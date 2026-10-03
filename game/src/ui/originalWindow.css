@@ -1,0 +1,380 @@
+/* Original-style screen windows (originalWindow.ts): ScreenPanel / HeaderPanel / CloseButton / GradientPanel /
+   GlassButton / ListViewBase / EnhancedTabControl in the original's pixels; the whole window is scaled as one with
+   transform: scale(k). Colours are the controls' Color.FromArgb values (see originalWindow.ts). */
+
+.ow-layer {
+    position: fixed;
+    inset: 0;
+    z-index: 1500; /* above the HUD, like the in-game tutorial window */
+    pointer-events: none;
+}
+
+.ow-screen {
+    position: absolute;
+    box-sizing: border-box;
+    transform-origin: 0 0;
+    pointer-events: auto;
+    /* BorderPanel.BackColor */
+    background: rgb(48, 48, 64);
+    color: #fff;
+    font-family: 'Forgotten Futurist', sans-serif;
+    font-size: 15.33px;
+    line-height: normal;
+    -webkit-font-smoothing: antialiased;
+    user-select: none;
+    box-shadow: 0 8px 40px rgba(0, 0, 0, 0.55);
+}
+/* BorderPanel.OnPaint: 3 px, top (200,200,200) / left (140) / bottom (20) / right (80), alpha 96. */
+.ow-screen::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    border: 3px solid;
+    border-color: rgba(200, 200, 200, 0.376) rgba(80, 80, 80, 0.376) rgba(20, 20, 20, 0.376) rgba(140, 140, 140, 0.376);
+}
+.ow-screen *,
+.ow-screen *::before,
+.ow-screen *::after {
+    box-sizing: border-box;
+}
+
+/* HeaderPanel.DrawBackground: outer border (0,0,16), black fill, (96,96,104) shine from alpha 153 to 51 over the top
+   half, inner border (67,67,77). */
+.ow-header {
+    position: absolute;
+    border: 1px solid rgb(0, 0, 16);
+    background:
+        linear-gradient(to bottom, rgba(96, 96, 104, 0.6), rgba(96, 96, 104, 0.2) 50%, transparent 50%),
+        #000;
+    box-shadow: inset 0 0 0 1px rgb(67, 67, 77);
+    cursor: default;
+    touch-action: none;
+}
+.ow-header-icon {
+    position: absolute;
+    left: 9px;
+    top: 9px;
+    width: 30px;
+    height: 30px;
+    object-fit: contain;
+    pointer-events: none;
+}
+/* DrawTitle: 22.67 px bold, white, at (45, 11). */
+.ow-title {
+    position: absolute;
+    left: 44px;
+    top: 10px;
+    font-size: 22.67px;
+    font-weight: bold;
+    line-height: 26px;
+    color: #fff;
+    white-space: nowrap;
+    pointer-events: none;
+}
+/* CloseButton 30 × 30 at (W - 41, 9): rounded rect radius 8 inset 2, pen 3 (67,67,77); hover pen 2 (134,134,154). */
+.ow-close {
+    position: absolute;
+    right: 10px;
+    top: 8px;
+    width: 30px;
+    height: 30px;
+    padding: 0;
+    margin: 0;
+    border: 0;
+    background: transparent;
+    cursor: pointer;
+}
+.ow-close svg {
+    display: block;
+    fill: #000;
+    stroke: rgb(67, 67, 77);
+    stroke-width: 3;
+}
+.ow-close .ow-close-x {
+    fill: none;
+    stroke-linecap: square;
+}
+.ow-close:hover svg {
+    stroke: rgb(134, 134, 154);
+    stroke-width: 2;
+}
+
+/* GradientPanel. */
+.ow-gradient {
+    position: absolute;
+    overflow: hidden;
+}
+.ow-body {
+    color: #fff;
+}
+
+/* Text (Graphics.DrawString; DrawStringWithDropShadow = a black copy at +1, +1). */
+.ow-text {
+    position: absolute;
+    white-space: pre;
+    line-height: 1.15;
+    color: rgb(200, 200, 200);
+    pointer-events: none;
+}
+.ow-text.ow-hot {
+    pointer-events: auto;
+}
+.ow-shadow {
+    text-shadow: 1px 1px 0 #000;
+}
+.ow-right {
+    transform: translateX(-100%);
+}
+.ow-dark {
+    position: absolute;
+}
+
+/* GlassButton.DrawButtonBackground. */
+.ow-glass {
+    --outer: rgb(0, 0, 16);
+    --shine: 112, 112, 128;
+    --glow: 48, 48, 128;
+    --inner: rgb(67, 67, 77);
+    position: absolute;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 0 4px;
+    margin: 0;
+    overflow: hidden;
+    cursor: pointer;
+    font-family: inherit;
+    font-weight: bold;
+    color: rgb(120, 120, 120);
+    border: 1px solid var(--outer);
+    background:
+        linear-gradient(to bottom, rgba(var(--shine), 0.6), rgba(var(--shine), 0.2) 50%, transparent 50%),
+        var(--outer);
+    box-shadow: inset 0 0 0 1px var(--inner);
+    transition: color 0.2s;
+    white-space: nowrap;
+    line-height: 1.1;
+}
+.ow-glass:hover:not(:disabled),
+.ow-glass.ow-glass-on {
+    color: #fff;
+    background:
+        linear-gradient(to bottom, rgba(var(--shine), 0.6), rgba(var(--shine), 0.2) 50%, transparent 50%),
+        radial-gradient(ellipse 85% 115% at 50% 100%, rgba(var(--glow), 0.7), rgba(var(--glow), 0) 100%),
+        var(--outer);
+}
+.ow-glass:active:not(:disabled) {
+    background:
+        linear-gradient(to bottom, rgba(var(--shine), 0.24), rgba(var(--shine), 0.08) 50%, transparent 50%),
+        var(--outer);
+}
+.ow-glass:disabled {
+    cursor: default;
+    color: rgb(72, 72, 80);
+    background:
+        linear-gradient(to bottom, rgba(var(--shine), 0.24), rgba(var(--shine), 0.08) 50%, transparent 50%),
+        var(--outer);
+}
+.ow-glass img {
+    flex: none;
+    pointer-events: none;
+}
+.ow-glass-text {
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* LinkLabel. */
+.ow-link {
+    position: absolute;
+    color: rgb(255, 192, 0);
+    text-decoration: none;
+    white-space: nowrap;
+    cursor: pointer;
+}
+.ow-link:hover {
+    text-decoration: underline;
+}
+.ow-link:active {
+    color: rgb(255, 128, 0);
+}
+
+/* Scroll regions: a dark scrollbar in the screen colours. */
+.ow-scroll {
+    overflow-x: hidden;
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: rgb(96, 96, 112) rgb(32, 32, 40);
+}
+.ow-scroll::-webkit-scrollbar {
+    width: 14px;
+}
+.ow-scroll::-webkit-scrollbar-track {
+    background: rgb(32, 32, 40);
+}
+.ow-scroll::-webkit-scrollbar-thumb {
+    background: rgb(80, 80, 96);
+    border: 3px solid rgb(32, 32, 40);
+    border-radius: 7px;
+}
+.ow-scroll::-webkit-scrollbar-thumb:hover {
+    background: rgb(112, 112, 128);
+}
+
+/* Input controls: the combo boxes' (48,48,64) back / (170,170,170) text. */
+.ow-input {
+    position: absolute;
+    font-family: inherit;
+    font-size: 15.33px;
+    color: rgb(170, 170, 170);
+    background: rgb(48, 48, 64);
+    border: 1px solid rgb(96, 96, 112);
+    border-radius: 0;
+    padding: 0 4px;
+    outline: none;
+}
+.ow-input:focus {
+    border-color: rgb(140, 140, 160);
+}
+.ow-select option {
+    background: rgb(48, 48, 64);
+    color: rgb(170, 170, 170);
+}
+.ow-textbox::placeholder {
+    color: rgb(110, 110, 120);
+}
+.ow-check {
+    position: absolute;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: rgb(170, 170, 170);
+    white-space: nowrap;
+    cursor: pointer;
+}
+.ow-check input {
+    margin: 0;
+    accent-color: rgb(96, 96, 112);
+}
+
+/* EnhancedTabControl. */
+.ow-tabs {
+    position: absolute;
+    display: flex;
+    align-items: flex-end;
+    padding: 2px 3px 0;
+    background: rgb(128, 128, 144);
+    height: 26px;
+}
+.ow-tab {
+    position: relative;
+    height: 21px;
+    padding: 3px 10px 0;
+    margin: 0 -1px 0 0;
+    font-family: inherit;
+    font-size: 15.33px;
+    line-height: 16px;
+    color: #fff;
+    background: rgb(64, 64, 80);
+    border: 1px solid rgb(128, 128, 144);
+    border-bottom: 0;
+    cursor: pointer;
+    white-space: nowrap;
+}
+.ow-tab.ow-tab-on {
+    color: rgb(255, 255, 0);
+    background: rgb(48, 48, 64);
+    z-index: 1;
+}
+.ow-tabs-bar {
+    position: absolute;
+    left: 3px;
+    right: 3px;
+    bottom: 0;
+    height: 5px;
+    background: rgb(64, 64, 80);
+    pointer-events: none;
+}
+
+/* DataGridView (ListViewBase). */
+.ow-grid {
+    position: absolute;
+    display: flex;
+    flex-direction: column;
+    background: var(--ow-row, rgb(32, 32, 40));
+    color: rgb(170, 170, 170);
+}
+.ow-grid-head {
+    flex: none;
+    display: grid;
+    grid-template-columns: var(--ow-cols);
+    background: rgb(24, 24, 24);
+    color: rgb(170, 170, 170);
+    padding-right: 14px; /* over the scrollbar */
+}
+.ow-grid-hcell {
+    padding: 2px 4px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    border-right: 1px solid rgb(48, 48, 48);
+}
+.ow-grid-hcell.ow-sortable {
+    cursor: pointer;
+}
+.ow-grid-hcell.ow-sort-asc::after {
+    content: ' \25B2';
+    font-size: 0.7em;
+}
+.ow-grid-hcell.ow-sort-desc::after {
+    content: ' \25BC';
+    font-size: 0.7em;
+}
+.ow-grid-body {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: scroll;
+}
+.ow-grid-row {
+    display: grid;
+    grid-template-columns: var(--ow-cols);
+    height: var(--ow-row-h);
+    background: var(--ow-row, rgb(32, 32, 40));
+    cursor: default;
+}
+.ow-grid-row.ow-alt {
+    background: var(--ow-row-alt, rgb(48, 48, 56));
+}
+.ow-grid-row.ow-sel {
+    background: rgb(96, 96, 96);
+    color: rgb(255, 255, 0);
+}
+.ow-grid-cell {
+    position: relative;
+    display: flex;
+    align-items: center;
+    min-width: 0;
+    overflow: hidden;
+    padding: 0 2px;
+    white-space: nowrap;
+}
+.ow-align-center {
+    justify-content: center;
+    text-align: center;
+}
+.ow-align-right {
+    justify-content: flex-end;
+    text-align: right;
+}
+.ow-grid-empty {
+    padding: 8px;
+    color: rgb(120, 120, 120);
+}
+.ow-bar {
+    pointer-events: none;
+}
+.ow-plain {
+    position: absolute;
+}

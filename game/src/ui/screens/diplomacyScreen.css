@@ -1,366 +1,304 @@
-/* Diplomacy screen (task 15a). Copied from coloniesList.css (prefix
-   diplomacy- instead of colonies-list-); dark-panel tokens. */
+/* Diplomacy screen (diplomacyScreen.ts) on the original-style window (../originalWindow.css). Everything is in the
+   original's pixels; the colours are the source controls' (DiplomaticRelationListView, EmpireDetailView,
+   HyperlinkOptionsBox, MessagePanel). */
 
-.diplomacy-wrap {
-    position: fixed;
-    inset: 0;
-    z-index: 1500; /* above the HUD, like the in-game tutorial window */
-    pointer-events: none;
-    font-family: 'Forgotten Futurist', sans-serif;
-    color: #e6e6e6;
+/* --- the empire list + relation strip (30 px rows on (60, 60, 72)) --- */
+.ow-grid.dip-list {
+    border: 1px solid rgb(30, 30, 38);
 }
-
-.diplomacy-window {
-    position: absolute;
-    top: 64px;
-    left: 16px;
-    width: 760px;
-    max-width: calc(100vw - 16px);
-    max-height: calc(100vh - 96px);
-    pointer-events: auto;
-    background: rgba(14, 16, 20, 0.94);
-    backdrop-filter: blur(6px);
-    -webkit-backdrop-filter: blur(6px);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 6px;
-    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6);
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-}
-
-.diplomacy-titlebar {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 8px 12px;
-    background: rgba(10, 11, 15, 0.9);
-    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-}
-
-.diplomacy-heading {
-    font-size: 13px;
-    color: #e8d24a;
-}
-
-.diplomacy-close {
-    background: transparent;
-    border: none;
-    color: #ccc;
-    font-size: 15px;
+.dip-list .ow-grid-row {
     cursor: pointer;
-    padding: 2px 6px;
 }
-.diplomacy-close:hover {
-    color: #fff;
+.dip-list .ow-grid-cell {
+    padding: 0;
 }
-
-/* Two panes: empire list | details of the selected empire. */
-.diplomacy-body {
-    display: grid;
-    grid-template-columns: 300px minmax(0, 1fr);
-    gap: 8px;
-    padding: 8px;
-    min-height: 0;
-    flex: 1 1 auto;
-    overflow: hidden;
-}
-.diplomacy-body-empty {
+.dip-flag,
+.dip-race {
     display: block;
+    pointer-events: none;
 }
-
-.diplomacy-list {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-    overflow-y: auto;
-    min-height: 0;
-}
-
-.diplomacy-detail {
-    overflow-y: auto;
-    min-height: 0;
-    padding: 4px 8px;
-    background: rgba(255, 255, 255, 0.03);
-    border: 1px solid rgba(255, 255, 255, 0.07);
-    border-radius: 4px;
-}
-
-.diplomacy-empty {
-    font-size: 12px;
-    color: #888;
-    padding: 8px;
-}
-
-/* Task 19k-1d (Big Galaxies: 60-empire games): filter box pinned to the top of the scrolling list pane. */
-.diplomacy-filter {
-    position: sticky;
-    top: 0;
-    z-index: 1;
-    padding: 5px 8px;
-    background: rgba(20, 22, 27, 0.98);
-    border: 1px solid rgba(255, 255, 255, 0.12);
-    border-radius: 4px;
-    color: #e6e6e6;
-    font-family: inherit;
-    font-size: 12px;
-}
-.diplomacy-filter:focus {
-    outline: none;
-    border-color: rgba(255, 255, 255, 0.3);
-}
-
-.diplomacy-list-empty {
-    padding: 10px 4px;
-    color: #888;
-    font-size: 12px;
-    text-align: center;
-}
-
-.diplomacy-row {
-    display: grid;
-    grid-template-columns: 10px minmax(0, 1fr) 8.5em 3em;
-    align-items: center;
-    gap: 8px;
-    padding: 5px 8px;
-    background: rgba(255, 255, 255, 0.04);
-    border: 1px solid rgba(255, 255, 255, 0.07);
-    border-radius: 4px;
-    cursor: pointer;
-}
-.diplomacy-row:hover {
-    background: rgba(255, 255, 255, 0.1);
-}
-.diplomacy-row-selected,
-.diplomacy-row-selected:hover {
-    background: rgba(232, 210, 74, 0.14);
-    border-color: rgba(232, 210, 74, 0.5);
-}
-
-.diplomacy-swatch {
-    display: inline-block;
-    width: 10px;
-    height: 10px;
-    border-radius: 2px;
-    border: 1px solid rgba(255, 255, 255, 0.25);
-}
-
-.diplomacy-name {
-    font-size: 13px;
-    color: #fff;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-
-.diplomacy-relation {
-    font-size: 11px;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-
-.diplomacy-attitude {
-    font-size: 12px;
-    text-align: right;
-}
-
-.diplomacy-detail-title {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 4px 0 6px;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-}
-.diplomacy-detail-name {
-    font-size: 14px;
-    color: #fff;
-}
-.diplomacy-portrait {
-    width: 96px;
-    height: 96px;
-    border-radius: 3px;
-    border: 1px solid rgba(255, 255, 255, 0.18);
-    object-fit: cover;
-}
-.diplomacy-flag {
-    width: 60px;
-    height: 36px;
-    margin-left: auto;
+.dip-race {
     object-fit: contain;
 }
+/* DataGridViewTextBoxDropShadowCell: 17 px bold, main colour (yellow when selected), contrast shadow at (+1, +1),
+   the strategic value bar (text colour from alpha 32 to 128) 3 px inset. */
+.dip-name-cell {
+    color: var(--dip-name);
+}
+.ow-sel .dip-name-cell {
+    color: rgb(255, 255, 0);
+    --dip-name-shadow: #000;
+}
+.dip-name {
+    position: relative;
+    padding-left: 2px;
+    font-size: 17px;
+    font-weight: bold;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    text-shadow: 1px 1px 0 var(--dip-name-shadow, #000);
+}
+.dip-name-bar {
+    position: absolute;
+    left: 0;
+    top: 3px;
+    bottom: 3px;
+    background: linear-gradient(to right, color-mix(in srgb, currentColor 12.5%, transparent), color-mix(in srgb, currentColor 50%, transparent));
+    pointer-events: none;
+}
+.dip-strip {
+    overflow: visible;
+}
+.dip-strip > * {
+    position: absolute;
+}
+.dip-rel-trade {
+    transform: translateX(-50%);
+}
+.dip-rel-alliance {
+    text-align: center;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.dip-rel-icon,
+.dip-rel-flag {
+    pointer-events: auto;
+}
 
+/* --- filters above the list (our addition) --- */
+.dip-filters > * {
+    height: 24px;
+}
+
+/* --- the detail panel --- */
+.dip-detail {
+    color: rgb(200, 200, 200);
+}
+.dip-detail-flag {
+    display: block;
+}
+.dip-detail-race,
+.dip-other-race,
+.dip-dom-race {
+    object-fit: cover;
+}
+.dip-alliance {
+    position: absolute;
+}
+.dip-extras {
+    position: absolute;
+    line-height: 1.12;
+    color: rgb(200, 200, 200);
+}
+.dip-factor {
+    white-space: normal;
+    margin-bottom: 1px;
+}
+.dip-pline {
+    white-space: pre-wrap;
+    color: rgb(200, 200, 200);
+    line-height: 1.12;
+}
+
+/* --- the right column --- */
+.dip-map {
+    border: 2px solid rgb(67, 67, 77);
+    background: #000;
+    overflow: hidden;
+}
+.dip-map canvas {
+    display: block;
+    width: 191px;
+    height: 191px;
+}
+.dip-key-swatch {
+    position: absolute;
+}
+.dip-extra-col {
+    position: absolute;
+}
+.dip-leagues {
+    position: absolute;
+    font-size: 14px;
+    color: rgb(170, 170, 170);
+}
+.dip-leagues .diplomacy-league-row {
+    display: flex;
+    align-items: center;
+    padding: 2px 0;
+}
+
+/* --- the talk panel (pnlDiplomacyTalk) --- */
+.dip-talk-panel .dip-talk-close {
+    right: 8px;
+    top: 8px;
+}
+.dip-talk-head {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+}
+.dip-talk-head .ow-text {
+    position: static;
+}
+.dip-talk-race {
+    object-fit: contain;
+}
+/* MessagePanel: 18.67 px, padding 12, black at alpha 80. */
+.dip-talk-response {
+    position: absolute;
+    padding: 12px;
+    background: rgba(0, 0, 0, 0.314);
+    font-size: 18.67px;
+    color: #fff;
+    line-height: 1.2;
+}
+/* HyperlinkOptionsBox: yellow links (orange while pressed), 5 px apart, centred vertically. */
+.dip-talk-options {
+    position: absolute;
+    background: rgba(0, 0, 0, 0.25);
+    display: flex;
+    flex-direction: column;
+}
+.dip-talk-options-inner {
+    margin: auto 0;
+    padding: 8px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+.dip-talk-link {
+    font-size: 18.67px;
+    color: rgb(255, 255, 0);
+    text-decoration: none;
+    cursor: pointer;
+}
+.dip-talk-link:hover {
+    text-decoration: underline;
+}
+.dip-talk-link:active {
+    color: rgb(255, 165, 0);
+}
+.dip-talk-link.dip-talk-disabled {
+    color: rgb(120, 120, 110);
+    cursor: default;
+    text-decoration: none;
+}
+.dip-talk-none {
+    color: rgb(150, 150, 150);
+    font-size: 16px;
+}
+
+/* --- shared blocks (also used by warTermsPanel.ts, leagueRows.ts, the 19a / 19c / 19d blocks) --- */
 .diplomacy-section-heading {
     margin-top: 8px;
-    font-size: 10px;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    color: #777;
+    font-size: 16.67px;
+    font-weight: bold;
+    color: rgb(200, 200, 200);
+    text-shadow: 1px 1px 0 #000;
 }
-
 .diplomacy-line {
-    font-size: 12px;
-    padding: 2px 0;
+    padding: 1px 0;
+    text-shadow: 1px 1px 0 #000;
 }
 .diplomacy-muted {
-    color: #777;
+    color: rgb(130, 130, 130);
 }
 .diplomacy-strategy {
-    margin-top: 8px;
-    color: #ccc;
+    margin-top: 6px;
+    color: rgb(170, 170, 170);
 }
-
-.diplomacy-message {
-    font-size: 11px;
-    font-style: italic;
-    color: #aaa;
-    padding: 2px 0;
+.diplomacy-treaty {
+    color: rgb(170, 170, 170);
 }
-
+.diplomacy-factor {
+    padding: 1px 0;
+    text-shadow: 1px 1px 0 #000;
+}
 .diplomacy-buttons {
     display: flex;
-    gap: 6px;
+    flex-wrap: wrap;
+    gap: 4px;
     padding: 4px 0;
 }
-
-.diplomacy-button {
+/* Small GlassButtons for the blocks' buttons. */
+.diplomacy-button,
+.dip-extras .diplomacy-propose-option {
     font-family: inherit;
-    font-size: 12px;
-    color: #e6e6e6;
-    background: rgba(255, 255, 255, 0.06);
-    border: 1px solid rgba(255, 255, 255, 0.2);
-    border-radius: 4px;
+    font-size: 14px;
+    font-weight: bold;
+    color: rgb(120, 120, 120);
+    border: 1px solid rgb(0, 0, 16);
+    border-radius: 7px;
+    background:
+        linear-gradient(to bottom, rgba(112, 112, 128, 0.6), rgba(112, 112, 128, 0.2) 50%, transparent 50%),
+        rgb(0, 0, 16);
+    box-shadow: inset 0 0 0 1px rgb(67, 67, 77);
     padding: 3px 10px;
     cursor: pointer;
 }
-.diplomacy-button:hover {
-    background: rgba(255, 255, 255, 0.14);
+.diplomacy-button:hover,
+.dip-extras .diplomacy-propose-option:hover:not(:disabled) {
     color: #fff;
+    background:
+        linear-gradient(to bottom, rgba(112, 112, 128, 0.6), rgba(112, 112, 128, 0.2) 50%, transparent 50%),
+        radial-gradient(ellipse 85% 115% at 50% 100%, rgba(48, 48, 128, 0.7), rgba(48, 48, 128, 0) 100%),
+        rgb(0, 0, 16);
 }
-
-.diplomacy-treaties {
-    margin: 2px 0;
-    padding-left: 16px;
-}
-.diplomacy-treaty {
-    font-size: 12px;
-    color: #ccc;
-}
-
-.diplomacy-feeling {
-    font-size: 13px;
-}
-
-.diplomacy-factor {
-    font-size: 11px;
-    padding: 1px 0;
-}
-
-/* [proposals] begin — task 17e "Propose..." block (the player's conversation options). */
-.diplomacy-propose {
-    margin-top: 4px;
+.dip-extras .diplomacy-propose-option:disabled {
+    color: rgb(72, 72, 80);
+    cursor: default;
 }
 .diplomacy-propose-group {
-    display: grid;
-    grid-template-columns: 8.5em minmax(0, 1fr);
-    gap: 6px;
-    align-items: baseline;
     padding: 2px 0;
 }
 .diplomacy-propose-label {
-    font-size: 11px;
-    color: #aaa;
+    color: rgb(170, 170, 170);
 }
 .diplomacy-propose-options {
     display: flex;
     flex-wrap: wrap;
     gap: 4px;
 }
-.diplomacy-propose-followups {
-    margin: 2px 0 4px;
-}
-.diplomacy-propose-option {
-    font-family: inherit;
-    font-size: 11px;
-    color: #e6e6e6;
-    background: rgba(255, 255, 255, 0.06);
-    border: 1px solid rgba(255, 255, 255, 0.2);
-    border-radius: 4px;
-    padding: 2px 8px;
-    cursor: pointer;
-}
-.diplomacy-propose-option:hover:not(:disabled) {
-    background: rgba(232, 210, 74, 0.16);
-    border-color: rgba(232, 210, 74, 0.55);
-    color: #fff;
-}
-.diplomacy-propose-option:disabled {
-    color: #666;
-    border-color: rgba(255, 255, 255, 0.08);
-    cursor: default;
-}
 .diplomacy-reply {
-    font-size: 12px;
-    padding: 4px 6px;
-    margin: 2px 0 4px;
-    border-left: 2px solid #888;
-    background: rgba(255, 255, 255, 0.04);
     white-space: pre-line;
 }
-.diplomacy-reply-accepted {
-    border-left-color: #90ee90;
+.dip-extras .diplomacy-reply {
+    padding: 4px 6px;
+    margin: 2px 0 4px;
+    background: rgba(0, 0, 0, 0.3);
 }
-.diplomacy-reply-refused {
-    border-left-color: #ffa500;
+.diplomacy-reply-accepted .diplomacy-reply-text {
+    color: rgb(144, 238, 144);
 }
-.diplomacy-reply-error {
-    border-left-color: #ff4040;
-    color: #aaa;
+.diplomacy-reply-refused .diplomacy-reply-text {
+    color: rgb(255, 200, 120);
+}
+.diplomacy-reply-error .diplomacy-reply-text {
+    color: rgb(170, 170, 170);
 }
 .diplomacy-reply-speaker {
-    color: #e8d24a;
+    color: rgb(255, 255, 0);
     margin-right: 6px;
+}
+.dip-talk-greeting {
+    color: rgb(200, 200, 200);
 }
 .diplomacy-propose-automation {
     display: flex;
     align-items: center;
     gap: 8px;
-    font-size: 11px;
-    color: #ccc;
-    padding: 2px 0 4px;
+    font-size: 15.33px;
+    color: rgb(200, 200, 200);
+    padding: 6px 0 0;
 }
-/* [proposals] end */
 
 /* [rimTrader] begin — scenario 19a trade terms block */
-.diplomacy-rimterms { border: 1px solid rgba(255, 179, 71, 0.45); border-radius: 4px; padding: 4px 8px 6px; margin: 6px 0; background: rgba(255, 179, 71, 0.06); }
+.diplomacy-rimterms { padding: 4px 6px 6px; margin: 6px 0; background: rgba(0, 0, 0, 0.3); }
 .diplomacy-rimterms-goods, .diplomacy-rimterms-line { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; margin: 3px 0; }
-.diplomacy-rimterms-label { color: #c8c8c8; min-width: 9em; }
+.diplomacy-rimterms-label { color: rgb(170, 170, 170); min-width: 9em; }
 .diplomacy-rimterms-good { display: inline-flex; align-items: center; gap: 4px; }
 .diplomacy-rimterms-good img { width: 20px; height: 20px; image-rendering: pixelated; }
 /* [rimTrader] end */
-
-.diplomacy-strengths { margin: 4px 0 8px; }
-.diplomacy-stat { display: flex; gap: 8px; font-size: 12px; line-height: 1.5; }
-.diplomacy-stat-label { flex: 0 0 120px; text-align: right; opacity: 0.75; }
-.diplomacy-stat-value { font-weight: bold; }
-.diplomacy-race { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
-.diplomacy-race-portrait { border-radius: 3px; }
-.diplomacy-power { font-size: 11px; opacity: 0.8; margin: 0 6px; white-space: nowrap; }
-.diplomacy-list-btn { margin-left: auto; margin-right: 8px; }
-
-.diplomacy-filter-row {
-    display: flex;
-    gap: 4px;
-    margin: 0 0 4px;
-}
-
-.diplomacy-filter-select {
-    flex: 1 1 0;
-    min-width: 0;
-    background: #10151c;
-    color: inherit;
-    border: 1px solid #3a4658;
-    border-radius: 3px;
-    padding: 2px 4px;
-    font: inherit;
-}

@@ -923,7 +923,16 @@ function openDiplomacy(wiring: HudWiring): void {
             cam.zoomAt(SYSTEM_LEVEL_ZOOM, cam.width / 2, cam.height / 2);
         },
     });
-    toggleDiplomacyScreen({ player: playerEmpire, onOpenEmpiresList: openList });
+    toggleDiplomacyScreen({
+        player: playerEmpire,
+        onOpenEmpiresList: openList,
+        onGoTo: (habitat) => {
+            const cam = wiring.camera;
+            if (!cam) return;
+            cam.centerOn(habitat.xpos, habitat.ypos);
+            cam.zoomAt(SYSTEM_LEVEL_ZOOM, cam.width / 2, cam.height / 2);
+        },
+    });
 }
 
 /** btnEmpireSummary: the player's flag (Empire.LargeFlagPicture scaled to 50 × 30, Main.Part12.cs 2904) — or the
