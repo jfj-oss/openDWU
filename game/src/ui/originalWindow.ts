@@ -12,7 +12,8 @@
 //      onClose })` — width / height are the ORIGINAL ScreenPanel size. The window lays itself out (header at (7, 8),
 //      body at (8, 59), ScreenPanel.DoLayout) and scales as one with `transform: scale(k)`, k = originalWindowScale():
 //      the HUD's factor (topBar.ts topBarScale: window height × UI scale × HUD_FRAME_SIZE) capped so the window fits.
-//      Text stays crisp at 4K because the browser re-rasterises a scaled transform.
+//      Text stays crisp at 4K because the browser re-rasterises a scaled transform. A non-chrome header icon (the
+//      player's flag on Empire Summary) goes in `iconUrl` / `win.setIcon(url)`.
 //   2. Everything inside `win.body` is positioned in the original's body-relative pixels: copy the Location / Size
 //      the source gives each control and call `place(el, x, y, w, h)`. Do NOT use flex/grid for the main layout —
 //      the point is a 1:1 port. Pick the large / small variant with `win.virtualSize` (the window in original pixels,
@@ -671,6 +672,9 @@ export interface OriginalWindowOptions {
     title: string;
     /** HeaderIcon: a chrome image file (images/ui/chrome/<icon>), e.g. 'diplomacy.png'. */
     icon?: string;
+    /** HeaderIcon as any image URL (e.g. the player's LargeFlagPicture as a data URL); wins over `icon`. Set it
+     *  later with `win.setIcon(url)` (an async flag). */
+    iconUrl?: string;
     /** ScreenPanel Size in the original's pixels. */
     width: number;
     height: number;
@@ -698,6 +702,8 @@ export interface OriginalWindow {
     readonly virtualSize: { w: number; h: number };
     readonly scale: number;
     setTitle(title: string): void;
+    /** Change the HeaderIcon to an image URL (creates it when the window was opened without an icon). */
+    setIcon(url: string): void;
     /** Resize the ScreenPanel (original pixels) and re-centre it. */
     setSize(width: number, height: number): void;
     close(): void;
@@ -730,9 +736,9 @@ export function openOriginalWindow(o: OriginalWindowOptions): OriginalWindow {
     const titleEl = el('div', 'ow-title');
     let iconEl: HTMLImageElement | null = null;
     if (headerEl) {
-        if (o.icon) {
+        if (o.icon || o.iconUrl) {
             iconEl = el('img', 'ow-header-icon');
-            iconEl.src = chromeImageUrl(o.icon);
+            iconEl.src = o.iconUrl ?? chromeImageUrl(o.icon!);
             iconEl.alt = '';
             iconEl.draggable = false;
             headerEl.appendChild(iconEl);
@@ -837,6 +843,17 @@ export function openOriginalWindow(o: OriginalWindowOptions): OriginalWindow {
         },
         setTitle(t: string) {
             setText(titleEl, t);
+        },
+        setIcon(url: string) {
+            if (!headerEl) return;
+            if (iconEl === null) {
+                iconEl = el('img', 'ow-header-icon');
+                iconEl.alt = '';
+                iconEl.draggable = false;
+                headerEl.insertBefore(iconEl, headerEl.firstChild);
+                titleEl.style.left = '';
+            }
+            if (iconEl.src !== url) iconEl.src = url;
         },
         setSize(nw: number, nh: number) {
             w = nw;

@@ -450,6 +450,12 @@ export function toggleFleets(selected?: ShipGroup): void {
         empire: src.empire,
         selected,
         onSelect: (sg) => selectShipGroup(sg, true),
+        // Select Fleet (method_208): select without moving the view.
+        onSelectOnly: (sg) => selectShipGroup(sg, false),
+        // The info panel's hotspots: a ship selects it; the fleet itself is the selection already.
+        onTarget: (t) => {
+            if (t.kind === 'select' && !(t.obj instanceof ShipGroup)) selectStellarObject(t.obj, false);
+        },
         // Home Base / Attack Point (Main.Part7.cs SetFleetHomeBase / SetFleetAttackPoint): the fleet is selected and the
         // next map click picks the point.
         onPickPoint: (sg, mode) => {
