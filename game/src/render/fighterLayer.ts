@@ -34,7 +34,7 @@ import { artBundleFlag } from './artBundleFlags';
 import { fogOf } from './fog';
 import type { Galaxy } from '../sim/galaxy';
 import { fightersOf, type Fighter } from '../sim/combat/fighters';
-import type { MotionInterpolator } from './renderInterp';
+import { sampleFighter, type MotionInterpolator } from './renderInterp';
 
 const IMG = '/assets/dwu/images';
 /** LoadFighters loads a fighter and a bomber per family folder (ShipImageHelper.ShipSetFighterImageCount = 2). */
@@ -189,12 +189,13 @@ export class FighterLayer {
                     // Coarse cull before the art lookup (fighters are at most a few dozen px).
                     if (sx < -CULL_MARGIN_PX - 64 || sx > cam.width + CULL_MARGIN_PX + 64 || sy < -CULL_MARGIN_PX - 64 || sy > cam.height + CULL_MARGIN_PX + 64) continue;
                     if (!fog.fighter(fighter)) continue;
-                    // Drawn position / heading: lerp between the last two sim steps (renderInterp.ts), or the sim state.
+                    // Drawn position / heading: lerp between the last two sim steps, extrapolated past the carrier's last touch
+                    // (renderInterp.ts sampleFighter), or the sim state.
                     let x = fighter.xpos;
                     let y = fighter.ypos;
                     let heading = fighter.heading;
                     if (this.motion !== null) {
-                        const st = this.motion.sample(fighter, x, y, heading, Math.max(fighter.topSpeed, Math.abs(fighter.currentSpeed)));
+                        const st = sampleFighter(this.motion, fighter);
                         x = st.x;
                         y = st.y;
                         heading = st.heading;
