@@ -93,6 +93,7 @@ import {
     type GridColumn,
     type OriginalWindow,
 } from '../originalWindow';
+import { requestSimRefresh } from '../../simworker/refresh';
 
 /** GameText lookup with the English text as fallback (tests run without GameText loaded). */
 function T(key: string, english: string): string {
@@ -1384,6 +1385,8 @@ function createColoniesScreen(opts: ColoniesScreenOptions): OpenState {
     refreshGrid();
     refreshDetail(true);
     if (selected) grid.select(selected, true);
+    // Worker mode: bring what the screen shows up to date now instead of up to a cold cycle later (no-op in-thread).
+    requestSimRefresh(galaxy, [empire, ...empire.colonies], () => refreshAll());
     timer = window.setInterval(refreshAll, opts.refreshMs ?? 1000);
     return state;
 }

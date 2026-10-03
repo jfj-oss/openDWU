@@ -5,6 +5,7 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import { createGame, createGameSteps, type GameStartProgress } from '../src/sim/game';
 import { defaultStartGameOptions, toCreateGameOptions } from '../src/sim/startGameOptions';
+import { GalaxyShape } from '../src/sim/types';
 import { stateDigest } from '../src/sim/tick/digest';
 import type { GameData } from '../src/sim/data/gameData';
 import { loadGameDataFs } from './helpers/loadGameDataFs';
@@ -19,6 +20,7 @@ describe('Mature start from the wizard options', () => {
         const so = defaultStartGameOptions();
         so.seed = 7;
         so.raceName = 'Human';
+        so.shape = GalaxyShape.Spiral; // pinned (the wizard default is now the original's Elliptical)
         so.starCountIndex = 2; // 400 stars
         so.dimensionIndex = 2; // 8x8
         so.galaxyExpansionIndex = 4; // Mature
@@ -38,7 +40,18 @@ describe('Mature start from the wizard options', () => {
             r = steps.next();
         }
         const g = r.value.galaxy;
-        for (const e of g.empires) expect(g.empireTerritory.checkLocationOwnership(g, e.capital!.xpos, e.capital!.ypos)).toBe(e.empireId);
+        // Every starting empire's capital lies in its own territory (a 100x influence range lets a neighbour swallow it).
+        // The exception is the Return of the Shakturi story's Ancient Guardians (on by default since the wizard follows
+        // Main.Part9.cs method_259 VictoryConditionsStoryEvents = true). Start.2.cs 1730-1767 GenerateAncientHelpers founds
+        // them on "Utopia", an unoccupied system that may sit inside a neighbour's territory, after the last start-up
+        // territory review (Start.2.cs 1487 ReviewEmpireTerritoryCore). The original shows the same thing until the first
+        // in-game territory review.
+        const guardians = g.empires.filter((e) => e.capital?.name === 'Utopia' && e.name === 'Ancient Guardians');
+        expect(guardians.length).toBe(1);
+        for (const e of g.empires) {
+            if (guardians.includes(e)) continue;
+            expect(g.empireTerritory.checkLocationOwnership(g, e.capital!.xpos, e.capital!.ypos)).toBe(e.empireId);
+        }
         expect(g.empires.reduce((n, e) => n + e.colonies.length, 0)).toBeGreaterThan(g.empires.length);
         for (let i = 1; i < seen.length; i++) expect(seen[i].fraction).toBeGreaterThanOrEqual(seen[i - 1].fraction);
         expect(seen.length).toBeGreaterThan(10);

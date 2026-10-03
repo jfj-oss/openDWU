@@ -78,6 +78,7 @@ import { showToast } from '../toast';
 import { mainResxImageUrl } from '../resxImage';
 import { openGalactopedia } from './galactopedia';
 import { CROSSHAIR_COLOR, GRID_COLOR, drawMapTerritory, galaxyMapScale, sectorColumnLabel, starBrushColor } from './galaxyMap';
+import { requestSimRefresh } from '../../simworker/refresh';
 
 /** Main.Part4.cs:2721 method_538: cmbExpansionPlannerMode index → mode key. */
 export type ExpansionMode = 'colonies' | 'resourcesyou' | 'resourcesgalaxy' | 'resourcessupply';
@@ -1310,11 +1311,13 @@ function createExpansionPlanner(opts: ExpansionPlannerOptions): OpenState {
                 const ship = r.built[0];
                 if (!r.ok || ship === undefined) {
                     showToast(r.message ? resolveGameText(r.message) : `${T('Build and Send Colony Ship')}: not possible`);
+                    afterOrder();
                 } else {
-                    issuePlayerCommand(galaxy, player, 'shipAction', [ship, ShipAction.forMission(BuiltObjectMissionType.Colonize, h), false]);
+                    // Re-bind once the colonize order has landed too (in worker mode it reaches a later boundary, so
+                    // the row only shows the assigned ship then — and Build stays off for it).
+                    issuePlayerCommand(galaxy, player, 'shipAction', [ship, ShipAction.forMission(BuiltObjectMissionType.Colonize, h), false], () => afterOrder());
                     showToast(formatNet(T('Send X to colonize Y', 'Send {0} to colonize {1}'), [ship.name, h.name]));
                 }
-                afterOrder();
             });
         } else if (mode === 'resourcesyou' || mode === 'resourcesgalaxy') {
             const design = miningStationDesign(galaxy, player, h);
@@ -1343,6 +1346,10 @@ function createExpansionPlanner(opts: ExpansionPlannerOptions): OpenState {
     bindResources();
     refreshAll();
     // Money, ship positions and queues move while the planner is open: keep the buttons and the map current.
+    // Worker mode: bring what the screen shows up to date now instead of up to a cold cycle later (no-op in-thread).
+    requestSimRefresh(galaxy, [player, player.colonies, player.builtObjects], () => {
+        if (!win.closed) refreshAll();
+    });
     timer = window.setInterval(() => {
         if (win.closed) return;
         refreshButtons();

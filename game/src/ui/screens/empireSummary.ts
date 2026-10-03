@@ -77,6 +77,7 @@ import {
     shipRowLabel,
     type BonusLine,
 } from './empireSummaryModel';
+import { requestSimRefresh } from '../../simworker/refresh';
 
 /** The data the panel displays: the player's empire plus its government's
  * display name (null when unknown). */
@@ -797,6 +798,8 @@ function createEmpireSummary(src: EmpireSummarySource): OpenState {
     };
     renderAll();
     // The original repaints on Invalidate; refresh the figures once a second.
+    // Worker mode: bring what the screen shows up to date now instead of up to a cold cycle later (no-op in-thread).
+    requestSimRefresh(galaxy, [empire], () => renderAll());
     const timer = window.setInterval(renderAll, 1000);
 
     const state: OpenState = { win, close: () => win.close() };

@@ -104,6 +104,7 @@ import {
     gt,
     resolveNodeDescription,
 } from './researchBenefits';
+import { requestSimRefresh } from '../../simworker/refresh';
 export { checkNodeValidForRace, queueResearchProject, dequeueResearchProject };
 
 export const RESEARCH_INDUSTRIES = [IndustryType.Weapon, IndustryType.Energy, IndustryType.HighTech] as const;
@@ -1277,6 +1278,10 @@ function createResearchScreen(opts: ResearchScreenOptions): OpenState {
 
     const cleanup: (() => void)[] = [];
     build();
+    // Worker mode: bring what the screen shows up to date now instead of up to a cold cycle later (no-op in-thread).
+    requestSimRefresh(galaxy, [empire, empire.research], () => {
+        if (!win.closed) refresh();
+    });
     timer = window.setInterval(() => {
         if (win.closed) return;
         refresh();

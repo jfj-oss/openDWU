@@ -267,6 +267,14 @@ not to the local queue.
   it names that the replica does not know yet are born in the same delta's hot part, and objects born in a cold part
   become a dependency. The callback runs on the main thread once the delta is applied, so the reply always resolves to
   replica objects. Unlike in-thread play, it runs one round trip later, not inside the boundary.
+- **Fresh replies (chunk 6).** Besides the precise compare of a command's arguments and result (see "Freshness of
+  `onApplied`" below), the host compares what they and the issuing empire reach, breadth-first, at most 3 levels and
+  3000 objects (`ReplicaEncoder.compareReach`). So a screen's refresh in `onApplied` sees, for example, the list a
+  new fleet template went into. Both compares reshape a class instance that has gained a lazily set `declare`d
+  field (e.g. `Empire.fleetDesigns`, `constructionBoard`). The round-robin cold pass does not notice new fields.
+- **Refresh on open** (`simworker/refresh.ts requestSimRefresh`, message `refresh`): when a screen opens, it asks the
+  worker to `compareReach` the objects it shows. It re-renders once they have arrived: the reply is applied with
+  `applyThrough`, as a command reply is. In-thread this is a no-op.
 - **`runPlayerCommand`** (synchronous result) throws on a replica. Its two callers, the advisor chat and the diplomat
   voice, are in §9 chunk 8.
 - **By-value identity** (`remoteArgs.ts RemoteValues`). By-value objects carry a main-thread value id. Shared or cyclic
@@ -383,6 +391,7 @@ The only behaviour changes in this mode are:
 | `src/simworker/simQuery.ts` | UI-side sim calls that change state as the C# UI does (menus, buttons, money panel), run where the game runs (§4.4) |
 | `src/simworker/tradeFlowSync.ts` | Trade-flow recording in the worker; the ledger as a side table (chunk 3) |
 | `src/simworker/protocol.ts` | Message types |
+| `src/simworker/refresh.ts` | Refresh-on-open requests from the screens (`requestSimRefresh`; no-op in-thread) |
 | `src/simFrameBudget.ts` | SimFrameBudget, shared by both modes |
 | `scripts/sync-measure.mjs` | Sync cost on a save (`--compare-options`, `--verify`, `--census`, `--hot-fields`) |
 | `scripts/simworker-smoke.mjs` | Browser smoke: boots with the flag, checks run / speed / pause / move order, screenshots |
@@ -545,6 +554,36 @@ Each chunk is independent. All chunks share the same test approach:
 - Work: async `onApplied`; by-value arguments (DesignDraft, policies) through `remoteArgs`; confirm that the heavy AI
   queries the planner runs are write-free on the replica.
 - Test: per screen, the command it issues through the host gives the in-thread digest; screenshots in both modes.
+- **Done:**
+  - Every order of the screens goes through `issuePlayerCommand`. On a replica the Empire Policy panel issues its
+    automation combos as `setEmpireControl` commands. In-thread it still writes `Empire.control*` directly, as the C#
+    method_597 does.
+  - Write-free reads on a replica. Some C# lookups create what they look up (`obtainDiplomaticRelation`,
+    `obtainPirateRelation`, `obtainEmpireEvaluation`, `scenarioState`, `wondersBuilt`), and some money reads age the
+    income they read (`thisYearsSpacePortIncome`, `thisYearsResortIncome`, `checkAgeVariableIncome`, the NaN tax
+    recalculation). On a galaxy marked read-only (`sim/readOnlyQuery.ts markReadOnlyGalaxy`; clientCore marks the
+    replica) they return the same value without writing. That covers every main-thread caller, not only the screens:
+    the planner's AI queries, the approval and tax queries, the charter checks, the HUD. Nothing else is ever
+    marked, so in-thread play and `repin` are unchanged.
+  - The Build Order's cashflow figure uses chunk 5's `moneyPanel` query (`simworker/simQuery.ts`), so the money
+    panel's CheckAgeVariableIncome runs in the worker.
+  - The replica gets the BaconSettings.txt statics (prices, maintenance) at boot.
+  - Tests: `test/simWorkerScreens.test.ts`, with the script in `test/helpers/screenOrders.ts`.
+    - 29 screen orders run through the host against the in-thread loop; the digest, the log and the replies match.
+    - Fresh replies and refresh requests are checked.
+    - The screens' reads, run on a replica, leave it equal to the worker's game; chunk 0's write detector finds no
+      write.
+  - Browser: `scripts/simworker-screens.mjs` opens every screen with the game paused, with `detectWrites=1`, and
+    compares the replica digest with the worker's. It then renames the empire and saves a design through the editor.
+- **Still open:**
+  - A reply whose result fails to encode is dropped (console warning only). The await-style callers (recruit, the
+    editor's Save) then wait forever.
+  - The Galactopedia's `loadGameData` reloads the global GameText table, which drops scenario text added on the main
+    thread.
+  - Lazily added `declare`d class fields reach the replica only through `compareNow` (chunk 9 / 0).
+  - In worker mode, the records the in-thread UI creates lazily are not created at all. Those are the NotMet relations
+    and evaluations made by the screens' queries. The worker does not run them; in-thread they happen at UI time and
+    are not journaled.
 
 **Chunk 7 — diplomacy, intelligence and politics.**
 - Files: `ui/screens/diplomacyScreen.ts`, `diplomacyRelationsView.ts`, `empireIntel.ts`, `empiresList.ts`,

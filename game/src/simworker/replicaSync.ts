@@ -455,7 +455,11 @@ export class ReplicaEncoder {
     compareNow(o: object, depth = 1): void {
         const id = this.ids.get(o);
         if (id === undefined) return;
-        this.compare(id);
+        // A class instance that gained (or lost) an own field since it was shaped — a `declare`d field set lazily,
+        // e.g. Empire.constructionBoard / fleetDesigns on the first job / template — gets its new shape (the
+        // round-robin pass assumes a class keeps its shape; revalidateShapes is the whole-graph version).
+        if (this.kinds[id] === Kind.Class && this.objs[id] !== null && this.shadows[id] !== undefined && this.shapeChanged(id)) this.reshape(id, this.objs[id]!);
+        else this.compare(id);
         if (depth <= 0) return;
         const sh = this.shadows[id];
         if (sh === undefined || this.kinds[id] === Kind.Typed) return;
@@ -463,6 +467,54 @@ export class ReplicaEncoder {
             const v = sh[i];
             if (v !== null && typeof v === 'object') this.compareNow(v as object, depth - 1);
         }
+    }
+
+    /**
+     * Compare `roots` whole now, and the synced objects they reach, breadth-first, up to `maxDepth` references away
+     * and `maxObjects` objects in all (the galaxy / side-table roots are compared but not expanded). Their changes
+     * travel in the next delta instead of waiting for the round-robin cold pass: what a player command just changed
+     * (its arguments, its result, the issuing empire) or what a screen opening is about to show. Read-only, like every
+     * compare. Returns the objects compared.
+     */
+    compareReach(roots: Iterable<object>, maxObjects = 3000, maxDepth = 3): number {
+        const seen = new Set<number>();
+        let level: number[] = [];
+        for (const r of roots) {
+            const id = this.ids.get(r);
+            if (id !== undefined && !seen.has(id)) {
+                seen.add(id);
+                level.push(id);
+            }
+        }
+        let n = 0;
+        for (let depth = 0; level.length > 0 && n < maxObjects; depth++) {
+            const next: number[] = [];
+            for (let i = 0; i < level.length && n < maxObjects; i++) {
+                const id = level[i];
+                // A class instance that gained (or lost) an own field since it was shaped — a `declare`d field set
+                // lazily, e.g. Empire.constructionBoard / fleetDesigns on the first job / template — gets its new shape
+                // (the round-robin pass assumes a class keeps its shape; revalidateShapes is the whole-graph version).
+                if (this.kinds[id] === Kind.Class && this.objs[id] !== null && this.shadows[id] !== undefined && this.shapeChanged(id)) this.reshape(id, this.objs[id]!);
+                else this.compare(id);
+                n++;
+                if (depth >= maxDepth || id <= 1 || this.kinds[id] === Kind.Typed) continue;
+                const sh = this.shadows[id];
+                if (sh === undefined) continue;
+                for (let k = 0; k < sh.length; k++) {
+                    const v = sh[k];
+                    if (v === null || typeof v !== 'object') continue;
+                    const cid = this.ids.get(v as object);
+                    if (cid !== undefined && !seen.has(cid)) {
+                        seen.add(cid);
+                        next.push(cid);
+                    }
+                }
+            }
+            level = next;
+        }
+        this.flushPending();
+        this.stats.coldCompared += n;
+        return n;
     }
 
     /** Everything written since the last delta. */
@@ -1079,6 +1131,16 @@ export class ReplicaEncoder {
      * Re-check every class instance's own field list (fields added or removed after construction; rare). The compare
      * passes assume a class instance keeps its shape. Tools / tests; returns the objects reshaped.
      */
+    /** Whether class instance `id`'s own field list differs from its shape's. */
+    private shapeChanged(id: number): boolean {
+        const o = this.objs[id]!;
+        const info = this.shapes[this.shapeOf[id]];
+        const keys = this.keysOf(o, info.proto);
+        if (keys.length !== info.keys.length) return true;
+        for (let i = 0; i < keys.length; i++) if (keys[i] !== info.keys[i]) return true;
+        return false;
+    }
+
     revalidateShapes(): number {
         let n = 0;
         for (let id = 0; id < this.objs.length; id++) {
