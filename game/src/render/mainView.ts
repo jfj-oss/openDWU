@@ -1687,7 +1687,7 @@ export class MainView {
 
         // Task M2e: empire ownership overlays. The layer's root is added to
         // world after all system roots, so rings/discs draw on top of stars.
-        this.empireLayer = new EmpireLayer(this.galaxy, this.world);
+        this.empireLayer = new EmpireLayer(this.galaxy, this.world, this.app.renderer);
         // Task M3: potential-colonies/scenic/research markers + the Empire
         // Territory toggle. Added after empireLayer so its yellow marker
         // rings draw above the territory discs and colony rings.
