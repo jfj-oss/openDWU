@@ -1,0 +1,80 @@
+/* [parC1] Ground Report (ColonyInvasion.cs Draw): the view at (5, 5) in the ScreenPanel body, in the view's pixels. */
+.ow-screen-groundReport .gr-view {
+    position: absolute;
+    overflow: hidden;
+    background: #000;
+}
+.ow-screen-groundReport .gr-view.gr-hover-resize .gr-resize path {
+    stroke: rgb(255, 255, 255);
+}
+.ow-screen-groundReport .gr-content > * {
+    position: absolute;
+}
+.ow-screen-groundReport .gr-header {
+    background: rgb(32, 32, 32);
+}
+.ow-screen-groundReport .gr-landscape,
+.ow-screen-groundReport .gr-space {
+    object-fit: fill;
+    pointer-events: none;
+}
+.ow-screen-groundReport .gr-img {
+    object-fit: contain;
+    pointer-events: none;
+}
+/* Draw 1353: defenders face right (a negative destination width). */
+.ow-screen-groundReport .gr-mirrored {
+    transform: scaleX(-1);
+}
+/* Draw 1220: the dashed (128, 255, 0, 0) 2 px frontline. */
+.ow-screen-groundReport .gr-frontline {
+    background: repeating-linear-gradient(to bottom, rgba(255, 0, 0, 0.5) 0 6px, transparent 6px 8px);
+}
+.ow-screen-groundReport .gr-shield {
+    background: rgba(160, 224, 255, 0.5);
+}
+.ow-screen-groundReport .gr-bar-red {
+    background: rgb(255, 0, 0);
+}
+.ow-screen-groundReport .gr-bar-green {
+    background: rgb(0, 255, 0);
+}
+/* DrawStringWithDropShadow: (170, 170, 170) over a black copy 1 px down-right. */
+.ow-screen-groundReport .gr-text {
+    color: rgb(170, 170, 170);
+    text-shadow: 1px 1px 0 #000;
+    white-space: nowrap;
+    line-height: 1.2;
+    pointer-events: none;
+}
+.ow-screen-groundReport .gr-bold {
+    font-weight: bold;
+}
+.ow-screen-groundReport .gr-centered {
+    transform: translateX(-50%);
+    text-align: center;
+}
+.ow-screen-groundReport .gr-hover-text {
+    position: absolute;
+    transform: translateX(-50%);
+    color: rgb(255, 255, 0);
+    text-shadow: 1px 1px 0 #000;
+    font-size: 16.67px;
+    white-space: nowrap;
+    pointer-events: none;
+}
+.ow-screen-groundReport .gr-hover-box {
+    position: absolute;
+    border: 1px dotted rgb(170, 170, 170);
+    box-sizing: border-box;
+    pointer-events: none;
+}
+/* Draw 1471-1492: the 3 px (170, 170, 170) size glyph, white while hovered. */
+.ow-screen-groundReport .gr-resize {
+    cursor: pointer;
+}
+.ow-screen-groundReport .gr-resize path {
+    fill: none;
+    stroke: rgb(170, 170, 170);
+    stroke-width: 3;
+}

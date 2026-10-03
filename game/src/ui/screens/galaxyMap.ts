@@ -18,9 +18,11 @@ import type { Empire } from '../../sim/empire';
 import { DiplomaticRelationType } from '../../sim/diplomacy';
 import { GalaxyLocationType } from '../../sim/galaxyLocation';
 import { HabitatCategoryType, HabitatType, type Habitat } from '../../sim/types';
-import { NebulaCloudGenerator } from '../../render/nebulaClouds';
-import { BACKDROP_URLS } from '../../render/assets';
 import { fogOf } from '../../render/fog';
+import { drawGalaxyMapLayers } from './galaxyMapLayers';
+import { habitatLandscapeImageUrl } from '../landscapeImages';
+import { SystemVisibilityStatus } from '../../sim/visibility';
+import { drawSystemView, findNearestHabitatNear, systemViewWorldAt } from '../systemView';
 import { territoryColorFn } from '../../render/empireLayer';
 import { drawTerritoryOnMap } from '../../render/territoryRaster';
 import './galaxyMap.css';
@@ -100,8 +102,11 @@ export function drawSystemsMiniMap(canvas: HTMLCanvasElement, galaxy: Galaxy, w:
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.fillStyle = '#000';
     ctx.fillRect(0, 0, w, w);
-    drawMapTerritory(ctx, galaxy, w);
     const s = galaxyMapScale(galaxy, w);
+    // GalaxyMap.cs method_6: bitmap_1 (backdrop) and bitmap_0 (nebulae) under the territory (galaxyMapLayers.ts); the
+    // control redraws itself while the shared nebula composite fills in.
+    drawGalaxyMapLayers(ctx, galaxy, s, 0, 0, { onChange: () => { if (canvas.isConnected) drawSystemsMiniMap(canvas, galaxy, w, selected); } });
+    drawMapTerritory(ctx, galaxy, w);
     const filter = selected.size > 0;
     const sizes = starDotSizes(w, filter);
     const dot = (h: Habitat, color: string | null, size: number): void => {
@@ -384,53 +389,99 @@ export interface GalaxyMapScreen {
     setViewMode(mode: GalaxyMapViewMode): void;
     /** Select the nearest system to a world point (as a single click does). */
     selectAt(x: number, y: number): Habitat | null;
+    /** habitat_8 / habitat_7: the selected habitat and the system the system map shows. */
+    readonly selectedHabitat: Habitat | null;
+    readonly selectedSystem: Habitat | null;
+    /** btnGalaxyMapBack / btnGalaxyMapForward. */
+    back(): void;
+    forward(): void;
 }
 
-// Cached per galaxy: backdrop image and generated nebula images.
-interface MapLayers {
-    backdrop: HTMLImageElement | null;
-    nebulae: { canvas: HTMLCanvasElement; x: number; y: number; w: number; h: number }[];
-}
-const layerCache = new WeakMap<Galaxy, MapLayers>();
+// ---------------------------------------------------------------------------
+// Back / Forward (Main.Part10.cs method_213 / btnGalaxyMapBack_Click / btnGalaxyMapForward_Click / method_215)
+// ---------------------------------------------------------------------------
 
-function buildLayers(galaxy: Galaxy, redraw: () => void): MapLayers {
-    const cached = layerCache.get(galaxy);
-    if (cached) return cached;
-    const layers: MapLayers = { backdrop: null, nebulae: [] };
-    layerCache.set(galaxy, layers);
-    const img = new Image();
-    img.onload = () => {
-        layers.backdrop = img;
-        redraw();
-    };
-    img.src = BACKDROP_URLS[0];
-    // Nebula images: same generator/seed the Main View uses for each nebula
-    // location (task 08f2), at map resolution. Generated in small batches so
-    // opening the map doesn't block.
-    // Deviation: the C# map shows the GalaxyNebulaeGenerator image (bitmap_182,
-    // its generateImage path, not ported); the per-location clouds are the
-    // closest ported equivalent.
-    const locations = galaxy.galaxyLocations.filter((l) => l.type === GalaxyLocationType.NebulaCloud);
-    let i = 0;
-    const step = (): void => {
-        const end = Math.min(locations.length, i + 4);
-        for (; i < end; i++) {
-            const loc = locations[i];
-            const gen = new NebulaCloudGenerator(2);
-            const r = gen.generateNebulaBackdrop(loc.pictureRef >= 0 ? loc.pictureRef : loc.effectRandomSeed, 114, -1, 48, 72, true, false, true);
-            const c = document.createElement('canvas');
-            c.width = r.width;
-            c.height = r.height;
-            const ctx = c.getContext('2d');
-            if (ctx) ctx.putImageData(new ImageData(new Uint8ClampedArray(r.image), r.width, r.height), 0, 0);
-            layers.nebulae.push({ canvas: c, x: loc.xpos, y: loc.ypos, w: loc.width, h: loc.height });
-        }
-        redraw();
-        if (i < locations.length) setTimeout(step, 0);
-    };
-    setTimeout(step, 0);
-    return layers;
+/** Main.Part13.cs 171: dremNtuMsv, the most habitats the Galaxy Map's Back / Forward history keeps. */
+export const GALAXY_MAP_HISTORY_MAX = 100;
+
+/** habitatList_0 + int_24: the visited habitats and the current position. */
+export interface GalaxyMapHistory {
+    list: Habitat[];
+    index: number;
 }
+
+export function createGalaxyMapHistory(): GalaxyMapHistory {
+    return { list: [], index: 0 };
+}
+
+/** Port of Main.Part10.cs method_213: record a visit (no-op when it is the current entry). Visiting from an earlier
+ * position drops the entries after it; a full list shifts its oldest entry out. */
+export function galaxyMapHistoryPush(hist: GalaxyMapHistory, h: Habitat, max = GALAXY_MAP_HISTORY_MAX): void {
+    const list = hist.list;
+    if (list.length > 0 && list[hist.index] === h) return;
+    if (hist.index < list.length - 1) {
+        hist.index++;
+        list[hist.index] = h;
+        if (hist.index < list.length - 1) list.splice(hist.index + 1, list.length - (hist.index + 1));
+    } else if (list.length >= max) {
+        for (let i = 0; i < list.length - 1; i++) list[i] = list[i + 1];
+        list[list.length - 1] = h;
+        hist.index = list.length - 1;
+    } else {
+        list.push(h);
+        hist.index = list.length - 1;
+    }
+}
+
+/** btnGalaxyMapBack_Click: step back; returns the habitat to show (method_214) or null. */
+export function galaxyMapHistoryBack(hist: GalaxyMapHistory): Habitat | null {
+    if (hist.index > 0) {
+        hist.index--;
+        return hist.list[hist.index];
+    }
+    return null;
+}
+
+/** btnGalaxyMapForward_Click: step forward; returns the habitat to show or null. */
+export function galaxyMapHistoryForward(hist: GalaxyMapHistory): Habitat | null {
+    if (hist.index < hist.list.length - 1) {
+        hist.index++;
+        return hist.list[hist.index];
+    }
+    return null;
+}
+
+/** method_215: the Back / Forward buttons' Enabled states. */
+export function galaxyMapHistoryButtons(hist: GalaxyMapHistory): { back: boolean; forward: boolean } {
+    return { back: hist.index > 0, forward: hist.index < hist.list.length - 1 };
+}
+
+/** method_132 (close): habitatList_0.Clear(); int_24 = 0. */
+export function galaxyMapHistoryClear(hist: GalaxyMapHistory): void {
+    hist.list.length = 0;
+    hist.index = 0;
+}
+
+/** Main.Part11.cs method_152: the system (habitat_7) and habitat (habitat_8) shown for a selected habitat — a moon's
+ * planet's star, a planet's / asteroid field's star, or the star / gas cloud itself. */
+export function galaxyMapSystemOf(galaxy: Galaxy, h: Habitat): Habitat {
+    switch (h.category) {
+        case HabitatCategoryType.Moon:
+            return h.parent?.parent ?? galaxy.determineHabitatSystemStar(h);
+        case HabitatCategoryType.Planet:
+        case HabitatCategoryType.Asteroid:
+            return h.parent ?? h;
+    }
+    return h;
+}
+
+/** Main.Part11.cs 1078: picSystemMap 250 × 250; scaleFactor = Galaxy.MaxSolarSystemSize * 2 / width (int). */
+export const SYSTEM_MAP_PX = 250;
+export function galaxyMapSystemScale(galaxy: Galaxy, width = SYSTEM_MAP_PX): number {
+    return Math.trunc((galaxy.maxSolarSystemSize * 2) / width);
+}
+/** pnlGalaxyMapHabitatPicture 250 × 174 at (670, 516), BackColor (32, 32, 48), ImageLayout.Center. */
+export const LANDSCAPE_PICTURE = { w: 250, h: 174 } as const;
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, text?: string): HTMLElementTagNameMap[K] {
     const e = document.createElement(tag);
@@ -459,8 +510,11 @@ export function createGalaxyMap(opts: GalaxyMapOptions): GalaxyMapScreen {
     let colonyType = HabitatType.Undefined;
     let resourceId: number | null = null;
     let selection: ViewModeSelection = { systems: null, habitats: null };
-    // C# habitat_7 (clicked system) and habitat_8 (selected habitat).
+    // C# habitat_7 (the shown system) and habitat_8 (the selected habitat in it).
     let selectedSystem: Habitat | null = null;
+    let selectedHabitat: Habitat | null = null;
+    // habitatList_0 / int_24: the Back / Forward history.
+    const history = createGalaxyMapHistory();
     let showNebulae = true;
     let showRegions = true;
 
@@ -469,11 +523,14 @@ export function createGalaxyMap(opts: GalaxyMapOptions): GalaxyMapScreen {
     const mapWrap = el('div', 'gmap-map');
     const canvas = el('canvas', 'gmap-canvas');
     mapWrap.appendChild(canvas);
+    // The original's right-hand column (Main.Part11.cs method_131, x = 670): picSystemMap (250 × 250), the habitat
+    // info (pnlHabitatInfo) and pnlGalaxyMapHabitatPicture (250 × 174), with Back / Forward above it.
+    const detail = el('div', 'hud-panel gmap-detail');
     const side = el('div', 'hud-panel gmap-side');
-    root.append(mapWrap, side);
+    root.append(mapWrap, detail, side);
 
     // Side panel: title + close, view mode, secondary filter, toggles,
-    // selection info, go-to, key.
+    // selection list, go-to, key.
     const head = el('div', 'gmap-head');
     head.append(el('div', 'gmap-title', 'Galaxy Map'));
     const closeBtn = el('button', 'gmap-btn gmap-close', '✕');
@@ -525,8 +582,6 @@ export function createGalaxyMap(opts: GalaxyMapOptions): GalaxyMapScreen {
     mkToggle('Region names', () => showRegions, (v) => (showRegions = v));
     side.appendChild(toggles);
 
-    const info = el('div', 'gmap-info');
-    side.appendChild(info);
     const list = el('div', 'gmap-list');
     side.appendChild(list);
 
@@ -537,6 +592,29 @@ export function createGalaxyMap(opts: GalaxyMapOptions): GalaxyMapScreen {
     keyBtn.type = 'button';
     actions.append(gotoBtn, keyBtn);
     side.appendChild(actions);
+
+    // Detail column: Back / Forward (btnGalaxyMapBack / btnGalaxyMapForward, 40 × 30), the system map, the info,
+    // the landscape picture.
+    const nav = el('div', 'gmap-nav');
+    const backBtn = el('button', 'gmap-btn gmap-nav-btn', '◀');
+    backBtn.type = 'button';
+    backBtn.title = 'Back';
+    backBtn.dataset.gmap = 'back';
+    const fwdBtn = el('button', 'gmap-btn gmap-nav-btn', '▶');
+    fwdBtn.type = 'button';
+    fwdBtn.title = 'Forward';
+    fwdBtn.dataset.gmap = 'forward';
+    nav.append(backBtn, fwdBtn);
+    detail.appendChild(nav);
+    const sysCanvas = el('canvas', 'gmap-system-map');
+    sysCanvas.title = 'Click a planet or moon to select it. Double-click to go there.';
+    detail.appendChild(sysCanvas);
+    const info = el('div', 'gmap-info');
+    detail.appendChild(info);
+    const landscape = el('div', 'gmap-landscape');
+    landscape.style.width = `${LANDSCAPE_PICTURE.w}px`;
+    landscape.style.height = `${LANDSCAPE_PICTURE.h}px`;
+    detail.appendChild(landscape);
 
     // Key (legend) popover: pnlGalaxyMapKey (Main.Part11.cs method_129).
     const key = el('div', 'gmap-key');
@@ -567,7 +645,6 @@ export function createGalaxyMap(opts: GalaxyMapOptions): GalaxyMapScreen {
     side.insertBefore(key, actions);
 
     let mapPx = 600;
-    let layers: MapLayers | null = null;
 
     const updateFilterVisibility = (): void => {
         typeRow.hidden = mode !== GalaxyMapViewMode.PotentialColonies;
@@ -579,21 +656,29 @@ export function createGalaxyMap(opts: GalaxyMapOptions): GalaxyMapScreen {
         updateFilterVisibility();
         renderList();
         draw();
+        drawSystemMap();
     };
 
     const renderInfo = (): void => {
         info.replaceChildren();
-        const h = selectedSystem;
-        if (h === null) {
+        const sys = selectedSystem;
+        const h = selectedHabitat ?? sys;
+        if (sys === null || h === null) {
             info.append(el('div', 'gmap-muted', 'Click a system to select it. Double-click to go there.'));
             gotoBtn.disabled = true;
             return;
         }
         gotoBtn.disabled = false;
         info.append(el('div', 'gmap-sel-name', h.name));
-        const typeName = h.category === HabitatCategoryType.GasCloud ? 'Gas Cloud' : STAR_TYPE_NAMES[h.type] ?? 'System';
         const sx = Math.trunc(h.xpos / galaxy.sectorSize);
         const sy = Math.trunc(h.ypos / galaxy.sectorSize);
+        if (h !== sys) {
+            const known = player.systemExplored(h.systemIndex);
+            info.append(el('div', 'gmap-muted', `${known ? habitatTypeWords(h) : 'Unexplored'} · ${sys.name} system · Sector ${sectorColumnLabel(sx)}${sy + 1}`));
+            if (known && h.empire !== null && h.empire !== galaxy.independentEmpire) info.append(el('div', 'gmap-muted', h.empire.name));
+            return;
+        }
+        const typeName = h.category === HabitatCategoryType.GasCloud ? 'Gas Cloud' : STAR_TYPE_NAMES[h.type] ?? 'System';
         info.append(el('div', 'gmap-muted', `${typeName} · Sector ${sectorColumnLabel(sx)}${sy + 1}`));
         if (h.category === HabitatCategoryType.Star) {
             const hs = galaxy.systemHabitatsOf(h.systemIndex);
@@ -602,6 +687,22 @@ export function createGalaxyMap(opts: GalaxyMapOptions): GalaxyMapScreen {
             const pops = hs.filter((x) => x.population.totalAmount > 0).length;
             info.append(el('div', 'gmap-muted', `${countLabel(planets, 'planet')} · ${countLabel(moons, 'moon')}${pops > 0 ? ` · ${pops} populated` : ''}`));
         }
+    };
+
+    // pnlGalaxyMapHabitatPicture: bitmap_29[habitat_8.LandscapePictureRef], centred, else empty.
+    let landscapeUrl: string | null = null;
+    const renderLandscape = (): void => {
+        const h = selectedHabitat;
+        const url = h !== null && player.systemExplored(h.systemIndex) ? habitatLandscapeImageUrl(h.landscapePictureRef) : null;
+        if (url === landscapeUrl) return;
+        landscapeUrl = url;
+        landscape.style.backgroundImage = url === null ? '' : `url("${url}")`;
+    };
+
+    const renderNav = (): void => {
+        const b = galaxyMapHistoryButtons(history);
+        backBtn.disabled = !b.back;
+        fwdBtn.disabled = !b.forward;
     };
 
     const renderList = (): void => {
@@ -616,11 +717,8 @@ export function createGalaxyMap(opts: GalaxyMapOptions): GalaxyMapScreen {
         for (const h of hs.slice(0, 200)) {
             const b = el('button', 'gmap-list-row', h.name);
             b.type = 'button';
-            b.addEventListener('click', () => {
-                selectedSystem = galaxy.determineHabitatSystemStar(h);
-                renderInfo();
-                draw();
-            });
+            // lvwHabitats_SelectedIndexChanged: habitat_7 = its system, habitat_8 = the habitat.
+            b.addEventListener('click', () => showHabitat(galaxyMapSystemOf(galaxy, h), h, true));
             b.addEventListener('dblclick', () => jump(h));
             list.appendChild(b);
         }
@@ -629,12 +727,17 @@ export function createGalaxyMap(opts: GalaxyMapOptions): GalaxyMapScreen {
     const layout = (): void => {
         const w = root.clientWidth || window.innerWidth;
         const h = root.clientHeight || window.innerHeight;
-        mapPx = Math.max(200, Math.floor(Math.min(h - 32, w - 360 - 48)));
+        // Map + detail column (250 + padding) + side panel (320) + gaps.
+        mapPx = Math.max(200, Math.floor(Math.min(h - 32, w - 320 - (SYSTEM_MAP_PX + 24) - 3 * 16 - 32)));
         const dpr = window.devicePixelRatio || 1;
         canvas.style.width = `${mapPx}px`;
         canvas.style.height = `${mapPx}px`;
         canvas.width = Math.round(mapPx * dpr);
         canvas.height = Math.round(mapPx * dpr);
+        sysCanvas.style.width = `${SYSTEM_MAP_PX}px`;
+        sysCanvas.style.height = `${SYSTEM_MAP_PX}px`;
+        sysCanvas.width = Math.round(SYSTEM_MAP_PX * dpr);
+        sysCanvas.height = Math.round(SYSTEM_MAP_PX * dpr);
     };
 
     // Port of GalaxyMap.cs method_6 for the whole-galaxy case (int_8 = int_10 = 0).
@@ -649,18 +752,9 @@ export function createGalaxyMap(opts: GalaxyMapOptions): GalaxyMapScreen {
         const H = mapPx;
         ctx.fillStyle = '#000';
         ctx.fillRect(0, 0, W, H);
-        // Backdrop (bitmap_1 = galaxy_backdrop.jpg) stretched over the galaxy.
-        if (layers?.backdrop) {
-            ctx.drawImage(layers.backdrop, 0, 0, galaxy.sizeX / s, galaxy.sizeY / s);
-        }
-        // Nebulae (bitmap_0, when bool_0 showNebulae).
-        if (showNebulae && layers) {
-            ctx.globalAlpha = 0.55;
-            for (const n of layers.nebulae) {
-                ctx.drawImage(n.canvas, n.x / s, n.y / s, n.w / s, n.h / s);
-            }
-            ctx.globalAlpha = 1;
-        }
+        // Backdrop (bitmap_1 = galaxy_backdrop.jpg) stretched over the galaxy, then the nebulae (bitmap_0, when
+        // bool_0 showNebulae) — the shared layers (galaxyMapLayers.ts).
+        drawGalaxyMapLayers(ctx, galaxy, s, 0, 0, { nebulae: showNebulae, onChange: draw });
         // Empire territory (bitmap_0 territory, 40%).
         drawMapTerritory(ctx, galaxy, W);
         // Sector grid + labels (pen_1 / solidBrush_0, Verdana 7pt).
@@ -710,13 +804,14 @@ export function createGalaxyMap(opts: GalaxyMapOptions): GalaxyMapScreen {
         }
         // Systems (method_6 main loop) + gas clouds (C# Systems include them).
         const filterActive = selection.systems !== null;
+        const filterSet = filterActive ? new Set(selection.systems) : null;
         const sizes = starDotSizes(W, filterActive);
         const drawDot = (h: Habitat): void => {
             let color = starBrushColor(h);
             let size = sizes.normal;
-            if (filterActive) {
+            if (filterSet !== null) {
                 color = DIMMED_COLOR;
-                if (selection.systems!.includes(h)) {
+                if (filterSet.has(h)) {
                     color = SELECTED_COLOR;
                     size = sizes.selected;
                 }
@@ -757,12 +852,58 @@ export function createGalaxyMap(opts: GalaxyMapOptions): GalaxyMapScreen {
         }
     };
 
+    // picSystemMap.Ignite(relativeToView: false, the system's index, MaxSolarSystemSize * 2 / 250, showIndicatorLines,
+    // habitat_7.Name) with SetSelectedHabitats(habitatList_2) — SystemView.cs method_5 (systemView.ts).
+    const drawSystemMap = (): void => {
+        if (!isOpen) return;
+        const ctx = sysCanvas.getContext('2d');
+        if (!ctx) return;
+        const dpr = sysCanvas.width / SYSTEM_MAP_PX;
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        const sys = selectedSystem;
+        if (sys === null) {
+            ctx.fillStyle = '#000';
+            ctx.fillRect(0, 0, SYSTEM_MAP_PX, SYSTEM_MAP_PX);
+            return;
+        }
+        drawSystemView(ctx, {
+            galaxy,
+            player: player === GOD_MODE_PLAYER ? null : galaxy.playerEmpire,
+            width: SYSTEM_MAP_PX,
+            height: SYSTEM_MAP_PX,
+            star: sys,
+            scale: galaxyMapSystemScale(galaxy),
+            centerX: sys.xpos,
+            centerY: sys.ypos,
+            indicator: selectedHabitat !== null ? { selected: selectedHabitat, system: sys } : null,
+            selectedHabitats: selection.habitats,
+            systemName: sys.name,
+        });
+    };
+
+    /** Show a system / habitat (method_152 / gmapMain_MouseUp / picSystemMap_MouseUp / method_214); `record` adds it to
+     * the Back / Forward history (method_213). */
+    const showHabitat = (sys: Habitat, h: Habitat, record: boolean): void => {
+        selectedSystem = sys;
+        selectedHabitat = h;
+        if (record) galaxyMapHistoryPush(history, h);
+        renderNav();
+        renderInfo();
+        renderLandscape();
+        draw();
+        drawSystemMap();
+    };
+
+    // gmapMain_MouseUp: habitat_7 = the nearest system; habitat_8 = the view filter's habitat in it when the system is
+    // one of the filter's, else the system itself; method_213(habitat_8).
     const selectAt = (x: number, y: number): Habitat | null => {
         const h = findNearestSystemAt(galaxy, x, y);
         if (h !== null) {
-            selectedSystem = h;
-            renderInfo();
-            draw();
+            let hab: Habitat = h;
+            if (selection.systems !== null && selection.systems.includes(h) && selection.habitats !== null) {
+                for (const sh of selection.habitats) if (sh.systemIndex === h.systemIndex) hab = sh;
+            }
+            showHabitat(h, hab, true);
         }
         return h;
     };
@@ -786,6 +927,40 @@ export function createGalaxyMap(opts: GalaxyMapOptions): GalaxyMapScreen {
         const h = findNearestSystemAt(galaxy, p.x, p.y);
         if (h !== null) jump(h);
     });
+    // picSystemMap_MouseUp / _MouseDoubleClick: the nearest habitat to the clicked point; an Unexplored system's
+    // habitats are not selectable.
+    const systemMapHit = (e: MouseEvent): Habitat | null => {
+        const sys = selectedSystem;
+        if (sys === null) return null;
+        const r = sysCanvas.getBoundingClientRect();
+        const k = r.width > 0 ? SYSTEM_MAP_PX / r.width : 1;
+        const p = systemViewWorldAt(sys, SYSTEM_MAP_PX, SYSTEM_MAP_PX, galaxyMapSystemScale(galaxy), (e.clientX - r.left) * k, (e.clientY - r.top) * k);
+        const h = findNearestHabitatNear(galaxy, p.x, p.y);
+        if (h === null) return null;
+        if (player !== GOD_MODE_PLAYER && galaxy.playerEmpire !== null && galaxy.playerEmpire.visibility.checkSystemVisibilityStatus(h.systemIndex) === SystemVisibilityStatus.Unexplored) return null;
+        return h;
+    };
+    sysCanvas.addEventListener('mouseup', (e) => {
+        if (e.button !== 0) return;
+        const h = systemMapHit(e);
+        if (h === null || selectedSystem === null) return;
+        showHabitat(selectedSystem, h, true);
+    });
+    sysCanvas.addEventListener('dblclick', (e) => {
+        const h = systemMapHit(e);
+        if (h !== null) jump(h);
+    });
+    // btnGalaxyMapBack_Click / btnGalaxyMapForward_Click → method_214(habitat): habitat_8 = it, habitat_7 = its star.
+    backBtn.addEventListener('click', () => {
+        const h = galaxyMapHistoryBack(history);
+        if (h !== null) showHabitat(galaxy.determineHabitatSystemStar(h) ?? h, h, false);
+        renderNav();
+    });
+    fwdBtn.addEventListener('click', () => {
+        const h = galaxyMapHistoryForward(history);
+        if (h !== null) showHabitat(galaxy.determineHabitatSystemStar(h) ?? h, h, false);
+        renderNav();
+    });
     viewSel.addEventListener('change', () => {
         mode = Number(viewSel.value) as GalaxyMapViewMode;
         recompute();
@@ -800,7 +975,8 @@ export function createGalaxyMap(opts: GalaxyMapOptions): GalaxyMapScreen {
     });
     closeBtn.addEventListener('click', () => close());
     gotoBtn.addEventListener('click', () => {
-        if (selectedSystem !== null) jump(selectedSystem);
+        const h = selectedHabitat ?? selectedSystem;
+        if (h !== null) jump(h);
     });
     keyBtn.addEventListener('click', () => {
         key.hidden = !key.hidden;
@@ -818,6 +994,7 @@ export function createGalaxyMap(opts: GalaxyMapOptions): GalaxyMapScreen {
         if (isOpen) {
             layout();
             draw();
+            drawSystemMap();
         }
     };
     window.addEventListener('resize', onResize);
@@ -827,14 +1004,17 @@ export function createGalaxyMap(opts: GalaxyMapOptions): GalaxyMapScreen {
         isOpen = true;
         root.hidden = false;
         opts.onOpen?.();
-        if (selected !== null) {
-            selectedSystem = galaxy.determineHabitatSystemStar(selected);
-        }
         if (resourceId === null && resources.length > 0) resourceId = resources[0].resourceId;
-        layers = buildLayers(galaxy, draw);
         layout();
+        // method_131 → method_152(habitat_9): the selected habitat's system and the habitat itself.
+        if (selected !== null) {
+            selectedSystem = galaxyMapSystemOf(galaxy, selected);
+            selectedHabitat = selected;
+        }
         recompute();
+        renderNav();
         renderInfo();
+        renderLandscape();
     }
 
     function close(): void {
@@ -842,6 +1022,8 @@ export function createGalaxyMap(opts: GalaxyMapOptions): GalaxyMapScreen {
         isOpen = false;
         root.hidden = true;
         key.hidden = true;
+        // method_132: habitatList_0.Clear(); int_24 = 0.
+        galaxyMapHistoryClear(history);
         opts.onClose?.();
     }
 
@@ -864,5 +1046,21 @@ export function createGalaxyMap(opts: GalaxyMapOptions): GalaxyMapScreen {
             recompute();
         },
         selectAt,
+        get selectedHabitat() {
+            return selectedHabitat;
+        },
+        get selectedSystem() {
+            return selectedSystem;
+        },
+        back: () => backBtn.click(),
+        forward: () => fwdBtn.click(),
     };
+}
+
+/** "Continental planet", "Ice moon", "Asteroid field" — the habitat's type and category in words. */
+function habitatTypeWords(h: Habitat): string {
+    if (h.category === HabitatCategoryType.Asteroid) return 'Asteroid field';
+    const t = HabitatType[h.type].replace(/([a-z])([A-Z])/g, '$1 $2');
+    const c = HabitatCategoryType[h.category].replace(/([a-z])([A-Z])/g, '$1 $2').toLowerCase();
+    return `${t} ${c}`;
 }

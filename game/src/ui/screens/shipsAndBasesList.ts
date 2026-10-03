@@ -69,7 +69,8 @@ import {
 import { buildInfoModel } from '../selectionInfo';
 import { empireFlagUrl, renderInfoModel } from '../selectionInfoView';
 import { habitatImageUrl, shipImageUrl } from '../selectionInfo';
-import { CROSSHAIR_COLOR, DIMMED_COLOR, GRID_COLOR, galaxyMapScale, sectorColumnLabel, starBrushColor, starDotSizes } from './galaxyMap';
+import { CROSSHAIR_COLOR, DIMMED_COLOR, GRID_COLOR, drawMapTerritory, galaxyMapScale, sectorColumnLabel, starBrushColor, starDotSizes } from './galaxyMap';
+import { drawGalaxyMapLayers } from './galaxyMapLayers';
 import { yardRows, waitRows, type ConstructionSite } from './constructionYards';
 import { troopRows, type TroopRow } from './troops';
 import { openDesignEditor } from './designEditor';
@@ -1084,6 +1085,9 @@ function createShipsAndBasesList(opts: ShipsAndBasesListOptions): OpenState {
         ctx.fillStyle = '#000';
         ctx.fillRect(0, 0, N, N);
         const s = galaxyMapScale(galaxy, N);
+        // GalaxyMap.cs method_6: backdrop (bitmap_1), nebulae (bitmap_0) and territory (bitmap_2) under the grid.
+        drawGalaxyMapLayers(ctx, galaxy, s, 0, 0, { onChange: () => { if (mapCanvas.isConnected) drawMap(); } });
+        drawMapTerritory(ctx, galaxy, N);
         // Sector grid with the A.. / 1.. labels (GalaxyMap.cs method_6, pen_1).
         const sec = galaxy.sectorSize / s;
         ctx.strokeStyle = GRID_COLOR;

@@ -730,6 +730,9 @@ export interface OriginalWindowOptions {
     forcePause?: boolean;
     /** Called when the viewport or the UI scale changes, after the window re-scaled (re-pick large / small layouts). */
     onResize?: (win: OriginalWindow) => void;
+    /** Where the scaled window's top-left corner goes (CSS px) instead of the viewport centre — for a ScreenPanel the
+     *  source places itself (e.g. pnlColonyInvasion beside the selection panel, Main.Part11.cs method_164). */
+    anchor?: (viewport: { w: number; h: number }, size: { w: number; h: number }, scale: number) => { left: number; top: number };
 }
 
 export interface OriginalWindow {
@@ -828,8 +831,9 @@ export function openOriginalWindow(o: OriginalWindowOptions): OriginalWindow {
         virtualSize.h = v.h;
         frame.style.width = `${w}px`;
         frame.style.height = `${h}px`;
-        const left = Math.round((vw - w * scale) / 2 + dragDx);
-        const top = Math.round((vh - h * scale) / 2 + dragDy);
+        const at = o.anchor?.({ w: vw, h: vh }, { w, h }, scale) ?? { left: (vw - w * scale) / 2, top: (vh - h * scale) / 2 };
+        const left = Math.round(at.left + dragDx);
+        const top = Math.round(at.top + dragDy);
         frame.style.left = `${left}px`;
         frame.style.top = `${top}px`;
         frame.style.transform = scale === 1 ? '' : `scale(${scale})`;
