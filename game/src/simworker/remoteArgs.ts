@@ -38,12 +38,25 @@ function classes(): NonNullable<typeof classTables> {
 export interface RemoteNaming {
     syncId(o: object): number;
     external(o: object): { kind: string; key: string | number } | undefined;
+    /**
+     * The main thread's identity of a by-value object (≥ 0, stable for the object's life; docs/sim-worker.md §4.3).
+     * Without it (the worker's own encoding) a value shared within one argument still travels once.
+     */
+    valueId?(o: object): number;
 }
 
-/** Encode one argument on the main thread. */
+/**
+ * Encode one argument on the main thread.
+ *
+ * By-value objects keep their identity (docs/sim-worker.md §4.3): each carries a value id `v`. A second occurrence
+ * in the same argument travels as `{v}` alone (shared and cyclic values decode to the same object, as the executor
+ * would see them in-thread), and the worker decodes the same main-thread object sent by several commands to one
+ * object (RemoteValues; e.g. a mission assigned by one command and framed by the next).
+ */
 export function encodeRemoteArg(value: unknown, naming: RemoteNaming): RemoteArg {
     const t = classes();
-    const stack = new Set<object>();
+    const seen = new Map<object, number>();
+    let local = 0;
     const enc = (v: unknown, path: string): RemoteArg => {
         if (v === null) return null;
         switch (typeof v) {
@@ -64,33 +77,109 @@ export function encodeRemoteArg(value: unknown, naming: RemoteNaming): RemoteArg
         if (ext !== undefined) return { x: ext.kind, k: ext.key };
         const id = naming.syncId(o);
         if (id >= 0) return { s: id };
-        if (stack.has(o)) throw new RemoteArgError(`command argument ${path}: cyclic value`);
-        stack.add(o);
-        try {
-            if (Array.isArray(o)) return { a: o.map((x, i) => enc(x, `${path}[${i}]`)) };
-            const fields: Record<string, RemoteArg> = {};
-            for (const k of Object.keys(o)) fields[k] = enc((o as Record<string, unknown>)[k], `${path}.${k}`);
-            const proto = Object.getPrototypeOf(o) as object | null;
-            if (proto === Object.prototype || proto === null) return { o: fields };
-            const name = t.nameByProto.get(proto);
-            if (name === undefined) throw new RemoteArgError(`command argument ${path}: unregistered class ${(proto as { constructor?: { name?: string } }).constructor?.name ?? '?'}`);
-            return { c: name, f: fields };
-        } finally {
-            stack.delete(o);
-        }
+        const again = seen.get(o);
+        if (again !== undefined) return { v: again };
+        const vid = naming.valueId !== undefined ? naming.valueId(o) : -++local;
+        seen.set(o, vid);
+        if (Array.isArray(o)) return { a: o.map((x, i) => enc(x, `${path}[${i}]`)), v: vid };
+        const fields: Record<string, RemoteArg> = {};
+        for (const k of Object.keys(o)) fields[k] = enc((o as Record<string, unknown>)[k], `${path}.${k}`);
+        const proto = Object.getPrototypeOf(o) as object | null;
+        if (proto === Object.prototype || proto === null) return { o: fields, v: vid };
+        const name = t.nameByProto.get(proto);
+        if (name === undefined) throw new RemoteArgError(`command argument ${path}: unregistered class ${(proto as { constructor?: { name?: string } }).constructor?.name ?? '?'}`);
+        return { c: name, f: fields, v: vid };
     };
     return enc(value, '$');
+}
+
+/**
+ * The worker's memory of the by-value objects it decoded recently, by main-thread value id (SimHost keeps one). In-thread
+ * the UI and the executors hold one object: a mission the form built is assigned by one command and framed by the next;
+ * the sim may change it after the first. So the same main-thread object sent again decodes to the same worker object:
+ * - before its first command was applied (same boundary): refilled with the contents sent last (the executors see the
+ *   UI's latest state, as in-thread at that boundary);
+ * - after (a later boundary, within `keepBoundaries`): only the fields the main thread changed since it last sent the
+ *   object are written, so the sim's own changes stay (what the shared object would hold in-thread).
+ * Older entries are forgotten: an object sent again later is a fresh copy.
+ */
+export class RemoteValues {
+    private readonly entries = new Map<number, { obj: object; sent: Map<string, string>; age: number }>();
+
+    constructor(private readonly keepBoundaries = 2) {}
+
+    /** A command boundary applied the commands decoded so far. */
+    boundary(): void {
+        for (const [vid, e] of this.entries) {
+            if (++e.age > this.keepBoundaries) this.entries.delete(vid);
+        }
+    }
+
+    get size(): number {
+        return this.entries.size;
+    }
+
+    /** @internal decodeRemoteArg */
+    entry(vid: number): { obj: object; sent: Map<string, string>; age: number } | undefined {
+        return this.entries.get(vid);
+    }
+
+    /** @internal decodeRemoteArg */
+    remember(vid: number, obj: object, sent: Map<string, string>): void {
+        const e = this.entries.get(vid);
+        if (e !== undefined && e.obj === obj) e.sent = sent;
+        else this.entries.set(vid, { obj, sent, age: 0 });
+    }
 }
 
 /** How the decoding side (worker) resolves names. */
 export interface RemoteResolving {
     object(syncId: number): object | null;
     external(kind: string, key: string | number): object | undefined;
+    /** Recent by-value objects (see RemoteValues); without it every by-value form decodes to a new object. */
+    values?: RemoteValues;
 }
 
 /** Decode one argument in the worker. */
 export function decodeRemoteArg(value: RemoteArg, resolving: RemoteResolving): unknown {
     const t = classes();
+    const local = new Map<number, object>();
+    const values = resolving.values;
+    /**
+     * Decode a by-value form into its object: a new one, or the recent one of the same value id and kind (RemoteValues).
+     * `parts` are the form's fields (an array: one part, '' = the elements).
+     */
+    const byValue = (
+        vid: number | undefined,
+        make: () => object,
+        sameKind: (o: object) => boolean,
+        parts: Record<string, unknown>,
+        assign: (out: object, changed: Map<string, unknown>, removed: string[]) => void,
+        decodePart: (x: unknown) => unknown = dec,
+    ): object => {
+        const prev = vid !== undefined && vid >= 0 ? values?.entry(vid) : undefined;
+        const reuse = prev !== undefined && sameKind(prev.obj) ? prev : undefined;
+        const out = reuse?.obj ?? make();
+        if (vid !== undefined) local.set(vid, out);
+        const sent = new Map<string, string>();
+        const changed = new Map<string, unknown>();
+        for (const [k, x] of Object.entries(parts)) {
+            const decoded = decodePart(x);
+            const text = JSON.stringify(x);
+            sent.set(k, text);
+            // Applied already: only what the main thread changed since it last sent the object.
+            if (reuse === undefined || reuse.age === 0 || reuse.sent.get(k) !== text) changed.set(k, decoded);
+        }
+        const removed = reuse === undefined ? [] : [...(reuse.age === 0 ? Object.keys(out) : reuse.sent.keys())].filter((k) => !(k in parts));
+        assign(out, changed, removed);
+        if (vid !== undefined && vid >= 0) values?.remember(vid, out, sent);
+        return out;
+    };
+    const assignFields = (out: object, changed: Map<string, unknown>, removed: string[]): void => {
+        const o = out as Record<string, unknown>;
+        for (const k of removed) delete o[k];
+        for (const [k, x] of changed) o[k] = x;
+    };
     const dec = (v: unknown): unknown => {
         if (v === null || typeof v !== 'object') return v;
         const o = v as Record<string, unknown>;
@@ -106,18 +195,34 @@ export function decodeRemoteArg(value: RemoteArg, resolving: RemoteResolving): u
             if (obj === undefined) throw new RemoteArgError(`command argument: unknown static ${String(o.x)}:${String(o.k)}`);
             return obj;
         }
-        if ('a' in o) return (o.a as unknown[]).map(dec);
-        if ('o' in o) {
-            const out: Record<string, unknown> = {};
-            for (const [k, x] of Object.entries(o.o as Record<string, unknown>)) out[k] = dec(x);
-            return out;
+        const vid = o.v as number | undefined;
+        if ('a' in o) {
+            return byValue(
+                vid,
+                () => [],
+                (p) => Array.isArray(p),
+                { '': o.a },
+                (out, changed) => {
+                    const items = changed.get('');
+                    if (items === undefined) return;
+                    const arr = out as unknown[];
+                    arr.length = 0;
+                    for (const x of items as unknown[]) arr.push(x);
+                },
+                (x) => (x as unknown[]).map(dec),
+            );
         }
+        if ('o' in o) return byValue(vid, () => ({}), (p) => !Array.isArray(p) && Object.getPrototypeOf(p) === Object.prototype, o.o as Record<string, unknown>, assignFields);
         if ('c' in o) {
             const proto = t.protoByName.get(o.c as string);
             if (proto === undefined) throw new RemoteArgError(`command argument: unknown class ${String(o.c)}`);
-            const out = Object.create(proto) as Record<string, unknown>;
-            for (const [k, x] of Object.entries(o.f as Record<string, unknown>)) out[k] = dec(x);
-            return out;
+            return byValue(vid, () => Object.create(proto) as object, (p) => Object.getPrototypeOf(p) === proto, o.f as Record<string, unknown>, assignFields);
+        }
+        if (vid !== undefined) {
+            // A back-reference to a value met earlier in this argument.
+            const obj = local.get(vid);
+            if (obj === undefined) throw new RemoteArgError(`command argument: value ${vid} referenced before it was sent`);
+            return obj;
         }
         throw new RemoteArgError(`command argument: bad value ${JSON.stringify(v)}`);
     };

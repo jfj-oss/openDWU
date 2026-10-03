@@ -25,6 +25,8 @@ import type { ShipActionSelection } from '../sim/player/executeShipAction';
 import { openActionMenu, selectionButtons } from '../sim/player/orderMenu';
 import { habitatDispatchOptions } from '../sim/player/habitatDispatch';
 import { moneyPanelIncome } from '../sim/treasury';
+import { listProposals } from '../sim/player/diplomacyProposals';
+import { calculatePirateProtectionPricePerMonth } from '../sim/pirates/pirateRelationsAI';
 
 export const SIM_QUERIES = {
     /**
@@ -40,6 +42,13 @@ export const SIM_QUERIES = {
     /** The top-right money panel's Cashflow / Bonus Income (treasury.ts moneyPanelIncome; Main.Part11.cs 832 method_126,
      *  which runs CheckAgeVariableIncome on the empire). */
     moneyPanel: (galaxy: Galaxy, empire: Empire) => moneyPanelIncome(galaxy, empire),
+    // [chunk 7] diplomacy (docs/sim-worker.md §9 chunk 7): sim reads the diplomacy screen shows that obtain records.
+    /** The talk panel's conversation options (diplomacyProposals.ts listProposals; Main.Part9.cs:46 method_238 obtains
+     *  the diplomatic / pirate relations it lists — Obtain* adds a NotMet record). */
+    listProposals: (galaxy: Galaxy, empire: Empire, other: Empire) => listProposals(galaxy, empire, other),
+    /** A pirate faction's price per month to protect `empire` (Empire.2.cs 2649 CalculatePirateProtectionPricePerMonth,
+     *  which obtains the pirate's relation with the empire — ObtainPirateRelation adds a NotMet record). */
+    pirateProtectionPrice: (galaxy: Galaxy, empire: Empire, pirate: Empire) => calculatePirateProtectionPricePerMonth(galaxy, pirate, empire).price,
 };
 
 type Queries = typeof SIM_QUERIES;

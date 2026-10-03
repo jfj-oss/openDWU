@@ -3,7 +3,7 @@
 import type { Galaxy } from '../../sim/galaxy';
 import type { Empire } from '../../sim/empire';
 import { scenarioFlag, scenarioText } from '../../sim/scenario';
-import { DiplomaticRelationType, obtainDiplomaticRelation } from '../../sim/diplomacy';
+import { DiplomaticRelationType } from '../../sim/diplomacy';
 import { RIM_MIN_RADIUS, rareGoodIds, rimGoodIds, rimParam, rimTraderEmpire, rimTraderPort, rimTraderStanding } from '../../sim/scenario/rimTrade/common';
 
 export interface RimGoodRow {
@@ -40,6 +40,20 @@ function goodRows(galaxy: Galaxy, ids: number[]): RimGoodRow[] {
     });
 }
 
+/**
+ * What obtainDiplomaticRelation(self, empire) would answer, without its write (docs/sim-worker.md §9 chunk 7): the
+ * relation self holds, else the fresh NotMet one Obtain would add (no supply of restricted resources); the stand-in
+ * None relation Obtain builds without storing it (no / independent / pirate / own empire; it supplies them). A row is a read: it must
+ * not add records to the graph (in-thread they would never be journaled; on a sim-worker replica the worker never sees
+ * them).
+ */
+export function peekDiplomaticRelation(self: Empire, empire: Empire | null): { type: DiplomaticRelationType; supplyRestrictedResources: boolean } {
+    const none = { type: DiplomaticRelationType.None, supplyRestrictedResources: true };
+    if (empire == null || empire === self.galaxy.independentEmpire || empire.pirateEmpireBaseHabitat !== null || self.pirateEmpireBaseHabitat !== null || empire === self) return none;
+    if (self.diplomaticRelations == null) return none;
+    return self.diplomaticRelations.byEmpire(empire) ?? { type: DiplomaticRelationType.NotMet, supplyRestrictedResources: false };
+}
+
 /** True when `empire` is the Concord and the scenario's rim-trader rules are on. */
 export function isRimTraderShown(galaxy: Galaxy, empire: Empire | null): boolean {
     return empire !== null && scenarioFlag(galaxy, 'rimTrader') && empire === rimTraderEmpire(galaxy);
@@ -50,7 +64,7 @@ export function rimTraderTermsRows(galaxy: Galaxy, viewer: Empire): RimTraderTer
     if (!scenarioFlag(galaxy, 'rimTrader')) return null;
     const r = rimTraderEmpire(galaxy);
     if (r === null || viewer === r) return null;
-    const rel = obtainDiplomaticRelation(r, viewer);
+    const rel = peekDiplomaticRelation(r, viewer);
     const standing = Math.round(rimTraderStanding(galaxy, viewer.empireId));
     const threshold = rimParam(galaxy, 'rimTraderGrantThreshold');
     const open = rel.supplyRestrictedResources;

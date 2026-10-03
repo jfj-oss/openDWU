@@ -7,15 +7,11 @@
 // No DOM: only fetch, timers and postMessage.
 
 import { loadGameData, type FetchText, type GameData } from '../sim/data/gameData';
-import { createGameSteps, installGameStatics, registerGameHooks, type Game } from '../sim/game';
-import { reviveCreateOptions } from './bootOptions';
-import { GalaxyTime } from '../sim/galaxyTime';
-import { deserializeGame } from '../sim/save/gameSave';
 import { loadScenarioIndex, loadScenarioOverlay } from '../sim/scenario/fetchScenario';
-import { applyScenarioOverlay, type ScenarioOverlay } from '../sim/scenario/overlay';
-import { scenarioOverlayFor } from '../sim/scenario/addons';
+import type { ScenarioOverlay } from '../sim/scenario/overlay';
 import { FRAME_REAL_MS } from '../sim/tick/scheduler';
 import { installWorkerBootState, SimHost } from './simHost';
+import { bootWorkerGame } from './workerBoot';
 import { deltaTransferables } from './replicaSync';
 import type { FromWorker, InitMessage, ToWorker } from './protocol';
 
@@ -42,13 +38,24 @@ const fetchText: FetchText = async (candidates: string[]): Promise<string> => {
     throw new Error(`Could not load any of: ${candidates.join(', ')}`);
 };
 
-async function gameDataFor(scenario: { id: string; include: string[] | null } | null): Promise<GameData> {
-    const base = await loadGameData(fetchText);
-    if (scenario === null) return base;
-    const overlays = new Map<string, ScenarioOverlay>();
-    for (const m of await loadScenarioIndex(fetchText)) overlays.set(m.id, await loadScenarioOverlay(fetchText, m));
-    return applyScenarioOverlay(base, scenarioOverlayFor(scenario.id, scenario.include, overlays));
-}
+// Data loaders (cached: one fetch per worker).
+let baseData: Promise<GameData> | null = null;
+let overlays: Promise<Map<string, ScenarioOverlay>> | null = null;
+const bootDeps = {
+    baseData: (): Promise<GameData> => (baseData ??= loadGameData(fetchText)),
+    overlays: (): Promise<Map<string, ScenarioOverlay>> =>
+        (overlays ??= (async () => {
+            const out = new Map<string, ScenarioOverlay>();
+            for (const m of await loadScenarioIndex(fetchText)) out.set(m.id, await loadScenarioOverlay(fetchText, m));
+            return out;
+        })()),
+    fetchSave: async (url: string): Promise<string> => {
+        const r = await fetch(url);
+        if (!r.ok) throw new Error(`save ${url}: HTTP ${r.status}`);
+        return await r.text();
+    },
+    progress: (step: string, fraction: number): void => post({ type: 'progress', step, fraction }),
+};
 
 let host: SimHost | null = null;
 let timer: ReturnType<typeof setTimeout> | null = null;
@@ -57,42 +64,19 @@ let last = 0;
 const early: ToWorker[] = [];
 
 async function init(m: InitMessage): Promise<void> {
-    post({ type: 'progress', step: 'Loading game data', fraction: 0 });
-    const gameData = await gameDataFor(m.boot.scenario);
-    installGameStatics(gameData);
-    registerGameHooks();
-    let game: Game;
-    let time: GalaxyTime;
-    if (m.boot.kind === 'create') {
-        const steps = createGameSteps(reviveCreateOptions(m.boot.options, gameData));
-        let lastPost = 0;
-        for (;;) {
-            const r = steps.next();
-            if (r.done === true) {
-                game = r.value;
-                break;
-            }
-            if (performance.now() - lastPost > 50) {
-                lastPost = performance.now();
-                post({ type: 'progress', step: r.value.step, fraction: r.value.fraction });
-            }
-        }
-        if (m.boot.flagShapeIndex !== undefined && m.boot.flagShapeIndex >= 0) game.playerEmpire.flagShape = m.boot.flagShapeIndex;
-        time = new GalaxyTime();
-    } else {
-        post({ type: 'progress', step: `Reading save (${Math.max(1, Math.round(m.boot.text.length / 1048576))} MB)`, fraction: 0.2 });
-        const loaded = deserializeGame(m.boot.text, gameData);
-        game = loaded.game;
-        time = loaded.time;
-    }
+    // A load's save text is dropped once parsed (bootWorkerGame): the worker keeps only the game (a late save is 100+ MB).
+    const booted = await bootWorkerGame(m.boot, bootDeps);
+    const time = booted.time;
     if (m.clock !== undefined) {
         time.speed = m.clock.speed;
         time.paused = m.clock.paused;
     }
+    const startOptions = booted.startOptions ?? m.startOptions;
+    if (startOptions === undefined) throw new Error('sim worker init: no start options');
     post({ type: 'progress', step: 'Preparing map', fraction: 0.9 });
-    installWorkerBootState(game.galaxy);
-    host = new SimHost(game, time, m.startOptions, { sync: m.sync });
-    post(host.snapshot());
+    installWorkerBootState(booted.game.galaxy);
+    host = new SimHost(booted.game, time, startOptions, { sync: m.sync });
+    post({ ...host.snapshot(), scenario: booted.scenario });
     for (const e of early.splice(0)) handle(e);
     last = performance.now();
     loop();
@@ -112,9 +96,24 @@ function loop(): void {
     timer = setTimeout(loop, delay);
 }
 
-/** Run a tick now (a command or a clock change while paused lands without waiting for the poll). */
+/**
+ * Run a tick next (a command or a clock change while paused lands without waiting for the poll). As a task of its own,
+ * not inside this message: the commands the main thread posted together (one UI action, e.g. assign a mission and frame
+ * it) arrive as consecutive messages and reach the same boundary, as in-thread (remoteArgs.ts RemoteValues).
+ */
 function kick(): void {
     if (timer !== null && host !== null && host.time.paused) {
+        clearTimeout(timer);
+        timer = setTimeout(loop, 0);
+    }
+}
+
+/**
+ * [simworker chunk 1] A clock change ticks at once, running or paused: a pause is then acknowledged (a step message
+ * echoing its seq) without waiting for the next timer, so the main thread's optimistic pause hold is short.
+ */
+function kickNow(): void {
+    if (timer !== null && host !== null) {
         clearTimeout(timer);
         loop();
     }
@@ -133,7 +132,7 @@ function handle(m: ToWorker): void {
             return;
         case 'clock':
             host!.clock(m);
-            kick();
+            kickNow();
             return;
         case 'command':
             host!.command(m);
@@ -166,6 +165,13 @@ function handle(m: ToWorker): void {
         }
         case 'digest':
             post({ type: 'digest', id: m.id, digest: host!.digest(), nowMs: host!.galaxy.nowMs, stepSerial: host!.serial });
+            return;
+        case 'debug':
+            post(host!.debug(m));
+            kick();
+            return;
+        case 'commandLog':
+            post({ type: 'commandLog', id: m.id, log: host!.commandLog() });
             return;
         case 'dispose':
             if (timer !== null) clearTimeout(timer);

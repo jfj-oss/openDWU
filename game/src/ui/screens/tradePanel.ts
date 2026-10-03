@@ -22,7 +22,8 @@ import {
     type TradeOfferResult,
     type TradeTree,
 } from '../../sim/player/tradeNegotiation';
-import { issuePlayerCommand } from '../../sim/player/playerCommands';
+import { hasRemoteCommandSink, issuePlayerCommand } from '../../sim/player/playerCommands';
+import type { TradeableItem } from '../../sim/tradeItems';
 // [diplovoice] begin
 import { counterNote, voicedLineToggle, voicingIndicator, type VoicedReply } from '../diplomatVoice';
 // [diplovoice] end
@@ -74,6 +75,38 @@ export function isTradePanelOpen(): boolean {
     return open !== null;
 }
 
+/**
+ * Sim worker (docs/sim-worker.md §9 chunk 7): the worker built the negotiation a DEAL_BEGIN reply carries; its trees
+ * arrive by value but their TradeableItems as replica objects (a save class: the reply names it by sync id). The panel
+ * edits the offered lists, and the edited negotiation goes back by value with submitTradeOffer, so none of it may stay
+ * part of the replica (a replica item would be sent by sync id, i.e. as the worker's original, and edits to replica
+ * objects are writes the sync undoes). This copy is the UI-owned negotiation in-thread play has: new trees, lists and
+ * TradeableItems (shared items stay shared: a required item is also in the offered list), the same empires and traded
+ * objects.
+ */
+export function detachTradeNegotiation(n: TradeNegotiation): TradeNegotiation {
+    const items = new Map<TradeableItem, TradeableItem>();
+    const item = (t: TradeableItem): TradeableItem => {
+        let c = items.get(t);
+        if (c === undefined) {
+            c = Object.assign(Object.create(Object.getPrototypeOf(t) as object) as TradeableItem, t);
+            items.set(t, c);
+        }
+        return c;
+    };
+    const tree = (t: TradeTree): TradeTree => ({
+        empire: t.empire,
+        otherEmpire: t.otherEmpire,
+        allowDiplomaticThreats: t.allowDiplomaticThreats,
+        refactorValuesForEmpire: t.refactorValuesForEmpire,
+        tradeableItems: t.tradeableItems.map(item),
+        selected: t.selected.map(item),
+        required: t.required.map(item),
+        excluded: t.excluded.map(item),
+    });
+    return { player: n.player, other: n.other, kind: n.kind, us: tree(n.us), them: tree(n.them) };
+}
+
 /** The text of a tree / list entry: the GameText part resolved, then " (value)". */
 export function tradeLabelText(label: TradeLabel): string {
     return formatTradeLabel(resolveGameText(label.text), label);
@@ -105,7 +138,9 @@ function rgb(c: number): string {
 }
 
 function createTradePanel(opts: TradePanelOptions): OpenPanel {
-    const { galaxy, negotiation } = opts;
+    const { galaxy } = opts;
+    // In-thread the reply's negotiation is already the UI's own; a replica's is detached first (see above).
+    const negotiation = hasRemoteCommandSink(galaxy) ? detachTradeNegotiation(opts.negotiation) : opts.negotiation;
     const other = negotiation.other;
     const root = el('div', 'trade-wrap');
     const win = el('div', 'trade-window');

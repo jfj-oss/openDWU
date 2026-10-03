@@ -238,10 +238,17 @@ The delta streams are transferred, not copied.
   The audit's §4 lists the 27 places that still write. They are §9's work. The dev-only write detector
   (`?detectWrites=1`, §9 chunk 0) finds them at run time, with stacks.
 - **The clock.** The HUD's GalaxyTime stays on the main thread as the control surface and is bound to the replica
-  Galaxy's `nowMs`, which travels hot. Pause and speed changes are posted, with a sequence number. The worker's own
+  Galaxy's `nowMs`, which travels hot. Pause and speed changes are posted, with a sequence number, the moment they are
+  written: `SimClientCore.bindClock` turns the instance's `paused` / `speed` into accessors, so every writer (HUD
+  buttons, keyboard, game menu, auto-pause, tutorials, the action menu, the console) posts at once. The worker's own
   GalaxyTime is authoritative. The main thread adopts the worker's pause and speed (for example, a game end that
-  paused from inside a tick) once a step message echoes the last clock seq it sent. Pausing takes effect at the
-  worker's next tick: one message round trip later.
+  paused from inside a tick) once a step message echoes the last clock seq it sent.
+- **Optimistic pause.** From the press until the worker acknowledges the pause (a step message whose clock seq
+  reaches it), the main thread holds the step messages instead of applying them: the replica's `nowMs`, its positions
+  and the render time (drawn as paused, alpha 0) stand still from the frame the player paused, as in-thread. The worker
+  ticks at once on a clock message, so the ack is one round trip (tens of ms). At the ack the held messages apply,
+  with the steps the worker ran before the pause reached it (0–2 in the smoke: at most ~35 game ms at 1×). Resuming
+  before the ack releases the hold; a worker that does not answer within 500 ms releases it too.
 
 ### 4.3 Commands
 
@@ -270,19 +277,29 @@ not to the local queue.
   `applyThrough`, as a command reply is. In-thread this is a no-op.
 - **`runPlayerCommand`** (synchronous result) throws on a replica. Its two callers, the advisor chat and the diplomat
   voice, are in §9 chunk 8.
+- **By-value identity** (`remoteArgs.ts RemoteValues`). By-value objects carry a main-thread value id. Shared or cyclic
+  values within one argument decode to one object. The same main-thread object sent by several commands decodes to
+  one worker object, as the executors share it in-thread (a mission assigned by one command and framed by the next):
+  before its first command is applied, it is refilled with the latest contents; after that, for two boundaries, only
+  the fields the main thread changed since its last send are written, so the sim's own changes stay. The worker kicks
+  a paused tick as a task of its own (`worker.ts kick`), so commands posted together reach one boundary.
 
 ### 4.4 Queries (order menus, selection buttons, money panel)
 
 Some UI calls are not commands but still change sim state, as the C# UI does: building the right-click action menu
 and the selection panel's buttons draws `galaxy.rnd` (the "Build here" designs, the build pages' surface / parking
 points, `DetermineOrbitalBaseLocation`) and fills `Empire.latestDesigns`; the money panel runs
-`CheckAgeVariableIncome`. They go through `simworker/simQuery.ts` (`SIM_QUERIES`: `actionMenu`, `selectionButtons`,
-`habitatDispatch`, `moneyPanel`):
+`CheckAgeVariableIncome`; the diplomacy screen's talk panel lists the conversation options with `listProposals`, and its
+pirate detail prices protection with `CalculatePirateProtectionPricePerMonth`, both of which obtain (add) the relation
+records they read. They go through `simworker/simQuery.ts` (`SIM_QUERIES`: `actionMenu`, `selectionButtons`,
+`habitatDispatch`, `moneyPanel`, `listProposals`, `pirateProtectionPrice`):
 
 - In-thread, `simQuery(galaxy, empire, op, args, done)` runs the function and calls `done` inside the call, as before.
 - On a replica, the query is posted (`query {id, empire, op, args}`), the worker runs it on the authoritative galaxy at
   once, in message order with the commands (so its draws land where in-thread play makes them), and posts an immediate
   sync-only step message (`SimHost.flush`) carrying the reply. Replies travel by value except graph objects (sync ids).
+- A screen that redraws on a timer reads the last answer (`ui/workerQueryCache.ts`: asked again once stale, one
+  request in flight per key); in-thread it keeps calling the function directly.
 - Every in-thread build is still made, one query each (never coalesced: the draw count must match). A reply for a
   right-click or a selection / page the UI has left since is not shown.
 - Gate: `test/simWorkerOrders.test.ts` (a scripted UI player: menus, button pages, dispatch, right-click, box
@@ -325,9 +342,12 @@ These run in the worker on the authoritative game, and the main thread gets an e
 - **Save.** The worker serializes its own game (`SimHost.save` = `serializeGame`), and the main thread awaits it. The
   save panel, Download and autosave now accept `serialize()` returning a Promise. The text is the same format, so
   saves load in either mode.
-- **Load.** The main thread parses the save once, for its scenario id, so that its replica gets the same static data.
-  It posts the text; the worker deserializes it and sends the snapshot. Test: a save from a host, loaded into a new
-  host, continues to the same digest, and its replica matches.
+- **Load.** The main thread does not parse the save. It posts the text (or, for `?load=<url>`, only the URL: the
+  worker fetches it). The worker parses it once (`workerBoot.ts`), reads its scenario, builds its data with that
+  overlay, deserializes, and names the scenario in the snapshot (`SnapshotMessage.scenario`); the main thread builds
+  its replica's static data from that, and takes the save's start options from the snapshot. Tests: a save from a
+  host, loaded into a new host, continues to the same digest, and its replica matches; the same through
+  `bootWorkerGame`, with and without a scenario (test/simWorkerBoot.test.ts).
 - **New games.** createGame options are structured-cloned into the worker. `bootOptions.ts` drops gameData (the worker
   loads its own from the same URLs, with the same scenario overlay) and rebuilds class-typed options
   (`VictoryConditions`). Test: the cloned options build a byte-identical game, and the test fails without the rebuild.
@@ -447,6 +467,19 @@ Each chunk is independent. All chunks share the same test approach:
 - Work: pause latency (an optimistic local pause that holds the replica `nowMs` until the worker acks); load without
   the main-thread JSON parse (send the scenario id from the save index, or parse in the worker).
 - Test: pause / speed / tutorial "Play This Game" in the smoke; load from the main menu.
+- **Done:**
+  - The optimistic pause and immediate clock posting (§4.2); the worker ticks on every clock message.
+  - Load without a main-thread parse (§5); `?load=<url>` is fetched by the worker.
+  - Tutorials and the bare `generateGalaxy` boot (`bootGameWithOptions` without `?autostart`, kind `generate`) run in
+    the worker; a tutorial game that fails to start in the worker returns to the main menu with a toast.
+  - Debug surface: `__dwu.sim` / `__dwu.simBudget` are stand-ins for the worker's SimDriver / SimFrameBudget
+    (`SimWorkerClient.debugObject`: fields read the last known value, writes go to the worker, other members are
+    called there and return a Promise, e.g. `await __dwu.sim.advance(1000)`); `__dwu.commands.log()` returns a
+    Promise of the worker's log. `__dwu.eventLog` reads the replica (cold-synced).
+  - Tests: test/simWorkerBoot.test.ts. Smoke: `scripts/simworker-smoke.mjs` default, `--tutorial`, `--menuload`,
+    `--generate` (each also with `--inthread`).
+- **Still open:** the in-flight steps at a pause are applied, not hidden (the authoritative game ran them); the
+  autosave / save panel and the wizard need no change (they await `serialize()` and post their options).
 
 **Chunk 2 — Main View hot path and audio.**
 - Files: `render/mainView.ts`, `renderInterp.ts`, `builtObjectIndex.ts`, `builtObjectLayer.ts`, `fighterLayer.ts`,
@@ -549,6 +582,20 @@ Each chunk is independent. All chunks share the same test approach:
 - Work: `obtainDiplomaticRelation` creates a relation on read (use a non-creating lookup); delete the dead
   intelligence mutators; by-value IntelligenceMission / TradeNegotiation / PeaceTerms arguments.
 - Test: proposal and trade flows through the host vs in-thread.
+- **Done.**
+  - `rimTraderRows` reads through `peekDiplomaticRelation`, in both modes; the dead intelligence mutators are deleted.
+  - The talk panel's listing and the pirate protection price are worker queries (§4.4); a probe of every other read
+    the chunk's screens make found no writes.
+  - The DEAL_BEGIN negotiation is detached from the replica before the trade panel edits it (`tradePanel.ts
+    detachTradeNegotiation`).
+  - Missions and peace terms go by value, keeping their identity (§4.3).
+  - Tests: `test/simWorkerDiplomacy.test.ts` (queries; proposals, trade, pirate protection, agent missions with a
+    false flag, transfers, dismissal, politics / court / security, peace terms: the in-thread log and digest) and
+    `test/simWorkerScreenReads.test.ts` (the screens' replica reads leave the replica unchanged, in nine game
+    setups).
+  - Browser: `scripts/simworker-smoke-diplomacy.mjs <url> --load=<save>` (a save where the player has met everyone).
+  - Left to other chunks: the conversation queue's message expiry (`setDiplomacyMessageExpiry`, chunk 4) and the
+    diplomat voice (chunk 8).
 
 **Chunk 8 — LLM and AI advisor.**
 - Files: `src/llm/*`, `ui/advisorClient.ts`, `advisorPanel.ts`, `diplomatVoice.ts`, `aiAdvisorDriver.ts`,
