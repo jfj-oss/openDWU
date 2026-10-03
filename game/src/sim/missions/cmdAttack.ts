@@ -8,8 +8,8 @@
 //   2050 `num66 > Galaxy.Rnd.NextDouble()` — the SensorJumpIntercept roll before a warp pursuit (only when flag23);
 //   2358 `Galaxy.Rnd.NextDouble() * 100.0 < val2` and 2362 `num87 * Galaxy.Rnd.NextDouble()` per landing troop;
 //   2379 `Galaxy.Rnd.Next(0, list.Count)` only when Habitat.ColonyInvasion != null (the UI invasion view; always null headless).
-// Weapon firing / bombardment / planet-destroyer fire are M4o stubs (combat/weapons.ts); assault pods, ion-cannon fire,
-// invasion stats and character landing are M4q stubs (combat/boarding.ts, combat/invasion.ts); DoMovement is M4c's stub.
+// Weapon firing, bombardment and planet-destroyer fire are in combat/weapons.ts; assault pods, invasion stats and
+// character landing in combat/boarding.ts and combat/invasion.ts; DoMovement in movement.ts.
 
 import type { BuiltObject } from '../builtObject';
 import type { Habitat } from '../types';

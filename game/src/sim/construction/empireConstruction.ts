@@ -77,7 +77,9 @@ import { ForceStructureProjection, ForceStructureProjectionList } from '../force
 import { determineNewSpacePortLocations, analyzeNewResearchFacilities, countResourceSourcesForEmpire, designsFindNewestCanBuild, habitatResourcesContainsGroup, identifyStrategicResourceSupplySource } from '../stationPlacement';
 import { determineOrbitalBaseLocation } from '../pirates';
 import { AdvisorMessageType, checkTaskAuthorized, determineResourcesEmpireSupplies, formatText, formatThousands, getText, type RefCount } from '../diplomacyTick';
-import { gameText } from '../colonyTick';
+import { RaceEventType } from '../eventTypes';
+import { gameText, racePeriodicRaceEvent } from '../colonyTick';
+import { raceChangePeriodActive } from '../racePeriodic';
 import { EmpireMessage, EmpireMessageType, resolveDescription, sendEmpireMessage } from '../messages';
 import { advisorText } from '../advisorQueue';
 import { ConstructionQueue, canBuiltObjectColonizeHabitat, resolveBuildSpeed } from './constructionQueue';
@@ -88,7 +90,7 @@ import { privateSectorBuildOrRefitInvestInInfrastructure } from './retrofit';
 import { pirateEconomyPerformExpense, calculatePirateCashflow } from '../pirates/pirateAI';
 import { PirateExpenseType } from '../pirates/pirateEconomy';
 import { assignMission, clearPreviousMissionRequirements, queueMission } from '../missions/assign';
-import { BuiltObjectMission, BuiltObjectMissionPriority, BuiltObjectMissionType, builtObjectMission, missionListContainsType, type MissionTarget, type StellarObject } from '../missions/mission';
+import { BuiltObjectMission, COORD_UNSET_DOUBLE, BuiltObjectMissionPriority, BuiltObjectMissionType, builtObjectMission, missionListContainsType, type MissionTarget, type StellarObject } from '../missions/mission';
 import { withinFuelRange } from '../movement';
 import { builtObjectCompleteTeardown } from '../combat/teardown';
 import { identifyPirateSpaceport, inflictDamageFull } from '../combat/damage';
@@ -102,8 +104,8 @@ import { PirateRelationType, obtainPirateRelation } from '../pirateRelations';
 import { SystemVisibilityStatus } from '../visibility';
 import { isObjectVisibleToThisEmpire } from '../independentTraders';
 import { checkColonizationLikeliness } from '../tradeItems';
-import { type ShipGroup, empireShipGroups, shipGroupAssignMission } from '../fleets/shipGroup';
-import { shipGroupQueueMission } from '../fleets/shipGroupTasks';
+import { type ShipGroup, empireShipGroups } from '../fleets/shipGroup';
+import { shipGroupAssignMissionFull, shipGroupQueueMission } from '../fleets/shipGroupTasks';
 import { baconSettings } from '../data/baconSettings';
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -212,9 +214,10 @@ function getLeaderMaintenanceBonuses(design: Design, empire: Empire | null): num
 export function designCalculateMaintenanceCosts(galaxy: Galaxy, design: Design, empire: Empire): number {
     const price = design.calculateCurrentPurchasePrice(galaxy);
     const num1 = (empire.pirateEmpireBaseHabitat !== null ? Math.trunc(price / (baconSettings.shipMarkupFactorPirates * 2.0)) + 1 : Math.trunc(price / baconSettings.shipMarkupFactor) + 1) + baconSettings.shipMaintenanceCostPerSizeUnit * design.size;
-    // TODO(port) M4u: Race.ChangePeriodActive && PeriodicRaceEvent == StrengthInNumbersMaintenanceLowerForSmallShips &&
-    // Size <= 200 → num2 = 0.25 — periodic race events are not modelled (outside such a period the C# sees 0).
-    const num2 = 0.0;
+    // BaconDesign.cs 165-166: a quarter off small ships while the dominant race's change period with the
+    // StrengthInNumbersMaintenanceLowerForSmallShips periodic event is active.
+    let num2 = 0.0;
+    if (empire != null && empire.dominantRace != null && raceChangePeriodActive(galaxy, empire.dominantRace) && racePeriodicRaceEvent(empire.dominantRace) === RaceEventType.StrengthInNumbersMaintenanceLowerForSmallShips && design.size <= 200) num2 = 0.25;
     const num3 = getLeaderMaintenanceBonuses(design, empire) / 100.0;
     const num4 = Math.min(1.0, design.maintenanceSavings + num2 + num3) * num1;
     let num5 = 1.0;
@@ -936,9 +939,9 @@ export function assignFleetRetrofit(galaxy: Galaxy, empire: Empire, fleet: ShipG
         if (shipYard === null) shipYard = findNearestShipYard(galaxy, fleet.empire!, fleet.leadShip!, true, false);
         if (shipYard !== null && shipYard instanceof BuiltObject) {
             let design = findNewestCanBuildFullEvaluate(fleet.empire!.designs, fleet.leadShip!.subRole, null);
-            // TODO(port) M4l: ShipGroup.AssignMission(Retrofit, shipYard, null, design, High, manuallyAssigned: true) — the
-            // M4l stub has no design parameter (the C# fleet mission carries `design`).
-            shipGroupAssignMission(galaxy, fleet, BuiltObjectMissionType.Retrofit, shipYard, null, BuiltObjectMissionPriority.High, true);
+            // ShipGroup.cs 2060 AssignMission(Retrofit, shipYard, null, design, High, manuallyAssigned: true) → 2083 → 2097
+            // (cargo null, x/y unset, starDate -1): the fleet mission carries the lead ship's retrofit design.
+            shipGroupAssignMissionFull(galaxy, fleet, BuiltObjectMissionType.Retrofit, shipYard, null, null, design, COORD_UNSET_DOUBLE, COORD_UNSET_DOUBLE, -1, BuiltObjectMissionPriority.High, true);
             for (let i = 0; i < fleet.ships.length; i++) {
                 const builtObject = fleet.ships[i];
                 if (builtObject.builtAt === null && builtObject.retrofitDesign === null) {

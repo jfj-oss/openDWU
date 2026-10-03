@@ -45,6 +45,7 @@ import {
     type PlayerMessageBatch,
 } from '../src/ui/messagePipeline';
 import { installWorkerMessageUi, type WorkerMessageUi } from '../src/ui/workerMessages';
+import { installReplicaWriteDetector } from '../src/simworker/writeDetector';
 import { createEmpireMessageFeed } from '../src/ui/empireMessageFeed';
 import { installGameEndHandler } from '../src/ui/screens/empireComparison';
 import { isProposalValid } from '../src/ui/screens/diplomacyScreen';
@@ -187,6 +188,8 @@ describe('sim worker: the player message pipeline', () => {
                 for (const ev of e.events) deliveredEvents.push([ev.type, ev.title, resolve(ev.data)]);
             } else if (e.kind === 'gameEnd') gameEnd = e;
         });
+        // Chunk 0's detector: the main side must not write the replica (the stamps, history and queue are the worker's).
+        const detector = installReplicaWriteDetector(w.client.replica, { warn: () => {} });
         const pipe = w.host.pipeline!;
         const pump = pipe.pump.bind(pipe);
         pipe.pump = () => {
@@ -252,6 +255,9 @@ describe('sim worker: the player message pipeline', () => {
         w.client.replica.apply(structuredClone(w.host.sync.delta(true)), true);
         expect(JSON.stringify(galaxyToJSON(w.client.galaxy)) === JSON.stringify(galaxyToJSON(game.galaxy))).toBe(true);
         expect(empireMessageHistory(w.client.game.playerEmpire).length).toBe(history.length);
+        detector.checkAll();
+        expect(detector.unexpected().map((x) => x.key)).toEqual([]);
+        detector.dispose();
         w.ui.dispose();
         w.client.dispose();
         w.host.dispose();
@@ -261,6 +267,7 @@ describe('sim worker: the player message pipeline', () => {
         const game = cachedTickGame(gameData);
         const time = new GalaxyTime();
         const w = connect(game, time);
+        const detector = installReplicaWriteDetector(w.client.replica, { warn: () => {} });
         w.tick();
         const wp = game.playerEmpire;
         const rp = w.client.game.playerEmpire;
@@ -294,6 +301,9 @@ describe('sim worker: the player message pipeline', () => {
         expirePlayerAdvisorSuggestionsFor(rp, rai);
         expect(advisorSuggestions(wp).includes(s)).toBe(false);
         expect(commandLog(game.galaxy).length).toBe(0); // unjournaled, as in-thread
+        detector.checkAll();
+        expect(detector.unexpected().map((x) => x.key)).toEqual([]);
+        detector.dispose();
         w.ui.dispose();
         w.client.dispose();
         w.host.dispose();

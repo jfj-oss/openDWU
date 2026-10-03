@@ -235,12 +235,20 @@ The delta streams are transferred, not copied.
   achievements, saves.
 - **The replica is read-only.** A main-thread write to a replica object is not an error, but it is wrong. The worker
   never sees it, and the next sync of that field overwrites it, or never does if the worker's value does not change.
-  The audit's §4 lists the 27 places that still write. They are §9's work.
+  The audit's §4 lists the 27 places that still write. They are §9's work. The dev-only write detector
+  (`?detectWrites=1`, §9 chunk 0) finds them at run time, with stacks.
 - **The clock.** The HUD's GalaxyTime stays on the main thread as the control surface and is bound to the replica
-  Galaxy's `nowMs`, which travels hot. Pause and speed changes are posted, with a sequence number. The worker's own
+  Galaxy's `nowMs`, which travels hot. Pause and speed changes are posted, with a sequence number, the moment they are
+  written: `SimClientCore.bindClock` turns the instance's `paused` / `speed` into accessors, so every writer (HUD
+  buttons, keyboard, game menu, auto-pause, tutorials, the action menu, the console) posts at once. The worker's own
   GalaxyTime is authoritative. The main thread adopts the worker's pause and speed (for example, a game end that
-  paused from inside a tick) once a step message echoes the last clock seq it sent. Pausing takes effect at the
-  worker's next tick: one message round trip later.
+  paused from inside a tick) once a step message echoes the last clock seq it sent.
+- **Optimistic pause.** From the press until the worker acknowledges the pause (a step message whose clock seq
+  reaches it), the main thread holds the step messages instead of applying them: the replica's `nowMs`, its positions
+  and the render time (drawn as paused, alpha 0) stand still from the frame the player paused, as in-thread. The worker
+  ticks at once on a clock message, so the ack is one round trip (tens of ms). At the ack the held messages apply,
+  with the steps the worker ran before the pause reached it (0–2 in the smoke: at most ~35 game ms at 1×). Resuming
+  before the ack releases the hold; a worker that does not answer within 500 ms releases it too.
 
 ### 4.3 Commands
 
@@ -261,8 +269,45 @@ not to the local queue.
   replica objects. Unlike in-thread play, it runs one round trip later, not inside the boundary.
 - **`runPlayerCommand`** (synchronous result) throws on a replica. Its two callers, the advisor chat and the diplomat
   voice, are in §9 chunk 8.
+- **By-value identity** (`remoteArgs.ts RemoteValues`). By-value objects carry a main-thread value id. Shared or cyclic
+  values within one argument decode to one object. The same main-thread object sent by several commands decodes to
+  one worker object, as the executors share it in-thread (a mission assigned by one command and framed by the next):
+  before its first command is applied, it is refilled with the latest contents; after that, for two boundaries, only
+  the fields the main thread changed since its last send are written, so the sim's own changes stay. The worker kicks
+  a paused tick as a task of its own (`worker.ts kick`), so commands posted together reach one boundary.
 
-### 4.4 Sim → UI hooks
+### 4.4 Queries (order menus, selection buttons, money panel)
+
+Some UI calls are not commands but still change sim state, as the C# UI does: building the right-click action menu
+and the selection panel's buttons draws `galaxy.rnd` (the "Build here" designs, the build pages' surface / parking
+points, `DetermineOrbitalBaseLocation`) and fills `Empire.latestDesigns`; the money panel runs
+`CheckAgeVariableIncome`; the diplomacy screen's talk panel lists the conversation options with `listProposals`, and its
+pirate detail prices protection with `CalculatePirateProtectionPricePerMonth`, both of which obtain (add) the relation
+records they read. They go through `simworker/simQuery.ts` (`SIM_QUERIES`: `actionMenu`, `selectionButtons`,
+`habitatDispatch`, `moneyPanel`, `listProposals`, `pirateProtectionPrice`):
+
+- In-thread, `simQuery(galaxy, empire, op, args, done)` runs the function and calls `done` inside the call, as before.
+- On a replica, the query is posted (`query {id, empire, op, args}`), the worker runs it on the authoritative galaxy at
+  once, in message order with the commands (so its draws land where in-thread play makes them), and posts an immediate
+  sync-only step message (`SimHost.flush`) carrying the reply. Replies travel by value except graph objects (sync ids).
+- A screen that redraws on a timer reads the last answer (`ui/workerQueryCache.ts`: asked again once stale, one
+  request in flight per key); in-thread it keeps calling the function directly.
+- Every in-thread build is still made, one query each (never coalesced: the draw count must match). A reply for a
+  right-click or a selection / page the UI has left since is not shown.
+- Gate: `test/simWorkerOrders.test.ts` (a scripted UI player: menus, button pages, dispatch, right-click, box
+  selection, hotkeys, fleet point) gives the in-thread menus, command log and digest; building the menus on the
+  replica instead does not.
+
+**Freshness of `onApplied`.** The host compares what a command named and returned (`ReplicaEncoder.compareNow`: the
+issuing empire to depth 1, arguments and results to depth 2) in the delta of the tick that applied it, and the main
+thread applies the cold parts through that delta before it runs the command replies (`GalaxyReplica.applyThrough`).
+So a callback reads the replica as of that boundary (one step later than in-thread), including cold fields.
+
+**Dropped objects.** A BuiltObject, Habitat, ShipGroup, Creature, Fighter or Empire the replica no longer knows (destroyed
+and dropped by the mark while the HUD still held it) is never sent by value: the command or query is dropped with a
+warning and its callback does not run.
+
+### 4.5 Sim → UI hooks
 
 These run in the worker on the authoritative game, and the main thread gets an event:
 
@@ -299,9 +344,12 @@ These run in the worker on the authoritative game, and the main thread gets an e
 - **Save.** The worker serializes its own game (`SimHost.save` = `serializeGame`), and the main thread awaits it. The
   save panel, Download and autosave now accept `serialize()` returning a Promise. The text is the same format, so
   saves load in either mode.
-- **Load.** The main thread parses the save once, for its scenario id, so that its replica gets the same static data.
-  It posts the text; the worker deserializes it and sends the snapshot. Test: a save from a host, loaded into a new
-  host, continues to the same digest, and its replica matches.
+- **Load.** The main thread does not parse the save. It posts the text (or, for `?load=<url>`, only the URL: the
+  worker fetches it). The worker parses it once (`workerBoot.ts`), reads its scenario, builds its data with that
+  overlay, deserializes, and names the scenario in the snapshot (`SnapshotMessage.scenario`); the main thread builds
+  its replica's static data from that, and takes the save's start options from the snapshot. Tests: a save from a
+  host, loaded into a new host, continues to the same digest, and its replica matches; the same through
+  `bootWorkerGame`, with and without a scenario (test/simWorkerBoot.test.ts).
 - **New games.** createGame options are structured-cloned into the worker. `bootOptions.ts` drops gameData (the worker
   loads its own from the same URLs, with the same scenario overlay) and rebuilds class-typed options
   (`VictoryConditions`). Test: the cloned options build a byte-identical game, and the test fails without the rebuild.
@@ -332,11 +380,14 @@ The only behaviour changes in this mode are:
 | `src/simworker/workerClient.ts` | Main-side Worker wrapper, boot with progress, frame loop, async save / digest, the flag |
 | `src/simworker/remoteArgs.ts` | Command arguments and replies across the boundary (sync ids) |
 | `src/simworker/bootOptions.ts` | createGame options across the boundary |
+| `src/simworker/simQuery.ts` | UI-side sim calls that change state as the C# UI does (menus, buttons, money panel), run where the game runs (§4.4) |
+| `src/simworker/tradeFlowSync.ts` | Trade-flow recording in the worker; the ledger as a side table (chunk 3) |
 | `src/simworker/protocol.ts` | Message types |
 | `src/simFrameBudget.ts` | SimFrameBudget, shared by both modes |
 | `scripts/sync-measure.mjs` | Sync cost on a save (`--compare-options`, `--verify`, `--census`, `--hot-fields`) |
 | `scripts/simworker-smoke.mjs` | Browser smoke: boots with the flag, checks run / speed / pause / move order, screenshots |
 | `test/simWorker.test.ts`, `test/replicaSync.test.ts` | Determinism, fidelity and save gates; codec fuzz (8 seeds × 400 steps by default; `FUZZ_SEEDS` / `FUZZ_STEPS`) |
+| `src/simworker/writeDetector.ts`, `test/replicaWriteDetector.test.ts` | Dev-only replica write detector (`?detectWrites=1`, §9 chunk 0) and its tests |
 
 ## 8. Known limits of phase 1 (also in §9)
 
@@ -350,8 +401,8 @@ The only behaviour changes in this mode are:
   `coldMaxSets`, `markBudgetMs`.
 - **Cold staleness.** Cold data is up to one cycle old (about 1–1.5 s), plus any pump backlog. A paused game settles
   to exact: the worker keeps comparing for two full cycles after the last change.
-- **Not ported (§9):** audio sound flags, order-menu RNG draws,
-  synchronous advisor commands, trade-flow recording, rim wiring, tutorials (they still boot in-thread), the
+- **Not ported (§9):** audio sound flags,
+  synchronous advisor commands, tutorials (they still boot in-thread), the
   `__dwu.sim` / `simBudget` debug hooks (null in worker mode), and `__dwu.commands.log` (the replica has no log).
 
 ## 9. Porting work list (parallel chunks)
@@ -363,9 +414,51 @@ Each chunk is independent. All chunks share the same test approach:
 - **Browser.** `scripts/simworker-smoke.mjs <dev url>`, with `--load=/dev-saves/late2500.dwusave` for the late game,
   extended with the chunk's own checks, and screenshots of the chunk's screens with `?simWorker=1` vs `0`.
 - **Determinism.** `npm run repin -- --check` must stay at 0, and `test:fast` must pass with the flag off.
-- **Safety net, worth doing first** (chunk 0, small): a dev-only replica write detector. In the decoder's cold pump,
-  compare the replica field values of each object it touches with the last values it applied, and warn once per
-  `Class.field` that changed without a delta. That catches the indirect writes a static audit misses.
+- **Safety net: the replica write detector** (chunk 0, done). Run your chunk's checks with it on, and make sure your
+  chunk's keys in the findings table below disappear. See "Chunk 0" below.
+
+**Chunk 0 — replica write detector (done).**
+- Files: `src/simworker/writeDetector.ts`; the decoder hook in `replicaSync.ts` (`ReplicaDecoder.watch`, `fieldName`,
+  `idLimit`: additive, null by default); the install in `workerClient.ts`; `scripts/simworker-smoke.mjs --detect-writes`;
+  `test/replicaWriteDetector.test.ts`.
+- **Turn it on:** `?simWorker=1&detectWrites=1` (dev builds only, `import.meta.env.DEV`). It warns once per key in the
+  console (`[replica write] …`) and is reachable as `window.__dwuWriteDetector`: `checkAll()` (compare everything now),
+  `writes()` / `unexpected()` (findings, with counts, first detail and stack), `summary()`, `reset()`, `arm(key)`.
+  `detectWrites=all` traps every field of every replica object from the start, so the first write already has a stack
+  (heavier; fine on a fresh game). In tests: `installReplicaWriteDetector(client.replica, { warn })`, then
+  `det.checkAll()` / `det.unexpected()`. Smoke: `node scripts/simworker-smoke.mjs <url> --detect-writes[=all]` prints the
+  findings after the move order and at the end, and saves `<out>/replica-writes.json`.
+- **How it works.** It keeps a mirror of the values the decoder applied to each replica object. The decoder calls
+  `watch(id, slot)` before each record; the first record on an object in an apply compares it with its mirror (only the
+  field being set, for a field set), so a foreign write is found when the sync next touches the object. Objects the sync
+  does not touch again are compared by a round-robin sweep at the start of every cold pump (0.25 ms), and by
+  `checkAll()`. Once a key is found, a trap is armed on it: the field becomes an accessor on every live and future replica
+  object with that label (containers: `push` / `splice` / `set` / `add` / … are watched), so the next write reports its
+  stack. Index writes (`a[i] = v`) and added / deleted keys are found by the compare only. Writes made while the replica
+  applies a delta (the decoder, `GalaxyReplica.afterApply`'s static wiring and side tables) are the sync's and never
+  reported. `REPLICA_WRITE_ALLOW` (in `writeDetector.ts`) lists intended client-side state, with a reason per entry: it
+  is empty, because every write found so far is a bug.
+- **Keys:** `Class.field` (class names from the save registry), `<label>.field` for a plain object, `<label>[]` for an
+  array, `<label>{}` for a Map / Set, `<label>#` for a typed array; a container's label is where it was first found
+  (`Empire.messageHistory[]` is that array).
+- **Cost:** off, nothing (the hook is null). On, the main thread's sync work is about 3–4× (fresh game: about 2 ms more
+  per frame in node). Installing it on the late save takes a few seconds and roughly doubles the replica's heap.
+- **Findings** (smoke on a fresh game, and on `late2500.dwusave`, both modes; 2026-10-03). Each key, the writer the trap
+  caught (or the compare's detail), and the chunk it belongs to:
+
+  | Key | Writer (stack) | Chunk |
+  |---|---|---|
+  | `EmpireMessage.starDate` | `ui/empireMessageFeed.ts recordTickerMessage` ← `main.ts refreshHud` (4 Hz) | 4 (audit §4 item 2) |
+  | `Empire.messageHistory[]` (push) | `sim/messages.ts addHistoryMessage` ← `empireMessageFeed.ts recordTickerMessage` ← `refreshHud` | 4 (item 2) |
+  | `Empire.advisorSuggestions[]` (push) | `sim/advisorQueue.ts addAdvisorSuggestion` ← `receiveAdvisorSuggestionMessage` ← `ui/messagePopups.ts tick` | 4 (item 3) |
+  | `Empire.eventMessageRecipient` (key "deleted": redefined non-enumerable, compare only) | `ui/eventMessages.ts` 138 / 194 and `audio/gameAudio.ts` 265 (`Object.defineProperty` on the player Empire) | 4 (item 6), 2 |
+  | `Empire.useAveragedVariableIncome`, `Empire.variableIncome`, `Empire.lastVariableIncomeUpdate`, `Empire.thisYearsResortIncomeValue`, `BuiltObject.currentYearsIncome` | `sim/treasury.ts checkAgeVariableIncome` (→ `ageVariableIncomeValues`, `thisYearsResortIncome`, `resetYearlyIncome`) ← `moneyPanelIncome` ← `ui/hud.ts refreshMoney` / `buildMoneyPanel` | **5 — not in the audit.** The C# UI does this too (Main.Part11.cs 841): it is a sim write by design, so it must become a command (or run in the worker at the panel's rate). `currentYearsIncome` is reset on every space port / mining station / resort base at a new galactic year. |
+  | `BuiltObject.hyperjumpAboutToEnterSoundPlayed` | `audio/mainViewSounds.ts MainViewSounds.hyperjump` ← `collect` ← `gameAudio.ts frame` | 2 (item 1) |
+
+  The smoke has no combat and opens no screens, so the audit's other writes (`Weapon.soundEffectPlayed`,
+  `Explosion.explosionSoundPlayed`, `BuiltObject.ionStrikeSoundPlayed`, the order menus' `Random` draws, the screens'
+  writes) did not come up. Run your chunk's flows with the detector on to catch them; a replica RNG draw is reported as
+  `Random.inext` / `Random.inextp` / `Random.seedArray[]` (tested).
 
 **Chunk 1 — clock, boot and persistence edges.**
 - Files: `src/main.ts` (tutorial boot `startTutorialGame` through the worker; `bootGameWithOptions` non-autostart
@@ -375,6 +468,19 @@ Each chunk is independent. All chunks share the same test approach:
 - Work: pause latency (an optimistic local pause that holds the replica `nowMs` until the worker acks); load without
   the main-thread JSON parse (send the scenario id from the save index, or parse in the worker).
 - Test: pause / speed / tutorial "Play This Game" in the smoke; load from the main menu.
+- **Done:**
+  - The optimistic pause and immediate clock posting (§4.2); the worker ticks on every clock message.
+  - Load without a main-thread parse (§5); `?load=<url>` is fetched by the worker.
+  - Tutorials and the bare `generateGalaxy` boot (`bootGameWithOptions` without `?autostart`, kind `generate`) run in
+    the worker; a tutorial game that fails to start in the worker returns to the main menu with a toast.
+  - Debug surface: `__dwu.sim` / `__dwu.simBudget` are stand-ins for the worker's SimDriver / SimFrameBudget
+    (`SimWorkerClient.debugObject`: fields read the last known value, writes go to the worker, other members are
+    called there and return a Promise, e.g. `await __dwu.sim.advance(1000)`); `__dwu.commands.log()` returns a
+    Promise of the worker's log. `__dwu.eventLog` reads the replica (cold-synced).
+  - Tests: test/simWorkerBoot.test.ts. Smoke: `scripts/simworker-smoke.mjs` default, `--tutorial`, `--menuload`,
+    `--generate` (each also with `--inthread`).
+- **Still open:** the in-flight steps at a pause are applied, not hidden (the authoritative game ran them); the
+  autosave / save panel and the wizard need no change (they await `serialize()` and post their options).
 
 **Chunk 2 — Main View hot path and audio.**
 - Files: `render/mainView.ts`, `renderInterp.ts`, `builtObjectIndex.ts`, `builtObjectLayer.ts`, `fighterLayer.ts`,
@@ -396,6 +502,21 @@ Each chunk is independent. All chunks share the same test approach:
   root; the rim install (`installRimWeights` / `installRimNameOverrides` write `galaxy.scenario.state`) runs in the
   worker at boot.
 - Test: overlay screenshots in both modes; a freight ledger equality test through the host.
+- **Done.**
+  - *Trade flows.* `tradeFlows.ts setRemoteTradeFlows` is registered on the replica, the same pattern as
+    `setRemoteCommandSink`. The overlay's unchanged enable / disable calls post a `tradeFlows` message, which is not a
+    command and is not journaled. The worker records on the authoritative galaxy. The ledger travels as a view in the
+    side-tables root (`tradeFlows`). The view shares `entries` and carries `version`, `startStarDate` and a Map of
+    the live freighters' contract destinations, refreshed at most every 15 ticks. The sim keeps those destinations in a
+    WeakMap, which cannot be synced. `index` stays empty, because only the recorder reads it. Until the first sync
+    the replica shows an empty placeholder.
+  - *Rim.* `installWorkerBootState` (simHost.ts) runs `installRimAtmosphereData` in the worker after create or load,
+    before the first tick. On a replica the call is a no-op. The rim curve moved to Pixi-free `render/rimCurve.ts`.
+  - *Reads.* The overlay readers are write-free on a replica. The territory overlay's sources
+    (`colonyInfluenceRadius`, `colonies`, `active`, explored systems) arrive cold, and its 30-frame signature poll
+    follows them.
+  - *Tests and tools.* Tests: `test/simWorkerMapOverlays.test.ts`. Smoke: `scripts/simworker-overlays-smoke.mjs`
+    (`--inthread`, `--scenario=rim-atmosphere`).
 
 **Chunk 4 — messages, events and game end** (the largest write cluster, audit §4 items 2–7 and 9).
 - Files: `ui/empireMessageFeed.ts`, `messagePopups.ts`, `messageStubList.ts`, `messageStubs.ts`, `messageRouting.ts`,
@@ -432,6 +553,20 @@ Each chunk is independent. All chunks share the same test approach:
 - Work: `obtainDiplomaticRelation` creates a relation on read (use a non-creating lookup); delete the dead
   intelligence mutators; by-value IntelligenceMission / TradeNegotiation / PeaceTerms arguments.
 - Test: proposal and trade flows through the host vs in-thread.
+- **Done.**
+  - `rimTraderRows` reads through `peekDiplomaticRelation`, in both modes; the dead intelligence mutators are deleted.
+  - The talk panel's listing and the pirate protection price are worker queries (§4.4); a probe of every other read
+    the chunk's screens make found no writes.
+  - The DEAL_BEGIN negotiation is detached from the replica before the trade panel edits it (`tradePanel.ts
+    detachTradeNegotiation`).
+  - Missions and peace terms go by value, keeping their identity (§4.3).
+  - Tests: `test/simWorkerDiplomacy.test.ts` (queries; proposals, trade, pirate protection, agent missions with a
+    false flag, transfers, dismissal, politics / court / security, peace terms: the in-thread log and digest) and
+    `test/simWorkerScreenReads.test.ts` (the screens' replica reads leave the replica unchanged, in nine game
+    setups).
+  - Browser: `scripts/simworker-smoke-diplomacy.mjs <url> --load=<save>` (a save where the player has met everyone).
+  - Left to other chunks: the conversation queue's message expiry (`setDiplomacyMessageExpiry`, chunk 4) and the
+    diplomat voice (chunk 8).
 
 **Chunk 8 — LLM and AI advisor.**
 - Files: `src/llm/*`, `ui/advisorClient.ts`, `advisorPanel.ts`, `diplomatVoice.ts`, `aiAdvisorDriver.ts`,

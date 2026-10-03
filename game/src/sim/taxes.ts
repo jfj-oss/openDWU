@@ -35,6 +35,7 @@ import type { Galaxy } from './galaxy';
 import type { Habitat } from './types';
 import { checkColonyRevenueFromPirateControl } from './pirates/pirateColonyControl';
 import type { Race } from './data/races';
+import { raceAggressionLevel, raceFriendlinessLevel } from './racePeriodic';
 import { resolveStandardRaceBias } from './raceBias';
 import { Empire, empireGovernmentAttributes, registerTakeOwnershipOfColonyHooks } from './empire';
 import { BuiltObjectSubRole } from './builtObjectTypes';
@@ -191,11 +192,12 @@ export function empireCivilityRatingApprovalRaw(galaxy: Galaxy, empire: Empire):
     return num;
 }
 
-// Empire.cs CalculateRacialReputationConcern (3104).
-export function calculateRacialReputationConcern(race: { aggression: number; friendliness: number } | null): number {
+// Empire.cs CalculateRacialReputationConcern (3104). Race.AggressionLevel / FriendlinessLevel are the periodic levels
+// while the race's change period is active (Race.cs 350-400).
+export function calculateRacialReputationConcern(galaxy: Galaxy, race: Race | null): number {
     let result = 1.0;
     if (race != null) {
-        result = race.aggression / race.friendliness;
+        result = raceAggressionLevel(galaxy, race) / raceFriendlinessLevel(galaxy, race);
         result = result * result * result * result * result;
         result = Math.max(1.0, result);
     }
@@ -377,7 +379,7 @@ export function empireApprovalRatingStock(galaxy: Galaxy, h: Habitat): number {
         if (wwDivisors.charactersDivisor !== null) num /= wwDivisors.charactersDivisor;
         inputValue2 = empireCivilityRatingApprovalRaw(galaxy, empire);
         let num7 = 1.0;
-        if (dominantRace !== null) num7 = calculateRacialReputationConcern(dominantRace);
+        if (dominantRace !== null) num7 = calculateRacialReputationConcern(galaxy, dominantRace);
         inputValue2 /= num7;
         num2 = calculatePopulationPolicyConcern(h);
     }
@@ -483,7 +485,7 @@ export function setColonyTaxRate(galaxy: Galaxy, empire: Empire, colony: Habitat
     const policy = empire.policy!; // C# dereferences Policy unguarded (NRE if null).
     let num = 1.0;
     if (empire.dominantRace !== null) {
-        num += (1.0 - (empire.dominantRace.friendliness + empire.dominantRace.intelligence) / 200.0) / 2.0;
+        num += (1.0 - (raceFriendlinessLevel(galaxy, empire.dominantRace) + empire.dominantRace.intelligence) / 200.0) / 2.0; // Race.FriendlinessLevel (periodic)
     }
     const num2 = 0.15;
     let num3 = f32(colony.taxRate);

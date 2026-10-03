@@ -8,6 +8,7 @@
 // against. Nothing is allocated per frame otherwise. In-flight freighter leaders (system zoom only) are rebuilt at
 // most every 250 ms.
 
+import { circleAtScreenRes } from './screenCircle';
 import { Container, Graphics } from 'pixi.js';
 import type { Camera } from './camera';
 import { fogOf } from './fog';
@@ -357,7 +358,7 @@ export class FreightOverlay {
         for (let i = this.discs.length - 1; i >= 0; i--) {
             const d = this.discs[i];
             const r = d.r / z;
-            h.circle(d.x, d.y, r).fill({ color: d.color, alpha: 0.25 }).stroke({ width: 1 / z, color: d.color, alpha: 0.9 });
+            circleAtScreenRes(h, d.x, d.y, r, z).fill({ color: d.color, alpha: 0.25 }).stroke({ width: 1 / z, color: d.color, alpha: 0.9 });
         }
     }
 

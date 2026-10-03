@@ -67,6 +67,7 @@ import { takeOwnershipOfBuiltObject, takeOwnershipOfColonyRuntime } from './comb
 import { haveRevolution } from './treasury';
 import { GalaxyLocation } from './galaxyLocation';
 import { galaxyColonyFillFactor } from './colonyTick';
+import { raceAggressionLevel, raceFriendlinessLevel } from './racePeriodic';
 import type { TechNode } from './researchSystem';
 import { nodeCategory, resolveResearchAbilityType, ResearchAbilityType } from './researchSystem';
 import { resolveMoreAdvancedProjectsIncludeSpecial } from './espionage';
@@ -172,8 +173,6 @@ const TRADE_GALAXY_MAP_THRESHHOLD = 15;
 const TRADE_RESEARCH_THRESHHOLD = 25;
 const TRADE_RESEARCH_SPECIAL_THRESHHOLD = 50;
 const MINIMUM_DIPLOMACY_TRADE_PROPOSAL_INTERVAL_YEARS = 1.25;
-/** Galaxy.cs 686 AllowTechTrading = true (Start wizard option, not in the TS CreateGameOptions yet). */
-const ALLOW_TECH_TRADING = true;
 
 // ---------------------------------------------------------------------------------------------------------------
 // Values (Galaxy.4.cs).
@@ -498,7 +497,8 @@ export function tradeItems(galaxy: Galaxy, empire: Empire): void {
         const tradeableItemList: TradeableItem[] = [];
         let num2 = TRADE_RESEARCH_THRESHHOLD;
         if (other === galaxy.playerEmpire) num2 = Math.trunc(TRADE_RESEARCH_THRESHHOLD * galaxy.difficultyLevel);
-        if (diplomaticRelation.strategy === DiplomaticStrategy.Ally && overallAttitude >= num2 && ALLOW_TECH_TRADING) {
+        // Galaxy.cs 686 AllowTechTrading: the wizard's "Enable tech trading" option (Start.2.cs 499).
+        if (diplomaticRelation.strategy === DiplomaticStrategy.Ally && overallAttitude >= num2 && galaxy.allowTechTrading) {
             let num3 = TRADE_RESEARCH_SPECIAL_THRESHHOLD;
             if (other === galaxy.playerEmpire) num3 = Math.trunc(TRADE_RESEARCH_SPECIAL_THRESHHOLD * galaxy.difficultyLevel);
             const includeSpecialTech = overallAttitude >= num3;
@@ -612,12 +612,13 @@ function clampValue(num: number): number {
 }
 
 /** Galaxy.1.cs 1367 CheckColonizationLikeliness(potentialColony, colonizingRace). */
+// Race.FriendlinessLevel / AggressionLevel: periodic levels while the race's change period is active (Race.cs 350-400).
 export function checkColonizationLikeliness(galaxy: Galaxy, potentialColony: Habitat, colonizingRace: Race): number {
-    let num = colonizingRace.friendliness - colonizingRace.aggression;
+    let num = raceFriendlinessLevel(galaxy, colonizingRace) - raceAggressionLevel(galaxy, colonizingRace);
     let num2 = 100;
     if (potentialColony.empire === galaxy.independentEmpire && potentialColony.population != null && potentialColony.population.dominantRace !== null) {
         const dominantRace = potentialColony.population.dominantRace;
-        num2 = dominantRace.friendliness - dominantRace.aggression;
+        num2 = raceFriendlinessLevel(galaxy, dominantRace) - raceAggressionLevel(galaxy, dominantRace);
         if (dominantRace === colonizingRace) {
             num2 += 35;
             num2 = Math.max(5, num2);
@@ -1063,7 +1064,8 @@ export function resolveTradeableItems(galaxy: Galaxy, giver: Empire, receiver: E
     for (const m of [10.0, 100.0, 1000.0, 10000.0, 100000.0]) list.push(new TradeableItem(TradeableItemType.Money, m, valueMoney(m)));
     if (receiver.pirateEmpireBaseHabitat === null) list.push(...resolveTradeableItemsColoniesBases(galaxy, giver, receiver, refactorValuesForEmpire));
     if (includeAllItems || num >= TRADE_TERRITORY_MAP_THRESHHOLD) list.push(...resolveTradeableItemsMaps(galaxy, giver, receiver, refactorValuesForEmpire));
-    if (ALLOW_TECH_TRADING) {
+    // Galaxy.cs 686 AllowTechTrading: the wizard's "Enable tech trading" option (Start.2.cs 499).
+    if (galaxy.allowTechTrading) {
         let num2 = TRADE_RESEARCH_THRESHHOLD;
         if (receiver === galaxy.playerEmpire) num2 = Math.trunc(TRADE_RESEARCH_THRESHHOLD * galaxy.difficultyLevel);
         if (includeAllItems || num >= num2) {

@@ -495,7 +495,7 @@ export function colonyAttitudeSummary(galaxy: Galaxy, h: Habitat): { header: str
         const owner = h.owner;
         const num17 = owner !== null && owner !== galaxy.independentEmpire ? safe(() => empireCivilityRatingApprovalRaw(galaxy, owner), 0) : 0;
         const dom = h.population?.dominantRace ?? null;
-        const num18 = dom !== null ? calculateRacialReputationConcern(dom) : 1;
+        const num18 = dom !== null ? calculateRacialReputationConcern(galaxy, dom) : 1;
         const num19 = mod(num17 / num18);
         if (num19 > 0.5) add(num19, T("We are proud of our empire's good reputation", "We are proud of our empire's good reputation"));
         else if (num19 < -0.5) add(num19, T("We are concerned about our empire's poor reputation", "We are concerned about our empire's poor reputation"));

@@ -99,10 +99,16 @@ export function pirateFlagShapeIndex(empire: Empire, galaxy?: Galaxy | null): nu
     return (h >>> 0) % PIRATE_FLAG_SHAPES.length;
 }
 
-/** Shape tile URL for an empire: its flag shape, or for a pirate faction at -1 the hashed pirate shape. */
+/** A pirate faction's index into FlagShapesPirates: the one the player chose in the wizard (Start.2.cs 456 / 870-878 pass
+ *  the pirate list for a pirate start), else the hashed pick. */
+function pirateShapeOf(empire: Empire, galaxy?: Galaxy | null): number {
+    return empire.flagShape >= 0 ? empire.flagShape : pirateFlagShapeIndex(empire, galaxy);
+}
+
+/** Shape tile URL for an empire: its flag shape, or for a pirate faction its pirate shape (hashed when at -1). */
 export function empireFlagShapeUrl(empire: Empire, galaxy?: Galaxy | null): string | null {
+    if (empire.pirateEmpireBaseHabitat !== null && !empire.pirateEmpireSuperPirates) return pirateFlagShapeUrl(pirateShapeOf(empire, galaxy));
     if (empire.flagShape >= 0) return flagShapeUrl(empire.flagShape);
-    if (empire.pirateEmpireBaseHabitat !== null && !empire.pirateEmpireSuperPirates) return pirateFlagShapeUrl(pirateFlagShapeIndex(empire, galaxy));
     return null;
 }
 
@@ -200,10 +206,10 @@ export async function stockFlagRgba(flagShape: number, main: number, secondary: 
 /** The stock 100 x 60 flag of an empire: pirate factions get a pirate shape plus the pirateflag.png badge drawn at
  *  (2, 2, 35 x 22) (Galaxy.8.cs ~4560-4603); super pirates use pirateflag.png itself. */
 export async function stockEmpireFlagRgba(galaxy: Galaxy | null | undefined, empire: Empire): Promise<RgbaImage> {
-    if (empire.flagShape >= 0 || empire.pirateEmpireBaseHabitat === null) return stockFlagRgba(empire.flagShape, empire.mainColor, empire.secondaryColor);
+    if (empire.pirateEmpireBaseHabitat === null || (empire.pirateEmpireSuperPirates && empire.flagShape >= 0)) return stockFlagRgba(empire.flagShape, empire.mainColor, empire.secondaryColor);
     const badge = await loadRgba(PIRATE_FLAG_URL);
     if (empire.pirateEmpireSuperPirates) return badge ?? composeEmpireFlag(null, empire.mainColor, empire.secondaryColor);
-    const shapeUrl = pirateFlagShapeUrl(pirateFlagShapeIndex(empire, galaxy ?? empire.galaxy));
+    const shapeUrl = pirateFlagShapeUrl(pirateShapeOf(empire, galaxy ?? empire.galaxy));
     const out = composeEmpireFlag(await loadRgba(shapeUrl), empire.mainColor, empire.secondaryColor);
     if (badge !== null) {
         const px = [0, 0, 0, 0];

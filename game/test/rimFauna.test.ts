@@ -170,7 +170,7 @@ describe('19g-7 rim fauna — feeding, unrest, AI, kill', () => {
         const herds0 = st.herds.length;
         const killed0 = st.stats.herdsKilled;
         for (const c of herdMembers(herd)) {
-            c.damageCreature(1e9);
+            c.damageCreature(null, 1e9, null);
             c.completeTeardown();
         }
         const stock1 = stock();

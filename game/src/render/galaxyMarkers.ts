@@ -47,6 +47,7 @@
 
 import type { BuiltObjectIndex } from './builtObjectIndex';
 import { inOwnRenderGroup } from './renderGroups';
+import { circleAtScreenRes } from './screenCircle';
 import { Container, Graphics, Particle, ParticleContainer, Rectangle, Sprite, Text, Texture } from 'pixi.js';
 import type { Camera } from './camera';
 import type { Galaxy } from '../sim/galaxy';
@@ -79,7 +80,7 @@ export const OUTLINE_SYMBOL_MAX_FACTOR = 10;
 /** Ring pen width in screen px (method_268: new Pen(color, 3f)). */
 export const FACTION_RING_WIDTH_PX = 3;
 /** method_236(0.25): the territory / system-influence layer's alpha (MainView.2.cs 241, 365). */
-export const PRESENCE_ALPHA = 0.25;
+export const PRESENCE_ALPHA = 0.4; // more noticeable (user call; the original's territory alpha is 0.25)
 /** CalculateEmpireSystemTerritory: num2 = 150000 * systemInfluenceSizeFactor (1.0), drawn (num2 + 0.5) * 1.1 across. */
 export const SYSTEM_INFLUENCE_RADIUS = (150000 * 1.1) / 2;
 /** Color.Gray: ResolveShipSymbolColor's colour for unowned / independent objects (MainView.2.cs:2160). */
@@ -266,8 +267,14 @@ export function stationPresenceVisible(state: Pick<MapOverlayState, 'stationPres
  * range of a colony). */
 export function presenceDiscRadius(count: number): number {
     if (count <= 0) return 0;
-    return SYSTEM_INFLUENCE_RADIUS * Math.min(2.5, 0.6 + 0.4 * Math.sqrt(count));
+    // 1.8x the original's system-influence size (user call: more noticeable).
+    return PRESENCE_SIZE_SCALE * SYSTEM_INFLUENCE_RADIUS * Math.min(2.5, 0.6 + 0.4 * Math.sqrt(count));
 }
+
+/** Presence discs drawn larger than the original's system-influence radius (user call). */
+export const PRESENCE_SIZE_SCALE = 1.8;
+/** Minimum on-screen presence disc radius (px), so stations stay visible fully zoomed out (user call). */
+export const PRESENCE_MIN_SCREEN_PX = 9;
 
 /**
  * Port of MainView.2.cs method_250's system circle radius in screen px (5239-5240, 5337-5374): val3 =
@@ -886,7 +893,7 @@ export class GalaxyMarkerLayer {
         let n = 0;
         for (const p of this.presence) {
             const star = this.galaxy.systems[p.systemIndex].systemStar;
-            const r = presenceDiscRadius(p.count);
+            const r = Math.max(presenceDiscRadius(p.count), PRESENCE_MIN_SCREEN_PX / z);
             if (!boundsOnScreen(star.xpos, star.ypos, r, 0, cam.x, cam.y, cam.width, cam.height, z)) continue;
             let part = this.discPool[n];
             if (part === undefined) {
@@ -955,7 +962,7 @@ export class GalaxyMarkerLayer {
                 }
                 g.stroke({ width, color: r.pen.color, alpha });
             } else {
-                g.circle(star.xpos, star.ypos, wr).stroke({ width, color: r.pen.color, alpha });
+                circleAtScreenRes(g, star.xpos, star.ypos, wr, z).stroke({ width, color: r.pen.color, alpha });
             }
         }
     }

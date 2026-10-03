@@ -17,6 +17,7 @@ import { scenarioParam } from '../sim/scenario/state';
 import {
     CHRONICLE_DEFAULT_EVENTS,
     chronicleInput,
+    chronicleYears,
     chronicleLine,
     chronicleOn,
     dueChronicleYear,
@@ -28,6 +29,8 @@ import {
 import { CHRONICLE_PROMPT_VERSION, CHRONICLE_SCHEMA, CHRONICLE_SYSTEM, CHRONICLE_USER, fillPrompt, historianVoice } from './prompts/chronicle';
 import type { ChatMessage } from '../ui/advisorClient';
 import type { LlmQueue, LlmResult } from './queue';
+import { remoteSimHost } from '../simworker/remoteHost';
+import { readReplica } from './replicaReads';
 
 /** The chronicle's system + user messages for one year. */
 export function buildChronicleMessages(galaxy: Galaxy, empire: Empire, input: ChronicleInput): { messages: ChatMessage[]; situation: string } {
@@ -81,6 +84,12 @@ export class ChronicleJob {
     private disposed = false;
     /** Years whose fallback we already tried to upgrade in this session (one attempt each). */
     private readonly upgradeTried = new Set<number>();
+    /**
+     * Sim worker: years stored in the worker that the replica does not show yet (the event-log state syncs in the cold
+     * cycle, about a second later), by the stored entry's source. Until then the year still looks due here, and writing
+     * it again could put a fallback over the model's text. Empty in-thread (the store is immediate).
+     */
+    private readonly awaitingSync = new Map<number, ChronicleYear['source']>();
     readonly written: ChronicleYear[] = [];
 
     constructor(private readonly opts: ChronicleJobOptions) {}
@@ -95,6 +104,11 @@ export class ChronicleJob {
         if (this.disposed || this.busy !== null) return;
         const { galaxy, empire } = this.opts;
         if (empire === null || !chronicleOn(galaxy)) return;
+        if (this.awaitingSync.size > 0) {
+            for (const c of chronicleYears(galaxy, empire)) if (this.awaitingSync.get(c.year) === c.source) this.awaitingSync.delete(c.year);
+            // Wait for the replica to show what was stored (then the due years are current again).
+            if (this.awaitingSync.size > 0) return;
+        }
         let year = dueChronicleYear(galaxy, empire);
         if (year === null) {
             // A fallback year is rewritten once per session when a model answers (the probe is rate-limited).
@@ -119,8 +133,8 @@ export class ChronicleJob {
         const { galaxy, empire, queue } = this.opts;
         if (empire === null) return null;
         const max = Math.max(5, Math.trunc(scenarioParam(galaxy, 'llmChronicleEvents', CHRONICLE_DEFAULT_EVENTS)));
-        const input = chronicleInput(galaxy, empire, year, max);
-        const { messages, situation } = buildChronicleMessages(galaxy, empire, input);
+        const input = readReplica(galaxy, () => chronicleInput(galaxy, empire, year, max));
+        const { messages, situation } = readReplica(galaxy, () => buildChronicleMessages(galaxy, empire, input));
         let res: LlmResult;
         try {
             res = await queue.submit({ priority: 'background', purpose: 'chronicle', situation, messages, schema: CHRONICLE_SCHEMA, schemaName: 'chronicle', temperature: 0.7 });
@@ -141,9 +155,22 @@ export class ChronicleJob {
                       events: input.events.length,
                       written: galaxyStarDate(galaxy),
                   }
-                : fallbackChronicle(galaxy, empire, input);
+                : readReplica(galaxy, () => fallbackChronicle(galaxy, empire, input));
         // Only missing or fallback years are written, so a model text is never replaced.
-        storeChronicleYear(galaxy, entry);
+        const remote = remoteSimHost(galaxy);
+        if (remote === null) storeChronicleYear(galaxy, entry);
+        else {
+            // Sim worker (docs/sim-worker.md §9 chunk 8): `galaxy` is the replica; the store is a host op on the worker's
+            // game (between two ticks, as here in-thread), and the replica gets the entry with the event-log state.
+            this.awaitingSync.set(year, entry.source);
+            try {
+                await remote.hostOp('chronicleYear', [entry]);
+            } catch {
+                this.awaitingSync.delete(year);
+                return null;
+            }
+            if (this.disposed) return null;
+        }
         this.written.push(entry);
         try {
             this.opts.onStored?.(entry);

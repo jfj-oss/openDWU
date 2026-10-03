@@ -27,6 +27,8 @@ import {
 } from '../sim/player/strategicDecisions';
 import { probeAdvisorEndpoint, requestAdvisor, type AdvisorApi, type ChatMessage } from './advisorClient';
 import { getSettings, type UiSettings } from './settings';
+import { remoteSimHost } from '../simworker/remoteHost';
+import { readReplica } from '../llm/replicaReads';
 
 type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;
 
@@ -100,7 +102,7 @@ export async function runStrategicTurn(args: {
     timeoutMs?: number;
 }): Promise<StrategicTurn> {
     const { galaxy, ai } = args;
-    const brief = buildStrategicBrief(galaxy, ai);
+    const brief = readReplica(galaxy, () => buildStrategicBrief(galaxy, ai));
     const turn: StrategicTurn = { empire: ai, empireName: ai.name, starDate: '', rationale: '', results: [], rejected: [], latencyMs: 0, raw: '' };
     try {
         const r = await requestAdvisor(args.cfg, buildStrategicMessages(brief), {
@@ -130,7 +132,18 @@ export async function runStrategicTurn(args: {
         turn.error = v.error;
         return turn;
     }
-    turn.results = applyStrategicDecisions(galaxy, ai, v.decisions, v.rationale);
+    const remote = remoteSimHost(galaxy);
+    if (remote === null) turn.results = applyStrategicDecisions(galaxy, ai, v.decisions, v.rationale);
+    else {
+        // Sim worker (docs/sim-worker.md §9 chunk 8): `galaxy` is the replica. The same applyStrategicDecisions runs in
+        // the worker when the request arrives — between two ticks, as here in-thread — re-checking every decision on the
+        // authoritative galaxy and journaling its 'ai-advisor' entries there (replays need no model).
+        try {
+            turn.results = await remote.hostOp('strategicDecisions', [ai, v.decisions, v.rationale]);
+        } catch (e) {
+            turn.error = e instanceof Error ? e.message : String(e);
+        }
+    }
     return turn;
 }
 

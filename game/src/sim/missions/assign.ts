@@ -12,6 +12,7 @@ import type { BuiltObject, DockingBay } from '../builtObject';
 import type { CargoList, TroopList } from '../cargo';
 import type { PopulationList } from '../population';
 import type { Design } from '../design';
+import type { Creature } from '../creature';
 import { BuiltObjectRole } from '../data/designSpecifications';
 import { BuiltObjectSubRole } from '../builtObjectTypes';
 import { empireShipGroups, forceCompleteMission } from '../fleets/shipGroup';
@@ -215,9 +216,9 @@ function removeFromList(list: unknown[] | null, item: unknown): void {
     if (index >= 0) list.splice(index, 1);
 }
 
-/** Creature.Pursuers — TODO(port) M4n/M4u: creature.ts has no Pursuers list yet (null ⇒ the C# null checks skip). */
-function creaturePursuers(creature: unknown): BuiltObject[] | null {
-    return (creature as { pursuers?: BuiltObject[] | null }).pursuers ?? null;
+/** Creature.Pursuers (Creature.cs 325: created by the ctor, so the C# null checks always pass). */
+function creaturePursuers(creature: Creature): StellarObject[] {
+    return creature.pursuers;
 }
 
 function removePursuer(target: StellarObject, bo: BuiltObject): void {

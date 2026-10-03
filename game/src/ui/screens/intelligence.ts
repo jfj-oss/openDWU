@@ -67,7 +67,6 @@ import {
     IntelligenceMissionOutcome,
     IntelligenceMissionType,
     calculateIntelligenceMissionSuccessChance,
-    cancelIntelligenceMission,
     characterMission,
     newIntelligenceMissionAgainstBuiltObject,
     newIntelligenceMissionAgainstCharacter,
@@ -616,26 +615,8 @@ export function canDismissCharacter(c: Character, player: Empire): boolean {
     return !((c.role === CharacterRole.Leader || c.role === CharacterRole.PirateLeader) && player.leaderChangeInfluence !== 0.0);
 }
 
-/** Main.Part6.cs:3351 btnIntelligenceAgentsDisband_Click (after "yes"): `Mission = null; Kill(galaxy)`. */
-export function dismissCharacter(galaxy: Galaxy, c: Character): void {
-    c.mission = null;
-    c.kill(galaxy);
-}
-
-/** CharacterMission.cs btnAssignMission_Click (after the automation prompt): `_Character.Mission = GetState()`. */
-export function assignMission(galaxy: Galaxy, player: Empire, agent: Character, form: MissionForm): boolean {
-    const state = buildMissionState(galaxy, player, agent, form);
-    if (state === null) return false;
-    agent.mission = state;
-    return true;
-}
-
-/** CharacterMission.cs btnCancelMission_Click (after the automation prompt): CancelIntelligenceMission, then Mission = null. */
-export function cancelMission(player: Empire, agent: Character): void {
-    const m = characterMission(agent);
-    if (m !== null) cancelIntelligenceMission(player, m);
-    agent.mission = null;
-}
+// Dismiss / assign / cancel are player commands (playerOps.ts dismissCharacter, setAgentMission, cancelAgentMission):
+// the screen never writes Character.mission or kills a character itself (docs/sim-worker.md §9 chunk 7).
 
 // ---------------------------------------------------------------------------------------------------------------
 // Pictures (CharacterImageCache.cs, CharacterSummary.cs GenerateCharacterPlanetCompositeImage)

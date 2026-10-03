@@ -37,6 +37,7 @@ import {
 import { issuePlayerCommand } from '../sim/player/playerCommands';
 import type { ChatMessage } from '../ui/advisorClient';
 import type { LlmQueue, LlmResult } from './queue';
+import { readReplica } from './replicaReads';
 
 /** Bump when the prompt changes (part of the situation-cache key). */
 export const STRATEGIC_PROMPT_VERSION = 1;
@@ -133,9 +134,9 @@ export class StrategicJob {
 
     private async run(e: Empire, year: number): Promise<StrategicAsk | null> {
         const { galaxy, queue } = this.opts;
-        const moves = legalMoves(galaxy, e);
+        const moves = readReplica(galaxy, () => legalMoves(galaxy, e));
         if (moves.length === 0) return null;
-        const { messages, situation } = buildStrategicMessages(galaxy, e, moves);
+        const { messages, situation } = readReplica(galaxy, () => buildStrategicMessages(galaxy, e, moves));
         let res: LlmResult;
         try {
             res = await queue.submit({ priority: 'background', purpose: 'strategic', situation, messages, schema: strategicSchema(moves), schemaName: 'strategic_move', temperature: 0.4 });

@@ -184,7 +184,8 @@ describe('diplomacyTick.ts race levels (Race.cs 350-400)', () => {
         const race = e.dominantRace!;
         const base = [aggressionLevel(e), cautionLevel(e), friendlinessLevel(e)];
         expect(base).toEqual([race.aggression, race.caution, race.friendliness]);
-        race.extra = { ...race.extra, PeriodicFactorsAggression: '180', PeriodicFactorsCaution: '60', PeriodicFactorsFriendliness: '300' };
+        // races/*.txt PeriodicFactors* as parsed (and clamped to [50, 200]) by data/races.ts.
+        Object.assign(race, { periodicAggressionLevel: 180, periodicCautionLevel: 60, periodicFriendlinessLevel: 200 });
         g.raceChangePeriodActive.add(race);
         expect(raceChangePeriodActive(g, race)).toBe(true);
         expect([aggressionLevel(e), cautionLevel(e), friendlinessLevel(e)]).toEqual([180, 60, 200]);
