@@ -12,6 +12,9 @@ import { creatureAttackTarget, creatureCheckForAttackers, creatureCheckForTarget
 import { stellarAttackers, stellarPursuers } from './combat/threats';
 import { checkEmpireHasHyperDriveTech } from './forceStructure';
 import { clearFightersTargeting } from './combat/fighters';
+import type { Weapon } from './weapon';
+import type { Empire } from './empire';
+import { ComponentType } from './data/components';
 
 // Port of DistantWorlds.Types.CreatureType (member order exact; byte enum).
 export enum CreatureType {
@@ -83,6 +86,11 @@ function isHabitatTarget(o: StellarObject): o is Habitat {
 function removeFrom<T>(list: T[], item: T): void {
     const i = list.indexOf(item);
     if (i >= 0) list.splice(i, 1);
+}
+
+/** The `StellarObject damager` of Creature.cs 926 DamageCreature: a BuiltObject, Habitat or Fighter (only its Empire is read). */
+export interface CreatureDamager {
+    readonly empire: Empire | null;
 }
 
 export class Creature {
@@ -696,10 +704,10 @@ export class Creature {
         }
     }
 
-    // Port of Creature.cs DamageCreature (line 926) with weapon == null
-    // (location damage). TODO(port): Ion-weapon bypass, empire kill counters.
-    damageCreature(damage: number): boolean {
-        if (this.type === CreatureType.SilverMist) {
+    // Port of Creature.cs DamageCreature(damager, damage, weapon) (line 926). A Silver Mist takes a tenth of the
+    // damage (at least 1) unless the weapon is an ion cannon or ion pulse (incl. a colony's Giant Ion Cannon).
+    damageCreature(damager: CreatureDamager | null, damage: number, weapon: Weapon | null): boolean {
+        if (this.type === CreatureType.SilverMist && (weapon === null || (weapon.component.type !== ComponentType.WeaponIonCannon && weapon.component.type !== ComponentType.WeaponIonPulse))) {
             damage = Math.max(1, Math.trunc(damage / 10.0));
         }
         this.damage += damage;
@@ -950,7 +958,7 @@ export class Creature {
 
     // Port of Creature.cs DoLocationEffects (line 1672).
     private doLocationEffects(timePassed: number): void {
-        if (this.creatureDamageAmountLocation > 0.0 && this.damageCreature(Math.trunc(this.creatureDamageAmountLocation * timePassed))) {
+        if (this.creatureDamageAmountLocation > 0.0 && this.damageCreature(null, Math.trunc(this.creatureDamageAmountLocation * timePassed), null)) {
             this.completeTeardown();
         }
         if (this.creaturePullAmountLocation <= 0.0) return;
