@@ -68,6 +68,8 @@ export interface UiSettings {
 
     /** Dither the map's output (render/outputDither.ts): removes banding in dark gradients on 8-bit canvases. */
     ditherGradients: boolean;
+    /** Cosmetic (not in the original): draw stations pulled in toward their planet's / moon's centre. */
+    pullStationsToCentre: boolean;
 
     /** GameOptions.AutoPauseWhenInPopupWindow (default true, Main.Part9.cs:2714): pause a running game while a screen window is open. */
     autoPauseInPopup: boolean;
@@ -178,6 +180,7 @@ export const DEFAULT_SETTINGS: UiSettings = {
     // [freightOverlay] end
 
     ditherGradients: true,
+    pullStationsToCentre: false,
     autoPauseInPopup: true,
     simWorker: false,
 
@@ -283,6 +286,7 @@ export function loadSettings(): UiSettings {
         if (typeof parsed.freightFlowsDefault === 'boolean') out.freightFlowsDefault = parsed.freightFlowsDefault;
         // [freightOverlay] end
         if (typeof parsed.ditherGradients === 'boolean') out.ditherGradients = parsed.ditherGradients;
+        if (typeof parsed.pullStationsToCentre === 'boolean') out.pullStationsToCentre = parsed.pullStationsToCentre;
         if (typeof parsed.autoPauseInPopup === 'boolean') out.autoPauseInPopup = parsed.autoPauseInPopup;
         if (typeof parsed.simWorker === 'boolean') out.simWorker = parsed.simWorker;
         // [galaxymarkers] begin
