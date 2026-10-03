@@ -82,7 +82,6 @@ function isFighter(o: Habitat | BuiltObject | VisibilityFighter): o is Visibilit
 // Design.cs Clone (1986-2009). Copies the listed fields only (not Size / OptimizedDesign),
 // ComponentList.Clone (new Component per id: the TS components are shared static definitions,
 // so a shallow copy of the array is equivalent), then ReDefine. No Rnd.
-// TODO(port): RepaitPriorityTemplateName (repair-priority templates) is not modeled on the TS Design.
 export function cloneDesign(source: Design): Design {
     const design = new Design(source.name);
     design.imageScalingType = source.imageScalingType;
@@ -102,6 +101,7 @@ export function cloneDesign(source: Design): Design {
     design.isObsolete = source.isObsolete;
     design.isManuallyCreated = source.isManuallyCreated;
     design.allowAutoRetrofit = source.allowAutoRetrofit;
+    design.repaitPriorityTemplateName = source.repaitPriorityTemplateName;
     design.reDefine();
     return design;
 }

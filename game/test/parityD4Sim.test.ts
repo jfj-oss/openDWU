@@ -16,6 +16,12 @@ import { Random } from '../src/sim/random';
 import { GalaxyLocation, GalaxyLocationType } from '../src/sim/galaxyLocation';
 import { formatGameTextNow } from '../src/sim/textResolver';
 import { generateSaleableInfoForEmpire } from '../src/sim/pirates/pirateRelationsAI';
+import { BuiltObjectRole } from '../src/sim/data/designSpecifications';
+import { ComponentStatus } from '../src/sim/builtObjectComponent';
+import { ComponentCategoryType } from '../src/sim/data/policies';
+import { captainBonuses } from '../src/sim/characters';
+import { doRepairs } from '../src/sim/construction/repair';
+import { DEFAULT_REPAIR_PRIORITY, getRepairPriorityList } from '../src/sim/construction/repairPriority';
 
 // Parity batch D4: targeted tests for the remaining sim gaps (docs/parity/*.md).
 let gameData: GameData;
@@ -175,5 +181,58 @@ describe('IsObjectVisibleToThisEmpire(Creature) (Empire.9.cs 3037)', () => {
         const gi = g.resolveIndex(500, 50);
         g.builtObjectIndexGrid[gi.x][gi.y].push(scanner);
         expect(player.visibility.isCreatureVisible(creature)).toBe(true);
+    });
+});
+
+describe('Repair-priority templates (BaconBuiltObject.cs 4806, RepairPriorityManager.cs)', () => {
+    function damagedShip(game: Game) {
+        const g = game.galaxy;
+        const ship = g.playerEmpire!.builtObjects.find((b) => b.role === BuiltObjectRole.Military && b.shipGroup === null && b.components.items.length > 4)!;
+        expect(ship).toBeDefined();
+        // Damage one component of each of the first three categories, in component order.
+        const seen = new Set<number>();
+        const damaged = [];
+        for (const c of ship.components.items) {
+            if (seen.has(c.category) || damaged.length >= 3) continue;
+            seen.add(c.category);
+            c.status = ComponentStatus.Damaged;
+            damaged.push(c);
+        }
+        ship.reDefine();
+        (ship as unknown as { _damageRepair: number })._damageRepair = 10;
+        const cb = captainBonuses(ship);
+        const num4 = 10 / ((cb !== null ? cb.repair : 100) / 100.0);
+        return { g, ship, damaged, timeForOne: num4 * 1.5 };
+    }
+
+    it('getRepairPriorityList: Default (any case) is the built-in list; Original / unknown names are null', () => {
+        expect(getRepairPriorityList('default')).toBe(DEFAULT_REPAIR_PRIORITY.priority);
+        expect(getRepairPriorityList('Original')).toBe(null);
+        expect(getRepairPriorityList('nope')).toBe(null);
+        expect(DEFAULT_REPAIR_PRIORITY.priority![0]).toBe(ComponentCategoryType.HyperDrive);
+    });
+
+    it('a Default-template design repairs the highest-priority category first, without the random start', () => {
+        const game = cachedTickGame(gameData, {});
+        const { g, ship, damaged, timeForOne } = damagedShip(game);
+        ship.design.repaitPriorityTemplateName = 'Default';
+        const order = DEFAULT_REPAIR_PRIORITY.priority!;
+        const best = damaged.slice().sort((a, b) => order.indexOf(a.category) - order.indexOf(b.category))[0];
+        const state = g.rnd.getState();
+        doRepairs(g, ship, timeForOne);
+        expect(best.status).toBe(ComponentStatus.Normal);
+        expect(damaged.filter((c) => c.status === ComponentStatus.Damaged).length).toBe(damaged.length - 1);
+        expect(g.rnd.getState()).toEqual(state);
+    });
+
+    it('no template: the original random-start repair (one Rnd draw)', () => {
+        const game = cachedTickGame(gameData, {});
+        const { g, ship, timeForOne } = damagedShip(game);
+        expect(ship.design.repaitPriorityTemplateName).toBe(null);
+        const before = new Random(0);
+        before.setState(g.rnd.getState());
+        before.next(0, ship.components.items.length);
+        doRepairs(g, ship, timeForOne);
+        expect(g.rnd.getState()).toEqual(before.getState());
     });
 });
