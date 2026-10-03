@@ -33,6 +33,7 @@ import { PreWarpProgressEventType } from './exploration';
 import { GalaxyLocationType, type GalaxyLocation } from './galaxyLocation';
 import { BuiltObjectSubRole } from './builtObjectTypes';
 import { gameText, raceChangePeriodActive } from './colonyTick';
+import { raceCautionLevel } from './racePeriodic';
 import { galaxyStarDate, REAL_SECONDS_IN_GALACTIC_YEAR } from './tick/simTime';
 import { EmpireMessageType, resolveDescription, sendMessageToEmpire } from './messages';
 import { DiplomaticRelationType, obtainDiplomaticRelation, obtainEmpireEvaluation, empireEvaluationsOf, FIRST_CONTACT_PENALTY_START_AMOUNT } from './diplomacy';
@@ -621,7 +622,7 @@ function randomEventUncoverKnownLocations(galaxy: Galaxy, empire: Empire): void 
                     if (!flag2) {
                         // (double)MilitaryPotency / (double)empire.MilitaryPotency (int properties).
                         const num = militaryPotency(galaxy, empire) / militaryPotency(galaxy, empire2);
-                        const num2 = 0.3 * (empire.dominantRace!.caution / 100.0);
+                        const num2 = 0.3 * (raceCautionLevel(galaxy, empire.dominantRace!) / 100.0); // Race.CautionLevel (periodic)
                         if (num > num2) exposePlanetDestroyerConstruction(galaxy, empire2, item, empire);
                     }
                     return;
@@ -1660,7 +1661,7 @@ export function reviewEmpireEvents(galaxy: Galaxy, empire: Empire): void {
     if (num > 2.5 && empire.colonies.length > 5 && currentStarDate > num2) {
         const colonyApproval = colonyApprovalAverage(galaxy, empire);
         let num3 = 1.0;
-        if (empire.dominantRace !== null) num3 = calculateRacialReputationConcern(empire.dominantRace);
+        if (empire.dominantRace !== null) num3 = calculateRacialReputationConcern(galaxy, empire.dominantRace);
         const num4 = empire.civilityRating / 2.0 / num3;
         let num5 = num4 + colonyApproval;
         const gov = empireGovernmentAttributes(empire);

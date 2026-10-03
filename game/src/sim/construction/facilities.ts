@@ -472,7 +472,7 @@ export function constructFacilities(galaxy: Galaxy, habitat: Habitat, timePassed
                     // C#: Rnd.Next(0, 3000000) * 1000 is int * int (unchecked): values above int.MaxValue / 1000 wrap negative.
                     const num6 = 15000000000 + ((galaxy.rnd.next(0, 3000000) * 1000) | 0);
                     habitat.maxPopulation = Math.max(habitat.maxPopulation, habitat.population.totalAmount + num6);
-                    const population = new Population(race, num6);
+                    const population = new Population(race, num6, galaxy);
                     habitat.population.add(population);
                     habitat.name = 'Utopia';
                 }
@@ -912,7 +912,7 @@ export function reviewColonyFacilities(galaxy: Galaxy, empire: Empire): void {
     const planetaryFacilityDefinition11 = definitionsFindFacilityByType(planetaryFacilityDefinitionList, PlanetaryFacilityType.CloningFacility);
     let planetaryFacilityDefinition12: Facility | null = null;
     // C# reads DominantRace.TroopStrength unguarded (every empire running this has a dominant race).
-    const num23 = resolveEmpireRaceTendency(empire.dominantRace!);
+    const num23 = resolveEmpireRaceTendency(galaxy, empire.dominantRace!);
     const num24: number = empire.dominantRace!.troopStrength;
     let num25 = 0;
     if (num23 === 2 || num24 < 100.0) {

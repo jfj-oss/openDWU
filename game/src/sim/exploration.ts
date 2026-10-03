@@ -1144,7 +1144,7 @@ export function investigateRuins(galaxy: Galaxy, investigatingEmpire: Empire | n
                 text += formatGameTextNow('Ruins Secret Form of Government Revealed Adoption');
                 sendEventMessageToEmpire(investigatingEmpire, EventMessageType.SpecialGovernmentType, empty, text, ruin, ruinsHabitat);
                 if (investigatingEmpire === galaxy.playerEmpire) break;
-                const governmentAttributesList = determineMostSuitableGovernmentTypes(investigatingEmpire.dominantRace!, investigatingEmpire.allowableGovernmentTypes);
+                const governmentAttributesList = determineMostSuitableGovernmentTypes(galaxy, investigatingEmpire.dominantRace!, investigatingEmpire.allowableGovernmentTypes);
                 if (governmentAttributesList != null && governmentAttributesList.length > 0) {
                     const governmentId = governmentAttributesList[0].governmentId;
                     if (governmentId === ruin.specialGovernmentId) {
@@ -1204,7 +1204,7 @@ export function investigateRuins(galaxy: Galaxy, investigatingEmpire: Empire | n
             case RuinType.NewPopulation:
                 if (ruin.habitatNewRace !== null) {
                     empty = formatGameTextNow('Sleeping Alien Race Awoken');
-                    const population = new Population(ruin.habitatNewRace, 200000000);
+                    const population = new Population(ruin.habitatNewRace, 200000000, galaxy);
                     if (ruinsHabitat.population == null) ruinsHabitat.population = new PopulationList();
                     ruinsHabitat.population.add(population);
                     takeOwnershipOfColonyFull(galaxy, galaxy.independentEmpire!, ruinsHabitat, galaxy.independentEmpire, false, false);

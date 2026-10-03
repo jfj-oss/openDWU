@@ -504,7 +504,7 @@ export function generateEmpireRestrictedResourcesDescription(galaxy: Galaxy, sel
     return { text, plural: num > 1 };
 }
 /** Empire.10.cs 4038. */
-function generateAutomationMessageTradeRestrictedResources(galaxy: Galaxy, self: Empire, otherEmpire: Empire, trade: boolean): string {
+export function generateAutomationMessageTradeRestrictedResources(galaxy: Galaxy, self: Empire, otherEmpire: Empire, trade: boolean): string {
     const arg = generateEmpireRestrictedResourcesDescription(galaxy, self).text;
     return advisorText(trade ? 'Automation Trade Restricted Resources' : 'Automation Terminate Restricted Resources', arg, otherEmpire.name);
 }

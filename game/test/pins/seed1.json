@@ -1,12 +1,12 @@
 {
     "builtObjectPlacement": {
         "playerCivilianNames": [
-            ["ExplorationShip", "RSR Swift Tide"],
-            ["ExplorationShip", "RSR Southern Albatross"],
-            ["ExplorationShip", "RSR Gentle Heron"],
-            ["ExplorationShip", "RSR Golden Kestrel"],
-            ["ConstructionShip", "RSC Southern Harbour"],
-            ["ConstructionShip", "RSC Blue Voyager"]
+            ["ExplorationShip", "RSR Morning Mariner"],
+            ["ExplorationShip", "RSR Faithful Pioneer"],
+            ["ExplorationShip", "RSR Prosperous Harbour"],
+            ["ExplorationShip", "RSR Bright Tide"],
+            ["ConstructionShip", "RSC Sol Heron"],
+            ["ConstructionShip", "RSC Lucky Pioneer"]
         ]
     },
     "characters": {
@@ -184,7 +184,7 @@
                         "GasMiningShip": 2,
                         "MiningShip": 2
                     },
-                    "troops": 5,
+                    "troops": 4,
                     "characters": 2,
                     "taxRates": [0.3100000023841858]
                 }
@@ -258,7 +258,7 @@
             "ruins": 22
         }
     },
-    "empireLifecycle": {"aiSplitDigest": "4985362bf65f2a5a:288778"},
+    "empireLifecycle": {"aiSplitDigest": "4a8493f807d8696f:288778"},
     "forceStructure": {
         "playerPrivate": [["SmallFreighter", 3], ["MediumFreighter", 1], ["GasMiningShip", 2], ["MiningShip", 2]],
         "age0Private": [[], [], [], []]
@@ -719,11 +719,11 @@
     },
     "taxes": {"taxRates": [0.28999999165534973, 0.2800000011920929, 0.18000000715255737, 0.3100000023841858]},
     "tickDeterminism": {
-        "digest600": "0a197d262536cac8",
-        "counts600": {"empires": 4, "pirateEmpires": 7, "habitats": 13326, "builtObjects": 575, "creatures": 328, "colonies": 4},
-        "rndDraws600": 566691,
-        "digest120": "dc89b652838d37f4",
-        "rndDraws120": 8503
+        "digest600": "89d3bfddd78f6edc",
+        "counts600": {"empires": 4, "pirateEmpires": 7, "habitats": 13326, "builtObjects": 578, "creatures": 328, "colonies": 4},
+        "rndDraws600": 579423,
+        "digest120": "492736eb90d9ba45",
+        "rndDraws120": 7948
     },
     "troops": {
         "capitals": [[1177, 882, 6], [1564, 1173, 8], [1758, 1318, 0], [660, 495, 10]],
