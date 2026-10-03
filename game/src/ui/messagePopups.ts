@@ -43,6 +43,8 @@ import { autoPauseClose, autoPauseOpen } from './autoPause';
 import { conversationActions, pirateOfferPriceLine, type ConversationAction } from './conversationActions';
 import { pirateProtectionPriceText } from './pirateProtectionPrice';
 import { goToMessage, messageGoToTarget } from './messageGoto';
+import { ShipGroup } from '../sim/fleets/shipGroup';
+import { selectShipGroup, selectStellarObject } from './hud';
 // [popupstubs] begin
 import { pushMessageStub, markMessageStubRead } from './messageStubList';
 import { getSettings } from './settings';
@@ -560,9 +562,8 @@ export function installMessagePopups(opts: MessagePopupsOptions): void {
                 issuePlayerCommand(galaxy, player, 'answerConversation', [sender, e.part, e.related, e.cost], (r) => {
                     if (r.noFunds) showToast("Looks like you don't have enough money to pay for this");
                     else if (r.ok) showToast(replyToast(e.part));
-                    if (r.history !== null) {
-                        showEventMessagePopup({ title: r.history.title, text: r.history.text, imageUrl: null, footer: resolveStarDateDescription(galaxyStarDate(galaxy)) });
-                    }
+                    // Main.Part10.cs 4994 / 5036: the revealed story text on the story panel (method_571 / method_572).
+                    if (r.history !== null) showShakturiStoryPanel(galaxy, player, r.history.title, r.history.text, r.history.storyLevel ?? -1);
                     // Main.Part10.cs: ExpireDiplomacyMessagesForEmpire after the treaty / war replies.
                     if (r.expireFor !== null && expireDiplomacyMessagesForEmpire(queue, r.expireFor) > 0 && dialogEntry !== null && !queue.includes(dialogEntry)) closeDialog();
                 });
@@ -960,6 +961,54 @@ export interface StoryEventPopup {
     text: string;
     /** pnlStoryEvent.BackgroundImage (ImageLayout.Zoom over black). */
     picture: EventPicture | null;
+    /** Main.Part4.cs 4926-4951 (method_572 at story levels 2 and 4): two 360 × 50 buttons instead of Close — `close`
+     *  (btnStoryEventClose) on the left, `action` (btnStoryEventAction) on the right; each also closes the panel. */
+    choice?: { closeText: string; onClose: () => void; actionText: string; onAction: () => void };
+}
+
+/**
+ * Main.Part4.cs 4899 method_572(title, text, int_64): the story panel for a Return of the Shakturi message at story level
+ * `level` (-1 = method_571, any other story text). The picture: storyEvent.jpg (bitmap_189) below level 2; guardians.jpg
+ * at 2 and 4, shakturi.jpg at 3, storyMessage.jpg (bitmap_190) above. Levels 2 and 4 ask a question (the two button
+ * captions); the answers are the storyEventClose / storyEventAction commands (sim/story/freedomAlliance.ts).
+ */
+export function storyPanelSpec(level: number): { pictureUrl: string; choice: { closeText: string; actionText: string } | null } {
+    const chrome = (f: string): string => `/assets/dwu/images/ui/chrome/${f}`;
+    let pictureUrl = chrome('storyEvent.jpg');
+    if (level >= 2) pictureUrl = level === 3 ? chrome('shakturi.jpg') : level === 2 || level === 4 ? chrome('guardians.jpg') : chrome('storyMessage.jpg');
+    if (level === 4) return { pictureUrl, choice: { closeText: gt('No, we do not need any further help'), actionText: gt('Yes, our dire situation calls for the use of this superweapon!') } };
+    if (level === 2) return { pictureUrl, choice: { closeText: gt('No, we do not care about Utopia, and we will not join this alliance'), actionText: gt('Yes, we will unite to fight the Shakturi!') } };
+    return { pictureUrl, choice: null };
+}
+
+/**
+ * method_572 with its buttons wired: shows the panel and, at levels 2 and 4, issues the answer as a player command — the
+ * action (join the Freedom Alliance / take the Deliverance) then selects and zooms to the fleet or ship it made
+ * (method_208 / method_157 / method_4(1.0)).
+ */
+export function showShakturiStoryPanel(galaxy: Galaxy, player: Empire, title: string, text: string, level: number): void {
+    const spec = storyPanelSpec(level);
+    showStoryEventPopup(
+        {
+            title,
+            text,
+            picture: { kind: 'url', url: spec.pictureUrl },
+            choice:
+                spec.choice === null
+                    ? undefined
+                    : {
+                          closeText: spec.choice.closeText,
+                          actionText: spec.choice.actionText,
+                          onClose: () => issuePlayerCommand(galaxy, player, 'storyEventClose', [level]),
+                          onAction: () =>
+                              issuePlayerCommand(galaxy, player, 'storyEventAction', [level], (r) => {
+                                  if (r instanceof ShipGroup) selectShipGroup(r, true);
+                                  else if (r !== null) selectStellarObject(r, true);
+                              }),
+                      },
+        },
+        galaxy,
+    );
 }
 
 let storyPanel: { root: HTMLDivElement; close: () => void } | null = null;
@@ -985,7 +1034,8 @@ export function showStoryEventPopup(p: StoryEventPopup, galaxy: Galaxy): void {
         if (e.key !== 'Escape') return;
         e.preventDefault();
         e.stopImmediatePropagation();
-        close();
+        // A question must be answered with one of its buttons.
+        if (p.choice === undefined) close();
     };
     const close = (): void => {
         if (closed) return;
@@ -996,8 +1046,22 @@ export function showStoryEventPopup(p: StoryEventPopup, galaxy: Galaxy): void {
         autoPauseClose();
         closeEventSting(); // btnStoryEventClose: method_522
     };
-    const btn = glassButton(gt('Close'), { className: 'msg-story-close', onClick: () => close() });
-    root.appendChild(btn);
+    if (p.choice !== undefined) {
+        const c = p.choice;
+        root.classList.add('msg-story-choice');
+        const no = glassButton(resolveGameText(c.closeText), { className: 'msg-story-close msg-story-no', onClick: () => {
+            c.onClose();
+            close();
+        } });
+        const yes = glassButton(resolveGameText(c.actionText), { className: 'msg-story-close msg-story-yes', onClick: () => {
+            c.onAction();
+            close();
+        } });
+        root.append(no, yes);
+    } else {
+        const btn = glassButton(gt('Close'), { className: 'msg-story-close', onClick: () => close() });
+        root.appendChild(btn);
+    }
     document.body.appendChild(root);
     document.addEventListener('keydown', onKey, true);
     autoPauseOpen();

@@ -123,7 +123,7 @@ export const COMMAND_FAILURE: FailureTable = {
     pirateMissionButton: no,
     assignPirateSmugglingMission: no,
     storyEventAction: () => null,
-    storyEventClose: () => undefined,
+    storyEventClose: no,
     politicsAction: refused,
     grantAutonomy: refused,
     securityInvestigate: refused,

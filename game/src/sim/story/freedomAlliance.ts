@@ -214,9 +214,10 @@ export function storyEventAction(galaxy: Galaxy, level: number): BuiltObject | S
  * Main.Part4.cs 5028 btnStoryEventClose_Click: refusing the alliance at level 2 forms it without the player
  * (GenerateFreedomAlliance(false)), launches the Shakturi invasion of the Guardians' capital (GenerateShakturiInvasion with
  * the last Shakturi / Mechanoid empires in Galaxy.Empires order) and moves the story to level 3. Any other level: nothing.
+ * Returns whether it was the level-2 refusal.
  */
-export function storyEventClose(galaxy: Galaxy, level: number): void {
-    if (level !== 2) return;
+export function storyEventClose(galaxy: Galaxy, level: number): boolean {
+    if (level !== 2) return false;
     generateFreedomAlliance(galaxy, false);
     let empire: Empire | null = null;
     let empire2: Empire | null = null;
@@ -227,6 +228,7 @@ export function storyEventClose(galaxy: Galaxy, level: number): void {
     }
     if (empire !== null && empire2 !== null) generateShakturiInvasion(galaxy, empire2, empire);
     galaxy.storyReturnOfTheShakturiEventLevel = 3;
+    return true;
 }
 
 /**
