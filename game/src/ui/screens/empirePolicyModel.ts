@@ -23,7 +23,9 @@ import { ComponentType } from '../../sim/data/components';
 import { BuiltObjectFleeWhen } from '../../sim/data/designTemplates';
 import { IndustryType } from '../../sim/types';
 import { BuiltObjectSubRole } from '../../sim/builtObjectTypes';
-import { resolveSubRoleDescription } from '../../sim/designGeneration';
+import { canBuildDesign, resolveSubRoleDescription } from '../../sim/designGeneration';
+import type { Design } from '../../sim/design';
+import { BuiltObjectRole } from '../../sim/data/designSpecifications';
 import { formatNet, tryGetText } from '../../sim/textResolver';
 import { AUTOMATION_ROWS, automationFieldValue, setAutomationValue } from './gameOptionsPanel';
 
@@ -71,11 +73,13 @@ export interface NumericControl {
     max: number;
     value: number;
 }
-/** DesignDropDown (method_615 / dFwNhteflw): read-only here, see the TODO(port) in buildPolicyPanel. */
+/** DesignDropDown (method_615 / dFwNhteflw): BindData(designs, allowNullDesign: true) — "(None)" then the designs. */
 export interface DesignControl {
     kind: 'design';
     design: unknown | null;
     label: string;
+    /** The DesignDropDown's items after "(None)", in list order. */
+    designs: unknown[];
 }
 export type PolicyControl = ComboControl | CheckControl | NumericControl | DesignControl;
 
@@ -286,6 +290,11 @@ export function readWonder(c: PanelControls, name: string, ctx: PolicyPanelConte
     return -1;
 }
 
+/** A DesignDropDown item's text: the design name, "(None)" for the null item. */
+export function designLabel(design: unknown | null): string {
+    return design === null ? '(' + policyText('None') + ')' : String((design as { name?: string }).name ?? '');
+}
+
 // Port of Main.Part3.cs:4281-4292 dFwNhteflw (DesignDropDown.SelectedDesign; null when absent).
 export function readDesign(c: PanelControls, name: string): unknown | null {
     const x = c.get(name);
@@ -456,17 +465,16 @@ export function buildPolicyPanel(empire: Empire, policy: PolicyData, ctx: Policy
         priority('ColonizeVolcanicPriority', 'Volcanic Planet Priority', LOW_NORMAL_HIGH_VERYHIGH, p.colonizeVolcanicPriority);
         priority('ColonizeRuinsPriority', 'Planets with Ruins Priority', LOW_NORMAL_HIGH_VERYHIGH, p.colonizeRuinsPriority);
         check('ColonyActionForNewTroopRecruitment', 'When establish new colony, always recruit new Troops', p.colonyActionForNewTroopRecruitment);
-        // method_615 DesignDropDown of the player's buildable Base designs (Designs.GetDesignsByRoles(Base) +
-        // StripUnbuildableDesigns). Read-only: choosing a design makes the colonize mission call
-        // Empire.PurchaseNewBuiltObject, which is not ported (cmdTroops.ts throws on it).
-        // TODO(port): DesignList.GetDesignsByRoles / StripUnbuildableDesigns + Empire.PurchaseNewBuiltObject — Main.Part3.cs:4710-4716, Empire.6.cs 1991.
-        const design = p.colonyActionForNewBuildDesign;
+        // Main.Part3.cs:4710-4716: Designs.GetDesignsByRoles(Base) (not obsolete), StripUnbuildableDesigns(PlayerEmpire)
+        // (CanBuildDesign), plus the policy's design when it is not among them; method_615 binds them with "(None)".
+        const design = p.colonyActionForNewBuildDesign as Design | null;
+        const designsByRoles = ((e.designs ?? []) as (Design | null)[]).filter((d): d is Design => d != null && d.role === BuiltObjectRole.Base && !d.isObsolete && canBuildDesign(e, d));
+        if (design !== null && !designsByRoles.includes(design)) designsByRoles.push(design);
         push({
             name: 'ColonyActionForNewBuildDesign',
             label: t('When establish new colony, immediately build this base'),
             suffix: '',
-            control: { kind: 'design', design, label: design === null ? '(' + t('None') + ')' : String((design as { name?: string }).name ?? '') },
-            readOnly: true,
+            control: { kind: 'design', design, label: designLabel(design), designs: designsByRoles },
         });
         const population = (name: string, label: string, value: ColonyPopulationPolicy): void =>
             push({ name, label: t(label), suffix: '', control: { kind: 'combo', reader: 'population', options: POPULATION_POLICY_TEXT.map(t), index: POPULATION_POLICIES.indexOf(value) } });

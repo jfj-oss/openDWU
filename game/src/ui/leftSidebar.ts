@@ -12,8 +12,8 @@
 // TODO(port): "Enemy Targets" panel (PrioritizedTarget rows, Main.method_205 + ItemListPanel.cs method_8/method_9, the
 //   click-to-assign-a-fleet behaviour of Main.Part12.cs method_78) — the target prioritisation is not ported.
 // TODO(port): "Pirate Missions" panel (EmpireActivity rows, ItemListPanel.cs method_7) — pirate playstyle only.
-// TODO(port): colony governor / fleet admiral portraits on the rows (characterImageCache ObtainCharacterImageVerySmall)
-//   — there is no character art; the Characters panel shows the character's race portrait instead.
+// Colony governor / fleet admiral pictures on the rows: ItemListPanel.cs 868-882 / 1371-1390
+//   (ObtainCharacterImageVerySmall, characterPortrait.ts: the picture file or race portrait with the role icon).
 // TODO(port): the pirate player's Colonies rows (ItemListPanel.cs 729-848: other empires' colonies with pirate
 //   control %) — pirate playstyle only.
 
@@ -21,7 +21,7 @@ import type { Galaxy } from '../sim/galaxy';
 import type { Empire } from '../sim/empire';
 import { BuiltObject } from '../sim/builtObject';
 import type { Race } from '../sim/data/races';
-import { Character } from '../sim/characters';
+import { Character, CharacterRole } from '../sim/characters';
 import type { ConstructionQueue } from '../sim/construction/constructionQueue';
 import { BuiltObjectSubRole } from '../sim/builtObjectTypes';
 import { BuiltObjectRole } from '../sim/data/designSpecifications';
@@ -45,7 +45,8 @@ import { fighterImageUrl } from '../render/fighterLayer';
 import { troopImageUrl } from '../render/troopImages';
 import { mapStarUrls, cloudUrls } from '../render/assets';
 import { racePortraitUrl } from './empireEmblem';
-import { characterPortraitUrl, roleIconRectForSize, roleIconUrl } from './characterPortrait';
+import { CHARACTER_IMAGE_SPEC, characterPortraitUrl, roleIconRectForSize, roleIconUrl } from './characterPortrait';
+import { getFleetAdmiralsAndGenerals } from '../sim/fleets/shipGroupTasks';
 import { chromeUrl, fmtK, habitatImageUrl, missionDescription, shipImageUrl } from './selectionInfo';
 import { resourceIconUrl } from './hud';
 import { plannerStatusInput, type PlannerStatusInput } from './screens/expansionPlanner';
@@ -537,7 +538,32 @@ function colonyRow(ctx: RowContext, h: Habitat): ItemRowModel {
         if (waiting > 0) line2.push(txt(` (${waiting} waiting)`, 'small', ROW_TEXT, { at: c.n165 + 27 + 2 }));
     }
     if (deficient(h as unknown as { manufacturingQueue: unknown })) overlays.push({ url: STALLED_URL, x: 5, y: c.n20, size: c.half });
+    // ItemListPanel.cs 868-882: every colony governor at the colony (Characters.FindCharactersAtLocation), right to left
+    // from x 5 + image width - num7, at y num, num10 apart.
+    if (pic) {
+        let x = 5 + c.image - c.n11;
+        for (const ch of (owner.characters ?? []) as (Character | null)[]) {
+            if (ch == null || ch.location !== h || ch.role !== CharacterRole.ColonyGovernor) continue;
+            overlays.push(...verySmallPortrait(ch, x, c.n3));
+            x -= c.n15;
+        }
+    }
     return { pictures, overlays, textX, line1, line2, right: [] };
+}
+
+/** CharacterImageCache.ObtainCharacterImageVerySmall drawn at its 13 px (DrawImage at a point): the picture and the
+ *  role icon over it (OverlayRoleIcon 0.48), unfaded. */
+function verySmallPortrait(ch: Character, x: number, y: number): ItemRowModel['overlays'] {
+    const out: ItemRowModel['overlays'] = [];
+    const size = CHARACTER_IMAGE_SPEC.verySmall.bitmap;
+    const url = characterPortraitUrl(ch);
+    if (url !== null) out.push({ url, x, y, size, full: true });
+    const role = roleIconUrl(ch.role);
+    if (role !== null) {
+        const r = roleIconRectForSize('verySmall', size);
+        out.push({ url: role, x: x + r.x, y: y + r.y, size: r.w, full: true });
+    }
+    return out;
 }
 
 /** method_6, any other Habitat (the Potential … lists): status colour, quality / size, resources, bonuses, and the
@@ -695,7 +721,18 @@ function shipGroupRow(ctx: RowContext, sg: ShipGroup): ItemRowModel {
     const r2 = sg.postureRangeSquared;
     const range = r2 <= 2250000 ? 'fleetRangeTarget.png' : r2 <= 2304000000 ? 'fleetRangeSystem.png' : r2 <= 250000000000 ? 'fleetRangeArea.png' : r2 <= 1000000000000 ? 'fleetRangeSector.png' : 'fleetRangeAny.png';
     right.push({ url: chromeUrl(range), fromRight: c.n20, size: c.half, y: c.n4 });
-    return { pictures, overlays: [], textX, line1, line2, right };
+    // ItemListPanel.cs 1371-1390: the admirals and generals (GetFleetAdmiralsAndGenerals) at x 5 + image width - num7,
+    // from y num down num10 apart, stopping past num12.
+    const overlays: ItemRowModel['overlays'] = [];
+    if (pic) {
+        let y = c.n3;
+        for (const ch of getFleetAdmiralsAndGenerals((sg.empire?.characters ?? []) as unknown[], sg)) {
+            overlays.push(...verySmallPortrait(ch, 5 + c.image - c.n11, y));
+            y += c.n15;
+            if (y > c.n19) break;
+        }
+    }
+    return { pictures, overlays, textX, line1, line2, right };
 }
 
 /** method_6, Character: ObtainCharacterImageSmall (characterPortrait.ts) — the picture with the role icon. */
