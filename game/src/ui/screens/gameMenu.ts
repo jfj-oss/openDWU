@@ -238,7 +238,7 @@ export function buildOptionsPanel(
     optionsPanel.appendChild(scaleRow);
 
     // Show system names / region labels toggles.
-    const makeToggle = (labelText: string, key: 'showSystemNames' | 'showRegionLabels' | 'freightFlowsDefault' | 'ditherGradients' | 'autoPauseInPopup' | GalaxyViewDisplayKey): HTMLElement => {
+    const makeToggle = (labelText: string, key: 'showSystemNames' | 'showRegionLabels' | 'freightFlowsDefault' | 'ditherGradients' | 'autoPauseInPopup' | 'simWorker' | GalaxyViewDisplayKey): HTMLElement => {
         const row = document.createElement('div');
         row.className = 'game-menu-option-row';
         const lbl = document.createElement('span');
@@ -262,6 +262,8 @@ export function buildOptionsPanel(
     optionsPanel.appendChild(makeToggle('Freight flows overlay on at start', 'freightFlowsDefault')); // [freightOverlay]
     // Applied live by main.ts (onSettingsChange → render/outputDither.ts setOutputDither).
     optionsPanel.appendChild(makeToggle('Dither gradients (no banding)', 'ditherGradients'));
+    // Experimental (docs/sim-worker.md): read by main.ts when the next game starts or loads.
+    optionsPanel.appendChild(makeToggle('Simulation in a worker thread (experimental, next game)', 'simWorker'));
     // [galaxymarkers] begin — Main.InitializeComponent.cs 9922-10041: grpGameOptionsAdvancedDisplaySettingsGalaxyIcons.
     const gvHead = document.createElement('div');
     gvHead.className = 'game-menu-option-label';

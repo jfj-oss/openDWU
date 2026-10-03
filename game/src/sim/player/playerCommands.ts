@@ -41,6 +41,25 @@ interface QueueState {
 
 const queues = new WeakMap<Galaxy, QueueState>();
 
+/**
+ * Sim worker (docs/sim-worker.md §4): a REPLICA galaxy on the main thread forwards its player commands to the worker
+ * that runs the authoritative game, instead of queueing them here. The sink gets the command as issued; the worker
+ * queues it on the real galaxy (issuePlayerCommand there), so it is applied and journaled exactly as in-thread.
+ */
+export type RemoteCommandSink = (empire: Empire, op: PlayerOpName, args: unknown[], onApplied?: (result: unknown) => void) => void;
+const remoteSinks = new WeakMap<Galaxy, RemoteCommandSink>();
+
+/** Route `galaxy`'s player commands to `sink` (a sim-worker replica), or back to the local queue (null). */
+export function setRemoteCommandSink(galaxy: Galaxy, sink: RemoteCommandSink | null): void {
+    if (sink === null) remoteSinks.delete(galaxy);
+    else remoteSinks.set(galaxy, sink);
+}
+
+/** Whether `galaxy` is a sim-worker replica whose commands go to the worker. */
+export function hasRemoteCommandSink(galaxy: Galaxy): boolean {
+    return remoteSinks.has(galaxy);
+}
+
 function queueOf(galaxy: Galaxy): QueueState {
     let q = queues.get(galaxy);
     if (q === undefined) {
@@ -58,6 +77,11 @@ function queueOf(galaxy: Galaxy): QueueState {
  */
 export function issuePlayerCommand<K extends PlayerOpName>(galaxy: Galaxy, empire: Empire, op: K, args: PlayerOpArgs<K>, onApplied?: (result: PlayerOpResult<K>) => void): void {
     if (inSimFrame()) throw new Error(`player command ${op} issued inside a sim frame (commands apply only at frame boundaries)`);
+    const remote = remoteSinks.get(galaxy);
+    if (remote !== undefined) {
+        remote(empire, op, args as unknown[], onApplied as ((r: unknown) => void) | undefined);
+        return;
+    }
     queueOf(galaxy).pending.push({ empire, op, args: args as unknown[], onApplied: onApplied as ((r: unknown) => void) | undefined });
 }
 
@@ -77,6 +101,7 @@ export function flushPlayerCommands(galaxy: Galaxy): void {
 
 /** Issue and apply at once (between frames only); returns the executor's result. */
 export function runPlayerCommand<K extends PlayerOpName>(galaxy: Galaxy, empire: Empire, op: K, args: PlayerOpArgs<K>): PlayerOpResult<K> {
+    if (remoteSinks.has(galaxy)) throw new Error(`runPlayerCommand(${op}) needs the result at once, which a sim-worker replica cannot give: issue it with issuePlayerCommand and an onApplied callback`);
     let result: PlayerOpResult<K> | undefined;
     let applied = false;
     issuePlayerCommand(galaxy, empire, op, args, (r) => {

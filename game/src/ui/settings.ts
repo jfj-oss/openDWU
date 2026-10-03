@@ -72,6 +72,10 @@ export interface UiSettings {
     /** GameOptions.AutoPauseWhenInPopupWindow (default true, Main.Part9.cs:2714): pause a running game while a screen window is open. */
     autoPauseInPopup: boolean;
 
+    /** Experimental (docs/sim-worker.md): run the simulation in a Web Worker (applies to the next game started or
+     *  loaded; `?simWorker=1|0` overrides). Off until every screen is ported. */
+    simWorker: boolean;
+
     // [galaxymarkers] begin — GameOptions.GalaxyViewDisplay* (GameOptions.cs 74-96, "Galaxy View - Ship Display"):
     // which ship/base types the galaxy view shows beyond zoom factor 3500 (MainView.2.cs method_250).
     galaxyViewDisplayFleets: boolean;
@@ -175,6 +179,7 @@ export const DEFAULT_SETTINGS: UiSettings = {
 
     ditherGradients: true,
     autoPauseInPopup: true,
+    simWorker: false,
 
     // [galaxymarkers] begin — GameOptions.cs 74-96 / Main.Part9.cs 2793-2804: all on except civilian ships.
     galaxyViewDisplayFleets: true,
@@ -279,6 +284,7 @@ export function loadSettings(): UiSettings {
         // [freightOverlay] end
         if (typeof parsed.ditherGradients === 'boolean') out.ditherGradients = parsed.ditherGradients;
         if (typeof parsed.autoPauseInPopup === 'boolean') out.autoPauseInPopup = parsed.autoPauseInPopup;
+        if (typeof parsed.simWorker === 'boolean') out.simWorker = parsed.simWorker;
         // [galaxymarkers] begin
         for (const k of GALAXY_VIEW_DISPLAY_KEYS) if (typeof parsed[k] === 'boolean') out[k] = parsed[k];
         // [galaxymarkers] end

@@ -390,6 +390,12 @@ export class SystemNebulaLayer {
         this.size = this.baseSize;
         this.gpu = createGpuNebula(renderer);
         this.root.label = 'systemNebulae';
+        // Pre-warm the patch shader while the game loads, not on the first zoom into a system.
+        try {
+            this.gpu?.warm();
+        } catch {
+            this.gpu = null;
+        }
     }
 
     /**

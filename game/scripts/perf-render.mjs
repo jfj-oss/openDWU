@@ -2,10 +2,17 @@
 //          [--w=1920 --h=1080 --dpr=2] [--days=60] [--secs=6] [--profile [--callers]] [--top=15] [--paused]
 //          [--stars=700 --sectors=4] [--zooms=galaxy,sector,system,planet] [--qs=dither=0] [--uncapped]
 //          [--load=<save file>] [--speed=1] [--save-profile=DIR]
+//          [--eval=<page script>] [--report=<page expression>] [--trace=<file.json>] [--pre-sweep=<page expression>] [--sweep [--sweeps=3] [--sweep-secs=3] [--notch=1] [--layers]]
 //
 // --load: copy that save (serializeGame text, e.g. scripts/lategame-start.mjs --save-out) to public/dev-saves/ and boot
 // it with ?load= instead of ?autostart=1 (no warm-up unless --days is given). --speed: game speed while measuring.
 // --save-profile: also write each zoom's CPU profile to DIR/<zoom>.cpuprofile (scripts/cpuprofile-summary.mjs).
+// --sweep: instead of the fixed zoom levels, a scripted wheel-zoom sweep: continuous wheel events on the canvas (at the
+// player's capital) zoom from the whole galaxy down to 100% and back out over --sweep-secs, repeated --sweeps times
+// (sweep 1 is cold: lazy textures / first rasterisation; later sweeps are warm). --notch: wheel notches per event (the
+// handler zooms x1.25 per notch). Per sweep it prints frame-time mean/p50/p95/p99/max, the update/render split, long
+// tasks (> 50 ms) and, with --profile, the top self time (DIR/sweepN.cpuprofile with --save-profile). --layers wraps
+// every MainView method and sub-layer `update` and prints the per-layer time of the slowest frames.
 //
 // Renderer performance at 4K (1920x1080 CSS px at dpr 2 = a 3840x2160 canvas by default). Starts its own Vite dev
 // server on a free port (unless --url is given), boots `?autostart=1`, unpauses at 4x until --days game days have
@@ -23,7 +30,7 @@ import { spawn, execFileSync } from 'node:child_process';
 import { createServer } from 'node:net';
 import { fileURLToPath } from 'node:url';
 import { basename, dirname, join } from 'node:path';
-import { copyFileSync, mkdirSync, writeFileSync } from 'node:fs';
+import { copyFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { loadavg } from 'node:os';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -51,6 +58,11 @@ const CALLERS = args.callers === 'true';
 // --qs=a=1&b=2 appends extra boot query parameters (e.g. --qs=dither=0 for an A/B of the output dither).
 const BOOT_QS = `${args.stars ? `&stars=${args.stars}` : ''}${args.sectors ? `&sectors=${args.sectors}` : ''}${args.qs ? `&${args.qs}` : ''}`;
 const ZOOMS = (args.zooms ?? 'galaxy,sector,system,planet').split(',');
+const SWEEP = args.sweep === 'true';
+const SWEEPS = +(args.sweeps ?? 3);
+const SWEEP_SECS = +(args['sweep-secs'] ?? 3);
+const NOTCH = +(args.notch ?? 1);
+const LAYERS = args.layers === 'true';
 
 const GPU_ARGS = {
     swiftshader: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'],
@@ -165,26 +177,35 @@ async function main() {
         // Instrument MainView.update and the Pixi render call (both looked up per frame).
         await page.evaluate(() => {
             const d = window.__dwu;
-            const acc = { update: 0, render: 0, frames: 0, deltas: [] };
+            // Per frame: update / render ms (parallel arrays, rendered frames) besides the sums.
+            const acc = { update: 0, render: 0, frames: 0, deltas: [], zooms: [], upd: [], rnd: [], lastUpd: 0 };
             window.__perf = acc;
             const upd = d.view.update.bind(d.view);
-            d.view.update = () => {
+            d.view.update = (...a) => {
                 const t = performance.now();
-                upd();
-                acc.update += performance.now() - t;
+                upd(...a);
+                acc.lastUpd = performance.now() - t;
+                acc.update += acc.lastUpd;
             };
             const r = d.app.renderer;
             const rnd = r.render.bind(r);
             r.render = (...a) => {
                 const t = performance.now();
                 const out = rnd(...a);
-                acc.render += performance.now() - t;
+                const dt = performance.now() - t;
+                acc.render += dt;
                 acc.frames++;
+                acc.upd.push(acc.lastUpd);
+                acc.rnd.push(dt);
+                acc.lastUpd = 0;
                 return out;
             };
             let last = -1;
             const loop = (ts) => {
-                if (last >= 0) acc.deltas.push(ts - last);
+                if (last >= 0) {
+                    acc.deltas.push(ts - last);
+                    acc.zooms.push(d.camera.zoom);
+                }
                 last = ts;
                 requestAnimationFrame(loop);
             };
@@ -217,12 +238,18 @@ async function main() {
             window.__dwu.time.paused = paused;
         }, { paused: PAUSED, speed: SPEED });
 
+        // --eval=<file>: run that script in the page before measuring (A/B experiments, e.g. stubbing a layer method).
+        if (args.eval) await page.evaluate(readFileSync(args.eval, 'utf8'));
         const cdp = PROFILE ? await page.context().newCDPSession(page) : null;
         if (cdp) {
             await cdp.send('Profiler.enable');
             await cdp.send('Profiler.setSamplingInterval', { interval: 200 });
         }
 
+        if (SWEEP) {
+            await runSweep(page, cdp, browser);
+            return;
+        }
         const zooms = ZOOMS;
         const rows = [];
         for (const zoom of zooms) {
@@ -272,6 +299,21 @@ async function main() {
                     update: p.frames ? p.update / p.frames : NaN,
                     render: p.frames ? p.render / p.frames : NaN,
                     sim: s.renderFrames ? s.simWallMs / s.renderFrames : NaN,
+                    // 240 Hz budget misses: frames longer than 1.5 × 4.17 ms (a skipped refresh).
+                    over240: d.length ? d.filter((x) => x > 6.25).length / d.length : NaN,
+                    // Sim worker mode (simworker/clientCore.ts SyncStats): main-thread sync cost and the worker's own.
+                    worker: s.deltas === undefined ? null : {
+                        hot: s.renderFrames ? s.hotApplyMs / s.renderFrames : NaN,
+                        cold: s.renderFrames ? s.coldPumpMs / s.renderFrames : NaN,
+                        maxHot: s.maxHotApplyMs,
+                        maxCold: s.maxColdPumpMs,
+                        maxSync: s.maxSimMsPerRenderFrame,
+                        stepsPerS: s.simFrames,
+                        workerStep: s.workerStepMs,
+                        workerDiff: s.workerDiffMs,
+                        kb: s.deltaBytes / 1024,
+                        backlog: s.coldBacklog,
+                    },
                 };
             });
             rows.push({ zoom, ...m });
@@ -295,11 +337,277 @@ async function main() {
                 `${r.zoom.padEnd(8)} ${f(1000 / r.frameMs, 6)} ${f(r.frameMs, 9)} ${f(r.p50)}${f(r.p95)}${f(r.update, 11)}${f(r.render, 11)}${f(r.sim)}`,
             );
         }
+        console.log(`240 Hz misses (frames > 6.25 ms): ${rows.map((r) => `${r.zoom} ${(100 * r.over240).toFixed(1)}%`).join(', ')}`);
+        if (rows.some((r) => r.worker !== null)) {
+            console.log('\nsim worker  main hot ms/frame  main cold ms/frame  max hot  max cold  max sync  sim steps  last worker step ms  diff ms  delta KB  cold backlog');
+            for (const r of rows) {
+                const w = r.worker;
+                if (w === null) continue;
+                const f = (v, n = 8) => (Number.isFinite(v) ? v.toFixed(2) : '-').padEnd(n);
+                console.log(`${r.zoom.padEnd(11)} ${f(w.hot, 17)}${f(w.cold, 19)}${f(w.maxHot, 9)}${f(w.maxCold, 10)}${f(w.maxSync, 10)}${String(w.stepsPerS).padEnd(11)}${f(w.workerStep, 20)}${f(w.workerDiff, 9)}${f(w.kb, 10)}${w.backlog}`);
+            }
+        }
         console.log(`load average after: ${loadavg().map((v) => v.toFixed(2)).join(' ')}`);
     } finally {
         await browser.close();
         if (vite) process.kill(-vite.pid, 'SIGTERM');
     }
+}
+
+/** --layers: wrap every MainView method (and each sub-layer's / SystemView's `update`) to time it per rendered frame. */
+async function installLayerTimers(page) {
+    await page.evaluate(() => {
+        const d = window.__dwu;
+        const view = d.view;
+        const cur = new Map();
+        const frames = [];
+        window.__layerTimes = { cur, frames };
+        const wrap = (obj, name, label) => {
+            const fn = obj[name];
+            if (typeof fn !== 'function' || fn.__timed) return;
+            const w = function (...a) {
+                const t = performance.now();
+                try {
+                    return fn.apply(this, a);
+                } finally {
+                    cur.set(label, (cur.get(label) ?? 0) + performance.now() - t);
+                }
+            };
+            w.__timed = true;
+            obj[name] = w;
+        };
+        const proto = Object.getPrototypeOf(view);
+        for (const name of Object.getOwnPropertyNames(proto)) {
+            if (name === 'constructor' || name === 'update') continue;
+            const desc = Object.getOwnPropertyDescriptor(proto, name);
+            if (desc && typeof desc.value === 'function') wrap(view, name, `view.${name}`);
+        }
+        for (const key of Object.keys(view)) {
+            const o = view[key];
+            if (o && typeof o === 'object' && typeof o.update === 'function' && o !== view) {
+                wrap(o, 'update', `${key}.update`);
+                const p = Object.getPrototypeOf(o);
+                for (const name of Object.getOwnPropertyNames(p)) {
+                    if (name === 'constructor' || name === 'update') continue;
+                    const desc = Object.getOwnPropertyDescriptor(p, name);
+                    if (desc && typeof desc.value === 'function') wrap(o, name, `${key}.${name}`);
+                }
+            }
+        }
+        // SystemView / CloudView / NebulaView instances: wrap on the prototype (hundreds of instances).
+        for (const key of ['systems', 'clouds', 'nebulae', 'regionLabelViews']) {
+            const arr = view[key];
+            if (!Array.isArray(arr) || arr.length === 0) continue;
+            const p = Object.getPrototypeOf(arr[0]);
+            for (const name of Object.getOwnPropertyNames(p)) {
+                if (name === 'constructor') continue;
+                const desc = Object.getOwnPropertyDescriptor(p, name);
+                if (desc && typeof desc.value === 'function') wrap(p, name, `${key}[].${name}`);
+            }
+        }
+        // One record per rendered frame (pushed at the render call, after the update).
+        const r = d.app.renderer;
+        const rnd = r.render;
+        r.render = (...a) => {
+            const out = rnd(...a);
+            frames.push(Object.fromEntries(cur));
+            cur.clear();
+            return out;
+        };
+    });
+}
+
+/** --sweep: wheel-zoom galaxy -> 100% -> galaxy, SWEEPS times, measuring each sweep. */
+async function runSweep(page, cdp, browser) {
+    if (LAYERS) await installLayerTimers(page);
+    await page.evaluate(() => {
+        window.__longTasks = [];
+        try {
+            new PerformanceObserver((list) => {
+                for (const e of list.getEntries()) window.__longTasks.push({ start: e.startTime, dur: e.duration });
+            }).observe({ type: 'longtask', buffered: false });
+        } catch {
+            // longtask entries unsupported
+        }
+    });
+    const rows = [];
+    for (let sweep = 1; sweep <= SWEEPS; sweep++) {
+        // Start fully zoomed out, centred on the capital's star.
+        await page.evaluate(() => {
+            const d = window.__dwu;
+            const cam = d.camera;
+            const g = d.game.galaxy;
+            const cap = d.game.playerEmpire?.capital ?? g.habitats[0];
+            cam.centerOn(cap.xpos, cap.ypos);
+            cam.zoom = cam.minZoom;
+            cam.centerOn(cap.xpos, cap.ypos);
+        });
+        await page.waitForTimeout(sweep === 1 ? 1500 : 1000);
+        // --pre-sweep=<expression>: evaluated in the page before each sweep (after the zoom-out settle), e.g. evicting
+        // Pixi's GPU caches to measure a revisit after the 60 s GC: renderer.gc.maxUnusedTime=0; renderer.gc.run().
+        if (args['pre-sweep']) await page.evaluate((e) => void (0, eval)(e), args['pre-sweep']);
+        // Start the profiler first: Profiler.start stalls the page, which must not count as a sweep frame.
+        if (cdp) await cdp.send('Profiler.start');
+        await page.evaluate(() => {
+            const p = window.__perf;
+            p.update = 0;
+            p.render = 0;
+            p.frames = 0;
+            p.deltas.length = 0;
+            p.zooms.length = 0;
+            p.upd.length = 0;
+            p.rnd.length = 0;
+            window.__longTasks.length = 0;
+            if (window.__layerTimes) window.__layerTimes.frames.length = 0;
+            window.__dwu.simStats.reset();
+        });
+        // Two frames after Profiler.start, then reset again: the profiler's start-up stall is not a sweep frame.
+        await page.evaluate(
+            () =>
+                new Promise((res) =>
+                    requestAnimationFrame(() =>
+                        requestAnimationFrame(() => {
+                            const p = window.__perf;
+                            p.update = p.render = p.frames = 0;
+                            p.deltas.length = p.zooms.length = p.upd.length = p.rnd.length = 0;
+                            window.__longTasks.length = 0;
+                            if (window.__layerTimes) window.__layerTimes.frames.length = 0;
+                            res();
+                        }),
+                    ),
+                ),
+        );
+        // --trace=FILE: a Chrome trace (renderer + GPU process) of the first sweep, for chrome://tracing / Perfetto.
+        if (args.trace && sweep === 1) {
+            await browser.startTracing(page, {
+                path: args.trace,
+                categories: ['devtools.timeline', 'toplevel', 'gpu', 'disabled-by-default-gpu.service', 'disabled-by-default-devtools.timeline', 'blink', 'cc', 'viz'],
+            });
+        }
+        // In-page schedule: one wheel event every `interval` ms at the capital's current screen position.
+        const res = await page.evaluate(
+            ({ secs, notch }) =>
+                new Promise((resolve) => {
+                    const d = window.__dwu;
+                    const cam = d.camera;
+                    const canvas = d.app.canvas;
+                    const g = d.game.galaxy;
+                    const cap = d.game.playerEmpire?.capital ?? g.habitats[0];
+                    const steps = Math.ceil(Math.log(cam.maxZoom / cam.minZoom) / Math.log(1.25 ** notch));
+                    const total = steps * 2;
+                    const interval = (secs * 1000) / total;
+                    let i = 0;
+                    const t0 = performance.now();
+                    const fire = () => {
+                        const rect = canvas.getBoundingClientRect();
+                        const s = cam.worldToScreen(cap.xpos, cap.ypos);
+                        const inward = i < steps;
+                        for (let k = 0; k < notch; k++) {
+                            canvas.dispatchEvent(
+                                new WheelEvent('wheel', {
+                                    deltaY: inward ? -100 : 100,
+                                    clientX: rect.left + Math.max(0, Math.min(cam.width, s.x)),
+                                    clientY: rect.top + Math.max(0, Math.min(cam.height, s.y)),
+                                    bubbles: true,
+                                    cancelable: true,
+                                }),
+                            );
+                        }
+                        i++;
+                        if (i < total) {
+                            const next = t0 + i * interval;
+                            setTimeout(fire, Math.max(0, next - performance.now()));
+                        } else {
+                            // Let the last zoom-out frame render.
+                            setTimeout(() => resolve({ steps, interval, wall: performance.now() - t0 }), 100);
+                        }
+                    };
+                    fire();
+                }),
+            { secs: SWEEP_SECS, notch: NOTCH },
+        );
+        const profile = cdp ? (await cdp.send('Profiler.stop')).profile : null;
+        if (args.trace && sweep === 1) await browser.stopTracing();
+        const m = await page.evaluate(() => {
+            const p = window.__perf;
+            const q = (arr, f) => {
+                const d = [...arr].sort((a, b) => a - b);
+                return d.length ? d[Math.min(d.length - 1, Math.floor(d.length * f))] : NaN;
+            };
+            const mean = (arr) => (arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : NaN);
+            const lt = window.__longTasks;
+            const out = {
+                frames: p.deltas.length,
+                mean: mean(p.deltas),
+                p50: q(p.deltas, 0.5),
+                p95: q(p.deltas, 0.95),
+                p99: q(p.deltas, 0.99),
+                max: q(p.deltas, 1),
+                updMean: mean(p.upd),
+                updP95: q(p.upd, 0.95),
+                updMax: q(p.upd, 1),
+                rndMean: mean(p.rnd),
+                rndP95: q(p.rnd, 0.95),
+                rndMax: q(p.rnd, 1),
+                longTasks: lt.length,
+                longTaskMs: lt.reduce((a, b) => a + b.dur, 0),
+                longTaskMax: lt.reduce((a, b) => Math.max(a, b.dur), 0),
+                worst: [],
+                // The 5 longest frame intervals, with the zoom (1/zoom = the original's zoom factor) they ended at.
+                longest: p.deltas
+                    .map((v, i) => [v, i])
+                    .sort((a, b) => b[0] - a[0])
+                    .slice(0, 5)
+                    .map(([v, i]) => ({ i, ms: v, factor: 1 / p.zooms[i] })),
+            };
+            const lf = window.__layerTimes?.frames;
+            if (lf && lf.length) {
+                // The 5 slowest rendered frames (update + render) with their top layers.
+                const idx = p.upd.map((u, i) => [u + p.rnd[i], i]).sort((a, b) => b[0] - a[0]).slice(0, 5);
+                for (const [tot, i] of idx) {
+                    const layers = Object.entries(lf[i] ?? {}).sort((a, b) => b[1] - a[1]).slice(0, 8);
+                    out.worst.push({ i, tot, upd: p.upd[i], rnd: p.rnd[i], layers });
+                }
+                // Mean per-layer ms across the sweep's frames.
+                const sum = new Map();
+                for (const f of lf) for (const [k, v] of Object.entries(f)) sum.set(k, (sum.get(k) ?? 0) + v);
+                out.layerMean = [...sum.entries()].map(([k, v]) => [k, v / lf.length]).sort((a, b) => b[1] - a[1]).slice(0, 15);
+            }
+            return out;
+        });
+        rows.push({ sweep, ...m });
+        console.log(`\n[sweep ${sweep}] ${res.steps} wheel events each way, every ${res.interval.toFixed(1)} ms (${(res.wall / 1000).toFixed(2)} s)`);
+        console.log(`  longest frame intervals: ${m.longest.map((l) => `#${l.i} ${l.ms.toFixed(0)} ms @ factor ${l.factor.toFixed(1)}`).join(', ')}`);
+        if (m.worst.length) {
+            console.log('  slowest frames (update + render ms; top layers, inclusive ms):');
+            for (const w of m.worst) {
+                console.log(`   #${w.i} ${w.tot.toFixed(1)} (upd ${w.upd.toFixed(1)}, render ${w.rnd.toFixed(1)}): ${w.layers.map(([k, v]) => `${k} ${v.toFixed(1)}`).join(', ')}`);
+            }
+            console.log(`  mean per frame: ${m.layerMean.map(([k, v]) => `${k} ${v.toFixed(2)}`).join(', ')}`);
+        }
+        if (profile && args['save-profile']) {
+            mkdirSync(args['save-profile'], { recursive: true });
+            writeFileSync(join(args['save-profile'], `sweep${sweep}.cpuprofile`), JSON.stringify(profile));
+        }
+        if (profile) {
+            const { total, rows: top } = topSelf(profile, TOP);
+            console.log(`  top self time (${(total / 1000).toFixed(2)} s sampled):`);
+            for (const [k, v, c] of top) {
+                console.log(`  ${v.toFixed(0).padStart(7)} ms ${((100 * v) / total).toFixed(1).padStart(5)}%  ${k}`);
+                if (CALLERS && c) console.log(`                         ${c}`);
+            }
+        }
+    }
+    // --report=<expression>: print JSON.stringify of that page expression (state left by an --eval experiment).
+    if (args.report) console.log(`report: ${await page.evaluate((e) => JSON.stringify((0, eval)(e)), args.report)}`);
+    const f = (v, w = 7) => (Number.isFinite(v) ? v.toFixed(1) : '-').padEnd(w);
+    console.log('\nsweep frames mean   p50    p95    p99    max    | upd mean p95   max    | rnd mean p95   max    | long tasks (ms, max)');
+    for (const r of rows) {
+        console.log(
+            `${String(r.sweep).padEnd(5)} ${String(r.frames).padEnd(6)} ${f(r.mean)}${f(r.p50)}${f(r.p95)}${f(r.p99)}${f(r.max)}| ${f(r.updMean, 9)}${f(r.updP95, 6)}${f(r.updMax)}| ${f(r.rndMean, 9)}${f(r.rndP95, 6)}${f(r.rndMax)}| ${r.longTasks} (${r.longTaskMs.toFixed(0)}, ${r.longTaskMax.toFixed(0)})`,
+        );
+    }
+    console.log(`load average after: ${loadavg().map((v) => v.toFixed(2)).join(' ')}`);
 }
 
 main().catch((err) => {

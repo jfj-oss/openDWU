@@ -20,6 +20,9 @@ import { GalaxyLocationType } from '../../sim/galaxyLocation';
 import { HabitatCategoryType, HabitatType, type Habitat } from '../../sim/types';
 import { NebulaCloudGenerator } from '../../render/nebulaClouds';
 import { BACKDROP_URLS } from '../../render/assets';
+import { fogOf } from '../../render/fog';
+import { territoryColorFn } from '../../render/empireLayer';
+import { drawTerritoryOnMap } from '../../render/territoryRaster';
 import './galaxyMap.css';
 import { countLabel } from '../plural';
 
@@ -81,6 +84,13 @@ export function galaxyMapScale(galaxy: Galaxy, mapWidthPx: number): number {
  * in yellow (GalaxyMap.cs method_6). `w` is the control's width in original pixels; the canvas is rasterised at
  * the device pixel ratio × 2 so it stays crisp inside a scaled original-style window.
  */
+/** GalaxyMap.cs 141-157: the empire territory bitmap under the dots at 40% (TransparentImage(0.4)), over the whole
+ * galaxy on a `mapW` px map. Cached and shared with the Main View (render/territoryRaster.ts): not recomputed per open
+ * unless the territory changed. Shared by the Galaxy Map window and the mini maps. */
+export function drawMapTerritory(ctx: CanvasRenderingContext2D, galaxy: Galaxy, mapW: number): void {
+    drawTerritoryOnMap(ctx, galaxy, fogOf(galaxy).player, territoryColorFn(galaxy), mapW, 0.4);
+}
+
 export function drawSystemsMiniMap(canvas: HTMLCanvasElement, galaxy: Galaxy, w: number, selected: ReadonlySet<Habitat>): void {
     const dpr = Math.min(3, (typeof window !== 'undefined' ? window.devicePixelRatio : 1) || 1) * 2;
     canvas.width = Math.round(w * dpr);
@@ -90,6 +100,7 @@ export function drawSystemsMiniMap(canvas: HTMLCanvasElement, galaxy: Galaxy, w:
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.fillStyle = '#000';
     ctx.fillRect(0, 0, w, w);
+    drawMapTerritory(ctx, galaxy, w);
     const s = galaxyMapScale(galaxy, w);
     const filter = selected.size > 0;
     const sizes = starDotSizes(w, filter);
@@ -650,6 +661,8 @@ export function createGalaxyMap(opts: GalaxyMapOptions): GalaxyMapScreen {
             }
             ctx.globalAlpha = 1;
         }
+        // Empire territory (bitmap_0 territory, 40%).
+        drawMapTerritory(ctx, galaxy, W);
         // Sector grid + labels (pen_1 / solidBrush_0, Verdana 7pt).
         const secPx = galaxy.sectorSize / s; // num21
         ctx.strokeStyle = GRID_COLOR;
