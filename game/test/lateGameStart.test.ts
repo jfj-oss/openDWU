@@ -5,6 +5,7 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import { createGame, createGameSteps, type GameStartProgress } from '../src/sim/game';
 import { defaultStartGameOptions, toCreateGameOptions } from '../src/sim/startGameOptions';
+import { GalaxyShape } from '../src/sim/types';
 import { stateDigest } from '../src/sim/tick/digest';
 import type { GameData } from '../src/sim/data/gameData';
 import { loadGameDataFs } from './helpers/loadGameDataFs';
@@ -19,6 +20,7 @@ describe('Mature start from the wizard options', () => {
         const so = defaultStartGameOptions();
         so.seed = 7;
         so.raceName = 'Human';
+        so.shape = GalaxyShape.Spiral; // pinned (the wizard default is now the original's Elliptical)
         so.starCountIndex = 2; // 400 stars
         so.dimensionIndex = 2; // 8x8
         so.galaxyExpansionIndex = 4; // Mature
