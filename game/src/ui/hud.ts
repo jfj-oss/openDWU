@@ -59,6 +59,7 @@ import { toggleShipDesigns } from './screens/shipDesigns'; // [16b]
 import { toggleShipsAndBasesList } from './screens/shipsAndBasesList';
 import { toggleMessageHistory } from './screens/messageHistory';
 import { toggleBuildOrder } from './screens/buildOrder'; import { toggleConstructionYards } from './screens/constructionYards'; // [16c]
+import { attachBuildQueueLauncher } from './screens/buildQueue'; // [buildQueue]
 import { toggleResearchScreen } from './screens/researchScreen'; // [15b]
 import { toggleEmpireComparison } from './screens/empireComparison';
 import { showToast } from './toast';
@@ -869,7 +870,10 @@ function openTopBarScreen(name: string, wiring: HudWiring): void {
             return;
         // [16c] btnBuildOrder → Build Order (Main.Part2.cs:1196); tbtnConstructionYards → Construction Yards (Main.Part6.cs:3243).
         case 'btnBuildOrder':
-            if (src) toggleBuildOrder({ empire: src.empire });
+            if (src) {
+                toggleBuildOrder({ empire: src.empire });
+                attachBuildQueueLauncher({ empire: src.empire, onGoto: (t) => selectStellarObject(t, true) }); // [buildQueue]
+            }
             return;
         case 'tbtnConstructionYards':
             if (src) toggleConstructionYards({ empire: src.empire, onSelect: (t) => selectStellarObject(t, true) });
