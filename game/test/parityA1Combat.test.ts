@@ -11,6 +11,8 @@ import type { GameData } from '../src/sim/data/gameData';
 import { BuiltObjectComponent, ComponentStatus } from '../src/sim/builtObjectComponent';
 import { ComponentType } from '../src/sim/data/components';
 import { Weapon } from '../src/sim/weapon';
+import { Design } from '../src/sim/design';
+import { checkDesignInUse, reviewRemoveObsoleteDesignsForSubRole } from '../src/sim/designGeneration';
 import { Creature, CreatureType } from '../src/sim/creature';
 import { galaxyNow } from '../src/sim/tick/simTime';
 import { weaponFire } from '../src/sim/combat/weapons';
@@ -264,5 +266,38 @@ describe('BuiltObject.1.cs 305-312 / 1264-1271: escaping from a fighter targets 
         const m = builtObjectMission(victim.mission);
         expect(m?.type).toBe(BuiltObjectMissionType.Escape);
         expect(m?.targetBuiltObject).toBe(carrier);
+    });
+});
+
+describe('Empire.10.cs 3266 ReviewRemoveObsoleteDesignsForSubRole keeps designs in use (3307 CheckDesignInUse)', () => {
+    it('marks every design of the sub-role obsolete but removes only the unused ones', () => {
+        const g = cachedTickGame(gameDataRef, { age: 0 }).galaxy;
+        const empire = g.empires.find((e) => e.builtObjects.some((b) => b !== null && !b.hasBeenDestroyed && (e.designs as Design[]).includes(b.design) && !b.design.isManuallyCreated))!;
+        expect(empire).toBeDefined();
+        const user = empire.builtObjects.find((b) => b !== null && !b.hasBeenDestroyed && (empire.designs as Design[]).includes(b.design) && !b.design.isManuallyCreated)!;
+        const used = user.design;
+        const designs = empire.designs as Design[];
+        const sameSubRole = (name: string): Design => {
+            const d = new Design(name);
+            d.subRole = used.subRole;
+            d.role = used.role;
+            return d;
+        };
+        const unused = sameSubRole('unused');
+        const retrofitTarget = sameSubRole('retrofit target');
+        designs.push(unused, retrofitTarget);
+        const other = empire.builtObjects.find((b) => b !== null && b !== user && !b.hasBeenDestroyed);
+        // A ship retrofitting to a design keeps it too (RetrofitDesign); without a second ship, use the first one.
+        (other ?? user).retrofitDesign = retrofitTarget;
+        expect(checkDesignInUse(empire, used)).toBe(true);
+        expect(checkDesignInUse(empire, retrofitTarget)).toBe(true);
+        expect(checkDesignInUse(empire, unused)).toBe(false);
+        reviewRemoveObsoleteDesignsForSubRole(empire, used.subRole, null, false);
+        expect(designs).toContain(used);
+        expect(designs).toContain(retrofitTarget);
+        expect(designs).not.toContain(unused);
+        expect(used.isObsolete).toBe(true);
+        expect(retrofitTarget.isObsolete).toBe(true);
+        expect(unused.isObsolete).toBe(true);
     });
 });
