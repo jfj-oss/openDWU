@@ -512,7 +512,7 @@ describe('sim worker chunk 5: onApplied, dropped objects, runPlayerCommand', () 
         w.host.dispose();
     }, 600000);
 
-    it('a replica object the sync no longer knows is not sent (no command, no callback)', () => {
+    it('a replica object the sync no longer knows is not sent: the command gets its failure value', async () => {
         const game = cachedTickGame(gameData);
         const time = new GalaxyTime();
         const w = connect(game, time);
@@ -520,19 +520,24 @@ describe('sim worker chunk 5: onApplied, dropped objects, runPlayerCommand', () 
         const gone = Object.create(BuiltObject.prototype) as BuiltObject;
         gone.name = 'Gone';
         const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+        const err = vi.spyOn(console, 'error').mockImplementation(() => {});
         const before = w.posted.length;
-        let called = false;
-        issuePlayerCommand(w.client.galaxy, p, 'shipAction', [gone, createShipAction(ShipActionType.AutomateShip, gone), false, undefined], () => (called = true));
-        issuePlayerCommand(w.client.galaxy, p, 'selectionButtons', [gone, null], () => (called = true));
+        const got: unknown[] = [];
+        issuePlayerCommand(w.client.galaxy, p, 'shipAction', [gone, createShipAction(ShipActionType.AutomateShip, gone), false, undefined], (r) => got.push(r.ok));
+        issuePlayerCommand(w.client.galaxy, p, 'selectionButtons', [gone, null], (r) => got.push(r));
         w.tick();
+        await new Promise((r) => setTimeout(r, 0));
         expect(w.posted.length).toBe(before);
-        expect(called).toBe(false);
+        // docs/sim-worker.md §4.4 "Failed commands": each callback once, with the op's failure value (no buttons).
+        expect(got).toEqual([false, null]);
         expect(warn.mock.calls.map((c) => String(c[0])).join('\n')).toMatch(/BuiltObject Gone is no longer in the game/);
-        // A command the worker cannot run answers with an error: no callback either.
+        // A command whose executor throws in the worker: no callback, as in-thread.
+        let called = false;
         issuePlayerCommand(w.client.galaxy, p, 'habitatDispatch', [null as unknown as Habitat], () => (called = true));
         w.tick();
         expect(called).toBe(false);
         warn.mockRestore();
+        err.mockRestore();
         // runPlayerCommand needs its result at once, which a replica cannot give: callers take the async path.
         expect(() => runPlayerCommand(w.client.galaxy, p, 'automationOff', ['Colony Tax Rates'])).toThrow(/sim-worker replica/);
         w.client.dispose();
