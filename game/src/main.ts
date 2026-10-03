@@ -125,6 +125,7 @@ import { setShipCommandHandler, setViewLockedQuery } from './ui/keyboard';
 import { refreshSelectionActionBar } from './ui/orderMenu';
 import { selectCreature, selectHabitat } from './ui/hud';
 import { createShipCommandKeys, type ShipCommandKeys } from './ui/shipCommandKeys';
+import { createControlGroupKeys } from './ui/controlGroups'; import { setControlGroupHandler } from './ui/keyboard'; import { resetPanelVisibility } from './ui/panelVisibility'; import { setMainViewDisplayType } from './render/mainViewDisplay'; import { closeGroundReport } from './ui/screens/groundReport'; import { playGridClick } from './audio/gameAudio'; // [parC1]
 import { showToast } from './ui/toast';
 // [fix6ui] end
 
@@ -808,6 +809,32 @@ export async function startGameView(
     setViewLockedQuery(() => activeShipKeys.locked);
     // [fix6ui] end
 
+    // [parC1] begin — control groups (Main.Part7.cs Main_KeyUp Set / SelectControlGroupN[WithFocus], ui/controlGroups.ts).
+    const controlGroupKeys = createControlGroupKeys({
+        galaxy,
+        player: game.playerEmpire,
+        camera,
+        getSelection: getHudSelection,
+        godMode: () => fogOf(galaxy).reveal,
+        playSetSound: () => playGridClick(),
+        // method_209(obj, bool_28: true) without method_157: select, keep the view.
+        select: (o) => {
+            if (o === null) hud.onSelectionChange?.(null);
+            else if (Array.isArray(o)) selectBuiltObjectList(o);
+            else if (o instanceof ShipGroup) selectShipGroup(o, false);
+            else if (o instanceof Habitat) selectHabitat(o, false);
+            else if (o instanceof Creature) selectCreature(o, false);
+            else if (o instanceof Fighter) return; // TODO(port): fighter selection — MainView.1.cs:1520 method_212 (parity #26)
+            else if ('systemStar' in o) hud.onSelectionChange?.({ habitat: o.systemStar, system: o, systemInfo: true });
+            else selectStellarObject(o, false);
+        },
+    });
+    setControlGroupHandler((kind, index) => controlGroupKeys.handle(kind, index));
+    // A new game view starts with every panel shown and the full display type (Main's defaults).
+    resetPanelVisibility();
+    setMainViewDisplayType(0);
+    // [parC1] end
+
     // Task 06l: extra boots run after the HUD/clock are wired (e.g. opening
     // a tutorial window that pauses/unpauses the clock).
     for (const boot of extraBoots ?? []) {
@@ -839,8 +866,9 @@ export async function startGameView(
             return;
         }
         const action = dispatchKey(e, keyHandlers);
-        // Space must not also activate a focused HUD button (a second toggle).
-        if (action === 'togglePause') e.preventDefault();
+        // Space must not also activate a focused HUD button (a second toggle). [parC1] Ctrl+digit must not reach the
+        // browser's / shell's own shortcut (where it can be cancelled).
+        if (action === 'togglePause' || (action !== null && action.startsWith('setControlGroup'))) e.preventDefault();
         if (action === 'togglePause' || action === 'speedUp' || action === 'speedDown') {
             refreshClockLabel();
         }
@@ -924,6 +952,9 @@ export async function startGameView(
         setShipCommandHandler(null);
         setViewLockedQuery(null);
         shipKeys = null;
+        setControlGroupHandler(null); // [parC1]
+        resetPanelVisibility(); // [parC1]
+        closeGroundReport(); // [parC1]
         // [fix6ui] end
         // Module-level panels hold the old game's Empire/camera and a
         // document keydown listener: close them and drop their source.

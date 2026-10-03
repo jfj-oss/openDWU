@@ -38,6 +38,7 @@ export const COMMAND_FAILURE: FailureTable = {
     fleetRetrofit: no,
     fleetRepairAndRefuel: no,
     shipOrderKey: no,
+    setControlGroup: no,
     automationOff: no,
     setEmpireControl: no,
     setEmpireSetting: no,

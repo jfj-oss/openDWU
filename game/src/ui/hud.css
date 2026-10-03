@@ -309,3 +309,14 @@
     gap: 4px;
     margin-top: 6px;
 }
+
+/* T key: Main.Part7.cs:3085 CyclePanelVisibility (ui/panelVisibility.ts). 'map' = method_472(true): every HUD panel
+   and button but the system-map corner (our options list) and the diplomatic message queue (the stub list); 'none' =
+   method_472(false): those too. The star date (pnlTopLeftBar's text) and the money block are drawn by MainView itself
+   (method_18) and stay. */
+body[data-panels] #hud > .hud-el:not([data-hud="pnlMoney"]):not([data-hud="pnlTopLeftBar"]):not([data-hud="pnlOptionsList"]),
+body[data-panels] #hud [data-hud="pnlTopLeftBar"] .top-btn,
+body[data-panels="none"] #hud > [data-hud="pnlOptionsList"],
+body[data-panels="none"] .message-stubs {
+    display: none !important;
+}

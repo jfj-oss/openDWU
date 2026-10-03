@@ -60,6 +60,7 @@ import type { DiplomatBrief } from './diplomatBrief';
 import { deleteDesign, saveDesign, setDesignSubRoleShouldBeUpgraded, type DesignDraft } from './designEditor';
 import { autoUpgradeDesigns, loadDesignFile } from './designTools';
 import { executeShipOrderKey, type ShipOrderKeyAction } from './shipHotkeys';
+import { setControlGroup, type ControlGroupObject } from './controlGroups';
 import { initiateCrashResearchProgram } from '../researchTick';
 import type { EmpireMessage } from '../messages';
 import { approveSuggestion, declineSuggestion } from './advisorSuggestions';
@@ -138,6 +139,8 @@ export const PLAYER_OPS = {
     fleetRepairAndRefuel: (galaxy: Galaxy, empire: Empire, fleet: ShipGroup) => fleetRepairAndRefuel(galaxy, empire, fleet),
     /** Main_KeyUp ship-order keys (E / R / A / S / ,). */
     shipOrderKey: (galaxy: Galaxy, empire: Empire, selected: ShipActionSelection, action: ShipOrderKeyAction) => executeShipOrderKey(galaxy, empire, selected, action),
+    /** Main_KeyUp SetControlGroup0..9 (Ctrl+digit): `_Game.PlayerHotkeyN = _Game.SelectedObject` (controlGroups.ts). */
+    setControlGroup: (galaxy: Galaxy, _empire: Empire, index: number, obj: ControlGroupObject | null) => setControlGroup(galaxy, index, obj),
 
     // --- Automation ---
     /** GenerateAutomationMessageBox "Turn off automation". */

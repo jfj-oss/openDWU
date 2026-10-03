@@ -53,6 +53,7 @@ import { toggleExpansionPlanner } from './screens/expansionPlanner'; // [16a]
 import { setEmpireSummarySource, getEmpireSummarySource, toggleEmpireSummary } from './screens/empireSummary';
 // [leftovers] begin
 import { toggleGalacticHistory } from './screens/galacticHistory';
+import { openGroundReport } from './screens/groundReport'; // [parC1]
 // [leftovers] end
 import { formatThousandsK } from './screens/coloniesList';
 import { toggleColoniesScreen } from './screens/coloniesScreen';
@@ -507,6 +508,13 @@ export function toggleColoniesFromHud(empire: Empire, selected: Habitat | null =
     });
 }
 
+/** btnMessageHistoryGoto_Click (Main.Part4.cs:1967): method_156(x, y) + method_4(1.0) — centre at planet zoom. */
+export function historyGoTo(cam: Camera | undefined, x: number, y: number): void {
+    if (!cam) return;
+    cam.centerOn(x, y);
+    cam.zoomAt(PLANET_LEVEL_ZOOM, cam.width / 2, cam.height / 2);
+}
+
 export function createHud(wiring: HudWiring = {}): HudRefs {
     galaxyMapAt = wiring.openGalaxyMapAt ?? null;
     const root = document.createElement('div');
@@ -894,18 +902,7 @@ function openTopBarScreen(name: string, wiring: HudWiring): void {
             return;
         // [leftovers] btnGalacticHistory → Galactic History (Main.Part3.cs:46 btnGalacticHistory_Click).
         case 'btnGalacticHistory':
-            if (src) {
-                toggleGalacticHistory({
-                    empire: src.empire,
-                    // btnMessageHistoryGoto_Click: method_156(x, y) + method_4(1.0).
-                    onGoTo: (x, y) => {
-                        const cam = wiring.camera;
-                        if (!cam) return;
-                        cam.centerOn(x, y);
-                        cam.zoomAt(PLANET_LEVEL_ZOOM, cam.width / 2, cam.height / 2);
-                    },
-                });
-            }
+            if (src) toggleGalacticHistory({ empire: src.empire, mode: 'galactichistory', onGoTo: (x, y) => historyGoTo(wiring.camera, x, y) });
             return;
         // Main.Part9.cs tbtnColonies_Click: toggle the Colonies screen (pnlColonyInfo, Main.Part11.cs method_166).
         case 'tbtnColonies':
@@ -915,9 +912,10 @@ function openTopBarScreen(name: string, wiring: HudWiring): void {
         case 'btnEmpireSummary':
             toggleEmpireSummary();
             return;
-        // Main.Part4.cs btnHistoryMessages_Click.
+        // Main.Part4.cs:2016 btnHistoryMessages_Click: the same pnlMessageHistory as btnGalacticHistory, opened with
+        // method_528("either") (the last filter, unless it was Galactic History).
         case 'btnHistoryMessages':
-            toggleMessageHistory();
+            if (src) toggleGalacticHistory({ empire: src.empire, mode: 'either', onGoTo: (x, y) => historyGoTo(wiring.camera, x, y) });
             return;
         // Main.Part9.cs tbtnBuiltObjects_Click.
         case 'tbtnBuiltObjects':
@@ -1613,6 +1611,11 @@ function buildSelectionPanel(wiring: HudWiring): HTMLElement {
             if (player === null) return;
             if (t.empire === player) toggleEmpireSummary();
             else toggleDiplomacyScreen({ player, selectedEmpire: t.empire });
+            return;
+        }
+        // [parC1] The Troops / battle rows: the Ground Report (method_164).
+        if (t.kind === 'groundReport') {
+            openGroundReport(t.habitat);
             return;
         }
         const o = t.obj;
