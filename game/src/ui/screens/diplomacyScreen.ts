@@ -545,7 +545,7 @@ const HEADER_TEXT = 'rgb(200, 200, 200)';
 
 // Empire flags as URLs, resolved once (empireFlagUrl composes the stock flag / scenario emblem asynchronously).
 const flagUrls = new Map<Empire, string>();
-function flagImage(empire: Empire, w: number, h: number, className = 'dip-flag'): HTMLImageElement {
+export function flagImage(empire: Empire, w: number, h: number, className = 'dip-flag'): HTMLImageElement {
     const img = el('img', className);
     img.alt = '';
     img.draggable = false;
@@ -564,7 +564,7 @@ function flagImage(empire: Empire, w: number, h: number, className = 'dip-flag')
 
 /** RaceImageCache.GetEmpireDominantRaceImage: the race portrait, or the pirate playstyle image for a pirate faction
  *  (scenario portrait overrides through the 19r emblem hook). */
-function raceImage(empire: Empire, size: number, className = 'dip-race'): HTMLImageElement {
+export function raceImage(empire: Empire, size: number, className = 'dip-race'): HTMLImageElement {
     const img = el('img', className);
     img.alt = '';
     img.draggable = false;

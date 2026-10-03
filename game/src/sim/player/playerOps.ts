@@ -25,6 +25,7 @@ import {
     fleetRepairAndRefuel,
     fleetRetrofit,
     retrofitSelectedShips,
+    setShipRetrofitStance,
     refuelSelectedShips,
     renameFleet,
     renameShip,
@@ -97,6 +98,7 @@ import { obtainPirateRelation, PirateRelationType } from '../pirateRelations';
 import { acceptPirateProtection, calculatePirateProtectionPricePerMonth } from '../pirates/pirateRelationsAI';
 import { orderSalvage } from '../scenario/wreckage/wreckage';
 import { applyLlmStrategicCommand, type LlmStrategicCommand } from '../scenario/llm/strategic';
+import { applyPopulationPolicyToAllColonies, renameColony, scrapColonyFacility, setColonyAsCapital, setColonyPopulationPolicy, transferToTransport } from './colonyOrders';
 
 /** Automation / control fields of Empire the UI sets directly (Game Options panel and the automation prompts). */
 function isEmpireControlField(empire: Empire, field: string): boolean {
@@ -122,6 +124,8 @@ export const PLAYER_OPS = {
     retrofitShips: (galaxy: Galaxy, empire: Empire, ships: BuiltObject[], design: Design | null = null) => retrofitSelectedShips(galaxy, empire, ships, design),
     /** Main.Part11.cs hvhxxedjqS_Leave: rename a ship / base from the Ships and Bases window. */
     renameShip: (_galaxy: Galaxy, empire: Empire, ship: BuiltObject, name: string) => renameShip(empire, ship, name),
+    /** Main.Part11.cs mUwHhIdjxs: the Retrofit Stance combo (applies only to a single selected own ship). */
+    setShipRetrofitStance: (_galaxy: Galaxy, empire: Empire, ships: BuiltObject[], auto: boolean) => setShipRetrofitStance(empire, ships, auto),
     retireShips: (galaxy: Galaxy, empire: Empire, ships: BuiltObject[]) => retireSelectedShips(galaxy, empire, ships),
     renameFleet: (_galaxy: Galaxy, _empire: Empire, fleet: ShipGroup, name: string) => renameFleet(fleet, name),
     setFleetHomeColony: (_galaxy: Galaxy, empire: Empire, fleet: ShipGroup, colony: Habitat) => setFleetHomeColony(empire, fleet, colony),
@@ -207,6 +211,20 @@ export const PLAYER_OPS = {
     empireRename: (_galaxy: Galaxy, empire: Empire, name: string) => renameEmpire(empire, name),
     /** Main.Part6.cs:3028 btnEmpireSummaryChangeGovernment_Click → Empire.HaveRevolution; -1 when rejected. */
     empireChangeGovernment: (galaxy: Galaxy, empire: Empire, governmentId: number) => changeGovernmentByRevolution(galaxy, empire, governmentId),
+
+    // --- Colonies window (player/colonyOrders.ts) ---
+    /** Main.Part11.cs 4760 txtColonyName_Leave. */
+    renameColony: (_galaxy: Galaxy, empire: Empire, colony: Habitat, name: string) => renameColony(empire, colony, name),
+    /** Main.Part5.cs 2215 btnColonyMakeCapital_Click (+ BaconMain.OnChangeCapital). */
+    setColonyAsCapital: (galaxy: Galaxy, empire: Empire, colony: Habitat) => setColonyAsCapital(galaxy, empire, colony),
+    /** Main.Part11.cs 2629 / 2643: cmbColonyPopulationPolicyRaceFamily (sameFamily) / cmbColonyPopulationPolicyAllOthers. */
+    setColonyPopulationPolicy: (_galaxy: Galaxy, empire: Empire, colony: Habitat, sameFamily: boolean, policy: number) => setColonyPopulationPolicy(empire, colony, sameFamily, policy),
+    /** Main.Part11.cs 2657 btnColonyPopulationApplyPolicyToAll_Click. */
+    applyPopulationPolicyToAll: (_galaxy: Galaxy, empire: Empire, raceFamily: number, allOthers: number) => applyPopulationPolicyToAllColonies(empire, raceFamily, allOthers),
+    /** Main.Part6.cs 3696 btnColonyFacilityScrap_Click (Scrap, or Attack for a pirate faction's facility). */
+    scrapColonyFacility: (galaxy: Galaxy, empire: Empire, colony: Habitat, index: number, facilityId: number) => scrapColonyFacility(galaxy, empire, colony, index, facilityId),
+    /** Main.Part6.cs 3525 btnColonyTroopTransferTransport_Click. */
+    colonyTransferToTransport: (galaxy: Galaxy, empire: Empire, colony: Habitat, item: Troop | Character, transport: BuiltObject) => transferToTransport(galaxy, empire, colony, item, transport),
 
     // --- Troops ---
     disbandTroops: (_galaxy: Galaxy, empire: Empire, troops: Troop[]) => disbandTroops(empire, troops),

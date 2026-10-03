@@ -16,7 +16,6 @@
 // recruit options (the selection panel's five RecruitTroops buttons, Main.Part3.cs:2759-2860, through
 // executeShipAction, Main.Part7.cs:883-951) with the colony's recruitment progress.
 //
-// TODO(port): AutoPauseWhenInPopupWindow pause/resume — Main.Part11.cs:3733 / 4661 method_184
 // TODO(port): the galaxy nebula image on the mini map (GalaxyMap.cs bitmap_0, as in galaxyMap.ts) — GalaxyMap.cs method_6
 
 import './troops.css';

@@ -12,6 +12,9 @@ import { BuiltObjectSubRole } from '../src/sim/builtObjectTypes';
 import { BuiltObjectMissionType, builtObjectMission } from '../src/sim/missions/mission';
 import { FleetPosture } from '../src/sim/diplomacyTick';
 import { fleetShipAction, fleetAutomated } from '../src/ui/screens/fleetsList';
+import { deserializeGame, serializeGame } from '../src/sim/save/gameSave';
+import { defaultStartGameOptions } from '../src/sim/startGameOptions';
+import { GalaxyTime } from '../src/sim/galaxyTime';
 import type { Game } from '../src/sim/game';
 import type { BuiltObject } from '../src/sim/builtObject';
 
@@ -199,5 +202,42 @@ describe('selected-ship buttons (Refuel / Repair / Retire)', () => {
         const m = builtObjectMission(mil[1].mission);
         if (m !== null) expect(m.type).toBe(BuiltObjectMissionType.Refuel);
         expect(mil[1].subRole).not.toBe(BuiltObjectSubRole.Undefined);
+    });
+});
+
+describe('Retrofit Stance combo (Main.Part11.cs mUwHhIdjxs)', () => {
+    it('sets SuppressAutoRetrofit on a single own ship, journaled; ignores multi-selection, private sub-roles and foreign ships', () => {
+        const { game, mil } = fresh();
+        const p = game.playerEmpire;
+        const s = mil[0];
+        expect(s.suppressAutoRetrofit).toBe(false);
+        apply(game, 'setShipRetrofitStance', [[s], false]);
+        expect(s.suppressAutoRetrofit).toBe(true);
+        expect(commandLog(game.galaxy).some((e) => e.source === 'player' && (e as PlayerLogEntry).op === 'setShipRetrofitStance')).toBe(true);
+        apply(game, 'setShipRetrofitStance', [[mil[1], mil[2]], false]); // original: Count == 1 only
+        expect(mil[1].suppressAutoRetrofit).toBe(false);
+        expect(mil[2].suppressAutoRetrofit).toBe(false);
+        apply(game, 'setShipRetrofitStance', [[s], true]);
+        expect(s.suppressAutoRetrofit).toBe(false);
+        const freighter = mil[3];
+        freighter.subRole = BuiltObjectSubRole.SmallFreighter; // a private sub-role: the combo is disabled
+        apply(game, 'setShipRetrofitStance', [[freighter], false]);
+        expect(freighter.suppressAutoRetrofit).toBe(false);
+        const other = game.galaxy.empires.find((e) => e !== p && e.builtObjects.some((b) => b !== null && b.role === BuiltObjectRole.Military))!;
+        const foreign = other.builtObjects.find((b) => b !== null && b.role === BuiltObjectRole.Military)!;
+        apply(game, 'setShipRetrofitStance', [[foreign], false]);
+        expect(foreign.suppressAutoRetrofit).toBe(false);
+    });
+
+    it('the stance survives save / load', () => {
+        const { game, mil } = fresh();
+        apply(game, 'setShipRetrofitStance', [[mil[0]], false]);
+        const time = new GalaxyTime();
+        time.togglePause();
+        time.advance(game.galaxy.nowMs);
+        const loaded = deserializeGame(serializeGame(game, time, { ...defaultStartGameOptions(), seed: 1 }), gameData).game;
+        const ships = loaded.playerEmpire.builtObjects.filter((b) => b !== null && b.role === BuiltObjectRole.Military);
+        expect(ships[0].suppressAutoRetrofit).toBe(true);
+        expect(ships[1].suppressAutoRetrofit).toBe(false);
     });
 });

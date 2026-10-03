@@ -15,6 +15,7 @@
 import { fogOf } from './fog';
 import { collectHitsUnderPoint, needsPickMenu, PICK_MENU_MAX_ROWS, type PickCandidate, type PickHit } from './pickStack';
 import { openPickMenu, closePickMenu, type PickMenuEntry } from '../ui/pickMenu';
+import { describeSubRole } from '../sim/player/orderMenu';
 import { BuiltObjectRole } from '../sim/data/designSpecifications';
 import { SystemVisibilityStatus } from '../sim/visibility';
 import { playGridClick } from '../audio/gameAudio'; // [audio]
@@ -64,7 +65,7 @@ import { AmbientLayer } from './ambientLayer';
 // [fightersfx] begin
 import { FighterLayer } from './fighterLayer';
 import { WhalePilotLayer, whalePilotEnabled } from './whalePilotLayer'; // [whalepilot]
-import { CreatureLayer, creatureTooltipText } from './creatureLayer';
+import { CreatureLayer, creatureTooltipText, creatureVariantName } from './creatureLayer';
 import { FaunaGallery, faunaGalleryEnabled } from './faunaGallery'; // [newfauna]
 // [fightersfx] end
 // [rimatmo] begin
@@ -1113,6 +1114,20 @@ export interface MainViewTextures {
     backdrop: Texture;
 }
 
+/** Type label for a stacked-object pick row: the ship / base sub-role, the habitat type + category, the creature
+ *  variant. */
+function pickTypeLabel(it: Creature | BuiltObject | Habitat): string {
+    if (it instanceof BuiltObject) return describeSubRole(it.subRole);
+    if (it instanceof Habitat) {
+        const key = Object.keys(HabitatType).find((k) => (HabitatType as Record<string, unknown>)[k] === it.type) ?? '';
+        const words = key.replace(/([a-z])([A-Z])/g, '$1 $2');
+        const cat = it.category === HabitatCategoryType.Planet ? ' Planet' : it.category === HabitatCategoryType.Moon ? ' Moon'
+            : it.category === HabitatCategoryType.Asteroid ? ' Asteroid' : it.category === HabitatCategoryType.Star ? ' Star' : '';
+        return `${words}${cat}`.trim();
+    }
+    return creatureVariantName(it) ?? 'Creature';
+}
+
 export class MainView {
     world = new Container();
     fx = new Container();
@@ -1375,9 +1390,9 @@ export class MainView {
         return hits.map((h) => {
             const it = h.item;
             const owner = it instanceof BuiltObject || it instanceof Habitat ? (it.empire?.name ?? '') : '';
-            const role = it instanceof BuiltObject ? BuiltObjectRole[it.role] : undefined;
-            const name = it.name !== '' ? it.name : (role ?? h.kind);
-            return { icon: icons[h.kind], name, owner, onPick: () => choose(it) };
+            const type = pickTypeLabel(it);
+            const name = it.name !== '' ? it.name : type !== '' ? type : h.kind;
+            return { icon: icons[h.kind], name, type: it.name !== '' ? type : '', owner, onPick: () => choose(it) };
         });
     }
 

@@ -805,7 +805,6 @@ export function canTransfer(c: Character, destination: StellarObject | null): bo
 // DOM (Main.Part6.cs:3098 method_425: pnlIntelligenceAgents, 1020 × 770)
 // ---------------------------------------------------------------------------------------------------------------
 
-// TODO(port): the panel pauses a running game while open and resumes on close — Main.Part6.cs:3098 method_425 / 3214 method_426 (bool_11).
 // TODO(port): renaming in txtName (CharacterSummary.cs txtName_Leave) and the character tooltip (Galaxy.ResolveCharacterDescription) — Main.Part6.cs:3165.
 export interface IntelligenceScreenOptions {
     player: Empire;

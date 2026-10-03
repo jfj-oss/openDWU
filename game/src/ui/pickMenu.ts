@@ -4,6 +4,8 @@ import './pickMenu.css';
 export interface PickMenuEntry {
     icon: string;
     name: string;
+    /** Object type ("Destroyer", "Construction Ship", "Continental Planet", ...); '' = none. */
+    type: string;
     owner: string;
     onPick: () => void;
 }
@@ -45,6 +47,12 @@ export function openPickMenu(entries: readonly PickMenuEntry[], clientX: number,
         name.className = 'pick-menu-name';
         name.textContent = en.name;
         row.append(icon, name);
+        if (en.type !== '') {
+            const type = document.createElement('span');
+            type.className = 'pick-menu-type';
+            type.textContent = en.type;
+            row.append(type);
+        }
         if (en.owner !== '') {
             const owner = document.createElement('span');
             owner.className = 'pick-menu-owner';

@@ -3,8 +3,9 @@
 //
 // Like the C# (BeginInvoke) the events are handled after the sim call returns: queued here, drained on a timer.
 // Each event is recorded as a suppressed-popup EmpireMessage of the method_523 type (so it reaches the ticker and the
-// saved MessageHistory, which the Galactic History screen lists); the WonderBuilt event also pops up on the 16d card.
-// TODO(port): the event panel for the other event types (method_508/509/510/511 pictures, method_515-520 music cues,
+// saved MessageHistory, which the Galactic History screen lists); ruins and the WonderBuilt event open the event panel
+// (messagePopups.ts showEventMessagePopup, pnlEventMessage).
+// TODO(port): the event panel for the other event types (method_508/509/511 pictures, method_515-520 music cues,
 // Avoid/Investigate buttons) — Main.Part4.cs:487 method_523
 
 import { EmpireMessage, EmpireMessageType, sendEmpireMessage } from '../sim/messages';
