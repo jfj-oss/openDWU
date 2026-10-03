@@ -28,6 +28,8 @@ export class BuiltObjectIndex {
     rs = new Float64Array(0);
     /** Times the index was rebuilt (tests / perf counters). */
     rebuilds = 0;
+    /** update() calls so far: a reader outside the Main View (audio) uses the index only in a frame it was updated. */
+    updates = 0;
     /** Whether the latest update() rebuilt the index (liveness / positions may have changed this frame). */
     changed = true;
     private liveSetCache: Set<BuiltObject> | null = null;
@@ -42,6 +44,7 @@ export class BuiltObjectIndex {
     update(galaxy: Galaxy, motion: MotionInterpolator | null): boolean {
         const arr = galaxy.builtObjects as readonly (BuiltObject | null)[];
         const serial = motion?.serial ?? -1;
+        this.updates++;
         this.framesSince++;
         this.changed = false;
         if (serial === this.serial && arr === this.source && arr.length === this.sourceLength && this.framesSince < REFRESH_FRAMES && motion !== null) return false;
@@ -105,4 +108,13 @@ export class BuiltObjectIndex {
         }
         return out;
     }
+}
+
+/** The Main View's index of each galaxy (registered by MainView), for readers outside the view layers. */
+const byGalaxy = new WeakMap<Galaxy, BuiltObjectIndex>();
+export function registerBuiltObjectIndex(galaxy: Galaxy, index: BuiltObjectIndex): void {
+    byGalaxy.set(galaxy, index);
+}
+export function builtObjectIndexOf(galaxy: Galaxy): BuiltObjectIndex | null {
+    return byGalaxy.get(galaxy) ?? null;
 }

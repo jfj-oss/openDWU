@@ -25,6 +25,7 @@ import type { Fighter } from '../sim/combat/fighters';
 import type { Explosion } from '../sim/combat/damage';
 import { GalaxyLocationEffectType, GalaxyLocationType } from '../sim/galaxyLocation';
 import { determineGalaxyLocationsInRangeAtPoint } from '../sim/visibility';
+import { builtObjectIndexOf } from '../render/builtObjectIndex';
 import { isObjectVisibleToThisEmpire } from '../sim/independentTraders';
 import { Random } from '../sim/random';
 import { MIN_TIME } from '../sim/tick/simTime';
@@ -126,6 +127,9 @@ export class MainViewSounds {
     private lightningRandom: Random;
     /** MainView.cs:3356 the current system (Main.int_28), cached by nearest-system search. */
     private lastSystemIndex = -1;
+    /** BuiltObjectIndex.updates seen at the last collect (an index not updated since is stale: walk the full list). */
+    private indexUpdates = -1;
+    private nearScratch: BuiltObject[] = [];
 
     constructor(private player: EffectsPlayer, seed = Date.now() & 0x7fffffff) {
         this.lightningRandom = new Random(seed);
@@ -180,7 +184,15 @@ export class MainViewSounds {
 
             // MainView.1.cs:864-887: built objects near the screen and visible to the viewing empire.
             const fighters: Fighter[] = [];
-            for (const bo of galaxy.builtObjects) {
+            // Perf (late games, ~10k objects): the Main View's index (when it was updated this frame) yields, in galaxy
+            // order, the live objects within the 100 px test below (plus a px for the integer screen rounding).
+            const index = builtObjectIndexOf(galaxy);
+            let list: readonly (BuiltObject | null)[] = galaxy.builtObjects;
+            if (index !== null && index.updates !== this.indexUpdates) {
+                this.indexUpdates = index.updates;
+                list = index.near(view.x, view.y, view.width / 2 / view.zoom, view.height / 2 / view.zoom, 102 / view.zoom, false, this.nearScratch);
+            }
+            for (const bo of list) {
                 if (bo === null || bo === undefined || bo.hasBeenDestroyed) continue;
                 const p = toScreen(view, bo.xpos, bo.ypos);
                 if (!onScreen(view, p, 100)) continue;

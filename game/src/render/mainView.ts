@@ -87,7 +87,7 @@ import { wreckTooltipText } from '../ui/scenario/wreckageUi'; // [wreckage]
 import type { FreightOverlay } from './freightOverlay'; // [freightOverlay]
 import { boundsOnScreen, DrawKey } from './drawCache';
 import { drawRangeRings, fleetRangeRadii } from './rangeRings';
-import { BuiltObjectIndex } from './builtObjectIndex';
+import { BuiltObjectIndex, registerBuiltObjectIndex } from './builtObjectIndex';
 import { MotionInterpolator, createRenderTime, builtObjectDrawnOffsetBound, drawnBuiltObjectPos, habitatTouchClampSeconds, renderOrbitAngle, type RenderTime } from './renderInterp';
 import { isDrag, objectsInBox, resolveBoxSelection, screenBox, shiftClickSelection, type ScreenBox } from './boxSelect';
 import { isObjectVisibleToThisEmpire } from '../sim/independentTraders';
@@ -1686,6 +1686,7 @@ export class MainView {
         // Render interpolation between sim steps: the layers drawing moving objects share one interpolator.
         this.builtObjectLayer.motion = this.motion;
         this.builtObjectLayer.index = this.builtObjectIndex;
+        registerBuiltObjectIndex(this.galaxy, this.builtObjectIndex);
         this.overlayLayer.motion = this.motion;
         this.overlayLayer.getSelection = () => this.getHudSelection();
         this.empireLayer.motion = this.motion;
