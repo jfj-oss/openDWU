@@ -1,24 +1,27 @@
-// Ship Designs panel (task 16b): a streamlined port of the original's Designs
-// window (F8 / top-bar tbtnDesigns). The design list and its two filter combos
-// follow Main.Part8.cs method_303 (latest buildable), method_304 (latest) and
-// method_306 (filters); the row columns follow DistantWorlds.Controls
-// DesignListView.cs BindData; the Obsolete / Retrofit toggles follow
-// Main.Part8.cs ctlDesignsList_CellClick; the detail pane's labels come from
-// DesignDefense.cs, DesignMovement.cs, DesignEnergy.cs and DesignIndustry.cs.
-// The original is a full design editor window; this version lists the
-// player's designs with the original's columns and shows the selected design's
-// stats and components.
-//
-// Task 17f: Add New / Edit / Copy As New / Manually Upgrade / Delete open the design editor (designEditor.ts) or
-// act through src/sim/player/designEditor.ts; the Upgrade toggle is Empire.SetDesignSubRoleShouldBeUpgraded.
-// TODO(port): "Auto Upgrade Selected Designs" (BaconMain.cs:2471 btnDesignsUpgrade_Click), load/save design files,
-//   design images, multi-select delete — not ported.
+// Designs screen (F8 / the top bar's tbtnDesigns): a port of the original pnlDesigns ScreenPanel on the shared
+// original-style window (../originalWindow.ts).
+// Sources:
+// - DistantWorlds/Main.Part8.cs:980 method_307 (window 980 × 690: the filter combos at (10, 18) / (190, 18), the
+//   maximum-size label (370, 15), Load / Save (635, 10) / (800, 10), the upgrade-roles explanation (10, 60), Show Empire
+//   Policy (635, 62), the design list (10, 122) 945 × 450 with its column widths, and the six buttons along y 580);
+// - Main.Part8.cs:697 method_303 / :753 method_304 / :835 method_306 (filters), :808 method_305 (maximum size label),
+//   :1081 ctlDesignsList_CellClick (the Obsolete / Upgrade / Retrofit cells toggle), :926 btnDesignsUpgradeManual_Click;
+//   Main.Part6.cs:1047 btnDesignsAddNew_Click, :1060 btnDesignsCopyAsNew_Click, :1114 btnDesignsDelete_Click;
+//   Main.Part7.cs:4840 btnDesignsEdit_Click; Main.Part12.cs:4453 GenerateAutomationMessageBox;
+// - DistantWorlds.Controls/Controls/DesignListView.cs (columns, BindData: the manual-design colour, the private-design
+//   retrofit cell, the red obsolete cross, multi-select).
+// The design editor (pnlDesignDetail) is designEditor.ts. Every change goes through a player command or the editor.
+// Our additions (kept from the streamlined screen): the selected design's summary on the right (picture, the stat rows,
+// its components) — the original window has no detail pane; double-click a row to edit it.
+// TODO(port): "Auto Upgrade Selected Designs" (BaconMain.cs:2471 btnDesignsUpgrade_Click — needs
+//   Empire.ResolveLatestStandardTorpedoWeapon / ResolveLatestBombardWeapon / ResearchSystem.CalculateCurrentTechPoints),
+//   Load / Save design files (Main.Part4.cs:1598 btnDesignsSave_Click), the empire-colour tint of the list's ship
+//   pictures (DesignListView.PrepareBuiltObjectImage).
 
-import './shipDesigns.css';
+import './designsScreen.css';
 import type { Empire } from '../../sim/empire';
 import type { Galaxy } from '../../sim/galaxy';
 import type { Design } from '../../sim/design';
-import type { BuiltObject } from '../../sim/builtObject';
 import { BuiltObjectRole } from '../../sim/data/designSpecifications';
 import { BuiltObjectSubRole } from '../../sim/builtObjectTypes';
 import {
@@ -30,21 +33,39 @@ import {
 } from '../../sim/designGeneration';
 import { designCalculateMaintenanceCosts } from '../../sim/construction/empireConstruction';
 import { issuePlayerCommand } from '../../sim/player/playerCommands';
-import { formatMoney, rgbCss } from '../hud';
-// [designeditor] begin
-import { getText, resolveGameText } from '../../sim/textResolver';
+import { formatMoney } from '../hud';
+import { resolveGameText } from '../../sim/textResolver';
 import {
-    deleteDesign,
     deleteDesignQuestion,
+    designAutomationPromptApplies,
     isDesignInUse,
     newDesignDraft,
-    setDesignSubRoleShouldBeUpgraded,
     type DesignDraftSource,
 } from '../../sim/player/designEditor';
 import { openDesignEditor, type DesignEditorHandle } from './designEditor';
 import { isPrivateDesignSubRole, toggleDesignObsolete, toggleDesignAutoRetrofit } from '../../sim/player/playerOrders';
+import { builtObjectImageUrl, resolveDrawPictureRef } from '../../render/builtObjectLayer';
+import { empireFlagUrl } from '../selectionInfoView';
+import { toggleEmpirePolicy } from './empirePolicy';
+import {
+    COLORS,
+    FONT,
+    OwGrid,
+    darkRect,
+    dropDown,
+    dropText,
+    el,
+    glassButton,
+    messageBox,
+    openOriginalWindow,
+    place,
+    scrollPanel,
+    setText,
+    text,
+    type OriginalWindow,
+} from '../originalWindow';
+import { componentImageUrl, gt, maximumSizeText } from './designPanelsModel';
 export { isPrivateDesignSubRole, toggleDesignObsolete, toggleDesignAutoRetrofit };
-// [designeditor] end
 
 /** cmbDesignsFilter items (Main.Part8.cs:1006-1028). */
 export enum DesignFilter { Latest, LatestBuildable, NonObsolete, BuildableNonObsolete, All }
@@ -292,7 +313,10 @@ export function componentSummary(design: Design): { name: string; count: number 
     return out;
 }
 
-// ---- DOM ----
+
+// ---------------------------------------------------------------------------------------------------------------------
+// DOM (pnlDesigns)
+// ---------------------------------------------------------------------------------------------------------------------
 
 export interface ShipDesignsOptions {
     /** The player's empire. */
@@ -300,253 +324,313 @@ export interface ShipDesignsOptions {
 }
 
 interface OpenState {
-    root: HTMLElement;
+    win: OriginalWindow;
     close: () => void;
 }
 
 let open: OpenState | null = null;
-// Kept across open/close, like the original's combos.
+// Kept across open/close, like the original's combos (filled once, cmbDesignsFilter.SelectedIndex = 1).
 let filterIndex: DesignFilter = DesignFilter.LatestBuildable;
 let typeFilterIndex: DesignTypeFilter = DesignTypeFilter.All;
 
-const MANUAL_COLOR = rgbCss((255 << 16) | (102 << 8) | 0);
-const LOCKED_COLOR = rgbCss((96 << 16) | (96 << 8) | 96);
+/** pnlDesigns.Size (Main.Part8.cs:988). */
+export const DESIGNS_WINDOW = { w: 980, h: 690 } as const;
+/** Our detail pane right of the list (not in the original): its width, added to the window. */
+export const DESIGNS_DETAIL_WIDTH = 262;
+
 const MANUAL_TOOLTIP = 'This design is manually created';
 const LOCKED_TOOLTIP = 'Private design - cannot manually retrofit';
-const HEADERS = ['Name', 'Role', 'Sub-role', 'Cost', 'Maint', 'Date Created', 'Size', 'Amount', 'Upgrade', 'Retrofit', 'Optimized', 'Obsolete'] as const;
-const NUMBER_COLUMNS = new Set(['Cost', 'Maint', 'Size', 'Amount']);
 
-/** Open the Designs panel, or close it if it is already open. */
+/** Open the Designs window, or close it if it is already open (Main.Part9.cs:4339 tbtnDesigns_Click). */
 export function toggleShipDesigns(opts: ShipDesignsOptions): void {
-    if (open) {
-        open.close();
-    } else {
-        open = createShipDesigns(opts);
-    }
+    if (open) open.close();
+    else open = createShipDesigns(opts);
 }
 
-/** Close the Designs panel (no-op when closed). */
+/** Close the Designs window (no-op when closed). */
 export function closeShipDesigns(): void {
     open?.close();
 }
 
-function el<K extends keyof HTMLElementTagNameMap>(tag: K, className: string, text?: string): HTMLElementTagNameMap[K] {
-    const e = document.createElement(tag);
-    e.className = className;
-    if (text !== undefined) e.textContent = text;
-    return e;
+export function isShipDesignsOpen(): boolean {
+    return open !== null;
+}
+
+/** A design's picture (BuiltObjectImageCache.GetImagesSmall()[PictureRef]). */
+export function designPictureUrl(design: Pick<Design, 'pictureRef' | 'subRole' | 'isPlanetDestroyer'>): string | null {
+    return builtObjectImageUrl(resolveDrawPictureRef({ pictureRef: design.pictureRef, isPlanetDestroyer: design.isPlanetDestroyer, subRole: design.subRole, builtObjectID: 0 }));
+}
+
+/** A ship picture turned like RotateFlip(Rotate270FlipNone) and zoomed into its box. */
+export function shipPicture(url: string | null, className = ''): HTMLDivElement {
+    const box = el('div', `dsg-ship${className ? ` ${className}` : ''}`);
+    if (url !== null) {
+        const img = el('img');
+        img.src = url;
+        img.alt = '';
+        img.draggable = false;
+        box.appendChild(img);
+    }
+    return box;
+}
+
+/** DesignListView.GenerateObsoleteImage: a red 16 × 16 cross with a bar (pen 2, round caps). */
+function obsoleteIcon(): HTMLElement {
+    const s = el('span', 'dsg-obsolete-icon');
+    s.innerHTML =
+        '<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M4 2 L11 14 M11 2 L4 14 M1 8 L14 8"/></svg>';
+    return s;
+}
+
+/**
+ * Main.Part12.cs:4453 GenerateAutomationMessageBox("Ship Design"): when the empire automates ship design, ask whether
+ * to turn it off ("Off" sets ControlDesigns = false). Resolves once answered.
+ */
+export async function askDesignAutomation(galaxy: Galaxy, empire: Empire): Promise<void> {
+    const task = gt('Ship Design');
+    const off = gt('Turn off automation');
+    const r = await messageBox({
+        caption: gt('Turn Off TASKNAME Automation?', task),
+        text: gt('Would you like to turn off automation', task),
+        buttons: [gt('Leave automation on'), off],
+        icon: 'question',
+        width: 520,
+        buttonWidth: 190,
+    });
+    if (r === off) issuePlayerCommand(galaxy, empire, 'setEmpireControl', ['controlDesigns', false]);
 }
 
 function createShipDesigns(opts: ShipDesignsOptions): OpenState {
     const player = opts.empire;
-    const galaxy = opts.empire.galaxy as Galaxy;
-    let selected: Design | null = null;
-    // [designeditor] begin
+    const galaxy = player.galaxy as Galaxy;
     let editor: DesignEditorHandle | null = null;
-    let pendingDelete: Design | null = null;
-    let notice = '';
-    // [designeditor] end
+    let busy = false; // a message box is up
+    const flagUrls = new Map<Empire, string>();
 
-    const root = el('div', 'ship-designs-wrap');
-    const win = el('div', 'ship-designs-window');
+    const win = openOriginalWindow({
+        id: 'designs',
+        title: gt('Designs'),
+        icon: 'designs.png',
+        width: DESIGNS_WINDOW.w + DESIGNS_DETAIL_WIDTH,
+        height: DESIGNS_WINDOW.h,
+        onClose: () => {
+            editor?.close();
+            window.clearInterval(timer);
+            open = null;
+        },
+    });
+    const body = win.body;
 
-    const titlebar = el('div', 'ship-designs-titlebar');
-    const heading = el('div', 'ship-designs-heading');
-    titlebar.appendChild(heading);
-    const closeBtn = el('button', 'ship-designs-close', '✕');
-    closeBtn.type = 'button';
-    closeBtn.title = 'Close';
-    titlebar.appendChild(closeBtn);
-    win.appendChild(titlebar);
+    // cmbDesignsFilter / cmbDesignsFilterTypes (Main.Part8.cs:997-1028).
+    body.appendChild(place(dropDown(DESIGN_FILTER_LABELS.map((l, i) => ({ value: String(i), label: gt(l) })), String(filterIndex), (v) => {
+        filterIndex = Number(v) as DesignFilter;
+        refreshList();
+    }), 10, 18, 165, 21));
+    body.appendChild(place(dropDown(DESIGN_TYPE_FILTER_LABELS.map((l, i) => ({ value: String(i), label: gt(l) })), String(typeFilterIndex), (v) => {
+        typeFilterIndex = Number(v) as DesignTypeFilter;
+        refreshList();
+    }), 190, 18, 165, 21));
+    // lblDesignsMaximumSize (method_305).
+    const maxSize = dropText(body, maximumSizeText(player), 370, 15, { color: COLORS.text });
+    // btnDesignsLoad / btnDesignsSave.
+    body.appendChild(place(glassButton(gt('Load Designs...'), { disabled: true, title: 'Loading design files is not available yet' }), 635, 10, 155, 40));
+    body.appendChild(place(glassButton(`${gt('Save Selected Designs')}...`, { disabled: true, title: 'Saving design files is not available yet' }), 800, 10, 155, 40));
+    // lblDesignsUpgradeRolesExplanation (10, 60) 615 × 45, MiddleLeft, font_3.
+    const explanation = el('div', 'dsg-explanation');
+    explanation.appendChild(text(gt('Designs Upgrade Roles Explanation'), { size: FONT.normal, wrapWidth: 615, color: COLORS.text }));
+    body.appendChild(place(explanation, 10, 60, 615, 45));
+    // btnDesignsShowEmpirePolicy → method_595.
+    body.appendChild(place(glassButton(gt('Show Empire Policy'), { onClick: () => toggleEmpirePolicy({ empire: player }) }), 635, 62, 320, 40));
 
-    // Toolbar: the two filter combos (Main.Part8.cs:1006-1028).
-    const toolbar = el('div', 'ship-designs-toolbar');
-    const makeSelect = (labels: readonly string[], value: number, onChange: (v: number) => void): HTMLSelectElement => {
-        const sel = el('select', 'ship-designs-select');
-        labels.forEach((text, i) => {
-            const o = document.createElement('option');
-            o.value = String(i);
-            o.textContent = text;
-            sel.appendChild(o);
-        });
-        sel.value = String(value);
-        sel.addEventListener('change', () => {
-            onChange(Number(sel.value));
-            render();
-        });
-        return sel;
-    };
-    toolbar.append(
-        makeSelect(DESIGN_FILTER_LABELS, filterIndex, (v) => { filterIndex = v as DesignFilter; }),
-        makeSelect(DESIGN_TYPE_FILTER_LABELS, typeFilterIndex, (v) => { typeFilterIndex = v as DesignTypeFilter; }),
-    );
-    // [designeditor] begin
-    // btnDesignsAddNew (Main.Part3.cs:837, Main.Part6.cs:1047).
-    const addNewBtn = el('button', 'ship-designs-button', getText('Add New'));
-    addNewBtn.type = 'button';
-    addNewBtn.addEventListener('click', () => openEditor({ kind: 'blank' }));
-    toolbar.appendChild(addNewBtn);
-    // [designeditor] end
-    win.appendChild(toolbar);
-
-    const body = el('div', 'ship-designs-body');
-    const listPane = el('div', 'ship-designs-pane ship-designs-list');
-    const detailPane = el('div', 'ship-designs-pane ship-designs-detail');
-    body.append(listPane, detailPane);
-    win.appendChild(body);
-    root.appendChild(win);
-    document.body.appendChild(root);
-
-    function render(): void {
-        const designs = filterDesigns(player, filterIndex, typeFilterIndex);
-        heading.textContent = `Designs (${designs.length})`;
-        if (selected === null || !designs.includes(selected)) selected = designs[0] ?? null;
-
-        listPane.replaceChildren();
-        if (designs.length === 0) {
-            listPane.appendChild(el('div', 'ship-designs-empty', 'No designs'));
-        } else {
-            const table = el('table', 'ship-designs-table');
-            const thead = el('thead', '');
-            const hr = el('tr', 'ship-designs-header');
-            for (const h of HEADERS) {
-                const th = el('th', NUMBER_COLUMNS.has(h) ? 'ship-designs-header-cell ship-designs-number' : 'ship-designs-header-cell', h);
-                hr.appendChild(th);
-            }
-            thead.appendChild(hr);
-            table.appendChild(thead);
-            const tbody = el('tbody', '');
-            for (const design of designs) {
-                const row = designRow(design, player, galaxy);
-                const tr = el('tr', design === selected ? 'ship-designs-row ship-designs-row-selected' : 'ship-designs-row');
-                if (row.manual) {
-                    tr.style.color = MANUAL_COLOR;
-                    tr.title = MANUAL_TOOLTIP;
-                }
-                const cells: [string, boolean][] = [
-                    [row.name, false], [row.role, false], [row.subRole, false],
-                    [formatMoney(row.cost), true], [formatMoney(row.maintenance), true], [row.dateCreated, false],
-                    [String(row.size), true], [String(row.amount), true], [row.upgrade, false],
-                    [row.retrofit, false], [row.optimized, false], [row.obsolete, false],
-                ];
-                cells.forEach(([text, isNum], i) => {
-                    let cls = isNum ? 'ship-designs-cell ship-designs-number' : 'ship-designs-cell';
-                    if (i === 0) cls += ' ship-designs-name';
-                    const td = el('td', cls, text);
-                    if (i === 9 && row.retrofitLocked) {
-                        td.style.color = LOCKED_COLOR;
-                        td.title = LOCKED_TOOLTIP;
+    // ctlDesignsList (10, 122) 945 × 450 with method_307's column widths (Name takes what the scrollbar leaves).
+    const grid = new OwGrid<DesignRow>({
+        key: (r) => r.design,
+        multiSelect: true,
+        rowClass: (r) => (r.manual ? 'dsg-manual' : ''),
+        onSelect: () => renderDetail(),
+        onDoubleClick: (r) => void startEditor({ kind: 'edit', design: r.design }),
+        empty: '',
+        columns: [
+            {
+                id: 'EmpirePicture', header: '', width: 22,
+                sort: (r) => (r.design.empire as Empire | null)?.name ?? '',
+                render: (r, cell) => {
+                    const owner = (r.design.empire as Empire | null) ?? player;
+                    const img = el('img', 'dsg-flag');
+                    img.alt = '';
+                    const known = flagUrls.get(owner);
+                    if (known) img.src = known;
+                    else void empireFlagUrl(galaxy, owner).then((u) => { flagUrls.set(owner, u); img.src = u; });
+                    cell.title = owner.name;
+                    cell.appendChild(img);
+                },
+            },
+            { id: 'Picture', header: '', width: 30, render: (r, cell) => cell.appendChild(shipPicture(designPictureUrl(r.design), 'dsg-ship-row')) },
+            { id: 'Name', header: gt('Name'), sort: (r) => r.name, render: (r, cell) => tip(cell, r, r.name) },
+            { id: 'Role', header: gt('Role'), width: 80, sort: (r) => r.role, render: (r, cell) => tip(cell, r, r.role) },
+            { id: 'SubRole', header: gt('SubRole'), width: 140, sort: (r) => r.subRole, render: (r, cell) => tip(cell, r, r.subRole) },
+            { id: 'Cost', header: gt('Cost'), width: 50, align: 'right', sort: (r) => r.cost, render: (r, cell) => tip(cell, r, String(Math.round(r.cost))) },
+            { id: 'Maintenance', header: gt('Maintenance Abbreviation'), width: 50, align: 'right', sort: (r) => r.maintenance, render: (r, cell) => tip(cell, r, String(Math.round(r.maintenance))) },
+            { id: 'DateCreated', header: gt('Date Created'), width: 80, sort: (r) => r.design.dateCreated, render: (r, cell) => tip(cell, r, r.dateCreated) },
+            { id: 'Size', header: gt('Size'), width: 45, align: 'right', sort: (r) => r.size, render: (r, cell) => tip(cell, r, String(r.size)) },
+            { id: 'BuildCount', header: gt('Amount'), width: 55, align: 'right', sort: (r) => r.amount, render: (r, cell) => tip(cell, r, String(r.amount)) },
+            {
+                id: 'Upgrade', header: gt('Upgrade'), width: 65, align: 'center', sort: (r) => r.upgrade,
+                render: (r, cell) => tip(cell, r, gt(r.upgrade)),
+                onClick: (r) => {
+                    // ctlDesignsList_CellClick "Upgrade": SetDesignSubRoleShouldBeUpgraded(SubRole, !current).
+                    const now = checkDesignSubRoleShouldBeUpgraded(player, r.design.subRole);
+                    issuePlayerCommand(galaxy, player, 'setDesignSubRoleUpgrade', [r.design.subRole, !now], () => refreshList());
+                },
+            },
+            {
+                id: 'AutoRetrofit', header: gt('Retrofit'), width: 65, align: 'center', sort: (r) => r.retrofit,
+                render: (r, cell) => {
+                    if (r.retrofitLocked) {
+                        cell.classList.add('dsg-locked');
+                        cell.title = gt(LOCKED_TOOLTIP);
                     }
-                    tr.appendChild(td);
-                });
-                tr.addEventListener('click', () => {
-                    selected = design;
-                    render();
-                });
-                tbody.appendChild(tr);
-            }
-            table.appendChild(tbody);
-            listPane.appendChild(table);
+                    tip(cell, r, gt(r.retrofit));
+                },
+                onClick: (r) => {
+                    // "AutoRetrofit": not for the six private sub-roles.
+                    if (r.retrofitLocked) return;
+                    const owner = (r.design.empire as Empire | null) ?? player;
+                    issuePlayerCommand(galaxy, owner, 'toggleDesignAutoRetrofit', [r.design], () => refreshList());
+                },
+            },
+            {
+                id: 'Optimized', header: gt('Optimized'), width: 70, align: 'center', sort: (r) => r.optimized,
+                render: (r, cell) => {
+                    if (r.optimized === 'Yes') cell.title = gt('This is an optimized design');
+                    tip(cell, r, gt(r.optimized));
+                },
+            },
+            {
+                id: 'Obsolete', header: gt('Obsolete'), width: 40, align: 'center', sort: (r) => r.obsolete,
+                render: (r, cell) => {
+                    cell.title = gt(r.obsolete);
+                    if (r.design.isObsolete) cell.appendChild(obsoleteIcon());
+                },
+                onClick: (r) => {
+                    // "Obsolete": design.IsObsolete = !design.IsObsolete.
+                    issuePlayerCommand(galaxy, player, 'toggleDesignObsolete', [r.design], () => refreshList());
+                },
+            },
+        ],
+    });
+    grid.el.classList.add('dsg-list');
+    body.appendChild(place(grid.el, 10, 122, 945, 450));
+
+    /** DesignListView: a manually created design's cells are (255, 102, 0) with "This design is manually created". */
+    function tip(cell: HTMLDivElement, r: DesignRow, value: string): void {
+        cell.textContent = value;
+        if (r.manual && cell.title === '') cell.title = gt(MANUAL_TOOLTIP);
+    }
+
+    // The buttons along y 580 (method_307).
+    const single = (): Design | null => {
+        const sel = grid.selectedAll;
+        return sel.length === 1 ? sel[0].design : (grid.selected?.design ?? null);
+    };
+    const editBtn = glassButton(gt('Edit'), { onClick: () => { const d = single(); if (d) void startEditor({ kind: 'edit', design: d }); } });
+    const addBtn = glassButton(gt('Add New'), { onClick: () => void startEditor({ kind: 'blank' }) });
+    const copyBtn = glassButton(gt('Copy As New'), { onClick: () => { const d = single(); if (d) void startEditor({ kind: 'copy', design: d }); } });
+    const upgradeManualBtn = glassButton(gt('Manually Upgrade Design'), {
+        onClick: () => {
+            // btnDesignsUpgradeManual_Click: exactly one selected row.
+            const sel = grid.selectedAll;
+            if (sel.length === 1) void startEditor({ kind: 'upgrade', design: sel[0].design });
+        },
+    });
+    const autoUpgradeBtn = glassButton(gt('Auto Upgrade Selected Designs'), { disabled: true, title: 'Automatic upgrading of selected designs is not available yet' });
+    const deleteBtn = glassButton(gt('Delete Selected Designs'), { onClick: () => void deleteSelected() });
+    body.append(
+        place(editBtn, 10, 580, 128, 40),
+        place(addBtn, 148, 580, 128, 40),
+        place(copyBtn, 286, 580, 128, 40),
+        place(upgradeManualBtn, 424, 580, 170, 40),
+        place(autoUpgradeBtn, 604, 580, 170, 40),
+        place(deleteBtn, 784, 580, 171, 40),
+    );
+
+    // Our detail pane (not in the original): the selected design at a glance.
+    const detail = darkRect();
+    detail.classList.add('dsg-detail');
+    body.appendChild(place(detail, DESIGNS_WINDOW.w - 16 + 4, 10, DESIGNS_DETAIL_WIDTH - 14, 610));
+    const detailName = dropText(detail, '', 8, 6, { size: FONT.large, bold: true, color: '#fff' });
+    detailName.classList.add('dsg-detail-name');
+    const detailRole = dropText(detail, '', 8, 28, { size: FONT.small, color: COLORS.label });
+    const detailPic = place(shipPicture(null, 'dsg-detail-pic'), 8, 50, DESIGNS_DETAIL_WIDTH - 30, 96);
+    detail.appendChild(detailPic);
+    const detailStats = place(el('div', 'dsg-detail-stats'), 8, 152, DESIGNS_DETAIL_WIDTH - 30, 238);
+    detail.appendChild(detailStats);
+    dropText(detail, gt('Components'), 8, 394, { size: FONT.normal, bold: true, color: '#fff' });
+    const detailComps = place(scrollPanel('dsg-detail-comps'), 8, 414, DESIGNS_DETAIL_WIDTH - 30, 188);
+    detail.appendChild(detailComps);
+
+    function renderDetail(): void {
+        const sel = grid.selectedAll;
+        const design = sel.length === 1 ? sel[0].design : grid.selected?.design ?? null;
+        const enable = (b: HTMLButtonElement, on: boolean): void => { b.disabled = !on; };
+        enable(editBtn, design !== null);
+        enable(copyBtn, design !== null);
+        enable(upgradeManualBtn, sel.length === 1);
+        enable(deleteBtn, sel.length > 0);
+        if (design === null) {
+            setText(detailName, sel.length > 1 ? `${sel.length} ${gt('Designs')}` : '');
+            setText(detailRole, '');
+            detailPic.replaceChildren();
+            detailStats.replaceChildren();
+            detailComps.replaceChildren();
+            return;
         }
+        setText(detailName, design.name);
+        setText(detailRole, `${resolveSubRoleDescription(design.subRole)} · ${roleDescription(design.role)}`);
+        const url = designPictureUrl(design);
+        const img = detailPic.querySelector('img');
+        if (url === null) detailPic.replaceChildren();
+        else if (img === null || img.getAttribute('src') !== url) detailPic.replaceChildren(...shipPicture(url).childNodes);
+        detailStats.replaceChildren();
+        for (const { label, value } of designStatRows(design)) {
+            const row = el('div', 'dsg-detail-row');
+            row.append(el('span', 'dsg-detail-label', gt(label)), el('span', 'dsg-detail-value', value));
+            detailStats.appendChild(row);
+        }
+        detailComps.replaceChildren();
+        const pics = new Map<string, number>();
+        for (const c of design.components) if (!pics.has(c.name)) pics.set(c.name, c.pictureRef);
+        for (const { name, count } of componentSummary(design)) {
+            const row = el('div', 'dsg-detail-comp');
+            const ic = el('img');
+            ic.src = componentImageUrl(pics.get(name) ?? 0);
+            ic.alt = '';
+            row.append(ic, el('span', 'dsg-detail-count', `${count}×`), el('span', 'dsg-detail-cname', name));
+            detailComps.appendChild(row);
+        }
+    }
+
+    function refreshList(selectDesign: Design | null = null): void {
+        const designs = filterDesigns(player, filterIndex, typeFilterIndex);
+        const prev = selectDesign ?? grid.selected?.design ?? null;
+        grid.setRows(designs.map((d) => designRow(d, player, galaxy)));
+        // The grid keeps its (multi-)selection by key across re-binds; select only a new design or when none is left.
+        if (selectDesign !== null && designs.includes(selectDesign)) grid.select(selectDesign, true);
+        else if (designs.length > 0 && (prev === null || !designs.includes(prev))) grid.select(designs[0], false);
+        setText(maxSize, maximumSizeText(player));
         renderDetail();
     }
 
-    function renderDetail(): void {
-        detailPane.replaceChildren();
-        const design = selected;
-        if (design === null) return;
-        detailPane.appendChild(el('div', 'ship-designs-detail-name', design.name));
-        detailPane.appendChild(
-            el('div', 'ship-designs-detail-role', `${resolveSubRoleDescription(design.subRole)} · ${roleDescription(design.role)}`),
-        );
-
-        const stats = el('div', 'ship-designs-stats');
-        for (const { label, value } of designStatRows(design)) {
-            stats.append(el('span', 'ship-designs-stat-label', label), el('span', 'ship-designs-stat-value', value));
+    // Edit / Add New / Copy As New / Manually Upgrade: the automation question first, then the editor.
+    async function startEditor(source: DesignDraftSource): Promise<void> {
+        if (editor !== null || busy) return;
+        busy = true;
+        try {
+            if (designAutomationPromptApplies(player, source.kind, source.kind === 'blank' ? null : source.design)) await askDesignAutomation(galaxy, player);
+        } finally {
+            busy = false;
         }
-        detailPane.appendChild(stats);
-
-        detailPane.appendChild(el('div', 'ship-designs-section', 'Components'));
-        const comps = el('div', 'ship-designs-components');
-        for (const { name, count } of componentSummary(design)) {
-            comps.appendChild(el('div', 'ship-designs-component', `${count} × ${name}`));
-        }
-        detailPane.appendChild(comps);
-
-        const buttons = el('div', 'ship-designs-buttons');
-        const obsoleteBtn = el('button', 'ship-designs-button', design.isObsolete ? 'Mark Not Obsolete' : 'Mark Obsolete');
-        obsoleteBtn.type = 'button';
-        obsoleteBtn.addEventListener('click', () => {
-            issuePlayerCommand(player.galaxy, player, 'toggleDesignObsolete', [design], () => render());
-        });
-        const retrofitBtn = el('button', 'ship-designs-button', design.allowAutoRetrofit ? 'Retrofit: Automatic' : 'Retrofit: Manual');
-        retrofitBtn.type = 'button';
-        if (isPrivateDesignSubRole(design.subRole)) {
-            retrofitBtn.disabled = true;
-            retrofitBtn.title = LOCKED_TOOLTIP;
-        }
-        retrofitBtn.addEventListener('click', () => {
-            const owner = (design.empire as Empire | null) ?? player;
-            issuePlayerCommand(owner.galaxy, owner, 'toggleDesignAutoRetrofit', [design], (ok) => ok && render());
-        });
-        buttons.append(obsoleteBtn, retrofitBtn);
-        detailPane.appendChild(buttons);
-        // [designeditor] begin
-        renderEditorButtons(design);
-        // [designeditor] end
-    }
-
-    // [designeditor] begin
-    // The Designs panel's editing buttons (Main.Part3.cs:837-841, Main.Part8.cs:1063-1069) and the Upgrade column
-    // toggle (Main.Part8.cs:1096-1122 ctlDesignsList_CellClick → Empire.SetDesignSubRoleShouldBeUpgraded).
-    function renderEditorButtons(design: Design): void {
-        const row = el('div', 'ship-designs-buttons');
-        const mk = (text: string, onClick: () => void): HTMLButtonElement => {
-            const b = el('button', 'ship-designs-button', text);
-            b.type = 'button';
-            b.addEventListener('click', onClick);
-            row.appendChild(b);
-            return b;
-        };
-        const upgrade = checkDesignSubRoleShouldBeUpgraded(player, design.subRole);
-        mk(`${getText('Upgrade')}: ${getText(upgrade ? 'Automatic' : 'Manual')}`, () => {
-            issuePlayerCommand(player.galaxy, player, 'setDesignSubRoleUpgrade', [design.subRole, !upgrade], () => render());
-        });
-        mk(getText('Edit'), () => openEditor({ kind: 'edit', design }));
-        mk(getText('Copy As New'), () => openEditor({ kind: 'copy', design }));
-        mk(getText('Manually Upgrade Design'), () => openEditor({ kind: 'upgrade', design }));
-        if (pendingDelete === design) {
-            // btnDesignsDelete_Click's "Are you sure…" question, inline.
-            const q = deleteDesignQuestion(1);
-            row.appendChild(el('span', 'ship-designs-confirm', resolveGameText(q.message)));
-            mk(getText('Yes'), () => {
-                pendingDelete = null;
-                const owner = (design.empire as Empire | null) ?? player;
-                issuePlayerCommand(owner.galaxy, owner, 'deleteDesign', [[design]], (r) => {
-                    notice = r.message !== undefined ? resolveGameText(r.message) : '';
-                    render();
-                });
-            });
-            mk(getText('No'), () => { pendingDelete = null; render(); });
-        } else {
-            mk(getText('Delete'), () => {
-                // Main.Part6.cs:1128-1149: an in-use design is refused before the question.
-                if (isDesignInUse((design.empire as Empire | null) ?? player, design)) {
-                    notice = getText('This design is in use and cannot be deleted');
-                } else {
-                    pendingDelete = design;
-                }
-                render();
-            });
-        }
-        detailPane.appendChild(row);
-        if (notice !== '') detailPane.appendChild(el('div', 'ship-designs-notice', notice));
-    }
-
-    function openEditor(source: DesignDraftSource): void {
-        if (editor !== null) return;
-        notice = '';
-        pendingDelete = null;
+        if (win.closed || editor !== null) return;
         const draft = newDesignDraft(galaxy, player, source);
         editor = openDesignEditor({
             galaxy,
@@ -556,40 +640,44 @@ function createShipDesigns(opts: ShipDesignsOptions): OpenState {
             sourceDesign: source.kind === 'blank' ? null : source.design,
             onClose: (saved) => {
                 editor = null;
-                if (saved !== null) selected = saved;
-                render();
+                if (!win.closed) refreshList(saved);
             },
         });
     }
-    // [designeditor] end
 
-    render();
-
-    function close(): void {
-        // [designeditor] begin
-        editor?.close();
-        // [designeditor] end
-        document.removeEventListener('keydown', onKeyDown);
-        root.remove();
-        open = null;
-    }
-
-    // Escape closes the panel; stopImmediatePropagation keeps the global game-menu Escape handler from firing too.
-    function onKeyDown(e: KeyboardEvent): void {
-        if (e.key === 'Escape') {
-            e.preventDefault();
-            e.stopImmediatePropagation();
-            // [designeditor] begin
-            if (editor !== null) {
-                editor.close(); // Escape cancels the editor first
+    // btnDesignsDelete_Click: automation question, the in-use check (one design), "Are you sure…", then delete.
+    async function deleteSelected(): Promise<void> {
+        if (busy || editor !== null) return;
+        const designs = grid.selectedAll.map((r) => r.design);
+        if (designs.length === 0) return;
+        busy = true;
+        try {
+            if (designAutomationPromptApplies(player, 'delete', null)) await askDesignAutomation(galaxy, player);
+            if (designs.length === 1 && isDesignInUse(player, designs[0])) {
+                await messageBox({ caption: gt('Cannot Delete Design'), text: gt('This design is in use and cannot be deleted'), icon: 'stop' });
                 return;
             }
-            // [designeditor] end
-            close();
+            const q = deleteDesignQuestion(designs.length);
+            const yes = gt('Yes');
+            const r = await messageBox({ caption: resolveGameText(q.title), text: resolveGameText(q.message), buttons: [yes, gt('No')], icon: 'question' });
+            if (r !== yes || win.closed) return;
+            issuePlayerCommand(galaxy, player, 'deleteDesign', [designs], (res) => {
+                if (!win.closed) refreshList();
+                if (res.message !== undefined) {
+                    void messageBox({ caption: resolveGameText(res.title ?? ''), text: resolveGameText(res.message), icon: 'warning' });
+                }
+            });
+        } finally {
+            busy = false;
         }
     }
-    document.addEventListener('keydown', onKeyDown);
-    closeBtn.addEventListener('click', () => close());
 
-    return { root, close };
+    refreshList();
+    // The list follows the sim (Amount, costs, automation upgrades) while open; a light re-bind keeps the selection.
+    const timer = window.setInterval(() => {
+        if (editor === null && !busy) refreshList();
+    }, 2000);
+
+    const state: OpenState = { win, close: () => win.close() };
+    return state;
 }
