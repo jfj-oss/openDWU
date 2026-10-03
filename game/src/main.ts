@@ -758,7 +758,7 @@ export async function startGameView(
 
     // [leftovers] begin
     // The player's EventMessageRecipient (Main.Part12.cs:2881) → history messages + the wonder-built popup.
-    installEventMessages({ player: game.playerEmpire, galaxy, onGoTo: (t) => selectStellarObject(t, true) });
+    installEventMessages({ player: game.playerEmpire, galaxy, onGoTo: (t) => selectStellarObject(t, true), onGoToCreature: (c) => selectCreature(c, true) });
     // Autosave every GameOptions.AutoSaveInterval minutes (Main.Part12.cs:4013 method_97).
     installAutosave({
         serialize: () => serializeCurrent(),

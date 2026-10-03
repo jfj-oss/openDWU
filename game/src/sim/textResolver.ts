@@ -124,7 +124,12 @@ export function resolveGameText(s: string): string {
         if (i < parts.length && args.length > 0) {
             // More encoded text follows: the last argument part ends with the next tag.
             const next = splitTrailingTag(args[args.length - 1]);
-            if (next === null) return out + split.prefix + formatNet(template, args) + '|' + parts.slice(i).join('|');
+            if (next === null) {
+                // No further tag anywhere after this one: the sender passed more arguments than the template uses
+                // (string.Format ignores the surplus, e.g. Empire.7.cs 3508 BuildFirstMiningStation's planet name).
+                if (parts.slice(i).every((x) => splitTrailingTag(x) === null)) return out + split.prefix + formatNet(template, args);
+                return out + split.prefix + formatNet(template, args) + '|' + parts.slice(i).join('|');
+            }
             // Arguments are names / numbers (no newlines): a newline starts the literal text between the two.
             const nl = next.prefix.indexOf('\n');
             args[args.length - 1] = nl >= 0 ? next.prefix.substring(0, nl) : next.prefix;

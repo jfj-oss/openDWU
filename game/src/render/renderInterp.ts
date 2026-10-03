@@ -7,8 +7,11 @@
 // - RenderTime: the fraction `alpha` of the next step already elapsed in real time (SimFrameBudget.backlogMs /
 //   FRAME_REAL_MS) and the game-time instant to draw at, renderNowMs = galaxy.nowMs + alpha × stepGameMs, which the
 //   orbit extrapolation (renderOrbitAngle) uses for planets, moons, asteroids and moon rings;
-// - MotionInterpolator: per-object previous / current step positions (a WeakMap of reused records, allocated once
-//   per object) drawn at lerp(prev, curr, alpha), snapping on teleports / hyperjump exits, on objects first seen or
+// - PresentationClock: turns that raw render time into an evenly advancing drawn instant (renderSerial) when steps land
+//   unevenly — a late game whose step costs more than its frame, sim worker bursts — with a small adaptive delay
+//   (about 0 when the sim keeps up);
+// - MotionInterpolator: per-object step samples (the last few, in a WeakMap of reused records allocated once per
+//   object) drawn between the two that bracket the drawn instant, snapping on teleports / hyperjump exits, on objects first seen or
 //   not seen for a while, and on moves made outside a step. Objects parked relative to an orbiting habitat (ships
 //   with a ParentHabitat offset, creatures holding station at a planet) are interpolated in the habitat's frame and
 //   placed around the habitat's render-interpolated position, so they move with the drawn planet instead of with its
@@ -29,16 +32,23 @@ export interface RenderTime {
     alpha: number;
     /** Game ms one sim step advances at the current speed (SimDriver: nextFrameMs without its integer carry). */
     stepGameMs: number;
-    /** galaxy.nowMs + alpha × stepGameMs: the game instant the frame is drawn at. */
+    /** galaxy.nowMs + alpha × stepGameMs: the game instant the frame is drawn at (presented: see PresentationClock). */
     renderNowMs: number;
     /** Sim steps completed so far (cumulative): a change tells the interpolator a new step landed. */
     stepSerial: number;
     /** galaxy.nowMs: the game instant of the committed (latest step's) state. */
     simNowMs: number;
+    /** Whether the clock is paused (the loop's pause, or the sim worker's optimistic pause hold). */
+    paused: boolean;
+    /**
+     * The presented instant in step units (cumulative serial, fractional): objects are drawn between the samples that
+     * bracket it (MotionInterpolator). NaN: not presented — stepSerial − 1 + alpha, the latest two steps lerped by alpha.
+     */
+    renderSerial: number;
 }
 
 export function createRenderTime(): RenderTime {
-    return { alpha: 0, stepGameMs: 0, renderNowMs: 0, stepSerial: 0, simNowMs: 0 };
+    return { alpha: 0, stepGameMs: 0, renderNowMs: 0, stepSerial: 0, simNowMs: 0, paused: true, renderSerial: Number.NaN };
 }
 
 /** Fraction into the next fixed step: backlogMs / FRAME_REAL_MS clamped to 0..1, and 0 while paused. */
@@ -59,8 +69,291 @@ export function updateRenderTime(rt: RenderTime, nowMs: number, backlogMs: numbe
     rt.stepGameMs = stepGameMsAt(speed);
     rt.renderNowMs = nowMs + rt.alpha * rt.stepGameMs;
     rt.simNowMs = nowMs;
+    rt.paused = paused;
     rt.stepSerial += stepsRun;
     return rt;
+}
+
+/** Copy every field of `src` into `out`. */
+export function copyRenderTime(src: RenderTime, out: RenderTime): RenderTime {
+    out.alpha = src.alpha;
+    out.stepGameMs = src.stepGameMs;
+    out.renderNowMs = src.renderNowMs;
+    out.stepSerial = src.stepSerial;
+    out.simNowMs = src.simNowMs;
+    out.paused = src.paused;
+    out.renderSerial = src.renderSerial;
+    return out;
+}
+
+/** The presented position within the committed steps (step units): RenderTime.renderSerial, else stepSerial − 1 + alpha. */
+export function renderSerialOf(rt: RenderTime): number {
+    const s = rt.renderSerial;
+    return s === s ? s : rt.stepSerial - 1 + rt.alpha;
+}
+
+/**
+ * Presentation clock: the render-side playout buffer that turns committed sim steps, however unevenly they land, into
+ * an evenly advancing drawn instant (render-only; the same in-thread and with the sim worker).
+ *
+ * The loops hand MainView a raw RenderTime: the latest committed step (stepSerial, simNowMs) and `alpha`, the real-time
+ * fraction of the next step (in-thread: SimFrameBudget's backlog; worker: the message's backlog plus the time since it
+ * was applied). While the sim keeps real time, raw = stepSerial − 1 + alpha advances evenly with the wall clock, and the
+ * clock presents exactly that (no delay: the two latest steps lerped by alpha, as without it). When a step costs more
+ * than its frame (late game), steps land several per frame and then none, or the worker's messages carry bursts: raw
+ * becomes a staircase. The clock then
+ * - advances its own position (`serial`, in step units) at the rate steps have been landing (over the last two seconds
+ *   of arrivals: 1 step per FRAME_REAL_MS at real time, less when the sim falls behind, more while it catches up),
+ * - a little faster or slower (bounded, filtered) to stay `delay` steps behind raw, where `delay` covers raw's
+ *   irregularity over the same window (how far below its steady line it dips: about half a burst), grows at once when
+ *   needed and shrinks slowly — about 0 when steps land evenly;
+ * - never passes the latest committed step (it waits there, and the delay grows), never goes backwards, and eases a
+ *   large lag (a catch-up burst, game time jumping ahead) out at up to 2.5× rate instead of snapping; only a lag over
+ *   SNAP_STEPS (a tab coming back) jumps;
+ * - stands still from the frame the game is paused (the picture stops at the press, also while the worker's pause
+ *   ack is in flight and its last steps land), and resumes from there.
+ * Objects are drawn between the samples that bracket `serial` (MotionInterpolator keeps a few per object), and
+ * renderNowMs is the game instant one step after it (as raw's: renderNowMs = nowMs + alpha × stepGameMs), mapped through
+ * the committed steps' own game times so a speed change never moves it backwards.
+ */
+export class PresentationClock {
+    /** Real ms of arrivals the rate and the irregularity are measured over. */
+    static readonly WINDOW_MS = 2000;
+    /** Rate change per step of (filtered) error above / below the target (bounded by MAX_UP / MAX_DOWN). */
+    static readonly GAIN_ABOVE = 0.03;
+    static readonly GAIN_BELOW = 0.06;
+    static readonly MAX_UP = 0.4;
+    static readonly MAX_DOWN = 0.6;
+    /** Lag beyond the target (steps) from which the catch-up grows past MAX_UP, up to MAX_CATCH_UP (2.5× rate). */
+    static readonly CATCH_UP_FROM = 12;
+    static readonly MAX_CATCH_UP = 1.5;
+    /** Lag beyond the target (steps) that is jumped instead of eased (1 s of steps). */
+    static readonly SNAP_STEPS = 60;
+    /** Most steps the delay may hold. */
+    static readonly MAX_DELAY = 12;
+    /** Steps the delay grows by each time the clock has to wait at the latest step. */
+    static readonly STARVED_BUMP = 0.5;
+    /** Real ms over which the measured arrival rate is eased in. */
+    static readonly RATE_EASE_MS = 300;
+    /** Quantile of raw's dip the delay covers (the deepest dips only make the clock wait a moment). */
+    static readonly LOW_QUANTILE = 0.01;
+    /** Slack kept above the measured irregularity: a share of the dip, plus a fixed MARGIN (steps). */
+    static readonly DIP_SLACK = 1;
+    static readonly MARGIN = 0.05;
+    /** The presented position (cumulative step serial, fractional); NaN until the first frame. */
+    serial = Number.NaN;
+    /** Steps the clock aims to stay behind raw. */
+    delay = 0;
+    /** Steps landing per FRAME_REAL_MS (1 at real time). */
+    rate = 1;
+    /** Frames the clock had to wait at the latest committed step (starved), since construction. */
+    starved = 0;
+    private lastReal = Number.NaN;
+    private lastSerial = Number.NaN;
+    /** Whether the clock is waiting at the latest step (starved). */
+    private waiting = false;
+    /** Filtered error (steps) and the mean real ms between arrivals (its filter span). */
+    private err = 0;
+    private interval = FRAME_REAL_MS;
+    /** Frame samples (real ms, raw) over the window, as a ring of pairs; and the arrival corners (real ms, raw). */
+    private frames = new Float64Array(2048);
+    private fHead = 0;
+    private fLen = 0;
+    private corners = new Float64Array(1024);
+    private cHead = 0;
+    private cLen = 0;
+    private scratch = new Float64Array(1024);
+    /** Committed steps' game times: (serial, nowMs, stepGameMs) per arrival, a ring. */
+    private map = new Float64Array(3 * 128);
+    private mHead = 0;
+    private mLen = 0;
+
+    /** Forget everything (a new game): the next frame starts at raw. */
+    reset(): void {
+        this.serial = Number.NaN;
+        this.delay = 0;
+        this.rate = 1;
+        this.err = 0;
+        this.lastReal = Number.NaN;
+        this.lastSerial = Number.NaN;
+        this.fLen = this.cLen = this.mLen = 0;
+    }
+
+    /** The presented RenderTime for real time `realMs` (the frame's time): `src` is the loop's raw one; writes `out`. */
+    present(src: RenderTime, realMs: number, out: RenderTime): RenderTime {
+        copyRenderTime(src, out);
+        const c = src.stepSerial;
+        const alpha = src.alpha > 0 ? Math.min(1, src.alpha) : 0;
+        const raw = c - 1 + alpha;
+        if (!(this.serial === this.serial) || c < this.lastSerial || !Number.isFinite(realMs)) {
+            this.reset();
+            this.serial = raw;
+            this.lastSerial = c;
+            this.lastReal = realMs;
+            this.note(c, src.simNowMs, src.stepGameMs);
+            return this.output(out, c, src);
+        }
+        const dt = Math.min(250, Math.max(0, realMs - this.lastReal));
+        this.lastReal = realMs;
+        const arrived = c > this.lastSerial;
+        if (arrived) this.note(c, src.simNowMs, src.stepGameMs);
+        this.lastSerial = c;
+        if (src.paused) {
+            // The picture stops at the press: the position stands (never past the latest step); the measurements start
+            // over when the steps resume (the pause gap is not jitter).
+            if (this.serial > c) this.serial = c;
+            this.fLen = this.cLen = 0;
+            this.err = 0;
+            return this.output(out, c, src);
+        }
+        this.measure(realMs, raw, arrived);
+        let s = this.serial;
+        const step = (dt / FRAME_REAL_MS) * this.rate;
+        // Error against where the clock would be this frame at the plain rate.
+        const e = raw - this.delay - (s + step);
+        if (e > PresentationClock.SNAP_STEPS) {
+            s = raw - this.delay;
+            this.err = 0;
+        } else {
+            // Filter the error over about one arrival interval (a burst's staircase must not modulate the rate).
+            const k = dt > 0 ? 1 - Math.exp(-dt / Math.min(200, Math.max(30, this.interval))) : 0;
+            this.err += (e - this.err) * k;
+            const f = this.err;
+            let gain: number;
+            if (f < 0) gain = Math.max(-PresentationClock.MAX_DOWN, f * PresentationClock.GAIN_BELOW);
+            else if (f <= PresentationClock.CATCH_UP_FROM) gain = Math.min(PresentationClock.MAX_UP, f * PresentationClock.GAIN_ABOVE);
+            else gain = Math.min(PresentationClock.MAX_CATCH_UP, PresentationClock.MAX_UP + (f - PresentationClock.CATCH_UP_FROM) * PresentationClock.GAIN_ABOVE * 2);
+            s += step * (1 + gain);
+        }
+        if (s > c) {
+            // Starved: the next step is later than the delay allowed for. Wait at the latest one; hold more next time
+            // (once per wait: the window's measurement covers a long one).
+            if (dt > 0) this.starved++;
+            if (!this.waiting) this.delay = Math.min(PresentationClock.MAX_DELAY, this.delay + PresentationClock.STARVED_BUMP);
+            this.waiting = true;
+            s = c;
+        } else this.waiting = false;
+        if (s < this.serial) s = this.serial;
+        this.serial = s;
+        return this.output(out, c, src);
+    }
+
+    /** Steps the presented position is behind the latest committed step. */
+    lagSteps(c: number): number {
+        const l = c - this.serial;
+        return l > 0 ? l : 0;
+    }
+
+    private output(out: RenderTime, c: number, src: RenderTime): RenderTime {
+        const s = this.serial;
+        out.renderSerial = s;
+        const a = s - (c - 1);
+        out.alpha = a < 0 ? 0 : a > 1 ? 1 : a;
+        out.renderNowMs = this.msAt(s + 1, src);
+        return out;
+    }
+
+    /** Record a committed step's game time (serial → nowMs, with the step size it ran at). */
+    private note(serial: number, nowMs: number, stepGameMs: number): void {
+        const m = this.map;
+        const cap = m.length / 3;
+        if (this.mLen > 0) {
+            const li = ((this.mHead + this.mLen - 1) % cap) * 3;
+            if (m[li] === serial) {
+                m[li + 1] = nowMs;
+                m[li + 2] = stepGameMs;
+                return;
+            }
+        }
+        const i = ((this.mHead + this.mLen) % cap) * 3;
+        if (this.mLen < cap) this.mLen++;
+        else this.mHead = (this.mHead + 1) % cap;
+        m[i] = serial;
+        m[i + 1] = nowMs;
+        m[i + 2] = stepGameMs;
+    }
+
+    /** Game ms at fractional serial `x`: between the recorded steps' times, else stepping on from the nearest one. */
+    private msAt(x: number, src: RenderTime): number {
+        const m = this.map;
+        const cap = m.length / 3;
+        if (this.mLen === 0) return src.simNowMs + (x - src.stepSerial) * src.stepGameMs;
+        let j = (this.mHead + this.mLen - 1) % cap;
+        if (x >= m[j * 3]) return m[j * 3 + 1] + (x - m[j * 3]) * m[j * 3 + 2];
+        for (let n = this.mLen - 1; n > 0; n--) {
+            const i = (j - 1 + cap) % cap;
+            const s0 = m[i * 3];
+            if (x >= s0) {
+                const s1 = m[j * 3];
+                const t0 = m[i * 3 + 1];
+                return t0 + ((m[j * 3 + 1] - t0) * (x - s0)) / (s1 - s0);
+            }
+            j = i;
+        }
+        return m[j * 3 + 1] - (m[j * 3] - x) * m[j * 3 + 2];
+    }
+
+    /** Window bookkeeping: the arrival rate (corner to corner) and raw's dip below its steady line (→ delay). */
+    private measure(t: number, raw: number, arrived: boolean): void {
+        const W = PresentationClock.WINDOW_MS;
+        const f = this.frames;
+        const fCap = f.length / 2;
+        let i = ((this.fHead + this.fLen) % fCap) * 2;
+        if (this.fLen < fCap) this.fLen++;
+        else this.fHead = (this.fHead + 1) % fCap;
+        f[i] = t;
+        f[i + 1] = raw;
+        while (this.fLen > 2 && t - f[this.fHead * 2] > W) {
+            this.fHead = (this.fHead + 1) % fCap;
+            this.fLen--;
+        }
+        if (!arrived) return;
+        const cr = this.corners;
+        const cCap = cr.length / 2;
+        i = ((this.cHead + this.cLen) % cCap) * 2;
+        if (this.cLen < cCap) this.cLen++;
+        else this.cHead = (this.cHead + 1) % cCap;
+        cr[i] = t;
+        cr[i + 1] = raw;
+        while (this.cLen > 2 && t - cr[this.cHead * 2] > W) {
+            this.cHead = (this.cHead + 1) % cCap;
+            this.cLen--;
+        }
+        if (this.cLen < 3) return;
+        const t0 = cr[this.cHead * 2];
+        const r0 = cr[this.cHead * 2 + 1];
+        const span = t - t0;
+        if (!(span > 4 * FRAME_REAL_MS)) return;
+        // Corner to corner over the window, eased over ~0.3 s (one burst more or less must not step the speed).
+        const inst = Math.min(8, Math.max(0.05, ((raw - r0) * FRAME_REAL_MS) / span));
+        const pi = ((this.cHead + this.cLen - 2) % cCap) * 2;
+        this.rate += (inst - this.rate) * (1 - Math.exp(-(t - cr[pi]) / PresentationClock.RATE_EASE_MS));
+        this.interval = span / (this.cLen - 1);
+        // Raw's dip below its steady line at that rate: the time-mean of (raw − rate · t) minus its LOW_QUANTILE quantile
+        // (LOW_QUANTILE: one late spell must not hold a big delay for the whole window; the clock then only waits a moment).
+        const perMs = inst / FRAME_REAL_MS;
+        const n = this.fLen;
+        const d = this.scratch.length >= n ? this.scratch : (this.scratch = new Float64Array(n * 2));
+        let sum = 0;
+        let wsum = 0;
+        for (let k = 0; k < n; k++) {
+            const q = ((this.fHead + k) % fCap) * 2;
+            const v = f[q + 1] - perMs * (f[q] - t0);
+            d[k] = v;
+            // Time-weighted (frames are not evenly spaced).
+            const w = k + 1 < n ? f[(((this.fHead + k + 1) % fCap) * 2)] - f[q] : 0;
+            sum += v * w;
+            wsum += w;
+        }
+        if (!(wsum > 0)) return;
+        const mean = sum / wsum;
+        const sorted = d.subarray(0, n).sort();
+        const low = sorted[Math.floor(n * PresentationClock.LOW_QUANTILE)];
+        // Plus slack for the clock's own wander around its target, which grows with the staircase's size.
+        const dip = Math.max(0, mean - low);
+        const want = Math.min(PresentationClock.MAX_DELAY, dip * (1 + PresentationClock.DIP_SLACK) + PresentationClock.MARGIN);
+        this.delay += (want - this.delay) * (want > this.delay ? 0.5 : 0.1);
+    }
 }
 
 // Render-only orbit interpolation (no sim-state write). The original ticks every on-screen habitat's Move every
@@ -73,10 +366,13 @@ export function updateRenderTime(rt: RenderTime, nowMs: number, backlogMs: numbe
 // step (several degrees) instead of advancing smoothly — the reported "moons jump ~1/20 orbit every 0.3s". This
 // recomputes the drawn angle from the last COMMITTED (orbitAngle, lastTouch) pair with the exact formula
 // habitatTick.ts's `move()` will next apply, so the two never disagree and there is no snap when the real touch
-// lands. `nowMs` is the instant drawn — RenderTime.renderNowMs (galaxy.nowMs plus the elapsed part of the next step),
-// so the angle also advances between sim steps; nothing here is written back to the habitat.
+// lands. `nowMs` is the instant drawn — RenderTime.renderNowMs (galaxy.nowMs plus the elapsed part of the next step,
+// or the presentation clock's instant), so the angle also advances between sim steps; nothing here is written back.
 export function renderOrbitAngle(orbitAngle: number, anglePerSecond: number, orbitDirection: boolean, lastTouch: number, nowMs: number, clampSeconds: number): number {
-    const elapsed = Math.min(Math.max(spanSeconds(nowMs, lastTouch), 0), Math.max(clampSeconds, 0));
+    // Both ways: the presented instant may lie before a habitat's latest touch (PresentationClock's delay), where the
+    // same uniform orbit runs backwards from the committed pair.
+    const c = Math.max(clampSeconds, 0);
+    const elapsed = Math.min(Math.max(spanSeconds(nowMs, lastTouch), -c), c);
     return orbitDirection ? orbitAngle + anglePerSecond * elapsed : orbitAngle - anglePerSecond * elapsed;
 }
 
@@ -152,6 +448,13 @@ export function isJump(dx: number, dy: number, steps: number, maxSpeed: number, 
     return dx * dx + dy * dy > limit * limit;
 }
 
+/** An object drawn every frame may take this many steps in one sample (a slow sim's burst: several steps land in one
+ * frame or one worker message) and still be interpolated across them; beyond it (2 s of steps) it snaps. */
+export const MAX_BURST_STEPS = 120;
+/** Samples kept per object: enough for the presented instant to lag a few arrivals behind the latest one
+ * (PresentationClock's delay covers about half a burst plus the irregularity). */
+export const MOTION_HISTORY = 8;
+
 /** What MotionInterpolator.advance did with a new sim position. */
 const enum Advance {
     /** Lerping on (or nothing new). */
@@ -164,7 +467,7 @@ const enum Advance {
 
 /** One object's interpolation record (reused every frame). */
 export interface MotionState {
-    /** Estimated position / heading one step before `c*` (in `frame` coordinates). */
+    /** Estimated position / heading one step before `c*` (in `frame` coordinates): on the line between the samples. */
     px: number;
     py: number;
     ph: number;
@@ -172,13 +475,13 @@ export interface MotionState {
     cx: number;
     cy: number;
     ch: number;
-    /** The habitat / parent built object whose frame px/py/cx/cy are in (null: galaxy coordinates). */
+    /** The habitat / parent built object whose frame the samples are in (null: galaxy coordinates). */
     frame: object | null;
-    /** The frame's drawn origin at the last sample (galaxy coordinates; 0, 0 for the galaxy frame): converts px/py/cx/cy
+    /** The frame's drawn origin at the last sample (galaxy coordinates; 0, 0 for the galaxy frame): converts the samples
      * into a new frame when the object changes frames. */
     ox: number;
     oy: number;
-    /** RenderTime.stepSerial when `c*` was taken. */
+    /** RenderTime.stepSerial when `c*` was taken (the latest sample's serial). */
     serial: number;
     /** Caller's identity of the object's current life (a shot's LastFired): a change snaps (a new shot spawns). */
     epoch: number;
@@ -196,6 +499,11 @@ export interface MotionState {
     eMs: number;
     /** RenderTime.renderNowMs of the last sample. */
     renderMs: number;
+    /** The presented serial the last sample was drawn at. */
+    atSerial: number;
+    /** The samples, oldest first: (serial, x, y, heading) × hn, in `frame` coordinates. */
+    hs: Float64Array;
+    hn: number;
 }
 
 /** Ease-out weight of a soft snap's offset at fraction u of its span (1 → 0, smoothstep: no velocity step at either end). */
@@ -205,17 +513,98 @@ function softSnapWeight(u: number): number {
     return 1 - u * u * (3 - 2 * u);
 }
 
+/** Scratch pose for history reads. */
+const poseScratch = { x: 0, y: 0, heading: 0 };
+
+/** `st`'s samples at serial `at` (frame coordinates): between the two that bracket it, else the nearest end. */
+function historyAt(st: MotionState, at: number, out: { x: number; y: number; heading: number }): { x: number; y: number; heading: number } {
+    const h = st.hs;
+    const n = st.hn;
+    let j = (n - 1) * 4;
+    if (n === 1 || !(at < h[j])) {
+        out.x = h[j + 1];
+        out.y = h[j + 2];
+        out.heading = h[j + 3];
+        return out;
+    }
+    if (!(at > h[0])) {
+        out.x = h[1];
+        out.y = h[2];
+        out.heading = h[3];
+        return out;
+    }
+    let i = j - 4;
+    while (i > 0 && h[i] > at) {
+        j = i;
+        i -= 4;
+    }
+    const t = (at - h[i]) / (h[j] - h[i]);
+    out.x = h[i + 1] + (h[j + 1] - h[i + 1]) * t;
+    out.y = h[i + 2] + (h[j + 2] - h[i + 2]) * t;
+    out.heading = lerpAngle(h[i + 3], h[j + 3], t);
+    return out;
+}
+
+/** Start `st`'s history over at one sample. */
+function snapTo(st: MotionState, serial: number, x: number, y: number, heading: number): void {
+    const h = st.hs;
+    h[0] = serial;
+    h[1] = x;
+    h[2] = y;
+    h[3] = heading;
+    st.hn = 1;
+    st.px = st.cx = x;
+    st.py = st.cy = y;
+    st.ph = st.ch = heading;
+    st.serial = serial;
+}
+
+/** Append a sample and refresh c* / p*. When full, the oldest goes — unless the presented instant `at` still lies
+ * before the second one (the oldest brackets it: a long lag over many small arrivals), then the second goes, so the
+ * drawn object keeps its place on the line instead of jumping ahead. */
+function pushSample(st: MotionState, serial: number, x: number, y: number, heading: number, at: number): void {
+    const h = st.hs;
+    if (st.hn === MOTION_HISTORY) {
+        if (h[4] > at) h.copyWithin(4, 8, MOTION_HISTORY * 4);
+        else h.copyWithin(0, 4, MOTION_HISTORY * 4);
+        st.hn--;
+    }
+    const j = st.hn * 4;
+    h[j] = serial;
+    h[j + 1] = x;
+    h[j + 2] = y;
+    h[j + 3] = heading;
+    st.hn++;
+    st.cx = x;
+    st.cy = y;
+    st.ch = heading;
+    st.serial = serial;
+    // One step back on the line from the previous sample (several steps landed: exact for straight-line motion).
+    const i = j - 4;
+    const t = (serial - 1 - h[i]) / (serial - h[i]);
+    st.px = h[i + 1] + (x - h[i + 1]) * t;
+    st.py = h[i + 2] + (y - h[i + 2]) * t;
+    st.ph = lerpAngle(h[i + 3], heading, t);
+}
+
 /**
- * Per-object previous / current step state and the drawn lerp. Call begin() once per render frame, then sample()
- * each object as it is drawn; layers drawn later in the frame read the same result with drawn() so selection rings,
- * engine glows, liveries, lines, etc. stay on the drawn sprite. O(objects sampled); allocates one record per object
- * the first time it is seen (WeakMap: released with the object).
+ * Per-object step samples and the drawn interpolation. Call begin() once per render frame, then sample() each object
+ * as it is drawn; layers drawn later in the frame read the same result with drawn() so selection rings, engine glows,
+ * liveries, lines, pick tests etc. stay on the drawn sprite. Each object keeps its last few step samples (MOTION_HISTORY,
+ * tagged with their step serial) and is drawn at the presented serial (RenderTime.renderSerial: the presentation
+ * clock's instant, or stepSerial − 1 + alpha) between the two samples that bracket it — the latest two when the sim
+ * keeps up; older ones while the clock trails a burst. O(objects sampled); allocates one record per object the first
+ * time it is seen (WeakMap: released with the object).
  */
 export class MotionInterpolator {
     private states = new WeakMap<object, MotionState>();
     private renderFrame = 0;
     serial = 0;
     alpha = 0;
+    /** The presented instant in step units (renderSerialOf the frame's RenderTime). */
+    at = 0;
+    /** Steps the presented instant trails the latest committed step (0 when drawing at it). */
+    lagSteps = 0;
     stepSeconds = 0;
     renderNowMs = 0;
     /** galaxy.nowMs of the committed state (RenderTime.simNowMs). */
@@ -240,6 +629,9 @@ export class MotionInterpolator {
         this.renderFrame++;
         this.serial = rt.stepSerial;
         this.alpha = rt.alpha;
+        const at = renderSerialOf(rt);
+        this.at = at < rt.stepSerial ? at : rt.stepSerial;
+        this.lagSteps = rt.stepSerial - this.at;
         this.stepSeconds = rt.stepGameMs / 1000;
         this.renderNowMs = rt.renderNowMs;
         this.simNowMs = rt.simNowMs;
@@ -261,21 +653,27 @@ export class MotionInterpolator {
     sample(obj: object, x: number, y: number, heading: number, maxSpeed: number, frame: object | null = null, originX = 0, originY = 0, epoch = 0, softSnapMs = 0): MotionState {
         let st = this.states.get(obj);
         if (st === undefined) {
-            st = { px: x, py: y, ph: heading, cx: x, cy: y, ch: heading, frame, ox: originX, oy: originY, serial: this.serial, epoch, renderFrame: 0, x, y, heading, ex: 0, ey: 0, eStart: 0, eMs: 0, renderMs: this.renderNowMs };
+            st = { px: x, py: y, ph: heading, cx: x, cy: y, ch: heading, frame, ox: originX, oy: originY, serial: this.serial, epoch, renderFrame: 0, x, y, heading, ex: 0, ey: 0, eStart: 0, eMs: 0, renderMs: this.renderNowMs, atSerial: this.at, hs: new Float64Array(MOTION_HISTORY * 4), hn: 0 };
+            snapTo(st, this.serial, x, y, heading);
             this.states.set(obj, st);
         } else if (st.epoch !== epoch) {
-            snapTo(st, x, y, heading);
+            snapTo(st, this.serial, x, y, heading);
             st.eMs = 0;
             st.frame = frame;
             st.epoch = epoch;
         } else {
             if (st.frame !== frame) {
                 // Entering / leaving a parent's frame (parking at or leaving a planet, docking at a base): carry the
-                // previous / current step positions over into the new frame (through galaxy coordinates, at the old
-                // frame's last drawn origin) and go on lerping, so the drawn object neither jumps nor stands still for
-                // a step. The step logic below still snaps a real jump (isJump) or a move made without a step.
+                // samples over into the new frame (through galaxy coordinates, at the old frame's last drawn origin) and
+                // go on lerping, so the drawn object neither jumps nor stands still for a step. The step logic below
+                // still snaps a real jump (isJump) or a move made without a step.
                 const dx = st.ox - originX;
                 const dy = st.oy - originY;
+                const h = st.hs;
+                for (let j = 0; j < st.hn * 4; j += 4) {
+                    h[j + 1] += dx;
+                    h[j + 2] += dy;
+                }
                 st.px += dx;
                 st.py += dy;
                 st.cx += dx;
@@ -288,20 +686,21 @@ export class MotionInterpolator {
             // The object's own motion over its last step (frame coordinates), kept through a soft snap.
             const vx = st.cx - st.px;
             const vy = st.cy - st.py;
-            const r = this.advance(st, x, y, heading, maxSpeed);
+            const vh = st.ch;
+            const r = this.advance(st, x, y, heading, maxSpeed, drawnLastFrame);
             if (r === Advance.Jump && softSnapMs > 0 && drawnLastFrame) {
-                // Go on lerping toward the new position at the old per-step velocity (no step standing still), and
-                // offset the drawn track so that at last frame's instant it was where it was drawn; the offset then
-                // eases out (which may restart an ease already running: last frame's position includes it).
-                st.px = x - vx;
-                st.py = y - vy;
-                const a = this.alpha;
-                const stepMs = this.stepSeconds * 1000;
-                const back = stepMs > 0 ? (this.renderNowMs - st.renderMs) / stepMs : 0;
-                const tx = originX + st.px + vx * (a - back);
-                const ty = originY + st.py + vy * (a - back);
-                st.ex = lastX - tx;
-                st.ey = lastY - ty;
+                // Go on along the old per-step velocity into the new position (no step standing still): a sample one
+                // step back (or back to last frame's presented instant, if that is earlier) on that line; and offset the
+                // drawn track so that at last frame's instant it was where it was drawn; the offset then eases out
+                // (which may restart an ease already running: last frame's position includes it).
+                const s1 = this.serial;
+                const s0 = Math.min(s1 - 1, Math.floor(st.atSerial));
+                const back = s1 - s0;
+                snapTo(st, s0, x - vx * back, y - vy * back, vh);
+                pushSample(st, s1, x, y, heading, this.at);
+                const p = historyAt(st, st.atSerial, poseScratch);
+                st.ex = lastX - (originX + p.x);
+                st.ey = lastY - (originY + p.y);
                 st.eStart = st.renderMs;
                 st.eMs = softSnapMs;
             } else if (r !== Advance.Lerp) {
@@ -310,13 +709,13 @@ export class MotionInterpolator {
         }
         st.ox = originX;
         st.oy = originY;
-        st.serial = this.serial;
         st.renderFrame = this.renderFrame;
         st.renderMs = this.renderNowMs;
-        const a = this.alpha;
-        st.x = originX + st.px + (st.cx - st.px) * a;
-        st.y = originY + st.py + (st.cy - st.py) * a;
-        st.heading = lerpAngle(st.ph, st.ch, a);
+        st.atSerial = this.at;
+        const p = historyAt(st, this.at, poseScratch);
+        st.x = originX + p.x;
+        st.y = originY + p.y;
+        st.heading = p.heading;
         if (st.eMs > 0) {
             const w = softSnapWeight((this.renderNowMs - st.eStart) / st.eMs);
             if (w > 0) {
@@ -329,32 +728,23 @@ export class MotionInterpolator {
         return st;
     }
 
-    /** Take the sim's (x, y, heading) into `st` (same frame): a new step shifts curr → prev and lerps on, snapping on a
-     * jump, a long gap or a move made without a step. */
-    private advance(st: MotionState, x: number, y: number, heading: number, maxSpeed: number): Advance {
+    /** Take the sim's (x, y, heading) into `st` (same frame): a new step adds a sample, snapping on a jump, a long gap
+     * (not drawn for MAX_INTERP_STEPS steps; MAX_BURST_STEPS when drawn last frame) or a move made without a step. */
+    private advance(st: MotionState, x: number, y: number, heading: number, maxSpeed: number, drawnLastFrame: boolean): Advance {
         if (st.serial !== this.serial) {
             const k = this.serial - st.serial;
-            if (k < 0 || k > MAX_INTERP_STEPS) {
-                snapTo(st, x, y, heading);
+            if (k < 0 || (k > MAX_INTERP_STEPS && !(drawnLastFrame && k <= MAX_BURST_STEPS))) {
+                snapTo(st, this.serial, x, y, heading);
                 return Advance.Snap;
             }
             if (isJump(x - st.cx, y - st.cy, k, maxSpeed, this.stepSeconds)) {
-                snapTo(st, x, y, heading);
+                snapTo(st, this.serial, x, y, heading);
                 return Advance.Jump;
-            } else {
-                // Linear estimate of where the object was one step before now (k > 1: several steps landed since the
-                // last sample; exact for straight-line motion).
-                const t = (k - 1) / k;
-                st.px = st.cx + (x - st.cx) * t;
-                st.py = st.cy + (y - st.cy) * t;
-                st.ph = lerpAngle(st.ch, heading, t);
-                st.cx = x;
-                st.cy = y;
-                st.ch = heading;
             }
+            pushSample(st, this.serial, x, y, heading, this.at);
         } else if (x !== st.cx || y !== st.cy || heading !== st.ch) {
             // Moved without a sim step (an order applied at the frame boundary, a load, an edit): no interpolation.
-            snapTo(st, x, y, heading);
+            snapTo(st, this.serial, x, y, heading);
             return Advance.Snap;
         }
         return Advance.Lerp;
@@ -412,12 +802,6 @@ export function drawnPositionOf(m: MotionInterpolator | null, o: { xpos: number;
     out.x = p.x;
     out.y = p.y;
     return out;
-}
-
-function snapTo(st: MotionState, x: number, y: number, heading: number): void {
-    st.px = st.cx = x;
-    st.py = st.cy = y;
-    st.ph = st.ch = heading;
 }
 
 /** BuiltObject fields read by sampleBuiltObject. */
@@ -554,6 +938,16 @@ export function sampleBuiltObject(m: MotionInterpolator, bo: MovingBuiltObject, 
     if (bo.parentOffsetX > PARENT_OFFSET_UNSET && bo.parentOffsetY > PARENT_OFFSET_UNSET) {
         const ox = bo.parentOffsetX;
         const oy = bo.parentOffsetY;
+        // A ship flying relative to its parent (movement.ts moveToward: ParentOffset += heading × the distance) the
+        // background pass has not touched this step: its offset carried on likewise (extrapolateUntouched), so it glides
+        // instead of standing still and then jumping each round-robin touch.
+        let fx = ox;
+        let fy = oy;
+        if (bo.lastTouch !== undefined && bo.currentSpeed > 0) {
+            const p = extrapolateUntouched(ox, oy, bo.heading, bo.currentSpeed, bo.lastTouch, m.simNowMs, m.untouchedMaxMs, extrapScratch);
+            fx = p.x;
+            fy = p.y;
+        }
         // The sim's order (executeCommands.ts 413-444): relative to ParentBuiltObject, then ParentHabitat overrides it,
         // then DockedAt overrides both. Each is used only while the committed position really is parent + offset.
         const dock = bo.dockedAt ?? null;
@@ -561,20 +955,20 @@ export function sampleBuiltObject(m: MotionInterpolator, bo: MovingBuiltObject, 
             if (isOrbitingBody(dock)) {
                 if (dock.parent !== null) {
                     const o = m.habitatPos(dock);
-                    return m.sample(bo, ox, oy, bo.heading, maxSpeed, dock, o.x, o.y);
+                    return m.sample(bo, fx, fy, bo.heading, maxSpeed, dock, o.x, o.y);
                 }
             } else if (isParentBuiltObject(bo, dock) && depth < MAX_PARENT_DEPTH) {
-                return sampleInBuiltObjectFrame(m, bo, dock, ox, oy, maxSpeed, depth);
+                return sampleInBuiltObjectFrame(m, bo, dock, fx, fy, maxSpeed, depth);
             }
         }
         const h = bo.parentHabitat;
         if (h !== null && h.parent !== null && !h.hasBeenDestroyed && followsParent(bo, h, ox, oy)) {
             const o = m.habitatPos(h);
-            return m.sample(bo, ox, oy, bo.heading, maxSpeed, h, o.x, o.y);
+            return m.sample(bo, fx, fy, bo.heading, maxSpeed, h, o.x, o.y);
         }
         const pb = bo.parentBuiltObject ?? null;
         if (pb !== null && isParentBuiltObject(bo, pb) && depth < MAX_PARENT_DEPTH && followsParent(bo, pb, ox, oy)) {
-            return sampleInBuiltObjectFrame(m, bo, pb, ox, oy, maxSpeed, depth);
+            return sampleInBuiltObjectFrame(m, bo, pb, fx, fy, maxSpeed, depth);
         }
     }
     if (bo.lastTouch !== undefined && bo.currentSpeed > 0) {
@@ -606,13 +1000,14 @@ export function habitatDrawnOffsetBound(h: OrbitingBody, clampSeconds: number): 
  * Upper bound (world units) on the distance between a built object's drawn position this frame (sampleBuiltObject /
  * drawnBuiltObjectPos) and its committed xpos / ypos, so callers can cull on the committed position before paying for
  * a sample: the step lerp (isJump keeps the previous step's estimate within SNAP_SPEED_FACTOR × speed × one step — at
- * 4× speed, for records taken at any speed), the untouched extrapolation (currentSpeed × untouchedMaxMs) and, when a
+ * 4× speed, for records taken at any speed — times the steps the presented instant trails the committed one,
+ * MotionInterpolator.lagSteps, when more than one), the untouched extrapolation (currentSpeed × untouchedMaxMs) and, when a
  * parent offset is set, the drift allowed by followsParent plus the parent's own bound (every candidate parent: dock,
  * ParentHabitat, ParentBuiltObject). Doubled for slack.
  */
 export function builtObjectDrawnOffsetBound(m: MotionInterpolator, bo: MovingBuiltObject, depth = 0): number {
     const maxSpeed = Math.max(bo.topSpeed, bo.warpSpeed, Math.abs(bo.currentSpeed), SNAP_MIN_SPEED);
-    let b = SNAP_SPEED_FACTOR * maxSpeed * Math.max(MAX_STEP_SECONDS, m.stepSeconds) + (Math.abs(bo.currentSpeed) * m.untouchedMaxMs) / 1000;
+    let b = SNAP_SPEED_FACTOR * maxSpeed * Math.max(MAX_STEP_SECONDS, m.stepSeconds) * Math.max(1, m.lagSteps) + (Math.abs(bo.currentSpeed) * m.untouchedMaxMs) / 1000;
     if (bo.parentOffsetX > PARENT_OFFSET_UNSET && bo.parentOffsetY > PARENT_OFFSET_UNSET) {
         b += PARENT_FRAME_MAX_DRIFT + parentDrawnOffsetBound(m, bo.dockedAt, depth) + parentDrawnOffsetBound(m, bo.parentHabitat, depth) + parentDrawnOffsetBound(m, bo.parentBuiltObject, depth);
     }

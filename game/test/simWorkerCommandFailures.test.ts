@@ -598,7 +598,7 @@ describe('sim worker: the failure-value table', () => {
         expect(msg).not.toContain('|');
         for (const op of ops) {
             const v = commandFailureValue(op, msg, op === 'advisorCommands' ? [{}, [{ id: 'c1' }]] : op === 'diplomatCounter' ? [{}, {}, 'k1'] : []);
-            if (op === 'investigateRuins') expect(v).toBeUndefined();
+            if (['investigateRuins', 'investigateEncounteredBuiltObject', 'warnTargetOfPirateAttackFunding', 'exposeUncoveredPlanetDestroyer'].includes(op)) expect(v).toBeUndefined();
             else expect(v, op).not.toBeUndefined();
             // Never a success.
             expect(v === true || (typeof v === 'object' && v !== null && ((v as { ok?: unknown }).ok === true || (v as { accepted?: unknown }).accepted === true)), op).toBe(false);

@@ -169,6 +169,39 @@ that (21 against 33 ms in their last step). The synthetic patterns in
 `test/simWorkerPacing.test.ts` (240 Hz): worker at real time with 12-26 ms jittered arrivals, p95 0.2 ms against
 4.2 ms unpaced; 3 steps per 68 ms, p95 0.3 ms against 30 ms.
 
+### 2.5 Presentation clock: smooth drawn motion when steps land unevenly (both modes)
+
+`src/render/renderInterp.ts PresentationClock`, run by `MainView.update` over the loop's raw render time
+(`?renderClock=0` turns it off). When a late-game step costs more than its frame, steps land several per frame and
+then none (in-thread), or in bursts of messages (worker), and drawing the latest step stutters. The clock is a
+render-side playout buffer in step units: it advances at the rate steps have been landing (2 s of arrivals), a little
+faster or slower (bounded, filtered) to stay `delay` steps behind raw (stepSerial − 1 + alpha); `delay` covers how far
+raw dips below its steady line (about 0 when steps land evenly, so the in-thread loop draws exactly what it drew
+before), grows when the clock has to wait at the latest step, shrinks slowly; a large lag eases out at up to 2.5× rate
+(only a lag over 60 steps jumps); paused, it stands still. Each object keeps its last 8 step samples
+(`MotionInterpolator`) and is drawn between the two that bracket the presented step; `renderNowMs` (orbits, effects)
+is the game time one step after it, through the committed steps' own times. Ships flying relative to a planet or base
+(ParentOffset) are now extrapolated between round-robin touches like free-flying ones (they stood still and jumped
+every ~10 steps on a 10 000-ship galaxy). Tests: `test/renderInterp-presentClock.test.ts`, `simWorkerPacing.test.ts`.
+
+Drawn motion on the late saves (`scripts/perf-render.mjs --load=… --gpu=egl --motion`, 60 Hz headless compositor, 4×
+speed; q = a ship's drawn move per frame over its true speed × the sim's measured rate; stall = q < 0.25):
+
+| save, mode, zoom | before: stall % / q p95 / jerk p95 | after: stall % / q p95 / jerk p95 | drawn lag (steps), before → after |
+|---|---|---|---|
+| late2500, in-thread, galaxy | 57.0 / 9.74 / 9.80 | 0.00 / 1.01 / 0.26 | 0.02 → 0.06 |
+| late2500, in-thread, system | 76.5 / 9.32 / 9.32 | 0.02 / 1.01 / 0.01 | 0.07 → 0.11 |
+| late2500, in-thread 2× + 14 ms steps, galaxy | 51.7 / 4.95 / 4.97 | 0.02 / 1.06 / 0.04 | — |
+| late2500, worker, galaxy | 48.1 / 5.00 / 5.65 | 0.04 / 1.13 / 0.11 | 8.4 → 6.6 |
+| late2500, worker, system | 68.7 / 5.12 / 4.96 | 0.22 / 1.10 / 0.05 | 7.6 → 9.2 |
+| late2500-1200, in-thread, system | 75.5 / 9.39 / 9.52 | 0.00 / 1.01 / 0.02 | 0.07 → 0.12 |
+| late2500-1200, worker, sector | 36.5 / 2.43 / 9.19 | 2.15 / 1.27 / 0.09 | 8.6 → 11.9 |
+
+Most of the "before" stalls are ships drawn in a planet's frame (ParentOffset) between round-robin touches; the rest
+(and the worker's clock stalls/jumps) is the arrival pattern. The worker's lag is a playout buffer either way
+(StepPacer held messages back; the clock trails them); its frames that still stand still follow a main-thread hitch
+(a 112 ms cold apply in that sector run). Worker lag figures come from separate runs of the same setup.
+
 ## 3. The replica sync (src/simworker/replicaSync.ts, replicaGalaxy.ts)
 
 ### 3.1 Identity and the shadow
@@ -612,11 +645,10 @@ Each chunk is independent. All chunks share the same test approach:
   left (`*SoundPlayed` gone); `Empire.eventMessageRecipient` (defined on the replica player by `eventMessages.ts` and
   `gameAudio.ts`, chunk 4's design) remains.
 - Hot-apply spikes: mission / design / fleet references compared hot but sent cold, births-only dependencies (§3.3).
-- Interpolation timing: `clientCore.ts StepPacer`, a playout buffer in step units (`?simPace=0` turns it off).
-  With chunk 1's optimistic pause: the picture stops at the press (drawn position held at the latest applied step;
-  the steps in the buffer and in flight land with the ack in one frame, on the same interpolation line), while the
-  replica's clock lands a few steps past it — the smoke's "pause is instant" check reads the drawn time when paced.
-  A message carrying a command / query reply is held at most 50 ms (`REPLY_WAIT_MS`).
+- Interpolation timing: first `clientCore.ts StepPacer`, a playout buffer that held step messages back; now replaced
+  by the render-side presentation clock (§2.5), the same in both modes. Every message is applied at the next frame
+  (replies at once), and the picture stops at the press (the clock stands still while the pause ack and the steps in
+  flight land).
 - Tests: `test/replicaHotStreams.test.ts`, `simWorkerMainView.test.ts`, `simWorkerPacing.test.ts`,
   `mainViewSoundsReplica.test.ts`; the smoke reports the render pacing (`--gpu=egl`, `--qs=`).
 

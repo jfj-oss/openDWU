@@ -99,6 +99,7 @@ import { grantCharter, nationaliseCompany, releaseCompany, renewCharter, type Ch
 import { obtainPirateRelation, PirateRelationType } from '../pirateRelations';
 import { acceptPirateProtection, calculatePirateProtectionPricePerMonth } from '../pirates/pirateRelationsAI';
 import { orderSalvage } from '../scenario/wreckage/wreckage';
+import { exposeUncoveredPlanetDestroyer, investigateEncounteredBuiltObject, warnTargetOfPirateAttackFunding } from './eventPanelActions';
 import { applyLlmStrategicCommand, type LlmStrategicCommand } from '../scenario/llm/strategic';
 import { applyPopulationPolicyToAllColonies, renameColony, scrapColonyFacility, setColonyAsCapital, setColonyPopulationPolicy, transferToTransport } from './colonyOrders';
 
@@ -333,6 +334,13 @@ export const PLAYER_OPS = {
     /** 19e-7 (scenario flag `wreckage`): send a construction / mining ship to salvage a debris field (right-click menu). */
     /** Main.Part4.cs:1831-1835 btnEventMessageInvestigate (EncounterRuins pop-up): Galaxy.InvestigateRuins(PlayerEmpire, habitat). */
     investigateRuins: (galaxy: Galaxy, empire: Empire, habitat: Habitat) => investigateRuins(galaxy, empire, habitat),
+    /** Main.Part4.cs:1836-1841 btnEventMessageInvestigate (EncounterBuiltObject pop-up, method_511): investigate the abandoned ship / base. */
+    investigateEncounteredBuiltObject: (galaxy: Galaxy, empire: Empire, builtObject: BuiltObject) => investigateEncounteredBuiltObject(galaxy, empire, builtObject),
+    /** Main.Part4.cs:1784-1812 btnEventMessageInvestigate (UncoverPirateAttackFundingAnotherEmpire pop-up): warn the target empire. */
+    warnTargetOfPirateAttackFunding: (galaxy: Galaxy, empire: Empire, requestingEmpire: Empire, targetEmpire: Empire) =>
+        warnTargetOfPirateAttackFunding(galaxy, empire, requestingEmpire, targetEmpire),
+    /** Main.Part4.cs:1813-1821 btnEventMessageInvestigate (UncoverPlanetDestroyerConstruction pop-up): expose the project. */
+    exposeUncoveredPlanetDestroyer: (galaxy: Galaxy, empire: Empire, builder: Empire, locationIndex: number) => exposeUncoveredPlanetDestroyer(galaxy, empire, builder, locationIndex),
     salvageWreckField: (galaxy: Galaxy, empire: Empire, ship: BuiltObject, fieldId: number) => orderSalvage(galaxy, empire, ship, fieldId, true),
     // [emergent] begin — scenario 19d1 internal politics (scenario/emergent/politicsActions.ts; flag-gated inside)
     politicsAction: (galaxy: Galaxy, empire: Empire, action: PoliticsActionName, character: Character) => runPoliticsAction(galaxy, empire, action, character),

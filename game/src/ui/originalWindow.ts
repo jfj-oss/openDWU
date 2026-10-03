@@ -726,6 +726,8 @@ export interface OriginalWindowOptions {
     escapeCloses?: boolean;
     /** Opt out of pausing the game while open (AutoPauseWhenInPopupWindow). Default false. */
     noAutoPause?: boolean;
+    /** Pause the game while open even with AutoPauseWhenInPopupWindow off (the event panel's method_154). Default false. */
+    forcePause?: boolean;
     /** Called when the viewport or the UI scale changes, after the window re-scaled (re-pick large / small layouts). */
     onResize?: (win: OriginalWindow) => void;
 }
@@ -920,7 +922,7 @@ export function openOriginalWindow(o: OriginalWindowOptions): OriginalWindow {
     layout();
     window.addEventListener('resize', onResize);
     openWindows.push({ win, escape: o.escapeCloses !== false });
-    if (!o.noAutoPause) autoPauseOpen();
+    if (!o.noAutoPause) autoPauseOpen(o.forcePause === true);
     if (!keyListening) {
         keyListening = true;
         document.addEventListener('keydown', onKeyDown);

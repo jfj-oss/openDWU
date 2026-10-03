@@ -22,6 +22,22 @@ describe('AutoPauseState', () => {
         s.close(c);
         expect(c.paused).toBe(true);
     });
+    it('a forced open (the event panel, method_508 → method_154) pauses with the setting off, and resumes on close', () => {
+        const c = { paused: false };
+        const s = new AutoPauseState(() => false);
+        s.open(c, true);
+        expect(c.paused).toBe(true);
+        s.close(c);
+        expect(c.paused).toBe(false);
+        // Nested inside an unpaused window (setting off): the forced one still pauses, and the last close resumes.
+        s.open(c);
+        expect(c.paused).toBe(false);
+        s.open(c, true);
+        expect(c.paused).toBe(true);
+        s.close(c);
+        s.close(c);
+        expect(c.paused).toBe(false);
+    });
     it('does nothing when the setting is off', () => {
         const c = { paused: false };
         const s = new AutoPauseState(() => false);
