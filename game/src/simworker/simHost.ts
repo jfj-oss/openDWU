@@ -29,7 +29,10 @@ import { TRADE_FLOWS_SIDE_KEY, TradeFlowSyncSource } from './tradeFlowSync';
 import { installRimAtmosphereData } from '../render/rimAtmosphereWiring';
 import { RemoteValues, decodeRemoteArg, encodeRemoteArg, type RemoteArg, type RemoteNaming } from './remoteArgs';
 import { runSimQuery, type SimQueryName } from './simQuery';
-import type { ClockMessage, CommandMessage, FromWorker, QueryMessage, SnapshotMessage, StepMessage, TradeFlowsMessage, WorkerEvent } from './protocol';
+import { runHostOp } from './hostOps';
+import { drainVoiceCues } from '../sim/scenario/llm/voiceCues';
+import type { ClockMessage, CommandMessage, DebugReply, DebugRequest, FromWorker, HostOpMessage, QueryMessage, SnapshotMessage, StepMessage, TradeFlowsMessage, WorkerEvent } from './protocol';
+import { commandLog, copyCommandLogEntry, type CommandLogEntry } from '../sim/player/commandLog';
 import type { ReplicaEncoderOptions } from './replicaSync';
 
 export interface SimHostOptions {
@@ -57,6 +60,8 @@ export class SimHost {
     /** Trade-flow recording and its ledger's side-table view (tradeFlowSync.ts). */
     readonly tradeFlows: TradeFlowSyncSource;
     private stepSerial = 0;
+    /** Steps run outside tick() (the `__dwu.sim.advance` debug call), reported with the next step message. */
+    private extraSteps = 0;
     private clockSeq = 0;
     /** By-value command arguments decoded recently, by main-thread value id (remoteArgs.ts RemoteValues). */
     private readonly commandValues = new RemoteValues();
@@ -192,6 +197,55 @@ export class SimHost {
         this.dirty = true;
     }
 
+    /**
+     * Run a host op (hostOps.ts) on the authoritative galaxy now — between two ticks, where its in-thread caller runs
+     * it (a promise continuation between frames). The result goes back in the next step message; what the op's
+     * arguments and result name is compared in that delta, as for a command.
+     */
+    hostOp(m: HostOpMessage): void {
+        const resolving = {
+            object: (id: number) => this.sync.encoder.objectOf(id),
+            external: (kind: string, key: string | number) => this.externalsByRef.get(`${kind}:${key}`),
+        };
+        try {
+            const args = m.args.map((a) => decodeRemoteArg(a, resolving));
+            for (const a of args) this.touch(a, 2);
+            const result = runHostOp(this.galaxy, m.op, args);
+            this.touch(result, 2);
+            if (m.id !== 0) {
+                try {
+                    this.results.push({ id: m.id, result: encodeRemoteArg(result, this.naming) });
+                } catch (err) {
+                    this.results.push({ id: m.id, result: null, error: `result not sendable: ${err instanceof Error ? err.message : String(err)}` });
+                }
+            }
+        } catch (err) {
+            if (m.id !== 0) this.results.push({ id: m.id, result: null, error: err instanceof Error ? err.message : String(err) });
+            else console.error(`sim worker: host op ${m.op} failed`, err);
+        }
+        this.dirty = true;
+    }
+
+    /**
+     * 19s-2 voices: the cues the sim left during this tick (a module WeakMap of the worker's galaxy, never state) go to
+     * the main thread's voice job as an event, as llm/voiceJob.ts poll drained them in-thread. Drained every tick, voices
+     * on or not (in-thread the job drains them too; off, noteVoiceCue records nothing).
+     */
+    private drainVoiceCues(): void {
+        const cues = drainVoiceCues(this.galaxy);
+        if (cues.length === 0) return;
+        const encoded: RemoteArg[] = [];
+        for (const cue of cues) {
+            try {
+                encoded.push(encodeRemoteArg(cue, this.naming));
+            } catch (err) {
+                // Voices are best-effort (MAX_PENDING drops the oldest in-thread too).
+                console.warn('sim worker: voice cue not sendable', err);
+            }
+        }
+        if (encoded.length > 0) this.events.push({ kind: 'voiceCues', cues: encoded });
+    }
+
     /** Collect the graph objects in a command argument / result (through arrays, plain objects, by-value classes). */
     private touch(v: unknown, depth: number): void {
         if (v === null || typeof v !== 'object') return;
@@ -236,6 +290,9 @@ export class SimHost {
             this.events.push({ kind: 'simError', message: err instanceof Error ? err.message : String(err) });
             this.dirty = true;
         }
+        this.drainVoiceCues();
+        steps += this.extraSteps;
+        this.extraSteps = 0;
         this.stepSerial += steps;
         const t1 = this.now();
         // After the last change (a step, a command, the clock), keep diffing until a whole cold cycle has passed, so a
@@ -293,6 +350,43 @@ export class SimHost {
         return stateDigest(this.galaxy);
     }
 
+    /** [simworker chunk 1] The authoritative command log (`__dwu.commands.log()`), as a copy (plain data). */
+    commandLog(): CommandLogEntry[] {
+        return commandLog(this.galaxy).map(copyCommandLogEntry);
+    }
+
+    /**
+     * [simworker chunk 1] `__dwu.sim` / `__dwu.simBudget` in worker mode: read, write or call a member of the worker's
+     * SimDriver / SimFrameBudget, as the console does in-thread. Steps a call runs (`advance`) count as steps of the
+     * next step message, so the replica's render serial follows. The reply carries the target's plain fields.
+     */
+    debug(m: DebugRequest): DebugReply {
+        const target = (m.target === 'sim' ? this.driver : this.budget) as unknown as Record<string, unknown>;
+        let value: unknown;
+        let error: string | undefined;
+        try {
+            if (m.op === 'get') value = m.name === undefined ? undefined : target[m.name];
+            else if (m.op === 'set') {
+                if (m.name === undefined) throw new Error('set: no member name');
+                target[m.name] = m.value;
+            } else {
+                const fn = m.name === undefined ? undefined : target[m.name];
+                if (typeof fn !== 'function') throw new Error(`${m.target}.${String(m.name)} is not a function`);
+                value = (fn as (...a: unknown[]) => unknown).apply(target, m.args ?? []);
+                if (m.target === 'sim' && m.name === 'advance' && typeof value === 'number') this.extraSteps += value;
+            }
+        } catch (err) {
+            error = err instanceof Error ? err.message : String(err);
+        }
+        this.dirty = true;
+        const state: DebugReply['state'] = {};
+        for (const k of Object.keys(target)) {
+            const v = target[k];
+            if (v === null || typeof v === 'number' || typeof v === 'boolean' || typeof v === 'string') state[k] = v;
+        }
+        return { type: 'debug', id: m.id, value: plainValue(value), state, ...(error === undefined ? {} : { error }) };
+    }
+
     get serial(): number {
         return this.stepSerial;
     }
@@ -301,6 +395,17 @@ export class SimHost {
         this.tradeFlows.dispose();
         setGameEndHandler(this.galaxy, null);
         registerLocationPingedHook(null);
+    }
+}
+
+/** A value that survives postMessage (functions and class instances become plain data or a string). */
+function plainValue(v: unknown): unknown {
+    if (v === undefined || v === null || typeof v === 'number' || typeof v === 'boolean' || typeof v === 'string') return v;
+    if (typeof v === 'function') return `[function ${v.name}]`;
+    try {
+        return JSON.parse(JSON.stringify(v)) as unknown;
+    } catch {
+        return String(v);
     }
 }
 

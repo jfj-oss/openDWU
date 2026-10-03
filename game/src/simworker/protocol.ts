@@ -2,6 +2,8 @@
 // No DOM / Pixi imports (types only).
 
 import type { CreateGameOptions } from '../sim/game';
+import type { GenerateGalaxyOptions } from '../sim/galaxy';
+import type { CommandLogEntry } from '../sim/player/commandLog';
 import type { StartGameOptions } from '../sim/startGameOptions';
 import type { ReplicaDelta } from './replicaSync';
 import type { RemoteArg } from './remoteArgs';
@@ -19,16 +21,28 @@ export type WorkerBoot =
       }
     | {
           kind: 'load';
-          /** serializeGame text. */
-          text: string;
-          scenario: { id: string; include: string[] | null } | null;
+          /** serializeGame text (or `url`: the worker fetches it, so the main thread never holds or parses the text). */
+          text?: string;
+          url?: string;
+          /** Ignored: the worker reads the scenario from the save itself (main.ts no longer parses the save). */
+          scenario?: { id: string; include: string[] | null } | null;
+      }
+    | {
+          /** [simworker chunk 1] main.ts bootGameWithOptions without ?autostart: a bare generateGalaxy (no empires). */
+          kind: 'generate';
+          options: Omit<GenerateGalaxyOptions, 'gameData'>;
+          viewX: number;
+          viewY: number;
       };
+
+/** A game's scenario as the worker resolved it (id, and the add-on list of a composite one). */
+export type ScenarioRef = { id: string; include: string[] | null } | null;
 
 export interface InitMessage {
     type: 'init';
     boot: WorkerBoot;
-    /** Saved with the game (serializeGame). */
-    startOptions: StartGameOptions;
+    /** Saved with the game (serializeGame). A load uses the save's own (this is then ignored and may be omitted). */
+    startOptions?: StartGameOptions;
     /** Clock controls to start with (a loaded save's, else paused at 1×). */
     clock?: { speed: number; paused: boolean };
     /** Replica sync tuning (ReplicaEncoderOptions). */
@@ -74,6 +88,26 @@ export interface DigestRequest {
 }
 
 /**
+ * [simworker chunk 1] The `__dwu.sim` / `__dwu.simBudget` debug surface in worker mode: read, write or call a member of
+ * the worker's SimDriver ('sim') or SimFrameBudget ('simBudget').
+ */
+export interface DebugRequest {
+    type: 'debug';
+    id: number;
+    target: 'sim' | 'simBudget';
+    op: 'get' | 'set' | 'call';
+    name?: string;
+    value?: unknown;
+    args?: unknown[];
+}
+
+/** [simworker chunk 1] The authoritative command log (`__dwu.commands.log()` in worker mode). */
+export interface CommandLogRequest {
+    type: 'commandLog';
+    id: number;
+}
+
+/**
  * Trade-flow recording on / off (render/freightOverlay.ts through sim/logistics/tradeFlows.ts setRemoteTradeFlows): not
  * a player command (in-thread it is not journaled either; it observes contracts and changes no sim state).
  */
@@ -82,7 +116,20 @@ export interface TradeFlowsMessage {
     record: boolean;
 }
 
-export type ToWorker = InitMessage | ClockMessage | CommandMessage | QueryMessage | SaveRequest | DigestRequest | TradeFlowsMessage | { type: 'dispose' };
+/**
+ * A host op (hostOps.ts) to run on the authoritative game between two ticks: a sim write of the local-model paths
+ * that is not a player command (strategic decisions, a chronicle year, a voiced message). Its result travels in the
+ * next step message's `results` under `id`, like a command reply.
+ */
+export interface HostOpMessage {
+    type: 'hostOp';
+    /** Main-side id for the reply (shared with the command ids). */
+    id: number;
+    op: string;
+    args: RemoteArg[];
+}
+
+export type ToWorker = InitMessage | ClockMessage | CommandMessage | QueryMessage | HostOpMessage | SaveRequest | DigestRequest | TradeFlowsMessage | DebugRequest | CommandLogRequest | { type: 'dispose' };
 
 export interface ProgressMessage {
     type: 'progress';
@@ -100,6 +147,9 @@ export interface SnapshotMessage {
     clock: { speed: number; paused: boolean };
     stepSerial: number;
     startOptions: StartGameOptions;
+    /** The scenario the worker's game data carries (a loaded save's, read by the worker): the replica's static data
+     *  needs the same overlay. Absent: none. */
+    scenario?: ScenarioRef;
 }
 
 /** Sent after every worker tick that ran steps or changed state (commands, clock), and periodically while paused. */
@@ -130,7 +180,9 @@ export interface StepMessage {
 export type WorkerEvent =
     | { kind: 'gameEnd' }
     | { kind: 'locationPinged'; target: RemoteArg }
-    | { kind: 'simError'; message: string };
+    | { kind: 'simError'; message: string }
+    /** 19s-2 voice cues the tick left (sim/scenario/llm/voiceCues.ts drainVoiceCues, drained in the worker): VoiceCue[]. */
+    | { kind: 'voiceCues'; cues: RemoteArg[] };
 
 export type FromWorker =
     | ProgressMessage
@@ -138,4 +190,15 @@ export type FromWorker =
     | StepMessage
     | { type: 'saved'; id: number; text: string | null; error?: string }
     | { type: 'digest'; id: number; digest: string; nowMs: number; stepSerial: number }
+    | DebugReply
+    | { type: 'commandLog'; id: number; log: CommandLogEntry[] }
     | { type: 'error'; message: string };
+
+/** Reply to a DebugRequest: the member's value (or the call's result) and the target's plain fields after the op. */
+export interface DebugReply {
+    type: 'debug';
+    id: number;
+    value: unknown;
+    state: Record<string, number | boolean | string | null>;
+    error?: string;
+}

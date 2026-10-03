@@ -18,6 +18,8 @@ import {
     type RejectedCommand,
 } from '../sim/player/advisorCommands';
 import { runPlayerCommand } from '../sim/player/playerCommands';
+import { remoteSimHost } from '../simworker/remoteHost';
+import { readReplica } from '../llm/replicaReads';
 
 export type AdvisorApi = 'ollama' | 'openai';
 
@@ -224,7 +226,7 @@ export async function runAdvisorTurn(args: {
     fetchImpl?: FetchLike;
     signal?: AbortSignal;
 }): Promise<AdvisorTurn> {
-    const brief = buildAdvisorBrief(args.galaxy, args.player, args.selection);
+    const brief = readReplica(args.galaxy, () => buildAdvisorBrief(args.galaxy, args.player, args.selection));
     const messages = buildAdvisorMessages(brief, args.history, args.text);
     const turn: AdvisorTurn = { reply: '', results: [], rejected: [], latencyMs: 0, raw: '', brief, history: [{ role: 'user', content: args.text }] };
     let raw: string;
@@ -254,7 +256,17 @@ export async function runAdvisorTurn(args: {
     } else if (v.commands.length > 0) {
         // Executed between frames (a frame boundary: the model's answer arrives in a promise callback), like the click
         // it stands for, and journaled in the command log.
-        turn.results = runPlayerCommand(args.galaxy, args.player, 'advisorCommands', [brief, v.commands]);
+        const remote = remoteSimHost(args.galaxy);
+        if (remote === null) turn.results = runPlayerCommand(args.galaxy, args.player, 'advisorCommands', [brief, v.commands]);
+        else {
+            // Sim worker (docs/sim-worker.md §9 chunk 8): `galaxy` is the replica; the command is applied at the worker's
+            // next frame boundary (journaled there exactly as in-thread) and its results come back with that step.
+            try {
+                turn.results = await remote.command(args.player, 'advisorCommands', [brief, v.commands]);
+            } catch (e) {
+                turn.error = e instanceof Error ? e.message : String(e);
+            }
+        }
     }
     const parts: string[] = [];
     if (turn.reply !== '') parts.push(`"${turn.reply}"`);
