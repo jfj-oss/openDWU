@@ -30,6 +30,7 @@ import {
     type BuildQueueRow,
     type FleetOrderRow,
 } from './buildQueueModel';
+import { requestSimRefresh } from '../../simworker/refresh';
 
 export interface BuildQueueOptions {
     empire: Empire;
@@ -326,6 +327,8 @@ function createBuildQueue(opts: BuildQueueOptions): OriginalWindow {
     }
 
     refresh();
+    // Worker mode: bring what the screen shows up to date now instead of up to a cold cycle later (no-op in-thread).
+    requestSimRefresh(galaxy, [empire, empire.constructionYards ?? []], () => refresh());
     const timer = window.setInterval(refresh, 1000);
     return win;
 }

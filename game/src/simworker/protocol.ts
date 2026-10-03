@@ -82,6 +82,16 @@ export interface SaveRequest {
     id: number;
 }
 
+/**
+ * Compare these replica objects (sync ids) and what they reach now, so their cold data arrives with the next delta (a
+ * screen opening; docs/sim-worker.md §9 chunk 6). `id` (0: none) gets an empty reply in `StepMessage.results`.
+ */
+export interface RefreshRequest {
+    type: 'refresh';
+    id: number;
+    objects: number[];
+}
+
 export interface DigestRequest {
     type: 'digest';
     id: number;
@@ -129,7 +139,7 @@ export interface HostOpMessage {
     args: RemoteArg[];
 }
 
-export type ToWorker = InitMessage | ClockMessage | CommandMessage | QueryMessage | HostOpMessage | SaveRequest | DigestRequest | TradeFlowsMessage | DebugRequest | CommandLogRequest | { type: 'dispose' };
+export type ToWorker = InitMessage | ClockMessage | CommandMessage | QueryMessage | HostOpMessage | RefreshRequest | SaveRequest | DigestRequest | TradeFlowsMessage | DebugRequest | CommandLogRequest | { type: 'dispose' };
 
 export interface ProgressMessage {
     type: 'progress';
@@ -170,7 +180,7 @@ export interface StepMessage {
     /** Worker wall ms: the steps, and the replica diff. */
     stepMs: number;
     diffMs: number;
-    /** onApplied results of commands applied at this tick's boundary, and query replies (`query`), resolved after
+    /** onApplied results of commands applied at this tick's boundary, query replies (`query`) and refresh replies, resolved after
      *  `delta`. A command result makes the main thread apply the queued cold parts through this delta first. */
     results: { id: number; result: RemoteArg; error?: string; query?: boolean }[];
     /** Sim → UI events raised during the tick (resolved after `delta`). */

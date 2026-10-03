@@ -73,6 +73,7 @@ import { CROSSHAIR_COLOR, DIMMED_COLOR, GRID_COLOR, galaxyMapScale, sectorColumn
 import { yardRows, waitRows, type ConstructionSite } from './constructionYards';
 import { troopRows, type TroopRow } from './troops';
 import { openDesignEditor } from './designEditor';
+import { requestSimRefresh } from '../../simworker/refresh';
 
 /** Human label for a built-object role: 'None' for Undefined (GameText.txt
  * "Ship Role Base" -> Base, ... , Undefined -> "None"), otherwise the enum
@@ -1267,6 +1268,10 @@ function createShipsAndBasesList(opts: ShipsAndBasesListOptions): OpenState {
 
     // The InfoPanel, the open tab and the map follow the sim; the list itself is rebound on commands / filter changes
     // (like the original, which binds it once).
+    // Worker mode: bring what the screen shows up to date now instead of up to a cold cycle later (no-op in-thread).
+    requestSimRefresh(galaxy, [empire, empire.builtObjects, empire.privateBuiltObjects], () => {
+        if (!win.closed) refresh();
+    });
     const timer = window.setInterval(() => {
         if (win.closed) return;
         updateDetail();

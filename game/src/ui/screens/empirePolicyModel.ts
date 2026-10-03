@@ -23,7 +23,7 @@ import { IndustryType } from '../../sim/types';
 import { BuiltObjectSubRole } from '../../sim/builtObjectTypes';
 import { resolveSubRoleDescription } from '../../sim/designGeneration';
 import { formatNet, tryGetText } from '../../sim/textResolver';
-import { AUTOMATION_ROWS, setAutomationValue } from './gameOptionsPanel';
+import { AUTOMATION_ROWS, automationFieldValue, setAutomationValue } from './gameOptionsPanel';
 
 // ---------------------------------------------------------------------------------------------------------------
 // Text
@@ -709,6 +709,24 @@ export function setPolicyAutomation(empire: Empire, field: PolicyAutomationField
     setAutomationValue(empire, row, value);
 }
 
+/** One Empire Control* change the panel makes (the field and its value as setAutomationValue would write them). */
+export interface PolicyAutomationChange {
+    field: string;
+    value: AutomationLevel | boolean;
+}
+
+/**
+ * The automation write applyPolicyPanel would make for one control, or null when the empire already has that value.
+ * The Empire Policy screen issues these as `setEmpireControl` commands instead of writing the empire (a screen never
+ * writes the game: in worker mode it is a read-only replica, and in-thread the write would bypass the command log).
+ */
+export function policyAutomationChange(empire: Empire, field: PolicyAutomationField, value: number | boolean): PolicyAutomationChange | null {
+    const row = AUTOMATION_ROWS.find((r) => r.field === field);
+    if (row === undefined) throw new Error(`no Game Options automation row for ${field}`);
+    const fv = automationFieldValue(row, value);
+    return (empire as unknown as Record<string, unknown>)[fv.field] === fv.value ? null : { field: fv.field, value: fv.value };
+}
+
 // ---------------------------------------------------------------------------------------------------------------
 // Apply: port of Main.Part3.cs:3971-4201 method_597
 // ---------------------------------------------------------------------------------------------------------------
@@ -718,12 +736,15 @@ export function setPolicyAutomation(empire: Empire, field: PolicyAutomationField
  * colony / diplomacy / troop ones only when the *player* is not a pirate — `_Game.PlayerEmpire.PirateEmpireBaseHabitat
  * == null`) and return a new EmpirePolicy built from the class defaults with every panel value read back through the
  * same reader and conversion. The caller assigns it: WqesexberY_Click `_Game.PlayerEmpire.Policy = method_597(...)`.
+ * `setAutomation` replaces the automation write (default: setPolicyAutomation on `empire`); the screen passes one that
+ * collects policyAutomationChange commands.
  */
 export function applyPolicyPanel(
     empire: Empire,
     playerIsPirate: boolean,
     c: PanelControls,
     ctx: PolicyPanelContext,
+    setAutomation: (field: PolicyAutomationField, value: number | boolean) => void = (field, value) => setPolicyAutomation(empire, field, value),
 ): PolicyData {
     const p = defaultEmpirePolicy(); // new EmpirePolicy()
     const idx = (n: string): number => readIndex(c, n);
@@ -731,7 +752,7 @@ export function applyPolicyPanel(
         // Only when the player is not a pirate: _Game.PlayerEmpire.PirateEmpireBaseHabitat == null (3974).
         if (colonyOnly && playerIsPirate) continue;
         // (AutomationLevel)method_605(...) / Convert.ToBoolean(method_605(...)).
-        setPolicyAutomation(empire, field, kind === 'bool' ? idx(name) !== 0 : idx(name));
+        setAutomation(field, kind === 'bool' ? idx(name) !== 0 : idx(name));
     }
 
     const num = (n: string): number => readNumeric(c, n);

@@ -19,7 +19,7 @@ import type { Galaxy } from '../../sim/galaxy';
 import type { Design } from '../../sim/design';
 import { BuiltObjectSubRole } from '../../sim/builtObjectTypes';
 import { issuePlayerCommand } from '../../sim/player/playerCommands';
-import { moneyPanelIncome } from '../../sim/treasury';
+import { simQuery } from '../../simworker/simQuery';
 import { formatThousands } from '../../sim/diplomacyTick';
 import { builtObjectImageUrl, resolveDrawPictureRef } from '../../render/builtObjectLayer';
 import { empireFlagUrl } from '../selectionInfoView';
@@ -65,6 +65,7 @@ import {
     purchaseResultText,
     type BuildOrderRow,
 } from './buildOrderModel';
+import { requestSimRefresh } from '../../simworker/refresh';
 
 export * from './buildOrderModel';
 
@@ -265,8 +266,11 @@ function createBuildOrder(opts: BuildOrderOptions): OriginalWindow {
             renderDesignCell(i, r);
         });
         setText(funds, formatThousands(empire.stateMoney));
-        const income = moneyPanelIncome(galaxy, empire);
-        if (income !== null) setText(cashflow, formatThousands(income.cashflow));
+        // The money panel's figures run CheckAgeVariableIncome (it writes the empire): a sim query, answered at once
+        // in-thread and by the worker on a replica (simworker/simQuery.ts).
+        simQuery(galaxy, empire, 'moneyPanel', [], (income) => {
+            if (income !== null && !win.closed) setText(cashflow, formatThousands(income.cashflow));
+        });
         renderTotals();
     }
 
@@ -295,6 +299,10 @@ function createBuildOrder(opts: BuildOrderOptions): OriginalWindow {
 
     refresh();
     // Money, counts and prices change while open.
+    // Worker mode: bring what the screen shows up to date now instead of up to a cold cycle later (no-op in-thread).
+    requestSimRefresh(galaxy, [empire, empire.designs], () => {
+        if (!win.closed) refresh();
+    });
     timer = window.setInterval(() => {
         if (!win.closed) refresh();
     }, 2000);

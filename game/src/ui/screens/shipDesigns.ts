@@ -68,6 +68,7 @@ import {
     type OriginalWindow,
 } from '../originalWindow';
 import { componentImageUrl, gt, maximumSizeText } from './designPanelsModel';
+import { requestSimRefresh } from '../../simworker/refresh';
 export { isPrivateDesignSubRole, toggleDesignObsolete, toggleDesignAutoRetrofit };
 
 /** cmbDesignsFilter items (Main.Part8.cs:1006-1028). */
@@ -745,6 +746,10 @@ function createShipDesigns(opts: ShipDesignsOptions): OpenState {
 
     refreshList();
     // The list follows the sim (Amount, costs, automation upgrades) while open; a light re-bind keeps the selection.
+    // Worker mode: bring what the screen shows up to date now instead of up to a cold cycle later (no-op in-thread).
+    requestSimRefresh(galaxy, [player, player.designs], () => {
+        if (!win.closed && editor === null && !busy) refreshList();
+    });
     const timer = window.setInterval(() => {
         if (editor === null && !busy) refreshList();
     }, 2000);

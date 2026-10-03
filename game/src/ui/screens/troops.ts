@@ -62,6 +62,7 @@ import {
     text,
     textBox,
 } from '../originalWindow';
+import { requestSimRefresh } from '../../simworker/refresh';
 export { disbandTroops, setTroopsGarrisoned, renameTroop };
 
 /** GameText lookup with the English text as fallback (tests run without GameText loaded). */
@@ -849,6 +850,10 @@ function createTroopsScreen(opts: TroopsScreenOptions): OpenState {
 
     refresh();
     drawMap();
+    // Worker mode: bring what the screen shows up to date now instead of up to a cold cycle later (no-op in-thread).
+    requestSimRefresh(galaxy, [empire, empire.troops], () => {
+        if (!win.closed) refresh();
+    });
     timer = window.setInterval(() => refresh(), opts.refreshMs ?? 1000);
     return { close: () => win.close() };
 }

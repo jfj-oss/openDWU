@@ -31,7 +31,7 @@ import { RemoteValues, decodeRemoteArg, encodeRemoteArg, type RemoteArg, type Re
 import { runSimQuery, type SimQueryName } from './simQuery';
 import { runHostOp } from './hostOps';
 import { drainVoiceCues } from '../sim/scenario/llm/voiceCues';
-import type { ClockMessage, CommandMessage, DebugReply, DebugRequest, FromWorker, HostOpMessage, QueryMessage, SnapshotMessage, StepMessage, TradeFlowsMessage, WorkerEvent } from './protocol';
+import type { ClockMessage, CommandMessage, DebugReply, DebugRequest, FromWorker, HostOpMessage, QueryMessage, RefreshRequest, SnapshotMessage, StepMessage, TradeFlowsMessage, WorkerEvent } from './protocol';
 import { commandLog, copyCommandLogEntry, type CommandLogEntry } from '../sim/player/commandLog';
 import type { ReplicaEncoderOptions } from './replicaSync';
 
@@ -73,6 +73,12 @@ export class SimHost {
     /** Something changed outside a step (a command, the clock): send a delta even if no step ran. */
     private dirty = true;
     private settleUntilCycle = 0;
+    /**
+     * Objects to compare before this tick's delta (compareNow): what the commands applied at this tick's boundary
+     * touched (arguments, results, the issuing empire) and what refresh requests named — so their changes reach the
+     * replica with the command's reply instead of a cold cycle later.
+     */
+    private freshRoots: object[] = [];
     /** Graph objects the commands since the last tick named or returned, with how deep to compare them (encoder
      *  compareNow) in that tick's delta: the issuing empire 1 (its lists), arguments and results 2 (a colony's
      *  construction queue and its wait list, a ship's mission and queued missions). */
@@ -157,8 +163,13 @@ export class SimHost {
             const args = m.args.map((a) => decodeRemoteArg(a, resolving));
             this.touched.set(empire, Math.max(1, this.touched.get(empire) ?? 0));
             for (const a of args) this.touch(a, 2);
+            // And, bounded, what they reach (screens refresh from the reply: a new fleet template's list, a colony's
+            // queues): compareReach.
+            for (const a of args) this.noteFresh(a);
+            this.noteFresh(empire);
             issuePlayerCommand(this.galaxy, empire, m.op as PlayerOpName, args as never, m.id === 0 ? undefined : (result: unknown) => {
                 this.touch(result, 2);
+                this.noteFresh(result);
                 let encoded: RemoteArg = null;
                 let error: string | undefined;
                 try {
@@ -173,6 +184,27 @@ export class SimHost {
             else console.error('sim worker: command failed', err);
         }
         this.dirty = true;
+    }
+
+    /** Compare these replica objects (sync ids) and what they reach before the next delta; reply to `m.id` with it. */
+    refresh(m: RefreshRequest): void {
+        for (const id of m.objects) {
+            const o = this.sync.encoder.objectOf(id);
+            if (o !== null) this.freshRoots.push(o);
+        }
+        if (m.id !== 0) this.results.push({ id: m.id, result: null });
+        this.dirty = true;
+    }
+
+    /** Note an object (or the objects of an argument / result array or plain object, one level) for compareNow. */
+    private noteFresh(v: unknown): void {
+        if (v === null || typeof v !== 'object') return;
+        if (this.sync.encoder.knownId(v) >= 0) {
+            this.freshRoots.push(v);
+            return;
+        }
+        const items = Array.isArray(v) ? v : Object.getPrototypeOf(v) === Object.prototype ? Object.values(v as Record<string, unknown>) : [];
+        for (const x of items) if (x !== null && typeof x === 'object' && this.sync.encoder.knownId(x) >= 0) this.freshRoots.push(x);
     }
 
     /**
@@ -301,6 +333,10 @@ export class SimHost {
         if (changed) this.settleUntilCycle = this.sync.encoder.cycleCount + 2;
         if (!changed && !forceDelta && this.sync.encoder.cycleCount >= this.settleUntilCycle) return null;
         this.dirty = false;
+        if (this.freshRoots.length > 0) {
+            this.sync.encoder.compareReach(this.freshRoots);
+            this.freshRoots = [];
+        }
         // What this tick's commands touched is compared now, so its effect travels in this delta, ahead of the
         // command replies (the main thread runs onApplied with the replica as of this boundary or later).
         this.tradeFlows.refresh();

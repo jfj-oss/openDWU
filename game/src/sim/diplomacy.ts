@@ -15,6 +15,7 @@
 // Empire methods are free functions taking the C# `this` as first argument.
 // The SyncList lock is irrelevant single-threaded.
 
+import { isReadOnlyGalaxy } from './readOnlyQuery';
 import type { Empire } from './empire';
 import type { Galaxy } from './galaxy';
 import type { Habitat } from './types';
@@ -418,7 +419,8 @@ export function obtainDiplomaticRelation(self: Empire, empire: Empire | null): D
         let diplomaticRelation = self.diplomaticRelations.byEmpire(empire);
         if (diplomaticRelation === null) {
             diplomaticRelation = new DiplomaticRelation(DiplomaticRelationType.NotMet, self, self, empire, false);
-            if (empire.active) self.diplomaticRelations.add(diplomaticRelation);
+            // A read-only replica galaxy gets the same NotMet relation, detached (readOnlyQuery.ts).
+            if (empire.active && !isReadOnlyGalaxy(self.galaxy)) self.diplomaticRelations.add(diplomaticRelation);
         }
         return diplomaticRelation;
     }
@@ -759,7 +761,8 @@ export function obtainEmpireEvaluation(galaxy: Galaxy, self: Empire, empire: Emp
         if (empireEvaluation === null) {
             empireEvaluation = new EmpireEvaluation(empire, galaxy);
             empireEvaluation.bias = resolveStandardRaceBias(self.dominantRace, empire.dominantRace);
-            if (empire.active) evaluations.push(empireEvaluation);
+            // A read-only replica galaxy gets the same new evaluation, detached (readOnlyQuery.ts).
+            if (empire.active && !isReadOnlyGalaxy(galaxy)) evaluations.push(empireEvaluation);
         }
         return empireEvaluation;
     }
