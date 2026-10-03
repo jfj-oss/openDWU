@@ -40,6 +40,7 @@ import { EmpireMessageType, sendMessageToEmpire } from '../messages';
 import { CharacterEventType, CharacterSkillType, doCharacterEventForList, type Character } from '../characters';
 import { EventMessageType, checkSendPreWarpProgressEventMessage, sendEventMessageToEmpire, sendNewsBroadcast } from '../events';
 import { gameText } from '../colonyTick';
+import { raceAggressionLevel, raceCautionLevel } from '../racePeriodic';
 import { PreWarpProgressEventType, doEmpireEncounter } from '../exploration';
 import { BuiltObjectMissionPriority, BuiltObjectMissionType, CommandAction, builtObjectMission, isBuiltObject, isCreature, type BuiltObjectMission, type StellarObject } from '../missions/mission';
 import { assignMission, clearPreviousMissionRequirements, recordRevertMission } from '../missions/assign';
@@ -1233,8 +1234,8 @@ export function checkBattleOverwhelming(galaxy: Galaxy, bo: BuiltObject, targetT
             const totalThreatLevel = builtObject.totalThreatLevel;
             const totalThreatLevel2 = bo.totalThreatLevel;
             let num = totalThreatLevel2 / totalThreatLevel;
-            const num2 = bo.empire.dominantRace!.aggression / 100.0;
-            const num3 = bo.empire.dominantRace!.caution / 100.0;
+            const num2 = raceAggressionLevel(galaxy, bo.empire.dominantRace!) / 100.0; // Race.AggressionLevel (periodic)
+            const num3 = raceCautionLevel(galaxy, bo.empire.dominantRace!) / 100.0; // Race.CautionLevel (periodic)
             let val = num2 / num3;
             val = Math.max(0.8, Math.min(val, 1.25));
             val *= 2.0;

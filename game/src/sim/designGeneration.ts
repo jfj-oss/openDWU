@@ -19,6 +19,7 @@
 // minor ship images (ShipImageHelper's own clock-seeded Random), CheckDesignInUse (no
 // BuiltObjects yet → never in use).
 
+import { raceAggressionLevel, raceCautionLevel } from './racePeriodic';
 import { BuiltObjectSubRole } from './builtObjectTypes';
 import { csInt } from './builtObjectComponent';
 import { componentImprovementFromComponent, evaluateLatestByCategory, evaluateLatestByType, generateOrderedComponentImprovementList, type ComponentDefinition, type ComponentImprovementEntry } from './componentStatic';
@@ -103,7 +104,7 @@ export function placementView(empire: Empire, galaxy: Galaxy): DesignPlacementEm
     return {
         research: empire.research,
         policy: empire.policy,
-        dominantRace: race === null ? null : { aggressionLevel: race.aggression, intelligenceLevel: race.intelligence },
+        dominantRace: race === null ? null : { aggressionLevel: raceAggressionLevel(galaxy, race), intelligenceLevel: race.intelligence }, // Race.AggressionLevel (periodic)
         componentDefinitions: galaxy.researchStatic?.componentStatic?.definitions ?? [],
         hasHyperDriveTech: empire.hasHyperDriveTech,
         maximumConstructionSize: (s) => empire.maximumConstructionSize(s),
@@ -632,7 +633,7 @@ export function createNewDesigns(galaxy: Galaxy, empire: Empire, designDate: num
     const militaryFleeWhen = empire.policy?.defaultMilitaryFleeWhen ?? BuiltObjectFleeWhen.Shields20;
     const race = empire.dominantRace!;
     let fleeWhen6 = BuiltObjectFleeWhen.Shields50;
-    if (race.caution < 80) fleeWhen6 = BuiltObjectFleeWhen.Shields20;
+    if (raceCautionLevel(galaxy, race) < 80) fleeWhen6 = BuiltObjectFleeWhen.Shields20; // Race.CautionLevel (periodic)
     const view = placementView(empire, galaxy);
     // BaconEmpire.cs 748: Galaxy.GenerateOrderedComponentImprovementList(WeaponTorpedo, 1), built once per review.
     const componentImprovementList = generateOrderedComponentImprovementList(componentDefinitionsStatic(galaxy), ComponentCategoryType.WeaponTorpedo, 1);

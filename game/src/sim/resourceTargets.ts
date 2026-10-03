@@ -16,6 +16,7 @@
 // KnownPirateBases (never filled yet), SystemVisibility.Threats, DiplomaticRelations.
 // Habitat.BasesAtHabitat is the real list (filled by Empire.addBuiltObjectToGalaxy).
 
+import { raceAggressionLevel, raceCautionLevel } from './racePeriodic';
 import { BuiltObjectMissionType, builtObjectMission, builtObjectSubsequentMissions } from './missions/mission';
 import { crisesMiningPriority } from './scenario/emergent/crisesCore';
 import type { Galaxy } from './galaxy';
@@ -352,8 +353,8 @@ export function identifyResourceCentres(galaxy: Galaxy, empire: Empire, filterOu
     let num2 = 1.0;
     let num3 = 1.0;
     if (empire.dominantRace !== null) {
-        num2 = empire.dominantRace.aggression / 100.0;
-        num3 = empire.dominantRace.caution / 100.0;
+        num2 = raceAggressionLevel(galaxy, empire.dominantRace) / 100.0; // Race.AggressionLevel (periodic, Race.cs 350)
+        num3 = raceCautionLevel(galaxy, empire.dominantRace) / 100.0; // Race.CautionLevel (periodic, Race.cs 368)
     }
     const num4 = csToInt32(1000.0 / ((num2 * num2 * num2) / (num3 * num3 * num3)));
     const habitatPrioritizationList2 = determineHabitatsBuildingMiningStations(empire);

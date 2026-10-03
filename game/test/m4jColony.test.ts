@@ -173,7 +173,8 @@ describe('Galaxy long-block reviews', () => {
     });
 
     it('ReviewRacePeriodicChanges toggles ChangePeriodActive on the interval / length schedule', () => {
-        const race = fakeRace({ extra: { PeriodicChangeInterval: '3', PeriodicChangeLength: '1', PeriodicFactorsGrowth: '1.5' } } as Partial<Race>);
+        // races/*.txt PeriodicChangeInterval 3, PeriodicChangeLength 1, PeriodicFactorsGrowth 1.5 (parsed by data/races.ts).
+        const race = fakeRace({ changePeriodYearsInterval: 3, changePeriodYearsLength: 1, periodicGrowthRate: 1.5 } as Partial<Race>);
         const g = fakeGalaxy({ races: [race] });
         const at = (years: number) => {
             (g as unknown as { nowMs: number }).nowMs = years * 600000;

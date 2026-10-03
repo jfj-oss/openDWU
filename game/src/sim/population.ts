@@ -6,6 +6,8 @@
 // (ISerializable/GetObjectData) and IComparable are omitted (out of scope).
 
 import type { Race } from './data/races';
+import type { Galaxy } from './galaxy';
+import { raceReproductiveRate } from './racePeriodic';
 
 // Port of Population.cs (fields _Race/_Amount/_UnassimilatedAmount/
 // _GrowthRate; ctor Population(Race race, long amount)). C# long is 64-bit;
@@ -17,12 +19,14 @@ export class Population {
     unassimilatedAmount = 0; // C#: long _UnassimilatedAmount
     growthRate = 0; // C#: float _GrowthRate
 
-    constructor(race?: Race, amount?: number) {
+    /** `galaxy` resolves Race.ReproductiveRate (PeriodicGrowthRate while the race's change period is active, Race.cs 320);
+     *  pass it from every sim call site (null / omitted reads the race's base rate). */
+    constructor(race?: Race, amount?: number, galaxy?: Galaxy | null) {
         if (race !== undefined && amount !== undefined) {
             this.race = race;
             this.amount = amount;
             // C#: this._GrowthRate = (float) race.ReproductiveRate;
-            this.growthRate = Math.fround(race.reproductionRate);
+            this.growthRate = Math.fround(galaxy != null ? raceReproductiveRate(galaxy, race) : race.reproductionRate);
         } else {
             this.race = race as Race;
         }

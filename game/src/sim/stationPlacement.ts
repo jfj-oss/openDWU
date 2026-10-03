@@ -60,6 +60,9 @@ import type { Design } from './design';
 import { findNewestCanBuild } from './designGeneration';
 import { COLONY_ANNUAL_LUXURY_RESOURCE_CONSUMPTION_RATE, MINIMUM_LUXURY_RESOURCE_REORDER_AMOUNT, type Empire } from './empire';
 import { checkEmpireHasHyperDriveTech } from './forceStructure';
+import { raceCautionLevel } from './racePeriodic';
+import { DiplomaticRelationType, obtainDiplomaticRelation } from './diplomacy';
+import { PirateRelationType, obtainPirateRelation } from './pirateRelations';
 import type { Galaxy } from './galaxy';
 import { netSort } from './netSort';
 import { ShipDesignFocus } from './researchSystem';
@@ -405,11 +408,28 @@ export function determineNewSpacePortLocations(galaxy: Galaxy, empire: Empire, c
     return habitatList;
 }
 
-// Empire CheckSystemEnemyShipLevel(SystemVisibility[systemIndex]).
-// TODO(port): SystemVisibility threats (enemy ships seen in the system) are not ported; the
-// game-start caller passes excludeColoniesWithEnemiesPresent = false, and no threat exists then (0).
-function checkSystemEnemyShipLevel(_empire: Empire, _systemIndex: number): number {
-    return 0;
+// Port of Empire.6.cs CheckSystemEnemyShipLevel(SystemVisibility[systemIndex]) (3165): the raw firepower of the mobile,
+// functional, foreign non-base ships among the system's cached threats (SystemVisibility.Threats, written by the threat
+// evaluations — combat/threats.ts) that belong to a pirate faction we don't pay protection to, or to an empire we are at
+// war with. No Rnd (ObtainPirateRelation / ObtainDiplomaticRelation may add a relation, as in the C#).
+export function checkSystemEnemyShipLevel(empire: Empire, systemIndex: number): number {
+    let num = 0;
+    const system = systemIndex >= 0 ? empire.visibility.systemVisibility[systemIndex] : undefined;
+    if (system != null && system.threats != null) {
+        for (let i = 0; i < system.threats.length; i++) {
+            const builtObject = system.threats[i];
+            if (!(builtObject instanceof BuiltObject)) continue;
+            if (builtObject.role === BuiltObjectRole.Base || builtObject.topSpeed <= 0 || !builtObject.isFunctional || builtObject.empire == null || builtObject.empire === empire) continue;
+            if (builtObject.empire.pirateEmpireBaseHabitat !== null) {
+                const pirateRelation = obtainPirateRelation(empire, builtObject.empire);
+                if (pirateRelation != null && pirateRelation.type !== PirateRelationType.Protection) num += builtObject.firepowerRaw;
+                continue;
+            }
+            const diplomaticRelation = obtainDiplomaticRelation(empire, builtObject.empire);
+            if (diplomaticRelation != null && diplomaticRelation.type === DiplomaticRelationType.War) num += builtObject.firepowerRaw;
+        }
+    }
+    return num;
 }
 
 // Galaxy.8.cs CreateSpacePorts(galaxy, empire, spacePortColonies) (1216).
@@ -1086,7 +1106,7 @@ export function setLuxuryResourcesAtColonies(galaxy: Galaxy, empire: Empire): vo
     for (let i = 0; i < empire.colonies.length; i++) {
         const habitat = empire.colonies[i];
         const num = Math.max(500000000, habitat.population.totalAmount);
-        const cautionLevel = (habitat.population.dominantRace as NonNullable<typeof habitat.population.dominantRace>).caution; // Race.CautionLevel
+        const cautionLevel = raceCautionLevel(galaxy, habitat.population.dominantRace as NonNullable<typeof habitat.population.dominantRace>); // Race.CautionLevel (periodic)
         let num2 = Math.trunc(COLONY_ANNUAL_LUXURY_RESOURCE_CONSUMPTION_RATE * num * (cautionLevel / 100.0) * 5.0);
         num2 = Math.max(num2 * 3, MINIMUM_LUXURY_RESOURCE_REORDER_AMOUNT);
         num2 = Math.max(400, num2);

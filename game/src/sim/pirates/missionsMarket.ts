@@ -60,9 +60,10 @@ import {
     calculateOrderPlacementDate,
     cargoAvailable,
     cargoGetCargoById,
-    checkTaskAuthorized,
     countResourceSupplyLocations,
 } from '../logistics/orders';
+import { AdvisorMessageType, checkTaskAuthorized } from '../diplomacyTick';
+import { BoxedPirateRelationType, advisorText } from '../advisorQueue';
 import { thisYearsPrivateFuelCosts } from '../logistics/refuel';
 import { determineDesirePirateProtection } from './pirateAI';
 import { PirateIncomeType } from './pirateEconomy';
@@ -904,7 +905,8 @@ export function makeDefendOffersToPirates(galaxy: Galaxy, empire: Empire, starDa
         if (empire.pirateMissions.containsEquivalentTarget(empireActivity.target, empireActivity.type)) continue;
         const num3 = countMissionsInSameSystem(galaxy, empire.pirateMissions, systemStar, EmpireActivityType.Defend, empire);
         if (num3 > 2) continue;
-        if (!checkTaskAuthorized(galaxy, empire, empire.controlOfferPirateMissions, empireActivity)) continue;
+        // Empire.2.cs 1231-1232 (fresh refusalCount).
+        if (!checkTaskAuthorized(galaxy, empire, empire.controlOfferPirateMissions, { value: 0 }, generateAutomationMessageOfferPirateDefendMission(galaxy, empireActivity), empireActivity, AdvisorMessageType.OfferPirateDefendMission, null, empireActivity, null)) continue;
         empire.pirateMissions.add(empireActivity);
         galaxy.pirateMissions.add(empireActivity);
         num += num2;
@@ -956,7 +958,8 @@ export function makeSmugglingOffersToPirates(galaxy: Galaxy, empire: Empire, sta
     const empireActivity = new EmpireActivity(empire, empire, expiryDate, EmpireActivityType.Smuggle, deficientColony, num2);
     empireActivity.resourceId = deficientResourceCount > 1 ? BYTE_MAX : deficientResourceId;
     if (empire.pirateMissions.containsEquivalentTarget(empireActivity.target, empireActivity.type)) return;
-    if (empire !== galaxy.independentEmpire && !checkTaskAuthorized(galaxy, empire, empire.controlOfferPirateMissions, empireActivity)) return;
+    // Empire.2.cs 1492-1493 (fresh refusalCount).
+    if (empire !== galaxy.independentEmpire && !checkTaskAuthorized(galaxy, empire, empire.controlOfferPirateMissions, { value: 0 }, generateAutomationMessageOfferPirateSmuggleMission(galaxy, empireActivity), empireActivity, AdvisorMessageType.OfferPirateSmuggleMission, null, empireActivity, null)) return;
     if (empireActivity.resourceId !== BYTE_MAX) {
         empireActivity.relatedOrder = createOrderWithExpiry(galaxy, deficientColony, empireActivity.resourceId, 10000, true, OrderType.Standard, expiryDate);
     }
@@ -1065,7 +1068,8 @@ function postAttackOffers(galaxy: Galaxy, empire: Empire, starDate: number, stel
         const expiryDate = starDate + Math.trunc(1.0 * REAL_SECONDS_IN_GALACTIC_YEAR * 1000.0);
         const empireActivity = new EmpireActivity(targetEmpire, empire, expiryDate, EmpireActivityType.Attack, stellarObject3, num3);
         if (empire.pirateMissions.containsEquivalentTarget(empireActivity.target, empireActivity.type)) continue;
-        if (!checkTaskAuthorized(galaxy, empire, empire.controlOfferPirateMissions, empireActivity)) continue;
+        // Empire.2.cs 1827-1828 / 1923-1924 (fresh refusalCount).
+        if (!checkTaskAuthorized(galaxy, empire, empire.controlOfferPirateMissions, { value: 0 }, generateAutomationMessageOfferPirateAttackMission(galaxy, empireActivity), empireActivity, AdvisorMessageType.OfferPirateAttackMission, null, empireActivity, null)) continue;
         empire.pirateMissions.add(empireActivity);
         galaxy.pirateMissions.add(empireActivity);
         num2 += num3;
@@ -1262,7 +1266,8 @@ export function pirateCheckMissionsOnOffer(galaxy: Galaxy, empire: Empire, starD
                 let num5 = 1;
                 if (empireActivity.resourceId !== BYTE_MAX) num5 = countResourceSupplyLocations(galaxy, empire, empireActivity.resourceId, true);
                 if (num4 > 0 && num5 > 0) {
-                    if (checkTaskAuthorized(galaxy, empire, empire.controlOfferPirateMissions, empireActivity)) empire.pirateMissions.add(empireActivity);
+                    // Empire.2.cs 2037-2038 (fresh refusalCount).
+                    if (checkTaskAuthorized(galaxy, empire, empire.controlOfferPirateMissions, { value: 0 }, generateAutomationMessageAcceptPirateSmuggleMission(galaxy, empireActivity), empireActivity, AdvisorMessageType.AcceptPirateSmugglingMission, null, empireActivity, null)) empire.pirateMissions.add(empireActivity);
                 }
                 break;
             }
@@ -1318,7 +1323,11 @@ export function reviewPirateRelations(galaxy: Galaxy, empire: Empire, starDate: 
         if (pirateRelation.type !== PirateRelationType.Protection || empire.pirateEmpireBaseHabitat !== null) continue;
         let num9 = 0.0;
         const pirateRelation2 = obtainPirateRelation(pirateRelation.otherEmpire, empire);
-        if (pirateRelation2 != null) num9 = pirateRelation2.monthlyProtectionFeeToThisEmpire * 12.0;
+        let monthlyFee = 0.0;
+        if (pirateRelation2 != null) {
+            monthlyFee = pirateRelation2.monthlyProtectionFeeToThisEmpire;
+            num9 = pirateRelation2.monthlyProtectionFeeToThisEmpire * 12.0;
+        }
         const num10 = calculateAnnualCashflow(galaxy, empire);
         const num11 = num10 * num;
         let cancel = false;
@@ -1327,11 +1336,77 @@ export function reviewPirateRelations(galaxy: Galaxy, empire: Empire, starDate: 
         } else if (!determineDesirePirateProtection(galaxy, empire, pirateRelation.otherEmpire) && pirateRelation.lastChangeDate < num7) {
             cancel = true;
         }
-        // GenerateAutomationMessageCancelPirateProtection(otherEmpire, monthlyFee): advisor text (UI).
-        if (cancel && checkTaskAuthorized(galaxy, empire, empire.controlDiplomacyTreaties, pirateRelation.otherEmpire)) {
+        // Empire.2.cs 2484-2485 / 2495-2496 (fresh refusalCount each).
+        if (cancel && checkTaskAuthorized(galaxy, empire, empire.controlDiplomacyTreaties, { value: 0 }, generateAutomationMessageCancelPirateProtection(empire, pirateRelation.otherEmpire, monthlyFee), pirateRelation.otherEmpire, AdvisorMessageType.TreatyOffer, null, new BoxedPirateRelationType(PirateRelationType.None), null)) {
             changePirateRelation(empire, pirateRelation.otherEmpire, PirateRelationType.None, starDate);
             sendMessageToEmpire(empire, pirateRelation.otherEmpire, EmpireMessageType.CancelPirateProtection, empire, gameText('Cancel Pirate Protection'));
         }
     }
     for (let k = 0; k < pirateRelationList.length; k++) empire.pirateRelations.remove(pirateRelationList[k]);
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// Empire.10.cs 4138-4260 GenerateAutomationMessage* for the pirate-mission advisor suggestions (the
+// CheckTaskAuthorized taskDescription; advisorQueue.ts advisorText encoding)
+// ---------------------------------------------------------------------------------------------------------------
+
+/** The target's system name (BuiltObject.NearestSystemStar / Galaxy.DetermineHabitatSystemStar), or "". */
+function activityTargetSystemName(galaxy: Galaxy, target: ActivityTarget): string {
+    if (target instanceof BuiltObject) return target.nearestSystemStar?.name ?? '';
+    const habitat = galaxy.determineHabitatSystemStar(target);
+    return habitat != null ? habitat.name : '';
+}
+/** double.ToString("0.#"). */
+function formatOneOptionalDecimal(v: number): string {
+    const r = (v < 0 ? -Math.round(-v * 10) : Math.round(v * 10)) / 10;
+    return String(r + 0);
+}
+
+/** Empire.10.cs 4138 GenerateAutomationMessageOfferPirateAttackMission(attackMission). */
+export function generateAutomationMessageOfferPirateAttackMission(galaxy: Galaxy, attackMission: EmpireActivity | null): string {
+    if (attackMission == null || attackMission.type !== EmpireActivityType.Attack || attackMission.target == null || attackMission.targetEmpire == null) return '';
+    const text = activityTargetSystemName(galaxy, attackMission.target);
+    return advisorText('Offer Pirate Attack Mission Advisor Suggestion', attackMission.target.name, attackMission.targetEmpire.name, text, price0(attackMission.price));
+}
+
+/** Empire.10.cs 4165 GenerateAutomationMessageOfferPirateDefendMission(defendMission). */
+export function generateAutomationMessageOfferPirateDefendMission(galaxy: Galaxy, defendMission: EmpireActivity | null): string {
+    if (defendMission == null || defendMission.type !== EmpireActivityType.Defend || defendMission.target == null || defendMission.targetEmpire == null) return '';
+    const arg = activityTargetSystemName(galaxy, defendMission.target);
+    return advisorText('Offer Pirate Defend Mission Advisor Suggestion', defendMission.target.name, arg, price0(defendMission.price));
+}
+
+/** Empire.10.cs 4192 GenerateAutomationMessageOfferPirateSmuggleMission(smuggleMission). */
+export function generateAutomationMessageOfferPirateSmuggleMission(galaxy: Galaxy, smuggleMission: EmpireActivity | null): string {
+    if (smuggleMission == null || smuggleMission.type !== EmpireActivityType.Smuggle || smuggleMission.target == null || smuggleMission.targetEmpire == null) return '';
+    const text = activityTargetSystemName(galaxy, smuggleMission.target);
+    const price = formatOneOptionalDecimal(smuggleMission.price * 100.0);
+    return smuggleMission.resourceId !== BYTE_MAX
+        ? advisorText('Offer Pirate Smuggle Mission Advisor Suggestion', smuggleMission.target.name, text, resourceName(galaxy, smuggleMission.resourceId), price)
+        : advisorText('Offer Pirate Smuggle Mission All Resources Advisor Suggestion', smuggleMission.target.name, text, price);
+}
+
+/** Empire.10.cs 4219 GenerateAutomationMessageAcceptPirateSmuggleMission(smuggleMission). */
+export function generateAutomationMessageAcceptPirateSmuggleMission(galaxy: Galaxy, smuggleMission: EmpireActivity | null): string {
+    if (smuggleMission == null || smuggleMission.type !== EmpireActivityType.Smuggle || smuggleMission.target == null || smuggleMission.targetEmpire == null) return '';
+    const text = activityTargetSystemName(galaxy, smuggleMission.target);
+    const price = formatOneOptionalDecimal(smuggleMission.price * 100.0);
+    const all = smuggleMission.resourceId === BYTE_MAX;
+    if (smuggleMission.requestingEmpire === galaxy.independentEmpire) {
+        return !all
+            ? advisorText('Accept Pirate Smuggle Mission Independent Advisor Suggestion', resourceName(galaxy, smuggleMission.resourceId), smuggleMission.target.name, text, price)
+            : advisorText('Accept Pirate Smuggle Mission Independent All Resources Advisor Suggestion', smuggleMission.target.name, text, price);
+    }
+    const requester = smuggleMission.requestingEmpire!.name;
+    return !all
+        ? advisorText('Accept Pirate Smuggle Mission Advisor Suggestion', requester, resourceName(galaxy, smuggleMission.resourceId), smuggleMission.target.name, text, price)
+        : advisorText('Accept Pirate Smuggle Mission All Resources Advisor Suggestion', requester, smuggleMission.target.name, text, price);
+}
+
+/** Empire.10.cs 4251 GenerateAutomationMessageCancelPirateProtection(empire, monthlyFee). */
+export function generateAutomationMessageCancelPirateProtection(self: Empire, empire: Empire | null, monthlyFee: number): string {
+    if (empire == null) return '';
+    return self.pirateEmpireBaseHabitat === null || empire.pirateEmpireBaseHabitat === null
+        ? advisorText('Automation Pirate Cancel Protection', empire.name, price0(monthlyFee))
+        : advisorText('Automation Pirate Cancel Protection To Pirates', empire.name);
 }
