@@ -27,7 +27,7 @@ import { SimFrameBudget } from '../simFrameBudget';
 import { GalaxySyncSource } from './replicaGalaxy';
 import { TRADE_FLOWS_SIDE_KEY, TradeFlowSyncSource } from './tradeFlowSync';
 import { installRimAtmosphereData } from '../render/rimAtmosphereWiring';
-import { decodeRemoteArg, encodeRemoteArg, type RemoteArg, type RemoteNaming } from './remoteArgs';
+import { RemoteValues, decodeRemoteArg, encodeRemoteArg, type RemoteArg, type RemoteNaming } from './remoteArgs';
 import { runSimQuery, type SimQueryName } from './simQuery';
 import type { ClockMessage, CommandMessage, FromWorker, QueryMessage, SnapshotMessage, StepMessage, TradeFlowsMessage, WorkerEvent } from './protocol';
 import type { ReplicaEncoderOptions } from './replicaSync';
@@ -58,6 +58,8 @@ export class SimHost {
     readonly tradeFlows: TradeFlowSyncSource;
     private stepSerial = 0;
     private clockSeq = 0;
+    /** By-value command arguments decoded recently, by main-thread value id (remoteArgs.ts RemoteValues). */
+    private readonly commandValues = new RemoteValues();
     private results: StepMessage['results'] = [];
     private events: WorkerEvent[] = [];
     private readonly naming: RemoteNaming;
@@ -142,6 +144,7 @@ export class SimHost {
         const resolving = {
             object: (id: number) => this.sync.encoder.objectOf(id),
             external: (kind: string, key: string | number) => this.externalsByRef.get(`${kind}:${key}`),
+            values: this.commandValues,
         };
         try {
             const empire = resolving.object(m.empire) as Empire | null;
@@ -217,6 +220,8 @@ export class SimHost {
         driver.isPaused = () => time.paused;
         try {
             drainCommandBoundary(this.galaxy);
+            // The queued commands have been applied with their by-value arguments.
+            this.commandValues.boundary();
             if (!time.paused) {
                 noteSimSpeed(this.galaxy, time.speed);
                 noteSimView(this.galaxy, false);

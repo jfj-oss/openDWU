@@ -262,19 +262,29 @@ not to the local queue.
   replica objects. Unlike in-thread play, it runs one round trip later, not inside the boundary.
 - **`runPlayerCommand`** (synchronous result) throws on a replica. Its two callers, the advisor chat and the diplomat
   voice, are in §9 chunk 8.
+- **By-value identity** (`remoteArgs.ts RemoteValues`). By-value objects carry a main-thread value id. Shared or cyclic
+  values within one argument decode to one object. The same main-thread object sent by several commands decodes to
+  one worker object, as the executors share it in-thread (a mission assigned by one command and framed by the next):
+  before its first command is applied, it is refilled with the latest contents; after that, for two boundaries, only
+  the fields the main thread changed since its last send are written, so the sim's own changes stay. The worker kicks
+  a paused tick as a task of its own (`worker.ts kick`), so commands posted together reach one boundary.
 
 ### 4.4 Queries (order menus, selection buttons, money panel)
 
 Some UI calls are not commands but still change sim state, as the C# UI does: building the right-click action menu
 and the selection panel's buttons draws `galaxy.rnd` (the "Build here" designs, the build pages' surface / parking
 points, `DetermineOrbitalBaseLocation`) and fills `Empire.latestDesigns`; the money panel runs
-`CheckAgeVariableIncome`. They go through `simworker/simQuery.ts` (`SIM_QUERIES`: `actionMenu`, `selectionButtons`,
-`habitatDispatch`, `moneyPanel`):
+`CheckAgeVariableIncome`; the diplomacy screen's talk panel lists the conversation options with `listProposals`, and its
+pirate detail prices protection with `CalculatePirateProtectionPricePerMonth`, both of which obtain (add) the relation
+records they read. They go through `simworker/simQuery.ts` (`SIM_QUERIES`: `actionMenu`, `selectionButtons`,
+`habitatDispatch`, `moneyPanel`, `listProposals`, `pirateProtectionPrice`):
 
 - In-thread, `simQuery(galaxy, empire, op, args, done)` runs the function and calls `done` inside the call, as before.
 - On a replica, the query is posted (`query {id, empire, op, args}`), the worker runs it on the authoritative galaxy at
   once, in message order with the commands (so its draws land where in-thread play makes them), and posts an immediate
   sync-only step message (`SimHost.flush`) carrying the reply. Replies travel by value except graph objects (sync ids).
+- A screen that redraws on a timer reads the last answer (`ui/workerQueryCache.ts`: asked again once stale, one
+  request in flight per key); in-thread it keeps calling the function directly.
 - Every in-thread build is still made, one query each (never coalesced: the draw count must match). A reply for a
   right-click or a selection / page the UI has left since is not shown.
 - Gate: `test/simWorkerOrders.test.ts` (a scripted UI player: menus, button pages, dispatch, right-click, box
@@ -510,6 +520,20 @@ Each chunk is independent. All chunks share the same test approach:
 - Work: `obtainDiplomaticRelation` creates a relation on read (use a non-creating lookup); delete the dead
   intelligence mutators; by-value IntelligenceMission / TradeNegotiation / PeaceTerms arguments.
 - Test: proposal and trade flows through the host vs in-thread.
+- **Done.**
+  - `rimTraderRows` reads through `peekDiplomaticRelation`, in both modes; the dead intelligence mutators are deleted.
+  - The talk panel's listing and the pirate protection price are worker queries (§4.4); a probe of every other read
+    the chunk's screens make found no writes.
+  - The DEAL_BEGIN negotiation is detached from the replica before the trade panel edits it (`tradePanel.ts
+    detachTradeNegotiation`).
+  - Missions and peace terms go by value, keeping their identity (§4.3).
+  - Tests: `test/simWorkerDiplomacy.test.ts` (queries; proposals, trade, pirate protection, agent missions with a
+    false flag, transfers, dismissal, politics / court / security, peace terms: the in-thread log and digest) and
+    `test/simWorkerScreenReads.test.ts` (the screens' replica reads leave the replica unchanged, in nine game
+    setups).
+  - Browser: `scripts/simworker-smoke-diplomacy.mjs <url> --load=<save>` (a save where the player has met everyone).
+  - Left to other chunks: the conversation queue's message expiry (`setDiplomacyMessageExpiry`, chunk 4) and the
+    diplomat voice (chunk 8).
 
 **Chunk 8 — LLM and AI advisor.**
 - Files: `src/llm/*`, `ui/advisorClient.ts`, `advisorPanel.ts`, `diplomatVoice.ts`, `aiAdvisorDriver.ts`,

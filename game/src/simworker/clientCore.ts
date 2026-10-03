@@ -110,6 +110,9 @@ export class SimClientCore {
     readonly renderTime: RenderTime = createRenderTime();
     readonly game: Game;
     private readonly pending = new Map<number, (r: unknown) => void>();
+    /** Main-thread identity of the by-value objects sent in commands (remoteArgs.ts valueId). */
+    private readonly valueIds = new WeakMap<object, number>();
+    private nextValueId = 0;
     private nextCommandId = 1;
     private clockSeq = 0;
     private sent: ClockControls;
@@ -159,6 +162,15 @@ export class SimClientCore {
                 return id;
             },
             external: (o) => byObject.get(o),
+            // By-value identity across commands (remoteArgs.ts RemoteValues).
+            valueId: (o) => {
+                let v = this.valueIds.get(o);
+                if (v === undefined) {
+                    v = this.nextValueId++;
+                    this.valueIds.set(o, v);
+                }
+                return v;
+            },
         };
         this.resolving = { object: (id) => this.replica.decoder.object(id), external: (kind, key) => this.replica.staticByRef.get(`${kind}:${key}`) };
         setRemoteCommandSink(galaxy, (empire, op, args, onApplied) => this.sendCommand(empire, op, args, onApplied));

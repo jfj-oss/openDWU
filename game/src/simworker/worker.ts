@@ -112,11 +112,15 @@ function loop(): void {
     timer = setTimeout(loop, delay);
 }
 
-/** Run a tick now (a command or a clock change while paused lands without waiting for the poll). */
+/**
+ * Run a tick next (a command or a clock change while paused lands without waiting for the poll). As a task of its own,
+ * not inside this message: the commands the main thread posted together (one UI action, e.g. assign a mission and frame
+ * it) arrive as consecutive messages and reach the same boundary, as in-thread (remoteArgs.ts RemoteValues).
+ */
 function kick(): void {
     if (timer !== null && host !== null && host.time.paused) {
         clearTimeout(timer);
-        loop();
+        timer = setTimeout(loop, 0);
     }
 }
 

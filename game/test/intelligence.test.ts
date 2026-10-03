@@ -18,14 +18,11 @@ import {
     TIME_ONE_YEAR,
     TIME_THREE_MONTHS,
     TIME_UNTIL_CANCELLED,
-    assignMission,
     buildMissionState,
-    cancelMission,
     canDismissCharacter,
     characterRows,
     characterSkillLines,
     characterTraitsLine,
-    dismissCharacter,
     formFromMission,
     initialMissionForm,
     missionDifficultyDescription,
@@ -53,6 +50,7 @@ import {
     transferOptions,
 } from '../src/ui/screens/intelligence';
 import { DiplomaticRelationType, obtainDiplomaticRelation } from '../src/sim/diplomacy';
+import { PLAYER_OPS } from '../src/sim/player/playerOps';
 
 let gameData: GameData;
 beforeAll(async () => {
@@ -183,14 +181,17 @@ describe('mission form gating (CharacterMission.cs)', () => {
         const { galaxy, a, b, agent } = setup();
         expect(missionPanelMode(agent)).toBe('assign');
         const f = { ...withMissionType(galaxy, a, { ...initialMissionForm(galaxy, a), targetEmpire: b }, T.StealTerritoryMap), timeIndex: 1 };
-        expect(assignMission(galaxy, a, agent, f)).toBe(true);
+        // The screen issues these as commands (setAgentMission / cancelAgentMission); their executors.
+        const state = buildMissionState(galaxy, a, agent, f);
+        expect(state).not.toBeNull();
+        expect(PLAYER_OPS.setAgentMission(galaxy, a, agent, state!)).toBe(true);
         expect(missionPanelMode(agent)).toBe('active');
         const m = characterMission(agent)!;
         expect(m.type).toBe(T.StealTerritoryMap);
         const back = formFromMission(galaxy, a, m);
         expect([back.type, back.targetEmpire, back.timeIndex]).toEqual([T.StealTerritoryMap, b, 1]);
         expect(missionShowsTime(m)).toBe(true);
-        cancelMission(a, agent);
+        PLAYER_OPS.cancelAgentMission(galaxy, a, agent);
         expect(characterMission(agent)).toBeNull();
         expect(missionPanelMode(agent)).toBe('assign');
         expect(missionPanelMode(a.leader ?? null)).toBe('hidden');
@@ -199,7 +200,7 @@ describe('mission form gating (CharacterMission.cs)', () => {
     it('dismiss: Mission = null then Kill; a leader cannot be dismissed while LeaderChangeInfluence != 0', () => {
         const { galaxy, a, agent } = setup();
         agent.mission = newIntelligenceMissionAgainstEmpire(a, agent, T.StealGalaxyMap, 0, aiEmpires(galaxy)[1]);
-        dismissCharacter(galaxy, agent);
+        PLAYER_OPS.dismissCharacter(galaxy, a, agent);
         expect(getEmpireCharacters(a)).not.toContain(agent);
         const leader = new Character('L', CharacterRole.Leader, '', a.dominantRace, null, null, 0);
         a.leaderChangeInfluence = 0.5;
