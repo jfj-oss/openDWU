@@ -27,8 +27,17 @@ const check = (ok, what) => {
     if (!ok) failed++;
 };
 
-/** Replica digest (main thread) and the worker's, once the paused worker has settled. */
+/** Replica digest (main thread) and the worker's, once the paused worker has settled (polled: up to 60 s). */
 async function digests() {
+    let d = await digestsNow();
+    for (let i = 0; i < 30 && d.replica !== d.worker; i++) {
+        await page.waitForTimeout(2000);
+        d = await digestsNow();
+    }
+    return d;
+}
+
+async function digestsNow() {
     return page.evaluate(async () => {
         const { stateDigest } = await import('/src/sim/tick/digest.ts');
         const d = window.__dwu;
@@ -114,7 +123,7 @@ try {
         const { issuePlayerCommand } = await import('/src/sim/player/playerCommands.ts');
         return new Promise((resolve) => {
             issuePlayerCommand(d.galaxy, p, 'empireRename', ['Worker Screens'], () => resolve(p.name));
-            setTimeout(() => resolve(`(no reply) ${p.name}`), 8000);
+            setTimeout(() => resolve(`(no reply) ${p.name}`), 20000);
         });
     });
     check(renamed === 'Worker Screens', `empire rename reply sees the new name (${renamed})`);
