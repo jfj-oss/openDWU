@@ -12,6 +12,8 @@ import { ComponentType } from '../src/sim/data/components';
 import { Weapon } from '../src/sim/weapon';
 import { Creature, CreatureType } from '../src/sim/creature';
 import { galaxyNow } from '../src/sim/tick/simTime';
+import { weaponFire } from '../src/sim/combat/weapons';
+import { creatureCheckForAttackers } from '../src/sim/events';
 import { baconInflictDamageMultiplier, habitatInflictIonDamage, inflictDamageFull, inflictIonDamage } from '../src/sim/combat/damage';
 
 let galaxy: Galaxy;
@@ -119,5 +121,26 @@ describe('Creature.cs 933 → EmpireCounters.cs 481 ProcessCreatureDeath on a ki
         ardilus.damageKillThreshold = 1;
         expect(ardilus.damageCreature(null, 100, null)).toBe(true);
         expect(counters.destroyedCreatureCountArdilus).toBe(before);
+    });
+});
+
+describe('Weapon.cs 299-305 FireInternal adds a firing BuiltObject to Creature.Attackers', () => {
+    it('ship fire registers the ship once; Creature.cs 1196 CheckForAttackers then targets it', () => {
+        const kaltor = newCreature(CreatureType.Kaltor);
+        kaltor.xpos = ship.xpos + 500;
+        kaltor.ypos = ship.ypos;
+        const weapon = ship.weapons![0];
+        weaponFire(galaxy, weapon, ship, kaltor, 500, galaxyNow(galaxy), true, 1);
+        weaponFire(galaxy, weapon, ship, kaltor, 500, galaxyNow(galaxy), true, 1);
+        expect(kaltor.attackers).toEqual([ship]);
+        creatureCheckForAttackers(galaxy, kaltor);
+        expect(kaltor.currentTarget).toBe(ship);
+        expect(ship.pursuers).toContain(kaltor);
+    });
+
+    it('a colony (Habitat) firer is not registered (FireInternal returns before the switch)', () => {
+        const kaltor = newCreature(CreatureType.Kaltor);
+        weaponFire(galaxy, weaponOfType(ComponentType.WeaponIonCannon), colony, kaltor, 500, galaxyNow(galaxy), true, 1);
+        expect(kaltor.attackers).toEqual([]);
     });
 });
