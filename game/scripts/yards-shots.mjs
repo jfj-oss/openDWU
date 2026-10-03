@@ -54,8 +54,11 @@ if (await waitRow.count()) {
     await page.waitForSelector('[data-ow="msgbox"]', { timeout: 5000 }).catch(() => {});
     await page.waitForTimeout(400);
     await page.screenshot({ path: `${outDir}/remove-${tag}.png` });
-    const no = page.locator('[data-ow="msgbox"] .ow-glass', { hasText: 'No' });
-    if (await no.count()) await no.click();
+    for (const label of ['No', 'OK']) {
+        const b = page.locator('[data-ow="msgbox"] .ow-glass', { hasText: label });
+        if (await b.count()) await b.first().click();
+    }
+    await page.waitForTimeout(300);
 }
 // A ship under construction: the construction summary.
 const yardRow = page.locator('[data-ow="yards"] .cy-page:not([hidden]) .ow-grid').nth(0).locator('.ow-grid-row').first();

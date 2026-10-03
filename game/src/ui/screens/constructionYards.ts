@@ -397,12 +397,16 @@ function objectId(o: object): number {
 
 /** Empire flag pictures (async composites), cached by empire. */
 const flagUrls = new Map<Empire, string | null>();
+let flagsVersion = 0;
 function flagUrl(galaxy: Galaxy, empire: Empire | null): string | null {
     if (empire === null) return null;
     if (!flagUrls.has(empire)) {
         flagUrls.set(empire, null);
         empireFlagUrl(galaxy, empire).then(
-            (u) => flagUrls.set(empire, u),
+            (u) => {
+                flagUrls.set(empire, u);
+                flagsVersion++;
+            },
             () => undefined,
         );
     }
@@ -892,6 +896,17 @@ function createConstructionYards(opts: ConstructionYardsOptions): OpenState {
     let fleetOrders = new Map<BuiltObject, string>();
     let detailKey = '';
 
+    /** Re-render a grid only when its rows (or the selection / the loaded flags) changed, so clicks are not lost to
+     *  a rebuild between mouse down and up. */
+    const gridKeys = new WeakMap<object, string>();
+    function sync<T>(grid: OwGrid<T>, data: T[], sig: (r: T) => string, sel: unknown): void {
+        const key = `${data.map(sig).join('\n')}#${sel !== null && typeof sel === 'object' ? objectId(sel) : String(sel)}#${flagsVersion}`;
+        if (gridKeys.get(grid) === key) return;
+        gridKeys.set(grid, key);
+        grid.setRows(data);
+        if (sel !== null) grid.select(sel, false);
+    }
+
     function updateButtons(): void {
         const bo = selectedBO();
         const mobile = bo !== null && bo.topSpeed > 0 && bo.role !== BuiltObjectRole.Base;
@@ -1016,8 +1031,7 @@ function createConstructionYards(opts: ConstructionYardsOptions): OpenState {
             selectedWait = null;
         }
         selected = row?.site ?? null;
-        siteGrid.setRows(rows);
-        if (selected) siteGrid.select(siteTarget(selected), false);
+        sync(siteGrid, rows, (r) => `${r.name}|${r.type}|${r.system}|${r.yards}|${r.building}|${r.waiting}|${r.speed}|${Math.round(r.progress * 10000)}`, selected ? siteTarget(selected) : null);
 
         const bo = selectedBO();
         if (document.activeElement !== nameBox) nameBox.value = bo?.name ?? (selected?.kind === 'colony' ? selected.habitat.name : '');
@@ -1025,27 +1039,28 @@ function createConstructionYards(opts: ConstructionYardsOptions): OpenState {
         fleetOrders = fleetOrderByShip(fleetDesignBook(empire).orders);
         const y = selected ? yardRows(selected, component) : [];
         if (selectedYard && !y.some((r) => r.yard === selectedYard)) selectedYard = null;
-        yardGrid.setRows(y);
-        if (selectedYard) yardGrid.select(selectedYard, false);
+        sync(yardGrid, y, (r) => `${objectId(r.yard)}|${r.ship}|${r.progressText}|${r.speed}|${r.shipObject ? (fleetOrders.get(r.shipObject) ?? '') : ''}`, selectedYard);
         const w = selected ? waitRows(selected) : [];
         if (selectedWait && !w.some((r) => r.builtObject === selectedWait)) selectedWait = null;
-        waitGrid.setRows(w);
-        if (selectedWait) waitGrid.select(selectedWait, false);
+        sync(waitGrid, w, (r) => `${objectId(r.builtObject)}|${r.name}|${r.type}|${fleetOrders.get(r.builtObject) ?? ''}`, selectedWait);
 
         const under = row ? row.building : 0;
         setText(tabButtons[0], `${gt('Construction Yards')}${under > 0 ? ` (${under})` : ''}`);
         const orders = fleetDesignBook(empire).orders;
         const waitSet = new Set(w.map((r) => r.builtObject));
         for (const r of y) if (r.shipObject) waitSet.add(r.shipObject);
-        fleetGrid.setRows(
+        sync(
+            fleetGrid,
             orders.map((o) => {
                 const p = fleetBuildProgress(empire, o);
                 return { id: o.id, name: o.name, built: p.built, total: p.total, building: p.building, here: o.pending.filter((b) => waitSet.has(b)).length };
             }),
+            (r) => `${r.id}|${r.name}|${r.built}|${r.total}|${r.building}|${r.here}`,
+            fleetGrid.selected?.id ?? null,
         );
         setText(tabButtons[1], `Fleet Builds${orders.length > 0 ? ` (${orders.length})` : ''}`);
         const jobs = constructionJobRows(galaxy, empire);
-        jobGrid.setRows(jobs);
+        sync(jobGrid, jobs, (r) => `${r.id}|${r.label}|${r.state}|${r.shipName}|${r.etaMs === null ? '' : Math.round(r.etaMs / 1000)}`, jobGrid.selected?.id ?? null);
         setText(tabButtons[2], `Construction Jobs${jobs.length > 0 ? ` (${jobs.length})` : ''}`);
 
         setText(maxSize, maximumSizeText(empireMaximumSizes(empire)));
