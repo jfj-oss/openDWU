@@ -44,7 +44,7 @@ import { BuiltObjectMissionPriority, BuiltObjectMissionType, CommandAction, buil
 import { assignMission, clearPreviousMissionRequirements, recordRevertMission } from '../missions/assign';
 import { startNewShipGroupBattleStats } from './damage';
 import { shipGroupAssignMission, shipGroupCompleteMission, shipGroupTotalOverallStrengthFactor, type ShipGroup } from '../fleets/shipGroup';
-import { withinFuelRange, withinFuelRangeAndRefuel } from '../movement';
+import { warpSpeedWithBonuses, withinFuelRange, withinFuelRangeAndRefuel } from '../movement';
 import { checkColonyShipMissionCancelled, determineDestroyOrCaptureTarget, shouldAttack } from './attackAI';
 import { determineThreatLevelFighter, isFighter, type Fighter } from './fighters';
 import { formatGameTextNow } from '../textResolver';
@@ -1138,10 +1138,7 @@ export function identifySystemThreatsToUs(galaxy: Galaxy, ship: BuiltObject, sys
 // BuiltObject.1.cs 208 PerformThreatEvaluation / 243 ThreatEvaluation and helpers
 // ---------------------------------------------------------------------------------------------------------------
 
-/** BuiltObject.WarpSpeedWithBonuses (BuiltObject.cs): WarpSpeed × fleet/captain bonuses — TODO(port) M4c/M4l: the bonuses; reads WarpSpeed. */
-export function warpSpeedWithBonuses(bo: BuiltObject): number {
-    return (bo as BuiltObject & { warpSpeedWithBonuses?: number }).warpSpeedWithBonuses ?? bo.warpSpeed;
-}
+// BuiltObject.cs 572 WarpSpeedWithBonuses (fleet and captain hyperjump bonuses): movement.ts warpSpeedWithBonuses.
 
 /** BuiltObject.1.cs 208 PerformThreatEvaluation(time). */
 export function performThreatEvaluation(galaxy: Galaxy, bo: BuiltObject, time: number): void {

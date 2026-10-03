@@ -13,6 +13,9 @@ import { Weapon } from '../src/sim/weapon';
 import { Creature, CreatureType } from '../src/sim/creature';
 import { galaxyNow } from '../src/sim/tick/simTime';
 import { weaponFire } from '../src/sim/combat/weapons';
+import { performThreatEvaluation, shipGroupOf } from '../src/sim/combat/threats';
+import { warpSpeedWithBonuses } from '../src/sim/movement';
+import { captainBonusMap } from '../src/sim/characters';
 import { creatureCheckForAttackers } from '../src/sim/events';
 import { baconInflictDamageMultiplier, habitatInflictIonDamage, inflictDamageFull, inflictIonDamage } from '../src/sim/combat/damage';
 
@@ -142,5 +145,34 @@ describe('Weapon.cs 299-305 FireInternal adds a firing BuiltObject to Creature.A
         const kaltor = newCreature(CreatureType.Kaltor);
         weaponFire(galaxy, weaponOfType(ComponentType.WeaponIonCannon), colony, kaltor, 500, galaxyNow(galaxy), true, 1);
         expect(kaltor.attackers).toEqual([]);
+    });
+});
+
+describe('BuiltObject.1.cs 208 PerformThreatEvaluation reads BuiltObject.cs 572 WarpSpeedWithBonuses', () => {
+    it('skips evaluation while moving at the captain-boosted warp speed', () => {
+        expect(ship.warpSpeed).toBeGreaterThan(0);
+        const savedSpeed = ship.currentSpeed;
+        const savedThreats = ship.threats;
+        const savedBonuses = captainBonusMap.get(ship);
+        const bonuses = { targeting: 100, countermeasures: 100, shipManeuvering: 100, fighters: 100, shipEnergyUsage: 100, weaponsDamage: 100, weaponsRange: 100, shieldRechargeRate: 100, damageControl: 100, repair: 100, hyperjumpSpeed: 150 };
+        captainBonusMap.set(ship, bonuses);
+        try {
+            const boosted = warpSpeedWithBonuses(ship);
+            expect(boosted).toBe(Math.trunc(ship.warpSpeed * (shipGroupOf(ship)?.hyperjumpSpeedBonus ?? 1) * 1.5));
+            expect(boosted).not.toBe(ship.warpSpeed);
+            const sentinel: BuiltObject['threats'] = [];
+            ship.threats = sentinel;
+            ship.currentSpeed = Math.fround(boosted);
+            performThreatEvaluation(galaxy, ship, galaxyNow(galaxy));
+            expect(ship.threats).toBe(sentinel); // early return: at full (boosted) warp
+            ship.currentSpeed = Math.fround(ship.warpSpeed);
+            performThreatEvaluation(galaxy, ship, galaxyNow(galaxy));
+            expect(ship.threats).not.toBe(sentinel); // the unboosted warp speed is not "full warp"
+        } finally {
+            ship.currentSpeed = savedSpeed;
+            ship.threats = savedThreats;
+            if (savedBonuses === undefined) captainBonusMap.delete(ship);
+            else captainBonusMap.set(ship, savedBonuses);
+        }
     });
 });
