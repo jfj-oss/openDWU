@@ -184,6 +184,7 @@ describe('hudTransformOrigin (task 10f)', () => {
         // The top strip (money block included) is placed at its scaled original position, scaling from 0 0.
         expect(hudTransformOrigin('pnlMoney', rectFor('pnlMoney'))).toBe('0 0');
         expect(hudTransformOrigin('pnlOptionsList', rectFor('pnlOptionsList'))).toBe('100% 100%');
+        expect(hudTransformOrigin('pnlSystemMap', rectFor('pnlSystemMap'))).toBe('100% 100%');
     });
 
     it('scales the bottom-left selection panel from its bottom edge', () => {
@@ -211,7 +212,7 @@ describe('streamlined HUD element set (task 05c)', () => {
         'pnlColonyHabitatInfo',
         'pnlDetailInfoShipGroup',
         'pnlDetailInfo',
-        'pnlSystemMap',
+        // pnlSystemMap is back (parity batch D1: hudSystemMap.ts), with picSystem inside it.
         'btnCycleBasesBack',
         'btnCycleColoniesBack',
         'btnCycleMilitaryBack',
@@ -301,7 +302,8 @@ describe('streamlined HUD element set (task 05c)', () => {
         expect(layout['pnlTopLeftBar'].y).toBe(0);
         expect(layout['pnlMoney'].x + layout['pnlMoney'].w).toBeCloseTo(1920);
         expect(layout['pnlSelection']).toEqual({ x: 10, y: 1080 - 310 - 10, w: 399, h: 310 });
-        expect(layout['pnlOptionsList']).toEqual({ x: 1920 - 220 - 10, y: 1080 - 10, w: 220, h: 0 });
+        expect(layout['pnlSystemMap']).toEqual({ x: 1920 - 330 - 10, y: 1080 - 290 - 10, w: 330, h: 290 });
+        expect(layout['pnlOptionsList']).toEqual({ x: 1920 - 220 - 10, y: 1080 - 10 - 290 - 4, w: 220, h: 0 });
     });
 });
 

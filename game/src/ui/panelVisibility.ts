@@ -11,8 +11,8 @@
 // buttons and the diplomatic message queue. method_472(false) hides those as well. What MainView draws itself
 // (method_18: the star date and speed text, the money / cashflow block and the system name) stays in every step.
 //
-// Port: our options list (pnlOptionsList) stands in for the system map corner (hudLayout.ts: the zoom rows and the
-// overlay toggles), the message stub list (messageStubList.ts) for the diplomatic message queue; the date text of
+// Port: the system map corner is pnlSystemMap (hudSystemMap.ts) plus our options list (pnlOptionsList: the zoom rows
+// and the overlay toggles), the message stub list (messageStubList.ts) for the diplomatic message queue; the date text of
 // pnlTopLeftBar and pnlMoney are the MainView-drawn parts. The state is a data attribute on <body> read by hud.css.
 // TODO(port): the hover message's move by the panel height (rectangle_0.Y / mainView.HoverMessageLocation,
 // Main.Part7.cs 3094-3103) — our map tooltip follows the cursor (mapTooltip.ts).
@@ -28,7 +28,7 @@ export function nextPanelVisibility(current: PanelVisibility): PanelVisibility {
 }
 
 /** HUD element names (data-hud) method_472(true) hides; everything under #hud but these stays in the 'map' step. */
-export const MAP_CORNER_ELEMENTS: readonly string[] = ['pnlOptionsList'];
+export const MAP_CORNER_ELEMENTS: readonly string[] = ['pnlSystemMap', 'pnlOptionsList'];
 /** HUD element names drawn by MainView itself (method_18), never hidden. */
 export const MAIN_VIEW_DRAWN_ELEMENTS: readonly string[] = ['pnlMoney'];
 

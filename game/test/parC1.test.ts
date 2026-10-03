@@ -102,6 +102,8 @@ describe('panel visibility (CyclePanelVisibility, method_472 / method_473)', () 
         expect(hudElementShown('lstMessages', 'map')).toBe(false);
         expect(hudElementShown('pnlItemList', 'map')).toBe(false);
         expect(hudElementShown('pnlOptionsList', 'map')).toBe(true);
+        expect(hudElementShown('pnlSystemMap', 'map')).toBe(true);
+        expect(hudElementShown('pnlSystemMap', 'none')).toBe(false);
         expect(hudElementShown('pnlOptionsList', 'none')).toBe(false);
         expect(hudElementShown('pnlMoney', 'none')).toBe(true);
         expect(hudElementShown('pnlSelection', 'all')).toBe(true);

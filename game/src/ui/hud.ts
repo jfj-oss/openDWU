@@ -1,4 +1,5 @@
-import { computeHudLayout, VIEW_ROWS, type Rect, type ViewRowKey } from './hudLayout';
+import { computeHudLayout, OPTIONS_ABOVE_MAP_GAP, SYSTEM_MAP_PANEL_H, VIEW_ROWS, type Rect, type ViewRowKey } from './hudLayout';
+import { buildHudSystemMap } from './hudSystemMap';
 import { cornerRadiusCss, MONEY_POS, researchReadout, showViewSystemName, TOP_DATE_POS, TOP_ELEMENT_NAMES, TOP_LEFT_BUTTONS, TOP_ROW_BUTTONS, topBarLayout, topBarScale, viewSystemName, type CornerCurves } from './topBar';
 import './topBar.css';
 import { openGameOptionsPanel, toggleGameOptionsPanel } from './screens/gameOptionsPanel';
@@ -242,7 +243,7 @@ const TOP_NAMES: ReadonlySet<string> = new Set(TOP_ELEMENT_NAMES);
 /** CSS `transform-origin` for a HUD element name given its layout rect. Pure
  * (no window access) so node-based tests can exercise the mapping. */
 export function hudTransformOrigin(name: string, _rect: Rect, _viewportWidth?: number): string {
-    if (name === 'pnlOptionsList') return '100% 100%'; // bottom-right anchored
+    if (name === 'pnlOptionsList' || name === 'pnlSystemMap') return '100% 100%'; // bottom-right anchored
     if (TOP_NAMES.has(name)) return '0 0'; // top strip: positioned at its scaled original position
     if (name === 'pnlSelection') return '0 100%'; // bottom-left anchored
     return '0 0'; // default: top-left anchored
@@ -283,7 +284,32 @@ export function applyHudScale(refs: HudRefs): void {
         el.style.transform = k === 1 ? '' : `scale(${k})`;
         if (name === 'pnlSelection') anchorSelectionPanel(el, rect);
     }
+    anchorOptionsAboveSystemMap(refs, s);
     placeTopStrip(refs);
+}
+
+/** The "View" popup sits right above the system mini-map: its bottom is the map's scaled top plus the gap (both are
+ * scaled from their bottom-right corners, so the offset scales too). Without a map it keeps its own rect. */
+function anchorOptionsAboveSystemMap(refs: HudRefs, s: number): void {
+    const opts = refs.elements.get('pnlOptionsList');
+    if (opts === undefined || !refs.elements.has('pnlSystemMap')) return;
+    const layout = computeHudLayout(window.innerWidth, window.innerHeight);
+    const map = layout['pnlSystemMap'];
+    if (map === undefined) return;
+    const mapBottom = Math.max(0, window.innerHeight - map.y - map.h);
+    opts.style.top = '';
+    opts.style.bottom = `${mapBottom + (SYSTEM_MAP_PANEL_H + OPTIONS_ABOVE_MAP_GAP) * s}px`;
+}
+
+/** Right / bottom anchoring for the bottom-right elements (task 10e): they never clip past the screen edge. */
+function anchorBottomRight(el: HTMLElement, name: string, rect: Rect): void {
+    if (name !== 'pnlOptionsList' && name !== 'pnlSystemMap') return;
+    el.style.left = '';
+    el.style.right = `${Math.max(0, window.innerWidth - rect.x - rect.w)}px`;
+    if (name === 'pnlSystemMap' || rect.h === 0) {
+        el.style.top = '';
+        el.style.bottom = `${Math.max(0, window.innerHeight - rect.y - rect.h)}px`;
+    }
 }
 
 /** System-level view: zoom factor 50 (Main.Part9.cs btnZoomSystem_Click
@@ -584,6 +610,11 @@ export function createHud(wiring: HudWiring = {}): HudRefs {
             case 'pnlOptionsList':
                 el = buildOptionsPopup(buildOptionsList({ ...wiring, overlays }));
                 break;
+            case 'pnlSystemMap':
+                // The original's bottom-right system mini-map (hudSystemMap.ts); needs the galaxy and the camera.
+                if (wiring.galaxy === undefined || wiring.camera === undefined) continue;
+                el = buildHudSystemMap({ galaxy: wiring.galaxy, camera: wiring.camera, onGalaxyMap: wiring.onGalaxyMap });
+                break;
             case 'tbtnEmpires':
                 el = buildDiplomacyButton(wiring);
                 break;
@@ -598,15 +629,8 @@ export function createHud(wiring: HudWiring = {}): HudRefs {
         // Task 10e: right-anchored panels position via `right` (not a computed
         // left) so they can never clip past the screen edge. The options list
         // is content-sized (rect.h === 0): anchor it to the window's
-        // bottom-right corner instead of a fixed top offset.
-        if (name === 'pnlOptionsList') {
-            el.style.left = '';
-            el.style.right = `${Math.max(0, window.innerWidth - rect.x - rect.w)}px`;
-        }
-        if (name === 'pnlOptionsList' && rect.h === 0) {
-            el.style.top = '';
-            el.style.bottom = `${Math.max(0, window.innerHeight - rect.y - rect.h)}px`;
-        }
+        // bottom-right corner instead of a fixed top offset; the mini-map too.
+        anchorBottomRight(el, name, rect);
         if (name === 'pnlSelection') anchorSelectionPanel(el, rect);
         root.appendChild(el);
         elements.set(name, el);
@@ -682,15 +706,8 @@ export function layoutHud(refs: HudRefs): void {
         if (TOP_NAMES.has(name)) continue; // placed by applyHudScale
         const rect = layout[name];
         if (rect) applyRect(el, rect);
-        // Task 10e: keep the right-anchored options list pinned to the right edge.
-        if (rect && name === 'pnlOptionsList') {
-            el.style.left = '';
-            el.style.right = `${Math.max(0, window.innerWidth - rect.x - rect.w)}px`;
-        }
-        if (name === 'pnlOptionsList' && rect && rect.h === 0) {
-            el.style.top = '';
-            el.style.bottom = `${Math.max(0, window.innerHeight - rect.y - rect.h)}px`;
-        }
+        // Task 10e: keep the right-anchored options list and mini-map pinned to the bottom-right corner.
+        if (rect) anchorBottomRight(el, name, rect);
         if (name === 'pnlSelection' && rect) anchorSelectionPanel(el, rect);
     }
     // Task 10f: keep the UI scale applied after a re-layout.
