@@ -294,10 +294,17 @@ The delta streams are transferred, not copied.
   The audit's §4 lists the 27 places that still write. They are §9's work. The dev-only write detector
   (`?detectWrites=1`, §9 chunk 0) finds them at run time, with stacks.
 - **The clock.** The HUD's GalaxyTime stays on the main thread as the control surface and is bound to the replica
-  Galaxy's `nowMs`, which travels hot. Pause and speed changes are posted, with a sequence number. The worker's own
+  Galaxy's `nowMs`, which travels hot. Pause and speed changes are posted, with a sequence number, the moment they are
+  written: `SimClientCore.bindClock` turns the instance's `paused` / `speed` into accessors, so every writer (HUD
+  buttons, keyboard, game menu, auto-pause, tutorials, the action menu, the console) posts at once. The worker's own
   GalaxyTime is authoritative. The main thread adopts the worker's pause and speed (for example, a game end that
-  paused from inside a tick) once a step message echoes the last clock seq it sent. Pausing takes effect at the
-  worker's next tick: one message round trip later.
+  paused from inside a tick) once a step message echoes the last clock seq it sent.
+- **Optimistic pause.** From the press until the worker acknowledges the pause (a step message whose clock seq
+  reaches it), the main thread holds the step messages instead of applying them: the replica's `nowMs`, its positions
+  and the render time (drawn as paused, alpha 0) stand still from the frame the player paused, as in-thread. The worker
+  ticks at once on a clock message, so the ack is one round trip (tens of ms). At the ack the held messages apply,
+  with the steps the worker ran before the pause reached it (0–2 in the smoke: at most ~35 game ms at 1×). Resuming
+  before the ack releases the hold; a worker that does not answer within 500 ms releases it too.
 
 ### 4.3 Commands
 
@@ -373,9 +380,12 @@ These run in the worker on the authoritative game, and the main thread gets an e
 - **Save.** The worker serializes its own game (`SimHost.save` = `serializeGame`), and the main thread awaits it. The
   save panel, Download and autosave now accept `serialize()` returning a Promise. The text is the same format, so
   saves load in either mode.
-- **Load.** The main thread parses the save once, for its scenario id, so that its replica gets the same static data.
-  It posts the text; the worker deserializes it and sends the snapshot. Test: a save from a host, loaded into a new
-  host, continues to the same digest, and its replica matches.
+- **Load.** The main thread does not parse the save. It posts the text (or, for `?load=<url>`, only the URL: the
+  worker fetches it). The worker parses it once (`workerBoot.ts`), reads its scenario, builds its data with that
+  overlay, deserializes, and names the scenario in the snapshot (`SnapshotMessage.scenario`); the main thread builds
+  its replica's static data from that, and takes the save's start options from the snapshot. Tests: a save from a
+  host, loaded into a new host, continues to the same digest, and its replica matches; the same through
+  `bootWorkerGame`, with and without a scenario (test/simWorkerBoot.test.ts).
 - **New games.** createGame options are structured-cloned into the worker. `bootOptions.ts` drops gameData (the worker
   loads its own from the same URLs, with the same scenario overlay) and rebuilds class-typed options
   (`VictoryConditions`). Test: the cloned options build a byte-identical game, and the test fails without the rebuild.
@@ -495,6 +505,19 @@ Each chunk is independent. All chunks share the same test approach:
 - Work: pause latency (an optimistic local pause that holds the replica `nowMs` until the worker acks); load without
   the main-thread JSON parse (send the scenario id from the save index, or parse in the worker).
 - Test: pause / speed / tutorial "Play This Game" in the smoke; load from the main menu.
+- **Done:**
+  - The optimistic pause and immediate clock posting (§4.2); the worker ticks on every clock message.
+  - Load without a main-thread parse (§5); `?load=<url>` is fetched by the worker.
+  - Tutorials and the bare `generateGalaxy` boot (`bootGameWithOptions` without `?autostart`, kind `generate`) run in
+    the worker; a tutorial game that fails to start in the worker returns to the main menu with a toast.
+  - Debug surface: `__dwu.sim` / `__dwu.simBudget` are stand-ins for the worker's SimDriver / SimFrameBudget
+    (`SimWorkerClient.debugObject`: fields read the last known value, writes go to the worker, other members are
+    called there and return a Promise, e.g. `await __dwu.sim.advance(1000)`); `__dwu.commands.log()` returns a
+    Promise of the worker's log. `__dwu.eventLog` reads the replica (cold-synced).
+  - Tests: test/simWorkerBoot.test.ts. Smoke: `scripts/simworker-smoke.mjs` default, `--tutorial`, `--menuload`,
+    `--generate` (each also with `--inthread`).
+- **Still open:** the in-flight steps at a pause are applied, not hidden (the authoritative game ran them); the
+  autosave / save panel and the wizard need no change (they await `serialize()` and post their options).
 
 **Chunk 2 — Main View hot path and audio.** *Done* (see §2.4 for the numbers):
 - Hot fields validated per layer (§3.2): fixed lists for Fighter / Weapon / FighterWeapon / Explosion as well,

@@ -47,6 +47,11 @@ export interface SyncStats {
     deltaBytes: number;
     hotBytes: number;
     coldBacklog: number;
+    /** [simworker chunk 1] Optimistic pause holds: how many, the last one's wall ms from the press to the worker's ack,
+     *  and the steps that were in flight (applied at the ack). */
+    pauseHolds: number;
+    lastPauseAckMs: number;
+    lastPauseInFlightSteps: number;
     reset(): void;
 }
 
@@ -68,6 +73,9 @@ function createSyncStats(): SyncStats {
         deltaBytes: 0,
         hotBytes: 0,
         coldBacklog: 0,
+        pauseHolds: 0,
+        lastPauseAckMs: 0,
+        lastPauseInFlightSteps: 0,
         reset() {
             this.renderFrames = 0;
             this.simFrames = 0;
@@ -215,6 +223,8 @@ export interface ClientCoreOptions {
      * client). Off (tests, tools): every message received is applied at the next frame().
      */
     pace?: boolean;
+    /** Longest the optimistic pause holds the replica without the worker's ack (default 500 ms; then deltas apply). */
+    pauseHoldMaxMs?: number;
 }
 
 export class SimClientCore {
@@ -245,12 +255,23 @@ export class SimClientCore {
     private readonly now: () => number;
     private readonly coldBudgetMs: number;
     private disposed = false;
+    /**
+     * [simworker chunk 1] Optimistic pause: the clock seq of a pause sent and not yet acknowledged (0: none). While it
+     * is set, step messages are held, not applied: the replica (nowMs, positions) and the render time stand still from
+     * the frame the player paused, as in-thread, instead of running on for the round trip. The worker's ack (a step
+     * message whose clockSeq reaches it) releases them, with the steps that were already in flight.
+     */
+    private holdSeq = 0;
+    private holdSince = 0;
+    private readonly pauseHoldMaxMs: number;
+    private unbindClock: (() => void) | null = null;
     /** The replica's trade-flow ledger hooks (recording runs in the worker; tradeFlowSync.ts). */
     readonly tradeFlows: ReplicaTradeFlows;
 
     constructor(gameData: GameData, snapshot: SnapshotMessage, private readonly opts: ClientCoreOptions) {
         this.now = opts.now ?? (() => performance.now());
         this.coldBudgetMs = opts.coldBudgetMs ?? 0.5;
+        this.pauseHoldMaxMs = opts.pauseHoldMaxMs ?? 500;
         this.replica = new GalaxyReplica(gameData, snapshot.baseTechCost);
         this.replica.apply(snapshot.delta, true);
         const galaxy = this.replica.galaxy;
@@ -378,10 +399,49 @@ export class SimClientCore {
 
     /** Hand the worker the HUD clock's pause / speed when they changed. */
     syncClock(time: ClockControls): void {
+        if (this.disposed) return;
         if (time.speed === this.sent.speed && time.paused === this.sent.paused) return;
+        const pausing = time.paused && !this.sent.paused;
         this.sent = { speed: time.speed, paused: time.paused };
         const m: ClockMessage = { type: 'clock', seq: ++this.clockSeq, speed: time.speed, paused: time.paused };
+        if (pausing) {
+            this.holdSeq = m.seq;
+            this.holdSince = this.now();
+            this.stats.pauseHolds++;
+        } else if (!time.paused) this.holdSeq = 0; // resumed before the ack: nothing to hold
         this.opts.post(m);
+    }
+
+    /** Whether a pause is waiting for the worker's ack (the replica is held). */
+    get pauseHeld(): boolean {
+        return this.holdSeq !== 0;
+    }
+
+    /**
+     * [simworker chunk 1] Make every write to `time.paused` / `time.speed` post the clock at once (the HUD buttons,
+     * keyboard, game menu, auto-pause, tutorials, the action menu and the console all write these fields), instead of
+     * at the next frame(). The fields become accessors on this instance; dispose() turns them back into plain fields.
+     */
+    bindClock(time: ClockControls): void {
+        this.unbindClock?.();
+        let paused = time.paused;
+        let speed = time.speed;
+        const define = (name: 'paused' | 'speed', get: () => unknown, set: (v: never) => void): void => {
+            Object.defineProperty(time, name, { configurable: true, enumerable: true, get, set });
+        };
+        define('paused', () => paused, (v: boolean) => {
+            paused = v;
+            this.syncClock(time);
+        });
+        define('speed', () => speed, (v: number) => {
+            speed = v;
+            this.syncClock(time);
+        });
+        this.unbindClock = () => {
+            Object.defineProperty(time, 'paused', { configurable: true, enumerable: true, writable: true, value: paused });
+            Object.defineProperty(time, 'speed', { configurable: true, enumerable: true, writable: true, value: speed });
+            this.unbindClock = null;
+        };
     }
 
     /** A step message arrived (applied in a later frame(), so all main-thread sync work happens inside frames). */
@@ -402,11 +462,24 @@ export class SimClientCore {
         this.syncClock(time);
         let steps = 0;
         let hotMs = 0;
+        // Optimistic pause: hold every step message until the one that acknowledges the pause (they are in order; the
+        // ack follows the steps that were in flight), or until the hold times out (a stalled worker).
+        let holding = false;
+        if (this.holdSeq !== 0) {
+            const acked = this.inbox.some((m) => m.clockSeq >= this.holdSeq);
+            if (acked || t0 - this.holdSince > this.pauseHoldMaxMs) {
+                if (acked) this.stats.lastPauseAckMs = t0 - this.holdSince;
+                let inFlight = 0;
+                for (const m of this.inbox) if (m.clockSeq < this.holdSeq) inFlight += m.steps;
+                this.stats.lastPauseInFlightSteps = inFlight;
+                this.holdSeq = 0;
+            } else holding = true;
+        }
         const pace = this.opts.pace === true;
-        let take = this.inbox.length;
+        let take = holding ? 0 : this.inbox.length;
         let drawn = Number.NaN;
         let forced = false;
-        if (pace && !this.paused) {
+        if (pace && !holding && !this.paused) {
             // Paced: the messages up to the step the drawn position needs (a message without steps — a query reply,
             // the clock while paused — goes as soon as those before it have).
             drawn = this.pacer.advance(t0, this.renderTime.stepSerial);
@@ -449,9 +522,10 @@ export class SimClientCore {
                 this.paused = m.paused;
                 this.speed = m.speed;
                 if (time.paused !== m.paused || time.speed !== m.speed) {
+                    // Set `sent` first: with bindClock these writes would otherwise post the worker's own state back.
+                    this.sent = { speed: m.speed, paused: m.paused };
                     time.paused = m.paused;
                     time.speed = m.speed;
-                    this.sent = { speed: m.speed, paused: m.paused };
                 }
             }
             for (const r of m.results) {
@@ -501,9 +575,11 @@ export class SimClientCore {
         this.arrivals.splice(0, take);
         const cold = this.replica.pumpCold(this.coldBudgetMs);
         const t2 = this.now();
+        // A held pause draws as paused (alpha 0) from the frame it was pressed, as the in-thread loop does.
+        const pausedNow = this.paused || holding;
         // updateRenderTime adds `steps`: land on the worker's cumulative serial.
         if (last !== null) this.renderTime.stepSerial = last.stepSerial - steps;
-        if (pace && !this.paused) {
+        if (pace && !pausedNow) {
             // Render alpha: the drawn position's place between the last two applied steps. It may lie before the
             // earlier of the two when one message brought several steps (the interpolator's previous position is the
             // linear estimate one step back, so a negative alpha follows the same line further back).
@@ -518,8 +594,8 @@ export class SimClientCore {
         } else {
             if (pace) this.pacer.hold(this.renderTime.stepSerial + steps, t0);
             // Render alpha: the worker's backlog after its last tick plus the real time since we applied it.
-            const backlog = this.paused ? 0 : Math.min(FRAME_REAL_MS, this.lastBacklogMs + (t0 - this.lastStepAt));
-            updateRenderTime(this.renderTime, this.galaxy.nowMs, backlog, this.speed, this.paused, steps);
+            const backlog = pausedNow ? 0 : Math.min(FRAME_REAL_MS, this.lastBacklogMs + (t0 - this.lastStepAt));
+            updateRenderTime(this.renderTime, this.galaxy.nowMs, backlog, this.speed, pausedNow, steps);
         }
         const s = this.stats;
         s.renderFrames++;
@@ -540,6 +616,7 @@ export class SimClientCore {
     dispose(): void {
         if (this.disposed) return;
         this.disposed = true;
+        this.unbindClock?.();
         setRemoteCommandSink(this.galaxy, null);
         setRemoteQuerySink(this.galaxy, null);
         setRemoteSimHost(this.galaxy, null);

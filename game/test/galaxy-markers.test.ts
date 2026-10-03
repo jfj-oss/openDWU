@@ -154,9 +154,9 @@ describe('alpha / style by zoom band', () => {
         expect(factionRingBandAlpha(151)).toBeCloseTo(galaxyOverlayAlpha(151));
         expect(factionRingBandAlpha(2000)).toBe(1);
     });
-    it('presence discs at 0.25 (method_236(0.25)) once past system zoom', () => {
+    it('presence discs at PRESENCE_ALPHA (raised from the original 0.25, user call) once past system zoom', () => {
         expect(presenceBandAlpha(50)).toBe(0);
-        expect(presenceBandAlpha(1000)).toBe(0.25);
+        expect(presenceBandAlpha(1000)).toBe(0.4);
     });
 });
 
@@ -181,9 +181,10 @@ describe('presenceDiscRadius', () => {
     it("is the original's system-influence radius (150000 * 1.1 / 2) for one, growing with sqrt(count)", () => {
         expect(SYSTEM_INFLUENCE_RADIUS).toBe(82500);
         expect(presenceDiscRadius(0)).toBe(0);
-        expect(presenceDiscRadius(1)).toBeCloseTo(82500);
-        expect(presenceDiscRadius(4)).toBeCloseTo(82500 * 1.4);
-        expect(presenceDiscRadius(9)).toBeCloseTo(82500 * 1.8);
+        // Scaled 1.8x from the original's size (user call).
+        expect(presenceDiscRadius(1)).toBeCloseTo(1.8 * 82500);
+        expect(presenceDiscRadius(4)).toBeCloseTo(1.8 * 82500 * 1.4);
+        expect(presenceDiscRadius(9)).toBeCloseTo(1.8 * 82500 * 1.8);
     });
     it('grows monotonically and stays a small fraction of the 0.5 M+ colony influence range', () => {
         let prev = 0;
@@ -192,7 +193,7 @@ describe('presenceDiscRadius', () => {
             expect(r).toBeGreaterThanOrEqual(prev);
             prev = r;
         }
-        expect(prev).toBeLessThanOrEqual(82500 * 2.5);
+        expect(prev).toBeLessThanOrEqual(1.8 * 82500 * 2.5);
     });
 });
 
