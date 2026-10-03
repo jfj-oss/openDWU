@@ -782,7 +782,9 @@ export function shipGroupInfo(ctx: InfoContext, sg: ShipGroup, extended = false)
     }
     if (pods > 0) rows.push(label('Boarding', [txt(`Strength: ${Math.round(podStrength)}`)]));
     rows.push({ kind: 'gap', h: Math.trunc(INFO.rowHeight / 4) });
-    rows.push({ kind: 'grid', indent: 1, cells: sg.ships.filter((s) => s != null).map((s) => shipCell(ctx, s, known, false)) });
+    // Biggest ships first (user call), ties in fleet order.
+    const byBiggest = sg.ships.filter((s) => s != null).map((s, i) => ({ s, i })).sort((a, b) => b.s.size - a.s.size || a.i - b.i).map((x) => x.s);
+    rows.push({ kind: 'grid', indent: 1, cells: byBiggest.map((s) => shipCell(ctx, s, known, false)) });
 
     const title: InfoSeg[] = [{ text: sg.name ?? '(Unnamed fleet)', color }];
     if (sg.leadShip !== null) title.push({ text: `(${sg.leadShip.name})`, color, gap: 2, tiny: false, w: -1 });
