@@ -48,4 +48,21 @@ describe('AutoPauseState', () => {
         s.close(c);
         expect(c.paused).toBe(false);
     });
+    it('screen, then a message popup on top, then both closing', () => {
+        const c = { paused: false };
+        const s = new AutoPauseState();
+        s.open(c); // screen
+        s.open(c); // talk / event popup
+        s.close(c); // popup closes first: still paused
+        expect(c.paused).toBe(true);
+        s.close(c);
+        expect(c.paused).toBe(false);
+        // screen closes first while the popup stays: no early resume
+        s.open(c);
+        s.open(c);
+        s.close(c);
+        expect(c.paused).toBe(true);
+        s.close(c);
+        expect(c.paused).toBe(false);
+    });
 });

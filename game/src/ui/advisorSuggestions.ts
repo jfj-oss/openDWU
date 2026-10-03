@@ -159,7 +159,6 @@ export function installAdvisorSuggestions(opts: AdvisorSuggestionsOptions): void
 
     let current: EmpireMessage | null = null;
     let win: OriginalWindow | null = null;
-    let pausedByUs = false;
     let expiryQueued = false;
     let restoreView: (() => void) | null = null;
 
@@ -172,21 +171,13 @@ export function installAdvisorSuggestions(opts: AdvisorSuggestionsOptions): void
         w?.close();
         restoreView?.();
         restoreView = null;
-        if (pausedByUs && opts.clock) opts.clock.paused = false;
-        pausedByUs = false;
     }
 
     function open(m: EmpireMessage): void {
-        // method_79: pause (and resume on close) when the game runs.
-        if (opts.clock && !opts.clock.paused && !pausedByUs) {
-            opts.clock.paused = true;
-            pausedByUs = true;
-        }
+        // method_79: the window pauses a running game and resumes it on close (central hook, autoPause.ts).
         const view = advisorSuggestionView(galaxy, player, m);
         if (view.opensBuildOrder) {
             opts.openBuildOrder?.();
-            if (pausedByUs && opts.clock) opts.clock.paused = false;
-            pausedByUs = false;
             return;
         }
         if (current !== null) {

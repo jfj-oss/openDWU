@@ -333,35 +333,15 @@ export function installMessagePopups(opts: MessagePopupsOptions): void {
     // [audio] end
     let dialogEntry: ConversationEntry | null = null;
     let dialogWin: OriginalWindow | null = null;
-    let releaseDialogPause: (() => void) | null = null;
     // [popupstubs] begin
     let popupMessage: EmpireMessage | null = null;
     let cardWin: OriginalWindow | null = null;
     let eventWin: OriginalWindow | null = null;
     // [popupstubs] end
 
-    // The pause rule of the original's message windows: the conversation panel (Main.Part8.cs:449 method_296: when the
-    // galaxy runs, bool_11 = true + method_154) and the event panel (Main.Part4.cs:48-113 method_509-511, Main.Part5.cs:5028
-    // method_508: method_154) pause the game while open; closing them resumes it (method_514 / method_155) — only when
-    // they paused it. The popup card (pnlMessagePopup) never pauses.
-    let pauseHolds = 0;
-    let pausedByUs = false;
-    function holdPause(): () => void {
-        const clock = opts.clock;
-        if (pauseHolds++ === 0 && clock !== undefined && !clock.paused) {
-            clock.paused = true;
-            pausedByUs = true;
-        }
-        let released = false;
-        return () => {
-            if (released) return;
-            released = true;
-            if (--pauseHolds === 0 && pausedByUs) {
-                pausedByUs = false;
-                if (clock !== undefined) clock.paused = false;
-            }
-        };
-    }
+    // The pause rule of the original's message windows (the talk panel Main.Part8.cs:449 method_296 and the event panel
+    // method_508-511 pause a running game; the popup card pnlMessagePopup never does) is the central
+    // AutoPauseWhenInPopupWindow hook in openOriginalWindow (autoPause.ts): every window pauses, the card opts out.
 
     // ---- the popup card (pnlMessagePopup, MessagePopup.cs) ----
 
@@ -392,6 +372,7 @@ export function installMessagePopups(opts: MessagePopupsOptions): void {
         const H = cardHeight();
         const win = openOriginalWindow({
             id: 'msgcard',
+            noAutoPause: true,
             title: popupTitle(m),
             headerless: true,
             width: W,
@@ -503,8 +484,6 @@ export function installMessagePopups(opts: MessagePopupsOptions): void {
         dialogWin = null;
         w?.close();
         // [popupstubs] begin
-        releaseDialogPause?.(); // method_155 on the dialog's close
-        releaseDialogPause = null;
         // [popupstubs] end
     }
 
@@ -579,12 +558,8 @@ export function installMessagePopups(opts: MessagePopupsOptions): void {
         // [audio] begin — Main.Part8.cs:469-473 method_296: `if (!pnlDiplomacyTalk.Visible) method_521(empire)`.
         if (dialogEntry === null) playDiplomacyMood(galaxy, entry.sender, player);
         // [audio] end
-        const keepPause = releaseDialogPause;
-        releaseDialogPause = null;
         if (dialogEntry !== null) closeDialog(true);
         dialogEntry = entry;
-        // Main.Part8.cs:457-461: the talk panel pauses a running game (kept across a switch to the next conversation).
-        releaseDialogPause = keepPause ?? holdPause();
         // [popupstubs] begin
         markMessageStubRead(entry.message);
         // [popupstubs] end
@@ -718,7 +693,6 @@ export function installMessagePopups(opts: MessagePopupsOptions): void {
 
     function showEvent(p: EventPopup): void {
         closeEvent();
-        const release = holdPause(); // method_508-511: method_154
         const win = openOriginalWindow({
             id: 'msgevent',
             title: resolveGameText(p.title),
@@ -728,7 +702,6 @@ export function installMessagePopups(opts: MessagePopupsOptions): void {
             onClose: () => {
                 if (eventWin === win) eventWin = null;
                 closeEventSting(); // btnEventMessageClose_Click: method_522
-                release(); // method_514 / method_155
             },
         });
         eventWin = win;
