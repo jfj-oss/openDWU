@@ -9,7 +9,7 @@
 // each store goes through Math.fround; dates are `long` (safe integers here).
 // The Empire methods are free functions taking the C# `this` as first argument.
 
-import { isReadOnlyGalaxy } from './readOnlyQuery';
+import { isReadOnlyGalaxy, requestUiRecord } from './readOnlyQuery';
 import type { Empire } from './empire';
 import type { Galaxy } from './galaxy';
 import { REAL_SECONDS_IN_GALACTIC_YEAR, startStarDateForAge } from './galaxyTime';
@@ -405,7 +405,9 @@ export function obtainPirateRelation(empire: Empire, otherEmpire: Empire | null)
     let pirateRelation = empire.pirateRelations.getRelationByOtherEmpire(otherEmpire);
     if (pirateRelation === null) {
         if (isReadOnlyGalaxy(empire.galaxy)) {
-            // A read-only replica galaxy: the relation AddPirateRelation would add, detached (readOnlyQuery.ts).
+            // A read-only galaxy (a UI read, readOnlyQuery.ts): the relation AddPirateRelation would add, detached; the
+            // add becomes a journaled command (requestUiRecord).
+            requestUiRecord(empire.galaxy, 'pirateRelation', empire, otherEmpire);
             const starDate = galaxyCurrentStarDate(empire.galaxy);
             pirateRelation = new PirateRelation(empire, otherEmpire, PirateRelationType.NotMet);
             pirateRelation.lastChangeDate = starDate;

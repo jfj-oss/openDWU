@@ -75,7 +75,7 @@ export function thisYearsResortIncome(galaxy: Galaxy, empire: Empire): number {
     const num = currentStarDate % (REAL_SECONDS_IN_GALACTIC_YEAR * 1000);
     const num2 = currentStarDate - num;
     if (empire.lastResortIncomeAddDate < num2) {
-        // A read-only replica galaxy (readOnlyQuery.ts): the value the reset would leave, without resetting.
+        // A read-only galaxy (a UI read, readOnlyQuery.ts): the value the reset would leave, without resetting.
         if (isReadOnlyGalaxy(galaxy)) return 0.0;
         empire.thisYearsResortIncomeValue = 0.0;
     }
@@ -108,7 +108,7 @@ export function thisYearsSpacePortIncome(galaxy: Galaxy, empire: Empire): number
                 continue;
             }
             if (!empire.useAveragedVariableIncome && builtObject.dateOfLastIncome < num3) {
-                // A read-only replica galaxy (readOnlyQuery.ts): this base's income after the aging, without aging it.
+                // A read-only galaxy (a UI read, readOnlyQuery.ts): this base's income after the aging, without aging it.
                 if (isReadOnlyGalaxy(galaxy)) continue;
                 if (builtObject.currentYearsIncome < builtObject.annualSupportCost * 2) {
                     builtObject.consecutiveUnprofitableYears++;
@@ -127,7 +127,8 @@ export function thisYearsSpacePortIncome(galaxy: Galaxy, empire: Empire): number
  * resets the per-base yearly income.
  */
 export function checkAgeVariableIncome(galaxy: Galaxy, empire: Empire): void {
-    // A sim-worker replica (readOnlyQuery.ts): the worker runs it, through the money-panel query (simworker/simQuery.ts).
+    // A UI read (readOnlyQuery.ts: the in-thread UI, a sim-worker replica): the money panel issues the journaled
+    // 'moneyPanel' command instead (moneyPanelWriteDue), which runs this in the game at the next frame boundary.
     if (isReadOnlyGalaxy(galaxy)) return;
     empire.useAveragedVariableIncome = true;
     const currentStarDate = galaxyStarDate(galaxy);
@@ -138,6 +139,21 @@ export function checkAgeVariableIncome(galaxy: Galaxy, empire: Empire): void {
         resetYearlyIncome(empire);
         empire.lastVariableIncomeUpdate = num2;
     }
+}
+
+/**
+ * Whether the money panel's refresh (moneyPanelIncome, Main.Part11.cs 832 method_126) would change the game now: its
+ * CheckAgeVariableIncome has not run yet (UseAveragedVariableIncome is still off), or a new galactic year began since it
+ * last aged the variable income, or ThisYearsResortIncome would reset. Pure. The UI then issues the journaled
+ * 'moneyPanel' command (player/playerOps.ts) instead of writing from its timer (docs/sim-worker.md §8).
+ */
+export function moneyPanelWriteDue(galaxy: Galaxy, empire: Empire | null): boolean {
+    if (empire === null || empire.pirateEmpireBaseHabitat !== null) return false;
+    if (!empire.useAveragedVariableIncome) return true;
+    const currentStarDate = galaxyStarDate(galaxy);
+    const yearStart = currentStarDate - (currentStarDate % (REAL_SECONDS_IN_GALACTIC_YEAR * 1000));
+    if (empire.lastVariableIncomeUpdate < yearStart) return true;
+    return empire.lastResortIncomeAddDate < yearStart && !Object.is(empire.thisYearsResortIncomeValue, 0.0);
 }
 
 /** Empire.6.cs 2212 ResetYearlyIncome. */
@@ -171,9 +187,11 @@ export function obtainAveragedVariableIncome(empire: Empire): number {
 
 /**
  * Main.Part11.cs 832 method_126: the top-right money panel's Cashflow (AheLexjQsu) and Bonus Income values for the player,
- * before the `+##,###,##0;-##,###,##0` formatting. Mutates like the C# (CheckAgeVariableIncome, ThisYears*Income resets);
- * the UI calls it, never the tick. null when there is no player empire, or for a pirate player without an economy
- * (the C# then leaves the previous strings).
+ * before the `+##,###,##0;-##,###,##0` formatting. Mutates like the C# (CheckAgeVariableIncome, ThisYears*Income resets)
+ * when run in the game: the 'moneyPanel' player command (playerOps.ts), which the UI issues when moneyPanelWriteDue. On
+ * a UI read (readOnlyQuery.ts) it writes nothing and gives the same figures whenever no write is due. Never the tick.
+ * null when there is no player empire, or for a pirate player without an economy (the C# then leaves the previous
+ * strings).
  */
 export function moneyPanelIncome(galaxy: Galaxy, empire: Empire | null): { cashflow: number; bonusIncome: number } | null {
     if (empire === null) return null;

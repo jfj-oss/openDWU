@@ -15,7 +15,7 @@
 // Empire methods are free functions taking the C# `this` as first argument.
 // The SyncList lock is irrelevant single-threaded.
 
-import { isReadOnlyGalaxy } from './readOnlyQuery';
+import { isReadOnlyGalaxy, requestUiRecord } from './readOnlyQuery';
 import type { Empire } from './empire';
 import type { Galaxy } from './galaxy';
 import type { Habitat } from './types';
@@ -419,8 +419,12 @@ export function obtainDiplomaticRelation(self: Empire, empire: Empire | null): D
         let diplomaticRelation = self.diplomaticRelations.byEmpire(empire);
         if (diplomaticRelation === null) {
             diplomaticRelation = new DiplomaticRelation(DiplomaticRelationType.NotMet, self, self, empire, false);
-            // A read-only replica galaxy gets the same NotMet relation, detached (readOnlyQuery.ts).
-            if (empire.active && !isReadOnlyGalaxy(self.galaxy)) self.diplomaticRelations.add(diplomaticRelation);
+            // A read-only galaxy (a UI read, readOnlyQuery.ts) gets the same NotMet relation, detached; the add the C# UI
+            // makes becomes a journaled command (requestUiRecord).
+            if (empire.active) {
+                if (!isReadOnlyGalaxy(self.galaxy)) self.diplomaticRelations.add(diplomaticRelation);
+                else requestUiRecord(self.galaxy, 'diplomaticRelation', self, empire);
+            }
         }
         return diplomaticRelation;
     }
@@ -761,8 +765,12 @@ export function obtainEmpireEvaluation(galaxy: Galaxy, self: Empire, empire: Emp
         if (empireEvaluation === null) {
             empireEvaluation = new EmpireEvaluation(empire, galaxy);
             empireEvaluation.bias = resolveStandardRaceBias(self.dominantRace, empire.dominantRace);
-            // A read-only replica galaxy gets the same new evaluation, detached (readOnlyQuery.ts).
-            if (empire.active && !isReadOnlyGalaxy(galaxy)) evaluations.push(empireEvaluation);
+            // A read-only galaxy (a UI read, readOnlyQuery.ts) gets the same new evaluation, detached; the add becomes a
+            // journaled command (requestUiRecord).
+            if (empire.active) {
+                if (!isReadOnlyGalaxy(galaxy)) evaluations.push(empireEvaluation);
+                else requestUiRecord(galaxy, 'empireEvaluation', self, empire);
+            }
         }
         return empireEvaluation;
     }

@@ -1,8 +1,9 @@
 // Sim worker, chunk 7 (docs/sim-worker.md §9): diplomacy, intelligence / characters and politics in worker mode.
 // - remoteArgs: by-value arguments keep their identity (shared / cyclic values within an argument; the same object sent
 //   by two commands of one boundary decodes to one object, as the executors share it in-thread);
-// - worker queries (simworker/simQuery.ts): listProposals and the pirate protection price — sim reads that write the
-//   graph — run on the authoritative game and answer with replica objects; the game they leave is the in-thread one;
+// - listProposals and the pirate protection price — C# reads that add the relation records they look up — are UI reads
+//   in both modes (on the replica in worker mode) that give the in-thread answers; the records they would add are added
+//   by one journaled 'obtainUiRecords' command (sim/readOnlyQuery.ts), so the game they leave is the in-thread one;
 // - the screens' command flows issued on the REPLICA (proposals, a trade negotiation edited on the main thread, pirate
 //   protection, agent missions with a false flag, character transfer / dismissal, peace terms) give the in-thread
 //   command log and state digest, tick for tick;
@@ -19,7 +20,6 @@ import { commandLog } from '../src/sim/player/commandLog';
 import { issuePlayerCommand } from '../src/sim/player/playerCommands';
 import { galaxyToJSON } from '../src/sim/save/galaxySave';
 import { RemoteValues, decodeRemoteArg, encodeRemoteArg, type RemoteNaming, type RemoteResolving } from '../src/simworker/remoteArgs';
-import { isRemoteQueryGalaxy, simQuery } from '../src/simworker/simQuery';
 import { DiplomaticRelationType, obtainDiplomaticRelation } from '../src/sim/diplomacy';
 import { Character, CharacterRole, getEmpireCharacters, IntelligenceMission } from '../src/sim/characters';
 import { characterMission, IntelligenceMissionType } from '../src/sim/espionage';
@@ -112,52 +112,53 @@ describe('remoteArgs: by-value identity', () => {
     });
 });
 
-describe('sim worker chunk 7: worker queries', () => {
-    it('listProposals and the protection price run in the worker: same answers (as replica objects), same game as in-thread', async () => {
+describe('sim worker chunk 7: the listing reads that obtain records', () => {
+    it('listProposals and the protection price: the same answers on the replica, the records added by one journaled command in both modes', async () => {
+        // Not everyone met: the reads would add NotMet relations and pirate relations (Obtain*).
         const ga = cachedTickGame(base);
         const gw = cachedTickGame(base);
-        for (const g of [ga, gw]) meetAll(g.galaxy);
         const a = inThread(ga);
         const w = inWorker(gw, base);
-        expect(isRemoteQueryGalaxy(w.galaxy)).toBe(true);
-        expect(isRemoteQueryGalaxy(a.galaxy)).toBe(false);
         w.settle();
         const others = [...normalAis(a.galaxy), ...a.galaxy.pirateEmpires.filter((p) => p !== null)];
-        const answers: { other: Empire; options?: ProposalOption[]; price?: number }[] = [];
-        for (const other of others) {
-            const entry: (typeof answers)[number] = { other: empireOn(w, other) };
-            answers.push(entry);
-            simQuery(w.galaxy, w.player, 'listProposals', [entry.other], (o) => (entry.options = o));
-            if (other.pirateEmpireBaseHabitat !== null) simQuery(w.galaxy, w.player, 'pirateProtectionPrice', [entry.other], (p) => (entry.price = p));
+        const relationCount = (g: Game): number => [g.playerEmpire, ...normalAis(g.galaxy), ...g.galaxy.pirateEmpires].reduce((n, e) => n + (e?.diplomaticRelations.count ?? 0) + (e?.pirateRelations.count ?? 0), 0);
+        const before = relationCount(ga);
+        const read = (s: Side) => others.map((o) => {
+            const other = empireOn(s, o);
+            return {
+                options: listProposals(s.galaxy, s.player, other),
+                price: other.pirateEmpireBaseHabitat !== null ? calculatePirateProtectionPricePerMonth(s.galaxy, other, s.player).price : undefined,
+            };
+        });
+        const ra = read(a);
+        const rw = read(w);
+        // A read writes nothing (in-thread the UI galaxy, in worker mode the replica).
+        expect(relationCount(ga)).toBe(before);
+        expect(w.replicaWrites()).toEqual([]);
+        for (let i = 0; i < others.length; i++) {
+            expect(rw[i].options.map((o) => [o.id, o.label, o.enabled, o.hint, o.cost])).toEqual(ra[i].options.map((o) => [o.id, o.label, o.enabled, o.hint, o.cost]));
+            expect(rw[i].price).toBe(ra[i].price);
         }
-        // In-thread the screen calls the same functions directly between two frames.
-        const ref = others.map((o) => ({
-            options: listProposals(a.galaxy, a.player, o),
-            price: o.pirateEmpireBaseHabitat !== null ? calculatePirateProtectionPricePerMonth(a.galaxy, o, a.player).price : undefined,
-        }));
+        expect(ra.some((r) => r.options.length > 0)).toBe(true);
+        expect(ra.some((r) => r.price !== undefined)).toBe(true);
+        // After the UI task, the records go out as one command each side, applied at the next boundary.
+        await new Promise((r) => setTimeout(r, 0));
         a.tick();
         w.tick();
+        const ops = (g: Game) => commandLog(g.galaxy).filter((e) => e.source === 'player').map((e) => (e as { op: string }).op);
+        expect(ops(ga)).toEqual(['obtainUiRecords']);
+        expect(relationCount(ga)).toBeGreaterThan(before);
+        expectSameGame(a, w);
+        // Read again: nothing left to add.
+        read(a);
+        read(w);
         await new Promise((r) => setTimeout(r, 0));
-        {
-            for (let i = 0; i < others.length; i++) {
-                const got = answers[i];
-                expect(got.options).toBeDefined();
-                expect(got.options!.map((o) => [o.id, o.label, o.enabled, o.hint, o.cost])).toEqual(ref[i].options.map((o) => [o.id, o.label, o.enabled, o.hint, o.cost]));
-                // `related` names replica objects.
-                got.options!.forEach((o, j) => {
-                    const r = ref[i].options[j].related;
-                    if (r === null) expect(o.related).toBeNull();
-                    else expect(w.client.replica.decoder.idOf(o.related!)).toBeGreaterThanOrEqual(0);
-                });
-                expect(got.price).toBe(ref[i].price);
-            }
-            expect(ref.some((r) => r.options.length > 0)).toBe(true);
-            expect(ref.some((r) => r.price !== undefined)).toBe(true);
-            // Whatever the queries obtained on the way, the worker's game is the in-thread one.
-            expectSameGame(a, w);
-            expect(w.replicaWrites()).toEqual([]);
-            w.dispose();
-        }
+        a.tick();
+        w.tick();
+        expect(ops(ga)).toEqual(['obtainUiRecords']);
+        expectSameGame(a, w);
+        expect(w.replicaWrites()).toEqual([]);
+        w.dispose();
     }, 600000);
 });
 
