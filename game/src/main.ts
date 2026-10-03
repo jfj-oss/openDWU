@@ -30,7 +30,7 @@ import { closeEmpiresList } from './ui/screens/empiresList';
 import { closeCharterPanels } from './ui/screens/charters'; // [charters]
 import { closeDiplomacyScreen } from './ui/screens/diplomacyScreen'; // [15a]
 import { closeExpansionPlanner } from './ui/screens/expansionPlanner'; // [16a]
-import { closeColoniesList } from './ui/screens/coloniesList';
+import { closeColoniesScreen } from './ui/screens/coloniesScreen';
 // [tradenego] begin
 import { closeTradePanel } from './ui/screens/tradePanel';
 // [tradenego] end
@@ -51,6 +51,7 @@ import { installOutputDither, setOutputDither } from './render/outputDither';
 // [aiadvisor] end
 import { closeMessageHistory } from './ui/screens/messageHistory';
 import { closeFleetsList } from './ui/screens/fleetsList'; // [15c]
+import { closeBuildQueue } from './ui/screens/buildQueue'; // [buildQueue]
 import { closeBuildOrder } from './ui/screens/buildOrder'; import { closeConstructionYards } from './ui/screens/constructionYards'; // [16c]
 import { createEmpireMessageFeed, recordTickerMessage, savedHistoryLines } from './ui/empireMessageFeed';
 // [policy] begin
@@ -525,6 +526,7 @@ export async function startGameView(
         gameData: lastPlayedGameData ?? lastGameData ?? undefined,
         followState: view.followState, // [followcam]
         onGalaxyMap: () => galaxyMap.toggle(),
+        openGalaxyMapAt: (h) => galaxyMap.open(h),
         onMainMenu: () => {
             teardownActiveGameView();
             showMainMenu();
@@ -826,7 +828,7 @@ export async function startGameView(
         closeCharterPanels(); // [charters]
         closeDiplomacyScreen(); // [15a]
         closeExpansionPlanner(); // [16a]
-        closeColoniesList();
+        closeColoniesScreen();
         // [tradenego] begin
         closeTradePanel();
         // [tradenego] end
@@ -842,6 +844,7 @@ export async function startGameView(
         closeMessageHistory();
         closeFleetsList(); // [15c]
         closeBuildOrder(); closeConstructionYards(); // [16c]
+        closeBuildQueue(); // [buildQueue]
 
         // [policy] begin
         closeEmpirePolicy();
@@ -1452,6 +1455,7 @@ async function bootGameWithOptions(opts: BootOptions): Promise<void> {
         gameData: gameData ?? undefined,
         followState: view.followState, // [followcam]
         onGalaxyMap: () => galaxyMap.toggle(),
+        openGalaxyMapAt: (h) => galaxyMap.open(h),
     });
     const systemNameEl = hud.elements.get('pnlMoney')?.querySelector('.hud-system-name');
     const topLeftEl = hud.elements.get('pnlTopLeftBar');

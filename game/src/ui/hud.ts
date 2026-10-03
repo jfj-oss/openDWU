@@ -46,7 +46,7 @@ import { createGameMenu, type GameMenuRefs } from './screens/gameMenu';
 import { createLeftSidebar, relayoutLeftSidebar } from './leftSidebarView';
 import { setGameMenuHandler, setCycleHandler, runShipCommand, isViewLocked, type CycleKind } from './keyboard';
 import { uiClickSounds } from '../audio/effectsPlayer';
-import { helpTopicKeyForHabitat, toggleGalactopedia } from './screens/galactopedia';
+import { helpTopicKeyForHabitat, openGalactopedia, toggleGalactopedia } from './screens/galactopedia';
 import { toggleEmpiresList } from './screens/empiresList';
 import { toggleDiplomacyScreen } from './screens/diplomacyScreen';
 import { toggleExpansionPlanner } from './screens/expansionPlanner'; // [16a]
@@ -54,11 +54,13 @@ import { setEmpireSummarySource, getEmpireSummarySource, toggleEmpireSummary } f
 // [leftovers] begin
 import { toggleGalacticHistory } from './screens/galacticHistory';
 // [leftovers] end
-import { toggleColoniesList, formatThousandsK } from './screens/coloniesList';
+import { formatThousandsK } from './screens/coloniesList';
+import { toggleColoniesScreen } from './screens/coloniesScreen';
 import { toggleShipDesigns } from './screens/shipDesigns'; // [16b]
 import { closeShipsAndBasesList, toggleShipsAndBasesList, type BuiltObjectFilter } from './screens/shipsAndBasesList';
 import { toggleMessageHistory } from './screens/messageHistory';
 import { toggleBuildOrder } from './screens/buildOrder'; import { toggleConstructionYards, type ConstructionYardsOptions } from './screens/constructionYards'; // [16c]
+import { attachBuildQueueLauncher } from './screens/buildQueue'; // [buildQueue]
 import { toggleResearchScreen } from './screens/researchScreen'; // [15b]
 import { toggleEmpireComparison } from './screens/empireComparison';
 import { showToast } from './toast';
@@ -329,6 +331,8 @@ export interface HudWiring {
     afterSelectionChange?: (sel: Selection | null) => void;
     /** Task C3: open/close the Galaxy Map screen (the "Galaxy map (G)" row). */
     onGalaxyMap?: () => void;
+    /** Open the Galaxy Map screen with a habitat's system selected (the screens' "Show On Galaxy Map", method_169). */
+    openGalaxyMapAt?: (h: Habitat) => void;
     /** Task followcam: shared with the Main View (src/render/mainView.ts), which recentres the camera on it
      * every frame and clears it on a manual pan/edge-scroll/map-click/target-loss. The selection panel's Follow
      * toggle (shown only for a selected ship/fleet) flips it here; a selection change also clears it
@@ -466,6 +470,12 @@ export function toggleFleets(selected?: ShipGroup): void {
         empire: src.empire,
         selected,
         onSelect: (sg) => selectShipGroup(sg, true),
+        // Select Fleet (method_208): select without moving the view.
+        onSelectOnly: (sg) => selectShipGroup(sg, false),
+        // The info panel's hotspots: a ship selects it; the fleet itself is the selection already.
+        onTarget: (t) => {
+            if (t.kind === 'select' && !(t.obj instanceof ShipGroup)) selectStellarObject(t.obj, false);
+        },
         // Home Base / Attack Point (Main.Part7.cs SetFleetHomeBase / SetFleetAttackPoint): the fleet is selected and the
         // next map click picks the point.
         onPickPoint: (sg, mode) => {
@@ -476,7 +486,28 @@ export function toggleFleets(selected?: ShipGroup): void {
 }
 
 /** Build the HUD overlay and append it to document.body. */
+/** HudWiring.openGalaxyMapAt of the running HUD (the Colonies screen's "Show On Galaxy Map"). */
+let galaxyMapAt: ((h: Habitat) => void) | null = null;
+
+/** Open / close the Colonies screen for the player's empire (top-bar Colonies button and F2) with the HUD's actions:
+ *  Select Colony = method_208 (select, view stays), Go to Colony = method_157 (select + move), Show On Galaxy Map,
+ *  Show Expansion Planner, Show Construction Summary and the Galactopedia links. */
+export function toggleColoniesFromHud(empire: Empire, selected: Habitat | null = null): void {
+    toggleColoniesScreen({
+        empire,
+        selected,
+        onSelect: (h) => selectHabitat(h, false),
+        onGoTo: (h) => selectHabitat(h, true),
+        onShowOnGalaxyMap: galaxyMapAt ?? undefined,
+        onExpansionPlanner: () => toggleExpansionPlanner({ empire, onSelect: (h) => selectHabitat(h, true) }),
+        onConstructionSummary: () => toggleConstructionYards({ empire, onSelect: (t) => selectStellarObject(t, true) }),
+        onHelp: (topic) => openGalactopedia({ topic }),
+        confirmAutomationOff: (task) => confirmAutomationOff(task),
+    });
+}
+
 export function createHud(wiring: HudWiring = {}): HudRefs {
+    galaxyMapAt = wiring.openGalaxyMapAt ?? null;
     const root = document.createElement('div');
     root.id = 'hud';
     // Task C4: HUD click sounds. Options-list rows are the original's
@@ -867,9 +898,9 @@ function openTopBarScreen(name: string, wiring: HudWiring): void {
                 });
             }
             return;
-        // Main.Part9.cs tbtnColonies_Click: toggle the Colonies list (a row selects the colony and moves the view).
+        // Main.Part9.cs tbtnColonies_Click: toggle the Colonies screen (pnlColonyInfo, Main.Part11.cs method_166).
         case 'tbtnColonies':
-            if (src) toggleColoniesList({ empire: src.empire, onZoomTo: (h) => selectHabitat(h, true) });
+            if (src) toggleColoniesFromHud(src.empire);
             return;
         // Main.Part8.cs btnEmpireSummary_Click.
         case 'btnEmpireSummary':
@@ -885,7 +916,10 @@ function openTopBarScreen(name: string, wiring: HudWiring): void {
             return;
         // [16c] btnBuildOrder → Build Order (Main.Part2.cs:1196); tbtnConstructionYards → Construction Yards (Main.Part6.cs:3243).
         case 'btnBuildOrder':
-            if (src) toggleBuildOrder({ empire: src.empire });
+            if (src) {
+                toggleBuildOrder({ empire: src.empire });
+                attachBuildQueueLauncher({ empire: src.empire, onGoto: (t) => selectStellarObject(t, true) }); // [buildQueue]
+            }
             return;
         case 'tbtnConstructionYards':
             if (src) toggleConstructionYards(constructionYardsOptions(src.empire));

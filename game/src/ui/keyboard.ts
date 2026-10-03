@@ -20,8 +20,9 @@ import { helpTopicKeyForHabitat, toggleGalactopedia } from './screens/galactoped
 import { toggleShipDesigns } from './screens/shipDesigns'; // [16b]
 import { toggleResearchScreen } from './screens/researchScreen'; // [15b]
 import { getEmpireSummarySource, toggleEmpireSummary } from './screens/empireSummary';
-import { toggleColoniesList } from './screens/coloniesList';
+import { toggleColoniesFromHud } from './hud';
 import { toggleBuildOrder } from './screens/buildOrder'; import { toggleConstructionYards } from './screens/constructionYards'; import { constructionYardsOptions, selectStellarObject } from './hud'; // [16c]
+import { attachBuildQueueLauncher } from './screens/buildQueue'; // [buildQueue]
 import { toggleFleets, toggleShipsAndBases } from './hud'; // [15c]
 import { toggleMessageHistory } from './screens/messageHistory';
 import { toggleGameOptionsPanel } from './screens/gameOptionsPanel'; // [16d]
@@ -340,7 +341,10 @@ export function dispatchKey(
         // [16c] F9: Build Order, F10: Construction Yards (task 16c).
         case 'buildOrderScreen': {
             const src = getEmpireSummarySource();
-            if (src) toggleBuildOrder({ empire: src.empire });
+            if (src) {
+                toggleBuildOrder({ empire: src.empire });
+                attachBuildQueueLauncher({ empire: src.empire, onGoto: (t) => selectStellarObject(t, true) }); // [buildQueue]
+            }
             break;
         }
         case 'constructionYardsScreen': {
@@ -443,17 +447,10 @@ export function buildDefaultHandlers(
         },
         // H: the Message History window (task 12i).
         messageHistoryScreen: () => toggleMessageHistory(),
-        // F2: the Colonies list (task 12m) — same source as the Empire Summary.
+        // F2: the Colonies screen (Main_KeyUp F2 → method_166) — same source as the Empire Summary.
         coloniesScreen: () => {
             const src = getEmpireSummarySource();
-            if (src) {
-                toggleColoniesList({
-                    empire: src.empire,
-                    // A row selects the colony and moves the view to it, like
-                    // the other lists (selectHabitat: method_208 + method_157).
-                    onZoomTo: (h) => selectHabitat(h, true),
-                });
-            }
+            if (src) toggleColoniesFromHud(src.empire);
         },
         // F11: the Ships and Bases list (task 13f) — same source as the
         // Empire Summary; sorts by distance to the selection when there is one.

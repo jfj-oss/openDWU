@@ -9,12 +9,42 @@
 // btnIntelligenceAgentsRecruit is hidden by method_425 (Main.Part6.cs:3200 `Visible = false`), so there is no
 // recruit button here either (agents appear through Empire.CheckForCharacterAppearance, characterRuntime.ts).
 //
-// Pure logic (rows, texts, the mission form state machine, GetState, the difficulty texts) is exported and tested
-// (test/intelligence.test.ts); the DOM half only wires it.
+//   - btnCharacterShowEventHistory → pnlCharacterEventHistory (Main.Part2.cs:3478 method_662, CharacterEventListView);
+//   - CharacterSummary "Transfer to new location" (SetupTransferControls / btnTransfer_Click).
+// The window is the shared original-style ScreenPanel (originalWindow.ts) at the original's 1020 × 770 and control
+// rects. Our extra: lblCharacterSummary's "n Role" entries are role-filter toggles with the characterRole_* icons.
+//
+// Pure logic (rows, texts, the mission form state machine, GetState, the difficulty texts, pictures, transfer
+// destinations, role filter) is exported and tested (test/intelligence.test.ts); the DOM half only wires it.
 
 import { blameOptions, missionFrameLabel, type BlameOption } from '../../sim/scenario/emergent/espionageView';
 import { missionFrame } from '../../sim/scenario/emergent/espionage';
 import './intelligence.css';
+import {
+    COLORS,
+    FONT,
+    OwGrid,
+    chromeImageUrl,
+    dropDown,
+    dropText,
+    el,
+    glassButton,
+    gradientPanel,
+    linkLabel,
+    messageBox,
+    openOriginalWindow,
+    place,
+    scrollPanel,
+    setText,
+    text,
+    type GridColumn,
+    type OriginalWindow,
+} from '../originalWindow';
+import { characterPortrait, characterPortraitUrl } from '../characterPortrait';
+import { openGalactopedia } from './galactopedia';
+import { characterPublicEvents, resolveCharacterEventDescription } from './characterEventText';
+import { compareShipGroups, shipGroupDetermineStrongestTroopTransport } from '../../sim/fleets/shipGroupTasks';
+import { netSort } from '../../sim/netSort';
 import type { Empire } from '../../sim/empire';
 import type { Galaxy } from '../../sim/galaxy';
 import type { Habitat } from '../../sim/types';
@@ -25,11 +55,13 @@ import { Habitat as HabitatClass } from '../../sim/types';
 import { BuiltObjectRole } from '../../sim/data/designSpecifications';
 import {
     Character,
+    CharacterEvent,
     CharacterRole,
     CharacterSkillType,
     CharacterTraitType,
     IntelligenceMission,
     getEmpireCharacters,
+    type StellarObject,
 } from '../../sim/characters';
 import {
     IntelligenceMissionOutcome,
@@ -59,7 +91,6 @@ import { AutomationLevel } from '../../sim/empire';
 import { issuePlayerCommand } from '../../sim/player/playerCommands';
 import { CHARACTER_ROLE, CHARACTER_SKILL, CHARACTER_TRAIT, INTELLIGENCE_MISSION, resolveEnumTextDescription } from '../../sim/enumText';
 import { formatNet, getText, isTextLoaded, resolveGameText } from '../../sim/textResolver';
-import { confirmAutomationOff } from '../orderMenu';
 import { politicsDetail, politicsRowCells, politicsVisible } from '../emergentPolitics'; // [emergent]
 import { courtDetail } from '../courtView'; // [court]
 import type { SeatName } from '../../sim/scenario/court/court'; // [court]
@@ -607,17 +638,181 @@ export function cancelMission(player: Empire, agent: Character): void {
 }
 
 // ---------------------------------------------------------------------------------------------------------------
-// DOM
+// Pictures (CharacterImageCache.cs, CharacterSummary.cs GenerateCharacterPlanetCompositeImage)
+// ---------------------------------------------------------------------------------------------------------------
+
+// Role icons, portraits and OverlayRoleIcon: characterPortrait.ts (CharacterImageCache.cs).
+export { characterPortraitUrl, roleIconOverlayRect, roleIconUrl } from '../characterPortrait';
+
+/** Main.Part12.cs LoadEnvLandscapes: the landscape bitmaps in GalaxyImages LandscapeImageOffset order. */
+const LANDSCAPE_FOLDERS: readonly [string, number][] = [
+    ['barrenrock', 4],
+    ['continental', 4],
+    ['forest', 1],
+    ['frozengasgiant', 2],
+    ['gasgiant', 6],
+    ['iceglacial', 3],
+    ['marshyswamp', 3],
+    ['ocean', 2],
+    ['sandydesert', 3],
+    ['volcanic', 2],
+];
+
+/** Habitat.LandscapePictureRef → images/environment/landscapes/<type>/landscape_<i>.png; null when out of range. */
+export function landscapeImageUrl(ref: number): string | null {
+    if (!Number.isInteger(ref) || ref < 0) return null;
+    let i = ref;
+    for (const [folder, count] of LANDSCAPE_FOLDERS) {
+        if (i < count) return `/assets/dwu/images/environment/landscapes/${folder}/landscape_${i}.png`;
+        i -= count;
+    }
+    return null;
+}
+
+/** CharacterSummary.cs DrawCharacter: no location, a transfer under way or an agent on an offensive mission. */
+export function characterInTransitOrUnknown(c: Character): boolean {
+    if (c.location === null) return true;
+    if (c.transferDestination !== null && c.transferTimeRemaining > 0) return true;
+    const m = characterMission(c);
+    return m !== null && m.type !== MT.CounterIntelligence && m.type !== MT.Undefined;
+}
+
+/**
+ * GenerateCharacterPlanetCompositeImage's background: the location's landscape (Galaxy.4.cs:1769
+ * SelectCharacterLandscapeImageIndex — a Habitat's LandscapePictureRef), else / in transit the space image
+ * (bitmap_189 = images/ui/chrome/storyEvent.jpg).
+ */
+export function characterBackdropUrl(c: Character): string {
+    const space = chromeImageUrl('storyEvent.jpg');
+    if (characterInTransitOrUnknown(c)) return space;
+    const loc = c.location;
+    if (loc instanceof HabitatClass) return landscapeImageUrl(loc.landscapePictureRef) ?? space;
+    return space;
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// Role filter (our extra on lblCharacterSummary: the summary's "n Role" entries as toggle buttons)
+// ---------------------------------------------------------------------------------------------------------------
+
+export interface RoleCount {
+    role: CharacterRole;
+    count: number;
+    label: string;
+}
+
+/** Galaxy.2.cs:3512 ResolveCharacterSummary's roles and counts, in its order. */
+export function characterRoleCounts(empire: Empire): RoleCount[] {
+    const roles =
+        empire.pirateEmpireBaseHabitat === null
+            ? [CharacterRole.Leader, CharacterRole.Ambassador, CharacterRole.ColonyGovernor, CharacterRole.FleetAdmiral, CharacterRole.ShipCaptain, CharacterRole.TroopGeneral, CharacterRole.Scientist, CharacterRole.IntelligenceAgent]
+            : [CharacterRole.PirateLeader, CharacterRole.FleetAdmiral, CharacterRole.ShipCaptain, CharacterRole.Scientist, CharacterRole.IntelligenceAgent];
+    return roles.map((role) => ({ role, count: countByRole(empire, role), label: T(CHARACTER_ROLE.tags[CharacterRole[role]]) }));
+}
+
+/** The list rows shown for a role filter (null = every character). */
+export function filterCharacterRows(rows: readonly CharacterRow[], role: CharacterRole | null): CharacterRow[] {
+    return role === null ? rows.slice() : rows.filter((r) => r.character.role === role);
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// Transfer (CharacterSummary.cs SetupTransferControls / btnTransfer_Click)
+// ---------------------------------------------------------------------------------------------------------------
+
+export interface TransferOption {
+    label: string;
+    /** The fleet (its destination is resolved on Transfer) or the stellar object. */
+    fleet: ShipGroup | null;
+    target: StellarObject | null;
+}
+
+function sortedFleets(empire: Empire): ShipGroup[] {
+    // FleetDropDown.BindData sorts the bound list (ShipGroup.CompareTo: SortTag, then Name) — on a copy here.
+    const out = (empire.shipGroups as ShipGroup[]).filter((g) => g !== null);
+    netSort(out, compareShipGroups);
+    return out;
+}
+
+function habitatsByName(list: readonly Habitat[]): Habitat[] {
+    // HabitatDropDown.BindData: HabitatList.OrderByName().
+    return list.filter((h) => h !== null).slice().sort((a, b) => a.name.localeCompare(b.name));
+}
+
+const fleetOption = (g: ShipGroup): TransferOption => ({ label: g.name ?? '', fleet: g, target: null });
+const objectOption = (o: StellarObject): TransferOption => ({ label: o.name, fleet: null, target: o });
+
+/**
+ * CharacterSummary.cs SetupTransferControls (not editing): the destinations of the role's combo, in its order; null
+ * when the role has no transfer combo (intelligence agents).
+ */
+export function transferOptions(galaxy: Galaxy, c: Character): TransferOption[] | null {
+    const e = c.empire;
+    switch (c.role) {
+        case CharacterRole.Leader:
+            return e === null ? [] : habitatsByName(e.capitals).map(objectOption);
+        case CharacterRole.Ambassador: {
+            const out: Habitat[] = [];
+            if (e !== null) {
+                for (const r of e.diplomaticRelations) {
+                    const other = r?.otherEmpire ?? null;
+                    if (r === null || r.type === DiplomaticRelationType.NotMet || r.type === DiplomaticRelationType.War || other === null || other === e || other.capital === null) continue;
+                    const star = galaxy.determineHabitatSystemStar(other.capital);
+                    if (star !== null && e.visibility.checkSystemExplored(star.systemIndex)) out.push(other.capital);
+                }
+            }
+            return habitatsByName(out).map(objectOption);
+        }
+        case CharacterRole.ColonyGovernor:
+            return e === null ? [] : habitatsByName(e.colonies).map(objectOption);
+        case CharacterRole.FleetAdmiral:
+            return e === null ? [] : sortedFleets(e).map(fleetOption);
+        case CharacterRole.TroopGeneral:
+            return e === null ? [] : [...sortedFleets(e).map(fleetOption), ...e.colonies.filter((h) => h !== null).map(objectOption)];
+        case CharacterRole.Scientist:
+            return e === null ? [] : (e.researchFacilities as BuiltObject[]).filter((b) => b !== null).map(objectOption);
+        case CharacterRole.PirateLeader:
+            if (e === null) return [];
+            return [
+                ...sortedFleets(e).map(fleetOption),
+                ...e.builtObjects.filter((b) => b !== null && b.role === BuiltObjectRole.Base).map(objectOption),
+                ...e.colonies.filter((h) => h !== null && h.empire === e).map(objectOption),
+            ];
+        case CharacterRole.ShipCaptain: {
+            if (e === null) return [];
+            const roles = [BuiltObjectRole.Build, BuiltObjectRole.Exploration, BuiltObjectRole.Freight, BuiltObjectRole.Military, BuiltObjectRole.Passenger, BuiltObjectRole.Resource];
+            return e.builtObjects.filter((b) => b !== null && roles.includes(b.role)).map(objectOption);
+        }
+        default:
+            return null;
+    }
+}
+
+/** btnTransfer_Click: a fleet resolves to its strongest troop transport (troop general / pirate leader) or lead ship. */
+export function resolveTransferDestination(c: Character, o: TransferOption | null): StellarObject | null {
+    if (o === null) return null;
+    if (o.fleet !== null) {
+        if (c.role === CharacterRole.TroopGeneral || c.role === CharacterRole.PirateLeader) return shipGroupDetermineStrongestTroopTransport(o.fleet) ?? o.fleet.leadShip;
+        return o.fleet.leadShip;
+    }
+    return o.target;
+}
+
+/** btnTransfer_Click: the transfer happens only to a new location while no transfer is under way. */
+export function canTransfer(c: Character, destination: StellarObject | null): boolean {
+    return destination !== null && destination !== c.location && c.transferDestination === null;
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// DOM (Main.Part6.cs:3098 method_425: pnlIntelligenceAgents, 1020 × 770)
 // ---------------------------------------------------------------------------------------------------------------
 
 // TODO(port): the panel pauses a running game while open and resumes on close — Main.Part6.cs:3098 method_425 / 3214 method_426 (bool_11).
-// TODO(port): CharacterSummary "Transfer to new location" (character transfer) — CharacterSummary.cs btnTransfer_Click / Main.Part6.cs:3325.
-// TODO(port): "Show Event History" (CharacterEventListView) and character portraits (CharacterImageCache) — Main.Part6.cs:3135, CharacterListView.cs BindData.
-// TODO(port): "Learn about Characters" / "Learn about Intelligence Missions" Galactopedia links — Main.Part6.cs:3124, CharacterMission.cs lnkMissionTypes_LinkClicked.
+// TODO(port): renaming in txtName (CharacterSummary.cs txtName_Leave) and the character tooltip (Galaxy.ResolveCharacterDescription) — Main.Part6.cs:3165.
 export interface IntelligenceScreenOptions {
     player: Empire;
     /** CharacterDoubleClicked: move the view to the character's location. */
     onZoomTo?: (target: BuiltObject | Habitat) => void;
+    /** method_424(character): open with this character selected. */
+    character?: Character | null;
 }
 
 interface OpenState {
@@ -637,13 +832,20 @@ export function closeIntelligenceScreen(): void {
     open?.close();
 }
 
-function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, text?: string): HTMLElementTagNameMap[K] {
-    const e = document.createElement(tag);
-    if (cls) e.className = cls;
-    if (text !== undefined) e.textContent = text;
-    return e;
+/** CharacterSummary.cs GenerateAutomationMessageBox → "off" turns the automation off. */
+async function automationOff(task: string): Promise<boolean> {
+    const answer = await messageBox({
+        caption: T('Turn Off TASKNAME Automation?', task),
+        text: T('Would you like to turn off automation', task),
+        buttons: [T('Leave automation on'), T('Turn off automation')],
+        icon: 'question',
+        width: 520,
+        buttonWidth: 190,
+    });
+    return answer === T('Turn off automation');
 }
 
+/** A combo whose items are labels; -1 = nothing selected (a hidden blank first option). */
 function fillSelect(sel: HTMLSelectElement, labels: string[], selected: number): void {
     const cur = Array.from(sel.options).map((o) => o.textContent);
     const want = ['', ...labels];
@@ -660,266 +862,303 @@ function fillSelect(sel: HTMLSelectElement, labels: string[], selected: number):
     sel.value = String(selected);
 }
 
+function labelledCombo(parent: HTMLElement, label: string, x: number, y: number, w: number): { label: HTMLDivElement; sel: HTMLSelectElement } {
+    const l = dropText(parent, label, x, y - 14, { size: FONT.tiny, bold: true, color: COLORS.label, shadow: false });
+    const sel = dropDown([], '', () => {});
+    place(sel, x, y, w, 21);
+    sel.style.fontSize = `${FONT.small}px`;
+    parent.appendChild(sel);
+    return { label: l, sel };
+}
+
 function createIntelligenceScreen(opts: IntelligenceScreenOptions): OpenState {
     const player = opts.player;
     const galaxy = player.galaxy as Galaxy;
+    let timer = 0;
+    let historyWin: OriginalWindow | null = null;
+    let securityWin: OriginalWindow | null = null;
+    const win = openOriginalWindow({
+        id: 'characters',
+        title: T('Characters'),
+        icon: 'characters.png',
+        width: 1020,
+        height: 770,
+        onClose: () => {
+            window.clearInterval(timer);
+            historyWin?.close(); // method_426 → method_663
+            securityWin?.close();
+            open = null;
+        },
+    });
+    const body = win.body;
+    body.classList.add('ch-body');
 
-    const root = el('div', 'intel-wrap');
-    const win = el('div', 'intel-window');
-    root.appendChild(win);
-
-    const titlebar = el('div', 'intel-titlebar');
-    const heading = el('div', 'intel-heading', T('Characters'));
-    const closeBtn = el('button', 'intel-close', '✕');
-    closeBtn.type = 'button';
-    closeBtn.title = 'Close';
-    titlebar.append(heading, closeBtn);
-    win.appendChild(titlebar);
-
-    const top = el('div', 'intel-top');
-    const summary = el('div', 'intel-summary');
-    const ciSummary = el('div', 'intel-ci-summary');
-    const dismissBtn = el('button', 'intel-btn', T('Dismiss'));
-    dismissBtn.type = 'button';
-    const summaryBox = el('div', 'intel-summary-box');
-    summaryBox.append(summary, ciSummary);
-    top.append(summaryBox, dismissBtn);
-    win.appendChild(top);
-
-    const body = el('div', 'intel-body');
-    win.appendChild(body);
-
-    // Left: the character list.
-    const listWrap = el('div', 'intel-list');
-    const header = el('div', 'intel-row intel-header');
-    for (const h of [T('Name'), T('Role'), T('Location'), T('Mission')]) header.appendChild(el('span', 'intel-cell', h));
-    // [emergent] begin — 19d1 internal politics: Loyalty / Ambition columns (flag on only)
-    const showPolitics = politicsVisible(galaxy);
-    if (showPolitics) {
-        listWrap.classList.add('intel-politics');
-        for (const h of ['Loyalty', 'Ambition']) header.appendChild(el('span', 'intel-cell intel-num', h));
+    // --- lblCharacterSummary (10, 8) 570 × 35: the "n Role" entries, here as role filter toggles (our extra). ---
+    let roleFilter: CharacterRole | null = null;
+    const chips = el('div', 'ch-roles');
+    place(chips, 10, 6, 570, 30);
+    body.appendChild(chips);
+    let chipsKey = '';
+    function renderChips(): void {
+        const counts = characterRoleCounts(player);
+        const key = counts.map((r) => `${r.role}:${r.count}`).join(',') + `|${roleFilter}`;
+        if (key === chipsKey) return;
+        chipsKey = key;
+        chips.replaceChildren();
+        chips.title = resolveCharacterSummary(player);
+        const w = Math.floor((570 - (counts.length - 1) * 4) / counts.length);
+        counts.forEach((r, i) => {
+            const b = glassButton(String(r.count), {
+                image: `characterRole_${CharacterRole[r.role]}.png`,
+                toggled: roleFilter === r.role,
+                size: FONT.normal,
+                title: `${r.count} ${r.label}` + (roleFilter === r.role ? ' — click to show every character' : ` — click to show only ${r.label}`),
+                className: 'ch-role-btn',
+                onClick: () => {
+                    roleFilter = roleFilter === r.role ? null : r.role;
+                    chipsKey = '';
+                    renderChips();
+                    renderList(true);
+                },
+            });
+            chips.appendChild(place(b, i * (w + 4), 0, w, 30));
+        });
     }
-    // [emergent] end
-    listWrap.appendChild(header);
-    const listBody = el('div', 'intel-list-body');
-    listWrap.appendChild(listBody);
-    body.appendChild(listWrap);
 
-    // Right: the character summary and the mission panel.
-    const side = el('div', 'intel-side');
-    const detail = el('div', 'intel-detail');
-    const dName = el('div', 'intel-d-name');
-    const dRole = el('div', 'intel-d-role');
-    const dTask = el('div', 'intel-d-task');
-    const dLoc = el('div', 'intel-d-loc');
-    const dTraits = el('div', 'intel-d-traits');
-    const dSkills = el('div', 'intel-d-skills');
-    detail.append(dName, dRole, dTask, dLoc, dTraits, dSkills);
-    // [emergent] begin — 19d1 internal politics: the Politics block
-    const dPolitics = el('div', 'intel-politics-block');
-    detail.appendChild(dPolitics);
-    // [emergent] end
-    const dCourt = el('div', 'intel-politics-block'); // [court] 19n house / seat / appoint
-    detail.appendChild(dCourt);
-    side.appendChild(detail);
-
-    const mission = el('div', 'intel-mission');
-    const mTitle = el('div', 'intel-m-title', T('Assign Mission'));
-    const field = (label: string): { row: HTMLDivElement; sel: HTMLSelectElement } => {
-        const row = el('div', 'intel-m-field');
-        const sel = el('select', 'intel-select');
-        row.append(el('label', 'intel-m-label', label), sel);
-        return { row, sel };
-    };
-    const fEmpire = field(T('Target Empire'));
-    const fType = field(T('Mission Type'));
-    const fTarget = field(T('Target'));
-    const fTime = field(T('Time to Complete'));
-    // 19d3 (scenario `espionageConsequences`): the false-flag "Blame" select; hidden when blameOptions is empty.
-    const fBlame = field('Blame');
-    let blameList: BlameOption[] = [];
-    let blameId = -1;
-    const chanceBox = el('div', 'intel-m-chance');
-    const chanceLabel = el('div', 'intel-m-chance-label');
-    const chanceValue = el('div', 'intel-m-chance-value');
-    const warning = el('div', 'intel-m-warning');
-    chanceBox.append(chanceLabel, chanceValue, warning);
-    const assignBtn = el('button', 'intel-btn', T('Assign Mission'));
-    assignBtn.type = 'button';
-    const cancelBtn = el('button', 'intel-btn', T('Cancel Mission'));
-    cancelBtn.type = 'button';
-    const mButtons = el('div', 'intel-m-buttons');
-    mButtons.append(assignBtn, cancelBtn);
-    mission.append(mTitle, fEmpire.row, fType.row, fTarget.row, fTime.row, fBlame.row, chanceBox, mButtons);
-    side.appendChild(mission);
-    body.appendChild(side);
-
-    document.body.appendChild(root);
-
-    let selected: Character | null = getEmpireCharacters(player)[0] ?? null;
-    let form: MissionForm = initialMissionForm(galaxy, player);
-    let formEmpires: Empire[] = [];
-    let shownMission: unknown = undefined; // mission object the panel was last built for
-    const rowEls = new Map<Character, { row: HTMLDivElement; cells: HTMLSpanElement[] }>();
-
-    // [security] begin — 19m internal security: a "Characters | Internal Security" tab strip and the leads tab (flag on only)
-    const showSecurity = securityVisible(galaxy);
-    const secPanel = el('div', 'intel-security');
-    let securityTab = false;
-    let securitySig = '';
-    if (showSecurity) {
-        const tabs = el('div', 'intel-tabs');
-        const tChars = el('button', 'intel-btn intel-tab', T('Characters'));
-        const tSec = el('button', 'intel-btn intel-tab', 'Internal Security');
-        tChars.type = 'button';
-        tSec.type = 'button';
-        tabs.append(tChars, tSec);
-        win.insertBefore(tabs, top);
-        secPanel.style.display = 'none';
-        win.appendChild(secPanel);
-        const setTab = (sec: boolean): void => {
-            securityTab = sec;
-            top.style.display = sec ? 'none' : '';
-            body.style.display = sec ? 'none' : '';
-            secPanel.style.display = sec ? '' : 'none';
-            tChars.classList.toggle('intel-tab-active', !sec);
-            tSec.classList.toggle('intel-tab-active', sec);
-            if (sec) {
-                securitySig = '';
-                renderSecurity();
-            }
-        };
-        tChars.addEventListener('click', () => setTab(false));
-        tSec.addEventListener('click', () => setTab(true));
-        setTab(false);
-    }
-    function renderSecurity(): void {
-        if (!showSecurity || !securityTab) return;
-        const agents = investigatorOptions(galaxy, player);
-        const rows = leadRows(galaxy, player);
-        // Rebuild only when something changed (the 1 s timer would otherwise reset the agent selects).
-        const sig = rows.map((r) => `${r.lead.id}:${r.level}:${r.status}:${r.actions.length}:${r.canInvestigate}`).join('|') + '#' + agents.map((a) => a.name).join(',');
-        if (sig === securitySig) return;
-        securitySig = sig;
-        secPanel.replaceChildren();
-        const head = el('div', 'intel-row intel-header');
-        for (const h of ['Lead', 'Target', 'Level', 'Since', 'Status', '']) head.appendChild(el('span', 'intel-cell', h));
-        secPanel.appendChild(head);
-        if (rows.length === 0) secPanel.appendChild(el('div', 'intel-row', 'No leads. Agents on counter-intelligence look for plots, converts, sleepers and foreign agents once a year.'));
-        for (const r of rows) {
-            const row = el('div', `intel-row intel-lead-${r.level}${r.lead.closed ? ' intel-lead-closed' : ''}`);
-            row.append(el('span', 'intel-cell', r.kind), el('span', 'intel-cell', r.target), el('span', 'intel-cell', r.level), el('span', 'intel-cell', r.since), el('span', 'intel-cell', r.status));
-            const cell = el('span', 'intel-cell');
-            if (r.canInvestigate && agents.length > 0) {
-                const sel = el('select', 'intel-select');
-                agents.forEach((a, i) => {
-                    const o = document.createElement('option');
-                    o.value = String(i);
-                    o.textContent = a.name;
-                    sel.appendChild(o);
-                });
-                const b = el('button', 'intel-btn', 'Investigate');
-                b.type = 'button';
-                b.addEventListener('click', () => {
-                    const agent = agents[Number(sel.value)];
-                    if (agent !== undefined) issuePlayerCommand(galaxy, player, 'securityInvestigate', [r.lead.id, agent], () => {
-                        securitySig = '';
-                        renderSecurity();
-                    });
-                });
-                cell.append(sel, b);
-            }
-            for (const a of r.actions) {
-                const b = el('button', 'intel-btn', a.label);
-                b.type = 'button';
-                b.addEventListener('click', () => issuePlayerCommand(galaxy, player, 'securityAction', [a.action, r.lead.id], () => renderSecurity()));
-                cell.appendChild(b);
-            }
-            row.appendChild(cell);
-            secPanel.appendChild(row);
-        }
-    }
+    // --- btnIntelligenceAgentsDisband (595, 8) 90 × 30, btnCharacterShowEventHistory (689, 8) 146 × 30, the link. ---
+    const dismissBtn = glassButton(T('Dismiss'), { onClick: () => void dismiss() });
+    body.appendChild(place(dismissBtn, 595, 8, 90, 30));
+    const historyBtn = glassButton(T('Show Event History'), { onClick: () => openHistory(selected) });
+    body.appendChild(place(historyBtn, 689, 8, 146, 30));
+    const showSecurity = securityVisible(galaxy); // [security]
+    const learn = linkLabel(T('Learn about Characters') + '...', () => openGalactopedia({ topic: T('Characters') }));
+    body.appendChild(place(learn, 840, showSecurity ? 2 : 12, 160, 21));
+    // [security] begin — 19m internal security: the leads table in its own window (flag on only)
+    if (showSecurity) body.appendChild(place(linkLabel('Internal Security...', () => openSecurity()), 840, 21, 160, 21));
     // [security] end
 
-    function renderList(): void {
-        const rows = characterRows(player, galaxy);
-        const seen = new Set<Character>();
-        rows.forEach((r, i) => {
-            seen.add(r.character);
-            let entry = rowEls.get(r.character);
-            if (!entry) {
-                const row = el('div', 'intel-row');
-                const cells = (showPolitics ? [0, 1, 2, 3, 4, 5] : [0, 1, 2, 3]).map((k) => el('span', k >= 4 ? 'intel-cell intel-num' : 'intel-cell'));
-                row.append(...cells);
-                row.title = T('Double-click to move to location');
-                const c = r.character;
-                row.addEventListener('click', () => select(c));
-                row.addEventListener('dblclick', () => {
-                    const loc = c.location;
-                    if (loc !== null && opts.onZoomTo && (loc instanceof BuiltObject || loc instanceof HabitatClass)) opts.onZoomTo(loc);
-                });
-                entry = { row, cells };
-                rowEls.set(c, entry);
-            }
-            const ffLabel = missionFrameLabel(galaxy, characterMission(r.character));
-            const vals = [r.name, r.role, r.location, ffLabel === '' ? r.mission : `${r.mission} ${ffLabel}`];
-            // [emergent] begin
-            if (showPolitics) {
-                const p = politicsRowCells(galaxy, r.character);
-                vals.push(p.loyalty, p.ambition);
-                entry.row.classList.toggle('intel-row-risk', p.risk);
-            }
-            // [emergent] end
-            entry.cells.forEach((cell, k) => {
-                if (cell.textContent !== vals[k]) cell.textContent = vals[k];
-            });
-            entry.row.classList.toggle('intel-row-selected', r.character === selected);
-            entry.row.classList.toggle('intel-row-agent', r.character.role === CharacterRole.IntelligenceAgent);
-            if (listBody.children[i] !== entry.row) listBody.insertBefore(entry.row, listBody.children[i] ?? null);
-        });
-        for (const [c, e] of rowEls) {
-            if (!seen.has(c)) {
-                e.row.remove();
-                rowEls.delete(c);
-            }
+    // --- ctlIntelligenceAgents (10, 40) 570 × 655: Image 40, Name 100, Role 100, Location 100, Mission 230. ---
+    const showPolitics = politicsVisible(galaxy); // [emergent] 19d1: Loyalty / Ambition columns
+    const zoomTo = (c: Character): void => {
+        const loc = c.location;
+        if (loc !== null && opts.onZoomTo && (loc instanceof BuiltObject || loc instanceof HabitatClass)) opts.onZoomTo(loc);
+    };
+    const tip = T('Double-click to move to location');
+    const columns: GridColumn<CharacterRow>[] = [
+        {
+            id: 'image',
+            header: '',
+            width: 40,
+            render: (r, cell) => {
+                cell.title = tip;
+                cell.appendChild(characterPortrait(r.character, 'small', 38));
+            },
+        },
+        { id: 'name', header: T('Name'), width: 100, sort: (r) => r.name, render: (r, cell) => wrapCell(cell, r.name, tip) },
+        { id: 'role', header: T('Role'), width: 100, sort: (r) => r.role, render: (r, cell) => wrapCell(cell, r.role, tip) },
+        { id: 'location', header: T('Location'), width: 100, sort: (r) => r.location, render: (r, cell) => wrapCell(cell, r.location, tip) },
+        {
+            id: 'mission',
+            header: T('Mission'),
+            width: showPolitics ? 130 : 230,
+            sort: (r) => r.mission,
+            render: (r, cell) => {
+                const ff = missionFrameLabel(galaxy, characterMission(r.character)); // [emergent] 19d3 false flag
+                wrapCell(cell, ff === '' ? r.mission : `${r.mission} ${ff}`, tip);
+            },
+        },
+    ];
+    // [emergent] begin
+    if (showPolitics) {
+        columns.push(
+            { id: 'loyalty', header: 'Loyalty', width: 50, align: 'right', render: (r, cell) => wrapCell(cell, politicsRowCells(galaxy, r.character).loyalty, tip) },
+            { id: 'ambition', header: 'Ambition', width: 50, align: 'right', render: (r, cell) => wrapCell(cell, politicsRowCells(galaxy, r.character).ambition, tip) },
+        );
+    }
+    // [emergent] end
+    const grid = new OwGrid<CharacterRow>({
+        columns,
+        key: (r) => r.character,
+        rowHeight: 40,
+        fontSize: FONT.normal,
+        onSelect: (r) => select(r.character),
+        onDoubleClick: (r) => zoomTo(r.character),
+        rowClass: (r) => (showPolitics && politicsRowCells(galaxy, r.character).risk ? 'ch-row-risk' : ''),
+    });
+    grid.el.classList.add('ch-list');
+    body.appendChild(place(grid.el, 10, 40, 570, 655));
+
+    // --- ctlCharacterSummary (595, 40) 400 × 655 (470 with the mission panel). ---
+    const summary = gradientPanel({ className: 'ch-summary' });
+    body.appendChild(place(summary, 595, 40, 400, 655));
+    const pictureWrap = el('div', 'ch-composite');
+    summary.appendChild(place(pictureWrap, 10, 10, 250, 250));
+    const sRole = dropText(summary, '', 270, 10, { size: FONT.large, bold: true, color: COLORS.label, className: 'ch-center' });
+    sRole.style.width = '120px';
+    const sName = dropText(summary, '', 270, 38, { size: 25, bold: true, color: COLORS.label, shadow: false, className: 'ch-center ch-name' });
+    place(sName, 270, 38, 120, 62);
+    const sTask = dropText(summary, '', 270, 108, { size: FONT.large, color: COLORS.label, shadow: false, wrapWidth: 120 });
+    sTask.style.height = '152px';
+    sTask.style.overflow = 'hidden';
+    const skills = scrollPanel('ch-skills');
+    summary.appendChild(place(skills, 13, 272, 377, 270));
+    const skillsInner = el('div', 'ch-skills-inner');
+    skills.appendChild(skillsInner);
+    const dPolitics = el('div', 'ch-extra'); // [emergent] 19d1 politics block
+    const dCourt = el('div', 'ch-extra'); // [court] 19n house / seat / appoint
+    skills.append(dPolitics, dCourt);
+    // cmb* (85, 565) 230 × 22 and btnTransfer (85, 595) 230 × 25.
+    const transferSel = dropDown([], '', () => {});
+    transferSel.style.fontSize = `${FONT.large}px`;
+    summary.appendChild(place(transferSel, 85, 565, 230, 24));
+    const transferBtn = glassButton(T('Transfer to new location'), { size: FONT.large, onClick: () => void doTransfer() });
+    summary.appendChild(place(transferBtn, 85, 595, 230, 25));
+
+    // --- pnlCharacterMission (595, 510) 400 × 185. ---
+    const mission = gradientPanel({ className: 'ch-mission' });
+    body.appendChild(place(mission, 595, 510, 400, 185));
+    mission.appendChild(place(linkLabel(T('Learn about Intelligence Missions...'), () => openGalactopedia({ topic: T('Intelligence Missions') }), FONT.small), 200, 5, 190, 20));
+    const fEmpire = labelledCombo(mission, T('Target Empire'), 10, 23, 180);
+    const fType = labelledCombo(mission, T('Mission Type'), 10, 66, 180);
+    const fTarget = labelledCombo(mission, T('Target'), 10, 109, 180);
+    const fTime = labelledCombo(mission, T('Time to Complete'), 10, 152, 180);
+    const chanceValue = dropText(mission, '', 275, 24, { size: FONT.title, bold: true, color: COLORS.label, shadow: false });
+    const chanceLabel = dropText(mission, '', 200, 56, { size: FONT.small, bold: true, color: COLORS.label, shadow: false, wrapWidth: 190 });
+    const warning = dropText(mission, '', 200, 72, { size: FONT.large, color: COLORS.label, shadow: false, wrapWidth: 190 });
+    warning.style.maxHeight = '80px';
+    warning.style.overflow = 'hidden';
+    // 19d3 (scenario `espionageConsequences`): the false-flag "Blame" combo; hidden when blameOptions is empty.
+    const fBlame = labelledCombo(mission, 'Blame', 200, 127, 190);
+    let blameList: BlameOption[] = [];
+    let blameId = -1;
+    const assignBtn = glassButton(T('Assign Mission'), { onClick: () => void assign() });
+    const cancelBtn = glassButton(T('Cancel Mission'), { onClick: () => void cancel() });
+    mission.appendChild(place(assignBtn, 200, 152, 190, 25));
+    mission.appendChild(place(cancelBtn, 200, 152, 190, 25));
+
+    let selected: Character | null = null;
+    let form: MissionForm = initialMissionForm(galaxy, player);
+    let formEmpires: Empire[] = [];
+    let shownMission: unknown = undefined;
+    let transferList: TransferOption[] = [];
+    let transferFor: Character | null | undefined = undefined;
+    let pictureKey = '';
+    let skillsKey = '';
+
+    function wrapCell(cell: HTMLDivElement, value: string, title: string): void {
+        const s = el('span', 'ch-wrap', value);
+        cell.title = title;
+        cell.appendChild(s);
+    }
+
+    function rows(): CharacterRow[] {
+        return filterCharacterRows(characterRows(player, galaxy), roleFilter);
+    }
+
+    function renderList(scroll = false): void {
+        const list = rows();
+        grid.setRows(list);
+        if (selected === null || !list.some((r) => r.character === selected)) {
+            select(grid.displayed[0]?.character ?? null, scroll);
+            return;
         }
-        if (selected !== null && !seen.has(selected)) select(rows[0]?.character ?? null);
+        if (scroll) grid.select(selected, true);
+    }
+
+    function renderPicture(c: Character): void {
+        const backdrop = characterBackdropUrl(c);
+        const key = `${backdrop}|${characterPortraitUrl(c)}|${c.role}`;
+        if (key === pictureKey) return;
+        pictureKey = key;
+        pictureWrap.replaceChildren();
+        // GenerateCharacterPlanetCompositeImage: backdrop and portrait cover-fill 238 × 238 at (6, 6), the frame on top.
+        const bg = el('img', 'ch-fill');
+        bg.src = backdrop;
+        bg.alt = '';
+        bg.draggable = false;
+        pictureWrap.appendChild(place(bg, 6, 6, 238, 238));
+        pictureWrap.appendChild(place(characterPortrait(c, 'large', 238), 6, 6, 238, 238));
+        const frame = el('img');
+        frame.src = chromeImageUrl('panelframe.png');
+        frame.alt = '';
+        frame.draggable = false;
+        pictureWrap.appendChild(place(frame, 0, 0, 250, 250));
+    }
+
+    function renderSkills(c: Character): void {
+        const lines = characterSkillLines(c);
+        const traits = characterTraitsLine(c);
+        const key = traits + '#' + lines.map((l) => `${l.name}|${l.value}|${l.progress}`).join(';');
+        if (key === skillsKey) return;
+        skillsKey = key;
+        skillsInner.replaceChildren();
+        if (traits !== '') skillsInner.appendChild(text(traits, { size: FONT.large, color: COLORS.label, wrapWidth: 357, className: 'ch-traits' }));
+        for (const l of lines) {
+            // CharacterSkillsTraitsProgress.DrawCharacter: name right-aligned to 205, value (22.67 bold) at 200,
+            // progress bar 100 × 18 at 260 (or "(from Trait)").
+            const row = el('div', 'ch-skill');
+            row.appendChild(place(text(l.name, { size: FONT.large, color: COLORS.label, className: 'ch-skill-name' }), 0, 0, 197));
+            const color = l.value === '?%' ? COLORS.label : l.positive ? 'rgb(0, 128, 0)' : COLORS.red;
+            row.appendChild(place(text(l.value, { size: FONT.title, bold: true, color }), 200, -5));
+            if (l.fromTrait) {
+                const t = text(`(${T('from Trait')})`, { size: FONT.tiny, color: COLORS.label, className: 'ch-center' });
+                row.appendChild(place(t, 260, 1, 100));
+            } else {
+                const bar = el('div', 'ch-progress');
+                const fill = el('div', 'ch-progress-fill');
+                fill.style.width = l.progress ?? '0%';
+                bar.append(fill, el('span', 'ch-progress-text', l.progress ?? ''));
+                row.appendChild(place(bar, 260, -2, 100, 18));
+            }
+            skillsInner.appendChild(row);
+        }
+    }
+
+    function renderTransfer(c: Character | null): void {
+        const opts2 = c === null ? null : transferOptions(galaxy, c);
+        const visible = opts2 !== null;
+        transferSel.style.display = visible ? '' : 'none';
+        transferBtn.style.display = visible ? '' : 'none';
+        if (!visible) {
+            transferList = [];
+            transferFor = c;
+            return;
+        }
+        const prev = transferFor === c ? transferList[Number(transferSel.value)] ?? null : null;
+        const labels = opts2.map((o) => o.label);
+        const changed = labels.length !== transferList.length || labels.some((l, i) => l !== transferList[i].label);
+        if (changed || transferFor !== c) {
+            transferList = opts2;
+            const idx = prev === null ? -1 : opts2.findIndex((o) => (o.fleet ?? o.target) === (prev.fleet ?? prev.target));
+            fillSelect(transferSel, labels, idx); // option values are list indexes (-1 = the hidden blank)
+        }
+        transferFor = c;
+        const dest = resolveTransferDestination(c!, transferList[Number(transferSel.value)] ?? null);
+        transferBtn.disabled = !canTransfer(c!, dest);
     }
 
     function renderDetail(): void {
         const c = selected;
         dismissBtn.disabled = c === null;
+        historyBtn.disabled = c === null;
+        summary.style.visibility = c === null ? 'hidden' : '';
         if (c === null) {
-            for (const d of [dName, dRole, dTask, dLoc, dTraits]) d.textContent = '';
-            dPolitics.replaceChildren(); // [emergent]
-            dCourt.replaceChildren(); // [court]
-            dCourt.dataset.key = '';
-            dSkills.replaceChildren();
+            renderTransfer(null);
             return;
         }
-        dName.textContent = c.name;
-        dRole.textContent = resolveRoleDescription(c.role);
-        dTask.textContent = resolveDescriptionCharacterTask(c, galaxy);
-        dLoc.textContent = `${T('Location')}: ${resolveCharacterLocationDescription(c)}`;
-        dTraits.textContent = characterTraitsLine(c);
+        const agent = missionPanelMode(c) !== 'hidden';
+        // method_425: the summary shrinks to 400 × 470 (skills 377 × 188) for an agent.
+        summary.style.height = agent ? '470px' : '655px';
+        skills.style.height = agent ? '188px' : '270px';
+        renderPicture(c);
+        setText(sRole, resolveRoleDescription(c.role));
+        setText(sName, c.name);
+        const task = resolveDescriptionCharacterTask(c, galaxy);
+        setText(sTask, task !== '' ? task : resolveCharacterLocationDescription(c));
+        renderSkills(c);
         renderPolitics(c); // [emergent]
         renderCourt(c); // [court]
-        const lines = characterSkillLines(c);
-        const key = lines.map((l) => `${l.name}|${l.value}|${l.progress}`).join(';');
-        if (dSkills.dataset.key !== key) {
-            dSkills.dataset.key = key;
-            dSkills.replaceChildren(
-                ...lines.map((l) => {
-                    const row = el('div', 'intel-skill');
-                    row.append(
-                        el('span', 'intel-skill-name', l.name),
-                        el('span', 'intel-skill-value ' + (l.value === '?%' ? '' : l.positive ? 'intel-good' : 'intel-bad'), l.value),
-                        el('span', 'intel-skill-progress', l.fromTrait ? `(${T('from Trait')})` : l.progress ?? ''),
-                    );
-                    return row;
-                }),
-            );
-        }
+        renderTransfer(c);
     }
 
     // [emergent] begin — 19d1 internal politics: loyalty, trend, causes, Honour / Arrest / Purge (command queue)
@@ -930,24 +1169,29 @@ function createIntelligenceScreen(opts: IntelligenceScreenOptions): OpenState {
         dPolitics.dataset.key = key;
         dPolitics.replaceChildren();
         if (p === null) return;
-        dPolitics.appendChild(el('div', 'intel-m-title', 'Politics'));
-        dPolitics.appendChild(el('div', 'intel-pol-line', `Loyalty ${p.loyalty}   (last year ${p.trend})${p.exposed ? '   — plot uncovered' : ''}`));
-        if (p.causes.length > 0) dPolitics.appendChild(el('div', 'intel-pol-causes', p.causes.join(' · ')));
-        if (p.grievances.length > 0) dPolitics.appendChild(el('div', 'intel-pol-grievances', `Grievances: ${p.grievances.join(' · ')}`));
-        const buttons = el('div', 'intel-m-buttons');
+        dPolitics.appendChild(text('POLITICS', { size: FONT.large, bold: true, color: COLORS.label }));
+        dPolitics.appendChild(text(`Loyalty ${p.loyalty}   (last year ${p.trend})${p.exposed ? '   — plot uncovered' : ''}`, { size: FONT.normal, color: COLORS.text, wrapWidth: 357 }));
+        if (p.causes.length > 0) dPolitics.appendChild(text(p.causes.join(' · '), { size: FONT.small, color: COLORS.label, wrapWidth: 357 }));
+        if (p.grievances.length > 0) dPolitics.appendChild(text(`Grievances: ${p.grievances.join(' · ')}`, { size: FONT.small, color: 'rgb(255, 160, 96)', wrapWidth: 357 }));
+        const buttons = el('div', 'ch-extra-buttons');
         for (const b of p.buttons) {
-            const btn = el('button', 'intel-btn', b.label);
-            btn.type = 'button';
-            btn.disabled = !b.enabled;
-            btn.title = b.reason;
-            btn.addEventListener('click', () => {
-                if (b.action === 'purge' && !window.confirm(`Purge ${c.name}? Every other official will resent it.`)) return;
-                issuePlayerCommand(galaxy, player, 'politicsAction', [b.action, c], () => {
-                    dPolitics.dataset.key = '';
-                    render();
-                });
-            });
-            buttons.appendChild(btn);
+            buttons.appendChild(
+                glassButton(b.label, {
+                    disabled: !b.enabled,
+                    title: b.reason,
+                    size: FONT.small,
+                    onClick: async () => {
+                        if (b.action === 'purge') {
+                            const a = await messageBox({ caption: 'Purge', text: `Purge ${c.name}? Every other official will resent it.`, buttons: ['Yes', 'No'], icon: 'warning' });
+                            if (a !== 'Yes') return;
+                        }
+                        issuePlayerCommand(galaxy, player, 'politicsAction', [b.action, c], () => {
+                            dPolitics.dataset.key = '';
+                            render();
+                        });
+                    },
+                }),
+            );
         }
         dPolitics.appendChild(buttons);
     }
@@ -961,39 +1205,23 @@ function createIntelligenceScreen(opts: IntelligenceScreenOptions): OpenState {
         dCourt.dataset.key = key;
         dCourt.replaceChildren();
         if (p === null) return;
-        dCourt.appendChild(el('div', 'intel-m-title', 'Court'));
-        dCourt.appendChild(el('div', 'intel-pol-line', `${p.house} — ${p.seat}${p.heir ? ' — heir' : ''}`));
-        const buttons = el('div', 'intel-m-buttons');
+        dCourt.appendChild(text('COURT', { size: FONT.large, bold: true, color: COLORS.label }));
+        dCourt.appendChild(text(`${p.house} — ${p.seat}${p.heir ? ' — heir' : ''}`, { size: FONT.normal, color: COLORS.text, wrapWidth: 357 }));
+        const buttons = el('div', 'ch-extra-buttons');
         const issue = (seat: SeatName, who: Character | null): void => {
             issuePlayerCommand(galaxy, player, 'courtAppoint', [seat, who], () => {
                 dCourt.dataset.key = '';
                 render();
             });
         };
-        for (const b of p.buttons) {
-            const btn = el('button', 'intel-btn', b.label);
-            btn.type = 'button';
-            btn.disabled = !b.enabled;
-            btn.title = b.reason;
-            btn.addEventListener('click', () => issue(b.seat, c));
-            buttons.appendChild(btn);
-        }
+        for (const b of p.buttons) buttons.appendChild(glassButton(b.label, { disabled: !b.enabled, title: b.reason, size: FONT.small, onClick: () => issue(b.seat, c) }));
         if (p.vacate !== null) {
             const seat = p.vacate;
-            const btn = el('button', 'intel-btn', 'Leave seat');
-            btn.type = 'button';
-            btn.addEventListener('click', () => issue(seat, null));
-            buttons.appendChild(btn);
+            buttons.appendChild(glassButton('Leave seat', { size: FONT.small, onClick: () => issue(seat, null) }));
         }
         dCourt.appendChild(buttons);
     }
     // [court] end
-
-    function renderSummary(): void {
-        summary.textContent = resolveCharacterSummary(player);
-        const s = agentAssignmentSummary(player);
-        ciSummary.textContent = `${T('IntelligenceMissionType CounterIntelligence')}: ${s.counterIntelligence} / ${s.agents} — offensive ${s.offensive}, idle ${s.idle}`;
-    }
 
     /** Push `form` into the combos (SetState / the change handlers). */
     function writeForm(editable: boolean): void {
@@ -1003,7 +1231,8 @@ function createIntelligenceScreen(opts: IntelligenceScreenOptions): OpenState {
         fillSelect(fType.sel, MISSION_TYPE_ORDER.map((t) => resolveMissionTypeDescription(t)), MISSION_TYPE_ORDER.indexOf(form.type));
         fillSelect(fTarget.sel, form.targetOptions, form.target !== null ? form.targetOptions.indexOf(form.target) : -1);
         fillSelect(fTime.sel, form.timeOptions.map((o) => o.label), form.timeIndex);
-        fTarget.row.style.display = missionNeedsTarget(form.type) ? '' : 'none';
+        const showTarget = missionNeedsTarget(form.type);
+        fTarget.sel.style.display = fTarget.label.style.display = showTarget ? '' : 'none';
         blameList = blameOptions(galaxy, player, form.type, form.targetEmpire);
         if (!editable) {
             const m = selected !== null ? characterMission(selected) : null;
@@ -1014,8 +1243,17 @@ function createIntelligenceScreen(opts: IntelligenceScreenOptions): OpenState {
             blameId = -1;
         }
         fillSelect(fBlame.sel, blameList.map((o) => o.label), blameList.findIndex((o) => o.empireId === blameId));
-        fBlame.row.style.display = blameList.length > 0 ? '' : 'none';
+        const showBlame = blameList.length > 0;
+        fBlame.sel.style.display = fBlame.label.style.display = showBlame ? '' : 'none';
+        warning.style.maxHeight = showBlame ? '38px' : '80px';
         for (const f of [fEmpire, fType, fTarget, fTime, fBlame]) f.sel.disabled = !editable;
+    }
+
+    function setWarning(m: IntelligenceMission | null, c: Character): void {
+        const w = m !== null ? missionDifficultyWarning(m, c) : '';
+        setText(warning, w);
+        if (m === null || w === '') warning.style.color = COLORS.label;
+        else warning.style.color = calculateIntelligenceMissionSuccessChance(c.empire!, m, c) < 0.7 ? 'rgb(255, 0, 0)' : 'rgb(255, 255, 0)';
     }
 
     function renderMission(force = false): void {
@@ -1033,44 +1271,56 @@ function createIntelligenceScreen(opts: IntelligenceScreenOptions): OpenState {
                 form = formFromMission(galaxy, player, m);
                 writeForm(false);
             }
-            fTime.row.style.display = missionShowsTime(m) ? '' : 'none';
+            const showTime = missionShowsTime(m);
+            fTime.sel.style.display = fTime.label.style.display = showTime ? '' : 'none';
             const d = missionDifficultyDescription(m, c);
-            chanceValue.textContent = d;
-            warning.textContent = missionDifficultyWarning(m, c);
-            chanceLabel.textContent = d === '' ? resolveDescriptionCharacterTask(c, galaxy) || resolveCharacterLocationDescription(c) : T('Success Probability');
+            setText(chanceValue, d);
+            setWarning(m, c);
+            // SetControlsAndMission: no estimate → the task description in a taller label at (200, 41).
+            if (d === '') {
+                setText(chanceLabel, resolveDescriptionCharacterTask(c, galaxy) || resolveCharacterLocationDescription(c));
+                chanceLabel.style.top = '41px';
+                chanceLabel.style.maxHeight = '50px';
+            } else {
+                setText(chanceLabel, T('Success Probability'));
+                chanceLabel.style.top = '56px';
+                chanceLabel.style.maxHeight = '20px';
+            }
             assignBtn.style.display = 'none';
             cancelBtn.style.display = '';
-            mTitle.textContent = T('Mission');
         } else {
             if (force || shownMission !== null) {
                 shownMission = null;
                 form = initialMissionForm(galaxy, player);
                 writeForm(true);
             }
-            fTime.row.style.display = '';
+            fTime.sel.style.display = fTime.label.style.display = '';
             const state = buildMissionState(galaxy, player, c, form);
             const d = state !== null ? missionDifficultyDescription(state, c) : '';
-            chanceValue.textContent = d;
-            warning.textContent = state !== null ? missionDifficultyWarning(state, c) : '';
-            chanceLabel.textContent = d === '' ? '' : T('Success Probability');
+            setText(chanceValue, d);
+            setWarning(state, c);
+            setText(chanceLabel, d === '' ? '' : T('Success Probability'));
+            chanceLabel.style.top = '56px';
+            chanceLabel.style.maxHeight = '20px';
             assignBtn.disabled = state === null;
             assignBtn.style.display = '';
             cancelBtn.style.display = 'none';
-            mTitle.textContent = T('Assign Mission');
         }
     }
 
     function render(): void {
-        renderSecurity(); // [security]
-        renderSummary();
+        renderChips();
         renderList();
         renderDetail();
         renderMission();
+        if (securityWin !== null) renderSecurity(); // [security]
     }
 
-    function select(c: Character | null): void {
+    function select(c: Character | null, scroll = true): void {
         selected = c;
-        renderList();
+        grid.select(c, scroll);
+        pictureKey = skillsKey = '';
+        skills.scrollTop = 0;
         renderDetail();
         renderMission(true);
     }
@@ -1098,18 +1348,19 @@ function createIntelligenceScreen(opts: IntelligenceScreenOptions): OpenState {
         form = { ...form, timeIndex: Number(fTime.sel.value) };
         renderMission();
     });
+    transferSel.addEventListener('change', () => renderTransfer(selected));
 
     /** CharacterMission.cs btnAssign/CancelMission_Click: the ControlAgentAssignment automation prompt first. */
-    async function automationPrompt(): Promise<void> {
-        if (player.controlAgentAssignment === AutomationLevel.FullyAutomated) {
+    async function agentAutomationPrompt(): Promise<void> {
+        if (player.controlAgentAssignment === AutomationLevel.FullyAutomated && (await automationOff(T('Agent Assignment')))) {
             // C# AutomationLevel.Manual (0). Command log: queued, applied at the next frame boundary.
-            if (await confirmAutomationOff(T('Agent Assignment'))) issuePlayerCommand(galaxy, player, 'setEmpireControl', ['controlAgentAssignment', AutomationLevel.Undefined]);
+            issuePlayerCommand(galaxy, player, 'setEmpireControl', ['controlAgentAssignment', AutomationLevel.Undefined]);
         }
     }
-    assignBtn.addEventListener('click', async () => {
+    async function assign(): Promise<void> {
         const c = selected;
         if (c === null) return;
-        await automationPrompt();
+        await agentAutomationPrompt();
         if (open === null || selected !== c) return;
         const state = buildMissionState(galaxy, player, c, form);
         if (state === null) return;
@@ -1120,47 +1371,163 @@ function createIntelligenceScreen(opts: IntelligenceScreenOptions): OpenState {
         }
         issuePlayerCommand(galaxy, player, 'setAgentMission', [c, state]);
         issuePlayerCommand(galaxy, player, 'setAgentMissionFrame', [state, framed], () => render());
-    });
-    cancelBtn.addEventListener('click', async () => {
+    }
+    async function cancel(): Promise<void> {
         const c = selected;
         if (c === null) return;
-        await automationPrompt();
+        await agentAutomationPrompt();
         if (open === null || selected !== c) return;
+        // pnlCharacterMission_MissionCancelled → method_424(selected): rebind.
         issuePlayerCommand(galaxy, player, 'cancelAgentMission', [c], () => render());
-    });
-    dismissBtn.addEventListener('click', () => {
+    }
+    /** CharacterSummary.cs btnTransfer_Click (not editing). */
+    async function doTransfer(): Promise<void> {
+        const c = selected;
+        if (c === null) return;
+        const option = transferList[Number(transferSel.value)] ?? null;
+        if (player.controlCharacterLocations && (await automationOff(T('Character Locations')))) {
+            issuePlayerCommand(galaxy, player, 'setEmpireControl', ['controlCharacterLocations', false]);
+        }
+        if (open === null || selected !== c) return;
+        const dest = resolveTransferDestination(c, option);
+        if (!canTransfer(c, dest)) return;
+        // CharacterTransferInitiated → method_425(selected): rebind.
+        issuePlayerCommand(galaxy, player, 'transferCharacter', [c, dest], () => render());
+    }
+    /** Main.Part6.cs:3351 btnIntelligenceAgentsDisband_Click. */
+    async function dismiss(): Promise<void> {
         const c = selected;
         if (c === null) return;
         if (!canDismissCharacter(c, player)) {
-            window.alert(T('You cannot currently dismiss your leader, because your empire already had a recent leadership change'));
+            await messageBox({ caption: T('Cannot Dismiss Leader Now'), text: T('You cannot currently dismiss your leader, because your empire already had a recent leadership change', c.name), icon: 'stop' });
             return;
         }
-        if (!window.confirm(T('Are you sure that you wish to disband this character?'))) return;
+        const a = await messageBox({ caption: T('Disband Character'), text: T('Are you sure that you wish to disband this character?', c.name), buttons: ['Yes', 'No'], icon: 'question' });
+        if (a !== 'Yes' || open === null) return;
         issuePlayerCommand(galaxy, player, 'dismissCharacter', [c], () => {
             selected = null;
             render();
         });
-    });
-
-    const timer = setInterval(render, 1000);
-
-    function close(): void {
-        clearInterval(timer);
-        document.removeEventListener('keydown', onKeyDown);
-        root.remove();
-        open = null;
     }
-    function onKeyDown(e: KeyboardEvent): void {
-        if (e.key === 'Escape') {
-            e.preventDefault();
-            e.stopImmediatePropagation();
-            close();
+
+    /** Main.Part2.cs:3478 method_662: pnlCharacterEventHistory (670 × 454). */
+    function openHistory(c: Character | null): void {
+        historyWin?.close();
+        const w = openOriginalWindow({
+            id: 'character-events',
+            title: T('Character Event History') + (c !== null ? `: ${c.name}` : ''),
+            icon: 'characters.png',
+            width: 670,
+            height: 454,
+            onClose: () => {
+                if (historyWin === w) historyWin = null;
+            },
+        });
+        historyWin = w;
+        const events = c !== null ? characterPublicEvents(c) : [];
+        const title = dropText(w.body, '', 300, 10, { size: FONT.large, bold: true, color: COLORS.text });
+        title.style.width = '343px';
+        const desc = scrollPanel('ch-event-text');
+        w.body.appendChild(place(desc, 300, 32, 343, 348));
+        const show = (ev: CharacterEvent | null): void => {
+            // method_664.
+            const d = ev !== null ? resolveCharacterEventDescription(ev, player) : { title: '', text: '' };
+            setText(title, d.title);
+            setText(desc, d.text);
+        };
+        const eventGrid = new OwGrid<CharacterEvent>({
+            columns: [
+                { id: 'date', header: T('Star Date'), width: 70, sort: (e) => e.starDate, render: (e, cell) => (cell.textContent = resolveStarDateDescription(e.starDate)) },
+                { id: 'title', header: T('Event'), width: 210, sort: (e) => resolveCharacterEventDescription(e, player).title, render: (e, cell) => (cell.textContent = resolveCharacterEventDescription(e, player).title) },
+            ],
+            key: (e) => e,
+            onSelect: (e) => show(e),
+            empty: '',
+        });
+        w.body.appendChild(place(eventGrid.el, 10, 10, 280, 370));
+        eventGrid.setRows(events);
+        eventGrid.select(events[0] ?? null);
+        show(events[0] ?? null);
+    }
+
+    // [security] begin — 19m internal security: leads and Investigate / actions (command queue), in its own window
+    let securitySig = '';
+    let securityBody: HTMLDivElement | null = null;
+    function openSecurity(): void {
+        if (securityWin !== null) {
+            securityWin.close();
+            return;
         }
+        const w = openOriginalWindow({
+            id: 'internal-security',
+            title: 'Internal Security',
+            icon: 'characters.png',
+            width: 900,
+            height: 520,
+            onClose: () => {
+                securityWin = null;
+                securityBody = null;
+            },
+        });
+        securityWin = w;
+        securityBody = scrollPanel('ch-security');
+        w.body.appendChild(place(securityBody, 10, 10, w.bodySize.w - 20, w.bodySize.h - 20));
+        securitySig = '';
+        renderSecurity();
     }
-    document.addEventListener('keydown', onKeyDown);
-    closeBtn.addEventListener('click', () => close());
+    function renderSecurity(): void {
+        const host = securityBody;
+        if (host === null) return;
+        const agents = investigatorOptions(galaxy, player);
+        const leads = leadRows(galaxy, player);
+        const sig = leads.map((r) => `${r.lead.id}:${r.level}:${r.status}:${r.actions.length}:${r.canInvestigate}`).join('|') + '#' + agents.map((a) => a.name).join(',');
+        if (sig === securitySig) return;
+        securitySig = sig;
+        host.replaceChildren();
+        if (leads.length === 0) {
+            host.appendChild(text('No leads. Agents on counter-intelligence look for plots, converts, sleepers and foreign agents once a year.', { size: FONT.normal, color: COLORS.label, wrapWidth: 840 }));
+            return;
+        }
+        const table = el('div', 'ch-sec-table');
+        const head = el('div', 'ch-sec-row ch-sec-head');
+        for (const h of ['Lead', 'Target', 'Level', 'Since', 'Status', '']) head.appendChild(el('span', '', h));
+        table.appendChild(head);
+        for (const r of leads) {
+            const row = el('div', `ch-sec-row ch-lead-${r.level}${r.lead.closed ? ' ch-lead-closed' : ''}`);
+            row.append(el('span', '', r.kind), el('span', '', r.target), el('span', '', r.level), el('span', '', r.since), el('span', '', r.status));
+            const cell = el('span', 'ch-sec-actions');
+            if (r.canInvestigate && agents.length > 0) {
+                const sel = dropDown(agents.map((a, i) => ({ value: String(i), label: a.name })), '0', () => {});
+                sel.style.position = 'static';
+                cell.appendChild(sel);
+                cell.appendChild(
+                    glassButton('Investigate', {
+                        size: FONT.small,
+                        onClick: () => {
+                            const agent = agents[Number(sel.value)];
+                            if (agent !== undefined) issuePlayerCommand(galaxy, player, 'securityInvestigate', [r.lead.id, agent], () => {
+                                securitySig = '';
+                                renderSecurity();
+                            });
+                        },
+                    }),
+                );
+            }
+            for (const a of r.actions) {
+                cell.appendChild(glassButton(a.label, { size: FONT.small, onClick: () => issuePlayerCommand(galaxy, player, 'securityAction', [a.action, r.lead.id], () => renderSecurity()) }));
+            }
+            row.appendChild(cell);
+            table.appendChild(row);
+        }
+        host.appendChild(table);
+    }
+    // [security] end
 
-    select(selected);
-    renderSummary();
-    return { close };
+    // method_425: select the requested character (if it is the empire's), else the first row.
+    renderChips();
+    grid.setRows(rows());
+    const initial = opts.character && opts.character.empire === player ? opts.character : grid.displayed[0]?.character ?? null;
+    select(initial);
+    timer = window.setInterval(render, 1000);
+    return { close: () => win.close() };
 }

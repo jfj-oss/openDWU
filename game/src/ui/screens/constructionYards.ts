@@ -199,13 +199,15 @@ export interface YardRow {
 
 // ConstructionYardListView.cs:128 BindData: one row per yard with ComponentId >= 0
 // (Cells[0] component picture + name tooltip, Cells[1] empire, Cells[2] ship picture, Cells[3] ship, Cells[4] progress, Cells[5] speed).
-export function yardRows(site: ConstructionSite, component: (componentId: number) => { name: string; pictureRef: number } | null): YardRow[] {
+/** `component` gives the yard component's name and picture (or just its name: pictureRef -1). */
+export function yardRows(site: ConstructionSite, component: (componentId: number) => { name: string; pictureRef: number } | string | null): YardRow[] {
     const yards = siteQueue(site)?.constructionYards ?? [];
     const rows: YardRow[] = [];
     for (const yard of yards) {
         if (!yard || yard.componentId < 0) continue;
         const progress = yardProgress(yard);
-        const c = component(yard.componentId);
+        const r = component(yard.componentId);
+        const c = typeof r === 'string' ? { name: r, pictureRef: -1 } : r;
         rows.push({
             yard,
             name: c?.name ?? '',

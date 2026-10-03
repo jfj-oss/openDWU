@@ -11,7 +11,7 @@ import type { BuiltObject } from '../builtObject';
 import type { Habitat } from '../types';
 import type { Design } from '../design';
 import type { ShipGroup } from '../fleets/shipGroup';
-import type { Character, IntelligenceMission } from '../characters';
+import type { Character, IntelligenceMission, StellarObject } from '../characters';
 import type { Troop } from '../cargo';
 import type { TechNode } from '../researchSystem';
 import type { EmpirePolicy } from '../data/policies';
@@ -27,6 +27,7 @@ import {
     retrofitSelectedShips,
     refuelSelectedShips,
     renameFleet,
+    renameShip,
     repairSelectedShips,
     retireSelectedShips,
     setFleetHomeColony,
@@ -83,6 +84,8 @@ import {
     moveWaitQueueItem,
     queueResearchProject,
     renameTroop,
+    renameEmpire,
+    changeGovernmentByRevolution,
     setTroopsGarrisoned,
     toggleDesignAutoRetrofit,
     toggleDesignObsolete,
@@ -115,7 +118,9 @@ export const PLAYER_OPS = {
     setShipsFleet: (galaxy: Galaxy, empire: Empire, ships: BuiltObject[], target: SetFleetTarget) => setShipsFleet(galaxy, empire, ships, target),
     refuelShips: (galaxy: Galaxy, empire: Empire, ships: BuiltObject[]) => refuelSelectedShips(galaxy, empire, ships),
     repairShips: (galaxy: Galaxy, empire: Empire, ships: BuiltObject[]) => repairSelectedShips(galaxy, empire, ships),
-    retrofitShips: (galaxy: Galaxy, empire: Empire, ships: BuiltObject[]) => retrofitSelectedShips(galaxy, empire, ships),
+    retrofitShips: (galaxy: Galaxy, empire: Empire, ships: BuiltObject[], design: Design | null = null) => retrofitSelectedShips(galaxy, empire, ships, design),
+    /** Main.Part11.cs hvhxxedjqS_Leave: rename a ship / base from the Ships and Bases window. */
+    renameShip: (_galaxy: Galaxy, empire: Empire, ship: BuiltObject, name: string) => renameShip(empire, ship, name),
     retireShips: (galaxy: Galaxy, empire: Empire, ships: BuiltObject[]) => retireSelectedShips(galaxy, empire, ships),
     renameFleet: (_galaxy: Galaxy, _empire: Empire, fleet: ShipGroup, name: string) => renameFleet(fleet, name),
     setFleetHomeColony: (_galaxy: Galaxy, empire: Empire, fleet: ShipGroup, colony: Habitat) => setFleetHomeColony(empire, fleet, colony),
@@ -193,6 +198,12 @@ export const PLAYER_OPS = {
         return true;
     },
 
+    // --- Empire Summary (player/playerOrders.ts) ---
+    /** Main.Part9.cs:4306 txtEmpireSummaryName_Leave. */
+    empireRename: (_galaxy: Galaxy, empire: Empire, name: string) => renameEmpire(empire, name),
+    /** Main.Part6.cs:3028 btnEmpireSummaryChangeGovernment_Click → Empire.HaveRevolution; -1 when rejected. */
+    empireChangeGovernment: (galaxy: Galaxy, empire: Empire, governmentId: number) => changeGovernmentByRevolution(galaxy, empire, governmentId),
+
     // --- Troops ---
     disbandTroops: (_galaxy: Galaxy, empire: Empire, troops: Troop[]) => disbandTroops(empire, troops),
     garrisonTroops: (_galaxy: Galaxy, empire: Empire, troops: Troop[], garrisoned: boolean) => setTroopsGarrisoned(empire, troops, garrisoned),
@@ -214,6 +225,13 @@ export const PLAYER_OPS = {
     /** 19d3 (scenario `espionageConsequences` only; not a port): blame another empire for the agent's mission (false flag). */
     setAgentMissionFrame: (galaxy: Galaxy, _empire: Empire, mission: IntelligenceMission, framed: Empire | null) =>
         scenarioFlag(galaxy, ESPIONAGE_FLAG) ? setMissionFrame(galaxy, mission, framed) : false,
+    /** CharacterSummary.cs btnTransfer_Click (not editing): TransferToNewLocation, unless the destination is the current
+     *  location or a transfer is already under way. */
+    transferCharacter: (galaxy: Galaxy, _empire: Empire, character: Character, destination: StellarObject | null) => {
+        if (destination === null || destination === character.location || character.transferDestination !== null) return false;
+        character.transferToNewLocation(destination, galaxy);
+        return true;
+    },
     /** Main.Part6.cs 3351 btnIntelligenceAgentsDisband_Click: `Mission = null; Kill(galaxy)`. */
     dismissCharacter: (galaxy: Galaxy, _empire: Empire, character: Character) => {
         character.mission = null;
