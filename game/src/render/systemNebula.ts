@@ -372,7 +372,12 @@ export class SystemNebulaLayer {
     private queue: Entry[] = [];
     private scheduled = false;
     private frame = 0;
-    private readonly size: number;
+    private size: number;
+    /** nebulaTextureSize(dpr) before the detail multiplier. */
+    private readonly baseSize: number;
+    /** GameOptions.ShowSystemNebulae (chkOptionsShowSystemNebulae). */
+    private shown = true;
+    private detailScale = 1;
     /** WebGL fragment-shader rasteriser (one pass per patch); null = CPU idle-slice path (tests / headless / WebGPU). */
     private gpu: GpuNebula | null;
 
@@ -381,7 +386,8 @@ export class SystemNebulaLayer {
         dpr: number,
         renderer?: Renderer | null,
     ) {
-        this.size = nebulaTextureSize(dpr);
+        this.baseSize = nebulaTextureSize(dpr);
+        this.size = this.baseSize;
         this.gpu = createGpuNebula(renderer);
         this.root.label = 'systemNebulae';
         // Pre-warm the patch shader while the game loads, not on the first zoom into a system.
@@ -390,6 +396,32 @@ export class SystemNebulaLayer {
         } catch {
             this.gpu = null;
         }
+    }
+
+    /**
+     * Game Options → Advanced Display Settings: "Display nebulae clouds in systems" and System Nebulae Detail as a
+     * texture resolution multiplier (render/viewInput.ts nebulaDetailScale). A detail change drops the cached clouds so
+     * they regenerate (Main.Part12.cs:2749 SastWuBaXc: mainView.ClearNebulaeImages()). No-op when nothing changed.
+     */
+    setDisplay(show: boolean, detailScale: number): void {
+        this.shown = show;
+        if (detailScale === this.detailScale) return;
+        this.detailScale = detailScale;
+        this.size = Math.min(Math.round(512 * detailScale), Math.round((this.baseSize * detailScale) / 32) * 32);
+        this.clear();
+    }
+
+    /** Drop every cached cloud (they regenerate on demand at the current size). */
+    private clear(): void {
+        for (const e of this.entries.values()) {
+            if (e.container) {
+                this.root.removeChild(e.container);
+                e.container.destroy({ children: true });
+            }
+            for (const t of e.textures) t.destroy(true);
+        }
+        this.entries.clear();
+        this.queue.length = 0;
     }
 
     /** Generation time of a system's textures in ms (undefined until finished) — perf diagnostics. */
@@ -404,7 +436,7 @@ export class SystemNebulaLayer {
      */
     update(z: number, camX: number, camY: number, viewW: number, viewH: number, systems: readonly NebulaSystem[], nowMs: number): void {
         this.frame++;
-        const zoomA = systemNebulaZoomAlpha(z);
+        const zoomA = this.shown ? systemNebulaZoomAlpha(z) : 0;
         const on = zoomA > 0.004;
         this.root.visible = on;
         if (!on) return;
@@ -487,6 +519,7 @@ export class SystemNebulaLayer {
     /** Rasterise queued patches for about `budgetMs` (at least one 16-row chunk); finished systems become sprites. */
     private work(budgetMs: number): void {
         this.scheduled = false;
+        if (this.queue.length === 0) return; // setDisplay cleared the queue while this slice was pending
         const t0 = performance.now();
         // Most recently wanted first (the system under the camera beats one panned past).
         this.queue.sort((a, b) => b.lastSeen - a.lastSeen);

@@ -102,7 +102,7 @@ describe('model: VictoryConditionProgress.cs', () => {
 
 describe('wizard → VictoryConditions (Start.1.cs 3772-3805)', () => {
     it('maps the page, dating TimeLimit / StartDate from the Expansion start star date', () => {
-        const v = { ...defaultVictoryConditions(), territory: true, territoryPercent: 40, economy: false, economyPercent: 50, timeLimit: true, timeLimitYears: 30, timeStart: true, startDateYears: 5, victoryThresholdPercentage: 0.8 };
+        const v = { ...defaultVictoryConditions(), enableStoryEvents: false, enableStoryEventsShadows: false, territory: true, territoryPercent: 40, economy: false, economyPercent: 50, timeLimit: true, timeLimitYears: 30, timeStart: true, startDateYears: 5, victoryThresholdPercentage: 0.8 };
         const vc = victoryConditionsFromWizard(v, 2);
         const start = startStarDateForAge(2);
         expect(vc.territory).toBe(true);
@@ -445,7 +445,7 @@ describe('stats XML (BaconMain.cs 1145-1283)', () => {
 
 describe('harness: seed 1 with the wizard victory conditions', () => {
     it('runs 600 s of game time evaluating victory progress without throwing', () => {
-        const v = { ...defaultVictoryConditions(), territory: true, population: true, economy: true, victoryThresholdPercentage: 0.8 };
+        const v = { ...defaultVictoryConditions(), enableStoryEvents: false, enableStoryEventsShadows: false, territory: true, population: true, economy: true, victoryThresholdPercentage: 0.8 };
         const g = createGame({ ...tickGameOptions(gameData), victoryConditions: victoryConditionsFromWizard(v, 1), difficultyLevelScalesAsPlayerApproachesVictory: true }).galaxy;
         expect(g.globalVictoryConditions).not.toBe(null);
         const ends: GameEndEventArgs[] = [];

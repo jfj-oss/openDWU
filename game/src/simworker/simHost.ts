@@ -10,7 +10,7 @@
 
 import type { Game } from '../sim/game';
 import type { Galaxy } from '../sim/galaxy';
-import type { Empire } from '../sim/empire';
+import { Empire as EmpireClass, type Empire } from '../sim/empire';
 import { GalaxyTime } from '../sim/galaxyTime';
 import type { StartGameOptions } from '../sim/startGameOptions';
 import { SimDriver, schedulerState } from '../sim/tick/scheduler';
@@ -18,7 +18,7 @@ import { drainCommandBoundary } from '../sim/tick/commandBoundary';
 import { issuePlayerCommand, noteSimSpeed, noteSimView } from '../sim/player/playerCommands';
 import type { PlayerOpName } from '../sim/player/playerOps';
 import { serializeGame } from '../sim/save/gameSave';
-import { galaxyExternals } from '../sim/save/galaxySave';
+import { galaxyExternals, saveClassPrototypes } from '../sim/save/galaxySave';
 import { stateDigest } from '../sim/tick/digest';
 import { setGameEndHandler, doGameEnd } from '../sim/victory';
 import { reviewAchievements } from '../sim/achievements';
@@ -28,7 +28,8 @@ import { GalaxySyncSource } from './replicaGalaxy';
 import { TRADE_FLOWS_SIDE_KEY, TradeFlowSyncSource } from './tradeFlowSync';
 import { installRimAtmosphereData } from '../render/rimAtmosphereWiring';
 import { decodeRemoteArg, encodeRemoteArg, type RemoteArg, type RemoteNaming } from './remoteArgs';
-import type { ClockMessage, CommandMessage, FromWorker, SnapshotMessage, StepMessage, TradeFlowsMessage, WorkerEvent } from './protocol';
+import { runSimQuery, type SimQueryName } from './simQuery';
+import type { ClockMessage, CommandMessage, FromWorker, QueryMessage, SnapshotMessage, StepMessage, TradeFlowsMessage, WorkerEvent } from './protocol';
 import type { ReplicaEncoderOptions } from './replicaSync';
 
 export interface SimHostOptions {
@@ -65,6 +66,11 @@ export class SimHost {
     /** Something changed outside a step (a command, the clock): send a delta even if no step ran. */
     private dirty = true;
     private settleUntilCycle = 0;
+    /** Graph objects the commands since the last tick named or returned, with how deep to compare them (encoder
+     *  compareNow) in that tick's delta: the issuing empire 1 (its lists), arguments and results 2 (a colony's
+     *  construction queue and its wait list, a ship's mission and queued missions). */
+    private readonly touched = new Map<object, number>();
+    private readonly graphProtos = new Set<object>(Object.values(saveClassPrototypes()));
 
     constructor(readonly game: Game, time: GalaxyTime, private readonly startOptions: StartGameOptions, opts: SimHostOptions = {}) {
         this.galaxy = game.galaxy;
@@ -78,8 +84,15 @@ export class SimHost {
         this.externalsByRef = ext.byRef;
         this.sync = new GalaxySyncSource(this.galaxy, opts.sync ?? {});
         this.tradeFlows = new TradeFlowSyncSource(this.galaxy, (view) => this.sync.setSideTable(TRADE_FLOWS_SIDE_KEY, view));
+        // Replies and events name graph objects by sync id (a new one is born in the delta that carries the reply);
+        // anything else (a ShipActionResult, menu items, a ShipAction) travels by value, as command arguments do.
         this.naming = {
-            syncId: (o) => this.sync.encoder.ensureId(o),
+            syncId: (o) => {
+                const enc = this.sync.encoder;
+                if (enc.knownId(o) >= 0) return enc.ensureId(o);
+                const proto = Object.getPrototypeOf(o) as object | null;
+                return proto !== null && this.graphProtos.has(proto) ? enc.ensureId(o) : -1;
+            },
             external: (o) => ext.byObject.get(o),
         };
         // Sim → UI hooks that change sim state run here, on the authoritative game; the main thread gets an event.
@@ -134,7 +147,10 @@ export class SimHost {
             const empire = resolving.object(m.empire) as Empire | null;
             if (empire === null) throw new Error(`command ${m.op}: issuing empire (sync id ${m.empire}) is not in the game`);
             const args = m.args.map((a) => decodeRemoteArg(a, resolving));
+            this.touched.set(empire, Math.max(1, this.touched.get(empire) ?? 0));
+            for (const a of args) this.touch(a, 2);
             issuePlayerCommand(this.galaxy, empire, m.op as PlayerOpName, args as never, m.id === 0 ? undefined : (result: unknown) => {
+                this.touch(result, 2);
                 let encoded: RemoteArg = null;
                 let error: string | undefined;
                 try {
@@ -149,6 +165,42 @@ export class SimHost {
             else console.error('sim worker: command failed', err);
         }
         this.dirty = true;
+    }
+
+    /**
+     * Run a read-only sim query (simQuery.ts) on the authoritative galaxy now, between ticks — where in-thread play
+     * runs it, between frames, in order with the commands (its galaxy.rnd draws land in the same place). The reply
+     * goes out with the next message (flush() sends one at once).
+     */
+    query(m: QueryMessage): void {
+        const resolving = {
+            object: (id: number) => this.sync.encoder.objectOf(id),
+            external: (kind: string, key: string | number) => this.externalsByRef.get(`${kind}:${key}`),
+        };
+        try {
+            const empire = resolving.object(m.empire) as Empire | null;
+            if (empire === null) throw new Error(`query ${m.op}: asking empire (sync id ${m.empire}) is not in the game`);
+            const args = m.args.map((a) => decodeRemoteArg(a, resolving));
+            const result = runSimQuery(this.galaxy, empire, m.op as SimQueryName, args as never);
+            this.results.push({ id: m.id, result: encodeRemoteArg(result, this.naming), query: true });
+        } catch (err) {
+            this.results.push({ id: m.id, result: null, error: err instanceof Error ? err.message : String(err), query: true });
+        }
+        this.dirty = true;
+    }
+
+    /** Collect the graph objects in a command argument / result (through arrays, plain objects, by-value classes). */
+    private touch(v: unknown, depth: number): void {
+        if (v === null || typeof v !== 'object') return;
+        const proto = Object.getPrototypeOf(v) as object | null;
+        if (proto !== null && this.graphProtos.has(proto)) {
+            // An empire named as an argument stays at its lists (depth 2 would compare every ship of it).
+            if (v !== this.galaxy) this.touched.set(v, v instanceof EmpireClass ? 1 : 2);
+            return;
+        }
+        if (depth <= 0) return;
+        if (Array.isArray(v)) for (const x of v) this.touch(x, depth - 1);
+        else for (const k of Object.keys(v)) this.touch((v as Record<string, unknown>)[k], depth - 1);
     }
 
     /**
@@ -187,7 +239,25 @@ export class SimHost {
         if (changed) this.settleUntilCycle = this.sync.encoder.cycleCount + 2;
         if (!changed && !forceDelta && this.sync.encoder.cycleCount >= this.settleUntilCycle) return null;
         this.dirty = false;
+        // What this tick's commands touched is compared now, so its effect travels in this delta, ahead of the
+        // command replies (the main thread runs onApplied with the replica as of this boundary or later).
         this.tradeFlows.refresh();
+        for (const [o, depth] of this.touched) this.sync.encoder.compareNow(o, depth);
+        this.touched.clear();
+        return this.message(steps, t1 - t0);
+    }
+
+    /**
+     * A message now, without draining the boundary or stepping (a query's reply: the main thread need not wait for the
+     * next tick). Read-only, like every delta.
+     */
+    flush(): StepMessage {
+        this.settleUntilCycle = this.sync.encoder.cycleCount + 2;
+        this.dirty = false;
+        return this.message(0, 0);
+    }
+
+    private message(steps: number, stepMs: number): StepMessage {
         const delta = this.sync.delta();
         const msg: StepMessage = {
             type: 'step',
@@ -196,10 +266,10 @@ export class SimHost {
             steps,
             nowMs: this.galaxy.nowMs,
             backlogMs: this.budget.backlogMs,
-            speed: time.speed,
-            paused: time.paused,
+            speed: this.time.speed,
+            paused: this.time.paused,
             clockSeq: this.clockSeq,
-            stepMs: t1 - t0,
+            stepMs,
             diffMs: delta.stats.diffMs,
             results: this.results,
             events: this.events,
