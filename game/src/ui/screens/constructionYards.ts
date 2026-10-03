@@ -14,8 +14,8 @@
 // btnBuiltObjectScrapSelected_Click (the 'scrapShips' op); the purchaser is yardPurchaser (also the Colonies screen's).
 // TODO(port): the Set Fleet combo and the manufacturing plants grids (duExoPvEoA / ctlConstructionYardManufacturerWaitQueue,
 //             laid out below the visible tab page in method_169).
-// TODO(port): pirate purchasing at a controlled colony / private construction at a pirate base (method_169 empire /
-//             allowPrivateConstruction overrides).
+// The purchaser is bound as method_169 binds it (purchaserBinding): a pirate player buys at a colony it controls as itself,
+// and private ships (freighters, mining ships / stations, passenger ships) too at its own bases (allowPrivateConstruction).
 
 import './constructionYards.css';
 import type { Empire } from '../../sim/empire';
@@ -43,7 +43,8 @@ import { empireFlagUrl } from '../selectionInfoView';
 import { componentImageUrl } from './researchTreeModel';
 import { gt } from './researchBenefits';
 import { BUILT_OBJECT_FILTERS, formatEta, retrofitToastText } from './shipsAndBasesList';
-import { DIMMED_COLOR, SELECTED_COLOR, galaxyMapScale, starDotSizes } from './galaxyMap';
+import { DIMMED_COLOR, SELECTED_COLOR, drawMapTerritory, galaxyMapScale, starDotSizes } from './galaxyMap';
+import { drawGalaxyMapLayers } from './galaxyMapLayers';
 import { openGalactopedia } from './galactopedia';
 import { openConstructionSummary } from './designEditor';
 import { builtObjectTabLabels, dataTabContentKey, renderDataTab, type DataTabId } from './builtObjectDataTabs';
@@ -304,6 +305,39 @@ export function purchaserDesigns(designs: readonly Design[], site: ConstructionS
     return out;
 }
 
+/** How method_169 binds the purchaser (ConstructionYardPurchaser.BindData's empire / allowPrivateConstruction), or null when
+ *  it is not bound. */
+export interface PurchaserBinding {
+    /** The empire whose designs and funds the purchaser uses. */
+    empire: Empire;
+    /** !allowPrivateConstruction. */
+    stateConstructionOnly: boolean;
+}
+
+/**
+ * Port of Main.Part11.cs 3366 method_169's purchaser binding. `shipsAndBases` is bool_28: the Ships and Bases / Construction
+ * Yards window (a site the player does not own is not bound; a mobile yard — TopSpeed > 0 — disables the purchaser); else the
+ * Colonies window's Construction Yard tab (the colony's owner). Either way a pirate player that controls the colony
+ * (PirateColonyControlList.CheckFactionHasControl) buys there as itself, and in the Ships and Bases window it may also
+ * buy private ships at its own bases (allowPrivateConstruction = pirate && the site is a Base).
+ */
+export function purchaserBinding(player: Empire, site: ConstructionSite, shipsAndBases: boolean): PurchaserBinding | null {
+    const isPirate = player.pirateEmpireBaseHabitat !== null;
+    if (shipsAndBases) {
+        const so = site.kind === 'colony' ? site.habitat : site.builtObject;
+        if (so.empire !== player) return null;
+        if (site.kind === 'builtObject' && site.builtObject.topSpeed > 0) return null;
+        let empire = so.empire as Empire;
+        if (isPirate && site.kind === 'colony' && site.habitat.pirateColonyControl.checkFactionHasControl(player)) empire = player;
+        const allowPrivateConstruction = isPirate && site.kind === 'builtObject' && site.builtObject.role === BuiltObjectRole.Base;
+        return { empire, stateConstructionOnly: !allowPrivateConstruction };
+    }
+    if (site.kind !== 'colony') return null;
+    let empire2 = site.habitat.empire as Empire | null;
+    if (isPirate && site.habitat.pirateColonyControl.checkFactionHasControl(player)) empire2 = player;
+    return empire2 === null ? null : { empire: empire2, stateConstructionOnly: true };
+}
+
 /** The purchaser combo's item text: "<sub-role>: <design> (<price> credits)". */
 export function purchaserLabel(design: Design, price: number): string {
     return `${resolveSubRoleDescription(design.subRole)}: ${design.name} (${gt('X credits', Math.trunc(price).toFixed(0))})`;
@@ -382,10 +416,11 @@ export interface YardPurchaser {
     /** The panel (place it where the screen's layout puts the purchaser). */
     readonly el: HTMLDivElement;
     /**
-     * BindData(empire, queue, colony, galaxy, allowPrivateConstruction): list the designs `empire` can build at `site`
-     * (none for null), refresh the funds; `enabled` = the panel's Enabled.
+     * BindData(empire, queue, colony, galaxy, allowPrivateConstruction) as method_169 binds it (purchaserBinding;
+     * `shipsAndBases` = bool_28): list the designs the bound empire can build at `site` (none for null, or when the
+     * binding is another empire's — it would spend that empire's funds), refresh the funds; `enabled` = Enabled.
      */
-    bind(site: ConstructionSite | null, enabled: boolean): void;
+    bind(site: ConstructionSite | null, enabled: boolean, shipsAndBases: boolean): void;
 }
 
 /**
@@ -437,10 +472,11 @@ export function yardPurchaser(empire: Empire, width: number, height: number, onP
         });
     }
 
-    function bind(next: ConstructionSite | null, isEnabled: boolean): void {
-        site = next;
-        enabled = isEnabled;
-        const list = next === null ? [] : purchaserDesigns(empire.designs, next, purchaserChecks(empire));
+    function bind(next: ConstructionSite | null, isEnabled: boolean, shipsAndBases: boolean): void {
+        const binding = next === null ? null : purchaserBinding(empire, next, shipsAndBases);
+        site = binding !== null && binding.empire === empire ? next : null;
+        enabled = isEnabled && site !== null;
+        const list = site === null || binding === null ? [] : purchaserDesigns(binding.empire.designs, site, purchaserChecks(binding.empire), binding.stateConstructionOnly);
         const prices = list.map((d) => d.calculateCurrentPurchasePrice(galaxy));
         const key = list.map((d, i) => `${objectId(d)}:${Math.trunc(prices[i])}`).join('|') + `@${next ? objectId(siteTarget(next)) : ''}`;
         if (key !== designsKey) {
@@ -456,10 +492,9 @@ export function yardPurchaser(empire: Empire, width: number, height: number, onP
             designBox.value = String(keep >= 0 ? keep : 0);
         }
         setText(funds, gt('X credits', Math.trunc(empire.stateMoney).toFixed(0)));
-        const canBuy = enabled && next !== null && designs.length > 0;
+        const canBuy = enabled && designs.length > 0;
         btnPurchase.disabled = !canBuy;
         designBox.disabled = !canBuy;
-        panel.classList.toggle('cy-disabled', !enabled);
     }
 
     return { el: panel, bind };
@@ -1022,9 +1057,8 @@ function createConstructionYards(opts: ConstructionYardsOptions): OpenState {
     }
 
     function refreshPurchaser(): void {
-        // method_169: the purchaser is disabled at a mobile yard (a construction ship, TopSpeed > 0).
-        const mobile = selected !== null && selected.kind === 'builtObject' && selected.builtObject.topSpeed > 0;
-        purchaser.bind(mobile ? null : selected, !mobile && selected !== null);
+        // method_169 (bool_28 true): not bound for a site the player does not own; disabled at a mobile yard (TopSpeed > 0).
+        purchaser.bind(selected, true, true);
     }
 
     function refreshDetail(r: ConstructionSiteRow | null): void {
@@ -1066,6 +1100,9 @@ function createConstructionYards(opts: ConstructionYardsOptions): OpenState {
         ctx.fillStyle = '#000';
         ctx.fillRect(0, 0, W, W);
         const s = galaxyMapScale(galaxy, W);
+        // GalaxyMap.cs method_6: backdrop (bitmap_1), nebulae (bitmap_0) and territory (bitmap_2) under the dots.
+        drawGalaxyMapLayers(ctx, galaxy, s, 0, 0, { onChange: () => { if (map.isConnected) drawMap(); } });
+        drawMapTerritory(ctx, galaxy, W);
         const sizes = starDotSizes(W, true);
         const dot = (x: number, y: number, color: string, size: number): void => {
             ctx.fillStyle = color;

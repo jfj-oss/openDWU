@@ -50,6 +50,7 @@ describe('left sidebar: panels (Main.Part11.cs method_163)', () => {
             'Fleets',
             'Military Ships',
             'Potential Colonies',
+            'Pirate Missions',
             'Potential Mining Locations',
             'Potential Research Locations',
             'Potential Resort Locations',

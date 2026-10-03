@@ -20,11 +20,12 @@
 // engagement range, attack point, home base, automate, stop, disband), and the "Fleet Designs" tab
 // (fleetDesignsTab.ts: fleet templates, form from existing, build fleet with a sector option and progress).
 // The fleet cycle keys follow Main.Part8.cs:1243 btnCycleShipGroups_Click (fleetCycleList).
-// TODO(port): admiral portraits in the grid's first column (CharacterImageCache.ObtainCharacterImageVerySmall) — the
-// role icon stands in, with the names as the tooltip.
+// The first column is ShipGroupListView.cs:170-182: the first admiral / general's very small picture
+// (CharacterImageCache.ObtainCharacterImageVerySmall, characterPortrait.ts) and every name as the tooltip.
 // TODO(port): the galaxy map's empire territory link lines (GalaxyMap.cs method_6 LinkSystemStars).
 
 import './fleetsList.css';
+import { CHARACTER_IMAGE_SPEC, characterPortrait } from '../characterPortrait';
 import type { ShipGroup } from '../../sim/fleets/shipGroup';
 import { empireShipGroups } from '../../sim/fleets/shipGroup';
 import { FleetPosture } from '../../sim/diplomacyTick';
@@ -42,8 +43,8 @@ import { SystemVisibilityStatus } from '../../sim/visibility';
 import { createFleetDesignsTab } from './fleetDesignsTab';
 import { troopCompositionDescription, troopCountsByType } from './troops';
 import { openGalactopedia } from './galactopedia';
-import { CROSSHAIR_COLOR, GRID_COLOR, galaxyMapScale, sectorColumnLabel, starBrushColor, starDotSizes } from './galaxyMap';
-import { BACKDROP_URLS } from '../../render/assets';
+import { CROSSHAIR_COLOR, GRID_COLOR, drawMapTerritory, galaxyMapScale, sectorColumnLabel, starBrushColor, starDotSizes } from './galaxyMap';
+import { drawGalaxyMapLayers } from './galaxyMapLayers';
 import { fmtK, missionDescription, shipGroupInfo, type InfoTarget } from '../selectionInfo';
 import { renderInfoModel } from '../selectionInfoView';
 import {
@@ -438,18 +439,16 @@ function createFleetsList(opts: FleetsListOptions): OpenState {
         cell.textContent = s;
         cell.title = s;
     };
-    const admirals = (sg: ShipGroup): string =>
-        empire.characters != null ? getFleetAdmiralsAndGenerals(empire.characters, sg).map((c) => c.name).join(', ') : '';
+    const admiralList = (sg: ShipGroup) => (empire.characters != null ? getFleetAdmiralsAndGenerals(empire.characters, sg) : []);
+    const admirals = (sg: ShipGroup): string => admiralList(sg).map((c) => c.name).join(', ');
     const renderers: Record<string, (r: FleetRow, cell: HTMLDivElement) => void> = {
         admirals: (r, cell) => {
-            const names = admirals(r.shipGroup);
-            if (names === '') return;
-            const img = el('img', 'fl-admiral');
-            img.src = chromeImageUrl('characterRole_FleetAdmiral.png');
-            img.alt = '';
-            img.draggable = false;
-            cell.appendChild(img);
-            cell.title = names;
+            const list = admiralList(r.shipGroup);
+            if (list.length === 0) return;
+            const pic = characterPortrait(list[0], 'verySmall', CHARACTER_IMAGE_SPEC.verySmall.bitmap);
+            pic.classList.add('fl-admiral');
+            cell.appendChild(pic);
+            cell.title = list.map((c) => c.name).join(', ');
         },
         name: (r, cell) => textCell(r.name, cell),
         ships: (r, cell) => textCell(String(r.ships), cell),
@@ -620,9 +619,6 @@ function createFleetsList(opts: FleetsListOptions): OpenState {
     const mapCanvas = el('canvas');
     mapBox.appendChild(mapCanvas);
     fleetsPage.appendChild(mapBox);
-    const backdrop = new Image();
-    backdrop.onload = () => drawMap();
-    backdrop.src = BACKDROP_URLS[0];
 
     // ---------------------------------------------------------------------------------------------------------------
     // Our fleet orders row (the selection panel's fleet buttons).
@@ -766,7 +762,9 @@ function createFleetsList(opts: FleetsListOptions): OpenState {
         ctx.fillStyle = '#000';
         ctx.fillRect(0, 0, W, W);
         const s = galaxyMapScale(galaxy, W);
-        if (backdrop.complete && backdrop.naturalWidth > 0) ctx.drawImage(backdrop, 0, 0, galaxy.sizeX / s, galaxy.sizeY / s);
+        // GalaxyMap.cs method_6: backdrop, nebulae and territory under the grid (galaxyMapLayers.ts).
+        drawGalaxyMapLayers(ctx, galaxy, s, 0, 0, { onChange: () => { if (mapCanvas.isConnected) drawMap(); } });
+        drawMapTerritory(ctx, galaxy, W);
         // Sector grid + labels (pen_1, Verdana 7 pt).
         const sec = galaxy.sectorSize / s;
         ctx.strokeStyle = GRID_COLOR;

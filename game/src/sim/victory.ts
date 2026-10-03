@@ -50,6 +50,8 @@ import { LONG_MAX_VALUE, type DiplomacyCounters } from './diplomacy';
 import type { VictoryConditions as WizardVictoryConditions } from './startGameOptions';
 import type { TechNode } from './researchSystem';
 import type { Troop } from './cargo';
+import { decimateEmpire } from './story/freedomAlliance';
+import { guardiansDepart } from './empireAbsorb';
 
 // ---------------------------------------------------------------------------------------------------------------
 // Model classes
@@ -239,7 +241,8 @@ export function onGameEnd(galaxy: Galaxy, e: GameEndEventArgs): void {
 
 /**
  * Main.Part12.cs 3423 DoGameEnd(e), model part: `_Game.IsFinished = true; _Game.Victor = e.VictorEmpire`. The rest
- * (music, game-end screen, Code 1 story message GenerateMajorStoryVictoryMessage) is UI — TODO(port) M9.
+ * (the music, the game-end banner and, for Code 1, the Shakturi ending story panel with GenerateMajorStoryVictoryMessage)
+ * is UI: ui/screens/empireComparison.ts presentGameEnd.
  */
 export function doGameEnd(galaxy: Galaxy, e: GameEndEventArgs): void {
     galaxy.gameIsFinished = true;
@@ -1036,16 +1039,6 @@ function categoryDescriptionLower(habitat: Habitat): string {
     return resolveDescription(HabitatCategoryType as unknown as Record<number, string>, habitat.category).toLowerCase();
 }
 
-/**
- * DecimateEmpire (Galaxy.1.cs 794; Rnd Next(0, 100) per built object, Next(0, 10) per colony) and GuardiansDepart
- * (Galaxy.1.cs 688) run only when a story event has set GlobalVictoryConditions.TargetHabitat (Galaxy.8.cs 2225
- * GenerateFreedomAlliance). Story events are M4z3's.
- */
-function decimateEmpireAndGuardiansDepart(): never {
-    // RND: Galaxy.1.cs 794 DecimateEmpire draws not drawn until M4z3.
-    throw new Error('TODO(port) M4z3: Galaxy.1.cs 429-430 DecimateEmpire(TargetHabitatEmpire, player) / GuardiansDepart (story Freedom Alliance victory)');
-}
-
 /** Galaxy.1.cs 390 CheckGlobalVictoryConditions(playerEmpire, globalVictoryConditions, out description, out code). */
 export function checkGlobalVictoryConditions(galaxy: Galaxy, playerEmpire: Empire | null, globalVictoryConditions: VictoryConditions | null): { empire: Empire | null; description: string; code: number } {
     let description = '';
@@ -1082,8 +1075,13 @@ export function checkGlobalVictoryConditions(galaxy: Galaxy, playerEmpire: Empir
         let empire5: Empire | null = null;
         const th = globalVictoryConditions.targetHabitat;
         if (th !== null && globalVictoryConditions.targetHabitatEmpire !== null && (th.hasBeenDestroyed || th.empire !== globalVictoryConditions.targetHabitatEmpire)) {
+            // 428-433: the Freedom Alliance's story victory (story/freedomAlliance.ts armed it).
             empire5 = playerEmpire;
-            decimateEmpireAndGuardiansDepart();
+            decimateEmpire(galaxy, globalVictoryConditions.targetHabitatEmpire, empire5);
+            guardiansDepart(galaxy);
+            galaxy.shakturiDefeated = true;
+            if (empire5 !== null) empire5.haveDefeatedShakturi = true;
+            code = 1;
         }
         // 435
         const empire6 = checkVictoryConditionsWinner(galaxy, true);
@@ -1101,8 +1099,17 @@ export function checkGlobalVictoryConditions(galaxy: Galaxy, playerEmpire: Empir
             }
         }
         if (empire5 !== null) {
-            // 458-478: unreachable until the TargetHabitat branch above is ported (M4z3).
+            // 458-478
             empire7 = empire5;
+            let text2 = empire7.name;
+            if (empire7 === playerEmpire) text2 = getText('You');
+            if (th!.hasBeenDestroyed) {
+                description += formatText(getText('Victory Conditions Colony Destroy'), text2, categoryDescriptionLower(th!), th!.name);
+            } else if (th!.empire === empire2) {
+                description += formatText(getText('Victory Conditions Colony Invade'), text2, categoryDescriptionLower(th!), th!.name);
+            } else {
+                description += formatText(getText('Victory Conditions Colony Cause Loss'), text2, categoryDescriptionLower(th!), th!.name, globalVictoryConditions.targetHabitatEmpire!.name);
+            }
         }
         if (empire7 === null && empire6 !== null) {
             empire7 = empire6;

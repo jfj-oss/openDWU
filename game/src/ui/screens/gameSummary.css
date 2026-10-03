@@ -1,0 +1,153 @@
+/* GameSummaryPanel (the Empire Comparison window's Achievements tab, gameSummary.ts), in the original's pixels.
+   Fonts: font_3 normal 15.33, font_7 bold 16.67, font_2 heading 18.67 bold, font_0 huge 32 bold (Main.Part12.cs 1521-
+   1526). Areas: (48, 255, 255, 255) fills; the area titles are (24, 255, 255, 255) huge text. */
+
+.gs-panel {
+    position: absolute;
+    overflow: hidden;
+    background-size: 100% 100%;
+    background-color: #000;
+    color: rgb(170, 170, 170);
+    font-size: 15.33px;
+    text-shadow: 1px 1px 0 #000;
+    user-select: none;
+}
+.gs-area {
+    position: absolute;
+    overflow: hidden;
+    background: rgba(255, 255, 255, 0.188);
+}
+.gs-fill {
+    position: absolute;
+    inset: 0;
+}
+.gs-watermark {
+    position: absolute;
+    left: 0;
+    text-align: center;
+    font-size: 32px;
+    font-weight: bold;
+    line-height: 40px;
+    color: rgba(255, 255, 255, 0.094);
+    text-shadow: 1px 1px 0 rgba(0, 0, 0, 0.094);
+    pointer-events: none;
+    white-space: nowrap;
+}
+.gs-img,
+.gs-arrow-img {
+    display: block;
+}
+.gs-medal {
+    position: absolute;
+}
+.gs-medal > img:first-child {
+    position: absolute;
+    left: 0;
+    top: 0;
+}
+.gs-arrow {
+    position: absolute;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    z-index: 1;
+}
+.gs-arrow:hover {
+    background: rgba(170, 170, 170, 0.502);
+}
+.gs-detail-col {
+    position: absolute;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+}
+.gs-detail-race {
+    width: 80px;
+    height: 80px;
+}
+.gs-heading {
+    font-size: 18.67px;
+    font-weight: bold;
+}
+.gs-normal {
+    font-size: 15.33px;
+}
+.gs-bold {
+    font-weight: bold;
+    font-size: 16.67px;
+}
+.gs-center {
+    text-align: center;
+    white-space: nowrap;
+}
+.gs-faction {
+    position: absolute;
+    cursor: pointer;
+}
+.gs-faction:hover,
+.gs-faction.gs-faction-selected:hover {
+    background: rgba(170, 170, 170, 0.502);
+}
+.gs-faction > * {
+    position: absolute;
+}
+.gs-game {
+    position: absolute;
+}
+.gs-game.gs-game-even {
+    background: rgba(255, 255, 255, 0.188);
+}
+.gs-game.gs-game-current {
+    background: rgba(255, 255, 255, 0.502);
+}
+.gs-game > * {
+    position: absolute;
+}
+.gs-game-cell {
+    white-space: nowrap;
+}
+.gs-tooltips {
+    position: absolute;
+    pointer-events: none;
+}
+.gs-tip {
+    position: absolute;
+    background: rgba(255, 255, 255, 0.502);
+    color: rgb(255, 255, 0);
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+.gs-tip-medal {
+    position: relative;
+    margin-bottom: 5px;
+}
+.gs-tip-title {
+    font-weight: bold;
+    font-size: 16.67px;
+}
+.gs-score-tip {
+    background: rgba(255, 255, 255, 0.753);
+    color: rgb(255, 165, 0);
+}
+.gs-score-line {
+    height: 20px;
+}
+.gs-overlay {
+    position: absolute;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    pointer-events: none;
+}
+.gs-overlay-line {
+    font-size: 32px;
+    font-weight: bold;
+    color: rgb(255, 255, 0);
+    text-align: center;
+    min-height: 1em;
+}

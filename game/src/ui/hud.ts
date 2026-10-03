@@ -1,4 +1,5 @@
-import { computeHudLayout, VIEW_ROWS, type Rect, type ViewRowKey } from './hudLayout';
+import { computeHudLayout, OPTIONS_ABOVE_MAP_GAP, SYSTEM_MAP_PANEL_H, VIEW_ROWS, type Rect, type ViewRowKey } from './hudLayout';
+import { buildHudSystemMap } from './hudSystemMap';
 import { openRuinDetail } from './screens/ruinDetail';
 import { cornerRadiusCss, MONEY_POS, researchReadout, showViewSystemName, TOP_DATE_POS, TOP_ELEMENT_NAMES, TOP_LEFT_BUTTONS, TOP_ROW_BUTTONS, topBarLayout, topBarScale, viewSystemName, type CornerCurves } from './topBar';
 import './topBar.css';
@@ -54,6 +55,7 @@ import { toggleExpansionPlanner } from './screens/expansionPlanner'; // [16a]
 import { setEmpireSummarySource, getEmpireSummarySource, toggleEmpireSummary } from './screens/empireSummary';
 // [leftovers] begin
 import { toggleGalacticHistory } from './screens/galacticHistory';
+import { openGroundReport } from './screens/groundReport'; // [parC1]
 // [leftovers] end
 import { formatThousandsK } from './screens/coloniesList';
 import { toggleColoniesScreen } from './screens/coloniesScreen';
@@ -242,7 +244,7 @@ const TOP_NAMES: ReadonlySet<string> = new Set(TOP_ELEMENT_NAMES);
 /** CSS `transform-origin` for a HUD element name given its layout rect. Pure
  * (no window access) so node-based tests can exercise the mapping. */
 export function hudTransformOrigin(name: string, _rect: Rect, _viewportWidth?: number): string {
-    if (name === 'pnlOptionsList') return '100% 100%'; // bottom-right anchored
+    if (name === 'pnlOptionsList' || name === 'pnlSystemMap') return '100% 100%'; // bottom-right anchored
     if (TOP_NAMES.has(name)) return '0 0'; // top strip: positioned at its scaled original position
     if (name === 'pnlSelection') return '0 100%'; // bottom-left anchored
     return '0 0'; // default: top-left anchored
@@ -283,7 +285,32 @@ export function applyHudScale(refs: HudRefs): void {
         el.style.transform = k === 1 ? '' : `scale(${k})`;
         if (name === 'pnlSelection') anchorSelectionPanel(el, rect);
     }
+    anchorOptionsAboveSystemMap(refs, s);
     placeTopStrip(refs);
+}
+
+/** The "View" popup sits right above the system mini-map: its bottom is the map's scaled top plus the gap (both are
+ * scaled from their bottom-right corners, so the offset scales too). Without a map it keeps its own rect. */
+function anchorOptionsAboveSystemMap(refs: HudRefs, s: number): void {
+    const opts = refs.elements.get('pnlOptionsList');
+    if (opts === undefined || !refs.elements.has('pnlSystemMap')) return;
+    const layout = computeHudLayout(window.innerWidth, window.innerHeight);
+    const map = layout['pnlSystemMap'];
+    if (map === undefined) return;
+    const mapBottom = Math.max(0, window.innerHeight - map.y - map.h);
+    opts.style.top = '';
+    opts.style.bottom = `${mapBottom + (SYSTEM_MAP_PANEL_H + OPTIONS_ABOVE_MAP_GAP) * s}px`;
+}
+
+/** Right / bottom anchoring for the bottom-right elements (task 10e): they never clip past the screen edge. */
+function anchorBottomRight(el: HTMLElement, name: string, rect: Rect): void {
+    if (name !== 'pnlOptionsList' && name !== 'pnlSystemMap') return;
+    el.style.left = '';
+    el.style.right = `${Math.max(0, window.innerWidth - rect.x - rect.w)}px`;
+    if (name === 'pnlSystemMap' || rect.h === 0) {
+        el.style.top = '';
+        el.style.bottom = `${Math.max(0, window.innerHeight - rect.y - rect.h)}px`;
+    }
 }
 
 /** System-level view: zoom factor 50 (Main.Part9.cs btnZoomSystem_Click
@@ -507,6 +534,13 @@ export function toggleColoniesFromHud(empire: Empire, selected: Habitat | null =
     });
 }
 
+/** btnMessageHistoryGoto_Click (Main.Part4.cs:1967): method_156(x, y) + method_4(1.0) — centre at planet zoom. */
+export function historyGoTo(cam: Camera | undefined, x: number, y: number): void {
+    if (!cam) return;
+    cam.centerOn(x, y);
+    cam.zoomAt(PLANET_LEVEL_ZOOM, cam.width / 2, cam.height / 2);
+}
+
 export function createHud(wiring: HudWiring = {}): HudRefs {
     galaxyMapAt = wiring.openGalaxyMapAt ?? null;
     const root = document.createElement('div');
@@ -576,6 +610,11 @@ export function createHud(wiring: HudWiring = {}): HudRefs {
             case 'pnlOptionsList':
                 el = buildOptionsPopup(buildOptionsList({ ...wiring, overlays }));
                 break;
+            case 'pnlSystemMap':
+                // The original's bottom-right system mini-map (hudSystemMap.ts); needs the galaxy and the camera.
+                if (wiring.galaxy === undefined || wiring.camera === undefined) continue;
+                el = buildHudSystemMap({ galaxy: wiring.galaxy, camera: wiring.camera, onGalaxyMap: wiring.onGalaxyMap });
+                break;
             case 'tbtnEmpires':
                 el = buildDiplomacyButton(wiring);
                 break;
@@ -590,15 +629,8 @@ export function createHud(wiring: HudWiring = {}): HudRefs {
         // Task 10e: right-anchored panels position via `right` (not a computed
         // left) so they can never clip past the screen edge. The options list
         // is content-sized (rect.h === 0): anchor it to the window's
-        // bottom-right corner instead of a fixed top offset.
-        if (name === 'pnlOptionsList') {
-            el.style.left = '';
-            el.style.right = `${Math.max(0, window.innerWidth - rect.x - rect.w)}px`;
-        }
-        if (name === 'pnlOptionsList' && rect.h === 0) {
-            el.style.top = '';
-            el.style.bottom = `${Math.max(0, window.innerHeight - rect.y - rect.h)}px`;
-        }
+        // bottom-right corner instead of a fixed top offset; the mini-map too.
+        anchorBottomRight(el, name, rect);
         if (name === 'pnlSelection') anchorSelectionPanel(el, rect);
         root.appendChild(el);
         elements.set(name, el);
@@ -674,15 +706,8 @@ export function layoutHud(refs: HudRefs): void {
         if (TOP_NAMES.has(name)) continue; // placed by applyHudScale
         const rect = layout[name];
         if (rect) applyRect(el, rect);
-        // Task 10e: keep the right-anchored options list pinned to the right edge.
-        if (rect && name === 'pnlOptionsList') {
-            el.style.left = '';
-            el.style.right = `${Math.max(0, window.innerWidth - rect.x - rect.w)}px`;
-        }
-        if (name === 'pnlOptionsList' && rect && rect.h === 0) {
-            el.style.top = '';
-            el.style.bottom = `${Math.max(0, window.innerHeight - rect.y - rect.h)}px`;
-        }
+        // Task 10e: keep the right-anchored options list and mini-map pinned to the bottom-right corner.
+        if (rect) anchorBottomRight(el, name, rect);
         if (name === 'pnlSelection' && rect) anchorSelectionPanel(el, rect);
     }
     // Task 10f: keep the UI scale applied after a re-layout.
@@ -894,18 +919,7 @@ function openTopBarScreen(name: string, wiring: HudWiring): void {
             return;
         // [leftovers] btnGalacticHistory → Galactic History (Main.Part3.cs:46 btnGalacticHistory_Click).
         case 'btnGalacticHistory':
-            if (src) {
-                toggleGalacticHistory({
-                    empire: src.empire,
-                    // btnMessageHistoryGoto_Click: method_156(x, y) + method_4(1.0).
-                    onGoTo: (x, y) => {
-                        const cam = wiring.camera;
-                        if (!cam) return;
-                        cam.centerOn(x, y);
-                        cam.zoomAt(PLANET_LEVEL_ZOOM, cam.width / 2, cam.height / 2);
-                    },
-                });
-            }
+            if (src) toggleGalacticHistory({ empire: src.empire, mode: 'galactichistory', onGoTo: (x, y) => historyGoTo(wiring.camera, x, y) });
             return;
         // Main.Part9.cs tbtnColonies_Click: toggle the Colonies screen (pnlColonyInfo, Main.Part11.cs method_166).
         case 'tbtnColonies':
@@ -915,9 +929,10 @@ function openTopBarScreen(name: string, wiring: HudWiring): void {
         case 'btnEmpireSummary':
             toggleEmpireSummary();
             return;
-        // Main.Part4.cs btnHistoryMessages_Click.
+        // Main.Part4.cs:2016 btnHistoryMessages_Click: the same pnlMessageHistory as btnGalacticHistory, opened with
+        // method_528("either") (the last filter, unless it was Galactic History).
         case 'btnHistoryMessages':
-            toggleMessageHistory();
+            if (src) toggleGalacticHistory({ empire: src.empire, mode: 'either', onGoTo: (x, y) => historyGoTo(wiring.camera, x, y) });
             return;
         // Main.Part9.cs tbtnBuiltObjects_Click.
         case 'tbtnBuiltObjects':
@@ -1053,7 +1068,7 @@ export const TOP_MORE_ITEMS: readonly { key: string; label: string }[] = [
     { key: 'galaxyMap', label: 'Galaxy Map (G)' },
     { key: 'empires', label: 'Empires list' },
     { key: 'gameOptions', label: 'Game Options (O)' },
-    { key: 'advisor', label: 'Talk to your admiral (T)' },
+    { key: 'advisor', label: 'Talk to your admiral (K)' },
     { key: 'shortcuts', label: 'Keyboard shortcuts (?)' },
 ];
 
@@ -1633,6 +1648,11 @@ function buildSelectionPanel(wiring: HudWiring): HTMLElement {
         if (t.kind === 'ruin') {
             // Main.Part4.cs 3581: a Ruin hotspot opens the Ruin Detail window (method_550).
             if (wiring.galaxy) openRuinDetail(wiring.galaxy, t.ruin);
+            return;
+        }
+        // [parC1] The Troops / battle rows: the Ground Report (method_164).
+        if (t.kind === 'groundReport') {
+            openGroundReport(t.habitat);
             return;
         }
         const o = t.obj;

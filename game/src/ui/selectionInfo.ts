@@ -115,7 +115,10 @@ export type InfoTarget =
     | { kind: 'select'; obj: Habitat | BuiltObject | ShipGroup }
     | { kind: 'empire'; empire: Empire }
     /** A ruin hotspot (InfoPanel.cs 4093 / 4263, "Name (click for details)"): Main.Part4.cs 3581 → method_550. */
-    | { kind: 'ruin'; ruin: Ruin };
+    | { kind: 'ruin'; ruin: Ruin }
+    /** InfoPanel.cs 4461 / 4497 `AddHotspot(..., new object[1] { habitat }, ...)`: the Ground / Battle Report
+     *  (Main.Part4.cs:3534 pnlDetailInfo_MouseClick → method_164(habitat), screens/groundReport.ts). */
+    | { kind: 'groundReport'; habitat: Habitat };
 
 /** One run of a row: text, an image, an empire flag, or a troop icon. */
 export interface InfoSeg {
@@ -1094,10 +1097,11 @@ export function habitatInfo(ctx: InfoContext, h: Habitat): InfoModel {
                     const segs = troopSegs(troops, recruit, invading);
                     // The row's hotspot text: "Show <colony> Ground/Battle Report  (Strength: …)" (InfoPanel.cs 4419-4462).
                     const strength = troopStrengthText(h, galaxy);
-                    rows.push(label('Troops', segs.length > 0 ? segs : [txt('(None)', color)], { alert: invading.length > 0, title: strength?.text ?? `Show ${h.name} Ground Report` }));
+                    const report: InfoTarget = { kind: 'groundReport', habitat: h };
+                    rows.push(label('Troops', segs.length > 0 ? segs : [txt('(None)', color)], { alert: invading.length > 0, title: strength?.text ?? `Show ${h.name} Ground Report`, target: report }));
                     // The invasion "defend  vs  attack" row (InfoPanel.cs 4469-4499).
                     const vs = invasionVsText(h, galaxy, player);
-                    if (vs !== null) rows.push(label('', [txt(vs.text)], { alert: true, title: vs.title }));
+                    if (vs !== null) rows.push(label('', [txt(vs.text)], { alert: true, title: vs.title, target: report }));
                 } else rows.push(label('Troops', [txt('(Unknown)', color)]));
             }
             // Building / Docked (colonies with population).

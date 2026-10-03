@@ -58,6 +58,8 @@ import {
     tagTamedShips,
 } from '../src/sim/scenario/rimHerders/rimHerders';
 
+import { processMessages } from '../src/sim/diplomacyTick';
+
 let base: GameData;
 /** Shared flag-on game: every rim independent is a herder, migration season on the last day (tests drive it). */
 let shared: Game;
@@ -317,7 +319,10 @@ describe('19j rim herders — (6) migration-season warnings', () => {
         const year = gameYear(galaxyStarDate(g));
         expect(rimHerdersWarn(g, year)).toBeGreaterThanOrEqual(1);
         expect(hc.warned).toContain(e.empireId);
-        expect(empireMessages(e).some((m) => m.messageType === EmpireMessageType.RemoveForcesFromSystem)).toBe(true);
+        const warning = empireMessages(e).find((m) => m.messageType === EmpireMessageType.RemoveForcesFromSystem);
+        expect(warning).toBeDefined();
+        // Sent by the herders' empire, so the AI's faithful RemoveMilitaryForcesFromSystem can weigh the requester.
+        expect(warning!.sender).toBe(hc.colony.empire);
         const herd = herderColonyHerds(g, hc)[0];
         const ship = militaryShip(e)!;
         ship.xpos = herd.leader!.xpos + 800;
@@ -329,6 +334,8 @@ describe('19j rim herders — (6) migration-season warnings', () => {
         // The leader (raised attack range) hunts the violator's warship.
         expect(herd.leader!.attackRange).toBeGreaterThan(1500);
         expect(herdMembers(herd).some((c) => c.currentTarget === ship)).toBe(true);
+        // The AI answers the warning in its message pass (this crashed with a null sender).
+        expect(() => processMessages(g, e)).not.toThrow();
     }, 600000);
 });
 

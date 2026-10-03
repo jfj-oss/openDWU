@@ -537,8 +537,46 @@ export interface GalacticHistoryOptions {
     empire: Empire;
     /** btnMessageHistoryGoto (Main.Part4.cs:1967): move the view to the point at planet zoom (method_156 + method_4(1.0)). */
     onGoTo: (x: number, y: number) => void;
-    /** Initial filter (method_528's argument; default "galactichistory"). */
+    /** method_528's argument (default "galactichistory", btnGalacticHistory); H and btnHistoryMessages pass "either". */
+    mode?: HistoryOpenMode;
+    /** An explicit initial filter (tests); wins over `mode`. */
     filter?: HistoryFilter;
+}
+
+/** The method_528(string_30) arguments (Main.Part4.cs:1884-1904). */
+export type HistoryOpenMode = 'galactichistory' | 'nonbattle' | 'all' | 'either';
+
+/**
+ * cmbMessageHistoryFilter.SelectedIndex: one combo on the Main form, so the last filter stays between openings (0 when
+ * first filled, Main.Part4.cs:1881).
+ */
+let comboIndex: HistoryFilter = HistoryFilter.All;
+
+/**
+ * Port of the method_528 switch (Main.Part4.cs:1884-1904): the filter the panel opens on, from the combo's current
+ * index. "either" (H, btnHistoryMessages_Click) keeps the last filter unless it was Galactic History, then All.
+ */
+export function resolveHistoryOpenFilter(current: HistoryFilter, mode: HistoryOpenMode): HistoryFilter {
+    switch (mode) {
+        case 'galactichistory':
+            return HistoryFilter.GalacticHistory;
+        case 'nonbattle':
+            return HistoryFilter.NonBattle;
+        case 'all':
+            return HistoryFilter.All;
+        case 'either':
+            return current === HistoryFilter.GalacticHistory ? HistoryFilter.All : current;
+    }
+}
+
+/** The combo's index as the next opening sees it (tests). */
+export function historyComboIndex(): HistoryFilter {
+    return comboIndex;
+}
+
+/** Test hook: set the combo's index. */
+export function setHistoryComboIndex(f: HistoryFilter): void {
+    comboIndex = f;
 }
 
 interface OpenState {
@@ -573,7 +611,8 @@ function createGalacticHistory(opts: GalacticHistoryOptions): OpenState {
     const { empire, onGoTo } = opts;
     // 19p: with the event log on, the list reads the log (category filter + importance sort).
     const logMode = galacticHistoryUsesEventLog(empire.galaxy);
-    let filter = opts.filter ?? HistoryFilter.GalacticHistory;
+    comboIndex = opts.filter ?? resolveHistoryOpenFilter(comboIndex, opts.mode ?? 'galactichistory');
+    let filter = comboIndex;
     let category: HistoryCategoryFilter = 'all';
     let logSort: HistoryLogSort = 'date';
     let sort: HistorySort | null = null;
@@ -832,7 +871,7 @@ function createGalacticHistory(opts: GalacticHistoryOptions): OpenState {
     select.value = logMode ? category : String(filter);
     select.addEventListener('change', () => {
         if (logMode) category = select.value as HistoryCategoryFilter;
-        else filter = Number(select.value) as HistoryFilter;
+        else filter = comboIndex = Number(select.value) as HistoryFilter;
         selected = null;
         rebind();
     });

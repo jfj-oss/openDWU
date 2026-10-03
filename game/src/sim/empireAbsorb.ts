@@ -71,9 +71,10 @@ export function absorbEmpire(galaxy: Galaxy, into: Empire, absorbed: Empire, opt
 }
 
 /**
- * Galaxy.1.cs 688 GuardiansDepart: the Ancient Guardians (the Mechanoid empire) join the player. Not yet called: its caller
- * is the Freedom Alliance victory branch of CheckGlobalVictoryConditions (Galaxy.1.cs 425-434, victory.ts
- * decimateEmpireAndGuardiansDepart — TODO(port) M4z3, with DecimateEmpire).
+ * Galaxy.1.cs 688 GuardiansDepart: the Ancient Guardians (the Mechanoid empire) join the player — called by the Freedom
+ * Alliance victory branch of CheckGlobalVictoryConditions (Galaxy.1.cs 425-434, victory.ts), after DecimateEmpire. Then
+ * (761-776) every diplomatic relation in the galaxy is unlocked (the alliance's locked war and pacts end), with or without
+ * a Mechanoid empire.
  */
 export function guardiansDepart(galaxy: Galaxy): void {
     const player = galaxy.playerEmpire;
@@ -93,7 +94,20 @@ export function guardiansDepart(galaxy: Galaxy): void {
             break;
         }
     }
-    if (empire === null) return;
+    if (empire !== null) guardiansJoinPlayer(galaxy, player, empire, race);
+    // 761-776
+    for (let num = 0; num < galaxy.empires.length; num++) {
+        const empire2 = galaxy.empires[num];
+        if (empire2 == null || !empire2.active || empire2.diplomaticRelations == null) continue;
+        for (let num2 = 0; num2 < empire2.diplomaticRelations.length; num2++) {
+            const diplomaticRelation = empire2.diplomaticRelations.at(num2);
+            if (diplomaticRelation != null) diplomaticRelation.locked = false;
+        }
+    }
+}
+
+/** Galaxy.1.cs 708-760: the Way of the Ancients government, then the absorb with the per-colony population swap. */
+function guardiansJoinPlayer(galaxy: Galaxy, player: Empire, empire: Empire, race: Race | null): void {
     // 710-714: GovernmentAttributesList.GetFirstByAvailability(2) (Way of the Ancients).
     let firstByAvailability = null;
     for (const g of getGovernmentsStatic()) {

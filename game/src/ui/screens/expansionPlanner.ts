@@ -50,7 +50,6 @@ import { cargoAvailable, cargoIndexOf } from '../../sim/logistics/orders';
 import { ResourceGroup, resourceGroupOf } from '../../sim/resourceSystem';
 import { SystemVisibilityStatus } from '../../sim/visibility';
 import { formatNet, resolveGameText, tryGetText } from '../../sim/textResolver';
-import { BACKDROP_URLS } from '../../render/assets';
 import {
     FONT,
     OwGrid,
@@ -78,6 +77,7 @@ import { mainResxImageUrl } from '../resxImage';
 import { openGalactopedia } from './galactopedia';
 import { openResourceLink } from './resourceComponents';
 import { CROSSHAIR_COLOR, GRID_COLOR, drawMapTerritory, galaxyMapScale, sectorColumnLabel, starBrushColor } from './galaxyMap';
+import { drawGalaxyMapLayers } from './galaxyMapLayers';
 import { requestSimRefresh } from '../../simworker/refresh';
 
 /** Main.Part4.cs:2721 method_538: cmbExpansionPlannerMode index → mode key. */
@@ -1181,10 +1181,6 @@ function createExpansionPlanner(opts: ExpansionPlannerOptions): OpenState {
     // Galaxy mini map (gmapExpansionPlanner, GalaxyMap.cs method_6 at full-galaxy zoom)
     // ------------------------------------------------------------------------------------------------------------
 
-    const backdrop = new Image();
-    backdrop.onload = () => drawMap();
-    backdrop.src = BACKDROP_URLS[0];
-
     function drawMap(): void {
         const W = 275;
         const dpr = Math.min(3, window.devicePixelRatio || 1) * Math.max(1, win.scale);
@@ -1198,7 +1194,8 @@ function createExpansionPlanner(opts: ExpansionPlannerOptions): OpenState {
         ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
         ctx.clearRect(0, 0, W, W);
         const s = galaxyMapScale(galaxy, W);
-        if (backdrop.complete && backdrop.naturalWidth > 0) ctx.drawImage(backdrop, 0, 0, W, (galaxy.sizeY / s) | 0);
+        // GalaxyMap.cs method_6: bitmap_1 (backdrop) and bitmap_0 (nebulae), then the territory (galaxyMapLayers.ts).
+        drawGalaxyMapLayers(ctx, galaxy, s, 0, 0, { onChange: () => { if (mapCanvas.isConnected) drawMap(); } });
         drawMapTerritory(ctx, galaxy, W);
         // Sector grid + labels (pen_1 / solidBrush_0).
         const secPx = galaxy.sectorSize / s;

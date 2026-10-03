@@ -152,6 +152,7 @@
     white-space: nowrap;
 }
 .ls-bold,
+.ls-regular,
 .ls-small {
     text-shadow: 1px 1px 0 #000;
     line-height: 1.1;
@@ -163,6 +164,48 @@
 }
 .ls-small {
     font-size: calc(12.67px * var(--ls-f));
+}
+/* Container.Font (the Pirate Missions rows' plain lines). */
+.ls-regular {
+    font-size: calc(14px * var(--ls-f));
+}
+.ls-regular.ls-ellipsis {
+    white-space: normal;
+}
+/* Empire.SmallFlagPicture: the flag shape over the main colour. */
+.ls-flag {
+    display: inline-block;
+    position: relative;
+    flex-shrink: 0;
+}
+.ls-flag img {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+}
+/* ItemListPanel.cs method_7 rect2 / rect3: the Bid / Accept / Cancel button at the row's right edge. */
+.ls-mission-btn {
+    position: absolute;
+    box-sizing: border-box;
+    background: rgba(96, 96, 96, 0.847);
+    border: 2px solid rgb(170, 170, 170);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: calc(5px * var(--ls-f));
+    text-align: center;
+    cursor: pointer;
+    white-space: normal;
+}
+.ls-mission-btn .ls-bold,
+.ls-mission-btn .ls-small {
+    white-space: normal;
+    color: rgb(170, 170, 170);
+}
+.ls-hover .ls-mission-btn {
+    background: rgb(128, 128, 128);
 }
 .ls-ellipsis {
     overflow: hidden;

@@ -583,9 +583,12 @@ export function rimHerdersWarn(galaxy: Galaxy, year: number): number {
         for (const e of friendlyEmpires(galaxy, hc)) {
             hc.warned.push(e.empireId);
             n++;
-            const m = scenarioMessage(galaxy, e, title(), scenarioText('Scenario RimHerders Migration Warning', hc.colony.name, where), { type: EmpireMessageType.RemoveForcesFromSystem, subject: hc.colony });
-            // 19s-2 voices (flag llmVoices; inert otherwise, no state): the elders tell the migration's lore.
+            // Sent by the herders' empire: an AI recipient answers RemoveForcesFromSystem through the faithful
+            // Empire.3.cs RemoveMilitaryForcesFromSystem(systemStar, requester), which weighs the requester's strength
+            // (a null sender crashed ProcessMessages).
             const herder = herderOwner(hc);
+            const m = scenarioMessage(galaxy, e, title(), scenarioText('Scenario RimHerders Migration Warning', hc.colony.name, where), { type: EmpireMessageType.RemoveForcesFromSystem, subject: hc.colony, sender: herder });
+            // 19s-2 voices (flag llmVoices; inert otherwise, no state): the elders tell the migration's lore.
             if (e === galaxy.playerEmpire && herder !== null && voicesOn(galaxy)) {
                 const herds = herderColonyHerds(galaxy, hc);
                 noteVoiceCue(galaxy, {

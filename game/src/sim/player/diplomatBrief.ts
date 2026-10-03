@@ -233,9 +233,10 @@ interface CounterDef extends DiplomatCounter {
  * - None / FreeTradeAgreement: OfferMutualDefense (Empire.8.cs 1824: a Protectorate when the AI's
  *   TotalColonyStrategicValue is over 4x the player's); None also OfferFreeTrade (1801). Both need a non-reclusive player
  *   and hyperdrive tech on one side (the gates at the top of both methods).
- * - War: EndWarRequest (1550, relation None). TODO(port): SubjugateRequest (1527) — the incoming path's validity check
- *   (EmpireDetailView.cs:639-706, DetermineDesiredDiplomaticRelationTypical) never yields SubjugatedDominion, so such an
- *   offer could never be answered there.
+ * - War: EndWarRequest (1550, relation None). SubjugateRequest (1527) is not a separate counter: its message names
+ *   relation None, so the player answers it as the WAR_END conversation (ui/messagePipeline.ts isWarEndConversation;
+ *   Main.Part10.cs:4798 WAR_END_ACCEPT ends the war as peace), exactly as an EndWarRequest; its proposed
+ *   SubjugatedDominion never passes EmpireDetailView.cs:639-706.
  * - TradeSanctions imposed by the player: the None request whose GenerateMessageDescription line is "We ask you to end
  *   your trade sanctions against us" (Empire.7.cs 3859).
  * - SubjugatedDominion with the AI subjugated: the release request (Empire.8.cs 755 ApplyDiplomaticStrategyToRelation).

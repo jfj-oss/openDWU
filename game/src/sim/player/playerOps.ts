@@ -64,6 +64,7 @@ import type { DiplomatBrief } from './diplomatBrief';
 import { deleteDesign, saveDesign, setDesignSubRoleShouldBeUpgraded, type DesignDraft } from './designEditor';
 import { autoUpgradeDesigns, loadDesignFile } from './designTools';
 import { executeShipOrderKey, type ShipOrderKeyAction } from './shipHotkeys';
+import { setControlGroup, type ControlGroupObject } from './controlGroups';
 import { initiateCrashResearchProgram } from '../researchTick';
 import type { EmpireMessage } from '../messages';
 import { approveSuggestion, declineSuggestion } from './advisorSuggestions';
@@ -93,8 +94,11 @@ import {
     disbandTroops,
     moveWaitQueueItem,
     queueResearchProject,
+    renameCharacter,
     renameTroop,
     renameEmpire,
+    setAllianceName,
+    setSupplyRestrictedResources,
     changeGovernmentByRevolution,
     setTroopsGarrisoned,
     toggleDesignAutoRetrofit,
@@ -106,6 +110,9 @@ import { obtainPirateRelation, PirateRelationType } from '../pirateRelations';
 import { acceptPirateProtection, calculatePirateProtectionPricePerMonth } from '../pirates/pirateRelationsAI';
 import { orderSalvage } from '../scenario/wreckage/wreckage';
 import { exposeUncoveredPlanetDestroyer, investigateEncounteredBuiltObject, warnTargetOfPirateAttackFunding } from './eventPanelActions';
+import { assignPirateSmugglingMission, pirateMissionButton } from '../pirates/pirateMissionsPanel';
+import type { EmpireActivityType } from '../pirates/empireActivity';
+import { storyEventAction, storyEventClose } from '../story/freedomAlliance';
 import { applyLlmStrategicCommand, type LlmStrategicCommand } from '../scenario/llm/strategic';
 import { applyPopulationPolicyToAllColonies, renameColony, scrapColonyFacility, setColonyAsCapital, setColonyPopulationPolicy, transferToTransport } from './colonyOrders';
 
@@ -192,6 +199,8 @@ export const PLAYER_OPS = {
     enemyTargetCancel: (galaxy: Galaxy, empire: Empire, target: PrioritizedTargetObject) => enemyTargetCancel(galaxy, empire, target),
     /** Main_KeyUp ship-order keys (E / R / A / S / ,). */
     shipOrderKey: (galaxy: Galaxy, empire: Empire, selected: ShipActionSelection, action: ShipOrderKeyAction) => executeShipOrderKey(galaxy, empire, selected, action),
+    /** Main_KeyUp SetControlGroup0..9 (Ctrl+digit): `_Game.PlayerHotkeyN = _Game.SelectedObject` (controlGroups.ts). */
+    setControlGroup: (galaxy: Galaxy, _empire: Empire, index: number, obj: ControlGroupObject | null) => setControlGroup(galaxy, index, obj),
 
     // --- Automation ---
     /** GenerateAutomationMessageBox "Turn off automation". */
@@ -318,6 +327,8 @@ export const PLAYER_OPS = {
         character.transferToNewLocation(destination, galaxy);
         return true;
     },
+    /** CharacterSummary.cs txtName_Leave: `_Character.Name = txtName.Text`. */
+    renameCharacter: (_galaxy: Galaxy, _empire: Empire, character: Character, name: string) => renameCharacter(character, name),
     /** Main.Part6.cs 3351 btnIntelligenceAgentsDisband_Click: `Mission = null; Kill(galaxy)`. */
     dismissCharacter: (galaxy: Galaxy, _empire: Empire, character: Character) => {
         character.mission = null;
@@ -334,6 +345,10 @@ export const PLAYER_OPS = {
     answerConversation: (galaxy: Galaxy, empire: Empire, sender: Empire, part: ConversationReplyPart, related: ConversationRelated, cost: number) =>
         answerConversationReply(galaxy, empire, sender, part, related, cost),
     acceptProposal: (_galaxy: Galaxy, empire: Empire, other: Empire) => acceptProposal(empire, other),
+    /** TradeRestrictedResourcesPanel.cs chkTradeResources_CheckedChanged: our SupplyRestrictedResources towards `other`. */
+    setSupplyRestrictedResources: (_galaxy: Galaxy, empire: Empire, other: Empire, supply: boolean) => setSupplyRestrictedResources(empire, other, supply),
+    /** Main.Part2.cs:4652 method_683 (pnlRelationAllianceName Apply): the alliance name on both relations. */
+    setAllianceName: (_galaxy: Galaxy, empire: Empire, other: Empire, name: string) => setAllianceName(empire, other, name),
     declineProposal: (_galaxy: Galaxy, empire: Empire, other: Empire) => declineProposal(empire, other),
 
     // --- Pirates ---
@@ -398,6 +413,20 @@ export const PLAYER_OPS = {
     /** Main.Part4.cs:1813-1821 btnEventMessageInvestigate (UncoverPlanetDestroyerConstruction pop-up): expose the project. */
     exposeUncoveredPlanetDestroyer: (galaxy: Galaxy, empire: Empire, builder: Empire, locationIndex: number) => exposeUncoveredPlanetDestroyer(galaxy, empire, builder, locationIndex),
     salvageWreckField: (galaxy: Galaxy, empire: Empire, ship: BuiltObject, fieldId: number) => orderSalvage(galaxy, empire, ship, fieldId, true),
+    // --- Pirate missions (the left sidebar's Pirate Missions panel, the smuggling resource picker) ---
+    /** Main.Part12.cs 2591-2678 method_78: a Pirate Missions row's button (Bid / Accept Smuggling Mission / Cancel); the
+     *  mission is named by its EmpireActivity.CheckEquivalent fields (pirates/pirateMissionsPanel.ts). */
+    pirateMissionButton: (galaxy: Galaxy, empire: Empire, target: Habitat | BuiltObject, type: EmpireActivityType, requestingEmpire: Empire | null, targetEmpire: Empire | null) =>
+        pirateMissionButton(galaxy, empire, target, type, requestingEmpire, targetEmpire),
+    /** Main.Part8.cs 5094 btnPirateSmugglingMissionAssign_Click: request smuggling to `habitat` (a resource, or null for all). */
+    assignPirateSmugglingMission: (galaxy: Galaxy, empire: Empire, habitat: Habitat, resourceId: number | null) => assignPirateSmugglingMission(galaxy, empire, habitat, resourceId),
+    // --- Return of the Shakturi story panel (pnlStoryEvent at levels 2 and 4; story/freedomAlliance.ts) ---
+    /** Main.Part4.cs 5006 btnStoryEventAction_Click: join the Freedom Alliance (level 2: its fleet) or take the Deliverance
+     *  planet destroyer (level 4); the UI selects and zooms to what it returns. */
+    storyEventAction: (galaxy: Galaxy, _empire: Empire, level: number) => storyEventAction(galaxy, level),
+    /** Main.Part4.cs 5028 btnStoryEventClose_Click: at level 2, refuse the alliance (it forms without the player; the
+     *  Shakturi invade; level 3). */
+    storyEventClose: (galaxy: Galaxy, _empire: Empire, level: number) => storyEventClose(galaxy, level),
     // [emergent] begin — scenario 19d1 internal politics (scenario/emergent/politicsActions.ts; flag-gated inside)
     politicsAction: (galaxy: Galaxy, empire: Empire, action: PoliticsActionName, character: Character) => runPoliticsAction(galaxy, empire, action, character),
     grantAutonomy: (galaxy: Galaxy, empire: Empire, colony: Habitat) => grantAutonomy(galaxy, empire, colony),

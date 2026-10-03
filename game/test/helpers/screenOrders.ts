@@ -7,6 +7,7 @@ import type { Empire } from '../../src/sim/empire';
 import type { Design } from '../../src/sim/design';
 import type { BuiltObject } from '../../src/sim/builtObject';
 import type { Troop } from '../../src/sim/cargo';
+import type { Character } from '../../src/sim/characters';
 import { issuePlayerCommand } from '../../src/sim/player/playerCommands';
 import type { PlayerOpArgs, PlayerOpName, PlayerOpResult } from '../../src/sim/player/playerOps';
 import { ShipAction, ShipActionType, createShipAction } from '../../src/sim/player/shipAction';
@@ -103,6 +104,30 @@ const ORDERS: Omit<ScreenOrder, 'tick'>[] = [
         issue: (g, p, r) => {
             const t = troopsOf(p)[0];
             return t === undefined ? false : issue(g, p, 'renameTroop', [t, 'Screen Guard'], r);
+        },
+    },
+    {
+        what: 'diplomacy: restricted-resource trading',
+        ops: ['setSupplyRestrictedResources'],
+        issue: (g, p, r) => {
+            const o = g.empires.find((e) => e !== p && e.active && e.pirateEmpireBaseHabitat === null && e !== g.independentEmpire);
+            return o === undefined ? false : issue(g, p, 'setSupplyRestrictedResources', [o, true], r);
+        },
+    },
+    {
+        what: 'diplomacy: alliance name',
+        ops: ['setAllianceName'],
+        issue: (g, p, r) => {
+            const o = g.empires.find((e) => e !== p && e.active && e.pirateEmpireBaseHabitat === null && e !== g.independentEmpire);
+            return o === undefined ? false : issue(g, p, 'setAllianceName', [o, 'Screen Accord'], r);
+        },
+    },
+    {
+        what: 'characters: rename',
+        ops: ['renameCharacter'],
+        issue: (g, p, r) => {
+            const c = ((p.characters ?? []) as (Character | null)[]).find((x): x is Character => x != null);
+            return c === undefined ? false : issue(g, p, 'renameCharacter', [c, 'Screen Envoy'], r);
         },
     },
     {
