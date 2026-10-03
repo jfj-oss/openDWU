@@ -80,7 +80,8 @@ import { updateCombatEffects } from './effectsLayer';
 import { BuiltObject } from '../sim/builtObject';
 import type { Creature } from '../sim/creature';
 import { createMapOverlayState, type MapOverlayState } from '../ui/mapOverlays';
-import { showRegionLabels, showSystemNames } from '../ui/settings';
+import { getSettings, showRegionLabels, showSystemNames } from '../ui/settings';
+import { edgeScrollPixels, nebulaDetailScale, wheelNotches, wheelZoom, wheelZoomAnchor } from './viewInput'; // [gameoptions]
 import { hideMapTooltip, showMapTooltip, tooltipText } from '../ui/mapTooltip';
 import { freightTooltipText } from '../ui/freightText'; // [freightOverlay]
 import { wreckTooltipText } from '../ui/scenario/wreckageUi'; // [wreckage]
@@ -1783,6 +1784,7 @@ export class MainView {
         // fades out (task 02b2), so something is always visible while
         // zooming between galaxy and system view; the per-system colour
         // patches follow once the backdrop is gone.
+        this.applyDisplaySettings(); // [gameoptions] Star Density, system nebulae on / detail
         this.deepStarfield.update(deepStarfieldAlpha(z, m), cam.x, cam.y, z, cam.width, cam.height);
         this.deepStarfield.updatePatches(systemPatchZoomAlpha(z, m), this.patchSystems, cam.x, cam.y, cam.width, cam.height);
         this.systemNebulae.update(z, cam.x, cam.y, cam.width, cam.height, this.nebulaSystems, nowMs);
@@ -1919,7 +1921,7 @@ export class MainView {
         let edgeDy = 0;
         if (!this.dragging && this.pointerInside) {
             const edge = 24;
-            const speed = 16;
+            const speed = edgeScrollPixels(getSettings().mainViewScrollSpeed); // [gameoptions] Scroll Speed
             if (this.lastPointer.x < edge) {
                 edgeDx = -speed;
             } else if (this.lastPointer.x > cam.width - edge) {
@@ -1956,6 +1958,40 @@ export class MainView {
             cam.panByScreen(-edgeDx, -edgeDy);
         }
     }
+
+    // [gameoptions] begin
+    /** Main.Part13.cs:388 OnMouseWheel on our camera: the zoom step from Zoom Speed and the anchor from the mouse
+     *  scroll-wheel behaviour (render/viewInput.ts). */
+    private wheelZoom(deltaY: number, deltaMode: number, sx: number, sy: number): void {
+        const s = getSettings();
+        const notches = wheelNotches(deltaY, deltaMode);
+        if (notches === 0) return;
+        const cam = this.camera;
+        const zoom = cam.clampZoom(wheelZoom(cam.zoom, notches, s.mainViewZoomSpeed));
+        if (zoom === cam.zoom) return; // `if (num == double_0) flag = false`: no movement either
+        const target = this.wheelSelectionPoint();
+        const anchor = wheelZoomAnchor(s.mouseScrollWheelBehaviour, notches < 0, target !== null);
+        if (anchor === 'selection' && target !== null) cam.centerOn(target.x, target.y);
+        if (anchor === 'cursor') cam.zoomAt(zoom, sx, sy);
+        else cam.zoomAt(zoom, cam.width / 2, cam.height / 2);
+    }
+
+    /** The selected item's drawn position (method_157's target): the HUD's ship / fleet, else the selected body. */
+    private wheelSelectionPoint(): { x: number; y: number } | null {
+        const sel = this.getHudSelection();
+        const bo = sel?.builtObject ?? sel?.shipGroup?.leadShip ?? null;
+        if (bo) return { x: bo.xpos, y: bo.ypos };
+        const h = this.selectedHabitat;
+        return h !== null ? this.motion.habitatPos(h) : null;
+    }
+
+    /** Push the display options into the starfield and the nebula layer (each a no-op unless the value changed). */
+    private applyDisplaySettings(): void {
+        const s = getSettings();
+        this.deepStarfield.setStarFieldSize(s.starFieldSize);
+        this.systemNebulae.setDisplay(s.showSystemNebulae, nebulaDetailScale(s.systemNebulaeDetail));
+    }
+    // [gameoptions] end
 
     /** Stop the follow camera if it is on (edge-scroll, a mousedown on the canvas, or the followed target being
      * gone — task followcam). A no-op while already off. */
@@ -2172,8 +2208,7 @@ export class MainView {
                 const rect = canvas.getBoundingClientRect();
                 const sx = e.clientX - rect.left;
                 const sy = e.clientY - rect.top;
-                const factor = e.deltaY < 0 ? 1.25 : 0.8;
-                this.camera.zoomAt(this.camera.zoom * factor, sx, sy);
+                this.wheelZoom(e.deltaY, e.deltaMode, sx, sy); // [gameoptions] Zoom Speed + Mouse scroll-wheel behaviour
             },
             { passive: false },
         );

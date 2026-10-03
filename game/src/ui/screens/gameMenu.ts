@@ -64,6 +64,9 @@ export interface GameMenuCallbacks {
     onMainMenu?: () => void;
     /** Called when "Exit" is confirmed (window.close / browser toast). */
     onExit?: () => void;
+    /** "Options" (Main.Part7.cs:4507 btnGameMenuOptions_Click → method_402): open the Game Options screen
+     *  (gameOptionsPanel.ts). Without it the button toggles the inline settings panel (buildOptionsPanel). */
+    onOptions?: () => void;
 }
 
 export interface GameMenuRefs {
@@ -337,6 +340,12 @@ export function createGameMenu(
         }
     });
     const optionsBtn = makeButton('Options', () => {
+        if (callbacks.onOptions) {
+            // The Game Options window pauses by itself (AutoPauseWhenInPopupWindow); the menu closes behind it.
+            hide();
+            callbacks.onOptions();
+            return;
+        }
         optionsPanel.style.display = optionsPanel.style.display === 'none' ? '' : 'none';
     });
     const mainMenuBtn = makeButton('Main Menu', () => {
