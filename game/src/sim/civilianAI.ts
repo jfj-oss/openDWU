@@ -114,7 +114,8 @@ import { Cargo, CargoList, ResourceRef } from './cargo';
 import { Population, PopulationList } from './population';
 import { ColonyPopulationPolicy } from './data/policy';
 import { ComponentCategoryType } from './data/policies';
-import { ShipDesignFocus } from './researchSystem';
+import { PlanetaryFacilityType, ShipDesignFocus } from './researchSystem';
+import { facilitiesCountByType } from './construction/facilities';
 import { LazyNetSortOrder, netSort } from './netSort';
 import { GalaxyLocationType, type GalaxyLocation } from './galaxyLocation';
 import { ForceStructureProjectionList } from './forceStructureProjection';
@@ -365,9 +366,18 @@ export function calculateScenicFactorIncludingRuinsWonders(habitat: Habitat): nu
     let num = 0.0;
     if (habitat.scenicFactor > 0) num = Math.max(num, habitat.scenicFactor);
     if (habitat.ruin !== null && habitat.ruin.developmentBonus > num) num = habitat.ruin.developmentBonus;
-    // TODO(port) M4i: Wonders (Habitat.Facilities with a scenic wonder bonus) are not on the TS habitat yet — the C#
-    // continues with `if (Facilities != null) foreach wonder ... num = Math.Max(num, wonder.ScenicBonus)`; no facility
-    // wonders are built until M4i lands, so the value the C# sees is the one above.
+    // Habitat.cs 1135-1157: the largest Value1 of the completed wonders here, as a fraction (int / 100.0).
+    if (habitat.facilities !== null && facilitiesCountByType(habitat.facilities, PlanetaryFacilityType.Wonder) > 0) {
+        let num2 = 0;
+        for (let i = 0; i < habitat.facilities.length; i++) {
+            const planetaryFacility2 = habitat.facilities[i];
+            if (planetaryFacility2 != null && planetaryFacility2.constructionProgress >= 1 && planetaryFacility2.type === PlanetaryFacilityType.Wonder) {
+                num2 = Math.max(num2, planetaryFacility2.value1);
+            }
+        }
+        const num3 = num2 / 100.0;
+        if (num3 > num) num = num3;
+    }
     return num;
 }
 

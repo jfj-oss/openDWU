@@ -20,6 +20,9 @@ import { racePeriodicRaceEvent } from '../src/sim/colonyTick';
 import { RaceEventType } from '../src/sim/eventTypes';
 import { baconSettings } from '../src/sim/data/baconSettings';
 import { empireGovernmentAttributes } from '../src/sim/empire';
+import { calculateScenicFactorIncludingRuinsWonders } from '../src/sim/civilianAI';
+import { PlanetaryFacility } from '../src/sim/construction/facilities';
+import { PlanetaryFacilityType, facilityType } from '../src/sim/researchSystem';
 
 let gameData: GameData;
 beforeAll(async () => {
@@ -148,5 +151,23 @@ describe('BaconDesign.cs 163 CalculateMaintenanceCosts: StrengthInNumbers small-
         const num1 = Math.trunc(small.calculateCurrentPurchasePrice(g.galaxy) / baconSettings.shipMarkupFactor) + 1 + baconSettings.shipMaintenanceCostPerSizeUnit * small.size;
         const num5 = empireGovernmentAttributes(e)?.maintenanceCosts ?? 1;
         expect(smallBase - smallActive).toBeCloseTo(0.25 * num1 * num5, 9);
+    });
+});
+
+describe('Habitat.cs 1122 CalculateScenicFactorIncludingRuinsWonders: built wonders', () => {
+    it('a completed wonder scores its largest Value1 / 100; an unfinished one scores nothing', () => {
+        const g = newGame().galaxy;
+        const h = g.habitats.find((x) => x.scenicFactor <= 0 && x.ruin === null)!;
+        const wonders = (g.researchStatic?.facilities ?? []).filter((fd) => facilityType(fd) === PlanetaryFacilityType.Wonder && fd.value1 > 0);
+        expect(wonders.length).toBeGreaterThan(1);
+        const [a, b] = [...wonders].sort((x, y) => x.value1 - y.value1).slice(-2);
+        expect(calculateScenicFactorIncludingRuinsWonders(h)).toBe(0);
+        h.facilities = [new PlanetaryFacility(b, 0.5)];
+        expect(calculateScenicFactorIncludingRuinsWonders(h)).toBe(0);
+        h.facilities = [new PlanetaryFacility(a, 1), new PlanetaryFacility(b, 1)];
+        expect(calculateScenicFactorIncludingRuinsWonders(h)).toBe(Math.max(a.value1, b.value1) / 100);
+        // Natural scenery above the wonder term wins.
+        h.scenicFactor = 10;
+        expect(calculateScenicFactorIncludingRuinsWonders(h)).toBe(Math.max(10, b.value1 / 100));
     });
 });
