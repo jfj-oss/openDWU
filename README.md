@@ -1,9 +1,355 @@
-# DWU — Distant Worlds: Universe recreation
+# openDWU — Distant Worlds: Universe recreation
 
 A faithful recreation of *Distant Worlds: Universe* (v1.9.5) in TypeScript
 and PixiJS, ported directly from the game's decompiled engine source
 (formulas, constants, generation order and RNG sequence), with an opt-in
-mod/scenario layer on top. The implementation lives under [`game/`](game/).
+mod/scenario layer on top. The code lives under [`game/`](game/).
+
+**You need your own copy of the original game's data files.** This
+repository ships no original art, sounds, data or decompiled source; the
+game reads them at runtime from a Distant Worlds: Universe install folder,
+either your Steam install or a clone of the private `jfj-oss/dwu-assets`
+repo (only if you have been given access).
+
+**Jump to your platform:** [Windows](#windows) · [macOS](#macos) · [Linux](#linux) · [Troubleshooting](#troubleshooting) · [Tests](#tests) · [About the project](#about-the-project)
+
+Each platform section is self-contained: install the prerequisites, get and
+link the game data, clone, run, optionally build the desktop app, and update.
+You need **Node.js 22.12 or newer** (Node 24 LTS is fine) and **git**.
+
+---
+
+## Windows
+
+Run all commands in **PowerShell** (Start menu → "PowerShell").
+
+**1. Install Node.js and git**
+
+```powershell
+winget install --id OpenJS.NodeJS.LTS -e
+winget install --id Git.Git -e
+```
+
+Close and reopen PowerShell so `node` and `git` are on your PATH, then check:
+
+```powershell
+node -v    # must print v22.12 or newer
+git --version
+```
+
+**2. Clone openDWU and install dependencies**
+
+```powershell
+cd $HOME
+git clone https://github.com/jfj-oss/openDWU.git
+cd openDWU\game
+npm ci
+```
+
+**3. Link the game data**
+
+`npm run import-assets` is a bash script and does **not** work on Windows.
+Create a directory junction instead (no administrator rights or Developer
+Mode needed). Run this from `openDWU\game`, changing the path if your Steam
+library is somewhere else (e.g. `D:\SteamLibrary\steamapps\common\Distant Worlds Universe`):
+
+```powershell
+$DwuDir = "C:\Program Files (x86)\Steam\steamapps\common\Distant Worlds Universe"
+New-Item -ItemType Directory -Force public\assets | Out-Null
+New-Item -ItemType Junction -Path public\assets\dwu -Target $DwuDir
+```
+
+The folder must contain an `images` subfolder. Nothing is copied; the
+junction just points at your install. If you use the private assets repo
+instead of Steam, clone it and point the junction at the clone:
+
+```powershell
+git clone https://github.com/jfj-oss/dwu-assets.git $HOME\dwu-assets
+New-Item -ItemType Directory -Force public\assets | Out-Null
+New-Item -ItemType Junction -Path public\assets\dwu -Target $HOME\dwu-assets
+```
+
+**4. Run the game**
+
+```powershell
+npm run dev
+```
+
+Open the URL it prints (normally <http://localhost:5173/>) in your browser.
+Windows Firewall may ask about Node.js because the dev server also listens
+on your local network; allowing "Private networks" is enough. Stop the
+server with `Ctrl+C`.
+
+**5. Desktop app**
+
+Not available on Windows: desktop packaging only supports macOS arm64 and
+Linux x86_64. Play in the browser (step 4).
+
+**6. Update to the latest version**
+
+From `openDWU\game`, with the dev server stopped:
+
+```powershell
+git pull
+npm ci
+npm run dev
+```
+
+The junction from step 3 is kept across updates. If you use the assets
+repo, also run `git -C $HOME\dwu-assets pull`.
+
+---
+
+## macOS
+
+Run all commands in **Terminal** (zsh, the default shell).
+
+**1. Install Node.js and git**
+
+Install [Homebrew](https://brew.sh) if you don't have it:
+
+```sh
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+```
+
+On Apple Silicon (M1 and later), Homebrew installs to `/opt/homebrew`; if
+`brew` is "command not found" afterwards, run the two `echo`/`eval` lines
+the installer prints under "Next steps", or:
+
+```sh
+eval "$(/opt/homebrew/bin/brew shellenv)"
+```
+
+Then:
+
+```sh
+brew install node git
+node -v    # must print v22.12 or newer
+```
+
+**2. Get the game data**
+
+There is no native macOS version of Distant Worlds: Universe, so use one of:
+
+- **The private assets repo** (if you have access; git asks for your GitHub
+  credentials):
+
+  ```sh
+  git clone https://github.com/jfj-oss/dwu-assets.git ~/dwu-assets
+  ```
+
+- **A copy of a Windows or Linux install:** copy the whole
+  `Distant Worlds Universe` folder (the one containing `images/`) to
+  `~/Games/Distant Worlds Universe`.
+
+**3. Clone openDWU, install dependencies and link the data**
+
+```sh
+cd ~
+git clone https://github.com/jfj-oss/openDWU.git
+cd openDWU/game
+npm ci
+```
+
+`import-assets` has no macOS default path, so always pass `DWU_DIR`.
+Use the line that matches step 2:
+
+```sh
+DWU_DIR="$HOME/dwu-assets" npm run import-assets
+```
+
+```sh
+DWU_DIR="$HOME/Games/Distant Worlds Universe" npm run import-assets
+```
+
+It prints `linked ... -> public/assets/dwu` (a symlink; nothing is copied).
+
+**4. Run the game**
+
+```sh
+npm run dev
+```
+
+Open the URL it prints (normally <http://localhost:5173/>). Stop it with `Ctrl+C`.
+
+**5. Optional: native desktop app (Apple Silicon only)**
+
+```sh
+npm run package:mac
+open release/dwu-darwin-arm64/dwu.app
+```
+
+If macOS refuses to open it ("damaged" or "unidentified developer"),
+re-sign it ad hoc and clear the quarantine flag:
+
+```sh
+xattr -cr release/dwu-darwin-arm64/dwu.app
+codesign --force --deep -s - release/dwu-darwin-arm64/dwu.app
+```
+
+On first launch the app looks for the game data in
+`~/Library/Application Support/Steam/steamapps/common/Distant Worlds Universe`
+and `~/Games/Distant Worlds Universe`, otherwise it asks you to pick the
+folder (pick `~/dwu-assets` if you use the assets repo). Intel Macs: use the
+browser version; there is no Intel package script. See
+[`game/desktop/README.md`](game/desktop/README.md) for details.
+
+**6. Update to the latest version**
+
+From `~/openDWU/game`, with the dev server stopped:
+
+```sh
+git pull
+npm ci
+npm run dev
+```
+
+If you use the assets repo, also run `git -C ~/dwu-assets pull`.
+
+---
+
+## Linux
+
+Run all commands in a terminal (bash).
+
+**1. Install Node.js and git**
+
+Arch / CachyOS / Manjaro:
+
+```bash
+sudo pacman -S --needed nodejs npm git
+```
+
+Debian / Ubuntu (the distro's Node is usually too old; this uses NodeSource's Node 22):
+
+```bash
+curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
+sudo apt-get install -y nodejs git
+```
+
+Fedora:
+
+```bash
+sudo dnf install nodejs npm git
+```
+
+Check the version:
+
+```bash
+node -v    # must print v22.12 or newer
+```
+
+**2. Get the game data**
+
+If DW:U is installed through Steam at the default location,
+`~/.local/share/Steam/steamapps/common/Distant Worlds Universe`, there is
+nothing to do here. Otherwise note where your copy is (another Steam
+library, Flatpak Steam at
+`~/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common/Distant Worlds Universe`),
+or clone the private assets repo if you have access:
+
+```bash
+git clone https://github.com/jfj-oss/dwu-assets.git ~/dwu-assets
+```
+
+**3. Clone openDWU, install dependencies and link the data**
+
+```bash
+cd ~
+git clone https://github.com/jfj-oss/openDWU.git
+cd openDWU/game
+npm ci
+```
+
+Default Steam location:
+
+```bash
+npm run import-assets
+```
+
+Anywhere else (e.g. the assets repo):
+
+```bash
+DWU_DIR="$HOME/dwu-assets" npm run import-assets
+```
+
+It prints `linked ... -> public/assets/dwu` (a symlink; nothing is copied).
+
+**4. Run the game**
+
+```bash
+npm run dev
+```
+
+Open the URL it prints (normally <http://localhost:5173/>). Stop it with `Ctrl+C`.
+
+**5. Optional: native desktop app (x86_64)**
+
+```bash
+npm run package:linux
+release/dwu-linux-x64/dwu
+```
+
+The app finds the data via `$DWU_DIR`, then the Steam default paths
+(`~/.local/share/Steam/...` and `~/Steam/...`), otherwise it asks you to
+pick the folder. You can also build the macOS app from Linux with
+`npm run package:mac`; see [`game/desktop/README.md`](game/desktop/README.md)
+for transferring and re-signing it.
+
+**6. Update to the latest version**
+
+From `~/openDWU/game`, with the dev server stopped:
+
+```bash
+git pull
+npm ci
+npm run dev
+```
+
+If you use the assets repo, also run `git -C ~/dwu-assets pull`.
+
+---
+
+## Troubleshooting
+
+- **Planets, ships and UI show plain generated placeholder art.** The game
+  data isn't linked. Redo step 3 for your platform, then restart
+  `npm run dev` (it regenerates `public/asset-manifest.json` from the linked
+  folder on every start; the file list is not picked up while the server is
+  running).
+- **`DW:U install not found at ...`** (macOS/Linux). The path passed to
+  `import-assets` has no `images/` folder. Check the path and its quoting.
+  The script's default is the Linux Steam path, so macOS always needs `DWU_DIR`.
+- **`New-Item : An item with the specified name ... already exists`** (Windows).
+  Remove the old link first with `cmd /c rmdir public\assets\dwu` (this
+  removes only the junction, not your game files), then rerun step 3.
+- **`npm ci` reports `EBADENGINE`, or Vite/Vitest fail with syntax errors.**
+  Your Node is too old; install Node 22.12 or newer and run `npm ci` again.
+- **Port 5173 is already in use.** Vite picks the next free port
+  (5174, ...) automatically; open the URL it prints.
+- **`npm run import-assets` fails on Windows.** Expected; it is a bash
+  script. Use the junction from the [Windows](#windows) step 3.
+- **`npm run test:fast` / `test:slow` fail on Windows.** They set an
+  environment variable with bash syntax; see [Tests](#tests).
+
+## Tests
+
+Run from `game/`:
+
+```sh
+npm run test:fast          # everything except the slow soak tests, for iterating
+npm test                   # the full test suite
+npm run repin -- --check   # verify the seed-pinned ("golden pin") values are still up to date
+npm run typecheck
+```
+
+On Windows PowerShell, run the fast tier as
+`$env:DWU_TEST_TIER = "fast"; npx vitest run` (and
+`Remove-Item Env:DWU_TEST_TIER` afterwards); `npm test` works as is.
+
+---
+
+## About the project
 
 - **Faithful port.** Game logic in `game/src/sim/` is ported line-for-line
   where practical from the original C# engine — same formulas, same order of
@@ -28,196 +374,7 @@ mod/scenario layer on top. The implementation lives under [`game/`](game/).
   storylines, systems and behaviour on top, each behind its own feature
   flags — see [Scenarios and mods](#scenarios-and-mods) below.
 
-## Requirements
-
-- **A legal copy of *Distant Worlds: Universe*.** This repository ships no
-  original game art, sounds, data files or decompiled source — nothing
-  copyrighted from the original game is in this repo. At runtime the game
-  reads art and data live from your own install folder. See
-  [Point at your Distant Worlds: Universe install](#point-at-your-distant-worlds-universe-install)
-  below for where that folder lives, or for the private-repo alternative if
-  you don't have the game installed locally.
-- **Node.js 22+** and npm.
-- **git.**
-
-## Install
-
-### Windows
-
-Open **PowerShell** and install Node.js and git (Node 22 or newer is fine):
-
-```powershell
-winget install OpenJS.NodeJS.LTS
-winget install Git.Git
-```
-
-Close and reopen PowerShell afterwards so `node` and `git` are on your PATH.
-
-### Linux
-
-**Arch / CachyOS:**
-
-```sh
-sudo pacman -S nodejs npm git
-```
-
-**Debian / Ubuntu** (the distro package is usually too old; use the
-NodeSource setup script for Node 22):
-
-```sh
-curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
-sudo apt-get install -y nodejs git
-```
-
-### macOS
-
-```sh
-brew install node git
-```
-
-### Quick start: exact commands
-
-You need a copy of Distant Worlds: Universe for the original art and data. Everything is on the default
-branch, `main`.
-
-**Windows (x86_64), game installed through Steam** (PowerShell):
-
-```powershell
-git clone https://github.com/jfj-oss/openDWU.git
-cd openDWU\game
-npm ci
-npm run import-assets      # links C:\Program Files (x86)\Steam\steamapps\common\Distant Worlds Universe
-npm run dev                # then open http://localhost:5173/
-```
-
-If your Steam library is somewhere else, set `DWU_DIR` first. PowerShell syntax differs from bash:
-
-```powershell
-$env:DWU_DIR = "D:\SteamLibrary\steamapps\common\Distant Worlds Universe"
-npm run import-assets
-```
-
-**Update to the latest version later** (from `openDWU\game`):
-
-```powershell
-git pull
-npm ci
-npm run dev
-```
-
-**Linux (x86_64), game installed through Steam:**
-
-```sh
-sudo pacman -S nodejs npm git        # Arch / CachyOS (Debian/Ubuntu: see Node 22 note above)
-git clone https://github.com/jfj-oss/openDWU.git
-cd openDWU/game
-npm ci
-npm run import-assets                # links ~/.local/share/Steam/steamapps/common/Distant Worlds Universe
-npm run dev                          # then open http://localhost:5173/
-```
-
-**macOS (Apple Silicon), no Steam copy of the game** (uses the private assets mirror):
-
-```sh
-brew install node git
-git clone https://github.com/jfj-oss/dwu-assets.git
-git clone https://github.com/jfj-oss/openDWU.git
-cd openDWU/game
-npm ci
-DWU_DIR="$HOME/dwu-assets" npm run import-assets
-npm run dev                          # then open http://localhost:5173/
-```
-
-If the game is installed through Steam on the Mac, skip the `dwu-assets` clone and run
-`DWU_DIR="$HOME/Library/Application Support/Steam/steamapps/common/Distant Worlds Universe" npm run import-assets`.
-
-**Native desktop app instead of the browser** (from `openDWU/game`, after the steps above):
-
-```sh
-npm run package:linux                # Linux x86_64 -> release/dwu-linux-x64/
-npm run package:mac                  # macOS arm64  -> release/dwu-darwin-arm64/
-```
-
-**Update to the latest version later** (from `openDWU/game`):
-
-```sh
-git pull
-npm ci                               # only needed when dependencies changed; safe to run every time
-npm run dev
-```
-
-On the Mac, also run `git -C ~/dwu-assets pull` if you use the assets mirror.
-
-#### Point at your Distant Worlds: Universe install
-
-`import-assets` links your DW:U install folder into `public/assets/dwu`
-(nothing is copied). The default Steam install paths are:
-
-- Windows: `C:\Program Files (x86)\Steam\steamapps\common\Distant Worlds Universe`
-- Linux: `~/.local/share/Steam/steamapps/common/Distant Worlds Universe`
-- macOS: `~/Library/Application Support/Steam/steamapps/common/Distant Worlds Universe`
-
-If your install is at the default path:
-
-```sh
-npm run import-assets
-```
-
-Otherwise, point `DWU_DIR` at it explicitly:
-
-```sh
-DWU_DIR="/path/to/Distant Worlds Universe" npm run import-assets
-```
-
-If you don't have the game installed locally (e.g. a cloud/CI machine), and
-you have access to the private assets mirror, clone it next to this repo
-instead and point `DWU_DIR` at the clone:
-
-```sh
-git clone https://github.com/jfj-oss/dwu-assets.git ../../dwu-assets
-DWU_DIR="$(realpath ../../dwu-assets)" npm run import-assets
-```
-
-#### Play in the browser
-
-```
-cd openDWU/game
-git pull
-npm ci
-npm run dev
-```
-
-```sh
-npm run dev
-```
-
-Open the URL it prints (typically `http://localhost:5173/`).
-
-#### Package the desktop app (Electron)
-
-```sh
-npm run package:linux   # -> release/dwu-linux-x64/
-npm run package:mac     # -> release/dwu-darwin-arm64/ (cross-buildable from Linux)
-```
-
-Run `npm run import-assets` (or set `DWU_DIR`) before packaging — the
-packaged app bakes in the install's file list. See
-[`game/desktop/README.md`](game/desktop/README.md) for how the app finds
-your install folder at runtime, and [`game/README.md`](game/README.md) for
-running the desktop shell in development (`npm run desktop:dev`) and the
-macOS re-signing steps needed after a cross-platform build.
-
-## Tests
-
-Run from `game/`:
-
-```sh
-npm run test:fast       # everything except the slow soak tests, for iterating
-npm test                # the full test suite
-npm run repin -- --check   # verify the seed-pinned ("golden pin") values are still up to date
-```
-
-## Scenarios and mods
+### Scenarios and mods
 
 With no scenario selected the game is the unmodified, byte-identical
 faithful port. Scenarios are chosen on the **Scenario** page of the new-game
@@ -249,7 +406,7 @@ full list, flags and parameters):
 | Big Galaxies | Extended colour palette and UI support for 40–60 empire games on galaxies of up to 4,000 stars. |
 | Local LLM Layer | Foundations for the optional local-model layer: request queue, grounding digests and a yearly in-character chronicle. |
 
-## Optional: local LLM layer
+### Optional: local LLM layer
 
 Two features can use a small local language model over an OpenAI/Ollama-
 compatible HTTP endpoint, and everything else in the scenario layer above
@@ -270,7 +427,7 @@ player command, so replay never needs the model and a missing/slow endpoint
 never blocks the sim. See `game/tasks/18-local-llm-diplomacy.md` and
 `game/tasks/19-mod-layer-scenarios.md` §19s for the design.
 
-## Project layout
+### Project layout
 
 ```
 game/
@@ -287,19 +444,22 @@ game/
   tasks/      design docs and the implementation plan/status
 ```
 
-## Status
+For running the desktop shell in development (`npm run desktop:dev`) see
+[`game/README.md`](game/README.md) and [`game/desktop/README.md`](game/desktop/README.md).
 
-There is no fixed release; the project is under continuous development.
-See [`game/tasks/`](game/tasks/) for the implementation plan, current status
-and design notes — `game/tasks/19-mod-layer-scenarios.md` in particular
-tracks the scenario/mod layer, and `game/tasks/M4-deferred-plan.md` tracks
-deferred core-engine work.
+### Status
 
-## Licence / assets note
+There is no fixed release; the project is under continuous development on
+the default branch, `main`. See [`game/tasks/`](game/tasks/) for the
+implementation plan, current status and design notes —
+`game/tasks/19-mod-layer-scenarios.md` in particular tracks the
+scenario/mod layer, and `game/tasks/M4-deferred-plan.md` tracks deferred
+core-engine work.
+
+### Licence / assets note
 
 This repository contains no original *Distant Worlds: Universe* art, sound,
-data files or decompiled source — none of it is copyrighted-original
-content and none of it is redistributed here. The game reads those files
-live from your own install folder at runtime. Art under `game/public/art/`
-is original artwork created for this project (procedural code and our own
-generated sprites), not from the original game.
+data files or decompiled source; none of it is redistributed here. The game
+reads those files live from your own install folder at runtime. Art under
+`game/public/art/` is original artwork created for this project (procedural
+code and our own generated sprites), not from the original game.
