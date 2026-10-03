@@ -21,13 +21,15 @@
 // TODO(port): Construction Yard tab's Scrap Ship / Remove Ship — Main.Part6.cs:3460-3560 (the purchaser,
 //   pnlColonyConstructionYardPurchaser, is bound as method_169 does: constructionYards.ts purchaserBinding)
 // TODO(port): Show Ruin Details window (method_550 pnlRuinDetail) — shown as a message box with the ruin's description here
-// TODO(port): character portraits in the Troops & Characters tab (CharacterImageCache) — CharacterTroopListIconView.cs
-// TODO(port): racial / wonder / resource bonus lines of the attitude summary — HabitatAttitudeSummary.cs DetermineHabitat*Bonuses
 
 import './coloniesScreen.css';
 import type { Empire } from '../../sim/empire';
 import type { Galaxy } from '../../sim/galaxy';
-import { HabitatCategoryType, type Habitat } from '../../sim/types';
+import { HabitatCategoryType, HabitatType, type Habitat } from '../../sim/types';
+import { PlanetaryFacilityType, WonderType } from '../../sim/researchSystem';
+import { ColonyResourceEffect } from '../../sim/developmentLevel';
+import { RaceEventType } from '../../sim/eventTypes';
+import { resolveDescription } from '../../sim/messages';
 import type { BuiltObject } from '../../sim/builtObject';
 import type { Troop } from '../../sim/cargo';
 import type { Race } from '../../sim/data/races';
@@ -52,7 +54,7 @@ import { getPlagueUnhappinessFactorWithPlague } from '../../sim/eventTypes';
 import { empireGovernmentAttributes } from '../../sim/empire';
 import { strategicValue } from '../../sim/territory';
 import { habitatAnnualRevenue } from '../../sim/forceStructure';
-import { calculatePlanetaryFacilityCost, type PlanetaryFacility } from '../../sim/construction/facilities';
+import { calculatePlanetaryFacilityCost, facilitiesFindBestPirateFacility, type PlanetaryFacility } from '../../sim/construction/facilities';
 import { resolveBuildableFacilities, resolveBuildableFacilitiesPirates, resolveBuildableWonders } from '../../sim/player/executeShipAction';
 import { ShipActionType, createShipAction } from '../../sim/player/shipAction';
 import { issuePlayerCommand } from '../../sim/player/playerCommands';
@@ -65,6 +67,9 @@ import { raceHasConcordArt } from '../../render/concordArt';
 import { facilityImageUrl, habitatImageUrl, habitatInfo, type InfoTarget } from '../selectionInfo';
 import { empireFlagUrl, renderInfoModel } from '../selectionInfoView';
 import { racePortraitUrl } from '../empireEmblem';
+import { characterPortrait } from '../characterPortrait';
+import { resolveCharacterDescription, resolveMissionTypeDescription, resolveRoleDescription } from './intelligence';
+import { characterMission } from '../../sim/espionage';
 import { resourceIconUrl, formatMoney } from '../hud';
 import { governorLoyaltyText } from '../emergentPolitics'; // [emergent]
 import { approvalMood, colonyScenarioInfo, formatThousandsK, type ApprovalMood } from './coloniesList';
@@ -93,6 +98,7 @@ import {
     textBox,
     type GridColumn,
     type OriginalWindow,
+    rgbCss,
 } from '../originalWindow';
 import { requestSimRefresh } from '../../simworker/refresh';
 
@@ -446,6 +452,131 @@ function colonyTabCounts(h: Habitat): ColonyTabCounts {
     };
 }
 
+/** .NET `ToString("+0%")` / `ToString("-0%")` of a fraction: a one-section custom format puts the literal sign before
+ *  the number and still adds the minus of a negative value (so the C#'s "-0%" of -0.2 reads "--20%"). */
+function signedPercentFormat(v: number, literal: '+' | '-'): string {
+    const n = roundAway(v * 100);
+    return `${n < 0 ? '-' : ''}${literal}${Math.abs(n)}%`;
+}
+
+/** Galaxy.5.cs:426 ResolveWonderDescriptionShort: "Wonder Description Colony / Empire" with the wonder's effect. */
+export function resolveWonderDescriptionShort(f: { name: string; wonderType: WonderType; value1: number; value2: number }): string {
+    const W = WonderType;
+    const colony = (effect: string): string => formatNet(T('Wonder Description Colony', '{0}: {1} at this colony'), [f.name, effect]);
+    const empire = (effect: string): string => formatNet(T('Wonder Description Empire', '{0}: {1} for the whole empire'), [f.name, effect]);
+    switch (f.wonderType) {
+        case W.ColonyConstructionSpeed: return colony(`+${f.value2}% ${T('Construction Speed', 'Construction Speed')}`);
+        case W.ColonyDefense: return colony(`+${f.value2 * 10}% ${T('Colony Defense', 'Colony Defense')}`);
+        case W.ColonyHappiness: return colony(`+${f.value2}% ${T('Colony Happiness', 'Colony Happiness')}`);
+        case W.ColonyIncome: return colony(`+${f.value2}% ${T('Colony Income', 'Colony Income')}`);
+        case W.ColonyPopulationGrowth: return colony(`+${f.value2}% ${T('Population Growth', 'Population Growth')}`);
+        case W.EmpireHappiness: return empire(`+${f.value2}% ${T('Empire Happiness', 'Empire Happiness')}`);
+        case W.EmpireIncome: return empire(`+${f.value2}% ${T('Empire Income', 'Empire Income')}`);
+        case W.EmpirePopulationGrowth: return empire(`+${f.value2}% ${T('Population Growth', 'Population Growth')}`);
+        case W.EmpireResearchEnergy: return empire(`+${f.value2}% ${T('Energy Research', 'Energy Research')}`);
+        case W.EmpireResearchHighTech: return empire(`+${f.value2}% ${T('HighTech Research', 'HighTech Research')}`);
+        case W.EmpireResearchWeapons: return empire(`+${f.value2}% ${T('Weapons Research', 'Weapons Research')}`);
+        case W.RaceAchievement: return colony(`+${f.value1}% ${T('Colony Development Bonus', 'Colony Development Bonus')}`);
+        default: return '';
+    }
+}
+
+/** HabitatAttitudeSummary.cs:180 DetermineHabitatWonderBonuses: each completed wonder at the colony. */
+export function habitatWonderBonuses(h: Habitat): string[] {
+    const out: string[] = [];
+    for (const f of (h.facilities ?? []) as (PlanetaryFacility | null)[]) {
+        if (f != null && f.constructionProgress >= 1.0 && f.type === PlanetaryFacilityType.Wonder) out.push(resolveWonderDescriptionShort(f));
+    }
+    return out;
+}
+
+/** HabitatAttitudeSummary.cs:198 DetermineHabitatResourceBonuses: every resource bonus but Happiness
+ *  (Galaxy.2.cs:5517 ResolveDescription(ResourceBonus): "Race Resource Bonus <Effect>[ Source]", the value "#0"). */
+export function habitatResourceBonuses(galaxy: Galaxy, h: Habitat): string[] {
+    const out: string[] = [];
+    for (const b of h.resourceBonuses ?? []) {
+        if (b == null || b.effect === ColonyResourceEffect.Happiness) continue;
+        const effect = ColonyResourceEffect[b.effect];
+        if (effect === undefined || b.effect === ColonyResourceEffect.Undefined) {
+            out.push('');
+            continue;
+        }
+        const name = galaxy.resourceSystem?.resources.find((r) => r.resourceId === b.resourceId)?.name ?? '';
+        const key = `Race Resource Bonus ${effect}${b.appliesOnlyToSources ? ' Source' : ''}`;
+        out.push(formatNet(T(key, key), [name, String(roundAway(b.value))]));
+    }
+    return out;
+}
+
+/** HabitatAttitudeSummary.cs:213 DetermineHabitatRacialBonuses (the dominant race's colony bonuses, in the C# order). */
+export function habitatRacialBonuses(h: Habitat): string[] {
+    const out: string[] = [];
+    const race = h.population?.dominantRace ?? null;
+    if (race === null) return out;
+    const empire = h.empire;
+    // Habitat.Characters.GetNonTransferringCharacters(ColonyGovernor)[0].
+    const governor = ((empire?.characters ?? []) as (Character | null)[]).find((c): c is Character => c != null && c.location === h && c.role === CharacterRole.ColonyGovernor && c.transferDestination == null);
+    if (governor !== undefined && governor !== null) out.push(formatNet(T('Colony governor provides bonuses to this colony', '{0} provides bonuses to this colony'), [governor.name]));
+    if (race.warWearinessAttenuation > 0) {
+        out.push(`${formatNet(T('The RACE give this colony lower war weariness', 'The {0} give this colony lower war weariness'), [race.name])} (-${formatPercent0(race.warWearinessAttenuation / 100.0)})`);
+    }
+    const R = RaceEventType;
+    const eventKey: Partial<Record<RaceEventType, string>> = {
+        [R.NepthysWineVintage]: 'Race Event Colony Description NepthysWineVintage',
+        [R.GreatHuntStrongTroops]: 'Race Event Colony Description GreatHuntStrongTroops',
+        [R.WarriorWaveTroopRecruitment]: 'Race Event Colony Description WarriorWave',
+        [R.AntiXenoRiotsExterminate]: 'Race Event Colony Description AntiXenoRiotsExterminate',
+        [R.XenophobiaNoAssimilate]: 'Race Event Colony Description XenophobiaNoAssimilate',
+        [R.TodashGalacticChampionships]: 'Race Event Colony Description TodashGalacticChampionships',
+        [R.DeathCultExterminate]: 'Race Event Colony Description DeathCultExterminate',
+        [R.PredictiveHistory]: 'Race Event Colony Description PredictiveHistory',
+    };
+    const key = eventKey[h.raceEventType as RaceEventType];
+    if (key !== undefined) out.push(formatNet(T(key, key), h.raceEventType === R.DeathCultExterminate ? [empire?.dominantRace?.name ?? ''] : []));
+    if (race.satisfactionModifier > 0) {
+        out.push(`${formatNet(T('The RACE give this colony higher happiness', 'The {0} give this colony higher happiness'), [race.name])} (+${formatPercent0(race.satisfactionModifier / 100.0)})`);
+    }
+    if (h.slaveryBonusFactor > 1.0) out.push(`${T('Slavery gives this colony higher income', 'Slavery gives this colony higher income')} (+${formatPercent0(Math.fround(h.slaveryBonusFactor - 1))})`);
+    const speed: Partial<Record<HabitatType, number>> = {
+        [HabitatType.Volcanic]: race.colonyConstructionSpeedFactorVolcanic,
+        [HabitatType.Desert]: race.colonyConstructionSpeedFactorDesert,
+        [HabitatType.MarshySwamp]: race.colonyConstructionSpeedFactorMarshySwamp,
+        [HabitatType.Continental]: race.colonyConstructionSpeedFactorContinental,
+        [HabitatType.Ocean]: race.colonyConstructionSpeedFactorOcean,
+        [HabitatType.Ice]: race.colonyConstructionSpeedFactorIce,
+    };
+    const factor = speed[h.type];
+    if (factor !== undefined) {
+        const typeName = resolveDescription(HabitatType as unknown as Record<number, string>, h.type);
+        if (factor > 1.0) out.push(formatNet(T('Race Colony Bonus ConstructionSpeed Increase', 'Race Colony Bonus ConstructionSpeed Increase'), [race.name, signedPercentFormat(factor - 1.0, '+'), typeName]));
+        else if (factor < 1.0) out.push(formatNet(T('Race Colony Bonus ConstructionSpeed Decrease', 'Race Colony Bonus ConstructionSpeed Decrease'), [race.name, signedPercentFormat(factor - 1.0, '-'), typeName]));
+    }
+    const EXT = ColonyPopulationPolicy.Exterminate;
+    if ((h.colonyPopulationPolicy === EXT || h.colonyPopulationPolicyRaceFamily === EXT) && race.colonyPopulationPolicyGrowthFactorExterminate !== 1.0) {
+        let flag = false;
+        for (const pop of h.population?.items ?? []) {
+            if (pop == null || pop.race == null) continue;
+            if (h.colonyPopulationPolicyRaceFamily === EXT && pop.race !== race && pop.race.raceFamily === race.raceFamily) {
+                flag = true;
+                break;
+            }
+            if (h.colonyPopulationPolicy === EXT && pop.race !== race && pop.race.raceFamily !== race.raceFamily) {
+                flag = true;
+                break;
+            }
+        }
+        if (flag) {
+            const g = race.colonyPopulationPolicyGrowthFactorExterminate;
+            if (g > 1.0) out.push(formatNet(T('Race Colony Bonus Extermination Growth Increase', 'Race Colony Bonus Extermination Growth Increase'), [race.name, signedPercentFormat(g - 1.0, '+')]));
+            else if (g < 1.0) out.push(formatNet(T('Race Colony Bonus Extermination Growth Decrease', 'Race Colony Bonus Extermination Growth Decrease'), [race.name, signedPercentFormat(g - 1.0, '-')]));
+        }
+    }
+    if (race.spaceportArmorStrengthFactor > 1.0) out.push(formatNet(T('Race Colony Bonus Spaceport Armor Strength Increase', 'Race Colony Bonus Spaceport Armor Strength Increase'), [race.name, signedPercentFormat(race.spaceportArmorStrengthFactor - 1.0, '+')]));
+    if (race.migrationFactor > 1.0) out.push(formatNet(T('Race Colony Bonus Migration Increase', 'Race Colony Bonus Migration Increase'), [race.name, signedPercentFormat(race.migrationFactor - 1.0, '+')]));
+    if (race.troopRegenerationFactor > 1.0) out.push(formatNet(T('Race Colony Bonus Troop Regeneration Increase', 'Race Colony Bonus Troop Regeneration Increase'), [race.name, signedPercentFormat(race.troopRegenerationFactor - 1.0, '+')]));
+    return out;
+}
+
 /** HabitatAttitudeSummary.DrawSummary: the header and the attitude factors (DetermineHabitatAttitudeFactors). */
 export function colonyAttitudeSummary(galaxy: Galaxy, h: Habitat): { header: string; notes: string[]; factors: AttitudeFactor[] } {
     const rating = safe(() => empireApprovalRating(galaxy, h), 0);
@@ -458,6 +589,17 @@ export function colonyAttitudeSummary(galaxy: Galaxy, h: Habitat): { header: str
         if (empire.economyEfficiency > 1) notes.push(`${T('Economy Efficiency Bonus Description', 'Our economy is running efficiently')} (+${formatPercent0(empire.economyEfficiency - 1)})`);
         else if (empire.economyEfficiency < 1) notes.push(`${T('Economy Efficiency Penalty Description', 'Our economy is running inefficiently')} (-${formatPercent0(1 - empire.economyEfficiency)})`);
     }
+    // DrawSummary 107-178: the pirate corruption line, then the wonder, racial and resource bonus lines.
+    const pirateControl = h.pirateColonyControl;
+    if (pirateControl.count > 0) {
+        let num = 0.0;
+        const highest = pirateControl.getHighestControl();
+        if (highest !== null) num = Math.fround(highest.controlLevel / 10);
+        const best = facilitiesFindBestPirateFacility(h.facilities ?? [], true, true);
+        if (best !== null) num += best.value3 / 100.0;
+        if (num > 0.0) notes.push(`${T('Pirate Corruption Description', 'Pirate corruption')} (+${formatPercent0(num)})`);
+    }
+    notes.push(...habitatWonderBonuses(h), ...habitatRacialBonuses(h), ...habitatResourceBonuses(galaxy, h));
     const factors: AttitudeFactor[] = [];
     const add = (value: number, description: string): void => {
         factors.push({ value, description });
@@ -1112,11 +1254,25 @@ function createColoniesScreen(opts: ColoniesScreenOptions): OpenState {
         page.appendChild(place(box, 0, 0, 540, 271));
         const raceCount = galaxy.races.length;
         for (const c of colonyCharacters(h)) {
+            // CharacterTroopListIconView.cs GenerateCharacterItems: ObtainCharacterImage prescaled to the 56 px image list,
+            // the tooltip the role, a foreign character's empire, ResolveCharacterDescription and the mission.
             const t = el('div', 'col-icon col-icon-char');
-            const role = CharacterRole[c.role] ?? '';
-            t.appendChild(img(chromeImageUrl(`characterRole_${role}.png`), 'col-icon-img'));
-            t.appendChild(el('div', 'col-icon-label', c.name));
-            t.title = `${c.name} (${role.replace(/([a-z])([A-Z])/g, '$1 $2')})`;
+            const pic = characterPortrait(c, 'large', 56);
+            pic.classList.add('col-icon-img');
+            t.appendChild(pic);
+            const label = el('div', 'col-icon-label', c.name);
+            const foreign = c.empire !== null && c.empire !== h.empire;
+            if (foreign) {
+                label.style.color = rgbCss(c.empire!.mainColor);
+                label.style.fontWeight = 'bold';
+            }
+            t.appendChild(label);
+            let tipText = `${resolveRoleDescription(c.role)}\n`;
+            if (foreign) tipText += `${c.empire!.name}\n`;
+            tipText += resolveCharacterDescription(c);
+            const mission = characterMission(c);
+            if (mission !== null) tipText += `\n${T('Mission', 'Mission')}: ${resolveMissionTypeDescription(mission.type)}`;
+            t.title = tipText;
             if (selectedCharacter === c) t.classList.add('col-icon-sel');
             t.addEventListener('click', () => {
                 selectedCharacter = selectedCharacter === c ? null : c;

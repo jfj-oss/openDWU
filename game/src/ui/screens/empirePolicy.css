@@ -177,3 +177,94 @@
     cursor: pointer;
     justify-self: start;
 }
+
+/* Load / Save (btnEmpirePolicyLoad / btnEmpirePolicySave) and their file list. */
+.policy-files {
+    display: flex;
+    gap: 6px;
+    margin-left: auto;
+    margin-right: 8px;
+}
+.policy-file-button {
+    background: rgba(48, 48, 64, 0.9);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 4px;
+    color: #ddd;
+    font: inherit;
+    font-size: 11px;
+    padding: 3px 12px;
+    cursor: pointer;
+}
+.policy-file-button:hover {
+    color: #fff;
+    border-color: rgba(255, 255, 255, 0.35);
+}
+.policy-file-picker {
+    position: absolute;
+    top: 40px;
+    right: 12px;
+    width: 300px;
+    max-height: calc(100% - 60px);
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 10px;
+    background: rgba(20, 22, 28, 0.98);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    border-radius: 6px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
+    z-index: 2;
+}
+.policy-file-title {
+    font-size: 12px;
+    color: #e8d24a;
+    padding-right: 24px;
+}
+.policy-file-cancel {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+}
+.policy-file-list {
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+    min-height: 0;
+}
+.policy-file-entry {
+    text-align: left;
+    background: transparent;
+    border: none;
+    border-radius: 3px;
+    color: #c8ccd2;
+    font: inherit;
+    font-size: 11px;
+    padding: 3px 6px;
+    cursor: pointer;
+}
+.policy-file-entry:hover {
+    background: rgba(255, 255, 255, 0.08);
+    color: #fff;
+}
+.policy-file-saved {
+    color: #8fd18f;
+}
+.policy-file-form {
+    display: flex;
+    gap: 6px;
+}
+.policy-file-name {
+    flex: 1;
+    min-width: 0;
+    background: rgb(48, 48, 64);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    color: rgb(170, 170, 170);
+    font: inherit;
+    font-size: 11px;
+    padding: 3px 6px;
+}
+.policy-file-existing,
+.policy-file-none {
+    font-size: 10px;
+    color: #8a929c;
+}

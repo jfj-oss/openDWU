@@ -188,3 +188,23 @@
 .ch-lead-closed > span {
     opacity: 0.55;
 }
+
+/* txtName: multiline, centred, (170, 170, 170) on the panel, no border until focused (txtName_Enter FixedSingle). */
+.ch-name-box {
+    box-sizing: border-box;
+    resize: none;
+    overflow: hidden;
+    background: transparent;
+    border: 1px solid transparent;
+    color: rgb(170, 170, 170);
+    font-family: inherit;
+    font-size: 25px;
+    font-weight: bold;
+    line-height: 1.15;
+    text-align: center;
+    padding: 0;
+    outline: none;
+}
+.ch-name-box:focus {
+    border-color: rgb(170, 170, 170);
+}

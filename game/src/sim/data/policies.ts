@@ -2,9 +2,8 @@
 // Port of EmpirePolicy.cs: every public field, LoadFromFile (229) /
 // SetNameValuePair (256), the Parse* helpers (788-838), and Galaxy.4.cs
 // ResolveTechFocus (917) / ResolveTechFocuses (1030).
-// SaveToFile/BuildPolicyLine/Clone are not ported: nothing in this codebase
-// writes policy files back out, and object identity/copy is handled by
-// plain object spreads instead of a C#-style Clone() method.
+// SaveToFile (840) / BuildPolicyLine (1052): writeEmpirePolicyFile (the Empire Policy panel's Save). Clone is not
+// ported: copies are plain object spreads (cloneEmpirePolicy).
 
 import { ComponentType } from './components';
 // ShipDesignFocus is defined in researchSystem.ts (owned by another task in
@@ -763,6 +762,12 @@ function setNameValuePair(policy: EmpirePolicy, name: string, value: string): vo
 // Port of EmpirePolicy.LoadFromFile: "name ;value" lines, "'" comments.
 export function parseEmpirePolicy(text: string): EmpirePolicy {
     const policy = defaultEmpirePolicy();
+    applyEmpirePolicyText(policy, text);
+    return policy;
+}
+
+/** EmpirePolicy.cs 229 LoadFromFile's line loop: each "name ;value" line through SetNameValuePair, in file order. */
+function applyEmpirePolicyText(policy: EmpirePolicy, text: string): void {
     for (const line of text.split(/\r?\n/)) {
         if (line.trim() === '' || line.trim().substring(0, 1) === "'") continue;
         const i = line.indexOf(';');
@@ -771,7 +776,6 @@ export function parseEmpirePolicy(text: string): EmpirePolicy {
         const value = line.substring(i + 1).trim();
         setNameValuePair(policy, name, value);
     }
-    return policy;
 }
 
 // Port of Galaxy.4.cs ResolveTechFocuses(policy): category wins over type per slot.
@@ -785,4 +789,287 @@ export function resolveTechFocuses(policy: EmpirePolicy | null): { categories: C
         }
     }
     return { categories, types };
+}
+
+// Port of Galaxy.4.cs:490-545 ResolveTechFocusIndex(ComponentType).
+export function resolveTechFocusIndexType(type: ComponentType): number {
+    switch (type) {
+        case ComponentType.WeaponPhaser: return 2;
+        case ComponentType.WeaponRailGun: return 3;
+        case ComponentType.WeaponBombard: return 5;
+        case ComponentType.WeaponMissile: return 6;
+        case ComponentType.Armor: return 10;
+        case ComponentType.EngineMainThrust: return 13;
+        case ComponentType.EngineVectoring: return 14;
+        case ComponentType.DamageControl: return 18;
+        case ComponentType.ComputerTargetting: return 19;
+        case ComponentType.ComputerCountermeasures: return 20;
+        case ComponentType.HabitationMedicalCenter: return 22;
+        case ComponentType.HabitationRecreationCenter: return 23;
+        case ComponentType.WeaponTractorBeam: return 24;
+        case ComponentType.AssaultPod: return 25;
+        case ComponentType.WeaponGravityBeam: return 26;
+        case ComponentType.WeaponAreaGravity: return 27;
+        default: return 0;
+    }
+}
+
+// Port of Galaxy.4.cs:547-590 ResolveTechFocusIndex(ComponentCategoryType).
+export function resolveTechFocusIndexCategory(category: ComponentCategoryType): number {
+    switch (category) {
+        case ComponentCategoryType.WeaponBeam: return 1;
+        case ComponentCategoryType.WeaponTorpedo: return 4;
+        case ComponentCategoryType.WeaponArea: return 7;
+        case ComponentCategoryType.WeaponIon: return 8;
+        case ComponentCategoryType.Fighter: return 9;
+        case ComponentCategoryType.Shields: return 11;
+        case ComponentCategoryType.Reactor: return 12;
+        case ComponentCategoryType.HyperDrive: return 15;
+        case ComponentCategoryType.HyperDisrupt: return 16;
+        case ComponentCategoryType.Construction: return 17;
+        case ComponentCategoryType.Sensor: return 21;
+        case ComponentCategoryType.AssaultPod: return 25;
+        default: return 0;
+    }
+}
+
+/** .NET Framework `ToString("G", InvariantCulture)` of a float (7 significant digits) / double (15): the shortest
+ *  rounded text, scientific ("E+XX") when the exponent is >= the precision or < -5. */
+function netGeneral(value: number, precision: number): string {
+    if (value === 0 || !Number.isFinite(value)) return value === 0 ? '0' : String(value);
+    const rounded = Number(value.toPrecision(precision));
+    const exponent = Math.floor(Math.log10(Math.abs(rounded)));
+    if (exponent >= precision || exponent < -5) {
+        const [m, e] = rounded.toExponential(precision - 1).split('e');
+        const mantissa = m.includes('.') ? m.replace(/0+$/, '').replace(/\.$/, '') : m;
+        const n = Number(e);
+        return `${mantissa}E${n < 0 ? '-' : '+'}${String(Math.abs(n)).padStart(2, '0')}`;
+    }
+    return String(rounded);
+}
+
+type PolicyFileKind = 'bool' | 'int' | 'float' | 'double' | 'enum';
+type PolicyFileField = readonly [name: string, field: keyof EmpirePolicy, kind: PolicyFileKind] | readonly [name: string, field: 'tech', slot: `tech${1 | 2 | 3 | 4 | 5 | 6}`];
+
+/** EmpirePolicy.cs 840 SaveToFile: the lines it writes, in its order (file name, field, BuildPolicyLine value type). */
+const POLICY_FILE_FIELDS: readonly PolicyFileField[] = [
+    ['ImmediatelyRecruitNewTroopsWhenColonize', 'colonyActionForNewTroopRecruitment', 'bool'],
+    ['ColonyAllowFacilityCloningFacility', 'colonyAllowFacilityCloningFacility', 'bool'],
+    ['ColonyAllowFacilityFortifiedBunker', 'colonyAllowFacilityFortifiedBunker', 'bool'],
+    ['ColonyAllowFacilityGiantIonCannon', 'colonyAllowFacilityGiantIonCannon', 'bool'],
+    ['ColonyAllowFacilityPlanetaryShield', 'colonyAllowFacilityPlanetaryShield', 'bool'],
+    ['ColonyAllowFacilityRegionalCapital', 'colonyAllowFacilityRegionalCapital', 'bool'],
+    ['ColonyAllowFacilityRoboticTroopFoundry', 'colonyAllowFacilityRoboticTroopFoundry', 'bool'],
+    ['ColonyAllowFacilityTerraformingFacility', 'colonyAllowFacilityTerraformingFacility', 'bool'],
+    ['ColonyAllowFacilityTroopTrainingCenter', 'colonyAllowFacilityTroopTrainingCenter', 'bool'],
+    ['ColonyAllowFacilityArmoredFactory', 'colonyAllowFacilityArmoredFactory', 'bool'],
+    ['ColonyAllowFacilitySpyAcademy', 'colonyAllowFacilitySpyAcademy', 'bool'],
+    ['ColonyAllowFacilityScienceAcademy', 'colonyAllowFacilityScienceAcademy', 'bool'],
+    ['ColonyAllowFacilityNavalAcademy', 'colonyAllowFacilityNavalAcademy', 'bool'],
+    ['ColonyAllowFacilityMilitaryAcademy', 'colonyAllowFacilityMilitaryAcademy', 'bool'],
+    ['ColonyFacilityPopulationThresholdCloningFacility', 'colonyFacilityPopulationThresholdCloningFacility', 'int'],
+    ['ColonyFacilityPopulationThresholdFortifiedBunker', 'colonyFacilityPopulationThresholdFortifiedBunker', 'int'],
+    ['ColonyFacilityPopulationThresholdGiantIonCannon', 'colonyFacilityPopulationThresholdGiantIonCannon', 'int'],
+    ['ColonyFacilityPopulationThresholdPlanetaryShield', 'colonyFacilityPopulationThresholdPlanetaryShield', 'int'],
+    ['ColonyFacilityPopulationThresholdRegionalCapital', 'colonyFacilityPopulationThresholdRegionalCapital', 'int'],
+    ['ColonyFacilityPopulationThresholdRoboticTroopFoundry', 'colonyFacilityPopulationThresholdRoboticTroopFoundry', 'int'],
+    ['ColonyFacilityPopulationThresholdTerraformingFacility', 'colonyFacilityPopulationThresholdTerraformingFacility', 'int'],
+    ['ColonyFacilityPopulationThresholdTroopTrainingCenter', 'colonyFacilityPopulationThresholdTroopTrainingCenter', 'int'],
+    ['ColonyFacilityPopulationThresholdArmoredFactory', 'colonyFacilityPopulationThresholdArmoredFactory', 'int'],
+    ['ColonyFacilityPopulationThresholdSpyAcademy', 'colonyFacilityPopulationThresholdSpyAcademy', 'int'],
+    ['ColonyFacilityPopulationThresholdScienceAcademy', 'colonyFacilityPopulationThresholdScienceAcademy', 'int'],
+    ['ColonyFacilityPopulationThresholdNavalAcademy', 'colonyFacilityPopulationThresholdNavalAcademy', 'int'],
+    ['ColonyFacilityPopulationThresholdMilitaryAcademy', 'colonyFacilityPopulationThresholdMilitaryAcademy', 'int'],
+    ['ColonyPopulationThresholdTroopRecruitment', 'colonyPopulationThresholdTroopRecruitment', 'int'],
+    ['ColonyTaxRateIncreaseWhenAtWar', 'colonyTaxRateIncreaseWhenAtWar', 'bool'],
+    ['ColonyTaxRateLargeColony', 'colonyTaxRateLargeColony', 'int'],
+    ['ColonyTaxRateMediumColony', 'colonyTaxRateMediumColony', 'int'],
+    ['ColonyTaxRateSmallColony', 'colonyTaxRateSmallColony', 'int'],
+    ['MilitaryConstructionLevel', 'constructionMilitary', 'int'],
+    ['ConstructionMilitaryCapitalShip', 'constructionMilitaryCapitalShip', 'float'],
+    ['ConstructionMilitaryCarrier', 'constructionMilitaryCarrier', 'float'],
+    ['ConstructionMilitaryCruiser', 'constructionMilitaryCruiser', 'float'],
+    ['ConstructionMilitaryDestroyer', 'constructionMilitaryDestroyer', 'float'],
+    ['ConstructionMilitaryEscort', 'constructionMilitaryEscort', 'float'],
+    ['ConstructionMilitaryFrigate', 'constructionMilitaryFrigate', 'float'],
+    ['ConstructionMilitaryTroopTransport', 'constructionMilitaryTroopTransport', 'float'],
+    ['ConstructionSpaceportLargeColonyPopulationThreshold', 'constructionSpaceportLargeColonyPopulationThreshold', 'int'],
+    ['ConstructionSpaceportMediumColonyPopulationThreshold', 'constructionSpaceportMediumColonyPopulationThreshold', 'int'],
+    ['ConstructionSpaceportSmallColonyPopulationThreshold', 'constructionSpaceportSmallColonyPopulationThreshold', 'int'],
+    ['ConstructionSpaceportMinimumDistance', 'constructionSpaceportMinimumDistance', 'int'],
+    ['DiplomacySendGiftsUpToAmount', 'diplomacySendGiftsUpToAmount', 'int'],
+    ['DiplomacyTradeSanctionsUseBlockades', 'diplomacyTradeSanctionsUseBlockades', 'bool'],
+    ['FleetMilitaryProportionForFleets', 'fleetMilitaryProportionForFleets', 'float'],
+    ['FleetStrikeForceTypicalSize', 'fleetStrikeForceTypicalSize', 'int'],
+    ['FleetTypicalSize', 'fleetTypicalSize', 'int'],
+    ['IntelligenceAllowMissionDeepCover', 'intelligenceAllowMissionDeepCover', 'bool'],
+    ['IntelligenceAllowMissionInciteRevolution', 'intelligenceAllowMissionInciteRevolution', 'bool'],
+    ['IntelligenceAllowMissionSabotageColony', 'intelligenceAllowMissionSabotageColony', 'bool'],
+    ['IntelligenceAllowMissionSabotageConstruction', 'intelligenceAllowMissionSabotageConstruction', 'bool'],
+    ['IntelligenceAllowMissionStealGalaxyMap', 'intelligenceAllowMissionStealGalaxyMap', 'bool'],
+    ['IntelligenceAllowMissionStealOperationsMap', 'intelligenceAllowMissionStealOperationsMap', 'bool'],
+    ['IntelligenceAllowMissionStealTechData', 'intelligenceAllowMissionStealTechData', 'bool'],
+    ['IntelligenceAllowMissionStealTerritoryMap', 'intelligenceAllowMissionStealTerritoryMap', 'bool'],
+    ['IntelligenceAllowMissionAssassinateCharacter', 'intelligenceAllowMissionAssassinateCharacter', 'bool'],
+    ['IntelligenceAllowMissionDestroyBase', 'intelligenceAllowMissionDestroyBase', 'bool'],
+    ['IntelligenceCounterIntelligenceProportion', 'intelligenceCounterIntelligenceProportion', 'float'],
+    ['IntelligenceUseEspionageAgainstEmpireWhen', 'intelligenceUseEspionageAgainstEmpireWhen', 'int'],
+    ['IntelligenceUseSabotageAgainstEmpireWhen', 'intelligenceUseSabotageAgainstEmpireWhen', 'int'],
+    ['ResearchDesignAutoRetrofit', 'researchDesignAutoRetrofit', 'bool'],
+    ['ResearchDesignOverallFocus', 'researchDesignOverallFocus', 'enum'],
+    ['ResearchDesignTechFocus1', 'tech', 'tech1'],
+    ['ResearchDesignTechFocus2', 'tech', 'tech2'],
+    ['ResearchDesignTechFocus3', 'tech', 'tech3'],
+    ['ResearchDesignTechFocus4', 'tech', 'tech4'],
+    ['ResearchDesignTechFocus5', 'tech', 'tech5'],
+    ['ResearchDesignTechFocus6', 'tech', 'tech6'],
+    ['ResearchDesignAutoUpgradeFighters', 'researchDesignAutoUpgradeFighters', 'bool'],
+    ['WarAttacksAllowColonyBombardment', 'warAttacksAllowColonyBombardment', 'int'],
+    ['WarAttacksAllowPlanetDestroying', 'warAttacksAllowPlanetDestroying', 'int'],
+    ['WarAttacksHarassEnemies', 'warAttacksHarassEnemies', 'bool'],
+    ['TradeWithOtherEmpires', 'tradeWithOtherEmpires', 'bool'],
+    ['EngageInTourism', 'engageInTourism', 'bool'],
+    ['NewColonyPopulationPolicyYourRaceFamily', 'newColonyPopulationPolicyYourRaceFamily', 'enum'],
+    ['NewColonyPopulationPolicyAllRaces', 'newColonyPopulationPolicyAllRaces', 'enum'],
+    ['ImplementEnslavementWithPenalColonies', 'implementEnslavementWithPenalColonies', 'bool'],
+    ['HomeworldDefensePriority', 'homeworldDefensePriority', 'double'],
+    ['ProtectLeaderAtAllCosts', 'protectLeaderAtAllCosts', 'bool'],
+    ['PrioritizeBuildWonderId', 'prioritizeBuildWonderId', 'int'],
+    ['ColonizeContinentalPriority', 'colonizeContinentalPriority', 'double'],
+    ['ColonizeMarshySwampPriority', 'colonizeMarshySwampPriority', 'double'],
+    ['ColonizeOceanPriority', 'colonizeOceanPriority', 'double'],
+    ['ColonizeDesertPriority', 'colonizeDesertPriority', 'double'],
+    ['ColonizeIcePriority', 'colonizeIcePriority', 'double'],
+    ['ColonizeVolcanicPriority', 'colonizeVolcanicPriority', 'double'],
+    ['ColonizeRuinsPriority', 'colonizeRuinsPriority', 'double'],
+    ['ControlRestrictedResourcesPriority', 'controlRestrictedResourcesPriority', 'double'],
+    ['ResearchIndustryFocus', 'researchIndustryFocus', 'enum'],
+    ['ResearchPriority', 'researchPriority', 'double'],
+    ['TradePriority', 'tradePriority', 'double'],
+    ['AlliancePriority', 'alliancePriority', 'double'],
+    ['SubjugationPriority', 'subjugationPriority', 'double'],
+    ['TourismPriority', 'tourismPriority', 'double'],
+    ['ExplorationPriority', 'explorationPriority', 'double'],
+    ['WarWillingness', 'warWillingness', 'double'],
+    ['BreakTreatyWillingness', 'breakTreatyWillingness', 'double'],
+    ['InvasionOverkillFactor', 'invasionOverkillFactor', 'double'],
+    ['ShipBattleCautionFactor', 'shipBattleCautionFactor', 'double'],
+    ['DefaultMilitaryFleeWhen', 'defaultMilitaryFleeWhen', 'enum'],
+    ['DesignUpgradeEscort', 'designUpgradeEscort', 'bool'],
+    ['DesignUpgradeFrigate', 'designUpgradeFrigate', 'bool'],
+    ['DesignUpgradeDestroyer', 'designUpgradeDestroyer', 'bool'],
+    ['DesignUpgradeCruiser', 'designUpgradeCruiser', 'bool'],
+    ['DesignUpgradeCapitalShip', 'designUpgradeCapitalShip', 'bool'],
+    ['DesignUpgradeTroopTransport', 'designUpgradeTroopTransport', 'bool'],
+    ['DesignUpgradeCarrier', 'designUpgradeCarrier', 'bool'],
+    ['DesignUpgradeResupplyShip', 'designUpgradeResupplyShip', 'bool'],
+    ['DesignUpgradeExplorationShip', 'designUpgradeExplorationShip', 'bool'],
+    ['DesignUpgradeColonyShip', 'designUpgradeColonyShip', 'bool'],
+    ['DesignUpgradeConstructionShip', 'designUpgradeConstructionShip', 'bool'],
+    ['DesignUpgradeSmallSpacePort', 'designUpgradeSmallSpacePort', 'bool'],
+    ['DesignUpgradeMediumSpacePort', 'designUpgradeMediumSpacePort', 'bool'],
+    ['DesignUpgradeLargeSpacePort', 'designUpgradeLargeSpacePort', 'bool'],
+    ['DesignUpgradeResortBase', 'designUpgradeResortBase', 'bool'],
+    ['DesignUpgradeGenericBase', 'designUpgradeGenericBase', 'bool'],
+    ['DesignUpgradeEnergyResearchStation', 'designUpgradeEnergyResearchStation', 'bool'],
+    ['DesignUpgradeWeaponsResearchStation', 'designUpgradeWeaponsResearchStation', 'bool'],
+    ['DesignUpgradeHighTechResearchStation', 'designUpgradeHighTechResearchStation', 'bool'],
+    ['DesignUpgradeMonitoringStation', 'designUpgradeMonitoringStation', 'bool'],
+    ['DesignUpgradeDefensiveBase', 'designUpgradeDefensiveBase', 'bool'],
+    ['DesignUpgradeSmallFreighter', 'designUpgradeSmallFreighter', 'bool'],
+    ['DesignUpgradeMediumFreighter', 'designUpgradeMediumFreighter', 'bool'],
+    ['DesignUpgradeLargeFreighter', 'designUpgradeLargeFreighter', 'bool'],
+    ['DesignUpgradePassengerShip', 'designUpgradePassengerShip', 'bool'],
+    ['DesignUpgradeGasMiningShip', 'designUpgradeGasMiningShip', 'bool'],
+    ['DesignUpgradeMiningShip', 'designUpgradeMiningShip', 'bool'],
+    ['DesignUpgradeGasMiningStation', 'designUpgradeGasMiningStation', 'bool'],
+    ['DesignUpgradeMiningStation', 'designUpgradeMiningStation', 'bool'],
+    ['CaptureTargetConditionShip', 'captureTargetConditionShip', 'int'],
+    ['CaptureTargetConditionBase', 'captureTargetConditionBase', 'int'],
+    ['OfferPirateAttackMissions', 'offerPirateAttackMissions', 'int'],
+    ['BidOnPirateAttackMissions', 'bidOnPirateAttackMissions', 'bool'],
+    ['BidOnPirateDefendMissions', 'bidOnPirateDefendMissions', 'bool'],
+    ['OfferDefensivePirateMissions', 'offerDefensivePirateMissions', 'int'],
+    ['OfferDefensivePirateMissionsSituation', 'offerDefensivePirateMissionsSituation', 'int'],
+    ['AcceptPirateSmugglingMissions', 'acceptPirateSmugglingMissions', 'bool'],
+    ['OfferSmugglingPirateMissions', 'offerSmugglingPirateMissions', 'int'],
+    ['PirateSmugglerFreighterLevel', 'pirateSmugglerFreighterLevel', 'double'],
+    ['PirateSmugglerMiningLevel', 'pirateSmugglerMiningLevel', 'double'],
+    ['PirateSmugglerPassengerLevel', 'pirateSmugglerPassengerLevel', 'double'],
+    ['CaptureEnlistMilitaryShip', 'captureEnlistMilitaryShip', 'int'],
+    ['CaptureDisassembleMilitaryShip', 'captureDisassembleMilitaryShip', 'int'],
+    ['CaptureEnlistCivilianShip', 'captureEnlistCivilianShip', 'int'],
+    ['CaptureDisassembleCivilianShip', 'captureDisassembleCivilianShip', 'int'],
+    ['CaptureEnlistBase', 'captureEnlistBase', 'int'],
+    ['UpgradeEnlistedMilitaryShips', 'upgradeEnlistedMilitaryShips', 'bool'],
+    ['UpgradeEnlistedCivilianShips', 'upgradeEnlistedCivilianShips', 'bool'],
+    ['TroopRecruitInfantryLevel', 'troopRecruitInfantryLevel', 'double'],
+    ['TroopRecruitArmorLevel', 'troopRecruitArmorLevel', 'double'],
+    ['TroopRecruitArtilleryLevel', 'troopRecruitArtilleryLevel', 'double'],
+    ['TroopRecruitSpecialForcesLevel', 'troopRecruitSpecialForcesLevel', 'double'],
+    ['TroopUseDefaultTransportLoadout', 'troopUseDefaultTransportLoadout', 'bool'],
+    ['TroopDefaultTransportLoadoutInfantry', 'troopDefaultTransportLoadoutInfantry', 'float'],
+    ['TroopDefaultTransportLoadoutArmor', 'troopDefaultTransportLoadoutArmor', 'float'],
+    ['TroopDefaultTransportLoadoutArtillery', 'troopDefaultTransportLoadoutArtillery', 'float'],
+    ['TroopDefaultTransportLoadoutSpecialForces', 'troopDefaultTransportLoadoutSpecialForces', 'float'],
+    ['TroopGarrisonMinimumPerColony', 'troopGarrisonMinimumPerColony', 'int'],
+    ['TroopGarrisonLevel', 'troopGarrisonLevel', 'double'],
+    ['UseExplorationShipsToScoutEnemySystems', 'useExplorationShipsToScoutEnemySystems', 'bool'],
+    ['BuildPlanetDestroyers', 'buildPlanetDestroyers', 'bool'],
+];
+
+/** EmpirePolicy.cs 1052 BuildPolicyLine(name, value): `name\t\t;value` (bool Y / N, numbers invariant, enums as int). */
+function buildPolicyLine(name: string, value: number | boolean, kind: PolicyFileKind): string {
+    let str = name + '\t\t;';
+    switch (kind) {
+        case 'bool':
+            str += value ? 'Y' : 'N';
+            break;
+        case 'float':
+            str += netGeneral(Math.fround(value as number), 7);
+            break;
+        case 'double':
+            str += netGeneral(value as number, 15);
+            break;
+        default:
+            str += String(Math.trunc(value as number));
+            break;
+    }
+    return str;
+}
+
+/** EmpirePolicy.cs 840 SaveToFile: the policy file text (the header comment, a blank line, one line per setting).
+ *  ColonyActionForNewBuildDesign (a Design) is not in the file, as in the C#. */
+export function writeEmpirePolicyFile(policy: EmpirePolicy): string {
+    const lines = ["'Distant Worlds - Empire Policy - 1.9.0.0", ''];
+    for (const f of POLICY_FILE_FIELDS) {
+        if (f[1] === 'tech') {
+            const slot = Number(f[2].substring(4)) as 1 | 2 | 3 | 4 | 5 | 6;
+            const category = policy[`researchDesignTechFocus${slot}`];
+            const type = policy[`researchDesignTechFocusType${slot}`];
+            // 916-921: the category's index, else the type's, else 0.
+            let num = 0;
+            if (category !== ComponentCategoryType.Undefined) num = resolveTechFocusIndexCategory(category);
+            else if (type !== ComponentType.Undefined) num = resolveTechFocusIndexType(type);
+            lines.push(buildPolicyLine(f[0], num, 'int'));
+        } else {
+            lines.push(buildPolicyLine(f[0], policy[f[1]] as number | boolean, f[2]));
+        }
+    }
+    // StreamWriter.WriteLine ends every line with Environment.NewLine.
+    return lines.map((l) => l + '\r\n').join('');
+}
+
+/** A copy of `policy` (EmpirePolicy.Clone: a field copy; the Design reference is shared). */
+export function cloneEmpirePolicy(policy: EmpirePolicy): EmpirePolicy {
+    return { ...policy, researchDesignTechFocus: policy.researchDesignTechFocus.map((f) => ({ ...f })) };
+}
+
+/** EmpirePolicy.cs 229 LoadFromFile on an existing policy (Main.Part3.cs btnEmpirePolicyLoad_Click:
+ *  `PlayerEmpire.Policy.LoadFromFile(file)`): the file's settings over a copy of `current`; settings the file does not
+ *  name keep their value (ColonyActionForNewBuildDesign among them). */
+export function loadEmpirePolicyFile(current: EmpirePolicy, text: string): EmpirePolicy {
+    const policy = cloneEmpirePolicy(current);
+    applyEmpirePolicyText(policy, text);
+    return policy;
 }

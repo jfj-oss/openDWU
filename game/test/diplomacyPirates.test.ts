@@ -161,7 +161,7 @@ describe('a non-pirate player speaking with a pirate faction (Main.Part9.cs:191-
         const rel2 = obtainPirateRelation(pirate, player);
         rel2.type = rel.type;
         const opts = listProposals(g, player, pirate);
-        expect(opts.map((o) => o.id)).toEqual(['PIRATE_PROTECTIONPROPOSE']);
+        expect(opts.map((o) => o.id)).toEqual(['PIRATE_PROTECTIONPROPOSE', 'PIRATE_BUYINFO']);
         const price = calculatePirateProtectionPricePerMonth(g, pirate, player).price;
         const r = submitProposal(g, player, pirate, 'PIRATE_PROTECTIONPROPOSE');
         expect(r.ok).toBe(true);
@@ -177,7 +177,7 @@ describe('a non-pirate player speaking with a pirate faction (Main.Part9.cs:191-
         expect(player.stateMoney).toBe(before - price);
         expect(pirate.pirateRelations.getRelationByOtherEmpire(player)!.monthlyProtectionFeeToThisEmpire).toBe(price);
         // Once in force, the only option is to cancel; a second accept is "already paid".
-        expect(listProposals(g, player, pirate).map((o) => o.id)).toEqual(['CANCELPIRATEPROTECTION']);
+        expect(listProposals(g, player, pirate).map((o) => o.id)).toEqual(['CANCELPIRATEPROTECTION', 'PIRATE_BUYINFO']);
         expect(submitProposal(g, player, pirate, accept.id).reply).toBe('PIRATE_PROTECTIONALREADYPAID');
     }, 300000);
 
