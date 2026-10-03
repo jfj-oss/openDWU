@@ -101,7 +101,6 @@ import {
 } from './playerOrders';
 import { grantCharter, nationaliseCompany, releaseCompany, renewCharter, type CharterTerms } from '../scenario/charteredCompanies/charters';
 import { obtainPirateRelation, PirateRelationType } from '../pirateRelations';
-import { obtainDiplomaticRelation } from '../diplomacy';
 import { acceptPirateProtection, calculatePirateProtectionPricePerMonth } from '../pirates/pirateRelationsAI';
 import { orderSalvage } from '../scenario/wreckage/wreckage';
 import { exposeUncoveredPlanetDestroyer, investigateEncounteredBuiltObject, warnTargetOfPirateAttackFunding } from './eventPanelActions';
