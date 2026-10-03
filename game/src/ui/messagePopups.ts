@@ -543,7 +543,10 @@ export function installMessagePopups(opts: MessagePopupsOptions): void {
                 // acceptPirateOfferProtection → the ported Empire.3.cs 4213 AcceptPirateProtection).
                 issuePlayerCommand(galaxy, player, 'acceptPirateOfferProtection', [sender], (result) => {
                     showToast(
-                        !result.accepted
+                        // cost < 0: the order never reached the game (sim worker: simworker/commandFailure.ts).
+                        result.cost < 0
+                            ? 'The offer could not be answered (see the console)'
+                            : !result.accepted
                             ? 'We already have an arrangement with them'
                             : result.cost > 0
                               ? `Protection accepted — ${pirateProtectionPriceText(result.cost)}`

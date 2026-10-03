@@ -3614,6 +3614,18 @@ export function selectionButton(ctx: SelectionContext, action: ShipAction | null
 }
 
 /** method_593 + method_585/588: the eight buttons, or null when the C# leaves them unchanged. */
+/**
+ * Whether selectionButtons(ctx, subMenu) may draw galaxy.rnd: an unowned / independent habitat's top page (habitatSlots,
+ * Main.Part3.cs 2941-3200) or a habitat's Build Options (buildOptionsSlots, 2152-2310). Every other page only reads the
+ * game (the UI builds those itself; these go through the journaled 'selectionButtons' command, playerOps.ts).
+ */
+export function selectionButtonsDrawRandom(ctx: { galaxy: Galaxy; empire: Empire; selected: ShipActionSelection }, subMenu: ShipAction | null): boolean {
+    const sel = ctx.selected;
+    if (!isHabitat(sel)) return false;
+    if (subMenu === null) return sel.owner !== ctx.empire && (sel.owner === null || sel.owner === ctx.galaxy.independentEmpire);
+    return subMenu.actionType === ShipActionType.BuildOptions;
+}
+
 export function selectionButtons(ctx: SelectionContext, subMenu: ShipAction | null): SelectionButton[] | null {
     const acts = selectionActions(ctx, subMenu);
     if (acts === null) return null;

@@ -552,6 +552,25 @@ export function calculateForceStrengths(
     attackingTroops: TroopList,
     attackingCharacters: Character[] | null,
 ): { defendingStrength: number; attackingStrength: number } {
+    const r = calculateForceStrengthsDetailed(galaxy, habitat, defender, attacker, defendingTroops, defendingCharacters, attackingTroops, attackingCharacters);
+    return { defendingStrength: r.defendingStrength, attackingStrength: r.attackingStrength };
+}
+
+/**
+ * The same, with the overload's other outs (BaconHabitat.cs 1188: totalDefendModifier, totalAttackModifier,
+ * modifierAmountsDefense / modifierReasonsDefense, modifierAmountsAttack / modifierReasonsAttack): the Ground Report
+ * header lists the modifiers (ColonyInvasion.cs Draw, ui/screens/groundReport.ts). No Rnd, no writes.
+ */
+export function calculateForceStrengthsDetailed(
+    galaxy: Galaxy,
+    habitat: Habitat,
+    defender: Empire | null,
+    attacker: Empire | null,
+    defendingTroops: TroopList,
+    defendingCharacters: Character[] | null,
+    attackingTroops: TroopList,
+    attackingCharacters: Character[] | null,
+): { defendingStrength: number; attackingStrength: number; totalDefendModifier: number; totalAttackModifier: number; defend: Modifiers; attack: Modifiers } {
     const { defend, attack } = determineTroopModifiers(galaxy, habitat, defendingTroops, attackingTroops, defendingCharacters, attackingCharacters);
     if (
         attacker !== null &&
@@ -566,7 +585,7 @@ export function calculateForceStrengths(
         // defendingTroops[0].Empire.PirateEmpireBaseHabitat: a null troop empire throws inside the Bacon try block (the
         // catch leaves both strengths at 0).
         const e0 = troopEmpire(defendingTroops.items[0]);
-        if (e0 === null) return { defendingStrength: 0, attackingStrength: 0 };
+        if (e0 === null) return { defendingStrength: 0, attackingStrength: 0, totalDefendModifier: 0, totalAttackModifier: 0, defend: { amounts: [], reasons: [] }, attack: { amounts: [], reasons: [] } };
         if (e0.pirateEmpireBaseHabitat === null) {
             const num = defender.civilityRating - attacker.civilityRating;
             if (num < -5.0) {
@@ -584,7 +603,7 @@ export function calculateForceStrengths(
     for (let index = 0; index < attack.amounts.length; ++index) totalAttackModifier += attack.amounts[index];
     const defendingStrength = csDoubleToInt((1.0 + totalDefendModifier) * defendingTroops.totalDefendStrength);
     const attackingStrength = csDoubleToInt((1.0 + totalAttackModifier) * attackingTroops.totalAttackStrength);
-    return { defendingStrength, attackingStrength };
+    return { defendingStrength, attackingStrength, totalDefendModifier, totalAttackModifier, defend, attack };
 }
 
 /** Habitat.cs 4447 CalculateForceStrength(troops, characters, defending, out amounts, out reasons). No Rnd. */

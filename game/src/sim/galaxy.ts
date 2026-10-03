@@ -4789,6 +4789,13 @@ export class Galaxy {
     playerVictoryConditionsToAchieve: EmpireVictoryConditions | null = null;
     playerVictoryConditionsToPrevent: EmpireVictoryConditions | null = null;
     /**
+     * Game.PlayerHotkey0..9 (Game.cs 48-57, `public object`, serialized with the Game): the player's control groups,
+     * each the _Game.SelectedObject at the moment Ctrl+digit was pressed (Main.Part7.cs Main_KeyUp SetControlGroupN).
+     * Kept on the galaxy like gameIsFinished / gameVictor (our Game is not saved). `declare`d: set only once the player
+     * assigns a group (player/controlGroups.ts), so games and saves without groups are unchanged.
+     */
+    declare playerHotkeys?: (object | null)[];
+    /**
      * Local record of the achievements the C# would unlock on Steam for the player (Empire.1.cs 3992
      * SteamAPI.SetAchievementIfNecessary: ResolveAchievementName, achievements.ts). No Steam in the port.
      */

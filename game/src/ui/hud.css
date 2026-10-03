@@ -309,3 +309,40 @@
     gap: 4px;
     margin-top: 6px;
 }
+
+/* T key: Main.Part7.cs:3085 CyclePanelVisibility (ui/panelVisibility.ts). 'map' = method_472(true): every HUD panel
+   and button but the system-map corner (pnlSystemMap and our options list with its zoom / overlay rows) and the diplomatic message queue (the stub list); 'none' =
+   method_472(false): those too. The star date (pnlTopLeftBar's text) and the money block are drawn by MainView itself
+   (method_18) and stay. */
+body[data-panels] #hud > .hud-el:not([data-hud="pnlMoney"]):not([data-hud="pnlTopLeftBar"]):not([data-hud="pnlOptionsList"]):not([data-hud="pnlSystemMap"]),
+body[data-panels] #hud [data-hud="pnlTopLeftBar"] .top-btn,
+body[data-panels="none"] #hud > [data-hud="pnlOptionsList"],
+body[data-panels="none"] #hud > [data-hud="pnlSystemMap"],
+body[data-panels="none"] .message-stubs {
+    display: none !important;
+}
+/* The system mini-map (hudSystemMap.ts): pnlSystemMap 330 × 290, BackColor (48, 48, 64), a 3 px bevelled border
+   (BorderColor1-4 at alpha 96, drawn inside the panel), picSystem 280 × 280 at (45, 5). */
+.hud-sysmap {
+    position: absolute;
+    box-sizing: border-box;
+    padding: 0;
+    background: rgb(48, 48, 64);
+    border: none;
+    border-radius: 0;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    box-shadow:
+        inset 1px 1px 0 rgba(200, 200, 200, 0.376),
+        inset -1px -1px 0 rgba(20, 20, 20, 0.376),
+        inset 2px 2px 0 rgba(140, 140, 140, 0.376),
+        inset -2px -2px 0 rgba(80, 80, 80, 0.376),
+        0 2px 8px rgba(0, 0, 0, 0.4);
+    overflow: hidden;
+}
+.hud-sysmap-pic {
+    position: absolute;
+    display: block;
+    background: #000;
+    cursor: crosshair;
+}

@@ -77,11 +77,6 @@ export function inWorker(game: Game, gameData: GameData): WorkerSide {
         const c = structuredClone(m);
         if (c.type === 'command') host.command(c);
         else if (c.type === 'clock') host.clock(c);
-        else if (c.type === 'query') {
-            // As worker.ts: run it at once and answer with a message of its own.
-            host.query(c);
-            client.receive(structuredClone(host.flush()));
-        }
     };
     const client = new SimClientCore(gameData, structuredClone(host.snapshot()), { post: toHost, now: fakeClock() });
     // Every main-thread write to the replica (the screens' code included) is found; nothing reported while quiet.

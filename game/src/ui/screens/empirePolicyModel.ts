@@ -719,12 +719,15 @@ export interface PolicyAutomationChange {
  * The automation write applyPolicyPanel would make for one control, or null when the empire already has that value.
  * The Empire Policy screen issues these as `setEmpireControl` commands instead of writing the empire (a screen never
  * writes the game: in worker mode it is a read-only replica, and in-thread the write would bypass the command log).
+ * `sent`: values already issued for a field and possibly not on the replica yet (a change X → Y → X within one worker
+ * round trip must still send the X).
  */
-export function policyAutomationChange(empire: Empire, field: PolicyAutomationField, value: number | boolean): PolicyAutomationChange | null {
+export function policyAutomationChange(empire: Empire, field: PolicyAutomationField, value: number | boolean, sent?: ReadonlyMap<string, unknown>): PolicyAutomationChange | null {
     const row = AUTOMATION_ROWS.find((r) => r.field === field);
     if (row === undefined) throw new Error(`no Game Options automation row for ${field}`);
     const fv = automationFieldValue(row, value);
-    return (empire as unknown as Record<string, unknown>)[fv.field] === fv.value ? null : { field: fv.field, value: fv.value };
+    const current = sent !== undefined && sent.has(fv.field) ? sent.get(fv.field) : (empire as unknown as Record<string, unknown>)[fv.field];
+    return current === fv.value ? null : { field: fv.field, value: fv.value };
 }
 
 // ---------------------------------------------------------------------------------------------------------------

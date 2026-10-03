@@ -6,7 +6,7 @@
 //   the ticker (empireMessageFeed.ts), the popups and stubs (messagePopups.ts) read instead of Empire.Messages; each
 //   event message goes to the replica player's event recipient (eventMessages.ts, and the audio stings that chain
 //   on it), as the sim would call it in-thread;
-// - 'gameEnd': the music and the banner (screens/empireComparison.ts presentGameEnd) — the worker already paused,
+// - 'gameEnd': the music, the comparison window's outcome overlay and the Game End panel (screens/empireComparison.ts presentGameEnd) — the worker already paused,
 //   ended the game and reviewed the achievements;
 // - the Game Options message filters, which decide what the worker records, are mirrored to it (sent now and on
 //   every change).

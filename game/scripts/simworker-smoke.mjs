@@ -9,7 +9,14 @@
 //   node scripts/simworker-smoke.mjs <base url> [--load=/dev-saves/x.dwusave] [--out=shots/simworker] [--inthread]
 //                                               [--tutorial | --menuload | --generate]
 //        [--gpu=swiftshader|egl] [--qs=renderClock=0]
-//        [--detect-writes[=all]]   (dev-only replica write detector, src/simworker/writeDetector.ts: prints what it found)
+//        [--detect-writes[=all]]   (dev-only replica write detector, src/simworker/writeDetector.ts: prints what it found;
+//                                   with --inthread, the save-text probe of the UI tour)
+//        [--ui-tour]               (the UI tour without the detector: select, hover, right-click, every panel and screen)
+//        [--no-commands]           skip the command reply checks (game mode, docs/sim-worker.md §4.4 "Failed commands"):
+//                                  Recruit from the Troops screen and Save from the Design Editor reply (success and a
+//                                  refusal), an order naming an object gone from the game replies with its failure
+//                                  value, and — worker mode, last — after a simulated worker crash Save and Recruit
+//                                  still answer (failure message, Save usable again) and nothing is left waiting.
 import { chromium } from 'playwright-core';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -52,6 +59,214 @@ async function dumpWrites(when) {
     writeFileSync(`${out}/replica-writes.json`, JSON.stringify(found.writes, null, 1));
     console.log(`saved ${out}/replica-writes.json`);
 }
+// UI tour (with --detect-writes, or --ui-tour): with the game paused, select a ship, the capital (and its Build page), an
+// unowned body (a page that draws galaxy.rnd), a fleet; hover and Ctrl-right-click a body (the action menu); open every
+// left-sidebar panel and every top-bar screen. Worker mode: the write detector watches the replica, and the replica's
+// digest must equal the worker's afterwards. In-thread (--inthread): the save text (every object, the side tables, the
+// RNG state) is compared before and after each step; a change with no journaled command applied in that step is a UI
+// write outside the command queue (docs/sim-worker.md §8), and fails the run.
+const uiTour = detectWrites !== '' || flag('ui-tour');
+async function installSaveProbe() {
+    await page.evaluate(async () => {
+        const { galaxyToJSON } = await import('/src/sim/save/galaxySave.ts');
+        // Walk two encoded saves (graphCodec.ts: {$s, $v} instances, arrays, $map / $set, $ref) and name the first
+        // differences by `Class.field` (the write detector's keys).
+        const diff = (a, b, shapesA, shapesB, out, key, path) => {
+            if (out.length >= 60) return;
+            if (a === b) return;
+            if (typeof a !== 'object' || typeof b !== 'object' || a === null || b === null) {
+                out.push({ key, path, a: JSON.stringify(a)?.slice(0, 80), b: JSON.stringify(b)?.slice(0, 80) });
+                return;
+            }
+            if (Array.isArray(a) || Array.isArray(b)) {
+                if (!Array.isArray(a) || !Array.isArray(b)) return void out.push({ key, path, a: 'array?', b: 'array?' });
+                if (a.length !== b.length) out.push({ key: `${key}[]`, path, a: `length ${a.length}`, b: `length ${b.length}` });
+                for (let i = 0; i < Math.min(a.length, b.length); i++) diff(a[i], b[i], shapesA, shapesB, out, `${key}[]`, `${path}[${i}]`);
+                return;
+            }
+            if ('$s' in a && '$s' in b) {
+                const sa = shapesA[a.$s], sb = shapesB[b.$s];
+                if (sa.join() !== sb.join()) return void out.push({ key: `${sa[0]}`, path, a: `shape ${sa.slice(1).join(',')}`.slice(0, 200), b: `shape ${sb.slice(1).join(',')}`.slice(0, 200) });
+                for (let i = 0; i < a.$v.length; i++) diff(a.$v[i], b.$v[i], shapesA, shapesB, out, `${sa[0]}.${sa[i + 1]}`, `${path}.${sa[i + 1]}`);
+                return;
+            }
+            const ka = Object.keys(a), kb = Object.keys(b);
+            if (ka.join() !== kb.join()) return void out.push({ key: `${key}{}`, path, a: ka.join(',').slice(0, 120), b: kb.join(',').slice(0, 120) });
+            for (const k of ka) diff(a[k], b[k], shapesA, shapesB, out, k.startsWith('$') ? key : `${key}.${k}`, `${path}.${k}`);
+        };
+        window.__saveProbe = {
+            snap() {
+                // A fresh encoded tree (plain data, nothing shared with the game).
+                return galaxyToJSON(window.__dwu.galaxy);
+            },
+            mark() {
+                window.__saveProbePrev = this.snap();
+            },
+            /** Differences since mark() (then marks again). */
+            check() {
+                const prev = window.__saveProbePrev;
+                const next = this.snap();
+                const out = [];
+                diff(prev.galaxy, next.galaxy, prev.shapes, next.shapes, out, 'Galaxy', '$');
+                diff(prev.sideTables, next.sideTables, prev.shapes, next.shapes, out, 'sideTables', 'sideTables');
+                diff(prev.territory, next.territory, prev.shapes, next.shapes, out, 'territory', 'territory');
+                window.__saveProbePrev = next;
+                return out;
+            },
+        };
+    });
+}
+/** The command-log entries (player ops) so far. */
+const logOps = () => page.evaluate(async () => (await window.__dwu.commands.log()).filter((e) => e.source === 'player').map((e) => e.op));
+const tourWrites = [];
+async function tourStep(name, act, settleMs = 1500) {
+    const before = (await logOps()).length;
+    await act();
+    await page.waitForTimeout(settleMs);
+    const ops = (await logOps()).slice(before);
+    if (inThread) {
+        const d = await page.evaluate(() => window.__saveProbe.check());
+        const keys = [...new Set(d.map((x) => x.key))];
+        if (d.length > 0) tourWrites.push({ step: name, ops, keys, first: d.slice(0, 8) });
+        const ok = d.length === 0 || ops.length > 0;
+        check(ok, `ui tour: ${name}: ${d.length === 0 ? 'no state change' : `state changed (${keys.slice(0, 8).join(', ')})`}${ops.length ? `; journaled ${ops.join(', ')}` : ''}`);
+        if (!ok) for (const x of d.slice(0, 6)) console.log(`       ${x.path}: ${x.a} → ${x.b}`);
+    } else console.log(`     ui tour: ${name}${ops.length ? ` (journaled ${ops.join(', ')})` : ''}`);
+}
+async function runUiTour() {
+    await page.evaluate(() => { window.__dwu.time.paused = true; });
+    await page.waitForTimeout(1500);
+    if (inThread) {
+        await installSaveProbe();
+        await page.evaluate(() => window.__saveProbe.mark());
+    }
+    await tourStep('idle (HUD timers, money panel)', async () => {}, 2000);
+    await page.evaluate(async () => { window.__SR = (await import('/src/sim/builtObjectTypes.ts')).BuiltObjectSubRole; });
+    const select = (expr) => page.evaluate(async (e) => {
+        const hud = await import('/src/ui/hud.ts');
+        const d = window.__dwu;
+        const p = d.game.playerEmpire;
+        const sys = d.galaxy.systems[p.capital.systemIndex];
+        const pick = new Function('d', 'p', 'sys', `return (${e});`)(d, p, sys);
+        if (!pick) return null;
+        if (pick.ships !== undefined && pick.leadShip !== undefined) hud.selectShipGroup(pick, true);
+        else hud.selectStellarObject(pick, true);
+        return pick.name ?? '?';
+    }, expr);
+    const enabledButtons = () => page.$$('.order-actions .order-action-btn:not([disabled]):not(.order-action-empty):not(.order-action-extra)');
+    await tourStep('select a construction ship', () => select('p.builtObjects.find((b) => b && b.subRole === window.__SR.ConstructionShip && b.builtAt === null && b.topSpeed > 0) ?? p.builtObjects.find((b) => b && b.builtAt === null && b.topSpeed > 0)'));
+    // Hover over an unowned body with the ship selected (the default-order hint), then Ctrl-right-click it (the menu).
+    const at = await page.evaluate(() => {
+        const d = window.__dwu;
+        const p = d.game.playerEmpire;
+        const sys = d.galaxy.systems[p.capital.systemIndex];
+        const h = sys.habitats.find((x) => x.empire === null && x.category !== 0) ?? sys.systemStar;
+        window.__tourBody = h;
+        d.camera.centerOn(h.xpos, h.ypos);
+        d.camera.zoom = d.camera.clampZoom(1 / 200);
+        const s = d.camera.worldToScreen(h.xpos, h.ypos);
+        const r = document.querySelector('canvas').getBoundingClientRect();
+        return { x: r.left + s.x, y: r.top + s.y, name: h.name };
+    });
+    await page.waitForTimeout(500);
+    await tourStep(`hover over ${at.name}`, async () => {
+        await page.mouse.move(at.x - 3, at.y - 3);
+        await page.mouse.move(at.x, at.y);
+    });
+    await tourStep(`Ctrl-right-click ${at.name} (action menu)`, async () => {
+        await page.keyboard.down('Control');
+        await page.mouse.down({ button: 'right' });
+        await page.mouse.up({ button: 'right' });
+        await page.keyboard.up('Control');
+        await page.waitForSelector('.order-menu-root .order-menu-item', { timeout: 10000 }).catch(() => {});
+        const rows = await page.$$('.order-menu-root .order-menu-panel:first-child .order-menu-item');
+        for (const row of rows.slice(0, 6)) await row.hover();
+    });
+    await tourStep('close the action menu', () => page.keyboard.press('Escape'));
+    await tourStep('select the capital', () => select('p.capital'));
+    await tourStep('capital: Build page', async () => {
+        const b = await page.$('.order-actions .order-action-btn.order-style-build:not([disabled])');
+        if (b) await b.click();
+    });
+    await tourStep('select an unowned body (its page draws galaxy.rnd)', () => select('window.__tourBody'));
+    await tourStep('select a fleet', () => select('p.shipGroups?.[0] ?? null'));
+    await tourStep('select a foreign colony', () => select('d.galaxy.habitats.find((h) => h.empire && h.empire !== p && h.empire !== d.galaxy.independentEmpire && h.population?.totalAmount > 0) ?? null'));
+    await tourStep('select an independent colony', () => select('d.galaxy.habitats.find((h) => h.empire === d.galaxy.independentEmpire && h.population?.totalAmount > 0) ?? null'));
+    // Every page button of the current ship selection (each opens a page: no order is given by a page button).
+    await tourStep('ship pages', async () => {
+        await select('p.builtObjects.find((b) => b && b.subRole === window.__SR.ConstructionShip && b.builtAt === null && b.topSpeed > 0) ?? null');
+        await page.waitForTimeout(800);
+        for (const b of await enabledButtons()) {
+            const cls = (await b.getAttribute('class')) ?? '';
+            if (!/order-style-(build|page|sub)/.test(cls)) continue;
+            await b.click().catch(() => {});
+            await page.waitForTimeout(600);
+        }
+    });
+    await page.evaluate(async () => (await import('/src/ui/hud.ts')).setSelection(null));
+    // Left-sidebar panels.
+    const panels = await page.$$eval('.ls-button[data-panel]', (bs) => bs.map((b) => b.dataset.panel));
+    for (const id of panels) {
+        await tourStep(`left panel ${id}`, async () => {
+            await page.click(`.ls-button[data-panel="${id}"]`).catch(() => {});
+            await page.waitForTimeout(1200);
+            const row = await page.$('[data-hud="pnlItemList"] [data-index="0"]');
+            if (row) await row.click().catch(() => {});
+            await page.waitForTimeout(600);
+            await page.click(`.ls-button[data-panel="${id}"]`).catch(() => {});
+        }, 800);
+    }
+    // Top-bar screens (and the galaxy map), each opened, left 2.5 s, closed.
+    const screens = ['tbtnColonies', 'tbtnBuiltObjects', 'tbtnShipGroups', 'tbtnDesigns', 'btnBuildOrder', 'tbtnConstructionYards', 'tbtnTroops', 'tbtnResearch', 'btnExpansionPlanner', 'btnEmpireSummary', 'btnEmpirePolicy', 'tbtnEmpires', 'tbtnIntelligenceAgents', 'btnEmpireGraphs', 'btnGalacticHistory', 'btnHistoryMessages'];
+    for (const id of screens) {
+        await tourStep(`screen ${id}`, async () => {
+            const btn = page.locator(`[data-hud="${id}"]`).first();
+            if ((await btn.count()) === 0) return void console.log(`     (no ${id} button)`);
+            await btn.click().catch(() => {});
+            await page.waitForTimeout(2500);
+            // Diplomacy: every empire row once.
+            if (id === 'tbtnEmpires') {
+                for (const r of (await page.$$('[data-ow] .ow-list-row, [data-ow] .dip-row')).slice(0, 12)) {
+                    await r.click().catch(() => {});
+                    await page.waitForTimeout(300);
+                }
+            }
+            await page.keyboard.press('Escape');
+            await page.waitForTimeout(500);
+            if ((await page.locator('[data-ow]').count()) > 0) await btn.click().catch(() => {});
+            await page.waitForTimeout(500);
+            while ((await page.locator('[data-ow] .ow-close').count()) > 0) {
+                await page.locator('[data-ow] .ow-close').first().click().catch(() => {});
+                await page.waitForTimeout(200);
+                if ((await page.locator('[data-ow] .ow-close').count()) > 3) break;
+            }
+        }, 800);
+    }
+    await tourStep('galaxy map', async () => {
+        await page.keyboard.press('g');
+        await page.waitForTimeout(3000);
+        await page.keyboard.press('g');
+    });
+    await tourStep('idle again', async () => {}, 2000);
+    if (inThread) {
+        writeFileSync(`${out}/ui-tour-writes.json`, JSON.stringify(tourWrites, null, 1));
+        console.log(`saved ${out}/ui-tour-writes.json`);
+    } else {
+        // The replica must still equal the worker's game (paused: settle for two cold cycles).
+        let dg = null;
+        for (let i = 0; i < 30; i++) {
+            await page.waitForTimeout(2000);
+            dg = await page.evaluate(async () => {
+                const { stateDigest } = await import('/src/sim/tick/digest.ts');
+                const d = window.__dwu;
+                return { replica: stateDigest(d.galaxy), worker: (await d.simWorker.digest()).digest };
+            });
+            if (dg.replica === dg.worker) break;
+        }
+        check(dg.replica === dg.worker, `ui tour: replica digest = worker digest after the tour (${dg.replica.slice(0, 12)} / ${dg.worker.slice(0, 12)})`);
+    }
+}
+
 const waitGame = () => page.waitForFunction(() => window.__dwu?.time !== undefined && window.__dwu?.view !== undefined, null, { timeout: 600000 });
 const now = () => page.evaluate(() => window.__dwu.galaxy.nowMs);
 
@@ -152,6 +367,134 @@ async function checkPacing() {
     }
 }
 
+/** Console lines from here on that the simulated crash is expected to log (not counted as errors). */
+let crashLogFrom = -1;
+
+/** The Troops / Design Editor command replies (both modes), then (worker mode) the same after a simulated crash. */
+async function commandReplies() {
+    await page.evaluate(() => { window.__dwu.time.paused = true; });
+    const pending = () => page.evaluate(() => window.__dwu.simWorker?.core.pendingReplies ?? 0);
+    /** Close the open windows with their close buttons (Escape on an empty view would open the game menu). */
+    const closeAll = async () => {
+        for (let i = 0; i < 6; i++) {
+            const x = page.locator('.ow-close').last();
+            if ((await x.count()) === 0) break;
+            await x.click().catch(() => {});
+            await page.waitForTimeout(300);
+        }
+    };
+    // 1. An order naming an object no longer in the game: its callback still runs, with the executor's refusal.
+    const gone = await page.evaluate(() => new Promise((resolve) => {
+        const d = window.__dwu;
+        const p = d.game.playerEmpire;
+        const fake = Object.create(Object.getPrototypeOf(p.colonies[0]));
+        d.commands.issue(d.galaxy, p, 'renameColony', [fake, 'Nowhere'], (r) => resolve(r));
+        setTimeout(() => resolve('(no reply)'), 10000);
+    }));
+    check(gone === false, `an order naming an object gone from the game replies with its refusal (${JSON.stringify(gone)})`);
+
+    // 2. Recruit from the Troops screen, filtered to the capital.
+    const recruit = async (label) => {
+        await page.click('[data-hud="tbtnTroops"]');
+        const opened = await page.waitForSelector('[data-ow="troops"]', { timeout: 15000 }).then(() => true, () => false);
+        if (!opened) return { opened };
+        const capital = await page.evaluate(() => {
+            const d = window.__dwu;
+            const h = d.game.playerEmpire.capital ?? d.game.playerEmpire.colonies[0];
+            const sel = document.querySelector('[data-ow="troops"] select.ow-select');
+            const opt = sel ? [...sel.options].find((o) => o.textContent.includes(h.name)) : undefined;
+            if (opt) {
+                sel.value = opt.value;
+                sel.dispatchEvent(new Event('change'));
+            }
+            return { name: h.name, filtered: opt !== undefined, before: h.troopsToRecruit?.count ?? h.troopsToRecruit?.items?.length ?? 0 };
+        });
+        await page.waitForTimeout(800);
+        const btn = page.locator('[data-ow="troops"] .tr-recruit-btn').first();
+        const has = (await btn.count()) > 0;
+        if (has) await btn.click();
+        // The recruit's reply continues the awaited flow: the automation prompt it carries (Troop Recruitment) opens.
+        const confirm = page.locator('.order-confirm-wrap .order-confirm-button').first();
+        const prompted = await confirm.waitFor({ timeout: 4000 }).then(() => true, () => false);
+        if (prompted) await confirm.click();
+        await page.waitForTimeout(1500);
+        const after = await page.evaluate(() => {
+            const d = window.__dwu;
+            const h = d.game.playerEmpire.capital ?? d.game.playerEmpire.colonies[0];
+            return h.troopsToRecruit?.count ?? h.troopsToRecruit?.items?.length ?? 0;
+        });
+        await page.screenshot({ path: `${out}/troops-${label}.png` });
+        await closeAll();
+        return { opened, ...capital, button: has, prompted, after };
+    };
+    const r1 = await recruit('recruit');
+    check(r1.opened && r1.filtered && r1.button, `troops screen: filtered to ${r1.name}, a recruit button (${JSON.stringify(r1)})`);
+    check(r1.after === r1.before + 1, `recruit reply: ${r1.name} recruiting ${r1.before} → ${r1.after}`);
+    check((await pending()) === 0, 'nothing left waiting after the recruit');
+
+    // 3. Design Editor: Save a copy (success), then a blank design (refused: red warnings) — Save answers each time.
+    const openEditor = async (how) => {
+        await page.click('[data-hud="tbtnDesigns"]');
+        await page.waitForSelector('[data-ow="designs"] .ow-grid-row', { timeout: 15000 });
+        await page.waitForTimeout(800);
+        if (how === 'copy') {
+            await page.locator('[data-ow="designs"] .ow-grid-row').first().click();
+            await page.locator('[data-ow="designs"] .ow-glass', { hasText: 'Copy As New' }).click();
+        } else await page.locator('[data-ow="designs"] .ow-glass', { hasText: /^Add New$|^New$|^Add New Design$/ }).first().click();
+        const prompt = page.locator('[data-ow="msgbox"] .ow-glass', { hasText: 'Turn off automation' });
+        await prompt.waitFor({ timeout: 3000 }).then(() => prompt.click(), () => {});
+        return page.waitForSelector('[data-ow="design-editor"]', { timeout: 10000 }).then(() => true, () => false);
+    };
+    const save = page.locator('[data-ow="design-editor"] .ow-glass', { hasText: /^Save$/ }).first();
+    /** Click Save; the message box it raised (text), or null; the box is dismissed. */
+    const clickSave = async () => {
+        await save.click();
+        const box = page.locator('[data-ow="msgbox"]').last();
+        const text = await box.waitFor({ timeout: 6000 }).then(() => box.innerText(), () => null);
+        if (text !== null) {
+            const ok = page.locator('[data-ow="msgbox"] .ow-glass', { hasText: /^(OK|Yes)$/ }).last();
+            if ((await ok.count()) > 0) await ok.click();
+            await page.waitForTimeout(500);
+        }
+        return text;
+    };
+    const designs = () => page.evaluate(() => window.__dwu.game.playerEmpire.designs.length);
+    const d0 = await designs();
+    if (await openEditor('copy')) {
+        const box = await clickSave();
+        await page.waitForTimeout(3000);
+        const closed = (await page.locator('[data-ow="design-editor"]').count()) === 0;
+        check(closed && (await designs()) === d0 + 1, `design editor Save (copy): saved, the editor closed (${d0} → ${await designs()} designs${box ? `; box: ${box.slice(0, 60)}` : ''})`);
+    } else check(false, 'design editor opens (Copy As New)');
+    await closeAll();
+    if (await openEditor('blank')) {
+        const box1 = await clickSave();
+        check(box1 !== null && (await page.locator('[data-ow="design-editor"]').count()) > 0, `design editor Save (blank, red warnings): refused with a message, the editor stays (${String(box1).slice(0, 80)})`);
+        const box2 = await clickSave();
+        check(box2 !== null, 'design editor Save answers again after a refusal (not stuck "saving")');
+        await page.screenshot({ path: `${out}/design-editor-refused.png` });
+        // 4. Worker mode: the worker crashes (simulated: SimWorkerClient.stop) with the editor open.
+        if (!inThread) {
+            crashLogFrom = logs.length;
+            await page.evaluate(() => window.__dwu.simWorker.stop('smoke: simulated crash'));
+            await page.waitForTimeout(500);
+            const box3 = await clickSave();
+            check(box3 !== null && /could not be carried out/.test(box3) && /stopped/.test(box3), `after a worker crash, Save answers with the failure (${String(box3).slice(0, 120)})`);
+            const box4 = await clickSave();
+            check(box4 !== null, 'after a worker crash, Save is still usable (answers again)');
+            await page.screenshot({ path: `${out}/design-editor-after-crash.png` });
+        }
+    } else check(false, 'design editor opens (blank)');
+    await closeAll();
+    if (!inThread) {
+        const r2 = await recruit('after-crash');
+        check(r2.opened, 'troops screen opens after the crash');
+        check((await pending()) === 0, 'after the crash nothing is left waiting (recruit, save answered)');
+        const toast = logs.slice(crashLogFrom).some((l) => l.includes('STOPPED'));
+        check(toast, 'the crash is reported loudly in the console');
+    }
+}
+
 async function combatViews() {
     // Combat and hyperjumps at system zoom (docs/sim-worker.md §9 chunk 2: shots, explosions, shield strikes, jump
     // flashes and their sounds on the replica): the first of the player's ships (else any) firing / about to jump.
@@ -242,6 +585,9 @@ try {
         await page.evaluate(() => { window.__dwu.time.paused = true; });
         await shots([['galaxy', null], ['sector', 0.02], ['system', 0.25], ['planet', 1.5]]);
         await combatViews();
+        if (uiTour) await runUiTour();
+        // Last: in worker mode it ends with a simulated crash.
+        if (!flag('no-commands')) await commandReplies();
     } else if (mode === 'tutorial') {
         await page.goto(`${base}?${sw}`);
         await page.click('.main-menu-item[data-id="tutorials"]');
@@ -309,7 +655,7 @@ try {
         await shots([['generated-galaxy', null]]);
     }
     await dumpWrites('end of run');
-    if (!inThread) {
+    if (!inThread && crashLogFrom < 0) {
         const s = await page.evaluate(() => {
             const st = window.__dwu.simStats;
             return { frames: st.renderFrames, deltas: st.deltas, hot: st.hotApplyMs / Math.max(1, st.renderFrames), cold: st.coldPumpMs / Math.max(1, st.renderFrames), maxHot: st.maxHotApplyMs, maxCold: st.maxColdPumpMs, workerStep: st.workerStepMs, workerDiff: st.workerDiffMs, kb: st.deltaBytes / 1024, backlog: st.coldBacklog, pauseHolds: st.pauseHolds, lastPauseAckMs: st.lastPauseAckMs };
@@ -318,7 +664,8 @@ try {
     }
 } finally {
     await browser.close();
-    const errors = logs.filter((l) => l.startsWith('[error]') || l.startsWith('[pageerror]'));
+    // The simulated crash's own errors (the worker STOPPED report, the failed requests) are expected.
+    const errors = logs.filter((l, i) => (l.startsWith('[error]') || l.startsWith('[pageerror]')) && !(crashLogFrom >= 0 && i >= crashLogFrom && /sim worker|simulation worker/.test(l)));
     for (const l of errors.slice(0, 30)) console.log(l);
     if (errors.length > 0) failed++;
     console.log(failed === 0 ? 'SMOKE OK' : `SMOKE FAILED (${failed})`);

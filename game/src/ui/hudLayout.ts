@@ -1,6 +1,7 @@
 // HUD layout (task 05c, top strip + selection frame re-ported). The top of the screen is the original's own layout
 // (topBar.ts: Main.Part12.cs MainInit + MainView.cs method_18, scaled as one strip), the bottom-left is the original's
-// selection frame, the bottom-right our options list (replacing the minimap).
+// selection frame, the bottom-right the original's system mini-map (pnlSystemMap, hudSystemMap.ts) with our options list
+// ("View" popup) right above it.
 // Pure function (no DOM/Pixi): returns a rect per element name, in screen pixels.
 
 import { TOP_ROW_BUTTONS, topBarScreenLayout } from './topBar';
@@ -25,6 +26,12 @@ export const VIEW_ROWS = [
 
 export type ViewRowKey = (typeof VIEW_ROWS)[number]['key'];
 
+/** pnlSystemMap's size (Main.Part12.cs 2099-2100; hudSystemMap.ts SYSTEM_MAP_PANEL). */
+export const SYSTEM_MAP_PANEL_W = 330;
+export const SYSTEM_MAP_PANEL_H = 290;
+/** Gap between the mini-map's top and the "View" button's bottom (original pixels). */
+export const OPTIONS_ABOVE_MAP_GAP = 4;
+
 export function computeHudLayout(width: number, height: number, uiScale = 1): Record<string, Rect> {
     const layout: Record<string, Rect> = {};
 
@@ -43,12 +50,20 @@ export function computeHudLayout(width: number, height: number, uiScale = 1): Re
     layout['pnlSelection'] = { x: 10, y: height - 310 - 10, w: 399, h: 310 };
 
     // ------------------------------------------------------------------
-    // Bottom-right: options list, 220 px wide (replaces the minimap),
-    // anchored to the right edge with a 10 px margin (task 10e). Height is
-    // content-driven (h = 0): the CSS sizes it to its rows and scrolls if
-    // the window is shorter than the list (task 05d).
+    // Bottom-right: the system mini-map, pnlSystemMap 330 × 290 at (mainView.Width - (330 + 10), mainView.Height -
+    // (290 + 10)) (Main.Part12.cs 2099-2100, 2132), in the original's pixels (the HUD scales it from its bottom-right
+    // corner, hud.ts applyHudScale).
     // ------------------------------------------------------------------
-    layout['pnlOptionsList'] = { x: width - 220 - 10, y: height - 10, w: 220, h: 0 };
+    layout['pnlSystemMap'] = { x: width - SYSTEM_MAP_PANEL_W - 10, y: height - SYSTEM_MAP_PANEL_H - 10, w: SYSTEM_MAP_PANEL_W, h: SYSTEM_MAP_PANEL_H };
+
+    // ------------------------------------------------------------------
+    // Bottom-right, above the mini-map: options list ("View" popup), 220 px
+    // wide, anchored to the right edge with a 10 px margin (task 10e). Height
+    // is content-driven (h = 0): its bottom sits OPTIONS_ABOVE_MAP_GAP px
+    // above the mini-map's top (where the original has its row of overlay
+    // buttons, 29 px above the panel); the list pops up from there.
+    // ------------------------------------------------------------------
+    layout['pnlOptionsList'] = { x: width - 220 - 10, y: height - 10 - SYSTEM_MAP_PANEL_H - OPTIONS_ABOVE_MAP_GAP, w: 220, h: 0 };
 
     return layout;
 }

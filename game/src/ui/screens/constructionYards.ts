@@ -41,7 +41,8 @@ import { empireFlagUrl } from '../selectionInfoView';
 import { componentImageUrl } from './researchTreeModel';
 import { gt } from './researchBenefits';
 import { BUILT_OBJECT_FILTERS, formatEta, retrofitToastText } from './shipsAndBasesList';
-import { DIMMED_COLOR, SELECTED_COLOR, galaxyMapScale, starDotSizes } from './galaxyMap';
+import { DIMMED_COLOR, SELECTED_COLOR, drawMapTerritory, galaxyMapScale, starDotSizes } from './galaxyMap';
+import { drawGalaxyMapLayers } from './galaxyMapLayers';
 import { openGalactopedia } from './galactopedia';
 import { showToast } from '../toast';
 import {
@@ -995,6 +996,9 @@ function createConstructionYards(opts: ConstructionYardsOptions): OpenState {
         ctx.fillStyle = '#000';
         ctx.fillRect(0, 0, W, W);
         const s = galaxyMapScale(galaxy, W);
+        // GalaxyMap.cs method_6: backdrop (bitmap_1), nebulae (bitmap_0) and territory (bitmap_2) under the dots.
+        drawGalaxyMapLayers(ctx, galaxy, s, 0, 0, { onChange: () => { if (map.isConnected) drawMap(); } });
+        drawMapTerritory(ctx, galaxy, W);
         const sizes = starDotSizes(W, true);
         const dot = (x: number, y: number, color: string, size: number): void => {
             ctx.fillStyle = color;

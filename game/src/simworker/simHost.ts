@@ -15,7 +15,7 @@ import { GalaxyTime } from '../sim/galaxyTime';
 import type { StartGameOptions } from '../sim/startGameOptions';
 import { SimDriver, schedulerState } from '../sim/tick/scheduler';
 import { drainCommandBoundary } from '../sim/tick/commandBoundary';
-import { issuePlayerCommand, noteSimSpeed, noteSimView } from '../sim/player/playerCommands';
+import { issuePlayerCommand, noteSimSpeed, noteSimView, pendingPlayerCommands } from '../sim/player/playerCommands';
 import type { PlayerOpName } from '../sim/player/playerOps';
 import { serializeGame } from '../sim/save/gameSave';
 import { galaxyExternals, saveClassPrototypes } from '../sim/save/galaxySave';
@@ -27,12 +27,11 @@ import { SimFrameBudget } from '../simFrameBudget';
 import { GalaxySyncSource } from './replicaGalaxy';
 import { TRADE_FLOWS_SIDE_KEY, TradeFlowSyncSource } from './tradeFlowSync';
 import { installRimAtmosphereData } from '../render/rimAtmosphereWiring';
-import { RemoteValues, decodeRemoteArg, encodeRemoteArg, type RemoteArg, type RemoteNaming } from './remoteArgs';
-import { runSimQuery, type SimQueryName } from './simQuery';
+import { RemoteValues, decodeRemoteArg, encodeRemoteArg, encodeRemoteResult, type RemoteArg, type RemoteNaming } from './remoteArgs';
 import { runHostOp } from './hostOps';
 import { drainVoiceCues } from '../sim/scenario/llm/voiceCues';
 import { PlayerMessagePipeline, applyPlayerMessageUiOp, attachPlayerRecipients, restorePlayerRecipients, withRecipientsAsSaved, type PlayerMessageBatch } from '../ui/messagePipeline';
-import type { ClockMessage, CommandMessage, DebugReply, DebugRequest, FromWorker, HostOpMessage, QueryMessage, RefreshRequest, SnapshotMessage, StepMessage, TradeFlowsMessage, UiOpMessage, WorkerEvent } from './protocol';
+import type { ClockMessage, CommandMessage, DebugReply, DebugRequest, FromWorker, HostOpMessage, RefreshRequest, SnapshotMessage, StepMessage, TradeFlowsMessage, UiOpMessage, WorkerEvent } from './protocol';
 import { commandLog, copyCommandLogEntry, type CommandLogEntry } from '../sim/player/commandLog';
 import type { ReplicaEncoderOptions } from './replicaSync';
 
@@ -74,6 +73,8 @@ export class SimHost {
     /** By-value command arguments decoded recently, by main-thread value id (remoteArgs.ts RemoteValues). */
     private readonly commandValues = new RemoteValues();
     private results: StepMessage['results'] = [];
+    /** Commands issued on the galaxy's player queue and not applied yet, in issue order (settleCommands). */
+    private readonly queued: { id: number; op: string; done: boolean }[] = [];
     private events: WorkerEvent[] = [];
     private readonly naming: RemoteNaming;
     private readonly externalsByRef: Map<string, object>;
@@ -166,7 +167,14 @@ export class SimHost {
         this.dirty = true;
     }
 
-    /** Queue a player command on the authoritative galaxy (applied at the next boundary, journaled as in-thread). */
+    /**
+     * Queue a player command on the authoritative galaxy (applied at the next boundary, journaled as in-thread). Every
+     * command with a reply id gets exactly one entry in a later step message's `results` (docs/sim-worker.md §4.4
+     * "Failed commands"): its result once applied; an error when it could not be queued (the issuing empire or an
+     * argument is no longer in the game, an unknown static / class); or, when its executor threw at the boundary,
+     * an error marked `threw` (settleCommands) — the in-thread loop then pauses with a simulation error and never calls
+     * the callback, and so does the main thread.
+     */
     command(m: CommandMessage): void {
         const resolving = {
             object: (id: number) => this.sync.encoder.objectOf(id),
@@ -183,23 +191,57 @@ export class SimHost {
             // queues): compareReach.
             for (const a of args) this.noteFresh(a);
             this.noteFresh(empire);
-            issuePlayerCommand(this.galaxy, empire, m.op as PlayerOpName, args as never, m.id === 0 ? undefined : (result: unknown) => {
-                this.touch(result, 2);
-                this.noteFresh(result);
-                let encoded: RemoteArg = null;
-                let error: string | undefined;
-                try {
-                    encoded = encodeRemoteArg(result, this.naming);
-                } catch (err) {
-                    error = `result not sendable: ${err instanceof Error ? err.message : String(err)}`;
-                }
-                this.results.push(error === undefined ? { id: m.id, result: encoded } : { id: m.id, result: null, error });
+            const entry = { id: m.id, op: m.op, done: false };
+            // A callback even without a reply id: settleCommands tells an applied command from one whose executor threw.
+            // (It changes nothing in the sim: applyLive calls it after the executor, as it calls the in-thread UI's.)
+            issuePlayerCommand(this.galaxy, empire, m.op as PlayerOpName, args as never, (result: unknown) => {
+                entry.done = true;
+                if (m.id !== 0) this.results.push(this.commandReply(m.id, m.op, result));
             });
+            this.queued.push(entry);
         } catch (err) {
             if (m.id !== 0) this.results.push({ id: m.id, result: null, error: err instanceof Error ? err.message : String(err) });
             else console.error('sim worker: command failed', err);
         }
         this.dirty = true;
+    }
+
+    /** The reply to an applied command: its result for the main thread (never lost: see encodeRemoteResult). */
+    private commandReply(id: number, op: string, result: unknown): StepMessage['results'][number] {
+        try {
+            this.touch(result, 2);
+            this.noteFresh(result);
+            return { id, result: this.encodeResult(`command ${op}`, result) };
+        } catch (err) {
+            console.error(`sim worker: command ${op}: its result could not be sent`, err);
+            return { id, result: null, error: `result not sendable: ${err instanceof Error ? err.message : String(err)}` };
+        }
+    }
+
+    /** encodeRemoteResult with the parts that could not cross exactly logged loudly (a result type to make sendable). */
+    private encodeResult(what: string, result: unknown): RemoteArg {
+        return encodeRemoteResult(result, this.naming, (problems) => console.error(`sim worker: ${what}: result sent with parts made plain (make its type sendable): ${problems.join('; ')}`));
+    }
+
+    /**
+     * After a boundary may have run (a tick, a save, a debug advance): the commands the player queue took off since the
+     * last call (it applies them in issue order, and only this host issues commands on its galaxy) are settled. One whose
+     * callback did not run had its executor throw (the boundary stopped there; the commands after it stay queued for the
+     * next boundary, as in-thread): its reply is an error marked `threw`.
+     */
+    private settleCommands(err?: unknown): void {
+        const taken = this.queued.length - pendingPlayerCommands(this.galaxy);
+        if (taken <= 0) return;
+        const why = err === undefined ? 'see the worker console' : err instanceof Error ? err.message : String(err);
+        for (const e of this.queued.splice(0, taken)) {
+            if (!e.done && e.id !== 0) this.results.push({ id: e.id, result: null, error: `command ${e.op} failed in the game: ${why}`, threw: true });
+        }
+        this.dirty = true;
+    }
+
+    /** Commands queued on the galaxy that have no reply yet (tests). */
+    get commandsInFlight(): number {
+        return this.queued.length;
     }
 
     /** Compare these replica objects (sync ids) and what they reach before the next delta; reply to `m.id` with it. */
@@ -221,28 +263,6 @@ export class SimHost {
         }
         const items = Array.isArray(v) ? v : Object.getPrototypeOf(v) === Object.prototype ? Object.values(v as Record<string, unknown>) : [];
         for (const x of items) if (x !== null && typeof x === 'object' && this.sync.encoder.knownId(x) >= 0) this.freshRoots.push(x);
-    }
-
-    /**
-     * Run a read-only sim query (simQuery.ts) on the authoritative galaxy now, between ticks — where in-thread play
-     * runs it, between frames, in order with the commands (its galaxy.rnd draws land in the same place). The reply
-     * goes out with the next message (flush() sends one at once).
-     */
-    query(m: QueryMessage): void {
-        const resolving = {
-            object: (id: number) => this.sync.encoder.objectOf(id),
-            external: (kind: string, key: string | number) => this.externalsByRef.get(`${kind}:${key}`),
-        };
-        try {
-            const empire = resolving.object(m.empire) as Empire | null;
-            if (empire === null) throw new Error(`query ${m.op}: asking empire (sync id ${m.empire}) is not in the game`);
-            const args = m.args.map((a) => decodeRemoteArg(a, resolving));
-            const result = runSimQuery(this.galaxy, empire, m.op as SimQueryName, args as never);
-            this.results.push({ id: m.id, result: encodeRemoteArg(result, this.naming), query: true });
-        } catch (err) {
-            this.results.push({ id: m.id, result: null, error: err instanceof Error ? err.message : String(err), query: true });
-        }
-        this.dirty = true;
     }
 
     /**
@@ -324,7 +344,7 @@ export class SimHost {
             this.touch(result, 2);
             if (m.id !== 0) {
                 try {
-                    this.results.push({ id: m.id, result: encodeRemoteArg(result, this.naming) });
+                    this.results.push({ id: m.id, result: this.encodeResult(`host op ${m.op}`, result) });
                 } catch (err) {
                     this.results.push({ id: m.id, result: null, error: `result not sendable: ${err instanceof Error ? err.message : String(err)}` });
                 }
@@ -382,6 +402,7 @@ export class SimHost {
         driver.speed = time.speed;
         driver.paused = time.paused;
         driver.isPaused = () => time.paused;
+        let failure: unknown;
         try {
             drainCommandBoundary(this.galaxy);
             // The queued commands have been applied with their by-value arguments.
@@ -392,6 +413,7 @@ export class SimHost {
             }
             steps = this.budget.run(driver, realDtMs, time.speed, time.paused);
         } catch (err) {
+            failure = err;
             // As in-thread: drop the half-drained tick queue, pause, and tell the player.
             console.error('Simulation error (paused):', err);
             schedulerState(this.galaxy).queue.length = 0;
@@ -400,6 +422,7 @@ export class SimHost {
             this.events.push({ kind: 'simError', message: err instanceof Error ? err.message : String(err) });
             this.dirty = true;
         }
+        this.settleCommands(failure);
         this.drainVoiceCues();
         // Between frames, as the in-thread UI timers run: the player's message pipeline.
         this.pumpPlayerMessages();
@@ -423,16 +446,6 @@ export class SimHost {
         for (const [o, depth] of this.touched) this.sync.encoder.compareNow(o, depth);
         this.touched.clear();
         return this.message(steps, t1 - t0);
-    }
-
-    /**
-     * A message now, without draining the boundary or stepping (a query's reply: the main thread need not wait for the
-     * next tick). Read-only, like every delta.
-     */
-    flush(): StepMessage {
-        this.settleUntilCycle = this.sync.encoder.cycleCount + 2;
-        this.dirty = false;
-        return this.message(0, 0);
     }
 
     private message(steps: number, stepMs: number): StepMessage {
@@ -461,7 +474,15 @@ export class SimHost {
     save(): string {
         const player = this.galaxy.playerEmpire;
         const save = (): string => serializeGame(this.game, this.time, this.startOptions);
-        return this.pipeline !== null && player !== null ? withRecipientsAsSaved(player, save) : save();
+        try {
+            const text = this.pipeline !== null && player !== null ? withRecipientsAsSaved(player, save) : save();
+            this.settleCommands();
+            return text;
+        } catch (err) {
+            // serializeGame applies the queued commands first: one may have thrown (the save fails, as in-thread).
+            this.settleCommands(err);
+            throw err;
+        }
     }
 
     digest(): string {
@@ -496,6 +517,8 @@ export class SimHost {
         } catch (err) {
             error = err instanceof Error ? err.message : String(err);
         }
+        // `advance` runs frames, whose boundaries apply the queued commands.
+        this.settleCommands(error);
         this.dirty = true;
         const state: DebugReply['state'] = {};
         for (const k of Object.keys(target)) {
