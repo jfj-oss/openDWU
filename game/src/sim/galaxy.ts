@@ -3670,9 +3670,8 @@ export class Galaxy {
         return habitat;
     }
 
-    // Port of Galaxy.9.cs AddHabitat (line 3225). Index maps (HabitatIndex
-    // grid, FixResourceMaps, SetSystemHabitatExploration) don't exist yet;
-    // later Habitats entries are re-numbered so habitatIndex == position.
+    // Port of Galaxy.9.cs AddHabitat (line 3225): insert after the system's last habitat, the HabitatIndex grid,
+    // FixResourceMaps (re-numbers later Habitats entries so habitatIndex == position) and SetSystemHabitatExploration.
     addHabitat(habitat: Habitat, nearestSystemStar: Habitat | null): boolean {
         if (nearestSystemStar === null) {
             return false;

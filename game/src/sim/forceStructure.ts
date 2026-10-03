@@ -830,7 +830,7 @@ function calculateSupportabilityFactor(galaxy: Galaxy, empire: Empire, forceProj
 export interface ForceStructureContext {
     /** Galaxy.CurrentStarDate (not tracked on the TS Galaxy yet). */
     currentStarDate: number;
-    /** Galaxy.DifficultyLevel (game option; not kept on the TS Galaxy yet). */
+    /** Galaxy.DifficultyLevel (the wizard's difficulty; empireTick.ts passes galaxy.difficultyLevel). */
     difficultyLevel: number;
 }
 

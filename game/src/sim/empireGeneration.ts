@@ -152,7 +152,8 @@ export function generateEmpire(
     // for fractional levels) + Research.Update.
     if (galaxy.researchStatic !== null) empire.research.setTechTreeLevel(rnd, race, techLevel, false);
     empire.research.update(race);
-    // TODO(port): LoadOptimizedDesignsForEmpire (designs).
+    // Galaxy.7.cs 5286 LoadOptimizedDesignsForEmpire reads <install>/designs/<race>/*.dwd (BinaryFormatter); the shipped
+    // game has no designs folder, so it adds nothing. TODO(port): .dwd loading — Galaxy.4.cs:1087 LoadDesigns.
     empire.reviewResearchAbilities();
     empire.reviewDesignsBuiltObjectsImprovedComponents();
     empire.reviewTroopTypes();
