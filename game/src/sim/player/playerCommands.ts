@@ -23,6 +23,7 @@ import { CommandEncodeError, decodeCommandArg, encodeCommandArg, type EncodedArg
 import { PLAYER_OPS, type PlayerOpArgs, type PlayerOpName, type PlayerOpResult } from './playerOps';
 import { applyStrategicCommand } from './strategicDecisions';
 import { noteConstructionBoardCommand } from './constructionBoard';
+import { setUiRecordSender, withSimWrites } from '../readOnlyQuery';
 
 interface Pending {
     empire: Empire;
@@ -139,11 +140,19 @@ function drain(galaxy: Galaxy): void {
 function applyOp(galaxy: Galaxy, empire: Empire, op: PlayerOpName, args: unknown[]): unknown {
     const fn = PLAYER_OPS[op] as unknown as (g: Galaxy, e: Empire, ...a: unknown[]) => unknown;
     if (fn === undefined) throw new Error(`command log: unknown player op ${String(op)}`);
-    const result = fn(galaxy, empire, ...args);
+    // The executor is sim code: the lazy lookups write (readOnlyQuery.ts); the onApplied callbacks are UI code and
+    // run outside it.
+    const result = withSimWrites(() => fn(galaxy, empire, ...args));
     // Any order may have replaced a construction-board job: re-check the board at the next frame (no-op without jobs).
     noteConstructionBoardCommand(galaxy, empire);
     return result;
 }
+
+// The records the C# UI's lookups add (readOnlyQuery.ts requestUiRecord) arrive as one journaled command per UI task.
+setUiRecordSender((galaxy, requests) => {
+    const player = galaxy.playerEmpire;
+    if (player !== null) issuePlayerCommand(galaxy, player, 'obtainUiRecords', [requests]);
+});
 
 function encodeArgs(galaxy: Galaxy, args: readonly unknown[]): EncodedArg[] {
     return args.map((a) => encodeCommandArg(galaxy, a));
@@ -190,7 +199,7 @@ function replayEntry(galaxy: Galaxy, e: CommandLogEntry): void {
         case 'ai-advisor': {
             const empire = flatEmpireList(galaxy).find((x) => x.empireId === e.empireId);
             if (empire === undefined) throw new Error(`command log replay: no empire id ${e.empireId}`);
-            const r = applyStrategicCommand(galaxy, empire, e.command);
+            const r = withSimWrites(() => applyStrategicCommand(galaxy, empire, e.command));
             appendCommandLog(galaxy, { ...(copyCommandLogEntry(e) as typeof e), status: r.status });
             return;
         }

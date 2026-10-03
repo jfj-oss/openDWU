@@ -1,10 +1,12 @@
-// Sim worker, chunk 5 (docs/sim-worker.md §9): HUD, selection and orders through the worker host, driven in-process.
-// - A scripted UI player builds the right-click action menu, the selection panel's buttons (incl. the pages whose
-//   method_593 draws galaxy.rnd) and the habitat dispatch buttons through simQuery, and gives the orders they offer
+// Sim worker, chunk 5 (docs/sim-worker.md §9) and the UI's sim writes (§8): HUD, selection and orders, driven in-process.
+// - A scripted UI player builds the right-click action menu, the selection panel's buttons of the pages whose
+//   method_593 draws galaxy.rnd and the habitat dispatch buttons through their journaled commands ('actionMenu',
+//   'selectionButtons', 'habitatDispatch'), reads the other button pages directly, and gives the orders they offer
 //   (shipAction, rightClickOrder, constructionJobAdd, shipOrderKey, fleetPoint, a multi-ship "box" selection). Run on
 //   the replica through the host, it gives the same menus, the same command log and the same state digest as the same
-//   script run in-thread through the real app loop (simLoop.ts), tick for tick; building the menus on the replica
-//   instead of in the worker does not (the authoritative galaxy.rnd misses the draws).
+//   script run in-thread through the real app loop (simLoop.ts), tick for tick; seed + that log replays the in-thread
+//   game exactly. Building the menus on the replica instead does not (the authoritative galaxy.rnd misses the draws),
+//   and a replay without the menu commands drifts.
 // - onApplied replies run with the command's effect already on the replica (also for fields that travel cold).
 // - A replica object the sync no longer knows is never sent by value; runPlayerCommand refuses a replica.
 // - The HUD / selection / sidebar / colony-list readers do not change the game (no writes, no galaxy.rnd draws).
@@ -19,7 +21,11 @@ import { GalaxyTime } from '../src/sim/galaxyTime';
 import { FRAME_REAL_MS } from '../src/sim/tick/scheduler';
 import { stateDigest } from '../src/sim/tick/digest';
 import { commandLog } from '../src/sim/player/commandLog';
-import { issuePlayerCommand, runPlayerCommand } from '../src/sim/player/playerCommands';
+import { issuePlayerCommand, replayCommandLog, runPlayerCommand } from '../src/sim/player/playerCommands';
+import { PLAYER_OPS, type PlayerOpArgs, type PlayerOpName, type PlayerOpResult } from '../src/sim/player/playerOps';
+import type { DispatchOption } from '../src/sim/player/habitatDispatch';
+import { tickGameOptions } from './helpers/tickGame';
+import type { CommandLogEntry } from '../src/sim/player/commandLog';
 import { createSimLoop } from '../src/simLoop';
 import { galaxyToJSON } from '../src/sim/save/galaxySave';
 import { BuiltObject } from '../src/sim/builtObject';
@@ -31,16 +37,15 @@ import { BuiltObjectMissionType, COORD_UNSET_DOUBLE, builtObjectMission } from '
 import { ShipAction, ShipActionType, createShipAction } from '../src/sim/player/shipAction';
 import type { ConstructionQueue } from '../src/sim/construction/constructionQueue';
 import type { ShipActionResult } from '../src/sim/player/executeShipAction';
-import { resolveHoverOrder, rightClickOrder, type OrderMenuItem } from '../src/sim/player/orderMenu';
+import { resolveHoverOrder, rightClickOrder, selectionButtons, selectionButtonsDrawRandom, type OrderMenuItem, type SelectionButton } from '../src/sim/player/orderMenu';
 import { fastFindNearestAvailableMilitaryShip } from '../src/sim/player/shipHotkeys';
 import type { Camera } from '../src/render/camera';
 import type { StartGameOptions } from '../src/sim/startGameOptions';
 import { SimHost } from '../src/simworker/simHost';
 import { SimClientCore } from '../src/simworker/clientCore';
 import { alwaysHotFields } from '../src/simworker/replicaGalaxy';
-import { setRemoteQuerySink, simQuery } from '../src/simworker/simQuery';
 import { installReplicaWriteDetector, type ReplicaWriteDetector } from '../src/simworker/writeDetector';
-import type { QueryMessage, ToWorker } from '../src/simworker/protocol';
+import type { ToWorker } from '../src/simworker/protocol';
 import { buildInfoModel, type InfoContext } from '../src/ui/selectionInfo';
 import { itemPanelDefs, itemRowModel, panelItems, type RowContext } from '../src/ui/leftSidebar';
 import { colonyMetrics, colonyRows, colonyScenarioInfo } from '../src/ui/screens/coloniesList';
@@ -82,49 +87,45 @@ interface Connected {
     client: SimClientCore;
     time: GalaxyTime;
     posted: ToWorker[];
-    /** Deliver the queries posted so far (host.query + its immediate flush message) and run their replies. */
-    drainQueries: () => void;
     tick: () => void;
 }
 
-/** Host + client wired in-process (messages structured-cloned as postMessage would; queries answered at once, as worker.ts does). */
+/** Host + client wired in-process (messages structured-cloned as postMessage would). */
 function connect(game: Game, time: GalaxyTime): Connected {
     const host = new SimHost(game, time, START_OPTIONS, { now: fakeClock() });
     const snap = structuredClone(host.snapshot());
-    const queries: QueryMessage[] = [];
     const posted: ToWorker[] = [];
     const toHost = (m: ToWorker): void => {
         const c = structuredClone(m);
         posted.push(c);
         if (c.type === 'command') host.command(c);
         else if (c.type === 'clock') host.clock(c);
-        else if (c.type === 'query') queries.push(c);
     };
     const client = new SimClientCore(gameData, snap, { post: toHost, now: fakeClock() });
     const uiTime = new GalaxyTime();
     uiTime.bindGalaxy(client.galaxy);
     uiTime.speed = time.speed;
     uiTime.paused = time.paused;
-    const drainQueries = (): void => {
-        while (queries.length > 0) {
-            host.query(queries.shift()!);
-            client.receive(structuredClone(host.flush()));
-            client.frame(uiTime);
-        }
-    };
     const tick = (): void => {
-        drainQueries();
         client.syncClock(uiTime);
         const m = host.tick(FRAME_REAL_MS);
         if (m !== null) client.receive(structuredClone(m));
         client.frame(uiTime);
-        drainQueries();
     };
-    return { host, client, time: uiTime, posted, drainQueries, tick };
+    return { host, client, time: uiTime, posted, tick };
+}
+
+/** Galaxies whose script builds the menus directly on what it reads (the sensitivity gate: no command). */
+const localBuilds = new WeakSet<Galaxy>();
+/** A menu command of the script ('actionMenu', 'selectionButtons', 'habitatDispatch'), or the direct build. */
+function menuCommand<K extends PlayerOpName>(g: Galaxy, p: Empire, op: K, args: PlayerOpArgs<K>, done: (r: PlayerOpResult<K>) => void): void {
+    if (!localBuilds.has(g)) return issuePlayerCommand(g, p, op, args, done);
+    const fn = PLAYER_OPS[op] as unknown as (g: Galaxy, e: Empire, ...a: unknown[]) => PlayerOpResult<K>;
+    done(fn(g, p, ...(args as unknown[])));
 }
 
 // ---------------------------------------------------------------------------------------------------------------
-// The scripted UI player (mode-agnostic: simQuery + issuePlayerCommand, on whatever galaxy it is handed)
+// The scripted UI player (mode-agnostic: issuePlayerCommand and reads, on whatever galaxy it is handed)
 // ---------------------------------------------------------------------------------------------------------------
 
 interface UiRun {
@@ -133,11 +134,15 @@ interface UiRun {
     fleet: ShipGroup | null;
     /** The ship / colony the steps act on, resolved once per run. */
     builder: BuiltObject | null;
+    /** The last menu / buttons / dispatch options a command answered (picked from by a later step). */
+    menu: OrderMenuItem[] | null;
+    buttons: SelectionButton[] | null;
+    dispatch: DispatchOption[] | null;
 }
 const runs = new WeakMap<Galaxy, UiRun>();
 function runOf(g: Galaxy): UiRun {
     let r = runs.get(g);
-    if (r === undefined) runs.set(g, (r = { seen: [], fleet: null, builder: null }));
+    if (r === undefined) runs.set(g, (r = { seen: [], fleet: null, builder: null, menu: null, buttons: null, dispatch: null }));
     return r;
 }
 
@@ -168,76 +173,122 @@ interface UiStep {
     issue: (g: Galaxy, p: Empire, run: UiRun) => void;
 }
 
+// Each menu / button page that writes the game (galaxy.rnd, ReviewLatestDesigns) is a journaled command whose reply is
+// the menu (docs/sim-worker.md §8); the pick is a later step, as a player picks after the menu shows (in-thread a reply
+// comes inside the boundary, in worker mode one round trip later: an order issued from the reply itself would land a
+// boundary later there).
 const UI_STEPS: UiStep[] = [
     {
         atMs: 1_000,
-        what: 'action menu at galaxy zoom over a home body: "Build here" (galaxy.rnd), pick the first design',
+        what: 'action menu at galaxy zoom over a home body: "Build here" (galaxy.rnd)',
         issue: (g, p, run) => {
             const ship = constructionShip(p);
             run.builder = ship;
             const h = homeBodies(g, p)[0];
-            simQuery(g, p, 'actionMenu', [ship, Math.trunc(h.xpos), Math.trunc(h.ypos), 200, h, null, true], (items) => {
+            menuCommand(g, p, 'actionMenu', [ship, Math.trunc(h.xpos), Math.trunc(h.ypos), 200, h, null, true], (items) => {
                 run.seen.push(`menu ${menuText(items)}`);
-                const pick = flat(items ?? []).find((i) => i.enabled && i.action !== null && i.action.missionType === BuiltObjectMissionType.Build && i.action.design !== null);
-                expect(pick).toBeDefined();
-                run.seen.push(`pick ${actionText(pick!.action)}`);
-                issuePlayerCommand(g, p, 'shipAction', [ship, pick!.action!, true, { x: Math.trunc(h.xpos), y: Math.trunc(h.ypos) }], (r: ShipActionResult) => {
-                    // onApplied: the order's effect is on the replica already (mission is not an always-hot field).
-                    run.seen.push(`applied ${String(r.ok)} mission ${builtObjectMission(ship)?.type ?? 'none'} ${ship.subsequentMissions?.length ?? 0}`);
-                });
+                run.menu = items;
+            });
+        },
+    },
+    {
+        atMs: 1_500,
+        what: '... pick its first design',
+        issue: (g, p, run) => {
+            const ship = run.builder!;
+            const h = homeBodies(g, p)[0];
+            const pick = flat(run.menu ?? []).find((i) => i.enabled && i.action !== null && i.action.missionType === BuiltObjectMissionType.Build && i.action.design !== null);
+            expect(pick).toBeDefined();
+            run.seen.push(`pick ${actionText(pick!.action)}`);
+            issuePlayerCommand(g, p, 'shipAction', [ship, pick!.action!, true, { x: Math.trunc(h.xpos), y: Math.trunc(h.ypos) }], (r: ShipActionResult) => {
+                // onApplied: the order's effect is on the replica already (mission is not an always-hot field).
+                run.seen.push(`applied ${String(r.ok)} mission ${builtObjectMission(ship)?.type ?? 'none'} ${ship.subsequentMissions?.length ?? 0}`);
             });
         },
     },
     {
         atMs: 2_000,
-        what: 'selection buttons of an unowned home body (top page draws galaxy.rnd), click the first enabled one',
+        what: 'selection buttons of an unowned home body (top page draws galaxy.rnd: a command)',
         issue: (g, p, run) => {
             const h = homeBodies(g, p)[1] ?? homeBodies(g, p)[0];
-            simQuery(g, p, 'selectionButtons', [h, null], (buttons) => {
+            expect(selectionButtonsDrawRandom({ galaxy: g, empire: p, selected: h }, null)).toBe(true);
+            menuCommand(g, p, 'selectionButtons', [h, null], (buttons) => {
                 run.seen.push(`buttons ${(buttons ?? []).map((b) => `${actionText(b.action)}:${b.enabled}`).join('|')}`);
-                const b = (buttons ?? []).find((x) => x.enabled && x.action !== null);
-                if (b !== undefined) issuePlayerCommand(g, p, 'shipAction', [h, b.action!, false, undefined], (r) => run.seen.push(`applied ${String(r.ok)} ${r.message ?? ''}`));
+                run.buttons = buttons;
             });
+        },
+    },
+    {
+        atMs: 2_500,
+        what: '... click the first enabled one',
+        issue: (g, p, run) => {
+            const h = homeBodies(g, p)[1] ?? homeBodies(g, p)[0];
+            const b = (run.buttons ?? []).find((x) => x.enabled && x.action !== null);
+            if (b !== undefined) issuePlayerCommand(g, p, 'shipAction', [h, b.action!, false, undefined], (r) => run.seen.push(`applied ${String(r.ok)} ${r.message ?? ''}`));
         },
     },
     {
         atMs: 3_000,
-        what: 'the capital\'s Build Options page (draws galaxy.rnd), build the first enabled design',
+        what: 'the capital\'s Build Options page (draws galaxy.rnd: a command)',
         issue: (g, p, run) => {
             const cap = p.capital!;
-            simQuery(g, p, 'selectionButtons', [cap, createShipAction(ShipActionType.BuildOptions, cap)], (buttons) => {
+            menuCommand(g, p, 'selectionButtons', [cap, createShipAction(ShipActionType.BuildOptions, cap)], (buttons) => {
                 run.seen.push(`build page ${(buttons ?? []).map((b) => `${actionText(b.action)}:${b.enabled}`).join('|')}`);
-                const b = (buttons ?? []).find((x) => x.enabled && x.action !== null && x.action.design !== null);
-                if (b !== undefined) issuePlayerCommand(g, p, 'shipAction', [cap, b.action!, false, undefined], (r) => run.seen.push(`applied ${String(r.ok)} queue ${(cap.constructionQueue as ConstructionQueue | null)?.constructionWaitQueue?.length ?? 'n/a'}`));
+                run.buttons = buttons;
             });
+        },
+    },
+    {
+        atMs: 3_500,
+        what: '... build the first enabled design',
+        issue: (g, p, run) => {
+            const cap = p.capital!;
+            const b = (run.buttons ?? []).find((x) => x.enabled && x.action !== null && x.action.design !== null);
+            if (b !== undefined) issuePlayerCommand(g, p, 'shipAction', [cap, b.action!, false, undefined], (r) => run.seen.push(`applied ${String(r.ok)} queue ${(cap.constructionQueue as ConstructionQueue | null)?.constructionWaitQueue?.length ?? 'n/a'}`));
         },
     },
     {
         atMs: 4_000,
-        what: 'habitat dispatch: re-resolved at click time, a build goes to the construction job board, else the ship goes',
+        what: 'habitat dispatch buttons (the candidate ships\' action menus: a command)',
         issue: (g, p, run) => {
             const h = homeBodies(g, p).find((x) => x.resources.length > 0) ?? homeBodies(g, p)[0];
-            simQuery(g, p, 'habitatDispatch', [h], (options) => {
+            menuCommand(g, p, 'habitatDispatch', [h], (options) => {
                 run.seen.push(`dispatch ${options.map((o) => `${o.id}:${o.ship?.name ?? '-'}`).join('|')}`);
-                const o = options.find((x) => x.ship !== null);
-                if (o === undefined) return;
-                simQuery(g, p, 'habitatDispatch', [h], (now) => {
-                    const fresh = now.find((x) => x.id === o.id)!;
-                    const design = fresh.action!.design;
-                    if (o.id.startsWith('build:') && design !== null) {
-                        const pos = fresh.action!.position;
-                        const zero = pos.x === 0 && pos.y === 0;
-                        issuePlayerCommand(g, p, 'constructionJobAdd', [design, h, zero ? COORD_UNSET_DOUBLE : pos.x, zero ? COORD_UNSET_DOUBLE : pos.y], (id) => run.seen.push(`job ${id} board ${p.constructionBoard?.jobs.length ?? 0}`));
-                    } else {
-                        issuePlayerCommand(g, p, 'shipAction', [fresh.ship!, fresh.action!, true, { x: h.xpos, y: h.ypos }], (r) => run.seen.push(`sent ${String(r.ok)}`));
-                    }
-                });
+                run.dispatch = options;
             });
         },
     },
     {
+        atMs: 4_500,
+        what: '... a click re-resolves them (a command again)',
+        issue: (g, p, run) => {
+            const h = homeBodies(g, p).find((x) => x.resources.length > 0) ?? homeBodies(g, p)[0];
+            menuCommand(g, p, 'habitatDispatch', [h], (now) => {
+                run.seen.push(`dispatch again ${now.map((o) => `${o.id}:${o.ship?.name ?? '-'}`).join('|')}`);
+                run.dispatch = now;
+            });
+        },
+    },
+    {
+        atMs: 4_800,
+        what: '... a build goes to the construction job board, else the ship goes',
+        issue: (g, p, run) => {
+            const h = homeBodies(g, p).find((x) => x.resources.length > 0) ?? homeBodies(g, p)[0];
+            const fresh = (run.dispatch ?? []).find((x) => x.ship !== null);
+            if (fresh === undefined) return;
+            const design = fresh.action!.design;
+            if (fresh.id.startsWith('build:') && design !== null) {
+                const pos = fresh.action!.position;
+                const zero = pos.x === 0 && pos.y === 0;
+                issuePlayerCommand(g, p, 'constructionJobAdd', [design, h, zero ? COORD_UNSET_DOUBLE : pos.x, zero ? COORD_UNSET_DOUBLE : pos.y], (id) => run.seen.push(`job ${id} board ${p.constructionBoard?.jobs.length ?? 0}`));
+            } else {
+                issuePlayerCommand(g, p, 'shipAction', [fresh.ship!, fresh.action!, true, { x: h.xpos, y: h.ypos }], (r) => run.seen.push(`sent ${String(r.ok)}`));
+            }
+        },
+    },
+    {
         atMs: 5_000,
-        what: 'right-click default order (resolveHoverOrder on the local galaxy), then the menu query (null: order given)',
+        what: 'right-click default order (resolveHoverOrder on the local galaxy), then the menu command (null: order given)',
         issue: (g, p, run) => {
             const ship = freeShips(p, 1)[0];
             const target = g.habitats.filter((h) => h.parent !== null && h.systemIndex !== p.capital!.systemIndex)[3];
@@ -248,23 +299,23 @@ const UI_STEPS: UiStep[] = [
             // The non-order outcomes stay local reads (idle-ships picker with nothing selected).
             const idle = rightClickOrder(g, p, null, null, { ctrl: false, alt: false }, 1);
             run.seen.push(`idle ${idle.kind}`);
-            simQuery(g, p, 'actionMenu', [ship, Math.trunc(target.xpos), Math.trunc(target.ypos), 1, target, hover.action, false], (items) => run.seen.push(`menu after order ${menuText(items)}`));
+            menuCommand(g, p, 'actionMenu', [ship, Math.trunc(target.xpos), Math.trunc(target.ypos), 1, target, hover.action, false], (items) => run.seen.push(`menu after order ${menuText(items)}`));
         },
     },
     {
         atMs: 6_000,
-        what: 'box selection of free ships: the list buttons, New Fleet; the reply names the new fleet',
+        what: 'box selection of free ships: the list buttons (a read), New Fleet; the reply names the new fleet',
         issue: (g, p, run) => {
             const box = resolveBoxSelection(freeShips(p, 3).filter((b) => isBoxSelectable(b, p)), p);
             const list = box.kind === 'list' ? box.ships : freeShips(p, 3);
-            simQuery(g, p, 'selectionButtons', [list, null], (buttons) => {
-                run.seen.push(`list buttons ${(buttons ?? []).map((b) => actionText(b.action)).join('|')}`);
-                const nf = (buttons ?? []).find((b) => b.action?.actionType === ShipActionType.CreateNewFleet) ?? null;
-                const action = nf?.action ?? createShipAction(ShipActionType.CreateNewFleet, null);
-                issuePlayerCommand(g, p, 'shipAction', [list, action, false, undefined], (r) => {
-                    if (r.select instanceof ShipGroup) run.fleet = r.select;
-                    run.seen.push(`fleet ${r.select instanceof ShipGroup ? `${r.select.name} ${r.select.ships.length}` : 'none'}`);
-                });
+            expect(selectionButtonsDrawRandom({ galaxy: g, empire: p, selected: list }, null)).toBe(false);
+            const buttons = selectionButtons({ galaxy: g, empire: p, selected: list }, null);
+            run.seen.push(`list buttons ${(buttons ?? []).map((b) => actionText(b.action)).join('|')}`);
+            const nf = (buttons ?? []).find((b) => b.action?.actionType === ShipActionType.CreateNewFleet) ?? null;
+            const action = nf?.action ?? createShipAction(ShipActionType.CreateNewFleet, null);
+            issuePlayerCommand(g, p, 'shipAction', [list, action, false, undefined], (r) => {
+                if (r.select instanceof ShipGroup) run.fleet = r.select;
+                run.seen.push(`fleet ${r.select instanceof ShipGroup ? `${r.select.name} ${r.select.ships.length}` : 'none'}`);
             });
         },
     },
@@ -297,7 +348,7 @@ const UI_STEPS: UiStep[] = [
         issue: (g, p, run) => {
             const ship = run.builder!;
             const h = homeBodies(g, p)[2] ?? homeBodies(g, p)[0];
-            simQuery(g, p, 'actionMenu', [ship, Math.trunc(h.xpos), Math.trunc(h.ypos), 200, h, null, true], (items) => run.seen.push(`menu2 ${menuText(items)}`));
+            menuCommand(g, p, 'actionMenu', [ship, Math.trunc(h.xpos), Math.trunc(h.ypos), 200, h, null, true], (items) => run.seen.push(`menu2 ${menuText(items)}`));
         },
     },
 ];
@@ -312,31 +363,23 @@ function dueUiSteps(g: Galaxy): UiStep[] {
 }
 
 /** The in-thread reference: the real app loop, the UI script issuing on the live game between frames. */
-function runInThread(): { game: Game; ticks: number; draws: number[] } {
+function runInThread(): { game: Game; ticks: number } {
     const ref = cachedTickGame(gameData);
     const time = new GalaxyTime();
     time.paused = false;
     const loop = createSimLoop(ref.galaxy, time, {} as Camera, false);
     (loop.budget as { now: () => number }).now = fakeClock();
     let ticks = 0;
-    const draws: number[] = [];
-    let n = 0;
-    ref.galaxy.rnd.setTrace(() => n++);
     while (ref.galaxy.nowMs < END_MS) {
-        for (const s of dueUiSteps(ref.galaxy)) {
-            const before = n;
-            s.issue(ref.galaxy, ref.playerEmpire, runOf(ref.galaxy));
-            draws.push(n - before);
-        }
+        for (const s of dueUiSteps(ref.galaxy)) s.issue(ref.galaxy, ref.playerEmpire, runOf(ref.galaxy));
         loop.tick(FRAME_REAL_MS);
         ticks++;
     }
-    ref.galaxy.rnd.setTrace(null);
-    return { game: ref, ticks, draws };
+    return { game: ref, ticks };
 }
 
-/** The same script on the replica through the host (`localQueries`: build the menus on the replica instead). */
-function runOnReplica(localQueries = false): { game: Game; w: Connected; ticks: number; detector: ReplicaWriteDetector } {
+/** The same script on the replica through the host (`localMenus`: build the menus on the replica instead). */
+function runOnReplica(localMenus = false): { game: Game; w: Connected; ticks: number; detector: ReplicaWriteDetector } {
     const game = cachedTickGame(gameData);
     const time = new GalaxyTime();
     time.paused = false;
@@ -344,7 +387,7 @@ function runOnReplica(localQueries = false): { game: Game; w: Connected; ticks: 
     const rg = w.client.galaxy;
     // Chunk 0's detector: any main-thread write to the replica (e.g. a galaxy.rnd draw on it) is reported.
     const detector = installReplicaWriteDetector(w.client.replica, { warn: () => {} });
-    if (localQueries) setRemoteQuerySink(rg, null);
+    if (localMenus) localBuilds.add(rg);
     let ticks = 0;
     while (game.galaxy.nowMs < END_MS) {
         const due = dueUiSteps(rg);
@@ -353,7 +396,6 @@ function runOnReplica(localQueries = false): { game: Game; w: Connected; ticks: 
             w.client.replica.apply(structuredClone(w.host.sync.delta(true)), true);
             expect(rg.nowMs).toBe(game.galaxy.nowMs);
             for (const s of due) s.issue(rg, w.client.game.playerEmpire, runOf(rg));
-            w.drainQueries();
         }
         w.tick();
         ticks++;
@@ -362,16 +404,35 @@ function runOnReplica(localQueries = false): { game: Game; w: Connected; ticks: 
     return { game, w, ticks, detector };
 }
 
-describe('sim worker chunk 5: orders from the HUD, the order menu and the selection panel', () => {
-    it('menus, buttons and dispatch built in the worker give the in-thread menus, command log and digest, tick for tick', () => {
-        const ref = runInThread();
-        // The script is meaningful: the "Build here" menu and the build pages draw galaxy.rnd in-thread.
-        expect(ref.draws[0]).toBeGreaterThan(0);
-        expect(ref.draws[1]).toBeGreaterThan(0);
-        expect(ref.draws[2]).toBeGreaterThan(0);
-        const refRun = runOf(ref.game.galaxy);
-        expect(refRun.seen.some((x) => x.startsWith('fleet ') && x !== 'fleet none')).toBe(true);
+const MENU_OPS = new Set(['actionMenu', 'selectionButtons', 'habitatDispatch']);
+const saveText = (g: Galaxy): string => JSON.stringify(galaxyToJSON(g));
 
+describe('sim worker chunk 5: orders from the HUD, the order menu and the selection panel', () => {
+    let ref: { game: Game; ticks: number };
+    let log: CommandLogEntry[];
+    beforeAll(() => {
+        ref = runInThread();
+        log = commandLog(ref.game.galaxy).map((e) => JSON.parse(JSON.stringify(e)) as CommandLogEntry);
+    }, 900000);
+
+    it('the menus that write the game are journaled commands: seed + log replays the in-thread game exactly', () => {
+        const ops = log.filter((e) => e.source === 'player').map((e) => (e as { op: string }).op);
+        expect(ops.filter((op) => op === 'actionMenu').length).toBe(3);
+        expect(ops.filter((op) => op === 'selectionButtons').length).toBe(2);
+        expect(ops.filter((op) => op === 'habitatDispatch').length).toBe(2);
+        expect(runOf(ref.game.galaxy).seen.some((x) => x.startsWith('fleet ') && x !== 'fleet none')).toBe(true);
+        const { seed, ...options } = tickGameOptions(gameData);
+        const replay = replayCommandLog(seed, options, log, ref.game.galaxy.nowMs);
+        expect(replay.galaxy.nowMs).toBe(ref.game.galaxy.nowMs);
+        expect(stateDigest(replay.galaxy)).toBe(stateDigest(ref.game.galaxy));
+        expect(saveText(replay.galaxy) === saveText(ref.game.galaxy)).toBe(true);
+        // The menu commands matter: without them (as when the menus drew galaxy.rnd outside the log) the replay drifts.
+        const without = replayCommandLog(seed, options, log.filter((e) => !(e.source === 'player' && MENU_OPS.has(e.op))), ref.game.galaxy.nowMs);
+        expect(stateDigest(without.galaxy)).not.toBe(stateDigest(ref.game.galaxy));
+    }, 900000);
+
+    it('menus, buttons and dispatch built in the worker give the in-thread menus, command log and digest, tick for tick', () => {
+        const refRun = runOf(ref.game.galaxy);
         const { game, w, ticks, detector } = runOnReplica();
         const rg = w.client.galaxy;
         detector.checkAll();
@@ -381,8 +442,8 @@ describe('sim worker chunk 5: orders from the HUD, the order menu and the select
         expect(runOf(rg).seen).toEqual(refRun.seen);
         expect(JSON.stringify(commandLog(game.galaxy))).toBe(JSON.stringify(commandLog(ref.game.galaxy)));
         expect(w.host.digest()).toBe(stateDigest(ref.game.galaxy));
-        // The queries went to the worker (none ran on the replica's own galaxy.rnd), and replies resolved to replica objects.
-        expect(w.posted.filter((m) => m.type === 'query').length).toBeGreaterThanOrEqual(7);
+        // The menu commands went to the worker, and replies resolved to replica objects.
+        expect(w.posted.filter((m) => m.type === 'command' && MENU_OPS.has(m.op)).length).toBe(7);
         expect(runOf(rg).fleet?.empire).toBe(w.client.game.playerEmpire);
         // The replica is still exact (nothing on the main thread wrote it).
         w.client.replica.apply(structuredClone(w.host.sync.delta(true)), true);
@@ -392,7 +453,6 @@ describe('sim worker chunk 5: orders from the HUD, the order menu and the select
     }, 900000);
 
     it('building the menus on the replica instead loses the galaxy.rnd draws (the gate above is sensitive)', () => {
-        const ref = runInThread();
         const { w, detector } = runOnReplica(true);
         expect(w.host.digest()).not.toBe(stateDigest(ref.game.galaxy));
         // ... and the write detector sees the menus draw on the replica's own galaxy.rnd.
@@ -429,29 +489,30 @@ describe('sim worker chunk 5: onApplied, dropped objects, runPlayerCommand', () 
         const cap = p.capital!;
         const realCap = w.host.sync.encoder.objectOf(w.client.replica.decoder.idOf(cap)) as Habitat;
         let queued = -1;
-        simQuery(w.client.galaxy, p, 'selectionButtons', [cap, createShipAction(ShipActionType.BuildOptions, cap)], (buttons) => {
-            const b = (buttons ?? []).find((x) => x.enabled && x.action !== null && x.action.design !== null)!;
-            issuePlayerCommand(w.client.galaxy, p, 'shipAction', [cap, b.action!, false, undefined], () => {
-                queued = (cap.constructionQueue as ConstructionQueue).constructionWaitQueue?.length ?? 0;
-                expect(queued).toBe((realCap.constructionQueue as ConstructionQueue).constructionWaitQueue?.length ?? 0);
-            });
+        let page: SelectionButton[] | null = null;
+        issuePlayerCommand(w.client.galaxy, p, 'selectionButtons', [cap, createShipAction(ShipActionType.BuildOptions, cap)], (buttons) => (page = buttons));
+        w.tick();
+        expect(page).not.toBeNull();
+        const b = (page! as SelectionButton[]).find((x) => x.enabled && x.action !== null && x.action.design !== null)!;
+        issuePlayerCommand(w.client.galaxy, p, 'shipAction', [cap, b.action!, false, undefined], () => {
+            queued = (cap.constructionQueue as ConstructionQueue).constructionWaitQueue?.length ?? 0;
+            expect(queued).toBe((realCap.constructionQueue as ConstructionQueue).constructionWaitQueue?.length ?? 0);
         });
-        w.drainQueries();
         w.tick();
         expect(queued).toBeGreaterThanOrEqual(0);
-        // The money panel query runs CheckAgeVariableIncome in the game itself (the replica gets the result).
+        // The money panel's command runs CheckAgeVariableIncome in the game itself (the replica gets the result).
         const realEmpire = w.host.galaxy.playerEmpire!;
         realEmpire.useAveragedVariableIncome = false;
         let income: unknown = undefined;
-        simQuery(w.client.galaxy, p, 'moneyPanel', [], (r) => (income = r));
-        w.drainQueries();
+        issuePlayerCommand(w.client.galaxy, p, 'moneyPanel', [], (r) => (income = r));
+        w.tick();
         expect(income).not.toBeUndefined();
         expect(realEmpire.useAveragedVariableIncome).toBe(true);
         w.client.dispose();
         w.host.dispose();
     }, 600000);
 
-    it('a replica object the sync no longer knows is not sent (no command, no query, no callback)', () => {
+    it('a replica object the sync no longer knows is not sent: the command gets its failure value', async () => {
         const game = cachedTickGame(gameData);
         const time = new GalaxyTime();
         const w = connect(game, time);
@@ -459,19 +520,24 @@ describe('sim worker chunk 5: onApplied, dropped objects, runPlayerCommand', () 
         const gone = Object.create(BuiltObject.prototype) as BuiltObject;
         gone.name = 'Gone';
         const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+        const err = vi.spyOn(console, 'error').mockImplementation(() => {});
         const before = w.posted.length;
-        let called = false;
-        issuePlayerCommand(w.client.galaxy, p, 'shipAction', [gone, createShipAction(ShipActionType.AutomateShip, gone), false, undefined], () => (called = true));
-        simQuery(w.client.galaxy, p, 'selectionButtons', [gone, null], () => (called = true));
+        const got: unknown[] = [];
+        issuePlayerCommand(w.client.galaxy, p, 'shipAction', [gone, createShipAction(ShipActionType.AutomateShip, gone), false, undefined], (r) => got.push(r.ok));
+        issuePlayerCommand(w.client.galaxy, p, 'selectionButtons', [gone, null], (r) => got.push(r));
         w.tick();
+        await new Promise((r) => setTimeout(r, 0));
         expect(w.posted.length).toBe(before);
-        expect(called).toBe(false);
+        // docs/sim-worker.md §4.4 "Failed commands": each callback once, with the op's failure value (no buttons).
+        expect(got).toEqual([false, null]);
         expect(warn.mock.calls.map((c) => String(c[0])).join('\n')).toMatch(/BuiltObject Gone is no longer in the game/);
-        // A query the worker cannot run answers with an error: no callback either.
-        simQuery(w.client.galaxy, p, 'habitatDispatch', [null as unknown as Habitat], () => (called = true));
+        // A command whose executor throws in the worker: no callback, as in-thread.
+        let called = false;
+        issuePlayerCommand(w.client.galaxy, p, 'habitatDispatch', [null as unknown as Habitat], () => (called = true));
         w.tick();
         expect(called).toBe(false);
         warn.mockRestore();
+        err.mockRestore();
         // runPlayerCommand needs its result at once, which a replica cannot give: callers take the async path.
         expect(() => runPlayerCommand(w.client.galaxy, p, 'automationOff', ['Colony Tax Rates'])).toThrow(/sim-worker replica/);
         w.client.dispose();

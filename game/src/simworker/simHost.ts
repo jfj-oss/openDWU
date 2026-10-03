@@ -28,11 +28,10 @@ import { GalaxySyncSource } from './replicaGalaxy';
 import { TRADE_FLOWS_SIDE_KEY, TradeFlowSyncSource } from './tradeFlowSync';
 import { installRimAtmosphereData } from '../render/rimAtmosphereWiring';
 import { RemoteValues, decodeRemoteArg, encodeRemoteArg, encodeRemoteResult, type RemoteArg, type RemoteNaming } from './remoteArgs';
-import { runSimQuery, type SimQueryName } from './simQuery';
 import { runHostOp } from './hostOps';
 import { drainVoiceCues } from '../sim/scenario/llm/voiceCues';
 import { PlayerMessagePipeline, applyPlayerMessageUiOp, attachPlayerRecipients, restorePlayerRecipients, withRecipientsAsSaved, type PlayerMessageBatch } from '../ui/messagePipeline';
-import type { ClockMessage, CommandMessage, DebugReply, DebugRequest, FromWorker, HostOpMessage, QueryMessage, RefreshRequest, SnapshotMessage, StepMessage, TradeFlowsMessage, UiOpMessage, WorkerEvent } from './protocol';
+import type { ClockMessage, CommandMessage, DebugReply, DebugRequest, FromWorker, HostOpMessage, RefreshRequest, SnapshotMessage, StepMessage, TradeFlowsMessage, UiOpMessage, WorkerEvent } from './protocol';
 import { commandLog, copyCommandLogEntry, type CommandLogEntry } from '../sim/player/commandLog';
 import type { ReplicaEncoderOptions } from './replicaSync';
 
@@ -267,28 +266,6 @@ export class SimHost {
     }
 
     /**
-     * Run a read-only sim query (simQuery.ts) on the authoritative galaxy now, between ticks — where in-thread play
-     * runs it, between frames, in order with the commands (its galaxy.rnd draws land in the same place). The reply
-     * goes out with the next message (flush() sends one at once).
-     */
-    query(m: QueryMessage): void {
-        const resolving = {
-            object: (id: number) => this.sync.encoder.objectOf(id),
-            external: (kind: string, key: string | number) => this.externalsByRef.get(`${kind}:${key}`),
-        };
-        try {
-            const empire = resolving.object(m.empire) as Empire | null;
-            if (empire === null) throw new Error(`query ${m.op}: asking empire (sync id ${m.empire}) is not in the game`);
-            const args = m.args.map((a) => decodeRemoteArg(a, resolving));
-            const result = runSimQuery(this.galaxy, empire, m.op as SimQueryName, args as never);
-            this.results.push({ id: m.id, result: encodeRemoteArg(result, this.naming), query: true });
-        } catch (err) {
-            this.results.push({ id: m.id, result: null, error: err instanceof Error ? err.message : String(err), query: true });
-        }
-        this.dirty = true;
-    }
-
-    /**
      * A UI-side sim write from the main thread (ui/messagePipeline.ts applyPlayerMessageUiOp): applied now, between
      * ticks, and not journaled — the in-thread UI writes these directly from its timers and handlers.
      */
@@ -469,16 +446,6 @@ export class SimHost {
         for (const [o, depth] of this.touched) this.sync.encoder.compareNow(o, depth);
         this.touched.clear();
         return this.message(steps, t1 - t0);
-    }
-
-    /**
-     * A message now, without draining the boundary or stepping (a query's reply: the main thread need not wait for the
-     * next tick). Read-only, like every delta.
-     */
-    flush(): StepMessage {
-        this.settleUntilCycle = this.sync.encoder.cycleCount + 2;
-        this.dirty = false;
-        return this.message(0, 0);
     }
 
     private message(steps: number, stepMs: number): StepMessage {

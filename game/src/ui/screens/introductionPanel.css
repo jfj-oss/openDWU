@@ -1,0 +1,59 @@
+/* The game-start Introduction panel (introductionPanel.ts, pnlIntroduction) on the original-style window. */
+
+/* lblIntroductionTitle: centred in the panel's width. */
+.intro-body .intro-title {
+    text-align: center;
+    line-height: 1;
+}
+
+.intro-body .intro-background {
+    position: absolute;
+    overflow: hidden;
+    box-sizing: border-box;
+}
+
+/* BackgroundImageLayout.Stretch, method_376(bitmap, 0.1f): the picture at 10 % alpha. */
+.intro-body .intro-background-image {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    opacity: 0.1;
+    pointer-events: none;
+}
+
+.intro-body .intro-race,
+.intro-body .intro-playstyle {
+    position: absolute;
+}
+.intro-body .intro-race img {
+    position: absolute;
+    object-fit: fill;
+}
+
+.intro-body .intro-label {
+    line-height: 1.2;
+}
+
+/* lblIntroductionVictoryConditions: MaximumSize 420 × 115 (AutoSize clips at it). */
+.intro-body .intro-victory {
+    max-height: 115px;
+    overflow: hidden;
+}
+
+/* lblIntroductionPlaystyleIntro: TextAlign MiddleCenter, centred vertically in picIntroductionPlaystyle. */
+.intro-body .intro-playstyle {
+    display: flex;
+    align-items: center;
+}
+.intro-body .intro-playstyle-text {
+    position: static;
+    text-align: center;
+    max-height: 210px;
+    overflow: hidden;
+}
+
+/* lblIntroductionWhatToDoPoints: 740 × 100 (MaximumSize). */
+.intro-body .intro-points {
+    overflow: hidden;
+}

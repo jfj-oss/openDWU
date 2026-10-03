@@ -13,14 +13,13 @@ import { createRenderTime, updateRenderTime, type RenderTime } from '../render/r
 import { GalaxyReplica } from './replicaGalaxy';
 import { ReplicaTradeFlows } from './tradeFlowSync';
 import { RemoteArgError, decodeRemoteArg, encodeRemoteArg, type RemoteArg, type RemoteNaming, type RemoteResolving } from './remoteArgs';
-import { setRemoteQuerySink, type SimQueryName } from './simQuery';
 import { BuiltObject } from '../sim/builtObject';
 import { Creature } from '../sim/creature';
 import { Fighter } from '../sim/combat/fighters';
 import { ShipGroup } from '../sim/fleets/shipGroup';
 import { Empire as EmpireClass } from '../sim/empire';
 import { Habitat } from '../sim/types';
-import type { ClockMessage, CommandMessage, HostOpMessage, QueryMessage, RefreshRequest, SnapshotMessage, StepMessage, ToWorker, WorkerEvent } from './protocol';
+import type { ClockMessage, CommandMessage, HostOpMessage, RefreshRequest, SnapshotMessage, StepMessage, ToWorker, WorkerEvent } from './protocol';
 import { setRemoteSimHost, type RemoteSimHost } from './remoteHost';
 import { commandFailureMessage, commandFailureValue } from './commandFailure';
 import { setRemoteRefreshSink } from './refresh';
@@ -98,7 +97,7 @@ function createSyncStats(): SyncStats {
 /**
  * Objects that only ever exist in the game graph. One the replica no longer knows (destroyed and dropped by the sync's
  * mark, while the HUD or a list still held it) cannot be named to the worker, and must not travel by value (the worker
- * would act on a copy): the command or query is dropped instead.
+ * would act on a copy): the command is dropped instead.
  */
 const IDENTITY_PROTOS: ReadonlySet<object> = new Set<object>([BuiltObject.prototype, Habitat.prototype, ShipGroup.prototype, Creature.prototype, Fighter.prototype, EmpireClass.prototype]);
 
@@ -111,11 +110,11 @@ export const REPLY_TIMEOUT_MS = 30000;
 
 /** A request to the worker that waits for its reply in a step message's `results`. */
 interface Waiting {
-    kind: 'command' | 'query' | 'refresh' | 'hostOp';
+    kind: 'command' | 'refresh' | 'hostOp';
     op: string;
     /** Main-thread time it was posted (now()). */
     sentAt: number;
-    /** The reply callback: a command's onApplied, a query's done, a refresh's onFresh, a promise's resolve. */
+    /** The reply callback: a command's onApplied, a refresh's onFresh, a promise's resolve. */
     reply?: (r: unknown) => void;
     /** Promised replies (remoteHost.ts): a failure rejects instead. */
     reject?: (err: Error) => void;
@@ -244,7 +243,6 @@ export class SimClientCore {
         };
         this.resolving = { object: (id) => this.replica.decoder.object(id), external: (kind, key) => this.replica.staticByRef.get(`${kind}:${key}`) };
         setRemoteCommandSink(galaxy, (empire, op, args, onApplied) => this.sendCommand(empire, op, args, onApplied));
-        setRemoteQuerySink(galaxy, (empire, op, args, done) => this.sendQuery(empire, op, args, done));
         setRemoteRefreshSink(galaxy, (objects, onFresh) => this.requestRefresh(objects, onFresh));
         // The sim's lazy "obtain" lookups never write the replica, whoever queries it (sim/readOnlyQuery.ts).
         markReadOnlyGalaxy(galaxy);
@@ -342,8 +340,8 @@ export class SimClientCore {
      * command's callback gets the op's failure value (commandFailure.ts: the value its executor returns when it refuses
      * the order), so the UI leaves its waiting state on its own refusal path — except when the executor threw
      * (`threw`): in-thread the boundary's exception then stops the frame (pause, "Simulation error" toast) and the
-     * callback never runs, and the worker did the same. A query's `done` and a refresh's `onFresh` do not run: an
-     * in-thread query that throws never calls `done` either, and an in-thread refresh never calls `onFresh`.
+     * callback never runs, and the worker did the same. A refresh's `onFresh` does not run: an in-thread refresh never
+     * calls `onFresh`.
      */
     private fail(w: Waiting, reason: string, threw = false): void {
         if (w.reject !== undefined) {
@@ -391,7 +389,7 @@ export class SimClientCore {
     }
 
     /**
-     * A request's outcome is known. A query / refresh / host op is answered now; a command when every command issued
+     * A request's outcome is known. A refresh / host op is answered now; a command when every command issued
      * before it has been answered (drainCommands).
      */
     private finish(id: number, w: Waiting, outcome: NonNullable<Waiting['outcome']>): void {
@@ -506,23 +504,6 @@ export class SimClientCore {
         this.opts.post(m);
     }
 
-    /** A sim query (simQuery.ts) for the worker; `done` runs when its reply has been applied (in frame()). */
-    private sendQuery(empire: Empire, op: SimQueryName, args: unknown[], done: (r: unknown) => void): void {
-        const gone = this.unavailable();
-        if (gone !== null) {
-            // As a query the worker could not run (an in-thread query that throws never calls `done`).
-            console.warn(`sim worker: query ${op} dropped: ${gone}`);
-            return;
-        }
-        const empireId = this.replica.decoder.idOf(empire);
-        if (empireId < 0) throw new Error(`sim worker: query ${op} from an empire that is not in the replica`);
-        const encoded = this.encodeArgs(`query ${op}`, args);
-        if (encoded === null) return;
-        const id = this.expect({ kind: 'query', op, reply: done });
-        const msg: QueryMessage = { type: 'query', id, empire: empireId, op, args: encoded };
-        this.opts.post(msg);
-    }
-
     /** A UI-side sim write for the worker to apply on receipt, unjournaled (protocol.ts UiOpMessage). */
     postUiOp(op: string, args: unknown[]): void {
         if (this.unavailable() !== null) return;
@@ -611,7 +592,7 @@ export class SimClientCore {
             const m = this.inbox[k];
             // Command replies: their onApplied reads the replica, so the cold parts through this delta (which carry
             // what the commands changed, simHost.ts touched) are applied first.
-            const fresh = m.results.some((r) => r.query !== true);
+            const fresh = m.results.length > 0;
             const st: ApplyStats = fresh ? this.replica.applyThrough(m.delta) : this.replica.apply(m.delta);
             hotMs += st.applyMs;
             steps += m.steps;
@@ -724,7 +705,6 @@ export class SimClientCore {
         this.unbindClock?.();
         // The command sink stays: a command issued on this closed replica (a screen of the old game still open) fails
         // cleanly through sendCommand instead of waiting in a local queue nothing drains.
-        setRemoteQuerySink(this.galaxy, null);
         setRemoteSimHost(this.galaxy, null);
         setRemoteRefreshSink(this.galaxy, null);
         markReadOnlyGalaxy(this.galaxy, false);

@@ -44,6 +44,7 @@ import {
     type MessageRoute,
 } from './messageRouting';
 import { formatEmpireMessage, recordTickerMessage } from './empireMessageFeed';
+import { withSimWrites } from '../sim/readOnlyQuery';
 import { isConversationExpired } from './messageStubs';
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -142,7 +143,9 @@ export function recordEventMessage(player: Empire, e: QueuedEvent, options: Mess
     m.description = e.message;
     m.title = e.title;
     m.supressPopup = true;
-    sendEmpireMessage(m, player);
+    // The pipeline's writes are sim writes on purpose (both threads, see the file header; docs/sim-worker.md §8): the
+    // lazy lookups write here as they do in the worker (readOnlyQuery.ts).
+    withSimWrites(() => sendEmpireMessage(m, player));
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -164,6 +167,11 @@ export interface PopupReceipt {
  * Galaxy_GameEnd); a popup is stamped with the star date when it has none; a conversation is stamped (2361).
  */
 export function receivePopupMessage(galaxy: Galaxy, player: Empire, m: EmpireMessage, options: MessageOptions): PopupReceipt {
+    // Sim writes on purpose, in both threads (the file header): the lazy lookups write (readOnlyQuery.ts).
+    return withSimWrites(() => receivePopupMessageWrites(galaxy, player, m, options));
+}
+
+function receivePopupMessageWrites(galaxy: Galaxy, player: Empire, m: EmpireMessage, options: MessageOptions): PopupReceipt {
     if (receiveAdvisorSuggestionMessage(player, m)) return { advisor: true, route: null, action: 'none' };
     const route = routeEmpireMessage(m, player, options);
     const defeat = playerDefeatGameEnd(m, player, galaxy.empires);
