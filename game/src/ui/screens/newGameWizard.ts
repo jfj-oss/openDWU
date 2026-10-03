@@ -39,6 +39,21 @@ import {
 // [todosweep2] begin
 import { GALAXY_RESEARCH_SPEED_MAX, GALAXY_RESEARCH_SPEED_MIN, researchBaseTechCostForSliderIndex, researchSpeedSliderIndexFor } from '../../sim/startGameOptions';
 // [todosweep2] end
+// [wizardB1] begin
+import {
+    applyEmpireTypeChoice,
+    empireTypeIsCustom,
+    empireTypeIsPirate,
+    HOME_SYSTEM_NAMES,
+    piratePlayStyleFor,
+    startLocationsForShape,
+    type WizardEmpireType,
+} from '../../sim/startGameOptions';
+import { isTextLoaded, loadText, tryGetText } from '../../sim/textResolver';
+import { pirateModifierLines } from './empireSummaryModel';
+import { piratePortraitUrl } from './diplomacyRelationsView';
+import { PIRATE_FLAG_SHAPES, pirateFlagShapeUrl } from '../empireEmblem';
+// [wizardB1] end
 import { parseRace, type Race } from '../../sim/data/races';
 import { parseRaceFamilies, type RaceFamily } from '../../sim/data/raceFamilies';
 import { parseGovernments, type Government } from '../../sim/data/governments';
@@ -97,6 +112,21 @@ export const EXPANSION_TICKS = ['Pre-Warp', 'Starting', 'Young', 'Expanding', 'M
 export const EMPIRE_SIZE_TICKS = ['Random', 'Starting', 'Young', 'Expanding', 'Mature', 'Old'];
 /** Task M4x: "Your Empire" tech-level slider labels (Start.cs 3460-3471). */
 export const TECH_LEVEL_TICKS = ['Pre-Warp', 'Normal', 'Level 1', 'Level 2', 'Level 3', 'Level 4', 'Level 5', 'Level 6', 'Level 7'];
+// [wizardB1] begin
+/** tbarStartNewGameTheGalaxyPirateStrength labels (Start.cs 3224). */
+export const PIRATE_STRENGTH_TICKS = ['Very Weak', 'Weak', 'Normal', 'Strong'];
+/** cmbStartNewGameTheGalaxyPirateProximity items (Start.1.cs 4774). */
+export const PIRATE_PROXIMITY_NAMES = ['Nearby', 'Average', 'Distant'];
+/** tbarStartNewGameYourEmpireCorruption labels (Start.cs 3472). */
+export const CORRUPTION_TICKS = ['Low', 'Normal', 'High', 'Very High'];
+/** tbarStartNewGameYourEmpireHomeSystem labels (Start.cs 3445). */
+export const HOME_SYSTEM_TICKS: readonly string[] = HOME_SYSTEM_NAMES;
+/** cmbVictoryPiratePlayStyle items (Start.1.cs 4808: Galaxy.ResolveDescription(PiratePlayStyle), GameText "PiratePlayStyle *"). */
+export const PIRATE_PLAYSTYLE_NAMES = ['Balanced', 'Raider', 'Mercenary', 'Smuggler'];
+/** cmbVictoryThresholdPercentage items (Start.InitializeComponent.cs 2883) and their values (Start.1.cs 3885 method_203). */
+export const VICTORY_THRESHOLD_NAMES = ['75%', '80%', '85%', '90%', '95%', '100%'];
+export const VICTORY_THRESHOLD_VALUES = [0.75, 0.8, 0.85, 0.9, 0.95, 1.0];
+// [wizardB1] end
 
 export interface NewGameWizardCallbacks {
     onBackToMenu: () => void;
@@ -119,12 +149,16 @@ export interface NewGameWizardRefs {
  * Your Empire and Victory Conditions, matching the original): The Galaxy →
  * Colonization and Territory → Your Race → Your Empire → Other Empires →
  * Victory Conditions → Start. */
-export type WizardPageId = 'galaxy' | 'colonization' | 'race' | 'empire' | 'empires' | 'victory' | 'scenario' | 'start';
-/** The mod layer's "Scenario" page (tasks/MODLAYER-DESIGN.md §3) sits between Victory Conditions and Start. */
-export const WIZARD_PAGES: WizardPageId[] = ['galaxy', 'colonization', 'race', 'empire', 'empires', 'victory', 'scenario', 'start'];
+export type WizardPageId = 'type' | 'jumpstart' | 'galaxy' | 'colonization' | 'race' | 'empire' | 'empires' | 'victory' | 'scenario' | 'start';
+/** The mod layer's "Scenario" page (tasks/MODLAYER-DESIGN.md §3) sits between Victory Conditions and Start. [wizardB1] The
+ * "Playstyle" page (Start.cs pnlStartNewGameYourEmpireType) comes first: its Custom buttons continue with The Galaxy, the
+ * other playstyles with the one-page Jump Start (pnlStartNewGameJumpStart), which starts the game. */
+export const WIZARD_PAGES: WizardPageId[] = ['type', 'galaxy', 'colonization', 'race', 'empire', 'empires', 'victory', 'scenario', 'start'];
 
 /** Title-bar text per page ("Start a New Game: <page title>"). */
 export const WIZARD_PAGE_TITLES: Record<WizardPageId, string> = {
+    type: 'Playstyle',
+    jumpstart: 'Galaxy, Race, Government, Difficulty',
     galaxy: 'The Galaxy',
     colonization: 'Colonization and Territory',
     race: 'Your Race',
@@ -137,7 +171,9 @@ export const WIZARD_PAGE_TITLES: Record<WizardPageId, string> = {
 
 /** Footer back-button label per page. */
 export const WIZARD_BACK_LABELS: Record<WizardPageId, string> = {
-    galaxy: '← Main Menu',
+    type: '← Main Menu',
+    jumpstart: '← Playstyle',
+    galaxy: '← Playstyle',
     colonization: '← The Galaxy',
     race: '← Colonization and Territory',
     empire: '← Your Race',
@@ -151,6 +187,8 @@ export const WIZARD_BACK_LABELS: Record<WizardPageId, string> = {
  * order (mirrors WIZARD_BACK_LABELS), except the last page which starts the
  * game rather than navigating. */
 export const WIZARD_FORWARD_LABELS: Record<WizardPageId, string> = {
+    type: '',
+    jumpstart: 'Start Game',
     galaxy: 'Colonization and Territory →',
     colonization: 'Your Race →',
     race: 'Your Empire →',
@@ -323,15 +361,21 @@ function isRaceFileText(text: string): boolean {
  * the page). */
 export function createNewGameWizard(callbacks: NewGameWizardCallbacks): NewGameWizardRefs {
     const options: StartGameOptions = defaultStartGameOptions();
-    let page: WizardPageId = 'galaxy';
+    let page: WizardPageId = 'type';
     try {
-        const requested = new URLSearchParams(window.location.search).get('page');
-        if (requested !== null && (WIZARD_PAGES as string[]).includes(requested)) {
+        const params = new URLSearchParams(window.location.search);
+        const requested = params.get('page');
+        if (requested !== null && ((WIZARD_PAGES as string[]).includes(requested) || requested === 'jumpstart')) {
             page = requested as WizardPageId;
         }
+        // Screenshot / dev hook: ?screen=wizard&page=empire&type=CustomPirate opens the pages of that playstyle.
+        const type = params.get('type');
+        if (type !== null && (WIZARD_EMPIRE_TYPES as readonly string[]).includes(type)) applyEmpireTypeChoice(options, type as WizardEmpireType);
     } catch {
         // non-browser context: stay on the first page
     }
+    // Re-show the current page once GameText.txt is in, so its descriptions use the game's text.
+    void ensureWizardGameText().then(() => showPage(page));
 
     const overlay = document.createElement('div');
     overlay.className = 'wizard-overlay';
@@ -358,6 +402,11 @@ export function createNewGameWizard(callbacks: NewGameWizardCallbacks): NewGameW
     win.appendChild(body);
 
     // --- Page containers (built once, shown/hidden on navigation). ---
+    const typePage = buildTypePage((t) => {
+        applyEmpireTypeChoice(options, t);
+        showPage(empireTypeIsCustom(t) ? 'galaxy' : 'jumpstart');
+    });
+    const jumpStartPage = buildJumpStartPage(options);
     const galaxyPage = buildGalaxyPage(options);
     const colonizationPage = buildColonizationPage(options);
     const racePage = buildRacePage(options, handleRaceChanged);
@@ -367,6 +416,8 @@ export function createNewGameWizard(callbacks: NewGameWizardCallbacks): NewGameW
     const scenarioPage = buildScenarioPage(options);
     const startPage = buildStartPage(options);
     const pageEls: Record<WizardPageId, HTMLElement> = {
+        type: typePage,
+        jumpstart: jumpStartPage,
         galaxy: galaxyPage,
         colonization: colonizationPage,
         race: racePage,
@@ -417,14 +468,22 @@ export function createNewGameWizard(callbacks: NewGameWizardCallbacks): NewGameW
         }
         backBtn.textContent = WIZARD_BACK_LABELS[id];
         nextBtn.textContent = WIZARD_FORWARD_LABELS[id];
+        // [wizardB1] the Playstyle page continues through its own buttons.
+        nextBtn.style.display = id === 'type' ? 'none' : '';
+        // [wizardB1] pages whose controls depend on the playstyle / other pages re-sync when shown.
+        (pageEls[id] as unknown as { __onShow?: () => void }).__onShow?.();
         if (id === 'start') {
             refreshStartSummary();
         }
     }
 
     function goBack(): void {
-        if (page === 'galaxy') {
+        if (page === 'type') {
             callbacks.onBackToMenu();
+            return;
+        }
+        if (page === 'galaxy' || page === 'jumpstart') {
+            showPage('type');
             return;
         }
         const idx = WIZARD_PAGES.indexOf(page);
@@ -432,6 +491,12 @@ export function createNewGameWizard(callbacks: NewGameWizardCallbacks): NewGameW
     }
 
     function goForward(): void {
+        if (page === 'type') return;
+        if (page === 'jumpstart') {
+            // Start.cs btnJumpStartTheGalaxyNext_Click starts the game from the Jump Start page.
+            callbacks.onStartGame({ ...options });
+            return;
+        }
         const idx = WIZARD_PAGES.indexOf(page);
         if (idx < WIZARD_PAGES.length - 1) {
             showPage(WIZARD_PAGES[idx + 1]);
@@ -470,6 +535,351 @@ export function createNewGameWizard(callbacks: NewGameWizardCallbacks): NewGameW
             overlay.remove();
         },
     };
+}
+
+// ---------------------------------------------------------------------------
+// [wizardB1] The Playstyle page (Start.cs pnlStartNewGameYourEmpireType, laid out by Start.cs 3495 method_41) and the
+// Jump Start page (pnlStartNewGameJumpStart, Start.cs 2904 method_35 / method_36).
+// ---------------------------------------------------------------------------
+
+/** Every playstyle the page offers (Start.cs wjhRtsSwmsa values). */
+export const WIZARD_EMPIRE_TYPES: readonly WizardEmpireType[] = ['CustomStandard', 'CustomPirate', 'ShadowsStandard', 'ShadowsPirate', 'ClassicEra', 'ReturnOfTheShakturi', 'Legends'];
+
+/** TextResolver.GetText(tag) when GameText.txt is loaded, else the English text it holds (GameText.txt). */
+function wt(tag: string, fallback: string): string {
+    return (tryGetText(tag) ?? fallback).replace(/\\n/g, '\n');
+}
+
+/** The wizard runs before the game data loads; load GameText.txt for its descriptions (no-op once loaded). */
+async function ensureWizardGameText(): Promise<void> {
+    if (isTextLoaded()) return;
+    try {
+        const text = await fetchText(resolveDataUrl('GameText.txt'));
+        if (!isTextLoaded() && isRaceFileText(text)) loadText(text);
+    } catch {
+        // keep the English fallbacks
+    }
+}
+
+interface PlaystyleButtonSpec {
+    type: WizardEmpireType | 'AncientGalaxy' | 'Introductory';
+    titleTag: string;
+    title: string;
+    descTag: string;
+    desc: string;
+    image: string;
+}
+
+const PLAYSTYLE_ERAS: PlaystyleButtonSpec[] = [
+    { type: 'AncientGalaxy', titleTag: 'Start New Game - Ancient Galaxy', title: 'The Ancient Galaxy', descTag: 'Start New Game Description - Ancient Galaxy', desc: 'Travel back to a time when the galaxy was young. Ancient empires have carved out their territories and formed alliances amongst themselves.', image: '/assets/dwu/images/ui/achievements/DefeatAncients.png' },
+    { type: 'ShadowsPirate', titleTag: 'Start New Game - Shadows Pirate', title: 'Pirate Faction in the Age of Shadows', descTag: 'Start New Game Description - Shadows Pirate', desc: 'You are a pirate faction in the Age of Shadows. Civilization has crumbled and pirates, smugglers and mercenaries rule the galaxy.', image: `${CHROME}playstyle_pirateshadows.png` },
+    { type: 'ShadowsStandard', titleTag: 'Start New Game - Shadows Standard', title: 'Standard Empire in the Age of Shadows', descTag: 'Start New Game Description - Shadows Standard', desc: 'You are a standard empire in the Age of Shadows. Civilization has crumbled and pirates, smugglers and mercenaries rule the galaxy.', image: `${CHROME}playstyle_normalshadows.png` },
+    { type: 'ClassicEra', titleTag: 'Start New Game - Classic Era', title: 'Classic Era', descTag: 'Start New Game Description - Classic Era', desc: 'You are a standard empire in the Classic Era. Your empire has begun to expand beyond your own star system.', image: `${CHROME}playstyle_normalclassic.png` },
+    { type: 'ReturnOfTheShakturi', titleTag: 'Start New Game - Return of the Shakturi', title: 'Return of the Shakturi', descTag: 'Start New Game Description - Return of the Shakturi', desc: 'You are a standard empire in the Classic Era, with the Return of the Shakturi storyline.', image: '/assets/dwu/images/ui/achievements/DefeatShakturi.png' },
+    { type: 'Legends', titleTag: 'Start New Game - Legends', title: 'Legends', descTag: 'Start New Game Description - Legends', desc: 'You are a standard empire in the Classic Era. This start includes all of the Distant Worlds storyline and events: Original, Return of the Shakturi and Legends.', image: '/assets/dwu/images/ui/achievements/DefeatLegendaryPirates.png' },
+];
+const PLAYSTYLE_CUSTOM: PlaystyleButtonSpec[] = [
+    { type: 'CustomStandard', titleTag: 'Start New Game - Custom Standard', title: 'Custom Game as Standard Empire', descTag: 'Start New Game Description - Custom Standard', desc: 'Set up a new game as a standard empire with the full range of options.', image: `${CHROME}playstyle_normalclassic.png` },
+    { type: 'CustomPirate', titleTag: 'Start New Game - Custom Pirate', title: 'Custom Game as Pirate Faction', descTag: 'Start New Game Description - Custom Pirate', desc: 'Set up a new game as a pirate faction with the full range of options.', image: `${CHROME}playstyle_pirateclassic.png` },
+];
+const PLAYSTYLE_INTRODUCTORY: PlaystyleButtonSpec = { type: 'Introductory', titleTag: 'Introductory Game', title: 'Introductory Game', descTag: 'Start New Game Description - Introductory Game', desc: 'An introduction to Distant Worlds. Jump straight into an easy game in the Classic Era, with abundant resources and few pirates.', image: '' };
+
+function buildTypePage(onChoose: (type: WizardEmpireType) => void): HTMLDivElement {
+    const wrap = document.createElement('div');
+    wrap.className = 'wizard-page wizard-type-page';
+    const desc = document.createElement('div');
+    desc.className = 'wizard-type-desc';
+
+    function makeButton(spec: PlaystyleButtonSpec, cls: string): HTMLButtonElement {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = `wizard-type-btn ${cls}`;
+        btn.dataset.type = spec.type;
+        if (spec.image !== '') {
+            const img = document.createElement('img');
+            img.src = spec.image;
+            img.alt = '';
+            btn.appendChild(img);
+        }
+        const label = document.createElement('span');
+        label.textContent = `${wt(spec.titleTag, spec.title)} >>`;
+        btn.appendChild(label);
+        const showDesc = (): void => {
+            label.textContent = `${wt(spec.titleTag, spec.title)} >>`;
+            desc.textContent = wt(spec.descTag, spec.desc);
+        };
+        btn.addEventListener('mouseenter', showDesc);
+        btn.addEventListener('focus', showDesc);
+        if (spec.type === 'AncientGalaxy' || spec.type === 'Introductory') {
+            // TODO(port): The Ancient Galaxy (Start.cs 5583: switches to "The Ancient Galaxy" theme and starts its prebuilt
+            // galaxy map, method_221) and the Introductory Game (Start.cs 5363 btnStartNewGameIntroductory_Click preset) are
+            // not ported yet.
+            btn.disabled = true;
+            btn.title = 'Not available yet';
+        } else {
+            const t = spec.type;
+            btn.addEventListener('click', () => onChoose(t));
+        }
+        return btn;
+    }
+
+    const intro = document.createElement('div');
+    intro.className = 'wizard-type-intro';
+    intro.appendChild(makeButton(PLAYSTYLE_INTRODUCTORY, 'wizard-type-btn-intro'));
+    wrap.appendChild(intro);
+    const eras = document.createElement('div');
+    eras.className = 'wizard-type-eras';
+    for (const spec of PLAYSTYLE_ERAS) eras.appendChild(makeButton(spec, 'wizard-type-btn-era'));
+    wrap.appendChild(eras);
+    wrap.appendChild(desc);
+    const custom = document.createElement('div');
+    custom.className = 'wizard-type-custom';
+    for (const spec of PLAYSTYLE_CUSTOM) custom.appendChild(makeButton(spec, 'wizard-type-btn-custom'));
+    wrap.appendChild(custom);
+    const note = document.createElement('div');
+    note.className = 'wizard-type-note';
+    note.textContent = wt('Start New Game New Player Explanation Text UNIVERSE', 'For a simple introduction to Distant Worlds try playing as a standard empire in the Classic Era.');
+    wrap.appendChild(note);
+    (wrap as unknown as { __onShow?: () => void }).__onShow = () => {
+        desc.textContent = wt('Start New Game Description - Custom Standard', PLAYSTYLE_CUSTOM[0].desc);
+        note.textContent = wt('Start New Game New Player Explanation Text UNIVERSE', note.textContent ?? '');
+    };
+    return wrap;
+}
+
+/** The pirate playstyle combo + its description and portrait (Start.cs 3384-3397 cmbVictoryPiratePlayStyle /
+ *  lblPiratePlaystyleDescription / picStartNewGameYourEmpirePiratePlaystyle; text from Start.2.cs 3147 method_101). */
+function buildPiratePlaystyleSection(options: StartGameOptions): HTMLDivElement {
+    const section = document.createElement('div');
+    section.className = 'wizard-pirate-playstyle';
+    const row = document.createElement('div');
+    row.className = 'wizard-empire-name-row';
+    const label = document.createElement('span');
+    label.className = 'wizard-empire-label';
+    label.textContent = wt('Pirate Playstyle', 'Pirate Playstyle');
+    row.appendChild(label);
+    const select = document.createElement('select');
+    select.className = 'wizard-empire-gov-select wizard-pirate-playstyle-select';
+    PIRATE_PLAYSTYLE_NAMES.forEach((n, i) => {
+        const opt = document.createElement('option');
+        opt.value = String(i);
+        opt.textContent = n;
+        select.appendChild(opt);
+    });
+    select.value = String(options.piratePlayStyleIndex ?? 0);
+    row.appendChild(select);
+    section.appendChild(row);
+    const body = document.createElement('div');
+    body.className = 'wizard-pirate-playstyle-body';
+    const text = document.createElement('div');
+    text.className = 'wizard-pirate-playstyle-desc';
+    const img = document.createElement('img');
+    img.className = 'wizard-pirate-playstyle-img';
+    img.alt = '';
+    body.appendChild(text);
+    body.appendChild(img);
+    section.appendChild(body);
+    const DESC_TAGS = ['Balanced', 'Pirate', 'Mercenary', 'Smuggler'];
+    const DESC_FALLBACK = [
+        'Balanced playstyle pirates attempt to control colonies, gain income from protection arrangements with other empires, and capture enemy ships and bases.',
+        'Raiders attempt to control colonies, both independent and those owned by standard empires. They grow rich by siphoning off the wealth from these controlled colonies.',
+        'Mercenaries are guns for hire who seek out attack and defense missions to perform for other empires.',
+        'Smugglers are focussed on gaining income by smuggling resources to colonies and building a network of protection arrangements with other empires.',
+    ];
+    function paint(): void {
+        const i = options.piratePlayStyleIndex ?? 0;
+        const style = piratePlayStyleFor(i);
+        const lines = [wt(`Pirate Playstyle Description ${DESC_TAGS[i] ?? 'Balanced'}`, DESC_FALLBACK[i] ?? DESC_FALLBACK[0]), '', ...pirateModifierLines(style).map((l) => l.text)];
+        text.textContent = lines.join('\n').trim();
+        img.src = piratePortraitUrl(style);
+    }
+    select.addEventListener('change', () => {
+        options.piratePlayStyleIndex = parseInt(select.value, 10);
+        paint();
+    });
+    (section as unknown as { __paint?: () => void }).__paint = () => {
+        select.value = String(options.piratePlayStyleIndex ?? 0);
+        paint();
+    };
+    paint();
+    return section;
+}
+
+/** A labelled <select> bound to an index. */
+function makeWizardSelect(title: string, items: readonly string[], get: () => number, set: (i: number) => void): { row: HTMLDivElement; select: HTMLSelectElement; setItems: (items: readonly string[]) => void } {
+    const row = document.createElement('div');
+    row.className = 'wizard-select-row';
+    const label = document.createElement('span');
+    label.className = 'wizard-slider-title';
+    label.textContent = title;
+    row.appendChild(label);
+    const select = document.createElement('select');
+    select.className = 'wizard-empire-gov-select';
+    function setItems(list: readonly string[]): void {
+        select.replaceChildren(...list.map((n, i) => {
+            const opt = document.createElement('option');
+            opt.value = String(i);
+            opt.textContent = n;
+            return opt;
+        }));
+        select.value = String(Math.min(Math.max(0, get()), list.length - 1));
+    }
+    setItems(items);
+    select.addEventListener('change', () => set(parseInt(select.value, 10)));
+    row.appendChild(select);
+    return { row, select, setItems };
+}
+
+/** A checkbox row bound to a boolean. */
+function makeWizardCheckbox(text: string, get: () => boolean, set: (v: boolean) => void): { row: HTMLLabelElement; input: HTMLInputElement; label: HTMLSpanElement } {
+    const row = document.createElement('label');
+    row.className = 'wizard-checkbox';
+    const input = document.createElement('input');
+    input.type = 'checkbox';
+    input.checked = get();
+    input.addEventListener('change', () => set(input.checked));
+    row.appendChild(input);
+    const label = document.createElement('span');
+    label.textContent = text;
+    row.appendChild(label);
+    return { row, input, label };
+}
+
+/** The Jump Start page: galaxy shape, star amount, physical size, difficulty (+ scaling), race and government (pirate
+ *  playstyle for a pirate) — everything else is the preset of Start.cs btnJumpStartTheGalaxyNext_Click
+ *  (startGameOptions.ts toCreateGameOptionsJumpStart). */
+function buildJumpStartPage(options: StartGameOptions): HTMLDivElement {
+    const wrap = document.createElement('div');
+    wrap.className = 'wizard-page wizard-jumpstart-page';
+
+    const top = document.createElement('div');
+    top.className = 'wizard-jumpstart-top';
+    wrap.appendChild(top);
+
+    // Galaxy shape (radJumpStartGalaxyShape*) with preview.
+    const shapeCol = document.createElement('div');
+    shapeCol.className = 'wizard-shape-row';
+    const shapeList = document.createElement('div');
+    shapeList.className = 'wizard-shape-list';
+    const preview = document.createElement('div');
+    preview.className = 'wizard-shape-preview';
+    const previewImg = document.createElement('img');
+    preview.appendChild(previewImg);
+    shapeCol.appendChild(shapeList);
+    shapeCol.appendChild(preview);
+    top.appendChild(shapeCol);
+    const radios: HTMLInputElement[] = [];
+    function updatePreview(): void {
+        const opt = SHAPE_OPTIONS.find((o) => o.shape === options.shape) ?? SHAPE_OPTIONS[1];
+        previewImg.src = `${CHROME}${opt.image}`;
+        previewImg.alt = opt.label;
+    }
+    for (const opt of SHAPE_OPTIONS) {
+        const label = document.createElement('label');
+        label.className = 'wizard-shape-item';
+        const radio = document.createElement('input');
+        radio.type = 'radio';
+        radio.name = 'wizard-jumpstart-shape';
+        radio.value = String(opt.shape);
+        radio.addEventListener('change', () => {
+            options.shape = opt.shape;
+            options.startLocationIndex = 0; // Start.1.cs 4064: the start-location combo resets with the shape
+            updatePreview();
+        });
+        radios.push(radio);
+        label.appendChild(radio);
+        const span = document.createElement('span');
+        span.textContent = opt.label;
+        label.appendChild(span);
+        shapeList.appendChild(label);
+    }
+
+    // Race (cmbJumpStartYourEmpireRace, with (Random)) and government / pirate playstyle.
+    const empireCol = document.createElement('div');
+    empireCol.className = 'wizard-jumpstart-empire';
+    top.appendChild(empireCol);
+    const raceSel = makeWizardSelect('Race', ['(Random)'], () => 0, () => {});
+    empireCol.appendChild(raceSel.row);
+    const raceImg = document.createElement('img');
+    raceImg.className = 'wizard-jumpstart-race-img';
+    raceImg.alt = '';
+    empireCol.appendChild(raceImg);
+    const govSel = makeWizardSelect('Government', ['(Random)'], () => 0, () => {});
+    empireCol.appendChild(govSel.row);
+    const pirateSection = buildPiratePlaystyleSection(options);
+    empireCol.appendChild(pirateSection);
+    let races: Race[] = [];
+    let governments: Government[] = [];
+    function paintRace(): void {
+        const race = races.find((r) => r.name === options.raceName);
+        if (race === undefined) {
+            raceImg.removeAttribute('src');
+            raceImg.style.visibility = 'hidden';
+        } else {
+            raceImg.style.visibility = '';
+            raceImg.src = racePortraitUrls(race.pictureIndex)[0];
+        }
+    }
+    raceSel.select.addEventListener('change', () => {
+        const i = parseInt(raceSel.select.value, 10);
+        options.raceName = i <= 0 ? '' : races[i - 1]?.name ?? '';
+        paintRace();
+    });
+    govSel.select.addEventListener('change', () => {
+        const i = parseInt(govSel.select.value, 10);
+        options.governmentId = i <= 0 ? -1 : governments[i - 1]?.governmentId ?? -1;
+    });
+    void Promise.all([loadWizardRaceData(), loadWizardGovernments()]).then(([data, govs]) => {
+        races = playableRacesSorted(data.races);
+        governments = filterStartGovernments(govs);
+        // The same default as the Your Race page (whichever loads first sets it).
+        if (options.raceName === '') options.raceName = defaultRaceName(data.races);
+        sync();
+    }).catch(() => {});
+
+    // Star Amount, Physical Size, Difficulty (tbarJumpStartTheGalaxy*), Difficulty scaling.
+    const grid = document.createElement('div');
+    grid.className = 'wizard-slider-grid';
+    wrap.appendChild(grid);
+    let sliders: HTMLDivElement[] = [];
+    function buildSliders(): void {
+        for (const el of sliders) el.remove();
+        sliders = [
+            makeWizardSlider('Star Amount', STAR_AMOUNT_TICKS, options.starCountIndex, (i) => { options.starCountIndex = i; }),
+            makeWizardSlider('Physical Size', PHYSICAL_SIZE_TICKS, options.dimensionIndex, (i) => { options.dimensionIndex = i; }),
+            makeWizardSlider('Difficulty', DIFFICULTY_TICKS, options.difficultyIndex, (i) => { options.difficultyIndex = i; }),
+        ];
+        for (const el of sliders) grid.appendChild(el);
+    }
+    const scaling = makeWizardCheckbox('Difficulty scales as player nears victory', () => options.difficultyScaling, (v) => { options.difficultyScaling = v; });
+    wrap.appendChild(scaling.row);
+    const typeNote = document.createElement('div');
+    typeNote.className = 'wizard-type-desc';
+    wrap.appendChild(typeNote);
+
+    function sync(): void {
+        radios.forEach((r) => (r.checked = Number(r.value) === options.shape));
+        updatePreview();
+        raceSel.setItems(['(Random)', ...races.map((r) => r.name)]);
+        const ri = races.findIndex((r) => r.name === options.raceName);
+        raceSel.select.value = String(ri + 1);
+        paintRace();
+        govSel.setItems(['(Random)', ...governments.map((g) => g.name)]);
+        const gi = governments.findIndex((g) => g.governmentId === options.governmentId);
+        govSel.select.value = String(gi + 1);
+        // Start.cs 2904 method_35: a pirate start shows the playstyle instead of the government.
+        const pirate = empireTypeIsPirate(options.empireType);
+        govSel.row.style.display = pirate ? 'none' : '';
+        pirateSection.style.display = pirate ? '' : 'none';
+        (pirateSection as unknown as { __paint?: () => void }).__paint?.();
+        scaling.input.checked = options.difficultyScaling;
+        buildSliders();
+        const spec = PLAYSTYLE_ERAS.find((p) => p.type === options.empireType);
+        typeNote.textContent = spec !== undefined ? `${wt(spec.titleTag, spec.title)}: ${wt(spec.descTag, spec.desc)}` : '';
+    }
+    (wrap as unknown as { __onShow?: () => void }).__onShow = sync;
+    sync();
+    return wrap;
 }
 
 // ---------------------------------------------------------------------------
@@ -546,6 +956,7 @@ function buildGalaxyPage(options: StartGameOptions): HTMLDivElement {
         radio.checked = opt.shape === options.shape;
         radio.addEventListener('change', () => {
             options.shape = opt.shape;
+            options.startLocationIndex = 0; // [wizardB1] Start.1.cs 4064: the start-location combo resets with the shape
             updatePreview();
         });
         label.appendChild(radio);
@@ -583,6 +994,10 @@ function buildGalaxyPage(options: StartGameOptions): HTMLDivElement {
     }));
     sliderGrid.appendChild(makeSlider('Pirates', PIRATES_TICKS, options.piratesIndex, (i) => {
         options.piratesIndex = i;
+    }));
+    // [wizardB1] tbarStartNewGameTheGalaxyPirateStrength (Start.cs 3224; Start.1.cs 3722-3736 → PirateShipMaintenanceFactor).
+    sliderGrid.appendChild(makeSlider('Pirate Strength', PIRATE_STRENGTH_TICKS, options.pirateStrengthIndex ?? 2, (i) => {
+        options.pirateStrengthIndex = i;
     }));
     sliderGrid.appendChild(makeSlider('Aggression', AGGRESSION_TICKS, options.aggressionIndex, (i) => {
         options.aggressionIndex = i;
@@ -622,6 +1037,21 @@ function buildGalaxyPage(options: StartGameOptions): HTMLDivElement {
         sliderGrid.appendChild(researchSlider);
     }
     // [todosweep2] end
+
+    // [wizardB1] cmbStartNewGameTheGalaxyPirateProximity (Start.1.cs 4774, method_190 → Galaxy.PirateProximity) and
+    // chkStartNewGameTheGalaxyPiratesRespawn (Start.cs 3193, Start.1.cs 3741 → Galaxy.DestroyedPiratesDoNotRespawn).
+    const pirateRow = document.createElement('div');
+    pirateRow.className = 'wizard-galaxy-pirate-row';
+    pirateRow.appendChild(makeWizardSelect(wt('Pirate Proximity', 'Pirate Proximity'), PIRATE_PROXIMITY_NAMES, () => options.pirateProximityIndex ?? 1, (i) => {
+        options.pirateProximityIndex = i;
+    }).row);
+    const respawn = makeWizardCheckbox(wt('Destroyed Pirates do not respawn', 'Destroyed Pirates do not respawn'), () => options.destroyedPiratesDoNotRespawn ?? false, (v) => {
+        options.destroyedPiratesDoNotRespawn = v;
+    });
+    respawn.row.title = wt('Destroyed Pirates do not respawn Description', 'If checked then pirate factions that are completely wiped out do not respawn replacement pirate factions.');
+    pirateRow.appendChild(respawn.row);
+    // In the free space right of the shape preview (the original puts them by the Pirates sliders, Start.cs 3150-3199).
+    shapeRow.appendChild(pirateRow);
 
     // "Difficulty scales as player nears victory" (chkStartNewGameTheGalaxyDifficultyScaling).
     const scalingRow = document.createElement('label');
@@ -666,6 +1096,12 @@ function buildGalaxyPage(options: StartGameOptions): HTMLDivElement {
     });
     seedRow.appendChild(rerollBtn);
     wrap.appendChild(seedRow);
+
+    // [wizardB1] the Jump Start page shares the shape: re-sync the radios when shown.
+    (wrap as unknown as { __onShow?: () => void }).__onShow = () => {
+        for (const r of shapeList.querySelectorAll<HTMLInputElement>('input[type=radio]')) r.checked = Number(r.value) === options.shape;
+        updatePreview();
+    };
 
     return wrap;
 }
@@ -864,6 +1300,16 @@ function buildOtherEmpiresPage(options: StartGameOptions): HTMLDivElement {
     perfNote.className = 'wizard-todo wizard-empires-perf-note';
     autoGroup.appendChild(perfNote);
 
+    // [wizardB1] chkGalaxyNewEmpiresDuringGame (Start.cs 3655; Start.1.cs 3689 → Galaxy.SpawnNewEmpires, Habitat.cs 1502).
+    const spawn = makeWizardCheckbox(
+        wt('Allow independent alien colonies to start new empires during the game', 'Allow independent alien colonies to start new empires during the game'),
+        () => options.spawnNewEmpires ?? true,
+        (v) => {
+            options.spawnNewEmpires = v;
+        },
+    );
+    spawn.row.classList.add('wizard-empires-spawn');
+
     // --- OR specify the starting empires below (lbl…OR). Task 06j: the
     // original lists each AI empire here for manual editing — an editable row
     // per empire with race / government pickers and a name field. ---
@@ -1002,6 +1448,7 @@ function buildOtherEmpiresPage(options: StartGameOptions): HTMLDivElement {
 
     paintPreview();
     wrap.appendChild(listPreview);
+    wrap.appendChild(spawn.row);
     autoCheck.addEventListener('change', paintPreview);
     countInput.addEventListener('input', paintPreview);
 
@@ -1256,13 +1703,33 @@ function buildEmpirePage(options: StartGameOptions): HTMLDivElement {
     // --- Task M4x: size (tbarStartNewGameYourEmpireSize) and tech level (tbarStartNewGameYourEmpireTechLevel). ---
     const eraGrid = document.createElement('div');
     eraGrid.className = 'wizard-slider-grid';
-    eraGrid.appendChild(makeWizardSlider('Size', EMPIRE_SIZE_TICKS, options.empireExpansionIndex ?? 1, (i) => {
+    // [wizardB1] cmbYourEmpireStartLocation (items per galaxy shape, Start.1.cs method_205) and the Home System slider.
+    const startLocation = makeWizardSelect('Galaxy Location', startLocationsForShape(options.shape), () => options.startLocationIndex ?? 0, (i) => {
+        options.startLocationIndex = i;
+    });
+    eraGrid.appendChild(startLocation.row);
+    const homeSystemSlider = makeWizardSlider('Home System', [...HOME_SYSTEM_TICKS], options.homeSystemIndex ?? 2, (i) => {
+        options.homeSystemIndex = i;
+    });
+    eraGrid.appendChild(homeSystemSlider);
+    const sizeSlider = makeWizardSlider('Size', EMPIRE_SIZE_TICKS, options.empireExpansionIndex ?? 1, (i) => {
         options.empireExpansionIndex = i;
-    }));
-    eraGrid.appendChild(makeWizardSlider('Tech Level', TECH_LEVEL_TICKS, options.empireTechLevelIndex ?? 1, (i) => {
+    });
+    eraGrid.appendChild(sizeSlider);
+    const techSlider = makeWizardSlider('Tech Level', TECH_LEVEL_TICKS, options.empireTechLevelIndex ?? 1, (i) => {
         options.empireTechLevelIndex = i;
-    }));
+    });
+    eraGrid.appendChild(techSlider);
+    // [wizardB1] tbarStartNewGameYourEmpireCorruption (Start.cs 3472; method_63 → EmpireStart.CorruptionMultiplier).
+    const corruptionSlider = makeWizardSlider('Corruption', CORRUPTION_TICKS, options.empireCorruptionIndex ?? 1, (i) => {
+        options.empireCorruptionIndex = i;
+    });
+    eraGrid.appendChild(corruptionSlider);
     wrap.appendChild(eraGrid);
+    // [wizardB1] the pirate playstyle (Start.cs 3384-3420 method_40: shown instead of government / home system / size /
+    // corruption for a pirate start).
+    const pirateSection = buildPiratePlaystyleSection(options);
+    wrap.appendChild(pirateSection);
 
     // --- Government (dropdown + modifier table) ---
     const govSection = document.createElement('div');
@@ -1433,7 +1900,10 @@ function buildEmpirePage(options: StartGameOptions): HTMLDivElement {
         updateFlagPreview();
     }
 
-    let flagUrls: string[] = flagShapeTileUrls(undefined);
+    let stockFlagUrls: string[] = flagShapeTileUrls(undefined);
+    // [wizardB1] Start.1.cs 3912 method_204: a pirate start lists Galaxy.FlagShapesPirates instead.
+    const pirateFlagUrls = PIRATE_FLAG_SHAPES.map((_, i) => pirateFlagShapeUrl(i));
+    let flagUrls: string[] = empireTypeIsPirate(options.empireType) ? pirateFlagUrls : stockFlagUrls;
     const shapeUrl = (i: number): string => flagUrls[i] ?? flagShapeUrl(i);
     function buildFlagTiles(): void {
         flagGrid.replaceChildren();
@@ -1459,7 +1929,8 @@ function buildEmpirePage(options: StartGameOptions): HTMLDivElement {
     }
     buildFlagTiles();
     void loadWizardManifest().then((m) => {
-        flagUrls = flagShapeTileUrls(m?.['ui/flagshapes']);
+        stockFlagUrls = flagShapeTileUrls(m?.['ui/flagshapes']);
+        flagUrls = empireTypeIsPirate(options.empireType) ? pirateFlagUrls : stockFlagUrls;
         clampFlagShape();
         buildFlagTiles();
         updateFlagPreview();
@@ -1495,6 +1966,30 @@ function buildEmpirePage(options: StartGameOptions): HTMLDivElement {
     // before any race has been picked (raceName '' → race index 0).
     onRaceChanged(options.raceName);
 
+    // [wizardB1] Start.cs 3398-3420 method_40: a pirate start hides the government, home system, size and corruption
+    // controls and shows the pirate playstyle; the start locations follow the galaxy shape.
+    function syncPlaystyle(): void {
+        const pirate = empireTypeIsPirate(options.empireType);
+        govSection.style.display = pirate ? 'none' : '';
+        homeSystemSlider.style.display = pirate ? 'none' : '';
+        sizeSlider.style.display = pirate ? 'none' : '';
+        corruptionSlider.style.display = pirate ? 'none' : '';
+        pirateSection.style.display = pirate ? '' : 'none';
+        (pirateSection as unknown as { __paint?: () => void }).__paint?.();
+        startLocation.setItems(startLocationsForShape(options.shape));
+        const techInput = techSlider.querySelector<HTMLInputElement>('input[type=range]');
+        if (techInput !== null) techInput.value = String(options.empireTechLevelIndex ?? 1);
+        const urls = pirate ? pirateFlagUrls : stockFlagUrls;
+        if (urls !== flagUrls) {
+            flagUrls = urls;
+            clampFlagShape();
+            buildFlagTiles();
+            updateFlagPreview();
+        }
+    }
+    (wrap as unknown as { __onShow?: () => void }).__onShow = syncPlaystyle;
+    syncPlaystyle();
+
     return wrap;
 }
 
@@ -1510,7 +2005,7 @@ function makeVictoryCheckbox(
     label: string,
     get: () => boolean,
     set: (v: boolean) => void,
-): void {
+): { input: HTMLInputElement; label: HTMLSpanElement } {
     const row = document.createElement('label');
     row.className = 'wizard-checkbox';
     const check = document.createElement('input');
@@ -1522,6 +2017,7 @@ function makeVictoryCheckbox(
     span.textContent = label;
     row.appendChild(span);
     wrap.appendChild(row);
+    return { input: check, label: span };
 }
 
 /** Task 06g: "Label … <number input> years/%" row for one numeric victory
@@ -1644,7 +2140,10 @@ function buildVictoryPage(options: StartGameOptions): HTMLDivElement {
         },
     );
 
-    makeVictoryCheckbox(sectionTime, 'Victory Conditions apply after years', () => true, () => {});
+    // [wizardB1] chkVictoryTimeStart (Start.1.cs 3792 → VictoryConditions.StartDate): was a dummy, always-checked box.
+    makeVictoryCheckbox(sectionTime, 'Victory Conditions apply after years', () => v.timeStart === true, (x) => {
+        v.timeStart = x;
+    });
     makeVictoryNumberRow(
         sectionTime,
         '',
@@ -1662,15 +2161,59 @@ function buildVictoryPage(options: StartGameOptions): HTMLDivElement {
     sectionEvents.className = 'wizard-victory-section';
     wrap.appendChild(sectionEvents);
 
+    // [wizardB1] cmbVictoryThresholdPercentage (Start.1.cs 3804 method_203 → VictoryThresholdPercentage).
+    const threshold = makeWizardSelect(wt('Victory Threshold Percent', 'Victory Threshold Percent'), VICTORY_THRESHOLD_NAMES, () => {
+        const i = VICTORY_THRESHOLD_VALUES.indexOf(v.victoryThresholdPercentage);
+        return i >= 0 ? i : VICTORY_THRESHOLD_VALUES.length - 1;
+    }, (i) => {
+        v.victoryThresholdPercentage = VICTORY_THRESHOLD_VALUES[i] ?? 1.0;
+    });
+    sectionTime.appendChild(threshold.row);
+
+    // [wizardB1] the story box (Start.cs 3715-3751): chkStoryDistantWorlds, chkStoryReturnOfTheShakturi, the event toggles,
+    // chkStoryShadows; tech trading and Giant Kaltors on the right (Start.cs 3752-3759).
+    makeVictoryCheckbox(sectionEvents, wt('Enable original Distant Worlds story events', 'Enable original Distant Worlds story events'), () => v.enableStoryDistantWorlds === true, (x) => {
+        v.enableStoryDistantWorlds = x;
+    });
+    const shakturi = makeVictoryCheckbox(sectionEvents, wt('Enable Return Of The Shakturi story events and victory conditions', 'Enable Return Of The Shakturi story events and victory conditions'), () => v.enableStoryEvents === true, (x) => {
+        v.enableStoryEvents = x;
+    });
     makeVictoryCheckbox(sectionEvents, 'Enable Disasters and other events', () => v.enableDisasterEvents, (x) => {
         v.enableDisasterEvents = x;
     });
-    makeVictoryCheckbox(sectionEvents, 'Enable race-specific victory conditions', () => v.enableRaceSpecificConditions, (x) => {
+    const raceConditions = makeVictoryCheckbox(sectionEvents, 'Enable race-specific victory conditions', () => v.enableRaceSpecificConditions, (x) => {
         v.enableRaceSpecificConditions = x;
     });
     makeVictoryCheckbox(sectionEvents, 'Enable race-specific events', () => v.enableRaceSpecificEvents, (x) => {
         v.enableRaceSpecificEvents = x;
     });
+    const shadows = makeVictoryCheckbox(sectionEvents, wt('Enable Shadows story events', 'Enable Shadows story events'), () => v.enableStoryEventsShadows === true, (x) => {
+        v.enableStoryEventsShadows = x;
+    });
+    const sectionGame = sectionEvents;
+    sectionEvents.classList.add('wizard-victory-events');
+    makeVictoryCheckbox(sectionGame, wt('Allow Tech Trading', 'Allow Tech Trading'), () => options.allowTechTrading ?? true, (x) => {
+        options.allowTechTrading = x;
+    });
+    makeVictoryCheckbox(sectionGame, wt('Allow Giant Kaltors at game start', 'Allow Giant Kaltors at game start'), () => options.allowGiantKaltorGeneration ?? true, (x) => {
+        options.allowGiantKaltorGeneration = x;
+    });
+
+    // Start.cs 3770 method_45 (pirate start: Return of the Shakturi unchecked and disabled, pirate-specific conditions,
+    // the pirate explanation) and Start.1.cs 3098 btnStartNewGameOtherEmpiresNext_Click (Shadows only in a PreWarp galaxy).
+    // The displayed state follows; the stored choice is kept and toCreateGameOptions applies the same rule.
+    (wrap as unknown as { __onShow?: () => void }).__onShow = () => {
+        const pirate = empireTypeIsPirate(options.empireType);
+        shakturi.input.disabled = pirate;
+        shakturi.input.checked = !pirate && v.enableStoryEvents === true;
+        const prewarp = (options.galaxyExpansionIndex ?? 1) === 0;
+        shadows.input.disabled = !prewarp;
+        shadows.input.checked = prewarp && v.enableStoryEventsShadows === true;
+        raceConditions.label.textContent = pirate ? 'Enable Pirate-specific victory conditions' : 'Enable race-specific victory conditions';
+        sandboxNote.textContent = pirate
+            ? wt('Victory Conditions Explanation Pirate', 'Enable Pirate-specific victory conditions. Then select the pirate playstyle for your empire. Finally select the percentage threshold for victory.')
+            : 'Leave all Victory Conditions unchecked to play in Sandbox mode (open play)';
+    };
 
     return wrap;
 }
@@ -1891,20 +2434,37 @@ function buildStartPage(options: StartGameOptions): HTMLDivElement {
 
     function refreshSummary(): void {
         const shapeOpt = SHAPE_OPTIONS.find((o) => o.shape === options.shape) ?? SHAPE_OPTIONS[1];
+        // [wizardB1] the playstyle and the options added with it.
+        const typeSpec = [...PLAYSTYLE_CUSTOM, ...PLAYSTYLE_ERAS].find((p) => p.type === (options.empireType ?? 'CustomStandard'));
+        const pirate = empireTypeIsPirate(options.empireType);
+        const stories = [
+            options.victory.enableStoryDistantWorlds === true && 'Distant Worlds',
+            !pirate && options.victory.enableStoryEvents === true && 'Return of the Shakturi',
+            (options.galaxyExpansionIndex ?? 1) === 0 && options.victory.enableStoryEventsShadows === true && 'Shadows',
+        ].filter(Boolean).join(', ');
         const rows: Array<[string, string]> = [
+            ['Playstyle', typeSpec !== undefined ? wt(typeSpec.titleTag, typeSpec.title) : String(options.empireType)],
+            ...(pirate ? [['Pirate Playstyle', PIRATE_PLAYSTYLE_NAMES[options.piratePlayStyleIndex ?? 0] ?? 'Balanced'] as [string, string]] : []),
             ['Galaxy Shape', shapeOpt.label],
             ['Star Amount', STAR_AMOUNT_TICKS[options.starCountIndex] ?? `${starCountFor(options.starCountIndex)} stars`],
             ['Physical Size', PHYSICAL_SIZE_TICKS[options.dimensionIndex] ?? `${sectorsFor(options.dimensionIndex)}×${sectorsFor(options.dimensionIndex)} sectors`],
             ['Colony Prevalence', COLONY_PREVALENCE_TICKS[options.colonyPrevalenceIndex] ?? `index ${options.colonyPrevalenceIndex}`],
             ['Alien Life', ALIEN_LIFE_TICKS[options.alienLifeIndex] ?? `index ${options.alienLifeIndex}`],
             ['Space Creatures', SPACE_CREATURES_TICKS[options.spaceCreaturesIndex] ?? `index ${options.spaceCreaturesIndex}`],
-            ['Pirates', PIRATES_TICKS[options.piratesIndex] ?? `index ${options.piratesIndex}`],
+            ['Pirates', `${PIRATES_TICKS[options.piratesIndex] ?? `index ${options.piratesIndex}`} · ${PIRATE_STRENGTH_TICKS[options.pirateStrengthIndex ?? 2]} · ${PIRATE_PROXIMITY_NAMES[options.pirateProximityIndex ?? 1]}${options.destroyedPiratesDoNotRespawn === true ? ' · no respawn' : ''}`],
             ['Aggression', AGGRESSION_TICKS[options.aggressionIndex] ?? `index ${options.aggressionIndex}`],
             ['Expansion', EXPANSION_TICKS[options.galaxyExpansionIndex ?? 1] ?? `index ${options.galaxyExpansionIndex}`],
             ['Empire Size', EMPIRE_SIZE_TICKS[options.empireExpansionIndex ?? 1] ?? `index ${options.empireExpansionIndex}`],
             ['Tech Level', TECH_LEVEL_TICKS[options.empireTechLevelIndex ?? 1] ?? `index ${options.empireTechLevelIndex}`],
             ['Difficulty', DIFFICULTY_TICKS[options.difficultyIndex] ?? `index ${options.difficultyIndex}` + (options.difficultyScaling ? ' (scales near victory)' : '')],
             ['Your Race', options.raceName || '(not chosen)'],
+            ['Home System', `${HOME_SYSTEM_TICKS[options.homeSystemIndex ?? 2]} · ${startLocationsForShape(options.shape)[options.startLocationIndex ?? 0] ?? '(Random)'} · corruption ${CORRUPTION_TICKS[options.empireCorruptionIndex ?? 1]}`],
+            ['Story Lines', stories || 'None'],
+            ['Game Options', [
+                (options.spawnNewEmpires ?? true) ? 'new empires during game' : 'no new empires',
+                (options.allowTechTrading ?? true) ? 'tech trading' : 'no tech trading',
+                (options.allowGiantKaltorGeneration ?? true) ? 'Giant Kaltors' : 'no Giant Kaltors',
+            ].join(', ')],
             ['Empire Name', options.empireName || '(generated at start)'],
             ['Government', options.governmentId >= 0 ? `#${options.governmentId}` : '(not chosen)'],
             ['Flag', `shape ${options.flagShapeIndex} · ${options.primaryColor} / ${options.secondaryColor}`],

@@ -1,5 +1,7 @@
 // New-game wizard options (task 06b). Headless — no DOM/Pixi imports.
-import { victoryConditionsFromWizard } from './victory';
+import { VictoryConditions as RuntimeVictoryConditions, victoryConditionsFromWizard } from './victory';
+import { PiratePlayStyle } from './pirates';
+import { REAL_SECONDS_IN_GALACTIC_YEAR, startStarDateForAge } from './galaxyTime';
 import { GalaxyShape } from './types';
 import type { Race } from './data/races';
 import type { GameData } from './data/gameData';
@@ -79,6 +81,30 @@ export interface StartGameOptions {
     /** Task M4x: "Your Empire" tech-level slider (tbarStartNewGameYourEmpireTechLevel, 0..8 = PreWarp, Normal,
      * Level 1..7; Start.cs 3460 / method_75). Unset = 1 (Normal, tech 0.5). */
     empireTechLevelIndex?: number;
+    // [wizardB1] begin — options of the original's wizard that were missing (all optional so older saves still load).
+    /** The "Playstyle" page (Start.cs pnlStartNewGameYourEmpireType): which start the player picked (Start.cs wjhRtsSwmsa).
+     *  Unset = 'CustomStandard' (the full wizard as a standard empire). */
+    empireType?: WizardEmpireType;
+    /** cmbVictoryPiratePlayStyle / cmbJumpStartVictoryPiratePlayStyle index (0 Balanced, 1 Pirate, 2 Mercenary, 3 Smuggler;
+     *  Start.1.cs 3204 method_191). Unset = 0 (StartGameOptions.PiratePlayStyle = 0). Read only for a pirate start. */
+    piratePlayStyleIndex?: number;
+    /** chkStartNewGameTheGalaxyPiratesRespawn "Destroyed Pirates do not respawn" (Start.1.cs 3741). Unset = false. */
+    destroyedPiratesDoNotRespawn?: boolean;
+    /** chkGalaxyNewEmpiresDuringGame "Allow independent alien colonies to start new empires during the game" (Start.1.cs 3689
+     *  → Galaxy.SpawnNewEmpires). Unset = true (Main.Part9.cs 2677 OtherEmpiresAllowNewEmpiresFromIndependentColonies). */
+    spawnNewEmpires?: boolean;
+    /** chkStartNewGameEnableTechTrading (Start.1.cs 3737 → Galaxy.AllowTechTrading). Unset = true (StartGameOptions.cs 64). */
+    allowTechTrading?: boolean;
+    /** chkStartNewGameEnableGiantKaltors (Start.1.cs 3738 → the Galaxy ctor). Unset = true (StartGameOptions.cs 66). */
+    allowGiantKaltorGeneration?: boolean;
+    /** tbarStartNewGameYourEmpireCorruption (0..3, Start.cs 4436 method_63: 0.9 / 1.1 / 1.3 / 1.5). Unset = 1
+     *  (Main.Part9.cs 2689 YourEmpireCorruption = 1 → 1.1, the EmpireStart default). */
+    empireCorruptionIndex?: number;
+    /** tbarStartNewGameYourEmpireHomeSystem (0..4 Harsh, Trying, Normal, Agreeable, Excellent). Unset = 2 (Main.Part9.cs 2684). */
+    homeSystemIndex?: number;
+    /** cmbYourEmpireStartLocation index into startLocationsForShape(shape) (0 = (Random)). Unset = 0 (Main.Part9.cs 2682). */
+    startLocationIndex?: number;
+    // [wizardB1] end
     /**
      * Mod layer (tasks/MODLAYER-DESIGN.md §3): the wizard's "Scenario" page. Absent / null = None (the faithful game).
      * The caller loads the scenario's overlay into the GameData it passes to toCreateGameOptions.
@@ -164,8 +190,12 @@ export interface VictoryConditions {
     /** M4z4: chkStoryReturnOfTheShakturi → VictoryConditions.EnableStoryEvents (Start.1.cs 3800). Unset = unchecked
      * (story events are deferred). */
     enableStoryEvents?: boolean;
-    /** M4z4: chkStoryShadows → VictoryConditions.EnableStoryEventsShadows (Start.1.cs 3805). Unset = unchecked. */
+    /** M4z4: chkStoryShadows → VictoryConditions.EnableStoryEventsShadows (Start.1.cs 3805). Unset = unchecked. Only offered
+     *  in a PreWarp galaxy (Expansion 0): btnStartNewGameOtherEmpiresNext_Click (Start.1.cs 3098) unchecks it otherwise. */
     enableStoryEventsShadows?: boolean;
+    /** [wizardB1] chkStoryDistantWorlds "Enable original Distant Worlds story events" → CreateGameFromSettings bool_7 →
+     *  Galaxy.StoryDistantWorldsEnabled (Start.1.cs 3850, Start.2.cs 502). Unset = unchecked. */
+    enableStoryDistantWorlds?: boolean;
 }
 
 /** Min/max bounds of the wizard's numeric victory controls, straight from
@@ -197,6 +227,12 @@ export function defaultVictoryConditions(): VictoryConditions {
         enableRaceSpecificConditions: true,
         enableRaceSpecificEvents: true,
         victoryThresholdPercentage: 1.0,
+        // [wizardB1] the story box: Main.Part9.cs method_259 VictoryConditionsStoryEvents = true (Return of the Shakturi),
+        // VictoryConditionsStoryEventsOriginal = true (Distant Worlds) and StartGameOptions.cs 68
+        // VictoryConditionsStoryEventsShadows = true (offered only at Expansion 0, see toCreateGameOptions).
+        enableStoryEvents: true,
+        enableStoryEventsShadows: true,
+        enableStoryDistantWorlds: true,
     };
 }
 
@@ -625,6 +661,82 @@ export function difficultyFor(index: number): number {
     }
 }
 
+// [wizardB1] begin
+/** The "Playstyle" page buttons (Start.cs 3495 method_41; wjhRtsSwmsa values set by their Click handlers, Start.cs 5188-5583).
+ *  The Custom types lead to the full wizard (Start.1.cs btnStartNewGameStart_Click); the others to the one-page "Jump Start"
+ *  (Start.cs btnJumpStartTheGalaxyNext_Click). The Ancient Galaxy loads a prebuilt galaxy map (not ported). */
+export type WizardEmpireType = 'CustomStandard' | 'CustomPirate' | 'ShadowsStandard' | 'ShadowsPirate' | 'ClassicEra' | 'ReturnOfTheShakturi' | 'Legends';
+
+/** Start.cs bool_2 (PlayAsAPirate) of each playstyle. */
+export function empireTypeIsPirate(t: WizardEmpireType | undefined): boolean {
+    return t === 'CustomPirate' || t === 'ShadowsPirate';
+}
+
+/** Start.cs bool_3 (an Age of Shadows start) of each playstyle. */
+export function empireTypeIsShadows(t: WizardEmpireType | undefined): boolean {
+    return t === 'ShadowsStandard' || t === 'ShadowsPirate';
+}
+
+/** The playstyles that use the full wizard; the rest use the Jump Start page. */
+export function empireTypeIsCustom(t: WizardEmpireType | undefined): boolean {
+    return t === undefined || t === 'CustomStandard' || t === 'CustomPirate';
+}
+
+/**
+ * What a Playstyle button's Click handler does to the options (Start.cs 5188-5583): records the type (wjhRtsSwmsa), and for
+ * Custom Pirate raises a PreWarp tech-level slider to Normal (Start.cs 5240 nVkoJxpyvO).
+ */
+export function applyEmpireTypeChoice(options: StartGameOptions, type: WizardEmpireType): void {
+    options.empireType = type;
+    if (type === 'CustomPirate' && (options.empireTechLevelIndex ?? 1) === 0) options.empireTechLevelIndex = 1;
+}
+
+/** Start.1.cs 3204 method_191 / 3215 method_192: pirate playstyle combo index → PiratePlayStyle (out of range = Balanced). */
+export function piratePlayStyleFor(index: number | undefined): PiratePlayStyle {
+    switch (index) {
+        case 0: return PiratePlayStyle.Balanced;
+        case 1: return PiratePlayStyle.Pirate;
+        case 2: return PiratePlayStyle.Mercenary;
+        case 3: return PiratePlayStyle.Smuggler;
+        default: return PiratePlayStyle.Balanced;
+    }
+}
+
+/** Start.cs 4436 method_63 (corruption slider → EmpireStart.CorruptionMultiplier; out of range 1.1). */
+export function corruptionMultiplierFor(index: number | undefined): number {
+    switch (index) {
+        case 0: return 0.9;
+        case 1: return 1.1;
+        case 2: return 1.3;
+        case 3: return 1.5;
+        default: return 1.1;
+    }
+}
+
+/** tbarStartNewGameYourEmpireHomeSystem labels (Start.cs 3445) → EmpireStart.HomeSystemFavourability (Start.cs ahrJhtHrDu). */
+export const HOME_SYSTEM_NAMES = ['Harsh', 'Trying', 'Normal', 'Agreeable', 'Excellent'] as const;
+export function homeSystemFor(index: number | undefined): (typeof HOME_SYSTEM_NAMES)[number] {
+    return HOME_SYSTEM_NAMES[index ?? 2] ?? 'Normal';
+}
+
+/** cmbYourEmpireStartLocation items per galaxy shape (Start.1.cs 3998-4064 method_205; the combo resets to (Random) when the
+ *  shape changes). */
+export function startLocationsForShape(shape: GalaxyShape): string[] {
+    switch (shape) {
+        case GalaxyShape.Elliptical: return ['(Random)', 'Deep Core', 'Outer Core', 'Inner Rim', 'Outer Rim'];
+        case GalaxyShape.Spiral: return ['(Random)', 'Deep Core', 'Outer Core', 'Far Regions'];
+        case GalaxyShape.Ring: return ['(Random)', 'Core', 'Void', 'Rim'];
+        default: return ['(Random)', 'Center', 'Edge'];
+    }
+}
+
+/** Start.1.cs 3189 method_189: the suggested colony influence range factor (Jump Start uses it as the factor). */
+export function colonyInfluenceRangeSuggestion(starCount: number, sectorsX: number, sectorsY: number): number {
+    const val = Math.sqrt(((sectorsX * sectorsY) / starCount) * 7.0);
+    return Math.max(0.5, Math.min(2.0, val));
+}
+// [wizardB1] end
+
 /** Task 06d: the wizard's default player race — the first playable race,
  * sorted by name. Falls back to the first race overall (still sorted) when
  * no race is playable, and '' when there are no races at all. */
@@ -722,17 +834,20 @@ export function defaultStartGameOptions(): StartGameOptions {
         flagShapeIndex: -1,
         primaryColor: '',
         secondaryColor: '',
+        // [wizardB1] slider positions of the original's fresh-install StartGameOptions (Main.Part9.cs 2659-2708 method_259) and
+        // the standard preset (Start.cs 3317-3324 method_38): Colony Prevalence 2, Alien Life 2 (400), Space Creatures 2 (0.6),
+        // Aggression 1 (1.1), Difficulty 1 (1.0).
         colonyPrevalenceIndex: 2,
         alienLifeIndex: 2,
-        spaceCreaturesIndex: 1,
+        spaceCreaturesIndex: 2,
         // Pirates page: the standard preset Start.cs 3302-3303 (Pirates 3 = 0.4, proximity 1 = Average) and
         // Main.Part9.cs 2665-2667 (GalaxyPirates 3, GalaxyPirateStrength 2, GalaxyPirateProximity 1).
         piratesIndex: 3,
         pirateProximityIndex: 1,
         pirateStrengthIndex: 2,
         galaxyResearchSpeed: 120, // [todosweep2] Main.Part9.cs 2668
-        aggressionIndex: 2,
-        difficultyIndex: 2,
+        aggressionIndex: 1,
+        difficultyIndex: 1,
         difficultyScaling: false,
         victory: defaultVictoryConditions(),
         colonization: defaultColonizationOptions(),
@@ -743,6 +858,16 @@ export function defaultStartGameOptions(): StartGameOptions {
         galaxyExpansionIndex: 1,
         empireExpansionIndex: 1,
         empireTechLevelIndex: 1,
+        // [wizardB1] Main.Part9.cs method_259 / StartGameOptions.cs field defaults.
+        empireType: 'CustomStandard',
+        piratePlayStyleIndex: 0,
+        destroyedPiratesDoNotRespawn: false,
+        spawnNewEmpires: true,
+        allowTechTrading: true,
+        allowGiantKaltorGeneration: true,
+        empireCorruptionIndex: 1,
+        homeSystemIndex: 2,
+        startLocationIndex: 0,
     };
 }
 
@@ -768,7 +893,11 @@ export function toCreateGameOptions(
     gameData: GameData,
     systemNames: string[],
 ): CreateGameOptions {
+    // [wizardB1] The Shadows / Classic Era / Return of the Shakturi / Legends playstyles start from the Jump Start page.
+    if (!empireTypeIsCustom(startOptions.empireType)) return toCreateGameOptionsJumpStart(startOptions, gameData, systemNames);
     const o = startOptions;
+    // Start.cs bool_2: the "Custom Game as Pirate Faction" playstyle (Start.cs nVkoJxpyvO).
+    const playAsPirate = empireTypeIsPirate(o.empireType);
     // Start.1.cs 3695 `int value = tbarStartNewGameTheGalaxyExpansion.Value`.
     const value = o.galaxyExpansionIndex ?? 1;
     // Start.1.cs 3685 `Random random_ = new Random((int)DateTime.Now.Ticks)` (clock-seeded → seeded from the
@@ -788,14 +917,18 @@ export function toCreateGameOptions(
         name: o.empireName,
         race: o.raceName === '' ? '(Random)' : o.raceName,
         governmentStyle: governmentName,
-        homeSystemFavourability: 'Normal',
-        startLocation: '(Random)',
+        // Start.1.cs 3708-3709 (ahrJhtHrDu: the Home System slider; cmbYourEmpireStartLocation).
+        homeSystemFavourability: homeSystemFor(o.homeSystemIndex),
+        startLocation: startLocationsForShape(o.shape)[o.startLocationIndex ?? 0] ?? '(Random)',
         age: playerAge,
         techLevel: playerTechLevel,
         // Start.1.cs 3717-3719: flag colours and shape.
         primaryColor: parseHexColor(o.primaryColor),
         secondaryColor: parseHexColor(o.secondaryColor),
         flagShape: o.flagShapeIndex,
+        // [wizardB1] Start.1.cs 3720-3721: the corruption slider (method_63) and the pirate playstyle (method_191).
+        corruptionMultiplier: corruptionMultiplierFor(o.empireCorruptionIndex),
+        ...(playAsPirate ? { playAsPirate: true, piratePlayStyle: piratePlayStyleFor(o.piratePlayStyleIndex) } : {}),
     };
 
     // AI empires (task 06h "Other Empires" page). Auto-generation produces
@@ -824,6 +957,7 @@ export function toCreateGameOptions(
                 proximityDistance: 'Random',
                 age: rowAge,
                 techLevel: rowTech,
+                corruptionMultiplier: EMPIRE_START_CORRUPTION_MULTIPLIER,
             });
         }
     } else {
@@ -840,6 +974,7 @@ export function toCreateGameOptions(
                 proximityDistance: 'Random',
                 age,
                 techLevel,
+                corruptionMultiplier: EMPIRE_START_CORRUPTION_MULTIPLIER,
             });
         }
     }
@@ -862,8 +997,22 @@ export function toCreateGameOptions(
         allowEmpiresInSameSystem: o.colonization.allowSameSystemAsOtherEmpires,
         // M4z4: Start.1.cs 3772-3805 VictoryConditions from the victory page (Galaxy.GlobalVictoryConditions,
         // Start.2.cs 501-506 / 2026) and Start.2.cs 496 difficulty scaling.
-        victoryConditions: victoryConditionsFromWizard(o.victory, value),
+        victoryConditions: victoryConditionsFromWizard(wizardVictoryForStart(o.victory, playAsPirate, value), value),
         difficultyLevelScalesAsPlayerApproachesVictory: o.difficultyScaling,
+        // [wizardB1] Start.1.cs 3850 chkStoryDistantWorlds.Checked → CreateGameFromSettings bool_7 → Start.2.cs 502.
+        storyDistantWorldsEnabled: o.victory.enableStoryDistantWorlds === true,
+        // [wizardB1] Start.1.cs 3687-3694 / 3737-3741 → Start.2.cs 485 Galaxy ctor and 496-499: the Galaxy-page sliders and
+        // the option checkboxes.
+        lifePrevalence: alienLifeFor(o.alienLifeIndex), // num4 = method_67(Alien Life) → _LifePrevalence
+        creaturePrevalence: spaceCreaturesFor(o.spaceCreaturesIndex), // num5 = method_62(Space Creatures) → _CreaturePrevalence
+        aggressionLevel: aggressionFor(o.aggressionIndex), // num9 = method_71(Aggression) → _AggressionLevel
+        difficultyLevel: difficultyFor(o.difficultyIndex), // EmpireStart.DifficultyLevel = method_201(Difficulty)
+        spawnNewEmpires: o.spawnNewEmpires ?? true, // @checked = chkGalaxyNewEmpiresDuringGame
+        allowTechTrading: o.allowTechTrading ?? true,
+        allowGiantKaltorGeneration: o.allowGiantKaltorGeneration ?? true,
+        destroyedPiratesDoNotRespawn: o.destroyedPiratesDoNotRespawn ?? false,
+        // Start.1.cs 3818-3821: method_104 runs on the auto-generated list only.
+        autogeneratedAiEmpires: manual.length === 0,
         // Start.1.cs 3745 `empireStart.EmpireTerritoryColonyInfluenceRangeFactor = (float)sld…ColonyInfluenceRange.Value / 100f`
         // (unconditional; → Galaxy.EmpireTerritoryColonyInfluenceRangeFactor, Start.2.cs 507). The slider is a percent:
         // passing it undivided made every colony's influence radius 100x (one or two empires owned the whole galaxy, and
@@ -882,14 +1031,180 @@ export function toCreateGameOptions(
         colonizationRange: colonizationRangeFor(clampColonization(o.colonization).colonizationRangeKly),
         // Mod layer: the scenario's switches (the overlay itself comes in with gameData.scenario).
         ...(o.scenario != null ? { scenarioFlags: { ...o.scenario.flags }, scenarioParams: { ...o.scenario.params } } : {}),
-        // TODO(createGame): fields createGame does not accept yet stay on
-        // StartGameOptions and are ignored here:
-        //   - alien life (alienLifeIndex → alienLifeFor): independent-life count
-        //   - space creatures (spaceCreaturesIndex → spaceCreaturesFor)
-        //   - aggression (aggressionIndex → aggressionFor)
-        //   - difficulty (difficultyIndex → difficultyFor); difficultyScaling is passed (M4z4)
     };
 }
+
+// [wizardB1] begin
+/** EmpireStart.cs 28 `_CorruptionMultiplier = 1.1`: every AI start the wizard builds keeps it (Start.1.cs 3753-3763 / 3577). */
+export const EMPIRE_START_CORRUPTION_MULTIPLIER = 1.1;
+
+/** The victory page's story box as btnStartNewGameStart_Click reads it (Start.1.cs 3800 / 3805): a pirate start has Return of
+ *  the Shakturi unchecked and disabled (Start.cs 3776 method_45), and Shadows is unchecked and disabled unless the galaxy is
+ *  PreWarp (Start.1.cs 3098 btnStartNewGameOtherEmpiresNext_Click). */
+export function wizardVictoryForStart(v: VictoryConditions, playAsPirate: boolean, galaxyExpansionIndex: number): VictoryConditions {
+    return {
+        ...v,
+        enableStoryEvents: playAsPirate ? false : v.enableStoryEvents === true,
+        enableStoryEventsShadows: galaxyExpansionIndex === 0 ? v.enableStoryEventsShadows === true : false,
+    };
+}
+
+/**
+ * Port of Start.cs 5613 btnJumpStartTheGalaxyNext_Click: the one-page "Jump Start" behind the Shadows Standard / Shadows
+ * Pirate / Classic Era / Return of the Shakturi / Legends playstyles. The page sets galaxy shape, star amount, physical size,
+ * difficulty (+ scaling), race, and government or pirate playstyle; everything else is the fixed preset below.
+ */
+export function toCreateGameOptionsJumpStart(o: StartGameOptions, gameData: GameData, systemNames: string[]): CreateGameOptions {
+    const type = o.empireType ?? 'ClassicEra';
+    const bool2 = empireTypeIsPirate(type);
+    const bool3 = empireTypeIsShadows(type);
+    // Start.cs 5619 random_ (clock-seeded → seeded from the galaxy seed, as toCreateGameOptions does).
+    const random_ = new Random((o.seed ^ 0x5619) | 0);
+    const num = starCountFor(o.starCountIndex); // 5621 method_60(star density)
+    const playable = gameData.races.filter((r) => r.playable).length;
+    const num2 = maximumEmpireAmountFor(o.starCountIndex, playable); // 5622 method_61
+    let num3 = colonyPrevalenceFor(2); // 5624 method_64(2)
+    let num4 = alienLifeFor(2); // 5625 method_67(2)
+    const num5 = spaceCreaturesFor(2); // 5626 method_62(2)
+    let num6 = piratesFor(3); // 5627 method_66(3)
+    let num7 = 1; // 5628 pirate proximity
+    const num8 = 120000.0; // 5629 base tech cost
+    let num9 = aggressionFor(1); // 5630 method_71(1)
+    const num10 = bool3 ? 0 : 1; // 5631-5635 galaxy Expansion
+    const sectors = sectorsFor(o.dimensionIndex); // 5676 method_69
+    // 5650-5661 player: Starting age (PreWarp in a PreWarp galaxy), Normal tech (PreWarp for a Shadows standard empire).
+    const playerAge = num10 === 0 ? 0 : 1;
+    const playerTechLevel = bool3 && !bool2 ? 0.0 : 0.5;
+    const governmentName = o.governmentId >= 0 ? gameData.governments[o.governmentId]?.name ?? '(Random)' : '(Random)';
+    const player: EmpireStartOptions = {
+        name: undefined, // 5638 empireStart.Name = string.Empty (the engine names it)
+        race: o.raceName === '' ? '(Random)' : o.raceName,
+        governmentStyle: governmentName, // 5648 method_73
+        startLocation: startLocationsForShape(o.shape)[o.startLocationIndex ?? 0] ?? '(Random)', // 5649 cmbYourEmpireStartLocation
+        homeSystemFavourability: 'Normal', // 5650
+        age: playerAge,
+        techLevel: playerTechLevel,
+        // 5662-5667: the race's default flag (createGame keeps the race defaults when no flag shape is passed).
+        corruptionMultiplier: corruptionMultiplierFor(1), // 5668 method_63(1)
+        ...(bool2 ? { playAsPirate: true, piratePlayStyle: piratePlayStyleFor(o.piratePlayStyleIndex) } : {}), // 5669 method_192
+    };
+    // 5682-5697: num2 auto-generated AI empires (Age = method_57(method_109(..)), TechLevel = method_89(num10)).
+    const aiEmpires: EmpireStartOptions[] = [];
+    for (let i = 0; i < num2; i++) {
+        aiEmpires.push({
+            race: '(Random)',
+            governmentStyle: '(Random)',
+            homeSystemFavourability: 'Normal',
+            proximityDistance: 'Random',
+            age: aiEmpireAge(num10, random_),
+            techLevel: aiTechLevelForExpansion(num10, new Random((o.seed ^ 0x5695 ^ (i + 1)) | 0)),
+            corruptionMultiplier: EMPIRE_START_CORRUPTION_MULTIPLIER,
+        });
+    }
+    // 5699-5710: economy / population / territory at 33 %, no time limit, conditions apply after 10 years, threshold 80 %.
+    const startStarDate = startStarDateForAge(num10);
+    const victoryConditions = new RuntimeVictoryConditions();
+    victoryConditions.economy = true;
+    victoryConditions.economyPercent = 33.0;
+    victoryConditions.population = true;
+    victoryConditions.populationPercent = 33.0;
+    victoryConditions.territory = true;
+    victoryConditions.territoryPercent = 33.0;
+    victoryConditions.timeLimit = false;
+    victoryConditions.timeLimitDate = 0;
+    victoryConditions.startDate = startStarDate + 10 * REAL_SECONDS_IN_GALACTIC_YEAR * 1000;
+    victoryConditions.victoryThresholdPercentage = 0.8;
+    let flag2 = false; // bool_7: StoryDistantWorldsEnabled
+    switch (type) {
+        case 'Legends':
+            victoryConditions.enableStoryEventsShadows = false;
+            flag2 = true;
+            victoryConditions.enableStoryEvents = true;
+            victoryConditions.enableDisasterEvents = true;
+            victoryConditions.enableRaceSpecificEvents = true;
+            victoryConditions.enableRaceSpecificVictoryConditions = true;
+            break;
+        case 'ReturnOfTheShakturi':
+            victoryConditions.enableStoryEventsShadows = false;
+            flag2 = true;
+            victoryConditions.enableStoryEvents = true;
+            victoryConditions.enableDisasterEvents = false;
+            victoryConditions.enableRaceSpecificEvents = false;
+            victoryConditions.enableRaceSpecificVictoryConditions = false;
+            break;
+        case 'ClassicEra':
+            victoryConditions.enableStoryEventsShadows = false;
+            flag2 = true;
+            victoryConditions.enableStoryEvents = false;
+            victoryConditions.enableDisasterEvents = false;
+            victoryConditions.enableRaceSpecificEvents = false;
+            victoryConditions.enableRaceSpecificVictoryConditions = false;
+            break;
+        case 'ShadowsPirate':
+            victoryConditions.enableStoryEventsShadows = true;
+            flag2 = false;
+            victoryConditions.enableStoryEvents = false;
+            victoryConditions.enableDisasterEvents = true;
+            victoryConditions.enableRaceSpecificEvents = true;
+            victoryConditions.enableRaceSpecificVictoryConditions = true;
+            num6 = piratesFor(4);
+            num7 = 1;
+            num3 = colonyPrevalenceFor(3);
+            num4 = alienLifeFor(3);
+            num9 = aggressionFor(2);
+            break;
+        case 'ShadowsStandard':
+            victoryConditions.enableStoryEventsShadows = true;
+            flag2 = false;
+            victoryConditions.enableStoryEvents = true;
+            victoryConditions.enableDisasterEvents = true;
+            victoryConditions.enableRaceSpecificEvents = true;
+            victoryConditions.enableRaceSpecificVictoryConditions = true;
+            num6 = piratesFor(4);
+            num7 = 0;
+            num3 = colonyPrevalenceFor(3);
+            num4 = alienLifeFor(3);
+            num9 = aggressionFor(2);
+            break;
+    }
+    return {
+        seed: o.seed,
+        shape: o.shape,
+        galaxyAge: num10,
+        starCount: num,
+        sectorWidth: sectors,
+        sectorHeight: sectors,
+        systemNames,
+        gameData,
+        colonyPrevalence: num3,
+        maximumEmpireAmount: num2,
+        player,
+        aiEmpires,
+        victoryConditions,
+        difficultyLevelScalesAsPlayerApproachesVictory: o.difficultyScaling,
+        storyDistantWorldsEnabled: flag2,
+        // 5679: EmpireTerritoryColonyInfluenceRangeFactor = (float)method_189(num, sectors, sectors).
+        empireTerritoryColonyInfluenceRangeFactor: Math.fround(colonyInfluenceRangeSuggestion(num, sectors, sectors)),
+        piratePrevalence: num6,
+        pirateProximity: num7,
+        pirateShipMaintenanceFactor: 0.4, // 5670
+        baseTechCost: num8,
+        colonizationRangeEnforceLimit: true, // 5680
+        colonizationRange: Math.fround(2 * 2000000), // 5681 2f * (float)Galaxy.SectorSize
+        lifePrevalence: num4,
+        creaturePrevalence: num5,
+        aggressionLevel: num9,
+        difficultyLevel: difficultyFor(o.difficultyIndex), // 5673 method_201(tbarJumpStartTheGalaxyDifficulty)
+        spawnNewEmpires: true, // 5623 flag
+        allowTechTrading: true, // 5671
+        allowGiantKaltorGeneration: true, // 5672
+        destroyedPiratesDoNotRespawn: false, // 5675
+        ageOfShadows: bool3,
+        autogeneratedAiEmpires: true, // 5777 method_104
+        ...(o.scenario != null ? { scenarioFlags: { ...o.scenario.flags }, scenarioParams: { ...o.scenario.params } } : {}),
+    };
+}
+// [wizardB1] end
 
 /** Tech level of the "Normal" start (Start.cs 4162 method_54 "Normal" = 0.5: starting ships, space port,
  * stations); 0 = PreWarp (no space port, no ships: Start.2.cs 1146 / 1308 / 1314 / 1367 gate on TechLevel > 0).

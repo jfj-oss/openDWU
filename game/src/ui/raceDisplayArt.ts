@@ -22,7 +22,8 @@ export function empireEmblem(galaxy: Galaxy | null | undefined, empire: Empire):
     if (o !== null) return { portraitUrl: o.portraitUrl, flagUrl: o.flagUrl, flagFilter: '' };
     return {
         portraitUrl: race !== null ? `/assets/dwu/images/units/races/race_${race.pictureIndex}.png` : null,
-        flagUrl: empire.flagShape >= 0 ? flagShapeUrl(empire.flagShape) : null,
+        // A pirate faction's flagShape indexes the pirate shapes (a wizard pirate start): no stock flag here, as before.
+        flagUrl: empire.flagShape >= 0 && empire.pirateEmpireBaseHabitat === null ? flagShapeUrl(empire.flagShape) : null,
         flagFilter: `sepia(1) saturate(4) hue-rotate(${colorHueRotate(empire.mainColor)}deg)`,
     };
 }
