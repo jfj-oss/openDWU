@@ -618,7 +618,7 @@ describe('generateGalaxy race regions (task 01f1: SetupAlienRacePopulations)', (
     }, 60000);
 
     it('determineAggressiveRaces filters by playable/aggression/intelligence and sorts descending', () => {
-        const result = determineAggressiveRaces(gameData.races, 115, 85);
+        const result = determineAggressiveRaces(null, gameData.races, 115, 85);
         const names = result.map((r) => r.name);
         // Playable races with Aggression >= 115 and Intelligence >= 85:
         // Boskara (140), Dhayut (119), Ikkuro (115), Mortalen (127),

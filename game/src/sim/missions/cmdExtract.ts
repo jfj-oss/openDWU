@@ -55,7 +55,7 @@ function deployAsteroidColony(galaxy: Galaxy, ship: BuiltObject, asteroid: Habit
         empire.stateMoney -= baconSettings.asteroidColonyCost;
         empire.takeOwnershipOfColony(asteroid, empire);
         // PopulationList.Add does not update TotalAmount (see population.ts).
-        asteroid.population.add(new Population(ship.nativeRace !== null ? ship.nativeRace : ship.actualEmpire!.dominantRace!, 30000));
+        asteroid.population.add(new Population(ship.nativeRace !== null ? ship.nativeRace : ship.actualEmpire!.dominantRace!, 30000, galaxy));
         const playerEmpire = galaxy.playerEmpire;
         if (playerEmpire !== null && ship.empire !== playerEmpire && playerEmpire.resourceMap.checkResourcesKnown(asteroid)) {
             playerEmpire.resourceMap.setResourcesKnown(asteroid, false);

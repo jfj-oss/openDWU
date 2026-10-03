@@ -838,7 +838,7 @@ export function checkHabitatIsEmpire(galaxy: Galaxy, habitat: Habitat): void {
     }
     if (num < HABITAT_TO_EMPIRE_THRESHHOLD || galaxy.empires.length >= galaxy.maximumEmpireAmount || galaxy.rnd.next(0, 5) !== 2) return;
     const race = habitat.population.dominantRace;
-    const governmentAttributesList = determineMostSuitableGovernmentTypes(race, EmpireClass.resolveDefaultAllowableGovernmentTypes(race));
+    const governmentAttributesList = determineMostSuitableGovernmentTypes(galaxy, race, EmpireClass.resolveDefaultAllowableGovernmentTypes(race));
     const policy = loadEmpirePolicy(galaxy.researchStatic, race, false);
     const empire = new EmpireClass(galaxy, '', habitat, race, governmentAttributesList[0].governmentId, 1.0, policy);
     habitat.isRefuellingDepot = true;

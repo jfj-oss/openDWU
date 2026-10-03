@@ -108,7 +108,7 @@ export function guardiansDepart(galaxy: Galaxy): void {
     absorbEmpire(galaxy, player, empire, {
         beforeColony: (habitat) => {
             // 738-752
-            habitat.population.add(new Population(player.dominantRace!, 500000000));
+            habitat.population.add(new Population(player.dominantRace!, 500000000, galaxy));
             const populationList = new PopulationList();
             if (habitat.population != null && habitat.population.items.length > 0) {
                 for (let m = 0; m < habitat.population.items.length; m++) {

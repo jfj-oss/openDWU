@@ -12,7 +12,7 @@
 import type { ResearchNode as ResearchNodeDefinition } from './data/research';
 import type { Component } from './data/components';
 import { ComponentType } from './data/components';
-import type { Race } from './data/races';
+import { RaceVictoryConditionType, type Race } from './data/races';
 import type { Random } from './random';
 import { HabitatType, IndustryType } from './types';
 import { TroopType } from './cargo';
@@ -20,7 +20,7 @@ import { BuiltObjectSubRole } from './builtObjectTypes';
 import type { Facility } from './data/facilities';
 import type { Fighter } from './data/fighters';
 import type { Plague } from './data/plagues';
-import { ComponentCategoryType, componentCategoryByIndex, defaultEmpirePolicy, resolveTechDisallow, resolveTechFocuses, type EmpirePolicy } from './data/policies';
+import { ComponentCategoryType, componentCategoryByIndex, defaultEmpirePolicy, resolveTechFocuses, type EmpirePolicy } from './data/policies';
 import {
     checkComponentDefinitionMatchesCategoryStrict,
     resolveComponentCategory,
@@ -130,8 +130,8 @@ export interface PlagueStatic extends Plague {
 }
 
 // Port of Galaxy.3.cs SetResearchRaceSpecialProjects (1932): specified races,
-// races whose SpecialComponent a node grants or improves, and the race
-// DisallowedResearchArea1..3 / DisallowedComponentIds (read from Race.extra).
+// races whose SpecialComponent a node grants or improves, the race's BuildWonder victory wonder, and the race
+// DisallowedResearchArea1..3 / DisallowedComponentIds.
 export function buildResearchStatic(
     definitions: ResearchNodeDefinition[],
     components: Component[],
@@ -162,18 +162,28 @@ export function buildResearchStatic(
                 if (d.components.includes(r.specialComponent) || d.componentImprovements.some((ci) => ci.componentId === r.specialComponent)) add(allowed, d.projectId, r.name);
             }
         }
-        // TODO(port): RaceVictoryCondition BuildWonder (RaceAchievement) allowed races.
-        const extra = r.extra ?? {};
-        const areas = ['DisallowedResearchArea1', 'DisallowedResearchArea2', 'DisallowedResearchArea3']
-            .filter((k) => extra[k] !== undefined)
-            .map((k) => resolveTechDisallow(Number.parseInt(extra[k], 10) || 0));
+        // Galaxy.3.cs 2015-2045: a race-achievement wonder the race must build to win (RaceVictoryCondition BuildWonder)
+        // is researchable by that race only — the first node that builds the facility gets the race in AllowedRaces.
+        for (const condition of r.victoryConditions ?? []) {
+            if (condition == null || condition.type !== RaceVictoryConditionType.BuildWonder || condition.additionalData === null) continue;
+            // AdditionalData is PlanetaryFacilityDefinitionsStatic[index] (null when out of range, Race.cs 1168).
+            const wonder = condition.additionalData >= 0 && condition.additionalData < facilities.length ? facilities[condition.additionalData] : null;
+            if (wonder === null || facilityType(wonder) !== PlanetaryFacilityType.Wonder || (wonder.wonderType as WonderType) !== WonderType.RaceAchievement) continue;
+            for (const d of definitions) {
+                const nodeFacility = d.facilityId !== null && d.facilityId >= 0 ? (facilities[d.facilityId] ?? null) : null;
+                if (nodeFacility !== null && nodeFacility.facilityId === wonder.facilityId) {
+                    add(allowed, d.projectId, r.name);
+                    break;
+                }
+            }
+        }
+        // Race.cs 1375-1394 DisallowedResearchAreas (one entry per DisallowedResearchAreaN line) and 859-876
+        // DisallowedComponents, as parsed by data/races.ts.
+        const areas = r.disallowedResearchAreas ?? [];
         if (areas.length > 0) {
             for (const d of definitions) if (areas.includes(componentCategoryByIndex(d.category))) disallow(d.projectId, r.name);
         }
-        const comps = (extra['DisallowedComponentIds'] ?? '')
-            .split(',')
-            .map((x) => Number.parseInt(x.trim(), 10))
-            .filter((n) => Number.isInteger(n) && n >= 0 && n < components.length);
+        const comps = (r.disallowedComponentIds ?? []).filter((n) => Number.isInteger(n) && n >= 0 && n < components.length);
         if (comps.length > 0) {
             for (const d of definitions) {
                 if (d.components.some((c) => comps.includes(c)) || d.componentImprovements.some((ci) => comps.includes(ci.componentId))) disallow(d.projectId, r.name);

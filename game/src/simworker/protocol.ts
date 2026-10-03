@@ -75,7 +75,16 @@ export interface HostOpMessage {
     args: RemoteArg[];
 }
 
-export type ToWorker = InitMessage | ClockMessage | CommandMessage | HostOpMessage | SaveRequest | DigestRequest | { type: 'dispose' };
+/**
+ * Trade-flow recording on / off (render/freightOverlay.ts through sim/logistics/tradeFlows.ts setRemoteTradeFlows): not
+ * a player command (in-thread it is not journaled either; it observes contracts and changes no sim state).
+ */
+export interface TradeFlowsMessage {
+    type: 'tradeFlows';
+    record: boolean;
+}
+
+export type ToWorker = InitMessage | ClockMessage | CommandMessage | HostOpMessage | SaveRequest | DigestRequest | TradeFlowsMessage | { type: 'dispose' };
 
 export interface ProgressMessage {
     type: 'progress';
