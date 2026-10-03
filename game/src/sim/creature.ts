@@ -15,6 +15,7 @@ import { clearFightersTargeting } from './combat/fighters';
 import type { Weapon } from './weapon';
 import type { Empire } from './empire';
 import { ComponentType } from './data/components';
+import { countersProcessCreatureDeath } from './victory';
 
 // Port of DistantWorlds.Types.CreatureType (member order exact; byte enum).
 export enum CreatureType {
@@ -712,6 +713,8 @@ export class Creature {
         }
         this.damage += damage;
         if (this.damage > this.damageKillThreshold) {
+            // 933: damager.Empire.Counters.ProcessCreatureDeath(this) (EmpireCounters.cs 481).
+            if (damager !== null && damager.empire !== null && damager.empire.counters != null) countersProcessCreatureDeath(damager.empire.counters, this.type);
             this.hasBeenDestroyed = true;
             removeFrom(this.galaxy.creatures, this);
             if (this.parentHabitat !== null) {

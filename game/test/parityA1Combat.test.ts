@@ -90,3 +90,34 @@ describe('Creature.cs 926 DamageCreature(damager, damage, weapon): Silver Mist a
         expect(mist.damage).toBe(300);
     });
 });
+
+describe('Creature.cs 933 → EmpireCounters.cs 481 ProcessCreatureDeath on a kill', () => {
+    it("advances the damager empire's creature counter", () => {
+        const counters = ship.empire!.counters;
+        const before = counters.destroyedCreatureCountKaltor;
+        const kaltor = newCreature(CreatureType.Kaltor);
+        kaltor.damageKillThreshold = 50;
+        expect(kaltor.damageCreature(ship, 40, null)).toBe(false);
+        expect(counters.destroyedCreatureCountKaltor).toBe(before);
+        expect(kaltor.damageCreature(ship, 40, null)).toBe(true);
+        expect(counters.destroyedCreatureCountKaltor).toBe(before + 1);
+    });
+
+    it('a ship kill through InflictDamage counts (Silver Mist)', () => {
+        const counters = ship.empire!.counters;
+        const before = counters.destroyedCreatureCountSilverMist;
+        const mist = newCreature(CreatureType.SilverMist);
+        mist.damageKillThreshold = 1;
+        expect(inflictDamageFull(galaxy, ship, mist, null, 1000, galaxyNow(galaxy), 0, true, 0, false)).toBe(true);
+        expect(counters.destroyedCreatureCountSilverMist).toBe(before + 1);
+    });
+
+    it('no damager (location / creature damage) counts nothing', () => {
+        const counters = ship.empire!.counters;
+        const before = counters.destroyedCreatureCountArdilus;
+        const ardilus = newCreature(CreatureType.Ardilus);
+        ardilus.damageKillThreshold = 1;
+        expect(ardilus.damageCreature(null, 100, null)).toBe(true);
+        expect(counters.destroyedCreatureCountArdilus).toBe(before);
+    });
+});
