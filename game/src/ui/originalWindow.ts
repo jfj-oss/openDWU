@@ -843,6 +843,8 @@ export interface MessageBoxOptions {
     icon?: 'question' | 'warning' | 'stop' | 'information';
     /** Window width in original pixels (default 460). */
     width?: number;
+    /** Button width in original pixels (default 100; MessageBoxEx sizes its buttons to their text). */
+    buttonWidth?: number;
 }
 
 const MESSAGE_ICON: Record<NonNullable<MessageBoxOptions['icon']>, string> = { question: '?', warning: '!', stop: '\u2716', information: 'i' };
@@ -874,7 +876,7 @@ export function messageBox(o: MessageBoxOptions): Promise<string | null> {
         t.classList.add('ow-msg-text');
         win.body.appendChild(place(t, 14 + iconW, 14));
         const textH = Math.max(o.icon ? 30 : 0, t.offsetHeight || 60);
-        const bw = 100;
+        const bw = o.buttonWidth ?? 100;
         const gap = 10;
         const height = 59 + 4 + 14 + textH + 16 + 30 + 14;
         win.setSize(width, height);

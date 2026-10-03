@@ -40,6 +40,17 @@ import {
     withMissionType,
     withTargetEmpire,
     type MissionForm,
+    canTransfer,
+    characterBackdropUrl,
+    characterInTransitOrUnknown,
+    characterPortraitUrl,
+    characterRoleCounts,
+    filterCharacterRows,
+    landscapeImageUrl,
+    resolveTransferDestination,
+    roleIconOverlayRect,
+    roleIconUrl,
+    transferOptions,
 } from '../src/ui/screens/intelligence';
 import { DiplomaticRelationType, obtainDiplomaticRelation } from '../src/sim/diplomacy';
 
@@ -220,5 +231,73 @@ describe('success estimate (Empire.6.cs 21 via CharacterMission.cs GetMissionDif
         expect(missionDifficultyDescription(ci, agent)).toBe('');
         expect(missionDifficultyWarning(ci, agent)).toBe('');
         expect(missionDifficultyDescription(null, agent)).toBe('(Unknown)');
+    });
+});
+
+describe('pictures (CharacterImageCache.cs, CharacterSummary.cs)', () => {
+    it('role icons are images/ui/chrome/characterRole_<Role>.png', () => {
+        expect(roleIconUrl(CharacterRole.ColonyGovernor)).toBe('/assets/dwu/images/ui/chrome/characterRole_ColonyGovernor.png');
+        expect(roleIconUrl(CharacterRole.PirateLeader)).toBe('/assets/dwu/images/ui/chrome/characterRole_PirateLeader.png');
+    });
+    it('OverlayRoleIcon: 20% / 20 px on a 300 px portrait, 35% / 1 px on the 38 px list image', () => {
+        expect(roleIconOverlayRect(300, 0.2, 20)).toEqual({ x: 220, y: 220, w: 60, h: 60 });
+        expect(roleIconOverlayRect(38, 0.35, 1)).toEqual({ x: 24, y: 24, w: 13, h: 13 });
+    });
+    it('landscape refs follow the LoadEnvLandscapes order (GalaxyImages offsets)', () => {
+        expect(landscapeImageUrl(0)).toBe('/assets/dwu/images/environment/landscapes/barrenrock/landscape_0.png');
+        expect(landscapeImageUrl(4)).toBe('/assets/dwu/images/environment/landscapes/continental/landscape_0.png');
+        expect(landscapeImageUrl(8)).toBe('/assets/dwu/images/environment/landscapes/forest/landscape_0.png');
+        expect(landscapeImageUrl(23)).toBe('/assets/dwu/images/environment/landscapes/ocean/landscape_0.png');
+        expect(landscapeImageUrl(29)).toBe('/assets/dwu/images/environment/landscapes/volcanic/landscape_1.png');
+        expect(landscapeImageUrl(30)).toBeNull();
+        expect(landscapeImageUrl(-1)).toBeNull();
+    });
+    it('race portrait without a picture file; space backdrop while on an offensive mission', () => {
+        const { galaxy, a, b, agent } = setup();
+        expect(characterPortraitUrl(agent)).toBe(`/assets/dwu/images/units/races/race_${a.dominantRace!.pictureIndex}.png`);
+        expect(characterInTransitOrUnknown(agent)).toBe(false);
+        const cap = a.capital!;
+        const land = landscapeImageUrl(cap.landscapePictureRef);
+        expect(characterBackdropUrl(agent)).toBe(land ?? '/assets/dwu/images/ui/chrome/storyEvent.jpg');
+        agent.mission = newIntelligenceMissionAgainstEmpire(a, agent, T.StealGalaxyMap, galaxyCurrentStarDate(galaxy), b);
+        expect(characterInTransitOrUnknown(agent)).toBe(true);
+        expect(characterBackdropUrl(agent)).toBe('/assets/dwu/images/ui/chrome/storyEvent.jpg');
+    });
+});
+
+describe('role filter (lblCharacterSummary entries)', () => {
+    it('counts match ResolveCharacterSummary and the filter keeps only that role', () => {
+        const { galaxy, a } = setup();
+        const counts = characterRoleCounts(a);
+        expect(counts.map((r) => `${r.count} ${r.label}`).join(', ')).toBe(resolveCharacterSummary(a));
+        const rows = characterRows(a, galaxy);
+        expect(filterCharacterRows(rows, null)).toHaveLength(rows.length);
+        const agents = filterCharacterRows(rows, CharacterRole.IntelligenceAgent);
+        expect(agents.length).toBe(counts.find((r) => r.role === CharacterRole.IntelligenceAgent)!.count);
+        expect(agents.every((r) => r.character.role === CharacterRole.IntelligenceAgent)).toBe(true);
+    });
+});
+
+describe('transfer (CharacterSummary.cs SetupTransferControls / btnTransfer_Click)', () => {
+    it('agents have no transfer combo; governors list the colonies by name; no transfer to the current location', () => {
+        const { galaxy, a, agent } = setup();
+        expect(transferOptions(galaxy, agent)).toBeNull();
+        const gov = new Character('Gov', CharacterRole.ColonyGovernor, '', a.dominantRace, null, null, 0);
+        gov.activate(galaxy, a, a.capital);
+        const opts = transferOptions(galaxy, gov)!;
+        expect(opts.map((o) => o.label)).toEqual(a.colonies.map((h) => h.name).sort((x, y) => x.localeCompare(y)));
+        const here = opts.find((o) => o.target === a.capital)!;
+        expect(canTransfer(gov, resolveTransferDestination(gov, here))).toBe(false);
+        expect(canTransfer(gov, resolveTransferDestination(gov, null))).toBe(false);
+        const other = opts.find((o) => o.target !== a.capital);
+        if (other) expect(canTransfer(gov, resolveTransferDestination(gov, other))).toBe(true);
+    });
+    it('a fleet admiral transfers to the lead ship of the chosen fleet', () => {
+        const { galaxy, a } = setup();
+        const adm = new Character('Adm', CharacterRole.FleetAdmiral, '', a.dominantRace, null, null, 0);
+        adm.activate(galaxy, a, a.capital);
+        const opts = transferOptions(galaxy, adm)!;
+        expect(opts.every((o) => o.fleet !== null)).toBe(true);
+        for (const o of opts) expect(resolveTransferDestination(adm, o)).toBe(o.fleet!.leadShip);
     });
 });
