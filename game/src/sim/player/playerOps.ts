@@ -20,6 +20,7 @@ import type { ShipAction } from './shipAction';
 import { executeShipAction, type ShipActionSelection } from './executeShipAction';
 import { addConstructionJob, cancelConstructionJob, moveConstructionJobUp } from './constructionBoard';
 import { applyAutomationOff, fleetPointClick, rightClickOrder } from './orderMenu';
+import { applyEmpireSetting, type EmpireSettingField } from './empireSettings';
 import {
     fleetLoadTroops,
     fleetRepairAndRefuel,
@@ -145,6 +146,9 @@ export const PLAYER_OPS = {
         (empire as unknown as Record<string, unknown>)[field] = value;
         return true;
     },
+    /** Main.Part4.cs:4271 method_558 (Game Options → Empire Settings): an engagement stance, the fleet attack settings,
+     *  a discovery action or NewShipsAutomated (player/empireSettings.ts validates the field and value). */
+    setEmpireSetting: (_galaxy: Galaxy, empire: Empire, field: EmpireSettingField, value: number | boolean) => applyEmpireSetting(empire, field, value),
 
     // --- Empire policy / construction / research ---
     /** Main.Part2.cs WqesexberY_Click: `PlayerEmpire.Policy = method_597(panel)`. */

@@ -1,7 +1,7 @@
 import { computeHudLayout, VIEW_ROWS, type Rect, type ViewRowKey } from './hudLayout';
 import { cornerRadiusCss, MONEY_POS, researchReadout, showViewSystemName, TOP_DATE_POS, TOP_ELEMENT_NAMES, TOP_LEFT_BUTTONS, TOP_ROW_BUTTONS, topBarLayout, topBarScale, viewSystemName, type CornerCurves } from './topBar';
 import './topBar.css';
-import { toggleGameOptionsPanel } from './screens/gameOptionsPanel';
+import { openGameOptionsPanel, toggleGameOptionsPanel } from './screens/gameOptionsPanel';
 import { toggleAdvisorPanel } from './advisorPanel';
 import { empireFlagUrl } from './selectionInfoView';
 import { threatKnownSites } from '../sim/scenario/threats/framework';
@@ -529,7 +529,14 @@ export function createHud(wiring: HudWiring = {}): HudRefs {
     // toggle is registered as the global Escape action; the ≡ button below
     // calls the same toggle.
     bindAutoPauseClock(clock, () => getSettings().autoPauseInPopup);
-    const gameMenu = createGameMenu(clock, { onMainMenu: wiring.onMainMenu });
+    const gameMenu = createGameMenu(clock, {
+        onMainMenu: wiring.onMainMenu,
+        // [gameoptions] the Escape menu's Options opens the Game Options screen (same as O).
+        onOptions: () => {
+            const src = getEmpireSummarySource();
+            if (src) openGameOptionsPanel({ empire: src.empire });
+        },
+    });
     setGameMenuHandler(gameMenu.toggle);
     refs.gameMenu = gameMenu;
 
