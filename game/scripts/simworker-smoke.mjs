@@ -39,7 +39,8 @@ try {
     const t3 = await now();
     check(t3 - t2 > 2 * (t1 - t0), `faster at 4x: ${(t3 - t2).toFixed(0)} game ms in 3 s`);
     await page.evaluate(() => { window.__dwu.time.paused = true; });
-    await page.waitForTimeout(500);
+    // Pausing lands at the worker's next tick; steps already in flight still arrive.
+    await page.waitForTimeout(1500);
     const t4 = await now();
     await page.waitForTimeout(1500);
     check((await now()) === t4, 'pause holds the clock');

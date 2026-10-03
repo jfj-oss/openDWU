@@ -85,6 +85,9 @@ export type ReplicaShape = [Kind, string, ...string[]];
 export interface ReplicaPart {
     /** Shell records: kind, id, then Class/Plain: shape · Array: length · Map/Set: — · Typed: ctor, payload index. */
     shells: Float64Array;
+    /** Fill records of the objects born in this part (applied before `body`: until `body` references them, a
+     *  half-filled newborn is invisible, so a cold part may be paused anywhere in here). */
+    births: Float64Array;
     body: Float64Array;
     strs: string[];
     typed: AnyTyped[];
@@ -130,12 +133,13 @@ export interface DeltaStats {
 /** One stream's writer (ReplicaPart under construction). */
 class PartWriter {
     shells = new F64Stream();
+    births = new F64Stream();
     body = new F64Stream();
     strs: string[] = [];
     typed: AnyTyped[] = [];
     drops: number[] = [];
     take(): ReplicaPart {
-        const out: ReplicaPart = { shells: this.shells.take(), body: this.body.take(), strs: this.strs, typed: this.typed, drops: this.drops };
+        const out: ReplicaPart = { shells: this.shells.take(), births: this.births.take(), body: this.body.take(), strs: this.strs, typed: this.typed, drops: this.drops };
         this.strs = [];
         this.typed = [];
         this.drops = [];
@@ -144,7 +148,7 @@ class PartWriter {
 }
 
 function partBytes(p: ReplicaPart): number {
-    let bytes = (p.shells.length + p.body.length) * 8 + p.drops.length * 8;
+    let bytes = (p.shells.length + p.births.length + p.body.length) * 8 + p.drops.length * 8;
     for (const s of p.strs) bytes += s.length * 2 + 8;
     for (const t of p.typed) bytes += t.byteLength;
     return bytes;
@@ -152,7 +156,7 @@ function partBytes(p: ReplicaPart): number {
 
 /** Whether a part carries nothing. */
 export function partEmpty(p: ReplicaPart): boolean {
-    return p.shells.length === 0 && p.body.length === 0 && p.drops.length === 0;
+    return p.shells.length === 0 && p.births.length === 0 && p.body.length === 0 && p.drops.length === 0;
 }
 
 /** A growable Float64 stream. */
@@ -714,13 +718,13 @@ export class ReplicaEncoder {
             const s = p[k + 1];
             this.curStream = s;
             this.cur = this.parts[s];
-            this.writeContents(p[k]);
+            this.writeContents(p[k], true);
         }
         p.length = 0;
     }
 
-    /** Fill record of a new (or refilled) object, and its shadow. */
-    private writeContents(id: number): void {
+    /** Fill record of a new (`birth`: in the part's births stream) or refilled object, and its shadow. */
+    private writeContents(id: number, birth = false): void {
         const o = this.objs[id]!;
         const kind = this.kinds[id];
         if (kind === Kind.Typed) {
@@ -744,10 +748,10 @@ export class ReplicaEncoder {
             vals = [...(o as Set<unknown>)];
         }
         this.shadows[id] = vals;
-        const b = this.cur.body;
+        const b = birth ? this.cur.births : this.cur.body;
         b.push2(Op.Fill, id);
         b.push(vals.length);
-        for (let i = 0; i < vals.length; i++) this.writeValue(vals[i], id, i);
+        for (let i = 0; i < vals.length; i++) this.writeValue(vals[i], id, i, b);
     }
 
     /** The discovery label of a container found at `slot` of object `owner` (see hotContainers). */
@@ -758,9 +762,8 @@ export class ReplicaEncoder {
         return `${this.labels[owner]}[]`;
     }
 
-    private writeValue(v: unknown, owner: number, slot: number): void {
+    private writeValue(v: unknown, owner: number, slot: number, b: F64Stream): void {
         const w = this.cur;
-        const b = w.body;
         switch (typeof v) {
             case 'number':
                 b.push2(Tag.Num, v);
@@ -887,7 +890,7 @@ export class ReplicaEncoder {
         b.push2(Op.Set, id);
         b.push(slot);
         if (this.markPhase === MarkPhase.Marking) this.greyValue(old);
-        this.writeValue(v, id, slot);
+        this.writeValue(v, id, slot, b);
         this.stats.sets++;
         const k = this.kinds[id];
         if (k === Kind.Class) this.shapes[this.shapeOf[id]].counts[slot]++;
@@ -1123,6 +1126,8 @@ export interface ReplicaDecoderOptions {
     revive?: Map<object, (instance: object) => void>;
     /** `kind:key` → static object (the replica's own GameData tables). */
     externals: Map<string, object>;
+    /** The cold pump checks its deadline every this many records / shells (default 64 / 32; tests use 1). */
+    sliceRecords?: number;
 }
 
 interface DecShape {
@@ -1148,7 +1153,7 @@ export interface ApplyStats {
 interface QueuedPart {
     seq: number;
     part: ReplicaPart;
-    /** 0 shells, 1 body, 2 drops. */
+    /** 0 shells, 1 births, 2 body, 3 drops. */
     phase: number;
     /** Index into the phase's stream. */
     i: number;
@@ -1205,10 +1210,12 @@ export class ReplicaDecoder {
             // The hot part names objects born in cold parts up to coldDep (possibly this delta's own).
             if (d.coldDep >= d.seq) this.coldQueue.push({ seq: d.seq, part: d.cold, phase: 0, i: 0 });
             this.pumpColdUntil(d.coldDep, fresh, now);
-            this.bodyOf(d.hot, 0, Infinity, now);
+            this.bodyOf(d.hot, d.hot.births, 0, Infinity, now);
+            this.bodyOf(d.hot, d.hot.body, 0, Infinity, now);
             if (d.coldDep < d.seq && !partEmpty(d.cold)) this.coldQueue.push({ seq: d.seq, part: d.cold, phase: 0, i: 0 });
         } else {
-            this.bodyOf(d.hot, 0, Infinity, now);
+            this.bodyOf(d.hot, d.hot.births, 0, Infinity, now);
+            this.bodyOf(d.hot, d.hot.body, 0, Infinity, now);
             if (!partEmpty(d.cold)) this.coldQueue.push({ seq: d.seq, part: d.cold, phase: 0, i: 0 });
             else if (this.coldQueue.length === 0) this.coldApplied = d.seq;
         }
@@ -1257,9 +1264,15 @@ export class ReplicaDecoder {
             q.i = 0;
         }
         if (q.phase === 1) {
-            q.i = this.bodyOf(q.part, q.i, deadline, now);
-            if (q.i < q.part.body.length) return false;
+            q.i = this.bodyOf(q.part, q.part.births, q.i, deadline, now, true);
+            if (q.i < q.part.births.length) return false;
             q.phase = 2;
+            q.i = 0;
+        }
+        if (q.phase === 2) {
+            q.i = this.bodyOf(q.part, q.part.body, q.i, deadline, now);
+            if (q.i < q.part.body.length) return false;
+            q.phase = 3;
         }
         for (const id of q.part.drops) {
             const o = this.objs[id];
@@ -1308,14 +1321,14 @@ export class ReplicaDecoder {
             this.idByObj.set(o, id);
             fresh.push(o);
             this.stats.newObjects++;
-            if ((++k & 31) === 0 && deadline !== Infinity && now() >= deadline) break;
+            if (++k % (this.opts.sliceRecords ?? 32) === 0 && deadline !== Infinity && now() >= deadline) break;
         }
         return i;
     }
 
-    /** Apply the body records of a part from index `i`; returns where it stopped (the end when done). */
-    private bodyOf(p: ReplicaPart, start: number, deadline: number, now: () => number): number {
-        const b = p.body;
+    /** Apply the records of a part's births / body stream `b` from index `start`; returns where it stopped (the end when
+     *  done). `anywhere`: may stop between any two records (the births stream), else only between objects. */
+    private bodyOf(p: ReplicaPart, b: Float64Array, start: number, deadline: number, now: () => number, anywhere = false): number {
         const strs = p.strs;
         const ext = this.opts.externals;
         const objs = this.objs;
@@ -1324,7 +1337,8 @@ export class ReplicaDecoder {
         const shapes = this.shapes;
         let i = start;
         let k = 0;
-        let nextCheck = 64;
+        const every = this.opts.sliceRecords ?? 64;
+        let nextCheck = every;
         const value = (): unknown => {
             const tag = b[i];
             const v = b[i + 1];
@@ -1417,8 +1431,8 @@ export class ReplicaDecoder {
             // Stop only between objects (never between an array's new length and its element sets), so a half-applied
             // cold part never shows a half-updated object.
             k++;
-            if (deadline !== Infinity && k >= nextCheck && i < b.length && b[i + 1] !== id) {
-                nextCheck = k + 64;
+            if (deadline !== Infinity && k >= nextCheck && i < b.length && (anywhere || b[i + 1] !== id)) {
+                nextCheck = k + every;
                 if (now() >= deadline) break;
             }
         }
@@ -1484,7 +1498,7 @@ function assignmentIntercepted(proto: object | null, key: string): boolean {
 export function deltaTransferables(d: ReplicaDelta): ArrayBuffer[] {
     const out: ArrayBuffer[] = [];
     for (const p of [d.hot, d.cold]) {
-        out.push(p.shells.buffer as ArrayBuffer, p.body.buffer as ArrayBuffer);
+        out.push(p.shells.buffer as ArrayBuffer, p.births.buffer as ArrayBuffer, p.body.buffer as ArrayBuffer);
         for (const t of p.typed) if (!out.includes(t.buffer as ArrayBuffer)) out.push(t.buffer as ArrayBuffer);
     }
     return out;

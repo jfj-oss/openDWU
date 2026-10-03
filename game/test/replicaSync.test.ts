@@ -102,7 +102,7 @@ function run(seed: number, steps: number): void {
         markBudgetMs: 0.01,
     };
     const enc = new ReplicaEncoder(opts, [root]);
-    const dec = new ReplicaDecoder({ classes: CLASSES, externals: new Map([['s:0', STATIC_A], ['s:1', STATIC_B]]) });
+    const dec = new ReplicaDecoder({ classes: CLASSES, externals: new Map([['s:0', STATIC_A], ['s:1', STATIC_B]]), sliceRecords: 1 });
     dec.apply(structuredClone(enc.diff(true)), true);
     const replicaRoot = dec.object(0) as Root;
     const identity = new Map<number, object>();
@@ -142,7 +142,10 @@ function run(seed: number, steps: number): void {
         const d: ReplicaDelta = structuredClone(enc.diff(false, () => step * 1e-3));
         dec.apply(d);
         // Cold parts lag by a random amount (0..several frames' worth of pump).
-        if (r() < 0.6) dec.pumpCold(r() < 0.2 ? Infinity : 0.0001, () => (r() < 0.5 ? 0 : 1));
+        if (r() < 0.6) {
+            let clock = 0;
+            dec.pumpCold(r() < 0.2 ? Infinity : 0.5, () => (clock += r() < 0.7 ? 0 : 1));
+        }
         // Identity: an id keeps naming the same replica object while it lives.
         for (let id = 0; id < 50; id++) {
             const o = dec.object(id);
@@ -152,6 +155,20 @@ function run(seed: number, steps: number): void {
             identity.set(id, o);
         }
         expect(dec.object(0)).toBe(replicaRoot);
+        // A half-applied cold part never shows a half-built object: everything reachable is complete.
+        for (const sh of replicaRoot.ships) {
+            expect(sh).toBeInstanceOf(Ship);
+            expect(typeof sh.name).toBe('string');
+            expect(Array.isArray(sh.weapons)).toBe(true);
+            expect(sh.cargo).toBeInstanceOf(Map);
+            for (const g of sh.weapons) expect(typeof g.heat).toBe('number');
+        }
+        for (const m of replicaRoot.misc) {
+            if (Array.isArray(m)) {
+                expect(m.length).toBe(2);
+                expect(typeof (m[1] as { n: number }).n).toBe('number');
+            } else expect((m as Map<unknown, unknown>).size).toBe(1);
+        }
     }
     // Full compare + flush: the replica equals the source.
     dec.apply(structuredClone(enc.diff(true)), true);
