@@ -13,6 +13,9 @@ import { updatePosition } from '../src/sim/movement';
 import { generateHabitatLocationDescription, generateIndependentColonyReport, generateLocationDescription, resolveRaceFamilyDescription } from '../src/sim/galaxyReports';
 import { cachedTickGame } from './helpers/gameCache';
 import { Random } from '../src/sim/random';
+import { GalaxyLocation, GalaxyLocationType } from '../src/sim/galaxyLocation';
+import { formatGameTextNow } from '../src/sim/textResolver';
+import { generateSaleableInfoForEmpire } from '../src/sim/pirates/pirateRelationsAI';
 
 // Parity batch D4: targeted tests for the remaining sim gaps (docs/parity/*.md).
 let gameData: GameData;
@@ -123,5 +126,20 @@ describe('GenerateLocationDescription (Galaxy.5.cs 4807 / 4852)', () => {
         const far = generateLocationDescription(g, star.xpos + 60000, star.ypos);
         expect(far).not.toContain(planet.name);
         expect(far.length).toBeGreaterThan(0);
+    });
+});
+
+describe('GenerateSaleableInfoForEmpire reads Galaxy.StoryCluesEnabled (Empire.5.cs 1286)', () => {
+    it('the story Dead Zone is for sale only once story clues are on', () => {
+        const game = cachedTickGame(gameData, {});
+        const g = game.galaxy;
+        const pirate = g.pirateEmpires.find((p) => p.pirateEmpireBaseHabitat !== null)!;
+        const base = pirate.pirateEmpireBaseHabitat!;
+        const zone = new GalaxyLocation(formatGameTextNow('Dead Zone'), GalaxyLocationType.RestrictedArea, base.xpos + 1000, base.ypos, 2000, 2000, -1);
+        pirate.visibility.knownGalaxyLocations.push(zone);
+        g.storyCluesEnabled = false;
+        expect(generateSaleableInfoForEmpire(g, pirate, g.playerEmpire).restrictedAreaLocations).not.toContain(zone);
+        g.storyCluesEnabled = true;
+        expect(generateSaleableInfoForEmpire(g, pirate, g.playerEmpire).restrictedAreaLocations).toContain(zone);
     });
 });

@@ -430,9 +430,6 @@ export interface SaleableInfo {
     restrictedAreaLocations: GalaxyLocation[];
 }
 
-/** Galaxy.StoryCluesEnabled (game option; the TS createGame keeps story clues off). */
-const STORY_CLUES_ENABLED = false;
-
 /** Empire.5.cs 1163 GenerateSaleableInfoForEmpire(pirateFaction, buyingEmpire, out ...). No Rnd. */
 export function generateSaleableInfoForEmpire(galaxy: Galaxy, pirateFaction: Empire | null, buyingEmpire: Empire | null): SaleableInfo {
     const info: SaleableInfo = { unmetEmpires: [], unexploredSystems: [], independentColonies: [], ruinHabitats: [], debrisFieldLocations: [], planetDestroyerLocations: [], restrictedAreaLocations: [] };
@@ -494,7 +491,7 @@ export function generateSaleableInfoForEmpire(galaxy: Galaxy, pirateFaction: Emp
                 const num3 = galaxy.calculateDistance(c2.x, c2.y, base.xpos, base.ypos);
                 if (num3 < SECTOR_SIZE * 3.0) info.planetDestroyerLocations.push(galaxyLocation);
             }
-        } else if (galaxyLocation.type === GalaxyLocationType.RestrictedArea && (STORY_CLUES_ENABLED || (galaxyLocation.name !== formatGameTextNow('Dead Zone') && galaxyLocation.name !== formatGameTextNow('NAME Weapons Testing Range', ['Pozdac']))) && !buyerKnown.includes(galaxyLocation)) {
+        } else if (galaxyLocation.type === GalaxyLocationType.RestrictedArea && (galaxy.storyCluesEnabled || (galaxyLocation.name !== formatGameTextNow('Dead Zone') && galaxyLocation.name !== formatGameTextNow('NAME Weapons Testing Range', ['Pozdac']))) && !buyerKnown.includes(galaxyLocation)) {
             const c3 = galaxyLocation.resolveLocationCenter();
             const num4 = galaxy.calculateDistance(c3.x, c3.y, base.xpos, base.ypos);
             if (num4 < SECTOR_SIZE * 3.0) info.restrictedAreaLocations.push(galaxyLocation);
