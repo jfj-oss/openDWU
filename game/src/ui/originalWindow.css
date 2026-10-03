@@ -126,6 +126,10 @@
 .ow-right {
     transform: translateX(-100%);
 }
+/* Centred on its x (MeasureString-centred text). */
+.ow-center {
+    transform: translateX(-50%);
+}
 .ow-dark {
     position: absolute;
 }
