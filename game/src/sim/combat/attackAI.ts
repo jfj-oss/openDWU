@@ -44,7 +44,7 @@ import { assignMission, clearPreviousMissionRequirements, recordRevertMission } 
 import { baconMovementSettings, withinFuelRangeAndRefuel } from '../movement';
 import { isFighter } from './fighters';
 import { captainBonuses } from '../characters';
-import { shipGroupOf, stellarAttackers, stellarCurrentSpeed, stellarCurrentTarget, stellarFirepowerRaw, stellarTopSpeed, builtObjectThreats, calculateOverallStrengthFactor, evaluateThreats, getBuiltObjectsAtLocationByArrays, shouldFleeFrom, type Threat } from './threats';
+import { shipGroupOf, stellarAttackers, stellarCurrentSpeed, stellarCurrentTarget, stellarFirepowerRaw, stellarTopSpeed, builtObjectThreats, calculateOverallStrengthFactor, escapeTargetForFleeFrom, evaluateThreats, getBuiltObjectsAtLocationByArrays, shouldFleeFrom, type Threat } from './threats';
 
 // ---------------------------------------------------------------------------------------------------------------
 // Galaxy constants (Galaxy.3.cs static ctor)
@@ -1070,8 +1070,8 @@ export function checkForAttack(galaxy: Galaxy, builtObject: BuiltObject): void {
     checkColonyShipMissionCancelled(galaxy, bo, 0);
     recordRevertMission(galaxy, bo, BuiltObjectMissionType.Escape);
     clearPreviousMissionRequirements(galaxy, bo);
-    // 1262-1269: a Fighter flee target is replaced by its (live) parent ship — Fighters are not threats in the TS port (M4p).
-    assignMission(galaxy, bo, BuiltObjectMissionType.Escape, stellarObject2, null, BuiltObjectMissionPriority.High);
+    // 1264-1271: flee from a Fighter's (live) carrier instead of the fighter.
+    assignMission(galaxy, bo, BuiltObjectMissionType.Escape, escapeTargetForFleeFrom(stellarObject2), null, BuiltObjectMissionPriority.High);
 }
 
 /** BuiltObject.1.cs 1852 CheckForRandomAttackTargets. */

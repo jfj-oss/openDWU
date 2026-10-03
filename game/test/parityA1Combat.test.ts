@@ -6,20 +6,25 @@ import { cachedTickGame } from './helpers/gameCache';
 import type { Galaxy } from '../src/sim/galaxy';
 import type { BuiltObject } from '../src/sim/builtObject';
 import type { Habitat } from '../src/sim/types';
-import { BattleTactics, BuiltObjectRole } from '../src/sim/data/designSpecifications';
+import { BattleTactics, BuiltObjectFleeWhen, BuiltObjectRole } from '../src/sim/data/designSpecifications';
+import type { GameData } from '../src/sim/data/gameData';
 import { BuiltObjectComponent, ComponentStatus } from '../src/sim/builtObjectComponent';
 import { ComponentType } from '../src/sim/data/components';
 import { Weapon } from '../src/sim/weapon';
 import { Creature, CreatureType } from '../src/sim/creature';
 import { galaxyNow } from '../src/sim/tick/simTime';
 import { weaponFire } from '../src/sim/combat/weapons';
-import { performThreatEvaluation, shipGroupOf } from '../src/sim/combat/threats';
+import { escapeTargetForFleeFrom, performThreatEvaluation, shipGroupOf, threatEvaluation } from '../src/sim/combat/threats';
+import { Fighter, identifyLatestFighterSpecification } from '../src/sim/combat/fighters';
+import { BuiltObjectMissionPriority, BuiltObjectMissionType, builtObjectMission, type StellarObject } from '../src/sim/missions/mission';
+import { assignMission } from '../src/sim/missions/assign';
 import { warpSpeedWithBonuses } from '../src/sim/movement';
 import { captainBonusMap } from '../src/sim/characters';
-import { determineAngle, modifyAttackRangeByTargetSpeedFor } from '../src/sim/combat/attackAI';
+import { checkForAttack, determineAngle, modifyAttackRangeByTargetSpeedFor } from '../src/sim/combat/attackAI';
 import { creatureCheckForAttackers } from '../src/sim/events';
 import { baconInflictDamageMultiplier, habitatInflictIonDamage, inflictDamageFull, inflictIonDamage } from '../src/sim/combat/damage';
 
+let gameDataRef: GameData;
 let galaxy: Galaxy;
 let ship: BuiltObject;
 let colony: Habitat;
@@ -38,6 +43,7 @@ function newCreature(type: CreatureType): Creature {
 
 beforeAll(async () => {
     const gameData = await loadGameDataFs();
+    gameDataRef = gameData;
     galaxy = cachedTickGame(gameData, { age: 0 }).galaxy;
     ship = galaxy.builtObjects.find((b): b is BuiltObject => b !== null && b.empire !== null && b.role === BuiltObjectRole.Military && b.firepowerRaw > 0 && b.isFunctional)!;
     expect(ship).toBeDefined();
@@ -212,5 +218,51 @@ describe('BuiltObject.2.cs 205 ModifyAttackRangeByTargetSpeed applies CaptainWea
             if (saved.bonuses === undefined) captainBonusMap.delete(ship);
             else captainBonusMap.set(ship, saved.bonuses);
         }
+    });
+});
+
+describe('BuiltObject.1.cs 305-312 / 1264-1271: escaping from a fighter targets its carrier', () => {
+    function setup() {
+        const g = cachedTickGame(gameDataRef, { age: 0 }).galaxy;
+        const victim = g.builtObjects.find((b): b is BuiltObject => b !== null && b.empire !== null && b.role === BuiltObjectRole.Military && b.isFunctional && b.topSpeed > 0 && b.builtAt === null)!;
+        const carrier = g.builtObjects.find((b): b is BuiltObject => b !== null && b !== victim && b.empire !== null && b.empire !== victim.empire && !b.hasBeenDestroyed)!;
+        if (carrier.fighters === null) carrier.fighters = [];
+        const spec = identifyLatestFighterSpecification(g.playerEmpire!)!;
+        const fighter = new Fighter(g, spec, carrier);
+        fighter.empire = carrier.empire;
+        fighter.xpos = victim.xpos + 1000;
+        fighter.ypos = victim.ypos;
+        victim.design.fleeWhen = BuiltObjectFleeWhen.Attacked;
+        victim.attackers = [fighter];
+        victim.mission = null;
+        victim.hyperjumpPrepare = false;
+        return { g, victim, carrier, fighter };
+    }
+
+    it('escapeTargetForFleeFrom: the live carrier; the fighter itself once the carrier is destroyed', () => {
+        const { carrier, fighter } = setup();
+        expect(escapeTargetForFleeFrom(fighter as unknown as StellarObject)).toBe(carrier);
+        carrier.hasBeenDestroyed = true;
+        expect(escapeTargetForFleeFrom(fighter as unknown as StellarObject)).toBe(fighter);
+        expect(escapeTargetForFleeFrom(carrier)).toBe(carrier);
+    });
+
+    it('ThreatEvaluation assigns an Escape mission from the carrier', () => {
+        const { g, victim, carrier } = setup();
+        threatEvaluation(g, victim, galaxyNow(g));
+        const m = builtObjectMission(victim.mission);
+        expect(m?.type).toBe(BuiltObjectMissionType.Escape);
+        expect(m?.targetBuiltObject).toBe(carrier);
+    });
+
+    it('CheckForAttack assigns an Escape mission from the carrier', () => {
+        const { g, victim, carrier } = setup();
+        // CheckForAttack only flees when it would not counter-attack: here a high-priority Move mission (1196-1200).
+        assignMission(g, victim, BuiltObjectMissionType.Move, g.habitats[0], null, BuiltObjectMissionPriority.High);
+        expect(builtObjectMission(victim.mission)?.type).toBe(BuiltObjectMissionType.Move);
+        checkForAttack(g, victim);
+        const m = builtObjectMission(victim.mission);
+        expect(m?.type).toBe(BuiltObjectMissionType.Escape);
+        expect(m?.targetBuiltObject).toBe(carrier);
     });
 });

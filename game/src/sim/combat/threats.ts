@@ -1736,6 +1736,19 @@ export function determineShipGroupTarget(galaxy: Galaxy, bo: BuiltObject, target
     return null;
 }
 
+/**
+ * BuiltObject.1.cs 305-312 / 1264-1271: the Escape target for a ShouldFleeFrom result. A Fighter (fighters register in
+ * BuiltObject.Attackers, combat/fighters.ts) is replaced by its parent ship unless that ship has been destroyed.
+ */
+export function escapeTargetForFleeFrom(stellarObject: StellarObject): StellarObject {
+    const so: StellarObject | Fighter = stellarObject;
+    if (isFighter(so)) {
+        const fighter = so;
+        if (fighter.parentBuiltObject !== null && !fighter.parentBuiltObject.hasBeenDestroyed) return fighter.parentBuiltObject;
+    }
+    return stellarObject;
+}
+
 /** BuiltObject.1.cs 243 ThreatEvaluation(galaxy, time). */
 export function threatEvaluation(galaxy: Galaxy, builtObject: BuiltObject, time: number): void {
     const bo = builtObject;
@@ -1787,8 +1800,8 @@ export function threatEvaluation(galaxy: Galaxy, builtObject: BuiltObject, time:
         checkColonyShipMissionCancelled(galaxy, bo, 0);
         recordRevertMission(galaxy, bo, BuiltObjectMissionType.Escape);
         clearPreviousMissionRequirements(galaxy, bo);
-        // 305-312: a Fighter flee target is replaced by its (live) parent ship — Fighters are not threats in the TS port (M4p).
-        assignMission(galaxy, bo, BuiltObjectMissionType.Escape, stellarObject, null, BuiltObjectMissionPriority.High);
+        // 305-312: flee from a Fighter's (live) carrier instead of the fighter.
+        assignMission(galaxy, bo, BuiltObjectMissionType.Escape, escapeTargetForFleeFrom(stellarObject), null, BuiltObjectMissionPriority.High);
     } else {
         if ((bo.subRole === BuiltObjectSubRole.ResupplyShip && bo.isDeployed) || !flag) {
             return;
