@@ -8,7 +8,10 @@
 //   - the scroll bars and the mouse wheel scroll by ScrollAmountPerClick (25 × size);
 //   - an item click selects it (method_208); a double click also centres the view on it and zooms to the 100%
 //     planet level (method_157 + method_4(1.0)); Shift+click a ship adds it to / removes it from a multi-selection;
-//   - the panel redraws every 0.5 s (MainView: LastRefresh > 0.5 s).
+//   - the panel redraws every 0.5 s (MainView: LastRefresh > 0.5 s);
+//   - Pirate Missions: the list comes from the `pirateMissionsPanel` sim query (in the worker on a replica: building it
+//     obtains pirate relations); a click on a row's right-hand button (Bid / Accept Mission / Cancel) issues the
+//     pirateMissionButton command (ItemListPanel.cs 2248 bid zone → Main.Part12.cs 2601 BidButtonClicked).
 
 import './leftSidebar.css';
 import type { Galaxy } from '../sim/galaxy';
@@ -19,6 +22,12 @@ import { BuiltObject } from '../sim/builtObject';
 import { ShipGroup } from '../sim/fleets/shipGroup';
 import { Habitat } from '../sim/types';
 import { hudScale } from './originalWindow';
+import { EmpireActivity } from '../sim/pirates/empireActivity';
+import { pirateMissionBidZoneActive, type PirateMissionsPanelData } from '../sim/pirates/pirateMissionsPanel';
+import { issuePlayerCommand } from '../sim/player/playerCommands';
+import { isRemoteQueryGalaxy, simQuery } from '../simworker/simQuery';
+import { WorkerQueryCache } from './workerQueryCache';
+import { empireFlagUrl } from './selectionInfoView';
 import { onSettingsChange, uiScaleFactor } from './settings';
 import { css } from './selectionInfo';
 import {
@@ -171,6 +180,34 @@ export function createLeftSidebar(wiring: LeftSidebarWiring): HTMLElement {
     };
     let area: ItemListArea = itemListArea(800, 600, 1);
     let defs: ItemPanelDef[] = [];
+    /** The Pirate Missions query's last answer (by toggle key); in-thread it is asked synchronously on every bind. */
+    let missions: PirateMissionsPanelData | null = null;
+    let missionsCache: { galaxy: Galaxy; cache: WorkerQueryCache<string, PirateMissionsPanelData> } | null = null;
+    const missionsData = (galaxy: Galaxy, p: Empire, t: readonly number[]): PirateMissionsPanelData | null => {
+        const ask = (key: string, done: (v: PirateMissionsPanelData) => void): void => {
+            const [a, b] = key.split(',').map(Number);
+            simQuery(galaxy, p, 'pirateMissionsPanel', [a, b], done);
+        };
+        const key = `${t[0] ?? 0},${t[1] ?? 0}`;
+        if (!isRemoteQueryGalaxy(galaxy)) {
+            let out: PirateMissionsPanelData | null = null;
+            ask(key, (v) => {
+                out = v;
+            });
+            return out;
+        }
+        if (missionsCache === null || missionsCache.galaxy !== galaxy) {
+            missionsCache?.cache.dispose();
+            missionsCache = {
+                galaxy,
+                cache: new WorkerQueryCache<string, PirateMissionsPanelData>(ask, () => {
+                    bind(true);
+                    render();
+                }, () => false, 500),
+            };
+        }
+        return missionsCache.cache.read(key) ?? null;
+    };
 
     const player = (): Empire | null => (wiring.game?.playerEmpire as Empire | undefined) ?? null;
     const rowCtx = (): RowContext | null => {
@@ -186,6 +223,7 @@ export function createLeftSidebar(wiring: LeftSidebarWiring): HTMLElement {
                 const r = gd?.resources.find((x) => x.resourceId === id);
                 return r ? { name: r.name, pictureRef: r.pictureRef } : null;
             },
+            pirateMissionsConsidering: missions !== null ? new Map(missions.items.map((a, i) => [a, missions!.considering[i] ?? 0])) : undefined,
         };
     };
     const openDef = (): ItemPanelDef | null => defs.find((d) => d.id === state.open) ?? null;
@@ -356,7 +394,7 @@ export function createLeftSidebar(wiring: LeftSidebarWiring): HTMLElement {
         items.addEventListener('mouseleave', () => setHovered(-1));
         items.addEventListener('click', (e) => {
             const i = itemIndexAt(e);
-            if (i >= 0) clickItem(state.items[i], e.shiftKey);
+            if (i >= 0) clickItem(state.items[i], e.shiftKey, bidZoneAt(e));
         });
         render();
     };
@@ -387,6 +425,15 @@ export function createLeftSidebar(wiring: LeftSidebarWiring): HTMLElement {
         // method_11: the gap between rows is no item.
         if (y < 0 || y > i * (m.item + m.gap) + m.item) return -1;
         return i < state.items.length ? i : -1;
+    };
+
+    /** ItemListPanel.cs 2251: the click is in the right-hand 60 px (the bid button's column). */
+    const bidZoneAt = (e: MouseEvent): boolean => {
+        if (!panelEls) return false;
+        const r = panelEls.items.getBoundingClientRect();
+        const k = r.width / Math.max(1, panelEls.items.offsetWidth);
+        const x = (e.clientX - r.left) / (k || 1);
+        return x > panelEls.items.offsetWidth - Math.trunc(60 * state.sizeFactor);
     };
 
     const scrollBy = (dir: number, amount: number): void => {
@@ -446,7 +493,8 @@ export function createLeftSidebar(wiring: LeftSidebarWiring): HTMLElement {
         const now = performance.now();
         if (!force && isSlowPanel(d.id) && now - state.itemsAt < 3000) return;
         try {
-            state.items = panelItems(d.id, galaxy, p, { toggles: togglesOf(d) });
+            if (d.id === 'pirateMissions') missions = missionsData(galaxy, p, togglesOf(d));
+            state.items = panelItems(d.id, galaxy, p, { toggles: togglesOf(d), pirateMissions: missions });
         } catch (err) {
             console.warn('item list', d.id, err);
             state.items = [];
@@ -545,6 +593,31 @@ export function createLeftSidebar(wiring: LeftSidebarWiring): HTMLElement {
         l2.style.left = `${model.textX}px`;
         l2.style.top = `${Math.trunc(22 * f)}px`;
         row.append(l1, l2);
+        for (const fr of model.free ?? []) {
+            const piece = drawLine([fr.seg], { text: 0, small: 0, img: 0 });
+            piece.style.left = `${fr.x}px`;
+            piece.style.top = `${fr.y}px`;
+            row.appendChild(piece);
+        }
+        if (model.button) {
+            // method_7 rect3: (w - num, 1) num × (h - num2), fill (216, 96, 96, 96), 2 px white border; the text centred.
+            const b = div('ls-mission-btn');
+            b.style.left = `${w - model.button.w}px`;
+            b.style.top = '1px';
+            b.style.width = `${model.button.w}px`;
+            b.style.height = `${h - Math.trunc(2 * f)}px`;
+            const t1 = document.createElement('span');
+            t1.className = 'ls-bold';
+            t1.textContent = model.button.text;
+            b.appendChild(t1);
+            if (model.button.sub !== '') {
+                const t2 = document.createElement('span');
+                t2.className = 'ls-small';
+                t2.textContent = model.button.sub;
+                b.appendChild(t2);
+            }
+            row.appendChild(b);
+        }
         for (const r of model.right) {
             const im = image(r.url, 'ls-overlay', r.full ? 1 : ALPHA);
             im.style.left = `${w - r.fromRight}px`;
@@ -561,12 +634,28 @@ export function createLeftSidebar(wiring: LeftSidebarWiring): HTMLElement {
         const line = div('ls-line');
         for (const s of segs) {
             let e: HTMLElement;
-            if (s.kind === 'text') {
+            if (s.kind === 'flag') {
+                const g = wiring.galaxy;
+                const box = document.createElement('span');
+                box.className = 'ls-flag';
+                box.style.width = `${s.w}px`;
+                box.style.height = `${s.h}px`;
+                box.style.background = css(s.empire.mainColor);
+                if (g) {
+                    const im = document.createElement('img');
+                    im.alt = '';
+                    void empireFlagUrl(g, s.empire).then((u) => {
+                        if (u !== '') im.src = u;
+                    });
+                    box.appendChild(im);
+                }
+                e = box;
+            } else if (s.kind === 'text') {
                 e = document.createElement('span');
-                e.className = s.font === 'bold' ? 'ls-bold' : 'ls-small';
+                e.className = s.font === 'bold' ? 'ls-bold' : s.font === 'regular' ? 'ls-regular' : 'ls-small';
                 e.textContent = s.text;
                 e.style.color = css(s.color);
-                e.style.marginTop = `${s.font === 'bold' ? dy.text : dy.small}px`;
+                e.style.marginTop = `${s.font === 'small' ? dy.small : dy.text}px`;
                 if (s.maxWidth !== undefined) {
                     e.style.maxWidth = `${s.maxWidth}px`;
                     e.classList.add('ls-ellipsis');
@@ -592,12 +681,22 @@ export function createLeftSidebar(wiring: LeftSidebarWiring): HTMLElement {
     };
 
     // ----- clicks (Main.Part12.cs method_78) --------------------------------------------------------------------
-    const clickItem = (item: PanelItem | undefined, shift: boolean): void => {
+    const clickItem = (item: PanelItem | undefined, shift: boolean, bidZone = false): void => {
         if (!item) return;
         const now = performance.now();
         const dbl = state.lastClick.item === item && now - state.lastClick.at < DOUBLE_CLICK_MS;
         state.lastClick = dbl ? { item: null, at: 0 } : { item, at: now };
         const p = player();
+        // Main.Part12.cs 2601: the row's button (ItemListPanel.cs 2248-2286 decides whether the click hit it).
+        if (item instanceof EmpireActivity && bidZone && p && wiring.galaxy && pirateMissionBidZoneActive(p, item) && item.target !== null) {
+            const d = openDef();
+            const key = d !== null ? `${togglesOf(d)[0] ?? 0},${togglesOf(d)[1] ?? 0}` : '';
+            issuePlayerCommand(wiring.galaxy, p, 'pirateMissionButton', [item.target, item.type, item.requestingEmpire, item.targetEmpire], () => {
+                missionsCache?.cache.invalidate(key);
+                bind(true);
+                render();
+            });
+        }
         if (shift && item instanceof BuiltObject && p) {
             const sel = getSelection();
             const current = sel?.builtObjects ?? sel?.builtObject ?? null;

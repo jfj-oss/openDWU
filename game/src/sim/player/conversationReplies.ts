@@ -65,7 +65,12 @@ export interface ConversationReplyResult {
     /** ExpireDiplomacyMessagesForEmpire(...) target (Main.Part10.cs after the treaty cases). */
     expireFor: Empire | null;
     /** A revealed story text (HISTORY_OFFER_*_ACCEPT: method_571 / method_572 dialog). */
-    history: { title: string; text: string } | null;
+    /**
+     * The story text to show (Main.Part10.cs method_571 / method_572) and copy to Galactic History. `storyLevel` is set for
+     * HISTORY_OFFER_STORYMESSAGE_ACCEPT: Galaxy.StoryReturnOfTheShakturiEventLevel as method_572 got it (before the
+     * increment) — it picks the panel's picture and, at 2 and 4, its two answer buttons (story/freedomAlliance.ts).
+     */
+    history: { title: string; text: string; storyLevel?: number } | null;
 }
 
 function removeProposal(a: Empire, b: Empire): void {
@@ -331,7 +336,7 @@ export function answerConversationReply(
             text += body;
             if (level === 0 || level === 1 || level === 3 || level === 4) galaxy.storyReturnOfTheShakturiEventLevel++;
             sendHistory(player, title, text);
-            result.history = { title, text };
+            result.history = { title, text, storyLevel: level };
             result.ok = true;
             break;
         }

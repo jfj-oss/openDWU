@@ -18,7 +18,8 @@
 // Kept from the earlier streamlined list (mod layer): the 19d2 shortage marker and the scenario approval breakdown
 // on the approval icon, the 19d1 governor-loyalty tooltip on the name.
 //
-// TODO(port): Construction Yard tab's purchaser panel (pnlColonyConstructionYardPurchaser), Scrap Ship / Remove Ship — Main.Part6.cs:3460-3560
+// TODO(port): Construction Yard tab's Scrap Ship / Remove Ship — Main.Part6.cs:3460-3560 (the purchaser,
+//   pnlColonyConstructionYardPurchaser, is bound as method_169 does: constructionYards.ts purchaserBinding)
 // TODO(port): Show Ruin Details window (method_550 pnlRuinDetail) — shown as a message box with the ruin's description here
 // TODO(port): character portraits in the Troops & Characters tab (CharacterImageCache) — CharacterTroopListIconView.cs
 // TODO(port): racial / wonder / resource bonus lines of the attitude summary — HabitatAttitudeSummary.cs DetermineHabitat*Bonuses
@@ -70,7 +71,7 @@ import { approvalMood, colonyScenarioInfo, formatThousandsK, type ApprovalMood }
 import { habitatTypeDescription } from './expansionPlanner';
 import { drawSystemsMiniMap } from './galaxyMap';
 import { recruitOptions, troopTypeDescription } from './troops';
-import { siteQueue, waitRows, yardRows, type ConstructionSite } from './constructionYards';
+import { purchaseAutomationTask, purchaserBinding, purchaserChecks, purchaserDesigns, purchaserLabel, siteQueue, waitRows, yardRows, type ConstructionSite } from './constructionYards';
 import {
     COLORS,
     FONT,
@@ -1261,6 +1262,34 @@ function createColoniesScreen(opts: ColoniesScreenOptions): OpenState {
         page.appendChild(place(glassButton(T('Remove Ship', 'Remove Ship'), { disabled: true, title: 'Not available yet' }), 395, 225, 110, 40));
         page.appendChild(place(glassButton(T('Scrap Ship', 'Scrap Ship'), { disabled: true, title: 'Not available yet' }), 190, 54, 200, 22));
         page.appendChild(place(glassButton(T('Show Construction Summary', 'Show Construction Summary'), { onClick: () => opts.onConstructionSummary?.(), disabled: !opts.onConstructionSummary }), 190, 77, 200, 22));
+        // pnlColonyConstructionYardPurchaser (430, 3) 230 × 90 (Main.Part11.cs 3402): bound by method_169 with bool_28 false
+        // — the colony's owner, or the pirate player at a colony it controls; state construction only.
+        const binding = purchaserBinding(empire, site, false);
+        const purchaser = gradientPanel({ corners: { tl: true, tr: true, br: true, bl: true }, radius: 20, className: 'col-purchaser' });
+        page.appendChild(place(purchaser, 430, 3, 230, 90));
+        dropText(purchaser, T('Available Funds', 'Available Funds'), 10, 8, { color: COLORS.label, size: FONT.small });
+        const fundsEl = dropText(purchaser, binding !== null ? (tryGetText('X credits') ?? '{0} credits').replace('{0}', Math.trunc(binding.empire.stateMoney).toFixed(0)) : '', 105, 8, { color: COLORS.label, bold: true, size: FONT.small });
+        const buyList = binding !== null ? purchaserDesigns(binding.empire.designs, site, purchaserChecks(binding.empire), binding.stateConstructionOnly) : [];
+        const buyBox = dropDown(buyList.map((d, i) => ({ value: String(i), label: purchaserLabel(d, d.calculateCurrentPurchasePrice(galaxy)) })), '0', () => fundsEl.classList.remove('cy-funds-short'));
+        purchaser.appendChild(place(buyBox, 10, 27, 210, 21));
+        // A colony bound to another empire would spend that empire's funds (the C# allows it); only the player's own buys.
+        const canBuy = binding !== null && binding.empire === empire && buyList.length > 0;
+        buyBox.disabled = !canBuy;
+        const buy = async (): Promise<void> => {
+            const design = buyList[Number(buyBox.value)];
+            if (!design || binding === null) return;
+            const task = purchaseAutomationTask(empire, design);
+            if (task !== null) {
+                const b = await messageBox({ caption: T(task, task), text: `${T(task, task)} is automated. Turn off automation so your order is not overridden?`, buttons: ['Turn off', 'Leave on'], icon: 'question' });
+                if (b === 'Turn off') issuePlayerCommand(galaxy, empire, 'automationOff', [task]);
+            }
+            if (design.calculateCurrentPurchasePrice(galaxy) > empire.stateMoney) {
+                fundsEl.classList.add('cy-funds-short'); // FlashAvailableFunds
+                return;
+            }
+            issuePlayerCommand(galaxy, empire, 'yardPurchase', [design, h], () => renderPage(true));
+        };
+        purchaser.appendChild(place(glassButton(T('Purchase', 'Purchase'), { onClick: () => void buy(), disabled: !canBuy }), 10, 56, 210, 25));
         const lnk = linkLabel(`${T('Learn about Construction', 'Learn about Construction')}...`, () => opts.onHelp?.(T('Construction', 'Construction')));
         lnk.classList.add('col-link-right');
         page.appendChild(place(lnk, 505, 228, 150, 42));

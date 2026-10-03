@@ -27,6 +27,7 @@ import { habitatDispatchOptions } from '../sim/player/habitatDispatch';
 import { moneyPanelIncome } from '../sim/treasury';
 import { listProposals } from '../sim/player/diplomacyProposals';
 import { calculatePirateProtectionPricePerMonth } from '../sim/pirates/pirateRelationsAI';
+import { pirateMissionsPanelData } from '../sim/pirates/pirateMissionsPanel';
 
 export const SIM_QUERIES = {
     /**
@@ -49,6 +50,10 @@ export const SIM_QUERIES = {
     /** A pirate faction's price per month to protect `empire` (Empire.2.cs 2649 CalculatePirateProtectionPricePerMonth,
      *  which obtains the pirate's relation with the empire — ObtainPirateRelation adds a NotMet record). */
     pirateProtectionPrice: (galaxy: Galaxy, empire: Empire, pirate: Empire) => calculatePirateProtectionPricePerMonth(galaxy, pirate, empire).price,
+    /** The left sidebar's Pirate Missions list and each row's "considering" count (pirates/pirateMissionsPanel.ts;
+     *  BaconMain.cs PopulateListsOnLefthandSide and Galaxy.9.cs CountPirateEmpiresConsideringMission obtain pirate
+     *  relations — ObtainPirateRelation adds a NotMet record). */
+    pirateMissionsPanel: (galaxy: Galaxy, empire: Empire, statusToggle: number, typeToggle: number) => pirateMissionsPanelData(galaxy, empire, statusToggle, typeToggle),
 };
 
 type Queries = typeof SIM_QUERIES;

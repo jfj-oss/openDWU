@@ -100,6 +100,9 @@ import { obtainPirateRelation, PirateRelationType } from '../pirateRelations';
 import { acceptPirateProtection, calculatePirateProtectionPricePerMonth } from '../pirates/pirateRelationsAI';
 import { orderSalvage } from '../scenario/wreckage/wreckage';
 import { exposeUncoveredPlanetDestroyer, investigateEncounteredBuiltObject, warnTargetOfPirateAttackFunding } from './eventPanelActions';
+import { assignPirateSmugglingMission, pirateMissionButton } from '../pirates/pirateMissionsPanel';
+import type { EmpireActivityType } from '../pirates/empireActivity';
+import { storyEventAction, storyEventClose } from '../story/freedomAlliance';
 import { applyLlmStrategicCommand, type LlmStrategicCommand } from '../scenario/llm/strategic';
 import { applyPopulationPolicyToAllColonies, renameColony, scrapColonyFacility, setColonyAsCapital, setColonyPopulationPolicy, transferToTransport } from './colonyOrders';
 
@@ -342,6 +345,20 @@ export const PLAYER_OPS = {
     /** Main.Part4.cs:1813-1821 btnEventMessageInvestigate (UncoverPlanetDestroyerConstruction pop-up): expose the project. */
     exposeUncoveredPlanetDestroyer: (galaxy: Galaxy, empire: Empire, builder: Empire, locationIndex: number) => exposeUncoveredPlanetDestroyer(galaxy, empire, builder, locationIndex),
     salvageWreckField: (galaxy: Galaxy, empire: Empire, ship: BuiltObject, fieldId: number) => orderSalvage(galaxy, empire, ship, fieldId, true),
+    // --- Pirate missions (the left sidebar's Pirate Missions panel, the smuggling resource picker) ---
+    /** Main.Part12.cs 2591-2678 method_78: a Pirate Missions row's button (Bid / Accept Smuggling Mission / Cancel); the
+     *  mission is named by its EmpireActivity.CheckEquivalent fields (pirates/pirateMissionsPanel.ts). */
+    pirateMissionButton: (galaxy: Galaxy, empire: Empire, target: Habitat | BuiltObject, type: EmpireActivityType, requestingEmpire: Empire | null, targetEmpire: Empire | null) =>
+        pirateMissionButton(galaxy, empire, target, type, requestingEmpire, targetEmpire),
+    /** Main.Part8.cs 5094 btnPirateSmugglingMissionAssign_Click: request smuggling to `habitat` (a resource, or null for all). */
+    assignPirateSmugglingMission: (galaxy: Galaxy, empire: Empire, habitat: Habitat, resourceId: number | null) => assignPirateSmugglingMission(galaxy, empire, habitat, resourceId),
+    // --- Return of the Shakturi story panel (pnlStoryEvent at levels 2 and 4; story/freedomAlliance.ts) ---
+    /** Main.Part4.cs 5006 btnStoryEventAction_Click: join the Freedom Alliance (level 2: its fleet) or take the Deliverance
+     *  planet destroyer (level 4); the UI selects and zooms to what it returns. */
+    storyEventAction: (galaxy: Galaxy, _empire: Empire, level: number) => storyEventAction(galaxy, level),
+    /** Main.Part4.cs 5028 btnStoryEventClose_Click: at level 2, refuse the alliance (it forms without the player; the
+     *  Shakturi invade; level 3). */
+    storyEventClose: (galaxy: Galaxy, _empire: Empire, level: number) => storyEventClose(galaxy, level),
     // [emergent] begin — scenario 19d1 internal politics (scenario/emergent/politicsActions.ts; flag-gated inside)
     politicsAction: (galaxy: Galaxy, empire: Empire, action: PoliticsActionName, character: Character) => runPoliticsAction(galaxy, empire, action, character),
     grantAutonomy: (galaxy: Galaxy, empire: Empire, colony: Habitat) => grantAutonomy(galaxy, empire, colony),
