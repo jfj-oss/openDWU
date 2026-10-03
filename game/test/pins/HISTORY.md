@@ -203,3 +203,9 @@ Appended by `npm run repin -- --reason "<why>"` (scripts/repin.mjs).
 - `tickDeterminism.digest600` (test/tickDeterminism.test.ts): Moved "0a197d262536cac8" → "89d3bfddd78f6edc": parity A2: spaceport threat check, race periodic traits, wonders scenic, race wonders, garrisons, maintenance, retrofit design
 - `tickDeterminism.counts600` (test/tickDeterminism.test.ts): Moved #873f307b0e → #f78b172cc4: parity A2: spaceport threat check, race periodic traits, wonders scenic, race wonders, garrisons, maintenance, retrofit design
 - `tickDeterminism.rndDraws600` (test/tickDeterminism.test.ts): Moved 566691 → 579423: parity A2: spaceport threat check, race periodic traits, wonders scenic, race wonders, garrisons, maintenance, retrofit design
+
+## 2026-10-03 — parity A1: creature combat, threat warp bonus, captain range, design torpedo order, keep in-use designs
+
+- `tickDeterminism.digest600` (test/tickDeterminism.test.ts): Moved "89d3bfddd78f6edc" → "3a9cc8b9c4f924da": parity A1: creature combat, threat warp bonus, captain range, design torpedo order, keep in-use designs
+- `tickDeterminism.counts600` (test/tickDeterminism.test.ts): Moved #f78b172cc4 → #32e802a26c: parity A1: creature combat, threat warp bonus, captain range, design torpedo order, keep in-use designs
+- `tickDeterminism.rndDraws600` (test/tickDeterminism.test.ts): Moved 579423 → 572462: parity A1: creature combat, threat warp bonus, captain range, design torpedo order, keep in-use designs
