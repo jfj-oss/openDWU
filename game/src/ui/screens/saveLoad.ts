@@ -270,7 +270,7 @@ export interface SaveLoadProvider {
     /** Open the panel in the given sub-mode ('save' / 'load'). */
     open(mode: 'save' | 'load'): void;
     /** Serialize the running game (null when saving is unavailable). */
-    serialize?: () => string | null;
+    serialize?: () => string | null | Promise<string | null>;
     /** Resolve stored save text to a LoadedGame (null when loading is
      * unavailable, e.g. on the main menu without a loaded game data set). */
     loadSave?: (text: string) => LoadedGame | Promise<LoadedGame>;
@@ -319,7 +319,7 @@ export interface SavePanelWiring {
     /** In-memory saves (this session), merged above the localStorage ones. */
     memorySaves?: Map<string, string>;
     /** Serialize the running game to its save text (null → saving disabled). */
-    serialize?: () => string | null;
+    serialize?: () => string | null | Promise<string | null>;
     /** Resolve a stored save text to a LoadedGame (load button / file open). */
     loadSave?: (text: string) => LoadedGame | Promise<LoadedGame>;
     /** Date stamp for newly written saves (default: now). */
@@ -556,7 +556,7 @@ export function createSaveLoadPanel(mode: 'save' | 'load', wiring: SavePanelWiri
             showToast('Enter a save name first');
             return;
         }
-        const text = serialize?.() ?? null;
+        const text = (await serialize?.()) ?? null;
         if (text === null) {
             showToast('Nothing to save yet');
             return;
@@ -580,9 +580,9 @@ export function createSaveLoadPanel(mode: 'save' | 'load', wiring: SavePanelWiri
         callbacks.onSaved?.(name);
     }
 
-    function doDownload(): void {
+    async function doDownload(): Promise<void> {
         const name = nameInput.value.trim() || 'save';
-        const text = serialize?.() ?? null;
+        const text = (await serialize?.()) ?? null;
         if (text === null) {
             showToast('Nothing to download yet');
             return;
