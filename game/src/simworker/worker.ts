@@ -75,7 +75,8 @@ async function init(m: InitMessage): Promise<void> {
     if (startOptions === undefined) throw new Error('sim worker init: no start options');
     post({ type: 'progress', step: 'Preparing map', fraction: 0.9 });
     installWorkerBootState(booted.game.galaxy);
-    host = new SimHost(booted.game, time, startOptions, { sync: m.sync });
+    // The browser game always has the message UI: the worker is the player's message recipient (docs §9 chunk 4).
+    host = new SimHost(booted.game, time, startOptions, { sync: m.sync, playerMessages: true });
     post({ ...host.snapshot(), scenario: booted.scenario });
     for (const e of early.splice(0)) handle(e);
     last = performance.now();
@@ -136,6 +137,10 @@ function handle(m: ToWorker): void {
             return;
         case 'command':
             host!.command(m);
+            kick();
+            return;
+        case 'uiOp':
+            host!.uiOp(m);
             kick();
             return;
         case 'refresh':

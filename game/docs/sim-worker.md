@@ -375,8 +375,18 @@ warning and its callback does not run.
 
 These run in the worker on the authoritative game, and the main thread gets an event:
 
-- The game-end handler: pause, `doGameEnd`, `reviewAchievements`. The banner is not ported yet; the main thread shows
-  a toast.
+- The game-end handler: pause, `doGameEnd`, `reviewAchievements`. The `gameEnd` event carries the args (victor,
+  outcome, text); the main thread plays the music and shows the banner (`empireComparison.ts presentGameEnd`).
+- The player's message pipeline (chunk 4, `ui/messagePipeline.ts`): the worker is the player's message and event
+  recipient (hidden `messageRecipient` / `eventMessageRecipient` fields, set before the sync first sees the empire, so
+  the replica never has them). After every tick it runs the UI timers' sim writes in their in-thread order — the
+  ticker pass (star date, history), the popup pass (advisor queue, defeat game end, star dates), the event pass (the
+  event's history message) — and sends one `playerMessages` event: each received message once (also those
+  ProcessMessages emptied before any sync), with its ticker line and routing, plus the event messages. The main
+  thread's `PlayerMessageStream` (`ui/workerMessages.ts`) feeds the ticker, popups, stubs and the event recipient,
+  which then only draw. Game Options message filters are mirrored to the worker; Galactic History's trim and the
+  advisor expiry are unjournaled `uiOp` messages, applied on receipt as the in-thread direct writes are. The worker's
+  save toggles `messageRecipient` back to a plain null so its text equals an in-thread save.
 - The location-pinged hook: the main thread centres the camera on the replica object.
 - A sim error: the worker pauses and the main thread shows a toast.
 
@@ -457,8 +467,7 @@ The only behaviour changes in this mode are:
   `coldMaxSets`, `markBudgetMs`.
 - **Cold staleness.** Cold data is up to one cycle old (about 1–1.5 s), plus any pump backlog. A paused game settles
   to exact: the worker keeps comparing for two full cycles after the last change.
-- **Not ported (§9):** the game-end banner, message-pipeline writes,
-  synchronous advisor commands, tutorials (they still boot in-thread), the
+- **Not ported (§9):** synchronous advisor commands, tutorials (they still boot in-thread), the
   `__dwu.sim` / `simBudget` debug hooks (null in worker mode), and `__dwu.commands.log` (the replica has no log).
 
 ## 9. Porting work list (parallel chunks)

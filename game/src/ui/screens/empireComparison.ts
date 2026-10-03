@@ -336,11 +336,20 @@ export function installGameEndHandler(galaxy: Galaxy, time: { paused: boolean })
         time.paused = true; // method_154
         doGameEnd(galaxy, e);
         reviewAchievements(galaxy); // method_436's first line
-        // [audio] begin — Main.Part12.cs:3428 DoGameEnd → musicPlayer_0.StartTheme().
-        if (typeof document !== 'undefined') musicGameEnded();
-        // [audio] end
-        if (typeof document !== 'undefined') showGameEndBanner(galaxy, time, e);
+        presentGameEnd(galaxy, time, e);
     });
+}
+
+/**
+ * DoGameEnd's UI part: the music and the banner. In-thread the handler above runs it; with the sim in a worker
+ * (docs/sim-worker.md §9 chunk 4) the worker's handler did the pause, DoGameEnd and the achievements on the
+ * authoritative game, and its gameEnd event brings the args here (resolved to replica objects).
+ */
+export function presentGameEnd(galaxy: Galaxy, time: { paused: boolean }, e: GameEndEventArgs): void {
+    // [audio] begin — Main.Part12.cs:3428 DoGameEnd → musicPlayer_0.StartTheme().
+    if (typeof document !== 'undefined') musicGameEnded();
+    // [audio] end
+    if (typeof document !== 'undefined') showGameEndBanner(galaxy, time, e);
 }
 
 export function removeGameEndHandler(galaxy: Galaxy): void {

@@ -7,6 +7,7 @@ import type { CommandLogEntry } from '../sim/player/commandLog';
 import type { StartGameOptions } from '../sim/startGameOptions';
 import type { ReplicaDelta } from './replicaSync';
 import type { RemoteArg } from './remoteArgs';
+import type { MessageRoute } from '../ui/messageRouting';
 
 /** How the worker gets its game. */
 export type WorkerBoot =
@@ -139,7 +140,17 @@ export interface HostOpMessage {
     args: RemoteArg[];
 }
 
-export type ToWorker = InitMessage | ClockMessage | CommandMessage | QueryMessage | HostOpMessage | RefreshRequest | SaveRequest | DigestRequest | TradeFlowsMessage | DebugRequest | CommandLogRequest | { type: 'dispose' };
+/**
+ * A UI-side sim write the in-thread UI does directly, outside the command queue (docs/sim-worker.md §9 chunk 4,
+ * ui/messagePipeline.ts applyPlayerMessageUiOp): applied by the worker on receipt, unjournaled — as in-thread.
+ */
+export interface UiOpMessage {
+    type: 'uiOp';
+    op: string;
+    args: RemoteArg[];
+}
+
+export type ToWorker = InitMessage | ClockMessage | CommandMessage | QueryMessage | HostOpMessage | RefreshRequest | SaveRequest | DigestRequest | TradeFlowsMessage | DebugRequest | CommandLogRequest | UiOpMessage | { type: 'dispose' };
 
 export interface ProgressMessage {
     type: 'progress';
@@ -187,8 +198,30 @@ export interface StepMessage {
     events: WorkerEvent[];
 }
 
+/** One message the player received, with what the worker's pipeline decided for it (ui/messagePipeline.ts). */
+export interface PlayerMessageWire {
+    m: RemoteArg;
+    ticker: string | null;
+    popupPass: boolean;
+    advisor: boolean;
+    route: MessageRoute | null;
+    action: 'queue' | 'open' | 'none';
+}
+
+/** One Empire.SendEventMessageToEmpire the player received. */
+export interface PlayerEventWire {
+    type: number;
+    title: string;
+    message: string;
+    data: RemoteArg;
+    location: RemoteArg;
+}
+
 export type WorkerEvent =
-    | { kind: 'gameEnd' }
+    /** Galaxy.GameEnd (the worker already paused, ran DoGameEnd and reviewed the achievements); `args` for the banner. */
+    | { kind: 'gameEnd'; args?: { victor: RemoteArg; outcome: number; description: string; code: number } }
+    /** The player's message pipeline after a tick (each message once, in arrival order). */
+    | { kind: 'playerMessages'; receipts: PlayerMessageWire[]; events: PlayerEventWire[] }
     | { kind: 'locationPinged'; target: RemoteArg }
     | { kind: 'simError'; message: string }
     /** 19s-2 voice cues the tick left (sim/scenario/llm/voiceCues.ts drainVoiceCues, drained in the worker): VoiceCue[]. */

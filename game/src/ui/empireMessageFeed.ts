@@ -4,10 +4,13 @@
 // instead, because Empire.messageRecipient is saved by the save codec and a function on it
 // cannot be serialized. The feed never mutates the messages; like the C# receiver (Main.Part9.cs 1508-1517) it adds
 // each one except Informational to the player's saved Empire.MessageHistory.
+// With the sim in a worker (docs/sim-worker.md §9 chunk 4) the worker is the recipient (messagePipeline.ts): the feed
+// reads the messages it delivered, with the line it formatted, and the worker records them.
 import { EmpireMessageType, addHistoryMessage, empireMessages, type EmpireMessage } from '../sim/messages';
 import type { Empire } from '../sim/empire';
 import { formatNet, resolveGameText, tryGetText } from '../sim/textResolver';
 import { getMessageOptions, routeEmpireMessage } from './messageRouting';
+import { playerMessageStream } from './messagePipeline';
 
 // Task 16d: the DisplayMessage<Category> options filter the ticker (messageRouting.ts); popups and the conversation queue are messagePopups.ts.
 // Port of Main.Part9.cs ReceiveMessageInternal (ticker text + bool_2) and method_250
@@ -58,6 +61,16 @@ export function createEmpireMessageFeed(): EmpireMessageFeed {
     const pollMessages = (empire: Empire | null): Array<{ message: EmpireMessage; text: string }> => {
         if (empire === null) return [];
         const out: Array<{ message: EmpireMessage; text: string }> = [];
+        const stream = playerMessageStream(empire);
+        if (stream !== undefined) {
+            // Worker mode: every message the worker received, once, with the ticker line it formatted (and recorded).
+            for (const r of stream.receipts()) {
+                if (seen.has(r.message)) continue;
+                seen.add(r.message);
+                if (r.ticker !== null) out.push({ message: r.message, text: r.ticker });
+            }
+            return out;
+        }
         for (const m of empireMessages(empire)) {
             if (m == null || seen.has(m)) continue;
             seen.add(m);
@@ -90,6 +103,8 @@ function messageHistoryOf(empire: Empire): EmpireMessage[] | null {
  * unless it is Informational, added to the player's message history
  * (Empire.AddHistoryMessage, which skips duplicates). */
 export function recordTickerMessage(player: Empire, message: EmpireMessage, currentStarDate: number): void {
+    // Worker mode: the replica is read-only; the worker already did this when it received the message.
+    if (playerMessageStream(player) !== undefined) return;
     message.starDate = currentStarDate;
     if (message.messageType === EmpireMessageType.Informational) return;
     addHistoryMessage(player, message); // Empire.cs 4697 (sim port; skips duplicates)

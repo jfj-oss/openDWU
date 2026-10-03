@@ -280,6 +280,9 @@ function assignInPlace(dst: Record<string, unknown>, src: Record<string, unknown
     for (const k of Object.keys(src)) {
         const a = dst[k];
         const b = src[k];
+        // The same live table on both sides (characterState.raceAvailableCharacters is the sim's own Map): nothing to
+        // copy — and clearing `a` would empty the authoritative table.
+        if (a === b) continue;
         if (a instanceof Map && b instanceof Map) {
             a.clear();
             for (const [x, y] of b) a.set(x, y);

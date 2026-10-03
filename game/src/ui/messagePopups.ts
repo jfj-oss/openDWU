@@ -12,8 +12,7 @@
 
 import { closeEventSting, playDiplomacyMood, playMessageSounds } from '../audio/gameAudio'; // [audio]
 import './messagePopups.css';
-import { getMessageOptions, playerDefeatGameEnd, routeEmpireMessage, shouldQueueConversation, type DialogPartType } from './messageRouting';
-import { onGameEnd } from '../sim/victory';
+import { getMessageOptions, type DialogPartType } from './messageRouting';
 import { EmpireMessageType, empireMessages, type EmpireMessage, empireMessageHistory } from '../sim/messages';
 import type { Empire } from '../sim/empire';
 import type { Galaxy } from '../sim/galaxy';
@@ -21,7 +20,7 @@ import type { ConversationReplyPart } from '../sim/player/conversationReplies';
 import { galaxyStarDate } from '../sim/tick/simTime';
 import { resolveStarDateDescription } from '../sim/galaxyTime';
 import { resolveGameText, tryGetText } from '../sim/textResolver';
-import { isProposalValid, proposalLabel, relationTypeLabel, setDiplomacyMessageExpiry, toggleDiplomacyScreen } from './screens/diplomacyScreen';
+import { proposalLabel, relationTypeLabel, setDiplomacyMessageExpiry, toggleDiplomacyScreen } from './screens/diplomacyScreen';
 import { issuePlayerCommand } from '../sim/player/playerCommands';
 // [proposals] begin
 // [proposals] end
@@ -42,21 +41,24 @@ import { CARD, CARD_STRIP_H, EVENT, TALK, cardHeight, cardPosition, eventButtonR
 import { conversationActions, pirateOfferPriceLine, type ConversationAction } from './conversationActions';
 import { pirateProtectionPriceText } from './pirateProtectionPrice';
 import { goToMessage, messageGoToTarget } from './messageGoto';
-// [suggest] begin
-import { expireAdvisorSuggestionsForEmpire, receiveAdvisorSuggestionMessage } from '../sim/advisorQueue';
-// [suggest] end
 // [popupstubs] begin
-import { isConversationExpired } from './messageStubs';
 import { pushMessageStub, markMessageStubRead } from './messageStubList';
 import { getSettings } from './settings';
 import { isScenarioDecision } from '../sim/scenario/decisions';
 // [popupstubs] end
-
-export interface ConversationEntry {
-    message: EmpireMessage;
-    conversation: DialogPartType;
-    sender: Empire | null;
-}
+// [simworker] chunk 4: the sim writes of the tick are messagePipeline.ts (shared with the sim worker, which runs them
+// itself when the sim is in a worker; the tick then reads the worker's receipts and only draws).
+import {
+    expirePlayerAdvisorSuggestionsFor,
+    isAnswerableProposal,
+    playerMessageStream,
+    pruneConversationQueue,
+    rebuildConversationQueue,
+    receivePopupMessage,
+    type ConversationEntry,
+    type PopupReceipt,
+} from './messagePipeline';
+export { isAnswerableProposal, pruneConversationQueue, rebuildConversationQueue, type ConversationEntry } from './messagePipeline';
 
 /**
  * The pirate protection / truce / extortion offer conversations (dialog/base_dialog.txt PIRATE_PROTECTIONPROPOSEINITIATE,
@@ -85,32 +87,6 @@ export function isPirateProtectionOfferEntry(entry: ConversationEntry): boolean 
  */
 export function openDiplomacyForPirateOffer(player: Empire, sender: Empire): void {
     toggleDiplomacyScreen({ player, selectedEmpire: sender });
-}
-
-/** A treaty proposal from the sender that the player can still accept or decline (EmpireDetailView.cs:639-706 flag3). */
-export function isAnswerableProposal(entry: ConversationEntry, player: Empire, starDate: number): boolean {
-    if (entry.message.messageType !== EmpireMessageType.ProposeDiplomaticRelation) return false;
-    if (entry.sender === null) return false;
-    const p = player.proposedDiplomaticRelations.byEmpire(entry.sender);
-    if (p === null) return false;
-    return isProposalValid(p, entry.sender, player, starDate);
-}
-
-// Stand-in for DiplomaticMessageQueue.cs:404 ExpireInvalidMessages — TODO(port): the full per-type expiry rules
-// [popupstubs] + DiplomaticMessageQueue.cs:671 method_3: entries older than 250 x RealSecondsInGalacticYear expire.
-export function pruneConversationQueue(queue: ConversationEntry[], player: Empire, starDate: number): number {
-    let removed = 0;
-    for (let i = queue.length - 1; i >= 0; i--) {
-        const e = queue[i];
-        if (
-            (e.message.messageType === EmpireMessageType.ProposeDiplomaticRelation && !isAnswerableProposal(e, player, starDate)) ||
-            (e.message.starDate > 0 && isConversationExpired(e.message.starDate, starDate))
-        ) {
-            queue.splice(i, 1);
-            removed++;
-        }
-    }
-    return removed;
 }
 
 /** The dialog's sub-heading: the treaty on offer (EmpireDetailView.cs text14), the relation type, or the title.
@@ -188,28 +164,6 @@ interface Installed {
 let installed: Installed | null = null;
 
 // [popupstubs] begin
-/**
- * The conversation queue rebuilt from a loaded game's message history (the C# queue is not saved): each history message
- * that ReceiveMessageInternal would queue (not the immediate ones, which opened at once), newer than the queue's
- * 250-year expiry, oldest first; stale treaty offers are then pruned. A non-offer conversation the player had already
- * dismissed before saving comes back until it expires — TODO(port): the C# drops the whole queue on load
- * (Main.Part12.cs 1204 ClearData); here the history stands in so pending offers survive a load.
- */
-export function rebuildConversationQueue(history: readonly EmpireMessage[], player: Empire, starDate: number): ConversationEntry[] {
-    const out: ConversationEntry[] = [];
-    const options = getMessageOptions();
-    const sorted = history.filter((m) => m != null).map((m, i) => ({ m, i })).sort((a, b) => a.m.starDate - b.m.starDate || a.i - b.i);
-    for (const { m } of sorted) {
-        if (m.messageType === EmpireMessageType.AdvisorSuggestion) continue;
-        if (isConversationExpired(m.starDate, starDate)) continue;
-        const route = routeEmpireMessage(m, player, options);
-        if (route.conversation === null || shouldQueueConversation(route, options) !== 'queue') continue;
-        out.push({ message: m, conversation: route.conversation, sender: m.sender });
-    }
-    pruneConversationQueue(out, player, starDate);
-    return out;
-}
-
 /** The installed conversation queue (read-only view for the stub list; empty when not installed). */
 export function conversationQueue(): readonly ConversationEntry[] {
     return installed?.queue ?? [];
@@ -767,36 +721,44 @@ export function installMessagePopups(opts: MessagePopupsOptions): void {
     function tick(): void {
         const options = getMessageOptions();
         let toOpen: ConversationEntry | null = null;
-        for (const m of empireMessages(player)) {
+        // [simworker] worker mode: the messages the worker received, with what its pass decided (and wrote).
+        const stream = playerMessageStream(player);
+        const receipts = stream?.receipts();
+        const list: readonly EmpireMessage[] = receipts !== undefined ? receipts.map((r) => r.message) : empireMessages(player);
+        for (let i = 0; i < list.length; i++) {
+            const m = list[i];
             if (m == null || seen.has(m)) continue;
             seen.add(m);
+            let p: PopupReceipt;
+            if (receipts !== undefined) {
+                const r = receipts[i];
+                if (!r.popupPass) continue; // a loaded game's queued conversation (the worker skipped it too)
+                p = r;
+            } else {
+                // The sim side, in the original order (messagePipeline.ts): Main.Part9.cs 2226 ReceiveMessageInternal,
+                // case AdvisorSuggestion (the BuildOrder advice joins the advisor queue, advisorSuggestions.ts shows it);
+                // 1994-2020 the player's own EmpireDefeated → Galaxy_GameEnd(defeat); the popup and conversation star
+                // date stamps (2361).
+                p = receivePopupMessage(galaxy, player, m, options);
+            }
             // [suggest] begin
-            // Main.Part9.cs 2226 ReceiveMessageInternal, case AdvisorSuggestion: the BuildOrder advice joins the advisor
-            // queue (advisorSuggestions.ts shows it).
-            if (receiveAdvisorSuggestionMessage(player, m)) continue;
+            if (p.advisor) continue;
             // [suggest] end
-            const route = routeEmpireMessage(m, player, options);
-            // Main.Part9.cs 1994-2020: the player's own EmpireDefeated message → Galaxy_GameEnd(defeat).
-            const defeat = playerDefeatGameEnd(m, player, galaxy.empires);
-            if (defeat !== null) onGameEnd(galaxy, defeat);
+            const route = p.route!;
             // [popupstubs] begin
             // A popup message becomes a stub under the top-right panel; the card opens by itself only with the
             // "Open messages automatically" option (the 16d behaviour).
             if (route.popup) {
-                if (m.starDate <= 0) m.starDate = galaxyStarDate(galaxy);
                 const auto = getSettings().openMessagesAutomatically;
                 pushMessageStub(m, auto);
                 if (auto) showPopup(m);
             }
             // [popupstubs] end
-            const action = shouldQueueConversation(route, options);
+            const action = p.action;
             // [audio] begin — Main.Part9.cs:2352-2360 ResolveMessage / ResolveImportantMessage on arrival.
             if (!heardBefore.has(m)) playMessageSounds(m.messageType, route, options.suppressAllPopups);
             // [audio] end
             if (action === 'none' || route.conversation === null) continue;
-            // [popupstubs] begin
-            m.starDate = galaxyStarDate(galaxy); // Main.Part9.cs 2361
-            // [popupstubs] end
             const entry: ConversationEntry = { message: m, conversation: route.conversation, sender: m.sender };
             queue.push(entry);
             if (action === 'open') toOpen = entry;
@@ -828,7 +790,7 @@ export function installMessagePopups(opts: MessagePopupsOptions): void {
     // The player's own conversation (17e) expires the other empire's pending messages, as the C# does.
     setDiplomacyMessageExpiry((empire) => {
         // [suggest] begin
-        expireAdvisorSuggestionsForEmpire(player, empire); // DiplomaticMessageQueue.cs 357-380 (the advisor cases)
+        expirePlayerAdvisorSuggestionsFor(player, empire); // DiplomaticMessageQueue.cs 357-380 (the advisor cases)
         // [suggest] end
         if (expireDiplomacyMessagesForEmpire(queue, empire) === 0) return;
         if (dialogEntry !== null && !queue.includes(dialogEntry)) closeDialog();

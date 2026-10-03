@@ -26,6 +26,7 @@ import { issuePlayerCommand } from '../sim/player/playerCommands';
 import { Habitat } from '../sim/types';
 import { COLORS, FONT, el, glassButton, openOriginalWindow, place, scrollPanel, text, type OriginalWindow } from './originalWindow';
 import { advisorIconUrl } from './messageStubs';
+import { playerMessageStream } from './messagePipeline';
 import { habitatImageUrl } from './selectionInfo';
 import {
     advisorSuggestionCost,
@@ -160,6 +161,9 @@ export function installAdvisorSuggestions(opts: AdvisorSuggestionsOptions): void
     let current: EmpireMessage | null = null;
     let win: OriginalWindow | null = null;
     let expiryQueued = false;
+    // [simworker] worker mode: the replica's queue shows the expiry only with the next cold sync (about a second after
+    // the reply); hold off re-issuing until then, so the log does not collect duplicate expiries.
+    let expiryHoldUntil = 0;
     let restoreView: (() => void) | null = null;
 
     // Main.Part2.cs 1363 pnlAdvisorSuggestion_CloseButtonClicked / method_644 + method_660.
@@ -267,9 +271,13 @@ export function installAdvisorSuggestions(opts: AdvisorSuggestionsOptions): void
         // DiplomaticMessageQueue.cs 864 method_3: expire old entries.
         // The expiry changes saved state, so it is a command too (issued only when an entry is due, so the log stays small).
         const due = galaxyStarDate(galaxy) - ADVISOR_SUGGESTION_LIFETIME;
-        if (advisorSuggestions(player).some((x) => x != null && x.starDate < due) && !expiryQueued) {
+        const remote = playerMessageStream(player) !== undefined;
+        if (advisorSuggestions(player).some((x) => x != null && x.starDate < due) && !expiryQueued && (!remote || performance.now() >= expiryHoldUntil)) {
             expiryQueued = true;
-            issuePlayerCommand(galaxy, player, 'expireAdvisorSuggestions', [], () => (expiryQueued = false));
+            issuePlayerCommand(galaxy, player, 'expireAdvisorSuggestions', [], () => {
+                expiryQueued = false;
+                if (remote) expiryHoldUntil = performance.now() + 2000;
+            });
         }
         if (current !== null && !advisorSuggestions(player).includes(current)) close();
     }
