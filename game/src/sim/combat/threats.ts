@@ -15,8 +15,9 @@
 //   Galaxy.4.cs 2012 DetermineGalaxyLocationsInRangeAtPoint; BuiltObjectList.cs 570 CalculateAttackingFirepowerNearEmpireTargets.
 //
 // Galaxy.Rnd: one draw site, IdentifySystemThreatsToUs (Bacon 4881 `Galaxy.Rnd.NextDouble() < num8`, the pirate-smuggler
-// detection roll), in C# order. Fighters (M4p) are not modelled as threats yet: the Fighter branches of the C#
-// (Galaxy.7.cs 3506 DetermineThreatLevel(Fighter …), the `threat is Fighter` redirects) are noted where they occur.
+// detection roll), in C# order. Fighters: Galaxy.7.cs 3506 DetermineThreatLevel(Fighter …) is combat/fighters.ts
+// determineThreatLevelFighter; fighters reach BuiltObject.Attackers, so ShouldFleeFrom can return one (the
+// `stellarObject is Fighter` carrier redirects, escapeTargetForFleeFrom).
 
 import { isAiControlled } from '../missions/playerOrder';
 import type { Galaxy } from '../galaxy';
@@ -62,7 +63,7 @@ export const ATTACK_OVERMATCH_FACTOR = 2.0;
 /** Galaxy.AttackEvaluationRangeFactor = 20000.0 (5038). */
 export const ATTACK_EVALUATION_RANGE_FACTOR = 20000.0;
 
-/** A `_Threats` element: C# StellarObject (BuiltObject | Creature here; Fighter threats are M4p). */
+/** A `_Threats` element: C# StellarObject; Galaxy.7.cs 3249 EvaluateThreats only adds BuiltObjects and Creatures. */
 export type Threat = BuiltObject | Creature;
 
 // ---------------------------------------------------------------------------------------------------------------

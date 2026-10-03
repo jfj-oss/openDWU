@@ -563,7 +563,7 @@ export function identifyPirateSpaceport(galaxy: Galaxy, pirateFaction: Empire | 
     return null;
 }
 
-/** Galaxy.9.cs 396 PirateFactionJoinsEmpire(empire, pirateFaction) → EliminatePirateFaction (M4s stub). */
+/** Galaxy.9.cs 396 PirateFactionJoinsEmpire(empire, pirateFaction) → EliminatePirateFaction (pirates/pirateGalaxyTick.ts). */
 export function pirateFactionJoinsEmpire(galaxy: Galaxy, empire: Empire | null, pirateFaction: Empire | null): void {
     if (empire !== null && pirateFaction !== null) eliminatePirateFaction(galaxy, pirateFaction, empire);
 }
@@ -1809,7 +1809,7 @@ export function reviewDisabledComponents(galaxy: Galaxy, builtObject: BuiltObjec
 // BuiltObject.2.cs 4816 CheckSelfDestruct, Galaxy.7.cs 2835 DetermineScrapDamagedShip
 // ---------------------------------------------------------------------------------------------------------------
 
-/** Galaxy.7.cs 2835 DetermineScrapDamagedShip(builtObject). No Rnd (FindNearestShipYard / FindNearestAvailableConstructionShip are M4h / M4i stubs). */
+/** Galaxy.7.cs 2835 DetermineScrapDamagedShip(builtObject). No Rnd (FindNearestShipYard / FindNearestAvailableConstructionShip: construction/empireConstruction.ts). */
 export function determineScrapDamagedShip(galaxy: Galaxy, builtObject: BuiltObject): boolean {
     const playerEmpire = galaxy.playerEmpire;
     if (
