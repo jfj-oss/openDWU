@@ -1,18 +1,28 @@
-// Fleets list panel (task 15c): a streamlined port of the original's Fleets
-// panel (Main.Part9.cs:3153 tbtnShipGroups_Click toggles pnlShipGroupInfo;
-// ShipGroupListView.cs for the row columns; Galaxy.2.cs:2100
-// ResolveDescriptionFleetPosture for the posture text), opened by F12 or the
-// top-bar fleets button. One row per player ShipGroup — name, ships, power,
-// troops, home base, mission and current system; clicking a row closes the
-// list, selects the fleet and zooms to its lead ship. The fleet cycle keys
-// follow Main.Part8.cs:1243 btnCycleShipGroups_Click (fleetCycleList).
-// The window also carries the original's fleet detail controls (Main.Part9.cs method_268 layout, Main.Part3.cs /
-// Main.Part6.cs / Main.Part9.cs handlers): rename, Select Fleet, Go to Fleet, Set Home Colony, Repair and Refuel,
-// Retrofit to Latest Designs, Load Troops, troop loadouts, plus the selection-panel fleet buttons (Automate, Home Base,
-// Attack Point, Posture, Range, Stop, Disband; Main.Part3.cs 3582-3645). All of them go through the player command
-// queue (playerOps shipAction / renameFleet / setFleetHomeColony / setFleetTroopLoadout / fleetLoadTroops /
-// fleetRetrofit / fleetRepairAndRefuel).
-// TODO(port): admiral portraits and the galaxy mini map of the detail panel (pnlDetailInfoShipGroup, gmapShipGroupInfo)
+// Fleets screen: a port of the original's pnlShipGroupInfo (Main.Part9.cs method_268, opened by F12 or the top-bar
+// fleets button, tbtnShipGroups_Click) on the shared original-style window (originalWindow.ts):
+//   - the 988 × 768 ScreenPanel "Fleets" with the fleets.png header icon (Main.Part12.cs bitmap_147) and the
+//     "Learn about Fleets..." link (lnkFleets, (10, 8));
+//   - ctlShipGroupListView (ShipGroupListView.cs, (10, 27) 950 × 283): admirals & generals, Name, Ships, Power, Troops
+//     ("0,K"), Home colony, Mission (Galaxy.ResolveDescription) and Current system, sortable; double click goes to the
+//     fleet;
+//   - the name box (txtShipGroupName, committed on leaving it), Select Fleet / Go to Fleet, the home colony combo with
+//     Set Home Colony, Repair and Refuel / Retrofit to latest designs / Load Troops;
+//   - pnlDetailInfoShipGroup: the InfoPanel (BaconInfoPanel.DrawShipGroup with ShowExtendedInfo): mission and queued
+//     missions, empire, base, posture, summary, troops, boarding pods and the fleet's ships as pictures with their
+//     damage tint and fuel bar (click a ship to select it);
+//   - the ungarrisoned-troops report (method_269) and the troop loadout group (grpShipGroupUseTroopLoadouts: the four
+//     percent spinners with their "= N units" targets, method_264 / method_265 / method_267);
+//   - gmapShipGroupInfo: "Location of selected Fleet in Galaxy" (GalaxyMap.cs method_6 with ShowFleetPostures: the
+//     sector grid, the posture ranges (red attack / blue defend), the systems, every fleet as a yellow dot and the
+//     selected fleet's crosshair).
+// Kept from our earlier screen (not in the original window; the original has them on the selection panel's fleet
+// buttons, Main.Part3.cs fleetSlots), in the same look: a row of fleet orders under the window's controls (posture,
+// engagement range, attack point, home base, automate, stop, disband), and the "Fleet Designs" tab
+// (fleetDesignsTab.ts: fleet templates, form from existing, build fleet with a sector option and progress).
+// The fleet cycle keys follow Main.Part8.cs:1243 btnCycleShipGroups_Click (fleetCycleList).
+// TODO(port): admiral portraits in the grid's first column (CharacterImageCache.ObtainCharacterImageVerySmall) — the
+// role icon stands in, with the names as the tooltip.
+// TODO(port): the galaxy map's empire territory link lines (GalaxyMap.cs method_6 LinkSystemStars).
 
 import './fleetsList.css';
 import type { ShipGroup } from '../../sim/fleets/shipGroup';
@@ -20,13 +30,48 @@ import { empireShipGroups } from '../../sim/fleets/shipGroup';
 import { FleetPosture } from '../../sim/diplomacyTick';
 import { BuiltObjectMissionType } from '../../sim/missions/mission';
 import type { Empire } from '../../sim/empire';
+import type { Galaxy } from '../../sim/galaxy';
 import { missionTypeLabel, missionTargetText } from '../hud';
 import { ShipAction, ShipActionType } from '../../sim/player/shipAction';
 import { issuePlayerCommand } from '../../sim/player/playerCommands';
 import type { TroopLoadout } from '../../sim/player/fleetOps';
 import type { Habitat } from '../../sim/types';
-import { shipGroupTotalTroopCapacity } from '../../sim/fleets/shipGroupTasks';
+import { getFleetAdmiralsAndGenerals, shipGroupGetTroopLoadoutTargetAmounts, shipGroupTotalTroopCapacity } from '../../sim/fleets/shipGroupTasks';
+import type { Troop } from '../../sim/cargo';
+import { SystemVisibilityStatus } from '../../sim/visibility';
 import { createFleetDesignsTab } from './fleetDesignsTab';
+import { troopCompositionDescription, troopCountsByType } from './troops';
+import { openGalactopedia } from './galactopedia';
+import { CROSSHAIR_COLOR, GRID_COLOR, galaxyMapScale, sectorColumnLabel, starBrushColor, starDotSizes } from './galaxyMap';
+import { BACKDROP_URLS } from '../../render/assets';
+import { fmtK, missionDescription, shipGroupInfo, type InfoTarget } from '../selectionInfo';
+import { renderInfoModel } from '../selectionInfoView';
+import {
+    COLORS,
+    FONT,
+    OwGrid,
+    chromeImageUrl,
+    dropDown,
+    dropText,
+    el,
+    glassButton,
+    gradientPanel,
+    linkLabel,
+    openOriginalWindow,
+    place,
+    rgbCss,
+    setButtonLabel,
+    setButtonMinorText,
+    setText,
+    tabStrip,
+    text,
+    type GridColumn,
+    type OriginalWindow,
+} from '../originalWindow';
+
+// -------------------------------------------------------------------------------------------------------------------
+// Pure helpers (tested)
+// -------------------------------------------------------------------------------------------------------------------
 
 // Port of Galaxy.2.cs:2100 ResolveDescriptionFleetPosture (GameText.txt 3454-3465).
 export function fleetPostureDescription(sg: ShipGroup | null): string {
@@ -79,9 +124,8 @@ export function fleetSystemName(sg: ShipGroup): string {
     return sg.leadShip?.nearestSystemStar?.name || '(Deep Space)';
 }
 
-/** ShipGroupListView.cs:190 "Mission" column (mission type label). */
+/** The mission type label (the selection rows' short form; the grid uses the full Galaxy.ResolveDescription). */
 export function fleetMissionText(sg: ShipGroup): string {
-    // TODO(port): full Galaxy.3.cs:20 ResolveDescription(empire, mission)
     return sg.mission === null || sg.mission.type === BuiltObjectMissionType.Undefined
         ? '(No mission)'
         : missionTypeLabel(sg.mission.type);
@@ -93,8 +137,7 @@ export function fleetCycleList(empire: Empire): ShipGroup[] {
     return empireShipGroups(empire).filter((sg): sg is ShipGroup => sg !== null);
 }
 
-/** One displayed row of the panel (ShipGroupListView.cs:183-191). Pure so
- * the row logic is testable without a DOM (jsdom is not configured). */
+/** One displayed row of the grid (ShipGroupListView.cs BindData). Pure so the row logic is testable without a DOM. */
 export interface FleetRow {
     shipGroup: ShipGroup;
     name: string;
@@ -106,7 +149,7 @@ export interface FleetRow {
     system: string;
 }
 
-// Port of ShipGroupListView.cs:183-191 (row cells 1-7).
+// Port of ShipGroupListView.cs:183-191 (row cells 1-7; the Mission cell's full text comes from fleetMissionDescription).
 export function fleetRows(empire: Empire): FleetRow[] {
     return fleetCycleList(empire).map((sg) => ({
         shipGroup: sg,
@@ -119,6 +162,23 @@ export function fleetRows(empire: Empire): FleetRow[] {
         system: fleetSystemName(sg),
     }));
 }
+
+/** The grid's Mission cell: Galaxy.ResolveDescription(empire, mission) (type and target). */
+export function fleetMissionDescription(sg: ShipGroup): string {
+    return missionDescription(sg.mission, sg.empire);
+}
+
+/** The grid's columns (ShipGroupListView constructor; widths from Main.Part9.cs method_268). */
+export const FLEET_GRID_COLUMNS: readonly { id: string; header: string; width: number; align: 'left' | 'center' | 'right' }[] = [
+    { id: 'admirals', header: '', width: 30, align: 'center' },
+    { id: 'name', header: 'Name', width: 170, align: 'left' },
+    { id: 'ships', header: 'Ships', width: 50, align: 'center' },
+    { id: 'power', header: 'Power', width: 60, align: 'right' },
+    { id: 'troops', header: 'Troops', width: 60, align: 'right' },
+    { id: 'home', header: 'Home colony', width: 140, align: 'left' },
+    { id: 'mission', header: 'Mission', width: 300, align: 'left' },
+    { id: 'system', header: 'Current system', width: 140, align: 'left' },
+];
 
 /** Rows for the bottom-left selection panel when a fleet is selected. */
 export function shipGroupSelectionRows(sg: ShipGroup, player: Empire | null): { label: string; value: string }[] {
@@ -153,6 +213,15 @@ export function fleetRangeLabel(rangeSquared: number): string {
     return 'Any target';
 }
 
+/** The chrome icon of a posture range step (images/ui/chrome/fleetRange*.png, the selection panel's range button). */
+export function fleetRangeIcon(rangeSquared: number): string {
+    if (rangeSquared <= 2250000.0) return 'fleetRangeTarget.png';
+    if (rangeSquared <= 2304000000.0) return 'fleetRangeSystem.png';
+    if (rangeSquared <= 250000000000.0) return 'fleetRangeArea.png';
+    if (rangeSquared <= 1000000000000.0) return 'fleetRangeSector.png';
+    return 'fleetRangeAny.png';
+}
+
 /** Posture as the toggle shows it (FleetPosture.Attack / Defend; Main.Part7.cs SetFleetPosture toggles between them). */
 export function fleetPostureLabel(sg: ShipGroup): string {
     return sg.posture === FleetPosture.Attack ? 'Attack' : sg.posture === FleetPosture.Defend ? 'Defend' : '(None)';
@@ -171,7 +240,41 @@ export function troopLoadoutMaxima(l: TroopLoadout): TroopLoadout {
     return { infantry: m(l.infantry), armored: m(l.armored), artillery: m(l.artillery), specialForces: m(l.specialForces) };
 }
 
-/** The action buttons of the fleet detail panel (the selection panel's fleet buttons + the window's own) as data. */
+/** Main.Part9.cs method_267: the spinner labels "% Infantry  (= N units)" (GetTroopLoadoutTargetAmounts with
+ *  refactorForDisabledTroopTypes false; 0 units without a fleet) and the capacity line. */
+export function troopLoadoutLabels(sg: ShipGroup | null): { infantry: string; armored: string; artillery: string; specialForces: string; description: string } {
+    const a = sg !== null ? shipGroupGetTroopLoadoutTargetAmounts(sg, false) : { infantryAmount: 0, artilleryAmount: 0, armorAmount: 0, specialForcesAmount: 0 };
+    const line = (type: string, n: number): string => `% ${type}  (= ${n} units)`;
+    return {
+        infantry: line('Infantry', a.infantryAmount),
+        armored: line('Armored', a.armorAmount),
+        artillery: line('Artillery', a.artilleryAmount),
+        specialForces: line('Special Forces', a.specialForcesAmount),
+        description: `Total Fleet Troop Capacity: ${sg !== null ? shipGroupTotalTroopCapacity(sg).toFixed(0) : '0'}`,
+    };
+}
+
+/** TroopList.cs GetTroopsNotGarrisonedAtColony: troops at a colony (and in its troop list) that are not garrisoned. */
+export function troopsNotGarrisonedAtColony(troops: readonly Troop[]): Troop[] {
+    return troops.filter((t) => {
+        if (t == null || t.garrisoned || !t.atColony) return false;
+        const colony = t.colony as { troops?: { contains(t: Troop): boolean } | null } | null;
+        return colony != null && colony.troops != null && colony.troops.contains(t);
+    });
+}
+
+/** Main.Part9.cs method_269: "Ungarrisoned Troops At Colonies\nN troops: 3 Inf, 1 Arm" (empty without a fleet). */
+export function ungarrisonedTroopReport(troops: readonly Troop[], sg: ShipGroup | null): string {
+    if (sg === null) return '';
+    const list = troopsNotGarrisonedAtColony(troops);
+    let text = `Ungarrisoned Troops At Colonies\n${list.length} troops`;
+    const c = troopCountsByType(list);
+    const comp = troopCompositionDescription(c.infantry, c.artillery, c.armor, c.specialForces);
+    if (comp !== '') text += `: ${comp}`;
+    return text;
+}
+
+/** The action buttons of the window (its own + the fleet orders row) as data. */
 export type FleetActionId =
     | 'select' | 'goto' | 'setHomeColony' | 'repairRefuel' | 'retrofit' | 'loadTroops'
     | 'homeBase' | 'attackPoint' | 'posture' | 'range' | 'automate' | 'stop' | 'disband';
@@ -210,359 +313,594 @@ export function fleetShipAction(id: 'posture' | 'range' | 'automate' | 'unautoma
     }
 }
 
+/** The window size: the original's 988 × 768 plus one 62 px band for our fleet orders row (y 702). */
+export const FLEETS_WINDOW = { w: 988, h: 768 + 62, ordersY: 702, ordersH: 48 } as const;
+
+/** x positions of `n` equal buttons across the grid's 950 px (10 px gaps), for the fleet orders row. */
+export function rowButtonLayout(n: number, left = 10, width = 950, gap = 10): { x: number; w: number }[] {
+    const w = Math.floor((width - (n - 1) * gap) / n);
+    const extra = width - (n * w + (n - 1) * gap);
+    return Array.from({ length: n }, (_, i) => ({ x: left + i * (w + gap) + Math.min(i, extra), w: w + (i < extra ? 1 : 0) }));
+}
+
+/** GalaxyMap.cs method_5 (ShowFleetPostures): the posture circle of a fleet in world units, or null. Attack fleets
+ *  ring their attack point red, defending fleets their gather point blue, only for a bounded range above the
+ *  "point only" step; an attack fleet also gets the dotted arrow from its base to the attack point. */
+export function fleetPostureCircle(sg: ShipGroup): { x: number; y: number; r: number; attack: boolean; from: { x: number; y: number } | null } | null {
+    if (sg.leadShip === null) return null;
+    const bounded = sg.postureRangeSquared > 2250000.0 && sg.postureRangeSquared < 3.4028234663852886e38;
+    const r = bounded ? Math.sqrt(sg.postureRangeSquared) : 0;
+    if (sg.posture === FleetPosture.Attack) {
+        const p = sg.attackPoint;
+        if (p === null) return null;
+        return { x: p.xpos, y: p.ypos, r, attack: true, from: sg.gatherPoint !== null ? { x: sg.gatherPoint.xpos, y: sg.gatherPoint.ypos } : null };
+    }
+    if (sg.posture === FleetPosture.Defend && sg.gatherPoint !== null) {
+        return { x: sg.gatherPoint.xpos, y: sg.gatherPoint.ypos, r, attack: false, from: null };
+    }
+    return null;
+}
+
+// -------------------------------------------------------------------------------------------------------------------
+// The window
+// -------------------------------------------------------------------------------------------------------------------
+
 export interface FleetsListOptions {
     /** The empire whose fleets are listed (the player's). */
     empire: Empire;
-    /** Select the clicked fleet (and zoom to its lead ship). */
+    /** Go to the fleet: select it and move the view to its lead ship (btnShipGroupGoto, method_157). */
     onSelect: (sg: ShipGroup) => void;
+    /** Select Fleet (btnShipGroupSelect, method_208): select without moving the view. Default onSelect. */
+    onSelectOnly?: (sg: ShipGroup) => void;
+    /** A ship / empire clicked in the info panel (pnlDetailInfoShipGroup hotspots). */
+    onTarget?: (t: InfoTarget) => void;
     /** The fleet to highlight when the window opens (View Fleet from the Ships and Bases window). */
     selected?: ShipGroup;
     /** Home Base / Attack Point: the fleet becomes the selection and the next map click picks the point
      * (Main.Part7.cs SetFleetHomeBase / SetFleetAttackPoint set mouseHoverMode). The window closes. */
     onPickPoint?: (sg: ShipGroup, mode: 'homeBase' | 'attackPoint') => void;
-    /** The tab to open on (default the fleets list). */
+    /** The tab to open on (default the last one shown). */
     tab?: 'fleets' | 'designs';
 }
 
 interface OpenState {
-    root: HTMLElement;
+    win: OriginalWindow;
     close: () => void;
 }
 
 let open: OpenState | null = null;
+/** The tab shown, kept between openings. */
+let lastTab: 'fleets' | 'designs' = 'fleets';
 
-/** Open the Fleets list, or close it if it is already open. */
+/** Open the Fleets window, or close it if it is already open. */
 export function toggleFleetsList(opts: FleetsListOptions): void {
-    if (open) {
-        open.close();
-    } else {
-        open = createFleetsList(opts);
-    }
+    if (open) open.close();
+    else open = createFleetsList(opts);
 }
 
-/** Close the Fleets list (no-op when closed). */
+/** Close the Fleets window (no-op when closed). */
 export function closeFleetsList(): void {
     open?.close();
 }
 
+/** One NumericUpDown of the loadout group (font_6), 40 × 25. */
+function spinner(onChange: (v: number) => void): HTMLInputElement {
+    const n = el('input', 'ow-input fl-num');
+    n.type = 'number';
+    n.min = '0';
+    n.max = '100';
+    n.step = '1';
+    n.addEventListener('keydown', (e) => {
+        if (e.key !== 'Escape') e.stopPropagation();
+    });
+    n.addEventListener('change', () => onChange(Math.trunc(Number(n.value) || 0)));
+    return n;
+}
+
 function createFleetsList(opts: FleetsListOptions): OpenState {
     const { empire } = opts;
-    const galaxy = empire.galaxy;
-    let rows = fleetRows(empire);
+    const galaxy = empire.galaxy as Galaxy;
     let current: ShipGroup | null = opts.selected ?? null;
+    let timer = 0;
+    let tab: 'fleets' | 'designs' = opts.tab ?? (opts.selected !== undefined ? 'fleets' : lastTab);
 
-    const root = document.createElement('div');
-    root.className = 'fleets-list-wrap';
-    const win = document.createElement('div');
-    win.className = 'fleets-list-window';
+    const win = openOriginalWindow({
+        id: 'fleets',
+        title: 'Fleets',
+        icon: 'fleets.png',
+        width: FLEETS_WINDOW.w,
+        height: FLEETS_WINDOW.h,
+        onClose: () => {
+            window.clearInterval(timer);
+            open = null;
+        },
+    });
+    const body = win.body;
+    const close = (): void => win.close();
 
-    const titlebar = document.createElement('div');
-    titlebar.className = 'fleets-list-titlebar';
-    const heading = document.createElement('div');
-    heading.className = 'fleets-list-heading';
-    titlebar.appendChild(heading);
-    // Tabs: the fleets list, and Fleet Designs (player fleet templates, fleetDesignsTab.ts — a deviation, no C# panel).
-    const tabs = document.createElement('div');
-    tabs.className = 'fleets-list-tabs';
-    const tabButton = (text: string, onClick: () => void): HTMLButtonElement => {
-        const b = document.createElement('button');
-        b.type = 'button';
-        b.className = 'fleets-list-tab';
-        b.textContent = text;
-        b.addEventListener('click', onClick);
-        tabs.appendChild(b);
+    // lnkFleets (10, 8).
+    body.appendChild(place(linkLabel('Learn about Fleets...', () => openGalactopedia({ topic: 'Fleets' })), 10, 8));
+
+    // Our tabs, right-aligned above the grid: the fleets page, and Fleet Designs (fleetDesignsTab.ts).
+    const tabs = tabStrip([{ id: 'fleets', label: 'Fleets' }, { id: 'designs', label: 'Fleet Designs' }], tab, (id) => showTab(id as 'fleets' | 'designs'), 130);
+    tabs.classList.add('fl-tabs');
+    body.appendChild(place(tabs, 960 - 266, 1, 266));
+
+    const fleetsPage = place(el('div', 'fl-page'), 0, 0, win.bodySize.w, win.bodySize.h);
+    const designsPage = place(el('div', 'fl-page'), 0, 0, win.bodySize.w, win.bodySize.h);
+    body.append(fleetsPage, designsPage);
+
+    // ---------------------------------------------------------------------------------------------------------------
+    // ctlShipGroupListView (10, 27) 950 × 283.
+    // ---------------------------------------------------------------------------------------------------------------
+    const textCell = (s: string, cell: HTMLDivElement): void => {
+        cell.textContent = s;
+        cell.title = s;
+    };
+    const admirals = (sg: ShipGroup): string =>
+        empire.characters != null ? getFleetAdmiralsAndGenerals(empire.characters, sg).map((c) => c.name).join(', ') : '';
+    const renderers: Record<string, (r: FleetRow, cell: HTMLDivElement) => void> = {
+        admirals: (r, cell) => {
+            const names = admirals(r.shipGroup);
+            if (names === '') return;
+            const img = el('img', 'fl-admiral');
+            img.src = chromeImageUrl('characterRole_FleetAdmiral.png');
+            img.alt = '';
+            img.draggable = false;
+            cell.appendChild(img);
+            cell.title = names;
+        },
+        name: (r, cell) => textCell(r.name, cell),
+        ships: (r, cell) => textCell(String(r.ships), cell),
+        power: (r, cell) => textCell(String(r.power), cell),
+        troops: (r, cell) => textCell(fmtK(r.shipGroup.totalTroopAttackStrength), cell),
+        home: (r, cell) => textCell(r.homeBase, cell),
+        mission: (r, cell) => textCell(fleetMissionDescription(r.shipGroup), cell),
+        system: (r, cell) => textCell(r.system, cell),
+    };
+    const sorts: Record<string, (r: FleetRow) => number | string> = {
+        admirals: (r) => admirals(r.shipGroup),
+        name: (r) => r.name,
+        ships: (r) => r.ships,
+        power: (r) => r.power,
+        troops: (r) => r.shipGroup.totalTroopAttackStrength,
+        home: (r) => r.homeBase,
+        mission: (r) => fleetMissionDescription(r.shipGroup),
+        system: (r) => r.system,
+    };
+    const columns: GridColumn<FleetRow>[] = FLEET_GRID_COLUMNS.map((c) => ({
+        id: c.id,
+        header: c.header,
+        // The Mission column takes what the vertical scrollbar leaves.
+        ...(c.id === 'mission' ? { fill: 1 } : { width: c.width }),
+        align: c.align,
+        sort: sorts[c.id],
+        render: renderers[c.id],
+        title: c.id === 'admirals' ? 'Admirals & Generals' : undefined,
+    }));
+    const grid = new OwGrid<FleetRow>({
+        columns,
+        key: (r) => r.shipGroup,
+        empty: 'No fleets',
+        onSelect: (r) => {
+            current = r.shipGroup;
+            updateDetail(true);
+        },
+        onDoubleClick: (r) => {
+            close();
+            opts.onSelect(r.shipGroup);
+        },
+    });
+    fleetsPage.appendChild(place(grid.el, 10, 27, 950, 283));
+
+    // ---------------------------------------------------------------------------------------------------------------
+    // Name, Select / Go to, home colony.
+    // ---------------------------------------------------------------------------------------------------------------
+    dropText(fleetsPage, 'Name', 10, 330, { size: FONT.header, bold: true, color: 'rgb(120, 120, 120)', shadow: false });
+    const nameBox = el('input', 'ow-input ow-textbox fl-name');
+    nameBox.type = 'text';
+    nameBox.autocomplete = 'off';
+    nameBox.spellcheck = false;
+    nameBox.style.fontSize = `${FONT.large}px`;
+    nameBox.style.fontWeight = 'bold';
+    fleetsPage.appendChild(place(nameBox, 60, 327, 280, 22));
+    // txtShipGroupName_Leave: a non-blank name is applied when the box loses focus.
+    const commitName = (): void => {
+        const sg = selectedFleet();
+        if (sg !== null && nameBox.value.trim() !== '' && nameBox.value !== sg.name) {
+            issuePlayerCommand(galaxy, empire, 'renameFleet', [sg, nameBox.value], () => refresh());
+        }
+    };
+    nameBox.addEventListener('blur', commitName);
+    nameBox.addEventListener('keydown', (e) => {
+        e.stopPropagation(); // typing must not trigger the game's hotkeys
+        if (e.key === 'Enter') nameBox.blur();
+        else if (e.key === 'Escape') {
+            nameBox.value = selectedFleet()?.name ?? '';
+            nameBox.blur();
+        }
+    });
+
+    const btnSelect = glassButton('Select Fleet', { onClick: () => withFleet((sg) => (opts.onSelectOnly ?? opts.onSelect)(sg)) });
+    fleetsPage.appendChild(place(btnSelect, 350, 320, 140, 42));
+    const btnGoto = glassButton('Go to Fleet', {
+        onClick: () => {
+            const sg = selectedFleet();
+            close();
+            if (sg !== null) opts.onSelect(sg);
+        },
+    });
+    fleetsPage.appendChild(place(btnGoto, 500, 320, 140, 42));
+
+    // cmbShipGroupInfoHomeColony (652, 330) 157 × 21: "(Select new home colony)" then the colonies by name.
+    const colonies = [...empire.colonies].filter((c) => c != null).sort((a: Habitat, b: Habitat) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+    const homeCombo = dropDown([{ value: '', label: '(Select new home colony)' }, ...colonies.map((c, i) => ({ value: String(i), label: c.name }))], '', () => {});
+    fleetsPage.appendChild(place(homeCombo, 652, 330, 157, 22));
+    const btnHome = glassButton('Set Home Colony', {
+        onClick: () =>
+            withFleet((sg) => {
+                const c = colonies[Number(homeCombo.value)];
+                if (homeCombo.value !== '' && c !== undefined) issuePlayerCommand(galaxy, empire, 'setFleetHomeColony', [sg, c], () => refresh());
+            }),
+    });
+    fleetsPage.appendChild(place(btnHome, 815, 320, 145, 42));
+
+    // ---------------------------------------------------------------------------------------------------------------
+    // pnlDetailInfoShipGroup (11, 380) 328 × 310, CornerCurveMode.BottomRight_TopLeft.
+    // ---------------------------------------------------------------------------------------------------------------
+    const infoPanel = gradientPanel({ corners: { tl: true, br: true }, radius: 10, border: COLORS.bodyBorder, borderWidth: 1, className: 'fl-info' });
+    fleetsPage.appendChild(place(infoPanel, 11, 380, 328, 310));
+    const infoFrame = el('div', 'sel-frame fl-info-frame');
+    const infoContent = el('div', 'sel-content-box fl-info-content');
+    infoFrame.appendChild(infoContent);
+    infoPanel.appendChild(infoFrame);
+    const onTarget = (t: InfoTarget): void => {
+        if (t.kind === 'select' && t.obj === selectedFleet()) return;
+        opts.onTarget?.(t);
+    };
+
+    // Repair and Refuel / Retrofit / Load Troops (350 / 450 / 550, 380) 90 × 80.
+    const bigButton = (label: string, x: number, onClick: () => void): HTMLButtonElement => {
+        const b = glassButton(label, { onClick, className: 'fl-wrap' });
+        fleetsPage.appendChild(place(b, x, 380, 90, 80));
         return b;
     };
-    const fleetsTab = tabButton('Fleets', () => showTab('fleets'));
-    const designsTabButton = tabButton('Fleet Designs', () => showTab('designs'));
-    titlebar.appendChild(tabs);
-    const closeBtn = document.createElement('button');
-    closeBtn.type = 'button';
-    closeBtn.className = 'fleets-list-close';
-    closeBtn.title = 'Close';
-    closeBtn.textContent = '✕';
-    titlebar.appendChild(closeBtn);
-    win.appendChild(titlebar);
+    const btnRepair = bigButton('Repair and Refuel', 350, () => withFleet((sg) => issuePlayerCommand(galaxy, empire, 'fleetRepairAndRefuel', [sg], () => refresh())));
+    btnRepair.title = 'Send the fleet to the nearest ship yard to repair, or to the nearest refuelling point';
+    const btnRetrofit = bigButton('Retrofit to latest designs', 450, () => withFleet((sg) => issuePlayerCommand(galaxy, empire, 'fleetRetrofit', [sg], () => refresh())));
+    btnRetrofit.title = 'Send the fleet to a ship yard to be retrofitted to the latest designs';
+    const btnLoad = bigButton('Load Troops', 550, () => withFleet((sg) => issuePlayerCommand(galaxy, empire, 'fleetLoadTroops', [sg], () => refresh())));
+    btnLoad.title = 'Load troops onto the fleet';
 
-    const body = document.createElement('div');
-    body.className = 'fleets-list-body';
-    win.appendChild(body);
-    const detail = document.createElement('div');
-    detail.className = 'fleets-detail';
-    win.appendChild(detail);
-    const designsBox = document.createElement('div');
-    designsBox.className = 'fleets-list-body fleet-designs-box';
-    win.appendChild(designsBox);
-    root.appendChild(win);
-    document.body.appendChild(root);
-    const designsTab = createFleetDesignsTab(designsBox, empire);
-    let ordersTimer: ReturnType<typeof setInterval> | null = null;
-    function showTab(tab: 'fleets' | 'designs'): void {
-        const designs = tab === 'designs';
-        body.style.display = designs ? 'none' : '';
-        detail.style.display = designs ? 'none' : '';
-        designsBox.style.display = designs ? '' : 'none';
-        fleetsTab.classList.toggle('fleets-list-tab-active', !designs);
-        designsTabButton.classList.toggle('fleets-list-tab-active', designs);
-        if (ordersTimer !== null) clearInterval(ordersTimer);
-        ordersTimer = null;
-        if (designs) {
-            designsTab.render();
-            ordersTimer = setInterval(() => designsTab.refreshOrders(), 1000); // build progress
-        } else {
-            refresh();
-        }
+    // lblShipGroupUngarrisonedTroopReport (350, 470) 290 × 45, font_6.
+    const troopReport = text('', { size: FONT.large, color: COLORS.label, shadow: false, wrapWidth: 290 });
+    troopReport.classList.add('fl-report');
+    fleetsPage.appendChild(place(troopReport, 350, 470, 290, 45));
+
+    // grpShipGroupUseTroopLoadouts (350, 515) 290 × 175 with chkShipGroupUseTroopLoadouts over its caption (360, 512).
+    const group = place(el('div', 'fl-group'), 350, 515, 290, 175);
+    fleetsPage.appendChild(group);
+    const useCheckInput = el('input');
+    useCheckInput.type = 'checkbox';
+    const useCheck = el('label', 'ow-check fl-group-caption');
+    useCheck.style.fontSize = `${FONT.large}px`;
+    useCheck.style.fontWeight = 'bold';
+    useCheck.append(useCheckInput, el('span', '', 'Use Troop Loadouts'));
+    fleetsPage.appendChild(place(useCheck, 358, 505));
+    // uuGypgjgrb: on = 100 % infantry; off = all four 255.
+    useCheckInput.addEventListener('change', () =>
+        withFleet((sg) =>
+            issuePlayerCommand(galaxy, empire, 'setFleetTroopLoadout', [sg, useCheckInput.checked ? { infantry: 100, armored: 0, artillery: 0, specialForces: 0 } : null], () => refresh()),
+        ),
+    );
+    const keys: (keyof TroopLoadout)[] = ['infantry', 'armored', 'artillery', 'specialForces'];
+    const spinners = {} as Record<keyof TroopLoadout, HTMLInputElement>;
+    const spinLabels = {} as Record<keyof TroopLoadout, HTMLDivElement>;
+    keys.forEach((k, i) => {
+        // numShipGroupTroopLoadout* (10, 23 + 30 i) 40 × 25; lblShipGroupTroopLoadout* (50, 28 + 30 i).
+        const n = spinner((v) =>
+            withFleet((sg) => {
+                const l = fleetTroopLoadout(sg);
+                if (l === null) return;
+                const max = troopLoadoutMaxima(l);
+                issuePlayerCommand(galaxy, empire, 'setFleetTroopLoadout', [sg, { ...l, [k]: Math.min(max[k], Math.max(0, v)) }], () => refresh());
+            }),
+        );
+        n.style.fontSize = `${FONT.large}px`;
+        group.appendChild(place(n, 10, 23 + 30 * i, 44, 25));
+        spinners[k] = n;
+        spinLabels[k] = dropText(group, '', 56, 27 + 30 * i, { size: FONT.large, color: COLORS.label, shadow: false });
+    });
+    const loadoutDesc = dropText(group, '', 10, 148, { size: FONT.large, color: COLORS.label, shadow: false });
+
+    // lblShipGroupGalaxyMapTitle (650, 365) and gmapShipGroupInfo (650, 380) 310 × 310.
+    dropText(fleetsPage, 'Location of selected Fleet in Galaxy', 650, 360, { size: FONT.normal, color: COLORS.label, shadow: false });
+    const mapBox = place(el('div', 'fl-map'), 650, 380, 310, 310);
+    const mapCanvas = el('canvas');
+    mapBox.appendChild(mapCanvas);
+    fleetsPage.appendChild(mapBox);
+    const backdrop = new Image();
+    backdrop.onload = () => drawMap();
+    backdrop.src = BACKDROP_URLS[0];
+
+    // ---------------------------------------------------------------------------------------------------------------
+    // Our fleet orders row (the selection panel's fleet buttons).
+    // ---------------------------------------------------------------------------------------------------------------
+    const orderSpecs: { id: FleetActionId; label: string; icon: string; title: string; run: (sg: ShipGroup) => void }[] = [
+        { id: 'posture', label: 'Posture', icon: 'fleetAttackPosture.png', title: 'Toggle the fleet posture between Attack and Defend', run: (sg) => shipAction(sg, fleetShipAction('posture', sg)) },
+        { id: 'range', label: 'Range', icon: 'fleetRangeAny.png', title: 'How far from its base or attack point the fleet takes missions (cycles)', run: (sg) => shipAction(sg, fleetShipAction('range', sg)) },
+        { id: 'attackPoint', label: 'Attack Point', icon: 'fleetAttackPoint.png', title: 'Click an enemy base or colony on the map (click empty space to clear)', run: (sg) => { close(); opts.onPickPoint?.(sg, 'attackPoint'); } },
+        { id: 'homeBase', label: 'Home Base', icon: 'fleetHomeBase.png', title: 'Click a friendly base or colony on the map (click empty space to clear)', run: (sg) => { close(); opts.onPickPoint?.(sg, 'homeBase'); } },
+        { id: 'automate', label: 'Automate', icon: 'automate.png', title: 'Toggle whether the fleet is controlled by the AI', run: (sg) => shipAction(sg, fleetShipAction(fleetAutomated(sg) ? 'unautomate' : 'automate', sg)) },
+        { id: 'stop', label: 'Stop', icon: 'stop.png', title: 'Cancel the fleet mission and hold', run: (sg) => shipAction(sg, fleetShipAction('stop', sg)) },
+        { id: 'disband', label: 'Disband Fleet', icon: 'leavefleet.png', title: 'Disband the fleet; its ships stay in service', run: (sg) => { current = null; shipAction(sg, fleetShipAction('disband', sg)); } },
+    ];
+    const orderButtons = new Map<FleetActionId, HTMLButtonElement>();
+    rowButtonLayout(orderSpecs.length).forEach(({ x, w }, i) => {
+        const s = orderSpecs[i];
+        const b = glassButton(s.label, { image: s.icon, minorText: '', title: s.title, className: 'fl-order', onClick: () => withFleet(s.run) });
+        fleetsPage.appendChild(place(b, x, FLEETS_WINDOW.ordersY, w, FLEETS_WINDOW.ordersH));
+        orderButtons.set(s.id, b);
+    });
+
+    // ---------------------------------------------------------------------------------------------------------------
+    // Fleet Designs tab.
+    // ---------------------------------------------------------------------------------------------------------------
+    const designsTab = createFleetDesignsTab(designsPage, empire, { w: win.bodySize.w, h: win.bodySize.h });
+
+    // ---------------------------------------------------------------------------------------------------------------
+    // State.
+    // ---------------------------------------------------------------------------------------------------------------
+    function selectedFleet(): ShipGroup | null {
+        if (current !== null && !empireShipGroups(empire).includes(current)) current = null;
+        return current;
     }
-
-    /** Issue a shipAction on the fleet (the panel's generic buttons), then redraw. */
-    const shipAction = (sg: ShipGroup, action: ShipAction): void => {
+    function withFleet(fn: (sg: ShipGroup) => void): void {
+        const sg = selectedFleet();
+        if (sg !== null) fn(sg);
+    }
+    /** Issue a shipAction on the fleet (the orders row), then redraw. */
+    function shipAction(sg: ShipGroup, action: ShipAction): void {
         issuePlayerCommand(galaxy, empire, 'shipAction', [sg, action, false], () => refresh());
-    };
-
-    function buildList(): void {
-        body.replaceChildren();
-        heading.textContent = `Fleets (${rows.length})`;
-        const header = document.createElement('div');
-        header.className = 'fleets-list-header';
-        const columns: [string, boolean][] = [
-            ['Name', false], ['Ships', true], ['Power', true], ['Troops', true],
-            ['Home base', false], ['Mission', false], ['System', false],
-        ];
-        for (const [text, numeric] of columns) {
-            const cell = document.createElement('span');
-            cell.className = numeric ? 'fleets-list-header-cell fleets-list-number' : 'fleets-list-header-cell';
-            cell.textContent = text;
-            header.appendChild(cell);
-        }
-        body.appendChild(header);
-        if (rows.length === 0) {
-            const empty = document.createElement('div');
-            empty.className = 'fleets-list-empty';
-            empty.textContent = 'No fleets';
-            body.appendChild(empty);
-            return;
-        }
-        for (const row of rows) {
-            const line = document.createElement('div');
-            line.className = 'fleets-list-row' + (row.shipGroup === current ? ' fleets-list-row-selected' : '');
-            const name = document.createElement('span');
-            name.className = 'fleets-list-name';
-            name.textContent = row.name;
-            name.title = row.name;
-            const cell = (text: string, numeric = false): HTMLElement => {
-                const el = document.createElement('span');
-                el.className = numeric ? 'fleets-list-cell fleets-list-number' : 'fleets-list-cell';
-                el.textContent = text;
-                el.title = text; // cells may be ellipsized: keep the full text in the tooltip
-                return el;
-            };
-            line.append(name, cell(String(row.ships), true), cell(String(row.power), true), cell(String(row.troops), true), cell(row.homeBase), cell(row.mission), cell(row.system));
-            line.addEventListener('click', () => {
-                current = row.shipGroup;
-                buildList();
-                buildDetail();
-            });
-            line.addEventListener('dblclick', () => {
-                close();
-                opts.onSelect(row.shipGroup);
-            });
-            body.appendChild(line);
-        }
     }
 
-    function buildDetail(): void {
-        detail.replaceChildren();
-        const sg = current !== null && empireShipGroups(empire).includes(current) ? current : null;
+    let infoKey = '';
+    /** Refresh everything that depends on the selected fleet. `changed`: the selection changed (reset the inputs). */
+    function updateDetail(changed: boolean): void {
+        const sg = selectedFleet();
+        const state = fleetPanelState(sg, sg !== null ? Math.max(0, shipGroupTotalTroopCapacity(sg) - totalTroopSpaceUsed(sg)) : 0);
+        // method_270.
+        nameBox.disabled = sg === null;
+        homeCombo.disabled = sg === null;
+        btnSelect.disabled = !state.enabled.select;
+        btnGoto.disabled = !state.enabled.goto;
+        btnHome.disabled = !state.enabled.setHomeColony;
+        btnRepair.disabled = !state.enabled.repairRefuel;
+        btnRetrofit.disabled = !state.enabled.retrofit;
+        btnLoad.disabled = !state.enabled.loadTroops;
+        if (changed || document.activeElement !== nameBox) nameBox.value = sg?.name ?? '';
+        if (changed) homeCombo.value = '';
+
+        // The info panel (re-rendered when its content changes; scroll kept).
         if (sg === null) {
-            current = null;
-            const hint = document.createElement('div');
-            hint.className = 'fleets-list-empty';
-            hint.textContent = rows.length === 0 ? '' : 'Select a fleet to see and change its settings';
-            detail.appendChild(hint);
-            return;
-        }
-        const state = fleetPanelState(sg, sg.ships.length > 0 ? 100 : 0);
-        const line = (): HTMLElement => {
-            const d = document.createElement('div');
-            d.className = 'fleets-detail-line';
-            detail.appendChild(d);
-            return d;
-        };
-        const label = (parent: HTMLElement, text: string): void => {
-            const l = document.createElement('span');
-            l.className = 'fleets-detail-label';
-            l.textContent = text;
-            parent.appendChild(l);
-        };
-        const btn = (parent: HTMLElement, text: string, title: string, enabled: boolean, onClick: () => void): HTMLButtonElement => {
-            const b = document.createElement('button');
-            b.type = 'button';
-            b.className = 'fleets-detail-button';
-            b.textContent = text;
-            b.title = title;
-            b.disabled = !enabled;
-            b.addEventListener('click', onClick);
-            parent.appendChild(b);
-            return b;
-        };
-
-        // Name (txtShipGroupName; committed on leaving the box, Main.Part9.cs txtShipGroupName_Leave).
-        const nameLine = line();
-        label(nameLine, 'Name');
-        const nameInput = document.createElement('input');
-        nameInput.type = 'text';
-        nameInput.className = 'fleets-detail-name';
-        nameInput.value = sg.name ?? '';
-        const commitName = (): void => {
-            if (nameInput.value.trim() !== '' && nameInput.value !== sg.name) {
-                issuePlayerCommand(galaxy, empire, 'renameFleet', [sg, nameInput.value], () => refresh());
+            if (infoKey !== '') renderInfoModel(infoContent, null, { galaxy, onTarget });
+            infoKey = '';
+        } else {
+            const model = shipGroupInfo({ galaxy, player: empire, resource: () => null }, sg, true);
+            const key = JSON.stringify(model, (k, v) => (k === 'ship' || k === 'obj' || k === 'flagOf' || k === 'empire' || k === 'target' || k === 'troop' ? undefined : v));
+            if (changed || key !== infoKey) {
+                const scroll = infoContent.querySelector('.sel-scroll');
+                const top = changed || scroll === null ? 0 : scroll.scrollTop;
+                renderInfoModel(infoContent, model, { galaxy, onTarget });
+                const next = infoContent.querySelector('.sel-scroll');
+                if (next !== null) next.scrollTop = top;
+                infoKey = key;
             }
+        }
+
+        // Troops: report, loadout group.
+        setText(troopReport, ungarrisonedTroopReport(empire.troops?.items ?? [], sg));
+        const loadout = sg !== null ? fleetTroopLoadout(sg) : null;
+        useCheckInput.checked = loadout !== null;
+        useCheckInput.disabled = sg === null;
+        group.classList.toggle('fl-disabled', loadout === null);
+        const labels = troopLoadoutLabels(sg);
+        const max = loadout !== null ? troopLoadoutMaxima(loadout) : null;
+        for (const k of keys) {
+            const n = spinners[k];
+            n.disabled = loadout === null;
+            if (document.activeElement !== n) n.value = String(loadout?.[k] ?? 0);
+            n.max = String(max?.[k] ?? 100);
+            setText(spinLabels[k], labels[k]);
+        }
+        setText(loadoutDesc, sg !== null ? labels.description : '');
+
+        // Orders row.
+        for (const s of orderSpecs) {
+            const b = orderButtons.get(s.id)!;
+            b.disabled = !state.enabled[s.id];
+        }
+        const minor = (id: FleetActionId, t: string): void => setButtonMinorText(orderButtons.get(id)!, t);
+        const icon = (id: FleetActionId, file: string): void => {
+            const img = orderButtons.get(id)!.querySelector('img');
+            const url = chromeImageUrl(file);
+            if (img !== null && img.getAttribute('src') !== url) img.src = url;
         };
-        nameInput.addEventListener('change', commitName);
-        nameInput.addEventListener('keydown', (e) => {
-            e.stopPropagation(); // typing must not trigger the game's hotkeys
-            if (e.key === 'Enter') nameInput.blur();
-            else if (e.key === 'Escape') { nameInput.value = sg.name ?? ''; nameInput.blur(); }
-        });
-        nameLine.appendChild(nameInput);
-        btn(nameLine, 'Select Fleet', 'Select the fleet on the map', state.enabled.select, () => opts.onSelect(sg));
-        btn(nameLine, 'Go to Fleet', 'Zoom to the fleet and close', state.enabled.goto, () => { close(); opts.onSelect(sg); });
-
-        // Home colony (cmbShipGroupInfoHomeColony + btnShipGroupInfoSetHomeColony).
-        const homeLine = line();
-        label(homeLine, 'Home colony');
-        const homeSelect = document.createElement('select');
-        homeSelect.className = 'fleets-detail-select';
-        const colonies = [...empire.colonies].sort((a: Habitat, b: Habitat) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
-        const o0 = document.createElement('option');
-        o0.value = '';
-        o0.textContent = '(Select new home colony)';
-        homeSelect.appendChild(o0);
-        colonies.forEach((c, i) => {
-            const o = document.createElement('option');
-            o.value = String(i);
-            o.textContent = c.name;
-            homeSelect.appendChild(o);
-        });
-        homeLine.appendChild(homeSelect);
-        btn(homeLine, 'Set Home Colony', "Make the chosen colony the fleet's home base", state.enabled.setHomeColony, () => {
-            const c = colonies[Number(homeSelect.value)];
-            if (homeSelect.value !== '' && c !== undefined) issuePlayerCommand(galaxy, empire, 'setFleetHomeColony', [sg, c], () => refresh());
-        });
-        btn(homeLine, 'Pick Home Base', 'Click a friendly base or colony on the map (click empty space to clear)', state.enabled.homeBase, () => {
-            close();
-            opts.onPickPoint?.(sg, 'homeBase');
-        });
-
-        // Posture / range / attack point (selection-panel buttons: SetFleetPosture, SetFleetRange, SetFleetAttackPoint).
-        const postureLine = line();
-        label(postureLine, 'Stance');
-        btn(postureLine, `Posture: ${fleetPostureLabel(sg)}`, 'Toggle between Attack and Defend', state.enabled.posture, () => shipAction(sg, fleetShipAction('posture', sg)));
-        btn(postureLine, `Range: ${fleetRangeLabel(sg.postureRangeSquared)}`, 'How far from its base or attack point the fleet takes missions (cycles)', state.enabled.range, () => shipAction(sg, fleetShipAction('range', sg)));
-        btn(postureLine, 'Pick Attack Point', 'Click an enemy base or colony on the map (click empty space to clear)', state.enabled.attackPoint, () => {
-            close();
-            opts.onPickPoint?.(sg, 'attackPoint');
-        });
-        const postureText = document.createElement('span');
-        postureText.className = 'fleets-detail-text';
-        postureText.textContent = fleetPostureDescription(sg);
-        postureLine.appendChild(postureText);
-
-        // Orders: Repair and Refuel, Retrofit, Load Troops, Automate, Stop, Disband.
-        const orderLine = line();
-        btn(orderLine, 'Repair and Refuel', 'Send the fleet to a ship yard to repair, or to refuel', state.enabled.repairRefuel, () => issuePlayerCommand(galaxy, empire, 'fleetRepairAndRefuel', [sg], () => refresh()));
-        btn(orderLine, 'Retrofit to Latest Designs', 'Send the fleet to a ship yard to be retrofitted', state.enabled.retrofit, () => issuePlayerCommand(galaxy, empire, 'fleetRetrofit', [sg], () => refresh()));
-        btn(orderLine, 'Load Troops', 'Load troops onto the fleet', state.enabled.loadTroops, () => issuePlayerCommand(galaxy, empire, 'fleetLoadTroops', [sg], () => refresh()));
-        btn(orderLine, state.automated ? 'Automation: On' : 'Automation: Off', 'Toggle whether the fleet is controlled by the AI', state.enabled.automate, () =>
-            shipAction(sg, fleetShipAction(state.automated ? 'unautomate' : 'automate', sg)));
-        btn(orderLine, 'Stop', 'Cancel the fleet mission and hold', state.enabled.stop, () => shipAction(sg, fleetShipAction('stop', sg)));
-        btn(orderLine, 'Disband Fleet', 'Disband the fleet; its ships stay in service', state.enabled.disband, () => {
-            current = null;
-            shipAction(sg, fleetShipAction('disband', sg));
-        });
-
-        // Troop loadouts (chkShipGroupUseTroopLoadouts + the four numShipGroupTroopLoadout* spinners).
-        const loadout = fleetTroopLoadout(sg);
-        const troopLine = line();
-        const use = document.createElement('input');
-        use.type = 'checkbox';
-        use.checked = loadout !== null;
-        use.id = 'fleets-use-loadouts';
-        use.addEventListener('change', () =>
-            issuePlayerCommand(galaxy, empire, 'setFleetTroopLoadout', [sg, use.checked ? { infantry: 100, armored: 0, artillery: 0, specialForces: 0 } : null], () => refresh()));
-        const useLabel = document.createElement('label');
-        useLabel.htmlFor = use.id;
-        useLabel.textContent = 'Use Troop Loadouts';
-        troopLine.append(use, useLabel);
-        if (loadout !== null) {
-            const max = troopLoadoutMaxima(loadout);
-            const spin = (key: keyof TroopLoadout, text: string): void => {
-                const wrap = document.createElement('span');
-                wrap.className = 'fleets-detail-spin';
-                const n = document.createElement('input');
-                n.type = 'number';
-                n.min = '0';
-                n.max = String(max[key]);
-                n.value = String(loadout[key]);
-                n.addEventListener('keydown', (e) => e.stopPropagation());
-                n.addEventListener('change', () =>
-                    issuePlayerCommand(galaxy, empire, 'setFleetTroopLoadout', [sg, { ...loadout, [key]: Math.min(max[key], Math.max(0, Number(n.value) || 0)) }], () => refresh()));
-                wrap.append(n, document.createTextNode(`% ${text}`));
-                troopLine.appendChild(wrap);
-            };
-            spin('infantry', 'Infantry');
-            spin('armored', 'Armored');
-            spin('artillery', 'Artillery');
-            spin('specialForces', 'Special Forces');
+        if (sg !== null) {
+            minor('posture', fleetPostureLabel(sg));
+            icon('posture', sg.posture === FleetPosture.Defend ? 'fleetDefendPosture.png' : 'fleetAttackPosture.png');
+            minor('range', fleetRangeLabel(sg.postureRangeSquared));
+            icon('range', fleetRangeIcon(sg.postureRangeSquared));
+            minor('attackPoint', sg.attackPoint?.name ?? '(None)');
+            minor('homeBase', sg.gatherPoint?.name ?? '(None)');
+            minor('automate', state.automated ? 'On' : 'Off');
+            setButtonLabel(orderButtons.get('automate')!, state.automated ? 'Automated' : 'Automate');
+            icon('automate', state.automated ? 'unautomate.png' : 'automate.png');
+            minor('stop', sg.mission !== null && sg.mission.type !== BuiltObjectMissionType.Undefined ? missionTypeLabel(sg.mission.type) : '(No mission)');
+            minor('disband', `${sg.ships.length} ships`);
+        } else {
+            for (const s of orderSpecs) minor(s.id, '');
         }
-        const cap = document.createElement('span');
-        cap.className = 'fleets-detail-text';
-        cap.textContent = `Troop capacity ${shipGroupTotalTroopCapacity(sg).toFixed(0)}`;
-        troopLine.appendChild(cap);
-
-        // Read-only summary (the detail panel): ships, mission, target, power, troops, home base, lead, location.
-        const info = document.createElement('div');
-        info.className = 'fleets-detail-info';
-        for (const r of shipGroupSelectionRows(sg, empire)) {
-            const l = document.createElement('span');
-            l.className = 'fleets-detail-label';
-            l.textContent = r.label;
-            const v = document.createElement('span');
-            v.className = 'fleets-detail-value';
-            v.textContent = r.value;
-            v.title = r.value;
-            info.append(l, v);
-        }
-        detail.appendChild(info);
+        drawMap();
     }
 
-    /** Redraw from the sim (after a filter of rows, or an applied command). */
+    function totalTroopSpaceUsed(sg: ShipGroup): number {
+        let used = 0;
+        for (const s of sg.ships) if (s?.troops != null) used += s.troops.totalSize;
+        return used;
+    }
+
+    /** GalaxyMap.cs method_6 over the whole galaxy (SetPosition: centred, Galaxy.SizeX / width per pixel). */
+    function drawMap(): void {
+        const W = 310;
+        const dpr = Math.min(3, window.devicePixelRatio || 1) * Math.max(1, win.scale);
+        const px = Math.round(W * dpr);
+        if (mapCanvas.width !== px) {
+            mapCanvas.width = px;
+            mapCanvas.height = px;
+        }
+        const ctx = mapCanvas.getContext('2d');
+        if (!ctx) return;
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        ctx.fillStyle = '#000';
+        ctx.fillRect(0, 0, W, W);
+        const s = galaxyMapScale(galaxy, W);
+        if (backdrop.complete && backdrop.naturalWidth > 0) ctx.drawImage(backdrop, 0, 0, galaxy.sizeX / s, galaxy.sizeY / s);
+        // Sector grid + labels (pen_1, Verdana 7 pt).
+        const sec = galaxy.sectorSize / s;
+        ctx.strokeStyle = GRID_COLOR;
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        for (let i = 0; i <= galaxy.sectorWidth; i++) {
+            const x = Math.trunc(i * sec) + 0.5;
+            ctx.moveTo(x, 0);
+            ctx.lineTo(x, Math.min(W, galaxy.sectorHeight * sec));
+        }
+        for (let j = 0; j <= galaxy.sectorHeight; j++) {
+            const y = Math.trunc(j * sec) + 0.5;
+            ctx.moveTo(0, y);
+            ctx.lineTo(Math.min(W, galaxy.sectorWidth * sec), y);
+        }
+        ctx.stroke();
+        ctx.fillStyle = 'rgb(96, 96, 170)';
+        ctx.font = '9px Verdana, sans-serif';
+        ctx.textBaseline = 'top';
+        for (let i = 0; i < galaxy.sectorWidth; i++) ctx.fillText(sectorColumnLabel(i), Math.trunc(i * sec + sec / 2 - 3), 2);
+        for (let j = 0; j < galaxy.sectorHeight; j++) ctx.fillText(String(j + 1), 2, Math.trunc(j * sec + sec / 2 - 5));
+        // method_5: the fleets' posture ranges.
+        for (const sg of fleetCycleList(empire)) {
+            const c = fleetPostureCircle(sg);
+            if (c === null) continue;
+            const color = c.attack ? 'rgba(255, 0, 0, 0.251)' : 'rgba(0, 0, 255, 0.251)';
+            const x = c.x / s;
+            const y = c.y / s;
+            const r = c.r / s;
+            if (r > 0) {
+                ctx.fillStyle = color;
+                ctx.strokeStyle = color;
+                ctx.beginPath();
+                ctx.arc(x, y, r, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.stroke();
+            }
+            if (c.from !== null) {
+                // pen3: dotted, arrow-anchor end cap.
+                const fx = c.from.x / s;
+                const fy = c.from.y / s;
+                ctx.strokeStyle = color;
+                ctx.setLineDash([1, 2]);
+                ctx.beginPath();
+                ctx.moveTo(fx, fy);
+                ctx.lineTo(x, y);
+                ctx.stroke();
+                ctx.setLineDash([]);
+                const a = Math.atan2(y - fy, x - fx);
+                ctx.fillStyle = color;
+                ctx.beginPath();
+                ctx.moveTo(x, y);
+                ctx.lineTo(x - 5 * Math.cos(a - 0.5), y - 5 * Math.sin(a - 0.5));
+                ctx.lineTo(x - 5 * Math.cos(a + 0.5), y - 5 * Math.sin(a + 0.5));
+                ctx.fill();
+            }
+        }
+        // Systems, with the dominant empire's ring when the player knows the system.
+        const sizes = starDotSizes(W, false);
+        for (const sys of galaxy.systems) {
+            const star = sys.systemStar;
+            const color = starBrushColor(star);
+            const x = star.xpos / s;
+            const y = star.ypos / s;
+            const dom = sys.dominantEmpire?.empire ?? null;
+            if (dom !== null) {
+                const vis = empire.visibility?.checkSystemVisibilityStatus?.(star.systemIndex);
+                if (vis === SystemVisibilityStatus.Visible || vis === SystemVisibilityStatus.Explored) {
+                    ctx.strokeStyle = rgbCss(dom.mainColor);
+                    ctx.lineWidth = 2;
+                    ctx.setLineDash((sys.otherEmpires?.length ?? 0) > 0 ? [3, 1] : []);
+                    ctx.beginPath();
+                    ctx.arc(x, y, (sizes.normal + 4) / 2, 0, Math.PI * 2);
+                    ctx.stroke();
+                    ctx.setLineDash([]);
+                    ctx.lineWidth = 1;
+                }
+            }
+            if (color === null) continue;
+            ctx.fillStyle = color;
+            ctx.beginPath();
+            ctx.arc(x, y, sizes.normal / 2, 0, Math.PI * 2);
+            ctx.fill();
+        }
+        // SetLocations(ShipGroups): every fleet's lead ship, a yellow 5 px dot.
+        ctx.fillStyle = 'rgb(255, 255, 0)';
+        for (const sg of fleetCycleList(empire)) {
+            if (sg.leadShip === null) continue;
+            ctx.beginPath();
+            ctx.arc(Math.trunc(sg.leadShip.xpos / s), Math.trunc(sg.leadShip.ypos / s), 2.5, 0, Math.PI * 2);
+            ctx.fill();
+        }
+        // SetPosition(lead ship): the pen_2 crosshair.
+        const sg = selectedFleet();
+        if (sg?.leadShip != null) {
+            const x = Math.trunc(sg.leadShip.xpos / s) + 1.5;
+            const y = Math.trunc(sg.leadShip.ypos / s) + 1.5;
+            ctx.strokeStyle = CROSSHAIR_COLOR;
+            ctx.beginPath();
+            ctx.moveTo(x, 0);
+            ctx.lineTo(x, W);
+            ctx.moveTo(0, y);
+            ctx.lineTo(W, y);
+            ctx.stroke();
+        }
+    }
+
+    /** Rebind the grid (keeps the selection and scroll) and refresh the detail. */
     function refresh(): void {
-        rows = fleetRows(empire);
-        buildList();
-        buildDetail();
+        if (win.closed) return;
+        grid.setRows(fleetRows(empire));
+        const sg = selectedFleet();
+        grid.select(sg, false);
+        updateDetail(false);
     }
 
-    showTab(opts.tab ?? 'fleets');
-
-    function close(): void {
-        if (ordersTimer !== null) clearInterval(ordersTimer);
-        document.removeEventListener('keydown', onKeyDown);
-        root.remove();
-        open = null;
+    function showTab(t: 'fleets' | 'designs'): void {
+        tab = t;
+        lastTab = t;
+        fleetsPage.style.display = t === 'fleets' ? '' : 'none';
+        designsPage.style.display = t === 'designs' ? '' : 'none';
+        if (t === 'designs') designsTab.render();
+        else refresh();
     }
 
-    // Escape closes the panel; stopImmediatePropagation keeps the global game-menu (and other open panels)
-    // Escape handler (registered in createHud) from opening as well.
-    function onKeyDown(e: KeyboardEvent): void {
-        if (e.key === 'Escape' && !(e.target instanceof HTMLInputElement)) {
-            e.preventDefault();
-            e.stopImmediatePropagation();
-            close();
-        }
-    }
-    document.addEventListener('keydown', onKeyDown);
-    closeBtn.addEventListener('click', () => close());
+    // Open: bind, select the given fleet (SelectShipGroup scrolls it into view).
+    grid.setRows(fleetRows(empire));
+    if (current !== null) grid.select(current, true);
+    updateDetail(true);
+    showTab(tab);
+    timer = window.setInterval(() => {
+        if (tab === 'designs') designsTab.refreshOrders(); // build progress
+        else refresh();
+    }, 1000);
+    nameBox.blur();
 
-    return { root, close };
+    return { win, close };
 }

@@ -270,9 +270,10 @@
 }
 .ow-tab {
     position: relative;
-    height: 21px;
-    padding: 3px 10px 0;
-    margin: 0 -1px 0 0;
+    height: 19px;
+    padding: 1px 10px 0;
+    /* Unselected tabs stop on the bar; the selected one runs into it (tab_DrawItem). */
+    margin: 0 -1px 5px 0;
     font-family: inherit;
     font-size: 15.33px;
     line-height: 16px;
@@ -286,6 +287,8 @@
 .ow-tab.ow-tab-on {
     color: rgb(255, 255, 0);
     background: rgb(48, 48, 64);
+    height: 24px;
+    margin-bottom: 0;
     z-index: 1;
 }
 .ow-tabs-bar {
