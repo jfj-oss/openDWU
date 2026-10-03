@@ -36,6 +36,7 @@ import { BUILT_OBJECT_MAX_FACTOR } from './builtObjectLayer';
 import type { Galaxy } from '../sim/galaxy';
 import { BuiltObject } from '../sim/builtObject';
 import { Habitat, HabitatCategoryType } from '../sim/types';
+import { habitatSystemIndex } from './habitatIndex';
 import type { Weapon } from '../sim/weapon';
 import { ComponentType } from '../sim/data/components';
 import { EXPLOSION_HABITAT_IMAGE_COUNT, EXPLOSION_IMAGE_COUNT, type Explosion } from '../sim/combat/damage';
@@ -727,6 +728,22 @@ export class EffectsLayer {
     /** Per-shot "already spawned" guards keyed on the weapon's LastFired. */
     private shotHandled = new WeakMap<Weapon, number>();
     private hyper = new WeakMap<BuiltObject, HyperState>();
+    /** Ships whose hyper state still holds a flag that checkHyper must reset once their flags clear. */
+    private hyperDirty = new Set<BuiltObject>();
+    /** Ships with a renderer-side strike record that may still be visible (phaser / tractor; beamHit). */
+    private strikeBos = new Set<BuiltObject>();
+    // Perf (late games: 10k built objects): every input of the per-ship effects work below except the renderer's own
+    // strike / hyper records is sim state, which changes only when a sim step lands. So the built objects that have
+    // something to do are collected once per step (refreshCandidates) and each frame visits only those, in galaxy
+    // order; the rest would have been no-ops.
+    private systemScratch: number[] = [];
+    private fxBuiltObjects: BuiltObject[] = [];
+    private fxBuiltObjectSet = new Set<BuiltObject>();
+    private fighterCarriers: BuiltObject[] = [];
+    private candSerial = -1;
+    private candSource: readonly unknown[] | null = null;
+    private candLength = -1;
+    private candFrames = 0;
 
     private cmd = newWeaponDraw();
     private bounds: ViewBounds = { left: 0, top: 0, right: 0, bottom: 0 };
@@ -804,31 +821,27 @@ export class EffectsLayer {
         // for objects the player cannot see (the checks are made lazily, only for objects with something to draw).
         const fog = fogOf(this.galaxy);
 
+        this.refreshCandidates(nowMs, starDate);
+
         // Habitats: giant ion cannons (method_169), bombardment explosions (method_180), planet destruction (method_187).
-        for (const h of this.galaxy.habitats) {
-            if (h === null) continue;
-            const hasFx = (h.giantIonCannonPresent && h.giantIonCannon !== null && h.giantIonCannon.distanceTravelled >= 0) || (h.explosions !== null && h.explosions.length > 0) || h.explosion !== null;
-            if (!hasFx || !fog.habitatDrawn(h)) continue;
-            if (h.giantIonCannonPresent && h.giantIonCannon !== null && h.giantIonCannon.distanceTravelled >= 0) {
-                this.drawWeapon(h.giantIonCannon, h, f, nowMs);
+        // Perf: only the habitats of systems near the view (habitatIndex.ts; same order): everything a habitat draws here
+        // is culled on screen within its explosion reach (4 diameters + 800) or its ion cannon's range of it.
+        const hix = habitatSystemIndex(this.galaxy);
+        if (hix.ordered) {
+            const b = this.bounds;
+            const margin = 800 + 1.5 * hix.giantIonCannonRange + 1000;
+            const systems = hix.visible((b.left + b.right) / 2, (b.top + b.bottom) / 2, (b.right - b.left) / 2, (b.bottom - b.top) / 2, 4, margin, this.systemScratch);
+            for (let si = 0; si < systems.length; si++) {
+                const habs = hix.bySystem[systems[si]];
+                for (let hi = 0; hi < habs.length; hi++) this.habitatEffects(habs[hi], f, nowMs, fog);
             }
-            const hasExplosions = h.explosions !== null && h.explosions.length > 0;
-            if (!hasExplosions && h.explosion === null) continue;
-            if (!circleInView(this.bounds, h.xpos, h.ypos, h.diameter * 4 + 800)) continue;
-            const hz = h.category === HabitatCategoryType.Planet ? planetZoomFactor(f) : h.category === HabitatCategoryType.Moon ? moonZoomFactor(f) : f;
-            if (hasExplosions) {
-                // Bombardment explosions sit on the drawn (render-interpolated orbit) planet.
-                const at = this.drawnAt(h);
-                const hx = at.xpos;
-                const hy = at.ypos;
-                for (const e of h.explosions as Explosion[]) this.drawExplosion(hx, hy, e, f, hz, nowMs);
-            }
-            if (h.explosion !== null) this.drawPlanetExplosion(h, h.explosion as Explosion, f, hz);
+        } else {
+            for (const h of this.galaxy.habitats) this.habitatEffects(h, f, nowMs, fog);
         }
 
         // Built objects, in the C#'s per-ship order: hyper animations (method_97), explosions (method_183), weapons
         // (method_167); shield / tractor strike overlays are part of the ship draw (MainView.1.cs 1215-1250).
-        for (const bo of this.galaxy.builtObjects) {
+        for (const bo of this.fxBuiltObjects) {
             if (bo === null) continue;
             const explosions = bo.explosions as Explosion[];
             if (!bo.hasBeenDestroyed) {
@@ -864,9 +877,17 @@ export class EffectsLayer {
             }
         }
 
+        // Renderer-side strikes on ships that are not candidates this step (marked by a beam since the last step): their
+        // overlay, drawn after the candidates' effects.
+        if (this.strikeBos.size > 0) {
+            for (const bo of this.strikeBos) {
+                if (!bo.hasBeenDestroyed && !this.fxBuiltObjectSet.has(bo)) this.drawStrikes(bo, nowMs);
+            }
+        }
+
         // Fighters (MainView.1.cs 1422-1556, after every ship): shield strike, explosions (method_184), weapons
         // (method_165) of each launched fighter near the view.
-        for (const bo of this.galaxy.builtObjects) {
+        for (const bo of this.fighterCarriers) {
             if (bo === null) continue;
             const fighters = fightersOf(bo);
             if (fighters === null) continue;
@@ -879,6 +900,97 @@ export class EffectsLayer {
 
         this.animations.draw(nowMs, this.sprites, this.inViewFn);
         this.sprites.end();
+    }
+
+    /** One habitat's effects (the habitat pass of update). */
+    private habitatEffects(h: Habitat | null, f: number, nowMs: number, fog: ReturnType<typeof fogOf>): void {
+        if (h === null) return;
+        const hasFx = (h.giantIonCannonPresent && h.giantIonCannon !== null && h.giantIonCannon.distanceTravelled >= 0) || (h.explosions !== null && h.explosions.length > 0) || h.explosion !== null;
+        if (!hasFx || !fog.habitatDrawn(h)) return;
+        if (h.giantIonCannonPresent && h.giantIonCannon !== null && h.giantIonCannon.distanceTravelled >= 0) {
+            this.drawWeapon(h.giantIonCannon, h, f, nowMs);
+        }
+        const hasExplosions = h.explosions !== null && h.explosions.length > 0;
+        if (!hasExplosions && h.explosion === null) return;
+        if (!circleInView(this.bounds, h.xpos, h.ypos, h.diameter * 4 + 800)) return;
+        const hz = h.category === HabitatCategoryType.Planet ? planetZoomFactor(f) : h.category === HabitatCategoryType.Moon ? moonZoomFactor(f) : f;
+        if (hasExplosions) {
+            // Bombardment explosions sit on the drawn (render-interpolated orbit) planet.
+            const at = this.drawnAt(h);
+            const hx = at.xpos;
+            const hy = at.ypos;
+            for (const e of h.explosions as Explosion[]) this.drawExplosion(hx, hy, e, f, hz, nowMs);
+        }
+        if (h.explosion !== null) this.drawPlanetExplosion(h, h.explosion as Explosion, f, hz);
+    }
+
+    /** Re-collect the per-step candidate lists when a sim step landed, the arrays changed, or every 8 frames. */
+    private refreshCandidates(nowMs: number, starDate: number): void {
+        const g = this.galaxy;
+        const serial = this.motion?.serial ?? -1;
+        this.candFrames++;
+        if (
+            this.motion !== null &&
+            serial === this.candSerial &&
+            g.builtObjects === this.candSource &&
+            g.builtObjects.length === this.candLength &&
+            this.candFrames < 8
+        ) {
+            return;
+        }
+        this.candSerial = serial;
+        this.candSource = g.builtObjects;
+        this.candLength = g.builtObjects.length;
+        this.candFrames = 0;
+        // Strike records that can no longer show are dropped (shield strikes show 200 ms, tractor strikes 2 s).
+        for (const bo of this.strikeBos) {
+            const own = this.phaserShieldStrikes.get(bo);
+            const tr = this.tractorStrikes.get(bo);
+            if (bo.hasBeenDestroyed || ((own === undefined || !(nowMs - own.time < 200.0)) && (tr === undefined || !tractorStrikeVisible(tr.time, nowMs)))) this.strikeBos.delete(bo);
+        }
+        const bos = this.fxBuiltObjects;
+        const set = this.fxBuiltObjectSet;
+        const carriers = this.fighterCarriers;
+        bos.length = 0;
+        set.clear();
+        carriers.length = 0;
+        for (const bo of g.builtObjects) {
+            if (bo === null) continue;
+            let need = (bo.explosions as Explosion[]).length > 0;
+            if (!need && !bo.hasBeenDestroyed) {
+                need =
+                    shieldStrikeVisible(bo.lastShieldStrike, nowMs) ||
+                    hyperEnterDue(bo.hyperjumpCountdown, starDate, bo.hyperEnterStartAnimation, bo.canHyperJump) ||
+                    bo.hyperExitStartAnimation ||
+                    bo.hyperjumpJustExited ||
+                    this.hyperDirty.has(bo) ||
+                    this.strikeBos.has(bo);
+                const weapons = bo.weapons;
+                if (!need && weapons !== null) {
+                    for (let i = 0; i < weapons.length; i++) {
+                        const w = weapons[i];
+                        if (w != null && w.distanceTravelled >= 0) {
+                            need = true;
+                            break;
+                        }
+                    }
+                }
+            }
+            if (need) {
+                bos.push(bo);
+                set.add(bo);
+            }
+            const fighters = fightersOf(bo);
+            if (fighters !== null) {
+                for (let i = 0; i < fighters.length; i++) {
+                    const fighter = fighters[i];
+                    if (fighter != null && !fighter.onboardCarrier) {
+                        carriers.push(bo);
+                        break;
+                    }
+                }
+            }
+        }
     }
 
     /** Where `o` is drawn this frame (MotionInterpolator.positionOf: its sample, a habitat's interpolated orbit, else
@@ -1044,6 +1156,7 @@ export class EffectsLayer {
         this.shotHandled.set(weapon, weapon.lastFired);
         if (type === ComponentType.WeaponTractorBeam) {
             setStrike(this.tractorStrikes, target, nowMs, weapon.heading);
+            this.strikeBos.add(target);
             return;
         }
         if (target.currentShields <= 5) {
@@ -1054,6 +1167,7 @@ export class EffectsLayer {
             this.animations.add(this.construction, nowMs, 100, target.xpos, target.ypos, val2, val2, -rotation + ROT90);
         } else {
             setStrike(this.phaserShieldStrikes, target, nowMs, weapon.heading);
+            this.strikeBos.add(target);
         }
     }
 
@@ -1136,6 +1250,7 @@ export class EffectsLayer {
             if (st !== undefined) {
                 st.exitFlag = false;
                 st.exitLatched = false;
+                this.hyperDirty.delete(bo);
             }
             return;
         }
@@ -1158,6 +1273,8 @@ export class EffectsLayer {
         }
         if (!bo.hyperjumpJustExited) st.exitLatched = false;
         st.exitFlag = exitFlag;
+        if (st.exitFlag || st.exitLatched) this.hyperDirty.add(bo);
+        else this.hyperDirty.delete(bo);
     }
 
     private addHyper(frames: FrameSet, bo: BuiltObject, nowMs: number): void {

@@ -19,6 +19,7 @@ import {
     renderHabitatPos,
     sampleBuiltObject,
 } from '../src/render/renderInterp';
+import { HabitatSystemIndex } from '../src/render/habitatIndex';
 import { BuiltObjectIndex } from '../src/render/builtObjectIndex';
 
 let game: Game;
@@ -81,6 +82,27 @@ describe('drawn-position bounds (render culling)', () => {
             }
         }
         expect(checked).toBeGreaterThan(1000);
+    }, 600_000);
+
+    it('habitatIndex: systems in order, and every habitat drawn and committed within its system extent', () => {
+        const g = game.galaxy;
+        const ix = new HabitatSystemIndex();
+        ix.ensure(g);
+        expect(ix.ordered).toBe(true);
+        expect(ix.bySystem.flat()).toEqual(g.habitats.filter((h) => h !== null));
+        const clamp = habitatTouchClampSeconds(g.habitats.length);
+        const out = { x: 0, y: 0 };
+        for (let s = 0; s < 30; s++) {
+            runSimFrame(g, 67);
+            for (const h of g.habitats) {
+                if (h === null) continue;
+                const i = h.systemIndex;
+                const ext = ix.extent[i] + 1e-6;
+                expect(Math.hypot(h.xpos - ix.starX[i], h.ypos - ix.starY[i])).toBeLessThanOrEqual(ext);
+                renderHabitatPos(h, g.nowMs + 67, clamp, out);
+                expect(Math.hypot(out.x - ix.starX[i], out.y - ix.starY[i])).toBeLessThanOrEqual(ext);
+            }
+        }
     }, 600_000);
 
     it('builtObjectIndex.near: in galaxy order, and keeps every object whose drawn position is in the view', () => {

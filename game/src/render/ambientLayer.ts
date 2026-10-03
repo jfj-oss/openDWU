@@ -25,7 +25,8 @@
 
 import type { BuiltObjectIndex } from './builtObjectIndex';
 import { fogOf } from './fog';
-import type { MotionInterpolator } from './renderInterp';
+import { habitatSystemIndex } from './habitatIndex';
+import { habitatDrawnOffsetBound, type MotionInterpolator } from './renderInterp';
 import { Container, Sprite, Texture } from 'pixi.js';
 import type { Camera } from './camera';
 import { AssetStore, useMinifyingFilter } from './assets';
@@ -435,6 +436,8 @@ export class AmbientLayer {
     private gasMining: FrameSet = { urls: frameUrls('gasmining', GAS_MINING_FRAME_COUNT), textures: null, loading: false };
     private construction: FrameSet = { urls: frameUrls('construction', CONSTRUCTION_FRAME_COUNT), textures: null, loading: false };
     private shieldHabitats: Habitat[] | null = null;
+    private nearHabitats: Habitat[] = [];
+    private systemScratch: number[] = [];
     /** Render-side index of the live built objects (set by MainView). Null: galaxy.builtObjects. */
     index: BuiltObjectIndex | null = null;
     private nearScratch: BuiltObject[] = [];
@@ -748,8 +751,37 @@ export class AmbientLayer {
         let used = 0;
         const halfW = cam.width / 2;
         const halfH = cam.height / 2;
-        for (const h of this.shieldHabitats) {
+        const clamp = this.motion !== null ? this.motion.clampSeconds : 0;
+        // Perf: only planets and moons of systems near the view (habitatIndex.ts; same order as shieldHabitats). A body's
+        // drawn sprite is at most 1.25 diameters (planetZoomFactor / moonZoomFactor >= f / 1.25) or 4 px across, and
+        // the cull below keeps px / 2 + 100 px around it.
+        const hix = habitatSystemIndex(this.galaxy);
+        let list: readonly Habitat[] = this.shieldHabitats;
+        if (hix.ordered) {
+            const near = this.nearHabitats;
+            near.length = 0;
+            const systems = hix.visible(cam.x, cam.y, halfW / z, halfH / z, 1, 110 / z, this.systemScratch);
+            for (let si = 0; si < systems.length; si++) {
+                const habs = hix.bySystem[systems[si]];
+                for (let hi = 0; hi < habs.length; hi++) {
+                    const h = habs[hi];
+                    if (h.category === HabitatCategoryType.Planet || h.category === HabitatCategoryType.Moon) near.push(h);
+                }
+            }
+            list = near;
+        }
+        for (const h of list) {
             if (h.hasBeenDestroyed) continue;
+            // Perf (13k planets and moons in a late 2500-star game): cull on the committed position widened by the
+            // most the drawn orbit position can differ from it (renderInterp.ts habitatDrawnOffsetBound) before
+            // computing the drawn position; the exact test below is unchanged.
+            {
+                const px0 = this.habitatPx(h, z);
+                const reach0 = px0 / 2 + 100 + (this.motion !== null ? habitatDrawnOffsetBound(h, clamp) * z : 0) + 1;
+                const sx0 = (h.xpos - cam.x) * z + halfW;
+                const sy0 = (h.ypos - cam.y) * z + halfH;
+                if (sx0 < -reach0 || sx0 > cam.width + reach0 || sy0 < -reach0 || sy0 > cam.height + reach0) continue;
+            }
             // The planet's drawn (render-interpolated orbit) position, else its committed one.
             let hx = h.xpos;
             let hy = h.ypos;
