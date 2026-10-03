@@ -6,7 +6,7 @@ import { cachedTickGame } from './helpers/gameCache';
 import type { Galaxy } from '../src/sim/galaxy';
 import type { BuiltObject } from '../src/sim/builtObject';
 import type { Habitat } from '../src/sim/types';
-import { BuiltObjectRole } from '../src/sim/data/designSpecifications';
+import { BattleTactics, BuiltObjectRole } from '../src/sim/data/designSpecifications';
 import { BuiltObjectComponent, ComponentStatus } from '../src/sim/builtObjectComponent';
 import { ComponentType } from '../src/sim/data/components';
 import { Weapon } from '../src/sim/weapon';
@@ -16,6 +16,7 @@ import { weaponFire } from '../src/sim/combat/weapons';
 import { performThreatEvaluation, shipGroupOf } from '../src/sim/combat/threats';
 import { warpSpeedWithBonuses } from '../src/sim/movement';
 import { captainBonusMap } from '../src/sim/characters';
+import { determineAngle, modifyAttackRangeByTargetSpeedFor } from '../src/sim/combat/attackAI';
 import { creatureCheckForAttackers } from '../src/sim/events';
 import { baconInflictDamageMultiplier, habitatInflictIonDamage, inflictDamageFull, inflictIonDamage } from '../src/sim/combat/damage';
 
@@ -173,6 +174,43 @@ describe('BuiltObject.1.cs 208 PerformThreatEvaluation reads BuiltObject.cs 572 
             ship.threats = savedThreats;
             if (savedBonuses === undefined) captainBonusMap.delete(ship);
             else captainBonusMap.set(ship, savedBonuses);
+        }
+    });
+});
+
+describe('BuiltObject.2.cs 205 ModifyAttackRangeByTargetSpeed applies CaptainWeaponsRangeBonus (BuiltObject.cs 600)', () => {
+    it('a 150% captain range bonus scales the chase range by 1.5', () => {
+        const target = galaxy.builtObjects.find((b): b is BuiltObject => b !== null && b !== ship && b.topSpeed > 0 && !b.hasBeenDestroyed)!;
+        const saved = { x: target.xpos, y: target.ypos, heading: target.heading, speed: target.currentSpeed, stronger: ship.design.tacticsStrongerShips, weaker: ship.design.tacticsWeakerShips, bonuses: captainBonusMap.get(ship), min: ship.optimalMinimumAttackRange, max: ship.optimalMaximumAttackRange };
+        try {
+            ship.design.tacticsStrongerShips = BattleTactics.AllWeapons;
+            ship.design.tacticsWeakerShips = BattleTactics.AllWeapons;
+            target.xpos = ship.xpos + 1000;
+            target.ypos = ship.ypos;
+            target.currentSpeed = 1;
+            target.heading = Math.fround(determineAngle(target.xpos, target.ypos, ship.xpos, ship.ypos) + Math.PI); // fleeing
+            const chaseRange = (rangeBonus: number): number => {
+                captainBonusMap.set(ship, { targeting: 100, countermeasures: 100, shipManeuvering: 100, fighters: 100, shipEnergyUsage: 100, weaponsDamage: 100, weaponsRange: rangeBonus, shieldRechargeRate: 100, damageControl: 100, repair: 100, hyperjumpSpeed: 100 });
+                ship.optimalMaximumAttackRange = 1e9;
+                modifyAttackRangeByTargetSpeedFor(galaxy, ship, target);
+                return ship.optimalMaximumAttackRange;
+            };
+            const base = chaseRange(100);
+            const boosted = chaseRange(150);
+            expect(base).toBeGreaterThan(0);
+            expect(base).toBeLessThan(1e9);
+            expect(boosted / base).toBeCloseTo(1.5, 2);
+        } finally {
+            target.xpos = saved.x;
+            target.ypos = saved.y;
+            target.heading = saved.heading;
+            target.currentSpeed = saved.speed;
+            ship.design.tacticsStrongerShips = saved.stronger;
+            ship.design.tacticsWeakerShips = saved.weaker;
+            ship.optimalMinimumAttackRange = saved.min;
+            ship.optimalMaximumAttackRange = saved.max;
+            if (saved.bonuses === undefined) captainBonusMap.delete(ship);
+            else captainBonusMap.set(ship, saved.bonuses);
         }
     });
 });

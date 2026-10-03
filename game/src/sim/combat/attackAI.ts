@@ -43,6 +43,7 @@ import { BuiltObjectMission, BuiltObjectMissionPriority, BuiltObjectMissionType,
 import { assignMission, clearPreviousMissionRequirements, recordRevertMission } from '../missions/assign';
 import { baconMovementSettings, withinFuelRangeAndRefuel } from '../movement';
 import { isFighter } from './fighters';
+import { captainBonuses } from '../characters';
 import { shipGroupOf, stellarAttackers, stellarCurrentSpeed, stellarCurrentTarget, stellarFirepowerRaw, stellarTopSpeed, builtObjectThreats, calculateOverallStrengthFactor, evaluateThreats, getBuiltObjectsAtLocationByArrays, shouldFleeFrom, type Threat } from './threats';
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -631,10 +632,10 @@ function shipGroupWeaponsRangeBonus(bo: BuiltObject): number {
     return shipGroup !== null ? shipGroup.weaponsRangeBonusBase + shipGroup.weaponsRangeBonusExtra : 1.0;
 }
 
-/** BuiltObject.CaptainWeaponsRangeBonus (BuiltObject.cs 600): (int)_CaptainWeaponsRangeBonus / 100.0 (byte, default 100). */
+/** BuiltObject.CaptainWeaponsRangeBonus (BuiltObject.cs 600): (int)_CaptainWeaponsRangeBonus / 100.0 (100 until ReviewCaptainBonuses runs). */
 function captainWeaponsRangeBonus(bo: BuiltObject): number {
-    const raw = (bo as BuiltObject & { _captainWeaponsRangeBonus?: number })._captainWeaponsRangeBonus ?? 100;
-    return Math.trunc(raw) / 100.0;
+    const b = captainBonuses(bo);
+    return (b !== null ? b.weaponsRange : 100) / 100.0;
 }
 
 /** BuiltObject.2.cs 205 ModifyAttackRangeByTargetSpeed(target). */
