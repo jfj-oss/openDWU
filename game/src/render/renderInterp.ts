@@ -25,6 +25,7 @@
 
 import { FRAME_REAL_MS, FRAMES_PER_SECOND, HABITAT_TICK_BATCH_SIZE } from '../sim/tick/scheduler';
 import { MIN_TIME, spanSeconds } from '../sim/tick/simTime';
+import { BuiltObjectRole } from '../sim/data/designSpecifications';
 
 /** The render-time sample the main loop hands MainView each frame (one object, mutated in place). */
 export interface RenderTime {
@@ -822,7 +823,34 @@ export interface MovingBuiltObject {
     /** BuiltObject.ParentBuiltObject: an object near a base is moved at ParentBuiltObject + ParentOffset. */
     parentBuiltObject?: MovingBuiltObject | null;
     hasBeenDestroyed?: boolean;
+    /** BuiltObject.Role: bases get the cosmetic pull toward their habitat (setStationPull). */
+    role?: BuiltObjectRole;
 }
+
+// Cosmetic option (not in the original, off by default): draw a base at a planet / moon pulled in toward its centre.
+// The sim keeps the faithful ParentOffset (a construction ship parks up to MovementPrecision short of a point inside the
+// body, so a base can sit at or past a small moon's rim); only the drawn position moves. Docked ships and ships parked
+// at the base follow, because they are drawn in the base's drawn frame.
+/** Drawn offset = the committed offset × this, ... */
+export const STATION_PULL_SCALE = 0.4;
+/** ... and at most this fraction of the body's radius. */
+export const STATION_PULL_MAX_RADIUS = 0.5;
+let stationPull = false;
+/** Turn the cosmetic station pull on or off (mainView.ts, from settings.pullStationsToCentre). */
+export function setStationPull(on: boolean): void {
+    stationPull = on;
+}
+
+/** The drawn parent offset of a base at habitat `h` with the station pull on (scratch point). */
+export function pulledStationOffset(ox: number, oy: number, diameter: number, out: Point): Point {
+    const len = Math.hypot(ox, oy);
+    const target = Math.min(len * STATION_PULL_SCALE, (STATION_PULL_MAX_RADIUS * Math.max(0, diameter)) / 2);
+    const k = len > 0 ? target / len : 0;
+    out.x = ox * k;
+    out.y = oy * k;
+    return out;
+}
+const pullScratch: Point = { x: 0, y: 0 };
 
 /** scheduler.ts backgroundPass "GxBO" int_43: built objects the background round-robin ticks per sim frame (multi-core
  * budget). With more objects than this, each one is touched only every ceil(count / 1000) steps. */
@@ -964,6 +992,14 @@ export function sampleBuiltObject(m: MotionInterpolator, bo: MovingBuiltObject, 
         const h = bo.parentHabitat;
         if (h !== null && h.parent !== null && !h.hasBeenDestroyed && followsParent(bo, h, ox, oy)) {
             const o = m.habitatPos(h);
+            if (stationPull && bo.role === BuiltObjectRole.Base) {
+                const d = (h as { diameter?: number }).diameter;
+                if (typeof d === 'number') {
+                    const q = pulledStationOffset(fx, fy, d, pullScratch);
+                    fx = q.x;
+                    fy = q.y;
+                }
+            }
             return m.sample(bo, fx, fy, bo.heading, maxSpeed, h, o.x, o.y);
         }
         const pb = bo.parentBuiltObject ?? null;
@@ -1010,6 +1046,8 @@ export function builtObjectDrawnOffsetBound(m: MotionInterpolator, bo: MovingBui
     let b = SNAP_SPEED_FACTOR * maxSpeed * Math.max(MAX_STEP_SECONDS, m.stepSeconds) * Math.max(1, m.lagSteps) + (Math.abs(bo.currentSpeed) * m.untouchedMaxMs) / 1000;
     if (bo.parentOffsetX > PARENT_OFFSET_UNSET && bo.parentOffsetY > PARENT_OFFSET_UNSET) {
         b += PARENT_FRAME_MAX_DRIFT + parentDrawnOffsetBound(m, bo.dockedAt, depth) + parentDrawnOffsetBound(m, bo.parentHabitat, depth) + parentDrawnOffsetBound(m, bo.parentBuiltObject, depth);
+        // The cosmetic station pull moves a base by at most its whole offset.
+        if (stationPull && bo.role === BuiltObjectRole.Base) b += Math.hypot(bo.parentOffsetX, bo.parentOffsetY);
     }
     return 2 * b;
 }

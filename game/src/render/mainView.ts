@@ -92,7 +92,7 @@ import type { FreightOverlay } from './freightOverlay'; // [freightOverlay]
 import { boundsOnScreen, DrawKey } from './drawCache';
 import { drawRangeRings, fleetRangeRadii } from './rangeRings';
 import { BuiltObjectIndex, registerBuiltObjectIndex } from './builtObjectIndex';
-import { MotionInterpolator, PresentationClock, copyRenderTime, createRenderTime, builtObjectDrawnOffsetBound, drawnBuiltObjectPos, habitatTouchClampSeconds, renderOrbitAngle, type RenderTime } from './renderInterp';
+import { MotionInterpolator, PresentationClock, copyRenderTime, createRenderTime, builtObjectDrawnOffsetBound, drawnBuiltObjectPos, habitatTouchClampSeconds, renderOrbitAngle, setStationPull, type RenderTime } from './renderInterp';
 import { isDrag, objectsInBox, resolveBoxSelection, screenBox, shiftClickSelection, type ScreenBox } from './boxSelect';
 import { isObjectVisibleToThisEmpire } from '../sim/independentTraders';
 import { createFollowState, followTargetAlive, followTargetPosition, isFollowing, stopFollow, type FollowState, type FollowTarget } from './followCamera';
@@ -1780,6 +1780,7 @@ export class MainView {
         const cam = this.camera;
         const z = cam.zoom;
         const m = this.minZoom;
+        setStationPull(getSettings().pullStationsToCentre);
 
         // Render interpolation between sim steps (renderInterp.ts): read-only on the sim.
         const rt = this.renderTime;

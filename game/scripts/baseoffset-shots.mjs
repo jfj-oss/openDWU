@@ -12,11 +12,21 @@ const page = await browser.newPage({ viewport: { width: 1600, height: 900 }, dev
 const logs = [];
 page.on('console', (m) => logs.push(`[${m.type()}] ${m.text()}`));
 page.on('pageerror', (e) => logs.push(`[pageerror] ${e.message}`));
+// PULL=1: turn on the cosmetic "Draw stations closer to their planet / moon" setting.
+if (process.env.PULL === '1') {
+    await page.addInitScript(() => {
+        try {
+            const s = JSON.parse(localStorage.getItem('dwu-ui-settings') ?? '{}');
+            s.pullStationsToCentre = true;
+            localStorage.setItem('dwu-ui-settings', JSON.stringify(s));
+        } catch {}
+    });
+}
 await page.goto(`${base}?autostart=1`);
 await page.waitForFunction(() => window.__dwu?.game?.playerEmpire !== undefined, null, { timeout: 180000 });
 await page.waitForTimeout(3000);
 
-const info = await page.evaluate(async ([secs, moonName]) => {
+const info = await page.evaluate(async ([secs, moonName, own]) => {
     const dwu = window.__dwu;
     const { galaxy, camera, game } = dwu;
     if (dwu.time) dwu.time.paused = true;
@@ -29,6 +39,7 @@ const info = await page.evaluate(async ([secs, moonName]) => {
         const h = b.parentHabitat;
         if (h.category !== 2) continue;
         if (!/Mining Station/.test(b.name)) continue;
+        if (own && b.empire !== game.playerEmpire) continue; // OWN=1: the player's own (always drawn)
         const d = Math.hypot(b.parentOffsetX, b.parentOffsetY);
         rows.push({ b, h, d, ratio: d / (h.diameter / 2) });
     }
@@ -51,7 +62,7 @@ const info = await page.evaluate(async ([secs, moonName]) => {
         surfaceRange: Math.max(pick.h.diameter - 10, 1) / 2,
         top: rows.slice(0, 6).map((r) => `${r.h.name} d=${r.h.diameter} off=${r.d.toFixed(1)} ratio=${r.ratio.toFixed(2)}`),
     };
-}, [+seconds, moonName]);
+}, [+seconds, moonName, process.env.OWN === '1']);
 console.log('setup', JSON.stringify(info, null, 1));
 const follow = async (zoom) => {
     await page.evaluate((z) => {
