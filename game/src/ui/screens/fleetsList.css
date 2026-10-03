@@ -1,318 +1,162 @@
-/* Fleets list panel (task 15c), copied from the Ships and Bases list. Styling follows the Empires list /
-   tutorial-window dark-panel tokens. */
+/* Fleets window (fleetsList.ts, fleetDesignsTab.ts) on the shared original-style window (originalWindow.css):
+   only what the shared widgets do not cover. */
 
-.fleets-list-wrap {
-    position: fixed;
-    inset: 0;
-    z-index: 1500; /* above the HUD, like the in-game tutorial window */
-    pointer-events: none;
-    font-family: 'Forgotten Futurist', sans-serif;
-    color: #e6e6e6;
+.fl-page {
+    overflow: hidden;
+}
+.fl-tabs {
+    z-index: 2;
 }
 
-.fleets-list-window {
+/* Admirals & Generals column: the role icon standing in for the portrait. */
+.fl-admiral {
+    width: 18px;
+    height: 18px;
+    object-fit: contain;
+    margin: 0 auto;
+}
+
+/* GlassButtons whose text wraps (the 90 × 80 Repair / Retrofit / Load Troops buttons). */
+.ow-glass.fl-wrap {
+    white-space: normal;
+    text-align: center;
+    line-height: 1.15;
+    padding: 0 6px;
+}
+
+/* The fleet orders row: icon + label + the current value as minor text. */
+.ow-glass.fl-order {
+    justify-content: flex-start;
+    padding: 0 8px;
+    gap: 8px;
+}
+.ow-glass.fl-order img {
+    width: 26px;
+    height: 26px;
+    object-fit: contain;
+}
+.ow-glass.fl-order .ow-glass-lines {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    min-width: 0;
+    overflow: hidden;
+}
+.ow-glass.fl-order .ow-glass-minortext {
+    font-weight: normal;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.ow-glass.fl-order:disabled img {
+    opacity: 0.35;
+}
+
+/* pnlDetailInfoShipGroup: the InfoPanel (the selection panel's look, selectionPanel.css) in the window. */
+.fl-info .fl-info-frame {
     position: absolute;
-    top: 64px;
-    left: 16px;
-    width: 900px;
-    max-width: calc(100vw - 16px);
-    max-height: calc(100vh - 96px);
+    left: 0;
+    top: 0;
+    /* The selection panel's InfoPanel drawing at the window's text size: 15 px rows become the grid's 20 px. */
+    zoom: 1.333;
+    width: 246px; /* 328 × 310 / 1.333 */
+    height: 232.5px;
     pointer-events: auto;
-    background: rgba(14, 16, 20, 0.94);
-    backdrop-filter: blur(6px);
-    -webkit-backdrop-filter: blur(6px);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 6px;
-    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6);
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
+}
+.fl-info .fl-info-content {
+    position: absolute;
+    inset: 0;
+}
+.fl-info .fl-info-content .sel-scroll {
+    padding: 4px 6px 4px 6px;
 }
 
-.fleets-list-titlebar {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 8px 12px;
-    background: rgba(10, 11, 15, 0.9);
-    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+.fl-report {
+    line-height: 1.2;
 }
 
-.fleets-list-heading {
-    font-size: 13px;
-    color: #e8d24a;
+/* GroupBox: a 1 px etched frame; the check box sits on its top edge as the caption. */
+.fl-group {
+    border: 1px solid rgb(96, 96, 112);
+    box-shadow: inset 1px 1px 0 rgba(0, 0, 0, 0.5);
+    border-radius: 3px;
 }
-
-.fleets-list-close {
-    background: transparent;
-    border: none;
-    color: #ccc;
-    font-size: 15px;
-    cursor: pointer;
-    padding: 2px 6px;
+.fl-group.fl-disabled .ow-text {
+    color: rgb(100, 100, 108) !important;
 }
-.fleets-list-close:hover {
-    color: #fff;
+.fl-group-caption {
+    padding: 0 6px 0 2px;
+    background: rgb(30, 30, 35);
+    z-index: 1;
 }
-
-.fleets-list-body {
-    padding: 8px;
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-    overflow-y: auto;
-}
-
-/* Column headers, same grid as the rows (Name | Ships | Power | Troops | Home base | Mission | System). */
-.fleets-list-header {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) 3.5em 4.5em 4em 8em 7em 7em;
-    align-items: center;
-    gap: 8px;
-    padding: 0 8px 2px;
-}
-
-.fleets-list-header-cell {
-    font-size: 10px;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    color: #777;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-
-.fleets-list-row {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) 3.5em 4.5em 4em 8em 7em 7em;
-    align-items: center;
-    gap: 8px;
-    padding: 5px 8px;
-    background: rgba(255, 255, 255, 0.04);
-    border: 1px solid rgba(255, 255, 255, 0.07);
-    border-radius: 4px;
-    cursor: pointer;
-}
-.fleets-list-row:hover {
-    background: rgba(255, 255, 255, 0.1);
-}
-
-.fleets-list-name {
-    font-size: 13px;
-    color: #fff;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-
-.fleets-list-cell {
-    font-size: 12px;
-    color: #bbb;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-
-.fleets-list-empty {
-    padding: 8px;
-    font-size: 12px;
-    color: #777;
-}
-.fleets-list-number {
+.ow-input.fl-num {
+    padding: 0 2px;
     text-align: right;
 }
+.ow-input:disabled {
+    color: rgb(100, 100, 108);
+    background: rgb(40, 40, 52);
+}
 
+/* gmapShipGroupInfo. */
+.fl-map {
+    background: #000;
+    border: 1px solid rgb(67, 67, 77);
+}
+.fl-map canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+}
 
-.fleets-list-row-selected,
-.fleets-list-row-selected:hover {
-    background: rgba(232, 210, 74, 0.22);
-    border-color: rgba(232, 210, 74, 0.55);
+/* Fleet Designs tab. */
+.fl-design-detail {
+    border: 1px solid rgb(67, 67, 77);
 }
-.fleets-detail {
-    padding: 8px;
-    border-top: 1px solid rgba(255, 255, 255, 0.08);
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    overflow-y: auto;
+.fl-step.ow-glass {
+    position: relative;
+    width: 24px;
+    height: 20px;
+    padding: 0;
+    font-size: 15.33px;
 }
-.fleets-detail-line {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 6px;
-    font-size: 12px;
+.fl-count {
+    display: inline-block;
+    min-width: 30px;
+    text-align: center;
 }
-.fleets-detail-label {
-    color: #777;
-    font-size: 10px;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    min-width: 5.5em;
+.fl-orders {
+    background: rgba(0, 0, 0, 0.376);
+    border: 1px solid rgb(67, 67, 77);
 }
-.fleets-detail-text {
-    color: #bbb;
-    font-size: 12px;
+.fl-order-row {
+    background: rgb(32, 32, 40);
 }
-.fleets-detail-name,
-.fleets-detail-select,
-.fleets-detail-spin input {
-    background: #303040;
-    color: #ccc;
-    border: 1px solid rgba(255, 255, 255, 0.15);
-    border-radius: 3px;
-    font: inherit;
-    font-size: 12px;
-    padding: 3px 4px;
+.fl-order-row.fl-alt {
+    background: rgb(48, 48, 56);
 }
-.fleets-detail-name {
-    width: 220px;
-}
-.fleets-detail-select {
-    min-width: 180px;
-}
-.fleets-detail-spin {
-    display: inline-flex;
-    align-items: center;
-    gap: 2px;
-    color: #bbb;
-    font-size: 11px;
-}
-.fleets-detail-spin input {
-    width: 3.6em;
-}
-.fleets-detail-button {
-    background: rgba(255, 255, 255, 0.06);
-    color: #ddd;
-    border: 1px solid rgba(255, 255, 255, 0.15);
-    border-radius: 3px;
-    font: inherit;
-    font-size: 12px;
-    padding: 4px 10px;
-    cursor: pointer;
-}
-.fleets-detail-button:hover:not(:disabled) {
-    background: rgba(255, 255, 255, 0.15);
-}
-.fleets-detail-button:disabled {
-    opacity: 0.4;
-    cursor: default;
-}
-.fleets-detail-info {
-    display: grid;
-    grid-template-columns: 6em minmax(0, 1fr) 6em minmax(0, 1fr);
-    gap: 2px 10px;
-    font-size: 12px;
-    color: #ccc;
-}
-.fleets-detail-value {
-    white-space: nowrap;
+.fl-ellipsis {
     overflow: hidden;
     text-overflow: ellipsis;
 }
-
-.fleets-list-body { max-height: 220px; }
-
-/* Tabs: Fleets | Fleet Designs. */
-.fleets-list-tabs {
-    display: flex;
-    gap: 4px;
-    margin-left: 16px;
-    margin-right: auto;
-}
-.fleets-list-tab {
-    background: rgba(255, 255, 255, 0.04);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 4px;
-    color: #bbb;
-    font: inherit;
-    font-size: 12px;
-    padding: 2px 10px;
-    cursor: pointer;
-}
-.fleets-list-tab:hover {
-    color: #fff;
-}
-.fleets-list-tab-active {
-    background: rgba(232, 210, 74, 0.22);
-    border-color: rgba(232, 210, 74, 0.55);
-    color: #fff;
-}
-
-/* Fleet Designs tab (fleetDesignsTab.ts). */
-.fleet-designs {
-    display: grid;
-    grid-template-columns: 14em minmax(0, 1fr);
-    gap: 10px;
-}
-.fleet-designs-list {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-}
-.fleet-designs-template {
-    grid-template-columns: minmax(0, 1fr) auto;
-}
-.fleet-designs-detail {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    min-width: 0;
-}
-.fleet-designs-rows {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-}
-.fleet-designs-row {
-    display: grid;
-    grid-template-columns: 7em minmax(0, 1fr) 7em 6em 4.5em 5em;
-    align-items: center;
-    gap: 8px;
-    padding: 3px 8px;
-    background: rgba(255, 255, 255, 0.04);
-    border-radius: 4px;
-}
-.fleet-designs-head {
-    background: transparent;
-}
-.fleet-designs-count {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-}
-.fleet-designs-count .fleets-detail-button {
-    padding: 0 6px;
-    min-width: 1.6em;
-}
-.fleet-designs-report {
-    margin: 0;
-    padding: 6px 8px;
-    font-family: inherit;
-    font-size: 12px;
-    color: #ddd;
-    white-space: pre-wrap;
-    background: rgba(255, 255, 255, 0.04);
-    border-radius: 4px;
-}
-.fleet-designs-orders {
-    margin-top: 10px;
-    padding-top: 8px;
-    border-top: 1px solid rgba(255, 255, 255, 0.08);
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-}
-.fleet-designs-progress {
-    display: inline-block;
-    width: 90px;
-    height: 8px;
-    background: rgba(255, 255, 255, 0.1);
-    border-radius: 4px;
+.fl-progress {
+    background: rgb(24, 24, 32);
+    border: 1px solid rgb(67, 67, 77);
     overflow: hidden;
 }
-.fleet-designs-progress-fill {
-    display: block;
+.fl-progress-fill {
     height: 100%;
-    background: #e8d24a;
+    background: linear-gradient(to right, rgba(144, 238, 144, 0.125), rgba(144, 238, 144, 0.5));
+}
+.fl-progress .ow-text {
+    text-align: center;
+    line-height: 14px;
+}
+.fl-report-box {
+    border-top: 1px solid rgb(67, 67, 77);
+}
+.ow-text.fl-report-text {
+    position: relative;
+    padding-top: 4px;
 }

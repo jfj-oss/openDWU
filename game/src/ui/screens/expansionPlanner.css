@@ -1,146 +1,166 @@
-/* Expansion Planner panel (task 16a). Styling copies the Colonies list /
-   tutorial-window dark-panel tokens. */
+/* Expansion Planner (pnlExpansionPlanner on the shared original-style window, originalWindow.css). Only what the shared
+   widgets do not cover: the wrapped multi-line glass buttons, the row status colours, the cell pictures, the
+   owner-drawn ships combo, the picture and the mini map. */
 
-.expansion-planner-wrap {
-    position: fixed;
-    inset: 0;
-    z-index: 1500; /* above the HUD, like the in-game tutorial window */
-    pointer-events: none;
-    font-family: 'Forgotten Futurist', sans-serif;
-    color: #e6e6e6;
+/* GlassButton text wraps inside the 170 × 70 / 132 × 70 buttons (DrawText with a layout rectangle). */
+.ow-screen-expansion .ep-wrap {
+    white-space: normal;
+    text-align: center;
+    padding: 0 8px;
+}
+.ow-screen-expansion .ep-wrap .ow-glass-text {
+    overflow: visible;
 }
 
-.expansion-planner-window {
-    position: absolute;
-    top: 64px;
-    left: 16px;
-    width: 960px;
-    max-width: calc(100vw - 16px);
-    max-height: calc(100vh - 96px);
-    pointer-events: auto;
-    background: rgba(14, 16, 20, 0.94);
-    backdrop-filter: blur(6px);
-    -webkit-backdrop-filter: blur(6px);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 6px;
-    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6);
+/* cmbExpansionPlannerMode: font_7 (16.67 bold) on (21, 22, 26). */
+.ow-screen-expansion .ep-mode {
+    font-size: 16.67px;
+    font-weight: bold;
+    background: rgb(21, 22, 26);
+    z-index: 1;
+}
+.ow-screen-expansion .ep-resfilter {
+    background: rgb(22, 21, 26);
+}
+.ow-screen-expansion .ep-pct {
+    padding: 0 3px;
+    text-align: right;
+    background: rgb(51, 54, 61);
+}
+.ow-screen-expansion .ep-filter-label {
+    text-align: right;
+    line-height: 21px;
+}
+
+/* ResourceListView headers wrap (ColumnHeadersHeightSizeMode.AutoSize). */
+.ow-screen-expansion .ep-resources .ow-grid-hcell {
+    white-space: normal;
+    font-size: 13.33px;
+    line-height: 1.05;
     display: flex;
-    flex-direction: column;
+    align-items: flex-end;
+}
+.ow-screen-expansion .ep-resources .ow-link {
+    position: static;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* HabitatPrioritizationListView: the row's status ForeColor and its SelectionForeColor. */
+.ow-screen-expansion .ep-targets .ow-grid-cell {
+    color: var(--ep-fg, rgb(170, 170, 170));
+    white-space: nowrap;
+}
+.ow-screen-expansion .ep-targets .ow-grid-row.ow-sel .ow-grid-cell {
+    color: var(--ep-sel, rgb(170, 170, 170));
+}
+.ow-screen-expansion .ep-targets .ow-grid-hcell {
+    font-size: 14px;
+}
+
+/* Cell pictures: PrescaleImage to 18 px high (resources 18 × 17 at most). */
+.ow-screen-expansion .ep-habitat,
+.ow-screen-expansion .ep-race,
+.ow-screen-expansion .ep-ruin {
+    height: 18px;
+    max-width: 100%;
+    object-fit: contain;
+}
+.ow-screen-expansion .ep-ship {
+    height: 18px;
+    max-width: 100%;
+    object-fit: contain;
+    transform: rotate(270deg); /* RotateFlipType.Rotate270FlipNone */
+    cursor: pointer;
+}
+.ow-screen-expansion .ep-resicon {
+    height: 17px;
+    max-width: 18px;
+    min-width: 0;
+    flex: 0 1 auto;
+    object-fit: contain;
+}
+.ow-screen-expansion .ep-resstrip {
+    display: flex;
+    gap: 2px;
+    align-items: center;
+    min-width: 0;
     overflow: hidden;
 }
-
-.expansion-planner-titlebar {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 8px 12px;
-    background: rgba(10, 11, 15, 0.9);
-    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+.ow-screen-expansion .ep-resicon.ep-critical {
+    outline: 1px dotted rgb(255, 255, 0);
+    outline-offset: -1px;
 }
 
-.expansion-planner-heading {
-    font-size: 13px;
-    color: #e8d24a;
-}
-
-.expansion-planner-close {
-    background: transparent;
-    border: none;
-    color: #ccc;
-    font-size: 15px;
-    cursor: pointer;
-    padding: 2px 6px;
-}
-.expansion-planner-close:hover {
-    color: #fff;
-}
-
-.expansion-planner-toolbar {
-    display: flex;
-    gap: 10px;
-    align-items: center;
-    padding: 8px 12px 0;
-    font-size: 12px;
-}
-
-.expansion-planner-toolbar select,
-.expansion-planner-toolbar button {
-    font: inherit;
-    color: #e6e6e6;
-    background: rgba(255, 255, 255, 0.06);
-    border: 1px solid rgba(255, 255, 255, 0.15);
-    border-radius: 4px;
-    padding: 3px 6px;
-}
-.expansion-planner-toolbar option {
-    background: #15171c;
-}
-.expansion-planner-toolbar button {
-    cursor: pointer;
-}
-.expansion-planner-toolbar button:hover {
-    background: rgba(255, 255, 255, 0.12);
-}
-
-.expansion-planner-check {
+/* BuiltObjectDropDown (ItemHeight 36): flag, ship picture, name. */
+.ow-screen-expansion .ep-shipbox {
     display: flex;
     align-items: center;
     gap: 4px;
-    color: #ccc;
+    padding: 2px 22px 2px 4px;
     cursor: pointer;
+    font-size: 16.67px;
+    font-weight: bold;
+    overflow: hidden;
+    box-sizing: border-box;
 }
-
-.expansion-planner-body {
-    padding: 8px;
-    max-height: 70vh;
+.ow-screen-expansion .ep-shipbox::after {
+    content: '\25BE';
+    position: absolute;
+    right: 6px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: rgb(170, 170, 170);
+}
+.ow-screen-expansion .ep-shiplist {
+    z-index: 3;
+    background: rgb(48, 48, 64);
+    border: 1px solid rgb(96, 96, 112);
+    box-sizing: border-box;
     overflow-y: auto;
 }
-
-.expansion-planner-table {
-    width: 100%;
-    border-collapse: separate;
-    border-spacing: 0 2px;
-    font-size: 12px;
-    color: #aaa; /* C# default fore colour (170,170,170) */
-}
-
-.expansion-planner-table th {
-    position: sticky;
-    top: 0;
-    background: rgba(14, 16, 20, 0.98);
-    font-size: 10px;
-    font-weight: normal;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    color: #777;
-    text-align: left;
-    padding: 0 6px 2px;
-    white-space: nowrap;
-}
-
-.expansion-planner-table td {
-    padding: 4px 6px;
-    background: rgba(255, 255, 255, 0.04);
-    white-space: nowrap;
-}
-
-.expansion-planner-row {
+.ow-screen-expansion .ep-shipitem {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    height: 36px;
+    padding: 0 4px;
+    color: rgb(170, 170, 170);
+    font-size: 16.67px;
+    font-weight: bold;
     cursor: pointer;
+    white-space: nowrap;
+    overflow: hidden;
 }
-.expansion-planner-row:hover td {
-    background: rgba(255, 255, 255, 0.1);
+.ow-screen-expansion .ep-shipitem:hover,
+.ow-screen-expansion .ep-shipitem.ep-on {
+    background: rgb(96, 96, 96);
+    color: rgb(255, 255, 0);
+}
+.ow-screen-expansion .ep-shipflag {
+    height: 28px;
+    flex: none;
+}
+.ow-screen-expansion .ep-shippic {
+    height: 32px;
+    max-width: 48px;
+    object-fit: contain;
+    flex: none;
+}
+.ow-screen-expansion .ep-shipname {
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
-.expansion-planner-table td.expansion-planner-resources {
-    white-space: normal;
+/* picExpansionPlannerImage: SizeMode.CenterImage (unscaled, centred, clipped). */
+.ow-screen-expansion .ep-picture {
+    background-position: center;
+    background-repeat: no-repeat;
 }
 
-.expansion-planner-table .expansion-planner-number {
-    text-align: right;
-}
-
-.expansion-planner-empty {
-    padding: 12px;
-    font-size: 12px;
-    color: #777;
+/* gmapExpansionPlanner: the GradientPanel colours behind the map. */
+.ow-screen-expansion .ep-map {
+    background: linear-gradient(to bottom, rgb(39, 40, 44), rgb(22, 21, 26) 50%, rgb(51, 54, 61));
+    border: 1px solid rgb(67, 67, 77);
+    box-sizing: border-box;
 }

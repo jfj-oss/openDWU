@@ -733,7 +733,9 @@ function shipCell(ctx: InfoContext, bo: BuiltObject, detailed: boolean, multi: b
     };
 }
 
-export function shipGroupInfo(ctx: InfoContext, sg: ShipGroup): InfoModel {
+/** `extended`: InfoPanel.ShowExtendedInfo (the Fleets window's pnlDetailInfoShipGroup): the queued missions are listed
+ *  one per line ("NEXT: ...") instead of "(n queued)". */
+export function shipGroupInfo(ctx: InfoContext, sg: ShipGroup, extended = false): InfoModel {
     const { galaxy, player } = ctx;
     const empire = sg.empire;
     const flag1 = empire !== player && empire !== null && player.empiresViewable.includes(empire);
@@ -743,7 +745,10 @@ export function shipGroupInfo(ctx: InfoContext, sg: ShipGroup): InfoModel {
     rows.push({ kind: 'gap', h: 2 });
     if (known) {
         let text = missionDescription(sg.mission, empire) + engageSuffix(sg.attackRangeSquared);
-        if (sg.subsequentMissions.length > 0) text += ` (${sg.subsequentMissions.length} queued)`;
+        if (sg.subsequentMissions.length > 0) {
+            if (extended) for (const m of sg.subsequentMissions) text += `\nNEXT: ${missionDescription(m, empire)}`;
+            else text += ` (${sg.subsequentMissions.length} queued)`;
+        }
         rows.push({ kind: 'line', segs: [txt(text)], wrap: true });
     } else rows.push({ kind: 'line', segs: [txt('(Unknown mission)', UNKNOWN_COLOR)] });
     if (sg.localDefenseTacticsApply) rows.push({ kind: 'line', segs: [txt('Local Defense Tactics: +20% Targeting & Countermeasures', 0x00ff00)] });
