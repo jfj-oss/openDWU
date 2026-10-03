@@ -128,11 +128,10 @@ export class TerritoryGrid {
 }
 
 /**
- * Build the territory meshes, one per owning empire. A generator: it yields every so often (after a batch of colonies
- * or grid rows) so the caller can stop when its frame budget is spent and resume next frame; the return value is the
- * finished meshes. `grid` is overwritten.
+ * Step 1 of the build, also used alone by the raster (territoryRaster.ts): splat each colony's influence onto the grid
+ * vertices (top empire, ln best influence, ln best influence of any other empire). Generator, yields periodically.
  */
-export function* buildTerritoryMeshes(sources: readonly TerritorySource[], grid: TerritoryGrid): Generator<void, TerritoryMeshData[], void> {
+export function* splatInfluence(sources: readonly TerritorySource[], grid: TerritoryGrid): Generator<void, void, void> {
     const { nx, ny, cell, top } = grid;
     const v1 = grid.l1; // raw influence during the splat, ln() afterwards
     const v2 = grid.l2;
@@ -186,6 +185,20 @@ export function* buildTerritoryMeshes(sources: readonly TerritorySource[], grid:
         if ((k & 0x3ffff) === 0x3ffff) yield;
     }
     yield;
+
+}
+
+/**
+ * Build the territory meshes, one per owning empire. A generator: it yields every so often (after a batch of colonies
+ * or grid rows) so the caller can stop when its frame budget is spent and resume next frame; the return value is the
+ * finished meshes. `grid` is overwritten.
+ */
+export function* buildTerritoryMeshes(sources: readonly TerritorySource[], grid: TerritoryGrid): Generator<void, TerritoryMeshData[], void> {
+    const { nx, ny, cell, top } = grid;
+    const v1 = grid.l1;
+    const v2 = grid.l2;
+    const stride = nx + 1;
+    yield* splatInfluence(sources, grid);
 
     // 2. Marching squares per cell.
     const builders = new Map<number, Builder>();
