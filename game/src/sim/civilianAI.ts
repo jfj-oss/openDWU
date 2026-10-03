@@ -1514,14 +1514,13 @@ function assignMissionExplorationShip(galaxy: Galaxy, empire: Empire, ship: Buil
 // ---------------------------------------------------------------------------------------------------------------
 
 /** Empire.5.cs 4063 CheckColonyForResourceClearance(ship, colony). No Rnd. */
-function checkColonyForResourceClearance(galaxy: Galaxy, empire: Empire, ship: BuiltObject, colony: Habitat): boolean {
+export function checkColonyForResourceClearance(galaxy: Galaxy, empire: Empire, ship: BuiltObject, colony: Habitat): boolean {
     const result = false;
     const cargo = colony.cargo;
     if (cargo !== null) {
         // WithinFuelRangeAndRefuel(x, y, 0.0, ship.CachedRefuellingLocation) (BuiltObject.1.cs 2490): the margin is the
-        // distance to the cached refuelling point. TODO(port) M4e: BuiltObject._RefuellingLocation (CheckForRefuelling)
-        // is not on the TS BuiltObject yet — null, which the C# reads as a 0 margin.
-        if (!withinFuelRangeAndRefuelAt(galaxy, ship, colony.xpos, colony.ypos, 0.0, null)) {
+        // distance to the refuelling point CheckForRefuelling cached (BuiltObject.cs 875 _RefuellingLocation).
+        if (!withinFuelRangeAndRefuelAt(galaxy, ship, colony.xpos, colony.ypos, 0.0, ship.refuellingLocation)) {
             return false;
         }
         for (const item2 of cargo.items) {

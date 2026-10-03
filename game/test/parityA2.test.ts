@@ -20,7 +20,9 @@ import { racePeriodicRaceEvent } from '../src/sim/colonyTick';
 import { RaceEventType } from '../src/sim/eventTypes';
 import { baconSettings } from '../src/sim/data/baconSettings';
 import { empireGovernmentAttributes } from '../src/sim/empire';
-import { calculateScenicFactorIncludingRuinsWonders } from '../src/sim/civilianAI';
+import { calculateScenicFactorIncludingRuinsWonders, checkColonyForResourceClearance } from '../src/sim/civilianAI';
+import { maximumFuelRange } from '../src/sim/movement';
+import { BuiltObjectSubRole } from '../src/sim/builtObjectTypes';
 import { PlanetaryFacility } from '../src/sim/construction/facilities';
 import { PlanetaryFacilityType, WonderType, facilityType } from '../src/sim/researchSystem';
 import { raceBuildWonderVictoryFacility } from '../src/sim/researchTick';
@@ -256,5 +258,32 @@ describe('Empire.9.cs 625 AssignFleetRetrofit: the fleet mission carries the des
         const expected = findNewestCanBuildFullEvaluate(fleet.empire!.designs, fleet.leadShip!.subRole, null);
         expect(expected).not.toBeNull();
         expect(fleet.mission!.design).toBe(expected);
+    });
+});
+
+describe('Empire.5.cs 4063 CheckColonyForResourceClearance: the cached refuelling location', () => {
+    it('WithinFuelRangeAndRefuel(x, y, 0, ship.CachedRefuellingLocation) keeps the margin to the cached refuel point', () => {
+        const build = () => {
+            const g = newGame();
+            const e = g.playerEmpire;
+            const colony = e.capital!;
+            const ship = g.galaxy.builtObjects.find((b) => b != null && b.empire === e && b.cargoCapacity > 0 && b.cargoSpace > 0 && b.topSpeed > 0 && b.role !== BuiltObjectRole.Base && b.subRole !== BuiltObjectSubRole.ConstructionShip)!;
+            expect(ship, 'a freighter-like ship of the player').toBeDefined();
+            ship.xpos = colony.xpos + 50;
+            ship.ypos = colony.ypos;
+            ship.currentFuel = ship.fuelCapacity;
+            return { g, e, colony, ship };
+        };
+        // No cached point: in range, so the colony's surplus is cleared (a transport mission is assigned).
+        const a = build();
+        a.ship.refuellingLocation = null;
+        expect(checkColonyForResourceClearance(a.g.galaxy, a.e, a.ship, a.colony)).toBe(true);
+        // A cached point farther than the ship's whole fuel range from the colony: margin >= 1, no clearance.
+        const b = build();
+        const range = maximumFuelRange(b.ship);
+        const far = b.g.galaxy.habitats.find((h) => b.g.galaxy.calculateDistance(h.xpos, h.ypos, b.colony.xpos, b.colony.ypos) > range * 1.05)!;
+        expect(far).toBeDefined();
+        b.ship.refuellingLocation = far;
+        expect(checkColonyForResourceClearance(b.g.galaxy, b.e, b.ship, b.colony)).toBe(false);
     });
 });
