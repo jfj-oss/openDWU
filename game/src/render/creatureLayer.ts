@@ -422,6 +422,11 @@ export class CreatureLayer {
     private fallback: LoadedSet | null = null;
     /** _Game.GodMode (every creature visible); off in a normal game. */
     godMode = false;
+    /** Creature animation clock (ms): advances in real time while game time runs, frozen while paused, so creatures
+     *  animate at normal speed whatever the game speed (user call). */
+    private animMs = 0;
+    private lastWallMs = -1;
+    private lastGameMs = -1;
     /** 19g-7b: the procedural fauna (variant bodies, lantern swarms, tamed harnesses), created on first need. */
     private faunaRoot = new Container();
     private art: FaunaArt | null = null;
@@ -668,10 +673,15 @@ export class CreatureLayer {
         const { factor, maxWidth } = creatureZoomFactor(f);
         const halfW = cam.width / 2;
         const halfH = cam.height / 2;
-        // Animation clock: the interpolated render instant (RenderTime.renderNowMs = galaxy.nowMs + alpha × step), so the
-        // frame sets and the 19g-7b rigs advance smoothly at any display rate — galaxy.nowMs alone only moves when a sim
-        // step lands — and stop while the game is paused. Without an interpolator: the committed sim time.
-        const nowMs = this.motion !== null ? this.motion.renderNowMs : this.galaxy.nowMs;
+        // Animation clock: real time, advancing only while game time runs (the interpolated render instant moves), so the
+        // frame sets and the 19g-7b rigs are smooth at any display rate, freeze while paused, and keep normal speed at any
+        // game speed (user call).
+        const gameMs = this.motion !== null ? this.motion.renderNowMs : this.galaxy.nowMs;
+        const wallMs = performance.now();
+        if (this.lastWallMs >= 0 && gameMs > this.lastGameMs) this.animMs += Math.min(250, wallMs - this.lastWallMs);
+        this.lastWallMs = wallMs;
+        this.lastGameMs = gameMs;
+        const nowMs = this.animMs;
         const t = creatureAnimSeconds(nowMs);
         // Harness lights blink on the time of day (MainView.cs 1457 TimeOfDay, like the ambient layer's lights).
         const secondsOfDay = (Date.now() % 86400000) / 1000;
