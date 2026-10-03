@@ -12,7 +12,8 @@
 //      onClose })` — width / height are the ORIGINAL ScreenPanel size. The window lays itself out (header at (7, 8),
 //      body at (8, 59), ScreenPanel.DoLayout) and scales as one with `transform: scale(k)`, k = originalWindowScale():
 //      the HUD's factor (topBar.ts topBarScale: window height × UI scale × HUD_FRAME_SIZE) capped so the window fits.
-//      Text stays crisp at 4K because the browser re-rasterises a scaled transform.
+//      Text stays crisp at 4K because the browser re-rasterises a scaled transform. A non-chrome header icon (the
+//      player's flag on Empire Summary) goes in `iconUrl` / `win.setIcon(url)`.
 //   2. Everything inside `win.body` is positioned in the original's body-relative pixels: copy the Location / Size
 //      the source gives each control and call `place(el, x, y, w, h)`. Do NOT use flex/grid for the main layout —
 //      the point is a 1:1 port. Pick the large / small variant with `win.virtualSize` (the window in original pixels,
@@ -22,8 +23,7 @@
 //        glassButton()    GlassButton (black glass, shine on the top half, glow on hover, grey→white text); `colors`
 //                         recolours it (OuterBorderColor / ShineColor / GlowColor), `minorText` adds the second line
 //        messageBox()     MessageBoxEx (caption, text, Yes / No / OK buttons) → Promise of the clicked button
-//        OwGrid           DataGridView via ListViewBase (row colours, header, selection, sortable columns;
-//                         `multiSelect` for Grid.MultiSelect with Ctrl / Shift clicks)
+//        OwGrid           DataGridView via ListViewBase (row colours, header, selection, sortable columns)
 //        tabStrip()       EnhancedTabControl
 //        text() / dropText()  labels (GraphicsHelper.DrawStringWithDropShadow)
 //        valueRow()       "Label  value" rows with the label right-aligned (EmpireDetailView stat block)
@@ -32,6 +32,8 @@
 //        linkLabel()      LinkLabel (255, 192, 0), underline on hover
 //        dropDown() / textBox() / checkBox()  the (48, 48, 64) / (170, 170, 170) input controls
 //        darkRect()       the translucent black blocks EmpireDetailView fills behind each section
+//        numericUpDown()  NumericUpDown (clamped integer, up / down buttons, arrow keys / wheel)
+//        imageCombo()     an owner-drawn ComboBox (DesignDropDown / ResourceDropDown: pictures + text per item)
 //   4. Fonts: the game's font (Forgotten Futurist, loaded by hud.css) at the GenerateFont pixel sizes from the source
 //      (FONT.normal 15.33, FONT.large 16.67, FONT.header 18.67, FONT.title 22.67 …). Colours: the source's
 //      Color.FromArgb values; reuse the COLORS constants here.
@@ -153,34 +155,6 @@ export function sortRows<T>(rows: readonly T[], value: ((r: T) => number | strin
 /** Next sort state of a header click: none → asc → desc → asc (DataGridView toggles once sorted). */
 export function nextSortDir(current: 'asc' | 'desc' | null): 'asc' | 'desc' {
     return current === 'asc' ? 'desc' : 'asc';
-}
-
-/**
- * DataGridView MultiSelect (FullRowSelect) click: a plain click selects only the clicked row, Ctrl toggles it, Shift
- * selects the display-order range from the anchor (Ctrl+Shift adds that range). Returns the new selection (in display
- * order) and anchor.
- */
-export function nextGridSelection<K>(
-    displayKeys: readonly K[],
-    current: ReadonlySet<K>,
-    anchor: K | null,
-    clicked: K,
-    mods: { ctrl?: boolean; shift?: boolean },
-): { selection: K[]; anchor: K } {
-    const a = anchor !== null ? displayKeys.indexOf(anchor) : -1;
-    const b = displayKeys.indexOf(clicked);
-    if (mods.shift && a >= 0 && b >= 0) {
-        const range = displayKeys.slice(Math.min(a, b), Math.max(a, b) + 1);
-        const set = new Set<K>(mods.ctrl ? [...current, ...range] : range);
-        return { selection: displayKeys.filter((k) => set.has(k)), anchor: anchor as K };
-    }
-    if (mods.ctrl) {
-        const set = new Set<K>(current);
-        if (set.has(clicked)) set.delete(clicked);
-        else set.add(clicked);
-        return { selection: displayKeys.filter((k) => set.has(k)), anchor: clicked };
-    }
-    return { selection: [clicked], anchor: clicked };
 }
 
 /** DataGridViewTextBoxDropShadowCell.Paint: width of the amount bar inside a cell `cellWidth` wide (0 = none). */
@@ -517,6 +491,8 @@ export interface GridColumn<T> {
     /** Fill the cell (text or nodes). */
     render: (row: T, cell: HTMLDivElement) => void;
     title?: string;
+    /** DataGridView.CellClick on this column's cells (after the row is selected). */
+    onClick?: (row: T, e: MouseEvent) => void;
 }
 
 export interface GridOptions<T> {
@@ -535,10 +511,8 @@ export interface GridOptions<T> {
     rowClass?: (row: T) => string;
     empty?: string;
     fontSize?: number;
-    /** Grid.MultiSelect: Ctrl / Shift clicks extend the selection (nextGridSelection); `selection` lists it. */
+    /** DataGridView.MultiSelect: Ctrl-click toggles a row, Shift-click selects the range from the last clicked row. */
     multiSelect?: boolean;
-    /** Called after a click changed the selection (both modes), with the selected rows in display order. */
-    onSelectionChange?: (rows: T[]) => void;
 }
 
 /** A DataGridView in ListViewBase's styles: header (24, 24, 24) / (170, 170, 170), rows alternating (32, 32, 40) and
@@ -550,10 +524,8 @@ export class OwGrid<T> {
     private readonly head: HTMLDivElement | null;
     private rows: T[] = [];
     private selectedKey: unknown = undefined;
-    /** MultiSelect grids: the selected keys and the Shift-click anchor. */
+    /** MultiSelect: every selected row's key (always includes selectedKey when set). */
     private selectedKeys = new Set<unknown>();
-    private anchorKey: unknown = null;
-    private rowEls: { el: HTMLDivElement; key: unknown }[] = [];
     private sortCol: string | null = null;
     private sortDir: 'asc' | 'desc' | null = null;
 
@@ -585,35 +557,17 @@ export class OwGrid<T> {
         this.el.appendChild(this.body);
     }
 
-    /** The selected row; a MultiSelect grid has one only while exactly one row is selected (SelectedRows.Count == 1). */
     get selected(): T | null {
-        if (this.o.multiSelect) {
-            if (this.selectedKeys.size !== 1) return null;
-            const [k] = this.selectedKeys;
-            return this.rows.find((r) => this.o.key(r) === k) ?? null;
-        }
         return this.rows.find((r) => this.o.key(r) === this.selectedKey) ?? null;
     }
 
-    /** The selected rows in display order (SelectedRows). */
-    get selection(): T[] {
-        if (!this.o.multiSelect) {
-            const s = this.selected;
-            return s !== null ? [s] : [];
-        }
-        return this.displayed.filter((r) => this.selectedKeys.has(this.o.key(r)));
-    }
-
-    /** MultiSelect grids: replace the selection (no onSelectionChange call); the first key becomes the anchor. */
-    selectKeys(keys: readonly unknown[], scroll = true): void {
-        this.selectedKeys = new Set(keys);
-        this.anchorKey = keys.length > 0 ? keys[0] : null;
-        if (keys.length > 0) this.select(keys[0], scroll);
-        else this.render();
+    /** DataGridView.SelectedRows: the selected rows in display order (one row unless `multiSelect`). */
+    get selectedAll(): T[] {
+        return this.displayed.filter((r) => this.isSelectedKey(this.o.key(r)));
     }
 
     private isSelectedKey(key: unknown): boolean {
-        return this.o.multiSelect ? this.selectedKeys.has(key) : key === this.selectedKey;
+        return key === this.selectedKey || this.selectedKeys.has(key);
     }
 
     /** The rows in display order (after sorting). */
@@ -630,10 +584,7 @@ export class OwGrid<T> {
     /** Select the row with this key (no onSelect call) and scroll it into view (FirstDisplayedScrollingRowIndex). */
     select(key: unknown, scroll = true): void {
         this.selectedKey = key;
-        if (this.o.multiSelect && !this.selectedKeys.has(key)) {
-            this.selectedKeys = new Set([key]);
-            this.anchorKey = key;
-        }
+        this.selectedKeys = new Set(key === undefined ? [] : [key]);
         this.render();
         if (scroll) {
             const r = this.body.querySelector<HTMLElement>('.ow-grid-row.ow-sel');
@@ -642,6 +593,31 @@ export class OwGrid<T> {
                 if (top < this.body.scrollTop || top + r.offsetHeight > this.body.scrollTop + this.body.clientHeight) this.body.scrollTop = top;
             }
         }
+    }
+
+    /** A row click: plain = select only it; MultiSelect Ctrl = toggle; Shift = the range from the last clicked row. */
+    private clickRow(rows: readonly T[], key: unknown, e: MouseEvent): void {
+        if (this.o.multiSelect && e.shiftKey && this.selectedKey !== undefined) {
+            const keys = rows.map((r) => this.o.key(r));
+            const a = keys.indexOf(this.selectedKey);
+            const b = keys.indexOf(key);
+            if (a >= 0 && b >= 0) {
+                this.selectedKeys = new Set(keys.slice(Math.min(a, b), Math.max(a, b) + 1));
+                return; // the anchor stays
+            }
+        }
+        if (this.o.multiSelect && (e.ctrlKey || e.metaKey)) {
+            if (this.selectedKeys.has(key) && this.selectedKeys.size > 1) {
+                this.selectedKeys.delete(key);
+                if (this.selectedKey === key) this.selectedKey = this.selectedKeys.values().next().value;
+            } else {
+                this.selectedKeys.add(key);
+                this.selectedKey = key;
+            }
+            return;
+        }
+        this.selectedKey = key;
+        this.selectedKeys = new Set([key]);
     }
 
     render(): void {
@@ -655,12 +631,6 @@ export class OwGrid<T> {
             });
         }
         const rows = this.displayed;
-        if (this.o.multiSelect) {
-            // Rebinding drops the selection of rows that are gone.
-            const alive = new Set(rows.map((r) => this.o.key(r)));
-            for (const k of [...this.selectedKeys]) if (!alive.has(k)) this.selectedKeys.delete(k);
-        }
-        this.rowEls = [];
         if (rows.length === 0 && this.o.empty) this.body.appendChild(el('div', 'ow-grid-empty', this.o.empty));
         rows.forEach((row, i) => {
             const key = this.o.key(row);
@@ -669,24 +639,22 @@ export class OwGrid<T> {
             for (const c of this.o.columns) {
                 const cell = el('div', `ow-grid-cell ow-align-${c.align ?? 'left'}`);
                 c.render(row, cell);
+                if (c.onClick) cell.classList.add('ow-hot');
                 r.appendChild(cell);
             }
-            this.rowEls.push({ el: r, key });
             r.addEventListener('click', (e) => {
-                if (this.o.multiSelect) {
-                    const next = nextGridSelection(this.rowEls.map((x) => x.key), this.selectedKeys, this.anchorKey, key, { ctrl: e.ctrlKey || e.metaKey, shift: e.shiftKey });
-                    this.selectedKeys = new Set(next.selection);
-                    this.anchorKey = next.anchor;
-                    this.selectedKey = key;
-                    for (const x of this.rowEls) x.el.classList.toggle('ow-sel', this.selectedKeys.has(x.key));
-                } else if (this.selectedKey !== key) {
-                    this.selectedKey = key;
-                    for (const x of this.body.querySelectorAll('.ow-grid-row.ow-sel')) x.classList.remove('ow-sel');
-                    r.classList.add('ow-sel');
+                this.clickRow(rows, key, e);
+                for (const x of this.body.querySelectorAll<HTMLElement>('.ow-grid-row')) {
+                    const k = this.o.key(rows[Number(x.dataset.i)]);
+                    x.classList.toggle('ow-sel', this.isSelectedKey(k));
                 }
                 this.o.onSelect?.(row);
-                this.o.onSelectionChange?.(this.selection);
+                // CellClick after the selection changed (DataGridView raises SelectionChanged first).
+                const cell = (e.target as HTMLElement).closest('.ow-grid-cell');
+                const col = cell ? this.o.columns[Array.prototype.indexOf.call(r.children, cell)] : undefined;
+                col?.onClick?.(row, e);
             });
+            r.dataset.i = String(i);
             if (this.o.onDoubleClick) r.addEventListener('dblclick', () => this.o.onDoubleClick!(row));
             this.body.appendChild(r);
         });
@@ -704,6 +672,9 @@ export interface OriginalWindowOptions {
     title: string;
     /** HeaderIcon: a chrome image file (images/ui/chrome/<icon>), e.g. 'diplomacy.png'. */
     icon?: string;
+    /** HeaderIcon as any image URL (e.g. the player's LargeFlagPicture as a data URL); wins over `icon`. Set it
+     *  later with `win.setIcon(url)` (an async flag). */
+    iconUrl?: string;
     /** ScreenPanel Size in the original's pixels. */
     width: number;
     height: number;
@@ -731,6 +702,8 @@ export interface OriginalWindow {
     readonly virtualSize: { w: number; h: number };
     readonly scale: number;
     setTitle(title: string): void;
+    /** Change the HeaderIcon to an image URL (creates it when the window was opened without an icon). */
+    setIcon(url: string): void;
     /** Resize the ScreenPanel (original pixels) and re-centre it. */
     setSize(width: number, height: number): void;
     close(): void;
@@ -763,9 +736,9 @@ export function openOriginalWindow(o: OriginalWindowOptions): OriginalWindow {
     const titleEl = el('div', 'ow-title');
     let iconEl: HTMLImageElement | null = null;
     if (headerEl) {
-        if (o.icon) {
+        if (o.icon || o.iconUrl) {
             iconEl = el('img', 'ow-header-icon');
-            iconEl.src = chromeImageUrl(o.icon);
+            iconEl.src = o.iconUrl ?? chromeImageUrl(o.icon!);
             iconEl.alt = '';
             iconEl.draggable = false;
             headerEl.appendChild(iconEl);
@@ -871,6 +844,17 @@ export function openOriginalWindow(o: OriginalWindowOptions): OriginalWindow {
         setTitle(t: string) {
             setText(titleEl, t);
         },
+        setIcon(url: string) {
+            if (!headerEl) return;
+            if (iconEl === null) {
+                iconEl = el('img', 'ow-header-icon');
+                iconEl.alt = '';
+                iconEl.draggable = false;
+                headerEl.insertBefore(iconEl, headerEl.firstChild);
+                titleEl.style.left = '';
+            }
+            if (iconEl.src !== url) iconEl.src = url;
+        },
         setSize(nw: number, nh: number) {
             w = nw;
             h = nh;
@@ -925,6 +909,8 @@ export interface MessageBoxOptions {
     icon?: 'question' | 'warning' | 'stop' | 'information';
     /** Window width in original pixels (default 460). */
     width?: number;
+    /** Each button's width in original pixels (default 100). */
+    buttonWidth?: number;
 }
 
 const MESSAGE_ICON: Record<NonNullable<MessageBoxOptions['icon']>, string> = { question: '?', warning: '!', stop: '\u2716', information: 'i' };
@@ -956,7 +942,7 @@ export function messageBox(o: MessageBoxOptions): Promise<string | null> {
         t.classList.add('ow-msg-text');
         win.body.appendChild(place(t, 14 + iconW, 14));
         const textH = Math.max(o.icon ? 30 : 0, t.offsetHeight || 60);
-        const bw = 100;
+        const bw = o.buttonWidth ?? 100;
         const gap = 10;
         const height = 59 + 4 + 14 + textH + 16 + 30 + 14;
         win.setSize(width, height);
@@ -983,4 +969,306 @@ export function messageBox(o: MessageBoxOptions): Promise<string | null> {
         document.addEventListener('keydown', onKey, true);
         defaultBtn?.focus();
     });
+}
+
+// -------------------------------------------------------------------------------------------------------------------
+// NumericUpDown and the owner-drawn image combo (DesignDropDown / ResourceDropDown …)
+// -------------------------------------------------------------------------------------------------------------------
+
+/** NumericUpDown.Value semantics: an integer clamped to [min, max]; non-numbers → min. */
+export function clampSpinValue(v: unknown, min: number, max: number): number {
+    const n = typeof v === 'number' ? v : typeof v === 'string' ? Number(v.trim()) : NaN;
+    if (!Number.isFinite(n)) return min;
+    return Math.min(max, Math.max(min, Math.trunc(n)));
+}
+
+export interface NumericUpDownOptions {
+    value: number;
+    min: number;
+    max: number;
+    /** ValueChanged (after clamping). */
+    onChange?: (v: number) => void;
+    size?: number;
+    /** TextAlign; default center. */
+    align?: 'left' | 'center' | 'right';
+}
+
+export interface NumericUpDown {
+    readonly el: HTMLDivElement;
+    readonly input: HTMLInputElement;
+    get value(): number;
+    /** Set the value (clamped) without firing onChange. */
+    setValue(v: number): void;
+    setEnabled(enabled: boolean): void;
+    /** ForeColor / Font.Bold (e.g. the Build Order's yellow bold spinners). */
+    setStyle(color: string, bold: boolean): void;
+}
+
+/** A WinForms NumericUpDown: a text box with the up / down buttons on the right. Arrow keys / wheel step by 1;
+ *  typing commits on change / blur (clamped, like the control on leave); Enter selects the text (method_635). */
+export function numericUpDown(o: NumericUpDownOptions): NumericUpDown {
+    const wrap = el('div', 'ow-spin');
+    const input = el('input', 'ow-spin-input');
+    input.type = 'text';
+    input.inputMode = 'numeric';
+    input.autocomplete = 'off';
+    input.spellcheck = false;
+    input.style.fontSize = `${o.size ?? FONT.normal}px`;
+    input.style.textAlign = o.align ?? 'center';
+    const up = el('button', 'ow-spin-btn ow-spin-up');
+    const down = el('button', 'ow-spin-btn ow-spin-down');
+    up.type = down.type = 'button';
+    up.tabIndex = down.tabIndex = -1;
+    wrap.append(input, up, down);
+    let value = clampSpinValue(o.value, o.min, o.max);
+    input.value = String(value);
+    const commit = (v: unknown): void => {
+        const n = clampSpinValue(v, o.min, o.max);
+        if (input.value !== String(n)) input.value = String(n);
+        if (n === value) return;
+        value = n;
+        o.onChange?.(n);
+    };
+    input.addEventListener('input', () => {
+        // Live totals while typing (the control raises ValueChanged on each valid edit).
+        const t = input.value.trim();
+        if (t === '' || !/^\d+$/.test(t)) return;
+        const n = clampSpinValue(t, o.min, o.max);
+        if (n !== value) {
+            value = n;
+            o.onChange?.(n);
+        }
+    });
+    input.addEventListener('change', () => commit(input.value));
+    input.addEventListener('blur', () => commit(input.value));
+    input.addEventListener('focus', () => input.select());
+    input.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') return;
+        e.stopPropagation();
+        if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            commit(value + 1);
+        } else if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            commit(value - 1);
+        } else if (e.key === 'Enter') commit(input.value);
+    });
+    input.addEventListener(
+        'wheel',
+        (e) => {
+            if (document.activeElement !== input) return;
+            e.preventDefault();
+            commit(value + (e.deltaY < 0 ? 1 : -1));
+        },
+        { passive: false },
+    );
+    // Hold to repeat, like the control's UpDownButtons timer.
+    const hold = (b: HTMLButtonElement, step: number): void => {
+        let t: number | undefined;
+        const stop = (): void => {
+            window.clearTimeout(t);
+            window.clearInterval(t);
+        };
+        b.addEventListener('pointerdown', (e) => {
+            if (e.button !== 0 || input.disabled) return;
+            e.preventDefault();
+            e.stopPropagation();
+            commit(value + step);
+            t = window.setTimeout(() => {
+                t = window.setInterval(() => commit(value + step), 60);
+            }, 400);
+        });
+        b.addEventListener('pointerup', stop);
+        b.addEventListener('pointerleave', stop);
+        b.addEventListener('click', (e) => e.stopPropagation());
+    };
+    hold(up, 1);
+    hold(down, -1);
+    return {
+        el: wrap,
+        input,
+        get value() {
+            return value;
+        },
+        setValue(v: number) {
+            value = clampSpinValue(v, o.min, o.max);
+            if (input.value !== String(value)) input.value = String(value);
+        },
+        setEnabled(enabled: boolean) {
+            input.disabled = !enabled;
+            up.disabled = !enabled;
+            down.disabled = !enabled;
+            wrap.classList.toggle('ow-disabled', !enabled);
+        },
+        setStyle(color: string, bold: boolean) {
+            input.style.color = color;
+            input.style.fontWeight = bold ? 'bold' : 'normal';
+        },
+    };
+}
+
+/** One picture of an owner-drawn combo item, drawn `height` tall at `x` (OnDrawItem's DrawImage rects). */
+export interface ImageComboPicture {
+    url: string | Promise<string | null> | null;
+    x: number;
+    /** Keep a square box (ship pictures); default false: width follows the image's aspect. */
+    square?: boolean;
+    /** Degrees (Bitmap.RotateFlip), e.g. 90 for the small ship images (BuiltObjectImageCache Rotate90FlipNone). */
+    rotate?: number;
+}
+
+export interface ImageComboItem {
+    value: string;
+    label: string;
+    pictures?: ImageComboPicture[];
+    title?: string;
+}
+
+export interface ImageComboOptions {
+    items: readonly ImageComboItem[];
+    value: string;
+    onChange: (v: string) => void;
+    /** OnMeasureItem ItemHeight; default 21. */
+    itemHeight?: number;
+    /** x of the text (OnDrawItem's PointF); default 4. */
+    textX?: number;
+    size?: number;
+    /** Rows shown before the list scrolls (MaxDropDownItems); default 8. */
+    maxItems?: number;
+}
+
+export interface ImageCombo {
+    readonly el: HTMLDivElement;
+    get value(): string;
+    setValue(v: string): void;
+    close(): void;
+}
+
+function comboItemRow(item: ImageComboItem, height: number, textX: number): HTMLDivElement {
+    const row = el('div', 'ow-combo-item');
+    row.style.height = `${height}px`;
+    const ph = Math.max(1, height - 2);
+    for (const p of item.pictures ?? []) {
+        if (p.url === null) continue;
+        const img = el('img', 'ow-combo-pic');
+        img.alt = '';
+        img.draggable = false;
+        img.style.left = `${p.x}px`;
+        img.style.height = `${ph}px`;
+        if (p.square) img.style.width = `${ph}px`;
+        if (p.rotate) img.style.transform = `rotate(${p.rotate}deg)`;
+        if (typeof p.url === 'string') img.src = p.url;
+        else
+            void p.url.then((u) => {
+                if (u) img.src = u;
+                else img.remove();
+            });
+        row.appendChild(img);
+    }
+    const t = el('span', 'ow-combo-text', item.label);
+    t.style.left = `${textX}px`;
+    row.appendChild(t);
+    if (item.title) row.title = item.title;
+    return row;
+}
+
+/** An owner-drawn ComboBox (DrawMode.OwnerDrawFixed, DropDownList): the (48, 48, 64) box shows the selected item as
+ *  OnDrawItem draws it (pictures + text), the arrow button on the right opens the list under it. The list is placed in
+ *  the same parent (so it scales with the window); Escape / a click elsewhere closes it. */
+export function imageCombo(o: ImageComboOptions): ImageCombo {
+    const ih = o.itemHeight ?? 21;
+    const textX = o.textX ?? 4;
+    const box = el('div', 'ow-combo');
+    box.tabIndex = 0;
+    box.style.fontSize = `${o.size ?? FONT.normal}px`;
+    const shown = el('div', 'ow-combo-shown');
+    const arrow = el('div', 'ow-combo-arrow');
+    box.append(shown, arrow);
+    let value = o.value;
+    let list: HTMLDivElement | null = null;
+    const render = (): void => {
+        const item = o.items.find((i) => i.value === value);
+        shown.replaceChildren(...(item ? [comboItemRow(item, ih, textX)] : []));
+        box.title = item?.title ?? item?.label ?? '';
+    };
+    const pick = (v: string): void => {
+        close();
+        if (v === value) return;
+        value = v;
+        render();
+        o.onChange(v);
+    };
+    const onOutside = (e: PointerEvent): void => {
+        if (list && !list.contains(e.target as Node) && !box.contains(e.target as Node)) close();
+    };
+    const onEsc = (e: KeyboardEvent): void => {
+        if (e.key === 'Escape' && list) {
+            e.preventDefault();
+            e.stopImmediatePropagation();
+            close();
+        }
+    };
+    function close(): void {
+        if (!list) return;
+        list.remove();
+        list = null;
+        box.classList.remove('ow-combo-open');
+        document.removeEventListener('pointerdown', onOutside, true);
+        window.removeEventListener('keydown', onEsc, true);
+    }
+    const open = (): void => {
+        const parent = box.offsetParent as HTMLElement | null;
+        if (!parent || o.items.length === 0) return;
+        list = el('div', 'ow-combo-list ow-scroll');
+        list.style.fontSize = box.style.fontSize;
+        for (const item of o.items) {
+            const row = comboItemRow(item, ih, textX);
+            if (item.value === value) row.classList.add('ow-combo-sel');
+            row.addEventListener('pointerdown', (e) => e.stopPropagation());
+            row.addEventListener('click', (e) => {
+                e.stopPropagation();
+                pick(item.value);
+            });
+            list.appendChild(row);
+        }
+        // Under the box, or above it when it would leave the parent.
+        const rows = Math.min(o.items.length, o.maxItems ?? 8);
+        const h = rows * ih + 2;
+        const below = box.offsetTop + box.offsetHeight;
+        const top = below + h > parent.clientHeight && box.offsetTop - h >= 0 ? box.offsetTop - h : below;
+        place(list, box.offsetLeft, top, box.offsetWidth, h);
+        parent.appendChild(list);
+        box.classList.add('ow-combo-open');
+        document.addEventListener('pointerdown', onOutside, true);
+        window.addEventListener('keydown', onEsc, true);
+    };
+    box.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (box.classList.contains('ow-disabled')) return;
+        if (list) close();
+        else open();
+    });
+    box.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') return;
+        e.stopPropagation();
+        const i = o.items.findIndex((x) => x.value === value);
+        if (e.key === 'ArrowDown' && i < o.items.length - 1) pick(o.items[i + 1].value);
+        else if (e.key === 'ArrowUp' && i > 0) pick(o.items[i - 1].value);
+        else if (e.key === 'Enter' || e.key === ' ') list ? close() : open();
+        else return;
+        e.preventDefault();
+    });
+    render();
+    return {
+        el: box,
+        get value() {
+            return value;
+        },
+        setValue(v: string) {
+            if (v === value) return;
+            value = v;
+            render();
+        },
+        close,
+    };
 }

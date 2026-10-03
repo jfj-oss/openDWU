@@ -518,7 +518,7 @@ function createTroopsScreen(opts: TroopsScreenOptions): OpenState {
     dropText(body, T('Name', 'Name'), 10, 46, { size: FONT.header, bold: true, color: 'rgb(120, 120, 120)' });
     const nameInput = textBox('', '', (v) => {
         // IgqymUpftW: rename the selected troop while the text is not blank.
-        const t = grid.selected;
+        const t = singleSelected();
         if (t !== null && v.trim() !== '') issuePlayerCommand(galaxy, empire, 'renameTroop', [t.troop, v], (ok) => ok && refresh());
     });
     nameInput.maxLength = 100;
@@ -579,7 +579,7 @@ function createTroopsScreen(opts: TroopsScreenOptions): OpenState {
             { id: 'maintenance', header: T('Maintenance', 'Maintenance'), width: 80, align: 'right', sort: (r) => r.maintenance, render: (r, cell) => cell.append(formatTroopNumber(r.maintenance)) },
             { id: 'location', header: T('Location', 'Location'), fill: 1, sort: (r) => r.location, render: (r, cell) => { cell.append(r.location); cell.title = r.location; } },
         ],
-        onSelectionChange: () => selectionChanged(),
+        onSelect: () => selectionChanged(),
         onDoubleClick: () => goTo(),
     });
     body.appendChild(place(grid.el, 10, 73, 720, 519));
@@ -631,7 +631,7 @@ function createTroopsScreen(opts: TroopsScreenOptions): OpenState {
             const i = values.findIndex((x) => x.value === v);
             filter = options[i] ?? { kind: 'all' };
             recruitSig = '';
-            grid.selectKeys([]);
+            grid.select(undefined, false);
             refresh();
         });
         next.style.fontSize = `${FONT.large}px`;
@@ -640,8 +640,14 @@ function createTroopsScreen(opts: TroopsScreenOptions): OpenState {
         filterSel = next;
     }
 
+    /** ctlTroopList.SelectedTroop: a row only while exactly one is selected (SelectedRows.Count == 1). */
+    function singleSelected(): TroopRow | null {
+        const all = grid.selectedAll;
+        return all.length === 1 ? all[0] : null;
+    }
+
     function selectedTroops(): Troop[] {
-        return grid.selection.map((r) => r.troop);
+        return grid.selectedAll.map((r) => r.troop);
     }
 
     function refresh(): void {
@@ -662,13 +668,13 @@ function createTroopsScreen(opts: TroopsScreenOptions): OpenState {
     }
 
     function updateControls(): void {
-        const one = grid.selected;
+        const one = singleSelected();
         const t = one?.troop ?? null;
         if (t !== lastNameTroop && document.activeElement !== nameInput) {
             nameInput.value = t?.name ?? '';
             lastNameTroop = t;
         }
-        const any = grid.selection.length > 0;
+        const any = grid.selectedAll.length > 0;
         btnGoto.disabled = t === null;
         btnDisband.disabled = !any;
         btnGarrison.disabled = !any;
@@ -813,7 +819,7 @@ function createTroopsScreen(opts: TroopsScreenOptions): OpenState {
 
     function goTo(): void {
         // btnTroopGoto_Click: only with exactly one selected troop (SelectedTroop); always closes (method_184).
-        const one = grid.selected;
+        const one = singleSelected();
         const target = one !== null ? troopGoToTarget(one.troop) : null;
         win.close();
         if (target !== null) opts.onGoTo(target);
@@ -833,7 +839,7 @@ function createTroopsScreen(opts: TroopsScreenOptions): OpenState {
             filterSig = '';
             refresh();
             const next = num >= 0 && num < empire.troops.count ? empire.troops.items[num] : null;
-            grid.selectKeys(next !== null ? [next] : []);
+            grid.select(next ?? undefined);
             selectionChanged();
         });
     }

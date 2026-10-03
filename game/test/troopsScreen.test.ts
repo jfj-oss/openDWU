@@ -245,18 +245,3 @@ describe('Troops window helpers', () => {
         expect(troopFilterValue({ kind: 'colony', colony: {} as Habitat }, 4)).toBe('colony:4');
     });
 });
-
-describe('nextGridSelection (Grid.MultiSelect clicks)', () => {
-    it('plain click selects one; Ctrl toggles; Shift selects the range from the anchor', async () => {
-        const { nextGridSelection } = await import('../src/ui/originalWindow');
-        const keys = ['a', 'b', 'c', 'd', 'e'];
-        expect(nextGridSelection(keys, new Set(['a', 'b']), 'a', 'c', {})).toEqual({ selection: ['c'], anchor: 'c' });
-        expect(nextGridSelection(keys, new Set(['a']), 'a', 'c', { ctrl: true })).toEqual({ selection: ['a', 'c'], anchor: 'c' });
-        expect(nextGridSelection(keys, new Set(['a', 'c']), 'a', 'c', { ctrl: true })).toEqual({ selection: ['a'], anchor: 'c' });
-        expect(nextGridSelection(keys, new Set(['b']), 'b', 'd', { shift: true })).toEqual({ selection: ['b', 'c', 'd'], anchor: 'b' });
-        expect(nextGridSelection(keys, new Set(['d']), 'd', 'b', { shift: true })).toEqual({ selection: ['b', 'c', 'd'], anchor: 'd' });
-        expect(nextGridSelection(keys, new Set(['e']), 'b', 'c', { shift: true, ctrl: true })).toEqual({ selection: ['b', 'c', 'e'], anchor: 'b' });
-        // Shift without an anchor acts as a plain click.
-        expect(nextGridSelection(keys, new Set(), null, 'c', { shift: true })).toEqual({ selection: ['c'], anchor: 'c' });
-    });
-});

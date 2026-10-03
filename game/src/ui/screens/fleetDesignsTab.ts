@@ -3,6 +3,8 @@
 // count) with +/-, total cost and strength, then Form from existing (unassigned finished ships, nearest the rally first)
 // or Build fleet (queues the ships at the player's yards, optionally in one sector; completed ships join the fleet).
 // Running build orders show their progress and can be cancelled. Every change is a player command.
+// Drawn with the original-style window widgets (originalWindow.ts) in body-relative pixels like the Fleets page:
+// the templates grid on the left, the selected template on the right, the running build orders along the bottom.
 
 import type { Empire } from '../../sim/empire';
 import type { Design } from '../../sim/design';
@@ -27,6 +29,20 @@ import {
 } from '../../sim/player/fleetTemplates';
 import { formatMoney } from '../hud';
 import { confirmAutomationOff } from '../orderMenu';
+import {
+    COLORS,
+    FONT,
+    OwGrid,
+    checkBox,
+    darkRect,
+    dropText,
+    el,
+    glassButton,
+    place,
+    scrollPanel,
+    text,
+    textBox,
+} from '../originalWindow';
 
 /** As the Ships and Bases Set Fleet: ask first to turn off Fleet Formation automation (the AI would otherwise disband
  * idle player fleets, Empire.cs MaintainShipGroups). */
@@ -72,30 +88,38 @@ export function buildReportText(r: BuildFleetResult): string {
     return lines.join('\n');
 }
 
-function el<K extends keyof HTMLElementTagNameMap>(tag: K, className: string, text?: string): HTMLElementTagNameMap[K] {
-    const e = document.createElement(tag);
-    e.className = className;
-    if (text !== undefined) e.textContent = text;
-    return e;
-}
-
-function button(parent: HTMLElement, text: string, title: string, onClick: () => void, enabled = true): HTMLButtonElement {
-    const b = el('button', 'fleets-detail-button', text);
-    b.type = 'button';
-    b.title = title;
-    b.disabled = !enabled;
-    b.addEventListener('click', onClick);
-    parent.appendChild(b);
-    return b;
-}
-
 export interface FleetDesignsTab {
     render: () => void;
     /** Redraw only the running-orders block (called on a timer while the tab is shown). */
     refreshOrders: () => void;
 }
 
-export function createFleetDesignsTab(container: HTMLElement, empire: Empire): FleetDesignsTab {
+/** A glass button in the tab's flow (inline, in the window font). */
+function button(label: string, title: string, onClick: () => void, enabled = true): HTMLButtonElement {
+    return glassButton(label, { title, onClick, disabled: !enabled });
+}
+
+/** A combo box positioned in the tab (dropDown with option groups). */
+function select(options: { value: string; label: string; group?: string }[], value: string, onChange: (v: string) => void): HTMLSelectElement {
+    const s = el('select', 'ow-input ow-select');
+    let og: HTMLOptGroupElement | null = null;
+    for (const o of options) {
+        if (o.group !== undefined && (og === null || og.label !== o.group)) {
+            og = document.createElement('optgroup');
+            og.label = o.group;
+            s.appendChild(og);
+        }
+        const opt = el('option', '', o.label);
+        opt.value = o.value;
+        (o.group !== undefined && og !== null ? og : s).appendChild(opt);
+    }
+    s.value = value;
+    s.addEventListener('change', () => onChange(s.value));
+    s.addEventListener('keydown', (e) => e.stopPropagation());
+    return s;
+}
+
+export function createFleetDesignsTab(container: HTMLElement, empire: Empire, size: { w: number; h: number } = { w: 972, h: 767 }): FleetDesignsTab {
     const galaxy = empire.galaxy;
     let selectedId: number | null = null;
     let rallyIndex = -1; // -1: capital
@@ -103,7 +127,10 @@ export function createFleetDesignsTab(container: HTMLElement, empire: Empire): F
     let allowSubstitutes = true;
     let mode: FleetBuildMode = 'missing';
     let report = '';
-    const ordersBox = el('div', 'fleet-designs-orders');
+
+    const W = size.w;
+    const H = size.h;
+    const ordersTop = H - 210;
 
     const issue = <K extends PlayerOpName>(op: K, args: PlayerOpArgs<K>, after?: (r: unknown) => void): void => {
         issuePlayerCommand(galaxy, empire, op, args, (r) => {
@@ -124,228 +151,216 @@ export function createFleetDesignsTab(container: HTMLElement, empire: Empire): F
         return { x, y };
     }
 
+    // The templates grid (left).
+    const templateGrid = new OwGrid<FleetTemplate>({
+        columns: [
+            { id: 'name', header: 'Fleet Design', fill: 1, sort: (t) => t.name, render: (t, c) => { c.textContent = t.name; c.title = t.name; } },
+            { id: 'ships', header: 'Ships', width: 60, align: 'center', sort: (t) => fleetTemplateTotals(galaxy, t).ships, render: (t, c) => { c.textContent = String(fleetTemplateTotals(galaxy, t).ships); } },
+        ],
+        key: (t) => t.id,
+        empty: 'No fleet designs yet',
+        onSelect: (t) => {
+            if (selectedId === t.id) return;
+            selectedId = t.id;
+            report = '';
+            render();
+        },
+    });
+
+    // Running build orders (bottom).
+    const ordersTitle = dropText(container, '', 10, ordersTop, { size: FONT.header, bold: true, color: COLORS.label });
+    const ordersBox = place(scrollPanel('fl-orders'), 10, ordersTop + 26, W - 22, H - ordersTop - 36);
+    container.appendChild(ordersBox);
+
     function renderOrders(): void {
+        const keep = ordersBox.scrollTop;
         ordersBox.replaceChildren();
         const orders = fleetDesignBook(empire).orders;
-        ordersBox.appendChild(el('div', 'fleets-detail-label', `Build orders (${orders.length})`));
+        ordersTitle.textContent = `Build Orders (${orders.length})`;
         if (orders.length === 0) {
-            ordersBox.appendChild(el('div', 'fleets-list-empty', 'No fleet is being built'));
+            ordersBox.appendChild(place(text('No fleet is being built', { size: FONT.normal, color: COLORS.label, shadow: false }), 8, 6));
             return;
         }
-        for (const o of orders) {
+        orders.forEach((o, i) => {
             const p = fleetBuildProgress(empire, o);
-            const line = el('div', 'fleets-detail-line fleet-designs-order');
+            const row = place(el('div', `fl-order-row${i % 2 === 1 ? ' fl-alt' : ''}`), 0, i * 30, W - 36, 30);
             const where = o.sector === null ? 'any sector' : `sector ${sectorLabel(o.sector)}`;
-            line.appendChild(el('span', 'fleets-detail-value', `${o.name}`));
-            const bar = el('span', 'fleet-designs-progress');
-            const fill = el('span', 'fleet-designs-progress-fill');
+            const name = text(o.name, { size: FONT.normal, bold: true, color: COLORS.text });
+            row.appendChild(place(name, 8, 6, 200));
+            name.classList.add('fl-ellipsis');
+            // DataGridViewTextBoxDropShadowCell-like progress bar.
+            const bar = place(el('div', 'fl-progress'), 215, 7, 200, 16);
+            const fill = el('div', 'fl-progress-fill');
             fill.style.width = `${p.total > 0 ? Math.round((100 * p.built) / p.total) : 0}%`;
             bar.appendChild(fill);
-            line.appendChild(bar);
-            line.appendChild(el('span', 'fleets-detail-text', `${p.built}/${p.total} built · ${p.building} under construction${p.lost > 0 ? ` · ${p.lost} lost` : ''} · ${where}${o.fleet !== null ? ` · ${o.fleet.name ?? ''}` : ''}`));
-            button(line, 'Cancel', 'Stop the order: ships still waiting for a yard are removed and refunded; ships on a slipway finish unassigned', () =>
+            bar.appendChild(place(text(`${p.built}/${p.total}`, { size: FONT.small, color: '#fff' }), 0, 0, 200));
+            row.appendChild(bar);
+            const status = text(`${p.building} under construction${p.lost > 0 ? ` · ${p.lost} lost` : ''} · ${where}${o.fleet !== null ? ` · ${o.fleet.name ?? ''}` : ''}`, { size: FONT.normal, color: COLORS.label, shadow: false });
+            status.classList.add('fl-ellipsis');
+            row.appendChild(place(status, 425, 6, W - 36 - 425 - 110));
+            row.appendChild(place(button('Cancel', 'Stop the order: ships still waiting for a yard are removed and refunded; ships on a slipway finish unassigned', () =>
                 issue('fleetTemplateCancelOrder', [o.id], (r) => {
                     const c = r as { removed: number; refund: number };
                     report = `Order cancelled: ${c.removed} queued ships removed, ${formatMoney(c.refund)} refunded`;
-                }));
-            ordersBox.appendChild(line);
-        }
+                })), W - 36 - 100, 2, 94, 26));
+            ordersBox.appendChild(row);
+        });
+        ordersBox.scrollTop = keep;
     }
 
-    function renderTemplate(t: FleetTemplate, parent: HTMLElement): void {
-        // Name.
-        const nameLine = el('div', 'fleets-detail-line');
-        nameLine.appendChild(el('span', 'fleets-detail-label', 'Name'));
-        const nameInput = el('input', 'fleets-detail-name');
-        nameInput.type = 'text';
-        nameInput.value = t.name;
+    // The selected template (right).
+    const detailX = 290;
+    const detailW = W - detailX - 12;
+    const detailH = ordersTop - 37 - 12;
+    const detail = place(darkRect(96), detailX, 37, detailW, detailH);
+    detail.classList.add('fl-design-detail');
+
+    function renderTemplate(t: FleetTemplate): void {
+        const DW = detailW;
+        // Name, Delete.
+        dropText(detail, 'Name', 10, 13, { size: FONT.large, bold: true, color: 'rgb(120, 120, 120)', shadow: false });
+        const nameInput = place(textBox(t.name, 'Fleet design name', () => {}), 70, 10, 300, 24);
         nameInput.addEventListener('keydown', (e) => {
-            e.stopPropagation();
             if (e.key === 'Enter') nameInput.blur();
         });
         nameInput.addEventListener('change', () => {
             if (nameInput.value.trim() !== '' && nameInput.value !== t.name) issue('fleetTemplateRename', [t.id, nameInput.value]);
         });
-        nameLine.appendChild(nameInput);
-        button(nameLine, 'Delete', 'Delete this fleet design (running build orders continue)', () => {
+        detail.appendChild(nameInput);
+        detail.appendChild(place(button('Delete', 'Delete this fleet design (running build orders continue)', () => {
             selectedId = null;
             issue('fleetTemplateDelete', [t.id]);
-        });
-        parent.appendChild(nameLine);
+        }), DW - 110, 6, 100, 32));
 
-        // Rows.
+        // Rows: Type, Design, Count (−/+), Unit cost, Power, Available.
         const r = rally();
         const pick = pickFleetShips(galaxy, empire, t, r, allowSubstitutes);
-        const table = el('div', 'fleet-designs-rows');
-        const head = el('div', 'fleet-designs-row fleet-designs-head');
-        for (const h of ['Type', 'Design', 'Count', 'Unit cost', 'Power', 'Available']) head.appendChild(el('span', 'fleets-list-header-cell', h));
-        table.appendChild(head);
-        if (t.entries.length === 0) table.appendChild(el('div', 'fleets-list-empty', 'Add designs below'));
-        t.entries.forEach((e, i) => {
-            const row = el('div', 'fleet-designs-row');
-            row.appendChild(el('span', 'fleets-list-cell', resolveSubRoleDescription(e.design.subRole)));
-            const gone = !empire.designs.includes(e.design);
-            const dn = el('span', 'fleets-list-name', e.design.name + (gone ? ' (deleted)' : e.design.isObsolete ? ' (obsolete)' : ''));
-            dn.title = dn.textContent ?? '';
-            row.appendChild(dn);
-            const cnt = el('span', 'fleet-designs-count');
-            button(cnt, '−', 'One fewer (0 removes the row)', () => issue('fleetTemplateSetEntry', [t.id, e.design, e.count - 1]));
-            cnt.appendChild(el('span', 'fleets-list-cell', String(e.count)));
-            button(cnt, '+', 'One more', () => issue('fleetTemplateSetEntry', [t.id, e.design, e.count + 1]));
-            row.appendChild(cnt);
-            row.appendChild(el('span', 'fleets-list-cell fleets-list-number', formatMoney(e.design.calculateCurrentPurchasePrice(galaxy))));
-            row.appendChild(el('span', 'fleets-list-cell fleets-list-number', String(e.design.firepowerRaw * e.count)));
-            const rep = pick.entries[i];
-            const avail = el('span', 'fleets-list-cell fleets-list-number', `${rep.wanted - rep.short}/${rep.wanted}`);
-            avail.title = formReportLines([rep])[0];
-            row.appendChild(avail);
-            table.appendChild(row);
+        type Row = { i: number };
+        const rowsGrid = new OwGrid<Row>({
+            columns: [
+                { id: 'type', header: 'Type', width: 120, render: ({ i }, c) => { c.textContent = resolveSubRoleDescription(t.entries[i].design.subRole); } },
+                {
+                    id: 'design', header: 'Design', fill: 1, render: ({ i }, c) => {
+                        const e = t.entries[i];
+                        const gone = !empire.designs.includes(e.design);
+                        c.textContent = e.design.name + (gone ? ' (deleted)' : e.design.isObsolete ? ' (obsolete)' : '');
+                        c.title = c.textContent;
+                    },
+                },
+                {
+                    id: 'count', header: 'Count', width: 100, align: 'center', render: ({ i }, c) => {
+                        const e = t.entries[i];
+                        const minus = button('−', 'One fewer (0 removes the row)', () => issue('fleetTemplateSetEntry', [t.id, e.design, e.count - 1]));
+                        const plus = button('+', 'One more', () => issue('fleetTemplateSetEntry', [t.id, e.design, e.count + 1]));
+                        minus.classList.add('fl-step');
+                        plus.classList.add('fl-step');
+                        c.append(minus, el('span', 'fl-count', String(e.count)), plus);
+                    },
+                },
+                { id: 'cost', header: 'Unit cost', width: 90, align: 'right', render: ({ i }, c) => { c.textContent = formatMoney(t.entries[i].design.calculateCurrentPurchasePrice(galaxy)); } },
+                { id: 'power', header: 'Power', width: 70, align: 'right', render: ({ i }, c) => { c.textContent = String(t.entries[i].design.firepowerRaw * t.entries[i].count); } },
+                {
+                    id: 'avail', header: 'Available', width: 80, align: 'right', render: ({ i }, c) => {
+                        const rep = pick.entries[i];
+                        c.textContent = `${rep.wanted - rep.short}/${rep.wanted}`;
+                        c.title = formReportLines([rep])[0];
+                    },
+                },
+            ],
+            key: (x) => x.i,
+            rowHeight: 26,
+            empty: 'Add designs below',
         });
-        parent.appendChild(table);
+        rowsGrid.setRows(t.entries.map((_, i) => ({ i })));
+        detail.appendChild(place(rowsGrid.el, 10, 46, DW - 20, 170));
 
         // Add a design.
-        const addLine = el('div', 'fleets-detail-line');
-        addLine.appendChild(el('span', 'fleets-detail-label', 'Add'));
-        const sel = el('select', 'fleets-detail-select');
+        dropText(detail, 'Add', 10, 231, { size: FONT.large, bold: true, color: 'rgb(120, 120, 120)', shadow: false });
         const all: Design[] = [];
+        const options: { value: string; label: string; group?: string }[] = [];
         for (const g of fleetTemplateDesignGroups(empire)) {
-            const og = document.createElement('optgroup');
-            og.label = g.label;
             for (const d of g.designs) {
-                const o = document.createElement('option');
-                o.value = String(all.length);
-                o.textContent = d.name + (d.isObsolete ? ' (obsolete)' : '');
+                options.push({ value: String(all.length), label: d.name + (d.isObsolete ? ' (obsolete)' : ''), group: g.label });
                 all.push(d);
-                og.appendChild(o);
             }
-            sel.appendChild(og);
         }
-        addLine.appendChild(sel);
-        button(addLine, 'Add Design', 'Add one ship of the chosen design', () => {
-            const d = all[Number(sel.value)];
+        const designSel = place(select(options, options[0]?.value ?? '', () => {}), 70, 228, 330, 24);
+        detail.appendChild(designSel);
+        detail.appendChild(place(button('Add Design', 'Add one ship of the chosen design', () => {
+            const d = all[Number(designSel.value)];
             if (d === undefined) return;
             const cur = t.entries.find((x) => x.design === d)?.count ?? 0;
             issue('fleetTemplateSetEntry', [t.id, d, cur + 1]);
-        }, all.length > 0);
-        parent.appendChild(addLine);
+        }, all.length > 0), 410, 224, 140, 32));
 
         // Totals.
         const tot = fleetTemplateTotals(galaxy, t);
-        const totLine = el('div', 'fleets-detail-line');
-        totLine.appendChild(el('span', 'fleets-detail-text', `${tot.ships} ships · total cost ${formatMoney(tot.cost)} · power ${tot.strength} · ${pick.ships.length} available unassigned`));
-        parent.appendChild(totLine);
+        dropText(detail, `${tot.ships} ships   ·   total cost ${formatMoney(tot.cost)}   ·   power ${tot.strength}   ·   ${pick.ships.length} available unassigned`, 10, 266, { size: FONT.normal, color: COLORS.text });
 
         // Options: rally, sector, substitutes, build mode.
-        const optLine = el('div', 'fleets-detail-line');
-        optLine.appendChild(el('span', 'fleets-detail-label', 'Rally'));
-        const rallySel = el('select', 'fleets-detail-select');
-        const cap = document.createElement('option');
-        cap.value = '-1';
-        cap.textContent = `Capital${empire.capital !== null ? ` (${empire.capital.name})` : ''}`;
-        rallySel.appendChild(cap);
-        colonies().forEach((c, i) => {
-            const o = document.createElement('option');
-            o.value = String(i);
-            o.textContent = c.name;
-            rallySel.appendChild(o);
-        });
-        rallySel.value = String(rallyIndex);
-        rallySel.addEventListener('change', () => {
-            rallyIndex = Number(rallySel.value);
+        dropText(detail, 'Rally at', 10, 299, { size: FONT.normal, bold: true, color: COLORS.label, shadow: false });
+        const rallyOptions = [{ value: '-1', label: `Capital${empire.capital !== null ? ` (${empire.capital.name})` : ''}` }, ...colonies().map((c, i) => ({ value: String(i), label: c.name }))];
+        detail.appendChild(place(select(rallyOptions, String(rallyIndex), (v) => {
+            rallyIndex = Number(v);
+            render();
+        }), 90, 296, 220, 24));
+        dropText(detail, 'Build in', 330, 299, { size: FONT.normal, bold: true, color: COLORS.label, shadow: false });
+        const sectorOptions = [{ value: '', label: 'Any sector' }, ...shipyardSectors(galaxy, empire).map((s) => ({ value: `${s.x},${s.y}`, label: `Sector ${sectorLabel(s)}` }))];
+        detail.appendChild(place(select(sectorOptions, sectorKey, (v) => (sectorKey = v)), 400, 296, 150, 24));
+        const subs = checkBox('Same-type substitutes', allowSubstitutes, (v) => {
+            allowSubstitutes = v;
             render();
         });
-        optLine.appendChild(rallySel);
-        optLine.appendChild(el('span', 'fleets-detail-label', 'Build in'));
-        const secSel = el('select', 'fleets-detail-select');
-        const any = document.createElement('option');
-        any.value = '';
-        any.textContent = 'Any sector';
-        secSel.appendChild(any);
-        for (const s of shipyardSectors(galaxy, empire)) {
-            const o = document.createElement('option');
-            o.value = `${s.x},${s.y}`;
-            o.textContent = `Sector ${sectorLabel(s)}`;
-            secSel.appendChild(o);
-        }
-        secSel.value = sectorKey;
-        secSel.addEventListener('change', () => (sectorKey = secSel.value));
-        optLine.appendChild(secSel);
-        const subs = el('input', '');
-        subs.type = 'checkbox';
-        subs.id = 'fleet-designs-subs';
-        subs.checked = allowSubstitutes;
-        subs.addEventListener('change', () => {
-            allowSubstitutes = subs.checked;
-            render();
-        });
-        const subsLabel = el('label', 'fleets-detail-text', 'Same-type substitutes');
-        subsLabel.htmlFor = subs.id;
-        subsLabel.title = 'When too few ships of a design are free, use other designs of the same type';
-        optLine.append(subs, subsLabel);
-        const modeSel = el('select', 'fleets-detail-select');
-        for (const [v, text] of [['missing', 'Build missing ships'], ['all', 'Build all ships']] as const) {
-            const o = document.createElement('option');
-            o.value = v;
-            o.textContent = text;
-            modeSel.appendChild(o);
-        }
-        modeSel.value = mode;
-        modeSel.addEventListener('change', () => (mode = modeSel.value as FleetBuildMode));
-        optLine.appendChild(modeSel);
-        parent.appendChild(optLine);
+        subs.title = 'When too few ships of a design are free, use other designs of the same type';
+        detail.appendChild(place(subs, 10, 332));
+        detail.appendChild(place(select([{ value: 'missing', label: 'Build missing ships' }, { value: 'all', label: 'Build all ships' }], mode, (v) => (mode = v as FleetBuildMode)), 400, 330, 150, 24));
 
         // Actions.
-        const actLine = el('div', 'fleets-detail-line');
-        button(actLine, 'Form from Existing', 'Form a new fleet from finished ships not in any fleet (nearest the rally point first) and gather it there', () =>
+        detail.appendChild(place(button('Form from Existing', 'Form a new fleet from finished ships not in any fleet (nearest the rally point first) and gather it there', () =>
             void withFleetFormationPrompt(empire, () =>
                 issue('fleetTemplateForm', [t.id, rally(), allowSubstitutes], (res) => {
                     const f = res as FormFleetResult;
                     report = [f.message, ...formReportLines(f.entries)].join('\n');
-                })), t.entries.length > 0);
-        button(actLine, 'Build Fleet', 'Order the ships at your ship yards; each completed ship joins the forming fleet', () =>
+                })), t.entries.length > 0), 10, 366, 200, 40));
+        detail.appendChild(place(button('Build Fleet', 'Order the ships at your ship yards; each completed ship joins the forming fleet', () =>
             void withFleetFormationPrompt(empire, () =>
                 issue('fleetTemplateBuild', [t.id, mode, sector(), rallyIndex < 0 && sectorKey !== '' ? null : rally(), allowSubstitutes], (res) => {
                     report = buildReportText(res as BuildFleetResult);
-                })), t.entries.length > 0);
-        parent.appendChild(actLine);
+                })), t.entries.length > 0), 220, 366, 200, 40));
     }
 
     function render(): void {
-        container.replaceChildren();
+        container.querySelectorAll('.fl-designs-own').forEach((x) => x.remove());
         const bk = fleetDesignBook(empire);
         if (selectedId !== null && !bk.templates.some((t) => t.id === selectedId)) selectedId = null;
         if (selectedId === null && bk.templates.length > 0) selectedId = bk.templates[0].id;
 
-        const layout = el('div', 'fleet-designs');
-        const list = el('div', 'fleet-designs-list');
-        for (const t of bk.templates) {
-            const tot = fleetTemplateTotals(galaxy, t);
-            const row = el('div', 'fleets-list-row fleet-designs-template' + (t.id === selectedId ? ' fleets-list-row-selected' : ''));
-            row.appendChild(el('span', 'fleets-list-name', t.name));
-            row.appendChild(el('span', 'fleets-list-cell fleets-list-number', `${tot.ships} ships`));
-            row.addEventListener('click', () => {
-                selectedId = t.id;
-                report = '';
-                render();
-            });
-            list.appendChild(row);
+        templateGrid.setRows(bk.templates);
+        templateGrid.select(selectedId, false);
+        if (templateGrid.el.parentElement === null) {
+            templateGrid.el.classList.add('fl-designs-keep');
+            container.appendChild(place(templateGrid.el, 10, 37, 270, ordersTop - 37 - 60));
         }
-        if (bk.templates.length === 0) list.appendChild(el('div', 'fleets-list-empty', 'No fleet designs yet'));
-        button(list, 'New Fleet Design', 'Create an empty fleet design', () =>
+        const newBtn = place(button('New Fleet Design', 'Create an empty fleet design', () =>
             issue('fleetTemplateCreate', [''], (id) => {
                 selectedId = id as number;
-            }));
-        layout.appendChild(list);
+            })), 10, ordersTop - 50, 270, 38);
+        newBtn.classList.add('fl-designs-own');
+        container.appendChild(newBtn);
 
-        const right = el('div', 'fleet-designs-detail');
+        detail.replaceChildren();
+        if (detail.parentElement === null) container.appendChild(detail);
         const t = bk.templates.find((x) => x.id === selectedId) ?? null;
-        if (t !== null) renderTemplate(t, right);
-        else right.appendChild(el('div', 'fleets-list-empty', 'Create a fleet design: pick ship designs and counts, then form it from idle ships or build it'));
-        if (report !== '') right.appendChild(el('pre', 'fleet-designs-report', report));
-        layout.appendChild(right);
-        container.appendChild(layout);
+        if (t !== null) renderTemplate(t);
+        else {
+            detail.appendChild(place(text('Create a fleet design: pick ship designs and counts, then form it from idle ships or build it.', { size: FONT.large, color: COLORS.label, shadow: false, wrapWidth: detailW - 40 }), 20, 20));
+        }
+        if (report !== '') {
+            const box = place(scrollPanel('fl-report-box'), 10, 416, detailW - 20, detailH - 426);
+            box.appendChild(text(report, { size: FONT.normal, color: COLORS.text, shadow: false, wrapWidth: detailW - 44, className: 'fl-report-text' }));
+            detail.appendChild(box);
+        }
         renderOrders();
-        container.appendChild(ordersBox);
     }
 
     return { render, refreshOrders: renderOrders };

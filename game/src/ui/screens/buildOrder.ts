@@ -1,484 +1,303 @@
-// Build Order panel (task 16c, purchase follow-up): a port of the original's Build Order
-// window, opened by F9 or the top-bar btnBuildOrder button. Rows follow
-// Main.Part2.cs:404 method_628 (one per buildable sub-role), each row
-// method_629 / method_630 (current amount, Order Amount spinner, Design drop-down: DesignDropDown, initially FindNewestCanBuild),
-// the row totals Main.Part2.cs:950 method_633 (amount x unit purchase cost :1113 method_641,
-// amount x unit maintenance), the panel totals :929 method_632 / :911 method_631 and the
-// Purchase button :1135 btnBuildOrderPurchase_Click → Empire.6.cs:3017 BuildNewShips.
-// TODO(port): Advisor Suggest column — RefactorForceStructureProjectionsToCosts(randomizedOrder: false) over the state + private force-structure projections (Main.Part2.cs:509-560)
+// Build Order screen: a 1:1 port of the original's pnlBuildOrder (the "purchase new ships" screen), opened by the top
+// bar's btnBuildOrder (buildButton.png, Main.Part2.cs 1196 btnBuildOrder_Click → 404 method_628), F9, or an advisor
+// BuildOrder suggestion. Built on the shared original-style window (originalWindow.ts): the ScreenPanel is 810 × 778,
+// every control at the Location / Size method_628 / method_629 give it (body-relative original pixels).
+//
+// Rows (method_629): Type label (font_7) · Current Amount · Advisor Suggest · Order Amount (NumericUpDown 0..1000,
+// prefilled with the advisor's suggestion unless state construction is Manual; yellow bold while above 0) · Design
+// (DesignDropDown: flag + small ship picture + "<role> (<name>)", initially FindNewestCanBuild; or the "(No buildable
+// designs)" / "(No construction yards for this ship type)" note) · Purchase Costs (font_7) · Maint. Costs (font_6).
+// The private ship types sit below the state ones (no maintenance). Totals (yellow), the available money / cashflow,
+// Cancel and "Purchase for X credits" → Empire.6.cs 3017 BuildNewShips via the player command log.
+//
+// Extras kept from our earlier panel: the design tooltip (size, unit cost, maintenance), a toast with the result,
+// live refresh of the counts / money / design lists while open.
+// TODO(port): AutoPauseWhenInPopupWindow pause / resume around the screen — Main.Part2.cs 406 method_628 / 1080 method_639.
 
 import './buildOrder.css';
 import type { Empire } from '../../sim/empire';
 import type { Galaxy } from '../../sim/galaxy';
 import type { Design } from '../../sim/design';
 import { BuiltObjectSubRole } from '../../sim/builtObjectTypes';
-import { findNewestCanBuild, getBuildableDesignsBySubRoles, resolveSubRoleDescription } from '../../sim/designGeneration';
-import type { BuildNewShipsResult } from '../../sim/construction/empireConstruction';
-import { buildOrderTotalCost, designCalculateMaintenanceCosts } from '../../sim/construction/empireConstruction';
 import { issuePlayerCommand } from '../../sim/player/playerCommands';
-import { checkPirateEmpireHasCriminalNetwork } from '../../sim/missions/cmdTroops';
-import { resolveGameText } from '../../sim/textResolver';
+import { moneyPanelIncome } from '../../sim/treasury';
 import { formatThousands } from '../../sim/diplomacyTick';
-import { formatMoney } from '../hud';
+import { builtObjectImageUrl, resolveDrawPictureRef } from '../../render/builtObjectLayer';
+import { empireFlagUrl } from '../selectionInfoView';
 import { showToast } from '../toast';
+import {
+    COLORS,
+    FONT,
+    el,
+    glassButton,
+    imageCombo,
+    messageBox,
+    numericUpDown,
+    openOriginalWindow,
+    place,
+    setButtonLabel,
+    setText,
+    text,
+    type ImageCombo,
+    type ImageComboItem,
+    type NumericUpDown,
+    type OriginalWindow,
+} from '../originalWindow';
+import {
+    BUILD_ORDER_COLUMNS as C,
+    BUILD_ORDER_CONTAINER,
+    BUILD_ORDER_SIZE,
+    BUILD_ORDER_SUBROLES,
+    BUILD_ORDER_TOTALS_Y,
+    ORDER_AMOUNT_MAX,
+    ORDER_AMOUNT_MIN,
+    bt,
+    buildOrderAdvisorTargets,
+    buildOrderDesignLabel,
+    buildOrderPurchaseLists,
+    buildOrderRowYs,
+    buildOrderRows,
+    buildOrderTotals,
+    cannotAffordMessage,
+    initialOrderAmount,
+    orderAmountEnabled,
+    orderAmountHighlighted,
+    purchaseButtonState,
+    purchaseResultText,
+    type BuildOrderRow,
+} from './buildOrderModel';
 
-// Main.Part2.cs:404 method_628: the row order.
-export const BUILD_ORDER_SUBROLES: readonly BuiltObjectSubRole[] = [
-    BuiltObjectSubRole.Escort,
-    BuiltObjectSubRole.Frigate,
-    BuiltObjectSubRole.Destroyer,
-    BuiltObjectSubRole.Cruiser,
-    BuiltObjectSubRole.CapitalShip,
-    BuiltObjectSubRole.TroopTransport,
-    BuiltObjectSubRole.Carrier,
-    BuiltObjectSubRole.ResupplyShip,
-    BuiltObjectSubRole.ExplorationShip,
-    BuiltObjectSubRole.ConstructionShip,
-    BuiltObjectSubRole.SmallFreighter,
-    BuiltObjectSubRole.MediumFreighter,
-    BuiltObjectSubRole.LargeFreighter,
-    BuiltObjectSubRole.MiningShip,
-    BuiltObjectSubRole.GasMiningShip,
-    BuiltObjectSubRole.PassengerShip,
-];
-
-// Main.Part2.cs:971 method_633: the private sub-roles, whose maintenance is 0.
-export function isPrivateBuildSubRole(subRole: BuiltObjectSubRole): boolean {
-    switch (subRole) {
-        case BuiltObjectSubRole.SmallFreighter:
-        case BuiltObjectSubRole.MediumFreighter:
-        case BuiltObjectSubRole.LargeFreighter:
-        case BuiltObjectSubRole.PassengerShip:
-        case BuiltObjectSubRole.GasMiningShip:
-        case BuiltObjectSubRole.MiningShip:
-            return true;
-        default:
-            return false;
-    }
-}
-
-// BaconMain.GetNumberOfShipsOfSubRole: PrivateBuiltObjects + BuiltObjects of that sub-role.
-export function shipsOfSubRoleCount(empire: Empire, subRole: BuiltObjectSubRole): number {
-    let num = 0;
-    for (const bo of empire.privateBuiltObjects) if (bo && bo.subRole === subRole) num++;
-    for (const bo of empire.builtObjects) if (bo && bo.subRole === subRole) num++;
-    return num;
-}
-
-// DesignList.GetBuildableDesignsBySubRoles({ subRole }, empire) (sim/designGeneration.ts).
-export function buildableDesignsBySubRole(empire: Empire, subRole: BuiltObjectSubRole): Design[] {
-    return getBuildableDesignsBySubRoles(empire.designs, [subRole], empire);
-}
-
-/**
- * DesignDropDown.BindData: the row's designs sorted by Design.CompareTo (sub-role, then name); a row's list is the
- * buildable designs of that sub-role (not obsolete, empire.CanBuildDesign).
- */
-export function buildOrderDesignOptions(empire: Empire, subRole: BuiltObjectSubRole): Design[] {
-    return buildableDesignsBySubRole(empire, subRole)
-        .slice()
-        .sort((a, b) => (a.subRole !== b.subRole ? a.subRole - b.subRole : a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
-}
-
-/** DesignDropDown.OnDrawItem text: "<sub-role> (<design name>)". */
-export function buildOrderDesignLabel(design: Design): string {
-    return `${resolveSubRoleDescription(design.subRole)} (${design.name})`;
-}
-
-export interface BuildOrderRow {
-    subRole: BuiltObjectSubRole;
-    type: string;
-    current: number;
-    design: Design | null;
-    /** The drop-down's designs (empty: a note is shown instead of the drop-down). */
-    options: Design[];
-    designText: string;
-    unitCost: number;
-    unitMaintenance: number;
-}
-
-// Main.Part2.cs:799 method_629 + :873 method_630 (design choice), :1113 method_641
-// (unit cost) and :971 method_633 (unit maintenance, 0 for private sub-roles).
-export function buildOrderRow(empire: Empire, galaxy: Galaxy, subRole: BuiltObjectSubRole, chosen: Design | null = null): BuildOrderRow {
-    const current = shipsOfSubRoleCount(empire, subRole);
-    const buildable = buildableDesignsBySubRole(empire, subRole);
-    let design: Design | null = null;
-    let designText: string;
-    let options: Design[] = [];
-    if (buildable.length > 0) {
-        const s = buildable[0].subRole;
-        if (
-            empire.constructionYards.length <= 0 &&
-            s !== BuiltObjectSubRole.ColonyShip &&
-            s !== BuiltObjectSubRole.ConstructionShip &&
-            s !== BuiltObjectSubRole.ResupplyShip
-        ) {
-            designText = '(No construction yards for this ship type)';
-        } else {
-            options = buildOrderDesignOptions(empire, subRole);
-            // The drop-down's selection: the player's pick while it is still in the list, else the newest.
-            design = chosen !== null && options.includes(chosen) ? chosen : findNewestCanBuild(empire.designs, subRole, empire);
-            designText = design?.name ?? '';
-        }
-    } else {
-        designText = '(No buildable designs)';
-    }
-    return {
-        subRole,
-        type: resolveSubRoleDescription(subRole),
-        current,
-        design,
-        options,
-        designText,
-        unitCost: design ? design.calculateCurrentPurchasePrice(galaxy) : 0,
-        unitMaintenance: design && !isPrivateBuildSubRole(subRole) ? designCalculateMaintenanceCosts(galaxy, design, empire) : 0,
-    };
-}
-
-/** One row per BUILD_ORDER_SUBROLES entry (method_628). */
-export function buildOrderRows(empire: Empire, galaxy: Galaxy, chosen: ReadonlyMap<BuiltObjectSubRole, Design> = new Map()): BuildOrderRow[] {
-    return BUILD_ORDER_SUBROLES.map((s) => buildOrderRow(empire, galaxy, s, chosen.get(s) ?? null));
-}
-
-// Main.Part2.cs:1043 method_637(…, "OrderAmount", 0, 1000, …): NumericUpDown Minimum 0, Maximum 1000.
-export const ORDER_AMOUNT_MIN = 0;
-export const ORDER_AMOUNT_MAX = 1000;
-
-/** The Order Amount spinner's value: an integer clamped to [0, 1000] (non-numbers → 0). */
-export function clampOrderAmount(v: unknown): number {
-    const n = typeof v === 'number' ? v : typeof v === 'string' ? Number(v.trim()) : NaN;
-    if (!Number.isFinite(n)) return ORDER_AMOUNT_MIN;
-    return Math.min(ORDER_AMOUNT_MAX, Math.max(ORDER_AMOUNT_MIN, Math.trunc(n)));
-}
-
-// Empire.3.cs:3577 CheckEmpireHasOwnedColonies.
-export function checkEmpireHasOwnedColonies(empire: Empire): boolean {
-    for (const habitat of empire.colonies ?? []) if (habitat != null && habitat.owner === empire) return true;
-    return false;
-}
-
-// Main.Part2.cs:840-846 (method_629): a pirate without a criminal network or owned colonies cannot order
-// resupply / construction ships; :858-862: a row without a design (the Label) has its spinner at 0 and disabled.
-export function orderAmountEnabled(empire: Empire, row: BuildOrderRow): boolean {
-    if (row.design === null) return false;
-    if (
-        (row.subRole === BuiltObjectSubRole.ResupplyShip || row.subRole === BuiltObjectSubRole.ConstructionShip) &&
-        empire.pirateEmpireBaseHabitat != null &&
-        !checkPirateEmpireHasCriminalNetwork(empire) &&
-        !checkEmpireHasOwnedColonies(empire)
-    ) {
-        return false;
-    }
-    return true;
-}
-
-export interface BuildOrderTotals {
-    /** Per row: amount x unit purchase cost (method_633 `_<Type>Cost`). */
-    rowCost: number[];
-    /** Per row: amount x unit maintenance, 0 for private sub-roles (method_633 `_<Type>Maintenance`). */
-    rowMaintenance: number[];
-    /** method_632's return: the purchase total. */
-    total: number;
-    /** method_632's double_7: the annual maintenance total (state rows only). */
-    maintenance: number;
-}
-
-// Main.Part2.cs:929 method_632 / :950 method_633 over the panel rows (amounts[i] is rows[i]'s spinner).
-export function buildOrderTotals(galaxy: Galaxy, empire: Empire, rows: readonly BuildOrderRow[], amounts: readonly number[]): BuildOrderTotals {
-    const n = rows.map((_, i) => clampOrderAmount(amounts[i] ?? 0));
-    const { total, maintenance } = buildOrderTotalCost(galaxy, empire, rows.map((r) => r.design), n);
-    return {
-        rowCost: rows.map((r, i) => n[i] * r.unitCost),
-        rowMaintenance: rows.map((r, i) => n[i] * r.unitMaintenance),
-        total,
-        maintenance,
-    };
-}
-
-// Main.Part2.cs:911 method_631: enabled with "Purchase for X credits" (GameText) when the total is positive.
-export function purchaseButtonState(total: number): { enabled: boolean; label: string } {
-    return total > 0 ? { enabled: true, label: `Purchase for ${formatThousands(total)} credits` } : { enabled: false, label: 'Purchase' };
-}
-
-// Main.Part2.cs:1136-1172 btnBuildOrderPurchase_Click's 16 method_643 calls (Escort … PassengerShip): the rows with a
-// design and an amount > 0, in panel order.
-export function buildOrderPurchaseLists(rows: readonly BuildOrderRow[], amounts: readonly number[]): { designs: Design[]; amounts: number[] } {
-    const designs: Design[] = [];
-    const out: number[] = [];
-    for (const subRole of BUILD_ORDER_SUBROLES) {
-        const i = rows.findIndex((r) => r.subRole === subRole);
-        if (i < 0) continue;
-        const num = clampOrderAmount(amounts[i] ?? 0);
-        const design = rows[i].design;
-        if (design !== null && num > 0) {
-            designs.push(design);
-            out.push(num);
-        }
-    }
-    return { designs, amounts: out };
-}
-
-/** The toast text for a purchase result: the cannot-afford message box (caption + text) or the ships queued. */
-export function purchaseResultText(result: BuildNewShipsResult): string {
-    if (result.message !== undefined) {
-        const title = result.title !== undefined ? resolveGameText(result.title) : '';
-        const message = resolveGameText(result.message).replace(/\s*\n+\s*/g, ' ');
-        return title ? `${title}: ${message}` : message;
-    }
-    const n = result.built.length;
-    return `Build order placed: ${n} ${n === 1 ? 'ship' : 'ships'} queued for construction`;
-}
+export * from './buildOrderModel';
 
 export interface BuildOrderOptions {
     /** The player's empire. */
     empire: Empire;
 }
 
-interface OpenState {
-    root: HTMLElement;
-    close: () => void;
-}
+let open: OriginalWindow | null = null;
 
-let open: OpenState | null = null;
-
-/** Open the Build Order panel, or close it if it is already open. */
+/** Open the Build Order screen, or close it if it is already open (btnBuildOrder_Click). */
 export function toggleBuildOrder(opts: BuildOrderOptions): void {
-    if (open) {
-        open.close();
-    } else {
-        open = createBuildOrder(opts);
-    }
+    if (open && !open.closed) open.close();
+    else open = createBuildOrder(opts);
 }
 
-/** Close the Build Order panel (no-op when closed). */
+/** Close the Build Order screen (no-op when closed). */
 export function closeBuildOrder(): void {
     open?.close();
 }
 
-function el<K extends keyof HTMLElementTagNameMap>(tag: K, className: string, text?: string): HTMLElementTagNameMap[K] {
-    const e = document.createElement(tag);
-    e.className = className;
-    if (text !== undefined) e.textContent = text;
-    return e;
+/** Labels (method_636): (170, 170, 170) on transparent, 23 px high, text aligned in the box. */
+function label(content: string, x: number, y: number, w: number, align: 'left' | 'center' | 'right', bold: boolean, size: number = FONT.large): HTMLDivElement {
+    const t = text(content, { size, bold, color: COLORS.label, shadow: false, className: `bo-cell bo-${align}` });
+    return place(t, x, y, w, 23);
 }
 
-function setText(e: HTMLElement, text: string, title = false): void {
-    if (e.textContent !== text) e.textContent = text;
-    if (title && e.title !== text) e.title = text;
+/** Small ship picture of a design (BuiltObjectImageCache small images: Rotate90FlipNone). */
+function designShipUrl(d: Design): string | null {
+    return builtObjectImageUrl(resolveDrawPictureRef({ pictureRef: d.pictureRef, isPlanetDestroyer: false, subRole: d.subRole, builtObjectID: 0 }));
 }
 
-function createBuildOrder(opts: BuildOrderOptions): OpenState {
-    const galaxy: Galaxy = opts.empire.galaxy;
+function createBuildOrder(opts: BuildOrderOptions): OriginalWindow {
+    const empire = opts.empire;
+    const galaxy: Galaxy = empire.galaxy;
+    let timer = 0;
+    const win = openOriginalWindow({
+        id: 'buildorder',
+        title: bt('Build Order'),
+        icon: 'buildButton.png',
+        width: BUILD_ORDER_SIZE.w,
+        height: BUILD_ORDER_SIZE.h,
+        onClose: () => {
+            window.clearInterval(timer);
+            for (const c of combos) c?.close();
+            if (open === win) open = null;
+        },
+    });
+    const body = win.body;
+    body.classList.add('bo-body');
 
-    const root = el('div', 'build-order-wrap');
-    const win = el('div', 'build-order-window');
-    const titlebar = el('div', 'build-order-titlebar');
-    titlebar.appendChild(el('div', 'build-order-heading', 'Build Order'));
-    const closeBtn = el('button', 'build-order-close', '✕');
-    closeBtn.type = 'button';
-    closeBtn.title = 'Close';
-    titlebar.appendChild(closeBtn);
-    win.appendChild(titlebar);
+    // lblBuildOrderExplanation (10, 10), font_6, MaximumSize 720 × 35.
+    const expl = text(bt('Build Order Explanation'), { size: FONT.large, color: COLORS.label, shadow: false, wrapWidth: 720, className: 'bo-explanation' });
+    body.appendChild(place(expl, 10, 10));
 
-    const body = el('div', 'build-order-body');
-    const money = el('div', 'build-order-money');
-    body.appendChild(money);
+    // Column headers at y 60 (font_3 bold): AutoSize labels with a MaximumSize (wrapping, centred) for the three
+    // amount columns; 40 px high boxes for Design (left), Purchase Costs and Maint. Costs (right).
+    const head = (s: string, x: number, maxW: number): void => {
+        const t = text(s, { size: FONT.normal, bold: true, color: COLORS.label, shadow: false, className: 'bo-head-auto' });
+        t.style.maxWidth = `${maxW}px`;
+        body.appendChild(place(t, x, 60));
+    };
+    head(bt('Current Amount'), C.current.x, 60);
+    head(bt('Advisor Suggest'), C.advisor.x, 60);
+    head(bt('Order Amount'), C.order.x, 70);
+    const headBox = (s: string, x: number, w: number, align: 'left' | 'right'): void => {
+        const t = text(s, { size: FONT.normal, bold: true, color: COLORS.label, shadow: false, className: `bo-head-box bo-${align}` });
+        body.appendChild(place(t, x, 60, w, 40));
+    };
+    headBox(bt('Design'), C.design.x, C.design.w, 'left');
+    headBox(bt('Purchase Costs'), C.cost.x + 5, 70, 'right');
+    headBox(bt('Maintenance Costs Abbreviated'), C.maintenance.x + 5, 65, 'right');
 
-    // Type | Current Amount | Order Amount | Design | Purchase Costs | Maint. Costs
-    const header = el('div', 'build-order-header');
-    for (const [text, num] of [['Type', false], ['Current Amount', true], ['Order Amount', true], ['Design', false], ['Purchase Costs', true], ['Maint. Costs', true]] as const) {
-        header.appendChild(el('span', 'build-order-header-cell' + (num ? ' build-order-number' : ''), text));
-    }
-    body.appendChild(header);
+    // pnlBuildOrderContainer and its rows.
+    const container = place(el('div', 'bo-container'), BUILD_ORDER_CONTAINER.x, BUILD_ORDER_CONTAINER.y, BUILD_ORDER_CONTAINER.w, BUILD_ORDER_CONTAINER.h);
+    body.appendChild(container);
 
-    // Rows are created once (the sub-role list is fixed) and updated in place.
-    const lines: HTMLElement[] = [];
-    const inputs: HTMLInputElement[] = [];
-    for (const subRole of BUILD_ORDER_SUBROLES) {
-        // The private ships sit under their own spacer (Main.Part2.cs:741 num5 += num2).
-        if (subRole === BuiltObjectSubRole.SmallFreighter) body.appendChild(el('div', 'build-order-separator'));
-        const line = el('div', 'build-order-row');
-        const input = el('input', 'build-order-amount');
-        input.type = 'number';
-        input.min = String(ORDER_AMOUNT_MIN);
-        input.max = String(ORDER_AMOUNT_MAX);
-        input.step = '1';
-        input.value = '0';
-        const amountCell = el('span', 'build-order-cell build-order-number');
-        amountCell.appendChild(input);
-        line.append(
-            el('span', 'build-order-name'),
-            el('span', 'build-order-cell build-order-number'),
-            amountCell,
-            el('span', 'build-order-cell'),
-            el('span', 'build-order-cell build-order-number'),
-            el('span', 'build-order-cell build-order-number'),
-        );
-        lines.push(line);
-        inputs.push(input);
-        body.appendChild(line);
-    }
-
-    // Main.Part2.cs:766 "TOTAL Purchase and Maintenance Costs" row (FfJsLkoYvX / lblBuildOrderTotalMaintenance).
-    const totalLine = el('div', 'build-order-row build-order-total');
-    const totalLabel = el('span', 'build-order-name', 'TOTAL Purchase and Maintenance Costs');
-    const totalCost = el('span', 'build-order-cell build-order-number');
-    const totalMaint = el('span', 'build-order-cell build-order-number');
-    totalLine.append(totalLabel, totalCost, totalMaint);
-    body.appendChild(totalLine);
-
-    const footer = el('div', 'build-order-footer');
-    const cancel = el('button', 'build-order-button', 'Cancel');
-    cancel.type = 'button';
-    const purchase = el('button', 'build-order-button build-order-purchase', 'Purchase');
-    purchase.type = 'button';
-    purchase.disabled = true;
-    footer.append(cancel, purchase);
-    body.appendChild(footer);
-
-    win.appendChild(body);
-    root.appendChild(win);
-    document.body.appendChild(root);
-
-    let rows: BuildOrderRow[] = [];
-    /** The drop-down picks per row (method_634 SelectedValueChanged). */
+    const advisorTargets = buildOrderAdvisorTargets(galaxy, empire);
     const chosen = new Map<BuiltObjectSubRole, Design>();
-    const selects: (HTMLSelectElement | null)[] = BUILD_ORDER_SUBROLES.map(() => null);
-    const selectKeys: string[] = BUILD_ORDER_SUBROLES.map(() => '');
+    let rows: BuildOrderRow[] = buildOrderRows(empire, galaxy, chosen, advisorTargets);
+    const ys = buildOrderRowYs();
 
-    /** Cell 3: a DesignDropDown for a row with designs, else the note label; rebuilt only when the list changes. */
+    interface RowView {
+        current: HTMLDivElement;
+        advisor: HTMLDivElement;
+        spin: NumericUpDown;
+        designCell: HTMLDivElement;
+        cost: HTMLDivElement;
+        maintenance: HTMLDivElement;
+    }
+    const views: RowView[] = [];
+    const combos: (ImageCombo | null)[] = BUILD_ORDER_SUBROLES.map(() => null);
+    const comboKeys: string[] = BUILD_ORDER_SUBROLES.map(() => '');
+
+    rows.forEach((r, i) => {
+        const y = ys[i];
+        container.appendChild(label(r.type, C.type.x, y, C.type.w, 'left', true));
+        const current = container.appendChild(label(String(r.current), C.current.x, y, C.current.w, 'center', false));
+        const advisor = container.appendChild(label(String(r.advisor), C.advisor.x, y, C.advisor.w, 'center', false));
+        const spin = numericUpDown({ value: initialOrderAmount(empire, r), min: ORDER_AMOUNT_MIN, max: ORDER_AMOUNT_MAX, size: FONT.large, onChange: () => renderTotals() });
+        container.appendChild(place(spin.el, C.order.x, y, C.order.w, 23));
+        const designCell = container.appendChild(place(el('div', 'bo-design'), C.design.x, y - 1, C.design.w, 25));
+        const cost = container.appendChild(label('0', C.cost.x, y, C.cost.w, 'right', true));
+        const maintenance = container.appendChild(label('0', C.maintenance.x, y, C.maintenance.w, 'right', false));
+        views.push({ current, advisor, spin, designCell, cost, maintenance });
+    });
+
+    // Totals (num29), money line (+30) and the buttons (+67).
+    const ty = BUILD_ORDER_TOTALS_Y;
+    body.appendChild(place(text(bt('TOTAL Purchase and Maintenance Costs'), { size: FONT.large, bold: true, color: COLORS.label, shadow: false }), 357, ty));
+    const totalCost = body.appendChild(label('0', C.cost.x - 5, ty + 4, C.cost.w + 5, 'right', true));
+    totalCost.style.color = 'rgb(255, 255, 0)';
+    const totalMaint = body.appendChild(label('0', C.maintenance.x, ty + 4, C.maintenance.w, 'right', false));
+    totalMaint.style.color = 'rgb(255, 255, 0)';
+    body.appendChild(place(text(bt('Available Money and Cashflow'), { size: FONT.large, bold: true, color: COLORS.label, shadow: false }), 414, ty + 30));
+    const funds = body.appendChild(label('', C.cost.x - 5, ty + 34, C.cost.w + 5, 'right', true));
+    const cashflow = body.appendChild(label('', C.maintenance.x, ty + 34, C.maintenance.w, 'right', false));
+
+    const cancel = glassButton(bt('Cancel'), { size: 15.83, onClick: () => win.close() });
+    body.appendChild(place(cancel, 12, ty + 67, 238, 40));
+    const purchase = glassButton(bt('Purchase'), { size: 15.83, disabled: true, onClick: () => void onPurchase() });
+    body.appendChild(place(purchase, 260, ty + 67, 520, 40));
+
+    /** The design cell: a DesignDropDown for a row with designs, else the note label; rebuilt only when the list changes. */
     function renderDesignCell(i: number, r: BuildOrderRow): void {
-        const cell = lines[i].children[3] as HTMLElement;
+        const cell = views[i].designCell;
         if (r.options.length === 0 || r.design === null) {
-            if (selects[i] !== null) {
-                selects[i] = null;
-                selectKeys[i] = '';
-                cell.replaceChildren();
+            if (combos[i] !== null || cell.childElementCount === 0) {
+                combos[i]?.close();
+                combos[i] = null;
+                comboKeys[i] = '';
+                cell.replaceChildren(place(text(r.designText, { size: FONT.large, color: COLORS.label, shadow: false, className: 'bo-cell bo-center' }), 0, 1, C.design.w, 23));
             }
-            setText(cell, r.designText);
-            cell.title = r.designText;
-            cell.classList.add('build-order-note');
             return;
         }
-        cell.classList.remove('build-order-note');
-        const key = r.options.map((d) => d.name).join('\u0001');
-        let sel = selects[i];
-        if (sel === null || selectKeys[i] !== key) {
-            sel = el('select', 'build-order-design');
-            sel.dataset.subRole = String(r.subRole);
-            r.options.forEach((d, k) => {
-                const o = document.createElement('option');
-                o.value = String(k);
-                o.textContent = buildOrderDesignLabel(d);
-                o.title = `${d.name}: size ${d.size}, cost ${formatThousands(d.calculateCurrentPurchasePrice(galaxy))}`;
-                sel!.appendChild(o);
+        const key = r.options.map((d) => `${d.name}|${d.pictureRef}`).join('\u0001');
+        if (combos[i] === null || comboKeys[i] !== key) {
+            combos[i]?.close();
+            const flag = empireFlagUrl(galaxy, empire).catch(() => null);
+            const items: ImageComboItem[] = r.options.map((d, k) => ({
+                value: String(k),
+                label: buildOrderDesignLabel(d),
+                // OnDrawItem: the design empire's flag at x 3, the small ship picture at x 30, the text at x 49.
+                pictures: [
+                    { url: flag, x: 3 },
+                    { url: designShipUrl(d), x: 30, square: true, rotate: 90 },
+                ],
+                title: `${d.name}: size ${d.size}, cost ${formatThousands(d.calculateCurrentPurchasePrice(galaxy))}`,
+            }));
+            const combo = imageCombo({
+                items,
+                value: String(r.options.indexOf(r.design)),
+                textX: 49,
+                size: FONT.large,
+                maxItems: 10,
+                onChange: (v) => {
+                    const pick = rows[i].options[Number(v)];
+                    if (pick !== undefined) chosen.set(rows[i].subRole, pick);
+                    refresh();
+                },
             });
-            sel.addEventListener('change', () => {
-                const pick = r.options[Number(sel!.value)];
-                if (pick !== undefined) chosen.set(r.subRole, pick);
-                render();
-            });
-            selects[i] = sel;
-            selectKeys[i] = key;
-            cell.replaceChildren(sel);
+            // DesignDropDown.Size(250, …), then the control sized to int_77 = 280.
+            cell.replaceChildren(place(combo.el, 0, 0, C.design.w, 25));
+            combos[i] = combo;
+            comboKeys[i] = key;
         }
-        sel.value = String(r.options.indexOf(r.design));
-        cell.title = `${r.design.name}: size ${r.design.size} — unit cost ${formatThousands(r.unitCost)}, maintenance ${formatThousands(r.unitMaintenance)}`;
+        combos[i]!.setValue(String(r.options.indexOf(r.design)));
+        const c = combos[i]!.el;
+        c.title = `${r.design.name}: size ${r.design.size} — unit cost ${formatThousands(r.unitCost)}, maintenance ${formatThousands(r.unitMaintenance)}`;
     }
 
-    function amounts(): number[] {
-        return inputs.map((i) => clampOrderAmount(i.value));
-    }
+    const amounts = (): number[] => views.map((v) => v.spin.value);
 
-    // Main.Part2.cs:911 method_631 (totals + button) and :1003 method_634 (spinner highlight).
+    // method_631 (totals + button) and method_634 (spinner colours).
     function renderTotals(): void {
         const a = amounts();
-        const t = buildOrderTotals(galaxy, opts.empire, rows, a);
+        const t = buildOrderTotals(galaxy, empire, rows, a);
         rows.forEach((_, i) => {
-            const c = lines[i].children as HTMLCollectionOf<HTMLElement>;
-            setText(c[4], formatThousands(t.rowCost[i]));
-            setText(c[5], formatThousands(t.rowMaintenance[i]));
-            inputs[i].classList.toggle('build-order-amount-set', a[i] > 0);
+            setText(views[i].cost, formatThousands(t.rowCost[i]));
+            setText(views[i].maintenance, formatThousands(t.rowMaintenance[i]));
+            const hot = orderAmountHighlighted(a[i]);
+            views[i].spin.setStyle(hot ? 'rgb(255, 255, 0)' : COLORS.label, hot);
         });
         setText(totalCost, formatThousands(t.total));
         setText(totalMaint, formatThousands(t.maintenance));
         const b = purchaseButtonState(t.total);
-        setText(purchase, b.label);
+        setButtonLabel(purchase, b.label);
         purchase.disabled = !b.enabled;
     }
 
-    function render(): void {
-        setText(money, `Available money: ${formatMoney(opts.empire.stateMoney)}`);
-        rows = buildOrderRows(opts.empire, galaxy, chosen);
+    function refresh(): void {
+        rows = buildOrderRows(empire, galaxy, chosen, advisorTargets);
         rows.forEach((r, i) => {
-            const c = lines[i].children as HTMLCollectionOf<HTMLElement>;
-            setText(c[0], r.type);
-            setText(c[1], String(r.current));
-            const enabled = orderAmountEnabled(opts.empire, r);
-            if (!enabled && inputs[i].value !== '0') inputs[i].value = '0';
-            inputs[i].disabled = !enabled;
-            void c;
+            setText(views[i].current, String(r.current));
+            const enabled = orderAmountEnabled(empire, r);
+            if (!enabled && views[i].spin.value !== 0) views[i].spin.setValue(0);
+            views[i].spin.setEnabled(enabled);
             renderDesignCell(i, r);
         });
+        setText(funds, formatThousands(empire.stateMoney));
+        const income = moneyPanelIncome(galaxy, empire);
+        if (income !== null) setText(cashflow, formatThousands(income.cashflow));
         renderTotals();
     }
 
-    render();
-    // Money, counts and prices change while open.
-    const timer = window.setInterval(render, 2000);
-
-    for (const input of inputs) {
-        input.addEventListener('input', renderTotals);
-        // Commit the spinner value (NumericUpDown clamps to [Minimum, Maximum] on leave).
-        input.addEventListener('change', () => {
-            const v = String(clampOrderAmount(input.value));
-            if (input.value !== v) input.value = v;
-            renderTotals();
-        });
-        // Main.Part2.cs:1024 method_635: select the value on Enter (focus).
-        input.addEventListener('focus', () => input.select());
-    }
-
-    // Main.Part2.cs:1135 btnBuildOrderPurchase_Click.
-    purchase.addEventListener('click', () => {
-        rows = buildOrderRows(opts.empire, galaxy, chosen);
+    // btnBuildOrderPurchase_Click: the cannot-afford message box, else BuildNewShips and close (method_639).
+    async function onPurchase(): Promise<void> {
+        rows = buildOrderRows(empire, galaxy, chosen, advisorTargets);
         const a = amounts();
+        const t = buildOrderTotals(galaxy, empire, rows, a);
+        const no = cannotAffordMessage(t.total, empire.stateMoney);
+        if (no !== null) {
+            await messageBox({ caption: no.caption, text: no.text, icon: 'stop' });
+            return;
+        }
         const lists = buildOrderPurchaseLists(rows, a);
-        // The affordability check sums every row (method_632), which buildNewShips repeats over method_643's lists
-        // (the same total: rows without a design or amount contribute 0).
-        // Command log: queued, applied at the next frame boundary.
-        issuePlayerCommand(galaxy, opts.empire, 'buildNewShips', [lists.designs, lists.amounts], (result) => {
+        // Command log: queued, applied at the next frame boundary (BuildNewShips repeats the affordability check).
+        issuePlayerCommand(galaxy, empire, 'buildNewShips', [lists.designs, lists.amounts], (result) => {
             if (result.message !== undefined) {
-                // MessageBoxEx "Cannot afford build order": the panel stays open.
-                showToast(purchaseResultText(result), root, 6000);
-                render();
+                void messageBox({ caption: result.title !== undefined ? bt('Cannot afford build order') : '', text: purchaseResultText(result), icon: 'stop' });
+                if (!win.closed) refresh();
                 return;
             }
-            // method_639: close the panel.
-            close();
             showToast(purchaseResultText(result));
         });
-    });
-
-    function close(): void {
-        window.clearInterval(timer);
-        document.removeEventListener('keydown', onKeyDown);
-        root.remove();
-        open = null;
+        win.close();
     }
 
-    // Escape closes the panel; stopImmediatePropagation keeps the global game-menu Escape handler from firing.
-    function onKeyDown(e: KeyboardEvent): void {
-        if (e.key === 'Escape') {
-            e.preventDefault();
-            e.stopImmediatePropagation();
-            close();
-        }
-    }
-    document.addEventListener('keydown', onKeyDown);
-    closeBtn.addEventListener('click', () => close());
-    // Main.Part2.cs:1179 btnBuildOrderCancel_Click → method_639.
-    cancel.addEventListener('click', () => close());
-
-    return { root, close };
+    refresh();
+    // Money, counts and prices change while open.
+    timer = window.setInterval(() => {
+        if (!win.closed) refresh();
+    }, 2000);
+    return win;
 }
