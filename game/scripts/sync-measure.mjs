@@ -1,0 +1,179 @@
+#!/usr/bin/env node
+// Sim worker sync cost on a saved game (docs/sim-worker.md §5): load the save, build the worker-side sync source and a
+// main-side replica in this process, then run --steps sim steps and after each one diff + apply the delta. Prints the
+// snapshot size / cost, then per step: worker diff ms, delta bytes, main-thread apply ms (mean / p95 / max), hot and
+// cold object counts, and the most-changed fields. --verify serializes the replica and the authoritative galaxy after
+// a full cold compare and checks that the two save texts are identical.
+//
+//   node scripts/sync-measure.mjs <save> [--steps 300] [--speed 1] [--warm 60] [--cold-ms 3] [--hot-fields] [--verify] [--census]
+import { build } from 'rolldown';
+import { tmpdir } from 'node:os';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { dirname, resolve } from 'node:path';
+
+const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+function arg(name, fallback) {
+    const i = process.argv.indexOf(`--${name}`);
+    if (i < 0) return fallback;
+    const v = process.argv[i + 1];
+    return v === undefined || v.startsWith('--') ? true : v;
+}
+const file = process.argv[2];
+if (!file || file.startsWith('--')) throw new Error('usage: sync-measure.mjs <save> [--steps 300]');
+const steps = Number(arg('steps', 300));
+const speed = Number(arg('speed', 1));
+const warm = Number(arg('warm', 0));
+const coldBudgetMs = Number(arg('cold-ms', 3));
+const pumpMs = Number(arg('pump-ms', 0.5));
+const verify = arg('verify', false) === true;
+const census = arg('census', false) === true;
+
+const MODULES = {
+    game: '/src/sim/game.ts',
+    load: '/test/helpers/loadGameDataFs.ts',
+    save: '/src/sim/save/gameSave.ts',
+    galaxySave: '/src/sim/save/galaxySave.ts',
+    scheduler: '/src/sim/tick/scheduler.ts',
+    digest: '/src/sim/tick/digest.ts',
+    replica: '/src/simworker/replicaGalaxy.ts',
+};
+const bundleDir = mkdtempSync(resolve(tmpdir(), 'dwu-sync-measure-'));
+const stat = (xs) => {
+    const s = [...xs].sort((a, b) => a - b);
+    const mean = s.reduce((a, b) => a + b, 0) / Math.max(1, s.length);
+    return { mean, p50: s[Math.floor(s.length * 0.5)] ?? 0, p95: s[Math.floor(s.length * 0.95)] ?? 0, max: s[s.length - 1] ?? 0 };
+};
+const fmt = (o, d = 2) => `mean ${o.mean.toFixed(d)} p50 ${o.p50.toFixed(d)} p95 ${o.p95.toFixed(d)} max ${o.max.toFixed(d)}`;
+try {
+    await build({ cwd: root, input: Object.fromEntries(Object.entries(MODULES).map(([k, v]) => [k, '.' + v])), platform: 'node',
+        transform: { define: { __dirname: JSON.stringify(resolve(root, 'test/helpers')) } },
+        output: { dir: bundleDir, format: 'esm', preserveModules: true, preserveModulesRoot: root }, write: true, logLevel: 'warn' });
+    const load = (key) => import(resolve(bundleDir, key + '.js'));
+    const { loadGameDataFs } = await load('load');
+    const { deserializeGame } = await load('save');
+    const { galaxyToJSON } = await load('galaxySave');
+    const { runSimFrame, nextFrameMs, schedulerState } = await load('scheduler');
+    const { stateDigest } = await load('digest');
+    const { GalaxySyncSource, GalaxyReplica } = await load('replica');
+    const { installGameStatics, registerGameHooks } = await load('game');
+    const gameData = await loadGameDataFs();
+    installGameStatics(gameData);
+    registerGameHooks();
+    let t0 = performance.now();
+    const { game } = deserializeGame(readFileSync(file, 'utf8'), gameData);
+    const g = game.galaxy;
+    console.log(`loaded ${file} in ${(performance.now() - t0).toFixed(0)} ms: ${g.systems.length} systems, ${g.builtObjects.length} built objects, ${g.creatures.length} creatures`);
+    const step = () => runSimFrame(g, nextFrameMs(schedulerState(g), speed));
+    for (let i = 0; i < warm; i++) step();
+
+    t0 = performance.now();
+    const source = new GalaxySyncSource(g, { coldBudgetMs });
+    const snap = source.snapshot();
+    if (arg('markdbg', false) === true) {
+        console.log(`markdbg: mark right after snapshot dropped ${source.encoder.mark()}`);
+        for (let i = 0; i < 50; i++) { step(); source.delta(); }
+        console.log(`markdbg: after 50 steps: dropped ${source.encoder.mark()} (live ${source.encoder.size})`);
+        source.delta(true);
+        console.log(`markdbg: after full: dropped ${source.encoder.mark()} (live ${source.encoder.size})`);
+        process.exit(0);
+    }
+    const tSnap = performance.now() - t0;
+    console.log(`snapshot: ${source.encoder.size} objects (${source.encoder.hotCount} hot), ${(snap.stats.bytes / 1048576).toFixed(1)} MB, ${tSnap.toFixed(0)} ms to encode`);
+    if (census) {
+        const c = source.encoder.census();
+        for (const [k, v] of Object.entries(c).sort((a, b) => b[1].hot - a[1].hot || b[1].count - a[1].count).slice(0, 50)) console.log(`  ${String(v.count).padStart(9)} (${String(v.hot).padStart(8)} hot) ${k}`);
+    }
+    // Structured clone, as postMessage does (minus the transfer of the Float64 streams).
+    t0 = performance.now();
+    const cloned = structuredClone(snap);
+    console.log(`snapshot structuredClone: ${(performance.now() - t0).toFixed(0)} ms`);
+    const replica = new GalaxyReplica(gameData, g.baseTechCost);
+    t0 = performance.now();
+    replica.apply(cloned, true);
+    console.log(`snapshot apply (main): ${(performance.now() - t0).toFixed(0)} ms, replica ${replica.decoder.size} objects`);
+
+    const forced = [], hotKB = [], pumpMsS = [], backlog = [], gated = [], hotMs = [], diffMs = [], applyMs = [], cloneMs = [], bytes = [], sets = [], fresh = [], stepMs = [];
+    source.encoder.profile = {};
+    for (let i = 0; i < steps; i++) {
+        const s0 = performance.now();
+        step();
+        stepMs.push(performance.now() - s0);
+        const before = { ...source.encoder.profile };
+        const d = source.delta();
+        if (d.stats.newObjects > (globalThis.__maxNew ?? 0)) {
+            globalThis.__maxNew = d.stats.newObjects;
+            globalThis.__maxNewProf = Object.entries(source.encoder.profile).map(([k, v]) => [k, v - (before[k] ?? 0)]).filter((x) => x[1] > 0 && x[0].startsWith('new')).sort((a, b) => b[1] - a[1]).slice(0, 12);
+        }
+        if (d.stats.sets > (globalThis.__maxSets ?? 0)) {
+            globalThis.__maxSets = d.stats.sets;
+            globalThis.__maxProf = Object.entries(source.encoder.profile).map(([k, v]) => [k, v - (before[k] ?? 0)]).filter((x) => x[1] > 0).sort((a, b) => b[1] - a[1]).slice(0, 12);
+        }
+        diffMs.push(d.stats.diffMs);
+        hotMs.push(d.stats.hotMs);
+        gated.push(d.stats.gated);
+        bytes.push(d.stats.bytes);
+        sets.push(d.stats.sets);
+        fresh.push(d.stats.newObjects);
+        const c0 = performance.now();
+        const dc = structuredClone(d);
+        cloneMs.push(performance.now() - c0);
+        const st = replica.apply(dc);
+        if (st.applyMs > (globalThis.__maxHot ?? 0)) {
+            globalThis.__maxHot = st.applyMs;
+            globalThis.__maxHotInfo = `${st.applyMs.toFixed(1)} ms: ${st.newObjects} new, ${st.sets} sets, ${st.coldParts} forced cold parts, hot ${(d.stats.hotBytes / 1024).toFixed(0)} KB`;
+        }
+        applyMs.push(st.applyMs);
+        forced.push(st.coldParts);
+        hotKB.push(d.stats.hotBytes / 1024);
+        // Four render frames per step at 240 Hz, each pumping the cold queue for --pump-ms.
+        let pm = 0;
+        for (let f = 0; f < 4; f++) {
+            const ps = replica.pumpCold(pumpMs);
+            pm = Math.max(pm, ps.applyMs);
+        }
+        pumpMsS.push(pm);
+        backlog.push(replica.decoder.coldBacklog);
+    }
+    console.log(`${steps} steps at ${speed}x (cold budget ${coldBudgetMs} ms/step; ${source.encoder.cycleCount} cold cycles, last mark dropped ${source.encoder.lastDropped}):`);
+    console.log(`  sim step ms      ${fmt(stat(stepMs))}`);
+    console.log(`  worker diff ms   ${fmt(stat(diffMs))}`);
+    console.log(`  of which hot ms  ${fmt(stat(hotMs))}`);
+    console.log(`  gated (touched)  ${fmt(stat(gated), 0)}`);
+    console.log(`  delta KB         ${fmt(stat(bytes.map((b) => b / 1024)), 1)}`);
+    console.log(`  clone ms         ${fmt(stat(cloneMs))}`);
+    console.log(`  main hot apply ms ${fmt(stat(applyMs))}  (cold parts forced by deps: ${fmt(stat(forced), 0)})`);
+    console.log(`  worst hot apply: ${globalThis.__maxHotInfo}`);
+    console.log(`  hot part KB      ${fmt(stat(hotKB), 1)}`);
+    console.log(`  main cold pump ms per frame (budget ${pumpMs}) ${fmt(stat(pumpMsS))}; cold backlog parts ${fmt(stat(backlog), 0)}`);
+    console.log(`  field sets       ${fmt(stat(sets), 0)}`);
+    console.log(`  new objects      ${fmt(stat(fresh), 0)}`);
+    console.log(`  live objects ${source.encoder.size}, hot ${source.encoder.hotCount}`);
+    const prof = Object.entries(source.encoder.profile).sort((a, b) => b[1] - a[1]).slice(0, 40);
+    console.log('  most-set fields (per step):');
+    for (const [k, v] of prof) console.log(`    ${(v / steps).toFixed(1).padStart(9)}  ${k}`);
+    source.encoder.profile = null;
+    console.log(`  most new objects (${globalThis.__maxNew}): ${globalThis.__maxNewProf.map(([k, v]) => `${k} ${v}`).join(', ')}`);
+    console.log(`  biggest step (${globalThis.__maxSets} sets): ${globalThis.__maxProf.map(([k, v]) => `${k} ${v}`).join(', ')}`);
+    if (arg('hot-fields', false) === true) for (const [k, v] of Object.entries(source.encoder.hotFields())) console.log(`  hot ${k}: ${v.length} fields: ${v.join(' ')}`);
+    t0 = performance.now();
+    const dropped = source.encoder.mark();
+    console.log(`mark: ${(performance.now() - t0).toFixed(0)} ms, dropped ${dropped}`);
+    t0 = performance.now();
+    const reshaped = source.encoder.revalidateShapes();
+    console.log(`revalidate shapes: ${(performance.now() - t0).toFixed(0)} ms, ${reshaped} reshaped`);
+    t0 = performance.now();
+    const full = source.delta(true);
+    console.log(`full cold compare: ${(performance.now() - t0).toFixed(0)} ms, ${(full.stats.bytes / 1024).toFixed(0)} KB`);
+    replica.apply(structuredClone(full), true);
+    if (verify) {
+        const a = JSON.stringify(galaxyToJSON(g));
+        const b = JSON.stringify(galaxyToJSON(replica.galaxy));
+        let at = -1;
+        for (let i = 0; i < Math.max(a.length, b.length); i++) if (a[i] !== b[i]) { at = i; break; }
+        console.log(at < 0 ? `verify: replica save text identical (${(a.length / 1048576).toFixed(0)} MB); digest ${stateDigest(g)} / replica ${stateDigest(replica.galaxy)}` : `verify: MISMATCH at ${at}: auth …${a.slice(Math.max(0, at - 200), at + 100)}…\n replica …${b.slice(Math.max(0, at - 200), at + 100)}…`);
+        if (at >= 0) process.exitCode = 1;
+    }
+} finally {
+    rmSync(bundleDir, { recursive: true, force: true });
+}
