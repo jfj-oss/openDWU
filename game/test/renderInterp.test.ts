@@ -192,8 +192,12 @@ describe('MotionInterpolator (lerp with snap)', () => {
         const obj = {};
         frame(m, rt, 0, 0);
         m.sample(obj, 0, 0, 0, 600);
-        frame(m, rt, 0.5, 20); // not sampled for 20 steps
+        frame(m, rt, 0.5, 10); // not sampled for a frame (culled) while 20 steps land
+        frame(m, rt, 0.5, 10);
         expect(m.sample(obj, 100, 0, 0, 600).x).toBe(100);
+        // Drawn every frame, a burst of 20 steps in one frame (a slow sim) is interpolated across, not snapped.
+        frame(m, rt, 0.5, 20);
+        expect(m.sample(obj, 200, 0, 0, 600).x).toBeCloseTo(197.5, 9);
         frame(m, rt, 0.5, 0); // no step, but the sim position changed (order at the frame boundary)
         expect(m.sample(obj, 104, 0, 0, 600).x).toBe(104);
     });
@@ -297,6 +301,38 @@ describe('interpolation gaps: shots, untouched ships, drawn positions', () => {
         expect(out.x).toBe(100); // stopped
         extrapolateUntouched(100, 0, 0, 600, -(2 ** 52), 1100, 1000, out);
         expect(out.x).toBe(100); // never touched
+    });
+
+    it('a ship flying relative to its planet (ParentOffset), touched only every 4th step, glides in the planet frame too', () => {
+        const m = new MotionInterpolator();
+        const rt = createRenderTime();
+        const speed = 300;
+        const step = 1000 / 60;
+        const star = { parent: null, xpos: 0, ypos: 0, orbitAngle: 0, anglePerSecond: 0, orbitDirection: true, orbitDistance: 0, lastTouch: 0, hasBeenDestroyed: false };
+        // A planet that stands still (its orbit is drawn on its own; here only the offset's motion matters).
+        const planet = { parent: star, xpos: 1000, ypos: 0, orbitAngle: 0, anglePerSecond: 0, orbitDirection: true, orbitDistance: 1000, lastTouch: 0, hasBeenDestroyed: false };
+        const bo: MovingBuiltObject = { xpos: 1500, ypos: 0, heading: 0, topSpeed: speed, warpSpeed: 0, currentSpeed: speed, parentHabitat: planet, parentOffsetX: 500, parentOffsetY: 0, lastTouch: 0 };
+        const xs: number[] = [];
+        for (let s = 0; s < 40; s++) {
+            if (s > 0 && s % 4 === 0) {
+                // movement.ts moveToward: ParentOffset += heading × speed × the time since the last touch.
+                const now = s * step;
+                bo.parentOffsetX += (speed * (now - (bo.lastTouch ?? 0))) / 1000;
+                bo.xpos = planet.xpos + bo.parentOffsetX;
+                bo.lastTouch = now;
+            }
+            for (const a of [0, 0.25, 0.5, 0.75]) {
+                frame(m, rt, a, a === 0 && s > 0 ? 1 : 0, 4000);
+                const st = sampleBuiltObject(m, bo);
+                expect(st.frame).toBe(planet);
+                xs.push(st.x);
+            }
+        }
+        const perFrame = (speed * step) / 1000 / 4;
+        for (let i = 9; i < xs.length; i++) {
+            expect(xs[i] - xs[i - 1]).toBeGreaterThan(perFrame * 0.5);
+            expect(xs[i] - xs[i - 1]).toBeLessThanOrEqual(perFrame * 1.5 + 1e-9);
+        }
     });
 
     it('a ship touched only every 4th step glides at a constant per-frame rate (no stand-still then jump)', () => {

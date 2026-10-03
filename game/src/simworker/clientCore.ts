@@ -95,125 +95,11 @@ function createSyncStats(): SyncStats {
 }
 
 /**
- * Render pacing for worker steps (docs/sim-worker.md §9 chunk 2: interpolation timing under jitter). In-thread, a step
- * runs inside the render frame and the frame's alpha is the budget's backlog, so the drawn game time advances with the
- * wall clock. Worker steps land whenever their message does — after the worker's step and diff (10-30 ms, varying), a
- * postMessage hop and the frame in progress — and, when the worker falls behind real time, several steps at once.
- * Taking alpha from each message's own backlog at the frame it is applied makes the drawn time stand still and jump by
- * that variation every step (the interpolator keeps only the last two steps).
- *
- * The pacer is a playout buffer in step units: a drawn position (cumulative step serial, fractional) that advances
- * with the wall clock at the rate steps have been arriving (over the last two seconds: 1 while the worker keeps real
- * time, less when it falls behind, more while it catches up), a little faster or slower to stay `target` steps behind
- * the latest step received, and never past it. `target` covers the arrival jitter measured over the same window (how
- * late each message's first step came against the steady rate: a burst of k steps is k − 1 steps late for its first),
- * plus one step for the interpolated pair; it grows at once, shrinks slowly, and grows again when the drawn position
- * catches up with the latest step anyway. A step message is applied once the drawn position needs it; alpha is the
- * drawn position's place between the last two applied steps (negative within a burst: see SimClientCore.frame). Far
- * behind (a stall), it skips ahead.
- */
-export class StepPacer {
-    static readonly MIN_TARGET = 1;
-    static readonly MAX_TARGET = 12;
-    /** Steps beyond `target` the drawn position may fall behind before it skips ahead. */
-    static readonly MAX_LAG = 12;
-    /** Real ms of arrivals the rate and the jitter are measured over. */
-    static readonly WINDOW_MS = 2000;
-    /** Speed-up / slow-down per step the buffer is above / below `target` (bounded; low, so arrival jitter and
-     *  bursts do not modulate the drawn speed — tuned on test/simWorkerPacing.test.ts's arrival patterns). */
-    static readonly GAIN_ABOVE = 0.03;
-    static readonly GAIN_BELOW = 0.06;
-    /** Drawn position, in steps (alpha = drawn − (latest applied − 1)); NaN until the first advance. */
-    drawn = Number.NaN;
-    /** Steps the drawn position aims to stay behind the latest step received. */
-    target = 2;
-    /** Steps arriving per FRAME_REAL_MS of real time (over the window; 1 while the worker keeps real time). */
-    rate = 1;
-    /** Cumulative serial of the latest step received. */
-    received = 0;
-    /** Recent arrivals: time, steps, serial after. */
-    private readonly window: { at: number; steps: number; serial: number }[] = [];
-    private readonly lateness: number[] = [];
-    private lastFrame = Number.NaN;
-
-    /** A step message arrived at `atMs` with `steps` steps, bringing the serial to `serial`. */
-    arrived(steps: number, serial: number, atMs: number): void {
-        if (serial > this.received) this.received = serial;
-        if (steps <= 0) return;
-        const w = this.window;
-        w.push({ at: atMs, steps, serial });
-        while (w.length > 2 && atMs - w[0].at > StepPacer.WINDOW_MS) w.shift();
-        if (w.length < 2) return;
-        // Rate: the steps after the first arrival over the time since it.
-        const first = w[0];
-        const span = Math.max(1, atMs - first.at);
-        this.rate = Math.min(8, Math.max(0.05, ((serial - first.serial) * FRAME_REAL_MS) / span));
-        // Jitter: how late each message's FIRST step came against the line through the window at that rate (a burst
-        // of k steps is k − 1 steps late for its first one). The buffer must cover the spread, plus the pair.
-        const msPerStep = FRAME_REAL_MS / this.rate;
-        const late = this.lateness;
-        late.length = 0;
-        for (const a of w) late.push(a.at - (first.at + (a.serial - a.steps + 1 - first.serial) * msPerStep));
-        late.sort((x, y) => x - y);
-        // The spread without the latest 5 % (one stall must not hold a big buffer for the whole window: a message later
-        // than the buffer only stands the drawn position still until it lands).
-        const spread = late[Math.min(late.length - 1, Math.floor(late.length * 0.95))] - late[0];
-        const want = Math.min(StepPacer.MAX_TARGET, Math.max(StepPacer.MIN_TARGET, spread / msPerStep + 1));
-        // Up fast, down within a few dozen arrivals (the window itself holds a late spell for its length).
-        this.target += (want - this.target) * (want > this.target ? 0.5 : 0.1);
-    }
-
-    /** Advance the drawn position to frame time `nowMs` (`applied`: the latest applied step's serial); returns it. */
-    advance(nowMs: number, applied: number): number {
-        if (Number.isNaN(this.drawn)) this.drawn = applied - 1;
-        const dt = Number.isNaN(this.lastFrame) ? 0 : Math.min(100, Math.max(0, nowMs - this.lastFrame));
-        this.lastFrame = nowMs;
-        const ahead = this.received - this.drawn;
-        if (ahead > this.target + StepPacer.MAX_LAG) {
-            this.drawn = this.received - this.target;
-        } else {
-            // A little faster / slower to hold the buffer at `target` (more so when it runs low).
-            const e = ahead - this.target;
-            const gain = e < 0 ? Math.max(-0.6, e * StepPacer.GAIN_BELOW) : Math.min(0.4, e * StepPacer.GAIN_ABOVE);
-            const next = this.drawn + (dt / FRAME_REAL_MS) * this.rate * (1 + gain);
-            if (next > this.received) {
-                // Starved: the next step is later than the buffer allowed for.
-                this.drawn = this.received;
-                this.target = Math.min(StepPacer.MAX_TARGET, this.target + 0.25);
-            } else this.drawn = next;
-        }
-        return this.drawn;
-    }
-
-    /** Skip ahead to at least `minDrawn` (messages applied ahead of the drawn position: a reply that waited); returns it. */
-    catchUp(minDrawn: number): number {
-        if (!(this.drawn >= minDrawn)) this.drawn = minDrawn;
-        return this.drawn;
-    }
-
-    /**
-     * Paused (or holding an optimistic pause): the drawn position stands where it was when the pause began (never past
-     * the latest applied step; the committed state before anything was drawn; `atApplied`: exactly at it), and the
-     * arrival measurements start over when the steps resume. Returns it.
-     */
-    hold(applied: number, nowMs: number, atApplied = false): number {
-        if (Number.isNaN(this.drawn)) this.drawn = applied - 1;
-        else if (this.drawn > applied || atApplied) this.drawn = applied;
-        this.window.length = 0;
-        this.lastFrame = nowMs;
-        return this.drawn;
-    }
-}
-
-/**
  * Objects that only ever exist in the game graph. One the replica no longer knows (destroyed and dropped by the sync's
  * mark, while the HUD or a list still held it) cannot be named to the worker, and must not travel by value (the worker
  * would act on a copy): the command or query is dropped instead.
  */
 const IDENTITY_PROTOS: ReadonlySet<object> = new Set<object>([BuiltObject.prototype, Habitat.prototype, ShipGroup.prototype, Creature.prototype, Fighter.prototype, EmpireClass.prototype]);
-
-/** Longest a step message carrying a command / query reply is held by the pacer (real ms since it arrived). */
-export const REPLY_WAIT_MS = 50;
 
 /** Clock controls the main thread hands the worker (GalaxyTime's pause / speed). */
 export interface ClockControls {
@@ -227,11 +113,6 @@ export interface ClientCoreOptions {
     /** Wall ms per render frame for applying queued cold parts (default 0.5; grows with the backlog). */
     coldBudgetMs?: number;
     onEvent?: (e: WorkerEvent, resolve: (a: unknown) => unknown) => void;
-    /**
-     * Pace step messages (StepPacer: the drawn game time follows the wall clock under arrival jitter; the browser
-     * client). Off (tests, tools): every message received is applied at the next frame().
-     */
-    pace?: boolean;
     /** Longest the optimistic pause holds the replica without the worker's ack (default 500 ms; then deltas apply). */
     pauseHoldMaxMs?: number;
 }
@@ -258,10 +139,6 @@ export class SimClientCore {
     private speed: number;
     private readonly inbox: StepMessage[] = [];
     /** Main-thread arrival time of each inbox message. */
-    private readonly arrivals: number[] = [];
-    readonly pacer = new StepPacer();
-    /** Steps applied by the last frame that applied any (how far back alpha may reach: StepPacer). */
-    private lastSteps = 1;
     private readonly naming: RemoteNaming;
     private readonly resolving: RemoteResolving;
     private readonly now: () => number;
@@ -492,10 +369,7 @@ export class SimClientCore {
 
     /** A step message arrived (applied in a later frame(), so all main-thread sync work happens inside frames). */
     receive(m: StepMessage): void {
-        const at = this.now();
         this.inbox.push(m);
-        this.arrivals.push(at);
-        this.pacer.arrived(m.paused ? 0 : m.steps, m.stepSerial, at);
     }
 
     /**
@@ -511,47 +385,19 @@ export class SimClientCore {
         // Optimistic pause: hold every step message until the one that acknowledges the pause (they are in order; the
         // ack follows the steps that were in flight), or until the hold times out (a stalled worker).
         let holding = false;
-        /** Paced: the messages through a pause's ack, applied now (the drawn position must not run on through them). */
-        let flush = 0;
         if (this.holdSeq !== 0) {
-            const ackAt = this.inbox.findIndex((m) => m.clockSeq >= this.holdSeq);
-            const acked = ackAt >= 0;
+            const acked = this.inbox.some((m) => m.clockSeq >= this.holdSeq);
             if (acked || t0 - this.holdSince > this.pauseHoldMaxMs) {
                 if (acked) this.stats.lastPauseAckMs = t0 - this.holdSince;
                 let inFlight = 0;
                 for (const m of this.inbox) if (m.clockSeq < this.holdSeq) inFlight += m.steps;
                 this.stats.lastPauseInFlightSteps = inFlight;
                 this.holdSeq = 0;
-                if (acked) flush = ackAt + 1;
             } else holding = true;
         }
-        const pace = this.opts.pace === true;
-        let take = holding ? 0 : this.inbox.length;
-        let drawn = Number.NaN;
-        let forced = false;
-        if (pace && flush > 0) take = flush;
-        else if (pace && !holding && !this.paused) {
-            // Paced: the messages up to the step the drawn position needs (a message without steps — a query reply,
-            // the clock while paused — goes as soon as those before it have).
-            drawn = this.pacer.advance(t0, this.renderTime.stepSerial);
-            let serial = this.renderTime.stepSerial;
-            take = 0;
-            while (take < this.inbox.length) {
-                const m = this.inbox[take];
-                if (m.steps > 0 && serial >= drawn) break;
-                serial = m.stepSerial;
-                take++;
-            }
-            // A command / query reply waits at most REPLY_WAIT_MS for the drawn position: the UI must not lag behind the
-            // buffer (the drawn position then skips ahead to the reply's step).
-            for (let k = this.inbox.length - 1; k >= take; k--) {
-                if (this.inbox[k].results.length > 0 && t0 - this.arrivals[k] >= REPLY_WAIT_MS) {
-                    take = k + 1;
-                    forced = true;
-                    break;
-                }
-            }
-        }
+        // Every message received is applied now (replies too: their onApplied runs this frame). Smoothing the drawn
+        // time over uneven arrivals is the render side's job (renderInterp.ts PresentationClock, in MainView).
+        const take = holding ? 0 : this.inbox.length;
         for (let k = 0; k < take; k++) {
             const m = this.inbox[k];
             // Command replies: their onApplied reads the replica, so the cold parts through this delta (which carry
@@ -622,37 +468,17 @@ export class SimClientCore {
         }
         const last = take > 0 ? this.inbox[take - 1] : null;
         this.inbox.splice(0, take);
-        this.arrivals.splice(0, take);
         const cold = this.replica.pumpCold(this.coldBudgetMs);
         const t2 = this.now();
-        // A held pause draws as paused (alpha 0) from the frame it was pressed, as the in-thread loop does.
+        // A held pause is drawn as paused from the frame it was pressed, as the in-thread loop does (the presentation
+        // clock stands still from that frame; the steps in flight then land without moving the picture).
         const pausedNow = this.paused || holding;
         // updateRenderTime adds `steps`: land on the worker's cumulative serial.
         if (last !== null) this.renderTime.stepSerial = last.stepSerial - steps;
-        if (steps > 0) this.lastSteps = steps;
-        if (pace) {
-            // Render alpha: the drawn position's place between the last two applied steps. It may lie before the
-            // earlier of the two after a frame that applied several steps: the interpolator's previous position is then
-            // the linear estimate one step back on the line from where the object was, so a negative alpha follows the
-            // same line further back (to −(steps − 1)). Paused (or holding a pause), the drawn position stands still
-            // where the pause found it — the steps in flight and in the buffer land without moving the picture.
-            const applied = this.renderTime.stepSerial + steps;
-            // Holding an optimistic pause, the picture moves to the latest applied step and stays there: the steps that
-            // land with the ack are then applied in one frame, whose interpolation line starts exactly there.
-            if (pausedNow) drawn = this.pacer.hold(applied, t0, holding);
-            else if (forced) drawn = this.pacer.catchUp(applied - this.lastSteps);
-            const alpha = drawn - (applied - 1);
-            updateRenderTime(this.renderTime, this.galaxy.nowMs, Math.max(0, Math.min(1, alpha)) * FRAME_REAL_MS, this.speed, false, steps);
-            if (alpha < 0) {
-                const a = Math.max(alpha, -Math.min(StepPacer.MAX_TARGET + StepPacer.MAX_LAG, this.lastSteps - 1));
-                this.renderTime.alpha = a;
-                this.renderTime.renderNowMs = this.galaxy.nowMs + a * this.renderTime.stepGameMs;
-            }
-        } else {
-            // Render alpha: the worker's backlog after its last tick plus the real time since we applied it.
-            const backlog = pausedNow ? 0 : Math.min(FRAME_REAL_MS, this.lastBacklogMs + (t0 - this.lastStepAt));
-            updateRenderTime(this.renderTime, this.galaxy.nowMs, backlog, this.speed, pausedNow, steps);
-        }
+        // Render alpha: the worker's backlog after its last tick plus the real time since we applied it (raw: MainView's
+        // presentation clock evens it out).
+        const backlog = pausedNow ? 0 : Math.min(FRAME_REAL_MS, this.lastBacklogMs + (t0 - this.lastStepAt));
+        updateRenderTime(this.renderTime, this.galaxy.nowMs, backlog, this.speed, pausedNow, steps);
         const s = this.stats;
         s.renderFrames++;
         s.simFrames += steps;

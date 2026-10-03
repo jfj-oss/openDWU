@@ -66,8 +66,7 @@ export class SimWorkerClient {
                     if (failed) return;
                     const data = typeof gameData === 'function' ? gameData(m) : gameData;
                     let c: SimWorkerClient | null = null;
-                    // Paced rendering (clientCore.ts StepPacer).
-                    const core = new SimClientCore(data, m, { post, onEvent: (ev, res) => c?.eventHandler?.(ev, res), pace: simWorkerPacing() });
+                    const core = new SimClientCore(data, m, { post, onEvent: (ev, res) => c?.eventHandler?.(ev, res) });
                     c = new SimWorkerClient(worker, core);
                     // Dev only: `&detectWrites=1|all` reports main-thread writes to the replica (writeDetector.ts).
                     if (import.meta.env.DEV) {
@@ -234,14 +233,6 @@ export class SimWorkerClient {
     }
 }
 
-/** Step pacing (clientCore.ts StepPacer) is on unless `?simPace=0` (A/B checks of the render timing). */
-function simWorkerPacing(): boolean {
-    try {
-        return new URLSearchParams(globalThis.location?.search ?? '').get('simPace') !== '0';
-    } catch {
-        return true;
-    }
-}
 
 /** `?simWorker=1|0` overrides the Settings toggle (default off). */
 export function simWorkerEnabled(search: string, setting: boolean): boolean {
