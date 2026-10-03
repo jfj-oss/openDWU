@@ -21,6 +21,7 @@ import {
     shipGroupUpdate,
 } from '../fleets/shipGroupTasks';
 import { assignFleetRetrofit, assignRetrofitMission, determineRetrofitAffordability, findNearestShipYard } from '../construction/empireConstruction';
+import { isPrivateDesignSubRole } from './playerOrders';
 import { findNewestCanBuildFullEvaluate } from '../designGeneration';
 import type { Design } from '../design';
 import { fastFindNearestRefuellingPoint } from '../movement';
@@ -212,6 +213,20 @@ export function repairSelectedShips(galaxy: Galaxy, empire: Empire, ships: reado
         }
     }
     return n;
+}
+
+/**
+ * Main.Part11.cs mUwHhIdjxs (cmbBuiltObjectAutoRetrofit.SelectedIndexChanged): only with exactly ONE built object
+ * selected, index 0 (Auto Retrofit) -> SuppressAutoRetrofit = false, index 1 (Only When Manually Ordered) -> true.
+ * The combo is disabled for freighters / passenger / mining ships (private sub-roles); own ships only here.
+ * Returns whether the flag was written.
+ */
+export function setShipRetrofitStance(empire: Empire, ships: readonly BuiltObject[], auto: boolean): boolean {
+    if (ships.length !== 1) return false;
+    const b = ships[0];
+    if (b.empire !== empire || isPrivateDesignSubRole(b.subRole)) return false;
+    b.suppressAutoRetrofit = !auto;
+    return true;
 }
 
 /** Main.Part3.cs btnBuiltObjectRetireSelected_Click: each mobile non-base ship with an owner is sent to retire at a yard. */

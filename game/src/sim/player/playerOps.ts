@@ -25,6 +25,7 @@ import {
     fleetRepairAndRefuel,
     fleetRetrofit,
     retrofitSelectedShips,
+    setShipRetrofitStance,
     refuelSelectedShips,
     renameFleet,
     renameShip,
@@ -121,6 +122,8 @@ export const PLAYER_OPS = {
     retrofitShips: (galaxy: Galaxy, empire: Empire, ships: BuiltObject[], design: Design | null = null) => retrofitSelectedShips(galaxy, empire, ships, design),
     /** Main.Part11.cs hvhxxedjqS_Leave: rename a ship / base from the Ships and Bases window. */
     renameShip: (_galaxy: Galaxy, empire: Empire, ship: BuiltObject, name: string) => renameShip(empire, ship, name),
+    /** Main.Part11.cs mUwHhIdjxs: the Retrofit Stance combo (applies only to a single selected own ship). */
+    setShipRetrofitStance: (_galaxy: Galaxy, empire: Empire, ships: BuiltObject[], auto: boolean) => setShipRetrofitStance(empire, ships, auto),
     retireShips: (galaxy: Galaxy, empire: Empire, ships: BuiltObject[]) => retireSelectedShips(galaxy, empire, ships),
     renameFleet: (_galaxy: Galaxy, _empire: Empire, fleet: ShipGroup, name: string) => renameFleet(fleet, name),
     setFleetHomeColony: (_galaxy: Galaxy, empire: Empire, fleet: ShipGroup, colony: Habitat) => setFleetHomeColony(empire, fleet, colony),

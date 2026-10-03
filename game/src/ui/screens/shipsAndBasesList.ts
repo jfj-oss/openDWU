@@ -21,8 +21,7 @@
 // Not in the original (kept from earlier tasks): "Refit selected / all to latest" (fleetOps.planRetrofit /
 // retrofitShips), the Automate toggle button under the Set Fleet combo, and the "Construction Jobs" tab (the
 // construction board of sim/player/constructionBoard.ts).
-// TODO(port): the troop loadout group of the Troops tab (Main.Part11.cs method_179), the Retrofit Stance combo
-// (cmbBuiltObjectAutoRetrofit, mUwHhIdjxs), the construction-yard buttons (purchaser, move/remove in the wait queue,
+// TODO(port): the troop loadout group of the Troops tab (Main.Part11.cs method_179), the construction-yard buttons (purchaser, move/remove in the wait queue,
 // Main.Part11.cs method_169), the cargo resource-shortage label and the weapons damage graph (WeaponListView).
 
 import './shipsAndBasesList.css';
@@ -35,6 +34,7 @@ import { BuiltObjectRole } from '../../sim/data/designSpecifications';
 import { BuiltObjectSubRole } from '../../sim/builtObjectTypes';
 import { BuiltObjectMissionType, builtObjectMission } from '../../sim/missions/mission';
 import { ShipGroup, empireShipGroups } from '../../sim/fleets/shipGroup';
+import { isPrivateDesignSubRole } from '../../sim/player/playerOrders';
 import { issuePlayerCommand } from '../../sim/player/playerCommands';
 import { constructionJobRows } from '../../sim/player/constructionBoard';
 import { ShipAction, ShipActionType } from '../../sim/player/shipAction';
@@ -905,8 +905,10 @@ function createShipsAndBasesList(opts: ShipsAndBasesListOptions): OpenState {
                 );
                 if (bo !== null) {
                     dropText(page, 'Retrofit Stance', 465, 220, { size: FONT.large, color: COLORS.label });
-                    const stance = dropDown([{ value: 'auto', label: 'Auto Retrofit' }, { value: 'never', label: 'Never Auto Retrofit' }], bo.suppressAutoRetrofit ? 'never' : 'auto', () => undefined);
-                    stance.disabled = true;
+                    const stance = dropDown([{ value: 'auto', label: 'Auto Retrofit (including advisor suggestions)' }, { value: 'never', label: 'Only Retrofit When Manually Ordered' }], bo.suppressAutoRetrofit ? 'never' : 'auto',
+                        (v) => issuePlayerCommand(galaxy, empire, 'setShipRetrofitStance', [[bo], v === 'auto'], () => { pageKey = ''; buildPage(); }));
+                    // cmbBuiltObjectAutoRetrofit.Enabled = false for the private sub-roles (and, here, for ships that are not ours).
+                    stance.disabled = bo.empire !== empire || isPrivateDesignSubRole(bo.subRole);
                     page.appendChild(place(stance, 465, 240, 200, 21));
                 }
                 break;
@@ -1295,7 +1297,7 @@ function pageContentKey(tab: string, o: BuiltObject | Habitat): string {
         case 'components': {
             const comps = (o as BuiltObject).components as unknown as { items?: { status: number }[] } | { status: number }[] | undefined;
             const list = (Array.isArray(comps) ? comps : comps?.items) ?? [];
-            return `${(o as BuiltObject).name}:${list.map((c) => c.status).join('')}`;
+            return `${(o as BuiltObject).name}:${list.map((c) => c.status).join('')}:${(o as BuiltObject).suppressAutoRetrofit ? 1 : 0}`;
         }
         case 'yards': {
             const q = o.constructionQueue as { constructionYards?: { shipUnderConstruction: { name: string } | null }[] | null; constructionWaitQueue?: unknown[] | null } | null;
