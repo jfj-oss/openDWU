@@ -9,7 +9,9 @@
 //   node scripts/simworker-smoke.mjs <base url> [--load=/dev-saves/x.dwusave] [--out=shots/simworker] [--inthread]
 //                                               [--tutorial | --menuload | --generate]
 //        [--gpu=swiftshader|egl] [--qs=renderClock=0]
-//        [--detect-writes[=all]]   (dev-only replica write detector, src/simworker/writeDetector.ts: prints what it found)
+//        [--detect-writes[=all]]   (dev-only replica write detector, src/simworker/writeDetector.ts: prints what it found;
+//                                   with --inthread, the save-text probe of the UI tour)
+//        [--ui-tour]               (the UI tour without the detector: select, hover, right-click, every panel and screen)
 import { chromium } from 'playwright-core';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -52,6 +54,214 @@ async function dumpWrites(when) {
     writeFileSync(`${out}/replica-writes.json`, JSON.stringify(found.writes, null, 1));
     console.log(`saved ${out}/replica-writes.json`);
 }
+// UI tour (with --detect-writes, or --ui-tour): with the game paused, select a ship, the capital (and its Build page), an
+// unowned body (a page that draws galaxy.rnd), a fleet; hover and Ctrl-right-click a body (the action menu); open every
+// left-sidebar panel and every top-bar screen. Worker mode: the write detector watches the replica, and the replica's
+// digest must equal the worker's afterwards. In-thread (--inthread): the save text (every object, the side tables, the
+// RNG state) is compared before and after each step; a change with no journaled command applied in that step is a UI
+// write outside the command queue (docs/sim-worker.md §8), and fails the run.
+const uiTour = detectWrites !== '' || flag('ui-tour');
+async function installSaveProbe() {
+    await page.evaluate(async () => {
+        const { galaxyToJSON } = await import('/src/sim/save/galaxySave.ts');
+        // Walk two encoded saves (graphCodec.ts: {$s, $v} instances, arrays, $map / $set, $ref) and name the first
+        // differences by `Class.field` (the write detector's keys).
+        const diff = (a, b, shapesA, shapesB, out, key, path) => {
+            if (out.length >= 60) return;
+            if (a === b) return;
+            if (typeof a !== 'object' || typeof b !== 'object' || a === null || b === null) {
+                out.push({ key, path, a: JSON.stringify(a)?.slice(0, 80), b: JSON.stringify(b)?.slice(0, 80) });
+                return;
+            }
+            if (Array.isArray(a) || Array.isArray(b)) {
+                if (!Array.isArray(a) || !Array.isArray(b)) return void out.push({ key, path, a: 'array?', b: 'array?' });
+                if (a.length !== b.length) out.push({ key: `${key}[]`, path, a: `length ${a.length}`, b: `length ${b.length}` });
+                for (let i = 0; i < Math.min(a.length, b.length); i++) diff(a[i], b[i], shapesA, shapesB, out, `${key}[]`, `${path}[${i}]`);
+                return;
+            }
+            if ('$s' in a && '$s' in b) {
+                const sa = shapesA[a.$s], sb = shapesB[b.$s];
+                if (sa.join() !== sb.join()) return void out.push({ key: `${sa[0]}`, path, a: `shape ${sa.slice(1).join(',')}`.slice(0, 200), b: `shape ${sb.slice(1).join(',')}`.slice(0, 200) });
+                for (let i = 0; i < a.$v.length; i++) diff(a.$v[i], b.$v[i], shapesA, shapesB, out, `${sa[0]}.${sa[i + 1]}`, `${path}.${sa[i + 1]}`);
+                return;
+            }
+            const ka = Object.keys(a), kb = Object.keys(b);
+            if (ka.join() !== kb.join()) return void out.push({ key: `${key}{}`, path, a: ka.join(',').slice(0, 120), b: kb.join(',').slice(0, 120) });
+            for (const k of ka) diff(a[k], b[k], shapesA, shapesB, out, k.startsWith('$') ? key : `${key}.${k}`, `${path}.${k}`);
+        };
+        window.__saveProbe = {
+            snap() {
+                // A fresh encoded tree (plain data, nothing shared with the game).
+                return galaxyToJSON(window.__dwu.galaxy);
+            },
+            mark() {
+                window.__saveProbePrev = this.snap();
+            },
+            /** Differences since mark() (then marks again). */
+            check() {
+                const prev = window.__saveProbePrev;
+                const next = this.snap();
+                const out = [];
+                diff(prev.galaxy, next.galaxy, prev.shapes, next.shapes, out, 'Galaxy', '$');
+                diff(prev.sideTables, next.sideTables, prev.shapes, next.shapes, out, 'sideTables', 'sideTables');
+                diff(prev.territory, next.territory, prev.shapes, next.shapes, out, 'territory', 'territory');
+                window.__saveProbePrev = next;
+                return out;
+            },
+        };
+    });
+}
+/** The command-log entries (player ops) so far. */
+const logOps = () => page.evaluate(async () => (await window.__dwu.commands.log()).filter((e) => e.source === 'player').map((e) => e.op));
+const tourWrites = [];
+async function tourStep(name, act, settleMs = 1500) {
+    const before = (await logOps()).length;
+    await act();
+    await page.waitForTimeout(settleMs);
+    const ops = (await logOps()).slice(before);
+    if (inThread) {
+        const d = await page.evaluate(() => window.__saveProbe.check());
+        const keys = [...new Set(d.map((x) => x.key))];
+        if (d.length > 0) tourWrites.push({ step: name, ops, keys, first: d.slice(0, 8) });
+        const ok = d.length === 0 || ops.length > 0;
+        check(ok, `ui tour: ${name}: ${d.length === 0 ? 'no state change' : `state changed (${keys.slice(0, 8).join(', ')})`}${ops.length ? `; journaled ${ops.join(', ')}` : ''}`);
+        if (!ok) for (const x of d.slice(0, 6)) console.log(`       ${x.path}: ${x.a} → ${x.b}`);
+    } else console.log(`     ui tour: ${name}${ops.length ? ` (journaled ${ops.join(', ')})` : ''}`);
+}
+async function runUiTour() {
+    await page.evaluate(() => { window.__dwu.time.paused = true; });
+    await page.waitForTimeout(1500);
+    if (inThread) {
+        await installSaveProbe();
+        await page.evaluate(() => window.__saveProbe.mark());
+    }
+    await tourStep('idle (HUD timers, money panel)', async () => {}, 2000);
+    await page.evaluate(async () => { window.__SR = (await import('/src/sim/builtObjectTypes.ts')).BuiltObjectSubRole; });
+    const select = (expr) => page.evaluate(async (e) => {
+        const hud = await import('/src/ui/hud.ts');
+        const d = window.__dwu;
+        const p = d.game.playerEmpire;
+        const sys = d.galaxy.systems[p.capital.systemIndex];
+        const pick = new Function('d', 'p', 'sys', `return (${e});`)(d, p, sys);
+        if (!pick) return null;
+        if (pick.ships !== undefined && pick.leadShip !== undefined) hud.selectShipGroup(pick, true);
+        else hud.selectStellarObject(pick, true);
+        return pick.name ?? '?';
+    }, expr);
+    const enabledButtons = () => page.$$('.order-actions .order-action-btn:not([disabled]):not(.order-action-empty):not(.order-action-extra)');
+    await tourStep('select a construction ship', () => select('p.builtObjects.find((b) => b && b.subRole === window.__SR.ConstructionShip && b.builtAt === null && b.topSpeed > 0) ?? p.builtObjects.find((b) => b && b.builtAt === null && b.topSpeed > 0)'));
+    // Hover over an unowned body with the ship selected (the default-order hint), then Ctrl-right-click it (the menu).
+    const at = await page.evaluate(() => {
+        const d = window.__dwu;
+        const p = d.game.playerEmpire;
+        const sys = d.galaxy.systems[p.capital.systemIndex];
+        const h = sys.habitats.find((x) => x.empire === null && x.category !== 0) ?? sys.systemStar;
+        window.__tourBody = h;
+        d.camera.centerOn(h.xpos, h.ypos);
+        d.camera.zoom = d.camera.clampZoom(1 / 200);
+        const s = d.camera.worldToScreen(h.xpos, h.ypos);
+        const r = document.querySelector('canvas').getBoundingClientRect();
+        return { x: r.left + s.x, y: r.top + s.y, name: h.name };
+    });
+    await page.waitForTimeout(500);
+    await tourStep(`hover over ${at.name}`, async () => {
+        await page.mouse.move(at.x - 3, at.y - 3);
+        await page.mouse.move(at.x, at.y);
+    });
+    await tourStep(`Ctrl-right-click ${at.name} (action menu)`, async () => {
+        await page.keyboard.down('Control');
+        await page.mouse.down({ button: 'right' });
+        await page.mouse.up({ button: 'right' });
+        await page.keyboard.up('Control');
+        await page.waitForSelector('.order-menu-root .order-menu-item', { timeout: 10000 }).catch(() => {});
+        const rows = await page.$$('.order-menu-root .order-menu-panel:first-child .order-menu-item');
+        for (const row of rows.slice(0, 6)) await row.hover();
+    });
+    await tourStep('close the action menu', () => page.keyboard.press('Escape'));
+    await tourStep('select the capital', () => select('p.capital'));
+    await tourStep('capital: Build page', async () => {
+        const b = await page.$('.order-actions .order-action-btn.order-style-build:not([disabled])');
+        if (b) await b.click();
+    });
+    await tourStep('select an unowned body (its page draws galaxy.rnd)', () => select('window.__tourBody'));
+    await tourStep('select a fleet', () => select('p.shipGroups?.[0] ?? null'));
+    await tourStep('select a foreign colony', () => select('d.galaxy.habitats.find((h) => h.empire && h.empire !== p && h.empire !== d.galaxy.independentEmpire && h.population?.totalAmount > 0) ?? null'));
+    await tourStep('select an independent colony', () => select('d.galaxy.habitats.find((h) => h.empire === d.galaxy.independentEmpire && h.population?.totalAmount > 0) ?? null'));
+    // Every page button of the current ship selection (each opens a page: no order is given by a page button).
+    await tourStep('ship pages', async () => {
+        await select('p.builtObjects.find((b) => b && b.subRole === window.__SR.ConstructionShip && b.builtAt === null && b.topSpeed > 0) ?? null');
+        await page.waitForTimeout(800);
+        for (const b of await enabledButtons()) {
+            const cls = (await b.getAttribute('class')) ?? '';
+            if (!/order-style-(build|page|sub)/.test(cls)) continue;
+            await b.click().catch(() => {});
+            await page.waitForTimeout(600);
+        }
+    });
+    await page.evaluate(async () => (await import('/src/ui/hud.ts')).setSelection(null));
+    // Left-sidebar panels.
+    const panels = await page.$$eval('.ls-button[data-panel]', (bs) => bs.map((b) => b.dataset.panel));
+    for (const id of panels) {
+        await tourStep(`left panel ${id}`, async () => {
+            await page.click(`.ls-button[data-panel="${id}"]`).catch(() => {});
+            await page.waitForTimeout(1200);
+            const row = await page.$('[data-hud="pnlItemList"] [data-index="0"]');
+            if (row) await row.click().catch(() => {});
+            await page.waitForTimeout(600);
+            await page.click(`.ls-button[data-panel="${id}"]`).catch(() => {});
+        }, 800);
+    }
+    // Top-bar screens (and the galaxy map), each opened, left 2.5 s, closed.
+    const screens = ['tbtnColonies', 'tbtnBuiltObjects', 'tbtnShipGroups', 'tbtnDesigns', 'btnBuildOrder', 'tbtnConstructionYards', 'tbtnTroops', 'tbtnResearch', 'btnExpansionPlanner', 'btnEmpireSummary', 'btnEmpirePolicy', 'tbtnEmpires', 'tbtnIntelligenceAgents', 'btnEmpireGraphs', 'btnGalacticHistory', 'btnHistoryMessages'];
+    for (const id of screens) {
+        await tourStep(`screen ${id}`, async () => {
+            const btn = page.locator(`[data-hud="${id}"]`).first();
+            if ((await btn.count()) === 0) return void console.log(`     (no ${id} button)`);
+            await btn.click().catch(() => {});
+            await page.waitForTimeout(2500);
+            // Diplomacy: every empire row once.
+            if (id === 'tbtnEmpires') {
+                for (const r of (await page.$$('[data-ow] .ow-list-row, [data-ow] .dip-row')).slice(0, 12)) {
+                    await r.click().catch(() => {});
+                    await page.waitForTimeout(300);
+                }
+            }
+            await page.keyboard.press('Escape');
+            await page.waitForTimeout(500);
+            if ((await page.locator('[data-ow]').count()) > 0) await btn.click().catch(() => {});
+            await page.waitForTimeout(500);
+            while ((await page.locator('[data-ow] .ow-close').count()) > 0) {
+                await page.locator('[data-ow] .ow-close').first().click().catch(() => {});
+                await page.waitForTimeout(200);
+                if ((await page.locator('[data-ow] .ow-close').count()) > 3) break;
+            }
+        }, 800);
+    }
+    await tourStep('galaxy map', async () => {
+        await page.keyboard.press('g');
+        await page.waitForTimeout(3000);
+        await page.keyboard.press('g');
+    });
+    await tourStep('idle again', async () => {}, 2000);
+    if (inThread) {
+        writeFileSync(`${out}/ui-tour-writes.json`, JSON.stringify(tourWrites, null, 1));
+        console.log(`saved ${out}/ui-tour-writes.json`);
+    } else {
+        // The replica must still equal the worker's game (paused: settle for two cold cycles).
+        let dg = null;
+        for (let i = 0; i < 30; i++) {
+            await page.waitForTimeout(2000);
+            dg = await page.evaluate(async () => {
+                const { stateDigest } = await import('/src/sim/tick/digest.ts');
+                const d = window.__dwu;
+                return { replica: stateDigest(d.galaxy), worker: (await d.simWorker.digest()).digest };
+            });
+            if (dg.replica === dg.worker) break;
+        }
+        check(dg.replica === dg.worker, `ui tour: replica digest = worker digest after the tour (${dg.replica.slice(0, 12)} / ${dg.worker.slice(0, 12)})`);
+    }
+}
+
 const waitGame = () => page.waitForFunction(() => window.__dwu?.time !== undefined && window.__dwu?.view !== undefined, null, { timeout: 600000 });
 const now = () => page.evaluate(() => window.__dwu.galaxy.nowMs);
 
@@ -242,6 +452,7 @@ try {
         await page.evaluate(() => { window.__dwu.time.paused = true; });
         await shots([['galaxy', null], ['sector', 0.02], ['system', 0.25], ['planet', 1.5]]);
         await combatViews();
+        if (uiTour) await runUiTour();
     } else if (mode === 'tutorial') {
         await page.goto(`${base}?${sw}`);
         await page.click('.main-menu-item[data-id="tutorials"]');

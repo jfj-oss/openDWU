@@ -19,7 +19,7 @@ import type { Galaxy } from '../../sim/galaxy';
 import type { Design } from '../../sim/design';
 import { BuiltObjectSubRole } from '../../sim/builtObjectTypes';
 import { issuePlayerCommand } from '../../sim/player/playerCommands';
-import { simQuery } from '../../simworker/simQuery';
+import { moneyPanelIncome } from '../../sim/treasury';
 import { formatThousands } from '../../sim/diplomacyTick';
 import { builtObjectImageUrl, resolveDrawPictureRef } from '../../render/builtObjectLayer';
 import { empireFlagUrl } from '../selectionInfoView';
@@ -266,11 +266,10 @@ function createBuildOrder(opts: BuildOrderOptions): OriginalWindow {
             renderDesignCell(i, r);
         });
         setText(funds, formatThousands(empire.stateMoney));
-        // The money panel's figures run CheckAgeVariableIncome (it writes the empire): a sim query, answered at once
-        // in-thread and by the worker on a replica (simworker/simQuery.ts).
-        simQuery(galaxy, empire, 'moneyPanel', [], (income) => {
-            if (income !== null && !win.closed) setText(cashflow, formatThousands(income.cashflow));
-        });
+        // Main.Part2.cs 785 shows the money panel's last Cashflow (AheLexjQsu, method_126); the panel's own refresh does
+        // the ageing (hud.ts, the 'moneyPanel' command). Here only a read (sim/readOnlyQuery.ts: it writes nothing).
+        const income = moneyPanelIncome(galaxy, empire);
+        if (income !== null) setText(cashflow, formatThousands(income.cashflow));
         renderTotals();
     }
 

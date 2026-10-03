@@ -16,6 +16,7 @@ import { fillPrompt } from './prompts/chronicle';
 import { ARCHIVIST_PROMPT_VERSION, ARCHIVIST_SCHEMA, ARCHIVIST_SYSTEM } from './prompts/archivist';
 import type { ChatMessage } from '../ui/advisorClient';
 import type { LlmQueue, LlmResult } from './queue';
+import { readReplica } from './replicaReads';
 
 export const NO_ARCHIVIST = 'No archivist is available (no model answered).';
 
@@ -82,7 +83,8 @@ export function archivistFallback(r: ArchiveRetrieval, outcome: ArchivistAnswer[
 
 /** Ask the archivist. Never rejects. */
 export async function askArchivist(galaxy: Galaxy, empire: Empire, queue: LlmQueue | null, question: string): Promise<ArchivistAnswer> {
-    const r = retrieveArchive(galaxy, empire, question);
+    // A port-only read (its digest reads the income a C# getter ages): side-effect-free (replicaReads.ts).
+    const r = readReplica(galaxy, () => retrieveArchive(galaxy, empire, question));
     if (question.trim() === '') return { ...archivistFallback(r, 'empty'), answer: 'Ask the archive a question.' };
     if (queue === null) return archivistFallback(r, 'silent');
     const { messages, situation } = buildArchivistMessages(galaxy, empire, question, r);

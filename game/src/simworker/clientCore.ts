@@ -13,14 +13,13 @@ import { createRenderTime, updateRenderTime, type RenderTime } from '../render/r
 import { GalaxyReplica } from './replicaGalaxy';
 import { ReplicaTradeFlows } from './tradeFlowSync';
 import { RemoteArgError, decodeRemoteArg, encodeRemoteArg, type RemoteArg, type RemoteNaming, type RemoteResolving } from './remoteArgs';
-import { setRemoteQuerySink, type SimQueryName } from './simQuery';
 import { BuiltObject } from '../sim/builtObject';
 import { Creature } from '../sim/creature';
 import { Fighter } from '../sim/combat/fighters';
 import { ShipGroup } from '../sim/fleets/shipGroup';
 import { Empire as EmpireClass } from '../sim/empire';
 import { Habitat } from '../sim/types';
-import type { ClockMessage, CommandMessage, HostOpMessage, QueryMessage, RefreshRequest, SnapshotMessage, StepMessage, ToWorker, WorkerEvent } from './protocol';
+import type { ClockMessage, CommandMessage, HostOpMessage, RefreshRequest, SnapshotMessage, StepMessage, ToWorker, WorkerEvent } from './protocol';
 import { setRemoteSimHost, type RemoteSimHost } from './remoteHost';
 import { setRemoteRefreshSink } from './refresh';
 import { markReadOnlyGalaxy } from '../sim/readOnlyQuery';
@@ -97,7 +96,7 @@ function createSyncStats(): SyncStats {
 /**
  * Objects that only ever exist in the game graph. One the replica no longer knows (destroyed and dropped by the sync's
  * mark, while the HUD or a list still held it) cannot be named to the worker, and must not travel by value (the worker
- * would act on a copy): the command or query is dropped instead.
+ * would act on a copy): the command is dropped instead.
  */
 const IDENTITY_PROTOS: ReadonlySet<object> = new Set<object>([BuiltObject.prototype, Habitat.prototype, ShipGroup.prototype, Creature.prototype, Fighter.prototype, EmpireClass.prototype]);
 
@@ -202,7 +201,6 @@ export class SimClientCore {
         };
         this.resolving = { object: (id) => this.replica.decoder.object(id), external: (kind, key) => this.replica.staticByRef.get(`${kind}:${key}`) };
         setRemoteCommandSink(galaxy, (empire, op, args, onApplied) => this.sendCommand(empire, op, args, onApplied));
-        setRemoteQuerySink(galaxy, (empire, op, args, done) => this.sendQuery(empire, op, args, done));
         setRemoteRefreshSink(galaxy, (objects, onFresh) => this.requestRefresh(objects, onFresh));
         // The sim's lazy "obtain" lookups never write the replica, whoever queries it (sim/readOnlyQuery.ts).
         markReadOnlyGalaxy(galaxy);
@@ -302,18 +300,6 @@ export class SimClientCore {
         this.opts.post(m);
     }
 
-    /** A sim query (simQuery.ts) for the worker; `done` runs when its reply has been applied (in frame()). */
-    private sendQuery(empire: Empire, op: SimQueryName, args: unknown[], done: (r: unknown) => void): void {
-        const empireId = this.replica.decoder.idOf(empire);
-        if (empireId < 0) throw new Error(`sim worker: query ${op} from an empire that is not in the replica`);
-        const encoded = this.encodeArgs(`query ${op}`, args);
-        if (encoded === null) return;
-        const id = this.nextCommandId++;
-        const msg: QueryMessage = { type: 'query', id, empire: empireId, op, args: encoded };
-        this.pending.set(id, done);
-        this.opts.post(msg);
-    }
-
     /** A UI-side sim write for the worker to apply on receipt, unjournaled (protocol.ts UiOpMessage). */
     postUiOp(op: string, args: unknown[]): void {
         if (this.disposed) return;
@@ -402,7 +388,7 @@ export class SimClientCore {
             const m = this.inbox[k];
             // Command replies: their onApplied reads the replica, so the cold parts through this delta (which carry
             // what the commands changed, simHost.ts touched) are applied first.
-            const fresh = m.results.some((r) => r.query !== true);
+            const fresh = m.results.length > 0;
             const st: ApplyStats = fresh ? this.replica.applyThrough(m.delta) : this.replica.apply(m.delta);
             hotMs += st.applyMs;
             steps += m.steps;
@@ -500,7 +486,6 @@ export class SimClientCore {
         this.disposed = true;
         this.unbindClock?.();
         setRemoteCommandSink(this.galaxy, null);
-        setRemoteQuerySink(this.galaxy, null);
         setRemoteSimHost(this.galaxy, null);
         setRemoteRefreshSink(this.galaxy, null);
         markReadOnlyGalaxy(this.galaxy, false);

@@ -49,7 +49,7 @@ import {
 
 /** Galaxy.cs 822 _WondersBuilt = new bool[PlanetaryFacilityDefinitionsStatic.Count] (created on first use). */
 function wondersBuilt(galaxy: Galaxy): boolean[] {
-    // A read-only replica galaxy (readOnlyQuery.ts): an unbuilt list, detached.
+    // A read-only galaxy (a UI read, readOnlyQuery.ts): an unbuilt list, detached.
     if (galaxy.wondersBuilt === null && isReadOnlyGalaxy(galaxy)) return new Array<boolean>(planetaryFacilityDefinitionsStatic(galaxy).length).fill(false);
     if (galaxy.wondersBuilt === null) galaxy.wondersBuilt = new Array<boolean>(planetaryFacilityDefinitionsStatic(galaxy).length).fill(false);
     return galaxy.wondersBuilt;
