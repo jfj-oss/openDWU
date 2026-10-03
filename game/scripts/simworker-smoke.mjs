@@ -2,6 +2,7 @@
 // Sim worker smoke (docs/sim-worker.md §6): boot a game with ?simWorker=1 in headless Chromium against a running dev
 // server and check that it runs, pauses, changes speed and takes a move order; save screenshots at four zooms.
 //   node scripts/simworker-smoke.mjs <base url> [--load=/dev-saves/x.dwusave] [--out=shots/simworker] [--inthread]
+//        [--gpu=swiftshader|egl] [--qs=simPace=0]
 import { chromium } from 'playwright-core';
 import { mkdirSync } from 'node:fs';
 
@@ -11,8 +12,10 @@ const load = opt('load', '');
 const out = opt('out', 'shots/simworker');
 const inThread = process.argv.includes('--inthread');
 mkdirSync(out, { recursive: true });
-const url = `${base}?${load ? `load=${encodeURIComponent(load)}` : 'autostart=1'}&simWorker=${inThread ? 0 : 1}`;
-const browser = await chromium.launch({ executablePath: process.env.CHROMIUM || '/usr/bin/chromium', args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
+const qs = opt('qs', '');
+const url = `${base}?${load ? `load=${encodeURIComponent(load)}` : 'autostart=1'}&simWorker=${inThread ? 0 : 1}${qs ? `&${qs}` : ''}`;
+const gpuArgs = opt('gpu', 'swiftshader') === 'egl' ? ['--use-gl=angle', '--use-angle=gl-egl', '--ignore-gpu-blocklist', '--enable-gpu'] : ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'];
+const browser = await chromium.launch({ executablePath: process.env.CHROMIUM || '/usr/bin/chromium', args: gpuArgs });
 const page = await browser.newPage({ viewport: { width: 1600, height: 900 } });
 const logs = [];
 page.on('console', (m) => logs.push(`[${m.type()}] ${m.text()}`));
@@ -65,6 +68,38 @@ try {
     });
     check(moved.result !== null, `move order applied (reply: ${moved.result})`);
     check(Math.hypot(moved.pos[0] - order.from[0], moved.pos[1] - order.from[1]) > 0, `ship ${order.id} moves toward ${order.target}: ${JSON.stringify(order.from.map(Math.round))} → ${JSON.stringify(moved.pos.map(Math.round))}`);
+    // Render pacing (docs/sim-worker.md §9 chunk 2): the drawn game time (RenderTime.renderNowMs) should advance with the
+    // wall clock — never backwards, without stalls or bursts as step messages arrive unevenly. Per rAF: the drawn
+    // time's advance against the wall time × speed; the mean absolute error and the worst frame.
+    {
+        await page.evaluate(() => { window.__dwu.time.speed = 1; window.__dwu.time.paused = false; });
+        await page.waitForTimeout(1000);
+        const pacing = await page.evaluate(() => new Promise((resolve) => {
+            const out = [];
+            let last = null;
+            const t0 = performance.now();
+            const tick = (now) => {
+                // MainView.renderTime: the sample the view drew this frame (the app ticker ran before this callback).
+                const drawn = window.__dwu.view?.renderTime?.renderNowMs ?? null;
+                if (drawn !== null && last !== null) out.push([now - last.wall, drawn - last.drawn]);
+                if (drawn !== null) last = { wall: now, drawn };
+                if (now - t0 < 3000) requestAnimationFrame(tick);
+                else resolve(out);
+            };
+            requestAnimationFrame(tick);
+        }));
+        if (pacing.length > 10) {
+            // Against the average rate (the sim may run slower than real time on a loaded machine): smoothness.
+            const rate = pacing.reduce((a, [, d]) => a + d, 0) / pacing.reduce((a, [w]) => a + w, 0);
+            const err = pacing.map(([w, d]) => Math.abs(d - rate * w));
+            const back = pacing.filter(([, d]) => d < 0).length;
+            const still = pacing.filter(([, d]) => d === 0).length;
+            const mean = err.reduce((a, b) => a + b, 0) / err.length;
+            const sorted = [...err].sort((a, b) => a - b);
+            console.log(`render pacing over ${pacing.length} frames at ${rate.toFixed(2)}× real time: |drawn − wall × rate| per frame mean ${mean.toFixed(2)} ms, p95 ${sorted[Math.floor(sorted.length * 0.95)].toFixed(2)} ms, max ${sorted[sorted.length - 1].toFixed(2)} ms; frames standing still ${still}; backwards ${back}`);
+            check(back === 0, 'drawn game time never goes backwards');
+        } else console.log(`render pacing: not measured (${pacing.length} samples)`);
+    }
     await page.evaluate(() => { window.__dwu.time.paused = true; });
     for (const [name, zoom] of [['galaxy', null], ['sector', 0.02], ['system', 0.25], ['planet', 1.5]]) {
         await page.evaluate((z) => {

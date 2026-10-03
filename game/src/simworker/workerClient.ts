@@ -54,7 +54,8 @@ export class SimWorkerClient {
                 } else if (m.type === 'snapshot') {
                     try {
                         let c: SimWorkerClient | null = null;
-                        const core = new SimClientCore(gameData, m as SnapshotMessage, { post, onEvent: (ev, res) => c?.eventHandler?.(ev, res) });
+                        // Paced rendering (clientCore.ts StepPacer).
+                        const core = new SimClientCore(gameData, m as SnapshotMessage, { post, onEvent: (ev, res) => c?.eventHandler?.(ev, res), pace: simWorkerPacing() });
                         c = new SimWorkerClient(worker, core);
                         client = c;
                         resolve(c);
@@ -133,6 +134,15 @@ export class SimWorkerClient {
         this.worker.terminate();
         this.core.dispose();
         this.waiting.clear();
+    }
+}
+
+/** Step pacing (clientCore.ts StepPacer) is on unless `?simPace=0` (A/B checks of the render timing). */
+function simWorkerPacing(): boolean {
+    try {
+        return new URLSearchParams(globalThis.location?.search ?? '').get('simPace') !== '0';
+    } catch {
+        return true;
     }
 }
 

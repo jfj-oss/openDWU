@@ -226,7 +226,40 @@ export interface ReplicaEncoderOptions {
      * moved, all the hot fields are compared, and so are the `children` fields' containers and the hot-class instances
      * in them (a ship's weapons and their shots, its fighters).
      */
-    gates?: Record<string, { gate: string; children: readonly string[] }>;
+    gates?: Record<string, { gate: string; children: readonly string[]; lists?: readonly string[] }>;
+    /**
+     * `Class.field`s whose changes always travel in the HOT stream, whatever their object's own stream: rarely changing
+     * fields of cold classes the view needs at once (a habitat's explosions, a system's visibility). They are compared in the cold
+     * cycle like any field, and every step for the objects named by touch() / touchId() / relatedFields. A class-wide,
+     * fixed choice, so each field's updates stay in order.
+     */
+    hotStreamFields?: ReadonlySet<string>;
+    /**
+     * `Class.field`s of cold classes that travel COLD when the cold pass finds them changed, and HOT when touch() /
+     * relatedFields compares them: a habitat's orbit pair and position, needed at once only where a ship parked at the
+     * habitat moved with it (its parent's position must arrive with its own), and otherwise a thousand changes a step
+     * not worth the hot stream. Ordering: a touch re-sends all of an object's mixed fields hot whenever one of them
+     * went cold since its last hot send, and the decoder (ReplicaDecoderOptions.mixedFields) drops a queued cold set of
+     * a mixed field older than the object's last hot one.
+     */
+    mixedStreamFields?: ReadonlySet<string>;
+    /**
+     * `Class.field`s of fixed hot classes compared every step with the hot fields, whose changes travel in the COLD
+     * stream: references to objects that are expensive to give birth to in the hot stream (a new mission and its command
+     * list) or that are usually born in a cold part (a new design, a new fleet) — sent cold, they neither inflate the hot
+     * part nor make it depend on a queued cold part. Also a fixed choice per field.
+     */
+    coldStreamFields?: ReadonlySet<string>;
+    /**
+     * `Class.field`s whose referenced object is compared (its touch slots: the hot fields of a hot class without its
+     * gate, the hotStreamFields and mixedStreamFields of a cold class) whenever the holder is hot-compared — a shot's, fighter's or
+     * creature's target, so what the hit does to it (a shield strike, a bombardment explosion) shows at once rather
+     * than when the target is next processed.
+     */
+    relatedFields?: ReadonlySet<string>;
+    /** Class name → fields compared, with the hot-class instances in them, by touch() (what a touched cold object
+     *  animates: a habitat's giant ion cannon shot). */
+    touchChildren?: Record<string, readonly string[]>;
     /** `Class.field`s of gated classes compared every step even while the gate has not moved (default:
      *  `<Class>.hasBeenDestroyed` of each gated class). */
     ungatedFields?: ReadonlySet<string>;
@@ -269,6 +302,21 @@ interface ShapeInfo {
     pinned: Uint8Array;
     /** Gated shapes: slots compared even while the gate has not moved (the gate, ungatedFields). */
     ungated: Uint8Array;
+    /** Gated shapes: slots holding containers compared (whole, without their elements) when the gate moves. */
+    listSlots: number[];
+    /** Slots whose sets always travel hot (hotStreamFields; null: none). */
+    hotStream: Uint8Array | null;
+    /** Slots that travel hot from touch compares and cold from the cold pass (mixedStreamFields; null: none). */
+    mixed: Uint8Array | null;
+    mixedSlots: number[];
+    /** Slots whose sets always travel cold (coldStreamFields; null: none). */
+    coldStream: Uint8Array | null;
+    /** Compare for touch() / relatedFields (hot slots without the gate, or the hot-stream and mixed slots; null: nothing). */
+    touchDiff: DiffFn | null;
+    /** Slots whose referenced object is touch-compared along with this one (relatedFields). */
+    relatedSlots: number[];
+    /** Slots compared with their hot-class contents by touch() (touchChildren). */
+    touchChildSlots: number[];
 }
 
 /** "Changed" by SameValue: NaN equals NaN, -0 differs from 0 (the state digest hashes the sign bit). */
@@ -296,6 +344,8 @@ export class ReplicaEncoder {
     /** Discovery label of each object (hotContainers, diagnostics). */
     private labels: string[] = [];
     private readonly hotContainers: ReadonlySet<string>;
+    /** Labels of gated classes' child containers (`Class.field`): compared through their gate, streamed hot. */
+    private readonly childLabels = new Set<string>();
     private readonly alwaysHot: ReadonlySet<string>;
     private hotIds: number[] = [];
     /** Every class instance / cold container (hot-class instances are here too: their full compare). */
@@ -308,6 +358,16 @@ export class ReplicaEncoder {
     private coldBirth: Int32Array = new Int32Array(1 << 16).fill(-1);
     private seq = 0;
     private coldDep = -1;
+    /** Diff call number, and per object the call in which touch() / relatedFields last compared it (once per step). */
+    private stamp = 0;
+    private touchStamp: Int32Array = new Int32Array(1 << 16);
+    /** 1: a mixed field of the object went cold since its mixed fields were last sent hot (mixedStreamFields). */
+    private mixedCold: Uint8Array = new Uint8Array(1 << 16);
+    /** Inside a touch compare (mixed fields go hot). */
+    private touching = false;
+    /** Called during diff() right after the hot pass (and before the cold slice): the binding's own per-step compares
+     *  (touch() / touchId() of the objects the sim processed this step that no gate sees). */
+    onHotPass: ((enc: ReplicaEncoder) => void) | null = null;
 
     private readonly nameByProto = new Map<object, string>();
     private readonly hotProtos: Set<object>;
@@ -364,6 +424,7 @@ export class ReplicaEncoder {
         this.markBudgetMs = opts.markBudgetMs ?? 1;
         this.markEveryCycles = Math.max(1, opts.markEveryCycles ?? 8);
         for (const p of opts.trackClasses ?? []) this.tracked.set(p, new Set());
+        for (const [name, g] of Object.entries(opts.gates ?? {})) for (const c of g.children) this.childLabels.add(`${name}.${c}`);
         roots.forEach((r, i) => this.idOf(r, `$root${i}`));
         this.flushPending();
     }
@@ -480,9 +541,11 @@ export class ReplicaEncoder {
     diff(fullCold = false, now: () => number = () => performance.now()): ReplicaDelta {
         const t0 = now();
         this.cycleStepCount++;
+        this.stamp++;
         const hotIds = this.hotIds;
         for (let i = 0; i < hotIds.length; i++) this.compareHot(hotIds[i]);
         this.stats.hotCompared += hotIds.length;
+        if (this.onHotPass !== null) this.onHotPass(this);
         const t1 = now();
         this.stats.hotMs = t1 - t0;
         const cold = this.coldIds;
@@ -648,6 +711,12 @@ export class ReplicaEncoder {
             const cb = new Int32Array(n).fill(-1);
             cb.set(this.coldBirth);
             this.coldBirth = cb;
+            const ts = new Int32Array(n);
+            ts.set(this.touchStamp);
+            this.touchStamp = ts;
+            const mc = new Uint8Array(n);
+            mc.set(this.mixedCold);
+            this.mixedCold = mc;
         }
         if (this.markPhase !== MarkPhase.Idle) {
             // Created during a mark: live by definition (and what it references is greyed as it is written).
@@ -685,7 +754,10 @@ export class ReplicaEncoder {
         this.kinds[id] = kind;
         this.shapeOf[id] = shape;
         this.hot[id] = hot ? 1 : 0;
-        this.streamOf[id] = (hot || childHot) && !coldStream ? 0 : 1;
+        // A gated object's child containers (a ship's weapons and fighters lists) travel hot like the instances in
+        // them: a new fighter or weapon is born in the hot stream, so its first hot compare needs no cold part.
+        const childList = kind !== Kind.Class && this.childLabels.has(label);
+        this.streamOf[id] = (hot || childHot || childList) && !coldStream ? 0 : 1;
         // Born in the stream of the record that referenced it first (the roots: hot).
         if (this.curStream === 1) this.coldBirth[id] = this.seq;
         this.labels[id] = label;
@@ -849,6 +921,21 @@ export class ReplicaEncoder {
         const fixed = hotClass && (this.opts.fixedHotClasses?.includes(name) ?? false);
         if (fixed && gateSlot >= 0 && !hotSlots.includes(gateSlot)) hotSlots.push(gateSlot);
         hotSlots.sort((a, b) => a - b);
+        const slotsOf = (set: ReadonlySet<string> | undefined): number[] => (plain || set === undefined ? [] : keys.flatMap((k, i) => (set.has(`${name}.${k}`) ? [i] : [])));
+        const maskOf = (slots: readonly number[]): Uint8Array | null => {
+            if (slots.length === 0) return null;
+            const m = new Uint8Array(keys.length);
+            for (const i of slots) m[i] = 1;
+            return m;
+        };
+        const hotStreamSlots = slotsOf(this.opts.hotStreamFields);
+        const mixedSlots = hotClass ? [] : slotsOf(this.opts.mixedStreamFields).filter((i) => !hotStreamSlots.includes(i));
+        // Cold-stream fields only mean something for the pinned slots of a fixed hot class (the rest travel cold anyway).
+        const coldStreamSlots = fixed ? slotsOf(this.opts.coldStreamFields).filter((i) => pinned[i] === 1) : [];
+        // touch() / relatedFields compare: a hot class's hot slots minus its gate (the gate itself must be seen moving by
+        // the hot pass, which then compares the children), else a cold class's hot-stream slots.
+        const touchSlots = hotClass ? (fixed ? hotSlots.filter((i) => i !== gateSlot) : []) : [...hotStreamSlots, ...mixedSlots].sort((a, b) => a - b);
+        const childNames = plain ? undefined : this.opts.touchChildren?.[name];
         const info: ShapeInfo = {
             id,
             proto,
@@ -864,6 +951,14 @@ export class ReplicaEncoder {
             lastChanged: new Int32Array(keys.length).fill(-1),
             pinned,
             ungated,
+            listSlots: gateSlot >= 0 ? (gate!.lists ?? []).map((c) => keys.indexOf(c)).filter((i) => i >= 0) : [],
+            hotStream: maskOf(hotStreamSlots),
+            mixed: maskOf(mixedSlots),
+            mixedSlots,
+            coldStream: maskOf(coldStreamSlots),
+            touchDiff: touchSlots.length > 0 ? makeDiffFn(keys, touchSlots) : null,
+            relatedSlots: slotsOf(this.opts.relatedFields),
+            touchChildSlots: childNames === undefined ? [] : childNames.map((c) => keys.indexOf(c)).filter((i) => i >= 0),
         };
         this.shapes.push(info);
         list.push(info);
@@ -876,11 +971,21 @@ export class ReplicaEncoder {
     /** Called by the generated diff functions: field `slot` of object `id` changed from `old` to `v`. */
     emitSet(id: number, slot: number, v: unknown, old: unknown): void {
         this.target(id);
-        if (this.curStream === 0 && this.kinds[id] === Kind.Class) {
-            // A fixed-hot-field class's other fields (found by the cold pass) travel cold: a fixed shape's slots never
-            // change stream, so each field's updates stay in order.
+        if (this.kinds[id] === Kind.Class) {
+            // A fixed-hot-field class's other fields (found by the cold pass) travel cold, and so do its coldStreamFields;
+            // hotStreamFields travel hot whatever the object's stream. Each is a fixed choice per shape slot, so each
+            // field's updates stay in order.
             const info = this.shapes[this.shapeOf[id]];
-            if (info.fixed && info.pinned[slot] === 0) {
+            if (info.hotStream !== null && info.hotStream[slot] === 1) {
+                this.curStream = 0;
+                this.cur = this.parts[0];
+            } else if (info.mixed !== null && info.mixed[slot] === 1) {
+                // Hot from a touch compare, else cold (and remembered: the next touch re-sends the mixed fields hot).
+                const hot = this.touching;
+                this.curStream = hot ? 0 : 1;
+                this.cur = this.parts[this.curStream];
+                if (!hot) this.mixedCold[id] = 1;
+            } else if (this.curStream === 0 && ((info.fixed && info.pinned[slot] === 0) || (info.coldStream !== null && info.coldStream[slot] === 1))) {
                 this.curStream = 1;
                 this.cur = this.parts[1];
             }
@@ -911,27 +1016,94 @@ export class ReplicaEncoder {
         const info = this.shapes[this.shapeOf[id]];
         if (info.gateDiff === null) {
             info.hotDiff!(o as Record<string, unknown>, sh, this, id);
+            if (info.relatedSlots.length > 0) this.touchRelated(info, sh);
             return;
         }
         if (!info.gateDiff(o as Record<string, unknown>, sh, this, id)) return;
         info.hotDiff!(o as Record<string, unknown>, sh, this, id);
         this.stats.gated++;
         const ids = this.ids;
-        for (const slot of info.childSlots) {
+        for (const slot of info.childSlots) this.compareChild(sh[slot]);
+        for (const slot of info.listSlots) {
             const c = sh[slot];
             if (c === null || typeof c !== 'object') continue;
             const cid = ids.get(c as object);
-            if (cid === undefined) continue;
-            this.compare(cid);
-            const csh = this.shadows[cid];
-            if (csh === undefined || this.kinds[cid] === Kind.Typed) continue;
-            for (let i = 0; i < csh.length; i++) {
-                const e = csh[i];
-                if (e === null || typeof e !== 'object') continue;
-                const eid = ids.get(e as object);
-                if (eid !== undefined && this.kinds[eid] === Kind.Class && this.shapes[this.shapeOf[eid]].hotDiff !== null) this.compareHot(eid);
+            if (cid !== undefined) this.compare(cid);
+        }
+        if (info.relatedSlots.length > 0) this.touchRelated(info, sh);
+    }
+
+    /** A gated / touched object's child: a container (compared, with the hot-class instances in it) or an instance. */
+    private compareChild(c: unknown): void {
+        if (c === null || typeof c !== 'object') return;
+        const ids = this.ids;
+        const cid = ids.get(c as object);
+        if (cid === undefined) return;
+        if (this.kinds[cid] === Kind.Class) {
+            if (this.shapes[this.shapeOf[cid]].hotDiff !== null) this.compareHot(cid);
+            return;
+        }
+        this.compare(cid);
+        const csh = this.shadows[cid];
+        if (csh === undefined || this.kinds[cid] === Kind.Typed) return;
+        for (let i = 0; i < csh.length; i++) {
+            const e = csh[i];
+            if (e === null || typeof e !== 'object') continue;
+            const eid = ids.get(e as object);
+            if (eid !== undefined && this.kinds[eid] === Kind.Class && this.shapes[this.shapeOf[eid]].hotDiff !== null) this.compareHot(eid);
+        }
+    }
+
+    /** relatedFields: touch-compare the objects a just-compared object refers to (its shadow, now current). */
+    private touchRelated(info: ShapeInfo, sh: unknown[]): void {
+        for (const slot of info.relatedSlots) {
+            const t = sh[slot];
+            if (t === null || typeof t !== 'object') continue;
+            const tid = this.ids.get(t as object);
+            if (tid !== undefined) this.touchCompare(tid, false);
+        }
+    }
+
+    /** Compare an object's touch slots (once per step), and with `children` its touchChildren. */
+    private touchCompare(id: number, children: boolean): void {
+        if (this.kinds[id] !== Kind.Class || this.touchStamp[id] === this.stamp) return;
+        const o = this.objs[id];
+        const sh = this.shadows[id];
+        if (o === null || sh === undefined) return;
+        this.touchStamp[id] = this.stamp;
+        const info = this.shapes[this.shapeOf[id]];
+        if (info.touchDiff !== null) {
+            this.touching = true;
+            try {
+                info.touchDiff(o as Record<string, unknown>, sh, this, id);
+                if (this.mixedCold[id] === 1) {
+                    // A mixed field went cold since the last hot send and may still be queued on the main thread:
+                    // send them all hot now (the decoder then drops the older cold sets), so this touch's view of the
+                    // object is complete.
+                    this.mixedCold[id] = 0;
+                    for (const slot of info.mixedSlots) this.emitSet(id, slot, sh[slot], sh[slot]);
+                }
+            } finally {
+                this.touching = false;
             }
         }
+        if (children) for (const slot of info.touchChildSlots) this.compareChild(sh[slot]);
+    }
+
+    /**
+     * The sim may have changed `o` this step though no gate sees it (a habitat firing its giant ion cannon, the player's
+     * system visibility): compare its touch slots now (a cold class's hot-stream and mixed fields, a fixed hot class's
+     * hot fields), and its
+     * touchChildren with the hot-class instances in them. Only from onHotPass (inside diff()).
+     */
+    touch(o: object): void {
+        const id = this.ids.get(o);
+        if (id !== undefined) this.touchCompare(id, true);
+    }
+
+    /** touch() by sync id (a binding that caches ids of objects it touches every step). */
+    touchId(id: number): void {
+        if (id >= 0 && id < this.objs.length) this.touchCompare(id, true);
     }
 
     private compare(id: number): void {
@@ -1128,12 +1300,17 @@ export interface ReplicaDecoderOptions {
     externals: Map<string, object>;
     /** The cold pump checks its deadline every this many records / shells (default 64 / 32; tests use 1). */
     sliceRecords?: number;
+    /** The encoder's mixedStreamFields (`Class.field`): a queued cold set of one of them older than the object's last
+     *  hot set of one of them is dropped. */
+    mixedFields?: ReadonlySet<string>;
 }
 
 interface DecShape {
     kind: Kind;
     proto: object | null;
     keys: string[];
+    /** Slots of mixedFields (null: none). */
+    mixed: Uint8Array | null;
     ctor: (() => Record<string, unknown>) | null;
     fill: (o: Record<string, unknown>, v: unknown[]) => void;
     set: (o: Record<string, unknown>, slot: number, v: unknown) => void;
@@ -1147,6 +1324,8 @@ export interface ApplyStats {
     drops: number;
     /** Cold parts applied by this call (a hot part's dependency, or the per-frame pump). */
     coldParts: number;
+    /** Cold parts whose births alone a hot part's dependency applied ahead of the pump. */
+    bornParts: number;
 }
 
 /** A cold part queued on the main thread, applied in order, possibly over several frames. */
@@ -1166,12 +1345,17 @@ export class ReplicaDecoder {
     private readonly shapes: DecShape[] = [];
     private readonly idByObj = new WeakMap<object, number>();
     private readonly coldQueue: QueuedPart[] = [];
+    /** Mixed fields: per object, the seq of the last hot part that set one of them. */
+    private readonly mixedHotSeq = new Map<number, number>();
     /** Seq of the last cold part applied completely. */
     private coldApplied = -1;
+    /** Seq of the last cold part whose shells and births are applied (≥ coldApplied: a hot part's dependency applies
+     *  only those, see apply). */
+    private coldBorn = -1;
     private readonly scratch: unknown[] = [];
     /** Called with each new object once it is filled (e.g. to wire a new Empire's visibility hooks). */
     onNewObject: ((o: object) => void) | null = null;
-    private stats: ApplyStats = { applyMs: 0, newObjects: 0, sets: 0, drops: 0, coldParts: 0 };
+    private stats: ApplyStats = { applyMs: 0, newObjects: 0, sets: 0, drops: 0, coldParts: 0, bornParts: 0 };
 
     constructor(private readonly opts: ReplicaDecoderOptions) {}
 
@@ -1202,22 +1386,24 @@ export class ReplicaDecoder {
      */
     apply(d: ReplicaDelta, all = false, now: () => number = () => performance.now()): ApplyStats {
         const t0 = now();
-        this.stats = { applyMs: 0, newObjects: 0, sets: 0, drops: 0, coldParts: 0 };
+        this.stats = { applyMs: 0, newObjects: 0, sets: 0, drops: 0, coldParts: 0, bornParts: 0 };
         for (const [id, shape] of d.shapes) this.addShape(id, shape);
         const fresh: object[] = [];
         this.shellsOf(d.hot, 0, Infinity, fresh, now);
-        if (d.coldDep >= 0 && d.coldDep > this.coldApplied) {
-            // The hot part names objects born in cold parts up to coldDep (possibly this delta's own).
+        if (d.coldDep >= 0 && d.coldDep > this.coldBorn) {
+            // The hot part names objects born in cold parts up to coldDep (possibly this delta's own). Only their births
+            // are needed (shells, then the newborns' first contents): the bodies — sets on objects that already existed —
+            // stay queued for the pump, so a dependency costs the births it needs, not whole parts.
             if (d.coldDep >= d.seq) this.coldQueue.push({ seq: d.seq, part: d.cold, phase: 0, i: 0 });
-            this.pumpColdUntil(d.coldDep, fresh, now);
-            this.bodyOf(d.hot, d.hot.births, 0, Infinity, now);
-            this.bodyOf(d.hot, d.hot.body, 0, Infinity, now);
+            this.bornUntil(d.coldDep, fresh, now);
+            this.bodyOf(d.hot, d.hot.births, 0, Infinity, now, false, d.seq, true);
+            this.bodyOf(d.hot, d.hot.body, 0, Infinity, now, false, d.seq, true);
             if (d.coldDep < d.seq && !partEmpty(d.cold)) this.coldQueue.push({ seq: d.seq, part: d.cold, phase: 0, i: 0 });
         } else {
-            this.bodyOf(d.hot, d.hot.births, 0, Infinity, now);
-            this.bodyOf(d.hot, d.hot.body, 0, Infinity, now);
+            this.bodyOf(d.hot, d.hot.births, 0, Infinity, now, false, d.seq, true);
+            this.bodyOf(d.hot, d.hot.body, 0, Infinity, now, false, d.seq, true);
             if (!partEmpty(d.cold)) this.coldQueue.push({ seq: d.seq, part: d.cold, phase: 0, i: 0 });
-            else if (this.coldQueue.length === 0) this.coldApplied = d.seq;
+            else if (this.coldQueue.length === 0) this.coldApplied = this.coldBorn = d.seq;
         }
         if (all) this.pumpColdUntil(Infinity, fresh, now);
         if (this.onNewObject !== null) for (const o of fresh) this.onNewObject(o);
@@ -1233,12 +1419,12 @@ export class ReplicaDecoder {
     pumpCold(budgetMs: number, now: () => number = () => performance.now()): ApplyStats {
         const t0 = now();
         budgetMs *= Math.min(4, 1 + Math.max(0, this.coldQueue.length - 4) * 0.1);
-        this.stats = { applyMs: 0, newObjects: 0, sets: 0, drops: 0, coldParts: 0 };
+        this.stats = { applyMs: 0, newObjects: 0, sets: 0, drops: 0, coldParts: 0, bornParts: 0 };
         const fresh: object[] = [];
         const deadline = t0 + budgetMs;
         while (this.coldQueue.length > 0) {
             if (!this.advance(this.coldQueue[0], deadline, fresh, now)) break;
-            this.coldApplied = this.coldQueue.shift()!.seq;
+            this.partDone(this.coldQueue.shift()!.seq);
             this.stats.coldParts++;
             if (now() >= deadline) break;
         }
@@ -1250,8 +1436,36 @@ export class ReplicaDecoder {
     private pumpColdUntil(seq: number, fresh: object[], now: () => number): void {
         while (this.coldQueue.length > 0 && this.coldQueue[0].seq <= seq) {
             this.advance(this.coldQueue[0], Infinity, fresh, now);
-            this.coldApplied = this.coldQueue.shift()!.seq;
+            this.partDone(this.coldQueue.shift()!.seq);
             this.stats.coldParts++;
+        }
+    }
+
+    private partDone(seq: number): void {
+        this.coldApplied = seq;
+        if (seq > this.coldBorn) this.coldBorn = seq;
+    }
+
+    /**
+     * Apply the shells and births of the queued cold parts up to `seq`, in order, leaving their bodies and drops to the
+     * pump. Safe out of order with those bodies: a part's births only fill objects born in it (with what it and the
+     * parts before it know), and a body only sets fields of objects that existed before its part.
+     */
+    private bornUntil(seq: number, fresh: object[], now: () => number): void {
+        for (const q of this.coldQueue) {
+            if (q.seq > seq) break;
+            if (q.phase === 0) {
+                q.i = this.shellsOf(q.part, q.i, Infinity, fresh, now);
+                q.phase = 1;
+                q.i = 0;
+            }
+            if (q.phase === 1) {
+                q.i = this.bodyOf(q.part, q.part.births, q.i, Infinity, now, true, q.seq, false);
+                q.phase = 2;
+                q.i = 0;
+                this.stats.bornParts++;
+            }
+            if (q.seq > this.coldBorn) this.coldBorn = q.seq;
         }
     }
 
@@ -1264,13 +1478,13 @@ export class ReplicaDecoder {
             q.i = 0;
         }
         if (q.phase === 1) {
-            q.i = this.bodyOf(q.part, q.part.births, q.i, deadline, now, true);
+            q.i = this.bodyOf(q.part, q.part.births, q.i, deadline, now, true, q.seq, false);
             if (q.i < q.part.births.length) return false;
             q.phase = 2;
             q.i = 0;
         }
         if (q.phase === 2) {
-            q.i = this.bodyOf(q.part, q.part.body, q.i, deadline, now);
+            q.i = this.bodyOf(q.part, q.part.body, q.i, deadline, now, false, q.seq, false);
             if (q.i < q.part.body.length) return false;
             q.phase = 3;
         }
@@ -1327,8 +1541,10 @@ export class ReplicaDecoder {
     }
 
     /** Apply the records of a part's births / body stream `b` from index `start`; returns where it stopped (the end when
-     *  done). `anywhere`: may stop between any two records (the births stream), else only between objects. */
-    private bodyOf(p: ReplicaPart, b: Float64Array, start: number, deadline: number, now: () => number, anywhere = false): number {
+     *  done). `anywhere`: may stop between any two records (the births stream), else only between objects. `seq` / `hot`:
+     *  the delta and stream of the part (mixed fields: a hot set is remembered, an older cold one dropped). */
+    private bodyOf(p: ReplicaPart, b: Float64Array, start: number, deadline: number, now: () => number, anywhere: boolean, seq: number, hot: boolean): number {
+        const mixedHot = this.mixedHotSeq;
         const strs = p.strs;
         const ext = this.opts.externals;
         const objs = this.objs;
@@ -1381,7 +1597,19 @@ export class ReplicaDecoder {
                     const slot = b[i++];
                     const v = value();
                     if (kinds[id] === Kind.Array) (o as unknown[])[slot] = v;
-                    else shapes[shapeOf[id]].set(o as Record<string, unknown>, slot, v);
+                    else {
+                        const shape = shapes[shapeOf[id]];
+                        const mixed = shape.mixed;
+                        if (mixed !== null && mixed[slot] === 1) {
+                            if (hot) mixedHot.set(id, seq);
+                            else {
+                                // A cold set older than the object's last hot send of its mixed fields: superseded.
+                                const h = mixedHot.get(id);
+                                if (h !== undefined && h > seq) break;
+                            }
+                        }
+                        shape.set(o as Record<string, unknown>, slot, v);
+                    }
                     this.stats.sets++;
                     break;
                 }
@@ -1450,7 +1678,16 @@ export class ReplicaDecoder {
             proto = this.opts.classes[name] ?? null;
             if (proto === null) throw new Error(`replica sync: unknown class ${name}`);
         }
-        this.shapes[id] = makeDecShape(kind, proto, keys, proto === null ? undefined : this.opts.revive?.get(proto));
+        const dec = makeDecShape(kind, proto, keys, proto === null ? undefined : this.opts.revive?.get(proto));
+        const mixedFields = this.opts.mixedFields;
+        if (mixedFields !== undefined && kind === Kind.Class && keys.some((k) => mixedFields.has(`${name}.${k}`))) {
+            const m = new Uint8Array(keys.length);
+            keys.forEach((k, i) => {
+                if (mixedFields.has(`${name}.${k}`)) m[i] = 1;
+            });
+            dec.mixed = m;
+        }
+        this.shapes[id] = dec;
     }
 
     private slowShell(shape: DecShape): Record<string, unknown> {
@@ -1485,7 +1722,7 @@ function makeDecShape(kind: Kind, proto: object | null, keys: string[], revive: 
         };
     }
     void kind;
-    return { kind, proto, keys, ctor, fill, set };
+    return { kind, proto, keys, mixed: null, ctor, fill, set };
 }
 
 /** Whether assigning `key` on an object with prototype `proto` could hit an accessor / read-only property. */

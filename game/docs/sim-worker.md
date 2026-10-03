@@ -34,8 +34,11 @@ How the sync stays cheap without touching the sim:
 - **Gates.** Ships, fighters and creatures are fully compared only in the steps the sim processed them, that is, when
   their `lastTouch` moved. With more than 1000 built objects the sim moves them round-robin anyway. Their weapons (the
   shots in flight) and fighters are compared along with them.
-- **Fixed hot fields.** For BuiltObject and Creature, only the listed per-frame fields
-  (`replicaGalaxy.ts alwaysHotFields`) travel hot. Their other ~350 fields travel cold.
+- **Fixed hot fields.** For BuiltObject, Creature, Fighter, Weapon, FighterWeapon and Explosion, only the listed
+  per-frame fields (`replicaGalaxy.ts alwaysHotFields`) travel hot. Their other fields (~350 for a ship) travel cold.
+- **Per-field streams** (§3.3): a few fields of cold classes travel hot (a habitat's explosions, the player's system
+  visibility), a habitat's orbit fields go hot only when a parked ship or a shot refers to the habitat, and a ship's
+  mission, design and fleet references travel cold.
 
 ## 2. Measurements (late game: 2500-star save, 3096 systems, 84k habitats, 9.8k built objects)
 
@@ -135,6 +138,37 @@ step 1.8–3.0 ms, diff 4.6–9.6 ms).
 0.05–0.3 ms in every frame. The main-thread budget is now render-bound: uncapped system/planet zoom reached 350–384
 fps, against about 250 in-thread.
 
+### 2.4 Chunk 2: hot path, spikes and render pacing (late save, machine load average 26-50)
+
+Main-thread hot apply per step, `node scripts/sync-measure.mjs <save> --steps 200`, the same save and steps back to
+back (the load moves the absolute numbers by up to 2×; the two runs per tree bracket it):
+
+| | hot apply ms mean | p95 | max | hot KB mean | worker hot pass ms mean |
+|---|---|---|---|---|---|
+| before | 2.33 / 1.36 | 10.5 / 5.9 | 31 / 10 | 200 / 219 | 16.7 / 8.8 |
+| after | 0.56 / 1.03 | 1.24 / 2.26 | 9.3 / 40 (GC) | 270 / 270 | 9.9 / 16.5 |
+
+The worst hot applies before carried 300-700 new objects (missions and their commands, weapon stats); after, the hot
+part's births are new ships and their explosions. The per-step compares added (the player's 3 096 system
+visibilities, the targets and parent habitats of the touched ships, gate lists) cost about 0.3 ms of the worker's
+hot pass. The hot part grew by about a quarter: the shot / fighter / explosion fields now travel hot from the first
+step of a fight instead of after a cold cycle.
+
+Render pacing, `scripts/simworker-smoke.mjs --load=/dev-saves/late2500.dwusave --gpu=egl` (60 Hz headless
+compositor; the drawn game time's advance per frame against the wall clock at the measured rate):
+
+| | mean ms | p95 ms | frames standing still (of 180) |
+|---|---|---|---|
+| worker, before | 13.4 | 30.9 | 39 |
+| worker, after, `?simPace=0` | 20.0 | 57.5 | 88 |
+| worker, after (StepPacer) | 3.4 | 8.6 | 0 |
+| in-thread (before and after) | 0.44 | 0.67 | 0 |
+
+On this load the worker ran 4-6 steps per message (step + diff 40-100 ms); the two unpaced runs differ mostly by
+that (21 against 33 ms in their last step). The synthetic patterns in
+`test/simWorkerPacing.test.ts` (240 Hz): worker at real time with 12-26 ms jittered arrivals, p95 0.2 ms against
+4.2 ms unpaced; 3 steps per 68 ms, p95 0.3 ms against 30 ms.
+
 ## 3. The replica sync (src/simworker/replicaSync.ts, replicaGalaxy.ts)
 
 ### 3.1 Identity and the shadow
@@ -166,10 +200,23 @@ What is synced and what is not:
      When `lastTouch` moved, the hot fields are compared too, plus the `weapons` and `fighters` lists and the Weapon /
      FighterWeapon instances in them.
    - **Hot fields:**
-     - *Fixed list* for BuiltObject and Creature (`alwaysHotFields`): the renderInterp `Moving*` fields, plus the
-       audit §3 per-frame set (visibility, combat, hyper, ambient, mission).
+     - *Fixed list* for BuiltObject, Creature, Fighter, Weapon, FighterWeapon and Explosion (`alwaysHotFields`): the
+       renderInterp `Moving*` fields, plus the audit §3 per-frame set (visibility, combat, hyper, ion strike, ambient,
+       mission), the shot fields `effectsLayer.ts` draws, and the explosion fields. (An adaptive list made the first
+       second of a fight after a quiet spell travel at the cold rate: a field became hot only after a cold cycle in
+       which it changed often enough.)
      - *Adaptive* for the other hot classes: a field is hot while it changed at least 0.25 times per step in a recent
        cold cycle.
+   - **Gate lists:** a ship's `attackers` (mutated in place; combat bars) is compared with its gate, without its
+     elements. A gate's child containers (`weapons`, `fighters`) travel hot, so a new fighter or weapon is born in the
+     hot stream.
+   - **Touches** (`ReplicaEncoder.touch` / `touchId`, from `GalaxySyncSource.hotPass`): the habitats with a giant ion
+     cannon (with the cannon's shot) and the player's (and its visibility partners') `SystemVisibility` records are
+     compared every step.
+   - **Related objects** (`relatedFields`): when a shot, fighter or creature is compared, so is its target (its hot
+     fields without its gate; or a habitat's hot-stream and mixed fields), so a shield strike or a bombardment
+     explosion shows in the same step; when a ship is, so is its `parentHabitat` / `dockedAt`, whose committed
+     position its own was just derived from (`renderInterp.ts followsParent`).
 2. **Cold pass.** Every object, whole, round-robin. Hot-class instances are included, so changes made by others,
    such as damage to an untouched ship, also arrive. The pass stops each tick after 3 ms or 6000 field sets / new
    objects, whichever comes first, and covers at least 1/1200 of the objects per tick. On the late save a full cycle
@@ -190,9 +237,18 @@ Each delta has a `hot` part and a `cold` part, and each part has shells (new obj
   - Empire and ShipGroup are compared every step but travel cold (`coldStreamClasses`).
   - For BuiltObject and Creature, sets of non-hot fields travel cold. This is safe because a fixed shape's slots never
     change stream.
+  - Per field, fixed per class (`replicaGalaxy.ts`): `hotStreamFields` always travel hot (Habitat explosions /
+    explosion / giantIonCannon / hasBeenDestroyed, SystemVisibility.status); `coldStreamFields` of a fixed hot class
+    are compared every step but travel cold (BuiltObject mission / design / shipGroup: a new mission is a burst of
+    births, a new design or fleet is usually born in a cold part first — sent hot, both made hot-apply spikes).
+  - `mixedStreamFields` (Habitat lastTouch / orbitAngle / xpos / ypos) travel cold from the cold pass and hot from a
+    touch or a related compare. A touch re-sends all of an object's mixed fields hot when one went cold since the
+    last hot send, and the decoder drops a queued cold set of a mixed field older than the object's last hot one.
 - **An object's birth (shell plus first contents) travels with the record that first referenced it.** If a hot
   record refers to an object born in a cold part the main thread may not have applied yet, the delta carries
-  `coldDep`. The main thread then applies the hot shells, then the cold parts up to `coldDep`, then the hot body.
+  `coldDep`. The main thread then applies the hot shells, then **only the shells and births** of the cold parts up to
+  `coldDep` (their bodies stay queued for the pump: a body only sets fields of objects that existed before its part),
+  then the hot body.
 - **Main thread, per delta:** register the shapes, apply the hot part, queue the cold part.
 - **Main thread, per frame:** pump the cold queue for 0.5 ms. The budget grows by 10 % per queued part beyond 4, up to
   4×. A part may be left half-applied, but only between objects: never between an array's new length and its element
@@ -332,15 +388,16 @@ The only behaviour changes in this mode are:
 
 - **Boot cost.** A late save's snapshot is about 4–5 s on top of the worker's own load, and the main thread is busy
   for about 2 s applying it. A streamed or incremental snapshot would fix that.
-- **Occasional hot-apply spikes (3–14 ms).** These are a cold part forced by `coldDep`, or a birth burst in the hot
-  stream. Candidates: give birth to cold-kind objects in the cold stream even when the referrer is hot (and make the
-  dependency rarer), and time-slice forced parts.
+- **Occasional hot-apply spikes (3–14 ms)** — addressed in chunk 2: the birth bursts (missions with their commands,
+  research-improved weapon stats) now travel cold, the usual dependencies (new designs and fleets, fighter launches,
+  refits) are gone, and a remaining dependency applies only births (§3.3). What is left is the hot part's own volume
+  on a busy step (about 5 000 sets) and GC pauses (§2.4).
 - **Worker headroom.** Step plus diff is 10–20 ms per step on the loaded machine at 60 steps/s. Above that the worker
   falls behind and the budget catches up, exactly as the in-thread loop does. Tuning knobs: `coldBudgetMs`,
   `coldMaxSets`, `markBudgetMs`.
 - **Cold staleness.** Cold data is up to one cycle old (about 1–1.5 s), plus any pump backlog. A paused game settles
   to exact: the worker keeps comparing for two full cycles after the last change.
-- **Not ported (§9):** the game-end banner, message-pipeline writes, audio sound flags, order-menu RNG draws,
+- **Not ported (§9):** the game-end banner, message-pipeline writes, order-menu RNG draws,
   synchronous advisor commands, trade-flow recording, rim wiring, tutorials (they still boot in-thread), the
   `__dwu.sim` / `simBudget` debug hooks (null in worker mode), and `__dwu.commands.log` (the replica has no log).
 
@@ -366,7 +423,25 @@ Each chunk is independent. All chunks share the same test approach:
   the main-thread JSON parse (send the scenario id from the save index, or parse in the worker).
 - Test: pause / speed / tutorial "Play This Game" in the smoke; load from the main menu.
 
-**Chunk 2 — Main View hot path and audio.**
+**Chunk 2 — Main View hot path and audio.** *Done* (see §2.4 for the numbers):
+- Hot fields validated per layer (§3.2): fixed lists for Fighter / Weapon / FighterWeapon / Explosion as well,
+  `lastIonStrike`, `canHyperJump`, `lastLocationEffectTouch` added, the audio flags dropped; gate lists (`attackers`,
+  `locationEffects`); child containers hot; related targets and parent habitats; the player's system visibility and
+  giant-ion-cannon habitats touched every step; `Galaxy.systems[].creatures` hot.
+- Habitat-fired shots: the cannon is its habitat's touch child, and the habitat's LastTouch comes with it (mixed field).
+  Planet explosions and bombardment: hot-stream fields, compared through the firing shot's target.
+- `builtObjectIndexGrid` stays cold (consumer audit §3: 400 000-unit cells, one reader, splices would go hot).
+- Audio: `mainViewSounds.ts SoundMarks` — render-side marks on a replica (`ReplicaSoundMarks`), the sim's flags
+  in-thread (`simFlagSoundMarks`, unchanged). An ion hit that disables nothing re-arms the C# flag without a new
+  LastIonStrike, so on a replica only strikes that land are heard. The event stings ride on
+  `Empire.eventMessageRecipient`, which the worker's sim calls on its own empire: they come back with chunk 4's event
+  stream.
+- Hot-apply spikes: mission / design / fleet references compared hot but sent cold, births-only dependencies (§3.3).
+- Interpolation timing: `clientCore.ts StepPacer`, a playout buffer in step units (`?simPace=0` turns it off).
+- Tests: `test/replicaHotStreams.test.ts`, `simWorkerMainView.test.ts`, `simWorkerPacing.test.ts`,
+  `mainViewSoundsReplica.test.ts`; the smoke reports the render pacing (`--gpu=egl`, `--qs=`).
+
+Original brief:
 - Files: `render/mainView.ts`, `renderInterp.ts`, `builtObjectIndex.ts`, `builtObjectLayer.ts`, `fighterLayer.ts`,
   `creatureLayer.ts`, `effectsLayer.ts`, `ambientLayer.ts`, `shipOverlays.ts`, `liveryLayer.ts`, `combatBars.ts`,
   `rangeRings.ts`, `followCamera.ts`, `fog.ts`, `src/audio/mainViewSounds.ts`, `gameAudio.ts`.

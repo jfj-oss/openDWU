@@ -17,7 +17,8 @@ import { ShipActionType, type ShipAction } from '../sim/player/shipAction';
 import { checkRuinsHaveBenefit } from '../sim/exploration';
 import { BuiltObjectRole } from '../sim/data/designSpecifications';
 import { startEffects, type EffectsPlayer, type SoundEffectRequest } from './effectsPlayer';
-import { ambientMusicAction, MainViewSounds, type SoundView } from './mainViewSounds';
+import { ambientMusicAction, MainViewSounds, ReplicaSoundMarks, simFlagSoundMarks, type SoundMarks, type SoundView } from './mainViewSounds';
+import { hasRemoteCommandSink } from '../sim/player/playerCommands';
 import { eventStingClosed, musicGameStarted, musicPlayer, playEventSting, stingPlayer } from './musicPlayer';
 // [rimatmo-wiring] begin — 19i items 8/9/10 (data/wiring; render half in src/render/rimAtmosphereLayer.ts, not edited here)
 import { scenarioParam } from '../sim/scenario/state';
@@ -225,6 +226,12 @@ export interface GameAudioDeps {
     suppressAllPopups: () => boolean;
     /** The Main View's selected ship (19i hull creaks prefer it over the nearest own ship). */
     selectedShip?: () => BuiltObject | null;
+    /**
+     * `galaxy` is the main thread's read-only replica of a game simulated in the worker (docs/sim-worker.md): the
+     * played-sound marks are kept render-side (mainViewSounds.ts ReplicaSoundMarks) instead of on the sim's flags.
+     * Default: whether the galaxy's player commands go to a remote sink (simworker/clientCore.ts sets one on its replica).
+     */
+    replica?: boolean;
 }
 
 export interface GameAudio {
@@ -233,11 +240,20 @@ export interface GameAudio {
     dispose(): void;
 }
 
+/**
+ * [simworker] The Main View sound pass's played-marks for `galaxy`: the sim's own flags in-thread, render-side marks on
+ * a sim-worker replica (a flag written there would never reach the worker, and the sync would never re-arm it).
+ * `replica` defaults to whether the galaxy's commands go to a remote sink (simworker/clientCore.ts sets one).
+ */
+export function soundMarksFor(galaxy: Galaxy, replica: boolean = hasRemoteCommandSink(galaxy)): SoundMarks {
+    return replica ? new ReplicaSoundMarks() : simFlagSoundMarks;
+}
+
 /** Wire the running game's audio; returns the per-frame hook and the teardown. */
 export function installGameAudio(deps: GameAudioDeps): GameAudio {
     const { galaxy, camera, time } = deps;
     const session = startEffects();
-    const sounds = new MainViewSounds(session.player);
+    const sounds = new MainViewSounds(session.player, undefined, soundMarksFor(galaxy, deps.replica));
     // EffectsPlayer.DX.cs:107 Initialize: preload ResolveWeaponSoundEffectFilenames(ComponentDefinitionsStatic) + explosions.
     const weaponFiles = new Set<string>();
     for (const c of galaxy.researchStatic?.componentsById.values() ?? []) {

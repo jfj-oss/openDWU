@@ -39,9 +39,11 @@ export function childHotClasses(): object[] {
  * and the renderer extrapolates between touches, render/renderInterp.ts); their weapons (shots in flight) and fighters
  * along with them.
  */
-export function hotGates(): Record<string, { gate: string; children: readonly string[] }> {
+export function hotGates(): Record<string, { gate: string; children: readonly string[]; lists?: readonly string[] }> {
     return {
-        BuiltObject: { gate: 'lastTouch', children: ['weapons', 'fighters'] },
+        // Lists mutated in place, compared with the ship (without their elements): its attackers (combat bars) and its
+        // location effects (liveryLayer.ts lightning scars, with lastLocationEffectTouch).
+        BuiltObject: { gate: 'lastTouch', children: ['weapons', 'fighters'], lists: ['attackers', 'locationEffects'] },
         Fighter: { gate: 'lastTouch', children: ['weapons'] },
         Creature: { gate: 'lastTouch', children: [] },
     };
@@ -49,12 +51,15 @@ export function hotGates(): Record<string, { gate: string; children: readonly st
 
 /**
  * Hot fields of the hot classes with a FIXED list (fixedHotClasses below): what the main view reads every frame —
- * render/renderInterp.ts MovingBuiltObject / MovingCreature (position, heading, speeds, parent frame, last touch), the
- * hyperjump / docking / shield-strike / combat state the ship, effects and overlay layers draw, and owner / fleet /
- * role changes, and the fields docs/sim-worker-consumer-audit.md §3 found the layers read every frame (visibility:
- * nearestSystemStar / stealth / sensors; combat bars: attackers; ambient: doing* / engineType / builtAt; travel vectors:
- * mission). Every other field of these classes reaches the replica in the cold cycle (about a second). For the
- * other hot classes these are fields compared every step on top of the adaptive ones (any field that keeps changing).
+ * render/renderInterp.ts MovingBuiltObject / MovingCreature / MovingFighter / MovingShot (position, heading, speeds,
+ * parent frame, last touch), the hyperjump / docking / shield-strike / ion-strike / combat state the ship, effects and
+ * overlay layers draw (effectsLayer.ts weaponDrawCommand / fighterWeaponDrawCommand / drawExplosion, combatBars.ts,
+ * shipOverlays.ts, liveryLayer.ts lightning scars), owner / fleet / role changes, and what
+ * docs/sim-worker-consumer-audit.md §3 found the layers read every frame (visibility: nearestSystemStar / stealth /
+ * sensors; ambient: doing* / engineType / builtAt; travel vectors: mission). The audio's `*SoundPlayed` flags are not
+ * synced at the step rate: the main thread keeps its own played-marks (audio/mainViewSounds.ts ReplicaSoundMarks).
+ * Every other field of these classes reaches the replica in the cold cycle (about a second). For the other hot classes
+ * these are fields compared every step on top of the adaptive ones (any field that keeps changing).
  */
 export function alwaysHotFields(): Set<string> {
     const out = new Set<string>();
@@ -64,27 +69,85 @@ export function alwaysHotFields(): Set<string> {
     add('BuiltObject', `xpos ypos _heading targetHeading currentSpeed _targetSpeed topSpeed warpSpeed parentHabitat parentOffsetX parentOffsetY
         parentBuiltObject dockedAt lastTouch hasBeenDestroyed empire role subRole design shipGroup currentTarget inBattle
         hyperjumpJustExited hyperjumpCountdown hyperjumpPrepare hyperjumpAboutToEnter hyperEnterStartAnimation hyperExitStartAnimation
-        hyperjumpX hyperjumpY lastShieldStrike lastShieldStrikeDirection currentShields shieldsCapacity damagedComponentCount
-        unbuiltComponentCount dateRetrofit isFunctional
+        hyperjumpX hyperjumpY canHyperJump lastShieldStrike lastShieldStrikeDirection currentShields shieldsCapacity damagedComponentCount
+        unbuiltComponentCount dateRetrofit isFunctional lastIonStrike lastLocationEffectTouch
         nearestSystemStar attackers stealth sensorLongRange sensorProximityArrayRange doingMining doingGasMining doingConstruction
-        engineType builtAt mission ionStrikeSoundPlayed hyperjumpAboutToEnterSoundPlayed`);
+        engineType builtAt mission`);
     add('Creature', `xpos ypos currentHeading targetHeading currentSpeed targetSpeed movementSpeed hyperSpeed lungeSpeed currentTarget
         parentHabitat parentX parentY lastTouch hasBeenDestroyed damage isVisible turnDirection distanceToTarget nearestSystemStar`);
-    add('Fighter', 'xpos ypos heading targetHeading currentSpeed hasBeenDestroyed onboardCarrier lastTouch');
+    add('Fighter', `xpos ypos heading targetHeading currentSpeed _targetSpeed topSpeed hasBeenDestroyed onboardCarrier lastTouch health
+        currentShields lastShieldStrike lastShieldStrikeDirection currentTarget parentBuiltObject empire`);
+    // Shots in flight (compared with their firer, render/effectsLayer.ts weaponDrawCommand + sampleShot).
+    add('Weapon', 'x y heading lastFired distanceTravelled target power willHitTarget _resetNext');
+    add('FighterWeapon', 'x y heading lastFired distanceTravelled power willHitTarget resetNext');
+    // effectsLayer.ts drawExplosion / drawPlanetExplosion (the frame of a ship's explosion follows from its start).
+    add('Explosion', 'explosionStart explosionSize explosionOffsetX explosionOffsetY explosionImageIndex explosionCurrentImage');
     add('Galaxy', 'nowMs');
     return out;
 }
 
-/** Hot classes whose hot fields are exactly alwaysHotFields. */
+/**
+ * Hot classes whose hot fields are exactly alwaysHotFields. A fixed list, not the adaptive one, for everything the
+ * view animates: an adaptive field becomes hot only after a cold cycle in which it changed often enough, so the first
+ * second of a fight (shots, fighters, explosions after a quiet spell) would otherwise travel at the cold rate.
+ */
 export function fixedHotClasses(): string[] {
-    return ['BuiltObject', 'Creature'];
+    return ['BuiltObject', 'Creature', 'Fighter', 'Weapon', 'FighterWeapon', 'Explosion'];
+}
+
+/**
+ * Fields of cold classes whose changes travel in the hot stream (replicaSync.ts hotStreamFields) — rare changes the
+ * view must show at once. They are compared every step for the objects a shot or ship refers to (relatedFields), the
+ * habitats with a giant ion cannon and the player's system visibility (GalaxySyncSource.hotPass):
+ * - Habitat explosions / planet explosion / giant ion cannon / destroyed flag (effectsLayer.ts habitatEffects): a
+ *   bombardment's explosion is pushed onto the target planet while the firing ship is processed;
+ * - SystemVisibility.status (render/fog.ts: whether the ships in a system are drawn, every frame).
+ */
+export function hotStreamFields(): Set<string> {
+    const out = new Set<string>();
+    for (const f of ['explosions', 'explosion', 'giantIonCannon', 'hasBeenDestroyed']) out.add(`Habitat.${f}`);
+    out.add('SystemVisibility.status');
+    return out;
+}
+
+/**
+ * Fields of cold classes that travel cold from the cold pass and hot when compared through a reference
+ * (replicaSync.ts mixedStreamFields): a habitat's (orbitAngle, lastTouch) pair and committed position. The background
+ * round-robin moves a thousand habitats a step, which the view extrapolates from the pair (renderInterp.ts
+ * renderOrbitAngle) at any staleness — but a ship parked at a planet is placed at the planet's committed position plus
+ * its offset when it is processed, and drawn in the planet's frame only while the two agree (renderInterp.ts
+ * followsParent), so its parent's fields come hot with it (relatedFields BuiltObject.parentHabitat / dockedAt); and a
+ * giant ion cannon's shot is extrapolated from its habitat's LastTouch.
+ */
+export function mixedStreamFields(): Set<string> {
+    return new Set(['Habitat.lastTouch', 'Habitat.orbitAngle', 'Habitat.xpos', 'Habitat.ypos']);
+}
+
+/**
+ * Hot fields whose changes travel cold (replicaSync.ts coldStreamFields): compared every step, applied by the main
+ * thread's cold pump (normally the same or the next frame). A new mission is a burst of births (the mission, its
+ * command list, Commands), a new design or fleet is usually born in a cold part first (Empire.designs /
+ * Empire.shipGroups): sent hot they made the occasional 3-14 ms hot-apply spike (docs/sim-worker.md §8).
+ */
+export function coldStreamFields(): Set<string> {
+    return new Set(['BuiltObject.mission', 'BuiltObject.design', 'BuiltObject.shipGroup']);
+}
+
+/**
+ * References whose target is compared with the holder (replicaSync.ts relatedFields): a shot's / fighter's / creature's
+ * target (shield strikes, bombardment explosions show at once), and a ship's parent habitat / dock (its position, which
+ * the ship's was just derived from).
+ */
+export function relatedFields(): Set<string> {
+    return new Set(['Weapon.target', 'Fighter.currentTarget', 'Creature.currentTarget', 'BuiltObject.parentHabitat', 'BuiltObject.dockedAt']);
 }
 
 /**
  * Containers compared every step (discovery labels, replicaSync.ts hotContainers): the lists the main view iterates
- * every frame (ships, creatures, empires) and the per-object lists of things it animates (weapons and their shots,
- * fighters, explosions — of ships and of planets: Habitat itself is cold, its orbit is extrapolated from the synced
- * (orbitAngle, lastTouch) pair, render/renderInterp.ts renderOrbitAngle).
+ * every frame (ships, creatures, empires, a system's creatures) and the per-object lists of things it animates
+ * (explosions — of ships and of planets: Habitat itself is cold, its orbit is extrapolated from the synced
+ * (orbitAngle, lastTouch) pair, render/renderInterp.ts renderOrbitAngle). A ship's weapons and fighters lists are its
+ * gate's children (compared when it moves, streamed hot).
  */
 export function hotContainers(): Set<string> {
     return new Set([
@@ -93,6 +156,8 @@ export function hotContainers(): Set<string> {
         'Habitat.explosions',
         'Empire.builtObjects', 'Empire.shipGroups',
         'ShipGroup.ships',
+        // SystemInfo (a plain object, labelled by where it was found) .creatures: creatureLayer.ts creaturesNear.
+        'Galaxy.systems[].creatures',
     ]);
 }
 
@@ -123,10 +188,56 @@ export class GalaxySyncSource {
                 coldStreamClasses: opts.coldStreamClasses ?? [Empire.prototype, ShipGroup.prototype],
                 alwaysHotFields: opts.alwaysHotFields ?? alwaysHotFields(),
                 fixedHotClasses: opts.fixedHotClasses ?? fixedHotClasses(),
+                hotStreamFields: opts.hotStreamFields ?? hotStreamFields(),
+                mixedStreamFields: opts.mixedStreamFields ?? mixedStreamFields(),
+                coldStreamFields: opts.coldStreamFields ?? coldStreamFields(),
+                relatedFields: opts.relatedFields ?? relatedFields(),
+                touchChildren: opts.touchChildren ?? { Habitat: ['giantIonCannon'] },
             },
             [galaxy, this.side],
         );
+        this.encoder.onHotPass = (enc) => this.hotPass(enc);
         this.refreshSideTables();
+    }
+
+    /** Sync ids of the habitats with a giant ion cannon and of the player's (and its shared-visibility partners')
+     *  SystemVisibility records, refreshed once per cold cycle. */
+    private cannonIds: number[] = [];
+    private visibilityIds: number[] = [];
+    private idsCycle = -1;
+
+    /**
+     * The binding's per-step compares (ReplicaEncoder.onHotPass), for what the sim may change this step that no gate or
+     * reference brings in:
+     * - the habitats with a giant ion cannon (its shot is the habitat's touch child; it moves when the habitat is ticked);
+     * - the player's system visibility (render/fog.ts reads SystemVisibility.status every frame) and that of the empires
+     *   it shares visibility with (EmpireVisibility.checkSystemVisible reads theirs too).
+     * The lists are rebuilt once per cold cycle (a cannon built since shows from then on). Read only.
+     */
+    private hotPass(enc: ReplicaEncoder): void {
+        if (this.idsCycle !== enc.cycleCount) {
+            this.idsCycle = enc.cycleCount;
+            const g = this.galaxy;
+            this.cannonIds.length = 0;
+            for (const h of g.habitats) {
+                if (h != null && h.giantIonCannonPresent) {
+                    const id = enc.knownId(h);
+                    if (id >= 0) this.cannonIds.push(id);
+                }
+            }
+            this.visibilityIds.length = 0;
+            const player = g.playerEmpire;
+            if (player !== null) {
+                for (const e of [player.visibility, ...player.visibility.empiresSharedVisibility]) {
+                    for (const sv of e.systemVisibility) {
+                        const id = enc.knownId(sv);
+                        if (id >= 0) this.visibilityIds.push(id);
+                    }
+                }
+            }
+        }
+        for (const id of this.cannonIds) enc.touchId(id);
+        for (const id of this.visibilityIds) enc.touchId(id);
     }
 
     /** Recollect the side tables into the persistent root (Maps / arrays refilled in place). */
@@ -183,7 +294,7 @@ export class GalaxyReplica {
     constructor(gameData: GameData, baseTechCost: number) {
         this.statics = replicaStatics(gameData, baseTechCost);
         const codec = replicaCodecOptions();
-        this.decoder = new ReplicaDecoder({ classes: codec.classes, revive: codec.revive, externals: this.statics.byRef });
+        this.decoder = new ReplicaDecoder({ classes: codec.classes, revive: codec.revive, externals: this.statics.byRef, mixedFields: mixedStreamFields() });
     }
 
     /** The replica's static GameData objects by `kind:key` (the save's externals). */

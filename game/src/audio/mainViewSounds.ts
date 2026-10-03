@@ -8,6 +8,13 @@
 // and hands each request to Main.method_0 (`request`), so the sim stays
 // DOM-free: it only sets/clears those flags, as the C# sim does.
 //
+// In worker mode (docs/sim-worker.md, `?simWorker=1`) the galaxy here is the main thread's read-only REPLICA, and a
+// flag set on it is never seen by the worker: the worker's flag stays false, so when the sim re-arms it (false again
+// on the next shot) nothing changes on its side and the replica keeps the stale `true` — every later shot of that
+// weapon would be silent. So the played state goes through a SoundMarks object: in-thread, simFlagSoundMarks reads and
+// writes the sim's flags exactly as before; on a replica, ReplicaSoundMarks keeps render-side marks keyed by what the
+// sim changes when it re-arms a flag (a shot's LastFired, an explosion object, LastIonStrike, a jump's countdown).
+//
 // Render-only state the C# keeps on sim objects (Habitat.NextSoundTime,
 // BuiltObject.NextSoundTimeConstruction/Mining/GasMining) lives in WeakMaps
 // here, and the lightning flicker (MainView.cs:1792 method_28) draws from a
@@ -30,6 +37,93 @@ import { isObjectVisibleToThisEmpire } from '../sim/independentTraders';
 import { Random } from '../sim/random';
 import { MIN_TIME } from '../sim/tick/simTime';
 import { resolveBalanceAndDistance, type EffectsPlayer, type SoundEffectRequest } from './effectsPlayer';
+
+/** A weapon in flight as the sound marks see it (Weapon or FighterWeapon). */
+export interface SoundShot {
+    soundEffectPlayed: boolean;
+    lastFired: number;
+}
+
+/**
+ * Which one-shot sounds were already requested (the C#'s *SoundPlayed flags). `played` / `mark` pairs for a shot, an
+ * explosion, an ion strike and a hyperjump entry.
+ */
+export interface SoundMarks {
+    shotPlayed(w: SoundShot): boolean;
+    markShot(w: SoundShot): void;
+    explosionPlayed(e: Explosion): boolean;
+    markExplosion(e: Explosion): void;
+    ionStrikePlayed(bo: BuiltObject): boolean;
+    markIonStrike(bo: BuiltObject): void;
+    hyperEntryPlayed(bo: BuiltObject): boolean;
+    markHyperEntry(bo: BuiltObject): void;
+}
+
+/**
+ * The C#'s own bookkeeping, on the sim objects (in-thread): Weapon.SoundEffectPlayed, Explosion.ExplosionSoundPlayed,
+ * BuiltObject.IonStrikeSoundPlayed / HyperjumpAboutToEnterSoundPlayed, set here and cleared by the sim when it re-arms
+ * them (a new shot, the end of an explosion, an ion hit, the next hyperjump order).
+ */
+export const simFlagSoundMarks: SoundMarks = {
+    shotPlayed: (w) => w.soundEffectPlayed,
+    markShot: (w) => {
+        w.soundEffectPlayed = true;
+    },
+    explosionPlayed: (e) => e.explosionSoundPlayed,
+    markExplosion: (e) => {
+        e.explosionSoundPlayed = true;
+    },
+    ionStrikePlayed: (bo) => bo.ionStrikeSoundPlayed,
+    markIonStrike: (bo) => {
+        bo.ionStrikeSoundPlayed = true;
+    },
+    hyperEntryPlayed: (bo) => bo.hyperjumpAboutToEnterSoundPlayed,
+    markHyperEntry: (bo) => {
+        bo.hyperjumpAboutToEnterSoundPlayed = true;
+    },
+};
+
+/**
+ * Render-side marks for a replica galaxy (worker mode): nothing is written to the sim objects. Each mark remembers the
+ * value the sim changes whenever it re-arms the C# flag, so a mark holds exactly as long as the flag would:
+ * - a shot: its LastFired (weaponFire / fighterWeaponFire set it with SoundEffectPlayed = false; Reset leaves the shot
+ *   out of flight, DistanceTravelled -1, until the next fire);
+ * - an explosion: the object itself (a new Explosion per blast; its flag is cleared only as it is removed);
+ * - an ion strike: LastIonStrike (stamped by the hit that disables a component — a hit that disables nothing re-arms the
+ *   C# flag without a new stamp, so on a replica only strikes that land are heard);
+ * - a hyperjump entry: HyperjumpCountdown (cmdHyperTo's first execution sets it with the flag cleared, once per jump).
+ */
+export class ReplicaSoundMarks implements SoundMarks {
+    private shots = new WeakMap<object, number>();
+    private explosions = new WeakSet<Explosion>();
+    private ionStrikes = new WeakMap<BuiltObject, number>();
+    private hyperEntries = new WeakMap<BuiltObject, number>();
+
+    shotPlayed(w: SoundShot): boolean {
+        return this.shots.get(w) === w.lastFired;
+    }
+    markShot(w: SoundShot): void {
+        this.shots.set(w, w.lastFired);
+    }
+    explosionPlayed(e: Explosion): boolean {
+        return this.explosions.has(e);
+    }
+    markExplosion(e: Explosion): void {
+        this.explosions.add(e);
+    }
+    ionStrikePlayed(bo: BuiltObject): boolean {
+        return this.ionStrikes.get(bo) === bo.lastIonStrike;
+    }
+    markIonStrike(bo: BuiltObject): void {
+        this.ionStrikes.set(bo, bo.lastIonStrike);
+    }
+    hyperEntryPlayed(bo: BuiltObject): boolean {
+        return this.hyperEntries.get(bo) === bo.hyperjumpCountdown;
+    }
+    markHyperEntry(bo: BuiltObject): void {
+        this.hyperEntries.set(bo, bo.hyperjumpCountdown);
+    }
+}
 
 /** The Main View's camera as the sound code needs it (world point at the centre, px per world unit, viewport px). */
 export interface SoundView {
@@ -131,7 +225,12 @@ export class MainViewSounds {
     private indexUpdates = -1;
     private nearScratch: BuiltObject[] = [];
 
-    constructor(private player: EffectsPlayer, seed = Date.now() & 0x7fffffff) {
+    constructor(
+        private player: EffectsPlayer,
+        seed = Date.now() & 0x7fffffff,
+        /** Played-sound bookkeeping: the sim's flags in-thread, render-side marks on a replica (worker mode). */
+        private marks: SoundMarks = simFlagSoundMarks,
+    ) {
         this.lightningRandom = new Random(seed);
     }
 
@@ -173,11 +272,11 @@ export class MainViewSounds {
                     const exps = h.explosions as Explosion[] | null;
                     if (exps !== null && exps.length > 0) this.explosions(h.xpos, h.ypos, exps, view, f, bd, req);
                     const planetExp = h.explosion as Explosion | null;
-                    if (planetExp !== null && !planetExp.explosionSoundPlayed) {
+                    if (planetExp !== null && !this.marks.explosionPlayed(planetExp)) {
                         const ep = this.explosionPoint(h.xpos, h.ypos, planetExp, view, f);
                         const b = bd(ep);
                         req(this.player.resolvePlanetExplosion(planetExp.explosionSize, b.balance, b.distance));
-                        planetExp.explosionSoundPlayed = true;
+                        this.marks.markExplosion(planetExp);
                     }
                 }
             }
@@ -198,8 +297,8 @@ export class MainViewSounds {
                 if (!onScreen(view, p, 100)) continue;
                 if (!godMode && viewer !== null && !isObjectVisibleToThisEmpire(galaxy, viewer, bo)) continue;
                 // MainView.1.cs:1161-1176: ion strike (within 1400 ms of the hit).
-                if (bo.lastIonStrike > MIN_TIME && now - bo.lastIonStrike < 1400.0 && !bo.ionStrikeSoundPlayed) {
-                    bo.ionStrikeSoundPlayed = true;
+                if (bo.lastIonStrike > MIN_TIME && now - bo.lastIonStrike < 1400.0 && !this.marks.ionStrikePlayed(bo)) {
+                    this.marks.markIonStrike(bo);
                     const b = bd(p);
                     req(this.player.resolveIonStrike(b.balance, b.distance));
                 }
@@ -222,9 +321,9 @@ export class MainViewSounds {
                 if (fighter.explosions.length > 0) this.explosions(fighter.xpos, fighter.ypos, fighter.explosions, view, f, bd, req);
                 for (const w of fighter.weapons) {
                     if (!(w.distanceTravelled >= 0)) continue;
-                    if (!w.soundEffectPlayed) {
+                    if (!this.marks.shotPlayed(w)) {
                         const b = bd(p);
-                        w.soundEffectPlayed = true;
+                        this.marks.markShot(w);
                         req(this.player.resolveFighterWeapon(fighter.specification.weaponSoundEffectFilename, w.type, b.balance, b.distance));
                     }
                 }
@@ -300,9 +399,9 @@ export class MainViewSounds {
     // Port of MainView.2.cs:1509 method_171 (sound part): the first frame a shot is drawn.
     private weaponSound(w: Weapon, p: ScreenPoint, bd: (p: ScreenPoint) => { balance: number; distance: number }, req: (r: SoundEffectRequest | null) => void): void {
         if (!(w.distanceTravelled >= 0)) return;
-        if (!w.soundEffectPlayed) {
+        if (!this.marks.shotPlayed(w)) {
             const b = bd(p);
-            w.soundEffectPlayed = true;
+            this.marks.markShot(w);
             req(this.player.resolveWeapon(w.component.def.soundEffectFilename, b.balance, b.distance));
         }
     }
@@ -327,20 +426,20 @@ export class MainViewSounds {
         req: (r: SoundEffectRequest | null) => void,
     ): void {
         for (const e of list.slice()) {
-            if (e.explosionSoundPlayed) continue;
+            if (this.marks.explosionPlayed(e)) continue;
             const b = bd(this.explosionPoint(x, y, e, view, f));
             req(this.player.resolveExplosion(e.explosionSize, b.balance, b.distance));
-            e.explosionSoundPlayed = true;
+            this.marks.markExplosion(e);
             // TODO(port): screen shake for ExplosionSize > 150 — Main.method_217 (MainView.2.cs:2811).
         }
     }
 
     // Port of MainView.1.cs:3062 method_97 (sound part).
     private hyperjump(bo: BuiltObject, p: ScreenPoint, bd: (p: ScreenPoint) => { balance: number; distance: number }, req: (r: SoundEffectRequest | null) => void): void {
-        if (bo.hyperjumpAboutToEnter && !bo.hyperjumpAboutToEnterSoundPlayed) {
+        if (bo.hyperjumpAboutToEnter && !this.marks.hyperEntryPlayed(bo)) {
             const b = bd(p);
             req(this.player.resolveHyperjumpEntry(b.balance, b.distance));
-            bo.hyperjumpAboutToEnterSoundPlayed = true;
+            this.marks.markHyperEntry(bo);
         }
         // No played flag in the C#: requested every frame while HyperjumpJustExited (the sim clears it next tick).
         if (bo.hyperjumpJustExited) {

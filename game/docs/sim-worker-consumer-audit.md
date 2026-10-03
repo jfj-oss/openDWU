@@ -261,6 +261,8 @@ This audit is written against that design. It also applies to a typed-array snap
 
 `mission` (travel vectors), `doing*` (animations) and `fighters` changes are tolerable.
 
+**Since chunk 2** (docs/sim-worker.md §3.2-3.3): all of the bold fields are in `alwaysHotFields` (with `lastIonStrike`, `canHyperJump`, `lastLocationEffectTouch`), `attackers` is compared as a gate list, `mission` / `design` / `shipGroup` are compared every step but travel cold, Fighter / Weapon / FighterWeapon / Explosion have fixed hot lists, a habitat's explosions and a parked-at habitat's orbit fields arrive hot, the player's `SystemVisibility.status` is compared every step, and `Galaxy.systems[].creatures` is a hot container. `builtObjectIndexGrid` stays cold: its cells are 400 000 units wide, so a ship changes cell rarely and the only reader (fog's `findShipOutsideSystemWithScanRange` for the cell of the point tested) is off only for a ship that crossed a cell boundary in the last cold cycle; comparing every cell every step would send each splice's element shifts hot.
+
 **Creature**
 - `xpos`, `ypos`, `currentHeading`, `targetHeading`, `currentSpeed`, `targetSpeed`, `movementSpeed`, `hyperSpeed`, `lungeSpeed`, `accelerationRate`, `lungeAccelerationRate`, `turnRate`, `parentHabitat`, `parentX/Y`, `lastTouch`, `hasBeenDestroyed`, `damage`, `damageKillThreshold`, `isVisible`, `currentTarget`, **`distanceToTarget`** (missing from the fixed list), `size`, `type`, `pictureRef`, `creatureId`, `nearestSystemStar`, `explosions`.
 
@@ -288,6 +290,7 @@ This audit is written against that design. It also applies to a typed-array snap
 
 **Every frame, or on a timer**
 1. `src/audio/mainViewSounds.ts` (every frame): `weapon.soundEffectPlayed`, `explosion.explosionSoundPlayed`, `bo.ionStrikeSoundPlayed`, `bo.hyperjumpAboutToEnterSoundPlayed`. On a replica these writes are overwritten by the sync, so sounds may replay. Move this to a render-side `WeakSet`, or let the worker emit sound events.
+   **Done (chunk 2):** on a replica the sound pass keeps render-side marks (`mainViewSounds.ts ReplicaSoundMarks`, keyed by a shot's LastFired, the explosion object, LastIonStrike and the jump's countdown) and writes nothing; in-thread it still uses the sim's flags (`simFlagSoundMarks`).
 2. `src/main.ts` `refreshHud` at 4 Hz → `ui/empireMessageFeed.ts recordTickerMessage`: `message.starDate = …`; `addHistoryMessage` (`Empire.messageHistory.push`).
 3. `ui/messagePopups.ts tick` at 4 Hz:
    - `m.starDate = galaxyStarDate(galaxy)` (two sites);

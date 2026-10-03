@@ -134,7 +134,7 @@ try {
         console.log(`option B, typed-array snapshot of hot fields: worker pack ms ${fmt(stat(packMs))}; KB ${fmt(stat(snapKB), 0)}; main transfer+read ms ${fmt(stat(unpackMs))} (every consumer must be ported to read it)`);
         console.log(`option C, full replica refresh at 4-10 Hz: ${tSnap.toFixed(0)} ms encode + ${(snap.stats.bytes / 1048576).toFixed(0)} MB + main rebuild (snapshot lines above) per refresh; a delta refresh at that rate costs the full compare above per refresh`);
     }
-    const forced = [], hotKB = [], pumpMsS = [], backlog = [], gated = [], hotMs = [], diffMs = [], applyMs = [], cloneMs = [], bytes = [], sets = [], fresh = [], stepMs = [];
+    const forced = [], born = [], hotKB = [], pumpMsS = [], backlog = [], gated = [], hotMs = [], diffMs = [], applyMs = [], cloneMs = [], bytes = [], sets = [], fresh = [], stepMs = [];
     source.encoder.profile = {};
     for (let i = 0; i < steps; i++) {
         const s0 = performance.now();
@@ -162,10 +162,11 @@ try {
         const st = replica.apply(dc);
         if (st.applyMs > (globalThis.__maxHot ?? 0)) {
             globalThis.__maxHot = st.applyMs;
-            globalThis.__maxHotInfo = `${st.applyMs.toFixed(1)} ms: ${st.newObjects} new, ${st.sets} sets, ${st.coldParts} forced cold parts, hot ${(d.stats.hotBytes / 1024).toFixed(0)} KB`;
+            globalThis.__maxHotInfo = `${st.applyMs.toFixed(1)} ms: ${st.newObjects} new, ${st.sets} sets, ${st.coldParts} forced cold parts, ${st.bornParts ?? 0} forced births, hot ${(d.stats.hotBytes / 1024).toFixed(0)} KB`;
         }
         applyMs.push(st.applyMs);
         forced.push(st.coldParts);
+        born.push(st.bornParts ?? 0);
         hotKB.push(d.stats.hotBytes / 1024);
         // Four render frames per step at 240 Hz, each pumping the cold queue for --pump-ms.
         let pm = 0;
@@ -183,7 +184,7 @@ try {
     console.log(`  gated (touched)  ${fmt(stat(gated), 0)}`);
     console.log(`  delta KB         ${fmt(stat(bytes.map((b) => b / 1024)), 1)}`);
     console.log(`  clone ms         ${fmt(stat(cloneMs))}`);
-    console.log(`  main hot apply ms ${fmt(stat(applyMs))}  (cold parts forced by deps: ${fmt(stat(forced), 0)})`);
+    console.log(`  main hot apply ms ${fmt(stat(applyMs))}  (cold parts forced by deps: ${fmt(stat(forced), 0)}; births only: ${fmt(stat(born), 0)})`);
     console.log(`  worst hot apply: ${globalThis.__maxHotInfo}`);
     console.log(`  hot part KB      ${fmt(stat(hotKB), 1)}`);
     console.log(`  main cold pump ms per frame (budget ${pumpMs}) ${fmt(stat(pumpMsS))}; cold backlog parts ${fmt(stat(backlog), 0)}`);
