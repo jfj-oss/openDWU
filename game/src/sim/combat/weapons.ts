@@ -217,7 +217,9 @@ function weaponFireInternal(galaxy: Galaxy, weapon: Weapon, firer: BuiltObject |
         const attackers = target.attackers!;
         if (!attackers.includes(firer)) attackers.push(firer);
     } else if (isCreature(target)) {
-        // TODO(port) M4u: Creature.Attackers (not modelled on the TS Creature; combat/threats.ts stellarAttackers sees an empty list).
+        // Weapon.cs 300-304: the creature retaliates (Creature.cs 1196 CheckForAttackers) or, if benign, flees (1019).
+        const attackers = target.attackers;
+        if (!attackers.includes(firer)) attackers.push(firer);
     }
 }
 

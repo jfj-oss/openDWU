@@ -13,6 +13,9 @@
 // Galaxy.4.cs GenerateGasCloud.
 
 import { fogOf } from './fog';
+import { AttachedChildren } from './renderGroups';
+import { circleAtScreenRes } from './screenCircle';
+import { installGlParameterCache } from './glParamCache';
 import { collectHitsUnderPoint, needsPickMenu, PICK_MENU_MAX_ROWS, type PickCandidate, type PickHit } from './pickStack';
 import { openPickMenu, closePickMenu, type PickMenuEntry } from '../ui/pickMenu';
 import { describeSubRole } from '../sim/player/orderMenu';
@@ -80,7 +83,8 @@ import { updateCombatEffects } from './effectsLayer';
 import { BuiltObject } from '../sim/builtObject';
 import type { Creature } from '../sim/creature';
 import { createMapOverlayState, type MapOverlayState } from '../ui/mapOverlays';
-import { showRegionLabels, showSystemNames } from '../ui/settings';
+import { getSettings, showRegionLabels, showSystemNames } from '../ui/settings';
+import { edgeScrollPixels, nebulaDetailScale, wheelNotches, wheelZoom, wheelZoomAnchor } from './viewInput'; // [gameoptions]
 import { hideMapTooltip, showMapTooltip, tooltipText } from '../ui/mapTooltip';
 import { freightTooltipText } from '../ui/freightText'; // [freightOverlay]
 import { wreckTooltipText } from '../ui/scenario/wreckageUi'; // [wreckage]
@@ -475,6 +479,11 @@ class SystemView {
      * the whole group is skipped — by this update and by Pixi's scene traversal — while none of it is drawn
      * (zoom factor >= 500). It sits where the bodies used to be among root's children, so draw order is unchanged. */
     bodies: Container;
+    /** Everything drawn only from sector / system zoom in: the star discs + corona, the orbit rings, the moon rings and
+     * `bodies`, in that draw order between the star sprite and the name label. Detached from root while none of it is
+     * drawn (render: zoom perf) — Pixi re-walks every attached descendant, hidden ones included, on each pan / zoom
+     * frame, and at galaxy zoom this was ~50 hidden containers per system. */
+    private detail = new Container();
     /** World-space radius around the star that holds everything this system draws, not counting pixel-sized
      * extras (min sprite sizes, labels) — those are covered by SYSTEM_CULL_PX_MARGIN. */
     drawRadius = 0;
@@ -516,7 +525,8 @@ class SystemView {
         this.root.x = star.xpos;
         this.root.y = star.ypos;
         this.root.visible = false;
-        view.world.addChild(this.root);
+        // Attached to the scene graph only while visible (MainView.systemLayer, renderGroups.ts AttachedChildren).
+        view.systemLayer.add(this.root);
 
         // Generated fallbacks; the original per-habitat art (pictureRef)
         // loads lazily in MainView.init and swaps the texture in.
@@ -545,14 +555,14 @@ class SystemView {
             this.corona = new Sprite(Texture.EMPTY);
             this.corona.anchor.set(0.5);
             this.starDiscs.addChild(this.discA, this.discB, this.corona);
-            this.root.addChild(this.starDiscs);
+            this.detail.addChild(this.starDiscs);
         }
 
         this.ring = new Graphics();
-        this.root.addChild(this.ring);
+        this.detail.addChild(this.ring);
         this.bodies = new Container();
-        this.root.addChild(this.bodies);
-        addRingBelowBodies(this.root, this.moonRingLayer, this.bodies);
+        this.detail.addChild(this.bodies);
+        addRingBelowBodies(this.detail, this.moonRingLayer, this.bodies);
         // Star: discs + corona (<= 2.3 x the drawn size S = max(4, diameter*z) px) or the map icon (<= 26 px or
         // diameter*z + 2 px), so 1.2 diameters plus the pixel margin.
         let radius = 1.2 * star.diameter;
@@ -616,6 +626,7 @@ class SystemView {
         // orbiting > ~0.3 * maxExtent from its star (the planet itself vanished).
         const visible = boundsOnScreen(star.xpos, star.ypos, this.drawRadius, SYSTEM_CULL_PX_MARGIN, cam.x, cam.y, cam.width, cam.height, zoom);
         this.root.visible = visible;
+        this.view.systemLayer.set(this.root, visible);
         if (!visible) {
             return;
         }
@@ -688,6 +699,7 @@ class SystemView {
         if (bodiesShown) {
             this.updateBodies(z, f);
         }
+        this.setDetailAttached(bodiesShown || this.ring.visible || (this.starDiscs?.visible ?? false));
 
         // System name label under the star (small white text). Task 12p: only
         // drawn above f = 150 (MainView.2.cs:5153/5627-5630) — nothing names
@@ -700,6 +712,14 @@ class SystemView {
             this.nameLabel.position.set(0, (Math.max(iconPx, gpx) * 0.5 + 10) / z);
             this.nameLabel.scale.set(1 / z);
         }
+    }
+
+    /** Attach `detail` (just below the name label) while any of it is drawn, else detach it (see `detail`). */
+    private setDetailAttached(on: boolean): void {
+        const attached = this.detail.parent === this.root;
+        if (on === attached) return;
+        if (on) this.root.addChildAt(this.detail, this.root.getChildIndex(this.nameLabel));
+        else this.root.removeChild(this.detail);
     }
 
     /**
@@ -867,7 +887,7 @@ class SystemView {
                 mg0.clear(); // fog of war (fog.ts): no orbit ring for a planet the player cannot see
                 continue;
             }
-            g.circle(0, 0, p.orbitDistance).stroke({ width: 1.2 / z, color: 0x5c5cc0, alpha: 0.85 });
+            circleAtScreenRes(g, 0, 0, p.orbitDistance, z).stroke({ width: 1.2 / z, color: 0x5c5cc0, alpha: 0.85 });
             // Faint moon-orbit circles (system zoom), drawn around (0,0) in their own Graphics; updateBodies moves it
             // to the planet's drawn position every frame.
             const mg = this.moonRings[i];
@@ -875,7 +895,7 @@ class SystemView {
             if (z > 0.25) {
                 for (let mk = 0; mk < planet.moons.length; mk++) {
                     if (!this.moonIsDrawn(i, mk)) continue;
-                    mg.circle(0, 0, planet.moons[mk].habitat.orbitDistance).stroke({ width: 1.2 / z, color: 0x4c4ca0, alpha: 0.65 });
+                    circleAtScreenRes(mg, 0, 0, planet.moons[mk].habitat.orbitDistance, z).stroke({ width: 1.2 / z, color: 0x4c4ca0, alpha: 0.65 });
                 }
             }
         }
@@ -1153,6 +1173,8 @@ export class MainView {
     regionLabels = new Container();
     private regionLabelViews: RegionLabel[] = [];
     systems: SystemView[] = [];
+    /** Every SystemView root, in galaxy order; only the on-screen ones are attached (renderGroups.ts AttachedChildren). */
+    readonly systemLayer = new AttachedChildren(new Container());
     clouds: CloudView[] = [];
     /** Task 08f2: nebula cloud images, world-space between backdrop and stars. */
     nebulae: NebulaView[] = [];
@@ -1248,6 +1270,11 @@ export class MainView {
         readonly store: AssetStore,
         private overlays: MapOverlayState = createMapOverlayState(),
     ) {
+        installGlParameterCache(app.renderer); // texture set-up must not wait on the GPU (glParamCache.ts)
+        // Nothing in the map takes Pixi pointer events (picking is MainView.pick on the camera): keep Pixi's EventSystem
+        // from hit-testing the whole world / overlay scene graph on every wheel and pointer-move event.
+        this.world.eventMode = 'none';
+        this.fx.eventMode = 'none';
         app.stage.addChild(this.world);
         app.stage.addChild(this.fx);
         this.world.addChild(this.grid);
@@ -1528,7 +1555,9 @@ export class MainView {
             )
             .catch(() => undefined);
 
-        // Systems and gas clouds.
+        // Systems and gas clouds. The system roots sit in one container (attached only while on screen) where they
+        // used to be among world's children, so draw order is unchanged.
+        this.world.addChild(this.systemLayer.root);
         for (const system of this.galaxy.systems) {
             // Gas clouds are SystemInfos too (C# / task C2c-1); they are drawn as clouds below.
             if (system.systemStar.category === HabitatCategoryType.GasCloud) continue;
@@ -1549,7 +1578,7 @@ export class MainView {
         }
         // Behind every system root (orbits, planets, stars), above the backdrop / galaxy nebulae / grid.
         this.systemNebulae = new SystemNebulaLayer(this.galaxy.randomSeed, this.app.renderer.resolution, this.app.renderer);
-        this.world.addChildAt(this.systemNebulae.root, this.systems.length > 0 ? this.world.getChildIndex(this.systems[0].root) : this.world.children.length);
+        this.world.addChildAt(this.systemNebulae.root, this.world.getChildIndex(this.systemLayer.root));
         for (const habitat of this.galaxy.habitats) {
             if (habitat.category === HabitatCategoryType.GasCloud) {
                 // Generated fallback; the original art loads lazily below.
@@ -1783,6 +1812,7 @@ export class MainView {
         // fades out (task 02b2), so something is always visible while
         // zooming between galaxy and system view; the per-system colour
         // patches follow once the backdrop is gone.
+        this.applyDisplaySettings(); // [gameoptions] Star Density, system nebulae on / detail
         this.deepStarfield.update(deepStarfieldAlpha(z, m), cam.x, cam.y, z, cam.width, cam.height);
         this.deepStarfield.updatePatches(systemPatchZoomAlpha(z, m), this.patchSystems, cam.x, cam.y, cam.width, cam.height);
         this.systemNebulae.update(z, cam.x, cam.y, cam.width, cam.height, this.nebulaSystems, nowMs);
@@ -1802,6 +1832,7 @@ export class MainView {
             const star = sv.system.systemStar;
             if (!systemInView(star.xpos, star.ypos, sv.maxExtent, cam.x, cam.y, cam.width, cam.height, z, 400)) {
                 sv.root.visible = false;
+                this.systemLayer.set(sv.root, false);
                 continue;
             }
             // Decide label visibility greedily (min 80 px between labels).
@@ -1824,6 +1855,7 @@ export class MainView {
             }
             sv.update(z, cam, allow, dtSeconds);
         }
+        this.systemLayer.flush();
         for (const cloud of this.clouds) {
             cloud.update(z, cam);
         }
@@ -1919,7 +1951,7 @@ export class MainView {
         let edgeDy = 0;
         if (!this.dragging && this.pointerInside) {
             const edge = 24;
-            const speed = 16;
+            const speed = edgeScrollPixels(getSettings().mainViewScrollSpeed); // [gameoptions] Scroll Speed
             if (this.lastPointer.x < edge) {
                 edgeDx = -speed;
             } else if (this.lastPointer.x > cam.width - edge) {
@@ -1956,6 +1988,40 @@ export class MainView {
             cam.panByScreen(-edgeDx, -edgeDy);
         }
     }
+
+    // [gameoptions] begin
+    /** Main.Part13.cs:388 OnMouseWheel on our camera: the zoom step from Zoom Speed and the anchor from the mouse
+     *  scroll-wheel behaviour (render/viewInput.ts). */
+    private wheelZoom(deltaY: number, deltaMode: number, sx: number, sy: number): void {
+        const s = getSettings();
+        const notches = wheelNotches(deltaY, deltaMode);
+        if (notches === 0) return;
+        const cam = this.camera;
+        const zoom = cam.clampZoom(wheelZoom(cam.zoom, notches, s.mainViewZoomSpeed));
+        if (zoom === cam.zoom) return; // `if (num == double_0) flag = false`: no movement either
+        const target = this.wheelSelectionPoint();
+        const anchor = wheelZoomAnchor(s.mouseScrollWheelBehaviour, notches < 0, target !== null);
+        if (anchor === 'selection' && target !== null) cam.centerOn(target.x, target.y);
+        if (anchor === 'cursor') cam.zoomAt(zoom, sx, sy);
+        else cam.zoomAt(zoom, cam.width / 2, cam.height / 2);
+    }
+
+    /** The selected item's drawn position (method_157's target): the HUD's ship / fleet, else the selected body. */
+    private wheelSelectionPoint(): { x: number; y: number } | null {
+        const sel = this.getHudSelection();
+        const bo = sel?.builtObject ?? sel?.shipGroup?.leadShip ?? null;
+        if (bo) return { x: bo.xpos, y: bo.ypos };
+        const h = this.selectedHabitat;
+        return h !== null ? this.motion.habitatPos(h) : null;
+    }
+
+    /** Push the display options into the starfield and the nebula layer (each a no-op unless the value changed). */
+    private applyDisplaySettings(): void {
+        const s = getSettings();
+        this.deepStarfield.setStarFieldSize(s.starFieldSize);
+        this.systemNebulae.setDisplay(s.showSystemNebulae, nebulaDetailScale(s.systemNebulaeDetail));
+    }
+    // [gameoptions] end
 
     /** Stop the follow camera if it is on (edge-scroll, a mousedown on the canvas, or the followed target being
      * gone — task followcam). A no-op while already off. */
@@ -2172,8 +2238,7 @@ export class MainView {
                 const rect = canvas.getBoundingClientRect();
                 const sx = e.clientX - rect.left;
                 const sy = e.clientY - rect.top;
-                const factor = e.deltaY < 0 ? 1.25 : 0.8;
-                this.camera.zoomAt(this.camera.zoom * factor, sx, sy);
+                this.wheelZoom(e.deltaY, e.deltaMode, sx, sy); // [gameoptions] Zoom Speed + Mouse scroll-wheel behaviour
             },
             { passive: false },
         );

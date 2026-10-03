@@ -156,8 +156,7 @@ export function galaxyDoTasks(
         identifyDisputedBases(galaxy, checkEmpireTerritoryCanBuildAtHabitat);
         generateIndependentTraders(galaxy);
         assignIndependentTraderMissions(galaxy);
-        // GenerateNewPirateEmpires (Galaxy.9.cs 20, pirates.ts; ported in its game-start form — TODO(port) M4s:
-        // DestroyedPiratesDoNotRespawn once CurrentStarDate − StartStarDate > 300000). The Empire ctor stamps the
+        // GenerateNewPirateEmpires (Galaxy.9.cs 20, pirates.ts; DestroyedPiratesDoNotRespawn is applied there). The Empire ctor stamps the
         // touch times of each new faction at CurrentDateTime (Empire.cs 4320); TS field defaults are game-time-0
         // values, so re-stamp the factions this call appended.
         const pirateCountBefore = galaxy.pirateEmpires.length;

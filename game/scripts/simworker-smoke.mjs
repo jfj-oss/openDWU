@@ -3,17 +3,20 @@
 // server and check that it runs, pauses, changes speed and takes a move order; save screenshots at four zooms.
 //   node scripts/simworker-smoke.mjs <base url> [--load=/dev-saves/x.dwusave] [--out=shots/simworker] [--inthread]
 //        [--gpu=swiftshader|egl] [--qs=simPace=0]
+//        [--detect-writes[=all]]   (dev-only replica write detector, src/simworker/writeDetector.ts: prints what it found)
 import { chromium } from 'playwright-core';
-import { mkdirSync } from 'node:fs';
+import { mkdirSync, writeFileSync } from 'node:fs';
 
 const base = process.argv[2] ?? 'http://localhost:5173/';
 const opt = (k, d) => (process.argv.find((a) => a.startsWith(`--${k}=`)) ?? `=${d}`).split('=').slice(1).join('=');
 const load = opt('load', '');
 const out = opt('out', 'shots/simworker');
 const inThread = process.argv.includes('--inthread');
+const detectArg = process.argv.find((a) => a === '--detect-writes' || a.startsWith('--detect-writes='));
+const detectWrites = detectArg === undefined ? '' : detectArg.includes('=') ? detectArg.split('=')[1] : '1';
 mkdirSync(out, { recursive: true });
 const qs = opt('qs', '');
-const url = `${base}?${load ? `load=${encodeURIComponent(load)}` : 'autostart=1'}&simWorker=${inThread ? 0 : 1}${qs ? `&${qs}` : ''}`;
+const url = `${base}?${load ? `load=${encodeURIComponent(load)}` : 'autostart=1'}&simWorker=${inThread ? 0 : 1}${detectWrites ? `&detectWrites=${detectWrites}` : ''}${qs ? `&${qs}` : ''}`;
 const gpuArgs = opt('gpu', 'swiftshader') === 'egl' ? ['--use-gl=angle', '--use-angle=gl-egl', '--ignore-gpu-blocklist', '--enable-gpu'] : ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'];
 const browser = await chromium.launch({ executablePath: process.env.CHROMIUM || '/usr/bin/chromium', args: gpuArgs });
 const page = await browser.newPage({ viewport: { width: 1600, height: 900 } });
@@ -21,6 +24,21 @@ const logs = [];
 page.on('console', (m) => logs.push(`[${m.type()}] ${m.text()}`));
 page.on('pageerror', (e) => logs.push(`[pageerror] ${e.stack ?? e.message}`));
 let failed = 0;
+// The replica write detector's findings so far (checkAll first), printed and saved as JSON.
+async function dumpWrites(when) {
+    if (!detectWrites || inThread) return;
+    const found = await page.evaluate(() => {
+        const det = window.__dwuWriteDetector;
+        if (!det) return null;
+        det.checkAll();
+        return { writes: det.writes(), summary: det.summary() };
+    });
+    check(found !== null, `replica write detector installed (${when})`);
+    if (found === null) return;
+    console.log(`replica writes, ${when} (${found.writes.filter((w) => !w.allowed).length} unexpected keys):\n${found.summary}`);
+    writeFileSync(`${out}/replica-writes.json`, JSON.stringify(found.writes, null, 1));
+    console.log(`saved ${out}/replica-writes.json`);
+}
 const check = (ok, what) => {
     console.log(`${ok ? 'ok  ' : 'FAIL'} ${what}`);
     if (!ok) failed++;
@@ -100,6 +118,7 @@ try {
             check(back === 0, 'drawn game time never goes backwards');
         } else console.log(`render pacing: not measured (${pacing.length} samples)`);
     }
+    await dumpWrites('after the move order');
     await page.evaluate(() => { window.__dwu.time.paused = true; });
     for (const [name, zoom] of [['galaxy', null], ['sector', 0.02], ['system', 0.25], ['planet', 1.5]]) {
         await page.evaluate((z) => {
@@ -120,6 +139,7 @@ try {
         });
         console.log(`sync stats: ${JSON.stringify(s)}`);
     }
+    await dumpWrites('end of run');
 } finally {
     await browser.close();
     const errors = logs.filter((l) => l.startsWith('[error]') || l.startsWith('[pageerror]'));

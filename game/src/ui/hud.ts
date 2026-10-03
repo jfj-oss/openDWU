@@ -1,7 +1,7 @@
 import { computeHudLayout, VIEW_ROWS, type Rect, type ViewRowKey } from './hudLayout';
 import { cornerRadiusCss, MONEY_POS, researchReadout, showViewSystemName, TOP_DATE_POS, TOP_ELEMENT_NAMES, TOP_LEFT_BUTTONS, TOP_ROW_BUTTONS, topBarLayout, topBarScale, viewSystemName, type CornerCurves } from './topBar';
 import './topBar.css';
-import { toggleGameOptionsPanel } from './screens/gameOptionsPanel';
+import { openGameOptionsPanel, toggleGameOptionsPanel } from './screens/gameOptionsPanel';
 import { toggleAdvisorPanel } from './advisorPanel';
 import { empireFlagUrl } from './selectionInfoView';
 import { threatKnownSites } from '../sim/scenario/threats/framework';
@@ -16,7 +16,6 @@ import { followOnSelectionChanged, isFollowingTarget, toggleFollow, type FollowS
 import { Galaxy } from '../sim/galaxy';
 import { calculateAvailableAssaultPodAttackStrength } from '../sim/combat/attackAI';
 import type { GameData } from '../sim/data/gameData';
-import { moneyPanelIncome } from '../sim/treasury';
 import type { ConstructionQueue } from '../sim/construction/constructionQueue';
 import { yardProgress } from './screens/constructionYards';
 import { Habitat, HabitatCategoryType, HabitatType, SystemInfo } from '../sim/types';
@@ -65,7 +64,8 @@ import { attachBuildQueueLauncher } from './screens/buildQueue'; // [buildQueue]
 import { toggleResearchScreen } from './screens/researchScreen'; // [15b]
 import { toggleEmpireComparison } from './screens/empireComparison';
 import { showToast } from './toast';
-import { habitatDispatchOptions } from '../sim/player/habitatDispatch';
+import type { DispatchOption } from '../sim/player/habitatDispatch';
+import { isRemoteQueryGalaxy, simQuery } from '../simworker/simQuery';
 // [troops] begin
 import { toggleTroopsScreen } from './screens/troops';
 import { confirmAutomationOff } from './orderMenu';
@@ -81,7 +81,7 @@ import { toggleEmpirePolicy } from './screens/empirePolicy';
 // [intel] begin
 import { toggleIntelligenceScreen } from './screens/intelligence';
 // [intel] end
-import { createSelectionActionBar, performAction, refreshSelectionActionBar, setSelectionExtraSlots, setSelectionIconResolvers, selectionShipIconUrl, type SelectionExtraSlot } from './orderMenu'; // [ordermenu]
+import { createSelectionActionBar, performAction, redrawSelectionActionBar, refreshSelectionActionBar, setSelectionExtraSlots, setSelectionIconResolvers, selectionShipIconUrl, type SelectionExtraSlot } from './orderMenu'; // [ordermenu]
 import { buildInfoModel, type InfoTarget } from './selectionInfo';
 import { renderInfoModel } from './selectionInfoView';
 import './selectionPanel.css';
@@ -529,7 +529,14 @@ export function createHud(wiring: HudWiring = {}): HudRefs {
     // toggle is registered as the global Escape action; the ≡ button below
     // calls the same toggle.
     bindAutoPauseClock(clock, () => getSettings().autoPauseInPopup);
-    const gameMenu = createGameMenu(clock, { onMainMenu: wiring.onMainMenu });
+    const gameMenu = createGameMenu(clock, {
+        onMainMenu: wiring.onMainMenu,
+        // [gameoptions] the Escape menu's Options opens the Game Options screen (same as O).
+        onOptions: () => {
+            const src = getEmpireSummarySource();
+            if (src) openGameOptionsPanel({ empire: src.empire });
+        },
+    });
     setGameMenuHandler(gameMenu.toggle);
     refs.gameMenu = gameMenu;
 
@@ -1175,12 +1182,16 @@ function buildMoneyPanel(game?: { playerEmpire: { name: string; mainColor: numbe
             money.classList.toggle('top-negative', m < 0);
             // Main.Part11.cs 838-857: Cashflow / Bonus Income, `+##,###,##0;-##,###,##0` (the C# keeps the previous
             // strings when there is nothing to show).
-            const income = galaxy === undefined ? null : moneyPanelIncome(galaxy, galaxy.playerEmpire);
-            if (income !== null) {
-                setTextIfChanged(cashflow, `(${formatSignedMoney(income.cashflow)})`);
-                cashflow.classList.toggle('top-negative', income.cashflow < 0);
-                setTextIfChanged(bonus, `(${formatSignedMoney(income.bonusIncome)})`);
-            }
+            // A sim query (simworker/simQuery.ts): method_126 also ages the player's variable income (CheckAgeVariableIncome),
+            // which must happen in the game itself — in-thread at once, on a sim-worker replica in the worker.
+            if (galaxy === undefined || galaxy.playerEmpire === null) return;
+            simQuery(galaxy, galaxy.playerEmpire, 'moneyPanel', [], (income) => {
+                if (income !== null) {
+                    setTextIfChanged(cashflow, `(${formatSignedMoney(income.cashflow)})`);
+                    cashflow.classList.toggle('top-negative', income.cashflow < 0);
+                    setTextIfChanged(bonus, `(${formatSignedMoney(income.bonusIncome)})`);
+                }
+            });
         };
         refreshMoney();
         setInterval(refreshMoney, 250);
@@ -1650,9 +1661,19 @@ function buildSelectionPanel(wiring: HudWiring): HTMLElement {
         const sel = currentSelection;
         const galaxy = wiring.galaxy;
         const player = galaxy?.playerEmpire ?? null;
-        dispatchSlots = sel && galaxy && player !== null && !sel.creature && !sel.shipGroup && !sel.builtObject && !sel.builtObjects
-            ? habitatDispatchSlots(galaxy, player, sel.habitat)
-            : [];
+        if (sel && galaxy && player !== null && !sel.creature && !sel.shipGroup && !sel.builtObject && !sel.builtObjects) {
+            // The options come from a sim query (in-thread: at once; sim worker: from the authoritative game one round
+            // trip later, then the strip is redrawn — a reply for a selection already left is dropped).
+            const remote = isRemoteQueryGalaxy(galaxy);
+            if (remote) dispatchSlots = [];
+            habitatDispatchSlots(galaxy, player, sel.habitat, (slots) => {
+                if (currentSelection !== sel) return;
+                dispatchSlots = slots;
+                if (remote) redrawSelectionActionBar();
+            });
+        } else {
+            dispatchSlots = [];
+        }
     };
     builtObjectListSelectHandler = (list) => {
         const galaxy = wiring.galaxy;
@@ -2695,34 +2716,40 @@ function dispatchIcon(id: string, design: { pictureRef: number; subRole: number 
     return undefined;
 }
 
-function habitatDispatchSlots(galaxy: Galaxy, player: Empire, h: Habitat): SelectionExtraSlot[] {
-    return habitatDispatchOptions(galaxy, player, h).map((o) => ({
+/** The dispatch slots for habitat `h`, handed to `done` (simQuery: in-thread inside this call, on a sim-worker replica
+ *  once the worker answered). */
+function habitatDispatchSlots(galaxy: Galaxy, player: Empire, h: Habitat, done: (slots: SelectionExtraSlot[]) => void): void {
+    simQuery(galaxy, player, 'habitatDispatch', [h], (options) => done(options.map((o) => ({
         label: o.label,
         title: `${o.label}: ${o.hint}`,
         icon: dispatchIcon(o.id, o.action?.design ?? null),
         disabled: o.ship === null,
         onClick: () => {
             // Re-resolve at click time: ships' queues and positions have moved since the panel was drawn.
-            const fresh = habitatDispatchOptions(galaxy, player, h).find((x) => x.id === o.id);
-            if (!fresh || fresh.ship === null || fresh.action === null) {
-                showToast(`No available ${o.role}`);
-                return;
-            }
-            const ship = fresh.ship;
-            const design = fresh.action.design;
-            if (o.id.startsWith('build:') && design !== null) {
-                // Build orders go onto the empire's construction job board (sim/player/constructionBoard.ts): the
-                // construction ship that finishes it first takes it, instead of a backlog on one ship.
-                const p = fresh.action.position;
-                const zero = p.x === 0 && p.y === 0;
-                issuePlayerCommand(galaxy, player, 'constructionJobAdd', [design, h, zero ? COORD_UNSET_DOUBLE : p.x, zero ? COORD_UNSET_DOUBLE : p.y], (id) => {
-                    showToast(id === 0 ? `${o.label} ${h.name}: not possible` : `Construction job added: ${o.label} at ${h.name}`);
-                });
-                return;
-            }
-            issuePlayerCommand(galaxy, player, 'shipAction', [ship, fresh.action, true, { x: h.xpos, y: h.ypos }], (r) => {
-                showToast(r.ok === false ? `${ship.name}: ${r.message ?? 'order refused'}` : `${ship.name} sent: ${o.label} ${h.name}`);
-            });
+            simQuery(galaxy, player, 'habitatDispatch', [h], (now) => dispatchOrder(galaxy, player, h, o, now.find((x) => x.id === o.id)));
         },
-    }));
+    }))));
+}
+
+/** Give the dispatch order `o` as re-resolved at click time (`fresh`). */
+function dispatchOrder(galaxy: Galaxy, player: Empire, h: Habitat, o: DispatchOption, fresh: DispatchOption | undefined): void {
+    if (!fresh || fresh.ship === null || fresh.action === null) {
+        showToast(`No available ${o.role}`);
+        return;
+    }
+    const ship = fresh.ship;
+    const design = fresh.action.design;
+    if (o.id.startsWith('build:') && design !== null) {
+        // Build orders go onto the empire's construction job board (sim/player/constructionBoard.ts): the
+        // construction ship that finishes it first takes it, instead of a backlog on one ship.
+        const p = fresh.action.position;
+        const zero = p.x === 0 && p.y === 0;
+        issuePlayerCommand(galaxy, player, 'constructionJobAdd', [design, h, zero ? COORD_UNSET_DOUBLE : p.x, zero ? COORD_UNSET_DOUBLE : p.y], (id) => {
+            showToast(id === 0 ? `${o.label} ${h.name}: not possible` : `Construction job added: ${o.label} at ${h.name}`);
+        });
+        return;
+    }
+    issuePlayerCommand(galaxy, player, 'shipAction', [ship, fresh.action, true, { x: h.xpos, y: h.ypos }], (r) => {
+        showToast(r.ok === false ? `${ship.name}: ${r.message ?? 'order refused'}` : `${ship.name} sent: ${o.label} ${h.name}`);
+    });
 }

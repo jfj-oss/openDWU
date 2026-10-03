@@ -15,7 +15,7 @@ import { loadScenarioIndex, loadScenarioOverlay } from '../sim/scenario/fetchSce
 import { applyScenarioOverlay, type ScenarioOverlay } from '../sim/scenario/overlay';
 import { scenarioOverlayFor } from '../sim/scenario/addons';
 import { FRAME_REAL_MS } from '../sim/tick/scheduler';
-import { SimHost } from './simHost';
+import { installWorkerBootState, SimHost } from './simHost';
 import { deltaTransferables } from './replicaSync';
 import type { FromWorker, InitMessage, ToWorker } from './protocol';
 
@@ -90,6 +90,7 @@ async function init(m: InitMessage): Promise<void> {
         time.paused = m.clock.paused;
     }
     post({ type: 'progress', step: 'Preparing map', fraction: 0.9 });
+    installWorkerBootState(game.galaxy);
     host = new SimHost(game, time, m.startOptions, { sync: m.sync });
     post(host.snapshot());
     for (const e of early.splice(0)) handle(e);
@@ -136,6 +137,19 @@ function handle(m: ToWorker): void {
             return;
         case 'command':
             host!.command(m);
+            kick();
+            return;
+        case 'query':
+            // Answered at once (no tick): the menu / buttons appear without waiting for the next step.
+            host!.query(m);
+            post(host!.flush());
+            return;
+        case 'hostOp':
+            host!.hostOp(m);
+            kick();
+            return;
+        case 'tradeFlows':
+            host!.setTradeFlowRecording(m);
             kick();
             return;
         case 'save': {

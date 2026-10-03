@@ -805,6 +805,9 @@ export interface GameStartTailContext {
     playAsPirate?: boolean;
     /** VictoryConditions.EnableStoryEventsShadows. */
     enableStoryEventsShadows?: boolean;
+    /** Start.2.cs bool_3: the wizard's Shadows playstyles (Start.cs btnStartNewGameYourEmpireTypeNormalShadows / PirateShadows)
+     *  start an Age of Shadows game whatever the player's age (2020-2023 only adds Age == 0). Default false. */
+    ageOfShadows?: boolean;
     /** Galaxy.RaceFamilies (GameData.raceFamilies): SelectSpecialRuins(SleepersAwake) reads SpecialFunctionCode 1 families. Default galaxy.raceFamilies. */
     raceFamilies?: readonly RaceFamily[];
 }
@@ -1525,9 +1528,9 @@ export function shakturiAbandonedShipsAtStart(galaxy: Galaxy): void {
  * applies the pre-warp flag and GlobalVictoryConditions, as in the C#: tick/gameStart.ts runGameStartHabitatTick).
  * Game.Version / view / GameOptions copies (2019-2146) are UI state.
  */
-export function gameObjectAtStart(galaxy: Galaxy, playerAge: number, playAsPirate: boolean, enableStoryEventsShadows: boolean): GameStartTailResult {
+export function gameObjectAtStart(galaxy: Galaxy, playerAge: number, playAsPirate: boolean, enableStoryEventsShadows: boolean, bool3 = false): GameStartTailResult {
     galaxy.deferEventsForGameStart = true;
-    let ageOfShadows = false;
+    let ageOfShadows = bool3; // Start.2.cs bool_3 (Shadows playstyle)
     if (playerAge === 0) ageOfShadows = true;
     const clearPreWarpSendPirateRaid = !playAsPirate && ageOfShadows && enableStoryEventsShadows;
     return { ageOfShadows, playAsAPirate: playAsPirate, clearPreWarpSendPirateRaid };
@@ -1550,5 +1553,5 @@ export function gameStartTail(galaxy: Galaxy, ctx: GameStartTailContext): GameSt
     asteroidAbandonedShipsAtStart(galaxy); // 2012 method_85
     shakturiAbandonedShipsAtStart(galaxy); // 2013-2016 method_86
     void ctx.playerEmpire;
-    return gameObjectAtStart(galaxy, ctx.playerAge ?? galaxy.age, ctx.playAsPirate ?? false, ctx.enableStoryEventsShadows ?? false); // 2017-2038
+    return gameObjectAtStart(galaxy, ctx.playerAge ?? galaxy.age, ctx.playAsPirate ?? false, ctx.enableStoryEventsShadows ?? false, ctx.ageOfShadows ?? false); // 2017-2038
 }

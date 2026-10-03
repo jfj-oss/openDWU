@@ -9,6 +9,7 @@
 import { GalaxyLocation, GalaxyLocationType } from './galaxyLocation';
 import type { Race } from './data/races';
 import type { Galaxy } from './galaxy';
+import { raceAggressionLevel } from './racePeriodic';
 
 // Port of EmpireStartList.EmpireStart (the fields SetupAlienRacePopulations
 // reads: ResolvedRace, ProjectedColonyAmount). The full EmpireStart model
@@ -44,13 +45,16 @@ export function totalColonyAmount(empireStarts: EmpireStart[]): number {
 // ascending, then Array.Reverse(array) yields descending order; ties keep
 // their original relative order (stable sort, matching Array.Sort's
 // stable behavior on equal keys).
-export function determineAggressiveRaces(races: Race[], aggressionLevel: number, intelligenceLevel: number): Race[] {
+// Race.AggressionLevel is the periodic level while the race's change period is active (Race.cs 350; `galaxy` null reads
+// the base level).
+export function determineAggressiveRaces(galaxy: Galaxy | null, races: Race[], aggressionLevel: number, intelligenceLevel: number): Race[] {
+    const level = (r: Race) => (galaxy !== null ? raceAggressionLevel(galaxy, r) : r.aggression);
     const playable = races.filter((r) => r.playable);
-    const sorted = [...playable].sort((a, b) => a.aggression - b.aggression);
+    const sorted = [...playable].sort((a, b) => level(a) - level(b));
     sorted.reverse();
     const result: Race[] = [];
     for (const race of sorted) {
-        if (race.aggression >= aggressionLevel && race.intelligence >= intelligenceLevel) {
+        if (level(race) >= aggressionLevel && race.intelligence >= intelligenceLevel) {
             result.push(race);
         }
     }
@@ -106,7 +110,7 @@ export function determineRaceRegion(galaxy: Galaxy, race: Race): GalaxyLocation 
 // same order as the source (ObtainRandomGalaxyCoordinates consumes
 // NextDouble x2 per call).
 export function setupAlienRacePopulations(galaxy: Galaxy, empireStarts: EmpireStart[], aggressiveRacesRequired: number): void {
-    const raceList = determineAggressiveRaces(galaxy.races, 115, 85);
+    const raceList = determineAggressiveRaces(galaxy, galaxy.races, 115, 85);
     let num = 0;
     const num2 = galaxy.sectorSize * 2.0;
     let flag = false;

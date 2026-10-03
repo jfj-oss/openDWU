@@ -1378,7 +1378,7 @@ export class BuiltObject {
     /** BuiltObject.cs 509 Explosions = new ExplosionList() (M4o owns the element type). */
     explosions: unknown[] = [];
     /** BuiltObject.cs _Threats (BuiltObject[20]) / _ThreatLevels (int[20]): allocated by the first DoTasks (3664-3668). */
-    // M4n: C# StellarObject[] — BuiltObjects and Creatures (Fighters are not modelled as threats in the TS port).
+    // M4n: C# StellarObject[] — Galaxy.7.cs 3249 EvaluateThreats only adds BuiltObjects and Creatures.
     threats: (BuiltObject | Creature | null)[] | null = null;
     threatLevels: number[] | null = null;
     // ---- M4b fields (missions & command dispatcher) ----

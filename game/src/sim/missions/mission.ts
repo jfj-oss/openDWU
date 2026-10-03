@@ -161,10 +161,10 @@ export function cloneCargoList(list: CargoList): CargoList {
 }
 
 /** PopulationList.Clone (PopulationList.cs 16). */
-export function clonePopulationList(list: PopulationList): PopulationList {
+export function clonePopulationList(galaxy: Galaxy, list: PopulationList): PopulationList {
     const populationList = new PopulationList();
     for (const population of list.items) {
-        populationList.add(new Population(population.race, population.amount));
+        populationList.add(new Population(population.race, population.amount, galaxy));
     }
     populationList.recalculateTotalAmount();
     return populationList;

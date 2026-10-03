@@ -6,11 +6,12 @@
 // 4256 / 4360 FastFindNearestUnexploredHabitat[InSector], 3848 / 4567 FindNearestUnexploredHabitatInSystem).
 //
 // Free functions, C# `this` first (tasks/M4-plan.md §3.1 rule 2). Every Galaxy.Rnd draw is on `galaxy.rnd` in C# order.
-// Cross-package callees that are still stubs are called through their owner's stub (assignScrapMission /
-// assignRepairMission / assignRetrofitMission / procureConstructionComponents /
-// determineHabitatsBeingMinedIncludingBuildingMiningStations (M4i), setupRefuelling (M4e), assignLoadTroopsMission and
-// the troop-transport checks (M4q)).
+// Cross-package callees live with their owners: assignScrapMission / assignRetrofitMission /
+// procureConstructionComponentsAtBuiltObject / determineHabitatsBeingMinedIncludingBuildingMiningStations
+// (construction/empireConstruction.ts), assignRepairMission (construction/repair.ts), setupRefuelling
+// (logistics/refuel.ts), assignLoadTroopsMission and the troop-transport checks (combat/troopsRuntime.ts).
 
+import { raceAggressionLevel, raceCautionLevel } from './racePeriodic';
 import { isAiControlled } from './missions/playerOrder';
 import type { Galaxy } from './galaxy';
 import type { Empire } from './empire';
@@ -113,7 +114,8 @@ import { Cargo, CargoList, ResourceRef } from './cargo';
 import { Population, PopulationList } from './population';
 import { ColonyPopulationPolicy } from './data/policy';
 import { ComponentCategoryType } from './data/policies';
-import { ShipDesignFocus } from './researchSystem';
+import { PlanetaryFacilityType, ShipDesignFocus } from './researchSystem';
+import { facilitiesCountByType } from './construction/facilities';
 import { LazyNetSortOrder, netSort } from './netSort';
 import { GalaxyLocationType, type GalaxyLocation } from './galaxyLocation';
 import { ForceStructureProjectionList } from './forceStructureProjection';
@@ -364,9 +366,18 @@ export function calculateScenicFactorIncludingRuinsWonders(habitat: Habitat): nu
     let num = 0.0;
     if (habitat.scenicFactor > 0) num = Math.max(num, habitat.scenicFactor);
     if (habitat.ruin !== null && habitat.ruin.developmentBonus > num) num = habitat.ruin.developmentBonus;
-    // TODO(port) M4i: Wonders (Habitat.Facilities with a scenic wonder bonus) are not on the TS habitat yet — the C#
-    // continues with `if (Facilities != null) foreach wonder ... num = Math.Max(num, wonder.ScenicBonus)`; no facility
-    // wonders are built until M4i lands, so the value the C# sees is the one above.
+    // Habitat.cs 1135-1157: the largest Value1 of the completed wonders here, as a fraction (int / 100.0).
+    if (habitat.facilities !== null && facilitiesCountByType(habitat.facilities, PlanetaryFacilityType.Wonder) > 0) {
+        let num2 = 0;
+        for (let i = 0; i < habitat.facilities.length; i++) {
+            const planetaryFacility2 = habitat.facilities[i];
+            if (planetaryFacility2 != null && planetaryFacility2.constructionProgress >= 1 && planetaryFacility2.type === PlanetaryFacilityType.Wonder) {
+                num2 = Math.max(num2, planetaryFacility2.value1);
+            }
+        }
+        const num3 = num2 / 100.0;
+        if (num3 > num) num = num3;
+    }
     return num;
 }
 
@@ -1503,14 +1514,13 @@ function assignMissionExplorationShip(galaxy: Galaxy, empire: Empire, ship: Buil
 // ---------------------------------------------------------------------------------------------------------------
 
 /** Empire.5.cs 4063 CheckColonyForResourceClearance(ship, colony). No Rnd. */
-function checkColonyForResourceClearance(galaxy: Galaxy, empire: Empire, ship: BuiltObject, colony: Habitat): boolean {
+export function checkColonyForResourceClearance(galaxy: Galaxy, empire: Empire, ship: BuiltObject, colony: Habitat): boolean {
     const result = false;
     const cargo = colony.cargo;
     if (cargo !== null) {
         // WithinFuelRangeAndRefuel(x, y, 0.0, ship.CachedRefuellingLocation) (BuiltObject.1.cs 2490): the margin is the
-        // distance to the cached refuelling point. TODO(port) M4e: BuiltObject._RefuellingLocation (CheckForRefuelling)
-        // is not on the TS BuiltObject yet — null, which the C# reads as a 0 margin.
-        if (!withinFuelRangeAndRefuelAt(galaxy, ship, colony.xpos, colony.ypos, 0.0, null)) {
+        // distance to the refuelling point CheckForRefuelling cached (BuiltObject.cs 875 _RefuellingLocation).
+        if (!withinFuelRangeAndRefuelAt(galaxy, ship, colony.xpos, colony.ypos, 0.0, ship.refuellingLocation)) {
             return false;
         }
         for (const item2 of cargo.items) {
@@ -1785,7 +1795,7 @@ export function assignMigrationMissionToBuiltObject(galaxy: Galaxy, empire: Empi
                     if (habitat2 !== null) {
                         const amount2 = Math.min(builtObject.populationCapacity, r.amount);
                         const populationList = new PopulationList();
-                        populationList.add(new Population(r.race!, amount2));
+                        populationList.add(new Population(r.race!, amount2, galaxy));
                         assignMission(galaxy, builtObject, BuiltObjectMissionType.Transport, habitat, habitat2, BuiltObjectMissionPriority.Normal, { population: populationList });
                         return true;
                     }
@@ -1826,7 +1836,7 @@ export function assignMigrationMissionToBuiltObject(galaxy: Galaxy, empire: Empi
                 if (habitat5 != null && habitat5.population != null && habitat5.population.items.length > 0 && habitat5.population.dominantRace !== null) {
                     const dominantRace = habitat5.population.dominantRace;
                     const amount3 = Math.min(builtObject.populationCapacity, Math.trunc(populationOfRace(habitat5.population, dominantRace)!.amount / 50));
-                    populationList2.add(new Population(dominantRace, amount3));
+                    populationList2.add(new Population(dominantRace, amount3, galaxy));
                     assignMission(galaxy, builtObject, BuiltObjectMissionType.Transport, habitat5, habitat3, BuiltObjectMissionPriority.Normal, { population: populationList2 });
                     return true;
                 }
@@ -1876,7 +1886,7 @@ export function assignTourismMissionToBuiltObject(galaxy: Galaxy, empire: Empire
                         if (dominantRace !== null) {
                             let val = Math.min(Math.trunc(builtObject.populationCapacity / 100), Math.trunc(populationOfRace(habitat.population, dominantRace)!.amount / 50));
                             val = Math.min(20000, val);
-                            populationList.add(new Population(dominantRace, val));
+                            populationList.add(new Population(dominantRace, val, galaxy));
                             clearPreviousMissionRequirements(galaxy, builtObject);
                             assignMission(galaxy, builtObject, BuiltObjectMissionType.Transport, habitat, builtObject2, BuiltObjectMissionPriority.Normal, { population: populationList });
                             return true;
@@ -1888,7 +1898,7 @@ export function assignTourismMissionToBuiltObject(galaxy: Galaxy, empire: Empire
                     if (dominantRace2 !== null) {
                         let val2 = Math.min(Math.trunc(builtObject.populationCapacity / 100), Math.trunc(populationOfRace(habitat.population, dominantRace2)!.amount / 50));
                         val2 = Math.min(20000, val2);
-                        populationList.add(new Population(dominantRace2, val2));
+                        populationList.add(new Population(dominantRace2, val2, galaxy));
                         clearPreviousMissionRequirements(galaxy, builtObject);
                         assignMission(galaxy, builtObject, BuiltObjectMissionType.Transport, habitat, target, BuiltObjectMissionPriority.Normal, { population: populationList });
                         return true;
@@ -2324,8 +2334,9 @@ export function identifyColonizationTargetsFull(galaxy: Galaxy, empire: Empire, 
     if (design === null) design = findNewest(empire.designs, BuiltObjectSubRole.ColonyShip);
     let flag = false;
     if (filterOutDangerousTargets) flag = checkEmpireTechCanSurviveStorms(empire);
-    const num = empire.dominantRace!.aggression / 100.0;
-    const num2 = empire.dominantRace!.caution / 100.0;
+    // Race.AggressionLevel / CautionLevel: periodic levels while the race's change period is active (Race.cs 350-377).
+    const num = raceAggressionLevel(galaxy, empire.dominantRace!) / 100.0;
+    const num2 = raceCautionLevel(galaxy, empire.dominantRace!) / 100.0;
     const num3 = Math.trunc(2000.0 / ((num * num) / (num2 * num2)));
     let empireHabitatTypes = empire.colonizableHabitatTypesForEmpire();
     empireHabitatTypes = colonizableHabitatTypesFromColonyShips(empire, empireHabitatTypes);
@@ -3247,7 +3258,7 @@ export function processTourists(galaxy: Galaxy, builtObject: BuiltObject, touris
     }
 }
 
-// ---- stub added by M4o (called from combat/damage.ts ProvideBonusFromPirateBase, BuiltObject.2.cs 4991) ----
+// ---- called from combat/damage.ts ProvideBonusFromPirateBase (BuiltObject.2.cs 4991) ----
 
 /**
  * Galaxy.3.cs 1542 FindLonelyColonyLocation(empire): a random offset (±300 000) from the capital, clamped to the galaxy,

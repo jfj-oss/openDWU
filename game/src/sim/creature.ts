@@ -12,6 +12,11 @@ import { creatureAttackTarget, creatureCheckForAttackers, creatureCheckForTarget
 import { stellarAttackers, stellarPursuers } from './combat/threats';
 import { checkEmpireHasHyperDriveTech } from './forceStructure';
 import { clearFightersTargeting } from './combat/fighters';
+import type { Weapon } from './weapon';
+import type { Empire } from './empire';
+import { ComponentType } from './data/components';
+import { countersProcessCreatureDeath } from './victory';
+import { galaxyStarDate } from './tick/simTime';
 
 // Port of DistantWorlds.Types.CreatureType (member order exact; byte enum).
 export enum CreatureType {
@@ -85,6 +90,11 @@ function removeFrom<T>(list: T[], item: T): void {
     if (i >= 0) list.splice(i, 1);
 }
 
+/** The `StellarObject damager` of Creature.cs 926 DamageCreature: a BuiltObject, Habitat or Fighter (only its Empire is read). */
+export interface CreatureDamager {
+    readonly empire: Empire | null;
+}
+
 export class Creature {
     creatureId = 0;
     name = '';
@@ -115,7 +125,7 @@ export class Creature {
     turnRate = 0; // float
     accelerationRate = 0; // float
     healRate = 0; // float
-    // TODO(port): BirthDate = Galaxy.CurrentStarDate (no star date on Galaxy yet).
+    /** Creature.cs 36 _BirthDate (long star date; set by the ctor, 326). */
     birthDate = 0;
     anchorHabitat: Habitat | null = null;
     anchorPoint: AnchorPoint | null;
@@ -174,6 +184,7 @@ export class Creature {
         this.galaxy = galaxy;
         this.type = type;
         this.creatureId = galaxy.getNextCreatureID();
+        this.birthDate = galaxyStarDate(galaxy); // 326: _BirthDate = _Galaxy.CurrentStarDate
         this.currentHeading = galaxy.selectRandomHeading();
         this.targetHeading = this.currentHeading;
         this.currentSpeed = 0;
@@ -696,14 +707,16 @@ export class Creature {
         }
     }
 
-    // Port of Creature.cs DamageCreature (line 926) with weapon == null
-    // (location damage). TODO(port): Ion-weapon bypass, empire kill counters.
-    damageCreature(damage: number): boolean {
-        if (this.type === CreatureType.SilverMist) {
+    // Port of Creature.cs DamageCreature(damager, damage, weapon) (line 926). A Silver Mist takes a tenth of the
+    // damage (at least 1) unless the weapon is an ion cannon or ion pulse (incl. a colony's Giant Ion Cannon).
+    damageCreature(damager: CreatureDamager | null, damage: number, weapon: Weapon | null): boolean {
+        if (this.type === CreatureType.SilverMist && (weapon === null || (weapon.component.type !== ComponentType.WeaponIonCannon && weapon.component.type !== ComponentType.WeaponIonPulse))) {
             damage = Math.max(1, Math.trunc(damage / 10.0));
         }
         this.damage += damage;
         if (this.damage > this.damageKillThreshold) {
+            // 933: damager.Empire.Counters.ProcessCreatureDeath(this) (EmpireCounters.cs 481).
+            if (damager !== null && damager.empire !== null && damager.empire.counters != null) countersProcessCreatureDeath(damager.empire.counters, this.type);
             this.hasBeenDestroyed = true;
             removeFrom(this.galaxy.creatures, this);
             if (this.parentHabitat !== null) {
@@ -950,7 +963,7 @@ export class Creature {
 
     // Port of Creature.cs DoLocationEffects (line 1672).
     private doLocationEffects(timePassed: number): void {
-        if (this.creatureDamageAmountLocation > 0.0 && this.damageCreature(Math.trunc(this.creatureDamageAmountLocation * timePassed))) {
+        if (this.creatureDamageAmountLocation > 0.0 && this.damageCreature(null, Math.trunc(this.creatureDamageAmountLocation * timePassed), null)) {
             this.completeTeardown();
         }
         if (this.creaturePullAmountLocation <= 0.0) return;

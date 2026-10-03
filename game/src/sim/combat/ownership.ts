@@ -41,7 +41,7 @@ import { formatText, getText } from '../diplomacyTick';
 import { EventMessageType, empireCompleteTeardown, sendEventMessageToEmpire } from '../events';
 import { CharacterRole, ensureHabitatInvadingCharacters, ensureStellarObjectCharacters, habitatInvadingCharacterList, identifyPirateBase, stellarObjectCharacters, type Character } from '../characters';
 import { recalculateDevelopmentLevelBaseline } from '../developmentLevel';
-import { recalculateColonyInfluenceRadius, strategicValue } from '../territory';
+import { recalculateColonyInfluenceRadius } from '../territory';
 import { recalculateAnnualTaxRevenue, recalculateDistanceFactor } from '../forceStructure';
 import { setColonyTaxRate } from '../taxes';
 import { reviewSpecialBonusesRuinsWonders } from '../treasury';
@@ -66,7 +66,7 @@ import { findNearestPirateFaction } from '../pirates';
 import { inflictDamageFull } from './damage';
 import { BuiltObjectEncounterAction, BuiltObjectEncounterEventType, cloneDesign } from '../gameStartTail';
 import { galaxyNow, galaxyStarDate } from '../tick/simTime';
-import { getGovernmentsStatic, registerTakeOwnershipOfColonyFull } from '../empire';
+import { getGovernmentsStatic, registerTakeOwnershipOfColonyFull, selectBestCandidateForCapital } from '../empire';
 import { fastFindNearestUnexploredHabitat } from '../civilianAI';
 import { SystemVisibilityStatus } from '../visibility';
 import { selectRandomNextResearchProjectExcludeSuperWeapons } from '../construction/constructionQueue';
@@ -108,19 +108,8 @@ export function getBuiltObjectsByRole(list: readonly BuiltObject[], roles: Built
     return result;
 }
 
-/** Empire.cs 3596 SelectBestCandidateForCapital(). No Rnd. */
-export function selectBestCandidateForCapital(empire: Empire): Habitat | null {
-    let result: Habitat | null = null;
-    let num = 0;
-    for (let i = 0; i < empire.colonies.length; i++) {
-        const habitat = empire.colonies[i];
-        if (strategicValue(habitat) > num) {
-            result = habitat;
-            num = strategicValue(habitat);
-        }
-    }
-    return result;
-}
+/** Empire.cs 3596 SelectBestCandidateForCapital(): empire.ts (the TakeOwnershipOfColony setup path calls it too). */
+export { selectBestCandidateForCapital } from '../empire';
 
 // ---------------------------------------------------------------------------------------------------------------
 // Empire.8.cs 3897-4160: cancelling blockades, attacks and transfers against a target changing hands

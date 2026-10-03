@@ -424,7 +424,7 @@ export function resolveCommandsForMission(theThis: BuiltObjectMission, mission: 
                 enqueue(command5.clone());
                 enqueue(new Command(CommandAction.Refuel));
                 if (mission.cargo === null || mission.cargo.items.length <= 0) {
-                    if (mission.population !== null && mission.population.items.length > 0) enqueue(Command.withPopulation(CommandAction.Load, clonePopulationList(mission.population)));
+                    if (mission.population !== null && mission.population.items.length > 0) enqueue(Command.withPopulation(CommandAction.Load, clonePopulationList(galaxy, mission.population)));
                 } else {
                     enqueue(Command.withCargo(CommandAction.Load, cloneCargoList(mission.cargo)));
                 }
@@ -437,7 +437,7 @@ export function resolveCommandsForMission(theThis: BuiltObjectMission, mission: 
                     enqueue(cmd(CommandAction.MoveTo, secondaryTargetHabitat));
                     enqueue(cmd(CommandAction.Dock, secondaryTargetHabitat));
                     if (mission.cargo !== null && mission.cargo.items.length > 0) enqueue(Command.withCargo(CommandAction.Unload, cloneCargoList(mission.cargo)));
-                    else if (mission.population !== null && mission.population.items.length > 0) enqueue(Command.withPopulation(CommandAction.Unload, clonePopulationList(mission.population)));
+                    else if (mission.population !== null && mission.population.items.length > 0) enqueue(Command.withPopulation(CommandAction.Unload, clonePopulationList(galaxy, mission.population)));
                     enqueue(new Command(CommandAction.Refuel));
                     enqueue(cmd(CommandAction.Undock, secondaryTargetHabitat));
                     enqueue(cmd(CommandAction.SetParent, secondaryTargetHabitat));
@@ -450,7 +450,7 @@ export function resolveCommandsForMission(theThis: BuiltObjectMission, mission: 
                     enqueue(cmd(CommandAction.MoveTo, target));
                     enqueue(cmd(CommandAction.Dock, target));
                     if (mission.cargo !== null && mission.cargo.items.length > 0) enqueue(Command.withCargo(CommandAction.Unload, cloneCargoList(mission.cargo)));
-                    else if (mission.population !== null && mission.population.items.length > 0) enqueue(Command.withPopulation(CommandAction.Unload, clonePopulationList(mission.population)));
+                    else if (mission.population !== null && mission.population.items.length > 0) enqueue(Command.withPopulation(CommandAction.Unload, clonePopulationList(galaxy, mission.population)));
                     enqueue(new Command(CommandAction.Refuel));
                     enqueue(cmd(CommandAction.Undock, target));
                     if (target.role === BuiltObjectRole.Base) enqueue(cmd(CommandAction.SetParent, target));
@@ -1120,7 +1120,7 @@ export function loadMoreCargo(mission: BuiltObjectMission, ship: BuiltObject | n
         commandQueue.push(command4.clone());
         commandQueue.push(new Command(CommandAction.Refuel));
         if (mission.cargo === null || mission.cargo.items.length <= 0) {
-            if (mission.population !== null && mission.population.items.length > 0) commandQueue.push(Command.withPopulation(CommandAction.Load, clonePopulationList(mission.population)));
+            if (mission.population !== null && mission.population.items.length > 0) commandQueue.push(Command.withPopulation(CommandAction.Load, clonePopulationList(ship._galaxy, mission.population)));
         } else {
             const st = mission.secondaryTargetBuiltObject;
             if (
@@ -1151,7 +1151,7 @@ export function loadMoreCargo(mission: BuiltObjectMission, ship: BuiltObject | n
             commandQueue.push(cmd(CommandAction.MoveTo, secondaryTargetHabitat));
             commandQueue.push(cmd(CommandAction.Dock, secondaryTargetHabitat));
             if (mission.cargo !== null && mission.cargo.items.length > 0) commandQueue.push(Command.withCargo(CommandAction.Unload, cloneCargoList(mission.cargo)));
-            else if (mission.population !== null && mission.population.items.length > 0) commandQueue.push(Command.withPopulation(CommandAction.Unload, clonePopulationList(mission.population)));
+            else if (mission.population !== null && mission.population.items.length > 0) commandQueue.push(Command.withPopulation(CommandAction.Unload, clonePopulationList(ship._galaxy, mission.population)));
             commandQueue.push(new Command(CommandAction.Refuel));
             commandQueue.push(cmd(CommandAction.Undock, secondaryTargetHabitat));
             commandQueue.push(cmd(CommandAction.SetParent, secondaryTargetHabitat));
@@ -1164,7 +1164,7 @@ export function loadMoreCargo(mission: BuiltObjectMission, ship: BuiltObject | n
             commandQueue.push(cmd(CommandAction.MoveTo, target));
             commandQueue.push(cmd(CommandAction.Dock, target));
             if (mission.cargo !== null && mission.cargo.items.length > 0) commandQueue.push(Command.withCargo(CommandAction.Unload, cloneCargoList(mission.cargo)));
-            else if (mission.population !== null && mission.population.items.length > 0) commandQueue.push(Command.withPopulation(CommandAction.Unload, clonePopulationList(mission.population)));
+            else if (mission.population !== null && mission.population.items.length > 0) commandQueue.push(Command.withPopulation(CommandAction.Unload, clonePopulationList(ship._galaxy, mission.population)));
             commandQueue.push(new Command(CommandAction.Refuel));
             commandQueue.push(cmd(CommandAction.Undock, target));
             if (target.role === BuiltObjectRole.Base) commandQueue.push(cmd(CommandAction.SetParent, target));

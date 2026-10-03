@@ -19,9 +19,10 @@
 // minor ship images (ShipImageHelper's own clock-seeded Random), CheckDesignInUse (no
 // BuiltObjects yet → never in use).
 
+import { raceAggressionLevel, raceCautionLevel } from './racePeriodic';
 import { BuiltObjectSubRole } from './builtObjectTypes';
 import { csInt } from './builtObjectComponent';
-import { componentImprovementFromComponent, evaluateLatestByCategory, evaluateLatestByType, type ComponentDefinition, type ComponentImprovementEntry } from './componentStatic';
+import { componentImprovementFromComponent, evaluateLatestByCategory, evaluateLatestByType, generateOrderedComponentImprovementList, type ComponentDefinition, type ComponentImprovementEntry } from './componentStatic';
 import { ComponentType } from './data/components';
 import type { ResearchNode as ResearchNodeDefinition } from './data/research';
 import { BattleTactics, BuiltObjectFleeWhen, BuiltObjectRole, InvasionTactics, type DesignSpecification } from './data/designSpecifications';
@@ -103,7 +104,7 @@ export function placementView(empire: Empire, galaxy: Galaxy): DesignPlacementEm
     return {
         research: empire.research,
         policy: empire.policy,
-        dominantRace: race === null ? null : { aggressionLevel: race.aggression, intelligenceLevel: race.intelligence },
+        dominantRace: race === null ? null : { aggressionLevel: raceAggressionLevel(galaxy, race), intelligenceLevel: race.intelligence }, // Race.AggressionLevel (periodic)
         componentDefinitions: galaxy.researchStatic?.componentStatic?.definitions ?? [],
         hasHyperDriveTech: empire.hasHyperDriveTech,
         maximumConstructionSize: (s) => empire.maximumConstructionSize(s),
@@ -515,22 +516,33 @@ export function checkDesignSubRoleShouldBeUpgraded(empire: Empire, subRole: Buil
     }
 }
 
-// Empire.10.cs ReviewRemoveObsoleteDesignsForSubRole (3266). CheckDesignInUse is always
-// false until BuiltObjects exist, so every obsoleted design is removed.
+// Empire.10.cs ReviewRemoveObsoleteDesignsForSubRole (3266): marks the sub-role's designs obsolete and removes those
+// no live ship uses (CheckDesignInUse). The base sub-roles' `_ = Capital` (3287-3293) is a no-op read.
 export function reviewRemoveObsoleteDesignsForSubRole(empire: Empire, subRole: BuiltObjectSubRole, designToExclude: Design | null, removeManualDesigns: boolean): void {
     const remove: Design[] = [];
     for (const d of empire.designs as Design[]) {
-        if (d.subRole !== subRole || (designToExclude !== null && d === designToExclude)) continue;
+        if (d == null || d.subRole !== subRole || (designToExclude !== null && d === designToExclude)) continue;
         const manual = d.isManuallyCreated && d.optimizedDesign === 0;
         if (removeManualDesigns || !manual) {
             d.isObsolete = true;
-            remove.push(d); // !CheckDesignInUse(design)
+            if (!checkDesignInUse(empire, d)) remove.push(d);
         }
     }
     for (const d of remove) {
         const i = (empire.designs as Design[]).indexOf(d);
         if (i >= 0) empire.designs.splice(i, 1);
     }
+}
+
+// Empire.10.cs CheckDesignInUse (3307): a live (not destroyed) state or private ship built to, or retrofitting to, the design.
+export function checkDesignInUse(empire: Empire, design: Design): boolean {
+    for (const list of [empire.builtObjects, empire.privateBuiltObjects]) {
+        for (let i = 0; i < list.length; i++) {
+            const builtObject = list[i];
+            if (builtObject != null && !builtObject.hasBeenDestroyed && (builtObject.design === design || builtObject.retrofitDesign === design)) return true;
+        }
+    }
+    return false;
 }
 
 function applySubRoleBehaviour(empire: Empire, design: Design, spec: DesignSpecification, fleeWhen6: BuiltObjectFleeWhen, militaryFleeWhen: BuiltObjectFleeWhen): void {
@@ -621,9 +633,10 @@ export function createNewDesigns(galaxy: Galaxy, empire: Empire, designDate: num
     const militaryFleeWhen = empire.policy?.defaultMilitaryFleeWhen ?? BuiltObjectFleeWhen.Shields20;
     const race = empire.dominantRace!;
     let fleeWhen6 = BuiltObjectFleeWhen.Shields50;
-    if (race.caution < 80) fleeWhen6 = BuiltObjectFleeWhen.Shields20;
+    if (raceCautionLevel(galaxy, race) < 80) fleeWhen6 = BuiltObjectFleeWhen.Shields20; // Race.CautionLevel (periodic)
     const view = placementView(empire, galaxy);
-    const componentImprovementList = null; // Galaxy.GenerateOrderedComponentImprovementList(WeaponTorpedo, 1): built inside placement when null
+    // BaconEmpire.cs 748: Galaxy.GenerateOrderedComponentImprovementList(WeaponTorpedo, 1), built once per review.
+    const componentImprovementList = generateOrderedComponentImprovementList(componentDefinitionsStatic(galaxy), ComponentCategoryType.WeaponTorpedo, 1);
     const designs = empire.designs as Design[];
     // DesignList source1 = empire.Designs.ResolveOptimizedDesigns(): always empty (see header).
     for (let index1 = num1; index1 < num2; ++index1) {

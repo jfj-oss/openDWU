@@ -330,6 +330,11 @@ This audit is written against that design. It also applies to a typed-array snap
 
     Each change must become a message to the worker.
 23. Debug: `__dwu.galaxy`/`game`/`sim`/`commands.issue`/`commands.log` expose the live sim graph.
+24. Found at run time by the replica write detector (sim-worker.md §9 chunk 0), not by this audit: `ui/hud.ts`
+    `refreshMoney` / `buildMoneyPanel` → `sim/treasury.ts moneyPanelIncome` → `checkAgeVariableIncome` writes
+    `Empire.useAveragedVariableIncome`, `variableIncome`, `lastVariableIncomeUpdate`, `thisYearsResortIncomeValue` and,
+    at a new galactic year, every base's `BuiltObject.currentYearsIncome` (a UI-driven sim write in C# too, Main.Part11.cs
+    841). `audio/gameAudio.ts` also redefines `player.eventMessageRecipient` (item 6).
 
 **Checked and safe (no sim write)**
 - `identifyColonizationTargetsFull` with `filterOutDangerousTargets=false` (it would push `empire.dangerousHabitats` if true).
