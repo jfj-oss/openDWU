@@ -47,7 +47,7 @@ import { empireFlagUrl } from '../selectionInfoView';
 import { dropShadowColor } from '../selectionInfo';
 import { uiScaleFactor } from '../settings';
 import { openGalactopedia } from './galactopedia';
-import { DIMMED_COLOR, SELECTED_COLOR, galaxyMapScale, starBrushColor, starDotSizes } from './galaxyMap';
+import { drawSystemsMiniMap } from './galaxyMap';
 import {
     COLORS,
     FONT,
@@ -800,16 +800,6 @@ function buildColorKey(): HTMLElement {
  *  (method_196: its colonies' systems the player has seen, or the known bases of a pirate faction). */
 function drawKnownSystems(canvas: HTMLCanvasElement, player: Empire, empire: Empire): void {
     const galaxy = player.galaxy;
-    const dpr = Math.min(3, window.devicePixelRatio || 1) * 2;
-    const W = 195;
-    canvas.width = Math.round(W * dpr);
-    canvas.height = Math.round(W * dpr);
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    ctx.fillStyle = '#000';
-    ctx.fillRect(0, 0, W, W);
-    const s = galaxyMapScale(galaxy, W);
     const systems = new Set<Habitat>();
     if (empire.pirateEmpireBaseHabitat !== null) {
         for (const b of player.knownPirateBases ?? []) {
@@ -827,17 +817,7 @@ function drawKnownSystems(canvas: HTMLCanvasElement, player: Empire, empire: Emp
             }
         }
     }
-    const filter = systems.size > 0;
-    const sizes = starDotSizes(W, filter);
-    const dot = (h: Habitat, color: string | null, size: number): void => {
-        if (color === null) return;
-        ctx.fillStyle = color;
-        ctx.beginPath();
-        ctx.ellipse(h.xpos / s, h.ypos / s, size / 2, size / 2, 0, 0, Math.PI * 2);
-        ctx.fill();
-    };
-    for (const sys of galaxy.systems) dot(sys.systemStar, filter ? DIMMED_COLOR : starBrushColor(sys.systemStar), sizes.normal);
-    for (const h of systems) dot(h, SELECTED_COLOR, sizes.selected);
+    drawSystemsMiniMap(canvas, galaxy, 195, systems);
 }
 
 function createDiplomacyScreen(opts: DiplomacyScreenOptions): OpenState {

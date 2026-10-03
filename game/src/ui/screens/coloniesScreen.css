@@ -1,0 +1,197 @@
+/* Colonies screen (coloniesScreen.ts) on the original-style window: only what the shared ow-* widgets do not cover. */
+
+.ow-screen-colonies .col-link-right {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    text-align: right;
+}
+
+/* HabitatListView cells: the flag (+ capital star), the 18 px habitat picture, facility and mood icons. */
+.ow-screen-colonies .col-grid .ow-grid-cell {
+    gap: 2px;
+}
+.ow-screen-colonies .col-flag {
+    width: 20px;
+    height: 12px;
+    object-fit: fill;
+    flex: none;
+}
+.ow-screen-colonies .col-capital {
+    width: 12px;
+    height: 12px;
+    flex: none;
+}
+.ow-screen-colonies .col-planet {
+    height: 18px;
+    width: 18px;
+    object-fit: contain;
+}
+.ow-screen-colonies .col-facility {
+    height: 18px;
+    max-width: 26px;
+    object-fit: contain;
+}
+.ow-screen-colonies .col-mood {
+    width: 16px;
+    height: 16px;
+}
+.ow-screen-colonies .col-ellipsis {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+}
+.ow-screen-colonies .col-bold {
+    font-weight: bold;
+}
+/* Mod layer (19d2): the shortage marker after the colony name. */
+.ow-screen-colonies .col-shortage {
+    flex: none;
+    margin-left: 3px;
+    padding: 0 4px;
+    border-radius: 7px;
+    font-size: 12px;
+    font-weight: bold;
+    line-height: 14px;
+    color: #000;
+    background: rgb(255, 160, 0);
+}
+.ow-screen-colonies .col-race {
+    width: 38px;
+    height: 38px;
+    object-fit: contain;
+}
+.ow-screen-colonies .col-res {
+    height: 22px;
+    max-width: 44px;
+    object-fit: contain;
+}
+
+/* gmapColony: the black galaxy map. */
+.ow-screen-colonies .col-map {
+    background: #000;
+    border: 1px solid rgb(67, 67, 77);
+    cursor: pointer;
+}
+
+.ow-screen-colonies .col-tax {
+    text-align: right;
+    padding: 0 2px;
+    -moz-appearance: textfield;
+}
+.ow-screen-colonies .col-tax::-webkit-inner-spin-button {
+    opacity: 1;
+}
+
+/* EnhancedTabControl: (64, 64, 80) behind the pages; the page itself (48, 48, 64). */
+.ow-screen-colonies .col-tabs {
+    background: rgb(64, 64, 80);
+}
+.ow-screen-colonies .col-page {
+    background: rgb(48, 48, 64);
+    overflow: hidden;
+}
+
+/* pnlColonyHabitatInfo: the selection panel's InfoPanel content at 300 × 300. */
+.ow-screen-colonies .col-info .col-info-box {
+    position: absolute;
+    inset: 0;
+    font-family: inherit;
+    font-size: 12px;
+    color: rgb(200, 200, 200);
+}
+
+/* HabitatAttitudeSummary (16.67 px; the header bold). */
+.ow-screen-colonies .col-attitude {
+    position: absolute;
+}
+.ow-screen-colonies .col-att-line {
+    font-size: 15.33px;
+    line-height: 1.2;
+    color: rgb(170, 170, 170);
+    white-space: normal;
+    margin-bottom: 2px;
+}
+.ow-screen-colonies .col-att-header {
+    font-weight: bold;
+    margin-bottom: 8px;
+}
+.ow-screen-colonies .col-att-note {
+    margin-bottom: 6px;
+}
+
+/* CharacterTroopListIconView / PlanetaryFacilityListIconView: LargeIcon list views on (48, 48, 64). */
+.ow-screen-colonies .col-icons {
+    position: absolute;
+    display: flex;
+    flex-wrap: wrap;
+    align-content: flex-start;
+    gap: 4px;
+    padding: 4px;
+    background: rgb(48, 48, 64);
+}
+.ow-screen-colonies .col-icon {
+    width: 84px;
+    height: 86px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 2px;
+    border: 1px solid transparent;
+    color: rgb(170, 170, 170);
+    cursor: default;
+}
+.ow-screen-colonies .col-troop:not(.col-recruit):not(.col-invading) {
+    cursor: pointer;
+}
+.ow-screen-colonies .col-icon-sel {
+    background: rgb(96, 96, 96);
+    border-color: rgb(140, 140, 150);
+    color: rgb(255, 255, 0);
+}
+.ow-screen-colonies .col-icon-img {
+    width: 56px;
+    height: 56px;
+    object-fit: contain;
+    flex: none;
+}
+.ow-screen-colonies .col-icon-label {
+    font-size: 12.67px;
+    line-height: 13px;
+    text-align: center;
+    max-width: 100%;
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    word-break: break-word;
+}
+/* FadeImage(image, 0.35f): facilities under construction / troops still recruiting are drawn faded. */
+.ow-screen-colonies .col-fac-building .col-icon-img,
+.ow-screen-colonies .col-recruit .col-icon-img {
+    opacity: 0.35;
+}
+.ow-screen-colonies .col-invading .col-icon-label {
+    color: rgb(255, 96, 96);
+}
+.ow-screen-colonies .col-right-label {
+    text-align: right;
+    white-space: nowrap;
+}
+.ow-screen-colonies .ow-select:disabled,
+.ow-screen-colonies .ow-input:read-only {
+    opacity: 0.75;
+}
+
+/* tabColonyData's seven captions in Verdana 8 (13.33 px): tabs 0..21, the 5 px bar under them (21..26). */
+.ow-screen-colonies .col-tabs .ow-tabs {
+    padding-top: 0;
+    align-items: flex-start;
+}
+.ow-screen-colonies .col-tabs .ow-tab {
+    font-size: 13.33px;
+    line-height: 14px;
+    height: 21px;
+    padding: 3px 6px 0;
+}

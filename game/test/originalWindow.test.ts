@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+    gridClickSelection,
     amountBarWidth,
     hudScale,
     isLargeScreen,
@@ -59,5 +60,24 @@ describe('originalWindow grid helpers', () => {
         expect(amountBarWidth(1, 1000, 164)).toBe(1);
         expect(rgbCss(0x102030)).toBe('rgb(16, 32, 48)');
         expect(rgbCss(0x102030, 128)).toBe('rgba(16, 32, 48, 0.502)');
+    });
+});
+
+describe('gridClickSelection (DataGridView MultiSelect)', () => {
+    const keys = ['a', 'b', 'c', 'd'];
+    it('plain click selects one; Ctrl toggles; Shift selects the range from the anchor; Ctrl+Shift adds it', () => {
+        let st = gridClickSelection(keys, new Set<string>(), undefined, 'b', {}, true);
+        expect([...st.selected]).toEqual(['b']);
+        st = gridClickSelection(keys, st.selected, st.anchor, 'd', { shift: true }, true);
+        expect([...st.selected].sort()).toEqual(['b', 'c', 'd']);
+        expect(st.anchor).toBe('b');
+        st = gridClickSelection(keys, st.selected, st.anchor, 'c', { ctrl: true }, true);
+        expect([...st.selected].sort()).toEqual(['b', 'd']);
+        st = gridClickSelection(keys, new Set(['d']), 'b', 'a', { ctrl: true, shift: true }, true);
+        expect([...st.selected].sort()).toEqual(['a', 'b', 'd']);
+    });
+    it('without multiSelect every click is a plain click', () => {
+        const st = gridClickSelection(keys, new Set(['a']), 'a', 'c', { ctrl: true, shift: true }, false);
+        expect([...st.selected]).toEqual(['c']);
     });
 });

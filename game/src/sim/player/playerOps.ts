@@ -27,6 +27,7 @@ import {
     retrofitSelectedShips,
     refuelSelectedShips,
     renameFleet,
+    renameShip,
     repairSelectedShips,
     retireSelectedShips,
     setFleetHomeColony,
@@ -114,7 +115,9 @@ export const PLAYER_OPS = {
     setShipsFleet: (galaxy: Galaxy, empire: Empire, ships: BuiltObject[], target: SetFleetTarget) => setShipsFleet(galaxy, empire, ships, target),
     refuelShips: (galaxy: Galaxy, empire: Empire, ships: BuiltObject[]) => refuelSelectedShips(galaxy, empire, ships),
     repairShips: (galaxy: Galaxy, empire: Empire, ships: BuiltObject[]) => repairSelectedShips(galaxy, empire, ships),
-    retrofitShips: (galaxy: Galaxy, empire: Empire, ships: BuiltObject[]) => retrofitSelectedShips(galaxy, empire, ships),
+    retrofitShips: (galaxy: Galaxy, empire: Empire, ships: BuiltObject[], design: Design | null = null) => retrofitSelectedShips(galaxy, empire, ships, design),
+    /** Main.Part11.cs hvhxxedjqS_Leave: rename a ship / base from the Ships and Bases window. */
+    renameShip: (_galaxy: Galaxy, empire: Empire, ship: BuiltObject, name: string) => renameShip(empire, ship, name),
     retireShips: (galaxy: Galaxy, empire: Empire, ships: BuiltObject[]) => retireSelectedShips(galaxy, empire, ships),
     renameFleet: (_galaxy: Galaxy, _empire: Empire, fleet: ShipGroup, name: string) => renameFleet(fleet, name),
     setFleetHomeColony: (_galaxy: Galaxy, empire: Empire, fleet: ShipGroup, colony: Habitat) => setFleetHomeColony(empire, fleet, colony),
