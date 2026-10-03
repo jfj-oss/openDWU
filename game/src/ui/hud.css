@@ -314,12 +314,17 @@
    and button but the system-map corner (pnlSystemMap and our options list with its zoom / overlay rows) and the diplomatic message queue (the stub list); 'none' =
    method_472(false): those too. The star date (pnlTopLeftBar's text) and the money block are drawn by MainView itself
    (method_18) and stay. */
-body[data-panels] #hud > .hud-el:not([data-hud="pnlMoney"]):not([data-hud="pnlTopLeftBar"]):not([data-hud="pnlOptionsList"]):not([data-hud="pnlSystemMap"]),
-body[data-panels] #hud [data-hud="pnlTopLeftBar"] .top-btn,
-body[data-panels="none"] #hud > [data-hud="pnlOptionsList"],
-body[data-panels="none"] #hud > [data-hud="pnlSystemMap"],
+/* T cycle (panelVisibility.ts): 'nomap' hides only the system map; 'none' hides every panel but the MainView-drawn
+   date / money. */
+body[data-panels="nomap"] #hud > [data-hud="pnlSystemMap"],
+body[data-panels="none"] #hud > .hud-el:not([data-hud="pnlMoney"]):not([data-hud="pnlTopLeftBar"]),
+body[data-panels="none"] #hud [data-hud="pnlTopLeftBar"] .top-btn,
 body[data-panels="none"] .message-stubs {
     display: none !important;
+}
+/* Without the map the View button drops to the corner. */
+body[data-panels="nomap"] #hud > [data-hud="pnlOptionsList"] {
+    bottom: 10px !important;
 }
 /* The system mini-map (hudSystemMap.ts): pnlSystemMap 330 × 290, BackColor (48, 48, 64), a 3 px bevelled border
    (BorderColor1-4 at alpha 96, drawn inside the panel), picSystem 280 × 280 at (45, 5). */
