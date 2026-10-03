@@ -10,7 +10,7 @@ import { loadGameData, type FetchText, type GameData } from '../sim/data/gameDat
 import { loadScenarioIndex, loadScenarioOverlay } from '../sim/scenario/fetchScenario';
 import type { ScenarioOverlay } from '../sim/scenario/overlay';
 import { FRAME_REAL_MS } from '../sim/tick/scheduler';
-import { SimHost } from './simHost';
+import { installWorkerBootState, SimHost } from './simHost';
 import { bootWorkerGame } from './workerBoot';
 import { deltaTransferables } from './replicaSync';
 import type { FromWorker, InitMessage, ToWorker } from './protocol';
@@ -74,6 +74,7 @@ async function init(m: InitMessage): Promise<void> {
     const startOptions = booted.startOptions ?? m.startOptions;
     if (startOptions === undefined) throw new Error('sim worker init: no start options');
     post({ type: 'progress', step: 'Preparing map', fraction: 0.9 });
+    installWorkerBootState(booted.game.galaxy);
     host = new SimHost(booted.game, time, startOptions, { sync: m.sync });
     post({ ...host.snapshot(), scenario: booted.scenario });
     for (const e of early.splice(0)) handle(e);
@@ -131,6 +132,15 @@ function handle(m: ToWorker): void {
             return;
         case 'command':
             host!.command(m);
+            kick();
+            return;
+        case 'query':
+            // Answered at once (no tick): the menu / buttons appear without waiting for the next step.
+            host!.query(m);
+            post(host!.flush());
+            return;
+        case 'tradeFlows':
+            host!.setTradeFlowRecording(m);
             kick();
             return;
         case 'save': {

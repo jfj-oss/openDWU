@@ -33,6 +33,7 @@ import { SimClientCore } from '../src/simworker/clientCore';
 import { bootWorkerGame, type WorkerBootDeps } from '../src/simworker/workerBoot';
 import { workerCreateOptions } from '../src/simworker/bootOptions';
 import type { StepMessage, ToWorker } from '../src/simworker/protocol';
+import { installReplicaWriteDetector } from '../src/simworker/writeDetector';
 
 let gameData: GameData;
 beforeAll(async () => {
@@ -57,6 +58,8 @@ function link(game: Game, time: GalaxyTime, start = START_OPTIONS) {
     const toClient: StepMessage[] = [];
     const wall = { ms: 0 };
     const client = new SimClientCore(gameData, structuredClone(host.snapshot()), { post: (m) => toHost.push(structuredClone(m)), now: () => wall.ms });
+    // Chunk 0's write detector: nothing in these flows may write to the replica (checked at the end of each test).
+    const detector = installReplicaWriteDetector(client.replica, { warn: () => {} });
     const ui = new GalaxyTime();
     ui.bindGalaxy(client.galaxy);
     ui.speed = client.clock.speed;
@@ -86,7 +89,11 @@ function link(game: Game, time: GalaxyTime, start = START_OPTIONS) {
         deliverToClient();
         frame();
     };
-    return { host, client, ui, toHost, toClient, wall, deliverToHost, hostTick, deliverToClient, frame, cycle };
+    const noReplicaWrites = (): void => {
+        detector.checkAll();
+        expect(detector.unexpected().map((x) => x.key)).toEqual([]);
+    };
+    return { host, client, ui, toHost, toClient, wall, deliverToHost, hostTick, deliverToClient, frame, cycle, noReplicaWrites };
 }
 
 describe('sim worker chunk 1: the clock', () => {
@@ -141,6 +148,7 @@ describe('sim worker chunk 1: the clock', () => {
         for (let i = 0; i < 10; i++) w.cycle();
         expect(game.galaxy.nowMs).toBeGreaterThan(settled);
         expect(w.client.galaxy.nowMs).toBe(game.galaxy.nowMs);
+        w.noReplicaWrites();
         w.client.dispose();
         w.host.dispose();
     }, 600000);
@@ -174,6 +182,7 @@ describe('sim worker chunk 1: the clock', () => {
         w.frame();
         expect(w.client.pauseHeld).toBe(false);
         expect(w.client.galaxy.nowMs).toBe(game.galaxy.nowMs);
+        w.noReplicaWrites();
         w.client.dispose();
         w.host.dispose();
     }, 600000);
@@ -317,6 +326,7 @@ describe('sim worker chunk 1: boot and load', () => {
         expect(w.host.digest()).toBe(stateDigest(ref));
         w.client.replica.apply(structuredClone(w.host.sync.delta(true)), true);
         expect(stateDigest(w.client.galaxy)).toBe(stateDigest(ref));
+        w.noReplicaWrites();
         w.client.dispose();
         w.host.dispose();
     }, 600000);
@@ -358,6 +368,7 @@ describe('sim worker chunk 1: the __dwu debug requests', () => {
         expect(JSON.stringify(log)).toBe(JSON.stringify(commandLog(game.galaxy)));
         expect(structuredClone(log)).toEqual(log);
         expect(commandLog(w.client.galaxy).length).toBe(0);
+        w.noReplicaWrites();
         w.client.dispose();
         w.host.dispose();
     }, 600000);

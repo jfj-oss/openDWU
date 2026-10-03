@@ -43,7 +43,8 @@ import { BuiltObjectMission, BuiltObjectMissionPriority, BuiltObjectMissionType,
 import { assignMission, clearPreviousMissionRequirements, recordRevertMission } from '../missions/assign';
 import { baconMovementSettings, withinFuelRangeAndRefuel } from '../movement';
 import { isFighter } from './fighters';
-import { shipGroupOf, stellarAttackers, stellarCurrentSpeed, stellarCurrentTarget, stellarFirepowerRaw, stellarTopSpeed, builtObjectThreats, calculateOverallStrengthFactor, evaluateThreats, getBuiltObjectsAtLocationByArrays, shouldFleeFrom, type Threat } from './threats';
+import { captainBonuses } from '../characters';
+import { shipGroupOf, stellarAttackers, stellarCurrentSpeed, stellarCurrentTarget, stellarFirepowerRaw, stellarTopSpeed, builtObjectThreats, calculateOverallStrengthFactor, escapeTargetForFleeFrom, evaluateThreats, getBuiltObjectsAtLocationByArrays, shouldFleeFrom, type Threat } from './threats';
 
 // ---------------------------------------------------------------------------------------------------------------
 // Galaxy constants (Galaxy.3.cs static ctor)
@@ -631,10 +632,10 @@ function shipGroupWeaponsRangeBonus(bo: BuiltObject): number {
     return shipGroup !== null ? shipGroup.weaponsRangeBonusBase + shipGroup.weaponsRangeBonusExtra : 1.0;
 }
 
-/** BuiltObject.CaptainWeaponsRangeBonus (BuiltObject.cs 600): (int)_CaptainWeaponsRangeBonus / 100.0 (byte, default 100). */
+/** BuiltObject.CaptainWeaponsRangeBonus (BuiltObject.cs 600): (int)_CaptainWeaponsRangeBonus / 100.0 (100 until ReviewCaptainBonuses runs). */
 function captainWeaponsRangeBonus(bo: BuiltObject): number {
-    const raw = (bo as BuiltObject & { _captainWeaponsRangeBonus?: number })._captainWeaponsRangeBonus ?? 100;
-    return Math.trunc(raw) / 100.0;
+    const b = captainBonuses(bo);
+    return (b !== null ? b.weaponsRange : 100) / 100.0;
 }
 
 /** BuiltObject.2.cs 205 ModifyAttackRangeByTargetSpeed(target). */
@@ -1069,8 +1070,8 @@ export function checkForAttack(galaxy: Galaxy, builtObject: BuiltObject): void {
     checkColonyShipMissionCancelled(galaxy, bo, 0);
     recordRevertMission(galaxy, bo, BuiltObjectMissionType.Escape);
     clearPreviousMissionRequirements(galaxy, bo);
-    // 1262-1269: a Fighter flee target is replaced by its (live) parent ship — Fighters are not threats in the TS port (M4p).
-    assignMission(galaxy, bo, BuiltObjectMissionType.Escape, stellarObject2, null, BuiltObjectMissionPriority.High);
+    // 1264-1271: flee from a Fighter's (live) carrier instead of the fighter.
+    assignMission(galaxy, bo, BuiltObjectMissionType.Escape, escapeTargetForFleeFrom(stellarObject2), null, BuiltObjectMissionPriority.High);
 }
 
 /** BuiltObject.1.cs 1852 CheckForRandomAttackTargets. */

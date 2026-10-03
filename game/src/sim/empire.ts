@@ -39,7 +39,7 @@ import type { HabitatPrioritization } from './resourceTargets';
 import type { ColonizationTarget, PrioritizedTarget } from './civilianAI';
 import { PirateRelationList, PirateRelationType, obtainPirateRelation, changePirateRelation, galaxyCurrentStarDate } from './pirateRelations';
 import { recalculateDevelopmentLevelBaseline } from './developmentLevel';
-import { recalculateColonyInfluenceRadius } from './territory';
+import { recalculateColonyInfluenceRadius, strategicValue } from './territory';
 import type { Character } from './characters';
 import { DiplomacyCounters, DiplomaticRelationList } from './diplomacy';
 import { MIN_TIME } from './tick/simTime';
@@ -54,6 +54,20 @@ import type { FleetAttack } from './fleets/militaryAI';
 // (forceStructure.ts RecalculateDistanceFactor / RecalculateAnnualTaxRevenue, taxes.ts
 // SetColonyTaxRate). taxes.ts registers them at module load; colony.ts and
 // empireGeneration.ts import taxes.ts, so every game path has them.
+/** Empire.cs 3596 SelectBestCandidateForCapital(): the colony with the highest StrategicValue (first on ties). No Rnd. */
+export function selectBestCandidateForCapital(empire: Empire): Habitat | null {
+    let result: Habitat | null = null;
+    let num = 0;
+    for (let i = 0; i < empire.colonies.length; i++) {
+        const habitat = empire.colonies[i];
+        if (strategicValue(habitat) > num) {
+            result = habitat;
+            num = strategicValue(habitat);
+        }
+    }
+    return result;
+}
+
 export interface TakeOwnershipOfColonyHooks {
     recalculateDistanceFactor(galaxy: Galaxy, colony: Habitat): void;
     setColonyTaxRate(galaxy: Galaxy, empire: Empire, colony: Habitat, atWar: boolean): void;
@@ -1063,8 +1077,8 @@ export class Empire {
         colony.owner = newEmpire;
         colony.empire = newEmpire;
         if (empire !== null && flag) {
-            // TODO(port): SelectBestCandidateForCapital — Empire.cs.
-            empire.capital = empire.colonies[0] ?? null;
+            // Empire.1.cs 201 (the colony was the old owner's capital): empire.Capital = SelectBestCandidateForCapital().
+            empire.capital = selectBestCandidateForCapital(empire);
         }
         if (newEmpire !== null) {
             colony.isRefuellingDepot = true;

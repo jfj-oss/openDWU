@@ -8,6 +8,7 @@ import type { RenderTime } from '../render/renderInterp';
 import { SimClientCore, type SyncStats } from './clientCore';
 import type { CommandLogEntry } from '../sim/player/commandLog';
 import type { DebugReply, DebugRequest, FromWorker, InitMessage, SnapshotMessage, ToWorker, WorkerEvent } from './protocol';
+import { installReplicaWriteDetector, writeDetectorMode } from './writeDetector';
 
 /** What main.ts drives every render frame (the in-thread SimLoop's shape, minus its driver / budget). */
 export interface WorkerSimLoop {
@@ -67,6 +68,15 @@ export class SimWorkerClient {
                     let c: SimWorkerClient | null = null;
                     const core = new SimClientCore(data, m, { post, onEvent: (ev, res) => c?.eventHandler?.(ev, res) });
                     c = new SimWorkerClient(worker, core);
+                    // Dev only: `&detectWrites=1|all` reports main-thread writes to the replica (writeDetector.ts).
+                    if (import.meta.env.DEV) {
+                        const mode = writeDetectorMode(globalThis.location?.search ?? '');
+                        if (mode !== null) {
+                            const det = installReplicaWriteDetector(core.replica, { trapAll: mode === 'all' });
+                            (globalThis as { __dwuWriteDetector?: unknown }).__dwuWriteDetector = det;
+                            console.info(`sim worker: replica write detector on (${mode})`);
+                        }
+                    }
                     client = c;
                     for (const b of backlog ?? []) c.onMessage(b);
                     backlog = null;

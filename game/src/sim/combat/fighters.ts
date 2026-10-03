@@ -2064,8 +2064,8 @@ export function fighterInflictDamageFull(
     const selfGroupStats = parent !== null ? shipGroupBattleStats(parent) : null;
     if (isCreature(abstractTarget)) {
         const creature = abstractTarget;
-        // TODO(port) M4u: Creature.cs 926 DamageCreature(damager, damage, weapon) — the TS overload ignores damager / weapon.
-        if (creature.damageCreature(csInt(hitPower))) {
+        // Fighter.cs 1119 creature.DamageCreature(this, (int)hitPower, null).
+        if (creature.damageCreature(self, csInt(hitPower), null)) {
             if (creature.type === CreatureType.SilverMist && self.empire !== null) setCivilityRating(self.empire, self.empire.civilityRating + DESTROY_SILVER_MIST_REPUTATION_BONUS);
             creature.completeTeardown();
             return true;

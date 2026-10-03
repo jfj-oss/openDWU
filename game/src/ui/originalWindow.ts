@@ -928,8 +928,14 @@ export function openOriginalWindow(o: OriginalWindowOptions): OriginalWindow {
         onSettingsChange(() => relayoutOriginalWindows());
     }
     // Bring to front on click (several screens can be open, like the original's BringToFront).
+    // The windows above this one move below it instead of this one moving to the end: re-inserting the pressed
+    // window's own nodes during pointerdown cancels the click on its button (and closes a select as it opens).
     frame.addEventListener('pointerdown', () => {
-        if (root.nextSibling !== null) document.body.appendChild(root);
+        for (let n = root.nextSibling; n !== null; ) {
+            const next = n.nextSibling;
+            if (n instanceof HTMLElement && n.classList.contains('ow-layer')) document.body.insertBefore(n, root);
+            n = next;
+        }
         const i = openWindows.findIndex((x) => x.win === win);
         if (i >= 0 && i !== openWindows.length - 1) openWindows.push(...openWindows.splice(i, 1));
     });

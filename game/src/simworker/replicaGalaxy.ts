@@ -137,6 +137,16 @@ export class GalaxySyncSource {
         assignInPlace(this.side, fresh);
     }
 
+    /**
+     * Put a table the save does not write into the side-tables root under `key` (null removes it): the trade-flow
+     * ledger view (tradeFlowSync.ts). The side-table collection never overwrites such a key (assignInPlace copies only
+     * the save's keys) and restoreSideTables ignores it on the replica.
+     */
+    setSideTable(key: string, value: unknown): void {
+        if (value === null) delete this.side[key];
+        else this.side[key] = value;
+    }
+
     /** The initial snapshot (everything discovered so far, incl. the side tables). */
     snapshot(): ReplicaDelta {
         // The side root was filled after the encoder discovered it empty: a full compare sends its contents.
@@ -200,6 +210,17 @@ export class GalaxyReplica {
     apply(d: ReplicaDelta, all = false): ApplyStats {
         const st = this.decoder.apply(d, all);
         this.afterApply(all);
+        return st;
+    }
+
+    /**
+     * Apply a delta and every cold part queued up to it, now (a step message carrying command replies: the onApplied
+     * callbacks then read the replica as of the boundary that applied the commands). The side tables keep their own
+     * cadence.
+     */
+    applyThrough(d: ReplicaDelta): ApplyStats {
+        const st = this.decoder.apply(d, true);
+        this.afterApply(false);
         return st;
     }
 

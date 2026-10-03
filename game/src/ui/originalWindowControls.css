@@ -1,0 +1,98 @@
+/* originalWindowControls.ts: GroupBox, ColorSlider, LabelledTrackBar, right-aligned CheckBox. */
+
+/* GroupBox: (170, 170, 170) caption in the group's font, a 1 px light frame broken by the caption (the frame's top
+   line runs through the caption's middle, as WinForms draws it at Font.Height / 2). */
+.owc-group {
+    position: absolute;
+}
+.owc-group-frame {
+    position: absolute;
+    inset: 0;
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    min-inline-size: 0;
+    border: 1px solid rgba(208, 208, 216, 0.55);
+    border-radius: 3px;
+    pointer-events: none;
+}
+.owc-group-title {
+    margin-left: 6px;
+    padding: 0 2px;
+    font-weight: bold;
+    color: rgb(170, 170, 170);
+    line-height: 1;
+    white-space: nowrap;
+}
+
+/* ColorSlider. */
+.owc-slider {
+    position: absolute;
+    outline: none;
+    cursor: pointer;
+    touch-action: none;
+}
+.owc-slider-bar {
+    position: absolute;
+    box-sizing: border-box;
+    background: linear-gradient(to bottom, rgb(32, 32, 40) 0%, rgb(64, 64, 72) 50%, rgb(32, 32, 40) 100%);
+    border: 1px solid rgba(16, 16, 24, 0.8);
+}
+.owc-slider-elapsed {
+    position: absolute;
+    box-sizing: border-box;
+    background: linear-gradient(to bottom, rgb(48, 48, 64) 0%, rgb(80, 80, 96) 50%, rgb(48, 48, 64) 100%);
+    border: 1px solid rgba(16, 16, 24, 0.8);
+    border-right: 0;
+}
+.owc-slider-thumb {
+    position: absolute;
+    box-sizing: border-box;
+    border-radius: 3px;
+    background: linear-gradient(to bottom, rgb(48, 48, 64) 0%, rgb(80, 80, 96) 50%, rgb(48, 48, 64) 100%);
+    border: 1px solid rgb(32, 32, 40);
+}
+.owc-slider:hover .owc-slider-thumb,
+.owc-slider.owc-active .owc-slider-thumb {
+    /* mouseEffects: ControlPaint.Dark(ThumbPenColor). */
+    border-color: rgb(16, 16, 20);
+    background: linear-gradient(to bottom, rgb(56, 56, 74) 0%, rgb(96, 96, 116) 50%, rgb(56, 56, 74) 100%);
+}
+.owc-slider:focus-visible .owc-slider-thumb {
+    outline: 1px dotted rgba(200, 200, 210, 0.6);
+    outline-offset: 1px;
+}
+.owc-slider.owc-disabled {
+    opacity: 0.45;
+    cursor: default;
+}
+
+/* LabelledTrackBar. */
+.owc-trackbar {
+    position: absolute;
+    color: rgb(170, 170, 170);
+}
+.owc-trackbar-caption {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    font-weight: bold;
+    line-height: 1.05;
+    white-space: pre-line;
+    pointer-events: none;
+}
+.owc-trackbar-tick {
+    background: rgb(64, 64, 72);
+}
+.owc-trackbar-label {
+    transform: translateX(-50%);
+    white-space: nowrap;
+    line-height: 1.1;
+    pointer-events: none;
+}
+
+/* CheckBox with CheckAlign MiddleRight. */
+.ow-check.owc-check-right {
+    flex-direction: row-reverse;
+}

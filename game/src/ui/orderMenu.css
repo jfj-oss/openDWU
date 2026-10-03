@@ -196,3 +196,14 @@
     font-size: 9px;
     color: #ffff00;
 }
+
+/* [gameoptions] "Don't ask me again" (MessageBoxEx SaveResponseText). */
+.order-confirm-remember {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin: 0 12px 10px;
+    font-size: 12px;
+    color: rgb(170, 170, 170);
+    cursor: pointer;
+}

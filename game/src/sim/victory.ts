@@ -506,12 +506,9 @@ export function determineLargestColoniesByType(galaxy: Galaxy, type: HabitatType
     return habitatList;
 }
 
-/**
- * Galaxy.DefeatedEmpires (EmpireList; CompleteTeardown adds the eliminated empire). TODO(port) M4z1: not modelled on
- * the TS Galaxy yet — read defensively as empty until the teardown package adds `galaxy.defeatedEmpires`.
- */
+/** Galaxy.DefeatedEmpires (EmpireList; CompleteTeardown adds the eliminated empire). */
 function defeatedEmpires(galaxy: Galaxy): readonly Empire[] {
-    return (galaxy as unknown as { defeatedEmpires?: Empire[] }).defeatedEmpires ?? [];
+    return galaxy.defeatedEmpires;
 }
 
 /** Empire.2.cs 3098 GetHomeworldsOwned. */
@@ -721,7 +718,7 @@ export function timeSpentAtWar(counters: DiplomacyCounters, starDate: number): n
     return counters.timeSpentAtWarExcludingCurrent + num;
 }
 
-/** EmpireCounters.cs 481 ProcessCreatureDeath(creature) (caller: Creature.cs 934 DamageCreature with an empire damager). */
+/** EmpireCounters.cs 481 ProcessCreatureDeath(creature) (caller: Creature.cs 933 DamageCreature with an empire damager, creature.ts damageCreature). */
 export function countersProcessCreatureDeath(counters: EmpireCounters, creatureType: CreatureType | null): void {
     if (creatureType === null) return;
     switch (creatureType) {
@@ -748,16 +745,13 @@ export function countersProcessEmpireElimination(galaxy: Galaxy, counters: Empir
     }
 }
 
-/**
- * EmpireCounters.cs 45-50 intelligence counters. TODO(port) M4z2: the espionage package adds them (ProcessIntelligenceMissionOutcome,
- * EmpireCounters.cs 234); read defensively (0 until then).
- */
+/** EmpireCounters.cs 45-50 intelligence counters (ProcessIntelligenceMissionOutcome, EmpireCounters.cs 234). */
 type IntelCounterName =
     | 'intelligenceMissionSuccessEspionageCount'
     | 'intelligenceMissionSuccessSabotageCount'
     | 'intelligenceMissionSuccessCounterIntelligenceCount';
 export function intelligenceCounter(empire: Empire, name: IntelCounterName): number {
-    return (empire.counters as unknown as Partial<Record<IntelCounterName, number>>)[name] ?? 0;
+    return empire.counters[name];
 }
 
 function characters(empire: Empire): Character[] {

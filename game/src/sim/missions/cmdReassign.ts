@@ -2,8 +2,8 @@
 //
 // One `case` of the C# switch with the `CommandHandler` signature from executeCommands.ts: it receives the shared
 // locals (`CommandContext`) and returns the C# `result` (seconds left for the DoTasks loop). Every Galaxy.Rnd draw is on
-// `galaxy.rnd` in C# order (two NextDouble per black-hole target). The pirate branch calls the M4s2 stub
-// pirateAssignShipMission (RND: the draws inside PirateAssignShipMission are not made until M4s2).
+// `galaxy.rnd` in C# order (two NextDouble per black-hole target). The pirate branch calls pirateAssignShipMission
+// (Empire.1.cs 4424, pirates/pirateShipMissions.ts), which makes its own draws.
 
 import { isAiControlled } from './playerOrder';
 import type { CommandHandler } from './executeCommands';

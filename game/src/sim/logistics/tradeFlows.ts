@@ -167,8 +167,31 @@ const ledgers = new WeakMap<Galaxy, TradeFlowLedger>();
 let enabledCount = 0;
 let unregister: (() => void) | null = null;
 
+/**
+ * Sim worker (docs/sim-worker.md §9 chunk 3): on a main-thread replica galaxy the contracts happen in the worker, so
+ * recording is switched there and the ledger arrives through the replica sync. The replica's client registers this;
+ * enable / disable / tradeFlowLedger on that galaxy then go through it (the same pattern as playerCommands.ts
+ * setRemoteCommandSink). Never set in-thread.
+ */
+export interface RemoteTradeFlows {
+    setRecording(on: boolean, startStarDate: number): void;
+    /** The synced ledger (or a placeholder while recording was asked for and the first sync is on its way). */
+    ledger(): TradeFlowLedger | null;
+}
+const remotes = new WeakMap<Galaxy, RemoteTradeFlows>();
+
+export function setRemoteTradeFlows(galaxy: Galaxy, remote: RemoteTradeFlows | null): void {
+    if (remote === null) remotes.delete(galaxy);
+    else remotes.set(galaxy, remote);
+}
+
 /** Start recording contracts for `galaxy` (idempotent). Registers the `tradeFlows.record` listener on first use. */
 export function enableTradeFlowRecording(galaxy: Galaxy, startStarDate = 0): TradeFlowLedger {
+    const remote = remotes.get(galaxy);
+    if (remote !== undefined) {
+        remote.setRecording(true, startStarDate);
+        return remote.ledger() ?? createTradeFlowLedger(startStarDate);
+    }
     const existing = ledgers.get(galaxy);
     if (existing !== undefined) return existing;
     const ledger = createTradeFlowLedger(startStarDate);
@@ -188,6 +211,11 @@ export function enableTradeFlowRecording(galaxy: Galaxy, startStarDate = 0): Tra
 
 /** Stop recording for `galaxy` and drop its ledger; the listener is unregistered when no galaxy records any more. */
 export function disableTradeFlowRecording(galaxy: Galaxy): void {
+    const remote = remotes.get(galaxy);
+    if (remote !== undefined) {
+        remote.setRecording(false, 0);
+        return;
+    }
     if (!ledgers.delete(galaxy)) return;
     enabledCount--;
     if (enabledCount <= 0 && unregister !== null) {
@@ -198,6 +226,8 @@ export function disableTradeFlowRecording(galaxy: Galaxy): void {
 }
 
 export function tradeFlowLedger(galaxy: Galaxy): TradeFlowLedger | null {
+    const remote = remotes.get(galaxy);
+    if (remote !== undefined) return remote.ledger();
     return ledgers.get(galaxy) ?? null;
 }
 

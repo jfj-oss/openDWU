@@ -83,11 +83,11 @@ describe('sectorsFor (task 06b, Start.cs Start.method_69)', () => {
 });
 
 describe('defaultStartGameOptions (task 06b)', () => {
-    it('defaults to Spiral, star index 3, dimension index 2', () => {
+    it('defaults to the original (Main.Part9.cs method_259): Elliptical, star index 3, dimension index 3', () => {
         const opts = defaultStartGameOptions();
-        expect(opts.shape).toBe(GalaxyShape.Spiral);
+        expect(opts.shape).toBe(GalaxyShape.Elliptical);
         expect(opts.starCountIndex).toBe(3);
-        expect(opts.dimensionIndex).toBe(2);
+        expect(opts.dimensionIndex).toBe(3);
         expect(typeof opts.seed).toBe('number');
         // Task 06d: no race chosen until the wizard's "Your Race" page runs.
         expect(opts.raceName).toBe('');
@@ -98,19 +98,19 @@ describe('defaultStartGameOptions (task 06b)', () => {
         expect(opts.flagShapeIndex).toBe(-1);
         expect(opts.primaryColor).toBe('');
         expect(opts.secondaryColor).toBe('');
-        // Task 06f: galaxy-option sliders default to their middle ticks (the
-        // original's default positions are not visible in the task context);
-        // difficulty scaling is off.
+        // [wizardB1] galaxy-option sliders at the original's fresh-install positions (Main.Part9.cs method_259 /
+        // Start.cs method_38 standard preset): colony prevalence 2, alien life 2, space creatures 2, aggression 1,
+        // difficulty 1; difficulty scaling is off.
         expect(opts.colonyPrevalenceIndex).toBe(2);
         expect(opts.alienLifeIndex).toBe(2);
-        expect(opts.spaceCreaturesIndex).toBe(1);
+        expect(opts.spaceCreaturesIndex).toBe(2);
         // Pirates page: Start.cs 3302-3303 standard preset / Main.Part9.cs 2665-2667 (Pirates 3, proximity
         // Average, strength 2) — was the guessed middle tick 2 before the pirate settings were mapped.
         expect(opts.piratesIndex).toBe(3);
         expect(opts.pirateProximityIndex).toBe(1);
         expect(opts.pirateStrengthIndex).toBe(2);
-        expect(opts.aggressionIndex).toBe(2);
-        expect(opts.difficultyIndex).toBe(2);
+        expect(opts.aggressionIndex).toBe(1);
+        expect(opts.difficultyIndex).toBe(1);
         expect(opts.difficultyScaling).toBe(false);
         // Task 06g: victory conditions default to the C# defaults (all types
         // unchecked = sandbox mode; percents 33; time limit 10y; time start
@@ -445,21 +445,26 @@ describe('difficultyFor (task 06f, Start.1.cs Start.method_201)', () => {
 });
 
 describe('defaultVictoryConditions (task 06g, VictoryConditions.cs + Start.InitializeComponent.cs)', () => {
-    it('matches the C# defaults: all types unchecked, percents 33, time limit 10y, time start 3y, events on, threshold 1.0', () => {
+    it('matches the original defaults (Main.Part9.cs method_259): territory/population/economy on at 33, time limit off 30y, apply after 20y, events on, threshold 0.8', () => {
         expect(defaultVictoryConditions()).toEqual({
-            territory: false,
+            territory: true,
             territoryPercent: 33,
-            population: false,
+            population: true,
             populationPercent: 33,
-            economy: false,
+            economy: true,
             economyPercent: 33,
             timeLimit: false,
-            timeLimitYears: 10,
-            startDateYears: 3,
+            timeLimitYears: 30,
+            startDateYears: 20,
+            timeStart: true,
             enableDisasterEvents: true,
             enableRaceSpecificConditions: true,
             enableRaceSpecificEvents: true,
-            victoryThresholdPercentage: 1.0,
+            victoryThresholdPercentage: 0.8,
+            // [wizardB1] the story box: Main.Part9.cs method_259 / StartGameOptions.cs 68 defaults.
+            enableStoryEvents: true,
+            enableStoryEventsShadows: true,
+            enableStoryDistantWorlds: true,
         });
     });
 
@@ -500,7 +505,7 @@ describe('clampVictory (task 06g)', () => {
         expect(c).not.toBe(v);
         expect(c.territory).toBe(true);
         expect(c.enableDisasterEvents).toBe(false);
-        expect(c.victoryThresholdPercentage).toBe(1.0);
+        expect(c.victoryThresholdPercentage).toBe(0.8);
     });
 });
 
@@ -613,12 +618,14 @@ describe('manual empire list round-trip (task 06j)', () => {
 });
 
 describe('wizard page order (task 06h, Start.InitializeComponent.cs navigation)', () => {
-    it('follows the original order: The Galaxy → Colonization and Territory → Your Race → Your Empire → Other Empires → Victory Conditions → (mod layer: Scenario) → Start', () => {
-        expect(WIZARD_PAGES).toEqual(['galaxy', 'colonization', 'race', 'empire', 'empires', 'victory', 'scenario', 'start']);
+    it('follows the original order: Playstyle → The Galaxy → Colonization and Territory → Your Race → Your Empire → Other Empires → Victory Conditions → (mod layer: Scenario) → Start', () => {
+        expect(WIZARD_PAGES).toEqual(['type', 'galaxy', 'colonization', 'race', 'empire', 'empires', 'victory', 'scenario', 'start']);
     });
 
     it('titles each page after its original panel name', () => {
         expect(WIZARD_PAGE_TITLES).toEqual({
+            type: 'Playstyle',
+            jumpstart: 'Galaxy, Race, Government, Difficulty',
             galaxy: 'The Galaxy',
             colonization: 'Colonization and Territory',
             race: 'Your Race',
@@ -632,7 +639,9 @@ describe('wizard page order (task 06h, Start.InitializeComponent.cs navigation)'
 
     it('back labels point at the previous page in that order', () => {
         expect(WIZARD_BACK_LABELS).toEqual({
-            galaxy: '← Main Menu',
+            type: '← Main Menu',
+            jumpstart: '← Playstyle',
+            galaxy: '← Playstyle',
             colonization: '← The Galaxy',
             race: '← Colonization and Territory',
             empire: '← Your Race',
@@ -645,6 +654,8 @@ describe('wizard page order (task 06h, Start.InitializeComponent.cs navigation)'
 
     it('forward labels name the next page in that order, except the final page, which starts the game', () => {
         expect(WIZARD_FORWARD_LABELS).toEqual({
+            type: '',
+            jumpstart: 'Start Game',
             galaxy: 'Colonization and Territory →',
             colonization: 'Your Race →',
             race: 'Your Empire →',
@@ -668,12 +679,12 @@ describe('toCreateGameOptions (task 06i)', () => {
     it('maps the galaxy options through the slider converters', () => {
         const o = defaultStartGameOptions();
         o.seed = 12345;
-        // Defaults: star index 3 -> 700, dimension index 2 -> 8x8.
+        // Defaults: star index 3 -> 700, dimension index 3 -> 10x10.
         const c = toCreateGameOptions(o, gameData, NAMES);
-        expect(c.shape).toBe(GalaxyShape.Spiral);
+        expect(c.shape).toBe(GalaxyShape.Elliptical);
         expect(c.starCount).toBe(starCountFor(3));
-        expect(c.sectorWidth).toBe(sectorsFor(2));
-        expect(c.sectorHeight).toBe(sectorsFor(2));
+        expect(c.sectorWidth).toBe(sectorsFor(3));
+        expect(c.sectorHeight).toBe(sectorsFor(3));
         expect(c.systemNames).toBe(NAMES);
         expect(c.gameData).toBe(gameData);
         expect(c.colonyPrevalence).toBe(colonyPrevalenceFor(2));
