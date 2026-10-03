@@ -1,4 +1,4 @@
-// 18a — the chat advisor panel (T): talk to the empire's fleet admiral, backed by a local model server
+// 18a — the chat advisor panel (K; T until parC1): talk to the empire's fleet admiral, backed by a local model server
 // (advisorClient.ts). Orders the admiral agrees to go through the player command layer and are echoed with ✓ / ✗ and
 // the sim's message; clarifying questions appear inline; a war declaration shows a Confirm chip. The panel stays
 // read-only (input disabled) until the configured endpoint (settings.ts advisorEndpoint / advisorModel) answers.
@@ -167,7 +167,7 @@ function createAdvisorPanel(opts: AdvisorPanelOptions): OpenState {
         if (open === null || open.root !== root) return;
         if (api === null) {
             setReady(false, 'offline');
-            add({ kind: 'system', text: `No model server at ${settings.advisorEndpoint}. Start Ollama (ollama serve; ollama pull ${settings.advisorModel}) or a llama-server, then reopen (T).` });
+            add({ kind: 'system', text: `No model server at ${settings.advisorEndpoint}. Start Ollama (ollama serve; ollama pull ${settings.advisorModel}) or a llama-server, then reopen (K).` });
             return;
         }
         setReady(true, `${settings.advisorModel}`);

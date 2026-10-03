@@ -1051,7 +1051,7 @@ export const TOP_MORE_ITEMS: readonly { key: string; label: string }[] = [
     { key: 'galaxyMap', label: 'Galaxy Map (G)' },
     { key: 'empires', label: 'Empires list' },
     { key: 'gameOptions', label: 'Game Options (O)' },
-    { key: 'advisor', label: 'Talk to your admiral (T)' },
+    { key: 'advisor', label: 'Talk to your admiral (K)' },
     { key: 'shortcuts', label: 'Keyboard shortcuts (?)' },
 ];
 

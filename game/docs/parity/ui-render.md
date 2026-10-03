@@ -8,16 +8,16 @@ Some C# panels have obfuscated names: CaLkaMyrMQ = Galaxy Map, kYdDyYeMls = Char
 
 | # | Feature | C# source | Status | Our location | Impact | Notes |
 |---|---|---|---|---|---|---|
-| 1 | Control groups: Ctrl+0-9 sets, 0-9 selects, a variant selects and moves the view | Main.Part7.cs Main_KeyUp SetControlGroupN / SelectControlGroupN(WithFocus), `_Game.PlayerHotkey0..9`, method_208/157 | MISSING | ui/keyboard.ts | High | The main way to manage fleets with the keyboard |
+| 1 | Control groups: Ctrl+0-9 sets, 0-9 selects, a variant selects and moves the view | Main.Part7.cs Main_KeyUp SetControlGroupN / SelectControlGroupN(WithFocus), `_Game.PlayerHotkey0..9`, method_208/157 | DONE (parC1) | ui/controlGroups.ts, sim/player/controlGroups.ts | High | Galaxy.playerHotkeys (saved), journaled op `setControlGroup`; Shift+digit = WithFocus (Expanded default mapping). Browsers keep Ctrl+1-9 for tabs; works in Electron |
 | 2 | Wizard empire-type page: Normal Classic/Shadows, **Pirate** Classic/Shadows, Legends, Return of the Shakturi, Ancient Galaxy, Quick Starts | Start.cs pnlStartNewGameYourEmpireType | MISSING | ui/screens/newGameWizard.ts | High | No pirate-player start, so every pirate-player screen is unreachable; the sim has PiratePlayStyle |
 | 3 | Game Editor family (pnlGameEditor, pnlEdit*, passwords, character skills/traits editor) | Main pnlGameEditor, pnlEdit* | MISSING | top-bar button shows a toast | High (modding) / Low | |
-| 4 | Ground invasion status panel ("[" key, Ground/Battle Report link) | Main.Part11.cs pnlColonyInvasion, method_165; InfoPanel.cs 4419/4497 | MISSING | text only in hud.ts / selectionInfo.ts | High | No way to follow an invasion in progress |
+| 4 | Ground invasion status panel ("[" key, Ground/Battle Report link) | Main.Part11.cs pnlColonyInvasion, method_164/165; ColonyInvasion.cs; InfoPanel.cs 4419/4497 | DONE (parC1, read-only) | ui/screens/groundReport.ts, groundReportModel.ts | High | Static layout ported; explosion / landing animation not. The C# hands the battle to the panel's paint loop while open (Habitat.ColonyInvasion); the port keeps it in the tick |
 | 5 | Game Options: engagement-stance defaults, fleet attack gather/refuel/overmatch, discoveries, new ships automated, same-system start, loaded games paused, wheel behaviour, zoom/scroll speed, starfield size, advanced display, Other Empire Settings, reset automation messages | Main pnlGameOptions + grpGameOptions*, Main.Part6.cs:1760-2560, Main.Part4.cs:4159-4747, Main.Part9.cs:2510-2600 | DONE | ui/screens/gameOptionsPanel.ts, gameOptionsModel.ts | — | Every group and sub-window ported; game-state values go through setEmpireControl / setEmpireSetting (journaled, worker-safe). Closing the window saves the player's settings as the next new game's defaults (YxwyUefOyQ + method_257 → settings.newGameOptions → createGame `gameOptions`, Start.2.cs 1352-1363 / 2122-2146). Left: the main menu's Options editing those defaults before a game (Start.1.cs:1928-1960); "Allow … other empires systems" is shown read-only (hidden in game in the original) |
 | 6 | Fleet Postures map overlay | MainView.2.cs MapOverlayFleetPostures | MISSING | ui/mapOverlays.ts toggle only | Med-High | The toggle does nothing |
 | 7 | Long Range Scanners overlay | MainView.2.cs MapOverlay LRS | MISSING | same as #6 | Med-High | fog.ts already reads longRangeScanners |
 | 8 | Battle bars at f<=3: shield line, boarding/assault bar, flashing boarding icon, fleet-leader badge | MainView.1.cs:1251-1295, MainView.cs:4521-4535 | PARTIAL/DIVERGENT | render/combatBars.ts (our own design; its header wrongly says the original has none); fighterLayer.ts:22 | Med | |
-| 9 | Display-type cycle (D / btnMainViewDisplayToggle, int_34) | Main.Part6.cs:3069; MainView.cs 4069/4352/4523/4696 | MISSING | — | Med | |
-| 10 | Panel-visibility cycle (T, CyclePanelVisibility) | Main.Part7.cs:3085 | MISSING/CONFLICT | keyboard.ts:86 binds T to advisor chat | Med | |
+| 9 | Display-type cycle (D / btnMainViewDisplayToggle, int_34) | Main.Part6.cs:3069; MainView.cs 4069/4352/4523/4696 | DONE (parC1) | render/mainViewDisplay.ts | Med | Gates colony rings, per-ship symbols, combat bars, habitat labels |
+| 10 | Panel-visibility cycle (T, CyclePanelVisibility) | Main.Part7.cs:3085, Main.Part5.cs method_472/473 | DONE (parC1) | ui/panelVisibility.ts, hud.css | Med | Advisor chat moved to K |
 | 11 | Game-start Introduction panel (story, victory conditions, Start) | Main.Part12.cs:2921-3118 method_81/82, Main.Part5.cs:449, Main.Part12.cs:4248-4258 | DONE | ui/screens/introductionPanel.ts | — | Shown paused for wizard games (dev autostart: ?intro=1); Start Playing resumes. Empire.Description (Game Editor) not modelled |
 | 12 | Tutorial in-game behaviours (highlight controls, zoom/scroll to object, open screen/tab) | Main.Part5.cs method_455 | PARTIAL | ui/screens/tutorials.ts:142, sim/data/tutorials.ts:12 | Med | Steps show text only |
 | 13 | Event/story popups: remaining pictures, full-screen pnlStoryEvent, Shakturi ending, music cues | Main.Part4.cs:1300-1460, 4839-4994; Main.Part12.cs:3428 | PARTIAL | ui/eventMessages.ts:8,171; empireComparison.ts:17 | Med | |
@@ -31,7 +31,7 @@ Some C# panels have obfuscated names: CaLkaMyrMQ = Galaxy Map, kYdDyYeMls = Char
 | 21 | Colony construction-yard purchaser, Scrap/Remove Ship | Main.Part6.cs:3460-3560 | PARTIAL | coloniesScreen.ts:21, 1261 | Med | |
 | 22 | Construction Yards detail tabs (Cargo/Components/Docking/Troops/Weapons), Scrap | Main.Part11.cs method_170-176 | PARTIAL | constructionYards.ts:12, 578 | Med | |
 | 23 | Resource Components panel | Main.Part4.cs method_552 | MISSING | expansionPlanner.ts:20 links to Galactopedia | Low-Med | |
-| 24 | H should open the full pnlMessageHistory | Main.Part4.cs:2016 method_528("either") | PARTIAL | H opens messageHistory.ts; the full port is galacticHistory.ts | Low-Med | Quick fix: route H to galacticHistory |
+| 24 | H should open the full pnlMessageHistory | Main.Part4.cs:2016 method_528("either") | DONE (parC1) | screens/galacticHistory.ts | Low-Med | H and the envelope button; the combo's filter persists |
 | 25 | Ion-strike lightning overlay | MainView.1.cs:1162-1201, LightningGenerator.cs | MISSING | effectsLayer.ts:28 | Low-Med | |
 | 26 | Fighter selection brackets and picking | MainView.1.cs:1520 method_212 | MISSING | fighterLayer.ts:23 | Low | |
 | 27 | Other empires' fleets on overlays, selected-fleet yellow, special-highlight red, arrow head | MainView.2.cs method_258 | PARTIAL | overlayLayer.ts:219 | Low-Med | |
@@ -62,7 +62,7 @@ Some C# panels have obfuscated names: CaLkaMyrMQ = Galaxy Map, kYdDyYeMls = Char
 - Bacon forms and the HotKeys screen.
 
 ## 3. Present (full or near-full)
-- **Keyboard:** near-complete except control groups, D, T and "[".
+- **Keyboard:** complete for the 1.9.5 table plus the Expanded control groups, D, T and "[" (parC1).
 - **Screens:** Galaxy Map, Characters, Diplomacy, Empire Summary, Research, Designs + Editor, Build Order + queue, Construction Yards, Ships & Bases, Fleets, Troops, Colonies, Expansion Planner, Empire Policy, Galactic History, Galactopedia, Tutorials, Main Menu, Credits, Game Menu, Save/Load, Advisor Suggestions, message popups, event messages, selection panel, left sidebar, top bar.
 - **Main view rendering:** broadly complete (crossfade zoom, fog, faction rings, markers, overlays, effects, damage, fighters, creatures, box select, pick menu, follow camera).
 - **Sound/music:** full; only the per-type popup sting gate and screen shake are missing.
