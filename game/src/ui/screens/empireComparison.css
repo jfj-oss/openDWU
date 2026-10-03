@@ -1,227 +1,167 @@
-/* Empire Comparisons and Victory Conditions panel + game-end banner (task 15d).
-   Copied from coloniesList.css (Empires list / tutorial-window dark-panel tokens). */
+/* Empire Comparison window (task 15d, parity #14): the panels inside the original-style window (originalWindow.ts)
+   laid out in the original's pixels — RaceVictoryConditionsPanel, EmpireComparison, TopColonies (Verdana-sized
+   15.33 px game font; title = +3 px bold; (170, 170, 170) text with a 1 px black drop shadow) — plus the game-end
+   banner. The Achievements tab's styles are in gameSummary.css. */
 
-.empire-comparison-wrap {
-    position: fixed;
-    inset: 0;
-    z-index: 1500; /* above the HUD, like the in-game tutorial window */
-    pointer-events: none;
-    font-family: 'Forgotten Futurist', sans-serif;
-    color: #e6e6e6;
-}
-
-.empire-comparison-window {
+.ec-tabs,
+.ec-page,
+.ec-panel {
     position: absolute;
-    top: 64px;
-    left: 16px;
-    width: min(900px, calc(100vw - 32px));
-    max-height: calc(100vh - 96px);
-    pointer-events: auto;
-    background: rgba(14, 16, 20, 0.94);
-    backdrop-filter: blur(6px);
-    -webkit-backdrop-filter: blur(6px);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 6px;
-    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6);
-    display: flex;
-    flex-direction: column;
+}
+.ec-page {
+    background: rgb(48, 48, 64);
+}
+.ec-panel {
     overflow: hidden;
+    color: rgb(170, 170, 170);
+    font-size: 15.33px;
+    /* GradientPanel (39, 40, 44) → (22, 21, 26) → (51, 54, 61). */
+    background: linear-gradient(to bottom, rgb(39, 40, 44), rgb(22, 21, 26) 50%, rgb(51, 54, 61));
+    border: 1px solid rgb(67, 67, 77);
+    box-sizing: border-box;
 }
-
-.empire-comparison-titlebar {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 8px 12px;
-    background: rgba(10, 11, 15, 0.9);
-    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-}
-
-.empire-comparison-heading {
-    font-size: 13px;
-    color: #e8d24a;
-}
-
-.empire-comparison-close {
-    background: transparent;
-    border: none;
-    color: #ccc;
-    font-size: 15px;
-    cursor: pointer;
-    padding: 2px 6px;
-}
-.empire-comparison-close:hover {
-    color: #fff;
-}
-
-/* "GAME OVER — Winner: X" line above the tabs once the game is finished. */
-.empire-comparison-gameover {
-    padding: 6px 12px;
-    font-size: 13px;
-    color: #ffff00;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-}
-
-.empire-comparison-tabs {
-    display: flex;
-    gap: 4px;
-    padding: 6px 8px 0;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-}
-
-.empire-comparison-tab {
-    background: rgba(255, 255, 255, 0.04);
-    border: 1px solid rgba(255, 255, 255, 0.07);
-    border-bottom: none;
-    border-radius: 4px 4px 0 0;
-    color: #aaa;
-    font-family: inherit;
-    font-size: 12px;
-    padding: 5px 12px;
-    cursor: pointer;
-}
-.empire-comparison-tab:hover {
-    color: #fff;
-}
-.empire-comparison-tab-active {
-    background: rgba(255, 255, 255, 0.12);
-    color: #e8d24a;
-}
-
-.empire-comparison-body {
-    padding: 8px;
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
+.ec-panel.ec-panel-scroll {
+    overflow-x: hidden;
     overflow-y: auto;
 }
-
-.empire-comparison-lines {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-    padding: 4px 8px 8px;
+.ec-text {
+    position: absolute;
+    white-space: pre;
+    text-shadow: 1px 1px 0 #000;
+    line-height: 1.1;
 }
-
-.empire-comparison-line {
-    font-size: 12px;
-    color: #ccc;
+.ec-normal {
+    font-weight: normal;
 }
-
-.empire-comparison-emphasis {
-    color: #fff;
-    font-size: 13px;
-}
-
-.empire-comparison-subtle {
-    font-size: 11px;
-    color: #888;
-    padding: 2px 8px 6px;
-}
-
-.empire-comparison-section {
-    font-size: 11px;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    color: #e8d24a;
-    padding: 10px 8px 2px;
-}
-
-/* Table rows: grid, template set per table in the TS. */
-.empire-comparison-header {
-    display: grid;
-    align-items: center;
-    gap: 8px;
-    padding: 0 8px 2px;
-    font-size: 10px;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    color: #777;
-}
-
-.empire-comparison-row {
-    display: grid;
-    align-items: center;
-    gap: 8px;
-    padding: 4px 8px;
-    background: rgba(255, 255, 255, 0.04);
-    border: 1px solid rgba(255, 255, 255, 0.07);
-    border-radius: 4px;
-    font-size: 12px;
-    color: #aaa;
-}
-
-.empire-comparison-cell {
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-
-.empire-comparison-row .empire-comparison-cell:first-child,
-.empire-comparison-bar-row .empire-comparison-cell:first-child {
-    color: #fff;
-    font-size: 13px;
-}
-
-.empire-comparison-number {
-    text-align: right;
-}
-
-.empire-comparison-player {
+.ec-bold {
     font-weight: bold;
 }
-.empire-comparison-player .empire-comparison-cell:first-child {
-    color: #e8d24a;
+.ec-title {
+    font-weight: bold;
+    font-size: 18.33px;
+}
+.ec-right {
+    text-align: right;
+}
+.ec-flag,
+.ec-race,
+.ec-cimg {
+    position: absolute;
+    object-fit: fill;
+}
+.ec-cimg {
+    object-fit: contain;
+    object-position: left top;
 }
 
-/* Comparison bars (EmpireComparison.cs:155 colours). */
-.empire-comparison-bar-row {
+/* RaceVictoryConditionsPanel */
+.ec-victory {
+    position: absolute;
+}
+.ec-vrow {
+    position: absolute;
+}
+.ec-vrow > * {
+    position: absolute;
+}
+.ec-vbar-back {
+    background: rgba(0, 0, 0, 0.251);
+}
+.ec-vthreshold {
+    background: rgb(255, 0, 0);
+}
+.ec-vlabel {
+    text-align: center;
+    line-height: 22px;
+}
+.ec-vplayer {
+    border: 2px solid rgb(255, 255, 0);
+    box-sizing: border-box;
+    pointer-events: none;
+}
+.ec-vdetail-host {
+    position: absolute;
+    pointer-events: none;
+    z-index: 2;
+}
+.ec-vdetail {
+    position: absolute;
+    overflow: hidden;
+    background: rgba(0, 0, 0, 0.98);
+    text-shadow: 1px 1px 0 #000;
+}
+.ec-vdetail > * {
+    position: absolute;
+}
+.ec-dotted-h {
+    border-top: 1px dotted rgb(170, 170, 170);
+}
+.ec-dotted-v {
+    border-left: 1px dotted rgb(170, 170, 170);
+}
+.ec-vcol {
+    white-space: normal;
+    overflow-wrap: break-word;
+}
+.ec-gap {
+    margin-top: 7px;
+}
+.ec-indent {
+    margin-left: 20px;
+}
+.ec-vrace-hdr {
+    position: relative;
+}
+.ec-vrace-prog-h {
+    position: absolute;
+    right: 0;
+}
+.ec-vrace-row {
     display: grid;
-    grid-template-columns: 14em minmax(0, 1fr) 9em;
-    align-items: center;
-    gap: 8px;
-    padding: 2px 8px;
-    font-size: 12px;
-    color: #aaa;
+    margin-top: 5px;
+}
+.ec-vrace-extra {
+    margin-left: 50px;
+}
+.ec-vbonus {
+    background: rgba(0, 0, 0, 0.98);
+    padding: 0 5px;
+    box-sizing: border-box;
+}
+.ec-vbonus-detail {
+    margin-left: 50px;
 }
 
-.empire-comparison-bar-track {
-    height: 10px;
-    background: rgba(32, 32, 128, 0.5);
+/* EmpireComparison bar graphs */
+.ec-axis {
+    position: absolute;
+    background: #fff;
+}
+.ec-gbar {
+    position: absolute;
+    background: rgba(32, 32, 128, 0.498);
+}
+.ec-gfill {
+    position: absolute;
+    background: linear-gradient(to right, rgba(48, 0, 96, 0.588), rgba(128, 0, 255, 0.588));
+}
+.ec-gfill.ec-gfill-player {
+    background: linear-gradient(to right, rgba(96, 0, 48, 0.588), rgba(255, 0, 128, 0.588));
+}
+.ec-glabel {
+    text-align: center;
+    text-shadow: none;
 }
 
-.empire-comparison-bar {
-    height: 10px;
-    background: rgba(255, 0, 128, 0.6);
+/* TopColonies */
+.ec-crow {
+    position: absolute;
+    background: rgb(0, 0, 48);
+}
+.ec-crow.ec-crow-odd {
+    background: rgb(0, 0, 80);
 }
 
-.empire-comparison-achievement {
-    padding: 5px 8px;
-    background: rgba(255, 255, 255, 0.04);
-    border: 1px solid rgba(255, 255, 255, 0.07);
-    border-radius: 4px;
-}
-
-.empire-comparison-achievement-title {
-    font-size: 13px;
-    color: #fff;
-}
-
-.empire-comparison-level-tag {
-    margin-left: 6px;
-    font-size: 10px;
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
-    color: #e8d24a;
-    border: 1px solid rgba(232, 210, 74, 0.4);
-    border-radius: 3px;
-    padding: 0 4px;
-}
-
-.empire-comparison-achievement-desc {
-    font-size: 12px;
-    color: #aaa;
-}
 
 /* Game-end banner (Main.Part6.cs method_436). */
 .empire-comparison-banner {

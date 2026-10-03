@@ -42,8 +42,8 @@ import { SystemVisibilityStatus } from '../../sim/visibility';
 import { createFleetDesignsTab } from './fleetDesignsTab';
 import { troopCompositionDescription, troopCountsByType } from './troops';
 import { openGalactopedia } from './galactopedia';
-import { CROSSHAIR_COLOR, GRID_COLOR, galaxyMapScale, sectorColumnLabel, starBrushColor, starDotSizes } from './galaxyMap';
-import { BACKDROP_URLS } from '../../render/assets';
+import { CROSSHAIR_COLOR, GRID_COLOR, drawMapTerritory, galaxyMapScale, sectorColumnLabel, starBrushColor, starDotSizes } from './galaxyMap';
+import { drawGalaxyMapLayers } from './galaxyMapLayers';
 import { fmtK, missionDescription, shipGroupInfo, type InfoTarget } from '../selectionInfo';
 import { renderInfoModel } from '../selectionInfoView';
 import {
@@ -620,9 +620,6 @@ function createFleetsList(opts: FleetsListOptions): OpenState {
     const mapCanvas = el('canvas');
     mapBox.appendChild(mapCanvas);
     fleetsPage.appendChild(mapBox);
-    const backdrop = new Image();
-    backdrop.onload = () => drawMap();
-    backdrop.src = BACKDROP_URLS[0];
 
     // ---------------------------------------------------------------------------------------------------------------
     // Our fleet orders row (the selection panel's fleet buttons).
@@ -766,7 +763,9 @@ function createFleetsList(opts: FleetsListOptions): OpenState {
         ctx.fillStyle = '#000';
         ctx.fillRect(0, 0, W, W);
         const s = galaxyMapScale(galaxy, W);
-        if (backdrop.complete && backdrop.naturalWidth > 0) ctx.drawImage(backdrop, 0, 0, galaxy.sizeX / s, galaxy.sizeY / s);
+        // GalaxyMap.cs method_6: backdrop, nebulae and territory under the grid (galaxyMapLayers.ts).
+        drawGalaxyMapLayers(ctx, galaxy, s, 0, 0, { onChange: () => { if (mapCanvas.isConnected) drawMap(); } });
+        drawMapTerritory(ctx, galaxy, W);
         // Sector grid + labels (pen_1, Verdana 7 pt).
         const sec = galaxy.sectorSize / s;
         ctx.strokeStyle = GRID_COLOR;

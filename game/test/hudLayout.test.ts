@@ -21,8 +21,10 @@ describe('computeHudLayout (top strip = the original layout, scaled)', () => {
             expect(l['pnlMoney'].x + l['pnlMoney'].w).toBeCloseTo(width);
             // Selection panel anchored bottom-left with a 10 px margin.
             expect(l['pnlSelection']).toEqual({ x: 10, y: height - 310 - 10, w: 399, h: 310 });
-            // Options list right-anchored with a 10 px margin; content-sized.
-            expect(l['pnlOptionsList']).toEqual({ x: width - 220 - 10, y: height - 10, w: 220, h: 0 });
+            // The system mini-map (pnlSystemMap 330 × 290, Main.Part12.cs 2099-2132) in the bottom-right corner.
+            expect(l['pnlSystemMap']).toEqual({ x: width - 330 - 10, y: height - 290 - 10, w: 330, h: 290 });
+            // Options list right-anchored with a 10 px margin, just above the mini-map; content-sized.
+            expect(l['pnlOptionsList']).toEqual({ x: width - 220 - 10, y: height - 10 - 290 - 4, w: 220, h: 0 });
             // Every rect stays inside the screen.
             for (const [name, r] of Object.entries(l)) {
                 expect(r.x, `x of ${name}`).toBeGreaterThanOrEqual(0);
