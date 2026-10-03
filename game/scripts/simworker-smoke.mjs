@@ -132,6 +132,28 @@ try {
         await page.screenshot({ path: `${out}/${name}.png` });
         console.log(`saved ${out}/${name}.png`);
     }
+    // Combat and hyperjumps at system zoom (docs/sim-worker.md §9 chunk 2: shots, explosions, shield strikes, jump
+    // flashes and their sounds on the replica): the first of the player's ships (else any) firing / about to jump.
+    for (const [name, kind] of [['combat', 'battle'], ['hyperjump', 'jump']]) {
+        const found = await page.evaluate((k) => {
+            const d = window.__dwu;
+            const p = d.game.playerEmpire;
+            const ok = (b) => b && !b.hasBeenDestroyed && (k === 'battle' ? b.weapons.some((w) => w && w.distanceTravelled >= 0) : b.hyperjumpPrepare || b.hyperEnterStartAnimation || b.hyperjumpAboutToEnter);
+            const list = d.galaxy.builtObjects.filter(ok);
+            const b = list.find((x) => x.empire === p) ?? list[0];
+            if (!b) return null;
+            d.camera.centerOn(b.xpos, b.ypos);
+            d.camera.zoom = d.camera.clampZoom(0.5);
+            return { id: b.builtObjectID, own: b.empire === p, n: list.length };
+        }, kind);
+        if (found === null) {
+            console.log(`${name}: no ship found`);
+            continue;
+        }
+        await page.waitForTimeout(2500);
+        await page.screenshot({ path: `${out}/${name}.png` });
+        console.log(`saved ${out}/${name}.png (ship ${found.id}${found.own ? ', own' : ''}; ${found.n} candidates)`);
+    }
     if (!inThread) {
         const s = await page.evaluate(() => {
             const st = window.__dwu.simStats;

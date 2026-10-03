@@ -241,6 +241,20 @@ export interface GameAudio {
 }
 
 /**
+ * Main.Part4.cs:487 method_523's sting for an event message that reached the player (Empire.EventMessageRecipient).
+ * In-thread installGameAudio's recipient calls it; in worker mode, the main thread's handler of the worker's event
+ * messages should (the recipient there runs in the worker).
+ */
+export function playEventMessageSting(type: EventMessageType, additionalData: unknown, suppressAllPopups: boolean): void {
+    try {
+        const file = eventStingFile(type, additionalData, suppressAllPopups, stingPlayer().isPlaying);
+        if (file !== null) playEventSting(file);
+    } catch {
+        // no audio
+    }
+}
+
+/**
  * [simworker] The Main View sound pass's played-marks for `galaxy`: the sim's own flags in-thread, render-side marks on
  * a sim-worker replica (a flag written there would never reach the worker, and the sync would never re-arm it).
  * `replica` defaults to whether the galaxy's commands go to a remote sink (simworker/clientCore.ts sets one).
@@ -253,7 +267,8 @@ export function soundMarksFor(galaxy: Galaxy, replica: boolean = hasRemoteComman
 export function installGameAudio(deps: GameAudioDeps): GameAudio {
     const { galaxy, camera, time } = deps;
     const session = startEffects();
-    const sounds = new MainViewSounds(session.player, undefined, soundMarksFor(galaxy, deps.replica));
+    const replica = deps.replica ?? hasRemoteCommandSink(galaxy);
+    const sounds = new MainViewSounds(session.player, undefined, soundMarksFor(galaxy, replica));
     // EffectsPlayer.DX.cs:107 Initialize: preload ResolveWeaponSoundEffectFilenames(ComponentDefinitionsStatic) + explosions.
     const weaponFiles = new Set<string>();
     for (const c of galaxy.researchStatic?.componentsById.values() ?? []) {
@@ -280,13 +295,16 @@ export function installGameAudio(deps: GameAudioDeps): GameAudio {
     const setRecipient = (value: Empire['eventMessageRecipient'], enumerable: boolean): void => {
         if (player !== null) Object.defineProperty(player, 'eventMessageRecipient', { value, writable: true, configurable: true, enumerable });
     };
-    if (player !== null) {
+    // [simworker] On a replica the sim that calls the recipient runs in the worker, on its own empire: a recipient here
+    // would never be called, and defining it writes the replica (docs/sim-worker.md §9 chunk 0's findings). The
+    // worker's event-message stream (chunk 4) plays the stings through playEventMessageSting.
+    const recipientInstalled = player !== null && !replica;
+    if (recipientInstalled) {
         setRecipient({
             receiveEventMessage(type, title, message, additionalData, location) {
                 previousRecipient?.receiveEventMessage(type, title, message, additionalData, location);
                 try {
-                    const file = eventStingFile(type as EventMessageType, additionalData, deps.suppressAllPopups(), stingPlayer().isPlaying);
-                    if (file !== null) playEventSting(file);
+                    playEventMessageSting(type as EventMessageType, additionalData, deps.suppressAllPopups());
                 } catch {
                     // no audio
                 }
@@ -341,7 +359,7 @@ export function installGameAudio(deps: GameAudioDeps): GameAudio {
             }
         },
         dispose(): void {
-            setRecipient(previousRecipient, true);
+            if (recipientInstalled) setRecipient(previousRecipient, true);
             rimAmbient.dispose(); // [rimatmo-wiring] 19i item 9
             // [rimatmo-audio] tear the synth bus and the shared rim context down with the audio graph.
             rimCreatures.dispose();

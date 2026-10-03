@@ -507,8 +507,11 @@ Each chunk is independent. All chunks share the same test approach:
 - Audio: `mainViewSounds.ts SoundMarks` — render-side marks on a replica (`ReplicaSoundMarks`), the sim's flags
   in-thread (`simFlagSoundMarks`, unchanged). An ion hit that disables nothing re-arms the C# flag without a new
   LastIonStrike, so on a replica only strikes that land are heard. The event stings ride on
-  `Empire.eventMessageRecipient`, which the worker's sim calls on its own empire: they come back with chunk 4's event
-  stream.
+  `Empire.eventMessageRecipient`, which the worker's sim calls on its own empire: on a replica `gameAudio.ts` no
+  longer defines it (one writer of chunk 0's `Empire.eventMessageRecipient` finding gone; `ui/eventMessages.ts` is the
+  other), and chunk 4's event-message handler plays them with `gameAudio.ts playEventMessageSting`.
+- Write detector (smoke `--detect-writes`, late save, combat and hyperjump views added to the smoke): no chunk-2 key
+  left (`*SoundPlayed` gone); what remains is chunk 4's.
 - Hot-apply spikes: mission / design / fleet references compared hot but sent cold, births-only dependencies (§3.3).
 - Interpolation timing: `clientCore.ts StepPacer`, a playout buffer in step units (`?simPace=0` turns it off).
 - Tests: `test/replicaHotStreams.test.ts`, `simWorkerMainView.test.ts`, `simWorkerPacing.test.ts`,
