@@ -74,7 +74,7 @@ describe('keyboard: the Expanded Main_KeyUp keys (GameHotKeysMappingFile.json de
         expect(mainViewDisplayType()).toBe(1);
         resetPanelVisibility();
         dispatchKey(ev('t', 'KeyT'), {});
-        expect(panelVisibility()).toBe('map');
+        expect(panelVisibility()).toBe('nomap');
         resetPanelVisibility();
         setMainViewDisplayType(0);
     });
@@ -89,22 +89,23 @@ describe('display type (Main.int_34, btnMainViewDisplayToggle_Click)', () => {
     });
 });
 
-describe('panel visibility (CyclePanelVisibility, method_472 / method_473)', () => {
-    it('all → system-map corner only → none → all', () => {
-        expect(nextPanelVisibility('all')).toBe('map');
-        expect(nextPanelVisibility('map')).toBe('none');
+describe('panel visibility (T: all → no map → none → all)', () => {
+    it('all → everything but the system map → none → all', () => {
+        expect(nextPanelVisibility('all')).toBe('nomap');
+        expect(nextPanelVisibility('nomap')).toBe('none');
         expect(nextPanelVisibility('none')).toBe('all');
         resetPanelVisibility();
-        expect([cyclePanelVisibility(), cyclePanelVisibility(), cyclePanelVisibility()]).toEqual(['map', 'none', 'all']);
+        expect([cyclePanelVisibility(), cyclePanelVisibility(), cyclePanelVisibility()]).toEqual(['nomap', 'none', 'all']);
     });
-    it('keeps the MainView-drawn money block, and the map corner in the first step', () => {
-        expect(hudElementShown('pnlSelection', 'map')).toBe(false);
-        expect(hudElementShown('lstMessages', 'map')).toBe(false);
-        expect(hudElementShown('pnlItemList', 'map')).toBe(false);
-        expect(hudElementShown('pnlOptionsList', 'map')).toBe(true);
-        expect(hudElementShown('pnlSystemMap', 'map')).toBe(true);
+    it('the no-map step hides only the system map; none keeps the MainView-drawn money block', () => {
+        expect(hudElementShown('pnlSelection', 'nomap')).toBe(true);
+        expect(hudElementShown('lstMessages', 'nomap')).toBe(true);
+        expect(hudElementShown('pnlItemList', 'nomap')).toBe(true);
+        expect(hudElementShown('pnlOptionsList', 'nomap')).toBe(true);
+        expect(hudElementShown('pnlSystemMap', 'nomap')).toBe(false);
         expect(hudElementShown('pnlSystemMap', 'none')).toBe(false);
         expect(hudElementShown('pnlOptionsList', 'none')).toBe(false);
+        expect(hudElementShown('pnlSelection', 'none')).toBe(false);
         expect(hudElementShown('pnlMoney', 'none')).toBe(true);
         expect(hudElementShown('pnlSelection', 'all')).toBe(true);
     });

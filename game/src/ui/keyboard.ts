@@ -97,7 +97,7 @@ export const KEY_BINDINGS: KeyBinding[] = [
     // StatusScreen (219), and the control groups (digits 48-57: SelectControlGroupN; Ctrl SetControlGroupN; Shift
     // SelectControlGroupNWithFocus).
     { key: 'D', modifiers: NONE, action: 'cycleMainDisplayTypes', description: 'Cycles the main view display: everything, without battle bars, without map indicators' },
-    { key: 'T', modifiers: NONE, action: 'cyclePanelVisibility', description: 'Cycles the panels: all shown, only the map controls, none' },
+    { key: 'T', modifiers: NONE, action: 'cyclePanelVisibility', description: 'Cycles the panels: all shown, all but the system map, none' },
     { key: '[', modifiers: NONE, action: 'groundInvasionStatus', description: 'Ground Report: the ground invasion status of the selected colony (else your capital)' },
     ...controlGroupBindings(),
     // [advisor] begin — 18a: not in the original table (the original has no advisor chat). It was on T until T got the
