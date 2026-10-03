@@ -27,7 +27,6 @@
 // TODO(port): Show Ruin Details window (method_550 pnlRuinDetail) — shown as a message box with the ruin's description here
 // TODO(port): character portraits in the Troops & Characters tab (CharacterImageCache) — CharacterTroopListIconView.cs
 // TODO(port): racial / wonder / resource bonus lines of the attitude summary — HabitatAttitudeSummary.cs DetermineHabitat*Bonuses
-// TODO(port): AutoPauseWhenInPopupWindow pause / resume — Main.Part11.cs method_166 / method_186
 
 import './coloniesScreen.css';
 import type { Empire } from '../../sim/empire';

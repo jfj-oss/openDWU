@@ -5,7 +5,8 @@ import { toggleGameOptionsPanel } from './screens/gameOptionsPanel';
 import { toggleAdvisorPanel } from './advisorPanel';
 import { empireFlagUrl } from './selectionInfoView';
 import { threatKnownSites } from '../sim/scenario/threats/framework';
-import { onSettingsChange, uiScaleFactor } from './settings';
+import { getSettings, onSettingsChange, uiScaleFactor } from './settings';
+import { bindAutoPauseClock } from './autoPause';
 import { HUD_FRAME_SIZE } from './topBar';
 import { GalaxyTime } from '../sim/clock';
 import { resolveStarDateDescription } from '../sim/galaxyTime';
@@ -527,6 +528,7 @@ export function createHud(wiring: HudWiring = {}): HudRefs {
     // it pauses the game and closing restores the previous paused state. Its
     // toggle is registered as the global Escape action; the ≡ button below
     // calls the same toggle.
+    bindAutoPauseClock(clock, () => getSettings().autoPauseInPopup);
     const gameMenu = createGameMenu(clock, { onMainMenu: wiring.onMainMenu });
     setGameMenuHandler(gameMenu.toggle);
     refs.gameMenu = gameMenu;
