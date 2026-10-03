@@ -537,6 +537,10 @@ Each chunk is independent. All chunks share the same test approach:
   left (`*SoundPlayed` gone); what remains is chunk 4's.
 - Hot-apply spikes: mission / design / fleet references compared hot but sent cold, births-only dependencies (§3.3).
 - Interpolation timing: `clientCore.ts StepPacer`, a playout buffer in step units (`?simPace=0` turns it off).
+  With chunk 1's optimistic pause: the picture stops at the press (drawn position held at the latest applied step;
+  the steps in the buffer and in flight land with the ack in one frame, on the same interpolation line), while the
+  replica's clock lands a few steps past it — the smoke's "pause is instant" check reads the drawn time when paced.
+  A message carrying a command / query reply is held at most 50 ms (`REPLY_WAIT_MS`).
 - Tests: `test/replicaHotStreams.test.ts`, `simWorkerMainView.test.ts`, `simWorkerPacing.test.ts`,
   `mainViewSoundsReplica.test.ts`; the smoke reports the render pacing (`--gpu=egl`, `--qs=`).
 

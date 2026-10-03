@@ -63,22 +63,29 @@ async function checkPauseIsInstant() {
         const d = window.__dwu;
         const frame = () => new Promise((res) => requestAnimationFrame(() => res()));
         await frame();
+        const drawn = () => d.view?.renderTime?.renderNowMs ?? d.galaxy.nowMs;
         const before = d.galaxy.nowMs;
+        const drawnBefore = drawn();
         d.time.paused = true;
         const seen = [];
         for (let i = 0; i < 60; i++) {
             await frame();
-            seen.push({ now: d.galaxy.nowMs, held: d.simWorker?.core.pauseHeld ?? false });
+            seen.push({ now: d.galaxy.nowMs, drawn: drawn(), held: d.simWorker?.core.pauseHeld ?? false });
         }
         const st = d.simWorker?.core.stats;
-        return { before, first: seen[0].now, heldFrames: seen.filter((s) => s.held).length, last: seen[seen.length - 1].now, ackMs: st?.lastPauseAckMs ?? null, inFlight: st?.lastPauseInFlightSteps ?? null };
+        // Worker mode with render pacing (clientCore.ts StepPacer, on unless ?simPace=0): the steps in the playout buffer
+        // were simulated before the press, so the replica's clock lands past it; what stops at the press is the picture.
+        const paced = d.simWorker != null && new URLSearchParams(location.search).get('simPace') !== '0';
+        return { paced, before, first: seen[0].now, heldFrames: seen.filter((s) => s.held).length, last: seen[seen.length - 1].now, drawnBefore, drawnFirst: seen[0].drawn, drawnLast: seen[seen.length - 1].drawn, ackMs: st?.lastPauseAckMs ?? null, inFlight: st?.lastPauseInFlightSteps ?? null };
     });
     // In-thread the clock stops dead. In worker mode the replica is held from the press until the worker's ack, then
     // takes the steps the worker ran before the pause reached it (1–2 at most: up to ~35 game ms at 1x); on a slow
-    // renderer (headless swiftshader draws ~8 fps) the ack lands inside the first frame.
+    // renderer (headless swiftshader draws ~8 fps) the ack lands inside the first frame. Paced, the drawn game time
+    // (MainView.renderTime.renderNowMs) is checked instead: it advances at most a frame past the press, then stands.
     const slack = inThread ? 0 : 2 * 17;
-    check(r.first - r.before <= slack && r.last === r.first, `pause is instant: the clock stops at the press (${r.before} → ${r.first}, then still)`);
-    console.log(`     pause: held ${r.heldFrames} frame(s), ack ${r.ackMs === null ? '-' : r.ackMs.toFixed(1)} ms, ${r.inFlight ?? 0} in-flight step(s) landed (+${r.last - r.before} game ms)`);
+    if (r.paced) check(r.drawnFirst - r.drawnBefore <= slack && Math.abs(r.drawnLast - r.drawnFirst) < 0.5, `pause is instant: the drawn time stops at the press (${r.drawnBefore.toFixed(0)} → ${r.drawnFirst.toFixed(0)} → ${r.drawnLast.toFixed(0)})`);
+    else check(r.first - r.before <= slack && r.last === r.first, `pause is instant: the clock stops at the press (${r.before} → ${r.first}, then still)`);
+    console.log(`     pause: held ${r.heldFrames} frame(s), ack ${r.ackMs === null ? '-' : r.ackMs.toFixed(1)} ms, ${r.inFlight ?? 0} in-flight step(s) landed (+${r.last - r.before} game ms on the replica clock)`);
     await page.waitForTimeout(800);
     const t4 = await now();
     await page.waitForTimeout(1500);

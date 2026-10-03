@@ -61,11 +61,13 @@ function play(list: Arrival[], paced: boolean, frameMs = 1000 / 240): [number, n
         let alpha: number;
         if (paced) {
             const drawn = pacer.advance(t, applied);
+            let frameSteps = 0;
             while (inbox.length > 0 && applied < drawn) {
                 const m = inbox.shift()!;
                 applied = m.serial;
-                lastSteps = m.steps;
+                frameSteps += m.steps;
             }
+            if (frameSteps > 0) lastSteps = frameSteps;
             alpha = Math.max(-Math.min(StepPacer.MAX_TARGET + StepPacer.MAX_LAG, lastSteps - 1), Math.min(1, drawn - (applied - 1)));
         } else {
             if (inbox.length > 0) {
@@ -166,7 +168,9 @@ describe('sim worker: render pacing', () => {
         // The buffer grew after starving, within its bounds; holding while paused restarts from the committed state.
         expect(p.target).toBeGreaterThan(1);
         expect(p.target).toBeLessThanOrEqual(StepPacer.MAX_TARGET);
-        p.hold(serial, t);
-        expect(p.drawn).toBe(serial - 1);
+        // Holding (paused) keeps the drawn position where the pause found it (never past the latest step).
+        const at = p.drawn;
+        expect(p.hold(serial, t)).toBe(at);
+        expect(p.hold(serial - 40, t)).toBe(serial - 40);
     });
 });
