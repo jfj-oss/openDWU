@@ -15,6 +15,11 @@ import { raceAggressionLevel, raceFriendlinessLevel, raceReproductiveRate } from
 import { calculateRacialReputationConcern } from '../src/sim/taxes';
 import { Population } from '../src/sim/population';
 import { selectRandomAggressiveRace } from '../src/sim/pirates';
+import { designCalculateMaintenanceCosts } from '../src/sim/construction/empireConstruction';
+import { racePeriodicRaceEvent } from '../src/sim/colonyTick';
+import { RaceEventType } from '../src/sim/eventTypes';
+import { baconSettings } from '../src/sim/data/baconSettings';
+import { empireGovernmentAttributes } from '../src/sim/empire';
 
 let gameData: GameData;
 beforeAll(async () => {
@@ -119,5 +124,29 @@ describe('Race.cs 306-400 periodic personality (ChangePeriodActive)', () => {
         expect(draws().has('Dhayut')).toBe(false);
         g.raceChangePeriodActive.add(dhayut);
         expect(draws().has('Dhayut')).toBe(true);
+    });
+});
+
+describe('BaconDesign.cs 163 CalculateMaintenanceCosts: StrengthInNumbers small-ship discount', () => {
+    it('a quarter off ships of size <= 200 while the Gizurean change period (StrengthInNumbers event) is active', () => {
+        const g = newGame();
+        const e = g.playerEmpire;
+        const gizurean = g.galaxy.races.find((r) => r.name === 'Gizurean')!;
+        expect(racePeriodicRaceEvent(gizurean)).toBe(RaceEventType.StrengthInNumbersMaintenanceLowerForSmallShips);
+        e.dominantRace = gizurean;
+        const small = e.designs.find((d) => d.size <= 200 && d.maintenanceSavings + 0.25 < 1)!;
+        const big = e.designs.find((d) => d.size > 200)!;
+        expect(small).toBeDefined();
+        expect(big).toBeDefined();
+        const smallBase = designCalculateMaintenanceCosts(g.galaxy, small, e);
+        const bigBase = designCalculateMaintenanceCosts(g.galaxy, big, e);
+        g.galaxy.raceChangePeriodActive.add(gizurean);
+        const smallActive = designCalculateMaintenanceCosts(g.galaxy, small, e);
+        expect(designCalculateMaintenanceCosts(g.galaxy, big, e)).toBe(bigBase);
+        expect(smallActive).toBeLessThan(smallBase);
+        // (num1 - min(1, savings + 0.25 + leader) * num1) * num5: the drop is 0.25 * num1 * num5 (below the cap).
+        const num1 = Math.trunc(small.calculateCurrentPurchasePrice(g.galaxy) / baconSettings.shipMarkupFactor) + 1 + baconSettings.shipMaintenanceCostPerSizeUnit * small.size;
+        const num5 = empireGovernmentAttributes(e)?.maintenanceCosts ?? 1;
+        expect(smallBase - smallActive).toBeCloseTo(0.25 * num1 * num5, 9);
     });
 });

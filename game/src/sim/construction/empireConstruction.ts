@@ -77,7 +77,9 @@ import { ForceStructureProjection, ForceStructureProjectionList } from '../force
 import { determineNewSpacePortLocations, analyzeNewResearchFacilities, countResourceSourcesForEmpire, designsFindNewestCanBuild, habitatResourcesContainsGroup, identifyStrategicResourceSupplySource } from '../stationPlacement';
 import { determineOrbitalBaseLocation } from '../pirates';
 import { AdvisorMessageType, checkTaskAuthorized, determineResourcesEmpireSupplies, formatText, formatThousands, getText, type RefCount } from '../diplomacyTick';
-import { gameText } from '../colonyTick';
+import { RaceEventType } from '../eventTypes';
+import { gameText, racePeriodicRaceEvent } from '../colonyTick';
+import { raceChangePeriodActive } from '../racePeriodic';
 import { EmpireMessage, EmpireMessageType, resolveDescription, sendEmpireMessage } from '../messages';
 import { advisorText } from '../advisorQueue';
 import { ConstructionQueue, canBuiltObjectColonizeHabitat, resolveBuildSpeed } from './constructionQueue';
@@ -212,9 +214,10 @@ function getLeaderMaintenanceBonuses(design: Design, empire: Empire | null): num
 export function designCalculateMaintenanceCosts(galaxy: Galaxy, design: Design, empire: Empire): number {
     const price = design.calculateCurrentPurchasePrice(galaxy);
     const num1 = (empire.pirateEmpireBaseHabitat !== null ? Math.trunc(price / (baconSettings.shipMarkupFactorPirates * 2.0)) + 1 : Math.trunc(price / baconSettings.shipMarkupFactor) + 1) + baconSettings.shipMaintenanceCostPerSizeUnit * design.size;
-    // TODO(port) M4u: Race.ChangePeriodActive && PeriodicRaceEvent == StrengthInNumbersMaintenanceLowerForSmallShips &&
-    // Size <= 200 → num2 = 0.25 — periodic race events are not modelled (outside such a period the C# sees 0).
-    const num2 = 0.0;
+    // BaconDesign.cs 165-166: a quarter off small ships while the dominant race's change period with the
+    // StrengthInNumbersMaintenanceLowerForSmallShips periodic event is active.
+    let num2 = 0.0;
+    if (empire != null && empire.dominantRace != null && raceChangePeriodActive(galaxy, empire.dominantRace) && racePeriodicRaceEvent(empire.dominantRace) === RaceEventType.StrengthInNumbersMaintenanceLowerForSmallShips && design.size <= 200) num2 = 0.25;
     const num3 = getLeaderMaintenanceBonuses(design, empire) / 100.0;
     const num4 = Math.min(1.0, design.maintenanceSavings + num2 + num3) * num1;
     let num5 = 1.0;
