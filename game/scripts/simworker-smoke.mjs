@@ -38,6 +38,14 @@ try {
     await page.waitForTimeout(3000);
     const t3 = await now();
     check(t3 - t2 > 2 * (t1 - t0), `faster at 4x: ${(t3 - t2).toFixed(0)} game ms in 3 s`);
+    // Chunk 4 (messages): the worker records the player's messages (history on the replica after the cold sync) and the
+    // main thread shows them (ticker lines / stubs).
+    await page.waitForTimeout(2000);
+    const msgs = await page.evaluate(() => {
+        const p = window.__dwu.game.playerEmpire;
+        return { history: p.messageHistory.length, stamped: p.messageHistory.filter((m) => m && m.starDate > 0).length, stubs: document.querySelectorAll('.message-stub').length };
+    });
+    check(msgs.history > 0 && msgs.stamped === msgs.history, `player messages recorded: ${JSON.stringify(msgs)}`);
     await page.evaluate(() => { window.__dwu.time.paused = true; });
     // Pausing lands at the worker's next tick; steps already in flight still arrive.
     await page.waitForTimeout(1500);

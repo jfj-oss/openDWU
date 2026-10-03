@@ -92,6 +92,7 @@ import { COMPOSITE_SCENARIO_ID, addonCatalog, compositeScenarioManifest, planAdd
 import { closeGalacticHistory } from './ui/screens/galacticHistory';
 import { installEventLogDevHook } from './ui/eventLogDev';
 import { installEventMessages, removeEventMessages } from './ui/eventMessages';
+import { installWorkerMessageUi } from './ui/workerMessages'; // [simworker] chunk 4
 import { installAutosave, removeAutosave } from './ui/autosave';
 import { isGameOptionsPanelOpen } from './ui/screens/gameOptionsPanel';
 // [leftovers] end
@@ -546,13 +547,15 @@ export async function startGameView(
     // window's "Play This Game" button can unpause it.
     (window as unknown as { __dwu?: unknown }).__dwu = buildDwuDebugObject({ camera, galaxy, view, app, game, time });
     Object.assign((window as unknown as { __dwu: Record<string, unknown> }).__dwu, { sim: inThreadLoop?.driver ?? null, simStats: simLoop.stats, simWorker: simClient ?? null });
-    // [simworker] Sim → UI events from the worker (the sim-side handling already ran there).
+    // [simworker] Sim → UI events from the worker (the sim-side handling already ran there). The player's messages,
+    // events and the game end are ui/workerMessages.ts (installed before the ticker / popups first read the messages).
+    const workerMessageUi = simClient !== undefined ? installWorkerMessageUi({ player: game.playerEmpire, galaxy, time, post: (op, args) => simClient.core.postUiOp(op, args) }) : null;
     simClient?.onEvent((e, resolve) => {
+        if (workerMessageUi?.onEvent(e, resolve) === true) return;
         if (e.kind === 'locationPinged') {
             const t = resolve(e.target) as { xpos: number; ypos: number } | null;
             if (t !== null) camera.centerOn(t.xpos, t.ypos);
-        } else if (e.kind === 'gameEnd') showToast('The game has ended (sim worker: the end-of-game banner is not ported yet)');
-        else if (e.kind === 'simError') showToast('Simulation error — game paused (see the worker console)');
+        } else if (e.kind === 'simError') showToast('Simulation error — game paused (see the worker console)');
     });
     // 19p event log: `?eventLog=dump` logs the chronicle digest; __dwu.eventLog.dump() / .export(since).
     (window as unknown as { __dwu: Record<string, unknown> }).__dwu.eventLog = installEventLogDevHook(galaxy, window.location.search);
@@ -682,7 +685,8 @@ export async function startGameView(
     };
     const refreshClockTimer = setInterval(refreshClockLabel, 250);
     // [15d] Galaxy.GameEnd → Main.Part12.cs Galaxy_GameEnd / DoGameEnd (pause, IsFinished/Victor, banner).
-    installGameEndHandler(galaxy, time);
+    // [simworker] worker mode: the worker's handler ends the game; its gameEnd event shows the banner (workerMessages.ts).
+    if (simClient === undefined) installGameEndHandler(galaxy, time);
     // [/15d]
     // [16d] Player messages → popups + the diplomatic conversation queue (Main.Part9.cs ReceiveMessageInternal).
     // [popupstubs] begin
@@ -970,6 +974,7 @@ export async function startGameView(
         orderUiCleanup(); // [ordermenu]
 
         gameAudio.dispose(); // [audio]
+        workerMessageUi?.dispose(); // [simworker]
         simClient?.dispose(); // [simworker]
     };
 

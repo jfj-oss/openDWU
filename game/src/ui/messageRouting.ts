@@ -150,6 +150,11 @@ export function resetMessageOptions(): void {
     options = defaultMessageOptions();
 }
 
+/** Take over another thread's options (the sim worker mirrors the main thread's Game Options, messagePipeline.ts). */
+export function replaceMessageOptions(o: MessageOptions): void {
+    options = { popup: { ...o.popup }, ticker: { ...o.ticker }, suppressAllPopups: o.suppressAllPopups === true };
+}
+
 export interface MessageClassification {
     category: MessageCategory | null;
     /** Explicit `bool_` set by the case (null: left to method_252). */

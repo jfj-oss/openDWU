@@ -26,13 +26,21 @@ import { registerLocationPingedHook } from '../sim/story/eventActions';
 import { SimFrameBudget } from '../simFrameBudget';
 import { GalaxySyncSource } from './replicaGalaxy';
 import { decodeRemoteArg, encodeRemoteArg, type RemoteArg, type RemoteNaming } from './remoteArgs';
-import type { ClockMessage, CommandMessage, FromWorker, SnapshotMessage, StepMessage, WorkerEvent } from './protocol';
+import { PlayerMessagePipeline, applyPlayerMessageUiOp, attachPlayerRecipients, restorePlayerRecipients, withRecipientsAsSaved, type PlayerMessageBatch } from '../ui/messagePipeline';
+import type { ClockMessage, CommandMessage, FromWorker, SnapshotMessage, StepMessage, UiOpMessage, WorkerEvent } from './protocol';
 import type { ReplicaEncoderOptions } from './replicaSync';
 
 export interface SimHostOptions {
     /** Wall clock (performance.now in the worker; a fake one in tests). */
     now?: () => number;
     sync?: Partial<Pick<ReplicaEncoderOptions, 'coldBudgetMs' | 'coldMaxSets' | 'markBudgetMs'>>;
+    /**
+     * Run the player's message pipeline here (ui/messagePipeline.ts, docs/sim-worker.md §9 chunk 4): the worker is the
+     * player's message / event recipient and does the UI's sim writes (star dates, history, advisor queue, defeat game
+     * end, event messages) after each tick, as the in-thread UI timers do; the main thread gets 'playerMessages'
+     * events. The browser worker turns it on (the in-thread app always has these UI timers); headless runs leave it off.
+     */
+    playerMessages?: boolean;
 }
 
 export class SimHost {
@@ -51,6 +59,8 @@ export class SimHost {
     /** Something changed outside a step (a command, the clock): send a delta even if no step ran. */
     private dirty = true;
     private settleUntilCycle = 0;
+    /** The player's message pipeline (opts.playerMessages), else null. */
+    readonly pipeline: PlayerMessagePipeline | null = null;
 
     constructor(readonly game: Game, time: GalaxyTime, private readonly startOptions: StartGameOptions, opts: SimHostOptions = {}) {
         this.galaxy = game.galaxy;
@@ -62,6 +72,12 @@ export class SimHost {
         this.budget = new SimFrameBudget(this.now);
         const ext = galaxyExternals(this.galaxy);
         this.externalsByRef = ext.byRef;
+        // Before the sync first looks at the empire: the recipients are hidden fields, so the replica never has them.
+        const player = this.galaxy.playerEmpire;
+        if (opts.playerMessages === true && player !== null) {
+            this.pipeline = new PlayerMessagePipeline(this.galaxy, player);
+            attachPlayerRecipients(player, this.pipeline);
+        }
         this.sync = new GalaxySyncSource(this.galaxy, opts.sync ?? {});
         this.naming = {
             syncId: (o) => this.sync.encoder.ensureId(o),
@@ -74,7 +90,7 @@ export class SimHost {
             this.time.paused = true;
             doGameEnd(this.galaxy, e);
             reviewAchievements(this.galaxy);
-            this.events.push({ kind: 'gameEnd' });
+            this.events.push({ kind: 'gameEnd', args: { victor: this.encodeOrNull(e.victorEmpire), outcome: e.outcomeForPlayer, description: e.description, code: e.code } });
             this.dirty = true;
         });
         registerLocationPingedHook((target) => {
@@ -131,6 +147,67 @@ export class SimHost {
     }
 
     /**
+     * A UI-side sim write from the main thread (ui/messagePipeline.ts applyPlayerMessageUiOp): applied now, between
+     * ticks, and not journaled — the in-thread UI writes these directly from its timers and handlers.
+     */
+    uiOp(m: UiOpMessage): void {
+        const resolving = {
+            object: (id: number) => this.sync.encoder.objectOf(id),
+            external: (kind: string, key: string | number) => this.externalsByRef.get(`${kind}:${key}`),
+        };
+        try {
+            const args = m.args.map((a) => decodeRemoteArg(a, resolving));
+            if (!applyPlayerMessageUiOp(this.pipeline, m.op, args)) console.warn(`sim worker: unknown UI op ${m.op}`);
+        } catch (err) {
+            console.error(`sim worker: UI op ${m.op} failed`, err);
+        }
+        this.dirty = true;
+    }
+
+    /** encodeRemoteArg, or null when the value cannot cross (an unregistered class): an event field, not a command. */
+    private encodeOrNull(v: unknown): RemoteArg {
+        try {
+            return encodeRemoteArg(v, this.naming);
+        } catch (err) {
+            console.warn('sim worker: event value not sendable', err);
+            return null;
+        }
+    }
+
+    /** The player's message pipeline after a tick: its sim writes, then one event for the main thread. */
+    private pumpPlayerMessages(): void {
+        const pipeline = this.pipeline;
+        if (pipeline === null) return;
+        let batch: PlayerMessageBatch | null = null;
+        try {
+            batch = pipeline.pump();
+        } catch (err) {
+            // As an exception in an in-thread UI timer: logged, the game goes on.
+            console.error('sim worker: player message pipeline failed', err);
+        }
+        if (batch === null) return;
+        // Encoded after every write of the pump, so a new message is born on the main thread with its final contents.
+        this.events.push({
+            kind: 'playerMessages',
+            receipts: batch.receipts.map((r) => ({
+                m: this.encodeOrNull(r.message),
+                ticker: r.ticker,
+                popupPass: r.popupPass,
+                advisor: r.advisor,
+                route: r.route === null ? null : { ...r.route },
+                action: r.action,
+            })),
+            events: batch.events.map((e) => ({
+                type: e.type,
+                title: String(e.title ?? ''),
+                message: String(e.message ?? ''),
+                data: this.encodeOrNull(e.additionalData),
+                location: this.encodeOrNull(e.location),
+            })),
+        });
+    }
+
+    /**
      * One worker tick with `realDtMs` of real time since the last: the in-thread frame driver (simLoop.ts tick) minus
      * the view, then the replica diff. Returns the step message, or null when nothing changed (paused, idle).
      */
@@ -159,6 +236,8 @@ export class SimHost {
             this.dirty = true;
         }
         this.stepSerial += steps;
+        // Between frames, as the in-thread UI timers run: the player's message pipeline.
+        this.pumpPlayerMessages();
         const t1 = this.now();
         // After the last change (a step, a command, the clock), keep diffing until a whole cold cycle has passed, so a
         // paused game's replica becomes exact (every cold object compared since); then go quiet.
@@ -189,7 +268,9 @@ export class SimHost {
 
     /** serializeGame of the authoritative game (between ticks: queued commands apply first, as in-thread). */
     save(): string {
-        return serializeGame(this.game, this.time, this.startOptions);
+        const player = this.galaxy.playerEmpire;
+        const save = (): string => serializeGame(this.game, this.time, this.startOptions);
+        return this.pipeline !== null && player !== null ? withRecipientsAsSaved(player, save) : save();
     }
 
     digest(): string {
@@ -201,6 +282,7 @@ export class SimHost {
     }
 
     dispose(): void {
+        if (this.pipeline !== null) restorePlayerRecipients(this.pipeline.player);
         setGameEndHandler(this.galaxy, null);
         registerLocationPingedHook(null);
     }

@@ -164,6 +164,12 @@ export class SimClientCore {
         this.opts.post(msg);
     }
 
+    /** A UI-side sim write for the worker to apply on receipt, unjournaled (protocol.ts UiOpMessage). */
+    postUiOp(op: string, args: unknown[]): void {
+        if (this.disposed) return;
+        this.opts.post({ type: 'uiOp', op, args: args.map((a) => encodeRemoteArg(a, this.naming)) });
+    }
+
     /** Hand the worker the HUD clock's pause / speed when they changed. */
     syncClock(time: ClockControls): void {
         if (time.speed === this.sent.speed && time.paused === this.sent.paused) return;

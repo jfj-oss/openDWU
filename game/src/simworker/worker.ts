@@ -90,7 +90,8 @@ async function init(m: InitMessage): Promise<void> {
         time.paused = m.clock.paused;
     }
     post({ type: 'progress', step: 'Preparing map', fraction: 0.9 });
-    host = new SimHost(game, time, m.startOptions, { sync: m.sync });
+    // The browser game always has the message UI: the worker is the player's message recipient (docs §9 chunk 4).
+    host = new SimHost(game, time, m.startOptions, { sync: m.sync, playerMessages: true });
     post(host.snapshot());
     for (const e of early.splice(0)) handle(e);
     last = performance.now();
@@ -136,6 +137,10 @@ function handle(m: ToWorker): void {
             return;
         case 'command':
             host!.command(m);
+            kick();
+            return;
+        case 'uiOp':
+            host!.uiOp(m);
             kick();
             return;
         case 'save': {
