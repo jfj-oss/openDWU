@@ -47,6 +47,7 @@
 
 import type { BuiltObjectIndex } from './builtObjectIndex';
 import { inOwnRenderGroup } from './renderGroups';
+import { circleAtScreenRes } from './screenCircle';
 import { Container, Graphics, Particle, ParticleContainer, Rectangle, Sprite, Text, Texture } from 'pixi.js';
 import type { Camera } from './camera';
 import type { Galaxy } from '../sim/galaxy';
@@ -955,7 +956,7 @@ export class GalaxyMarkerLayer {
                 }
                 g.stroke({ width, color: r.pen.color, alpha });
             } else {
-                g.circle(star.xpos, star.ypos, wr).stroke({ width, color: r.pen.color, alpha });
+                circleAtScreenRes(g, star.xpos, star.ypos, wr, z).stroke({ width, color: r.pen.color, alpha });
             }
         }
     }

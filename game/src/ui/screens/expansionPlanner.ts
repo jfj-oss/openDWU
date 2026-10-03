@@ -16,7 +16,6 @@
 //
 // TODO(port): canColonizeBecauseAtWar — galaxy.checkEmpireTerritoryCanColonizeHabitat does not return the C# out parameter (Galaxy.cs 3613), so the "Colonization target in another empire's system" status never shows
 // TODO(port): method_539 purchases the colony ship at the colony with the best queue-time × sqrt(distance) to the target (Main.Part4.cs method_539); 'buildNewShips' picks the yard like the Build Order screen does
-// TODO(port): the galaxy mini map's territory overlay (GalaxyMap.cs bitmap_0, ShowEmpireTerritory) — the systems' dominant-empire rings stand in for it
 // TODO(port): resource rows open the Resource Components panel for non-luxury resources (Main.Part4.cs method_541 → method_552); here every name opens the Galactopedia
 
 import { abundancePercentText } from '../resourceAbundance';
@@ -78,7 +77,7 @@ import { habitatTypeLabel, resourceIconUrl, rgbCss, selectHabitat, selectStellar
 import { showToast } from '../toast';
 import { mainResxImageUrl } from '../resxImage';
 import { openGalactopedia } from './galactopedia';
-import { CROSSHAIR_COLOR, GRID_COLOR, galaxyMapScale, sectorColumnLabel, starBrushColor } from './galaxyMap';
+import { CROSSHAIR_COLOR, GRID_COLOR, drawMapTerritory, galaxyMapScale, sectorColumnLabel, starBrushColor } from './galaxyMap';
 
 /** Main.Part4.cs:2721 method_538: cmbExpansionPlannerMode index → mode key. */
 export type ExpansionMode = 'colonies' | 'resourcesyou' | 'resourcesgalaxy' | 'resourcessupply';
@@ -1198,6 +1197,7 @@ function createExpansionPlanner(opts: ExpansionPlannerOptions): OpenState {
         ctx.clearRect(0, 0, W, W);
         const s = galaxyMapScale(galaxy, W);
         if (backdrop.complete && backdrop.naturalWidth > 0) ctx.drawImage(backdrop, 0, 0, W, (galaxy.sizeY / s) | 0);
+        drawMapTerritory(ctx, galaxy, W);
         // Sector grid + labels (pen_1 / solidBrush_0).
         const secPx = galaxy.sectorSize / s;
         ctx.strokeStyle = GRID_COLOR;

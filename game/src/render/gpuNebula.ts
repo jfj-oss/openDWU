@@ -138,6 +138,17 @@ export class GpuNebula {
         this.program = GlProgram.from({ vertex: VERT, fragment: FRAG, name: 'system-nebula-patch' });
     }
 
+    /**
+     * Do the first patch pass now (a blank 256 px patch, discarded): it compiles and links the patch program (~50 ms
+     * on the main thread) and makes the GPU set up its first mipmapped half-float render target (~200 ms in the GPU
+     * process with ANGLE on Linux, blocking frames; a 4 px pass did not trigger it). Unwarmed, both landed in the
+     * frames where the first system came into nebula range while zooming in.
+     */
+    warm(): void {
+        const z: [number, number, number] = [0, 0, 0];
+        this.render({ lattice: new Float32Array(4096), warp: 0, freq: 1, threshold: 0, opacity: 0, c1: z, c2: z, extent: 1, envOuter: 1 }, 256).destroy(true);
+    }
+
     /** Renders one patch to a premultiplied-alpha RenderTexture (square, `size` px, mipmapped). */
     render(p: GpuPatchInput, size: number): Texture {
         const bytes = new Uint8Array(64 * 64 * 4);
