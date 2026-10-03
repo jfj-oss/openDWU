@@ -37,6 +37,7 @@ import { galaxyDoTasks } from './tick/galaxyTick';
 import { clearColony } from './combat/ownership';
 import { EmpireMessageType, resolveDescription, sendMessageToEmpireWithTitle } from './messages';
 import { gameText } from './colonyTick';
+import { raceAggressionLevel, raceCautionLevel, raceFriendlinessLevel } from './racePeriodic';
 import { resetEmpireTouchTimesForAge, runGameStartEmpireTick, runGameStartGalaxyTick, runGameStartHabitatTick, staggerEmpireTouchTimes } from './tick/gameStart';
 import { meetEmpiresAtStart } from './diplomacy';
 import { gameStartTail } from './gameStartTail';
@@ -340,9 +341,13 @@ export function ensureAggressiveAiRaces(aiStarts: ResolvedStart[], playableRaces
     updateEmpireStarts(aiStarts, playableRaces, rnd);
 }
 
-// Port of Empire.10.cs DetermineMostSuitableGovermentTypes(race, allowable, 3).
-export function determineMostSuitableGovernmentTypes(race: Race, allowable: number[], maximumCount = 3): Government[] {
+// Port of Empire.10.cs DetermineMostSuitableGovermentTypes(race, allowable, 3) (4327). Race.AggressionLevel /
+// CautionLevel / FriendlinessLevel are the periodic levels while the race's change period is active (Race.cs 350-400).
+export function determineMostSuitableGovernmentTypes(galaxy: Galaxy, race: Race, allowable: number[], maximumCount = 3): Government[] {
     const list: { g: Government; tag: number }[] = [];
+    const aggressionLevel = raceAggressionLevel(galaxy, race);
+    const cautionLevel = raceCautionLevel(galaxy, race);
+    const friendlinessLevel = raceFriendlinessLevel(galaxy, race);
     for (const g of governmentsStatic()) {
         if (g === null) continue;
         const num = 1.0 - g.warWeariness + (g.troopRecruitment - 1.0);
@@ -350,10 +355,10 @@ export function determineMostSuitableGovernmentTypes(race: Race, allowable: numb
         const num3 = g.researchSpeed - 1.0 + (1.0 - g.maintenanceCosts) + (1.0 - g.corruption);
         const num4 = g.tradeBonus - 1.0 + (g.approvalRating - 1.0) + (g.populationGrowth - 1.0);
         let num5 = 0.0;
-        num5 += ((race.aggression - 100) / 100.0) * num;
-        num5 += ((race.caution - 100) / 100.0) * num2;
+        num5 += ((aggressionLevel - 100) / 100.0) * num;
+        num5 += ((cautionLevel - 100) / 100.0) * num2;
         num5 += ((race.intelligence - 100) / 100.0) * num3;
-        num5 += ((race.friendliness - 100) / 100.0) * num4;
+        num5 += ((friendlinessLevel - 100) / 100.0) * num4;
         if (g.availability !== 0) num5 += 2.0;
         if (allowable.includes(g.governmentId)) list.push({ g, tag: Math.fround(num5) });
     }
@@ -369,7 +374,7 @@ function governmentsStatic(): (Government | null)[] {
 
 // Port of Empire.10.cs SelectSuitableGovernment(race, excludeId = -1, allowable).
 function selectSuitableGovernment(galaxy: Galaxy, race: Race, allowable: number[]): number {
-    const list = determineMostSuitableGovernmentTypes(race, allowable);
+    const list = determineMostSuitableGovernmentTypes(galaxy, race, allowable);
     if (list.length <= 0) return -1;
     let num = -1;
     for (let i = 0; i < list.length; i++) {
@@ -1192,7 +1197,7 @@ export function* createGameSteps(opts: CreateGameOptions): Generator<GameStartPr
         let aiGov: Government | null;
         if ((es.opts.governmentStyle ?? RANDOM) === RANDOM) {
             const allowable = Empire.resolveDefaultAllowableGovernmentTypes(aiRace);
-            const suitable = determineMostSuitableGovernmentTypes(aiRace, allowable);
+            const suitable = determineMostSuitableGovernmentTypes(galaxy, aiRace, allowable);
             aiGov = null;
             if (suitable.length > 0) {
                 aiGov = suitable[galaxy.rnd.next(0, suitable.length)];

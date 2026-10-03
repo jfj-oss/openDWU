@@ -134,7 +134,7 @@ export function generateEmpire(
         val = Math.trunc(homeSystemFactor * 2200000000.0 + homeSystemFactor * rnd.nextDouble() * 500000000.0);
     }
     num5 = Math.max(num5, val);
-    capital.population.add(new Population(race, num5));
+    capital.population.add(new Population(race, num5, galaxy));
     capital.population.totalAmount = num5;
     // TODO(port): capital.GrowPopulation(TimeSpan.Zero) — no Rnd.
     // (Control* automation flags are re-set here in the C#; the ctor already

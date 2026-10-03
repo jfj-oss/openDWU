@@ -547,7 +547,7 @@ export const cmdLoad: CommandHandler = (ctx) => {
                     if (dockPopulation.totalAmount > 30000000 + item6.amount) {
                         const byRace = populationByRace(dockPopulation.items, item6);
                         if (byRace !== null && byRace.amount >= item6.amount) {
-                            bo.population.add(new Population(item6.race, item6.amount));
+                            bo.population.add(new Population(item6.race, item6.amount, galaxy));
                             populationByRace(dockPopulation.items, item6)!.amount -= item6.amount;
                             dockPopulation.recalculateTotalAmount();
                         }

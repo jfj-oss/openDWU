@@ -81,7 +81,7 @@ import { netSort } from './netSort';
 import { registerTodo, todo } from './tick/todo';
 import { galaxyCurrentStarDate } from './pirateRelations';
 import { selectRandomRace } from './pirates';
-import { habitatAnnualRevenue, identifyEmpireCapitals, totalColonyStrategicValue } from './forceStructure';
+import { habitatAnnualRevenue, totalColonyStrategicValue } from './forceStructure';
 import { strategicValue as habitatStrategicValue } from './territory';
 import { PirateRelationType } from './pirateRelations';
 import { DiplomaticRelationType, DiplomaticStrategy, WarObjective, obtainDiplomaticRelation, resolveEmpiresToDefendAgainst as resolveEmpiresToDefendAgainstDiplomatic, DiplomaticRelation } from './diplomacy';
@@ -7055,12 +7055,11 @@ function determineHabitatSystemStar(habitat: Habitat | null): Habitat | null {
 void determineHabitatSystemStar;
 void SystemVisibilityStatus;
 
-// Empire.Capitals (Empire.cs 513): assigned by RefreshColonyFacilityInfo (Empire.3.cs 104) in the
-// long-interval block of Empire.DoTasks (Empire.1.cs 3654), which the first DoTasks of GenerateEmpire
-// runs. TODO(port): not stored on the TS Empire — recomputed with IdentifyEmpireCapitals
-// (forceStructure.ts), identical at game start (no facility changes since that DoTasks).
+// Empire.Capitals (Empire.cs 513): the cached list RefreshColonyFacilityInfo (Empire.3.cs 104,
+// construction/facilities.ts) assigns in the long-interval block of Empire.DoTasks (Empire.1.cs 3654).
+// Read as cached, as the C# does (Empire.7.cs 952/975/1229, Empire.9.cs 1819) — not recomputed.
 function empireCapitals(empire: Empire): Habitat[] {
-    return identifyEmpireCapitals(empire);
+    return empire.capitals;
 }
 
 // Galaxy.7.cs DetermineSpacePortAtColony (295).

@@ -934,7 +934,7 @@ export function executeEventAction(galaxy: Galaxy, eventAction: EventAction, tri
             if (habitat === null || habitat.hasBeenDestroyed || (habitat.empire !== null && habitat.empire !== galaxy.independentEmpire)) break;
             let governmentId: number | null = null;
             const list = EmpireClass.resolveDefaultAllowableGovernmentTypes(eventAction.race);
-            const governmentAttributesList2 = determineMostSuitableGovernmentTypes(eventAction.race, list);
+            const governmentAttributesList2 = determineMostSuitableGovernmentTypes(galaxy, eventAction.race, list);
             if (governmentAttributesList2 != null && governmentAttributesList2.length > 0) {
                 const index = galaxy.rnd.next(0, governmentAttributesList2.length);
                 governmentId = governmentAttributesList2[index].governmentId;
@@ -1189,7 +1189,7 @@ export function executeEventAction(galaxy: Galaxy, eventAction: EventAction, tri
                 triggerEmpire.allowableGovernmentTypes.push(governmentAttributes.governmentId);
             }
             if (triggerEmpire !== galaxy.playerEmpire) {
-                const governmentAttributesList = determineMostSuitableGovernmentTypes(triggerEmpire.dominantRace!, triggerEmpire.allowableGovernmentTypes);
+                const governmentAttributesList = determineMostSuitableGovernmentTypes(galaxy, triggerEmpire.dominantRace!, triggerEmpire.allowableGovernmentTypes);
                 const governmentId = governmentAttributesList[0].governmentId;
                 if (governmentId === governmentAttributes.governmentId) {
                     haveRevolution(galaxy, triggerEmpire, triggerEmpire.dominantRace, governmentId, 1.0);
@@ -1262,7 +1262,7 @@ export function executeEventAction(galaxy: Galaxy, eventAction: EventAction, tri
             habitat = target;
             if (habitat.owner === null) {
                 const amount = Math.min(20000000000, eventAction.value * 1000000);
-                const population = new Population(eventAction.race, amount);
+                const population = new Population(eventAction.race, amount, galaxy);
                 if (habitat.population == null) habitat.population = new PopulationList();
                 habitat.population.add(population);
                 const independent = galaxy.independentEmpire!;

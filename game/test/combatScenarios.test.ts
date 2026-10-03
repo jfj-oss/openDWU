@@ -62,7 +62,7 @@ const CAST: string[] = [
     'carrier: Skaif Space Port (MediumSpacePort, Royal Sol Commonwealth)',
     'pirateEscort: Rusty Kraken (Escort, Dread Storm Security)',
     'boarder: Rusty Hook (Escort, Dread Invaders)',
-    'boarded: RSR Faithful Harbour (ExplorationShip, Royal Sol Commonwealth)',
+    'boarded: RSR Albatross of Sol (ExplorationShip, Royal Sol Commonwealth)',
     'independentColony: Toinsa (Independent)',
 ];
 
@@ -739,7 +739,7 @@ describe('(3) fighters launched by a carrier engage and return per the C# rules'
 describe('(4) boarding: an assault-pod ship boards and captures a disabled ship', () => {
     /**
      * Dread Invaders' Rusty Hook (1 Assault Pod: RawDamage 50, Range 140; empire BoardingAttackFactor 1, dominant
-     * race TroopStrength 92, pirate RaidStrengthFactor 1.25) against the player's RSR Faithful Harbour (3 Hab Modules, no troops;
+     * race TroopStrength 92, pirate RaidStrengthFactor 1.25) against the player's RSR Albatross of Sol (3 Hab Modules, no troops;
      * BoardingDefenseFactor 1, TroopStrength 121) with its shields down and engines knocked out, 100 apart.
      */
     function stage(): { g: Galaxy; att: BuiltObject; tgt: BuiltObject } {

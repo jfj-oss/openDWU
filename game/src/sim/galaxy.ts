@@ -59,6 +59,7 @@ import { BuiltObjectSubRole } from './builtObjectTypes';
 import { applyShipRegistryPrefix, pickStyled, resolveEmpireShipNameStyle } from './shipNameStyle';
 import { MIN_TIME, galaxyNow } from './tick/simTime';
 import { habitatDoTasks } from './tick/habitatTick';
+import { raceReproductiveRate } from './racePeriodic';
 import { canEmpireColonizeHabitat, habitatResourcesHaveSuperLuxury } from './exploration';
 import type { SchedulerState } from './tick/scheduler';
 import type { Blockade } from './fleets/blockades';
@@ -3528,9 +3529,9 @@ export class Galaxy {
             for (let i = 0; i < num; i++) {
                 this.independentCount++;
                 const amount = this.calculatePopulationAmount(habitat, race);
-                const population = new Population(race, amount);
+                const population = new Population(race, amount, this);
                 // C#: population.GrowthRate = 1f + ((float)race.ReproductiveRate - 1f) / 3f
-                population.growthRate = Math.fround(1 + (Math.fround(race.reproductionRate) - 1) / 3);
+                population.growthRate = Math.fround(1 + (Math.fround(raceReproductiveRate(this, race)) - 1) / 3);
                 if (this.raceIndependentColonyCount !== null) {
                     const idx = race.pictureIndex;
                     if (idx < this.raceIndependentColonyCount.length) {

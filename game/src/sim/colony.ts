@@ -6,6 +6,7 @@
 
 import { generateColonyStartingTroops } from './troops';
 import type { Galaxy } from './galaxy';
+import { raceCautionLevel } from './racePeriodic';
 import type { Empire } from './empire';
 import { COLONY_ANNUAL_LUXURY_RESOURCE_CONSUMPTION_RATE, COLONY_ANNUAL_RESOURCE_CONSUMPTION_RATE, MINIMUM_LUXURY_RESOURCE_REORDER_AMOUNT } from './empire';
 import type { Race } from './data/races';
@@ -55,7 +56,7 @@ export function makeHabitatIntoColony(
     if (age > 0) {
         num2 = Math.trunc(num2 * Math.pow(1.7, age));
     }
-    const population = new Population(race, num2);
+    const population = new Population(race, num2, galaxy);
     habitat.population.add(population);
     habitat.population.totalAmount += num2;
     // TODO(port): Habitat.GrowPopulation(TimeSpan.Zero) — no Rnd; growth model not ported.
@@ -86,8 +87,8 @@ export function setColonyResources(galaxy: Galaxy, habitat: Habitat, empire: Emp
     val = Math.min(10, val);
     const num = 500.0;
     const dominant = habitat.population.dominantRace;
-    // C#: (double)(DominantRace.CautionLevel / 100) — integer division.
-    let num2 = COLONY_ANNUAL_RESOURCE_CONSUMPTION_RATE * (habitat.population.totalAmount / 20.0) * Math.trunc((dominant?.caution ?? 0) / 100);
+    // C#: (double)(DominantRace.CautionLevel / 100) — integer division; CautionLevel is periodic (Race.cs 368).
+    let num2 = COLONY_ANNUAL_RESOURCE_CONSUMPTION_RATE * (habitat.population.totalAmount / 20.0) * Math.trunc((dominant !== null ? raceCautionLevel(galaxy, dominant) : 0) / 100);
     if (num2 < 1.0) {
         num2 = 1.0;
     } else if (num2 > 4.0) {
@@ -111,7 +112,7 @@ export function setColonyResources(galaxy: Galaxy, habitat: Habitat, empire: Emp
             }
         }
         const num3 = Math.max(500000000, habitat.population.totalAmount);
-        let num4 = Math.trunc(COLONY_ANNUAL_LUXURY_RESOURCE_CONSUMPTION_RATE * num3 * ((dominant?.caution ?? 0) / 100.0) * 5.0);
+        let num4 = Math.trunc(COLONY_ANNUAL_LUXURY_RESOURCE_CONSUMPTION_RATE * num3 * ((dominant !== null ? raceCautionLevel(galaxy, dominant) : 0) / 100.0) * 5.0);
         num4 = Math.max(num4 * 3, MINIMUM_LUXURY_RESOURCE_REORDER_AMOUNT);
         num4 = Math.max(400, num4);
         num4 = Math.trunc(num4 * 1.5);

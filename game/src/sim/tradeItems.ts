@@ -67,6 +67,7 @@ import { takeOwnershipOfBuiltObject, takeOwnershipOfColonyRuntime } from './comb
 import { haveRevolution } from './treasury';
 import { GalaxyLocation } from './galaxyLocation';
 import { galaxyColonyFillFactor } from './colonyTick';
+import { raceAggressionLevel, raceFriendlinessLevel } from './racePeriodic';
 import type { TechNode } from './researchSystem';
 import { nodeCategory, resolveResearchAbilityType, ResearchAbilityType } from './researchSystem';
 import { resolveMoreAdvancedProjectsIncludeSpecial } from './espionage';
@@ -611,12 +612,13 @@ function clampValue(num: number): number {
 }
 
 /** Galaxy.1.cs 1367 CheckColonizationLikeliness(potentialColony, colonizingRace). */
+// Race.FriendlinessLevel / AggressionLevel: periodic levels while the race's change period is active (Race.cs 350-400).
 export function checkColonizationLikeliness(galaxy: Galaxy, potentialColony: Habitat, colonizingRace: Race): number {
-    let num = colonizingRace.friendliness - colonizingRace.aggression;
+    let num = raceFriendlinessLevel(galaxy, colonizingRace) - raceAggressionLevel(galaxy, colonizingRace);
     let num2 = 100;
     if (potentialColony.empire === galaxy.independentEmpire && potentialColony.population != null && potentialColony.population.dominantRace !== null) {
         const dominantRace = potentialColony.population.dominantRace;
-        num2 = dominantRace.friendliness - dominantRace.aggression;
+        num2 = raceFriendlinessLevel(galaxy, dominantRace) - raceAggressionLevel(galaxy, dominantRace);
         if (dominantRace === colonizingRace) {
             num2 += 35;
             num2 = Math.max(5, num2);
