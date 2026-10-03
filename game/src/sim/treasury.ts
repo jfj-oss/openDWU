@@ -424,7 +424,7 @@ export function checkChangeGovernment(galaxy: Galaxy, empire: Empire): void {
             return;
         }
         let num4 = -1;
-        const governmentAttributesList = determineMostSuitableGovernmentTypes(empire.dominantRace!, empire.allowableGovernmentTypes);
+        const governmentAttributesList = determineMostSuitableGovernmentTypes(galaxy, empire.dominantRace!, empire.allowableGovernmentTypes);
         for (let k = 0; k < governmentAttributesList.length; k++) {
             if (!list.includes(num4) && num4 >= 0) {
                 break;
@@ -451,7 +451,7 @@ export function checkChangeGovernment(galaxy: Galaxy, empire: Empire): void {
 
 /** Empire.10.cs 4404 SelectSuitableGovernment(race, excludeId, allowableGovernmentTypes). */
 export function selectSuitableGovernment(galaxy: Galaxy, race: Race, excludeId: number, allowableGovernmentTypes: number[]): number {
-    const governmentAttributesList = determineMostSuitableGovernmentTypes(race, allowableGovernmentTypes);
+    const governmentAttributesList = determineMostSuitableGovernmentTypes(galaxy, race, allowableGovernmentTypes);
     let result = -1;
     if (governmentAttributesList.length > 0) {
         result = governmentAttributesList[0].governmentId;

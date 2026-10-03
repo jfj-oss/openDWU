@@ -35,6 +35,7 @@
 //   Empire.PenalColonies: empty. Empire.Capitals: only Capital at game start.
 //   Habitat.RaceEventType: Undefined. Habitat.DefensiveFortressBonus: 0. Facilities: none.
 
+import { raceCautionLevel } from './racePeriodic';
 import { RaceEventType } from './eventTypes';
 import { Troop, TroopList, TroopType } from './cargo';
 import { PlanetaryFacilityType } from './researchSystem';
@@ -160,9 +161,9 @@ export function estimatedDefensiveForceRequired(galaxy: Galaxy, habitat: Habitat
     let num = 0.0;
     const owner = habitat.owner;
     if (owner !== null && owner !== galaxy.independentEmpire) {
-        num = Math.pow(owner.dominantRace!.caution / 100.0, 2.0);
+        num = Math.pow(raceCautionLevel(galaxy, owner.dominantRace!) / 100.0, 2.0); // Race.CautionLevel (periodic, Race.cs 368)
     } else if (owner === galaxy.independentEmpire && habitat.population != null && habitat.population.dominantRace != null) {
-        num = Math.pow(habitat.population.dominantRace.caution / 100.0, 2.0);
+        num = Math.pow(raceCautionLevel(galaxy, habitat.population.dominantRace) / 100.0, 2.0);
     }
     let num2 = 750.0;
     if (owner !== galaxy.playerEmpire && difficultyLevel > 1.0) {

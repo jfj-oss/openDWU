@@ -11,6 +11,10 @@ import { BuiltObjectRole } from '../src/sim/data/designSpecifications';
 import { DiplomaticRelationType, obtainDiplomaticRelation } from '../src/sim/diplomacy';
 import { PirateRelationType, obtainPirateRelation } from '../src/sim/pirateRelations';
 import { checkSystemEnemyShipLevel, determineNewSpacePortLocations } from '../src/sim/stationPlacement';
+import { raceAggressionLevel, raceFriendlinessLevel, raceReproductiveRate } from '../src/sim/racePeriodic';
+import { calculateRacialReputationConcern } from '../src/sim/taxes';
+import { Population } from '../src/sim/population';
+import { selectRandomAggressiveRace } from '../src/sim/pirates';
 
 let gameData: GameData;
 beforeAll(async () => {
@@ -75,5 +79,45 @@ describe('Empire.6.cs 3165 CheckSystemEnemyShipLevel', () => {
         e.visibility.systemVisibility[colony.systemIndex].threats = [mobileWarship(g, enemy)];
         expect(determineNewSpacePortLocations(g.galaxy, e, [colony], 1, true)).toEqual([]);
         expect(determineNewSpacePortLocations(g.galaxy, e, [colony], 1, false)).toEqual([colony]);
+    });
+});
+
+describe('Race.cs 306-400 periodic personality (ChangePeriodActive)', () => {
+    it('races/*.txt PeriodicChange* / PeriodicFactors* reach the accessors (they are parsed fields, not Race.extra)', () => {
+        const dhayut = gameData.races.find((r) => r.name === 'Dhayut')!;
+        expect([dhayut.changePeriodYearsInterval, dhayut.changePeriodYearsLength, dhayut.periodicAggressionLevel, dhayut.periodicGrowthRate]).toEqual([5, 2, 133, 1.28]);
+    });
+
+    it('while the period is active the C# Race properties read the periodic values at the sim call sites', () => {
+        const g = newGame().galaxy;
+        const dhayut = g.races.find((r) => r.name === 'Dhayut')!;
+        const securan = g.races.find((r) => r.name === 'Securan')!;
+        const before = {
+            aggression: raceAggressionLevel(g, dhayut),
+            friendliness: raceFriendlinessLevel(g, securan),
+            growth: raceReproductiveRate(g, dhayut),
+            concern: calculateRacialReputationConcern(g, dhayut),
+            popGrowth: new Population(dhayut, 1000, g).growthRate,
+        };
+        expect(before).toEqual({ aggression: 119, friendliness: 110, growth: 1.12, concern: Math.max(1, (119 / 65) ** 5), popGrowth: Math.fround(1.12) });
+        g.raceChangePeriodActive.add(dhayut);
+        g.raceChangePeriodActive.add(securan);
+        expect(raceAggressionLevel(g, dhayut)).toBe(133);
+        expect(raceFriendlinessLevel(g, securan)).toBe(140);
+        expect(raceReproductiveRate(g, dhayut)).toBe(1.28);
+        // Empire.cs 3104 CalculateRacialReputationConcern: AggressionLevel / FriendlinessLevel.
+        expect(calculateRacialReputationConcern(g, dhayut)).toBeCloseTo((133 / 65) ** 5, 10);
+        // Population.cs 62: _GrowthRate = (float)race.ReproductiveRate.
+        expect(new Population(dhayut, 1000, g).growthRate).toBe(Math.fround(1.28));
+        // Galaxy.8.cs 3747 SelectRandomAggressiveRace: AggressionLevel >= threshold (Dhayut 133 >= 125 only while active).
+        g.raceChangePeriodActive.delete(dhayut);
+        const draws = () => {
+            const seen = new Set<string>();
+            for (let i = 0; i < 200; i++) seen.add(selectRandomAggressiveRace(g, 125)?.name ?? '-');
+            return seen;
+        };
+        expect(draws().has('Dhayut')).toBe(false);
+        g.raceChangePeriodActive.add(dhayut);
+        expect(draws().has('Dhayut')).toBe(true);
     });
 });

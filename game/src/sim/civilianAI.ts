@@ -11,6 +11,7 @@
 // determineHabitatsBeingMinedIncludingBuildingMiningStations (M4i), setupRefuelling (M4e), assignLoadTroopsMission and
 // the troop-transport checks (M4q)).
 
+import { raceAggressionLevel, raceCautionLevel } from './racePeriodic';
 import { isAiControlled } from './missions/playerOrder';
 import type { Galaxy } from './galaxy';
 import type { Empire } from './empire';
@@ -1785,7 +1786,7 @@ export function assignMigrationMissionToBuiltObject(galaxy: Galaxy, empire: Empi
                     if (habitat2 !== null) {
                         const amount2 = Math.min(builtObject.populationCapacity, r.amount);
                         const populationList = new PopulationList();
-                        populationList.add(new Population(r.race!, amount2));
+                        populationList.add(new Population(r.race!, amount2, galaxy));
                         assignMission(galaxy, builtObject, BuiltObjectMissionType.Transport, habitat, habitat2, BuiltObjectMissionPriority.Normal, { population: populationList });
                         return true;
                     }
@@ -1826,7 +1827,7 @@ export function assignMigrationMissionToBuiltObject(galaxy: Galaxy, empire: Empi
                 if (habitat5 != null && habitat5.population != null && habitat5.population.items.length > 0 && habitat5.population.dominantRace !== null) {
                     const dominantRace = habitat5.population.dominantRace;
                     const amount3 = Math.min(builtObject.populationCapacity, Math.trunc(populationOfRace(habitat5.population, dominantRace)!.amount / 50));
-                    populationList2.add(new Population(dominantRace, amount3));
+                    populationList2.add(new Population(dominantRace, amount3, galaxy));
                     assignMission(galaxy, builtObject, BuiltObjectMissionType.Transport, habitat5, habitat3, BuiltObjectMissionPriority.Normal, { population: populationList2 });
                     return true;
                 }
@@ -1876,7 +1877,7 @@ export function assignTourismMissionToBuiltObject(galaxy: Galaxy, empire: Empire
                         if (dominantRace !== null) {
                             let val = Math.min(Math.trunc(builtObject.populationCapacity / 100), Math.trunc(populationOfRace(habitat.population, dominantRace)!.amount / 50));
                             val = Math.min(20000, val);
-                            populationList.add(new Population(dominantRace, val));
+                            populationList.add(new Population(dominantRace, val, galaxy));
                             clearPreviousMissionRequirements(galaxy, builtObject);
                             assignMission(galaxy, builtObject, BuiltObjectMissionType.Transport, habitat, builtObject2, BuiltObjectMissionPriority.Normal, { population: populationList });
                             return true;
@@ -1888,7 +1889,7 @@ export function assignTourismMissionToBuiltObject(galaxy: Galaxy, empire: Empire
                     if (dominantRace2 !== null) {
                         let val2 = Math.min(Math.trunc(builtObject.populationCapacity / 100), Math.trunc(populationOfRace(habitat.population, dominantRace2)!.amount / 50));
                         val2 = Math.min(20000, val2);
-                        populationList.add(new Population(dominantRace2, val2));
+                        populationList.add(new Population(dominantRace2, val2, galaxy));
                         clearPreviousMissionRequirements(galaxy, builtObject);
                         assignMission(galaxy, builtObject, BuiltObjectMissionType.Transport, habitat, target, BuiltObjectMissionPriority.Normal, { population: populationList });
                         return true;
@@ -2324,8 +2325,9 @@ export function identifyColonizationTargetsFull(galaxy: Galaxy, empire: Empire, 
     if (design === null) design = findNewest(empire.designs, BuiltObjectSubRole.ColonyShip);
     let flag = false;
     if (filterOutDangerousTargets) flag = checkEmpireTechCanSurviveStorms(empire);
-    const num = empire.dominantRace!.aggression / 100.0;
-    const num2 = empire.dominantRace!.caution / 100.0;
+    // Race.AggressionLevel / CautionLevel: periodic levels while the race's change period is active (Race.cs 350-377).
+    const num = raceAggressionLevel(galaxy, empire.dominantRace!) / 100.0;
+    const num2 = raceCautionLevel(galaxy, empire.dominantRace!) / 100.0;
     const num3 = Math.trunc(2000.0 / ((num * num) / (num2 * num2)));
     let empireHabitatTypes = empire.colonizableHabitatTypesForEmpire();
     empireHabitatTypes = colonizableHabitatTypesFromColonyShips(empire, empireHabitatTypes);

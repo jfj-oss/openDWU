@@ -32,7 +32,7 @@ import { DiplomaticRelationType, obtainDiplomaticRelation } from '../../diplomac
 import { applyReputation } from '../reputation/ledger';
 import { EmpireMessageType } from '../../messages';
 import { galaxyStarDate } from '../../tick/simTime';
-import { raceFriendlinessLevel } from '../../colonyTick';
+import { raceFriendlinessLevel } from '../../racePeriodic';
 import { registerScenarioEvent, registerScenarioPeriodic, registerScenarioYearly, gameYear } from '../hooks';
 import { registerStabilityTerm } from '../stability';
 import { colonyQuarantined, securitySlots } from '../security/registry';
@@ -459,10 +459,10 @@ export function acceptFlow(galaxy: Galaxy, flow: RefugeeFlow): void {
         carriedTotal += amount;
         ship.name = scenarioText('Emergent Refugee Convoy RACE', flow.race.name);
         ship.population = new PopulationList();
-        ship.population.add(new Population(flow.race, amount));
+        ship.population.add(new Population(flow.race, amount, galaxy));
         ship.population.recalculateTotalAmount();
         const missionPopulation = new PopulationList();
-        missionPopulation.add(new Population(flow.race, amount));
+        missionPopulation.add(new Population(flow.race, amount, galaxy));
         assignMission(galaxy, ship, BuiltObjectMissionType.Transport, origin, destination, BuiltObjectMissionPriority.Normal, { population: missionPopulation });
         st.convoys.set(ship, { flow, race: flow.race, amount });
     }
@@ -509,7 +509,7 @@ export function settleRefugeeConvoyArrival(galaxy: Galaxy, bo: BuiltObject, dock
                 makeHabitatIntoColonyRuntime(galaxy, galaxy.independentEmpire!, habitat, galaxy.independentEmpire!, item.race, item.amount);
             } else if (habitat.empire !== null) {
                 habitat.population.items.length = 0;
-                habitat.population.add(new Population(item.race, item.amount));
+                habitat.population.add(new Population(item.race, item.amount, galaxy));
                 habitat.population.recalculateTotalAmount();
                 recalculateEmpirePopulation(habitat.empire);
             }

@@ -60,6 +60,7 @@ import type { Design } from './design';
 import { findNewestCanBuild } from './designGeneration';
 import { COLONY_ANNUAL_LUXURY_RESOURCE_CONSUMPTION_RATE, MINIMUM_LUXURY_RESOURCE_REORDER_AMOUNT, type Empire } from './empire';
 import { checkEmpireHasHyperDriveTech } from './forceStructure';
+import { raceCautionLevel } from './racePeriodic';
 import { DiplomaticRelationType, obtainDiplomaticRelation } from './diplomacy';
 import { PirateRelationType, obtainPirateRelation } from './pirateRelations';
 import type { Galaxy } from './galaxy';
@@ -1105,7 +1106,7 @@ export function setLuxuryResourcesAtColonies(galaxy: Galaxy, empire: Empire): vo
     for (let i = 0; i < empire.colonies.length; i++) {
         const habitat = empire.colonies[i];
         const num = Math.max(500000000, habitat.population.totalAmount);
-        const cautionLevel = (habitat.population.dominantRace as NonNullable<typeof habitat.population.dominantRace>).caution; // Race.CautionLevel
+        const cautionLevel = raceCautionLevel(galaxy, habitat.population.dominantRace as NonNullable<typeof habitat.population.dominantRace>); // Race.CautionLevel (periodic)
         let num2 = Math.trunc(COLONY_ANNUAL_LUXURY_RESOURCE_CONSUMPTION_RATE * num * (cautionLevel / 100.0) * 5.0);
         num2 = Math.max(num2 * 3, MINIMUM_LUXURY_RESOURCE_REORDER_AMOUNT);
         num2 = Math.max(400, num2);

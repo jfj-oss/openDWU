@@ -42,6 +42,7 @@
 // group and its draws (the escort Next(0,3) is still drawn).
 import { difficultyScalingForPlayer, type VictoryConditionProgress } from './victory';
 import type { Galaxy } from './galaxy';
+import { raceAggressionLevel } from './racePeriodic';
 import { generateStartingCharacters } from './characters';
 import { HabitatCategoryType, type Habitat, type SystemInfo } from './types';
 import type { Race } from './data/races';
@@ -100,7 +101,8 @@ function pickRace(galaxy: Galaxy, pred: (r: Race) => boolean): Race | null {
 }
 // Galaxy.8.cs SelectRandomPirateRace / SelectRandomAggressiveRace / SelectRandomRace.
 export const selectRandomPirateRace = (g: Galaxy) => pickRace(g, (r) => r.canBePirate);
-export const selectRandomAggressiveRace = (g: Galaxy, threshold: number) => pickRace(g, (r) => r.aggression >= threshold && r.playable);
+// Race.AggressionLevel: the periodic level while the race's change period is active (Race.cs 350).
+export const selectRandomAggressiveRace = (g: Galaxy, threshold: number) => pickRace(g, (r) => raceAggressionLevel(g, r) >= threshold && r.playable);
 export const selectRandomRace = (g: Galaxy, threshold: number) => pickRace(g, (r) => r.intelligence >= threshold && r.playable);
 
 // Galaxy.8.cs SetPirateFactionModifiers table (order: smugglingIncome, raidStrength,
