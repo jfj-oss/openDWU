@@ -11,6 +11,7 @@ import { setRemoteCommandSink } from '../sim/player/playerCommands';
 import { FRAME_REAL_MS } from '../sim/tick/scheduler';
 import { createRenderTime, updateRenderTime, type RenderTime } from '../render/renderInterp';
 import { GalaxyReplica } from './replicaGalaxy';
+import { ReplicaTradeFlows } from './tradeFlowSync';
 import { decodeRemoteArg, encodeRemoteArg, type RemoteNaming, type RemoteResolving } from './remoteArgs';
 import type { ClockMessage, CommandMessage, SnapshotMessage, StepMessage, ToWorker, WorkerEvent } from './protocol';
 import type { ApplyStats } from './replicaSync';
@@ -109,6 +110,8 @@ export class SimClientCore {
     private readonly now: () => number;
     private readonly coldBudgetMs: number;
     private disposed = false;
+    /** The replica's trade-flow ledger hooks (recording runs in the worker; tradeFlowSync.ts). */
+    readonly tradeFlows: ReplicaTradeFlows;
 
     constructor(gameData: GameData, snapshot: SnapshotMessage, private readonly opts: ClientCoreOptions) {
         this.now = opts.now ?? (() => performance.now());
@@ -135,6 +138,11 @@ export class SimClientCore {
         this.naming = { syncId: (o) => this.replica.decoder.idOf(o), external: (o) => byObject.get(o) };
         this.resolving = { object: (id) => this.replica.decoder.object(id), external: (kind, key) => this.replica.staticByRef.get(`${kind}:${key}`) };
         setRemoteCommandSink(galaxy, (empire, op, args, onApplied) => this.sendCommand(empire, op, args, onApplied));
+        this.tradeFlows = new ReplicaTradeFlows(
+            galaxy,
+            () => this.replica.decoder.object(1) as Record<string, unknown> | null,
+            (record) => this.opts.post({ type: 'tradeFlows', record }),
+        );
     }
 
     private *staticEntries(): Iterable<[string, object]> {
@@ -254,6 +262,7 @@ export class SimClientCore {
         if (this.disposed) return;
         this.disposed = true;
         setRemoteCommandSink(this.galaxy, null);
+        this.tradeFlows.dispose();
         this.pending.clear();
     }
 }

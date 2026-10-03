@@ -10,7 +10,7 @@
 import { registerTodo, todo } from '../tick/todo';
 import type { Galaxy } from '../galaxy';
 import type { Empire } from '../empire';
-import { AutomationLevel, empireGovernmentAttributes } from '../empire';
+import { empireGovernmentAttributes } from '../empire';
 import { BuiltObject } from '../builtObject';
 import { BuiltObjectSubRole } from '../builtObjectTypes';
 import type { Habitat } from '../types';
@@ -27,7 +27,7 @@ import { countersProcessColonyRevenue } from '../treasury';
 import { calculateResourceLevelStockForBaseRetrofit } from './colonySupply';
 import type { Contract } from './contracts';
 import { cancelContract } from './contracts';
-import { determineResourcesEmpireSupplies } from '../diplomacyTick';
+import { AdvisorMessageType, checkTaskAuthorized, determineResourcesEmpireSupplies, generateAutomationMessageTradeRestrictedResources } from '../diplomacyTick';
 import { baconSettings } from '../data/baconSettings';
 import { scenarioFlag } from '../scenario/state';
 import { isRimTraderAI, rimTraderAccessChanged, rimTraderAllowsRestrictedTrade } from '../scenario/rimTrade/common';
@@ -711,35 +711,6 @@ export function determineWhetherTradeRestrictedResourcesWithEmpire(galaxy: Galax
     return result;
 }
 
-/**
- * Empire.8.cs 4374-4501 CheckTaskAuthorized(automationLevel, taskDescription, taskTarget, advisorMessageType) with
- * refusalCount 0 and no attack target. TS AutomationLevel.Undefined / PartiallyAutomated are the C# Manual /
- * SemiAutomated (same values).
- */
-export function checkTaskAuthorized(galaxy: Galaxy, empire: Empire, automationLevel: AutomationLevel, taskTarget: unknown): boolean {
-    void taskTarget;
-    let result = true;
-    switch (automationLevel) {
-        case AutomationLevel.PartiallyAutomated:
-            result = false;
-            // TODO(port) M4b: `refusalCount >= MaximumMissionRefusals || !_DeclinedTasks.CheckTaskTargetValid(taskTarget,
-            // starDate)` breaks with false — declined tasks are only added by the player path below / on a player "No",
-            // so an AI empire's list is empty and the check passes.
-            if (empire === galaxy.playerEmpire) {
-                // TODO(port) M9: player prompt — EmpireMessage(AdvisorSuggestion) + PromptPlayerForAuthorization and
-                // DeclinedTask(taskTarget, starDate + 600000); the C# returns false here.
-                return false;
-            }
-            // Non-player: _AutomationResponse is forced to Yes.
-            result = true;
-            break;
-        case AutomationLevel.Undefined: // Manual
-            result = false;
-            break;
-    }
-    return result;
-}
-
 /** Empire.4.cs 4311 ReviewRestrictedResourceTrading. */
 export function reviewRestrictedResourceTrading(galaxy: Galaxy, empire: Empire): void {
     if (!checkEmpireSuppliesRestrictedResources(galaxy, empire).supplies || empire.reclusive) return;
@@ -748,9 +719,9 @@ export function reviewRestrictedResourceTrading(galaxy: Galaxy, empire: Empire):
         if (diplomaticRelation.otherEmpire === empire) continue;
         const flag = determineWhetherTradeRestrictedResourcesWithEmpire(galaxy, empire, diplomaticRelation.otherEmpire);
         if (flag === diplomaticRelation.supplyRestrictedResources) continue;
-        // AdvisorMessageType Allow/DisallowTradeRestrictedResources and the automation text
-        // (GenerateAutomationMessageTradeRestrictedResources, Empire.10.cs 4038) only feed the player prompt.
-        if (checkTaskAuthorized(galaxy, empire, empire.controlDiplomacyTreaties, diplomaticRelation.otherEmpire)) {
+        const advisorMessageType = flag ? AdvisorMessageType.AllowTradeRestrictedResources : AdvisorMessageType.DisallowTradeRestrictedResources;
+        // Empire.8.cs 4374 CheckTaskAuthorized(level, description, target, type): diplomacyTick.ts (fresh refusal counter).
+        if (checkTaskAuthorized(galaxy, empire, empire.controlDiplomacyTreaties, { value: 0 }, generateAutomationMessageTradeRestrictedResources(galaxy, empire, diplomaticRelation.otherEmpire!, flag), diplomaticRelation.otherEmpire, advisorMessageType)) {
             let empty = '';
             let empireMessageType = EmpireMessageType.RestrictedResourceTradingAllowed;
             if (flag) {

@@ -9,11 +9,18 @@
 // "[rimatmo-wiring]" marker there). No-op with the scenario flag off or no scenario: computeRimWeightsPerSystem
 // returns [] whenever rimParams(galaxy) is null, and every install function below no-ops on an empty/absent weight
 // array — nothing is read from or written to GalaxyScenario.state.
+//
+// Sim worker (docs/sim-worker.md §9 chunk 3): the install writes sim state that sim code reads during ticks, so in
+// worker mode it runs in the worker, on the authoritative galaxy, right after the game is created or loaded and before
+// the first tick (src/simworker/worker.ts) — the same point in the game's life as MainView.init in-thread. The state
+// reaches the replica with the snapshot; on the replica (a galaxy with a remote command sink) this is a no-op. That is
+// also why the rim curve comes from rimCurve.ts, not the Pixi layer: the worker cannot load pixi.js.
 
 import type { Galaxy } from '../sim/galaxy';
 import { installRimNameOverrides } from '../sim/scenario/rimNames';
 import { installRimWeights } from '../sim/scenario/rimState';
-import { rimFraction, rimGeometry, rimParams, rimWeight } from './rimAtmosphereLayer';
+import { hasRemoteCommandSink } from '../sim/player/playerCommands';
+import { rimFraction, rimGeometry, rimParams, rimWeight } from './rimCurve';
 
 /**
  * Per-system rim weight, in galaxy.systems order (so index i lines up with systems[i].systemStar.systemIndex === i,
@@ -38,6 +45,8 @@ export function computeRimWeightsPerSystem(galaxy: Galaxy): number[] {
  * result) and safe to call with no scenario or the flag off (a no-op).
  */
 export function installRimAtmosphereData(galaxy: Galaxy): void {
+    // A sim-worker replica is read-only: the worker installed this on the authoritative galaxy.
+    if (hasRemoteCommandSink(galaxy)) return;
     const weights = computeRimWeightsPerSystem(galaxy);
     if (weights.length === 0) return;
     installRimWeights(galaxy, weights);

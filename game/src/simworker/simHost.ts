@@ -25,8 +25,10 @@ import { reviewAchievements } from '../sim/achievements';
 import { registerLocationPingedHook } from '../sim/story/eventActions';
 import { SimFrameBudget } from '../simFrameBudget';
 import { GalaxySyncSource } from './replicaGalaxy';
+import { TRADE_FLOWS_SIDE_KEY, TradeFlowSyncSource } from './tradeFlowSync';
+import { installRimAtmosphereData } from '../render/rimAtmosphereWiring';
 import { decodeRemoteArg, encodeRemoteArg, type RemoteArg, type RemoteNaming } from './remoteArgs';
-import type { ClockMessage, CommandMessage, FromWorker, SnapshotMessage, StepMessage, WorkerEvent } from './protocol';
+import type { ClockMessage, CommandMessage, FromWorker, SnapshotMessage, StepMessage, TradeFlowsMessage, WorkerEvent } from './protocol';
 import type { ReplicaEncoderOptions } from './replicaSync';
 
 export interface SimHostOptions {
@@ -35,12 +37,24 @@ export interface SimHostOptions {
     sync?: Partial<Pick<ReplicaEncoderOptions, 'coldBudgetMs' | 'coldMaxSets' | 'markBudgetMs'>>;
 }
 
+/**
+ * Sim state the in-thread app writes from the view's set-up (MainView.init), before the first tick: in worker mode it is
+ * written here, on the authoritative galaxy, after create / load and before the SimHost (and its snapshot) exists.
+ * - 19i rim atmosphere (scenario flag `rimAtmosphere`): the per-system rim weights and rim name overrides that sim
+ *   message code reads (render/rimAtmosphereWiring.ts installRimAtmosphereData; idempotent, a no-op off the flag).
+ */
+export function installWorkerBootState(galaxy: Galaxy): void {
+    installRimAtmosphereData(galaxy);
+}
+
 export class SimHost {
     readonly galaxy: Galaxy;
     readonly time: GalaxyTime;
     readonly driver: SimDriver;
     readonly budget: SimFrameBudget;
     readonly sync: GalaxySyncSource;
+    /** Trade-flow recording and its ledger's side-table view (tradeFlowSync.ts). */
+    readonly tradeFlows: TradeFlowSyncSource;
     private stepSerial = 0;
     private clockSeq = 0;
     private results: StepMessage['results'] = [];
@@ -63,6 +77,7 @@ export class SimHost {
         const ext = galaxyExternals(this.galaxy);
         this.externalsByRef = ext.byRef;
         this.sync = new GalaxySyncSource(this.galaxy, opts.sync ?? {});
+        this.tradeFlows = new TradeFlowSyncSource(this.galaxy, (view) => this.sync.setSideTable(TRADE_FLOWS_SIDE_KEY, view));
         this.naming = {
             syncId: (o) => this.sync.encoder.ensureId(o),
             external: (o) => ext.byObject.get(o),
@@ -100,6 +115,12 @@ export class SimHost {
         this.time.speed = m.speed;
         this.time.paused = m.paused;
         this.clockSeq = m.seq;
+        this.dirty = true;
+    }
+
+    /** The main thread switched trade-flow recording (the freight overlay / Trade Flows panel). */
+    setTradeFlowRecording(m: TradeFlowsMessage): void {
+        this.tradeFlows.setRecording(m.record);
         this.dirty = true;
     }
 
@@ -166,6 +187,7 @@ export class SimHost {
         if (changed) this.settleUntilCycle = this.sync.encoder.cycleCount + 2;
         if (!changed && !forceDelta && this.sync.encoder.cycleCount >= this.settleUntilCycle) return null;
         this.dirty = false;
+        this.tradeFlows.refresh();
         const delta = this.sync.delta();
         const msg: StepMessage = {
             type: 'step',
@@ -201,6 +223,7 @@ export class SimHost {
     }
 
     dispose(): void {
+        this.tradeFlows.dispose();
         setGameEndHandler(this.galaxy, null);
         registerLocationPingedHook(null);
     }

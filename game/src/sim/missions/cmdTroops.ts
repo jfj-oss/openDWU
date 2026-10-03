@@ -34,7 +34,7 @@ import { EmpireMessageType, resolveDescription, sendMessageToEmpire, sendMessage
 import { formatGameTextNow } from '../textResolver';
 import { EventMessageType, sendEventMessageToEmpire } from '../events';
 import { reviewEmpireAbilityBonusesFull } from '../treasury';
-import { raceAggressionLevel } from '../colonyTick';
+import { raceAggressionLevel } from '../racePeriodic';
 import { setColonyTaxRate } from '../taxes';
 import { CharacterRole, generateNewCharacter } from '../characters';
 import { builtObjectCompleteTeardown } from '../combat/teardown';
@@ -70,7 +70,7 @@ export function makeHabitatIntoColonyRuntime(galaxy: Galaxy, self: Empire, habit
     if (habitat === null) return;
     takeOwnershipOfColonyFull(galaxy, self, habitat, empire, false, false);
     habitat.isRefuellingDepot = true;
-    const population = new Population(race, newPopulationAmount);
+    const population = new Population(race, newPopulationAmount, galaxy);
     if (habitat.population == null) habitat.population = new PopulationList();
     habitat.population.add(population);
     habitat.population.recalculateTotalAmount();
