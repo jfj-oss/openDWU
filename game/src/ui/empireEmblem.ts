@@ -22,6 +22,8 @@ import {
     herderFlag,
     secededFlag,
     secededPortrait,
+    sampleBilinear,
+    over,
     type RgbaImage,
 } from '../render/emblemArt';
 
@@ -71,12 +73,45 @@ export function racePortraitUrl(pictureIndex: number): string {
  *  committed under public/art/ rather than generated at runtime. */
 export const HERDER_PORTRAIT_URL = '/art/herder/portrait.png';
 
+/** Galaxy.LoadFlagShapesPirates: images/ui/flagshapes/pirate/*.png, sorted by file name (37 in v1.9.5). */
+export const PIRATE_FLAG_SHAPES = [
+    'armcutlass', 'centered', 'centerskull', 'cutlasses', 'daggermouth', 'earring', 'eyepatch', 'hatcutlasses', 'largecutlasses',
+    'pistols', 'rough', 'skeleton', 'skullcap', 'skullcrossbones', 'skullhatsword', 'skullsword', 'spear', 'tripleskull',
+    'z_flag00', 'z_flag02', 'z_flag04', 'z_flag05', 'z_flag08', 'z_flag09', 'z_flag10', 'z_flag19', 'z_flag21', 'z_flag22',
+    'z_flag23', 'z_flag26', 'z_flag27', 'z_flag28', 'z_flag30', 'z_flag32', 'z_flag33', 'z_flag35', 'z_flag37',
+];
+
+export function pirateFlagShapeUrl(index: number): string {
+    return `/assets/dwu/images/ui/flagshapes/pirate/${PIRATE_FLAG_SHAPES[index] ?? PIRATE_FLAG_SHAPES[0]}.png`;
+}
+
+/** The pirate flag badge (Galaxy.PirateFlagLarge, images/ui/chrome/pirateflag.png, 100 x 60). */
+export const PIRATE_FLAG_URL = '/assets/dwu/images/ui/chrome/pirateflag.png';
+
+/** Pirate shape pick: GenerateEmpireFlag(.., -1, FlagShapesPirates, ..) uses a clock-seeded Random, which the sim must
+ *  not do; the sim leaves pirates at flagShape -1 and the shape is chosen here, render-side, by a deterministic hash of
+ *  the empire id and galaxy seed (no galaxy.rnd draw). */
+export function pirateFlagShapeIndex(empire: Empire, galaxy?: Galaxy | null): number {
+    let h = (Math.imul((empire.empireId | 0) + 1, 0x9e3779b1) ^ Math.imul((galaxy?.randomSeed ?? 0) | 0, 0x85ebca6b)) | 0;
+    h = Math.imul(h ^ (h >>> 16), 0x7feb352d);
+    h = Math.imul(h ^ (h >>> 15), 0x846ca68b);
+    h ^= h >>> 16;
+    return (h >>> 0) % PIRATE_FLAG_SHAPES.length;
+}
+
+/** Shape tile URL for an empire: its flag shape, or for a pirate faction at -1 the hashed pirate shape. */
+export function empireFlagShapeUrl(empire: Empire, galaxy?: Galaxy | null): string | null {
+    if (empire.flagShape >= 0) return flagShapeUrl(empire.flagShape);
+    if (empire.pirateEmpireBaseHabitat !== null && !empire.pirateEmpireSuperPirates) return pirateFlagShapeUrl(pirateFlagShapeIndex(empire, galaxy));
+    return null;
+}
+
 /** The stock emblem (synchronous). */
 export function stockEmblem(empire: Empire): EmpireEmblem {
     const race = empire.dominantRace;
     return {
         portraitUrl: race != null ? racePortraitUrl(race.pictureIndex) : null,
-        flagUrl: empire.flagShape >= 0 ? flagShapeUrl(empire.flagShape) : null,
+        flagUrl: empireFlagShapeUrl(empire, empire.galaxy),
         flagFilter: `sepia(1) saturate(4) hue-rotate(${hueRotateOf(empire.mainColor)}deg)`,
     };
 }
@@ -160,6 +195,26 @@ export function rgbaToDataUrl(img: RgbaImage): string {
 export async function stockFlagRgba(flagShape: number, main: number, secondary: number): Promise<RgbaImage> {
     const shape = flagShape >= 0 ? await loadRgba(flagShapeUrl(flagShape)) : null;
     return composeEmpireFlag(shape, main, secondary);
+}
+
+/** The stock 100 x 60 flag of an empire: pirate factions get a pirate shape plus the pirateflag.png badge drawn at
+ *  (2, 2, 35 x 22) (Galaxy.8.cs ~4560-4603); super pirates use pirateflag.png itself. */
+export async function stockEmpireFlagRgba(galaxy: Galaxy | null | undefined, empire: Empire): Promise<RgbaImage> {
+    if (empire.flagShape >= 0 || empire.pirateEmpireBaseHabitat === null) return stockFlagRgba(empire.flagShape, empire.mainColor, empire.secondaryColor);
+    const badge = await loadRgba(PIRATE_FLAG_URL);
+    if (empire.pirateEmpireSuperPirates) return badge ?? composeEmpireFlag(null, empire.mainColor, empire.secondaryColor);
+    const shapeUrl = pirateFlagShapeUrl(pirateFlagShapeIndex(empire, galaxy ?? empire.galaxy));
+    const out = composeEmpireFlag(await loadRgba(shapeUrl), empire.mainColor, empire.secondaryColor);
+    if (badge !== null) {
+        const px = [0, 0, 0, 0];
+        for (let y = 0; y < 22; y++) {
+            for (let x = 0; x < 35; x++) {
+                sampleBilinear(badge, ((x + 0.5) * badge.w) / 35, ((y + 0.5) * badge.h) / 22, px);
+                over(out.data, ((y + 2) * out.w + x + 2) * 4, px[0], px[1], px[2], px[3] / 255);
+            }
+        }
+    }
+    return out;
 }
 
 const generated = new Map<string, Promise<{ portraitUrl?: string; flagUrl?: string }>>();
