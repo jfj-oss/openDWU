@@ -1171,6 +1171,10 @@ export class ReplicaDecoder {
     private readonly scratch: unknown[] = [];
     /** Called with each new object once it is filled (e.g. to wire a new Empire's visibility hooks). */
     onNewObject: ((o: object) => void) | null = null;
+    /** Dev-only (writeDetector.ts, docs/sim-worker.md §9 chunk 0): called with an object's id right before each shell /
+     *  record that creates or changes it, so the detector can check it against the values last applied; `slot` is the
+     *  shape slot of a class / plain object's field set (fieldName), -1 for any other record. Null: off. */
+    watch: ((id: number, slot: number) => void) | null = null;
     private stats: ApplyStats = { applyMs: 0, newObjects: 0, sets: 0, drops: 0, coldParts: 0 };
 
     constructor(private readonly opts: ReplicaDecoderOptions) {}
@@ -1183,6 +1187,16 @@ export class ReplicaDecoder {
     /** The sync id of a replica object (-1 when it is not part of the replica). */
     idOf(o: object): number {
         return this.idByObj.get(o) ?? -1;
+    }
+
+    /** The field name of shape slot `slot` of class / plain object `id` (the write detector's per-field check). */
+    fieldName(id: number, slot: number): string | undefined {
+        return this.shapes[this.shapeOf[id]]?.keys[slot];
+    }
+
+    /** One past the highest sync id seen (ids are dense and never reused; dropped ids hold null). */
+    get idLimit(): number {
+        return this.objs.length;
     }
 
     get size(): number {
@@ -1319,6 +1333,7 @@ export class ReplicaDecoder {
             this.objs[id] = o;
             this.kinds[id] = kind;
             this.idByObj.set(o, id);
+            if (this.watch !== null) this.watch(id, -1);
             fresh.push(o);
             this.stats.newObjects++;
             if (++k % (this.opts.sliceRecords ?? 32) === 0 && deadline !== Infinity && now() >= deadline) break;
@@ -1370,12 +1385,14 @@ export class ReplicaDecoder {
             throw new Error(`replica sync: bad value tag ${tag}`);
         };
         const scratch = this.scratch;
+        const watch = this.watch;
         while (i < b.length) {
             const op = b[i];
             const id = b[i + 1];
             i += 2;
             const o = objs[id];
             if (o == null) throw new Error(`replica sync: op ${op} on unknown id ${id}`);
+            if (watch !== null) watch(id, op === Op.Set && kinds[id] !== Kind.Array ? b[i] : -1);
             switch (op) {
                 case Op.Set: {
                     const slot = b[i++];
