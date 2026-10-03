@@ -587,6 +587,67 @@ function decodeTerritory(rows: number[][] | null): TerritoryGrid {
 }
 
 // ---------------------------------------------------------------------------
+// Sim worker replica (src/simworker/replicaSync.ts)
+// ---------------------------------------------------------------------------
+
+/**
+ * The fields the sim worker's replica sync leaves out of the object graph: the save's skip list, except that the
+ * territory grid IS synced (the map draws it; the save writes it beside the graph instead).
+ */
+export function replicaSkipFields(): Map<object, ReadonlySet<string>> {
+    const out = new Map(CODEC_OPTIONS.skipFields);
+    out.delete(EmpireTerritory.prototype);
+    return out;
+}
+
+/** The save's class registry and revive hooks, for the replica decoder (same prototypes as a loaded save). */
+export function replicaCodecOptions(): Pick<GraphCodecOptions, 'classes' | 'revive'> {
+    return { classes: CLASSES, revive: CODEC_OPTIONS.revive };
+}
+
+/**
+ * Static data for a main-thread replica galaxy (the same tables galaxyFromJSON wires, built from gameData): `byRef`
+ * resolves the externals the sync stream names (`kind:key`), and `wire` attaches the tables, the derived step order and
+ * the visibility owner hooks to the replica's Galaxy once the first snapshot has built it.
+ */
+export function replicaStatics(gameData: GameData, baseTechCost: number): { byRef: Map<string, object>; wire(galaxy: Galaxy): void } {
+    const tables = staticTablesOfGameData(gameData, baseTechCost);
+    return {
+        byRef: externalsByRef(tables),
+        wire(galaxy: Galaxy): void {
+            const g = galaxy as unknown as Record<string, unknown>;
+            for (const field of GALAXY_STATIC_FIELDS) {
+                if (Object.prototype.hasOwnProperty.call(g, field)) g[field] = tables[field];
+                else Object.defineProperty(g, field, { value: tables[field], writable: true, enumerable: true, configurable: true });
+            }
+            for (const field of GALAXY_DERIVED_FIELDS) {
+                if (!Object.prototype.hasOwnProperty.call(g, field)) Object.defineProperty(g, field, { value: undefined, writable: true, enumerable: true, configurable: true });
+            }
+            g.stepOrder = [];
+            g.stepOrderDirty = true;
+            wireReplicaVisibility(galaxy);
+        },
+    };
+}
+
+/** (Re)attach the visibility owner hooks of every empire of a replica galaxy (new empires arrive by sync). */
+export function wireReplicaVisibility(galaxy: Galaxy): void {
+    for (const empire of flatEmpireList(galaxy)) {
+        if (empire?.visibility != null && (empire.visibility as { owner?: unknown }).owner == null) empire.visibility.owner = empire.visibilityOwner(empire === galaxy.independentEmpire);
+    }
+}
+
+/** The galaxy's side tables (state kept outside the object graph), for the replica sync's second root. */
+export function replicaSideTables(galaxy: Galaxy, visited: readonly object[]): object {
+    return collectSideTables(galaxy, visited);
+}
+
+/** Apply a synced side-tables root (replicaSideTables) to a replica galaxy. */
+export function applyReplicaSideTables(galaxy: Galaxy, tables: object): void {
+    restoreSideTables(galaxy, tables as SideTables);
+}
+
+// ---------------------------------------------------------------------------
 // Deserialize
 // ---------------------------------------------------------------------------
 
