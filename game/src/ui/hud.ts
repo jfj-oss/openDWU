@@ -43,6 +43,7 @@ import { troopCountsByType, troopCompositionDescription } from './screens/troops
 // [/troopart]
 import { resolveEmpireEmblem } from './empireEmblem';
 import { createGameMenu, type GameMenuRefs } from './screens/gameMenu';
+import { createLeftSidebar, relayoutLeftSidebar } from './leftSidebarView';
 import { setGameMenuHandler, setCycleHandler, runShipCommand, isViewLocked, type CycleKind } from './keyboard';
 import { uiClickSounds } from '../audio/effectsPlayer';
 import { helpTopicKeyForHabitat, toggleGalactopedia } from './screens/galactopedia';
@@ -546,6 +547,11 @@ export function createHud(wiring: HudWiring = {}): HudRefs {
         root.appendChild(el);
         elements.set(name, el);
     }
+
+    // The left sidebar (the original's Empire Navigation Tool, ItemListCollectionPanel): category buttons + item list.
+    const leftSidebar = createLeftSidebar(wiring);
+    root.appendChild(leftSidebar);
+    elements.get('pnlSelection')?.addEventListener('sel-resize', () => relayoutLeftSidebar(leftSidebar));
 
     // Task 10d: bind the message ticker's five lines to the ring buffer.
     setMessageLineElements(elements.get('lstMessages') ?? null);
@@ -1154,7 +1160,7 @@ export const SELECTION_FRAME_BASE_SCALE = 683 / 399;
 /** btnSelectionPanelSize toggles the content size (InfoPanel.Kickstart(isLargeSize)); here the small size is the
  *  same frame drawn smaller. Persisted per browser. */
 const PANEL_SIZE_KEY = 'dwu.selectionPanelSmall';
-function selectionPanelSmall(): boolean {
+export function selectionPanelSmall(): boolean {
     try {
         return localStorage.getItem(PANEL_SIZE_KEY) === '1';
     } catch {

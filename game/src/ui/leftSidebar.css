@@ -1,0 +1,194 @@
+/* Left sidebar (leftSidebarView.ts): the original's ItemListCollectionPanel / ItemListPanel in its own pixels,
+   scaled as one with transform: scale(k). Colours are the source's Color.FromArgb values (alpha / 255). */
+
+.ls-root {
+    position: absolute;
+    transform-origin: 0 0;
+    pointer-events: none;
+    font-family: 'Forgotten Futurist', sans-serif;
+    -webkit-font-smoothing: antialiased;
+    user-select: none;
+    color: rgb(170, 170, 170);
+    --ls-f: 1;
+}
+.ls-root img {
+    pointer-events: none;
+}
+.ls-root img.ls-icon {
+    pointer-events: auto;
+}
+
+/* Category buttons: Fill (80,170,170,170), outline (112,170,170,170); hovered (144) / (192). */
+.ls-buttons {
+    position: absolute;
+    left: 0;
+    top: 0;
+}
+.ls-button {
+    position: absolute;
+    left: 0;
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    border: 1px solid rgba(170, 170, 170, 0.44);
+    background: rgba(170, 170, 170, 0.314);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: auto;
+    cursor: pointer;
+}
+.ls-button:hover {
+    border-color: rgba(170, 170, 170, 0.753);
+    background: rgba(170, 170, 170, 0.565);
+}
+.ls-button-icon {
+    object-fit: contain;
+}
+.ls-rot {
+    transform: rotate(-90deg); /* RotateFlip(Rotate270FlipNone) */
+}
+
+.ls-panel {
+    position: absolute;
+    pointer-events: none;
+}
+.ls-panel > * {
+    position: absolute;
+    box-sizing: border-box;
+    pointer-events: auto;
+}
+
+/* Title bar: vertical gradient (160,170,170,170) → (160,64,64,64) (the open panel), BoldFont. */
+.ls-title {
+    background: linear-gradient(to bottom, rgba(170, 170, 170, 0.627), rgba(64, 64, 64, 0.627));
+    overflow: hidden;
+}
+.ls-title-icon {
+    position: absolute;
+    left: 2px;
+    top: 2px;
+    object-fit: contain;
+}
+.ls-title-text {
+    position: absolute;
+    top: -1px;
+    font-size: calc(16.67px * var(--ls-f));
+    font-weight: bold;
+    line-height: 1.15;
+    white-space: nowrap;
+    color: rgb(170, 170, 170);
+    text-shadow: 1px 1px 0 #000;
+}
+/* method_2 / method_3: (160,170,170,170), hovered (220,220,220,220). */
+.ls-title-btn {
+    position: absolute;
+    display: flex;
+    color: rgba(170, 170, 170, 0.627);
+    cursor: pointer;
+}
+.ls-title-btn:hover {
+    color: rgba(220, 220, 220, 0.863);
+}
+
+/* Toggle buttons: (80,170,170,170), SmallFont centred. */
+.ls-toggle {
+    background: rgba(170, 170, 170, 0.314);
+    font-size: calc(12.67px * var(--ls-f));
+    line-height: 1.1;
+    text-align: center;
+    white-space: nowrap;
+    overflow: hidden;
+    text-shadow: 1px 1px 0 #000;
+    cursor: pointer;
+}
+.ls-toggle:hover {
+    background: rgba(170, 170, 170, 0.565);
+}
+
+/* Scroll bars: (80,170,170,170), hovered (144) while they can scroll; the arrow images only when they can. */
+.ls-scrollbar {
+    background: rgba(170, 170, 170, 0.314);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+}
+.ls-scrollbar.ls-can {
+    cursor: pointer;
+}
+.ls-scrollbar.ls-can:hover {
+    background: rgba(170, 170, 170, 0.565);
+}
+.ls-arrow[hidden] {
+    display: none;
+}
+
+.ls-items {
+    overflow: hidden;
+    cursor: default;
+}
+/* An item: Fill (80,170,170,170); hovered (144) + outline (224). */
+.ls-row {
+    position: absolute;
+    box-sizing: border-box;
+    background: rgba(170, 170, 170, 0.314);
+    cursor: pointer;
+}
+.ls-row.ls-hover {
+    background: rgba(170, 170, 170, 0.565);
+    outline: 1px solid rgba(170, 170, 170, 0.878);
+    outline-offset: -1px;
+}
+.ls-pic,
+.ls-overlay {
+    position: absolute;
+    object-fit: contain;
+}
+.ls-line {
+    position: absolute;
+    display: flex;
+    align-items: flex-start;
+    white-space: nowrap;
+}
+.ls-bold,
+.ls-small {
+    text-shadow: 1px 1px 0 #000;
+    line-height: 1.1;
+    white-space: nowrap;
+}
+.ls-bold {
+    font-size: calc(16.67px * var(--ls-f));
+    font-weight: bold;
+}
+.ls-small {
+    font-size: calc(12.67px * var(--ls-f));
+}
+.ls-ellipsis {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    flex-shrink: 0;
+}
+.ls-icon {
+    object-fit: contain;
+    flex-shrink: 0;
+}
+/* Critical resources of the player's race: Pen(Color.Yellow, 1) DashStyle.Dot. */
+.ls-dotted {
+    outline: 1px dotted #ff0;
+    outline-offset: -1px;
+}
+/* "(No ITEMS)": LargeBoldFont, (96,170,170,170), centred. */
+.ls-empty {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    font-size: calc(22.67px * var(--ls-f));
+    font-weight: bold;
+    color: rgba(170, 170, 170, 0.376);
+    text-shadow: 1px 1px 0 rgba(0, 0, 0, 0.6);
+    padding: 0 8px;
+}
