@@ -21,7 +21,7 @@
 
 import { BuiltObjectSubRole } from './builtObjectTypes';
 import { csInt } from './builtObjectComponent';
-import { componentImprovementFromComponent, evaluateLatestByCategory, evaluateLatestByType, type ComponentDefinition, type ComponentImprovementEntry } from './componentStatic';
+import { componentImprovementFromComponent, evaluateLatestByCategory, evaluateLatestByType, generateOrderedComponentImprovementList, type ComponentDefinition, type ComponentImprovementEntry } from './componentStatic';
 import { ComponentType } from './data/components';
 import type { ResearchNode as ResearchNodeDefinition } from './data/research';
 import { BattleTactics, BuiltObjectFleeWhen, BuiltObjectRole, InvasionTactics, type DesignSpecification } from './data/designSpecifications';
@@ -623,7 +623,8 @@ export function createNewDesigns(galaxy: Galaxy, empire: Empire, designDate: num
     let fleeWhen6 = BuiltObjectFleeWhen.Shields50;
     if (race.caution < 80) fleeWhen6 = BuiltObjectFleeWhen.Shields20;
     const view = placementView(empire, galaxy);
-    const componentImprovementList = null; // Galaxy.GenerateOrderedComponentImprovementList(WeaponTorpedo, 1): built inside placement when null
+    // BaconEmpire.cs 748: Galaxy.GenerateOrderedComponentImprovementList(WeaponTorpedo, 1), built once per review.
+    const componentImprovementList = generateOrderedComponentImprovementList(componentDefinitionsStatic(galaxy), ComponentCategoryType.WeaponTorpedo, 1);
     const designs = empire.designs as Design[];
     // DesignList source1 = empire.Designs.ResolveOptimizedDesigns(): always empty (see header).
     for (let index1 = num1; index1 < num2; ++index1) {
