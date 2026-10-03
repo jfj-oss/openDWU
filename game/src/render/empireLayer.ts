@@ -11,6 +11,7 @@
 // pixels. Zoom gating mirrors the original's factor threshold: system/planet
 // zoom is factor < 70 (factor = 1/z), the same test MainView.pick uses.
 
+import { circleAtScreenRes } from './screenCircle';
 import { fogOf } from './fog';
 import type { MotionInterpolator } from './renderInterp';
 import { Container, Graphics, Mesh, MeshGeometry, Rectangle, Sprite, Texture } from 'pixi.js';
@@ -336,7 +337,7 @@ export class EmpireLayer {
             // Geometry around (0, 0), rebuilt only when radius, width or colour changed; moved to the body each frame.
             if (cr.key.changed(r, 1 / z, color)) {
                 cr.ring.clear();
-                cr.ring.circle(0, 0, r).stroke({ width: 1 / z, color, alpha: 0.4 });
+                circleAtScreenRes(cr.ring, 0, 0, r, z).stroke({ width: 1 / z, color, alpha: 0.4 });
             }
             cr.ring.position.set(hx, hy);
             cr.ring.visible = true;
