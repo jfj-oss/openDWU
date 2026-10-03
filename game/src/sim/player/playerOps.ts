@@ -61,6 +61,7 @@ import type { EmpireMessage } from '../messages';
 import { approveSuggestion, declineSuggestion } from './advisorSuggestions';
 import { expireOldAdvisorSuggestions } from '../advisorQueue';
 import { galaxyStarDate } from '../tick/simTime';
+import { purchaseAtYard, removeFromYardQueue, renameBuiltObject, scrapShipUnderConstruction } from './yardOrders'; // [yards]
 import { investigateRuins } from '../exploration';
 import { cancelIntelligenceMission, characterMission } from '../espionage';
 import { scenarioFlag } from '../scenario/state';
@@ -157,6 +158,15 @@ export const PLAYER_OPS = {
         const queue = (site.constructionQueue as ConstructionQueue | null)?.constructionWaitQueue ?? null;
         return queue !== null && moveWaitQueueItem(queue, item, move);
     },
+    // [yards] Construction Yards screen (player/yardOrders.ts).
+    /** ConstructionYardPurchaser.cs btnPurchase_Click: build `design` at this yard. */
+    yardPurchase: (galaxy: Galaxy, empire: Empire, design: Design, site: BuiltObject | Habitat) => purchaseAtYard(galaxy, empire, design, site),
+    /** Main.Part4.cs 2199 btnBuiltObjectConstructionRemoveFromQueue_Click. */
+    yardRemoveFromQueue: (galaxy: Galaxy, _empire: Empire, site: BuiltObject | Habitat, ship: BuiltObject) => removeFromYardQueue(galaxy, site, ship),
+    /** Main.Part4.cs 2168 btnBuiltObjectConstructionScrap_Click. */
+    yardScrapShip: (galaxy: Galaxy, _empire: Empire, site: BuiltObject | Habitat, ship: BuiltObject) => scrapShipUnderConstruction(galaxy, site, ship),
+    /** Main.Part11.cs hvhxxedjqS: the Name box. */
+    renameBuiltObject: (_galaxy: Galaxy, _empire: Empire, ship: BuiltObject, name: string) => renameBuiltObject(ship, name),
     queueResearch: (_galaxy: Galaxy, empire: Empire, node: TechNode) => queueResearchProject(empire.research, node, empire.dominantRace),
     dequeueResearch: (_galaxy: Galaxy, empire: Empire, node: TechNode) => dequeueResearchProject(empire.research, node),
     crashResearch: (galaxy: Galaxy, empire: Empire, node: TechNode, cost: number) => {

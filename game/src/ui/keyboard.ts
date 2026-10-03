@@ -21,7 +21,7 @@ import { toggleShipDesigns } from './screens/shipDesigns'; // [16b]
 import { toggleResearchScreen } from './screens/researchScreen'; // [15b]
 import { getEmpireSummarySource, toggleEmpireSummary } from './screens/empireSummary';
 import { toggleColoniesList } from './screens/coloniesList';
-import { toggleBuildOrder } from './screens/buildOrder'; import { toggleConstructionYards } from './screens/constructionYards'; import { selectStellarObject } from './hud'; // [16c]
+import { toggleBuildOrder } from './screens/buildOrder'; import { toggleConstructionYards } from './screens/constructionYards'; import { constructionYardsOptions, selectStellarObject } from './hud'; // [16c]
 import { toggleFleets, toggleShipsAndBases } from './hud'; // [15c]
 import { toggleMessageHistory } from './screens/messageHistory';
 import { toggleGameOptionsPanel } from './screens/gameOptionsPanel'; // [16d]
@@ -345,7 +345,7 @@ export function dispatchKey(
         }
         case 'constructionYardsScreen': {
             const src = getEmpireSummarySource();
-            if (src) toggleConstructionYards({ empire: src.empire, onSelect: (t) => selectStellarObject(t, true) });
+            if (src) toggleConstructionYards(constructionYardsOptions(src.empire));
             break;
         }
         // [/16c]

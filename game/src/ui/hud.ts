@@ -56,9 +56,9 @@ import { toggleGalacticHistory } from './screens/galacticHistory';
 // [leftovers] end
 import { toggleColoniesList, formatThousandsK } from './screens/coloniesList';
 import { toggleShipDesigns } from './screens/shipDesigns'; // [16b]
-import { toggleShipsAndBasesList } from './screens/shipsAndBasesList';
+import { closeShipsAndBasesList, toggleShipsAndBasesList, type BuiltObjectFilter } from './screens/shipsAndBasesList';
 import { toggleMessageHistory } from './screens/messageHistory';
-import { toggleBuildOrder } from './screens/buildOrder'; import { toggleConstructionYards } from './screens/constructionYards'; // [16c]
+import { toggleBuildOrder } from './screens/buildOrder'; import { toggleConstructionYards, type ConstructionYardsOptions } from './screens/constructionYards'; // [16c]
 import { toggleResearchScreen } from './screens/researchScreen'; // [15b]
 import { toggleEmpireComparison } from './screens/empireComparison';
 import { showToast } from './toast';
@@ -427,12 +427,13 @@ export function selectHabitat(h: Habitat, moveView = true): void {
 // [/16a]
 
 /** F11 / the top-bar Ships and Bases button (Main.Part9.cs tbtnBuiltObjects_Click): toggle the Ships and Bases window. */
-export function toggleShipsAndBases(): void {
+export function toggleShipsAndBases(filter?: BuiltObjectFilter): void {
     const src = getEmpireSummarySource();
     if (!src) return;
     const sel = getSelection();
     toggleShipsAndBasesList({
         empire: src.empire,
+        filter,
         selected: sel ? (sel.builtObject ?? sel.builtObjects?.[0] ?? sel.habitat) : null,
         // Select / Go to / double click select the ship/base (or colony) and move the view to it.
         onSelect: (bo) => selectStellarObject(bo, false),
@@ -440,6 +441,21 @@ export function toggleShipsAndBases(): void {
         // View Fleet (Main.Part6.cs btnBuiltObjectViewShipGroup_Click): the Fleets window on that fleet.
         onViewFleet: (sg) => toggleFleets(sg),
     });
+}
+
+/** The Construction Yards screen's callbacks (top-bar tbtnConstructionYards and F10). */
+export function constructionYardsOptions(empire: Empire): ConstructionYardsOptions {
+    return {
+        empire,
+        onSelect: (t) => selectStellarObject(t, true),
+        onSelectOnly: (t) => selectStellarObject(t, false),
+        onViewFleet: (sg) => toggleFleets(sg),
+        // The header's filter combo: another filter opens the Ships and Bases screen on it.
+        onOpenShipsAndBases: (f) => {
+            closeShipsAndBasesList();
+            toggleShipsAndBases(f as BuiltObjectFilter);
+        },
+    };
 }
 
 /** F12 / the top-bar Fleets button (Main.Part9.cs tbtnShipGroups_Click), optionally on one fleet (View Fleet). */
@@ -872,7 +888,7 @@ function openTopBarScreen(name: string, wiring: HudWiring): void {
             if (src) toggleBuildOrder({ empire: src.empire });
             return;
         case 'tbtnConstructionYards':
-            if (src) toggleConstructionYards({ empire: src.empire, onSelect: (t) => selectStellarObject(t, true) });
+            if (src) toggleConstructionYards(constructionYardsOptions(src.empire));
             return;
         // [15c] tbtnShipGroups → Fleets list (Main.Part9.cs:3153 tbtnShipGroups_Click).
         case 'tbtnShipGroups':

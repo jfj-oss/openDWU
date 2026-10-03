@@ -1,228 +1,79 @@
-/* Construction Yards panel (task 16c), based on the Ships and Bases list. Styling follows the Empires list /
-   tutorial-window dark-panel tokens. */
+/* Construction Yards screen (constructionYards.ts) on the shared original-style window (originalWindow.css). */
 
-.construction-yards-wrap {
-    position: fixed;
-    inset: 0;
-    z-index: 1500; /* above the HUD, like the in-game tutorial window */
-    pointer-events: none;
-    font-family: 'Forgotten Futurist', sans-serif;
-    color: #e6e6e6;
-}
-
-.construction-yards-window {
-    position: absolute;
-    top: 64px;
-    left: 16px;
-    width: 900px;
-    max-width: calc(100vw - 16px);
-    max-height: calc(100vh - 96px);
-    pointer-events: auto;
-    background: rgba(14, 16, 20, 0.94);
-    backdrop-filter: blur(6px);
-    -webkit-backdrop-filter: blur(6px);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 6px;
-    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6);
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-}
-
-.construction-yards-titlebar {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 8px 12px;
-    background: rgba(10, 11, 15, 0.9);
-    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-}
-
-.construction-yards-heading {
-    font-size: 13px;
-    color: #e8d24a;
-}
-
-.construction-yards-close {
-    background: transparent;
-    border: none;
-    color: #ccc;
-    font-size: 15px;
-    cursor: pointer;
-    padding: 2px 6px;
-}
-.construction-yards-close:hover {
-    color: #fff;
-}
-
-.construction-yards-body {
-    padding: 8px;
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-    overflow-y: auto;
-}
-
-/* Column headers, same grid as the rows (Name | Role | System | Location). */
-.construction-yards-header {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) 14em 7em 7em;
-    align-items: center;
-    gap: 8px;
-    padding: 0 8px 2px;
-}
-
-.construction-yards-header-cell {
-    font-size: 10px;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    color: #777;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-
-.construction-yards-row {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) 14em 7em 7em;
-    align-items: center;
-    gap: 8px;
-    padding: 5px 8px;
-    background: rgba(255, 255, 255, 0.04);
-    border: 1px solid rgba(255, 255, 255, 0.07);
-    border-radius: 4px;
-    cursor: pointer;
-}
-.construction-yards-row:hover {
-    background: rgba(255, 255, 255, 0.1);
-}
-
-.construction-yards-name {
-    font-size: 13px;
-    color: #fff;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-
-.construction-yards-cell {
-    font-size: 12px;
-    color: #bbb;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-
-.construction-yards-empty {
-    padding: 8px;
-    font-size: 12px;
-    color: #777;
-}
-/* Two-pane body: site table | selected site. */
-.construction-yards-body.construction-yards-split {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) 380px;
-    gap: 10px;
-    align-items: start;
-}
-
-.construction-yards-left,
-.construction-yards-right {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-    overflow-y: auto;
-    max-height: 70vh;
-    min-width: 0;
-}
-
-.construction-yards-list {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-}
-
-/* Name | Type | Yards | Building | Waiting | Speed */
-.construction-yards-header.construction-yards-site-grid,
-.construction-yards-row.construction-yards-site-grid {
-    grid-template-columns: minmax(0, 1fr) 118px 40px 54px 50px 40px;
-}
-/* Yard | Ship | Progress | Speed */
-.construction-yards-header.construction-yards-yard-grid,
-.construction-yards-row.construction-yards-yard-grid {
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 64px 40px;
-}
-/* Name | Type | Price */
-.construction-yards-row.construction-yards-wait-grid {
-    grid-template-columns: minmax(0, 1fr) 100px 64px;
-}
-
-.construction-yards-static {
-    cursor: default;
-}
-.construction-yards-static:hover {
-    background: rgba(255, 255, 255, 0.04);
-}
-
-.construction-yards-row-selected,
-.construction-yards-row-selected:hover {
-    background: rgba(232, 210, 74, 0.16);
-    border-color: rgba(232, 210, 74, 0.5);
-}
-
-.construction-yards-number {
-    text-align: right;
-}
-
-.construction-yards-site-head {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 8px;
-    padding: 2px 2px 6px;
-}
-
-.construction-yards-site-name {
+.ow-screen-yards .cy-filter {
+    z-index: 2;
     font-size: 14px;
-    color: #e8d24a;
+}
+
+/* The pictures of the grids (DataGridViewImageColumn, ImageLayout.Zoom). */
+.ow-screen-yards .cy-flag {
+    width: 20px;
+    height: 13px;
+    object-fit: contain;
+}
+.cy-pic {
+    width: 30px;
+    height: 22px;
+    object-fit: contain;
+}
+.cy-comp {
+    width: 22px;
+    height: 22px;
+    object-fit: contain;
+}
+/* PrepareBuiltObjectImage + RotateFlip(Rotate270FlipNone): ships drawn nose left. */
+.cy-rot {
+    transform: rotate(-90deg);
+}
+.ow-screen-yards .ow-grid-cell .cy-cell-text {
+    position: relative;
+}
+.ow-screen-yards .ow-grid-cell .ow-bar {
+    position: absolute;
+    left: 2px;
+}
+.ow-screen-yards .cy-fleet-build {
+    color: rgb(255, 192, 0);
+}
+.ow-screen-yards .ow-grid-row.ow-sel .cy-fleet-build {
+    color: rgb(255, 255, 0);
+}
+
+.cy-map {
+    border: 1px solid rgb(67, 67, 77);
+    background: #000;
+}
+
+/* The tab page (EnhancedTabControl TabPage, BackColor (48, 48, 64)) under the strip. */
+.cy-page-frame {
+    background: rgb(48, 48, 64);
+    border: 1px solid rgb(128, 128, 144);
+    border-top: 0;
+}
+.cy-page {
+    overflow: hidden;
+}
+.cy-page[hidden] {
+    display: none;
+}
+
+.cy-purchaser .ow-text {
     white-space: nowrap;
+}
+/* ConstructionYardPurchaser.FlashAvailableFunds: lblStateMoney.BackColor = Red. */
+.cy-funds-short {
+    background: rgb(255, 0, 0);
+}
+
+.cy-detail-pic {
+    object-fit: contain;
+}
+.cy-ellipsis {
     overflow: hidden;
     text-overflow: ellipsis;
-}
-
-.construction-yards-section {
-    margin-top: 8px;
-    font-size: 11px;
-    color: #aaa;
-}
-
-.construction-yards-buttons {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-    margin-top: 4px;
-}
-
-.construction-yards-button {
-    font-family: inherit;
-    font-size: 12px;
-    color: #e6e6e6;
-    background: rgba(255, 255, 255, 0.06);
-    border: 1px solid rgba(255, 255, 255, 0.2);
-    border-radius: 4px;
-    padding: 3px 10px;
-    cursor: pointer;
     white-space: nowrap;
 }
-.construction-yards-button:hover:not(:disabled) {
-    background: rgba(255, 255, 255, 0.14);
-}
-.construction-yards-button:disabled {
-    opacity: 0.4;
-    cursor: default;
-}
-
-[hidden].construction-yards-empty,
-[hidden].construction-yards-header {
-    display: none;
+.cy-summary-pic {
+    object-fit: contain;
+    transform: rotate(-90deg);
 }

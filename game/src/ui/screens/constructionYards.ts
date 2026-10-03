@@ -1,30 +1,86 @@
-// Construction Yards panel (task 16c): a streamlined port of the original's
-// Construction Yards view, opened by F10 or the top-bar tbtnConstructionYards
-// button. The site list is BaconMain.cs method_423's "Construction Yards"
-// branch; the yards table ports ConstructionYardListView.cs BindData; the
-// wait-queue buttons port Main.Part5.cs:2147-2213 (Move to Top / Up / Down /
-// Bottom). Styling follows the Ships and Bases list.
-// TODO(port): remove from queue / scrap ship / construction summary / manufacturing wait queue (Main.Part3.cs:681-700 buttons) — not in 16c
+// Construction Yards screen: a port of what the original's top-bar Construction Yards button opens
+// (Main.Part6.cs 3243 tbtnConstructionYards_Click → method_177(null) with cmbBuiltObjectFilter = 3 "Construction
+// Yards"): the Ships and Bases ScreenPanel pnlBuiltObjectInfo (Main.Part11.cs 4230 method_178, 1024 × 756) listing the
+// empire's ship yards (BaconMain.cs method_423 "Construction Yards": state then private bases with a construction yard,
+// then every colony) with its Construction Yards tab (Main.Part11.cs 3366 method_169): the yards (ConstructionYardListView),
+// "Ships waiting to be constructed", the purchaser (ConstructionYardPurchaser: Available Funds, design picker, Purchase),
+// Scrap Ship / Show Construction Summary, Move to Top / Up / Down, Remove Ship, the maximum-size text (Main.Part8.cs 808
+// method_305) and "Learn about Construction...". Built on the shared original-style window (ui/originalWindow.ts).
+// Our additions in the same style: list columns for the yard counts / queue / build progress, a Fleet Builds tab (fleet
+// design build orders and which of their ships wait at the selected yard) and a Construction Jobs tab (the empire's
+// construction job board: construction ships acting as mobile yards).
+// TODO(port): the other detail tabs (Cargo / Components / Docking Bays / Troops / Weapons, Main.Part11.cs method_170-176),
+//             the Set Fleet combo, Scrap selected (btnBuiltObjectScrapSelected_Click) and the manufacturing plants grids
+//             (duExoPvEoA / ctlConstructionYardManufacturerWaitQueue, laid out below the visible tab page in method_169).
+// TODO(port): pirate purchasing at a controlled colony / private construction at a pirate base (method_169 empire /
+//             allowPrivateConstruction overrides).
 
 import './constructionYards.css';
 import type { Empire } from '../../sim/empire';
-import { issuePlayerCommand } from '../../sim/player/playerCommands';
+import { AutomationLevel } from '../../sim/empire';
 import type { Galaxy } from '../../sim/galaxy';
 import type { BuiltObject } from '../../sim/builtObject';
+import type { Design } from '../../sim/design';
 import type { Habitat } from '../../sim/types';
+import type { ShipGroup } from '../../sim/fleets/shipGroup';
 import type { ConstructionQueue } from '../../sim/construction/constructionQueue';
 import type { ConstructionYard } from '../../sim/construction/constructionYard';
 import { componentListDiff, yardsCountUnderConstruction } from '../../sim/construction/constructionYard';
+import { BuiltObjectSubRole } from '../../sim/builtObjectTypes';
+import { BuiltObjectRole } from '../../sim/data/designSpecifications';
 import { resolveSubRoleDescription, componentDefinitionsStatic } from '../../sim/designGeneration';
-import { formatMoney } from '../hud';
+import { canBuildBuiltObject } from '../../sim/forceStructure';
+import { determineSpacePortAtColonyIncludingUnderConstruction } from '../../sim/pirates/missionsMarket';
+import { issuePlayerCommand } from '../../sim/player/playerCommands';
 import { moveWaitQueueItem, type WaitQueueMove } from '../../sim/player/playerOrders';
+import { fleetBuildProgress, fleetDesignBook } from '../../sim/player/fleetTemplates';
+import { constructionJobRows, type ConstructionJobRow } from '../../sim/player/constructionBoard';
+import { builtObjectImageUrl, resolveDrawPictureRef } from '../../render/builtObjectLayer';
+import { habitatImageUrl } from '../selectionInfo';
+import { empireFlagUrl } from '../selectionInfoView';
+import { componentImageUrl } from './researchTreeModel';
+import { gt } from './researchBenefits';
+import { BUILT_OBJECT_FILTERS, formatEta, retrofitToastText } from './shipsAndBasesList';
+import { DIMMED_COLOR, SELECTED_COLOR, galaxyMapScale, starDotSizes } from './galaxyMap';
+import { openGalactopedia } from './galactopedia';
+import { showToast } from '../toast';
+import {
+    COLORS,
+    FONT,
+    OwGrid,
+    barGraph,
+    dropDown,
+    dropText,
+    el,
+    glassButton,
+    gradientPanel,
+    linkLabel,
+    messageBox,
+    openOriginalWindow,
+    place,
+    setText,
+    tabStrip,
+    text,
+    textBox,
+    valueRow,
+    type OriginalWindow,
+} from '../originalWindow';
 export { moveWaitQueueItem, type WaitQueueMove };
+
+// -------------------------------------------------------------------------------------------------------------------
+// Pure helpers (tested)
+// -------------------------------------------------------------------------------------------------------------------
 
 export type ConstructionSite = { kind: 'builtObject'; builtObject: BuiltObject } | { kind: 'colony'; habitat: Habitat };
 
 /** The site's construction queue (the field is `unknown` on BuiltObject and Habitat). */
 export function siteQueue(site: ConstructionSite): ConstructionQueue | null {
     return (site.kind === 'colony' ? site.habitat : site.builtObject).constructionQueue as ConstructionQueue | null;
+}
+
+/** The stellar object a site stands for. */
+export function siteTarget(site: ConstructionSite): BuiltObject | Habitat {
+    return site.kind === 'colony' ? site.habitat : site.builtObject;
 }
 
 // BaconMain.cs method_423, "Construction Yards" branch: state then private ship
@@ -77,14 +133,39 @@ export interface ConstructionSiteRow {
     site: ConstructionSite;
     name: string;
     type: string;
+    /** Nearest system star's name ('(Deep Space)' for a free-flying yard). */
+    system: string;
     yards: number;
     building: number;
     waiting: number;
     speed: number;
+    /** Mean progress of the ships on the slipways (0 when none). */
+    progress: number;
 }
 
-// BaconMain.cs method_423 list rows, with the queue counts the Construction
-// Yards view shows for the selected site.
+/** The system a site is in (BuiltObjectListView System column). */
+function siteSystem(site: ConstructionSite): string {
+    if (site.kind === 'colony') {
+        // A colony's system: the star of its SystemIndex.
+        const galaxy = (site.habitat.empire as Empire | null)?.galaxy as Galaxy | undefined;
+        return galaxy?.systems[site.habitat.systemIndex]?.systemStar?.name ?? '';
+    }
+    return site.builtObject.nearestSystemStar?.name || '(Deep Space)';
+}
+
+/** The mean progress of the yards building something (0 when idle). */
+export function siteBuildProgress(yards: readonly (ConstructionYard | null)[]): number {
+    let n = 0;
+    let sum = 0;
+    for (const y of yards) {
+        if (!y || y.componentId < 0 || y.shipUnderConstruction === null) continue;
+        n++;
+        sum += yardProgress(y);
+    }
+    return n === 0 ? 0 : sum / n;
+}
+
+// BaconMain.cs method_423 list rows, with the queue counts of each site's ConstructionQueue.
 export function constructionSiteRows(empire: Empire): ConstructionSiteRow[] {
     return constructionSites(empire).map((site) => {
         const queue = siteQueue(site);
@@ -93,16 +174,23 @@ export function constructionSiteRows(empire: Empire): ConstructionSiteRow[] {
             site,
             name: site.kind === 'colony' ? site.habitat.name : site.builtObject.name,
             type: site.kind === 'colony' ? 'Colony' : resolveSubRoleDescription(site.builtObject.subRole),
+            system: siteSystem(site),
             yards: queue ? yards.length : 0,
             building: queue ? yardsCountUnderConstruction(yards) : 0,
             waiting: queue ? (queue.constructionWaitQueue?.length ?? 0) : 0,
             speed: queue ? queue.constructionSpeed : 0,
+            progress: queue ? siteBuildProgress(yards) : 0,
         };
     });
 }
 
 export interface YardRow {
-    yard: string;
+    yard: ConstructionYard;
+    /** Component name (Cells[0] tooltip). */
+    name: string;
+    /** Component picture ref (Cells[0]). */
+    componentPicture: number;
+    shipObject: BuiltObject | null;
     ship: string;
     progress: number;
     progressText: string;
@@ -110,15 +198,19 @@ export interface YardRow {
 }
 
 // ConstructionYardListView.cs:128 BindData: one row per yard with ComponentId >= 0
-// (Cells[0] tooltip = component name, Cells[3] ship, Cells[4] progress, Cells[5] speed).
-export function yardRows(site: ConstructionSite, componentName: (componentId: number) => string): YardRow[] {
+// (Cells[0] component picture + name tooltip, Cells[1] empire, Cells[2] ship picture, Cells[3] ship, Cells[4] progress, Cells[5] speed).
+export function yardRows(site: ConstructionSite, component: (componentId: number) => { name: string; pictureRef: number } | null): YardRow[] {
     const yards = siteQueue(site)?.constructionYards ?? [];
     const rows: YardRow[] = [];
     for (const yard of yards) {
         if (!yard || yard.componentId < 0) continue;
         const progress = yardProgress(yard);
+        const c = component(yard.componentId);
         rows.push({
-            yard: componentName(yard.componentId),
+            yard,
+            name: c?.name ?? '',
+            componentPicture: c?.pictureRef ?? -1,
+            shipObject: yard.shipUnderConstruction,
             ship: yard.shipUnderConstruction !== null ? yard.shipUnderConstruction.name : '',
             progress,
             progressText: formatProgressP(progress),
@@ -132,321 +224,841 @@ export interface WaitRow {
     builtObject: BuiltObject;
     name: string;
     type: string;
-    price: string;
+    price: number;
 }
 
-/** "Ships waiting to be constructed" (Main.Part3.cs:699), in queue order. */
+/** "Ships waiting to be constructed" (Main.Part3.cs:699; BuiltObjectListView Name / Role), in queue order. */
 export function waitRows(site: ConstructionSite): WaitRow[] {
     const wait = siteQueue(site)?.constructionWaitQueue ?? [];
     const rows: WaitRow[] = [];
     for (const bo of wait) {
         if (!bo) continue;
-        rows.push({ builtObject: bo, name: bo.name, type: resolveSubRoleDescription(bo.subRole), price: formatMoney(bo.purchasePrice) });
+        rows.push({ builtObject: bo, name: bo.name, type: resolveSubRoleDescription(bo.subRole), price: bo.purchasePrice });
     }
     return rows;
 }
 
+/** Empire.10.cs 447 CheckDesignComponentsResearched. */
+export function checkDesignComponentsResearched(empire: Empire, design: Design): boolean {
+    for (const c of design.components) if (!empire.research.checkComponentResearched(c)) return false;
+    return true;
+}
+
+const PRIVATE_SUBROLES: readonly BuiltObjectSubRole[] = [
+    BuiltObjectSubRole.SmallFreighter,
+    BuiltObjectSubRole.MediumFreighter,
+    BuiltObjectSubRole.LargeFreighter,
+    BuiltObjectSubRole.PassengerShip,
+    BuiltObjectSubRole.GasMiningShip,
+    BuiltObjectSubRole.MiningShip,
+    BuiltObjectSubRole.GasMiningStation,
+    BuiltObjectSubRole.MiningStation,
+];
+const SPACE_PORTS: readonly BuiltObjectSubRole[] = [BuiltObjectSubRole.SmallSpacePort, BuiltObjectSubRole.MediumSpacePort, BuiltObjectSubRole.LargeSpacePort];
+
+/** The predicates ConstructionYardPurchaser.PopulateDesigns reads (injectable for tests). */
+export interface PurchaserChecks {
+    canBuild: (design: Design, colony: Habitat | null) => boolean;
+    researched: (design: Design) => boolean;
+    /** Galaxy.DetermineSpacePortAtColonyIncludingUnderConstruction(colony) != null. */
+    colonyHasSpacePort: (colony: Habitat) => boolean;
+}
+
+export function purchaserChecks(empire: Empire): PurchaserChecks {
+    return {
+        canBuild: (d, colony) => canBuildBuiltObject(empire, d, colony),
+        researched: (d) => checkDesignComponentsResearched(empire, d),
+        colonyHasSpacePort: (c) => determineSpacePortAtColonyIncludingUnderConstruction(c) !== null,
+    };
+}
+
+/**
+ * ConstructionYardPurchaser.cs PopulateDesigns: the empire's current (not obsolete) designs, minus those it cannot build
+ * at this yard (CanBuildBuiltObject with the colony), with unresearched components, planet destroyers, the private
+ * sub-roles (state construction only), space ports at a colony that already has one, and bases at a ship / base yard.
+ * Empty unless the site is a ship yard or a colony.
+ */
+export function purchaserDesigns(designs: readonly Design[], site: ConstructionSite, checks: PurchaserChecks, stateConstructionOnly = true): Design[] {
+    const queue = siteQueue(site);
+    if (queue === null) return [];
+    if (site.kind === 'builtObject' && !site.builtObject.isShipYard) return [];
+    const colony = site.kind === 'colony' ? site.habitat : null;
+    const out: Design[] = [];
+    for (const design of designs) {
+        if (design.isObsolete) continue;
+        if (!checks.canBuild(design, colony)) continue;
+        if (!checks.researched(design)) continue;
+        if (design.isPlanetDestroyer) continue;
+        if (stateConstructionOnly && PRIVATE_SUBROLES.includes(design.subRole)) continue;
+        if (colony !== null && SPACE_PORTS.includes(design.subRole) && checks.colonyHasSpacePort(colony)) continue;
+        if (site.kind === 'builtObject' && design.role === BuiltObjectRole.Base) continue;
+        out.push(design);
+    }
+    return out;
+}
+
+/** The purchaser combo's item text: "<sub-role>: <design> (<price> credits)". */
+export function purchaserLabel(design: Design, price: number): string {
+    return `${resolveSubRoleDescription(design.subRole)}: ${design.name} (${gt('X credits', Math.trunc(price).toFixed(0))})`;
+}
+
+/** Main.Part8.cs 808 method_305: the maximum ship / base size text of the Construction Yards tab. */
+export function maximumSizeText(sizes: { any: number; civilian: number; military: number; base: number }): string {
+    let t = String(sizes.any);
+    if (sizes.civilian !== sizes.any) t += `, C:${sizes.civilian}`;
+    if (sizes.military !== sizes.any) t += `, M:${sizes.military}`;
+    return `${gt('Maximum Ship size')}: ${t}\n${gt('Maximum Base size')}: ${sizes.base} (${gt('when not at colony')})`;
+}
+
+function empireMaximumSizes(empire: Empire): { any: number; civilian: number; military: number; base: number } {
+    return {
+        any: empire.maximumConstructionSize(),
+        civilian: empire.maximumConstructionSize(BuiltObjectSubRole.SmallFreighter),
+        military: empire.maximumConstructionSize(BuiltObjectSubRole.Frigate),
+        base: empire.maximumConstructionSizeBase(),
+    };
+}
+
+/** Our fleet-design build orders: the order (by name) each queued ship belongs to. */
+export function fleetOrderByShip(orders: readonly { name: string; pending: readonly BuiltObject[] }[]): Map<BuiltObject, string> {
+    const m = new Map<BuiltObject, string>();
+    for (const o of orders) for (const b of o.pending) if (!m.has(b)) m.set(b, o.name);
+    return m;
+}
+
+/** The purchase's automation prompt (ConstructionYardPurchaser.btnPurchase_Click): the task to ask about, or null. */
+export function purchaseAutomationTask(empire: Pick<Empire, 'controlColonization' | 'controlStateConstruction'>, design: Pick<Design, 'subRole'>): string | null {
+    if (design.subRole === BuiltObjectSubRole.ColonyShip) return empire.controlColonization === AutomationLevel.FullyAutomated ? 'Colonization' : null;
+    return empire.controlStateConstruction === AutomationLevel.FullyAutomated ? 'Ship Building' : null;
+}
+
+/** Main.Part11.cs 4230 method_178 / 3366 method_169 layout, in body pixels of the 1024 × 756 ScreenPanel. */
+export const YARDS_LAYOUT = {
+    window: { w: 1024, h: 756 },
+    list: { x: 10, y: 10, w: 680, h: 288 },
+    mapTitle: { x: 700, y: 7 },
+    map: { x: 700, y: 25, w: 300, h: 300 },
+    buttons: { x: 10, y: 308, w: 133, h: 40, step: 135 },
+    buttons2: { x: 10, y: 350, w: 133, h: 25, step: 135 },
+    nameLabel: { x: 700, y: 357 },
+    name: { x: 750, y: 355, w: 250, h: 20 },
+    detail: { x: 700, y: 385, w: 300, h: 300 },
+    tabs: { x: 10, y: 385, w: 680, h: 300 },
+    /** Tab page client origin (below the 26 px strip) and size. */
+    page: { x: 13, y: 413, w: 674, h: 270 },
+} as const;
+
+// -------------------------------------------------------------------------------------------------------------------
+// The screen
+// -------------------------------------------------------------------------------------------------------------------
+
 export interface ConstructionYardsOptions {
     /** The player's empire. */
     empire: Empire;
-    /** Go to: select the site and zoom to it. */
+    /** Go to: select the site and move the view to it (the window closes). */
     onSelect: (target: BuiltObject | Habitat) => void;
+    /** Select Ship: select it without moving the view (the window stays open). Default: onSelect. */
+    onSelectOnly?: (target: BuiltObject | Habitat) => void;
+    /** View Fleet. */
+    onViewFleet?: (fleet: ShipGroup) => void;
+    /** The header's filter combo picked another filter: open the Ships and Bases screen on it. */
+    onOpenShipsAndBases?: (filter: string) => void;
 }
 
 interface OpenState {
-    root: HTMLElement;
+    win: OriginalWindow;
     close: () => void;
 }
 
 let open: OpenState | null = null;
 
-/** Open the Construction Yards panel, or close it if it is already open. */
+/** Open the Construction Yards screen, or close it if it is already open. */
 export function toggleConstructionYards(opts: ConstructionYardsOptions): void {
-    if (open) {
-        open.close();
-    } else {
-        open = createConstructionYards(opts);
-    }
+    if (open) open.close();
+    else open = createConstructionYards(opts);
 }
 
-/** Close the Construction Yards panel (no-op when closed). */
+/** Close the Construction Yards screen (no-op when closed). */
 export function closeConstructionYards(): void {
     open?.close();
 }
 
-function el<K extends keyof HTMLElementTagNameMap>(tag: K, className: string, text?: string): HTMLElementTagNameMap[K] {
-    const e = document.createElement(tag);
-    e.className = className;
-    if (text !== undefined) e.textContent = text;
-    return e;
-}
-
-function setText(e: HTMLElement, text: string, title = false): void {
-    if (e.textContent !== text) e.textContent = text;
-    if (title && e.title !== text) e.title = text;
-}
-
-/** Keyed in-place list refresh: rows are reused by key (object identity), updated,
- * and re-appended only when the order changes, so clicks survive the refresh tick. */
-function syncRows<T, K>(
-    container: HTMLElement,
-    cache: Map<K, HTMLElement>,
-    items: readonly T[],
-    key: (item: T) => K,
-    create: (item: T) => HTMLElement,
-    update: (line: HTMLElement, item: T) => void,
-): void {
-    const seen = new Set<K>();
-    const lines: HTMLElement[] = [];
-    for (const item of items) {
-        const k = key(item);
-        seen.add(k);
-        let line = cache.get(k);
-        if (!line) {
-            line = create(item);
-            cache.set(k, line);
-        }
-        update(line, item);
-        lines.push(line);
+/** A stable id per object (combo keys). */
+const objectIds = new WeakMap<object, number>();
+let nextObjectId = 1;
+function objectId(o: object): number {
+    let id = objectIds.get(o);
+    if (id === undefined) {
+        id = nextObjectId++;
+        objectIds.set(o, id);
     }
-    for (const [k, line] of cache) {
-        if (!seen.has(k)) {
-            line.remove();
-            cache.delete(k);
-        }
-    }
-    const current = Array.from(container.children);
-    if (current.length !== lines.length || lines.some((l, i) => current[i] !== l)) container.replaceChildren(...lines);
+    return id;
 }
 
-function siteTarget(site: ConstructionSite): BuiltObject | Habitat {
-    return site.kind === 'colony' ? site.habitat : site.builtObject;
+/** Empire flag pictures (async composites), cached by empire. */
+const flagUrls = new Map<Empire, string | null>();
+function flagUrl(galaxy: Galaxy, empire: Empire | null): string | null {
+    if (empire === null) return null;
+    if (!flagUrls.has(empire)) {
+        flagUrls.set(empire, null);
+        empireFlagUrl(galaxy, empire).then(
+            (u) => flagUrls.set(empire, u),
+            () => undefined,
+        );
+    }
+    return flagUrls.get(empire) ?? null;
 }
 
-function headerRow(gridClass: string, cols: readonly (readonly [string, boolean])[]): HTMLElement {
-    const header = el('div', `construction-yards-header ${gridClass}`);
-    for (const [text, num] of cols) {
-        header.appendChild(el('span', 'construction-yards-header-cell' + (num ? ' construction-yards-number' : ''), text));
-    }
-    return header;
+function img(url: string | null, cls: string, title = ''): HTMLElement {
+    if (url === null) return el('span', cls);
+    const i = el('img', cls);
+    i.src = url;
+    i.alt = '';
+    i.draggable = false;
+    if (title) i.title = title;
+    return i;
+}
+
+function shipPictureUrl(bo: BuiltObject): string | null {
+    // ConstructionYardListView: the retrofit design's picture while a retrofit is under way.
+    if (bo.retrofitDesign !== null) return builtObjectImageUrl(bo.retrofitDesign.pictureRef);
+    return builtObjectImageUrl(resolveDrawPictureRef(bo));
+}
+
+function sitePictureUrl(site: ConstructionSite): string | null {
+    return site.kind === 'colony' ? habitatImageUrl(site.habitat) : shipPictureUrl(site.builtObject);
+}
+
+/** The progress cell: the DataGridViewTextBoxDropShadowCell bar under the "p" formatted value. */
+function progressCell(cell: HTMLDivElement, progress: number, width: number, shown: boolean, h: number): void {
+    if (!shown) return;
+    cell.appendChild(barGraph(progress, 1, width, h, 'rgb(96, 192, 96)'));
+    cell.appendChild(el('span', 'cy-cell-text', formatProgressP(progress)));
 }
 
 function createConstructionYards(opts: ConstructionYardsOptions): OpenState {
-    const galaxy: Galaxy = opts.empire.galaxy;
-    const componentName = (componentId: number): string => {
-        const defs = componentDefinitionsStatic(galaxy);
-        return defs.find((d) => d.componentId === componentId)?.name ?? '';
+    const { empire } = opts;
+    const galaxy = empire.galaxy as Galaxy;
+    const L = YARDS_LAYOUT;
+    const componentDefs = componentDefinitionsStatic(galaxy);
+    const component = (id: number): { name: string; pictureRef: number } | null => {
+        const d = componentDefs[id]?.componentId === id ? componentDefs[id] : componentDefs.find((x) => x.componentId === id);
+        return d ? { name: d.name, pictureRef: d.pictureRef } : null;
     };
 
-    const root = el('div', 'construction-yards-wrap');
-    const win = el('div', 'construction-yards-window');
-    const titlebar = el('div', 'construction-yards-titlebar');
-    const heading = el('div', 'construction-yards-heading');
-    titlebar.appendChild(heading);
-    const closeBtn = el('button', 'construction-yards-close', '✕');
-    closeBtn.type = 'button';
-    closeBtn.title = 'Close';
-    titlebar.appendChild(closeBtn);
-    win.appendChild(titlebar);
+    let timer = 0;
+    let summary: OriginalWindow | null = null;
+    const win = openOriginalWindow({
+        id: 'yards',
+        title: gt('Ships and Bases'),
+        icon: 'shipsAndBases.png',
+        width: L.window.w,
+        height: L.window.h,
+        onClose: () => {
+            window.clearInterval(timer);
+            summary?.close();
+            open = null;
+        },
+    });
+    const body = win.body;
 
-    const body = el('div', 'construction-yards-body');
-    const emptyAll = el('div', 'construction-yards-empty', 'No construction yards');
-
-    // Left pane: the site table (Name | Type | Yards | Building | Waiting | Speed).
-    const left = el('div', 'construction-yards-left');
-    left.appendChild(
-        headerRow('construction-yards-site-grid', [['Name', false], ['Type', false], ['Yards', true], ['Building', true], ['Waiting', true], ['Speed', true]]),
+    // cmbBuiltObjectFilter in the header at (380, 12), 210 × 21, on "Construction Yards".
+    const header = win.frame.querySelector<HTMLElement>('.ow-header');
+    const filter = dropDown(
+        BUILT_OBJECT_FILTERS.map((f) => ({ value: f, label: gt(f) })),
+        'Construction Yards',
+        (v) => {
+            if (v === 'Construction Yards') return;
+            if (opts.onOpenShipsAndBases) {
+                win.close();
+                opts.onOpenShipsAndBases(v);
+            } else filter.value = 'Construction Yards';
+        },
+        'Show only ships and bases of one role',
     );
-    const siteList = el('div', 'construction-yards-list');
-    left.appendChild(siteList);
+    filter.classList.add('cy-filter');
+    if (header) header.appendChild(place(filter, 380, 12, 210, 21));
 
-    // Right pane: the selected site.
-    const right = el('div', 'construction-yards-right');
-    const siteHead = el('div', 'construction-yards-site-head');
-    const siteName = el('div', 'construction-yards-site-name');
-    const goTo = el('button', 'construction-yards-button', 'Go to');
-    goTo.type = 'button';
-    siteHead.append(siteName, goTo);
-    const yardHeader = headerRow('construction-yards-yard-grid', [['Yard', false], ['Ship', false], ['Progress', true], ['Speed', true]]);
-    const yardList = el('div', 'construction-yards-list');
-    const yardEmpty = el('div', 'construction-yards-empty', 'No construction yards');
-    const waitLabel = el('div', 'construction-yards-section', 'Ships waiting to be constructed');
-    const waitList = el('div', 'construction-yards-list');
-    const waitEmpty = el('div', 'construction-yards-empty', 'No ships waiting');
-    const buttons = el('div', 'construction-yards-buttons');
-    const moveButtons: HTMLButtonElement[] = [];
-    for (const [text, move] of [['Move to Top', 'top'], ['Move Up', 'up'], ['Move Down', 'down'], ['Move to Bottom', 'bottom']] as const) {
-        const b = el('button', 'construction-yards-button', text);
-        b.type = 'button';
-        b.addEventListener('click', () => {
-            const site = selectedSite;
-            const wait = site ? siteQueue(site)?.constructionWaitQueue : null;
-            if (!wait || selectedWait === null) return;
-            issuePlayerCommand(opts.empire.galaxy, opts.empire, 'moveWaitQueueItem', [siteTarget(site!), selectedWait, move], () => render());
-        });
-        moveButtons.push(b);
-        buttons.appendChild(b);
-    }
-    right.append(siteHead, yardHeader, yardList, yardEmpty, waitLabel, waitList, waitEmpty, buttons);
-
-    win.appendChild(body);
-    root.appendChild(win);
-    document.body.appendChild(root);
-
-    // Selections are kept by object identity across refreshes.
-    let selectedTarget: BuiltObject | Habitat | null = null;
-    let selectedSite: ConstructionSite | null = null;
+    // ---- State (by object identity across refreshes) ----
+    let rows: ConstructionSiteRow[] = [];
+    let selected: ConstructionSite | null = null;
+    let selectedYard: ConstructionYard | null = null;
     let selectedWait: BuiltObject | null = null;
-    const siteLines = new Map<BuiltObject | Habitat, HTMLElement>();
-    const waitLines = new Map<BuiltObject, HTMLElement>();
+    let tab: 'yards' | 'fleets' | 'jobs' = 'yards';
+    const selectedTarget = (): BuiltObject | Habitat | null => (selected ? siteTarget(selected) : null);
+    const selectedBO = (): BuiltObject | null => (selected?.kind === 'builtObject' ? selected.builtObject : null);
 
-    goTo.addEventListener('click', () => {
-        const site = selectedSite;
-        if (!site) return;
-        close();
-        opts.onSelect(siteTarget(site));
+    // ---- ctlBuiltObjectList (10, 10) 680 × 288 ----
+    const ROW_H = 26;
+    const siteGrid = new OwGrid<ConstructionSiteRow>({
+        key: (r) => siteTarget(r.site),
+        rowHeight: ROW_H,
+        empty: 'No construction yards',
+        columns: [
+            { id: 'empire', header: '', width: 25, align: 'center', render: (r, c) => {
+                const e = siteTarget(r.site).empire as Empire | null;
+                c.appendChild(img(flagUrl(galaxy, e), 'cy-flag', e?.name ?? ''));
+            } },
+            { id: 'picture', header: '', width: 35, align: 'center', render: (r, c) => {
+                c.appendChild(img(sitePictureUrl(r.site), r.site.kind === 'colony' ? 'cy-pic cy-pic-habitat' : 'cy-pic cy-pic-ship'));
+            } },
+            { id: 'name', header: gt('Name'), width: 130, sort: (r) => r.name, render: (r, c) => { c.textContent = r.name; c.title = r.name; } },
+            { id: 'role', header: gt('Role'), width: 110, sort: (r) => r.type, render: (r, c) => { c.textContent = r.type; c.title = r.type; } },
+            { id: 'system', header: gt('System'), width: 90, sort: (r) => r.system, render: (r, c) => { c.textContent = r.system; c.title = r.system; } },
+            { id: 'yards', header: 'Yards', width: 45, align: 'right', sort: (r) => r.yards, title: 'Construction yards (slipways)', render: (r, c) => { c.textContent = String(r.yards); } },
+            { id: 'building', header: 'Building', width: 60, align: 'right', sort: (r) => r.building, title: 'Ships under construction', render: (r, c) => { c.textContent = String(r.building); } },
+            { id: 'waiting', header: 'Waiting', width: 55, align: 'right', sort: (r) => r.waiting, title: 'Ships waiting to be constructed', render: (r, c) => { c.textContent = String(r.waiting); } },
+            { id: 'speed', header: gt('Speed'), width: 45, align: 'right', sort: (r) => r.speed, title: 'Construction speed', render: (r, c) => { c.textContent = String(r.speed); } },
+            { id: 'progress', header: gt('Progress'), align: 'right', sort: (r) => r.progress, title: 'Mean progress of the ships under construction', render: (r, c) => progressCell(c, r.progress, 70, r.building > 0, ROW_H) },
+        ],
+        onSelect: (r) => {
+            if (selected && siteTarget(selected) === siteTarget(r.site)) return;
+            selected = r.site;
+            selectedYard = null;
+            selectedWait = null;
+            refresh();
+        },
+        onDoubleClick: (r) => goTo(r.site),
+    });
+    body.appendChild(place(siteGrid.el, L.list.x, L.list.y, L.list.w, L.list.h));
+
+    // ---- gmapBuiltObject (700, 25) 300 × 300 with its title at (700, 7) ----
+    dropText(body, gt('Location of selected item in Galaxy'), L.mapTitle.x, L.mapTitle.y, { color: COLORS.label });
+    const map = el('canvas', 'cy-map');
+    body.appendChild(place(map, L.map.x, L.map.y, L.map.w, L.map.h));
+
+    // ---- Buttons under the list ----
+    const btn = (label: string, x: number, y: number, w: number, h: number, onClick: () => void, title = ''): HTMLButtonElement => {
+        const b = glassButton(label, { onClick, title });
+        body.appendChild(place(b, x, y, w, h));
+        return b;
+    };
+    const B = L.buttons;
+    const btnSelect = btn(gt('Select Ship'), B.x, B.y, B.w, B.h, () => {
+        const t = selectedTarget();
+        if (t) (opts.onSelectOnly ?? opts.onSelect)(t);
+    });
+    btn(gt('Go to Ship'), B.x + B.step, B.y, B.w, B.h, () => {
+        if (selected) goTo(selected);
+    });
+    const btnViewDesign = btn(gt('View Design'), B.x + 2 * B.step, B.y, B.w, B.h, () => {
+        const bo = selectedBO();
+        if (bo) showSummary(bo.design);
+    });
+    const btnViewFleet = btn(gt('View Fleet'), B.x + 3 * B.step, B.y, B.w, B.h, () => {
+        const sg = selectedBO()?.shipGroup as ShipGroup | null | undefined;
+        if (sg && opts.onViewFleet) opts.onViewFleet(sg);
+    });
+    const B2 = L.buttons2;
+    const shipOp = (op: 'refuelShips' | 'repairShips' | 'retireShips', done: string) => () => {
+        const bo = selectedBO();
+        if (!bo) return;
+        issuePlayerCommand(galaxy, empire, op, [[bo]], (n) => showToast(n > 0 ? `${bo.name}: ${done}` : `${bo.name}: no suitable destination`));
+    };
+    const btnRefuel = btn(gt('Refuel'), B2.x, B2.y, B2.w, B2.h, shipOp('refuelShips', 'sent to refuel'));
+    const btnRepair = btn(gt('Repair'), B2.x + B2.step, B2.y, B2.w, B2.h, shipOp('repairShips', 'sent for repair'));
+    const btnRetrofit = btn(gt('Retrofit'), B2.x + 2 * B2.step, B2.y, B2.w, B2.h, () => {
+        const bo = selectedBO();
+        if (bo) issuePlayerCommand(galaxy, empire, 'retrofitShips', [[bo]], (res) => showToast(retrofitToastText(res)));
+    }, 'Retrofit to the latest design of its type');
+    const retire = shipOp('retireShips', 'sent to retire');
+    const btnRetire = btn(gt('Retire'), B2.x + 3 * B2.step, B2.y, B2.w, B2.h, () => {
+        const bo = selectedBO();
+        if (!bo) return;
+        void messageBox({ caption: gt('Retire'), text: `${gt('Retire')} ${bo.name}?`, buttons: ['Yes', 'No'], icon: 'question' }).then((b) => {
+            if (b === 'Yes') retire();
+        });
+    });
+    // TODO(port): Main.Part3.cs btnBuiltObjectScrapSelected_Click (no scrap op yet).
+    const btnScrap = btn(gt('Scrap'), B2.x + 4 * B2.step, B2.y, 140, B2.h, () => undefined, 'Not available yet');
+    btnScrap.disabled = true;
+
+    // ---- Name (700, 357) / (750, 355) 250 × 20 ----
+    dropText(body, gt('Name'), L.nameLabel.x, L.nameLabel.y, { color: COLORS.label, bold: true });
+    const nameBox = textBox('', '', () => undefined);
+    body.appendChild(place(nameBox, L.name.x, L.name.y, L.name.w, L.name.h));
+    const commitName = (): void => {
+        const bo = selectedBO();
+        if (bo && nameBox.value.trim() !== '' && nameBox.value.trim() !== bo.name) {
+            issuePlayerCommand(galaxy, empire, 'renameBuiltObject', [bo, nameBox.value], () => refresh());
+        }
+    };
+    nameBox.addEventListener('change', commitName);
+    nameBox.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') nameBox.blur();
     });
 
-    function render(): void {
-        const rows = constructionSiteRows(opts.empire);
-        setText(heading, `Construction Yards (${rows.length})`);
-        if (rows.length === 0) {
-            body.classList.remove('construction-yards-split');
-            if (body.firstChild !== emptyAll || body.childNodes.length !== 1) body.replaceChildren(emptyAll);
-            selectedTarget = null;
-            selectedSite = null;
-            selectedWait = null;
+    // ---- pnlBuiltObjectDetail (700, 385) 300 × 300, CornerCurveMode.BottomRight_TopLeft ----
+    const detail = gradientPanel({ corners: { tl: true, br: true }, className: 'cy-detail' });
+    body.appendChild(place(detail, L.detail.x, L.detail.y, L.detail.w, L.detail.h));
+
+    // ---- tabBuiltObjectData (10, 385) 680 × 300 ----
+    const tabs = tabStrip(
+        [
+            { id: 'yards', label: gt('Construction Yards') },
+            { id: 'fleets', label: 'Fleet Builds' },
+            { id: 'jobs', label: 'Construction Jobs' },
+        ],
+        tab,
+        (id) => {
+            tab = id as typeof tab;
+            showTab();
+        },
+    );
+    body.appendChild(place(tabs, L.tabs.x, L.tabs.y, L.tabs.w));
+    const tabButtons = Array.from(tabs.querySelectorAll<HTMLButtonElement>('.ow-tab'));
+    const pageFrame = el('div', 'cy-page-frame');
+    body.appendChild(place(pageFrame, L.tabs.x, L.tabs.y + 26, L.tabs.w, L.tabs.h - 26));
+    const pageYards = place(el('div', 'cy-page'), L.page.x, L.page.y, L.page.w, L.page.h);
+    const pageFleets = place(el('div', 'cy-page'), L.page.x, L.page.y, L.page.w, L.page.h);
+    const pageJobs = place(el('div', 'cy-page'), L.page.x, L.page.y, L.page.w, L.page.h);
+    body.append(pageYards, pageFleets, pageJobs);
+    function showTab(): void {
+        pageYards.hidden = tab !== 'yards';
+        pageFleets.hidden = tab !== 'fleets';
+        pageJobs.hidden = tab !== 'jobs';
+        refresh();
+    }
+
+    // Construction Yards tab: ctlConstructionYards (0, 0) 390 × 150.
+    const YARD_ROW_H = 26;
+    const yardGrid = new OwGrid<YardRow>({
+        key: (r) => r.yard,
+        rowHeight: YARD_ROW_H,
+        empty: 'No construction yards',
+        columns: [
+            { id: 'component', header: '', width: 30, align: 'center', render: (r, c) => {
+                c.appendChild(img(r.componentPicture >= 0 ? componentImageUrl(r.componentPicture) : null, 'cy-comp', r.name));
+            } },
+            { id: 'empire', header: '', width: 30, align: 'center', render: (r, c) => {
+                const e = r.shipObject?.empire ?? null;
+                if (r.shipObject) c.appendChild(img(flagUrl(galaxy, e), 'cy-flag', e?.name ?? ''));
+            } },
+            { id: 'picture', header: '', width: 40, align: 'center', render: (r, c) => {
+                if (r.shipObject) c.appendChild(img(shipPictureUrl(r.shipObject), 'cy-pic cy-pic-ship cy-rot'));
+            } },
+            { id: 'ship', header: gt('Ship'), sort: (r) => r.ship, render: (r, c) => {
+                c.textContent = r.ship;
+                const order = r.shipObject ? fleetOrders.get(r.shipObject) : undefined;
+                c.title = order ? `${r.ship} (fleet build: ${order})` : r.ship;
+                if (order) c.classList.add('cy-fleet-build');
+            } },
+            { id: 'progress', header: gt('Progress'), width: 70, align: 'right', sort: (r) => r.progress, render: (r, c) => progressCell(c, r.progress, 70, r.shipObject !== null, YARD_ROW_H) },
+            { id: 'speed', header: gt('Speed'), width: 53, align: 'right', sort: (r) => r.speed, render: (r, c) => { c.textContent = String(r.speed); } },
+        ],
+        onSelect: (r) => {
+            selectedYard = r.yard;
+            updateButtons();
+        },
+    });
+    pageYards.appendChild(place(yardGrid.el, 0, 0, 390, 150));
+    pageYards.appendChild(place(text(gt('Ships waiting to be constructed'), { bold: true, color: COLORS.label }), 0, 158));
+    const waitGrid = new OwGrid<WaitRow>({
+        key: (r) => r.builtObject,
+        rowHeight: 24,
+        empty: 'No ships waiting',
+        columns: [
+            { id: 'empire', header: '', width: 30, align: 'center', render: (r, c) => {
+                c.appendChild(img(flagUrl(galaxy, r.builtObject.empire), 'cy-flag', r.builtObject.empire?.name ?? ''));
+            } },
+            { id: 'picture', header: '', width: 40, align: 'center', render: (r, c) => {
+                c.appendChild(img(shipPictureUrl(r.builtObject), 'cy-pic cy-pic-ship cy-rot'));
+            } },
+            { id: 'name', header: gt('Name'), render: (r, c) => {
+                c.textContent = r.name;
+                const order = fleetOrders.get(r.builtObject);
+                c.title = order ? `${r.name} (fleet build: ${order})` : r.name;
+                if (order) c.classList.add('cy-fleet-build');
+            } },
+            { id: 'role', header: gt('Role'), width: 140, render: (r, c) => { c.textContent = r.type; c.title = `${r.type}, ${gt('X credits', Math.trunc(r.price).toFixed(0))}`; } },
+        ],
+        onSelect: (r) => {
+            selectedWait = r.builtObject;
+            updateButtons();
+        },
+    });
+    pageYards.appendChild(place(waitGrid.el, 0, 180, 390, 90));
+
+    // pnlBuiltObjectConstructionYardPurchaser (395, 3) 270 × 90.
+    const purchaser = gradientPanel({ corners: { tl: true, tr: true, br: true, bl: true }, radius: 20, className: 'cy-purchaser' });
+    pageYards.appendChild(place(purchaser, 395, 3, 270, 90));
+    dropText(purchaser, gt('Available Funds'), 10, 8, { color: COLORS.label, size: FONT.small });
+    const funds = dropText(purchaser, '', 105, 8, { color: COLORS.label, bold: true, size: FONT.small });
+    let designs: Design[] = [];
+    let designsKey = '';
+    const designBox = dropDown([], '', () => funds.classList.remove('cy-funds-short'), 'Design to build at this yard');
+    purchaser.appendChild(place(designBox, 10, 27, 250, 21));
+    const btnPurchase = glassButton(gt('Purchase'), { onClick: () => void purchase() });
+    purchaser.appendChild(place(btnPurchase, 10, 56, 250, 25));
+
+    const yb = (label: string, x: number, y: number, w: number, h: number, onClick: () => void, title = ''): HTMLButtonElement => {
+        const b = glassButton(label, { onClick, title });
+        pageYards.appendChild(place(b, x, y, w, h));
+        return b;
+    };
+    const btnScrapShip = yb(gt('Scrap Ship'), 395, 99, 230, 25, () => void scrapShip(), 'Scrap the selected ship under construction (no refund)');
+    const btnSummary = yb(gt('Show Construction Summary'), 395, 126, 230, 25, () => {
+        const s = selectedYard?.shipUnderConstruction ?? null;
+        if (s) showSummary(s.retrofitDesign ?? s.design);
+    });
+    const move = (m: WaitQueueMove) => () => {
+        const t = selectedTarget();
+        if (t && selectedWait) issuePlayerCommand(galaxy, empire, 'moveWaitQueueItem', [t, selectedWait, m], () => refresh());
+    };
+    const btnTop = yb(gt('Move to Top'), 395, 180, 120, 22, move('top'));
+    const btnUp = yb(gt('Move Up'), 395, 203, 120, 22, move('up'));
+    const btnDown = yb(gt('Move Down'), 395, 226, 120, 22, move('down'));
+    const btnRemove = yb(gt('Remove Ship'), 395, 249, 120, 22, () => void removeShip(), 'Remove the selected ship from the queue (half the cost is refunded)');
+    const maxSize = text('', { size: FONT.tiny, color: COLORS.label, wrapWidth: 160 });
+    pageYards.appendChild(place(maxSize, 515, 180));
+    pageYards.appendChild(place(linkLabel(`${gt('Learn about Construction')}...`, () => openGalactopedia({ topic: gt('Construction') }), FONT.small), 515, 250));
+
+    // Fleet Builds tab (ours): the running fleet-design build orders; the ships of each waiting at the selected yard.
+    interface FleetRow {
+        id: number;
+        name: string;
+        built: number;
+        total: number;
+        building: number;
+        here: number;
+    }
+    const fleetGrid = new OwGrid<FleetRow>({
+        key: (r) => r.id,
+        rowHeight: 22,
+        empty: 'No fleet builds. Build fleets from fleet designs in the Designs screen (Fleet Designs tab).',
+        columns: [
+            { id: 'name', header: 'Fleet', render: (r, c) => { c.textContent = r.name; c.title = r.name; } },
+            { id: 'built', header: 'Built', width: 70, align: 'right', render: (r, c) => { c.textContent = `${r.built} / ${r.total}`; } },
+            { id: 'building', header: 'In queues', width: 80, align: 'right', render: (r, c) => { c.textContent = String(r.building); } },
+            { id: 'here', header: 'At this yard', width: 95, align: 'right', render: (r, c) => { c.textContent = String(r.here); } },
+            { id: 'progress', header: gt('Progress'), width: 110, align: 'right', render: (r, c) => progressCell(c, r.total > 0 ? r.built / r.total : 0, 110, r.total > 0, 22) },
+        ],
+        onSelect: () => updateButtons(),
+    });
+    pageFleets.appendChild(place(fleetGrid.el, 0, 0, 540, 270));
+    const btnCancelFleet = glassButton('Cancel Build', {
+        title: 'Stop the build order: waiting ships are removed and refunded, ships on a slipway finish unassigned',
+        onClick: () => {
+            const r = fleetGrid.selected;
+            if (!r) return;
+            void messageBox({ caption: 'Cancel Fleet Build', text: `Cancel the build order for ${r.name}?`, buttons: ['Yes', 'No'], icon: 'question' }).then((b) => {
+                if (b === 'Yes') issuePlayerCommand(galaxy, empire, 'fleetTemplateCancelOrder', [r.id], (res) => {
+                    if (res.ok) showToast(`${r.name}: build cancelled${res.removed > 0 ? `, ${res.removed} ships removed (${Math.round(res.refund).toLocaleString('en-US')} credits refunded)` : ''}`);
+                    refresh();
+                });
+            });
+        },
+    });
+    pageFleets.appendChild(place(btnCancelFleet, 548, 0, 120, 25));
+
+    // Construction Jobs tab (ours): the job board — construction ships are the mobile yards that build bases.
+    const jobGrid = new OwGrid<ConstructionJobRow>({
+        key: (r) => r.id,
+        rowHeight: 22,
+        empty: 'No construction jobs. Build orders for stations and bases are queued here and taken by the construction ship that can finish them first.',
+        columns: [
+            { id: 'job', header: 'Job', render: (r, c) => { c.textContent = r.label; c.title = r.label; } },
+            { id: 'state', header: 'State', width: 70, render: (r, c) => { c.textContent = r.state === 'active' ? 'Building' : r.state === 'next' ? 'Next' : 'Open'; } },
+            { id: 'ship', header: gt('Ship'), width: 150, render: (r, c) => { c.textContent = r.shipName || '—'; c.title = r.shipName; } },
+            { id: 'eta', header: 'ETA', width: 75, align: 'right', render: (r, c) => { c.textContent = r.etaMs === null ? '—' : formatEta(r.etaMs); } },
+        ],
+        onSelect: () => updateButtons(),
+        onDoubleClick: (r) => {
+            if (r.ship) goToTarget(r.ship);
+        },
+    });
+    pageJobs.appendChild(place(jobGrid.el, 0, 0, 540, 270));
+    const jobBtn = (label: string, y: number, title: string, onClick: () => void): HTMLButtonElement => {
+        const b = glassButton(label, { onClick, title });
+        pageJobs.appendChild(place(b, 548, y, 120, 22));
+        return b;
+    };
+    const btnJobUp = jobBtn(gt('Move Up'), 0, 'Earlier jobs are handed out first', () => {
+        const r = jobGrid.selected;
+        if (r) issuePlayerCommand(galaxy, empire, 'constructionJobMoveUp', [r.id], () => refresh());
+    });
+    const btnJobCancel = jobBtn('Cancel Job', 23, 'Cancel this construction job', () => {
+        const r = jobGrid.selected;
+        if (r) issuePlayerCommand(galaxy, empire, 'constructionJobCancel', [r.id], () => refresh());
+    });
+    const btnJobGoto = jobBtn('Go to Ship', 46, 'Select the construction ship and move the view to it', () => {
+        const r = jobGrid.selected;
+        if (r?.ship) goToTarget(r.ship);
+    });
+
+    // ---- Actions ----
+    function goToTarget(t: BuiltObject | Habitat): void {
+        win.close();
+        opts.onSelect(t);
+    }
+    function goTo(site: ConstructionSite): void {
+        goToTarget(siteTarget(site));
+    }
+
+    async function purchase(): Promise<void> {
+        const site = selected;
+        const design = designs[Number(designBox.value)];
+        if (!site || !design) return;
+        // ConstructionYardPurchaser.btnPurchase_Click: the automation prompt first.
+        const task = purchaseAutomationTask(empire, design);
+        if (task !== null) {
+            const b = await messageBox({
+                caption: gt(task),
+                text: `${gt(task)} is automated. Turn off automation so your order is not overridden?`,
+                buttons: ['Turn off', 'Leave on'],
+                icon: 'question',
+            });
+            if (b === 'Turn off') issuePlayerCommand(galaxy, empire, 'automationOff', [task]);
+        }
+        if (design.calculateCurrentPurchasePrice(galaxy) > empire.stateMoney) {
+            funds.classList.add('cy-funds-short'); // FlashAvailableFunds
             return;
         }
-        body.classList.add('construction-yards-split');
-        if (body.firstChild !== left) body.replaceChildren(left, right);
+        issuePlayerCommand(galaxy, empire, 'yardPurchase', [design, siteTarget(site)], (bo) => {
+            if (bo === null) showToast(`${design.name}: cannot be built at ${siteTarget(site).name}`);
+            refresh();
+        });
+    }
 
-        let selectedRow = rows.find((r) => siteTarget(r.site) === selectedTarget);
-        if (!selectedRow) {
-            selectedRow = rows[0];
-            selectedTarget = siteTarget(selectedRow.site);
+    async function removeShip(): Promise<void> {
+        const site = selected;
+        const ship = selectedWait;
+        if (!site || !ship) return;
+        if (ship.owner === null) {
+            await messageBox({
+                caption: gt('Cannot remove ship from queue'),
+                text: ship.empire !== null ? gt('This ship is privately owned - it cannot be removed') : gt('This ship is not owned by your empire - it cannot be removed'),
+                icon: 'information',
+            });
+            return;
+        }
+        const t = `${gt('Removing this ship from the construction queue will refund half the purchase cost', (ship.purchasePrice * 0.5).toFixed(0))} (${ship.name})`;
+        if ((await messageBox({ caption: gt('Remove Ship from Construction Queue?'), text: t, buttons: ['Yes', 'No'], icon: 'question' })) !== 'Yes') return;
+        issuePlayerCommand(galaxy, empire, 'yardRemoveFromQueue', [siteTarget(site), ship], () => {
+            selectedWait = null;
+            refresh();
+        });
+    }
+
+    async function scrapShip(): Promise<void> {
+        const site = selected;
+        const ship = selectedYard?.shipUnderConstruction ?? null;
+        if (!site || !ship) return;
+        if (ship.owner === null) {
+            await messageBox({
+                caption: gt('Cannot scrap ship'),
+                text: ship.empire !== null ? gt('This ship is privately owned - it cannot be scrapped') : gt('This ship is not owned by your empire - it cannot be scrapped'),
+                icon: 'information',
+            });
+            return;
+        }
+        const t = `${gt('The purchase cost will not be refunded if you scrap this ship')} (${ship.name})`;
+        if ((await messageBox({ caption: gt('Scrap Ship under Construction?'), text: t, buttons: ['Yes', 'No'], icon: 'warning' })) !== 'Yes') return;
+        issuePlayerCommand(galaxy, empire, 'yardScrapShip', [siteTarget(site), ship], () => refresh());
+    }
+
+    /** Main.Part4.cs 3441 btnBuiltObjectConstructionShowSummary_Click → method_548(design): the design's summary. */
+    function showSummary(design: Design): void {
+        summary?.close();
+        const counts = new Map<number, { name: string; pictureRef: number; n: number }>();
+        for (const c of design.components) {
+            const e = counts.get(c.componentId);
+            if (e) e.n++;
+            else counts.set(c.componentId, { name: c.name, pictureRef: c.pictureRef, n: 1 });
+        }
+        const w = openOriginalWindow({ id: 'yards-summary', title: gt('Construction Summary'), icon: 'construction.png', width: 460, height: 560, onClose: () => { if (summary === w) summary = null; } });
+        summary = w;
+        const b = w.body;
+        const pic = img(builtObjectImageUrl(design.pictureRef), 'cy-summary-pic');
+        b.appendChild(place(pic, 12, 12, 96, 96));
+        dropText(b, design.name, 120, 12, { size: FONT.header, bold: true, color: 'rgb(255, 255, 255)' });
+        dropText(b, resolveSubRoleDescription(design.subRole), 120, 38, { color: COLORS.label });
+        valueRow(b, gt('Size'), String(design.size), 190, 62);
+        valueRow(b, gt('Cost'), gt('X credits', Math.trunc(design.calculateCurrentPurchasePrice(galaxy)).toFixed(0)), 190, 84);
+        const grid = new OwGrid<{ name: string; pictureRef: number; n: number }>({
+            key: (r) => r.name,
+            rowHeight: 24,
+            columns: [
+                { id: 'pic', header: '', width: 30, align: 'center', render: (r, c) => { c.appendChild(img(componentImageUrl(r.pictureRef), 'cy-comp')); } },
+                { id: 'name', header: gt('Component'), sort: (r) => r.name, render: (r, c) => { c.textContent = r.name; c.title = r.name; } },
+                { id: 'n', header: gt('Amount'), width: 70, align: 'right', sort: (r) => r.n, render: (r, c) => { c.textContent = String(r.n); } },
+            ],
+        });
+        b.appendChild(place(grid.el, 12, 120, w.bodySize.w - 24, w.bodySize.h - 132));
+        grid.setRows([...counts.values()]);
+    }
+
+    // ---- Refresh ----
+    let fleetOrders = new Map<BuiltObject, string>();
+    let detailKey = '';
+
+    function updateButtons(): void {
+        const bo = selectedBO();
+        const mobile = bo !== null && bo.topSpeed > 0 && bo.role !== BuiltObjectRole.Base;
+        btnSelect.disabled = selected === null;
+        btnViewDesign.disabled = bo === null;
+        btnViewFleet.disabled = !(bo !== null && bo.shipGroup != null && opts.onViewFleet);
+        btnRefuel.disabled = !mobile;
+        btnRepair.disabled = !(mobile && bo!.damagedComponentCount > 0);
+        btnRetrofit.disabled = bo === null || bo.owner === null;
+        btnRetire.disabled = !(mobile && bo!.owner !== null);
+        nameBox.disabled = bo === null;
+        const ship = selectedYard?.shipUnderConstruction ?? null;
+        btnScrapShip.disabled = ship === null;
+        btnSummary.disabled = ship === null;
+        const hasWait = selectedWait !== null;
+        btnTop.disabled = btnUp.disabled = btnDown.disabled = btnRemove.disabled = !hasWait;
+        // The purchaser is disabled at a mobile yard (a construction ship, method_169: TopSpeed > 0).
+        const canBuy = selected !== null && !(selected.kind === 'builtObject' && selected.builtObject.topSpeed > 0) && designs.length > 0;
+        btnPurchase.disabled = !canBuy;
+        designBox.disabled = !canBuy;
+        btnCancelFleet.disabled = fleetGrid.selected === null;
+        const job = jobGrid.selected;
+        btnJobUp.disabled = btnJobCancel.disabled = job === null;
+        btnJobGoto.disabled = job?.ship == null;
+    }
+
+    function refreshPurchaser(): void {
+        const site = selected;
+        const list = site === null || (site.kind === 'builtObject' && site.builtObject.topSpeed > 0) ? [] : purchaserDesigns(empire.designs, site, purchaserChecks(empire));
+        const prices = list.map((d) => d.calculateCurrentPurchasePrice(galaxy));
+        const key = list.map((d, i) => `${objectId(d)}:${Math.trunc(prices[i])}`).join('|') + `@${site ? objectId(siteTarget(site)) : ''}`;
+        if (key !== designsKey) {
+            const prev = designs[Number(designBox.value)];
+            designsKey = key;
+            designs = list;
+            designBox.replaceChildren(...list.map((d, i) => {
+                const o = el('option', '', purchaserLabel(d, prices[i]));
+                o.value = String(i);
+                return o;
+            }));
+            const keep = prev ? list.indexOf(prev) : -1;
+            designBox.value = String(keep >= 0 ? keep : 0);
+        }
+        setText(funds, gt('X credits', Math.trunc(empire.stateMoney).toFixed(0)));
+    }
+
+    function refreshDetail(r: ConstructionSiteRow | null): void {
+        const key = r ? `${r.name}|${r.type}|${r.system}|${r.yards}|${r.building}|${r.waiting}|${r.speed}|${Math.round(r.progress * 1000)}` : '';
+        if (key === detailKey) return;
+        detailKey = key;
+        detail.replaceChildren();
+        if (!r) return;
+        detail.appendChild(place(img(sitePictureUrl(r.site), r.site.kind === 'colony' ? 'cy-detail-pic' : 'cy-detail-pic cy-rot'), 10, 10, 90, 90));
+        const name = text(r.name, { size: FONT.header, bold: true, color: 'rgb(255, 255, 255)' });
+        name.classList.add('cy-ellipsis');
+        detail.appendChild(place(name, 108, 14, 180));
+        dropText(detail, r.type, 108, 40, { color: COLORS.label });
+        dropText(detail, r.system, 108, 60, { color: COLORS.label });
+        const lines: [string, string][] = [
+            ['Construction Yards', String(r.yards)],
+            ['Under construction', String(r.building)],
+            ['Waiting', String(r.waiting)],
+            [gt('Construction Speed'), String(r.speed)],
+            [gt('Progress'), r.building > 0 ? formatProgressP(r.progress) : '-'],
+        ];
+        lines.forEach(([l, v], i) => valueRow(detail, l, v, 160, 118 + i * 22));
+        if (r.site.kind === 'builtObject' && r.site.builtObject.topSpeed > 0) {
+            detail.appendChild(place(text('A mobile yard: ships cannot be purchased here.', { size: FONT.tiny, color: COLORS.label, wrapWidth: 270 }), 12, 238));
+        }
+    }
+
+    function drawMap(): void {
+        const W = L.map.w;
+        const dpr = Math.min(3, window.devicePixelRatio || 1) * Math.max(1, win.scale);
+        const px = Math.round(W * dpr);
+        if (map.width !== px) {
+            map.width = px;
+            map.height = px;
+        }
+        const ctx = map.getContext('2d');
+        if (!ctx) return;
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        ctx.fillStyle = '#000';
+        ctx.fillRect(0, 0, W, W);
+        const s = galaxyMapScale(galaxy, W);
+        const sizes = starDotSizes(W, true);
+        const dot = (x: number, y: number, color: string, size: number): void => {
+            ctx.fillStyle = color;
+            ctx.beginPath();
+            ctx.ellipse(x / s, y / s, size / 2, size / 2, 0, 0, Math.PI * 2);
+            ctx.fill();
+        };
+        for (const sys of galaxy.systems) dot(sys.systemStar.xpos, sys.systemStar.ypos, DIMMED_COLOR, sizes.normal);
+        // GalaxyMap.SetLocations: the listed yards, the selected one in yellow with a crosshair.
+        for (const r of rows) {
+            const t = siteTarget(r.site);
+            dot(t.xpos, t.ypos, 'rgb(96, 160, 255)', sizes.selected);
+        }
+        const t = selectedTarget();
+        if (t) {
+            const x = t.xpos / s;
+            const y = t.ypos / s;
+            ctx.strokeStyle = SELECTED_COLOR;
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(x - 10, y);
+            ctx.lineTo(x + 10, y);
+            ctx.moveTo(x, y - 10);
+            ctx.lineTo(x, y + 10);
+            ctx.stroke();
+            dot(t.xpos, t.ypos, SELECTED_COLOR, sizes.selected + 2);
+        }
+    }
+
+    function refresh(): void {
+        if (win.closed) return;
+        rows = constructionSiteRows(empire);
+        let row = selected ? rows.find((r) => siteTarget(r.site) === siteTarget(selected!)) ?? null : null;
+        if (!row && rows.length > 0) {
+            row = rows[0];
+            selectedYard = null;
             selectedWait = null;
         }
-        selectedSite = selectedRow.site;
-        const site = selectedRow.site;
+        selected = row?.site ?? null;
+        siteGrid.setRows(rows);
+        if (selected) siteGrid.select(siteTarget(selected), false);
 
-        syncRows(
-            siteList,
-            siteLines,
-            rows,
-            (r) => siteTarget(r.site),
-            (r) => {
-                const line = el('div', 'construction-yards-row construction-yards-site-grid');
-                line.append(
-                    el('span', 'construction-yards-name'),
-                    el('span', 'construction-yards-cell'),
-                    el('span', 'construction-yards-cell construction-yards-number'),
-                    el('span', 'construction-yards-cell construction-yards-number'),
-                    el('span', 'construction-yards-cell construction-yards-number'),
-                    el('span', 'construction-yards-cell construction-yards-number'),
-                );
-                const t = siteTarget(r.site);
-                line.addEventListener('click', () => {
-                    if (t !== selectedTarget) {
-                        selectedTarget = t;
-                        selectedWait = null;
-                        render();
-                    }
-                });
-                return line;
-            },
-            (line, r) => {
-                const c = line.children as HTMLCollectionOf<HTMLElement>;
-                setText(c[0], r.name, true);
-                setText(c[1], r.type, true);
-                setText(c[2], String(r.yards));
-                setText(c[3], String(r.building));
-                setText(c[4], String(r.waiting));
-                setText(c[5], String(r.speed));
-                line.classList.toggle('construction-yards-row-selected', r === selectedRow);
-            },
+        const bo = selectedBO();
+        if (document.activeElement !== nameBox) nameBox.value = bo?.name ?? (selected?.kind === 'colony' ? selected.habitat.name : '');
+
+        fleetOrders = fleetOrderByShip(fleetDesignBook(empire).orders);
+        const y = selected ? yardRows(selected, component) : [];
+        if (selectedYard && !y.some((r) => r.yard === selectedYard)) selectedYard = null;
+        yardGrid.setRows(y);
+        if (selectedYard) yardGrid.select(selectedYard, false);
+        const w = selected ? waitRows(selected) : [];
+        if (selectedWait && !w.some((r) => r.builtObject === selectedWait)) selectedWait = null;
+        waitGrid.setRows(w);
+        if (selectedWait) waitGrid.select(selectedWait, false);
+
+        const under = row ? row.building : 0;
+        setText(tabButtons[0], `${gt('Construction Yards')}${under > 0 ? ` (${under})` : ''}`);
+        const orders = fleetDesignBook(empire).orders;
+        const waitSet = new Set(w.map((r) => r.builtObject));
+        for (const r of y) if (r.shipObject) waitSet.add(r.shipObject);
+        fleetGrid.setRows(
+            orders.map((o) => {
+                const p = fleetBuildProgress(empire, o);
+                return { id: o.id, name: o.name, built: p.built, total: p.total, building: p.building, here: o.pending.filter((b) => waitSet.has(b)).length };
+            }),
         );
+        setText(tabButtons[1], `Fleet Builds${orders.length > 0 ? ` (${orders.length})` : ''}`);
+        const jobs = constructionJobRows(galaxy, empire);
+        jobGrid.setRows(jobs);
+        setText(tabButtons[2], `Construction Jobs${jobs.length > 0 ? ` (${jobs.length})` : ''}`);
 
-        setText(siteName, selectedRow.name, true);
-
-        // Yards: rebuilt only when the row count changes, text updated in place.
-        const yRows = yardRows(site, componentName);
-        yardHeader.hidden = yRows.length === 0;
-        yardEmpty.hidden = yRows.length !== 0;
-        while (yardList.children.length > yRows.length) yardList.lastElementChild!.remove();
-        while (yardList.children.length < yRows.length) {
-            const line = el('div', 'construction-yards-row construction-yards-static construction-yards-yard-grid');
-            line.append(
-                el('span', 'construction-yards-cell'),
-                el('span', 'construction-yards-name'),
-                el('span', 'construction-yards-cell construction-yards-number'),
-                el('span', 'construction-yards-cell construction-yards-number'),
-            );
-            yardList.appendChild(line);
-        }
-        yRows.forEach((y, i) => {
-            const c = yardList.children[i].children as HTMLCollectionOf<HTMLElement>;
-            setText(c[0], y.yard, true);
-            setText(c[1], y.ship, true);
-            setText(c[2], y.ship ? y.progressText : '');
-            setText(c[3], String(y.speed));
-        });
-
-        // Wait queue.
-        const wRows = waitRows(site);
-        if (selectedWait !== null && !wRows.some((w) => w.builtObject === selectedWait)) selectedWait = null;
-        waitEmpty.hidden = wRows.length !== 0;
-        syncRows(
-            waitList,
-            waitLines,
-            wRows,
-            (w) => w.builtObject,
-            (w) => {
-                const line = el('div', 'construction-yards-row construction-yards-wait-grid');
-                line.append(
-                    el('span', 'construction-yards-name'),
-                    el('span', 'construction-yards-cell'),
-                    el('span', 'construction-yards-cell construction-yards-number'),
-                );
-                const bo = w.builtObject;
-                line.addEventListener('click', () => {
-                    selectedWait = bo;
-                    render();
-                });
-                return line;
-            },
-            (line, w) => {
-                const c = line.children as HTMLCollectionOf<HTMLElement>;
-                setText(c[0], w.name, true);
-                setText(c[1], w.type, true);
-                setText(c[2], w.price);
-                line.classList.toggle('construction-yards-row-selected', w.builtObject === selectedWait);
-            },
-        );
-        for (const b of moveButtons) b.disabled = selectedWait === null;
+        setText(maxSize, maximumSizeText(empireMaximumSizes(empire)));
+        refreshPurchaser();
+        refreshDetail(row);
+        drawMap();
+        updateButtons();
     }
 
-    render();
-    // Progress moves while open: refresh every second, keeping both selections.
-    const timer = window.setInterval(render, 1000);
+    showTab();
+    if (selected) siteGrid.select(siteTarget(selected));
+    // Progress moves while open: refresh every second, keeping the selections and scroll positions.
+    timer = window.setInterval(refresh, 1000);
 
-    function close(): void {
-        window.clearInterval(timer);
-        document.removeEventListener('keydown', onKeyDown);
-        root.remove();
-        open = null;
-    }
-
-    // Escape closes the panel; stopImmediatePropagation keeps the global game-menu Escape handler from firing.
-    function onKeyDown(e: KeyboardEvent): void {
-        if (e.key === 'Escape') {
-            e.preventDefault();
-            e.stopImmediatePropagation();
-            close();
-        }
-    }
-    document.addEventListener('keydown', onKeyDown);
-    closeBtn.addEventListener('click', () => close());
-
-    return { root, close };
+    return { win, close: () => win.close() };
 }
