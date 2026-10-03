@@ -138,6 +138,10 @@ function handle(m: ToWorker): void {
             host!.command(m);
             kick();
             return;
+        case 'hostOp':
+            host!.hostOp(m);
+            kick();
+            return;
         case 'save': {
             try {
                 post({ type: 'saved', id: m.id, text: host!.save() });

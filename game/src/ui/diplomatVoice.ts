@@ -18,6 +18,8 @@ import { buildDiplomatBrief, personaLines, type DiplomatBrief, type DiplomatCont
 import { type DiplomatCounterOutcome } from '../sim/player/diplomatCounter';
 import { groundDiplomatBrief } from '../sim/player/diplomatGrounding';
 import { runPlayerCommand } from '../sim/player/playerCommands';
+import { remoteSimHost } from '../simworker/remoteHost';
+import { readReplica } from '../llm/replicaReads';
 import { probeAdvisorEndpoint, requestAdvisor, type AdvisorApi, type ChatMessage } from './advisorClient';
 import { getSettings, updateSettings } from './settings';
 import './diplomatVoice.css';
@@ -185,7 +187,7 @@ export async function voiceDiplomatReply(args: {
 }): Promise<VoicedReply> {
     const original = args.context.original;
     // 19s-2: grounded on the ledger + claims with llmVoices on (unchanged otherwise).
-    const brief = groundDiplomatBrief(args.galaxy, buildDiplomatBrief(args.galaxy, args.ai, args.player, args.context), args.ai, args.player);
+    const brief = readReplica(args.galaxy, () => groundDiplomatBrief(args.galaxy, buildDiplomatBrief(args.galaxy, args.ai, args.player, args.context), args.ai, args.player));
     const out: VoicedReply = { text: original, original, voiced: false, latencyMs: 0, counter: null, brief, raw: '' };
     let raw: string;
     try {
@@ -215,8 +217,18 @@ export async function voiceDiplomatReply(args: {
     if (p.counterId !== null && (args.applyCounter?.() ?? true)) {
         // Between frames, like the click it stands for; the sim's evaluator decides.
         // (A frame boundary: the model's answer arrives in a promise callback.) Journaled in the command log.
-        out.counter = runPlayerCommand(args.galaxy, args.player, 'diplomatCounter', [args.ai, brief, p.counterId]);
-        if (out.counter.message !== null) rememberVoicedMessage(out.counter.message, out.text);
+        const remote = remoteSimHost(args.galaxy);
+        if (remote === null) out.counter = runPlayerCommand(args.galaxy, args.player, 'diplomatCounter', [args.ai, brief, p.counterId]);
+        else {
+            // Sim worker (docs/sim-worker.md §9 chunk 8): applied at the worker's next frame boundary and journaled there;
+            // the outcome's message comes back as the replica's EmpireMessage (the dialog finds it by identity).
+            try {
+                out.counter = await remote.command(args.player, 'diplomatCounter', [args.ai, brief, p.counterId]);
+            } catch (e) {
+                out.error = e instanceof Error ? e.message : String(e);
+            }
+        }
+        if (out.counter !== null && out.counter.message !== null) rememberVoicedMessage(out.counter.message, out.text);
     }
     return out;
 }

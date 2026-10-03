@@ -17,6 +17,7 @@ import { fillPrompt } from './prompts/chronicle';
 import { ORDERS_PROMPT_VERSION, ORDERS_SYSTEM } from './prompts/archivist';
 import type { ChatMessage } from '../ui/advisorClient';
 import type { LlmQueue, LlmResult } from './queue';
+import { readReplica } from './replicaReads';
 
 export const NO_ORDER_CLERK = 'No order clerk is available (no model answered): give the order through the menus.';
 
@@ -35,7 +36,7 @@ export function buildOrderMessages(empire: Empire, menu: OrderMenu, text: string
 export async function interpretOrder(galaxy: Galaxy, player: Empire, queue: LlmQueue | null, selection: AdvisorSelection, text: string): Promise<OrderOutcome> {
     if (text.trim() === '') return { status: 'clarify', text: 'What are your orders?' };
     if (queue === null) return { status: 'unavailable', text: NO_ORDER_CLERK };
-    const menu = buildOrderMenu(galaxy, player, selection);
+    const menu = readReplica(galaxy, () => buildOrderMenu(galaxy, player, selection));
     const messages = buildOrderMessages(player, menu, text);
     let res: LlmResult;
     try {
