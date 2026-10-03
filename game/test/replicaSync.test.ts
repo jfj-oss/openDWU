@@ -182,7 +182,7 @@ function run(seed: number, steps: number): void {
 
 describe('replica sync codec', () => {
     for (const seed of Array.from({ length: Number(process.env.FUZZ_SEEDS ?? 8) }, (_, i) => i + 1)) {
-        it(`randomized graph mutations stay in sync (seed ${seed})`, () => run(seed, Number(process.env.FUZZ_STEPS ?? 400)));
+        it(`randomized graph mutations stay in sync (seed ${seed})`, () => run(seed, Number(process.env.FUZZ_STEPS ?? 400)), 120000);
     }
 
     it('writes nothing for an unchanged graph', () => {

@@ -1421,7 +1421,10 @@ export class ReplicaDecoder {
                     const s = b[i++];
                     const old = shapes[shapeOf[id]];
                     const next = shapes[s];
-                    for (const key of old.keys) if (!next.keys.includes(key)) delete (o as Record<string, unknown>)[key];
+                    // Drop every old field: the Fill that follows re-adds them in the new shape's order (key order is
+                    // state — a plain object's keys are saved in order).
+                    for (const key of old.keys) delete (o as Record<string, unknown>)[key];
+                    void next;
                     shapeOf[id] = s;
                     break;
                 }
