@@ -18,16 +18,10 @@
 // Kept from the earlier streamlined list (mod layer): the 19d2 shortage marker and the scenario approval breakdown
 // on the approval icon, the 19d1 governor-loyalty tooltip on the name.
 //
-// TODO(port): rename the colony (txtColonyName_Leave sets Habitat.Name) — needs a player op — Main.Part11.cs txtColonyName_Leave
-// TODO(port): Set as Capital (Empire.Capital + RecalculateColonyDistancesFromCapital) — needs a player op — Main.Part5.cs:2215
-// TODO(port): population policy drop-downs / Apply to All (Habitat.ColonyPopulationPolicy[RaceFamily]) — needs a player op — Main.Part11.cs cmbColonyPopulationPolicy*
-// TODO(port): Scrap Facility / Attack pirate facility — needs a player op — Main.Part6.cs:3696 btnColonyFacilityScrap_Click
-// TODO(port): troop transfer to a transport (cmbColonyTroopTransferTransport) — Main.Part11.cs:4600 btnColonyTroopTransferTransport_Click
 // TODO(port): Construction Yard tab's purchaser panel (pnlColonyConstructionYardPurchaser), Scrap Ship / Remove Ship — Main.Part6.cs:3460-3560
 // TODO(port): Show Ruin Details window (method_550 pnlRuinDetail) — shown as a message box with the ruin's description here
 // TODO(port): character portraits in the Troops & Characters tab (CharacterImageCache) — CharacterTroopListIconView.cs
 // TODO(port): racial / wonder / resource bonus lines of the attitude summary — HabitatAttitudeSummary.cs DetermineHabitat*Bonuses
-// TODO(port): AutoPauseWhenInPopupWindow pause / resume — Main.Part11.cs method_166 / method_186
 
 import './coloniesScreen.css';
 import type { Empire } from '../../sim/empire';
@@ -57,10 +51,12 @@ import { getPlagueUnhappinessFactorWithPlague } from '../../sim/eventTypes';
 import { empireGovernmentAttributes } from '../../sim/empire';
 import { strategicValue } from '../../sim/territory';
 import { habitatAnnualRevenue } from '../../sim/forceStructure';
-import { calculatePlanetaryFacilityCost } from '../../sim/construction/facilities';
+import { calculatePlanetaryFacilityCost, type PlanetaryFacility } from '../../sim/construction/facilities';
 import { resolveBuildableFacilities, resolveBuildableFacilitiesPirates, resolveBuildableWonders } from '../../sim/player/executeShipAction';
 import { ShipActionType, createShipAction } from '../../sim/player/shipAction';
 import { issuePlayerCommand } from '../../sim/player/playerCommands';
+import { checkFacilityOwnedByColonyOwner, colonyPopulationPolicyLocked, colonyTroopTransports } from '../../sim/player/colonyOrders';
+import { checkCanInitiateAttackAgainstPirateFacilities } from '../../sim/pirates/pirateEmpireAI';
 import { formatNet, tryGetText } from '../../sim/textResolver';
 import { componentDefinitionsStatic } from '../../sim/designGeneration';
 import { troopImageUrl, wireTroopImageFallback } from '../../render/troopImages';
@@ -747,13 +743,18 @@ function createColoniesScreen(opts: ColoniesScreenOptions): OpenState {
         buttons[b.id] = btn;
         body.appendChild(place(btn, b.x, L.buttonsY, b.w, L.buttonsH));
     }
-    buttons.capital.title = 'Not available yet';
 
     // --- Name / tax ---------------------------------------------------------------------------------------------------
     dropText(body, T('Name', 'Name'), L.nameLabel.x, L.nameLabel.y, { color: COLORS.gridText });
     const nameBox = textBox('', '', () => {});
-    nameBox.readOnly = true;
-    nameBox.title = 'Renaming colonies is not available yet';
+    nameBox.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') nameBox.blur();
+    });
+    // txtColonyName_Leave: a non-blank name renames the selected colony.
+    nameBox.addEventListener('blur', () => {
+        const h = selected;
+        if (h && nameBox.value.trim() !== '' && nameBox.value.trim() !== h.name) issuePlayerCommand(galaxy, empire, 'renameColony', [h, nameBox.value], () => refreshAll());
+    });
     body.appendChild(place(nameBox, L.nameBox.x, L.nameBox.y, L.nameBox.w, L.nameBox.h));
     dropText(body, T('Tax', 'Tax'), L.taxLabel.x, L.taxLabel.y, { color: COLORS.gridText });
     const taxBox = el('input', 'ow-input col-tax');
@@ -833,6 +834,9 @@ function createColoniesScreen(opts: ColoniesScreenOptions): OpenState {
             case 'galaxyMap':
                 opts.onShowOnGalaxyMap?.(h);
                 return;
+            case 'capital':
+                issuePlayerCommand(galaxy, empire, 'setColonyAsCapital', [h], () => refreshAll());
+                return;
             case 'ruin':
                 if (h.ruin) void messageBox({ caption: h.ruin.name, text: h.ruin.description ?? h.ruin.name, icon: 'information', width: 520 });
                 return;
@@ -873,9 +877,11 @@ function createColoniesScreen(opts: ColoniesScreenOptions): OpenState {
         buttons.select.disabled = !h || !opts.onSelect;
         buttons.goto.disabled = !h;
         buttons.galaxyMap.disabled = !h || !opts.onShowOnGalaxyMap;
-        buttons.capital.disabled = true;
+        // Main.Part11.cs 3329: btnColonyMakeCapital disabled for a pirate player's non-owned colony.
+        buttons.capital.disabled = !h || h.empire !== empire;
         buttons.ruin.disabled = !h || h.ruin === null;
-        if (nameBox.value !== (h?.name ?? '')) nameBox.value = h?.name ?? '';
+        if (document.activeElement !== nameBox && nameBox.value !== (h?.name ?? '')) nameBox.value = h?.name ?? '';
+        nameBox.disabled = !h || h.empire !== empire;
         if (document.activeElement !== taxBox) taxBox.value = h ? String(roundAway(Math.max(0, h.taxRate) * 100)) : '0';
         taxBox.disabled = !h || (empire.pirateEmpireBaseHabitat !== null && h.empire !== empire);
         renderStrip();
@@ -962,22 +968,40 @@ function createColoniesScreen(opts: ColoniesScreenOptions): OpenState {
         });
         g.setRows(rows);
         page.appendChild(place(g.el, 0, 0, 270, 185));
-        const policyRow = (label: string, y: number, value: number): void => {
+        // Main.Part11.cs 3247-3256 / 3329: the drop-downs are disabled during an extermination race event and for a
+        // pirate player's non-owned colony.
+        const owned = h.empire === empire;
+        const policyRow = (label: string, y: number, value: number, sameFamily: boolean): HTMLSelectElement => {
             const l = text(label, { color: COLORS.gridText, size: FONT.small });
             l.classList.add('col-right-label');
             page.appendChild(place(l, 0, y, 182, 15));
             const dd = dropDown(
                 POPULATION_POLICIES.map((p) => ({ value: String(p), label: populationPolicyLabel(p) })),
                 String(value),
-                () => {},
-                'Changing the population policy is not available yet',
+                (v) => issuePlayerCommand(galaxy, empire, 'setColonyPopulationPolicy', [h, sameFamily, Number(v)], () => renderPage(true)),
             );
-            dd.disabled = true;
+            dd.disabled = !owned || colonyPopulationPolicyLocked(h);
             page.appendChild(place(dd, 185, y - 5, 85, 21));
+            return dd;
         };
-        policyRow(T('Population Policy: Same Family', 'Population Policy: Same Family'), 193, h.colonyPopulationPolicyRaceFamily);
-        policyRow(T('Population Policy: All Other Races', 'Population Policy: All Other Races'), 220, h.colonyPopulationPolicy);
-        const apply = glassButton(T('Apply this Policy to All Colonies', 'Apply this Policy to All Colonies'), { disabled: true, title: 'Not available yet' });
+        const ddFamily = policyRow(T('Population Policy: Same Family', 'Population Policy: Same Family'), 193, h.colonyPopulationPolicyRaceFamily, true);
+        const ddOthers = policyRow(T('Population Policy: All Other Races', 'Population Policy: All Other Races'), 220, h.colonyPopulationPolicy, false);
+        const apply = glassButton(T('Apply this Policy to All Colonies', 'Apply this Policy to All Colonies'), {
+            disabled: !owned,
+            onClick: () => {
+                // btnColonyPopulationApplyPolicyToAll_Click: the Yes/No question, then both drop-downs' policies.
+                const family = Number(ddFamily.value);
+                const others = Number(ddOthers.value);
+                void messageBox({
+                    caption: T('Apply Population Policy title', 'Apply Population Policy to All Colonies?'),
+                    text: T('Apply Population Policy warning', 'This will apply the current population policy for this colony to all of the other colonies in your empire.\n\nAre you sure that you want to do this?').replace(/\\n/g, '\n'),
+                    buttons: ['Yes', 'No'],
+                    icon: 'question',
+                }).then((b) => {
+                    if (b === 'Yes') issuePlayerCommand(galaxy, empire, 'applyPopulationPolicyToAll', [family, others], () => refreshAll());
+                });
+            },
+        });
         page.appendChild(place(apply, 5, 244, 265, 25));
         const bg = gradientPanel({ corners: { tl: true, br: true } });
         page.appendChild(place(bg, 274, 5, 385, 240));
@@ -1079,6 +1103,8 @@ function createColoniesScreen(opts: ColoniesScreenOptions): OpenState {
 
     // --- Troops & Characters tab (ctlColonyCharacterTroops + recruit / disband / garrison) ----------------------------
     let selectedTroops = new Set<Troop>();
+    let selectedCharacter: Character | null = null;
+    let transportChoice: BuiltObject | null = null;
     function renderTroops(h: Habitat): void {
         const box = scrollPanel('col-icons');
         page.appendChild(place(box, 0, 0, 540, 271));
@@ -1089,6 +1115,12 @@ function createColoniesScreen(opts: ColoniesScreenOptions): OpenState {
             t.appendChild(img(chromeImageUrl(`characterRole_${role}.png`), 'col-icon-img'));
             t.appendChild(el('div', 'col-icon-label', c.name));
             t.title = `${c.name} (${role.replace(/([a-z])([A-Z])/g, '$1 $2')})`;
+            if (selectedCharacter === c) t.classList.add('col-icon-sel');
+            t.addEventListener('click', () => {
+                selectedCharacter = selectedCharacter === c ? null : c;
+                selectedTroops = new Set();
+                renderPage(true);
+            });
             box.appendChild(t);
         }
         const troopTile = (tr: Troop, state: string): void => {
@@ -1101,6 +1133,7 @@ function createColoniesScreen(opts: ColoniesScreenOptions): OpenState {
             if (state === '') {
                 t.addEventListener('click', (e) => {
                     if (!e.ctrlKey && !e.shiftKey) selectedTroops = new Set();
+                    selectedCharacter = null;
                     if (selectedTroops.has(tr)) selectedTroops.delete(tr);
                     else selectedTroops.add(tr);
                     renderPage(true);
@@ -1130,10 +1163,37 @@ function createColoniesScreen(opts: ColoniesScreenOptions): OpenState {
         btn(T('Disband', 'Disband'), 70, () => void disband(sel), owned && sel.length > 0);
         btn(T('Garrison', 'Garrison'), 120, () => issuePlayerCommand(galaxy, empire, 'garrisonTroops', [sel, true], () => renderPage(true)), owned && sel.length > 0);
         btn(T('Ungarrison', 'Ungarrison'), 150, () => issuePlayerCommand(galaxy, empire, 'garrisonTroops', [sel, false], () => renderPage(true)), owned && sel.length > 0);
-        const tdd = dropDown([], '', () => {}, 'Transferring troops to a transport is not available yet');
-        tdd.disabled = true;
+        if (selectedCharacter !== null && !colonyCharacters(h).includes(selectedCharacter)) selectedCharacter = null;
+        // method_427: the empire's ships within 1000 with room for 100 troop size.
+        const transports = owned ? colonyTroopTransports(galaxy, empire, h) : [];
+        if (transportChoice === null || !transports.includes(transportChoice)) transportChoice = transports[0] ?? null;
+        const tdd = dropDown(
+            transports.map((b, i) => ({ value: String(i), label: b.name })),
+            String(Math.max(0, transportChoice ? transports.indexOf(transportChoice) : 0)),
+            (v) => {
+                transportChoice = transports[Number(v)] ?? null;
+            },
+        );
+        tdd.disabled = transports.length === 0;
         page.appendChild(place(tdd, 545, 200, 115, 21));
-        btn(T('Transfer', 'Transfer'), 225, () => {}, false);
+        // btnColonyTroopTransferTransport_Click: the selected troop(s) or character onto the transport.
+        const items: (Troop | Character)[] = selectedCharacter !== null ? [selectedCharacter] : sel;
+        btn(
+            T('Transfer', 'Transfer'),
+            225,
+            () => {
+                const transport = transportChoice;
+                if (!transport) return;
+                items.forEach((it, i) =>
+                    issuePlayerCommand(galaxy, empire, 'colonyTransferToTransport', [h, it, transport], i === items.length - 1 ? () => {
+                        selectedTroops = new Set();
+                        selectedCharacter = null;
+                        refreshAll();
+                    } : undefined),
+                );
+            },
+            owned && transportChoice !== null && items.length > 0,
+        );
     }
 
     async function recruitSelected(h: Habitat, action: ReturnType<typeof createShipAction> | undefined): Promise<void> {
@@ -1235,12 +1295,19 @@ function createColoniesScreen(opts: ColoniesScreenOptions): OpenState {
 
     // --- Facilities tab (ctlColonyFacilities + cmbColonyFacilitiesToBuild) --------------------------------------------
     let facilityChoice = '';
+    let selectedFacility: PlanetaryFacility | null = null;
     function renderFacilities(h: Habitat): void {
         const box = scrollPanel('col-icons');
         page.appendChild(place(box, 0, 0, 450, 271));
-        for (const f of h.facilities ?? []) {
+        const facilities = h.facilities ?? [];
+        if (selectedFacility !== null && !facilities.includes(selectedFacility)) selectedFacility = null;
+        for (const f of facilities) {
             if (!f) continue;
-            const t = el('div', `col-icon col-fac${f.constructionProgress < 1 ? ' col-fac-building' : ''}`);
+            const t = el('div', `col-icon col-fac${f.constructionProgress < 1 ? ' col-fac-building' : ''}${selectedFacility === f ? ' col-icon-sel' : ''}`);
+            t.addEventListener('click', () => {
+                selectedFacility = selectedFacility === f ? null : f;
+                renderPage(true);
+            });
             t.appendChild(img(facilityImageUrl(f.def.pictureRef), 'col-icon-img'));
             t.appendChild(el('div', 'col-icon-label', f.name));
             let tip = '';
@@ -1272,7 +1339,35 @@ function createColoniesScreen(opts: ColoniesScreenOptions): OpenState {
             },
         });
         page.appendChild(place(buildBtn, 460, 38, 190, 25));
-        page.appendChild(place(glassButton(T('Scrap Facility', 'Scrap Facility'), { disabled: true, title: 'Not available yet' }), 460, 84, 190, 25));
+        // ctlColonyFacilities_SelectedIndexChanged: "Scrap" for the colony owner's facility, "Attack" for a pirate
+        // faction's (disabled unless CheckCanInitiateAttackAgainstPirateFacilities).
+        const fIndex = selectedFacility === null ? -1 : facilities.indexOf(selectedFacility);
+        const fac = fIndex >= 0 ? facilities[fIndex] : null;
+        const ownedByColony = fac !== null && checkFacilityOwnedByColonyOwner(galaxy, h, fIndex);
+        const canAct = fac !== null && h.empire === empire && (ownedByColony || checkCanInitiateAttackAgainstPirateFacilities(galaxy, h, empire, fac));
+        const scrapBtn = glassButton(fac === null ? T('Scrap Facility', 'Scrap Facility') : ownedByColony ? T('Scrap', 'Scrap') : T('Attack', 'Attack'), {
+            disabled: !canAct,
+            onClick: () => {
+                if (fac === null) return;
+                const run = (): void => issuePlayerCommand(galaxy, empire, 'scrapColonyFacility', [h, fIndex, fac.planetaryFacilityDefinitionId], () => {
+                    selectedFacility = null;
+                    refreshAll();
+                });
+                if (!ownedByColony) {
+                    run();
+                    return;
+                }
+                void messageBox({
+                    caption: T('Scrap Facility', 'Scrap Facility'),
+                    text: `Are you sure that you want to scrap the ${fac.name} at your colony ${h.name}?`,
+                    buttons: ['Yes', 'No'],
+                    icon: 'question',
+                }).then((b) => {
+                    if (b === 'Yes') run();
+                });
+            },
+        });
+        page.appendChild(place(scrapBtn, 460, 84, 190, 25));
     }
 
     function refreshAll(): void {
