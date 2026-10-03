@@ -13,12 +13,13 @@
 
 import { fogOf } from './fog';
 import type { MotionInterpolator } from './renderInterp';
-import { Container, Graphics, Mesh, MeshGeometry, Texture } from 'pixi.js';
+import { Container, Graphics, Mesh, MeshGeometry, Rectangle, Sprite, Texture } from 'pixi.js';
 import type { Camera } from './camera';
 import type { Galaxy } from '../sim/galaxy';
 import type { Empire } from '../sim/empire';
 import { HabitatCategoryType } from '../sim/types';
-import { TerritoryGrid, buildTerritoryMeshes, collectTerritorySources, territorySignature, type TerritoryMeshData } from './territoryField';
+import { TerritoryGrid, buildTerritoryMeshes, collectTerritorySources, type TerritoryMeshData } from './territoryField';
+import { galaxyTerritorySignature, publishTerritoryRaster, rasterizeTerritory, type TerritoryRaster } from './territoryRaster';
 import type { Habitat } from '../sim/types';
 import { moonDotPx, planetSpritePx } from './mainView';
 import { DrawKey } from './drawCache';
@@ -101,6 +102,21 @@ export function empireColour(empire: Empire, index: number): number {
  * matrix that scales alpha to 25% (MainView.2.cs 3665). */
 export const TERRITORY_ALPHA = 0.25;
 
+/** Colour of galaxy.empires[owner] for the territory bitmaps (the mini maps use it too). */
+export function territoryColorFn(galaxy: Galaxy): (owner: number) => number {
+    return (owner) => {
+        const empire = galaxy.empires[owner];
+        return empire === undefined ? 0 : empireColour(empire, owner);
+    };
+}
+
+/** The vector meshes give way to the soft bitmap once a bitmap pixel is smaller than this many screen px (smoothstep
+ * from TEXEL_SHARP to TEXEL_SOFT screen px per bitmap pixel): at galaxy zoom the blurred bitmap is about screen
+ * resolution (the original's 2000 px backdrop copy), zoomed in the meshes keep the edges crisp (the original recomputes
+ * at viewport resolution there). */
+const TEXEL_SOFT = 4;
+const TEXEL_SHARP = 12;
+
 /** Main-thread time a territory rebuild may take per frame (ms); a rebuild spans as many frames as it needs. */
 const TERRITORY_BUILD_BUDGET_MS = 4;
 /** Minimum wall time between two territory rebuilds (ms), however often the influence changes. */
@@ -114,9 +130,13 @@ export class EmpireLayer {
     /** Territory fill (territoryField.ts): one mesh per owning empire, regions disjoint, faded as a whole. */
     private territoryRoot = new Container();
     private territoryMeshes: Mesh[] = [];
+    /** The meshes' container (alpha = their share of the mesh/bitmap crossfade) and the soft bitmap sprite. */
+    private meshRoot = new Container();
+    private softSprite: Sprite | null = null;
+    private softCell = 0;
     private territoryGrid: TerritoryGrid | null = null;
     /** In-flight time-sliced rebuild, and the signature it was started for. */
-    private territoryBuild: Generator<void, TerritoryMeshData[], void> | null = null;
+    private territoryBuild: Generator<void, { meshes: TerritoryMeshData[]; raster: TerritoryRaster }, void> | null = null;
     private territoryBuildSig = -1;
     /** Signature of the sources the current meshes show (-1 = never built). */
     private territorySig = -1;
@@ -141,6 +161,7 @@ export class EmpireLayer {
         world.addChild(this.root);
         this.territoryRoot.visible = false;
         this.root.addChild(this.territoryRoot);
+        this.territoryRoot.addChild(this.meshRoot);
         for (const h of galaxy.habitats) {
             if (h.category !== HabitatCategoryType.Planet && h.category !== HabitatCategoryType.Moon) continue;
             if (h.owner === null && h.empire === null) continue;
@@ -178,9 +199,9 @@ export class EmpireLayer {
                 this.territoryGrid = new TerritoryGrid(this.galaxy.sizeX, this.galaxy.sizeY);
             }
             const sources = collectTerritorySources(this.galaxy, fogOf(this.galaxy).player);
-            const sig = territorySignature(sources, this.territoryGrid.cell);
+            const sig = galaxyTerritorySignature(this.galaxy, sources);
             if (sig !== this.territorySig) {
-                this.territoryBuild = buildTerritoryMeshes(sources, this.territoryGrid);
+                this.territoryBuild = this.buildAll(sources, this.territoryGrid);
                 this.territoryBuildSig = sig;
                 this.territoryLastBuildMs = now;
             }
@@ -191,13 +212,48 @@ export class EmpireLayer {
         for (;;) {
             const r = this.territoryBuild.next();
             if (r.done === true) {
-                this.applyTerritoryMeshes(r.value);
+                this.applyTerritoryMeshes(r.value.meshes);
+                this.applySoftBitmap(r.value.raster);
+                publishTerritoryRaster(this.galaxy, this.territoryBuildSig, r.value.raster);
                 this.territoryBuild = null;
                 this.territorySig = this.territoryBuildSig;
                 return;
             }
             if (performance.now() >= deadline) return;
         }
+    }
+
+    /** Meshes, then the soft bitmap from the same influence grid (time-sliced together). */
+    private *buildAll(sources: ReturnType<typeof collectTerritorySources>, grid: TerritoryGrid): Generator<void, { meshes: TerritoryMeshData[]; raster: TerritoryRaster }, void> {
+        const meshes = yield* buildTerritoryMeshes(sources, grid);
+        const raster = yield* rasterizeTerritory(grid, territoryColorFn(this.galaxy));
+        return { meshes, raster };
+    }
+
+    /** Swap in the blurred owner bitmap as a sprite over the galaxy (uploaded once per rebuild). */
+    private applySoftBitmap(raster: TerritoryRaster): void {
+        if (typeof document === 'undefined') return;
+        const canvas = document.createElement('canvas');
+        canvas.width = raster.width;
+        canvas.height = raster.height;
+        const ctx = canvas.getContext('2d');
+        if (ctx === null) return;
+        ctx.putImageData(new ImageData(new Uint8ClampedArray(raster.data), raster.width, raster.height), 0, 0);
+        const base = Texture.from(canvas);
+        // Crop to the part inside the galaxy so the clip at the galaxy edge stays hard.
+        const texture = new Texture({ source: base.source, frame: new Rectangle(0, 0, raster.usedW, raster.usedH) });
+        if (this.softSprite === null) {
+            this.softSprite = new Sprite(texture);
+            this.territoryRoot.addChildAt(this.softSprite, 0);
+        } else {
+            const old = this.softSprite.texture;
+            this.softSprite.texture = texture;
+            old.destroy(true);
+        }
+        this.softSprite.position.set(0, 0);
+        this.softSprite.width = this.galaxy.sizeX;
+        this.softSprite.height = this.galaxy.sizeY;
+        this.softCell = raster.cell;
     }
 
     private applyTerritoryMeshes(data: TerritoryMeshData[]): void {
@@ -213,7 +269,7 @@ export class EmpireLayer {
             mesh.tint = this.territoryColor(d.owner);
             // Regions are disjoint, so the 25% fade is applied once on territoryRoot (no per-empire filter needed).
             mesh.blendMode = 'normal';
-            this.territoryRoot.addChild(mesh);
+            this.meshRoot.addChild(mesh);
             this.territoryMeshes.push(mesh);
         }
     }
@@ -231,7 +287,18 @@ export class EmpireLayer {
         const showTerritory = !atSystemZoom && this.territoryEnabled && fade > 0;
         if (showTerritory) this.updateTerritory();
         this.territoryRoot.visible = showTerritory && this.territoryMeshes.length > 0;
-        if (this.territoryRoot.visible) this.territoryRoot.alpha = TERRITORY_ALPHA * fade * fade * (3 - 2 * fade);
+        if (this.territoryRoot.visible) {
+            this.territoryRoot.alpha = TERRITORY_ALPHA * fade * fade * (3 - 2 * fade);
+            // Crossfade soft bitmap (galaxy zoom) <-> crisp meshes (zoomed in) by the bitmap pixel's screen size.
+            if (this.softSprite !== null) {
+                const t = Math.max(0, Math.min(1, (this.softCell * z - TEXEL_SOFT) / (TEXEL_SHARP - TEXEL_SOFT)));
+                const w = t * t * (3 - 2 * t);
+                this.softSprite.visible = w < 1;
+                this.softSprite.alpha = 1 - w;
+                this.meshRoot.visible = w > 0;
+                this.meshRoot.alpha = w;
+            }
+        }
 
         // Colony rings: system/planet zoom only (hidden at galaxy/sector zoom
         // where the owned-system marker rings take over).
