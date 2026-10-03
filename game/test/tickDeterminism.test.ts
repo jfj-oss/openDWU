@@ -245,6 +245,7 @@ describe('determinism (single seeded galaxy.rnd, fixed-order scheduler)', () => 
         // Moved "09dbdbc868a2ce9a" → "debd45f48e221a8e": Habitat.cs 924-935/986-998 OrbitDistance/OrbitSpeed property setters recompute _AnglePerSecond on every reassignment; Galaxy.5.cs 1689/1730 sets a moon's real OrbitDistance well after construction (ctor gets a placeholder Rnd.Next(5,32)) relying on that recompute -- types.ts previously had these as plain fields, so moons kept the angular speed implied by the tiny placeholder radius applied to their real, much larger orbit (up to ~240x too fast); fixed by making orbitDistance/orbitSpeed real accessor properties (2026-09-28)
         // Moved "debd45f48e221a8e" → "7e33f79b0cd5b5a3": player explorers skip found-but-uninvestigated ruins (explorer stuck on planet) (2026-10-01)
         // Moved "7e33f79b0cd5b5a3" → "0a197d262536cac8": orbits spaced so planets/moons never overlap (user deviation) (2026-10-03)
+        // Moved "0a197d262536cac8" → "78ba8d356a0b099b": parity A1: creature combat, threat warp bonus, captain range, design torpedo order, keep in-use designs (2026-10-03)
         expect(summary.digest).toMatchPin('tickDeterminism.digest600');
         // (counts and Galaxy.Rnd draws pinned with the digest, tasks/M4-plan.md §5.3.4.)
         // Moved #f1aebd5dcd → #d21f9fe281: 17d: human player starts with C# automation defaults (Start.2.cs:2122) (2026-09-25)
@@ -261,6 +262,7 @@ describe('determinism (single seeded galaxy.rnd, fixed-order scheduler)', () => 
         // Moved #f6b377a02f → #fb42ef63a8: Habitat.cs 924-935/986-998 OrbitDistance/OrbitSpeed property setters recompute _AnglePerSecond on every reassignment; Galaxy.5.cs 1689/1730 sets a moon's real OrbitDistance well after construction (ctor gets a placeholder Rnd.Next(5,32)) relying on that recompute -- types.ts previously had these as plain fields, so moons kept the angular speed implied by the tiny placeholder radius applied to their real, much larger orbit (up to ~240x too fast); fixed by making orbitDistance/orbitSpeed real accessor properties (2026-09-28)
         // Moved #fb42ef63a8 → #30732dcefb: player explorers skip found-but-uninvestigated ruins (explorer stuck on planet) (2026-10-01)
         // Moved #30732dcefb → #873f307b0e: orbits spaced so planets/moons never overlap (user deviation) (2026-10-03)
+        // Moved #873f307b0e → #c849a693af: parity A1: creature combat, threat warp bonus, captain range, design torpedo order, keep in-use designs (2026-10-03)
         expect(summary.counts).toMatchPin('tickDeterminism.counts600');
         // Moved 389082 → 384537: 17d: human player starts with C# automation defaults (Start.2.cs:2122) (2026-09-25)
         // Moved 384537 → 571596: fix4sim: BaconMain.cs 605-640/859-874 BaconInitialize applies the stock BaconSettings.txt (useStarGravityWells=false, HyperJumpThreshhold=4000, BaseHyperJumpAccuracy=666, sublightFuelBurnDivisor=20, noFuel* 0.9/0.9/0.5) after createGame; Galaxy.5.cs 1609-1616/1747-1752 populated planets/moons get Cargo/Troop lists (2026-09-25)
@@ -276,6 +278,7 @@ describe('determinism (single seeded galaxy.rnd, fixed-order scheduler)', () => 
         // Moved 594013 → 658628: Habitat.cs 924-935/986-998 OrbitDistance/OrbitSpeed property setters recompute _AnglePerSecond on every reassignment; Galaxy.5.cs 1689/1730 sets a moon's real OrbitDistance well after construction (ctor gets a placeholder Rnd.Next(5,32)) relying on that recompute -- types.ts previously had these as plain fields, so moons kept the angular speed implied by the tiny placeholder radius applied to their real, much larger orbit (up to ~240x too fast); fixed by making orbitDistance/orbitSpeed real accessor properties (2026-09-28)
         // Moved 658628 → 635176: player explorers skip found-but-uninvestigated ruins (explorer stuck on planet) (2026-10-01)
         // Moved 635176 → 566691: orbits spaced so planets/moons never overlap (user deviation) (2026-10-03)
+        // Moved 566691 → 624070: parity A1: creature combat, threat warp bonus, captain range, design torpedo order, keep in-use designs (2026-10-03)
         expect(summary.rndDraws).toMatchPin('tickDeterminism.rndDraws600');
         // The test game cache's 600 s game (one createGame + runGameSeconds(600) call, saved and loaded; the harness
         // smokes of other files use it) is this state. Checked when another file has built it (not built here: that

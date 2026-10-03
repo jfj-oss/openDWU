@@ -192,3 +192,9 @@ Appended by `npm run repin -- --reason "<why>"` (scripts/repin.mjs).
 - `troops.recruitCapitalTroops` (test/troops.test.ts): Moved [7,0,2,6] → [6,7,8,5]: orbits spaced so planets/moons never overlap (user deviation)
 - `troops.recruitMaintenance` (test/troops.test.ts): Moved [7000,0,1700,5400] → [6000,6300,6800,4500]: orbits spaced so planets/moons never overlap (user deviation)
 - `troops.recruitProcessDraws` (test/troops.test.ts): Moved #edcbc03e8b → ["","","",""]: orbits spaced so planets/moons never overlap (user deviation)
+
+## 2026-10-03 — parity A1: creature combat, threat warp bonus, captain range, design torpedo order, keep in-use designs
+
+- `tickDeterminism.digest600` (test/tickDeterminism.test.ts): Moved "0a197d262536cac8" → "78ba8d356a0b099b": parity A1: creature combat, threat warp bonus, captain range, design torpedo order, keep in-use designs
+- `tickDeterminism.counts600` (test/tickDeterminism.test.ts): Moved #873f307b0e → #c849a693af: parity A1: creature combat, threat warp bonus, captain range, design torpedo order, keep in-use designs
+- `tickDeterminism.rndDraws600` (test/tickDeterminism.test.ts): Moved 566691 → 624070: parity A1: creature combat, threat warp bonus, captain range, design torpedo order, keep in-use designs
