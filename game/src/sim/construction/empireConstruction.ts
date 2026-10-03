@@ -90,7 +90,7 @@ import { privateSectorBuildOrRefitInvestInInfrastructure } from './retrofit';
 import { pirateEconomyPerformExpense, calculatePirateCashflow } from '../pirates/pirateAI';
 import { PirateExpenseType } from '../pirates/pirateEconomy';
 import { assignMission, clearPreviousMissionRequirements, queueMission } from '../missions/assign';
-import { BuiltObjectMission, BuiltObjectMissionPriority, BuiltObjectMissionType, builtObjectMission, missionListContainsType, type MissionTarget, type StellarObject } from '../missions/mission';
+import { BuiltObjectMission, COORD_UNSET_DOUBLE, BuiltObjectMissionPriority, BuiltObjectMissionType, builtObjectMission, missionListContainsType, type MissionTarget, type StellarObject } from '../missions/mission';
 import { withinFuelRange } from '../movement';
 import { builtObjectCompleteTeardown } from '../combat/teardown';
 import { identifyPirateSpaceport, inflictDamageFull } from '../combat/damage';
@@ -104,8 +104,8 @@ import { PirateRelationType, obtainPirateRelation } from '../pirateRelations';
 import { SystemVisibilityStatus } from '../visibility';
 import { isObjectVisibleToThisEmpire } from '../independentTraders';
 import { checkColonizationLikeliness } from '../tradeItems';
-import { type ShipGroup, empireShipGroups, shipGroupAssignMission } from '../fleets/shipGroup';
-import { shipGroupQueueMission } from '../fleets/shipGroupTasks';
+import { type ShipGroup, empireShipGroups } from '../fleets/shipGroup';
+import { shipGroupAssignMissionFull, shipGroupQueueMission } from '../fleets/shipGroupTasks';
 import { baconSettings } from '../data/baconSettings';
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -939,9 +939,9 @@ export function assignFleetRetrofit(galaxy: Galaxy, empire: Empire, fleet: ShipG
         if (shipYard === null) shipYard = findNearestShipYard(galaxy, fleet.empire!, fleet.leadShip!, true, false);
         if (shipYard !== null && shipYard instanceof BuiltObject) {
             let design = findNewestCanBuildFullEvaluate(fleet.empire!.designs, fleet.leadShip!.subRole, null);
-            // TODO(port) M4l: ShipGroup.AssignMission(Retrofit, shipYard, null, design, High, manuallyAssigned: true) — the
-            // M4l stub has no design parameter (the C# fleet mission carries `design`).
-            shipGroupAssignMission(galaxy, fleet, BuiltObjectMissionType.Retrofit, shipYard, null, BuiltObjectMissionPriority.High, true);
+            // ShipGroup.cs 2060 AssignMission(Retrofit, shipYard, null, design, High, manuallyAssigned: true) → 2083 → 2097
+            // (cargo null, x/y unset, starDate -1): the fleet mission carries the lead ship's retrofit design.
+            shipGroupAssignMissionFull(galaxy, fleet, BuiltObjectMissionType.Retrofit, shipYard, null, null, design, COORD_UNSET_DOUBLE, COORD_UNSET_DOUBLE, -1, BuiltObjectMissionPriority.High, true);
             for (let i = 0; i < fleet.ships.length; i++) {
                 const builtObject = fleet.ships[i];
                 if (builtObject.builtAt === null && builtObject.retrofitDesign === null) {

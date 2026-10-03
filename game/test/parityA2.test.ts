@@ -25,6 +25,11 @@ import { PlanetaryFacility } from '../src/sim/construction/facilities';
 import { PlanetaryFacilityType, WonderType, facilityType } from '../src/sim/researchSystem';
 import { raceBuildWonderVictoryFacility } from '../src/sim/researchTick';
 import { troopLevelRequired } from '../src/sim/troops';
+import { assignFleetRetrofit } from '../src/sim/construction/empireConstruction';
+import { ShipGroup, empireShipGroups } from '../src/sim/fleets/shipGroup';
+import { shipGroupAddShipToFleet } from '../src/sim/fleets/shipGroupTasks';
+import { findNewestCanBuildFullEvaluate } from '../src/sim/designGeneration';
+import { BuiltObjectMissionType } from '../src/sim/missions/mission';
 
 let gameData: GameData;
 beforeAll(async () => {
@@ -228,5 +233,28 @@ describe('Habitat.cs 318 TroopLevelRequired: Empire.Capitals and PenalColonies',
         const penal = troopLevelRequired(gal, h, gal.difficultyLevel);
         expect(penal).toBeGreaterThanOrEqual(Math.trunc(200 * mult));
         expect(penal).toBeGreaterThanOrEqual(plain);
+    });
+});
+
+describe('Empire.9.cs 625 AssignFleetRetrofit: the fleet mission carries the design', () => {
+    it("ShipGroup.AssignMission(Retrofit, yard, null, design, High, true) stores the lead ship's newest design", () => {
+        const g = newGame();
+        const gal = g.galaxy;
+        // A two-warship fleet of the player (as livelyGalaxy19l.test.ts builds them).
+        const e = g.playerEmpire;
+        const ships = gal.builtObjects.filter((b) => b != null && b.empire === e && b.role === BuiltObjectRole.Military && b.topSpeed > 0 && b.shipGroup === null).slice(0, 2);
+        expect(ships.length).toBe(2);
+        const fleet = new ShipGroup(gal);
+        fleet.empire = e;
+        for (const s of ships) shipGroupAddShipToFleet(gal, fleet, s!);
+        empireShipGroups(e).push(fleet);
+        expect(fleet.leadShip).not.toBeNull();
+        const yard = fleet.empire!.spacePorts[0];
+        expect(assignFleetRetrofit(gal, fleet.empire!, fleet!, yard, false)).toBe(true);
+        expect(fleet.mission).not.toBeNull();
+        expect(fleet.mission!.type).toBe(BuiltObjectMissionType.Retrofit);
+        const expected = findNewestCanBuildFullEvaluate(fleet.empire!.designs, fleet.leadShip!.subRole, null);
+        expect(expected).not.toBeNull();
+        expect(fleet.mission!.design).toBe(expected);
     });
 });
