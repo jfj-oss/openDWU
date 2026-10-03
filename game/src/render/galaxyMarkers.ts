@@ -739,7 +739,7 @@ export class GalaxyMarkerLayer {
     private underFire = new Map<number, number>();
     private lastRefresh = -Infinity;
     private dataVersion = 0;
-    private ringKey = { z: NaN, v: -1, a: NaN, x0: 0, y0: 0, x1: 0, y1: 0 };
+    private ringKey = { z: NaN, v: -1, a: NaN, x0: 0, y0: 0, x1: 0, y1: 0, sig: '' };
     private discKey = { z: NaN, v: -1, x: NaN, y: NaN };
 
     constructor(
@@ -915,6 +915,13 @@ export class GalaxyMarkerLayer {
         const hh = cam.height / (2 * z);
         const inRect = cam.x - hw >= k.x0 && cam.x + hw <= k.x1 && cam.y - hh >= k.y0 && cam.y + hh <= k.y1;
         if (k.z === z && k.v === this.dataVersion && k.a === alpha && inRect) return;
+        if (k.z === z && k.a === alpha && inRect) {
+            // Only the data was refreshed (once a second): rebuilding this Graphics (thousands of rings at galaxy zoom)
+            // costs tens of ms, so redraw only when something drawn in the cull rectangle changed.
+            const sig = this.ringSignature(f, z, k.x0, k.y0, k.x1, k.y1);
+            k.v = this.dataVersion;
+            if (sig === k.sig) return;
+        }
         k.z = z;
         k.v = this.dataVersion;
         k.a = alpha;
@@ -923,6 +930,7 @@ export class GalaxyMarkerLayer {
         k.x1 = cam.x + 2 * hw;
         k.y0 = cam.y - 2 * hh;
         k.y1 = cam.y + 2 * hh;
+        k.sig = this.ringSignature(f, z, k.x0, k.y0, k.x1, k.y1);
         const g = this.rings;
         g.clear();
         const maxSys = this.galaxy.maxSolarSystemSize;
@@ -950,6 +958,32 @@ export class GalaxyMarkerLayer {
                 g.circle(star.xpos, star.ypos, wr).stroke({ width, color: r.pen.color, alpha });
             }
         }
+    }
+
+    /** What updateRings draws inside the cull rectangle (system, pen, integer ring radius / cross half-size), hashed. */
+    private ringSignature(f: number, z: number, x0: number, y0: number, x1: number, y1: number): string {
+        const maxSys = this.galaxy.maxSolarSystemSize;
+        let h1 = 0x811c9dc5 | 0;
+        let h2 = 0x01000193 | 0;
+        let n = 0;
+        const mix = (v: number): void => {
+            h1 = Math.imul(h1 ^ v, 0x01000193);
+            h2 = Math.imul(h2 + v, 0x5bd1e995) ^ (h2 >>> 15);
+        };
+        for (const r of this.ringList) {
+            const star = r.sys.systemStar;
+            const px = r.cross ? gasCloudCrossHalfPx(f, r.tsv, maxSys) : systemRingRadiusPx(f, r.tsv, star.diameter, maxSys, star.type === HabitatType.BlackHole);
+            const wr = px / z;
+            if (star.xpos + wr < x0 || star.xpos - wr > x1 || star.ypos + wr < y0 || star.ypos - wr > y1) continue;
+            n++;
+            mix(star.systemIndex);
+            mix(r.cross ? 1 : 0);
+            mix(Math.round(px * 1024));
+            mix(r.pen.color);
+            mix(Math.round(r.pen.widthPx * 1024));
+            mix(r.pen.dashed ? 1 : 0);
+        }
+        return `${n}:${h1 >>> 0}:${h2 >>> 0}`;
     }
 
     // System-name decorations ---------------------------------------------------------------------------------------
