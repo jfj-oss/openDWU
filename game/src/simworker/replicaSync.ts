@@ -446,13 +446,37 @@ export class ReplicaEncoder {
     }
 
     /**
+     * Compare `o` whole now, outside the cold round-robin, plus (`depth` > 0) the synced objects its fields hold
+     * directly (a ship's mission, its queues). For what a player command touched: its effect then travels in the next
+     * delta instead of waiting for the cold cycle to reach the object (docs/sim-worker.md §4.3, onApplied). Unknown
+     * objects are ignored (they are born when something synced references them). Read-only on the sim, as every
+     * compare.
+     */
+    compareNow(o: object, depth = 1): void {
+        const id = this.ids.get(o);
+        if (id === undefined) return;
+        // A class instance that gained (or lost) an own field since it was shaped — a `declare`d field set lazily,
+        // e.g. Empire.constructionBoard / fleetDesigns on the first job / template — gets its new shape (the
+        // round-robin pass assumes a class keeps its shape; revalidateShapes is the whole-graph version).
+        if (this.kinds[id] === Kind.Class && this.objs[id] !== null && this.shadows[id] !== undefined && this.shapeChanged(id)) this.reshape(id, this.objs[id]!);
+        else this.compare(id);
+        if (depth <= 0) return;
+        const sh = this.shadows[id];
+        if (sh === undefined || this.kinds[id] === Kind.Typed) return;
+        for (let i = 0; i < sh.length; i++) {
+            const v = sh[i];
+            if (v !== null && typeof v === 'object') this.compareNow(v as object, depth - 1);
+        }
+    }
+
+    /**
      * Compare `roots` whole now, and the synced objects they reach, breadth-first, up to `maxDepth` references away
      * and `maxObjects` objects in all (the galaxy / side-table roots are compared but not expanded). Their changes
      * travel in the next delta instead of waiting for the round-robin cold pass: what a player command just changed
      * (its arguments, its result, the issuing empire) or what a screen opening is about to show. Read-only, like every
      * compare. Returns the objects compared.
      */
-    compareNow(roots: Iterable<object>, maxObjects = 3000, maxDepth = 3): number {
+    compareReach(roots: Iterable<object>, maxObjects = 3000, maxDepth = 3): number {
         const seen = new Set<number>();
         let level: number[] = [];
         for (const r of roots) {
@@ -1229,6 +1253,10 @@ export class ReplicaDecoder {
     private readonly scratch: unknown[] = [];
     /** Called with each new object once it is filled (e.g. to wire a new Empire's visibility hooks). */
     onNewObject: ((o: object) => void) | null = null;
+    /** Dev-only (writeDetector.ts, docs/sim-worker.md §9 chunk 0): called with an object's id right before each shell /
+     *  record that creates or changes it, so the detector can check it against the values last applied; `slot` is the
+     *  shape slot of a class / plain object's field set (fieldName), -1 for any other record. Null: off. */
+    watch: ((id: number, slot: number) => void) | null = null;
     private stats: ApplyStats = { applyMs: 0, newObjects: 0, sets: 0, drops: 0, coldParts: 0 };
 
     constructor(private readonly opts: ReplicaDecoderOptions) {}
@@ -1241,6 +1269,16 @@ export class ReplicaDecoder {
     /** The sync id of a replica object (-1 when it is not part of the replica). */
     idOf(o: object): number {
         return this.idByObj.get(o) ?? -1;
+    }
+
+    /** The field name of shape slot `slot` of class / plain object `id` (the write detector's per-field check). */
+    fieldName(id: number, slot: number): string | undefined {
+        return this.shapes[this.shapeOf[id]]?.keys[slot];
+    }
+
+    /** One past the highest sync id seen (ids are dense and never reused; dropped ids hold null). */
+    get idLimit(): number {
+        return this.objs.length;
     }
 
     get size(): number {
@@ -1300,22 +1338,6 @@ export class ReplicaDecoder {
             this.stats.coldParts++;
             if (now() >= deadline) break;
         }
-        if (this.onNewObject !== null) for (const o of fresh) this.onNewObject(o);
-        this.stats.applyMs = now() - t0;
-        return this.stats;
-    }
-
-    /** Whether every cold part up to delta `seq` (inclusive) has been applied. */
-    coldAppliedThrough(seq: number): boolean {
-        return this.coldQueue.length === 0 || this.coldQueue[0].seq > seq;
-    }
-
-    /** Apply the queued cold parts up to delta `seq` now, whatever the budget (a reply that has waited too long). */
-    flushColdThrough(seq: number, now: () => number = () => performance.now()): ApplyStats {
-        const t0 = now();
-        this.stats = { applyMs: 0, newObjects: 0, sets: 0, drops: 0, coldParts: 0 };
-        const fresh: object[] = [];
-        this.pumpColdUntil(seq, fresh, now);
         if (this.onNewObject !== null) for (const o of fresh) this.onNewObject(o);
         this.stats.applyMs = now() - t0;
         return this.stats;
@@ -1393,6 +1415,7 @@ export class ReplicaDecoder {
             this.objs[id] = o;
             this.kinds[id] = kind;
             this.idByObj.set(o, id);
+            if (this.watch !== null) this.watch(id, -1);
             fresh.push(o);
             this.stats.newObjects++;
             if (++k % (this.opts.sliceRecords ?? 32) === 0 && deadline !== Infinity && now() >= deadline) break;
@@ -1444,12 +1467,14 @@ export class ReplicaDecoder {
             throw new Error(`replica sync: bad value tag ${tag}`);
         };
         const scratch = this.scratch;
+        const watch = this.watch;
         while (i < b.length) {
             const op = b[i];
             const id = b[i + 1];
             i += 2;
             const o = objs[id];
             if (o == null) throw new Error(`replica sync: op ${op} on unknown id ${id}`);
+            if (watch !== null) watch(id, op === Op.Set && kinds[id] !== Kind.Array ? b[i] : -1);
             switch (op) {
                 case Op.Set: {
                     const slot = b[i++];

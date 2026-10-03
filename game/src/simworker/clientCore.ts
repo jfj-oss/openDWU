@@ -12,8 +12,15 @@ import { FRAME_REAL_MS } from '../sim/tick/scheduler';
 import { createRenderTime, updateRenderTime, type RenderTime } from '../render/renderInterp';
 import { GalaxyReplica } from './replicaGalaxy';
 import { ReplicaTradeFlows } from './tradeFlowSync';
-import { decodeRemoteArg, encodeRemoteArg, type RemoteNaming, type RemoteResolving } from './remoteArgs';
-import type { ClockMessage, CommandMessage, RefreshRequest, SnapshotMessage, StepMessage, ToWorker, WorkerEvent } from './protocol';
+import { RemoteArgError, decodeRemoteArg, encodeRemoteArg, type RemoteArg, type RemoteNaming, type RemoteResolving } from './remoteArgs';
+import { setRemoteQuerySink, type SimQueryName } from './simQuery';
+import { BuiltObject } from '../sim/builtObject';
+import { Creature } from '../sim/creature';
+import { Fighter } from '../sim/combat/fighters';
+import { ShipGroup } from '../sim/fleets/shipGroup';
+import { Empire as EmpireClass } from '../sim/empire';
+import { Habitat } from '../sim/types';
+import type { ClockMessage, CommandMessage, QueryMessage, RefreshRequest, SnapshotMessage, StepMessage, ToWorker, WorkerEvent } from './protocol';
 import { setRemoteRefreshSink } from './refresh';
 import { markReadOnlyGalaxy } from '../sim/readOnlyQuery';
 import type { ApplyStats } from './replicaSync';
@@ -78,6 +85,13 @@ function createSyncStats(): SyncStats {
     };
 }
 
+/**
+ * Objects that only ever exist in the game graph. One the replica no longer knows (destroyed and dropped by the sync's
+ * mark, while the HUD or a list still held it) cannot be named to the worker, and must not travel by value (the worker
+ * would act on a copy): the command or query is dropped instead.
+ */
+const IDENTITY_PROTOS: ReadonlySet<object> = new Set<object>([BuiltObject.prototype, Habitat.prototype, ShipGroup.prototype, Creature.prototype, Fighter.prototype, EmpireClass.prototype]);
+
 /** Clock controls the main thread hands the worker (GalaxyTime's pause / speed). */
 export interface ClockControls {
     speed: number;
@@ -89,11 +103,6 @@ export interface ClientCoreOptions {
     now?: () => number;
     /** Wall ms per render frame for applying queued cold parts (default 0.5; grows with the backlog). */
     coldBudgetMs?: number;
-    /**
-     * Render frames a reply waits for its delta's cold part before that part is applied at once (default 30). A
-     * reply runs once its whole delta is applied, so a command's follow-up sees the command's effects.
-     */
-    replyWaitFrames?: number;
     onEvent?: (e: WorkerEvent, resolve: (a: unknown) => unknown) => void;
 }
 
@@ -103,8 +112,6 @@ export class SimClientCore {
     readonly renderTime: RenderTime = createRenderTime();
     readonly game: Game;
     private readonly pending = new Map<number, (r: unknown) => void>();
-    /** Replies that arrived, waiting for their delta's cold part (in arrival order: seqs never decrease). */
-    private readonly replies: { seq: number; frames: number; run: () => void }[] = [];
     private nextCommandId = 1;
     private clockSeq = 0;
     private sent: ClockControls;
@@ -144,9 +151,20 @@ export class SimClientCore {
                 byObject.set(o, { kind: k.slice(0, at), key: /^-?\d+$/.test(key) ? Number(key) : key });
             }
         }
-        this.naming = { syncId: (o) => this.replica.decoder.idOf(o), external: (o) => byObject.get(o) };
+        this.naming = {
+            syncId: (o) => {
+                const id = this.replica.decoder.idOf(o);
+                if (id < 0 && IDENTITY_PROTOS.has(Object.getPrototypeOf(o) as object)) {
+                    const name = (o as { name?: unknown }).name;
+                    throw new RemoteArgError(`${(o as object).constructor.name}${typeof name === 'string' ? ` ${name}` : ''} is no longer in the game`);
+                }
+                return id;
+            },
+            external: (o) => byObject.get(o),
+        };
         this.resolving = { object: (id) => this.replica.decoder.object(id), external: (kind, key) => this.replica.staticByRef.get(`${kind}:${key}`) };
         setRemoteCommandSink(galaxy, (empire, op, args, onApplied) => this.sendCommand(empire, op, args, onApplied));
+        setRemoteQuerySink(galaxy, (empire, op, args, done) => this.sendQuery(empire, op, args, done));
         setRemoteRefreshSink(galaxy, (objects, onFresh) => this.requestRefresh(objects, onFresh));
         // The sim's lazy "obtain" lookups never write the replica, whoever queries it (sim/readOnlyQuery.ts).
         markReadOnlyGalaxy(galaxy);
@@ -175,11 +193,25 @@ export class SimClientCore {
         return decodeRemoteArg(a as never, this.resolving);
     }
 
+    /** The arguments for the worker, or null (with a warning) when one cannot be named any more. */
+    private encodeArgs(what: string, args: unknown[]): RemoteArg[] | null {
+        try {
+            return args.map((a) => encodeRemoteArg(a, this.naming));
+        } catch (err) {
+            if (!(err instanceof RemoteArgError)) throw err;
+            // As a reply the worker could not give: no callback (docs/sim-worker.md §4.3).
+            console.warn(`sim worker: ${what} dropped: ${err.message}`);
+            return null;
+        }
+    }
+
     private sendCommand(empire: Empire, op: string, args: unknown[], onApplied?: (r: unknown) => void): void {
-        const id = onApplied === undefined ? 0 : this.nextCommandId++;
         const empireId = this.replica.decoder.idOf(empire);
         if (empireId < 0) throw new Error(`sim worker: command ${op} from an empire that is not in the replica`);
-        const msg: CommandMessage = { type: 'command', id, empire: empireId, op, args: args.map((a) => encodeRemoteArg(a, this.naming)) };
+        const encoded = this.encodeArgs(`command ${op}`, args);
+        if (encoded === null) return;
+        const id = onApplied === undefined ? 0 : this.nextCommandId++;
+        const msg: CommandMessage = { type: 'command', id, empire: empireId, op, args: encoded };
         if (onApplied !== undefined) this.pending.set(id, onApplied);
         this.opts.post(msg);
     }
@@ -198,6 +230,18 @@ export class SimClientCore {
         if (onFresh !== undefined) this.pending.set(id, () => onFresh());
         const m: RefreshRequest = { type: 'refresh', id, objects: ids };
         this.opts.post(m);
+    }
+
+    /** A sim query (simQuery.ts) for the worker; `done` runs when its reply has been applied (in frame()). */
+    private sendQuery(empire: Empire, op: SimQueryName, args: unknown[], done: (r: unknown) => void): void {
+        const empireId = this.replica.decoder.idOf(empire);
+        if (empireId < 0) throw new Error(`sim worker: query ${op} from an empire that is not in the replica`);
+        const encoded = this.encodeArgs(`query ${op}`, args);
+        if (encoded === null) return;
+        const id = this.nextCommandId++;
+        const msg: QueryMessage = { type: 'query', id, empire: empireId, op, args: encoded };
+        this.pending.set(id, done);
+        this.opts.post(msg);
     }
 
     /** Hand the worker the HUD clock's pause / speed when they changed. */
@@ -225,7 +269,10 @@ export class SimClientCore {
         let hotMs = 0;
         for (let k = 0; k < this.inbox.length; k++) {
             const m = this.inbox[k];
-            const st: ApplyStats = this.replica.apply(m.delta);
+            // Command replies: their onApplied reads the replica, so the cold parts through this delta (which carry
+            // what the commands changed, simHost.ts touched) are applied first.
+            const fresh = m.results.some((r) => r.query !== true);
+            const st: ApplyStats = fresh ? this.replica.applyThrough(m.delta) : this.replica.apply(m.delta);
             hotMs += st.applyMs;
             steps += m.steps;
             this.stats.deltas++;
@@ -250,16 +297,13 @@ export class SimClientCore {
                 this.pending.delete(r.id);
                 if (r.error !== undefined) console.warn(`sim worker: command reply ${r.id}: ${r.error}`);
                 else if (cb !== undefined) {
-                    // Resolved now (the objects it names are in this delta's hot part); run once the delta's cold
-                    // part is applied too, so the callback sees what the command changed (compareNow in the worker).
-                    let value: unknown;
                     try {
-                        value = this.resolve(r.result);
+                        cb(this.resolve(r.result));
                     } catch (err) {
-                        console.warn(`sim worker: command reply ${r.id}:`, err);
-                        continue;
+                        queueMicrotask(() => {
+                            throw err;
+                        });
                     }
-                    this.replies.push({ seq: m.delta.seq, frames: 0, run: () => cb(value) });
                 }
             }
             for (const e of m.events) this.opts.onEvent?.(e, (a) => this.resolve(a));
@@ -267,7 +311,6 @@ export class SimClientCore {
         const last = this.inbox.length > 0 ? this.inbox[this.inbox.length - 1] : null;
         this.inbox.length = 0;
         const cold = this.replica.pumpCold(this.coldBudgetMs);
-        if (this.replies.length > 0) this.runReplies();
         const t2 = this.now();
         // Render alpha: the worker's backlog after its last tick plus the real time since we applied it.
         const backlog = this.paused ? 0 : Math.min(FRAME_REAL_MS, this.lastBacklogMs + (t0 - this.lastStepAt));
@@ -290,38 +333,14 @@ export class SimClientCore {
         return steps;
     }
 
-    /** Run the replies whose delta is fully applied (forcing the cold parts of one that has waited too long). */
-    private runReplies(): void {
-        const dec = this.replica.decoder;
-        const wait = this.opts.replyWaitFrames ?? 30;
-        for (const r of this.replies) r.frames++;
-        let k = 0;
-        for (; k < this.replies.length; k++) {
-            const r = this.replies[k];
-            if (!dec.coldAppliedThrough(r.seq)) {
-                // In order: a later reply never runs before an earlier one.
-                if (r.frames < wait) break;
-                this.replica.flushColdThrough(r.seq);
-            }
-            try {
-                r.run();
-            } catch (err) {
-                queueMicrotask(() => {
-                    throw err;
-                });
-            }
-        }
-        this.replies.splice(0, k);
-    }
-
     dispose(): void {
         if (this.disposed) return;
         this.disposed = true;
         setRemoteCommandSink(this.galaxy, null);
+        setRemoteQuerySink(this.galaxy, null);
         setRemoteRefreshSink(this.galaxy, null);
         markReadOnlyGalaxy(this.galaxy, false);
         this.tradeFlows.dispose();
         this.pending.clear();
-        this.replies.length = 0;
     }
 }

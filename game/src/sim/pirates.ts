@@ -877,12 +877,18 @@ export interface PirateSettings {
     pirateProximity: number;
 }
 
-// Galaxy.9.cs GenerateNewPirateEmpires (game-start: DestroyedPiratesDoNotRespawn is
-// irrelevant because CurrentStarDate - StartStarDate <= 300000).
+// Galaxy.9.cs GenerateNewPirateEmpires (run at game start and from the galaxy tick's long block).
 export function generateNewPirateEmpires(galaxy: Galaxy, ctx: PirateGenerationContext, settings: PirateSettings): void {
     const stockCount = Math.trunc(2.0 * settings.piratePrevalence * settings.maximumEmpireAmount);
     // Scenario hook (hooks.ts pirateFactionCount): pure, no-op without a scenario — 19h rimPirateFactionCap.
-    const num = scenarioQuery(galaxy, 'pirateFactionCount', stockCount, {});
+    let num = scenarioQuery(galaxy, 'pirateFactionCount', stockCount, {});
+    // Galaxy.9.cs 23-30: with DestroyedPiratesDoNotRespawn, once more than 300000 ms of the game have passed
+    // (CurrentStarDate - _StartStarDate, which is galaxy.nowMs: simTime.ts galaxyStarDate) the target is the current
+    // faction count, so destroyed factions are not replaced.
+    if (galaxy.destroyedPiratesDoNotRespawn) {
+        const num2 = galaxy.nowMs;
+        if (num2 > 300000) num = galaxy.pirateEmpires.length;
+    }
     if (galaxy.pirateEmpires.length >= num) return;
     let num3 = num - galaxy.pirateEmpires.length;
     let num4 = galaxy.maxSolarSystemSize * 2.1;
