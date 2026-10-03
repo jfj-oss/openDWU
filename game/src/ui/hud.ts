@@ -1500,6 +1500,15 @@ function buildSelectionPanel(wiring: HudWiring): HTMLElement {
             : 'Lock the view on the selection (L)';
     };
     panel.appendChild(lockBtn);
+    // Double-clicking the panel's title (the selection name) turns the follow camera on for a selected ship / fleet.
+    content.addEventListener('dblclick', (e) => {
+        if (!(e.target instanceof Element) || e.target.closest('.sel-title') === null) return;
+        const t = followTarget();
+        const state = wiring.followState;
+        if (t === null || state === undefined || isFollowingTarget(state, t)) return;
+        toggleFollow(state, t);
+        syncLock();
+    });
     panel.appendChild(glassButton('sel-nearest', 343, 36, 56, 28, 'nearestMilitary.png', 'Select the nearest military ship (Z)', 'right', () => runShipCommand('selectNearestMilitaryShip')));
     SELECTION_CYCLE_BUTTONS.forEach((c, i) => {
         const y = 66 + 30 * i;
