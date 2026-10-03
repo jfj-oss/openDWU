@@ -121,3 +121,50 @@ describe('fleet panel helpers', () => {
         expect(fleetPanelState(mk({}), 50).enabled.loadTroops).toBe(false);
     });
 });
+
+describe('Fleets window port (Main.Part9.cs method_268)', () => {
+    it('grid columns are the ShipGroupListView ones at the method_268 widths (950 px)', async () => {
+        const { FLEET_GRID_COLUMNS } = await import('../src/ui/screens/fleetsList');
+        expect(FLEET_GRID_COLUMNS.map((c) => c.header)).toEqual(['', 'Name', 'Ships', 'Power', 'Troops', 'Home colony', 'Mission', 'Current system']);
+        expect(FLEET_GRID_COLUMNS.reduce((s, c) => s + c.width, 0)).toBe(950);
+    });
+    it('orders row buttons fill 950 px with 10 px gaps', async () => {
+        const { rowButtonLayout } = await import('../src/ui/screens/fleetsList');
+        const l = rowButtonLayout(7);
+        expect(l[0].x).toBe(10);
+        const last = l[6];
+        expect(last.x + last.w).toBe(960);
+        for (let i = 1; i < 7; i++) expect(l[i].x - (l[i - 1].x + l[i - 1].w)).toBe(10);
+    });
+    it('range icons follow the range ladder', async () => {
+        const { fleetRangeIcon } = await import('../src/ui/screens/fleetsList');
+        expect([2250000, 2304000000, 250000000000, 1e12, 3.4e38].map(fleetRangeIcon)).toEqual(
+            ['fleetRangeTarget.png', 'fleetRangeSystem.png', 'fleetRangeArea.png', 'fleetRangeSector.png', 'fleetRangeAny.png']);
+    });
+    it('posture circle (GalaxyMap.cs method_5)', async () => {
+        const { fleetPostureCircle } = await import('../src/ui/screens/fleetsList');
+        expect(fleetPostureCircle(sg)).toBeNull(); // attack, no attack point
+        const p = { name: 'P', xpos: 10, ypos: 20 };
+        const atk = fleetPostureCircle(mk({ attackPoint: p, postureRangeSquared: 2304000000, gatherPoint: { name: 'T', xpos: 1, ypos: 2 } }))!;
+        expect(atk).toMatchObject({ x: 10, y: 20, attack: true, from: { x: 1, y: 2 } });
+        expect(atk.r).toBeCloseTo(48000);
+        const def = fleetPostureCircle(mk({ posture: FleetPosture.Defend, gatherPoint: { name: 'T', xpos: 1, ypos: 2 }, postureRangeSquared: 2250000 }))!;
+        expect(def).toMatchObject({ attack: false, r: 0, from: null });
+    });
+    it('ungarrisoned troop report (method_269)', async () => {
+        const { ungarrisonedTroopReport } = await import('../src/ui/screens/fleetsList');
+        const list: unknown[] = [];
+        const colony = { troops: { contains: (t: unknown) => list.includes(t) } };
+        const t1 = { type: 0, garrisoned: false, atColony: true, colony };
+        const t2 = { type: 0, garrisoned: true, atColony: true, colony };
+        list.push(t1, t2);
+        expect(ungarrisonedTroopReport(list as never, null)).toBe('');
+        expect(ungarrisonedTroopReport(list as never, sg)).toMatch(/^Ungarrisoned Troops At Colonies\n1 troops/);
+    });
+    it('troop loadout labels without a fleet', async () => {
+        const { troopLoadoutLabels } = await import('../src/ui/screens/fleetsList');
+        const l = troopLoadoutLabels(null);
+        expect(l.infantry).toBe('% Infantry  (= 0 units)');
+        expect(l.description).toBe('Total Fleet Troop Capacity: 0');
+    });
+});

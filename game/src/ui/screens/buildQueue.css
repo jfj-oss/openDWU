@@ -1,0 +1,32 @@
+/* Build Queue window (buildQueue.ts) on the original-style window (originalWindow.css). Sizes are the original's
+   pixels; colours reuse the shared ListViewBase / label colours. */
+
+.ow-screen-buildQueue .bq-explanation {
+    line-height: 1.2;
+}
+
+/* Text over the amount bar in the Progress / Built cells. */
+.ow-screen-buildQueue .bq-cell-text {
+    position: relative;
+}
+
+.ow-screen-buildQueue .bq-status {
+    white-space: nowrap;
+}
+
+/* The "Build Queue" launcher in the Build Order window's header, left of the close button (30 × 30 at W - 41, 9). */
+.bq-launcher.ow-glass {
+    position: absolute;
+    right: 49px;
+    top: 10px;
+    width: 130px;
+    height: 30px;
+}
+/* The pre-port Build Order window's title bar (plain flow layout). */
+.build-order-titlebar .bq-launcher.ow-glass {
+    position: relative;
+    right: auto;
+    top: auto;
+    margin-left: auto;
+    margin-right: 8px;
+}

@@ -1,121 +1,108 @@
-/* Empire Summary panel (task 12j). Styling follows the tutorial window / HUD
-   dark-panel tokens. */
+/* Empire Summary screen (empireSummary.ts) on the shared original-style window (../originalWindow.css). Positions are
+   the original's pixels; these rules only cover what the shared widgets do not. */
 
-.empire-summary-wrap {
-    position: fixed;
-    inset: 0;
-    z-index: 1500; /* above the HUD, like the in-game tutorial window */
-    pointer-events: none;
-    font-family: 'Forgotten Futurist', sans-serif;
-    color: #e6e6e6;
-}
-
-.empire-summary-window {
+.ow-screen-summary .es-fill,
+.ow-screen-summary .es-pen {
     position: absolute;
-    top: 64px;
-    left: 16px;
-    width: 320px;
-    max-width: calc(100vw - 16px);
-    max-height: calc(100vh - 96px);
-    pointer-events: auto;
-    background: rgba(14, 16, 20, 0.94);
-    backdrop-filter: blur(6px);
-    -webkit-backdrop-filter: blur(6px);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 6px;
-    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6);
+    pointer-events: none;
+}
+/* EmpireSummaryEconomy: Pen((170, 170, 170), 2) around the cash and cashflow values. */
+.ow-screen-summary .es-pen {
+    border: 2px solid rgb(170, 170, 170);
+}
+
+/* The summary controls draw with GenericTypographic: lines sit tight (15 px rows at 16.67 px). */
+.ow-screen-summary .es-body .ow-text {
+    line-height: 1;
+}
+
+.ow-screen-summary .es-colony {
+    overflow: visible;
+}
+
+/* Value + "(Xth of Y)" ranking: the ranking 10 px after the value, two pixels lower, in the normal font. */
+.ow-screen-summary .es-value-line {
+    position: absolute;
     display: flex;
-    flex-direction: column;
-    overflow: hidden;
+    align-items: flex-start;
+    white-space: nowrap;
+    pointer-events: none;
+}
+.ow-screen-summary .es-value-line .ow-text {
+    position: relative;
+}
+.ow-screen-summary .es-rank {
+    margin-left: 10px;
+    top: 2px;
+}
+.ow-screen-summary .es-pair-value {
+    margin-left: 4px;
 }
 
-.empire-summary-titlebar {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 8px 12px;
-    background: rgba(10, 11, 15, 0.9);
-    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+/* txtEmpireSummaryName: font_7 (16.67 px bold). */
+.ow-screen-summary .es-name {
+    font-size: 16.67px;
+    font-weight: bold;
+}
+.ow-screen-summary .es-gov-combo {
+    font-size: 15.33px;
 }
 
-.empire-summary-heading {
-    font-size: 13px;
-    color: #e8d24a;
-}
-
-.empire-summary-close {
-    background: transparent;
-    border: none;
-    color: #ccc;
-    font-size: 15px;
-    cursor: pointer;
-    padding: 2px 6px;
-}
-.empire-summary-close:hover {
-    color: #fff;
-}
-
-.empire-summary-body {
-    padding: 8px;
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
+/* The Bonuses panel's scrolling container (EmpireSummaryBonusesTitle._Container, AutoScroll). */
+.ow-screen-summary .es-bonus-scroll {
+    position: absolute;
+    overflow-x: hidden;
     overflow-y: auto;
 }
-
-/* Two-column grid: dim label on the left, right-aligned value on the right. */
-.empire-summary-row {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-    align-items: center;
-    gap: 8px;
-    padding: 5px 8px;
-    background: rgba(255, 255, 255, 0.04);
-    border: 1px solid rgba(255, 255, 255, 0.07);
-    border-radius: 4px;
+.ow-screen-summary .es-bonus-list {
+    width: 310px;
+}
+/* DrawBonuses: a 15 × 15 picture at x 0, the text at x 20 wrapped at 290, 5 px between lines. */
+.ow-screen-summary .es-bonus-line {
+    position: relative;
+    min-height: 15px;
+    padding-left: 20px;
+    margin-bottom: 5px;
+}
+.ow-screen-summary .es-bonus-gap {
+    margin-top: 5px;
+}
+.ow-screen-summary .es-bonus-img {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 15px;
+    height: 15px;
+    object-fit: contain;
+}
+.ow-screen-summary .es-bonus-text,
+.ow-screen-summary .es-bonus-heading {
+    position: relative;
+}
+.ow-screen-summary .es-bonus-heading {
+    margin: 10px 0 5px;
 }
 
-.empire-summary-label {
-    font-size: 12px;
-    color: #888;
+/* The pirate faction branch of EmpireSummaryColony: a flowing list, 17 px lines. */
+.ow-screen-summary .es-pirate-flow .ow-text {
+    position: relative;
+    line-height: 17px;
+}
+.ow-screen-summary .es-flow-indent {
+    margin-left: 20px;
+}
+.ow-screen-summary .es-flow-gap {
+    margin-bottom: 17px;
+}
+.ow-screen-summary .es-flow-tight {
+    line-height: 14px;
+}
+
+.ow-screen-summary .es-firepower {
+    position: absolute;
+    pointer-events: auto;
+}
+.ow-screen-summary .es-tradeflows {
+    position: absolute;
     white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-
-.empire-summary-value {
-    font-size: 12px;
-    color: #fff;
-    text-align: right;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-/* [freightOverlay] begin — task 19e-9 */
-.empire-summary-link {
-    margin-top: 6px;
-    background: transparent;
-    border: none;
-    color: #7fb2ff;
-    font: inherit;
-    font-size: 12px;
-    text-align: left;
-    cursor: pointer;
-    padding: 2px 8px;
-}
-.empire-summary-link:hover {
-    color: #fff;
-}
-/* [freightOverlay] end */
-
-.empire-summary-econ-heading {
-    margin-top: 10px;
-    padding-bottom: 2px;
-    font-size: 12px;
-    color: #e8d24a;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-}
-
-.empire-summary-negative {
-    color: #ff6a5a;
 }
