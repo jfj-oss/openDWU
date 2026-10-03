@@ -6,7 +6,7 @@
 // constructor, empire.ts).
 //
 // The layer lives in world space (inside MainView.world) so colony rings,
-// markers and territory discs scale with the camera like everything else;
+// markers and the territory fill (territoryField.ts, docs/territory.md) scale with the camera like everything else;
 // stroke widths are divided by the zoom to stay a constant number of screen
 // pixels. Zoom gating mirrors the original's factor threshold: system/planet
 // zoom is factor < 70 (factor = 1/z), the same test MainView.pick uses.
@@ -14,12 +14,13 @@
 import { circleAtScreenRes } from './screenCircle';
 import { fogOf } from './fog';
 import type { MotionInterpolator } from './renderInterp';
-import { AlphaFilter, Container, Graphics } from 'pixi.js';
+import { Container, Graphics, Mesh, MeshGeometry, Rectangle, Sprite, Texture } from 'pixi.js';
 import type { Camera } from './camera';
 import type { Galaxy } from '../sim/galaxy';
 import type { Empire } from '../sim/empire';
 import { HabitatCategoryType } from '../sim/types';
-import { SystemVisibilityStatus } from '../sim/visibility';
+import { TerritoryGrid, buildTerritoryMeshes, collectTerritorySources, type TerritoryMeshData } from './territoryField';
+import { galaxyTerritorySignature, publishTerritoryRaster, rasterizeTerritory, type TerritoryRaster } from './territoryRaster';
 import type { Habitat } from '../sim/types';
 import { moonDotPx, planetSpritePx } from './mainView';
 import { DrawKey } from './drawCache';
@@ -34,11 +35,6 @@ export const INDEPENDENT_RING_COLOR = 0x606060;
  * f = zoom factor 1/z), so at 100% zoom the ring sits 28 px outside the body. */
 export function colonyRingRadius(drawnPx: number, f = 100): number {
     return drawnPx / 2 + Math.max(6, Math.trunc(28 / f));
-}
-
-/** Territory disc radius in world units: ~1.2 sectors × 0.25 (task M2e). */
-export function territoryRadius(sectorSize: number): number {
-    return sectorSize * 1.2 * 0.25;
 }
 
 /** Convert a colour given as a 0xRRGGBB number or a '#rrggbb' / 'rgb(r,g,b)'
@@ -103,141 +99,70 @@ export function empireColour(empire: Empire, index: number): number {
     return EMPIRE_FALLBACK_COLORS[i];
 }
 
-/** One Graphics per non-independent empire: all of that empire's territory
- * discs go into it (normal blending, so overlapping discs merge visually). */
-/** Opacity of an empire's territory wash (one layer, however many discs overlap). */
-export const TERRITORY_ALPHA = 0.18;
+/** Opacity of the territory fill: MainView.2.cs 241 / 365 draw the territory bitmap through method_236(0.25), a colour
+ * matrix that scales alpha to 25% (MainView.2.cs 3665). */
+export const TERRITORY_ALPHA = 0.25;
 
-class EmpireTerritory {
-    graphics: Graphics;
-    empire: Empire;
-    /** Render: perf pass — the discs are drawn once (all owned systems) and then only shown / hidden: their
-     * geometry is zoom-independent world space and the owned-system list is collected once. */
-    drawn = false;
-    hasDiscs = false;
-    /** Signature of the explored owned systems the discs were last built for (see knownTerritorySystems). */
-    sig = '';
-    private alphaFilter: AlphaFilter | null = null;
-    get filter(): AlphaFilter {
-        if (this.alphaFilter === null) {
-            this.alphaFilter = new AlphaFilter({ alpha: TERRITORY_ALPHA });
-            this.graphics.filters = [this.alphaFilter];
-        }
-        return this.alphaFilter;
-    }
-    constructor(empire: Empire, layer: Container) {
-        this.empire = empire;
-        this.graphics = new Graphics();
-        // Normal (non-additive) blending so overlapping discs do not bloom.
-        this.graphics.blendMode = 'normal';
-        // The discs are drawn opaque and the whole empire's union is faded once by this filter, so overlapping discs
-        // of one empire blend into one even wash instead of stacking darker where they overlap.
-        // (Created lazily on first draw: building a filter compiles a GL program, which needs a browser.)
-        layer.addChild(this.graphics);
-    }
+/** Colour of galaxy.empires[owner] for the territory bitmaps (the mini maps use it too). */
+export function territoryColorFn(galaxy: Galaxy): (owner: number) => number {
+    return (owner) => {
+        const empire = galaxy.empires[owner];
+        return empire === undefined ? 0 : empireColour(empire, owner);
+    };
 }
 
-export interface EmpireSystems {
-    /** The owning empire (always a member of galaxy.empires). */
-    empire: Empire;
-    /** Indices into galaxy.systems for every system with an owned colony. */
-    systems: number[];
-}
+/** The vector meshes give way to the soft bitmap once a bitmap pixel is smaller than this many screen px (smoothstep
+ * from TEXEL_SHARP to TEXEL_SOFT screen px per bitmap pixel): at galaxy zoom the blurred bitmap is about screen
+ * resolution (the original's 2000 px backdrop copy), zoomed in the meshes keep the edges crisp (the original recomputes
+ * at viewport resolution there). */
+const TEXEL_SOFT = 4;
+const TEXEL_SHARP = 12;
 
-/** Task M2e3: pure collector — for each non-independent empire in
- * galaxy.empires, the set of systems containing at least one owned
- * planet/moon (`habitat.owner === empire`, task M2e3: ownership is the
- * source of truth, not the empire.colonies bookkeeping list). The independent
- * empire is excluded: its populated worlds are drawn as grey rings by the
- * layer (INDEPENDENT_RING_COLOR), never as territory. Deterministic given
- * the galaxy state; no sim state is mutated. */
-export function collectEmpireSystems(galaxy: Galaxy): EmpireSystems[] {
-    const byEmpire = new Map<Empire, Set<number>>();
-    for (const h of galaxy.habitats) {
-        if (h.category !== HabitatCategoryType.Planet && h.category !== HabitatCategoryType.Moon) continue;
-        const owner = h.owner ?? h.empire;
-        if (owner === null || owner === undefined) continue;
-        if (galaxy.independentEmpire !== null && owner === galaxy.independentEmpire) continue;
-        if (!galaxy.empires.includes(owner)) continue;
-        let set = byEmpire.get(owner);
-        if (set === undefined) {
-            set = new Set<number>();
-            byEmpire.set(owner, set);
-        }
-        set.add(h.systemIndex);
-    }
-    const out: EmpireSystems[] = [];
-    for (const empire of galaxy.empires) {
-        if (empire === galaxy.independentEmpire) continue;
-        const set = byEmpire.get(empire);
-        if (set === undefined) continue;
-        out.push({ empire, systems: [...set].sort((a, b) => a - b) });
-    }
-    return out;
-}
-
-/**
- * Which of an empire's owned systems get a territory disc for the viewing empire. Port of EmpireTerritory.cs
- * CalculateEmpireTerritoryGrid (417 / 428 / 437: `godMode || viewingEmpire == null ||
- * viewingEmpire.CheckSystemExplored(colony.SystemIndex)`) and CalculateEmpireSystemTerritory (341): territory is
- * drawn only for colonies in systems the viewer has explored, so empires whose colonies the player has never seen
- * (unmet empires) leave no shading. `viewer === null` (god mode / reveal) shows everything.
- */
-export function knownTerritorySystems(systems: readonly number[], viewer: Empire | null): number[] {
-    if (viewer === null) return [...systems];
-    return systems.filter((i) => viewer.visibility.checkSystemVisibilityStatus(i) >= SystemVisibilityStatus.Explored);
-}
+/** Main-thread time a territory rebuild may take per frame (ms); a rebuild spans as many frames as it needs. */
+const TERRITORY_BUILD_BUDGET_MS = 4;
+/** Minimum wall time between two territory rebuilds (ms), however often the influence changes. */
+const TERRITORY_REBUILD_INTERVAL_MS = 1500;
 
 export class EmpireLayer {
-    /** World-space layer: territory discs, then colony/marker rings above. */
+    /** World-space layer: territory fill, then colony rings above. */
     root = new Container();
     /** Render interpolation (renderInterp.ts; set by MainView): colony rings follow the drawn planet / moon. */
     motion: MotionInterpolator | null = null;
-    /** Non-independent empires in galaxy.empires order (index → palette). */
-    private empires: Empire[] = [];
-    /** Display colour per empire index (own main colour or palette fallback). */
-    private colors: number[] = [];
-    /** Owned-system indices per empire (task M2e3: from habitat ownership,
-     * collected once — the layer is built after createGame, so colonies exist). */
-    private empireSystems: EmpireSystems[] = [];
-    private territories: Map<Empire, EmpireTerritory> = new Map();
+    /** Territory fill (territoryField.ts): one mesh per owning empire, regions disjoint, faded as a whole. */
+    private territoryRoot = new Container();
+    private territoryMeshes: Mesh[] = [];
+    /** The meshes' container (alpha = their share of the mesh/bitmap crossfade) and the soft bitmap sprite. */
+    private meshRoot = new Container();
+    private softSprite: Sprite | null = null;
+    private softCell = 0;
+    private territoryGrid: TerritoryGrid | null = null;
+    /** In-flight time-sliced rebuild, and the signature it was started for. */
+    private territoryBuild: Generator<void, { meshes: TerritoryMeshData[]; raster: TerritoryRaster }, void> | null = null;
+    private territoryBuildSig = -1;
+    /** Signature of the sources the current meshes show (-1 = never built). */
+    private territorySig = -1;
+    private territoryLastBuildMs = -Infinity;
+    /** Display colour per empire (own main colour or palette fallback, task M2e2). */
+    private colorCache = new Map<Empire, number>();
     /** Colony rings, one per owned planet/moon (world space). */
     private colonyRings: Array<{ habitat: Habitat; ring: Graphics; key: DrawKey }> = [];
     // Owned-system marker rings were removed: they passed a screen-px radius as world units (invisible), and the
     // faction rings of render/galaxyMarkers.ts (the port of MainView.2.cs method_250 / method_268) supersede them.
-    /** Task M3: gates the territory discs only (not colony/marker rings),
-     * driven by the "Empire Territory" overlay toggle in overlayLayer.ts. */
+    /** Task M3: gates the territory fill only (not colony rings), driven by the "Empire Territory" overlay toggle in
+     * overlayLayer.ts. */
     private territoryEnabled = true;
     private frame = 0;
 
-    /** Show/hide the territory discs (overlayLayer.ts, "Empire Territory"). */
+    /** Show/hide the territory fill (overlayLayer.ts, "Empire Territory"). */
     setTerritoryEnabled(enabled: boolean): void {
         this.territoryEnabled = enabled;
     }
 
     constructor(private galaxy: Galaxy, world: Container) {
         world.addChild(this.root);
-        // Task M2e3: iterate galaxy.empires and draw territory + rings for
-        // EVERY empire with owned habitats (ownership via habitat.owner).
-        // Previously only one disc was drawn because the territory loop read
-        // empire.colonies, which can be empty/stale for some empires even
-        // though their habitats carry the owner reference.
-        this.empireSystems = collectEmpireSystems(this.galaxy);
-        for (const es of this.empireSystems) {
-            this.empires.push(es.empire);
-            this.colors.push(empireColour(es.empire, this.empires.length - 1));
-            this.territories.set(es.empire, new EmpireTerritory(es.empire, this.root));
-        }
-        // Empires in galaxy.empires that own nothing still get a (empty)
-        // territory object so indexOf-based lookups stay aligned.
-        for (const empire of this.galaxy.empires) {
-            if (empire === this.galaxy.independentEmpire) continue;
-            if (this.territories.has(empire)) continue;
-            this.empires.push(empire);
-            this.colors.push(empireColour(empire, this.empires.length - 1));
-            this.territories.set(empire, new EmpireTerritory(empire, this.root));
-            console.warn(`Empire "${empire.name}" owns no habitats; its territory will not be drawn`);
-        }
+        this.territoryRoot.visible = false;
+        this.root.addChild(this.territoryRoot);
+        this.territoryRoot.addChild(this.meshRoot);
         for (const h of galaxy.habitats) {
             if (h.category !== HabitatCategoryType.Planet && h.category !== HabitatCategoryType.Moon) continue;
             if (h.owner === null && h.empire === null) continue;
@@ -249,49 +174,131 @@ export class EmpireLayer {
         }
     }
 
+    /** Display colour of galaxy.empires[index]: the owner's MainColor (EmpireTerritory.cs 458), as colonyRingColor. */
+    private territoryColor(index: number): number {
+        const empire = this.galaxy.empires[index];
+        let c = this.colorCache.get(empire);
+        if (c === undefined) {
+            c = empireColour(empire, index);
+            this.colorCache.set(empire, c);
+        }
+        return c;
+    }
+
+    /**
+     * Keep the territory meshes current. Rebuilt only when the influence sources change (territorySignature: an
+     * ownership change, a newly explored system, a colony's influence growing or shrinking by half a grid cell),
+     * at most every TERRITORY_REBUILD_INTERVAL_MS, and time-sliced at TERRITORY_BUILD_BUDGET_MS per frame. The
+     * original rebuilds its territory bitmap when the galaxy backdrop is regenerated after each territory review
+     * (Galaxy.cs 3418 OnRefreshView(onlyGalaxyBackdrops) -> Main.Part12.cs 3240 method_148) and when the zoomed-in
+     * sector background is redrawn (MainView.2.cs 262).
+     */
+    private updateTerritory(): void {
+        const now = performance.now();
+        if (this.territoryBuild === null && (this.territorySig === -1 || this.frame % 30 === 0) && now - this.territoryLastBuildMs >= TERRITORY_REBUILD_INTERVAL_MS) {
+            if (this.territoryGrid === null || this.territoryGrid.sizeX !== this.galaxy.sizeX || this.territoryGrid.sizeY !== this.galaxy.sizeY) {
+                this.territoryGrid = new TerritoryGrid(this.galaxy.sizeX, this.galaxy.sizeY);
+            }
+            const sources = collectTerritorySources(this.galaxy, fogOf(this.galaxy).player);
+            const sig = galaxyTerritorySignature(this.galaxy, sources);
+            if (sig !== this.territorySig) {
+                this.territoryBuild = this.buildAll(sources, this.territoryGrid);
+                this.territoryBuildSig = sig;
+                this.territoryLastBuildMs = now;
+            }
+        }
+        if (this.territoryBuild === null) return;
+        // The very first build runs to completion so the overlay is there on the first frame it is shown.
+        const deadline = this.territorySig === -1 ? Infinity : now + TERRITORY_BUILD_BUDGET_MS;
+        for (;;) {
+            const r = this.territoryBuild.next();
+            if (r.done === true) {
+                this.applyTerritoryMeshes(r.value.meshes);
+                this.applySoftBitmap(r.value.raster);
+                publishTerritoryRaster(this.galaxy, this.territoryBuildSig, r.value.raster);
+                this.territoryBuild = null;
+                this.territorySig = this.territoryBuildSig;
+                return;
+            }
+            if (performance.now() >= deadline) return;
+        }
+    }
+
+    /** Meshes, then the soft bitmap from the same influence grid (time-sliced together). */
+    private *buildAll(sources: ReturnType<typeof collectTerritorySources>, grid: TerritoryGrid): Generator<void, { meshes: TerritoryMeshData[]; raster: TerritoryRaster }, void> {
+        const meshes = yield* buildTerritoryMeshes(sources, grid);
+        const raster = yield* rasterizeTerritory(grid, territoryColorFn(this.galaxy));
+        return { meshes, raster };
+    }
+
+    /** Swap in the blurred owner bitmap as a sprite over the galaxy (uploaded once per rebuild). */
+    private applySoftBitmap(raster: TerritoryRaster): void {
+        if (typeof document === 'undefined') return;
+        const canvas = document.createElement('canvas');
+        canvas.width = raster.width;
+        canvas.height = raster.height;
+        const ctx = canvas.getContext('2d');
+        if (ctx === null) return;
+        ctx.putImageData(new ImageData(new Uint8ClampedArray(raster.data), raster.width, raster.height), 0, 0);
+        const base = Texture.from(canvas);
+        // Crop to the part inside the galaxy so the clip at the galaxy edge stays hard.
+        const texture = new Texture({ source: base.source, frame: new Rectangle(0, 0, raster.usedW, raster.usedH) });
+        if (this.softSprite === null) {
+            this.softSprite = new Sprite(texture);
+            this.territoryRoot.addChildAt(this.softSprite, 0);
+        } else {
+            const old = this.softSprite.texture;
+            this.softSprite.texture = texture;
+            old.destroy(true);
+        }
+        this.softSprite.position.set(0, 0);
+        this.softSprite.width = this.galaxy.sizeX;
+        this.softSprite.height = this.galaxy.sizeY;
+        this.softCell = raster.cell;
+    }
+
+    private applyTerritoryMeshes(data: TerritoryMeshData[]): void {
+        for (const m of this.territoryMeshes) {
+            const g = m.geometry;
+            m.destroy();
+            g.destroy();
+        }
+        this.territoryMeshes = [];
+        for (const d of data) {
+            const geometry = new MeshGeometry({ positions: d.positions, uvs: new Float32Array(d.positions.length), indices: d.indices });
+            const mesh = new Mesh({ geometry, texture: Texture.WHITE });
+            mesh.tint = this.territoryColor(d.owner);
+            // Regions are disjoint, so the 25% fade is applied once on territoryRoot (no per-empire filter needed).
+            mesh.blendMode = 'normal';
+            this.meshRoot.addChild(mesh);
+            this.territoryMeshes.push(mesh);
+        }
+    }
+
     /** Per-frame update. `z` = camera zoom (px per world unit); the original's
      * system-zoom threshold is factor < 70 (factor = 1/z). */
     update(z: number, cam: Camera): void {
         const factor = 1 / z;
         this.frame++;
         const atSystemZoom = factor < 70;
-        const tRadius = territoryRadius(this.galaxy.sectorSize);
 
-        // Territory discs: galaxy/sector zoom only, hidden at system zoom.
-        // Task M2e3: driven by collectEmpireSystems (habitat.owner), not
-        // empire.colonies, so every empire with owned habitats draws its disc.
-        for (let i = 0; i < this.empires.length; i++) {
-            const t = this.territories.get(this.empires[i])!;
-            if (atSystemZoom || !this.territoryEnabled) {
-                t.graphics.visible = false;
-                continue;
+        // Territory fill: galaxy/sector zoom only. Fades out while zooming in towards a system (factor 300 -> 70),
+        // where one empire's fill covers the whole screen as a flat coloured haze.
+        const fade = Math.max(0, Math.min(1, (factor - 70) / (300 - 70)));
+        const showTerritory = !atSystemZoom && this.territoryEnabled && fade > 0;
+        if (showTerritory) this.updateTerritory();
+        this.territoryRoot.visible = showTerritory && this.territoryMeshes.length > 0;
+        if (this.territoryRoot.visible) {
+            this.territoryRoot.alpha = TERRITORY_ALPHA * fade * fade * (3 - 2 * fade);
+            // Crossfade soft bitmap (galaxy zoom) <-> crisp meshes (zoomed in) by the bitmap pixel's screen size.
+            if (this.softSprite !== null) {
+                const t = Math.max(0, Math.min(1, (this.softCell * z - TEXEL_SOFT) / (TEXEL_SHARP - TEXEL_SOFT)));
+                const w = t * t * (3 - 2 * t);
+                this.softSprite.visible = w < 1;
+                this.softSprite.alpha = 1 - w;
+                this.meshRoot.visible = w > 0;
+                this.meshRoot.alpha = w;
             }
-            // Only explored systems get a disc (EmpireTerritory.cs CheckSystemExplored); re-checked ~twice a second
-            // and rebuilt only when the explored set changed.
-            if (!t.drawn || this.frame % 30 === 0) {
-                t.drawn = true;
-                const es = this.empireSystems.find((e) => e.empire === t.empire);
-                const known = knownTerritorySystems(es?.systems ?? [], fogOf(this.galaxy).player);
-                const sig = known.join(',');
-                if (sig !== t.sig) {
-                    t.sig = sig;
-                    t.graphics.clear();
-                    t.hasDiscs = false;
-                    for (const sysIdx of known) {
-                        const star = this.galaxy.systems[sysIdx].systemStar;
-                        t.graphics.circle(star.xpos, star.ypos, tRadius).fill({
-                            color: this.colors[i],
-                            alpha: 1,
-                        });
-                        t.hasDiscs = true;
-                    }
-                }
-            }
-            // Fade the territory wash out while zooming in towards a system (factor 300 → 70): at near-system zoom
-            // a single disc fills the screen as a flat coloured haze.
-            const fade = Math.max(0, Math.min(1, (factor - 70) / (300 - 70)));
-            t.graphics.visible = t.hasDiscs && fade > 0;
-            if (t.graphics.visible) t.filter.alpha = TERRITORY_ALPHA * fade * fade * (3 - 2 * fade);
         }
 
         // Colony rings: system/planet zoom only (hidden at galaxy/sector zoom

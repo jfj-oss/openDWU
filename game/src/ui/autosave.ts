@@ -47,7 +47,7 @@ export async function writeAutosave(name: string, text: string, storage: SaveSto
 
 export interface AutosaveOptions {
     /** Serialize the running game (null when saving is unavailable). */
-    serialize: () => string | null;
+    serialize: () => string | null | Promise<string | null>;
     /** True while the save must wait (the Game Options panel is open). */
     isBlocked?: () => boolean;
 }
@@ -81,7 +81,7 @@ export function installAutosave(opts: AutosaveOptions): void {
     let last: number | null = null;
     const state: Installed = { timer: 0 as unknown as ReturnType<typeof setInterval>, idle: null, disposed: false };
 
-    function save(): void {
+    async function save(): Promise<void> {
         state.idle = null;
         if (state.disposed) return;
         const slot = nextAutosaveSlot(lastSlot);
@@ -89,7 +89,7 @@ export function installAutosave(opts: AutosaveOptions): void {
         const t0 = performance.now();
         let text: string | null = null;
         try {
-            text = opts.serialize();
+            text = await opts.serialize(); // sim worker mode: the worker serializes (main.ts)
         } catch (err) {
             console.error('Autosave failed', err);
         }
@@ -117,7 +117,7 @@ export function installAutosave(opts: AutosaveOptions): void {
         state.idle = requestIdle(() => {
             if (state.disposed) return;
             showToast(tryGetText('Saving the Galaxy...') ?? 'Saving the Galaxy...', document.body, 8000);
-            state.idle = window.setTimeout(save, 60);
+            state.idle = window.setTimeout(() => void save(), 60);
         });
     }
 

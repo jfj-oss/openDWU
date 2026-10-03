@@ -299,6 +299,21 @@ async function main() {
                     update: p.frames ? p.update / p.frames : NaN,
                     render: p.frames ? p.render / p.frames : NaN,
                     sim: s.renderFrames ? s.simWallMs / s.renderFrames : NaN,
+                    // 240 Hz budget misses: frames longer than 1.5 × 4.17 ms (a skipped refresh).
+                    over240: d.length ? d.filter((x) => x > 6.25).length / d.length : NaN,
+                    // Sim worker mode (simworker/clientCore.ts SyncStats): main-thread sync cost and the worker's own.
+                    worker: s.deltas === undefined ? null : {
+                        hot: s.renderFrames ? s.hotApplyMs / s.renderFrames : NaN,
+                        cold: s.renderFrames ? s.coldPumpMs / s.renderFrames : NaN,
+                        maxHot: s.maxHotApplyMs,
+                        maxCold: s.maxColdPumpMs,
+                        maxSync: s.maxSimMsPerRenderFrame,
+                        stepsPerS: s.simFrames,
+                        workerStep: s.workerStepMs,
+                        workerDiff: s.workerDiffMs,
+                        kb: s.deltaBytes / 1024,
+                        backlog: s.coldBacklog,
+                    },
                 };
             });
             rows.push({ zoom, ...m });
@@ -321,6 +336,16 @@ async function main() {
             console.log(
                 `${r.zoom.padEnd(8)} ${f(1000 / r.frameMs, 6)} ${f(r.frameMs, 9)} ${f(r.p50)}${f(r.p95)}${f(r.update, 11)}${f(r.render, 11)}${f(r.sim)}`,
             );
+        }
+        console.log(`240 Hz misses (frames > 6.25 ms): ${rows.map((r) => `${r.zoom} ${(100 * r.over240).toFixed(1)}%`).join(', ')}`);
+        if (rows.some((r) => r.worker !== null)) {
+            console.log('\nsim worker  main hot ms/frame  main cold ms/frame  max hot  max cold  max sync  sim steps  last worker step ms  diff ms  delta KB  cold backlog');
+            for (const r of rows) {
+                const w = r.worker;
+                if (w === null) continue;
+                const f = (v, n = 8) => (Number.isFinite(v) ? v.toFixed(2) : '-').padEnd(n);
+                console.log(`${r.zoom.padEnd(11)} ${f(w.hot, 17)}${f(w.cold, 19)}${f(w.maxHot, 9)}${f(w.maxCold, 10)}${f(w.maxSync, 10)}${String(w.stepsPerS).padEnd(11)}${f(w.workerStep, 20)}${f(w.workerDiff, 9)}${f(w.kb, 10)}${w.backlog}`);
+            }
         }
         console.log(`load average after: ${loadavg().map((v) => v.toFixed(2)).join(' ')}`);
     } finally {
