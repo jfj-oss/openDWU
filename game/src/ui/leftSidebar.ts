@@ -12,8 +12,8 @@
 // TODO(port): "Enemy Targets" panel (PrioritizedTarget rows, Main.method_205 + ItemListPanel.cs method_8/method_9, the
 //   click-to-assign-a-fleet behaviour of Main.Part12.cs method_78) — the target prioritisation is not ported.
 // "Pirate Missions" panel (Main.Part11.cs method_163, every empire): the list is BaconMain.cs PopulateListsOnLefthandSide's
-//   pirate branches (sim/pirates/pirateMissionsPanel.ts, run as the `pirateMissionsPanel` sim query because it obtains
-//   pirate relations), the rows ItemListPanel.cs 1577 method_7 (missionRow below), the right-hand button the
+//   pirate branches (sim/pirates/pirateMissionsPanel.ts, read-only from the UI: the pirate relations it obtains are
+//   requested through obtainUiRecords), the rows ItemListPanel.cs 1577 method_7 (missionRow below), the right-hand button the
 //   pirateMissionButton command (Main.Part12.cs 2591-2678).
 // TODO(port): hovering a Pirate Missions row highlights the ships assigned to it (ItemListPanel.cs 2353
 //   DetermineShipsAssignedToMission → Main.method_246) — no ship-highlight list in the main view yet.
@@ -343,8 +343,7 @@ export function idleShipsList(player: Empire): (ShipGroup | BuiltObject)[] {
 export interface PanelListOptions {
     /** Toggle button states (index → state). */
     toggles: readonly number[];
-    /** The Pirate Missions list, as the `pirateMissionsPanel` sim query answered it for these toggles (building it obtains
-     *  pirate relations, so it is never built here: none yet → no rows). */
+    /** The Pirate Missions list for these toggles (pirateMissionsPanelData; the view builds it, none → no rows). */
     pirateMissions?: PirateMissionsPanelData | null;
 }
 
@@ -451,7 +450,7 @@ export interface RowContext {
     sizeFactor: number;
     /** resources.txt id → picture ref. */
     resource: (id: number) => { name: string; pictureRef: number } | null;
-    /** The Pirate Missions query's "considering" counts (method_7's DisplayExtraData), by row. */
+    /** The Pirate Missions panel's "considering" counts (method_7's DisplayExtraData), by row. */
     pirateMissionsConsidering?: ReadonlyMap<EmpireActivity, number>;
 }
 

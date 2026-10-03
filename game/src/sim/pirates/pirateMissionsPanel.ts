@@ -5,8 +5,8 @@
 // Accept Smuggling Mission / Cancel: Main.Part12.cs 2591-2678 method_78, the BidButtonClicked branch).
 //
 // Building the list and the "considering" counts obtains pirate relation records (ObtainPirateRelation adds a NotMet
-// record), as the C# UI does while drawing: the UI runs them through simworker/simQuery.ts (`pirateMissionsPanel`). The
-// button is a player command (player/playerOps.ts `pirateMissionButton`). No Rnd anywhere here.
+// record), as the C# UI does while drawing; from the UI those lookups are read-only (sim/readOnlyQuery.ts) and the
+// records are added by an obtainUiRecords command. The button is a player command (player/playerOps.ts `pirateMissionButton`). No Rnd anywhere here.
 //
 // No DOM / Pixi imports.
 
@@ -218,7 +218,7 @@ export interface PirateMissionsPanelData {
     considering: number[];
 }
 
-/** The `pirateMissionsPanel` sim query: the list and its "considering" counts. */
+/** The panel's data: the list and its "considering" counts. */
 export function pirateMissionsPanelData(galaxy: Galaxy, player: Empire, statusToggle: number, typeToggle: number): PirateMissionsPanelData {
     const items = pirateMissionsPanelItems(galaxy, player, statusToggle, typeToggle);
     const considering = items.map((a) => countPirateEmpiresConsideringMission(galaxy, a, player));

@@ -25,11 +25,12 @@ import {
     rightClickCentersView,
     rightClickOrder,
     selectionAfterClick,
+    selectionButtons,
+    selectionButtonsDrawRandom,
     selectionRefreshPage,
     type OrderMenuItem,
     type SelectionButton,
 } from '../sim/player/orderMenu';
-import { isRemoteQueryGalaxy, simQuery } from '../simworker/simQuery';
 import { showToast } from './toast';
 import { openPirateSmugglingPicker } from './pirateSmugglingPicker';
 import { saveAutomationResponse, savedAutomationResponse } from './settings'; // [gameoptions]
@@ -344,9 +345,10 @@ export function installOrderUi(d: OrderUiDeps, view: OrderMainView, camera: Orde
     statusEl.hidden = true;
     document.body.appendChild(statusEl);
 
-    // Sim worker: the action menu is built by a query (simworker/simQuery.ts; it draws galaxy.rnd, so it runs where the
-    // game runs). In-thread it answers inside the call, as before; on a replica one round trip later — a reply for an
-    // older right-click is dropped.
+    // The action menu is built by the journaled 'actionMenu' command (playerOps.ts): building it draws galaxy.rnd and
+    // reviews the latest designs, as the C# does, so it runs in the game at the next frame boundary (in-thread within a
+    // frame; in worker mode in the worker, one round trip later) and replays from the log (docs/sim-worker.md §8). A
+    // reply for an older right-click is dropped.
     let rightClickSeq = 0;
     view.onRightClick = (sx, sy, e) => {
         if (deps === null) return;
@@ -365,7 +367,7 @@ export function installOrderUi(d: OrderUiDeps, view: OrderMainView, camera: Orde
         // "Salvage <field>" on top of the full action menu (the default order is not given on that click).
         const salvage = wreckSalvageMenuItem(galaxy, empire, selected, w.x, w.y, 1 / view.zoomFactor);
         if (salvage !== null) {
-            simQuery(galaxy, empire, 'actionMenu', [selected, x, y, view.zoomFactor, target, hover.action, true], (menu) => {
+            issuePlayerCommand(galaxy, empire, 'actionMenu', [selected, x, y, view.zoomFactor, target, hover.action, true], (menu) => {
                 if (!current()) return;
                 const rest = menu ?? [];
                 const sep: OrderMenuItem = { key: '', label: '', hint: null, enabled: false, action: null, children: [], separator: true };
@@ -405,7 +407,7 @@ export function installOrderUi(d: OrderUiDeps, view: OrderMainView, camera: Orde
             return;
         }
         // actionMenu_Opening: the ContextMenuStrip opens on the same click unless the default order was given.
-        simQuery(galaxy, empire, 'actionMenu', [selected, x, y, view.zoomFactor, target, hover.action, e.ctrlKey], (items) => {
+        issuePlayerCommand(galaxy, empire, 'actionMenu', [selected, x, y, view.zoomFactor, target, hover.action, e.ctrlKey], (items) => {
             if (!current()) return;
             // Main.Part10.cs 3310-3559 re-centres on the click when something is selected and there is no default order; here the
             // view stays put whenever the menu opens on that click (it opens at the cursor over what was clicked).
@@ -787,23 +789,29 @@ export function createSelectionActionBar(): HTMLElement {
                 self.page = null; // method_209 → method_592
                 force = true;
             }
-            // The 500 ms refresh skips pages whose method_593 draws galaxy.rnd (an unowned habitat's build buttons, a
-            // colony's Build Options): they are rebuilt only on player input (selection change, a click), keeping
-            // galaxy.rnd player-input-only (the C# redraws them every 500 ms, Main.Part11.cs 661).
-            if (!force && isUnownedHabitat(deps, selected) && self.page === null) return;
-            if (!force && self.page !== null && self.page.actionType === ShipActionType.BuildOptions && selected instanceof Habitat) return;
-            // A query (simworker/simQuery.ts): method_593 may draw galaxy.rnd, so it runs where the game runs —
-            // in-thread inside this call, on a sim-worker replica in the worker (every build the in-thread bar makes,
-            // in the same order). A reply for a selection / page the bar has left since is not shown.
             const page = self.page;
-            simQuery(deps.galaxy, deps.empire, 'selectionButtons', [selected, page], (next) => {
+            const ctx = { galaxy: deps.galaxy, empire: deps.empire, selected };
+            const show = (next: SelectionButton[] | null): void => {
                 if (deps === null || deps.getSelected() !== selected || self.page !== page) return;
                 buttonsSel = selected;
                 buttonsPage = page;
                 if (next === null) return; // the C# leaves the buttons as they are
                 buttons = next;
                 draw();
-            });
+            };
+            if (selectionButtonsDrawRandom(ctx, page)) {
+                // The 500 ms refresh skips pages whose method_593 draws galaxy.rnd (an unowned habitat's build buttons, a
+                // colony's Build Options): they are rebuilt only on player input (selection change, a click), keeping
+                // galaxy.rnd player-input-only (the C# redraws them every 500 ms, Main.Part11.cs 661).
+                if (!force) return;
+                // Built by the journaled 'selectionButtons' command (playerOps.ts), so the draws happen in the game at the
+                // next frame boundary and replay from the log (docs/sim-worker.md §8). A reply for a selection / page the
+                // bar has left since is not shown.
+                issuePlayerCommand(deps.galaxy, deps.empire, 'selectionButtons', [selected, page], show);
+                return;
+            }
+            // Every other page only reads the game (on a sim-worker replica: the replica).
+            show(selectionButtons(ctx, page));
         },
     };
     // Eight persistent buttons, updated in place (no DOM rebuild on refresh).
@@ -915,20 +923,15 @@ export function createSelectionActionBar(): HTMLElement {
             self.render(true);
             return;
         }
-        // Sim worker: the buttons of the new selection / page have not arrived yet (the refresh takes the page from the
-        // first button, which would undo the page change in flight).
-        if ((buttonsSel !== selected || buttonsPage !== self.page) && isRemoteQueryGalaxy(deps.galaxy)) return;
+        // The buttons of the new selection / page have not arrived yet (a 'selectionButtons' command in flight: the
+        // refresh takes the page from the first button, which would undo the page change).
+        if (buttonsSel !== selected || buttonsPage !== self.page) return;
         const next = selectionRefreshPage(selected, buttons[0]?.action ?? null);
         if (next === undefined) return;
         self.page = next;
         self.render(false);
     }, 500);
     return element;
-}
-
-/** An unowned / independent habitat: its top page (method_593 2941-3200) draws galaxy.rnd. */
-function isUnownedHabitat(d: OrderUiDeps, selected: ShipActionSelection): boolean {
-    return selected instanceof Habitat && (selected.owner === null || selected.owner === d.galaxy.independentEmpire);
 }
 
 /** Re-render the selection buttons now (selection changed / after an order). */

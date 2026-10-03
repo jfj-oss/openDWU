@@ -9,8 +9,8 @@
 //   - an item click selects it (method_208); a double click also centres the view on it and zooms to the 100%
 //     planet level (method_157 + method_4(1.0)); Shift+click a ship adds it to / removes it from a multi-selection;
 //   - the panel redraws every 0.5 s (MainView: LastRefresh > 0.5 s);
-//   - Pirate Missions: the list comes from the `pirateMissionsPanel` sim query (in the worker on a replica: building it
-//     obtains pirate relations); a click on a row's right-hand button (Bid / Accept Mission / Cancel) issues the
+//   - Pirate Missions: the list is read from the game (sim/readOnlyQuery.ts: the pirate relations its lookups obtain are
+//     requested through obtainUiRecords); a click on a row's right-hand button (Bid / Accept Mission / Cancel) issues the
 //     pirateMissionButton command (ItemListPanel.cs 2248 bid zone → Main.Part12.cs 2601 BidButtonClicked).
 
 import './leftSidebar.css';
@@ -23,10 +23,8 @@ import { ShipGroup } from '../sim/fleets/shipGroup';
 import { Habitat } from '../sim/types';
 import { hudScale } from './originalWindow';
 import { EmpireActivity } from '../sim/pirates/empireActivity';
-import { pirateMissionBidZoneActive, type PirateMissionsPanelData } from '../sim/pirates/pirateMissionsPanel';
+import { pirateMissionBidZoneActive, pirateMissionsPanelData, type PirateMissionsPanelData } from '../sim/pirates/pirateMissionsPanel';
 import { issuePlayerCommand } from '../sim/player/playerCommands';
-import { isRemoteQueryGalaxy, simQuery } from '../simworker/simQuery';
-import { WorkerQueryCache } from './workerQueryCache';
 import { empireFlagUrl } from './selectionInfoView';
 import { onSettingsChange, uiScaleFactor } from './settings';
 import { css } from './selectionInfo';
@@ -180,34 +178,11 @@ export function createLeftSidebar(wiring: LeftSidebarWiring): HTMLElement {
     };
     let area: ItemListArea = itemListArea(800, 600, 1);
     let defs: ItemPanelDef[] = [];
-    /** The Pirate Missions query's last answer (by toggle key); in-thread it is asked synchronously on every bind. */
+    /** The Pirate Missions list and its "considering" counts, read from the game (replica or in-thread) between frames:
+     *  sim/readOnlyQuery.ts keeps the lookups from writing, and the pirate relations they would add are asked for
+     *  (obtainUiRecords). */
     let missions: PirateMissionsPanelData | null = null;
-    let missionsCache: { galaxy: Galaxy; cache: WorkerQueryCache<string, PirateMissionsPanelData> } | null = null;
-    const missionsData = (galaxy: Galaxy, p: Empire, t: readonly number[]): PirateMissionsPanelData | null => {
-        const ask = (key: string, done: (v: PirateMissionsPanelData) => void): void => {
-            const [a, b] = key.split(',').map(Number);
-            simQuery(galaxy, p, 'pirateMissionsPanel', [a, b], done);
-        };
-        const key = `${t[0] ?? 0},${t[1] ?? 0}`;
-        if (!isRemoteQueryGalaxy(galaxy)) {
-            let out: PirateMissionsPanelData | null = null;
-            ask(key, (v) => {
-                out = v;
-            });
-            return out;
-        }
-        if (missionsCache === null || missionsCache.galaxy !== galaxy) {
-            missionsCache?.cache.dispose();
-            missionsCache = {
-                galaxy,
-                cache: new WorkerQueryCache<string, PirateMissionsPanelData>(ask, () => {
-                    bind(true);
-                    render();
-                }, () => false, 500),
-            };
-        }
-        return missionsCache.cache.read(key) ?? null;
-    };
+    const missionsData = (galaxy: Galaxy, p: Empire, t: readonly number[]): PirateMissionsPanelData | null => pirateMissionsPanelData(galaxy, p, t[0] ?? 0, t[1] ?? 0);
 
     const player = (): Empire | null => (wiring.game?.playerEmpire as Empire | undefined) ?? null;
     const rowCtx = (): RowContext | null => {
@@ -689,10 +664,7 @@ export function createLeftSidebar(wiring: LeftSidebarWiring): HTMLElement {
         const p = player();
         // Main.Part12.cs 2601: the row's button (ItemListPanel.cs 2248-2286 decides whether the click hit it).
         if (item instanceof EmpireActivity && bidZone && p && wiring.galaxy && pirateMissionBidZoneActive(p, item) && item.target !== null) {
-            const d = openDef();
-            const key = d !== null ? `${togglesOf(d)[0] ?? 0},${togglesOf(d)[1] ?? 0}` : '';
             issuePlayerCommand(wiring.galaxy, p, 'pirateMissionButton', [item.target, item.type, item.requestingEmpire, item.targetEmpire], () => {
-                missionsCache?.cache.invalidate(key);
                 bind(true);
                 render();
             });

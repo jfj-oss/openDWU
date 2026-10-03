@@ -171,6 +171,13 @@ export interface CreateGameOptions {
     raceSpecificEventsEnabled?: boolean;
     /** Galaxy.EmpireTerritoryColonyInfluenceRangeFactor from the wizard (<= 0 = auto). */
     empireTerritoryColonyInfluenceRangeFactor?: number;
+    /**
+     * main_0.gameOptions_0 (Main.Part9.cs method_256/260: the "defaultOptions" file, or the method_260 defaults when
+     * there is none): the human player's automation / engagement / discovery settings that Start.2.cs 1352-1363 and
+     * 2122-2146 copy onto the player empire. The in-game Options window saves the player's current values here on close
+     * (Main.Part6.cs:2540 YxwyUefOyQ + method_257). Unset = DEFAULT_GAME_OPTIONS_AUTOMATION.
+     */
+    gameOptions?: Readonly<GameOptionsAutomation>;
     // [todosweep2] begin
     /** Start.2.cs 446 CreateGameFromSettings double_4 = the wizard's research-cost box × 1000 (Start.1.cs 3693): the
      *  Galaxy ctor's baseTechCost (research costs, component tech points, Galaxy.BaseTechCost). Unset = 120000
@@ -1444,7 +1451,7 @@ export function* createGameSteps(opts: CreateGameOptions): Generator<GameStartPr
     }
     if (stopAt('empireSetup')) return result();
     // Start.2.cs 1352-1363: the player's attack ranges from GameOptions (Main.Part9.cs method_260 defaults). No Rnd.
-    applyStartAttackRanges(empire2, DEFAULT_GAME_OPTIONS_AUTOMATION);
+    applyStartAttackRanges(empire2, opts.gameOptions ?? DEFAULT_GAME_OPTIONS_AUTOMATION);
     // Start.2.cs 1365-1375: starting ships.
     for (let num35 = 0; num35 < empireList.length; num35++) {
         const empire4 = empireList[num35];
@@ -1501,7 +1508,7 @@ export function* createGameSteps(opts: CreateGameOptions): Generator<GameStartPr
     if (empire2.capital !== null) runGameStartHabitatTick(galaxy, empire2.capital);
     // 17d: Start.2.cs 2122-2146 — the human player's automation settings come from GameOptions (the defaults of
     // Main.Part9.cs method_260 when no options file exists); AI empires keep the ctor's FullyAutomated.
-    applyStartAutomationSettings(empire2, DEFAULT_GAME_OPTIONS_AUTOMATION);
+    applyStartAutomationSettings(empire2, opts.gameOptions ?? DEFAULT_GAME_OPTIONS_AUTOMATION);
     // TODO(port): the rest of CreateGameFromSettings (see header).
     // Main.Part12.cs 3151 BaconMain.BaconInitialize(this) once Main starts the new game: the loaded BaconSettings.txt
     // takes effect (baconSettings.ts; the settings part only).

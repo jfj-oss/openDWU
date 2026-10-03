@@ -65,7 +65,6 @@ import { toggleResearchScreen } from './screens/researchScreen'; // [15b]
 import { toggleEmpireComparison } from './screens/empireComparison';
 import { showToast } from './toast';
 import type { DispatchOption } from '../sim/player/habitatDispatch';
-import { isRemoteQueryGalaxy, simQuery } from '../simworker/simQuery';
 // [troops] begin
 import { toggleTroopsScreen } from './screens/troops';
 import { confirmAutomationOff } from './orderMenu';
@@ -73,6 +72,7 @@ import { galaxyStarDate } from '../sim/tick/simTime';
 import { createShipAction, ShipActionType } from '../sim/player/shipAction';
 import { issuePlayerCommand } from '../sim/player/playerCommands';
 // [troops] end
+import { moneyPanelIncome, moneyPanelWriteDue } from '../sim/treasury';
 import { countLabel } from './plural';
 // [policy] begin
 import { toggleEmpirePolicy } from './screens/empirePolicy';
@@ -1175,6 +1175,14 @@ function buildMoneyPanel(game?: { playerEmpire: { name: string; mainColor: numbe
     panel.appendChild(sys);
 
     if (game) {
+        const showIncome = (income: { cashflow: number; bonusIncome: number } | null): void => {
+            if (income === null) return;
+            setTextIfChanged(cashflow, `(${formatSignedMoney(income.cashflow)})`);
+            cashflow.classList.toggle('top-negative', income.cashflow < 0);
+            setTextIfChanged(bonus, `(${formatSignedMoney(income.bonusIncome)})`);
+        };
+        /** When the last 'moneyPanel' command was issued (performance.now), while it is not applied yet. */
+        let moneyCommandAt: number | null = null;
         const refreshMoney = (): void => {
             // 4 Hz; written only on change (render: perf pass).
             const m = game.playerEmpire.stateMoney;
@@ -1182,16 +1190,23 @@ function buildMoneyPanel(game?: { playerEmpire: { name: string; mainColor: numbe
             money.classList.toggle('top-negative', m < 0);
             // Main.Part11.cs 838-857: Cashflow / Bonus Income, `+##,###,##0;-##,###,##0` (the C# keeps the previous
             // strings when there is nothing to show).
-            // A sim query (simworker/simQuery.ts): method_126 also ages the player's variable income (CheckAgeVariableIncome),
-            // which must happen in the game itself — in-thread at once, on a sim-worker replica in the worker.
             if (galaxy === undefined || galaxy.playerEmpire === null) return;
-            simQuery(galaxy, galaxy.playerEmpire, 'moneyPanel', [], (income) => {
-                if (income !== null) {
-                    setTextIfChanged(cashflow, `(${formatSignedMoney(income.cashflow)})`);
-                    cashflow.classList.toggle('top-negative', income.cashflow < 0);
-                    setTextIfChanged(bonus, `(${formatSignedMoney(income.bonusIncome)})`);
-                }
-            });
+            const player = galaxy.playerEmpire;
+            if (moneyPanelWriteDue(galaxy, player)) {
+                // method_126 also ages the player's variable income (841 CheckAgeVariableIncome): a sim write, so the
+                // journaled 'moneyPanel' command does it in the game at the next frame boundary (in-thread or in the
+                // worker) and the panel shows its figures (docs/sim-worker.md §8). Asked again if no reply came.
+                const t = performance.now();
+                if (moneyCommandAt !== null && t - moneyCommandAt < 2000) return;
+                moneyCommandAt = t;
+                issuePlayerCommand(galaxy, player, 'moneyPanel', [], (income) => {
+                    moneyCommandAt = null;
+                    showIncome(income);
+                });
+                return;
+            }
+            // Nothing to write: the same figures, as a read (sim/readOnlyQuery.ts: the lookups write nothing).
+            showIncome(moneyPanelIncome(galaxy, player));
         };
         refreshMoney();
         setInterval(refreshMoney, 250);
@@ -1662,14 +1677,13 @@ function buildSelectionPanel(wiring: HudWiring): HTMLElement {
         const galaxy = wiring.galaxy;
         const player = galaxy?.playerEmpire ?? null;
         if (sel && galaxy && player !== null && !sel.creature && !sel.shipGroup && !sel.builtObject && !sel.builtObjects) {
-            // The options come from a sim query (in-thread: at once; sim worker: from the authoritative game one round
-            // trip later, then the strip is redrawn — a reply for a selection already left is dropped).
-            const remote = isRemoteQueryGalaxy(galaxy);
-            if (remote) dispatchSlots = [];
+            // The options come from a command (at the next frame boundary; in worker mode from the authoritative game
+            // one round trip later), then the strip is redrawn — a reply for a selection already left is dropped.
+            dispatchSlots = [];
             habitatDispatchSlots(galaxy, player, sel.habitat, (slots) => {
                 if (currentSelection !== sel) return;
                 dispatchSlots = slots;
-                if (remote) redrawSelectionActionBar();
+                redrawSelectionActionBar();
             });
         } else {
             dispatchSlots = [];
@@ -2757,17 +2771,17 @@ function dispatchIcon(id: string, design: { pictureRef: number; subRole: number 
     return undefined;
 }
 
-/** The dispatch slots for habitat `h`, handed to `done` (simQuery: in-thread inside this call, on a sim-worker replica
- *  once the worker answered). */
+/** The dispatch slots for habitat `h`, handed to `done` once the journaled 'habitatDispatch' command applied (it builds
+ *  the candidate ships' action menus, which draws galaxy.rnd: playerOps.ts). */
 function habitatDispatchSlots(galaxy: Galaxy, player: Empire, h: Habitat, done: (slots: SelectionExtraSlot[]) => void): void {
-    simQuery(galaxy, player, 'habitatDispatch', [h], (options) => done(options.map((o) => ({
+    issuePlayerCommand(galaxy, player, 'habitatDispatch', [h], (options) => done(options.map((o) => ({
         label: o.label,
         title: `${o.label}: ${o.hint}`,
         icon: dispatchIcon(o.id, o.action?.design ?? null),
         disabled: o.ship === null,
         onClick: () => {
             // Re-resolve at click time: ships' queues and positions have moved since the panel was drawn.
-            simQuery(galaxy, player, 'habitatDispatch', [h], (now) => dispatchOrder(galaxy, player, h, o, now.find((x) => x.id === o.id)));
+            issuePlayerCommand(galaxy, player, 'habitatDispatch', [h], (now) => dispatchOrder(galaxy, player, h, o, now.find((x) => x.id === o.id)));
         },
     }))));
 }
