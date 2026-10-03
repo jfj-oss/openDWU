@@ -436,7 +436,7 @@ op does not compile without one.
 These run in the worker on the authoritative game, and the main thread gets an event:
 
 - The game-end handler: pause, `doGameEnd`, `reviewAchievements`. The `gameEnd` event carries the args (victor,
-  outcome, text); the main thread plays the music and shows the banner (`empireComparison.ts presentGameEnd`).
+  outcome, text); the main thread plays the music and shows the outcome (the comparison window's overlay and the Game End panel) (`empireComparison.ts presentGameEnd`).
 - The player's message pipeline (chunk 4, `ui/messagePipeline.ts`): the worker is the player's message and event
   recipient (hidden `messageRecipient` / `eventMessageRecipient` fields, set before the sync first sees the empire, so
   the replica never has them). After every tick it runs the UI timers' sim writes in their in-thread order — the
