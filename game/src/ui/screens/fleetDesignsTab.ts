@@ -200,8 +200,8 @@ export function createFleetDesignsTab(container: HTMLElement, empire: Empire, si
             row.appendChild(place(status, 425, 6, W - 36 - 425 - 110));
             row.appendChild(place(button('Cancel', 'Stop the order: ships still waiting for a yard are removed and refunded; ships on a slipway finish unassigned', () =>
                 issue('fleetTemplateCancelOrder', [o.id], (r) => {
-                    const c = r as { removed: number; refund: number };
-                    report = `Order cancelled: ${c.removed} queued ships removed, ${formatMoney(c.refund)} refunded`;
+                    const c = r as { ok: boolean; removed: number; refund: number };
+                    report = c.ok ? `Order cancelled: ${c.removed} queued ships removed, ${formatMoney(c.refund)} refunded` : 'The order could not be cancelled';
                 })), W - 36 - 100, 2, 94, 26));
             ordersBox.appendChild(row);
         });

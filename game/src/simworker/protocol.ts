@@ -192,8 +192,10 @@ export interface StepMessage {
     stepMs: number;
     diffMs: number;
     /** onApplied results of commands applied at this tick's boundary, query replies (`query`) and refresh replies, resolved after
-     *  `delta`. A command result makes the main thread apply the queued cold parts through this delta first. */
-    results: { id: number; result: RemoteArg; error?: string; query?: boolean }[];
+     *  `delta`. A command result makes the main thread apply the queued cold parts through this delta first. `error`: the
+     *  command / query / host op failed (docs/sim-worker.md §4.4 "Failed commands"); `threw`: the command's executor
+     *  threw at the boundary (the worker paused with a simulation error; as in-thread, no callback runs). */
+    results: { id: number; result: RemoteArg; error?: string; query?: boolean; threw?: boolean }[];
     /** Sim → UI events raised during the tick (resolved after `delta`). */
     events: WorkerEvent[];
 }
@@ -224,6 +226,9 @@ export type WorkerEvent =
     | { kind: 'playerMessages'; receipts: PlayerMessageWire[]; events: PlayerEventWire[] }
     | { kind: 'locationPinged'; target: RemoteArg }
     | { kind: 'simError'; message: string }
+    /** The worker stopped for good (its loop threw, it crashed, or it stopped answering): raised by the main thread
+     *  (SimClientCore.workerFailed), never sent by the worker. */
+    | { kind: 'workerStopped'; message: string }
     /** 19s-2 voice cues the tick left (sim/scenario/llm/voiceCues.ts drainVoiceCues, drained in the worker): VoiceCue[]. */
     | { kind: 'voiceCues'; cues: RemoteArg[] };
 
@@ -235,7 +240,12 @@ export type FromWorker =
     | { type: 'digest'; id: number; digest: string; nowMs: number; stepSerial: number }
     | DebugReply
     | { type: 'commandLog'; id: number; log: CommandLogEntry[] }
-    | { type: 'error'; message: string };
+    /**
+     * Something failed in the worker. `fatal`: the worker's game stopped (its step loop or the sync threw; nothing more
+     * will come — the main thread fails what waits on it). `id`: the save / digest / debug / commandLog request that
+     * failed (its promise rejects). Neither: a message handler failed (logged).
+     */
+    | { type: 'error'; message: string; fatal?: boolean; id?: number };
 
 /** Reply to a DebugRequest: the member's value (or the call's result) and the target's plain fields after the op. */
 export interface DebugReply {

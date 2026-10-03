@@ -43,6 +43,14 @@ export interface RemoteNaming {
      * Without it (the worker's own encoding) a value shared within one argument still travels once.
      */
     valueId?(o: object): number;
+    /**
+     * An object that is no longer in the game and cannot be named (the main thread: a destroyed ship the replica
+     * dropped while a list still held it). As an ELEMENT of an argument that is itself an array (a ships list, a
+     * selection) it is left out, with `dropped` told — in-thread the executor gets the dead ship and skips it, so the
+     * rest of the order still goes; anywhere else naming it throws (the whole command fails).
+     */
+    gone?(o: object): boolean;
+    dropped?(path: string, o: object): void;
 }
 
 /**
@@ -53,7 +61,7 @@ export interface RemoteNaming {
  * would see them in-thread), and the worker decodes the same main-thread object sent by several commands to one
  * object (RemoteValues; e.g. a mission assigned by one command and framed by the next).
  */
-export function encodeRemoteArg(value: unknown, naming: RemoteNaming): RemoteArg {
+export function encodeRemoteArg(value: unknown, naming: RemoteNaming, lenient?: (problem: string) => void): RemoteArg {
     const t = classes();
     const seen = new Map<object, number>();
     let local = 0;
@@ -70,6 +78,10 @@ export function encodeRemoteArg(value: unknown, naming: RemoteNaming): RemoteArg
             case 'object':
                 break;
             default:
+                if (lenient !== undefined) {
+                    lenient(`${path}: a ${typeof v} (sent as undefined)`);
+                    return { u: 1 };
+                }
                 throw new RemoteArgError(`command argument ${path}: cannot send a ${typeof v}`);
         }
         const o = v as object;
@@ -81,16 +93,54 @@ export function encodeRemoteArg(value: unknown, naming: RemoteNaming): RemoteArg
         if (again !== undefined) return { v: again };
         const vid = naming.valueId !== undefined ? naming.valueId(o) : -++local;
         seen.set(o, vid);
-        if (Array.isArray(o)) return { a: o.map((x, i) => enc(x, `${path}[${i}]`)), v: vid };
+        if (Array.isArray(o)) {
+            const items: RemoteArg[] = [];
+            o.forEach((x, i) => {
+                const at = `${path}[${i}]`;
+                // Only in a top-level array argument (`$[i]`): deeper lists (a trade offer's items) are part of a value
+                // whose meaning changes without the element — those fail the command instead.
+                if (path === '$' && x !== null && typeof x === 'object' && naming.gone?.(x) === true) {
+                    naming.dropped?.(at, x);
+                    return;
+                }
+                items.push(enc(x, at));
+            });
+            return { a: items, v: vid };
+        }
         const fields: Record<string, RemoteArg> = {};
         for (const k of Object.keys(o)) fields[k] = enc((o as Record<string, unknown>)[k], `${path}.${k}`);
         const proto = Object.getPrototypeOf(o) as object | null;
         if (proto === Object.prototype || proto === null) return { o: fields, v: vid };
         const name = t.nameByProto.get(proto);
-        if (name === undefined) throw new RemoteArgError(`command argument ${path}: unregistered class ${(proto as { constructor?: { name?: string } }).constructor?.name ?? '?'}`);
+        if (name === undefined) {
+            const cls = (proto as { constructor?: { name?: string } }).constructor?.name ?? '?';
+            if (lenient !== undefined) {
+                lenient(`${path}: unregistered class ${cls} (sent as a plain object)`);
+                return { o: fields, v: vid };
+            }
+            throw new RemoteArgError(`command argument ${path}: unregistered class ${cls}`);
+        }
         return { c: name, f: fields, v: vid };
     };
     return enc(value, '$');
+}
+
+/**
+ * A command / host-op RESULT for the main thread (simHost.ts): exact when it can be (encodeRemoteArg), else — rather
+ * than losing the reply, which would leave the UI waiting on an order that did apply — with what cannot cross made
+ * plain (an unregistered class instance becomes a plain object of its fields, a function undefined), each such part
+ * reported to `report` (the host logs it loudly: the result type should be made sendable).
+ */
+export function encodeRemoteResult(value: unknown, naming: RemoteNaming, report: (problems: string[]) => void): RemoteArg {
+    try {
+        return encodeRemoteArg(value, naming);
+    } catch (err) {
+        if (!(err instanceof RemoteArgError)) throw err;
+    }
+    const problems: string[] = [];
+    const out = encodeRemoteArg(value, naming, (p) => problems.push(p));
+    report(problems);
+    return out;
 }
 
 /**

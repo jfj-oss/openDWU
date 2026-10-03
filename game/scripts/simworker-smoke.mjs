@@ -10,6 +10,11 @@
 //                                               [--tutorial | --menuload | --generate]
 //        [--gpu=swiftshader|egl] [--qs=simPace=0]
 //        [--detect-writes[=all]]   (dev-only replica write detector, src/simworker/writeDetector.ts: prints what it found)
+//        [--no-commands]           skip the command reply checks (game mode, docs/sim-worker.md §4.4 "Failed commands"):
+//                                  Recruit from the Troops screen and Save from the Design Editor reply (success and a
+//                                  refusal), an order naming an object gone from the game replies with its failure
+//                                  value, and — worker mode, last — after a simulated worker crash Save and Recruit
+//                                  still answer (failure message, Save usable again) and nothing is left waiting.
 import { chromium } from 'playwright-core';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -151,6 +156,134 @@ async function checkPacing() {
     }
 }
 
+/** Console lines from here on that the simulated crash is expected to log (not counted as errors). */
+let crashLogFrom = -1;
+
+/** The Troops / Design Editor command replies (both modes), then (worker mode) the same after a simulated crash. */
+async function commandReplies() {
+    await page.evaluate(() => { window.__dwu.time.paused = true; });
+    const pending = () => page.evaluate(() => window.__dwu.simWorker?.core.pendingReplies ?? 0);
+    /** Close the open windows with their close buttons (Escape on an empty view would open the game menu). */
+    const closeAll = async () => {
+        for (let i = 0; i < 6; i++) {
+            const x = page.locator('.ow-close').last();
+            if ((await x.count()) === 0) break;
+            await x.click().catch(() => {});
+            await page.waitForTimeout(300);
+        }
+    };
+    // 1. An order naming an object no longer in the game: its callback still runs, with the executor's refusal.
+    const gone = await page.evaluate(() => new Promise((resolve) => {
+        const d = window.__dwu;
+        const p = d.game.playerEmpire;
+        const fake = Object.create(Object.getPrototypeOf(p.colonies[0]));
+        d.commands.issue(d.galaxy, p, 'renameColony', [fake, 'Nowhere'], (r) => resolve(r));
+        setTimeout(() => resolve('(no reply)'), 10000);
+    }));
+    check(gone === false, `an order naming an object gone from the game replies with its refusal (${JSON.stringify(gone)})`);
+
+    // 2. Recruit from the Troops screen, filtered to the capital.
+    const recruit = async (label) => {
+        await page.click('[data-hud="tbtnTroops"]');
+        const opened = await page.waitForSelector('[data-ow="troops"]', { timeout: 15000 }).then(() => true, () => false);
+        if (!opened) return { opened };
+        const capital = await page.evaluate(() => {
+            const d = window.__dwu;
+            const h = d.game.playerEmpire.capital ?? d.game.playerEmpire.colonies[0];
+            const sel = document.querySelector('[data-ow="troops"] select.ow-select');
+            const opt = sel ? [...sel.options].find((o) => o.textContent.includes(h.name)) : undefined;
+            if (opt) {
+                sel.value = opt.value;
+                sel.dispatchEvent(new Event('change'));
+            }
+            return { name: h.name, filtered: opt !== undefined, before: h.troopsToRecruit?.count ?? h.troopsToRecruit?.items?.length ?? 0 };
+        });
+        await page.waitForTimeout(800);
+        const btn = page.locator('[data-ow="troops"] .tr-recruit-btn').first();
+        const has = (await btn.count()) > 0;
+        if (has) await btn.click();
+        // The recruit's reply continues the awaited flow: the automation prompt it carries (Troop Recruitment) opens.
+        const confirm = page.locator('.order-confirm-wrap .order-confirm-button').first();
+        const prompted = await confirm.waitFor({ timeout: 4000 }).then(() => true, () => false);
+        if (prompted) await confirm.click();
+        await page.waitForTimeout(1500);
+        const after = await page.evaluate(() => {
+            const d = window.__dwu;
+            const h = d.game.playerEmpire.capital ?? d.game.playerEmpire.colonies[0];
+            return h.troopsToRecruit?.count ?? h.troopsToRecruit?.items?.length ?? 0;
+        });
+        await page.screenshot({ path: `${out}/troops-${label}.png` });
+        await closeAll();
+        return { opened, ...capital, button: has, prompted, after };
+    };
+    const r1 = await recruit('recruit');
+    check(r1.opened && r1.filtered && r1.button, `troops screen: filtered to ${r1.name}, a recruit button (${JSON.stringify(r1)})`);
+    check(r1.after === r1.before + 1, `recruit reply: ${r1.name} recruiting ${r1.before} → ${r1.after}`);
+    check((await pending()) === 0, 'nothing left waiting after the recruit');
+
+    // 3. Design Editor: Save a copy (success), then a blank design (refused: red warnings) — Save answers each time.
+    const openEditor = async (how) => {
+        await page.click('[data-hud="tbtnDesigns"]');
+        await page.waitForSelector('[data-ow="designs"] .ow-grid-row', { timeout: 15000 });
+        await page.waitForTimeout(800);
+        if (how === 'copy') {
+            await page.locator('[data-ow="designs"] .ow-grid-row').first().click();
+            await page.locator('[data-ow="designs"] .ow-glass', { hasText: 'Copy As New' }).click();
+        } else await page.locator('[data-ow="designs"] .ow-glass', { hasText: /^Add New$|^New$|^Add New Design$/ }).first().click();
+        const prompt = page.locator('[data-ow="msgbox"] .ow-glass', { hasText: 'Turn off automation' });
+        await prompt.waitFor({ timeout: 3000 }).then(() => prompt.click(), () => {});
+        return page.waitForSelector('[data-ow="design-editor"]', { timeout: 10000 }).then(() => true, () => false);
+    };
+    const save = page.locator('[data-ow="design-editor"] .ow-glass', { hasText: /^Save$/ }).first();
+    /** Click Save; the message box it raised (text), or null; the box is dismissed. */
+    const clickSave = async () => {
+        await save.click();
+        const box = page.locator('[data-ow="msgbox"]').last();
+        const text = await box.waitFor({ timeout: 6000 }).then(() => box.innerText(), () => null);
+        if (text !== null) {
+            const ok = page.locator('[data-ow="msgbox"] .ow-glass', { hasText: /^(OK|Yes)$/ }).last();
+            if ((await ok.count()) > 0) await ok.click();
+            await page.waitForTimeout(500);
+        }
+        return text;
+    };
+    const designs = () => page.evaluate(() => window.__dwu.game.playerEmpire.designs.length);
+    const d0 = await designs();
+    if (await openEditor('copy')) {
+        const box = await clickSave();
+        await page.waitForTimeout(3000);
+        const closed = (await page.locator('[data-ow="design-editor"]').count()) === 0;
+        check(closed && (await designs()) === d0 + 1, `design editor Save (copy): saved, the editor closed (${d0} → ${await designs()} designs${box ? `; box: ${box.slice(0, 60)}` : ''})`);
+    } else check(false, 'design editor opens (Copy As New)');
+    await closeAll();
+    if (await openEditor('blank')) {
+        const box1 = await clickSave();
+        check(box1 !== null && (await page.locator('[data-ow="design-editor"]').count()) > 0, `design editor Save (blank, red warnings): refused with a message, the editor stays (${String(box1).slice(0, 80)})`);
+        const box2 = await clickSave();
+        check(box2 !== null, 'design editor Save answers again after a refusal (not stuck "saving")');
+        await page.screenshot({ path: `${out}/design-editor-refused.png` });
+        // 4. Worker mode: the worker crashes (simulated: SimWorkerClient.stop) with the editor open.
+        if (!inThread) {
+            crashLogFrom = logs.length;
+            await page.evaluate(() => window.__dwu.simWorker.stop('smoke: simulated crash'));
+            await page.waitForTimeout(500);
+            const box3 = await clickSave();
+            check(box3 !== null && /could not be carried out/.test(box3) && /stopped/.test(box3), `after a worker crash, Save answers with the failure (${String(box3).slice(0, 120)})`);
+            const box4 = await clickSave();
+            check(box4 !== null, 'after a worker crash, Save is still usable (answers again)');
+            await page.screenshot({ path: `${out}/design-editor-after-crash.png` });
+        }
+    } else check(false, 'design editor opens (blank)');
+    await closeAll();
+    if (!inThread) {
+        const r2 = await recruit('after-crash');
+        check(r2.opened, 'troops screen opens after the crash');
+        check((await pending()) === 0, 'after the crash nothing is left waiting (recruit, save answered)');
+        const toast = logs.slice(crashLogFrom).some((l) => l.includes('STOPPED'));
+        check(toast, 'the crash is reported loudly in the console');
+    }
+}
+
 async function combatViews() {
     // Combat and hyperjumps at system zoom (docs/sim-worker.md §9 chunk 2: shots, explosions, shield strikes, jump
     // flashes and their sounds on the replica): the first of the player's ships (else any) firing / about to jump.
@@ -241,6 +374,8 @@ try {
         await page.evaluate(() => { window.__dwu.time.paused = true; });
         await shots([['galaxy', null], ['sector', 0.02], ['system', 0.25], ['planet', 1.5]]);
         await combatViews();
+        // Last: in worker mode it ends with a simulated crash.
+        if (!flag('no-commands')) await commandReplies();
     } else if (mode === 'tutorial') {
         await page.goto(`${base}?${sw}`);
         await page.click('.main-menu-item[data-id="tutorials"]');
@@ -308,7 +443,7 @@ try {
         await shots([['generated-galaxy', null]]);
     }
     await dumpWrites('end of run');
-    if (!inThread) {
+    if (!inThread && crashLogFrom < 0) {
         const s = await page.evaluate(() => {
             const st = window.__dwu.simStats;
             return { frames: st.renderFrames, deltas: st.deltas, hot: st.hotApplyMs / Math.max(1, st.renderFrames), cold: st.coldPumpMs / Math.max(1, st.renderFrames), maxHot: st.maxHotApplyMs, maxCold: st.maxColdPumpMs, workerStep: st.workerStepMs, workerDiff: st.workerDiffMs, kb: st.deltaBytes / 1024, backlog: st.coldBacklog, pauseHolds: st.pauseHolds, lastPauseAckMs: st.lastPauseAckMs };
@@ -317,7 +452,8 @@ try {
     }
 } finally {
     await browser.close();
-    const errors = logs.filter((l) => l.startsWith('[error]') || l.startsWith('[pageerror]'));
+    // The simulated crash's own errors (the worker STOPPED report, the failed requests) are expected.
+    const errors = logs.filter((l, i) => (l.startsWith('[error]') || l.startsWith('[pageerror]')) && !(crashLogFrom >= 0 && i >= crashLogFrom && /sim worker|simulation worker/.test(l)));
     for (const l of errors.slice(0, 30)) console.log(l);
     if (errors.length > 0) failed++;
     console.log(failed === 0 ? 'SMOKE OK' : `SMOKE FAILED (${failed})`);

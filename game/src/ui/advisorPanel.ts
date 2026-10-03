@@ -179,16 +179,21 @@ function createAdvisorPanel(opts: AdvisorPanelOptions): OpenState {
         busy = true;
         setReady(true, 'thinking…');
         add({ kind: 'user', text });
-        const turn = await runAdvisorTurn({
-            galaxy: opts.galaxy,
-            player: opts.player,
-            selection: advisorSelectionFromHud(),
-            history,
-            text,
-            cfg: { endpoint: settings.advisorEndpoint, model: settings.advisorModel, api, think: settings.advisorThink },
-            signal: abort.signal,
-        });
-        busy = false;
+        let turn: Awaited<ReturnType<typeof runAdvisorTurn>>;
+        try {
+            turn = await runAdvisorTurn({
+                galaxy: opts.galaxy,
+                player: opts.player,
+                selection: advisorSelectionFromHud(),
+                history,
+                text,
+                cfg: { endpoint: settings.advisorEndpoint, model: settings.advisorModel, api, think: settings.advisorThink },
+                signal: abort.signal,
+            });
+        } finally {
+            // Not left busy (the input disabled) when the turn throws (in-thread: an executor that throws).
+            busy = false;
+        }
         if (open === null || open.root !== root) return;
         lastBrief = turn.brief;
         history.push(...turn.history);

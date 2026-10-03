@@ -1549,8 +1549,9 @@ function createDiplomacyScreen(opts: DiplomacyScreenOptions): OpenState {
             startVoice(other, res, resolveGameText(o.label), o.id);
             // [diplovoice] end
             // [tradenego] begin
-            // DEAL_BEGIN (Main.Part10.cs:4324 method_302): the trade trees open beside the conversation.
-            if (res.trade !== null) {
+            // DEAL_BEGIN (Main.Part10.cs:4324 method_302): the trade trees open beside the conversation — not when the
+            // screen or its conversation closed before the reply came (one worker round trip later on a replica).
+            if (res.trade !== null && !closed && talk !== null && !talk.closed) {
                 openTradePanel({
                     galaxy: player.galaxy,
                     negotiation: res.trade,

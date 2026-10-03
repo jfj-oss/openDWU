@@ -22,6 +22,7 @@ import { Empire as EmpireClass } from '../sim/empire';
 import { Habitat } from '../sim/types';
 import type { ClockMessage, CommandMessage, HostOpMessage, QueryMessage, RefreshRequest, SnapshotMessage, StepMessage, ToWorker, WorkerEvent } from './protocol';
 import { setRemoteSimHost, type RemoteSimHost } from './remoteHost';
+import { commandFailureMessage, commandFailureValue } from './commandFailure';
 import { setRemoteRefreshSink } from './refresh';
 import { markReadOnlyGalaxy } from '../sim/readOnlyQuery';
 import type { ApplyStats } from './replicaSync';
@@ -215,6 +216,33 @@ const IDENTITY_PROTOS: ReadonlySet<object> = new Set<object>([BuiltObject.protot
 /** Longest a step message carrying a command / query reply is held by the pacer (real ms since it arrived). */
 export const REPLY_WAIT_MS = 50;
 
+/**
+ * Safety net: a reply the worker has not sent after this long (real ms) is given up — loudly (console.error) — and
+ * failed as if the worker had reported an error (docs/sim-worker.md §4.4 "Failed commands"). Replies normally come
+ * with the next tick (tens of ms; a few seconds while the worker saves a late game).
+ */
+export const REPLY_TIMEOUT_MS = 30000;
+
+/** A request to the worker that waits for its reply in a step message's `results`. */
+interface Waiting {
+    kind: 'command' | 'query' | 'refresh' | 'hostOp';
+    op: string;
+    /** Main-thread time it was posted (now()). */
+    sentAt: number;
+    /** The reply callback: a command's onApplied, a query's done, a refresh's onFresh, a promise's resolve. */
+    reply?: (r: unknown) => void;
+    /** Promised replies (remoteHost.ts): a failure rejects instead. */
+    reject?: (err: Error) => void;
+    /** A command's arguments (a few failure values name them: commandFailure.ts). */
+    args?: readonly unknown[];
+    /**
+     * A command's outcome, once known: its callbacks run in ISSUE order (drainCommands), as in-thread, where one
+     * boundary applies the queued commands in order — so a command that fails at once (an argument gone) is not
+     * answered before the commands issued ahead of it.
+     */
+    outcome?: { ok: true; value: unknown } | { ok: false; reason: string; threw: boolean };
+}
+
 /** Clock controls the main thread hands the worker (GalaxyTime's pause / speed). */
 export interface ClockControls {
     speed: number;
@@ -226,6 +254,8 @@ export interface ClientCoreOptions {
     now?: () => number;
     /** Wall ms per render frame for applying queued cold parts (default 0.5; grows with the backlog). */
     coldBudgetMs?: number;
+    /** Reply safety net (default REPLY_TIMEOUT_MS). */
+    replyTimeoutMs?: number;
     onEvent?: (e: WorkerEvent, resolve: (a: unknown) => unknown) => void;
     /**
      * Pace step messages (StepPacer: the drawn game time follows the wall clock under arrival jitter; the browser
@@ -241,12 +271,17 @@ export class SimClientCore {
     readonly stats = createSyncStats();
     readonly renderTime: RenderTime = createRenderTime();
     readonly game: Game;
-    private readonly pending = new Map<number, (r: unknown) => void>();
+    /** Requests waiting for their reply, by id (commands with a callback, queries, refreshes, host ops). */
+    private readonly waiting = new Map<number, Waiting>();
+    /** Ids given up by the reply timeout (a reply that still comes is dropped with a warning). */
+    private readonly timedOut = new Set<number>();
+    /** Why the worker is gone (workerFailed), else null: requests fail at once. */
+    private stopped: string | null = null;
+    private warnedUnavailable = false;
+    private readonly replyTimeoutMs: number;
     /** Main-thread identity of the by-value objects sent in commands (remoteArgs.ts valueId). */
     private readonly valueIds = new WeakMap<object, number>();
     private nextValueId = 0;
-    /** Replies awaited as promises (remoteHost.ts): rejected when the worker reports an error. */
-    private readonly failing = new Map<number, (err: Error) => void>();
     private readonly listeners = new Set<(e: WorkerEvent, resolve: (a: unknown) => unknown) => void>();
     private nextCommandId = 1;
     private clockSeq = 0;
@@ -284,6 +319,7 @@ export class SimClientCore {
         this.now = opts.now ?? (() => performance.now());
         this.coldBudgetMs = opts.coldBudgetMs ?? 0.5;
         this.pauseHoldMaxMs = opts.pauseHoldMaxMs ?? 500;
+        this.replyTimeoutMs = opts.replyTimeoutMs ?? REPLY_TIMEOUT_MS;
         this.replica = new GalaxyReplica(gameData, snapshot.baseTechCost);
         this.replica.apply(snapshot.delta, true);
         const galaxy = this.replica.galaxy;
@@ -313,6 +349,12 @@ export class SimClientCore {
                 return id;
             },
             external: (o) => byObject.get(o),
+            // A dropped object in a ships list / selection is left out of it (remoteArgs.ts RemoteNaming.gone).
+            gone: (o) => this.replica.decoder.idOf(o) < 0 && IDENTITY_PROTOS.has(Object.getPrototypeOf(o) as object),
+            dropped: (path, o) => {
+                const name = (o as { name?: unknown }).name;
+                console.warn(`sim worker: argument ${path} (${(o as object).constructor.name}${typeof name === 'string' ? ` ${name}` : ''}) is no longer in the game: left out of the list`);
+            },
             // By-value identity across commands (remoteArgs.ts RemoteValues).
             valueId: (o) => {
                 let v = this.valueIds.get(o);
@@ -344,11 +386,13 @@ export class SimClientCore {
                 new Promise((resolve, reject) => this.sendCommand(empire, op, args as unknown[], resolve as (r: unknown) => void, reject)) as never,
             hostOp: (op, args) =>
                 new Promise((resolve, reject) => {
+                    if (this.unavailable() !== null) {
+                        reject(new Error(`sim worker: host op ${op}: ${this.unavailable()}`));
+                        return;
+                    }
                     const encoded = (args as unknown[]).map((a) => encodeRemoteArg(a, this.naming));
-                    const id = this.nextCommandId++;
+                    const id = this.expect({ kind: 'hostOp', op, reply: resolve as (r: unknown) => void, reject });
                     const msg: HostOpMessage = { type: 'hostOp', id, op, args: encoded };
-                    this.pending.set(id, resolve as (r: unknown) => void);
-                    this.failing.set(id, reject);
                     this.opts.post(msg);
                 }) as never,
             subscribe: (listener) => {
@@ -382,30 +426,190 @@ export class SimClientCore {
             return args.map((a) => encodeRemoteArg(a, this.naming));
         } catch (err) {
             if (!(err instanceof RemoteArgError)) throw err;
-            // As a reply the worker could not give: no callback (docs/sim-worker.md §4.3).
+            // As a reply the worker could not give: no callback (docs/sim-worker.md §4.4).
             console.warn(`sim worker: ${what} dropped: ${err.message}`);
             return null;
         }
     }
 
-    /** `onFailed` (a promised reply, remoteHost.ts): errors reject instead of throwing / dropping with a warning. */
-    private sendCommand(empire: Empire, op: string, args: unknown[], onApplied?: (r: unknown) => void, onFailed?: (err: Error) => void): void {
-        let encoded: RemoteArg[] | null;
-        try {
-            const empireId0 = this.replica.decoder.idOf(empire);
-            if (empireId0 < 0) throw new Error(`sim worker: command ${op} from an empire that is not in the replica`);
-            encoded = onFailed !== undefined ? args.map((a) => encodeRemoteArg(a, this.naming)) : this.encodeArgs(`command ${op}`, args);
-        } catch (err) {
-            if (onFailed === undefined) throw err;
-            onFailed(err instanceof Error ? err : new Error(String(err)));
+    /** Warn about a command that could not be sent (once only while the game is closed / the worker stopped: the UI
+     *  timers keep issuing). */
+    private warnNotSent(op: string, reason: string): void {
+        if (this.unavailable() !== null) {
+            if (this.warnedUnavailable) return;
+            this.warnedUnavailable = true;
+        }
+        console.warn(`sim worker: command ${op} not sent: ${reason}`);
+    }
+
+    /** Why requests cannot reach the worker now (closed, or the worker stopped), else null. */
+    private unavailable(): string | null {
+        if (this.disposed) return 'the game was closed';
+        return this.stopped;
+    }
+
+    /** Register a request that waits for a reply; returns its id. */
+    private expect(w: Omit<Waiting, 'sentAt'>): number {
+        const id = this.nextCommandId++;
+        this.waiting.set(id, { ...w, sentAt: this.now() });
+        return id;
+    }
+
+    /** Requests waiting for their reply (tests, the smoke). */
+    get pendingReplies(): number {
+        return this.waiting.size;
+    }
+
+    /**
+     * A request that will not get its reply (docs/sim-worker.md §4.4 "Failed commands"). A promised reply rejects. A
+     * command's callback gets the op's failure value (commandFailure.ts: the value its executor returns when it refuses
+     * the order), so the UI leaves its waiting state on its own refusal path — except when the executor threw
+     * (`threw`): in-thread the boundary's exception then stops the frame (pause, "Simulation error" toast) and the
+     * callback never runs, and the worker did the same. A query's `done` and a refresh's `onFresh` do not run: an
+     * in-thread query that throws never calls `done` either, and an in-thread refresh never calls `onFresh`.
+     */
+    private fail(w: Waiting, reason: string, threw = false): void {
+        if (w.reject !== undefined) {
+            w.reject(new Error(`sim worker: ${w.kind} ${w.op}: ${reason}`));
             return;
         }
-        if (encoded === null) return;
+        if (w.kind !== 'command' || threw || w.reply === undefined) return;
+        this.deliverFailure(w.op, w.args ?? [], reason, w.reply);
+    }
+
+    /** Call a command's callback with its failure value (an exception in it surfaces as an in-thread one does). */
+    private deliverFailure(op: string, args: readonly unknown[], reason: string, reply: (r: unknown) => void): void {
+        const value = commandFailureValue(op, commandFailureMessage(reason), args);
+        try {
+            reply(value);
+        } catch (err) {
+            queueMicrotask(() => {
+                throw err;
+            });
+        }
+    }
+
+    /**
+     * Every waiting request fails with `reason` (the worker stopped, the game was closed): commands get their failure
+     * value, promises reject (see fail). Each at most once; none is left behind.
+     */
+    private failAll(reason: string): void {
+        // In issue order, each at most once (an outcome already known is delivered as it was).
+        for (const [id, w] of this.waiting) {
+            this.waiting.delete(id);
+            this.deliver(w, w.outcome ?? { ok: false, reason, threw: false });
+        }
+    }
+
+    /** Run a request's callback for `outcome` (exceptions in it surface as in-thread: rethrown in a microtask). */
+    private deliver(w: Waiting, outcome: NonNullable<Waiting['outcome']>): void {
+        try {
+            if (!outcome.ok) this.fail(w, outcome.reason, outcome.threw);
+            else w.reply?.(outcome.value);
+        } catch (err) {
+            queueMicrotask(() => {
+                throw err;
+            });
+        }
+    }
+
+    /**
+     * A request's outcome is known. A query / refresh / host op is answered now; a command when every command issued
+     * before it has been answered (drainCommands).
+     */
+    private finish(id: number, w: Waiting, outcome: NonNullable<Waiting['outcome']>): void {
+        if (w.kind !== 'command') {
+            this.waiting.delete(id);
+            this.deliver(w, outcome);
+            return;
+        }
+        w.outcome = outcome;
+        this.drainCommands();
+    }
+
+    /** Answer the commands whose outcome is known, in issue order, up to the first still waiting for its reply. A
+     *  command an answered callback issues joins the same pass (as in-thread, the same boundary). */
+    private drainCommands(): void {
+        for (const [id, w] of this.waiting) {
+            if (w.kind !== 'command') continue;
+            if (w.outcome === undefined) return;
+            this.waiting.delete(id);
+            this.deliver(w, w.outcome);
+        }
+    }
+
+    /**
+     * The worker is gone for good (worker.ts reported a fatal error, it crashed, or a message from it was lost):
+     * every waiting request fails, later ones fail at once, and the app is told (a `workerStopped` event).
+     */
+    workerFailed(reason: string): void {
+        if (this.disposed || this.stopped !== null) return;
+        this.stopped = `the simulation worker stopped (${reason})`;
+        console.error(`sim worker: STOPPED — ${reason}. ${this.waiting.size} waiting request(s) fail; the game cannot continue in this session.`);
+        this.failAll(this.stopped);
+        const e: WorkerEvent = { kind: 'workerStopped', message: reason };
+        this.emit(e);
+    }
+
+    /** Whether the worker stopped (workerFailed). */
+    get workerStopped(): boolean {
+        return this.stopped !== null;
+    }
+
+    private emit(e: WorkerEvent): void {
+        const resolve = (a: unknown): unknown => this.resolve(a);
+        try {
+            this.opts.onEvent?.(e, resolve);
+        } catch (err) {
+            queueMicrotask(() => {
+                throw err;
+            });
+        }
+        for (const l of this.listeners) {
+            try {
+                l(e, resolve);
+            } catch (err) {
+                queueMicrotask(() => {
+                    throw err;
+                });
+            }
+        }
+    }
+
+    /**
+     * Send a player command (the replica's remote command sink). Never throws and never calls back inside this call
+     * (in-thread the callback runs at the next boundary): a command that cannot be sent — an argument the replica no
+     * longer knows, the worker gone — fails in a microtask (see fail). `onFailed`: a promised reply (remoteHost.ts),
+     * which rejects instead.
+     */
+    private sendCommand(empire: Empire, op: string, args: unknown[], onApplied?: (r: unknown) => void, onFailed?: (err: Error) => void): void {
+        const failSoon = (reason: string): void => {
+            this.warnNotSent(op, reason);
+            if (onApplied === undefined && onFailed === undefined) return;
+            // Answered in issue order, after the commands still in flight ahead of it, and never inside this call.
+            const id = this.expect({ kind: 'command', op, reply: onApplied, reject: onFailed, args });
+            this.waiting.get(id)!.outcome = { ok: false, reason, threw: false };
+            queueMicrotask(() => this.drainCommands());
+        };
+        const gone = this.unavailable();
+        if (gone !== null) {
+            failSoon(gone);
+            return;
+        }
+        let encoded: RemoteArg[];
+        try {
+            if (this.replica.decoder.idOf(empire) < 0) throw new RemoteArgError(`the issuing empire is not in the replica`);
+            encoded = args.map((a) => encodeRemoteArg(a, this.naming));
+        } catch (err) {
+            // RemoteArgError: an argument left the game (destroyed, dropped by the sync) or cannot be sent; anything
+            // else is a bug in the codec — logged as an error, the command still fails cleanly.
+            if (!(err instanceof RemoteArgError)) console.error(`sim worker: command ${op}: encoding its arguments failed`, err);
+            failSoon(err instanceof Error ? err.message : String(err));
+            return;
+        }
         const empireId = this.replica.decoder.idOf(empire);
-        const id = onApplied === undefined ? 0 : this.nextCommandId++;
+        const id = onApplied === undefined && onFailed === undefined ? 0 : this.expect({ kind: 'command', op, reply: onApplied, reject: onFailed, args });
         const msg: CommandMessage = { type: 'command', id, empire: empireId, op, args: encoded };
-        if (onApplied !== undefined) this.pending.set(id, onApplied);
-        if (onFailed !== undefined) this.failing.set(id, onFailed);
         this.opts.post(msg);
     }
 
@@ -414,32 +618,37 @@ export class SimClientCore {
      * `onFresh` runs once the delta that carries them is applied.
      */
     requestRefresh(objects: readonly object[], onFresh?: () => void): void {
+        if (this.unavailable() !== null) return;
         const ids: number[] = [];
         for (const o of objects) {
             const id = this.replica.decoder.idOf(o);
             if (id >= 0) ids.push(id);
         }
-        const id = onFresh === undefined ? 0 : this.nextCommandId++;
-        if (onFresh !== undefined) this.pending.set(id, () => onFresh());
+        const id = onFresh === undefined ? 0 : this.expect({ kind: 'refresh', op: 'refresh', reply: () => onFresh() });
         const m: RefreshRequest = { type: 'refresh', id, objects: ids };
         this.opts.post(m);
     }
 
     /** A sim query (simQuery.ts) for the worker; `done` runs when its reply has been applied (in frame()). */
     private sendQuery(empire: Empire, op: SimQueryName, args: unknown[], done: (r: unknown) => void): void {
+        const gone = this.unavailable();
+        if (gone !== null) {
+            // As a query the worker could not run (an in-thread query that throws never calls `done`).
+            console.warn(`sim worker: query ${op} dropped: ${gone}`);
+            return;
+        }
         const empireId = this.replica.decoder.idOf(empire);
         if (empireId < 0) throw new Error(`sim worker: query ${op} from an empire that is not in the replica`);
         const encoded = this.encodeArgs(`query ${op}`, args);
         if (encoded === null) return;
-        const id = this.nextCommandId++;
+        const id = this.expect({ kind: 'query', op, reply: done });
         const msg: QueryMessage = { type: 'query', id, empire: empireId, op, args: encoded };
-        this.pending.set(id, done);
         this.opts.post(msg);
     }
 
     /** A UI-side sim write for the worker to apply on receipt, unjournaled (protocol.ts UiOpMessage). */
     postUiOp(op: string, args: unknown[]): void {
-        if (this.disposed) return;
+        if (this.unavailable() !== null) return;
         this.opts.post({ type: 'uiOp', op, args: args.map((a) => encodeRemoteArg(a, this.naming)) });
     }
 
@@ -578,52 +787,14 @@ export class SimClientCore {
                     time.speed = m.speed;
                 }
             }
-            for (const r of m.results) {
-                const cb = this.pending.get(r.id);
-                const fail = this.failing.get(r.id);
-                this.pending.delete(r.id);
-                this.failing.delete(r.id);
-                if (r.error !== undefined) {
-                    if (fail !== undefined) fail(new Error(r.error));
-                    else console.warn(`sim worker: command reply ${r.id}: ${r.error}`);
-                } else if (cb !== undefined) {
-                    let value: unknown;
-                    try {
-                        value = this.resolve(r.result);
-                    } catch (err) {
-                        if (fail !== undefined) fail(err instanceof Error ? err : new Error(String(err)));
-                        else
-                            queueMicrotask(() => {
-                                throw err;
-                            });
-                        continue;
-                    }
-                    try {
-                        cb(value);
-                    } catch (err) {
-                        queueMicrotask(() => {
-                            throw err;
-                        });
-                    }
-                }
-            }
-            for (const e of m.events) {
-                this.opts.onEvent?.(e, (a) => this.resolve(a));
-                for (const l of this.listeners) {
-                    try {
-                        l(e, (a) => this.resolve(a));
-                    } catch (err) {
-                        queueMicrotask(() => {
-                            throw err;
-                        });
-                    }
-                }
-            }
+            for (const r of m.results) this.settle(r);
+            for (const e of m.events) this.emit(e);
         }
         const last = take > 0 ? this.inbox[take - 1] : null;
         this.inbox.splice(0, take);
         this.arrivals.splice(0, take);
         const cold = this.replica.pumpCold(this.coldBudgetMs);
+        if (this.waiting.size > 0) this.checkReplyTimeouts(t0);
         const t2 = this.now();
         // A held pause draws as paused (alpha 0) from the frame it was pressed, as the in-thread loop does.
         const pausedNow = this.paused || holding;
@@ -669,20 +840,69 @@ export class SimClientCore {
         return steps;
     }
 
+    /** A reply from a step message (its delta applied): the waiting request's callback, once. */
+    private settle(r: StepMessage['results'][number]): void {
+        const w = this.waiting.get(r.id);
+        if (w === undefined) {
+            if (this.timedOut.delete(r.id)) console.warn(`sim worker: reply ${r.id} came after its timeout (already failed); dropped`);
+            return;
+        }
+        if (w.outcome !== undefined) return; // failed already (timed out), waiting for its turn
+        if (r.error !== undefined) {
+            if (r.threw === true) console.error(`sim worker: ${w.kind} ${w.op}: ${r.error}`);
+            else console.warn(`sim worker: ${w.kind} ${w.op} failed: ${r.error}`);
+            this.finish(r.id, w, { ok: false, reason: r.error, threw: r.threw === true });
+            return;
+        }
+        let value: unknown;
+        try {
+            value = this.resolve(r.result);
+        } catch (err) {
+            const why = `its reply could not be resolved on the replica (${err instanceof Error ? err.message : String(err)})`;
+            console.error(`sim worker: ${w.kind} ${w.op}: ${why}`);
+            this.finish(r.id, w, { ok: false, reason: why, threw: false });
+            return;
+        }
+        // An exception in the callback (deliver) must not stop the other replies, as in-thread (applyLive).
+        this.finish(r.id, w, { ok: true, value });
+    }
+
+    /** The reply safety net: requests older than replyTimeoutMs whose reply is not in the inbox fail, loudly. */
+    private checkReplyTimeouts(nowMs: number): void {
+        let inInbox: Set<number> | null = null;
+        const late: [number, Waiting][] = [];
+        for (const [id, w] of this.waiting) {
+            if (w.outcome !== undefined || nowMs - w.sentAt < this.replyTimeoutMs) continue;
+            inInbox ??= new Set(this.inbox.flatMap((m) => m.results.map((r) => r.id)));
+            if (!inInbox.has(id)) late.push([id, w]);
+        }
+        for (const [id, w] of late) {
+            this.timedOut.add(id);
+            const s = Math.round((nowMs - w.sentAt) / 1000);
+            console.error(`sim worker: ${w.kind} ${w.op} (request ${id}): no reply from the simulation worker after ${s} s — giving up on it (a lost reply is a bug: please report it)`);
+            // A late command may still be applied by the worker: the message says so.
+            const why = `no reply from the simulation worker after ${s} s; it may still be applied`;
+            if (this.waiting.has(id)) this.finish(id, w, { ok: false, reason: why, threw: false });
+        }
+    }
+
     dispose(): void {
         if (this.disposed) return;
         this.disposed = true;
+        // A game closed (main menu, new game, load) with orders in flight: their callbacks get the failure value now,
+        // promises reject — nothing is left waiting on a game that is gone.
+        if (this.waiting.size > 0) console.warn(`sim worker: the game was closed with ${this.waiting.size} request(s) waiting for the worker; they fail`);
+        // In a microtask: after the teardown that called dispose() (main.ts closes the screens first), not inside it.
+        queueMicrotask(() => this.failAll('the game was closed'));
+        this.timedOut.clear();
         this.unbindClock?.();
-        setRemoteCommandSink(this.galaxy, null);
+        // The command sink stays: a command issued on this closed replica (a screen of the old game still open) fails
+        // cleanly through sendCommand instead of waiting in a local queue nothing drains.
         setRemoteQuerySink(this.galaxy, null);
         setRemoteSimHost(this.galaxy, null);
         setRemoteRefreshSink(this.galaxy, null);
         markReadOnlyGalaxy(this.galaxy, false);
         this.tradeFlows.dispose();
-        this.pending.clear();
-        const failing = [...this.failing.values()];
-        this.failing.clear();
         this.listeners.clear();
-        for (const f of failing) f(new Error('sim worker: the game was closed'));
     }
 }

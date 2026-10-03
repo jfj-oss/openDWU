@@ -368,8 +368,33 @@ thread applies the cold parts through that delta before it runs the command repl
 So a callback reads the replica as of that boundary (one step later than in-thread), including cold fields.
 
 **Dropped objects.** A BuiltObject, Habitat, ShipGroup, Creature, Fighter or Empire the replica no longer knows (destroyed
-and dropped by the mark while the HUD still held it) is never sent by value: the command or query is dropped with a
-warning and its callback does not run.
+and dropped by the mark while the HUD still held it) is never sent by value. In a top-level array argument (a ships
+list, a selection) it is left out with a warning, and the order goes for the rest (in-thread the executor gets the dead
+ship and skips it). Anywhere else the query is dropped with a warning and `done` does not run. A command fails, and its
+callback gets the op's failure value (see "Failed commands" below).
+
+**Failed commands** (`clientCore.ts`, `simHost.ts settleCommands`, `commandFailure.ts`; test
+`test/simWorkerCommandFailures.test.ts`). In-thread, every issued command reaches its executor at the next boundary, and
+`onApplied` always gets its result. The only exception is an executor that throws: the frame stops, the game pauses with
+"Simulation error", and the callback never runs. On a replica, every command issued with a callback is answered exactly
+once, never inside the `issuePlayerCommand` call, and in issue order (a command that fails at once waits for the replies
+of the commands ahead of it, as one boundary applies them in order).
+
+| What happened | Callback | Promise (`remoteSimHost(g).command` / `hostOp`) |
+|---|---|---|
+| The executor ran (also a refusal: `false`, `null`, `-1`, `{ ok: false }`) | its result, as in-thread | resolves |
+| The executor threw, or an unknown op | none, as in-thread. The worker pauses with a `simError` (toast) and replies `threw`, so nothing is left waiting; the commands after it apply at the next boundary | rejects |
+| An argument cannot be sent (dropped object, unregistered class) or the worker cannot resolve it (stale sync id, unknown static), or the issuing empire is gone | the op's **failure value** (`COMMAND_FAILURE`: the value its executor returns when it refuses, with the reason as the message where the result has one) | rejects |
+| The result has a part that cannot cross exactly (an unregistered class, a function) | the result with those parts made plain, logged loudly (`console.error`: make the type sendable) | resolves |
+| No reply after `REPLY_TIMEOUT_MS` (30 s; a lost message) | the failure value, logged loudly. A reply that still comes is dropped with a warning (the order may still have been applied) | rejects |
+| The worker stopped (`worker.ts` fatal: its loop or the sync threw; an uncaught error; a message that could not be read; `SimWorkerClient.stop`) | the failure value, at once. Later commands fail in a microtask, and a `workerStopped` event shows a toast | rejects |
+| The game is closed, reloaded or a new one started (`SimClientCore.dispose`) | the failure value, in a microtask after the teardown. The command sink stays installed, so a command issued on the closed replica fails the same way | rejects |
+
+Queries never call `done` on a failure (an in-thread query that throws does not call it either; `WorkerQueryCache`
+asks again after `lostMs`), and refresh requests never call `onFresh`, as in-thread. Both are removed from the waiting
+table, and the timeout covers them too. Save / digest / debug / commandLog requests reject when the worker stops or the
+client is disposed. `save()` then returns null, as for a failed save. The failure values are typed per op: a new player
+op does not compile without one.
 
 ### 4.5 Sim → UI hooks
 
@@ -443,6 +468,7 @@ The only behaviour changes in this mode are:
 | `src/simworker/worker.ts` | Worker entry: data loading, create / load, timer loop, message dispatch |
 | `src/simworker/workerClient.ts` | Main-side Worker wrapper, boot with progress, frame loop, async save / digest, the flag |
 | `src/simworker/remoteArgs.ts` | Command arguments and replies across the boundary (sync ids) |
+| `src/simworker/commandFailure.ts` | Each player op's failure value, for commands the worker could not apply (§4.4 "Failed commands") |
 | `src/simworker/bootOptions.ts` | createGame options across the boundary |
 | `src/simworker/simQuery.ts` | UI-side sim calls that change state as the C# UI does (menus, buttons, money panel), run where the game runs (§4.4) |
 | `src/simworker/tradeFlowSync.ts` | Trade-flow recording in the worker; the ledger as a side table (chunk 3) |
@@ -451,6 +477,7 @@ The only behaviour changes in this mode are:
 | `src/simFrameBudget.ts` | SimFrameBudget, shared by both modes |
 | `scripts/sync-measure.mjs` | Sync cost on a save (`--compare-options`, `--verify`, `--census`, `--hot-fields`) |
 | `scripts/simworker-smoke.mjs` | Browser smoke: boots with the flag, checks run / speed / pause / move order, screenshots |
+| `test/simWorkerCommandFailures.test.ts` | Failed commands: refusals, throws, unknown ops, dropped / stale arguments, unsendable results, timeout, worker stop, close / reload (§4.4) |
 | `test/simWorker.test.ts`, `test/replicaSync.test.ts` | Determinism, fidelity and save gates; codec fuzz (8 seeds × 400 steps by default; `FUZZ_SEEDS` / `FUZZ_STEPS`) |
 | `src/simworker/writeDetector.ts`, `test/replicaWriteDetector.test.ts` | Dev-only replica write detector (`?detectWrites=1`, §9 chunk 0) and its tests |
 
@@ -469,6 +496,28 @@ The only behaviour changes in this mode are:
   to exact: the worker keeps comparing for two full cycles after the last change.
 - **Not ported (§9):** synchronous advisor commands, tutorials (they still boot in-thread), the
   `__dwu.sim` / `simBudget` debug hooks (null in worker mode), and `__dwu.commands.log` (the replica has no log).
+- **Command replies.** Every command issued on the replica with a callback is answered exactly once, in issue order
+  (§4.4 "Failed commands"). Before this fix, an error reply (a result that could not be encoded, a stale argument)
+  only logged a warning. The worker dying, a reload or a lost message left the callback waiting forever, so the flows
+  that wait on it hung: Recruit (`troops.ts` / `coloniesScreen.ts` await the reply) and the Design Editor's Save
+  (`saving` was reset only in the callback). Audited: every UI caller of `issuePlayerCommand`, `simQuery`,
+  `requestSimRefresh` and `remoteSimHost` (about 140 sites). They take the failure value on their existing refusal
+  path, and none keeps a busy state past it. Smoke: `scripts/simworker-smoke.mjs` (game mode, both modes; `--no-commands`
+  skips it) recruits from the Troops screen, saves from the Design Editor (a copy, then a refused blank design twice),
+  and in worker mode crashes the worker (`SimWorkerClient.stop`) and checks that Save and Recruit still answer.
+  Remaining limits:
+  - A timed-out command may still be applied by the worker after its callback got the failure value.
+  - An executor that throws leaves the waiting flows stuck in both modes (`designEditor.ts` `saving`), as in-thread.
+  - Worker latency makes some UI computations from replica state lossy under quick repeats within one round trip:
+    - the Colonies tax steps from `h.taxRate`;
+    - Fleets troop loadout spinners from the replica loadout;
+    - Fleet Designs ± counts;
+    - Expansion Planner "Build" stays enabled for two round trips, so a double click buys two colony ships.
+    The Empire Policy combos now compare with the values they sent.
+  - In-thread, `empirePolicy.ts` writes the automation `control*` fields directly, while worker mode issues
+    `setEmpireControl` commands, so the two modes' command logs differ there.
+  - Some failure texts are generic: Recruit refusals are silent in both modes; Construction Yards "no suitable
+    destination" for a refuel / repair / retire that failed; Expansion Planner "Cannot build here".
 
 ## 9. Porting work list (parallel chunks)
 
@@ -656,8 +705,8 @@ Original brief:
   - Browser: `scripts/simworker-screens.mjs` opens every screen with the game paused, with `detectWrites=1`, and
     compares the replica digest with the worker's. It then renames the empire and saves a design through the editor.
 - **Still open:**
-  - A reply whose result fails to encode is dropped (console warning only). The await-style callers (recruit, the
-    editor's Save) then wait forever.
+  - ~~A reply whose result fails to encode is dropped (console warning only). The await-style callers (recruit, the
+    editor's Save) then wait forever.~~ Fixed: §4.4 "Failed commands".
   - The Galactopedia's `loadGameData` reloads the global GameText table, which drops scenario text added on the main
     thread.
   - Lazily added `declare`d class fields reach the replica only through `compareNow` (chunk 9 / 0).
