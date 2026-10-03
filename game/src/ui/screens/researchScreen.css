@@ -1,276 +1,441 @@
-/* Research screen (task 15b). Styling follows the Colonies / Empires list
-   dark-panel tokens. */
+/* Research screen (researchScreen.ts) on the original-style window (originalWindow.css). Sizes are the original's
+   pixels; colours are ResearchTree.cs / Main.Part6.cs Color.FromArgb values. */
 
-.research-wrap {
-    position: fixed;
-    inset: 0;
-    z-index: 1500; /* above the HUD, like the in-game tutorial window */
-    pointer-events: none;
-    font-family: 'Forgotten Futurist', sans-serif;
-    color: #e6e6e6;
+.ow-screen-research .rs-instructions {
+    line-height: 1.2;
 }
 
-.research-window {
+/* The industry tabs (GlassButton, top corners curved). */
+.ow-screen-research .rs-tab {
+    z-index: 0;
+}
+
+/* WdosRcovZt: the black scrolling container (in front of the tabs) holding the ResearchTree control. */
+.rs-tree-frame {
     position: absolute;
-    top: 64px;
-    left: 16px;
-    width: min(980px, calc(100vw - 32px));
-    max-height: calc(100vh - 96px);
-    pointer-events: auto;
-    background: rgba(14, 16, 20, 0.94);
-    backdrop-filter: blur(6px);
-    -webkit-backdrop-filter: blur(6px);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 6px;
-    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6);
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
+    z-index: 1;
+    background: #000;
 }
-
-.research-titlebar {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 8px 12px;
-    background: rgba(10, 11, 15, 0.9);
-    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-}
-
-.research-heading {
-    font-size: 13px;
-    color: #e8d24a;
-}
-
-.research-close {
-    background: transparent;
-    border: none;
-    color: #ccc;
-    font-size: 15px;
-    cursor: pointer;
-    padding: 2px 6px;
-}
-.research-close:hover {
-    color: #fff;
-}
-
-.research-body {
-    padding: 8px;
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    overflow-y: auto;
-}
-
-.research-summary {
-    font-size: 12px;
-    color: #aaa;
-}
-
-.research-tabs {
-    display: flex;
-    gap: 6px;
-}
-
-.research-tab {
-    flex: 1 1 0;
-    min-width: 0;
-    text-align: left;
-    font-family: inherit;
-    color: #ccc;
-    background: rgba(255, 255, 255, 0.04);
-    border: 1px solid rgba(255, 255, 255, 0.07);
-    border-radius: 4px 4px 0 0;
-    padding: 5px 8px;
-    cursor: pointer;
-}
-.research-tab:hover {
-    background: rgba(255, 255, 255, 0.1);
-}
-.research-tab-selected {
-    background: rgba(255, 255, 255, 0.12);
-    color: #fff;
-}
-
-.research-tab-label {
-    font-size: 13px;
-}
-
-.research-tab-minor {
-    font-size: 10px;
-    color: #999;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-
-.research-output {
-    font-size: 12px;
-    color: #aaa;
-}
-
-.research-section {
-    font-size: 10px;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    color: #777;
-    margin-top: 4px;
-}
-
-.research-queue {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-}
-
-.research-empty {
-    font-size: 12px;
-    color: #777;
-    padding: 2px 8px;
-}
-
-.research-row {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) 160px 3em auto;
-    align-items: center;
-    gap: 8px;
-    padding: 5px 8px;
-    background: rgba(255, 255, 255, 0.04);
-    border: 1px solid rgba(255, 255, 255, 0.07);
-    border-radius: 4px;
-}
-.research-row-current {
-    border-color: rgba(255, 255, 0, 0.5);
-}
-
-.research-row-name {
-    font-size: 13px;
-    color: #fff;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-
-.research-row-percent {
-    font-size: 12px;
-    color: #aaa;
-    text-align: right;
-}
-
-.research-row-actions {
-    display: flex;
-    align-items: center;
-    justify-content: flex-end;
-    gap: 6px;
-}
-
-/* DrawBarGraph colours: yellow fill on dark olive. */
-.research-bar,
-.research-node-bar {
-    height: 4px;
-    background: rgba(48, 48, 0, 1);
-    overflow: hidden;
-}
-.research-node-bar {
-    height: 2px;
-    margin-top: 2px;
-}
-.research-bar-fill {
-    height: 100%;
-    background: #ffff00;
-}
-
-.research-crash {
-    font-family: inherit;
-    font-size: 11px;
-    color: #e8d24a;
-    background: transparent;
-    border: 1px solid rgba(232, 210, 74, 0.5);
-    border-radius: 3px;
-    padding: 1px 6px;
-    cursor: pointer;
-}
-.research-crash:hover {
-    background: rgba(232, 210, 74, 0.15);
-}
-
-.research-crash-tag {
-    font-size: 10px;
-    letter-spacing: 0.06em;
-    color: #ff4060;
-    border: 1px solid rgba(255, 64, 96, 0.5);
-    border-radius: 3px;
-    padding: 0 4px;
-}
-
-.research-remove {
-    background: transparent;
-    border: none;
-    color: #ccc;
-    font-size: 13px;
-    cursor: pointer;
-    padding: 0 4px;
-}
-.research-remove:hover:not(:disabled) {
-    color: #fff;
-}
-.research-remove:disabled {
-    color: #444;
+.rs-tree-view {
+    position: absolute;
+    inset: 0;
+    overflow: auto;
     cursor: default;
 }
-
-.research-tree {
-    display: flex;
-    gap: 8px;
-    overflow-x: auto;
-    padding-bottom: 4px;
+.rs-tree-view.rs-dragging,
+.rs-tree-view.rs-dragging * {
+    cursor: move !important;
+}
+.rs-tree-view::-webkit-scrollbar {
+    height: 14px;
+}
+.rs-tree-view::-webkit-scrollbar-corner {
+    background: rgb(32, 32, 40);
+}
+.rs-tree {
+    position: relative;
+}
+.rs-paths {
+    position: absolute;
+    left: 0;
+    top: 0;
+    pointer-events: none;
 }
 
-.research-column {
-    flex: 0 0 150px;
+/* A node (DrawNode → CreateBackgroundFrame / DrawButtonBackground), 175 × 52. */
+.rs-node {
+    --outer: rgb(0, 0, 20);
+    --shine: 128, 128, 148;
+    --glow: 80, 80, 160;
+    --border: 0px;
+    position: absolute;
+    font-size: 13px;
 }
-
-.research-column-heading {
-    font-size: 10px;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    color: #777;
-    margin-bottom: 4px;
+/* The queue border: a rounded rect (radius 10) `--border` px around the node, (128, 255, 255, 0) when queued. */
+.rs-node-border {
+    position: absolute;
+    inset: calc(-1 * var(--border));
+    border-radius: 10px;
+    display: none;
+    pointer-events: none;
 }
-
-.research-node {
-    font-size: 11px;
-    border-radius: 3px;
-    padding: 3px 5px;
-    margin-bottom: 3px;
-    border: 1px solid transparent;
+.rs-border-queued .rs-node-border {
+    display: block;
+    background: rgba(255, 255, 0, 0.5);
+}
+.rs-border-highlight .rs-node-border {
+    display: block;
+    background: rgb(255, 0, 0);
+}
+/* The current project: UpdateColor((128, 255, 96, 0), (255, 255, 255, 0)) — a 2 s triangle wave. */
+.rs-border-current .rs-node-border {
+    display: block;
+    animation: rs-pulse 2s linear infinite;
+}
+@keyframes rs-pulse {
+    0%,
+    100% {
+        background: rgba(255, 255, 0, 1);
+    }
+    50% {
+        background: rgba(255, 96, 0, 0.5);
+    }
+}
+.rs-node-glass {
+    position: absolute;
+    inset: 0;
+    border-radius: 7px;
+    border: 1px solid var(--outer);
+    box-shadow: inset 0 0 0 1px rgb(48, 48, 68);
+    background:
+        linear-gradient(to bottom, rgba(var(--shine), 0.6), rgba(var(--shine), 0.2) 50%, transparent 50%),
+        var(--outer);
+    pointer-events: none;
+}
+.rs-disabled .rs-node-glass {
+    background:
+        linear-gradient(to bottom, rgba(var(--shine), 0.24), rgba(var(--shine), 0.08) 50%, transparent 50%),
+        var(--outer);
+}
+/* HatchBrush(WideDownwardDiagonal / DarkUpwardDiagonal, outer colour) on black. */
+.rs-fill-hatch-wide .rs-node-glass {
+    background:
+        linear-gradient(to bottom, rgba(var(--shine), 0.24), rgba(var(--shine), 0.08) 50%, transparent 50%),
+        repeating-linear-gradient(45deg, var(--outer) 0 2.1px, #000 2.1px 5.66px);
+}
+.rs-fill-hatch-dark .rs-node-glass {
+    background:
+        linear-gradient(to bottom, rgba(var(--shine), 0.24), rgba(var(--shine), 0.08) 50%, transparent 50%),
+        repeating-linear-gradient(-45deg, var(--outer) 0 1.42px, #000 1.42px 2.83px);
+}
+/* The glowing frame: the radial glow from the bottom (alpha 178), full shine. */
+.rs-frame-glowing .rs-node-glass {
+    background:
+        linear-gradient(to bottom, rgba(var(--shine), 0.6), rgba(var(--shine), 0.2) 50%, transparent 50%),
+        radial-gradient(ellipse 85% 115% at 50% 100%, rgba(var(--glow), 0.7), rgba(var(--glow), 0) 100%),
+        var(--outer);
+}
+.rs-frame-glowing.rs-fill-hatch-wide .rs-node-glass {
+    background:
+        linear-gradient(to bottom, rgba(var(--shine), 0.6), rgba(var(--shine), 0.2) 50%, transparent 50%),
+        radial-gradient(ellipse 85% 115% at 50% 100%, rgba(var(--glow), 0.7), rgba(var(--glow), 0) 100%),
+        repeating-linear-gradient(45deg, var(--outer) 0 2.1px, #000 2.1px 5.66px);
+}
+.rs-node-title {
+    position: absolute;
+    left: 4px;
+    top: 3px;
+    right: 3px;
+    font-size: 14px;
+    font-weight: bold;
+    line-height: 15px;
+    white-space: nowrap;
     overflow: hidden;
-    text-overflow: ellipsis;
+    pointer-events: none;
+}
+.rs-node-desc {
+    position: absolute;
+    font-size: 13px;
+    line-height: 14px;
+    overflow: hidden;
+    color: rgb(170, 170, 170);
+    pointer-events: none;
+}
+.rs-disabled .rs-node-desc {
+    color: rgb(80, 80, 80);
+}
+.rs-frame-glowing .rs-node-desc {
+    color: #fff;
+}
+.rs-node-img {
+    position: absolute;
+    pointer-events: none;
+}
+.rs-node-img > img:first-child {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    display: block;
+}
+.rs-node-img.rs-rot > img:first-child {
+    transform: rotate(-90deg);
+}
+/* GenerateImprovedComponentImage: UpArrow.png (13 × 24) over the left edge. */
+.rs-node-up {
+    position: absolute;
+    left: 0;
+    top: 2px;
+    width: 13px;
+    height: 24px;
+}
+.rs-disabled .rs-node-img,
+.rs-disabled .rs-node-race {
+    opacity: 0.3;
+}
+.rs-node-race {
+    position: absolute;
+    object-fit: contain;
+}
+.rs-node-race > img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+}
+/* DisallowedRaces: two 3 px red diagonals. */
+.rs-node-race-not::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background:
+        linear-gradient(to top right, transparent calc(50% - 1.5px), rgb(255, 0, 0) calc(50% - 1.5px) calc(50% + 1.5px), transparent calc(50% + 1.5px)),
+        linear-gradient(to bottom right, transparent calc(50% - 1.5px), rgb(255, 0, 0) calc(50% - 1.5px) calc(50% + 1.5px), transparent calc(50% + 1.5px));
+}
+.rs-node-crash {
+    position: absolute;
+    right: 4px;
+    bottom: 4px;
+    width: 13px;
+    height: 14px;
+    pointer-events: none;
+}
+.rs-node-bar {
+    position: absolute;
+    background: rgba(0, 0, 0, 0.314);
+    pointer-events: none;
+}
+.rs-node-bar-fill {
+    height: 100%;
+    width: 0;
+    background: linear-gradient(to right, rgb(48, 48, 0), rgb(255, 255, 0));
+}
+/* Ours (19d3 espionage): the stolen marker. */
+.rs-node-stolen {
+    position: absolute;
+    right: 4px;
+    bottom: 6px;
+    font-size: 12px;
+    font-weight: bold;
+    color: rgb(255, 128, 64);
+    text-shadow: 1px 1px 0 #000;
 }
 
-.research-node-completed {
-    background: rgba(255, 255, 255, 0.12);
+/* DrawProjectInfo: the hover panel, FillRectangle((224, 0, 0, 0)). */
+.rs-info {
+    position: absolute;
+    z-index: 5;
+    background: rgba(0, 0, 0, 0.878);
+    pointer-events: none;
     color: #fff;
 }
-.research-node-researching {
-    border: 1px solid #ffff00;
-    color: #fff;
+.rs-info-line {
+    position: absolute;
+    white-space: pre;
+    line-height: 1.12;
 }
-.research-node-queued {
-    border: 1px dashed #e8d24a;
+.rs-info-line[style*='width'] {
+    white-space: pre-wrap;
 }
-.research-node-available {
-    color: #aaa;
+.rs-info-name {
+    font-size: 20px;
+    font-weight: bold;
+}
+.rs-info-large {
+    font-size: 20px;
+}
+.rs-info-bold {
+    font-size: 18px;
+    font-weight: bold;
+}
+.rs-info-normal {
+    font-size: 18px;
+}
+.rs-info-red {
+    color: rgb(255, 0, 0);
+}
+.rs-info-unres {
+    color: rgb(255, 32, 0);
+}
+/* _FadedDotPen: (170, 170, 170), DashStyle.Dot. */
+.rs-info-hsep {
+    position: absolute;
+    border-top: 1px dotted rgb(170, 170, 170);
+}
+.rs-info-vsep {
+    position: absolute;
+    border-left: 1px dotted rgb(170, 170, 170);
+}
+
+/* Ours: the research queue panel at the tree's right edge (DrawProjectInfo's translucent black). */
+.rs-queue {
+    position: absolute;
+    z-index: 6;
+    top: 0;
+    right: 14px;
+    bottom: 14px;
+    width: 330px;
+    display: flex;
+    flex-direction: column;
+    background: rgba(0, 0, 0, 0.82);
+    border-left: 1px solid rgb(67, 67, 77);
+    color: rgb(170, 170, 170);
+    font-size: 15.33px;
+}
+.rs-queue.rs-queue-closed {
+    width: 26px;
+    background: transparent;
+    border: 0;
+}
+.rs-queue-handle {
+    position: absolute;
+    top: 10px;
+    right: 0;
+    width: 26px;
+    height: 150px;
+    padding: 0;
+    border: 1px solid rgb(0, 0, 16);
+    border-right: 0;
+    border-radius: 7px 0 0 7px;
+    background:
+        linear-gradient(to right, rgba(112, 112, 128, 0.6), rgba(112, 112, 128, 0.2) 50%, transparent 50%),
+        rgb(0, 0, 16);
+    box-shadow: inset 0 0 0 1px rgb(67, 67, 77);
+    color: rgb(170, 170, 170);
+    font-family: inherit;
+    font-size: 14px;
+    font-weight: bold;
+    writing-mode: vertical-rl;
     cursor: pointer;
 }
-.research-node-available:hover {
-    background: rgba(255, 255, 255, 0.1);
+.rs-queue-handle:hover {
+    color: #fff;
 }
-.research-node-locked {
-    color: #555;
+.rs-queue-head {
+    position: relative;
+    flex: none;
+    height: 34px;
+    border-bottom: 1px solid rgb(67, 67, 77);
 }
-.research-node-disabled,
-.research-node-restricted {
-    color: #555;
-    text-decoration: line-through;
+.rs-queue-title {
+    position: absolute;
+    left: 10px;
+    top: 7px;
+    font-size: 18.67px;
+    font-weight: bold;
+    color: #fff;
+    text-shadow: 1px 1px 0 #000;
+}
+.rs-queue-hide.ow-glass {
+    position: absolute;
+    right: 6px;
+    top: 5px;
+    width: 24px;
+    height: 24px;
+    padding: 0;
+}
+.rs-queue-stats {
+    flex: none;
+    padding: 6px 10px 8px;
+    line-height: 1.3;
+    border-bottom: 1px solid rgb(48, 48, 56);
+}
+.rs-queue-industry {
+    color: #fff;
+    font-weight: bold;
+}
+.rs-queue-list {
+    flex: 1 1 auto;
+    min-height: 0;
+}
+.rs-queue-empty {
+    padding: 10px;
+    color: rgb(120, 120, 120);
+}
+.rs-queue-row {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    grid-template-rows: auto 6px;
+    column-gap: 6px;
+    row-gap: 4px;
+    align-items: center;
+    padding: 6px 10px;
+    border-bottom: 1px solid rgb(40, 40, 48);
+}
+.rs-queue-row.rs-queue-current .rs-queue-name {
+    color: rgb(255, 255, 0);
+}
+.rs-queue-name {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: rgb(200, 200, 200);
+    cursor: pointer;
+}
+.rs-queue-name:hover {
+    text-decoration: underline;
+}
+.rs-queue-actions {
+    display: flex;
+    gap: 4px;
+    align-items: center;
+}
+.rs-queue-btn.ow-glass {
+    position: relative;
+    width: 26px;
+    height: 22px;
+    padding: 0;
+    font-size: 13px;
+}
+.rs-queue-btn.ow-glass img {
+    width: 16px;
+    height: 16px;
+}
+.rs-queue-crashtag {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    font-size: 12px;
+    font-weight: bold;
+    color: rgb(255, 160, 64);
+}
+.rs-queue-bar {
+    height: 6px;
+    background: rgba(0, 0, 0, 0.6);
+    box-shadow: inset 0 0 0 1px rgb(48, 48, 56);
+}
+.rs-queue-bar-fill {
+    height: 100%;
+    width: 0;
+    background: linear-gradient(to right, rgb(48, 48, 0), rgb(255, 255, 0));
+}
+.rs-queue-pct {
+    font-size: 13px;
+    text-align: right;
+    min-width: 36px;
+}
+
+/* TwUstMvCeX: the Research Stations page. */
+.rs-stations .ow-grid-cell img.rs-flag {
+    width: 21px;
+    height: 13px;
+    object-fit: contain;
+}
+.rs-stations .ow-grid-cell img.rs-ship {
+    width: 28px;
+    height: 28px;
+    object-fit: contain;
+    transform: rotate(-90deg);
+}
+.rs-potential {
+    background: rgba(255, 64, 128, 0.376);
+    padding: 0 2px;
+}
+.rs-special {
+    overflow: hidden;
+    line-height: 1.2;
+}
+/* ResearchSummary: the (96, 255, 64, 128) band behind the output row. */
+.rs-summary-band {
+    position: absolute;
+    background: rgba(255, 64, 128, 0.376);
 }

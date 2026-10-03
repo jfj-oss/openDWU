@@ -19,7 +19,9 @@
 //      the original's ClientSize) when the source has one (`isLargeScreen`).
 //   3. Use the widgets below rather than ad-hoc DOM so all screens share one look:
 //        gradientPanel()  GradientPanel (3-colour vertical gradient, shaded border, curved corners)
-//        glassButton()    GlassButton (black glass, shine on the top half, glow on hover, grey→white text)
+//        glassButton()    GlassButton (black glass, shine on the top half, glow on hover, grey→white text); `colors`
+//                         recolours it (OuterBorderColor / ShineColor / GlowColor), `minorText` adds the second line
+//        messageBox()     MessageBoxEx (caption, text, Yes / No / OK buttons) → Promise of the clicked button
 //        OwGrid           DataGridView via ListViewBase (row colours, header, selection, sortable columns)
 //        tabStrip()       EnhancedTabControl
 //        text() / dropText()  labels (GraphicsHelper.DrawStringWithDropShadow)
@@ -204,7 +206,7 @@ export interface TextOptions {
     color?: string;
     /** GraphicsHelper.DrawStringWithDropShadow: a 1 px black copy at (+1, +1). Default true. */
     shadow?: boolean;
-    /** Wrap inside this width (MeasureString with a layout width); default: one line. */
+    /** Wrap inside this width (MeasureString with a layout width; newlines kept); default: one line. */
     wrapWidth?: number;
     className?: string;
 }
@@ -216,7 +218,8 @@ export function text(content: string, o: TextOptions = {}): HTMLDivElement {
     if (o.bold) t.style.fontWeight = 'bold';
     if (o.color) t.style.color = o.color;
     if (o.wrapWidth !== undefined) {
-        t.style.whiteSpace = 'normal';
+        // DrawString in a layout rectangle: wraps at the width and keeps the text's own line breaks.
+        t.style.whiteSpace = 'pre-line';
         t.style.width = `${o.wrapWidth}px`;
     }
     return t;
@@ -298,6 +301,28 @@ export interface GlassButtonOptions {
     size?: number;
     bold?: boolean;
     className?: string;
+    /** SetBackColor / OuterBorderColor / ShineColor / GlowColor (0xRRGGBB): the glass fill is the outer border colour
+     *  (GlassButton.DrawButtonBackground fills with it). */
+    colors?: GlassColors;
+    /** GlassButton.MinorText: a second, centred line in the font 2 px smaller, regular (DrawText). */
+    minorText?: string;
+}
+
+export interface GlassColors {
+    outer?: number;
+    shine?: number;
+    glow?: number;
+    inner?: number;
+}
+
+const rgbTriple = (c: number): string => `${(c >> 16) & 255}, ${(c >> 8) & 255}, ${c & 255}`;
+
+/** Recolour a glass button (GlassButton.SetBackColor / SetOuterBorderColor / SetShineColor / GlowColor). */
+export function setGlassColors(b: HTMLElement, c: GlassColors): void {
+    if (c.outer !== undefined) b.style.setProperty('--outer', rgbCss(c.outer));
+    if (c.shine !== undefined) b.style.setProperty('--shine', rgbTriple(c.shine));
+    if (c.glow !== undefined) b.style.setProperty('--glow', rgbTriple(c.glow));
+    if (c.inner !== undefined) b.style.setProperty('--inner', rgbCss(c.inner));
 }
 
 /** GlassButton: (0, 0, 16) glass, (112, 112, 128) shine on the top half, (48, 48, 128) glow from the bottom on hover,
@@ -314,7 +339,14 @@ export function glassButton(label: string, o: GlassButtonOptions = {}): HTMLButt
         img.draggable = false;
         b.appendChild(img);
     }
-    if (label !== '') b.appendChild(el('span', 'ow-glass-text', label));
+    if (o.minorText !== undefined) {
+        // DrawText: the text and the minor text centred as a block, one pixel apart.
+        b.classList.add('ow-glass-minor');
+        const col = el('span', 'ow-glass-lines');
+        col.append(el('span', 'ow-glass-text', label), el('span', 'ow-glass-minortext', o.minorText));
+        b.appendChild(col);
+    } else if (label !== '') b.appendChild(el('span', 'ow-glass-text', label));
+    if (o.colors) setGlassColors(b, o.colors);
     b.style.fontSize = `${o.size ?? FONT.normal}px`;
     if (o.bold !== false) b.style.fontWeight = 'bold';
     if (o.title) b.title = o.title;
@@ -334,6 +366,12 @@ export function setButtonLabel(b: HTMLButtonElement, label: string): void {
     const t = b.querySelector<HTMLElement>('.ow-glass-text');
     if (t) setText(t, label);
     else b.appendChild(el('span', 'ow-glass-text', label));
+}
+
+/** Change a glass button's minor text in place (buttons made with `minorText`). */
+export function setButtonMinorText(b: HTMLButtonElement, text: string): void {
+    const t = b.querySelector<HTMLElement>('.ow-glass-minortext');
+    if (t) setText(t, text);
 }
 
 /** LinkLabel: (255, 192, 0), (255, 128, 0) while pressed, underline on hover (LinkBehavior.HoverUnderline). */
@@ -788,4 +826,79 @@ export function openOriginalWindow(o: OriginalWindowOptions): OriginalWindow {
 /** Re-scale every open window (the UI scale setting changed). */
 export function relayoutOriginalWindows(): void {
     window.dispatchEvent(new Event('resize'));
+}
+
+// -------------------------------------------------------------------------------------------------------------------
+// Message box (MessageBoxEx)
+// -------------------------------------------------------------------------------------------------------------------
+
+export interface MessageBoxOptions {
+    caption: string;
+    text: string;
+    /** Button labels left to right (MessageBoxExButtons.Yes / No / Ok …). Default ['OK']. */
+    buttons?: string[];
+    /** The button Enter presses (default the first). Escape resolves null. */
+    defaultButton?: string;
+    /** MessageBoxExIcon: Question / Warning / Stop (drawn as a glyph left of the text). */
+    icon?: 'question' | 'warning' | 'stop' | 'information';
+    /** Window width in original pixels (default 460). */
+    width?: number;
+}
+
+const MESSAGE_ICON: Record<NonNullable<MessageBoxOptions['icon']>, string> = { question: '?', warning: '!', stop: '\u2716', information: 'i' };
+
+/** MessageBoxExManager.CreateMessageBox(…).Show(): a small ScreenPanel with the caption as its title, the text (newlines
+ *  kept) and glass buttons along the bottom. Resolves the clicked button's label, or null (closed / Escape). */
+export function messageBox(o: MessageBoxOptions): Promise<string | null> {
+    return new Promise((resolve) => {
+        const width = o.width ?? 460;
+        const buttons = o.buttons ?? ['OK'];
+        let result: string | null = null;
+        const win = openOriginalWindow({
+            id: 'msgbox',
+            title: o.caption,
+            width,
+            height: 200,
+            onClose: () => {
+                document.removeEventListener('keydown', onKey, true);
+                resolve(result);
+            },
+        });
+        win.root.classList.add('ow-modal');
+        const iconW = o.icon ? 44 : 0;
+        if (o.icon) {
+            const ic = el('div', `ow-msg-icon ow-msg-icon-${o.icon}`, MESSAGE_ICON[o.icon]);
+            win.body.appendChild(place(ic, 14, 14, 30, 30));
+        }
+        const t = text(o.text, { size: FONT.normal, color: COLORS.text, wrapWidth: win.bodySize.w - 28 - iconW });
+        t.classList.add('ow-msg-text');
+        win.body.appendChild(place(t, 14 + iconW, 14));
+        const textH = Math.max(o.icon ? 30 : 0, t.offsetHeight || 60);
+        const bw = 100;
+        const gap = 10;
+        const height = 59 + 4 + 14 + textH + 16 + 30 + 14;
+        win.setSize(width, height);
+        const by = win.bodySize.h - 14 - 30;
+        let bx = Math.round((win.bodySize.w - (buttons.length * bw + (buttons.length - 1) * gap)) / 2);
+        const finish = (label: string | null): void => {
+            result = label;
+            win.close();
+        };
+        let defaultBtn: HTMLButtonElement | null = null;
+        for (const label of buttons) {
+            const b = glassButton(label, { onClick: () => finish(label) });
+            win.body.appendChild(place(b, bx, by, bw, 30));
+            if (label === (o.defaultButton ?? buttons[0])) defaultBtn = b;
+            bx += bw + gap;
+        }
+        const onKey = (e: KeyboardEvent): void => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                e.stopImmediatePropagation();
+                finish(o.defaultButton ?? buttons[0]);
+            }
+        };
+        document.addEventListener('keydown', onKey, true);
+        defaultBtn?.focus();
+    });
 }
