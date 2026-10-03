@@ -4,7 +4,7 @@
 // save it (serializeGame) and load the save back (deserializeGame), timing each.
 //
 //   node --expose-gc scripts/lategame-start.mjs [--seed 1] [--stars-index 5] [--dim-index 4] [--empires 19]
-//        [--expansion 4] [--your-size 4] [--seconds 0] [--save] [--quiet]
+//        [--expansion 4] [--your-size 4] [--stars N] [--seconds 0] [--save [--save-out FILE]] [--quiet]
 //
 // Defaults = the reported crash: 1400 stars (index 5), 15x15 sectors (index 4), 20 empires (player + 19), Mature
 // galaxy (Expansion 4) and Mature player empire (size 4).
@@ -50,7 +50,10 @@ try {
     so.galaxyExpansionIndex = Number(arg('expansion', 4));
     so.empireExpansionIndex = Number(arg('your-size', 4));
     so.raceName = 'Human';
-    const opts = toCreateGameOptions(so, gameData, Array.from({ length: 2000 }, (_, i) => `S${i}`));
+    const starsOverride = arg('stars', null);
+    const opts = toCreateGameOptions(so, gameData, Array.from({ length: Math.max(2000, Number(starsOverride ?? 0)) }, (_, i) => `S${i}`));
+    // --stars N: override the slider's star count (beyond the wizard's 1400 maximum), keeping every other wizard option.
+    if (starsOverride !== null) opts.starCount = Number(starsOverride);
     console.log(`seed ${seed}: ${opts.starCount} stars, ${opts.sectorWidth}x${opts.sectorHeight}, ${1 + opts.aiEmpires.length} empires, galaxy age ${opts.galaxyAge}, AI ages ${opts.aiEmpires.map((e) => e.age).join(',')}`);
     const t0 = performance.now();
     let last = t0;

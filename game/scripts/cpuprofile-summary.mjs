@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Summarise a V8 .cpuprofile (node --cpu-prof): top self-time functions and top inclusive-time call paths.
 //   node scripts/cpuprofile-summary.mjs <file.cpuprofile> [--self 30] [--paths 15] [--incl 30] [--depth 6] [--under fn]
-//        [--lines fn,...] [--children fn,...]
+//        [--lines 'fn;...'] [--children 'fn;name src/file.ts:line;...']
 // Self time is per function (name + file:line). Inclusive time counts a function once per sample even when it
 // recurses. Paths are the hottest call chains (by inclusive time, ending at a sim function), shown as the last
 // --depth frames below the tick roots.
@@ -29,7 +29,7 @@ const isUnder = (id) => {
 };
 for (let i = 0; i < p.samples.length; i++) if (isUnder(p.samples[i])) weight.set(p.samples[i], (weight.get(p.samples[i]) ?? 0) + (p.timeDeltas[i] ?? 0));
 const total = [...weight.values()].reduce((a, b) => a + b, 0);
-const short = (u) => u.replace(/^file:\/\/.*?\/dwu-profile-sim-[^/]+\//, '').replace(/^file:\/\/.*\/node_modules\//, 'nm/');
+const short = (u) => u.replace(/^file:\/\/.*?\/dwu-profile-sim-[^/]+\//, '').replace(/^file:\/\/.*\/node_modules\//, 'nm/').replace(/^https?:\/\/[^/]+\//, '').replace(/\?.*$/, '');
 const key = (n) => `${n.callFrame.functionName || '(anon)'} ${short(n.callFrame.url)}:${n.callFrame.lineNumber + 1}`;
 const self = new Map(), incl = new Map(), paths = new Map();
 for (const [id, w] of weight) {
@@ -79,14 +79,14 @@ for (const [k, w] of cand) {
     shown.push([k, w]);
 }
 for (const [k, w] of shown) console.log(`${pct(w)}  ${k}`);
-// --lines fnName[,fnName]: per-line self samples (positionTicks) of those functions (bundle line numbers; keep the
+// --lines 'fnName[;name src/file.ts:line]': per-line self samples (positionTicks) of those functions (bundle line numbers; keep the
 // bundle with profile-sim --keep-bundle to read them).
-const linesOpt = (() => { const i = process.argv.indexOf('--lines'); return i < 0 ? [] : process.argv[i + 1].split(','); })();
+const linesOpt = (() => { const i = process.argv.indexOf('--lines'); return i < 0 ? [] : process.argv[i + 1].split(/[;,]/); })();
 for (const fn of linesOpt) {
     const ticks = new Map();
     let url = '';
     for (const n of p.nodes) {
-        if (n.callFrame.functionName !== fn) continue;
+        if (fn.includes(' ') ? key(n) !== fn : n.callFrame.functionName !== fn) continue;
         url = n.callFrame.url;
         for (const t of n.positionTicks ?? []) ticks.set(t.line, (ticks.get(t.line) ?? 0) + t.ticks);
     }
@@ -94,8 +94,8 @@ for (const fn of linesOpt) {
     console.log(`\n== ${fn} (${short(url)}) self ticks by line (${sum} ticks)`);
     for (const [l, t] of [...ticks].sort((a, b) => b[1] - a[1]).slice(0, 25)) console.log(`${((100 * t) / sum).toFixed(1).padStart(5)}%  line ${l}`);
 }
-// --children fnName[,fnName]: inclusive time of each direct callee of those functions (merged over call sites).
-const childOpt = (() => { const i = process.argv.indexOf('--children'); return i < 0 ? [] : process.argv[i + 1].split(','); })();
+// --children 'fnName[;name src/file.ts:line]': inclusive time of each direct callee of those functions (merged over call sites).
+const childOpt = (() => { const i = process.argv.indexOf('--children'); return i < 0 ? [] : process.argv[i + 1].split(';'); })();
 if (childOpt.length > 0) {
     const inclNode = new Map();
     const sumNode = (n) => { let w = weight.get(n.id) ?? 0; for (const c of n.children ?? []) w += sumNode(byId.get(c)); inclNode.set(n.id, w); return w; };
@@ -104,13 +104,15 @@ if (childOpt.length > 0) {
         const kids = new Map();
         let tot = 0;
         for (const n of p.nodes) {
-            if (n.callFrame.functionName !== fn) continue;
+            // fn is a function name, or `name src/file.ts:line` (a key as printed above) to pick one of several same-named
+            const match = (node) => (fn.includes(' ') ? key(node) === fn : node.callFrame.functionName === fn);
+            if (!match(n)) continue;
             // skip recursive inner occurrences
             let rec = false;
-            for (let cur = parent.get(n.id); cur !== undefined; cur = parent.get(cur)) if (byId.get(cur).callFrame.functionName === fn) { rec = true; break; }
+            for (let cur = parent.get(n.id); cur !== undefined; cur = parent.get(cur)) if (match(byId.get(cur))) { rec = true; break; }
             if (rec) continue;
             tot += inclNode.get(n.id);
-            for (const c of n.children ?? []) { const cn = byId.get(c); const k = cn.callFrame.functionName || '(anon)'; kids.set(k, (kids.get(k) ?? 0) + inclNode.get(c)); }
+            for (const c of n.children ?? []) { const cn = byId.get(c); const k = key(cn); kids.set(k, (kids.get(k) ?? 0) + inclNode.get(c)); }
         }
         console.log(`\n== ${fn} (${(tot / 1000).toFixed(0)} ms) callees`);
         for (const [k, w] of [...kids].sort((a, b) => b[1] - a[1]).slice(0, 25)) console.log(`${pct(w)}  ${k}`);

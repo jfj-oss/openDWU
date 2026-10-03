@@ -12,7 +12,7 @@ import { MainView } from './render/mainView';
 import { AssetStore, loadManifest } from './render/assets';
 import { generateGalaxy } from './sim/galaxy';
 import { Galaxy } from './sim/galaxy';
-import { createGame, createGameSteps, type CreateGameOptions } from './sim/game';
+import { createGame, createGameSteps, installGameStatics, registerGameHooks, type CreateGameOptions } from './sim/game';
 import { runStepsWithProgress, showLoadingOverlay, nextPaint } from './ui/loadingOverlay';
 import { parseSystemNames } from './sim/data';
 import { loadGameData, type FetchText, type GameData } from './sim/data/gameData';
@@ -266,6 +266,10 @@ function gameDataForSave(save: GameSaveJSON): GameData {
     if (lastGameData === null) throw new Error('DW:U game data is required to load a save');
     const id = savedScenarioId(save);
     lastPlayedGameData = gameDataWithScenario(lastGameData, id, id === COMPOSITE_SCENARIO_ID ? savedScenarioInclude(save) : null);
+    // The static tables and hooks createGame installs (race/government biases, troop-general hook): a save loaded in a
+    // session that never started a game (main-menu Load Game on a fresh page) would otherwise run without them.
+    installGameStatics(lastPlayedGameData);
+    registerGameHooks();
     return lastPlayedGameData;
 }
 
@@ -1082,6 +1086,17 @@ async function main(): Promise<void> {
         const o = JSON.parse(newGame) as Partial<StartGameOptions> & { otherEmpires?: Partial<StartGameOptions['otherEmpires']> };
         const base = defaultStartGameOptions();
         void bootGameFromWizard({ ...base, raceName: 'Human', empireName: 'Human Empire', ...o, otherEmpires: { ...base.otherEmpires, ...o.otherEmpires } });
+        return;
+    }
+
+    const loadUrl = params.get('load');
+    if (loadUrl !== null) {
+        // Dev / perf hook: ?load=<url> fetches a save (serializeGame text, e.g. /dev-saves/x.dwusave under public/) and
+        // boots it as the main menu's Load Game would (scripts/perf-render.mjs --load=...).
+        await ensureStaticData();
+        const res = await fetch(loadUrl);
+        if (!res.ok) throw new Error(`?load=${loadUrl}: HTTP ${res.status}`);
+        await bootLoadedGame(await loadSaveWithProgress(await res.text()));
         return;
     }
 

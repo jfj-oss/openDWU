@@ -11,3 +11,4 @@ tasks/.queue.lock
 test/.cache/
 .vite/
 node_modules
+public/dev-saves/

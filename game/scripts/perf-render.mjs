@@ -1,6 +1,11 @@
 // Usage: node scripts/perf-render.mjs [--url=http://localhost:5173/] [--gpu=swiftshader|egl|vulkan]
 //          [--w=1920 --h=1080 --dpr=2] [--days=60] [--secs=6] [--profile [--callers]] [--top=15] [--paused]
 //          [--stars=700 --sectors=4] [--zooms=galaxy,sector,system,planet] [--qs=dither=0] [--uncapped]
+//          [--load=<save file>] [--speed=1] [--save-profile=DIR]
+//
+// --load: copy that save (serializeGame text, e.g. scripts/lategame-start.mjs --save-out) to public/dev-saves/ and boot
+// it with ?load= instead of ?autostart=1 (no warm-up unless --days is given). --speed: game speed while measuring.
+// --save-profile: also write each zoom's CPU profile to DIR/<zoom>.cpuprofile (scripts/cpuprofile-summary.mjs).
 //
 // Renderer performance at 4K (1920x1080 CSS px at dpr 2 = a 3840x2160 canvas by default). Starts its own Vite dev
 // server on a free port (unless --url is given), boots `?autostart=1`, unpauses at 4x until --days game days have
@@ -17,7 +22,8 @@ import { chromium } from 'playwright-core';
 import { spawn, execFileSync } from 'node:child_process';
 import { createServer } from 'node:net';
 import { fileURLToPath } from 'node:url';
-import { dirname, join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
+import { copyFileSync, mkdirSync, writeFileSync } from 'node:fs';
 import { loadavg } from 'node:os';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -32,7 +38,9 @@ const args = Object.fromEntries(
 const W = +(args.w ?? 1920);
 const H = +(args.h ?? 1080);
 const DPR = +(args.dpr ?? 2);
-const DAYS = +(args.days ?? 60);
+const LOAD = args.load ?? null;
+const DAYS = +(args.days ?? (LOAD ? 0 : 60));
+const SPEED = +(args.speed ?? 1);
 const SECS = +(args.secs ?? 6);
 const TOP = +(args.top ?? 15);
 const GPU = args.gpu ?? 'swiftshader';
@@ -134,7 +142,13 @@ async function main() {
         page.on('console', (m) => {
             if (m.type() === 'error') console.log(`[console.error] ${m.text()}`);
         });
-        await page.goto(`${base.replace(/\/$/, '')}/?autostart=1${BOOT_QS}`);
+        let bootQs = `autostart=1${BOOT_QS}`;
+        if (LOAD) {
+            mkdirSync(join(root, 'public/dev-saves'), { recursive: true });
+            copyFileSync(LOAD, join(root, 'public/dev-saves', basename(LOAD)));
+            bootQs = `load=/dev-saves/${encodeURIComponent(basename(LOAD))}${args.qs ? `&${args.qs}` : ''}`;
+        }
+        await page.goto(`${base.replace(/\/$/, '')}/?${bootQs}`);
         await page.waitForFunction(() => !!window.__dwu?.game && !!window.__dwu?.time, null, { timeout: 120000 });
         const gl = await page.evaluate(() => {
             const c = document.createElement('canvas').getContext('webgl2');
@@ -198,10 +212,10 @@ async function main() {
         }
         const days = await page.evaluate((s) => (window.__dwu.game.galaxy.nowMs - s) / (600000 / 360), start);
         console.log(`warm-up: ${days.toFixed(1)} game days in ${((Date.now() - t0) / 1000).toFixed(0)} s`);
-        await page.evaluate((paused) => {
-            window.__dwu.time.speed = 1;
+        await page.evaluate(({ paused, speed }) => {
+            window.__dwu.time.speed = speed;
             window.__dwu.time.paused = paused;
-        }, PAUSED);
+        }, { paused: PAUSED, speed: SPEED });
 
         const cdp = PROFILE ? await page.context().newCDPSession(page) : null;
         if (cdp) {
@@ -261,6 +275,10 @@ async function main() {
                 };
             });
             rows.push({ zoom, ...m });
+            if (profile && args['save-profile']) {
+                mkdirSync(args['save-profile'], { recursive: true });
+                writeFileSync(join(args['save-profile'], `${zoom}.cpuprofile`), JSON.stringify(profile));
+            }
             if (profile) {
                 const { total, rows: top } = topSelf(profile, TOP);
                 console.log(`\n[${zoom}] top self time (${(total / 1000).toFixed(2)} s sampled):`);
