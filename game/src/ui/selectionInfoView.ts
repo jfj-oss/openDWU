@@ -8,7 +8,7 @@ import type { Empire } from '../sim/empire';
 import { troopImageUrl, wireTroopImageFallback } from '../render/troopImages';
 import { raceHasConcordArt } from '../render/concordArt';
 import type { Race } from '../sim/data/races';
-import { resolveEmpireEmblem, rgbaToDataUrl, stockFlagRgba } from './empireEmblem';
+import { resolveEmpireEmblem, rgbaToDataUrl, stockEmpireFlagRgba } from './empireEmblem';
 import {
     BAR_BACKGROUND,
     INFO,
@@ -40,7 +40,7 @@ const flagCache = new Map<string, Promise<string>>();
 /** The empire's flag picture as a URL: a scenario emblem override when there is one, else the stock composed flag
  *  (empireEmblem.ts stockFlagRgba, GenerateEmpireFlag). Cached per shape/colours. */
 export function empireFlagUrl(galaxy: Galaxy, empire: Empire): Promise<string> {
-    const key = `${empire.empireId}|${empire.flagShape}|${empire.mainColor}|${empire.secondaryColor}|${galaxy.scenario !== null ? 's' : ''}`;
+    const key = `${galaxy.randomSeed}|${empire.empireId}|${empire.flagShape}|${empire.mainColor}|${empire.secondaryColor}|${galaxy.scenario !== null ? 's' : ''}`;
     let p = flagCache.get(key);
     if (p === undefined) {
         p = (async () => {
@@ -48,7 +48,7 @@ export function empireFlagUrl(galaxy: Galaxy, empire: Empire): Promise<string> {
                 const e = await resolveEmpireEmblem(galaxy, empire);
                 if (e.flagUrl !== null && e.flagFilter === '') return e.flagUrl;
             }
-            return rgbaToDataUrl(await stockFlagRgba(empire.flagShape, empire.mainColor, empire.secondaryColor));
+            return rgbaToDataUrl(await stockEmpireFlagRgba(galaxy, empire));
         })();
         flagCache.set(key, p);
     }
