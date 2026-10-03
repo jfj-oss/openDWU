@@ -22,7 +22,8 @@ import { baconSettings } from '../src/sim/data/baconSettings';
 import { empireGovernmentAttributes } from '../src/sim/empire';
 import { calculateScenicFactorIncludingRuinsWonders } from '../src/sim/civilianAI';
 import { PlanetaryFacility } from '../src/sim/construction/facilities';
-import { PlanetaryFacilityType, facilityType } from '../src/sim/researchSystem';
+import { PlanetaryFacilityType, WonderType, facilityType } from '../src/sim/researchSystem';
+import { raceBuildWonderVictoryFacility } from '../src/sim/researchTick';
 
 let gameData: GameData;
 beforeAll(async () => {
@@ -169,5 +170,32 @@ describe('Habitat.cs 1122 CalculateScenicFactorIncludingRuinsWonders: built wond
         // Natural scenery above the wonder term wins.
         h.scenicFactor = 10;
         expect(calculateScenicFactorIncludingRuinsWonders(h)).toBe(Math.max(10, b.value1 / 100));
+    });
+});
+
+describe('Galaxy.3.cs 2015-2045 SetResearchRaceSpecialProjects: BuildWonder victory wonders', () => {
+    it("each race-achievement wonder's research node is restricted to the races that must build it", () => {
+        const g = newGame().galaxy;
+        const stat = g.researchStatic!;
+        const checked: string[] = [];
+        for (const name of ['Gizurean', 'Shandar', 'Zenox', 'Wekkarus']) {
+            const race = g.races.find((r) => r.name === name)!;
+            const wonder = raceBuildWonderVictoryFacility(g, race);
+            expect(wonder, `${name} BuildWonder facility`).not.toBeNull();
+            if (facilityType(wonder!) !== PlanetaryFacilityType.Wonder || (wonder!.wonderType as WonderType) !== WonderType.RaceAchievement) continue;
+            const node = stat.definitions.find((d) => d.facilityId !== null && d.facilityId >= 0 && stat.facilities[d.facilityId]?.facilityId === wonder!.facilityId)!;
+            expect(node, `${name} wonder research node`).toBeDefined();
+            expect([...(stat.allowedRaces.get(node.projectId) ?? [])]).toContain(name);
+            checked.push(name);
+        }
+        expect(checked.length).toBeGreaterThan(0);
+        // No race outside the BuildWonder owners (or the node's own SpecifiedRaces) may research them.
+        for (const name of checked) {
+            const race = g.races.find((r) => r.name === name)!;
+            const wonder = raceBuildWonderVictoryFacility(g, race)!;
+            const node = stat.definitions.find((d) => d.facilityId !== null && d.facilityId >= 0 && stat.facilities[d.facilityId]?.facilityId === wonder.facilityId)!;
+            const owners = g.races.filter((r) => raceBuildWonderVictoryFacility(g, r)?.facilityId === wonder.facilityId).map((r) => r.name);
+            for (const allowed of stat.allowedRaces.get(node.projectId)!) expect([...owners, ...node.allowedRaces]).toContain(allowed);
+        }
     });
 });
