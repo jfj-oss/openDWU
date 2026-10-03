@@ -592,11 +592,12 @@ function decodeTerritory(rows: number[][] | null): TerritoryGrid {
 
 /** Rebuild a Galaxy from a galaxyToJSON object. Static data comes from
  *  gameData, mirroring generateGalaxy's wiring. */
-export function galaxyFromJSON(obj: GalaxySaveJSON, gameData: GameData): Galaxy {
+export function galaxyFromJSON(obj: GalaxySaveJSON, gameData: GameData, codec: { shapeConstructors?: boolean } = {}): Galaxy {
     if (obj.version !== 2) throw new Error(`Unsupported galaxy save version ${String((obj as { version: unknown }).version)}.`);
     const tables = staticTablesOfGameData(gameData, obj.baseTechCost ?? 120000);
     const externals = externalsByRef(tables);
-    const decoder = new GraphDecoder(CODEC_OPTIONS, (ref) => externals.get(`${ref.kind}:${ref.key}`), obj.shapes);
+    const options = codec.shapeConstructors === undefined ? CODEC_OPTIONS : { ...CODEC_OPTIONS, shapeConstructors: codec.shapeConstructors };
+    const decoder = new GraphDecoder(options, (ref) => externals.get(`${ref.kind}:${ref.key}`), obj.shapes);
     const galaxy = decoder.decode(obj.galaxy, 'galaxy') as Galaxy;
     if (!(galaxy instanceof Galaxy)) throw new Error('Save root is not a Galaxy.');
 

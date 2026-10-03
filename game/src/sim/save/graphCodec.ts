@@ -49,6 +49,43 @@ export interface GraphCodecOptions {
      *  assigned: restores state a constructor sets up that is not an own enumerable field (e.g. non-enumerable
      *  counters defined with Object.defineProperty). */
     revive?: Map<object, (instance: object) => void>;
+    /** Rebuild {$s, $v} instances with one generated constructor per shape (see GraphDecoder.shapeFactory). Default
+     *  true; false keeps Object.create + defineProperty for every instance (same graph, same key order). */
+    shapeConstructors?: boolean;
+}
+
+/** A shape's generated constructor: `new S(values)` gives an instance of the shape's class with every field assigned in
+ *  shape order — primitives (and the {$n} / {$u} number / undefined encodings) from `values`, null for the rest. */
+type ShapeConstructor = new (values: Encoded[]) => Record<string, unknown>;
+
+/** Whether an encoded value is decoded without memo entries or allocation (a primitive, {$n}, {$u}). */
+function inlineValue(e: Encoded): boolean {
+    if (e === null || typeof e !== 'object') return true;
+    if (Array.isArray(e)) return false;
+    for (const k in e) return k === '$n' || k === '$u';
+    return false;
+}
+
+/** The value of an inline encoding (inlineValue), else the null placeholder the decoder overwrites. */
+function inlineOrNull(e: Encoded): unknown {
+    if (e === null || typeof e !== 'object') return e;
+    if (Array.isArray(e)) return null;
+    for (const k in e) {
+        if (k === '$n') return Number((e as { $n: string }).$n);
+        if (k === '$u') return undefined;
+        return null;
+    }
+    return null;
+}
+
+/** Whether assigning `key` on an object with prototype `proto` could do anything but create a plain own data
+ *  property: an accessor or a read-only property of that name on the prototype chain. */
+function assignmentIntercepted(proto: object | null, key: string): boolean {
+    for (let o = proto; o !== null; o = Object.getPrototypeOf(o) as object | null) {
+        const d = Object.getOwnPropertyDescriptor(o, key);
+        if (d !== undefined) return d.get !== undefined || d.set !== undefined || d.writable === false;
+    }
+    return false;
 }
 
 const TYPED_ARRAYS: [string, { new (values: ArrayLike<number>): ArrayLike<number>; prototype: object }][] = [
@@ -173,6 +210,8 @@ export class GraphEncoder {
 
 export class GraphDecoder {
     private readonly memo: unknown[] = [];
+    /** shapeFactory results by shape id (null: use Object.create + defineProperty for that shape). */
+    private readonly factories: (ShapeConstructor | null)[] = [];
 
     constructor(
         private readonly options: GraphCodecOptions,
@@ -180,6 +219,42 @@ export class GraphDecoder {
         /** The encoder's shape table (GraphEncoder.shapes) for {$s, $v} instances; absent in older saves. */
         private readonly shapes: ShapeTable = [],
     ) {}
+
+    /**
+     * Perf: a generated constructor for a shape (`this.f0 = …; this.f1 = …` in shape order, prototype = the class's),
+     * so every instance of the shape is built on one hidden class with its fields stored in the object itself. Object.create
+     * + defineProperty per field gave each instance a map grown field by field with almost every field out-of-object
+     * (72 maps for the built objects of a 2-year 2500-star save): a loaded game ticked 15-45% slower than the same
+     * state built in place (megamorphic, extra-indirection field loads in every hot sim loop). The result is the same
+     * graph: the same own enumerable writable configurable data properties, in the same order, with the same values,
+     * and the same memo order (the instance is registered before its object-valued fields are decoded, in field order;
+     * inline values push nothing). Null — the defineProperty path — for shapes with a revive hook, a key an assignment
+     * would not simply define (an accessor / read-only property up the chain, `__proto__`, a duplicate), or no Function.
+     */
+    private shapeFactory(id: number, shape: string[], proto: object): ShapeConstructor | null {
+        const known = this.factories[id];
+        if (known !== undefined) return known;
+        let S: ShapeConstructor | null = null;
+        const keys = shape.slice(1);
+        const usable =
+            this.options.shapeConstructors !== false &&
+            this.options.revive?.has(proto) !== true &&
+            new Set(keys).size === keys.length &&
+            keys.every((k) => k !== '__proto__' && !assignmentIntercepted(proto, k));
+        if (usable) {
+            try {
+                const body = keys.map((k, i) => `this${/^[A-Za-z_$][\w$]*$/.test(k) ? `.${k}` : `[${JSON.stringify(k)}]`} = f(v[${i}]);`).join('\n');
+                const make = new Function('f', `return function Shape(v) {\n${body}\n};`) as (f: typeof inlineOrNull) => ShapeConstructor & { prototype: object };
+                const ctor = make(inlineOrNull);
+                ctor.prototype = proto;
+                S = ctor;
+            } catch {
+                S = null; // e.g. code generation disallowed: the defineProperty path
+            }
+        }
+        this.factories[id] = S;
+        return S;
+    }
 
     decode(value: Encoded, path = '$'): unknown {
         if (value === null || typeof value !== 'object') return value;
@@ -234,6 +309,16 @@ export class GraphDecoder {
                 if (shape === undefined) throw new Error(`Unknown shape ${String(value.$s)} at ${path}.`);
                 const proto = this.options.classes[shape[0]];
                 if (proto === undefined) throw new Error(`Unknown class ${shape[0]} at ${path}.`);
+                const S = this.shapeFactory(value.$s as number, shape, proto);
+                if (S !== null) {
+                    const values = value.$v as Encoded[];
+                    const out = new S(values);
+                    this.memo.push(out);
+                    for (let i = 0; i < values.length; i++) {
+                        if (!inlineValue(values[i])) out[shape[i + 1]] = this.decode(values[i], `${path}.${shape[i + 1]}`);
+                    }
+                    return out;
+                }
                 const out = Object.create(proto) as Record<string, unknown>;
                 this.options.revive?.get(proto)?.(out);
                 this.memo.push(out);

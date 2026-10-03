@@ -5,7 +5,9 @@
 // the digest after the run must not change).
 //
 //   node [--cpu-prof --cpu-prof-dir=DIR] scripts/profile-save.mjs <save> [--warm 5] [--seconds 30] [--speed 1]
-//        [--passes 25] [--keep-bundle DIR]
+//        [--passes 25] [--keep-bundle DIR] [--alloc-prof out.heapprofile]
+// --alloc-prof: sampling allocation profile of the measured run, including objects already collected (allocation
+// throughput by site, not just what is still live); summarise with scripts/heapprofile-summary.mjs.
 // Summarise a .cpuprofile with scripts/cpuprofile-summary.mjs <file> --under runGameSeconds.
 import { build } from 'rolldown';
 import { tmpdir } from 'node:os';
@@ -27,6 +29,7 @@ const seconds = Number(arg('seconds', 30));
 const speed = Number(arg('speed', 1));
 const nPasses = Number(arg('passes', 25));
 const keepBundle = arg('keep-bundle', null);
+const allocProf = arg('alloc-prof', null);
 
 const MODULES = { game: '/src/sim/game.ts', load: '/test/helpers/loadGameDataFs.ts', harness: '/src/sim/tick/harness.ts', save: '/src/sim/save/gameSave.ts', digest: '/src/sim/tick/digest.ts' };
 const bundleDir = mkdtempSync(resolve(tmpdir(), 'dwu-profile-sim-'));
@@ -48,11 +51,24 @@ try {
     const g = game.galaxy;
     console.log(`loaded ${file} in ${(performance.now() - t0).toFixed(0)} ms: ${g.systems.length} systems, ${g.empires.length} empires, ${g.builtObjects.length} built objects; digest ${stateDigest(g)}`);
     if (warm > 0) runGameSeconds(game, warm, { speed });
+    let session = null;
+    if (allocProf !== null) {
+        const { Session } = await import('node:inspector/promises');
+        session = new Session();
+        session.connect();
+        await session.post('HeapProfiler.enable');
+        await session.post('HeapProfiler.startSampling', { samplingInterval: 16384, includeObjectsCollectedByMajorGC: true, includeObjectsCollectedByMinorGC: true });
+    }
     const cpu0 = process.cpuUsage();
     const w0 = performance.now();
     const r = runGameSeconds(game, seconds, { speed, profileClock: () => performance.now() });
     const wall = performance.now() - w0;
     const c = process.cpuUsage(cpu0);
+    if (session !== null) {
+        const { profile } = await session.post('HeapProfiler.stopSampling');
+        (await import('node:fs')).writeFileSync(String(allocProf), JSON.stringify(profile));
+        session.disconnect();
+    }
     const cpu = (c.user + c.system) / 1000;
     console.log(`ran ${seconds} game s at ${speed}x: ${r.frames} steps, ${(wall / r.frames).toFixed(2)} wall ms/step, ${(cpu / r.frames).toFixed(2)} cpu ms/step (${(wall / 1000).toFixed(1)} s wall)`);
     const total = Object.values(r.timings).reduce((a, b) => a + b, 0);
