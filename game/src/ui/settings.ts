@@ -116,6 +116,12 @@ export interface UiSettings {
     /** MessageBoxExManager saved responses of the automation prompts ("Don't ask me again"), by task: true = turn
      *  automation off, false = leave it on. Cleared by Game Options → Reset Warnings (Main.Part5.cs:2051). */
     automationPromptResponses: Record<string, boolean>;
+    /** GameOptions (the "defaultOptions" file, Main.Part9.cs:2510 method_257): the player empire's automation /
+     *  engagement / discovery settings saved when the in-game Options window closes (Main.Part6.cs:2540 YxwyUefOyQ),
+     *  copied onto the player of the next new game (Start.2.cs 1352-1363, 2122-2146). Keys are sim/game.ts
+     *  GameOptionsAutomation's; screens/gameOptionsModel.ts newGameOptionsFromSettings validates them. null = the
+     *  method_260 defaults. */
+    newGameOptions: Record<string, number | boolean> | null;
     // [gameoptions] end
 }
 
@@ -209,6 +215,7 @@ export const DEFAULT_SETTINGS: UiSettings = {
     maximumFramerate: -1,
     loadedGamesPaused: true,
     automationPromptResponses: {},
+    newGameOptions: null,
     // [gameoptions] end
 };
 
@@ -308,6 +315,11 @@ export function loadSettings(): UiSettings {
             const r: Record<string, boolean> = {};
             for (const [k, v] of Object.entries(parsed.automationPromptResponses)) if (typeof v === 'boolean') r[k] = v;
             out.automationPromptResponses = r;
+        }
+        if (parsed.newGameOptions !== null && typeof parsed.newGameOptions === 'object' && !Array.isArray(parsed.newGameOptions)) {
+            const o: Record<string, number | boolean> = {};
+            for (const [k, v] of Object.entries(parsed.newGameOptions)) if (typeof v === 'boolean' || (typeof v === 'number' && Number.isFinite(v))) o[k] = v;
+            out.newGameOptions = o;
         }
         // [gameoptions] end
     } catch {

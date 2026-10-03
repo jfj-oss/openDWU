@@ -2,7 +2,8 @@
 // compute from the REPLICA in worker mode is write-free — the replica's save text (every object, the side tables, the
 // RNG state) is unchanged after a full round of the screens' reads, in the stock game and in the scenarios whose screen
 // blocks they show (politics, court, security, council, reputation, war goals, rim trader, charters). The reads that do
-// write (listProposals, the pirate protection price) are worker queries (simworker/simQuery.ts).
+// write (listProposals, the pirate protection price) are read-only too; the records they obtain come from a journaled
+// command (sim/readOnlyQuery.ts, test/uiSimWrites.test.ts).
 import { beforeAll, describe, expect, it } from 'vitest';
 import { loadGameDataFs } from './helpers/loadGameDataFs';
 import { cachedTickGame } from './helpers/gameCache';

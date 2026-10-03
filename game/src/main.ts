@@ -95,6 +95,7 @@ import { installEventMessages, removeEventMessages } from './ui/eventMessages';
 import { installWorkerMessageUi } from './ui/workerMessages'; // [simworker] chunk 4
 import { installAutosave, removeAutosave } from './ui/autosave';
 import { isGameOptionsPanelOpen } from './ui/screens/gameOptionsPanel';
+import { newGameOptionsFromSettings } from './ui/screens/gameOptionsModel'; // [gameoptions]
 // [leftovers] end
 import { issuePlayerCommand } from './sim/player/playerCommands';
 import { createMissionShipActionAt } from './sim/player/shipAction';
@@ -107,6 +108,8 @@ import { createGalaxyMap, type GalaxyMapScreen } from './ui/screens/galaxyMap';
 import { hideMapTooltip } from './ui/mapTooltip';
 import { closeTradeFlows, mountFreightLegend, openTradeFlows, toggleTradeFlows } from './ui/screens/tradeFlows'; // [freightOverlay]
 import { closeEmpireComparison, closeGameEndBanner, installGameEndHandler, removeGameEndHandler } from './ui/screens/empireComparison'; // [15d]
+import { setGameEndExitHandler } from './ui/screens/gameEndPanel'; // [15d]
+import { closeIntroductionPanel, openIntroductionPanel } from './ui/screens/introductionPanel'; // [intro]
 import { installMessagePopups, removeMessagePopups } from './ui/messagePopups'; import { closeGameOptionsPanel, setAllowSameSystemSource } from './ui/screens/gameOptionsPanel'; // [16d]
 import { installOrderUi, selectionTarget } from './ui/orderMenu'; import { getSelection as getHudSelection, selectBuiltObjectList, selectShipGroup, selectStellarObject } from './ui/hud'; import { ShipGroup } from './sim/fleets/shipGroup'; import { Fighter } from './sim/combat/fighters'; // [ordermenu]
 // [suggest] begin
@@ -711,6 +714,11 @@ export async function startGameView(
     // [15d] Galaxy.GameEnd → Main.Part12.cs Galaxy_GameEnd / DoGameEnd (pause, IsFinished/Victor, banner).
     // [simworker] worker mode: the worker's handler ends the game; its gameEnd event shows the banner (workerMessages.ts).
     if (simClient === undefined) installGameEndHandler(galaxy, time);
+    // Main.Part6.cs:4050 btnGameEndExit_Click: the Game End panel's "Exit to main menu" leaves like the menu's Main Menu.
+    setGameEndExitHandler(() => {
+        teardownActiveGameView();
+        showMainMenu();
+    });
     // [/15d]
     // [16d] Player messages → popups + the diplomatic conversation queue (Main.Part9.cs ReceiveMessageInternal).
     // [popupstubs] begin
@@ -1011,6 +1019,8 @@ export async function startGameView(
         removeGameEndHandler(galaxy);
         closeEmpireComparison();
         closeGameEndBanner();
+        setGameEndExitHandler(null);
+        closeIntroductionPanel(); // [intro]
         // [/15d]
         // [16d]
         removeMessagePopups();
@@ -1112,12 +1122,16 @@ async function bootGameFromWizard(startOptions: StartGameOptions): Promise<void>
     // Built in steps under a progress overlay: a big Mature/Old galaxy takes several seconds.
     let game: Game;
     let simClient: SimWorkerClient | undefined; // [simworker]
+    let createOpts: CreateGameOptions;
     try {
+        // [gameoptions] Start.2.cs 1352-1363 / 2122-2146: the player empire starts with the GameOptions defaults the
+        // in-game Options window saved (Main.Part9.cs YxwyUefOyQ / method_257; undefined = method_260's defaults).
+        createOpts = { ...toCreateGameOptions(startOptions, playData, systemNames), gameOptions: newGameOptionsFromSettings(getSettings().newGameOptions) };
         if (useSimWorker()) {
             const sc = startOptions.scenario;
             const scenario = sc == null ? null : { id: sc.id, include: choiceInclude(sc) };
-            ({ game, simClient } = await createGameInWorker(toCreateGameOptions(startOptions, playData, systemNames), scenario, startOptions, startOptions.flagShapeIndex));
-        } else game = await runStepsWithProgress('Creating galaxy', createGameSteps(toCreateGameOptions(startOptions, playData, systemNames)));
+            ({ game, simClient } = await createGameInWorker(createOpts, scenario, startOptions, startOptions.flagShapeIndex));
+        } else game = await runStepsWithProgress('Creating galaxy', createGameSteps(createOpts));
     } catch (err) {
         console.error('Galaxy creation failed', err);
         showToast('Could not create the galaxy — see console');
@@ -1130,7 +1144,20 @@ async function bootGameFromWizard(startOptions: StartGameOptions): Promise<void>
     if (startOptions.flagShapeIndex >= 0 && simClient === undefined) {
         game.playerEmpire.flagShape = startOptions.flagShapeIndex;
     }
-    await startGameViewWithOverlay(game, undefined, undefined, undefined, simClient);
+    const time = await startGameViewWithOverlay(game, undefined, undefined, undefined, simClient);
+    // Main.Part12.cs:4248-4258: a new (non-tutorial) game pauses and shows the Introduction panel once the main view is
+    // up. Game.PlayAsAPirate = Start.2.cs bool_2; Game.AgeOfShadows = Start.2.cs:2020-2024 (bool_3, or the player's
+    // Age == 0; sim/gameStartTail.ts gameObjectAtStart).
+    showIntroduction(game, time, { playAsAPirate: createOpts.player.playAsPirate ?? false, ageOfShadows: createOpts.ageOfShadows === true || createOpts.player.age === 0 });
+}
+
+/** [intro] Open the game-start Introduction panel (ui/screens/introductionPanel.ts) over the main view. */
+function showIntroduction(game: Game, time: GalaxyTime, kind: { playAsAPirate: boolean; ageOfShadows: boolean }): void {
+    try {
+        openIntroductionPanel({ galaxy: game.galaxy, player: game.playerEmpire, clock: time, ...kind });
+    } catch (err) {
+        console.warn('Introduction panel failed', err);
+    }
 }
 
 /** Task 06l: boot a default-options game (player Human + 3 random AI
@@ -1558,7 +1585,9 @@ async function bootGameWithOptions(opts: BootOptions): Promise<void> {
             // screenshots), otherwise startGameView applies Sector zoom.
             const simClient = autostartSimClient ?? undefined; // [simworker]
             autostartSimClient = null;
-            await startGameView(started, zoomParam ?? undefined, undefined, undefined, simClient);
+            const time = await startGameView(started, zoomParam ?? undefined, undefined, undefined, simClient);
+            // [intro] ?intro=1: the dev autostart shows the Introduction panel too (wizard games always do).
+            if (new URLSearchParams(window.location.search).get('intro') === '1') showIntroduction(started, time, { playAsAPirate: started.playerEmpire.pirateEmpireBaseHabitat !== null, ageOfShadows: false });
             return;
         }
     }

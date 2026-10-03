@@ -1,5 +1,5 @@
 // Empire Comparisons and Victory Conditions panel (task 15d), opened by V,
-// plus the game-end banner.
+// plus the game-end outcome overlay (the Continue / Exit panel is gameEndPanel.ts).
 //
 // Ports:
 // - DistantWorlds.Controls/Controls/GameVictoryConditions.cs 90-230, 331-348
@@ -8,8 +8,9 @@
 //   DetermineOrderedKnownEmpires -> knownEmpires / rankDescending /
 //   formatComparisonValue.
 // - Main.Part12.cs 3423 DoGameEnd and Main.Part6.cs 3998 method_436 (the
-//   game-end screen) -> installGameEndHandler / gameEndBannerLines /
-//   canContinueAfterGameEnd.
+//   game-end screen: this window on the Achievements tab with the outcome
+//   overlay, plus pnlGameEnd in gameEndPanel.ts) -> installGameEndHandler /
+//   presentGameEnd / gameEndBannerLines / canContinueAfterGameEnd.
 //
 // Streamlined: one DOM panel with three tabs (Victory, Comparison,
 // Achievements) instead of the original's multi-panel window.
@@ -45,6 +46,7 @@ import { resolveStarDateDescription } from '../../sim/galaxyTime';
 import { parseGameText } from '../../sim/data/gameText';
 import type { GameText } from '../../sim/data/gameText';
 import { countLabel } from '../plural';
+import { closeGameEndPanel, openGameEndPanel } from './gameEndPanel';
 
 // ---------------------------------------------------------------------------
 // Formatting helpers (pure)
@@ -349,60 +351,28 @@ export function presentGameEnd(galaxy: Galaxy, time: { paused: boolean }, e: Gam
     // [audio] begin — Main.Part12.cs:3428 DoGameEnd → musicPlayer_0.StartTheme().
     if (typeof document !== 'undefined') musicGameEnded();
     // [audio] end
-    if (typeof document !== 'undefined') showGameEndBanner(galaxy, time, e);
+    if (typeof document === 'undefined') return;
+    // Main.Part6.cs:4013-4026 method_436: method_400 (open the Empire Comparison window), tabEmpireComparisonGraphs
+    // .SelectedIndex = 1 (Achievements, the Game Summary) and pnlGameSummary.OverlayTextLines = the outcome lines.
+    const player = galaxy.playerEmpire;
+    if (player) {
+        if (open) open.close();
+        open = createEmpireComparison({ player });
+        selectedTab = 'achievements';
+        overlayLines = gameEndBannerLines(e);
+        open.render();
+    }
+    // pnlGameEnd: the outcome with Continue Playing / Exit to main menu (gameEndPanel.ts).
+    openGameEndPanel(galaxy, time, e);
 }
 
 export function removeGameEndHandler(galaxy: Galaxy): void {
     setGameEndHandler(galaxy, null);
 }
 
-let banner: HTMLElement | null = null;
-
-function showGameEndBanner(galaxy: Galaxy, time: { paused: boolean }, e: GameEndEventArgs): void {
-    closeGameEndBanner();
-    const root = document.createElement('div');
-    root.className = 'empire-comparison-banner';
-    const panel = document.createElement('div');
-    panel.className = 'empire-comparison-banner-panel';
-    gameEndBannerLines(e).forEach((line, i, all) => {
-        const div = document.createElement('div');
-        const isHeadline = i === 0 && all.length === 3;
-        div.className = isHeadline ? 'empire-comparison-banner-headline' : 'empire-comparison-banner-line';
-        div.textContent = line;
-        panel.appendChild(div);
-    });
-    const buttons = document.createElement('div');
-    buttons.className = 'empire-comparison-banner-buttons';
-    const cont = document.createElement('button');
-    cont.type = 'button';
-    cont.className = 'empire-comparison-button';
-    cont.textContent = 'Continue';
-    cont.disabled = !canContinueAfterGameEnd(e, galaxy.playerEmpire);
-    cont.addEventListener('click', () => {
-        closeGameEndBanner();
-        time.paused = false; // method_155
-    });
-    const vc = document.createElement('button');
-    vc.type = 'button';
-    vc.className = 'empire-comparison-button';
-    vc.textContent = 'Victory Conditions';
-    vc.addEventListener('click', () => {
-        const player = galaxy.playerEmpire;
-        if (!player) return;
-        selectedTab = 'victory';
-        if (open) open.render();
-        else toggleEmpireComparison({ player });
-    });
-    buttons.append(cont, vc);
-    panel.appendChild(buttons);
-    root.appendChild(panel);
-    document.body.appendChild(root);
-    banner = root;
-}
-
+/** Hide the Game End panel (leaving the game). */
 export function closeGameEndBanner(): void {
-    banner?.remove();
-    banner = null;
+    closeGameEndPanel();
 }
 
 // ---------------------------------------------------------------------------
@@ -417,6 +387,8 @@ type Tab = 'victory' | 'comparison' | 'achievements';
 const TABS: readonly [Tab, string][] = [['victory', 'Victory'], ['comparison', 'Comparison'], ['achievements', 'Achievements']];
 
 let selectedTab: Tab = 'victory';
+/** pnlGameSummary.OverlayTextLines: method_400 clears them on every open, method_436 sets the game-end outcome. */
+let overlayLines: string[] = [];
 
 interface OpenState {
     root: HTMLElement;
@@ -431,6 +403,7 @@ export function toggleEmpireComparison(opts: EmpireComparisonOptions): void {
     if (open) {
         open.close();
     } else {
+        overlayLines = []; // method_400: pnlGameSummary.OverlayTextLines.Clear()
         open = createEmpireComparison(opts);
     }
 }
@@ -578,6 +551,12 @@ function renderComparisonTab(body: HTMLElement, player: Empire): void {
 let loadedText: GameText | null = null;
 
 function renderAchievementsTab(body: HTMLElement, player: Empire, rerender: () => void): void {
+    // GameSummaryPanel.cs:603-613: the overlay lines in the huge font (32 px bold), yellow with a drop shadow, centred.
+    if (overlayLines.length > 0) {
+        const overlay = el('div', 'empire-comparison-overlay');
+        for (const line of overlayLines) overlay.appendChild(el('div', 'empire-comparison-overlay-line', line));
+        body.appendChild(overlay);
+    }
     if (loadedText === null) {
         void loadGameText().then((t) => {
             if (t !== null && loadedText === null) {

@@ -373,27 +373,30 @@ not to the local queue.
   the fields the main thread changed since its last send are written, so the sim's own changes stay. The worker kicks
   a paused tick as a task of its own (`worker.ts kick`), so commands posted together reach one boundary.
 
-### 4.4 Queries (order menus, selection buttons, money panel)
+### 4.4 UI calls that write the game (order menus, selection buttons, money panel, lookups)
 
-Some UI calls are not commands but still change sim state, as the C# UI does: building the right-click action menu
-and the selection panel's buttons draws `galaxy.rnd` (the "Build here" designs, the build pages' surface / parking
-points, `DetermineOrbitalBaseLocation`) and fills `Empire.latestDesigns`; the money panel runs
-`CheckAgeVariableIncome`; the diplomacy screen's talk panel lists the conversation options with `listProposals`, and its
-pirate detail prices protection with `CalculatePirateProtectionPricePerMonth`, both of which obtain (add) the relation
-records they read. They go through `simworker/simQuery.ts` (`SIM_QUERIES`: `actionMenu`, `selectionButtons`,
-`habitatDispatch`, `moneyPanel`, `listProposals`, `pirateProtectionPrice`):
+Some UI calls are not orders but still change sim state, as the C# UI does: building the right-click action menu and
+the selection panel's buttons draws `galaxy.rnd` (the "Build here" designs, the build pages' surface / parking points,
+`DetermineOrbitalBaseLocation`) and runs `ReviewLatestDesigns`; the money panel runs `CheckAgeVariableIncome`; many
+reads obtain (add) the relation / evaluation records they look up. None of them may write outside the journaled
+command queue (§8 "UI sim writes"): they are either **journaled player commands** whose reply is what the UI shows —
+`actionMenu`, `selectionButtons` (only the pages that draw, `orderMenu.ts selectionButtonsDrawRandom`),
+`habitatDispatch`, `moneyPanel` (only when `treasury.ts moneyPanelWriteDue`), `obtainUiRecords` — or **read-only UI
+reads** (`sim/readOnlyQuery.ts`) that run on the replica in worker mode and on the in-thread game between frames:
 
-- In-thread, `simQuery(galaxy, empire, op, args, done)` runs the function and calls `done` inside the call, as before.
-- On a replica, the query is posted (`query {id, empire, op, args}`), the worker runs it on the authoritative galaxy at
-  once, in message order with the commands (so its draws land where in-thread play makes them), and posts an immediate
-  sync-only step message (`SimHost.flush`) carrying the reply. Replies travel by value except graph objects (sync ids).
-- A screen that redraws on a timer reads the last answer (`ui/workerQueryCache.ts`: asked again once stale, one
-  request in flight per key); in-thread it keeps calling the function directly.
-- Every in-thread build is still made, one query each (never coalesced: the draw count must match). A reply for a
-  right-click or a selection / page the UI has left since is not shown.
-- Gate: `test/simWorkerOrders.test.ts` (a scripted UI player: menus, button pages, dispatch, right-click, box
-  selection, hotkeys, fleet point) gives the in-thread menus, command log and digest; building the menus on the
-  replica instead does not.
+- A command is applied at the next frame boundary in both modes, journaled and replayed; in worker mode its reply comes
+  one round trip later (applied with `applyThrough`, as every reply). A reply for a right-click or a selection / page the
+  UI has left since is not shown.
+- A read-only lookup answers with the value it would give (a detached record, the aged figure) and writes nothing. The
+  records the C# UI's lookups add are asked for (`requestUiRecord`) and added by one `obtainUiRecords` command per UI
+  task, the same in both modes. Port-only reads (the local-model briefs) use `withPureSimReads`: they ask for nothing.
+- Gates: `test/simWorkerOrders.test.ts` (a scripted UI player: menus, button pages, dispatch, right-click, box
+  selection, hotkeys, fleet point) gives the in-thread menus, command log and digest in worker mode, seed + the log
+  replays the in-thread game exactly, and both fail without the menu commands; `test/uiSimWrites.test.ts` (each path:
+  read twice → the save text and galaxy.rnd unchanged; the commands replay; worker = in-thread).
+
+(Before this, these calls were *queries* — `simworker/simQuery.ts`, run directly in-thread and in the worker on a
+replica, never journaled, so a replay of seed + log missed their writes. The query protocol is gone.)
 
 **Freshness of `onApplied`.** The host compares what a command named and returned (`ReplicaEncoder.compareNow`: the
 issuing empire to depth 1, arguments and results to depth 2) in the delta of the tick that applied it, and the main
@@ -403,7 +406,7 @@ So a callback reads the replica as of that boundary (one step later than in-thre
 **Dropped objects.** A BuiltObject, Habitat, ShipGroup, Creature, Fighter or Empire the replica no longer knows (destroyed
 and dropped by the mark while the HUD still held it) is never sent by value. In a top-level array argument (a ships
 list, a selection) it is left out with a warning, and the order goes for the rest (in-thread the executor gets the dead
-ship and skips it). Anywhere else the query is dropped with a warning and `done` does not run. A command fails, and its
+ship and skips it). Anywhere else the command fails, and its
 callback gets the op's failure value (see "Failed commands" below).
 
 **Failed commands** (`clientCore.ts`, `simHost.ts settleCommands`, `commandFailure.ts`; test
@@ -423,9 +426,8 @@ of the commands ahead of it, as one boundary applies them in order).
 | The worker stopped (`worker.ts` fatal: its loop or the sync threw; an uncaught error; a message that could not be read; `SimWorkerClient.stop`) | the failure value, at once. Later commands fail in a microtask, and a `workerStopped` event shows a toast | rejects |
 | The game is closed, reloaded or a new one started (`SimClientCore.dispose`) | the failure value, in a microtask after the teardown. The command sink stays installed, so a command issued on the closed replica fails the same way | rejects |
 
-Queries never call `done` on a failure (an in-thread query that throws does not call it either; `WorkerQueryCache`
-asks again after `lostMs`), and refresh requests never call `onFresh`, as in-thread. Both are removed from the waiting
-table, and the timeout covers them too. Save / digest / debug / commandLog requests reject when the worker stops or the
+Refresh requests never call `onFresh` on a failure, as in-thread; they are removed from the waiting table, and the
+timeout covers them too. Save / digest / debug / commandLog requests reject when the worker stops or the
 client is disposed. `save()` then returns null, as for a failed save. The failure values are typed per op: a new player
 op does not compile without one.
 
@@ -434,7 +436,7 @@ op does not compile without one.
 These run in the worker on the authoritative game, and the main thread gets an event:
 
 - The game-end handler: pause, `doGameEnd`, `reviewAchievements`. The `gameEnd` event carries the args (victor,
-  outcome, text); the main thread plays the music and shows the banner (`empireComparison.ts presentGameEnd`).
+  outcome, text); the main thread plays the music and shows the outcome (the comparison window's overlay and the Game End panel) (`empireComparison.ts presentGameEnd`).
 - The player's message pipeline (chunk 4, `ui/messagePipeline.ts`): the worker is the player's message and event
   recipient (hidden `messageRecipient` / `eventMessageRecipient` fields, set before the sync first sees the empire, so
   the replica never has them). After every tick it runs the UI timers' sim writes in their in-thread order — the
@@ -503,7 +505,7 @@ The only behaviour changes in this mode are:
 | `src/simworker/remoteArgs.ts` | Command arguments and replies across the boundary (sync ids) |
 | `src/simworker/commandFailure.ts` | Each player op's failure value, for commands the worker could not apply (§4.4 "Failed commands") |
 | `src/simworker/bootOptions.ts` | createGame options across the boundary |
-| `src/simworker/simQuery.ts` | UI-side sim calls that change state as the C# UI does (menus, buttons, money panel), run where the game runs (§4.4) |
+| `src/sim/readOnlyQuery.ts` | Read-only UI reads (replica; the in-thread game between frames), record requests, `withSimWrites` / `withPureSimReads` (§4.4, §8) |
 | `src/simworker/tradeFlowSync.ts` | Trade-flow recording in the worker; the ledger as a side table (chunk 3) |
 | `src/simworker/protocol.ts` | Message types |
 | `src/simworker/refresh.ts` | Refresh-on-open requests from the screens (`requestSimRefresh`; no-op in-thread) |
@@ -527,6 +529,26 @@ The only behaviour changes in this mode are:
   `coldMaxSets`, `markBudgetMs`.
 - **Cold staleness.** Cold data is up to one cycle old (about 1–1.5 s), plus any pump backlog. A paused game settles
   to exact: the worker keeps comparing for two full cycles after the last change.
+- **UI sim writes (2026-10-03).** No UI path writes the game, or draws `galaxy.rnd`, outside the journaled command
+  queue any more, in either mode (decisions per path: consumer audit §4.1):
+  - Where the C# UI makes the write, it is a journaled player command issued at the same point, whose reply the UI
+    shows: `actionMenu` (the right-click menu: "Build here" SelectRelativePoint, ReviewLatestDesigns),
+    `selectionButtons` (the button pages that draw), `habitatDispatch`, `moneyPanel` (CheckAgeVariableIncome, only when
+    `moneyPanelWriteDue`) and `obtainUiRecords` (the records Obtain* adds). In-thread the reply comes within a frame
+    instead of inside the call.
+  - Every other UI read is read-only (`sim/readOnlyQuery.ts`): on the replica as before, and on the in-thread game
+    (`simLoop.ts` marks it) whenever no sim code runs (outside a frame, outside a command's executor, which
+    `playerCommands.ts` runs in `withSimWrites`). The player message pipeline keeps its writes on purpose
+    (`ui/messagePipeline.ts` runs them in `withSimWrites`, as the worker does). Port-only reads (the local-model
+    briefs, `llm/replicaReads.ts`) are `withPureSimReads`.
+  - The `simQuery` protocol (query message, `SimHost.query` / `flush`, `ui/workerQueryCache.ts`) is gone.
+  - `repin --check`: 0 pins move (the harness has no UI). Write detector (`scripts/simworker-smoke.mjs
+    --detect-writes`, with a UI tour of every panel and screen): 0 unexpected keys on a fresh game and on
+    `late2500.dwusave`, replica digest = worker digest after the tour; the tour's in-thread save-text probe
+    (`--inthread --detect-writes`) shows a state change only in steps that applied one of the commands above.
+  - Left: the message pipeline's writes and `uiOp`s, the chronicle store and the wizard's `flagShape` are still
+    outside the journal (audit §4.1); an `approveSuggestion` names the suggestion by its place in the queue the
+    pipeline fills, so seed + log replays it only once the pipeline runs sim-side.
 - **Not ported (§9):** synchronous advisor commands, tutorials (they still boot in-thread), the
   `__dwu.sim` / `simBudget` debug hooks (null in worker mode), and `__dwu.commands.log` (the replica has no log).
 - **Command replies.** Every command issued on the replica with a callback is answered exactly once, in issue order
@@ -703,7 +725,7 @@ Original brief:
   `orderMenu.ts`, `shipCommandKeys.ts`, `shipHotkeys.ts`, `topBar.ts`, `mapTooltip.ts`, `pickMenu.ts`,
   `listSelection.ts`, `screens/coloniesList.ts`.
 - Work: the order menu's `galaxy.rnd` draws (`selectRelativePoint` and friends) must move into the command, which
-  picks its point in the worker, or become a worker query; the async `onApplied` contract for selection follow-ups;
+  picks its point in the worker, or become a journaled command (done, §4.4 / §8); the async `onApplied` contract for selection follow-ups;
   selection of objects that the replica dropped (destroyed ships).
 - Test: right-click and action-menu orders through the host give the in-thread command log.
 
@@ -724,10 +746,11 @@ Original brief:
     income they read (`thisYearsSpacePortIncome`, `thisYearsResortIncome`, `checkAgeVariableIncome`, the NaN tax
     recalculation). On a galaxy marked read-only (`sim/readOnlyQuery.ts markReadOnlyGalaxy`; clientCore marks the
     replica) they return the same value without writing. That covers every main-thread caller, not only the screens:
-    the planner's AI queries, the approval and tax queries, the charter checks, the HUD. Nothing else is ever
-    marked, so in-thread play and `repin` are unchanged.
-  - The Build Order's cashflow figure uses chunk 5's `moneyPanel` query (`simworker/simQuery.ts`), so the money
-    panel's CheckAgeVariableIncome runs in the worker.
+    the planner's AI queries, the approval and tax queries, the charter checks, the HUD. Since §8 "UI sim writes"
+    the in-thread game is read-only for them too while the UI runs (between frames, outside a command's executor);
+    tests and the headless harness never mark a galaxy, so `repin` is unchanged.
+  - The Build Order's cashflow figure is a read (Main.Part2.cs 785 shows the money panel's last figure); the money
+    panel's CheckAgeVariableIncome is the journaled `moneyPanel` command (§8 "UI sim writes").
   - The replica gets the BaconSettings.txt statics (prices, maintenance) at boot.
   - Tests: `test/simWorkerScreens.test.ts`, with the script in `test/helpers/screenOrders.ts`.
     - 29 screen orders run through the host against the in-thread loop; the digest, the log and the replies match.
@@ -742,9 +765,8 @@ Original brief:
   - The Galactopedia's `loadGameData` reloads the global GameText table, which drops scenario text added on the main
     thread.
   - Lazily added `declare`d class fields reach the replica only through `compareNow` (chunk 9 / 0).
-  - In worker mode, the records the in-thread UI creates lazily are not created at all. Those are the NotMet relations
-    and evaluations made by the screens' queries. The worker does not run them; in-thread they happen at UI time and
-    are not journaled.
+  - ~~In worker mode, the records the in-thread UI creates lazily are not created at all.~~ Fixed (§8 "UI sim
+    writes"): in both modes the read only asks for them and one journaled `obtainUiRecords` command adds them.
 
 **Chunk 7 — diplomacy, intelligence and politics.**
 - Files: `ui/screens/diplomacyScreen.ts`, `diplomacyRelationsView.ts`, `empireIntel.ts`, `empiresList.ts`,
@@ -755,12 +777,13 @@ Original brief:
 - Test: proposal and trade flows through the host vs in-thread.
 - **Done.**
   - `rimTraderRows` reads through `peekDiplomaticRelation`, in both modes; the dead intelligence mutators are deleted.
-  - The talk panel's listing and the pirate protection price are worker queries (§4.4); a probe of every other read
-    the chunk's screens make found no writes.
+  - The talk panel's listing and the pirate protection price are read-only UI reads whose records are added by the
+    `obtainUiRecords` command (§4.4; they were worker queries before); a probe of every other read the chunk's
+    screens make found no writes.
   - The DEAL_BEGIN negotiation is detached from the replica before the trade panel edits it (`tradePanel.ts
     detachTradeNegotiation`).
   - Missions and peace terms go by value, keeping their identity (§4.3).
-  - Tests: `test/simWorkerDiplomacy.test.ts` (queries; proposals, trade, pirate protection, agent missions with a
+  - Tests: `test/simWorkerDiplomacy.test.ts` (the listing reads and their records; proposals, trade, pirate protection, agent missions with a
     false flag, transfers, dismissal, politics / court / security, peace terms: the in-thread log and digest) and
     `test/simWorkerScreenReads.test.ts` (the screens' replica reads leave the replica unchanged, in nine game
     setups).

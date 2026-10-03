@@ -1,7 +1,10 @@
 // Pure parts of the Game Options screen (gameOptionsPanel.ts): the Automation "Mode" presets (cmbOptionsAutomationMode,
-// Main.Part6.cs:1944-2033 + 2117-2290) and the message-settings order of the original window. No DOM.
+// Main.Part6.cs:1944-2033 + 2117-2290), the message-settings order of the original window, and the new-game defaults
+// the window saves on close (Main.Part9.cs:2531 YxwyUefOyQ / 2510 method_257). No DOM.
 
-import type { Empire } from '../../sim/empire';
+import { AutomationLevel, type Empire } from '../../sim/empire';
+import { DEFAULT_GAME_OPTIONS_AUTOMATION, type GameOptionsAutomation } from '../../sim/game';
+import type { EmpireSettingField } from '../../sim/player/empireSettings';
 import { AUTOMATION_ROWS, automationValue, type AutomationField, type MessageOptionRow, MESSAGE_OPTION_ROWS } from './gameOptionsPanel';
 
 /** One Automation control's value as the window holds it: the combo index (0 manual, 1 suggest, 2 full) or the check. */
@@ -120,4 +123,81 @@ export function messageSettingsRows(): MessageOptionRow[] {
         if (row === undefined) throw new Error(`message option row "${label}" missing`);
         return row;
     });
+}
+
+// ---------------------------------------------------------------------------
+// New-game defaults (GameOptions *Default fields)
+// ---------------------------------------------------------------------------
+
+/** Empire field values the window issued as commands this session (they apply at the next frame boundary, and in
+ *  worker mode reach the replica later still): they win over the empire's current values when the defaults are read. */
+export type PendingEmpireValues = Partial<Record<AutomationField | EmpireSettingField, number | boolean>>;
+
+/**
+ * Port of Main.Part9.cs:2531 YxwyUefOyQ, the PlayerEmpire part (statement order), plus Main.Part4.cs:4319-4320 (method_558
+ * also writes gameOptions_0.FleetAttackRefuelPortion / GatherPortion): the GameOptions defaults taken from the player
+ * empire when the Options window closes (Main.Part6.cs:2540, method_418's tail; method_257 then saves the file).
+ */
+export function gameOptionsFromEmpire(empire: Empire, pending: PendingEmpireValues = {}): GameOptionsAutomation {
+    const num = (f: AutomationField | EmpireSettingField): number => {
+        const p = pending[f];
+        return typeof p === 'number' ? p : Number((empire as unknown as Record<string, number>)[f]);
+    };
+    const bool = (f: AutomationField | EmpireSettingField): boolean => {
+        const p = pending[f];
+        return typeof p === 'boolean' ? p : Boolean((empire as unknown as Record<string, boolean>)[f]);
+    };
+    return {
+        controlAgentAssignmentDefault: num('controlAgentAssignment') as AutomationLevel,
+        controlAttacksOnEnemiesDefault: num('controlMilitaryAttacks') as AutomationLevel,
+        controlColonizationDefault: num('controlColonization') as AutomationLevel,
+        controlColonyTaxRatesDefault: bool('controlColonyTaxRates'),
+        controlDiplomaticGiftsDefault: num('controlDiplomacyGifts') as AutomationLevel,
+        controlFleetFormationDefault: bool('controlMilitaryFleets'),
+        controlShipBuildingDefault: num('controlStateConstruction') as AutomationLevel,
+        controlShipDesignDefault: bool('controlDesigns'),
+        controlTreatyNegotiationDefault: num('controlDiplomacyTreaties') as AutomationLevel,
+        controlTroopRecruitmentDefault: bool('controlTroopGeneration'),
+        controlCharacterLocationsDefault: bool('controlCharacterLocations'),
+        controlWarTradeSanctionsDefault: num('controlDiplomacyOffense') as AutomationLevel,
+        controlResearchDefault: bool('controlResearch'),
+        controlColonyFacilitiesDefault: num('controlColonyFacilities') as AutomationLevel,
+        controlPopulationPolicyDefault: bool('controlPopulationPolicy'),
+        controlOfferPirateMissionsDefault: num('controlOfferPirateMissions') as AutomationLevel,
+        attackRangePatrol: num('attackRangePatrol'),
+        attackRangeEscort: num('attackRangeEscort'),
+        attackRangeAttack: num('attackRangeAttack'),
+        attackRangeOther: num('attackRangeOther'),
+        attackRangePatrolManual: num('attackRangePatrolManual'),
+        attackRangeEscortManual: num('attackRangeEscortManual'),
+        attackRangeAttackManual: num('attackRangeAttackManual'),
+        attackRangeOtherManual: num('attackRangeOtherManual'),
+        attackOverMatchFactor: num('attackOvermatchFactor'),
+        fleetAttackRefuelPortion: num('fleetAttackRefuelPortion'),
+        fleetAttackGatherPortion: num('fleetAttackGatherPortion'),
+        discoveryActionRuin: num('discoveryActionRuin'),
+        discoveryActionAbandonedShipBase: num('discoveryActionAbandonedShipBase'),
+        newShipsAutomated: bool('newShipsAutomated'),
+    };
+}
+
+/**
+ * Main.Part9.cs:2491 method_256's counterpart for "defaultOptions" (the GameOptions file read at start-up, else
+ * method_260's defaults): the saved defaults (ui/settings.ts newGameOptions) as createGame's `gameOptions`, field by
+ * field over DEFAULT_GAME_OPTIONS_AUTOMATION (a missing or mistyped field keeps its default; an AutomationLevel outside
+ * the enum is Manual, as method_419 maps an unknown index). Undefined when nothing was saved.
+ */
+export function newGameOptionsFromSettings(stored: Readonly<Record<string, number | boolean>> | null): GameOptionsAutomation | undefined {
+    if (stored === null) return undefined;
+    const out = { ...DEFAULT_GAME_OPTIONS_AUTOMATION } as GameOptionsAutomation;
+    const rec = out as unknown as Record<string, number | boolean>;
+    for (const key of Object.keys(DEFAULT_GAME_OPTIONS_AUTOMATION)) {
+        const v = stored[key];
+        const d = rec[key];
+        if (typeof v !== typeof d || (typeof v === 'number' && !Number.isFinite(v))) continue;
+        if (key.startsWith('control') && typeof v === 'number') {
+            rec[key] = v === AutomationLevel.PartiallyAutomated || v === AutomationLevel.FullyAutomated ? v : AutomationLevel.Undefined;
+        } else rec[key] = v;
+    }
+    return out;
 }

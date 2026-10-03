@@ -19,7 +19,11 @@ import type { ConstructionQueue } from '../construction/constructionQueue';
 import type { ShipAction } from './shipAction';
 import { executeShipAction, type ShipActionSelection } from './executeShipAction';
 import { addConstructionJob, cancelConstructionJob, moveConstructionJobUp } from './constructionBoard';
-import { applyAutomationOff, fleetPointClick, rightClickOrder } from './orderMenu';
+import { applyAutomationOff, fleetPointClick, openActionMenu, rightClickOrder, selectionButtons } from './orderMenu';
+import { habitatDispatchOptions } from './habitatDispatch';
+import { moneyPanelIncome } from '../treasury';
+import { obtainDiplomaticRelation, obtainEmpireEvaluation } from '../diplomacy';
+import type { UiRecordRequest } from '../readOnlyQuery';
 import { applyEmpireSetting, type EmpireSettingField } from './empireSettings';
 import {
     fleetLoadTroops,
@@ -120,6 +124,47 @@ export const PLAYER_OPS = {
     /** Main.Part10.cs 3063-3125: the fleet's attack point / home base pick. */
     fleetPoint: (galaxy: Galaxy, empire: Empire, fleet: ShipGroup, mode: 'SetFleetAttackPoint' | 'SetFleetHomeBase', target: unknown) =>
         fleetPointClick(galaxy, empire, fleet, mode, target),
+    // --- Sim writes the C# UI makes when it builds a menu or refreshes a panel (docs/sim-worker.md §8). A command, so
+    // they happen at a frame boundary, are journaled and replay; the result is what the UI shows. ---
+    /**
+     * The right-click action menu (Main.Part8.cs 1332 actionMenu_Opening → 3202 method_344): building it draws
+     * galaxy.rnd (the "Build here" designs, 1839 / 1912 Galaxy.SelectRelativePoint) and runs 4860
+     * Empire.ReviewLatestDesigns, as the C# does. `target`: what the view picked under the cursor (method_143),
+     * `hoverOrder` the default order there (resolveHoverOrder), `ctrl` Ctrl held.
+     */
+    actionMenu: (galaxy: Galaxy, empire: Empire, selected: ShipActionSelection, cursorX: number, cursorY: number, zoomFactor: number, target: unknown, hoverOrder: ShipAction | null, ctrl: boolean) =>
+        openActionMenu({ galaxy, empire, selected, cursorX, cursorY, zoomFactor, pickAt: () => target }, hoverOrder, ctrl),
+    /**
+     * The selection panel's eight buttons for a page that draws galaxy.rnd (Main.Part3.cs method_593: an unowned
+     * habitat's top page, 2945 / 2958 SelectRelativeHabitatSurfacePoint / SelectRelativeParkingPoint; a colony's Build
+     * Options, 2293-2307 with DetermineOrbitalBaseLocation). The other pages are pure reads (orderMenu.ts
+     * selectionButtonsDrawRandom).
+     */
+    selectionButtons: (galaxy: Galaxy, empire: Empire, selected: ShipActionSelection, page: ShipAction | null) => selectionButtons({ galaxy, empire, selected }, page),
+    /**
+     * A selected habitat's dispatch buttons (habitatDispatch.ts; not in the original as buttons): the action menu of
+     * every candidate ship with the cursor on the habitat, built as the C# builds the right-click menu (galaxy.rnd,
+     * ReviewLatestDesigns), so a command too.
+     */
+    habitatDispatch: (galaxy: Galaxy, empire: Empire, habitat: Habitat) => habitatDispatchOptions(galaxy, empire, habitat),
+    /**
+     * The top-right money panel's refresh when it writes the game (treasury.ts moneyPanelWriteDue): Main.Part11.cs 832
+     * method_126 runs Empire.6.cs 2196 CheckAgeVariableIncome for the player (the only caller in the original). Returns
+     * the panel's Cashflow / Bonus Income.
+     */
+    moneyPanel: (galaxy: Galaxy, empire: Empire) => moneyPanelIncome(galaxy, empire),
+    /**
+     * The records the C# UI's lookups add when they are missing (readOnlyQuery.ts requestUiRecord): Empire.4.cs 137
+     * ObtainDiplomaticRelation, Empire.8.cs 2351 ObtainPirateRelation, Empire.4.cs 106 ObtainEmpireEvaluation — a UI
+     * read only gets the detached record; this adds it, in request order (a no-op for one that exists by now).
+     */
+    obtainUiRecords: (galaxy: Galaxy, _empire: Empire, requests: UiRecordRequest[]) => {
+        for (const r of requests) {
+            if (r.kind === 'diplomaticRelation') obtainDiplomaticRelation(r.self, r.other);
+            else if (r.kind === 'pirateRelation') obtainPirateRelation(r.self, r.other);
+            else obtainEmpireEvaluation(galaxy, r.self, r.other);
+        }
+    },
     // --- Ships and Bases window / Fleets window buttons (player/fleetOps.ts) ---
     /** Main.Part6.cs cmbBuiltObjectSetFleet: form a new fleet / join a fleet / leave the fleet for the selected ships. */
     setShipsFleet: (galaxy: Galaxy, empire: Empire, ships: BuiltObject[], target: SetFleetTarget) => setShipsFleet(galaxy, empire, ships, target),
