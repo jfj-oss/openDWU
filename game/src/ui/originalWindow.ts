@@ -22,7 +22,8 @@
 //        glassButton()    GlassButton (black glass, shine on the top half, glow on hover, grey→white text); `colors`
 //                         recolours it (OuterBorderColor / ShineColor / GlowColor), `minorText` adds the second line
 //        messageBox()     MessageBoxEx (caption, text, Yes / No / OK buttons) → Promise of the clicked button
-//        OwGrid           DataGridView via ListViewBase (row colours, header, selection, sortable columns)
+//        OwGrid           DataGridView via ListViewBase (row colours, header, selection, sortable columns;
+//                         `multiSelect` for Grid.MultiSelect with Ctrl / Shift clicks)
 //        tabStrip()       EnhancedTabControl
 //        text() / dropText()  labels (GraphicsHelper.DrawStringWithDropShadow)
 //        valueRow()       "Label  value" rows with the label right-aligned (EmpireDetailView stat block)
@@ -152,6 +153,34 @@ export function sortRows<T>(rows: readonly T[], value: ((r: T) => number | strin
 /** Next sort state of a header click: none → asc → desc → asc (DataGridView toggles once sorted). */
 export function nextSortDir(current: 'asc' | 'desc' | null): 'asc' | 'desc' {
     return current === 'asc' ? 'desc' : 'asc';
+}
+
+/**
+ * DataGridView MultiSelect (FullRowSelect) click: a plain click selects only the clicked row, Ctrl toggles it, Shift
+ * selects the display-order range from the anchor (Ctrl+Shift adds that range). Returns the new selection (in display
+ * order) and anchor.
+ */
+export function nextGridSelection<K>(
+    displayKeys: readonly K[],
+    current: ReadonlySet<K>,
+    anchor: K | null,
+    clicked: K,
+    mods: { ctrl?: boolean; shift?: boolean },
+): { selection: K[]; anchor: K } {
+    const a = anchor !== null ? displayKeys.indexOf(anchor) : -1;
+    const b = displayKeys.indexOf(clicked);
+    if (mods.shift && a >= 0 && b >= 0) {
+        const range = displayKeys.slice(Math.min(a, b), Math.max(a, b) + 1);
+        const set = new Set<K>(mods.ctrl ? [...current, ...range] : range);
+        return { selection: displayKeys.filter((k) => set.has(k)), anchor: anchor as K };
+    }
+    if (mods.ctrl) {
+        const set = new Set<K>(current);
+        if (set.has(clicked)) set.delete(clicked);
+        else set.add(clicked);
+        return { selection: displayKeys.filter((k) => set.has(k)), anchor: clicked };
+    }
+    return { selection: [clicked], anchor: clicked };
 }
 
 /** DataGridViewTextBoxDropShadowCell.Paint: width of the amount bar inside a cell `cellWidth` wide (0 = none). */
@@ -506,6 +535,10 @@ export interface GridOptions<T> {
     rowClass?: (row: T) => string;
     empty?: string;
     fontSize?: number;
+    /** Grid.MultiSelect: Ctrl / Shift clicks extend the selection (nextGridSelection); `selection` lists it. */
+    multiSelect?: boolean;
+    /** Called after a click changed the selection (both modes), with the selected rows in display order. */
+    onSelectionChange?: (rows: T[]) => void;
 }
 
 /** A DataGridView in ListViewBase's styles: header (24, 24, 24) / (170, 170, 170), rows alternating (32, 32, 40) and
@@ -517,6 +550,10 @@ export class OwGrid<T> {
     private readonly head: HTMLDivElement | null;
     private rows: T[] = [];
     private selectedKey: unknown = undefined;
+    /** MultiSelect grids: the selected keys and the Shift-click anchor. */
+    private selectedKeys = new Set<unknown>();
+    private anchorKey: unknown = null;
+    private rowEls: { el: HTMLDivElement; key: unknown }[] = [];
     private sortCol: string | null = null;
     private sortDir: 'asc' | 'desc' | null = null;
 
@@ -548,8 +585,35 @@ export class OwGrid<T> {
         this.el.appendChild(this.body);
     }
 
+    /** The selected row; a MultiSelect grid has one only while exactly one row is selected (SelectedRows.Count == 1). */
     get selected(): T | null {
+        if (this.o.multiSelect) {
+            if (this.selectedKeys.size !== 1) return null;
+            const [k] = this.selectedKeys;
+            return this.rows.find((r) => this.o.key(r) === k) ?? null;
+        }
         return this.rows.find((r) => this.o.key(r) === this.selectedKey) ?? null;
+    }
+
+    /** The selected rows in display order (SelectedRows). */
+    get selection(): T[] {
+        if (!this.o.multiSelect) {
+            const s = this.selected;
+            return s !== null ? [s] : [];
+        }
+        return this.displayed.filter((r) => this.selectedKeys.has(this.o.key(r)));
+    }
+
+    /** MultiSelect grids: replace the selection (no onSelectionChange call); the first key becomes the anchor. */
+    selectKeys(keys: readonly unknown[], scroll = true): void {
+        this.selectedKeys = new Set(keys);
+        this.anchorKey = keys.length > 0 ? keys[0] : null;
+        if (keys.length > 0) this.select(keys[0], scroll);
+        else this.render();
+    }
+
+    private isSelectedKey(key: unknown): boolean {
+        return this.o.multiSelect ? this.selectedKeys.has(key) : key === this.selectedKey;
     }
 
     /** The rows in display order (after sorting). */
@@ -566,6 +630,10 @@ export class OwGrid<T> {
     /** Select the row with this key (no onSelect call) and scroll it into view (FirstDisplayedScrollingRowIndex). */
     select(key: unknown, scroll = true): void {
         this.selectedKey = key;
+        if (this.o.multiSelect && !this.selectedKeys.has(key)) {
+            this.selectedKeys = new Set([key]);
+            this.anchorKey = key;
+        }
         this.render();
         if (scroll) {
             const r = this.body.querySelector<HTMLElement>('.ow-grid-row.ow-sel');
@@ -587,23 +655,37 @@ export class OwGrid<T> {
             });
         }
         const rows = this.displayed;
+        if (this.o.multiSelect) {
+            // Rebinding drops the selection of rows that are gone.
+            const alive = new Set(rows.map((r) => this.o.key(r)));
+            for (const k of [...this.selectedKeys]) if (!alive.has(k)) this.selectedKeys.delete(k);
+        }
+        this.rowEls = [];
         if (rows.length === 0 && this.o.empty) this.body.appendChild(el('div', 'ow-grid-empty', this.o.empty));
         rows.forEach((row, i) => {
             const key = this.o.key(row);
             const extra = this.o.rowClass?.(row) ?? '';
-            const r = el('div', `ow-grid-row${i % 2 === 1 ? ' ow-alt' : ''}${key === this.selectedKey ? ' ow-sel' : ''}${extra ? ` ${extra}` : ''}`);
+            const r = el('div', `ow-grid-row${i % 2 === 1 ? ' ow-alt' : ''}${this.isSelectedKey(key) ? ' ow-sel' : ''}${extra ? ` ${extra}` : ''}`);
             for (const c of this.o.columns) {
                 const cell = el('div', `ow-grid-cell ow-align-${c.align ?? 'left'}`);
                 c.render(row, cell);
                 r.appendChild(cell);
             }
-            r.addEventListener('click', () => {
-                if (this.selectedKey !== key) {
+            this.rowEls.push({ el: r, key });
+            r.addEventListener('click', (e) => {
+                if (this.o.multiSelect) {
+                    const next = nextGridSelection(this.rowEls.map((x) => x.key), this.selectedKeys, this.anchorKey, key, { ctrl: e.ctrlKey || e.metaKey, shift: e.shiftKey });
+                    this.selectedKeys = new Set(next.selection);
+                    this.anchorKey = next.anchor;
+                    this.selectedKey = key;
+                    for (const x of this.rowEls) x.el.classList.toggle('ow-sel', this.selectedKeys.has(x.key));
+                } else if (this.selectedKey !== key) {
                     this.selectedKey = key;
                     for (const x of this.body.querySelectorAll('.ow-grid-row.ow-sel')) x.classList.remove('ow-sel');
                     r.classList.add('ow-sel');
                 }
                 this.o.onSelect?.(row);
+                this.o.onSelectionChange?.(this.selection);
             });
             if (this.o.onDoubleClick) r.addEventListener('dblclick', () => this.o.onDoubleClick!(row));
             this.body.appendChild(r);

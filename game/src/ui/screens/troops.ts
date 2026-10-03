@@ -1,18 +1,23 @@
-// Troops screen: a streamlined port of the original's Troops panel (Main.Part9.cs:3129 tbtnTroops_Click toggles
-// pnlTroopInfo; Main.Part11.cs:3730 method_172 lays it out, 3637 cmbTroopFilter_SelectedIndexChanged fills it,
-// 3611 method_171 writes the summary; TroopListView.cs for the columns). The original has no hotkey for it
-// (Main_KeyUp has no case; its hover hint "Open Troops screen" carries no key).
+// Troops screen: a port of the original's Troops panel on the shared original-style window (originalWindow.ts).
+// Main.Part9.cs:3129 tbtnTroops_Click toggles pnlTroopInfo; Main.Part11.cs:3730 method_172 lays it out (1065 × 700,
+// every control at its source Location / Size), 3637 cmbTroopFilter_SelectedIndexChanged fills it, 3611 method_171
+// writes the summary, 3808 ctlTroopList_SelectionChanged follows the selection; TroopListView.cs for the columns.
+// The original has no hotkey for it (Main_KeyUp has no case; its hover hint "Open Troops screen" carries no key).
 //
-// Left: the filter (FleetHabitatDropDown.cs: "(None)" = all troops, then the fleets, then the colonies by name).
-// Right: the summary, the troop grid (Name / Experience / Type / Readiness / Attack / Defend / Maintenance /
-// Location; header click sorts, as DataGridViewColumnSortMode.Automatic), the rename box and the original's four
-// buttons (Go to Troop, Disband, Garrison, Ungarrison). When the filter is a colony the player owns, the colony's
-// recruit options (the selection panel's five RecruitTroops buttons, Main.Part3.cs:2759-2860) are shown too and go
-// through executeShipAction (Main.Part7.cs:883-951).
+// Layout (body pixels): "Learn about Troops..." (10, 9), the summary (380, 9), "Filter by" (780, 14) + the
+// FleetHabitatDropDown (840, 10) ("(None)" = all troops, then the fleets, then the colonies by name), the Name box
+// (60, 43), the troop grid (10, 73) 720 × 519 (Empire / Name / Experience / Type / Readiness / Attack / Defend /
+// Maintenance / Location; MultiSelect; header click sorts), the mini galaxy map (740, 88) 300 × 300 with the
+// crosshair on the selected troop, and the four buttons at y 602 (Go to Troop, Disband, Garrison, Ungarrison).
 //
-// TODO(port): the mini galaxy map beside the list (dboYnQplv3 SetPosition) — Main.Part11.cs:3808 ctlTroopList_SelectionChanged
-// TODO(port): the "Learn about Troops..." Galactopedia link — Main.Part4.cs:2138 lnkTroops_LinkClicked
+// Our extras, in the same chrome, in the space the original leaves empty under the map: the troop pictures (a
+// small one in the Name cell, a large one in the detail block), the selected troop's detail (experience, type,
+// strengths, readiness / recruitment progress bar, location) and, when the filter is a colony the player owns, its
+// recruit options (the selection panel's five RecruitTroops buttons, Main.Part3.cs:2759-2860, through
+// executeShipAction, Main.Part7.cs:883-951) with the colony's recruitment progress.
+//
 // TODO(port): AutoPauseWhenInPopupWindow pause/resume — Main.Part11.cs:3733 / 4661 method_184
+// TODO(port): the galaxy nebula image on the mini map (GalaxyMap.cs bitmap_0, as in galaxyMap.ts) — GalaxyMap.cs method_6
 
 import './troops.css';
 import type { Empire } from '../../sim/empire';
@@ -37,6 +42,27 @@ import { formatThousandsK } from './coloniesList';
 import { disbandTroops, setTroopsGarrisoned, renameTroop } from '../../sim/player/playerOrders';
 import { troopImageUrl, wireTroopImageFallback } from '../../render/troopImages';
 import { raceHasConcordArt } from '../../render/concordArt';
+import { BACKDROP_URLS } from '../../render/assets';
+import { CROSSHAIR_COLOR, GRID_COLOR, galaxyMapScale, starBrushColor, starDotSizes } from './galaxyMap';
+import { openGalactopedia } from './galactopedia';
+import { empireFlagUrl } from '../selectionInfoView';
+import {
+    COLORS,
+    FONT,
+    OwGrid,
+    barGraph,
+    darkRect,
+    dropDown,
+    dropText,
+    el,
+    glassButton,
+    linkLabel,
+    openOriginalWindow,
+    place,
+    setText,
+    text,
+    textBox,
+} from '../originalWindow';
 export { disbandTroops, setTroopsGarrisoned, renameTroop };
 
 /** GameText lookup with the English text as fallback (tests run without GameText loaded). */
@@ -373,7 +399,40 @@ export function troopFilterLabel(f: TroopFilter): string {
 }
 
 // ---------------------------------------------------------------------------------------------------------------
-// DOM
+// Pure helpers of the window (tested)
+// ---------------------------------------------------------------------------------------------------------------
+
+/** Main.Part9.cs:4150 btnTroopGoto_Click / ctlTroopList_SelectionChanged: the troop's colony while AtColony, else its ship. */
+export function troopGoToTarget(troop: Troop): Habitat | BuiltObject | null {
+    if (troop.atColony) return (troop.colony as Habitat | null) ?? null;
+    return (troop.builtObject as BuiltObject | null) ?? null;
+}
+
+/** Galaxy.7.cs:5467's type abbreviations (Inf / Arm / PDU / SF); Pirate Raiders have none in the source. */
+export function troopTypeAbbreviation(type: TroopType): string {
+    switch (type) {
+        case TroopType.Infantry: return T('TroopType Infantry Abbreviation', 'Inf');
+        case TroopType.Armored: return T('TroopType Armored Abbreviation', 'Arm');
+        case TroopType.Artillery: return T('TroopType Artillery Abbreviation', 'PDU');
+        case TroopType.SpecialForces: return T('TroopType SpecialForces Abbreviation', 'SF');
+        case TroopType.PirateRaider: return T('TroopType PirateRaider', 'Pirate Raider');
+    }
+    return '';
+}
+
+/** GalaxyMap.cs SetPosition + method_6 crosshair: a world point in the `mapPx`-wide mini map (trunc(x / scale) + 1). */
+export function miniMapPoint(galaxySizeX: number, mapPx: number, x: number, y: number): { x: number; y: number } {
+    const s = galaxySizeX / mapPx;
+    return { x: Math.trunc(x / s) + 1, y: Math.trunc(y / s) + 1 };
+}
+
+/** The dropdown value of a filter entry (stable while the entry exists). */
+export function troopFilterValue(f: TroopFilter, index: number): string {
+    return f.kind === 'all' ? 'all' : `${f.kind}:${index}`;
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// The window (Main.Part11.cs:3730 method_172: pnlTroopInfo 1065 × 700)
 // ---------------------------------------------------------------------------------------------------------------
 
 export interface TroopsScreenOptions {
@@ -409,306 +468,355 @@ export function isTroopsScreenOpen(): boolean {
     return open !== null;
 }
 
-function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls: string, text?: string): HTMLElementTagNameMap[K] {
-    const e = document.createElement(tag);
-    e.className = cls;
-    if (text !== undefined) e.textContent = text;
-    return e;
-}
+/** pnlTroopInfo.Size (method_172). */
+const WINDOW_W = 1065;
+const WINDOW_H = 700;
+/** dboYnQplv3: the GalaxyMap control, 300 × 300 at (740, 88), 2 px (67, 67, 77) border. */
+const MAP = { x: 740, y: 88, size: 300 };
+/** TroopListView.BindData: _GarrisonStyle.ForeColor. */
+const GARRISON_COLOR = 'rgb(0, 255, 0)';
 
-function sameFilter(a: TroopFilter, b: TroopFilter): boolean {
-    if (a.kind !== b.kind) return false;
-    if (a.kind === 'fleet') return a.fleet === (b as { fleet: ShipGroup }).fleet;
-    if (a.kind === 'colony') return a.colony === (b as { colony: Habitat }).colony;
-    return true;
-}
+const backdrop: { img: HTMLImageElement | null } = { img: null };
 
 function createTroopsScreen(opts: TroopsScreenOptions): OpenState {
     const { galaxy, empire } = opts;
+    const raceCount = galaxy.races.length;
     let filter: TroopFilter = { kind: 'all' };
-    let sortKey: TroopSortKey | null = null;
-    let sortDesc = false;
-    let selected = new Set<Troop>();
-    let anchor: Troop | null = null;
-    let shownOrder: Troop[] = [];
+    let filterOptions: TroopFilter[] = [];
+    let filterSig = '';
     let recruitSig = '';
+    let lastNameTroop: Troop | null = null;
+    let timer = 0;
 
-    const root = el('div', 'troops-wrap');
-    const win = el('div', 'troops-window');
-    const titlebar = el('div', 'troops-titlebar');
-    const heading = el('div', 'troops-heading', T('Troops', 'Troops'));
-    const closeBtn = el('button', 'troops-close', '✕');
-    closeBtn.type = 'button';
-    closeBtn.title = 'Close';
-    titlebar.append(heading, closeBtn);
+    const win = openOriginalWindow({
+        id: 'troops',
+        title: T('Troops', 'Troops'),
+        icon: 'troops.png',
+        width: WINDOW_W,
+        height: WINDOW_H,
+        onClose: () => {
+            window.clearInterval(timer);
+            open = null;
+        },
+        onResize: () => drawMap(),
+    });
+    const body = win.body;
 
-    const body = el('div', 'troops-body');
-    const side = el('div', 'troops-filter');
-    const main = el('div', 'troops-main');
-    body.append(side, main);
+    // lnkTroops (10, 9): Main.Part4.cs:2138 lnkTroops_LinkClicked → the Galactopedia's "Troops" topic.
+    body.appendChild(place(linkLabel(`${T('Learn about Troops', 'Learn about Troops')}...`, () => openGalactopedia({ topic: T('Troops', 'Troops') }), FONT.normal), 10, 9));
 
-    const summary = el('div', 'troops-summary');
-    const nameBar = el('div', 'troops-namebar');
-    const nameLabel = el('label', 'troops-name-label', T('Name', 'Name'));
-    const nameInput = el('input', 'troops-name-input');
-    nameInput.type = 'text';
+    // lblTroopSummary (380, 9): font_3 (15.33), color_2 (170, 170, 170); method_171's four lines.
+    const summary = text('', { size: FONT.normal, color: COLORS.label, wrapWidth: 390, className: 'tr-summary' });
+    body.appendChild(place(summary, 380, 9));
+
+    // lblTroopFilter (780, 14) "Filter by" + cmbTroopFilter (840, 10) 200 × 21, font_6 (16.67).
+    dropText(body, T('Filter by', 'Filter by'), 780, 14, { size: FONT.large, color: COLORS.label });
+    let filterSel = dropDown([], '', () => undefined);
+    body.appendChild(filterSel);
+
+    // lblTroopInfoName (10, 46) font_2 (18.67 bold) color_1 (120, 120, 120); txtTroopInfoName (60, 43) 250 × 20 font_7.
+    dropText(body, T('Name', 'Name'), 10, 46, { size: FONT.header, bold: true, color: 'rgb(120, 120, 120)' });
+    const nameInput = textBox('', '', (v) => {
+        // IgqymUpftW: rename the selected troop while the text is not blank.
+        const t = grid.selected;
+        if (t !== null && v.trim() !== '') issuePlayerCommand(galaxy, empire, 'renameTroop', [t.troop, v], (ok) => ok && refresh());
+    });
     nameInput.maxLength = 100;
-    nameBar.append(nameLabel, nameInput);
+    nameInput.style.fontSize = `${FONT.large}px`;
+    nameInput.style.fontWeight = 'bold';
+    body.appendChild(place(nameInput, 60, 43, 250, 20));
 
-    const grid = el('div', 'troops-grid');
-    const header = el('div', 'troops-row troops-header');
-    header.appendChild(el('span', 'troops-cell troops-flag'));
-    // Image column (InfoPanel.cs DrawTroopsAgents / Main.Part13.cs LoadTroops): TroopListView.cs itself has no
-    // troop-race image column (only the Empire flag), so this header cell — like the flag's — carries no label.
-    header.appendChild(el('span', 'troops-cell troops-image-col'));
-    const headerCells = new Map<TroopSortKey, HTMLElement>();
-    for (const col of TROOP_COLUMNS) {
-        const h = el('span', `troops-cell troops-sortable${col.numeric ? ' troops-num' : ''}`, T(col.label, col.label));
-        h.addEventListener('click', () => {
-            if (sortKey === col.key) sortDesc = !sortDesc;
-            else {
-                sortKey = col.key;
-                sortDesc = false;
-            }
-            refresh();
-        });
-        headerCells.set(col.key, h);
-        header.appendChild(h);
-    }
-    const rowsBox = el('div', 'troops-rows');
-    const empty = el('div', 'troops-empty', 'No troops');
-    grid.append(header, rowsBox);
+    // ctlTroopList (10, 73) 720 × 519; column widths from method_172 (Location fills what the scrollbar leaves).
+    const flagCache = new Map<Empire, string>();
+    const grid = new OwGrid<TroopRow>({
+        key: (r) => r.troop,
+        multiSelect: true,
+        rowHeight: 20,
+        fontSize: FONT.normal,
+        empty: '',
+        columns: [
+            {
+                id: 'empire',
+                header: '',
+                width: 30,
+                align: 'center',
+                render: (r, cell) => {
+                    const emp = r.troop.empire as Empire | null;
+                    cell.title = r.empireName;
+                    if (emp === null) return;
+                    const im = el('img', 'tr-flag');
+                    im.alt = '';
+                    const cached = flagCache.get(emp);
+                    if (cached) im.src = cached;
+                    else
+                        void empireFlagUrl(galaxy, emp).then((u) => {
+                            flagCache.set(emp, u);
+                            im.src = u;
+                        });
+                    cell.appendChild(im);
+                },
+            },
+            {
+                id: 'name',
+                header: T('Name', 'Name'),
+                width: 160,
+                sort: (r) => r.name,
+                render: (r, cell) => {
+                    // Our extra: the troop's race / type picture (InfoPanel.cs DrawTroopsAgents) before the name.
+                    cell.appendChild(troopPicture(r.troop, 'tr-pic'));
+                    cell.append(r.name);
+                    if (r.garrisoned) {
+                        cell.classList.add('tr-garrison');
+                        cell.title = T('This troop is garrisoned at this location', 'This troop is garrisoned at this location');
+                    } else cell.title = r.name;
+                },
+            },
+            { id: 'experience', header: T('Experience', 'Experience'), width: 80, sort: (r) => r.experience, render: (r, cell) => cell.append(r.experience) },
+            { id: 'type', header: T('Type', 'Type'), width: 100, sort: (r) => r.type, render: (r, cell) => { cell.append(r.type); cell.title = r.type; } },
+            { id: 'readiness', header: T('Readiness', 'Readiness'), title: T('Readiness', 'Readiness'), width: 50, align: 'right', sort: (r) => r.readiness, render: (r, cell) => cell.append(formatTroopNumber(r.readiness)) },
+            { id: 'attack', header: T('Attack Strength', 'Attack Strength'), title: T('Attack Strength', 'Attack Strength'), width: 50, align: 'right', sort: (r) => r.attack, render: (r, cell) => cell.append(formatTroopNumber(r.attack)) },
+            { id: 'defend', header: T('Defend Strength', 'Defend Strength'), title: T('Defend Strength', 'Defend Strength'), width: 50, align: 'right', sort: (r) => r.defend, render: (r, cell) => cell.append(formatTroopNumber(r.defend)) },
+            { id: 'maintenance', header: T('Maintenance', 'Maintenance'), width: 80, align: 'right', sort: (r) => r.maintenance, render: (r, cell) => cell.append(formatTroopNumber(r.maintenance)) },
+            { id: 'location', header: T('Location', 'Location'), fill: 1, sort: (r) => r.location, render: (r, cell) => { cell.append(r.location); cell.title = r.location; } },
+        ],
+        onSelectionChange: () => selectionChanged(),
+        onDoubleClick: () => goTo(),
+    });
+    body.appendChild(place(grid.el, 10, 73, 720, 519));
+    grid.el.classList.add('tr-grid');
 
-    const buttons = el('div', 'troops-buttons');
-    const mkBtn = (text: string): HTMLButtonElement => {
-        const b = el('button', 'troops-btn', text);
-        b.type = 'button';
-        buttons.appendChild(b);
-        return b;
-    };
-    const btnGoto = mkBtn(T('Go to Troop', 'Go to Troop'));
-    const btnDisband = mkBtn(T('Disband Selected Troops', 'Disband Selected Troops'));
-    const btnGarrison = mkBtn(T('Garrison selected troops', 'Garrison selected troops'));
-    const btnUngarrison = mkBtn(T('Ungarrison selected troops', 'Ungarrison selected troops'));
+    // lblTroopsGalaxyMapTitle (740, 70) + dboYnQplv3 (740, 88) 300 × 300.
+    dropText(body, T('Location of selected Troops in Galaxy', 'Location of selected Troops in Galaxy'), 740, 70, { size: FONT.normal, color: COLORS.label });
+    const mapBox = place(el('div', 'tr-map'), MAP.x, MAP.y, MAP.size, MAP.size);
+    const canvas = el('canvas', 'tr-map-canvas');
+    mapBox.appendChild(canvas);
+    body.appendChild(mapBox);
+    let mapPoint: { x: number; y: number } | null = null;
 
-    const recruitBox = el('div', 'troops-recruit');
+    // Our extra below the map: the selected troop(s) and the colony's recruit options.
+    const detail = place(darkRect(), 740, 398, 300, 98);
+    body.appendChild(detail);
+    const recruitBox = place(el('div', 'tr-recruit'), 740, 502, 300, 125);
+    body.appendChild(recruitBox);
 
-    main.append(summary, nameBar, grid, buttons, recruitBox);
-    win.append(titlebar, body);
-    root.appendChild(win);
-    document.body.appendChild(root);
+    // btnTroopGoto (10, 602) 130 × 25, btnTroopDisband (150, 602) 180, btnTroopGarrison (340, 602) 180,
+    // btnTroopUngarrison (530, 602) 200.
+    const btnGoto = glassButton(T('Go to Troop', 'Go to Troop'), { onClick: () => goTo() });
+    const btnDisband = glassButton(T('Disband Selected Troops', 'Disband Selected Troops'), { onClick: () => void disband() });
+    const btnGarrison = glassButton(T('Garrison selected troops', 'Garrison selected troops'), { onClick: () => garrison(true) });
+    const btnUngarrison = glassButton(T('Ungarrison selected troops', 'Ungarrison selected troops'), { onClick: () => garrison(false) });
+    body.append(place(btnGoto, 10, 602, 130, 25), place(btnDisband, 150, 602, 180, 25), place(btnGarrison, 340, 602, 180, 25), place(btnUngarrison, 530, 602, 200, 25));
 
-    // --- filter list ---
-    const filterRows = new Map<HTMLElement, TroopFilter>();
-    function renderFilters(): void {
-        const options = troopFilterOptions(empire);
-        if (!options.some((o) => sameFilter(o, filter))) filter = { kind: 'all' };
-        side.replaceChildren();
-        filterRows.clear();
-        let lastKind = '';
-        for (const o of options) {
-            if (o.kind !== lastKind && o.kind !== 'all') {
-                side.appendChild(el('div', 'troops-filter-group', o.kind === 'fleet' ? T('Fleets', 'Fleets') : T('Colonies', 'Colonies')));
-            }
-            lastKind = o.kind;
-            const row = el('div', 'troops-filter-row');
-            const label = el('span', 'troops-filter-name', troopFilterLabel(o));
-            const count = el('span', 'troops-filter-count');
-            row.append(label, count);
-            if (sameFilter(o, filter)) row.classList.add('selected');
-            row.addEventListener('click', () => {
-                filter = o;
-                selected = new Set();
-                anchor = null;
-                for (const r of filterRows.keys()) r.classList.toggle('selected', r === row);
-                recruitSig = '';
-                refresh();
-            });
-            filterRows.set(row, o);
-            side.appendChild(row);
-        }
-    }
-    function updateFilterCounts(): void {
-        for (const [row, f] of filterRows) {
-            (row.lastChild as HTMLElement).textContent = String(troopsForFilter(empire, f).length);
-        }
-    }
-
-    // --- grid rows (refreshed in place, keyed by troop) ---
-    interface RowEls { line: HTMLElement; cells: HTMLElement[] }
-    const rowEls = new Map<Troop, RowEls>();
-    /** Port of InfoPanel.cs:2609 DrawTroopsAgents's per-type bitmap lookup (Main.Part13.cs:2063 LoadTroops):
-     *  the troop's own race/type image, set once (a troop's type and pictureRef never change). */
-    function makeTroopImage(troop: Troop): HTMLImageElement {
-        const img = el('img', 'troops-cell troops-image');
+    function troopPicture(t: Troop, cls: string): HTMLImageElement {
+        const img = el('img', cls);
         img.alt = '';
-        const raceCount = galaxy.races.length;
-        const concordArt = raceHasConcordArt(galaxy, (troop.race as Race | null)?.name);
-        img.src = troopImageUrl(troop, raceCount, { concordArt });
-        wireTroopImageFallback(img, troop, raceCount, { concordArt });
+        img.draggable = false;
+        const concordArt = raceHasConcordArt(galaxy, (t.race as Race | null)?.name);
+        img.src = troopImageUrl(t, raceCount, { concordArt });
+        wireTroopImageFallback(img, t, raceCount, { concordArt });
         return img;
     }
-    function makeRow(troop: Troop): RowEls {
-        const line = el('div', 'troops-row troops-line');
-        const cells: HTMLElement[] = [];
-        const flag = el('span', 'troops-cell troops-flag');
-        line.appendChild(flag);
-        cells.push(flag);
-        line.appendChild(makeTroopImage(troop));
-        for (const col of TROOP_COLUMNS) {
-            const c = el('span', `troops-cell${col.numeric ? ' troops-num' : ''}`);
-            line.appendChild(c);
-            cells.push(c);
-        }
-        line.addEventListener('click', (e) => onRowClick(troop, e));
-        line.addEventListener('dblclick', () => goTo());
-        return { line, cells };
-    }
-    function setText(e: HTMLElement, t: string): void {
-        if (e.textContent !== t) {
-            e.textContent = t;
-            e.title = t;
-        }
-    }
-    function fillRow(r: RowEls, row: TroopRow): void {
-        const empireObj = row.troop.empire as Empire | null;
-        r.cells[0].style.background = empireObj !== null ? cssColor(empireObj.mainColor) : 'transparent';
-        r.cells[0].title = row.empireName;
-        setText(r.cells[1], row.name);
-        r.cells[1].classList.toggle('troops-garrisoned', row.garrisoned);
-        r.cells[1].title = row.garrisoned ? T('This troop is garrisoned at this location', 'This troop is garrisoned at this location') : row.name;
-        setText(r.cells[2], row.experience);
-        setText(r.cells[3], row.type);
-        setText(r.cells[4], formatTroopNumber(row.readiness));
-        setText(r.cells[5], formatTroopNumber(row.attack));
-        setText(r.cells[6], formatTroopNumber(row.defend));
-        setText(r.cells[7], formatTroopNumber(row.maintenance));
-        setText(r.cells[8], row.location);
-        r.line.classList.toggle('selected', selected.has(row.troop));
+
+    // --- filter (FleetHabitatDropDown.BindData; rebuilt when the fleets / colonies change) ---
+    function renderFilter(): void {
+        const options = troopFilterOptions(empire);
+        const sig = options.map((o) => troopFilterLabel(o)).join('|');
+        if (sig === filterSig && filterOptions.length === options.length) return;
+        filterSig = sig;
+        if (!options.some((o) => sameFilter(o, filter))) filter = { kind: 'all' };
+        filterOptions = options;
+        const values = options.map((o, i) => ({ value: troopFilterValue(o, i), label: troopFilterLabel(o) }));
+        const current = values[Math.max(0, options.findIndex((o) => sameFilter(o, filter)))].value;
+        const next = dropDown(values, current, (v) => {
+            const i = values.findIndex((x) => x.value === v);
+            filter = options[i] ?? { kind: 'all' };
+            recruitSig = '';
+            grid.selectKeys([]);
+            refresh();
+        });
+        next.style.fontSize = `${FONT.large}px`;
+        place(next, 840, 10, 200, 21);
+        filterSel.replaceWith(next);
+        filterSel = next;
     }
 
-    function onRowClick(troop: Troop, e: MouseEvent): void {
-        if (e.shiftKey && anchor !== null && shownOrder.includes(anchor)) {
-            const a = shownOrder.indexOf(anchor);
-            const b = shownOrder.indexOf(troop);
-            selected = new Set(shownOrder.slice(Math.min(a, b), Math.max(a, b) + 1));
-        } else if (e.ctrlKey || e.metaKey) {
-            if (selected.has(troop)) selected.delete(troop);
-            else selected.add(troop);
-            anchor = troop;
-        } else {
-            selected = new Set([troop]);
-            anchor = troop;
-        }
-        refresh();
-    }
-
-    /** ctlTroopList.SelectedTroop: the first selected troop in display order. */
-    function selectedTroop(): Troop | null {
-        for (const t of shownOrder) if (selected.has(t)) return t;
-        return null;
-    }
     function selectedTroops(): Troop[] {
-        return shownOrder.filter((t) => selected.has(t));
+        return grid.selection.map((r) => r.troop);
     }
 
-    let lastNameTroop: Troop | null = null;
     function refresh(): void {
+        renderFilter();
         const troops = troopsForFilter(empire, filter);
-        const rows = sortTroopRows(troopRows(troops), sortKey, sortDesc);
-        shownOrder = rows.map((r) => r.troop);
-        const alive = new Set(shownOrder);
-        for (const t of [...selected]) if (!alive.has(t)) selected.delete(t);
-        for (const [t, r] of rowEls) {
-            if (!alive.has(t)) {
-                r.line.remove();
-                rowEls.delete(t);
-            }
-        }
-        let prev: Element | null = null;
-        for (const row of rows) {
-            let r = rowEls.get(row.troop);
-            if (r === undefined) {
-                r = makeRow(row.troop);
-                rowEls.set(row.troop, r);
-            }
-            fillRow(r, row);
-            const want: Element | null = prev === null ? rowsBox.firstElementChild : prev.nextElementSibling;
-            if (want !== r.line) rowsBox.insertBefore(r.line, want);
-            prev = r.line;
-        }
-        if (rows.length === 0) {
-            if (empty.parentElement !== rowsBox) rowsBox.appendChild(empty);
-        } else empty.remove();
-
+        grid.setRows(troopRows(troops));
         const lines = troopSummaryLines(troops, empire);
-        if (summary.childElementCount !== lines.length) summary.replaceChildren(...lines.map(() => el('div', 'troops-summary-line')));
-        lines.forEach((l, i) => setText(summary.children[i] as HTMLElement, l));
-        heading.textContent = `${T('Troops', 'Troops')} — ${troopFilterLabel(filter)}`;
-
-        for (const [k, h] of headerCells) {
-            h.classList.toggle('sorted-asc', sortKey === k && !sortDesc);
-            h.classList.toggle('sorted-desc', sortKey === k && sortDesc);
-        }
-        const sel = selectedTroop();
-        if (sel !== lastNameTroop && document.activeElement !== nameInput) {
-            nameInput.value = sel?.name ?? '';
-            lastNameTroop = sel;
-        }
-        const any = selected.size > 0;
-        btnGoto.disabled = sel === null;
-        btnDisband.disabled = !any;
-        btnGarrison.disabled = !any;
-        btnUngarrison.disabled = !any;
-        nameInput.disabled = sel === null;
-        updateFilterCounts();
+        setText(summary, lines.join('\n'));
+        updateControls();
+        refreshDetail();
         refreshRecruit();
     }
 
-    function refreshRecruit(): void {
-        const opts2 = filter.kind === 'colony' ? recruitOptions(galaxy, empire, filter.colony) : [];
-        const sig = opts2.map((o) => `${o.label}|${o.extra}|${Math.round(o.maintenance)}`).join(';');
-        if (sig === recruitSig) return;
-        recruitSig = sig;
-        recruitBox.replaceChildren();
-        if (opts2.length === 0) {
-            recruitBox.style.display = 'none';
-            return;
+    /** ctlTroopList_SelectionChanged: the name box and the map position follow the single selected troop. */
+    function selectionChanged(): void {
+        updateControls();
+        refreshDetail();
+    }
+
+    function updateControls(): void {
+        const one = grid.selected;
+        const t = one?.troop ?? null;
+        if (t !== lastNameTroop && document.activeElement !== nameInput) {
+            nameInput.value = t?.name ?? '';
+            lastNameTroop = t;
         }
-        recruitBox.style.display = '';
-        recruitBox.appendChild(el('div', 'troops-recruit-title', `${T('Recruit Troops', 'Recruit Troops')} — ${troopFilterLabel(filter)}`));
-        for (const o of opts2) {
-            const b = el('button', 'troops-btn troops-recruit-btn');
-            b.type = 'button';
-            const name = el('span', 'troops-recruit-name', `${o.troop.name}, ${troopTypeDescription(o.troop.type)}`);
-            const stats = el('span', 'troops-recruit-stats', `${o.troop.attackStrength} / ${o.troop.defendStrength} · ${T('Maintenance', 'Maintenance')} ${formatTroopNumber(o.maintenance)}`);
-            b.append(name, stats);
-            b.title = o.label;
-            b.addEventListener('click', () => void recruit(o));
-            recruitBox.appendChild(b);
+        const any = grid.selection.length > 0;
+        btnGoto.disabled = t === null;
+        btnDisband.disabled = !any;
+        btnGarrison.disabled = !any;
+        btnUngarrison.disabled = !any;
+        nameInput.disabled = t === null;
+        const target = t !== null ? troopGoToTarget(t) : null;
+        const p = target !== null ? miniMapPoint(galaxy.sizeX, MAP.size, target.xpos, target.ypos) : null;
+        if (p?.x !== mapPoint?.x || p?.y !== mapPoint?.y) {
+            mapPoint = p;
+            drawMap();
         }
     }
 
-    async function recruit(o: RecruitOption): Promise<void> {
-        if (filter.kind !== 'colony') return;
-        // Command log: queued, applied at the next frame boundary.
-        const colony = filter.colony;
+    // --- mini galaxy map (GalaxyMap.cs method_6 at 300 px: backdrop, sector grid, systems, crosshair) ---
+    function drawMap(): void {
+        const px = Math.max(1, Math.round(MAP.size * win.scale * (window.devicePixelRatio || 1)));
+        if (canvas.width !== px) {
+            canvas.width = px;
+            canvas.height = px;
+        }
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return;
+        const k = px / MAP.size;
+        ctx.setTransform(k, 0, 0, k, 0, 0);
+        const W = MAP.size;
+        const s = galaxyMapScale(galaxy, W);
+        ctx.fillStyle = '#000';
+        ctx.fillRect(0, 0, W, W);
+        if (backdrop.img === null) {
+            const img = new Image();
+            img.onload = () => {
+                backdrop.img = img;
+                if (!win.closed) drawMap();
+            };
+            img.src = BACKDROP_URLS[0];
+        } else if (backdrop.img.complete) ctx.drawImage(backdrop.img, 0, 0, galaxy.sizeX / s, galaxy.sizeY / s);
+        const sec = galaxy.sectorSize / s;
+        ctx.strokeStyle = GRID_COLOR;
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        for (let i = 0; i <= galaxy.sectorWidth; i++) {
+            const x = Math.trunc(i * sec) + 0.5;
+            ctx.moveTo(x, 0);
+            ctx.lineTo(x, Math.min(W, galaxy.sectorHeight * sec));
+        }
+        for (let j = 0; j <= galaxy.sectorHeight; j++) {
+            const y = Math.trunc(j * sec) + 0.5;
+            ctx.moveTo(0, y);
+            ctx.lineTo(Math.min(W, galaxy.sectorWidth * sec), y);
+        }
+        ctx.stroke();
+        const dot = starDotSizes(W, false).normal;
+        for (const sys of galaxy.systems) {
+            const c = starBrushColor(sys.systemStar);
+            if (c === null) continue;
+            ctx.fillStyle = c;
+            ctx.fillRect(sys.systemStar.xpos / s - dot / 2, sys.systemStar.ypos / s - dot / 2, dot, dot);
+        }
+        if (mapPoint !== null) {
+            ctx.strokeStyle = CROSSHAIR_COLOR;
+            ctx.beginPath();
+            ctx.moveTo(mapPoint.x + 0.5, 0);
+            ctx.lineTo(mapPoint.x + 0.5, W);
+            ctx.moveTo(0, mapPoint.y + 0.5);
+            ctx.lineTo(W, mapPoint.y + 0.5);
+            ctx.stroke();
+        }
+    }
+
+    // --- selected troop detail (our extra) ---
+    let detailSig = '';
+    function refreshDetail(): void {
+        const sel = selectedTroops();
+        const one = sel.length === 1 ? sel[0] : null;
+        const sig = one !== null
+            ? `1|${one.name}|${one.type}|${Math.round(one.readiness)}|${Math.round(one.overallAttackStrength)}|${Math.round(one.overallDefendStrength)}|${troopLocation(one)}|${one.garrisoned}|${one.beingRecruited}`
+            : `${sel.length}|${sel.map((t) => Math.round(t.readiness)).join(',')}`;
+        if (sig === detailSig) return;
+        detailSig = sig;
+        detail.replaceChildren();
+        if (one !== null) {
+            detail.appendChild(place(troopPicture(one, 'tr-detail-pic'), 8, 9, 80, 80));
+            const row = one;
+            const r = troopRow(row);
+            dropText(detail, r.name, 96, 6, { size: FONT.large, bold: true, color: r.garrisoned ? GARRISON_COLOR : 'rgb(255, 255, 255)' }).classList.add('tr-ellipsis');
+            dropText(detail, [r.experience, r.type].filter((x) => x !== '').join(' '), 96, 26, { size: FONT.normal, color: COLORS.text });
+            dropText(detail, `${T('Attack', 'Attack')} ${formatTroopNumber(r.attack)}  ·  ${T('Defend', 'Defend')} ${formatTroopNumber(r.defend)}`, 96, 43, { size: FONT.tiny, color: COLORS.label }).classList.add('tr-ellipsis');
+            const label = row.beingRecruited ? T('Recruiting', 'Recruiting') : T('Readiness', 'Readiness');
+            const barBox = place(el('div', 'tr-bar'), 96, 61, 196, 14);
+            barBox.appendChild(barGraph(row.readiness, 100, 196, 14, row.beingRecruited ? 'rgb(255, 192, 0)' : COLORS.green));
+            barBox.appendChild(place(text(`${label} ${formatTroopNumber(row.readiness)}%`, { size: FONT.tiny, color: COLORS.text }), 4, -1));
+            detail.appendChild(barBox);
+            const loc = r.location !== '' ? r.location : '';
+            const where = row.garrisoned ? `${loc} (${T('Garrisoned', 'Garrisoned')})` : loc;
+            dropText(detail, where, 96, 78, { size: FONT.tiny, color: COLORS.label }).classList.add('tr-ellipsis');
+        } else if (sel.length > 1) {
+            const lines = troopSummaryLines(sel, empire);
+            dropText(detail, T('Selected Troops', 'Selected Troops'), 10, 8, { size: FONT.large, bold: true, color: 'rgb(255, 255, 255)' });
+            dropText(detail, lines.join('\n'), 10, 28, { size: FONT.tiny, color: COLORS.label, wrapWidth: 280 });
+        } else {
+            dropText(detail, T('Select a troop to see its details', 'Select a troop to see its details'), 10, 40, { size: FONT.normal, color: 'rgb(120, 120, 120)' });
+        }
+    }
+
+    // --- recruit at the filtered colony (our extra: the selection panel's RecruitTroops buttons) ---
+    function refreshRecruit(): void {
+        const colony = filter.kind === 'colony' ? filter.colony : null;
+        const options = colony !== null ? recruitOptions(galaxy, empire, colony) : [];
+        const training = colony !== null ? troopItemsOf(colony.troopsToRecruit) : [];
+        const sig = `${colony?.name ?? ''}|${options.map((o) => `${o.label}|${o.extra}|${Math.round(o.maintenance)}`).join(';')}|${training.map((t) => Math.round(t.readiness)).join(',')}`;
+        if (sig === recruitSig) return;
+        recruitSig = sig;
+        recruitBox.replaceChildren();
+        if (colony === null || options.length === 0) {
+            dropText(recruitBox, colony === null ? T('Filter by a colony to recruit troops there', 'Filter by a colony to recruit troops there') : T('No troops can be recruited here', 'No troops can be recruited here'), 0, 2, { size: FONT.normal, color: 'rgb(120, 120, 120)', wrapWidth: 300 });
+            return;
+        }
+        dropText(recruitBox, `${T('Recruit Troops', 'Recruit Troops')}: ${colony.name}`, 0, 0, { size: FONT.normal, bold: true, color: COLORS.text }).classList.add('tr-ellipsis');
+        options.forEach((o, i) => {
+            const b = glassButton('', { onClick: () => void recruit(colony, o), title: `${o.label}\n${T('Attack Strength', 'Attack Strength')} ${o.troop.attackStrength} · ${T('Defend Strength', 'Defend Strength')} ${o.troop.defendStrength}\n${T('Maintenance', 'Maintenance')} ${formatTroopNumber(o.maintenance)}`, className: 'tr-recruit-btn' });
+            b.appendChild(place(troopPicture(o.troop, 'tr-recruit-pic'), 6, 3, 44, 44));
+            const cap = el('span', 'tr-recruit-cap', o.extra !== '' ? T(o.extra, o.extra.charAt(0).toUpperCase() + o.extra.slice(1)) : troopTypeAbbreviation(o.troop.type));
+            b.appendChild(place(cap, 0, 48, 56, 14));
+            recruitBox.appendChild(place(b, i * 61, 20, 56, 64));
+        });
+        const line = training.length > 0
+            ? `${T('Recruiting', 'Recruiting')}: ${training.length}  (${training.map((t) => `${formatTroopNumber(t.readiness)}%`).join(', ')})`
+            : `${T('Recruiting', 'Recruiting')}: 0`;
+        dropText(recruitBox, line, 0, 90, { size: FONT.tiny, color: COLORS.label, wrapWidth: 300 }).classList.add('tr-ellipsis');
+    }
+
+    async function recruit(colony: Habitat, o: RecruitOption): Promise<void> {
+        // Command log: queued, applied at the next frame boundary (Main.Part7.cs:883-951 via executeShipAction).
         const r = await new Promise<ShipActionResult>((resolve) => issuePlayerCommand(galaxy, empire, 'shipAction', [colony, o.action, false], resolve));
+        if (win.closed) return;
+        recruitSig = '';
         refresh();
         for (const task of r.automationPrompts) {
-            if (opts.confirmAutomationOff && (await opts.confirmAutomationOff(T(task, task)))) issuePlayerCommand(galaxy, empire, 'automationOff', [task], () => refresh());
+            if (opts.confirmAutomationOff && (await opts.confirmAutomationOff(T(task, task)))) issuePlayerCommand(galaxy, empire, 'automationOff', [task], () => !win.closed && refresh());
         }
     }
 
     function goTo(): void {
-        const t = selectedTroop();
-        if (t !== null) {
-            const target = t.atColony ? (t.colony as Habitat | null) : (t.builtObject as BuiltObject | null);
-            close();
-            if (target !== null) opts.onGoTo(target);
-            return;
-        }
-        close();
+        // btnTroopGoto_Click: only with exactly one selected troop (SelectedTroop); always closes (method_184).
+        const one = grid.selected;
+        const target = one !== null ? troopGoToTarget(one.troop) : null;
+        win.close();
+        if (target !== null) opts.onGoTo(target);
     }
 
     async function disband(): Promise<void> {
@@ -717,64 +825,36 @@ function createTroopsScreen(opts: TroopsScreenOptions): OpenState {
             issuePlayerCommand(galaxy, empire, 'setEmpireControl', ['controlTroopGeneration', false]);
         }
         const list = selectedTroops();
-        if (list.length <= 0) return;
+        if (list.length <= 0 || win.closed) return;
         issuePlayerCommand(galaxy, empire, 'disbandTroops', [list], (num) => {
+            if (win.closed) return;
             // The C# rebinds to all troops and reselects the troop at index num.
             filter = { kind: 'all' };
-            renderFilters();
-            selected = new Set();
-            if (num >= 0 && num < empire.troops.count) selected.add(empire.troops.items[num]);
+            filterSig = '';
             refresh();
+            const next = num >= 0 && num < empire.troops.count ? empire.troops.items[num] : null;
+            grid.selectKeys(next !== null ? [next] : []);
+            selectionChanged();
         });
     }
 
-    btnGoto.addEventListener('click', goTo);
-    btnDisband.addEventListener('click', () => void disband());
-    btnGarrison.addEventListener('click', () => {
-        issuePlayerCommand(galaxy, empire, 'garrisonTroops', [selectedTroops(), true], () => refresh());
-    });
-    btnUngarrison.addEventListener('click', () => {
-        issuePlayerCommand(galaxy, empire, 'garrisonTroops', [selectedTroops(), false], () => refresh());
-    });
-    nameInput.addEventListener('input', () => {
-        const t = selectedTroop();
-        if (t !== null && nameInput.value.trim() !== '') issuePlayerCommand(galaxy, empire, 'renameTroop', [t, nameInput.value], (ok) => ok && refresh());
-    });
+    function garrison(on: boolean): void {
+        issuePlayerCommand(galaxy, empire, 'garrisonTroops', [selectedTroops(), on], () => !win.closed && refresh());
+    }
 
-    renderFilters();
     refresh();
-    let lastFilterSig = filterSignature();
-    function filterSignature(): string {
-        return troopFilterOptions(empire).map((o) => troopFilterLabel(o)).join('|');
-    }
-    const timer = setInterval(() => {
-        const sig = filterSignature();
-        if (sig !== lastFilterSig) {
-            lastFilterSig = sig;
-            renderFilters();
-        }
-        refresh();
-    }, opts.refreshMs ?? 1000);
-
-    function close(): void {
-        clearInterval(timer);
-        document.removeEventListener('keydown', onKeyDown);
-        root.remove();
-        open = null;
-    }
-    function onKeyDown(e: KeyboardEvent): void {
-        if (e.key === 'Escape') {
-            e.preventDefault();
-            e.stopImmediatePropagation();
-            close();
-        }
-    }
-    document.addEventListener('keydown', onKeyDown);
-    closeBtn.addEventListener('click', () => close());
-    return { close };
+    drawMap();
+    timer = window.setInterval(() => refresh(), opts.refreshMs ?? 1000);
+    return { close: () => win.close() };
 }
 
-/** Empire.mainColor (packed RGB) as CSS; the flag column's swatch (the C# draws SmallFlagPicture). */
-function cssColor(c: number): string {
-    return `#${(c & 0xffffff).toString(16).padStart(6, '0')}`;
+function troopItemsOf(list: TroopList | null): Troop[] {
+    return list !== null ? list.items.filter((t): t is Troop => t != null) : [];
+}
+
+function sameFilter(a: TroopFilter, b: TroopFilter): boolean {
+    if (a.kind !== b.kind) return false;
+    if (a.kind === 'fleet') return a.fleet === (b as { fleet: ShipGroup }).fleet;
+    if (a.kind === 'colony') return a.colony === (b as { colony: Habitat }).colony;
+    return true;
 }

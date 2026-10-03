@@ -220,3 +220,43 @@ describe('with a colony (fixture galaxy)', () => {
         expect(t1.awaitingPickup).toBe(false);
     });
 });
+
+describe('Troops window helpers', () => {
+    it('miniMapPoint: GalaxyMap.cs SetPosition crosshair, trunc(x / (SizeX / 300)) + 1', async () => {
+        const { miniMapPoint } = await import('../src/ui/screens/troops');
+        expect(miniMapPoint(300000, 300, 0, 0)).toEqual({ x: 1, y: 1 });
+        expect(miniMapPoint(300000, 300, 150999, 2500)).toEqual({ x: 151, y: 3 });
+    });
+    it('troopTypeAbbreviation follows ResolveTroopCompositionDescription', async () => {
+        const { troopTypeAbbreviation } = await import('../src/ui/screens/troops');
+        expect(troopTypeAbbreviation(TroopType.Infantry)).toBe('Inf');
+        expect(troopTypeAbbreviation(TroopType.Artillery)).toBe('PDU');
+        expect(troopTypeAbbreviation(TroopType.Armored)).toBe('Arm');
+        expect(troopTypeAbbreviation(TroopType.SpecialForces)).toBe('SF');
+    });
+    it('troopGoToTarget: the colony while AtColony, else the ship, else null', async () => {
+        const { troopGoToTarget } = await import('../src/ui/screens/troops');
+        const t = mk(TroopType.Infantry, 1, 1);
+        expect(troopGoToTarget(t)).toBeNull();
+    });
+    it('troopFilterValue is "all" for the null entry and kind:index otherwise', async () => {
+        const { troopFilterValue } = await import('../src/ui/screens/troops');
+        expect(troopFilterValue({ kind: 'all' }, 0)).toBe('all');
+        expect(troopFilterValue({ kind: 'colony', colony: {} as Habitat }, 4)).toBe('colony:4');
+    });
+});
+
+describe('nextGridSelection (Grid.MultiSelect clicks)', () => {
+    it('plain click selects one; Ctrl toggles; Shift selects the range from the anchor', async () => {
+        const { nextGridSelection } = await import('../src/ui/originalWindow');
+        const keys = ['a', 'b', 'c', 'd', 'e'];
+        expect(nextGridSelection(keys, new Set(['a', 'b']), 'a', 'c', {})).toEqual({ selection: ['c'], anchor: 'c' });
+        expect(nextGridSelection(keys, new Set(['a']), 'a', 'c', { ctrl: true })).toEqual({ selection: ['a', 'c'], anchor: 'c' });
+        expect(nextGridSelection(keys, new Set(['a', 'c']), 'a', 'c', { ctrl: true })).toEqual({ selection: ['a'], anchor: 'c' });
+        expect(nextGridSelection(keys, new Set(['b']), 'b', 'd', { shift: true })).toEqual({ selection: ['b', 'c', 'd'], anchor: 'b' });
+        expect(nextGridSelection(keys, new Set(['d']), 'd', 'b', { shift: true })).toEqual({ selection: ['b', 'c', 'd'], anchor: 'd' });
+        expect(nextGridSelection(keys, new Set(['e']), 'b', 'c', { shift: true, ctrl: true })).toEqual({ selection: ['b', 'c', 'e'], anchor: 'b' });
+        // Shift without an anchor acts as a plain click.
+        expect(nextGridSelection(keys, new Set(), null, 'c', { shift: true })).toEqual({ selection: ['c'], anchor: 'c' });
+    });
+});
