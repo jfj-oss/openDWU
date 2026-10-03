@@ -1,0 +1,15 @@
+/* The Game End panel (gameEndPanel.ts, pnlGameEnd) on the original-style chrome (originalWindow.css .ow-screen). */
+
+.game-end-layer {
+    z-index: 1600; /* above the Empire Comparison window it sits beside */
+}
+
+.game-end-panel .game-end-headline {
+    text-align: center;
+    line-height: 1;
+}
+
+.game-end-panel .game-end-description {
+    text-align: center;
+    overflow: hidden;
+}

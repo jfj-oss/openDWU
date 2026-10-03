@@ -32,6 +32,7 @@ import { getEmpireById } from '../logistics/contracts';
 import { galaxyStarDate } from '../tick/simTime';
 import { resolveTechFocus, type EmpirePolicy } from '../data/policies';
 import { appendCommandLog, type StrategicCommand } from './commandLog';
+import { withPureSimReads, withSimWrites } from '../readOnlyQuery';
 import {
     PRIORITY_LEVELS,
     STRATEGIC_POLICY_FIELDS,
@@ -309,7 +310,8 @@ function commandFor(opt: StrategicOptionDef, targetId: string | undefined): Stra
 export function applyStrategicDecisions(galaxy: Galaxy, ai: Empire, decisions: readonly StrategicDecision[], rationale = ''): StrategicDecisionResult[] {
     const results: StrategicDecisionResult[] = [];
     for (const d of decisions) {
-        const live = listStrategicOptions(galaxy, ai);
+        // The listing only validates (a replay applies the journaled command without it): side-effect-free.
+        const live = withPureSimReads(() => listStrategicOptions(galaxy, ai));
         const opt = live.find((o) => o.id === d.id);
         if (opt === undefined) {
             results.push({ id: d.id, kind: '', status: 'rejected', text: `${d.id}: not (or no longer) a legal decision` });
@@ -321,7 +323,8 @@ export function applyStrategicDecisions(galaxy: Galaxy, ai: Empire, decisions: r
             continue;
         }
         const cmd = commandFor(opt, d.targetId);
-        const r = applyStrategicCommand(galaxy, ai, cmd);
+        // Sim code, as when a replay applies the entry (playerCommands.ts): the lazy lookups write (readOnlyQuery.ts).
+        const r = withSimWrites(() => applyStrategicCommand(galaxy, ai, cmd));
         appendCommandLog(galaxy, {
             starDate: galaxyStarDate(galaxy),
             nowMs: galaxy.nowMs,

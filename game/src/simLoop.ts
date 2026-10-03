@@ -20,6 +20,7 @@ import type { Galaxy } from './sim/galaxy';
 import type { GalaxyTime } from './sim/galaxyTime';
 import { SimDriver, schedulerState, type SimView } from './sim/tick/scheduler';
 import { drainCommandBoundary } from './sim/tick/commandBoundary';
+import { markUiGalaxy } from './sim/readOnlyQuery';
 import { noteSimSpeed, noteSimView } from './sim/player/playerCommands';
 import { showToast } from './ui/toast';
 import { createRenderTime, updateRenderTime, type RenderTime } from './render/renderInterp';
@@ -74,6 +75,9 @@ export function simViewEnabledFromUrl(search: string): boolean {
 
 export function createSimLoop(galaxy: Galaxy, time: GalaxyTime, camera: Camera, useView: boolean): SimLoop {
     time.bindGalaxy(galaxy);
+    // The UI reads this game between frames: its lazy lookups must not write it there (sim/readOnlyQuery.ts; the
+    // writes the C# UI makes are journaled commands instead — docs/sim-worker.md §8).
+    markUiGalaxy(galaxy);
     const driver = new SimDriver(galaxy, time.speed, time.paused);
     const stats: SimLoopStats = {
         renderFrames: 0,

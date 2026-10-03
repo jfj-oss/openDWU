@@ -24,6 +24,12 @@ export const COMMAND_FAILURE: FailureTable = {
     shipAction: (message) => ({ ok: false, message, automationPrompts: [] }),
     rightClickOrder: () => ({ kind: 'order', executed: false, attackClick: false }),
     fleetPoint: no,
+    // The menus / pages / panel the UI shows from a command (docs/sim-worker.md §4.4): nothing to show.
+    actionMenu: () => null,
+    selectionButtons: () => null,
+    habitatDispatch: () => [],
+    moneyPanel: () => null,
+    obtainUiRecords: () => undefined,
     setShipsFleet: () => null,
     refuelShips: zero,
     repairShips: zero,
