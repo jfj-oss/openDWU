@@ -13,7 +13,7 @@
 import type { Galaxy } from '../galaxy';
 import type { Empire } from '../empire';
 import { Habitat } from '../types';
-import { DiplomaticRelationType, obtainDiplomaticRelation, obtainEmpireEvaluation } from '../diplomacy';
+import { DiplomaticRelationType, empireEvaluationByEmpire, empireEvaluationsOf, obtainDiplomaticRelation, obtainEmpireEvaluation } from '../diplomacy';
 import { SystemVisibilityStatus } from '../visibility';
 import {
     changeDiplomaticRelation,
@@ -32,7 +32,12 @@ import { EmpireMessage, EmpireMessageType, sendEmpireMessage, sendMessageToEmpir
 import { getText } from '../textResolver';
 import { generateBuiltObjectStoryClue, generateMajorStoryItem } from '../story/storyEvents';
 import type { BuiltObject } from '../builtObject';
-import type { GalaxyLocation } from '../galaxyLocation';
+import { GalaxyLocation } from '../galaxyLocation';
+import type { DialogPartType } from '../data/dialogSet';
+import { HabitatCategoryType, HabitatType } from '../types';
+import { resolveDescription } from '../messages';
+import { resolveSectorDescription } from '../empireEvents';
+import { scenarioEmit } from '../scenario/hooks';
 
 /** The response DialogPartTypes (Main.Part9.cs:46 method_238 options) this executor evaluates. */
 export type ConversationReplyPart =
@@ -51,6 +56,7 @@ export type ConversationReplyPart =
     | 'TRADESANCTIONS_REQUESTIMPOSEJOINT_ACCEPT'
     | 'WAR_DECLARE_REQUESTJOINT_ACCEPT'
     | 'WAR_END_REQUESTOTHER_ACCEPT'
+    | 'WAR_END_ACCEPT'
     | 'HISTORY_OFFER_STORYCLUE_ACCEPT'
     | 'HISTORY_OFFER_STORYMESSAGE_ACCEPT';
 
@@ -71,6 +77,11 @@ export interface ConversationReplyResult {
      * increment) — it picks the panel's picture and, at 2 and 4, its two answer buttons (story/freedomAlliance.ts).
      */
     history: { title: string; text: string; storyLevel?: number } | null;
+    /** The part method_237 turns the option into (method_234), whose dialog text Main.Part10.cs:3590 method_230 shows in
+     *  the talk panel's response; null when the option closes the conversation (method_294: the history offers). */
+    reply: DialogPartType | null;
+    /** string.Format arguments of the reply text (method_230). */
+    replyArgs: string[];
 }
 
 function removeProposal(a: Empire, b: Empire): void {
@@ -232,7 +243,7 @@ export function answerConversationReply(
     related: ConversationRelated,
     cost: number,
 ): ConversationReplyResult {
-    const result: ConversationReplyResult = { ok: false, noFunds: false, expireFor: null, history: null };
+    const result: ConversationReplyResult = { ok: false, noFunds: false, expireFor: null, history: null, reply: null, replyArgs: [] };
     switch (part) {
         case 'INFO_UNMETEMPIRE':
         case 'INFO_EXPLORATION':
@@ -308,6 +319,17 @@ export function answerConversationReply(
             result.ok = true;
             break;
         }
+        case 'WAR_END_ACCEPT': {
+            // Main.Part10.cs:4798: the WAR_END conversation's "We agree - this war ends now" (Main.Part9.cs:500) — also
+            // the answer to an AI's SubjugateRequest (Empire.8.cs 1527), whose ProposeDiplomaticRelation message names
+            // DiplomaticRelationType.None and so opens WAR_END (Main.Part9.cs:1723). Ours acts only while the war is on.
+            if (obtainDiplomaticRelation(player, sender).type !== DiplomaticRelationType.War) break;
+            endWarWith(galaxy, player, sender);
+            result.expireFor = sender;
+            result.ok = true;
+            if (galaxy.scenario !== null) scenarioEmit(galaxy, 'peaceSigned', { empire: player, other: sender }); // mod layer, as acceptProposal
+            break;
+        }
         case 'HISTORY_OFFER_STORYCLUE_ACCEPT': {
             // Main.Part10.cs:4994 (method_571 shows the text; the GalacticHistory message keeps it).
             const clue = generateBuiltObjectStoryClue(galaxy, null as unknown as BuiltObject);
@@ -341,7 +363,108 @@ export function answerConversationReply(
             break;
         }
     }
+    conversationReplyPart(galaxy, player, sender, part, related, result);
     return result;
+}
+
+/** Main.Part10.cs:3966 method_231 → 4999 method_236: the greeting by `empire`'s overall attitude to `initiator`
+ *  (< -10 angry, > 10 friendly). `galaxy` null: read without obtaining the evaluation (the UI's text-only replies; no
+ *  evaluation counts as neutral); otherwise ObtainEmpireEvaluation, as the C#. */
+export function attitudeGreeting(galaxy: Galaxy | null, empire: Empire, initiator: Empire): DialogPartType {
+    const ev = galaxy !== null ? obtainEmpireEvaluation(galaxy, empire, initiator) : empireEvaluationByEmpire(empireEvaluationsOf(empire), initiator);
+    const v = ev?.overallAttitude ?? 0;
+    return v < -10 ? 'GREETING_ANGRY' : v > 10 ? 'GREETING_FRIENDLY' : 'GREETING_NEUTRAL';
+}
+
+/** The reply part (method_237's method_234) and its method_230 arguments for an answered option. */
+function conversationReplyPart(galaxy: Galaxy, player: Empire, sender: Empire, part: ConversationReplyPart, related: ConversationRelated, result: ConversationReplyResult): void {
+    const set = (reply: DialogPartType | null, args: string[] = []): void => {
+        result.reply = reply;
+        result.replyArgs = args;
+    };
+    if (result.noFunds) {
+        set('INFO_NOFUNDS');
+        return;
+    }
+    if (!result.ok) return;
+    switch (part) {
+        case 'INFO_UNMETEMPIRE':
+        case 'INFO_EXPLORATION':
+        case 'INFO_INDEPENDENTCOLONY':
+        case 'INFO_RUINS':
+        case 'INFO_DEBRISFIELD':
+        case 'INFO_PLANETDESTROYER':
+        case 'INFO_RESTRICTEDAREA': {
+            const subject = Array.isArray(related) ? galaxyLocationAt(galaxy, related as number[]) : related;
+            set(part, infoReplyArgs(galaxy, part, subject as Empire | Habitat | GalaxyLocation | null));
+            return;
+        }
+        case 'DEAL_ACCEPT':
+            // 4391-4448: a list deal → DEAL_ACCEPT_RESPONSE; a single map / tech item → method_236's greeting.
+            set(related instanceof TradeableItem ? attitudeGreeting(galaxy, sender, player) : 'DEAL_ACCEPT_RESPONSE');
+            return;
+        case 'DEAL_REJECT':
+            set('DEAL_REJECT_RESPONSE');
+            return;
+        case 'MUTUALDEFENSE_HONORREQUESTHELP':
+            set('MUTUALDEFENSE_HONORREQUESTHELP_RESPONSE');
+            return;
+        case 'MUTUALDEFENSE_DECLINEREQUESTHELP':
+            set('MUTUALDEFENSE_DECLINEREQUESTHELP_RESPONSE');
+            return;
+        case 'TRADESANCTIONS_REQUESTLIFTOTHER_ACCEPT':
+        case 'TRADESANCTIONS_REQUESTIMPOSEJOINT_ACCEPT':
+        case 'WAR_DECLARE_REQUESTJOINT_ACCEPT':
+        case 'WAR_END_REQUESTOTHER_ACCEPT':
+            set('TREATY_ACCEPTRESPONSE');
+            return;
+        case 'WAR_END_ACCEPT':
+            set('WAR_END_ACCEPT_RESPONSE');
+            return;
+        default:
+            // HISTORY_OFFER_*_ACCEPT: Main.Part9.cs:731 method_241 shows no reply (the history dialog instead).
+            set(null);
+            return;
+    }
+}
+
+/** Galaxy.5.cs 4851 GenerateLocationDescription(habitat): "Location Planet" (type, category, name, system, sector). */
+export function generateHabitatLocationDescription(galaxy: Galaxy, habitat: Habitat): string {
+    const star = galaxy.determineHabitatSystemStar(habitat) ?? habitat;
+    return getText('Location Planet')
+        .replace('{0}', resolveDescription(HabitatType as unknown as Record<number, string>, habitat.type).toLowerCase())
+        .replace('{1}', resolveDescription(HabitatCategoryType as unknown as Record<number, string>, habitat.category).toLowerCase())
+        .replace('{2}', habitat.name)
+        .replace('{3}', star.name)
+        .replace('{4}', resolveSectorDescription(galaxy, habitat.xpos, habitat.ypos));
+}
+
+/** Main.Part10.cs:3590 method_230, the INFO_* cases: the string.Format arguments of the bought information's text. */
+export function infoReplyArgs(galaxy: Galaxy, part: DialogPartType, subject: Empire | Habitat | GalaxyLocation | null): string[] {
+    switch (part) {
+        case 'INFO_UNMETEMPIRE':
+            return [(subject as Empire | null)?.name ?? ''];
+        case 'INFO_EXPLORATION': {
+            if (!(subject instanceof Habitat)) return [];
+            return [subject.name, resolveSectorDescription(galaxy, subject.xpos, subject.ypos)];
+        }
+        case 'INFO_INDEPENDENTCOLONY':
+            return subject instanceof Habitat ? [generateHabitatLocationDescription(galaxy, subject)] : [];
+        case 'INFO_RUINS': {
+            if (!(subject instanceof Habitat)) return [];
+            const name = subject.ruin != null ? subject.ruin.name : getText('Ancient Ruins');
+            return [name, generateHabitatLocationDescription(galaxy, subject)];
+        }
+        case 'INFO_DEBRISFIELD':
+        case 'INFO_PLANETDESTROYER':
+        case 'INFO_RESTRICTEDAREA': {
+            if (!(subject instanceof GalaxyLocation)) return [];
+            const system = galaxy.fastFindNearestSystem(subject.xpos, subject.ypos);
+            return [system !== null ? system.name : getText('unknown'), resolveSectorDescription(galaxy, subject.xpos, subject.ypos)];
+        }
+        default:
+            return [];
+    }
 }
 
 // EmpireMessage(player, GalacticHistory, null) with SupressPopup, sent to the player (Main.Part10.cs:5002-5009).

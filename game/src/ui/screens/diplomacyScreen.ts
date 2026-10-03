@@ -9,6 +9,8 @@
 // - EmpireDetailView.cs DrawEmpireDetail (flag, races, name, stats, Dominant Race, Current Relationship With Us,
 //   Treaty on Offer + Accept Offer, feeling and factors; the pirate branch), Kickstart (large fonts), BindData;
 // - Main.Part8.cs:449 method_296 (the talk panel pnlDiplomacyTalk: flag + name, race picture, response, options);
+// - Main.Part2.cs:4619-4690 (pnlRelationAllianceName: a list row double-clicked names the alliance, method_683);
+// - TradeRestrictedResourcesPanel.cs (the restricted-resource lines and our trade checkbox, a player command);
 // - DistantWorlds.Types/Empire.4.cs:55 ResolveFeelingDescription; Empire.7.cs:4164 DetermineEmpireRelationshipFactors;
 //   Empire.10.cs:681 CivilityDescription; Main.Part10.cs:3930 method_235 (decline).
 // Proposals (task 17e): the player's conversation options (Main.Part9.cs:46 method_238 / Main.Part10.cs:3957 method_237,
@@ -177,6 +179,12 @@ import { councilView } from '../../sim/scenario/emergent/councilView';
 import { reputationRows } from '../../sim/scenario/reputation/view';
 import { activeVoiceJob } from '../../llm/voiceJob'; // [llm] 19s-2
 import { acceptProposal, declineProposal } from '../../sim/player/playerOrders';
+import type { Character } from '../../sim/characters';
+import { CHARACTER_IMAGE_SPEC, characterPortrait } from '../characterPortrait';
+import { abilityBonusLines } from './empireSummaryModel';
+import { determineEmpireRelationshipFactors } from '../../sim/empireRelationshipFactors';
+import { EmpireActivityType } from '../../sim/pirates/empireActivity';
+import { gameText as gameTextKey } from '../../sim/colonyTick';
 export { acceptProposal, declineProposal };
 
 /** EmpireDetailView.cs:639-706 flag3: is the other empire's offer still open?
@@ -457,6 +465,12 @@ export function proposalReplyText(set: DialogSet | null, result: ProposalResult,
     return formatNet(set.resolveDialog(result.reply, raceName), result.replyArgs);
 }
 
+/** Main.Part10.cs:3590 method_230 for any part: string.Format(dialogSet.ResolveDialog(type, race), args) ('…' while the
+ *  dialog files load; the part name when they cannot be read). */
+export function dialogReplyText(raceName: string, part: DialogPartType, args: readonly string[]): Promise<string> {
+    return loadDialogSet(raceName).then((set) => (set !== null ? formatNet(set.resolveDialog(part, raceName), [...args]) : part));
+}
+
 let expireDiplomacyMessages: ((empire: Empire) => void) | null = null;
 
 /** messagePopups (16d) registers its conversation queue's ExpireDiplomacyMessagesForEmpire here. */
@@ -467,7 +481,7 @@ export function setDiplomacyMessageExpiry(fn: ((empire: Empire) => void) | null)
 // DialogSet.cs:21 Initialize: base_dialog.txt plus the race's file, loaded on first use.
 let dialogLoad: Promise<DialogSet | null> | null = null;
 const raceDialogLoads = new Map<string, Promise<void>>();
-function loadDialogSet(raceName: string): Promise<DialogSet | null> {
+export function loadDialogSet(raceName: string): Promise<DialogSet | null> {
     dialogLoad ??= fetchText(resolveDataUrl('dialog/base_dialog.txt'))
         .then((t) => new DialogSet(t))
         .catch(() => null);
@@ -847,6 +861,7 @@ function createDiplomacyScreen(opts: DiplomacyScreenOptions): OpenState {
             // [diplovoice] end
             clearInterval(timer);
             talk?.close();
+            allianceWin?.close();
             // [tradenego] begin
             closeTradePanel();
             // [tradenego] end
@@ -880,7 +895,9 @@ function createDiplomacyScreen(opts: DiplomacyScreenOptions): OpenState {
         body.appendChild(filterRow);
         const listY = lay.list.y + 30;
         const listH = lay.list.h - 30;
-        list = buildRelationList(lay, listH, (e) => select(e, false), (e) => openTalk(e));
+        // DiplomaticRelationListView _RelationDoubleClicked (a row or its relation strip) → Main.Part2.cs:4677
+        // ctlEmpireDiplomaticRelationList__RelationDoubleClicked: the alliance naming panel (Speak is the button).
+        list = buildRelationList(lay, listH, (e) => select(e, false), (e) => openAllianceName(e));
         place(list.grid.el, lay.list.x, listY, lay.list.w, listH);
         body.appendChild(list.grid.el);
 
@@ -1124,8 +1141,10 @@ function createDiplomacyScreen(opts: DiplomacyScreenOptions): OpenState {
             dropText(detail, `${Math.round(dom.millions).toLocaleString('en-US')}M`, lay.raceTextX, ry, { size: f.normal, color: TEXT });
             raceCharacteristics(dom.race).forEach((line, i) => dropText(detail, line, lay.column2X, i * step + r.y + 12, { size: f.normal, bold: true, color: TEXT }));
         }
-        // TODO(port): the empire ability bonus lines under the race (Empire.ResolveEmpireAbilityBonusDescriptions) —
-        // EmpireDetailView.cs DrawEmpireDetail.
+        // EmpireDetailView.cs:509-511: Empire.ResolveEmpireAbilityBonusDescriptions() at x 20, one line per num14 from
+        // num27 = rect4.Top + 33 + 3 × num14 + num15 (under the race text).
+        const abilityY = r.y + 33 + 3 * step + lay.raceGap;
+        abilityBonusLines(empire, false).forEach((b, i) => dropText(detail, b.text, 20, abilityY + i * step, { size: f.normal, color: TEXT }));
 
         if (isSelf || row === null) return;
 
@@ -1135,13 +1154,17 @@ function createDiplomacyScreen(opts: DiplomacyScreenOptions): OpenState {
         dropText(detail, 'Current Relationship With Us', 20, rr.y + 5, { size: f.header, bold: true, color: HEADER_TEXT });
         dropText(detail, row.relationText + warRowSuffix(player, empire), 25, rr.y + 28, { size: f.large, bold: true, color: rgb(row.relationColor) }); // [wargoals]
         // The player's ambassador at their capital (role / name / diplomacy bonus at rect5.Right - 88).
-        const amb = ambassadorAt(player, empire);
+        const amb = ambassadorAt<Character>(player, empire);
         if (amb !== null) {
             const ax = rr.x + rr.w - 88;
+            // CharacterImageCache.ObtainCharacterImageSmall (38 px, role icon) at (x - 40, y) (EmpireDetailView.cs:626-628).
+            const portrait = place(characterPortrait(amb.character, 'small', CHARACTER_IMAGE_SPEC.small.bitmap), ax - 40, rr.y + 5);
+            portrait.classList.add('dip-ambassador-portrait');
+            portrait.title = amb.name;
+            detail.appendChild(portrait);
             dropText(detail, amb.role, ax, rr.y + 5, { size: f.normal, color: TEXT });
             dropText(detail, amb.name, ax, rr.y + 5 + lay.ambassadorStep, { size: f.normal, color: TEXT });
             dropText(detail, amb.bonus, ax, rr.y + 5 + 2 * lay.ambassadorStep, { size: f.normal, color: TEXT });
-            // TODO(port): the ambassador's small portrait at (x - 40, y) — CharacterImageCache.ObtainCharacterImageSmall.
         }
         let feelingY = lay.feelingY;
         if (row.incoming !== null) {
@@ -1186,9 +1209,14 @@ function createDiplomacyScreen(opts: DiplomacyScreenOptions): OpenState {
         restricted.forEach((ln, i) => {
             const y0 = lay.detail.h - 15 - restrictedH + i * 18 - 6;
             if (ln.kind === 'label') dropText(detail, ln.text, 20, y0, { size: f.normal, color: TEXT, shadow: false });
-            // TODO(port): toggling the restricted-resource checkbox needs a player command
-            // (TradeRestrictedResourcesPanel.chkTradeResources_CheckedChanged: SupplyRestrictedResources).
-            else detail.appendChild(place(checkBox(ln.text, ln.checked, null, f.normal), 20, y0));
+            else {
+                // TradeRestrictedResourcesPanel.chkTradeResources_CheckedChanged: our SupplyRestrictedResources towards
+                // them (a player command, applied at the next frame boundary).
+                const other = empire;
+                const box = checkBox(ln.text, ln.checked, (v) => issuePlayerCommand(player.galaxy, player, 'setSupplyRestrictedResources', [other, v], () => render()), f.normal);
+                box.classList.add('dip-restricted-check');
+                detail.appendChild(place(box, 20, y0));
+            }
         });
     }
 
@@ -1352,14 +1380,68 @@ function createDiplomacyScreen(opts: DiplomacyScreenOptions): OpenState {
             const evaluation = pr?.evaluation ?? 0;
             line(`${feelingDescription(Math.trunc(evaluation))} with us (${formatSigned(evaluation)})`, { bold: true, gapAfter: 4 });
         }
-        // TODO(port): the pirate relationship factors (Empire.7.cs:4270 DetermineEmpireRelationshipFactors pirate branch)
-        // and the attack missions we funded (PirateMissions Attack, "Pirate Attack Description New").
+        if (row !== null) {
+            // EmpireDetailView.cs:345-363: PlayerEmpire.DetermineEmpireRelationshipFactors(pirate) — Empire.7.cs:4270 the
+            // pirate branch (their PirateRelation with us, factored), red below 0, light green otherwise.
+            for (const fac of determineEmpireRelationshipFactors(player, empire)) {
+                line(`${resolveGameText(fac.description)} (${formatSigned(fac.value)})`, { color: fac.value < 0 ? RED : LIGHT_GREEN });
+            }
+            // EmpireDetailView.cs:364-386: the attack missions we asked them for ("Pirate Attack Description New": the
+            // target, its empire, the price), num7 + num5 apart.
+            const attacks = empire.pirateMissions?.resolveActivitiesByType(EmpireActivityType.Attack);
+            for (const a of attacks?.items ?? []) {
+                if (a === null || a.requestingEmpire !== player) continue;
+                const targetName = (a.target as { name?: string } | null)?.name ?? '';
+                line(resolveGameText(gameTextKey('Pirate Attack Description New', targetName, a.targetEmpire?.name ?? '', String(Math.round(a.price)))), { gapAfter: pl.gap });
+            }
+        }
         detail.appendChild(sc);
         sc.scrollTop = extrasScroll;
         const keep = (): void => {
             extrasScroll = sc.scrollTop;
         };
         sc.addEventListener('scroll', keep);
+    }
+
+    // ---- the alliance naming panel (pnlRelationAllianceName, Main.Part2.cs:4619 method_682(false) / 4652 method_683) ----
+    let allianceWin: OriginalWindow | null = null;
+    function openAllianceName(empire: Empire): void {
+        // ObtainDiplomaticRelation(empire): our own row and a pirate faction have no relation to name.
+        if (empire === player || empire.pirateEmpireBaseHabitat !== null) return;
+        allianceWin?.close();
+        // 335 × 40 in game (the Locked checkbox is the Game Editor's, method_682(true)), centred on the main view.
+        const w = openOriginalWindow({
+            id: 'alliance-name',
+            title: resolveGameText('Alliance Name'),
+            headerless: true,
+            width: 335,
+            height: 40,
+            onClose: () => {
+                if (allianceWin === w) allianceWin = null;
+            },
+        });
+        allianceWin = w;
+        w.frame.classList.add('dip-alliance-name');
+        // lblRelationAllianceName (10, 12) font_7; txtRelationAllianceName (110, 10) 150 × 20, (48, 48, 64) on
+        // (170, 170, 170); btnRelationAllianceNameApply (265, 8) 60 × 25.
+        w.body.appendChild(place(text(resolveGameText('Alliance Name'), { size: FONT.normal, color: 'rgb(170, 170, 170)', shadow: false }), 10 - 3, 12 - 3));
+        let name = player.diplomaticRelations.byEmpire(empire)?.allianceName ?? '';
+        const input = textBox(name, '', (v) => {
+            name = v;
+        });
+        input.classList.add('dip-alliance-input');
+        w.body.appendChild(place(input, 110 - 3, 10 - 3, 150, 20));
+        const apply = (): void => {
+            // method_683: the name on both relations (a player command, applied at the next frame boundary).
+            issuePlayerCommand(player.galaxy, player, 'setAllianceName', [empire, name], () => render());
+            w.close();
+        };
+        input.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') apply();
+        });
+        w.body.appendChild(place(glassButton(resolveGameText('Apply'), { onClick: apply }), 265 - 3, 8 - 3, 60, 25));
+        input.focus();
+        input.select();
     }
 
     // ---- the talk panel (pnlDiplomacyTalk, Main.Part8.cs:449 method_296) ----
@@ -1668,9 +1750,9 @@ function restrictedResourceLines(player: Empire, empire: Empire): ({ kind: 'labe
     const theirs = names(empire);
     if (theirs !== '') {
         const rel = empire.diplomaticRelations.byEmpire(player);
-        out.push({ kind: 'label', text: rel?.supplyRestrictedResources ? `They have ${theirs} which they trade with us` : `They have ${theirs} which they REFUSE to trade with us` });
+        out.push({ kind: 'label', text: resolveGameText(gameTextKey(rel?.supplyRestrictedResources ? 'Restricted Resource Trade Description' : 'Restricted Resource Trade Refuse Description', theirs)) });
     }
     const ours = names(player);
-    if (ours !== '') out.push({ kind: 'check', text: `Trade our ${ours} with them`, checked: player.diplomaticRelations.byEmpire(empire)?.supplyRestrictedResources === true });
+    if (ours !== '') out.push({ kind: 'check', text: resolveGameText(gameTextKey('Restricted Resource Trade Us Description', ours)), checked: player.diplomaticRelations.byEmpire(empire)?.supplyRestrictedResources === true });
     return out;
 }

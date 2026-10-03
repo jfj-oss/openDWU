@@ -20,11 +20,12 @@
 // engagement range, attack point, home base, automate, stop, disband), and the "Fleet Designs" tab
 // (fleetDesignsTab.ts: fleet templates, form from existing, build fleet with a sector option and progress).
 // The fleet cycle keys follow Main.Part8.cs:1243 btnCycleShipGroups_Click (fleetCycleList).
-// TODO(port): admiral portraits in the grid's first column (CharacterImageCache.ObtainCharacterImageVerySmall) — the
-// role icon stands in, with the names as the tooltip.
+// The first column is ShipGroupListView.cs:170-182: the first admiral / general's very small picture
+// (CharacterImageCache.ObtainCharacterImageVerySmall, characterPortrait.ts) and every name as the tooltip.
 // TODO(port): the galaxy map's empire territory link lines (GalaxyMap.cs method_6 LinkSystemStars).
 
 import './fleetsList.css';
+import { CHARACTER_IMAGE_SPEC, characterPortrait } from '../characterPortrait';
 import type { ShipGroup } from '../../sim/fleets/shipGroup';
 import { empireShipGroups } from '../../sim/fleets/shipGroup';
 import { FleetPosture } from '../../sim/diplomacyTick';
@@ -438,18 +439,16 @@ function createFleetsList(opts: FleetsListOptions): OpenState {
         cell.textContent = s;
         cell.title = s;
     };
-    const admirals = (sg: ShipGroup): string =>
-        empire.characters != null ? getFleetAdmiralsAndGenerals(empire.characters, sg).map((c) => c.name).join(', ') : '';
+    const admiralList = (sg: ShipGroup) => (empire.characters != null ? getFleetAdmiralsAndGenerals(empire.characters, sg) : []);
+    const admirals = (sg: ShipGroup): string => admiralList(sg).map((c) => c.name).join(', ');
     const renderers: Record<string, (r: FleetRow, cell: HTMLDivElement) => void> = {
         admirals: (r, cell) => {
-            const names = admirals(r.shipGroup);
-            if (names === '') return;
-            const img = el('img', 'fl-admiral');
-            img.src = chromeImageUrl('characterRole_FleetAdmiral.png');
-            img.alt = '';
-            img.draggable = false;
-            cell.appendChild(img);
-            cell.title = names;
+            const list = admiralList(r.shipGroup);
+            if (list.length === 0) return;
+            const pic = characterPortrait(list[0], 'verySmall', CHARACTER_IMAGE_SPEC.verySmall.bitmap);
+            pic.classList.add('fl-admiral');
+            cell.appendChild(pic);
+            cell.title = list.map((c) => c.name).join(', ');
         },
         name: (r, cell) => textCell(r.name, cell),
         ships: (r, cell) => textCell(String(r.ships), cell),

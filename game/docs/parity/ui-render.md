@@ -35,21 +35,21 @@ Some C# panels have obfuscated names: CaLkaMyrMQ = Galaxy Map, kYdDyYeMls = Char
 | 25 | Ion-strike lightning overlay | MainView.1.cs:1162-1201, LightningGenerator.cs | MISSING | effectsLayer.ts:28 | Low-Med | |
 | 26 | Fighter selection brackets and picking | MainView.1.cs:1520 method_212 | MISSING | fighterLayer.ts:23 | Low | |
 | 27 | Other empires' fleets on overlays, selected-fleet yellow, special-highlight red, arrow head | MainView.2.cs method_258 | PARTIAL | overlayLayer.ts:219 | Low-Med | |
-| 28 | Alliance naming panel | Main.Part2.cs pnlRelationAllianceName | MISSING | — | Low | |
-| 29 | Empire Policy Load/Save | Main.Part3.cs btnEmpirePolicyLoad/Save | MISSING | empirePolicy.ts:7 | Low | |
+| 28 | Alliance naming panel | Main.Part2.cs pnlRelationAllianceName | DONE (D3) | — | Low | list row double-click → setAllianceName command |
+| 29 | Empire Policy Load/Save | Main.Part3.cs btnEmpirePolicyLoad/Save | DONE (D3) | empirePolicy.ts:7 | Low | install Policy/ files + browser-storage saves (ui/policyFiles.ts); ApplyDesignUpgradePoliciesToGameOptions still TODO |
 | 30 | Ruin Detail window | Main method_550 | PARTIAL | coloniesScreen.ts:22 | Low | |
-| 31 | Diplomacy: restricted-resource toggle, ability bonus lines, ambassador portrait, pirate relation factors | Main.Part5.cs; Empire.7.cs:4270 | PARTIAL | diplomacyScreen.ts | Low-Med | |
+| 31 | Diplomacy: restricted-resource toggle, ability bonus lines, ambassador portrait, pirate relation factors | Main.Part5.cs; Empire.7.cs:4270 | DONE (D3) | diplomacyScreen.ts | Low-Med | setSupplyRestrictedResources command; pirate funded-attack lines too |
 | 32 | Key remapping screen | BaconDistantWorlds/HotKeys/* | MISSING | — | Low | |
 | 33 | Bacon mod forms (cargo/passenger/mining mission targets, customize ship, custom bomber, invasion command, prison) | BaconDistantWorlds/*.cs | MISSING | orderMenu.ts:475 | Low-Med | Mod-only |
 | 34 | Weapon-range circles and gravity-well ring for the selected ship | BaconMain.cs:404-470 | MISSING | rangeRings.ts (fuel rings only) | Low-Med | |
 | 35 | Explosion screen shake (ExplosionSize > 150) | Main.method_217 | MISSING | audio/mainViewSounds.ts:334 | Low | |
 | 36 | Main menu Change Theme | Start.cs pnlThemes | MISSING | mainMenu.ts:206 | Low | |
 | 37 | Save/Load progress panel | pnlSaveLoadProgress | PARTIAL | loadingOverlay.ts | Low | |
-| 38 | Character portraits in lists | CharacterImageCache | PARTIAL | fleetsList.ts:23, leftSidebar.ts:15, coloniesScreen.ts:23 | Low | characterPortrait.ts now exists; wire it in |
-| 39 | Character rename + tooltip | CharacterSummary.cs | MISSING | intelligence.ts:808 | Low | |
+| 38 | Character portraits in lists | CharacterImageCache | DONE (D3) | fleetsList.ts:23, leftSidebar.ts:15, coloniesScreen.ts:23 | Low | fleets list, left sidebar governor / admiral rows, colony Troops & Characters tab |
+| 39 | Character rename + tooltip | CharacterSummary.cs | DONE (D3) | intelligence.ts:808 | Low | renameCharacter command; Galaxy.2.cs ResolveCharacterDescription tooltip |
 | 40 | Composite pictures in popups and advisor | MessagePopup.cs 764-971 | PARTIAL | messagePicture.ts, advisorSuggestions.ts | Low | |
-| 41 | Colony attitude bonus lines | HabitatAttitudeSummary.cs | PARTIAL | coloniesScreen.ts:24 | Low | |
-| 42 | Reply text panel after a diplomatic choice | Main.Part10.cs:3590 | PARTIAL (toast) | messagePopups.ts:11 | Low | |
+| 41 | Colony attitude bonus lines | HabitatAttitudeSummary.cs | DONE (D3) | coloniesScreen.ts:24 | Low | pirate corruption, wonder, racial and resource lines |
+| 42 | Reply text panel after a diplomatic choice | Main.Part10.cs:3590 | DONE (D3) | messagePopups.ts:11 | Low | conversationActions.ts conversationReplyView |
 | 43 | HoverDetail list hover popups | Controls HoverDetail | MISSING | mapTooltip.ts | Low | |
 | 44 | Screensaver mode, splash | Main ToggleScreenSaverActive, Splash.cs | MISSING | — | Low | |
 
