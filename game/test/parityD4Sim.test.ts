@@ -143,3 +143,37 @@ describe('GenerateSaleableInfoForEmpire reads Galaxy.StoryCluesEnabled (Empire.5
         expect(generateSaleableInfoForEmpire(g, pirate, g.playerEmpire).restrictedAreaLocations).toContain(zone);
     });
 });
+
+describe('IsObjectVisibleToThisEmpire(Creature) (Empire.9.cs 3037)', () => {
+    it('a deep-space creature is visible only in a long-range scanner\'s range or with a ship outside a system near it', () => {
+        const game = cachedTickGame(gameData, {});
+        const g = game.galaxy;
+        const player = g.playerEmpire!;
+        const creature = g.creatures.find((c) => c != null && !c.hasBeenDestroyed)!;
+        // Park it in the emptiest corner of the galaxy, away from every system.
+        creature.xpos = 50;
+        creature.ypos = 50;
+        creature.nearestSystemStar = null;
+        creature.isVisible = true;
+        expect(player.visibility.isCreatureVisible(creature)).toBe(false);
+        const scanner = player.builtObjects.find((b) => b.subRole === BuiltObjectSubRole.ExplorationShip)!;
+        const saved = player.longRangeScanners.slice();
+        scanner.sensorLongRange = 5000;
+        scanner.xpos = 3000;
+        scanner.ypos = 50;
+        player.longRangeScanners.push(scanner);
+        expect(player.visibility.isCreatureVisible(creature)).toBe(true);
+        creature.isVisible = false;
+        expect(player.visibility.isCreatureVisible(creature)).toBe(false);
+        player.longRangeScanners.length = 0;
+        player.longRangeScanners.push(...saved);
+        // FindShipOutsideSystemWithScanRange(x, y, 1.0): a ship in deep space within its scan range of the creature.
+        creature.isVisible = true;
+        scanner.currentSpeed = 0;
+        scanner.xpos = 500;
+        scanner.nearestSystemStar = null; // in deep space
+        const gi = g.resolveIndex(500, 50);
+        g.builtObjectIndexGrid[gi.x][gi.y].push(scanner);
+        expect(player.visibility.isCreatureVisible(creature)).toBe(true);
+    });
+});
