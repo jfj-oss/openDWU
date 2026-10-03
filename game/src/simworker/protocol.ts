@@ -52,6 +52,17 @@ export interface CommandMessage {
     args: RemoteArg[];
 }
 
+/** A read-only sim query (simQuery.ts SIM_QUERIES) run on the authoritative galaxy, in order with the commands. */
+export interface QueryMessage {
+    type: 'query';
+    /** Main-side id for the reply (same id space as CommandMessage.id; never 0). */
+    id: number;
+    /** Sync id of the asking empire. */
+    empire: number;
+    op: string;
+    args: RemoteArg[];
+}
+
 export interface SaveRequest {
     type: 'save';
     id: number;
@@ -60,6 +71,15 @@ export interface SaveRequest {
 export interface DigestRequest {
     type: 'digest';
     id: number;
+}
+
+/**
+ * Trade-flow recording on / off (render/freightOverlay.ts through sim/logistics/tradeFlows.ts setRemoteTradeFlows): not
+ * a player command (in-thread it is not journaled either; it observes contracts and changes no sim state).
+ */
+export interface TradeFlowsMessage {
+    type: 'tradeFlows';
+    record: boolean;
 }
 
 /**
@@ -75,16 +95,7 @@ export interface HostOpMessage {
     args: RemoteArg[];
 }
 
-/**
- * Trade-flow recording on / off (render/freightOverlay.ts through sim/logistics/tradeFlows.ts setRemoteTradeFlows): not
- * a player command (in-thread it is not journaled either; it observes contracts and changes no sim state).
- */
-export interface TradeFlowsMessage {
-    type: 'tradeFlows';
-    record: boolean;
-}
-
-export type ToWorker = InitMessage | ClockMessage | CommandMessage | HostOpMessage | SaveRequest | DigestRequest | TradeFlowsMessage | { type: 'dispose' };
+export type ToWorker = InitMessage | ClockMessage | CommandMessage | QueryMessage | HostOpMessage | SaveRequest | DigestRequest | TradeFlowsMessage | { type: 'dispose' };
 
 export interface ProgressMessage {
     type: 'progress';
@@ -122,8 +133,9 @@ export interface StepMessage {
     /** Worker wall ms: the steps, and the replica diff. */
     stepMs: number;
     diffMs: number;
-    /** onApplied results of commands applied at this tick's boundary (resolved after `delta`). */
-    results: { id: number; result: RemoteArg; error?: string }[];
+    /** onApplied results of commands applied at this tick's boundary, and query replies (`query`), resolved after
+     *  `delta`. A command result makes the main thread apply the queued cold parts through this delta first. */
+    results: { id: number; result: RemoteArg; error?: string; query?: boolean }[];
     /** Sim → UI events raised during the tick (resolved after `delta`). */
     events: WorkerEvent[];
 }

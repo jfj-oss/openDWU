@@ -91,6 +91,30 @@ export interface UiSettings {
     galaxyViewDisplayAlwaysEnemyMilitaryShips: boolean;
     galaxyViewDisplayAlwaysPirates: boolean;
     // [galaxymarkers] end
+
+    // [gameoptions] begin — the Game Options screen's view / display options (Main.Part6.cs:2491-2515 method_418,
+    // Main.Part4.cs:4690-4712 method_569; defaults Main.Part9.cs:2774-2807 method_260). UI-only: none reaches the sim.
+    /** Game.MainViewScrollSpeed (sldOptionsMainViewScrollSpeed 1..100, default 10): edge / arrow-key scroll speed. */
+    mainViewScrollSpeed: number;
+    /** Game.MainViewZoomSpeed (sldOptionsMainViewZoomSpeed 1..100, default 12): percent per wheel notch. */
+    mainViewZoomSpeed: number;
+    /** Game.MouseScrollWheelBehaviour (cmbOptionsMouseScrollWheelBehaviour): 0 no movement, 1 move to the selected
+     *  item, 2 move to the mouse cursor (default). */
+    mouseScrollWheelBehaviour: number;
+    /** Game.StarFieldSize (sldOptionsMainViewStarFieldSize "Star Density" 50..2000, default 1000). */
+    starFieldSize: number;
+    /** GameOptions.ShowSystemNebulae (chkOptionsShowSystemNebulae, default true). */
+    showSystemNebulae: boolean;
+    /** GameOptions.SystemNebulaeDetail (tbarGameOptionsAdvancedDisplaySettingsSystemNebulaeDetail 0 Low .. 2 High, default 0). */
+    systemNebulaeDetail: number;
+    /** GameOptions.MaximumFramerate (-1 = Unlimited, the default; else numGameOptionsAdvancedDisplaySettingsMaximumFramerate 10..100). */
+    maximumFramerate: number;
+    /** GameOptions.LoadedGamesPaused (chkOptionsLoadedGamesPaused, default true; Main.Part7.cs:4056). */
+    loadedGamesPaused: boolean;
+    /** MessageBoxExManager saved responses of the automation prompts ("Don't ask me again"), by task: true = turn
+     *  automation off, false = leave it on. Cleared by Game Options → Reset Warnings (Main.Part5.cs:2051). */
+    automationPromptResponses: Record<string, boolean>;
+    // [gameoptions] end
 }
 
 /** [galaxymarkers] The GalaxyViewDisplay* keys, in the original's option order. */
@@ -171,6 +195,18 @@ export const DEFAULT_SETTINGS: UiSettings = {
     galaxyViewDisplayAlwaysEnemyMilitaryShips: true,
     galaxyViewDisplayAlwaysPirates: true,
     // [galaxymarkers] end
+
+    // [gameoptions] begin — Main.Part9.cs:2774-2807 method_260; GameOptions.cs _MaximumFramerate = -1, _SystemNebulaeDetail = 0.
+    mainViewScrollSpeed: 10,
+    mainViewZoomSpeed: 12,
+    mouseScrollWheelBehaviour: 2,
+    starFieldSize: 1000,
+    showSystemNebulae: true,
+    systemNebulaeDetail: 0,
+    maximumFramerate: -1,
+    loadedGamesPaused: true,
+    automationPromptResponses: {},
+    // [gameoptions] end
 };
 
 /** Minimal storage shape (localStorage-compatible). */
@@ -252,11 +288,65 @@ export function loadSettings(): UiSettings {
         // [galaxymarkers] begin
         for (const k of GALAXY_VIEW_DISPLAY_KEYS) if (typeof parsed[k] === 'boolean') out[k] = parsed[k];
         // [galaxymarkers] end
+        // [gameoptions] begin
+        const int = (v: unknown, min: number, max: number): number | null =>
+            typeof v === 'number' && Number.isFinite(v) ? Math.min(max, Math.max(min, Math.round(v))) : null;
+        out.mainViewScrollSpeed = int(parsed.mainViewScrollSpeed, 1, 100) ?? out.mainViewScrollSpeed;
+        out.mainViewZoomSpeed = int(parsed.mainViewZoomSpeed, 1, 100) ?? out.mainViewZoomSpeed;
+        out.mouseScrollWheelBehaviour = int(parsed.mouseScrollWheelBehaviour, 0, 2) ?? out.mouseScrollWheelBehaviour;
+        out.starFieldSize = int(parsed.starFieldSize, 50, 2000) ?? out.starFieldSize;
+        if (typeof parsed.showSystemNebulae === 'boolean') out.showSystemNebulae = parsed.showSystemNebulae;
+        out.systemNebulaeDetail = int(parsed.systemNebulaeDetail, 0, 2) ?? out.systemNebulaeDetail;
+        const fps = int(parsed.maximumFramerate, -1, 100);
+        if (fps !== null) out.maximumFramerate = clampMaximumFramerate(fps);
+        if (typeof parsed.loadedGamesPaused === 'boolean') out.loadedGamesPaused = parsed.loadedGamesPaused;
+        if (parsed.automationPromptResponses !== null && typeof parsed.automationPromptResponses === 'object') {
+            const r: Record<string, boolean> = {};
+            for (const [k, v] of Object.entries(parsed.automationPromptResponses)) if (typeof v === 'boolean') r[k] = v;
+            out.automationPromptResponses = r;
+        }
+        // [gameoptions] end
     } catch {
         // Corrupt blob: keep the defaults.
     }
     return out;
 }
+
+// [gameoptions] begin
+/** GameOptions.MaximumFramerate: <= 0 is Unlimited (-1); else numGameOptionsAdvancedDisplaySettingsMaximumFramerate's
+ *  range 10..100 (Minimum 10, NumericUpDown's default Maximum 100; Main.Part4.cs:4667-4671 clamps to it). */
+export function clampMaximumFramerate(v: number): number {
+    if (!Number.isFinite(v) || v <= 0) return -1;
+    return Math.min(100, Math.max(10, Math.round(v)));
+}
+
+/** The Pixi ticker's maxFPS for a MaximumFramerate setting (0 = uncapped). */
+export function tickerMaxFps(maximumFramerate: number): number {
+    return maximumFramerate > 0 ? clampMaximumFramerate(maximumFramerate) : 0;
+}
+
+/** Main.Part7.cs:4056-4063 (after loading a game): a paused game resumes unless LoadedGamesPaused, a running one pauses
+ *  when it is set — the loaded game is paused exactly when the option is on. */
+export function loadedGamePaused(_savedPaused: boolean, loadedGamesPaused: boolean): boolean {
+    return loadedGamesPaused;
+}
+
+/** MessageBoxEx.UseSavedResponse for an automation prompt: the remembered answer, or null to ask. */
+export function savedAutomationResponse(task: string): boolean | null {
+    const r = getSettings().automationPromptResponses[task];
+    return typeof r === 'boolean' ? r : null;
+}
+
+/** "Don't ask me again": remember the answer to `task`'s automation prompt. */
+export function saveAutomationResponse(task: string, off: boolean): void {
+    updateSettings({ automationPromptResponses: { ...getSettings().automationPromptResponses, [task]: off } });
+}
+
+/** Main.Part5.cs:2051 btnGameOptionsResetAutomationMessages_Click: MessageBoxExManager.ResetAllSavedResponses(). */
+export function resetAutomationResponses(): void {
+    updateSettings({ automationPromptResponses: {} });
+}
+// [gameoptions] end
 
 // [leftovers] begin
 /** numOptionsAutoSaveMinutes range (Main.InitializeComponent.cs:10739-10740: 10..60) and Math.Max(10, …) (Main.Part6.cs:2595). */

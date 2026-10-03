@@ -141,6 +141,18 @@ export interface GenerateGalaxyOptions {
     races?: Race[];
     /** Mod layer: the scenario (galaxy.scenario) set before generation so its placement rules apply. Omitted = none. */
     scenario?: GalaxyScenario | null;
+    // Galaxy.4.cs 2088 ctor arguments the wizard sets (Start.1.cs 3685-3739 → Start.2.cs 485), applied before generation as
+    // the ctor does. Each omitted value keeps the C# ctor / field default.
+    /** `int lifePrevalence` → _LifePrevalence (Galaxy.4.cs 2141; the Alien Life slider, Start.cs method_67). Default 1000. */
+    lifePrevalence?: number;
+    /** `double creaturePrevalence` → _CreaturePrevalence (2142; the Space Creatures slider, Start.cs method_62). Default 1.0. */
+    creaturePrevalence?: number;
+    /** `bool allowGiantKaltorGeneration` → AllowGiantKaltorGeneration (2143; chkStartNewGameEnableGiantKaltors). Default true. */
+    allowGiantKaltorGeneration?: boolean;
+    /** `double difficultyLevel` → DifficultyLevel (2101; the Difficulty slider, Start.1.cs method_201). Default 1.0. */
+    difficultyLevel?: number;
+    /** `bool spawnNewEmpires` → _SpawnNewEmpires (2153; chkGalaxyNewEmpiresDuringGame). Default true. */
+    spawnNewEmpires?: boolean;
 }
 
 /** Scratch for Galaxy.ringSearch: [d, nx, ny] of the last closestIndexEdgesInto, read before any per-cell callback runs
@@ -4640,8 +4652,15 @@ export class Galaxy {
     pirateShipMaintenanceFactor = 0.4;
     /** Galaxy.MaximumEmpireAmount — wizard option; 0 = derive (player + AIs = empires at game start). */
     maximumEmpireAmount = 0;
-    /** Galaxy.SpawnNewEmpires (Start.2.cs 116, wizard option) — gates Habitat CheckHabitatIsEmpire. */
+    /** Galaxy.SpawnNewEmpires (Galaxy.4.cs 2153 ctor `spawnNewEmpires`, the wizard's "Allow independent alien colonies to
+     *  start new empires during the game", Start.1.cs 3689) — gates Habitat.cs 1502 CheckHabitatIsEmpire (habitatTick.ts). */
     spawnNewEmpires = true;
+    /** Galaxy.cs 686 AllowTechTrading (default true; Start.2.cs 499 = the wizard's chkStartNewGameEnableTechTrading). Read by
+     *  Galaxy.4.cs 4441 ResolveTradeableItems, Empire.7.cs 2599 / 2695 (tradeItems.ts, pirateRelationsAI.ts). */
+    allowTechTrading = true;
+    /** Galaxy.cs 488 DestroyedPiratesDoNotRespawn (Start.2.cs 497 = the wizard's chkStartNewGameTheGalaxyPiratesRespawn):
+     *  after the first 300000 ms of play GenerateNewPirateEmpires only keeps the current faction count (Galaxy.9.cs 23-30). */
+    destroyedPiratesDoNotRespawn = false;
     // [todosweep2] begin
     /**
      * Galaxy.cs 619/908 _BaseTechCost: the Galaxy ctor sets `(int)baseTechCost` (Galaxy.4.cs 2148; Start.2.cs 111 on a
@@ -4844,6 +4863,17 @@ export function generateGalaxy(options: GenerateGalaxyOptions): Galaxy {
     const { seed, shape, starCount, sectorWidth, sectorHeight, systemNames, colonyPrevalence, gameData, cloudImageCount } = options;
     const galaxy = new Galaxy(seed, shape, starCount, sectorWidth, sectorHeight, systemNames, colonyPrevalence);
     galaxy.scenario = options.scenario ?? null;
+    // Galaxy.4.cs 2101 DifficultyLevel and 2137-2153 (_LifePrevalence ... _SpawnNewEmpires), before any generation.
+    // (_AggressionLevel, 2151, is stored below where it also sets aggressiveRacesRequired.)
+    if (options.difficultyLevel !== undefined) galaxy.difficultyLevel = options.difficultyLevel;
+    if (options.lifePrevalence !== undefined) {
+        // Galaxy.4.cs 2137-2140.
+        if (options.lifePrevalence > 2500 || options.lifePrevalence <= 0) throw new RangeError('lifePrevalence: Must be greater than zero and less than 2500');
+        galaxy.lifePrevalence = Math.trunc(options.lifePrevalence);
+    }
+    if (options.creaturePrevalence !== undefined) galaxy.creaturePrevalence = options.creaturePrevalence;
+    if (options.allowGiantKaltorGeneration !== undefined) galaxy.allowGiantKaltorGeneration = options.allowGiantKaltorGeneration;
+    if (options.spawnNewEmpires !== undefined) galaxy.spawnNewEmpires = options.spawnNewEmpires;
     // Mod layer (19h map scale): a scenario extent beyond the constructor's 15-sector clamp.
     if (galaxy.scenario !== null && (sectorWidth > 15 || sectorHeight > 15)) galaxy.setScenarioGalaxyDimensions(sectorWidth, sectorHeight);
     // Galaxy.4.cs 2132 `Races = LoadRaces(...)`: the galaxy's own Race objects (mutated in play, saved with the game).

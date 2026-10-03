@@ -52,7 +52,7 @@ import { closeAdvisorPanel } from './ui/advisorPanel';
 import { aiAdvisorSettingsWithUrl, startAiAdvisorDriver } from './ui/aiAdvisorDriver';
 import { closeCouncilLog, pushCouncilLog } from './ui/aiAdvisorLog';
 import { startLlmLayer } from './llm/llmLayer'; // [llm] 19s-1
-import { getSettings, onSettingsChange } from './ui/settings';
+import { getSettings, loadedGamePaused, onSettingsChange, tickerMaxFps } from './ui/settings';
 import { installOutputDither, setOutputDither } from './render/outputDither';
 // [aiadvisor] end
 import { closeMessageHistory } from './ui/screens/messageHistory';
@@ -106,7 +106,7 @@ import { createGalaxyMap, type GalaxyMapScreen } from './ui/screens/galaxyMap';
 import { hideMapTooltip } from './ui/mapTooltip';
 import { closeTradeFlows, mountFreightLegend, openTradeFlows, toggleTradeFlows } from './ui/screens/tradeFlows'; // [freightOverlay]
 import { closeEmpireComparison, closeGameEndBanner, installGameEndHandler, removeGameEndHandler } from './ui/screens/empireComparison'; // [15d]
-import { installMessagePopups, removeMessagePopups } from './ui/messagePopups'; import { closeGameOptionsPanel } from './ui/screens/gameOptionsPanel'; // [16d]
+import { installMessagePopups, removeMessagePopups } from './ui/messagePopups'; import { closeGameOptionsPanel, setAllowSameSystemSource } from './ui/screens/gameOptionsPanel'; // [16d]
 import { installOrderUi, selectionTarget } from './ui/orderMenu'; import { getSelection as getHudSelection, selectBuiltObjectList, selectShipGroup, selectStellarObject } from './ui/hud'; import { ShipGroup } from './sim/fleets/shipGroup'; import { Fighter } from './sim/combat/fighters'; // [ordermenu]
 // [suggest] begin
 import { installAdvisorSuggestions, removeAdvisorSuggestions } from './ui/advisorSuggestions';
@@ -346,6 +346,8 @@ async function startGameViewWithOverlay(...args: Parameters<typeof startGameView
     }
 }
 let lastStartOptions: StartGameOptions | null = null;
+// [gameoptions] Game Options → Empire Settings shows this game's same-system start option read-only.
+setAllowSameSystemSource(() => lastStartOptions?.colonization.allowSameSystemAsOtherEmpires ?? null);
 let activeSavePanel: ReturnType<typeof createSaveLoadPanel> | null = null;
 /** Saves that could not be written to localStorage (quota), kept for this
  * session and shared by every save/load panel (in-game and main menu). */
@@ -482,6 +484,7 @@ export async function startGameView(
         preference: 'webgl',
     });
     initOutputDither(app);
+    initFrameLimiter(app); // [gameoptions]
     document.body.appendChild(app.canvas);
 
     const camera = new Camera();
@@ -1147,7 +1150,8 @@ async function bootLoadedGame(loaded: LoadedGame): Promise<void> {
     await ensureStaticData();
     teardownActiveGameView();
     // The sim time itself is galaxy.nowMs (saved with the galaxy); the save's clock only restores pause/speed.
-    await startGameViewWithOverlay(game, undefined, undefined, { speed: time.speed, paused: time.paused }, simClient);
+    // [gameoptions] Main.Part7.cs:4056-4063: a loaded game is paused exactly when "Loaded games are paused" is on.
+    await startGameViewWithOverlay(game, undefined, undefined, { speed: time.speed, paused: loadedGamePaused(time.paused, getSettings().loadedGamesPaused) }, simClient);
 }
 
 async function main(): Promise<void> {
@@ -1500,6 +1504,7 @@ async function bootGameWithOptions(opts: BootOptions): Promise<void> {
         preference: 'webgl',
     });
     initOutputDither(app);
+    initFrameLimiter(app); // [gameoptions]
     document.body.appendChild(app.canvas);
 
     // Deterministic galaxy (seed/shape/stars/sectors from the URL or wizard).
@@ -1661,6 +1666,23 @@ async function bootGameWithOptions(opts: BootOptions): Promise<void> {
 main().catch((err) => {
     console.error('DW:U boot failed', err);
 });
+// [gameoptions] begin
+/** The running game view's ticker (the one listener below follows the latest view). */
+let limitedTicker: Application['ticker'] | null = null;
+let frameLimiterListening = false;
+/** GameOptions.MaximumFramerate (Main.Part12.cs:4289-4316: the main loop sleeps to stay under it; -1 = Unlimited) as
+ *  the Pixi ticker's maxFPS; follows later changes from Game Options → Advanced Display Settings. */
+function initFrameLimiter(app: Application): void {
+    limitedTicker = app.ticker;
+    app.ticker.maxFPS = tickerMaxFps(getSettings().maximumFramerate);
+    if (frameLimiterListening) return;
+    frameLimiterListening = true;
+    onSettingsChange((st) => {
+        if (limitedTicker !== null) limitedTicker.maxFPS = tickerMaxFps(st.maximumFramerate);
+    });
+}
+// [gameoptions] end
+
 /**
  * Anti-banding output dither (render/outputDither.ts): on unless Settings → "Dither gradients" is off; `?dither=0|1`
  * overrides it for A/B checks (scripts/perf-render.mjs, screenshots). Follows later settings changes live.

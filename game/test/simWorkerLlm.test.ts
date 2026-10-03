@@ -44,6 +44,7 @@ import { SimHost } from '../src/simworker/simHost';
 import { SimClientCore } from '../src/simworker/clientCore';
 import { remoteSimHost } from '../src/simworker/remoteHost';
 import { readReplica } from '../src/llm/replicaReads';
+import { installReplicaWriteDetector, type ReplicaWriteDetector } from '../src/simworker/writeDetector';
 import type { ToWorker } from '../src/simworker/protocol';
 import type { StartGameOptions } from '../src/sim/startGameOptions';
 import { runAdvisorTurn, type ChatMessage } from '../src/ui/advisorClient';
@@ -76,6 +77,10 @@ interface Wired {
     tick: () => void;
     /** Full compare: the replica exactly current. */
     settle: () => void;
+    /** Chunk 0's write detector on the replica (no main-thread write may be found). */
+    detector: ReplicaWriteDetector;
+    /** Check the whole replica for main-thread writes: the unexpected ones' keys (must be empty). */
+    writes: () => string[];
     dispose: () => void;
 }
 
@@ -92,6 +97,7 @@ function connect(game: Game, gameData: GameData, running = false): Wired {
         else if (c.type === 'clock') host.clock(c);
     };
     const client = new SimClientCore(gameData, snap, { post: toHost, now: fakeClock() });
+    const detector = installReplicaWriteDetector(client.replica, { warn: () => {}, sweepBudgetMs: Infinity, sweepMax: 2000 });
     const uiTime = new GalaxyTime();
     uiTime.bindGalaxy(client.galaxy);
     uiTime.speed = time.speed;
@@ -110,7 +116,13 @@ function connect(game: Game, gameData: GameData, running = false): Wired {
         time: uiTime,
         tick,
         settle: () => client.replica.apply(structuredClone(host.sync.delta(true)), true),
+        detector,
+        writes: () => {
+            detector.checkAll();
+            return detector.unexpected().map((x) => `${x.key}: ${x.detail}`);
+        },
         dispose: () => {
+            detector.dispose();
             client.dispose();
             host.dispose();
         },
@@ -227,6 +239,7 @@ describe('sim worker: advisor chat and diplomat voice (synchronous commands → 
         w.time.paused = false;
         while (game.galaxy.nowMs < ref.galaxy.nowMs) w.tick();
         expect(w.host.digest()).toBe(stateDigest(ref.galaxy));
+        expect(w.writes()).toEqual([]);
         w.dispose();
         expect(remoteSimHost(w.rg)).toBeNull();
     }, 600000);
@@ -240,6 +253,7 @@ describe('sim worker: advisor chat and diplomat voice (synchronous commands → 
         await expect(drive(w, remote.command(ghost, 'advisorCommands', [buildAdvisorBrief(w.rg, w.rp, null), []]))).rejects.toThrow(/not in the replica/);
         await expect(drive(w, remote.hostOp('nope' as never, [] as never))).rejects.toThrow(/unknown host op/);
         expect(commandLog(game.galaxy)).toHaveLength(0);
+        expect(w.writes()).toEqual([]);
         w.dispose();
     }, 600000);
 
@@ -284,6 +298,7 @@ describe('sim worker: advisor chat and diplomat voice (synchronous commands → 
         expect(voicedMessageText(msg)).toBe(v.text);
         expect(JSON.stringify(commandLog(game.galaxy))).toBe(JSON.stringify(commandLog(ref.galaxy)));
         expect(w.host.digest()).toBe(stateDigest(ref.galaxy));
+        expect(w.writes()).toEqual([]);
         w.dispose();
     }, 600000);
 });
@@ -350,6 +365,7 @@ describe('sim worker: 18c AI advisor (applyStrategicDecisions → host op)', () 
         w.time.paused = false;
         while (game.galaxy.nowMs < ref.galaxy.nowMs) w.tick();
         expect(w.host.digest()).toBe(stateDigest(ref.galaxy));
+        expect(w.writes()).toEqual([]);
         w.dispose();
     }, 900000);
 });
@@ -401,6 +417,7 @@ describe('sim worker: 19s-1 chronicle and 19s-2 voices', () => {
         job.poll();
         expect(job.pending).toBeNull();
         expect(t.reqs).toHaveLength(1);
+        expect(w.writes()).toEqual([]);
         w.dispose();
     }, 600000);
 
@@ -464,6 +481,7 @@ describe('sim worker: 19s-1 chronicle and 19s-2 voices', () => {
         await job.settle();
         expect(t.reqs).toHaveLength(1);
         job.dispose();
+        expect(w.writes()).toEqual([]);
         w.dispose();
     }, 600000);
 });
@@ -500,6 +518,7 @@ describe('sim worker: the brief builders on the replica', () => {
         expect(g.rnd.drawCount).toBe(draws);
         expect(stateDigest(g)).toBe(digest);
         expect(replicaText(g) === before).toBe(true);
+        expect(w.writes()).toEqual([]);
         w.dispose();
     }, 600000);
 });
