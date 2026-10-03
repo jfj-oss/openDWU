@@ -77,6 +77,14 @@ export function renameFleet(fleet: ShipGroup, name: string): boolean {
     return true;
 }
 
+/** Main.Part11.cs hvhxxedjqS_Leave (the Ships and Bases window's name box): rename one of the empire's ships / bases
+ *  (a blank name is ignored). */
+export function renameShip(empire: Empire, ship: BuiltObject, name: string): boolean {
+    if (ship.empire !== empire || name.trim() === '') return false;
+    ship.name = name;
+    return true;
+}
+
 /** Main.Part6.cs btnShipGroupInfoSetHomeColony_Click: the fleet's GatherPoint becomes one of the empire's colonies. */
 export function setFleetHomeColony(empire: Empire, fleet: ShipGroup, colony: Habitat): boolean {
     if (fleet.empire !== empire || !empire.colonies.includes(colony)) return false;
@@ -238,8 +246,10 @@ export interface RetrofitResult {
  * design the empire can build for its subrole (Designs.FindNewestCanBuildFullEvaluate(SubRole, ParentHabitat)), skipping
  * private ships and ships already retrofitting (method_579), ships under construction / immobile / already on that design
  * (Empire.5.cs AssignRetrofitMission). Read-only; `cost` is the DetermineRetrofitAffordability estimate.
+ * With `design` (the retrofit dialog's cmbRetrofitDesign, method_575 when every ship has the same sub-role) every ship
+ * goes to that design instead; a ship of another sub-role is skipped ('no buildable design').
  */
-export function planRetrofit(galaxy: Galaxy, empire: Empire, ships: readonly BuiltObject[]): RetrofitPlanEntry[] {
+export function planRetrofit(galaxy: Galaxy, empire: Empire, ships: readonly BuiltObject[], chosen: Design | null = null): RetrofitPlanEntry[] {
     const seen = new Set<BuiltObject>();
     const out: RetrofitPlanEntry[] = [];
     for (const ship of ships) {
@@ -253,7 +263,7 @@ export function planRetrofit(galaxy: Galaxy, empire: Empire, ships: readonly Bui
         if (ship.retrofitDesign !== null) { entry('already refitting'); continue; }
         if (ship.builtAt !== null) { entry('under construction'); continue; }
         if (ship.role !== BuiltObjectRole.Base && ship.topSpeed <= 0) { entry('immobile'); continue; }
-        const design = findNewestCanBuildFullEvaluate(empire.designs, ship.subRole, ship.parentHabitat);
+        const design = chosen !== null ? (chosen.subRole === ship.subRole ? chosen : null) : findNewestCanBuildFullEvaluate(empire.designs, ship.subRole, ship.parentHabitat);
         if (design === null) { entry('no buildable design'); continue; }
         if (ship.design === design) { entry('already latest design', design); continue; }
         const aff = determineRetrofitAffordability(galaxy, empire, ship, design);
@@ -263,12 +273,12 @@ export function planRetrofit(galaxy: Galaxy, empire: Empire, ships: readonly Bui
 }
 
 /** Retrofit each eligible ship (planRetrofit) to its newest design, forcing use of a yard like the original's Go button. */
-export function retrofitSelectedShips(galaxy: Galaxy, empire: Empire, ships: readonly BuiltObject[]): RetrofitResult {
+export function retrofitSelectedShips(galaxy: Galaxy, empire: Empire, ships: readonly BuiltObject[], design: Design | null = null): RetrofitResult {
     const result: RetrofitResult = { sent: 0, skipped: {} };
     const skip = (r: RetrofitSkipReason): void => {
         result.skipped[r] = (result.skipped[r] ?? 0) + 1;
     };
-    for (const e of planRetrofit(galaxy, empire, ships)) {
+    for (const e of planRetrofit(galaxy, empire, ships, design)) {
         if (e.skip !== null) { skip(e.skip); continue; }
         const snap = snapshotOrders([e.ship], []);
         const ok = assignRetrofitMission(galaxy, empire, e.ship, e.design, null, true);

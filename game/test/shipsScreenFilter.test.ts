@@ -187,3 +187,55 @@ describe('selection actions', () => {
         expect(shipsActionState([])).toMatchObject({ setFleet: false, retire: false });
     });
 });
+
+describe('original-window port helpers (method_178 / pnlRetrofit)', () => {
+    it('retrofitCommonSubRole: one item, same sub-role, space ports only with space ports (method_581)', async () => {
+        const { retrofitCommonSubRole } = await import('../src/ui/screens/shipsAndBasesList');
+        expect(retrofitCommonSubRole([frigate])).toBe(S.Frigate);
+        expect(retrofitCommonSubRole([frigate, ship(S.Frigate, BuiltObjectRole.Military)])).toBe(S.Frigate);
+        expect(retrofitCommonSubRole([frigate, escort])).toBeNull();
+        expect(retrofitCommonSubRole([yard, ship(S.SmallSpacePort, BuiltObjectRole.Base)])).toBeNull();
+        expect(retrofitCommonSubRole([])).toBeNull();
+    });
+
+    it('retrofitWarnings follows method_576', async () => {
+        const { retrofitWarnings } = await import('../src/ui/screens/shipsAndBasesList');
+        expect(retrofitWarnings([frigate])).toEqual([]);
+        const w = retrofitWarnings([frigate, escort, ship(S.Frigate, BuiltObjectRole.Military, { owner: null }), yard]);
+        expect(w).toHaveLength(3);
+        expect(w[0]).toMatch(/cannot be retrofitted/);
+        expect(w[1]).toMatch(/not of the same type/);
+        expect(w[2]).toMatch(/at a colony/);
+    });
+
+    it('cost line, plan summary, tab captions, name state and maintenance', async () => {
+        const m = await import('../src/ui/screens/shipsAndBasesList');
+        expect(m.retrofitCostText(1234.4, 5000)).toBe('Total retrofit cost: 1,234 credits');
+        expect(m.retrofitCostText(6000, 5000)).toMatch(/Cannot afford this retrofit/);
+        const plan = [
+            { ship: frigate, design: null, cost: 10, skip: null },
+            { ship: escort, design: null, cost: 0, skip: 'already latest design' as const },
+        ];
+        expect(m.retrofitPlanSummary(plan)).toBe('1 will be retrofitted; skipped: 1 already latest design');
+        expect(m.builtObjectTabLabels(null).troops).toBe('Troops & Characters');
+        const loaded = ship(S.Frigate, BuiltObjectRole.Military, { cargo: { items: [{}, {}] }, damagedComponentCount: 3, weapons: [{}], dockingBays: [{ dockedShip: null }, { dockedShip: {} }], troops: { items: [{}] }, characters: [{}] });
+        expect(m.builtObjectTabLabels(loaded)).toEqual({
+            cargo: 'Cargo (2)',
+            components: 'Components (3 damaged)',
+            yards: 'Construction Yards',
+            docking: 'Docking Bays (1)',
+            troops: 'Troops & Characters (2)',
+            weapons: 'Weapons (1)',
+        });
+        expect(m.builtObjectNameState(ship(S.Frigate, BuiltObjectRole.Military, { damagedComponentCount: 2, warpSpeed: 0 }))).toEqual({ state: 'damaged', tip: '2 components damaged (no hyperdrive, cannot travel for repairs)' });
+        expect(m.builtObjectNameState(ship(S.Frigate, BuiltObjectRole.Military, { unbuiltComponentCount: 4 })).state).toBe('unbuilt');
+        expect(m.builtObjectMaintenance({ annualSupportCost: 100, empire: { shipMaintenanceSavings: 0.25 } })).toBe(75);
+    });
+
+    it('new button rules: retrofit / scrap / automate / view design', () => {
+        expect(shipsActionState([frigate])).toMatchObject({ retrofit: true, scrap: true, automate: true });
+        expect(shipsActionState([gasStation])).toMatchObject({ automate: false, scrap: true });
+        expect(shipsActionState([ship(S.Frigate, BuiltObjectRole.Military, { retrofitDesign: {} })]).retrofit).toBe(false);
+        expect(shipsActionState([])).toMatchObject({ scrap: false, retrofit: false, viewDesign: false });
+    });
+});
