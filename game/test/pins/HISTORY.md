@@ -192,3 +192,14 @@ Appended by `npm run repin -- --reason "<why>"` (scripts/repin.mjs).
 - `troops.recruitCapitalTroops` (test/troops.test.ts): Moved [7,0,2,6] → [6,7,8,5]: orbits spaced so planets/moons never overlap (user deviation)
 - `troops.recruitMaintenance` (test/troops.test.ts): Moved [7000,0,1700,5400] → [6000,6300,6800,4500]: orbits spaced so planets/moons never overlap (user deviation)
 - `troops.recruitProcessDraws` (test/troops.test.ts): Moved #edcbc03e8b → ["","","",""]: orbits spaced so planets/moons never overlap (user deviation)
+
+## 2026-10-03 — parity A2: spaceport threat check, race periodic traits, wonders scenic, race wonders, garrisons, maintenance, retrofit design
+
+- `builtObjectPlacement.playerCivilianNames` (test/builtObjectPlacement.test.ts): Moved #693c620a91 → #02eb9f7977: parity A2: spaceport threat check, race periodic traits, wonders scenic, race wonders, garrisons, maintenance, retrofit design
+- `createGameFull.summary` (test/createGameFull.test.ts): Moved #00658945fe → #f6392efece: parity A2: spaceport threat check, race periodic traits, wonders scenic, race wonders, garrisons, maintenance, retrofit design
+- `empireLifecycle.aiSplitDigest` (test/empireLifecycleExtras.test.ts): Moved "4985362bf65f2a5a:288778" → "4a8493f807d8696f:288778": parity A2: spaceport threat check, race periodic traits, wonders scenic, race wonders, garrisons, maintenance, retrofit design
+- `tickDeterminism.digest120` (test/tickDeterminism.test.ts): Moved "dc89b652838d37f4" → "492736eb90d9ba45": parity A2: spaceport threat check, race periodic traits, wonders scenic, race wonders, garrisons, maintenance, retrofit design
+- `tickDeterminism.rndDraws120` (test/tickDeterminism.test.ts): Moved 8503 → 7948: parity A2: spaceport threat check, race periodic traits, wonders scenic, race wonders, garrisons, maintenance, retrofit design
+- `tickDeterminism.digest600` (test/tickDeterminism.test.ts): Moved "0a197d262536cac8" → "89d3bfddd78f6edc": parity A2: spaceport threat check, race periodic traits, wonders scenic, race wonders, garrisons, maintenance, retrofit design
+- `tickDeterminism.counts600` (test/tickDeterminism.test.ts): Moved #873f307b0e → #f78b172cc4: parity A2: spaceport threat check, race periodic traits, wonders scenic, race wonders, garrisons, maintenance, retrofit design
+- `tickDeterminism.rndDraws600` (test/tickDeterminism.test.ts): Moved 566691 → 579423: parity A2: spaceport threat check, race periodic traits, wonders scenic, race wonders, garrisons, maintenance, retrofit design

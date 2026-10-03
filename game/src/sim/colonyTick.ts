@@ -23,6 +23,17 @@ import { Habitat, HabitatType, recalculateMaximumPopulation } from './types';
 import type { Race } from './data/races';
 import type { BuiltObject } from './builtObject';
 import { Population } from './population';
+import {
+    raceChangePeriodActive,
+    raceChangePeriodYearsInterval,
+    raceChangePeriodYearsLength,
+    raceAggressionLevel,
+    racePeriodicAggressionLevel,
+    racePeriodicCautionLevel,
+    racePeriodicFriendlinessLevel,
+    racePeriodicGrowthRate,
+    raceReproductiveRate,
+} from './racePeriodic';
 import { Random } from './random';
 import { REAL_SECONDS_IN_GALACTIC_YEAR, galaxyStarDate } from './tick/simTime';
 import { DiplomaticRelationType } from './diplomacy';
@@ -125,56 +136,16 @@ export function raceColonyPopulationPolicyGrowthFactorExterminate(race: Race): n
     return Math.min(5.0, Math.max(0.2, raceExtraDouble(race, 'ColonyPopulationPolicyGrowthFactorExterminate', 1.0)));
 }
 
-/** Race.cs 121 ChangePeriodYearsInterval ("PeriodicChangeInterval", Race.cs 1343). */
-export function raceChangePeriodYearsInterval(race: Race): number {
-    return raceExtraInt(race, 'PeriodicChangeInterval', 0);
-}
-
-/** Race.cs 123 ChangePeriodYearsLength ("PeriodicChangeLength", Race.cs 1346). */
-export function raceChangePeriodYearsLength(race: Race): number {
-    return raceExtraInt(race, 'PeriodicChangeLength', 0);
-}
-
-/** Race.cs 306 ChangePeriodActive (per galaxy, see Galaxy.raceChangePeriodActive). */
-export function raceChangePeriodActive(galaxy: Galaxy, race: Race): boolean {
-    return galaxy.raceChangePeriodActive.has(race);
-}
-
-/** Race.cs 111 PeriodicGrowthRate = 1.0 (file value clamped to [1.0, 2.0], Race.cs 1349). */
-function racePeriodicGrowthRate(race: Race): number {
-    if (race.extra?.['PeriodicFactorsGrowth'] === undefined) return 1.0;
-    return Math.max(1.0, Math.min(raceExtraDouble(race, 'PeriodicFactorsGrowth', 1.0), 2.0));
-}
-
-/** Race.cs 113-117 PeriodicAggression/Caution/FriendlinessLevel = 100 (file values clamped to [50, 200]). */
-function racePeriodicLevel(race: Race, key: string): number {
-    if (race.extra?.[key] === undefined) return 100;
-    return Math.max(50, Math.min(raceExtraInt(race, key, 100), 200));
-}
-
-/**
- * Race.cs 320 ReproductiveRate: PeriodicGrowthRate while ChangePeriodActive, else _ReproductiveRate.
- * TODO(port) M4j: the other ChangePeriodActive-dependent Race properties (CautionLevel, FriendlinessLevel —
- * Race.cs 366-400) are still read directly from the race data elsewhere in src/sim.
- */
-export function raceReproductiveRate(galaxy: Galaxy, race: Race): number {
-    return raceChangePeriodActive(galaxy, race) ? racePeriodicGrowthRate(race) : race.reproductionRate;
-}
-
-/** Race.cs 348 AggressionLevel (PeriodicAggressionLevel while ChangePeriodActive). */
-export function raceAggressionLevel(galaxy: Galaxy, race: Race): number {
-    return raceChangePeriodActive(galaxy, race) ? racePeriodicLevel(race, 'PeriodicFactorsAggression') : race.aggression;
-}
-
-/** Race.cs 368 CautionLevel (PeriodicCautionLevel while ChangePeriodActive). */
-export function raceCautionLevel(galaxy: Galaxy, race: Race): number {
-    return raceChangePeriodActive(galaxy, race) ? racePeriodicLevel(race, 'PeriodicFactorsCaution') : race.caution;
-}
-
-/** Race.cs 384 FriendlinessLevel (PeriodicFriendlinessLevel while ChangePeriodActive). */
-export function raceFriendlinessLevel(galaxy: Galaxy, race: Race): number {
-    return raceChangePeriodActive(galaxy, race) ? racePeriodicLevel(race, 'PeriodicFactorsFriendliness') : race.friendliness;
-}
+// Race.cs ChangePeriodActive-dependent properties: racePeriodic.ts (re-exported for the existing importers).
+export {
+    raceAggressionLevel,
+    raceCautionLevel,
+    raceChangePeriodActive,
+    raceChangePeriodYearsInterval,
+    raceChangePeriodYearsLength,
+    raceFriendlinessLevel,
+    raceReproductiveRate,
+} from './racePeriodic';
 
 /**
  * Race.cs 119 PeriodicRaceEvent (RaceEventType, default Undefined): races.txt "PeriodicChangeCycleEvent", kept only
@@ -1003,13 +974,13 @@ export function reviewColonyPopulationPolicy(galaxy: Galaxy, empire: Empire, tim
                 case ColonyPopulationPolicy.Enslave:
                     population.growthRate = 1;
                     num2 += population.amount;
-                    addPopulationMerged(populationList, new Population(population.race, population.amount));
+                    addPopulationMerged(populationList, new Population(population.race, population.amount, galaxy));
                     break;
                 case ColonyPopulationPolicy.Exterminate:
                     if (totalAmount > 30000000) {
                         const num3 = Math.min(population.amount, num);
                         const num4 = Math.max(0, population.amount - num3);
-                        addPopulationMerged(populationList2, new Population(population.race, num));
+                        addPopulationMerged(populationList2, new Population(population.race, num, galaxy));
                         if (num4 <= 0) {
                             populationList3.push(population);
                         } else {
@@ -1273,9 +1244,9 @@ export function reviewRacePeriodicChanges(galaxy: Galaxy): void {
 /** Galaxy.cs 3497 ResolveRaceChangeQualitiesDescription(race) (GameText keys joined by ", "; M9 localizes). */
 function resolveRaceChangeQualitiesDescription(race: Race): string {
     const parts: string[] = [];
-    const pa = racePeriodicLevel(race, 'PeriodicFactorsAggression');
-    const pc = racePeriodicLevel(race, 'PeriodicFactorsCaution');
-    const pf = racePeriodicLevel(race, 'PeriodicFactorsFriendliness');
+    const pa = racePeriodicAggressionLevel(race);
+    const pc = racePeriodicCautionLevel(race);
+    const pf = racePeriodicFriendlinessLevel(race);
     const pg = racePeriodicGrowthRate(race);
     if (pa > race.aggression) parts.push('increased aggression');
     else if (pa < race.aggression) parts.push('decreased aggression');

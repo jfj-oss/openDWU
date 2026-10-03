@@ -35,6 +35,7 @@
 //   Empire.PenalColonies: empty. Empire.Capitals: only Capital at game start.
 //   Habitat.RaceEventType: Undefined. Habitat.DefensiveFortressBonus: 0. Facilities: none.
 
+import { raceCautionLevel } from './racePeriodic';
 import { RaceEventType } from './eventTypes';
 import { Troop, TroopList, TroopType } from './cargo';
 import { PlanetaryFacilityType } from './researchSystem';
@@ -160,9 +161,9 @@ export function estimatedDefensiveForceRequired(galaxy: Galaxy, habitat: Habitat
     let num = 0.0;
     const owner = habitat.owner;
     if (owner !== null && owner !== galaxy.independentEmpire) {
-        num = Math.pow(owner.dominantRace!.caution / 100.0, 2.0);
+        num = Math.pow(raceCautionLevel(galaxy, owner.dominantRace!) / 100.0, 2.0); // Race.CautionLevel (periodic, Race.cs 368)
     } else if (owner === galaxy.independentEmpire && habitat.population != null && habitat.population.dominantRace != null) {
-        num = Math.pow(habitat.population.dominantRace.caution / 100.0, 2.0);
+        num = Math.pow(raceCautionLevel(galaxy, habitat.population.dominantRace) / 100.0, 2.0);
     }
     let num2 = 750.0;
     if (owner !== galaxy.playerEmpire && difficultyLevel > 1.0) {
@@ -196,9 +197,7 @@ export function troopLevelRequired(galaxy: Galaxy, habitat: Habitat, difficultyL
     const owner = habitat.owner;
     if (owner !== null) {
         let num3 = 1.0;
-        // TODO(port): Empire.Capitals (HabitatList, IdentifyEmpireCapitals) — holds only the
-        // Capital at game start, which the first test already covers.
-        if (owner.capital === habitat) {
+        if (owner.capital === habitat || (owner.capitals != null && owner.capitals.includes(habitat))) {
             num3 = 1.5;
             if (owner !== galaxy.playerEmpire) num3 *= Math.sqrt(difficultyLevel);
         } else if (owner.homeWorld === habitat) {
@@ -207,8 +206,10 @@ export function troopLevelRequired(galaxy: Galaxy, habitat: Habitat, difficultyL
         }
         num = csDoubleToInt(num * num3);
     }
-    // TODO(port): Empire.PenalColonies (Max(200, num)) — empty at game start.
     const empire = habitat.empire;
+    if (empire !== null && empire.penalColonies != null && empire.penalColonies.length > 0 && empire.penalColonies.includes(habitat)) {
+        num = Math.max(200, num);
+    }
     if (empire !== null && empire.policy != null) {
         num = csDoubleToInt(num * Math.max(empire.policy.troopRecruitInfantryLevel, empire.policy.troopGarrisonLevel));
         num = Math.max(num, empire.policy.troopGarrisonMinimumPerColony * 100);

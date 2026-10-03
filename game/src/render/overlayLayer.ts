@@ -45,6 +45,7 @@
 // TODO(overlay): fold in colony-ship design range and ruin/superluxury
 // bonuses once those are ported.
 
+import { circleAtScreenRes } from './screenCircle';
 import type { MotionInterpolator } from './renderInterp';
 import { Container, Graphics, Sprite, Texture } from 'pixi.js';
 import type { Camera } from './camera';
@@ -392,7 +393,7 @@ export class OverlayLayer {
             // Geometry around (0, 0), rebuilt only on a radius / width change; moved to the body each frame.
             if (m.key.changed(r, 4 / z)) {
                 m.graphics.clear();
-                m.graphics.circle(0, 0, r).stroke({ width: 4 / z, color: OVERLAY_MARKER_COLOR, alpha: 1 });
+                circleAtScreenRes(m.graphics, 0, 0, r, z).stroke({ width: 4 / z, color: OVERLAY_MARKER_COLOR, alpha: 1 });
             }
             m.graphics.position.set(hx, hy);
             m.graphics.visible = true;
@@ -434,8 +435,8 @@ export class OverlayLayer {
         }
         for (const m of this.scenarioMarkerList) {
             const r = 12 / z;
-            g.circle(m.x, m.y, r).stroke({ width: 2 / z, color: m.color, alpha: 1 });
-            g.circle(m.x, m.y, r + 5 / z).stroke({ width: 1 / z, color: m.color, alpha: 0.5 });
+            circleAtScreenRes(g, m.x, m.y, r, z).stroke({ width: 2 / z, color: m.color, alpha: 1 });
+            circleAtScreenRes(g, m.x, m.y, r + 5 / z, z).stroke({ width: 1 / z, color: m.color, alpha: 0.5 });
             g.moveTo(m.x, m.y - r).lineTo(m.x, m.y - r - 14 / z).lineTo(m.x + 9 / z, m.y - r - 10 / z).lineTo(m.x, m.y - r - 6 / z).stroke({ width: 2 / z, color: m.color, alpha: 1 });
         }
         g.visible = true;
@@ -462,7 +463,7 @@ export class OverlayLayer {
         }
         for (const f of this.wreckList) {
             const m = wreckMarker(f, z);
-            g.circle(m.x, m.y, m.r).stroke({ width: 2 / z, color: WRECK_MARKER_COLOR, alpha: 0.9 });
+            circleAtScreenRes(g, m.x, m.y, m.r, z).stroke({ width: 2 / z, color: WRECK_MARKER_COLOR, alpha: 0.9 });
             const c = 5 / z;
             g.moveTo(m.x - c, m.y - c).lineTo(m.x + c, m.y + c).moveTo(m.x + c, m.y - c).lineTo(m.x - c, m.y + c).stroke({ width: 2 / z, color: WRECK_MARKER_COLOR, alpha: 0.9 });
         }
@@ -497,8 +498,8 @@ export class OverlayLayer {
         for (const site of this.threatSites) {
             const m = threatMarker(site, z);
             if (m.kind === 'ring') {
-                g.circle(m.x, m.y, m.r).stroke({ width: 3 / z, color: m.color, alpha: 1 });
-                g.circle(m.x, m.y, m.r + 5 / z).stroke({ width: 1 / z, color: m.color, alpha: 0.6 });
+                circleAtScreenRes(g, m.x, m.y, m.r, z).stroke({ width: 3 / z, color: m.color, alpha: 1 });
+                circleAtScreenRes(g, m.x, m.y, m.r + 5 / z, z).stroke({ width: 1 / z, color: m.color, alpha: 0.6 });
             } else {
                 g.moveTo(m.x, m.y - m.r).lineTo(m.x + m.r, m.y).lineTo(m.x, m.y + m.r).lineTo(m.x - m.r, m.y).closePath().stroke({ width: 2 / z, color: m.color, alpha: 1 });
             }

@@ -75,9 +75,9 @@ function habitatDockingBayWaitQueueCount(habitat: Habitat): number | null {
     return q === null ? null : q.length;
 }
 
-/** Habitat.IsBlockaded (Habitat.cs 119). TODO(port) M4m: blockades not modeled on Habitat yet (false until then). */
+/** Habitat.IsBlockaded (Habitat.cs 119; set by fleets/blockades.ts). */
 function habitatIsBlockaded(habitat: Habitat): boolean {
-    return (habitat as Habitat & { isBlockaded?: boolean }).isBlockaded ?? false;
+    return habitat.isBlockaded;
 }
 
 // ------------------------------------------------------------------------------------------

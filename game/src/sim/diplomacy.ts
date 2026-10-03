@@ -184,14 +184,7 @@ export class DiplomaticRelation {
         this._tradeValues.items.push(new YearlyTradeValue(startOfYear));
     }
 
-    /**
-     * DiplomaticRelation.cs 103 PerformTradeTransaction.
-     * TODO(port): EmpireCounters.ProcessTradeBonus + Galaxy.DoCharacterEvent(TradeIncome, ambassadors)
-     * (EmpireCounters not ported). Never called during game creation (no trade has happened).
-     */
-    performTradeTransaction(_value: number, _starDate: number): void {
-        throw new Error('TODO(port): DiplomaticRelation.cs PerformTradeTransaction (EmpireCounters.ProcessTradeBonus)');
-    }
+    // DiplomaticRelation.cs 103 PerformTradeTransaction: logistics/contracts.ts performTradeTransaction(galaxy, relation, …).
 
     // DiplomaticRelation.cs 179 NormalizedAnnualTradeValue.
     get normalizedAnnualTradeValue(): number {
