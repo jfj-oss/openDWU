@@ -66,6 +66,7 @@ import { displayColorForEmpire } from '../sim/empireColors';
 import { useMinifyingFilter } from './assets';
 import { boundsOnScreen } from './drawCache';
 import { combatBarAlpha, drawCombatBars } from './combatBars';
+import { showsBattleBars, showsMapIndicators } from './mainViewDisplay';
 import { drawCrossedSwords, systemsUnderFire } from './battleIcons';
 import { builtObjectHiddenFromPick, warEmpires } from './builtObjectLayer';
 
@@ -1117,6 +1118,10 @@ export class GalaxyMarkerLayer {
         const selBo = sel?.shipGroup === undefined ? (sel?.builtObject ?? null) : null;
         const selGroup = sel?.shipGroup ?? null;
         const galaxyPass = band === 'galaxy';
+        // MainView.1.cs:1080 / 1253 (Main.int_34, mainViewDisplay.ts): display type 2 drops the per-ship symbols, 1 and 2
+        // the battle bars. The galaxy pass (MainView.2.cs method_250) does not read it.
+        const perShipSymbols = showsMapIndicators();
+        const battleBars = showsBattleBars();
         // Particle / bar vertices are float32 in the container's local space, and galaxy coordinates run to millions
         // (spacing 0.06 - 0.5 world units), which shows as stepping when a ship glides a fraction of a px per frame.
         // So both containers sit at the camera centre and the markers are placed relative to it (small local numbers).
@@ -1147,6 +1152,7 @@ export class GalaxyMarkerLayer {
                 if (!galaxyViewTypeShown(bo.subRole, opts, enemy, f)) continue;
                 if (builtObjectHiddenFromPick(bo, g.systems, g.pirateEmpires, this.war)) continue;
             } else {
+                if (!perShipSymbols) continue;
                 // MainView.1.cs 1083-1088: beyond f = 20 the player's own private ships get no symbol.
                 if (f > 20 && !isBase && bo.owner === null && player !== null && bo.empire === player) continue;
             }
@@ -1170,7 +1176,7 @@ export class GalaxyMarkerLayer {
                 this.pushSymbol(n++, artIdx, pos.x - ox, pos.y - oy, heightPx + 2.5, z, brighten(base, -96), alpha * 0.9);
                 this.pushSymbol(n++, artIdx, pos.x - ox, pos.y - oy, heightPx, z, tint, alpha);
             }
-            if (!galaxyPass && !isBase) {
+            if (!galaxyPass && !isBase && battleBars) {
                 // Shield / hull bars under the marker while the ship fights (render/combatBars.ts).
                 const barAlpha = combatBarAlpha(bo, g.nowMs);
                 if (barAlpha > 0) drawCombatBars(this.barsG, bo, pos.x - ox, pos.y - oy, heightPx, z, barAlpha);
