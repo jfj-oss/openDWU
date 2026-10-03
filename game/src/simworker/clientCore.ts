@@ -11,6 +11,7 @@ import { setRemoteCommandSink } from '../sim/player/playerCommands';
 import { FRAME_REAL_MS } from '../sim/tick/scheduler';
 import { createRenderTime, updateRenderTime, type RenderTime } from '../render/renderInterp';
 import { GalaxyReplica } from './replicaGalaxy';
+import { ReplicaTradeFlows } from './tradeFlowSync';
 import { decodeRemoteArg, encodeRemoteArg, type RemoteNaming, type RemoteResolving } from './remoteArgs';
 import type { ClockMessage, CommandMessage, RefreshRequest, SnapshotMessage, StepMessage, ToWorker, WorkerEvent } from './protocol';
 import { setRemoteRefreshSink } from './refresh';
@@ -118,6 +119,8 @@ export class SimClientCore {
     private readonly now: () => number;
     private readonly coldBudgetMs: number;
     private disposed = false;
+    /** The replica's trade-flow ledger hooks (recording runs in the worker; tradeFlowSync.ts). */
+    readonly tradeFlows: ReplicaTradeFlows;
 
     constructor(gameData: GameData, snapshot: SnapshotMessage, private readonly opts: ClientCoreOptions) {
         this.now = opts.now ?? (() => performance.now());
@@ -147,6 +150,11 @@ export class SimClientCore {
         setRemoteRefreshSink(galaxy, (objects, onFresh) => this.requestRefresh(objects, onFresh));
         // The sim's lazy "obtain" lookups never write the replica, whoever queries it (sim/readOnlyQuery.ts).
         markReadOnlyGalaxy(galaxy);
+        this.tradeFlows = new ReplicaTradeFlows(
+            galaxy,
+            () => this.replica.decoder.object(1) as Record<string, unknown> | null,
+            (record) => this.opts.post({ type: 'tradeFlows', record }),
+        );
     }
 
     private *staticEntries(): Iterable<[string, object]> {
@@ -312,6 +320,7 @@ export class SimClientCore {
         setRemoteCommandSink(this.galaxy, null);
         setRemoteRefreshSink(this.galaxy, null);
         markReadOnlyGalaxy(this.galaxy, false);
+        this.tradeFlows.dispose();
         this.pending.clear();
         this.replies.length = 0;
     }

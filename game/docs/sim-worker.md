@@ -330,6 +330,7 @@ The only behaviour changes in this mode are:
 | `src/simworker/workerClient.ts` | Main-side Worker wrapper, boot with progress, frame loop, async save / digest, the flag |
 | `src/simworker/remoteArgs.ts` | Command arguments and replies across the boundary (sync ids) |
 | `src/simworker/bootOptions.ts` | createGame options across the boundary |
+| `src/simworker/tradeFlowSync.ts` | Trade-flow recording in the worker; the ledger as a side table (chunk 3) |
 | `src/simworker/protocol.ts` | Message types |
 | `src/simworker/refresh.ts` | Refresh-on-open requests from the screens (`requestSimRefresh`; no-op in-thread) |
 | `src/simFrameBudget.ts` | SimFrameBudget, shared by both modes |
@@ -350,7 +351,7 @@ The only behaviour changes in this mode are:
 - **Cold staleness.** Cold data is up to one cycle old (about 1–1.5 s), plus any pump backlog. A paused game settles
   to exact: the worker keeps comparing for two full cycles after the last change.
 - **Not ported (§9):** the game-end banner, message-pipeline writes, audio sound flags, order-menu RNG draws,
-  synchronous advisor commands, trade-flow recording, rim wiring, tutorials (they still boot in-thread), the
+  synchronous advisor commands, tutorials (they still boot in-thread), the
   `__dwu.sim` / `simBudget` debug hooks (null in worker mode), and `__dwu.commands.log` (the replica has no log).
 
 ## 9. Porting work list (parallel chunks)
@@ -395,6 +396,21 @@ Each chunk is independent. All chunks share the same test approach:
   root; the rim install (`installRimWeights` / `installRimNameOverrides` write `galaxy.scenario.state`) runs in the
   worker at boot.
 - Test: overlay screenshots in both modes; a freight ledger equality test through the host.
+- **Done.**
+  - *Trade flows.* `tradeFlows.ts setRemoteTradeFlows` is registered on the replica, the same pattern as
+    `setRemoteCommandSink`. The overlay's unchanged enable / disable calls post a `tradeFlows` message, which is not a
+    command and is not journaled. The worker records on the authoritative galaxy. The ledger travels as a view in the
+    side-tables root (`tradeFlows`). The view shares `entries` and carries `version`, `startStarDate` and a Map of
+    the live freighters' contract destinations, refreshed at most every 15 ticks. The sim keeps those destinations in a
+    WeakMap, which cannot be synced. `index` stays empty, because only the recorder reads it. Until the first sync
+    the replica shows an empty placeholder.
+  - *Rim.* `installWorkerBootState` (simHost.ts) runs `installRimAtmosphereData` in the worker after create or load,
+    before the first tick. On a replica the call is a no-op. The rim curve moved to Pixi-free `render/rimCurve.ts`.
+  - *Reads.* The overlay readers are write-free on a replica. The territory overlay's sources
+    (`colonyInfluenceRadius`, `colonies`, `active`, explored systems) arrive cold, and its 30-frame signature poll
+    follows them.
+  - *Tests and tools.* Tests: `test/simWorkerMapOverlays.test.ts`. Smoke: `scripts/simworker-overlays-smoke.mjs`
+    (`--inthread`, `--scenario=rim-atmosphere`).
 
 **Chunk 4 — messages, events and game end** (the largest write cluster, audit §4 items 2–7 and 9).
 - Files: `ui/empireMessageFeed.ts`, `messagePopups.ts`, `messageStubList.ts`, `messageStubs.ts`, `messageRouting.ts`,

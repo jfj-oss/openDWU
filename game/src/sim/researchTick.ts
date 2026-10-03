@@ -127,6 +127,7 @@ import { disbandShipGroup, empireShipGroups, shipGroupWarpSpeed, type ShipGroup 
 import { REAL_SECONDS_IN_GALACTIC_YEAR } from './tick/simTime';
 import { netSort, netSortLastByKey } from './netSort';
 import { gameText } from './colonyTick';
+import { raceAggressionLevel, raceCautionLevel } from './racePeriodic';
 import { formatGameTextNow } from './textResolver';
 import { registerTodo, todo } from './tick/todo';
 import { galaxyStarDate } from './tick/simTime';
@@ -1017,19 +1018,21 @@ export function resolveEssentialProjectsNew(
     const findWonderByType = (type: WonderType): Facility | null => facilities.find((fd) => facilityType(fd) === PlanetaryFacilityType.Wonder && fd.wonderType === type) ?? null;
     const governmentAttributes = empireGovernmentAttributes(empire)!;
     if (race !== null) {
-        // TODO(port) M4j: Race.CautionLevel / AggressionLevel return the periodic levels while a race change period is
-        // active (Race.cs 350-377, ReviewRacePeriodicChanges); the base levels are read here.
-        if (race.caution >= 100) {
+        // ResearchSystem.cs 354-367: Race.CautionLevel / AggressionLevel are the periodic levels while the race's change
+        // period is active (Race.cs 350-377).
+        const cautionLevel = raceCautionLevel(galaxy, race);
+        const aggressionLevel = raceAggressionLevel(galaxy, race);
+        if (cautionLevel >= 100) {
             addLaggingFacility(PlanetaryFacilityType.FortifiedBunker);
             addLaggingTroop(TroopType.Artillery);
-            if (race.caution >= 110) {
+            if (cautionLevel >= 110) {
                 addLaggingFacility(PlanetaryFacilityType.PlanetaryShield);
                 addLaggingType(T.ComputerCountermeasuresFleet);
             }
         }
-        if (race.aggression >= 110) {
+        if (aggressionLevel >= 110) {
             addLaggingTroop(TroopType.SpecialForces);
-            if (race.aggression >= 115) {
+            if (aggressionLevel >= 115) {
                 addLaggingType(T.WeaponBombard);
                 addLaggingType(T.ComputerTargettingFleet);
             }
@@ -1526,11 +1529,13 @@ export function performResearch(galaxy: Galaxy, empire: Empire, timePassed: numb
 // ---------------------------------------------------------------------------
 
 // Empire.3.cs ResolveEmpireRaceTendency (3005).
-export function resolveEmpireRaceTendency(race: Race): number {
-    // TODO(port) M4j: Race.AggressionLevel / CautionLevel periodic levels (Race.cs 350-377); base levels read here.
-    if (race.aggression > race.caution && race.aggression > race.intelligence) return 3;
-    if (race.caution > race.aggression && race.caution > race.intelligence) return 2;
-    if (race.intelligence > race.caution && race.intelligence > race.aggression) return 1;
+// Race.AggressionLevel / CautionLevel are the periodic levels while the race's change period is active (Race.cs 350-377).
+export function resolveEmpireRaceTendency(galaxy: Galaxy, race: Race): number {
+    const aggression = raceAggressionLevel(galaxy, race);
+    const caution = raceCautionLevel(galaxy, race);
+    if (aggression > caution && aggression > race.intelligence) return 3;
+    if (caution > aggression && caution > race.intelligence) return 2;
+    if (race.intelligence > caution && race.intelligence > aggression) return 1;
     return 0;
 }
 
@@ -1614,7 +1619,7 @@ export function doCrashResearch(galaxy: Galaxy, empire: Empire): void {
     if (num >= 0) researchNode = researchNodeList[num];
     if (researchNode === null) {
         // C# dereferences DominantRace without a null check.
-        switch (resolveEmpireRaceTendency(empire.dominantRace!)) {
+        switch (resolveEmpireRaceTendency(galaxy, empire.dominantRace!)) {
             case 0: {
                 const index = galaxy.rnd.next(0, researchNodeList.length);
                 researchNode = researchNodeList[index];
