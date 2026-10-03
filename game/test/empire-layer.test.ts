@@ -2,7 +2,8 @@
 
 import { beforeAll, describe, expect, it } from 'vitest';
 import type { Empire } from '../src/sim/empire';
-import { colonyRingRadius, collectEmpireSystems, EMPIRE_FALLBACK_COLORS, empireColour, INDEPENDENT_RING_COLOR, territoryRadius, toPixiColor } from '../src/render/empireLayer';
+import { colonyRingRadius, EMPIRE_FALLBACK_COLORS, empireColour, INDEPENDENT_RING_COLOR, toPixiColor } from '../src/render/empireLayer';
+import { collectTerritorySources } from '../src/render/territoryField';
 import { createGame, type CreateGameOptions } from '../src/sim/game';
 import { GalaxyShape } from '../src/sim/types';
 import { loadGameDataFs } from './helpers/loadGameDataFs';
@@ -19,13 +20,6 @@ describe('colonyRingRadius', () => {
         expect(colonyRingRadius(294, 1)).toBe(147 + 28);
         expect(colonyRingRadius(100, 2)).toBe(50 + 14);
         expect(colonyRingRadius(100, 10)).toBe(50 + 6);
-    });
-});
-
-describe('territoryRadius', () => {
-    it('is ~1.2 sectors x 0.25', () => {
-        expect(territoryRadius(1000000)).toBeCloseTo(1000000 * 1.2 * 0.25);
-        expect(territoryRadius(0)).toBe(0);
     });
 });
 
@@ -101,10 +95,10 @@ describe('empireColour', () => {
     });
 });
 
-// Task M2e3: collectEmpireSystems derives per-empire owned systems from
-// habitat ownership (habitat.owner), the source of truth the layer draws
-// from — independent of the empire.colonies bookkeeping list.
-describe('collectEmpireSystems (task M2e3)', () => {
+// The territory overlay's sources (territoryField.ts collectTerritorySources, the colony filter of EmpireTerritory.cs
+// CalculateEmpireTerritoryGrid 394-437) on a real game: every major empire's colonies, with the influence radius the sim
+// keeps, and no independent colony (its radius is 0, Habitat.cs RecalculateColonyInfluenceRadius 1067).
+describe('collectTerritorySources on a new game', () => {
     let gameData: GameData;
     beforeAll(async () => { gameData = await loadGameDataFs(); }, 60000);
 
@@ -120,46 +114,21 @@ describe('collectEmpireSystems (task M2e3)', () => {
         };
     }
 
-    it('returns one entry per non-independent empire, each owning >= 1 system', () => {
+    it('god mode: one or more sources per major empire, radii from the sim; the player sees at least its own', () => {
         const galaxy = createGame(autostartOpts()).galaxy;
-        const collected = collectEmpireSystems(galaxy);
-        // The four normal empires (player + 3 AI) are in galaxy.empires; the
-        // independent empire is separate and excluded.
-        expect(collected.length).toBe(4);
-        for (const es of collected) {
-            expect(galaxy.empires.includes(es.empire)).toBe(true);
-            if (galaxy.independentEmpire !== null) {
-                expect(es.empire).not.toBe(galaxy.independentEmpire);
-            }
-            expect(es.systems.length).toBeGreaterThanOrEqual(1);
-            for (const sysIdx of es.systems) {
-                expect(sysIdx).toBeGreaterThanOrEqual(0);
-                expect(sysIdx).toBeLessThan(galaxy.systems.length);
-            }
+        const all = collectTerritorySources(galaxy, null);
+        const owners = new Set(all.map((s) => galaxy.empires[s.owner]));
+        expect(owners.size).toBe(4);
+        expect(owners.has(galaxy.independentEmpire!)).toBe(false);
+        for (const s of all) {
+            expect(s.r).toBeGreaterThan(0);
+            const colony = galaxy.empires[s.owner].colonies.find((c) => c.xpos === s.x && c.ypos === s.y)!;
+            expect(colony.colonyInfluenceRadius).toBe(s.r);
         }
-        // Every empire in galaxy.empires that owns habitats appears exactly once.
-        const names = collected.map((es) => es.empire.name);
-        expect(new Set(names).size).toBe(names.length);
+        const player = galaxy.playerEmpire!;
+        const seen = collectTerritorySources(galaxy, player);
+        expect(seen.length).toBeGreaterThan(0);
+        expect(seen.length).toBeLessThanOrEqual(all.length);
+        expect(seen.some((s) => galaxy.empires[s.owner] === player)).toBe(true);
     }, 60000);
-});
-// Empire Territory shows only systems the viewer has explored (EmpireTerritory.cs CalculateEmpireTerritoryGrid 417 / 428 /
-// 437 and CalculateEmpireSystemTerritory 341: `godMode || viewingEmpire.CheckSystemExplored(...)`), so unmet empires whose
-// colonies the player has never seen leave no shading.
-import { knownTerritorySystems } from '../src/render/empireLayer';
-import { SystemVisibilityStatus } from '../src/sim/visibility';
-
-describe('knownTerritorySystems (EmpireTerritory.cs CheckSystemExplored)', () => {
-    const viewer = (status: Record<number, SystemVisibilityStatus>): Empire =>
-        ({ visibility: { checkSystemVisibilityStatus: (i: number) => status[i] ?? SystemVisibilityStatus.Unexplored } }) as unknown as Empire;
-
-    it('keeps only explored / visible systems', () => {
-        const v = viewer({ 1: SystemVisibilityStatus.Explored, 2: SystemVisibilityStatus.Visible, 3: SystemVisibilityStatus.Unexplored });
-        expect(knownTerritorySystems([1, 2, 3, 4], v)).toEqual([1, 2]);
-    });
-    it('an empire whose systems are all unexplored has no territory at all', () => {
-        expect(knownTerritorySystems([5, 6, 7], viewer({}))).toEqual([]);
-    });
-    it('god mode / no viewer shows everything', () => {
-        expect(knownTerritorySystems([5, 6, 7], null)).toEqual([5, 6, 7]);
-    });
 });
