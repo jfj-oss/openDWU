@@ -19,7 +19,9 @@ import { designCalculateMaintenanceCosts } from '../src/sim/construction/empireC
 import { racePeriodicRaceEvent } from '../src/sim/colonyTick';
 import { RaceEventType } from '../src/sim/eventTypes';
 import { baconSettings } from '../src/sim/data/baconSettings';
-import { empireGovernmentAttributes } from '../src/sim/empire';
+import { empireGovernmentAttributes, registerTakeOwnershipOfColonyFull } from '../src/sim/empire';
+import { takeOwnershipOfColonyFull } from '../src/sim/combat/ownership';
+import { strategicValue } from '../src/sim/territory';
 import { calculateScenicFactorIncludingRuinsWonders, checkColonyForResourceClearance } from '../src/sim/civilianAI';
 import { maximumFuelRange } from '../src/sim/movement';
 import { resolveLocationsToDefend } from '../src/sim/characters';
@@ -301,5 +303,36 @@ describe('Empire.9.cs 1819 ResolveLocationsToDefend reads the cached Empire.Capi
         expect(resolveLocationsToDefend(gal, e, false)).not.toContain(h);
         e.capitals = [...e.capitals, h];
         expect(resolveLocationsToDefend(gal, e, false)).toContain(h);
+    });
+});
+
+describe('Empire.1.cs 201 TakeOwnershipOfColony (setup path): SelectBestCandidateForCapital', () => {
+    it("losing the capital picks the remaining colony with the highest StrategicValue, not Colonies[0]", () => {
+        const g = newGame();
+        const gal = g.galaxy;
+        const e = g.playerEmpire;
+        const home = e.capital!;
+        // Two independent colonies (StrategicValue 10000, the floor) join the player; one of them is the capital that is lost.
+        const [lost, low] = gal.habitats.filter((x) => x.empire === gal.independentEmpire && x.population.totalAmount > 0).slice(0, 2);
+        for (const h of [lost, low]) {
+            const i = gal.independentEmpire!.colonies.indexOf(h);
+            if (i >= 0) gal.independentEmpire!.colonies.splice(i, 1);
+            h.empire = e;
+            h.owner = e;
+        }
+        expect(strategicValue(home)).toBeGreaterThan(strategicValue(low));
+        e.colonies = [lost, low, home];
+        e.capital = lost;
+        const capital = lost;
+        const high = home;
+        // Run the Empire.takeOwnershipOfColony body itself (the pre-registration path), then restore the full port.
+        registerTakeOwnershipOfColonyFull(null as never);
+        try {
+            e.takeOwnershipOfColony(capital, gal.independentEmpire);
+        } finally {
+            registerTakeOwnershipOfColonyFull(takeOwnershipOfColonyFull);
+        }
+        expect(e.colonies).toEqual([low, high]);
+        expect(e.capital).toBe(high);
     });
 });
