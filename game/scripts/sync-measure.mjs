@@ -5,7 +5,7 @@
 // cold object counts, and the most-changed fields. --verify serializes the replica and the authoritative galaxy after
 // a full cold compare and checks that the two save texts are identical.
 //
-//   node scripts/sync-measure.mjs <save> [--steps 300] [--speed 1] [--warm 60] [--cold-ms 3] [--hot-fields] [--verify] [--census]
+//   node scripts/sync-measure.mjs <save> [--steps 300] [--speed 1] [--warm 60] [--cold-ms 3] [--pump-ms 0.5] [--hot-fields] [--compare-options] [--verify] [--census]
 import { build } from 'rolldown';
 import { tmpdir } from 'node:os';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
@@ -93,6 +93,47 @@ try {
     replica.apply(cloned, true);
     console.log(`snapshot apply (main): ${(performance.now() - t0).toFixed(0)} ms, replica ${replica.decoder.size} objects`);
 
+    if (arg('compare-options', false) === true) {
+        // Option A (naive): compare the WHOLE graph after every step.
+        const fullDiff = [], fullApply = [], fullKB = [];
+        for (let i = 0; i < 10; i++) {
+            step();
+            const d = source.delta(true);
+            fullDiff.push(d.stats.diffMs);
+            fullKB.push(d.stats.bytes / 1024);
+            fullApply.push(replica.apply(structuredClone(d), true).applyMs);
+        }
+        console.log(`option A-naive, full compare every step (10 steps): worker diff ms ${fmt(stat(fullDiff))}; delta KB ${fmt(stat(fullKB), 0)}; main apply ms ${fmt(stat(fullApply))}`);
+        // Option B: typed-array snapshot of the hot per-frame fields (ships, creatures, fighters, shots).
+        const packMs = [], unpackMs = [], snapKB = [];
+        for (let i = 0; i < 30; i++) {
+            step();
+            const t1 = performance.now();
+            const bos = g.builtObjects.filter((b) => b != null);
+            const shots = [];
+            const fighters = [];
+            for (const b of bos) {
+                for (const w of b.weapons ?? []) shots.push(w);
+                for (const f of b.fighters ?? []) fighters.push(f);
+            }
+            const N = bos.length, C = g.creatures.length, F = fighters.length, W = shots.length;
+            const buf = new Float64Array(N * 12 + C * 10 + F * 8 + W * 6);
+            let k = 0;
+            for (const b of bos) { buf[k++] = b.builtObjectID; buf[k++] = b.xpos; buf[k++] = b.ypos; buf[k++] = b._heading; buf[k++] = b.currentSpeed; buf[k++] = b._targetSpeed; buf[k++] = b.targetHeading; buf[k++] = b.lastTouch; buf[k++] = b.parentOffsetX; buf[k++] = b.parentOffsetY; buf[k++] = b.hasBeenDestroyed ? 1 : 0; buf[k++] = b.hyperjumpCountdown; }
+            for (const c of g.creatures) { buf[k++] = c.xpos; buf[k++] = c.ypos; buf[k++] = c.currentHeading; buf[k++] = c.currentSpeed; buf[k++] = c.targetHeading; buf[k++] = c.targetSpeed; buf[k++] = c.lastTouch; buf[k++] = c.parentX; buf[k++] = c.parentY; buf[k++] = c.hasBeenDestroyed ? 1 : 0; }
+            for (const f of fighters) { buf[k++] = f.xpos; buf[k++] = f.ypos; buf[k++] = f.heading; buf[k++] = f.currentSpeed; buf[k++] = f.targetHeading; buf[k++] = f.lastTouch; buf[k++] = f.onboardCarrier ? 1 : 0; buf[k++] = f.hasBeenDestroyed ? 1 : 0; }
+            for (const w of shots) { buf[k++] = w.x; buf[k++] = w.y; buf[k++] = w.heading; buf[k++] = w.distanceTravelled; buf[k++] = w.lastFired; buf[k++] = w._resetNext ? 1 : 0; }
+            packMs.push(performance.now() - t1);
+            snapKB.push(buf.byteLength / 1024);
+            const t2 = performance.now();
+            const moved = structuredClone(buf, { transfer: [buf.buffer] });
+            let acc = 0;
+            for (let j = 0; j < moved.length; j++) acc += moved[j];
+            unpackMs.push(performance.now() - t2 + (acc === 1e300 ? 1 : 0));
+        }
+        console.log(`option B, typed-array snapshot of hot fields: worker pack ms ${fmt(stat(packMs))}; KB ${fmt(stat(snapKB), 0)}; main transfer+read ms ${fmt(stat(unpackMs))} (every consumer must be ported to read it)`);
+        console.log(`option C, full replica refresh at 4-10 Hz: ${tSnap.toFixed(0)} ms encode + ${(snap.stats.bytes / 1048576).toFixed(0)} MB + main rebuild (snapshot lines above) per refresh; a delta refresh at that rate costs the full compare above per refresh`);
+    }
     const forced = [], hotKB = [], pumpMsS = [], backlog = [], gated = [], hotMs = [], diffMs = [], applyMs = [], cloneMs = [], bytes = [], sets = [], fresh = [], stepMs = [];
     source.encoder.profile = {};
     for (let i = 0; i < steps; i++) {

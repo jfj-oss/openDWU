@@ -267,10 +267,10 @@ interface ShapeInfo {
     ungated: Uint8Array;
 }
 
-/** NaN-aware "changed" test (shadow and value both NaN: unchanged). */
+/** "Changed" by SameValue: NaN equals NaN, -0 differs from 0 (the state digest hashes the sign bit). */
 function changed(a: unknown, b: unknown): boolean {
     // eslint-disable-next-line no-self-compare
-    return a !== b && (a === a || b === b);
+    return a !== b ? a === a || b === b : a === 0 && 1 / (a as number) !== 1 / (b as number);
 }
 
 const KIND_NAMES = ['class', 'plain', 'array', 'map', 'set', 'typed'];
@@ -1076,7 +1076,7 @@ function makeGateFn(keys: readonly string[], pinned: Uint8Array, gateSlot: numbe
     const lines: string[] = [];
     for (let i = 0; i < keys.length; i++) {
         if (pinned[i] !== 1) continue;
-        lines.push(`v = o${access(keys[i])}; w = s[${i}]; if (v !== w && (v === v || w === w)) { s[${i}] = v; enc.emitSet(id, ${i}, v, w);${i === gateSlot ? ' g = true;' : ''} }`);
+        lines.push(`v = o${access(keys[i])}; w = s[${i}]; if (v !== w ? v === v || w === w : v === 0 && 1 / v !== 1 / w) { s[${i}] = v; enc.emitSet(id, ${i}, v, w);${i === gateSlot ? ' g = true;' : ''} }`);
     }
     return new Function('o', 's', 'enc', 'id', `let v, w, g = false;\n${lines.join('\n')}\nreturn g;`) as NonNullable<ShapeInfo['gateDiff']>;
 }
@@ -1086,7 +1086,7 @@ function makeGateFn(keys: readonly string[], pinned: Uint8Array, gateSlot: numbe
 function makeDiffFn(keys: readonly string[], slots: readonly number[] | null): DiffFn {
     const access = (k: string): string => (/^[A-Za-z_$][\w$]*$/.test(k) ? `.${k}` : `[${JSON.stringify(k)}]`);
     const which = slots ?? keys.map((_, i) => i);
-    const lines = which.map((i) => `v = o${access(keys[i])}; w = s[${i}]; if (v !== w && (v === v || w === w)) { s[${i}] = v; enc.emitSet(id, ${i}, v, w); }`);
+    const lines = which.map((i) => `v = o${access(keys[i])}; w = s[${i}]; if (v !== w ? v === v || w === w : v === 0 && 1 / v !== 1 / w) { s[${i}] = v; enc.emitSet(id, ${i}, v, w); }`);
     try {
         return new Function('o', 's', 'enc', 'id', `let v, w;\n${lines.join('\n')}`) as DiffFn;
     } catch {

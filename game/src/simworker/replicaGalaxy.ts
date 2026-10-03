@@ -182,6 +182,11 @@ export class GalaxyReplica {
         this.decoder = new ReplicaDecoder({ classes: codec.classes, revive: codec.revive, externals: this.statics.byRef });
     }
 
+    /** The replica's static GameData objects by `kind:key` (the save's externals). */
+    get staticByRef(): Map<string, object> {
+        return this.statics.byRef;
+    }
+
     /** The replica Galaxy (null before the snapshot). */
     get galaxy(): Galaxy | null {
         return (this.decoder.object(0) as Galaxy | null) ?? null;
