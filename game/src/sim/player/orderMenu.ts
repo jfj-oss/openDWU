@@ -243,11 +243,8 @@ function systemVisibility(empire: Empire, systemIndex: number): SystemVisibility
 }
 /** Empire.IsObjectVisibleToThisEmpire for the StellarObject kinds the menus test. */
 function visibleTo(ctx: { galaxy: Galaxy; empire: Empire }, o: BuiltObject | Habitat | Creature): boolean {
-    if (isCreature(o)) {
-        // TODO(port): the Creature branch of Empire.IsObjectVisibleToThisEmpire (Empire.9.cs 3065) is not ported — a
-        // creature the renderer shows (and can pick) counts as visible.
-        return true;
-    }
+    // Empire.9.cs 3037 IsObjectVisibleToThisEmpire(Creature) (visibility.ts isCreatureVisible).
+    if (isCreature(o)) return ctx.empire.visibility.isCreatureVisible(o);
     return isObjectVisibleToThisEmpire(ctx.galaxy, ctx.empire, o);
 }
 

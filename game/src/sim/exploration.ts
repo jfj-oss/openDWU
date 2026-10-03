@@ -74,6 +74,8 @@ import { selectRandomRace } from './pirates';
 import { gameText } from './colonyTick';
 import { baconSettings } from './data/baconSettings';
 import { formatGameTextNow, formatNet, tryGetText } from './textResolver';
+import { generateIndependentColonyReport, generateRaceReport } from './galaxyReports';
+import { resolveTechBonusFactor } from './combat/attackAI';
 
 // ---------------------------------------------------------------------------------------------------------------
 // Constants
@@ -697,9 +699,16 @@ export function scanArea(galaxy: Galaxy, builtObject: BuiltObject): void {
         empireOfShip.resourceMap.setResourcesKnown(habitat, true);
         builtObject.scanHabitatIndex = habitat.habitatIndex;
         builtObject.lastScanTime = galaxyStarDate(galaxy);
-        // 2069-2089: restricted-resource discovery messages (SendEventMessageToEmpire) — UI only.
+        // 2069-2089: a restricted resource on an unowned / independent habitat (the current owner, after the encounter).
+        if (habitat.empire === null || habitat.empire === galaxy.independentEmpire) sendRestrictedResourceDiscoveries(galaxy, empireOfShip, habitat);
         if (empire === galaxy.independentEmpire) {
-            // 2090-2098: independent colony report (SendEventMessageToEmpire IndependentPopulation) — UI only.
+            // 2090-2098: the independent colony report (Galaxy.1.cs 1314; its story clue draws Rnd for the player).
+            if (habitat.population != null && habitat.population.dominantRace !== null) {
+                const dominantRace = habitat.population.dominantRace;
+                const message = generateIndependentColonyReport(galaxy, empireOfShip, habitat, dominantRace);
+                const text2 = formatGameTextNow('Independent Colony Discovered');
+                sendEventMessageToEmpire(empireOfShip, EventMessageType.IndependentPopulation, text2, message, dominantRace, habitat);
+            }
             continue;
         }
         if (galaxy.rnd.next(0, 800) !== 1 || (habitat.category !== HabitatCategoryType.Planet && habitat.category !== HabitatCategoryType.Moon) || habitat.empire !== null) {
@@ -726,6 +735,44 @@ export function scanArea(galaxy: Galaxy, builtObject: BuiltObject): void {
     }
 }
 
+/**
+ * BuiltObject.1.cs 2069-2089: one "<resource> Discovered" event message per restricted resource of a newly surveyed
+ * unowned or independent habitat. No Rnd.
+ */
+function sendRestrictedResourceDiscoveries(galaxy: Galaxy, empire: Empire, habitat: Habitat): void {
+    for (const resource of habitat.resources) {
+        if (resource == null || !isRestrictedResource(galaxy, resource.resourceId)) continue;
+        const name = galaxy.resourceSystem.resources[resource.resourceId].name;
+        const habitat2 = galaxy.determineHabitatSystemStar(habitat);
+        const category = resolveDescription(HabitatCategoryType as unknown as Record<number, string>, habitat.category).toLowerCase();
+        let text = formatGameTextNow('Valuable Discovery ENVIRONMENT PLANETTYPE NAME SYSTEM', [
+            resolveDescription(HabitatType as unknown as Record<number, string>, habitat.type).toLowerCase(),
+            category,
+            habitat.name,
+            habitat2?.name ?? '',
+        ]);
+        text += '.\n\n';
+        switch (name.toLowerCase()) {
+            case 'korabbian spice':
+                text += formatGameTextNow('Restricted Resource Discovery - Korabbian Spice', [category]);
+                break;
+            case 'zentabia fluid':
+                text += formatGameTextNow('Restricted Resource Discovery - Zentabia Fluid', [category]);
+                break;
+            case 'loros fruit':
+                text += formatGameTextNow('Restricted Resource Discovery - Loros Fruit', [category]);
+                break;
+            default:
+                text += formatGameTextNow('Restricted Resource Discovery - General', [category, name]);
+                break;
+        }
+        text += '\n\n';
+        text += formatGameTextNow('Restricted Resource Benefits');
+        const title = formatGameTextNow('X Discovered', [name]);
+        sendEventMessageToEmpire(empire, EventMessageType.RestrictedResourceDiscovered, title, text, resource, habitat);
+    }
+}
+
 /** BuiltObject.1.cs 2127-2209: the deserted ship found on a surveyed planet/moon (state-owned, obsolete design). */
 function generateDesertedShip(galaxy: Galaxy, empire: Empire, habitat: Habitat): void {
     let designSpecification = null;
@@ -747,18 +794,30 @@ function generateDesertedShip(galaxy: Galaxy, empire: Empire, habitat: Habitat):
     // C# dereferences designSpecification / design unguarded (NullReferenceException).
     const subRole = designSpecification!.subRole;
     let pictureRef = resolveMajorShipImageIndex(FreedomAllianceFamily, subRole, true);
-    switch (habitat.type) {
-        case HabitatType.GasGiant:
-        case HabitatType.FrozenGasGiant:
-        case HabitatType.BarrenRock:
-        case HabitatType.Continental:
-        case HabitatType.Ice:
-        case HabitatType.MarshySwamp:
-        case HabitatType.Ocean:
-        case HabitatType.Desert:
-        case HabitatType.Volcanic:
-            pictureRef = resolveMinorShipImageIndex(galaxy, subRole, true);
-            break;
+    const habitat4 = galaxy.determineHabitatSystemStar(habitat);
+    let text4 = formatGameTextNow('Strange Discovery ENVIRONMENT PLANETTYPE NAME SYSTEM', [
+        resolveDescription(HabitatType as unknown as Record<number, string>, habitat.type).toLowerCase(),
+        resolveDescription(HabitatCategoryType as unknown as Record<number, string>, habitat.category).toLowerCase(),
+        habitat.name,
+        habitat4?.name ?? '',
+    ]);
+    text4 += '.\n\n';
+    // 2147-2183: the habitat type's discovery line (the ship's sub-role, its name).
+    const DESERTED_SHIP_TEXT: Partial<Record<HabitatType, string>> = {
+        [HabitatType.GasGiant]: 'Deserted Ship Gas Giant',
+        [HabitatType.FrozenGasGiant]: 'Deserted Ship Frozen Gas Giant',
+        [HabitatType.BarrenRock]: 'Deserted Ship Barren Rock',
+        [HabitatType.Continental]: 'Deserted Ship Continental',
+        [HabitatType.Ice]: 'Deserted Ship Ice',
+        [HabitatType.MarshySwamp]: 'Deserted Ship Marshy Swamp',
+        [HabitatType.Ocean]: 'Deserted Ship Ocean',
+        [HabitatType.Desert]: 'Deserted Ship Desert',
+        [HabitatType.Volcanic]: 'Deserted Ship Volcanic',
+    };
+    const typeTag = DESERTED_SHIP_TEXT[habitat.type];
+    if (typeTag !== undefined) {
+        text4 += formatGameTextNow(typeTag, [resolveDescription(BuiltObjectSubRole as unknown as Record<number, string>, subRole), text3]);
+        pictureRef = resolveMinorShipImageIndex(galaxy, subRole, true);
     }
     if (subRole === BuiltObjectSubRole.ColonyShip) pictureRef = resolveMinorShipImageIndex(galaxy, BuiltObjectSubRole.ColonyShip, true);
     const design = generateDesignFromSpec(galaxy, empire, designSpecification!, 3.0, galaxyStarDate(galaxy))!;
@@ -776,7 +835,20 @@ function generateDesertedShip(galaxy: Galaxy, empire: Empire, habitat: Habitat):
     builtObject.heading = galaxy.selectRandomHeading();
     builtObject.targetHeading = builtObject.heading;
     builtObject.supportCostFactor = 0.5;
-    // 2190-2208: race report / tech-bonus text + SendEventMessageToEmpire FreeSuperShip — UI only.
+    // 2205-2219: the colony ship's race report, the tech-bonus line and the FreeSuperShip event message. No Rnd.
+    if (builtObject.subRole === BuiltObjectSubRole.ColonyShip && builtObject.nativeRace !== null) {
+        text4 += '\n\n';
+        text4 += formatGameTextNow('Colony Ship Race', [builtObject.nativeRace.name]);
+        text4 += '.\n\n';
+        text4 += generateRaceReport(galaxy, builtObject.nativeRace);
+    }
+    const num7 = resolveTechBonusFactor(empire, galaxy, builtObject);
+    if (num7 > 1.0) {
+        text4 += '\n\n';
+        text4 += formatGameTextNow('Disassembling the advanced technology in this ship');
+    }
+    const text5 = formatGameTextNow('Deserted Ship Discovered');
+    sendEventMessageToEmpire(empire, EventMessageType.FreeSuperShip, text5, text4, habitat, builtObject);
 }
 
 /**

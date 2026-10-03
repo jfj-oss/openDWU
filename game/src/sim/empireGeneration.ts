@@ -8,7 +8,7 @@
 // original until Empire.DoTasks exists. Other unported callees here don't
 // draw Rnd (checked): LoadEmpirePolicy, TakeOwnershipOfColony,
 // GenerateDesignSpecifications, Research.Update, LoadOptimizedDesigns,
-// GrowPopulation, EstimatedDefensiveForceRequired,
+// EstimatedDefensiveForceRequired,
 // GenerateNewTroop; SetTechTreeLevel draws only for fractional tech levels.
 // Of DoTasks only CreateNewDesigns, IdentifyResourceCentres and
 // ProjectForceStructure / ProjectPrivateForceStructure run (task M3b; none draws
@@ -27,6 +27,7 @@ import { Population } from './population';
 import { setEmpireExplorationAmount } from './visibility';
 import { runGameStartEmpireTick } from './tick/gameStart';
 import { habitatDoTasks } from './tick/habitatTick';
+import { growPopulation } from './colonyTick';
 import { galaxyNow } from './tick/simTime';
 
 export interface GenerateEmpireResult {
@@ -136,7 +137,8 @@ export function generateEmpire(
     num5 = Math.max(num5, val);
     capital.population.add(new Population(race, num5, galaxy));
     capital.population.totalAmount = num5;
-    // TODO(port): capital.GrowPopulation(TimeSpan.Zero) — no Rnd.
+    // Galaxy.7.cs 5258 capital.GrowPopulation(new TimeSpan(0L)) (zero span: the floor and the MaximumPopulation clamp). No Rnd.
+    growPopulation(galaxy, capital, 0);
     // (Control* automation flags are re-set here in the C#; the ctor already
     // set the same values.)
     galaxy.empires.push(empire);
@@ -150,7 +152,8 @@ export function generateEmpire(
     // for fractional levels) + Research.Update.
     if (galaxy.researchStatic !== null) empire.research.setTechTreeLevel(rnd, race, techLevel, false);
     empire.research.update(race);
-    // TODO(port): LoadOptimizedDesignsForEmpire (designs).
+    // Galaxy.7.cs 5286 LoadOptimizedDesignsForEmpire reads <install>/designs/<race>/*.dwd (BinaryFormatter); the shipped
+    // game has no designs folder, so it adds nothing. TODO(port): .dwd loading — Galaxy.4.cs:1087 LoadDesigns.
     empire.reviewResearchAbilities();
     empire.reviewDesignsBuiltObjectsImprovedComponents();
     empire.reviewTroopTypes();

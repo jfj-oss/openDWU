@@ -914,7 +914,7 @@ export function checkHabitatIsEmpire(galaxy: Galaxy, habitat: Habitat): void {
             builtObject.reDefine();
         }
     }
-    // TODO(port) M4i: EnsureStrategicResourceSupply (Empire.6.cs 1656) — stub.
+    // Empire.6.cs 1656 EnsureStrategicResourceSupply (construction/empireConstruction.ts).
     ensureStrategicResourceSupply(galaxy, empire);
     empire.resolveSystemVisibility(habitat.xpos, habitat.ypos);
     galaxy.empires.push(empire);

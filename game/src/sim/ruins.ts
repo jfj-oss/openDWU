@@ -624,8 +624,7 @@ export function placeRuinsUnlockTech(galaxy: Galaxy, empire: Empire, techLevel: 
                 if (habitat10 !== null) {
                     // C# Monitor.Enter(galaxy._LockObject) around AddHabitat — no-op here.
                     galaxy.addHabitat(habitat10, habitat11);
-                    // TODO(port): Galaxy.AddHabitat's FixResourceMaps (shifts every empire's
-                    // ResourceMap bits past the inserted index) is not ported in galaxy.ts.
+                    // (galaxy.ts addHabitat runs Galaxy.9.cs FixResourceMaps for the inserted index.)
                     empire.resourceMap.setResourcesKnown(habitat10, false);
                     selectRuinsUnlockTech(galaxy, habitat10, researchNodeDefinition.projectId);
                 }
