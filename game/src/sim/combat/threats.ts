@@ -15,8 +15,9 @@
 //   Galaxy.4.cs 2012 DetermineGalaxyLocationsInRangeAtPoint; BuiltObjectList.cs 570 CalculateAttackingFirepowerNearEmpireTargets.
 //
 // Galaxy.Rnd: one draw site, IdentifySystemThreatsToUs (Bacon 4881 `Galaxy.Rnd.NextDouble() < num8`, the pirate-smuggler
-// detection roll), in C# order. Fighters (M4p) are not modelled as threats yet: the Fighter branches of the C#
-// (Galaxy.7.cs 3506 DetermineThreatLevel(Fighter …), the `threat is Fighter` redirects) are noted where they occur.
+// detection roll), in C# order. Fighters: Galaxy.7.cs 3506 DetermineThreatLevel(Fighter …) is combat/fighters.ts
+// determineThreatLevelFighter; fighters reach BuiltObject.Attackers, so ShouldFleeFrom can return one (the
+// `stellarObject is Fighter` carrier redirects, escapeTargetForFleeFrom).
 
 import { isAiControlled } from '../missions/playerOrder';
 import type { Galaxy } from '../galaxy';
@@ -45,7 +46,7 @@ import { BuiltObjectMissionPriority, BuiltObjectMissionType, CommandAction, buil
 import { assignMission, clearPreviousMissionRequirements, recordRevertMission } from '../missions/assign';
 import { startNewShipGroupBattleStats } from './damage';
 import { shipGroupAssignMission, shipGroupCompleteMission, shipGroupTotalOverallStrengthFactor, type ShipGroup } from '../fleets/shipGroup';
-import { withinFuelRange, withinFuelRangeAndRefuel } from '../movement';
+import { warpSpeedWithBonuses, withinFuelRange, withinFuelRangeAndRefuel } from '../movement';
 import { checkColonyShipMissionCancelled, determineDestroyOrCaptureTarget, shouldAttack } from './attackAI';
 import { determineThreatLevelFighter, isFighter, type Fighter } from './fighters';
 import { formatGameTextNow } from '../textResolver';
@@ -63,7 +64,7 @@ export const ATTACK_OVERMATCH_FACTOR = 2.0;
 /** Galaxy.AttackEvaluationRangeFactor = 20000.0 (5038). */
 export const ATTACK_EVALUATION_RANGE_FACTOR = 20000.0;
 
-/** A `_Threats` element: C# StellarObject (BuiltObject | Creature here; Fighter threats are M4p). */
+/** A `_Threats` element: C# StellarObject; Galaxy.7.cs 3249 EvaluateThreats only adds BuiltObjects and Creatures. */
 export type Threat = BuiltObject | Creature;
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -1139,10 +1140,7 @@ export function identifySystemThreatsToUs(galaxy: Galaxy, ship: BuiltObject, sys
 // BuiltObject.1.cs 208 PerformThreatEvaluation / 243 ThreatEvaluation and helpers
 // ---------------------------------------------------------------------------------------------------------------
 
-/** BuiltObject.WarpSpeedWithBonuses (BuiltObject.cs): WarpSpeed × fleet/captain bonuses — TODO(port) M4c/M4l: the bonuses; reads WarpSpeed. */
-export function warpSpeedWithBonuses(bo: BuiltObject): number {
-    return (bo as BuiltObject & { warpSpeedWithBonuses?: number }).warpSpeedWithBonuses ?? bo.warpSpeed;
-}
+// BuiltObject.cs 572 WarpSpeedWithBonuses (fleet and captain hyperjump bonuses): movement.ts warpSpeedWithBonuses.
 
 /** BuiltObject.1.cs 208 PerformThreatEvaluation(time). */
 export function performThreatEvaluation(galaxy: Galaxy, bo: BuiltObject, time: number): void {
@@ -1740,6 +1738,19 @@ export function determineShipGroupTarget(galaxy: Galaxy, bo: BuiltObject, target
     return null;
 }
 
+/**
+ * BuiltObject.1.cs 305-312 / 1264-1271: the Escape target for a ShouldFleeFrom result. A Fighter (fighters register in
+ * BuiltObject.Attackers, combat/fighters.ts) is replaced by its parent ship unless that ship has been destroyed.
+ */
+export function escapeTargetForFleeFrom(stellarObject: StellarObject): StellarObject {
+    const so: StellarObject | Fighter = stellarObject;
+    if (isFighter(so)) {
+        const fighter = so;
+        if (fighter.parentBuiltObject !== null && !fighter.parentBuiltObject.hasBeenDestroyed) return fighter.parentBuiltObject;
+    }
+    return stellarObject;
+}
+
 /** BuiltObject.1.cs 243 ThreatEvaluation(galaxy, time). */
 export function threatEvaluation(galaxy: Galaxy, builtObject: BuiltObject, time: number): void {
     const bo = builtObject;
@@ -1791,8 +1802,8 @@ export function threatEvaluation(galaxy: Galaxy, builtObject: BuiltObject, time:
         checkColonyShipMissionCancelled(galaxy, bo, 0);
         recordRevertMission(galaxy, bo, BuiltObjectMissionType.Escape);
         clearPreviousMissionRequirements(galaxy, bo);
-        // 305-312: a Fighter flee target is replaced by its (live) parent ship — Fighters are not threats in the TS port (M4p).
-        assignMission(galaxy, bo, BuiltObjectMissionType.Escape, stellarObject, null, BuiltObjectMissionPriority.High);
+        // 305-312: flee from a Fighter's (live) carrier instead of the fighter.
+        assignMission(galaxy, bo, BuiltObjectMissionType.Escape, escapeTargetForFleeFrom(stellarObject), null, BuiltObjectMissionPriority.High);
     } else {
         if ((bo.subRole === BuiltObjectSubRole.ResupplyShip && bo.isDeployed) || !flag) {
             return;

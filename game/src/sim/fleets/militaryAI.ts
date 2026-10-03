@@ -88,7 +88,7 @@ import { PirateRelationType, obtainPirateRelation } from '../pirateRelations';
 import { EmpireActivityType } from '../pirates/empireActivity';
 import { EmpireMessageType, sendMessageToEmpire, sendMessageToEmpireWithTitle } from '../messages';
 import { isObjectVisibleToThisEmpire } from '../independentTraders';
-import { arraySortKeysItems, currentRange, getNearestBuiltObjectWithinRange, sortStellarObjectsByDistance, ultraFastFindNearestRefuellingLocation, withinFuelRangeAndRefuel } from '../movement';
+import { arraySortKeysItems, currentRange, getNearestBuiltObjectWithinRange, sortStellarObjectsByDistance, ultraFastFindNearestRefuellingLocation, warpSpeedWithBonuses, withinFuelRangeAndRefuel } from '../movement';
 import {
     calculateOverallStrengthFactor,
     determineBaseStrengthAtHabitat,
@@ -96,7 +96,6 @@ import {
     determineDefendingStrengthFleet,
     fastFindNearestColony,
     THREAT_RANGE,
-    warpSpeedWithBonuses,
 } from '../combat/threats';
 import { checkSystemOwnershipId, determineAngle, determineDestroyOrCaptureTarget, determineSpacePortAtColony } from '../combat/attackAI';
 import { clearAllMissionsForTargetEmpire } from '../combat/teardown';

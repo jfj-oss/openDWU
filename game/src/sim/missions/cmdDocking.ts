@@ -7,9 +7,9 @@
 // Also here: BuiltObject.2.cs 350 FinalizeContractsNotPresentAtLoad, and ContractList.cs 14/37
 // GetContractForCargoWithRemaining{Pickup,Delivery} with their component branch (logistics/contracts.ts has the
 // resource-only versions).
-// Not ported here: the Load `command.Troops` branch (3363-3540: troop loadout picks, TroopList.Sort, invading
-// characters) → combat/troopsRuntime.ts cmdLoadTroops (M4q); ProcessTourists (4825, tourism income) →
-// civilianAI.ts processTourists (M4f).
+// Ported elsewhere: the Load `command.Troops` branch (3363-3540: troop loadout picks, TroopList.Sort, invading
+// characters) is combat/troopsRuntime.ts cmdLoadTroops; ProcessTourists (4825, tourism income) is civilianAI.ts
+// processTourists.
 //
 // Rnd: Dock's first execution draws Rnd.NextDouble() for the smuggler-detection roll (2811) when a pirate smuggler
 // docks at a colony whose bases out-scan its jamming; Dock → CheckMissionStillValid (logistics/docking.ts, its draw is
@@ -526,7 +526,7 @@ export const cmdLoad: CommandHandler = (ctx) => {
             result = timePassed;
         }
     } else if (troops !== null && troops.count > 0) {
-        // TODO(port) M4q: 3363-3540 the troop-loading branch (docked-bay check, loadout picks, invading characters).
+        // 3363-3540: the troop-loading branch (docked-bay check, loadout picks, invading characters).
         result = cmdLoadTroops(ctx);
     } else if (population !== null && population.items.length > 0) {
         let num57 = -1;
