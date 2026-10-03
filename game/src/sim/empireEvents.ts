@@ -25,6 +25,7 @@ import type { Empire } from './empire';
 import type { BuiltObject } from './builtObject';
 import type { Habitat } from './types';
 import type { Race } from './data/races';
+import type { Component } from './data/components';
 import { HabitatType, Habitat as HabitatClass } from './types';
 import { Creature as CreatureClass, CreatureType, type Creature } from './creature';
 import { shadowsBuildFirstMilitaryShip, shadowsFirstContactNormalEmpire, shadowsFirstHyperjump } from './story/storyEvents';
@@ -2051,14 +2052,18 @@ export function checkReviewSpecialPirateEvents(galaxy: Galaxy, empire: Empire): 
     }
 }
 
-/** ResearchNode.Components[0] / ComponentImprovements[0].ImprovedComponent (Empire.7.cs 3470-3480) as { name }. */
-function researchNodeComponent(galaxy: Galaxy, researchNode: TechNode): { componentId: number; name: string } | null {
+/**
+ * ResearchNode.Components[0] / ComponentImprovements[0].ImprovedComponent (Empire.7.cs 3470-3480): the Component itself
+ * (Galaxy.ComponentDefinitionsStatic), which the events below hand to the player's recipient as their additionalData —
+ * Main.Part4.cs:972-984 draws it (bitmap_21[PictureRef], or warpjump_large.png / colonization_large.png for the first
+ * hyperdrive / colonization module).
+ */
+function researchNodeComponent(galaxy: Galaxy, researchNode: TechNode): Component | null {
     let id = -1;
     if (researchNode.def.components != null && researchNode.def.components.length > 0) id = researchNode.def.components[0];
     else if (researchNode.def.componentImprovements != null && researchNode.def.componentImprovements.length > 0) id = researchNode.def.componentImprovements[0].componentId;
     if (id < 0) return null;
-    const c = galaxy.researchStatic?.componentsById.get(id);
-    return { componentId: id, name: c?.name ?? '' };
+    return galaxy.researchStatic?.componentsById.get(id) ?? null;
 }
 
 /**
@@ -2072,7 +2077,7 @@ export function checkSendPreWarpProgressEventMessage(galaxy: Galaxy, self: Empir
     let builtObject: BuiltObject | null = null;
     let habitat: Habitat | null = null;
     let creature: Creature | null = null;
-    let component: { componentId: number; name: string } | null = null;
+    let component: Component | null = null;
     if (subject instanceof BuiltObjectClass) {
         builtObject = subject;
         stellarObject = subject;
@@ -2105,7 +2110,9 @@ export function checkSendPreWarpProgressEventMessage(galaxy: Galaxy, self: Empir
                 if (builtObject !== null && builtObject.parentHabitat !== null) {
                     self.economyEfficiency += 0.25;
                     const text15 = gameText('PreWarpProgressEvent Title BuildFirstMiningStation');
-                    const message10 = gameText('PreWarpProgressEvent Message BuildFirstMiningStation', builtObject.name, builtObject.parentHabitat.name);
+                    // Formatted now: the template uses {0} only, and the surplus planet-name argument would make the deferred
+                    // gameText() encoding ambiguous for a station name ending in a GameText key ("… Mining Station").
+                    const message10 = formatGameTextNow('PreWarpProgressEvent Message BuildFirstMiningStation', [builtObject.name, builtObject.parentHabitat.name]);
                     sendEventMessageToEmpire(self, EventMessageType.GeneralDiscovery, text15, message10, subject, subject);
                 }
                 setPreWarpProgressEventOccurred(self, eventType);

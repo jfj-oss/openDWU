@@ -157,6 +157,102 @@
 .msg-event-picture {
     object-fit: contain;
 }
+/* picEventMessage (SizeMode Zoom): every picture part is scaled to fit its box, centred, aspect kept. */
+.msg-event-pic {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    line-height: 0;
+}
+.msg-event-pic-img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+}
+/* method_654: two pictures side by side. */
+.msg-event-pic-row {
+    gap: 0;
+}
+.msg-event-pic-part {
+    flex: 1 1 0;
+    min-width: 0;
+    height: 100%;
+}
+/* method_652(empire, 200): 333 × 200, the flag (0, 40) 200 × 120 under the race (133, 0) 200 × 200. */
+.msg-event-flagrace {
+    position: relative;
+    aspect-ratio: 333 / 200;
+    width: 100%;
+    max-height: 100%;
+}
+.msg-event-flagrace-flag,
+.msg-event-flagrace-race {
+    position: absolute;
+    display: block;
+    object-fit: fill;
+}
+.msg-event-flagrace-flag {
+    left: 0;
+    top: 20%;
+    width: 60%;
+    height: 60%;
+}
+.msg-event-flagrace-race {
+    left: 40%;
+    top: 0;
+    width: 60%;
+    height: 100%;
+}
+
+/* ---- story event (pnlStoryEvent, Main.Part4.cs:4839 method_570 / 4899 method_572) ---- */
+.msg-story {
+    position: fixed;
+    inset: 0;
+    z-index: 1450; /* over the Main View and HUD, under the original-style windows (1500) */
+    background: #000;
+    color: #fff;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 5px 16px 73px;
+    box-sizing: border-box;
+}
+.msg-story-picture {
+    position: absolute;
+    inset: 0;
+}
+.msg-story-content {
+    position: relative;
+    max-width: 800px;
+    width: 100%;
+    text-align: center;
+    overflow-y: auto;
+    max-height: 100%;
+}
+.msg-story-title {
+    font-size: 26px;
+    font-weight: bold;
+    margin-bottom: 12px;
+    text-shadow: 0 0 6px #000, 0 0 2px #000;
+}
+.msg-story-text {
+    font-size: 16px;
+    line-height: 1.35;
+    white-space: pre-line;
+    text-align: left;
+    text-shadow: 0 0 6px #000, 0 0 2px #000;
+}
+.msg-story .msg-story-close {
+    position: absolute;
+    left: 50%;
+    bottom: 20px;
+    width: 260px;
+    height: 33px;
+    transform: translateX(-50%);
+}
 .ow-text.msg-event-title {
     white-space: pre-line;
     text-align: center;

@@ -11,6 +11,8 @@ import { EventMessageType } from '../sim/eventTypes';
 import { Creature, CreatureType } from '../sim/creature';
 import { Character } from '../sim/characters';
 import { isBuiltObject, isHabitat } from '../sim/missions/mission';
+import { EventAction, EventActionType } from '../sim/story/gameEventModel';
+import { eventMessagePresentation, eventPopupShown } from '../ui/eventMessagePresentation';
 import { empireEvaluationByEmpire, empireEvaluationsOf } from '../sim/diplomacy';
 import type { MessageRoute } from '../ui/messageRouting';
 import { ShipActionType, type ShipAction } from '../sim/player/shipAction';
@@ -37,11 +39,11 @@ export const STING_DISCOVERY = 'discovery.mp3';
 
 /**
  * Port of Main.Part4.cs:487 method_523's sting choice for an event message: the sting file, or null.
- * `suppressAllPopups` is gameOptions_0.SuppressAllPopups (flag), `stingPlaying` musicPlayer_1.IsPlaying.
- * TODO(port): flag7's per-type popup level gate (Main.Part4.cs:1300-1395, the event popup options) — the event
- * popup panel itself (pnlEventMessage) is not ported, so only SuppressAllPopups gates the stings.
+ * `suppressAllPopups` is gameOptions_0.SuppressAllPopups (flag), `stingPlaying` musicPlayer_1.IsPlaying, `popupShown`
+ * the rest of flag7 (Main.Part4.cs:1314-1398, ui/eventMessagePresentation.ts eventPopupShown: the Game Options discovery
+ * settings against the event's popup level).
  */
-export function eventStingFile(type: EventMessageType, additionalData: unknown, suppressAllPopups: boolean, stingPlaying: boolean): string | null {
+export function eventStingFile(type: EventMessageType, additionalData: unknown, suppressAllPopups: boolean, stingPlaying: boolean, popupShown = true): string | null {
     const flag = !suppressAllPopups;
     switch (type) {
         // Main.Part4.cs:509-552: exploration encounters play discovery with their popup.
@@ -56,8 +58,13 @@ export function eventStingFile(type: EventMessageType, additionalData: unknown, 
             return flag ? STING_DISCOVERY : null;
     }
     // Main.Part4.cs:1400: `if (flag7 && !musicPlayer_1.IsPlaying)`.
-    if (!flag || stingPlaying) return null;
+    if (!flag || !popupShown || stingPlaying) return null;
     switch (type) {
+        case EventMessageType.GeneralDiscovery:
+            // 1032-1078 → method_570 (4847): a story EventAction opens pnlStoryEvent, which plays discovery when nothing plays.
+            return additionalData instanceof EventAction && (additionalData.type === EventActionType.GeneralMessageToEmpire || additionalData.type === EventActionType.EmpireMessageToEmpire)
+                ? STING_DISCOVERY
+                : null;
         case EventMessageType.CreatureOutbreak:
             return additionalData instanceof Creature && additionalData.type === CreatureType.SilverMist ? 'dread.mp3' : null;
         case EventMessageType.FreeSuperShip:
@@ -244,9 +251,9 @@ export interface GameAudio {
  * Main.Part4.cs:487 method_523's sting for an event message that reached the player (Empire.EventMessageRecipient):
  * what installGameAudio's recipient plays (in worker mode the recipient is called by ui/workerMessages.ts).
  */
-export function playEventMessageSting(type: EventMessageType, additionalData: unknown, suppressAllPopups: boolean): void {
+export function playEventMessageSting(type: EventMessageType, additionalData: unknown, suppressAllPopups: boolean, popupShown = true): void {
     try {
-        const file = eventStingFile(type, additionalData, suppressAllPopups, stingPlayer().isPlaying);
+        const file = eventStingFile(type, additionalData, suppressAllPopups, stingPlayer().isPlaying, popupShown);
         if (file !== null) playEventSting(file);
     } catch {
         // no audio
@@ -302,7 +309,9 @@ export function installGameAudio(deps: GameAudioDeps): GameAudio {
             receiveEventMessage(type, title, message, additionalData, location) {
                 previousRecipient?.receiveEventMessage(type, title, message, additionalData, location);
                 try {
-                    playEventMessageSting(type as EventMessageType, additionalData, deps.suppressAllPopups());
+                    const suppress = deps.suppressAllPopups();
+                    const shown = player !== null && eventPopupShown(eventMessagePresentation(type as EventMessageType, additionalData, location, player, galaxy), additionalData, player, suppress);
+                    playEventMessageSting(type as EventMessageType, additionalData, suppress, shown);
                 } catch {
                     // no audio
                 }

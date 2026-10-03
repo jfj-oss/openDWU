@@ -15,10 +15,19 @@ export class AutoPauseState {
 
     constructor(private readonly enabled: () => boolean = () => true) {}
 
-    /** A top-level or nested window opened. */
-    open(clock: PausableClock | null): void {
-        if (this.depth++ !== 0) return;
-        if (clock !== null && this.enabled() && !clock.paused) {
+    /**
+     * A top-level or nested window opened. `force`: pause whatever AutoPauseWhenInPopupWindow says (the event panel,
+     * Main.Part4.cs method_508-511 → method_154, pauses unconditionally).
+     */
+    open(clock: PausableClock | null, force = false): void {
+        if (this.depth++ !== 0) {
+            if (force && clock !== null && !clock.paused) {
+                this.pausedByUs = true;
+                clock.paused = true;
+            }
+            return;
+        }
+        if (clock !== null && (force || this.enabled()) && !clock.paused) {
             this.pausedByUs = true;
             clock.paused = true;
         }
@@ -54,8 +63,8 @@ export function bindAutoPauseClock(clock: PausableClock | null, enabled: () => b
     state = new AutoPauseState(enabled);
 }
 
-export function autoPauseOpen(): void {
-    state?.open(boundClock);
+export function autoPauseOpen(force = false): void {
+    state?.open(boundClock, force);
 }
 
 export function autoPauseClose(): void {
