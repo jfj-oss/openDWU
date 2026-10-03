@@ -1204,9 +1204,11 @@ function createDiplomacyScreen(opts: DiplomacyScreenOptions): OpenState {
         restricted.forEach((ln, i) => {
             const y0 = lay.detail.h - 15 - restrictedH + i * 18 - 6;
             if (ln.kind === 'label') dropText(detail, ln.text, 20, y0, { size: f.normal, color: TEXT, shadow: false });
-            // TODO(port): toggling the restricted-resource checkbox needs a player command
-            // (TradeRestrictedResourcesPanel.chkTradeResources_CheckedChanged: SupplyRestrictedResources).
-            else detail.appendChild(place(checkBox(ln.text, ln.checked, null, f.normal), 20, y0));
+            // TradeRestrictedResourcesPanel.chkTradeResources_CheckedChanged: SupplyRestrictedResources (playerOps.ts).
+            else
+                detail.appendChild(
+                    place(checkBox(ln.text, ln.checked, (v) => issuePlayerCommand(player.galaxy, player, 'setSupplyRestrictedResources', [empire, v], () => render()), f.normal), 20, y0),
+                );
         });
     }
 

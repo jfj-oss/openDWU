@@ -28,7 +28,9 @@
 // "Request Pirate Protection" (PIRATE_PROTECTIONPROPOSE: the pirate names the monthly price, CalculatePirateProtectionPricePerMonth;
 // follow-ups accept (PIRATE_PROTECTIONACCEPTRESPONSE, or PIRATE_TRUCEACCEPTRESPONSE when free) / "No thanks") or "Cancel Pirate
 // Protection Option" (CANCELPIRATEPROTECTION). Super pirates (PirateEmpireSuperPirates, `flag2`) offer nothing.
-// TODO(port): PIRATE_BUYINFO ("Buy information", Main.Part9.cs:207 / Part10 GenerateSaleableInfoForEmpire) — not offered yet.
+// "Buy information" (PIRATE_BUYINFO, Main.Part9.cs:215): the pirate's reply lists what GenerateSaleableInfoForEmpire
+// (Empire.5.cs 1163) finds (Main.Part9.cs:101-140 — an unmet empire, an unexplored system, an independent colony, one
+// discovery); a pick is the INFO_* purchase (Main.Part10.cs:4016-4128, conversationReplies.ts buyInfo).
 // TODO(port): the automation message box "Treaty Negotiation" (Main.Part10.cs:4150 GenerateAutomationMessageBox) is not
 //   shown; the caller answers it with `SubmitProposalOptions.disableTreatyAutomation`.
 
@@ -75,7 +77,10 @@ import { BuiltObjectSubRole } from '../builtObjectTypes';
 import { BuiltObjectMissionType, builtObjectMission } from '../missions/mission';
 import { beginTradeNegotiation, offerDealOptions, submitOfferDeal, type TradeNegotiation, type TradeNegotiationKind } from './tradeNegotiation';
 import { PirateRelationEvaluationType, PirateRelationType, changePirateEvaluation, changePirateRelation, obtainPirateRelation } from '../pirateRelations';
-import { acceptPirateProtection, calculatePirateProtectionPricePerMonth, cancelAttacksAgainstEmpire } from '../pirates/pirateRelationsAI';
+import { acceptPirateProtection, calculatePirateProtectionPricePerMonth, cancelAttacksAgainstEmpire, generateSaleableInfoForEmpire } from '../pirates/pirateRelationsAI';
+import { answerConversationReply, galaxyLocationKey, type ConversationRelated, type ConversationReplyPart } from './conversationReplies';
+import { totalColonyStrategicValue } from '../forceStructure';
+import { netRound } from '../taxes';
 import { EmpireActivityType } from '../pirates/empireActivity';
 import { determineDesirePirateProtection } from '../pirates/pirateAI';
 import { price0 } from '../pirates/missionsMarket';
@@ -209,16 +214,55 @@ function piratePlayerOptions(galaxy: Galaxy, player: Empire, other: Empire): Pro
 }
 
 /**
- * Main.Part9.cs:191-206 (`flag && !flag2 && empire != null`): a non-pirate player with a pirate faction (not the super
- * pirates): request protection (or, when it is in force, cancel it). PIRATE_BUYINFO is a TODO(port) (see the header).
+ * Main.Part9.cs:196-215 (`flag && !flag2 && empire != null`): a non-pirate player with a pirate faction (not the super
+ * pirates): request protection (or, when it is in force, cancel it), and "Buy information".
  */
 function pirateFactionOptions(galaxy: Galaxy, player: Empire, other: Empire): ProposalOption[] {
     void galaxy;
     if (other.pirateEmpireSuperPirates) return [];
     const type = player.pirateRelations.getRelationByOtherEmpire(other)?.type ?? PirateRelationType.None;
-    if (type === PirateRelationType.None) return [option('PIRATE_PROTECTIONPROPOSE', 'PIRATE_PROTECTIONPROPOSE', 'GREETING', 'Request Pirate Protection')];
-    return [option('CANCELPIRATEPROTECTION', 'CANCELPIRATEPROTECTION', 'GREETING', 'Cancel Pirate Protection Option')];
+    const list: ProposalOption[] = [];
+    if (type === PirateRelationType.None) list.push(option('PIRATE_PROTECTIONPROPOSE', 'PIRATE_PROTECTIONPROPOSE', 'GREETING', 'Request Pirate Protection'));
+    else list.push(option('CANCELPIRATEPROTECTION', 'CANCELPIRATEPROTECTION', 'GREETING', 'Cancel Pirate Protection Option'));
+    list.push(option('PIRATE_BUYINFO', 'PIRATE_BUYINFO', 'GREETING', 'Buy information'));
+    return list;
 }
+
+/** A PIRATE_BUYINFO follow-up and the purchase it makes (its ConversationOption.RelatedInfo, command-safe). */
+interface BuyInfoOffer {
+    option: ProposalOption;
+    related: ConversationRelated;
+}
+
+/**
+ * Main.Part9.cs:101-140 case PIRATE_BUYINFO: the information `pirate` sells `player` (GenerateSaleableInfoForEmpire,
+ * no Rnd): contact with the first unmet empire (TotalColonyStrategicValue / 300, rounded, at most 10,000), the maps of an
+ * unexplored system (2,000), an independent colony's location (20,000), and one discovery (30,000: ruins, else a
+ * restricted area, else a debris field, else a planet destroyer).
+ */
+function buyInfoOffers(galaxy: Galaxy, pirate: Empire, player: Empire): BuyInfoOffer[] {
+    const info = generateSaleableInfoForEmpire(galaxy, pirate, player);
+    const list: BuyInfoOffer[] = [];
+    const add = (id: ConversationReplyPart, key: string, cost: number, related: ConversationRelated, relatedOption: Empire | Habitat | null): void => {
+        list.push({ option: option(id, id, 'FOLLOW_UP', gameText(key, formatThousands(cost)), relatedOption, cost), related });
+    };
+    if (info.unmetEmpires.length > 0) {
+        let cost = totalColonyStrategicValue(info.unmetEmpires[0]) / 300.0;
+        cost = netRound(cost, 0);
+        cost = Math.min(cost, 10000.0);
+        add('INFO_UNMETEMPIRE', 'We can put you in contact with another empire', cost, info.unmetEmpires[0], info.unmetEmpires[0]);
+    }
+    if (info.unexploredSystems.length > 0) add('INFO_EXPLORATION', 'We have maps of an unexplored system', 2000.0, info.unexploredSystems[0], info.unexploredSystems[0]);
+    if (info.independentColonies.length > 0) add('INFO_INDEPENDENTCOLONY', 'We can reveal the location of an independent colony', 20000.0, info.independentColonies[0], info.independentColonies[0]);
+    const discovery = 'We have made an intriguing discovery that we will share';
+    if (info.ruinHabitats.length > 0) add('INFO_RUINS', discovery, 30000.0, info.ruinHabitats[0], info.ruinHabitats[0]);
+    else if (info.restrictedAreaLocations.length > 0) add('INFO_RESTRICTEDAREA', discovery, 30000.0, galaxyLocationKey(info.restrictedAreaLocations[0]), null);
+    else if (info.debrisFieldLocations.length > 0) add('INFO_DEBRISFIELD', discovery, 30000.0, galaxyLocationKey(info.debrisFieldLocations[0]), null);
+    else if (info.planetDestroyerLocations.length > 0) add('INFO_PLANETDESTROYER', discovery, 30000.0, galaxyLocationKey(info.planetDestroyerLocations[0]), null);
+    return list;
+}
+
+const BUY_INFO_IDS: ReadonlySet<string> = new Set(['INFO_UNMETEMPIRE', 'INFO_EXPLORATION', 'INFO_INDEPENDENTCOLONY', 'INFO_RUINS', 'INFO_RESTRICTEDAREA', 'INFO_DEBRISFIELD', 'INFO_PLANETDESTROYER']);
 
 /**
  * Main.Part9.cs:584-611 PIRATE_PROTECTIONPROPOSE / PIRATE_TRUCEPROPOSE: the pirate's reply options — a free arrangement is
@@ -512,6 +556,15 @@ export function submitProposal(
         // Follow-up of PIRATE_PROTECTIONPROPOSE (Main.Part9.cs:584-611), priced afresh from the live state.
         if (!canSpeak(galaxy, player, other) || other.pirateEmpireBaseHabitat === null || other.pirateEmpireSuperPirates || player.pirateEmpireBaseHabitat !== null) return refused('');
         chosen = pirateProposeFollowUps(galaxy, other, player).find((o) => o.id === id);
+    } else if (BUY_INFO_IDS.has(id)) {
+        // Follow-up of PIRATE_BUYINFO (Main.Part9.cs:101-140), priced afresh from the live state; the purchase is
+        // Main.Part10.cs:4016-4128 (conversationReplies.ts buyInfo), INFO_NOFUNDS when the player cannot pay.
+        if (!canSpeak(galaxy, player, other) || other.pirateEmpireBaseHabitat === null || other.pirateEmpireSuperPirates || player.pirateEmpireBaseHabitat !== null) return refused('');
+        const offer = buyInfoOffers(galaxy, other, player).find((o) => o.option.id === id);
+        if (offer === undefined) return refused('No longer on offer');
+        const r = answerConversationReply(galaxy, player, other, id as ConversationReplyPart, offer.related, offer.option.cost);
+        const reply: DialogPartType = r.noFunds ? 'INFO_NOFUNDS' : offer.option.part;
+        return { ok: true, accepted: r.ok, message: reply, reply, replyArgs: [], followUps: [], expireMessagesFor: null, automationPrompt: false, trade: null };
     } else if (id.startsWith('OFFER_DEAL_')) {
         // Follow-up of OFFER_DEAL_RESPONSE (Main.Part9.cs:273), settled at once (Main.Part10.cs:4230-4323).
         if (!canSpeak(galaxy, player, other)) return refused('');
@@ -857,6 +910,10 @@ function evaluateProposal(galaxy: Galaxy, initiator: Empire, empire: Empire, opt
             } else {
                 reply('PIRATE_PROTECTIONPROPOSE_OFFER_REJECT');
             }
+            break;
+        case 'PIRATE_BUYINFO': // Main.Part10.cs default reply = the part's own text; Main.Part9.cs:101 lists the offers.
+            reply('PIRATE_BUYINFO');
+            result.followUps = buyInfoOffers(galaxy, empire, initiator).map((o) => o.option);
             break;
         case 'PIRATE_PROTECTIONPROPOSE': // Main.Part9.cs:584 (the pirate names its monthly price; Main.Part10.cs default reply = the part's own text)
             reply('PIRATE_PROTECTIONPROPOSE');

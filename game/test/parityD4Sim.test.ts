@@ -22,6 +22,11 @@ import { ComponentCategoryType } from '../src/sim/data/policies';
 import { captainBonuses } from '../src/sim/characters';
 import { doRepairs } from '../src/sim/construction/repair';
 import { DEFAULT_REPAIR_PRIORITY, getRepairPriorityList } from '../src/sim/construction/repairPriority';
+import { listProposals, submitProposal } from '../src/sim/player/diplomacyProposals';
+import { PLAYER_OPS } from '../src/sim/player/playerOps';
+import { changePirateRelation, PirateRelationType } from '../src/sim/pirateRelations';
+import { obtainDiplomaticRelation } from '../src/sim/diplomacy';
+import { galaxyStarDate } from '../src/sim/tick/simTime';
 
 // Parity batch D4: targeted tests for the remaining sim gaps (docs/parity/*.md).
 let gameData: GameData;
@@ -234,5 +239,48 @@ describe('Repair-priority templates (BaconBuiltObject.cs 4806, RepairPriorityMan
         before.next(0, ship.components.items.length);
         doRepairs(g, ship, timeForOne);
         expect(g.rnd.getState()).toEqual(before.getState());
+    });
+});
+
+describe('Player conversation commands (Main.Part9.cs 215 PIRATE_BUYINFO, TradeRestrictedResourcesPanel.cs 136)', () => {
+    it('"Buy information" lists the saleable info and a pick buys it (INFO_EXPLORATION / INFO_NOFUNDS)', () => {
+        const game = cachedTickGame(gameData, {});
+        const g = game.galaxy;
+        const player = g.playerEmpire!;
+        const pirate = g.pirateEmpires.find((p) => p.pirateEmpireBaseHabitat !== null && !p.pirateEmpireSuperPirates)!;
+        changePirateRelation(player, pirate, PirateRelationType.None, galaxyStarDate(g));
+        changePirateRelation(pirate, player, PirateRelationType.None, galaxyStarDate(g));
+        const offered = listProposals(g, player, pirate);
+        expect(offered.map((o) => o.id)).toContain('PIRATE_BUYINFO');
+        const r = submitProposal(g, player, pirate, 'PIRATE_BUYINFO');
+        expect(r.ok).toBe(true);
+        expect(r.reply).toBe('PIRATE_BUYINFO');
+        const info = generateSaleableInfoForEmpire(g, pirate, player);
+        expect(r.followUps.some((o) => o.id === 'INFO_EXPLORATION')).toBe(info.unexploredSystems.length > 0);
+        expect(r.followUps.some((o) => o.id === 'INFO_INDEPENDENTCOLONY')).toBe(info.independentColonies.length > 0);
+        expect(info.independentColonies.length).toBeGreaterThan(0);
+        const target = info.independentColonies[0];
+        expect(r.followUps.find((o) => o.id === 'INFO_INDEPENDENTCOLONY')!.cost).toBe(20000);
+        player.stateMoney = 1000;
+        expect(submitProposal(g, player, pirate, 'INFO_INDEPENDENTCOLONY').reply).toBe('INFO_NOFUNDS');
+        player.stateMoney = 25000;
+        const money = pirate.stateMoney;
+        const bought = submitProposal(g, player, pirate, 'INFO_INDEPENDENTCOLONY');
+        expect(bought.accepted).toBe(true);
+        expect(bought.reply).toBe('INFO_INDEPENDENTCOLONY');
+        expect(player.stateMoney).toBe(5000);
+        expect(pirate.stateMoney).toBe(money + 20000);
+        expect(player.visibility.checkSystemExplored(target.systemIndex)).toBe(true);
+    });
+
+    it('setSupplyRestrictedResources sets the player\'s SupplyRestrictedResources towards the empire', () => {
+        const game = cachedTickGame(gameData, {});
+        const g = game.galaxy;
+        const player = g.playerEmpire!;
+        const other = g.empires.find((e) => e !== player && e.pirateEmpireBaseHabitat === null && e !== g.independentEmpire)!;
+        expect(PLAYER_OPS.setSupplyRestrictedResources(g, player, other, false)).toBe(true);
+        expect(obtainDiplomaticRelation(player, other).supplyRestrictedResources).toBe(false);
+        PLAYER_OPS.setSupplyRestrictedResources(g, player, other, true);
+        expect(obtainDiplomaticRelation(player, other).supplyRestrictedResources).toBe(true);
     });
 });

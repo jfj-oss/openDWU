@@ -90,6 +90,7 @@ export const COMMAND_FAILURE: FailureTable = {
     answerConversation: () => ({ ok: false, noFunds: false, expireFor: null, history: null }),
     acceptProposal: no,
     declineProposal: no,
+    setSupplyRestrictedResources: no,
     // cost -1: no price was ever computed — the popup tells this apart from "already protected" (accepted false, cost 0).
     acceptPirateOfferProtection: () => ({ accepted: false, cost: -1 }),
     answerDecision: no,
