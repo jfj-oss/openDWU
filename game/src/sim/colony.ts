@@ -20,6 +20,7 @@ import { recalculateAnnualTaxRevenue } from './forceStructure';
 import { RuinType } from './ruins';
 import type { ConstructionQueueHandle } from './construction/constructionYard';
 import { habitatDoTasks } from './tick/habitatTick';
+import { growPopulation } from './colonyTick';
 import { galaxyNow } from './tick/simTime';
 
 // Port of Galaxy.8.cs MakeHabitatIntoColony(galaxy, habitat, empire, age, race,
@@ -59,7 +60,9 @@ export function makeHabitatIntoColony(
     const population = new Population(race, num2, galaxy);
     habitat.population.add(population);
     habitat.population.totalAmount += num2;
-    // TODO(port): Habitat.GrowPopulation(TimeSpan.Zero) — no Rnd; growth model not ported.
+    // Galaxy.8.cs 674 habitat.GrowPopulation(new TimeSpan(0L)): no growth over a zero span, but the independent growth rate,
+    // the minimum-amount floor and the clamp to MaximumPopulation apply. No Rnd.
+    growPopulation(galaxy, habitat, 0);
     const num3 = setColonyResources(galaxy, habitat, empire, hasSpacePort);
     habitat.setDevelopmentLevel(Math.min(50, Math.max(0, num3 * 5 + galaxy.rnd.next(0, 5))));
     // Galaxy.8.cs 677-679.
