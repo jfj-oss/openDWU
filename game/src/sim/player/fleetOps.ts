@@ -80,8 +80,9 @@ export function renameFleet(fleet: ShipGroup, name: string): boolean {
 /** Main.Part11.cs hvhxxedjqS_Leave (the Ships and Bases window's name box): rename one of the empire's ships / bases
  *  (a blank name is ignored). */
 export function renameShip(empire: Empire, ship: BuiltObject, name: string): boolean {
-    if (ship.empire !== empire || name.trim() === '') return false;
-    ship.name = name;
+    const n = name.trim();
+    if (ship.empire !== empire || n === '' || n === ship.name) return false;
+    ship.name = n;
     return true;
 }
 

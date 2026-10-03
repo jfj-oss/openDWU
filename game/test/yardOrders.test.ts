@@ -8,7 +8,8 @@ import type { BuiltObject } from '../src/sim/builtObject';
 import type { ConstructionQueue } from '../src/sim/construction/constructionQueue';
 import { issuePlayerCommand, flushPlayerCommands } from '../src/sim/player/playerCommands';
 import { constructionSites, purchaserChecks, purchaserDesigns, siteQueue, siteTarget, type ConstructionSite } from '../src/ui/screens/constructionYards';
-import { removeFromYardQueue, renameBuiltObject } from '../src/sim/player/yardOrders';
+import { removeFromYardQueue } from '../src/sim/player/yardOrders';
+import { renameShip } from '../src/sim/player/fleetOps';
 
 let gameData: GameData;
 beforeAll(async () => {
@@ -67,10 +68,13 @@ describe('yard orders', () => {
         expect(e.stateMoney).toBe(0);
     }, 300000);
 
-    it('rename ignores blanks', () => {
-        const ship = { name: 'A' } as BuiltObject;
-        expect(renameBuiltObject(ship, '  ')).toBe(false);
-        expect(renameBuiltObject(ship, ' B ')).toBe(true);
+    it('rename ignores blanks, trims, and only renames the empire\'s own ships', () => {
+        const mine = {} as Parameters<typeof renameShip>[0];
+        const other = {} as Parameters<typeof renameShip>[0];
+        const ship = { name: 'A', empire: mine } as unknown as BuiltObject;
+        expect(renameShip(mine, ship, '  ')).toBe(false);
+        expect(renameShip(other, ship, 'X')).toBe(false);
+        expect(renameShip(mine, ship, ' B ')).toBe(true);
         expect(ship.name).toBe('B');
     });
 });

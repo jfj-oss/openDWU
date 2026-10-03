@@ -62,7 +62,7 @@ import type { EmpireMessage } from '../messages';
 import { approveSuggestion, declineSuggestion } from './advisorSuggestions';
 import { expireOldAdvisorSuggestions } from '../advisorQueue';
 import { galaxyStarDate } from '../tick/simTime';
-import { purchaseAtYard, removeFromYardQueue, renameBuiltObject, scrapShipUnderConstruction } from './yardOrders'; // [yards]
+import { purchaseAtYard, removeFromYardQueue, scrapShipUnderConstruction } from './yardOrders'; // [yards]
 import { investigateRuins } from '../exploration';
 import { cancelIntelligenceMission, characterMission } from '../espionage';
 import { scenarioFlag } from '../scenario/state';
@@ -171,7 +171,6 @@ export const PLAYER_OPS = {
     /** Main.Part4.cs 2168 btnBuiltObjectConstructionScrap_Click. */
     yardScrapShip: (galaxy: Galaxy, _empire: Empire, site: BuiltObject | Habitat, ship: BuiltObject) => scrapShipUnderConstruction(galaxy, site, ship),
     /** Main.Part11.cs hvhxxedjqS: the Name box. */
-    renameBuiltObject: (_galaxy: Galaxy, _empire: Empire, ship: BuiltObject, name: string) => renameBuiltObject(ship, name),
     queueResearch: (_galaxy: Galaxy, empire: Empire, node: TechNode) => queueResearchProject(empire.research, node, empire.dominantRace),
     dequeueResearch: (_galaxy: Galaxy, empire: Empire, node: TechNode) => dequeueResearchProject(empire.research, node),
     crashResearch: (galaxy: Galaxy, empire: Empire, node: TechNode, cost: number) => {

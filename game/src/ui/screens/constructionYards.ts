@@ -586,7 +586,7 @@ function createConstructionYards(opts: ConstructionYardsOptions): OpenState {
     const commitName = (): void => {
         const bo = selectedBO();
         if (bo && nameBox.value.trim() !== '' && nameBox.value.trim() !== bo.name) {
-            issuePlayerCommand(galaxy, empire, 'renameBuiltObject', [bo, nameBox.value], () => refresh());
+            issuePlayerCommand(galaxy, empire, 'renameShip', [bo, nameBox.value], () => refresh());
         }
     };
     nameBox.addEventListener('change', commitName);

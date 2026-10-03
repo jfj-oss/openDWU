@@ -68,11 +68,3 @@ export function scrapShipUnderConstruction(galaxy: Galaxy, site: BuiltObject | H
     return true;
 }
 
-/** Main.Part11.cs hvhxxedjqS (the Name box of the Ships and Bases panel): rename the selected ship or base. Blank
- *  names are ignored. */
-export function renameBuiltObject(ship: BuiltObject, name: string): boolean {
-    const n = name.trim();
-    if (n === '' || n === ship.name) return false;
-    ship.name = n;
-    return true;
-}
