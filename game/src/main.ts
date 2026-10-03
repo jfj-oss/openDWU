@@ -21,6 +21,12 @@ import { clearHudMessages, createHud, refreshTopLeftControls, topSystemNameText,
 import { GalaxyTime } from './sim/clock';
 import { resolveStarDateDescription } from './sim/galaxyTime';
 import { createSimLoop, simViewEnabledFromUrl } from './simLoop';
+// [simworker] begin — docs/sim-worker.md: the sim in a Web Worker behind ?simWorker=1 / Settings (default off).
+import { SimWorkerClient, simWorkerEnabled } from './simworker/workerClient';
+import { workerCreateOptions } from './simworker/bootOptions';
+import type { WorkerBoot } from './simworker/protocol';
+import type { RenderTime } from './render/renderInterp';
+// [simworker] end
 import { SECTOR_LEVEL_ZOOM, SYSTEM_LEVEL_ZOOM, type Selection } from './ui/hud';
 import { setTextIfChanged } from './render/drawCache';
 import { Habitat, HabitatCategoryType } from './sim/types';
@@ -90,6 +96,8 @@ import { installAutosave, removeAutosave } from './ui/autosave';
 import { isGameOptionsPanelOpen } from './ui/screens/gameOptionsPanel';
 // [leftovers] end
 import { issuePlayerCommand } from './sim/player/playerCommands';
+import { createMissionShipActionAt } from './sim/player/shipAction';
+import { BuiltObjectMissionType } from './sim/missions/mission';
 import { commandLog } from './sim/player/commandLog';
 import { setSaveLoadProvider, createSaveLoadPanel, type LoadedGame } from './ui/screens/saveLoad';
 import { type Game } from './sim/game';
@@ -276,8 +284,55 @@ function gameDataForSave(save: GameSaveJSON): GameData {
 /** Deserialize a save under the loading overlay (the save is parsed once; a late-game save takes seconds). */
 async function loadSaveWithProgress(text: string): Promise<LoadedGame> {
     if (lastGameData === null) throw new Error('DW:U game data is required to load a save');
+    if (useSimWorker()) return (await loadSaveInWorker(text)) as unknown as LoadedGame;
     return (await runStepsWithProgress('Loading game', deserializeGameSteps(text, gameDataForSave))) as unknown as LoadedGame;
 }
+
+// [simworker] begin
+/** Whether the next game runs its sim in a worker (`?simWorker=1|0`, else Settings → simulation in a worker thread). */
+function useSimWorker(): boolean {
+    return simWorkerEnabled(window.location.search, getSettings().simWorker);
+}
+
+/** Boot the worker's game under the loading overlay and build the replica from its snapshot. */
+async function bootWorker(title: string, boot: WorkerBoot, playData: GameData, startOptions: StartGameOptions, clock?: { speed: number; paused: boolean }): Promise<SimWorkerClient> {
+    const overlay = showLoadingOverlay(title);
+    try {
+        overlay.update({ step: 'Starting simulation thread', fraction: 0 });
+        await nextPaint();
+        return await SimWorkerClient.boot({ type: 'init', boot, startOptions, clock }, playData, overlay);
+    } finally {
+        overlay.close();
+    }
+}
+
+/** The loaded-game record of a worker game (bootLoadedGame hands `simClient` on to startGameView). */
+interface WorkerLoadedGame {
+    game: Game;
+    time: GalaxyTime;
+    startOptions: StartGameOptions;
+    simClient: SimWorkerClient;
+}
+
+/** A save loaded by the worker: the main thread only reads the scenario (for its replica's static data). */
+async function loadSaveInWorker(text: string): Promise<WorkerLoadedGame> {
+    const save = JSON.parse(text) as GameSaveJSON;
+    const playData = gameDataForSave(save);
+    const id = savedScenarioId(save);
+    const scenario = id === null ? null : { id, include: id === COMPOSITE_SCENARIO_ID ? savedScenarioInclude(save) : null };
+    const client = await bootWorker('Loading game', { kind: 'load', text, scenario }, playData, save.startOptions);
+    const time = new GalaxyTime();
+    time.speed = client.core.clock.speed;
+    time.paused = client.core.clock.paused;
+    return { game: client.core.game, time, startOptions: save.startOptions, simClient: client };
+}
+
+/** createGame in the worker (autostart / wizard): the options minus gameData, and the scenario to apply to its data. */
+async function createGameInWorker(opts: CreateGameOptions, scenario: { id: string; include: string[] | null } | null, startOptions: StartGameOptions, flagShapeIndex?: number): Promise<{ game: Game; simClient: SimWorkerClient }> {
+    const client = await bootWorker('Creating galaxy', { kind: 'create', options: workerCreateOptions(opts), scenario, flagShapeIndex }, opts.gameData, startOptions);
+    return { game: client.core.game, simClient: client };
+}
+// [simworker] end
 
 /** startGameView under a "Preparing map" overlay: building the map layers of a big galaxy takes a moment. */
 async function startGameViewWithOverlay(...args: Parameters<typeof startGameView>): Promise<GalaxyTime> {
@@ -398,6 +453,7 @@ export async function startGameView(
     zoomOverride?: number,
     extraBoots?: Array<() => void>,
     savedClock?: { speed: number; paused: boolean },
+    simClient?: SimWorkerClient, // [simworker] the game runs in this worker; `game` is its replica
 ): Promise<GalaxyTime> {
     const dwuPresent = await detectDwuPresent();
     if (dwuPresent) {
@@ -405,6 +461,9 @@ export async function startGameView(
         await loadManifest();
     }
     const galaxy = game.galaxy;
+    // [simworker] Save text of the running game: the worker's authoritative game in worker mode (async).
+    const serializeCurrent = (): string | null | Promise<string | null> =>
+        simClient !== undefined ? simClient.save() : lastStartOptions !== null ? serializeGame(game, time, lastStartOptions) : null;
 
     // Task 10d: first message of the top-middle ticker — the founding line.
     const playerCapital = game.playerEmpire?.capital ?? null;
@@ -463,7 +522,14 @@ export async function startGameView(
         time.speed = savedClock.speed;
         time.paused = savedClock.paused;
     }
-    const simLoop = createSimLoop(galaxy, time, camera, simViewEnabledFromUrl(window.location.search));
+    if (simClient !== undefined) {
+        // The worker's clock controls (a loaded save's, or a new game's paused start).
+        time.speed = simClient.core.clock.speed;
+        time.paused = simClient.core.clock.paused;
+    }
+    // [simworker] in worker mode the frame loop applies the worker's deltas to the replica instead of stepping.
+    const inThreadLoop = simClient === undefined ? createSimLoop(galaxy, time, camera, simViewEnabledFromUrl(window.location.search)) : null;
+    const simLoop: { stats: object; renderTime: RenderTime; tick(realDtMs: number): number } = inThreadLoop ?? simClient!.createLoop(time);
     if (savedClock === undefined) {
         // New game: the founding line, dated at the game start.
         pushHudMessage(foundingMessage, resolveStarDateDescription(time.currentStarDate));
@@ -479,7 +545,15 @@ export async function startGameView(
     // Task 06l: also exposes the running clock (`time`) so the tutorial
     // window's "Play This Game" button can unpause it.
     (window as unknown as { __dwu?: unknown }).__dwu = buildDwuDebugObject({ camera, galaxy, view, app, game, time });
-    Object.assign((window as unknown as { __dwu: Record<string, unknown> }).__dwu, { sim: simLoop.driver, simStats: simLoop.stats });
+    Object.assign((window as unknown as { __dwu: Record<string, unknown> }).__dwu, { sim: inThreadLoop?.driver ?? null, simStats: simLoop.stats, simWorker: simClient ?? null });
+    // [simworker] Sim → UI events from the worker (the sim-side handling already ran there).
+    simClient?.onEvent((e, resolve) => {
+        if (e.kind === 'locationPinged') {
+            const t = resolve(e.target) as { xpos: number; ypos: number } | null;
+            if (t !== null) camera.centerOn(t.xpos, t.ypos);
+        } else if (e.kind === 'gameEnd') showToast('The game has ended (sim worker: the end-of-game banner is not ported yet)');
+        else if (e.kind === 'simError') showToast('Simulation error — game paused (see the worker console)');
+    });
     // 19p event log: `?eventLog=dump` logs the chronicle digest; __dwu.eventLog.dump() / .export(since).
     (window as unknown as { __dwu: Record<string, unknown> }).__dwu.eventLog = installEventLogDevHook(galaxy, window.location.search);
 
@@ -506,9 +580,9 @@ export async function startGameView(
     (window as unknown as { __dwu?: Record<string, unknown> }).__dwu!.galaxyMap = galaxyMap;
     // [fix6ui] begin — ship-order / selection keys (created after the order UI below).
     let shipKeys: ShipCommandKeys | null = null;
-    Object.assign((window as unknown as { __dwu: Record<string, unknown> }).__dwu, { simBudget: simLoop.budget });
+    Object.assign((window as unknown as { __dwu: Record<string, unknown> }).__dwu, { simBudget: inThreadLoop?.budget ?? null });
     // Command log (smoke / debugging): issue a player command through the queue and read the journal.
-    Object.assign((window as unknown as { __dwu: Record<string, unknown> }).__dwu, { commands: { issue: issuePlayerCommand, log: () => commandLog(galaxy) } });
+    Object.assign((window as unknown as { __dwu: Record<string, unknown> }).__dwu, { commands: { issue: issuePlayerCommand, log: () => commandLog(galaxy), moveOrder: (t: Habitat) => createMissionShipActionAt(BuiltObjectMissionType.Move, t, Math.trunc(t.xpos), Math.trunc(t.ypos)) } });
     // [fix6ui] end
     // [freightOverlay] begin — task 19e-9: Trade Flows panel (overlay row "…", legend button) + map legend.
     const tradeFlowsOpts = {
@@ -660,7 +734,7 @@ export async function startGameView(
     installEventMessages({ player: game.playerEmpire, galaxy, onGoTo: (t) => selectStellarObject(t, true) });
     // Autosave every GameOptions.AutoSaveInterval minutes (Main.Part12.cs:4013 method_97).
     installAutosave({
-        serialize: () => (lastStartOptions !== null ? serializeGame(game, time, lastStartOptions) : null),
+        serialize: () => serializeCurrent(),
         isBlocked: () => isGameOptionsPanelOpen(),
     });
     // [leftovers] end
@@ -780,8 +854,7 @@ export async function startGameView(
                     onLoadedFile: (loaded) => void bootLoadedGame(loaded),
                 },
                 memorySaves,
-                serialize: () =>
-                    lastStartOptions !== null ? serializeGame(game, time, lastStartOptions) : null,
+                serialize: () => serializeCurrent(),
                 loadSave: (text) => {
                     return loadSaveWithProgress(text);
                 },
@@ -795,8 +868,7 @@ export async function startGameView(
             const panel = getSavePanel();
             panel.show();
         },
-        serialize: () =>
-            lastStartOptions !== null ? serializeGame(game, time, lastStartOptions) : null,
+        serialize: () => serializeCurrent(),
         loadSave: (text) => {
             return loadSaveWithProgress(text);
         },
@@ -898,6 +970,7 @@ export async function startGameView(
         orderUiCleanup(); // [ordermenu]
 
         gameAudio.dispose(); // [audio]
+        simClient?.dispose(); // [simworker]
     };
 
     return time;
@@ -979,8 +1052,13 @@ async function bootGameFromWizard(startOptions: StartGameOptions): Promise<void>
     lastPlayedGameData = playData;
     // Built in steps under a progress overlay: a big Mature/Old galaxy takes several seconds.
     let game: Game;
+    let simClient: SimWorkerClient | undefined; // [simworker]
     try {
-        game = await runStepsWithProgress('Creating galaxy', createGameSteps(toCreateGameOptions(startOptions, playData, systemNames)));
+        if (useSimWorker()) {
+            const sc = startOptions.scenario;
+            const scenario = sc == null ? null : { id: sc.id, include: choiceInclude(sc) };
+            ({ game, simClient } = await createGameInWorker(toCreateGameOptions(startOptions, playData, systemNames), scenario, startOptions, startOptions.flagShapeIndex));
+        } else game = await runStepsWithProgress('Creating galaxy', createGameSteps(toCreateGameOptions(startOptions, playData, systemNames)));
     } catch (err) {
         console.error('Galaxy creation failed', err);
         showToast('Could not create the galaxy — see console');
@@ -990,10 +1068,10 @@ async function bootGameFromWizard(startOptions: StartGameOptions): Promise<void>
     // Task 10d: the wizard's chosen flag shape/colour is not forwarded to
     // createGame yet (see TODO(createGame) in startGameOptions.ts), so apply
     // it to the player empire here for the HUD's empires button.
-    if (startOptions.flagShapeIndex >= 0) {
+    if (startOptions.flagShapeIndex >= 0 && simClient === undefined) {
         game.playerEmpire.flagShape = startOptions.flagShapeIndex;
     }
-    await startGameViewWithOverlay(game);
+    await startGameViewWithOverlay(game, undefined, undefined, undefined, simClient);
 }
 
 /** Task 06l: boot a default-options game (player Human + 3 random AI
@@ -1057,10 +1135,11 @@ function teardownActiveGameView(): void {
  * deserialized by the save panel's loadSave), rebooting through the shared
  * startGameView. */
 async function bootLoadedGame(loaded: LoadedGame): Promise<void> {
-    const { game, time, startOptions } = loaded as unknown as {
+    const { game, time, startOptions, simClient } = loaded as unknown as {
         game: Game;
         time: GalaxyTime;
         startOptions: StartGameOptions;
+        simClient?: SimWorkerClient; // [simworker]
     };
     lastStartOptions = startOptions;
     activeMainMenu?.destroy();
@@ -1068,7 +1147,7 @@ async function bootLoadedGame(loaded: LoadedGame): Promise<void> {
     await ensureStaticData();
     teardownActiveGameView();
     // The sim time itself is galaxy.nowMs (saved with the galaxy); the save's clock only restores pause/speed.
-    await startGameViewWithOverlay(game, undefined, undefined, { speed: time.speed, paused: time.paused });
+    await startGameViewWithOverlay(game, undefined, undefined, { speed: time.speed, paused: time.paused }, simClient);
 }
 
 async function main(): Promise<void> {
@@ -1306,6 +1385,9 @@ function starCountIndexFor(starCount: number): number {
     return best;
 }
 
+/** [simworker] The worker an autostart game was created in (handed to startGameView by bootGameWithOptions). */
+let autostartSimClient: SimWorkerClient | null = null;
+
 async function buildAutostartGame(
     seed: number,
     shape: GalaxyShape,
@@ -1355,10 +1437,20 @@ async function buildAutostartGame(
     }
     // [scenarioAutostart] end
     try {
+        // Saves need start options (metadata only; the galaxy itself is saved).
+        const startOptions = { ...defaultStartGameOptions(), seed, scenario: scenarioChoice };
+        if (useSimWorker()) {
+            // [simworker] the same options, created in the worker (its data gets the same scenario overlay).
+            const scenario = scenarioChoice === null ? null : { id: scenarioChoice.id, include: choiceInclude(scenarioChoice) };
+            const r = await createGameInWorker(opts, scenario, startOptions);
+            lastPlayedGameData = playData;
+            lastStartOptions = startOptions;
+            autostartSimClient = r.simClient;
+            return r.game;
+        }
         const game = await runStepsWithProgress('Creating galaxy', createGameSteps(opts));
         lastPlayedGameData = playData;
-        // Saves need start options (metadata only; the galaxy itself is saved).
-        lastStartOptions = { ...defaultStartGameOptions(), seed, scenario: scenarioChoice };
+        lastStartOptions = startOptions;
         return game;
     } catch (err) {
         console.warn('?autostart=1 createGame failed; falling back to generateGalaxy', err);
@@ -1389,7 +1481,9 @@ async function bootGameWithOptions(opts: BootOptions): Promise<void> {
         if (started !== null) {
             // Task M2e3: honour ?zoom= on the autostart path too (galaxy-view
             // screenshots), otherwise startGameView applies Sector zoom.
-            await startGameView(started, zoomParam ?? undefined);
+            const simClient = autostartSimClient ?? undefined; // [simworker]
+            autostartSimClient = null;
+            await startGameView(started, zoomParam ?? undefined, undefined, undefined, simClient);
             return;
         }
     }
