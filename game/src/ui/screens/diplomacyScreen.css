@@ -167,6 +167,8 @@
     padding: 8px 12px;
     display: flex;
     flex-direction: column;
+    align-items: center; /* decisions centred in the panel (user call) */
+    text-align: center;
     gap: 5px;
 }
 .dip-talk-link {
