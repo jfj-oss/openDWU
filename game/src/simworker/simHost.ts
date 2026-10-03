@@ -50,6 +50,7 @@ export class SimHost {
     private readonly now: () => number;
     /** Something changed outside a step (a command, the clock): send a delta even if no step ran. */
     private dirty = true;
+    private settleUntilCycle = 0;
 
     constructor(readonly game: Game, time: GalaxyTime, private readonly startOptions: StartGameOptions, opts: SimHostOptions = {}) {
         this.galaxy = game.galaxy;
@@ -159,7 +160,11 @@ export class SimHost {
         }
         this.stepSerial += steps;
         const t1 = this.now();
-        if (steps === 0 && !this.dirty && !forceDelta && this.results.length === 0 && this.events.length === 0) return null;
+        // After the last change (a step, a command, the clock), keep diffing until a whole cold cycle has passed, so a
+        // paused game's replica becomes exact (every cold object compared since); then go quiet.
+        const changed = steps > 0 || this.dirty || this.results.length > 0 || this.events.length > 0;
+        if (changed) this.settleUntilCycle = this.sync.encoder.cycleCount + 2;
+        if (!changed && !forceDelta && this.sync.encoder.cycleCount >= this.settleUntilCycle) return null;
         this.dirty = false;
         const delta = this.sync.delta();
         const msg: StepMessage = {

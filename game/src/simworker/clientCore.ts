@@ -141,6 +141,11 @@ export class SimClientCore {
         yield* this.replica.staticByRef;
     }
 
+    /** The clock controls as last agreed with the worker. */
+    get clock(): ClockControls {
+        return { speed: this.speed, paused: this.paused };
+    }
+
     get galaxy(): Galaxy {
         return this.game.galaxy;
     }

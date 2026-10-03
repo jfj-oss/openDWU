@@ -425,8 +425,17 @@ export class ReplicaEncoder {
         return this.objs[id] ?? null;
     }
 
-    /** Sync id of `o`, sending it as a new object (with everything new it reaches) when not known yet. */
+    /** Sync id of `o` for a reply / event, sending it as a new object (with everything new it reaches) when not known yet. */
     ensureId(o: object): number {
+        // Named by a message the main thread resolves right after this delta's hot part: born in the hot stream, and a
+        // known object born in a cold part makes that part a dependency of the hot one.
+        this.curStream = 0;
+        this.cur = this.parts[0];
+        const known = this.ids.get(o);
+        if (known !== undefined) {
+            this.noteHotUse(known);
+            return known;
+        }
         const id = this.idOf(o, '$command');
         this.flushPending();
         return id;
@@ -1315,6 +1324,7 @@ export class ReplicaDecoder {
         const shapes = this.shapes;
         let i = start;
         let k = 0;
+        let nextCheck = 64;
         const value = (): unknown => {
             const tag = b[i];
             const v = b[i + 1];
@@ -1404,7 +1414,13 @@ export class ReplicaDecoder {
                 default:
                     throw new Error(`replica sync: bad op ${op}`);
             }
-            if ((++k & 63) === 0 && deadline !== Infinity && now() >= deadline) break;
+            // Stop only between objects (never between an array's new length and its element sets), so a half-applied
+            // cold part never shows a half-updated object.
+            k++;
+            if (deadline !== Infinity && k >= nextCheck && i < b.length && b[i + 1] !== id) {
+                nextCheck = k + 64;
+                if (now() >= deadline) break;
+            }
         }
         return i;
     }

@@ -51,7 +51,9 @@ export function hotGates(): Record<string, { gate: string; children: readonly st
  * Hot fields of the hot classes with a FIXED list (fixedHotClasses below): what the main view reads every frame —
  * render/renderInterp.ts MovingBuiltObject / MovingCreature (position, heading, speeds, parent frame, last touch), the
  * hyperjump / docking / shield-strike / combat state the ship, effects and overlay layers draw, and owner / fleet /
- * role changes. Every other field of these classes reaches the replica in the cold cycle (under a second). For the
+ * role changes, and the fields docs/sim-worker-consumer-audit.md §3 found the layers read every frame (visibility:
+ * nearestSystemStar / stealth / sensors; combat bars: attackers; ambient: doing* / engineType / builtAt; travel vectors:
+ * mission). Every other field of these classes reaches the replica in the cold cycle (about a second). For the
  * other hot classes these are fields compared every step on top of the adaptive ones (any field that keeps changing).
  */
 export function alwaysHotFields(): Set<string> {
@@ -63,9 +65,11 @@ export function alwaysHotFields(): Set<string> {
         parentBuiltObject dockedAt lastTouch hasBeenDestroyed empire role subRole design shipGroup currentTarget inBattle
         hyperjumpJustExited hyperjumpCountdown hyperjumpPrepare hyperjumpAboutToEnter hyperEnterStartAnimation hyperExitStartAnimation
         hyperjumpX hyperjumpY lastShieldStrike lastShieldStrikeDirection currentShields shieldsCapacity damagedComponentCount
-        unbuiltComponentCount dateRetrofit isFunctional`);
+        unbuiltComponentCount dateRetrofit isFunctional
+        nearestSystemStar attackers stealth sensorLongRange sensorProximityArrayRange doingMining doingGasMining doingConstruction
+        engineType builtAt mission ionStrikeSoundPlayed hyperjumpAboutToEnterSoundPlayed`);
     add('Creature', `xpos ypos currentHeading targetHeading currentSpeed targetSpeed movementSpeed hyperSpeed lungeSpeed currentTarget
-        parentHabitat parentX parentY lastTouch hasBeenDestroyed damage isVisible turnDirection`);
+        parentHabitat parentX parentY lastTouch hasBeenDestroyed damage isVisible turnDirection distanceToTarget nearestSystemStar`);
     add('Fighter', 'xpos ypos heading targetHeading currentSpeed hasBeenDestroyed onboardCarrier lastTouch');
     add('Galaxy', 'nowMs');
     return out;

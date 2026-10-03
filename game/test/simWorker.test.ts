@@ -24,6 +24,11 @@ import type { StartGameOptions } from '../src/sim/startGameOptions';
 import { SimHost } from '../src/simworker/simHost';
 import { SimClientCore } from '../src/simworker/clientCore';
 import type { ToWorker } from '../src/simworker/protocol';
+import { reviveCreateOptions, workerCreateOptions } from '../src/simworker/bootOptions';
+import { tickGameOptions } from './helpers/tickGame';
+import { createGame } from '../src/sim/game';
+import { VictoryConditions } from '../src/sim/victory';
+import { serializeGame } from '../src/sim/save/gameSave';
 
 let gameData: GameData;
 beforeAll(async () => {
@@ -145,5 +150,13 @@ describe('sim worker: host + replica vs the in-thread loop', () => {
             c.client.dispose();
             c.host.dispose();
         }
+    }, 600000);
+
+    it('createGame options cloned into the worker build the identical game', () => {
+        const opts = { ...tickGameOptions(gameData), victoryConditions: Object.assign(new VictoryConditions(), { territory: true, territoryPercent: 0.4 }) };
+        const here = createGame(opts);
+        const there = createGame(reviveCreateOptions(structuredClone(workerCreateOptions(opts)), gameData));
+        const t = (g: Game): string => serializeGame(g, new GalaxyTime().bindGalaxy(g.galaxy), START_OPTIONS);
+        expect(t(there) === t(here)).toBe(true);
     }, 600000);
 });
