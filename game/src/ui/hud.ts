@@ -1,4 +1,5 @@
 import { computeHudLayout, VIEW_ROWS, type Rect, type ViewRowKey } from './hudLayout';
+import { openRuinDetail } from './screens/ruinDetail';
 import { cornerRadiusCss, MONEY_POS, researchReadout, showViewSystemName, TOP_DATE_POS, TOP_ELEMENT_NAMES, TOP_LEFT_BUTTONS, TOP_ROW_BUTTONS, topBarLayout, topBarScale, viewSystemName, type CornerCurves } from './topBar';
 import './topBar.css';
 import { openGameOptionsPanel, toggleGameOptionsPanel } from './screens/gameOptionsPanel';
@@ -501,7 +502,6 @@ export function toggleColoniesFromHud(empire: Empire, selected: Habitat | null =
         onGoTo: (h) => selectHabitat(h, true),
         onShowOnGalaxyMap: galaxyMapAt ?? undefined,
         onExpansionPlanner: () => toggleExpansionPlanner({ empire, onSelect: (h) => selectHabitat(h, true) }),
-        onConstructionSummary: () => toggleConstructionYards({ empire, onSelect: (t) => selectStellarObject(t, true) }),
         onHelp: (topic) => openGalactopedia({ topic }),
         confirmAutomationOff: (task) => confirmAutomationOff(task),
     });
@@ -1628,6 +1628,11 @@ function buildSelectionPanel(wiring: HudWiring): HTMLElement {
             if (player === null) return;
             if (t.empire === player) toggleEmpireSummary();
             else toggleDiplomacyScreen({ player, selectedEmpire: t.empire });
+            return;
+        }
+        if (t.kind === 'ruin') {
+            // Main.Part4.cs 3581: a Ruin hotspot opens the Ruin Detail window (method_550).
+            if (wiring.galaxy) openRuinDetail(wiring.galaxy, t.ruin);
             return;
         }
         const o = t.obj;

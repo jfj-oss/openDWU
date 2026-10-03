@@ -43,6 +43,7 @@ export const COMMAND_FAILURE: FailureTable = {
     fleetLoadTroops: no,
     fleetRetrofit: no,
     fleetRepairAndRefuel: no,
+    enemyTargetList: () => [],
     enemyTargetAttack: () => null,
     enemyTargetCancel: no,
     shipOrderKey: no,

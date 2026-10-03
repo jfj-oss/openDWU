@@ -8,6 +8,7 @@
 // The builders only read the sim (no galaxy.rnd, no caches written): they run every 500 ms while something is
 // selected.
 
+import type { Ruin } from '../sim/ruins';
 import type { Galaxy } from '../sim/galaxy';
 import type { Empire } from '../sim/empire';
 import type { BuiltObject } from '../sim/builtObject';
@@ -112,7 +113,9 @@ export function dropShadowColor(rgb: number): number {
 /** What a hotspot (InfoPanel.AddHotspot) does on click. */
 export type InfoTarget =
     | { kind: 'select'; obj: Habitat | BuiltObject | ShipGroup }
-    | { kind: 'empire'; empire: Empire };
+    | { kind: 'empire'; empire: Empire }
+    /** A ruin hotspot (InfoPanel.cs 4093 / 4263, "Name (click for details)"): Main.Part4.cs 3581 → method_550. */
+    | { kind: 'ruin'; ruin: Ruin };
 
 /** One run of a row: text, an image, an empire flag, or a troop icon. */
 export interface InfoSeg {
@@ -979,10 +982,15 @@ export function habitatInfo(ctx: InfoContext, h: Habitat): InfoModel {
     else if (h.population.totalAmount > 0) corner = { text: 'Independent', color };
 
     rows.push({ kind: 'gap', h: 3 });
-    rows.push({ kind: 'line', segs: [txt(habitatDescriptionLine(h), color)] });
+    // InfoPanel.cs 4089-4094: an explored / visible habitat's ruin picture after the description line, a hotspot
+    // "Name (click for details)" (Main.Part4.cs 3581 → method_550, the Ruin Detail window).
+    const descSegs: InfoSeg[] = [txt(habitatDescriptionLine(h), color)];
+    if (explored && h.ruin !== null) {
+        descSegs.push({ img: `/assets/dwu/images/environment/ruins/ruin_${h.ruin.pictureRef}.png`, w: 30, h: 18, gap: 8, title: `${h.ruin.name} (click for details)`, target: { kind: 'ruin', ruin: h.ruin } });
+    }
+    rows.push({ kind: 'line', segs: descSegs });
 
     if (explored) {
-        // Ruins icon on the description line's right (InfoPanel.cs 4090-4096): as a hint row suffix.
         // Plague (InfoPanel.cs 4097-4118).
         if (h.plagueId >= 0) {
             const plague = galaxyPlagues(galaxy)[h.plagueId] ?? null;
@@ -1012,7 +1020,8 @@ export function habitatInfo(ctx: InfoContext, h: Habitat): InfoModel {
                 const s = fmtSignedPct(h.scenicFactor);
                 rows.push(label('Scenery', [txt(h.scenicFeature !== '' ? `${s} from ${h.scenicFeature}` : s, color)]));
             }
-            if (h.ruin !== null) rows.push(label('Ruins', [txt(h.ruin.name, color)], { title: `${h.ruin.name}` }));
+            // InfoPanel.cs 4257-4264: the Ruins row, its name a "click for details" hotspot.
+            if (h.ruin !== null) rows.push(label('Ruins', [{ ...txt(h.ruin.name, color), target: { kind: 'ruin', ruin: h.ruin }, title: `${h.ruin.name} (click for details)` }]));
             rows.push({ kind: 'gap', h: 4 });
             if (h.population.totalAmount > 0) rows.push(...populationRows(h, color));
             if (independent) {

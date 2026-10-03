@@ -69,7 +69,7 @@ import type { EmpireMessage } from '../messages';
 import { approveSuggestion, declineSuggestion } from './advisorSuggestions';
 import { expireOldAdvisorSuggestions } from '../advisorQueue';
 import { galaxyStarDate } from '../tick/simTime';
-import { enemyTargetAttack, enemyTargetCancel } from './enemyTargets';
+import { enemyTargetAttack, enemyTargetCancel, enemyTargetObjects } from './enemyTargets';
 import type { PrioritizedTargetObject } from '../civilianAI';
 import { purchaseAtYard, removeFromYardQueue, scrapBuiltObjects, scrapShipUnderConstruction } from './yardOrders'; // [yards]
 import { investigateRuins } from '../exploration';
@@ -183,6 +183,9 @@ export const PLAYER_OPS = {
     fleetLoadTroops: (galaxy: Galaxy, empire: Empire, fleet: ShipGroup) => fleetLoadTroops(galaxy, empire, fleet),
     fleetRetrofit: (galaxy: Galaxy, empire: Empire, fleet: ShipGroup) => fleetRetrofit(galaxy, empire, fleet),
     fleetRepairAndRefuel: (galaxy: Galaxy, empire: Empire, fleet: ShipGroup) => fleetRepairAndRefuel(galaxy, empire, fleet),
+    /** Main.Part11.cs 5081 method_205: the left sidebar's Enemy Targets list, as a command when building it draws
+     *  galaxy.rnd (player/enemyTargets.ts enemyTargetListDrawsRandom; the panel reads it directly otherwise). */
+    enemyTargetList: (galaxy: Galaxy, empire: Empire) => enemyTargetObjects(galaxy, empire),
     /** Main.Part12.cs 2469 method_78: a left click on an Enemy Targets row with no fleet on it (player/enemyTargets.ts). */
     enemyTargetAttack: (galaxy: Galaxy, empire: Empire, target: PrioritizedTargetObject, selectedFleet: ShipGroup | null) => enemyTargetAttack(galaxy, empire, target, selectedFleet),
     /** Main.Part12.cs 2469 method_78: a right click on an Enemy Targets row — ForceCompleteMission of the fleet on it. */

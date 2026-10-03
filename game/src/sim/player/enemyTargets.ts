@@ -2,9 +2,12 @@
 // (Main.Part11.cs 5081 method_205, bound by BaconMain.cs 2298 PopulateListsOnLefthandSide), the fleet already sent at a
 // target (ItemListCollectionPanel.cs 822 ResolveAssignedFleet) and the click orders (Main.Part12.cs 2469 method_78).
 //
-// method_205 draws galaxy.rnd (IdentifyEmpireStrikePoints: Next(0, 3) when the player race's aggression is over 115),
-// exactly as the C# UI does every time the panel is rebound, so the UI asks for it through simworker/simQuery.ts
-// ('enemyTargets'); the click orders are player commands (playerOps.ts 'enemyTargetAttack' / 'enemyTargetCancel').
+// method_205 draws galaxy.rnd (IdentifyEmpireStrikePoints: Next(0, 3) per enemy when the player race's aggression is
+// over 115), exactly as the C# UI does every time the panel is rebound. A UI read must not write the game outside the
+// journaled command queue (sim/readOnlyQuery.ts, docs/sim-worker.md §4.4), so when the list would draw
+// (enemyTargetListDrawsRandom) the panel asks for it with the journaled 'enemyTargetList' command and shows its reply;
+// otherwise it reads it directly (no write). The click orders are player commands ('enemyTargetAttack' /
+// 'enemyTargetCancel').
 // Headless: no DOM / Pixi.
 
 import type { Galaxy } from '../galaxy';
@@ -15,7 +18,7 @@ import { BuiltObjectMissionPriority, BuiltObjectMissionType } from '../missions/
 import { empireShipGroups, forceCompleteMission, shipGroupAssignMission, type ShipGroup } from '../fleets/shipGroup';
 import { PrioritizedTarget, prioritizedTargetListAdd, sortPrioritizedTargets, type PrioritizedTargetObject } from '../civilianAI';
 import { calculateDistanceFactor, identifyEmpireStrikePoints, identifyNearestAvailableFleet } from '../fleets/militaryAI';
-import { determineEmpiresAtWarWith } from '../diplomacyTick';
+import { aggressionLevel, determineEmpiresAtWarWith } from '../diplomacyTick';
 import { PirateRelationType } from '../pirateRelations';
 import { isObjectVisibleToThisEmpire } from '../independentTraders';
 
@@ -56,6 +59,12 @@ export function enemyTargetList(galaxy: Galaxy, player: Empire | null): Prioriti
     sortPrioritizedTargets(prioritizedTargetList);
     prioritizedTargetList.reverse();
     return prioritizedTargetList;
+}
+
+/** Whether building method_205's list draws galaxy.rnd (IdentifyEmpireStrikePoints' AggressionLevel > 115 test, run
+ *  once per empire at war with the player). */
+export function enemyTargetListDrawsRandom(player: Empire | null): boolean {
+    return player !== null && player.dominantRace !== null && determineEmpiresAtWarWith(player).length > 0 && aggressionLevel(player) > 115;
 }
 
 /** method_205's targets as the objects they name (what the sim query returns; the panel rebuilds its rows from them). */

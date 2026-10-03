@@ -8,7 +8,11 @@
 //   - the scroll bars and the mouse wheel scroll by ScrollAmountPerClick (25 × size);
 //   - an item click selects it (method_208); a double click also centres the view on it and zooms to the 100%
 //     planet level (method_157 + method_4(1.0)); Shift+click a ship adds it to / removes it from a multi-selection;
-//   - the panel redraws every 0.5 s (MainView: LastRefresh > 0.5 s).
+//   - the panel redraws every 0.5 s (MainView: LastRefresh > 0.5 s);
+//   - Enemy Targets (method_78's PrioritizedTarget branch): a click on a target with a fleet on it selects that fleet;
+//     otherwise it sends the selected fleet of ours, or the nearest available one, to attack it ('enemyTargetAttack');
+//     a right click cancels the attack of the fleet on it ('enemyTargetCancel'). Its list is the journaled
+//     'enemyTargetList' command when building it draws galaxy.rnd (sim/player/enemyTargets.ts), a direct read otherwise.
 
 import './leftSidebar.css';
 import type { Galaxy } from '../sim/galaxy';
@@ -19,6 +23,9 @@ import { BuiltObject } from '../sim/builtObject';
 import { ShipGroup } from '../sim/fleets/shipGroup';
 import { Habitat } from '../sim/types';
 import { hudScale } from './originalWindow';
+import { issuePlayerCommand } from '../sim/player/playerCommands';
+import { enemyTargetListDrawsRandom, resolveAssignedFleet } from '../sim/player/enemyTargets';
+import { empireFlagUrl } from './selectionInfoView';
 import { onSettingsChange, uiScaleFactor } from './settings';
 import { css } from './selectionInfo';
 import {
@@ -31,7 +38,10 @@ import {
     selectionPanelSmall,
 } from './hud';
 import {
+    EnemyTargetItem,
     buttonColumnTop,
+    enemyTargetItems,
+    enemyTargetsHint,
     clampScroll,
     isSlowPanel,
     itemClickTarget,
@@ -170,6 +180,10 @@ export function createLeftSidebar(wiring: LeftSidebarWiring): HTMLElement {
         lastClick: { item: null, at: 0 },
     };
     let area: ItemListArea = itemListArea(800, 600, 1);
+    /** When the pending 'enemyTargetList' command was issued (one at a time; asked again after 2 s without a reply). */
+    let targetsAsked: number | null = null;
+    /** The empires' flag pictures (async composites) for the Enemy Targets rows. */
+    const flagUrls = new Map<Empire, string | null>();
     let defs: ItemPanelDef[] = [];
 
     const player = (): Empire | null => (wiring.game?.playerEmpire as Empire | undefined) ?? null;
@@ -358,6 +372,14 @@ export function createLeftSidebar(wiring: LeftSidebarWiring): HTMLElement {
             const i = itemIndexAt(e);
             if (i >= 0) clickItem(state.items[i], e.shiftKey);
         });
+        items.addEventListener('contextmenu', (e) => {
+            const i = itemIndexAt(e);
+            const item = i >= 0 ? state.items[i] : undefined;
+            if (!(item instanceof EnemyTargetItem)) return;
+            e.preventDefault();
+            targetClick(item, 'right');
+        });
+        if (d.id === 'enemyTargets') items.title = enemyTargetsHint(d.title);
         render();
     };
 
@@ -445,6 +467,20 @@ export function createLeftSidebar(wiring: LeftSidebarWiring): HTMLElement {
         }
         const now = performance.now();
         if (!force && isSlowPanel(d.id) && now - state.itemsAt < 3000) return;
+        if (d.id === 'enemyTargets' && enemyTargetListDrawsRandom(p)) {
+            // method_205 draws galaxy.rnd here: the journaled command builds it in the game; its reply is the list.
+            if (targetsAsked !== null && now - targetsAsked < 2000) return;
+            targetsAsked = now;
+            issuePlayerCommand(galaxy, p, 'enemyTargetList', [], (list) => {
+                targetsAsked = null;
+                if (state.open !== 'enemyTargets') return;
+                state.items = enemyTargetItems(list);
+                state.itemsAt = performance.now();
+                state.scroll = clampScroll(state.scroll, state.items.length, metrics(), area.h, d.toggles.length);
+                render();
+            });
+            return;
+        }
         try {
             state.items = panelItems(d.id, galaxy, p, { toggles: togglesOf(d) });
         } catch (err) {
@@ -517,6 +553,25 @@ export function createLeftSidebar(wiring: LeftSidebarWiring): HTMLElement {
         row.style.left = '1px';
         row.style.width = `${w}px`;
         row.style.height = `${h}px`;
+        if (model.flag) {
+            const fl = model.flag;
+            if (!flagUrls.has(fl.empire)) {
+                flagUrls.set(fl.empire, null);
+                void empireFlagUrl(wiring.galaxy as Galaxy, fl.empire).then((u) => {
+                    flagUrls.set(fl.empire, u);
+                    renderRows();
+                });
+            }
+            const u = flagUrls.get(fl.empire);
+            if (u) {
+                const im = image(u, 'ls-flag');
+                im.style.left = `${fl.x}px`;
+                im.style.top = `${fl.y}px`;
+                im.style.width = `${fl.w}px`;
+                im.style.height = `${fl.h}px`;
+                row.appendChild(im);
+            }
+        }
         for (const p of model.pictures) {
             const im = image(p.url, `ls-pic${p.rotate ? ' ls-rot' : ''}`);
             im.style.left = `${p.x}px`;
@@ -544,7 +599,22 @@ export function createLeftSidebar(wiring: LeftSidebarWiring): HTMLElement {
         const l2 = drawLine(model.line2, { text: Math.trunc(2 * f), small: Math.trunc(2 * f), img: 0 });
         l2.style.left = `${model.textX}px`;
         l2.style.top = `${Math.trunc(22 * f)}px`;
+        if (model.textAlpha !== undefined && model.textAlpha < 255) {
+            l1.style.opacity = String(model.textAlpha / 255);
+            l2.style.opacity = String(model.textAlpha / 255);
+        }
         row.append(l1, l2);
+        if (model.centre) {
+            const c = div('ls-centre');
+            const big = document.createElement('span');
+            big.className = 'ls-centre-large';
+            big.textContent = model.centre.large;
+            const small = document.createElement('span');
+            small.className = 'ls-small';
+            small.textContent = model.centre.small;
+            c.append(big, small);
+            row.appendChild(c);
+        }
         for (const r of model.right) {
             const im = image(r.url, 'ls-overlay', r.full ? 1 : ALPHA);
             im.style.left = `${w - r.fromRight}px`;
@@ -592,8 +662,31 @@ export function createLeftSidebar(wiring: LeftSidebarWiring): HTMLElement {
     };
 
     // ----- clicks (Main.Part12.cs method_78) --------------------------------------------------------------------
+    /** Main.Part12.cs 2469 method_78, PrioritizedTarget: left = select the fleet on it, else send a fleet; right =
+     *  cancel the assigned fleet's attack (when it is its current mission). */
+    const targetClick = (item: EnemyTargetItem, button: 'left' | 'right'): void => {
+        const p = player();
+        const galaxy = wiring.galaxy;
+        if (!p || !galaxy) return;
+        const assigned = resolveAssignedFleet(p, item.target);
+        if (button === 'right') {
+            if (assigned !== null && assigned.missionQueueIndex === 0) issuePlayerCommand(galaxy, p, 'enemyTargetCancel', [item.target], () => render());
+            return;
+        }
+        if (assigned !== null) {
+            selectShipGroup(assigned.fleet, false);
+            return;
+        }
+        const selFleet = getSelection()?.shipGroup ?? null;
+        issuePlayerCommand(galaxy, p, 'enemyTargetAttack', [item.target, selFleet !== null && selFleet.empire === p ? selFleet : null], () => render());
+    };
+
     const clickItem = (item: PanelItem | undefined, shift: boolean): void => {
         if (!item) return;
+        if (item instanceof EnemyTargetItem) {
+            targetClick(item, 'left');
+            return;
+        }
         const now = performance.now();
         const dbl = state.lastClick.item === item && now - state.lastClick.at < DOUBLE_CLICK_MS;
         state.lastClick = dbl ? { item: null, at: 0 } : { item, at: now };

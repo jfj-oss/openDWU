@@ -192,3 +192,27 @@
     text-shadow: 1px 1px 0 rgba(0, 0, 0, 0.6);
     padding: 0 8px;
 }
+
+/* Enemy Targets rows (ItemListPanel.cs method_6, PrioritizedTarget): the empire's large flag under the row, and the
+   "FLEET attacking" / "(right-click to cancel)" text centred over a target a fleet is on. */
+.ls-flag {
+    position: absolute;
+    object-fit: fill;
+}
+.ls-centre {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    color: rgb(220, 220, 220);
+    pointer-events: none;
+}
+.ls-centre-large {
+    font-size: calc(18.67px * var(--ls-f));
+    font-weight: bold;
+    text-shadow: 1px 1px 0 #000;
+    white-space: nowrap;
+    line-height: 1.1;
+}

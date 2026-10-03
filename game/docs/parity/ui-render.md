@@ -27,17 +27,17 @@ Some C# panels have obfuscated names: CaLkaMyrMQ = Galaxy Map, kYdDyYeMls = Char
 | 17 | HUD system mini-map (pnlSystemMap/picSystem) | Main.Part11.cs:451 | MISSING (replaced) | hudLayout.ts:46 (options list in its place) | Med | |
 | 18 | Territory shading algorithm (CalculateEmpireTerritoryGrid / SystemTerritory) | GalaxyMap.cs, EmpireTerritory.cs, MainView.2.cs:262-365 | PARTIAL | render/empireLayer.ts | Med | Being ported (territory agent) |
 | 19 | Pirate-player UI: Pirate Missions panel, pirate colonies rows, smuggling resource picker, pirate construction at bases | ItemListPanel.cs method_7 / 729-848; Main.Part8.cs:5067; Main.Part11.cs method_169 | MISSING | TODOs in leftSidebar.ts, orderMenu.ts:470, constructionYards.ts:15 | Med (blocked by #2) | |
-| 20 | Left sidebar "Enemy Targets" panel | Main.method_205, ItemListPanel.cs method_8/9 | MISSING | leftSidebar.ts:12 | Med | |
-| 21 | Colony construction-yard purchaser, Scrap/Remove Ship | Main.Part6.cs:3460-3560 | PARTIAL | coloniesScreen.ts:21, 1261 | Med | |
-| 22 | Construction Yards detail tabs (Cargo/Components/Docking/Troops/Weapons), Scrap | Main.Part11.cs method_170-176 | PARTIAL | constructionYards.ts:12, 578 | Med | |
-| 23 | Resource Components panel | Main.Part4.cs method_552 | MISSING | expansionPlanner.ts:20 links to Galactopedia | Low-Med | |
+| 20 | Left sidebar "Enemy Targets" panel | Main.method_205, ItemListPanel.cs method_8/9 | DONE (D2) | leftSidebar.ts, leftSidebarView.ts, sim/player/enemyTargets.ts | Med | List = journaled 'enemyTargetList' when it draws Rnd, else a read; click/right-click = 'enemyTargetAttack' / 'enemyTargetCancel' (method_78). Not shown: hovering a row highlighting it in the main view (method_243) |
+| 21 | Colony construction-yard purchaser, Scrap/Remove Ship | Main.Part6.cs:3396, Main.Part4.cs 2244/2276, Main.Part11.cs 2991 | DONE (D2) | coloniesScreen.ts renderConstruction, constructionYards.ts yardPurchaser | Med | Pirate overrides (method_169 empire swap) still TODO |
+| 22 | Construction Yards detail tabs (Cargo/Components/Docking/Troops/Weapons), Scrap | Main.Part11.cs method_170/175/176/178, Main.Part3.cs 403 | DONE (D2) | builtObjectDataTabs.ts (shared with Ships and Bases), 'scrapShips' op | Med | Left: troop loadouts (method_179), Set Fleet combo, manufacturing grids, cargo shortage label |
+| 23 | Resource Components panel | Main.Part4.cs method_552, method_541 | DONE (D2) | resourceComponents.ts | Low-Med | Name link opens the Component Guide (the decompiled CellContentClick never fires) |
 | 24 | H should open the full pnlMessageHistory | Main.Part4.cs:2016 method_528("either") | PARTIAL | H opens messageHistory.ts; the full port is galacticHistory.ts | Low-Med | Quick fix: route H to galacticHistory |
 | 25 | Ion-strike lightning overlay | MainView.1.cs:1162-1201, LightningGenerator.cs | MISSING | effectsLayer.ts:28 | Low-Med | |
 | 26 | Fighter selection brackets and picking | MainView.1.cs:1520 method_212 | MISSING | fighterLayer.ts:23 | Low | |
 | 27 | Other empires' fleets on overlays, selected-fleet yellow, special-highlight red, arrow head | MainView.2.cs method_258 | PARTIAL | overlayLayer.ts:219 | Low-Med | |
 | 28 | Alliance naming panel | Main.Part2.cs pnlRelationAllianceName | MISSING | — | Low | |
 | 29 | Empire Policy Load/Save | Main.Part3.cs btnEmpirePolicyLoad/Save | MISSING | empirePolicy.ts:7 | Low | |
-| 30 | Ruin Detail window | Main method_550 | PARTIAL | coloniesScreen.ts:22 | Low | |
+| 30 | Ruin Detail window | Main method_550, Galaxy.6.cs GenerateRuinAbilitiesSummary | DONE (D2) | ruinDetail.ts; Colonies button + InfoPanel ruin hotspots | Low | |
 | 31 | Diplomacy: restricted-resource toggle, ability bonus lines, ambassador portrait, pirate relation factors | Main.Part5.cs; Empire.7.cs:4270 | PARTIAL | diplomacyScreen.ts | Low-Med | |
 | 32 | Key remapping screen | BaconDistantWorlds/HotKeys/* | MISSING | — | Low | |
 | 33 | Bacon mod forms (cargo/passenger/mining mission targets, customize ship, custom bomber, invasion command, prison) | BaconDistantWorlds/*.cs | MISSING | orderMenu.ts:475 | Low-Med | Mod-only |

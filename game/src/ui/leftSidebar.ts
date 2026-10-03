@@ -9,8 +9,9 @@
 // view scales it with the HUD), the per-panel item lists (BaconMain.PopulateListsOnLefthandSide, vanilla ordering)
 // and the row models (ItemListPanel.cs method_6), so it is unit-tested without a browser. leftSidebarView.ts draws it.
 //
-// TODO(port): "Enemy Targets" panel (PrioritizedTarget rows, Main.method_205 + ItemListPanel.cs method_8/method_9, the
-//   click-to-assign-a-fleet behaviour of Main.Part12.cs method_78) — the target prioritisation is not ported.
+// The "Enemy Targets" panel (typeof(PrioritizedTarget)): the list of Main.Part11.cs 5081 method_205
+//   (sim/player/enemyTargets.ts), its rows ItemListPanel.cs 1477-1572 (method_6) with method_8 (the strength line) and
+//   method_9 (the picture), the click orders of Main.Part12.cs 2469 method_78 (leftSidebarView.ts).
 // TODO(port): "Pirate Missions" panel (EmpireActivity rows, ItemListPanel.cs method_7) — pirate playstyle only.
 // TODO(port): colony governor / fleet admiral portraits on the rows (characterImageCache ObtainCharacterImageVerySmall)
 //   — there is no character art; the Characters panel shows the character's race portrait instead.
@@ -38,6 +39,13 @@ import { empireApprovalRating } from '../sim/taxes';
 import { habitatAnnualRevenue } from '../sim/forceStructure';
 import { checkBasesToBeBuiltAtHabitat, checkColonizingHabitat, determineResortBaseBuildLocations, identifyColonizationTargetsFull } from '../sim/civilianAI';
 import { identifyResourceCentres } from '../sim/resourceTargets';
+import type { PrioritizedTargetObject } from '../sim/civilianAI';
+import { enemyTargetListDrawsRandom, enemyTargetObjects, resolveAssignedFleet } from '../sim/player/enemyTargets';
+import { determineDefendingFirepower } from '../sim/pirates/pirateEmpireAI';
+import { determineDefendingStrength } from '../sim/combat/threats';
+import { isObjectVisibleToThisEmpire } from '../sim/independentTraders';
+import { shipGroupTotalFirepower } from '../sim/fleets/shipGroupTasks';
+import { tryGetText, formatNet } from '../sim/textResolver';
 import { determineResearchStationLocation } from '../sim/stationPlacement';
 import { resolveSectorDescription } from '../sim/empireEvents';
 import { builtObjectImageUrl, resolveDrawPictureRef } from '../render/builtObjectLayer';
@@ -62,6 +70,7 @@ export type ItemPanelId =
     | 'miningStations'
     | 'constructionShips'
     | 'explorationShips'
+    | 'enemyTargets'
     | 'fleets'
     | 'militaryShips'
     | 'potentialColonies'
@@ -87,8 +96,8 @@ export interface ItemPanelDef {
     extra?: boolean;
 }
 
-/** Port of Main.Part11.cs method_163: the panels in their original order. Enemy Targets and Pirate Missions are not
- *  ported (see the TODOs above); "Idle Ships" is our extra (the old Idle chip), after the original set. */
+/** Port of Main.Part11.cs method_163: the panels in their original order. Pirate Missions is not ported (see the
+ *  TODO above); "Idle Ships" is our extra (the old Idle chip), after the original set. */
 export function itemPanelDefs(isPirate: boolean): ItemPanelDef[] {
     const out: ItemPanelDef[] = [
         { id: 'colonies', title: 'Colonies', icon: { kind: 'chrome', file: 'colony.png' }, toggles: [], itemHeightFactor: 1 },
@@ -97,6 +106,8 @@ export function itemPanelDefs(isPirate: boolean): ItemPanelDef[] {
         { id: 'miningStations', title: 'Mining Stations', icon: { kind: 'ship', subRole: BuiltObjectSubRole.MiningStation }, toggles: [], itemHeightFactor: 1 },
         { id: 'constructionShips', title: 'Construction Ships', icon: { kind: 'chrome', file: 'build.png' }, toggles: [], itemHeightFactor: 1 },
         { id: 'explorationShips', title: 'Exploration Ships', icon: { kind: 'ship', subRole: BuiltObjectSubRole.ExplorationShip }, toggles: [], itemHeightFactor: 1 },
+        // bitmap_82 = attack.png (Main.Part12.cs 685).
+        { id: 'enemyTargets', title: 'Enemy Targets', icon: { kind: 'chrome', file: 'attack.png' }, toggles: [], itemHeightFactor: 1 },
         { id: 'fleets', title: 'Fleets', icon: { kind: 'chrome', file: 'fleetLeader.png' }, toggles: [], itemHeightFactor: 1 },
         {
             id: 'militaryShips',
@@ -289,7 +300,12 @@ export function panelLayout(w: number, h: number, m: PanelMetrics, toggleCount: 
 // Item lists (BaconMain.PopulateListsOnLefthandSide, vanilla order: the empire's own list order)
 // ---------------------------------------------------------------------------------------------------------------
 
-export type PanelItem = Habitat | BuiltObject | ShipGroup | Character | GalaxyLocation;
+/** An Enemy Targets row: a PrioritizedTarget's Target (method_205 via sim/player/enemyTargets.ts). */
+export class EnemyTargetItem {
+    constructor(readonly target: PrioritizedTargetObject) {}
+}
+
+export type PanelItem = Habitat | BuiltObject | ShipGroup | Character | GalaxyLocation | EnemyTargetItem;
 
 function live<T>(list: readonly (T | null | undefined)[] | null | undefined): T[] {
     return (list ?? []).filter((x): x is T => x != null && !(x as { hasBeenDestroyed?: boolean }).hasBeenDestroyed);
@@ -355,7 +371,18 @@ export function panelItems(id: ItemPanelId, galaxy: Galaxy, player: Empire, o: P
             );
         case 'idleShips':
             return idleShipsList(player);
+        case 'enemyTargets':
+            // The direct read: only when building the list draws no galaxy.rnd (enemyTargetListDrawsRandom false);
+            // the view asks for it with the journaled 'enemyTargetList' command otherwise.
+            return enemyTargetItems(enemyTargetListDrawsRandom(player) ? [] : enemyTargetObjects(galaxy, player));
     }
+}
+
+/** method_205's targets as panel items (live ones only). */
+export function enemyTargetItems(targets: readonly (PrioritizedTargetObject | null)[]): EnemyTargetItem[] {
+    const out: EnemyTargetItem[] = [];
+    for (const t of targets) if (t != null && !(t as { hasBeenDestroyed?: boolean }).hasBeenDestroyed) out.push(new EnemyTargetItem(t));
+    return out;
 }
 
 /** Panels whose list is costly to build (empire-wide target searches): refreshed less often by the view. */
@@ -401,6 +428,12 @@ export interface ItemRowModel {
     line2: RowSeg[];
     /** Icons drawn from the row's right edge (fleet posture / range; colonizing / base-to-build markers). */
     right: { url: string; fromRight: number; size: number; y: number; full?: boolean }[];
+    /** Enemy Targets: the target empire's large flag drawn under the row (EmpireFlagImages, 50 × 30 × size). */
+    flag?: { empire: Empire; x: number; y: number; w: number; h: number };
+    /** Enemy Targets: the text's alpha (72 / 255 while a fleet is assigned). */
+    textAlpha?: number;
+    /** Enemy Targets: "FLEET attacking" + "(right-click to cancel)" centred over the row. */
+    centre?: { large: string; small: string };
 }
 
 export interface RowContext {
@@ -765,8 +798,103 @@ function galaxyLocationRow(ctx: RowContext, loc: GalaxyLocation): ItemRowModel {
     };
 }
 
+/** GameText with the English text as fallback (headless tests). */
+function gtx(tag: string, english: string, ...args: unknown[]): string {
+    return formatNet(tryGetText(tag) ?? english, args);
+}
+
+/** .NET "#0 firepower" (GameText "firepower format"). */
+function firepowerText(v: number): string {
+    const f = tryGetText('firepower format') ?? '#0 firepower';
+    return f.replace(/#0/, String(Math.trunc(v)));
+}
+
+/** Port of ItemListPanel.cs 1943 method_8: an Enemy Targets row's second line (strength, troops, bunker). No writes. */
+export function enemyTargetDescription(galaxy: Galaxy, player: Empire, target: PrioritizedTargetObject): string {
+    let text = '';
+    if (target instanceof Habitat) {
+        const habitat = target;
+        const flag = isObjectVisibleToThisEmpire(galaxy, player, habitat);
+        if (!flag) text += `${gtx('Estimated', 'Estimated')}: `;
+        let num = 0;
+        if (flag) num += determineDefendingFirepower(galaxy, habitat, habitat.empire);
+        else for (const b of habitat.basesAtHabitat ?? []) if (b != null) num += b.firepowerRaw;
+        text += firepowerText(num);
+        if (habitat.troops != null) {
+            if (flag) text += `, ${habitat.troops.items.length} ${gtx('troops', 'troops')}`;
+            else text += `, ? ${gtx('troops', 'troops')}`;
+        }
+        // GetText("Planetary Facility Fortified Bunker"): not in GameText.txt; the facility's name instead.
+        if (habitat.defensiveFortressBonus > 0) text += `, ${tryGetText('Planetary Facility Fortified Bunker') ?? 'Fortified Bunker'}`;
+    } else if (target instanceof BuiltObject) {
+        const builtObject = target;
+        const flag = isObjectVisibleToThisEmpire(galaxy, player, builtObject);
+        let num2 = 0;
+        if (flag && builtObject.nearestSystemStar !== null && builtObject.empire !== null) {
+            num2 = determineDefendingStrength(galaxy, builtObject, builtObject.empire);
+        } else {
+            if (!flag) text += `${gtx('Estimated', 'Estimated')}: `;
+            num2 = builtObject.firepowerRaw;
+        }
+        text += firepowerText(num2);
+    } else {
+        const shipGroup = target;
+        if (shipGroup.ships != null) text += `${shipGroup.ships.length} ${gtx('Ships', 'Ships').toLowerCase()}, ${firepowerText(shipGroupTotalFirepower(shipGroup))}`;
+    }
+    return text;
+}
+
+/** PrioritizedTarget.Empire: a habitat's owner, a fleet's / ship's empire. */
+function targetEmpire(t: PrioritizedTargetObject): Empire | null {
+    if (t instanceof Habitat) return (t.owner as Empire | null) ?? null;
+    return (t.empire as Empire | null) ?? null;
+}
+
+/** Port of ItemListPanel.cs 1477-1572 (method_6, PrioritizedTarget): flag, picture (method_9), name in the empire's
+ *  colour with "(Empire)", the strength line (method_8), dimmed with "FLEET attacking" when a fleet is on it. */
+function enemyTargetRow(ctx: RowContext, item: EnemyTargetItem): ItemRowModel {
+    const c = k(ctx);
+    const t = item.target;
+    const assigned = resolveAssignedFleet(ctx.player, t);
+    const alpha = assigned !== null ? 72 : 255;
+    const empire = targetEmpire(t);
+    let color = 0xffffff;
+    let flag: ItemRowModel['flag'];
+    if (empire !== null && empire !== ctx.galaxy.independentEmpire) {
+        flag = { empire, x: c.n5, y: c.n5, w: Math.trunc(50 * snapSizeFactor(ctx.sizeFactor)), h: Math.trunc(30 * snapSizeFactor(ctx.sizeFactor)) };
+        color = empire.pirateEmpireBaseHabitat === null ? empire.mainColor : ROW_TEXT;
+    }
+    // method_9: HabitatImages[PictureRef] / BuiltObjectImages[PictureRef] (the lead ship's for a fleet).
+    const pictures: RowPicture[] = [];
+    let pic: string | null = null;
+    let rotate = false;
+    if (t instanceof Habitat) pic = habitatImageUrl(t);
+    else if (t instanceof BuiltObject) {
+        pic = builtObjectImageUrl(t.pictureRef);
+        rotate = true;
+    } else if (t.leadShip !== null) {
+        pic = builtObjectImageUrl(t.leadShip.pictureRef);
+        rotate = true;
+    }
+    if (pic) pictures.push({ url: pic, size: c.image, rotate, x: 5 + c.n55, y: 5 });
+    const textX = 5 + c.n55 + (pic ? c.image + c.n3 : 0);
+    const name = t instanceof ShipGroup ? (t.name ?? '') : t.name;
+    const line1: RowSeg[] = [txt(name, 'bold', color, { maxWidth: Math.trunc(300 * snapSizeFactor(ctx.sizeFactor) * 0.67) })];
+    if (empire !== null) line1.push(txt(`(${empire.name})`, 'small', color, { gapBefore: c.n6 }));
+    const line2: RowSeg[] = [txt(enemyTargetDescription(ctx.galaxy, ctx.player, t), 'small', ROW_TEXT)];
+    const model: ItemRowModel = { pictures, overlays: [], textX, line1, line2, right: [], flag, textAlpha: alpha };
+    if (assigned !== null) model.centre = { large: gtx('FLEET attacking', '{0} attacking', assigned.fleet.name ?? ''), small: `(${gtx('Right-click to cancel', 'Right-click to cancel').toLowerCase()})` };
+    return model;
+}
+
+/** The status-bar hint over an Enemy Targets row (ItemListPanel.DetectHoveredElement, string_17). */
+export function enemyTargetsHint(title: string): string {
+    return `${title}: ${gtx('cycle fleets (X key) and click to assign attack', 'cycle fleets ({0} key) and click to assign attack', 'F')}`;
+}
+
 /** Port of ItemListPanel.cs method_6: the row model of one item of panel `id`. */
 export function itemRowModel(ctx: RowContext, id: ItemPanelId, item: PanelItem): ItemRowModel {
+    if (item instanceof EnemyTargetItem) return enemyTargetRow(ctx, item);
     if (item instanceof ShipGroup) return shipGroupRow(ctx, item);
     if (item instanceof Habitat) {
         const owned = item.owner != null && item.owner !== ctx.galaxy.independentEmpire && (item.population?.totalAmount ?? 0) > 0;
@@ -791,6 +919,13 @@ export function itemClickTarget(item: PanelItem): { select: Habitat | BuiltObjec
     if (item instanceof GalaxyLocation) {
         const related = (item as { relatedBuiltObject?: BuiltObject | null }).relatedBuiltObject ?? null;
         return { select: related, centre: { x: item.xpos, y: item.ypos } };
+    }
+    if (item instanceof EnemyTargetItem) {
+        // Clicks on targets are method_78's PrioritizedTarget branch (leftSidebarView.ts); the view's hover centre is the
+        // target (ItemListPanel.cs 2321-2333: a fleet's lead ship).
+        const t = item.target;
+        const at = t instanceof ShipGroup ? t.leadShip : t;
+        return { select: null, centre: at ? { x: at.xpos, y: at.ypos } : null };
     }
     const at = item.location as (Habitat | BuiltObject | null);
     return { select: at ?? null, centre: at ? { x: at.xpos, y: at.ypos } : null };
