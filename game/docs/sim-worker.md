@@ -99,6 +99,19 @@ Worker-mode sync detail, per frame (hot / cold mean, then the worst frame's hot 
 The remaining misses are render-side (Pixi update and render at 4K on a loaded machine), not the sim. The worst hot
 applies are single frames: a cold part forced by a dependency, or a birth burst. They are listed in §8 as tuning work.
 
+I re-ran worker mode (uncapped) after the final codec change (the births stream, §3.3) at a higher machine load
+(load average 19–22):
+
+| Zoom | fps | p95 ms | 240 Hz misses | sync ms/frame | max sync ms | worker step + diff ms |
+|---|---|---|---|---|---|---|
+| galaxy | 330 | 7.0 | 5.9 % | 0.10 | 6.7 | 6.8 + 11.8 |
+| sector | 385 | 6.9 | 5.4 % | 0.10 | 7.8 | 8.5 + 21.4 |
+| system | 387 | 7.8 | 7.5 % | 0.09 | 4.8 | 12.7 + 20.2 |
+| planet | 503 | 5.3 | 2.7 % | 0.06 | 6.6 | 8.6 + 14.9 |
+
+The worker still held 60 steps/s (360–373 steps in 6 s). Its step and diff times grow with machine load, because the
+two share the worker thread.
+
 Vsync run (no `--uncapped`; the headless compositor's own rate): see §2.3.
 
 ### 2.3 Vsync run
