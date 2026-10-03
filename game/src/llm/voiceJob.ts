@@ -28,6 +28,8 @@ import { FACTION_ULTIMATUM_PROMPT_VERSION, FACTION_ULTIMATUM_SYSTEM, FACTION_ULT
 import { COUNCIL_SPEECH_PROMPT_VERSION, COUNCIL_SPEECH_SYSTEM, COUNCIL_SPEECH_USER, SPEECH_STANCE } from './prompts/councilSpeech';
 import { CONCORD_SYSTEM, CONCORD_USER, HERDERS_SYSTEM, HERDERS_USER, RIM_LORE_PROMPT_VERSION } from './prompts/rimLore';
 import { LETTER_PROMPT_VERSION, LETTER_SYSTEM, LETTER_TASKS, LETTER_USER } from './prompts/letter';
+import { remoteSimHost, type RemoteSimHost } from '../simworker/remoteHost';
+import { readReplica } from './replicaReads';
 
 // ---------------------------------------------------------------------------------------------------------------
 // Prompt building (pure: reads the galaxy, writes nothing)
@@ -164,6 +166,14 @@ export function applyVoiceToMessage(m: EmpireMessage, cue: VoiceCue, text: strin
     return true;
 }
 
+/**
+ * Sim worker: the worker upgraded `m` (its replica here; the new description arrives with the next cold sync): record
+ * the voice for layerVoiceOf, as applyVoiceToMessage does in-thread. The replica's text is never written here.
+ */
+function rememberRemoteVoice(m: EmpireMessage, cue: VoiceCue, text: string): void {
+    voicedMessages.set(m, { original: cue.scripted, text, label: cue.role, kind: cue.kind });
+}
+
 // ---------------------------------------------------------------------------------------------------------------
 // Council speeches (shown in the council screen)
 // ---------------------------------------------------------------------------------------------------------------
@@ -206,8 +216,38 @@ export class VoiceJob {
     private readonly speeches = new WeakMap<object, SpeechEntry>();
     /** Every finished request (tests, dev overlay). */
     readonly outcomes: VoiceOutcome[] = [];
+    /**
+     * Sim worker (docs/sim-worker.md §9 chunk 8): the galaxy is a replica. The cues are recorded in the worker's tick,
+     * so they arrive as worker events (simworker/simHost.ts drains them) and wait here for the next poll; a voiced
+     * message is upgraded in the worker (host op), where the message lives. Null in-thread.
+     */
+    private readonly remote: RemoteSimHost | null;
+    private readonly remoteCues: VoiceCue[] = [];
+    private readonly unsubscribe: (() => void) | null = null;
 
-    constructor(private readonly opts: VoiceJobOptions) {}
+    constructor(private readonly opts: VoiceJobOptions) {
+        this.remote = remoteSimHost(opts.galaxy);
+        if (this.remote !== null) {
+            this.unsubscribe = this.remote.subscribe((e, resolve) => {
+                if (e.kind !== 'voiceCues' || this.disposed) return;
+                for (const c of e.cues) {
+                    try {
+                        this.remoteCues.push(resolve(c) as VoiceCue);
+                    } catch {
+                        // An object of the cue is gone from the replica already: voices are best-effort.
+                    }
+                }
+                // Bounded like the sim-side queue (voiceCues.ts MAX_PENDING).
+                if (this.remoteCues.length > 64) this.remoteCues.splice(0, this.remoteCues.length - 64);
+            });
+        }
+    }
+
+    /** The cues left since the last poll (in-thread: the sim-side queue; worker: the events received). */
+    private takeCues(): VoiceCue[] {
+        if (this.remote === null) return drainVoiceCues(this.opts.galaxy);
+        return this.remoteCues.splice(0);
+    }
 
     /** Resolves when every request in flight has been applied (tests). */
     async settle(): Promise<void> {
@@ -218,10 +258,10 @@ export class VoiceJob {
     poll(): void {
         const { galaxy } = this.opts;
         if (this.disposed || !voicesOn(galaxy)) {
-            drainVoiceCues(galaxy);
+            this.takeCues();
             return;
         }
-        for (const cue of drainVoiceCues(galaxy)) {
+        for (const cue of this.takeCues()) {
             if (cue.kind === 'speech') {
                 const ref = cue.ref as { council?: { name: string; members: Empire[] }; motion?: SpeechMotion } | undefined;
                 if (ref?.council !== undefined && ref.motion !== undefined) this.councilSpeeches(ref.council, ref.motion);
@@ -252,7 +292,7 @@ export class VoiceJob {
         const m = cue.message!;
         let req: VoiceRequest;
         try {
-            req = buildVoiceRequest(this.opts.galaxy, cue);
+            req = readReplica(this.opts.galaxy, () => buildVoiceRequest(this.opts.galaxy, cue));
         } catch {
             return;
         }
@@ -262,7 +302,17 @@ export class VoiceJob {
             this.outcomes.push({ purpose: req.purpose, outcome: res.outcome === 'ok' || res.outcome === 'cached' ? 'unusable' : res.outcome, applied: false });
             return;
         }
-        const applied = applyVoiceToMessage(m, cue, text);
+        let applied: boolean;
+        if (this.remote === null) applied = applyVoiceToMessage(m, cue, text);
+        else {
+            try {
+                applied = await this.remote.hostOp('voiceMessage', [m, { scripted: cue.scripted, role: cue.role, kind: cue.kind }, text]);
+            } catch {
+                applied = false;
+            }
+            if (applied) rememberRemoteVoice(m, cue, text);
+            if (this.disposed) return;
+        }
         this.outcomes.push({ purpose: req.purpose, outcome: applied ? res.outcome : 'stale', applied });
         if (applied) this.notify(cue, text);
     }
@@ -285,7 +335,7 @@ export class VoiceJob {
         if (this.disposed || !voicesOn(galaxy)) return null;
         let entry = this.speeches.get(motion);
         if (entry === undefined) {
-            const sides = councilSpeakers(galaxy, council.members, motion);
+            const sides = readReplica(galaxy, () => councilSpeakers(galaxy, council.members, motion));
             const mk = (s: SpeechSide | null): Speech | null => (s !== null ? { side: s.side, speaker: s.empire, text: s.scripted, voiced: false } : null);
             entry = { for: mk(sides.for), against: mk(sides.against), listener: null };
             this.speeches.set(motion, entry);
@@ -296,7 +346,7 @@ export class VoiceJob {
     }
 
     private async voiceSpeech(council: string, motion: SpeechMotion, side: SpeechSide, entry: SpeechEntry): Promise<void> {
-        const req = buildSpeechRequest(this.opts.galaxy, council, motion, side);
+        const req = readReplica(this.opts.galaxy, () => buildSpeechRequest(this.opts.galaxy, council, motion, side));
         const { res, text } = await this.ask(req);
         if (this.disposed || !voicesOn(this.opts.galaxy)) return;
         const speech = entry[side.side];
@@ -317,6 +367,8 @@ export class VoiceJob {
 
     dispose(): void {
         this.disposed = true;
+        this.unsubscribe?.();
+        this.remoteCues.length = 0;
     }
 }
 

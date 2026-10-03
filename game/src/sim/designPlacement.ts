@@ -29,7 +29,7 @@ import {
     getFirstByType,
 } from './design';
 import type { ComponentDefinition, ComponentImprovementEntry } from './componentStatic';
-import { evaluateLatestByCategory, evaluateLatestByType } from './componentStatic';
+import { evaluateLatestByCategory, evaluateLatestByType, generateOrderedComponentImprovementList } from './componentStatic';
 import { ComponentType } from './data/components';
 import { ComponentCategoryType, type EmpirePolicy, resolveTechFocuses } from './data/policies';
 import {
@@ -263,14 +263,10 @@ export function placeComponentsOnDesign(
     const designFocus: ShipDesignFocus =
         empire.dominantRace !== null && empire.policy !== null ? empire.policy.researchDesignOverallFocus : ShipDesignFocus.Balanced;
 
+    // 1687-1690: torpedoWeapons ??= Galaxy.GenerateOrderedComponentImprovementList(WeaponTorpedo, 1): every
+    // torpedo-category component, highest Value1 (damage) first, with its static (unresearched) values.
     const torpedoWeapons =
-        torpedoWeaponsIn ??
-        // Galaxy.GenerateOrderedComponentImprovementList(WeaponTorpedo, 1) — approximated from
-        // the empire's known component definitions (see generateOrderedComponentImprovementList).
-        [...empire.componentDefinitions]
-            .filter((c) => c.category === ComponentCategoryType.WeaponTorpedo)
-            .sort((a, b) => a.techLevel - b.techLevel)
-            .map((c) => research.resolveImprovedComponentValues(c));
+        torpedoWeaponsIn ?? generateOrderedComponentImprovementList(empire.componentDefinitions, ComponentCategoryType.WeaponTorpedo, 1);
 
     let energyConsumed = 0.0;
     let energyOutput = 0.0;

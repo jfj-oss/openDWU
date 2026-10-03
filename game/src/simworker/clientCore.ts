@@ -20,7 +20,8 @@ import { Fighter } from '../sim/combat/fighters';
 import { ShipGroup } from '../sim/fleets/shipGroup';
 import { Empire as EmpireClass } from '../sim/empire';
 import { Habitat } from '../sim/types';
-import type { ClockMessage, CommandMessage, QueryMessage, RefreshRequest, SnapshotMessage, StepMessage, ToWorker, WorkerEvent } from './protocol';
+import type { ClockMessage, CommandMessage, HostOpMessage, QueryMessage, RefreshRequest, SnapshotMessage, StepMessage, ToWorker, WorkerEvent } from './protocol';
+import { setRemoteSimHost, type RemoteSimHost } from './remoteHost';
 import { setRemoteRefreshSink } from './refresh';
 import { markReadOnlyGalaxy } from '../sim/readOnlyQuery';
 import type { ApplyStats } from './replicaSync';
@@ -112,6 +113,9 @@ export class SimClientCore {
     readonly renderTime: RenderTime = createRenderTime();
     readonly game: Game;
     private readonly pending = new Map<number, (r: unknown) => void>();
+    /** Replies awaited as promises (remoteHost.ts): rejected when the worker reports an error. */
+    private readonly failing = new Map<number, (err: Error) => void>();
+    private readonly listeners = new Set<(e: WorkerEvent, resolve: (a: unknown) => unknown) => void>();
     private nextCommandId = 1;
     private clockSeq = 0;
     private sent: ClockControls;
@@ -173,6 +177,28 @@ export class SimClientCore {
             () => this.replica.decoder.object(1) as Record<string, unknown> | null,
             (record) => this.opts.post({ type: 'tradeFlows', record }),
         );
+        setRemoteSimHost(galaxy, this.remoteHost());
+    }
+
+    /** The replica's handle for the local-model paths (remoteHost.ts): commands and host ops with promised results. */
+    private remoteHost(): RemoteSimHost {
+        return {
+            command: (empire, op, args) =>
+                new Promise((resolve, reject) => this.sendCommand(empire, op, args as unknown[], resolve as (r: unknown) => void, reject)) as never,
+            hostOp: (op, args) =>
+                new Promise((resolve, reject) => {
+                    const encoded = (args as unknown[]).map((a) => encodeRemoteArg(a, this.naming));
+                    const id = this.nextCommandId++;
+                    const msg: HostOpMessage = { type: 'hostOp', id, op, args: encoded };
+                    this.pending.set(id, resolve as (r: unknown) => void);
+                    this.failing.set(id, reject);
+                    this.opts.post(msg);
+                }) as never,
+            subscribe: (listener) => {
+                this.listeners.add(listener);
+                return () => this.listeners.delete(listener);
+            },
+        };
     }
 
     private *staticEntries(): Iterable<[string, object]> {
@@ -205,14 +231,24 @@ export class SimClientCore {
         }
     }
 
-    private sendCommand(empire: Empire, op: string, args: unknown[], onApplied?: (r: unknown) => void): void {
-        const empireId = this.replica.decoder.idOf(empire);
-        if (empireId < 0) throw new Error(`sim worker: command ${op} from an empire that is not in the replica`);
-        const encoded = this.encodeArgs(`command ${op}`, args);
+    /** `onFailed` (a promised reply, remoteHost.ts): errors reject instead of throwing / dropping with a warning. */
+    private sendCommand(empire: Empire, op: string, args: unknown[], onApplied?: (r: unknown) => void, onFailed?: (err: Error) => void): void {
+        let encoded: RemoteArg[] | null;
+        try {
+            const empireId0 = this.replica.decoder.idOf(empire);
+            if (empireId0 < 0) throw new Error(`sim worker: command ${op} from an empire that is not in the replica`);
+            encoded = onFailed !== undefined ? args.map((a) => encodeRemoteArg(a, this.naming)) : this.encodeArgs(`command ${op}`, args);
+        } catch (err) {
+            if (onFailed === undefined) throw err;
+            onFailed(err instanceof Error ? err : new Error(String(err)));
+            return;
+        }
         if (encoded === null) return;
+        const empireId = this.replica.decoder.idOf(empire);
         const id = onApplied === undefined ? 0 : this.nextCommandId++;
         const msg: CommandMessage = { type: 'command', id, empire: empireId, op, args: encoded };
         if (onApplied !== undefined) this.pending.set(id, onApplied);
+        if (onFailed !== undefined) this.failing.set(id, onFailed);
         this.opts.post(msg);
     }
 
@@ -294,11 +330,26 @@ export class SimClientCore {
             }
             for (const r of m.results) {
                 const cb = this.pending.get(r.id);
+                const fail = this.failing.get(r.id);
                 this.pending.delete(r.id);
-                if (r.error !== undefined) console.warn(`sim worker: command reply ${r.id}: ${r.error}`);
-                else if (cb !== undefined) {
+                this.failing.delete(r.id);
+                if (r.error !== undefined) {
+                    if (fail !== undefined) fail(new Error(r.error));
+                    else console.warn(`sim worker: command reply ${r.id}: ${r.error}`);
+                } else if (cb !== undefined) {
+                    let value: unknown;
                     try {
-                        cb(this.resolve(r.result));
+                        value = this.resolve(r.result);
+                    } catch (err) {
+                        if (fail !== undefined) fail(err instanceof Error ? err : new Error(String(err)));
+                        else
+                            queueMicrotask(() => {
+                                throw err;
+                            });
+                        continue;
+                    }
+                    try {
+                        cb(value);
                     } catch (err) {
                         queueMicrotask(() => {
                             throw err;
@@ -306,7 +357,18 @@ export class SimClientCore {
                     }
                 }
             }
-            for (const e of m.events) this.opts.onEvent?.(e, (a) => this.resolve(a));
+            for (const e of m.events) {
+                this.opts.onEvent?.(e, (a) => this.resolve(a));
+                for (const l of this.listeners) {
+                    try {
+                        l(e, (a) => this.resolve(a));
+                    } catch (err) {
+                        queueMicrotask(() => {
+                            throw err;
+                        });
+                    }
+                }
+            }
         }
         const last = this.inbox.length > 0 ? this.inbox[this.inbox.length - 1] : null;
         this.inbox.length = 0;
@@ -338,9 +400,14 @@ export class SimClientCore {
         this.disposed = true;
         setRemoteCommandSink(this.galaxy, null);
         setRemoteQuerySink(this.galaxy, null);
+        setRemoteSimHost(this.galaxy, null);
         setRemoteRefreshSink(this.galaxy, null);
         markReadOnlyGalaxy(this.galaxy, false);
         this.tradeFlows.dispose();
         this.pending.clear();
+        const failing = [...this.failing.values()];
+        this.failing.clear();
+        this.listeners.clear();
+        for (const f of failing) f(new Error('sim worker: the game was closed'));
     }
 }

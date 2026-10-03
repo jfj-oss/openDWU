@@ -214,19 +214,22 @@ export const VICTORY_TIME_START_YEARS_MAX = 99;
  * start 3 years, all event toggles on, threshold 1.0. */
 export function defaultVictoryConditions(): VictoryConditions {
     return {
-        territory: false,
+        // Original defaults (Main.Part9.cs method_259): Territory / Population / Economy on at 33 %, apply after 20
+        // years, time limit off at 30 years, victory threshold index 1 (80 %).
+        territory: true,
         territoryPercent: 33,
-        population: false,
+        population: true,
         populationPercent: 33,
-        economy: false,
+        economy: true,
         economyPercent: 33,
         timeLimit: false,
-        timeLimitYears: 10,
-        startDateYears: 3,
+        timeLimitYears: 30,
+        startDateYears: 20,
+        timeStart: true,
         enableDisasterEvents: true,
         enableRaceSpecificConditions: true,
         enableRaceSpecificEvents: true,
-        victoryThresholdPercentage: 1.0,
+        victoryThresholdPercentage: 0.8,
         // [wizardB1] the story box: Main.Part9.cs method_259 VictoryConditionsStoryEvents = true (Return of the Shakturi),
         // VictoryConditionsStoryEventsOriginal = true (Distant Worlds) and StartGameOptions.cs 68
         // VictoryConditionsStoryEventsShadows = true (offered only at Expansion 0, see toCreateGameOptions).
@@ -824,9 +827,10 @@ export function applyEmpireDefaults(options: StartGameOptions, raceIndex: number
  * defaults (see defaultColonizationOptions / defaultOtherEmpiresOptions). */
 export function defaultStartGameOptions(): StartGameOptions {
     return {
-        shape: GalaxyShape.Spiral,
+        // Original defaults (Main.Part9.cs method_259): Elliptical, GalaxySize 3 (700 stars), GalaxyDimensions 3 (10x10).
+        shape: GalaxyShape.Elliptical,
         starCountIndex: 3,
-        dimensionIndex: 2,
+        dimensionIndex: 3,
         seed: Date.now() % 2147483647,
         raceName: '',
         empireName: '',

@@ -45,13 +45,13 @@ interface CareerBattleStatsLike {
 
 /**
  * BaconBuiltObject.cs 2166 CalculateCrewLevel(main, ship): "" for non-military ships, else by career damage dealt minus
- * three times damage taken. The C# creates CareerBattleStats when null (all zero) — TODO(port) M4o: the TS BuiltObject
- * has no CareerBattleStats yet, so a missing one reads as zeros ("green").
+ * three times damage taken. The C# creates CareerBattleStats when null (all zero); a missing one reads as zeros here,
+ * the same result (BaconSpaceBattleStats.cs 20, achievements.ts, creates it where it accumulates).
  */
 export function calculateCrewLevel(ship: BuiltObject): string {
     if (ship.role !== BuiltObjectRole.Military) return '';
     let num = 0;
-    const stats = (ship as unknown as { careerBattleStats?: CareerBattleStatsLike | null }).careerBattleStats ?? null;
+    const stats = ship.careerBattleStats as CareerBattleStatsLike | null;
     const weaponsDamageToEnemy = stats !== null ? stats.weaponsDamageToEnemy : 0;
     const damageToUs = stats !== null ? stats.damageToUs : 0;
     if (ship.role === BuiltObjectRole.Military) num = csInt(Math.max(0.0, Math.fround(weaponsDamageToEnemy - Math.fround(damageToUs * 3))));

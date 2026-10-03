@@ -718,7 +718,7 @@ export function timeSpentAtWar(counters: DiplomacyCounters, starDate: number): n
     return counters.timeSpentAtWarExcludingCurrent + num;
 }
 
-/** EmpireCounters.cs 481 ProcessCreatureDeath(creature) (caller: Creature.cs 934 DamageCreature with an empire damager). */
+/** EmpireCounters.cs 481 ProcessCreatureDeath(creature) (caller: Creature.cs 933 DamageCreature with an empire damager, creature.ts damageCreature). */
 export function countersProcessCreatureDeath(counters: EmpireCounters, creatureType: CreatureType | null): void {
     if (creatureType === null) return;
     switch (creatureType) {

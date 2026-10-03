@@ -120,7 +120,7 @@ describe('wizard → VictoryConditions (Start.1.cs 3772-3805)', () => {
         const o = { ...defaultStartGameOptions(), seed: 5, raceName: 'Human', difficultyScaling: true };
         const c = toCreateGameOptions(o, gameData, Array.from({ length: 800 }, (_, i) => `N${i}`));
         expect(c.victoryConditions).toBeInstanceOf(VictoryConditions);
-        expect(c.victoryConditions!.victoryThresholdPercentage).toBe(1.0);
+        expect(c.victoryConditions!.victoryThresholdPercentage).toBe(0.8);
         expect(c.difficultyLevelScalesAsPlayerApproachesVictory).toBe(true);
     });
 });

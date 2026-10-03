@@ -1,7 +1,6 @@
 // Ports of Weapon.cs (construction, ReviewValues, Reset, value accessors) and
-// WeaponList.cs (task M3a). Firing (Weapon.Fire / FireInternal, which draw from
-// Galaxy.Rnd) belongs to combat and is not ported yet.
-// TODO(port): Weapon.Fire / FireInternal / IsAvailable — Weapon.cs (combat).
+// WeaponList.cs (task M3a). Firing (Weapon.Fire / FireInternal / IsAvailable, which
+// draw from Galaxy.Rnd) is in combat/weapons.ts.
 
 import { BuiltObjectComponent, ComponentStatus } from './builtObjectComponent';
 import { componentImprovementFromComponent, type ComponentDefinition, type ComponentImprovementEntry } from './componentStatic';

@@ -148,6 +148,10 @@ function handle(m: ToWorker): void {
             host!.query(m);
             post(host!.flush());
             return;
+        case 'hostOp':
+            host!.hostOp(m);
+            kick();
+            return;
         case 'tradeFlows':
             host!.setTradeFlowRecording(m);
             kick();

@@ -30,7 +30,9 @@ import { TRADE_FLOWS_SIDE_KEY, TradeFlowSyncSource } from './tradeFlowSync';
 import { installRimAtmosphereData } from '../render/rimAtmosphereWiring';
 import { decodeRemoteArg, encodeRemoteArg, type RemoteArg, type RemoteNaming } from './remoteArgs';
 import { runSimQuery, type SimQueryName } from './simQuery';
-import type { ClockMessage, CommandMessage, FromWorker, QueryMessage, RefreshRequest, SnapshotMessage, StepMessage, TradeFlowsMessage, WorkerEvent } from './protocol';
+import { runHostOp } from './hostOps';
+import { drainVoiceCues } from '../sim/scenario/llm/voiceCues';
+import type { ClockMessage, CommandMessage, FromWorker, HostOpMessage, QueryMessage, RefreshRequest, SnapshotMessage, StepMessage, TradeFlowsMessage, WorkerEvent } from './protocol';
 import type { ReplicaEncoderOptions } from './replicaSync';
 
 export interface SimHostOptions {
@@ -231,6 +233,55 @@ export class SimHost {
         this.dirty = true;
     }
 
+    /**
+     * Run a host op (hostOps.ts) on the authoritative galaxy now — between two ticks, where its in-thread caller runs
+     * it (a promise continuation between frames). The result goes back in the next step message; what the op's
+     * arguments and result name is compared in that delta, as for a command.
+     */
+    hostOp(m: HostOpMessage): void {
+        const resolving = {
+            object: (id: number) => this.sync.encoder.objectOf(id),
+            external: (kind: string, key: string | number) => this.externalsByRef.get(`${kind}:${key}`),
+        };
+        try {
+            const args = m.args.map((a) => decodeRemoteArg(a, resolving));
+            for (const a of args) this.touch(a, 2);
+            const result = runHostOp(this.galaxy, m.op, args);
+            this.touch(result, 2);
+            if (m.id !== 0) {
+                try {
+                    this.results.push({ id: m.id, result: encodeRemoteArg(result, this.naming) });
+                } catch (err) {
+                    this.results.push({ id: m.id, result: null, error: `result not sendable: ${err instanceof Error ? err.message : String(err)}` });
+                }
+            }
+        } catch (err) {
+            if (m.id !== 0) this.results.push({ id: m.id, result: null, error: err instanceof Error ? err.message : String(err) });
+            else console.error(`sim worker: host op ${m.op} failed`, err);
+        }
+        this.dirty = true;
+    }
+
+    /**
+     * 19s-2 voices: the cues the sim left during this tick (a module WeakMap of the worker's galaxy, never state) go to
+     * the main thread's voice job as an event, as llm/voiceJob.ts poll drained them in-thread. Drained every tick, voices
+     * on or not (in-thread the job drains them too; off, noteVoiceCue records nothing).
+     */
+    private drainVoiceCues(): void {
+        const cues = drainVoiceCues(this.galaxy);
+        if (cues.length === 0) return;
+        const encoded: RemoteArg[] = [];
+        for (const cue of cues) {
+            try {
+                encoded.push(encodeRemoteArg(cue, this.naming));
+            } catch (err) {
+                // Voices are best-effort (MAX_PENDING drops the oldest in-thread too).
+                console.warn('sim worker: voice cue not sendable', err);
+            }
+        }
+        if (encoded.length > 0) this.events.push({ kind: 'voiceCues', cues: encoded });
+    }
+
     /** Collect the graph objects in a command argument / result (through arrays, plain objects, by-value classes). */
     private touch(v: unknown, depth: number): void {
         if (v === null || typeof v !== 'object') return;
@@ -275,6 +326,7 @@ export class SimHost {
             this.events.push({ kind: 'simError', message: err instanceof Error ? err.message : String(err) });
             this.dirty = true;
         }
+        this.drainVoiceCues();
         this.stepSerial += steps;
         const t1 = this.now();
         // After the last change (a step, a command, the clock), keep diffing until a whole cold cycle has passed, so a

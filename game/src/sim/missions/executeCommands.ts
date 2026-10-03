@@ -3,7 +3,7 @@
 // target coordinates), the CommandAction dispatch table, the M4b-owned cases (EvaluateThreats 792, ScanArea 798,
 // Hold 1207, Deploy 4352, RepeatSubsequentCommands 4361, SetParent 4367, Undeploy 4390, ClearParent 4406,
 // ClearAttackers 4487), the no-command epilogue (4494-4574: battle stats, queued/revert missions, mission-complete
-// message, idle drift) and the InView clamp (4575). Every other case is a stub in its owner's cmd*.ts module with the
+// message, idle drift) and the InView clamp (4575). Every other case is ported in its owner's cmd*.ts module with the
 // `CommandHandler` signature; ConditionalHyperTo's `goto case HyperTo/MoveTo` (2966/3002) stays inside cmdMovement.ts.
 // EvaluateRelativeToParent (6784) is ported here (only ExecuteCommands and DoMovement call it).
 // Rnd: none in the frame; cases draw inside their owners.
