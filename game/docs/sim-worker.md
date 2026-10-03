@@ -235,7 +235,8 @@ The delta streams are transferred, not copied.
   achievements, saves.
 - **The replica is read-only.** A main-thread write to a replica object is not an error, but it is wrong. The worker
   never sees it, and the next sync of that field overwrites it, or never does if the worker's value does not change.
-  The audit's §4 lists the 27 places that still write. They are §9's work.
+  The audit's §4 lists the 27 places that still write. They are §9's work. The dev-only write detector
+  (`?detectWrites=1`, §9 chunk 0) finds them at run time, with stacks.
 - **The clock.** The HUD's GalaxyTime stays on the main thread as the control surface and is bound to the replica
   Galaxy's `nowMs`, which travels hot. Pause and speed changes are posted, with a sequence number. The worker's own
   GalaxyTime is authoritative. The main thread adopts the worker's pause and speed (for example, a game end that
@@ -356,6 +357,7 @@ The only behaviour changes in this mode are:
 | `scripts/sync-measure.mjs` | Sync cost on a save (`--compare-options`, `--verify`, `--census`, `--hot-fields`) |
 | `scripts/simworker-smoke.mjs` | Browser smoke: boots with the flag, checks run / speed / pause / move order, screenshots |
 | `test/simWorker.test.ts`, `test/replicaSync.test.ts` | Determinism, fidelity and save gates; codec fuzz (8 seeds × 400 steps by default; `FUZZ_SEEDS` / `FUZZ_STEPS`) |
+| `src/simworker/writeDetector.ts`, `test/replicaWriteDetector.test.ts` | Dev-only replica write detector (`?detectWrites=1`, §9 chunk 0) and its tests |
 
 ## 8. Known limits of phase 1 (also in §9)
 
@@ -382,9 +384,51 @@ Each chunk is independent. All chunks share the same test approach:
 - **Browser.** `scripts/simworker-smoke.mjs <dev url>`, with `--load=/dev-saves/late2500.dwusave` for the late game,
   extended with the chunk's own checks, and screenshots of the chunk's screens with `?simWorker=1` vs `0`.
 - **Determinism.** `npm run repin -- --check` must stay at 0, and `test:fast` must pass with the flag off.
-- **Safety net, worth doing first** (chunk 0, small): a dev-only replica write detector. In the decoder's cold pump,
-  compare the replica field values of each object it touches with the last values it applied, and warn once per
-  `Class.field` that changed without a delta. That catches the indirect writes a static audit misses.
+- **Safety net: the replica write detector** (chunk 0, done). Run your chunk's checks with it on, and make sure your
+  chunk's keys in the findings table below disappear. See "Chunk 0" below.
+
+**Chunk 0 — replica write detector (done).**
+- Files: `src/simworker/writeDetector.ts`; the decoder hook in `replicaSync.ts` (`ReplicaDecoder.watch`, `fieldName`,
+  `idLimit`: additive, null by default); the install in `workerClient.ts`; `scripts/simworker-smoke.mjs --detect-writes`;
+  `test/replicaWriteDetector.test.ts`.
+- **Turn it on:** `?simWorker=1&detectWrites=1` (dev builds only, `import.meta.env.DEV`). It warns once per key in the
+  console (`[replica write] …`) and is reachable as `window.__dwuWriteDetector`: `checkAll()` (compare everything now),
+  `writes()` / `unexpected()` (findings, with counts, first detail and stack), `summary()`, `reset()`, `arm(key)`.
+  `detectWrites=all` traps every field of every replica object from the start, so the first write already has a stack
+  (heavier; fine on a fresh game). In tests: `installReplicaWriteDetector(client.replica, { warn })`, then
+  `det.checkAll()` / `det.unexpected()`. Smoke: `node scripts/simworker-smoke.mjs <url> --detect-writes[=all]` prints the
+  findings after the move order and at the end, and saves `<out>/replica-writes.json`.
+- **How it works.** It keeps a mirror of the values the decoder applied to each replica object. The decoder calls
+  `watch(id, slot)` before each record; the first record on an object in an apply compares it with its mirror (only the
+  field being set, for a field set), so a foreign write is found when the sync next touches the object. Objects the sync
+  does not touch again are compared by a round-robin sweep at the start of every cold pump (0.25 ms), and by
+  `checkAll()`. Once a key is found, a trap is armed on it: the field becomes an accessor on every live and future replica
+  object with that label (containers: `push` / `splice` / `set` / `add` / … are watched), so the next write reports its
+  stack. Index writes (`a[i] = v`) and added / deleted keys are found by the compare only. Writes made while the replica
+  applies a delta (the decoder, `GalaxyReplica.afterApply`'s static wiring and side tables) are the sync's and never
+  reported. `REPLICA_WRITE_ALLOW` (in `writeDetector.ts`) lists intended client-side state, with a reason per entry: it
+  is empty, because every write found so far is a bug.
+- **Keys:** `Class.field` (class names from the save registry), `<label>.field` for a plain object, `<label>[]` for an
+  array, `<label>{}` for a Map / Set, `<label>#` for a typed array; a container's label is where it was first found
+  (`Empire.messageHistory[]` is that array).
+- **Cost:** off, nothing (the hook is null). On, the main thread's sync work is about 3–4× (fresh game: about 2 ms more
+  per frame in node). Installing it on the late save takes a few seconds and roughly doubles the replica's heap.
+- **Findings** (smoke on a fresh game, and on `late2500.dwusave`, both modes; 2026-10-03). Each key, the writer the trap
+  caught (or the compare's detail), and the chunk it belongs to:
+
+  | Key | Writer (stack) | Chunk |
+  |---|---|---|
+  | `EmpireMessage.starDate` | `ui/empireMessageFeed.ts recordTickerMessage` ← `main.ts refreshHud` (4 Hz) | 4 (audit §4 item 2) |
+  | `Empire.messageHistory[]` (push) | `sim/messages.ts addHistoryMessage` ← `empireMessageFeed.ts recordTickerMessage` ← `refreshHud` | 4 (item 2) |
+  | `Empire.advisorSuggestions[]` (push) | `sim/advisorQueue.ts addAdvisorSuggestion` ← `receiveAdvisorSuggestionMessage` ← `ui/messagePopups.ts tick` | 4 (item 3) |
+  | `Empire.eventMessageRecipient` (key "deleted": redefined non-enumerable, compare only) | `ui/eventMessages.ts` 138 / 194 and `audio/gameAudio.ts` 265 (`Object.defineProperty` on the player Empire) | 4 (item 6), 2 |
+  | `Empire.useAveragedVariableIncome`, `Empire.variableIncome`, `Empire.lastVariableIncomeUpdate`, `Empire.thisYearsResortIncomeValue`, `BuiltObject.currentYearsIncome` | `sim/treasury.ts checkAgeVariableIncome` (→ `ageVariableIncomeValues`, `thisYearsResortIncome`, `resetYearlyIncome`) ← `moneyPanelIncome` ← `ui/hud.ts refreshMoney` / `buildMoneyPanel` | **5 — not in the audit.** The C# UI does this too (Main.Part11.cs 841): it is a sim write by design, so it must become a command (or run in the worker at the panel's rate). `currentYearsIncome` is reset on every space port / mining station / resort base at a new galactic year. |
+  | `BuiltObject.hyperjumpAboutToEnterSoundPlayed` | `audio/mainViewSounds.ts MainViewSounds.hyperjump` ← `collect` ← `gameAudio.ts frame` | 2 (item 1) |
+
+  The smoke has no combat and opens no screens, so the audit's other writes (`Weapon.soundEffectPlayed`,
+  `Explosion.explosionSoundPlayed`, `BuiltObject.ionStrikeSoundPlayed`, the order menus' `Random` draws, the screens'
+  writes) did not come up. Run your chunk's flows with the detector on to catch them; a replica RNG draw is reported as
+  `Random.inext` / `Random.inextp` / `Random.seedArray[]` (tested).
 
 **Chunk 1 — clock, boot and persistence edges.**
 - Files: `src/main.ts` (tutorial boot `startTutorialGame` through the worker; `bootGameWithOptions` non-autostart

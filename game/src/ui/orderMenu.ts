@@ -31,6 +31,7 @@ import {
 } from '../sim/player/orderMenu';
 import { isRemoteQueryGalaxy, simQuery } from '../simworker/simQuery';
 import { showToast } from './toast';
+import { saveAutomationResponse, savedAutomationResponse } from './settings'; // [gameoptions]
 import { wreckSalvageMenuItem } from './scenario/wreckageUi'; // [wreckage]
 
 export interface OrderMenuHandlers {
@@ -219,6 +220,10 @@ export function openOrderMenu(items: OrderMenuItem[], clientX: number, clientY: 
  * the original's two buttons. Resolves true for "Turn off automation", false for "Leave on" (also Escape).
  */
 export function confirmAutomationOff(taskText: string): Promise<boolean> {
+    // [gameoptions] MessageBoxEx.UseSavedResponse: a "Don't ask me again" answer is reused without asking (reset by
+    // Game Options → Reset Warnings, Main.Part5.cs:2051).
+    const saved = savedAutomationResponse(taskText);
+    if (saved !== null) return Promise.resolve(saved);
     return new Promise((resolve) => {
         const wrap = document.createElement('div');
         wrap.className = 'order-confirm-wrap';
@@ -232,9 +237,16 @@ export function confirmAutomationOff(taskText: string): Promise<boolean> {
         body.textContent = `${taskText} is automated. Turn off automation so your order is not overridden?`;
         const buttons = document.createElement('div');
         buttons.className = 'order-confirm-buttons';
+        // [gameoptions] AllowSaveResponse / SaveResponseText "Don't ask me again" (Main.Part12.cs:4463-4464).
+        const remember = document.createElement('label');
+        remember.className = 'order-confirm-remember';
+        const rememberBox = document.createElement('input');
+        rememberBox.type = 'checkbox';
+        remember.append(rememberBox, document.createTextNode(" Don't ask me again"));
         const finish = (v: boolean): void => {
             document.removeEventListener('keydown', onKey, true);
             wrap.remove();
+            if (rememberBox.checked) saveAutomationResponse(taskText, v);
             resolve(v);
         };
         const mk = (text: string, v: boolean): HTMLButtonElement => {
@@ -260,7 +272,7 @@ export function confirmAutomationOff(taskText: string): Promise<boolean> {
             }
         };
         document.addEventListener('keydown', onKey, true);
-        win.append(title, body, buttons);
+        win.append(title, body, remember, buttons);
         wrap.appendChild(win);
         document.body.appendChild(wrap);
         off.focus();

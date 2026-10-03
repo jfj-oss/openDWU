@@ -283,6 +283,9 @@ export class DeepStarfield {
     private patchSprites: Sprite[] = [];
     private patchCache = new Map<number, SystemPatches>();
     private ready = false;
+    /** Game.StarFieldSize ("Star Density" in Game Options); a change rebuilds the layers (Main.Part6.cs:2497-2501:
+     *  mainView.ClearMain(); mainView.method_14(StarFieldSize)). */
+    private starFieldSize = DEFAULT_STAR_FIELD_SIZE;
 
     constructor(private readonly seed: number) {
         this.root.addChild(this.patches, this.far, this.near);
@@ -344,14 +347,22 @@ export class DeepStarfield {
         return tex;
     }
 
-    /** (Re)build every layer's particles for a view of w × h CSS px (on first use and on resize only). */
+    /** Set the star density (50..2000); the layers are rebuilt at the next update when it changed. */
+    setStarFieldSize(size: number): void {
+        const v = Math.max(50, Math.min(2000, Math.round(size)));
+        if (v === this.starFieldSize) return;
+        this.starFieldSize = v;
+        this.builtW = -1;
+    }
+
+    /** (Re)build every layer's particles for a view of w × h CSS px (on first use, on resize and on a density change). */
     private build(w: number, h: number): void {
         this.builtW = w;
         this.builtH = h;
         const screenMax = Math.max(w, h);
         for (let li = 0; li < STAR_LAYERS.length; li++) {
             const spec = STAR_LAYERS[li];
-            const data = generateStarLayer(this.seed, li, screenMax, this.atlasFrames.length);
+            const data = generateStarLayer(this.seed, li, screenMax, this.atlasFrames.length, this.starFieldSize);
             this.layerData[li] = data;
             const pc = this.layers[li];
             pc.removeParticles();

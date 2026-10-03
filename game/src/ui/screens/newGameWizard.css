@@ -890,3 +890,147 @@
     gap: 8px;
     padding: 8px 0 4px;
 }
+
+/* --- [wizardB1] Playstyle page (Start.cs pnlStartNewGameYourEmpireType, method_41 layout): the Introductory button on
+   top, six era buttons in a row, the description under them, the two Custom buttons at the bottom. --- */
+.wizard-type-page {
+    gap: 12px;
+}
+.wizard-type-intro,
+.wizard-type-custom {
+    display: flex;
+    justify-content: center;
+    gap: 60px;
+}
+.wizard-type-eras {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    gap: 8px;
+}
+.wizard-type-btn {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 6px;
+    padding: 8px;
+    border-radius: 6px;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    background: rgba(255, 255, 255, 0.05);
+    color: #e6e6e6;
+    font-family: inherit;
+    font-size: 12px;
+    cursor: pointer;
+    text-align: center;
+}
+.wizard-type-btn:hover:not(:disabled),
+.wizard-type-btn:focus-visible {
+    border-color: #e8d24a;
+    background: rgba(232, 210, 74, 0.08);
+}
+.wizard-type-btn:disabled {
+    opacity: 0.45;
+    cursor: default;
+}
+.wizard-type-btn img {
+    width: 100%;
+    object-fit: contain;
+}
+.wizard-type-btn-era {
+    height: 230px;
+}
+.wizard-type-btn-era img {
+    flex: 1;
+    min-height: 0;
+}
+.wizard-type-btn-custom {
+    width: 340px;
+    height: 120px;
+    flex-direction: row;
+    font-size: 14px;
+}
+.wizard-type-btn-custom img {
+    width: 140px;
+    height: 100%;
+}
+.wizard-type-btn-intro {
+    width: 420px;
+    padding: 14px;
+    font-size: 15px;
+}
+.wizard-type-desc {
+    min-height: 90px;
+    font-size: 12px;
+    color: #c9d1d9;
+    white-space: pre-line;
+    padding: 8px 12px;
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 6px;
+}
+.wizard-type-note {
+    font-size: 12px;
+    color: #aaa;
+    text-align: center;
+}
+
+/* --- [wizardB1] Jump Start page and shared controls --- */
+.wizard-jumpstart-top {
+    display: flex;
+    gap: 28px;
+}
+.wizard-jumpstart-empire {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+.wizard-jumpstart-race-img {
+    width: 120px;
+    height: 120px;
+    object-fit: contain;
+}
+.wizard-select-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+.wizard-galaxy-pirate-row {
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    gap: 12px;
+    margin-left: auto;
+    padding-bottom: 8px;
+}
+.wizard-pirate-playstyle {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+.wizard-pirate-playstyle-body {
+    display: flex;
+    gap: 12px;
+}
+.wizard-pirate-playstyle-desc {
+    flex: 1;
+    font-size: 12px;
+    color: #c9d1d9;
+    white-space: pre-line;
+}
+.wizard-pirate-playstyle-img {
+    width: 150px;
+    height: 150px;
+    object-fit: contain;
+}
+.wizard-checkbox input[type='checkbox']:disabled + span {
+    opacity: 0.45;
+}
+
+/* [wizardB1] the story / event / game-option checkboxes in two columns (the original puts tech trading and Giant
+   Kaltors on the right, Start.cs 3752-3759). */
+.wizard-victory-section.wizard-victory-events {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px 24px;
+}

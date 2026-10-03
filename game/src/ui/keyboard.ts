@@ -6,6 +6,8 @@
 
 import { Camera } from '../render/camera';
 import { isFollowing, stopFollow, type FollowState } from '../render/followCamera';
+import { keyScrollPixels } from '../render/viewInput'; // [gameoptions]
+import { getSettings } from './settings'; // [gameoptions]
 import { toggleExpansionPlanner } from './screens/expansionPlanner'; import { selectHabitat } from './hud'; // [16a]
 import { GalaxyTime } from '../sim/clock';
 import { toggleDiplomacyScreen } from './screens/diplomacyScreen'; // [15a]
@@ -422,19 +424,19 @@ export function buildDefaultHandlers(
         zoomPlanetLevel: () => camera.zoomAt(PLANET_LEVEL_ZOOM, cx(), cy()),
         scrollUp: () => {
             stopFollowOnScroll();
-            camera.panByScreen(0, SCROLL_PAN_PX);
+            camera.panByScreen(0, scrollPx());
         },
         scrollDown: () => {
             stopFollowOnScroll();
-            camera.panByScreen(0, -SCROLL_PAN_PX);
+            camera.panByScreen(0, -scrollPx());
         },
         scrollLeft: () => {
             stopFollowOnScroll();
-            camera.panByScreen(SCROLL_PAN_PX, 0);
+            camera.panByScreen(scrollPx(), 0);
         },
         scrollRight: () => {
             stopFollowOnScroll();
-            camera.panByScreen(-SCROLL_PAN_PX, 0);
+            camera.panByScreen(-scrollPx(), 0);
         },
         // G: zoom the Main View out to show the whole galaxy (minZoom is the
         // galaxy-fit zoom from Camera.setGalaxyBounds) and centre on its
@@ -471,7 +473,8 @@ export function buildDefaultHandlers(
 }
 
 /** Screen-pixel step for arrow-key scrolling (one HUD-panel-height-ish nudge). */
-const SCROLL_PAN_PX = 60;
+/** [gameoptions] Arrow-key scroll step: 60 px at the default Scroll Speed, scaled by it (render/viewInput.ts). */
+const scrollPx = (): number => keyScrollPixels(getSettings().mainViewScrollSpeed);
 
 // ---------------------------------------------------------------------------
 // Game-menu hook (task 10c): createHud registers the in-game menu's toggle so

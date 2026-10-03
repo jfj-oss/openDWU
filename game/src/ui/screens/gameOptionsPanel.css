@@ -1,155 +1,48 @@
-/* Game Options panel (task 16d). Dark-panel tokens copied from coloniesList.css. */
+/* Game Options and its sub-windows (gameOptionsPanel.ts) on the original-style window (originalWindow.css). */
 
-.game-options-wrap {
-    position: fixed;
-    inset: 0;
-    z-index: 1500; /* above the HUD, like the other screens */
-    pointer-events: none;
-    font-family: 'Forgotten Futurist', sans-serif;
-    color: #e6e6e6;
+/* WinForms Labels: no drop shadow, one line, the text's top at the control's Location. */
+.go-body .go-label {
+    line-height: 1;
 }
-
-.game-options-window {
-    position: absolute;
-    top: 64px;
-    left: 50%;
-    transform: translateX(-50%);
-    width: 720px;
-    max-width: calc(100vw - 16px);
-    max-height: calc(100vh - 96px);
-    pointer-events: auto;
-    background: rgba(14, 16, 20, 0.94);
-    backdrop-filter: blur(6px);
-    -webkit-backdrop-filter: blur(6px);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 6px;
-    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6);
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-}
-
-.game-options-titlebar {
+/* method_404: AutoSize off, TextAlign MiddleRight in its box. */
+.go-body .go-label-right {
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    padding: 8px 12px;
-    background: rgba(10, 11, 15, 0.9);
-    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-}
-
-.game-options-heading {
-    font-size: 13px;
-    color: #e8d24a;
-}
-
-.game-options-close {
-    background: transparent;
-    border: none;
-    color: #ccc;
-    font-size: 15px;
-    cursor: pointer;
-    padding: 2px 6px;
-}
-.game-options-close:hover {
-    color: #fff;
-}
-
-.game-options-body {
-    padding: 8px;
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 12px;
-    overflow-y: auto;
-}
-
-.game-options-section {
-    display: flex;
-    flex-direction: column;
-    gap: 3px;
-    min-width: 0;
-}
-
-.game-options-section-title {
-    font-size: 10px;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    color: #777;
-    padding: 0 4px 4px;
-}
-
-.game-options-row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 8px;
-    padding: 3px 6px;
-    background: rgba(255, 255, 255, 0.04);
-    border: 1px solid rgba(255, 255, 255, 0.07);
-    border-radius: 4px;
-}
-
-.game-options-label {
-    font-size: 12px;
-    color: #ddd;
+    justify-content: flex-end;
     white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    min-width: 0;
 }
 
-.game-options-select {
-    flex: none;
-    width: 13.5em;
-    font-family: inherit;
-    font-size: 11px;
-    color: #e6e6e6;
-    background: rgba(10, 11, 15, 0.9);
-    border: 1px solid rgba(255, 255, 255, 0.2);
-    border-radius: 3px;
-    padding: 1px 2px;
+/* ComboBox (FlatStyle Popup, (48, 48, 64) / (170, 170, 170)). */
+.go-body .go-combo {
+    box-sizing: border-box;
+    padding: 0 2px;
+    line-height: 1;
 }
 
-.game-options-checkbox {
-    margin: 0;
-    cursor: pointer;
-    accent-color: #e8d24a;
-}
-
-/* Messages table: label | Popup | Scrolling. */
-.game-options-messages {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) 4.5em 4.5em;
-    align-items: center;
-    row-gap: 3px;
-    column-gap: 4px;
-    padding: 0 6px;
-}
-
-.game-options-header-cell {
-    font-size: 10px;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    color: #777;
-}
-
-.game-options-center {
-    display: flex;
-    justify-content: center;
-    text-align: center;
-}
-
-.game-options-suppress {
-    margin-top: 6px;
-}
-
-/* [leftovers] begin — Auto Save "Every [N] minutes" */
-.game-options-autosave {
-    display: flex;
-    align-items: center;
+/* CheckBox: 13 px box, the text 4 px right of it, font_4. */
+.go-body .go-check {
     gap: 4px;
+    line-height: 1;
 }
-.game-options-select.game-options-minutes {
-    width: 4em;
+.go-body .go-check input {
+    width: 13px;
+    height: 13px;
 }
-/* [leftovers] end */
+.go-body .go-anchor-right {
+    left: auto;
+}
+.go-body .go-readonly {
+    opacity: 0.6;
+}
+
+/* Glass buttons whose text wraps (Reset Warnings in 73 × 40). */
+.go-body .go-button-wrap .ow-glass-text {
+    white-space: normal;
+    text-align: center;
+    line-height: 1.05;
+}
+
+/* pnlOptionsAutomationMode: BackColor Color.FromArgb(128, 192, 0, 128) (Main.Part6.cs:1864). */
+.go-body .go-mode-panel {
+    background: rgba(192, 0, 128, 0.5);
+}

@@ -668,8 +668,6 @@ export function pirateGenerateSellInfoOffersCore(galaxy: Galaxy, empire: Empire)
 // Empire.7.cs 2666 PirateTradeItems
 // ---------------------------------------------------------------------------------------------------------------
 
-/** Galaxy.cs 686 AllowTechTrading = true (Start wizard option, not in the TS CreateGameOptions yet). */
-const ALLOW_TECH_TRADING = true;
 
 /** Empire.7.cs 2666 PirateTradeItems. Rnd per met relation: NextDouble; Next(0, items) when tech is offered. */
 export function pirateTradeItemsCore(galaxy: Galaxy, empire: Empire): void {
@@ -690,7 +688,8 @@ export function pirateTradeItemsCore(galaxy: Galaxy, empire: Empire): void {
         if (pirateRelation.lastInfoDate > num6) continue;
         const num7 = Math.trunc(pirateRelation.evaluation);
         const tradeableItemList: TradeableItem[] = [];
-        if (ALLOW_TECH_TRADING) {
+        // Galaxy.cs 686 AllowTechTrading: the wizard's "Enable tech trading" option (Start.2.cs 499).
+        if (galaxy.allowTechTrading) {
             let num8 = 0;
             if (otherEmpire === galaxy.playerEmpire && galaxy.difficultyLevel > 1.0) num8 = Math.trunc(20.0 * (galaxy.difficultyLevel - 1.0));
             if (num7 >= num8) {
