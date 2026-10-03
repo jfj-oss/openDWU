@@ -5,6 +5,14 @@ import { makeHabitatIntoColony } from '../src/sim/colony';
 import { GalaxyShape, HabitatCategoryType, type Habitat } from '../src/sim/types';
 import { loadGameDataFs } from './helpers/loadGameDataFs';
 import type { GameData } from '../src/sim/data/gameData';
+import type { Game } from '../src/sim/game';
+import { BuiltObjectSubRole } from '../src/sim/builtObjectTypes';
+import { EventMessageType } from '../src/sim/eventTypes';
+import { scanArea } from '../src/sim/exploration';
+import { updatePosition } from '../src/sim/movement';
+import { generateHabitatLocationDescription, generateIndependentColonyReport, generateLocationDescription, resolveRaceFamilyDescription } from '../src/sim/galaxyReports';
+import { cachedTickGame } from './helpers/gameCache';
+import { Random } from '../src/sim/random';
 
 // Parity batch D4: targeted tests for the remaining sim gaps (docs/parity/*.md).
 let gameData: GameData;
@@ -33,5 +41,87 @@ describe('GrowPopulation(TimeSpan.Zero) at colony creation (Galaxy.8.cs 674)', (
         let sum = 0;
         for (const p of target.population.items) sum += p.amount;
         expect(sum).toBe(target.population.totalAmount);
+    });
+});
+
+describe('ScanArea discovery reports (BuiltObject.1.cs 2069-2098)', () => {
+    function surveyAt(game: Game, h: Habitat) {
+        const g = game.galaxy;
+        const player = g.playerEmpire!;
+        const ship = player.builtObjects.find((b) => b.subRole === BuiltObjectSubRole.ExplorationShip)!;
+        const events: { type: EventMessageType; title: string; message: string }[] = [];
+        player.eventMessageRecipient = { receiveEventMessage: (type, title, message) => events.push({ type, title, message }) };
+        player.resourceMap!.setResourcesKnown(h, false);
+        ship.xpos = h.xpos;
+        ship.ypos = h.ypos;
+        updatePosition(g, ship);
+        scanArea(g, ship);
+        return { g, player, ship, events };
+    }
+
+    it('an independent colony sends the Independent Colony Discovered report (Galaxy.1.cs 1314)', () => {
+        const game = cachedTickGame(gameData, {});
+        const g = game.galaxy;
+        const colony = g.independentColonies.find((h) => h.population.dominantRace !== null && h.population.dominantRace !== g.playerEmpire!.dominantRace)!;
+        expect(colony).toBeDefined();
+        const { events, player } = surveyAt(game, colony);
+        expect(player.resourceMap!.checkResourcesKnown(colony)).toBe(true);
+        const report = events.find((e) => e.type === EventMessageType.IndependentPopulation);
+        expect(report).toBeDefined();
+        expect(report!.message).toContain(colony.population.dominantRace!.name);
+        expect(report!.message).toContain(colony.name);
+        // Another race: the race report follows the intro (GenerateRaceReport's family line).
+        expect(report!.message).toContain(resolveRaceFamilyDescription(g, colony.population.dominantRace!.raceFamily));
+    });
+
+    it('the player\'s report uses up one of the first secondary story clues, with one Rnd draw (Galaxy.5.cs 3692)', () => {
+        const game = cachedTickGame(gameData, {});
+        const g = game.galaxy;
+        const colony = g.independentColonies.find((h) => h.population.dominantRace !== null)!;
+        // A Distant Worlds story in progress: clue 0 used, clue 1 open at a live location.
+        g.storyClueUsed = [true, false];
+        g.storyClueLocations = [colony, colony];
+        g.storySecondaryClueUsed = Array.from({ length: 9 }, () => false);
+        const before = new Random(0);
+        before.setState(g.rnd.getState());
+        const expectedIndex = before.next(0, 2);
+        const report = generateIndependentColonyReport(g, g.playerEmpire!, colony, colony.population.dominantRace!);
+        expect(g.storySecondaryClueUsed.filter((x) => x)).toEqual([true]);
+        expect(g.storySecondaryClueUsed[expectedIndex]).toBe(true);
+        expect(report).toContain('*** ');
+        expect(g.rnd.next(0, 1 << 30)).toBe(before.next(0, 1 << 30));
+        // An AI colonizer gets no clue and draws nothing.
+        const ai = g.empires.find((e) => e !== g.playerEmpire && e.pirateEmpireBaseHabitat === null && e !== g.independentEmpire)!;
+        const r2 = new Random(0);
+        r2.setState(g.rnd.getState());
+        generateIndependentColonyReport(g, ai, colony, colony.population.dominantRace!);
+        expect(g.rnd.next(0, 1 << 30)).toBe(r2.next(0, 1 << 30));
+    });
+
+    it('a restricted resource on an unowned planet sends the "X Discovered" message', () => {
+        const game = cachedTickGame(gameData, {});
+        const g = game.galaxy;
+        const h = g.habitats.find((x) => x.empire === null && x.resources.some((r) => g.resourceSystem.resources[r.resourceId].superLuxuryBonusAmount > 0))!;
+        expect(h).toBeDefined();
+        const { events } = surveyAt(game, h);
+        const names = h.resources.filter((r) => g.resourceSystem.resources[r.resourceId].superLuxuryBonusAmount > 0).map((r) => g.resourceSystem.resources[r.resourceId].name);
+        const found = events.filter((e) => e.type === EventMessageType.RestrictedResourceDiscovered);
+        expect(found.length).toBe(names.length);
+        for (const n of names) expect(found.some((e) => e.title.includes(n))).toBe(true);
+    });
+});
+
+describe('GenerateLocationDescription (Galaxy.5.cs 4807 / 4852)', () => {
+    it('a point at a habitat names the habitat; a point in deep space names its sector', () => {
+        const game = cachedTickGame(gameData, {});
+        const g = game.galaxy;
+        const planet = g.habitats.find((h) => h.category === HabitatCategoryType.Planet)!;
+        const atPlanet = generateLocationDescription(g, planet.xpos, planet.ypos);
+        expect(atPlanet).toBe(generateHabitatLocationDescription(g, planet));
+        expect(atPlanet).toContain(planet.name);
+        const star = g.determineHabitatSystemStar(planet)!;
+        const far = generateLocationDescription(g, star.xpos + 60000, star.ypos);
+        expect(far).not.toContain(planet.name);
+        expect(far.length).toBeGreaterThan(0);
     });
 });
