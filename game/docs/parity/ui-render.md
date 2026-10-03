@@ -21,10 +21,10 @@ Some C# panels have obfuscated names: CaLkaMyrMQ = Galaxy Map, kYdDyYeMls = Char
 | 11 | Game-start Introduction panel (story, victory conditions, Start) | Main.Part12.cs:2921-3118 method_81/82, Main.Part5.cs:449, Main.Part12.cs:4248-4258 | DONE | ui/screens/introductionPanel.ts | — | Shown paused for wizard games (dev autostart: ?intro=1); Start Playing resumes. Empire.Description (Game Editor) not modelled |
 | 12 | Tutorial in-game behaviours (highlight controls, zoom/scroll to object, open screen/tab) | Main.Part5.cs method_455 | PARTIAL | ui/screens/tutorials.ts:142, sim/data/tutorials.ts:12 | Med | Steps show text only |
 | 13 | Event/story popups: remaining pictures, full-screen pnlStoryEvent, Shakturi ending, music cues | Main.Part4.cs:1300-1460, 4839-4994; Main.Part12.cs:3428 | PARTIAL | ui/eventMessages.ts:8,171; empireComparison.ts:17 | Med | |
-| 14 | Empire Comparison / Victory: graphs + history, Top Colonies, race victory detail, scenario lists, pirate comparison, Game Summary | Main.Part6.cs:1700-1745 method_571 | PARTIAL | ui/screens/empireComparison.ts | Med | |
+| 14 | Empire Comparison / Victory: graphs + history, Top Colonies, race victory detail, scenario lists, pirate comparison, Game Summary | Main.Part6.cs:1685-1745 method_400; EmpireComparison.cs, TopColonies.cs, RaceVictoryConditionsPanel.cs, GameVictoryConditions.cs, GameSummaryPanel.cs | DONE (batch D1) | ui/screens/empireComparison.ts, gameSummary.ts | Med | The original has no history charts. Left: Shakturi story message (Code 1) |
 | 15 | Game End panel (outcome + Continue + Exit) | Main.Part12.cs DoGameEnd, Main.Part6.cs:3998-4067 method_436/437, btnGameEndContinue/Exit_Click | DONE | ui/screens/gameEndPanel.ts, empireComparison.ts presentGameEnd | — | method_436: the comparison window opens on Achievements with the outcome overlay (OverlayTextLines); pnlGameEnd (never made visible in 1.9.5, no layout code) is shown beside it with Continue Playing... / Exit to main menu — its layout is ours. The method_429-431 taunts are dead code, not ported |
-| 16 | Galaxy Map extras: system view (picSystemMap), landscape, Back/Forward, territory shading, nebula on mini maps | Main.Part11.cs:1078, 2074-2130; GalaxyMap.cs bitmap_0 | PARTIAL | ui/screens/galaxyMap.ts | Med | Same TODO in troops.ts:19, expansionPlanner.ts:19 |
-| 17 | HUD system mini-map (pnlSystemMap/picSystem) | Main.Part11.cs:451 | MISSING (replaced) | hudLayout.ts:46 (options list in its place) | Med | |
+| 16 | Galaxy Map extras: system view (picSystemMap), landscape, Back/Forward, territory shading, nebula on mini maps | Main.Part11.cs:1078, 2074-2130; Main.Part10.cs method_213-215; SystemView.cs; GalaxyMap.cs bitmap_0 | DONE (batch D1) | ui/screens/galaxyMap.ts, ui/systemView.ts, ui/screens/galaxyMapLayers.ts | Med | Nebula image is a per-location cloud composite (GenerateNebulae image path not ported); pnlHabitatInfo (InfoPanel) and the resource list not ported |
+| 17 | HUD system mini-map (pnlSystemMap/picSystem) | Main.Part11.cs:451, 1879; Main.Part12.cs 2099-2134; SystemView.cs method_5/9 | DONE (batch D1) | ui/hudSystemMap.ts (the View popup sits above it) | Med | |
 | 18 | Territory shading algorithm (CalculateEmpireTerritoryGrid / SystemTerritory) | GalaxyMap.cs, EmpireTerritory.cs, MainView.2.cs:262-365 | PARTIAL | render/empireLayer.ts | Med | Being ported (territory agent) |
 | 19 | Pirate-player UI: Pirate Missions panel, pirate colonies rows, smuggling resource picker, pirate construction at bases | ItemListPanel.cs method_7 / 729-848; Main.Part8.cs:5067; Main.Part11.cs method_169 | MISSING | TODOs in leftSidebar.ts, orderMenu.ts:470, constructionYards.ts:15 | Med (blocked by #2) | |
 | 20 | Left sidebar "Enemy Targets" panel | Main.method_205, ItemListPanel.cs method_8/9 | MISSING | leftSidebar.ts:12 | Med | |
@@ -58,7 +58,7 @@ Some C# panels have obfuscated names: CaLkaMyrMQ = Galaxy Map, kYdDyYeMls = Char
 - pnlColonyInvasion.
 - Wizard: pnlStartNewGameYourEmpireType (incl. Pirate), JumpStart/QuickStart, saved galaxy maps, Introductory.
 - pnlResourceComponents, pnlRelationAllianceName, pnlPirateSmugglingMissionResourceSelection, pnlSaveLoadProgress, pnlThemes.
-- pnlStoryEvent (full-screen), pnlGameSummary; HUD pnlSystemMap.
+- pnlStoryEvent (full-screen).
 - Bacon forms and the HotKeys screen.
 
 ## 3. Present (full or near-full)

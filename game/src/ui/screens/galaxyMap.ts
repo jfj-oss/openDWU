@@ -20,7 +20,7 @@ import { GalaxyLocationType } from '../../sim/galaxyLocation';
 import { HabitatCategoryType, HabitatType, type Habitat } from '../../sim/types';
 import { fogOf } from '../../render/fog';
 import { drawGalaxyMapLayers } from './galaxyMapLayers';
-import { landscapeImageUrl } from '../landscapeImages';
+import { habitatLandscapeImageUrl } from '../landscapeImages';
 import { SystemVisibilityStatus } from '../../sim/visibility';
 import { drawSystemView, findNearestHabitatNear, systemViewWorldAt } from '../systemView';
 import { territoryColorFn } from '../../render/empireLayer';
@@ -693,7 +693,7 @@ export function createGalaxyMap(opts: GalaxyMapOptions): GalaxyMapScreen {
     let landscapeUrl: string | null = null;
     const renderLandscape = (): void => {
         const h = selectedHabitat;
-        const url = h !== null && player.systemExplored(h.systemIndex) ? landscapeImageUrl(h.landscapePictureRef) : null;
+        const url = h !== null && player.systemExplored(h.systemIndex) ? habitatLandscapeImageUrl(h.landscapePictureRef) : null;
         if (url === landscapeUrl) return;
         landscapeUrl = url;
         landscape.style.backgroundImage = url === null ? '' : `url("${url}")`;

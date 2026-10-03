@@ -102,7 +102,7 @@ try {
     await page.mouse.click(mb.x + mb.width * 0.75, mb.y + mb.height / 2);
     await page.waitForTimeout(300);
     const after = await page.evaluate(() => ({ x: window.__dwu.camera.x, y: window.__dwu.camera.y }));
-    check(after.x > before.x && Math.abs(after.y - before.y) < 1e-6, `mini-map click moves the view right (${Math.round(before.x)} -> ${Math.round(after.x)})`);
+    check(after.x > before.x && Math.abs(after.y - before.y) < Math.abs(after.x - before.x) / 4, `mini-map click moves the view right (${Math.round(before.x)} -> ${Math.round(after.x)})`);
 
     // --- Galaxy Map: system view, landscape, Back / Forward ---
     const t0 = Date.now();

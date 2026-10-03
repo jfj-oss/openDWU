@@ -279,3 +279,18 @@ describe('SystemView draws on a real game (read-only)', () => {
         expect(hudSystemMapClickTarget(galaxy, { x: star.xpos, y: star.ypos, zoomFactor: 500 }, 141, 140)).toEqual({ x: Math.trunc(star.xpos) + 35000, y: Math.trunc(star.ypos) });
     });
 });
+
+describe('landscape pictures (pnlGalaxyMapHabitatPicture)', () => {
+    it('maps GalaxyImages indexes through and the sim placeholders to their type range', async () => {
+        const { resolveLandscapeRef, habitatLandscapeImageUrl } = await import('../src/ui/landscapeImages');
+        expect(resolveLandscapeRef(5)).toBe(5);
+        expect(resolveLandscapeRef(-1)).toBe(-1);
+        expect(resolveLandscapeRef(400)).toBe(4);
+        expect(resolveLandscapeRef(409)).toBe(7);
+        expect(resolveLandscapeRef(1000)).toBe(23);
+        expect(resolveLandscapeRef(1009)).toBe(24);
+        expect(resolveLandscapeRef(1605)).toBe(11 + 3);
+        expect(resolveLandscapeRef(3000)).toBe(-1);
+        expect(habitatLandscapeImageUrl(1401)).toBe('/assets/dwu/images/environment/landscapes/volcanic/landscape_0.png');
+    });
+});
