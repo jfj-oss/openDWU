@@ -95,6 +95,7 @@ import { politicsDetail, politicsRowCells, politicsVisible } from '../emergentPo
 import { courtDetail } from '../courtView'; // [court]
 import type { SeatName } from '../../sim/scenario/court/court'; // [court]
 import { investigatorOptions, leadRows, securityVisible } from '../internalSecurityView'; // [security]
+import { landscapeImageUrl } from '../landscapeImages';
 
 const MT = IntelligenceMissionType;
 
@@ -727,30 +728,8 @@ export function canDismissCharacter(c: Character, player: Empire): boolean {
 // Role icons, portraits and OverlayRoleIcon: characterPortrait.ts (CharacterImageCache.cs).
 export { characterPortraitUrl, roleIconOverlayRect, roleIconUrl } from '../characterPortrait';
 
-/** Main.Part12.cs LoadEnvLandscapes: the landscape bitmaps in GalaxyImages LandscapeImageOffset order. */
-const LANDSCAPE_FOLDERS: readonly [string, number][] = [
-    ['barrenrock', 4],
-    ['continental', 4],
-    ['forest', 1],
-    ['frozengasgiant', 2],
-    ['gasgiant', 6],
-    ['iceglacial', 3],
-    ['marshyswamp', 3],
-    ['ocean', 2],
-    ['sandydesert', 3],
-    ['volcanic', 2],
-];
-
-/** Habitat.LandscapePictureRef → images/environment/landscapes/<type>/landscape_<i>.png; null when out of range. */
-export function landscapeImageUrl(ref: number): string | null {
-    if (!Number.isInteger(ref) || ref < 0) return null;
-    let i = ref;
-    for (const [folder, count] of LANDSCAPE_FOLDERS) {
-        if (i < count) return `/assets/dwu/images/environment/landscapes/${folder}/landscape_${i}.png`;
-        i -= count;
-    }
-    return null;
-}
+// Landscape pictures: landscapeImages.ts (Main.Part12.cs LoadEnvLandscapes), shared with the Galaxy Map.
+export { landscapeImageUrl };
 
 /** CharacterSummary.cs DrawCharacter: no location, a transfer under way or an agent on an offensive mission. */
 export function characterInTransitOrUnknown(c: Character): boolean {

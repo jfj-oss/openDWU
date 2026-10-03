@@ -26,7 +26,11 @@ import { toggleColoniesFromHud } from './hud';
 import { toggleBuildOrder } from './screens/buildOrder'; import { toggleConstructionYards } from './screens/constructionYards'; import { constructionYardsOptions, selectStellarObject } from './hud'; // [16c]
 import { attachBuildQueueLauncher } from './screens/buildQueue'; // [buildQueue]
 import { toggleFleets, toggleShipsAndBases } from './hud'; // [15c]
-import { toggleMessageHistory } from './screens/messageHistory';
+import { toggleGalacticHistory } from './screens/galacticHistory';
+import { historyGoTo } from './hud';
+import { cycleMainViewDisplayType } from '../render/mainViewDisplay';
+import { cyclePanelVisibility } from './panelVisibility';
+import { toggleGroundReportFromKey } from './screens/groundReport';
 import { toggleGameOptionsPanel } from './screens/gameOptionsPanel'; // [16d]
 import { toggleEmpireComparison } from './screens/empireComparison'; // [15d]
 import { showToast } from './toast';
@@ -55,6 +59,10 @@ export interface KeyBinding {
     action: string;
     /** Verbatim description from the original's help table. */
     description: string;
+    /** The key as the shortcuts overlay shows it, when it is not `key` (one row standing for 0-9). */
+    overlayKey?: string;
+    /** Not listed in the shortcuts overlay (the other nine digits of a 0-9 row). */
+    overlayHidden?: boolean;
 }
 
 const NONE: KeyModifiers = { ctrl: false, alt: false, shift: false };
@@ -84,8 +92,17 @@ export const KEY_BINDINGS: KeyBinding[] = [
     { key: 'H', modifiers: NONE, action: 'messageHistoryScreen', description: 'Message History' },
     { key: 'V', modifiers: NONE, action: 'empireComparisonScreen', description: 'Empire Comparison and Victory Conditions screen' },
     { key: 'O', modifiers: NONE, action: 'gameOptionsScreen', description: 'Game Options screen' },
-    // [advisor] begin — 18a: not in the original table (the original has no advisor chat).
-    { key: 'T', modifiers: NONE, action: 'advisorChat', description: 'Talk to your fleet admiral (advisor chat, needs a local model server)' },
+    // [parC1] The Expanded build's Main_KeyUp keys missing from the 1.9.5 help table (Main.Part7.cs; default keys from
+    // GameHotKeysMappingFile.json): D CycleMainDisplayTypes (68), T CyclePanelVisibility (84), [ OpenGroundInvasion-
+    // StatusScreen (219), and the control groups (digits 48-57: SelectControlGroupN; Ctrl SetControlGroupN; Shift
+    // SelectControlGroupNWithFocus).
+    { key: 'D', modifiers: NONE, action: 'cycleMainDisplayTypes', description: 'Cycles the main view display: everything, without battle bars, without map indicators' },
+    { key: 'T', modifiers: NONE, action: 'cyclePanelVisibility', description: 'Cycles the panels: all shown, only the map controls, none' },
+    { key: '[', modifiers: NONE, action: 'groundInvasionStatus', description: 'Ground Report: the ground invasion status of the selected colony (else your capital)' },
+    ...controlGroupBindings(),
+    // [advisor] begin — 18a: not in the original table (the original has no advisor chat). It was on T until T got the
+    // original's CyclePanelVisibility; K is free in the original's and the Bacon / Expansion mods' default mappings.
+    { key: 'K', modifiers: NONE, action: 'advisorChat', description: 'Talk to your fleet admiral (advisor chat, needs a local model server)' },
     // [advisor] end
     // "Pause or Spacebar": both keys pause/resume.
     { key: 'Pause', modifiers: NONE, action: 'togglePause', description: 'Pauses or resumes the game' },
@@ -140,6 +157,53 @@ export const KEY_BINDINGS: KeyBinding[] = [
     // location) are mouse commands — see the table in tasks/10a-keyboard.md.
     { key: 'Control', modifiers: NONE, action: 'ctrlWithZoomKeys', description: 'Ctrl (with zoom keys/buttons) — cycles-and-moves variants of C/P/M/Y/X/F/I' },
 ];
+
+/** The 30 control-group rows: digit = select, Ctrl+digit = set, Shift+digit = select and move the view; one overlay
+ *  row per variant (shown as 0-9). */
+function controlGroupBindings(): KeyBinding[] {
+    const out: KeyBinding[] = [];
+    const variants: [KeyModifiers, string, string][] = [
+        [NONE, 'selectControlGroup', 'Selects the control group (the object assigned with Ctrl+0-9)'],
+        [CTRL, 'setControlGroup', 'Assigns the selected item to the control group'],
+        [SHIFT, 'selectControlGroupWithFocus', 'Selects the control group and moves the view to it'],
+    ];
+    for (const [modifiers, action, description] of variants) {
+        for (let d = 0; d <= 9; d++) {
+            out.push({ key: String(d), modifiers, action: `${action}${d}`, description, overlayKey: d === 0 ? '0-9' : undefined, overlayHidden: d !== 0 });
+        }
+    }
+    return out;
+}
+
+/** Decode a control-group binding action ('selectControlGroup3', 'setControlGroup0', ...). Pure. */
+export function controlGroupActionArgs(action: string): { kind: ControlGroupKeyKind; index: number } | null {
+    const m = /^(selectControlGroupWithFocus|selectControlGroup|setControlGroup)(\d)$/.exec(action);
+    if (m === null) return null;
+    const kind: ControlGroupKeyKind = m[1] === 'setControlGroup' ? 'set' : m[1] === 'selectControlGroup' ? 'select' : 'selectWithFocus';
+    return { kind, index: Number(m[2]) };
+}
+
+/** Main_KeyUp: SetControlGroupN / SelectControlGroupN / SelectControlGroupNWithFocus. */
+export type ControlGroupKeyKind = 'set' | 'select' | 'selectWithFocus';
+
+let controlGroupHandler: ((kind: ControlGroupKeyKind, index: number) => void) | null = null;
+
+/** Register the game view's control-group handler (main.ts → ui/controlGroups.ts; null on teardown). */
+export function setControlGroupHandler(h: ((kind: ControlGroupKeyKind, index: number) => void) | null): void {
+    controlGroupHandler = h;
+}
+
+/** The key a binding row stands for, from a key event: the top-row digits and "[" by their physical key (Shift+1 is
+ *  "!" in `key`; the C# reads Keys.D0-D9 / Keys.OemOpenBrackets), everything else by `key`. */
+export function eventBindingKey(event: Pick<KeyboardEvent, 'key'> & { code?: string }): string {
+    const code = event.code;
+    if (code !== undefined) {
+        const m = /^Digit(\d)$/.exec(code);
+        if (m !== null) return m[1];
+        if (code === 'BracketLeft') return '[';
+    }
+    return event.key;
+}
 
 /** Handlers for the actions that exist today. Anything missing falls back
  * to `console.info('TODO(key): <action>')`. */
@@ -202,12 +266,12 @@ export function findBinding(
  * id that ran (or null when nothing matched / typing was ignored), so tests
  * can assert on it without spying on handlers. */
 export function dispatchKey(
-    event: Pick<KeyboardEvent, 'key' | 'ctrlKey' | 'altKey' | 'shiftKey' | 'target'>,
+    event: Pick<KeyboardEvent, 'key' | 'ctrlKey' | 'altKey' | 'shiftKey' | 'target'> & { code?: string },
     handlers: KeyHandlers,
     bindings: KeyBinding[] = KEY_BINDINGS,
 ): string | null {
     if (isTypingTarget(event.target)) return null;
-    const binding = findBinding(event.key, {
+    const binding = findBinding(eventBindingKey(event), {
         ctrl: event.ctrlKey,
         alt: event.altKey,
         shift: event.shiftKey,
@@ -228,6 +292,13 @@ export function dispatchKey(
         return binding.action;
     }
     // [fix6ui] end
+    // [parC1] Ctrl+0-9 / 0-9 / Shift+0-9: the control groups (ui/controlGroups.ts).
+    const group = controlGroupActionArgs(binding.action);
+    if (group !== null) {
+        if (controlGroupHandler) controlGroupHandler(group.kind, group.index);
+        else console.info(`TODO(key): ${binding.action}`);
+        return binding.action;
+    }
     switch (binding.action) {
         case 'togglePause':
             handlers.togglePause?.();
@@ -355,7 +426,19 @@ export function dispatchKey(
             break;
         }
         // [/16c]
-        // [advisor] begin T: chat advisor (task 18a).
+        // [parC1] D: Main.Part6.cs:3069 btnMainViewDisplayToggle_Click (int_34, render/mainViewDisplay.ts).
+        case 'cycleMainDisplayTypes':
+            cycleMainViewDisplayType();
+            break;
+        // [parC1] T: Main.Part7.cs:3085 CyclePanelVisibility (ui/panelVisibility.ts).
+        case 'cyclePanelVisibility':
+            cyclePanelVisibility();
+            break;
+        // [parC1] [: Main.Part7.cs:3321 OpenGroundInvasionStatusScreen (method_164 / method_165, screens/groundReport.ts).
+        case 'groundInvasionStatus':
+            toggleGroundReportFromKey();
+            break;
+        // [advisor] begin K: chat advisor (task 18a; T until parC1).
         case 'advisorChat': {
             const src = getEmpireSummarySource();
             if (src) toggleAdvisorPanel({ galaxy: src.empire.galaxy, player: src.empire });
@@ -447,8 +530,12 @@ export function buildDefaultHandlers(
                 camera.centerOn(galaxySize.width / 2, galaxySize.height / 2);
             }
         },
-        // H: the Message History window (task 12i).
-        messageHistoryScreen: () => toggleMessageHistory(),
+        // H: Main_KeyUp OpenMessageHistory → Main.Part4.cs:2016 btnHistoryMessages_Click → method_528("either"): the
+        // full pnlMessageHistory (screens/galacticHistory.ts) on its last filter unless that was Galactic History.
+        messageHistoryScreen: () => {
+            const src = getEmpireSummarySource();
+            if (src) toggleGalacticHistory({ empire: src.empire, mode: 'either', onGoTo: (x, y) => historyGoTo(camera, x, y) });
+        },
         // F2: the Colonies screen (Main_KeyUp F2 → method_166) — same source as the Empire Summary.
         coloniesScreen: () => {
             const src = getEmpireSummarySource();
@@ -609,6 +696,9 @@ export const IMPLEMENTED_KEY_ACTIONS: ReadonlySet<string> = new Set([
         .flatMap((k) => [`cycle${k}`, `cycle${k}Backward`, `cycle${k}MoveView`]),
     'empireComparisonScreen', // [15d]
     'gameOptionsScreen', // [16d]
+    // [parC1]
+    'cycleMainDisplayTypes', 'cyclePanelVisibility', 'groundInvasionStatus',
+    ...['selectControlGroup', 'setControlGroup', 'selectControlGroupWithFocus'].flatMap((a) => Array.from({ length: 10 }, (_, d) => `${a}${d}`)),
     // [fix6ui] begin
     'advisorChat', 'ctrlWithZoomKeys',
     ...SHIP_COMMAND_ACTIONS,
@@ -654,6 +744,7 @@ export function createShortcutsOverlay(): {
     const list = document.createElement('div');
     list.className = 'hud-keyboard-rows';
     for (const b of KEY_BINDINGS) {
+        if (b.overlayHidden) continue;
         const row = document.createElement('div');
         row.className = 'hud-keyboard-row';
         if (!isKeyActionAvailable(b.action)) {
@@ -666,7 +757,7 @@ export function createShortcutsOverlay(): {
             b.modifiers.alt ? 'Alt+' : '',
             b.modifiers.shift ? 'Shift+' : '',
         ].join('');
-        k.textContent = `${modParts}${displayKeyName(b.key)}`;
+        k.textContent = `${modParts}${b.overlayKey ?? displayKeyName(b.key)}`;
         const d = document.createElement('span');
         d.className = 'hud-option-label';
         d.textContent = b.description;

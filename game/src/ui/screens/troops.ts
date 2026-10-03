@@ -16,7 +16,8 @@
 // recruit options (the selection panel's five RecruitTroops buttons, Main.Part3.cs:2759-2860, through
 // executeShipAction, Main.Part7.cs:883-951) with the colony's recruitment progress.
 //
-// TODO(port): the galaxy nebula image on the mini map (GalaxyMap.cs bitmap_0, as in galaxyMap.ts) — GalaxyMap.cs method_6
+// The mini map draws GalaxyMap.cs method_6's pictures: the backdrop (bitmap_1), the nebulae (bitmap_0) and the empire
+// territory (bitmap_2, 40 %) under the grid — the shared layers of galaxyMapLayers.ts / drawMapTerritory.
 
 import './troops.css';
 import type { Empire } from '../../sim/empire';
@@ -41,8 +42,8 @@ import { formatThousandsK } from './coloniesList';
 import { disbandTroops, setTroopsGarrisoned, renameTroop } from '../../sim/player/playerOrders';
 import { troopImageUrl, wireTroopImageFallback } from '../../render/troopImages';
 import { raceHasConcordArt } from '../../render/concordArt';
-import { BACKDROP_URLS } from '../../render/assets';
-import { CROSSHAIR_COLOR, GRID_COLOR, galaxyMapScale, starBrushColor, starDotSizes } from './galaxyMap';
+import { CROSSHAIR_COLOR, GRID_COLOR, drawMapTerritory, galaxyMapScale, starBrushColor, starDotSizes } from './galaxyMap';
+import { drawGalaxyMapLayers } from './galaxyMapLayers';
 import { openGalactopedia } from './galactopedia';
 import { empireFlagUrl } from '../selectionInfoView';
 import {
@@ -476,8 +477,6 @@ const MAP = { x: 740, y: 88, size: 300 };
 /** TroopListView.BindData: _GarrisonStyle.ForeColor. */
 const GARRISON_COLOR = 'rgb(0, 255, 0)';
 
-const backdrop: { img: HTMLImageElement | null } = { img: null };
-
 function createTroopsScreen(opts: TroopsScreenOptions): OpenState {
     const { galaxy, empire } = opts;
     const raceCount = galaxy.races.length;
@@ -688,7 +687,7 @@ function createTroopsScreen(opts: TroopsScreenOptions): OpenState {
         }
     }
 
-    // --- mini galaxy map (GalaxyMap.cs method_6 at 300 px: backdrop, sector grid, systems, crosshair) ---
+    // --- mini galaxy map (GalaxyMap.cs method_6 at 300 px: backdrop, nebulae, territory, sector grid, systems, crosshair) ---
     function drawMap(): void {
         const px = Math.max(1, Math.round(MAP.size * win.scale * (window.devicePixelRatio || 1)));
         if (canvas.width !== px) {
@@ -703,14 +702,8 @@ function createTroopsScreen(opts: TroopsScreenOptions): OpenState {
         const s = galaxyMapScale(galaxy, W);
         ctx.fillStyle = '#000';
         ctx.fillRect(0, 0, W, W);
-        if (backdrop.img === null) {
-            const img = new Image();
-            img.onload = () => {
-                backdrop.img = img;
-                if (!win.closed) drawMap();
-            };
-            img.src = BACKDROP_URLS[0];
-        } else if (backdrop.img.complete) ctx.drawImage(backdrop.img, 0, 0, galaxy.sizeX / s, galaxy.sizeY / s);
+        drawGalaxyMapLayers(ctx, galaxy, s, 0, 0, { onChange: () => { if (!win.closed) drawMap(); } });
+        drawMapTerritory(ctx, galaxy, W);
         const sec = galaxy.sectorSize / s;
         ctx.strokeStyle = GRID_COLOR;
         ctx.lineWidth = 1;

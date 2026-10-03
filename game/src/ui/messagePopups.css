@@ -253,6 +253,18 @@
     height: 33px;
     transform: translateX(-50%);
 }
+/* method_572 at levels 2 / 4: two 360 × 50 buttons, 20 px apart, centred ((width - 740) / 2), 20 px above the bottom. */
+.msg-story.msg-story-choice .msg-story-close {
+    width: 360px;
+    height: 50px;
+    transform: none;
+}
+.msg-story.msg-story-choice .msg-story-no {
+    left: calc(50% - 370px);
+}
+.msg-story.msg-story-choice .msg-story-yes {
+    left: calc(50% + 10px);
+}
 .ow-text.msg-event-title {
     white-space: pre-line;
     text-align: center;

@@ -631,9 +631,9 @@ const VICTORY_AMOUNT_FORMAT = new Set<RaceVictoryConditionType>([
     RaceVictoryConditionType.MutualDefensePactsFormedProportionAllEmpires,
 ]);
 
-/** Port of Galaxy.2.cs ResolveDescription(RaceVictoryCondition, Empire) with
- *  empire = null (the race summary's call). */
-function victoryConditionDescription(text: GameText, c: RaceVictoryCondition, facilities: ReadonlyArray<Facility>): string {
+/** Port of Galaxy.2.cs ResolveDescription(RaceVictoryCondition, Empire). `homeWorldName` is empire.HomeWorld.Name
+ *  (null: empire == null or no homeworld — the race summary's call); the Empire Comparison panel passes it. */
+export function victoryConditionDescription(text: GameText, c: RaceVictoryCondition, facilities: ReadonlyArray<Facility>, homeWorldName: string | null = null): string {
     const T = (key: string): string => getText(text, `Race Victory Condition ${key}`);
     const name = RaceVictoryConditionType[c.type];
     switch (c.type) {
@@ -644,7 +644,7 @@ function victoryConditionDescription(text: GameText, c: RaceVictoryCondition, fa
             return f ? format(T('BuildWonder'), f.name) : '';
         }
         case RaceVictoryConditionType.ControlHomeworld:
-            return format(T('ControlHomeworld'), '');
+            return format(T('ControlHomeworld'), homeWorldName !== null ? `(${homeWorldName})` : '');
         case RaceVictoryConditionType.ControlLargestColoniesByType:
         case RaceVictoryConditionType.ControlPlanetTypePercentage:
             return c.additionalData !== null ? format(T(name), fmt0(c.amount), habitatTypeDescription(text, c.additionalData)) : '';

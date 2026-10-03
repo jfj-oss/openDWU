@@ -21,7 +21,7 @@ Read-only audit: C# Empire.cs + Empire.1-10.cs, EmpirePolicy, DiplomaticRelation
 | 11 | Characters read the cached capitals list | Empire.cs 513 Capitals | PARTIAL | characters.ts:7062 | Low | Recomputed each time; determinism risk |
 | 12 | Capital choice after losing a colony (setup path) | Empire.cs 3596 SelectBestCandidateForCapital | PARTIAL | empire.ts:1066 | Low | Uses colonies[0]; runtime path is correct |
 | 13 | Player free-trader upkeep (Bacon mod) | BaconEmpire PayAnnualMaintenanceCostForFreeTraders | MISSING (unreachable throw) | treasury.ts:221-248 | Low | |
-| 14 | Freedom Alliance victory story | Galaxy.1.cs 429 DecimateEmpire / GuardiansDepart | MISSING (throws) | victory.ts:1052 | Low | |
+| 14 | Freedom Alliance victory story | Galaxy.1.cs 429 DecimateEmpire / GuardiansDepart | DONE (parC4) | victory.ts, story/freedomAlliance.ts | — | |
 | 15 | Bacon story actions: loan payment, scientific missions | BaconGalaxy.cs 334-343 | MISSING (throws) | story/eventActions.ts:1713-1717 | Low | |
 | 16 | Pirate relationship factors (diplomacy UI) | Empire.7.cs 4270 | DONE (D3) | diplomacyScreen.ts:1352 | Low | pirate detail shows the factors and our funded attack missions |
 | 17 | Empire ability-bonus lines (diplomacy UI) | Empire.cs ResolveEmpireAbilityBonusDescriptions | DONE (D3) | diplomacyScreen.ts:1124 | Low | empireSummaryModel abilityBonusLines under the race |

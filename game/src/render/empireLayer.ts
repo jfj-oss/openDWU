@@ -25,6 +25,7 @@ import type { Habitat } from '../sim/types';
 import { moonDotPx, planetSpritePx } from './mainView';
 import { DrawKey } from './drawCache';
 import { displayColorForEmpire } from '../sim/empireColors';
+import { showsMapIndicators } from './mainViewDisplay';
 
 /** Neutral grey for independent (non-empire) populated worlds. Matches the
  * grey the sim forces onto the independent empire (Empire ctor, empire.ts). */
@@ -319,9 +320,11 @@ export class EmpireLayer {
 
         // Colony rings: system/planet zoom only (hidden at galaxy/sector zoom
         // where the owned-system marker rings take over).
+        // MainView.1.cs:792 `main_0.int_34 < 2`: display type 2 (D key, mainViewDisplay.ts) drops the owner circles.
+        const indicators = showsMapIndicators();
         for (const cr of this.colonyRings) {
             const h = cr.habitat;
-            if (!atSystemZoom) {
+            if (!atSystemZoom || !indicators) {
                 cr.ring.visible = false;
                 continue;
             }
