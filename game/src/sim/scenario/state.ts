@@ -98,7 +98,7 @@ export function scenarioState<T>(galaxy: Galaxy, key: string, init: () => T): T 
     const s = galaxy.scenario;
     if (s === null) throw new Error(`scenarioState(${key}): no scenario in this game`);
     if (!(key in s.state)) {
-        // A read-only replica galaxy (readOnlyQuery.ts): the fresh bag, detached (nothing is created in the game).
+        // A read-only galaxy (a UI read, readOnlyQuery.ts): the fresh bag, detached (nothing is created in the game).
         if (isReadOnlyGalaxy(galaxy)) return init();
         s.state[key] = init();
     }

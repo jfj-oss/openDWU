@@ -33,7 +33,6 @@ import { SimClientCore } from '../src/simworker/clientCore';
 import type { ToWorker, WorkerEvent } from '../src/simworker/protocol';
 import { remoteSimHost } from '../src/simworker/remoteHost';
 import { requestSimRefresh } from '../src/simworker/refresh';
-import { simQuery } from '../src/simworker/simQuery';
 import { COMMAND_FAILURE, commandFailureMessage, commandFailureValue } from '../src/simworker/commandFailure';
 import { bootWorkerGame } from '../src/simworker/workerBoot';
 import { showToast } from '../src/ui/toast';
@@ -96,12 +95,8 @@ function connect(game: Game, opts: { intercept?: (m: ToWorker) => ToWorker | nul
         if (c.type === 'command') host.command(c);
         else if (c.type === 'clock') host.clock(c);
         else if (c.type === 'refresh') host.refresh(c);
-        else if (c.type === 'query') {
-            host.query(c);
-            pending.push(host.flush());
-        } else if (c.type === 'hostOp') host.hostOp(c);
+        else if (c.type === 'hostOp') host.hostOp(c);
     };
-    const pending: ReturnType<SimHost['flush']>[] = [];
     const wall = { t: 0 };
     const events: WorkerEvent[] = [];
     const client = new SimClientCore(gameData, snap, { post: toHost, now: () => wall.t, replyTimeoutMs: opts.replyTimeoutMs, onEvent: (e) => events.push(e) });
@@ -112,7 +107,6 @@ function connect(game: Game, opts: { intercept?: (m: ToWorker) => ToWorker | nul
     const tick = (): void => {
         wall.t += FRAME_REAL_MS;
         client.syncClock(ui);
-        for (const q of pending.splice(0)) client.receive(structuredClone(q));
         const m = host.tick(FRAME_REAL_MS);
         if (m !== null) client.receive(structuredClone(m));
         client.frame(ui);
@@ -474,7 +468,7 @@ describe('sim worker: pending replies when the worker stops, the game is closed 
         const promised = remoteSimHost(w.client.galaxy)!.command(p, 'empireRename', ['Promised']).then(() => 'resolved', (e: Error) => e.message);
         const hostOp = remoteSimHost(w.client.galaxy)!.hostOp('chronicleYear', [{ year: 1 } as never]).then(() => 'resolved', (e: Error) => e.message);
         const answered: unknown[] = [];
-        simQuery(w.client.galaxy, p, 'moneyPanel', [], (r) => answered.push(r));
+        issuePlayerCommand(w.client.galaxy, p, 'moneyPanel', [], (r) => answered.push(r));
         let fresh = 0;
         requestSimRefresh(w.client.galaxy, [p], () => fresh++);
         for (let i = 0; i < 3; i++) w.tick();
@@ -487,8 +481,9 @@ describe('sim worker: pending replies when the worker stops, the game is closed 
         expect(String((calls.get('save')[0] as { message: string }).message)).toMatch(/worker stopped/);
         expect(await promised).toMatch(/worker stopped/);
         expect(await hostOp).toMatch(/worker stopped/);
-        // A query / refresh never answers on failure (as an in-thread query that throws, an in-thread refresh).
-        expect(answered).toEqual([]);
+        // The money panel's command gets its failure value (nothing to show); a refresh never answers on failure (as
+        // an in-thread refresh).
+        expect(answered).toEqual([null]);
         expect(fresh).toBe(0);
         expect(w.events.filter((e) => e.kind === 'workerStopped')).toHaveLength(1);
         expect(err.mock.calls.some((c) => String(c[0]).includes('STOPPED'))).toBe(true);
@@ -572,18 +567,18 @@ describe('sim worker: pending replies when the worker stops, the game is closed 
         host2.dispose();
     }, 600000);
 
-    it('a query whose reply fails or is pending at close never calls back, and leaves nothing waiting', () => {
+    it('a menu / panel command the worker cannot resolve gets its failure value, in order, and leaves nothing waiting', () => {
         vi.spyOn(console, 'warn').mockImplementation(() => undefined);
         const w = connect(cachedTickGame(gameData), {
-            // A query naming an object the worker does not know: its error reply.
-            intercept: (m) => (m.type === 'query' && m.op === 'habitatDispatch' ? { ...m, args: [{ s: 987654321 }] } : m),
+            // A dispatch naming an object the worker does not know: its error reply.
+            intercept: (m) => (m.type === 'command' && m.op === 'habitatDispatch' ? { ...m, args: [{ s: 987654321 }] } : m),
         });
         const p = w.client.game.playerEmpire;
         const answers: string[] = [];
-        simQuery(w.client.galaxy, p, 'habitatDispatch', [ownColony(p)], () => answers.push('dispatch'));
-        simQuery(w.client.galaxy, p, 'moneyPanel', [], () => answers.push('money'));
+        issuePlayerCommand(w.client.galaxy, p, 'habitatDispatch', [ownColony(p)], (r) => answers.push(`dispatch ${JSON.stringify(r)}`));
+        issuePlayerCommand(w.client.galaxy, p, 'moneyPanel', [], () => answers.push('money'));
         for (let i = 0; i < 3; i++) w.tick();
-        expect(answers).toEqual(['money']);
+        expect(answers).toEqual(['dispatch []', 'money']);
         expect(w.client.pendingReplies).toBe(0);
         w.client.dispose();
         w.host.dispose();
@@ -598,7 +593,7 @@ describe('sim worker: the failure-value table', () => {
         expect(msg).not.toContain('|');
         for (const op of ops) {
             const v = commandFailureValue(op, msg, op === 'advisorCommands' ? [{}, [{ id: 'c1' }]] : op === 'diplomatCounter' ? [{}, {}, 'k1'] : []);
-            if (['investigateRuins', 'investigateEncounteredBuiltObject', 'warnTargetOfPirateAttackFunding', 'exposeUncoveredPlanetDestroyer'].includes(op)) expect(v).toBeUndefined();
+            if (['investigateRuins', 'investigateEncounteredBuiltObject', 'warnTargetOfPirateAttackFunding', 'exposeUncoveredPlanetDestroyer', 'obtainUiRecords'].includes(op)) expect(v).toBeUndefined();
             else expect(v, op).not.toBeUndefined();
             // Never a success.
             expect(v === true || (typeof v === 'object' && v !== null && ((v as { ok?: unknown }).ok === true || (v as { accepted?: unknown }).accepted === true)), op).toBe(false);

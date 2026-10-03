@@ -1,4 +1,5 @@
-// Empire Comparisons and Victory Conditions window (task 15d, parity #14), opened by V, plus the game-end banner.
+// Empire Comparisons and Victory Conditions window (task 15d, parity #14), opened by V, plus the game-end screen (this window on
+// Achievements with the outcome overlay; the Continue / Exit panel is gameEndPanel.ts).
 //
 // The window is Main.Part6.cs method_400 (vHfFsoqMev "Empire Comparison", 925 × 785; tabEmpireComparisonGraphs
 // 890 × 705 at (10, 10); every tab's panel 860 × 660 at (10, 10) of its page), with the tabs in the original's order:
@@ -24,7 +25,6 @@
 // TODO(port): Shakturi story message (Code 1) — Main.Part12.cs 3428 DoGameEnd.
 
 import './empireComparison.css';
-import { withReadOnlyGalaxy } from '../readOnlyScope';
 import type { Empire } from '../../sim/empire';
 import type { Galaxy } from '../../sim/galaxy';
 import type { Habitat } from '../../sim/types';
@@ -71,7 +71,8 @@ import { asteroidUrls, planetUrls } from '../../render/assets';
 import { applyEmpireEmblem } from '../empireEmblem';
 import { openOriginalWindow, place, tabStrip } from '../originalWindow';
 import { victoryConditionDescription } from './galactopedia';
-import { createGameSummaryPanel, recordGameEndSummary, type GameSummaryView } from './gameSummary';
+import { clearGameSummaryOverlay, createGameSummaryPanel, recordGameEndSummary, type GameSummaryView } from './gameSummary';
+import { closeGameEndPanel, openGameEndPanel } from './gameEndPanel';
 
 // ---------------------------------------------------------------------------
 // Formatting helpers (pure)
@@ -379,70 +380,34 @@ export function presentGameEnd(galaxy: Galaxy, time: { paused: boolean }, e: Gam
     // [audio] begin — Main.Part12.cs:3428 DoGameEnd → musicPlayer_0.StartTheme().
     if (typeof document !== 'undefined') musicGameEnded();
     // [audio] end
-    if (typeof document !== 'undefined') {
-        // method_436: the GameSummary of this game into the persisted list, the overlay lines, the victor selected.
-        recordGameEndSummary(
-            galaxy,
-            e.outcomeForPlayer === GameEndOutcome.Victory,
-            e.outcomeForPlayer === GameEndOutcome.Victory ? 'Victory' : e.outcomeForPlayer === GameEndOutcome.Defeat ? 'Defeat' : null,
-            e.description,
-            e.victorEmpire,
-        );
-        showGameEndBanner(galaxy, time, e);
+    if (typeof document === 'undefined') return;
+    // method_436: the GameSummary of this game into the persisted list, the overlay lines, the victor selected.
+    recordGameEndSummary(
+        galaxy,
+        e.outcomeForPlayer === GameEndOutcome.Victory,
+        e.outcomeForPlayer === GameEndOutcome.Victory ? 'Victory' : e.outcomeForPlayer === GameEndOutcome.Defeat ? 'Defeat' : null,
+        e.description,
+        e.victorEmpire,
+    );
+    // Main.Part6.cs:4013-4026 method_436: method_400 (open the Empire Comparison window), tabEmpireComparisonGraphs
+    // .SelectedIndex = 1 (Achievements, the Game Summary) with the outcome overlay (gameSummary.ts).
+    const player = galaxy.playerEmpire;
+    if (player) {
+        if (open) open.close();
+        selectedTab = 'achievements';
+        open = createEmpireComparison({ player });
     }
+    // pnlGameEnd: the outcome with Continue Playing / Exit to main menu (gameEndPanel.ts).
+    openGameEndPanel(galaxy, time, e);
 }
 
 export function removeGameEndHandler(galaxy: Galaxy): void {
     setGameEndHandler(galaxy, null);
 }
 
-let banner: HTMLElement | null = null;
-
-function showGameEndBanner(galaxy: Galaxy, time: { paused: boolean }, e: GameEndEventArgs): void {
-    closeGameEndBanner();
-    const root = document.createElement('div');
-    root.className = 'empire-comparison-banner';
-    const panel = document.createElement('div');
-    panel.className = 'empire-comparison-banner-panel';
-    gameEndBannerLines(e).forEach((line, i, all) => {
-        const div = document.createElement('div');
-        const isHeadline = i === 0 && all.length === 3;
-        div.className = isHeadline ? 'empire-comparison-banner-headline' : 'empire-comparison-banner-line';
-        div.textContent = line;
-        panel.appendChild(div);
-    });
-    const buttons = document.createElement('div');
-    buttons.className = 'empire-comparison-banner-buttons';
-    const cont = document.createElement('button');
-    cont.type = 'button';
-    cont.className = 'empire-comparison-button';
-    cont.textContent = 'Continue';
-    cont.disabled = !canContinueAfterGameEnd(e, galaxy.playerEmpire);
-    cont.addEventListener('click', () => {
-        closeGameEndBanner();
-        time.paused = false; // method_155
-    });
-    const vc = document.createElement('button');
-    vc.type = 'button';
-    vc.className = 'empire-comparison-button';
-    vc.textContent = 'Victory Conditions';
-    vc.addEventListener('click', () => {
-        const player = galaxy.playerEmpire;
-        if (!player) return;
-        selectedTab = 'victory';
-        if (open) open.showTab('victory');
-        else toggleEmpireComparison({ player });
-    });
-    buttons.append(cont, vc);
-    panel.appendChild(buttons);
-    root.appendChild(panel);
-    document.body.appendChild(root);
-    banner = root;
-}
-
+/** Hide the Game End panel (leaving the game). */
 export function closeGameEndBanner(): void {
-    banner?.remove();
-    banner = null;
+    closeGameEndPanel();
 }
 
 // ---------------------------------------------------------------------------
@@ -1061,6 +1026,7 @@ export function toggleEmpireComparison(opts: EmpireComparisonOptions): void {
     if (open) {
         open.close();
     } else {
+        clearGameSummaryOverlay(opts.player.galaxy); // method_400: pnlGameSummary.OverlayTextLines.Clear()
         open = createEmpireComparison(opts);
     }
 }
@@ -1370,12 +1336,9 @@ function createEmpireComparison(opts: EmpireComparisonOptions): OpenState {
         strip = s;
     };
 
-    // Every query of a refresh runs read-only (readOnlyScope.ts): the in-thread galaxy is never written by the panel.
+    // Every query is read-only: outside sim code the UI galaxy answers the lazy lookups without writing
+    // (sim/readOnlyQuery.ts markUiGalaxy; the replica under ?simWorker=1).
     function render(): void {
-        withReadOnlyGalaxy(galaxy, renderNow);
-    }
-
-    function renderNow(): void {
         const scroll = panel.scrollTop;
         if (selectedTab === 'achievements') {
             if (summary === null) {

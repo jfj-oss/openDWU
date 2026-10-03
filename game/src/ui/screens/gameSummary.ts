@@ -14,7 +14,6 @@
 // game end (DoGameEnd / the worker's handler), and this panel reads them as they are. The C# file is a .NET
 // BinaryFormatter blob in the game folder; ours is JSON in localStorage (DWU_GAME_SUMMARIES_KEY).
 
-import { withReadOnlyGalaxy } from '../readOnlyScope';
 import './gameSummary.css';
 import type { Galaxy } from '../../sim/galaxy';
 import type { Empire } from '../../sim/empire';
@@ -313,6 +312,11 @@ function stateOf(galaxy: Galaxy): SummaryState {
     return s;
 }
 
+/** method_400: pnlGameSummary.OverlayTextLines.Clear() on every open of the window. */
+export function clearGameSummaryOverlay(galaxy: Galaxy): void {
+    stateOf(galaxy).overlay = [];
+}
+
 /**
  * Main.Part6.cs method_436 (the summary part): DetermineGameSummary (read-only), PlayerVictory, add it to the list and
  * merge the achievements, persist (method_255), the yellow overlay lines (VICTORY!/DEFEAT!, " ", description) and
@@ -322,7 +326,7 @@ export function recordGameEndSummary(galaxy: Galaxy, victory: boolean, outcomeWo
     const st = stateOf(galaxy);
     let summary: StoredGameSummary;
     try {
-        const s = withReadOnlyGalaxy(galaxy, () => determineGameSummary(galaxy));
+        const s = determineGameSummary(galaxy);
         if (victory) s.playerVictory = true;
         summary = toStoredGameSummary(s);
     } catch (err) {
@@ -501,7 +505,7 @@ export function createGameSummaryPanel(host: HTMLElement, galaxy: Galaxy, w = 86
                 clearTip();
                 let s;
                 try {
-                    s = withReadOnlyGalaxy(galaxy, () => calculateEmpireScore(galaxy, sel));
+                    s = calculateEmpireScore(galaxy, sel);
                 } catch {
                     return;
                 }
