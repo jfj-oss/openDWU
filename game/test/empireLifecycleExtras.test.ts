@@ -50,6 +50,7 @@ describe('initiateEmpireSplitAt (Empire.1.cs 1102 / 2883, split for targeted sec
         // Moved "a8b312e8d6f7df18:288951" → "82600a40b8a35771:289000": merge: todosweep2 (planet DoTasks, ProcessEmpireScienceShips scheduling) on top of the integration branch's todosweep/combattest pins (2026-09-26)
         // Moved "82600a40b8a35771:289000" → "42159d821d5440d8:288980": BaconMain.cs 686-697 BaconInitialize queues the SaveStats delayed action (1 day; BaconGalaxy.cs 319 re-queues it every statSaveIntervalInGameDays) and BaconMain.cs 1069/1075-1087 AddOtherDelayedEvents queues ClearShipsAboutToBeDestroyed with Galaxy.Rnd.Next(10, 12) after the 700-715 science-ship Next(26, 35) (2026-09-26)
         // Moved "42159d821d5440d8:288980" → "df5e591362688597:288980": Habitat.cs 924-935/986-998 OrbitDistance/OrbitSpeed property setters recompute _AnglePerSecond on every reassignment; Galaxy.5.cs 1689/1730 sets a moon's real OrbitDistance well after construction (ctor gets a placeholder Rnd.Next(5,32)) relying on that recompute -- types.ts previously had these as plain fields, so moons kept the angular speed implied by the tiny placeholder radius applied to their real, much larger orbit (up to ~240x too fast); fixed by making orbitDistance/orbitSpeed real accessor properties (2026-09-28)
+        // Moved "df5e591362688597:288980" → "4985362bf65f2a5a:288778": orbits spaced so planets/moons never overlap (user deviation) (2026-10-03)
         expect(`${stateDigest(galaxy)}:${galaxy.rnd.drawCount}`).toMatchPin('empireLifecycle.aiSplitDigest');
     }, 300000);
 

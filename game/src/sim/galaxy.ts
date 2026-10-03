@@ -15,6 +15,7 @@ import { Random } from './random';
 import type { Cargo } from './cargo';
 import { newHabitatConstructionQueue } from './construction/constructionYard';
 import { Creature, CreatureType } from './creature';
+import { fitNewPlanetOrbit, spaceSystemOrbits } from './orbitSpacing';
 import { GalaxyLocation, GalaxyLocationEffectType, GalaxyLocationShape, GalaxyLocationType } from './galaxyLocation';
 import { GalaxyNebulaeGenerator } from './galaxyNebulaeGenerator';
 import { setupAlienRacePopulations, type EmpireStart } from './raceRegions';
@@ -76,7 +77,10 @@ const INDEX_SIZE = 400_000;
 const MAXIMUM_EMPIRE_COUNT = 255; // Galaxy.3.cs:5034
 // Port of Galaxy.3.cs InitializeStatics: MaxSolarSystemSize = 23000.
 const MAX_SOLAR_SYSTEM_SIZE = 23000;
-// Port of Galaxy.3.cs InitializeStatics: MaxMoonOrbitSize = 1200.
+// Galaxy.cs:162 MaxMoonOrbitSize. TODO(port): the original's only assignment is 1600 (Galaxy.3.cs:4979, `static Galaxy()`
+// at 4955), not 1200. Fixing it widens SetupSolarSystem's moon-orbit Rnd.Next ranges, which reshuffles every seed's
+// galaxy (seed-1 capitals, empires, designs) and the hand-written seed-1 expectations in ~18 test files; left for a
+// dedicated change — Galaxy.3.cs static Galaxy().
 const MAX_MOON_ORBIT_SIZE = 1200;
 // Port of Galaxy.3.cs InitializeStatics: MovementDecelerationRange = 150 (Galaxy.3.cs:4983;
 // Galaxy.cs:170 `public static readonly int`).
@@ -3565,6 +3569,33 @@ export class Galaxy {
         return num;
     }
 
+    // DEVIATION (user request, src/sim/orbitSpacing.ts): spaces the planets and moons SetupSolarSystem just generated
+    // so no two bodies (drawn sizes included) overlap, then moves every body to its new orbit radius at its unchanged
+    // orbit angle and carries along the creatures SelectCreatures spawned on a body (Creature ctor: xpos =
+    // startingHabitat.xpos + parentOffsetX). No Rnd calls.
+    private spaceSetupSystemOrbits(star: Habitat, planets: Habitat[], moons: Map<Habitat, Habitat[]>, creatureStart: number): void {
+        const moonsOf = (p: Habitat): Habitat[] => moons.get(p) ?? [];
+        const bodies: Habitat[] = [];
+        for (const p of planets) bodies.push(p, ...moonsOf(p));
+        const oldPos = bodies.map((h) => ({ x: h.xpos, y: h.ypos }));
+        if (!spaceSystemOrbits(star, planets, moonsOf)) return;
+        // Planets first so each moon is placed around its parent's new position.
+        for (const p of planets) p.advanceOrbit(0);
+        for (const p of planets) for (const m of moonsOf(p)) m.advanceOrbit(0);
+        for (let c = creatureStart; c < this.creatures.length; c++) {
+            const creature = this.creatures[c];
+            const ax = creature.xpos - creature.parentOffsetX;
+            const ay = creature.ypos - creature.parentOffsetY;
+            for (let b = 0; b < bodies.length; b++) {
+                if (Math.abs(oldPos[b].x - ax) < 0.5 && Math.abs(oldPos[b].y - ay) < 0.5) {
+                    creature.xpos = bodies[b].xpos + creature.parentOffsetX;
+                    creature.ypos = bodies[b].ypos + creature.parentOffsetY;
+                    break;
+                }
+            }
+        }
+    }
+
     // Port of Galaxy.8.cs CheckPlanetaryOrbitalOverlap (line 367).
     private checkPlanetaryOrbitalOverlap(systemStar: Habitat, orbitDistance: number): boolean {
         const num = 150;
@@ -3579,20 +3610,26 @@ export class Galaxy {
     }
 
     // Port of Galaxy.8.cs GeneratePlanetaryOrbitDistance (line 390).
-    private generatePlanetaryOrbitDistance(systemStar: Habitat, minOrbitDistance: number, maxOrbitDistance: number): number {
+    // DEVIATION (orbitSpacing.ts): `diameter` (the new planet's) is extra; after the original's draws the result is
+    // pushed outward to the first radius where the new planet clears the star and every planet (and its moons) already
+    // orbiting systemStar. No extra Rnd calls.
+    private generatePlanetaryOrbitDistance(systemStar: Habitat, minOrbitDistance: number, maxOrbitDistance: number, diameter: number): number {
         let num = this.rnd.next(minOrbitDistance, maxOrbitDistance);
         let num2 = 0;
         while (this.checkPlanetaryOrbitalOverlap(systemStar, num) && num2 < 20) {
             num = this.rnd.next(minOrbitDistance, maxOrbitDistance);
             num2++;
         }
-        return num;
+        const habitats = this.systemHabitatsExcludingStar(systemStar);
+        const planets = habitats.filter((h) => h.category === HabitatCategoryType.Planet && h.parent === systemStar);
+        const moonsOf = (p: Habitat): Habitat[] => habitats.filter((h) => h.category === HabitatCategoryType.Moon && h.parent === p);
+        return fitNewPlanetOrbit(systemStar, num, diameter, planets, moonsOf);
     }
 
     // Port of Galaxy.8.cs GenerateContinentalPlanet (line 458), habitat fields only.
     generateContinentalPlanet(sun: Habitat): Habitat {
         const { type, pictureRef, diameter, minOrbitDistance, maxOrbitDistance, landscapePictureRef } = this.selectContinentalPlanet();
-        const orbitdistance = this.generatePlanetaryOrbitDistance(sun, minOrbitDistance, maxOrbitDistance);
+        const orbitdistance = this.generatePlanetaryOrbitDistance(sun, minOrbitDistance, maxOrbitDistance, diameter);
         const name = this.generateRandomName();
         const orbitAngle = this.rnd.nextDouble() * Math.PI * 2.0;
         const habitat = new Habitat(HabitatCategoryType.Planet, type, name, sun, orbitAngle, true, orbitdistance, this.rnd.next(2, 5));
@@ -4107,6 +4144,10 @@ export class Galaxy {
         habitatList2.push(sunHabitat);
 
         if (planetCount > 0) {
+            // Orbit-spacing deviation bookkeeping (see spaceSetupSystemOrbits below); no Rnd.
+            const creatureStart = this.creatures.length;
+            const systemPlanets: Habitat[] = [];
+            const systemMoons = new Map<Habitat, Habitat[]>();
             for (let i = 0; i < planetCount; i++) {
                 let habitat: Habitat = sunHabitat;
                 const { type, pictureRef, diameter, minOrbitDistance, maxOrbitDistance, landscapePictureRef } = this.selectPlanetType(habitat.type);
@@ -4205,6 +4246,8 @@ export class Galaxy {
                 }
 
                 const moonsForThisPlanet: Habitat[] = [];
+                systemPlanets.push(planet);
+                systemMoons.set(planet, moonsForThisPlanet);
                 for (let l = 0; l < moonCount; l++) {
                     const moonSel = this.selectMoonType(habitat.diameter, habitat.type);
                     let moonDiameter = moonSel.diameter;
@@ -4289,6 +4332,10 @@ export class Galaxy {
                     habitatList.push(moon);
                 }
             }
+
+            // DEVIATION (orbitSpacing.ts): after all of the original's planet/moon draws, push overlapping orbits
+            // outward. Deterministic, no Rnd, so the random sequence below is unchanged.
+            this.spaceSetupSystemOrbits(sunHabitat, systemPlanets, systemMoons, creatureStart);
 
             // Extra un-clustered asteroids directly orbiting the star.
             const extraAsteroidCount = this.rnd.next(0, Math.trunc(planetCount * 4.5));

@@ -667,9 +667,9 @@ describe('(4) pirate raids', () => {
     }
 
     /**
-     * The Mercenary faction (seed-1: S78 Gangsters; play style: RaidStrengthFactor 1.25, RaidBonusFactor 0.75, LootingFactor 1.33 —
+     * The Mercenary faction (seed-1: Dread Invaders; play style: RaidStrengthFactor 1.25, RaidBonusFactor 0.75, LootingFactor 1.33 —
      * Galaxy.8.cs 4396 SetPirateFactionModifiers) raid the player's capital with its escort's Assault Pod
-     * (components.txt id 114: Value1 strength 50, speed 50). Dominant race troop strength 138.
+     * (components.txt id 114: Value1 strength 50, speed 50). Dominant race troop strength 92.
      */
     function stage() {
         const g = cachedTickGame(gameData).galaxy;
@@ -684,16 +684,17 @@ describe('(4) pirate raids', () => {
     it('play-style factors: Mercenary raids at 1.25 strength / 0.75 loot and loots at 1.33, Smuggler 0.75 / 0.75 / 0.75, Pirate 1.25 / 1.4 / 1.0 (Galaxy.8.cs 4396, BaconEmpire.cs 59-84)', () => {
         const { g, pe } = stage();
         expect(pe).toBe(pirateFaction(g, MERCENARY));
-        expect(pe.dominantRace!.troopStrength).toBe(138);
+        expect(pe.dominantRace!.troopStrength).toBe(92);
         const f = (e: Empire) => [empireRaidStrengthFactor(e), empireRaidBonusFactor(e), empireLootingFactor(e)];
         expect(f(pe)).toEqual([1.25, 0.75, 1.33]); // Mercenary
-        expect(f(pirateFaction(g, SMUGGLER))).toEqual([0.75, 0.75, 0.75]); // Smuggler
+        // Seed 1 has no Smuggler faction since the orbit-spacing deviation; every faction still reads one of the four tables.
+        for (const e of g.pirateEmpires) expect([MERCENARY, PIRATE, SMUGGLER, BALANCED]).toContainEqual(f(e));
         expect(f(pirateFaction(g, PIRATE))).toEqual([1.25, 1.4, 1.0]); // Pirate
         expect(f(pirateFaction(g, BALANCED))).toEqual([1.0, 1.0, 1.0]); // Balanced
         expect(f(g.playerEmpire!)).toEqual([1.0, 1.0, 1.0]); // not a pirate: the Empire.cs 431-455 defaults
     });
 
-    it('a pod landing on a colony becomes a Pirate Raider troop of (int)(50 × 1.38 × 1.25) = 86 (BuiltObject.1.cs 2696-2733); a pod does not raid a colony its own empire is invading with regular troops', () => {
+    it('a pod landing on a colony becomes a Pirate Raider troop of (int)(50 × 0.92 × 1.25) = 57 (BuiltObject.1.cs 2696-2733); a pod does not raid a colony its own empire is invading with regular troops', () => {
         const { g, wf, capital, pe } = stage();
         const pod = wf.weapons.find((w) => w.component.type === ComponentType.AssaultPod)!;
         place(g, wf, capital.xpos + 50, capital.ypos);
@@ -706,8 +707,8 @@ describe('(4) pirate raids', () => {
         expect(pod.distanceTravelled).toBe(-1); // Weapon.Reset after landing (2736)
         const raiders = capital.invadingTroops!.items.filter((t) => t.type === TroopType.PirateRaider && t.empire === pe);
         expect(raiders.length).toBe(1);
-        expect(raiders[0].attackStrength).toBe(Math.trunc(50 * 1.0 * (138 / 100.0) * 1.0 * 1.25));
-        expect(raiders[0].attackStrength).toBe(86);
+        expect(raiders[0].attackStrength).toBe(Math.trunc(50 * 1.0 * (92 / 100.0) * 1.0 * 1.25));
+        expect(raiders[0].attackStrength).toBe(57);
         expect(raiders[0].colony).toBe(capital);
         expect(pe.troops.count).toBe(troops0 + 1);
         // Same empire already invading with a regular troop (2705-2717): the pod is spent without raiding.

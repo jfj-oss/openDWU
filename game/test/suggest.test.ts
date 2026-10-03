@@ -198,8 +198,9 @@ describe('a SemiAutomated player is advised instead of building (Empire.6.cs 258
         directConstruction(full.galaxy, full.playerEmpire);
         const fullBuilt = builtSince(full, n0);
         expect(fullBuilt.length).toBe(1);
-        // Which lab the seed-1 capital lacks depends on the galaxy layout (Weapons since the todosweep galaxy fixes).
-        expect(fullBuilt[0].subRole).toBe(BuiltObjectSubRole.WeaponsResearchStation);
+        // Which lab the seed-1 capital lacks depends on the galaxy layout (Weapons since the todosweep galaxy fixes,
+        // Energy since the orbit-spacing deviation).
+        expect(fullBuilt[0].subRole).toBe(BuiltObjectSubRole.EnergyResearchStation);
         expect(fullBuilt[0].builtAt).toBe(full.playerEmpire.capital);
         expect(advisorSuggestions(full.playerEmpire).length).toBe(0);
 

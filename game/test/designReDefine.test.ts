@@ -83,16 +83,16 @@ describe('Design.ReDefine hand-worked values (seed 1 tick game)', () => {
         expect(designStatRows(d).find((r) => r.label === 'Firepower')?.value).toBe('10');
     });
 
-    it("pirate TroopTransport 'Praetor'", () => {
-        //  2x Maxos Blaster, 25x Standard Armor, 5x Corvidian Shields, 8x Proton Thruster, 1x Thrust Vector,
+    it("pirate TroopTransport 'Venator'", () => {
+        //  2x Maxos Blaster, 20x Standard Armor, 5x Corvidian Shields, 8x Proton Thruster, 2x Thrust Vector,
         //  1x Gerax HyperDrive, 2x Fission Reactor, 1x Energy Collector, 3x Standard Fuel Cell,
         //  3x Standard Troop Compartment (size 8, V1 100), 1x Command Center, 4x Life Support (V1 85),
         //  5x Hab Module, 1x Medical Center (size 4, energy 3, V1 100), 4x Assault Pod (size 8, V1 50 V2 140 V5 20).
-        const isRoyale = (x: { name: string; subRole: BuiltObjectSubRole }) => x.name === 'Praetor' && x.subRole === BuiltObjectSubRole.TroopTransport;
+        const isRoyale = (x: { name: string; subRole: BuiltObjectSubRole }) => x.name === 'Venator' && x.subRole === BuiltObjectSubRole.TroopTransport;
         const owner = galaxy.pirateEmpires.find((e) => e.designs.some(isRoyale))!;
         const d = owner.designs.find(isRoyale)!;
         expect(d.subRole).toBe(BuiltObjectSubRole.TroopTransport);
-        expect(d.size).toBe(2 * 5 + 25 + 5 * 10 + 8 * 7 + 2 + 11 + 2 * 22 + 8 + 3 * 6 + 3 * 8 + 2 + 4 + 5 * 2 + 4 + 4 * 8); // 300
+        expect(d.size).toBe(2 * 5 + 20 + 5 * 10 + 8 * 7 + 2 * 2 + 11 + 2 * 22 + 8 + 3 * 6 + 3 * 8 + 2 + 4 + 5 * 2 + 4 + 4 * 8); // 297
         expect(d.staticEnergyConsumption).toBe(2 + 4 + 5 + 3); // 14
         // Assault pods are weapons but not firepower (Design.cs 1325-1356 adds them to Weapons only).
         expect(d.firepowerRaw).toBe(10);
@@ -100,17 +100,17 @@ describe('Design.ReDefine hand-worked values (seed 1 tick game)', () => {
         expect(d.assaultStrength).toBe(200);
         expect(d.assaultRange).toBe(140);
         expect(d.assaultShieldPenetration).toBe(20);
-        expect(d.topSpeed).toBe(Math.trunc(8000 / 300)); // 26
-        expect(d.cruiseSpeed).toBe(Math.trunc(4480 / 300)); // 14
+        expect(d.topSpeed).toBe(Math.trunc(8000 / 297)); // 26
+        expect(d.cruiseSpeed).toBe(Math.trunc(4480 / 297)); // 15
         expect(d.warpSpeed).toBe(12500);
         expect(d.shieldsCapacity).toBe(500);
         expect(d.shieldRechargeRate).toBeCloseTo(1.5, 12);
-        expect(d.armor).toBe(250);
+        expect(d.armor).toBe(200);
         expect(d.fuelCapacity).toBe(195);
         expect(d.troopCapacity).toBe(300);
         expect(d.medicalCapacity).toBe(100);
         expect(d.population).toBe(Math.min(5 * 60, 4 * 85)); // 300
-        expect(d.turnRate).toBe(0.1 + (6 * 2.0) / 300);
+        expect(d.turnRate).toBe(0.1 + (12 * 2.0) / 297);
         // num37 = (120 - 14) / 40 = 2.65 → 2.65^(1/4).
         expect(d.accelerationRate).toBe((26 / 8.0 + 0.5) * Math.sqrt(Math.sqrt(106 / 40)));
     });

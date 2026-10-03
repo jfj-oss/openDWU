@@ -89,7 +89,21 @@ describe('diplomacy commands take effect at the frame boundary', () => {
         expect(player.stateMoney).toBe(money);
         runSimFrame(galaxy, 17);
         expect(res).toMatchObject({ ok: true, accepted: true });
-        expect(player.stateMoney).toBe(money - 10000);
+        // Seed 1's player is credited income in this frame too: compare with a twin game running the same frame without
+        // the gift. The gift itself nudges that frame's other income by a couple of credits, hence the ±5 tolerance.
+        const twin = cachedTickGame(gameData).galaxy;
+        const twinPlayer = twin.playerEmpire!;
+        const twinAi = twin.empires.find((e) => e !== twinPlayer && e.pirateEmpireBaseHabitat === null && e !== twin.independentEmpire && e.active)!;
+        twinAi.reclusive = false;
+        twinPlayer.stateMoney = 80000;
+        for (const [x, y] of [[twinPlayer, twinAi], [twinAi, twinPlayer]] as const) {
+            const r = obtainDiplomaticRelation(x, y);
+            r.type = DiplomaticRelationType.None;
+            r.initiator = twinPlayer;
+            r.locked = false;
+        }
+        runSimFrame(twin, 17);
+        expect(player.stateMoney).toBeCloseTo(twinPlayer.stateMoney - 10000, -1);
     });
 
     it('declare war changes the relation only after the frame', () => {
