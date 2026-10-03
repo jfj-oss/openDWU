@@ -574,7 +574,7 @@ export function createHud(wiring: HudWiring = {}): HudRefs {
                 break;
             }
             case 'pnlOptionsList':
-                el = buildOptionsList({ ...wiring, overlays });
+                el = buildOptionsPopup(buildOptionsList({ ...wiring, overlays }));
                 break;
             case 'tbtnEmpires':
                 el = buildDiplomacyButton(wiring);
@@ -1843,6 +1843,47 @@ function buildOptionsList(wiring: HudWiring): HTMLElement {
         panel.appendChild(item);
     }
     return panel;
+}
+
+const OPTIONS_POPUP_OPEN_KEY = 'dwu.optionsPopup.open';
+
+/** The bottom-right options list behind a small "View" button: the list pops up
+ * above the button and closes on a second click or a click elsewhere. */
+function buildOptionsPopup(list: HTMLElement): HTMLElement {
+    const wrap = document.createElement('div');
+    wrap.className = 'hud-options-pop';
+    list.classList.add('hud-options-menu');
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'hud-panel hud-options-toggle';
+    btn.title = 'View and map overlays';
+    const setOpen = (open: boolean): void => {
+        wrap.classList.toggle('open', open);
+        btn.textContent = open ? 'View ▾' : 'View ▴';
+        btn.setAttribute('aria-expanded', String(open));
+        try {
+            localStorage.setItem(OPTIONS_POPUP_OPEN_KEY, open ? '1' : '0');
+        } catch {
+            /* storage unavailable */
+        }
+    };
+    let initial = false;
+    try {
+        initial = localStorage.getItem(OPTIONS_POPUP_OPEN_KEY) === '1';
+    } catch {
+        /* storage unavailable */
+    }
+    setOpen(initial);
+    btn.addEventListener('click', () => setOpen(!wrap.classList.contains('open')));
+    document.addEventListener(
+        'pointerdown',
+        (e) => {
+            if (wrap.classList.contains('open') && !wrap.contains(e.target as Node)) setOpen(false);
+        },
+        true,
+    );
+    wrap.append(list, btn);
+    return wrap;
 }
 
 // ---------------------------------------------------------------------------

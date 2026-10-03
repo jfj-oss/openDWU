@@ -112,6 +112,34 @@
     max-height: calc(100vh - 140px);
     overflow-y: auto;
 }
+/* The options list pops up from a "View" button in the bottom-right corner. */
+.hud-options-pop {
+    height: auto !important;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 4px;
+    pointer-events: none;
+}
+.hud-options-pop .hud-options-menu {
+    display: none;
+    width: 100%;
+    box-sizing: border-box;
+}
+.hud-options-pop.open .hud-options-menu {
+    display: block;
+}
+.hud-options-toggle {
+    pointer-events: auto;
+    cursor: pointer;
+    color: #fff;
+    font-family: inherit;
+    padding: 3px 12px;
+}
+.hud-options-toggle:hover,
+.hud-options-pop.open .hud-options-toggle {
+    background: rgba(38, 42, 48, 0.96);
+}
 .hud-section-head {
     color: #9aa3ad;
     font-size: 11px;
