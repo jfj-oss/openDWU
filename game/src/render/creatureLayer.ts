@@ -162,6 +162,13 @@ export function creatureDrawPx(contentPixels: number, size: number, f: number, c
     return f < 1 ? px : Math.min(px, Math.trunc(maxWidth * capMul));
 }
 
+/** The rigs' animation time (s) at game instant `ms`: wrapped to a day (86 400 s, a multiple of every rig period's
+ * whole-second cycles) so the sines the rigs evaluate keep full precision. */
+export function creatureAnimSeconds(ms: number): number {
+    const d = ms % 86400000;
+    return (d < 0 ? d + 86400000 : d) / 1000;
+}
+
 /** MainView.1.cs:3729 method_113 frame pick: cycle = n / fps s, step = cycle / max(1, n - 1). */
 export function creatureFrameIndex(ms: number, frameCount: number, fps: number): number {
     const cycle = Math.trunc((frameCount / fps) * 1000);
@@ -415,6 +422,11 @@ export class CreatureLayer {
     private fallback: LoadedSet | null = null;
     /** _Game.GodMode (every creature visible); off in a normal game. */
     godMode = false;
+    /** Creature animation clock (ms): advances in real time while game time runs, frozen while paused, so creatures
+     *  animate at normal speed whatever the game speed (user call). */
+    private animMs = 0;
+    private lastWallMs = -1;
+    private lastGameMs = -1;
     /** 19g-7b: the procedural fauna (variant bodies, lantern swarms, tamed harnesses), created on first need. */
     private faunaRoot = new Container();
     private art: FaunaArt | null = null;
@@ -661,11 +673,18 @@ export class CreatureLayer {
         const { factor, maxWidth } = creatureZoomFactor(f);
         const halfW = cam.width / 2;
         const halfH = cam.height / 2;
-        const nowMs = this.galaxy.nowMs;
-        // 19g-7b rig clock (render time, like the ambient layer's lights: MainView.cs 1457 TimeOfDay).
-        const wallMs = Date.now();
-        const t = (wallMs % 86400000) / 1000;
-        const secondsOfDay = t;
+        // Animation clock: real time, advancing only while game time runs (the interpolated render instant moves), so the
+        // frame sets and the 19g-7b rigs are smooth at any display rate, freeze while paused, and keep normal speed at any
+        // game speed (user call).
+        const gameMs = this.motion !== null ? this.motion.renderNowMs : this.galaxy.nowMs;
+        const wallMs = performance.now();
+        if (this.lastWallMs >= 0 && gameMs > this.lastGameMs) this.animMs += Math.min(250, wallMs - this.lastWallMs);
+        this.lastWallMs = wallMs;
+        this.lastGameMs = gameMs;
+        const nowMs = this.animMs;
+        const t = creatureAnimSeconds(nowMs);
+        // Harness lights blink on the time of day (MainView.cs 1457 TimeOfDay, like the ambient layer's lights).
+        const secondsOfDay = (Date.now() % 86400000) / 1000;
         const faunaOn = this.galaxy.scenario !== null || extra.length > 0;
         for (const c of list) {
             if (c === null || c.hasBeenDestroyed) continue;

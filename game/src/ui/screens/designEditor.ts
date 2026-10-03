@@ -12,16 +12,20 @@
 //   DesignDefense.cs, ComponentDetail.cs, ComponentListView.cs, WeaponListView.cs (models in designPanelsModel.ts).
 // Our additions: a component-family filter over the toolbox (the streamlined editor grouped it by family), the picture
 // chooser organised by ship family, double-click to add / remove a component, Enter in the name box saves.
-// TODO(port): "Only Show Latest Components" (Main.Part9.cs:4900 Kdxguwronl — needs ResearchSystem.GetLatestComponents);
-//   the repair-priority template picker (_btnRepairPrioritySelect, ExpansionMod); the Component Guide and Construction
-//   Summary windows (Main.Part4.cs:3425 / :3435); the empire-colour tint of the ship picture (PrepareBuiltObjectImage).
+// - "Only Show Latest Components" (Main.Part6.cs:877 chkDesignComponentsShowLatest_CheckedChanged, Main.Part9.cs:4900
+//   Kdxguwronl → player/designTools.ts latestToolboxComponents); the Component Guide (Main.Part4.cs:3425
+//   btnDesignsShowComponentGuide_Click → :3057 method_543 / :3088 method_544) and Construction Summary (:3435
+//   btnDesignsShowConstructionSummary_Click → :3363 method_548) windows.
+// TODO(port): the repair-priority template picker (_btnRepairPrioritySelect, ExpansionMod); the empire-colour tint of
+//   the ship picture (PrepareBuiltObjectImage); the Component Guide's "Learn about X..." Galactopedia link
+//   (Main.Part4.cs:3357 lnkComponentGuideType_LinkClicked, :3117 method_546).
 
 import type { Empire } from '../../sim/empire';
 import type { Galaxy } from '../../sim/galaxy';
 import type { Design } from '../../sim/design';
 import type { ComponentDefinition } from '../../sim/componentStatic';
 import { BuiltObjectSubRole } from '../../sim/builtObjectTypes';
-import { DesignImageScalingMode } from '../../sim/data/designSpecifications';
+import { BuiltObjectRole, DesignImageScalingMode } from '../../sim/data/designSpecifications';
 import { resolveSubRoleDescription } from '../../sim/designGeneration';
 import { designCalculateMaintenanceCosts } from '../../sim/construction/empireConstruction';
 import { determineResourcesEmpireSupplies } from '../../sim/diplomacyTick';
@@ -36,8 +40,10 @@ import {
     designToolboxComponents,
     designUpgradeExplanation,
     designWarnings,
+    prepareDesignForEditor,
     removeComponent,
     resolveBattleTacticsDescription,
+    resolveResourcesFromComponents,
     resolveComponentCategoryDescription,
     resolveFleeWhenDescription,
     resolveInvasionTacticsDescription,
@@ -47,6 +53,8 @@ import {
     type DesignDraftSource,
 } from '../../sim/player/designEditor';
 import { isPrivateDesignSubRole } from '../../sim/player/playerOrders';
+import { latestToolboxComponents } from '../../sim/player/designTools';
+import { resourceIconUrl } from '../hud';
 import {
     COLORS,
     FONT,
@@ -146,6 +154,144 @@ function statRows(parent: HTMLElement, rows: readonly StatRow[], x: number, widt
     return y;
 }
 
+function componentPicture(c: ComponentDefinition): HTMLImageElement {
+    const img = el('img', 'dsgx-component-pic');
+    img.src = componentImageUrl(c.pictureRef);
+    img.alt = '';
+    img.draggable = false;
+    return img;
+}
+
+/**
+ * ComponentDetail.DrawComponentDetailInfo (SetTextPositions(x, labelWidth, valueX, …)) for one component, into a
+ * panel `width` wide: the editor's pnlDesignComponentDetail and the Component Guide's pnlComponentGuideDetail.
+ */
+function renderComponentDetail(detail: HTMLElement, empire: Empire, c: ComponentDefinition | null, pos: { width: number; x: number; labelWidth: number; valueX: number; large?: boolean }): void {
+    detail.replaceChildren();
+    if (c === null) return;
+    const m = componentDetailModel(empire, c);
+    const size = pos.large ? 14 : 13;
+    const t = text(m.title, { size: FONT.normal + 2, bold: true, color: GREY });
+    t.classList.add('dsgx-detail-title');
+    detail.appendChild(place(t, pos.x - 2, 12, pos.width - 50));
+    const pic = componentPicture(c);
+    pic.classList.add('dsgx-detail-pic');
+    detail.appendChild(place(pic, pos.width - 10 - 40, 10, 40, 20));
+    let y = 30 + 14;
+    detail.appendChild(place(text(m.type, { size, bold: true, color: GREY }), pos.x, y));
+    y += 14;
+    detail.appendChild(place(text(m.sizeCost, { size, color: GREY }), pos.x, y));
+    y += 14;
+    if (m.energyUsed > 0) {
+        const l = text(gt('Static Energy Used'), { size, color: GREY });
+        l.classList.add('ow-right');
+        detail.append(place(l, pos.x + pos.labelWidth, y), place(text(m.staticEnergy, { size, bold: true, color: GREY }), pos.valueX, y - 2));
+        y += 14;
+    }
+    const wrap = pos.width - 6;
+    for (const line of m.lines) {
+        if (line.value === null) {
+            const d = text(line.description, { size, color: GREY, wrapWidth: wrap });
+            detail.appendChild(place(d, pos.x - 1, y));
+            y += 14 * Math.max(1, Math.ceil(line.description.length / Math.max(1, Math.floor(wrap / 6.8))));
+        } else {
+            const l = text(line.description, { size, color: GREY });
+            l.classList.add('ow-right');
+            detail.append(place(l, pos.x + pos.labelWidth, y), place(text(line.value, { size, bold: true, color: GREY }), pos.valueX, y - 1));
+            y += 13;
+        }
+    }
+}
+
+/** ResourceListView (Picture / Type / Quantity) over (resource id, quantity) rows. */
+function resourceGrid(galaxy: Galaxy, rows: { resourceId: number; quantity: number }[], widths: { picture: number; type: number; quantity: number }): OwGrid<{ resourceId: number; quantity: number }> {
+    const res = (id: number) => galaxy.resourceSystem.byId.get(id);
+    const grid = new OwGrid<{ resourceId: number; quantity: number }>({
+        key: (r) => r.resourceId,
+        columns: [
+            {
+                id: 'Picture', header: '', width: widths.picture,
+                render: (r, cell) => {
+                    const img = el('img', 'dsgx-resource-pic');
+                    img.src = resourceIconUrl(res(r.resourceId)?.pictureRef ?? -1);
+                    img.alt = '';
+                    img.draggable = false;
+                    cell.appendChild(img);
+                },
+            },
+            { id: 'Type', header: gt('Type'), width: widths.type, sort: (r) => res(r.resourceId)?.name ?? '', render: (r, cell) => { cell.textContent = res(r.resourceId)?.name ?? String(r.resourceId); } },
+            { id: 'Quantity', header: gt('Quantity'), width: widths.quantity, align: 'right', sort: (r) => r.quantity, render: (r, cell) => { cell.textContent = String(r.quantity); } },
+        ],
+    });
+    grid.setRows(rows);
+    return grid;
+}
+
+let componentGuide: OriginalWindow | null = null;
+
+/**
+ * Main.Part4.cs:3057 method_543 / :3088 method_544: the Component Guide (pnlComponentGuide 360 × 530) for one
+ * component — its ComponentDetail and the resources required to manufacture it.
+ */
+export function openComponentGuide(galaxy: Galaxy, empire: Empire, component: ComponentDefinition | null): void {
+    componentGuide?.close();
+    const win = openOriginalWindow({ id: 'component-guide', title: gt('Component Guide'), width: 360, height: 530, onClose: () => { if (componentGuide === win) componentGuide = null; } });
+    componentGuide = win;
+    win.root.classList.add('dsgx-popup-layer');
+    const body = win.body;
+    // pnlComponentGuideGroup (10, 10) 325 × 445 → pnlComponentGuideDetail (10, 10) 305 × 275, SetTextPositions(10, 140, 160, 115).
+    const group = place(editorPanel(20), 10, 10, 325, 445);
+    body.appendChild(group);
+    const detail = place(editorPanel(20), 10, 10, 305, 275);
+    group.appendChild(detail);
+    renderComponentDetail(detail, empire, component, { width: 305, x: 10, labelWidth: 140, valueX: 160, large: true });
+    // lblComponentGuideResources (10, 315) + ctlComponentGuideResources (10, 330) 305 × 105: Picture 50, Type 200, Quantity 55.
+    group.appendChild(place(text(gt('Resources required to manufacture'), { size: FONT.normal, color: GREY }), 10, 315));
+    const rows = (component?.resourceRequirements ?? []).map((r) => ({ resourceId: r.resourceId, quantity: r.amount }));
+    group.appendChild(place(resourceGrid(galaxy, rows, { picture: 50, type: 200, quantity: 55 }).el, 10, 330, 305, 105));
+}
+
+let constructionSummary: OriginalWindow | null = null;
+
+/**
+ * Main.Part4.cs:3363 method_548: the Construction Summary (pnlConstructionSummary 418 × 622) of a design — its
+ * components and the resources they need (Empire.ResolveResourcesFromComponents).
+ */
+export function openConstructionSummary(galaxy: Galaxy, design: Design): void {
+    constructionSummary?.close();
+    const win = openOriginalWindow({ id: 'construction-summary', title: gt('Construction Summary'), width: 418, height: 622, onClose: () => { if (constructionSummary === win) constructionSummary = null; } });
+    constructionSummary = win;
+    win.root.classList.add('dsgx-popup-layer');
+    const body = win.body;
+    // lblConstructionSummaryOverview (10, 10), MaximumSize 380 × 40, font_7.
+    const key = design.role === BuiltObjectRole.Base ? 'Requirements for building base design X' : 'Requirements for building ship design X';
+    body.appendChild(place(text(gt(key, design.name), { size: FONT.large, bold: true, color: '#fff', wrapWidth: 380 }), 10, 10, 380, 40));
+    // lblConstructionSummaryComponents (10, 50); ctlConstructionSummaryComponents (10, 65) 380 × 200 (not summarized):
+    // Picture 35, Name 230, Category 65, Size 50 (TechPoints hidden).
+    body.appendChild(place(text(gt('Components Required'), { size: FONT.normal, color: GREY }), 10, 50));
+    const comps = new OwGrid<{ c: ComponentDefinition; i: number }>({
+        key: (r) => r.i,
+        columns: [
+            { id: 'Picture', header: '', width: 35, render: (r, cell) => cell.appendChild(componentPicture(r.c)) },
+            { id: 'Name', header: gt('Name'), width: 230, sort: (r) => r.c.name, render: (r, cell) => { cell.textContent = r.c.name; } },
+            {
+                id: 'Category', header: gt('Category'), width: 65, sort: (r) => componentCategoryAbbreviation(r.c.category),
+                render: (r, cell) => {
+                    cell.textContent = componentCategoryAbbreviation(r.c.category);
+                    cell.title = resolveComponentCategoryDescription(r.c.category);
+                },
+            },
+            { id: 'Size', header: gt('Size'), width: 50, align: 'right', sort: (r) => r.c.size, render: (r, cell) => { cell.textContent = String(r.c.size); } },
+        ],
+    });
+    comps.setRows(design.components.map((c, i) => ({ c, i })));
+    body.appendChild(place(comps.el, 10, 65, 380, 200));
+    // lblConstructionSummaryResources (10, 280); ctlConstructionSummaryConstructionResources (10, 295) 380 × 250:
+    // Picture 40, Type 290, Quantity 50.
+    body.appendChild(place(text(gt('Resources Required'), { size: FONT.normal, color: GREY }), 10, 280));
+    body.appendChild(place(resourceGrid(galaxy, resolveResourcesFromComponents(design.components), { picture: 40, type: 290, quantity: 50 }).el, 10, 295, 380, 250));
+}
+
 /** Open the editor over the Designs window. */
 export function openDesignEditor(opts: DesignEditorOptions): DesignEditorHandle {
     const { galaxy, empire, draft } = opts;
@@ -160,7 +306,11 @@ export function openDesignEditor(opts: DesignEditorOptions): DesignEditorHandle 
         headerless: true,
         width: DESIGN_EDITOR_SIZE.w,
         height: DESIGN_EDITOR_SIZE.h,
-        onClose: () => opts.onClose(saved),
+        onClose: () => {
+            componentGuide?.close();
+            constructionSummary?.close();
+            opts.onClose(saved);
+        },
     });
     win.root.classList.add('dsgx-layer');
     const body = win.body;
@@ -277,9 +427,13 @@ export function openDesignEditor(opts: DesignEditorOptions): DesignEditorHandle 
     body.appendChild(energy);
 
     // ---- Components ------------------------------------------------------------------------------------------------
-    // chkDesignComponentsShowLatest (10, 249).
-    body.appendChild(at(checkBox(gt('Only Show Latest Components'), false, null, SMALL), 10, 249));
-    (body.lastElementChild as HTMLElement).title = 'Not available yet: every researched component is listed';
+    // chkDesignComponentsShowLatest (10, 249): Checked = true on opening (Main.Part8.cs:242); CheckedChanged re-binds
+    // the toolbox (method_291 → method_292).
+    let showLatest = true;
+    body.appendChild(at(checkBox(gt('Only Show Latest Components'), showLatest, (v) => {
+        showLatest = v;
+        bindToolbox();
+    }, SMALL), 10, 249));
     // Our family filter over the toolbox.
     const categories = [...new Set(designToolboxComponents(empire).map((c) => c.category))].sort((a, b) => a - b);
     let categoryFilter = -1;
@@ -369,8 +523,16 @@ export function openDesignEditor(opts: DesignEditorOptions): DesignEditorHandle 
     body.appendChild(at(components.el, 370, 299, 320, 250));
 
     // btnDesignsShowComponentGuide (10, 555), btnDesignsShowConstructionSummary (370, 555), 320 × 25.
-    body.appendChild(at(glassButton(gt('Show Component Guide'), { disabled: true, title: 'Not available yet' }), 10, 555, 320, 25));
-    body.appendChild(at(glassButton(gt('Show Construction Summary'), { disabled: true, title: 'Not available yet' }), 370, 555, 320, 25));
+    // btnDesignsShowComponentGuide_Click: the detail panel's component, else the toolbox selection.
+    let detailComponent: ComponentDefinition | null = null;
+    body.appendChild(at(glassButton(gt('Show Component Guide'), { onClick: () => openComponentGuide(galaxy, empire, detailComponent ?? toolbox.selected) }), 10, 555, 320, 25));
+    // btnDesignsShowConstructionSummary_Click: PrepareDesignForEditor, then method_548(design_0).
+    body.appendChild(at(glassButton(gt('Show Construction Summary'), {
+        onClick: () => {
+            prepareDesignForEditor(design);
+            openConstructionSummary(galaxy, design);
+        },
+    }), 370, 555, 320, 25));
 
     // pnlDesignMovement (700, 249) 300 × 188, pnlDesignIndustry (700, 445) 300 × 132.
     const movement = at(editorPanel(20), 700, 249, 300, 188);
@@ -467,16 +629,8 @@ export function openDesignEditor(opts: DesignEditorOptions): DesignEditorHandle 
     });
 
     // ---- Binding ---------------------------------------------------------------------------------------------------
-    function componentPicture(c: ComponentDefinition): HTMLImageElement {
-        const img = el('img', 'dsgx-component-pic');
-        img.src = componentImageUrl(c.pictureRef);
-        img.alt = '';
-        img.draggable = false;
-        return img;
-    }
-
     function bindToolbox(): void {
-        const all = designToolboxComponents(empire);
+        const all = showLatest ? latestToolboxComponents(galaxy, empire) : designToolboxComponents(empire);
         toolbox.setRows(categoryFilter < 0 ? all : all.filter((c) => c.category === categoryFilter));
     }
 
@@ -505,38 +659,8 @@ export function openDesignEditor(opts: DesignEditorOptions): DesignEditorHandle 
 
     /** ComponentDetail.DrawComponentDetailInfo for the selected component (SetTextPositions(5, 135, 150, 60)). */
     function showComponent(c: ComponentDefinition | null): void {
-        detail.replaceChildren();
-        if (c === null) return;
-        const m = componentDetailModel(empire, c);
-        const t = text(m.title, { size: FONT.normal + 2, bold: true, color: GREY });
-        t.classList.add('dsgx-detail-title');
-        detail.appendChild(place(t, 3, 12, 160));
-        const pic = componentPicture(c);
-        pic.classList.add('dsgx-detail-pic');
-        detail.appendChild(place(pic, 210 - 10 - 40, 10, 40, 20));
-        let y = 30 + 14;
-        detail.appendChild(place(text(m.type, { size: 13, bold: true, color: GREY }), 5, y));
-        y += 14;
-        detail.appendChild(place(text(m.sizeCost, { size: 13, color: GREY }), 5, y));
-        y += 14;
-        if (m.energyUsed > 0) {
-            const l = text(gt('Static Energy Used'), { size: 13, color: GREY });
-            l.classList.add('ow-right');
-            detail.append(place(l, 5 + 135, y), place(text(m.staticEnergy, { size: 13, bold: true, color: GREY }), 150, y - 2));
-            y += 14;
-        }
-        for (const line of m.lines) {
-            if (line.value === null) {
-                const d = text(line.description, { size: 13, color: GREY, wrapWidth: 204 });
-                detail.appendChild(place(d, 4, y));
-                y += 14 * Math.max(1, Math.ceil(line.description.length / 30));
-            } else {
-                const l = text(line.description, { size: 13, color: GREY });
-                l.classList.add('ow-right');
-                detail.append(place(l, 5 + 135, y), place(text(line.value, { size: 13, bold: true, color: GREY }), 150, y - 1));
-                y += 13;
-            }
-        }
+        detailComponent = c;
+        renderComponentDetail(detail, empire, c, { width: 210, x: 5, labelWidth: 135, valueX: 150 });
     }
 
     function renderWarnings(): void {

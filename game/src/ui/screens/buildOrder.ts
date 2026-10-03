@@ -12,7 +12,6 @@
 //
 // Extras kept from our earlier panel: the design tooltip (size, unit cost, maintenance), a toast with the result,
 // live refresh of the counts / money / design lists while open.
-// TODO(port): AutoPauseWhenInPopupWindow pause / resume around the screen — Main.Part2.cs 406 method_628 / 1080 method_639.
 
 import './buildOrder.css';
 import type { Empire } from '../../sim/empire';

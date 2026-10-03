@@ -1,214 +1,172 @@
-/* Task 16d: message popup card, conversation queue chips and conversation dialog.
-   Dark-panel tokens as in coloniesList.css; z-index one below the screens' windows (1500). */
+/* Task 16d → the original's message windows (messagePopups.ts), built on originalWindow.ts.
+   - .msg-card   pnlMessagePopup (MessagePopup.cs): 335 × 280 GradientPanel, the picture over the text
+   - .msg-talk   pnlDiplomacyTalk (Main.Part8.cs:449 method_296), shares the Diplomacy talk panel's dip-talk-* styles
+   - .msg-event  pnlEventMessage (Main.Part4.cs:115 method_513): 420 × 660 BorderPanel, 400 × 640 GradientPanel
+   All sizes are the original's pixels; the window scales as one (originalWindowScale). */
 
-.message-popup {
-    position: fixed;
-    /* popupstubs: opened from a stub, the card sits beside the stub list (left of the top-right column). */
-    top: 114px;
-    right: 276px;
-    width: 335px;
-    max-height: calc(100vh - 140px);
-    z-index: 1499;
-    pointer-events: auto;
-    font-family: 'Forgotten Futurist', sans-serif;
-    color: #e6e6e6;
-    background: rgba(14, 16, 20, 0.94);
-    backdrop-filter: blur(6px);
-    -webkit-backdrop-filter: blur(6px);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 6px;
-    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6);
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-}
-.message-popup[hidden] {
-    display: none;
-}
-
-.message-popup-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 6px 10px;
-    background: rgba(10, 11, 15, 0.9);
-    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-}
-
-.message-popup-title {
-    font-size: 13px;
-    color: #e8d24a;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-
-.message-popup-close,
-.message-conversation-close {
+/* ---- popup card ---- */
+.ow-screen.msg-card {
     background: transparent;
-    border: none;
-    color: #ccc;
-    font-size: 15px;
-    cursor: pointer;
-    padding: 2px 6px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.55);
 }
-.message-popup-close:hover,
-.message-conversation-close:hover {
-    color: #fff;
-}
-
-.message-popup-body {
-    padding: 8px 10px;
-    font-size: 12px;
-    line-height: 1.4;
-    white-space: pre-line;
-    overflow-y: auto;
-}
-
-.message-popup-footer {
-    padding: 0 10px 6px;
-    font-size: 10px;
-    color: #777;
-    text-align: right;
-}
-
-.message-swatch {
-    flex: none;
-    display: inline-block;
-    width: 10px;
-    height: 10px;
-    border-radius: 2px;
-    border: 1px solid rgba(255, 255, 255, 0.3);
-}
-
-/* Conversation dialog: a centred window like the other screens. */
-.message-conversation-wrap {
-    position: fixed;
-    inset: 0;
-    z-index: 1500;
-    pointer-events: none;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-family: 'Forgotten Futurist', sans-serif;
-    color: #e6e6e6;
-}
-.message-conversation-wrap[hidden] {
+.ow-screen.msg-card::after {
     display: none;
 }
-
-.message-conversation-window {
-    pointer-events: auto;
-    width: 440px;
-    max-width: calc(100vw - 16px);
-    max-height: calc(100vh - 96px);
-    background: rgba(14, 16, 20, 0.94);
-    backdrop-filter: blur(6px);
-    -webkit-backdrop-filter: blur(6px);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 6px;
-    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6);
+/* OnPaint: the picture centred, the text 12 px under it, the whole block centred vertically (the original clips a
+   text that is too tall; here it scrolls). */
+.msg-card-content {
     display: flex;
     flex-direction: column;
+    align-items: center;
+    justify-content: safe center;
+    gap: 12px;
+    padding: 12px 0;
     overflow: hidden;
 }
-
-.message-conversation-titlebar {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 8px 12px;
-    background: rgba(10, 11, 15, 0.9);
-    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-}
-
-.message-conversation-title {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    font-size: 13px;
-    color: #e8d24a;
-}
-
-.message-conversation-body {
-    padding: 10px 12px;
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    overflow-y: auto;
-}
-
-.message-conversation-heading {
-    font-size: 11px;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    color: #aaa;
-}
-
-.message-conversation-text {
-    font-size: 13px;
-    line-height: 1.45;
-    white-space: pre-line;
-}
-
-.message-conversation-price {
-    margin-top: 6px;
-    font-size: 13px;
-    font-weight: bold;
-    color: #ffd700;
-}
-
-.message-conversation-buttons {
-    display: flex;
-    justify-content: flex-end;
-    gap: 8px;
-    padding: 8px 12px 10px;
-}
-
-.message-conversation-button {
-    font-family: inherit;
-    font-size: 12px;
-    color: #e6e6e6;
-    background: rgba(255, 255, 255, 0.06);
-    border: 1px solid rgba(255, 255, 255, 0.2);
-    border-radius: 4px;
-    padding: 4px 14px;
+.msg-card-content.msg-card-goto-target {
     cursor: pointer;
 }
-.message-conversation-button:hover {
-    background: rgba(255, 255, 255, 0.14);
+.msg-card-content.msg-card-goto-target:hover .msg-card-text {
+    color: rgb(220, 220, 220);
+}
+.msg-card-textbox {
+    position: relative;
+    flex: 0 1 auto;
+    min-height: 0;
+    width: 100%;
+    padding: 0 12px;
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: rgb(96, 96, 112) transparent;
+}
+/* _FlagImage: the sender's flag at 50 % alpha, 50 × 30, centred behind the text. */
+.msg-card-flag {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 50px;
+    height: 30px;
+    transform: translate(-50%, -50%);
+    opacity: 0.5;
+    pointer-events: none;
+}
+.msg-card-title {
+    position: relative;
+    font-size: 16.67px;
+    font-weight: bold;
     color: #fff;
+    margin-bottom: 4px;
+    text-align: center;
+}
+/* MessagePopup: font 16.67 px, (170, 170, 170) with a black copy at (+1, +1). */
+.msg-card-text {
+    position: relative;
+    font-size: 16.67px;
+    line-height: 1.2;
+    color: rgb(170, 170, 170);
+    white-space: pre-line;
+    overflow-wrap: anywhere;
+}
+.msg-card-close {
+    z-index: 2;
+}
+.msg-card-strip {
+    border-top: 1px solid rgba(0, 0, 0, 0.45);
+    background: rgba(0, 0, 0, 0.25);
+}
+.msg-card-date {
+    white-space: nowrap;
 }
 
-/* [leftovers] begin — event message on the popup card (Main.Part4.cs method_508: picture, title, text, Go To). */
-.message-popup-image {
+/* The message picture (LimitImageSize 240 × 180; smaller pictures keep their size). */
+.msg-pic {
+    position: relative;
+    flex: 0 0 auto;
+    line-height: 0;
+}
+.msg-pic-img {
     display: block;
-    max-width: 200px;
-    max-height: 200px;
-    margin: 0 auto 8px;
+    max-width: 240px;
+    max-height: 180px;
     object-fit: contain;
 }
-.message-popup-goto {
+.msg-pic-planet {
+    width: 140px;
+    height: 140px;
+}
+.msg-pic-character {
+    width: 180px;
+    height: 180px;
+}
+.msg-pic-largeflag {
+    width: 200px;
+    height: 120px;
+}
+.msg-pic-flag,
+.msg-pic-race {
     display: block;
-    margin: 8px 0 0 auto;
-    padding: 3px 12px;
-    font: inherit;
-    font-size: 12px;
-    color: #e6e6e6;
-    background: rgba(255, 255, 255, 0.08);
-    border: 1px solid rgba(255, 255, 255, 0.15);
-    border-radius: 3px;
-    cursor: pointer;
+    object-fit: fill;
 }
-.message-popup-goto:hover {
-    background: rgba(255, 255, 255, 0.16);
+.msg-pic-research {
+    width: 170px;
+    height: 134px;
+    overflow: hidden;
 }
-/* [leftovers] end */
+.msg-pic-research .msg-pic-img {
+    max-width: none;
+    max-height: none;
+}
+.msg-pic-benefit {
+    position: absolute;
+    right: 0;
+    top: 0;
+}
+.msg-pic-empire {
+    width: 170px;
+    height: 60px;
+}
+/* StripeBitmap: 2 px transparent stripes every 10 px. */
+.msg-pic-striped {
+    -webkit-mask-image: repeating-linear-gradient(to bottom, transparent 0 2px, #000 2px 10px);
+    mask-image: repeating-linear-gradient(to bottom, transparent 0 2px, #000 2px 10px);
+}
 
-/* A notification about a place: its text jumps there (Main.Part9.cs:912 method_249). */
-.message-popup-body-goto {
-    cursor: pointer;
+/* ---- conversation (pnlDiplomacyTalk) ---- */
+.msg-talk-response {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
 }
-.message-popup-body-goto:hover {
-    background: rgba(255, 255, 255, 0.05);
+.msg-talk-heading {
+    font-size: 16.67px;
+    font-weight: bold;
+    color: rgb(255, 192, 0);
+}
+.msg-talk-text {
+    white-space: pre-line;
+    text-shadow: 1px 1px 0 #000;
+}
+/* The pirate protection price per month and per year. */
+.msg-talk-price {
+    font-size: 16.67px;
+    font-weight: bold;
+    color: rgb(255, 215, 0);
+}
+
+/* ---- event panel (pnlEventMessage) ---- */
+.msg-event-picture {
+    object-fit: contain;
+}
+.ow-text.msg-event-title {
+    white-space: pre-line;
+    text-align: center;
+    line-height: 1.2;
+}
+.ow-text.msg-event-text {
+    position: static;
+    line-height: 1.25;
+}
+.ow-text.msg-event-date {
+    text-align: right;
+    white-space: nowrap;
 }
