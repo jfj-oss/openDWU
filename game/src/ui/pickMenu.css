@@ -40,6 +40,10 @@
     overflow: hidden;
     text-overflow: ellipsis;
 }
+.pick-menu-type {
+    color: #c8b468;
+    font-size: 11px;
+}
 .pick-menu-owner {
     color: #9aa3ad;
     font-size: 11px;
