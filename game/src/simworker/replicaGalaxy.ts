@@ -6,6 +6,7 @@
 
 import type { Galaxy } from '../sim/galaxy';
 import type { GameData } from '../sim/data/gameData';
+import { baconInitializeSettings } from '../sim/baconSettings';
 import { applyReplicaSideTables, galaxyExternals, replicaCodecOptions, replicaSideTables, replicaSkipFields, replicaStatics, wireReplicaVisibility } from '../sim/save/galaxySave';
 import { Galaxy as GalaxyClass } from '../sim/galaxy';
 import { BuiltObject } from '../sim/builtObject';
@@ -182,6 +183,9 @@ export class GalaxyReplica {
 
     constructor(gameData: GameData, baseTechCost: number) {
         this.statics = replicaStatics(gameData, baseTechCost);
+        // The BaconSettings.txt statics (prices, maintenance, movement) the main thread's screens read, as the worker's
+        // createGame / deserializeGame applied them there (statics only: the galaxy is the worker's).
+        baconInitializeSettings(null, gameData.baconSettings);
         const codec = replicaCodecOptions();
         this.decoder = new ReplicaDecoder({ classes: codec.classes, revive: codec.revive, externals: this.statics.byRef });
     }
@@ -206,6 +210,13 @@ export class GalaxyReplica {
     /** Apply queued cold parts for up to `budgetMs` (once per render frame). */
     pumpCold(budgetMs: number): ApplyStats {
         const st = this.decoder.pumpCold(budgetMs);
+        if (st.coldParts > 0) this.afterApply(false);
+        return st;
+    }
+
+    /** Apply the queued cold parts up to delta `seq` now (a command reply that waited too long). */
+    flushColdThrough(seq: number): ApplyStats {
+        const st = this.decoder.flushColdThrough(seq);
         if (st.coldParts > 0) this.afterApply(false);
         return st;
     }

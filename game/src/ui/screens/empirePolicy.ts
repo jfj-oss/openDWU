@@ -14,6 +14,8 @@ import { issuePlayerCommand } from '../../sim/player/playerCommands';
 import {
     applyPolicyPanel,
     buildPolicyPanel,
+    policyAutomationChange,
+    type PolicyAutomationChange,
     clampNumeric,
     panelControls,
     policyText,
@@ -67,9 +69,17 @@ function createEmpirePolicy(opts: EmpirePolicyOptions): OpenState {
     const playerIsPirate = (galaxy.playerEmpire ?? empire).pirateEmpireBaseHabitat !== null;
 
     // Main.Part2.cs WqesexberY_Click: _Game.PlayerEmpire.Policy = method_597(panel, PlayerEmpire) — run on every change.
+    // The automation combos become setEmpireControl commands (only the values that change), then the policy: the
+    // screen never writes the empire itself (docs/sim-worker.md §9 chunk 6).
     const apply = (): void => {
+        const changes: PolicyAutomationChange[] = [];
+        const policy = applyPolicyPanel(empire, playerIsPirate, controls, ctx, (field, value) => {
+            const c = policyAutomationChange(empire, field, value);
+            if (c !== null) changes.push(c);
+        });
         // Command log: queued, applied at the next frame boundary.
-        issuePlayerCommand(galaxy, empire, 'setPolicy', [applyPolicyPanel(empire, playerIsPirate, controls, ctx)]);
+        for (const c of changes) issuePlayerCommand(galaxy, empire, 'setEmpireControl', [c.field, c.value]);
+        issuePlayerCommand(galaxy, empire, 'setPolicy', [policy]);
     };
 
     const root = el('div', 'policy-wrap');

@@ -445,6 +445,54 @@ export class ReplicaEncoder {
         return id;
     }
 
+    /**
+     * Compare `roots` whole now, and the synced objects they reach, breadth-first, up to `maxDepth` references away
+     * and `maxObjects` objects in all (the galaxy / side-table roots are compared but not expanded). Their changes
+     * travel in the next delta instead of waiting for the round-robin cold pass: what a player command just changed
+     * (its arguments, its result, the issuing empire) or what a screen opening is about to show. Read-only, like every
+     * compare. Returns the objects compared.
+     */
+    compareNow(roots: Iterable<object>, maxObjects = 3000, maxDepth = 3): number {
+        const seen = new Set<number>();
+        let level: number[] = [];
+        for (const r of roots) {
+            const id = this.ids.get(r);
+            if (id !== undefined && !seen.has(id)) {
+                seen.add(id);
+                level.push(id);
+            }
+        }
+        let n = 0;
+        for (let depth = 0; level.length > 0 && n < maxObjects; depth++) {
+            const next: number[] = [];
+            for (let i = 0; i < level.length && n < maxObjects; i++) {
+                const id = level[i];
+                // A class instance that gained (or lost) an own field since it was shaped — a `declare`d field set
+                // lazily, e.g. Empire.constructionBoard / fleetDesigns on the first job / template — gets its new shape
+                // (the round-robin pass assumes a class keeps its shape; revalidateShapes is the whole-graph version).
+                if (this.kinds[id] === Kind.Class && this.objs[id] !== null && this.shadows[id] !== undefined && this.shapeChanged(id)) this.reshape(id, this.objs[id]!);
+                else this.compare(id);
+                n++;
+                if (depth >= maxDepth || id <= 1 || this.kinds[id] === Kind.Typed) continue;
+                const sh = this.shadows[id];
+                if (sh === undefined) continue;
+                for (let k = 0; k < sh.length; k++) {
+                    const v = sh[k];
+                    if (v === null || typeof v !== 'object') continue;
+                    const cid = this.ids.get(v as object);
+                    if (cid !== undefined && !seen.has(cid)) {
+                        seen.add(cid);
+                        next.push(cid);
+                    }
+                }
+            }
+            level = next;
+        }
+        this.flushPending();
+        this.stats.coldCompared += n;
+        return n;
+    }
+
     /** Everything written since the last delta. */
     takeDelta(): ReplicaDelta {
         const hot = this.parts[0].take();
@@ -1059,6 +1107,16 @@ export class ReplicaEncoder {
      * Re-check every class instance's own field list (fields added or removed after construction; rare). The compare
      * passes assume a class instance keeps its shape. Tools / tests; returns the objects reshaped.
      */
+    /** Whether class instance `id`'s own field list differs from its shape's. */
+    private shapeChanged(id: number): boolean {
+        const o = this.objs[id]!;
+        const info = this.shapes[this.shapeOf[id]];
+        const keys = this.keysOf(o, info.proto);
+        if (keys.length !== info.keys.length) return true;
+        for (let i = 0; i < keys.length; i++) if (keys[i] !== info.keys[i]) return true;
+        return false;
+    }
+
     revalidateShapes(): number {
         let n = 0;
         for (let id = 0; id < this.objs.length; id++) {
@@ -1242,6 +1300,22 @@ export class ReplicaDecoder {
             this.stats.coldParts++;
             if (now() >= deadline) break;
         }
+        if (this.onNewObject !== null) for (const o of fresh) this.onNewObject(o);
+        this.stats.applyMs = now() - t0;
+        return this.stats;
+    }
+
+    /** Whether every cold part up to delta `seq` (inclusive) has been applied. */
+    coldAppliedThrough(seq: number): boolean {
+        return this.coldQueue.length === 0 || this.coldQueue[0].seq > seq;
+    }
+
+    /** Apply the queued cold parts up to delta `seq` now, whatever the budget (a reply that has waited too long). */
+    flushColdThrough(seq: number, now: () => number = () => performance.now()): ApplyStats {
+        const t0 = now();
+        this.stats = { applyMs: 0, newObjects: 0, sets: 0, drops: 0, coldParts: 0 };
+        const fresh: object[] = [];
+        this.pumpColdUntil(seq, fresh, now);
         if (this.onNewObject !== null) for (const o of fresh) this.onNewObject(o);
         this.stats.applyMs = now() - t0;
         return this.stats;

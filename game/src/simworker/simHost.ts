@@ -24,15 +24,23 @@ import { setGameEndHandler, doGameEnd } from '../sim/victory';
 import { reviewAchievements } from '../sim/achievements';
 import { registerLocationPingedHook } from '../sim/story/eventActions';
 import { SimFrameBudget } from '../simFrameBudget';
+import { checkAgeVariableIncome } from '../sim/treasury';
 import { GalaxySyncSource } from './replicaGalaxy';
 import { decodeRemoteArg, encodeRemoteArg, type RemoteArg, type RemoteNaming } from './remoteArgs';
-import type { ClockMessage, CommandMessage, FromWorker, SnapshotMessage, StepMessage, WorkerEvent } from './protocol';
+import type { ClockMessage, CommandMessage, FromWorker, RefreshRequest, SnapshotMessage, StepMessage, WorkerEvent } from './protocol';
 import type { ReplicaEncoderOptions } from './replicaSync';
 
 export interface SimHostOptions {
     /** Wall clock (performance.now in the worker; a fake one in tests). */
     now?: () => number;
     sync?: Partial<Pick<ReplicaEncoderOptions, 'coldBudgetMs' | 'coldMaxSets' | 'markBudgetMs'>>;
+    /**
+     * Run the money panel's CheckAgeVariableIncome for the player after each tick that stepped (treasury.ts
+     * moneyPanelIncome): in-thread the HUD's money panel does it (the C# UI does, Main.Part11.cs 841); on a replica the
+     * screens' copy is read-only, so the worker does it on the authoritative game. Off in the determinism tests, whose
+     * in-thread reference has no HUD.
+     */
+    playerIncomeAging?: boolean;
 }
 
 export class SimHost {
@@ -51,10 +59,18 @@ export class SimHost {
     /** Something changed outside a step (a command, the clock): send a delta even if no step ran. */
     private dirty = true;
     private settleUntilCycle = 0;
+    private readonly playerIncomeAging: boolean;
+    /**
+     * Objects to compare before this tick's delta (compareNow): what the commands applied at this tick's boundary
+     * touched (arguments, results, the issuing empire) and what refresh requests named — so their changes reach the
+     * replica with the command's reply instead of a cold cycle later.
+     */
+    private freshRoots: object[] = [];
 
     constructor(readonly game: Game, time: GalaxyTime, private readonly startOptions: StartGameOptions, opts: SimHostOptions = {}) {
         this.galaxy = game.galaxy;
         this.now = opts.now ?? (() => performance.now());
+        this.playerIncomeAging = opts.playerIncomeAging ?? false;
         // The clock is a view over galaxy.nowMs, as in-thread (simLoop.ts createSimLoop).
         this.time = time;
         time.bindGalaxy(this.galaxy);
@@ -113,7 +129,12 @@ export class SimHost {
             const empire = resolving.object(m.empire) as Empire | null;
             if (empire === null) throw new Error(`command ${m.op}: issuing empire (sync id ${m.empire}) is not in the game`);
             const args = m.args.map((a) => decodeRemoteArg(a, resolving));
-            issuePlayerCommand(this.galaxy, empire, m.op as PlayerOpName, args as never, m.id === 0 ? undefined : (result: unknown) => {
+            // Always an onApplied here (it does not change what is journaled): it notes what the command touched.
+            issuePlayerCommand(this.galaxy, empire, m.op as PlayerOpName, args as never, (result: unknown) => {
+                for (const a of args) this.noteFresh(a);
+                this.noteFresh(result);
+                this.noteFresh(empire);
+                if (m.id === 0) return;
                 let encoded: RemoteArg = null;
                 let error: string | undefined;
                 try {
@@ -128,6 +149,27 @@ export class SimHost {
             else console.error('sim worker: command failed', err);
         }
         this.dirty = true;
+    }
+
+    /** Compare these replica objects (sync ids) and what they reach before the next delta; reply to `m.id` with it. */
+    refresh(m: RefreshRequest): void {
+        for (const id of m.objects) {
+            const o = this.sync.encoder.objectOf(id);
+            if (o !== null) this.freshRoots.push(o);
+        }
+        if (m.id !== 0) this.results.push({ id: m.id, result: null });
+        this.dirty = true;
+    }
+
+    /** Note an object (or the objects of an argument / result array or plain object, one level) for compareNow. */
+    private noteFresh(v: unknown): void {
+        if (v === null || typeof v !== 'object') return;
+        if (this.sync.encoder.knownId(v) >= 0) {
+            this.freshRoots.push(v);
+            return;
+        }
+        const items = Array.isArray(v) ? v : Object.getPrototypeOf(v) === Object.prototype ? Object.values(v as Record<string, unknown>) : [];
+        for (const x of items) if (x !== null && typeof x === 'object' && this.sync.encoder.knownId(x) >= 0) this.freshRoots.push(x);
     }
 
     /**
@@ -149,6 +191,8 @@ export class SimHost {
                 noteSimView(this.galaxy, false);
             }
             steps = this.budget.run(driver, realDtMs, time.speed, time.paused);
+            const player = this.galaxy.playerEmpire;
+            if (this.playerIncomeAging && steps > 0 && player !== null && player.pirateEmpireBaseHabitat === null) checkAgeVariableIncome(this.galaxy, player);
         } catch (err) {
             // As in-thread: drop the half-drained tick queue, pause, and tell the player.
             console.error('Simulation error (paused):', err);
@@ -166,6 +210,10 @@ export class SimHost {
         if (changed) this.settleUntilCycle = this.sync.encoder.cycleCount + 2;
         if (!changed && !forceDelta && this.sync.encoder.cycleCount >= this.settleUntilCycle) return null;
         this.dirty = false;
+        if (this.freshRoots.length > 0) {
+            this.sync.encoder.compareNow(this.freshRoots);
+            this.freshRoots = [];
+        }
         const delta = this.sync.delta();
         const msg: StepMessage = {
             type: 'step',

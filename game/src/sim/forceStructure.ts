@@ -25,6 +25,7 @@
 // - Characters / Leader: none; RaidCountdown 0; no pirate colony control.
 // - Tax: Habitat.TaxRate / TaxComplianceRate come from taxes.ts (SetColonyTaxRate).
 
+import { inReadOnlyQuery } from './readOnlyQuery';
 import { scenarioQuery } from './scenario/hooks';
 import type { Galaxy } from './galaxy';
 import type { Habitat } from './types';
@@ -513,7 +514,19 @@ export function annualTaxRevenue(galaxy: Galaxy, empire: Empire): number {
         if (habitat == null || habitat.empire !== empire || (empire.pirateEmpireBaseHabitat !== null && checkColonyRevenueFromPirateControl(habitat, empire)) || habitat.population == null) continue;
         num2 += habitat.population.totalAmount;
         if (!habitatRebelling(habitat)) {
-            if (Number.isNaN(habitatAnnualRevenue(galaxy, habitat))) recalculateAnnualTaxRevenue(galaxy, habitat);
+            if (Number.isNaN(habitatAnnualRevenue(galaxy, habitat))) {
+                if (inReadOnlyQuery(galaxy)) {
+                    // A screen's read-only query (readOnlyQuery.ts): the recalculated revenue, then the colony as it was.
+                    const revenue = habitat.annualTaxRevenue;
+                    const bonuses = habitat.resourceBonuses;
+                    recalculateAnnualTaxRevenue(galaxy, habitat);
+                    num += habitat.annualTaxRevenue;
+                    habitat.annualTaxRevenue = revenue;
+                    habitat.resourceBonuses = bonuses;
+                    continue;
+                }
+                recalculateAnnualTaxRevenue(galaxy, habitat);
+            }
             num += habitat.annualTaxRevenue;
         }
     }

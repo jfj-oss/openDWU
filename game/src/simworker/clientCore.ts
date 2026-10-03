@@ -12,7 +12,9 @@ import { FRAME_REAL_MS } from '../sim/tick/scheduler';
 import { createRenderTime, updateRenderTime, type RenderTime } from '../render/renderInterp';
 import { GalaxyReplica } from './replicaGalaxy';
 import { decodeRemoteArg, encodeRemoteArg, type RemoteNaming, type RemoteResolving } from './remoteArgs';
-import type { ClockMessage, CommandMessage, SnapshotMessage, StepMessage, ToWorker, WorkerEvent } from './protocol';
+import type { ClockMessage, CommandMessage, RefreshRequest, SnapshotMessage, StepMessage, ToWorker, WorkerEvent } from './protocol';
+import { setRemoteRefreshSink } from './refresh';
+import { markReadOnlyGalaxy } from '../sim/readOnlyQuery';
 import type { ApplyStats } from './replicaSync';
 
 /** Main-thread sync cost readout (window.__dwu.simStats in worker mode). */
@@ -86,6 +88,11 @@ export interface ClientCoreOptions {
     now?: () => number;
     /** Wall ms per render frame for applying queued cold parts (default 0.5; grows with the backlog). */
     coldBudgetMs?: number;
+    /**
+     * Render frames a reply waits for its delta's cold part before that part is applied at once (default 30). A
+     * reply runs once its whole delta is applied, so a command's follow-up sees the command's effects.
+     */
+    replyWaitFrames?: number;
     onEvent?: (e: WorkerEvent, resolve: (a: unknown) => unknown) => void;
 }
 
@@ -95,6 +102,8 @@ export class SimClientCore {
     readonly renderTime: RenderTime = createRenderTime();
     readonly game: Game;
     private readonly pending = new Map<number, (r: unknown) => void>();
+    /** Replies that arrived, waiting for their delta's cold part (in arrival order: seqs never decrease). */
+    private readonly replies: { seq: number; frames: number; run: () => void }[] = [];
     private nextCommandId = 1;
     private clockSeq = 0;
     private sent: ClockControls;
@@ -135,6 +144,9 @@ export class SimClientCore {
         this.naming = { syncId: (o) => this.replica.decoder.idOf(o), external: (o) => byObject.get(o) };
         this.resolving = { object: (id) => this.replica.decoder.object(id), external: (kind, key) => this.replica.staticByRef.get(`${kind}:${key}`) };
         setRemoteCommandSink(galaxy, (empire, op, args, onApplied) => this.sendCommand(empire, op, args, onApplied));
+        setRemoteRefreshSink(galaxy, (objects, onFresh) => this.requestRefresh(objects, onFresh));
+        // The sim's lazy "obtain" lookups never write the replica, whoever queries it (sim/readOnlyQuery.ts).
+        markReadOnlyGalaxy(galaxy);
     }
 
     private *staticEntries(): Iterable<[string, object]> {
@@ -162,6 +174,22 @@ export class SimClientCore {
         const msg: CommandMessage = { type: 'command', id, empire: empireId, op, args: args.map((a) => encodeRemoteArg(a, this.naming)) };
         if (onApplied !== undefined) this.pending.set(id, onApplied);
         this.opts.post(msg);
+    }
+
+    /**
+     * Ask the worker to compare `objects` (replica objects) and what they reach now (refresh.ts requestSimRefresh);
+     * `onFresh` runs once the delta that carries them is applied.
+     */
+    requestRefresh(objects: readonly object[], onFresh?: () => void): void {
+        const ids: number[] = [];
+        for (const o of objects) {
+            const id = this.replica.decoder.idOf(o);
+            if (id >= 0) ids.push(id);
+        }
+        const id = onFresh === undefined ? 0 : this.nextCommandId++;
+        if (onFresh !== undefined) this.pending.set(id, () => onFresh());
+        const m: RefreshRequest = { type: 'refresh', id, objects: ids };
+        this.opts.post(m);
     }
 
     /** Hand the worker the HUD clock's pause / speed when they changed. */
@@ -214,13 +242,16 @@ export class SimClientCore {
                 this.pending.delete(r.id);
                 if (r.error !== undefined) console.warn(`sim worker: command reply ${r.id}: ${r.error}`);
                 else if (cb !== undefined) {
+                    // Resolved now (the objects it names are in this delta's hot part); run once the delta's cold
+                    // part is applied too, so the callback sees what the command changed (compareNow in the worker).
+                    let value: unknown;
                     try {
-                        cb(this.resolve(r.result));
+                        value = this.resolve(r.result);
                     } catch (err) {
-                        queueMicrotask(() => {
-                            throw err;
-                        });
+                        console.warn(`sim worker: command reply ${r.id}:`, err);
+                        continue;
                     }
+                    this.replies.push({ seq: m.delta.seq, frames: 0, run: () => cb(value) });
                 }
             }
             for (const e of m.events) this.opts.onEvent?.(e, (a) => this.resolve(a));
@@ -228,6 +259,7 @@ export class SimClientCore {
         const last = this.inbox.length > 0 ? this.inbox[this.inbox.length - 1] : null;
         this.inbox.length = 0;
         const cold = this.replica.pumpCold(this.coldBudgetMs);
+        if (this.replies.length > 0) this.runReplies();
         const t2 = this.now();
         // Render alpha: the worker's backlog after its last tick plus the real time since we applied it.
         const backlog = this.paused ? 0 : Math.min(FRAME_REAL_MS, this.lastBacklogMs + (t0 - this.lastStepAt));
@@ -250,10 +282,37 @@ export class SimClientCore {
         return steps;
     }
 
+    /** Run the replies whose delta is fully applied (forcing the cold parts of one that has waited too long). */
+    private runReplies(): void {
+        const dec = this.replica.decoder;
+        const wait = this.opts.replyWaitFrames ?? 30;
+        for (const r of this.replies) r.frames++;
+        let k = 0;
+        for (; k < this.replies.length; k++) {
+            const r = this.replies[k];
+            if (!dec.coldAppliedThrough(r.seq)) {
+                // In order: a later reply never runs before an earlier one.
+                if (r.frames < wait) break;
+                this.replica.flushColdThrough(r.seq);
+            }
+            try {
+                r.run();
+            } catch (err) {
+                queueMicrotask(() => {
+                    throw err;
+                });
+            }
+        }
+        this.replies.splice(0, k);
+    }
+
     dispose(): void {
         if (this.disposed) return;
         this.disposed = true;
         setRemoteCommandSink(this.galaxy, null);
+        setRemoteRefreshSink(this.galaxy, null);
+        markReadOnlyGalaxy(this.galaxy, false);
         this.pending.clear();
+        this.replies.length = 0;
     }
 }

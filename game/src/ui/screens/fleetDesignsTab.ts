@@ -43,6 +43,7 @@ import {
     text,
     textBox,
 } from '../originalWindow';
+import { readOnlyQuery } from '../../sim/readOnlyQuery';
 
 /** As the Ships and Bases Set Fleet: ask first to turn off Fleet Formation automation (the AI would otherwise disband
  * idle player fleets, Empire.cs MaintainShipGroups). */
@@ -173,6 +174,11 @@ export function createFleetDesignsTab(container: HTMLElement, empire: Empire, si
     container.appendChild(ordersBox);
 
     function renderOrders(): void {
+        // Read-only: the sim queries this runs must not write the game (sim/readOnlyQuery.ts; docs/sim-worker.md §9 chunk 6).
+        return readOnlyQuery(() => renderOrdersQuery());
+    }
+
+    function renderOrdersQuery(): void {
         const keep = ordersBox.scrollTop;
         ordersBox.replaceChildren();
         const orders = fleetDesignBook(empire).orders;
@@ -216,6 +222,11 @@ export function createFleetDesignsTab(container: HTMLElement, empire: Empire, si
     detail.classList.add('fl-design-detail');
 
     function renderTemplate(t: FleetTemplate): void {
+        // Read-only: the sim queries this runs must not write the game (sim/readOnlyQuery.ts; docs/sim-worker.md §9 chunk 6).
+        return readOnlyQuery(() => renderTemplateQuery(t));
+    }
+
+    function renderTemplateQuery(t: FleetTemplate): void {
         const DW = detailW;
         // Name, Delete.
         dropText(detail, 'Name', 10, 13, { size: FONT.large, bold: true, color: 'rgb(120, 120, 120)', shadow: false });
@@ -330,6 +341,11 @@ export function createFleetDesignsTab(container: HTMLElement, empire: Empire, si
     }
 
     function render(): void {
+        // Read-only: the sim queries this runs must not write the game (sim/readOnlyQuery.ts; docs/sim-worker.md §9 chunk 6).
+        return readOnlyQuery(() => renderQuery());
+    }
+
+    function renderQuery(): void {
         container.querySelectorAll('.fl-designs-own').forEach((x) => x.remove());
         const bk = fleetDesignBook(empire);
         if (selectedId !== null && !bk.templates.some((t) => t.id === selectedId)) selectedId = null;

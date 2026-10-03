@@ -90,7 +90,7 @@ async function init(m: InitMessage): Promise<void> {
         time.paused = m.clock.paused;
     }
     post({ type: 'progress', step: 'Preparing map', fraction: 0.9 });
-    host = new SimHost(game, time, m.startOptions, { sync: m.sync });
+    host = new SimHost(game, time, m.startOptions, { sync: m.sync, playerIncomeAging: true });
     post(host.snapshot());
     for (const e of early.splice(0)) handle(e);
     last = performance.now();
@@ -136,6 +136,10 @@ function handle(m: ToWorker): void {
             return;
         case 'command':
             host!.command(m);
+            kick();
+            return;
+        case 'refresh':
+            host!.refresh(m);
             kick();
             return;
         case 'save': {

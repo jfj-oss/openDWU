@@ -104,6 +104,8 @@ import {
     gt,
     resolveNodeDescription,
 } from './researchBenefits';
+import { readOnlyQuery } from '../../sim/readOnlyQuery';
+import { requestSimRefresh } from '../../simworker/refresh';
 export { checkNodeValidForRace, queueResearchProject, dequeueResearchProject };
 
 export const RESEARCH_INDUSTRIES = [IndustryType.Weapon, IndustryType.Energy, IndustryType.HighTech] as const;
@@ -743,6 +745,11 @@ function createResearchScreen(opts: ResearchScreenOptions): OpenState {
     }
 
     function refreshPaths(): void {
+        // Read-only: the sim queries this runs must not write the game (sim/readOnlyQuery.ts; docs/sim-worker.md §9 chunk 6).
+        return readOnlyQuery(() => refreshPathsQuery());
+    }
+
+    function refreshPathsQuery(): void {
         if (svg === null || ranges === null) return;
         const r = ranges;
         let key = '';
@@ -771,6 +778,11 @@ function createResearchScreen(opts: ResearchScreenOptions): OpenState {
     }
 
     function refreshTree(): void {
+        // Read-only: the sim queries this runs must not write the game (sim/readOnlyQuery.ts; docs/sim-worker.md §9 chunk 6).
+        return readOnlyQuery(() => refreshTreeQuery());
+    }
+
+    function refreshTreeQuery(): void {
         if (content === null || ranges === null) return;
         for (const nv of nodeViews) {
             const valid = nodeValidForRace(galaxy, nv.node, race);
@@ -782,6 +794,11 @@ function createResearchScreen(opts: ResearchScreenOptions): OpenState {
 
     /** DrawTree → DrawProjectInfo for the hovered node. */
     function refreshInfo(): void {
+        // Read-only: the sim queries this runs must not write the game (sim/readOnlyQuery.ts; docs/sim-worker.md §9 chunk 6).
+        return readOnlyQuery(() => refreshInfoQuery());
+    }
+
+    function refreshInfoQuery(): void {
         if (info === null || view === null || ranges === null) return;
         const n = hovered;
         if (n === null) {
@@ -1032,6 +1049,11 @@ function createResearchScreen(opts: ResearchScreenOptions): OpenState {
     }
 
     function refreshQueue(): void {
+        // Read-only: the sim queries this runs must not write the game (sim/readOnlyQuery.ts; docs/sim-worker.md §9 chunk 6).
+        return readOnlyQuery(() => refreshQueueQuery());
+    }
+
+    function refreshQueueQuery(): void {
         const p = queuePanel;
         if (p === null) return;
         const key = queueStructureKey();
@@ -1265,6 +1287,11 @@ function createResearchScreen(opts: ResearchScreenOptions): OpenState {
     // -----------------------------------------------------------------------------------------------------------
 
     function refresh(): void {
+        // Read-only: the sim queries this runs must not write the game (sim/readOnlyQuery.ts; docs/sim-worker.md §9 chunk 6).
+        return readOnlyQuery(() => refreshQuery());
+    }
+
+    function refreshQuery(): void {
         for (const t of tabs) if (t.industry !== IndustryType.Undefined) setButtonMinorText(t.btn, currentProjectText(rs, t.industry));
         if (selectedIndustry === IndustryType.Undefined) {
             if (tick % 8 === 0) stationsRefresh?.();
@@ -1277,6 +1304,10 @@ function createResearchScreen(opts: ResearchScreenOptions): OpenState {
 
     const cleanup: (() => void)[] = [];
     build();
+    // Worker mode: bring what the screen shows up to date now instead of up to a cold cycle later (no-op in-thread).
+    requestSimRefresh(galaxy, [empire, empire.research], () => {
+        if (!win.closed) refresh();
+    });
     timer = window.setInterval(() => {
         if (win.closed) return;
         refresh();

@@ -16,6 +16,7 @@
 //
 // Rnd: HaveRevolution (SelectSuitableGovernment, per-colony damage, disruption) draws Galaxy.Rnd; nothing else here does.
 
+import { inReadOnlyQuery } from './readOnlyQuery';
 import { generateVictoryConditionProgresses } from './victory';
 import type { Galaxy } from './galaxy';
 import type { Empire } from './empire';
@@ -74,6 +75,8 @@ export function thisYearsResortIncome(galaxy: Galaxy, empire: Empire): number {
     const num = currentStarDate % (REAL_SECONDS_IN_GALACTIC_YEAR * 1000);
     const num2 = currentStarDate - num;
     if (empire.lastResortIncomeAddDate < num2) {
+        // A screen's read-only query (readOnlyQuery.ts): the value the reset would leave, without resetting.
+        if (inReadOnlyQuery(galaxy)) return 0.0;
         empire.thisYearsResortIncomeValue = 0.0;
     }
     return empire.thisYearsResortIncomeValue;
@@ -105,6 +108,8 @@ export function thisYearsSpacePortIncome(galaxy: Galaxy, empire: Empire): number
                 continue;
             }
             if (!empire.useAveragedVariableIncome && builtObject.dateOfLastIncome < num3) {
+                // A screen's read-only query (readOnlyQuery.ts): this base's income after the aging, without aging it.
+                if (inReadOnlyQuery(galaxy)) continue;
                 if (builtObject.currentYearsIncome < builtObject.annualSupportCost * 2) {
                     builtObject.consecutiveUnprofitableYears++;
                 }
@@ -122,6 +127,8 @@ export function thisYearsSpacePortIncome(galaxy: Galaxy, empire: Empire): number
  * resets the per-base yearly income.
  */
 export function checkAgeVariableIncome(galaxy: Galaxy, empire: Empire): void {
+    // A screen's read-only query (readOnlyQuery.ts; in worker mode the worker runs this for the player, simHost.ts).
+    if (inReadOnlyQuery(galaxy)) return;
     empire.useAveragedVariableIncome = true;
     const currentStarDate = galaxyStarDate(galaxy);
     const num = currentStarDate % (REAL_SECONDS_IN_GALACTIC_YEAR * 1000);

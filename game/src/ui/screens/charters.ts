@@ -30,6 +30,8 @@ import {
 } from '../../sim/scenario/charteredCompanies/charters';
 import { issuePlayerCommand } from '../../sim/player/playerCommands';
 import { showToast } from '../toast';
+import { readOnlyQuery } from '../../sim/readOnlyQuery';
+import { requestSimRefresh } from '../../simworker/refresh';
 
 // ---------------------------------------------------------------------------------------------------------------
 // Pure models
@@ -76,7 +78,8 @@ export function charterRows(galaxy: Galaxy, founder: Empire): CharterRow[] {
             tariffThisYear: c.tariffThisYear,
             tariffLastYear: c.tariffLastYear,
             tariffTotal: c.tariffTotal,
-            tribute: alive ? estimatedTribute(galaxy, company) : 0,
+            // Read-only: this year's space-port income ages the bases when it is read at a new year (treasury.ts).
+            tribute: alive ? readOnlyQuery(() => estimatedTribute(galaxy, company)) : 0,
             strengthRatio: alive && fp > 0 ? militaryPotency(company) / fp : 0,
             actionable: alive && c.status === 'active',
         };
@@ -108,7 +111,8 @@ const ROLE_ORDER: [string, BuiltObjectSubRole, BuiltObjectSubRole | null][] = [
 
 /** The dialog model for chartering `target` (founder's race designs preview the expedition). */
 export function charterDialogModel(galaxy: Galaxy, founder: Empire, target: Habitat, resourceName: (id: number) => string = (id) => `#${id}`): CharterDialogModel {
-    const el = charterEligibility(galaxy, founder, target);
+    // Read-only: the territory check must not write the game (sim/readOnlyQuery.ts; docs/sim-worker.md §9 chunk 6).
+    const el = readOnlyQuery(() => charterEligibility(galaxy, founder, target));
     const counts: Record<string, number> = {
         'Colony ship': 1,
         'Construction ship': 1,
@@ -140,7 +144,8 @@ export function charterDialogModel(galaxy: Galaxy, founder: Empire, target: Habi
 export function charterButtonState(galaxy: Galaxy | null, player: Empire | null, habitat: Habitat | null): { visible: boolean; enabled: boolean; title: string } {
     if (galaxy === null || player === null || habitat === null || !scenarioFlag(galaxy, CHARTER_FLAG)) return { visible: false, enabled: false, title: '' };
     if (habitat.category !== HabitatCategoryType.Planet && habitat.category !== HabitatCategoryType.Moon) return { visible: false, enabled: false, title: '' };
-    const el = charterEligibility(galaxy, player, habitat);
+    // Read-only: the territory check must not write the game (sim/readOnlyQuery.ts; docs/sim-worker.md §9 chunk 6).
+    const el = readOnlyQuery(() => charterEligibility(galaxy, player, habitat));
     return { visible: true, enabled: el.ok, title: el.ok ? 'Charter a company to settle this world' : el.reason };
 }
 
@@ -275,6 +280,10 @@ export function toggleChartersScreen(galaxy: Galaxy, player: Empire): void {
     }
     render();
     // Figures change with the sim; refresh in place every 2 s (buttons are rebuilt only then).
+    // Worker mode: bring what the screen shows up to date now instead of up to a cold cycle later (no-op in-thread).
+    requestSimRefresh(galaxy, [player], () => {
+        if (p.root.isConnected) render();
+    });
     const timer = window.setInterval(() => {
         if (!p.root.isConnected) return;
         render();
@@ -359,7 +368,7 @@ export function openCharterDialog(galaxy: Galaxy, player: Empire, target: Habita
     ok.addEventListener('click', () => {
         const terms = { kind: kindSel.value as CharterKind, tariffPct: Number(tariff.value), durationYears: Math.max(1, Math.min(100, Math.trunc(Number(dur.value) || m.defaults.durationYears))) };
         issuePlayerCommand(galaxy, player, 'charterCompany', [target, terms], (granted) => {
-            const why = charterEligibility(galaxy, player, target).reason;
+            const why = readOnlyQuery(() => charterEligibility(galaxy, player, target)).reason;
             showToast(granted ? `Charter granted: the expedition sets out for ${target.name}` : `Charter refused: ${why}`);
         });
         p.close();

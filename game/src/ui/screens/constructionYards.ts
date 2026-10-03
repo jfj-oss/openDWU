@@ -65,6 +65,8 @@ import {
     valueRow,
     type OriginalWindow,
 } from '../originalWindow';
+import { readOnlyQuery } from '../../sim/readOnlyQuery';
+import { requestSimRefresh } from '../../simworker/refresh';
 export { moveWaitQueueItem, type WaitQueueMove };
 
 // -------------------------------------------------------------------------------------------------------------------
@@ -936,6 +938,11 @@ function createConstructionYards(opts: ConstructionYardsOptions): OpenState {
     }
 
     function refreshPurchaser(): void {
+        // Read-only: the sim queries this runs must not write the game (sim/readOnlyQuery.ts; docs/sim-worker.md §9 chunk 6).
+        return readOnlyQuery(() => refreshPurchaserQuery());
+    }
+
+    function refreshPurchaserQuery(): void {
         const site = selected;
         const list = site === null || (site.kind === 'builtObject' && site.builtObject.topSpeed > 0) ? [] : purchaserDesigns(empire.designs, site, purchaserChecks(empire));
         const prices = list.map((d) => d.calculateCurrentPurchasePrice(galaxy));
@@ -956,6 +963,11 @@ function createConstructionYards(opts: ConstructionYardsOptions): OpenState {
     }
 
     function refreshDetail(r: ConstructionSiteRow | null): void {
+        // Read-only: the sim queries this runs must not write the game (sim/readOnlyQuery.ts; docs/sim-worker.md §9 chunk 6).
+        return readOnlyQuery(() => refreshDetailQuery(r));
+    }
+
+    function refreshDetailQuery(r: ConstructionSiteRow | null): void {
         const key = r ? `${r.name}|${r.type}|${r.system}|${r.yards}|${r.building}|${r.waiting}|${r.speed}|${Math.round(r.progress * 1000)}` : '';
         if (key === detailKey) return;
         detailKey = key;
@@ -1024,6 +1036,11 @@ function createConstructionYards(opts: ConstructionYardsOptions): OpenState {
     }
 
     function refresh(): void {
+        // Read-only: the sim queries this runs must not write the game (sim/readOnlyQuery.ts; docs/sim-worker.md §9 chunk 6).
+        return readOnlyQuery(() => refreshQuery());
+    }
+
+    function refreshQuery(): void {
         if (win.closed) return;
         rows = constructionSiteRows(empire);
         let row = selected ? rows.find((r) => siteTarget(r.site) === siteTarget(selected!)) ?? null : null;
@@ -1075,6 +1092,8 @@ function createConstructionYards(opts: ConstructionYardsOptions): OpenState {
     showTab();
     if (selected) siteGrid.select(siteTarget(selected));
     // Progress moves while open: refresh every second, keeping the selections and scroll positions.
+    // Worker mode: bring what the screen shows up to date now instead of up to a cold cycle later (no-op in-thread).
+    requestSimRefresh(galaxy, [empire, empire.constructionYards ?? [], empire.spacePorts], () => refresh());
     timer = window.setInterval(refresh, 1000);
 
     return { win, close: () => win.close() };

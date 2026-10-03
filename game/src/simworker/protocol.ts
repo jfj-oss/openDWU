@@ -57,12 +57,22 @@ export interface SaveRequest {
     id: number;
 }
 
+/**
+ * Compare these replica objects (sync ids) and what they reach now, so their cold data arrives with the next delta (a
+ * screen opening; docs/sim-worker.md §9 chunk 6). `id` (0: none) gets an empty reply in `StepMessage.results`.
+ */
+export interface RefreshRequest {
+    type: 'refresh';
+    id: number;
+    objects: number[];
+}
+
 export interface DigestRequest {
     type: 'digest';
     id: number;
 }
 
-export type ToWorker = InitMessage | ClockMessage | CommandMessage | SaveRequest | DigestRequest | { type: 'dispose' };
+export type ToWorker = InitMessage | ClockMessage | CommandMessage | RefreshRequest | SaveRequest | DigestRequest | { type: 'dispose' };
 
 export interface ProgressMessage {
     type: 'progress';
@@ -100,7 +110,10 @@ export interface StepMessage {
     /** Worker wall ms: the steps, and the replica diff. */
     stepMs: number;
     diffMs: number;
-    /** onApplied results of commands applied at this tick's boundary (resolved after `delta`). */
+    /**
+     * onApplied results of commands applied at this tick's boundary (resolved after `delta`; the main thread runs each
+     * callback once this delta's cold part is applied too, so it sees the command's effects), and refresh replies.
+     */
     results: { id: number; result: RemoteArg; error?: string }[];
     /** Sim → UI events raised during the tick (resolved after `delta`). */
     events: WorkerEvent[];

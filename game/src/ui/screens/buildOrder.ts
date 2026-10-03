@@ -65,6 +65,8 @@ import {
     purchaseResultText,
     type BuildOrderRow,
 } from './buildOrderModel';
+import { readOnlyQuery } from '../../sim/readOnlyQuery';
+import { requestSimRefresh } from '../../simworker/refresh';
 
 export * from './buildOrderModel';
 
@@ -240,6 +242,11 @@ function createBuildOrder(opts: BuildOrderOptions): OriginalWindow {
 
     // method_631 (totals + button) and method_634 (spinner colours).
     function renderTotals(): void {
+        // Read-only: the sim queries this runs must not write the game (sim/readOnlyQuery.ts; docs/sim-worker.md §9 chunk 6).
+        return readOnlyQuery(() => renderTotalsQuery());
+    }
+
+    function renderTotalsQuery(): void {
         const a = amounts();
         const t = buildOrderTotals(galaxy, empire, rows, a);
         rows.forEach((_, i) => {
@@ -256,6 +263,11 @@ function createBuildOrder(opts: BuildOrderOptions): OriginalWindow {
     }
 
     function refresh(): void {
+        // Read-only: the sim queries this runs must not write the game (sim/readOnlyQuery.ts; docs/sim-worker.md §9 chunk 6).
+        return readOnlyQuery(() => refreshQuery());
+    }
+
+    function refreshQuery(): void {
         rows = buildOrderRows(empire, galaxy, chosen, advisorTargets);
         rows.forEach((r, i) => {
             setText(views[i].current, String(r.current));
@@ -295,6 +307,10 @@ function createBuildOrder(opts: BuildOrderOptions): OriginalWindow {
 
     refresh();
     // Money, counts and prices change while open.
+    // Worker mode: bring what the screen shows up to date now instead of up to a cold cycle later (no-op in-thread).
+    requestSimRefresh(galaxy, [empire, empire.designs], () => {
+        if (!win.closed) refresh();
+    });
     timer = window.setInterval(() => {
         if (!win.closed) refresh();
     }, 2000);

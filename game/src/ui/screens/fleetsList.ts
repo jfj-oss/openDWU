@@ -68,6 +68,8 @@ import {
     type GridColumn,
     type OriginalWindow,
 } from '../originalWindow';
+import { readOnlyQuery } from '../../sim/readOnlyQuery';
+import { requestSimRefresh } from '../../simworker/refresh';
 
 // -------------------------------------------------------------------------------------------------------------------
 // Pure helpers (tested)
@@ -875,6 +877,11 @@ function createFleetsList(opts: FleetsListOptions): OpenState {
 
     /** Rebind the grid (keeps the selection and scroll) and refresh the detail. */
     function refresh(): void {
+        // Read-only: the sim queries this runs must not write the game (sim/readOnlyQuery.ts; docs/sim-worker.md §9 chunk 6).
+        return readOnlyQuery(() => refreshQuery());
+    }
+
+    function refreshQuery(): void {
         if (win.closed) return;
         grid.setRows(fleetRows(empire));
         const sg = selectedFleet();
@@ -896,6 +903,8 @@ function createFleetsList(opts: FleetsListOptions): OpenState {
     if (current !== null) grid.select(current, true);
     updateDetail(true);
     showTab(tab);
+    // Worker mode: bring what the screen shows up to date now instead of up to a cold cycle later (no-op in-thread).
+    requestSimRefresh(galaxy, [empire, empire.shipGroups], () => refresh());
     timer = window.setInterval(() => {
         if (tab === 'designs') designsTab.refreshOrders(); // build progress
         else refresh();

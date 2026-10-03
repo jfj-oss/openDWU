@@ -94,6 +94,7 @@ import {
     type StatRow,
 } from './designPanelsModel';
 import { builtObjectImageUrl } from '../../render/builtObjectLayer';
+import { readOnlyQuery } from '../../sim/readOnlyQuery';
 
 export interface DesignEditorOptions {
     galaxy: Galaxy;
@@ -781,6 +782,11 @@ export function openDesignEditor(opts: DesignEditorOptions): DesignEditorHandle 
 
     // method_292 (+ method_385): everything that depends on the design.
     function refresh(): void {
+        // Read-only: the sim queries this runs must not write the game (sim/readOnlyQuery.ts; docs/sim-worker.md §9 chunk 6).
+        return readOnlyQuery(() => refreshQuery());
+    }
+
+    function refreshQuery(): void {
         updateTitle();
         setText(purchase, `${gt('Purchase Cost')}: ${Math.round(design.calculateCurrentPurchasePrice(galaxy))}`);
         setText(maintenance, `${gt('Maintenance Cost')}: ${Math.round(designCalculateMaintenanceCosts(galaxy, design, (design.empire as Empire | null) ?? empire))}`);

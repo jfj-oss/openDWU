@@ -259,6 +259,14 @@ not to the local queue.
   it names that the replica does not know yet are born in the same delta's hot part, and objects born in a cold part
   become a dependency. The callback runs on the main thread once the delta is applied, so the reply always resolves to
   replica objects. Unlike in-thread play, it runs one round trip later, not inside the boundary.
+- **Fresh replies (chunk 6).** After the boundary, the worker compares what each command touched (its arguments,
+  its result, the issuing empire, and what they reach: `ReplicaEncoder.compareNow`, 3 levels and 3000 objects at
+  most) into that tick's delta. The main thread runs the callback only once that delta's cold part is applied too
+  (after 30 frames it forces it), so a screen's refresh in `onApplied` sees what the command changed. A class
+  instance that gained a lazily set `declare`d field (e.g. `Empire.fleetDesigns`, `constructionBoard`) is reshaped
+  there; the round-robin cold pass does not notice new fields.
+- **Refresh on open** (`simworker/refresh.ts requestSimRefresh`): a screen that opens asks the worker to compare the
+  objects it shows now, and re-renders when they have arrived. In-thread it is a no-op.
 - **`runPlayerCommand`** (synchronous result) throws on a replica. Its two callers, the advisor chat and the diplomat
   voice, are in §9 chunk 8.
 
@@ -323,6 +331,7 @@ The only behaviour changes in this mode are:
 | `src/simworker/remoteArgs.ts` | Command arguments and replies across the boundary (sync ids) |
 | `src/simworker/bootOptions.ts` | createGame options across the boundary |
 | `src/simworker/protocol.ts` | Message types |
+| `src/simworker/refresh.ts` | Refresh-on-open requests from the screens (`requestSimRefresh`; no-op in-thread) |
 | `src/simFrameBudget.ts` | SimFrameBudget, shared by both modes |
 | `scripts/sync-measure.mjs` | Sync cost on a save (`--compare-options`, `--verify`, `--census`, `--hot-fields`) |
 | `scripts/simworker-smoke.mjs` | Browser smoke: boots with the flag, checks run / speed / pause / move order, screenshots |
@@ -414,6 +423,30 @@ Each chunk is independent. All chunks share the same test approach:
 - Work: async `onApplied`; by-value arguments (DesignDraft, policies) through `remoteArgs`; confirm that the heavy AI
   queries the planner runs are write-free on the replica.
 - Test: per screen, the command it issues through the host gives the in-thread digest; screenshots in both modes.
+- **Done:**
+  - Every order of the screens goes through `issuePlayerCommand`. The Empire Policy panel now issues its automation
+    combos as `setEmpireControl` commands (it wrote `Empire.control*` directly before, which also bypassed the log
+    in-thread).
+  - Write-free reads: some C# lookups create what they look up (`obtainDiplomaticRelation`,
+    `obtainPirateRelation`, `obtainEmpireEvaluation`, `scenarioState`, `wondersBuilt`), and some money queries age
+    income on read (`thisYearsSpacePortIncome`, `thisYearsResortIncome`, `checkAgeVariableIncome`, the NaN tax
+    recalculation). Inside `sim/readOnlyQuery.ts readOnlyQuery`, and always on a replica galaxy (`markReadOnlyGalaxy`,
+    clientCore), they answer the same value without writing. The screens run their renders in that scope, and the
+    planner runs its AI queries in it. The sim never opens the scope, so `repin` is unchanged.
+  - The money panel's yearly variable-income aging runs in the worker for the player (`SimHostOptions.
+    playerIncomeAging`), since the replica's money panel is read-only.
+  - The replica gets the BaconSettings.txt statics (prices, maintenance) at boot.
+  - Tests: `test/simWorkerScreens.test.ts`, with the script in `test/helpers/screenOrders.ts`. It runs 29 screen
+    orders through the host against the in-thread loop (digest, log and replies), checks fresh replies and refreshes,
+    and checks that the screens' reads leave the replica and the in-thread game unchanged. Browser:
+    `scripts/simworker-screens.mjs` opens every screen with the game paused, compares the replica digest with the
+    worker's, and saves a design through the editor.
+- **Still open:**
+  - A reply whose result fails to encode is dropped (console warning only). The await-style callers (recruit, the
+    editor's Save) then wait forever.
+  - The Galactopedia's `loadGameData` reloads the global GameText table, which drops scenario text added on the main
+    thread.
+  - Lazily added `declare`d class fields reach the replica only through `compareNow` (chunk 9 / 0).
 
 **Chunk 7 — diplomacy, intelligence and politics.**
 - Files: `ui/screens/diplomacyScreen.ts`, `diplomacyRelationsView.ts`, `empireIntel.ts`, `empiresList.ts`,
