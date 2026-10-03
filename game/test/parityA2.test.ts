@@ -24,6 +24,7 @@ import { calculateScenicFactorIncludingRuinsWonders } from '../src/sim/civilianA
 import { PlanetaryFacility } from '../src/sim/construction/facilities';
 import { PlanetaryFacilityType, WonderType, facilityType } from '../src/sim/researchSystem';
 import { raceBuildWonderVictoryFacility } from '../src/sim/researchTick';
+import { troopLevelRequired } from '../src/sim/troops';
 
 let gameData: GameData;
 beforeAll(async () => {
@@ -197,5 +198,35 @@ describe('Galaxy.3.cs 2015-2045 SetResearchRaceSpecialProjects: BuildWonder vict
             const owners = g.races.filter((r) => raceBuildWonderVictoryFacility(g, r)?.facilityId === wonder.facilityId).map((r) => r.name);
             for (const allowed of stat.allowedRaces.get(node.projectId)!) expect([...owners, ...node.allowedRaces]).toContain(allowed);
         }
+    });
+});
+
+describe('Habitat.cs 318 TroopLevelRequired: Empire.Capitals and PenalColonies', () => {
+    it('an extra capital gets the capital multiplier; a penal colony needs at least 200', () => {
+        const g = newGame();
+        const e = g.playerEmpire;
+        const gal = g.galaxy;
+        // A second colony for the player (test-only re-ownership of an independent colony).
+        const h = gal.habitats.find((x) => x.empire === gal.independentEmpire && x.population.totalAmount > 0 && x !== e.capital && x !== e.homeWorld)!;
+        h.empire = e;
+        h.owner = e;
+        e.policy!.troopGarrisonMinimumPerColony = 0;
+        const plain = troopLevelRequired(gal, h, gal.difficultyLevel);
+        const savedCapital = e.capital;
+        e.capital = h;
+        const asCapital = troopLevelRequired(gal, h, gal.difficultyLevel);
+        e.capital = savedCapital;
+        expect(asCapital).toBeGreaterThan(plain);
+        e.capitals = [...e.capitals, h];
+        expect(troopLevelRequired(gal, h, gal.difficultyLevel)).toBe(asCapital);
+        e.capitals = e.capitals.filter((x) => x !== h);
+        expect(troopLevelRequired(gal, h, gal.difficultyLevel)).toBe(plain);
+        // PenalColonies: Max(200, num) before the policy multiplier.
+        const mult = Math.max(e.policy!.troopRecruitInfantryLevel, e.policy!.troopGarrisonLevel);
+        expect(plain, 'precondition: the plain need is below the penal floor').toBeLessThan(Math.trunc(200 * mult));
+        e.penalColonies = [h];
+        const penal = troopLevelRequired(gal, h, gal.difficultyLevel);
+        expect(penal).toBeGreaterThanOrEqual(Math.trunc(200 * mult));
+        expect(penal).toBeGreaterThanOrEqual(plain);
     });
 });

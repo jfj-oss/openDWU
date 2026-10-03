@@ -197,9 +197,7 @@ export function troopLevelRequired(galaxy: Galaxy, habitat: Habitat, difficultyL
     const owner = habitat.owner;
     if (owner !== null) {
         let num3 = 1.0;
-        // TODO(port): Empire.Capitals (HabitatList, IdentifyEmpireCapitals) — holds only the
-        // Capital at game start, which the first test already covers.
-        if (owner.capital === habitat) {
+        if (owner.capital === habitat || (owner.capitals != null && owner.capitals.includes(habitat))) {
             num3 = 1.5;
             if (owner !== galaxy.playerEmpire) num3 *= Math.sqrt(difficultyLevel);
         } else if (owner.homeWorld === habitat) {
@@ -208,8 +206,10 @@ export function troopLevelRequired(galaxy: Galaxy, habitat: Habitat, difficultyL
         }
         num = csDoubleToInt(num * num3);
     }
-    // TODO(port): Empire.PenalColonies (Max(200, num)) — empty at game start.
     const empire = habitat.empire;
+    if (empire !== null && empire.penalColonies != null && empire.penalColonies.length > 0 && empire.penalColonies.includes(habitat)) {
+        num = Math.max(200, num);
+    }
     if (empire !== null && empire.policy != null) {
         num = csDoubleToInt(num * Math.max(empire.policy.troopRecruitInfantryLevel, empire.policy.troopGarrisonLevel));
         num = Math.max(num, empire.policy.troopGarrisonMinimumPerColony * 100);
