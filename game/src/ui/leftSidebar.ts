@@ -45,6 +45,7 @@ import { fighterImageUrl } from '../render/fighterLayer';
 import { troopImageUrl } from '../render/troopImages';
 import { mapStarUrls, cloudUrls } from '../render/assets';
 import { racePortraitUrl } from './empireEmblem';
+import { characterPortraitUrl, roleIconRectForSize, roleIconUrl } from './characterPortrait';
 import { chromeUrl, fmtK, habitatImageUrl, missionDescription, shipImageUrl } from './selectionInfo';
 import { resourceIconUrl } from './hud';
 import { plannerStatusInput, type PlannerStatusInput } from './screens/expansionPlanner';
@@ -697,11 +698,18 @@ function shipGroupRow(ctx: RowContext, sg: ShipGroup): ItemRowModel {
     return { pictures, overlays: [], textX, line1, line2, right };
 }
 
-/** method_6, Character (race portrait instead of the character picture — no character art). */
+/** method_6, Character: ObtainCharacterImageSmall (characterPortrait.ts) — the picture with the role icon. */
 function characterRow(ctx: RowContext, ch: Character): ItemRowModel {
     const c = k(ctx);
     const pictures: RowPicture[] = [];
-    if (ch.race) pictures.push({ url: racePortraitUrl(ch.race.pictureIndex), size: c.image, rotate: false, x: 5, y: 5 });
+    const overlays: ItemRowModel['overlays'] = [];
+    const pic = characterPortraitUrl(ch);
+    if (pic) pictures.push({ url: pic, size: c.image, rotate: false, x: 5, y: 5 });
+    const role = roleIconUrl(ch.role);
+    if (role) {
+        const r = roleIconRectForSize('small', c.image);
+        overlays.push({ url: role, x: 5 + r.x, y: 5 + r.y, size: r.w });
+    }
     const textX = 5 + c.n38 + c.n5;
     let task = resolveDescriptionCharacterTask(ch, ctx.galaxy);
     if (task === '' && ch.location) {
@@ -711,7 +719,7 @@ function characterRow(ctx: RowContext, ch: Character): ItemRowModel {
     }
     return {
         pictures,
-        overlays: [],
+        overlays,
         textX,
         line1: [txt(ch.name, 'bold'), txt(`(${resolveRoleDescription(ch.role)})`, 'small', ROW_TEXT, { gapBefore: c.n8 })],
         line2: [txt(task, 'small')],
