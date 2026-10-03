@@ -14,13 +14,13 @@
 import { circleAtScreenRes } from './screenCircle';
 import { fogOf } from './fog';
 import type { MotionInterpolator } from './renderInterp';
-import { Container, Graphics, Mesh, MeshGeometry, Rectangle, Sprite, Texture } from 'pixi.js';
+import { BufferImageSource, Container, Graphics, Mesh, MeshGeometry, Rectangle, RendererType, Sprite, Texture, type Renderer } from 'pixi.js';
 import type { Camera } from './camera';
 import type { Galaxy } from '../sim/galaxy';
 import type { Empire } from '../sim/empire';
 import { HabitatCategoryType } from '../sim/types';
 import { TerritoryGrid, buildTerritoryMeshes, collectTerritorySources, type TerritoryMeshData } from './territoryField';
-import { galaxyTerritorySignature, publishTerritoryRaster, rasterizeTerritory, type TerritoryRaster } from './territoryRaster';
+import { galaxyTerritorySignature, publishTerritoryRaster, rasterToRgba8Premultiplied, rasterizeTerritory, type TerritoryRaster } from './territoryRaster';
 import type { Habitat } from '../sim/types';
 import { moonDotPx, planetSpritePx } from './mainView';
 import { DrawKey } from './drawCache';
@@ -123,6 +123,18 @@ const TERRITORY_BUILD_BUDGET_MS = 4;
 /** Minimum wall time between two territory rebuilds (ms), however often the influence changes. */
 const TERRITORY_REBUILD_INTERVAL_MS = 1500;
 
+/**
+ * Texture format for the soft territory bitmap on `renderer`: premultiplied half floats where they can be sampled
+ * with linear filtering (WebGPU core; WebGL2 core, RGBA16F is always filterable), else 8-bit premultiplied with an
+ * ordered dither (WebGL1: Pixi maps rgba16float / rgba32float to WebGL2-only enums there). No renderer (tests) -> 8-bit.
+ */
+export function territoryTextureFormat(renderer: Renderer | null): 'rgba16float' | 'rgba8unorm' {
+    if (renderer === null) return 'rgba8unorm';
+    if (renderer.type === RendererType.WEBGPU) return 'rgba16float';
+    const ctx = (renderer as unknown as { context?: { webGLVersion?: number } }).context;
+    return ctx?.webGLVersion === 2 ? 'rgba16float' : 'rgba8unorm';
+}
+
 export class EmpireLayer {
     /** World-space layer: territory fill, then colony rings above. */
     root = new Container();
@@ -158,7 +170,8 @@ export class EmpireLayer {
         this.territoryEnabled = enabled;
     }
 
-    constructor(private galaxy: Galaxy, world: Container) {
+    /** `renderer` picks the soft bitmap's texture format (territoryTextureFormat); null = 8-bit. */
+    constructor(private galaxy: Galaxy, world: Container, private renderer: Renderer | null = null) {
         world.addChild(this.root);
         this.territoryRoot.visible = false;
         this.root.addChild(this.territoryRoot);
@@ -231,18 +244,21 @@ export class EmpireLayer {
         return { meshes, raster };
     }
 
-    /** Swap in the blurred owner bitmap as a sprite over the galaxy (uploaded once per rebuild). */
+    /** Swap in the blurred owner bitmap as a sprite over the galaxy (uploaded once per rebuild). Premultiplied all the
+     * way: half floats straight from the float blur, or one dithered 8-bit quantisation; no canvas, no un-premultiply. */
     private applySoftBitmap(raster: TerritoryRaster): void {
-        if (typeof document === 'undefined') return;
-        const canvas = document.createElement('canvas');
-        canvas.width = raster.width;
-        canvas.height = raster.height;
-        const ctx = canvas.getContext('2d');
-        if (ctx === null) return;
-        ctx.putImageData(new ImageData(new Uint8ClampedArray(raster.data), raster.width, raster.height), 0, 0);
-        const base = Texture.from(canvas);
+        const format = territoryTextureFormat(this.renderer);
+        const source = new BufferImageSource({
+            resource: format === 'rgba16float' ? raster.data : rasterToRgba8Premultiplied(raster),
+            width: raster.width,
+            height: raster.height,
+            format,
+            alphaMode: 'premultiplied-alpha',
+            scaleMode: 'linear',
+            autoGenerateMipmaps: false,
+        });
         // Crop to the part inside the galaxy so the clip at the galaxy edge stays hard.
-        const texture = new Texture({ source: base.source, frame: new Rectangle(0, 0, raster.usedW, raster.usedH) });
+        const texture = new Texture({ source, frame: new Rectangle(0, 0, raster.usedW, raster.usedH) });
         if (this.softSprite === null) {
             this.softSprite = new Sprite(texture);
             this.territoryRoot.addChildAt(this.softSprite, 0);
