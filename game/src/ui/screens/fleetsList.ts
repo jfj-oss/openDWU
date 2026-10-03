@@ -68,7 +68,6 @@ import {
     type GridColumn,
     type OriginalWindow,
 } from '../originalWindow';
-import { readOnlyQuery } from '../../sim/readOnlyQuery';
 import { requestSimRefresh } from '../../simworker/refresh';
 
 // -------------------------------------------------------------------------------------------------------------------
@@ -877,11 +876,6 @@ function createFleetsList(opts: FleetsListOptions): OpenState {
 
     /** Rebind the grid (keeps the selection and scroll) and refresh the detail. */
     function refresh(): void {
-        // Read-only: the sim queries this runs must not write the game (sim/readOnlyQuery.ts; docs/sim-worker.md §9 chunk 6).
-        return readOnlyQuery(() => refreshQuery());
-    }
-
-    function refreshQuery(): void {
         if (win.closed) return;
         grid.setRows(fleetRows(empire));
         const sg = selectedFleet();

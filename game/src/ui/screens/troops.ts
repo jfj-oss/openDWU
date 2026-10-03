@@ -62,7 +62,6 @@ import {
     text,
     textBox,
 } from '../originalWindow';
-import { readOnlyQuery } from '../../sim/readOnlyQuery';
 import { requestSimRefresh } from '../../simworker/refresh';
 export { disbandTroops, setTroopsGarrisoned, renameTroop };
 
@@ -620,11 +619,6 @@ function createTroopsScreen(opts: TroopsScreenOptions): OpenState {
 
     // --- filter (FleetHabitatDropDown.BindData; rebuilt when the fleets / colonies change) ---
     function renderFilter(): void {
-        // Read-only: the sim queries this runs must not write the game (sim/readOnlyQuery.ts; docs/sim-worker.md §9 chunk 6).
-        return readOnlyQuery(() => renderFilterQuery());
-    }
-
-    function renderFilterQuery(): void {
         const options = troopFilterOptions(empire);
         const sig = options.map((o) => troopFilterLabel(o)).join('|');
         if (sig === filterSig && filterOptions.length === options.length) return;
@@ -657,11 +651,6 @@ function createTroopsScreen(opts: TroopsScreenOptions): OpenState {
     }
 
     function refresh(): void {
-        // Read-only: the sim queries this runs must not write the game (sim/readOnlyQuery.ts; docs/sim-worker.md §9 chunk 6).
-        return readOnlyQuery(() => refreshQuery());
-    }
-
-    function refreshQuery(): void {
         renderFilter();
         const troops = troopsForFilter(empire, filter);
         grid.setRows(troopRows(troops));
@@ -758,11 +747,6 @@ function createTroopsScreen(opts: TroopsScreenOptions): OpenState {
     // --- selected troop detail (our extra) ---
     let detailSig = '';
     function refreshDetail(): void {
-        // Read-only: the sim queries this runs must not write the game (sim/readOnlyQuery.ts; docs/sim-worker.md §9 chunk 6).
-        return readOnlyQuery(() => refreshDetailQuery());
-    }
-
-    function refreshDetailQuery(): void {
         const sel = selectedTroops();
         const one = sel.length === 1 ? sel[0] : null;
         const sig = one !== null
@@ -797,11 +781,6 @@ function createTroopsScreen(opts: TroopsScreenOptions): OpenState {
 
     // --- recruit at the filtered colony (our extra: the selection panel's RecruitTroops buttons) ---
     function refreshRecruit(): void {
-        // Read-only: the sim queries this runs must not write the game (sim/readOnlyQuery.ts; docs/sim-worker.md §9 chunk 6).
-        return readOnlyQuery(() => refreshRecruitQuery());
-    }
-
-    function refreshRecruitQuery(): void {
         const colony = filter.kind === 'colony' ? filter.colony : null;
         const options = colony !== null ? recruitOptions(galaxy, empire, colony) : [];
         const training = colony !== null ? troopItemsOf(colony.troopsToRecruit) : [];

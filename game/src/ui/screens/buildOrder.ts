@@ -19,7 +19,7 @@ import type { Galaxy } from '../../sim/galaxy';
 import type { Design } from '../../sim/design';
 import { BuiltObjectSubRole } from '../../sim/builtObjectTypes';
 import { issuePlayerCommand } from '../../sim/player/playerCommands';
-import { moneyPanelIncome } from '../../sim/treasury';
+import { simQuery } from '../../simworker/simQuery';
 import { formatThousands } from '../../sim/diplomacyTick';
 import { builtObjectImageUrl, resolveDrawPictureRef } from '../../render/builtObjectLayer';
 import { empireFlagUrl } from '../selectionInfoView';
@@ -65,7 +65,6 @@ import {
     purchaseResultText,
     type BuildOrderRow,
 } from './buildOrderModel';
-import { readOnlyQuery } from '../../sim/readOnlyQuery';
 import { requestSimRefresh } from '../../simworker/refresh';
 
 export * from './buildOrderModel';
@@ -242,11 +241,6 @@ function createBuildOrder(opts: BuildOrderOptions): OriginalWindow {
 
     // method_631 (totals + button) and method_634 (spinner colours).
     function renderTotals(): void {
-        // Read-only: the sim queries this runs must not write the game (sim/readOnlyQuery.ts; docs/sim-worker.md §9 chunk 6).
-        return readOnlyQuery(() => renderTotalsQuery());
-    }
-
-    function renderTotalsQuery(): void {
         const a = amounts();
         const t = buildOrderTotals(galaxy, empire, rows, a);
         rows.forEach((_, i) => {
@@ -263,11 +257,6 @@ function createBuildOrder(opts: BuildOrderOptions): OriginalWindow {
     }
 
     function refresh(): void {
-        // Read-only: the sim queries this runs must not write the game (sim/readOnlyQuery.ts; docs/sim-worker.md §9 chunk 6).
-        return readOnlyQuery(() => refreshQuery());
-    }
-
-    function refreshQuery(): void {
         rows = buildOrderRows(empire, galaxy, chosen, advisorTargets);
         rows.forEach((r, i) => {
             setText(views[i].current, String(r.current));
@@ -277,8 +266,11 @@ function createBuildOrder(opts: BuildOrderOptions): OriginalWindow {
             renderDesignCell(i, r);
         });
         setText(funds, formatThousands(empire.stateMoney));
-        const income = moneyPanelIncome(galaxy, empire);
-        if (income !== null) setText(cashflow, formatThousands(income.cashflow));
+        // The money panel's figures run CheckAgeVariableIncome (it writes the empire): a sim query, answered at once
+        // in-thread and by the worker on a replica (simworker/simQuery.ts).
+        simQuery(galaxy, empire, 'moneyPanel', [], (income) => {
+            if (income !== null && !win.closed) setText(cashflow, formatThousands(income.cashflow));
+        });
         renderTotals();
     }
 

@@ -77,7 +77,6 @@ import {
     shipRowLabel,
     type BonusLine,
 } from './empireSummaryModel';
-import { readOnlyQuery } from '../../sim/readOnlyQuery';
 import { requestSimRefresh } from '../../simworker/refresh';
 
 /** The data the panel displays: the player's empire plus its government's
@@ -788,10 +787,7 @@ function createEmpireSummary(src: EmpireSummarySource): OpenState {
         });
     }
 
-    const renderAll = (): void =>
-        // Read-only: the sim queries this runs must not write the game (sim/readOnlyQuery.ts; docs/sim-worker.md §9 chunk 6).
-        readOnlyQuery(() => renderAllQuery());
-    function renderAllQuery(): void {
+    const renderAll = (): void => {
         if (win.closed) return;
         win.setTitle(`${gt('Empire Summary')}: ${empire.name}`);
         if (document.activeElement !== name && name.value !== empire.name) name.value = empire.name;
@@ -799,7 +795,7 @@ function createEmpireSummary(src: EmpireSummarySource): OpenState {
         renderEconomy();
         renderBonuses();
         renderShips();
-    }
+    };
     renderAll();
     // The original repaints on Invalidate; refresh the figures once a second.
     // Worker mode: bring what the screen shows up to date now instead of up to a cold cycle later (no-op in-thread).

@@ -91,7 +91,7 @@ async function init(m: InitMessage): Promise<void> {
     }
     post({ type: 'progress', step: 'Preparing map', fraction: 0.9 });
     installWorkerBootState(game.galaxy);
-    host = new SimHost(game, time, m.startOptions, { sync: m.sync, playerIncomeAging: true });
+    host = new SimHost(game, time, m.startOptions, { sync: m.sync });
     post(host.snapshot());
     for (const e of early.splice(0)) handle(e);
     last = performance.now();

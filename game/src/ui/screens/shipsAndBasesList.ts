@@ -73,7 +73,6 @@ import { CROSSHAIR_COLOR, DIMMED_COLOR, GRID_COLOR, galaxyMapScale, sectorColumn
 import { yardRows, waitRows, type ConstructionSite } from './constructionYards';
 import { troopRows, type TroopRow } from './troops';
 import { openDesignEditor } from './designEditor';
-import { readOnlyQuery } from '../../sim/readOnlyQuery';
 import { requestSimRefresh } from '../../simworker/refresh';
 
 /** Human label for a built-object role: 'None' for Undefined (GameText.txt
@@ -850,11 +849,6 @@ function createShipsAndBasesList(opts: ShipsAndBasesListOptions): OpenState {
         return g;
     }
     function buildPage(): void {
-        // Read-only: the sim queries this runs must not write the game (sim/readOnlyQuery.ts; docs/sim-worker.md §9 chunk 6).
-        return readOnlyQuery(() => buildPageQuery());
-    }
-
-    function buildPageQuery(): void {
         const o = current.length === 1 ? current[0].stellarObject : null;
         const bo = o !== null && !(o instanceof Habitat) ? (o as BuiltObject) : null;
         let key = `${activeTab}|`;
@@ -1058,11 +1052,6 @@ function createShipsAndBasesList(opts: ShipsAndBasesListOptions): OpenState {
 
     // --- Selection → detail, name, map, tabs, buttons (ctlBuiltObjectList_SelectionChanged) ---
     function updateDetail(): void {
-        // Read-only: the sim queries this runs must not write the game (sim/readOnlyQuery.ts; docs/sim-worker.md §9 chunk 6).
-        return readOnlyQuery(() => updateDetailQuery());
-    }
-
-    function updateDetailQuery(): void {
         const scroll = detailContent.querySelector('.sel-scroll');
         const top = scroll?.scrollTop ?? 0;
         if (current.length === 0) {
@@ -1085,11 +1074,6 @@ function createShipsAndBasesList(opts: ShipsAndBasesListOptions): OpenState {
     }
 
     function drawMap(): void {
-        // Read-only: the sim queries this runs must not write the game (sim/readOnlyQuery.ts; docs/sim-worker.md §9 chunk 6).
-        return readOnlyQuery(() => drawMapQuery());
-    }
-
-    function drawMapQuery(): void {
         const dpr = Math.min(3, window.devicePixelRatio || 1) * Math.max(1, win.scale);
         const N = MAP.size;
         mapCanvas.width = Math.round(N * dpr);
@@ -1192,11 +1176,6 @@ function createShipsAndBasesList(opts: ShipsAndBasesListOptions): OpenState {
 
     /** Rebuild the rows from the sim (after a filter change or an applied command), keeping the selection. */
     function refresh(): void {
-        // Read-only: the sim queries this runs must not write the game (sim/readOnlyQuery.ts; docs/sim-worker.md §9 chunk 6).
-        return readOnlyQuery(() => refreshQuery());
-    }
-
-    function refreshQuery(): void {
         rows = shipsAndBasesRows(empire, opts.selected, filter);
         const keep = grid.selectedRows.map((r) => r.stellarObject);
         grid.setRows(rows);

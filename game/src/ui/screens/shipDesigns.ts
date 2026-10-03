@@ -68,7 +68,6 @@ import {
     type OriginalWindow,
 } from '../originalWindow';
 import { componentImageUrl, gt, maximumSizeText } from './designPanelsModel';
-import { readOnlyQuery } from '../../sim/readOnlyQuery';
 import { requestSimRefresh } from '../../simworker/refresh';
 export { isPrivateDesignSubRole, toggleDesignObsolete, toggleDesignAutoRetrofit };
 
@@ -575,11 +574,6 @@ function createShipDesigns(opts: ShipDesignsOptions): OpenState {
     detail.appendChild(detailComps);
 
     function renderDetail(): void {
-        // Read-only: the sim queries this runs must not write the game (sim/readOnlyQuery.ts; docs/sim-worker.md §9 chunk 6).
-        return readOnlyQuery(() => renderDetailQuery());
-    }
-
-    function renderDetailQuery(): void {
         const sel = grid.selectedAll;
         const design = sel.length === 1 ? sel[0].design : grid.selected?.design ?? null;
         const enable = (b: HTMLButtonElement, on: boolean): void => { b.disabled = !on; };
@@ -622,11 +616,6 @@ function createShipDesigns(opts: ShipDesignsOptions): OpenState {
     }
 
     function refreshList(selectDesign: Design | null = null): void {
-        // Read-only: the sim queries this runs must not write the game (sim/readOnlyQuery.ts; docs/sim-worker.md §9 chunk 6).
-        return readOnlyQuery(() => refreshListQuery(selectDesign));
-    }
-
-    function refreshListQuery(selectDesign: Design | null = null): void {
         const designs = filterDesigns(player, filterIndex, typeFilterIndex);
         const prev = selectDesign ?? grid.selected?.design ?? null;
         grid.setRows(designs.map((d) => designRow(d, player, galaxy)));

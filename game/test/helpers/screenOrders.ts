@@ -34,7 +34,6 @@ import { fleetTemplateDesignGroups } from '../../src/ui/screens/fleetDesignsTab'
 import { empireSummaryExtra, modLayerSummaryRows } from '../../src/ui/screens/empireSummary';
 import { computeEconomyBreakdown } from '../../src/sim/economyBreakdown';
 import { moneyPanelIncome } from '../../src/sim/treasury';
-import { readOnlyQuery } from '../../src/sim/readOnlyQuery';
 import { colonyGridRow, colonyAttitudeSummary } from '../../src/ui/screens/coloniesScreen';
 import { generateBenefitDetail, resolveNodeDescription } from '../../src/ui/screens/researchBenefits';
 
@@ -331,8 +330,8 @@ export function screenOrders(): ScreenOrder[] {
 }
 
 /**
- * Run the screens' read paths on (`g`, `p`) — the models the screens render from and the sim queries they call (in
- * the scope the screens run them in) — for every colony / ship / fleet / design / tech; returns what ran.
+ * Run the screens' read paths on (`g`, `p`) — the models the screens render from and the sim queries they call — for
+ * every colony / target / tech; returns what ran.
  */
 export function screenReads(g: Galaxy, p: Empire): string[] {
     const ran: string[] = [];
@@ -342,8 +341,8 @@ export function screenReads(g: Galaxy, p: Empire): string[] {
     };
     for (const h of p.colonies) {
         if (h == null) continue;
-        run(`colony row ${h.name}`, () => readOnlyQuery(() => colonyGridRow(g, h)));
-        run(`colony attitude ${h.name}`, () => readOnlyQuery(() => colonyAttitudeSummary(g, h)));
+        run(`colony row ${h.name}`, () => colonyGridRow(g, h));
+        run(`colony attitude ${h.name}`, () => colonyAttitudeSummary(g, h));
         run(`recruit options ${h.name}`, () => recruitOptions(g, p, h));
         run(`buildable facilities ${h.name}`, () => resolveBuildableFacilities(g, h));
         run(`charter button ${h.name}`, () => charterButtonState(g, p, h));
@@ -352,14 +351,14 @@ export function screenReads(g: Galaxy, p: Empire): string[] {
     run('troop filters', () => troopFilterOptions(p));
     run('troop maintenance', () => troopListAnnualMaintenance(troopsOf(p), p));
     run('build order rows', () => buildOrderRows(p, g, new Map(), buildOrderAdvisorTargets(g, p)));
-    run('money panel (build order, read-only)', () => readOnlyQuery(() => moneyPanelIncome(g, p)));
+    run('money panel', () => moneyPanelIncome(g, p));
     run('build queue rows', () => buildQueueRows(g, p));
     run('fleet orders', () => fleetOrderRows(p));
     run('construction jobs', () => constructionJobRows(g, p));
     run('fleet template groups', () => fleetTemplateDesignGroups(p));
-    run('economy breakdown', () => readOnlyQuery(() => computeEconomyBreakdown(g, p)));
-    run('summary extra', () => readOnlyQuery(() => empireSummaryExtra(p)));
-    run('mod-layer summary', () => readOnlyQuery(() => modLayerSummaryRows(g, p)));
+    run('economy breakdown', () => computeEconomyBreakdown(g, p));
+    run('summary extra', () => empireSummaryExtra(p));
+    run('mod-layer summary', () => modLayerSummaryRows(g, p));
     run('charters', () => charterRows(g, p));
     for (const mode of ['colonies', 'resourcesyou', 'resourcesgalaxy', 'resourcessupply'] as const) {
         run(`expansion ${mode}`, () => {
@@ -372,7 +371,7 @@ export function screenReads(g: Galaxy, p: Empire): string[] {
         });
     }
     run('deficient resources', () => deficientResourceRows(g, p));
-    for (const n of p.research.techTree.slice(0, 200)) run(`tech ${n.def.name}`, () => readOnlyQuery(() => [resolveNodeDescription(g, p.research, n), generateBenefitDetail(g, p, p.research, n)]));
+    for (const n of p.research.techTree.slice(0, 200)) run(`tech ${n.def.name}`, () => [resolveNodeDescription(g, p.research, n), generateBenefitDetail(g, p, p.research, n)]);
     void defaultEmpirePolicy;
     return ran;
 }

@@ -24,7 +24,6 @@ import { setGameEndHandler, doGameEnd } from '../sim/victory';
 import { reviewAchievements } from '../sim/achievements';
 import { registerLocationPingedHook } from '../sim/story/eventActions';
 import { SimFrameBudget } from '../simFrameBudget';
-import { checkAgeVariableIncome } from '../sim/treasury';
 import { GalaxySyncSource } from './replicaGalaxy';
 import { TRADE_FLOWS_SIDE_KEY, TradeFlowSyncSource } from './tradeFlowSync';
 import { installRimAtmosphereData } from '../render/rimAtmosphereWiring';
@@ -39,13 +38,6 @@ export interface SimHostOptions {
     /** Wall clock (performance.now in the worker; a fake one in tests). */
     now?: () => number;
     sync?: Partial<Pick<ReplicaEncoderOptions, 'coldBudgetMs' | 'coldMaxSets' | 'markBudgetMs'>>;
-    /**
-     * Run the money panel's CheckAgeVariableIncome for the player after each tick that stepped (treasury.ts
-     * moneyPanelIncome): in-thread the HUD's money panel does it (the C# UI does, Main.Part11.cs 841); on a replica the
-     * screens' copy is read-only, so the worker does it on the authoritative game. Off in the determinism tests, whose
-     * in-thread reference has no HUD.
-     */
-    playerIncomeAging?: boolean;
 }
 
 /**
@@ -76,7 +68,6 @@ export class SimHost {
     /** Something changed outside a step (a command, the clock): send a delta even if no step ran. */
     private dirty = true;
     private settleUntilCycle = 0;
-    private readonly playerIncomeAging: boolean;
     /**
      * Objects to compare before this tick's delta (compareNow): what the commands applied at this tick's boundary
      * touched (arguments, results, the issuing empire) and what refresh requests named — so their changes reach the
@@ -92,7 +83,6 @@ export class SimHost {
     constructor(readonly game: Game, time: GalaxyTime, private readonly startOptions: StartGameOptions, opts: SimHostOptions = {}) {
         this.galaxy = game.galaxy;
         this.now = opts.now ?? (() => performance.now());
-        this.playerIncomeAging = opts.playerIncomeAging ?? false;
         // The clock is a view over galaxy.nowMs, as in-thread (simLoop.ts createSimLoop).
         this.time = time;
         time.bindGalaxy(this.galaxy);
@@ -315,8 +305,6 @@ export class SimHost {
                 noteSimView(this.galaxy, false);
             }
             steps = this.budget.run(driver, realDtMs, time.speed, time.paused);
-            const player = this.galaxy.playerEmpire;
-            if (this.playerIncomeAging && steps > 0 && player !== null && player.pirateEmpireBaseHabitat === null) checkAgeVariableIncome(this.galaxy, player);
         } catch (err) {
             // As in-thread: drop the half-drained tick queue, pause, and tell the player.
             console.error('Simulation error (paused):', err);

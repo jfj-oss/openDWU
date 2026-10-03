@@ -4,10 +4,11 @@
 //   Summary), issued on the REPLICA with the screen's own argument shapes (by-value DesignDraft, EmpirePolicy,
 //   ShipAction, troop loadouts, …), gives the in-thread state digest and command log, tick for tick, and its onApplied
 //   reply resolves to the matching replica objects;
-// - a reply runs only once the replica holds what the command changed (compareNow in the worker + the reply waiting
-//   for its delta's cold part), and a refresh request brings an object's cold data at once;
+// - a reply sees what the command changed (the worker compares what it touched into the reply's delta, and the main
+//   thread applies the delta through its cold part first), and a refresh request brings an object's cold data at once;
 // - the screens' read paths (their models and the sim queries they run) leave the replica exactly as the worker's
-//   game: no write, no RNG draw.
+//   game: no write, no RNG draw (a replica galaxy is read-only for the sim's lazily-creating lookups,
+//   sim/readOnlyQuery.ts; in-thread they keep writing as the C# UI does).
 import { beforeAll, describe, expect, it } from 'vitest';
 import { loadGameDataFs } from './helpers/loadGameDataFs';
 import { cachedTickGame } from './helpers/gameCache';
@@ -26,7 +27,8 @@ import { SimHost } from '../src/simworker/simHost';
 import { SimClientCore } from '../src/simworker/clientCore';
 import type { ToWorker } from '../src/simworker/protocol';
 import { isReplicaGalaxy, requestSimRefresh } from '../src/simworker/refresh';
-import { readOnlyQuery } from '../src/sim/readOnlyQuery';
+import { markReadOnlyGalaxy } from '../src/sim/readOnlyQuery';
+import { installReplicaWriteDetector } from '../src/simworker/writeDetector';
 import { moneyPanelIncome } from '../src/sim/treasury';
 import { screenOrders, screenReads, type ScreenOrder } from './helpers/screenOrders';
 
@@ -188,7 +190,7 @@ describe('sim worker chunk 6: empire-management screen orders through the host',
 });
 
 describe('sim worker chunk 6: replies and refreshes see current cold data', () => {
-    it('a rename reply sees the new name (compareNow + the reply waiting for its cold part)', () => {
+    it('a rename reply sees the new name (compared into the reply\'s delta, applied through it)', () => {
         const game = cachedTickGame(gameData);
         const time = new GalaxyTime();
         time.paused = false;
@@ -257,7 +259,10 @@ describe('sim worker chunk 6: screen reads leave the replica untouched', () => {
         const rg = w.client.galaxy;
         const before = JSON.stringify(galaxyToJSON(rg));
         expect(before === JSON.stringify(galaxyToJSON(game.galaxy))).toBe(true);
+        // Chunk 0's replica write detector watches the replica too (it names the Class.field of any write).
+        const detector = installReplicaWriteDetector(w.client.replica);
         const ran = screenReads(rg, w.client.game.playerEmpire);
+        expect(detector.checkAll().map((x) => `${x.key} ${x.detail}`)).toEqual([]);
         expect(ran.length).toBeGreaterThan(10);
         const after = JSON.stringify(galaxyToJSON(rg));
         if (after !== before) {
@@ -272,24 +277,16 @@ describe('sim worker chunk 6: screen reads leave the replica untouched', () => {
         w.host.dispose();
     }, 600000);
 
-    it('in-thread, the same reads (in the scope the screens run them) leave the game untouched', () => {
-        const game = cachedTickGame(gameData, { seconds: 30 });
-        const g = game.galaxy;
-        const before = JSON.stringify(galaxyToJSON(g));
-        const digest = stateDigest(g);
-        expect(screenReads(g, game.playerEmpire).length).toBeGreaterThan(10);
-        expect(stateDigest(g)).toBe(digest);
-        expect(JSON.stringify(galaxyToJSON(g)) === before).toBe(true);
-    }, 600000);
-
-    it('without the read-only scope those queries do write (the scope is what keeps the screens clean)', () => {
+    it('only a replica galaxy is read-only: in-thread the same queries still write as the C# does', () => {
         const game = cachedTickGame(gameData, { seconds: 30 });
         const g = game.galaxy;
         const p = game.playerEmpire;
         // The money panel's CheckAgeVariableIncome switches the empire to averaged variable income on first use.
         expect(p.useAveragedVariableIncome).toBe(false);
-        readOnlyQuery(() => moneyPanelIncome(g, p));
+        markReadOnlyGalaxy(g);
+        moneyPanelIncome(g, p);
         expect(p.useAveragedVariableIncome).toBe(false);
+        markReadOnlyGalaxy(g, false);
         moneyPanelIncome(g, p);
         expect(p.useAveragedVariableIncome).toBe(true);
     }, 600000);

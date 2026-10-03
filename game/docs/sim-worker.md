@@ -512,29 +512,35 @@ Each chunk is independent. All chunks share the same test approach:
   queries the planner runs are write-free on the replica.
 - Test: per screen, the command it issues through the host gives the in-thread digest; screenshots in both modes.
 - **Done:**
-  - Every order of the screens goes through `issuePlayerCommand`. The Empire Policy panel now issues its automation
-    combos as `setEmpireControl` commands (it wrote `Empire.control*` directly before, which also bypassed the log
-    in-thread).
-  - Write-free reads: some C# lookups create what they look up (`obtainDiplomaticRelation`,
-    `obtainPirateRelation`, `obtainEmpireEvaluation`, `scenarioState`, `wondersBuilt`), and some money queries age
-    income on read (`thisYearsSpacePortIncome`, `thisYearsResortIncome`, `checkAgeVariableIncome`, the NaN tax
-    recalculation). Inside `sim/readOnlyQuery.ts readOnlyQuery`, and always on a replica galaxy (`markReadOnlyGalaxy`,
-    clientCore), they answer the same value without writing. The screens run their renders in that scope, and the
-    planner runs its AI queries in it. The sim never opens the scope, so `repin` is unchanged.
-  - The money panel's yearly variable-income aging runs in the worker for the player (`SimHostOptions.
-    playerIncomeAging`), since the replica's money panel is read-only.
+  - Every order of the screens goes through `issuePlayerCommand`. On a replica the Empire Policy panel issues its
+    automation combos as `setEmpireControl` commands. In-thread it still writes `Empire.control*` directly, as the C#
+    method_597 does.
+  - Write-free reads on a replica. Some C# lookups create what they look up (`obtainDiplomaticRelation`,
+    `obtainPirateRelation`, `obtainEmpireEvaluation`, `scenarioState`, `wondersBuilt`), and some money reads age the
+    income they read (`thisYearsSpacePortIncome`, `thisYearsResortIncome`, `checkAgeVariableIncome`, the NaN tax
+    recalculation). On a galaxy marked read-only (`sim/readOnlyQuery.ts markReadOnlyGalaxy`; clientCore marks the
+    replica) they return the same value without writing. That covers every main-thread caller, not only the screens:
+    the planner's AI queries, the approval and tax queries, the charter checks, the HUD. Nothing else is ever
+    marked, so in-thread play and `repin` are unchanged.
+  - The Build Order's cashflow figure uses chunk 5's `moneyPanel` query (`simworker/simQuery.ts`), so the money
+    panel's CheckAgeVariableIncome runs in the worker.
   - The replica gets the BaconSettings.txt statics (prices, maintenance) at boot.
-  - Tests: `test/simWorkerScreens.test.ts`, with the script in `test/helpers/screenOrders.ts`. It runs 29 screen
-    orders through the host against the in-thread loop (digest, log and replies), checks fresh replies and refreshes,
-    and checks that the screens' reads leave the replica and the in-thread game unchanged. Browser:
-    `scripts/simworker-screens.mjs` opens every screen with the game paused, compares the replica digest with the
-    worker's, and saves a design through the editor.
+  - Tests: `test/simWorkerScreens.test.ts`, with the script in `test/helpers/screenOrders.ts`.
+    - 29 screen orders run through the host against the in-thread loop; the digest, the log and the replies match.
+    - Fresh replies and refresh requests are checked.
+    - The screens' reads, run on a replica, leave it equal to the worker's game; chunk 0's write detector finds no
+      write.
+  - Browser: `scripts/simworker-screens.mjs` opens every screen with the game paused, with `detectWrites=1`, and
+    compares the replica digest with the worker's. It then renames the empire and saves a design through the editor.
 - **Still open:**
   - A reply whose result fails to encode is dropped (console warning only). The await-style callers (recruit, the
     editor's Save) then wait forever.
   - The Galactopedia's `loadGameData` reloads the global GameText table, which drops scenario text added on the main
     thread.
   - Lazily added `declare`d class fields reach the replica only through `compareNow` (chunk 9 / 0).
+  - In worker mode, the records the in-thread UI creates lazily are not created at all. Those are the NotMet relations
+    and evaluations made by the screens' queries. The worker does not run them; in-thread they happen at UI time and
+    are not journaled.
 
 **Chunk 7 — diplomacy, intelligence and politics.**
 - Files: `ui/screens/diplomacyScreen.ts`, `diplomacyRelationsView.ts`, `empireIntel.ts`, `empiresList.ts`,

@@ -93,7 +93,6 @@ import {
     type GridColumn,
     type OriginalWindow,
 } from '../originalWindow';
-import { readOnlyQuery } from '../../sim/readOnlyQuery';
 import { requestSimRefresh } from '../../simworker/refresh';
 
 /** GameText lookup with the English text as fallback (tests run without GameText loaded). */
@@ -861,11 +860,6 @@ function createColoniesScreen(opts: ColoniesScreenOptions): OpenState {
 
     // --- Refresh ------------------------------------------------------------------------------------------------------
     function refreshGrid(): void {
-        // Read-only: the sim queries this runs must not write the game (sim/readOnlyQuery.ts; docs/sim-worker.md §9 chunk 6).
-        return readOnlyQuery(() => refreshGridQuery());
-    }
-
-    function refreshGridQuery(): void {
         const rows = empire.colonies.map((h) => colonyGridRow(galaxy, h));
         grid.setRows(rows);
         if (selected !== null && !empire.colonies.includes(selected)) selected = empire.colonies[0] ?? null;
@@ -875,11 +869,6 @@ function createColoniesScreen(opts: ColoniesScreenOptions): OpenState {
 
     let lastMapSystem: Habitat | null | undefined;
     function refreshDetail(selectionChanged: boolean): void {
-        // Read-only: the sim queries this runs must not write the game (sim/readOnlyQuery.ts; docs/sim-worker.md §9 chunk 6).
-        return readOnlyQuery(() => refreshDetailQuery(selectionChanged));
-    }
-
-    function refreshDetailQuery(selectionChanged: boolean): void {
         const h = selected;
         const sys = h ? galaxy.determineHabitatSystemStar(h) : null;
         if (sys !== lastMapSystem) {
@@ -902,11 +891,6 @@ function createColoniesScreen(opts: ColoniesScreenOptions): OpenState {
     }
 
     function renderInfo(): void {
-        // Read-only: the sim queries this runs must not write the game (sim/readOnlyQuery.ts; docs/sim-worker.md §9 chunk 6).
-        return readOnlyQuery(() => renderInfoQuery());
-    }
-
-    function renderInfoQuery(): void {
         const h = selected;
         if (!h) {
             infoBox.replaceChildren();
@@ -931,11 +915,6 @@ function createColoniesScreen(opts: ColoniesScreenOptions): OpenState {
     }
 
     function renderPage(force: boolean): void {
-        // Read-only: the sim queries this runs must not write the game (sim/readOnlyQuery.ts; docs/sim-worker.md §9 chunk 6).
-        return readOnlyQuery(() => renderPageQuery(force));
-    }
-
-    function renderPageQuery(force: boolean): void {
         // Keep an open drop-down / focused field alive between timer refreshes.
         if (!force && page.contains(document.activeElement)) return;
         const scrolls = [...page.querySelectorAll<HTMLElement>('.ow-scroll')].map((s) => s.scrollTop);
@@ -1393,11 +1372,6 @@ function createColoniesScreen(opts: ColoniesScreenOptions): OpenState {
     }
 
     function refreshAll(): void {
-        // Read-only: the sim queries this runs must not write the game (sim/readOnlyQuery.ts; docs/sim-worker.md §9 chunk 6).
-        return readOnlyQuery(() => refreshAllQuery());
-    }
-
-    function refreshAllQuery(): void {
         if (win.closed) return;
         refreshGrid();
         refreshDetail(false);

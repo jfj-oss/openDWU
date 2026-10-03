@@ -29,16 +29,8 @@ import { resolveDescription } from '../../sim/messages';
 import { formatNet, tryGetText } from '../../sim/textResolver';
 import { resolvePlanetaryFacilityLines } from '../../sim/construction/facilityText';
 import { calculatePlanetaryFacilityCost } from '../../sim/construction/facilities';
+import { checkWonderBuiltDef } from '../../sim/construction/wonders';
 import { REAL_SECONDS_IN_GALACTIC_YEAR } from '../../sim/galaxyTime';
-
-/**
- * Galaxy.5.cs 322 CheckWonderBuilt without its first-use allocation (construction/wonders.ts checkWonderBuilt creates
- * galaxy.wondersBuilt when it is still null): a screen must not write the game, which in worker mode is a read-only
- * replica (docs/sim-worker.md §9 chunk 6). Null means no wonder has been built yet.
- */
-function wonderAlreadyBuilt(galaxy: Galaxy, wonder: { facilityId: number }): boolean {
-    return galaxy.wondersBuilt?.[wonder.facilityId] ?? false;
-}
 
 // -------------------------------------------------------------------------------------------------------------------
 // Text and .NET number formats
@@ -675,7 +667,7 @@ export function generateBenefitDetail(galaxy: Galaxy | null, empire: Empire | nu
         const costText = '  (' + gt('X credits', formatGroupedFacility(cost)) + ')';
         if (facilityType(facility) === PlanetaryFacilityType.Wonder) {
             lines.descriptions[0] = gt('Wonder') + ': ' + lines.descriptions[0] + costText;
-            if (galaxy !== null && wonderAlreadyBuilt(galaxy, facility)) lines.descriptions[0] = gt('Wonder Already Built').toUpperCase() + '\n' + lines.descriptions[0];
+            if (galaxy !== null && checkWonderBuiltDef(galaxy, facility)) lines.descriptions[0] = gt('Wonder Already Built').toUpperCase() + '\n' + lines.descriptions[0];
         } else {
             lines.descriptions[0] = gt('Planetary Facility') + ': ' + lines.descriptions[0] + costText;
         }

@@ -44,7 +44,6 @@ import { countResourceSourcesForEmpire, fastFindNearestSpacePort } from '../../s
 import { BuiltObjectMissionPriority, BuiltObjectMissionType, COORD_UNSET_DOUBLE } from '../../sim/missions/mission';
 import { ShipAction } from '../../sim/player/shipAction';
 import { issuePlayerCommand } from '../../sim/player/playerCommands';
-import { readOnlyQuery } from '../../sim/readOnlyQuery';
 import { findNewestCanBuild } from '../../sim/designGeneration';
 import { canBuiltObjectColonizeHabitat } from '../../sim/construction/constructionQueue';
 import { galaxyResourceCurrentPrices } from '../../sim/design';
@@ -247,8 +246,7 @@ export function plannerStatus(s: PlannerStatusInput): PlannerStatus {
 // CheckNearPirateBase(Habitat, x, y) is the overload with scanRange =
 // (int)(MaxSolarSystemSize * 2.1) and empireToExclude = null.
 export function plannerStatusInput(galaxy: Galaxy, player: Empire, habitat: Habitat, forColonization: boolean): PlannerStatusInput {
-    // Read-only: the territory / danger checks' relation lookups must not add relations (sim/readOnlyQuery.ts).
-    return readOnlyQuery(() => ({
+    return {
         forColonization,
         inRange: forColonization ? canEmpireColonizeHabitatRange(galaxy, player, habitat) : true,
         specialRuins: ruinHasSpecialBonus(habitat.ruin),
@@ -266,7 +264,7 @@ export function plannerStatusInput(galaxy: Galaxy, player: Empire, habitat: Habi
         inStorm: checkInStorm(galaxy, habitat.xpos, habitat.ypos),
         dangerous: checkWhetherHabitatIsDangerous(galaxy, player, habitat),
         category: habitat.category,
-    }));
+    };
 }
 
 export interface ExpansionTarget {
@@ -277,16 +275,6 @@ export interface ExpansionTarget {
 
 // Main.Part4.cs:2364 method_532: the per-mode target list.
 export function expansionTargets(
-    mode: ExpansionMode,
-    galaxy: Galaxy,
-    player: Empire,
-    opts: { includeLowQuality: boolean; includeAsteroids: boolean },
-): ExpansionTarget[] {
-    // Read-only: the AI target queries' territory checks must not add relations (sim/readOnlyQuery.ts).
-    return readOnlyQuery(() => expansionTargetsQuery(mode, galaxy, player, opts));
-}
-
-function expansionTargetsQuery(
     mode: ExpansionMode,
     galaxy: Galaxy,
     player: Empire,
@@ -660,7 +648,7 @@ export interface ResourceRow {
 // Port of Main.Part11.cs:2393 (IdentifyDeficientEmpireResources(true, 0.001)) + ResourceListView.cs BindData.
 export function deficientResourceRows(galaxy: Galaxy, player: Empire): ResourceRow[] {
     const prices = galaxyResourceCurrentPrices(galaxy);
-    return readOnlyQuery(() => identifyDeficientEmpireResources(galaxy, player, true, 0.001)).map((r) => {
+    return identifyDeficientEmpireResources(galaxy, player, true, 0.001).map((r) => {
         const def = galaxy.resourceSystem.resources[r.resourceId];
         const you = calculateResourceDemand(galaxy, r.resourceId, player);
         const all = calculateResourceDemand(galaxy, r.resourceId, null);
@@ -695,8 +683,7 @@ export function plannerAvailableShips(galaxy: Galaxy, player: Empire, mode: Expa
             return all.filter((b) => b.subRole === BuiltObjectSubRole.ConstructionShip && b.builtAt == null && shipIdleForPlanner(b));
         case 'colonies':
             if (habitat === null) return [];
-            // Read-only: the colonize check's territory lookups must not add relations (sim/readOnlyQuery.ts).
-            return readOnlyQuery(() => all.filter((b) => b.subRole === BuiltObjectSubRole.ColonyShip && shipIdleForPlanner(b) && canBuiltObjectColonizeHabitat(galaxy, player, b, habitat).result));
+            return all.filter((b) => b.subRole === BuiltObjectSubRole.ColonyShip && shipIdleForPlanner(b) && canBuiltObjectColonizeHabitat(galaxy, player, b, habitat).result);
         default:
             return [];
     }
@@ -1139,10 +1126,6 @@ function createExpansionPlanner(opts: ExpansionPlannerOptions): OpenState {
     }
 
     function inputsFor(row: ExpansionRow | null): { action: ButtonState; build: ButtonState } {
-        return readOnlyQuery(() => inputsForQuery(row));
-    }
-
-    function inputsForQuery(row: ExpansionRow | null): { action: ButtonState; build: ButtonState } {
         const h = row?.habitat ?? null;
         const assigned = row !== null && row.target.assignedShip !== null;
         const colonyDesign = findNewestCanBuild(player.designs, BuiltObjectSubRole.ColonyShip, player);
@@ -1164,11 +1147,6 @@ function createExpansionPlanner(opts: ExpansionPlannerOptions): OpenState {
     }
 
     function refreshButtons(): void {
-        // Read-only: the sim queries this runs must not write the game (sim/readOnlyQuery.ts; docs/sim-worker.md §9 chunk 6).
-        return readOnlyQuery(() => refreshButtonsQuery());
-    }
-
-    function refreshButtonsQuery(): void {
         const row = selectedRow();
         const { action, build } = inputsFor(row);
         setButtonLabel(actionBtn, action.text);
@@ -1192,11 +1170,6 @@ function createExpansionPlanner(opts: ExpansionPlannerOptions): OpenState {
     }
 
     function refreshAll(): void {
-        // Read-only: the sim queries this runs must not write the game (sim/readOnlyQuery.ts; docs/sim-worker.md §9 chunk 6).
-        return readOnlyQuery(() => refreshAllQuery());
-    }
-
-    function refreshAllQuery(): void {
         bindTargets();
         bindShips();
         refreshButtons();
@@ -1212,11 +1185,6 @@ function createExpansionPlanner(opts: ExpansionPlannerOptions): OpenState {
     backdrop.src = BACKDROP_URLS[0];
 
     function drawMap(): void {
-        // Read-only: the sim queries this runs must not write the game (sim/readOnlyQuery.ts; docs/sim-worker.md §9 chunk 6).
-        return readOnlyQuery(() => drawMapQuery());
-    }
-
-    function drawMapQuery(): void {
         const W = 275;
         const dpr = Math.min(3, window.devicePixelRatio || 1) * Math.max(1, win.scale);
         const px = Math.round(W * dpr);
@@ -1338,7 +1306,7 @@ function createExpansionPlanner(opts: ExpansionPlannerOptions): OpenState {
         const h = row.habitat;
         if (mode === 'colonies') {
             const design = findNewestCanBuild(player.designs, BuiltObjectSubRole.ColonyShip, player);
-            if (design === null || !readOnlyQuery(() => canEmpireColonizeHabitat(galaxy, player, player, h, player.colonizableHabitatTypesForEmpire(), design))) return;
+            if (design === null || !canEmpireColonizeHabitat(galaxy, player, player, h, player.colonizableHabitatTypesForEmpire(), design)) return;
             issuePlayerCommand(galaxy, player, 'buildNewShips', [[design], [1]], (r) => {
                 const ship = r.built[0];
                 if (!r.ok || ship === undefined) {
