@@ -4,6 +4,10 @@
 // sim's gameText() encodings (textResolver.ts).
 // The conversation buttons are conversationActions.ts (the option lists of Main.Part9.cs:46 method_238); their sim effects
 // go through issuePlayerCommand. The popup card's text and a Go to button jump to the message's subject (messageGoto.ts).
+// The windows follow the original: the card is pnlMessagePopup (MessagePopup.cs: 335 × 280, the message picture over the
+// text), a conversation opens pnlDiplomacyTalk (Main.Part8.cs:449 method_296: 430 × 778, flag + name, race picture,
+// the message in the response panel, the method_238 options as links), an event pnlEventMessage (Main.Part4.cs:115
+// method_513: 420 × 660, picture, title, text, Investigate / Leave alone or Close / Go to Event Location).
 // TODO(port): the original's reply text panel after a choice (Main.Part10.cs:3590 method_230): a toast summarises it here
 
 import { closeEventSting, playDiplomacyMood, playMessageSounds } from '../audio/gameAudio'; // [audio]
@@ -16,7 +20,7 @@ import type { Galaxy } from '../sim/galaxy';
 import type { ConversationReplyPart } from '../sim/player/conversationReplies';
 import { galaxyStarDate } from '../sim/tick/simTime';
 import { resolveStarDateDescription } from '../sim/galaxyTime';
-import { resolveGameText } from '../sim/textResolver';
+import { resolveGameText, tryGetText } from '../sim/textResolver';
 import { isProposalValid, proposalLabel, relationTypeLabel, setDiplomacyMessageExpiry, toggleDiplomacyScreen } from './screens/diplomacyScreen';
 import { issuePlayerCommand } from '../sim/player/playerCommands';
 // [proposals] begin
@@ -26,7 +30,15 @@ import { showToast } from './toast';
 import { layerVoiceOf } from '../llm/voiceJob'; // [llm] 19s-2
 import { diplomatVoiceConfig, rememberVoicedMessage, voiceDiplomatReply, voicedLineToggle, voicedMessageText, voicingIndicator } from './diplomatVoice';
 // [diplovoice] end
-import { rgbCss } from './hud';
+import { COLORS, FONT, el, glassButton, gradientPanel, openOriginalWindow, place, rgbCss, text, type OriginalWindow } from './originalWindow';
+import { flagImage, raceImage } from './screens/diplomacyScreen';
+import { diplomacyBackgroundColor } from './screens/diplomacyRelationsView';
+import { empireFlagUrl } from './selectionInfoView';
+import { habitatImageUrl, shipImageUrl } from './selectionInfo';
+import { landscapeImageUrl } from './screens/intelligence';
+import { characterPortraitUrl } from './characterPortrait';
+import { messageCardFlagEmpire, messageCardText, messageImageUrl, messagePicture, type MessagePicture } from './messagePicture';
+import { CARD, CARD_STRIP_H, EVENT, TALK, cardHeight, cardPosition, eventButtonRects, eventPanelLayout } from './messageWindowLayout';
 import { conversationActions, pirateOfferPriceLine, type ConversationAction } from './conversationActions';
 import { pirateProtectionPriceText } from './pirateProtectionPrice';
 import { goToMessage, messageGoToTarget } from './messageGoto';
@@ -160,8 +172,6 @@ export interface MessagePopupsOptions {
 
 interface Installed {
     timer: ReturnType<typeof setInterval>;
-    popup: HTMLElement;
-    dialogRoot: HTMLElement;
     queue: ConversationEntry[];
     seen: WeakSet<EmpireMessage>;
     closeDialog: () => void;
@@ -171,6 +181,8 @@ interface Installed {
     openDialog: (entry: ConversationEntry) => void;
     openKey: () => EmpireMessage | null;
     // [popupstubs] end
+    showEvent: (p: EventPopup) => void;
+    closeEvent: () => void;
 }
 
 let installed: Installed | null = null;
@@ -232,17 +244,81 @@ export function openMessageKey(): EmpireMessage | null {
 }
 // [popupstubs] end
 
-function el(tag: string, className: string, text?: string): HTMLElement {
-    const e = document.createElement(tag);
-    e.className = className;
-    if (text !== undefined) e.textContent = text;
-    return e;
+// ---------------------------------------------------------------------------------------------------------------
+// The windows (DOM). Built on originalWindow.ts: the card is a headerless window holding MessagePopup's GradientPanel,
+// the conversation is pnlDiplomacyTalk (as the Diplomacy screen's talk panel), events are pnlEventMessage.
+// ---------------------------------------------------------------------------------------------------------------
+
+/** TextResolver.GetText for a plain key (the key itself when GameText is not loaded). */
+function gt(key: string): string {
+    return tryGetText(key) ?? key;
 }
 
-function swatch(sender: Empire | null): HTMLElement {
-    const s = el('span', 'message-swatch');
-    s.style.background = sender ? rgbCss(sender.mainColor) : 'transparent';
-    return s;
+/** A picture box: an <img> (hidden when the file is missing). */
+function pictureImg(url: string | null, className = 'msg-pic-img'): HTMLImageElement {
+    const img = el('img', className);
+    img.alt = '';
+    img.draggable = false;
+    if (url !== null) img.src = url;
+    else img.style.visibility = 'hidden';
+    img.addEventListener('error', () => (img.style.visibility = 'hidden'));
+    return img;
+}
+
+/** The DOM for a MessagePopup _MainImage (messagePicture.ts), capped at 240 × 180 like LimitImageSize. */
+function messagePictureElement(p: MessagePicture, galaxy: Galaxy): HTMLElement {
+    const box = el('div', 'msg-pic');
+    switch (p.kind) {
+        case 'url': {
+            box.appendChild(pictureImg(p.url));
+            // ImprintFlag: the sender's flag at (65, 30) 100 × 60 on the (231 × 180) treaty picture.
+            if (p.flag !== null) box.appendChild(place(flagImage(p.flag, 100, 60, 'msg-pic-flag'), 65, 30, 100, 60));
+            if (p.striped) box.classList.add('msg-pic-striped');
+            break;
+        }
+        case 'research': {
+            // The 170 × 134 overlay: researchbreakthrough.png (0, 0) 79 × 134, the benefit × 2.5 right-aligned.
+            box.classList.add('msg-pic-research');
+            box.appendChild(place(pictureImg(messageImageUrl(8)), 0, 0, 79, 134));
+            const pic = pictureImg(p.url, `msg-pic-benefit${p.tile ? ' msg-pic-tile' : ''}`);
+            pic.addEventListener('load', () => {
+                const k = p.tile ? 2.5 : Math.min(2.5, 120 / Math.max(1, pic.naturalWidth, pic.naturalHeight));
+                const w = Math.trunc(pic.naturalWidth * k);
+                const h = Math.trunc(pic.naturalHeight * k);
+                place(pic, 170 - w, Math.trunc((134 - h) / 2), w, h);
+            });
+            box.appendChild(pic);
+            break;
+        }
+        case 'ship':
+            box.appendChild(pictureImg(shipImageUrl(p.builtObject)));
+            break;
+        case 'habitat':
+            box.appendChild(pictureImg(habitatImageUrl(p.habitat), 'msg-pic-img msg-pic-planet'));
+            break;
+        case 'landscape':
+            box.appendChild(pictureImg(landscapeImageUrl(p.ref)));
+            if (p.striped) box.classList.add('msg-pic-striped');
+            break;
+        case 'character':
+            box.appendChild(pictureImg(characterPortraitUrl(p.character), 'msg-pic-img msg-pic-character'));
+            break;
+        case 'flag': {
+            const f = pictureImg(null, 'msg-pic-img msg-pic-largeflag');
+            f.style.visibility = '';
+            void empireFlagUrl(galaxy, p.empire).then((u) => (f.src = u));
+            box.appendChild(f);
+            break;
+        }
+        case 'empire': {
+            // 170 × 60: the flag (0, 0) 100 × 60, the dominant race (110, 0) 60 × 60.
+            box.classList.add('msg-pic-empire');
+            box.append(place(flagImage(p.empire, 100, 60, 'msg-pic-flag'), 0, 0, 100, 60), place(raceImage(p.empire, 60, 'msg-pic-race'), 110, 0, 60, 60));
+            if (p.striped) box.classList.add('msg-pic-striped');
+            break;
+        }
+    }
+    return box;
 }
 
 /** Start routing the player's messages into the popup card and the conversation queue. Idempotent. */
@@ -250,129 +326,185 @@ export function installMessagePopups(opts: MessagePopupsOptions): void {
     removeMessagePopups();
     const { player, galaxy } = opts;
 
-    // Popup card (pnlMessagePopup).
-    const popup = el('div', 'message-popup');
-    popup.hidden = true;
-    const popupHeader = el('div', 'message-popup-header');
-    const popupTitleEl = el('div', 'message-popup-title');
-    const popupClose = el('button', 'message-popup-close', '✕') as HTMLButtonElement;
-    popupClose.type = 'button';
-    popupClose.title = 'Close';
-    popupHeader.append(popupTitleEl, popupClose);
-    const popupBody = el('div', 'message-popup-body');
-    const popupFooter = el('div', 'message-popup-footer');
-    popup.append(popupHeader, popupBody, popupFooter);
-    popupClose.addEventListener('click', () => closePopup());
-    popupBody.addEventListener('click', () => {
-        if (popupMessage !== null && popupBody.classList.contains('message-popup-body-goto')) {
-            goToMessage(popupMessage, galaxy);
-            closePopup();
-        }
-    });
-
-    // Conversation dialog (method_254).
-    const dialogRoot = el('div', 'message-conversation-wrap');
-    dialogRoot.hidden = true;
-
     const queue: ConversationEntry[] = [];
     const seen = new WeakSet<EmpireMessage>();
     // [audio] begin — messages already in Empire.Messages (a loaded save) were received before: no arrival sound.
     const heardBefore = new WeakSet<EmpireMessage>(empireMessages(player).filter((m) => m != null));
     // [audio] end
     let dialogEntry: ConversationEntry | null = null;
+    let dialogWin: OriginalWindow | null = null;
+    let releaseDialogPause: (() => void) | null = null;
     // [popupstubs] begin
     let popupMessage: EmpireMessage | null = null;
-    let pausedByUs = false;
+    let cardWin: OriginalWindow | null = null;
+    let eventWin: OriginalWindow | null = null;
     // [popupstubs] end
 
-    document.body.append(popup, dialogRoot);
-
-    // [popupstubs] begin
-    // Escape closes the open card (not the stub list); a conversation dialog on top takes Escape first.
-    function onPopupKeyDown(e: KeyboardEvent): void {
-        if (e.key === 'Escape' && !popup.hidden && dialogEntry === null) {
-            e.preventDefault();
-            e.stopImmediatePropagation();
-            closePopup();
+    // The pause rule of the original's message windows: the conversation panel (Main.Part8.cs:449 method_296: when the
+    // galaxy runs, bool_11 = true + method_154) and the event panel (Main.Part4.cs:48-113 method_509-511, Main.Part5.cs:5028
+    // method_508: method_154) pause the game while open; closing them resumes it (method_514 / method_155) — only when
+    // they paused it. The popup card (pnlMessagePopup) never pauses.
+    let pauseHolds = 0;
+    let pausedByUs = false;
+    function holdPause(): () => void {
+        const clock = opts.clock;
+        if (pauseHolds++ === 0 && clock !== undefined && !clock.paused) {
+            clock.paused = true;
+            pausedByUs = true;
         }
+        let released = false;
+        return () => {
+            if (released) return;
+            released = true;
+            if (--pauseHolds === 0 && pausedByUs) {
+                pausedByUs = false;
+                if (clock !== undefined) clock.paused = false;
+            }
+        };
     }
 
+    // ---- the popup card (pnlMessagePopup, MessagePopup.cs) ----
+
+    function positionCard(win: OriginalWindow): void {
+        const r = document.querySelector('.message-stubs')?.getBoundingClientRect();
+        const stubs = r !== undefined && r.width > 0 ? { left: r.left, top: r.top } : null;
+        const p = cardPosition(window.innerWidth, window.innerHeight, win.scale, stubs);
+        win.frame.style.left = `${p.left}px`;
+        win.frame.style.top = `${p.top}px`;
+    }
+
+    // [popupstubs] begin
     function closePopup(): void {
-        if (popup.hidden) return;
-        popup.hidden = true;
+        const w = cardWin;
+        if (w === null) return;
+        cardWin = null;
         popupMessage = null;
-        document.removeEventListener('keydown', onPopupKeyDown);
+        w.close();
     }
     // [popupstubs] end
 
     function showPopup(m: EmpireMessage): void {
-        popupTitleEl.textContent = popupTitle(m);
-        popupBody.textContent = resolveGameText(m.description);
+        closePopup();
         // [popupstubs] begin
-        popupFooter.textContent = resolveStarDateDescription(m.starDate > 0 ? m.starDate : galaxyStarDate(galaxy));
         popupMessage = m;
+        // [popupstubs] end
+        const W = CARD.width;
+        const H = cardHeight();
+        const win = openOriginalWindow({
+            id: 'msgcard',
+            title: popupTitle(m),
+            headerless: true,
+            width: W,
+            height: H,
+            onClose: () => {
+                if (cardWin === win) {
+                    cardWin = null;
+                    popupMessage = null;
+                }
+            },
+            onResize: positionCard,
+        });
+        cardWin = win;
+        win.frame.classList.add('msg-card');
+        positionCard(win);
+        // MessagePopup: a GradientPanel (39, 40, 44) / (22, 21, 26) / (51, 54, 61), 3 px (67, 67, 77) border, padding 12.
+        const panel = place(gradientPanel({ borderWidth: 3, className: 'msg-card-panel' }), -3, -3, W, H);
+        win.body.appendChild(panel);
+
+        // OnPaint: the picture centred, the text (16.67 px, (170, 170, 170), drop shadow) 12 px under it, the block
+        // centred vertically; the sender's flag at 50 % behind the text.
+        const content = place(el('div', 'msg-card-content'), 0, 0, W - 6, CARD.height - 3);
+        const picture = messagePicture(m, player);
+        if (picture !== null) content.appendChild(messagePictureElement(picture, galaxy));
+        const textBox = el('div', 'msg-card-textbox');
+        const flagEmpire = messageCardFlagEmpire(m, player);
+        if (flagEmpire !== null) textBox.appendChild(flagImage(flagEmpire, CARD.flagW, CARD.flagH, 'msg-card-flag'));
+        const title = resolveGameText(m.title);
+        if (title !== '') textBox.appendChild(el('div', 'msg-card-title ow-shadow', title));
+        textBox.appendChild(el('div', 'msg-card-text ow-shadow', messageCardText(m, player, resolveGameText(m.description))));
+        content.appendChild(textBox);
+        panel.appendChild(content);
+
+        const close = el('button', 'ow-close msg-card-close');
+        close.type = 'button';
+        close.title = 'Close';
+        close.innerHTML = CLOSE_SVG;
+        close.addEventListener('click', (e) => {
+            e.stopPropagation();
+            closePopup();
+        });
+        panel.appendChild(place(close, W - 6 - 36, 4, 30, 30));
+
+        // The strip: the star date, a scenario decision's options and Go to.
+        const strip = place(el('div', 'msg-card-strip'), 0, CARD.height - 3, W - 6, CARD_STRIP_H - 3);
+        panel.appendChild(strip);
+        const buttons: HTMLButtonElement[] = [];
+        // [popupstubs] begin
         // Mod layer: a pending scenario decision shows its options; a click answers it (scenario/decisions.ts).
         const decision = m.subject;
         if (isScenarioDecision(decision) && decision.answer === null) {
-            const row = el('div', 'message-conversation-buttons');
             for (const o of decision.options) {
-                const b = el('button', 'message-conversation-button', o.label) as HTMLButtonElement;
-                b.type = 'button';
-                b.addEventListener('click', () => {
-                    // A player command (journaled, applied at the next frame boundary) so seed + command log replays it.
-                    issuePlayerCommand(galaxy, decision.empire, 'answerScenarioDecision', [decision.id, o.id]);
-                    closePopup();
-                });
-                row.appendChild(b);
+                buttons.push(
+                    glassButton(o.label, {
+                        onClick: () => {
+                            // A player command (journaled, applied at the next frame boundary) so seed + command log replays it.
+                            issuePlayerCommand(galaxy, decision.empire, 'answerScenarioDecision', [decision.id, o.id]);
+                            closePopup();
+                        },
+                    }),
+                );
             }
-            popupFooter.appendChild(row);
         }
-        // A notification about a place: a Go to button, and the text jumps there too (Main.Part9.cs:912 method_249).
-        if (messageGoToTarget(m) !== null) {
-            const row = el('div', 'message-conversation-buttons');
-            const go = el('button', 'message-conversation-button message-popup-goto', 'Go to') as HTMLButtonElement;
-            go.type = 'button';
-            go.addEventListener('click', () => {
+        // A notification about a place: a Go to button, and a click on the card jumps there too (pnlMessagePopup_Click,
+        // Main.Part6.cs:2633; Main.Part9.cs:912 method_249).
+        const hasTarget = messageGoToTarget(m) !== null;
+        if (hasTarget) {
+            buttons.push(
+                glassButton(gt('Go to'), {
+                    className: 'msg-card-goto',
+                    onClick: () => {
+                        goToMessage(m, galaxy);
+                        closePopup();
+                    },
+                }),
+            );
+            content.classList.add('msg-card-goto-target');
+            content.title = 'Go to';
+            content.addEventListener('click', () => {
                 goToMessage(m, galaxy);
                 closePopup();
             });
-            row.appendChild(go);
-            popupFooter.appendChild(row);
-            popupBody.classList.add('message-popup-body-goto');
-            popupBody.title = 'Go to';
-        } else {
-            popupBody.classList.remove('message-popup-body-goto');
-            popupBody.title = '';
         }
+        const bw = buttons.length <= 1 ? 110 : Math.min(140, Math.floor((W - 6 - 24 - (buttons.length - 1) * 6) / buttons.length));
+        let bx = W - 6 - 12 - bw;
+        for (let i = buttons.length - 1; i >= 0; i--) {
+            strip.appendChild(place(buttons[i], bx, 3, bw, 30));
+            bx -= bw + 6;
+        }
+        const date = resolveStarDateDescription(m.starDate > 0 ? m.starDate : galaxyStarDate(galaxy));
+        if (buttons.length <= 1) strip.appendChild(place(text(date, { size: FONT.tiny, color: 'rgb(120, 120, 120)', className: 'msg-card-date' }), 12, 10));
+        else strip.title = date;
         markMessageStubRead(m);
-        if (popup.hidden) document.addEventListener('keydown', onPopupKeyDown);
         // [popupstubs] end
-        popup.hidden = false;
     }
+
+    // ---- the conversation panel (pnlDiplomacyTalk, Main.Part8.cs:449 method_296) ----
 
     function removeEntry(entry: ConversationEntry): void {
         const i = queue.indexOf(entry);
         if (i >= 0) queue.splice(i, 1);
     }
 
-    function onDialogKeyDown(e: KeyboardEvent): void {
-        if (e.key === 'Escape') {
-            e.preventDefault();
-            e.stopImmediatePropagation();
-            closeDialog();
-        }
-    }
-
     function closeDialog(switching = false): void {
         if (dialogEntry === null) return;
         dialogEntry = null;
         if (!switching) closeEventSting(); // [audio] Main.Part8.cs:435 talk closed → method_522
-        document.removeEventListener('keydown', onDialogKeyDown);
-        dialogRoot.replaceChildren();
-        dialogRoot.hidden = true;
+        const w = dialogWin;
+        dialogWin = null;
+        w?.close();
         // [popupstubs] begin
-        if (pausedByUs && opts.clock) opts.clock.paused = false; // method_155 on the dialog's close
-        pausedByUs = false;
+        releaseDialogPause?.(); // method_155 on the dialog's close
+        releaseDialogPause = null;
         // [popupstubs] end
     }
 
@@ -447,43 +579,73 @@ export function installMessagePopups(opts: MessagePopupsOptions): void {
         // [audio] begin — Main.Part8.cs:469-473 method_296: `if (!pnlDiplomacyTalk.Visible) method_521(empire)`.
         if (dialogEntry === null) playDiplomacyMood(galaxy, entry.sender, player);
         // [audio] end
+        const keepPause = releaseDialogPause;
+        releaseDialogPause = null;
         if (dialogEntry !== null) closeDialog(true);
         dialogEntry = entry;
+        // Main.Part8.cs:457-461: the talk panel pauses a running game (kept across a switch to the next conversation).
+        releaseDialogPause = keepPause ?? holdPause();
         // [popupstubs] begin
         markMessageStubRead(entry.message);
         // [popupstubs] end
         const starDate = galaxyStarDate(galaxy);
-        const win = el('div', 'message-conversation-window');
-        const titlebar = el('div', 'message-conversation-titlebar');
-        const title = el('div', 'message-conversation-title');
-        title.append(swatch(entry.sender), document.createTextNode(entry.sender?.name ?? 'Message'));
-        const close = el('button', 'message-conversation-close', '✕') as HTMLButtonElement;
+        const sender = entry.sender;
+        const win = openOriginalWindow({
+            id: 'msgtalk',
+            title: sender?.name ?? 'Message',
+            headerless: true,
+            width: TALK.width,
+            height: TALK.height,
+            onClose: () => {
+                if (dialogWin === win) closeDialog();
+            },
+        });
+        dialogWin = win;
+        win.frame.classList.add('msg-talk');
+        // pnlDiplomacyTalkPanel: 410 × 758 at (10, 10), BackColor2 = BaconMain.SetColorForDiplomacyBackground(empire).
+        const mid = sender !== null ? rgbCss(diplomacyBackgroundColor(sender.mainColor)) : 'rgb(22, 21, 26)';
+        const panel = gradientPanel({ colors: ['rgb(39, 40, 44)', mid, 'rgb(51, 54, 61)'], corners: { tl: true, tr: true, br: true, bl: true }, radius: 20, className: 'dip-talk-panel' });
+        place(panel, TALK.panel.x - 3, TALK.panel.y - 3, TALK.panel.w, TALK.panel.h);
+        win.body.appendChild(panel);
+        const close = el('button', 'ow-close dip-talk-close');
         close.type = 'button';
         close.title = 'Close';
+        close.innerHTML = CLOSE_SVG;
         close.addEventListener('click', () => closeDialog());
-        titlebar.append(title, close);
+        panel.appendChild(close);
 
-        const body = el('div', 'message-conversation-body');
+        // The flag (50 × 30) and the empire's name (22.67 px bold), centred at y 8; the race picture 280 × 280 at y 45.
+        const head = place(el('div', 'dip-talk-head'), 0, TALK.flag.y, TALK.panel.w, 34);
+        if (sender !== null) head.appendChild(flagImage(sender, TALK.flag.w, TALK.flag.h, 'dip-talk-flag'));
+        head.appendChild(text(sender?.name ?? popupTitle(entry.message), { size: FONT.title, bold: true, color: '#fff', className: 'dip-talk-name' }));
+        panel.appendChild(head);
+        if (sender !== null) panel.appendChild(place(raceImage(sender, TALK.race.w, 'dip-talk-race'), TALK.race.x, TALK.race.y, TALK.race.w, TALK.race.h));
+        else {
+            const pic = messagePicture(entry.message, player);
+            if (pic !== null) panel.appendChild(place(messagePictureElement(pic, galaxy), TALK.race.x, TALK.race.y, TALK.race.w, TALK.race.h));
+        }
+
+        // pnlDiplomaticConversationResponse (method_230): the message, black at alpha 80 behind it.
+        const resp = place(el('div', 'dip-talk-response ow-scroll msg-talk-response'), TALK.response.x, TALK.response.y, TALK.response.w, TALK.response.h);
+        panel.appendChild(resp);
         const headingText = conversationHeading(entry, player, starDate);
-        const textEl = el('div', 'message-conversation-text', resolveGameText(entry.message.description));
-        body.append(el('div', 'message-conversation-heading', headingText), textEl);
+        const textEl = el('div', 'msg-talk-text', resolveGameText(entry.message.description));
+        if (headingText !== '' && headingText !== textEl.textContent) resp.appendChild(el('div', 'msg-talk-heading', headingText));
+        resp.appendChild(textEl);
         // A pirate protection offer names its price per month and per year (the original shows the monthly fee only).
         if (isPirateProtectionOfferEntry(entry)) {
             const priceLine = pirateOfferPriceLine(entry, { player, galaxy });
-            if (priceLine !== '') body.appendChild(el('div', 'message-conversation-price', priceLine));
+            if (priceLine !== '') resp.appendChild(el('div', 'msg-talk-price', priceLine));
         }
         // [diplovoice] begin
         voiceIncoming(entry, headingText, textEl);
         // [diplovoice] end
 
-        const buttons = el('div', 'message-conversation-buttons');
-        const button = (text: string, onClick: () => void): HTMLButtonElement => {
-            const b = el('button', 'message-conversation-button', text) as HTMLButtonElement;
-            b.type = 'button';
-            b.addEventListener('click', onClick);
-            buttons.appendChild(b);
-            return b;
-        };
+        // ctlDiplomacyConversation (HyperlinkOptionsBox, method_238): the options as yellow links, in order.
+        const optsBox = place(el('div', 'dip-talk-options ow-scroll'), TALK.options.x, TALK.options.y, TALK.options.w, TALK.options.h);
+        const inner = el('div', 'dip-talk-options-inner');
+        optsBox.appendChild(inner);
+        panel.appendChild(optsBox);
         const actions = conversationActions(entry, {
             player,
             galaxy,
@@ -497,12 +659,15 @@ export function installMessagePopups(opts: MessagePopupsOptions): void {
             closeDialog();
         };
         for (const a of actions) {
-            button(a.label, () => runConversationAction(a, entry, needsAnswer, finish));
+            const link = el('a', `dip-talk-link msg-talk-option msg-talk-${a.effect.kind}`, a.label);
+            link.href = '#';
+            link.dataset.option = a.id;
+            link.addEventListener('click', (ev) => {
+                ev.preventDefault();
+                runConversationAction(a, entry, needsAnswer, finish);
+            });
+            inner.appendChild(link);
         }
-        win.append(titlebar, body, buttons);
-        dialogRoot.replaceChildren(win);
-        dialogRoot.hidden = false;
-        document.addEventListener('keydown', onDialogKeyDown);
     }
 
     // [diplovoice] begin
@@ -543,6 +708,89 @@ export function installMessagePopups(opts: MessagePopupsOptions): void {
     }
     // [diplovoice] end
 
+    // ---- the event panel (pnlEventMessage, Main.Part4.cs:115 method_513) ----
+
+    function closeEvent(): void {
+        const w = eventWin;
+        eventWin = null;
+        w?.close();
+    }
+
+    function showEvent(p: EventPopup): void {
+        closeEvent();
+        const release = holdPause(); // method_508-511: method_154
+        const win = openOriginalWindow({
+            id: 'msgevent',
+            title: resolveGameText(p.title),
+            headerless: true,
+            width: EVENT.width,
+            height: EVENT.height,
+            onClose: () => {
+                if (eventWin === win) eventWin = null;
+                closeEventSting(); // btnEventMessageClose_Click: method_522
+                release(); // method_514 / method_155
+            },
+        });
+        eventWin = win;
+        win.frame.classList.add('msg-event');
+        const extra = 0;
+        const panel = gradientPanel({ corners: { tl: true, tr: true, br: true, bl: true }, radius: 20, className: 'msg-event-panel' });
+        win.body.appendChild(panel);
+        const panelRect = eventPanelLayout(false, 0).panel;
+        place(panel, panelRect.x - 3, panelRect.y - 3, panelRect.w, panelRect.h); // sized first: the title wraps in it
+        // The title first (its measured height places the text container).
+        const titleEl = text(resolveGameText(p.title), { size: FONT.header, bold: true, color: '#fff', shadow: false, className: 'msg-event-title' });
+        titleEl.style.maxWidth = `${EVENT.width - 40}px`;
+        panel.appendChild(titleEl);
+        const titleH = Math.max(1, Math.ceil(titleEl.offsetHeight || FONT.header * 1.25));
+        const lay = eventPanelLayout(p.imageUrl !== null, titleH, false, extra);
+        const titleW = Math.min(lay.titleMaxW, Math.ceil(titleEl.offsetWidth || lay.titleMaxW));
+        place(titleEl, Math.trunc((lay.panel.w - titleW) / 2), lay.titleY);
+        if (lay.picture !== null && p.imageUrl !== null) {
+            // picEventMessage: SizeMode Zoom.
+            panel.appendChild(place(pictureImg(p.imageUrl, 'msg-event-picture'), lay.picture.x, lay.picture.y, lay.picture.w, lay.picture.h));
+        }
+        // pnlEventMessageContainer (AutoScroll) holding lblEventMessageText (16.67 px, (170, 170, 170)).
+        const container = place(el('div', 'msg-event-container ow-scroll'), lay.container.x, lay.container.y, lay.container.w, lay.container.h - 16);
+        const body = text(resolveGameText(p.text), { size: FONT.large, color: COLORS.gridText, shadow: false, wrapWidth: lay.textW, className: 'msg-event-text' });
+        container.appendChild(body);
+        panel.appendChild(container);
+        // The star date under the text (not in the original).
+        const date = text(p.footer, { size: FONT.tiny, color: 'rgb(120, 120, 120)', shadow: false, className: 'msg-event-date' });
+        panel.appendChild(place(date, lay.container.x, lay.container.y + lay.container.h - 14, lay.container.w, 14));
+
+        // The buttons: Investigate / Leave alone (method_509-511), else Close + Go to Event Location (method_508).
+        const buttons: HTMLButtonElement[] = [];
+        if (p.actions !== undefined && p.actions.length > 0) {
+            for (const a of p.actions) {
+                buttons.push(
+                    glassButton(a.label, {
+                        onClick: () => {
+                            closeEvent();
+                            a.onClick();
+                        },
+                    }),
+                );
+            }
+        } else {
+            buttons.push(glassButton(gt('Close'), { className: 'msg-event-close', onClick: () => closeEvent() }));
+            if (p.onGoTo) {
+                const onGoTo = p.onGoTo;
+                buttons.push(
+                    glassButton(gt('Go to Event Location'), {
+                        className: 'msg-event-goto',
+                        onClick: () => {
+                            closeEvent();
+                            onGoTo();
+                        },
+                    }),
+                );
+            }
+        }
+        const rects = eventButtonRects(buttons.length, lay.buttonY, extra);
+        buttons.forEach((b, i) => panel.appendChild(place(b, rects[i].x, rects[i].y, rects[i].w, rects[i].h)));
+    }
+
     function tick(): void {
         const options = getMessageOptions();
         let toOpen: ConversationEntry | null = null;
@@ -582,16 +830,8 @@ export function installMessagePopups(opts: MessagePopupsOptions): void {
         }
         pruneConversationQueue(queue, player, galaxyStarDate(galaxy));
         if (dialogEntry !== null && !queue.includes(dialogEntry)) closeDialog();
-        if (toOpen !== null && queue.includes(toOpen)) {
-            // [popupstubs] begin
-            // Main.Part9.cs 1544 method_253: the immediate conversation pauses the game (method_154) until answered.
-            if (opts.clock && !opts.clock.paused) {
-                opts.clock.paused = true;
-                pausedByUs = true;
-            }
-            // [popupstubs] end
-            openDialog(toOpen);
-        }
+        // Main.Part9.cs 1544 method_253: the immediate conversation opens (and pauses the game, method_154).
+        if (toOpen !== null && queue.includes(toOpen)) openDialog(toOpen);
     }
 
     // [popupstubs] begin
@@ -604,11 +844,12 @@ export function installMessagePopups(opts: MessagePopupsOptions): void {
 
     const timer = setInterval(tick, 250);
     installed = {
-        timer, popup, dialogRoot, queue, seen, closeDialog,
+        timer, queue, seen, closeDialog,
         // [popupstubs] begin
         showPopup, closePopup, openDialog,
         openKey: () => dialogEntry?.message ?? popupMessage,
         // [popupstubs] end
+        showEvent, closeEvent,
     };
     // [proposals] begin
     // The player's own conversation (17e) expires the other empire's pending messages, as the C# does.
@@ -622,6 +863,10 @@ export function installMessagePopups(opts: MessagePopupsOptions): void {
     // [proposals] end
 }
 
+const CLOSE_SVG =
+    '<svg viewBox="0 0 30 30" width="30" height="30" aria-hidden="true"><rect x="2" y="2" width="26" height="26" rx="8" ry="8"/>' +
+    '<path class="ow-close-x" d="M8 8 L22 22 M8 22 L22 8"/></svg>';
+
 /** Stop polling and remove the popup, the queue and the dialog. No-op when not installed. */
 export function removeMessagePopups(): void {
     if (installed === null) return;
@@ -633,8 +878,7 @@ export function removeMessagePopups(): void {
     // [proposals] end
     s.closeDialog();
     s.closePopup(); // [popupstubs]
-    s.popup.remove();
-    s.dialogRoot.remove();
+    s.closeEvent();
     s.queue.length = 0;
 }
 
@@ -675,65 +919,28 @@ export function expireConversationsForEmpire(empire: Empire): void {
 // [suggest] end
 
 // [leftovers] begin
-/** An event message (Empire.EventMessageRecipient, Main.Part4.cs:487 method_523) shown on the popup card. */
+/** An event message (Empire.EventMessageRecipient, Main.Part4.cs:487 method_523) shown on the event panel. */
 export interface EventPopup {
     title: string;
     text: string;
     /** The event's picture (method_523 `bitmap`), or null. */
     imageUrl: string | null;
-    /** Footer text (the star date). */
+    /** The star date (shown under the text). */
     footer: string;
-    /** btnEventMessageGoto (Main.Part4.cs:216-229): shown when the event has a location. */
+    /** btnEventMessageGoto (Main.Part4.cs:262-276): shown when the event has a location. */
     onGoTo?: (() => void) | null;
-    /** btnEventMessageInvestigate / btnEventMessageAvoid (Main.Part4.cs:73-76 method_510): choice buttons; each closes the card. */
+    /** btnEventMessageInvestigate / btnEventMessageAvoid (Main.Part4.cs:48-108 method_509-511): choice buttons; each closes the panel. */
     actions?: { label: string; onClick: () => void }[];
 }
 
 /**
- * Show an event message on the 16d popup card (replacing the card's current message, as a new popup does).
- * Returns false when the popups are not installed. The event panel's layout (image above title + text, Go To / Close)
- * is Main.Part4.cs:115-229 method_508; here it is the card with the picture on top.
+ * Show an event message on the event panel (pnlEventMessage, Main.Part4.cs:115 method_513: 420 × 660, the picture
+ * 360 × 270 on top, the title, the scrolling text, then Investigate / Leave alone or Close / Go to Event Location),
+ * replacing the one shown. Returns false when the popups are not installed.
  */
 export function showEventMessagePopup(p: EventPopup): boolean {
     if (installed === null) return false;
-    const popup = installed.popup;
-    const titleEl = popup.querySelector('.message-popup-title');
-    const body = popup.querySelector('.message-popup-body');
-    const footer = popup.querySelector('.message-popup-footer');
-    if (titleEl === null || body === null || footer === null) return false;
-    titleEl.textContent = resolveGameText(p.title);
-    body.replaceChildren();
-    body.classList.remove('message-popup-body-goto');
-    body.removeAttribute('title');
-    if (p.imageUrl !== null) {
-        const img = el('img', 'message-popup-image') as HTMLImageElement;
-        img.src = p.imageUrl;
-        img.alt = '';
-        img.draggable = false;
-        body.appendChild(img);
-    }
-    body.appendChild(el('div', 'message-popup-event-text', resolveGameText(p.text)));
-    if (p.onGoTo) {
-        const onGoTo = p.onGoTo;
-        const go = el('button', 'message-popup-goto', 'Go To') as HTMLButtonElement;
-        go.type = 'button';
-        go.addEventListener('click', () => {
-            popup.hidden = true;
-            onGoTo();
-        });
-        body.appendChild(go);
-    }
-    for (const action of p.actions ?? []) {
-        const btn = el('button', 'message-popup-goto', action.label) as HTMLButtonElement;
-        btn.type = 'button';
-        btn.addEventListener('click', () => {
-            popup.hidden = true;
-            action.onClick();
-        });
-        body.appendChild(btn);
-    }
-    footer.textContent = p.footer;
-    popup.hidden = false;
+    installed.showEvent(p);
     return true;
 }
 // [leftovers] end
