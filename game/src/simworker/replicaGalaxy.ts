@@ -203,6 +203,17 @@ export class GalaxyReplica {
         return st;
     }
 
+    /**
+     * Apply a delta and every cold part queued up to it, now (a step message carrying command replies: the onApplied
+     * callbacks then read the replica as of the boundary that applied the commands). The side tables keep their own
+     * cadence.
+     */
+    applyThrough(d: ReplicaDelta): ApplyStats {
+        const st = this.decoder.apply(d, true);
+        this.afterApply(false);
+        return st;
+    }
+
     /** Apply queued cold parts for up to `budgetMs` (once per render frame). */
     pumpCold(budgetMs: number): ApplyStats {
         const st = this.decoder.pumpCold(budgetMs);

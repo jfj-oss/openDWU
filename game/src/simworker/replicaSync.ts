@@ -445,6 +445,26 @@ export class ReplicaEncoder {
         return id;
     }
 
+    /**
+     * Compare `o` whole now, outside the cold round-robin, plus (`depth` > 0) the synced objects its fields hold
+     * directly (a ship's mission, its queues). For what a player command touched: its effect then travels in the next
+     * delta instead of waiting for the cold cycle to reach the object (docs/sim-worker.md §4.3, onApplied). Unknown
+     * objects are ignored (they are born when something synced references them). Read-only on the sim, as every
+     * compare.
+     */
+    compareNow(o: object, depth = 1): void {
+        const id = this.ids.get(o);
+        if (id === undefined) return;
+        this.compare(id);
+        if (depth <= 0) return;
+        const sh = this.shadows[id];
+        if (sh === undefined || this.kinds[id] === Kind.Typed) return;
+        for (let i = 0; i < sh.length; i++) {
+            const v = sh[i];
+            if (v !== null && typeof v === 'object') this.compareNow(v as object, depth - 1);
+        }
+    }
+
     /** Everything written since the last delta. */
     takeDelta(): ReplicaDelta {
         const hot = this.parts[0].take();

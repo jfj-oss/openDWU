@@ -20,17 +20,16 @@ import { type ShipActionMouseHoverMode, type ShipActionResult, type ShipActionSe
 import { issuePlayerCommand } from '../sim/player/playerCommands';
 import type { RightClickResult } from '../sim/player/orderMenu';
 import {
-    openActionMenu,
     orderSubject,
     resolveHoverOrder,
     rightClickCentersView,
     rightClickOrder,
     selectionAfterClick,
-    selectionButtons,
     selectionRefreshPage,
     type OrderMenuItem,
     type SelectionButton,
 } from '../sim/player/orderMenu';
+import { isRemoteQueryGalaxy, simQuery } from '../simworker/simQuery';
 import { showToast } from './toast';
 import { wreckSalvageMenuItem } from './scenario/wreckageUi'; // [wreckage]
 
@@ -332,9 +331,15 @@ export function installOrderUi(d: OrderUiDeps, view: OrderMainView, camera: Orde
     statusEl.hidden = true;
     document.body.appendChild(statusEl);
 
+    // Sim worker: the action menu is built by a query (simworker/simQuery.ts; it draws galaxy.rnd, so it runs where the
+    // game runs). In-thread it answers inside the call, as before; on a replica one round trip later — a reply for an
+    // older right-click is dropped.
+    let rightClickSeq = 0;
     view.onRightClick = (sx, sy, e) => {
         if (deps === null) return;
         const { galaxy, empire } = deps;
+        const seq = ++rightClickSeq;
+        const current = (): boolean => seq === rightClickSeq && deps !== null;
         fleetPointMode = null; // mouseHoverMode_0 = Undefined after any click
         const w = camera.screenToWorld(sx, sy);
         const x = Math.trunc(w.x);
@@ -347,21 +352,24 @@ export function installOrderUi(d: OrderUiDeps, view: OrderMainView, camera: Orde
         // "Salvage <field>" on top of the full action menu (the default order is not given on that click).
         const salvage = wreckSalvageMenuItem(galaxy, empire, selected, w.x, w.y, 1 / view.zoomFactor);
         if (salvage !== null) {
-            const rest = openActionMenu({ galaxy, empire, selected, cursorX: x, cursorY: y, zoomFactor: view.zoomFactor, pickAt: () => target }, hover.action, true) ?? [];
-            const sep: OrderMenuItem = { key: '', label: '', hint: null, enabled: false, action: null, children: [], separator: true };
-            openOrderMenu(rest.length > 0 ? [salvage.item, sep, ...rest] : [salvage.item], e.clientX, e.clientY, {
-                onPick: (item, shift) => {
-                    if (item === salvage.item) {
-                        issuePlayerCommand(galaxy, empire, 'salvageWreckField', [salvage.ship, salvage.field.id], (ok) => {
-                            if (!ok) showToast('Salvage not possible');
-                            bar?.render(true);
-                        });
-                        return;
-                    }
-                    if (item.action === null) return;
-                    if (shift) item.action.isSubsequentAction = true;
-                    void performAction(item.action, true, { x, y });
-                },
+            simQuery(galaxy, empire, 'actionMenu', [selected, x, y, view.zoomFactor, target, hover.action, true], (menu) => {
+                if (!current()) return;
+                const rest = menu ?? [];
+                const sep: OrderMenuItem = { key: '', label: '', hint: null, enabled: false, action: null, children: [], separator: true };
+                openOrderMenu(rest.length > 0 ? [salvage.item, sep, ...rest] : [salvage.item], e.clientX, e.clientY, {
+                    onPick: (item, shift) => {
+                        if (item === salvage.item) {
+                            issuePlayerCommand(galaxy, empire, 'salvageWreckField', [salvage.ship, salvage.field.id], (ok) => {
+                                if (!ok) showToast('Salvage not possible');
+                                bar?.render(true);
+                            });
+                            return;
+                        }
+                        if (item.action === null) return;
+                        if (shift) item.action.isSubsequentAction = true;
+                        void performAction(item.action, true, { x, y });
+                    },
+                });
             });
             return;
         }
@@ -384,19 +392,21 @@ export function installOrderUi(d: OrderUiDeps, view: OrderMainView, camera: Orde
             return;
         }
         // actionMenu_Opening: the ContextMenuStrip opens on the same click unless the default order was given.
-        const items = openActionMenu({ galaxy, empire, selected, cursorX: x, cursorY: y, zoomFactor: view.zoomFactor, pickAt: () => target }, hover.action, e.ctrlKey);
-        // Main.Part10.cs 3310-3559 re-centres on the click when something is selected and there is no default order; here the
-        // view stays put whenever the menu opens on that click (it opens at the cursor over what was clicked).
-        if (rightClickCentersView(r, items)) camera.centerOn(w.x, w.y);
-        if (items !== null && items.length > 0) {
-            openOrderMenu(items, e.clientX, e.clientY, {
-                onPick: (item, shift) => {
-                    if (item.action === null) return;
-                    if (shift) item.action.isSubsequentAction = true; // queue after the current mission
-                    void performAction(item.action, true, { x, y });
-                },
-            });
-        }
+        simQuery(galaxy, empire, 'actionMenu', [selected, x, y, view.zoomFactor, target, hover.action, e.ctrlKey], (items) => {
+            if (!current()) return;
+            // Main.Part10.cs 3310-3559 re-centres on the click when something is selected and there is no default order; here the
+            // view stays put whenever the menu opens on that click (it opens at the cursor over what was clicked).
+            if (rightClickCentersView(r, items)) camera.centerOn(w.x, w.y);
+            if (items !== null && items.length > 0) {
+                openOrderMenu(items, e.clientX, e.clientY, {
+                    onPick: (item, shift) => {
+                        if (item.action === null) return;
+                        if (shift) item.action.isSubsequentAction = true; // queue after the current mission
+                        void performAction(item.action, true, { x, y });
+                    },
+                });
+            }
+        });
     };
     view.onLeftClickIntercept = (sx, sy) => {
         if (deps === null || fleetPointMode === null) return false;
@@ -723,6 +733,8 @@ interface SelectionBar {
     page: ShipAction | null;
     /** Rebuild the buttons (`force`: also pages that draw galaxy.rnd). */
     render(force: boolean): void;
+    /** Redraw the current buttons and extras without rebuilding the buttons (no galaxy.rnd). */
+    redraw(): void;
 }
 
 /** The selected object the buttons act on, as the C# SelectedObject (fleet, else ship / base, else habitat). */
@@ -742,9 +754,15 @@ export function createSelectionActionBar(): HTMLElement {
     element.className = 'order-actions';
     let buttons: SelectionButton[] = [];
     let lastSel: ShipActionSelection = null;
+    /** Sim worker: the selection and page the current `buttons` answer (a reply arrives one round trip after render). */
+    let buttonsSel: ShipActionSelection = null;
+    let buttonsPage: ShipAction | null = null;
     const self: SelectionBar = {
         element,
         page: null,
+        redraw(): void {
+            if (deps !== null) draw();
+        },
         render(force: boolean): void {
             if (deps === null) {
                 element.replaceChildren();
@@ -761,10 +779,18 @@ export function createSelectionActionBar(): HTMLElement {
             // galaxy.rnd player-input-only (the C# redraws them every 500 ms, Main.Part11.cs 661).
             if (!force && isUnownedHabitat(deps, selected) && self.page === null) return;
             if (!force && self.page !== null && self.page.actionType === ShipActionType.BuildOptions && selected instanceof Habitat) return;
-            const next = selectionButtons({ galaxy: deps.galaxy, empire: deps.empire, selected }, self.page);
-            if (next === null) return; // the C# leaves the buttons as they are
-            buttons = next;
-            draw();
+            // A query (simworker/simQuery.ts): method_593 may draw galaxy.rnd, so it runs where the game runs —
+            // in-thread inside this call, on a sim-worker replica in the worker (every build the in-thread bar makes,
+            // in the same order). A reply for a selection / page the bar has left since is not shown.
+            const page = self.page;
+            simQuery(deps.galaxy, deps.empire, 'selectionButtons', [selected, page], (next) => {
+                if (deps === null || deps.getSelected() !== selected || self.page !== page) return;
+                buttonsSel = selected;
+                buttonsPage = page;
+                if (next === null) return; // the C# leaves the buttons as they are
+                buttons = next;
+                draw();
+            });
         },
     };
     // Eight persistent buttons, updated in place (no DOM rebuild on refresh).
@@ -876,6 +902,9 @@ export function createSelectionActionBar(): HTMLElement {
             self.render(true);
             return;
         }
+        // Sim worker: the buttons of the new selection / page have not arrived yet (the refresh takes the page from the
+        // first button, which would undo the page change in flight).
+        if ((buttonsSel !== selected || buttonsPage !== self.page) && isRemoteQueryGalaxy(deps.galaxy)) return;
         const next = selectionRefreshPage(selected, buttons[0]?.action ?? null);
         if (next === undefined) return;
         self.page = next;
@@ -892,4 +921,9 @@ function isUnownedHabitat(d: OrderUiDeps, selected: ShipActionSelection): boolea
 /** Re-render the selection buttons now (selection changed / after an order). */
 export function refreshSelectionActionBar(): void {
     bar?.render(true);
+}
+
+/** Redraw the selection buttons' extras (e.g. the dispatch slots arrived) without rebuilding the buttons. */
+export function redrawSelectionActionBar(): void {
+    bar?.redraw();
 }

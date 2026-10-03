@@ -262,7 +262,34 @@ not to the local queue.
 - **`runPlayerCommand`** (synchronous result) throws on a replica. Its two callers, the advisor chat and the diplomat
   voice, are in §9 chunk 8.
 
-### 4.4 Sim → UI hooks
+### 4.4 Queries (order menus, selection buttons, money panel)
+
+Some UI calls are not commands but still change sim state, as the C# UI does: building the right-click action menu
+and the selection panel's buttons draws `galaxy.rnd` (the "Build here" designs, the build pages' surface / parking
+points, `DetermineOrbitalBaseLocation`) and fills `Empire.latestDesigns`; the money panel runs
+`CheckAgeVariableIncome`. They go through `simworker/simQuery.ts` (`SIM_QUERIES`: `actionMenu`, `selectionButtons`,
+`habitatDispatch`, `moneyPanel`):
+
+- In-thread, `simQuery(galaxy, empire, op, args, done)` runs the function and calls `done` inside the call, as before.
+- On a replica, the query is posted (`query {id, empire, op, args}`), the worker runs it on the authoritative galaxy at
+  once, in message order with the commands (so its draws land where in-thread play makes them), and posts an immediate
+  sync-only step message (`SimHost.flush`) carrying the reply. Replies travel by value except graph objects (sync ids).
+- Every in-thread build is still made, one query each (never coalesced: the draw count must match). A reply for a
+  right-click or a selection / page the UI has left since is not shown.
+- Gate: `test/simWorkerOrders.test.ts` (a scripted UI player: menus, button pages, dispatch, right-click, box
+  selection, hotkeys, fleet point) gives the in-thread menus, command log and digest; building the menus on the
+  replica instead does not.
+
+**Freshness of `onApplied`.** The host compares what a command named and returned (`ReplicaEncoder.compareNow`: the
+issuing empire to depth 1, arguments and results to depth 2) in the delta of the tick that applied it, and the main
+thread applies the cold parts through that delta before it runs the command replies (`GalaxyReplica.applyThrough`).
+So a callback reads the replica as of that boundary (one step later than in-thread), including cold fields.
+
+**Dropped objects.** A BuiltObject, Habitat, ShipGroup, Creature, Fighter or Empire the replica no longer knows (destroyed
+and dropped by the mark while the HUD still held it) is never sent by value: the command or query is dropped with a
+warning and its callback does not run.
+
+### 4.5 Sim → UI hooks
 
 These run in the worker on the authoritative game, and the main thread gets an event:
 
@@ -322,6 +349,7 @@ The only behaviour changes in this mode are:
 | `src/simworker/workerClient.ts` | Main-side Worker wrapper, boot with progress, frame loop, async save / digest, the flag |
 | `src/simworker/remoteArgs.ts` | Command arguments and replies across the boundary (sync ids) |
 | `src/simworker/bootOptions.ts` | createGame options across the boundary |
+| `src/simworker/simQuery.ts` | UI-side sim calls that change state as the C# UI does (menus, buttons, money panel), run where the game runs (§4.4) |
 | `src/simworker/protocol.ts` | Message types |
 | `src/simFrameBudget.ts` | SimFrameBudget, shared by both modes |
 | `scripts/sync-measure.mjs` | Sync cost on a save (`--compare-options`, `--verify`, `--census`, `--hot-fields`) |
@@ -340,7 +368,7 @@ The only behaviour changes in this mode are:
   `coldMaxSets`, `markBudgetMs`.
 - **Cold staleness.** Cold data is up to one cycle old (about 1–1.5 s), plus any pump backlog. A paused game settles
   to exact: the worker keeps comparing for two full cycles after the last change.
-- **Not ported (§9):** the game-end banner, message-pipeline writes, audio sound flags, order-menu RNG draws,
+- **Not ported (§9):** the game-end banner, message-pipeline writes, audio sound flags,
   synchronous advisor commands, trade-flow recording, rim wiring, tutorials (they still boot in-thread), the
   `__dwu.sim` / `simBudget` debug hooks (null in worker mode), and `__dwu.commands.log` (the replica has no log).
 

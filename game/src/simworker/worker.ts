@@ -138,6 +138,11 @@ function handle(m: ToWorker): void {
             host!.command(m);
             kick();
             return;
+        case 'query':
+            // Answered at once (no tick): the menu / buttons appear without waiting for the next step.
+            host!.query(m);
+            post(host!.flush());
+            return;
         case 'save': {
             try {
                 post({ type: 'saved', id: m.id, text: host!.save() });
