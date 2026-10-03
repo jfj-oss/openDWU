@@ -92,7 +92,7 @@ import type { FreightOverlay } from './freightOverlay'; // [freightOverlay]
 import { boundsOnScreen, DrawKey } from './drawCache';
 import { drawRangeRings, fleetRangeRadii } from './rangeRings';
 import { BuiltObjectIndex, registerBuiltObjectIndex } from './builtObjectIndex';
-import { MotionInterpolator, createRenderTime, builtObjectDrawnOffsetBound, drawnBuiltObjectPos, habitatTouchClampSeconds, renderOrbitAngle, type RenderTime } from './renderInterp';
+import { MotionInterpolator, PresentationClock, copyRenderTime, createRenderTime, builtObjectDrawnOffsetBound, drawnBuiltObjectPos, habitatTouchClampSeconds, renderOrbitAngle, type RenderTime } from './renderInterp';
 import { isDrag, objectsInBox, resolveBoxSelection, screenBox, shiftClickSelection, type ScreenBox } from './boxSelect';
 import { isObjectVisibleToThisEmpire } from '../sim/independentTraders';
 import { createFollowState, followTargetAlive, followTargetPosition, isFollowing, stopFollow, type FollowState, type FollowTarget } from './followCamera';
@@ -133,6 +133,21 @@ export async function loadMapFont(): Promise<void> {
 
 export function fadeOut(v: number, a: number, b: number): number {
     return 1 - fadeIn(v, a, b);
+}
+
+/** `?renderClock=0` turns the presentation clock off (renderInterp.ts PresentationClock; on by default). */
+function renderClockEnabled(): boolean {
+    try {
+        return new URLSearchParams(globalThis.location?.search ?? '').get('renderClock') !== '0';
+    } catch {
+        return true;
+    }
+}
+
+/** The current frame's time (the rAF timestamp inside a frame: frames are presented at vsync, not when update runs). */
+function frameTimeMs(): number {
+    const t = (globalThis as { document?: { timeline?: { currentTime?: unknown } } }).document?.timeline?.currentTime;
+    return typeof t === 'number' ? t : performance.now();
 }
 
 // Layer crossfade windows for the mid-zoom gap between the galaxy backdrop
@@ -1232,6 +1247,9 @@ export class MainView {
      * previous/current step positions shared by every layer that draws a moving object. Render-only. */
     renderTime: RenderTime = createRenderTime();
     readonly motion = new MotionInterpolator();
+    /** Presentation clock (renderInterp.ts): the loop's raw render time → an evenly advancing drawn instant when steps
+     * land unevenly (late game, sim worker bursts). `?renderClock=0` draws the raw render time (A/B). */
+    readonly presentClock: PresentationClock | null = renderClockEnabled() ? new PresentationClock() : null;
     /** Render-side index of the live built objects, refreshed per sim step (builtObjectIndex.ts). */
     readonly builtObjectIndex = new BuiltObjectIndex();
     /** Follow camera (task followcam): shared with the HUD's selection-panel toggle (src/ui/hud.ts) and its
@@ -1766,17 +1784,16 @@ export class MainView {
         // Render interpolation between sim steps (renderInterp.ts): read-only on the sim.
         const rt = this.renderTime;
         if (renderTime !== undefined) {
-            rt.alpha = renderTime.alpha;
-            rt.stepGameMs = renderTime.stepGameMs;
-            rt.renderNowMs = renderTime.renderNowMs;
-            rt.stepSerial = renderTime.stepSerial;
-            rt.simNowMs = renderTime.simNowMs;
+            if (this.presentClock !== null) this.presentClock.present(renderTime, frameTimeMs(), rt);
+            else copyRenderTime(renderTime, rt);
         } else {
             rt.alpha = 0;
             rt.stepGameMs = 0;
             rt.renderNowMs = this.galaxy.nowMs;
             rt.stepSerial = this.galaxy.scheduler?.frames ?? 0;
             rt.simNowMs = this.galaxy.nowMs;
+            rt.paused = true;
+            rt.renderSerial = Number.NaN;
         }
         this.motion.begin(rt, habitatTouchClampSeconds(this.galaxy.habitats.length), this.galaxy.builtObjects.length, this.galaxy.creatures.length, this.galaxy.habitats.length);
         this.builtObjectIndex.update(this.galaxy, this.motion);

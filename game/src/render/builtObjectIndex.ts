@@ -6,8 +6,8 @@
 // sim step lands (and, rarely, at the command boundary), so this index copies them once per step into flat arrays:
 //   live      — the non-null, non-destroyed objects in galaxy.builtObjects order (the order every layer draws in);
 //   xs / ys   — their committed positions;
-//   rs        — renderInterp.ts builtObjectDrawnOffsetBound at the fastest game speed: no drawn (interpolated) position
-//               is farther than this from the committed one;
+//   rs        — renderInterp.ts builtObjectDrawnOffsetBound at the fastest game speed (and the presentation clock's
+//               lag at the rebuild): no drawn (interpolated) position is farther than this from the committed one;
 // and `near` returns, in that same order, every live object that could be on screen — a superset of what each layer's
 // own cull keeps, so a layer that runs its unchanged per-object tests over `near` draws exactly what it drew before.
 // It is refreshed when a step lands (MotionInterpolator.serial), when the array changes (identity / length), and every
@@ -59,6 +59,9 @@ export class BuiltObjectIndex {
         w.stepSeconds = 4 / FRAMES_PER_SECOND;
         w.untouchedMaxMs = builtObjectTouchGapMs(arr.length, 4000 / FRAMES_PER_SECOND);
         w.clampSeconds = motion?.clampSeconds ?? 0;
+        // How far the presented instant trails the committed step (PresentationClock): it only shrinks until the next
+        // step lands, which rebuilds the index, so this frame's lag bounds every frame until then.
+        w.lagSteps = motion?.lagSteps ?? 0;
         const live = this.live;
         live.length = 0;
         for (let i = 0; i < arr.length; i++) {

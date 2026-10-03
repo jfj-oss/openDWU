@@ -1,11 +1,15 @@
 // Usage: node scripts/perf-render.mjs [--url=http://localhost:5173/] [--gpu=swiftshader|egl|vulkan]
 //          [--w=1920 --h=1080 --dpr=2] [--days=60] [--secs=6] [--profile [--callers]] [--top=15] [--paused]
 //          [--stars=700 --sectors=4] [--zooms=galaxy,sector,system,planet] [--qs=dither=0] [--uncapped]
-//          [--load=<save file>] [--speed=1] [--save-profile=DIR]
+//          [--load=<save file>] [--speed=1] [--save-profile=DIR] [--motion]
 //          [--eval=<page script>] [--report=<page expression>] [--trace=<file.json>] [--pre-sweep=<page expression>] [--sweep [--sweeps=3] [--sweep-secs=3] [--notch=1] [--layers]]
 //
 // --load: copy that save (serializeGame text, e.g. scripts/lategame-start.mjs --save-out) to public/dev-saves/ and boot
 // it with ?load= instead of ?autostart=1 (no warm-up unless --days is given). --speed: game speed while measuring.
+// --motion: also measure drawn-motion smoothness per zoom (installMotionProbe below): per frame, each steadily moving
+// free-flying ship's drawn displacement against its true velocity × the sim's measured game rate × the frame's real
+// time (q = 1 is perfectly even motion), with stalls (q < 0.25), jumps (q > 2), reversals and jerk |Δq|, plus the
+// same for the render clock (renderNowMs) and the render delay behind the committed sim time.
 // --save-profile: also write each zoom's CPU profile to DIR/<zoom>.cpuprofile (scripts/cpuprofile-summary.mjs).
 // --sweep: instead of the fixed zoom levels, a scripted wheel-zoom sweep: continuous wheel events on the canvas (at the
 // player's capital) zoom from the whole galaxy down to 100% and back out over --sweep-secs, repeated --sweeps times
@@ -63,6 +67,7 @@ const SWEEPS = +(args.sweeps ?? 3);
 const SWEEP_SECS = +(args['sweep-secs'] ?? 3);
 const NOTCH = +(args.notch ?? 1);
 const LAYERS = args.layers === 'true';
+const MOTION = args.motion === 'true';
 
 const GPU_ARGS = {
     swiftshader: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'],
@@ -212,6 +217,8 @@ async function main() {
             requestAnimationFrame(loop);
         });
 
+        if (MOTION) await page.evaluate(installMotionProbe);
+
         // Warm up: run the sim at 4x until DAYS game days have passed (1 day = 1/360 of a 600 s game year at 1x).
         const DAY_MS = 600000 / 360;
         const start = await page.evaluate(() => {
@@ -281,6 +288,7 @@ async function main() {
                 p.frames = 0;
                 p.deltas.length = 0;
                 window.__dwu.simStats.reset();
+                window.__motionProbe?.reset();
             });
             if (cdp) await cdp.send('Profiler.start');
             await page.waitForTimeout(SECS * 1000);
@@ -316,6 +324,7 @@ async function main() {
                     },
                 };
             });
+            if (MOTION) m.motion = await page.evaluate(() => window.__motionProbe.summary());
             rows.push({ zoom, ...m });
             if (profile && args['save-profile']) {
                 mkdirSync(args['save-profile'], { recursive: true });
@@ -347,10 +356,175 @@ async function main() {
                 console.log(`${r.zoom.padEnd(11)} ${f(w.hot, 17)}${f(w.cold, 19)}${f(w.maxHot, 9)}${f(w.maxCold, 10)}${f(w.maxSync, 10)}${String(w.stepsPerS).padEnd(11)}${f(w.workerStep, 20)}${f(w.workerDiff, 9)}${f(w.kb, 10)}${w.backlog}`);
             }
         }
+        if (MOTION) printMotion(rows);
         console.log(`load average after: ${loadavg().map((v) => v.toFixed(2)).join(' ')}`);
     } finally {
         await browser.close();
         if (vite) process.kill(-vite.pid, 'SIGTERM');
+    }
+}
+
+/**
+ * --motion: page-side probe (wraps MainView.update). Per rendered frame (t = document.timeline.currentTime, the frame's
+ * rAF time) it reads the view's RenderTime and, for every built object the view sampled this frame (motion.drawn), its
+ * drawn position (relative to its drawn parent when it is drawn in a parent's frame). A ship counts when it was drawn in
+ * the same frame this frame and the last, flies at a steady CurrentSpeed (within 2 % for the last 20 frames; sub-light
+ * or warp, not entering / leaving hyperspace) and the game is running. Its true move this
+ * frame is CurrentSpeed × rate × dt, where rate is the sim's measured game ms per real ms over the last 1.5 s (so a
+ * sim that falls behind is judged against the rate it really runs at); q = drawn move / true move.
+ */
+function installMotionProbe() {
+    const d = window.__dwu;
+    const view = d.view;
+    const CAP = 400000;
+    const fresh = () => ({ lag: [], starved0: view.presentClock?.starved ?? 0, framedN: 0, framedStall: 0, frames: 0, q: [], dq: [], stall: 0, jump: 0, rev: 0, clock: [], clockDq: [], clockBack: 0, clockStall: 0, clockJump: 0, steps: [0, 0, 0, 0, 0], delay: [], rates: [], shipsPerFrame: 0 });
+    let data = fresh();
+    const ships = new WeakMap();
+    const hist = [];
+    let frameNo = 0;
+    let lastT = -1;
+    let lastRender = 0;
+    let lastSerial = -1;
+    let lastClockQ = NaN;
+    const inner = view.update;
+    view.update = (...a) => {
+        inner(...a);
+        const rt = view.renderTime;
+        const t = document.timeline.currentTime ?? performance.now();
+        frameNo++;
+        const dt = lastT < 0 ? 0 : t - lastT;
+        lastT = t;
+        hist.push(t, rt.simNowMs);
+        while (hist.length > 4 && t - hist[0] > 1500) hist.splice(0, 2);
+        const span = t - hist[0];
+        const rate = span > 400 ? (rt.simNowMs - hist[1]) / span : NaN;
+        const running = !d.time.paused && rate > 0 && dt > 0;
+        const steps = lastSerial < 0 ? 0 : rt.stepSerial - lastSerial;
+        lastSerial = rt.stepSerial;
+        if (running) {
+            data.frames++;
+            data.steps[Math.min(4, Math.max(0, steps))]++;
+            data.rates.push(rate);
+            data.delay.push((rt.simNowMs - rt.renderNowMs) / rate);
+            // Steps the drawn instant trails the latest step received (the presentation clock; before it, the worker's
+            // StepPacer playout buffer, whose held messages the replica does not have yet).
+            const pacer = d.simWorker?.core?.pacer;
+            const drawnSerial = Number.isNaN(rt.renderSerial ?? Number.NaN) || rt.renderSerial === undefined ? rt.stepSerial - 1 + rt.alpha : rt.renderSerial;
+            data.lag.push(pacer ? pacer.received - pacer.drawn : rt.stepSerial - drawnSerial);
+            const cq = (rt.renderNowMs - lastRender) / (rate * dt);
+            data.clock.push(cq);
+            if (cq < 0) data.clockBack++;
+            else if (cq < 0.25) data.clockStall++;
+            else if (cq > 2) data.clockJump++;
+            if (Number.isFinite(lastClockQ)) data.clockDq.push(Math.abs(cq - lastClockQ));
+            lastClockQ = cq;
+        } else lastClockQ = NaN;
+        lastRender = rt.renderNowMs;
+        const g = d.game.galaxy;
+        const m = view.motion;
+        let n = 0;
+        for (const bo of g.builtObjects) {
+            if (bo === null || bo === undefined || bo.hasBeenDestroyed) continue;
+            const s = m.drawn(bo);
+            if (s === null) continue;
+            const speed = bo.currentSpeed;
+            let r = ships.get(bo);
+            if (r === undefined) {
+                r = { f: 0, x: 0, y: 0, dx: 0, dy: 0, q: NaN, speed: -1, steady: 0, frame: undefined };
+                ships.set(bo, r);
+            }
+            const steady = speed > 0 && speed <= Math.max(bo.topSpeed, bo.warpSpeed) * 1.001 && Math.abs(speed - r.speed) <= 0.02 * speed && !bo.hyperjumpPrepare && !bo.hyperjumpJustExited;
+            r.steady = steady && r.f === frameNo - 1 ? r.steady + 1 : 0;
+            // In a parent's frame (parked at / approaching a planet, docked at a base) the ship's own motion is its offset
+            // from the drawn parent: measured relative to it.
+            const px = s.frame === null ? s.x : s.x - s.ox;
+            const py = s.frame === null ? s.y : s.y - s.oy;
+            if (running && r.f === frameNo - 1 && s.frame === r.frame && r.steady >= 20) {
+                const expected = (speed * rate * dt) / 1000;
+                const dx = px - r.x;
+                const dy = py - r.y;
+                const mv = Math.hypot(dx, dy);
+                if (expected > 1e-6) {
+                    const q = mv / expected;
+                    n++;
+                    if (data.q.length < CAP) data.q.push(q);
+                    if (s.frame !== null) {
+                        data.framedN++;
+                        if (q < 0.25) data.framedStall++;
+                    }
+                    if (q < 0.25) data.stall++;
+                    else if (q > 2) data.jump++;
+                    const pm = Math.hypot(r.dx, r.dy);
+                    if (dx * r.dx + dy * r.dy < 0 && mv > 0.05 * expected && pm > 0.05 * expected) data.rev++;
+                    if (Number.isFinite(r.q) && data.dq.length < CAP) data.dq.push(Math.abs(q - r.q));
+                    r.q = q;
+                    r.dx = dx;
+                    r.dy = dy;
+                } else r.q = NaN;
+            } else {
+                r.q = NaN;
+                r.dx = 0;
+                r.dy = 0;
+            }
+            r.f = frameNo;
+            r.x = px;
+            r.y = py;
+            r.speed = speed;
+            r.frame = s.frame;
+        }
+        if (running) data.shipsPerFrame += n;
+    };
+    const pct = (a, f) => {
+        if (a.length === 0) return NaN;
+        const s = Float64Array.from(a).sort();
+        return s[Math.min(s.length - 1, Math.floor(s.length * f))];
+    };
+    const mean = (a) => (a.length ? a.reduce((x, y) => x + y, 0) / a.length : NaN);
+    window.__motionProbe = {
+        reset() {
+            data = fresh();
+        },
+        summary() {
+            const n = data.q.length;
+            const rms = n ? Math.sqrt(data.q.reduce((s, q) => s + (q - 1) * (q - 1), 0) / n) : NaN;
+            const cn = data.clock.length;
+            const crms = cn ? Math.sqrt(data.clock.reduce((s, q) => s + (q - 1) * (q - 1), 0) / cn) : NaN;
+            return {
+                frames: data.frames,
+                samples: n,
+                shipsPerFrame: data.frames ? data.shipsPerFrame / data.frames : 0,
+                q: { p1: pct(data.q, 0.01), p5: pct(data.q, 0.05), p50: pct(data.q, 0.5), p95: pct(data.q, 0.95), p99: pct(data.q, 0.99), rms },
+                stallPct: n ? (100 * data.stall) / n : NaN,
+                framedPct: n ? (100 * data.framedN) / n : NaN,
+                framedStallPct: data.framedN ? (100 * data.framedStall) / data.framedN : NaN,
+                jumpPct: n ? (100 * data.jump) / n : NaN,
+                revPct: n ? (100 * data.rev) / n : NaN,
+                jerk: { mean: mean(data.dq), p95: pct(data.dq, 0.95), p99: pct(data.dq, 0.99) },
+                clock: { p1: pct(data.clock, 0.01), p50: pct(data.clock, 0.5), p99: pct(data.clock, 0.99), rms: crms, backPct: cn ? (100 * data.clockBack) / cn : NaN, stallPct: cn ? (100 * data.clockStall) / cn : NaN, jumpPct: cn ? (100 * data.clockJump) / cn : NaN, jerkMean: mean(data.clockDq), jerkP95: pct(data.clockDq, 0.95) },
+                stepsPerFrame: data.steps,
+                delayMs: { mean: mean(data.delay), p5: pct(data.delay, 0.05), p95: pct(data.delay, 0.95) },
+                rate: mean(data.rates),
+                lag: { mean: mean(data.lag), p50: pct(data.lag, 0.5), p95: pct(data.lag, 0.95) },
+                starved: (view.presentClock?.starved ?? 0) - data.starved0,
+            };
+        },
+    };
+}
+
+function printMotion(rows) {
+    const f = (v, n = 7, dp = 2) => (Number.isFinite(v) ? v.toFixed(dp) : '-').padEnd(n);
+    console.log('\nmotion   samples  ships/fr  q p1   q p5   q p50  q p95  q p99  rms(q-1) stall%  jump%  rev%   jerk mean p95    p99    | game rate | framed% (stall%)');
+    for (const r of rows) {
+        const m = r.motion;
+        if (!m) continue;
+        console.log(`${r.zoom.padEnd(8)} ${String(m.samples).padEnd(8)} ${f(m.shipsPerFrame, 9, 0)} ${f(m.q.p1)}${f(m.q.p5)}${f(m.q.p50)}${f(m.q.p95)}${f(m.q.p99)}${f(m.q.rms, 9)}${f(m.stallPct)}${f(m.jumpPct)}${f(m.revPct)}${f(m.jerk.mean, 10)}${f(m.jerk.p95)}${f(m.jerk.p99)}| ${f(m.rate, 9, 3)} | ${f(m.framedPct, 5, 0)} (${f(m.framedStallPct, 4, 1)})`);
+    }
+    console.log('\nclock    frames  q p1   q p50  q p99  rms(q-1) back%  stall%  jump%  jerk mean p95    | delay ms mean p5     p95    | steps/frame 0,1,2,3,4+ | lag steps mean p50 p95 | starved');
+    for (const r of rows) {
+        const m = r.motion;
+        if (!m) continue;
+        const c = m.clock;
+        console.log(`${r.zoom.padEnd(8)} ${String(m.frames).padEnd(7)} ${f(c.p1)}${f(c.p50)}${f(c.p99)}${f(c.rms, 9)}${f(c.backPct)}${f(c.stallPct)}${f(c.jumpPct)}${f(c.jerkMean, 10)}${f(c.jerkP95)}| ${f(m.delayMs.mean, 14, 1)}${f(m.delayMs.p5, 7, 1)}${f(m.delayMs.p95, 7, 1)}| ${m.stepsPerFrame.join(',').padEnd(22)} | ${f(m.lag.mean, 5)}${f(m.lag.p50, 5)}${f(m.lag.p95, 5)} | ${m.starved}`);
     }
 }
 

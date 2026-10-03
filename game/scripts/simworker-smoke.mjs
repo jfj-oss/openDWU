@@ -8,7 +8,7 @@
 //   --generate   ?seed=1 without ?autostart (the bare generateGalaxy boot)
 //   node scripts/simworker-smoke.mjs <base url> [--load=/dev-saves/x.dwusave] [--out=shots/simworker] [--inthread]
 //                                               [--tutorial | --menuload | --generate]
-//        [--gpu=swiftshader|egl] [--qs=simPace=0]
+//        [--gpu=swiftshader|egl] [--qs=renderClock=0]
 //        [--detect-writes[=all]]   (dev-only replica write detector, src/simworker/writeDetector.ts: prints what it found)
 import { chromium } from 'playwright-core';
 import { mkdirSync, writeFileSync } from 'node:fs';
@@ -73,15 +73,16 @@ async function checkPauseIsInstant() {
             seen.push({ now: d.galaxy.nowMs, drawn: drawn(), held: d.simWorker?.core.pauseHeld ?? false });
         }
         const st = d.simWorker?.core.stats;
-        // Worker mode with render pacing (clientCore.ts StepPacer, on unless ?simPace=0): the steps in the playout buffer
-        // were simulated before the press, so the replica's clock lands past it; what stops at the press is the picture.
-        const paced = d.simWorker != null && new URLSearchParams(location.search).get('simPace') !== '0';
+        // With the presentation clock (render/renderInterp.ts PresentationClock, in MainView; on unless ?renderClock=0)
+        // what stops at the press is the picture: in worker mode the steps in flight were simulated before the press, so
+        // the replica's clock lands past it.
+        const paced = d.view?.presentClock != null;
         return { paced, before, first: seen[0].now, heldFrames: seen.filter((s) => s.held).length, last: seen[seen.length - 1].now, drawnBefore, drawnFirst: seen[0].drawn, drawnLast: seen[seen.length - 1].drawn, ackMs: st?.lastPauseAckMs ?? null, inFlight: st?.lastPauseInFlightSteps ?? null };
     });
     // In-thread the clock stops dead. In worker mode the replica is held from the press until the worker's ack, then
     // takes the steps the worker ran before the pause reached it (1–2 at most: up to ~35 game ms at 1x); on a slow
-    // renderer (headless swiftshader draws ~8 fps) the ack lands inside the first frame. Paced, the drawn game time
-    // (MainView.renderTime.renderNowMs) is checked instead: it advances at most a frame past the press, then stands.
+    // renderer (headless swiftshader draws ~8 fps) the ack lands inside the first frame. With the presentation clock the
+    // drawn game time (MainView.renderTime.renderNowMs) is checked instead: it stops at the press, then stands.
     const slack = inThread ? 0 : 2 * 17;
     if (r.paced) check(r.drawnFirst - r.drawnBefore <= slack && Math.abs(r.drawnLast - r.drawnFirst) < 0.5, `pause is instant: the drawn time stops at the press (${r.drawnBefore.toFixed(0)} → ${r.drawnFirst.toFixed(0)} → ${r.drawnLast.toFixed(0)})`);
     else check(r.first - r.before <= slack && r.last === r.first, `pause is instant: the clock stops at the press (${r.before} → ${r.first}, then still)`);

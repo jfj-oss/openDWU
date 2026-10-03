@@ -17,6 +17,7 @@ import {
 } from '../src/ui/screens/researchScreen';
 import { formatMoney } from '../src/ui/hud';
 import { isKeyActionAvailable } from '../src/ui/keyboard';
+import { moveResearchProject } from '../src/sim/player/playerOrders';
 
 function node(id: number, industry: number, techLevel: number, row: number, extra: Record<string, unknown> = {}): TechNode {
     return {
@@ -93,6 +94,30 @@ describe('research screen (task 15b)', () => {
         expect(dequeueResearchProject(rs, d)).toBe(false);
         expect(dequeueResearchProject(rs, b)).toBe(true);
         expect(rs.researchQueueWeapons).toEqual([]);
+    });
+
+    it('moveResearchProject keeps parents first and crash programs at the head', () => {
+        const e = node(5, 0, 1, 2);
+        const f = node(6, 0, 1, 3);
+        rs.techTree.push(e, f);
+        rs.researchQueueWeapons.push(b, e, c, f);
+        // f to the top.
+        expect(moveResearchProject(rs, f, 0)).toBe(true);
+        expect(rs.researchQueueWeapons).toEqual([f, b, e, c]);
+        // c cannot go above its parent b: clamped to just after it.
+        expect(moveResearchProject(rs, c, 0)).toBe(true);
+        expect(rs.researchQueueWeapons).toEqual([f, b, c, e]);
+        // b cannot go below its child c: dragging it to the end stops just before c (no change here).
+        expect(moveResearchProject(rs, b, 3)).toBe(false);
+        expect(rs.researchQueueWeapons).toEqual([f, b, c, e]);
+        // A crash program at the head keeps its place, and cannot itself be moved.
+        f.isRushing = true;
+        expect(moveResearchProject(rs, e, 0)).toBe(true);
+        expect(rs.researchQueueWeapons).toEqual([f, e, b, c]);
+        expect(moveResearchProject(rs, f, 3)).toBe(false);
+        // Not queued / bad index.
+        expect(moveResearchProject(rs, d, 0)).toBe(false);
+        expect(moveResearchProject(rs, e, NaN)).toBe(false);
     });
 
     it('researchQueueRows', () => {
