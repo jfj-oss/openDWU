@@ -123,7 +123,7 @@ import { installMessageStubList, removeMessageStubList } from './ui/messageStubL
 // [fix6ui] begin
 import { setShipCommandHandler, setViewLockedQuery } from './ui/keyboard';
 import { refreshSelectionActionBar } from './ui/orderMenu';
-import { selectCreature, selectHabitat } from './ui/hud';
+import { selectCreature, selectFighter, selectHabitat } from './ui/hud';
 import { createShipCommandKeys, type ShipCommandKeys } from './ui/shipCommandKeys';
 import { showToast } from './ui/toast';
 // [fix6ui] end
@@ -639,7 +639,8 @@ export async function startGameView(
         afterSelectionChange: (sel) => {
             view.selectedBuiltObject = sel?.builtObject ?? null;
             view.selectedCreature = sel?.creature ?? null;
-            view.selectedHabitat = sel && !sel.builtObject && !sel.creature && !sel.builtObjects ? sel.habitat : null;
+            view.selectedFighter = sel?.fighter ?? null;
+            view.selectedHabitat = sel && !sel.builtObject && !sel.creature && !sel.fighter && !sel.builtObjects ? sel.habitat : null;
             view.selectedBuiltObjects = sel?.builtObjects ?? null;
             shipKeys?.afterSelectionChange(sel); // [fix6ui] selection history + view lock
         },
@@ -664,11 +665,13 @@ export async function startGameView(
     };
     // A clicked creature selects it (InfoPanel.cs DrawCreature in the selection panel).
     view.onCreatureSelect = (c) => selectCreature(c, false);
+    // A clicked fighter selects it (Main.Part11.cs 1579-1600 → InfoPanel.cs DrawFighter).
+    view.onFighterSelect = (f) => selectFighter(f);
     // Left-drag box / Shift-click multi-selection (Main.Part10.cs 2989 mainView_MouseUp, BuiltObjectList).
     view.onBuiltObjectListSelect = (list) => selectBuiltObjectList(list);
     view.getSelectedShips = () => {
         const s = getHudSelection();
-        if (s === null || s.shipGroup !== undefined || s.creature !== undefined) return null;
+        if (s === null || s.shipGroup !== undefined || s.creature !== undefined || s.fighter !== undefined) return null;
         return s.builtObjects ?? s.builtObject ?? null;
     };
     // [galaxymarkers] fleet icons / double-clicked fleet ships select the fleet; symbols highlight the HUD selection.

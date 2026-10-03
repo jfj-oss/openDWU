@@ -65,7 +65,6 @@ import { getSettings, type UiSettings } from '../ui/settings';
 import { displayColorForEmpire } from '../sim/empireColors';
 import { useMinifyingFilter } from './assets';
 import { boundsOnScreen } from './drawCache';
-import { combatBarAlpha, drawCombatBars } from './combatBars';
 import { drawCrossedSwords, systemsUnderFire } from './battleIcons';
 import { builtObjectHiddenFromPick, warEmpires } from './builtObjectLayer';
 
@@ -718,7 +717,6 @@ export class GalaxyMarkerLayer {
     private readonly rings = new Graphics();
     private readonly overlayG = new Graphics();
     /** Shield / hull bars, drawn relative to `symbols.position` (see updateSymbols: the same camera-local origin). */
-    private readonly barsG = new Graphics();
     private readonly iconLayer = new Container();
     private readonly countLayer = new Container();
     private discTex: Texture;
@@ -761,8 +759,9 @@ export class GalaxyMarkerLayer {
         this.discs = new ParticleContainer({ texture: this.discTex, dynamicProperties: dyn });
         this.symbols = new ParticleContainer({ texture: Texture.WHITE, dynamicProperties: dyn });
         this.back.addChild(this.discs, this.rings);
-        // barsG / overlayG are cleared and redrawn every frame: each in its own render group (renderGroups.ts).
-        this.front.addChild(this.symbols, inOwnRenderGroup(this.barsG), this.countLayer, inOwnRenderGroup(this.overlayG), this.iconLayer);
+        // overlayG is cleared and redrawn every frame: in its own render group (renderGroups.ts). (The battle bars over the
+        // ships are combatBars.ts BattleBarLayer, MainView.1.cs 1251-1295.)
+        this.front.addChild(this.symbols, this.countLayer, inOwnRenderGroup(this.overlayG), this.iconLayer);
         const idx = below !== null ? world.children.indexOf(below) : -1;
         if (idx >= 0) world.addChildAt(this.back, idx);
         else world.addChild(this.back);
@@ -860,7 +859,6 @@ export class GalaxyMarkerLayer {
         this.front.visible = factionOn;
         this.drawn = [];
         this.overlayG.clear();
-        this.barsG.clear();
         this.decorateLabels(systems, f, z, factionOn);
         if (!this.back.visible && !this.front.visible) return;
 
@@ -1123,7 +1121,6 @@ export class GalaxyMarkerLayer {
         const ox = cam.x;
         const oy = cam.y;
         this.symbols.position.set(ox, oy);
-        this.barsG.position.set(ox, oy);
         const shipPx = shipSymbolPx(f, false);
         const basePx = shipSymbolPx(f, true);
         const opts: GalaxyViewDisplay = getSettings();
@@ -1169,11 +1166,6 @@ export class GalaxyMarkerLayer {
                 // Filled art over a darker, slightly larger copy: the contour.
                 this.pushSymbol(n++, artIdx, pos.x - ox, pos.y - oy, heightPx + 2.5, z, brighten(base, -96), alpha * 0.9);
                 this.pushSymbol(n++, artIdx, pos.x - ox, pos.y - oy, heightPx, z, tint, alpha);
-            }
-            if (!galaxyPass && !isBase) {
-                // Shield / hull bars under the marker while the ship fights (render/combatBars.ts).
-                const barAlpha = combatBarAlpha(bo, g.nowMs);
-                if (barAlpha > 0) drawCombatBars(this.barsG, bo, pos.x - ox, pos.y - oy, heightPx, z, barAlpha);
             }
             if (galaxyPass) {
                 this.drawn.push({ bo, group: null, x: pos.x, y: pos.y, halfPx: heightPx / 2 });

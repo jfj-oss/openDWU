@@ -90,6 +90,7 @@ import { createCharterButton } from './screens/charters'; // [charters]
 import { setTextIfChanged } from '../render/drawCache';
 import { CREATURE_FRAME_SETS, creatureFrameSetIndexes, creatureFrameUrls } from '../render/creatureLayer';
 import type { Creature } from '../sim/creature';
+import type { Fighter } from '../sim/combat/fighters';
 
 // Port of Main.Part12.cs LoadUiChromeButtons (381–520): the control → chrome
 // button image mapping. The original loads each control's image from
@@ -351,6 +352,9 @@ export interface Selection {
     shipGroup?: ShipGroup;
     /** A selected space creature (InfoPanel.cs DrawCreature). `habitat` is then its nearest system's star. */
     creature?: Creature;
+    /** A selected launched fighter (InfoPanel.cs 3495 DrawFighter; picked on the map, Main.Part11.cs 1579-1600).
+     *  `habitat` is then its nearest system's star. */
+    fighter?: Fighter;
     /** Several selected ships (the C# BuiltObjectList selection: a left-drag box or Shift-clicks), 2+ entries;
      * `builtObject` / `shipGroup` are then unset and `habitat` is the first ship's nearest system star. */
     builtObjects?: BuiltObject[];
@@ -414,6 +418,12 @@ export function setSelection(sel: Selection | null): void {
 let creatureSelectHandler: ((c: Creature, moveView: boolean) => void) | null = null;
 export function selectCreature(c: Creature, moveView = false): void {
     creatureSelectHandler?.(c, moveView);
+}
+
+// Fighter selection hook: buildSelectionPanel registers it; the Main View's fighter click calls selectFighter.
+let fighterSelectHandler: ((f: Fighter) => void) | null = null;
+export function selectFighter(f: Fighter): void {
+    fighterSelectHandler?.(f);
 }
 
 // [15c] Fleet selection hook: buildSelectionPanel registers it; the Fleets list,
@@ -1317,7 +1327,7 @@ function buildSelectionPanel(wiring: HudWiring): HTMLElement {
         () => ({
             galaxy: wiring.galaxy ?? null,
             player: wiring.galaxy?.playerEmpire ?? null,
-            habitat: currentSelection !== null && currentSelection.builtObject === undefined && currentSelection.shipGroup === undefined && currentSelection.builtObjects === undefined && currentSelection.creature === undefined ? currentSelection.habitat : null,
+            habitat: currentSelection !== null && currentSelection.builtObject === undefined && currentSelection.shipGroup === undefined && currentSelection.builtObjects === undefined && currentSelection.creature === undefined && currentSelection.fighter === undefined ? currentSelection.habitat : null,
         }),
         (id) => wiring.gameData?.resources.find((d) => d.resourceId === id)?.name ?? `#${id}`,
     );
@@ -1592,6 +1602,14 @@ function buildSelectionPanel(wiring: HudWiring): HTMLElement {
         }
     };
     // [/16a]
+    // Select a fighter (Main.Part10.cs method_208 for a Fighter): its nearest system's star as `habitat`.
+    fighterSelectHandler = (f) => {
+        const galaxy = wiring.galaxy;
+        if (!galaxy) return;
+        const system = nearestSystem(galaxy.systems, f.xpos, f.ypos);
+        if (!system) return;
+        wiring.onSelectionChange?.({ habitat: system.systemStar, system, fighter: f });
+    };
     // Select a creature: its nearest system's star as `habitat`, `creature` set (the map ring and live refresh follow it).
     creatureSelectHandler = (c, moveView) => {
         const galaxy = wiring.galaxy;
@@ -1661,7 +1679,7 @@ function buildSelectionPanel(wiring: HudWiring): HTMLElement {
         const sel = currentSelection;
         const galaxy = wiring.galaxy;
         const player = galaxy?.playerEmpire ?? null;
-        if (sel && galaxy && player !== null && !sel.creature && !sel.shipGroup && !sel.builtObject && !sel.builtObjects) {
+        if (sel && galaxy && player !== null && !sel.creature && !sel.fighter && !sel.shipGroup && !sel.builtObject && !sel.builtObjects) {
             // The options come from a sim query (in-thread: at once; sim worker: from the authoritative game one round
             // trip later, then the strip is redrawn — a reply for a selection already left is dropped).
             const remote = isRemoteQueryGalaxy(galaxy);
@@ -1693,7 +1711,7 @@ function buildSelectionPanel(wiring: HudWiring): HTMLElement {
     wiring.onSelectionChange = (sel) => {
         // A star picked at galaxy / sector zoom is the C# SystemInfo selection (DrawSystemInfo); at system zoom the
         // star itself (DrawHabitat).
-        if (sel !== null && sel.systemInfo === undefined && sel.habitat === sel.system.systemStar && !sel.builtObject && !sel.shipGroup && !sel.creature && !sel.builtObjects) {
+        if (sel !== null && sel.systemInfo === undefined && sel.habitat === sel.system.systemStar && !sel.builtObject && !sel.shipGroup && !sel.creature && !sel.fighter && !sel.builtObjects) {
             const cam = wiring.camera;
             sel = { ...sel, systemInfo: cam !== undefined && cam.zoom < SYSTEM_INFO_ZOOM };
         }
@@ -1713,6 +1731,12 @@ function buildSelectionPanel(wiring: HudWiring): HTMLElement {
     const liveTimer = setInterval(() => {
         if (!panel.isConnected) {
             clearInterval(liveTimer);
+            return;
+        }
+        if (currentSelection?.fighter) {
+            // InfoPanel.cs 3497 DrawFighter: a destroyed fighter clears the selection.
+            if (currentSelection.fighter.hasBeenDestroyed) wiring.onSelectionChange?.(null);
+            else refresh();
             return;
         }
         if (currentSelection?.creature) {
