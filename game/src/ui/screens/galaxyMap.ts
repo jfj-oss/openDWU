@@ -75,6 +75,35 @@ export function galaxyMapScale(galaxy: Galaxy, mapWidthPx: number): number {
     return galaxy.sizeX / mapWidthPx;
 }
 
+/**
+ * The small GalaxyMap control the screens embed (gmapEmpireDetail, gmapColony …) after SetSystem / SetSystems:
+ * black, every system as a dot in its star colour — dimmed grey once some are selected — and the selected systems
+ * in yellow (GalaxyMap.cs method_6). `w` is the control's width in original pixels; the canvas is rasterised at
+ * the device pixel ratio × 2 so it stays crisp inside a scaled original-style window.
+ */
+export function drawSystemsMiniMap(canvas: HTMLCanvasElement, galaxy: Galaxy, w: number, selected: ReadonlySet<Habitat>): void {
+    const dpr = Math.min(3, (typeof window !== 'undefined' ? window.devicePixelRatio : 1) || 1) * 2;
+    canvas.width = Math.round(w * dpr);
+    canvas.height = Math.round(w * dpr);
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, w, w);
+    const s = galaxyMapScale(galaxy, w);
+    const filter = selected.size > 0;
+    const sizes = starDotSizes(w, filter);
+    const dot = (h: Habitat, color: string | null, size: number): void => {
+        if (color === null) return;
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        ctx.ellipse(h.xpos / s, h.ypos / s, size / 2, size / 2, 0, 0, Math.PI * 2);
+        ctx.fill();
+    };
+    for (const sys of galaxy.systems) dot(sys.systemStar, filter ? DIMMED_COLOR : starBrushColor(sys.systemStar), sizes.normal);
+    for (const h of selected) dot(h, SELECTED_COLOR, sizes.selected);
+}
+
 // Sector-grid label for column i (GalaxyMap.cs: (char)(i + 65)) and row j (j + 1).
 export function sectorColumnLabel(i: number): string {
     return String.fromCharCode(i + 65);
