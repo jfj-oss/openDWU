@@ -563,7 +563,7 @@ export function identifyPirateSpaceport(galaxy: Galaxy, pirateFaction: Empire | 
     return null;
 }
 
-/** Galaxy.9.cs 396 PirateFactionJoinsEmpire(empire, pirateFaction) → EliminatePirateFaction (M4s stub). */
+/** Galaxy.9.cs 396 PirateFactionJoinsEmpire(empire, pirateFaction) → EliminatePirateFaction (pirates/pirateGalaxyTick.ts). */
 export function pirateFactionJoinsEmpire(galaxy: Galaxy, empire: Empire | null, pirateFaction: Empire | null): void {
     if (empire !== null && pirateFaction !== null) eliminatePirateFaction(galaxy, pirateFaction, empire);
 }
@@ -982,8 +982,8 @@ export function inflictDamageFull(
     const selfGroupStats = shipGroupBattleStats(self);
     if (isCreature(abstractTarget)) {
         const creature: Creature = abstractTarget;
-        // TODO(port) M4u: Creature.cs 926 DamageCreature(damager, damage, weapon) — the TS overload ignores damager / weapon.
-        if (creature.damageCreature(csInt(hitPower))) {
+        // BuiltObject.2.cs 6227 creature.DamageCreature(this, (int)hitPower, weapon).
+        if (creature.damageCreature(self, csInt(hitPower), weapon)) {
             if (creature.type === CreatureType.SilverMist && self.empire !== null) self.empire.civilityRating += DESTROY_SILVER_MIST_REPUTATION_BONUS;
             // BuiltObject.2.cs 6233 _Galaxy.CheckTriggerEvent(creature.GameEventId, ActualEmpire, Destroy, null) (story/eventActions.ts, M4z3).
             checkTriggerEvent(galaxy, creature.gameEventId, self.actualEmpire, EventTriggerType.Destroy, null);
@@ -1350,13 +1350,12 @@ function isWeaponCategory(category: ComponentCategoryType): boolean {
  * Next(15000, 25000) per component disabled.
  */
 export function inflictIonDamage(galaxy: Galaxy, self: BuiltObject, target: StellarObject, weapon: Weapon | null, hitPower: number, time: number, strikeAngle: number): number {
-    void weapon;
     void strikeAngle;
     hitPower *= baconInflictDamageMultiplier(self);
     if (isCreature(target)) {
         const creature = target;
-        // TODO(port) M4u: Creature.cs 926 DamageCreature(damager, damage, weapon) — the TS overload ignores damager / weapon.
-        if (creature.type === CreatureType.SilverMist && creature.damageCreature(csInt(hitPower))) {
+        // BuiltObject.2.cs 6133 creature.DamageCreature(this, (int)hitPower, weapon): full damage from an ion weapon.
+        if (creature.type === CreatureType.SilverMist && creature.damageCreature(self, csInt(hitPower), weapon)) {
             // BuiltObject.2.cs 6135 CheckTriggerEvent(creature.GameEventId, Empire, Destroy) (story/eventActions.ts, M4z3).
             checkTriggerEvent(galaxy, creature.gameEventId, self.empire, EventTriggerType.Destroy, null);
             if (creature.type === CreatureType.SilverMist && self.empire !== null) self.empire.civilityRating += DESTROY_SILVER_MIST_REPUTATION_BONUS;
@@ -1407,8 +1406,8 @@ export function habitatInflictIonDamage(galaxy: Galaxy, self: Habitat, target: S
     void strikeAngle;
     if (isCreature(target)) {
         const creature = target;
-        // TODO(port) M4u: Creature.cs 926 DamageCreature(damager, damage, weapon) — the TS overload ignores damager / weapon.
-        if (creature.damageCreature(csInt(hitPower))) {
+        // Habitat.cs 2355 creature.DamageCreature(this, (int)hitPower, GiantIonCannon).
+        if (creature.damageCreature(self, csInt(hitPower), self.giantIonCannon)) {
             // Habitat.cs 2357 CheckTriggerEvent(creature.GameEventId, Empire, Destroy) (story/eventActions.ts, M4z3).
             checkTriggerEvent(galaxy, creature.gameEventId, self.empire, EventTriggerType.Destroy, null);
             if (creature.type === CreatureType.SilverMist && self.empire !== null) self.empire.civilityRating += DESTROY_SILVER_MIST_REPUTATION_BONUS;
@@ -1810,7 +1809,7 @@ export function reviewDisabledComponents(galaxy: Galaxy, builtObject: BuiltObjec
 // BuiltObject.2.cs 4816 CheckSelfDestruct, Galaxy.7.cs 2835 DetermineScrapDamagedShip
 // ---------------------------------------------------------------------------------------------------------------
 
-/** Galaxy.7.cs 2835 DetermineScrapDamagedShip(builtObject). No Rnd (FindNearestShipYard / FindNearestAvailableConstructionShip are M4h / M4i stubs). */
+/** Galaxy.7.cs 2835 DetermineScrapDamagedShip(builtObject). No Rnd (FindNearestShipYard / FindNearestAvailableConstructionShip: construction/empireConstruction.ts). */
 export function determineScrapDamagedShip(galaxy: Galaxy, builtObject: BuiltObject): boolean {
     const playerEmpire = galaxy.playerEmpire;
     if (
@@ -1891,7 +1890,7 @@ export function checkSelfDestruct(galaxy: Galaxy, builtObject: BuiltObject): voi
 export function creatureDamageTarget(galaxy: Galaxy, creature: Creature, abstractTarget: BuiltObject | Habitat | Creature, damage: number, tempNow: number, timePassed: number): boolean {
     if (isCreature(abstractTarget)) {
         const creature2 = abstractTarget;
-        if (creature2.damageCreature(damage)) {
+        if (creature2.damageCreature(null, damage, null)) {
             creature2.completeTeardown();
             creature.currentTarget = null;
         }

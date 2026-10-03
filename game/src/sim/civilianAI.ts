@@ -6,10 +6,10 @@
 // 4256 / 4360 FastFindNearestUnexploredHabitat[InSector], 3848 / 4567 FindNearestUnexploredHabitatInSystem).
 //
 // Free functions, C# `this` first (tasks/M4-plan.md §3.1 rule 2). Every Galaxy.Rnd draw is on `galaxy.rnd` in C# order.
-// Cross-package callees that are still stubs are called through their owner's stub (assignScrapMission /
-// assignRepairMission / assignRetrofitMission / procureConstructionComponents /
-// determineHabitatsBeingMinedIncludingBuildingMiningStations (M4i), setupRefuelling (M4e), assignLoadTroopsMission and
-// the troop-transport checks (M4q)).
+// Cross-package callees live with their owners: assignScrapMission / assignRetrofitMission /
+// procureConstructionComponentsAtBuiltObject / determineHabitatsBeingMinedIncludingBuildingMiningStations
+// (construction/empireConstruction.ts), assignRepairMission (construction/repair.ts), setupRefuelling
+// (logistics/refuel.ts), assignLoadTroopsMission and the troop-transport checks (combat/troopsRuntime.ts).
 
 import { raceAggressionLevel, raceCautionLevel } from './racePeriodic';
 import { isAiControlled } from './missions/playerOrder';
@@ -3258,7 +3258,7 @@ export function processTourists(galaxy: Galaxy, builtObject: BuiltObject, touris
     }
 }
 
-// ---- stub added by M4o (called from combat/damage.ts ProvideBonusFromPirateBase, BuiltObject.2.cs 4991) ----
+// ---- called from combat/damage.ts ProvideBonusFromPirateBase (BuiltObject.2.cs 4991) ----
 
 /**
  * Galaxy.3.cs 1542 FindLonelyColonyLocation(empire): a random offset (±300 000) from the capital, clamped to the galaxy,

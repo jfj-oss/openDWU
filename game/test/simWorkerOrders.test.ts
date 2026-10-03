@@ -39,6 +39,7 @@ import { SimHost } from '../src/simworker/simHost';
 import { SimClientCore } from '../src/simworker/clientCore';
 import { alwaysHotFields } from '../src/simworker/replicaGalaxy';
 import { setRemoteQuerySink, simQuery } from '../src/simworker/simQuery';
+import { installReplicaWriteDetector, type ReplicaWriteDetector } from '../src/simworker/writeDetector';
 import type { QueryMessage, ToWorker } from '../src/simworker/protocol';
 import { buildInfoModel, type InfoContext } from '../src/ui/selectionInfo';
 import { itemPanelDefs, itemRowModel, panelItems, type RowContext } from '../src/ui/leftSidebar';
@@ -335,12 +336,14 @@ function runInThread(): { game: Game; ticks: number; draws: number[] } {
 }
 
 /** The same script on the replica through the host (`localQueries`: build the menus on the replica instead). */
-function runOnReplica(localQueries = false): { game: Game; w: Connected; ticks: number } {
+function runOnReplica(localQueries = false): { game: Game; w: Connected; ticks: number; detector: ReplicaWriteDetector } {
     const game = cachedTickGame(gameData);
     const time = new GalaxyTime();
     time.paused = false;
     const w = connect(game, time);
     const rg = w.client.galaxy;
+    // Chunk 0's detector: any main-thread write to the replica (e.g. a galaxy.rnd draw on it) is reported.
+    const detector = installReplicaWriteDetector(w.client.replica, { warn: () => {} });
     if (localQueries) setRemoteQuerySink(rg, null);
     let ticks = 0;
     while (game.galaxy.nowMs < END_MS) {
@@ -356,7 +359,7 @@ function runOnReplica(localQueries = false): { game: Game; w: Connected; ticks: 
         ticks++;
         expect(rg.nowMs).toBe(game.galaxy.nowMs);
     }
-    return { game, w, ticks };
+    return { game, w, ticks, detector };
 }
 
 describe('sim worker chunk 5: orders from the HUD, the order menu and the selection panel', () => {
@@ -369,8 +372,11 @@ describe('sim worker chunk 5: orders from the HUD, the order menu and the select
         const refRun = runOf(ref.game.galaxy);
         expect(refRun.seen.some((x) => x.startsWith('fleet ') && x !== 'fleet none')).toBe(true);
 
-        const { game, w, ticks } = runOnReplica();
+        const { game, w, ticks, detector } = runOnReplica();
         const rg = w.client.galaxy;
+        detector.checkAll();
+        expect(detector.unexpected().map((x) => x.key)).toEqual([]);
+        detector.dispose();
         expect(ticks).toBe(ref.ticks);
         expect(runOf(rg).seen).toEqual(refRun.seen);
         expect(JSON.stringify(commandLog(game.galaxy))).toBe(JSON.stringify(commandLog(ref.game.galaxy)));
@@ -387,8 +393,12 @@ describe('sim worker chunk 5: orders from the HUD, the order menu and the select
 
     it('building the menus on the replica instead loses the galaxy.rnd draws (the gate above is sensitive)', () => {
         const ref = runInThread();
-        const { w } = runOnReplica(true);
+        const { w, detector } = runOnReplica(true);
         expect(w.host.digest()).not.toBe(stateDigest(ref.game.galaxy));
+        // ... and the write detector sees the menus draw on the replica's own galaxy.rnd.
+        detector.checkAll();
+        expect(detector.unexpected().some((x) => /Random/.test(x.key))).toBe(true);
+        detector.dispose();
         w.client.dispose();
         w.host.dispose();
     }, 900000);

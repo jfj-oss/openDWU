@@ -3,7 +3,8 @@ import { generateGalaxy } from '../src/sim/galaxy';
 import { setGovernmentsStatic } from '../src/sim/empire';
 import { generateEmpire } from '../src/sim/empireGeneration';
 import { ResearchSystem, buildResearchStatic, loadEmpirePolicy, ShipDesignFocus } from '../src/sim/researchSystem';
-import { buildComponentStatic } from '../src/sim/componentStatic';
+import { buildComponentStatic, componentImprovementFromComponent, generateOrderedComponentImprovementList } from '../src/sim/componentStatic';
+import { ComponentCategoryType } from '../src/sim/data/policies';
 import { Random } from '../src/sim/random';
 import { createGame } from '../src/sim/game';
 import { GalaxyShape, HabitatCategoryType } from '../src/sim/types';
@@ -191,5 +192,45 @@ describe('placeComponentsOnDesign', () => {
         for (const c of result!.components) {
             expect(ctx.research.checkComponentResearched(c)).toBe(true);
         }
+    });
+});
+
+// Empire.10.cs 1687-1690 / 1978-1992: the default torpedoWeapons list is Galaxy.GenerateOrderedComponentImprovementList
+// (WeaponTorpedo, 1) (Galaxy.4.cs 87): WeaponTorpedo-type components only (strict category: no missiles or bombards),
+// highest Value1 first, static values. A torpedo-slot pick with Value7 > 0 (a bombard) walks it and keeps the last
+// researched entry, stopping at the first one with Value7 == 0 — the most damaging researched torpedo.
+describe('placeComponentsOnDesign default torpedo list (Empire.10.cs 1689)', () => {
+    function destroyerTorpedoIds(techLevel: number): number[] {
+        const ctx = makeEmpireContext(techLevel);
+        const nuke = ctx.componentDefinitions.find((d) => d.componentId === 11)!; // Nuclear Devastator: WeaponBombard, Value7 3
+        expect(nuke.type).toBe(ComponentType.WeaponBombard);
+        expect(nuke.value7).toBeGreaterThan(0);
+        const evaluate = ctx.research.evaluateDesiredComponentImprovement.bind(ctx.research);
+        ctx.research.evaluateDesiredComponentImprovement = (type, focus) => (type === ComponentType.WeaponMissile ? componentImprovementFromComponent(nuke) : evaluate(type, focus));
+        const spec = loadSpec('Destroyer', BuiltObjectSubRole.Destroyer, true);
+        const result = placeComponentsOnDesign(ctx, makeDesign(BuiltObjectSubRole.Destroyer, spec.role), spec, null, MAX_SHIP_SIZE, MAX_BASE_SIZE, null, 0.0);
+        expect(result).not.toBeNull();
+        return result!.components.filter((c) => c.category === ComponentCategoryType.WeaponTorpedo).map((c) => c.componentId);
+    }
+
+    it('the list holds the WeaponTorpedo-type components, highest damage first', () => {
+        const ctx = makeEmpireContext(0.5);
+        const list = generateOrderedComponentImprovementList(ctx.componentDefinitions, ComponentCategoryType.WeaponTorpedo, 1);
+        expect(list.every((ci) => ci.improvedComponent.type === ComponentType.WeaponTorpedo)).toBe(true);
+        const values = list.map((ci) => ci.value1);
+        expect(values).toEqual([...values].sort((a, b) => b - a));
+        expect(list.slice(2).map((ci) => ci.improvedComponent.componentId)).toEqual([7, 6, 5]); // 8 / 9 (36) lead
+    });
+
+    it('a bombard pick in a missile slot becomes the best researched torpedo (tech 1: Epsilon Torpedo, not Seeking Missile)', () => {
+        const ids = destroyerTorpedoIds(1);
+        expect(ids.length).toBeGreaterThan(0);
+        expect(ids.every((id) => id === 5)).toBe(true);
+    });
+
+    it('with no torpedo researched the bombard pick stays (tech 0.5)', () => {
+        const ids = destroyerTorpedoIds(0.5);
+        expect(ids.length).toBeGreaterThan(0);
+        expect(ids.every((id) => id === 11)).toBe(true);
     });
 });
