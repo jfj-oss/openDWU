@@ -497,7 +497,8 @@ export function setGameMenuHandler(h: (() => void) | null): void {
 // cycle actions to it and never falls through to the inert default branch.
 // ---------------------------------------------------------------------------
 
-/** The seven cycler lists of the selection panel (the CYCLE_CHIPS keys). */
+/** The seven cycler lists of the selection panel (hud.ts SELECTION_CYCLE_BUTTONS). The category lists of the old
+ *  footer chips are now the left sidebar's panels (leftSidebar.ts). */
 export type CycleKind = 'colonies' | 'bases' | 'military' | 'construction' | 'other' | 'fleets' | 'idleShips';
 
 let cycleHandler: ((kind: CycleKind, dir: 1 | -1, moveView: boolean) => void) | null = null;

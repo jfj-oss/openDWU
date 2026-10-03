@@ -11,21 +11,6 @@ export interface Rect { x: number; y: number; w: number; h: number }
  *  (envelope) and galactic history (hourglass) buttons beside the message box. */
 export const TOP_BAR_BUTTONS = [...TOP_ROW_BUTTONS.map((b) => b.name), 'btnHistoryMessages', 'btnGalacticHistory'] as const;
 
-/** Cycle chips of the streamlined selection panel footer. The original's
-    cycle<X>.png art bakes a "›" arrow into each icon, so the chips render
-    as short text labels instead (task 05d). */
-export const CYCLE_CHIPS = [
-    { key: 'colonies', label: 'Colonies' },
-    { key: 'bases', label: 'Bases' },
-    { key: 'military', label: 'Military' },
-    { key: 'construction', label: 'Constr.' },
-    { key: 'other', label: 'Other' },
-    { key: 'fleets', label: 'Fleets' },
-    { key: 'idleShips', label: 'Idle' },
-] as const;
-
-export type CycleChipKey = (typeof CYCLE_CHIPS)[number]['key'];
-
 /** View rows of the bottom-right options list. */
 export const VIEW_ROWS = [
     { key: 'zoomSelection', label: 'Zoom to selection' },
