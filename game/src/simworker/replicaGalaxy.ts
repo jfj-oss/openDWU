@@ -6,6 +6,7 @@
 
 import type { Galaxy } from '../sim/galaxy';
 import type { GameData } from '../sim/data/gameData';
+import { baconInitializeSettings } from '../sim/baconSettings';
 import { applyReplicaSideTables, galaxyExternals, replicaCodecOptions, replicaSideTables, replicaSkipFields, replicaStatics, wireReplicaVisibility } from '../sim/save/galaxySave';
 import { Galaxy as GalaxyClass } from '../sim/galaxy';
 import { BuiltObject } from '../sim/builtObject';
@@ -168,6 +169,9 @@ function assignInPlace(dst: Record<string, unknown>, src: Record<string, unknown
     for (const k of Object.keys(src)) {
         const a = dst[k];
         const b = src[k];
+        // The same live table on both sides (characterState.raceAvailableCharacters is the sim's own Map): nothing to
+        // copy — and clearing `a` would empty the authoritative table.
+        if (a === b) continue;
         if (a instanceof Map && b instanceof Map) {
             a.clear();
             for (const [x, y] of b) a.set(x, y);
@@ -192,6 +196,9 @@ export class GalaxyReplica {
 
     constructor(gameData: GameData, baseTechCost: number) {
         this.statics = replicaStatics(gameData, baseTechCost);
+        // The BaconSettings.txt statics (prices, maintenance, movement) the main thread's screens read, as the worker's
+        // createGame / deserializeGame applied them there (statics only: the galaxy is the worker's).
+        baconInitializeSettings(null, gameData.baconSettings);
         const codec = replicaCodecOptions();
         this.decoder = new ReplicaDecoder({ classes: codec.classes, revive: codec.revive, externals: this.statics.byRef });
     }

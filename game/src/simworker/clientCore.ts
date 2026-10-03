@@ -20,8 +20,10 @@ import { Fighter } from '../sim/combat/fighters';
 import { ShipGroup } from '../sim/fleets/shipGroup';
 import { Empire as EmpireClass } from '../sim/empire';
 import { Habitat } from '../sim/types';
-import type { ClockMessage, CommandMessage, HostOpMessage, QueryMessage, SnapshotMessage, StepMessage, ToWorker, WorkerEvent } from './protocol';
+import type { ClockMessage, CommandMessage, HostOpMessage, QueryMessage, RefreshRequest, SnapshotMessage, StepMessage, ToWorker, WorkerEvent } from './protocol';
 import { setRemoteSimHost, type RemoteSimHost } from './remoteHost';
+import { setRemoteRefreshSink } from './refresh';
+import { markReadOnlyGalaxy } from '../sim/readOnlyQuery';
 import type { ApplyStats } from './replicaSync';
 
 /** Main-thread sync cost readout (window.__dwu.simStats in worker mode). */
@@ -121,6 +123,9 @@ export class SimClientCore {
     readonly renderTime: RenderTime = createRenderTime();
     readonly game: Game;
     private readonly pending = new Map<number, (r: unknown) => void>();
+    /** Main-thread identity of the by-value objects sent in commands (remoteArgs.ts valueId). */
+    private readonly valueIds = new WeakMap<object, number>();
+    private nextValueId = 0;
     /** Replies awaited as promises (remoteHost.ts): rejected when the worker reports an error. */
     private readonly failing = new Map<number, (err: Error) => void>();
     private readonly listeners = new Set<(e: WorkerEvent, resolve: (a: unknown) => unknown) => void>();
@@ -184,10 +189,22 @@ export class SimClientCore {
                 return id;
             },
             external: (o) => byObject.get(o),
+            // By-value identity across commands (remoteArgs.ts RemoteValues).
+            valueId: (o) => {
+                let v = this.valueIds.get(o);
+                if (v === undefined) {
+                    v = this.nextValueId++;
+                    this.valueIds.set(o, v);
+                }
+                return v;
+            },
         };
         this.resolving = { object: (id) => this.replica.decoder.object(id), external: (kind, key) => this.replica.staticByRef.get(`${kind}:${key}`) };
         setRemoteCommandSink(galaxy, (empire, op, args, onApplied) => this.sendCommand(empire, op, args, onApplied));
         setRemoteQuerySink(galaxy, (empire, op, args, done) => this.sendQuery(empire, op, args, done));
+        setRemoteRefreshSink(galaxy, (objects, onFresh) => this.requestRefresh(objects, onFresh));
+        // The sim's lazy "obtain" lookups never write the replica, whoever queries it (sim/readOnlyQuery.ts).
+        markReadOnlyGalaxy(galaxy);
         this.tradeFlows = new ReplicaTradeFlows(
             galaxy,
             () => this.replica.decoder.object(1) as Record<string, unknown> | null,
@@ -268,6 +285,22 @@ export class SimClientCore {
         this.opts.post(msg);
     }
 
+    /**
+     * Ask the worker to compare `objects` (replica objects) and what they reach now (refresh.ts requestSimRefresh);
+     * `onFresh` runs once the delta that carries them is applied.
+     */
+    requestRefresh(objects: readonly object[], onFresh?: () => void): void {
+        const ids: number[] = [];
+        for (const o of objects) {
+            const id = this.replica.decoder.idOf(o);
+            if (id >= 0) ids.push(id);
+        }
+        const id = onFresh === undefined ? 0 : this.nextCommandId++;
+        if (onFresh !== undefined) this.pending.set(id, () => onFresh());
+        const m: RefreshRequest = { type: 'refresh', id, objects: ids };
+        this.opts.post(m);
+    }
+
     /** A sim query (simQuery.ts) for the worker; `done` runs when its reply has been applied (in frame()). */
     private sendQuery(empire: Empire, op: SimQueryName, args: unknown[], done: (r: unknown) => void): void {
         const empireId = this.replica.decoder.idOf(empire);
@@ -278,6 +311,12 @@ export class SimClientCore {
         const msg: QueryMessage = { type: 'query', id, empire: empireId, op, args: encoded };
         this.pending.set(id, done);
         this.opts.post(msg);
+    }
+
+    /** A UI-side sim write for the worker to apply on receipt, unjournaled (protocol.ts UiOpMessage). */
+    postUiOp(op: string, args: unknown[]): void {
+        if (this.disposed) return;
+        this.opts.post({ type: 'uiOp', op, args: args.map((a) => encodeRemoteArg(a, this.naming)) });
     }
 
     /** Hand the worker the HUD clock's pause / speed when they changed. */
@@ -458,6 +497,8 @@ export class SimClientCore {
         setRemoteCommandSink(this.galaxy, null);
         setRemoteQuerySink(this.galaxy, null);
         setRemoteSimHost(this.galaxy, null);
+        setRemoteRefreshSink(this.galaxy, null);
+        markReadOnlyGalaxy(this.galaxy, false);
         this.tradeFlows.dispose();
         this.pending.clear();
         const failing = [...this.failing.values()];

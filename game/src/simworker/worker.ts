@@ -75,7 +75,8 @@ async function init(m: InitMessage): Promise<void> {
     if (startOptions === undefined) throw new Error('sim worker init: no start options');
     post({ type: 'progress', step: 'Preparing map', fraction: 0.9 });
     installWorkerBootState(booted.game.galaxy);
-    host = new SimHost(booted.game, time, startOptions, { sync: m.sync });
+    // The browser game always has the message UI: the worker is the player's message recipient (docs §9 chunk 4).
+    host = new SimHost(booted.game, time, startOptions, { sync: m.sync, playerMessages: true });
     post({ ...host.snapshot(), scenario: booted.scenario });
     for (const e of early.splice(0)) handle(e);
     last = performance.now();
@@ -96,11 +97,15 @@ function loop(): void {
     timer = setTimeout(loop, delay);
 }
 
-/** Run a tick now (a command or a clock change while paused lands without waiting for the poll). */
+/**
+ * Run a tick next (a command or a clock change while paused lands without waiting for the poll). As a task of its own,
+ * not inside this message: the commands the main thread posted together (one UI action, e.g. assign a mission and frame
+ * it) arrive as consecutive messages and reach the same boundary, as in-thread (remoteArgs.ts RemoteValues).
+ */
 function kick(): void {
     if (timer !== null && host !== null && host.time.paused) {
         clearTimeout(timer);
-        loop();
+        timer = setTimeout(loop, 0);
     }
 }
 
@@ -132,6 +137,14 @@ function handle(m: ToWorker): void {
             return;
         case 'command':
             host!.command(m);
+            kick();
+            return;
+        case 'uiOp':
+            host!.uiOp(m);
+            kick();
+            return;
+        case 'refresh':
+            host!.refresh(m);
             kick();
             return;
         case 'query':

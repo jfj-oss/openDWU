@@ -8,7 +8,6 @@
 // TODO(port): the event panel for the other event types (method_508/509/511 pictures, method_515-520 music cues,
 // Avoid/Investigate buttons) — Main.Part4.cs:487 method_523
 
-import { EmpireMessage, EmpireMessageType, sendEmpireMessage } from '../sim/messages';
 import { EventMessageType } from '../sim/eventTypes';
 import type { Empire } from '../sim/empire';
 import type { Galaxy } from '../sim/galaxy';
@@ -17,94 +16,19 @@ import { Habitat } from '../sim/types';
 import { PlanetaryFacility } from '../sim/construction/facilities';
 import { galaxyStarDate } from '../sim/tick/simTime';
 import { resolveStarDateDescription } from '../sim/galaxyTime';
-import { MessageCategory, getMessageOptions } from './messageRouting';
+import { getMessageOptions } from './messageRouting';
 import { showEventMessagePopup } from './messagePopups';
 import { issuePlayerCommand } from '../sim/player/playerCommands';
 import { resolveGameText } from '../sim/textResolver';
-
-/**
- * The EmpireMessageType method_523 records an event as (Main.Part4.cs:509-1306), or null when it records nothing
- * (EmpireMessageType.Informational in the main branch, 1311: NewEmpireEmerges and the unlisted types).
- * The three "decision" events (1471-1510, the else branch) are recorded as Informational (which the history skips).
- */
-export function eventHistoryMessageType(type: EventMessageType, additionalData: unknown): EmpireMessageType | null {
-    const T = EventMessageType;
-    const M = EmpireMessageType;
-    switch (type) {
-        case T.EncounterBuiltObject:
-            return additionalData instanceof BuiltObject ? M.ExplorationBuiltObject : null; // 509-528
-        case T.EncounterRuins:
-            return additionalData instanceof Habitat ? M.ExplorationRuins : null; // 531-554
-        case T.RogueFleetDefectsToUs:
-        case T.UncoverPirateAttackFundingAnotherEmpire:
-        case T.UncoverPlanetDestroyerConstruction:
-            return M.Informational; // 1498-1505
-        case T.NewEmpireRaceAbility:
-        case T.ExoticTechDiscovered:
-        case T.SpecialGovernmentType:
-        case T.GalacticRefugees:
-        case T.SleepersAwake:
-        case T.LostBuiltObjectCoordinates:
-        case T.LostColonyCoordinates:
-        case T.TreasureFound:
-        case T.LostColonyFound:
-        case T.IndependentPopulation:
-            return M.ExplorationHabitat;
-        case T.CreatureOutbreak:
-        case T.BuiltObjectExplodes:
-        case T.PirateAmbush:
-            return M.BattleUnderAttack;
-        case T.FreeSuperShip:
-        case T.PirateFactionJoinsYou:
-            return M.ExplorationBuiltObject;
-        case T.GeneralRuinsDiscovery:
-        case T.RuinsEmpireBonus:
-            return M.ExplorationRuins;
-        case T.OriginsDiscovery:
-        case T.StoryClue:
-            return M.GalacticHistory; // 751-771
-        case T.RestrictedResourceDiscovered:
-            return M.RestrictedResourceDiscovered;
-        case T.RogueFleetDefectsFromUs:
-        case T.EmpireSplits:
-        case T.UncoverPirateAttackFundingYourEmpire:
-        case T.DisasterEvent:
-        case T.ResourceDepletion:
-        case T.PhantomPirates:
-            return M.GeneralBadEvent;
-        case T.UncoverKnownLocation: // 833-850: goto SpecialArea / AncientBattleDebrisField
-        case T.SpecialArea:
-        case T.AncientBattleDebrisField:
-            return M.ExplorationLocation;
-        case T.RareResourceIntercepted:
-        case T.ResourceAppearance:
-        case T.WonderBuilt:
-            return M.GeneralGoodEvent;
-        case T.GeneralDiscovery: // 887-953
-            if (additionalData instanceof BuiltObject) return M.ExplorationBuiltObject;
-            if (additionalData instanceof Habitat) return M.ExplorationHabitat;
-            return M.ExplorationRuins;
-        case T.RaceEvent:
-        case T.CharacterEvent:
-        case T.LeaderChange:
-            return M.GeneralNeutralEvent;
-        default:
-            return null;
-    }
-}
+// [simworker] chunk 4: the recording half is messagePipeline.ts (the sim worker records the events itself and hands the
+// main thread's recipient each one to show).
+import { playerMessageStream, recordEventMessage, type QueuedEvent } from './messagePipeline';
+export { eventHistoryMessageType } from './messagePipeline';
 
 /** The WonderBuilt event picture: bitmap_8[facility.PictureRef] (Main.Part4.cs:1277), loaded from
  *  environment/planetaryfacilities/facility_<n>.png (Main.Part13.cs:1736 LoadPlanetaryFacilities). */
 export function wonderImageUrl(facility: PlanetaryFacility): string {
     return `/assets/dwu/images/environment/planetaryfacilities/facility_${facility.def.pictureRef}.png`;
-}
-
-interface QueuedEvent {
-    type: EventMessageType;
-    title: string;
-    message: string;
-    additionalData: unknown;
-    location: unknown;
 }
 
 export interface EventMessagesOptions {
@@ -141,15 +65,8 @@ export function installEventMessages(opts: EventMessagesOptions): void {
     function handle(e: QueuedEvent): void {
         const options = getMessageOptions();
         const popupsAllowed = !options.suppressAllPopups; // 489-493 flag
-        const type = eventHistoryMessageType(e.type, e.additionalData);
-        // 1311 / 1496: _Game.DisplayMessageExploration gates recording.
-        if (type !== null && options.ticker[MessageCategory.Exploration]) {
-            const m = new EmpireMessage(player, type, e.location);
-            m.description = e.message;
-            m.title = e.title;
-            m.supressPopup = true;
-            sendEmpireMessage(m, player);
-        }
+        // 1311 / 1496: _Game.DisplayMessageExploration gates recording. Worker mode: the worker recorded it.
+        if (playerMessageStream(player) === undefined) recordEventMessage(player, e, options);
         if (e.type === EventMessageType.EncounterRuins && popupsAllowed && e.additionalData instanceof Habitat) {
             // Main.Part4.cs:531-554 → method_510 (64-84): the ruin's picture, Investigate Ruins / Leave the Ruins alone.
             // Investigate is btnEventMessageInvestigate_Click 1831-1835 (Galaxy.InvestigateRuins), issued as a player command.

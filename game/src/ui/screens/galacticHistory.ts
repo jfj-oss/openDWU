@@ -5,7 +5,9 @@
 // TODO(port): the small galaxy map beside the text (gmapMessageHistory, Main.Part4.cs:1921-1923 / 1996) — Main.Part4.cs:method_531
 
 import './galacticHistory.css';
-import { EmpireMessageType, empireMessageHistory, removeOldHistoryMessages, type EmpireMessage } from '../../sim/messages';
+import { EmpireMessageType, empireMessageHistory, type EmpireMessage } from '../../sim/messages';
+// [simworker] chunk 4: the rebind's RemoveOldHistoryMessages runs in the sim worker when the sim is there.
+import { playerMessageStream, trimMessageHistory, trimmedHistoryView } from '../messagePipeline';
 import { Empire } from '../../sim/empire';
 import { BuiltObject } from '../../sim/builtObject';
 import { Habitat } from '../../sim/types';
@@ -395,8 +397,8 @@ export interface HistorySort {
 }
 
 /** Rows for the list (method_542 order). */
-export function galacticHistoryRows(player: Empire, filter: HistoryFilter): GalacticHistoryRow[] {
-    return filterHistoryMessages(empireMessageHistory(player), filter).map((m) => ({
+export function galacticHistoryRows(player: Empire, filter: HistoryFilter, history: readonly EmpireMessage[] = empireMessageHistory(player)): GalacticHistoryRow[] {
+    return filterHistoryMessages(history, filter).map((m) => ({
         message: m,
         title: messageTitle(m, player),
         starDate: m.starDate,
@@ -794,7 +796,9 @@ function createGalacticHistory(opts: GalacticHistoryOptions): OpenState {
                 loc: r.location,
             }));
         }
-        return galacticHistoryRows(empire, filter).map((r) => ({
+        // Worker mode: the list as the worker's trim leaves it (the replica's catches up with the next sync).
+        const history = playerMessageStream(empire) !== undefined ? trimmedHistoryView(empire) : undefined;
+        return galacticHistoryRows(empire, filter, history).map((r) => ({
             key: r.message,
             title: r.title,
             date: r.date,
@@ -809,7 +813,7 @@ function createGalacticHistory(opts: GalacticHistoryOptions): OpenState {
     // method_542: RemoveOldHistoryMessages (Empire.cs:4708), then rebind. Keeps the selection when still listed,
     // else selects the first row (the grid's default current row).
     function rebind(): void {
-        if (!logMode) removeOldHistoryMessages(empire);
+        if (!logMode) trimMessageHistory(empire);
         rows = buildRows();
         if (selected === null || !rows.some((r) => r.key === selected)) selected = shownRows()[0]?.key ?? null;
         renderList();
