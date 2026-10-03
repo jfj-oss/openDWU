@@ -269,13 +269,14 @@ const ORDERS: Omit<ScreenOrder, 'tick'>[] = [
     },
     // --- Research -------------------------------------------------------------------------------------------------
     {
-        what: 'research: queue, dequeue',
-        ops: ['queueResearch', 'dequeueResearch'],
+        what: 'research: queue, reorder, dequeue',
+        ops: ['queueResearch', 'moveResearch', 'dequeueResearch'],
         issue: (g, p, r) => {
             const nodes = p.research.techTree.filter((n) => !n.isResearched && p.research.canResearchNode(n));
             if (nodes.length < 2) return false;
             issue(g, p, 'queueResearch', [nodes[0]]);
             issue(g, p, 'queueResearch', [nodes[1]]);
+            issue(g, p, 'moveResearch', [nodes[1], 0]);
             return issue(g, p, 'dequeueResearch', [nodes[1]], r);
         },
     },

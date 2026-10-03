@@ -83,6 +83,7 @@ import {
     acceptProposal,
     declineProposal,
     dequeueResearchProject,
+    moveResearchProject,
     disbandTroops,
     moveWaitQueueItem,
     queueResearchProject,
@@ -182,6 +183,8 @@ export const PLAYER_OPS = {
     /** Main.Part11.cs hvhxxedjqS: the Name box. */
     queueResearch: (_galaxy: Galaxy, empire: Empire, node: TechNode) => queueResearchProject(empire.research, node, empire.dominantRace),
     dequeueResearch: (_galaxy: Galaxy, empire: Empire, node: TechNode) => dequeueResearchProject(empire.research, node),
+    /** Not in the original: drag a project up or down the research queue panel. */
+    moveResearch: (_galaxy: Galaxy, empire: Empire, node: TechNode, toIndex: number) => moveResearchProject(empire.research, node, toIndex),
     crashResearch: (galaxy: Galaxy, empire: Empire, node: TechNode, cost: number) => {
         initiateCrashResearchProgram(galaxy, empire, node, cost);
         return node.isRushing;

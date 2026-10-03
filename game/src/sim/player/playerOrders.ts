@@ -62,6 +62,31 @@ export function dequeueResearchProject(rs: ResearchSystem, node: TechNode): bool
     return true;
 }
 
+/**
+ * Not in the original (our research queue panel): move a queued project to `toIndex` in its industry's queue.
+ * The target is clamped so a project stays after every queued parent and before every queued child, and a crash
+ * program at the head keeps its place. Returns true if the queue order changed.
+ */
+export function moveResearchProject(rs: ResearchSystem, node: TechNode, toIndex: number): boolean {
+    const items = rs.researchQueueFor(nodeIndustry(node));
+    if (items === null) return false;
+    const from = items.indexOf(node);
+    if (from < 0 || node.isRushing || !Number.isFinite(toIndex)) return false;
+    const rest = items.filter((n) => n !== node);
+    let lo = rest.length > 0 && rest[0].isRushing ? 1 : 0;
+    let hi = rest.length;
+    for (let i = 0; i < rest.length; i++) {
+        if (node.parentNodes.includes(rest[i])) lo = Math.max(lo, i + 1);
+        if (rest[i].parentNodes.includes(node)) hi = Math.min(hi, i);
+    }
+    if (lo > hi) return false;
+    const to = Math.min(hi, Math.max(lo, Math.trunc(toIndex)));
+    if (to === from) return false;
+    rest.splice(to, 0, node);
+    items.splice(0, items.length, ...rest);
+    return true;
+}
+
 // ---------------------------------------------------------------------------------------------------------------
 // Troops (troops screen)
 // ---------------------------------------------------------------------------------------------------------------

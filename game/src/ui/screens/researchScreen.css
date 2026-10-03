@@ -360,6 +360,23 @@
     padding: 6px 10px;
     border-bottom: 1px solid rgb(40, 40, 48);
 }
+/* Drag to reorder (not in the original). */
+.rs-queue-row.rs-queue-draggable {
+    cursor: grab;
+    touch-action: none;
+    user-select: none;
+}
+.rs-queue-row.rs-queue-dragging {
+    cursor: grabbing;
+    opacity: 0.55;
+    background: rgba(255, 255, 255, 0.06);
+}
+.rs-queue-row.rs-queue-drop-before {
+    box-shadow: inset 0 2px 0 rgb(255, 200, 0);
+}
+.rs-queue-row.rs-queue-drop-after {
+    box-shadow: inset 0 -2px 0 rgb(255, 200, 0);
+}
 .rs-queue-row.rs-queue-current .rs-queue-name {
     color: rgb(255, 255, 0);
 }

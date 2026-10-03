@@ -519,6 +519,7 @@ function createResearchScreen(opts: ResearchScreenOptions): OpenState {
         const instructions =
             '- ' + gt('Click a project to add it to the research queue (previous projects must already be researched)') + '\n' +
             '- ' + gt('Right-click a queued project to cancel research, moving up subsequent projects in the queue') + '\n' +
+            '- Drag a project in the Research Queue panel up or down to reorder it\n' +
             '- ' + gt('Click the current project to initiate crash-research, spending credits to shorten the research time');
         const ins = text(instructions, { size: FONT.large, bold: true, color: COLORS.label, shadow: false, wrapWidth: 800 });
         ins.classList.add('rs-instructions');
@@ -1025,6 +1026,65 @@ function createResearchScreen(opts: ResearchScreenOptions): OpenState {
         queueKey = '';
     }
 
+    let queueDragging = false;
+
+    /** Not in the original: drag a queue row up or down to reorder (moveResearch); rushing rows stay put. */
+    function makeQueueRowDraggable(list: HTMLElement, line: HTMLElement, node: TechNode): void {
+        if (node.isRushing) return;
+        line.classList.add('rs-queue-draggable');
+        line.addEventListener('pointerdown', (e) => {
+            if (e.button !== 0 || (e.target as HTMLElement).closest('button') !== null) return;
+            const startY = e.clientY;
+            let dragging = false;
+            let target = -1;
+            const rowsNow = (): HTMLElement[] => [...list.querySelectorAll<HTMLElement>('.rs-queue-row')];
+            const clearMarks = (): void => {
+                for (const r of rowsNow()) r.classList.remove('rs-queue-drop-before', 'rs-queue-drop-after');
+            };
+            const move = (ev: PointerEvent): void => {
+                if (!dragging) {
+                    if (Math.abs(ev.clientY - startY) < 4) return;
+                    dragging = queueDragging = true;
+                    line.classList.add('rs-queue-dragging');
+                    line.setPointerCapture(e.pointerId);
+                }
+                const others = rowsNow().filter((r) => r !== line);
+                target = others.length;
+                for (let i = 0; i < others.length; i++) {
+                    const rc = others[i].getBoundingClientRect();
+                    if (ev.clientY < rc.top + rc.height / 2) {
+                        target = i;
+                        break;
+                    }
+                }
+                clearMarks();
+                if (target < others.length) others[target].classList.add('rs-queue-drop-before');
+                else if (others.length > 0) others[others.length - 1].classList.add('rs-queue-drop-after');
+                // Keep the dragged row in view in a long queue.
+                const lr = list.getBoundingClientRect();
+                if (ev.clientY < lr.top + 16) list.scrollTop -= 8;
+                else if (ev.clientY > lr.bottom - 16) list.scrollTop += 8;
+            };
+            const end = (): void => {
+                window.removeEventListener('pointermove', move);
+                window.removeEventListener('pointerup', end);
+                window.removeEventListener('pointercancel', end);
+                if (!dragging) return;
+                clearMarks();
+                line.classList.remove('rs-queue-dragging');
+                queueDragging = false;
+                // Swallow the click that follows the drop (the name would scroll the tree).
+                line.addEventListener('click', (ce) => ce.stopPropagation(), { capture: true, once: true });
+                if (target >= 0) issuePlayerCommand(galaxy, empire, 'moveResearch', [node, target], () => refresh());
+                queueKey = '';
+                refreshQueue();
+            };
+            window.addEventListener('pointermove', move);
+            window.addEventListener('pointerup', end);
+            window.addEventListener('pointercancel', end);
+        });
+    }
+
     function queueStructureKey(): string {
         const q = rs.researchQueueFor(selectedIndustry) ?? [];
         const head = q[0];
@@ -1036,7 +1096,8 @@ function createResearchScreen(opts: ResearchScreenOptions): OpenState {
         const p = queuePanel;
         if (p === null) return;
         const key = queueStructureKey();
-        if (key === queueKey) {
+        // While a row is being dragged the list keeps its rows (rebuilt once the drop lands).
+        if (key === queueKey || queueDragging) {
             for (const u of queueUpdaters) u();
             return;
         }
@@ -1128,6 +1189,7 @@ function createResearchScreen(opts: ResearchScreenOptions): OpenState {
             });
             actions.appendChild(remove);
             line.append(name, actions, bar, pct);
+            makeQueueRowDraggable(list, line, row.node);
             list.appendChild(line);
         }
         p.appendChild(list);
