@@ -1,6 +1,6 @@
 // suggest: the Advisor Suggestion window (Main.Part2.cs 2781 method_649 pnlAdvisorSuggestion). Its queue entries
 // (DiplomaticMessageQueue.cs, advisor entries drawn grey with the advisor icon, :906-935) are stubs in the list under the
-// top-right panel (popupstubs, messageStubList.ts). Built on the 16d popup system (conversation window classes).
+// top-right panel (popupstubs, messageStubList.ts). The window is an original-style ScreenPanel (originalWindow.ts).
 //
 // The queue lives on the player empire (src/sim/advisorQueue.ts, saved with the game); this module polls it, lets the
 // player Approve / Decline / "Show me first" (Main.Part2.cs 1369 / 2732 / 2635 → src/sim/player/advisorSuggestions.ts),
@@ -23,6 +23,10 @@ import { resolveGameText } from '../sim/textResolver';
 import { formatThousands } from '../sim/diplomacyTick';
 import { ADVISOR_SUGGESTION_LIFETIME, AdvisorMessageType, advisorSuggestions } from '../sim/advisorQueue';
 import { issuePlayerCommand } from '../sim/player/playerCommands';
+import { Habitat } from '../sim/types';
+import { COLORS, FONT, el, glassButton, openOriginalWindow, place, scrollPanel, text, type OriginalWindow } from './originalWindow';
+import { advisorIconUrl } from './messageStubs';
+import { habitatImageUrl } from './selectionInfo';
 import {
     advisorSuggestionCost,
     advisorSuggestionShowTarget,
@@ -115,7 +119,6 @@ export interface AdvisorSuggestionsOptions {
 
 interface Installed {
     timer: ReturnType<typeof setInterval>;
-    wrap: HTMLElement;
     close: () => void;
     // [popupstubs] begin
     open: (m: EmpireMessage) => void;
@@ -137,118 +140,127 @@ export function openAdvisorSuggestionKey(): EmpireMessage | null {
 }
 // [popupstubs] end
 
-function el(tag: string, className: string, text?: string): HTMLElement {
-    const e = document.createElement(tag);
-    e.className = className;
-    if (text !== undefined) e.textContent = text;
-    return e;
+/** pnlAdvisorSuggestion (Main.Part2.cs:2788 method_649): a ScreenPanel 355 × 448, centred. */
+const SUGGEST_W = 355;
+const SUGGEST_H = 448;
+
+/** The window's picture (method_659): the subject habitat's picture when there is one, else the advisor icon.
+ *  TODO(port): the composed pictures (method_650 / 656 / 657: habitat + design / ship / character) — Main.Part2.cs:2943 */
+function suggestionPictureUrl(m: EmpireMessage): string | null {
+    const subject = m.subject;
+    const icon = advisorIconUrl(m.advisorMessageType as AdvisorMessageType);
+    return subject instanceof Habitat ? (habitatImageUrl(subject) ?? icon) : icon;
 }
 
 /** Start polling the player's advisor queue. Idempotent. */
 export function installAdvisorSuggestions(opts: AdvisorSuggestionsOptions): void {
     removeAdvisorSuggestions();
     const { player, galaxy } = opts;
-    const wrap = el('div', 'message-conversation-wrap advisor-suggestion-wrap');
-    wrap.hidden = true;
-    document.body.append(wrap);
 
     let current: EmpireMessage | null = null;
-    let keyListening = false;
-    let pausedByUs = false;
+    let win: OriginalWindow | null = null;
     let expiryQueued = false;
     let restoreView: (() => void) | null = null;
-
-    function onKey(e: KeyboardEvent): void {
-        if (e.key === 'Escape') {
-            e.preventDefault();
-            e.stopImmediatePropagation();
-            close();
-        }
-    }
 
     // Main.Part2.cs 1363 pnlAdvisorSuggestion_CloseButtonClicked / method_644 + method_660.
     function close(): void {
         if (current === null) return;
         current = null;
-        document.removeEventListener('keydown', onKey);
-        keyListening = false;
-        wrap.replaceChildren();
-        wrap.hidden = true;
-        wrap.classList.remove('advisor-suggestion-shown');
+        const w = win;
+        win = null;
+        w?.close();
         restoreView?.();
         restoreView = null;
-        if (pausedByUs && opts.clock) opts.clock.paused = false;
-        pausedByUs = false;
     }
 
     function open(m: EmpireMessage): void {
-        // method_79: pause (and resume on close) when the game runs.
-        if (opts.clock && !opts.clock.paused && !pausedByUs) {
-            opts.clock.paused = true;
-            pausedByUs = true;
-        }
+        // method_79: the window pauses a running game and resumes it on close (central hook, autoPause.ts).
         const view = advisorSuggestionView(galaxy, player, m);
         if (view.opensBuildOrder) {
             opts.openBuildOrder?.();
-            if (pausedByUs && opts.clock) opts.clock.paused = false;
-            pausedByUs = false;
             return;
         }
         if (current !== null) {
             current = null;
-            wrap.replaceChildren();
+            const w = win;
+            win = null;
+            w?.close();
         }
         current = m;
-        const win = el('div', 'message-conversation-window advisor-suggestion-window');
-        win.setAttribute('role', 'dialog');
-        const bar = el('div', 'message-conversation-titlebar');
-        bar.append(el('div', 'message-conversation-title', 'Advisor Suggestion'));
-        const x = el('button', 'message-conversation-close', '✕') as HTMLButtonElement;
-        x.type = 'button';
-        x.title = 'Close';
-        x.addEventListener('click', close);
-        bar.append(x);
-        const body = el('div', 'message-conversation-body');
-        body.append(el('div', 'advisor-suggestion-title', view.title), el('div', 'message-conversation-text', view.text));
+        let shown = false;
+        const w = openOriginalWindow({
+            id: 'advisor-suggestion',
+            title: resolveGameText('Advisor Suggestion'),
+            iconUrl: advisorIconUrl(m.advisorMessageType as AdvisorMessageType),
+            width: SUGGEST_W,
+            height: SUGGEST_H,
+            onClose: () => {
+                if (win === w) close();
+            },
+            // "Show me first": the panel moves to (20, 20) (Main.Part2.cs:2728).
+            onResize: (ww) => {
+                if (shown) moveTopLeft(ww);
+            },
+        });
+        win = w;
+        w.frame.setAttribute('role', 'dialog');
+        const moveTopLeft = (ww: OriginalWindow): void => {
+            ww.frame.style.left = '20px';
+            ww.frame.style.top = '20px';
+        };
+        const body = w.body;
+        // picAdvisorSuggestionImage: 300 × 105 at (20, 10), Zoom.
+        const pic = el('img', 'advisor-suggestion-picture');
+        pic.alt = '';
+        pic.draggable = false;
+        const url = suggestionPictureUrl(m);
+        if (url !== null) pic.src = url;
+        else pic.style.visibility = 'hidden';
+        pic.addEventListener('error', () => (pic.style.visibility = 'hidden'));
+        body.appendChild(place(pic, 20, 10, 300, 105));
+        // lblAdvisorSuggestionTitle: (10, 125) 320 × 32, 22.67 px bold, centred.
+        const title = place(el('div', 'advisor-suggestion-title ow-shadow', view.title), 10, 125, 320, 32);
+        title.style.fontSize = `${FONT.title}px`;
+        body.appendChild(title);
+        // pnlAdvisorSuggestionDescriptionContainer: (10, 155) 320 × 170, the description (16.67 px) 302 wide.
+        const desc = place(scrollPanel('advisor-suggestion-desc'), 10, 155, 320, 170);
+        const t = text(view.text, { size: FONT.large, color: COLORS.gridText, wrapWidth: 302, className: 'advisor-suggestion-text' });
+        desc.appendChild(t);
         if (view.cost !== null) {
             const c = el('div', 'advisor-suggestion-cost');
             c.append(el('span', 'advisor-suggestion-cost-label', 'Cost'), el('span', 'advisor-suggestion-cost-value', `${view.cost} credits`));
-            const money = el('span', 'advisor-suggestion-cost-money', `(treasury ${formatThousands(player.stateMoney)})`);
-            c.append(money);
-            body.append(c);
+            c.append(el('span', 'advisor-suggestion-cost-money', `(treasury ${formatThousands(player.stateMoney)})`));
+            desc.appendChild(c);
         }
-        body.append(el('div', 'advisor-suggestion-automation', `${view.automation}: suggest (semi-automated)`));
-        const buttons = el('div', 'message-conversation-buttons');
-        const button = (text: string, onClick: () => void): HTMLButtonElement => {
-            const b = el('button', 'message-conversation-button', text) as HTMLButtonElement;
-            b.type = 'button';
-            b.addEventListener('click', onClick);
-            buttons.append(b);
-            return b;
-        };
-        button('Approve', () => {
-            // Command log: queued, applied at the next frame boundary.
-            issuePlayerCommand(galaxy, player, 'approveSuggestion', [m], (r) => {
-                for (const e of r.expireDiplomacyFor) opts.expireConversations?.(e);
-            });
-            close();
+        desc.appendChild(el('div', 'advisor-suggestion-automation', `${view.automation}: suggest (semi-automated)`));
+        body.appendChild(desc);
+        // Approve (10, 335) 100 × 40, Show me first (115, 335) 110 × 40, Decline (230, 335) 100 × 40.
+        const approve = glassButton(resolveGameText('Approve'), {
+            onClick: () => {
+                // Command log: queued, applied at the next frame boundary.
+                issuePlayerCommand(galaxy, player, 'approveSuggestion', [m], (r) => {
+                    for (const e of r.expireDiplomacyFor) opts.expireConversations?.(e);
+                });
+                close();
+            },
         });
-        const show = button('Show me first', () => {
-            const target = advisorSuggestionShowTarget(m);
-            if (target !== null && opts.show) restoreView = opts.show(target) ?? null;
-            show.disabled = true;
-            wrap.classList.add('advisor-suggestion-shown'); // Location (20, 20)
+        const show = glassButton(resolveGameText('Show me first'), {
+            disabled: !view.canShow,
+            onClick: () => {
+                const target = advisorSuggestionShowTarget(m);
+                if (target !== null && opts.show) restoreView = opts.show(target) ?? null;
+                show.disabled = true;
+                shown = true;
+                moveTopLeft(w);
+            },
         });
-        show.disabled = !view.canShow;
-        button('Decline', () => {
-            issuePlayerCommand(galaxy, player, 'declineSuggestion', [m]);
-            close();
+        const decline = glassButton(resolveGameText('Decline'), {
+            onClick: () => {
+                issuePlayerCommand(galaxy, player, 'declineSuggestion', [m]);
+                close();
+            },
         });
-        win.append(bar, body, buttons);
-        wrap.replaceChildren(win);
-        wrap.hidden = false;
-        if (!keyListening) document.addEventListener('keydown', onKey);
-        keyListening = true;
+        body.append(place(approve, 10, 335, 100, 40), place(show, 115, 335, 110, 40), place(decline, 230, 335, 100, 40));
     }
 
     function tick(): void {
@@ -263,7 +275,7 @@ export function installAdvisorSuggestions(opts: AdvisorSuggestionsOptions): void
     }
 
     const timer = setInterval(tick, 250);
-    installed = { timer, wrap, close, open, current: () => current };
+    installed = { timer, close, open, current: () => current };
 }
 
 /** Stop polling and remove the queue column and the window. No-op when not installed. */
@@ -273,5 +285,4 @@ export function removeAdvisorSuggestions(): void {
     installed = null;
     clearInterval(s.timer);
     s.close();
-    s.wrap.remove();
 }

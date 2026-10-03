@@ -258,6 +258,43 @@ export interface ShotPosition {
     readonly heading: number;
 }
 
+/**
+ * World units / game s a ship's or habitat's shot flies along its heading at its firer's next touch (HandleWeaponsFiring,
+ * BuiltObject.1.cs 3737 / Habitat giant ion cannon: Speed × dt; a missile ramps up to Speed over its first 120 units,
+ * at least 3), for sampleShot's extrapolation between firer touches. 0 for the launch step (DistanceTravelled ≤ 1: a
+ * fixed 2 / 10 unit step) and for shots that do not fly in a line: area rings (centred on the target), gravity / tractor
+ * beams (placed on the target), assault pods (handleAssaultPodMovement), and a shot that has hit or run out of range
+ * (ResetNext: it stays where it ended until the next touch clears it).
+ */
+export function shotFlightSpeed(type: ComponentType, speed: number, distanceTravelled: number, resetNext = false): number {
+    if (!(distanceTravelled > 1) || !(speed > 0) || resetNext) return 0;
+    switch (type) {
+        case ComponentType.WeaponBeam:
+        case ComponentType.WeaponPointDefense:
+        case ComponentType.WeaponIonCannon:
+        case ComponentType.WeaponSuperBeam:
+        case ComponentType.WeaponPhaser:
+        case ComponentType.WeaponRailGun:
+        case ComponentType.WeaponSuperPhaser:
+        case ComponentType.WeaponSuperRailGun:
+        case ComponentType.WeaponTorpedo:
+        case ComponentType.WeaponBombard:
+        case ComponentType.WeaponSuperTorpedo:
+            return speed;
+        case ComponentType.WeaponMissile:
+        case ComponentType.WeaponSuperMissile:
+            return distanceTravelled < 120 ? Math.max(3, speed * (distanceTravelled / 120)) : speed;
+        default:
+            return 0;
+    }
+}
+
+/** A fighter's shot: beams and torpedo-category shots fly at Speed × dt past the launch step (Fighter.cs HandleWeaponsFiring). */
+export function fighterShotFlightSpeed(category: ComponentCategoryType, speed: number, distanceTravelled: number, resetNext = false): number {
+    if (!(distanceTravelled > 1) || !(speed > 0) || resetNext) return 0;
+    return category === ComponentCategoryType.WeaponBeam || category === ComponentCategoryType.WeaponTorpedo ? speed : 0;
+}
+
 function hasPosition(o: unknown): o is Positioned {
     return typeof o === 'object' && o !== null && typeof (o as Positioned).xpos === 'number' && typeof (o as Positioned).ypos === 'number';
 }
@@ -1016,7 +1053,12 @@ export class EffectsLayer {
         const c = this.cmd;
         const m = this.motion;
         // The shot lerped between steps (snaps on spawn / impact); a stretched beam's far end on the drawn target.
-        const shot = m !== null ? sampleShot(m, weapon) : weapon;
+        // Extrapolated past the firer's last touch (the shot only moves when its firer is ticked): habitats are touched once
+        // per habitat round-robin, ships once per built-object round-robin.
+        const shot =
+            m !== null
+                ? sampleShot(m, weapon, firer.lastTouch, shotFlightSpeed(weapon.component.type, weapon.speed, weapon.distanceTravelled, weapon.resetNext), firer instanceof Habitat ? m.habitatUntouchedMaxMs : m.untouchedMaxMs)
+                : weapon;
         const t = weapon.target;
         const targetAt = m !== null && hasPosition(t) ? this.drawnAt(t, this.targetScratch) : null;
         const kind = weaponDrawCommand(weapon, this.drawnAt(firer), f, nowMs, c, shot, targetAt);
@@ -1124,7 +1166,7 @@ export class EffectsLayer {
         for (let i = 0; i < weapons.length; i++) {
             const w = weapons[i];
             if (!(w.distanceTravelled >= 0)) continue;
-            const shot = this.motion !== null ? sampleShot(this.motion, w) : w;
+            const shot = this.motion !== null ? sampleShot(this.motion, w, fighter.lastTouch, fighterShotFlightSpeed(w.category, w.speed, w.distanceTravelled, w.resetNext)) : w;
             if (fighterWeaponDrawCommand(w, at, imageIndex, f, nowMs, this.cmd, shot) !== WeaponDrawKind.None) this.drawSpriteCommand(this.cmd);
         }
     }

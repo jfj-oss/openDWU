@@ -344,14 +344,15 @@ describe('flags off = faithful game (§S6.1)', () => {
     }, 1200000);
 });
 
-describe('2-year seed-1 run with the flag on', () => {
+describe('3-year seed-1 run with the flag on', () => {
+    // 3 years (1800 s): since the orbit-spacing deviation the seed-1 empires stay stable through year 2.
     it('produces political events and a different stream from the faithful game', () => {
-        const ref = cachedTickGameRun(base, { seconds: 1200 });
+        const ref = cachedTickGameRun(base, { seconds: 1800 });
         const game = politicsGame(1, { politicsIntensity: 3, coupApprovalThreshold: 50 });
-        runGameSeconds(game, 1200);
+        runGameSeconds(game, 1800);
         const st = politicsState(game.galaxy);
         const summary = st.events.map((x) => `${x.year} ${x.empire.name}: ${x.kind} by ${CharacterRole[x.character.role]} ${x.character.name} (${x.success ? 'success/exposed' : 'failed/hidden'})`);
-        console.log('19d1 2-year run events:\n' + summary.join('\n'));
+        console.log('19d1 3-year run events:\n' + summary.join('\n'));
         expect(st.events.length).toBeGreaterThanOrEqual(1);
         expect(game.galaxy.rnd.drawCount).not.toBe(ref.game.galaxy.rnd.drawCount);
     }, 1200000);

@@ -235,7 +235,7 @@ export function buildOptionsPanel(
     optionsPanel.appendChild(scaleRow);
 
     // Show system names / region labels toggles.
-    const makeToggle = (labelText: string, key: 'showSystemNames' | 'showRegionLabels' | 'freightFlowsDefault' | 'ditherGradients' | GalaxyViewDisplayKey): HTMLElement => {
+    const makeToggle = (labelText: string, key: 'showSystemNames' | 'showRegionLabels' | 'freightFlowsDefault' | 'ditherGradients' | 'autoPauseInPopup' | GalaxyViewDisplayKey): HTMLElement => {
         const row = document.createElement('div');
         row.className = 'game-menu-option-row';
         const lbl = document.createElement('span');
@@ -253,6 +253,7 @@ export function buildOptionsPanel(
         row.append(lbl, chk);
         return row;
     };
+    optionsPanel.appendChild(makeToggle('Pause game when a screen is open', 'autoPauseInPopup'));
     optionsPanel.appendChild(makeToggle('Show system names', 'showSystemNames'));
     optionsPanel.appendChild(makeToggle('Show region labels', 'showRegionLabels'));
     optionsPanel.appendChild(makeToggle('Freight flows overlay on at start', 'freightFlowsDefault')); // [freightOverlay]

@@ -53,16 +53,16 @@ import { MERCENARY, describeCast, pirateEscort, pirateExplorer, pirateFaction, p
 /** The seed-1 cast the hand-worked values below were derived for (update this line after a generation change). */
 const CAST: string[] = [
     'escort: RSS Praefectus 001 (Escort, Royal Sol Commonwealth)',
-    'pirateExplorer: Smuggled Rascal (ExplorationShip, S105 Ravagers)',
-    'pirateBase: Bandits Sanctuary (SmallSpacePort, S78 Gangsters)',
+    'pirateExplorer: Stolen Smuggler (ExplorationShip, Dread Storm Security)',
+    'pirateBase: Bandits Haunt (SmallSpacePort, S83 Confederation)',
     'frigate0: RSS Minotaur 001 (Frigate, Royal Sol Commonwealth)',
     'frigate1: RSS Minotaur 002 (Frigate, Royal Sol Commonwealth)',
     'destroyer0: RSS Venator 001 (Destroyer, Royal Sol Commonwealth)',
     'destroyer1: RSS Venator 002 (Destroyer, Royal Sol Commonwealth)',
     'carrier: Skaif Space Port (MediumSpacePort, Royal Sol Commonwealth)',
-    'pirateEscort: Wicked Buccaneer (Escort, S78 Gangsters)',
-    'boarder: Wicked Buccaneer (Escort, S78 Gangsters)',
-    'boarded: RSR Southern Albatross (ExplorationShip, Royal Sol Commonwealth)',
+    'pirateEscort: Rusty Kraken (Escort, Dread Storm Security)',
+    'boarder: Rusty Hook (Escort, Dread Invaders)',
+    'boarded: RSR Faithful Harbour (ExplorationShip, Royal Sol Commonwealth)',
     'independentColony: Toinsa (Independent)',
 ];
 
@@ -738,8 +738,8 @@ describe('(3) fighters launched by a carrier engage and return per the C# rules'
 
 describe('(4) boarding: an assault-pod ship boards and captures a disabled ship', () => {
     /**
-     * S78 Gangsters' Wicked Buccaneer (1 Assault Pod: RawDamage 50, Range 140; empire BoardingAttackFactor 1, dominant
-     * race TroopStrength 138, pirate RaidStrengthFactor 1.25) against the player's RSR Southern Albatross (3 Hab Modules, no troops;
+     * Dread Invaders' Rusty Hook (1 Assault Pod: RawDamage 50, Range 140; empire BoardingAttackFactor 1, dominant
+     * race TroopStrength 92, pirate RaidStrengthFactor 1.25) against the player's RSR Faithful Harbour (3 Hab Modules, no troops;
      * BoardingDefenseFactor 1, TroopStrength 121) with its shields down and engines knocked out, 100 apart.
      */
     function stage(): { g: Galaxy; att: BuiltObject; tgt: BuiltObject } {
@@ -760,12 +760,12 @@ describe('(4) boarding: an assault-pod ship boards and captures a disabled ship'
     it('assault strength vs defence, hand-worked (BuiltObject.1.cs 2626 HandleAssaultPodMovement, 3314 / 3399)', () => {
         const { g, att, tgt } = stage();
         const pe = att.empire!;
-        expect([pe.boardingAttackFactor, pe.dominantRace!.troopStrength, empireRaidStrengthFactor(pe)]).toEqual([1, 138, 1.25]);
+        expect([pe.boardingAttackFactor, pe.dominantRace!.troopStrength, empireRaidStrengthFactor(pe)]).toEqual([1, 92, 1.25]);
         const pod = att.weapons.find((w) => w.component.type === ComponentType.AssaultPod)!;
         expect([pod.rawDamage, pod.range]).toEqual([50, 140]);
-        // Attack per pod: (short)(RawDamage 50 × TroopStrength/100 1.38 × BoardingAttackFactor 1 × AssaultPodStrengthMultiplier 1
-        // × RaidStrengthFactor 1.25) = (short)86.25 = 86.
-        expect(calculateAvailableAssaultPodAttackStrength(g, att, g.nowMs)).toBe(86);
+        // Attack per pod: (short)(RawDamage 50 × TroopStrength/100 0.92 × BoardingAttackFactor 1 × AssaultPodStrengthMultiplier 1
+        // × RaidStrengthFactor 1.25) = (short)57.5 = 57.
+        expect(calculateAvailableAssaultPodAttackStrength(g, att, g.nowMs)).toBe(57);
         // Defence: per Normal Hab Module (int)(20 × 1.21 × BoardingDefenseFactor 1 × RaidStrengthFactor 1) = 24; 3 modules, no
         // troops, no pods: 72.
         expect(tgt.components.items.filter((c) => c.type === ComponentType.HabitationHabModule).length).toBe(3);
@@ -777,23 +777,23 @@ describe('(4) boarding: an assault-pod ship boards and captures a disabled ship'
         pod.y = tgt.ypos;
         pod.distanceFromTarget = f32(5);
         handleAssaultPodMovement(g, att, 0.01);
-        expect(tgt.assaultAttackValue).toBe(86);
+        expect(tgt.assaultAttackValue).toBe(57);
         expect(tgt.assaultAttackEmpireId).toBe(pe.empireId);
         expect(pod.distanceTravelled).toBe(-1); // Reset on arrival
     });
 
     it('one ProcessBoardingAssault step, draw for draw (BuiltObject.1.cs 2954)', () => {
         const { g, tgt, att } = stage();
-        tgt.assaultAttackValue = 86;
+        tgt.assaultAttackValue = 57;
         tgt.assaultAttackEmpireId = att.empire!.empireId;
         tgt.assaultDefenseValue = 0; // → CalculateBoardingDefenseValue = 72 first
         const sh = shadowRnd(g);
         const tp = 3;
         processBoardingAssault(g, tgt, g.nowMs, tp);
-        const num = Math.max(0.5, Math.min(2.0, 86 / 72));
+        const num = Math.max(0.5, Math.min(2.0, 57 / 72));
         const num2 = (tp * (2.0 + sh.nextDouble() * 2.0)) / num;
         const num3 = tp * (2.0 + sh.nextDouble() * 2.0) * num;
-        expect(tgt.assaultAttackValue).toBe(Math.max(0, Math.trunc(86 - num2)));
+        expect(tgt.assaultAttackValue).toBe(Math.max(0, Math.trunc(57 - num2)));
         expect(tgt.assaultDefenseValue).toBe(Math.max(0, Math.trunc(72 - num3)));
         if (num2 + num3 > sh.nextDouble() * 10.0 * tp) {
             sh.next(20000, 30000);
@@ -812,6 +812,10 @@ describe('(4) boarding: an assault-pod ship boards and captures a disabled ship'
     it('on the harness: a Capture mission launches the pod, the boarding fight runs down both sides and the ship changes owner', () => {
         const { g, att, tgt } = stage();
         const player = g.playerEmpire!;
+        // One pod (57) cannot beat 3 hab modules (72) since the seed-1 Mercenaries are Dread Invaders (TroopStrength 92):
+        // knock one module out so the defence (2 × 24 = 48, CalculateBoardingDefenseValue counts Normal modules only) falls.
+        tgt.components.items.find((c) => c.type === ComponentType.HabitationHabModule)!.status = ComponentStatus.Damaged;
+        tgt.reDefine();
         assignMission(g, att, BuiltObjectMissionType.Capture, tgt, null, BuiltObjectMissionPriority.High);
         let firstAttack = -1;
         let captured = -1;
@@ -822,7 +826,7 @@ describe('(4) boarding: an assault-pod ship boards and captures a disabled ship'
                 frame++;
                 if (firstAttack < 0 && tgt.assaultAttackValue > 0) {
                     firstAttack = frame;
-                    expect(tgt.assaultAttackValue).toBe(86); // one pod
+                    expect(tgt.assaultAttackValue).toBe(57); // one pod
                 }
                 if (tgt.assaultAttackValue > 0) defence.push(tgt.assaultDefenseValue);
                 if (captured < 0 && tgt.empire === att.empire) captured = frame;
@@ -830,7 +834,7 @@ describe('(4) boarding: an assault-pod ship boards and captures a disabled ship'
         });
         expect(firstAttack).toBeGreaterThan(0);
         expect(firstAttack).toBeLessThanOrEqual(120);
-        expect(defence[0]).toBe(72);
+        expect(defence[0]).toBe(48);
         for (let i = 1; i < defence.length; i++) expect(defence[i]).toBeLessThanOrEqual(defence[i - 1]);
         expect(captured).toBeGreaterThan(firstAttack);
         expect(tgt.empire).toBe(att.empire);

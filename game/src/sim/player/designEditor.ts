@@ -648,9 +648,7 @@ export function setDraftSubRole(empire: Empire, draft: DesignDraft, subRole: Bui
 // ---------------------------------------------------------------------------
 
 // Port of Main.Part9.cs:5018 method_290: the component toolbox with "Show latest components only" unchecked — every
-// component the empire has researched.
-// TODO(port): the "Show latest components only" toolbox (Main.Part9.cs:4900 Kdxguwronl + method_285-289) needs
-// ResearchSystem.GetLatestComponents(category/type) lists, which src/sim does not have.
+// component the empire has researched. (Checked, the toolbox is designTools.ts latestToolboxComponents.)
 export function designToolboxComponents(empire: Empire): ComponentDefinition[] {
     return [...empire.research.researchedComponents];
 }
@@ -746,7 +744,7 @@ export function summarizeComponents(design: Design): { component: ComponentDefin
 // ---------------------------------------------------------------------------
 
 // Port of Empire.6.cs:985 ResolveResourcesFromComponents: resource id → summed quantity, first-seen order.
-function resolveResourcesFromComponents(components: readonly ComponentDefinition[]): { resourceId: number; quantity: number }[] {
+export function resolveResourcesFromComponents(components: readonly ComponentDefinition[]): { resourceId: number; quantity: number }[] {
     const list: { resourceId: number; quantity: number }[] = [];
     for (const component of components) {
         for (const req of component.resourceRequirements) {

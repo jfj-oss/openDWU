@@ -1749,7 +1749,7 @@ export class MainView {
             rt.stepSerial = this.galaxy.scheduler?.frames ?? 0;
             rt.simNowMs = this.galaxy.nowMs;
         }
-        this.motion.begin(rt, habitatTouchClampSeconds(this.galaxy.habitats.length), this.galaxy.builtObjects.length);
+        this.motion.begin(rt, habitatTouchClampSeconds(this.galaxy.habitats.length), this.galaxy.builtObjects.length, this.galaxy.creatures.length, this.galaxy.habitats.length);
         this.builtObjectIndex.update(this.galaxy, this.motion);
         fogOf(this.galaxy).begin(); // the player's per-frame visibility answers (fog.ts)
 

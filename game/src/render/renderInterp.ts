@@ -15,6 +15,10 @@
 //   round-robin-committed xpos (which only changes when the background pass touches the habitat). Ships docked at or
 //   parked by a base are likewise drawn around the drawn base (ship → base → planet), and a change of frame carries the
 //   previous / current step positions into the new frame instead of snapping.
+// - Objects the background round-robin moves only every few steps — ships in galaxies over 1000 built objects, their
+//   fighters and shots (moved in their carrier / firer's DoTasks), habitat-fired shots, creatures (50 a step) — are
+//   sampled where their next touch will put them (extrapolated from their LastTouch), so they glide instead of moving in
+//   bursts; a fighter's position reset by the out-of-view leash is eased out (soft snap) instead of popping.
 
 import { FRAME_REAL_MS, FRAMES_PER_SECOND, HABITAT_TICK_BATCH_SIZE } from '../sim/tick/scheduler';
 import { MIN_TIME, spanSeconds } from '../sim/tick/simTime';
@@ -148,6 +152,16 @@ export function isJump(dx: number, dy: number, steps: number, maxSpeed: number, 
     return dx * dx + dy * dy > limit * limit;
 }
 
+/** What MotionInterpolator.advance did with a new sim position. */
+const enum Advance {
+    /** Lerping on (or nothing new). */
+    Lerp,
+    /** Snapped on a jump (isJump) within the interpolation window: a soft snap may ease it. */
+    Jump,
+    /** Snapped on a long gap or a move made without a step. */
+    Snap,
+}
+
 /** One object's interpolation record (reused every frame). */
 export interface MotionState {
     /** Estimated position / heading one step before `c*` (in `frame` coordinates). */
@@ -174,6 +188,21 @@ export interface MotionState {
     x: number;
     y: number;
     heading: number;
+    /** Soft snap (sample's `softSnapMs`): the drawn-minus-new offset (galaxy units) at a jump, eased out to 0 over
+     * `eMs` game ms from render instant `eStart`. eMs 0: none. */
+    ex: number;
+    ey: number;
+    eStart: number;
+    eMs: number;
+    /** RenderTime.renderNowMs of the last sample. */
+    renderMs: number;
+}
+
+/** Ease-out weight of a soft snap's offset at fraction u of its span (1 → 0, smoothstep: no velocity step at either end). */
+function softSnapWeight(u: number): number {
+    if (!(u < 1)) return 0;
+    if (!(u > 0)) return 1;
+    return 1 - u * u * (3 - 2 * u);
 }
 
 /**
@@ -192,16 +221,22 @@ export class MotionInterpolator {
     /** galaxy.nowMs of the committed state (RenderTime.simNowMs). */
     simNowMs = 0;
     clampSeconds = 0;
-    /** Longest a built object's position is extrapolated past its LastTouch (builtObjectTouchGapMs). */
+    /** Longest a built object's position is extrapolated past its LastTouch (builtObjectTouchGapMs) — also the bound for
+     * what moves when a built object is touched: its fighters and the shots it or its fighters fired. */
     untouchedMaxMs = 0;
+    /** Longest a creature's position is extrapolated past its LastTouch (one creature round-robin + a step). */
+    creatureUntouchedMaxMs = 0;
+    /** Longest a habitat-fired shot is extrapolated past the habitat's LastTouch (one habitat round-robin + a step). */
+    habitatUntouchedMaxMs = 0;
     /** Scratch origin for frame-relative samples. */
     private origin: Point = { x: 0, y: 0 };
     /** Scratch for positionOf. */
     private posScratch: Point = { x: 0, y: 0 };
 
-    /** `builtObjectCount`: galaxy.builtObjects.length, which sets how long a ship may go untouched by the background
-     * pass (sampleBuiltObject's extrapolation bound). */
-    begin(rt: RenderTime, clampSeconds: number, builtObjectCount = 0): void {
+    /** `builtObjectCount` / `creatureCount` / `habitatCount`: galaxy.builtObjects / creatures / habitats .length, which set
+     * how long each may go untouched by the background pass (the extrapolation bounds of sampleBuiltObject / sampleFighter
+     * / sampleShot, sampleCreature, and sampleShot for habitat-fired shots). */
+    begin(rt: RenderTime, clampSeconds: number, builtObjectCount = 0, creatureCount = 0, habitatCount = 0): void {
         this.renderFrame++;
         this.serial = rt.stepSerial;
         this.alpha = rt.alpha;
@@ -210,20 +245,27 @@ export class MotionInterpolator {
         this.simNowMs = rt.simNowMs;
         this.clampSeconds = clampSeconds;
         this.untouchedMaxMs = builtObjectTouchGapMs(builtObjectCount, rt.stepGameMs);
+        this.creatureUntouchedMaxMs = roundRobinTouchGapMs(creatureCount, CREATURE_TICK_BATCH_SIZE, rt.stepGameMs);
+        this.habitatUntouchedMaxMs = roundRobinTouchGapMs(habitatCount, HABITAT_TICK_BATCH_SIZE, rt.stepGameMs);
     }
 
     /**
      * Sample `obj` at sim position (x, y) / heading this frame: in galaxy coordinates when `frame` is null, else as an
      * offset from `frame` (whose drawn position is `originX, originY`). Returns the object's record with x / y /
      * heading set to the drawn values.
+     *
+     * `softSnapMs` > 0: a jump (isJump) of an object drawn last frame is not shown as a pop but eased out over that many
+     * game ms — the drawn position starts where it was last frame and converges on the new one (render time: it holds
+     * while paused). First sight, a long gap, a new epoch and moves made without a step still snap at once.
      */
-    sample(obj: object, x: number, y: number, heading: number, maxSpeed: number, frame: object | null = null, originX = 0, originY = 0, epoch = 0): MotionState {
+    sample(obj: object, x: number, y: number, heading: number, maxSpeed: number, frame: object | null = null, originX = 0, originY = 0, epoch = 0, softSnapMs = 0): MotionState {
         let st = this.states.get(obj);
         if (st === undefined) {
-            st = { px: x, py: y, ph: heading, cx: x, cy: y, ch: heading, frame, ox: originX, oy: originY, serial: this.serial, epoch, renderFrame: 0, x, y, heading };
+            st = { px: x, py: y, ph: heading, cx: x, cy: y, ch: heading, frame, ox: originX, oy: originY, serial: this.serial, epoch, renderFrame: 0, x, y, heading, ex: 0, ey: 0, eStart: 0, eMs: 0, renderMs: this.renderNowMs };
             this.states.set(obj, st);
         } else if (st.epoch !== epoch) {
             snapTo(st, x, y, heading);
+            st.eMs = 0;
             st.frame = frame;
             st.epoch = epoch;
         } else {
@@ -240,26 +282,65 @@ export class MotionInterpolator {
                 st.cy += dy;
                 st.frame = frame;
             }
-            this.advance(st, x, y, heading, maxSpeed);
+            const drawnLastFrame = st.renderFrame === this.renderFrame - 1;
+            const lastX = st.x;
+            const lastY = st.y;
+            // The object's own motion over its last step (frame coordinates), kept through a soft snap.
+            const vx = st.cx - st.px;
+            const vy = st.cy - st.py;
+            const r = this.advance(st, x, y, heading, maxSpeed);
+            if (r === Advance.Jump && softSnapMs > 0 && drawnLastFrame) {
+                // Go on lerping toward the new position at the old per-step velocity (no step standing still), and
+                // offset the drawn track so that at last frame's instant it was where it was drawn; the offset then
+                // eases out (which may restart an ease already running: last frame's position includes it).
+                st.px = x - vx;
+                st.py = y - vy;
+                const a = this.alpha;
+                const stepMs = this.stepSeconds * 1000;
+                const back = stepMs > 0 ? (this.renderNowMs - st.renderMs) / stepMs : 0;
+                const tx = originX + st.px + vx * (a - back);
+                const ty = originY + st.py + vy * (a - back);
+                st.ex = lastX - tx;
+                st.ey = lastY - ty;
+                st.eStart = st.renderMs;
+                st.eMs = softSnapMs;
+            } else if (r !== Advance.Lerp) {
+                st.eMs = 0;
+            }
         }
         st.ox = originX;
         st.oy = originY;
         st.serial = this.serial;
         st.renderFrame = this.renderFrame;
+        st.renderMs = this.renderNowMs;
         const a = this.alpha;
         st.x = originX + st.px + (st.cx - st.px) * a;
         st.y = originY + st.py + (st.cy - st.py) * a;
         st.heading = lerpAngle(st.ph, st.ch, a);
+        if (st.eMs > 0) {
+            const w = softSnapWeight((this.renderNowMs - st.eStart) / st.eMs);
+            if (w > 0) {
+                st.x += st.ex * w;
+                st.y += st.ey * w;
+            } else {
+                st.eMs = 0;
+            }
+        }
         return st;
     }
 
     /** Take the sim's (x, y, heading) into `st` (same frame): a new step shifts curr → prev and lerps on, snapping on a
      * jump, a long gap or a move made without a step. */
-    private advance(st: MotionState, x: number, y: number, heading: number, maxSpeed: number): void {
+    private advance(st: MotionState, x: number, y: number, heading: number, maxSpeed: number): Advance {
         if (st.serial !== this.serial) {
             const k = this.serial - st.serial;
-            if (k < 0 || k > MAX_INTERP_STEPS || isJump(x - st.cx, y - st.cy, k, maxSpeed, this.stepSeconds)) {
+            if (k < 0 || k > MAX_INTERP_STEPS) {
                 snapTo(st, x, y, heading);
+                return Advance.Snap;
+            }
+            if (isJump(x - st.cx, y - st.cy, k, maxSpeed, this.stepSeconds)) {
+                snapTo(st, x, y, heading);
+                return Advance.Jump;
             } else {
                 // Linear estimate of where the object was one step before now (k > 1: several steps landed since the
                 // last sample; exact for straight-line motion).
@@ -274,7 +355,9 @@ export class MotionInterpolator {
         } else if (x !== st.cx || y !== st.cy || heading !== st.ch) {
             // Moved without a sim step (an order applied at the frame boundary, a load, an edit): no interpolation.
             snapTo(st, x, y, heading);
+            return Advance.Snap;
         }
+        return Advance.Lerp;
     }
 
     /** The record sampled for `obj` this render frame, or null (not drawn yet this frame: use its sim position). */
@@ -367,8 +450,66 @@ export const BUILT_OBJECT_TICK_BATCH_SIZE = 1000;
  * one step at 1x speed.
  */
 export function builtObjectTouchGapMs(builtObjectCount: number, stepGameMs: number): number {
-    const steps = Math.max(1, Math.ceil(Math.max(0, builtObjectCount) / BUILT_OBJECT_TICK_BATCH_SIZE)) + 1;
+    return roundRobinTouchGapMs(builtObjectCount, BUILT_OBJECT_TICK_BATCH_SIZE, stepGameMs);
+}
+
+/** scheduler.ts backgroundPass "GxCr" int_44: creatures the background round-robin ticks per sim frame (multi-core
+ * budget). With more creatures than this, each one moves only every ceil(count / 50) steps. */
+export const CREATURE_TICK_BATCH_SIZE = 50;
+
+/** Longest (game ms) between two touches of an object in a round-robin of `count` objects, `batch` per step: one full
+ * cycle plus one step of slack (builtObjectTouchGapMs for any round-robin). */
+export function roundRobinTouchGapMs(count: number, batch: number, stepGameMs: number): number {
+    const steps = Math.max(1, Math.ceil(Math.max(0, count) / batch)) + 1;
     return steps * (stepGameMs > 0 ? stepGameMs : 1000 / FRAMES_PER_SECOND);
+}
+
+/** Result of extrapolateMover (a scratch record). */
+export interface MoverPose {
+    x: number;
+    y: number;
+    heading: number;
+}
+
+/**
+ * Where a self-propelled mover (fighter, creature) touched `dtSeconds` ago will be put by its next touch, if its orders
+ * hold: the move both Fighter.cs 1783 DoMovement and Creature.cs 998 Move apply over the elapsed time — turn toward
+ * TargetHeading by turnRate × dt along the shorter arc (CalculateCurrentHeading), accelerate toward TargetSpeed
+ * (AccelerateToTargetSpeed: up by accelerationRate × dt, down by max(1, accelerationRate) × dt), then step
+ * CurrentSpeed × dt along the new heading. Render-only: writes `out` and returns it.
+ */
+export function extrapolateMover(
+    x: number, y: number, heading: number, targetHeading: number, turnRate: number, currentSpeed: number, targetSpeed: number, accelerationRate: number, dtSeconds: number, out: MoverPose,
+): MoverPose {
+    out.x = x;
+    out.y = y;
+    out.heading = heading;
+    if (!(dtSeconds > 0) || !Number.isFinite(dtSeconds)) return out;
+    let h = heading;
+    if (h !== targetHeading && turnRate > 0) {
+        let d = (targetHeading - h) % TWO_PI;
+        if (d > Math.PI) d -= TWO_PI;
+        else if (d < -Math.PI) d += TWO_PI;
+        const turn = turnRate * dtSeconds;
+        h = Math.abs(d) <= turn ? targetHeading : h + Math.sign(d) * turn;
+    }
+    let v = currentSpeed;
+    if (targetSpeed > v) v = Math.min(targetSpeed, v + accelerationRate * dtSeconds);
+    else if (targetSpeed < v) v = Math.max(targetSpeed, v - Math.max(1, accelerationRate) * dtSeconds);
+    if (v < 0) v = 0;
+    out.x = x + Math.cos(h) * v * dtSeconds;
+    out.y = y + Math.sin(h) * v * dtSeconds;
+    out.heading = h;
+    return out;
+}
+
+const moverScratch: MoverPose = { x: 0, y: 0, heading: 0 };
+
+/** Seconds since `lastTouchMs` at the committed instant, bounded by `maxMs` (0 when never touched / touched now). */
+function untouchedSeconds(m: MotionInterpolator, lastTouchMs: number, maxMs: number): number {
+    if (!(maxMs > 0) || !(lastTouchMs > MIN_TIME)) return 0;
+    const dt = m.simNowMs - lastTouchMs;
+    return dt > 0 && Number.isFinite(dt) ? Math.min(dt, maxMs) / 1000 : 0;
 }
 
 /**
@@ -532,19 +673,109 @@ export interface MovingCreature {
     parentHabitat: (OrbitingBody & { hasBeenDestroyed: boolean }) | null;
     parentX: number;
     parentY: number;
+    /** Creature._LastTouch (game SECONDS): when Move last advanced it. With the rest below: extrapolated between touches. */
+    lastTouch?: number;
+    targetHeading?: number;
+    targetSpeed?: number;
+    turnRate?: number;
+    accelerationRate?: number;
+    lungeAccelerationRate?: number;
 }
 
-/** Sample a creature: relative to its orbiting ParentHabitat while it holds station there (creature.ts move: no
- * CurrentTarget ⇒ xpos = ParentHabitat.xpos + parentX), else in galaxy coordinates. */
+/**
+ * Sample a creature: relative to its orbiting ParentHabitat while it rests there (creature.ts move: TargetSpeed and
+ * CurrentSpeed 0 ⇒ xpos = ParentHabitat.xpos + parentX), else in galaxy coordinates. The background pass moves only 50
+ * creatures a step (scheduler.ts "GxCr" int_44), so with more creatures each one moves every ceil(n / 50) steps — a
+ * burst of several steps' motion, then standing still. A moving creature is sampled where its next Move will put it
+ * (extrapolateMover over the time since its LastTouch, bounded by one round-robin), so it glides between touches; in the
+ * habitat's frame the offset is extrapolated (Move steps parentX / parentY along the heading).
+ */
 export function sampleCreature(m: MotionInterpolator, c: MovingCreature): MotionState {
     const maxSpeed = Math.max(Math.abs(c.currentSpeed), c.movementSpeed, c.hyperSpeed, c.lungeSpeed);
     const h = c.parentHabitat;
-    if (h !== null && h.parent !== null && !h.hasBeenDestroyed && c.currentTarget === null) {
-        const o = m.habitatPos(h);
-        return m.sample(c, c.parentX, c.parentY, c.currentHeading, maxSpeed, h, o.x, o.y);
+    // Creature.cs Move: only a creature at rest (TargetSpeed and CurrentSpeed 0) is placed at ParentHabitat + parentX —
+    // it follows the (committed) planet. A moving one steps its galaxy position (parentX = xpos − parent.xpos is
+    // recomputed from it each Move), so it does not follow the planet: drawn in the planet's frame its offset would jump
+    // back by the planet's round-robin orbit step at each touch (a reversal), so it is drawn in galaxy coordinates.
+    const moving = c.currentSpeed > 0 || (c.targetSpeed ?? 0) > 0;
+    const inFrame = h !== null && h.parent !== null && !h.hasBeenDestroyed && !moving;
+    let x = inFrame ? c.parentX : c.xpos;
+    let y = inFrame ? c.parentY : c.ypos;
+    let heading = c.currentHeading;
+    if (c.lastTouch !== undefined && moving && c.currentSpeed <= Math.max(c.movementSpeed, c.lungeSpeed)) {
+        // Sub-light only: a hyperspeed leg ends in a relocation to a hyperjump exit, never where the line points.
+        const dt = untouchedSeconds(m, c.lastTouch * 1000, m.creatureUntouchedMaxMs);
+        if (dt > 0) {
+            const target = c.targetSpeed ?? c.currentSpeed;
+            // A lunge (TargetSpeed = LungeSpeed above MovementSpeed) accelerates at LungeAccelerationRate (Creature.cs Move).
+            const accel = target > c.movementSpeed && c.lungeSpeed > 0 ? (c.lungeAccelerationRate ?? c.accelerationRate ?? 0) : (c.accelerationRate ?? 0);
+            const p = extrapolateMover(x, y, heading, c.targetHeading ?? heading, c.turnRate ?? 0, c.currentSpeed, target, accel, dt, moverScratch);
+            x = p.x;
+            y = p.y;
+            heading = p.heading;
+        }
     }
-    return m.sample(c, c.xpos, c.ypos, c.currentHeading, maxSpeed);
+    if (inFrame) {
+        const o = m.habitatPos(h);
+        return m.sample(c, x, y, heading, maxSpeed, h, o.x, o.y);
+    }
+    return m.sample(c, x, y, heading, maxSpeed);
 }
+
+/** Fighter fields read by sampleFighter. */
+export interface MovingFighter {
+    xpos: number;
+    ypos: number;
+    heading: number;
+    targetHeading: number;
+    currentSpeed: number;
+    readonly targetSpeed: number;
+    topSpeed: number;
+    /** Fighter._LastTouch (game ms): when its carrier's DoTasks last ran Fighter.DoTasks → DoMovement. */
+    lastTouch: number;
+    onboardCarrier: boolean;
+    readonly specification: { readonly turnRate: number; readonly accelerationRate: number };
+}
+
+/** Fighter.cs 2069 GetCurrentTurnRate(speed): ×4 at or below 12 % of top speed, ×2.6 below 25 %, ×1.6 below 50 %. */
+export function fighterTurnRate(turnRate: number, speed: number, topSpeed: number): number {
+    let r = turnRate;
+    if (speed <= topSpeed * 0.12) r *= 4;
+    if (speed < topSpeed * 0.25) r *= 2.6;
+    if (speed < topSpeed * 0.5) r *= 1.6;
+    return r;
+}
+
+/**
+ * Sample a fighter (galaxy coordinates). Fighters move only when their carrier's DoTasks runs (builtObjectTick.ts:
+ * Fighter.DoTasks for each of bo.fighters), so in a galaxy with more than 1000 built objects a fighter moves every
+ * ceil(n / 1000) steps like its carrier — several steps' motion in one, then standing still. It is sampled where its
+ * next DoMovement will put it (extrapolateMover from its LastTouch, bounded like the carrier's extrapolation), so it
+ * glides between touches and turns smoothly; a touched-this-step fighter is sampled at its committed position.
+ */
+export function sampleFighter(m: MotionInterpolator, f: MovingFighter): MotionState {
+    const maxSpeed = Math.max(f.topSpeed, Math.abs(f.currentSpeed));
+    if (!f.onboardCarrier) {
+        const dt = untouchedSeconds(m, f.lastTouch, m.untouchedMaxMs);
+        if (dt > 0) {
+            const spec = f.specification;
+            const p = extrapolateMover(f.xpos, f.ypos, f.heading, f.targetHeading, fighterTurnRate(spec.turnRate, f.currentSpeed, f.topSpeed), f.currentSpeed, f.targetSpeed, spec.accelerationRate, dt, moverScratch);
+            return m.sample(f, p.x, p.y, p.heading, maxSpeed, null, 0, 0, 0, FIGHTER_SOFT_SNAP_MS);
+        }
+    }
+    return m.sample(f, f.xpos, f.ypos, f.heading, maxSpeed, null, 0, 0, 0, FIGHTER_SOFT_SNAP_MS);
+}
+
+/**
+ * Game ms over which a fighter's position reset is eased out instead of popping. Fighter.cs 1805-1829 DoMovement: a
+ * fighter whose carrier is not in view (`!InView`) is put back on a circle around its carrier — 600 units on patrol,
+ * 1500 on attack — whenever it strays outside it, so when a fight ends (Attack → Patrol) every fighter beyond 600 is
+ * moved there in one step (40-180 units seen on the 4000-star test galaxy). The original only does this off screen
+ * (on-screen carriers are ticked with InView, Main.Part11.cs ProcessMain); this port ticks every object as not in view
+ * unless `?simView=1` (simLoop.ts), so on-screen fighters get the reset too. The sim stays as it is (the off-view tick is
+ * what replay needs); the drawn fighter slides to its new place.
+ */
+export const FIGHTER_SOFT_SNAP_MS = 400;
 
 /** Weapon / FighterWeapon fields read by sampleShot. */
 export interface MovingShot {
@@ -560,8 +791,22 @@ export interface MovingShot {
  * Sample a shot in flight (torpedo, missile, bolt, area ring centre): its (x, y) lerped between the last two steps like
  * a ship's, snapping on spawn (first sight, or a new LastFired: the weapon's record is reused shot after shot) and on
  * a jump (isJump at the shot's speed: the impact snap to the target, a reset). Galaxy coordinates.
+ *
+ * A shot moves only when its firer is touched (HandleWeaponsFiring in the ship's / habitat's DoTasks, Fighter.DoTasks
+ * for a fighter's), by its speed × the time since that touch. Habitats are touched every ceil(n / 1000) steps (13 000
+ * habitats on the seed-1 galaxy: every 14 steps), ships beyond 1000 built objects every ceil(n / 1000), so the committed
+ * shot advances in bursts. Given the firer's LastTouch (game ms), the speed it flies at along its heading (`flightSpeed`,
+ * world units / game s; 0 for shots that do not fly in a line: area rings, stretched beams, the launch step) and the
+ * extrapolation bound (`maxMs`: one round-robin of the firer's kind), it is sampled where the next touch will put it.
  */
-export function sampleShot(m: MotionInterpolator, w: MovingShot): MotionState {
+export function sampleShot(m: MotionInterpolator, w: MovingShot, firerLastTouchMs = Number.NaN, flightSpeed = 0, maxMs = m.untouchedMaxMs): MotionState {
+    if (flightSpeed > 0) {
+        const dt = untouchedSeconds(m, firerLastTouchMs, maxMs);
+        if (dt > 0) {
+            const d = flightSpeed * dt;
+            return m.sample(w, w.x + Math.cos(w.heading) * d, w.y + Math.sin(w.heading) * d, w.heading, w.speed, null, 0, 0, w.lastFired);
+        }
+    }
     return m.sample(w, w.x, w.y, w.heading, w.speed, null, 0, 0, w.lastFired);
 }
 

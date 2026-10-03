@@ -71,8 +71,8 @@ describe('17f design editor', () => {
         // The seed-1 player supplies none of these, so the resources line is the template's only warning.
         const base = designWarnings(g, p, draft.design);
         expect(base.mustDo).toEqual([]);
-        expect(base.shouldDo).toEqual(['We do not have a supply of all required resources|(Silicon, Polymer, Carbon Fibre, Helium, Nekros Stone, Iridium, Chromium)']);
-        expect(resolveGameText(base.shouldDo[0])).toBe('We do not have a supply of required resources (Silicon, Polymer, Carbon Fibre, Helium, Nekros Stone, Iridium, Chromium)');
+        expect(base.shouldDo).toEqual(['We do not have a supply of all required resources|(Polymer, Carbon Fibre, Helium, Nekros Stone, Chromium)']);
+        expect(resolveGameText(base.shouldDo[0])).toBe('We do not have a supply of required resources (Polymer, Carbon Fibre, Helium, Nekros Stone, Chromium)');
 
         // Remove all 6 Proton Thrusters (EngineMainThrust): list (must-have types) → "Must have a {0} component".
         const thruster = draft.design.components.find((c) => c.type === ComponentType.EngineMainThrust)!;

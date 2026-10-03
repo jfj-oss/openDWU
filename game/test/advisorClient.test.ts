@@ -129,7 +129,7 @@ describe('runAdvisorTurn (harness game, scripted model)', () => {
         // History and the new message follow the system prompt.
         const sent = requests[requests.length - 1].body as { messages: ChatMessage[] };
         expect(sent.messages.map((m) => m.role)).toEqual(['system', 'user']);
-        expect(sent.messages[0].content).toContain('You are San Ikkuros, ruling Leader acting as fleet admiral of the Royal Sol Commonwealth');
+        expect(sent.messages[0].content).toContain('You are Caran Ikkuros, ruling Leader acting as fleet admiral of the Royal Sol Commonwealth');
         expect(sent.messages[0].content).toContain('EARLIER IN THIS CHAT (context only, do not copy):\nPlayer said: status?\nYou answered: All quiet.');
     }, 120000);
 

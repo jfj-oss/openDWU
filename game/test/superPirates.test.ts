@@ -197,6 +197,7 @@ describe('generateSuperPirateFaction (seed 1, createGame, tech 4)', () => {
         // Moved #cceb332a00 → #f4b98fffc3: sweep 2: Habitat.DoTasks on generated planets/moons (Galaxy.8.cs 215-551, Galaxy.5.cs 1587/1731; Habitat.cs 1399) with the Habitat ctor LastTouch = now - 30 s (Habitat.cs 6297-6303: orbits advance 30 s more); BaconMain.cs 700-715 queues ProcessEmpireScienceShips (Galaxy.Rnd.Next(26, 35) at BaconInitialize) and BaconGalaxy.cs 322-329 / BaconEmpire.cs 170-275 ProcessScienceShips; Start.2.cs 508-509 ColonizationRange(EnforceLimit) and Galaxy.BaseTechCost plumbed (defaults unchanged) (2026-09-26)
         // Moved #f4b98fffc3 → #3d8cd96269: BaconMain.cs 686-697 BaconInitialize queues the SaveStats delayed action (1 day; BaconGalaxy.cs 319 re-queues it every statSaveIntervalInGameDays) and BaconMain.cs 1069/1075-1087 AddOtherDelayedEvents queues ClearShipsAboutToBeDestroyed with Galaxy.Rnd.Next(10, 12) after the 700-715 science-ship Next(26, 35) (2026-09-26)
         // Moved #3d8cd96269 → #6a2ed05cf6: per-empire/race ship naming styles (shipNameStyle.ts deviation): registry prefixes + race word lists; name strings only, Rnd draws unchanged (2026-10-01)
+        // Moved #6a2ed05cf6 → #6df472ecb9: orbits spaced so planets/moons never overlap (user deviation) (2026-10-03)
         expect(a).toMatchPin('superPirates.faction');
     }, 60000);
 });

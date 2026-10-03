@@ -42,14 +42,14 @@
       "kind": "inline",
       "file": "test/characters.test.ts",
       "test": "creates the C# starting characters, deterministic Rnd use",
-      "anchor": "expect(activationsAt).toMatchPin('characters.activationsAt', 19);"
+      "anchor": "expect(activationsAt).toMatchPin('characters.activationsAt', 49);"
     },
     {
       "key": "characters.dhayutLeaderColonyHappiness",
       "kind": "inline",
       "file": "test/characters.test.ts",
       "test": "bonus getters read the leader and the colony characters (bonuses known only)",
-      "anchor": "expect(leader.colonyHappiness).toMatchPin('characters.dhayutLeaderColonyHappiness', 15);"
+      "anchor": "expect(leader.colonyHappiness).toMatchPin('characters.dhayutLeaderColonyHappiness', 10);"
     },
     {
       "key": "characters.pirateRoles",
@@ -168,7 +168,7 @@
       "kind": "inline",
       "file": "test/independentTraders.test.ts",
       "test": "seed 1: exact Rnd draws, deterministic",
-      "anchor": "expect(a.log.length).toMatchPin('independentTraders.draws', 1573);"
+      "anchor": "expect(a.log.length).toMatchPin('independentTraders.draws', 1570);"
     },
     {
       "key": "independentTraders.lastDraws",

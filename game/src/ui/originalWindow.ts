@@ -55,6 +55,7 @@
 import './originalWindow.css';
 import { HUD_FRAME_SIZE, TOP_BASE_SCALE } from './topBar';
 import { onSettingsChange, uiScaleFactor } from './settings';
+import { autoPauseClose, autoPauseOpen } from './autoPause';
 
 // -------------------------------------------------------------------------------------------------------------------
 // Pure helpers (tested)
@@ -723,6 +724,8 @@ export interface OriginalWindowOptions {
     onClose?: () => void;
     /** Default true. */
     escapeCloses?: boolean;
+    /** Opt out of pausing the game while open (AutoPauseWhenInPopupWindow). Default false. */
+    noAutoPause?: boolean;
     /** Called when the viewport or the UI scale changes, after the window re-scaled (re-pick large / small layouts). */
     onResize?: (win: OriginalWindow) => void;
 }
@@ -909,6 +912,7 @@ export function openOriginalWindow(o: OriginalWindowOptions): OriginalWindow {
             const i = openWindows.findIndex((x) => x.win === win);
             if (i >= 0) openWindows.splice(i, 1);
             root.remove();
+            if (!o.noAutoPause) autoPauseClose();
             o.onClose?.();
         },
     };
@@ -916,6 +920,7 @@ export function openOriginalWindow(o: OriginalWindowOptions): OriginalWindow {
     layout();
     window.addEventListener('resize', onResize);
     openWindows.push({ win, escape: o.escapeCloses !== false });
+    if (!o.noAutoPause) autoPauseOpen();
     if (!keyListening) {
         keyListening = true;
         document.addEventListener('keydown', onKeyDown);

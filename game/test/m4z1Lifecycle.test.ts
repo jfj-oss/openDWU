@@ -157,7 +157,9 @@ describe('pirate faction elimination (Galaxy.8.cs 3183 EliminatePirateFaction â†
         expect(galaxy.pirateEmpires.includes(faction)).toBe(false);
         expect(galaxy.defeatedEmpires.includes(faction)).toBe(false); // only Galaxy.Empires members go to DefeatedEmpires
         expect(human.counters.eliminatePirateEmpireCount).toBe(1);
-        for (const b of ships) expect(b.empire === faction || b.actualEmpire === faction).toBe(false);
+        // Every ship is taken over (warships / bases / freighters / civilian ships) or torn down (the default branch, e.g. an
+        // exploration ship; CompleteTeardown keeps its Empire field).
+        for (const b of ships) expect(b.hasBeenDestroyed || (b.empire !== faction && b.actualEmpire !== faction)).toBe(true);
         expect(referencesTo(galaxy, faction)).toEqual([]);
         runGameSeconds(galaxy, 120);
         expect(referencesTo(galaxy, faction)).toEqual([]);

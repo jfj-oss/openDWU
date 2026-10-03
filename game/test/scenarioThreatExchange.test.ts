@@ -35,6 +35,7 @@ import { characterMission } from '../src/sim/espionage';
 import { answerScenarioDecision, pendingScenarioDecisions } from '../src/sim/scenario/decisions';
 import { peekSecurityState } from '../src/sim/scenario/security/registry';
 import { annualResearchPotential } from '../src/sim/researchTick';
+import { CharacterRole, CharacterTraitType, checkCharactersForTrait, getEmpireCharacters } from '../src/sim/characters';
 import {
     EXCHANGE_BUY_INTEL_DECISION,
     EXCHANGE_GRUDGE,
@@ -158,9 +159,11 @@ describe('The Exchange: forced appearance on seed 1 (shared game, in order)', ()
         expect(st.incomeLog[0].base).toBe(100000);
         expect(st.agentTarget).toBe(6);
         // Research potential: the stock pirate-faction branch (√ built objects × 10000 + half the labs of its research
-        // stations; the first period may already have bought them), not the population formula.
+        // stations; the first period may already have bought them; × 1.2 with an UltraGenius scientist, as on seed 1 since
+        // the orbit-spacing deviation), not the population formula.
         const labs = st.researchStations.reduce((s: number, b) => s + 0.5 * (b.researchEnergy + b.researchHighTech + b.researchWeapons), 0);
-        expect(annualResearchPotential(f)).toBeCloseTo((Math.sqrt(f.builtObjects.length) * 10000 + labs) * f.economyEfficiency, 0);
+        const genius = checkCharactersForTrait(getEmpireCharacters(f), CharacterRole.Scientist, CharacterTraitType.UltraGenius) ? 1.2 : 1.0;
+        expect(annualResearchPotential(f)).toBeCloseTo((Math.sqrt(f.builtObjects.length) * 10000 + labs) * f.economyEfficiency * genius, 0);
     }, 600000);
 
     it('no wars: declarations by or on the Exchange are blocked; it never colonises', () => {

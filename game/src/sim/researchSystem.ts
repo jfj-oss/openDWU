@@ -1018,6 +1018,68 @@ export class ResearchSystem {
         return arr[match as number] ?? null;
     }
 
+    // Port of ResearchSystem.cs GetLatestComponents(ComponentType) (1647) / GetLatestComponents(ComponentCategoryType)
+    // (1688): the latest component of the type / category, the other components of that type / category improved to
+    // at least its (improved) tech level, and the researched ones of the same tech level. Read-only; no Rnd.
+    // (C# ComponentImprovements is an array indexed by ComponentID: walked here in ComponentID order.)
+    getLatestComponents(match: ComponentType | ComponentCategoryType, byCategory = false): ComponentDefinition[] {
+        const latestComponents: ComponentDefinition[] = [];
+        const contains = (c: ComponentDefinition): boolean => latestComponents.some((x) => x.componentId === c.componentId);
+        const sameKind = (c: ComponentDefinition, latest: ComponentDefinition): boolean => (byCategory ? c.category === latest.category : c.type === latest.type);
+        const latestComponent = this.getLatestComponent(match, byCategory);
+        let num = 0;
+        if (latestComponent !== null) {
+            latestComponents.push(latestComponent);
+            num = latestComponent.techLevel;
+        }
+        const improvements = [...this.componentImprovements.entries()].sort((a, b) => a[0] - b[0]).map((e) => e[1]);
+        let componentImprovement: ComponentImprovementEntry | null = null;
+        if (latestComponent !== null) {
+            for (const ci of improvements) {
+                if (ci.improvedComponent.componentId === latestComponent.componentId && (componentImprovement === null || ci.techLevel > componentImprovement.techLevel)) componentImprovement = ci;
+            }
+        }
+        if (componentImprovement !== null && componentImprovement.techLevel > num) num = componentImprovement.techLevel;
+        if (latestComponent !== null) {
+            for (const ci of improvements) {
+                if (sameKind(ci.improvedComponent, latestComponent) && ci.improvedComponent.componentId !== latestComponent.componentId && ci.techLevel >= num && !contains(ci.improvedComponent)) {
+                    latestComponents.push(ci.improvedComponent);
+                }
+            }
+            for (const researchedComponent of this.researchedComponents) {
+                const kindMatches = byCategory ? researchedComponent.category === (match as ComponentCategoryType) : researchedComponent.type === (match as ComponentType);
+                if (kindMatches && researchedComponent.componentId !== latestComponent.componentId && researchedComponent.techLevel === latestComponent.techLevel && !contains(researchedComponent)) {
+                    latestComponents.push(researchedComponent);
+                }
+            }
+        }
+        return latestComponents;
+    }
+
+    // Port of ResearchSystem.cs CalculateCurrentTechPoints(component, galaxy) (1357): 1 + Σ 2^(i-1) × BaseTechCost for
+    // i = the highest researched tech level among the projects that give or improve the component, down to 0; +1 when
+    // that project is race-specific. (ResearchProjectsPerComponent[Improvement] = the tech-tree nodes listing the
+    // component, DetermineResearchProjectsPerComponent.) Read-only; no Rnd.
+    calculateCurrentTechPoints(component: ComponentDefinition, baseTechCost: number): number {
+        let num1 = -1;
+        let flag = false;
+        const visit = (lists: (n: TechNode) => boolean): void => {
+            for (const researchNode of this.techTree) {
+                if (!lists(researchNode)) continue;
+                if (researchNode.isResearched && researchNode.def.techLevel > num1) {
+                    num1 = researchNode.def.techLevel;
+                    flag = this.allowedRacesCount(researchNode) > 0;
+                }
+            }
+        };
+        visit((n) => n.def.components.includes(component.componentId));
+        visit((n) => n.def.componentImprovements.some((ci) => ci.componentId === component.componentId));
+        let currentTechPoints = 1.0;
+        for (let index = num1; index > -1; --index) currentTechPoints += Math.pow(2.0, index - 1) * baseTechCost;
+        if (flag) ++currentTechPoints;
+        return Math.trunc(currentTechPoints);
+    }
+
     // Port of ResearchSystem.cs ReviewOrderedComponents (173) / FilterUnresearchedComponents (192).
     private filterUnresearchedComponents(components: ComponentDefinition[]): ComponentImprovementEntry[] {
         return components.filter((c) => this.researchedComponentIds.has(c.componentId)).map((c) => this.resolveImprovedComponentValues(c));

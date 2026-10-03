@@ -40,7 +40,7 @@ type PlanetSelector = 'selectGasGiantPlanet' | 'selectFrozenGasGiantPlanet' | 's
 //   DoTasks ; SelectResources ; if (Rnd.Next(0,5)==2) OrbitDirection=false ; Cargo = new CargoList().
 function generatePlanet(galaxy: Galaxy, sun: Habitat, selector: PlanetSelector, colonyLists: boolean): Habitat {
     const sel: PlanetSelection = galaxy[selector]();
-    const orbitdistance: number = galaxy['generatePlanetaryOrbitDistance'](sun, sel.minOrbitDistance, sel.maxOrbitDistance);
+    const orbitdistance: number = galaxy['generatePlanetaryOrbitDistance'](sun, sel.minOrbitDistance, sel.maxOrbitDistance, sel.diameter);
     // C# argument evaluation order: GenerateRandomName(), Rnd.NextDouble(), Rnd.Next(2, 5).
     const name = galaxy.generateRandomName();
     const orbitAngle = galaxy.rnd.nextDouble() * Math.PI * 2.0;

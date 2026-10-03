@@ -56,7 +56,7 @@ describe('buildAdvisorBrief (seed-1 harness game)', () => {
         expect(stateDigest(galaxy)).toBe(before);
         expect(briefTokenEstimate(brief)).toBeLessThan(4000);
         expect(brief.empire.name).toBe(player.name);
-        expect(brief.admiral).toEqual({ name: 'San Ikkuros', role: 'Leader' });
+        expect(brief.admiral).toEqual({ name: 'Caran Ikkuros', role: 'Leader' });
         // 12 mobile ships, none in a fleet; bases are not ships.
         expect(brief.ships.length).toBe(12);
         expect(brief.ships.every((s) => s.ref.startsWith('s'))).toBe(true);

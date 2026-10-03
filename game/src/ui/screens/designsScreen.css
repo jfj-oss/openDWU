@@ -292,3 +292,14 @@
     transform: rotate(-90deg);
     pointer-events: none;
 }
+
+/* The Component Guide / Construction Summary windows: over the design editor, under message boxes. */
+.dsgx-popup-layer {
+    z-index: 1560;
+}
+.dsgx-resource-pic {
+    width: 24px;
+    height: 24px;
+    object-fit: contain;
+    pointer-events: none;
+}
