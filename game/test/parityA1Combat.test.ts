@@ -14,7 +14,7 @@ import { Weapon } from '../src/sim/weapon';
 import { Design } from '../src/sim/design';
 import { checkDesignInUse, reviewRemoveObsoleteDesignsForSubRole } from '../src/sim/designGeneration';
 import { Creature, CreatureType } from '../src/sim/creature';
-import { galaxyNow } from '../src/sim/tick/simTime';
+import { galaxyNow, galaxyStarDate } from '../src/sim/tick/simTime';
 import { weaponFire } from '../src/sim/combat/weapons';
 import { escapeTargetForFleeFrom, performThreatEvaluation, shipGroupOf, threatEvaluation } from '../src/sim/combat/threats';
 import { Fighter, identifyLatestFighterSpecification } from '../src/sim/combat/fighters';
@@ -299,5 +299,13 @@ describe('Empire.10.cs 3266 ReviewRemoveObsoleteDesignsForSubRole keeps designs 
         expect(used.isObsolete).toBe(true);
         expect(retrofitTarget.isObsolete).toBe(true);
         expect(unused.isObsolete).toBe(true);
+    });
+});
+
+describe('Creature.cs 326 BirthDate = Galaxy.CurrentStarDate', () => {
+    it('a new creature is born at the current star date', () => {
+        const c = new Creature(galaxy, CreatureType.Kaltor, colony);
+        expect(c.birthDate).toBe(galaxyStarDate(galaxy));
+        expect(c.birthDate).toBeGreaterThan(0);
     });
 });

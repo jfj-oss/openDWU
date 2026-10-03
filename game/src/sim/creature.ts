@@ -16,6 +16,7 @@ import type { Weapon } from './weapon';
 import type { Empire } from './empire';
 import { ComponentType } from './data/components';
 import { countersProcessCreatureDeath } from './victory';
+import { galaxyStarDate } from './tick/simTime';
 
 // Port of DistantWorlds.Types.CreatureType (member order exact; byte enum).
 export enum CreatureType {
@@ -124,7 +125,7 @@ export class Creature {
     turnRate = 0; // float
     accelerationRate = 0; // float
     healRate = 0; // float
-    // TODO(port): BirthDate = Galaxy.CurrentStarDate (no star date on Galaxy yet).
+    /** Creature.cs 36 _BirthDate (long star date; set by the ctor, 326). */
     birthDate = 0;
     anchorHabitat: Habitat | null = null;
     anchorPoint: AnchorPoint | null;
@@ -183,6 +184,7 @@ export class Creature {
         this.galaxy = galaxy;
         this.type = type;
         this.creatureId = galaxy.getNextCreatureID();
+        this.birthDate = galaxyStarDate(galaxy); // 326: _BirthDate = _Galaxy.CurrentStarDate
         this.currentHeading = galaxy.selectRandomHeading();
         this.targetHeading = this.currentHeading;
         this.currentSpeed = 0;
