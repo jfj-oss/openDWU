@@ -13,7 +13,9 @@ const inThread = process.argv.includes('--inthread');
 const load = opt('load', '');
 const out = opt('out', `shots/simworker-screens${inThread ? '-inthread' : ''}`);
 mkdirSync(out, { recursive: true });
-const url = `${base}?${load ? `load=${encodeURIComponent(load)}` : 'autostart=1'}&simWorker=${inThread ? 0 : 1}`;
+// Worker mode also turns on chunk 0's replica write detector (writeDetector.ts): a main-thread write to the replica
+// made by a chunk 6 screen fails the run.
+const url = `${base}?${load ? `load=${encodeURIComponent(load)}` : 'autostart=1'}&simWorker=${inThread ? 0 : 1}${inThread ? '' : '&detectWrites=1'}`;
 const browser = await chromium.launch({ executablePath: process.env.CHROMIUM || '/usr/bin/chromium', args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
 const page = await browser.newPage({ viewport: { width: 1920, height: 1080 } });
 const logs = [];
@@ -26,6 +28,24 @@ const check = (ok, what) => {
     console.log(`${ok ? 'ok  ' : 'FAIL'} ${what}`);
     if (!ok) failed++;
 };
+
+/** The write detector's not-allowed findings after a full compare (worker mode; null when it is not installed). */
+async function replicaWrites() {
+    const r = await page.evaluate((other) => {
+        const det = window.__dwuWriteDetector;
+        if (!det) return null;
+        det.checkAll();
+        const mine = det.unexpected().filter((w) => !new RegExp(other).test(w.key));
+        return { mine: mine.map((w) => `${w.key} ×${w.count} ${w.detail}`).join('\n'), all: det.summary() };
+    }, OTHER_CHUNKS.source);
+    if (r === null) return null;
+    if (r.all !== '') console.log(`write detector findings (all):\n${r.all}`);
+    return r.mine;
+}
+
+// Writes the detector finds that belong to other chunks' files (docs/sim-worker.md §9): the message pipeline (chunk 4:
+// the ticker's starDate stamp and history, advisor suggestions, the event-message recipient). Reported, not failed.
+const OTHER_CHUNKS = /^(Empire\.messageHistory|Empire\.advisorSuggestions|Empire\.eventMessageRecipient|EmpireMessage\.)/;
 
 /** Replica digest (main thread) and the worker's, once the paused worker has settled (polled: up to 60 s). */
 async function digests() {
@@ -114,15 +134,19 @@ try {
     const d1 = await digests();
     if (!inThread) check(d1.replica === d1.worker, `replica digest = worker digest after opening every screen (${d1.replica.slice(0, 12)})`);
     check(d1.worker === d0.worker, 'the paused game did not change while the screens were open');
+    if (!inThread) {
+        const w = await replicaWrites();
+        check(w === '', `write detector: no main-thread write to the replica while the screens were open${w ? `\n${w}` : ''}`);
+    }
 
     // A screen order through the worker: rename the empire from the Empire Summary's name box path (command), and see it
     // on the replica.
     const renamed = await page.evaluate(async () => {
         const d = window.__dwu;
         const p = d.game.playerEmpire;
-        const { issuePlayerCommand } = await import('/src/sim/player/playerCommands.ts');
+        // The app's own issuePlayerCommand (a fresh dynamic import could be another module instance after an HMR).
         return new Promise((resolve) => {
-            issuePlayerCommand(d.galaxy, p, 'empireRename', ['Worker Screens'], () => resolve(p.name));
+            d.commands.issue(d.galaxy, p, 'empireRename', ['Worker Screens'], () => resolve(p.name));
             setTimeout(() => resolve(`(no reply) ${p.name}`), 20000);
         });
     });
@@ -156,6 +180,10 @@ try {
         const designsAfter = await page.evaluate(() => window.__dwu.game.playerEmpire.designs.length);
         check(designsAfter === designsBefore + 1, `saved design reaches the replica (${designsBefore} → ${designsAfter})`);
         await page.screenshot({ path: `${out}/designs-after-save.png` });
+    }
+    if (!inThread) {
+        const w = await replicaWrites();
+        check(w === '', `write detector: none after the screen orders either${w ? `\n${w}` : ''}`);
     }
 } catch (err) {
     check(false, `script error: ${err instanceof Error ? err.message : String(err)}`);
