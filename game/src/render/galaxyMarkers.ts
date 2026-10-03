@@ -45,6 +45,7 @@
 // original symbol art (procedural shapes when the art is missing), the discs a second one; rings one Graphics
 // rebuilt only on zoom / data / view changes. Everything lives in world space and is sized by /z in screen px.
 
+import { inOwnRenderGroup } from './renderGroups';
 import { Container, Graphics, Particle, ParticleContainer, Rectangle, Sprite, Text, Texture } from 'pixi.js';
 import type { Camera } from './camera';
 import type { Galaxy } from '../sim/galaxy';
@@ -745,7 +746,8 @@ export class GalaxyMarkerLayer {
         this.discs = new ParticleContainer({ texture: this.discTex, dynamicProperties: dyn });
         this.symbols = new ParticleContainer({ texture: Texture.WHITE, dynamicProperties: dyn });
         this.back.addChild(this.discs, this.rings);
-        this.front.addChild(this.symbols, this.barsG, this.countLayer, this.overlayG, this.iconLayer);
+        // barsG / overlayG are cleared and redrawn every frame: each in its own render group (renderGroups.ts).
+        this.front.addChild(this.symbols, inOwnRenderGroup(this.barsG), this.countLayer, inOwnRenderGroup(this.overlayG), this.iconLayer);
         const idx = below !== null ? world.children.indexOf(below) : -1;
         if (idx >= 0) world.addChildAt(this.back, idx);
         else world.addChild(this.back);

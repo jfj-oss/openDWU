@@ -356,6 +356,8 @@ interface Entry {
     ready: boolean;
     readySince: number;
     lastSeen: number;
+    /** Frame the container was last shown (its visibility is set once per frame from this). */
+    shownFrame: number;
     /** Generation time (ms, summed over slices) — for the perf budget check. */
     genMs: number;
 }
@@ -402,7 +404,9 @@ export class SystemNebulaLayer {
         if (!on) return;
         const halfW = viewW / 2 / z;
         const halfH = viewH / 2 / z;
-        for (const e of this.entries.values()) if (e.container) e.container.visible = false;
+        // Visibility is set once per container per frame (below): hiding every container and re-showing the visible
+        // ones flipped `visible` each frame, which makes Pixi rebuild the whole scene's instruction list.
+        const shown = this.frame;
         for (let s = 0; s < systems.length; s++) {
             const sys = systems[s];
             if (!sys.enabled) continue;
@@ -417,9 +421,10 @@ export class SystemNebulaLayer {
             if (e.readySince < 0) e.readySince = nowMs;
             const fadeUp = Math.min(1, (nowMs - e.readySince) / (READY_FADE_S * 1000));
             const c = e.container!;
-            c.visible = true;
+            e.shownFrame = shown;
             c.alpha = zoomA * fadeUp * fadeUp * (3 - 2 * fadeUp);
         }
+        for (const e of this.entries.values()) if (e.container) e.container.visible = e.shownFrame === shown;
         if (this.queue.length > 0) this.schedule();
     }
 
@@ -435,6 +440,7 @@ export class SystemNebulaLayer {
             ready: false,
             readySince: -1,
             lastSeen: this.frame,
+            shownFrame: -1,
             genMs: 0,
         };
         this.entries.set(sys.index, e);

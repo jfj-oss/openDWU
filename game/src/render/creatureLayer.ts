@@ -738,9 +738,13 @@ export class CreatureLayer {
         this.damagePool.end();
         // Drop the damage layers of creatures not drawn for a while.
         if (this.frameNo % 60 === 0) for (const [c, d] of this.damage) if (this.frameNo - d.seenFrame > 120) this.dropDamage(c, d);
-        // The damage overlays, then the harness overlays, sit above the original frames.
-        this.root.addChild(this.damageRoot);
-        this.root.addChild(this.faunaRoot);
+        // The damage overlays, then the harness overlays, sit above the original frames. Re-appended only when something
+        // was added after them (re-adding every frame marks the scene structure changed: a full Pixi instruction rebuild).
+        const kids = this.root.children;
+        if (kids[kids.length - 2] !== this.damageRoot || kids[kids.length - 1] !== this.faunaRoot) {
+            this.root.addChild(this.damageRoot);
+            this.root.addChild(this.faunaRoot);
+        }
         this.hideStaleViews();
     }
 
