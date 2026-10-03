@@ -22,6 +22,7 @@ import { toggleResearchScreen } from './screens/researchScreen'; // [15b]
 import { getEmpireSummarySource, toggleEmpireSummary } from './screens/empireSummary';
 import { toggleColoniesFromHud } from './hud';
 import { toggleBuildOrder } from './screens/buildOrder'; import { toggleConstructionYards } from './screens/constructionYards'; import { selectStellarObject } from './hud'; // [16c]
+import { attachBuildQueueLauncher } from './screens/buildQueue'; // [buildQueue]
 import { toggleFleets, toggleShipsAndBases } from './hud'; // [15c]
 import { toggleMessageHistory } from './screens/messageHistory';
 import { toggleGameOptionsPanel } from './screens/gameOptionsPanel'; // [16d]
@@ -340,7 +341,10 @@ export function dispatchKey(
         // [16c] F9: Build Order, F10: Construction Yards (task 16c).
         case 'buildOrderScreen': {
             const src = getEmpireSummarySource();
-            if (src) toggleBuildOrder({ empire: src.empire });
+            if (src) {
+                toggleBuildOrder({ empire: src.empire });
+                attachBuildQueueLauncher({ empire: src.empire, onGoto: (t) => selectStellarObject(t, true) }); // [buildQueue]
+            }
             break;
         }
         case 'constructionYardsScreen': {

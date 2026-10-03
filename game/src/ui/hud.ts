@@ -60,6 +60,7 @@ import { toggleShipDesigns } from './screens/shipDesigns'; // [16b]
 import { toggleShipsAndBasesList } from './screens/shipsAndBasesList';
 import { toggleMessageHistory } from './screens/messageHistory';
 import { toggleBuildOrder } from './screens/buildOrder'; import { toggleConstructionYards } from './screens/constructionYards'; // [16c]
+import { attachBuildQueueLauncher } from './screens/buildQueue'; // [buildQueue]
 import { toggleResearchScreen } from './screens/researchScreen'; // [15b]
 import { toggleEmpireComparison } from './screens/empireComparison';
 import { showToast } from './toast';
@@ -453,6 +454,12 @@ export function toggleFleets(selected?: ShipGroup): void {
         empire: src.empire,
         selected,
         onSelect: (sg) => selectShipGroup(sg, true),
+        // Select Fleet (method_208): select without moving the view.
+        onSelectOnly: (sg) => selectShipGroup(sg, false),
+        // The info panel's hotspots: a ship selects it; the fleet itself is the selection already.
+        onTarget: (t) => {
+            if (t.kind === 'select' && !(t.obj instanceof ShipGroup)) selectStellarObject(t.obj, false);
+        },
         // Home Base / Attack Point (Main.Part7.cs SetFleetHomeBase / SetFleetAttackPoint): the fleet is selected and the
         // next map click picks the point.
         onPickPoint: (sg, mode) => {
@@ -893,7 +900,10 @@ function openTopBarScreen(name: string, wiring: HudWiring): void {
             return;
         // [16c] btnBuildOrder → Build Order (Main.Part2.cs:1196); tbtnConstructionYards → Construction Yards (Main.Part6.cs:3243).
         case 'btnBuildOrder':
-            if (src) toggleBuildOrder({ empire: src.empire });
+            if (src) {
+                toggleBuildOrder({ empire: src.empire });
+                attachBuildQueueLauncher({ empire: src.empire, onGoto: (t) => selectStellarObject(t, true) }); // [buildQueue]
+            }
             return;
         case 'tbtnConstructionYards':
             if (src) toggleConstructionYards({ empire: src.empire, onSelect: (t) => selectStellarObject(t, true) });

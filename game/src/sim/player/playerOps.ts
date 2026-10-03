@@ -11,7 +11,7 @@ import type { BuiltObject } from '../builtObject';
 import type { Habitat } from '../types';
 import type { Design } from '../design';
 import type { ShipGroup } from '../fleets/shipGroup';
-import type { Character, IntelligenceMission } from '../characters';
+import type { Character, IntelligenceMission, StellarObject } from '../characters';
 import type { Troop } from '../cargo';
 import type { TechNode } from '../researchSystem';
 import type { EmpirePolicy } from '../data/policies';
@@ -204,6 +204,13 @@ export const PLAYER_OPS = {
     /** 19d3 (scenario `espionageConsequences` only; not a port): blame another empire for the agent's mission (false flag). */
     setAgentMissionFrame: (galaxy: Galaxy, _empire: Empire, mission: IntelligenceMission, framed: Empire | null) =>
         scenarioFlag(galaxy, ESPIONAGE_FLAG) ? setMissionFrame(galaxy, mission, framed) : false,
+    /** CharacterSummary.cs btnTransfer_Click (not editing): TransferToNewLocation, unless the destination is the current
+     *  location or a transfer is already under way. */
+    transferCharacter: (galaxy: Galaxy, _empire: Empire, character: Character, destination: StellarObject | null) => {
+        if (destination === null || destination === character.location || character.transferDestination !== null) return false;
+        character.transferToNewLocation(destination, galaxy);
+        return true;
+    },
     /** Main.Part6.cs 3351 btnIntelligenceAgentsDisband_Click: `Mission = null; Kill(galaxy)`. */
     dismissCharacter: (galaxy: Galaxy, _empire: Empire, character: Character) => {
         character.mission = null;
