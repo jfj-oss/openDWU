@@ -12,17 +12,17 @@ Some C# panels have obfuscated names: CaLkaMyrMQ = Galaxy Map, kYdDyYeMls = Char
 | 2 | Wizard empire-type page: Normal Classic/Shadows, **Pirate** Classic/Shadows, Legends, Return of the Shakturi, Ancient Galaxy, Quick Starts | Start.cs pnlStartNewGameYourEmpireType | MISSING | ui/screens/newGameWizard.ts | High | No pirate-player start, so every pirate-player screen is unreachable; the sim has PiratePlayStyle |
 | 3 | Game Editor family (pnlGameEditor, pnlEdit*, passwords, character skills/traits editor) | Main pnlGameEditor, pnlEdit* | MISSING | top-bar button shows a toast | High (modding) / Low | |
 | 4 | Ground invasion status panel ("[" key, Ground/Battle Report link) | Main.Part11.cs pnlColonyInvasion, method_165; InfoPanel.cs 4419/4497 | MISSING | text only in hud.ts / selectionInfo.ts | High | No way to follow an invasion in progress |
-| 5 | Game Options: engagement-stance defaults, fleet attack gather/refuel/overmatch, discoveries, new ships automated, same-system start, loaded games paused, wheel behaviour, zoom/scroll speed, starfield size, advanced display, Other Empire Settings, reset automation messages | Main pnlGameOptions + grpGameOptions*, Main.Part6.cs:2406-2560 | PARTIAL | ui/screens/gameOptionsPanel.ts, gameMenu.ts | High | The sim already has the fields (sim/game.ts:758-807); there is just no UI |
+| 5 | Game Options: engagement-stance defaults, fleet attack gather/refuel/overmatch, discoveries, new ships automated, same-system start, loaded games paused, wheel behaviour, zoom/scroll speed, starfield size, advanced display, Other Empire Settings, reset automation messages | Main pnlGameOptions + grpGameOptions*, Main.Part6.cs:1760-2560, Main.Part4.cs:4159-4747, Main.Part9.cs:2510-2600 | DONE | ui/screens/gameOptionsPanel.ts, gameOptionsModel.ts | — | Every group and sub-window ported; game-state values go through setEmpireControl / setEmpireSetting (journaled, worker-safe). Closing the window saves the player's settings as the next new game's defaults (YxwyUefOyQ + method_257 → settings.newGameOptions → createGame `gameOptions`, Start.2.cs 1352-1363 / 2122-2146). Left: the main menu's Options editing those defaults before a game (Start.1.cs:1928-1960); "Allow … other empires systems" is shown read-only (hidden in game in the original) |
 | 6 | Fleet Postures map overlay | MainView.2.cs MapOverlayFleetPostures | MISSING | ui/mapOverlays.ts toggle only | Med-High | The toggle does nothing |
 | 7 | Long Range Scanners overlay | MainView.2.cs MapOverlay LRS | MISSING | same as #6 | Med-High | fog.ts already reads longRangeScanners |
 | 8 | Battle bars at f<=3: shield line, boarding/assault bar, flashing boarding icon, fleet-leader badge | MainView.1.cs:1251-1295, MainView.cs:4521-4535 | PARTIAL/DIVERGENT | render/combatBars.ts (our own design; its header wrongly says the original has none); fighterLayer.ts:22 | Med | |
 | 9 | Display-type cycle (D / btnMainViewDisplayToggle, int_34) | Main.Part6.cs:3069; MainView.cs 4069/4352/4523/4696 | MISSING | — | Med | |
 | 10 | Panel-visibility cycle (T, CyclePanelVisibility) | Main.Part7.cs:3085 | MISSING/CONFLICT | keyboard.ts:86 binds T to advisor chat | Med | |
-| 11 | Game-start Introduction panel (story, victory conditions, Start) | Main.Part12.cs:~3000-3117 pnlIntroduction | MISSING | — | Med | |
+| 11 | Game-start Introduction panel (story, victory conditions, Start) | Main.Part12.cs:2921-3118 method_81/82, Main.Part5.cs:449, Main.Part12.cs:4248-4258 | DONE | ui/screens/introductionPanel.ts | — | Shown paused for wizard games (dev autostart: ?intro=1); Start Playing resumes. Empire.Description (Game Editor) not modelled |
 | 12 | Tutorial in-game behaviours (highlight controls, zoom/scroll to object, open screen/tab) | Main.Part5.cs method_455 | PARTIAL | ui/screens/tutorials.ts:142, sim/data/tutorials.ts:12 | Med | Steps show text only |
 | 13 | Event/story popups: remaining pictures, full-screen pnlStoryEvent, Shakturi ending, music cues | Main.Part4.cs:1300-1460, 4839-4994; Main.Part12.cs:3428 | PARTIAL | ui/eventMessages.ts:8,171; empireComparison.ts:17 | Med | |
 | 14 | Empire Comparison / Victory: graphs + history, Top Colonies, race victory detail, scenario lists, pirate comparison, Game Summary | Main.Part6.cs:1700-1745 method_571 | PARTIAL | ui/screens/empireComparison.ts | Med | |
-| 15 | Game End panel (outcome + Continue + Exit) | Main.Part12.cs DoGameEnd | PARTIAL | empireComparison.ts (no Exit) | Med | |
+| 15 | Game End panel (outcome + Continue + Exit) | Main.Part12.cs DoGameEnd, Main.Part6.cs:3998-4067 method_436/437, btnGameEndContinue/Exit_Click | DONE | ui/screens/gameEndPanel.ts, empireComparison.ts presentGameEnd | — | method_436: the comparison window opens on Achievements with the outcome overlay (OverlayTextLines); pnlGameEnd (never made visible in 1.9.5, no layout code) is shown beside it with Continue Playing... / Exit to main menu — its layout is ours. The method_429-431 taunts are dead code, not ported |
 | 16 | Galaxy Map extras: system view (picSystemMap), landscape, Back/Forward, territory shading, nebula on mini maps | Main.Part11.cs:1078, 2074-2130; GalaxyMap.cs bitmap_0 | PARTIAL | ui/screens/galaxyMap.ts | Med | Same TODO in troops.ts:19, expansionPlanner.ts:19 |
 | 17 | HUD system mini-map (pnlSystemMap/picSystem) | Main.Part11.cs:451 | MISSING (replaced) | hudLayout.ts:46 (options list in its place) | Med | |
 | 18 | Territory shading algorithm (CalculateEmpireTerritoryGrid / SystemTerritory) | GalaxyMap.cs, EmpireTerritory.cs, MainView.2.cs:262-365 | PARTIAL | render/empireLayer.ts | Med | Being ported (territory agent) |
@@ -55,10 +55,9 @@ Some C# panels have obfuscated names: CaLkaMyrMQ = Galaxy Map, kYdDyYeMls = Char
 
 ## 2. Missing whole screens/panels
 - Game Editor and all pnlEdit* panels; pnlGameEditorPassword/EnterPassword; pnlCharacterEditSkillsTraits.
-- pnlColonyInvasion; pnlIntroduction.
+- pnlColonyInvasion.
 - Wizard: pnlStartNewGameYourEmpireType (incl. Pirate), JumpStart/QuickStart, saved galaxy maps, Introductory.
 - pnlResourceComponents, pnlRelationAllianceName, pnlPirateSmugglingMissionResourceSelection, pnlSaveLoadProgress, pnlThemes.
-- pnlGameOptionsEmpireSettings, pnlGameOptionsAdvancedDisplaySettings, pnlOptionsAutomationMode.
 - pnlStoryEvent (full-screen), pnlGameSummary; HUD pnlSystemMap.
 - Bacon forms and the HotKeys screen.
 

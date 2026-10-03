@@ -157,7 +157,7 @@ function handle(m: ToWorker): void {
     try {
         dispatch(m);
     } catch (err) {
-        // The host's command / query / host-op / UI-op paths contain their own errors (an error reply); what is left is
+        // The host's command / host-op / UI-op paths contain their own errors (an error reply); what is left is
         // a request handler or the host itself. A request gets an error answer; the rest is logged on the main thread.
         console.error(`sim worker: ${m.type} failed`, err);
         post({ type: 'error', message: `${m.type} failed: ${err instanceof Error ? err.message : String(err)}`, id: requestId(m) });
@@ -190,15 +190,6 @@ function dispatch(m: ToWorker): void {
         case 'refresh':
             host!.refresh(m);
             kick();
-            return;
-        case 'query':
-            // Answered at once (no tick): the menu / buttons appear without waiting for the next step.
-            host!.query(m);
-            try {
-                post(host!.flush());
-            } catch (err) {
-                fatal('sync (query reply)', err);
-            }
             return;
         case 'hostOp':
             host!.hostOp(m);

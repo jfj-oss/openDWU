@@ -67,17 +67,6 @@ export interface CommandMessage {
     args: RemoteArg[];
 }
 
-/** A read-only sim query (simQuery.ts SIM_QUERIES) run on the authoritative galaxy, in order with the commands. */
-export interface QueryMessage {
-    type: 'query';
-    /** Main-side id for the reply (same id space as CommandMessage.id; never 0). */
-    id: number;
-    /** Sync id of the asking empire. */
-    empire: number;
-    op: string;
-    args: RemoteArg[];
-}
-
 export interface SaveRequest {
     type: 'save';
     id: number;
@@ -150,7 +139,7 @@ export interface UiOpMessage {
     args: RemoteArg[];
 }
 
-export type ToWorker = InitMessage | ClockMessage | CommandMessage | QueryMessage | HostOpMessage | RefreshRequest | SaveRequest | DigestRequest | TradeFlowsMessage | DebugRequest | CommandLogRequest | UiOpMessage | { type: 'dispose' };
+export type ToWorker = InitMessage | ClockMessage | CommandMessage | HostOpMessage | RefreshRequest | SaveRequest | DigestRequest | TradeFlowsMessage | DebugRequest | CommandLogRequest | UiOpMessage | { type: 'dispose' };
 
 export interface ProgressMessage {
     type: 'progress';
@@ -191,11 +180,11 @@ export interface StepMessage {
     /** Worker wall ms: the steps, and the replica diff. */
     stepMs: number;
     diffMs: number;
-    /** onApplied results of commands applied at this tick's boundary, query replies (`query`) and refresh replies, resolved after
-     *  `delta`. A command result makes the main thread apply the queued cold parts through this delta first. `error`: the
-     *  command / query / host op failed (docs/sim-worker.md §4.4 "Failed commands"); `threw`: the command's executor
-     *  threw at the boundary (the worker paused with a simulation error; as in-thread, no callback runs). */
-    results: { id: number; result: RemoteArg; error?: string; query?: boolean; threw?: boolean }[];
+    /** onApplied results of commands applied at this tick's boundary and refresh replies, resolved after `delta`. A
+     *  result makes the main thread apply the queued cold parts through this delta first. `error`: the command / host op
+     *  failed (docs/sim-worker.md §4.4 "Failed commands"); `threw`: the command's executor threw at the boundary (the
+     *  worker paused with a simulation error; as in-thread, no callback runs). */
+    results: { id: number; result: RemoteArg; error?: string; threw?: boolean }[];
     /** Sim → UI events raised during the tick (resolved after `delta`). */
     events: WorkerEvent[];
 }

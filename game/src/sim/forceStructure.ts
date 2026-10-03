@@ -516,7 +516,7 @@ export function annualTaxRevenue(galaxy: Galaxy, empire: Empire): number {
         if (!habitatRebelling(habitat)) {
             if (Number.isNaN(habitatAnnualRevenue(galaxy, habitat))) {
                 if (isReadOnlyGalaxy(galaxy)) {
-                    // A read-only replica galaxy (readOnlyQuery.ts): the recalculated revenue, then the colony as it was.
+                    // A read-only galaxy (a UI read, readOnlyQuery.ts): the recalculated revenue, then the colony as it was.
                     const revenue = habitat.annualTaxRevenue;
                     const bonuses = habitat.resourceBonuses;
                     recalculateAnnualTaxRevenue(galaxy, habitat);

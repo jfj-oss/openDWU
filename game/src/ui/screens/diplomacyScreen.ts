@@ -99,8 +99,6 @@ import { empireIntel, formatMillions } from './empireIntel';
 // [proposals] begin
 import { listProposals, type ProposalOption, type ProposalResult } from '../../sim/player/diplomacyProposals';
 import { issuePlayerCommand } from '../../sim/player/playerCommands';
-import { isRemoteQueryGalaxy, simQuery } from '../../simworker/simQuery';
-import { WorkerQueryCache } from '../workerQueryCache';
 import { companyHeaderLine, toggleChartersScreen } from './charters'; // [charters]
 import { charterOfCompany } from '../../sim/scenario/charteredCompanies/charters'; // [charters]
 import { DialogSet, raceDialogFileName } from '../../sim/data/dialogSet';
@@ -456,11 +454,6 @@ export function proposalGroups(options: readonly ProposalOption[]): ProposalGrou
         g.options.push(o);
     }
     return groups;
-}
-
-/** The talk panel's rebuild key of a listing (what the options box shows of each option). */
-function proposalOptionsKey(options: readonly ProposalOption[]): string {
-    return options.map((o) => `${o.id}|${o.label}|${o.enabled}|${o.hint}|${o.cost}`).join(';');
 }
 
 /** Main.Part10.cs:3590 method_230: the reply line, string.Format(dialogSet.ResolveDialog(type, race), args); a refused
@@ -852,18 +845,9 @@ function createDiplomacyScreen(opts: DiplomacyScreenOptions): OpenState {
     let governmentFilter = '';
     let extrasScroll = 0;
     let closed = false;
-    // Sim worker (docs/sim-worker.md §9 chunk 7): on a replica the queries that write the graph run in the worker —
-    // listProposals (method_238 obtains the relations it lists) and the protection price (ObtainPirateRelation); the
-    // screen shows their last answer. In-thread both stay direct calls (null here).
-    const workerQueries = isRemoteQueryGalaxy(player.galaxy);
-    const talkOptions = workerQueries
-        ? new WorkerQueryCache<Empire, ProposalOption[]>(
-              (e, done) => simQuery(player.galaxy, player, 'listProposals', [e], done),
-              () => renderTalk(),
-              (a, b) => proposalOptionsKey(a) === proposalOptionsKey(b),
-          )
-        : null;
-    const protectionPrices = workerQueries ? new WorkerQueryCache<Empire, number>((e, done) => simQuery(player.galaxy, player, 'pirateProtectionPrice', [e], done), () => render()) : null;
+    // listProposals (method_238 obtains the relations it lists) and the protection price (ObtainPirateRelation) are UI
+    // reads in both modes (on the replica in worker mode): the lookups do not write, and the records the C# adds here
+    // become a journaled command (sim/readOnlyQuery.ts requestUiRecord; docs/sim-worker.md §8).
 
     const win = openOriginalWindow({
         id: 'diplomacy',
@@ -876,8 +860,6 @@ function createDiplomacyScreen(opts: DiplomacyScreenOptions): OpenState {
             closed = true;
             // [diplovoice] end
             clearInterval(timer);
-            talkOptions?.dispose();
-            protectionPrices?.dispose();
             talk?.close();
             allianceWin?.close();
             // [tradenego] begin
@@ -1391,8 +1373,8 @@ function createDiplomacyScreen(opts: DiplomacyScreenOptions): OpenState {
                 );
             } else if (player.pirateEmpireBaseHabitat === null && !empire.pirateEmpireSuperPirates) {
                 // Our addition: what a protection arrangement would cost now (per month and per year).
-                const price = protectionPrices !== null ? protectionPrices.read(empire) : calculatePirateProtectionPricePerMonth(player.galaxy, empire, player).price;
-                line(`Protection price now: ${price === undefined ? '…' : price > 0 ? pirateProtectionPriceText(price) : 'Free (truce)'}`, { color: TEXT, gapAfter: pl.step });
+                const price = calculatePirateProtectionPricePerMonth(player.galaxy, empire, player).price;
+                line(`Protection price now: ${price > 0 ? pirateProtectionPriceText(price) : 'Free (truce)'}`, { color: TEXT, gapAfter: pl.step });
             }
             const pr = empire.pirateRelations?.getRelationByOtherEmpire(player) ?? null;
             const evaluation = pr?.evaluation ?? 0;
@@ -1529,8 +1511,7 @@ function createDiplomacyScreen(opts: DiplomacyScreenOptions): OpenState {
     function renderTalk(): void {
         if (talk === null || talk.closed || talkFor === null) return;
         const other = talkFor;
-        // Worker mode: the last listing the worker sent (null until the first arrives).
-        const options = talkOptions !== null ? talkOptions.read(other) ?? null : listProposals(player.galaxy, player, other);
+        const options: ProposalOption[] | null = listProposals(player.galaxy, player, other);
         const reply = proposalReplies.get(other) ?? null;
         const key = `${proposalVersion};${talkMenu};${player.controlDiplomacyTreaties};` + (options === null ? '…' : options.map((o) => `${o.id}|${o.label}|${o.enabled}`).join(';'));
         if (key === talkBuiltKey) return;
@@ -1622,7 +1603,6 @@ function createDiplomacyScreen(opts: DiplomacyScreenOptions): OpenState {
             issuePlayerCommand(player.galaxy, player, 'submitProposal', [other, o.id], (res) => submitted(o, res));
         };
         const submitted = (o: ProposalOption, res: ProposalResult): void => {
-            talkOptions?.invalidate(other);
             proposalReplies.set(other, res);
             proposalVersion++;
             talkMenu = null;

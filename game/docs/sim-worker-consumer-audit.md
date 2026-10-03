@@ -309,6 +309,7 @@ This audit is written against that design. It also applies to a typed-array snap
 10. `main.ts registerLocationPingedHook` (story events call it during a tick to centre the camera).
 11. `render/rimAtmosphereWiring.ts` (once at `MainView.init`): `installRimWeights` / `installRimNameOverrides` write `galaxy.scenario.state[…]`, which sim message code reads.
 12. `ui/orderMenu.ts` → `sim/player/orderMenu.ts openActionMenu` / `selectionButtons` draw **`galaxy.rnd`** (`selectRelativePoint`, `selectRelativeHabitatSurfacePoint`, `selectRelativeParkingPoint`). This happens on user input and is not journaled. On a replica it diverges the RNG; it needs a worker query, or the positions must be chosen inside the command.
+    **Done (§4.1 below):** the journaled `actionMenu` / `selectionButtons` (drawing pages) / `habitatDispatch` commands.
 13. `ui/advisorClient.ts`: `runPlayerCommand(galaxy, player, 'advisorCommands', …)` executes synchronously (bypasses the queue).
 14. `ui/diplomatVoice.ts`: `runPlayerCommand(…, 'diplomatCounter', …)` executes synchronously.
 15. `ui/aiAdvisorDriver.ts`: `applyStrategicDecisions` → `applyStrategicCommand` plus `appendCommandLog`, run directly.
@@ -335,6 +336,40 @@ This audit is written against that design. It also applies to a typed-array snap
     `Empire.useAveragedVariableIncome`, `variableIncome`, `lastVariableIncomeUpdate`, `thisYearsResortIncomeValue` and,
     at a new galactic year, every base's `BuiltObject.currentYearsIncome` (a UI-driven sim write in C# too, Main.Part11.cs
     841). `audio/gameAudio.ts` also redefines `player.eventMessageRecipient` (item 6).
+    **Done (§4.1 below):** the journaled `moneyPanel` command when a write is due; otherwise a read-only read.
+
+### 4.1 UI writes outside the journal: decisions (2026-10-03)
+
+The paths that wrote the game, or drew `galaxy.rnd`, from the UI outside the journaled command queue (in-thread: not in
+the command log, so seed + log replays drifted; in worker mode: written on the replica, or run in the worker as an
+unjournaled query). Found by the in-thread save-text probe of `scripts/simworker-smoke.mjs --inthread --detect-writes`
+(every step of a UI tour: select, hover, right-click, every left-sidebar panel and top-bar screen, on a fresh game and
+on `late2500.dwusave`), the worker-mode write detector (`--detect-writes`, same tour), a grep of `galaxy.rnd` /
+`rnd.next` / `isReadOnlyGalaxy` sites reachable from `src/ui` / `src/llm`, and this list. The rule: where the C# UI
+makes the write, it becomes a journaled player command issued at the same point; where only our port writes, the read
+becomes side-effect-free.
+
+| Path | C# | Decision |
+|---|---|---|
+| Right-click action menu (`openActionMenu`: "Build here" `SelectRelativePoint`, `ReviewLatestDesigns`) | Main.Part8.cs 1332 actionMenu_Opening → 3202 method_344 (1839 / 1912 SelectRelativePoint, 4860 ReviewLatestDesigns) | journaled `actionMenu` command; the reply is the menu |
+| Selection buttons, an unowned / independent habitat's top page and a habitat's Build Options (`SelectRelativeHabitatSurfacePoint`, `SelectRelativeParkingPoint`, `DetermineOrbitalBaseLocation`) | Main.Part3.cs method_593 2293-2307, 2945, 2958 | journaled `selectionButtons` command (`selectionButtonsDrawRandom`), on input only as before; every other page is a read |
+| Habitat dispatch buttons (an action menu per candidate ship) | none (our buttons), but built from the method_344 menus, which draw / review | journaled `habitatDispatch` command (its draws affect results, so not a read) |
+| Left-sidebar row click / any selection of such a habitat | as the two above | through them |
+| Money panel `CheckAgeVariableIncome` (+ ThisYears*Income resets) | Main.Part11.cs 832 method_126 / 841 (the only caller; timer 756, pause 2214) | journaled `moneyPanel` command when `moneyPanelWriteDue` (first refresh, a new galactic year); otherwise a read-only read |
+| Build Order cashflow | Main.Part2.cs 785 shows the panel's last figure (no ageing) | read-only read |
+| Obtain* lookups from UI reads (hover hint `resolveHoverOrder`, talk panel `listProposals`, pirate protection price, screens) | Main.Part10.cs 365 / 434 / 567 (mouse move), Main.Part9.cs 46 method_238, Empire.2.cs 2649 … | the read returns the detached record and asks for it; one journaled `obtainUiRecords` command per UI task adds it (both modes; fixes chunk 6's open item) |
+| `ThisYearsSpacePortIncome` ageing, the NaN tax recalculation, `ThisYearsResortIncome` reset, `_WondersBuilt` / scenario-bag creation on a UI read | getters the C# UI also reads, but the ageing count depends on how often a screen redraws | read-only (the value without the write): port side effect, a cache, or no information |
+| Local-model briefs / digests / archive (`llm/replicaReads.ts readReplica`; `askArchivist` now too; the AI advisor's validation listing) | none (port-only) | `withPureSimReads`: read-only and no record requests. In-thread a strategic brief used to add 1 to every unearning AI base's `consecutiveUnprofitableYears` per read |
+| Empire Policy panel's automation combos written into `Empire.control*` in-thread | method_597 (UI writes) | `setEmpireControl` commands in both modes (was worker-only) |
+| `applyStrategicDecisions` (AI advisor, in-thread direct) | none | already journaled ('ai-advisor'); now applied in `withSimWrites` like its replay |
+
+**Still outside the journal (documented, not changed):** the player message pipeline's writes (items 2–4, 6: ticker
+star dates, `messageHistory`, the advisor queue, event messages, the defeat game end — `ui/messagePipeline.ts`, run as
+sim writes in both threads; in worker mode after every tick, in-thread from the 4 Hz timers) and its `uiOp`s (Galactic
+History's trim, the advisor expiry); the chronicle store (item 16; host op in worker mode); the wizard's `flagShape`
+(item 19, before the first frame). None of them feeds the AI or the economy, but a command that names an advisor
+suggestion (`approveSuggestion`) resolves it by its index in the queue the pipeline fills, which a headless replay does
+not fill: making the pipeline sim-side (run at the frame boundary in both modes and in replays) is the follow-up.
 
 **Checked and safe (no sim write)**
 - `identifyColonizationTargetsFull` with `filterOutDangerousTargets=false` (it would push `empire.dangerousHabitats` if true).
