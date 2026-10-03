@@ -58,7 +58,7 @@ import { BuiltObject } from './builtObject';
 import { Cargo, ResourceRef } from './cargo';
 import { ResourceGroup, resourceGroupOf } from './resourceSystem';
 import { checkEmpireHasHyperDriveTech } from './forceStructure';
-import { checkEmpireTerritoryCanBuildAtHabitat, habitatPrioritizationIndexOf, identifyResourceCentres } from './resourceTargets';
+import { checkEmpireTerritoryCanBuildAtHabitat, checkNearPirateBase as checkNearPirateBaseInRange, habitatPrioritizationIndexOf, identifyResourceCentres } from './resourceTargets';
 import { startStarDateForAge } from './galaxyTime';
 import { loadEmpirePolicy } from './researchSystem';
 import { SystemVisibilityStatus } from './visibility';
@@ -477,35 +477,10 @@ function identifyStrategicResourceSupplySource(empire: Empire, resourceId: numbe
 }
 
 // Empire.5.cs CheckNearPirateBase(stellarObject, x, y, empireToExclude) (3450) →
-// (stellarObject, scanRange, x, y, empireToExclude) (3456). No Rnd.
+// (stellarObject, scanRange = (int)(MaxSolarSystemSize * 2.1), x, y, empireToExclude) (3456): resourceTargets.ts.
 function checkNearPirateBase(galaxy: Galaxy, empire: Empire, stellarObject: Habitat | null, x: number, y: number, empireToExclude: Empire | null): boolean {
     const scanRange = Math.trunc(galaxy.maxSolarSystemSize * 2.1);
-    void scanRange;
-    void stellarObject;
-    const empire2 = findNearestPirateFaction(galaxy, x, y, empireToExclude, true);
-    if (empire2 !== null && empire2.pirateEmpireBaseHabitat !== null) {
-        let builtObject: BuiltObject | null = null;
-        const bases = empire2.pirateEmpireBaseHabitat.basesAtHabitat;
-        if (bases != null && bases.length > 0) {
-            for (let i = 0; i < bases.length; i++) {
-                const builtObject2 = bases[i];
-                if (builtObject2 != null && builtObject2.empire === empire2 && (builtObject2.subRole === BuiltObjectSubRole.SmallSpacePort || builtObject2.subRole === BuiltObjectSubRole.MediumSpacePort || builtObject2.subRole === BuiltObjectSubRole.LargeSpacePort)) {
-                    builtObject = builtObject2;
-                    break;
-                }
-            }
-        }
-        // TODO(port): Empire.KnownPirateBases (BuiltObjectList) is not modeled. It is filled
-        // by the empire's own sightings (Empire.DoTasks / visibility reviews), so it is empty
-        // for a faction that is being generated: KnownPirateBases.Contains(builtObject) is
-        // false and C# returns false here.
-        const knownPirateBasesContains = false;
-        void empire;
-        if (knownPirateBasesContains && builtObject !== null) {
-            throw new Error('TODO(port): Empire.KnownPirateBases');
-        }
-    }
-    return false;
+    return checkNearPirateBaseInRange(galaxy, empire, stellarObject, scanRange, x, y, empireToExclude);
 }
 
 // Empire.6.cs CheckResourceSupplyMeetsExpected(resource) (1602) →

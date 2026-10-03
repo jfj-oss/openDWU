@@ -497,9 +497,7 @@ export function changeGovernment(galaxy: Galaxy, empire: Empire, governmentId: n
     for (let i = 0; i < galaxy.empires.length; i++) {
         const other = galaxy.empires[i];
         if (other != null && other.active && other !== empire && other !== galaxy.independentEmpire && other.pirateEmpireBaseHabitat === null) {
-            // TODO(port) M4r: EmpireEvaluation.GovernmentStyleAffinity / GovernmentStyleAffinityCumulative are not in the
-            // TS EmpireEvaluation model yet; set as plain properties.
-            const empireEvaluation = obtainEmpireEvaluation(galaxy, other, empire) as unknown as { governmentStyleAffinity: number; governmentStyleAffinityCumulative: number };
+            const empireEvaluation = obtainEmpireEvaluation(galaxy, other, empire);
             empireEvaluation.governmentStyleAffinity = 0;
             empireEvaluation.governmentStyleAffinityCumulative = 0.0;
         }

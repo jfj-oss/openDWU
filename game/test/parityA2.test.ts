@@ -8,7 +8,7 @@ import type { Game } from '../src/sim/game';
 import type { Empire } from '../src/sim/empire';
 import { BuiltObject } from '../src/sim/builtObject';
 import { BuiltObjectRole } from '../src/sim/data/designSpecifications';
-import { DiplomaticRelationType, obtainDiplomaticRelation } from '../src/sim/diplomacy';
+import { DiplomaticRelation, DiplomaticRelationType, obtainDiplomaticRelation } from '../src/sim/diplomacy';
 import { PirateRelationType, obtainPirateRelation } from '../src/sim/pirateRelations';
 import { checkSystemEnemyShipLevel, determineNewSpacePortLocations } from '../src/sim/stationPlacement';
 import { raceAggressionLevel, raceFriendlinessLevel, raceReproductiveRate } from '../src/sim/racePeriodic';
@@ -368,3 +368,8 @@ describe('Empire.8.cs 4395 CheckTaskAuthorized: one implementation (diplomacyTic
     });
 });
 
+describe('stale TODO(port) stubs removed (docs/parity/empire-ai-economy.md)', () => {
+    it('DiplomaticRelation has no throwing PerformTradeTransaction stub (the port is logistics/contracts.ts)', () => {
+        expect('performTradeTransaction' in DiplomaticRelation.prototype).toBe(false);
+    });
+});
