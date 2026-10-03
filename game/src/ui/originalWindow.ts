@@ -12,7 +12,8 @@
 //      onClose })` — width / height are the ORIGINAL ScreenPanel size. The window lays itself out (header at (7, 8),
 //      body at (8, 59), ScreenPanel.DoLayout) and scales as one with `transform: scale(k)`, k = originalWindowScale():
 //      the HUD's factor (topBar.ts topBarScale: window height × UI scale × HUD_FRAME_SIZE) capped so the window fits.
-//      Text stays crisp at 4K because the browser re-rasterises a scaled transform.
+//      Text stays crisp at 4K because the browser re-rasterises a scaled transform. A non-chrome header icon (the
+//      player's flag on Empire Summary) goes in `iconUrl` / `win.setIcon(url)`.
 //   2. Everything inside `win.body` is positioned in the original's body-relative pixels: copy the Location / Size
 //      the source gives each control and call `place(el, x, y, w, h)`. Do NOT use flex/grid for the main layout —
 //      the point is a 1:1 port. Pick the large / small variant with `win.virtualSize` (the window in original pixels,
@@ -488,6 +489,8 @@ export interface GridColumn<T> {
     /** Fill the cell (text or nodes). */
     render: (row: T, cell: HTMLDivElement) => void;
     title?: string;
+    /** DataGridView.CellClick on this column's cells (after the row is selected). */
+    onClick?: (row: T, e: MouseEvent) => void;
 }
 
 export interface GridOptions<T> {
@@ -506,6 +509,8 @@ export interface GridOptions<T> {
     rowClass?: (row: T) => string;
     empty?: string;
     fontSize?: number;
+    /** DataGridView.MultiSelect: Ctrl-click toggles a row, Shift-click selects the range from the last clicked row. */
+    multiSelect?: boolean;
 }
 
 /** A DataGridView in ListViewBase's styles: header (24, 24, 24) / (170, 170, 170), rows alternating (32, 32, 40) and
@@ -517,6 +522,8 @@ export class OwGrid<T> {
     private readonly head: HTMLDivElement | null;
     private rows: T[] = [];
     private selectedKey: unknown = undefined;
+    /** MultiSelect: every selected row's key (always includes selectedKey when set). */
+    private selectedKeys = new Set<unknown>();
     private sortCol: string | null = null;
     private sortDir: 'asc' | 'desc' | null = null;
 
@@ -552,6 +559,15 @@ export class OwGrid<T> {
         return this.rows.find((r) => this.o.key(r) === this.selectedKey) ?? null;
     }
 
+    /** DataGridView.SelectedRows: the selected rows in display order (one row unless `multiSelect`). */
+    get selectedAll(): T[] {
+        return this.displayed.filter((r) => this.isSelectedKey(this.o.key(r)));
+    }
+
+    private isSelectedKey(key: unknown): boolean {
+        return key === this.selectedKey || this.selectedKeys.has(key);
+    }
+
     /** The rows in display order (after sorting). */
     get displayed(): T[] {
         const col = this.o.columns.find((c) => c.id === this.sortCol);
@@ -566,6 +582,7 @@ export class OwGrid<T> {
     /** Select the row with this key (no onSelect call) and scroll it into view (FirstDisplayedScrollingRowIndex). */
     select(key: unknown, scroll = true): void {
         this.selectedKey = key;
+        this.selectedKeys = new Set(key === undefined ? [] : [key]);
         this.render();
         if (scroll) {
             const r = this.body.querySelector<HTMLElement>('.ow-grid-row.ow-sel');
@@ -574,6 +591,31 @@ export class OwGrid<T> {
                 if (top < this.body.scrollTop || top + r.offsetHeight > this.body.scrollTop + this.body.clientHeight) this.body.scrollTop = top;
             }
         }
+    }
+
+    /** A row click: plain = select only it; MultiSelect Ctrl = toggle; Shift = the range from the last clicked row. */
+    private clickRow(rows: readonly T[], key: unknown, e: MouseEvent): void {
+        if (this.o.multiSelect && e.shiftKey && this.selectedKey !== undefined) {
+            const keys = rows.map((r) => this.o.key(r));
+            const a = keys.indexOf(this.selectedKey);
+            const b = keys.indexOf(key);
+            if (a >= 0 && b >= 0) {
+                this.selectedKeys = new Set(keys.slice(Math.min(a, b), Math.max(a, b) + 1));
+                return; // the anchor stays
+            }
+        }
+        if (this.o.multiSelect && (e.ctrlKey || e.metaKey)) {
+            if (this.selectedKeys.has(key) && this.selectedKeys.size > 1) {
+                this.selectedKeys.delete(key);
+                if (this.selectedKey === key) this.selectedKey = this.selectedKeys.values().next().value;
+            } else {
+                this.selectedKeys.add(key);
+                this.selectedKey = key;
+            }
+            return;
+        }
+        this.selectedKey = key;
+        this.selectedKeys = new Set([key]);
     }
 
     render(): void {
@@ -591,20 +633,26 @@ export class OwGrid<T> {
         rows.forEach((row, i) => {
             const key = this.o.key(row);
             const extra = this.o.rowClass?.(row) ?? '';
-            const r = el('div', `ow-grid-row${i % 2 === 1 ? ' ow-alt' : ''}${key === this.selectedKey ? ' ow-sel' : ''}${extra ? ` ${extra}` : ''}`);
+            const r = el('div', `ow-grid-row${i % 2 === 1 ? ' ow-alt' : ''}${this.isSelectedKey(key) ? ' ow-sel' : ''}${extra ? ` ${extra}` : ''}`);
             for (const c of this.o.columns) {
                 const cell = el('div', `ow-grid-cell ow-align-${c.align ?? 'left'}`);
                 c.render(row, cell);
+                if (c.onClick) cell.classList.add('ow-hot');
                 r.appendChild(cell);
             }
-            r.addEventListener('click', () => {
-                if (this.selectedKey !== key) {
-                    this.selectedKey = key;
-                    for (const x of this.body.querySelectorAll('.ow-grid-row.ow-sel')) x.classList.remove('ow-sel');
-                    r.classList.add('ow-sel');
+            r.addEventListener('click', (e) => {
+                this.clickRow(rows, key, e);
+                for (const x of this.body.querySelectorAll<HTMLElement>('.ow-grid-row')) {
+                    const k = this.o.key(rows[Number(x.dataset.i)]);
+                    x.classList.toggle('ow-sel', this.isSelectedKey(k));
                 }
                 this.o.onSelect?.(row);
+                // CellClick after the selection changed (DataGridView raises SelectionChanged first).
+                const cell = (e.target as HTMLElement).closest('.ow-grid-cell');
+                const col = cell ? this.o.columns[Array.prototype.indexOf.call(r.children, cell)] : undefined;
+                col?.onClick?.(row, e);
             });
+            r.dataset.i = String(i);
             if (this.o.onDoubleClick) r.addEventListener('dblclick', () => this.o.onDoubleClick!(row));
             this.body.appendChild(r);
         });
@@ -622,6 +670,9 @@ export interface OriginalWindowOptions {
     title: string;
     /** HeaderIcon: a chrome image file (images/ui/chrome/<icon>), e.g. 'diplomacy.png'. */
     icon?: string;
+    /** HeaderIcon as any image URL (e.g. the player's LargeFlagPicture as a data URL); wins over `icon`. Set it
+     *  later with `win.setIcon(url)` (an async flag). */
+    iconUrl?: string;
     /** ScreenPanel Size in the original's pixels. */
     width: number;
     height: number;
@@ -649,6 +700,8 @@ export interface OriginalWindow {
     readonly virtualSize: { w: number; h: number };
     readonly scale: number;
     setTitle(title: string): void;
+    /** Change the HeaderIcon to an image URL (creates it when the window was opened without an icon). */
+    setIcon(url: string): void;
     /** Resize the ScreenPanel (original pixels) and re-centre it. */
     setSize(width: number, height: number): void;
     close(): void;
@@ -681,9 +734,9 @@ export function openOriginalWindow(o: OriginalWindowOptions): OriginalWindow {
     const titleEl = el('div', 'ow-title');
     let iconEl: HTMLImageElement | null = null;
     if (headerEl) {
-        if (o.icon) {
+        if (o.icon || o.iconUrl) {
             iconEl = el('img', 'ow-header-icon');
-            iconEl.src = chromeImageUrl(o.icon);
+            iconEl.src = o.iconUrl ?? chromeImageUrl(o.icon!);
             iconEl.alt = '';
             iconEl.draggable = false;
             headerEl.appendChild(iconEl);
@@ -789,6 +842,17 @@ export function openOriginalWindow(o: OriginalWindowOptions): OriginalWindow {
         setTitle(t: string) {
             setText(titleEl, t);
         },
+        setIcon(url: string) {
+            if (!headerEl) return;
+            if (iconEl === null) {
+                iconEl = el('img', 'ow-header-icon');
+                iconEl.alt = '';
+                iconEl.draggable = false;
+                headerEl.insertBefore(iconEl, headerEl.firstChild);
+                titleEl.style.left = '';
+            }
+            if (iconEl.src !== url) iconEl.src = url;
+        },
         setSize(nw: number, nh: number) {
             w = nw;
             h = nh;
@@ -843,6 +907,8 @@ export interface MessageBoxOptions {
     icon?: 'question' | 'warning' | 'stop' | 'information';
     /** Window width in original pixels (default 460). */
     width?: number;
+    /** Each button's width in original pixels (default 100). */
+    buttonWidth?: number;
 }
 
 const MESSAGE_ICON: Record<NonNullable<MessageBoxOptions['icon']>, string> = { question: '?', warning: '!', stop: '\u2716', information: 'i' };
@@ -874,7 +940,7 @@ export function messageBox(o: MessageBoxOptions): Promise<string | null> {
         t.classList.add('ow-msg-text');
         win.body.appendChild(place(t, 14 + iconW, 14));
         const textH = Math.max(o.icon ? 30 : 0, t.offsetHeight || 60);
-        const bw = 100;
+        const bw = o.buttonWidth ?? 100;
         const gap = 10;
         const height = 59 + 4 + 14 + textH + 16 + 30 + 14;
         win.setSize(width, height);
