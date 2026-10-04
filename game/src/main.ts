@@ -86,7 +86,7 @@ import { openGalactopedia } from './ui/screens/galactopedia';
 import { habitatInfo } from './ui/selectionInfo';
 import { renderInfoModel } from './ui/selectionInfoView';
 import { colonizationRangeFor, defaultStartGameOptions, piratesFor, STARTING_TECH_LEVEL, toCreateGameOptions, type StartGameOptions, maximumEmpireAmountFor, starCountFor, defaultScenarioChoice, type StartScenarioChoice } from './sim/startGameOptions';
-import { serializeGame, deserializeGameSteps, savedScenarioId, savedScenarioInclude, type GameSaveJSON } from './sim/save/gameSave';
+import { serializeGame, deserializeGameSteps, savedCustomizationSet, savedScenarioId, savedScenarioInclude, type GameSaveJSON } from './sim/save/gameSave';
 import { loadScenarioIndex, loadScenarioOverlay } from './sim/scenario/fetchScenario';
 import { applyScenarioOverlay, type ScenarioOverlay } from './sim/scenario/overlay';
 import { COMPOSITE_SCENARIO_ID, addonCatalog, compositeScenarioManifest, planAddonStart, resolveAddonSwitches, scenarioOverlayFor } from './sim/scenario/addons';
@@ -138,6 +138,11 @@ import { showToast } from './ui/toast';
 // [fix6ui] end
 
 import './ui/hud.css';
+import { activateTheme, bootTheme } from './themeLoader';
+import { activeCustomizationSet, activeCustomizationSetName, normalizeCustomizationSetName } from './sim/data/customization';
+import { setThemeChromeRace } from './themeAssets';
+import { resetMusicForTheme } from './audio/musicPlayer';
+import { updateSettings } from './ui/settings';
 
 // ?shape= names accepted by the boot URL.
 const SHAPE_BY_NAME: Record<string, GalaxyShape> = {
@@ -191,7 +196,8 @@ async function detectDwuPresent(): Promise<boolean> {
 async function loadSystemNames(dwuPresent: boolean): Promise<string[]> {
     if (dwuPresent) {
         try {
-            const text = await (await fetch('/assets/dwu/systemNames.txt')).text();
+            // Galaxy.4.cs 3437 LoadSystemNames: Customization\<set>\systemNames.txt when it exists, else the stock file.
+            const text = await (await fetch(activeCustomizationSet()?.fileUrl('systemNames.txt') ?? '/assets/dwu/systemNames.txt')).text();
             const names = parseSystemNames(text);
             if (names.length > 0) {
                 return names;
@@ -227,7 +233,8 @@ const fetchTextBrowser: FetchText = async (candidates: string[]): Promise<string
 async function loadGameDataOrNone(dwuPresent: boolean): Promise<GameData | null> {
     if (!dwuPresent) return null;
     try {
-        return await loadGameData(fetchTextBrowser);
+        // The active theme's files where the original reads Customization\<set>\ (data/gameData.ts).
+        return await loadGameData(fetchTextBrowser, activeCustomizationSet() ?? undefined);
     } catch (err) {
         console.warn('DW:U game data failed to load; continuing without it', err);
         return null;
@@ -293,6 +300,14 @@ function gameDataForSave(save: GameSaveJSON): GameData {
 
 /** Deserialize a save under the loading overlay (the save is parsed once; a late-game save takes seconds). */
 async function loadSaveWithProgress(text: string): Promise<LoadedGame> {
+    // Start.cs 1777 / Main.Part7.cs 3941 LoadFromFile: a save of another theme first switches to it — as the user's
+    // choice too (delegate8_0 = method_2(ThemeName, bool_5: true, …)) — then the galaxy loads on that theme's data.
+    const saveTheme = savedCustomizationSet(text);
+    if (saveTheme !== activeCustomizationSetName()) {
+        showToast(`Switching to ${saveTheme === '' ? '(Default)' : saveTheme} theme`); // "Switching to THEMENAME theme"
+        await switchTheme(saveTheme, true);
+        await ensureStaticData();
+    }
     if (lastGameData === null) throw new Error('DW:U game data is required to load a save');
     if (useSimWorker()) return (await loadSaveInWorker({ text })) as unknown as LoadedGame;
     return (await runStepsWithProgress('Loading game', deserializeGameSteps(text, gameDataForSave))) as unknown as LoadedGame;
@@ -310,7 +325,8 @@ async function bootWorker(title: string, boot: WorkerBoot, playData: ReplicaGame
     try {
         overlay.update({ step: 'Starting simulation thread', fraction: 0 });
         await nextPaint();
-        return await SimWorkerClient.boot({ type: 'init', boot, startOptions, clock }, playData, { update: (p) => overlay.update(p), paint: nextPaint });
+        // The worker loads the same theme's data (Main.Part12.cs CustomizationSetName()).
+        return await SimWorkerClient.boot({ type: 'init', boot, startOptions, clock, customizationSet: activeCustomizationSetName() }, playData, { update: (p) => overlay.update(p), paint: nextPaint });
     } finally {
         overlay.close();
     }
@@ -555,6 +571,8 @@ export async function startGameView(
         await loadManifest();
     }
     const galaxy = game.galaxy;
+    // Start.2.cs 60 / Start.cs 2394 method_56: the player race's chrome folder of the theme is searched first.
+    setThemeChromeRace(game.playerEmpire?.dominantRace?.name ?? '');
     // [simworker] Save text of the running game: the worker's authoritative game in worker mode (async).
     const serializeCurrent = (): string | null | Promise<string | null> =>
         simClient !== undefined ? simClient.save() : lastStartOptions !== null ? serializeGame(game, time, lastStartOptions) : null;
@@ -1332,8 +1350,30 @@ async function bootLoadedGame(loaded: LoadedGame): Promise<void> {
     await startGameViewWithOverlay(game, undefined, undefined, { speed: time.speed, paused: loadedGamePaused(time.paused, getSettings().loadedGamesPaused) }, simClient);
 }
 
+/**
+ * Make `name` the active theme in this session (Start.cs method_2 / Main.Part12.cs method_66): data, GameText, art
+ * and music are reloaded for it on next use. `persist` = GameOptions.CustomizationSetName is set too (bool_5).
+ */
+async function switchTheme(name: string, persist: boolean): Promise<void> {
+    const set = normalizeCustomizationSetName(name);
+    if (persist) updateSettings({ customizationSet: set });
+    if (set === activeCustomizationSetName()) return;
+    await activateTheme(set);
+    lastGameData = null;
+    lastPlayedGameData = null;
+    resetMusicForTheme();
+    // Galaxy.InitializeData + TextResolver.LoadText for the new set (method_2 1458-1473): data and GameText now.
+    await ensureStaticData();
+}
+
 async function main(): Promise<void> {
     const params = new URLSearchParams(window.location.search);
+    // The stored theme (GameOptions.CustomizationSetName), cleared when its folder is gone (Main.Part12.cs 1932-1938).
+    // ?theme=<name> (dev / screenshots) picks one for this page only.
+    const urlTheme = params.get('theme');
+    await bootTheme(urlTheme ?? getSettings().customizationSet, () => {
+        if (urlTheme === null) updateSettings({ customizationSet: '' });
+    });
     // [audio] begin — GlassButton / HoverButton / HoverMenuItem / ListViewBase click sounds on every screen.
     installUiClickSounds();
     // [audio] end
@@ -1424,7 +1464,14 @@ async function main(): Promise<void> {
  * load mode (localStorage saves + .dwusave files); a pick reboots through
  * startGameView with the remembered gameData. */
 function showMainMenu(): void {
+    setThemeChromeRace(''); // no player race on the menu (Main.Part12.cs method_56 runs at game start)
     const menu = createMainMenu({
+        // Start.1.cs btnThemeSwitch_Click → method_2(theme, bool_5: true, bool_6: true), then the menu shows the new set.
+        onSwitchTheme: async (name) => {
+            await switchTheme(name, true);
+            menu.destroy();
+            showMainMenu();
+        },
         onStartNewGame: () => {
             menu.destroy();
             openWizard(showMainMenu);
@@ -1554,7 +1601,8 @@ function defaultDevGameOptions(
         // default instead (Main.Part9.cs 2674-2675 method_259): enforcement on, 2 sectors.
         colonizationRangeEnforceLimit: defaultStartGameOptions().colonization.enforceRangeLimits,
         colonizationRange: colonizationRangeFor(defaultStartGameOptions().colonization.colonizationRangeKly),
-        player: { race: 'Human', homeSystemFavourability: 'Normal', startLocation: '(Random)', age: 1, techLevel: STARTING_TECH_LEVEL },
+        // Human, or (a theme without one) the first playable race of its races\ folder.
+        player: { race: gameData.races.some((r) => r.name === 'Human' && r.playable) ? 'Human' : (gameData.races.find((r) => r.playable)?.name ?? 'Human'), homeSystemFavourability: 'Normal', startLocation: '(Random)', age: 1, techLevel: STARTING_TECH_LEVEL },
         aiEmpires: [ai, { ...ai }, { ...ai }],
     };
 }

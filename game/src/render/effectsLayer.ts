@@ -28,6 +28,8 @@
 //   MainView.1.cs 1162-1201         — the ion-strike lightning over a ship for 1.4 s after LastIonStrike (lightning.ts)
 //   MainView.2.cs 2680/2718/2811    — a newly drawn explosion > 150 shakes the view (screenShake.ts; `onShake`)
 
+import { themeArtFolder } from '../themeAssets';
+import { activeCustomizationSet } from '../sim/data/customization';
 import { sampleShot, type MotionInterpolator } from './renderInterp';
 import { Container, Graphics, Texture } from 'pixi.js';
 import type { Camera } from './camera';
@@ -302,6 +304,26 @@ function hasPosition(o: unknown): o is Positioned {
     return typeof o === 'object' && o !== null && typeof (o as Positioned).xpos === 'number' && typeof (o as Positioned).ypos === 'number';
 }
 
+/**
+ * torpedo_ / beam_ / area_ pictures loaded (Main.Part12.cs 46-122 LoadEffectsWeapons): the stock counts, or with a
+ * theme whose effects\weapons\ folder holds any *.png (it then replaces the stock folder) Directory.GetFiles of
+ * "<kind>_*.png" in it.
+ */
+export function weaponImageCount(kind: 'torpedo' | 'beam' | 'area'): number {
+    const stock = kind === 'torpedo' ? TORPEDO_IMAGE_COUNT : kind === 'beam' ? BEAM_IMAGE_COUNT : AREA_IMAGE_COUNT;
+    const set = activeCustomizationSet();
+    if (set === null) return stock;
+    let counts = weaponCountCache.get(set);
+    if (counts === undefined) {
+        const theme = themeArtFolder('images/effects/weapons');
+        const n = (k: string): number | null => (theme === null ? null : theme.files.filter((f) => f.toLowerCase().startsWith(`${k}_`) && f.toLowerCase().endsWith('.png')).length);
+        counts = { torpedo: n('torpedo'), beam: n('beam'), area: n('area') };
+        weaponCountCache.set(set, counts);
+    }
+    return counts[kind] ?? stock;
+}
+const weaponCountCache = new WeakMap<object, Record<'torpedo' | 'beam' | 'area', number | null>>();
+
 function artIndex(special: number, count: number): number {
     return special >= 0 && special < count ? special : 0;
 }
@@ -361,7 +383,7 @@ export function weaponDrawCommand(
             let num46 = -1000.0;
             if (weapon.bombardDamage > 0 && weapon.target instanceof Habitat) {
                 num45 = Math.min(weapon.bombardDamage * 2.5, 60.0);
-                num43 = artIndex(special, TORPEDO_IMAGE_COUNT);
+                num43 = artIndex(special, weaponImageCount('torpedo'));
                 switch (type) {
                     case ComponentType.WeaponTorpedo:
                     case ComponentType.WeaponSuperTorpedo:
@@ -394,7 +416,7 @@ export function weaponDrawCommand(
             if (num14 < 1) num14 = 1;
             let num48 = 1.0;
             if (num43 < 0) {
-                num43 = artIndex(special, TORPEDO_IMAGE_COUNT);
+                num43 = artIndex(special, weaponImageCount('torpedo'));
                 switch (type) {
                     case ComponentType.WeaponTorpedo:
                     case ComponentType.WeaponSuperTorpedo:
@@ -456,7 +478,7 @@ export function weaponDrawCommand(
         case ComponentType.WeaponSuperRailGun: {
             const isPod = type === ComponentType.AssaultPod;
             out.art = isPod ? WeaponArt.AssaultPod : WeaponArt.Beam;
-            out.artIndex = isPod ? 0 : artIndex(special, BEAM_IMAGE_COUNT);
+            out.artIndex = isPod ? 0 : artIndex(special, weaponImageCount('beam'));
             if (type === ComponentType.WeaponGravityBeam || type === ComponentType.WeaponTractorBeam || type === ComponentType.WeaponPhaser || type === ComponentType.WeaponSuperPhaser) {
                 const target = targetAt ?? weapon.target;
                 if (!hasPosition(target)) return WeaponDrawKind.None;
@@ -503,7 +525,7 @@ export function weaponDrawCommand(
             const val = areaRampAlpha(weapon.distanceTravelled, weapon.range);
             out.kind = WeaponDrawKind.Area;
             out.art = WeaponArt.Area;
-            out.artIndex = artIndex(special, AREA_IMAGE_COUNT);
+            out.artIndex = artIndex(special, weaponImageCount('area'));
             out.x = shot.x;
             out.y = shot.y;
             out.rotation = 0;
@@ -574,7 +596,7 @@ export function fighterWeaponDrawCommand(
             if (d < num) across /= num / d;
             out.kind = WeaponDrawKind.Bolt;
             out.art = WeaponArt.Beam;
-            out.artIndex = artIndex(weaponImageIndex, BEAM_IMAGE_COUNT);
+            out.artIndex = artIndex(weaponImageIndex, weaponImageCount('beam'));
             out.rotation = shot.heading;
             out.alongPx = along;
             out.across = across;
@@ -592,7 +614,7 @@ export function fighterWeaponDrawCommand(
             out.kind = WeaponDrawKind.Projectile;
             out.art = WeaponArt.Torpedo;
             // texture2D_1[num6]: num6 stays -1 for any other torpedo-category type (the C# would throw); use 0.
-            out.artIndex = artIndex(weaponImageIndex, TORPEDO_IMAGE_COUNT);
+            out.artIndex = artIndex(weaponImageIndex, weaponImageCount('torpedo'));
             out.rotation = fixed > -1000.0 ? fixed : ((nowMs - weapon.lastFired) / 1000) * spin;
             // num12 = num11 / texture.Width: the square art is drawn num11 px wide.
             out.alongPx = num11;
@@ -813,9 +835,11 @@ export class EffectsLayer {
         this.sprites = new SpritePool(spriteRoot);
 
         const W = `${IMG}/effects/weapons`;
-        this.loadInto(this.torpedo, TORPEDO_IMAGE_COUNT, (i) => `${W}/torpedo_${i}.png`);
-        this.loadInto(this.beam, BEAM_IMAGE_COUNT, (i) => `${W}/beam_${i}.png`);
-        this.loadInto(this.area, AREA_IMAGE_COUNT, (i) => `${W}/area_${i}.png`);
+        // Main.Part12.cs 46-122 LoadEffectsWeapons: a theme's effects\weapons\ folder holding any *.png replaces the
+        // stock one, and the torpedo_ / beam_ / area_ counts are Directory.GetFiles("<kind>_*.png") of the folder used.
+        this.loadInto(this.torpedo, weaponImageCount('torpedo'), (i) => `${W}/torpedo_${i}.png`);
+        this.loadInto(this.beam, weaponImageCount('beam'), (i) => `${W}/beam_${i}.png`);
+        this.loadInto(this.area, weaponImageCount('area'), (i) => `${W}/area_${i}.png`);
         this.loadOne(`${W}/assaultpod_0.png`, (t) => (this.assaultPod = t));
         this.loadOne(`${IMG}/effects/other/shieldstrike.png`, (t) => (this.shieldStrike = t));
 

@@ -9,8 +9,16 @@ import { createTutorialsScreen } from './tutorials';
 import { musicControls, stopAllMusic } from '../../audio/musicPlayer';
 import { openGalactopedia } from './galactopedia';
 import { showToast } from '../toast';
+import { openChangeTheme } from './changeTheme';
+import { activeCustomizationSetName } from '../../sim/data/customization';
+import { themeMenuBackgroundUrl } from '../../themeAssets';
+import { getSettings } from '../settings';
+import { tryGetText } from '../../sim/textResolver';
 
 const CHROME = '/assets/dwu/images/ui/chrome/';
+
+/** BaconStart.InitializeMore's background, resolved at the first menu of the session (undefined = not yet). */
+let startupMenuBackground: string | null | undefined;
 
 export interface MenuItem {
     id: string;
@@ -38,6 +46,8 @@ export interface MainMenuCallbacks {
     onTutorials?: () => void;
     /** Called when "Load Game" is clicked (task 11a3: open the load panel). */
     onLoadGame?: () => void;
+    /** Change Theme → Switch Theme (Start.1.cs btnThemeSwitch_Click → method_2): load and remember theme `name`. */
+    onSwitchTheme?: (name: string) => void | Promise<void>;
 }
 
 export interface MainMenuRefs {
@@ -135,13 +145,18 @@ export function createMainMenu(callbacks: MainMenuCallbacks): MainMenuRefs {
 
     const bg = document.createElement('img');
     bg.className = 'main-menu-bg';
-    bg.src = `${CHROME}MainBackground.jpg`;
+    // BaconStart.cs 23-40 InitializeMore (once, from the Start form constructor): the startup theme's
+    // images\customBackgroundImage.jpg replaces the background for the session.
+    if (startupMenuBackground === undefined) startupMenuBackground = themeMenuBackgroundUrl();
+    bg.src = startupMenuBackground ?? `${CHROME}MainBackground.jpg`;
     bg.alt = '';
     root.appendChild(bg);
 
     const themeLabel = document.createElement('div');
     themeLabel.className = 'main-menu-theme';
-    themeLabel.textContent = 'Current Theme: Distant Worlds Original';
+    // Start.cs method_1: "Current Theme: <set>", empty for the stock game.
+    const activeTheme = activeCustomizationSetName();
+    themeLabel.textContent = activeTheme === '' ? '' : `${tryGetText('Current Theme') ?? 'Current Theme'}: ${activeTheme}`;
     root.appendChild(themeLabel);
 
     // Vertical item list panel.
@@ -201,6 +216,15 @@ export function createMainMenu(callbacks: MainMenuCallbacks): MainMenuRefs {
                     } else {
                         showToast('Close this tab to exit', root);
                     }
+                    break;
+                case 'changeTheme':
+                    // Start.cs menuChangeTheme_Click → method_26 (pnlThemes).
+                    void openChangeTheme({
+                        current: getSettings().customizationSet,
+                        onSwitch: async (name) => {
+                            await callbacks.onSwitchTheme?.(name);
+                        },
+                    });
                     break;
                 default:
                     console.info(`TODO(menu): ${item.id}`);

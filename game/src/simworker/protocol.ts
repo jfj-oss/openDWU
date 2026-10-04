@@ -46,6 +46,8 @@ export interface InitMessage {
     clock?: { speed: number; paused: boolean };
     /** Replica sync tuning (ReplicaEncoderOptions). */
     sync?: { coldBudgetMs?: number; coldMaxSets?: number; markBudgetMs?: number };
+    /** The main thread's active theme ("" / absent = the stock game): the worker loads that set's data. */
+    customizationSet?: string;
 }
 
 export interface ClockMessage {

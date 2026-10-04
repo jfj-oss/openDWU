@@ -13,7 +13,10 @@
 //   1. main menu at dwu://app/index.html
 //   2. dwu://app/index.html?autostart=1 -> game view (window.__dwu.game)
 //   3. Play -> galaxy.nowMs advances within 60 s
-//   4. F5 (Diplomacy) and F8 (Ship Designs) open and close on Escape
+//   4. the bottom-right system map; F5 Diplomacy, F8 Designs, V Empire Comparison, Construction Yards and G Galaxy
+//      Map open and close
+//   5. profiled PNG/JPEG art is served stripped (desktop/colorProfile.cjs, byte-compared)
+//   6. ?simWorker=1: the module Web Worker loads under dwu:// and the replica galaxy advances
 // saving 1920x1080 captures to shots/pkg-*.png. Every request whose URL has
 // /assets/dwu/ must go through dwu:// and succeed; console errors, page errors
 // and failed/4xx requests fail the check (exit 1) — except 404s for files the
@@ -38,7 +41,9 @@ import { spawn, execFileSync } from 'node:child_process';
 import { createServer } from 'node:net';
 import { fileURLToPath } from 'node:url';
 import { dirname, join, resolve } from 'node:path';
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, realpathSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, statSync } from 'node:fs';
+import { createRequire } from 'node:module';
+const { stripColorProfile, isProfiledImagePath } = createRequire(import.meta.url)('../desktop/colorProfile.cjs');
 import os from 'node:os';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -178,7 +183,7 @@ async function runFlow(page, base, tag, results) {
     }
 
     try {
-        await page.goto(`${base}index.html?autostart=1`, { waitUntil: 'domcontentloaded' });
+        await page.goto(`${base}index.html?autostart=1&simWorker=0`, { waitUntil: 'domcontentloaded' });
         await page.waitForFunction(() => !!window.__dwu?.game?.galaxy, null, { timeout: 90000 });
         await page.waitForSelector('canvas', { state: 'visible', timeout: 15000 });
         const n = await page.evaluate(() => window.__dwu.game.galaxy.empires.length);
@@ -210,23 +215,136 @@ async function runFlow(page, base, tag, results) {
         await shot('running-failed').catch(() => {});
     }
 
-    for (const [key, sel, label] of [
-        ['F5', '.diplomacy-wrap', 'f5-diplomacy'],
-        ['F8', '.ship-designs-wrap', 'f8-ship-designs'],
+    // System map (hudSystemMap.ts): the remade bottom-right panel, with its strip images decoded.
+    try {
+        await page.waitForSelector('[data-hud="pnlSystemMap"]', { state: 'visible', timeout: 10000 });
+        const info = await page.evaluate(() => {
+            const m = document.querySelector('[data-hud="pnlSystemMap"]');
+            const r = m.getBoundingClientRect();
+            const imgs = [...m.querySelectorAll('img')];
+            return { w: r.width, h: r.height, right: innerWidth - r.right, bottom: innerHeight - r.bottom, imgs: imgs.length, broken: imgs.filter((i) => !i.complete || i.naturalWidth === 0).length };
+        });
+        if (info.w < 50 || info.h < 50) throw new Error(`system map too small: ${JSON.stringify(info)}`);
+        if (info.right > 400 || info.bottom > 400) throw new Error(`system map is not bottom-right: ${JSON.stringify(info)}`);
+        if (info.broken > 0) throw new Error(`${info.broken}/${info.imgs} system map images failed to decode`);
+        await shot('system-map');
+        ok(`bottom-right system map (${Math.round(info.w)}x${Math.round(info.h)}, ${info.imgs} images)`);
+    } catch (err) {
+        bad('bottom-right system map', err);
+        await shot('system-map-failed').catch(() => {});
+    }
+
+    // Screens: F5 / F8 plus one from each recent parity batch (Empire Comparison, Construction Yards, Galaxy Map).
+    for (const [name, open, sel] of [
+        ['F5 Diplomacy', { key: 'F5' }, '[data-ow="diplomacy"]'],
+        ['F8 Designs', { key: 'F8' }, '[data-ow="designs"]'],
+        ['V Empire Comparison', { key: 'v' }, '[data-ow="empireComparison"]'],
+        ['Construction Yards', { hud: 'tbtnConstructionYards' }, '[data-ow="yards"]'],
+        ['G Galaxy Map', { key: 'g' }, '.gmap-overlay:not([hidden])'],
     ]) {
+        const label = name.toLowerCase().replace(/[^a-z0-9]+/g, '-');
         try {
-            await page.keyboard.press(key);
-            await page.waitForSelector(sel, { state: 'attached', timeout: 5000 });
-            await page.waitForTimeout(1000); // let images in the screen load
+            if (open.hud) await page.click(`[data-hud="${open.hud}"]`);
+            else await page.keyboard.press(open.key);
+            await page.waitForSelector(sel, { state: 'visible', timeout: 10000 });
+            await page.waitForTimeout(1500); // let images in the screen load
+            const broken = await page.evaluate((s) => {
+                const root = document.querySelector(s);
+                return [...root.querySelectorAll('img')].filter((i) => i.complete && i.naturalWidth === 0).length;
+            }, sel);
+            if (broken > 0) throw new Error(`${broken} broken image(s)`);
             await shot(label);
             await page.keyboard.press('Escape');
-            await page.waitForSelector(sel, { state: 'detached', timeout: 5000 });
-            ok(`${key} opens ${sel}, Escape closes it`);
+            await page.waitForSelector(sel, { state: 'hidden', timeout: 5000 }).catch(async () => {
+                // Not closed by Escape: toggle with the opener.
+                if (open.hud) await page.click(`[data-hud="${open.hud}"]`);
+                else await page.keyboard.press(open.key);
+                await page.waitForSelector(sel, { state: 'hidden', timeout: 5000 });
+            });
+            ok(`${name} opens ${sel} and closes`);
         } catch (err) {
-            bad(`${key} opens ${sel}`, err);
+            bad(`${name} opens ${sel}`, err);
             await shot(`${label}-failed`).catch(() => {});
+            await page.keyboard.press('Escape').catch(() => {});
         }
     }
+
+    // Colour-profile stripped art: a profiled PNG and JPEG must come back byte-identical to
+    // stripColorProfile(file) (dwu:// handler / Vite middleware).
+    try {
+        const samples = findProfiledSamples();
+        if (samples.length === 0) throw new Error('no PNG/JPEG with a colour profile found in the install');
+        const sum = (b) => b.reduce((a, v, i) => (a + v * ((i % 251) + 1)) % 4294967291, 0);
+        for (const s of samples) {
+            const got = await page.evaluate(async (u) => {
+                const r = await fetch(u);
+                const b = new Uint8Array(await r.arrayBuffer());
+                return { status: r.status, len: b.length, sum: b.reduce((a, v, i) => (a + v * ((i % 251) + 1)) % 4294967291, 0) };
+            }, `${base}assets/dwu/${s.rel}`);
+            const want = stripColorProfile(readFileSync(s.abs));
+            if (got.status !== 200 || got.len !== want.length || got.sum !== sum(want)) {
+                throw new Error(`${s.rel}: served ${got.len} B (HTTP ${got.status}), expected stripped ${want.length} B`);
+            }
+            console.log(`  stripped ${s.rel}: ${statSync(s.abs).size} -> ${want.length} B`);
+        }
+        ok(`colour profile stripped from served art (${samples.map((s) => s.rel).join(', ')})`);
+    } catch (err) {
+        bad('colour profile stripped art', err);
+    }
+
+    // Web Worker: ?simWorker=1 runs the sim in a module worker (dist/assets/worker-*.js) loaded over the same scheme.
+    try {
+        const workerUrls = [];
+        page.on('worker', (w) => workerUrls.push(w.url()));
+        await page.goto(`${base}index.html?autostart=1&simWorker=1`, { waitUntil: 'domcontentloaded' });
+        await page.waitForFunction(() => !!window.__dwu?.game?.galaxy && window.__dwu.simWorker != null, null, { timeout: 120000 });
+        // Pixi also starts blob: workers (image decoding); the sim worker is the script file from dist/assets/.
+        const simUrls = workerUrls.filter((u) => !u.startsWith('blob:'));
+        if (simUrls.length === 0) throw new Error(`no sim worker script was loaded (workers: ${workerUrls.slice(0, 3).join(' ')})`);
+        if (!simUrls.every((u) => u.startsWith(base) && /\/assets\/worker-[^/]+\.js$/.test(u))) throw new Error(`unexpected worker script: ${simUrls.join(' ')}`);
+        await page.waitForTimeout(1500);
+        await page.evaluate(() => { window.__dwu.time.paused = false; });
+        const nowMs = () => page.evaluate(() => window.__dwu?.game?.galaxy?.nowMs ?? -1);
+        const t0 = await nowMs();
+        let t1 = t0;
+        const deadline = Date.now() + 60000;
+        while (Date.now() < deadline) {
+            await page.waitForTimeout(500);
+            t1 = await nowMs();
+            if (t1 - t0 >= 1000) break;
+        }
+        if (t1 - t0 < 1000) throw new Error(`replica galaxy.nowMs did not advance (${t0} -> ${t1})`);
+        await shot('worker');
+        ok(`?simWorker=1 sim worker runs (${simUrls[0]}), replica nowMs ${t0} -> ${t1}`);
+    } catch (err) {
+        bad('?simWorker=1 sim worker', err);
+        await shot('worker-failed').catch(() => {});
+    }
+}
+
+/** A few profiled images from the install (PNG with colour chunks, JPEG with an ICC APP2) that strip shrinks. */
+function findProfiledSamples() {
+    const out = [];
+    const want = { png: 2, jpg: 1 };
+    const walk = (dir, rel) => {
+        let ents;
+        try { ents = readdirSync(dir, { withFileTypes: true }); } catch { return; }
+        for (const e of ents) {
+            if (want.png + want.jpg === 0) return;
+            const abs = join(dir, e.name);
+            const r = `${rel}/${e.name}`;
+            if (e.isDirectory()) { walk(abs, r); continue; }
+            if (!isProfiledImagePath(abs)) continue;
+            const k = /\.png$/i.test(e.name) ? 'png' : 'jpg';
+            if (want[k] === 0) continue;
+            let buf;
+            try { buf = readFileSync(abs); } catch { continue; }
+            if (buf.length > 600000) continue;
+            if (stripColorProfile(buf).length < buf.length) { out.push({ abs, rel: r }); want[k]--; }
+        }
+    };
+    walk(join(dwuDir, 'images'), 'images');
+    return out;
 }
 
 /** '/assets/dwu/<rest>' part of a URL (decoded, lowercased), or null. */

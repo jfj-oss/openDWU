@@ -3,6 +3,7 @@ dist/
 release/
 public/assets/
 public/asset-manifest.json
+public/theme-manifest/
 shots/
 tasks/*.log
 tasks/queue.status

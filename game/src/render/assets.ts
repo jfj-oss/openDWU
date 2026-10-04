@@ -13,6 +13,7 @@
 
 import { Assets, Texture } from 'pixi.js';
 import { Habitat, HabitatType } from '../sim/types';
+import { themedAssetUrl } from '../themeAssets';
 
 // ---------------------------------------------------------------------------
 // Fallback colors (match the original art palettes: yellow/white main
@@ -426,7 +427,10 @@ function pseudo(i: number): number {
 // Pixi's asset resolver joins root-relative paths itself and, under the packaged
 // app's custom scheme (dwu://app/…), turns "/assets/dwu/x" into "dwu://assets/dwu/x".
 // Resolve against the document first so every scheme gets a correct absolute URL.
+// With a theme active the install file is swapped for the theme's copy where the original would load that
+// (themeAssets.ts themedAssetUrl; unchanged with no theme).
 function absoluteUrl(url: string): string {
+    url = themedAssetUrl(url);
     return typeof document !== 'undefined' ? new URL(url, document.baseURI).href : url;
 }
 
@@ -447,7 +451,7 @@ export class AssetStore {
      * (keeps the console clean and the render instant).
      */
     loadFirst(urls: string[], fallback: () => Texture): Promise<Texture> {
-        const key = urls[0];
+        const key = urls.length > 0 ? themedAssetUrl(urls[0]) : urls[0];
         const hit = this.cache.get(key);
         if (hit) {
             return hit instanceof Texture ? Promise.resolve(hit) : hit;

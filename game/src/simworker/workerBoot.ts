@@ -9,12 +9,13 @@
 // (SnapshotMessage.scenario) and builds its replica's static data from that.
 // No DOM / Pixi imports.
 
+import { activeCustomizationSetName } from '../sim/data/customization';
 import type { GameData } from '../sim/data/gameData';
 import { createGameSteps, installGameStatics, registerGameHooks, type Game } from '../sim/game';
 import { generateGalaxy } from '../sim/galaxy';
 import type { Empire } from '../sim/empire';
 import { GalaxyTime } from '../sim/galaxyTime';
-import { deserializeGame, savedScenarioId, savedScenarioInclude, type GameSaveJSON } from '../sim/save/gameSave';
+import { deserializeGame, savedCustomizationSet, savedScenarioId, savedScenarioInclude, type GameSaveJSON } from '../sim/save/gameSave';
 import type { StartGameOptions } from '../sim/startGameOptions';
 import { applyScenarioOverlay, type ScenarioOverlay } from '../sim/scenario/overlay';
 import { COMPOSITE_SCENARIO_ID, scenarioOverlayFor } from '../sim/scenario/addons';
@@ -111,6 +112,12 @@ export async function bootWorkerGame(boot: WorkerBoot, deps: WorkerBootDeps): Pr
     text = undefined;
     boot.text = undefined;
     const scenario = saveScenarioRef(save);
+    // The main thread switches to a save's theme before booting the worker on it (main.ts loadSaveWithProgress,
+    // Start.cs 1777); a save fetched here by URL can still name another one: its tables would not match this data.
+    const saveTheme = savedCustomizationSet(save);
+    if (saveTheme !== activeCustomizationSetName()) {
+        throw new Error(`This game was saved with the ${saveTheme === '' ? '(Default)' : `"${saveTheme}"`} theme; switch to it (Change Theme) to load it.`);
+    }
     progress('Loading game data', 0.25);
     const gameData = await scenarioGameData(deps, scenario);
     // main.ts gameDataForSave: the static tables and hooks createGame installs.
