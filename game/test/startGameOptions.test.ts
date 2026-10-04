@@ -765,7 +765,7 @@ describe('toCreateGameOptions (task 06i)', () => {
         expect(c.aiEmpires).toHaveLength(4);
         for (const ai of c.aiEmpires) {
             expect(ai.race).toBe('(Random)');
-            expect(ai.proximityDistance).toBe('Random');
+            expect(ai.proximityDistance).toBe('(Random)') // Start.2.cs method_114: wizard AI empires get "(Random)";
             expect(ai.homeSystemFavourability).toBe('Normal');
             expect(ai.techLevel).toBe(0.5);
         }
@@ -808,7 +808,7 @@ describe('toCreateGameOptions (task 06i)', () => {
         expect(c.aiEmpires[1].name).toBeUndefined();
         for (const ai of c.aiEmpires) {
             expect(ai.homeSystemFavourability).toBe('Normal');
-            expect(ai.proximityDistance).toBe('Random');
+            expect(ai.proximityDistance).toBe('(Random)');
             expect(ai.techLevel).toBe(0.5);
         }
     });

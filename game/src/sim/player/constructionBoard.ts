@@ -275,7 +275,10 @@ export function jobInvalidReason(galaxy: Galaxy, empire: Empire, job: Constructi
     if (isMining(subRole) || subRole === BuiltObjectSubRole.ResortBase) {
         if (isMining(subRole) && checkAlreadyHaveMiningStationAtHabitat(h, empire)) return `${h.name} already has a mining station`;
         if (checkForeignBaseAtHabitat(h, empire)) return `another empire has a base at ${h.name}`;
-        if (h.owner !== null && h.owner !== galaxy.independentEmpire && h.owner !== empire) return `${h.name} is owned by ${h.owner.name}`;
+        // BuiltObject.2.cs 1456-1463: a (gas) mining station needs an unowned (or independent) habitat — the player's
+        // own colonies too are refused (those buy theirs at the colony yard, Main.Part7.cs 1180); a resort base may
+        // also go to the empire's own colony.
+        if (h.owner !== null && h.owner !== galaxy.independentEmpire && (isMining(subRole) || h.owner !== empire)) return `${h.name} is owned by ${h.owner.name}`;
         if (!checkEmpireTerritoryCanBuildAtHabitat(galaxy, empire, h)) return `${h.name} is in another empire's territory`;
     }
     if (isResearch(subRole) && checkResearchStationAtLocation(galaxy, h)) return `there already is a research station in the ${h.name} system`;
