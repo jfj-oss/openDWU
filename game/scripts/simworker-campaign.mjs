@@ -536,7 +536,13 @@ async function stepColonies() {
         b.blur();
     }, dir);
     await page.waitForFunction(([want]) => Number(document.querySelector('[data-ow="colonies"] input.col-tax')?.value) === want, [before + 3 * dir], { timeout: 10000 }).catch(() => {});
-    await wait(2500);
+    // The colony's rate follows with the replies (a round trip each; on a loaded late game a few seconds).
+    await page.waitForFunction((want) => {
+        const sel = document.querySelector('[data-ow="colonies"] .ow-grid-row.ow-sel');
+        const cells = sel ? [...sel.children].map((c) => c.textContent.trim()) : [];
+        const h = window.__dwu.game.playerEmpire.colonies.find((c) => cells.includes(c.name));
+        return h !== undefined && Math.round(Math.max(0, h.taxRate) * 100) === want;
+    }, before + 3 * dir, { timeout: 20000 }).catch(() => {});
     const after = await box.inputValue().then(Number);
     const rate = await ev(() => {
         const sel = document.querySelector('[data-ow="colonies"] .ow-grid-row.ow-sel');
@@ -1280,7 +1286,8 @@ async function stepControlGroups() {
     await page.keyboard.press('Shift+Digit2');
     await wait(1000);
     const s2 = await selectionName();
-    check(s2 === ship, `control groups: Shift+2 selects and centres ${ship} (${s2})`);
+    if (ship === null) note(`control groups: no mobile ship for group 2 (a pre-warp start); Shift+2 selects ${s2}`);
+    else check(s2 === ship, `control groups: Shift+2 selects and centres ${ship} (${s2})`);
     const groups = await ev(async () => {
         const cg = await import('/src/sim/player/controlGroups.ts');
         return [1, 2].map((i) => {
