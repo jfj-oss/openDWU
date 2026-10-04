@@ -479,6 +479,25 @@ export class AssetStore {
         return promise;
     }
 
+    /**
+     * Decode an original image with its embedded colour profile ignored (raw sample values), or null when there is
+     * no install / the file is missing. The original loads art with `new Bitmap(path)` (DistantWorlds.Types
+     * GraphicsHelper.cs LoadImageFromFilePath), i.e. GDI+ without ICM, so the iCCP profiles most DW:U PNGs carry are
+     * never applied; the browser applies them by default (e.g. the grey mapstars/flares profile brightens their
+     * halos ~17%). Not cached: callers bake the result into their own texture.
+     */
+    async loadRawImage(url: string): Promise<ImageBitmap | null> {
+        if (!this.dwuPresent) return null;
+        try {
+            const r = await fetch(absoluteUrl(url));
+            if (!r.ok) throw new Error(`HTTP ${r.status}`);
+            return await createImageBitmap(await r.blob(), { colorSpaceConversion: 'none', premultiplyAlpha: 'default' });
+        } catch {
+            warnMissing(url);
+            return null;
+        }
+    }
+
     /** Preload a set of (key, urls, fallback) assets in parallel. */
     async preload(entries: Array<[string, string[], () => Texture]>): Promise<Map<string, Texture>> {
         const out = new Map<string, Texture>();

@@ -1568,12 +1568,8 @@ export class MainView {
         void this.deepStarfield
             .load(
                 flareFiles.map((f) => `/assets/dwu/images/environment/mapstars/flares/${f}`),
-                async (url) => {
-                    if (!store.dwuPresent) return null;
-                    const tex = await store.loadFirst([url], () => Texture.EMPTY);
-                    const res = tex === Texture.EMPTY ? null : (tex.source.resource as CanvasImageSource | undefined);
-                    return res ?? null;
-                },
+                // Raw samples, colour profile ignored, as the original's GDI+ load (assets.ts loadRawImage).
+                (url) => store.loadRawImage(url),
             )
             .catch(() => undefined);
 
@@ -1835,7 +1831,7 @@ export class MainView {
         // zooming between galaxy and system view; the per-system colour
         // patches follow once the backdrop is gone.
         this.applyDisplaySettings(); // [gameoptions] Star Density, system nebulae on / detail
-        this.deepStarfield.update(deepStarfieldAlpha(z, m), cam.x, cam.y, z, cam.width, cam.height);
+        this.deepStarfield.update(deepStarfieldAlpha(z, m), cam.x, cam.y, z, cam.width, cam.height, this.app.renderer.resolution);
         this.deepStarfield.updatePatches(systemPatchZoomAlpha(z, m), this.patchSystems, cam.x, cam.y, cam.width, cam.height);
         this.systemNebulae.update(z, cam.x, cam.y, cam.width, cam.height, this.nebulaSystems, nowMs);
 

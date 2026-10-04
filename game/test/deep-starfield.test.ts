@@ -4,7 +4,11 @@ import {
     generateStarLayer,
     generateSystemPatches,
     layerOffset,
+    layerTexelSizes,
+    resampleNearest,
     starBrightness,
+    STAR_BRIGHTNESS_AT_CUT,
+    STARFIELD_FLARE_SCALE,
     starLayerTileSize,
     STAR_LAYERS,
     systemPatchDistanceWeight,
@@ -30,10 +34,21 @@ describe('deep starfield fade curve', () => {
             expect(a).toBeGreaterThanOrEqual(prev - 1e-12);
             expect(a).toBeGreaterThanOrEqual(0);
             expect(a).toBeLessThanOrEqual(1);
-            // Backdrop fades out exactly where the stars fade in (at >= half the original's z^0.25 brightness).
-            expect(backdropAlpha(z, m) + deepStarfieldAlpha(z, m) * 2).toBeGreaterThanOrEqual(1 - 1e-9);
+            // Backdrop fades out exactly where the stars fade in (at >= the original's brightness at its F = 300 cut).
+            expect(backdropAlpha(z, m) + deepStarfieldAlpha(z, m) / STAR_BRIGHTNESS_AT_CUT).toBeGreaterThanOrEqual(1 - 1e-9);
             prev = a;
         }
+    });
+
+    it('is exactly the original method_45 brightness once the crossfade is done (no extra dimming)', () => {
+        // F = 1 / z: planet (1), system zoom (5, 50), the original's star range up to the F = 300 cut.
+        for (const F of [1, 5, 50, 200, 299]) {
+            expect(deepStarfieldAlpha(1 / F, m)).toBeCloseTo(Math.min(1, Math.pow(F, -0.25)), 12);
+        }
+        // Past the cut (still inside our backdrop window's far end): held at 300^-0.25.
+        expect(STAR_BRIGHTNESS_AT_CUT).toBeCloseTo(0.24028, 5);
+        expect(deepStarfieldAlpha(m * 14, m)).toBeCloseTo(STAR_BRIGHTNESS_AT_CUT, 12);
+        expect(STARFIELD_FLARE_SCALE).toBe(1);
     });
 
     it('ports MainView.cs method_45: brightness = clamp(z^0.25)', () => {
@@ -87,6 +102,7 @@ describe('deep starfield generation', () => {
         for (let i = 0; i < l.count; i++) {
             expect(l.xs[i]).toBeGreaterThanOrEqual(0);
             expect(l.xs[i]).toBeLessThan(l.tile);
+            expect(Number.isInteger(l.xs[i]) && Number.isInteger(l.ys[i])).toBe(true); // random.Next(0, tile)
             expect(l.frames[i]).toBe(i % 17);
         }
     });
@@ -100,5 +116,40 @@ describe('deep starfield generation', () => {
             // Worst offset (just under a tile) must still reach the far edge.
             expect(tileCopies(extent, tile) * tile - tile).toBeGreaterThanOrEqual(extent);
         }
+    });
+});
+
+describe('deep starfield per-star textures (Main.Part13.cs bitmap_197/198 + MainView.1.cs method_105)', () => {
+    it('prescales layers 3..1 to 16 px then nearest to 6 / 7 / 11 px, layer 0 to 32 px (drawn at 20 px)', () => {
+        expect(STAR_LAYERS.map((l) => [l.size, l.prescale, l.sampling])).toEqual([
+            [6, 16, 'nearest'],
+            [7, 16, 'nearest'],
+            [11, 16, 'nearest'],
+            [20, 32, 'linear'],
+        ]);
+        expect(STAR_LAYERS.map((l) => layerTexelSizes(l, 1))).toEqual([
+            { prescale: 16, texture: 6 },
+            { prescale: 16, texture: 7 },
+            { prescale: 16, texture: 11 },
+            { prescale: 32, texture: 32 },
+        ]);
+        // HiDPI: the nearest layers keep the original's pixels (1 texel per CSS px); layer 0 prescales at device res.
+        expect(layerTexelSizes(STAR_LAYERS[0], 2)).toEqual({ prescale: 16, texture: 6 });
+        expect(layerTexelSizes(STAR_LAYERS[3], 2)).toEqual({ prescale: 64, texture: 64 });
+        expect(layerTexelSizes(STAR_LAYERS[3], 1.5)).toEqual({ prescale: 48, texture: 48 });
+        expect(layerTexelSizes(STAR_LAYERS[3], 0)).toEqual({ prescale: 32, texture: 32 });
+    });
+
+    it('resamples nearest-neighbour by pixel centres', () => {
+        // 4x1 -> 2x1 picks source pixels 1 and 3; 2x1 -> 4x1 doubles each pixel.
+        const src = new Uint8ClampedArray([10, 0, 0, 255, 20, 0, 0, 255, 30, 0, 0, 255, 40, 0, 0, 255]);
+        expect(Array.from(resampleNearest(src, 4, 1, 2, 1))).toEqual([20, 0, 0, 255, 40, 0, 0, 255]);
+        const two = new Uint8ClampedArray([1, 2, 3, 4, 5, 6, 7, 8]);
+        expect(Array.from(resampleNearest(two, 2, 1, 4, 1))).toEqual([1, 2, 3, 4, 1, 2, 3, 4, 5, 6, 7, 8, 5, 6, 7, 8]);
+        // 16 -> 6 (layer 3) reads source columns 1, 4, 6, 9, 12, 14.
+        const ramp16 = new Uint8ClampedArray(16 * 4);
+        for (let i = 0; i < 16; i++) ramp16[i * 4] = i;
+        const six = resampleNearest(ramp16, 16, 1, 6, 1);
+        expect([0, 1, 2, 3, 4, 5].map((i) => six[i * 4])).toEqual([1, 4, 6, 9, 12, 14]);
     });
 });
