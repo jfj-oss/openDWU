@@ -1004,7 +1004,7 @@ export function createGalaxyMap(opts: GalaxyMapOptions): GalaxyMapScreen {
         renderNav();
     });
     // pnlGalaxyMapKey (Main.Part11.cs method_129 / method_130): a 300 x 418 BorderPanel with the title, the MapKey
-    // control (pnlGalaxyMapKeyActual 280 x 368 at (10, 40)) and a Close button (140, 10).
+    // control (pnlGalaxyMapKeyActual 280 x 368, here 280 x 386 inside a 300 x 436 panel for the extra Current Main View row at (10, 40)) and a Close button (140, 10).
     const closeKey = (): void => {
         const k = keyWin;
         keyWin = null;
@@ -1015,7 +1015,7 @@ export function createGalaxyMap(opts: GalaxyMapOptions): GalaxyMapScreen {
             closeKey();
             return;
         }
-        const kw = openOriginalWindow({ id: 'galaxymap-key', title: 'Map Key', width: 300, height: 418, headerless: true, noAutoPause: true, onClose: () => { if (keyWin === kw) keyWin = null; } });
+        const kw = openOriginalWindow({ id: 'galaxymap-key', title: 'Map Key', width: 300, height: 436, headerless: true, noAutoPause: true, onClose: () => { if (keyWin === kw) keyWin = null; } });
         keyWin = kw;
         kw.root.classList.add('gmap-key-layer');
         kw.frame.classList.add('gmap-key');
@@ -1023,20 +1023,20 @@ export function createGalaxyMap(opts: GalaxyMapOptions): GalaxyMapScreen {
             place(owText('Map Key', { size: FONT.header, bold: true, color: '#fff' }), 7, 7),
             place(glassButton('Close', { size: FONT.small, onClick: closeKey }), 137, 7, 150, 25),
         );
-        const actual = place(gradientPanel({ corners: { tl: true, br: true } }), 7, 37, 280, 368);
+        const actual = place(gradientPanel({ corners: { tl: true, br: true } }), 7, 37, 280, 386);
         actual.classList.add('gmap-key-actual');
         const section = (title: string, y: number): number => {
             actual.appendChild(place(owText(title, { size: FONT.large, bold: true, color: '#fff' }), 10, y));
-            return y + 22;
+            return y + 21; // RowHeight * 1.5
         };
         const item = (c: string, label: string, y: number, rect = false): number => {
             const sw = place(el('span', rect ? 'gmap-swatch gmap-swatch-rect' : 'gmap-swatch'), 10, y + 3);
             if (!rect) sw.style.background = c;
             actual.append(sw, place(owText(label, { size: FONT.tiny, color: COLORS.gridText, shadow: false }), 26, y));
-            return y + 15;
+            return y + 14; // MapKey._RowHeight
         };
         // MapKey.DrawColorKey: three sections of rows.
-        let y = section('Galaxy Map', 8);
+        let y = section('Galaxy Map', 10);
         for (const [c, l] of [
             ['rgb(255, 255, 0)', 'Main Sequence star system'],
             ['rgb(255, 0, 0)', 'Red Giant or Super Giant star system'],
@@ -1046,7 +1046,7 @@ export function createGalaxyMap(opts: GalaxyMapOptions): GalaxyMapScreen {
             ['rgb(0, 0, 176)', 'Black Hole'],
             ['rgb(238, 130, 238)', 'Gas Cloud'],
         ] as const) y = item(c, l, y);
-        y = item('', 'Current Main View', y, true) + 6;
+        y = item('', 'Current Main View', y, true) + 14;
         y = section('System Map', y);
         for (const [c, l] of [
             ['rgb(0, 128, 0)', 'Continental planet or moon'],
@@ -1059,7 +1059,7 @@ export function createGalaxyMap(opts: GalaxyMapOptions): GalaxyMapScreen {
             ['rgb(255, 0, 0)', 'Gas Giant planet'],
             ['rgb(255, 20, 147)', 'Frozen Gas Giant planet'],
         ] as const) y = item(c, l, y);
-        y = section('Filtered View Items', y + 6);
+        y = section('Filtered View Items', y + 14);
         y = item(SELECTED_COLOR, 'Item matching view filter', y);
         item(DIMMED_COLOR, 'Item not matching view filter', y);
         kw.body.appendChild(actual);
