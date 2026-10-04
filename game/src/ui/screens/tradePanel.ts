@@ -25,6 +25,7 @@ import {
 import { hasRemoteCommandSink, issuePlayerCommand } from '../../sim/player/playerCommands';
 import type { TradeableItem } from '../../sim/tradeItems';
 // [diplovoice] begin
+import { FONT, glassButton, openOriginalWindow, place } from '../originalWindow';
 import { counterNote, voicedLineToggle, voicingIndicator, type VoicedReply } from '../diplomatVoice';
 // [diplovoice] end
 
@@ -127,10 +128,7 @@ function el(tag: string, className: string, text?: string): HTMLElement {
 }
 
 function button(className: string, text: string, onClick: () => void): HTMLButtonElement {
-    const b = el('button', className, text) as HTMLButtonElement;
-    b.type = 'button';
-    b.addEventListener('click', onClick);
-    return b;
+    return glassButton(text, { size: className === 'trade-propose' ? FONT.normal : FONT.tiny, className: `ow-flow ${className}`, onClick });
 }
 
 function rgb(c: number): string {
@@ -142,17 +140,22 @@ function createTradePanel(opts: TradePanelOptions): OpenPanel {
     // In-thread the reply's negotiation is already the UI's own; a replica's is detached first (see above).
     const negotiation = hasRemoteCommandSink(galaxy) ? detachTradeNegotiation(opts.negotiation) : opts.negotiation;
     const other = negotiation.other;
-    const root = el('div', 'trade-wrap');
-    const win = el('div', 'trade-window');
-    const titlebar = el('div', 'trade-titlebar');
-    titlebar.appendChild(el('div', 'trade-heading', `Trade negotiation — ${other.name}`));
-    const closeBtn = button('trade-close', '✕', () => close());
-    closeBtn.title = 'Close';
-    titlebar.appendChild(closeBtn);
+    // Original-style ScreenPanel (ui/originalWindow.ts); it sits above the Diplomacy screen and does not pause.
+    const owin = openOriginalWindow({
+        id: 'trade',
+        title: `Trade negotiation — ${other.name}`,
+        icon: 'diplomacy.png',
+        width: 900,
+        height: 760,
+        noAutoPause: true,
+        onClose: () => close(),
+    });
+    const root = owin.root;
+    root.classList.add('trade-wrap');
+    root.style.zIndex = '1600'; // above the Diplomacy screen (1500)
     const body = el('div', 'trade-body');
-    win.append(titlebar, body);
-    root.appendChild(win);
-    document.body.appendChild(root);
+    place(body, 0, 0, owin.bodySize.w, owin.bodySize.h);
+    owin.body.appendChild(body);
 
     let last: TradeOfferResult | null = null;
     // Main.Part10.cs:4324 DEAL_BEGIN: the conversation shows "What do you propose?" first.
@@ -321,23 +324,11 @@ function createTradePanel(opts: TradePanelOptions): OpenPanel {
     render(true);
     const timer = setInterval(() => render(false), 1000);
 
-    function onKeyDown(e: KeyboardEvent): void {
-        if (e.key === 'Escape') {
-            e.preventDefault();
-            e.stopImmediatePropagation();
-            close();
-        }
-    }
-    // Capture phase: runs before the diplomacy screen's own Escape handler, so only this panel closes.
-    document.addEventListener('keydown', onKeyDown, true);
-
     function close(): void {
-        // [diplovoice] begin
+        if (closed) return;
         closed = true;
-        // [diplovoice] end
         clearInterval(timer);
-        document.removeEventListener('keydown', onKeyDown, true);
-        root.remove();
+        if (!owin.closed) owin.close();
         if (open === panel) open = null;
         opts.onChange?.();
     }

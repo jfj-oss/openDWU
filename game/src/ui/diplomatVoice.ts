@@ -23,6 +23,7 @@ import { readReplica } from '../llm/replicaReads';
 import { probeAdvisorEndpoint, requestAdvisor, type AdvisorApi, type ChatMessage } from './advisorClient';
 import { getSettings, updateSettings } from './settings';
 import './diplomatVoice.css';
+import { FONT, checkBox, glassButton, setButtonLabel } from './originalWindow';
 
 type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;
 
@@ -309,14 +310,13 @@ export function counterOutcomeText(c: DiplomatCounterOutcome | null): string {
  * button (returned; the caller places it after the text).
  */
 export function voicedLineToggle(textEl: HTMLElement, voiced: string, original: string, state: { showOriginal: boolean } = { showOriginal: false }): HTMLButtonElement {
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = 'dv-toggle';
+    // An original GlassButton inline after the reply text.
+    const btn = glassButton('original', { size: FONT.tiny, bold: false, className: 'ow-flow dv-toggle' });
     const apply = (): void => {
         textEl.textContent = state.showOriginal ? original : voiced;
         textEl.classList.toggle('dv-voiced', !state.showOriginal);
         textEl.title = state.showOriginal ? 'Original dialog line' : `Voiced by the local model. Original: ${original}`;
-        btn.textContent = state.showOriginal ? 'voiced' : 'original';
+        setButtonLabel(btn, state.showOriginal ? 'voiced' : 'original');
         btn.title = state.showOriginal ? 'Show the voiced reply' : 'Show the original dialog line';
     };
     btn.addEventListener('click', (e) => {
@@ -348,16 +348,11 @@ export function counterNote(c: DiplomatCounterOutcome | null): HTMLElement | nul
 
 /** The "AI voice" checkbox (settings.diplomatVoice). */
 export function voiceSwitch(onChange: () => void): HTMLElement {
-    const label = document.createElement('label');
-    label.className = 'dv-switch';
-    label.title = 'Voice AI replies with the local model (advisor endpoint settings); the original line stays under "original"';
-    const box = document.createElement('input');
-    box.type = 'checkbox';
-    box.checked = isDiplomatVoiceEnabled();
-    box.addEventListener('change', () => {
-        updateSettings({ diplomatVoice: box.checked });
+    const label = checkBox('AI voice', isDiplomatVoiceEnabled(), (v) => {
+        updateSettings({ diplomatVoice: v });
         onChange();
-    });
-    label.append(box, document.createTextNode('AI voice'));
+    }, FONT.tiny);
+    label.classList.add('ow-flow', 'dv-switch');
+    label.title = 'Voice AI replies with the local model (advisor endpoint settings); the original line stays under "original"';
     return label;
 }

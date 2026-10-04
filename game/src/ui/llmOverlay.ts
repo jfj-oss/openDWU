@@ -1,7 +1,8 @@
 // 19s-1 dev overlay: the local-model queue's metrics (`?llmMetrics=1` with the llmFoundations flag on). Not a port.
-// A small fixed box refreshed once a second; read-only. 19s-3: with llmStrategic on, the last rows of the strategic
+// A small fixed box refreshed once a second; read-only, drawn as an original BorderPanel (llmOverlay.css). 19s-3: with llmStrategic on, the last rows of the strategic
 // decision log (empire, year, options offered, choice, the model's reason, applied / blocked / refused).
 
+import './llmOverlay.css';
 import type { LlmMetrics } from '../llm/queue';
 import type { StrategicLogEntry } from '../sim/scenario/llm/strategic';
 
@@ -38,20 +39,6 @@ export function llmMetricsText(m: LlmMetrics): string {
 export function showLlmOverlay(metrics: () => LlmMetrics, strategic?: () => readonly StrategicLogEntry[]): { dispose: () => void } {
     const box = document.createElement('pre');
     box.className = 'llm-metrics-overlay';
-    Object.assign(box.style, {
-        position: 'fixed',
-        right: '8px',
-        bottom: '8px',
-        margin: '0',
-        padding: '6px 8px',
-        font: '11px/1.35 monospace',
-        color: '#cfe',
-        background: 'rgba(0,0,0,0.72)',
-        border: '1px solid #466',
-        zIndex: '9000',
-        pointerEvents: 'none',
-        whiteSpace: 'pre',
-    } satisfies Partial<CSSStyleDeclaration>);
     document.body.appendChild(box);
     const tick = (): void => {
         box.textContent = llmMetricsText(metrics()) + (strategic !== undefined ? `\n${strategicLogText(strategic())}` : '');

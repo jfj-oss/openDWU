@@ -8,6 +8,7 @@ import type { Habitat } from '../../sim/types';
 import { issuePlayerCommand } from '../../sim/player/playerCommands';
 import { buildTerms, describeTerms, termsChoices, warView, type PeaceTermsResult } from '../../sim/scenario/lively/peaceTerms';
 import type { PeaceTerms } from '../../sim/scenario/lively/warGoals';
+import { FONT, checkBox, dropDown, glassButton, numericUpDown } from '../originalWindow';
 
 interface Draft {
     cedeTheirs: Set<Habitat>;
@@ -35,10 +36,7 @@ function el(tag: string, className: string, text?: string): HTMLElement {
 }
 
 function button(label: string, onClick: () => void): HTMLButtonElement {
-    const b = el('button', 'diplomacy-propose-option', label) as HTMLButtonElement;
-    b.type = 'button';
-    b.addEventListener('click', onClick);
-    return b;
+    return glassButton(label, { size: FONT.normal, className: 'ow-flow diplomacy-war-btn', onClick });
 }
 
 function emptyDraft(): Draft {
@@ -142,12 +140,8 @@ function composer(player: Empire, other: Empire, rerender: () => void): HTMLElem
         const group = el('div', 'diplomacy-propose-group');
         group.appendChild(el('div', 'diplomacy-propose-label', label));
         for (const h of items) {
-            const line = el('label', 'diplomacy-line');
-            const cb = document.createElement('input');
-            cb.type = 'checkbox';
-            cb.checked = set.has(h);
-            cb.addEventListener('change', () => (cb.checked ? set.add(h) : set.delete(h)));
-            line.append(cb, document.createTextNode(` ${h.name}`));
+            const line = checkBox(h.name, set.has(h), (v) => void (v ? set.add(h) : set.delete(h)));
+            line.classList.add('ow-flow', 'diplomacy-line');
             group.appendChild(line);
         }
         box.appendChild(group);
@@ -158,41 +152,31 @@ function composer(player: Empire, other: Empire, rerender: () => void): HTMLElem
 
     const num = (label: string, value: number, set: (v: number) => void): HTMLElement => {
         const line = el('label', 'diplomacy-line');
-        const input = document.createElement('input');
-        input.type = 'number';
-        input.min = '0';
-        input.value = String(value);
-        input.style.width = '7em';
-        input.addEventListener('change', () => set(Math.max(0, Math.floor(Number(input.value) || 0))));
-        line.append(document.createTextNode(`${label} `), input);
+        const spin = numericUpDown({ value, min: 0, max: 2_000_000_000, size: FONT.normal, onChange: set });
+        spin.el.classList.add('ow-flow');
+        line.append(document.createTextNode(`${label} `), spin.el);
         return line;
     };
     const rep = el('div', 'diplomacy-propose-group');
     rep.appendChild(el('div', 'diplomacy-propose-label', 'Reparations'));
-    const sel = document.createElement('select');
-    for (const [v, t] of [
-        ['none', 'None'],
-        ['they', 'They pay us'],
-        ['we', 'We pay them'],
-    ] as const) {
-        const o = document.createElement('option');
-        o.value = v;
-        o.textContent = t;
-        o.selected = d.payer === v;
-        sel.appendChild(o);
-    }
-    sel.addEventListener('change', () => (d.payer = sel.value as Draft['payer']));
+    const sel = dropDown(
+        [
+            { value: 'none', label: 'None' },
+            { value: 'they', label: 'They pay us' },
+            { value: 'we', label: 'We pay them' },
+        ],
+        d.payer,
+        (v) => (d.payer = v as Draft['payer']),
+    );
+    sel.classList.add('ow-flow');
+    sel.style.fontSize = `${FONT.normal}px`;
     rep.append(sel, num('Lump sum', d.lump, (v) => (d.lump = v)), num('Per year', d.perYear, (v) => (d.perYear = v)), num('Years', d.years, (v) => (d.years = v)));
     if (d.demil.size > 0 || choices.theirSystems.length > 0) rep.appendChild(num('Demilitarisation years', d.demilYears, (v) => (d.demilYears = Math.max(1, v))));
     box.appendChild(rep);
 
     if (subject !== null) {
-        const line = el('label', 'diplomacy-line');
-        const cb = document.createElement('input');
-        cb.type = 'checkbox';
-        cb.checked = d.release;
-        cb.addEventListener('change', () => (d.release = cb.checked));
-        line.append(cb, document.createTextNode(` They release the ${subject.name}`));
+        const line = checkBox(`They release the ${subject.name}`, d.release, (v) => (d.release = v));
+        line.classList.add('ow-flow', 'diplomacy-line');
         box.appendChild(line);
     }
 
