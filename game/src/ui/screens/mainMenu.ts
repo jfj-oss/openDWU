@@ -14,6 +14,7 @@ import { activeCustomizationSetName } from '../../sim/data/customization';
 import { themeMenuBackgroundUrl } from '../../themeAssets';
 import { getSettings } from '../settings';
 import { tryGetText } from '../../sim/textResolver';
+import { openNewGameDefaultsPanel } from './newGameDefaultsPanel';
 
 const CHROME = '/assets/dwu/images/ui/chrome/';
 
@@ -109,6 +110,14 @@ export function openOptionsModal(root: HTMLElement): void {
     // The same rows the in-game Escape menu shows (music volume/mute, UI
     // scale, label toggles).
     panel.appendChild(buildOptionsPanel(menuMusic()));
+
+    // Start.1.cs:1928-1960: the main menu's Options edit the Automation / Empire Settings defaults of the next new game.
+    const defaultsBtn = document.createElement('button');
+    defaultsBtn.type = 'button';
+    defaultsBtn.className = 'main-menu-newgame-defaults';
+    defaultsBtn.textContent = 'Automation & New Game Defaults...';
+    defaultsBtn.addEventListener('click', () => openNewGameDefaultsPanel());
+    panel.appendChild(defaultsBtn);
 
     const closeBtn = document.createElement('button');
     closeBtn.type = 'button';

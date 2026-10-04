@@ -131,3 +131,18 @@
 .main-menu-options-panel {
     width: min(420px, calc(100vw - 40px));
 }
+
+.main-menu-newgame-defaults {
+    margin-top: 12px;
+    width: 100%;
+    padding: 8px 10px;
+    color: #d8e4f0;
+    background: rgba(40, 60, 90, 0.7);
+    border: 1px solid rgba(160, 190, 230, 0.5);
+    cursor: pointer;
+    font: inherit;
+}
+
+.main-menu-newgame-defaults:hover {
+    background: rgba(70, 100, 150, 0.8);
+}
