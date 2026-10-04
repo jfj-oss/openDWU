@@ -16,8 +16,9 @@
 //   pirate branches (sim/pirates/pirateMissionsPanel.ts, read-only from the UI: the pirate relations it obtains are
 //   requested through obtainUiRecords), the rows ItemListPanel.cs 1577 method_7 (missionRow below), the right-hand button the
 //   pirateMissionButton command (Main.Part12.cs 2591-2678).
-// TODO(port): hovering a Pirate Missions row highlights the ships assigned to it (ItemListPanel.cs 2353
-//   DetermineShipsAssignedToMission → Main.method_246) — no ship-highlight list in the main view yet.
+// Hovering a row (every panel; ItemListPanel.cs 2291-2389): the yellow ping at the row's object and the red travel
+//   vectors of the ships flying a hovered pirate mission (DetermineShipsAssignedToMission → Main.method_246), else of
+//   those travelling to the selection — ui/listHover.ts, drawn from render/mapHighlights.ts.
 // Colony governor / fleet admiral pictures on the rows: ItemListPanel.cs 868-882 / 1371-1390
 //   (ObtainCharacterImageVerySmall, characterPortrait.ts: the picture file or race portrait with the role icon).
 // The pirate player's Colonies rows (ItemListPanel.cs 728-848: the colonies it controls but does not own, with the

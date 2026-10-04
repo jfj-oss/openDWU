@@ -41,7 +41,9 @@ import { yardProgress } from './screens/constructionYards';
 import type { ConstructionQueue } from '../sim/construction/constructionQueue';
 import { builtObjectImageUrl, resolveDrawPictureRef } from '../render/builtObjectLayer';
 import { fighterImageUrl } from '../render/fighterLayer';
-import { FighterMissionType, type Fighter } from '../sim/combat/fighters';
+import { FighterMissionType, Fighter, captainFightersBonus } from '../sim/combat/fighters';
+import { CharacterRole, CharacterSkillType } from '../sim/characters';
+import { CHARACTER_ROLE, CHARACTER_SKILL, resolveEnumTextDescription } from '../sim/enumText';
 import { cloudUrls, habitatPictureUrl, mapStarUrls } from '../render/assets';
 import { racePortraitUrl } from './empireEmblem';
 import { abundancePercentText } from './resourceAbundance';
@@ -114,7 +116,7 @@ export function dropShadowColor(rgb: number): number {
 
 /** What a hotspot (InfoPanel.AddHotspot) does on click. */
 export type InfoTarget =
-    | { kind: 'select'; obj: Habitat | BuiltObject | ShipGroup }
+    | { kind: 'select'; obj: Habitat | BuiltObject | ShipGroup | Fighter }
     | { kind: 'empire'; empire: Empire }
     /** A ruin hotspot (InfoPanel.cs 4093 / 4263, "Name (click for details)"): Main.Part4.cs 3581 → method_550. */
     | { kind: 'ruin'; ruin: Ruin }
@@ -652,7 +654,7 @@ export function builtObjectInfo(ctx: InfoContext, bo: BuiltObject): InfoModel {
     }
     // Fighters (BaconInfoPanel.cs:725-739, InfoPanel.cs 2979 DrawFighters).
     if (known) {
-        const fighters = (bo.fighters ?? []) as FighterLike[];
+        const fighters = (bo.fighters ?? []) as Fighter[];
         if (bo.fighterCapacity > 0 || fighters.length > 0) rows.push(label('Fighters', fighterSegs(fighters), { strip: true }));
     } else {
         rows.push(label('Fighters', [txt('(Unknown)', UNKNOWN_COLOR)]));
@@ -687,28 +689,30 @@ export function builtObjectInfo(ctx: InfoContext, bo: BuiltObject): InfoModel {
     };
 }
 
-interface FighterLike {
-    name: string;
-    health: number;
-    onboardCarrier: boolean;
-    underConstruction: boolean;
-    pictureRef: number;
-}
-
-/** InfoPanel.cs 2979 DrawFighters: launched fighters, then those onboard, then those being built (faded); a red chip
- *  behind a damaged one. */
-function fighterSegs(fighters: FighterLike[]): InfoSeg[] {
+/**
+ * InfoPanel.cs 2979 DrawFighters: launched fighters, then those onboard, then those being built (faded); a red chip
+ * behind a damaged one. Each picture is a hotspot (AddHotspot(…, fighter, text)): a click selects the fighter
+ * (Main.Part4.cs 3547 pnlDetailInfo_MouseClick → method_208), whose own buttons then launch / retrieve / retire it.
+ */
+function fighterSegs(fighters: readonly Fighter[]): InfoSeg[] {
     if (fighters.length === 0) return [txt('(None)')];
     const out = fighters.filter((f) => !f.onboardCarrier);
     const onboard = fighters.filter((f) => f.onboardCarrier && !f.underConstruction);
     const building = fighters.filter((f) => f.onboardCarrier && f.underConstruction);
     const segs: InfoSeg[] = [];
-    const add = (f: FighterLike, gap: number, faded: boolean, title: string): void => {
-        segs.push({ img: fighterImageUrl(f.pictureRef) ?? undefined, bg: !faded && f.health < 1 ? 'rgb(255,0,0)' : undefined, faded, gap, title });
+    // 3049 / 3068: num8 += num4 (half an image) after the launched and after the onboard group, whether empty or not.
+    let gap = 0;
+    const add = (f: Fighter, faded: boolean, title: string): void => {
+        segs.push({ img: fighterImageUrl(f.pictureRef) ?? undefined, bg: !faded && f.health < 1 ? 'rgb(255,0,0)' : undefined, faded, gap, title, target: { kind: 'select', obj: f } });
+        gap = 0;
     };
-    out.forEach((f) => add(f, 0, false, `${f.name} (launched)`));
-    onboard.forEach((f, i) => add(f, i === 0 && out.length > 0 ? INFO.imageSize / 2 : 0, false, `${f.name} (Onboard)`));
-    building.forEach((f, i) => add(f, i === 0 && segs.length > 0 ? INFO.imageSize / 2 : 0, true, `${f.name} (Building)`));
+    // 3046: Name + " (" + Galaxy.ResolveMissionDescription(fighter) + ")".
+    out.forEach((f) => add(f, false, `${f.name} (${fighterMissionDescription(f)})`));
+    gap += INFO.imageSize / 2;
+    // 3052 / 3060-3065: red behind a damaged one (not while being built); " (Onboard <carrier>)" when it has a carrier.
+    onboard.forEach((f) => add(f, false, f.parentBuiltObject !== null ? `${f.name} (Onboard ${f.parentBuiltObject.name})` : f.name));
+    gap += INFO.imageSize / 2;
+    building.forEach((f) => add(f, true, `${f.name} (Building)`));
     return segs;
 }
 
@@ -871,7 +875,42 @@ export function fighterMissionDescription(f: Pick<Fighter, 'missionType' | 'curr
     }
 }
 
-/** Port of InfoPanel.cs 3495 DrawFighter (the character-bonus line, _CharacterBonuses, is not ported). */
+/** .NET `double.ToString("+0%;-0%")`: the percentage rounded half away from zero, "+" for zero and up. */
+function fmtPlusMinusPct(v: number): string {
+    const p = v * 100;
+    const r = Math.sign(p) * Math.round(Math.abs(p));
+    return r < 0 ? `-${-r}%` : `+${r}%`;
+}
+
+/**
+ * Port of Galaxy.2.cs 4043 GenerateCharacterBonusDescription(Fighter) — InfoPanel.cs 987 _CharacterBonuses for a
+ * fighter: the carrier captain's Fighters bonus plus its fleet admiral's (ShipGroup.FightersBonus, ADDED to the
+ * captain's factor as the C# does: a carrier in a fleet starts from 2.0), e.g. "Ship Captain, Fleet Admiral: +25%
+ * Fighters". Empty without a carrier or when the sum is exactly 1.
+ */
+export function fighterCharacterBonusDescription(fighter: Pick<Fighter, 'parentBuiltObject'>): string {
+    let text = '';
+    const carrier = fighter.parentBuiltObject;
+    if (carrier === null) return text;
+    let flag = false;
+    let flag2 = false;
+    let num = captainFightersBonus(carrier);
+    if (num !== 1.0) flag = true;
+    const group = carrier.shipGroup as ShipGroup | null;
+    if (group !== null && group !== undefined) {
+        num += group.fightersBonus;
+        if (group.fightersBonus !== 1.0) flag2 = true;
+    }
+    if (num !== 1.0) {
+        if (flag) text = text + resolveEnumTextDescription(CHARACTER_ROLE, CharacterRole[CharacterRole.ShipCaptain]) + ', ';
+        if (flag2) text = text + resolveEnumTextDescription(CHARACTER_ROLE, CharacterRole[CharacterRole.FleetAdmiral]) + ', ';
+        if (text !== '' && text.length > 2) text = text.substring(0, text.length - 2);
+        text = text + ': ' + fmtPlusMinusPct(num - 1.0) + ' ' + resolveEnumTextDescription(CHARACTER_SKILL, CharacterSkillType[CharacterSkillType.Fighters]);
+    }
+    return text;
+}
+
+/** Port of InfoPanel.cs 3495 DrawFighter. */
 export function fighterInfo(ctx: InfoContext, fi: Fighter): InfoModel {
     const { galaxy, player } = ctx;
     const e = fi.empire;
@@ -903,6 +942,9 @@ export function fighterInfo(ctx: InfoContext, fi: Fighter): InfoModel {
     rows.push({ kind: 'bar', label: 'Speed', max: fi.topSpeed, current: sp, inner: `${sp}${fi.movementSlowedLocation ? ' (slowed)' : ''}`, right: String(fi.topSpeed), fill: BAR_FILL });
     rows.push({ kind: 'gap', h: 5 });
     rows.push(label('Weapons', [txt(fi.firepowerRaw === 0 ? '(None)' : `Firepower: ${fi.firepowerRaw}, Range: ${fi.specification.weaponRange}`)]));
+    // 3627-3634: DrawLabel("Bonuses") + the _CharacterBonuses text bounded to the content width (wrapped).
+    const bonuses = fighterCharacterBonusDescription(fi);
+    if (bonuses !== '') rows.push(label('Bonuses', [txt(bonuses)], { wrap: true }));
     return {
         title: [{ text: fi.name, color: empireTitleColor(galaxy, e) }],
         corner,

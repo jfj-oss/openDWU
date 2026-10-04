@@ -569,7 +569,7 @@ function removeFirst(list: unknown[] | null, item: unknown): void {
     if (i >= 0) list.splice(i, 1);
 }
 /** BuiltObject.CaptainFightersBonus = _CaptainFightersBonus / 100 (100 until ReviewCaptainBonuses). */
-function captainFightersBonus(bo: BuiltObject): number {
+export function captainFightersBonus(bo: BuiltObject): number {
     const b = captainBonuses(bo);
     return (b !== null ? b.fighters : 100) / 100.0;
 }

@@ -888,7 +888,9 @@ export async function startGameView(
             select: (t) => {
                 if (t === null) hud.onSelectionChange?.(null);
                 else if (t instanceof ShipGroup) selectShipGroup(t, false);
-                else if (Array.isArray(t)) selectBuiltObjectList(t); // BuiltObjectList (one ship: a ship selection) else if (!(t instanceof Fighter)) selectStellarObject(t, false); // (a Fighter is not selectable here)
+                else if (Array.isArray(t)) selectBuiltObjectList(t); // BuiltObjectList (one ship: a ship selection)
+                else if (t instanceof Fighter) selectFighter(t); // Main.Part10.cs method_208 for a Fighter
+                else selectStellarObject(t, false);
             },
         },
         view,
@@ -934,7 +936,7 @@ export async function startGameView(
             else if (o instanceof ShipGroup) selectShipGroup(o, false);
             else if (o instanceof Habitat) selectHabitat(o, false);
             else if (o instanceof Creature) selectCreature(o, false);
-            else if (o instanceof Fighter) return; // TODO(port): fighter selection — MainView.1.cs:1520 method_212 (parity #26)
+            else if (o instanceof Fighter) selectFighter(o);
             else if ('systemStar' in o) hud.onSelectionChange?.({ habitat: o.systemStar, system: o, systemInfo: true });
             else selectStellarObject(o, false);
         },
