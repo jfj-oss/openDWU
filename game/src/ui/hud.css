@@ -205,6 +205,43 @@
     background: rgba(255, 255, 255, 0.12);
 }
 /* [freightOverlay] end */
+/* [dw2overlays] begin — the Improvements section's inline "…" panels (ui/overlayOptionPanels.ts). */
+.hud-option-panel {
+    pointer-events: auto;
+    margin: 0 4px 4px 26px;
+    padding: 4px 6px;
+    border-radius: 6px;
+    background: rgba(20, 23, 28, 0.9);
+    font-size: 11px;
+    color: #c8d0da;
+}
+.hud-option-panel-label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+.hud-option-select {
+    flex: 1;
+    min-width: 0;
+    max-width: 210px;
+    font: inherit;
+    font-size: 11px;
+    color: #fff;
+    background: #1b1f26;
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    border-radius: 4px;
+    padding: 1px 2px;
+}
+.hud-option-select .hud-option-none {
+    color: #7d8590;
+}
+.hud-option-panel-note {
+    margin-top: 3px;
+    color: #8a939e;
+    font-size: 10px;
+    white-space: normal;
+}
+/* [dw2overlays] end */
 
 /* "Keyboard shortcuts" overlay (task 10a): centered, content-sized panel. */
 #keyboard-shortcuts-overlay {

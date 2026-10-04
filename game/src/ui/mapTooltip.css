@@ -13,10 +13,9 @@
     font-family: 'Forgotten Futurist', sans-serif;
     font-size: 12px;
     color: #fff;
-    white-space: nowrap;
+    white-space: pre; /* [dw2overlays] multi-line texts keep their line breaks (single lines: unchanged) */
 }
 /* Several lines (the Supply Shortages tooltip, ui/supplyChainText.ts). */
 .dwu-map-tooltip.multiline {
-    white-space: pre;
     line-height: 1.35;
 }

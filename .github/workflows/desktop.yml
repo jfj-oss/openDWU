@@ -1,39 +1,126 @@
-# Builds the native desktop apps. Manual trigger only (Actions → "desktop" → Run workflow).
-# Tests need the user's DW:U install, so CI only typechecks, builds and packages.
+# Desktop app release builds: macOS arm64 (.dmg), Linux x64 (.AppImage + .tar.gz) and Windows x64 (setup .exe +
+# portable .zip), built on GitHub's runners and attached to the GitHub Release that triggered the run (see
+# RELEASING.md).
+#
+# Triggers:
+# - `release: published`: publishing a release (including a pre-release) builds and attaches the installers. Nothing
+#   runs on ordinary pushes.
+# - `workflow_dispatch` (Actions → desktop → Run workflow): the same build by hand; with `tag` set, the files are
+#   attached to that existing release (e.g. to retry a failed run), otherwise they are only kept as workflow artifacts.
+# - Tag pushes (v*) deliberately do NOT trigger it: creating the release on GitHub creates its tag and fires
+#   `release: published` anyway, so a tag trigger would build every release twice, and a bare tag has no release to
+#   attach files to. Push a tag, then publish a release for it, and the release event does the build.
+#
+# The build never needs (and never sees) the original game: GitHub's runners have no Distant Worlds: Universe install,
+# and the app reads it from the player's own folder at runtime. scripts/package-desktop.mjs also refuses to package
+# anything outside its allow-list. Tests that need the install are not run here; the ones below need none.
 name: desktop
+
 on:
+  release:
+    types: [published]
   workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Attach the builds to this existing release tag (e.g. v0.2.0). Empty: build only (workflow artifacts).'
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+
+concurrency:
+  group: desktop-${{ github.event.release.tag_name || inputs.tag || github.ref }}
+  cancel-in-progress: false
+
 jobs:
-  package:
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: ubuntu-latest
-            script: package:linux
-            artifact: dwu-linux-x64
-          - os: macos-14   # Apple Silicon runner
-            script: package:mac
-            artifact: dwu-darwin-arm64
-    runs-on: ${{ matrix.os }}
+  check:
+    name: Check version and code
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.tag.outputs.tag }}
     defaults:
       run:
         working-directory: game
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name || inputs.tag || github.ref }}
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
           cache-dependency-path: game/package-lock.json
+      - name: Release tag must match game/package.json
+        id: tag
+        env:
+          TAG: ${{ github.event.release.tag_name || inputs.tag }}
+        run: |
+          version="$(node -p "require('./package.json').version")"
+          if [ -n "$TAG" ] && [ "$TAG" != "v$version" ]; then
+            echo "::error::Release tag '$TAG' does not match game/package.json version $version: bump the version to match (tag v$version), or tag the commit that has it."
+            exit 1
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "Building openDWU $version${TAG:+ for release $TAG}"
       - run: npm ci
       - run: npm run typecheck
-      - run: npm run build
-      - run: npm run ${{ matrix.script }}
-      - name: Ad-hoc sign (macOS)
-        if: runner.os == 'macOS'
-        run: codesign --force --deep -s - release/*/*.app
+      - name: Desktop shell tests (no game files needed)
+        run: npx vitest run test/desktopShell.test.ts test/colorProfile.test.ts
+
+  package:
+    name: ${{ matrix.name }}
+    needs: check
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Linux x64
+            os: ubuntu-latest
+            script: dist:linux
+            artifact: openDWU-linux-x64
+          - name: macOS arm64
+            os: macos-14 # Apple silicon runner
+            script: dist:mac
+            artifact: openDWU-macos-arm64
+          - name: Windows x64
+            os: windows-latest
+            script: dist:win
+            artifact: openDWU-windows-x64
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: write # gh release upload
+    defaults:
+      run:
+        working-directory: game
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name || inputs.tag || github.ref }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            game/package-lock.json
+            game/scripts/installer-tools/package-lock.json
+      - run: npm ci
+      - name: Installer tools (electron-builder, pinned in scripts/installer-tools)
+        if: runner.os != 'macOS' # the macOS disk image is made with hdiutil
+        working-directory: game/scripts/installer-tools
+        run: npm ci --no-audit --no-fund
+      - name: Build, package and make the installers
+        run: npm run ${{ matrix.script }}
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact }}
-          path: game/release/
+          path: game/release/upload/
+          if-no-files-found: error
+          retention-days: 14
+      - name: Attach to the release
+        if: needs.check.outputs.tag != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.check.outputs.tag }}
+        run: gh release upload "$TAG" release/upload/* --clobber --repo "$GITHUB_REPOSITORY"

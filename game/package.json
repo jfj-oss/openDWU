@@ -4,10 +4,13 @@
   "private": true,
   "type": "module",
   "main": "desktop/main.cjs",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/jfj-oss/openDWU.git"
+  },
   "scripts": {
     "predev": "node scripts/gen-asset-manifest.mjs",
     "dev": "vite --host 0.0.0.0",
-    "prebuild": "node scripts/gen-asset-manifest.mjs",
     "build": "tsc --noEmit && vite build",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
@@ -18,7 +21,11 @@
     "import-assets": "bash scripts/import-assets.sh",
     "desktop:dev": "npm run build && electron desktop/main.cjs",
     "package:linux": "node scripts/package-desktop.mjs --platform=linux --arch=x64",
-    "package:mac": "node scripts/package-desktop.mjs --platform=darwin --arch=arm64"
+    "package:mac": "node scripts/package-desktop.mjs --platform=darwin --arch=arm64",
+    "package:win": "node scripts/package-desktop.mjs --platform=win32 --arch=x64",
+    "dist:linux": "node scripts/package-desktop.mjs --platform=linux --arch=x64 --installers",
+    "dist:mac": "node scripts/package-desktop.mjs --platform=darwin --arch=arm64 --installers",
+    "dist:win": "node scripts/package-desktop.mjs --platform=win32 --arch=x64 --installers"
   },
   "dependencies": {
     "pixi.js": "^8.21.0"

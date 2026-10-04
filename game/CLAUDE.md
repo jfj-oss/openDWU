@@ -2,7 +2,7 @@
 
 A faithful recreation of *Distant Worlds: Universe* (v1.9.5) in TypeScript + PixiJS 8 (Vite for dev).
 
-**Targets: native desktop apps for macOS arm64 and Linux x86_64**, via an Electron shell (`desktop/`). The game code must stay platform-neutral: no Node APIs in `src/`, load all assets/data through URLs under `/assets/dwu/` (the desktop shell maps that prefix to the user's DW:U install folder), no platform-specific paths.
+**Targets: native desktop apps for macOS arm64, Linux x86_64 and Windows x64**, via an Electron shell (`desktop/`; release builds: `../RELEASING.md`). The game code must stay platform-neutral: no Node APIs in `src/`, load all assets/data through URLs under `/assets/dwu/` (the desktop shell maps that prefix to the user's DW:U install folder), no platform-specific paths.
 
 **Main View is one seamless map:** the player scrolls continuously from the whole galaxy down to a single planet and back — the galaxy map and the system map are the same view at different zoom levels, with layers cross-fading (never a hard screen switch).
 

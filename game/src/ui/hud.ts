@@ -14,7 +14,8 @@ import { bindAutoPauseClock } from './autoPause';
 import { HUD_FRAME_SIZE } from './topBar';
 import { GalaxyTime } from '../sim/clock';
 import { resolveStarDateDescription } from '../sim/galaxyTime';
-import { createMapOverlayState, OVERLAY_ROWS, toggleOverlay, type MapOverlayState, type OverlayKey, type OverlayRow } from './mapOverlays';
+import { createMapOverlayState, OVERLAY_ROWS, onOverlayChange, toggleOverlay, type MapOverlayState, type OverlayKey, type OverlayRow } from './mapOverlays';
+import { resourcePickerPanel, type OverlayOptionPanel } from './overlayOptionPanels'; // [dw2overlays]
 import { IMPROVEMENTS_TITLE, onImprovementsChange, overlayRowSections } from './improvements'; // [improvements]
 import { Camera } from '../render/camera';
 import { followOnSelectionChanged, isFollowingTarget, toggleFollow, type FollowState, type FollowTarget } from '../render/followCamera';
@@ -2026,6 +2027,26 @@ function buildOptionsList(wiring: HudWiring): HTMLElement {
             item.appendChild(more);
         }
         // [freightOverlay] end
+        // [dw2overlays] begin — the Resources row's "…": an inline resource picker under the row (ui/overlayOptionPanels.ts).
+        let sub: OverlayOptionPanel | null = null;
+        if (row.panel === 'resources' && wiring.galaxy !== undefined) {
+            const picker = resourcePickerPanel(overlays, wiring.galaxy);
+            sub = picker;
+            picker.element.style.display = 'none';
+            const more = document.createElement('span');
+            more.className = 'hud-option-more';
+            more.textContent = '…';
+            more.title = 'Pick a resource';
+            more.setAttribute('role', 'button');
+            more.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const open = picker.element.style.display === 'none';
+                if (open) picker.refresh();
+                picker.element.style.display = open ? '' : 'none';
+            });
+            item.appendChild(more);
+        }
+        // [dw2overlays] end
         item.addEventListener('click', () => {
             toggleOverlay(overlays, row.key);
             check.textContent = overlays[row.key] ? '✓' : '';
@@ -2033,6 +2054,7 @@ function buildOptionsList(wiring: HudWiring): HTMLElement {
             // reads the state every frame (Fade civilian ships: builtObjectLayer.ts).
         });
         panel.appendChild(item);
+        if (sub !== null) panel.appendChild(sub.element); // [dw2overlays]
     };
     // The original's overlays, then the Improvements section (ui/improvements.ts: DW2-inspired additions, each one
     // listed only while it is enabled in Game Options → Improvements).
@@ -2050,6 +2072,15 @@ function buildOptionsList(wiring: HudWiring): HTMLElement {
     // Until the HUD is destroyed (hudLifetime.ts).
     const off = onImprovementsChange(() => render());
     onHudDestroyed(off);
+    // [dw2overlays] the checks follow changes made elsewhere (the resource picker turns its overlay on).
+    onHudDestroyed(
+        onOverlayChange(() => {
+            for (const el of panel.querySelectorAll<HTMLElement>('.hud-option-row[data-overlay]')) {
+                const c = el.querySelector('.hud-option-check');
+                if (c !== null) c.textContent = overlays[el.dataset.overlay as OverlayKey] ? '✓' : '';
+            }
+        }),
+    );
     return panel;
 }
 
