@@ -3,14 +3,17 @@
 // HabitatImageCache.cs GenerateHabitatImageFilepaths file order; sim/galaxyImages.ts):
 // - the index table: offsets are the running sums of the counts in HabitatImageCache's order, 665 fixed pictures, and
 //   each is a file of the install (asset manifest);
-// - a seeded galaxy's refs lie in the C#'s range for each category and type (stars and gas clouds keep their own,
-//   untouched values), and every one resolves to a manifest file (render/assets.ts habitatPictureUrl, the
-//   HabitatImageCache equivalent the Main View, the selection panel and the lists use);
+// - a seeded galaxy's refs lie in the C#'s range for each category and type (stars: the map-star range SetupSun's
+//   SelectHabitatPictures draws, test/starMapPictureRefs.test.ts; gas clouds their own values), and every one resolves
+//   to a manifest file (render/assets.ts habitatPictureUrl, the HabitatImageCache equivalent the Main View, the
+//   selection panel and the lists use);
 // - each selector draws Rnd as the C# does — one sample per picture, the picture being Offset + Next(0, Count) of its
 //   own sample (SelectXxxPlanet: diameter, picture, landscape; SelectHabitatPictures: picture then landscape, gas
 //   giants landscape / Next(0, 5) / picture);
 // - the port changed no draw: the generation's Rnd / CryptoRnd draw counts, the state digests, the seed-5 habitats and
-//   the whole seed-1 save with the picture refs blanked are the values measured on the code before the port (29dfa54);
+//   the whole seed-1 save with the picture refs blanked were the values measured on the code before the port (29dfa54);
+//   they moved once since, deliberately, with SetupSun's SelectHabitatPictures(star) call (2 Rnd draws per star,
+//   Galaxy.5.cs 1328; see the pins' reason comments);
 // - a theme's planets/other pictures follow the 665 (HabitatImageOffsetOTHER + i), and a theme's copy of a fixed one is
 //   used per file;
 // - saves from before the port (no habitatPictureRefs marker; test/fixtures/before-sim-message-pipeline.dwusave.gz)
@@ -100,8 +103,10 @@ const CS_ASTEROID_RANGES: Partial<Record<HabitatType, readonly [number, number]>
     [HabitatType.Ice]: [449, 548],
     [HabitatType.Metal]: [549, 664], // AsteroidsMetal 549-648; GenerateTreasureAsteroid gold 649-656, crystal 657-664
 };
-/** SelectStar's PictureRef (the port keeps it: SetupSun does not redraw it, see sim/galaxy.ts) / Galaxy.4.cs gas clouds. */
-const STAR_REFS = new Set([0, 83, 84, 85, 86, 87, 88, 95]);
+/** A star's PictureRef: SetupSun's SelectHabitatPictures draw, MapStarImageOffsetX + Next(0, MapStarImageCountX)
+ *  (Galaxy.6.cs 2214-2237: 0-13), a super nova SelectStar's 0; in a save from before that port, SelectStar's own values. */
+const STAR_REFS = new Set(Array.from({ length: 14 }, (_, i) => i));
+const PRE_PORT_STAR_REFS = new Set([0, 83, 84, 85, 86, 87, 88, 95]);
 
 /** The C# range of a planet / moon / asteroid, null for stars and gas clouds. */
 function csRange(h: Habitat): readonly [number, number] | null {
@@ -110,13 +115,13 @@ function csRange(h: Habitat): readonly [number, number] | null {
     if (r === undefined) throw new Error(`no C# picture range for category ${h.category} type ${h.type}`);
     return r;
 }
-function badRefs(habitats: readonly Habitat[]): string[] {
+function badRefs(habitats: readonly Habitat[], prePortStars = false): string[] {
     const bad: string[] = [];
     for (const h of habitats) {
         const r = csRange(h);
         let ok: boolean;
         if (r !== null) ok = Number.isInteger(h.pictureRef) && h.pictureRef >= r[0] && h.pictureRef <= r[1];
-        else if (h.category === HabitatCategoryType.Star) ok = STAR_REFS.has(h.pictureRef);
+        else if (h.category === HabitatCategoryType.Star) ok = (prePortStars ? PRE_PORT_STAR_REFS : STAR_REFS).has(h.pictureRef);
         else ok = h.pictureRef >= 71 && h.pictureRef <= 82;
         if (!ok) bad.push(`${h.name} cat ${h.category} type ${h.type}: ${h.pictureRef}`);
     }
@@ -172,9 +177,13 @@ describe('seeded galaxies store the C# picture index', () => {
             if (!byType.has(k)) byType.set(k, new Set());
             byType.get(k)!.add(h.pictureRef);
         }
+        // Seed 1 (since SetupSun's star picture draws): all 21 barren rock pictures, 22 of the 25 desert ones, both the
+        // continental and the forest pictures (SelectHabitatPictures: 21-66), all 200 rocky asteroids — not 10 values.
         expect(byType.get(`planet:${HabitatType.BarrenRock}`)!.size).toBe(21);
-        expect(byType.get(`planet:${HabitatType.Desert}`)!.size).toBe(25);
-        expect(byType.get(`planet:${HabitatType.Continental}`)!.size).toBeGreaterThan(20); // the forest pictures too
+        expect(byType.get(`planet:${HabitatType.Desert}`)!.size).toBeGreaterThan(20);
+        const continental = [...byType.get(`planet:${HabitatType.Continental}`)!];
+        expect(continental.some((r) => r < 41) && continental.some((r) => r >= 41)).toBe(true); // the forest pictures too
+        expect(continental.length).toBeGreaterThan(10);
         expect(byType.get(`asteroid:${HabitatType.BarrenRock}`)!.size).toBe(200);
     });
     (installLinked ? it : it.skip)('every planet / moon / asteroid ref resolves to a manifest file (habitatPictureUrl, the HabitatImageCache)', () => {
@@ -306,26 +315,37 @@ describe('draw order (Galaxy.6.cs SelectXxxPlanet / SelectHabitatPictures)', () 
         expect(anyHits).toBeGreaterThan(0);
     });
 
-    it('generation draws exactly as before the port (counts and state measured on the pre-port code, 29dfa54)', () => {
-        // Values measured on commit 29dfa54 (placeholder picture refs); the port changed only the picture values.
-        expect(measured.seed5Draws).toMatchPin('pictureRefs.seed5Draws', { rnd: 175856, crypto: 364815 });
-        expect(measured.seed5Digest).toMatchPin('pictureRefs.seed5Digest', '92e5c3c9a325a220');
-        expect(measured.seed5HabitatsWithoutPictures).toMatchPin('pictureRefs.seed5HabitatsWithoutPictures', '0985ec4a6de10a62bc19d86b45d946a384f25873');
-        expect(measured.seed1Draws).toMatchPin('pictureRefs.seed1Draws', { rnd: 288729, crypto: 587179 });
-        expect(measured.seed1Digest).toMatchPin('pictureRefs.seed1Digest', '0cecc3d70b1487e6');
-        // The whole saved game with every picture ref blanked and the save marker removed (on a loaded copy).
+    it('generation draws as the C# (counts and state pinned; the PictureRef port itself changed no draw)', () => {
+        // Values measured on commit 29dfa54 (placeholder picture refs); the PictureRef port changed only the picture
+        // values. They moved with SetupSun's SelectHabitatPictures(star) (Galaxy.5.cs 1328): 2 more Rnd draws per star
+        // (none for a super nova), which shift every later sample of the generation.
+        // Moved {"rnd":175856,"crypto":364815} → {"rnd":169111,"crypto":352715}: SetupSun SelectHabitatPictures (Galaxy.5.cs 1323): star PictureRef/MapPictureRef draws (2026-10-04)
+        expect(measured.seed5Draws).toMatchPin('pictureRefs.seed5Draws', {"rnd": 169111, "crypto": 352715});
+        // Moved "92e5c3c9a325a220" → "563e841e53e25225": SetupSun SelectHabitatPictures (Galaxy.5.cs 1323): star PictureRef/MapPictureRef draws (2026-10-04)
+        expect(measured.seed5Digest).toMatchPin('pictureRefs.seed5Digest', "563e841e53e25225");
+        // Moved #b9b595ffcb → #3a26d844ee: SetupSun SelectHabitatPictures (Galaxy.5.cs 1323): star PictureRef/MapPictureRef draws (2026-10-04)
+        expect(measured.seed5HabitatsWithoutPictures).toMatchPin('pictureRefs.seed5HabitatsWithoutPictures', "a1a3e179c8958a632f94a36c4700a84da6a17a95");
+        // Moved {"rnd":288729,"crypto":587179} → {"rnd":262043,"crypto":528421}: SetupSun SelectHabitatPictures (Galaxy.5.cs 1323): star PictureRef/MapPictureRef draws (2026-10-04)
+        expect(measured.seed1Draws).toMatchPin('pictureRefs.seed1Draws', {"rnd": 262043, "crypto": 528421});
+        // Moved "0cecc3d70b1487e6" → "4948f3713d8cdf2d": SetupSun SelectHabitatPictures (Galaxy.5.cs 1323): star PictureRef/MapPictureRef draws (2026-10-04)
+        expect(measured.seed1Digest).toMatchPin('pictureRefs.seed1Digest', "4948f3713d8cdf2d");
+        // The whole saved game with every picture ref blanked and the save markers removed (on a loaded copy).
         const time = new GalaxyTime();
         time.togglePause();
         const start = { ...defaultStartGameOptions(), seed: 1 };
         const copy = deserializeGame(serializeGame(game, time, start), gameData);
         for (const h of copy.game.galaxy.habitats) {
             h.pictureRef = -2;
+            h.mapPictureRef = -2;
             h.landscapePictureRef = -2;
         }
-        const obj = JSON.parse(serializeGame(copy.game, copy.time, start)) as { galaxy: { habitatPictureRefs?: string } };
+        const obj = JSON.parse(serializeGame(copy.game, copy.time, start)) as { galaxy: { habitatPictureRefs?: string; habitatMapPictureRefs?: string } };
         expect(obj.galaxy.habitatPictureRefs).toBe('GalaxyImages');
+        expect(obj.galaxy.habitatMapPictureRefs).toBe('MapStarImages');
         delete obj.galaxy.habitatPictureRefs;
-        expect(sha(JSON.stringify(obj))).toMatchPin('pictureRefs.seed1SaveWithoutPictures', '151f4ed001f094018596a4e91452651fd48b3ccb');
+        delete obj.galaxy.habitatMapPictureRefs;
+        // Moved #91c58990ed → #ff3777c6bb: SetupSun SelectHabitatPictures (Galaxy.5.cs 1323): star PictureRef/MapPictureRef draws (2026-10-04)
+        expect(sha(JSON.stringify(obj))).toMatchPin('pictureRefs.seed1SaveWithoutPictures', "4139f9fa81a480bf7f5e3e80849933529785fdb5");
     }, 300000);
 });
 
@@ -433,7 +453,7 @@ describe('saves from before the port (placeholder refs)', () => {
         const { game: loaded, time, startOptions } = deserializeGame(text, gameData);
         const g = loaded.galaxy;
         expect(saved.size).toBe(g.habitats.length);
-        expect(badRefs(g.habitats)).toEqual([]);
+        expect(badRefs(g.habitats, true)).toEqual([]);
         const bad: string[] = [];
         let same = 0;
         let outside = 0;

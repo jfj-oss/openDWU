@@ -130,7 +130,8 @@ describe('Dark Farms: forced trigger on seed 1', () => {
         expect(eligible).toContain(farm.habitat);
         // The seed-1 farm colony (the first eligible colony in galaxy.empires / colonies order: the roll always hits).
         expect(farm.habitat).toBe(eligible[0]);
-        expect(farm.habitat.name).toMatchPin('darkFarms.seed1FarmColony', 'S265 1');
+        // Moved "S265 1" → "Stapagai": SetupSun SelectHabitatPictures (Galaxy.5.cs 1323): star PictureRef/MapPictureRef draws (2026-10-04)
+        expect(farm.habitat.name).toMatchPin('darkFarms.seed1FarmColony', "Stapagai");
     }, 1200000);
 
     it('production: hidden robots and sleepers accumulate for free; sleepers are host private freighters', () => {

@@ -5,7 +5,9 @@
 // - each selector draws Rnd as the C# does — diameter, picture, landscape (gas giants in SelectHabitatPictures:
 //   landscape first) — one sample each, the landscape being Offset + Next(0, Count) of its own sample;
 // - the port changed no draw: the generation's Rnd / CryptoRnd draw counts, the state digest and the whole saved state
-//   with the landscape refs blanked are the values measured on the code before the port (commit c602b02);
+//   with the landscape refs blanked were the values measured on the code before the port (commit c602b02); they moved
+//   since with the faithful PictureRef and SetupSun's SelectHabitatPictures(star) call (2 Rnd draws per star,
+//   Galaxy.5.cs 1328; see the pins' reason comments);
 // - the UI uses the index directly (bitmap_29[ref]): every ref resolves to a file in the asset manifest, for the Galaxy
 //   Map / Intelligence / message pictures (landscapes/) and the ground report (planetmaps/);
 // - a save from before the port (test/fixtures/before-sim-message-pipeline.dwusave.gz, placeholder refs) loads with
@@ -207,16 +209,22 @@ describe('draw order (Galaxy.6.cs SelectXxxPlanet / SelectHabitatPictures)', () 
         }
     });
 
-    it('generation draws exactly as before the port (counts and state measured on the pre-port code)', () => {
-        // Values measured on commit c602b02 (placeholder landscape refs); the port changed only the landscape values.
+    it('generation draws as the C# (counts and state pinned; the landscape port itself changed no draw)', () => {
+        // Values measured on commit c602b02 (placeholder landscape refs); the landscape port changed only the landscape
+        // values. The draw counts / digests moved with SetupSun's SelectHabitatPictures(star) (Galaxy.5.cs 1328).
         // seed5Habitats and seed1SaveWithoutLandscapes also hold Habitat.PictureRef: re-measured after the faithful
         // pictureRef port, which test/habitatPictureRefs.test.ts checks with the picture refs blanked as well.
-        expect(measured.seed5Draws).toMatchPin('landscapeRefs.seed5Draws', { rnd: 175856, crypto: 364815 });
-        expect(measured.seed5Digest).toMatchPin('landscapeRefs.seed5Digest', '92e5c3c9a325a220');
+        // Moved {"rnd":175856,"crypto":364815} → {"rnd":169111,"crypto":352715}: SetupSun SelectHabitatPictures (Galaxy.5.cs 1323): star PictureRef/MapPictureRef draws (2026-10-04)
+        expect(measured.seed5Draws).toMatchPin('landscapeRefs.seed5Draws', {"rnd": 169111, "crypto": 352715});
+        // Moved "92e5c3c9a325a220" → "563e841e53e25225": SetupSun SelectHabitatPictures (Galaxy.5.cs 1323): star PictureRef/MapPictureRef draws (2026-10-04)
+        expect(measured.seed5Digest).toMatchPin('landscapeRefs.seed5Digest', "563e841e53e25225");
         // Moved #c1c7b97f32 → #3f3ecd6438: faithful habitat pictureRef (Galaxy.6.cs) (2026-10-04)
-        expect(measured.seed5Habitats).toMatchPin('landscapeRefs.seed5Habitats', "fc670e93621db6127454131478fb742e5dfe49ff");
-        expect(measured.seed1Draws).toMatchPin('landscapeRefs.seed1Draws', { rnd: 288729, crypto: 587179 });
-        expect(measured.seed1Digest).toMatchPin('landscapeRefs.seed1Digest', '0cecc3d70b1487e6');
+        // Moved #3f3ecd6438 → #49cd310363: SetupSun SelectHabitatPictures (Galaxy.5.cs 1323): star PictureRef/MapPictureRef draws (2026-10-04)
+        expect(measured.seed5Habitats).toMatchPin('landscapeRefs.seed5Habitats', "0c70d91aad0a30d6e5d939e033124dbc0a47d1c9");
+        // Moved {"rnd":288729,"crypto":587179} → {"rnd":262043,"crypto":528421}: SetupSun SelectHabitatPictures (Galaxy.5.cs 1323): star PictureRef/MapPictureRef draws (2026-10-04)
+        expect(measured.seed1Draws).toMatchPin('landscapeRefs.seed1Draws', {"rnd": 262043, "crypto": 528421});
+        // Moved "0cecc3d70b1487e6" → "4948f3713d8cdf2d": SetupSun SelectHabitatPictures (Galaxy.5.cs 1323): star PictureRef/MapPictureRef draws (2026-10-04)
+        expect(measured.seed1Digest).toMatchPin('landscapeRefs.seed1Digest', "4948f3713d8cdf2d");
         // The whole saved game, landscape refs blanked (on a loaded copy, so `game` keeps its refs).
         const time = new GalaxyTime();
         time.togglePause();
@@ -224,7 +232,8 @@ describe('draw order (Galaxy.6.cs SelectXxxPlanet / SelectHabitatPictures)', () 
         const copy = deserializeGame(serializeGame(game, time, start), gameData);
         for (const h of copy.game.galaxy.habitats) h.landscapePictureRef = -2;
         // Moved #f49403b7b3 → #869ba44598: faithful habitat pictureRef (Galaxy.6.cs) (2026-10-04)
-        expect(sha(serializeGame(copy.game, copy.time, start))).toMatchPin('landscapeRefs.seed1SaveWithoutLandscapes', "807e8031584be1083a010eeea94c4bb06ab0b8d8");
+        // Moved #869ba44598 → #47ed84cdb0: SetupSun SelectHabitatPictures (Galaxy.5.cs 1323): star PictureRef/MapPictureRef draws (2026-10-04)
+        expect(sha(serializeGame(copy.game, copy.time, start))).toMatchPin('landscapeRefs.seed1SaveWithoutLandscapes', "5e15481bfe1ff7abd0e06011cd0c0560b23933aa");
     });
 });
 

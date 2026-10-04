@@ -68,11 +68,16 @@ describe('map knowledge readers (Galaxy.4.cs 4635, Galaxy.5.cs 4496)', () => {
 describe('refuelling readers (Empire.6.cs 3905, Galaxy.6.cs 3219 / 3375)', () => {
     it('a refuelling base parked at a (non gas cloud) star is no refuelling point', () => {
         const g = createTickGame(gameData).galaxy;
-        const empire = g.empires.find((e) => e !== g.playerEmpire && e.pirateEmpireBaseHabitat === null && e.spacePorts.length > 0)!;
+        // An AI empire with a space port that has explored a normal star with no other refuelling point (the first such
+        // empire: which one has one depends on the seed's galaxy).
+        const emptyExploredSystem = (e: (typeof g.empires)[number]): number =>
+            g.systems.findIndex((s, k) => s.systemStar.category === HabitatCategoryType.Star && e.visibility.checkSystemExplored(k) && planetsOf(s).every((h) => h.basesAtHabitat.length === 0 && h.population.items.length === 0));
+        const empire = g.empires.find((e) => e !== g.playerEmpire && e.pirateEmpireBaseHabitat === null && e.spacePorts.length > 0 && emptyExploredSystem(e) >= 0)!;
+        expect(empire).toBeDefined();
         const port = empire.spacePorts[0] as BuiltObject;
         expect(port.isRefuellingDepot).toBe(true);
         // move the port from its colony to a normal star the empire has explored and that has no other refuelling point
-        const sysIndex = g.systems.findIndex((s, k) => s.systemStar.category === HabitatCategoryType.Star && empire.visibility.checkSystemExplored(k) && planetsOf(s).every((h) => h.basesAtHabitat.length === 0 && h.population.items.length === 0));
+        const sysIndex = emptyExploredSystem(empire);
         expect(sysIndex).toBeGreaterThanOrEqual(0);
         const star = g.systems[sysIndex].systemStar;
         const from = port.parentHabitat!;

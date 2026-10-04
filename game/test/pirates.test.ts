@@ -128,10 +128,21 @@ describe('createGame with piratePrevalence', () => {
         }
     });
 
-    it('no pirate base is in the same system as a populated independent colony', () => {
-        const game = createGame(opts());
+    it('no GenerateNewPirateEmpires base is in the same system as a populated independent colony', () => {
+        // Galaxy.9.cs GenerateNewPirateEmpires skips a fuel habitat in an independent colony's system. The extra faction
+        // near the player (Start.2.cs 1493-1533, after 'territoryReview') only keeps clear of the nearest
+        // non-independent colony (FindNearestColony(…, includeIndependentColonies: false), 1525), so it may share a
+        // system with one — seed 1 does since SetupSun's star picture draws moved the galaxy.
+        let beforeNearPlayer = -1;
+        const game = createGame({
+            ...opts(),
+            __phaseHook: (phase, galaxy) => {
+                if (phase === 'territoryReview') beforeNearPlayer = galaxy.pirateEmpires.length;
+            },
+        });
         const g = game.galaxy;
-        for (const pirate of g.pirateEmpires) {
+        expect(beforeNearPlayer).toBeGreaterThan(0);
+        for (const pirate of g.pirateEmpires.slice(0, beforeNearPlayer)) {
             const base = pirate.pirateEmpireBaseHabitat!;
             const sameSystemIndependent = g.habitats.some(
                 (h) => h.systemIndex === base.systemIndex && h.empire === g.independentEmpire && h.population.totalAmount > 0,
@@ -192,6 +203,7 @@ describe('createGame with piratePrevalence', () => {
         // (re-pinned M4q: InvadeUnwillingColonizationTargets draws Rnd.NextDouble in each game-start Empire.DoTasks)
         // Moved #44bb9b4aa2 → #b9c453c5c6: todosweep TODO(port) sweep: Galaxy.4.cs 2794 GenerateGasCloud places clouds in NebulaCloud locations (location/offset Rnd); Galaxy.6.cs 3714 FindNearestSystemGasCloudAsteroid sees Parent==null habitats (stars too), so SetupSun's spacing retries change the galaxy; Galaxy.8.cs 479-482 continental-planet lists; Start.2.cs 1484 Galaxy.DoTasks and 2035-2038 Capital.DoTasks at game start; Empire.9.cs 4772 GetOrders count in ProjectPrivateForceStructure; Galaxy.ResourceCurrentPrices in IdentifyResourceCentres; Habitat.cs 878 raid revenue, Empire.cs 1683 rebels, HabitatList.cs 553 MigrationFactor; Empire.1.cs 1021 / Empire.cs 1761 trade + space-port income in tribute; Empire.9.cs 5351 fuel costs; Galaxy.7.cs 4570-4594 trader refuel missions / retirement teardown; Galaxy.3.cs 1832 / 1851 docking under war / blockade; Galaxy.cs 3659/3681 mining rights, BaconGalaxy.cs 162 DetermineDefendingFirepower; Empire.9.cs 4035 CheckWhetherHabitatIsDangerous; Empire.9.cs 3071-3224 shared visibility; Race.cs 350-400 periodic levels; BuiltObject.cs 799 StrengthInNumbers; Empire.8.cs 16 CheckEmpireBuildingVictoryWonder; Empire.9.cs 4604 mission priority; Empire.cs 983 SpecialBonusDiplomacy; Empire.4.cs 4264 ruin colonization; Empire.7.cs 1429 purchase message; BaconGalaxy.cs 137 TargettingFactor; Galaxy.2.cs 5231 troop-general message; Start.cs 3954 AssignSystemName; Galaxy.6.cs 871 ClearColony (2026-09-26)
         // Moved #b9c453c5c6 → #80cfa6435b: orbits spaced so planets/moons never overlap (user deviation) (2026-10-03)
+        // Moved #80cfa6435b → #1d4581e78f: SetupSun SelectHabitatPictures (Galaxy.5.cs 1323): star PictureRef/MapPictureRef draws (2026-10-04)
         expect(a).toMatchPin('pirates.factions');
     });
 

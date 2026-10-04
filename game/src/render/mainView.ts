@@ -45,6 +45,7 @@ import {
     sampleCentreColour,
     scaleColour,
     starDiscUrl,
+    starPictureUrls,
     starSpriteUrls,
 } from './assets';
 import { DeepStarfield, deepStarfieldAlpha, systemPatchZoomAlpha, type PatchSystem } from './deepStarfield';
@@ -660,6 +661,10 @@ class SystemView {
         const f = 1 / z;
         const S = starSpritePx(star.diameter, z);
         const isBHOrSN = star.type === HabitatType.BlackHole || star.type === HabitatType.SuperNova;
+        // TODO(port): between method_60 and factor 500 the C# system pass also draws a disc-type star's list_6 texture,
+        // HabitatImageCache.FastGetImage(PictureRef) (MainView.1.cs method_78 / 783-786) — a habitat picture (0-13: a
+        // barren rock) under the galaxy pass's bitmap_196[MapPictureRef] icon (MainView.2.cs 5490-5500, drawn after
+        // it). Not drawn here: only the map-star icon shows in that band.
         if (!isBHOrSN && f < starDiscMaxFactor(star.type)) {
             this.mapIcon.visible = false;
             this.starSprite.visible = false;
@@ -1629,22 +1634,26 @@ export class MainView {
         }
 
         // Lazy per-habitat sprite loading: planets, moons and asteroids draw HabitatImageCache[PictureRef]
-        // (assets.ts habitatPictureUrls); stars their map / system art.
+        // (assets.ts habitatPictureUrls); stars bitmap_196[MapPictureRef] (a super nova bitmap_206[NovaImageIndexMajor],
+        // MainView.2.cs 5429-5438: assets.ts starPictureUrls) and, for a black hole, its system-zoom sprite.
         const lazyLoads: Promise<unknown>[] = [];
         for (const sv of this.systems) {
             const star = sv.system.systemStar;
             lazyLoads.push(
                 store
-                    .loadFirst(mapStarUrls(star), () => makeGlowTexture(starColors(star.type).glow, starColors(star.type).core))
+                    .loadFirst(starPictureUrls(star), () => makeGlowTexture(starColors(star.type).glow, starColors(star.type).core))
                     .then((tex) => {
                         sv.mapIcon.texture = tex;
                     }),
             );
-            lazyLoads.push(
-                store.loadFirst(starSpriteUrls(star), () => makeStarSpriteTexture(star.type)).then((tex) => {
-                    sv.starSprite.texture = tex;
-                }),
-            );
+            // Only a black hole shows starSprite (SystemView.update); the other stars' system art is the disc group.
+            if (star.type === HabitatType.BlackHole) {
+                lazyLoads.push(
+                    store.loadFirst(starSpriteUrls(star), () => makeStarSpriteTexture(star.type)).then((tex) => {
+                        sv.starSprite.texture = tex;
+                    }),
+                );
+            }
             for (const planet of sv.planets) {
                 lazyLoads.push(
                     store

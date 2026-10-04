@@ -1034,7 +1034,9 @@ function n0(v: number): string {
     return Math.round(v).toLocaleString('en-US');
 }
 
-/** A target's picture (method_7: BuiltObjectImages[PictureRef] / HabitatImages[PictureRef]). */
+/** A target's picture (method_7: BuiltObjectImages[PictureRef] / HabitatImages[PictureRef]). TODO(port): a star target
+ *  shows HabitatImages[star.PictureRef] in the C# (a map-star index, 0-13, read as a habitat picture); habitatImageUrl
+ *  gives its bitmap_196 map picture — ItemListPanel.cs 1653 / 2030 method_7 / method_9. */
 function targetPictureUrl(t: ActivityTarget): { url: string | null; rotate: boolean } {
     if (t instanceof BuiltObject) return { url: shipImageUrl(t), rotate: true };
     return { url: habitatImageUrl(t), rotate: false };

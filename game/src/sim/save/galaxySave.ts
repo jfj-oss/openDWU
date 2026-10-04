@@ -66,7 +66,7 @@ import { Ruin } from '../ruins';
 import { EmpireTerritory } from '../territory';
 import { TradeableItem } from '../tradeItems';
 import { Habitat } from '../types';
-import { migrateLegacyLandscapePictureRef, migratePrePortPictureRef } from '../galaxyImages';
+import { migrateLegacyLandscapePictureRef, migratePreMapPictureRef, migratePrePortPictureRef } from '../galaxyImages';
 import { EmpireVisibility, GalaxyResourceMap, SystemVisibility } from '../visibility';
 import { Weapon } from '../weapon';
 
@@ -91,6 +91,10 @@ export interface GalaxySaveJSON {
      *  SelectHabitatPictures, Galaxy.6.cs). Absent in older saves, whose planet / moon / asteroid refs are the port's
      *  placeholders and are migrated on load (migratePictureRefs). */
     habitatPictureRefs?: 'GalaxyImages';
+    /** 'MapStarImages': Habitat.MapPictureRef is saved (stars: Galaxy.5.cs SetupSun's SelectHabitatPictures draw, the
+     *  bitmap_196 index; gas clouds: Galaxy.4.cs GenerateGasCloud's 16-23). Absent in older saves, which have no
+     *  MapPictureRef: it is derived on load from the picture the old renderer showed (migrateMapPictureRefs). */
+    habitatMapPictureRefs?: 'MapStarImages';
 }
 
 // ---------------------------------------------------------------------------
@@ -422,7 +426,7 @@ export function galaxyToJSON(galaxy: Galaxy): GalaxySaveJSON {
     const encoder = new GraphEncoder(CODEC_OPTIONS, externalsByObject(staticTablesOfGalaxy(galaxy)));
     const encoded = encoder.encode(galaxy, 'galaxy');
     const sideTables = encoder.encode(collectSideTables(galaxy, [...encoder.visited()]), 'sideTables');
-    return { version: 2, shapes: encoder.shapes, galaxy: encoded, territory: encodeTerritory(territoryGrid(galaxy.empireTerritory)), sideTables, baseTechCost: galaxy.baseTechCost, habitatPictureRefs: 'GalaxyImages' };
+    return { version: 2, shapes: encoder.shapes, galaxy: encoded, territory: encodeTerritory(territoryGrid(galaxy.empireTerritory)), sideTables, baseTechCost: galaxy.baseTechCost, habitatPictureRefs: 'GalaxyImages', habitatMapPictureRefs: 'MapStarImages' };
 }
 
 /**
@@ -650,6 +654,16 @@ function migratePictureRefs(galaxy: Galaxy): void {
     }
 }
 
+/**
+ * Habitat.MapPictureRef of a save written before it was ported (no GalaxySaveJSON.habitatMapPictureRefs): each star gets
+ * the bitmap_196 index of the map picture the old renderer showed for it (its SelectStar PictureRef mod the type's
+ * folder count), a gas cloud GenerateGasCloud's 16-23, anything else 0 (galaxyImages.ts migratePreMapPictureRef).
+ * PictureRef is left as saved (a star's is SelectStar's; nothing draws it).
+ */
+function migrateMapPictureRefs(galaxy: Galaxy): void {
+    for (const habitat of galaxy.habitats) habitat.mapPictureRef = migratePreMapPictureRef(habitat.category, habitat.type, habitat.pictureRef);
+}
+
 /** The save's class registry and revive hooks, for the replica decoder (same prototypes as a loaded save). */
 export function replicaCodecOptions(): Pick<GraphCodecOptions, 'classes' | 'revive'> {
     return { classes: CLASSES, revive: CODEC_OPTIONS.revive };
@@ -737,6 +751,7 @@ export function galaxyFromJSON(obj: GalaxySaveJSON, gameData: GameData, codec: {
     }
     migrateLandscapePictureRefs(galaxy);
     if (obj.habitatPictureRefs !== 'GalaxyImages') migratePictureRefs(galaxy);
+    if (obj.habitatMapPictureRefs !== 'MapStarImages') migrateMapPictureRefs(galaxy);
     // --- Territory grid: restored as saved. Saves without it (older version-2 files) fall back to a full
     //     ReviewEmpireTerritory (Start.2.cs 1485), which also recalculates the colony influence radii.
     const territory = galaxy.empireTerritory as unknown as { territory: TerritoryGrid };

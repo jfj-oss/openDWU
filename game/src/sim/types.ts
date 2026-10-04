@@ -198,6 +198,9 @@ export class Habitat {
         recalculateMaximumPopulation(this);
     }
     pictureRef = 0; // C#: short
+    // C#: byte MapPictureRef (Habitat.cs 41 / 950): a star's bitmap_196 map picture (Galaxy.5.cs SetupSun 1323 /
+    // Galaxy.6.cs SelectHabitatPictures 2214-2237), a gas cloud's 16-23 (Galaxy.4.cs GenerateGasCloud 2923), else 0.
+    mapPictureRef = 0;
     landscapePictureRef = 0; // C#: short
     private _baseQuality = 1; // C#: float _BaseQuality = 1f
     get baseQuality(): number {

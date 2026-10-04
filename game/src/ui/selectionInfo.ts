@@ -44,7 +44,7 @@ import { fighterImageUrl } from '../render/fighterLayer';
 import { FighterMissionType, Fighter, captainFightersBonus } from '../sim/combat/fighters';
 import { CharacterRole, CharacterSkillType } from '../sim/characters';
 import { CHARACTER_ROLE, CHARACTER_SKILL, resolveEnumTextDescription } from '../sim/enumText';
-import { cloudUrls, habitatPictureUrl, mapStarUrls } from '../render/assets';
+import { cloudUrls, habitatPictureUrl, mapStarUrls, starPictureUrls } from '../render/assets';
 import { racePortraitUrl } from './empireEmblem';
 import { abundancePercentText } from './resourceAbundance';
 import { habitatTypeLabel, hyperjumpStatusText, invasionVsText, missionTargetText, missionTypeLabel, resourceIconUrl, threatRows, troopStrengthText } from './hud';
@@ -279,7 +279,7 @@ export function facilityImageUrl(pictureRef: number): string {
 }
 
 /** The small picture of a habitat (habitatImageCache GetImagesSmall): the planet / moon / asteroid / cloud sprite, a
- *  star's map icon. Null without art. */
+ *  star's map picture bitmap_196[MapPictureRef] (ItemListPanel.cs 951; a super nova's too). Null without art. */
 export function habitatImageUrl(h: Habitat): string | null {
     switch (h.category) {
         case HabitatCategoryType.Star:
@@ -1247,12 +1247,13 @@ export function habitatInfo(ctx: InfoContext, h: Habitat): InfoModel {
         rows.push({ kind: 'band' });
     }
 
-    // Picture: the planet art at its diameter (method_54) faded 0.33; a star sits 55% off the left edge.
+    // Picture: the planet art at its diameter (method_54) faded 0.33; a star sits 55% off the left edge. method_54
+    // draws a star's bitmap_196[MapPictureRef], a super nova's bitmap_206[NovaImageIndexMajor] (starPictureUrls).
     const isStar = h.category === HabitatCategoryType.Star;
     return {
         title,
         corner,
-        picture: picture(habitatImageUrl(h), isStar ? h.diameter : h.diameter, 0, isStar),
+        picture: picture(isStar ? (starPictureUrls(h)[0] ?? null) : habitatImageUrl(h), isStar ? h.diameter : h.diameter, 0, isStar),
         rows,
         labelWidth: INFO.labelWidthHabitat - 5,
         automated: false,
@@ -1438,6 +1439,7 @@ export function systemInfoModel(ctx: InfoContext, sys: SystemInfo): InfoModel {
     return {
         title: [{ text: explored ? name : `(Unknown ${kind})`, color: titleColor }],
         corner: null,
+        // Main.Part10.cs 1422: bitmap_196[SystemStar.MapPictureRef] (a super nova's too), a gas cloud's bitmap_4.
         picture: picture(star.category !== HabitatCategoryType.GasCloud ? (mapStarUrls(star)[0] ?? null) : habitatImageUrl(star), star.diameter, 0, star.category === HabitatCategoryType.Star),
         rows,
         labelWidth: INFO.labelWidth - 5,

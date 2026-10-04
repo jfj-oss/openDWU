@@ -4,7 +4,8 @@
 // (HabitatImageCache.cs GenerateHabitatImageFilepaths): HabitatImageOffset* / HabitatImageCount* (GalaxyImages.cs 11-58),
 // in the file order of HABITAT_IMAGE_SETS below — 665 fixed pictures (0-664, HabitatImageOffsetOTHER = 665), then a theme
 // set's images/environment/planets/other/*.png (render/assets.ts habitatPictureUrls). Stars draw by MapPictureRef
-// (MapStarImageOffset* / Count*, the LoadMapStars bitmap_196 order) and gas clouds by their own pictures, not this table.
+// (MapStarImageOffset* / Count*, the LoadMapStars bitmap_196 order, MAP_STAR_IMAGE_FOLDERS) and gas clouds by their own
+// pictures, not this table. (A star's PictureRef is a map-star index too, Galaxy.6.cs SelectHabitatPictures 2214-2237.)
 //
 // Habitat.LandscapePictureRef is an index into the app's landscape bitmaps (LandscapeImageOffset* /
 // LandscapeImageCount*, lines 75-94; Main.Part12.cs LoadEnvLandscapes, bitmap_29), loaded in this order: barrenrock,
@@ -86,6 +87,53 @@ export const MapStarImageOffsetSuperGiant = 7;
 export const MapStarImageOffsetWhiteDwarf = 8;
 export const MapStarImageOffsetNeutron = 11;
 export const MapStarImageOffsetBlackHole = 13;
+
+/**
+ * Main.Part13.cs LoadMapStars 993-1051: the map-star folders (under images/environment/mapstars/) in bitmap_196 order
+ * with their GalaxyImages offset and count. bitmap_196 is the folders' *.png listings concatenated (Directory.GetFiles
+ * order); in the shipped install each folder holds exactly its count, so bitmap_196[MapPictureRef] is the
+ * (MapPictureRef - offset)-th file of the star type's folder. 14 pictures (0-13).
+ */
+export const MAP_STAR_IMAGE_FOLDERS: readonly { folder: string; type: HabitatType; offset: number; count: number }[] = [
+    { folder: 'mainsequence', type: HabitatType.MainSequence, offset: MapStarImageOffsetMainSequence, count: MapStarImageCountMainSequence },
+    { folder: 'redgiant', type: HabitatType.RedGiant, offset: MapStarImageOffsetRedGiant, count: MapStarImageCountRedGiant },
+    { folder: 'supergiant', type: HabitatType.SuperGiant, offset: MapStarImageOffsetSuperGiant, count: MapStarImageCountSuperGiant },
+    { folder: 'whitedwarf', type: HabitatType.WhiteDwarf, offset: MapStarImageOffsetWhiteDwarf, count: MapStarImageCountWhiteDwarf },
+    { folder: 'neutron', type: HabitatType.Neutron, offset: MapStarImageOffsetNeutron, count: MapStarImageCountNeutron },
+    { folder: 'blackhole', type: HabitatType.BlackHole, offset: MapStarImageOffsetBlackHole, count: MapStarImageCountBlackHole },
+];
+
+/** The number of map-star pictures (bitmap_196 of the shipped install): 14. */
+export const MAP_STAR_IMAGE_COUNT = MapStarImageOffsetBlackHole + MapStarImageCountBlackHole;
+
+/**
+ * The map-star range Galaxy.6.cs SelectHabitatPictures (2214-2237) gives a star of this type — PictureRef and
+ * MapPictureRef are each MapStarImageOffsetX + Rnd.Next(0, MapStarImageCountX) — or null (SuperNova: no draw, the
+ * SelectStar values PictureRef 0 / MapPictureRef 0 stay; not a star type).
+ */
+export function mapStarImageRangeOfType(type: HabitatType): readonly [offset: number, count: number] | null {
+    const f = MAP_STAR_IMAGE_FOLDERS.find((x) => x.type === type);
+    return f === undefined ? null : [f.offset, f.count];
+}
+
+/**
+ * Galaxy.4.cs GenerateGasCloud 2923-2947 (and the (type, x, y) overload 3040-3064): a gas cloud's MapPictureRef by
+ * its type, 16-23 (the C# literals; no GalaxyImages constant, not a bitmap_196 index — the app draws clouds from
+ * their own art). 0 for any other type (the byte default).
+ */
+export function gasCloudMapPictureRef(type: HabitatType): number {
+    switch (type) {
+        case HabitatType.Ammonia: return 16;
+        case HabitatType.Argon: return 17;
+        case HabitatType.CarbonDioxide: return 18;
+        case HabitatType.Chlorine: return 19;
+        case HabitatType.Helium: return 20;
+        case HabitatType.Hydrogen: return 21;
+        case HabitatType.NitrogenOxygen: return 22;
+        case HabitatType.Oxygen: return 23;
+        default: return 0;
+    }
+}
 
 /**
  * HabitatImageCache.cs GenerateHabitatImageFilepaths 296-343: the habitat pictures in index order — `count` files
@@ -328,4 +376,24 @@ export function migratePrePortPictureRef(ref: number, category: HabitatCategoryT
     if (list[i] >= 0) return list[i];
     const range = habitatImageRangeOf(category, type) ?? [HabitatImageOffsetOcean, HabitatImageCountOcean];
     return range[0] + (i % range[1]);
+}
+
+// --- MapPictureRef save migration (our save format, no C# counterpart).
+// Saves written before Habitat.MapPictureRef was ported (they lack GalaxySaveJSON.habitatMapPictureRefs) have no
+// MapPictureRef at all, and their stars keep SelectStar's PictureRef (83 / 84 main sequence, 85 red giant, 86 super
+// giant, 87 white dwarf, 88 neutron, 95 black hole, 0 super nova): the port's SetupSun never made the
+// SelectHabitatPictures(star) call. The old renderer showed a star's map picture as file `PictureRef mod n` of its
+// type's mapstars/<type>/ folder (render/assets.ts mapStarUrls → pickFromFolder over the manifest listing); in
+// bitmap_196 that file is MapStarImageOffset<Type> + (PictureRef mod MapStarImageCount<Type>) — the folder counts of
+// the shipped install — so each star keeps the very picture it showed. A super nova gets SelectStar's 0 (its
+// SelectHabitatPictures case draws nothing), a gas cloud GenerateGasCloud's 16-23, any other habitat the byte default 0.
+
+/** A pre-MapPictureRef save's habitat as the MapPictureRef the port now stores (see above). */
+export function migratePreMapPictureRef(category: HabitatCategoryType, type: HabitatType, pictureRef: number): number {
+    if (category === HabitatCategoryType.GasCloud) return gasCloudMapPictureRef(type);
+    if (category !== HabitatCategoryType.Star) return 0;
+    const range = mapStarImageRangeOfType(type);
+    if (range === null) return 0; // SuperNova (SelectStar mapPictureRef = 0)
+    const ref = Number.isInteger(pictureRef) ? pictureRef : 0;
+    return range[0] + (((ref % range[1]) + range[1]) % range[1]);
 }

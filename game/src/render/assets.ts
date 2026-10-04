@@ -6,16 +6,16 @@
 // browser can't enumerate the install's art folders, so
 // `scripts/gen-asset-manifest.mjs` (predev/prebuild) writes
 // public/asset-manifest.json = { "<folder under images/environment/>": [sorted
-// file names] }; loadManifest() fetches it at boot and the star / gas-cloud URL
-// builders below pick a real file out of their folder via pictureRef modulo
-// the folder's file count. Without a manifest (no install) every builder
+// file names] }; loadManifest() fetches it at boot. Stars use Habitat.MapPictureRef as the index of the original's
+// bitmap_196 (mapStarImageUrls, the LoadMapStars folder listings); the gas-cloud URL builder picks a real file out of
+// its folder via pictureRef modulo the folder's file count. Without a manifest (no install) every builder
 // returns [] and the store falls back to generated textures — the view must
 // render (and stay console-clean) with or without the install.
 
 import { Assets, Texture } from 'pixi.js';
-import { Habitat, HabitatType } from '../sim/types';
-import { HABITAT_IMAGE_COUNT, habitatImageFile } from '../sim/galaxyImages';
-import { themedAssetUrl, themeOtherPlanetUrls } from '../themeAssets';
+import { Habitat, HabitatCategoryType, HabitatType } from '../sim/types';
+import { HABITAT_IMAGE_COUNT, MAP_STAR_IMAGE_FOLDERS, habitatImageFile } from '../sim/galaxyImages';
+import { themeArtFolder, themedAssetUrl, themeOtherPlanetUrls } from '../themeAssets';
 
 // ---------------------------------------------------------------------------
 // Fallback colors (match the original art palettes: yellow/white main
@@ -84,9 +84,8 @@ export async function loadManifest(): Promise<void> {
 
 /**
  * Pick a real file from a manifest folder: `pictureRef` modulo the folder's
- * file count (stars and gas clouds: the port does not model their own picture
- * indices, see sim/galaxy.ts SetupSun). Returns [] when the folder is unknown
- * or empty.
+ * file count (gas clouds: the port does not model their own picture indices).
+ * Returns [] when the folder is unknown or empty.
  */
 export function pickFromFolder(folder: string, pictureRef: number): string[] {
     const files = MANIFEST[folder];
@@ -105,38 +104,77 @@ export function manifestFiles(key: string): string[] | undefined {
     return MANIFEST[key];
 }
 
-// Port of Main.Part13.cs LoadMapStars: map-star icons live under
-// images/environment/mapstars/<type>/ and are indexed by MapPictureRef.
-const STAR_MAP_FOLDERS: Record<string, string> = {
-    [HabitatType.MainSequence]: 'mainsequence',
-    [HabitatType.RedGiant]: 'redgiant',
-    [HabitatType.SuperGiant]: 'supergiant',
-    [HabitatType.WhiteDwarf]: 'whitedwarf',
-    [HabitatType.Neutron]: 'neutron',
-    [HabitatType.BlackHole]: 'blackhole',
-    [HabitatType.SuperNova]: 'flares',
-};
+/**
+ * Port of Main.Part13.cs LoadMapStars 993-1051: bitmap_196, the map-star pictures — every *.png of
+ * images/environment/mapstars/<folder>/ for the folders mainsequence, redgiant, supergiant, whitedwarf, neutron,
+ * blackhole (sim/galaxyImages.ts MAP_STAR_IMAGE_FOLDERS), concatenated in that order (the manifest's listing is the
+ * Directory.GetFiles order). LoadMapStars reads the stock install only (Main.Part12.cs 1018; themeAssets.ts BASE_ONLY).
+ * Index i is Habitat.MapPictureRef i (GalaxyImages.cs 59-71: 0-5 main sequence, 6 red giant, 7 super giant, 8-10
+ * white dwarf, 11-12 neutron, 13 black hole). [] without a manifest.
+ */
+export function mapStarImageUrls(): string[] {
+    const urls: string[] = [];
+    for (const { folder } of MAP_STAR_IMAGE_FOLDERS) for (const f of MANIFEST[`mapstars/${folder}`] ?? []) urls.push(`${IMG}/environment/mapstars/${folder}/${f}`);
+    return urls;
+}
 
-export function mapStarUrls(habitat: Habitat): string[] {
-    const folder = `mapstars/${STAR_MAP_FOLDERS[habitat.type] ?? 'mainsequence'}`;
-    return pickFromFolder(folder, habitat.pictureRef);
+/** bitmap_196[mapPictureRef] (mapStarImageUrls), or null outside the table. */
+export function mapStarImageUrl(mapPictureRef: number): string | null {
+    if (!Number.isInteger(mapPictureRef) || mapPictureRef < 0) return null;
+    return mapStarImageUrls()[mapPictureRef] ?? null;
 }
 
 /**
- * Full star sprites at system zoom (Main.Part13.cs LoadStars): one of three
- * shared discs (`stars/star_disc_<n>.png`, n = pictureRef % 3) plus an
- * animated corona ray frame (`stars/rays/CoronaA-<nnnn>.png`). Black holes
- * use the dedicated disc + accretion-disc art instead.
+ * A star's map picture, bitmap_196[habitat.MapPictureRef], as a loadFirst list ([] for a habitat that is no star or
+ * without art). The C# draws it for every star wherever it shows a star's picture: the Main View galaxy pass
+ * (MainView.2.cs 5437 texture2D_18 = bitmap_196) and the system-zoom discs' tint (MainView.1.cs 741 method_120), the
+ * selected system's panel (Main.Part10.cs 1422) and the item lists (ItemListPanel.cs 951) — a super nova too, whose
+ * MapPictureRef is SelectStar's 0; the Main View and the habitat panel draw a super nova's own picture instead
+ * (starPictureUrls).
+ */
+export function mapStarUrls(habitat: Habitat): string[] {
+    if (habitat.category !== HabitatCategoryType.Star) return [];
+    const url = mapStarImageUrl(habitat.mapPictureRef);
+    return url === null ? [] : [url];
+}
+
+/**
+ * Port of Main.Part13.cs 1189-1215: bitmap_206, the super-nova pictures — every *.png of images/environment/supernovae/
+ * (the theme's folder when it holds a *.png: themeAssets.ts FOLDER_RULES), Directory.GetFiles order. Indexed by
+ * Habitat.NovaImageIndexMajor (Galaxy.5.cs SetupSun 1357, Rnd.Next(0, NovaImageCountMajor = 20)).
+ */
+export function supernovaImageUrls(): string[] {
+    const theme = themeArtFolder('images/environment/supernovae');
+    if (theme !== null) return theme.files.filter((f) => f.toLowerCase().endsWith('.png')).map((f) => theme.urlOf(f));
+    return (MANIFEST['supernovae'] ?? []).map((f) => `${IMG}/environment/supernovae/${f}`);
+}
+
+/**
+ * The picture of a star where the C# draws it with its own art (MainView.cs method_54 — the selection panel's habitat
+ * picture and the hover panel, Main.Part10.cs 1193-1205 — and the Main View galaxy pass, MainView.2.cs 5429-5438): a
+ * super nova's bitmap_206[NovaImageIndexMajor], any other star's bitmap_196[MapPictureRef] (mapStarUrls).
+ */
+export function starPictureUrls(habitat: Habitat): string[] {
+    if (habitat.category === HabitatCategoryType.Star && habitat.type === HabitatType.SuperNova) {
+        const url = supernovaImageUrls()[habitat.novaImageIndexMajor];
+        return url === undefined ? [] : [url];
+    }
+    return mapStarUrls(habitat);
+}
+
+/**
+ * The black hole's system-zoom sprite (f < 150, MainView.1.cs 649-722): a still accretion frame
+ * (stars/blackhole/BlkHole-0001.png, the first of the method_117 animation frames), else star_blackhole_0.png.
+ * TODO(port): the C# animates it — star_blackhole_0 (texture2D_12[0]) drawn three times rotating, tinted by
+ * HabitatIndex % 4, under the BlkHole-* frames (texture2D_13) at 15 fps — MainView.1.cs method_76 649-722. [] for any
+ * other star (their system-zoom art is the disc + corona group, mainView.ts buildStarDiscs).
  */
 export function starSpriteUrls(habitat: Habitat): string[] {
-    if (habitat.type === HabitatType.BlackHole) {
-        const urls = [...pickFromFolder('stars/blackhole', habitat.pictureRef)];
-        urls.push(`${IMG}/environment/stars/star_blackhole_0.png`);
-        return urls;
-    }
-    const disc = `${IMG}/environment/stars/star_disc_${habitat.pictureRef % 3}.png`;
-    const rays = pickFromFolder('stars/rays', habitat.pictureRef);
-    return [disc, ...rays];
+    if (habitat.type !== HabitatType.BlackHole) return [];
+    const frames = MANIFEST['stars/blackhole'] ?? [];
+    const urls = frames.length > 0 ? [`${IMG}/environment/stars/blackhole/${frames[0]}`] : [];
+    urls.push(`${IMG}/environment/stars/star_blackhole_0.png`);
+    return urls;
 }
 
 // Task 02c2: the GPU renderer draws system-zoom stars as two tinted,

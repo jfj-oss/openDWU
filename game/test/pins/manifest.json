@@ -42,14 +42,14 @@
       "kind": "inline",
       "file": "test/characters.test.ts",
       "test": "creates the C# starting characters, deterministic Rnd use",
-      "anchor": "expect(activationsAt).toMatchPin('characters.activationsAt', 49);"
+      "anchor": "expect(activationsAt).toMatchPin('characters.activationsAt', 31);"
     },
     {
       "key": "characters.dhayutLeaderColonyHappiness",
       "kind": "inline",
       "file": "test/characters.test.ts",
       "test": "bonus getters read the leader and the colony characters (bonuses known only)",
-      "anchor": "expect(leader.colonyHappiness).toMatchPin('characters.dhayutLeaderColonyHappiness', 10);"
+      "anchor": "expect(leader.colonyHappiness).toMatchPin('characters.dhayutLeaderColonyHappiness', 0);"
     },
     {
       "key": "characters.pirateRoles",
@@ -84,7 +84,7 @@
       "kind": "inline",
       "file": "test/forceStructure.test.ts",
       "test": "tech 0.5, age 1: explorers + construction ships; freighters and mining ships; deterministic",
-      "anchor": "expect(a[0].targets.length).toMatchPin('forceStructure.playerTargets', 25);"
+      "anchor": "expect(a[0].targets.length).toMatchPin('forceStructure.playerTargets', 83);"
     },
     {
       "key": "forceStructure.age0Private",
@@ -98,14 +98,14 @@
       "kind": "inline",
       "file": "test/forceStructure.test.ts",
       "test": "colony economy at the DoTasks point: tax snapshot −ColonyStateSupportCost, income 0",
-      "anchor": "expect(cap.taxRate).toMatchPin('forceStructure.capitalTaxRate', 0.09000000357627869);"
+      "anchor": "expect(cap.taxRate).toMatchPin('forceStructure.capitalTaxRate', 0.029999999329447746);"
     },
     {
       "key": "forceStructure.capitalTaxRevenue",
       "kind": "inline",
       "file": "test/forceStructure.test.ts",
       "test": "colony economy at the DoTasks point: tax snapshot −ColonyStateSupportCost, income 0",
-      "anchor": "expect(cap.annualTaxRevenue).toMatchPin('forceStructure.capitalTaxRevenue', 4593.410891068567);"
+      "anchor": "expect(cap.annualTaxRevenue).toMatchPin('forceStructure.capitalTaxRevenue', 183.11541350972084);"
     },
     {
       "key": "game.capitals",
@@ -118,43 +118,43 @@
       "key": "pictureRefs.seed5Draws",
       "kind": "inline",
       "file": "test/habitatPictureRefs.test.ts",
-      "test": "generation draws exactly as before the port (counts and state measured on the pre-port code, 29dfa54)",
-      "anchor": "expect(measured.seed5Draws).toMatchPin('pictureRefs.seed5Draws', { rnd: 175856, crypto: 364815 });"
+      "test": "generation draws as the C# (counts and state pinned; the PictureRef port itself changed no draw)",
+      "anchor": "expect(measured.seed5Draws).toMatchPin('pictureRefs.seed5Draws', {\"rnd\": 169111, \"crypto\": 352715});"
     },
     {
       "key": "pictureRefs.seed5Digest",
       "kind": "inline",
       "file": "test/habitatPictureRefs.test.ts",
-      "test": "generation draws exactly as before the port (counts and state measured on the pre-port code, 29dfa54)",
-      "anchor": "expect(measured.seed5Digest).toMatchPin('pictureRefs.seed5Digest', '92e5c3c9a325a220');"
+      "test": "generation draws as the C# (counts and state pinned; the PictureRef port itself changed no draw)",
+      "anchor": "expect(measured.seed5Digest).toMatchPin('pictureRefs.seed5Digest', \"563e841e53e25225\");"
     },
     {
       "key": "pictureRefs.seed5HabitatsWithoutPictures",
       "kind": "inline",
       "file": "test/habitatPictureRefs.test.ts",
-      "test": "generation draws exactly as before the port (counts and state measured on the pre-port code, 29dfa54)",
-      "anchor": "expect(measured.seed5HabitatsWithoutPictures).toMatchPin('pictureRefs.seed5HabitatsWithoutPictures', '0985ec4a6de10a62bc19d86b45d946a384f25873');"
+      "test": "generation draws as the C# (counts and state pinned; the PictureRef port itself changed no draw)",
+      "anchor": "expect(measured.seed5HabitatsWithoutPictures).toMatchPin('pictureRefs.seed5HabitatsWithoutPictures', \"a1a3e179c8958a632f94a36c4700a84da6a17a95\");"
     },
     {
       "key": "pictureRefs.seed1Draws",
       "kind": "inline",
       "file": "test/habitatPictureRefs.test.ts",
-      "test": "generation draws exactly as before the port (counts and state measured on the pre-port code, 29dfa54)",
-      "anchor": "expect(measured.seed1Draws).toMatchPin('pictureRefs.seed1Draws', { rnd: 288729, crypto: 587179 });"
+      "test": "generation draws as the C# (counts and state pinned; the PictureRef port itself changed no draw)",
+      "anchor": "expect(measured.seed1Draws).toMatchPin('pictureRefs.seed1Draws', {\"rnd\": 262043, \"crypto\": 528421});"
     },
     {
       "key": "pictureRefs.seed1Digest",
       "kind": "inline",
       "file": "test/habitatPictureRefs.test.ts",
-      "test": "generation draws exactly as before the port (counts and state measured on the pre-port code, 29dfa54)",
-      "anchor": "expect(measured.seed1Digest).toMatchPin('pictureRefs.seed1Digest', '0cecc3d70b1487e6');"
+      "test": "generation draws as the C# (counts and state pinned; the PictureRef port itself changed no draw)",
+      "anchor": "expect(measured.seed1Digest).toMatchPin('pictureRefs.seed1Digest', \"4948f3713d8cdf2d\");"
     },
     {
       "key": "pictureRefs.seed1SaveWithoutPictures",
       "kind": "inline",
       "file": "test/habitatPictureRefs.test.ts",
-      "test": "generation draws exactly as before the port (counts and state measured on the pre-port code, 29dfa54)",
-      "anchor": "expect(sha(JSON.stringify(obj))).toMatchPin('pictureRefs.seed1SaveWithoutPictures', '151f4ed001f094018596a4e91452651fd48b3ccb');"
+      "test": "generation draws as the C# (counts and state pinned; the PictureRef port itself changed no draw)",
+      "anchor": "expect(sha(JSON.stringify(obj))).toMatchPin('pictureRefs.seed1SaveWithoutPictures', \"4139f9fa81a480bf7f5e3e80849933529785fdb5\");"
     },
     {
       "key": "independentTraders.popularSmallFreighters",
@@ -175,21 +175,21 @@
       "kind": "inline",
       "file": "test/independentTraders.test.ts",
       "test": "seed 1: count, ownership, placement at non-visible independent colonies",
-      "anchor": "expect(cols.length).toMatchPin('independentTraders.independentColonies', 10);"
+      "anchor": "expect(cols.length).toMatchPin('independentTraders.independentColonies', 11);"
     },
     {
       "key": "independentTraders.target",
       "kind": "inline",
       "file": "test/independentTraders.test.ts",
       "test": "seed 1: count, ownership, placement at non-visible independent colonies",
-      "anchor": "expect(Math.min(Math.trunc(pop / 20000000), cols.length * 15)).toMatchPin('independentTraders.target', 150);"
+      "anchor": "expect(Math.min(Math.trunc(pop / 20000000), cols.length * 15)).toMatchPin('independentTraders.target', 165);"
     },
     {
       "key": "independentTraders.traders",
       "kind": "inline",
       "file": "test/independentTraders.test.ts",
       "test": "seed 1: count, ownership, placement at non-visible independent colonies",
-      "anchor": "expect(traders.length).toMatchPin('independentTraders.traders', 150);"
+      "anchor": "expect(traders.length).toMatchPin('independentTraders.traders', 165);"
     },
     {
       "key": "independentTraders.perColony",
@@ -210,7 +210,7 @@
       "kind": "inline",
       "file": "test/independentTraders.test.ts",
       "test": "seed 1: exact Rnd draws, deterministic",
-      "anchor": "expect(a.log.length).toMatchPin('independentTraders.draws', 1570);"
+      "anchor": "expect(a.log.length).toMatchPin('independentTraders.draws', 1727);"
     },
     {
       "key": "independentTraders.lastDraws",
@@ -231,56 +231,56 @@
       "kind": "inline",
       "file": "test/independentTraders.test.ts",
       "test": "a second call tops up to the target only (num2 = 0 → no draws)",
-      "anchor": "expect(g.independentEmpire!.privateBuiltObjects.length).toMatchPin('independentTraders.tradersAfterSecondCall', 150);"
+      "anchor": "expect(g.independentEmpire!.privateBuiltObjects.length).toMatchPin('independentTraders.tradersAfterSecondCall', 165);"
     },
     {
       "key": "independentTraders.fallbackTraders",
       "kind": "inline",
       "file": "test/independentTraders.test.ts",
       "test": "fallback: no popular freighters → designs generated from the independent spec per playable race",
-      "anchor": "expect(traders.length).toMatchPin('independentTraders.fallbackTraders', 150);"
+      "anchor": "expect(traders.length).toMatchPin('independentTraders.fallbackTraders', 165);"
     },
     {
       "key": "landscapeRefs.seed5Draws",
       "kind": "inline",
       "file": "test/landscapePictureRefs.test.ts",
-      "test": "generation draws exactly as before the port (counts and state measured on the pre-port code)",
-      "anchor": "expect(measured.seed5Draws).toMatchPin('landscapeRefs.seed5Draws', { rnd: 175856, crypto: 364815 });"
+      "test": "generation draws as the C# (counts and state pinned; the landscape port itself changed no draw)",
+      "anchor": "expect(measured.seed5Draws).toMatchPin('landscapeRefs.seed5Draws', {\"rnd\": 169111, \"crypto\": 352715});"
     },
     {
       "key": "landscapeRefs.seed5Digest",
       "kind": "inline",
       "file": "test/landscapePictureRefs.test.ts",
-      "test": "generation draws exactly as before the port (counts and state measured on the pre-port code)",
-      "anchor": "expect(measured.seed5Digest).toMatchPin('landscapeRefs.seed5Digest', '92e5c3c9a325a220');"
+      "test": "generation draws as the C# (counts and state pinned; the landscape port itself changed no draw)",
+      "anchor": "expect(measured.seed5Digest).toMatchPin('landscapeRefs.seed5Digest', \"563e841e53e25225\");"
     },
     {
       "key": "landscapeRefs.seed5Habitats",
       "kind": "inline",
       "file": "test/landscapePictureRefs.test.ts",
-      "test": "generation draws exactly as before the port (counts and state measured on the pre-port code)",
-      "anchor": "expect(measured.seed5Habitats).toMatchPin('landscapeRefs.seed5Habitats', \"fc670e93621db6127454131478fb742e5dfe49ff\");"
+      "test": "generation draws as the C# (counts and state pinned; the landscape port itself changed no draw)",
+      "anchor": "expect(measured.seed5Habitats).toMatchPin('landscapeRefs.seed5Habitats', \"0c70d91aad0a30d6e5d939e033124dbc0a47d1c9\");"
     },
     {
       "key": "landscapeRefs.seed1Draws",
       "kind": "inline",
       "file": "test/landscapePictureRefs.test.ts",
-      "test": "generation draws exactly as before the port (counts and state measured on the pre-port code)",
-      "anchor": "expect(measured.seed1Draws).toMatchPin('landscapeRefs.seed1Draws', { rnd: 288729, crypto: 587179 });"
+      "test": "generation draws as the C# (counts and state pinned; the landscape port itself changed no draw)",
+      "anchor": "expect(measured.seed1Draws).toMatchPin('landscapeRefs.seed1Draws', {\"rnd\": 262043, \"crypto\": 528421});"
     },
     {
       "key": "landscapeRefs.seed1Digest",
       "kind": "inline",
       "file": "test/landscapePictureRefs.test.ts",
-      "test": "generation draws exactly as before the port (counts and state measured on the pre-port code)",
-      "anchor": "expect(measured.seed1Digest).toMatchPin('landscapeRefs.seed1Digest', '0cecc3d70b1487e6');"
+      "test": "generation draws as the C# (counts and state pinned; the landscape port itself changed no draw)",
+      "anchor": "expect(measured.seed1Digest).toMatchPin('landscapeRefs.seed1Digest', \"4948f3713d8cdf2d\");"
     },
     {
       "key": "landscapeRefs.seed1SaveWithoutLandscapes",
       "kind": "inline",
       "file": "test/landscapePictureRefs.test.ts",
-      "test": "generation draws exactly as before the port (counts and state measured on the pre-port code)",
-      "anchor": "expect(sha(serializeGame(copy.game, copy.time, start))).toMatchPin('landscapeRefs.seed1SaveWithoutLandscapes', \"807e8031584be1083a010eeea94c4bb06ab0b8d8\");"
+      "test": "generation draws as the C# (counts and state pinned; the landscape port itself changed no draw)",
+      "anchor": "expect(sha(serializeGame(copy.game, copy.time, start))).toMatchPin('landscapeRefs.seed1SaveWithoutLandscapes', \"5e15481bfe1ff7abd0e06011cd0c0560b23933aa\");"
     },
     {
       "key": "pirateBases.fleets",
@@ -301,14 +301,14 @@
       "kind": "inline",
       "file": "test/scenarioDarkFarms.test.ts",
       "test": "spawn: one farm on an eligible non-capital colony after the year boundary",
-      "anchor": "expect(farm.habitat.name).toMatchPin('darkFarms.seed1FarmColony', 'S265 1');"
+      "anchor": "expect(farm.habitat.name).toMatchPin('darkFarms.seed1FarmColony', \"Stapagai\");"
     },
     {
       "key": "startingColonies.alreadyInhabitedExceptions",
       "kind": "inline",
       "file": "test/startingColonies.test.ts",
       "test": "seed 1, techLevel 0.5, age 2: empires get more than one colony, all habitable types they can colonize",
-      "anchor": "expect(outsideColonizable).toMatchPin('startingColonies.alreadyInhabitedExceptions', 2);"
+      "anchor": "expect(outsideColonizable).toMatchPin('startingColonies.alreadyInhabitedExceptions', 3);"
     },
     {
       "key": "startingColonies.colonyCounts",

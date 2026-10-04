@@ -138,6 +138,19 @@ import {
     LandscapeImageOffsetMarshySwamp,
     LandscapeImageOffsetOcean,
     LandscapeImageOffsetVolcanic,
+    MapStarImageCountBlackHole,
+    MapStarImageCountMainSequence,
+    MapStarImageCountNeutron,
+    MapStarImageCountRedGiant,
+    MapStarImageCountSuperGiant,
+    MapStarImageCountWhiteDwarf,
+    MapStarImageOffsetBlackHole,
+    MapStarImageOffsetMainSequence,
+    MapStarImageOffsetNeutron,
+    MapStarImageOffsetRedGiant,
+    MapStarImageOffsetSuperGiant,
+    MapStarImageOffsetWhiteDwarf,
+    gasCloudMapPictureRef,
 } from './galaxyImages';
 
 // Port of Galaxy.cs static fields (Galaxy.3.cs InitializeStatics sets
@@ -1761,12 +1774,14 @@ export class Galaxy {
      */
     generationTopLevelHabitats: Habitat[] | null = null;
 
-    // Port of Galaxy.6.cs SelectStar
-    private selectStar(): { type: HabitatType; diameter: number; pictureRef: number; solarRadiation: number; microwaveRadiation: number; xrayRadiation: number } {
+    // Port of Galaxy.6.cs SelectStar (2525). Its mapPictureRef (num2 + 1 / + 7 / + 13, 6 neutron, 0 black hole / super
+    // nova) is SetupSun's habitat2.MapPictureRef until SelectHabitatPictures(habitat2) redraws it (every type but SuperNova).
+    private selectStar(): { type: HabitatType; diameter: number; pictureRef: number; mapPictureRef: number; solarRadiation: number; microwaveRadiation: number; xrayRadiation: number } {
         const roll = this.rnd.next(0, 77);
         let type: HabitatType;
         let diameter: number;
         let pictureRef: number;
+        let mapPictureRef: number;
         // Solar/Microwave/Xray radiation rolls (stored on the star, Galaxy.5.cs 1325-1327; read by M4g IndustrialProcessing).
         let solarRadiation: number;
         let microwaveRadiation: number;
@@ -1775,7 +1790,7 @@ export class Galaxy {
             type = HabitatType.MainSequence;
             diameter = this.rnd.next(950, 1400);
             pictureRef = diameter <= 1200 ? 83 : 84;
-            this.rnd.next(0, 4); // mapPictureRef roll — MapPictureRef not modeled yet
+            mapPictureRef = this.rnd.next(0, 4) + 1;
             solarRadiation = this.rnd.next(40, 60);
             microwaveRadiation = this.rnd.next(5, 20);
             xrayRadiation = this.rnd.next(5, 12);
@@ -1783,7 +1798,7 @@ export class Galaxy {
             type = HabitatType.RedGiant;
             diameter = this.rnd.next(1450, 1620);
             pictureRef = 85;
-            this.rnd.next(0, 3);
+            mapPictureRef = this.rnd.next(0, 3) + 7;
             solarRadiation = this.rnd.next(70, 95);
             microwaveRadiation = this.rnd.next(5, 20);
             xrayRadiation = this.rnd.next(5, 12);
@@ -1791,7 +1806,7 @@ export class Galaxy {
             type = HabitatType.SuperGiant;
             diameter = this.rnd.next(1620, 1950);
             pictureRef = 86;
-            this.rnd.next(0, 3);
+            mapPictureRef = this.rnd.next(0, 3) + 7;
             solarRadiation = this.rnd.next(80, 100);
             microwaveRadiation = this.rnd.next(5, 20);
             xrayRadiation = this.rnd.next(5, 12);
@@ -1799,7 +1814,7 @@ export class Galaxy {
             type = HabitatType.WhiteDwarf;
             diameter = this.rnd.next(260, 350);
             pictureRef = 87;
-            this.rnd.next(0, 3);
+            mapPictureRef = this.rnd.next(0, 3) + 13;
             solarRadiation = this.rnd.next(10, 30);
             microwaveRadiation = this.rnd.next(20, 40);
             xrayRadiation = this.rnd.next(40, 60);
@@ -1807,6 +1822,7 @@ export class Galaxy {
             type = HabitatType.Neutron;
             diameter = this.rnd.next(180, 230);
             pictureRef = 88;
+            mapPictureRef = 6;
             solarRadiation = this.rnd.next(1, 5);
             microwaveRadiation = this.rnd.next(60, 90);
             xrayRadiation = this.rnd.next(120, 200);
@@ -1814,6 +1830,7 @@ export class Galaxy {
             type = HabitatType.BlackHole;
             diameter = this.rnd.next(4500, 6500);
             pictureRef = 95;
+            mapPictureRef = 0;
             solarRadiation = this.rnd.next(10, 15);
             microwaveRadiation = this.rnd.next(60, 80);
             xrayRadiation = this.rnd.next(90, 130);
@@ -1821,11 +1838,12 @@ export class Galaxy {
             type = HabitatType.SuperNova;
             diameter = this.rnd.next(300, 900);
             pictureRef = 0;
+            mapPictureRef = 0;
             solarRadiation = this.rnd.next(60, 80);
             microwaveRadiation = this.rnd.next(70, 110);
             xrayRadiation = this.rnd.next(160, 220);
         }
-        return { type, diameter, pictureRef, solarRadiation, microwaveRadiation, xrayRadiation };
+        return { type, diameter, pictureRef, mapPictureRef, solarRadiation, microwaveRadiation, xrayRadiation };
     }
 
     // Port of Galaxy.4.cs GenerateNebulae (generateImage=false call) plus
@@ -2121,16 +2139,16 @@ export class Galaxy {
         const star = new Habitat(HabitatCategoryType.Star, type, this.generateCodeName(), x, y);
         star.diameter = diameter;
         star.pictureRef = pictureRef;
+        star.mapPictureRef = selected.mapPictureRef & 0xff; // Galaxy.5.cs 1323: (byte)mapPictureRef
         star.landscapePictureRef = -1;
-        // TODO(port): Habitat.MapPictureRef (the star's map / system sprite, bitmap_196[MapPictureRef]) and the
-        // SelectHabitatPictures(habitat2) call after the radiation bytes, which redraws PictureRef and MapPictureRef
-        // (MapStarImageOffsetX + Rnd.Next(0, MapStarImageCountX), 2 draws per star, galaxyImages.ts) — Galaxy.5.cs
-        // SetupSun 1323 / 1328, Galaxy.6.cs SelectHabitatPictures 2214-2237. Adding the draws shifts every later Rnd
-        // sample of the generation; the renderer picks the star sprite from PictureRef (render/assets.ts mapStarUrls).
         // Galaxy.5.cs 1325-1327: (byte) casts of the radiation rolls.
         star.solarRadiation = selected.solarRadiation & 0xff;
         star.microwaveRadiation = selected.microwaveRadiation & 0xff;
         star.xrayRadiation = selected.xrayRadiation & 0xff;
+        // Galaxy.5.cs 1328: SelectHabitatPictures(habitat2) redraws PictureRef, then MapPictureRef, each
+        // MapStarImageOffsetX + Rnd.Next(0, MapStarImageCountX) (Galaxy.6.cs 2214-2237) — 2 draws for every type but
+        // SuperNova (no draw: SelectStar's 0 / 0 stay). The star sprites draw bitmap_196[MapPictureRef].
+        this.selectHabitatPictures(star);
         if (type === HabitatType.BlackHole) {
             // Port of Galaxy.5.cs SetupSun black-hole GalaxyLocations
             // (1329-1352). C# renames the star via GenerateBlackHoleName()
@@ -2638,6 +2656,8 @@ export class Galaxy {
                 habitat.pictureRef = habitat.diameter < 1750 ? 71 : habitat.diameter < 3000 ? 72 : habitat.diameter < 4250 ? 73 : 74;
                 break;
         }
+        // Galaxy.4.cs 2923-2947: MapPictureRef 16 (Ammonia) … 23 (Oxygen) by type. No draw.
+        habitat.mapPictureRef = gasCloudMapPictureRef(habitat.type);
         habitat.landscapePictureRef = -1;
         if (this.rnd.next(0, 5) === 2) {
             habitat.orbitDirection = false;
@@ -3303,9 +3323,34 @@ export class Galaxy {
                 habitat.pictureRef = HabitatImageOffsetVolcanic + this.rnd.next(0, HabitatImageCountVolcanic);
                 habitat.landscapePictureRef = LandscapeImageOffsetVolcanic + this.rnd.next(0, LandscapeImageCountVolcanic);
                 break;
-            // MainSequence/RedGiant/SuperGiant/WhiteDwarf/Neutron/BlackHole (Galaxy.6.cs 2214-2237): PictureRef and
-            // MapPictureRef = MapStarImageOffsetX + Rnd.Next(0, MapStarImageCountX), two draws; SuperNova: none. Not
-            // ported: the port's SetupSun does not call SelectHabitatPictures on the star (see the TODO there).
+            // Galaxy.6.cs 2214-2237: stars — PictureRef, then MapPictureRef, each MapStarImageOffsetX +
+            // Rnd.Next(0, MapStarImageCountX) (a count of 1 still draws); SuperNova: nothing (2238).
+            case HabitatType.MainSequence:
+                habitat.pictureRef = MapStarImageOffsetMainSequence + this.rnd.next(0, MapStarImageCountMainSequence);
+                habitat.mapPictureRef = MapStarImageOffsetMainSequence + this.rnd.next(0, MapStarImageCountMainSequence);
+                break;
+            case HabitatType.RedGiant:
+                habitat.pictureRef = MapStarImageOffsetRedGiant + this.rnd.next(0, MapStarImageCountRedGiant);
+                habitat.mapPictureRef = MapStarImageOffsetRedGiant + this.rnd.next(0, MapStarImageCountRedGiant);
+                break;
+            case HabitatType.SuperGiant:
+                habitat.pictureRef = MapStarImageOffsetSuperGiant + this.rnd.next(0, MapStarImageCountSuperGiant);
+                habitat.mapPictureRef = MapStarImageOffsetSuperGiant + this.rnd.next(0, MapStarImageCountSuperGiant);
+                break;
+            case HabitatType.WhiteDwarf:
+                habitat.pictureRef = MapStarImageOffsetWhiteDwarf + this.rnd.next(0, MapStarImageCountWhiteDwarf);
+                habitat.mapPictureRef = MapStarImageOffsetWhiteDwarf + this.rnd.next(0, MapStarImageCountWhiteDwarf);
+                break;
+            case HabitatType.Neutron:
+                habitat.pictureRef = MapStarImageOffsetNeutron + this.rnd.next(0, MapStarImageCountNeutron);
+                habitat.mapPictureRef = MapStarImageOffsetNeutron + this.rnd.next(0, MapStarImageCountNeutron);
+                break;
+            case HabitatType.BlackHole:
+                habitat.pictureRef = MapStarImageOffsetBlackHole + this.rnd.next(0, MapStarImageCountBlackHole);
+                habitat.mapPictureRef = MapStarImageOffsetBlackHole + this.rnd.next(0, MapStarImageCountBlackHole);
+                break;
+            case HabitatType.SuperNova:
+                break;
         }
     }
 
