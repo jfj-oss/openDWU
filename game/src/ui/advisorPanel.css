@@ -1,189 +1,90 @@
-/* 18a chat advisor panel. Dark-panel tokens as the Fleets / Ships lists; docked right of centre, below the top-middle
-   bar and left of the right-hand column (money panel, view / overlay list), clear of the bottom-left selection panel. */
-
-.advisor-wrap {
-    position: fixed;
-    inset: 0;
-    z-index: 1500;
-    pointer-events: none;
-    font-family: 'Forgotten Futurist', sans-serif;
-    color: #e6e6e6;
-}
-
-.advisor-window {
-    position: absolute;
-    top: 120px;
-    right: 270px;
-    width: 440px;
-    max-width: calc(100vw - 32px);
-    height: min(560px, calc(100vh - 200px));
-    pointer-events: auto;
-    background: rgba(14, 16, 20, 0.94);
-    backdrop-filter: blur(6px);
-    -webkit-backdrop-filter: blur(6px);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 6px;
-    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6);
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-}
-
-.advisor-titlebar {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 8px 12px;
-    background: rgba(10, 11, 15, 0.9);
-    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-}
-
-.advisor-heading {
-    font-size: 13px;
-    color: #e8d24a;
-    flex: 1;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
+/* 18a chat advisor panel in the original window style (originalWindow.ts ScreenPanel: BorderPanel + HeaderPanel +
+   GradientPanel body). Inside: a status line, the conversation in a dark (32, 32, 40) list with the grid scrollbar,
+   a text box and a GlassButton. Message kinds keep their meaning (colours from the original palette). */
 
 .advisor-status {
-    font-size: 10px;
-    color: #888;
+    font-size: 13.33px;
+    color: rgb(170, 170, 170);
     white-space: nowrap;
 }
 .advisor-status::before {
     content: '●';
-    margin-right: 4px;
-    color: #a33;
+    margin-right: 6px;
+    color: rgb(190, 60, 60);
 }
 .advisor-status-on::before {
-    color: #4c4;
-}
-
-.advisor-close {
-    background: transparent;
-    border: none;
-    color: #ccc;
-    font-size: 15px;
-    cursor: pointer;
-    padding: 2px 6px;
-}
-.advisor-close:hover {
-    color: #fff;
+    color: rgb(144, 238, 144);
 }
 
 .advisor-messages {
-    flex: 1;
+    box-sizing: border-box;
     overflow-y: auto;
-    padding: 10px 12px;
+    padding: 8px 10px;
     display: flex;
     flex-direction: column;
     gap: 6px;
-    font-size: 12px;
-    line-height: 1.4;
+    font-size: 15.33px;
+    line-height: 1.3;
+    background: rgb(32, 32, 40);
+    border: 1px solid rgb(67, 67, 77);
 }
 
 .advisor-line {
     white-space: pre-wrap;
     overflow-wrap: anywhere;
+    color: rgb(200, 200, 200);
 }
 
 .advisor-user {
     align-self: flex-end;
     max-width: 85%;
-    background: rgba(90, 120, 170, 0.28);
-    border: 1px solid rgba(120, 160, 220, 0.25);
-    border-radius: 6px;
-    padding: 5px 8px;
+    background: rgb(48, 48, 64);
+    border: 1px solid rgb(96, 96, 112);
+    padding: 4px 8px;
+    color: rgb(220, 220, 220);
 }
 
 .advisor-advisor {
     align-self: flex-start;
     max-width: 90%;
-    background: rgba(255, 255, 255, 0.05);
-    border: 1px solid rgba(232, 210, 74, 0.25);
-    border-radius: 6px;
-    padding: 5px 8px;
-    color: #f0e6b0;
+    background: rgb(48, 48, 56);
+    border: 1px solid rgb(96, 96, 112);
+    padding: 4px 8px;
+    color: rgb(255, 192, 0);
 }
 
 .advisor-question {
-    color: #9fd0ff;
+    color: rgb(150, 200, 255);
     font-style: italic;
 }
 
 .advisor-ok {
-    color: #8fd88f;
-    font-size: 11px;
+    color: rgb(144, 238, 144);
+    font-size: 13.33px;
 }
 
 .advisor-fail,
 .advisor-error {
-    color: #e08a7a;
-    font-size: 11px;
+    color: rgb(255, 110, 100);
+    font-size: 13.33px;
 }
 
 .advisor-system {
-    color: #888;
-    font-size: 11px;
+    color: rgb(140, 140, 150);
+    font-size: 13.33px;
 }
 
 .advisor-confirm {
-    color: #f0b060;
-    font-size: 11px;
+    color: rgb(255, 192, 0);
+    font-size: 13.33px;
     display: flex;
     align-items: center;
     gap: 8px;
 }
 
-.advisor-confirm-chip {
-    background: rgba(200, 60, 40, 0.35);
-    border: 1px solid rgba(240, 110, 80, 0.6);
-    border-radius: 10px;
-    color: #fff;
-    font-size: 11px;
-    padding: 1px 10px;
-    cursor: pointer;
-}
-.advisor-confirm-chip:disabled {
-    opacity: 0.4;
-    cursor: default;
-}
-
 .advisor-input-row {
-    display: flex;
-    gap: 6px;
-    padding: 8px;
-    border-top: 1px solid rgba(255, 255, 255, 0.08);
     margin: 0;
-}
-
-.advisor-input {
-    flex: 1;
-    background: rgba(0, 0, 0, 0.35);
-    border: 1px solid rgba(255, 255, 255, 0.15);
-    border-radius: 4px;
-    color: #eee;
-    font: inherit;
-    font-size: 12px;
-    padding: 6px 8px;
 }
 .advisor-input:disabled {
     opacity: 0.5;
-}
-
-.advisor-send {
-    background: rgba(232, 210, 74, 0.15);
-    border: 1px solid rgba(232, 210, 74, 0.45);
-    border-radius: 4px;
-    color: #e8d24a;
-    font: inherit;
-    font-size: 12px;
-    padding: 0 12px;
-    cursor: pointer;
-}
-.advisor-send:disabled {
-    opacity: 0.4;
-    cursor: default;
 }

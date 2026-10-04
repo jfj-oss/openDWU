@@ -4,6 +4,7 @@
 // (src/sim/player/orderMenu.ts) returns; this file only draws it and reports the picked entry.
 // Also the small automation confirm dialog (GenerateAutomationMessageBox) used after an order.
 import './orderMenu.css';
+import { addWaypointMenu, waypointAtScreen, waypointMenu } from './waypoints'; // [waypoints]
 import type { Galaxy } from '../sim/galaxy';
 import type { Empire } from '../sim/empire';
 import type { GalaxyTime } from '../sim/galaxyTime';
@@ -365,6 +366,27 @@ export function installOrderUi(d: OrderUiDeps, view: OrderMainView, camera: Orde
         const target = view.pickOrderTarget(sx, sy);
         const hover = resolveHoverOrder({ galaxy, empire, selected, x, y, target: hoverOrderTarget(target) /* [fix6ui] N5 */, shift: e.shiftKey, alt: e.altKey, ctrl: e.ctrlKey });
         const keys = { ctrl: e.ctrlKey, alt: e.altKey };
+        // [waypoints] begin — a right-click on one of the player's waypoint markers: Rename… / Delete on top of the full
+        // action menu (the default order is not given on that click, as for a debris field below).
+        const wp = waypointAtScreen(sx, sy);
+        if (wp !== null) {
+            const own = waypointMenu(wp);
+            issuePlayerCommand(galaxy, empire, 'actionMenu', [selected, x, y, view.zoomFactor, target, hover.action, true], (menu) => {
+                if (!current()) return;
+                const rest = menu ?? [];
+                const sep: OrderMenuItem = { key: '', label: '', hint: null, enabled: false, action: null, children: [], separator: true };
+                openOrderMenu(rest.length > 0 ? [...own.items, sep, ...rest] : own.items, e.clientX, e.clientY, {
+                    onPick: (item, shift) => {
+                        if (own.pick(item)) return;
+                        if (item.action === null) return;
+                        if (shift) item.action.isSubsequentAction = true;
+                        void performAction(item.action, true, { x, y });
+                    },
+                });
+            });
+            return;
+        }
+        // [waypoints] end
         // [wreckage] begin — scenario 19e-7: a construction / mining ship right-clicking a known debris field gets
         // "Salvage <field>" on top of the full action menu (the default order is not given on that click).
         const salvage = wreckSalvageMenuItem(galaxy, empire, selected, w.x, w.y, 1 / view.zoomFactor);
@@ -405,7 +427,15 @@ export function installOrderUi(d: OrderUiDeps, view: OrderMainView, camera: Orde
                 bar?.render(true);
             });
         } else if (r.kind === 'idleShips') {
-            openOrderMenu(r.items, e.clientX, e.clientY, { onPick: (item) => item.select !== undefined && deps?.select(item.select) });
+            // [waypoints] empty space: "Add Waypoint here…" below the idle ships.
+            const add = target === null ? addWaypointMenu(w.x, w.y) : null;
+            const sep: OrderMenuItem = { key: '', label: '', hint: null, enabled: false, action: null, children: [], separator: true };
+            openOrderMenu(add !== null ? [...r.items, sep, add.item] : r.items, e.clientX, e.clientY, {
+                onPick: (item) => {
+                    if (add?.pick(item) === true) return;
+                    if (item.select !== undefined) deps?.select(item.select);
+                },
+            });
             return;
         }
         // actionMenu_Opening: the ContextMenuStrip opens on the same click unless the default order was given.
@@ -414,9 +444,16 @@ export function installOrderUi(d: OrderUiDeps, view: OrderMainView, camera: Orde
             // Main.Part10.cs 3310-3559 re-centres on the click when something is selected and there is no default order; here the
             // view stays put whenever the menu opens on that click (it opens at the cursor over what was clicked).
             if (rightClickCentersView(r, items)) camera.centerOn(w.x, w.y);
+            // [waypoints] a click on empty space (no default order given): "Add Waypoint here…" at the end of the menu.
+            const add = target === null && r.kind !== 'order' ? addWaypointMenu(w.x, w.y) : null;
+            if (add !== null) {
+                const sep: OrderMenuItem = { key: '', label: '', hint: null, enabled: false, action: null, children: [], separator: true };
+                items = items !== null && items.length > 0 ? [...items, sep, add.item] : [add.item];
+            }
             if (items !== null && items.length > 0) {
                 openOrderMenu(items, e.clientX, e.clientY, {
                     onPick: (item, shift) => {
+                        if (add?.pick(item) === true) return;
                         if (item.action === null) return;
                         if (shift) item.action.isSubsequentAction = true; // queue after the current mission
                         void performAction(item.action, true, { x, y });

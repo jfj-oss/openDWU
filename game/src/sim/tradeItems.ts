@@ -78,6 +78,7 @@ import type { Component } from './data/components';
 import { ComponentType } from './data/components';
 import { ComponentCategoryType } from './data/policies';
 import { DesignSpecificationComponentRuleType, resolveComponentCategoryForType, type DesignSpecification } from './data/designSpecifications';
+import { sectorColumnName } from './sectorNames';
 import { baconSettings } from './data/baconSettings';
 import { formatNetGrouped0 } from './netNumberFormat';
 import { resolveSectorDescription } from './empireEvents';
@@ -238,7 +239,7 @@ function staticHabitatSystemStar(habitat: Habitat): Habitat | null {
 function sectorDescriptionStatic(galaxy: Galaxy | null, x: number, y: number): string {
     if (galaxy !== null) return resolveSectorDescription(galaxy, x, y);
     const SECTOR_SIZE = 2_000_000; // Galaxy.SectorSize
-    return String.fromCharCode(Math.trunc(Math.trunc(x) / SECTOR_SIZE) + 65) + String(Math.trunc(Math.trunc(y) / SECTOR_SIZE) + 1);
+    return sectorColumnName(Math.trunc(Math.trunc(x) / SECTOR_SIZE)) + String(Math.trunc(Math.trunc(y) / SECTOR_SIZE) + 1);
 }
 
 /** TradeableItemList.cs 14 TotalValue (int sum). */

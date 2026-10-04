@@ -1,172 +1,47 @@
-/* Empires list panel (task 12b). Styling follows the tutorial window / HUD
-   dark-panel tokens. */
-
-.empires-list-wrap {
-    position: fixed;
-    inset: 0;
-    z-index: 1500; /* above the HUD, like the in-game tutorial window */
-    pointer-events: none;
-    font-family: 'Forgotten Futurist', sans-serif;
-    color: #e6e6e6;
-}
-
-.empires-list-window {
-    position: absolute;
-    top: 64px;
-    left: 16px;
-    width: 380px;
-    max-width: calc(100vw - 16px);
-    max-height: calc(100vh - 96px);
-    pointer-events: auto;
-    background: rgba(14, 16, 20, 0.94);
-    backdrop-filter: blur(6px);
-    -webkit-backdrop-filter: blur(6px);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 6px;
-    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6);
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-}
-
-.empires-list-titlebar {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 8px 12px;
-    background: rgba(10, 11, 15, 0.9);
-    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-}
-
-.empires-list-heading {
-    font-size: 13px;
-    color: #e8d24a;
-}
-
-.empires-list-close {
-    background: transparent;
-    border: none;
-    color: #ccc;
-    font-size: 15px;
-    cursor: pointer;
-    padding: 2px 6px;
-}
-.empires-list-close:hover {
-    color: #fff;
-}
-
-.empires-list-body {
-    padding: 8px;
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-    overflow-y: auto;
-    /* Task 19k-1d (Big Galaxies): force this pane to shrink within the window's
-       flex column instead of growing past max-height, so it actually scrolls
-       (rather than silently clipping) once there are 60 empire rows. */
-    flex: 1 1 auto;
-    min-height: 0;
-}
-
-.empires-list-rows {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-}
-
-/* Task 19k-1d: the filter box above the header/rows. */
-.empires-list-filter {
-    margin: 0 8px 6px;
-    padding: 5px 8px;
-    background: rgba(255, 255, 255, 0.06);
-    border: 1px solid rgba(255, 255, 255, 0.12);
-    border-radius: 4px;
-    color: #e6e6e6;
-    font-family: inherit;
-    font-size: 12px;
-}
-.empires-list-filter:focus {
-    outline: none;
-    border-color: rgba(255, 255, 255, 0.3);
-}
-
-.empires-list-empty {
-    padding: 10px 4px;
-    color: #888;
-    font-size: 12px;
-    text-align: center;
-}
-
-/* Task 12g: column headers, same grid as the rows. */
-.empires-list-header {
-    display: grid;
-    grid-template-columns: 12px minmax(0, 1fr) 2.5em minmax(0, 1fr);
-    align-items: center;
-    gap: 8px;
-    padding: 0 8px 2px;
-}
-
-.empires-list-header-swatch {
-    /* Blank swatch column keeps the header aligned with the row swatches. */
-}
-
-.empires-list-header-cell {
-    font-size: 10px;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    color: #777;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-
-.empires-list-header-colonies {
-    text-align: right;
-}
-
-.empires-list-row {
-    display: grid;
-    grid-template-columns: 12px minmax(0, 1fr) 2.5em minmax(0, 1fr);
-    align-items: center;
-    gap: 8px;
-    padding: 5px 8px;
-    background: rgba(255, 255, 255, 0.04);
-    border: 1px solid rgba(255, 255, 255, 0.07);
-    border-radius: 4px;
-    cursor: pointer;
-}
-.empires-list-row:hover {
-    background: rgba(255, 255, 255, 0.1);
-}
+/* Empires list in the original window style (ui/originalWindow.ts ScreenPanel + OwGrid): only the cell contents and
+   the leagues block are styled here. */
 
 .empires-list-swatch {
-    width: 12px;
-    height: 12px;
-    border-radius: 2px;
-    border: 1px solid rgba(255, 255, 255, 0.25);
+    display: inline-block;
+    width: 13px;
+    height: 13px;
+    vertical-align: middle;
+    border: 1px solid rgb(120, 120, 130);
 }
 
 .empires-list-name {
-    font-size: 13px;
-    color: #fff;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
 }
 
-.empires-list-colonies {
-    font-size: 12px;
-    color: #aaa;
-    text-align: right; /* task 12g: right-aligned in header and rows */
-}
-
-.empires-list-capital {
-    font-size: 12px;
-    color: #999;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
 /* [rimTrader] begin — scenario 19a tag on the Concord row */
-.empires-list-tag { margin-left: 6px; padding: 0 4px; border-radius: 3px; font-size: 0.8em; color: #ffb347; border: 1px solid rgba(255, 179, 71, 0.6); }
+.empires-list-tag {
+    margin-left: 6px;
+    padding: 0 4px;
+    font-size: 0.8em;
+    color: rgb(255, 179, 71);
+    border: 1px solid rgba(255, 179, 71, 0.6);
+}
 /* [rimTrader] end */
+
+/* The independent leagues (19k-3) under the grid. */
+.empires-list-leagues-box {
+    box-sizing: border-box;
+    overflow-y: auto;
+    padding: 0 6px 4px;
+    background: rgb(32, 32, 40);
+    border: 1px solid rgb(67, 67, 77);
+    color: rgb(170, 170, 170);
+    font-size: 15.33px;
+}
+.empires-list-leagues-heading {
+    margin-top: 4px !important;
+    opacity: 1 !important;
+    color: rgb(255, 255, 255);
+}
+.empires-list-league-row {
+    height: 24px;
+    display: flex;
+    align-items: center;
+}
