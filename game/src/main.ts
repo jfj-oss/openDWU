@@ -86,7 +86,7 @@ import { createNewGameWizard } from './ui/screens/newGameWizard';
 import { openGalactopedia } from './ui/screens/galactopedia';
 import { habitatInfo } from './ui/selectionInfo';
 import { renderInfoModel } from './ui/selectionInfoView';
-import { colonizationRangeFor, defaultStartGameOptions, piratesFor, STARTING_TECH_LEVEL, toCreateGameOptions, type StartGameOptions, maximumEmpireAmountFor, starCountFor, defaultScenarioChoice, type StartScenarioChoice } from './sim/startGameOptions';
+import { colonizationRangeFor, defaultStartGameOptions, wizardStartGameOptions, piratesFor, STARTING_TECH_LEVEL, toCreateGameOptions, type StartGameOptions, maximumEmpireAmountFor, starCountFor, defaultScenarioChoice, type StartScenarioChoice } from './sim/startGameOptions';
 import { serializeGame, deserializeGameSteps, savedCustomizationSet, savedScenarioId, savedScenarioInclude, type GameSaveJSON } from './sim/save/gameSave';
 import { loadScenarioIndex, loadScenarioOverlay } from './sim/scenario/fetchScenario';
 import { applyScenarioOverlay, type ScenarioOverlay } from './sim/scenario/overlay';
@@ -1470,7 +1470,7 @@ async function main(): Promise<void> {
         // wizard defaults overridden by this JSON, e.g. the big late start
         // ?newgame={"seed":1,"starCountIndex":5,"dimensionIndex":4,"galaxyExpansionIndex":4,"empireExpansionIndex":4,"otherEmpires":{"empireCount":19}}
         const o = JSON.parse(newGame) as Partial<StartGameOptions> & { otherEmpires?: Partial<StartGameOptions['otherEmpires']> };
-        const base = defaultStartGameOptions();
+        const base = wizardStartGameOptions();
         void bootGameFromWizard({ ...base, raceName: 'Human', empireName: 'Human Empire', ...o, otherEmpires: { ...base.otherEmpires, ...o.otherEmpires } });
         return;
     }

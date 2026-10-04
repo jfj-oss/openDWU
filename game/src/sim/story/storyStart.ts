@@ -212,30 +212,43 @@ export function originsRuinsAtStart(galaxy: Galaxy, num72: number, raceFamilies:
  * Start.2.cs 1968-2010: with the Distant Worlds story on, large / small debris fields and incomplete planet destroyers by the
  * wizard star count (int_1). Rnd: GenerateDebrisFieldLarge / Small / GeneratePlanetDestroyer's.
  */
-export function debrisFieldsAtStart(galaxy: Galaxy, int1: number): void {
+export function debrisFieldCounts(int1: number, scale: boolean): { large: number; small: number; destroyers: number } {
+    let large: number;
+    let small: number;
+    let destroyers: number;
+    if (int1 >= 1400) {
+        large = 3;
+        small = 5;
+        destroyers = 3;
+    } else if (int1 >= 700) {
+        large = 2;
+        small = 3;
+        destroyers = 2;
+    } else if (int1 >= 400) {
+        large = 1;
+        small = 3;
+        destroyers = 1;
+    } else {
+        large = 0;
+        small = 2;
+        destroyers = 1;
+    }
+    // Our addition (option "Scale debris fields with galaxy size"): never fewer than the original band; planet destroyers unchanged.
+    if (scale) {
+        large = Math.max(large, Math.round(int1 / 200));
+        small = Math.max(small, Math.round(int1 / 80));
+    }
+    return { large, small, destroyers };
+}
+
+export function debrisFieldsAtStart(galaxy: Galaxy, int1: number, scale = false): void {
     const galaxyLocationList4 = galaxy.galaxyLocations.filter((l) => l.type === GalaxyLocationType.DebrisField);
     void galaxyLocationList4;
     if (galaxy.storyDistantWorldsEnabled) {
-        let num83 = 1;
-        let num84 = 1;
-        let num85 = 1;
-        if (int1 >= 1400) {
-            num83 = 3;
-            num84 = 5;
-            num85 = 3;
-        } else if (int1 >= 700) {
-            num83 = 2;
-            num84 = 3;
-            num85 = 2;
-        } else if (int1 >= 400) {
-            num83 = 1;
-            num84 = 3;
-            num85 = 1;
-        } else {
-            num83 = 0;
-            num84 = 2;
-            num85 = 1;
-        }
+        const counts = debrisFieldCounts(int1, scale);
+        const num83 = counts.large;
+        const num84 = counts.small;
+        const num85 = counts.destroyers;
         for (let num86 = 0; num86 < num83; num86++) generateDebrisFieldLarge(galaxy);
         for (let num87 = 0; num87 < num84; num87++) generateDebrisFieldSmall(galaxy);
         for (let num88 = 0; num88 < num85; num88++) generatePlanetDestroyer(galaxy);

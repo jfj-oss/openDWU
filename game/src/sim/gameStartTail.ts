@@ -794,6 +794,8 @@ export interface GameStartTailContext {
     creaturePrevalence?: number;
     /** Start.2.cs int_1 (wizard star count). Default galaxy.starCount. */
     starCount?: number;
+    /** Our addition: scale the Distant Worlds debris fields with the star count (storyStart.debrisFieldCounts). Default false. */
+    scaleDebrisFields?: boolean;
     /** Start.2.cs xpos / ypos: the player's start (capital, or pirate base) — read by the story blocks. Default 0. */
     xpos?: number;
     ypos?: number;
@@ -1233,8 +1235,8 @@ export function placeSpecialRuinsAtStart(galaxy: Galaxy, int1: number = galaxy.s
  * Start.2.cs 1968-2010: `galaxyLocationList4 = GalaxyLocations.FindLocations(DebrisField)`; when StoryDistantWorldsEnabled:
  * large/small debris fields and planet destroyers by the wizard star count (int_1) — story/storyStart.ts (M4z3).
  */
-export function debrisFieldsAtStart(galaxy: Galaxy, int1: number = galaxy.starCount): void {
-    storyStart.debrisFieldsAtStart(galaxy, int1);
+export function debrisFieldsAtStart(galaxy: Galaxy, int1: number = galaxy.starCount, scale = false): void {
+    storyStart.debrisFieldsAtStart(galaxy, int1, scale);
 }
 
 /** Start.2.cs 2725 method_93(galaxy, min, max): random point in a ring around the galaxy centre. Rnd: NextDouble ×2, Next(0,2) ×2. */
@@ -1548,7 +1550,7 @@ export function gameStartTail(galaxy: Galaxy, ctx: GameStartTailContext): GameSt
     generateSilverMistRuins(galaxy); // 1857-1860
     generateSpecialBonusRuins(galaxy); // 1861-1864
     placeSpecialRuinsAtStart(galaxy, ctx.starCount ?? galaxy.starCount, ctx.raceFamilies); // 1865-1967
-    debrisFieldsAtStart(galaxy, ctx.starCount ?? galaxy.starCount); // 1968-2010
+    debrisFieldsAtStart(galaxy, ctx.starCount ?? galaxy.starCount, ctx.scaleDebrisFields ?? false); // 1968-2010
     abandonedShipsAtStart(galaxy); // 2011 method_87
     asteroidAbandonedShipsAtStart(galaxy); // 2012 method_85
     shakturiAbandonedShipsAtStart(galaxy); // 2013-2016 method_86
