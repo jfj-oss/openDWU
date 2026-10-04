@@ -289,8 +289,8 @@ export function ensureImportantPreWarpResources(galaxy: Galaxy, empire: Empire, 
             if (habitat7 !== null) {
                 // C# Monitor.Enter(galaxy._LockObject) around AddHabitat — no-op here.
                 galaxy.addHabitat(habitat7, habitat9);
-                // TODO(port): Galaxy.AddHabitat's HabitatIndex-grid insert, FixResourceMaps and
-                // SetSystemHabitatExploration (Galaxy.9.cs 3234-3243) are not done by galaxy.ts addHabitat.
+                // galaxy.ts addHabitat also does Galaxy.9.cs 3234-3243 (HabitatIndex grid, FixResourceMaps,
+                // SetSystemHabitatExploration).
                 // C# re-checks `TechLevel == 0.0` here (always true inside this block).
                 if (techLevel === 0.0) {
                     empire.resourceMap.setResourcesKnown(habitat7, false);

@@ -195,3 +195,18 @@
     height: 21px;
     padding: 3px 6px 0;
 }
+
+/* Construction Yard tab: the ConstructionYardListView progress bar under its "p" text (constructionYards.ts progressCell). */
+.ow-screen-colonies .ow-grid-cell .cy-cell-text {
+    position: relative;
+}
+.ow-screen-colonies .ow-grid-cell .ow-bar {
+    position: absolute;
+    left: 2px;
+}
+.ow-screen-colonies .cy-purchaser .ow-text {
+    white-space: nowrap;
+}
+.ow-screen-colonies .cy-funds-short {
+    background: rgb(255, 0, 0);
+}

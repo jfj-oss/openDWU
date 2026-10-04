@@ -310,16 +310,17 @@
     margin-top: 6px;
 }
 
-/* T key: Main.Part7.cs:3085 CyclePanelVisibility (ui/panelVisibility.ts). 'map' = method_472(true): every HUD panel
-   and button but the system-map corner (pnlSystemMap with its zoom strip and our options list with the overlay rows) and the diplomatic message queue (the stub list); 'none' =
-   method_472(false): those too. The star date (pnlTopLeftBar's text) and the money block are drawn by MainView itself
-   (method_18) and stay. */
-body[data-panels] #hud > .hud-el:not([data-hud="pnlMoney"]):not([data-hud="pnlTopLeftBar"]):not([data-hud="pnlOptionsList"]):not([data-hud="pnlSystemMap"]),
-body[data-panels] #hud [data-hud="pnlTopLeftBar"] .top-btn,
-body[data-panels="none"] #hud > [data-hud="pnlOptionsList"],
-body[data-panels="none"] #hud > [data-hud="pnlSystemMap"],
+/* T cycle (panelVisibility.ts): 'nomap' hides only the system map (the panel with its zoom strip and size toggle); 'none' hides every panel but the MainView-drawn
+   date / money. */
+body[data-panels="nomap"] #hud > [data-hud="pnlSystemMap"],
+body[data-panels="none"] #hud > .hud-el:not([data-hud="pnlMoney"]):not([data-hud="pnlTopLeftBar"]),
+body[data-panels="none"] #hud [data-hud="pnlTopLeftBar"] .top-btn,
 body[data-panels="none"] .message-stubs {
     display: none !important;
+}
+/* Without the map the View button drops to the corner. */
+body[data-panels="nomap"] #hud > [data-hud="pnlOptionsList"] {
+    bottom: 10px !important;
 }
 /* The system mini-map (hudSystemMap.ts), in the original's pixels and scaled as one from its bottom-right corner
    (hud.ts systemMapFrameScale): the 330 × 290 element is pnlSystemMap's rect; the zoom strip hangs 13 px out of its
@@ -395,8 +396,4 @@ body[data-panels="none"] .message-stubs {
 }
 .sysmap-btn-text {
     pointer-events: none;
-}
-/* The T key's map-only step hides btnZoomSelection and tbtnGalaxyMap (method_472(true), Main.Part5.cs 2369 / 2393). */
-body[data-panels] .hud-sysmap .sysmap-hide-in-map {
-    display: none;
 }

@@ -22,6 +22,7 @@
 //   Story clues: GenerateIndependentColonyStoryClue Next(0, n); GenerateSecondaryStoryClue case 8 FindLonelyNebulaLocation's,
 //     Next(110000, 200000), Next(0.15·stars, 0.25·stars).
 
+import { generateLocationDescription } from '../galaxyReports';
 import type { Galaxy } from '../galaxy';
 import type { Empire } from '../empire';
 import { planetsOf, type Habitat } from '../types';
@@ -1143,17 +1144,11 @@ export function checkForStoryLocationHint(galaxy: Galaxy): string {
     return result;
 }
 
-/**
- * Galaxy.5.cs 4807 GenerateLocationDescription(x, y, prefixWithA) — TextResolver text stand-in (sector description only;
- * TODO(port) M9: the nearest-habitat / nebula wording). No Rnd.
- */
-export function generateLocationDescription(galaxy: Galaxy, x: number, y: number, prefixWithA: boolean): string {
-    return formatGameTextNow(prefixWithA ? 'A Location Description' : 'Location Description', [resolveSectorDescription(galaxy, x, y)]);
-}
 
 /**
  * Galaxy.5.cs 3692 GenerateIndependentColonyStoryClue(colony): one of the first four secondary clues (by the story progress).
- * Called by Galaxy.1.cs 1326 (the player meets an independent colony — not ported yet). Rnd: Next(0, n) when any is left.
+ * Called by Galaxy.1.cs 1326 GenerateIndependentColonyReport (galaxyReports.ts; the player meets an independent colony).
+ * Rnd: Next(0, n) when any is left.
  */
 export function generateIndependentColonyStoryClue(galaxy: Galaxy, colony: Habitat): string {
     let result = '';

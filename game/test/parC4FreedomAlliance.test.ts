@@ -20,6 +20,7 @@ import { shakturiEndingStory } from '../src/ui/screens/empireComparison';
 import { generateMajorStoryVictoryMessage } from '../src/sim/story/storyEvents';
 import { decimateEmpire } from '../src/sim/story/freedomAlliance';
 import { Random } from '../src/sim/random';
+import { resolveGameText, tryGetText } from '../src/sim/textResolver';
 
 let gameData: GameData;
 
@@ -158,6 +159,33 @@ describe('Freedom Alliance and the Shakturi story victory', () => {
             });
             for (let j = 0; j < colonies.length; j++) r.next(0, 10);
             expect(JSON.stringify(g.rnd.getState())).toBe(JSON.stringify(r.getState()));
+        });
+    }, 300000);
+
+    it('the story panel shows resolved text at every level, on its buttons and on the Code 1 ending (no GameText keys)', () => {
+        withRaceRestored(() => {
+            const g = storyGame().galaxy;
+            const player = g.playerEmpire!;
+            const mech = identifyMechanoidEmpire(g)!;
+            obtainDiplomaticRelation(player, mech).type = DiplomaticRelationType.None;
+            const leaks = (t: string): boolean => t === '' || /MajorStoryEvent|ShakturiPlayer|StoryMessage|\{\d+\}|\|/.test(t) || (tryGetText(t) !== null && tryGetText(t) !== t);
+            for (const level of [0, 1, 2, 3, 4]) {
+                g.storyReturnOfTheShakturiEventLevel = level;
+                const r = runPlayerCommand(g, player, 'answerConversation', [mech, 'HISTORY_OFFER_STORYMESSAGE_ACCEPT', null, 0]);
+                const title = resolveGameText(r.history!.title);
+                const text = resolveGameText(r.history!.text);
+                expect(leaks(title), `level ${level} title: ${title}`).toBe(false);
+                expect(leaks(text), `level ${level} text: ${text.slice(0, 60)}`).toBe(false);
+                expect(text.length).toBeGreaterThan(80);
+                const c = storyPanelSpec(level).choice;
+                if (c !== null) for (const b of [c.closeText, c.actionText]) expect(leaks(resolveGameText(b)), b).toBe(false);
+            }
+            for (const outcome of [GameEndOutcome.Victory, GameEndOutcome.Defeat]) {
+                const st = shakturiEndingStory({ code: 1, outcomeForPlayer: outcome } as GameEndEventArgs)!;
+                expect(leaks(resolveGameText(st.title)), st.title).toBe(false);
+                expect(leaks(resolveGameText(st.text)), st.text.slice(0, 60)).toBe(false);
+                expect(st.text.length).toBeGreaterThan(80);
+            }
         });
     }, 300000);
 });

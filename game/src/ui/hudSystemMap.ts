@@ -91,8 +91,6 @@ export interface SystemMapButtonDef {
     chrome?: string;
     /** Main.Part10.cs method_206 hover hint. */
     hint: string;
-    /** Hidden by method_472(true) (the T key's map-only step, Main.Part5.cs 2369 / 2393). */
-    hideInMapStep?: boolean;
     /** Text when the install has no decompiled Main.resx to read the image from. */
     fallback: string;
 }
@@ -101,7 +99,7 @@ const stripY = (i: number): number => SYSTEM_MAP_STRIP.y + i * SYSTEM_MAP_STRIP.
 
 /** The strip, top to bottom (Main.Part12.cs 2107-2122; hints Main.Part10.cs 955-997 / 1046). */
 export const SYSTEM_MAP_BUTTONS: readonly SystemMapButtonDef[] = [
-    { name: 'btnZoomSelection', action: 'zoomSelection', y: stripY(0), h: 28, resx: 'btnZoomSelection.Image', hint: 'Zoom to selected item (Backspace)', hideInMapStep: true, fallback: 'Sel' },
+    { name: 'btnZoomSelection', action: 'zoomSelection', y: stripY(0), h: 28, resx: 'btnZoomSelection.Image', hint: 'Zoom to selected item (Backspace)', fallback: 'Sel' },
     { name: 'btnZoomIn', action: 'zoomIn', y: stripY(1), h: 28, resx: 'btnZoomIn.Image', hint: 'Zoom In (Page Down)', fallback: '+' },
     { name: 'btnZoomOut', action: 'zoomOut', y: stripY(2), h: 28, resx: 'btnZoomOut.Image', hint: 'Zoom Out (Page Up)', fallback: '\u2212' },
     { name: 'btnZoomColony', action: 'zoomColony', y: stripY(3), h: 28, resx: 'btnZoomColony.Image', hint: 'Zoom to 100% (Home)', fallback: '100%' },
@@ -110,7 +108,7 @@ export const SYSTEM_MAP_BUTTONS: readonly SystemMapButtonDef[] = [
     { name: 'btnZoomRegion', action: 'zoomRegion', y: stripY(6), h: 28, resx: 'btnZoomRegion.Image', hint: 'Zoom to Galaxy (End)', fallback: 'Gal' },
     // Not in the original: the free slot at num6 + 210 holds the size toggle (btnSelectionPanelSize's image).
     { name: 'btnSystemMapSize', action: 'size', y: stripY(7), h: 28, chrome: 'selectionPanelSize.png', hint: 'Shrink System Map', fallback: '\u2195' },
-    { name: 'tbtnGalaxyMap', action: 'galaxyMap', y: stripY(8), h: 40, chrome: 'galaxyMapButton.png', hint: 'Open Galaxy Map screen (G)', hideInMapStep: true, fallback: 'Map' },
+    { name: 'tbtnGalaxyMap', action: 'galaxyMap', y: stripY(8), h: 40, chrome: 'galaxyMapButton.png', hint: 'Open Galaxy Map screen (G)', fallback: 'Map' },
 ];
 
 /** Main.Part13.cs 185-186: double_4 / double_5, the Main View's zoom factor limits. */
@@ -282,7 +280,7 @@ export function buildHudSystemMap(opts: HudSystemMapOptions): HTMLElement {
     for (const def of SYSTEM_MAP_BUTTONS) {
         const b = document.createElement('button');
         b.type = 'button';
-        b.className = `sel-glass sel-corners-left sysmap-btn${def.h < 30 ? ' sysmap-btn-r6' : ''}${def.hideInMapStep === true ? ' sysmap-hide-in-map' : ''}`;
+        b.className = `sel-glass sel-corners-left sysmap-btn${def.h < 30 ? ' sysmap-btn-r6' : ''}`;
         b.dataset.sysmap = def.name;
         b.style.left = `${SYSTEM_MAP_STRIP.x}px`;
         b.style.top = `${def.y}px`;

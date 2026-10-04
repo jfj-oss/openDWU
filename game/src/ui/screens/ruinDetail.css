@@ -1,0 +1,33 @@
+/* Ruin Detail window (ruinDetail.ts, pnlRuinDetail). */
+.ow-screen-ruin-detail .rd-picture {
+    object-fit: contain;
+}
+.ow-screen-ruin-detail .rd-name {
+    text-align: center;
+    font-weight: bold;
+    text-shadow: 1px 1px 0 #000;
+    white-space: nowrap;
+}
+.ow-screen-ruin-detail .rd-column {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+/* AutoSize labels with MaximumSize 320 wide: the abilities centred by their own width, the description at x 10. */
+.ow-screen-ruin-detail .rd-abilities {
+    align-self: center;
+    max-width: 320px;
+    max-height: 200px;
+    overflow: hidden;
+    white-space: pre-wrap;
+    text-shadow: 1px 1px 0 #000;
+}
+.ow-screen-ruin-detail .rd-description {
+    margin: 15px 0 0 10px;
+    max-width: 320px;
+    white-space: pre-wrap;
+    text-shadow: 1px 1px 0 #000;
+}
+.ow-screen-ruin-detail .rd-description:empty {
+    display: none;
+}

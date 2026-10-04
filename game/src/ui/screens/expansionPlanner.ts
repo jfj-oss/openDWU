@@ -16,7 +16,6 @@
 //
 // TODO(port): canColonizeBecauseAtWar — galaxy.checkEmpireTerritoryCanColonizeHabitat does not return the C# out parameter (Galaxy.cs 3613), so the "Colonization target in another empire's system" status never shows
 // TODO(port): method_539 purchases the colony ship at the colony with the best queue-time × sqrt(distance) to the target (Main.Part4.cs method_539); 'buildNewShips' picks the yard like the Build Order screen does
-// TODO(port): resource rows open the Resource Components panel for non-luxury resources (Main.Part4.cs method_541 → method_552); here every name opens the Galactopedia
 
 import { abundancePercentText } from '../resourceAbundance';
 import './expansionPlanner.css';
@@ -76,6 +75,7 @@ import { habitatTypeLabel, resourceIconUrl, rgbCss, selectHabitat, selectStellar
 import { showToast } from '../toast';
 import { mainResxImageUrl } from '../resxImage';
 import { openGalactopedia } from './galactopedia';
+import { openResourceLink } from './resourceComponents';
 import { CROSSHAIR_COLOR, GRID_COLOR, drawMapTerritory, galaxyMapScale, sectorColumnLabel, starBrushColor } from './galaxyMap';
 import { drawGalaxyMapLayers } from './galaxyMapLayers';
 import { requestSimRefresh } from '../../simworker/refresh';
@@ -932,7 +932,8 @@ function createExpansionPlanner(opts: ExpansionPlannerOptions): OpenState {
                     header: T('Name'),
                     width: 110,
                     sort: (r) => r.name,
-                    render: (r, cell) => cell.appendChild(linkLabel(r.name, () => openGalactopedia({ topic: r.name }))),
+                    // Main.Part4.cs 2945 method_541: a luxury opens its Galactopedia topic, any other the Resource Components window.
+                    render: (r, cell) => cell.appendChild(linkLabel(r.name, () => openResourceLink(galaxy, player, r.resourceId))),
                 },
                 { id: 'type', header: T('Type'), width: 56, sort: (r) => (r.luxury ? 1 : 0), render: (r, cell) => cell.append(r.luxury ? T('Luxury') : T('Strategic')) },
                 { id: 'price', header: T('Price'), width: 42, align: 'right', sort: (r) => r.price, render: (r, cell) => cell.append(formatPrice(r.price)) },

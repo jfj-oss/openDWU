@@ -22,6 +22,7 @@ import { assignMission } from '../missions/assign';
 import { BuiltObjectMissionPriority } from '../missions/mission';
 import { MAX_SOLAR_SYSTEM_SIZE, baconMovementSettings } from '../movement';
 import { OrderType, empireCreateOrder } from '../logistics/orders';
+import { getRepairPriorityList } from './repairPriority';
 import { findNearestShipYard, procureConstructionComponentsAtBuiltObject, procureConstructionComponentsAtColony } from './empireConstruction';
 
 /** BaconBuiltObject.cs 66-70 shipFreeRepairTimeFromCrewSkill* (seconds per component; BaconSettings.txt has the same values). */
@@ -90,21 +91,44 @@ export function doRepairs(galaxy: Galaxy, builtObject: BuiltObject, timePassed: 
         }
         let componentToRepairCount = num5;
         if (componentToRepairCount > 0) {
-            // Design.RepaitPriorityTemplateName (ExpansionMod repair-priority templates, set only through the player's
-            // repair-priority UI / FixAI/PlayerDesignRepairTemplates) is null for every TS design, so the C# takes the
-            // random-start branch. TODO(port): repair-priority templates (Main._ExpModMain.GetRepairPriorityList).
             const components = ship.components.items;
-            const num8 = galaxy.rnd.next(0, components.length);
-            for (let index = num8; index < components.length && componentToRepairCount > 0; ++index) {
-                if (components[index].status === ComponentStatus.Damaged) {
-                    components[index].status = ComponentStatus.Normal;
-                    --componentToRepairCount;
+            // 4805-4829: a design repair-priority template (construction/repairPriority.ts; none named in the shipped
+            // game) repairs category by category: Components.GroupBy(Category) (first-appearance order), stable
+            // OrderBy(template.IndexOf(category)) (an unlisted category, -1, first). No Rnd on this branch.
+            const templateName = ship.design?.repaitPriorityTemplateName ?? null;
+            const repairTemplate = templateName !== null ? getRepairPriorityList(templateName) : null;
+            if (repairTemplate !== null) {
+                const groups = new Map<number, typeof components>();
+                for (const c of components) {
+                    const g = groups.get(c.category);
+                    if (g !== undefined) g.push(c);
+                    else groups.set(c.category, [c]);
                 }
-            }
-            for (let index = 0; index < num8 && componentToRepairCount > 0; ++index) {
-                if (components[index].status === ComponentStatus.Damaged) {
-                    components[index].status = ComponentStatus.Normal;
-                    --componentToRepairCount;
+                const ordered = [...groups.entries()]
+                    .map(([category, items], i) => ({ key: repairTemplate.indexOf(category), i, items }))
+                    .sort((a, b) => a.key - b.key || a.i - b.i);
+                outer: for (const group of ordered) {
+                    for (const component of group.items) {
+                        if (component.status === ComponentStatus.Damaged) {
+                            component.status = ComponentStatus.Normal;
+                            --componentToRepairCount;
+                        }
+                        if (componentToRepairCount === 0) break outer;
+                    }
+                }
+            } else {
+                const num8 = galaxy.rnd.next(0, components.length);
+                for (let index = num8; index < components.length && componentToRepairCount > 0; ++index) {
+                    if (components[index].status === ComponentStatus.Damaged) {
+                        components[index].status = ComponentStatus.Normal;
+                        --componentToRepairCount;
+                    }
+                }
+                for (let index = 0; index < num8 && componentToRepairCount > 0; ++index) {
+                    if (components[index].status === ComponentStatus.Damaged) {
+                        components[index].status = ComponentStatus.Normal;
+                        --componentToRepairCount;
+                    }
                 }
             }
             ship.reDefine();

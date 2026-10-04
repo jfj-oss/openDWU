@@ -14,15 +14,16 @@
 //   - the name box (hvhxxedjqS at (750, 355), rename on leave) and the InfoPanel (pnlBuiltObjectDetail, 300 × 300 at
 //     (700, 385)) drawn by the selection panel's InfoPanel port (selectionInfo.ts / selectionInfoView.ts);
 //   - the tab control (tabBuiltObjectData, 680 × 300 at (10, 385)): Cargo, Components, Construction Yards, Docking Bays,
-//     Troops & Characters, Weapons, with the original's "(n)" counts.
+//     Troops, Weapons, with the original's "(n)" counts (the Cargo / Components / Docking Bays / Troops / Weapons pages
+//     are the shared builtObjectDataTabs.ts, also used by the Construction Yards screen).
 // The Retrofit button opens pnlRetrofit (Main.Part3.cs method_574 / 575: total cost, the design combo when every
-// selected item has the same sub-role, the warnings of method_576, Go) and Scrap asks first
-// (btnBuiltObjectScrapSelected_Click). Every command goes through the player command queue.
+// selected item has the same sub-role, the warnings of method_576, Go) and Scrap asks first, then scraps them
+// (btnBuiltObjectScrapSelected_Click, the 'scrapShips' op). Every command goes through the player command queue.
 // Not in the original (kept from earlier tasks): "Refit selected / all to latest" (fleetOps.planRetrofit /
 // retrofitShips), the Automate toggle button under the Set Fleet combo, and the "Construction Jobs" tab (the
 // construction board of sim/player/constructionBoard.ts).
-// TODO(port): the troop loadout group of the Troops tab (Main.Part11.cs method_179), the construction-yard buttons (purchaser, move/remove in the wait queue,
-// Main.Part11.cs method_169), the cargo resource-shortage label and the weapons damage graph (WeaponListView).
+// TODO(port): the construction-yard buttons of the Construction Yards tab here (purchaser, move/remove in the wait
+// queue, Main.Part11.cs method_169) — the Construction Yards screen (constructionYards.ts) has them.
 
 import './shipsAndBasesList.css';
 import type { BuiltObject } from '../../sim/builtObject';
@@ -39,11 +40,8 @@ import { issuePlayerCommand } from '../../sim/player/playerCommands';
 import { constructionJobRows } from '../../sim/player/constructionBoard';
 import { ShipAction, ShipActionType } from '../../sim/player/shipAction';
 import { getBuildableDesignsBySubRoles } from '../../sim/designGeneration';
-import { ComponentStatus } from '../../sim/builtObjectComponent';
-import { CharacterRole } from '../../sim/characters';
-import { ComponentCategoryType } from '../../sim/data/policies';
 import { newDesignDraft } from '../../sim/player/designEditor';
-import { subRoleLabel, missionTypeLabel, habitatTypeLabel, resourceIconUrl } from '../hud';
+import { subRoleLabel, missionTypeLabel, habitatTypeLabel } from '../hud';
 import { confirmAutomationOff } from '../orderMenu';
 import { planRetrofit, type RetrofitPlanEntry, type RetrofitResult } from '../../sim/player/fleetOps';
 import { showToast } from '../toast';
@@ -72,8 +70,9 @@ import { habitatImageUrl, shipImageUrl } from '../selectionInfo';
 import { CROSSHAIR_COLOR, DIMMED_COLOR, GRID_COLOR, drawMapTerritory, galaxyMapScale, sectorColumnLabel, starBrushColor, starDotSizes } from './galaxyMap';
 import { drawGalaxyMapLayers } from './galaxyMapLayers';
 import { yardRows, waitRows, type ConstructionSite } from './constructionYards';
-import { troopRows, type TroopRow } from './troops';
 import { openDesignEditor } from './designEditor';
+import { builtObjectTabLabels, dataTabContentKey, renderDataTab, type DataTabId } from './builtObjectDataTabs';
+import { gt } from './researchBenefits';
 import { requestSimRefresh } from '../../simworker/refresh';
 
 /** Human label for a built-object role: 'None' for Undefined (GameText.txt
@@ -397,24 +396,7 @@ export function retrofitCostText(cost: number, money: number): string {
     return t;
 }
 
-/** Main.Part11.cs method_178 / ctlBuiltObjectList_SelectionChanged: the data tabs' captions with their "(n)" counts. */
-export function builtObjectTabLabels(o: BuiltObject | Habitat | null): { cargo: string; components: string; yards: string; docking: string; troops: string; weapons: string } {
-    const n = (v: number, suffix = ''): string => (v > 0 ? ` (${v}${suffix})` : '');
-    if (o === null) return { cargo: 'Cargo', components: 'Components', yards: 'Construction Yards', docking: 'Docking Bays', troops: 'Troops & Characters', weapons: 'Weapons' };
-    const bo = o instanceof Habitat ? null : (o as BuiltObject);
-    const cargo = (o.cargo as { items?: unknown[] } | null)?.items?.length ?? 0;
-    const yards = ((o.constructionQueue as { constructionYards?: { shipUnderConstruction: unknown }[] | null } | null)?.constructionYards ?? []).filter((y) => y.shipUnderConstruction !== null).length;
-    const bays = ((o.dockingBays as { dockedShip: unknown }[] | null) ?? []).filter((d) => d.dockedShip !== null).length;
-    const troops = ((o.troops as { items?: unknown[] } | null)?.items?.length ?? 0) + (((o as { characters?: unknown[] | null }).characters)?.length ?? 0);
-    return {
-        cargo: `Cargo${n(cargo)}`,
-        components: `Components${n(bo?.damagedComponentCount ?? 0, ' damaged')}`,
-        yards: `Construction Yards${n(yards)}`,
-        docking: `Docking Bays${n(bays)}`,
-        troops: `Troops & Characters${n(troops)}`,
-        weapons: `Weapons${n(bo?.weapons?.length ?? 0)}`,
-    };
-}
+export { builtObjectTabLabels };
 
 /** "1h 05m" / "4m 30s" / "12s" for a job's estimated time (sim ms). */
 export function formatEta(ms: number): string {
@@ -425,11 +407,6 @@ export function formatEta(ms: number): string {
     if (h > 0) return `${h}h ${String(m).padStart(2, '0')}m`;
     if (m > 0) return `${m}m ${String(s).padStart(2, '0')}s`;
     return `${s}s`;
-}
-
-/** An enum member name as words ("WeaponBeam" → "Weapon Beam"). */
-function enumWords(name: string | undefined): string {
-    return (name ?? '').replace(/([a-z])([A-Z])/g, '$1 $2');
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -843,6 +820,8 @@ function createShipsAndBasesList(opts: ShipsAndBasesListOptions): OpenState {
 
     // Pages: rebuilt when their content key changes (the timer refreshes in place otherwise).
     let pageKey = '';
+    /** Components tab: the selected component (ctlBuiltObjectComponents.SelectedComponent). */
+    let selectedComponent: number | null = null;
     function pageGrid<T>(cols: GridColumn<T>[], data: T[], x: number, y: number, w: number, h: number, empty: string): OwGrid<T> {
         const g = new OwGrid<T>({ columns: cols, key: (r) => r, rowHeight: 26, empty });
         g.setRows(data);
@@ -856,65 +835,20 @@ function createShipsAndBasesList(opts: ShipsAndBasesListOptions): OpenState {
         if (activeTab === 'jobs') {
             key += constructionJobRows(galaxy, empire).map((j) => `${j.id}:${j.state}:${j.shipName}:${j.etaMs === null ? '' : Math.round(j.etaMs / 1000)}`).join(',');
         } else if (o !== null) {
-            key += pageContentKey(activeTab, o);
+            key += pageContentKey(activeTab, o, selectedComponent);
         }
         if (key === pageKey) return;
         pageKey = key;
         page.replaceChildren();
         switch (activeTab) {
-            case 'cargo': {
-                // ctlBuiltObjectCargo (350 × 275): Empire 30, Picture 40, Name 160, Amount 60, Reserved 60.
-                type CargoRow = { empire: Empire | null; url: string | null; name: string; amount: number; reserved: number };
-                const items = ((o?.cargo as { items?: { commodity: { resourceId: number }; commodityComponent: { componentId: number } | null; amount: number; reserved: number; empire: unknown }[] } | null)?.items ?? []).map((c): CargoRow => {
-                    const res = c.commodityComponent === null ? galaxy.resources.find((r) => r.resourceId === c.commodity.resourceId) : undefined;
-                    const comp = c.commodityComponent !== null ? galaxy.researchStatic?.componentsById.get(c.commodityComponent.componentId) : undefined;
-                    return {
-                        empire: (c.empire as Empire | null) ?? null,
-                        url: res ? resourceIconUrl(res.pictureRef) : null,
-                        name: res?.name ?? (comp as { name?: string } | undefined)?.name ?? '',
-                        amount: c.amount,
-                        reserved: c.reserved,
-                    };
-                });
-                pageGrid<CargoRow>(
-                    [
-                        { id: 'e', header: 'Empire', width: 30, render: (r, c) => flagCell(galaxy, c, r.empire) },
-                        { id: 'p', header: '', width: 40, align: 'center', render: (r, c) => imageCell(c, r.url, 22) },
-                        { id: 'n', header: 'Name', width: 160, sort: (r) => r.name, render: (r, c) => textCell(c, r.name) },
-                        { id: 'a', header: 'Amount', width: 60, align: 'right', sort: (r) => r.amount, render: (r, c) => textCell(c, r.amount.toLocaleString('en-US')) },
-                        { id: 'r', header: 'Reserved', width: 60, align: 'right', sort: (r) => r.reserved, render: (r, c) => textCell(c, r.reserved.toLocaleString('en-US')) },
-                    ],
-                    items,
-                    0, 0, 350, 274, o === null ? '' : 'No cargo',
-                );
+            case 'cargo':
+            case 'components':
+            case 'docking':
+            case 'troops':
+            case 'weapons':
+                // The shared pnlBuiltObjectInfo data tabs (builtObjectDataTabs.ts).
+                renderDataTab(activeTab, o, { galaxy, empire, page, rebuild: () => { pageKey = ''; buildPage(); }, selectedComponent, setSelectedComponent: (i) => { selectedComponent = i; } });
                 break;
-            }
-            case 'components': {
-                // ctlBuiltObjectComponents (455 × 275).
-                type CompRow = { name: string; category: string; status: ComponentStatus };
-                const comps = (bo?.components as unknown as { items?: unknown[] } | null | undefined);
-                const list = ((Array.isArray(comps) ? comps : comps?.items) ?? []) as { def: { name: string; category: number }; status: ComponentStatus }[];
-                const data: CompRow[] = list.map((c) => ({ name: c.def.name, category: enumWords(componentCategoryName(c.def.category)), status: c.status }));
-                const statusText = (s: ComponentStatus): string => (s === ComponentStatus.Damaged ? 'Damaged' : s === ComponentStatus.Unbuilt ? 'Unbuilt' : 'Normal');
-                pageGrid<CompRow>(
-                    [
-                        { id: 'n', header: 'Component', width: 200, sort: (r) => r.name, render: (r, c) => { textCell(c, r.name); if (r.status !== ComponentStatus.Normal) c.style.color = r.status === ComponentStatus.Damaged ? 'rgb(255, 0, 0)' : 'rgb(255, 165, 0)'; } },
-                        { id: 'c', header: 'Type', width: 150, sort: (r) => r.category, render: (r, c) => textCell(c, r.category) },
-                        { id: 's', header: 'Status', fill: 1, sort: (r) => r.status, render: (r, c) => textCell(c, statusText(r.status)) },
-                    ],
-                    data,
-                    0, 0, 455, 274, bo === null ? '' : 'No components',
-                );
-                if (bo !== null) {
-                    dropText(page, 'Retrofit Stance', 465, 220, { size: FONT.large, color: COLORS.label });
-                    const stance = dropDown([{ value: 'auto', label: 'Auto Retrofit (including advisor suggestions)' }, { value: 'never', label: 'Only Retrofit When Manually Ordered' }], bo.suppressAutoRetrofit ? 'never' : 'auto',
-                        (v) => issuePlayerCommand(galaxy, empire, 'setShipRetrofitStance', [[bo], v === 'auto'], () => { pageKey = ''; buildPage(); }));
-                    // cmbBuiltObjectAutoRetrofit.Enabled = false for the private sub-roles (and, here, for ships that are not ours).
-                    stance.disabled = bo.empire !== empire || isPrivateDesignSubRole(bo.subRole);
-                    page.appendChild(place(stance, 465, 240, 200, 21));
-                }
-                break;
-            }
             case 'yards': {
                 // ctlConstructionYards (390 × 150) + the wait queue (390 × 95 at (0, 180)).
                 const site: ConstructionSite | null = o === null ? null : o instanceof Habitat ? { kind: 'colony', habitat: o } : { kind: 'builtObject', builtObject: o as BuiltObject };
@@ -940,80 +874,6 @@ function createShipsAndBasesList(opts: ShipsAndBasesListOptions): OpenState {
                     ],
                     waits,
                     0, 180, 390, 94, '',
-                );
-                break;
-            }
-            case 'docking': {
-                // ctlDockingBays (555 × 130) + the wait queue (555 × 120 at (0, 155)).
-                const bays = ((o?.dockingBays as { dockedShip: BuiltObject | null }[] | null) ?? []);
-                pageGrid<{ dockedShip: BuiltObject | null }>(
-                    [
-                        { id: 'e', header: 'Empire', width: 30, render: (r, c) => (r.dockedShip ? flagCell(galaxy, c, r.dockedShip.empire) : undefined) },
-                        { id: 'p', header: '', width: 40, align: 'center', render: (r, c) => (r.dockedShip ? imageCell(c, shipImageUrl(r.dockedShip), 22, -90) : undefined) },
-                        { id: 'n', header: 'Ship', width: 300, render: (r, c) => textCell(c, r.dockedShip?.name ?? '(Empty)') },
-                        { id: 'm', header: 'Command', fill: 1, render: (r, c) => { const m = r.dockedShip ? builtObjectMission(r.dockedShip.mission) : null; textCell(c, m !== null && m.type !== BuiltObjectMissionType.Undefined ? missionTypeLabel(m.type) : ''); } },
-                    ],
-                    bays,
-                    0, 0, 555, 130, o === null ? '' : 'No docking bays',
-                );
-                dropText(page, 'Ships waiting for a Docking Bay', 0, 135, { size: FONT.header, bold: true, color: COLORS.label });
-                const queue = ((o as { dockingBayWaitQueue?: BuiltObject[] | null } | null)?.dockingBayWaitQueue ?? []);
-                pageGrid<BuiltObject>(
-                    [
-                        { id: 'e', header: 'Empire', width: 30, render: (r, c) => flagCell(galaxy, c, r.empire) },
-                        { id: 'p', header: '', width: 40, align: 'center', render: (r, c) => imageCell(c, shipImageUrl(r), 22, -90) },
-                        { id: 'n', header: 'Name', width: 155, render: (r, c) => textCell(c, r.name) },
-                        { id: 'r', header: 'Role', width: 150, render: (r, c) => textCell(c, `${builtObjectRoleLabel(r.role)}, ${subRoleLabel(r.subRole)}`) },
-                        { id: 'm', header: 'Mission', width: 80, render: (r, c) => { const m = builtObjectMission(r.mission); textCell(c, m !== null && m.type !== BuiltObjectMissionType.Undefined ? missionTypeLabel(m.type) : '(None)'); } },
-                        { id: 's', header: 'System', fill: 1, render: (r, c) => textCell(c, r.nearestSystemStar?.name ?? '') },
-                    ],
-                    queue,
-                    0, 155, 555, 119, '',
-                );
-                break;
-            }
-            case 'troops': {
-                // ctlBuiltObjectCharactersTroops (455 × 275): the characters, then the troops.
-                type TRow = { name: string; type: string; strength: string; troop: TroopRow | null };
-                const chars = (((o as { characters?: unknown } | null)?.characters as { name: string; role: CharacterRole }[] | null) ?? []).map((ch): TRow => ({ name: ch.name, type: enumWords(CharacterRole[ch.role]), strength: '', troop: null }));
-                const troops = troopRows((o?.troops as { items?: never[] } | null)?.items ?? []).map((t): TRow => ({ name: t.name, type: t.type, strength: `${Math.round(t.attack)} / ${Math.round(t.defend)}`, troop: t }));
-                pageGrid<TRow>(
-                    [
-                        { id: 'n', header: 'Name', width: 170, sort: (r) => r.name, render: (r, c) => textCell(c, r.name) },
-                        { id: 't', header: 'Type', width: 130, sort: (r) => r.type, render: (r, c) => textCell(c, r.type) },
-                        { id: 'x', header: 'Experience', width: 70, render: (r, c) => textCell(c, r.troop?.experience ?? '') },
-                        { id: 's', header: 'Att / Def', fill: 1, align: 'right', render: (r, c) => textCell(c, r.strength) },
-                    ],
-                    [...chars, ...troops],
-                    0, 0, 455, 274, o === null ? '' : 'No troops or characters',
-                );
-                break;
-            }
-            case 'weapons': {
-                // ctlWeapons (600 × 275): Picture 40, Name 135, Speed 50, EnergyRequired 50, FireRate 50, damage 275.
-                type Wp = { name: string; speed: number; energy: number; fireRate: number; damage: number; range: number };
-                const ws: Wp[] = (bo?.weapons ?? []).map((w) => ({ name: w.component.def.name, speed: w.speed, energy: w.energyRequired, fireRate: w.fireRate, damage: w.rawDamage, range: w.range }));
-                const maxDmg = Math.max(1, ...ws.map((w) => w.damage));
-                pageGrid<Wp>(
-                    [
-                        { id: 'n', header: 'Name', width: 175, sort: (r) => r.name, render: (r, c) => textCell(c, r.name) },
-                        { id: 's', header: 'Speed', width: 50, align: 'right', sort: (r) => r.speed, render: (r, c) => textCell(c, String(Math.round(r.speed))) },
-                        { id: 'e', header: 'Energy', width: 50, align: 'right', sort: (r) => r.energy, render: (r, c) => textCell(c, String(Math.round(r.energy))) },
-                        { id: 'f', header: 'Fire Rate', width: 50, align: 'right', sort: (r) => r.fireRate, render: (r, c) => textCell(c, (r.fireRate / 1000).toFixed(1)) },
-                        {
-                            id: 'd',
-                            header: 'Damage / Range',
-                            fill: 1,
-                            sort: (r) => r.damage,
-                            render: (r, c) => {
-                                const bar = el('div', 'ships-dmgbar');
-                                bar.style.width = `${Math.round((r.damage / maxDmg) * 150)}px`;
-                                c.append(bar, el('span', '', `${Math.round(r.damage)} @ ${Math.round(r.range)}`));
-                            },
-                        },
-                    ],
-                    ws,
-                    0, 0, 600, 274, bo === null ? '' : 'No weapons',
                 );
                 break;
             }
@@ -1167,6 +1027,7 @@ function createShipsAndBasesList(opts: ShipsAndBasesListOptions): OpenState {
 
     function selectionChanged(): void {
         const r = current[0] ?? null;
+        selectedComponent = null;
         if (document.activeElement !== nameBox) nameBox.value = current.length === 1 && r !== null ? r.name : '';
         nameBox.disabled = !(current.length === 1 && r !== null && r.builtObject !== null);
         win.setTitle(current.length > 1 ? `Ships and Bases (${rows.length}) - ${current.length} selected` : `Ships and Bases (${rows.length})`);
@@ -1244,22 +1105,25 @@ function createShipsAndBasesList(opts: ShipsAndBasesListOptions): OpenState {
         const ships = selectedShips(current);
         if (ships.length === 0) return;
         const answer = await messageBox({
-            caption: 'Scrap selected ships and bases?',
-            text: 'Scrapping ships and bases permanently and immediately removes them from the game',
+            caption: gt('Scrap selected ships and bases?'),
+            text: gt('Scrapping ships and bases permanently and immediately removes them from the game'),
             buttons: ['Yes', 'No'],
             defaultButton: 'No',
             icon: 'warning',
         });
         if (answer !== 'Yes' || win.closed) return;
-        // The row before the first selected one (or after it, at the top) becomes the selection.
+        // The row before the first selected one (or the second row, when it is the first) becomes the selection
+        // (method_178(builtObject_, filter) after the scrap).
         const shown = grid.displayed;
         const i = shown.indexOf(current[0]);
-        const nextSel = shown.slice(0, Math.max(0, i)).reverse().concat(shown.slice(i + 1)).find((r) => !ships.includes(r.builtObject as BuiltObject));
-        // Main.Part7.cs: a base's Retire with no target tears it (and its construction queue) down; a ship's Retire on
-        // itself is "Scrap Ships Immediately".
-        shipActions(ships, (b) => ShipAction.forMission(BuiltObjectMissionType.Retire, b.role === BuiltObjectRole.Base ? null : b), () => {
-            grid.setSelection(nextSel ? [nextSel.stellarObject] : []);
-            refresh();
+        const nextSel = i > 0 ? shown[i - 1] : i === 0 && shown.length > 1 ? shown[1] : null;
+        issuePlayerCommand(galaxy, empire, 'scrapShips', [ships], () => {
+            if (win.closed) return;
+            rows = shipsAndBasesRows(empire, opts.selected, filter);
+            grid.setRows(rows);
+            grid.setSelection(nextSel !== null && rows.some((r) => r.stellarObject === nextSel.stellarObject) ? [nextSel.stellarObject] : [], true);
+            current = grid.selectedRows;
+            selectionChanged();
         });
     }
 
@@ -1300,31 +1164,12 @@ function createShipsAndBasesList(opts: ShipsAndBasesListOptions): OpenState {
 }
 
 /** Content key of a data tab (rebuild the page only when it changed). */
-function pageContentKey(tab: string, o: BuiltObject | Habitat): string {
-    const len = (v: unknown): number => (Array.isArray(v) ? v.length : ((v as { items?: unknown[] } | null)?.items?.length ?? 0));
-    switch (tab) {
-        case 'cargo':
-            return ((o.cargo as { items?: { amount: number; reserved: number }[] } | null)?.items ?? []).map((c) => `${c.amount}/${c.reserved}`).join(',');
-        case 'components': {
-            const comps = (o as BuiltObject).components as unknown as { items?: { status: number }[] } | { status: number }[] | undefined;
-            const list = (Array.isArray(comps) ? comps : comps?.items) ?? [];
-            return `${(o as BuiltObject).name}:${list.map((c) => c.status).join('')}:${(o as BuiltObject).suppressAutoRetrofit ? 1 : 0}`;
-        }
-        case 'yards': {
-            const q = o.constructionQueue as { constructionYards?: { shipUnderConstruction: { name: string } | null }[] | null; constructionWaitQueue?: unknown[] | null } | null;
-            return `${(q?.constructionYards ?? []).map((y) => y.shipUnderConstruction?.name ?? '').join(',')}|${len(q?.constructionWaitQueue)}|${Math.floor(Date.now() / 5000)}`;
-        }
-        case 'docking':
-            return `${((o.dockingBays as { dockedShip: { name: string } | null }[] | null) ?? []).map((d) => d.dockedShip?.name ?? '').join(',')}|${len((o as { dockingBayWaitQueue?: unknown }).dockingBayWaitQueue)}`;
-        case 'troops':
-            return `${len(o.troops)}|${len((o as { characters?: unknown }).characters)}`;
-        case 'weapons':
-            return `${(o as BuiltObject).name}:${len((o as BuiltObject).weapons)}`;
+function pageContentKey(tab: string, o: BuiltObject | Habitat, selectedComponent: number | null): string {
+    if (tab === 'yards') {
+        const len = (v: unknown): number => (Array.isArray(v) ? v.length : ((v as { items?: unknown[] } | null)?.items?.length ?? 0));
+        const q = o.constructionQueue as { constructionYards?: { shipUnderConstruction: { name: string } | null }[] | null; constructionWaitQueue?: unknown[] | null } | null;
+        return `${(q?.constructionYards ?? []).map((y) => y.shipUnderConstruction?.name ?? '').join(',')}|${len(q?.constructionWaitQueue)}|${Math.floor(Date.now() / 5000)}`;
     }
-    return '';
+    return dataTabContentKey(tab as DataTabId, o, selectedComponent);
 }
 
-/** ComponentCategoryType member name of a category value. */
-function componentCategoryName(category: number): string {
-    return (ComponentCategoryType as unknown as Record<number, string>)[category] ?? '';
-}

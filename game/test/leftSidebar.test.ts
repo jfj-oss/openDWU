@@ -46,6 +46,7 @@ describe('left sidebar: panels (Main.Part11.cs method_163)', () => {
             'Mining Stations',
             'Construction Ships',
             'Exploration Ships',
+            'Enemy Targets',
             'Fleets',
             'Military Ships',
             'Potential Colonies',

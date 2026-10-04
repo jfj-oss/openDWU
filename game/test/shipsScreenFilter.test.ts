@@ -217,14 +217,15 @@ describe('original-window port helpers (method_178 / pnlRetrofit)', () => {
             { ship: escort, design: null, cost: 0, skip: 'already latest design' as const },
         ];
         expect(m.retrofitPlanSummary(plan)).toBe('1 will be retrofitted; skipped: 1 already latest design');
-        expect(m.builtObjectTabLabels(null).troops).toBe('Troops & Characters');
+        // method_178: tabBuiltObject_Troops.Text = "Troops" + " (Troops.Count)" (the characters are not counted).
+        expect(m.builtObjectTabLabels(null).troops).toBe('Troops');
         const loaded = ship(S.Frigate, BuiltObjectRole.Military, { cargo: { items: [{}, {}] }, damagedComponentCount: 3, weapons: [{}], dockingBays: [{ dockedShip: null }, { dockedShip: {} }], troops: { items: [{}] }, characters: [{}] });
         expect(m.builtObjectTabLabels(loaded)).toEqual({
             cargo: 'Cargo (2)',
             components: 'Components (3 damaged)',
             yards: 'Construction Yards',
             docking: 'Docking Bays (1)',
-            troops: 'Troops & Characters (2)',
+            troops: 'Troops (1)',
             weapons: 'Weapons (1)',
         });
         expect(m.builtObjectNameState(ship(S.Frigate, BuiltObjectRole.Military, { damagedComponentCount: 2, warpSpeed: 0 }))).toEqual({ state: 'damaged', tip: '2 components damaged (no hyperdrive, cannot travel for repairs)' });

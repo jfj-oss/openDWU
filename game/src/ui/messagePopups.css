@@ -219,6 +219,9 @@
     justify-content: center;
     padding: 5px 16px 73px;
     box-sizing: border-box;
+    /* The game's UI font (originalWindow.css .ow-screen): the panel sits outside an .ow-screen, so it does not inherit it. */
+    font-family: 'Forgotten Futurist', sans-serif;
+    -webkit-font-smoothing: antialiased;
 }
 .msg-story-picture {
     position: absolute;
@@ -258,6 +261,18 @@
     width: 360px;
     height: 50px;
     transform: none;
+    /* GlassButton draws its text wrapped in the button's rectangle (font_2); the answers are long. */
+    white-space: normal;
+    text-align: center;
+    padding: 0 10px;
+    font-size: 14px;
+}
+.msg-story.msg-story-choice .msg-story-close .ow-glass-text {
+    overflow: visible;
+    text-overflow: clip;
+}
+.msg-story .msg-story-close {
+    font-size: 14px;
 }
 .msg-story.msg-story-choice .msg-story-no {
     left: calc(50% - 370px);

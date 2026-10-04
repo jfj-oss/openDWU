@@ -84,10 +84,10 @@ if (n > 1) {
     await rows.nth(0).click();
     await page.waitForTimeout(500);
 }
-await page.locator('[data-ow="yards"] .ow-tab').nth(1).click();
+await page.locator('[data-ow="yards"] .ow-tab').nth(6).click(); // Fleet Builds (after method_178's six tabs)
 await page.waitForTimeout(1000);
 await page.screenshot({ path: `${outDir}/fleets-${tag}.png` });
-await page.locator('[data-ow="yards"] .ow-tab').nth(2).click();
+await page.locator('[data-ow="yards"] .ow-tab').nth(7).click(); // Construction Jobs
 await page.waitForTimeout(1000);
 await page.screenshot({ path: `${outDir}/jobs-${tag}.png` });
 console.log(logs.length ? logs.join('\n') : 'no console errors');

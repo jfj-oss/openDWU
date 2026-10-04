@@ -21,6 +21,7 @@ import type { Creature } from './creature';
 import type { BuiltObject } from './builtObject';
 import { MIN_TIME } from './tick/simTime';
 import type { Galaxy } from './galaxy';
+import type { Empire } from './empire';
 import { GalaxyLocationType, type GalaxyLocation } from './galaxyLocation';
 import { HabitatCategoryType, type Habitat, type SystemInfo } from './types';
 
@@ -173,6 +174,18 @@ export interface VisibilityOwner {
     longRangeScanners(): readonly { xpos: number; ypos: number; sensorLongRange: number }[];
     // C#: FindShipOutsideSystemWithScanRange(x, y, 1.0) != null.
     hasShipOutsideSystemWithScanRange(x: number, y: number): boolean;
+}
+
+// Empire.9.cs 3444 FindShipOutsideSystemWithScanRange(x, y, rangeModifier) != null for an Empire owner. The port
+// (independentTraders.ts findShipOutsideSystemWithScanRange) registers itself here: this module cannot import it.
+type ShipOutsideSystemScan = (empire: Empire, x: number, y: number, rangeModifier: number) => boolean;
+let shipOutsideSystemScan: ShipOutsideSystemScan | null = null;
+export function registerShipOutsideSystemScan(fn: ShipOutsideSystemScan): void {
+    shipOutsideSystemScan = fn;
+}
+export function empireHasShipOutsideSystemWithScanRange(empire: Empire, x: number, y: number): boolean {
+    if (shipOutsideSystemScan === null) throw new Error('FindShipOutsideSystemWithScanRange not registered (import independentTraders.ts)');
+    return shipOutsideSystemScan(empire, x, y, 1.0);
 }
 
 // An owner with no colonies or ships (tests, observers, pre-M2 empires).

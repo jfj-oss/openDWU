@@ -11,25 +11,27 @@
 // buttons and the diplomatic message queue. method_472(false) hides those as well. What MainView draws itself
 // (method_18: the star date and speed text, the money / cashflow block and the system name) stays in every step.
 //
-// Port: the system map corner is pnlSystemMap (hudSystemMap.ts: the panel and its zoom strip, of which btnZoomSelection
-// and tbtnGalaxyMap hide in the map step) plus our options list (pnlOptionsList: the overlay toggles, the original's row
+// Port: the system map corner is pnlSystemMap (hudSystemMap.ts: the panel, its zoom strip and our size toggle) plus our options list (pnlOptionsList: the overlay toggles, the original's row
 // of overlay buttons), the message stub list (messageStubList.ts) for the diplomatic message queue; the date text of
 // pnlTopLeftBar and pnlMoney are the MainView-drawn parts. The state is a data attribute on <body> read by hud.css.
+//
+// Changed at the user's request (not the original's order): T cycles all → everything but the system map → no UI →
+// all. 'nomap' hides only the system map corner (pnlSystemMap); 'none' is method_472(false)'s state.
 // TODO(port): the hover message's move by the panel height (rectangle_0.Y / mainView.HoverMessageLocation,
 // Main.Part7.cs 3094-3103) — our map tooltip follows the cursor (mapTooltip.ts).
 
-/** 'all' = method_473's state, 'map' = after method_472(true), 'none' = after method_472(false). */
-export type PanelVisibility = 'all' | 'map' | 'none';
+/** 'all' = method_473's state, 'nomap' = everything but the system map, 'none' = after method_472(false). */
+export type PanelVisibility = 'all' | 'nomap' | 'none';
 
-/** Main_KeyUp CyclePanelVisibility: the step after `current` (pnlInfoPanel.Visible / pnlSystemMap.Visible). */
+/** The T key's step after `current`: all → nomap → none → all. */
 export function nextPanelVisibility(current: PanelVisibility): PanelVisibility {
-    if (current === 'all') return 'map';
-    if (current === 'map') return 'none';
+    if (current === 'all') return 'nomap';
+    if (current === 'nomap') return 'none';
     return 'all';
 }
 
-/** HUD element names (data-hud) method_472(true) hides; everything under #hud but these stays in the 'map' step. */
-export const MAP_CORNER_ELEMENTS: readonly string[] = ['pnlSystemMap', 'pnlOptionsList'];
+/** HUD element names (data-hud) the 'nomap' step hides; everything else stays. */
+export const MAP_CORNER_ELEMENTS: readonly string[] = ['pnlSystemMap'];
 /** HUD element names drawn by MainView itself (method_18), never hidden. */
 export const MAIN_VIEW_DRAWN_ELEMENTS: readonly string[] = ['pnlMoney'];
 
@@ -37,7 +39,7 @@ export const MAIN_VIEW_DRAWN_ELEMENTS: readonly string[] = ['pnlMoney'];
 export function hudElementShown(name: string, state: PanelVisibility): boolean {
     if (state === 'all' || MAIN_VIEW_DRAWN_ELEMENTS.includes(name)) return true;
     if (name === 'pnlTopLeftBar') return true; // its buttons are hidden by CSS, the date text stays
-    if (state === 'map') return MAP_CORNER_ELEMENTS.includes(name);
+    if (state === 'nomap') return !MAP_CORNER_ELEMENTS.includes(name);
     return false;
 }
 

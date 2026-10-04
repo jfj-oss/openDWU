@@ -129,12 +129,21 @@ for (const mode of ['inthread', 'worker']) {
 
         // The Return of the Shakturi story panel at level 2 (display only: no answer is clicked) and the Code 1 ending.
         await page.evaluate(async () => {
+            // The texts HISTORY_OFFER_STORYMESSAGE_ACCEPT builds at level 2 (Main.Part10.cs 5013-5036).
             const mp = await import('/src/ui/messagePopups.ts');
+            const se = await import('/src/sim/story/storyEvents.ts');
+            const tr = await import('/src/sim/textResolver.ts');
             const g = window.__dwu.galaxy;
-            mp.showShakturiStoryPanel(g, g.playerEmpire, 'Ancient Guardians Reveal All', 'StoryMessageLevel2', 2);
+            mp.showShakturiStoryPanel(g, g.playerEmpire, tr.tryGetText('Ancient Guardians Reveal All') ?? 'Ancient Guardians Reveal All', se.generateMajorStoryItem(2), 2);
         });
         await shot('story-freedom-alliance');
         check((await page.locator('.msg-story-yes').count()) === 1 && (await page.locator('.msg-story-no').count()) === 1, `${mode}: the level-2 story panel asks to join the alliance`);
+        const storyText = await page.locator('.msg-story-text').textContent();
+        check(storyText.length > 80 && !/MajorStoryEvent|StoryMessage/.test(storyText), `${mode}: the story text is the resolved message (${storyText.slice(0, 40)}...)`);
+        const font = await page.locator('.msg-story-title').evaluate((e) => getComputedStyle(e).fontFamily);
+        check(font.includes('Forgotten Futurist'), `${mode}: the story panel uses the UI font (${font})`);
+        const clipped = await page.locator('.msg-story-close .ow-glass-text').evaluateAll((els) => els.some((e) => e.scrollWidth > e.clientWidth + 1 || e.scrollHeight > e.parentElement.clientHeight + 1));
+        check(!clipped, `${mode}: the answer buttons show their whole text`);
         await page.evaluate(async () => {
             const mp = await import('/src/ui/messagePopups.ts');
             mp.closeStoryEventPopup();
@@ -145,6 +154,8 @@ for (const mode of ['inthread', 'worker']) {
         });
         await shot('story-ending');
         check((await page.locator('.msg-story-title', { hasText: 'Defeated the Shakturi' }).count()) === 1, `${mode}: the Code 1 ending shows the story panel`);
+        const endText = await page.locator('.msg-story-text').textContent();
+        check(endText.length > 80 && !/ShakturiPlayer/.test(endText), `${mode}: the ending text is the resolved message (${endText.slice(0, 40)}...)`);
     } catch (e) {
         failures.push(`${mode}: ${e.message}`);
         console.log(`FAIL ${mode}: ${e.message}`);

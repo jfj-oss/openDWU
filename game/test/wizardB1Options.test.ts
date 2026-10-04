@@ -256,3 +256,13 @@ describe('Start.2.cs method_104: aggressive races among the four largest auto-ge
         expect(ages(run(0.9))).toEqual([1, 1, 1, 1, 1, 3, 3, 3]);
     });
 });
+
+describe('wizard AI empire proximity (Start.cs 5689 / Start.1.cs method_114: "(Random)", not "Random")', () => {
+    it('custom and Jump Start paths give every AI empire the "(Random)" region-placement proximity', () => {
+        const custom = toCreateGameOptions(start({ empireType: 'CustomStandard' }), gameData, NAMES);
+        const jump = toCreateGameOptions(start({ empireType: 'ClassicEra', starCountIndex: 1 }), gameData, NAMES);
+        expect(custom.aiEmpires.length).toBeGreaterThan(0);
+        expect(jump.aiEmpires.length).toBeGreaterThan(0);
+        for (const c of [custom, jump]) for (const ai of c.aiEmpires) expect(ai.proximityDistance).toBe('(Random)');
+    });
+});

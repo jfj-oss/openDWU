@@ -70,7 +70,9 @@ import type { EmpireMessage } from '../messages';
 import { approveSuggestion, declineSuggestion } from './advisorSuggestions';
 import { expireOldAdvisorSuggestions } from '../advisorQueue';
 import { galaxyStarDate } from '../tick/simTime';
-import { purchaseAtYard, removeFromYardQueue, scrapShipUnderConstruction } from './yardOrders'; // [yards]
+import { enemyTargetAttack, enemyTargetCancel, enemyTargetObjects } from './enemyTargets';
+import type { PrioritizedTargetObject } from '../civilianAI';
+import { purchaseAtYard, removeFromYardQueue, scrapBuiltObjects, scrapShipUnderConstruction } from './yardOrders'; // [yards]
 import { investigateRuins } from '../exploration';
 import { cancelIntelligenceMission, characterMission } from '../espionage';
 import { scenarioFlag } from '../scenario/state';
@@ -188,6 +190,13 @@ export const PLAYER_OPS = {
     fleetLoadTroops: (galaxy: Galaxy, empire: Empire, fleet: ShipGroup) => fleetLoadTroops(galaxy, empire, fleet),
     fleetRetrofit: (galaxy: Galaxy, empire: Empire, fleet: ShipGroup) => fleetRetrofit(galaxy, empire, fleet),
     fleetRepairAndRefuel: (galaxy: Galaxy, empire: Empire, fleet: ShipGroup) => fleetRepairAndRefuel(galaxy, empire, fleet),
+    /** Main.Part11.cs 5081 method_205: the left sidebar's Enemy Targets list, as a command when building it draws
+     *  galaxy.rnd (player/enemyTargets.ts enemyTargetListDrawsRandom; the panel reads it directly otherwise). */
+    enemyTargetList: (galaxy: Galaxy, empire: Empire) => enemyTargetObjects(galaxy, empire),
+    /** Main.Part12.cs 2469 method_78: a left click on an Enemy Targets row with no fleet on it (player/enemyTargets.ts). */
+    enemyTargetAttack: (galaxy: Galaxy, empire: Empire, target: PrioritizedTargetObject, selectedFleet: ShipGroup | null) => enemyTargetAttack(galaxy, empire, target, selectedFleet),
+    /** Main.Part12.cs 2469 method_78: a right click on an Enemy Targets row — ForceCompleteMission of the fleet on it. */
+    enemyTargetCancel: (galaxy: Galaxy, empire: Empire, target: PrioritizedTargetObject) => enemyTargetCancel(galaxy, empire, target),
     /** Main_KeyUp ship-order keys (E / R / A / S / ,). */
     shipOrderKey: (galaxy: Galaxy, empire: Empire, selected: ShipActionSelection, action: ShipOrderKeyAction) => executeShipOrderKey(galaxy, empire, selected, action),
     /** Main_KeyUp SetControlGroup0..9 (Ctrl+digit): `_Game.PlayerHotkeyN = _Game.SelectedObject` (controlGroups.ts). */
@@ -235,6 +244,8 @@ export const PLAYER_OPS = {
     yardRemoveFromQueue: (galaxy: Galaxy, _empire: Empire, site: BuiltObject | Habitat, ship: BuiltObject) => removeFromYardQueue(galaxy, site, ship),
     /** Main.Part4.cs 2168 btnBuiltObjectConstructionScrap_Click. */
     yardScrapShip: (galaxy: Galaxy, _empire: Empire, site: BuiltObject | Habitat, ship: BuiltObject) => scrapShipUnderConstruction(galaxy, site, ship),
+    /** Main.Part3.cs 403 btnBuiltObjectScrapSelected_Click: scrap the selected ships and bases immediately. */
+    scrapShips: (galaxy: Galaxy, empire: Empire, ships: BuiltObject[]) => scrapBuiltObjects(galaxy, empire, ships),
     /** Main.Part11.cs hvhxxedjqS: the Name box. */
     queueResearch: (_galaxy: Galaxy, empire: Empire, node: TechNode) => queueResearchProject(empire.research, node, empire.dominantRace),
     dequeueResearch: (_galaxy: Galaxy, empire: Empire, node: TechNode) => dequeueResearchProject(empire.research, node),

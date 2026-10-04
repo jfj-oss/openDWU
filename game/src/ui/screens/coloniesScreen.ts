@@ -14,13 +14,14 @@
 //
 // Orders go through the command log (issuePlayerCommand): tax changes as ColonyTaxUp/Down actions (the only colony
 // tax command the sim has), recruiting and facility building as the selection panel's ShipActions, disband /
-// garrison as the Troops screen's ops, wait-queue moves as the Construction Yards screen's op.
+// garrison as the Troops screen's ops; the Construction Yard tab's purchaser (pnlColonyConstructionYardPurchaser, the
+// shared ConstructionYardPurchaser port of constructionYards.ts), Scrap Ship, Remove Ship and the wait-queue moves as
+// the Construction Yards screen's ops (Main.Part4.cs btnColonyConstructionScrap_Click / RemoveFromQueue_Click).
 // Kept from the earlier streamlined list (mod layer): the 19d2 shortage marker and the scenario approval breakdown
 // on the approval icon, the 19d1 governor-loyalty tooltip on the name.
 //
-// TODO(port): Construction Yard tab's Scrap Ship / Remove Ship — Main.Part6.cs:3460-3560 (the purchaser,
-//   pnlColonyConstructionYardPurchaser, is bound as method_169 does: constructionYards.ts purchaserBinding)
-// TODO(port): Show Ruin Details window (method_550 pnlRuinDetail) — shown as a message box with the ruin's description here
+// TODO(port): character portraits in the Troops & Characters tab (CharacterImageCache) — CharacterTroopListIconView.cs
+// TODO(port): racial / wonder / resource bonus lines of the attitude summary — HabitatAttitudeSummary.cs DetermineHabitat*Bonuses
 
 import './coloniesScreen.css';
 import type { Empire } from '../../sim/empire';
@@ -76,7 +77,12 @@ import { approvalMood, colonyScenarioInfo, formatThousandsK, type ApprovalMood }
 import { habitatTypeDescription } from './expansionPlanner';
 import { drawSystemsMiniMap } from './galaxyMap';
 import { recruitOptions, troopTypeDescription } from './troops';
-import { purchaseAutomationTask, purchaserBinding, purchaserChecks, purchaserDesigns, purchaserLabel, siteQueue, waitRows, yardRows, type ConstructionSite } from './constructionYards';
+import { empireMaximumSizes, maximumSizeText, progressCell, shipPictureUrl, siteQueue, waitRows, yardPurchaser, yardRows, type ConstructionSite } from './constructionYards';
+import type { ConstructionYard } from '../../sim/construction/constructionYard';
+import { openConstructionSummary } from './designEditor';
+import { openRuinDetail } from './ruinDetail';
+import { componentImageUrl } from './designPanelsModel';
+import { gt } from './researchBenefits';
 import {
     COLORS,
     FONT,
@@ -695,8 +701,6 @@ export interface ColoniesScreenOptions {
     onShowOnGalaxyMap?: (h: Habitat) => void;
     /** Show Expansion Planner (method_160("colonies")). */
     onExpansionPlanner?: () => void;
-    /** Show Construction Summary (the Construction Yards screen). */
-    onConstructionSummary?: () => void;
     /** method_456(topic): open the Galactopedia on a topic. */
     onHelp?: (topic: string) => void;
     /** GenerateAutomationMessageBox: resolves true for "turn automation off". */
@@ -947,6 +951,10 @@ function createColoniesScreen(opts: ColoniesScreenOptions): OpenState {
     info.appendChild(infoBox);
     // InfoPanel clicks: a colony of ours selects its row; anything else is left to the main view.
     const onInfoTarget = (t: InfoTarget): void => {
+        if (t.kind === 'ruin') {
+            openRuinDetail(galaxy, t.ruin);
+            return;
+        }
         if (t.kind === 'select' && empire.colonies.includes(t.obj as Habitat)) {
             selectColony(t.obj as Habitat);
             grid.select(t.obj, true);
@@ -982,7 +990,8 @@ function createColoniesScreen(opts: ColoniesScreenOptions): OpenState {
                 issuePlayerCommand(galaxy, empire, 'setColonyAsCapital', [h], () => refreshAll());
                 return;
             case 'ruin':
-                if (h.ruin) void messageBox({ caption: h.ruin.name, text: h.ruin.description ?? h.ruin.name, icon: 'information', width: 520 });
+                // btnColonyShowRuin_Click → method_550.
+                if (h.ruin) openRuinDetail(galaxy, h.ruin);
                 return;
         }
     }
@@ -1374,81 +1383,142 @@ function createColoniesScreen(opts: ColoniesScreenOptions): OpenState {
         });
     }
 
-    // --- Construction Yard tab ----------------------------------------------------------------------------------------
+    // --- Construction Yard tab (Main.Part11.cs 2991-3040 layout; Main.Part4.cs btnColonyConstruction* handlers) -------
+    // The selections persist across the page's timer rebuilds (ctlColonyConstructionYard.SelectedConstructionYard,
+    // ctlColonyConstructionYardWaitQueue.SelectedBuiltObject), and so does the purchaser (an open drop-down).
+    let colYard: ConstructionYard | null = null;
+    let colWait: BuiltObject | null = null;
+    // pnlColonyConstructionYardPurchaser (395, 3) 262 × 90; PurchaseMade rebinds the yards and the wait queue.
+    const colonyPurchaser = yardPurchaser(empire, 262, 90, () => renderPage(true));
     function renderConstruction(h: Habitat): void {
         const site: ConstructionSite = { kind: 'colony', habitat: h };
         const comps = componentDefinitionsStatic(galaxy);
-        const yards = yardRows(site, (id) => comps.find((d) => d.componentId === id)?.name ?? '');
+        const yards = yardRows(site, (id) => {
+            const d = comps.find((x) => x.componentId === id);
+            return d ? { name: d.name, pictureRef: d.pictureRef } : null;
+        });
         type YardRow = (typeof yards)[number];
+        if (colYard !== null && !yards.some((r) => r.yard === colYard)) colYard = null;
+        // UnlxwvByxj_SelectionChanged 3321-3358: a pirate player's foreign colony disables the purchaser and the buttons.
+        const enabled = !(empire.pirateEmpireBaseHabitat !== null && h.empire !== empire);
+        // ctlColonyConstructionYard (0, 0) 390 × 50: ComponentPicture 30, ShipEmpire 30, ShipPicture 40, ShipName 162,
+        // Progress 70, Speed 58 (ConstructionYardListView.cs BindData).
         const yg = new OwGrid<YardRow>({
             columns: [
-                { id: 'ship', header: T('Ship', 'Ship'), fill: 192, render: (r, c) => cellText(c, r.ship) },
-                { id: 'progress', header: T('Progress', 'Progress'), fill: 70, align: 'right', render: (r, c) => cellText(c, r.ship !== '' ? formatPercent0(r.progress) : '') },
-                { id: 'speed', header: T('Speed', 'Speed'), fill: 58, align: 'right', render: (r, c) => cellText(c, String(Math.round(r.speed))) },
+                { id: 'component', header: '', width: 30, align: 'center', render: (r, c) => { if (r.componentPicture >= 0) c.appendChild(img(componentImageUrl(r.componentPicture), 'cy-comp', r.name)); } },
+                { id: 'empire', header: '', width: 30, align: 'center', render: (r, c) => { const e = r.shipObject?.empire ?? null; if (e) flagFor(e, c); } },
+                { id: 'picture', header: '', width: 40, align: 'center', render: (r, c) => { const u = r.shipObject ? shipPictureUrl(r.shipObject) : null; if (u) c.appendChild(img(u, 'cy-pic cy-rot')); } },
+                { id: 'ship', header: T('Ship', 'Ship'), width: 162, render: (r, c) => cellText(c, r.ship) },
+                { id: 'progress', header: T('Progress', 'Progress'), width: 70, align: 'right', render: (r, c) => progressCell(c, r.progress, 70, r.shipObject !== null, 20) },
+                { id: 'speed', header: T('Speed', 'Speed'), width: 58, align: 'right', render: (r, c) => cellText(c, String(r.speed)) },
             ],
-            key: (r) => r,
+            key: (r) => r.yard,
             rowHeight: 20,
-            empty: T('(None)', '(None)'),
+            onSelect: (r) => {
+                colYard = r.yard;
+                updateYardButtons();
+            },
         });
         yg.setRows(yards);
+        if (colYard !== null) yg.select(colYard, false);
         page.appendChild(place(yg.el, 0, 0, 390, 50));
-        dropText(page, T('Ships waiting to be constructed', 'Ships waiting to be constructed'), 0, 115, { color: COLORS.gridText });
+        // method_166 / UnlxwvByxj_SelectionChanged: bound to the colony's owner (or the pirate player that controls it).
+        colonyPurchaser.bind(h.constructionQueue ? site : null, enabled, false);
+        page.appendChild(place(colonyPurchaser.el, 395, 3, 262, 90));
+        // lblColonyMaximumSize (5, 55), MaximumSize 190 × 50: method_305.
+        page.appendChild(place(text(maximumSizeText(empireMaximumSizes(empire)), { size: FONT.tiny, color: COLORS.label, wrapWidth: 185 }), 5, 55, 190, 50));
+        const btnScrap = glassButton(T('Scrap Ship', 'Scrap Ship'), { onClick: () => void scrapShip(h) });
+        page.appendChild(place(btnScrap, 190, 54, 200, 22));
+        const btnSummary = glassButton(T('Show Construction Summary', 'Show Construction Summary'), {
+            // btnColonyConstructionShowSummary_Click → method_548: the design (or retrofit design) on the selected slipway.
+            onClick: () => {
+                const ship = colYard?.shipUnderConstruction ?? null;
+                if (ship) openConstructionSummary(galaxy, ship.retrofitDesign ?? ship.design);
+            },
+        });
+        page.appendChild(place(btnSummary, 190, 77, 200, 22));
+        dropText(page, T('Ships waiting to be constructed', 'Ships waiting to be constructed'), 0, 115, { size: FONT.header, bold: true, color: COLORS.gridText });
         const waits = waitRows(site);
         type WaitRow = (typeof waits)[number];
-        let selWait: BuiltObject | null = null;
+        if (colWait !== null && !waits.some((r) => r.builtObject === colWait)) colWait = null;
+        // ctlColonyConstructionYardWaitQueue (0, 135) 390 × 140: Empire 30, Picture 40, Name 170, Role 150.
         const wg = new OwGrid<WaitRow>({
             columns: [
-                { id: 'name', header: T('Name', 'Name'), fill: 170, render: (r, c) => cellText(c, r.name) },
-                { id: 'role', header: T('Role', 'Role'), fill: 150, render: (r, c) => cellText(c, r.type) },
+                { id: 'empire', header: '', width: 30, align: 'center', render: (r, c) => { const e = r.builtObject.empire; if (e) flagFor(e, c); } },
+                { id: 'picture', header: '', width: 40, align: 'center', render: (r, c) => { const u = shipPictureUrl(r.builtObject); if (u) c.appendChild(img(u, 'cy-pic cy-rot')); } },
+                { id: 'name', header: T('Name', 'Name'), width: 170, render: (r, c) => cellText(c, r.name) },
+                { id: 'role', header: T('Role', 'Role'), width: 150, render: (r, c) => cellText(c, r.type) },
             ],
             key: (r) => r.builtObject,
             rowHeight: 20,
             onSelect: (r) => {
-                selWait = r.builtObject;
+                colWait = r.builtObject;
+                updateYardButtons();
             },
         });
         wg.setRows(waits);
+        if (colWait !== null) wg.select(colWait, false);
         page.appendChild(place(wg.el, 0, 135, 390, 136));
-        const owned = h.empire === empire;
         const move = (m: 'up' | 'down'): void => {
-            if (selWait) issuePlayerCommand(galaxy, empire, 'moveWaitQueueItem', [h, selWait, m], () => renderPage(true));
+            if (colWait) issuePlayerCommand(galaxy, empire, 'moveWaitQueueItem', [h, colWait, m], () => renderPage(true));
         };
-        page.appendChild(place(glassButton(T('Move Up', 'Move Up'), { onClick: () => move('up'), disabled: !owned }), 395, 135, 110, 25));
-        page.appendChild(place(glassButton(T('Move Down', 'Move Down'), { onClick: () => move('down'), disabled: !owned }), 395, 165, 110, 25));
-        page.appendChild(place(glassButton(T('Remove Ship', 'Remove Ship'), { disabled: true, title: 'Not available yet' }), 395, 225, 110, 40));
-        page.appendChild(place(glassButton(T('Scrap Ship', 'Scrap Ship'), { disabled: true, title: 'Not available yet' }), 190, 54, 200, 22));
-        page.appendChild(place(glassButton(T('Show Construction Summary', 'Show Construction Summary'), { onClick: () => opts.onConstructionSummary?.(), disabled: !opts.onConstructionSummary }), 190, 77, 200, 22));
-        // pnlColonyConstructionYardPurchaser (430, 3) 230 × 90 (Main.Part11.cs 3402): bound by method_169 with bool_28 false
-        // — the colony's owner, or the pirate player at a colony it controls; state construction only.
-        const binding = purchaserBinding(empire, site, false);
-        const purchaser = gradientPanel({ corners: { tl: true, tr: true, br: true, bl: true }, radius: 20, className: 'col-purchaser' });
-        page.appendChild(place(purchaser, 430, 3, 230, 90));
-        dropText(purchaser, T('Available Funds', 'Available Funds'), 10, 8, { color: COLORS.label, size: FONT.small });
-        const fundsEl = dropText(purchaser, binding !== null ? (tryGetText('X credits') ?? '{0} credits').replace('{0}', Math.trunc(binding.empire.stateMoney).toFixed(0)) : '', 105, 8, { color: COLORS.label, bold: true, size: FONT.small });
-        const buyList = binding !== null ? purchaserDesigns(binding.empire.designs, site, purchaserChecks(binding.empire), binding.stateConstructionOnly) : [];
-        const buyBox = dropDown(buyList.map((d, i) => ({ value: String(i), label: purchaserLabel(d, d.calculateCurrentPurchasePrice(galaxy)) })), '0', () => fundsEl.classList.remove('cy-funds-short'));
-        purchaser.appendChild(place(buyBox, 10, 27, 210, 21));
-        // A colony bound to another empire would spend that empire's funds (the C# allows it); only the player's own buys.
-        const canBuy = binding !== null && binding.empire === empire && buyList.length > 0;
-        buyBox.disabled = !canBuy;
-        const buy = async (): Promise<void> => {
-            const design = buyList[Number(buyBox.value)];
-            if (!design || binding === null) return;
-            const task = purchaseAutomationTask(empire, design);
-            if (task !== null) {
-                const b = await messageBox({ caption: T(task, task), text: `${T(task, task)} is automated. Turn off automation so your order is not overridden?`, buttons: ['Turn off', 'Leave on'], icon: 'question' });
-                if (b === 'Turn off') issuePlayerCommand(galaxy, empire, 'automationOff', [task]);
-            }
-            if (design.calculateCurrentPurchasePrice(galaxy) > empire.stateMoney) {
-                fundsEl.classList.add('cy-funds-short'); // FlashAvailableFunds
-                return;
-            }
-            issuePlayerCommand(galaxy, empire, 'yardPurchase', [design, h], () => renderPage(true));
-        };
-        purchaser.appendChild(place(glassButton(T('Purchase', 'Purchase'), { onClick: () => void buy(), disabled: !canBuy }), 10, 56, 210, 25));
+        const btnUp = glassButton(T('Move Up', 'Move Up'), { onClick: () => move('up') });
+        const btnDown = glassButton(T('Move Down', 'Move Down'), { onClick: () => move('down') });
+        const btnRemove = glassButton(T('Remove Ship', 'Remove Ship'), { onClick: () => void removeShip(h) });
+        page.appendChild(place(btnUp, 395, 135, 110, 25));
+        page.appendChild(place(btnDown, 395, 165, 110, 25));
+        page.appendChild(place(btnRemove, 395, 225, 110, 40));
         const lnk = linkLabel(`${T('Learn about Construction', 'Learn about Construction')}...`, () => opts.onHelp?.(T('Construction', 'Construction')));
         lnk.classList.add('col-link-right');
         page.appendChild(place(lnk, 505, 228, 150, 42));
+        function updateYardButtons(): void {
+            btnScrap.disabled = !enabled;
+            btnSummary.disabled = !enabled;
+            btnUp.disabled = btnDown.disabled = btnRemove.disabled = !enabled;
+        }
+        updateYardButtons();
+    }
+
+    /** Main.Part4.cs 2244 btnColonyConstructionScrap_Click (its texts are not GameText keys). */
+    async function scrapShip(h: Habitat): Promise<void> {
+        if (h.constructionQueue == null) return;
+        const ship = colYard?.shipUnderConstruction ?? null;
+        if (ship === null) return;
+        if (ship.owner === null) {
+            await messageBox({
+                caption: 'Cannot scrap ship',
+                text: ship.empire !== null ? 'This ship is privately owned - it cannot be scrapped' : 'This ship is not owned by your empire - it cannot be scrapped',
+                icon: 'information',
+            });
+            return;
+        }
+        const t = `The purchase cost will not be refunded if you scrap this ship.\n\nAre you sure you want to scrap this ship? (${ship.name})`;
+        if ((await messageBox({ caption: 'Scrap Ship under Construction?', text: t, buttons: ['Yes', 'No'], icon: 'question' })) !== 'Yes') return;
+        issuePlayerCommand(galaxy, empire, 'yardScrapShip', [h, ship], () => {
+            colYard = null;
+            renderPage(true);
+        });
+    }
+
+    /** Main.Part4.cs 2276 btnColonyConstructionRemoveFromQueue_Click: refunds half the purchase price. */
+    async function removeShip(h: Habitat): Promise<void> {
+        if (h.constructionQueue == null) return;
+        const ship = colWait;
+        if (ship === null) return;
+        if (ship.owner === null) {
+            await messageBox({
+                caption: T('Cannot remove ship from queue', 'Cannot remove ship from queue'),
+                text: ship.empire !== null ? T('This ship is privately owned - it cannot be removed', 'This ship is privately owned - it cannot be removed') : T('This ship is not owned by your empire - it cannot be removed', 'This ship is not owned by your empire - it cannot be removed'),
+                icon: 'information',
+            });
+            return;
+        }
+        const t = `${gt('Removing this ship from the construction queue will refund half the purchase cost', (ship.purchasePrice * 0.5).toFixed(0))} (${ship.name})`;
+        if ((await messageBox({ caption: T('Remove Ship from Construction Queue?', 'Remove Ship from Construction Queue?'), text: t, buttons: ['Yes', 'No'], icon: 'question' })) !== 'Yes') return;
+        issuePlayerCommand(galaxy, empire, 'yardRemoveFromQueue', [h, ship], () => {
+            colWait = null;
+            renderPage(true);
+        });
     }
 
     // --- Docking Bay tab ----------------------------------------------------------------------------------------------
