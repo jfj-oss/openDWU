@@ -75,6 +75,8 @@ export interface UiSettings {
     /** Bacon mod (BaconMain.cs 442 DrawWeaponRanges, opt-in like its showRangeCircles / "!rangecircles"): weapon-range
      *  circles around the selected ship (render/weaponRangeCircles.ts). */
     showWeaponRangeCircles: boolean;
+    /** Ours: scroll the map when the mouse is at a screen edge (the original always does; default on). */
+    edgeScroll: boolean;
 
     /** GameOptions.AutoPauseWhenInPopupWindow (default true, Main.Part9.cs:2714): pause a running game while a screen window is open. */
     autoPauseInPopup: boolean;
@@ -214,6 +216,7 @@ export const DEFAULT_SETTINGS: UiSettings = {
     ditherGradients: true,
     pullStationsToCentre: false,
     showWeaponRangeCircles: false,
+    edgeScroll: true,
     autoPauseInPopup: true,
     improvements: {}, // [improvements]
     supplyShowColonyShortages: true, // [improvements] supplyChain
@@ -332,6 +335,7 @@ export function loadSettings(): UiSettings {
         if (typeof parsed.pullStationsToCentre === 'boolean') out.pullStationsToCentre = parsed.pullStationsToCentre;
         if (typeof parsed.cleanGalaxyView === 'boolean') out.cleanGalaxyView = parsed.cleanGalaxyView;
         if (typeof parsed.showWeaponRangeCircles === 'boolean') out.showWeaponRangeCircles = parsed.showWeaponRangeCircles;
+        if (typeof parsed.edgeScroll === 'boolean') out.edgeScroll = parsed.edgeScroll;
         if (typeof parsed.autoPauseInPopup === 'boolean') out.autoPauseInPopup = parsed.autoPauseInPopup;
         // [improvements] begin
         if (parsed.improvements !== null && typeof parsed.improvements === 'object' && !Array.isArray(parsed.improvements)) {

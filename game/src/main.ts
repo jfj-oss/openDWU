@@ -131,6 +131,7 @@ import { Creature } from './sim/creature';
 // [popupstubs] begin
 import { installBattleReportNotifier, removeBattleReportNotifier } from './ui/battleReports';
 import { installDesignLineUpgradeSync, removeDesignLineUpgradeSync } from './ui/designLineUpgrade'; // [improvements]
+import { installStatePrioritySync, removeStatePrioritySync } from './ui/statePriorityShipyards'; // [improvements]
 import { setBattleReportsEnabled } from './sim/battleReports/hooks';
 import { installMessageStubList, removeMessageStubList } from './ui/messageStubList';
 // [popupstubs] end
@@ -935,6 +936,7 @@ export async function startGameView(
     setBattleReportsEnabled(battleReportsObserverOn());
     installBattleReportNotifier({ galaxy, player: game.playerEmpire, goTo: (x, y) => historyGoTo(camera, x, y) });
     installDesignLineUpgradeSync(galaxy, game.playerEmpire); // [improvements] designLineUpgrade: the switch → the sim (journaled)
+    installStatePrioritySync(galaxy, game.playerEmpire); // [improvements] statePriorityShipyards: the switch → the sim (journaled)
     // Dev / screenshot hook (scripts/battlereports-shots.mjs): the current game's save text (both modes).
     Object.assign((window as unknown as { __dwu: Record<string, unknown> }).__dwu, { serialize: serializeCurrent });
 
@@ -1194,6 +1196,7 @@ export async function startGameView(
         // [popupstubs] end
         removeBattleReportNotifier(); // [improvements]
         removeDesignLineUpgradeSync(); // [improvements] designLineUpgrade
+        removeStatePrioritySync(); // [improvements] statePriorityShipyards
 
         // [leftovers] begin
         removeEventMessages();

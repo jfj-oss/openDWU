@@ -66,6 +66,7 @@ import type { DiplomatBrief } from './diplomatBrief';
 import { deleteDesign, saveDesign, setDesignSubRoleShouldBeUpgraded, type DesignDraft } from './designEditor';
 import { autoUpgradeDesigns, loadDesignFile } from './designTools';
 import { isPlayerMadeDesign, markPlayerDesignSubRole, setDesignLineUpgrade } from './designLineUpgrade'; // [improvements]
+import { setStatePriorityShipyards } from '../construction/statePriority'; // [improvements]
 import { executeShipOrderKey, type ShipOrderKeyAction } from './shipHotkeys';
 import { setControlGroup, type ControlGroupObject } from './controlGroups';
 import { addWaypoint, deleteWaypoint, dismissMarker, renameWaypoint } from './waypoints';
@@ -320,6 +321,8 @@ export const PLAYER_OPS = {
     },
     /** [improvements] designLineUpgrade on / off for the player empire (issued by the game view, ui/designLineUpgrade.ts). */
     setDesignLineUpgrade: (galaxy: Galaxy, empire: Empire, on: boolean) => setDesignLineUpgrade(galaxy, empire, on),
+    /** [improvements] statePriorityShipyards on / off for the player empire (issued by the game view, ui/statePriorityShipyards.ts). */
+    setStatePriorityShipyards: (galaxy: Galaxy, empire: Empire, on: boolean) => setStatePriorityShipyards(galaxy, empire, on),
     /** Main.Part4.cs:1682 Load Designs... with the picked file's text (player/designTools.ts). */
     loadDesignFile: (galaxy: Galaxy, empire: Empire, text: string) => {
         const result = loadDesignFile(galaxy, empire, text);

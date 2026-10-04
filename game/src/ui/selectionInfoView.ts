@@ -82,6 +82,16 @@ function shadow(rgb: number): string {
     return `1px 1px 0 ${css(dropShadowColor(rgb))}`;
 }
 
+/** Readability (not in the original): a colour dark enough for the original's white drop shadow (dropShadowColor) is
+ *  drawn half-way to white over a black shadow instead — the white 1 px shadow smears dark text (an empire's dark red
+ *  name) into an unreadable white blur at this size. Other colours keep the original colour and shadow. */
+function readableText(rgb: number): { color: string; shadow: string } {
+    if (dropShadowColor(rgb) !== 0xffffff) return { color: css(rgb), shadow: shadow(rgb) };
+    const lift = (v: number): number => Math.round(v + (255 - v) * 0.5);
+    const lifted = (lift((rgb >> 16) & 0xff) << 16) | (lift((rgb >> 8) & 0xff) << 8) | lift(rgb & 0xff);
+    return { color: css(lifted), shadow: '1px 1px 0 #000' };
+}
+
 /** The hotspot's hover message (Hotspot.HoverMessage): the main view draws it in yellow above the selection panel while
  *  the cursor is over the hotspot (Main.Part10.cs 1141-1159 → string_17, MainView.cs 1599), not as a tool tip. hud.ts
  *  shows it (the .sel-hover-msg line); `data-hover` carries it. */
@@ -147,9 +157,9 @@ function segElement(seg: InfoSeg, o: InfoViewOptions): HTMLElement {
         el = document.createElement('span');
         el.className = 'sel-text';
         el.textContent = seg.text ?? '';
-        const c = seg.color ?? WHITE;
-        el.style.color = css(c);
-        el.style.textShadow = shadow(c);
+        const t = readableText(seg.color ?? WHITE);
+        el.style.color = t.color;
+        el.style.textShadow = t.shadow;
         if (seg.tiny) el.classList.add('sel-tiny');
         if (seg.width !== undefined && seg.width > 0) {
             el.style.width = `${seg.width}px`;

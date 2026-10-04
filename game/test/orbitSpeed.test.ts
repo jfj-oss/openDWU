@@ -124,10 +124,14 @@ describe('mainView.renderOrbitAngle (render-only orbit interpolation, no sim-sta
 });
 
 describe('mainView.habitatTouchClampSeconds', () => {
-    it('is zero for an empty galaxy and scales with habitat count / HABITAT_TICK_BATCH_SIZE at 4x game speed', () => {
+    it('is zero for an empty galaxy and stays above the worst real touch gap at 4x game speed', () => {
         expect(habitatTouchClampSeconds(0)).toBe(0);
-        const oneCycle = (HABITAT_TICK_BATCH_SIZE / HABITAT_TICK_BATCH_SIZE / FRAMES_PER_SECOND) * 4;
-        expect(habitatTouchClampSeconds(HABITAT_TICK_BATCH_SIZE)).toBeCloseTo(oneCycle, 12);
-        expect(habitatTouchClampSeconds(140_000)).toBeCloseTo((140_000 / HABITAT_TICK_BATCH_SIZE / FRAMES_PER_SECOND) * 4, 12);
+        const frameSeconds = 4 / FRAMES_PER_SECOND; // sim seconds per frame at 4x
+        for (const n of [1, 999, HABITAT_TICK_BATCH_SIZE, 1001, 12_345, 140_000]) {
+            // Worst gap: ceil(n / batch) + 1 frames between touches (the round robin wraps) plus one step of the
+            // drawn instant running ahead.
+            const worstGap = (Math.ceil(n / HABITAT_TICK_BATCH_SIZE) + 2) * frameSeconds;
+            expect(habitatTouchClampSeconds(n)).toBeGreaterThan(worstGap);
+        }
     });
 });

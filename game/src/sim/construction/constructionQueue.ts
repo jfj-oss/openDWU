@@ -65,6 +65,7 @@ import {
 } from './constructionYard';
 import { formatGameTextNow } from '../textResolver';
 import { scenarioEmit } from '../scenario/hooks';
+import { processWaitQueueStatePriority, statePriorityActive } from './statePriority'; // [improvements]
 
 /** Galaxy.3.cs 5086 ColonyShipBuildFactor = 10.0. */
 export const COLONY_SHIP_BUILD_FACTOR = 10.0;
@@ -318,6 +319,11 @@ export class ConstructionQueue {
         else if (this._parentHabitat !== null) buildingEmpire = this._parentHabitat.empire;
         const waitQueue = this._constructionWaitQueue!;
         if (waitQueue.length <= 0) return;
+        // [improvements] statePriorityShipyards: the player's state ships first (construction/statePriority.ts; off = the original).
+        if (statePriorityActive(this._galaxy, buildingEmpire)) {
+            processWaitQueueStatePriority(this._galaxy, this._constructionYards!, waitQueue, (ship) => yardsAddBuiltObjectToConstruct(this._galaxy, this._constructionYards!, ship, buildingEmpire));
+            return;
+        }
         for (const item of waitQueue) {
             if (yardsAddBuiltObjectToConstruct(this._galaxy, this._constructionYards!, item, buildingEmpire)) builtObjectList.push(item);
         }

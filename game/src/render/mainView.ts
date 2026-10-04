@@ -926,6 +926,8 @@ class SystemView {
             planet.label.position.set(px + (sprPx / 2) / z, py);
             planet.label.scale.set(1 / z);
             if (planet.label.visible) {
+                // A renamed colony (renameColony) shows its new name.
+                if (planet.label.text !== p.name) planet.label.text = p.name;
                 const fontSize = habitatLabelFontSize(f);
                 if (fontSize !== planet.label.style.fontSize) {
                     planet.label.style.fontSize = fontSize;
@@ -958,6 +960,7 @@ class SystemView {
                 moon.label.position.set(mx + (mPx / 2) / z, my);
                 moon.label.scale.set(1 / z);
                 if (moon.label.visible) {
+                    if (moon.label.text !== m.name) moon.label.text = m.name;
                     const fontSize = habitatLabelFontSize(f);
                     if (fontSize !== moon.label.style.fontSize) {
                         moon.label.style.fontSize = fontSize;
@@ -1541,7 +1544,10 @@ export class MainView {
                 for (const moon of p.moons) add(moon.habitat, 'moon');
             }
         }
-        return collectHitsUnderPoint(cands, w.x, w.y, z, 6, PICK_MENU_MAX_ROWS * 4);
+        const hits = collectHitsUnderPoint(cands, w.x, w.y, z, 6, PICK_MENU_MAX_ROWS * 4);
+        // Ours (not in the original): the stacked-object list puts planets first, then stations, construction ships,
+        // the state navy, other state ships and private ships (creatures last); nearest / smallest first within each.
+        return hits.map((h, i) => ({ h, i, r: pickListRank(h.item) })).sort((a, b) => a.r - b.r || a.i - b.i).map((x) => x.h);
     }
 
     /** Popup rows for a stack of hits: icon, name, owner; `choose` runs with the picked object. */
@@ -2115,7 +2121,7 @@ export class MainView {
         // Screen-edge auto-scroll (original control scheme).
         let edgeDx = 0;
         let edgeDy = 0;
-        if (!this.dragging && this.pointerInside) {
+        if (!this.dragging && this.pointerInside && getSettings().edgeScroll) {
             const edge = 24;
             const speed = edgeScrollPixels(getSettings().mainViewScrollSpeed); // [gameoptions] Scroll Speed
             if (this.lastPointer.x < edge) {
@@ -2813,4 +2819,17 @@ export class MainView {
         return this.overlayLayer?.freight ?? null;
     }
     // [freightOverlay] end
+}
+
+/** pickAllAt's list order: planets and moons, stars, stations, construction ships, state warships, other state ships,
+ *  private ships, creatures. */
+function pickListRank(item: Creature | BuiltObject | Habitat): number {
+    if (item instanceof Habitat) return item.category === HabitatCategoryType.Planet || item.category === HabitatCategoryType.Moon ? 0 : 1;
+    if (item instanceof BuiltObject) {
+        if (item.role === BuiltObjectRole.Base) return 2;
+        if (item.role === BuiltObjectRole.Build) return 3;
+        if (item.owner != null) return item.role === BuiltObjectRole.Military ? 4 : 5;
+        return 6;
+    }
+    return 7;
 }

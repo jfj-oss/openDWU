@@ -392,15 +392,19 @@ export function renderOrbitAngle(orbitAngle: number, anglePerSecond: number, orb
     return orbitDirection ? orbitAngle + anglePerSecond * elapsed : orbitAngle - anglePerSecond * elapsed;
 }
 
-// Safety bound (sim seconds) on renderOrbitAngle's extrapolation: one background-pass round-robin cycle
-// (habitatCount / HABITAT_TICK_BATCH_SIZE sim frames — scheduler.ts backgroundPass) at the fastest game speed (4x,
-// the documented top of Galaxy TimeSpeed). This is a generous upper bound on the real gap between touches at any
-// speed, so it only bites for a habitat that has gone stranger-than-expected stale (a long-paused tab, a very large
-// galaxy) — the common case never reaches it, since the real gap is normally much smaller.
+// Safety bound (sim seconds) on renderOrbitAngle's extrapolation, for a habitat that has gone stale (a long-paused
+// tab). It must stay well above the real gap between touches: the background pass (scheduler.ts backgroundPass
+// "GxHab") touches each habitat once per round-robin cycle of habitatCount / HABITAT_TICK_BATCH_SIZE sim frames, but
+// the batches wrap the habitat list, so a habitat's gap is up to ceil(cycle) + 1 frames, and the drawn instant runs
+// up to one step past the last committed one. A bound of exactly one cycle at 4x (the old value) froze every habitat
+// for a frame or two at the end of each cycle at 4x speed — visible as a fast inner planet stopping and starting.
+// The extrapolation is the exact orbit Move applies at the next touch, so a looser bound costs nothing: twice the
+// worst-case gap at the fastest game speed (4x, the documented top of Galaxy TimeSpeed).
 export function habitatTouchClampSeconds(habitatCount: number): number {
+    if (habitatCount <= 0) return 0;
     const MAX_GAME_SPEED = 4;
-    const cycleFrames = Math.max(0, habitatCount) / HABITAT_TICK_BATCH_SIZE;
-    return (cycleFrames / FRAMES_PER_SECOND) * MAX_GAME_SPEED;
+    const gapFrames = Math.ceil(habitatCount / HABITAT_TICK_BATCH_SIZE) + 2;
+    return ((2 * gapFrames) / FRAMES_PER_SECOND) * MAX_GAME_SPEED;
 }
 
 /** The orbit fields renderHabitatPos reads (Habitat). */
