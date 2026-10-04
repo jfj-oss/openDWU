@@ -43,7 +43,7 @@ import { CARD, CARD_STRIP_H, EVENT, TALK, cardHeight, cardPosition, eventButtonR
 import type { EventPicture } from './eventMessagePresentation';
 import { autoPauseClose, autoPauseOpen } from './autoPause';
 import { conversationActions, conversationReplyView, pirateOfferPriceLine, type ConversationAction } from './conversationActions';
-import { goToMessage, messageGoToTarget } from './messageGoto';
+import { goToMessage, messageGoToTarget, pingMessage, unpingMessage } from './messageGoto';
 import { ShipGroup } from '../sim/fleets/shipGroup';
 import { selectShipGroup, selectStellarObject } from './hud';
 // [popupstubs] begin
@@ -365,6 +365,7 @@ export function installMessagePopups(opts: MessagePopupsOptions): void {
         const w = cardWin;
         if (w === null) return;
         cardWin = null;
+        if (popupMessage !== null) unpingMessage(galaxy, popupMessage); // Main.Part9.cs 2391 / 2443 method_244
         popupMessage = null;
         w.close();
     }
@@ -387,12 +388,16 @@ export function installMessagePopups(opts: MessagePopupsOptions): void {
             onClose: () => {
                 if (cardWin === win) {
                     cardWin = null;
+                    if (popupMessage !== null) unpingMessage(galaxy, popupMessage);
                     popupMessage = null;
                 }
             },
             onResize: positionCard,
         });
         cardWin = win;
+        // pnlMessagePopup_MouseEnter / _MouseLeave (Main.Part4.cs 1570 / 1580): method_242 / method_244.
+        win.frame.addEventListener('mouseenter', () => pingMessage(galaxy, m));
+        win.frame.addEventListener('mouseleave', () => unpingMessage(galaxy, m));
         win.frame.classList.add('msg-card');
         positionCard(win);
         // MessagePopup: a GradientPanel (39, 40, 44) / (22, 21, 26) / (51, 54, 61), 3 px (67, 67, 77) border, padding 12.

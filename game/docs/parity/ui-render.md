@@ -53,7 +53,7 @@ Some C# panels have obfuscated names: CaLkaMyrMQ = Galaxy Map, kYdDyYeMls = Char
 | 43 | HoverDetail list hover popups | Controls HoverDetail | MISSING | mapTooltip.ts | Low | |
 | 44 | Screensaver mode, splash | Main ToggleScreenSaverActive, Splash.cs | MISSING | — | Low | |
 | 45 | Selection marker | MainView.2.cs 3132 method_212 / 3140 method_213; MainView.1.cs 823-826 / 1141-1161 / 1715-1720; MainView.2.cs 5536-5546 / 5984-6016 / 6395-6398 | DONE (fighters batch) | render/selectionCircle.ts, mainView.ts drawSelectionCircles, galaxyMarkers.ts | Med | The pulsing 5 px, 50-segment circle (color_7 ↔ color_8 over 2 s of UTC) replaces our blue ring / yellow box: selected ship, every ship of a selected fleet / BuiltObjectList, creature, fighter, habitat, galaxy-pass ship symbol, fleet icon, SystemInfo at f > 150 |
-| 46 | EventLocations pings | MainView.2.cs 3500 method_232; Main.Part9.cs 742-868 method_242-245 | PARTIAL | render/mapHighlights.ts, overlayLayer.ts | Low | List-row hover only; the message hover pings (method_242 / 244) are not wired |
+| 46 | EventLocations pings | MainView.2.cs 3500 method_232; Main.Part9.cs 742-868 method_242-245 | DONE | render/mapHighlights.ts, overlayLayer.ts, ui/messageGoto.ts messagePingObject, messageStubList.ts, messagePopups.ts | Low | List-row hover and the message hover (stub rows = ScrollingLinkList method_247/248, the popup card MouseEnter/Leave, method_244 on close) |
 | 47 | System link lines (the dotted lines between an empire's systems at galaxy / sector zoom) | MainView.2.cs method_250 5237-5336 (GDI fallback method_248 4205-4305); XnaDrawingHelper.cs 574-610; network: Empire.9.cs 3273 EvaluateSystemLinks | DONE (colonylinks) | render/systemLinks.ts, galaxyMarkers.ts | Med | SystemVisibility.LinkSystemStars / ReciprocalLinkSystemStars (sim state, read only) of the dominant and other empires of every system in the view's sector range the player has explored, both ends known, f > 150, MainColor, 1 px, 6 px dashes with a solid last piece; under the faction rings and with their toggle. Expanded's Clean Galaxy View (hides them) not ported |
 
 ## 2. Missing whole screens/panels
@@ -70,3 +70,5 @@ Some C# panels have obfuscated names: CaLkaMyrMQ = Galaxy Map, kYdDyYeMls = Char
 - **Main view rendering:** broadly complete (crossfade zoom, fog, faction rings, markers, overlays, effects, damage, fighters, creatures, box select, pick menu, follow camera).
 - **Sound/music:** full; only the per-type popup sting gate and screen shake are missing.
 - **Stale TODOs:** builtObjectLayer.ts:710-711 and messageRouting.ts:4.
+
+- Bonuses lines (BaconInfoPanel.cs 777 / 1067, Galaxy.2.cs 4084 / 4152): ui/characterBonusText.ts, shown only in the ShowExtendedInfo panels (Ships & Bases detail, Fleets detail), not the main selection panel. Layer order: the travel-vector / overlay root is last in the world (mainView.placePostureLayer); faction rings are full alpha above f 150 (method_250 sets int_15 = 255).

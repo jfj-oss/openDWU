@@ -939,7 +939,7 @@ function createShipsAndBasesList(opts: ShipsAndBasesListOptions): OpenState {
             : first instanceof Habitat
                 ? { habitat: first, system: sys }
                 : { habitat: sys.systemStar, system: sys, builtObject: first as BuiltObject };
-        const model = buildInfoModel({ galaxy, player: empire, resource }, sel);
+        const model = buildInfoModel({ galaxy, player: empire, resource }, sel, null, true);
         renderInfoModel(detailContent, model, { galaxy, onTarget: () => undefined });
         const next = detailContent.querySelector('.sel-scroll');
         if (next !== null) next.scrollTop = top;
