@@ -14,6 +14,7 @@
 // algorithm), seeded exactly as the C# does (new Random(seed) per generation).
 
 import { Texture } from 'pixi.js';
+import { textureFromRgbaPixels } from './textureCanvas';
 import { Random } from '../sim/random';
 import { useMinifyingFilter } from './assets';
 
@@ -828,14 +829,7 @@ export class NebulaCloudGenerator {
 
     /** Wrap the generated RGBA buffer in a PixiJS texture. */
     toTexture(result: { image: Uint8ClampedArray; width: number; height: number }): Texture {
-        const canvas =
-            typeof OffscreenCanvas !== 'undefined' ? new OffscreenCanvas(result.width, result.height) : document.createElement('canvas');
-        canvas.width = result.width;
-        canvas.height = result.height;
-        const ctx = canvas.getContext('2d')!;
-        const data = new Uint8ClampedArray(result.image.buffer, result.image.byteOffset, result.image.byteLength);
-        ctx.putImageData(new ImageData(data as unknown as Uint8ClampedArray<ArrayBuffer>, result.width, result.height), 0, 0);
-        const texture = Texture.from(canvas);
+        const texture = textureFromRgbaPixels(result.image, result.width, result.height);
         // Stretched over the location rect, so minified at sector/galaxy zoom.
         useMinifyingFilter(texture);
         return texture;

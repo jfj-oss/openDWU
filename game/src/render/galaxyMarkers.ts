@@ -50,6 +50,7 @@ import { inOwnRenderGroup } from './renderGroups';
 import { circleAtScreenRes } from './screenCircle';
 import { SELECTION_CIRCLE_WIDTH_PX, applySelectionTint, buildSelectionCircles, symbolSelectionBox } from './selectionCircle';
 import { Container, Graphics, Particle, ParticleContainer, Rectangle, Sprite, Text, Texture } from 'pixi.js';
+import { makeTextureCanvas, textureFromCanvas } from './textureCanvas';
 import type { Camera } from './camera';
 import type { Galaxy } from '../sim/galaxy';
 import type { Empire } from '../sim/empire';
@@ -555,11 +556,9 @@ const DISC_SIZE = 128;
 /** Atlas cell order: filled galaxy art, outline art, then the fleet icon. */
 const CELL_KEYS: readonly string[] = [...SYMBOL_ART.map((a) => `${a}_galaxy`), ...SYMBOL_ART, 'fleet'];
 
+/** A software canvas (its 2D context made with willReadFrequently: no GPU surface; see textureCanvas.ts). */
 function makeCanvas(w: number, h: number): HTMLCanvasElement {
-    const c = document.createElement('canvas');
-    c.width = w;
-    c.height = h;
-    return c;
+    return makeTextureCanvas(w, h).canvas;
 }
 
 function traceShape(ctx: CanvasRenderingContext2D, shape: MarkerShape | 'fleet', x0: number, y0: number, s: number): void {
@@ -647,7 +646,7 @@ async function buildSymbolAtlas(): Promise<{ frames: Texture[]; aspect: number[]
         }
         aspect.push(1);
     });
-    const atlas = Texture.from(canvas);
+    const atlas = textureFromCanvas(canvas);
     useMinifyingFilter(atlas);
     const frames = CELL_KEYS.map((_, i) => new Texture({ source: atlas.source, frame: new Rectangle(i * CELL, 0, CELL, CELL) }));
     return { frames, aspect };
@@ -665,7 +664,7 @@ function buildDiscFallback(): Texture {
     }
     ctx.fillStyle = g;
     ctx.fillRect(0, 0, DISC_SIZE, DISC_SIZE);
-    const tex = Texture.from(c);
+    const tex = textureFromCanvas(c);
     useMinifyingFilter(tex);
     return tex;
 }

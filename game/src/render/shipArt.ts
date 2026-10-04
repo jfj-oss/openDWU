@@ -14,6 +14,7 @@
 //     method_101 (the same thruster scan + replacement, method_102 the same sampler), no light scan.
 
 import { Texture } from 'pixi.js';
+import { textureFromRgbaPixels } from './textureCanvas';
 import { useMinifyingFilter } from './assets';
 import { shipImageMetrics, type ShipImageMetrics } from './builtObjectLayer';
 import { MAX_MARKERS, scanShipMarkers, type ShipMarkers } from './ambientLayer';
@@ -128,14 +129,7 @@ export function loadShipArt(url: string, includeLights = true): Promise<ShipArt 
                 if (metrics !== null) {
                     const markers = scanShipMarkers(data, w, h, metrics);
                     const cleaned = paintOutShipMarkers(data, w, h, metrics, markers, includeLights);
-                    const canvas = document.createElement('canvas');
-                    canvas.width = w;
-                    canvas.height = h;
-                    const ctx = canvas.getContext('2d')!;
-                    const img = ctx.createImageData(w, h);
-                    img.data.set(cleaned);
-                    ctx.putImageData(img, 0, 0);
-                    const texture = Texture.from(canvas);
+                    const texture = textureFromRgbaPixels(cleaned, w, h);
                     useMinifyingFilter(texture);
                     art = { texture, metrics, markers, rgba: cleaned, w, h, url };
                 }
