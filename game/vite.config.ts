@@ -346,8 +346,12 @@ function testTier(): { include?: string[]; exclude?: string[] } {
     throw new Error(`DWU_TEST_TIER must be fast, slow or all (got ${tier})`);
 }
 
+const PKG_VERSION = String((JSON.parse(readFileSync(path.join(here, 'package.json'), 'utf8')) as { version?: string }).version ?? '0.0.0');
+
 export default defineConfig({
     base: './',
+    // The app's own version (package.json), shown on the main menu and compared with the latest GitHub release.
+    define: { __DWU_VERSION__: JSON.stringify(PKG_VERSION) },
     // Per-checkout dep-optimizer cache. node_modules is a symlink shared by
     // every git worktree, so the default node_modules/.vite cache was
     // rewritten by other worktrees' dev servers mid-boot (504 Outdated

@@ -17,6 +17,7 @@ import { getSettings } from '../settings';
 import { tryGetText } from '../../sim/textResolver';
 import { openGameOptionsPanel } from './gameOptionsPanel';
 import { messageBox } from '../originalWindow';
+import { APP_VERSION, RELEASES_URL, checkLatestRelease } from '../../appVersion';
 
 const CHROME = '/assets/dwu/images/ui/chrome/';
 
@@ -87,10 +88,43 @@ export function openOptionsModal(_root?: HTMLElement): void {
     openGameOptionsPanel({ empire: null });
 }
 
-/** The recreation's version label (Start.cs:1287 lblVersion: "Version" + Application.ProductVersion). */
-export const MENU_VERSION_TEXT = 'Version 1.9.5 (recreation)';
-/** The label's two lines (the recreation tag does not fit the 135 px corner on one line). */
-const MENU_VERSION_LINES = 'Version 1.9.5\n(recreation)';
+/** The version label (Start.cs:1287 lblVersion: "Version" + Application.ProductVersion): openDWU's own version and
+ *  the DW:U version it recreates. */
+export const MENU_VERSION_TEXT = `openDWU ${APP_VERSION} (DW:U 1.9.5)`;
+/** The label's two lines (both do not fit the 135 px corner on one line). */
+const MENU_VERSION_LINES = `openDWU ${APP_VERSION}\n(DW:U 1.9.5)`;
+
+/** The desktop shell's bridge (desktop/gamePreload.cjs); absent in the browser. */
+interface DwuDesktopBridge {
+    checkForUpdates?: () => Promise<boolean>;
+}
+
+/** menuCheckForUpdates_Click: the desktop shell's own check (its dialogs), else the GitHub check here. */
+async function checkForUpdatesFromMenu(): Promise<void> {
+    const bridge = (window as unknown as { dwuDesktop?: DwuDesktopBridge }).dwuDesktop;
+    if (bridge?.checkForUpdates !== undefined) {
+        await bridge.checkForUpdates();
+        return;
+    }
+    const res = await checkLatestRelease();
+    if (res.kind === 'newer') {
+        const choice = await messageBox({
+            caption: 'Check for Updates',
+            text: `openDWU ${res.latest} is available.\n\nYou are running ${APP_VERSION}.`,
+            buttons: ['Open Release Page', 'Later'],
+            icon: 'information',
+        });
+        if (choice === 'Open Release Page') window.open(res.url, '_blank', 'noopener');
+        return;
+    }
+    const text =
+        res.kind === 'upToDate'
+            ? `openDWU is up to date.\n\nYou are running ${APP_VERSION}, the latest release.`
+            : res.kind === 'noRelease'
+              ? `No releases published yet.\n\nYou are running ${APP_VERSION}.`
+              : `Could not check for updates: ${res.message}\n\nReleases: ${RELEASES_URL}`;
+    await messageBox({ caption: 'Check for Updates', text, buttons: ['OK'], icon: res.kind === 'error' ? 'warning' : 'information' });
+}
 
 /** Build the main menu screen and append it to document.body. */
 export function createMainMenu(callbacks: MainMenuCallbacks): MainMenuRefs {
@@ -250,16 +284,8 @@ export function createMainMenu(callbacks: MainMenuCallbacks): MainMenuRefs {
     updates.addEventListener('mouseleave', () => {
         updatesImg.src = `${CHROME}Menu_CheckForUpdates_Inactive.png`;
     });
-    // menuCheckForUpdates_Click opens CodeForce's version check page; this recreation has no update server, so it says
-    // so in a MessageBoxEx.
-    updates.addEventListener('click', () => {
-        void messageBox({
-            caption: 'Check for Updates',
-            text: `No updates: this is the recreation build.\n\n${MENU_VERSION_TEXT}`,
-            buttons: ['OK'],
-            icon: 'information',
-        });
-    });
+    // menuCheckForUpdates_Click opens CodeForce's version check page; here it checks openDWU's GitHub releases.
+    updates.addEventListener('click', () => void checkForUpdatesFromMenu());
     const version = document.createElement('div');
     version.className = 'main-menu-version';
     version.textContent = MENU_VERSION_LINES;

@@ -338,6 +338,12 @@ function setupInfo() {
     };
 }
 
+// The main menu's Check for Updates (gamePreload.cjs): the manual check, from the game window only.
+ipcMain.handle('dwu:check-updates', async (event) => {
+    if (mainWin === null || event.sender !== mainWin.webContents) return false;
+    await checkForUpdates({ manual: true });
+    return true;
+});
 ipcMain.handle('dwu-setup:info', (event) => (fromSetupWindow(event) ? setupInfo() : null));
 ipcMain.handle('dwu-setup:browse', async (event, start) => {
     if (!fromSetupWindow(event)) return null;
@@ -574,6 +580,7 @@ function createWindow() {
             contextIsolation: true,
             nodeIntegration: false,
             sandbox: true,
+            preload: path.join(__dirname, 'gamePreload.cjs'),
         },
     });
     mainWin = win;
