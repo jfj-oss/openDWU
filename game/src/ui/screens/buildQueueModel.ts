@@ -280,7 +280,8 @@ export function fleetOrderRows(empire: Empire): FleetOrderRow[] {
             total: p.total,
             building: p.building,
             lost: p.lost,
-            where: o.sector === null ? 'Any sector' : `Sector ${sectorLabel(o.sector)}`,
+            // A fleet's replacements (auto-refill / Replenish, sim/player/fleetRefill.ts).
+            where: o.refillLinkId !== undefined ? 'Replacements' : o.sector === null ? 'Any sector' : `Sector ${sectorLabel(o.sector)}`,
             fleet: o.fleet?.name ?? '',
         };
     });

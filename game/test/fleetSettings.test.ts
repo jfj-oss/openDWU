@@ -59,7 +59,7 @@ import {
     issueResupplyMembership,
     unassignedResupplyShips,
 } from '../src/ui/screens/fleetSettingsModel';
-import { IMPROVEMENTS, isImprovementEnabled, setImprovementEnabled } from '../src/ui/improvements';
+import { improvementById, isImprovementEnabled, setImprovementEnabled } from '../src/ui/improvements';
 import { setSettingsStorage } from '../src/ui/settings';
 import { KEY_BINDINGS, dispatchKey } from '../src/ui/keyboard';
 import { nextAttackRangeSquared } from '../src/sim/player/shipHotkeys';
@@ -421,7 +421,7 @@ describe('Fleet Settings: the Improvements switch', () => {
     it('is listed, default on; off makes Q inert (the shortcuts overlay skips its row)', () => {
         const store = new Map<string, string>();
         setSettingsStorage({ getItem: (k) => store.get(k) ?? null, setItem: (k, v) => void store.set(k, v), removeItem: (k) => void store.delete(k) });
-        const spec = IMPROVEMENTS.find((s) => s.id === 'fleetSettings');
+        const spec = improvementById('fleetSettings');
         expect(spec?.default).toBe(true);
         expect(isImprovementEnabled('fleetSettings')).toBe(true);
         const q = KEY_BINDINGS.find((b) => b.key === 'Q');

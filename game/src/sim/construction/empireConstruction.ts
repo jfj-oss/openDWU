@@ -49,7 +49,7 @@ import { galaxyNow, galaxyStarDate } from '../tick/simTime';
 import { REAL_SECONDS_IN_GALACTIC_YEAR } from '../galaxyTime';
 import { netSort } from '../netSort';
 import { ComponentType } from '../data/components';
-import { ShipDesignFocus } from '../researchSystem';
+import { ShipDesignFocus, type TechNode } from '../researchSystem';
 import { ResourceGroup } from '../resourceSystem';
 import { findNewestCanBuild, findNewestCanBuildFullEvaluate, canBuildDesign, createNewDesigns } from '../designGeneration';
 import {
@@ -834,6 +834,29 @@ export function formatMoney(value: number): string {
     return formatNetGrouped0(value);
 }
 
+/**
+ * Empire.6.cs 3418-3448: the retrofit advisor text — "Retrofit Recommendation Message Components" listing the components
+ * RecentProjects unlocked ("    <name>\n" each; "Retrofit Recommendation Message" without any), followed directly by
+ * "Retrofit Recommendation Explanation" (or "… Partial") with the cost as ToString("###,###,###,##0").
+ */
+export function generateRetrofitRecommendationText(galaxy: Galaxy, recentProjects: readonly TechNode[] | null, partial: boolean, cost: number): string {
+    const componentNames: string[] = [];
+    if (recentProjects != null) {
+        for (const researchNode of recentProjects) {
+            for (const id of researchNode.def.components) componentNames.push(galaxy.researchStatic?.componentsById.get(id)?.name ?? '');
+        }
+    }
+    let empty: string;
+    if (componentNames.length > 0) {
+        let text = '';
+        for (const name of componentNames) text = text + '    ' + name + '\n';
+        empty = formatText(getText('Retrofit Recommendation Message Components'), text);
+    } else {
+        empty = getText('Retrofit Recommendation Message');
+    }
+    return empty + formatText(getText(partial ? 'Retrofit Recommendation Explanation Partial' : 'Retrofit Recommendation Explanation'), formatMoney(cost));
+}
+
 /** Empire.10.cs 3640 GenerateAutomationMessageDefensiveBase(colony, baseDesign). */
 function generateAutomationMessageDefensiveBase(galaxy: Galaxy, colony: Habitat, baseDesign: Design): string {
     const habitat = galaxy.determineHabitatSystemStar(colony);
@@ -1347,10 +1370,11 @@ export function retrofitBuiltObjects(galaxy: Galaxy, empire: Empire, stateRetrof
         }
         if (empire === galaxy.playerEmpire) {
             if (empire.stateMoney >= num2) {
-                // 3409-3437: the advisor text lists RecentProjects' components. TODO(port) M9: GameText formatting.
-                const text = getText(builtObjectList2.length === builtObjects.length ? 'Retrofit Recommendation Explanation' : 'Retrofit Recommendation Explanation Partial');
+                // Empire.6.cs 3418-3448: the advisor text lists the components RecentProjects unlocked, then the cost
+                // (num8.ToString("###,###,###,##0")).
+                const taskDescription = generateRetrofitRecommendationText(galaxy, recentProjects, builtObjectList2.length !== builtObjects.length, Math.max(0.0, num2));
                 const refusalCount: RefCount = { value: 0 };
-                if (checkTaskAuthorized(galaxy, empire, empire.controlStateConstruction, refusalCount, formatText(text, formatMoney(Math.max(0.0, num2))), builtObjectList2, AdvisorMessageType.Retrofit)) {
+                if (checkTaskAuthorized(galaxy, empire, empire.controlStateConstruction, refusalCount, taskDescription, builtObjectList2, AdvisorMessageType.Retrofit)) {
                     flag = true;
                     if (empire.controlStateConstruction !== AutomationLevel.FullyAutomated) stateRetrofitAge = 0;
                 }

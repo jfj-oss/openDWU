@@ -78,6 +78,11 @@ export interface UiSettings {
     /** GameOptions.AutoPauseWhenInPopupWindow (default true, Main.Part9.cs:2714): pause a running game while a screen window is open. */
     autoPauseInPopup: boolean;
 
+    // [improvements] begin — the DW2-inspired additions (src/ui/improvements.ts): on / off per improvement id. A missing
+    // id takes the improvement's default.
+    improvements: Record<string, boolean>;
+    // [improvements] end
+
     /** Run the simulation in a Web Worker (docs/sim-worker.md; the default). Off: the in-thread fallback, the sim on the
      *  main thread as before. Applies to the next game started or loaded; `?simWorker=1|0` overrides. */
     simWorker: boolean;
@@ -131,10 +136,6 @@ export interface UiSettings {
     /** GameOptions.CustomizationSetName (GameOptions.cs 258): the theme chosen on the Change Theme panel (Start.cs
      *  method_2), "" = the stock game. */
     customizationSet: string;
-
-    /** The "Improvements" switches (ui/improvements.ts): additions not in the original, by id; a missing id takes the
-     *  improvement's default. */
-    improvements: Record<string, boolean>;
 }
 
 /** [galaxymarkers] The GalaxyViewDisplay* keys, in the original's option order. */
@@ -201,6 +202,7 @@ export const DEFAULT_SETTINGS: UiSettings = {
     pullStationsToCentre: false,
     showWeaponRangeCircles: false,
     autoPauseInPopup: true,
+    improvements: {}, // [improvements]
     // On by default only with 16 GB+ of RAM (src/systemMemory.ts): on an 8 GB Mac the replica's extra memory caused severe
     // slowdown and WebGL context loss (2026-10-04); see docs/sim-worker.md §6.
     simWorker: simWorkerDefault(),
@@ -233,7 +235,6 @@ export const DEFAULT_SETTINGS: UiSettings = {
     newGameOptions: null,
     customizationSet: '',
     // [gameoptions] end
-    improvements: {},
 };
 
 /** Minimal storage shape (localStorage-compatible). */
@@ -313,6 +314,13 @@ export function loadSettings(): UiSettings {
         if (typeof parsed.pullStationsToCentre === 'boolean') out.pullStationsToCentre = parsed.pullStationsToCentre;
         if (typeof parsed.showWeaponRangeCircles === 'boolean') out.showWeaponRangeCircles = parsed.showWeaponRangeCircles;
         if (typeof parsed.autoPauseInPopup === 'boolean') out.autoPauseInPopup = parsed.autoPauseInPopup;
+        // [improvements] begin
+        if (parsed.improvements !== null && typeof parsed.improvements === 'object' && !Array.isArray(parsed.improvements)) {
+            const m: Record<string, boolean> = {};
+            for (const [k, v] of Object.entries(parsed.improvements as Record<string, unknown>)) if (typeof v === 'boolean') m[k] = v;
+            out.improvements = m;
+        }
+        // [improvements] end
         // The worker became the default with SIM_WORKER_SETTING_VERSION 2: a stored value from before (the old default
         // `false`, written with every other setting) is not the player's choice and is ignored.
         if (typeof parsed.simWorker === 'boolean' && (parsed as { simWorkerVersion?: unknown }).simWorkerVersion === SIM_WORKER_SETTING_VERSION) out.simWorker = parsed.simWorker;
@@ -343,11 +351,6 @@ export function loadSettings(): UiSettings {
         }
         // [gameoptions] end
         if (typeof parsed.customizationSet === 'string') out.customizationSet = parsed.customizationSet;
-        if (parsed.improvements !== null && typeof parsed.improvements === 'object' && !Array.isArray(parsed.improvements)) {
-            const r: Record<string, boolean> = {};
-            for (const [k, v] of Object.entries(parsed.improvements)) if (typeof v === 'boolean') r[k] = v;
-            out.improvements = r;
-        }
     } catch {
         // Corrupt blob: keep the defaults.
     }

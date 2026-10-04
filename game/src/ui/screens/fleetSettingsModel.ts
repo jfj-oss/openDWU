@@ -47,6 +47,15 @@ import { fleetBuildProgress, type FleetBuildOrder, type FleetBuildProgress } fro
 import { resolveBattleTacticsDescription, resolveFleeWhenDescription, resolveInvasionTacticsDescription } from '../../sim/player/designEditor';
 import { ENGAGEMENT_STANCE_ITEMS, type AttackRangeField, type EmpireSettingField } from '../../sim/player/empireSettings';
 import { PendingOnce, PendingValues } from '../pendingCommands';
+import { registerImprovement } from '../improvements';
+
+/** The Improvements switch (ui/improvements.ts): off hides the panel's buttons and its Q key. */
+export const FLEET_SETTINGS_IMPROVEMENT = registerImprovement({
+    id: 'fleetSettings',
+    label: 'Fleet Settings panel',
+    description: "A fleet's behaviour settings in one window: posture, engagement, retreat, fuel, troops, resupply (Q).",
+    default: true,
+});
 
 // -------------------------------------------------------------------------------------------------------------------
 // Posture range (ShipGroup.PostureRangeSquared)

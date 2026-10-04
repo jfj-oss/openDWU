@@ -146,10 +146,15 @@ try {
     await page.keyboard.press('o');
     await page.waitForSelector('[data-ow="gameoptions"]');
     await wait(800);
+    await page.locator('[data-ow="gameoptions"] .ow-glass', { hasText: 'Improvements...' }).click();
+    await page.waitForSelector('[data-ow="gameoptions-improvements"]');
+    await wait(600);
     await shot('game-options-improvements');
-    const box = page.locator('[data-ow="gameoptions"] [data-improvement="fleetSettings"] input');
+    const box = page.locator('[data-ow="gameoptions-improvements"] [data-improvement="fleetSettings"] input');
     check((await box.count()) === 1 && (await box.isChecked()), 'Game Options → Improvements → Fleet Settings panel: on by default');
     await box.click();
+    await wait(300);
+    await page.keyboard.press('Escape');
     await wait(300);
     await page.keyboard.press('Escape');
     await wait(600);

@@ -610,6 +610,8 @@ function createShipsAndBasesList(opts: ShipsAndBasesListOptions): OpenState {
             width: 35,
             align: 'center',
             render: (r, c) => {
+                // BuiltObjectListView.cs 512: Design.Name + " (" + SubRole.ToString() + ")" — the C# shows the enum member
+                // name here (e.g. "SmallSpacePort"), not ResolveDescription(SubRole).
                 if (r.builtObject !== null) imageCell(c, shipImageUrl(r.builtObject), 28, -90, `${r.builtObject.design?.name ?? ''} (${BuiltObjectSubRole[r.builtObject.subRole]})`);
                 else imageCell(c, habitatImageUrl(r.stellarObject as Habitat), 26);
             },

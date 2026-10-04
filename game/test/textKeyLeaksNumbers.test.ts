@@ -22,7 +22,23 @@ import { formatNet0, formatNetFixed, formatNetGrouped0, formatNetPercent0 } from
 import { resolveDescription } from '../src/sim/messages';
 import { TroopType } from '../src/sim/cargo';
 import { HabitatType, IndustryType } from '../src/sim/types';
-import { generateAutomationMessageColonization } from '../src/sim/construction/empireConstruction';
+import { generateAutomationMessageColonization, generateRetrofitRecommendationText } from '../src/sim/construction/empireConstruction';
+import { TradeableItem, TradeableItemType } from '../src/sim/tradeItems';
+import { Empire as EmpireClass } from '../src/sim/empire';
+import { Habitat as HabitatClass } from '../src/sim/types';
+import { GalaxyLocation } from '../src/sim/galaxyLocation';
+import { BuiltObjectSubRole } from '../src/sim/builtObjectTypes';
+import { pirateBaseBonusAbandonedShipText, pirateBaseBonusExplorationText, pirateBaseBonusFactionJoinsText, pirateBaseBonusMoneyText } from '../src/sim/combat/pirateBaseBonusText';
+import {
+    generateAutomationMessagePiratesAttackPirates,
+    generateAutomationMessagePiratesMission,
+    generateAutomationMessageRaidBase,
+    generateAutomationMessageRaidColony,
+} from '../src/sim/pirates/pirateFleets';
+import type { EmpireActivity } from '../src/sim/pirates/empireActivity';
+import type { BuiltObject } from '../src/sim/builtObject';
+import type { ShipGroup } from '../src/sim/fleets/shipGroup';
+import type { TechNode } from '../src/sim/researchSystem';
 import { formatNet, getText, resolveGameText } from '../src/sim/textResolver';
 import {
     resolveEmpireAbilityBonusDescriptionEspionage,
@@ -254,5 +270,117 @@ describe('textkeys: enum and argument texts found in the same audit', () => {
         const text = generateAutomationMessageColonization(galaxy, target, { name: 'Colony Ship 1' } as never, null);
         expectShown('Automation Colonization Existing Ship', text);
         expect(text).toBe(formatNet(getText('Automation Colonization Existing Ship'), ['continental', 'planet', 'Earth', 'Sol', 'Colony Ship 1']));
+    });
+});
+
+/** A plain object that passes `instanceof Class` (the texts only read names / positions). */
+function fake<T>(cls: { prototype: T }, fields: Record<string, unknown>): T {
+    return Object.assign(Object.create(cls.prototype as object), fields) as T;
+}
+
+describe('textkeys: trade, pirate-base, pirate advisor and retrofit texts', () => {
+    // A galaxy of 10 × 10 sectors (Galaxy.SectorSize 2,000,000) whose habitats' system star is their parent.
+    const galaxy = {
+        sectorSize: 2_000_000,
+        sectorWidth: 10,
+        sectorHeight: 10,
+        independentEmpire: null as unknown,
+        determineHabitatSystemStar: (h: { parent?: unknown }) => h.parent ?? h,
+        researchStatic: { componentsById: new Map([[7, { name: 'Shockwave Torpedo' }], [9, { name: 'Ion Shield' }]]) },
+    } as unknown as Galaxy;
+    const sol = fake(HabitatClass, { name: 'Sol', category: HabitatCategoryType.Star, type: HabitatType.MainSequence, xpos: 5_000_000, ypos: 3_000_000, parent: null });
+    const earth = fake(HabitatClass, { name: 'Earth', category: HabitatCategoryType.Planet, type: HabitatType.Continental, xpos: 5_000_100, ypos: 3_000_000, parent: sol, empire: null });
+    const enemy = fake(EmpireClass, { name: 'Ackdarian Empire' });
+    const pirates = fake(EmpireClass, { name: 'Black Raiders' });
+    const station = { name: 'Raider Base', xpos: 5_000_200, ypos: 3_000_000, nearestSystemStar: sol, parentHabitat: earth, empire: pirates, subRole: BuiltObjectSubRole.SmallSpacePort } as unknown as BuiltObject;
+    const fleet = { name: '1st Raid Fleet' } as unknown as ShipGroup;
+
+    it('TradeableItem.ToString: every item type uses its GameText format (TradeableItem.cs 36-140)', () => {
+        const items: Array<[TradeableItemType, unknown, number]> = [
+            [TradeableItemType.Money, 12345.6, 12345],
+            [TradeableItemType.Colony, earth, 250000],
+            [TradeableItemType.Base, station, 1234567],
+            [TradeableItemType.TerritoryMap, null, 5000],
+            [TradeableItemType.GalaxyMap, null, 9000],
+            [TradeableItemType.AdoptGovernmentStyle, { name: 'Democracy', governmentId: 3 }, 1000],
+            [TradeableItemType.ThreatenWar, null, 0],
+            [TradeableItemType.DeclareWarOther, enemy, 20000],
+            [TradeableItemType.ThreatenTradeSanctions, null, 0],
+            [TradeableItemType.InitiateTradeSanctionsOther, enemy, 15000],
+            [TradeableItemType.EndWar, null, 3000],
+            [TradeableItemType.EndWarOther, enemy, 3000],
+            [TradeableItemType.LiftTradeSanctions, null, 2000],
+            [TradeableItemType.LiftTradeSanctionsOther, enemy, 2000],
+            [TradeableItemType.ResearchProject, { def: { name: 'Hyperdrive' } }, 45000],
+            [TradeableItemType.ContactEmpire, enemy, 10000],
+            [TradeableItemType.SecretLocation, fake(GalaxyLocation, { name: 'Ancient Ruins' }), 30000],
+            [TradeableItemType.SystemMap, sol, 2000],
+            [TradeableItemType.IndependentColonyLocation, earth, 20000],
+        ];
+        const enumNames = new Set(Object.keys(TradeableItemType).filter((k) => Number.isNaN(Number(k))));
+        for (const [type, item, value] of items) {
+            for (const showValue of [true, false]) {
+                const text = new TradeableItem(type, item, value).toString(showValue, galaxy);
+                const what = `${TradeableItemType[type]} (${showValue})`;
+                expectShown(what, text);
+                expect(text.length, what).toBeGreaterThan(0);
+                for (const w of text.split(/[\s(),]+/)) expect(enumNames.has(w) && /[a-z][A-Z]/.test(w), `${what}: ${text}`).toBe(false);
+            }
+        }
+        expect(new TradeableItem(TradeableItemType.Money, 12345.6, 12345).toString(true, galaxy)).toBe(formatNet(getText('Trade Description Money'), ['12,346']));
+        expect(new TradeableItem(TradeableItemType.Base, station, 1234567).toString(true, galaxy)).toBe('Raider Base (Sol system, sector C2) (1,234,567)');
+        expect(new TradeableItem(TradeableItemType.Colony, earth, 250000).toString(false, galaxy)).toBe(formatNet(getText('Trade Description Colony NAME PLANETTYPE SYSTEMNAME'), ['Earth', resolveDescription(HabitatType as unknown as Record<number, string>, HabitatType.Continental), 'Sol']));
+        const hidden = new TradeableItem(TradeableItemType.SecretLocation, fake(GalaxyLocation, { name: 'Ancient Ruins' }), 30000);
+        hidden.showSecretLocationNames = false;
+        expect(hidden.toString(false, galaxy)).toBe(getText('Secret Location'));
+    });
+
+    it('pirate-base destruction bonus events (BuiltObject.2.cs 5022-5100 / Fighter.cs 979-1057)', () => {
+        const wreck = { name: 'Old Cruiser', xpos: 7_100_000, ypos: 9_500_000, subRole: BuiltObjectSubRole.Cruiser } as unknown as BuiltObject;
+        const race = gameData.races[0];
+        const texts = [
+            pirateBaseBonusAbandonedShipText(galaxy, station, wreck, sol),
+            pirateBaseBonusMoneyText(station, 4321.987654321),
+            pirateBaseBonusFactionJoinsText(station, pirates),
+            pirateBaseBonusExplorationText(galaxy, station, earth, race),
+        ];
+        for (const t of texts) {
+            expectShown('pirate base bonus title', t.title);
+            expectShown('pirate base bonus message', t.message);
+        }
+        expect(texts[0].message).toContain('abandoned cruiser named Old Cruiser');
+        expect(texts[0].message).toContain('the Sol system in sector D5');
+        expect(texts[1].message).toContain('totals to 4322 credits'); // num5.ToString("#0")
+        expect(texts[3].title).toBe(`Independent Colony of ${race.name}s`);
+        expect(texts[3].message).toContain('the Sol system in sector C2');
+    });
+
+    it('pirate advisor texts (Empire.10.cs 3861-3960)', () => {
+        const requester = fake(EmpireClass, { name: 'Haakonish Republic' });
+        const mission = { target: station, targetEmpire: enemy, requestingEmpire: requester } as unknown as EmpireActivity;
+        const colony = fake(HabitatClass, { name: 'Mars', category: HabitatCategoryType.Planet, type: HabitatType.Desert, parent: sol, empire: enemy });
+        const independent = fake(HabitatClass, { name: 'Titan', category: HabitatCategoryType.Moon, type: HabitatType.Ice, parent: sol, empire: null });
+        const g = { ...galaxy, independentEmpire: null, determineHabitatSystemStar: () => sol } as unknown as Galaxy;
+        const texts = [
+            generateAutomationMessagePiratesMission(g, 'Automation Pirate Attack Mission', mission, fleet),
+            generateAutomationMessagePiratesMission(g, 'Automation Pirate Defend Mission', mission, fleet),
+            generateAutomationMessagePiratesAttackPirates(g, station, fleet),
+            generateAutomationMessageRaidBase(g, station, fleet),
+            generateAutomationMessageRaidColony(g, colony, fleet),
+            generateAutomationMessageRaidColony(g, independent, fleet), // empire null === IndependentEmpire (null here)
+        ];
+        for (const t of texts) expectShown('pirate advisor', t);
+        expect(texts[0]).toBe(formatNet(getText('Automation Pirate Attack Mission'), ['Haakonish Republic', 'Raider Base', 'Ackdarian Empire', 'Sol', '1st Raid Fleet']));
+        expect(texts[2]).toBe(formatNet(getText('Automation Pirate Attack Pirate'), ['Black Raiders', 'Raider Base', 'Sol', '1st Raid Fleet']));
+        expect(texts[5]).toBe(formatNet(getText('Automation Raid Independent Colony'), ['Titan', 'Sol', '1st Raid Fleet']));
+    });
+
+    it('retrofit advisor text: the unlocked components, then the cost (Empire.6.cs 3418-3448)', () => {
+        const projects = [{ def: { components: [7, 9] } }, { def: { components: [] } }] as unknown as TechNode[];
+        const withComponents = generateRetrofitRecommendationText(galaxy, projects, false, 123456.7);
+        expectShown('retrofit', withComponents);
+        expect(withComponents).toBe(formatNet(getText('Retrofit Recommendation Message Components'), ['    Shockwave Torpedo\n    Ion Shield\n']) + formatNet(getText('Retrofit Recommendation Explanation'), ['123,457']));
+        const plain = generateRetrofitRecommendationText(galaxy, [], true, 999);
+        expect(plain).toBe(getText('Retrofit Recommendation Message') + formatNet(getText('Retrofit Recommendation Explanation Partial'), ['999']));
     });
 });

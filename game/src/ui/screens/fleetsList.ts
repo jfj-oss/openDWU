@@ -19,6 +19,8 @@
 // buttons, Main.Part3.cs fleetSlots), in the same look: a row of fleet orders under the window's controls (posture,
 // engagement range, attack point, home base, automate, stop, disband), and the "Fleet Designs" tab
 // (fleetDesignsTab.ts: fleet templates, form from existing, build fleet with a sector option and progress).
+// Below the orders row, the fleet's template row (fleetRefillControls.ts: fleet design, "Auto-refill from template",
+// the replacements' yard, Replenish and the status line; sim/player/fleetRefill.ts — a gameplay addition).
 // The fleet cycle keys follow Main.Part8.cs:1243 btnCycleShipGroups_Click (fleetCycleList).
 // The first column is ShipGroupListView.cs:170-182: the first admiral / general's very small picture
 // (CharacterImageCache.ObtainCharacterImageVerySmall, characterPortrait.ts) and every name as the tooltip.
@@ -42,6 +44,7 @@ import { getFleetAdmiralsAndGenerals, shipGroupGetTroopLoadoutTargetAmounts, shi
 import type { Troop } from '../../sim/cargo';
 import { SystemVisibilityStatus } from '../../sim/visibility';
 import { createFleetDesignsTab } from './fleetDesignsTab';
+import { createFleetRefillControls } from '../fleetRefillControls';
 import { troopCompositionDescription, troopCountsByType } from './troops';
 import { openGalactopedia } from './galactopedia';
 import { CROSSHAIR_COLOR, GRID_COLOR, drawMapTerritory, galaxyMapScale, sectorColumnLabel, starBrushColor, starDotSizes } from './galaxyMap';
@@ -340,7 +343,7 @@ export function fleetShipAction(id: 'posture' | 'range' | 'automate' | 'unautoma
 }
 
 /** The window size: the original's 988 × 768 plus one 62 px band for our fleet orders row (y 702). */
-export const FLEETS_WINDOW = { w: 988, h: 768 + 62, ordersY: 702, ordersH: 48 } as const;
+export const FLEETS_WINDOW = { w: 988, h: 768 + 62 + 64, ordersY: 702, ordersH: 48, refillY: 760 } as const;
 
 /** x positions of `n` equal buttons across the grid's 950 px (10 px gaps), for the fleet orders row. */
 export function rowButtonLayout(n: number, left = 10, width = 950, gap = 10): { x: number; w: number }[] {
@@ -679,6 +682,13 @@ function createFleetsList(opts: FleetsListOptions): OpenState {
     });
 
     // ---------------------------------------------------------------------------------------------------------------
+    // The fleet's template row (fleetRefillControls.ts; not in the original): fleet design, auto-refill, yard,
+    // Replenish, status.
+    // ---------------------------------------------------------------------------------------------------------------
+    const refillRow = createFleetRefillControls(empire, 950, () => refresh());
+    fleetsPage.appendChild(place(refillRow.el, 10, FLEETS_WINDOW.refillY, 950, 56));
+
+    // ---------------------------------------------------------------------------------------------------------------
     // Fleet Designs tab.
     // ---------------------------------------------------------------------------------------------------------------
     const designsTab = createFleetDesignsTab(designsPage, empire, { w: win.bodySize.w, h: win.bodySize.h });
@@ -781,6 +791,7 @@ function createFleetsList(opts: FleetsListOptions): OpenState {
         } else {
             for (const s of orderSpecs) minor(s.id, '');
         }
+        refillRow.update(sg);
         drawMap();
     }
 

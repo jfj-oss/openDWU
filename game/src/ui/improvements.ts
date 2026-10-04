@@ -1,88 +1,112 @@
-// "Improvements": the additions that are not in Distant Worlds: Universe (several are Distant Worlds 2 ideas built on
-// the original's mechanics). Each has an on/off switch in the Game Options window's "Improvements" group. When an
-// improvement is off, its UI entry points (buttons, hotkeys, overlays) are hidden. These switches are UI settings
-// (ui/settings.ts `improvements`, persisted per browser). None reaches the sim: every sim change an improvement makes
-// still goes through the journaled player commands.
+// "Improvements": the one category every Distant Worlds 2-inspired addition goes under. NOT a port: DW:U has none of
+// them. They are UI only (no game rules change) and each can be switched off in Game Options → Improvements.
 //
-// The registry holds {id, label, description, default}. A feature asks `isImprovementEnabled(id)` when it builds or
-// refreshes its entry points, and listens with `onImprovementsChange` to show or hide them live.
-// `improvementsOptionsGroup` builds the Game Options group (one check box and a description line per improvement).
+// The shared scaffolding (reuse it for a new improvement):
+//   1. Add an entry to IMPROVEMENTS below (or call registerImprovement from the feature's module): a stable `id`, the
+//      label and one-line description the Game Options group shows, and the default (on).
+//   2. A map overlay that belongs to it: give its OVERLAY_ROWS row `improvement: '<id>'` (mapOverlays.ts). The View
+//      popup (hud.ts buildOptionsList) lists those rows in an "Improvements" section below the original's Overlays,
+//      without the "+" badge, and hides them while the improvement is off; mapOverlays.ts overlayActive(state, key) is
+//      false then, so the renderer draws nothing.
+//   3. Panels / rows: gate them with isImprovementEnabled('<id>'), and react to a toggle with onImprovementsChange.
+// The on / off choices persist in the UI settings (settings.ts `improvements`, id → boolean; a missing id = default).
+//
+// The Game Options group is buildImprovementsGroup (screens/gameOptionsPanel.ts opens it from "Improvements...").
 
 import { getSettings, onSettingsChange, updateSettings } from './settings';
-import { COLORS, checkBox, place, text } from './originalWindow';
+import { COLORS, FONT, checkBox, el, place, text } from './originalWindow';
 import { groupBox } from './originalWindowControls';
 
-export interface ImprovementSpec {
-    /** Stable id (the key stored in settings.improvements). */
+export interface Improvement {
+    /** Stable id (settings key, OVERLAY_ROWS `improvement`). */
     id: string;
-    /** The check box label in Game Options. */
+    /** Name in Game Options → Improvements. */
     label: string;
-    /** One line under the label: what it adds. */
+    /** One line under the name. */
     description: string;
-    /** On or off before the player changes it. */
+    /** On unless the player turned it off. */
     default: boolean;
 }
 
-/** Every improvement, in the order Game Options lists them. */
-export const IMPROVEMENTS: ImprovementSpec[] = [
-    {
-        id: 'fleetSettings',
-        label: 'Fleet Settings panel',
-        description: "A fleet's behaviour settings in one window: posture, engagement, retreat, fuel, troops (Q).",
-        default: true,
-    },
-];
+/** Title of the overlay section and of the options group. */
+export const IMPROVEMENTS_TITLE = 'Improvements';
 
-/** Add an improvement to the registry (no-op when its id is listed already). */
-export function registerImprovement(spec: ImprovementSpec): void {
-    if (!IMPROVEMENTS.some((s) => s.id === spec.id)) IMPROVEMENTS.push(spec);
+/** The registry, in display order. */
+const IMPROVEMENTS: Improvement[] = [];
+
+/** Add an improvement (or replace the one with the same id). Returns it. */
+export function registerImprovement(imp: Improvement): Improvement {
+    const i = IMPROVEMENTS.findIndex((x) => x.id === imp.id);
+    if (i >= 0) IMPROVEMENTS[i] = imp;
+    else IMPROVEMENTS.push(imp);
+    return imp;
 }
 
-export function findImprovement(id: string): ImprovementSpec | null {
-    return IMPROVEMENTS.find((s) => s.id === id) ?? null;
+/** Every registered improvement, in display order. */
+export function improvements(): readonly Improvement[] {
+    return IMPROVEMENTS;
 }
 
-/** Whether `id` is on: the player's choice, else its default (an unknown id is off). */
+export function improvementById(id: string): Improvement | null {
+    return IMPROVEMENTS.find((x) => x.id === id) ?? null;
+}
+
+/** On / off for `id`: the player's choice, else the default (an unknown id is on). */
 export function isImprovementEnabled(id: string): boolean {
-    const spec = findImprovement(id);
-    if (spec === null) return false;
-    const stored = getSettings().improvements[id];
-    return typeof stored === 'boolean' ? stored : spec.default;
+    const v = getSettings().improvements?.[id];
+    if (typeof v === 'boolean') return v;
+    return improvementById(id)?.default ?? true;
 }
 
-/** Turn `id` on or off (persisted; listeners are told). */
 export function setImprovementEnabled(id: string, on: boolean): void {
-    updateSettings({ improvements: { ...getSettings().improvements, [id]: on } });
+    if (isImprovementEnabled(id) === on) return;
+    updateSettings({ improvements: { ...(getSettings().improvements ?? {}), [id]: on } });
 }
 
-/** Called after any improvement switch may have changed. Returns the unsubscribe function. */
-export function onImprovementsChange(cb: () => void): () => void {
-    let last = JSON.stringify(IMPROVEMENTS.map((s) => isImprovementEnabled(s.id)));
+/** Called after any improvement was switched (with its id), until the returned function unsubscribes. */
+export function onImprovementsChange(cb: (id: string, on: boolean) => void): () => void {
+    let last = new Map(IMPROVEMENTS.map((i) => [i.id, isImprovementEnabled(i.id)]));
     return onSettingsChange(() => {
-        const now = JSON.stringify(IMPROVEMENTS.map((s) => isImprovementEnabled(s.id)));
-        if (now === last) return;
-        last = now;
-        cb();
+        const next = new Map(IMPROVEMENTS.map((i) => [i.id, isImprovementEnabled(i.id)]));
+        const prev = last;
+        last = next;
+        for (const [id, on] of next) if (prev.get(id) !== on) cb(id, on);
     });
 }
 
-/** Height of the Game Options "Improvements" group for `n` improvements (caption + 44 px per row). */
-export function improvementsGroupHeight(n: number = IMPROVEMENTS.length): number {
-    return 30 + 44 * Math.max(1, n);
+/** Split overlay rows into the original's and the Improvements section (only the enabled improvements' rows). */
+export function overlayRowSections<R extends { improvement?: string }>(rows: readonly R[]): { original: R[]; improvements: R[] } {
+    const original: R[] = [];
+    const extra: R[] = [];
+    for (const r of rows) {
+        if (r.improvement === undefined) original.push(r);
+        else if (isImprovementEnabled(r.improvement)) extra.push(r);
+    }
+    return { original, improvements: extra };
 }
 
-/** The Game Options "Improvements" group, `w` wide: a check box per improvement with its description under it. */
-export function improvementsOptionsGroup(w: number, size = 20.77): HTMLDivElement {
-    const g = groupBox('Improvements', w, improvementsGroupHeight(), 18.67);
-    g.dataset.go = 'improvements';
-    IMPROVEMENTS.forEach((spec, i) => {
-        const y = 22 + 44 * i;
-        const c = checkBox(spec.label, isImprovementEnabled(spec.id), (v) => setImprovementEnabled(spec.id, v), size);
-        c.classList.add('go-check');
-        c.dataset.improvement = spec.id;
-        g.appendChild(place(c, 9, y));
-        const d = text(spec.description, { size: 14, color: COLORS.label, shadow: false, className: 'go-label' });
-        g.appendChild(place(d, 32, y + 23, w - 44));
+/** Row pitch of the options group (check box line + description line). */
+const ROW_H = 40;
+
+/** Height of the options group for `n` improvements. */
+export function improvementsGroupHeight(n = IMPROVEMENTS.length): number {
+    return 30 + Math.max(1, n) * ROW_H;
+}
+
+/**
+ * The Game Options "Improvements" group: one check box per improvement (its label) with its description below, in the
+ * original-window style (originalWindowControls.groupBox / originalWindow.checkBox). Toggling saves at once.
+ */
+export function buildImprovementsGroup(width: number, size: number = FONT.normal): HTMLDivElement {
+    const g = groupBox(IMPROVEMENTS_TITLE, width, improvementsGroupHeight(), FONT.header);
+    g.classList.add('improvements-group');
+    IMPROVEMENTS.forEach((imp, i) => {
+        const y = 24 + i * ROW_H;
+        const c = checkBox(imp.label, isImprovementEnabled(imp.id), (v) => setImprovementEnabled(imp.id, v), size);
+        c.dataset.improvement = imp.id;
+        g.appendChild(place(c, 10, y));
+        g.appendChild(place(text(imp.description, { size: FONT.tiny, color: COLORS.label, wrapWidth: width - 50 }), 34, y + 19));
     });
+    if (IMPROVEMENTS.length === 0) g.appendChild(place(el('div', 'ow-text', '(none)'), 10, 24));
     return g;
 }
