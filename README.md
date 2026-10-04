@@ -1,15 +1,74 @@
-# openDWU — Distant Worlds: Universe recreation
+<div align="center">
 
-A faithful recreation of *Distant Worlds: Universe* (v1.9.5) in TypeScript
-and PixiJS, ported directly from the game's decompiled engine source
+# openDWU
+
+**A faithful recreation of *Distant Worlds: Universe* (v1.9.5) in TypeScript and PixiJS.**
+
+[![Download](https://img.shields.io/badge/download-latest%20release-2b6cb0)](https://github.com/jfj-oss/openDWU/releases/latest)
+[![Platforms](https://img.shields.io/badge/platforms-macOS%20%C2%B7%20Linux%20%C2%B7%20Windows-555)](#install)
+[![License: MIT](https://img.shields.io/badge/license-MIT-3c873a)](LICENSE)
+
+<img src="docs/screenshots/system-view.webp" alt="A capital planet ringed by its starbase, freighters and warships" width="900">
+
+</div>
+
+> [!IMPORTANT]
+> **You need your own copy of the original game's data files.** This
+> repository ships no original art, sounds, data or decompiled source; the
+> game reads them at runtime from a Distant Worlds: Universe install folder,
+> either your Steam install or a clone of the private `jfj-oss/dwu-assets`
+> repo (only if you have been given access).
+
+openDWU is ported directly from the game's decompiled engine source
 (formulas, constants, generation order and RNG sequence), with an opt-in
 mod/scenario layer on top. The code lives under [`game/`](game/).
 
-**You need your own copy of the original game's data files.** This
-repository ships no original art, sounds, data or decompiled source; the
-game reads them at runtime from a Distant Worlds: Universe install folder,
-either your Steam install or a clone of the private `jfj-oss/dwu-assets`
-repo (only if you have been given access).
+## What's here
+
+- **A faithful port of DW:U 1.9.5**: the original engine's formulas,
+  constants, order of operations and seeded `System.Random` sequence, with
+  thousands of seed-pinned values to catch regressions.
+- **One seamless map.** Scroll continuously from the whole galaxy down to a
+  single planet and back. The galaxy and system views are the same map at
+  different zoom levels, cross-fading instead of switching screens.
+- **Desktop apps for macOS, Linux and Windows.** They find your Steam
+  install, remember your game folder and offer new releases. You can also
+  run the game from source in the browser.
+- **Opt-in scenarios and mods.** With no scenario selected the game is the
+  byte-identical port. Scenarios add factions, storylines and threats, each
+  behind its own flags ([details](#scenarios-and-mods)).
+- **Improvements inspired by Distant Worlds 2**: battle reports, supply-chain
+  visibility, waypoints, a Fleet Settings panel, and resource, fuel-range and
+  colony-score overlays. You can switch each one off in Game Options →
+  Improvements.
+- **Bacon mod settings per game.** Every game keeps its own
+  `BaconSettings.txt` values, and you can edit them at any time from Game
+  Options.
+- **Deterministic and replayable.** A seed plus the player's command log
+  reproduces a game exactly.
+
+## Screenshots
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/galaxy-territories.webp" alt="Galaxy view with empire territories over the nebulae"></td>
+    <td width="50%"><img src="docs/screenshots/new-game-race.webp" alt="New game wizard, Your Race page"></td>
+  </tr>
+  <tr>
+    <td align="center"><sub>Zoomed out: empire territories over the nebulae</sub></td>
+    <td align="center"><sub>New game wizard: choosing your race</sub></td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/colonies-window.webp" alt="Colonies window over the map"></td>
+    <td width="50%"><img src="docs/screenshots/research-window.webp" alt="Research tree window"></td>
+  </tr>
+  <tr>
+    <td align="center"><sub>The Colonies window, over the map</sub></td>
+    <td align="center"><sub>The research tree and queue</sub></td>
+  </tr>
+</table>
+
+## Install
 
 **Jump to your platform:** [Windows](#windows) · [macOS](#macos) · [Linux](#linux) · [Troubleshooting](#troubleshooting) · [Tests](#tests) · [About the project](#about-the-project)
 
@@ -28,7 +87,8 @@ each section below says how to get past that once.
 
 ## Windows
 
-### Desktop app (Windows 10/11, 64-bit)
+<details>
+<summary><b>Desktop app (Windows 10/11, 64-bit)</b></summary>
 
 **1. Download** `openDWU-<version>-windows-x64-setup.exe` from the
 [latest release](https://github.com/jfj-oss/openDWU/releases/latest). (There
@@ -62,7 +122,10 @@ run it and it replaces the old version (settings and saves are kept).
 **Uninstall:** Settings → Apps → **openDWU**. Your settings and saves stay in
 `%APPDATA%\Distant Worlds Universe`; delete that folder too to remove them.
 
-### Run from source (browser)
+</details>
+
+<details>
+<summary><b>Run from source (browser)</b></summary>
 
 **1. Install Node.js and git**
 
@@ -141,11 +204,14 @@ npm run dev
 The junction from step 3 is kept across updates. If you use the assets
 repo, also run `git -C $HOME\dwu-assets pull`.
 
+</details>
+
 ---
 
 ## macOS
 
-### Desktop app (Apple silicon: M1 and later)
+<details>
+<summary><b>Desktop app (Apple silicon: M1 and later)</b></summary>
 
 **1. Download** `openDWU-<version>-macos-arm64.dmg` from the
 [latest release](https://github.com/jfj-oss/openDWU/releases/latest), open
@@ -188,7 +254,10 @@ most once a day): **Download** opens the new disk image in your browser;
 drag **dwu** to Applications again, replacing the old one, and repeat the
 one-time step 2. Settings and saves are kept.
 
-### Run from source (browser)
+</details>
+
+<details>
+<summary><b>Run from source (browser)</b></summary>
 
 **1. Install Node.js and git**
 
@@ -281,11 +350,14 @@ npm run dev
 
 If you use the assets repo, also run `git -C ~/dwu-assets pull`.
 
+</details>
+
 ---
 
 ## Linux
 
-### Desktop app (x86_64)
+<details>
+<summary><b>Desktop app (x86_64)</b></summary>
 
 **1. Download** from the
 [latest release](https://github.com/jfj-oss/openDWU/releases/latest) either
@@ -322,7 +394,10 @@ most once a day): **Download** opens the new AppImage (or tar.gz) in your
 browser; replace the old file with it. Settings and saves
 (`~/.config/Distant Worlds Universe`) are kept.
 
-### Run from source (browser)
+</details>
+
+<details>
+<summary><b>Run from source (browser)</b></summary>
 
 **1. Install Node.js and git**
 
@@ -418,6 +493,8 @@ npm run dev
 ```
 
 If you use the assets repo, also run `git -C ~/dwu-assets pull`.
+
+</details>
 
 ---
 
@@ -604,3 +681,14 @@ data files or decompiled source; none of it is redistributed here. The game
 reads those files live from your own install folder at runtime. Art under
 `game/public/art/` is original artwork created for this project (procedural
 code and our own generated sprites), not from the original game.
+
+---
+
+## Contributing
+
+Bug reports and pull requests are welcome; see [`CONTRIBUTING.md`](CONTRIBUTING.md).
+
+## License
+
+Code: MIT (see [`LICENSE`](LICENSE)). *Distant Worlds: Universe* and its
+data, art and sounds belong to their owners and are not included.
