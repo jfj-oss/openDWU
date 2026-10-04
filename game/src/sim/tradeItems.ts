@@ -79,6 +79,9 @@ import { ComponentType } from './data/components';
 import { ComponentCategoryType } from './data/policies';
 import { DesignSpecificationComponentRuleType, resolveComponentCategoryForType, type DesignSpecification } from './data/designSpecifications';
 import { baconSettings } from './data/baconSettings';
+import { formatNetGrouped0 } from './netNumberFormat';
+import { resolveSectorDescription } from './empireEvents';
+import { Empire as EmpireClass } from './empire';
 
 // TradeableItemType.cs (member order exact).
 export enum TradeableItemType {
@@ -127,34 +130,115 @@ export class TradeableItem {
         return new TradeableItem(this.type, this.item, this.value);
     }
 
-    /** TradeableItem.cs 36 ToString(showValue): GameText keys (M9 localises). */
-    toString(showValue = true): string {
+    /**
+     * TradeableItem.cs 36 ToString(showValue): the item's GameText description, resolved now (it is joined into the
+     * "Trade Offer" / "Trade Demand" texts, TradeableItemList.cs 61 BuildTradeableItemsDescription), then " (value)"
+     * with `Value.ToString("###,###,###,##0")` for the valued types. `galaxy` gives the Base's sector the C#'s
+     * Galaxy.ResolveSectorDescriptionStatic clamps to the galaxy's sectors (unclamped without it).
+     */
+    toString(showValue = true, galaxy: Galaxy | null = null): string {
         let str1 = '';
+        const empire = this.item as Empire | null;
         switch (this.type) {
+            case TradeableItemType.Money:
+                str1 = formatText(getText('Trade Description Money'), formatNetGrouped0(this.item as number));
+                break;
+            case TradeableItemType.Colony: {
+                const habitat1 = this.item as Habitat;
+                const systemStar = staticHabitatSystemStar(habitat1);
+                str1 = formatText(getText('Trade Description Colony NAME PLANETTYPE SYSTEMNAME'), habitat1.name, resolveDescription(HabitatType as unknown as Record<number, string>, habitat1.type), systemStar?.name ?? '');
+                break;
+            }
+            case TradeableItemType.Base: {
+                const builtObject = this.item as BuiltObject;
+                const str2 = builtObject.nearestSystemStar !== null ? builtObject.nearestSystemStar.name : '';
+                str1 = formatText(getText('Trade Description Base With Sector'), builtObject.name, str2, sectorDescriptionStatic(galaxy, builtObject.xpos, builtObject.ypos));
+                break;
+            }
             case TradeableItemType.TerritoryMap:
                 str1 = getText('Trade Description Territory Map');
                 break;
             case TradeableItemType.GalaxyMap:
                 str1 = getText('Trade Description Galaxy Map');
                 break;
+            case TradeableItemType.AdoptGovernmentStyle:
+                str1 = formatText(getText('Trade Description AdoptGovernmentStyle'), (this.item as { name?: string } | null)?.name ?? '');
+                break;
             case TradeableItemType.ThreatenWar:
                 str1 = getText('Trade Description Threaten War');
+                break;
+            case TradeableItemType.DeclareWarOther:
+                str1 = formatText(getText('Trade Description Declare War Other'), empire?.name ?? '');
                 break;
             case TradeableItemType.ThreatenTradeSanctions:
                 str1 = getText('Trade Description Threaten Trade Sanctions');
                 break;
-            case TradeableItemType.ResearchProject:
-                str1 = String((this.item as { name?: string } | null)?.name ?? '');
+            case TradeableItemType.InitiateTradeSanctionsOther:
+                str1 = formatText(getText('Trade Description Trade Sanctions Other'), empire?.name ?? '');
                 break;
-            default:
-                str1 = `${TradeableItemType[this.type]}`;
+            case TradeableItemType.EndWar:
+                str1 = getText('Trade Description End War You');
+                break;
+            case TradeableItemType.EndWarOther:
+                str1 = formatText(getText('Trade Description End War Other'), empire?.name ?? '');
+                break;
+            case TradeableItemType.LiftTradeSanctions:
+                str1 = getText('Trade Description Lift Trade Sanctions You');
+                break;
+            case TradeableItemType.LiftTradeSanctionsOther:
+                str1 = formatText(getText('Trade Description Lift Trade Sanctions Other'), empire?.name ?? '');
+                break;
+            case TradeableItemType.ResearchProject: {
+                // "" + ((ResearchNode)Item).Name (the TS node keeps the name on its definition).
+                const node = this.item as { def?: { name?: string }; name?: string } | null;
+                str1 = String(node?.def?.name ?? node?.name ?? '');
+                break;
+            }
+            case TradeableItemType.ContactEmpire:
+                if (this.item instanceof EmpireClass) str1 = this.item.name;
+                break;
+            case TradeableItemType.SecretLocation:
+                if (this.showSecretLocationNames) {
+                    if (this.item instanceof GalaxyLocation || this.item instanceof HabitatClass) str1 = this.item.name;
+                } else {
+                    str1 = getText('Secret Location');
+                }
+                break;
+            case TradeableItemType.SystemMap:
+                if (this.item instanceof HabitatClass) str1 = formatText(getText('Trade Description System Map'), this.item.name);
+                break;
+            case TradeableItemType.IndependentColonyLocation:
+                if (this.item instanceof HabitatClass) str1 = this.item.name;
                 break;
         }
         if (showValue && this.type !== TradeableItemType.Money && this.type !== TradeableItemType.TerritoryMap && this.type !== TradeableItemType.GalaxyMap && this.type !== TradeableItemType.ThreatenWar && this.type !== TradeableItemType.ThreatenTradeSanctions) {
-            str1 = str1 + ' (' + Math.round(this.value).toLocaleString('en-US') + ')';
+            str1 = str1 + ' (' + formatNetGrouped0(this.value) + ')';
         }
         return str1;
     }
+}
+
+/** Galaxy.7.cs 669 DetermineHabitatSystemStar(habitat) (static: the parent chain). */
+function staticHabitatSystemStar(habitat: Habitat): Habitat | null {
+    switch (habitat.category) {
+        case HabitatCategoryType.Planet:
+        case HabitatCategoryType.Asteroid:
+            return habitat.parent;
+        case HabitatCategoryType.Moon:
+            return habitat.parent?.parent ?? null;
+        case HabitatCategoryType.Star:
+        case HabitatCategoryType.GasCloud:
+            return habitat;
+        default:
+            return null;
+    }
+}
+
+/** Galaxy.7.cs 1502 ResolveSectorDescriptionStatic(x, y): "<letter><row>" of the 2,000,000-wide sector. */
+function sectorDescriptionStatic(galaxy: Galaxy | null, x: number, y: number): string {
+    if (galaxy !== null) return resolveSectorDescription(galaxy, x, y);
+    const SECTOR_SIZE = 2_000_000; // Galaxy.SectorSize
+    return String.fromCharCode(Math.trunc(Math.trunc(x) / SECTOR_SIZE) + 65) + String(Math.trunc(Math.trunc(y) / SECTOR_SIZE) + 1);
 }
 
 /** TradeableItemList.cs 14 TotalValue (int sum). */
@@ -1683,9 +1767,9 @@ export function reviewDisputedTerritory(galaxy: Galaxy, empire: Empire): void {
             let text: string;
             if (offered.length > 0 && flag) {
                 const threats = extractHighOrderedItemsByType(offered, [TradeableItemType.ThreatenWar, TradeableItemType.ThreatenTradeSanctions]);
-                text = threats.length <= 0 ? formatText(getText('Trade Offer'), describeItems(offered), describeItems(requested)) : formatText(getText('Trade Demand Threat'), describeItems(requested), describeItems(offered));
+                text = threats.length <= 0 ? formatText(getText('Trade Offer'), describeItems(galaxy, offered), describeItems(galaxy, requested)) : formatText(getText('Trade Demand Threat'), describeItems(galaxy, requested), describeItems(galaxy, offered));
             } else {
-                text = formatText(getText('Trade Demand'), describeItems(requested));
+                text = formatText(getText('Trade Demand'), describeItems(galaxy, requested));
             }
             sendMessageToEmpire(self, other, EmpireMessageType.OfferTrade, [offered, requested], text);
             diplomaticRelation.lastTradeDealOfferDate = currentStarDate;
@@ -1694,10 +1778,10 @@ export function reviewDisputedTerritory(galaxy: Galaxy, empire: Empire): void {
 }
 
 /** TradeableItemList.cs 58 ToString → BuildTradeableItemsDescription(items, showValues false). */
-function describeItems(items: readonly TradeableItem[]): string {
+function describeItems(galaxy: Galaxy, items: readonly TradeableItem[]): string {
     let str = '';
     for (const t of items) {
-        str += t.type === TradeableItemType.GalaxyMap ? getText('Trade Description OUR GALAXY MAP') : t.type === TradeableItemType.TerritoryMap ? getText('Trade Description OUR TERRITORY MAP') : t.toString(false);
+        str += t.type === TradeableItemType.GalaxyMap ? getText('Trade Description OUR GALAXY MAP') : t.type === TradeableItemType.TerritoryMap ? getText('Trade Description OUR TERRITORY MAP') : t.toString(false, galaxy);
         str += ', ';
     }
     if (str.length > 0) str = str.substring(0, str.length - 2);

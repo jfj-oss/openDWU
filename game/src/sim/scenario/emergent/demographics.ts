@@ -39,6 +39,8 @@ import { colonyQuarantined, securitySlots } from '../security/registry';
 import { scenarioFlag, scenarioParam, scenarioState } from '../state';
 import { registerScenarioDecision, raiseScenarioDecision } from '../decisions';
 import { scenarioMessage, scenarioNews, scenarioText } from '../messages';
+// Population counts in the texts with thousands groups ("12,000,000", the original's ###,###,##0 money / population style).
+import { formatNetGrouped0 } from '../../netNumberFormat';
 import { createEmpireMidGame } from '../empireMidGame';
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -347,7 +349,7 @@ export function chooseAsylum(galaxy: Galaxy, flow: RefugeeFlow): { habitat: Habi
 function markStranded(galaxy: Galaxy, flow: RefugeeFlow): void {
     flow.stage = 'stranded';
     if (flow.amount > 100_000_000) {
-        scenarioNews(galaxy, null, scenarioText('Emergent Refugee Stranded News', flow.race.name, flow.origin.name, String(flow.amount)));
+        scenarioNews(galaxy, null, scenarioText('Emergent Refugee Stranded News', flow.race.name, flow.origin.name, formatNetGrouped0(flow.amount)));
     }
 }
 
@@ -369,7 +371,7 @@ function processAsylumSelection(galaxy: Galaxy, flow: RefugeeFlow): void {
         const decision = raiseScenarioDecision(galaxy, choice.host, {
             kind: 'refugees.asylum',
             title: scenarioText('Emergent Refugee Asylum Title'),
-            text: scenarioText('Emergent Refugee Asylum Text', String(flow.amount), flow.race.name, flow.origin.name, flow.cause, choice.habitat.name),
+            text: scenarioText('Emergent Refugee Asylum Text', formatNetGrouped0(flow.amount), flow.race.name, flow.origin.name, flow.cause, choice.habitat.name),
             options: [
                 { id: 'accept', label: scenarioText('Emergent Refugee Asylum Accept') },
                 { id: 'redirect', label: scenarioText('Emergent Refugee Asylum Redirect') },
@@ -468,10 +470,10 @@ export function acceptFlow(galaxy: Galaxy, flow: RefugeeFlow): void {
     }
     if (carriedTotal < flow.amount) {
         // The rest is lost in transit (capped at MAX_CONVOY_SHIPS ships).
-        scenarioMessage(galaxy, flow.originEmpire ?? independentEmpire, scenarioText('Emergent Refugee Convoy Title'), scenarioText('Emergent Refugee Convoy Overflow', String(flow.amount - carriedTotal), flow.race.name));
+        scenarioMessage(galaxy, flow.originEmpire ?? independentEmpire, scenarioText('Emergent Refugee Convoy Title'), scenarioText('Emergent Refugee Convoy Overflow', formatNetGrouped0(flow.amount - carriedTotal), flow.race.name));
     }
-    scenarioMessage(galaxy, flow.originEmpire ?? independentEmpire, scenarioText('Emergent Refugee Convoy Title'), scenarioText('Emergent Refugee Convoy Departed', String(carriedTotal), flow.race.name, origin.name, destination.name));
-    if (flow.host !== null) scenarioMessage(galaxy, flow.host, scenarioText('Emergent Refugee Convoy Title'), scenarioText('Emergent Refugee Convoy Inbound', String(carriedTotal), flow.race.name, origin.name));
+    scenarioMessage(galaxy, flow.originEmpire ?? independentEmpire, scenarioText('Emergent Refugee Convoy Title'), scenarioText('Emergent Refugee Convoy Departed', formatNetGrouped0(carriedTotal), flow.race.name, origin.name, destination.name));
+    if (flow.host !== null) scenarioMessage(galaxy, flow.host, scenarioText('Emergent Refugee Convoy Title'), scenarioText('Emergent Refugee Convoy Inbound', formatNetGrouped0(carriedTotal), flow.race.name, origin.name));
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -524,9 +526,9 @@ export function settleRefugeeConvoyArrival(galaxy: Galaxy, bo: BuiltObject, dock
     }
     convoy.flow.stage = 'settled';
     securitySlots.refugeesArrived?.(galaxy, convoy.flow.origin, habitat); // 19m: refugees can carry the creed (flag-gated)
-    scenarioMessage(galaxy, convoy.flow.host ?? habitat.empire ?? galaxy.independentEmpire!, scenarioText('Emergent Refugee Convoy Title'), scenarioText('Emergent Refugee Convoy Settled', String(convoy.amount), convoy.race.name, habitat.name));
+    scenarioMessage(galaxy, convoy.flow.host ?? habitat.empire ?? galaxy.independentEmpire!, scenarioText('Emergent Refugee Convoy Title'), scenarioText('Emergent Refugee Convoy Settled', formatNetGrouped0(convoy.amount), convoy.race.name, habitat.name));
     if (convoy.amount > 100_000_000) {
-        scenarioNews(galaxy, habitat.empire, scenarioText('Emergent Refugee Convoy Settled News', String(convoy.amount), convoy.race.name, habitat.name));
+        scenarioNews(galaxy, habitat.empire, scenarioText('Emergent Refugee Convoy Settled News', formatNetGrouped0(convoy.amount), convoy.race.name, habitat.name));
     }
 }
 
@@ -550,7 +552,7 @@ export function loseRefugeeConvoy(galaxy: Galaxy, bo: BuiltObject): void {
     convoy.flow.stage = 'lost';
     st.convoys.delete(bo);
     if (convoy.amount > 100_000_000) {
-        scenarioNews(galaxy, null, scenarioText('Emergent Refugee Convoy Lost News', String(convoy.amount), convoy.race.name));
+        scenarioNews(galaxy, null, scenarioText('Emergent Refugee Convoy Lost News', formatNetGrouped0(convoy.amount), convoy.race.name));
     }
 }
 

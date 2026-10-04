@@ -23,10 +23,20 @@
 //   sampled where their next touch will put them (extrapolated from their LastTouch), so they glide instead of moving in
 //   bursts. A fighter's extrapolation is kept on its out-of-view leash, a fighter on the leash is drawn round the drawn
 //   carrier, and its position reset by the leash is eased out (soft snap) instead of popping.
+// - Headings likewise: CalculateCurrentHeading turns an object by its turn rate × the whole time since its last touch,
+//   so a ship the round-robin touches every ~11 steps held its heading and then swung by the whole turn. A ship the sim
+//   turned at its latest touch is sampled at the heading its next touch turns it to (toward TargetHeading at
+//   GetCurrentTurnRate: turnedAtLastTouch, untouchedHeading) and moved along it, as DoMovement moves it; fighters and
+//   creatures turn the same way in extrapolateMover (turnHeading, the creature's unwrapped difference included). A heading
+//   the next touch disagrees with (a turn begun or re-aimed there, a command that stops turning) is eased at
+//   HEADING_EASE_FACTOR × the turn rate instead of turned in one step (MotionInterpolator.sample `turnLimit`).
 
 import { FRAME_REAL_MS, FRAMES_PER_SECOND, HABITAT_TICK_BATCH_SIZE } from '../sim/tick/scheduler';
 import { MIN_TIME, spanSeconds } from '../sim/tick/simTime';
 import { BuiltObjectRole } from '../sim/data/designSpecifications';
+import { MOVEMENT_IMPULSE_SPEED } from '../sim/movement';
+import { captainBonuses } from '../sim/characters';
+import type { BuiltObject } from '../sim/builtObject';
 
 /** The render-time sample the main loop hands MainView each frame (one object, mutated in place). */
 export interface RenderTime {
@@ -430,10 +440,15 @@ const TWO_PI = Math.PI * 2;
 
 /** a → b by t along the shorter arc (radians; the result is not normalised). */
 export function lerpAngle(a: number, b: number, t: number): number {
-    let d = (b - a) % TWO_PI;
+    return a + wrapAngle(b - a) * t;
+}
+
+/** `d` (radians) into −π..π: the shorter arc of a heading difference. */
+export function wrapAngle(d: number): number {
+    d %= TWO_PI;
     if (d > Math.PI) d -= TWO_PI;
     else if (d < -Math.PI) d += TWO_PI;
-    return a + d * t;
+    return d;
 }
 
 /** A move of (dx, dy) over `steps` sim steps of `stepSeconds` game s is a jump (teleport / hyperjump exit) when it is
@@ -519,6 +534,18 @@ export interface MotionState {
     /** The samples, oldest first: (serial, x, y, heading) × hn, in `frame` coordinates. */
     hs: Float64Array;
     hn: number;
+    /** Turn evidence (sampleBuiltObject, turnedAtLastTouch): the LastTouch and committed heading of the latest touch
+     * seen (NaN: none yet), whether that touch turned the object (its heading changed from the touch before), and,
+     * taken at that touch: the speed its next touch moves it at (nextTouchSpeed), the rate that touch turns it at
+     * (builtObjectTurnRate; 0 when not turning), the rate at that speed whether turning or not (for the next touch's
+     * turnLimit) and its turnLimit. */
+    tTouch: number;
+    tHeading: number;
+    tTurning: boolean;
+    tSpeed: number;
+    tRate: number;
+    tRateAny: number;
+    tLimit: number;
 }
 
 /** Scratch for easeOffset: the offset and its velocity (per step). */
@@ -669,6 +696,11 @@ export class MotionInterpolator {
     /** Longest a built object's position is extrapolated past its LastTouch (builtObjectTouchGapMs) — also the bound for
      * what moves when a built object is touched: its fighters and the shots it or its fighters fired. */
     untouchedMaxMs = 0;
+    /** The mean game ms between two touches of a built object (count / 1000 steps, at least one): when its next touch
+     * is expected (nextTouchSpeed). */
+    touchGapMs = 0;
+    /** Whether sample()'s turnLimit eases drawn headings (false: they follow the samples at once — A/B comparisons). */
+    easeHeadings = true;
     /** Longest a creature's position is extrapolated past its LastTouch (one creature round-robin + a step). */
     creatureUntouchedMaxMs = 0;
     /** Longest a habitat-fired shot is extrapolated past the habitat's LastTouch (one habitat round-robin + a step). */
@@ -677,6 +709,24 @@ export class MotionInterpolator {
     private origin: Point = { x: 0, y: 0 };
     /** Scratch for positionOf. */
     private posScratch: Point = { x: 0, y: 0 };
+    /** peek()'s last lookup, which the next sample() of the same object reuses (one WeakMap lookup per object). */
+    private peekObj: object | null = null;
+    private peekState: MotionState | undefined = undefined;
+
+    /** `obj`'s record (undefined before its first sample), for the sample about to be taken (sampleBuiltObject reads
+     * and updates its turn evidence first). */
+    peek(obj: object): MotionState | undefined {
+        const st = this.states.get(obj);
+        this.peekObj = obj;
+        this.peekState = st;
+        return st;
+    }
+
+    /** `obj`'s record, or undefined (not sampled yet), without peek()'s reuse: a carrier's turn evidence, read (and
+     * taken in, once per touch) while one of its fighters is sampled. */
+    stateOf(obj: object): MotionState | undefined {
+        return this.states.get(obj);
+    }
 
     /** `builtObjectCount` / `creatureCount` / `habitatCount`: galaxy.builtObjects / creatures / habitats .length, which set
      * how long each may go untouched by the background pass (the extrapolation bounds of sampleBuiltObject / sampleFighter
@@ -693,6 +743,7 @@ export class MotionInterpolator {
         this.simNowMs = rt.simNowMs;
         this.clampSeconds = clampSeconds;
         this.untouchedMaxMs = builtObjectTouchGapMs(builtObjectCount, rt.stepGameMs);
+        this.touchGapMs = Math.max(1, builtObjectCount / BUILT_OBJECT_TICK_BATCH_SIZE) * (rt.stepGameMs > 0 ? rt.stepGameMs : 1000 / FRAMES_PER_SECOND);
         this.creatureUntouchedMaxMs = roundRobinTouchGapMs(creatureCount, CREATURE_TICK_BATCH_SIZE, rt.stepGameMs);
         this.habitatUntouchedMaxMs = roundRobinTouchGapMs(habitatCount, HABITAT_TICK_BATCH_SIZE, rt.stepGameMs);
     }
@@ -708,12 +759,26 @@ export class MotionInterpolator {
      * step's) — and an offset that starts at the drawn-minus-new position, with the drawn-minus-new velocity, eases to
      * rest (easeOffset). Presented time: it holds while paused. First sight, a long gap, a new epoch and moves made
      * without a step still snap at once.
+     *
+     * `turnLimit` > 0 (radians per game second): the drawn heading of an object drawn last frame turns at most that
+     * fast toward its samples' heading, so a heading the sim set at a touch that the samples before it did not lead
+     * up to (a turn begun at that touch, an extrapolated turn the touch did not make, a heading set outright) is eased
+     * out instead of turned in one step. Callers pass a multiple of the fastest the sim turns the object
+     * (HEADING_EASE_FACTOR), which an ordinary turn never reaches. A snap, first sight or a new epoch takes the
+     * heading at once.
      */
-    sample(obj: object, x: number, y: number, heading: number, maxSpeed: number, frame: object | null = null, originX = 0, originY = 0, epoch = 0, softSnapMs = 0, jumpVx = Number.NaN, jumpVy = Number.NaN): MotionState {
-        let st = this.states.get(obj);
+    sample(obj: object, x: number, y: number, heading: number, maxSpeed: number, frame: object | null = null, originX = 0, originY = 0, epoch = 0, softSnapMs = 0, jumpVx = Number.NaN, jumpVy = Number.NaN, turnLimit = 0): MotionState {
+        let st: MotionState | undefined;
+        if (obj === this.peekObj) {
+            st = this.peekState;
+            this.peekObj = null;
+            this.peekState = undefined;
+        } else st = this.states.get(obj);
         let jumped = false;
+        /** Whether the drawn heading may be eased (turnLimit): drawn last frame and not snapped. */
+        let easeHeading = false;
         if (st === undefined) {
-            st = { px: x, py: y, ph: heading, cx: x, cy: y, ch: heading, frame, ox: originX, oy: originY, serial: this.serial, epoch, renderFrame: 0, x, y, heading, ex: 0, ey: 0, evx: 0, evy: 0, eStart: 0, eLen: 0, tx: x, ty: y, tvx: 0, tvy: 0, atSerial: this.at, hs: new Float64Array(MOTION_HISTORY * 4), hn: 0 };
+            st = { px: x, py: y, ph: heading, cx: x, cy: y, ch: heading, frame, ox: originX, oy: originY, serial: this.serial, epoch, renderFrame: 0, x, y, heading, ex: 0, ey: 0, evx: 0, evy: 0, eStart: 0, eLen: 0, tx: x, ty: y, tvx: 0, tvy: 0, atSerial: this.at, hs: new Float64Array(MOTION_HISTORY * 4), hn: 0, tTouch: Number.NaN, tHeading: 0, tTurning: false, tSpeed: 0, tRate: 0, tRateAny: 0, tLimit: 0 };
             snapTo(st, this.serial, x, y, heading);
             this.states.set(obj, st);
         } else if (st.epoch !== epoch) {
@@ -762,8 +827,18 @@ export class MotionInterpolator {
             } else if (r !== Advance.Lerp) {
                 st.eLen = 0;
             }
+            easeHeading = drawnLastFrame && (r === Advance.Lerp || jumped);
         }
         const p = historyAt(st, this.at, poseScratch);
+        if (p.heading !== st.heading && turnLimit > 0 && easeHeading && this.easeHeadings) {
+            // At most turnLimit × the presented game time since last frame away from last frame's drawn heading.
+            const stepS = this.stepSeconds > 0 ? this.stepSeconds : 1 / FRAMES_PER_SECOND;
+            const dAt = this.at - st.atSerial;
+            const maxD = turnLimit * stepS * (dAt > 0 ? dAt : 0);
+            const d = wrapAngle(p.heading - st.heading);
+            if (d > maxD) p.heading = st.heading + maxD;
+            else if (d < -maxD) p.heading = st.heading - maxD;
+        }
         if (softSnapMs > 0) {
             const v = trackVelocity(st, this.at, velScratch);
             if (jumped) this.easeJump(st, p, v, softSnapMs);
@@ -933,8 +1008,18 @@ export interface MovingBuiltObject {
     /** BuiltObject.ParentBuiltObject: an object near a base is moved at ParentBuiltObject + ParentOffset. */
     parentBuiltObject?: MovingBuiltObject | null;
     hasBeenDestroyed?: boolean;
-    /** BuiltObject.Role: bases get the cosmetic pull toward their habitat (setStationPull). */
+    /** BuiltObject.Role: bases get the cosmetic pull toward their habitat (setStationPull); a base never turns. */
     role?: BuiltObjectRole;
+    /** BuiltObject.TargetHeading and TurnRate (rad / game s), the fleet (its ShipManeuveringBonus) and the captain's
+     * bonus (characters.ts captainBonuses): an untouched turning ship's heading is extrapolated (builtObjectTurnRate). */
+    targetHeading?: number;
+    turnRate?: number;
+    shipGroup?: unknown;
+    /** BuiltObject.TargetSpeed, AccelerationRate and HyperjumpPrepare: a ship preparing a hyperjump accelerates before
+     * it turns and moves (nextTouchSpeed). */
+    targetSpeed?: number;
+    accelerationRate?: number;
+    hyperjumpPrepare?: boolean;
 }
 
 // Cosmetic option (not in the original, off by default): draw a base at a planet / moon pulled in toward its centre.
@@ -994,27 +1079,46 @@ export interface MoverPose {
 }
 
 /**
+ * The heading CalculateCurrentHeading leaves after a turn of `turn` radians toward `target` (BuiltObject.2.cs 7433,
+ * Fighter.cs 1846, Creature.cs 685): the difference target − heading — wrapped once into ±π first (`wrapDiff`; the
+ * creature's is not) — turns left (−) when in (−π, 0) or [π, 2π), else right (+); a turn longer than the difference
+ * lands on the target; the result is brought back into −π..π (IncreaseAngle / ReduceAngle). Unwrapped (a creature
+ * whose target lies across the ±π seam) the "longer than the difference" test reads the raw difference, so the turn
+ * runs on past the target, as the sim's does. Render-only.
+ */
+export function turnHeading(heading: number, target: number, turn: number, wrapDiff = true): number {
+    if (heading === target || !(turn > 0)) return heading;
+    let d = target - heading;
+    if (wrapDiff) {
+        if (d > Math.PI) d -= TWO_PI;
+        else if (d < -Math.PI) d += TWO_PI;
+    }
+    let h: number;
+    if ((d < 0 && d > -Math.PI) || (d >= Math.PI && d < TWO_PI)) {
+        h = Math.abs(d) < turn ? target : heading - turn;
+        for (let i = 0; i < 20 && h <= -Math.PI; i++) h += TWO_PI;
+    } else {
+        h = Math.abs(d) < turn ? target : heading + turn;
+        for (let i = 0; i < 20 && h >= Math.PI; i++) h -= TWO_PI;
+    }
+    return h;
+}
+
+/**
  * Where a self-propelled mover (fighter, creature) touched `dtSeconds` ago will be put by its next touch, if its orders
  * hold: the move both Fighter.cs 1783 DoMovement and Creature.cs 998 Move apply over the elapsed time — turn toward
- * TargetHeading by turnRate × dt along the shorter arc (CalculateCurrentHeading), accelerate toward TargetSpeed
- * (AccelerateToTargetSpeed: up by accelerationRate × dt, down by max(1, accelerationRate) × dt), then step
- * CurrentSpeed × dt along the new heading. Render-only: writes `out` and returns it.
+ * TargetHeading by turnRate × dt (turnHeading: CalculateCurrentHeading; `wrapDiff` false for a creature's), accelerate
+ * toward TargetSpeed (AccelerateToTargetSpeed: up by accelerationRate × dt, down by max(1, accelerationRate) × dt), then
+ * step CurrentSpeed × dt along the new heading. Render-only: writes `out` and returns it.
  */
 export function extrapolateMover(
-    x: number, y: number, heading: number, targetHeading: number, turnRate: number, currentSpeed: number, targetSpeed: number, accelerationRate: number, dtSeconds: number, out: MoverPose,
+    x: number, y: number, heading: number, targetHeading: number, turnRate: number, currentSpeed: number, targetSpeed: number, accelerationRate: number, dtSeconds: number, out: MoverPose, wrapDiff = true,
 ): MoverPose {
     out.x = x;
     out.y = y;
     out.heading = heading;
     if (!(dtSeconds > 0) || !Number.isFinite(dtSeconds)) return out;
-    let h = heading;
-    if (h !== targetHeading && turnRate > 0) {
-        let d = (targetHeading - h) % TWO_PI;
-        if (d > Math.PI) d -= TWO_PI;
-        else if (d < -Math.PI) d += TWO_PI;
-        const turn = turnRate * dtSeconds;
-        h = Math.abs(d) <= turn ? targetHeading : h + Math.sign(d) * turn;
-    }
+    const h = turnRate > 0 ? turnHeading(heading, targetHeading, turnRate * dtSeconds, wrapDiff) : heading;
     let v = currentSpeed;
     if (targetSpeed > v) v = Math.min(targetSpeed, v + accelerationRate * dtSeconds);
     else if (targetSpeed < v) v = Math.max(targetSpeed, v - Math.max(1, accelerationRate) * dtSeconds);
@@ -1035,9 +1139,99 @@ function untouchedSeconds(m: MotionInterpolator, lastTouchMs: number, maxMs: num
 }
 
 /**
+ * Port of BuiltObject.2.cs 7372 GetCurrentTurnRate(speed) (movement.ts getCurrentTurnRate), radians per game second:
+ * TurnRate × 3 at or below 2 × MovementImpulseSpeed, × 2.3 at or below 3 ×, × 1.6 at or below 4 ×; × the fleet's
+ * ShipManeuveringBonus; × the captain's CaptainShipManeuveringBonus / 100. The rate CalculateCurrentHeading turns a
+ * ship at over the time since its last touch (DoMovement turns before it accelerates: the committed CurrentSpeed's).
+ * Render-only (reads the fields; 0 without a TurnRate).
+ */
+export function builtObjectTurnRate(bo: MovingBuiltObject, speed = bo.currentSpeed): number {
+    let r = bo.turnRate ?? 0;
+    if (!(r > 0)) return 0;
+    if (speed <= MOVEMENT_IMPULSE_SPEED * 2) r *= 3.0;
+    else if (speed <= MOVEMENT_IMPULSE_SPEED * 3) r *= 2.3;
+    else if (speed <= MOVEMENT_IMPULSE_SPEED * 4) r *= 1.6;
+    const sg = bo.shipGroup as { shipManeuveringBonus?: number } | null | undefined;
+    if (sg != null) {
+        const b = sg.shipManeuveringBonus;
+        if (typeof b === 'number') r *= b;
+    }
+    return r * ((captainBonuses(bo as BuiltObject)?.shipManeuvering ?? 100) / 100.0);
+}
+
+/** The drawn heading of an object turns at most this many times the fastest the sim turns it (MotionInterpolator.sample
+ * `turnLimit`): an ordinary turn (extrapolated) never reaches it; a heading the next touch disagrees with eases. */
+export const HEADING_EASE_FACTOR = 2;
+
+/**
+ * The speed `bo`'s next touch moves it at, and turns it at the rate of (GetCurrentTurnRate reads CurrentSpeed): its
+ * committed CurrentSpeed — DoMovement takes the move (CurrentSpeed × time) and turns before it accelerates — except
+ * for a ship preparing a hyperjump, whose HyperTo leg (cmdMovement.ts, BuiltObject.2.cs HyperTo) accelerates first
+ * (AccelerateToTargetSpeed over the expected time to that touch, MotionInterpolator.touchGapMs) and then turns and
+ * moves at the new speed.
+ */
+function nextTouchSpeed(m: MotionInterpolator, bo: MovingBuiltObject): number {
+    const v = bo.currentSpeed;
+    if (bo.hyperjumpPrepare !== true || bo.targetSpeed === undefined) return v;
+    const target = bo.targetSpeed;
+    const a = bo.accelerationRate ?? 0;
+    const dt = m.touchGapMs / 1000;
+    let n = v;
+    if (target > v) n = Math.min(target, v + a * dt);
+    else if (target < v) n = Math.max(target, v - Math.max(1, a) * dt);
+    return n > 0 ? n : 0;
+}
+
+/**
+ * The rate (rad / game s) the sim is turning `bo` at, if it turned it at its latest touch, else 0. Turning: its
+ * committed heading changed from the touch before (both seen by the interpolator, at most three round-robins apart),
+ * and still differs from TargetHeading. Only then is its turn carried on between touches: a ship whose commands do not
+ * turn it (waiting, docked, unloading — CalculateCurrentHeading runs only in DoMovement, the hyperjump legs and the
+ * idle branch of ExecuteCommands, never for a base) can keep a TargetHeading it does not face. Updates `st`'s evidence
+ * when a new touch is seen (once per touch, taken then: the next touch's speed, nextTouchSpeed, and turn rate at it,
+ * builtObjectTurnRate; and the turnLimit — HEADING_EASE_FACTOR × the faster of that rate and the previous touch's,
+ * which the samples being drawn may still turn at; none on a warp leg, whose heading the sim sets outright).
+ */
+function turnedAtLastTouch(m: MotionInterpolator, bo: MovingBuiltObject, st: MotionState | undefined): number {
+    if (st === undefined) return 0;
+    const t = bo.lastTouch;
+    if (t === undefined) return 0;
+    if (t !== st.tTouch) {
+        const prev = st.tTouch;
+        st.tTurning = prev === prev && t > prev && t - prev <= 3 * m.untouchedMaxMs && bo.heading !== st.tHeading && bo.role !== BuiltObjectRole.Base;
+        st.tTouch = t;
+        st.tHeading = bo.heading;
+        const v = nextTouchSpeed(m, bo);
+        const r = builtObjectTurnRate(bo, v);
+        st.tSpeed = v;
+        st.tRate = st.tTurning ? r : 0;
+        st.tLimit = bo.currentSpeed > bo.topSpeed ? 0 : HEADING_EASE_FACTOR * Math.max(r, st.tRateAny);
+        st.tRateAny = r;
+    }
+    return st.tTurning && bo.heading !== bo.targetHeading ? st.tRate : 0;
+}
+
+/**
+ * The heading `bo`'s next touch gives it after `dtSeconds` untouched, if its orders hold: turned toward its
+ * TargetHeading at `rate` (turnedAtLastTouch; 0: not turning) by turnHeading, else its committed heading.
+ */
+function untouchedHeading(bo: MovingBuiltObject, dtSeconds: number, rate: number): number {
+    if (!(rate > 0) || !(dtSeconds > 0) || bo.targetHeading === undefined) return bo.heading;
+    return turnHeading(bo.heading, bo.targetHeading, rate * dtSeconds);
+}
+
+/** sample()'s turnLimit for a built object not tracked by touch (no LastTouch): HEADING_EASE_FACTOR × the fastest it
+ * turns (builtObjectTurnRate at rest). */
+function builtObjectTurnLimit(bo: MovingBuiltObject): number {
+    return HEADING_EASE_FACTOR * builtObjectTurnRate(bo, 0);
+}
+
+/**
  * Where a built object the background pass has not touched since `lastTouch` would be at `nowMs`: the committed
- * position carried on along its heading at CurrentSpeed for the elapsed time (at most `maxMs`) — exactly the step
- * executeCommands.ts (BuiltObject.2.cs 4553-4560) applies when the object is next touched, if heading and speed hold.
+ * position carried on along `heading` at CurrentSpeed for the elapsed time (at most `maxMs`) — exactly the step
+ * DoMovement / executeCommands.ts (BuiltObject.2.cs 4553-4560) applies when the object is next touched, if speed holds
+ * and `heading` is the one that touch turns it to (the sim turns first, then moves along the new heading:
+ * untouchedHeading).
  * Objects touched this step (lastTouch = nowMs), stopped or never touched stay at their committed position. Writes
  * `out` and returns it. Render-only: nothing is written to the object.
  */
@@ -1070,8 +1264,29 @@ const PARENT_FRAME_MAX_DRIFT = 500;
  * is sampled at its extrapolated position (extrapolateUntouched), so it glides between touches instead of standing
  * still and then jumping; the next touch lands where the extrapolation was heading, and the usual snap rules
  * (isJump, MAX_INTERP_STEPS) still apply to the extrapolated positions.
+ *
+ * Its heading likewise: a ship the sim is turning (turnedAtLastTouch) is sampled at the heading its next touch turns
+ * it to (untouchedHeading: toward TargetHeading at GetCurrentTurnRate), and moved along that heading as the touch
+ * moves it, so it turns smoothly between touches instead of holding its heading and then swinging by the whole
+ * round-robin's turn; a heading the next touch disagrees with is eased (sample's turnLimit, builtObjectTurnLimit).
  */
 export function sampleBuiltObject(m: MotionInterpolator, bo: MovingBuiltObject, depth = 0): MotionState {
+    const st0 = m.peek(bo);
+    const rate = turnedAtLastTouch(m, bo, st0);
+    const heading = rate > 0 ? untouchedHeading(bo, untouchedSeconds(m, bo.lastTouch!, m.untouchedMaxMs), rate) : bo.heading;
+    // Taken at the latest touch (turnedAtLastTouch); none before the first sample, which snaps anyway.
+    const tracked = st0 !== undefined && bo.lastTouch !== undefined;
+    const limit = st0 === undefined ? 0 : tracked ? st0.tLimit : builtObjectTurnLimit(bo);
+    // (A hyperjump leg's acceleration first, nextTouchSpeed; otherwise the committed speed as it stands.)
+    const speed = tracked && bo.hyperjumpPrepare === true ? st0.tSpeed : bo.currentSpeed;
+    const st = sampleBuiltObjectAs(m, bo, depth, heading, speed, limit);
+    // First sight: its latest touch is the one the next is compared with (turnedAtLastTouch).
+    if (st0 === undefined) turnedAtLastTouch(m, bo, st);
+    return st;
+}
+
+/** sampleBuiltObject's placement (parent frames, extrapolated position) at drawn `heading`, extrapolation `speed`. */
+function sampleBuiltObjectAs(m: MotionInterpolator, bo: MovingBuiltObject, depth: number, heading: number, speed: number, limit: number): MotionState {
     const maxSpeed = Math.max(bo.topSpeed, bo.warpSpeed, Math.abs(bo.currentSpeed));
     if (bo.parentOffsetX > PARENT_OFFSET_UNSET && bo.parentOffsetY > PARENT_OFFSET_UNSET) {
         const ox = bo.parentOffsetX;
@@ -1081,8 +1296,8 @@ export function sampleBuiltObject(m: MotionInterpolator, bo: MovingBuiltObject, 
         // instead of standing still and then jumping each round-robin touch.
         let fx = ox;
         let fy = oy;
-        if (bo.lastTouch !== undefined && bo.currentSpeed > 0) {
-            const p = extrapolateUntouched(ox, oy, bo.heading, bo.currentSpeed, bo.lastTouch, m.simNowMs, m.untouchedMaxMs, extrapScratch);
+        if (bo.lastTouch !== undefined && speed > 0) {
+            const p = extrapolateUntouched(ox, oy, heading, speed, bo.lastTouch, m.simNowMs, m.untouchedMaxMs, extrapScratch);
             fx = p.x;
             fy = p.y;
         }
@@ -1093,10 +1308,10 @@ export function sampleBuiltObject(m: MotionInterpolator, bo: MovingBuiltObject, 
             if (isOrbitingBody(dock)) {
                 if (dock.parent !== null) {
                     const o = m.habitatPos(dock);
-                    return m.sample(bo, fx, fy, bo.heading, maxSpeed, dock, o.x, o.y);
+                    return m.sample(bo, fx, fy, heading, maxSpeed, dock, o.x, o.y, 0, 0, Number.NaN, Number.NaN, limit);
                 }
             } else if (isParentBuiltObject(bo, dock) && depth < MAX_PARENT_DEPTH) {
-                return sampleInBuiltObjectFrame(m, bo, dock, fx, fy, maxSpeed, depth);
+                return sampleInBuiltObjectFrame(m, bo, dock, fx, fy, heading, maxSpeed, limit, depth);
             }
         }
         const h = bo.parentHabitat;
@@ -1110,18 +1325,18 @@ export function sampleBuiltObject(m: MotionInterpolator, bo: MovingBuiltObject, 
                     fy = q.y;
                 }
             }
-            return m.sample(bo, fx, fy, bo.heading, maxSpeed, h, o.x, o.y);
+            return m.sample(bo, fx, fy, heading, maxSpeed, h, o.x, o.y, 0, 0, Number.NaN, Number.NaN, limit);
         }
         const pb = bo.parentBuiltObject ?? null;
         if (pb !== null && isParentBuiltObject(bo, pb) && depth < MAX_PARENT_DEPTH && followsParent(bo, pb, ox, oy)) {
-            return sampleInBuiltObjectFrame(m, bo, pb, fx, fy, maxSpeed, depth);
+            return sampleInBuiltObjectFrame(m, bo, pb, fx, fy, heading, maxSpeed, limit, depth);
         }
     }
-    if (bo.lastTouch !== undefined && bo.currentSpeed > 0) {
-        const p = extrapolateUntouched(bo.xpos, bo.ypos, bo.heading, bo.currentSpeed, bo.lastTouch, m.simNowMs, m.untouchedMaxMs, extrapScratch);
-        return m.sample(bo, p.x, p.y, bo.heading, maxSpeed);
+    if (bo.lastTouch !== undefined && speed > 0) {
+        const p = extrapolateUntouched(bo.xpos, bo.ypos, heading, speed, bo.lastTouch, m.simNowMs, m.untouchedMaxMs, extrapScratch);
+        return m.sample(bo, p.x, p.y, heading, maxSpeed, null, 0, 0, 0, 0, Number.NaN, Number.NaN, limit);
     }
-    return m.sample(bo, bo.xpos, bo.ypos, bo.heading, maxSpeed);
+    return m.sample(bo, bo.xpos, bo.ypos, heading, maxSpeed, null, 0, 0, 0, 0, Number.NaN, Number.NaN, limit);
 }
 
 /** Game seconds of one sim step at the fastest game speed (4×): stepSeconds bound for records taken at any speed. */
@@ -1147,13 +1362,15 @@ export function habitatDrawnOffsetBound(h: OrbitingBody, clampSeconds: number): 
  * drawnBuiltObjectPos) and its committed xpos / ypos, so callers can cull on the committed position before paying for
  * a sample: the step lerp (isJump keeps the previous step's estimate within SNAP_SPEED_FACTOR × speed × one step — at
  * 4× speed, for records taken at any speed — times the steps the presented instant trails the committed one,
- * MotionInterpolator.lagSteps, when more than one), the untouched extrapolation (currentSpeed × untouchedMaxMs) and, when a
+ * MotionInterpolator.lagSteps, when more than one), the untouched extrapolation (currentSpeed × untouchedMaxMs — or
+ * TargetSpeed for a ship preparing a hyperjump, which nextTouchSpeed accelerates toward it) and, when a
  * parent offset is set, the drift allowed by followsParent plus the parent's own bound (every candidate parent: dock,
  * ParentHabitat, ParentBuiltObject). Doubled for slack.
  */
 export function builtObjectDrawnOffsetBound(m: MotionInterpolator, bo: MovingBuiltObject, depth = 0): number {
     const maxSpeed = Math.max(bo.topSpeed, bo.warpSpeed, Math.abs(bo.currentSpeed), SNAP_MIN_SPEED);
-    let b = SNAP_SPEED_FACTOR * maxSpeed * Math.max(MAX_STEP_SECONDS, m.stepSeconds) * Math.max(1, m.lagSteps) + (Math.abs(bo.currentSpeed) * m.untouchedMaxMs) / 1000;
+    const extrapSpeed = bo.hyperjumpPrepare === true ? Math.max(Math.abs(bo.currentSpeed), bo.targetSpeed ?? 0) : Math.abs(bo.currentSpeed);
+    let b = SNAP_SPEED_FACTOR * maxSpeed * Math.max(MAX_STEP_SECONDS, m.stepSeconds) * Math.max(1, m.lagSteps) + (extrapSpeed * m.untouchedMaxMs) / 1000;
     if (bo.parentOffsetX > PARENT_OFFSET_UNSET && bo.parentOffsetY > PARENT_OFFSET_UNSET) {
         b += PARENT_FRAME_MAX_DRIFT + parentDrawnOffsetBound(m, bo.dockedAt, depth) + parentDrawnOffsetBound(m, bo.parentHabitat, depth) + parentDrawnOffsetBound(m, bo.parentBuiltObject, depth);
         // The cosmetic station pull moves a base by at most its whole offset.
@@ -1196,11 +1413,11 @@ function isParentBuiltObject(bo: MovingBuiltObject, p: object): p is MovingBuilt
  * planet is drawn around the planet's interpolated orbit), so a ship docked at / parked by a base moves with the drawn
  * base instead of with its round-robin-committed xpos.
  */
-function sampleInBuiltObjectFrame(m: MotionInterpolator, bo: MovingBuiltObject, parent: MovingBuiltObject, ox: number, oy: number, maxSpeed: number, depth: number): MotionState {
+function sampleInBuiltObjectFrame(m: MotionInterpolator, bo: MovingBuiltObject, parent: MovingBuiltObject, ox: number, oy: number, heading: number, maxSpeed: number, turnLimit: number, depth: number): MotionState {
     const d = m.drawn(parent) ?? sampleBuiltObject(m, parent, depth + 1);
     const px = d.x;
     const py = d.y;
-    return m.sample(bo, ox, oy, bo.heading, maxSpeed, parent, px, py);
+    return m.sample(bo, ox, oy, heading, maxSpeed, parent, px, py, 0, 0, Number.NaN, Number.NaN, turnLimit);
 }
 
 /** Creature fields read by sampleCreature. */
@@ -1252,17 +1469,20 @@ export function sampleCreature(m: MotionInterpolator, c: MovingCreature): Motion
             const target = c.targetSpeed ?? c.currentSpeed;
             // A lunge (TargetSpeed = LungeSpeed above MovementSpeed) accelerates at LungeAccelerationRate (Creature.cs Move).
             const accel = target > c.movementSpeed && c.lungeSpeed > 0 ? (c.lungeAccelerationRate ?? c.accelerationRate ?? 0) : (c.accelerationRate ?? 0);
-            const p = extrapolateMover(x, y, heading, c.targetHeading ?? heading, c.turnRate ?? 0, c.currentSpeed, target, accel, dt, moverScratch);
+            // Creature.cs CalculateCurrentHeading does not wrap target − heading (turnHeading wrapDiff false).
+            const p = extrapolateMover(x, y, heading, c.targetHeading ?? heading, c.turnRate ?? 0, c.currentSpeed, target, accel, dt, moverScratch, false);
             x = p.x;
             y = p.y;
             heading = p.heading;
         }
     }
+    // The drawn heading turns at most HEADING_EASE_FACTOR × the creature's TurnRate (a touch it did not lead up to eases).
+    const turnLimit = HEADING_EASE_FACTOR * (c.turnRate ?? 0);
     if (inFrame) {
         const o = m.habitatPos(h);
-        return m.sample(c, x, y, heading, maxSpeed, h, o.x, o.y);
+        return m.sample(c, x, y, heading, maxSpeed, h, o.x, o.y, 0, 0, Number.NaN, Number.NaN, turnLimit);
     }
-    return m.sample(c, x, y, heading, maxSpeed);
+    return m.sample(c, x, y, heading, maxSpeed, null, 0, 0, 0, 0, Number.NaN, Number.NaN, turnLimit);
 }
 
 /** Fighter fields read by sampleFighter. */
@@ -1306,6 +1526,8 @@ export function fighterTurnRate(turnRate: number, speed: number, topSpeed: numbe
 export function sampleFighter(m: MotionInterpolator, f: MovingFighter): MotionState {
     const maxSpeed = Math.max(f.topSpeed, Math.abs(f.currentSpeed));
     if (f.onboardCarrier) return m.sample(f, f.xpos, f.ypos, f.heading, maxSpeed, null, 0, 0, 0, FIGHTER_SOFT_SNAP_MS);
+    // The drawn heading turns at most HEADING_EASE_FACTOR × the fastest the fighter turns (GetCurrentTurnRate at rest).
+    const turnLimit = HEADING_EASE_FACTOR * fighterTurnRate(f.specification.turnRate, 0, f.topSpeed);
     const dt = untouchedSeconds(m, f.lastTouch, m.untouchedMaxMs);
     const stepS = m.stepSeconds > 0 ? m.stepSeconds : 1 / FRAMES_PER_SECOND;
     // The game instant the sample stands for: its LastTouch + dt (the committed position is LastTouch's).
@@ -1324,7 +1546,7 @@ export function sampleFighter(m: MotionInterpolator, f: MovingFighter): MotionSt
         toDrawnLeash(p, dt > 0 ? lp.nextX : lp.comX, dt > 0 ? lp.nextY : lp.comY, lp, w);
         toDrawnLeash(q, lq.nextX, lq.nextY, lq, w);
     }
-    return m.sample(f, p.x, p.y, p.heading, maxSpeed, null, 0, 0, 0, FIGHTER_SOFT_SNAP_MS, q.x - p.x, q.y - p.y);
+    return m.sample(f, p.x, p.y, p.heading, maxSpeed, null, 0, 0, 0, FIGHTER_SOFT_SNAP_MS, q.x - p.x, q.y - p.y, turnLimit);
 }
 
 /** The leash a fighter's next DoMovement applies (fighterLeashOf; a scratch record). */
@@ -1380,14 +1602,20 @@ function fighterLeashOf(m: MotionInterpolator, f: MovingFighter, tMs: number, ou
     out.r = f.missionType === FIGHTER_MISSION_PATROL ? FIGHTER_LEASH_PATROL : FIGHTER_LEASH_OTHER;
     out.comX = c.xpos;
     out.comY = c.ypos;
-    const moving = c.lastTouch !== undefined && c.currentSpeed > 0;
+    // The carrier moves as sampleBuiltObject extrapolates it: at its next touch's speed, along the heading that touch
+    // turns it to.
+    const cs = c.lastTouch !== undefined ? m.stateOf(c) : undefined;
+    const rate = turnedAtLastTouch(m, c, cs);
+    const cv = cs !== undefined && c.hyperjumpPrepare === true ? cs.tSpeed : c.currentSpeed;
+    const moving = c.lastTouch !== undefined && cv > 0;
+    const ch = moving && rate > 0 ? untouchedHeading(c, Math.max(0, Math.min(tMs - c.lastTouch!, m.untouchedMaxMs)) / 1000, rate) : c.heading;
     const h = carrierHabitat(c);
     out.framed = h !== null;
     if (h !== null) {
         let ox = c.parentOffsetX;
         let oy = c.parentOffsetY;
         if (moving) {
-            const q = extrapolateUntouched(ox, oy, c.heading, c.currentSpeed, c.lastTouch!, tMs, m.untouchedMaxMs, extrapScratch);
+            const q = extrapolateUntouched(ox, oy, ch, cv, c.lastTouch!, tMs, m.untouchedMaxMs, extrapScratch);
             ox = q.x;
             oy = q.y;
         }
@@ -1399,7 +1627,7 @@ function fighterLeashOf(m: MotionInterpolator, f: MovingFighter, tMs: number, ou
         return out;
     }
     if (moving) {
-        const q = extrapolateUntouched(c.xpos, c.ypos, c.heading, c.currentSpeed, c.lastTouch!, tMs, m.untouchedMaxMs, extrapScratch);
+        const q = extrapolateUntouched(c.xpos, c.ypos, ch, cv, c.lastTouch!, tMs, m.untouchedMaxMs, extrapScratch);
         out.nextX = q.x;
         out.nextY = q.y;
     } else {

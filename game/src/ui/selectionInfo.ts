@@ -37,6 +37,8 @@ import { calculateAvailableAssaultPodAttackStrength } from '../sim/combat/attack
 import { shipGroupTotalTroopCapacity, shipGroupTotalTroopSpaceUsed } from '../sim/fleets/shipGroupTasks';
 import { troopCountsByType, troopCompositionDescription } from './screens/troops';
 import { fleetPostureDescription, fleetTotalFirepower } from './screens/fleetsList';
+import { fleetRefillStatus } from '../sim/player/fleetRefill';
+import { fleetTemplateSummary } from './fleetRefillControls';
 import { yardProgress } from './screens/constructionYards';
 import type { ConstructionQueue } from '../sim/construction/constructionQueue';
 import { builtObjectImageUrl, resolveDrawPictureRef } from '../render/builtObjectLayer';
@@ -129,7 +131,10 @@ export type InfoTarget =
      *  "Wonders" or "Planetary Facilities" topic. */
     | { kind: 'galactopedia'; topic: string }
     /** [improvements] supplyChain: the Waiting row → the Construction Yards screen's Waiting For tab at this site. */
-    | { kind: 'supply'; target: Habitat | BuiltObject };
+    | { kind: 'supply'; target: Habitat | BuiltObject }
+    /** Not in the original: the player's fleet's "Template" row (fleetRefill.ts) opens the Fleets screen on the fleet,
+     *  where its template, auto-refill and Replenish are. */
+    | { kind: 'fleetTemplate'; fleet: ShipGroup };
 // (The same target serves the resource and race hotspots: Main.Part4.cs 3598-3607, method_456(resource / race Name).)
 
 /** One run of a row: text, an image, an empire flag, or a troop icon. */
@@ -836,6 +841,11 @@ export function shipGroupInfo(ctx: InfoContext, sg: ShipGroup, extended = false)
         }
     }
     if (pods > 0) rows.push(label('Boarding', [txt(`Strength: ${Math.round(podStrength)}`)]));
+    // Not in the original: the player's fleet design for the fleet, auto-refill and its replacements (fleetRefill.ts).
+    if (empire === player) {
+        const refill = fleetTemplateSummary(fleetRefillStatus(galaxy, player, sg));
+        if (refill !== '') rows.push(label('Template', [txt(refill)], { title: `${refill}\n(click for the fleet's template, auto-refill and Replenish)`, target: { kind: 'fleetTemplate', fleet: sg } }));
+    }
     rows.push({ kind: 'gap', h: Math.trunc(INFO.rowHeight / 4) });
     // Biggest ships first (user call), ties in fleet order.
     const byBiggest = sg.ships.filter((s) => s != null).map((s, i) => ({ s, i })).sort((a, b) => b.s.size - a.s.size || a.i - b.i).map((x) => x.s);

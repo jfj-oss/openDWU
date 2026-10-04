@@ -31,7 +31,7 @@ import { BuiltObjectRole } from '../sim/data/designSpecifications';
 import { BuiltObjectMissionType, COORD_UNSET_DOUBLE, builtObjectMission, type BuiltObjectMission } from '../sim/missions/mission';
 // [15c]
 import { ShipGroup } from '../sim/fleets/shipGroup';
-import { fleetCycleList, fleetShipAction, toggleFleetsList } from './screens/fleetsList';
+import { closeFleetsList, fleetCycleList, fleetShipAction, toggleFleetsList } from './screens/fleetsList';
 // [/15c]
 import { SystemVisibilityStatus } from '../sim/visibility';
 import { flagShapeUrl } from '../sim/startGameOptions';
@@ -1768,6 +1768,12 @@ function buildSelectionPanel(wiring: HudWiring): HTMLElement {
         if (t.kind === 'supply') {
             const src = getEmpireSummarySource();
             if (src) openConstructionYards({ ...constructionYardsOptions(src.empire), site: t.target, tab: 'supply' });
+            return;
+        }
+        // Not in the original: a fleet's "Template" row opens the Fleets screen on the fleet (fleetRefillControls.ts).
+        if (t.kind === 'fleetTemplate') {
+            closeFleetsList();
+            toggleFleets(t.fleet);
             return;
         }
         const o = t.obj;

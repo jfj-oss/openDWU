@@ -1902,7 +1902,7 @@ function conquerColony(galaxy: Galaxy, self: Habitat, defender: Empire | null, i
 // ---------------------------------------------------------------------------------------------------------------
 
 /** Empire.10.cs 3777 GenerateAutomationMessageInvadeIndependent(habitat, invasionFleet) — advisor text (UI). */
-function generateAutomationMessageInvadeIndependent(galaxy: Galaxy, habitat: Habitat | null, invasionFleet: ShipGroup | null): string {
+export function generateAutomationMessageInvadeIndependent(galaxy: Galaxy, habitat: Habitat | null, invasionFleet: ShipGroup | null): string {
     const habitat2 = habitat !== null ? galaxy.determineHabitatSystemStar(habitat) : null;
     const race = habitat !== null && habitat.population != null ? habitat.population.dominantRace : null;
     // {0} ResolveDescription(Type), {1} ResolveDescription(Category).ToLower(Invariant), {2} name, {3} system, {4} race, {5} fleet.

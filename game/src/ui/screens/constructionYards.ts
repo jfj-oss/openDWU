@@ -1044,7 +1044,7 @@ function createConstructionYards(opts: ConstructionYardsOptions): OpenState {
     });
     pageFleets.appendChild(place(fleetGrid.el, 0, 0, 540, 270));
     const btnCancelFleet = glassButton('Cancel Build', {
-        title: 'Stop the build order: waiting ships are removed and refunded, ships on a slipway finish unassigned',
+        title: 'Stop the build order: waiting ships are removed and refunded, ships on a slipway finish unassigned (a fleet\'s replacements: also turns off its auto-refill)',
         onClick: () => {
             const r = fleetGrid.selected;
             if (!r) return;
