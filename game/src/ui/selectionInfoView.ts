@@ -79,8 +79,15 @@ function shadow(rgb: number): string {
     return `1px 1px 0 ${css(dropShadowColor(rgb))}`;
 }
 
+/** The hotspot's hover message (Hotspot.HoverMessage): the main view draws it in yellow above the selection panel while
+ *  the cursor is over the hotspot (Main.Part10.cs 1141-1159 → string_17, MainView.cs 1599), not as a tool tip. hud.ts
+ *  shows it (the .sel-hover-msg line); `data-hover` carries it. */
+export function setHoverMessage(el: HTMLElement, text: string | undefined): void {
+    if (text !== undefined && text !== '') el.dataset.hover = text;
+}
+
 function attachTarget(el: HTMLElement, target: InfoTarget | undefined, title: string | undefined, o: InfoViewOptions): void {
-    if (title !== undefined && title !== '') el.title = title;
+    setHoverMessage(el, title);
     if (target === undefined) return;
     el.classList.add('sel-hot');
     el.addEventListener('click', (e) => {
@@ -259,7 +266,7 @@ function colonyColumn(item: ColonySummaryItem, x: number, o: InfoViewOptions): H
         race.src = item.raceImg;
         race.alt = '';
         race.draggable = false;
-        if (item.race !== null) race.title = `${item.race.name}`;
+        if (item.race !== null) setHoverMessage(race, `${item.race.name}`);
         detail.appendChild(race);
         // DrawPopulationIndicator: a 5×5 grid, population columns × development rows lit.
         const grid = document.createElement('div');
@@ -271,7 +278,7 @@ function colonyColumn(item: ColonySummaryItem, x: number, o: InfoViewOptions): H
                 grid.appendChild(c);
             }
         }
-        grid.title = 'Population / development';
+        setHoverMessage(grid, 'Population / development');
         detail.appendChild(grid);
     } else if (item.base !== null) {
         const base = document.createElement('img');
@@ -286,7 +293,7 @@ function colonyColumn(item: ColonySummaryItem, x: number, o: InfoViewOptions): H
             r.className = 'sel-colony-res';
             r.src = item.resourceImg;
             r.alt = '';
-            r.title = item.resourceTitle;
+            setHoverMessage(r, item.resourceTitle);
             detail.appendChild(r);
         } else if (item.resourceUnknown) {
             const q = document.createElement('div');
@@ -450,7 +457,7 @@ export function renderInfoModel(panel: HTMLElement, model: InfoModel | null, o: 
         auto.src = chromeUrl('automate.png');
         auto.alt = '';
         auto.draggable = false;
-        auto.title = 'Automated (click to turn off)';
+        setHoverMessage(auto, 'Automated (click to turn off)');
         if (o.onAutomate !== undefined) {
             auto.classList.add('sel-hot');
             const onAutomate = o.onAutomate;

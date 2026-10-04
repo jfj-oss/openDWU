@@ -47,6 +47,7 @@ import { abundancePercentText } from './resourceAbundance';
 import { habitatTypeLabel, hyperjumpStatusText, invasionVsText, missionTargetText, missionTypeLabel, resourceIconUrl, threatRows, troopStrengthText } from './hud';
 import { wreckSalvageRows } from './scenario/wreckageUi'; // [wreckage]
 import { rimGoodMarker } from './scenario/rimTraderRows'; // [rimTrader]
+import { facilityGalactopediaTopic, facilityPanelHoverText } from './facilityHover';
 
 // ---------------------------------------------------------------------------------------------------------------
 // Metrics (InfoPanel.cs SetContentSizeNormal 2420-2447) and colours (InfoPanel.cs fields / BaconInfoPanel.cs).
@@ -118,7 +119,10 @@ export type InfoTarget =
     | { kind: 'ruin'; ruin: Ruin }
     /** InfoPanel.cs 4461 / 4497 `AddHotspot(..., new object[1] { habitat }, ...)`: the Ground / Battle Report
      *  (Main.Part4.cs:3534 pnlDetailInfo_MouseClick → method_164(habitat), screens/groundReport.ts). */
-    | { kind: 'groundReport'; habitat: Habitat };
+    | { kind: 'groundReport'; habitat: Habitat }
+    /** A planetary facility hotspot (InfoPanel.cs 2604): Main.Part4.cs 3586-3597 → method_456, the Galactopedia at the
+     *  "Wonders" or "Planetary Facilities" topic. */
+    | { kind: 'galactopedia'; topic: string };
 
 /** One run of a row: text, an image, an empire flag, or a troop icon. */
 export interface InfoSeg {
@@ -440,19 +444,19 @@ function resourceSegs(ctx: InfoContext, resources: { resourceId: number; abundan
     return segs;
 }
 
-/** InfoPanel.cs 2552 DrawFacilities: facility icons (faded while under construction) on the dark strip. */
-function facilitySegs(h: Habitat): InfoSeg[] {
+/** InfoPanel.cs 2552 DrawFacilities: facility icons (faded while under construction) on the dark strip. Each icon is a
+ *  hotspot (AddHotspot(rect, planetaryFacility, text), 2575-2604): its hover message is facilityPanelHoverText and a
+ *  click opens the Galactopedia at "Wonders" / "Planetary Facilities" (Main.Part4.cs 3586 pnlDetailInfo_MouseClick). */
+function facilitySegs(galaxy: Galaxy, h: Habitat): InfoSeg[] {
     const list = (h.facilities ?? []).filter((f) => f != null);
     if (list.length === 0) return [txt('(None)')];
-    return list.map((f, i) => {
-        const building = f.constructionProgress < 1;
-        return {
-            img: facilityImageUrl(f.def.pictureRef),
-            faded: building,
-            gap: i > 0 ? 2 : 0,
-            title: building ? `${f.name} (${fmtPct(f.constructionProgress)} complete)` : f.name,
-        };
-    });
+    return list.map((f, i) => ({
+        img: facilityImageUrl(f.def.pictureRef),
+        faded: f.constructionProgress < 1,
+        gap: i > 0 ? 2 : 0,
+        title: facilityPanelHoverText(galaxy, h, f),
+        target: { kind: 'galactopedia', topic: facilityGalactopediaTopic(f) },
+    }));
 }
 
 /** The picture behind the rows: InfoPanel.SetData's _PictureSize (min 60, max 200 px) and FadeImage(0.33). */
@@ -1086,7 +1090,7 @@ export function habitatInfo(ctx: InfoContext, h: Habitat): InfoModel {
                 rows.push({ kind: 'gap', h: 4 });
             }
             // Facilities.
-            rows.push(label('Facilities', facilitySegs(h), { strip: true }));
+            rows.push(label('Facilities', facilitySegs(galaxy, h), { strip: true }));
             // Troops (InfoPanel.cs 4404-4500).
             const troops = troopItems(h.troops);
             const recruit = troopItems(h.troopsToRecruit);

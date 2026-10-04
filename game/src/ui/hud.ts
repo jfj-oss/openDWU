@@ -1319,6 +1319,35 @@ function buildSelectionPanel(wiring: HudWiring): HTMLElement {
     const content = document.createElement('div');
     content.className = 'sel-content-box';
     detail.appendChild(content);
+    // The main view's hover message over the selection panel (Main.Part10.cs 1141-1159: the hovered pnlDetailInfo
+    // hotspot's HoverMessage → string_17, drawn in yellow with a drop shadow at HoverMessageLocation = (10, height -
+    // (pnlInfoPanel + btnSelectionForward + btnSelectionAction1 heights + 4 + 35)), Main.Part12.cs 2103 / MainView.cs
+    // 1599): 19 px above this frame's top, at its left edge.
+    // TODO(port): the default "Selection Panel: click to center view on selected item" hint and the click that centres
+    // the view (pnlDetailInfo_MouseClick → method_157) — Main.Part10.cs 1143 / Main.Part4.cs 3644.
+    const hoverMsg = document.createElement('div');
+    hoverMsg.className = 'sel-hover-msg';
+    hoverMsg.hidden = true;
+    panel.appendChild(hoverMsg);
+    let hoverPoint: { x: number; y: number } | null = null;
+    const syncHoverMessage = (): void => {
+        let text = '';
+        if (hoverPoint !== null) {
+            const under = document.elementFromPoint(hoverPoint.x, hoverPoint.y);
+            const hot = under instanceof HTMLElement && detail.contains(under) ? under.closest<HTMLElement>('[data-hover]') : null;
+            text = hot !== null && detail.contains(hot) ? (hot.dataset.hover ?? '') : '';
+        }
+        if (hoverMsg.textContent !== text) hoverMsg.textContent = text;
+        hoverMsg.hidden = text === '';
+    };
+    detail.addEventListener('mousemove', (e) => {
+        hoverPoint = { x: e.clientX, y: e.clientY };
+        syncHoverMessage();
+    });
+    detail.addEventListener('mouseleave', () => {
+        hoverPoint = null;
+        syncHoverMessage();
+    });
     // Our controls with no button in the original (follow, the dispatch orders, charter) go into the action strip's
     // empty slots (orderMenu.ts setSelectionExtraSlots); any that don't fit overflow into this compact row.
     const extras = document.createElement('div');
@@ -1655,6 +1684,12 @@ function buildSelectionPanel(wiring: HudWiring): HTMLElement {
             openGroundReport(t.habitat);
             return;
         }
+        // Main.Part4.cs 3586-3597: a planetary facility hotspot opens the Galactopedia (method_456) at "Wonders" or
+        // "Planetary Facilities".
+        if (t.kind === 'galactopedia') {
+            openGalactopedia({ topic: t.topic });
+            return;
+        }
         const o = t.obj;
         if (o instanceof ShipGroup) shipGroupSelectHandler?.(o, false);
         else if (o instanceof Habitat) habitatSelectHandler?.(o, false);
@@ -1690,6 +1725,8 @@ function buildSelectionPanel(wiring: HudWiring): HTMLElement {
             const next = content.querySelector('.sel-scroll');
             if (next !== null) next.scrollTop = lastScroll;
         }
+        // The hovered hotspot was redrawn: its (refreshed) message stays up while the cursor is still on it.
+        syncHoverMessage();
         // The stance button only for the player's military ship / fleet (Main.Part10.cs: btnCycleShipStance.Visible).
         const target = automationTarget();
         stanceBtn.style.visibility = target !== null && player !== null
