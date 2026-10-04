@@ -288,6 +288,14 @@ export function habitatPictureUrl(pictureRef: number): string | null {
     return themeOtherPlanetUrls()[pictureRef - HABITAT_IMAGE_COUNT] ?? null;
 }
 
+/**
+ * HabitatImageCache._Filepaths.Count (GetImagesSmall().Length, scrEditHabitatPicture.Maximum + 1, Main.Part5.cs 3770):
+ * the 665 fixed pictures plus a theme's planets/other/*.png.
+ */
+export function habitatPictureCount(): number {
+    return HABITAT_IMAGE_COUNT + themeOtherPlanetUrls().length;
+}
+
 /** The planet / moon / asteroid sprite of `habitat` (habitatPictureUrl of its PictureRef) as a loadFirst list. */
 export function habitatPictureUrls(habitat: Habitat): string[] {
     const url = habitatPictureUrl(habitat.pictureRef);

@@ -25,7 +25,9 @@ import {
     STANDARD_FAMILY_COUNT,
     STANDARD_SHIP_IMAGE_START_INDEX,
     SHIP_SET_IMAGE_COUNT,
+    themeShipFamilyPaths,
 } from '../../render/builtObjectLayer';
+import { activeCustomizationSet } from '../../sim/data/customization';
 
 /** TextResolver.GetText with the key itself as the fallback (tests run without GameText.txt). */
 export function gt(key: string, ...args: unknown[]): string {
@@ -486,15 +488,43 @@ export function maximumSizeText(empire: Pick<Empire, 'maximumConstructionSize' |
     return `${gt('Maximum Ship size')}: ${text}\n${gt('Maximum Base size')}: ${empire.maximumConstructionSizeBase()} (${gt('when not at colony')})`;
 }
 
-/** BuiltObjectImageCache.GetImagesSmall().Length: every pictureRef the picture combo lists. */
+/** BuiltObjectImageCache.GetImagesSmall().Length of the stock game: every pictureRef the picture combo lists. */
 export const SHIP_PICTURE_COUNT = STANDARD_SHIP_IMAGE_START_INDEX + STANDARD_FAMILY_COUNT * SHIP_SET_IMAGE_COUNT;
 
-/** The picture combo's groups (our addition: a heading per ship family; the original is one flat list). */
+/**
+ * GetImagesSmall().Length with the active theme: the 72 fixed pictures plus every slot BaconBuiltObjectImageCache.cs
+ * AddMoreImages takes for the stock and the theme's family folders (builtObjectLayer.ts themeShipFamilyPaths — a theme's
+ * extra families, variants and missing roles change the count); SHIP_PICTURE_COUNT with no theme.
+ */
+export function shipPictureCount(): number {
+    const theme = activeCustomizationSet();
+    return theme === null ? SHIP_PICTURE_COUNT : STANDARD_SHIP_IMAGE_START_INDEX + themeShipFamilyPaths(theme).length;
+}
+
+/**
+ * The picture combo's groups (our addition: a heading per ship family; the original is one flat list). With a theme
+ * each family<N> folder's run of slots (themeShipFamilyPaths order) is one group, "Family N+1".
+ */
 export function shipPictureGroups(): { label: string; first: number; last: number }[] {
     const out = [{ label: gt('Other'), first: 0, last: STANDARD_SHIP_IMAGE_START_INDEX - 1 }];
-    for (let f = 0; f < STANDARD_FAMILY_COUNT; f++) {
-        const first = STANDARD_SHIP_IMAGE_START_INDEX + f * SHIP_SET_IMAGE_COUNT;
-        out.push({ label: `${gt('Family')} ${f + 1}`, first, last: first + SHIP_SET_IMAGE_COUNT - 1 });
+    const theme = activeCustomizationSet();
+    if (theme === null) {
+        for (let f = 0; f < STANDARD_FAMILY_COUNT; f++) {
+            const first = STANDARD_SHIP_IMAGE_START_INDEX + f * SHIP_SET_IMAGE_COUNT;
+            out.push({ label: `${gt('Family')} ${f + 1}`, first, last: first + SHIP_SET_IMAGE_COUNT - 1 });
+        }
+        return out;
     }
+    let family: string | null = null;
+    themeShipFamilyPaths(theme).forEach((path, i) => {
+        const ref = STANDARD_SHIP_IMAGE_START_INDEX + i;
+        const f = path.slice(0, path.indexOf('/'));
+        if (f === family) {
+            out[out.length - 1].last = ref;
+            return;
+        }
+        family = f;
+        out.push({ label: `${gt('Family')} ${Number(f.slice('family'.length)) + 1}`, first: ref, last: ref });
+    });
     return out;
 }

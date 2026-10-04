@@ -88,6 +88,8 @@ import { BuiltObject } from '../sim/builtObject';
 import type { Creature } from '../sim/creature';
 import { createMapOverlayState, type MapOverlayState } from '../ui/mapOverlays';
 import { getSettings, showRegionLabels, showSystemNames } from '../ui/settings';
+import { VOLCANIC_GLOW_SCALE, VolcanicGlowTextures, volcanicGlowIndex } from './volcanicGlow';
+import { galaxyViewGates } from './cleanGalaxyView';
 import { edgeScrollPixels, nebulaDetailScale, wheelNotches, wheelZoom, wheelZoomAnchor } from './viewInput'; // [gameoptions]
 import { hideMapTooltip, showMapTooltip, tooltipText } from '../ui/mapTooltip';
 import { freightTooltipText } from '../ui/freightText'; // [freightOverlay]
@@ -418,12 +420,25 @@ function starColors(type: HabitatType): { glow: string; core: string } {
     return STAR_COLORS[type] ?? STAR_COLORS[HabitatType.MainSequence];
 }
 
+/** method_50: the glow at its body's place, size / 1.025 of the body's picture, shown with it. */
+function syncVolcanicGlow(body: Sprite, glow: Sprite | null): void {
+    if (glow === null) return;
+    glow.visible = body.visible;
+    if (!glow.visible) return;
+    glow.position.copyFrom(body.position);
+    glow.alpha = body.alpha;
+    const pic = body.texture;
+    glow.scale.set((body.scale.x * pic.width * VOLCANIC_GLOW_SCALE) / glow.texture.width, (body.scale.y * pic.height * VOLCANIC_GLOW_SCALE) / glow.texture.height);
+}
+
 // ---------------------------------------------------------------------------
 
 class PlanetView {
     habitat: Habitat;
     dot: Sprite;
     sprite: Sprite;
+    /** The volcanic glow over `sprite` (MainView.cs method_50, volcanicGlow.ts), once loaded. */
+    glow: Sprite | null = null;
     label: Text;
     moons: MoonView[] = [];
     constructor(private system: SystemView, habitat: Habitat, dotTex: Texture) {
@@ -458,6 +473,8 @@ class PlanetView {
 class MoonView {
     habitat: Habitat;
     dot: Sprite;
+    /** The volcanic glow over `dot` (MainView.cs method_50, volcanicGlow.ts), once loaded. */
+    glow: Sprite | null = null;
     label: Text;
     constructor(private system: SystemView, habitat: Habitat, tex: Texture) {
         this.habitat = habitat;
@@ -819,9 +836,11 @@ class SystemView {
                 planet.sprite.visible = false;
                 planet.label.visible = false;
                 mg.visible = false;
+                syncVolcanicGlow(planet.sprite, planet.glow);
                 for (const moon of planet.moons) {
                     moon.dot.visible = false;
                     moon.label.visible = false;
+                    syncVolcanicGlow(moon.dot, moon.glow);
                 }
                 continue;
             }
@@ -836,6 +855,7 @@ class SystemView {
             planet.sprite.alpha = 1;
             planet.sprite.position.set(px, py);
             planet.sprite.scale.set(sprPx / (planet.sprite.texture.width * z));
+            syncVolcanicGlow(planet.sprite, planet.glow);
             // Label centred on the drawn rect's right edge (method_84),
             // vertically centred on the body.
             const populated = p.owner !== null && p.population.items.length > 0;
@@ -857,6 +877,7 @@ class SystemView {
                 if (!this.moonIsDrawn(pi, mk)) {
                     moon.dot.visible = false;
                     moon.label.visible = false;
+                    syncVolcanicGlow(moon.dot, moon.glow);
                     continue;
                 }
                 const m = moon.habitat;
@@ -868,6 +889,7 @@ class SystemView {
                 moon.dot.alpha = 1;
                 moon.dot.position.set(mx, my);
                 moon.dot.scale.set(mPx / (moon.dot.texture.width * z));
+                syncVolcanicGlow(moon.dot, moon.glow);
                 const mPopulated = m.owner !== null && m.population.items.length > 0;
                 moon.label.visible = labels && habitatLabelVisible(false, mPopulated, f);
                 moon.label.position.set(mx + (mPx / 2) / z, my);
@@ -1641,6 +1663,8 @@ export class MainView {
         // (assets.ts habitatPictureUrls); stars bitmap_196[MapPictureRef] (a super nova bitmap_206[NovaImageIndexMajor],
         // MainView.2.cs 5429-5438: assets.ts starPictureUrls) and, for a black hole, its system-zoom sprite.
         const lazyLoads: Promise<unknown>[] = [];
+        // bitmap_195, the volcanic glow drawn over a volcanic planet / moon picture (volcanicGlow.ts, method_50).
+        const glows = new VolcanicGlowTextures(store);
         for (const sv of this.systems) {
             const star = sv.system.systemStar;
             lazyLoads.push(
@@ -1664,6 +1688,7 @@ export class MainView {
                         .loadFirst(habitatPictureUrls(planet.habitat), () => makePlanetTexture(PLANET_COLORS[planet.habitat.type] ?? '#888888'))
                         .then((tex) => {
                             planet.sprite.texture = tex;
+                            this.addVolcanicGlow(glows, planet);
                         }),
                 );
                 // Task 12p: moons use per-habitat planet art too.
@@ -1673,6 +1698,7 @@ export class MainView {
                             .loadFirst(habitatPictureUrls(moon.habitat), () => makePlanetTexture(PLANET_COLORS[moon.habitat.type] ?? '#888888'))
                             .then((tex) => {
                                 moon.dot.texture = tex;
+                                this.addVolcanicGlow(glows, moon);
                             }),
                     );
                 }
@@ -1870,7 +1896,9 @@ export class MainView {
 
         // Faint sector grid: fades in over the galaxy zoom, out at mid zoom
         // (MainView.1.cs FadeSectorBackground).
-        const gridA = fadeIn(z, m * 2, m * 6) * fadeOut(z, 0.004, 0.015);
+        // GameOptions.CleanGalaxyView hides it (method_250 5155: `if (!flag)`, cleanGalaxyView.ts).
+        const clean = galaxyViewGates(getSettings().cleanGalaxyView);
+        const gridA = clean.sectorGrid ? fadeIn(z, m * 2, m * 6) * fadeOut(z, 0.004, 0.015) : 0;
         this.grid.alpha = gridA;
         this.grid.visible = gridA > 0.01;
         if (this.grid.visible && (this.lastGridZoom < 0 || Math.abs(z / this.lastGridZoom - 1) > 0.05)) {
@@ -1890,7 +1918,8 @@ export class MainView {
         // Systems: greedy 80 px label-overlap suppression across systems.
         const labelZoom = m * 4; // system names appear at ~sector zoom
         // Task 10f: the "Show system names" setting disables them entirely.
-        const namesOn = z > labelZoom && showSystemNames();
+        // Clean Galaxy view: no system names (method_250 5584: `flag26 && !flag`; they are drawn only at f > 150).
+        const namesOn = z > labelZoom && showSystemNames() && clean.systemNames;
         // Kept label positions as flat x, y pairs (reused across frames: no per-frame allocation).
         const kept = this.keptLabels;
         kept.length = 0;
@@ -2251,6 +2280,25 @@ export class MainView {
             this.selectedBuiltObject = null;
             this.onSelectionChange?.(null);
         }
+    }
+
+    /**
+     * MainView.cs 2515 method_50: a volcanic planet / moon picture gets its bitmap_195 glow, (255, 64, 0) at the
+     * picture's alpha, size / 1.025, centred (a child of the body sprite, so it follows its position and scale).
+     */
+    private addVolcanicGlow(glows: VolcanicGlowTextures, view: PlanetView | MoonView): void {
+        const habitat = view.habitat;
+        if (volcanicGlowIndex(habitat) < 0 || habitatPictureUrls(habitat).length === 0) return;
+        void glows.textureFor(habitat).then((glow) => {
+            const body = view instanceof PlanetView ? view.sprite : view.dot;
+            if (glow === null || body.destroyed || body.parent === null) return;
+            const s = new Sprite(glow);
+            s.anchor.set(0.5);
+            s.visible = false;
+            // Right above its body (a Sprite takes no children in Pixi 8): syncVolcanicGlow follows it every frame.
+            body.parent.addChildAt(s, body.parent.getChildIndex(body) + 1);
+            view.glow = s;
+        });
     }
 
     private drawGrid(z: number): void {

@@ -143,7 +143,7 @@ import { showToast } from './ui/toast';
 // [fix6ui] end
 
 import './ui/hud.css';
-import { activateTheme, bootTheme } from './themeLoader';
+import { activateTheme, bootTheme, fetchThemeList, themeToRestoreOnLeave } from './themeLoader';
 import { activeCustomizationSet, activeCustomizationSetName, normalizeCustomizationSetName } from './sim/data/customization';
 import { setThemeChromeRace } from './themeAssets';
 import { resetMusicForTheme } from './audio/musicPlayer';
@@ -414,8 +414,7 @@ async function offerWorkerRestartOnce(simClient: SimWorkerClient, game: Game, ti
     const MENU = 'Main Menu';
     const answer = await messageBox({ caption: 'Simulation Stopped', text: restartPromptText(reason, sources), buttons: sources.length > 0 ? [RESTART, MENU] : [MENU], icon: 'stop', width: 540, buttonWidth: 120 });
     const toMenu = (): void => {
-        teardownActiveGameView();
-        showMainMenu();
+        void leaveGameToMenu();
     };
     if (answer !== RESTART) {
         toMenu();
@@ -798,8 +797,7 @@ export async function startGameView(
         onGalaxyMap: () => galaxyMap.toggle(),
         openGalaxyMapAt: (h) => galaxyMap.open(h),
         onMainMenu: () => {
-            teardownActiveGameView();
-            showMainMenu();
+            void leaveGameToMenu();
         },
         // Keep the Main View selection ring on whatever the panel shows.
         afterSelectionChange: (sel) => {
@@ -880,8 +878,7 @@ export async function startGameView(
     if (simClient === undefined) installGameEndHandler(galaxy, time);
     // Main.Part6.cs:4050 btnGameEndExit_Click: the Game End panel's "Exit to main menu" leaves like the menu's Main Menu.
     setGameEndExitHandler(() => {
-        teardownActiveGameView();
-        showMainMenu();
+        void leaveGameToMenu();
     });
     // [/15d]
     // [16d] Player messages → popups + the diplomatic conversation queue (Main.Part9.cs ReceiveMessageInternal).
@@ -1440,6 +1437,18 @@ async function switchTheme(name: string, persist: boolean): Promise<void> {
     resetMusicForTheme();
     // Galaxy.InitializeData + TextResolver.LoadText for the new set (method_2 1458-1473): data and GameText now.
     await ensureStaticData();
+}
+
+/**
+ * Leave the running game for the main menu (the game menu's Main Menu, the Game End panel's exit, a stopped
+ * simulation): Main.Part12.cs 3181-3184 first loads GameOptions.CustomizationSetName's theme again when the game ran on
+ * another one (a ?theme= game; themeLoader.ts themeToRestoreOnLeave), not persisting it.
+ */
+async function leaveGameToMenu(): Promise<void> {
+    teardownActiveGameView();
+    const restore = themeToRestoreOnLeave(activeCustomizationSetName(), getSettings().customizationSet, await fetchThemeList());
+    if (restore !== null) await switchTheme(restore, false);
+    showMainMenu();
 }
 
 async function main(): Promise<void> {
