@@ -69,6 +69,8 @@ import { Habitat } from '../types';
 import { migrateLegacyLandscapePictureRef, migratePreMapPictureRef, migratePrePortPictureRef } from '../galaxyImages';
 import { EmpireVisibility, GalaxyResourceMap, SystemVisibility } from '../visibility';
 import { Weapon } from '../weapon';
+import { battleReportState, restoreBattleReportState, type BattleReportState } from '../battleReports/battleReports';
+import { liveWaypointState, restoreWaypointState, savedWaypointState, type WaypointState } from '../player/waypoints';
 
 export interface GalaxySaveJSON {
     version: 2;
@@ -503,6 +505,14 @@ interface SideTables {
     raceFields?: Record<string, string | number | boolean>[];
     /** Random.drawCount of every saved stream (a non-enumerable diagnostic counter; the harness reports deltas). */
     randomDraws: Map<Random, number>;
+    /** Mod layer (battle reports, an Improvement; battleReports/battleReports.ts): the open battles and the last reports.
+     *  Absent until the game's first battle — so a game that never fought saves the same text as before — and in
+     *  older saves. */
+    battleReports?: BattleReportState;
+    /** Player waypoints (an Improvement; player/waypoints.ts): absent while the game has none — so a game without
+     *  waypoints saves the same text as before — and in older saves. The replica sync carries the live table, or null
+     *  (replicaSideTables), so deleting the last one reaches the replica too. */
+    waypoints?: WaypointState | null;
 }
 
 function collectSideTables(galaxy: Galaxy, visited: readonly object[]): SideTables {
@@ -534,6 +544,10 @@ function collectSideTables(galaxy: Galaxy, visited: readonly object[]): SideTabl
     const state = galaxyStates.get(galaxy);
     if (state !== undefined) out.randomDraws.set(state.rndStatic, state.rndStatic.drawCount);
     if (state !== undefined) out.characterState = { raceAvailableCharacters: state.raceAvailableCharacters, rndStatic: state.rndStatic };
+    const battles = battleReportState(galaxy);
+    if (battles !== undefined) out.battleReports = battles;
+    const wps = savedWaypointState(galaxy);
+    if (wps !== undefined) out.waypoints = wps;
     return out;
 }
 
@@ -561,6 +575,8 @@ function restoreSideTables(galaxy: Galaxy, t: SideTables): void {
     t.plagueLatestTechLevelUpdate.forEach((v, i) => {
         if (i < plagues.length) plagues[i].latestTechLevelUpdate = v;
     });
+    if (t.battleReports !== undefined) restoreBattleReportState(galaxy, t.battleReports);
+    restoreWaypointState(galaxy, t.waypoints);
 }
 
 type TerritoryGrid = Uint8Array[] | null;
@@ -703,7 +719,11 @@ export function wireReplicaVisibility(galaxy: Galaxy): void {
 
 /** The galaxy's side tables (state kept outside the object graph), for the replica sync's second root. */
 export function replicaSideTables(galaxy: Galaxy, visited: readonly object[]): object {
-    return collectSideTables(galaxy, visited);
+    const t = collectSideTables(galaxy, visited);
+    // The live waypoint table, also while empty (the save leaves it out then): the root keeps the key, so a delete of
+    // the last waypoint reaches the replica.
+    t.waypoints = liveWaypointState(galaxy);
+    return t;
 }
 
 /** Apply a synced side-tables root (replicaSideTables) to a replica galaxy. */

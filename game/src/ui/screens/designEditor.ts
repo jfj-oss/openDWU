@@ -77,7 +77,7 @@ import {
 import {
     MOVEMENT_COLUMNS,
     MOVEMENT_ROWS,
-    SHIP_PICTURE_COUNT,
+    shipPictureCount,
     componentCategoryAbbreviation,
     componentDetailModel,
     componentImageUrl,
@@ -579,7 +579,7 @@ export function openDesignEditor(opts: DesignEditorOptions): DesignEditorHandle 
             return;
         }
         const groups = shipPictureGroups();
-        const current = Math.max(0, Math.min(SHIP_PICTURE_COUNT - 1, design.pictureRef));
+        const current = Math.max(0, Math.min(shipPictureCount() - 1, design.pictureRef));
         let groupIndex = Math.max(0, groups.findIndex((g) => current >= g.first && current <= g.last));
         const box = at(editorPanel(10), 350, 34, 560, 520);
         box.classList.add('dsgx-chooser');

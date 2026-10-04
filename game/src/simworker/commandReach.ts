@@ -15,8 +15,10 @@ export function commandFreshRoots(op: string, empire: Empire): object[] {
     if (op.startsWith('fleetTemplate')) {
         const book = empire.fleetDesigns;
         if (book === undefined) return [];
-        // Each template whole (its entries and their rows, 3 levels down) and each build order (its pending ships).
-        return [book, book.templates, ...book.templates, book.orders, ...book.orders];
+        // Each template whole (its entries and their rows, 3 levels down), each build order (its pending ships) and
+        // each fleet's template link (player/fleetRefill.ts).
+        const links = book.links ?? [];
+        return [book, book.templates, ...book.templates, book.orders, ...book.orders, ...(book.links !== undefined ? [book.links, ...links] : [])];
     }
     if (op.startsWith('constructionJob')) {
         const board = empire.constructionBoard as object | undefined | null;

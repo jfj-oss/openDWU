@@ -37,6 +37,19 @@ import { computeEconomyBreakdown } from '../../src/sim/economyBreakdown';
 import { moneyPanelIncome } from '../../src/sim/treasury';
 import { colonyGridRow, colonyAttitudeSummary } from '../../src/ui/screens/coloniesScreen';
 import { generateBenefitDetail, resolveNodeDescription } from '../../src/ui/screens/researchBenefits';
+import {
+    builtObjectTabLabels,
+    builtObjectTroopIconItems,
+    componentWaitRows,
+    constructionResourceShortageText,
+    manufacturerRows,
+    setFleetItems,
+    shipTroopLoadout,
+    shipTroopLoadoutOn,
+    shipTroopLoadoutSpin,
+    shipTroopLoadoutView,
+    siteManufacturingQueue,
+} from '../../src/ui/screens/builtObjectDataTabs';
 
 export interface ScreenOrder {
     /** Tick (one FRAME_REAL_MS step each) the order is issued before. */
@@ -252,6 +265,20 @@ const ORDERS: Omit<ScreenOrder, 'tick'>[] = [
         },
     },
     {
+        what: 'ships: troop loadout (Troops tab, method_179)',
+        ops: ['setShipTroopLoadout'],
+        issue: (g, p, r) => {
+            const b = ownShips(p).find((s) => s.role !== BuiltObjectRole.Base);
+            if (b === undefined) return false;
+            // chkUseTroopLoadouts ticked, a spinner step, then unticked (the screen's own builders).
+            const on = shipTroopLoadoutOn(b.troopCapacity);
+            issue(g, p, 'setShipTroopLoadout', [b, on]);
+            const step = shipTroopLoadoutSpin(on, 'infantry', Math.max(0, on.infantry - 1), b.troopCapacity);
+            if (step !== null) issue(g, p, 'setShipTroopLoadout', [b, step]);
+            return issue(g, p, 'setShipTroopLoadout', [b, null], r);
+        },
+    },
+    {
         what: 'ships: automate (shipAction with an undefined menu point)',
         ops: ['shipAction'],
         issue: (g, p, r) => {
@@ -373,6 +400,20 @@ export function screenReads(g: Galaxy, p: Empire): string[] {
         run(`buildable facilities ${h.name}`, () => resolveBuildableFacilities(g, h));
         run(`charter button ${h.name}`, () => charterButtonState(g, p, h));
     }
+    // Ships and Bases / Construction Yards data tabs (builtObjectDataTabs.ts).
+    run('set fleet items', () => setFleetItems(p));
+    for (const b of ownShips(p).slice(0, 40)) {
+        run(`ship tabs ${b.name}`, () => {
+            builtObjectTroopIconItems(b);
+            shipTroopLoadoutView(b, shipTroopLoadout(b));
+            constructionResourceShortageText(g, b);
+            const mq = siteManufacturingQueue(b, p);
+            manufacturerRows(mq?.manufacturers ?? null, () => null);
+            componentWaitRows(mq?.componentWaitQueue ?? null);
+            builtObjectTabLabels(b);
+        });
+    }
+    for (const h of p.colonies) if (h != null) run(`colony troop icons ${h.name}`, () => builtObjectTroopIconItems(h));
     run('troop rows', () => troopRows(troopsOf(p)));
     run('troop filters', () => troopFilterOptions(p));
     run('troop maintenance', () => troopListAnnualMaintenance(troopsOf(p), p));

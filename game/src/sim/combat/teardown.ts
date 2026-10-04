@@ -24,6 +24,7 @@ import { clearFightersTargeting, fighterTargetEmpire } from './fighters';
 import { checkForPlanetDestroyerWeaponFiringDelayOnHyperExit } from './weapons';
 import { updatePosition } from '../movement';
 import { scenarioEmit } from '../scenario/hooks';
+import { battleReportHooks } from '../battleReports/hooks';
 
 /** Galaxy.3.cs 4959 IndexSize (galaxy.ts / movement.ts keep private copies). */
 const INDEX_SIZE = 400_000;
@@ -179,6 +180,10 @@ export function clearAllMissionsForTargetBuiltObject(galaxy: Galaxy, self: Built
  * galaxy index, galaxy / empire lists, pirate attack missions, system visibility).
  */
 export function builtObjectCompleteTeardown(galaxy: Galaxy, builtObject: BuiltObject, removeFromEmpire = true): void {
+    // Mod layer (battle reports, an Improvement): records the fate of a ship / base in a battle before it is detached.
+    // Reads only (battleReports/hooks.ts).
+    const battleHook = battleReportHooks.builtObjectTeardown;
+    if (battleHook !== null) battleHook(galaxy, builtObject);
     if (galaxy.scenario !== null) {
         // mod layer: HasBeenDestroyed is already set only by the combat destroy branches (InflictDamage BuiltObject.2.cs
         // 6545-6573, creature / area damage) — the teardown of a destroyed ship or base, from DoExplosions or CleanupInvalidShips.

@@ -30,6 +30,7 @@ import { determineHabModulesRequired, determineLifeSupportRequired } from '../de
 import { reviewLatestDesigns } from '../construction/empireConstruction';
 import { gameText } from '../colonyTick';
 import { nextMarkName } from './designEditor';
+import './designLineUpgrade'; // Design.upgradedFrom
 
 const T = ComponentType;
 const C = ComponentCategoryType;
@@ -197,6 +198,32 @@ function upgradedComponent(galaxy: Galaxy, empire: Empire, component: ComponentD
 }
 
 /**
+ * BaconMain.cs:2550-2575 (btnDesignsUpgrade_Click): top the design up with the latest (improved) hab modules / life
+ * support its components now need (Galaxy.8.cs DetermineHabModulesRequired / DetermineLifeSupportRequired). No Rnd.
+ * Shared with the [improvements] same-line design upgrade (player/designLineUpgrade.ts).
+ */
+export function addRequiredHabitation(empire: Empire, design: Design): void {
+    const research = empire.research;
+    const latestComponent = research.getLatestComponent(T.HabitationHabModule);
+    const latestComponent2 = research.getLatestComponent(T.HabitationLifeSupport);
+    // C# `new ComponentImprovement(null)` throws when nothing is researched; here no module is then added.
+    const componentImprovement: ComponentImprovementEntry | null = latestComponent !== null ? research.resolveImprovedComponentValues(latestComponent) : null;
+    const componentImprovement2: ComponentImprovementEntry | null = latestComponent2 !== null ? research.resolveImprovedComponentValues(latestComponent2) : null;
+    const num = determineHabModulesRequired(componentImprovement, design);
+    const num2 = determineLifeSupportRequired(componentImprovement2, design);
+    let num3 = 0;
+    let num4 = 0;
+    for (const component3 of design.components) {
+        if (component3.type === T.HabitationHabModule) num3++;
+        else if (component3.type === T.HabitationLifeSupport) num4++;
+    }
+    const num5 = num - num3;
+    const num6 = num2 - num4;
+    for (let k = 0; k < num5; k++) design.components.push(componentImprovement!.improvedComponent);
+    for (let l = 0; l < num6; l++) design.components.push(componentImprovement2!.improvedComponent);
+}
+
+/**
  * Port of BaconMain.cs:2471 btnDesignsUpgrade_Click (after the ControlDesigns question, which the screen asks): each
  * selected design is cloned with every component replaced by the empire's latest equivalent, topped up with the latest
  * hab modules / life support its new size needs; a clone that differs from its design is renamed "<name> Mk(N+1)"
@@ -209,7 +236,6 @@ function upgradedComponent(galaxy: Galaxy, empire: Empire, component: ComponentD
 export function autoUpgradeDesigns(galaxy: Galaxy, empire: Empire, selectedDesigns: readonly Design[]): AutoUpgradeResult {
     const added: Design[] = [];
     if (selectedDesigns.length <= 0) return { added, select: null };
-    const research = empire.research;
     let design: Design | null = null;
     for (const design2 of selectedDesigns) {
         design = cloneDesign(design2);
@@ -218,23 +244,7 @@ export function autoUpgradeDesigns(galaxy: Galaxy, empire: Empire, selectedDesig
             const component2 = upgradedComponent(galaxy, empire, component);
             if (component2 !== null && component2.componentId !== component.componentId) design.components[j] = component2;
         }
-        const latestComponent = research.getLatestComponent(T.HabitationHabModule);
-        const latestComponent2 = research.getLatestComponent(T.HabitationLifeSupport);
-        // C# `new ComponentImprovement(null)` throws when nothing is researched; here no module is then added.
-        const componentImprovement: ComponentImprovementEntry | null = latestComponent !== null ? research.resolveImprovedComponentValues(latestComponent) : null;
-        const componentImprovement2: ComponentImprovementEntry | null = latestComponent2 !== null ? research.resolveImprovedComponentValues(latestComponent2) : null;
-        const num = determineHabModulesRequired(componentImprovement, design);
-        const num2 = determineLifeSupportRequired(componentImprovement2, design);
-        let num3 = 0;
-        let num4 = 0;
-        for (const component3 of design.components) {
-            if (component3.type === T.HabitationHabModule) num3++;
-            else if (component3.type === T.HabitationLifeSupport) num4++;
-        }
-        const num5 = num - num3;
-        const num6 = num2 - num4;
-        for (let k = 0; k < num5; k++) design.components.push(componentImprovement!.improvedComponent);
-        for (let l = 0; l < num6; l++) design.components.push(componentImprovement2!.improvedComponent);
+        addRequiredHabitation(empire, design);
         if (design.isEquivalent(design2)) continue;
         design.name = nextMarkName(design2.name);
         design.dateCreated = galaxyCurrentStarDate(galaxy);
@@ -244,6 +254,7 @@ export function autoUpgradeDesigns(galaxy: Galaxy, empire: Empire, selectedDesig
         design.isManuallyCreated = true;
         design.reDefine();
         design2.isObsolete = true;
+        design.upgradedFrom = design2; // [improvements] designLineUpgrade lineage (not in the C#; read only by Retrofit when on)
         empire.designs.push(design);
         added.push(design);
     }

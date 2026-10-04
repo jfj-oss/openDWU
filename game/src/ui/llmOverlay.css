@@ -1,0 +1,19 @@
+/* 19s-1 dev overlay: the local-model queue's metrics, drawn as the original's BorderPanel ((48, 48, 64) with 3 px
+   alpha-96 grey borders) in the game font. Read-only, click-through. */
+.llm-metrics-overlay {
+    position: fixed;
+    right: 8px;
+    bottom: 8px;
+    margin: 0;
+    padding: 6px 10px;
+    box-sizing: border-box;
+    font-family: 'Forgotten Futurist', sans-serif;
+    font-size: 13.33px;
+    line-height: 1.35;
+    color: rgb(170, 170, 170);
+    background: rgb(48, 48, 64);
+    border: 3px solid rgba(200, 200, 200, 0.38);
+    z-index: 9000;
+    pointer-events: none;
+    white-space: pre;
+}

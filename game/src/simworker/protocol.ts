@@ -48,6 +48,8 @@ export interface InitMessage {
     sync?: { coldBudgetMs?: number; coldMaxSets?: number; markBudgetMs?: number };
     /** The main thread's active theme ("" / absent = the stock game): the worker loads that set's data. */
     customizationSet?: string;
+    /** Battle-report observer (an Improvement; sim/battleReports/hooks.ts): false = off (`?battleReports=0`); absent = on. */
+    battleReports?: boolean;
 }
 
 export interface ClockMessage {

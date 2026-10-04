@@ -1,5 +1,6 @@
 /* 17c: the right-click order menu (actionMenu), the automation confirm dialog, the right-click status line and the
-   selection panel's action buttons. Streamlined HUD style (hud.css / messagePopups.css). */
+   selection panel's action buttons. The menu and the dialog are in the original's look (originalWindow.css
+   .ow-toolstrip / MessageBoxEx); the status line is the original's drop-shadowed map text. */
 
 .order-menu-root {
     position: fixed;
@@ -11,47 +12,18 @@
 .order-menu-panel {
     position: fixed;
     pointer-events: auto;
-    min-width: 180px;
-    max-width: 420px;
+    min-width: calc(150px * var(--ow-ts-k));
+    max-width: calc(520px * var(--ow-ts-k));
     max-height: calc(100vh - 16px);
     overflow-y: auto;
-    padding: 4px 0;
-    background: rgba(18, 20, 26, 0.96);
-    border: 1px solid rgba(255, 255, 255, 0.12);
-    border-radius: 6px;
-    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6);
-    color: #e6e6e6;
-    font-size: 12px;
 }
-.order-menu-item {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 16px;
-    padding: 5px 12px;
-    cursor: pointer;
-    white-space: nowrap;
-    outline: none;
-}
-.order-menu-item.order-menu-active {
-    background: rgba(120, 170, 255, 0.18);
-    color: #fff;
-}
-.order-menu-item.order-menu-disabled {
-    color: #6c737c;
-    cursor: default;
-}
-.order-menu-arrow {
-    color: #9aa3ad;
-}
-.order-menu-sep {
-    height: 1px;
-    margin: 4px 8px;
-    background: rgba(255, 255, 255, 0.1);
-}
+/* The rows, arrows and separators: originalWindow.css .ow-ts-item / .ow-ts-arrow / .ow-ts-sep (CustomToolStripRenderer). */
 
-/* GenerateAutomationMessageBox */
+/* GenerateAutomationMessageBox: a MessageBoxEx in the ScreenPanel look (originalWindow.ts messageBox): BorderPanel
+   (48,48,64) with the 3 px alpha-96 border, the HeaderPanel caption (black, (96,96,104) shine on the top half, bold
+   white), the GradientPanel body, GlassButtons. Original pixels × the HUD scale. */
 .order-confirm-wrap {
+    --ow-ts-k: var(--ow-hud-k, 0.856);
     position: fixed;
     inset: 0;
     z-index: 1700;
@@ -60,52 +32,83 @@
     justify-content: center;
     background: rgba(0, 0, 0, 0.25);
     font-family: 'Forgotten Futurist', sans-serif;
-    color: #e6e6e6;
+    font-size: calc(15.33px * var(--ow-ts-k));
+    color: rgb(200, 200, 200);
+    -webkit-font-smoothing: antialiased;
 }
 .order-confirm-window {
-    width: 380px;
+    box-sizing: border-box;
+    width: calc(460px * var(--ow-ts-k));
     max-width: calc(100vw - 16px);
-    background: rgba(14, 16, 20, 0.96);
-    border: 1px solid rgba(255, 255, 255, 0.12);
-    border-radius: 6px;
-    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6);
+    padding: calc(5px * var(--ow-ts-k));
+    background: rgb(48, 48, 64);
+    border: 3px solid;
+    border-color: rgba(200, 200, 200, 0.376) rgba(80, 80, 80, 0.376) rgba(20, 20, 20, 0.376) rgba(140, 140, 140, 0.376);
+    box-shadow: 0 8px 40px rgba(0, 0, 0, 0.55);
     overflow: hidden;
 }
 .order-confirm-title {
-    padding: 8px 12px;
-    font-size: 13px;
-    color: #e8d24a;
-    background: rgba(10, 11, 15, 0.9);
-    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    padding: calc(8px * var(--ow-ts-k)) calc(10px * var(--ow-ts-k));
+    font-size: calc(18.67px * var(--ow-ts-k));
+    font-weight: bold;
+    color: #fff;
+    border: 1px solid rgb(0, 0, 16);
+    background: linear-gradient(to bottom, rgba(96, 96, 104, 0.6), rgba(96, 96, 104, 0.2) 50%, transparent 50%), #000;
+    box-shadow: inset 0 0 0 1px rgb(67, 67, 77);
 }
 .order-confirm-text {
-    padding: 12px;
-    font-size: 13px;
-    line-height: 1.45;
+    padding: calc(14px * var(--ow-ts-k));
+    line-height: 1.3;
+    background: linear-gradient(to bottom, rgb(39, 40, 44), rgb(22, 21, 26) 50%, rgb(51, 54, 61));
+    border: 1px solid rgb(67, 67, 77);
+    border-bottom: 0;
 }
 .order-confirm-buttons {
     display: flex;
-    justify-content: flex-end;
-    gap: 8px;
-    padding: 0 12px 12px;
+    justify-content: center;
+    gap: calc(10px * var(--ow-ts-k));
+    padding: calc(4px * var(--ow-ts-k)) calc(14px * var(--ow-ts-k)) calc(14px * var(--ow-ts-k));
+    background: rgb(51, 54, 61);
+    border: 1px solid rgb(67, 67, 77);
+    border-top: 0;
 }
-.order-confirm-button {
+/* GlassButton (originalWindow.css .ow-glass), also for the waypoint name dialog's plain buttons. */
+.order-confirm-buttons .order-confirm-button {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-width: calc(100px * var(--ow-ts-k));
+    height: calc(30px * var(--ow-ts-k));
+    margin: 0;
+    padding: 0 calc(10px * var(--ow-ts-k));
     font-family: inherit;
-    font-size: 12px;
-    color: #e6e6e6;
-    background: rgba(255, 255, 255, 0.06);
-    border: 1px solid rgba(255, 255, 255, 0.2);
-    border-radius: 4px;
-    padding: 4px 14px;
+    font-size: calc(15.33px * var(--ow-ts-k));
+    font-weight: bold;
+    white-space: nowrap;
+    color: rgb(120, 120, 120);
+    border: 1px solid rgb(0, 0, 16);
+    border-radius: 7px;
+    background:
+        linear-gradient(to bottom, rgba(112, 112, 128, 0.6), rgba(112, 112, 128, 0.2) 50%, transparent 50%),
+        rgb(0, 0, 16);
+    box-shadow: inset 0 0 0 1px rgb(67, 67, 77);
     cursor: pointer;
+    transition: color 0.2s;
 }
-.order-confirm-button:hover,
-.order-confirm-button:focus {
-    background: rgba(255, 255, 255, 0.14);
+.order-confirm-buttons .order-confirm-button:hover,
+.order-confirm-buttons .order-confirm-button:focus-visible {
     color: #fff;
+    outline: none;
+    background:
+        linear-gradient(to bottom, rgba(112, 112, 128, 0.6), rgba(112, 112, 128, 0.2) 50%, transparent 50%),
+        radial-gradient(ellipse 85% 115% at 50% 100%, rgba(48, 48, 128, 0.7), rgba(48, 48, 128, 0) 100%),
+        rgb(0, 0, 16);
 }
 
 /* "Right-click to Attack X   (Ctrl-Right-click for more missions...)" */
+/* MainView.cs string_17 / string_18: DrawStringDropShadow in Main.font_6 (GenerateFont 16.67) and Color.Yellow
+   (MainView solidBrush_1), straight on the map. */
 .order-status {
     position: fixed;
     left: 50%;
@@ -113,12 +116,12 @@
     transform: translateX(-50%);
     z-index: 900;
     pointer-events: none;
-    padding: 3px 10px;
-    border-radius: 4px;
-    background: rgba(12, 14, 18, 0.8);
-    color: #cfd6de;
+    padding: 0 4px;
+    background: transparent;
+    color: rgb(255, 255, 0);
+    text-shadow: 1px 1px 0 #000;
     font-family: 'Forgotten Futurist', sans-serif;
-    font-size: 12px;
+    font-size: calc(16.67px * var(--ow-hud-k, 0.856));
     white-space: nowrap;
 }
 .order-status[hidden] {
@@ -197,13 +200,20 @@
     color: #ffff00;
 }
 
-/* [gameoptions] "Don't ask me again" (MessageBoxEx SaveResponseText). */
+/* [gameoptions] "Don't ask me again" (MessageBoxEx SaveResponseText): the (170,170,170) CheckBox on the body. */
 .order-confirm-remember {
     display: flex;
     align-items: center;
-    gap: 4px;
-    margin: 0 12px 10px;
-    font-size: 12px;
+    gap: calc(6px * var(--ow-ts-k));
+    padding: 0 calc(14px * var(--ow-ts-k)) calc(10px * var(--ow-ts-k));
     color: rgb(170, 170, 170);
+    background: rgb(51, 54, 61);
+    border: 1px solid rgb(67, 67, 77);
+    border-top: 0;
+    border-bottom: 0;
     cursor: pointer;
+}
+.order-confirm-remember input {
+    margin: 0;
+    accent-color: rgb(96, 96, 112);
 }

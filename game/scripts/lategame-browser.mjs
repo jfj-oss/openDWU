@@ -53,7 +53,7 @@ async function watch(page, cdp, label, start) {
         if (performance.now() - t0 > TIMEOUT) { crashed = `timeout after ${TIMEOUT / 1000}s`; break; }
         let r;
         try {
-            r = await page.evaluate(() => ({ ready: !!window.__dwu?.game, step: document.querySelector('.dwu-loading-step')?.textContent ?? null, title: document.querySelector('.dwu-loading-title span')?.textContent ?? null }));
+            r = await page.evaluate(() => ({ ready: !!window.__dwu?.game, step: document.querySelector('.dwu-loading-step')?.textContent ?? null, title: document.querySelector('.dwu-loading-title')?.textContent ?? null }));
         } catch (e) {
             if (crashed) break;
             if (/Execution context was destroyed|navigation/i.test(String(e))) continue;

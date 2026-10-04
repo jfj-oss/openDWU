@@ -912,8 +912,14 @@ export class ResearchSystem {
 
     // Port of ResearchSystem.cs DetermineBestComponent (2304).
     determineBestComponent(type: ComponentType, researchedComponents: ComponentDefinition[]): ComponentDefinition | null {
+        return this.determineBestComponentAmong(type, this.getByType(researchedComponents, type));
+    }
+
+    // DetermineBestComponent's per-type evaluation (2304) over `byType` as given (not filtered by type). The port's
+    // DetermineBestComponent calls it with ComponentList.GetByType(type); the [improvements] same-line design upgrade
+    // (player/designLineUpgrade.ts) calls it with a weapon line that spans types (e.g. a blaster and its phasers).
+    determineBestComponentAmong(type: ComponentType, byType: ComponentDefinition[]): ComponentDefinition | null {
         const T = ComponentType;
-        const byType = this.getByType(researchedComponents, type);
         switch (type) {
             case T.WeaponBombard:
                 return this.identifyHighestValue(byType, 7);

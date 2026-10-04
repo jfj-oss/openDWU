@@ -78,6 +78,7 @@ import { declareWar as declareWarImpl, fastFindNearestColony } from './diplomacy
 import { conditionCheckLimit } from './fleets/blockades';
 import { stellarEmpire } from './combat/threats';
 import { selectSuitableGovernment, changeGovernment } from './treasury';
+import { sectorColumnName } from './sectorNames';
 import { loadEmpirePolicy } from './researchSystem';
 import { takeOwnershipOfColonyFull } from './combat/ownership';
 import { recalculateEmpirePopulation } from './taxes';
@@ -184,7 +185,7 @@ export function resolveSectorDescription(galaxy: Galaxy, x: number, y: number): 
     // CorrectSectorCoords (Galaxy.7.cs): clamp to [0, SectorWidth-1] × [0, SectorHeight-1].
     x2 = Math.max(0, Math.min(x2, galaxy.sectorWidth - 1));
     y2 = Math.max(0, Math.min(y2, galaxy.sectorHeight - 1));
-    return String.fromCharCode(x2 + 65) + String(y2 + 1);
+    return sectorColumnName(x2) + String(y2 + 1);
 }
 
 /** Galaxy.3.cs 683 FastFindNearestLongRangeScanner(x, y, empire). No Rnd. */

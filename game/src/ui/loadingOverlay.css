@@ -1,62 +1,74 @@
-/* Full-screen "please wait" panel while a new galaxy is built or a save is loaded (loadingOverlay.ts). The spinner
-   turns with a transform animation, which the compositor keeps running while the main thread is busy in one long
-   step (JSON.parse of a big save, the graph decode), so the page never looks frozen. */
+/* "Please wait" panel while a new galaxy is built or a save is loaded (loadingOverlay.ts): the original's
+   pnlSaveLoadProgress BorderPanel (.ow-screen + .ow-stripes, originalWindow.css) with its turning galaxy picture.
+   The full-screen layer keeps clicks off the page while the job runs; like the original it does not dim the view. */
 .dwu-loading {
     position: fixed;
     inset: 0;
     z-index: 5000;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: rgba(0, 0, 0, 0.82);
     font-family: 'Forgotten Futurist', sans-serif;
-    color: #e8ecf2;
+    color: #fff;
 }
 .dwu-loading-box {
-    width: min(420px, calc(100vw - 32px));
-    padding: 22px 24px;
-    background: rgba(20, 22, 28, 0.96);
-    border: 1px solid rgba(255, 255, 255, 0.12);
-    border-radius: 8px;
+    position: absolute;
+    left: 0;
+    top: 0;
 }
+/* lblSaveLoadMessage: font_2 (18.67 px bold), white, centred at y 13. */
 .dwu-loading-title {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    font-size: 16px;
-    margin-bottom: 14px;
+    position: absolute;
+    left: 6px;
+    right: 6px;
+    top: 13px;
+    text-align: center;
+    font-size: 18.67px;
+    font-weight: bold;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
-.dwu-loading-spinner {
-    width: 18px;
-    height: 18px;
-    border: 2px solid rgba(255, 255, 255, 0.2);
-    border-top-color: #7fb4ff;
-    border-radius: 50%;
-    animation: dwu-loading-spin 0.9s linear infinite;
+/* picSaveLoadGalaxy: galaxy.png turning -π/160 every 75 ms (a full turn in 24 s, counter-clockwise). A transform
+   animation keeps running on the compositor while the main thread is busy. */
+.dwu-loading-galaxy {
+    position: absolute;
+    width: 274px;
+    height: 274px;
+    animation: dwu-loading-spin 24s linear infinite;
     will-change: transform;
+    pointer-events: none;
 }
 @keyframes dwu-loading-spin {
     to {
-        transform: rotate(360deg);
+        transform: rotate(-360deg);
     }
 }
+/* Ours: the progress bar and the current step under the picture, in the screens' bar / label colours. */
 .dwu-loading-bar {
-    height: 6px;
-    background: rgba(255, 255, 255, 0.1);
-    border-radius: 3px;
+    position: absolute;
+    left: 20px;
+    right: 20px;
+    top: 330px;
+    height: 8px;
+    background: rgb(32, 32, 40);
+    border: 1px solid rgb(67, 67, 77);
     overflow: hidden;
 }
 .dwu-loading-fill {
     height: 100%;
     width: 100%;
-    background: #7fb4ff;
+    background: linear-gradient(to bottom, rgb(150, 150, 190), rgb(72, 72, 150));
     transform-origin: left center;
     transform: scaleX(0);
     transition: transform 0.2s linear;
 }
 .dwu-loading-step {
-    margin-top: 10px;
-    font-size: 12px;
-    color: #aab3c0;
-    min-height: 1.2em;
+    position: absolute;
+    left: 10px;
+    right: 10px;
+    top: 345px;
+    text-align: center;
+    font-size: 13.33px;
+    color: rgb(170, 170, 170);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }

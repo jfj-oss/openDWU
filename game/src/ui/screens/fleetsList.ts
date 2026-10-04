@@ -19,6 +19,8 @@
 // buttons, Main.Part3.cs fleetSlots), in the same look: a row of fleet orders under the window's controls (posture,
 // engagement range, attack point, home base, automate, stop, disband), and the "Fleet Designs" tab
 // (fleetDesignsTab.ts: fleet templates, form from existing, build fleet with a sector option and progress).
+// Below the orders row, the fleet's template row (fleetRefillControls.ts: fleet design, "Auto-refill from template",
+// the replacements' yard, Replenish and the status line; sim/player/fleetRefill.ts — a gameplay addition).
 // The fleet cycle keys follow Main.Part8.cs:1243 btnCycleShipGroups_Click (fleetCycleList).
 // The first column is ShipGroupListView.cs:170-182: the first admiral / general's very small picture
 // (CharacterImageCache.ObtainCharacterImageVerySmall, characterPortrait.ts) and every name as the tooltip.
@@ -42,9 +44,10 @@ import { getFleetAdmiralsAndGenerals, shipGroupGetTroopLoadoutTargetAmounts, shi
 import type { Troop } from '../../sim/cargo';
 import { SystemVisibilityStatus } from '../../sim/visibility';
 import { createFleetDesignsTab } from './fleetDesignsTab';
+import { createFleetRefillControls } from '../fleetRefillControls';
 import { troopCompositionDescription, troopCountsByType } from './troops';
 import { openGalactopedia } from './galactopedia';
-import { CROSSHAIR_COLOR, GRID_COLOR, drawMapTerritory, galaxyMapScale, sectorColumnLabel, starBrushColor, starDotSizes } from './galaxyMap';
+import { CROSSHAIR_COLOR, GRID_COLOR, drawMapTerritory, galaxyMapScale, sectorColumnLabel, sectorLabelStride, starBrushColor, starDotSizes } from './galaxyMap';
 import { drawGalaxyMapLayers } from './galaxyMapLayers';
 import { fmtK, missionDescription, shipGroupInfo, type InfoTarget } from '../selectionInfo';
 import { renderInfoModel } from '../selectionInfoView';
@@ -71,6 +74,7 @@ import {
     type OriginalWindow,
 } from '../originalWindow';
 import { requestSimRefresh } from '../../simworker/refresh';
+import { isImprovementEnabled } from '../improvements';
 
 // -------------------------------------------------------------------------------------------------------------------
 // Pure helpers (tested)
@@ -301,7 +305,7 @@ export function ungarrisonedTroopReport(troops: readonly Troop[], sg: ShipGroup 
 /** The action buttons of the window (its own + the fleet orders row) as data. */
 export type FleetActionId =
     | 'select' | 'goto' | 'setHomeColony' | 'repairRefuel' | 'retrofit' | 'loadTroops'
-    | 'homeBase' | 'attackPoint' | 'posture' | 'range' | 'automate' | 'stop' | 'disband';
+    | 'homeBase' | 'attackPoint' | 'posture' | 'range' | 'automate' | 'stop' | 'disband' | 'settings';
 
 export interface FleetPanelState {
     /** Enabled flag per action (method_270: all of them need a selected fleet). */
@@ -319,6 +323,7 @@ export function fleetPanelState(sg: ShipGroup | null, troopSpaceRemaining = 100)
         homeBase: on, attackPoint: on, posture: on, range: on, automate: on,
         stop: on && sg.mission !== null && sg.mission.type !== BuiltObjectMissionType.Undefined,
         disband: on,
+        settings: on,
     };
     return { enabled, automated: sg !== null && fleetAutomated(sg) };
 }
@@ -338,7 +343,7 @@ export function fleetShipAction(id: 'posture' | 'range' | 'automate' | 'unautoma
 }
 
 /** The window size: the original's 988 × 768 plus one 62 px band for our fleet orders row (y 702). */
-export const FLEETS_WINDOW = { w: 988, h: 768 + 62, ordersY: 702, ordersH: 48 } as const;
+export const FLEETS_WINDOW = { w: 988, h: 768 + 62 + 64, ordersY: 702, ordersH: 48, refillY: 760 } as const;
 
 /** x positions of `n` equal buttons across the grid's 950 px (10 px gaps), for the fleet orders row. */
 export function rowButtonLayout(n: number, left = 10, width = 950, gap = 10): { x: number; w: number }[] {
@@ -385,6 +390,8 @@ export interface FleetsListOptions {
     onPickPoint?: (sg: ShipGroup, mode: 'homeBase' | 'attackPoint') => void;
     /** The tab to open on (default the last one shown). */
     tab?: 'fleets' | 'designs';
+    /** The Fleet Settings panel on the fleet (an Improvement, ui/improvements.ts; no button without it or while off). */
+    onOpenSettings?: (sg: ShipGroup) => void;
 }
 
 interface OpenState {
@@ -660,6 +667,12 @@ function createFleetsList(opts: FleetsListOptions): OpenState {
         { id: 'stop', label: 'Stop', icon: 'stop.png', title: 'Cancel the fleet mission and hold', run: (sg) => shipAction(sg, fleetShipAction('stop', sg)) },
         { id: 'disband', label: 'Disband Fleet', icon: 'leavefleet.png', title: 'Disband the fleet; its ships stay in service', run: (sg) => { current = null; shipAction(sg, fleetShipAction('disband', sg)); } },
     ];
+    // An Improvement (ui/improvements.ts 'fleetSettings'): the Fleet Settings panel, all of the fleet's behaviour
+    // settings in one window. Not shown while the improvement is off.
+    if (opts.onOpenSettings !== undefined && isImprovementEnabled('fleetSettings')) {
+        const openSettings = opts.onOpenSettings;
+        orderSpecs.push({ id: 'settings', label: 'Settings', icon: 'fleetposture.png', title: 'Fleet Settings: posture, engagement, retreat, fuel, troops and resupply in one window (Q)', run: (sg) => openSettings(sg) });
+    }
     const orderButtons = new Map<FleetActionId, HTMLButtonElement>();
     rowButtonLayout(orderSpecs.length).forEach(({ x, w }, i) => {
         const s = orderSpecs[i];
@@ -667,6 +680,13 @@ function createFleetsList(opts: FleetsListOptions): OpenState {
         fleetsPage.appendChild(place(b, x, FLEETS_WINDOW.ordersY, w, FLEETS_WINDOW.ordersH));
         orderButtons.set(s.id, b);
     });
+
+    // ---------------------------------------------------------------------------------------------------------------
+    // The fleet's template row (fleetRefillControls.ts; not in the original): fleet design, auto-refill, yard,
+    // Replenish, status.
+    // ---------------------------------------------------------------------------------------------------------------
+    const refillRow = createFleetRefillControls(empire, 950, () => refresh());
+    fleetsPage.appendChild(place(refillRow.el, 10, FLEETS_WINDOW.refillY, 950, 56));
 
     // ---------------------------------------------------------------------------------------------------------------
     // Fleet Designs tab.
@@ -767,9 +787,11 @@ function createFleetsList(opts: FleetsListOptions): OpenState {
             icon('automate', automated ? 'unautomate.png' : 'automate.png');
             minor('stop', sg.mission !== null && sg.mission.type !== BuiltObjectMissionType.Undefined ? missionTypeLabel(sg.mission.type) : '(No mission)');
             minor('disband', `${sg.ships.length} ships`);
+            if (orderButtons.has('settings')) minor('settings', 'All settings');
         } else {
             for (const s of orderSpecs) minor(s.id, '');
         }
+        refillRow.update(sg);
         drawMap();
     }
 
@@ -816,8 +838,8 @@ function createFleetsList(opts: FleetsListOptions): OpenState {
         ctx.fillStyle = 'rgb(96, 96, 170)';
         ctx.font = '9px Verdana, sans-serif';
         ctx.textBaseline = 'top';
-        for (let i = 0; i < galaxy.sectorWidth; i++) ctx.fillText(sectorColumnLabel(i), Math.trunc(i * sec + sec / 2 - 3), 2);
-        for (let j = 0; j < galaxy.sectorHeight; j++) ctx.fillText(String(j + 1), 2, Math.trunc(j * sec + sec / 2 - 5));
+        for (let i = 0; i < galaxy.sectorWidth; i += sectorLabelStride(galaxy.sectorWidth, sec)) ctx.fillText(sectorColumnLabel(i), Math.trunc(i * sec + sec / 2 - 3), 2);
+        for (let j = 0; j < galaxy.sectorHeight; j += sectorLabelStride(galaxy.sectorHeight, sec)) ctx.fillText(String(j + 1), 2, Math.trunc(j * sec + sec / 2 - 5));
         // method_5: the fleets' posture ranges.
         for (const sg of fleetCycleList(empire)) {
             const c = fleetPostureCircle(sg);

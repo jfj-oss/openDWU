@@ -22,13 +22,14 @@ import { BuiltObjectRole } from '../data/designSpecifications';
 import { BuiltObjectSubRole } from '../builtObjectTypes';
 import { type ShipGroup, empireShipGroups, forceCompleteMission, shipGroupAssignMission } from '../fleets/shipGroup';
 import { shipGroupAddShipToFleet, shipGroupUpdate } from '../fleets/shipGroupTasks';
-import { BuiltObjectMissionPriority, BuiltObjectMissionType } from '../missions/mission';
+import { BuiltObjectMissionPriority, BuiltObjectMissionType, type StellarObject } from '../missions/mission';
 import { markFleetPlayerOrder } from '../missions/playerOrder';
 import { buildNewShips } from '../construction/empireConstruction';
 import { setShipConstructedHook, type ConstructionQueue } from '../construction/constructionQueue';
 import { builtObjectCompleteTeardown } from '../combat/teardown';
 import { findNewestCanBuild, getBuildableDesignsBySubRoles } from '../designGeneration';
 import { setShipsFleet } from './fleetOps';
+import { sectorColumnName } from '../sectorNames';
 
 export interface FleetTemplateEntry {
     design: Design;
@@ -64,12 +65,45 @@ export interface FleetBuildOrder {
     existing: number;
     rally: Habitat | BuiltObject | null;
     sector: SectorRef | null;
+    /** Replacements of a template link (auto-refill / Replenish, player/fleetRefill.ts): FleetTemplateLink.id. */
+    refillLinkId?: number;
 }
 
 export interface FleetDesignBook {
     nextId: number;
     templates: FleetTemplate[];
     orders: FleetBuildOrder[];
+    /** Fleets with an assigned template (player/fleetRefill.ts); absent until the first assignment (old saves: none). */
+    links?: FleetTemplateLink[];
+}
+
+/** The last auto-refill check's outcome (player/fleetRefill.ts), for the status line. */
+export type FleetRefillState = 'idle' | 'full' | 'queued' | 'funds' | 'noYard' | 'unbuildable';
+
+/**
+ * A fleet's assigned template (player/fleetRefill.ts). Assigning one changes nothing in the sim; with `autoRefill` on
+ * the fleet's missing ships are queued periodically, and Replenish queues them once.
+ */
+export interface FleetTemplateLink {
+    id: number;
+    /** The fleet; null while a wiped-out fleet is being re-formed by its replacements. */
+    fleet: ShipGroup | null;
+    templateId: number;
+    /** Per-fleet "Auto-refill from template" (off by default). */
+    autoRefill: boolean;
+    /** The yard replacements are queued at (one of the empire's space ports); null = the yard nearest the fleet. */
+    yard: BuiltObject | null;
+    /** The fleet's name and home base at the last check (the re-formed fleet's name and rally point). */
+    name: string;
+    gatherPoint: StellarObject | null;
+    /** The fleet's ships at the last check (tells a fleet destroyed in battle from one the player disbanded). */
+    ships: BuiltObject[];
+    /** galaxy.nowMs of the next auto-refill check. */
+    nextCheckMs: number;
+    state: FleetRefillState;
+    /** Ships the last check could not queue, and their cost. */
+    short: number;
+    shortCost: number;
 }
 
 declare module '../empire' {
@@ -87,6 +121,61 @@ export function fleetDesignBook(empire: Empire): FleetDesignBook {
 function book(empire: Empire): FleetDesignBook {
     if (empire.fleetDesigns === undefined) empire.fleetDesigns = { nextId: 1, templates: [], orders: [] };
     return empire.fleetDesigns;
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// Template links (a fleet's assigned template; auto-refill / Replenish in player/fleetRefill.ts)
+// ---------------------------------------------------------------------------------------------------------------
+
+/** The fleet's template link, or null (read-only). */
+export function fleetTemplateLinkOf(empire: Empire, fleet: ShipGroup): FleetTemplateLink | null {
+    const links = empire.fleetDesigns?.links;
+    if (links === undefined) return null;
+    for (let i = 0; i < links.length; i++) if (links[i].fleet === fleet) return links[i];
+    return null;
+}
+
+/**
+ * Assign template `templateId` to `fleet` (a new link with auto-refill off, or the existing link re-pointed). Assigning
+ * changes nothing in the sim by itself. Returns the link, or null (no such template).
+ */
+export function linkFleetTemplate(galaxy: Galaxy, empire: Empire, fleet: ShipGroup, templateId: number): FleetTemplateLink | null {
+    if (findFleetTemplate(empire, templateId) === null) return null;
+    const b = book(empire);
+    if (b.links === undefined) b.links = [];
+    let link = fleetTemplateLinkOf(empire, fleet);
+    if (link === null) {
+        link = {
+            id: b.nextId++,
+            fleet,
+            templateId,
+            autoRefill: false,
+            yard: null,
+            name: fleet.name ?? '',
+            gatherPoint: fleet.gatherPoint,
+            ships: fleet.ships.slice(),
+            nextCheckMs: galaxy.nowMs,
+            state: 'idle',
+            short: 0,
+            shortCost: 0,
+        };
+        b.links.push(link);
+    } else if (link.templateId !== templateId) {
+        link.templateId = templateId;
+        link.state = 'idle';
+        link.short = 0;
+        link.shortCost = 0;
+        link.nextCheckMs = galaxy.nowMs;
+    }
+    return link;
+}
+
+/** Remove a link (unassign the template). Its queued replacements still finish and join the fleet. */
+export function unlinkFleetTemplate(empire: Empire, link: FleetTemplateLink): void {
+    const links = empire.fleetDesigns?.links;
+    if (links === undefined) return;
+    const i = links.indexOf(link);
+    if (i >= 0) links.splice(i, 1);
 }
 
 export function findFleetTemplate(empire: Empire, id: number): FleetTemplate | null {
@@ -122,6 +211,8 @@ export function deleteFleetTemplate(empire: Empire, id: number): boolean {
     const i = b.templates.findIndex((t) => t.id === id);
     if (i < 0) return false;
     b.templates.splice(i, 1);
+    // The fleets it was assigned to lose their template (and auto-refill).
+    if (b.links !== undefined) b.links = b.links.filter((l) => l.templateId !== id);
     return true;
 }
 
@@ -272,6 +363,7 @@ export function formFleetFromExisting(galaxy: Galaxy, empire: Empire, templateId
     const fleet = newFleet(galaxy, empire, pick.ships, t.name, r);
     if (fleet === null) return { ok: false, fleet: null, entries: pick.entries, message: 'Could not form the fleet' };
     gatherFleet(galaxy, fleet, r);
+    linkFleetTemplate(galaxy, empire, fleet, t.id); // the fleet remembers its template (auto-refill stays off)
     const short = pick.entries.reduce((s, e) => s + e.short, 0);
     return { ok: true, fleet, entries: pick.entries, message: `${fleet.name} formed with ${fleet.ships.length} ships` + (short > 0 ? ` (${short} short)` : '') };
 }
@@ -289,7 +381,7 @@ export function sectorOf(galaxy: Galaxy, x: number, y: number): SectorRef {
 
 /** Galaxy.7.cs ResolveSectorDescription: column letter + row number ("C4"). */
 export function sectorLabel(s: SectorRef): string {
-    return String.fromCharCode(s.x + 65) + String(s.y + 1);
+    return sectorColumnName(s.x) + String(s.y + 1);
 }
 
 function inSector(galaxy: Galaxy, o: { xpos: number; ypos: number }, s: SectorRef): boolean {
@@ -384,7 +476,10 @@ export function buildFleetFromTemplate(galaxy: Galaxy, empire: Empire, templateI
     let fleet: ShipGroup | null = null;
     if (existing.length > 0) {
         fleet = newFleet(galaxy, empire, existing, t.name, rallyPoint);
-        if (fleet !== null) gatherFleet(galaxy, fleet, rallyPoint);
+        if (fleet !== null) {
+            gatherFleet(galaxy, fleet, rallyPoint);
+            linkFleetTemplate(galaxy, empire, fleet, t.id);
+        }
     }
     const queued: { designName: string; count: number }[] = [];
     for (const b of built) {
@@ -438,6 +533,11 @@ export function cancelFleetBuildOrder(galaxy: Galaxy, empire: Empire, orderId: n
     if (b === undefined || i < 0) return { ok: false, removed: 0, refund: 0 };
     const o = b.orders[i];
     b.orders.splice(i, 1);
+    // Cancelling a fleet's replacements also stops its auto-refill (it would queue them again at the next check).
+    if (o.refillLinkId !== undefined) {
+        const link = b.links?.find((l) => l.id === o.refillLinkId);
+        if (link !== undefined) link.autoRefill = false;
+    }
     let removed = 0;
     let refund = 0;
     for (const ship of o.pending) {
@@ -456,6 +556,15 @@ export function cancelFleetBuildOrder(galaxy: Galaxy, empire: Empire, orderId: n
     return { ok: true, removed, refund };
 }
 
+/** A re-formed fleet's rally point: its old home base while still ours (or neutral), else the capital. */
+function refillRally(empire: Empire, p: StellarObject | null): Habitat | BuiltObject | null {
+    if (p !== null && !p.hasBeenDestroyed) {
+        const owner = (p as { empire?: Empire | null }).empire ?? null;
+        if (owner === null || owner === empire) return p as Habitat | BuiltObject;
+    }
+    return empire.capital;
+}
+
 /** Construction completion hook: a ship of a build order joins (or starts) its fleet. */
 export function fleetBuildOrderShipCompleted(galaxy: Galaxy, ship: BuiltObject): void {
     const empire = ship.empire;
@@ -471,9 +580,27 @@ export function fleetBuildOrderShipCompleted(galaxy: Galaxy, ship: BuiltObject):
             if (o.fleet !== null && empireShipGroups(empire).includes(o.fleet)) {
                 shipGroupAddShipToFleet(galaxy, o.fleet, ship);
                 shipGroupUpdate(galaxy, o.fleet);
+            } else if (o.refillLinkId !== undefined) {
+                // A fleet's replacements (player/fleetRefill.ts): a fleet destroyed in battle (its link re-forming) is
+                // re-formed by its first replacement, under its name and home base; a fleet the player disbanded (no
+                // link) is not — the ship finishes unassigned.
+                const link = b.links?.find((l) => l.id === o.refillLinkId) ?? null;
+                if (link !== null && link.fleet === null) {
+                    const rally = refillRally(empire, link.gatherPoint);
+                    o.fleet = newFleet(galaxy, empire, [ship], link.name !== '' ? link.name : o.name, rally);
+                    if (o.fleet !== null) {
+                        gatherFleet(galaxy, o.fleet, rally);
+                        link.fleet = o.fleet;
+                        link.ships = o.fleet.ships.slice();
+                        link.gatherPoint = o.fleet.gatherPoint;
+                    }
+                }
             } else {
                 o.fleet = newFleet(galaxy, empire, [ship], o.name, o.rally);
-                if (o.fleet !== null) gatherFleet(galaxy, o.fleet, o.rally);
+                if (o.fleet !== null) {
+                    gatherFleet(galaxy, o.fleet, o.rally);
+                    linkFleetTemplate(galaxy, empire, o.fleet, o.templateId);
+                }
             }
         }
         if (o.pending.every((p) => !stillBuilding(empire, p))) b.orders.splice(i, 1);

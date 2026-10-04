@@ -6,6 +6,7 @@
 // Bundled by Vite as a separate module worker (src/simworker/workerClient.ts: new Worker(new URL('./worker.ts', ...))).
 // No DOM: only fetch, timers and postMessage.
 
+import { setBattleReportsEnabled } from '../sim/battleReports/hooks';
 import { loadGameData, type FetchText, type GameData } from '../sim/data/gameData';
 import { activeCustomizationSet } from '../sim/data/customization';
 import { activateTheme } from '../themeLoader';
@@ -69,6 +70,7 @@ let last = 0;
 const early: ToWorker[] = [];
 
 async function init(m: InitMessage): Promise<void> {
+    setBattleReportsEnabled(m.battleReports !== false);
     if (m.customizationSet !== undefined && m.customizationSet !== '') await activateTheme(m.customizationSet);
     // A load's save text is dropped once parsed (bootWorkerGame): the worker keeps only the game (a late save is 100+ MB).
     const booted = await bootWorkerGame(m.boot, bootDeps);

@@ -1,5 +1,6 @@
 // "Improvements": the one category every Distant Worlds 2-inspired addition goes under. NOT a port: DW:U has none of
-// them. They are UI only (no game rules change) and each can be switched off in Game Options → Improvements.
+// them. Most are UI only; one that changes the player's game (designLineUpgrade) reaches the sim only through a
+// journaled player command. Each can be switched off in Game Options → Improvements.
 //
 // The shared scaffolding (reuse it for a new improvement):
 //   1. Add an entry to IMPROVEMENTS below (or call registerImprovement from the feature's module): a stable `id`, the
@@ -26,13 +27,31 @@ export interface Improvement {
     description: string;
     /** On unless the player turned it off. */
     default: boolean;
+    /** List a row in the View popup's Improvements section that switches the improvement itself (one with no map
+     *  overlay of its own; always listed, its check = on / off). */
+    viewRow?: boolean;
 }
 
 /** Title of the overlay section and of the options group. */
 export const IMPROVEMENTS_TITLE = 'Improvements';
 
 /** The registry, in display order. */
-const IMPROVEMENTS: Improvement[] = [];
+const IMPROVEMENTS: Improvement[] = [
+    {
+        id: 'supplyChain',
+        label: 'Supply chain visibility',
+        description: 'What construction is waiting for, the Supply Shortages map overlay and the per-resource supply panel.',
+        default: true,
+    },
+    {
+        // [improvements] designLineUpgrade (sim/player/designLineUpgrade.ts; ui/designLineUpgrade.ts syncs it to the sim).
+        id: 'designLineUpgrade',
+        label: 'Automatic design upgrades (same tech line)',
+        description: 'New research upgrades the parts of the design types you made along their own tech line (blaster → phaser, missile → missile); automation stops replacing those types.',
+        default: true,
+        viewRow: true,
+    },
+];
 
 /** Add an improvement (or replace the one with the same id). Returns it. */
 export function registerImprovement(imp: Improvement): Improvement {
@@ -85,28 +104,49 @@ export function overlayRowSections<R extends { improvement?: string }>(rows: rea
     return { original, improvements: extra };
 }
 
-/** Row pitch of the options group (check box line + description line). */
-const ROW_H = 40;
+/** The improvements that list their own on / off row in the View popup (Improvement.viewRow), in display order. */
+export function improvementViewRows(): Improvement[] {
+    return IMPROVEMENTS.filter((i) => i.viewRow === true);
+}
 
-/** Height of the options group for `n` improvements. */
+/** Row pitch of the options group (check box line + up to two wrapped description lines). */
+const ROW_H = 66;
+
+/** Tallest the group grows before its list scrolls. */
+export const IMPROVEMENTS_GROUP_MAX_H = 520;
+
+/** Height of the options group for `n` improvements (capped: past the cap the list scrolls). */
 export function improvementsGroupHeight(n = IMPROVEMENTS.length): number {
-    return 30 + Math.max(1, n) * ROW_H;
+    return Math.min(IMPROVEMENTS_GROUP_MAX_H, 30 + Math.max(1, n) * ROW_H);
 }
 
 /**
  * The Game Options "Improvements" group: one check box per improvement (its label) with its description below, in the
- * original-window style (originalWindowControls.groupBox / originalWindow.checkBox). Toggling saves at once.
+ * original-window style (originalWindowControls.groupBox / originalWindow.checkBox). Toggling saves at once. Rows are
+ * ROW_H apart so a wrapped description never reaches the next check box; any number of entries scrolls.
  */
 export function buildImprovementsGroup(width: number, size: number = FONT.normal): HTMLDivElement {
-    const g = groupBox(IMPROVEMENTS_TITLE, width, improvementsGroupHeight(), FONT.header);
+    const h = improvementsGroupHeight();
+    const g = groupBox(IMPROVEMENTS_TITLE, width, h, FONT.header);
     g.classList.add('improvements-group');
+    const list = place(el('div', 'improvements-list'), 0, 24, width - 4, h - 28);
+    list.style.overflowX = 'hidden';
+    list.style.overflowY = 'auto';
+    const inner = el('div', 'improvements-rows');
+    inner.style.position = 'relative';
+    inner.style.height = `${Math.max(1, IMPROVEMENTS.length) * ROW_H}px`;
+    list.appendChild(inner);
     IMPROVEMENTS.forEach((imp, i) => {
-        const y = 24 + i * ROW_H;
+        const y = 2 + i * ROW_H;
         const c = checkBox(imp.label, isImprovementEnabled(imp.id), (v) => setImprovementEnabled(imp.id, v), size);
         c.dataset.improvement = imp.id;
-        g.appendChild(place(c, 10, y));
-        g.appendChild(place(text(imp.description, { size: FONT.tiny, color: COLORS.label, wrapWidth: width - 50 }), 34, y + 19));
+        inner.appendChild(place(c, 10, y));
+        const d = place(text(imp.description, { size: FONT.tiny, color: COLORS.label, wrapWidth: width - 60 }), 34, y + 22);
+        d.style.maxHeight = `${ROW_H - 26}px`;
+        d.style.overflow = 'hidden';
+        inner.appendChild(d);
     });
-    if (IMPROVEMENTS.length === 0) g.appendChild(place(el('div', 'ow-text', '(none)'), 10, 24));
+    if (IMPROVEMENTS.length === 0) inner.appendChild(place(el('div', 'ow-text', '(none)'), 10, 2));
+    g.appendChild(list);
     return g;
 }

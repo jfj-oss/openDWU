@@ -1,89 +1,25 @@
-/* Trade Flows panel + Freight Flows legend (task 19e-9). Tokens follow empiresList.css. */
-
-.trade-flows-wrap {
-    position: fixed;
-    inset: 0;
-    z-index: 1500;
-    pointer-events: none;
-    font-family: 'Forgotten Futurist', sans-serif;
-    color: #e6e6e6;
-}
-
-.trade-flows-window {
-    position: absolute;
-    top: 64px;
-    left: 16px;
-    width: 520px;
-    max-width: calc(100vw - 16px);
-    max-height: calc(100vh - 96px);
-    pointer-events: auto;
-    background: rgba(14, 16, 20, 0.94);
-    backdrop-filter: blur(6px);
-    -webkit-backdrop-filter: blur(6px);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 6px;
-    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6);
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-}
-
-.trade-flows-titlebar {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 8px 12px;
-    background: rgba(10, 11, 15, 0.9);
-    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-}
-
-.trade-flows-heading {
-    font-size: 13px;
-    color: #e8d24a;
-}
-
-.trade-flows-close {
-    background: transparent;
-    border: none;
-    color: #ccc;
-    font-size: 15px;
-    cursor: pointer;
-    padding: 2px 6px;
-}
-.trade-flows-close:hover {
-    color: #fff;
-}
+/* Trade Flows panel + Freight Flows legend (task 19e-9) in the original window style: the ScreenPanel chrome comes
+   from ui/originalWindow.ts, the list below is a dark (32, 32, 40) grid-like area. */
 
 .trade-flows-body {
-    padding: 8px;
+    box-sizing: border-box;
+    padding: 6px 8px;
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    gap: 3px;
     overflow-y: auto;
-}
-
-.trade-flows-filters {
-    display: flex;
-    gap: 6px;
-}
-
-.trade-flows-select {
-    flex: 1;
-    background: rgba(255, 255, 255, 0.06);
-    color: #e6e6e6;
-    border: 1px solid rgba(255, 255, 255, 0.12);
-    border-radius: 3px;
-    font: inherit;
-    font-size: 12px;
-    padding: 2px 4px;
+    background: rgb(32, 32, 40);
+    border: 1px solid rgb(67, 67, 77);
+    font-size: 15.33px;
+    color: rgb(170, 170, 170);
 }
 
 .trade-flows-legend {
     display: flex;
     flex-wrap: wrap;
-    gap: 4px 12px;
-    font-size: 11px;
-    color: #aaa;
+    gap: 4px 14px;
+    font-size: 13.33px;
+    color: rgb(170, 170, 170);
     padding: 2px 2px 0;
 }
 
@@ -95,70 +31,69 @@
 }
 
 .trade-flows-note {
-    font-size: 11px;
-    color: #9a9a70;
-    min-height: 0;
+    font-size: 13.33px;
+    color: rgb(190, 190, 110);
 }
 .trade-flows-note:empty {
     display: none;
 }
 
 .trade-flows-section-head {
-    margin-top: 6px;
-    font-size: 10px;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    color: #e8d24a;
+    margin-top: 8px;
+    padding: 2px 0;
+    font-size: 15.33px;
+    font-weight: bold;
+    color: rgb(255, 255, 255);
+    border-bottom: 1px solid rgb(67, 67, 77);
 }
 
 .trade-flows-rows {
     display: flex;
     flex-direction: column;
-    gap: 3px;
 }
 .trade-flows-rows:not([data-empty=''])::after {
     content: attr(data-empty);
-    font-size: 11px;
-    color: #777;
+    font-size: 13.33px;
+    color: rgb(120, 120, 130);
     padding: 2px 8px;
 }
 
+/* ListViewBase rows: (32, 32, 40) / (48, 48, 56) alternating, (170, 170, 170) text, yellow selected-style hover. */
 .trade-flows-row {
     display: grid;
     align-items: center;
     gap: 8px;
-    padding: 4px 8px;
-    background: rgba(255, 255, 255, 0.04);
-    border: 1px solid rgba(255, 255, 255, 0.07);
-    border-radius: 4px;
-    font-size: 12px;
+    padding: 2px 8px;
+    min-height: 22px;
+    background: rgb(32, 32, 40);
+    font-size: 15.33px;
+}
+.trade-flows-row:nth-child(even) {
+    background: rgb(48, 48, 56);
 }
 .trade-flows-row.cols-3 {
     grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) 6em;
 }
 .trade-flows-row.cols-4.has-swatch {
-    grid-template-columns: 10px minmax(0, 1.6fr) minmax(0, 1fr) 6em 4.5em;
+    grid-template-columns: 12px minmax(0, 1.6fr) minmax(0, 1fr) 6em 5.5em;
 }
 .trade-flows-row.clickable {
     cursor: pointer;
 }
 .trade-flows-row.clickable:hover {
-    background: rgba(255, 255, 255, 0.1);
+    background: rgb(96, 96, 96);
+    color: rgb(255, 255, 0);
 }
 .trade-flows-row.mine {
-    border-color: rgba(232, 210, 74, 0.35);
+    color: rgb(255, 255, 0);
 }
-.trade-flows-header {
-    background: transparent;
-    border-color: transparent;
-    padding-top: 0;
-    padding-bottom: 0;
+.trade-flows-header,
+.trade-flows-header:nth-child(even) {
+    background: rgb(24, 24, 24);
+    min-height: 22px;
 }
 .trade-flows-header .trade-flows-cell {
-    font-size: 10px;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    color: #777;
+    color: rgb(170, 170, 170);
 }
 
 .trade-flows-cell {
@@ -175,50 +110,37 @@
 
 .trade-flows-swatch {
     display: inline-block;
-    width: 10px;
-    height: 10px;
-    border-radius: 2px;
-    border: 1px solid rgba(255, 255, 255, 0.25);
+    width: 11px;
+    height: 11px;
+    border: 1px solid rgb(120, 120, 130);
 }
 .trade-flows-swatch.blank {
     border-color: transparent;
 }
 
-/* Map legend while Freight Flows is on: left edge, below the top bar. */
+/* Map legend while Freight Flows is on: a BorderPanel ((48, 48, 64) with 3 px alpha-96 grey borders), left edge,
+   below the top bar. */
 .freight-legend {
     position: fixed;
     left: 12px;
     top: 120px;
     z-index: 900;
     padding: 6px 10px 8px;
-    background: rgba(14, 16, 20, 0.82);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 5px;
+    background: rgb(48, 48, 64);
+    border: 3px solid rgba(200, 200, 200, 0.38);
     font-family: 'Forgotten Futurist', sans-serif;
-    font-size: 11px;
-    color: #ccc;
+    font-size: 13.33px;
+    color: rgb(170, 170, 170);
     display: flex;
     flex-direction: column;
     gap: 3px;
 }
 .freight-legend-head {
-    color: #e8d24a;
-    font-size: 10px;
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
+    color: rgb(255, 255, 255);
+    font-weight: bold;
     margin-bottom: 2px;
 }
 .freight-legend-more {
     margin-top: 4px;
-    background: rgba(255, 255, 255, 0.06);
-    border: 1px solid rgba(255, 255, 255, 0.12);
-    border-radius: 3px;
-    color: #e6e6e6;
-    font: inherit;
-    font-size: 11px;
-    cursor: pointer;
-    padding: 2px 6px;
-}
-.freight-legend-more:hover {
-    background: rgba(255, 255, 255, 0.12);
+    align-self: flex-start;
 }

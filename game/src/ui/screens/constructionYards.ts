@@ -12,8 +12,9 @@
 // The other pnlBuiltObjectInfo tabs (Cargo / Components / Docking Bays / Troops / Weapons, Main.Part11.cs method_170,
 // method_175, method_176, method_178) are the shared pages of builtObjectDataTabs.ts; Scrap is
 // btnBuiltObjectScrapSelected_Click (the 'scrapShips' op); the purchaser is yardPurchaser (also the Colonies screen's).
-// TODO(port): the Set Fleet combo and the manufacturing plants grids (duExoPvEoA / ctlConstructionYardManufacturerWaitQueue,
-//             laid out below the visible tab page in method_169).
+// The Set Fleet combo (cmbBuiltObjectSetFleet, method_182) and the manufacturing plants grids (duExoPvEoA /
+// ctlConstructionYardManufacturerWaitQueue, laid out below the visible tab page in method_169: the page scrolls to them
+// here) are the shared ones of builtObjectDataTabs.ts.
 // The purchaser is bound as method_169 binds it (purchaserBinding): a pirate player buys at a colony it controls as itself,
 // and private ships (freighters, mining ships / stations, passenger ships) too at its own bases (allowPrivateConstruction).
 
@@ -47,7 +48,7 @@ import { DIMMED_COLOR, SELECTED_COLOR, drawMapTerritory, galaxyMapScale, starDot
 import { drawGalaxyMapLayers } from './galaxyMapLayers';
 import { openGalactopedia } from './galactopedia';
 import { openConstructionSummary } from './designEditor';
-import { builtObjectTabLabels, dataTabContentKey, renderDataTab, type DataTabId } from './builtObjectDataTabs';
+import { builtObjectTabLabels, createSetFleetCombo, dataTabContentKey, manufacturingGrids, renderDataTab, type DataTabId } from './builtObjectDataTabs';
 import { showToast } from '../toast';
 import { formatNet, tryGetText } from '../../sim/textResolver';
 import {
@@ -72,6 +73,12 @@ import {
     type OriginalWindow,
 } from '../originalWindow';
 import { requestSimRefresh } from '../../simworker/refresh';
+// [improvements] supplyChain — the "Waiting For" tab, the Supply column and the ship rows' waiting text.
+import type { Delivery, SiteSupply } from '../../sim/logistics/supplyChain';
+import { supplyChainEnabled, supplySnapshot } from '../supplyChainCache';
+import { deliveryText, formatEtaDays, formatUnits, itemNeedsText, itemStateText, needStatus, needStatusText, placeText, resourceName, siteHeadline, siteResourceText, type NeedStatus } from '../supplyChainText';
+import { openResourceSupply, resourceSupplyAvailable } from './resourceSupply';
+import { onImprovementsChange } from '../improvements';
 /** The Construction Yards ship orders (the Ships and Bases buttons on the selected yard ship). */
 export type YardShipOrder = 'refuelShips' | 'repairShips' | 'retireShips';
 
@@ -276,6 +283,83 @@ export function waitRows(site: ConstructionSite): WaitRow[] {
     return rows;
 }
 
+// [improvements] supplyChain begin
+export interface WaitingRow {
+    key: string;
+    ship: BuiltObject;
+    /** The item's first row (its name is shown once). */
+    first: boolean;
+    shipText: string;
+    state: string;
+    resourceId: number | null;
+    resource: string;
+    missing: string;
+    coming: string;
+    from: string;
+    eta: string;
+    status: NeedStatus | 'ok';
+    title: string;
+    /** The soonest delivery covering it (double click selects its freighter). */
+    delivery: Delivery | null;
+}
+
+/** The "Waiting For" tab's rows: per queue item (slipways, then the wait queue) one row per missing resource — how much,
+ *  what is bringing it (freighters, their sources, ETA) or that nothing is — or one row when it lacks nothing. */
+export function waitingRows(galaxy: Galaxy, site: SiteSupply | null): WaitingRow[] {
+    const rows: WaitingRow[] = [];
+    if (site === null) return rows;
+    const viewer = galaxy.playerEmpire;
+    site.items.forEach((item, i) => {
+        const shipText = `${item.yard !== null ? '' : 'Queued: '}${item.ship.name}`;
+        const state = itemStateText(item);
+        const parts = `${item.componentsToBuild} components to fit: ${item.componentsReady} ready, ${item.componentsInManufacture} being made, ${item.componentsToMake} to make`;
+        if (item.needs.length === 0) {
+            rows.push({ key: `${i}`, ship: item.ship, first: true, shipText, state, resourceId: null, resource: '', missing: '', coming: '', from: itemNeedsText(galaxy, item), eta: '', status: 'ok', title: `${item.ship.name}: ${state}. ${parts}.`, delivery: null });
+            return;
+        }
+        item.needs.forEach((n, j) => {
+            const st = needStatus(n);
+            const sr = site.resources.find((r) => r.resourceId === n.resourceId) ?? null;
+            const sources = [...new Set(n.deliveries.map((d) => placeText(galaxy, d.delivery.supplier, viewer)))];
+            let from = sources.join(', ');
+            if (st === 'none' || n.uncovered > 0) {
+                const why = sr !== null && sr.availableElsewhere > 0 ? `${formatUnits(sr.availableElsewhere)} held${sr.availableAt !== null ? ` at ${placeText(galaxy, sr.availableAt, viewer)}` : ''}, not ordered` : 'none in your empire';
+                from = from === '' ? why : `${from}; rest: ${why}`;
+            } else if (st === 'ordered' && from === '') from = 'ordered, waiting for a freighter';
+            const coming = n.byDeliveries > 0 ? formatUnits(n.byDeliveries) : n.byOrders > 0 ? 'ordered' : 'nothing';
+            const lines = [`${item.ship.name} needs ${formatUnits(n.missing)} ${resourceName(galaxy, n.resourceId)} (${needStatusText(n)}). ${parts}.`];
+            for (const d of n.deliveries) lines.push(`• ${deliveryText(galaxy, d.delivery, viewer, d.amount)}`);
+            if (n.byOrders > 0) lines.push(`• ${formatUnits(n.byOrders)} ordered, no freighter yet`);
+            if (n.uncovered > 0) lines.push(`• ${formatUnits(n.uncovered)}: nothing coming`);
+            rows.push({
+                key: `${i}:${n.resourceId}`,
+                ship: item.ship,
+                first: j === 0,
+                shipText,
+                state,
+                resourceId: n.resourceId,
+                resource: resourceName(galaxy, n.resourceId),
+                missing: formatUnits(n.missing),
+                coming,
+                from,
+                eta: n.etaMs !== null ? formatEtaDays(n.etaMs) : n.deliveries.length > 0 ? `${formatEtaDays(n.deliveries[0].delivery.etaMs)}+` : '—',
+                status: st,
+                title: lines.join('\n'),
+                delivery: n.deliveries[0]?.delivery ?? null,
+            });
+        });
+    });
+    return rows;
+}
+
+/** The Supply column of the site list: '' (supplied / nothing queued), 'Short', 'Stalled'. */
+export function siteSupplyLabel(site: SiteSupply | null): { text: string; cls: string; title: string } {
+    if (site === null || site.resources.length === 0) return { text: '', cls: '', title: site === null ? '' : 'Every queued ship has its resources' };
+    if (site.stalled || site.nothingComing) return { text: site.stalled ? 'Stalled' : 'Short!', cls: 'cy-stalled', title: siteHeadline(site) };
+    return { text: 'Short', cls: 'cy-short', title: siteHeadline(site) };
+}
+// [improvements] supplyChain end
+
 /** Empire.10.cs 447 CheckDesignComponentsResearched. */
 export function checkDesignComponentsResearched(empire: Empire, design: Design): boolean {
     for (const c of design.components) if (!empire.research.checkComponentResearched(c)) return false;
@@ -404,8 +488,8 @@ export function purchaseAutomationTask(empire: Pick<Empire, 'controlColonization
 }
 
 /** The screen's tab pages: method_178's (Cargo, Components, Construction Yards, Docking Bays, Troops, Weapons), then
- *  our Fleet Builds and Construction Jobs. */
-export const TAB_ORDER = ['cargo', 'components', 'yards', 'docking', 'troops', 'weapons', 'fleets', 'jobs'] as const;
+ *  our Fleet Builds and Construction Jobs, and the Improvements' Waiting For (supplyChain; hidden while it is off). */
+export const TAB_ORDER = ['cargo', 'components', 'yards', 'docking', 'troops', 'weapons', 'fleets', 'jobs', 'supply'] as const;
 function isDataTab(t: string): t is DataTabId {
     return t === 'cargo' || t === 'components' || t === 'docking' || t === 'troops' || t === 'weapons';
 }
@@ -545,6 +629,9 @@ export interface ConstructionYardsOptions {
     onViewFleet?: (fleet: ShipGroup) => void;
     /** The header's filter combo picked another filter: open the Ships and Bases screen on it. */
     onOpenShipsAndBases?: (filter: string) => void;
+    /** [improvements] supplyChain: open on this site (and tab), e.g. from the selection panel's Waiting row. */
+    site?: BuiltObject | Habitat;
+    tab?: 'supply' | 'yards';
 }
 
 interface OpenState {
@@ -558,6 +645,12 @@ let open: OpenState | null = null;
 export function toggleConstructionYards(opts: ConstructionYardsOptions): void {
     if (open) open.close();
     else open = createConstructionYards(opts);
+}
+
+/** Open the Construction Yards screen (re-opened when it is open) — on `opts.site` / `opts.tab` when given. */
+export function openConstructionYards(opts: ConstructionYardsOptions): void {
+    if (open) open.close();
+    open = createConstructionYards(opts);
 }
 
 /** Close the Construction Yards screen (no-op when closed). */
@@ -629,10 +722,17 @@ function createConstructionYards(opts: ConstructionYardsOptions): OpenState {
         height: L.window.h,
         onClose: () => {
             window.clearInterval(timer);
+            offImprovements();
             open = null;
         },
     });
     const body = win.body;
+    // [improvements] supplyChain switched off while open: leave its tab (refresh hides the tab button).
+    const offImprovements = onImprovementsChange((id, on) => {
+        if (id !== 'supplyChain') return;
+        if (!on && tab === 'supply') tabButtons[TAB_ORDER.indexOf('yards')].click();
+        refresh();
+    });
 
     // cmbBuiltObjectFilter in the header at (380, 12), 210 × 21, on "Construction Yards".
     const header = win.frame.querySelector<HTMLElement>('.ow-header');
@@ -653,10 +753,14 @@ function createConstructionYards(opts: ConstructionYardsOptions): OpenState {
 
     // ---- State (by object identity across refreshes) ----
     let rows: ConstructionSiteRow[] = [];
-    let selected: ConstructionSite | null = null;
+    let selected: ConstructionSite | null = opts.site ? (constructionSites(empire).find((x) => siteTarget(x) === opts.site) ?? null) : null;
     let selectedYard: ConstructionYard | null = null;
     let selectedWait: BuiltObject | null = null;
-    let tab: DataTabId | 'yards' | 'fleets' | 'jobs' = 'yards';
+    // [improvements] supplyChain: the Waiting For tab and the Supply column exist while the improvement is on.
+    const supplyOn = supplyChainEnabled();
+    let tab: DataTabId | 'yards' | 'fleets' | 'jobs' | 'supply' = opts.tab === 'supply' && supplyOn ? 'supply' : 'yards';
+    /** The selected site's supply (the shared snapshot, ≤ 1 s old). */
+    let siteSupply: SiteSupply | null = null;
     /** Components tab: the selected component (ctlBuiltObjectComponents.SelectedComponent). */
     let selectedComponent: number | null = null;
     const selectedTarget = (): BuiltObject | Habitat | null => (selected ? siteTarget(selected) : null);
@@ -676,14 +780,23 @@ function createConstructionYards(opts: ConstructionYardsOptions): OpenState {
             { id: 'picture', header: '', width: 35, align: 'center', render: (r, c) => {
                 c.appendChild(img(sitePictureUrl(r.site), r.site.kind === 'colony' ? 'cy-pic cy-pic-habitat' : 'cy-pic cy-pic-ship'));
             } },
-            { id: 'name', header: gt('Name'), width: 130, sort: (r) => r.name, render: (r, c) => { c.textContent = r.name; c.title = r.name; } },
-            { id: 'role', header: gt('Role'), width: 110, sort: (r) => r.type, render: (r, c) => { c.textContent = r.type; c.title = r.type; } },
-            { id: 'system', header: gt('System'), width: 90, sort: (r) => r.system, render: (r, c) => { c.textContent = r.system; c.title = r.system; } },
+            { id: 'name', header: gt('Name'), width: supplyOn ? 118 : 130, sort: (r) => r.name, render: (r, c) => { c.textContent = r.name; c.title = r.name; } },
+            { id: 'role', header: gt('Role'), width: supplyOn ? 100 : 110, sort: (r) => r.type, render: (r, c) => { c.textContent = r.type; c.title = r.type; } },
+            { id: 'system', header: gt('System'), width: supplyOn ? 82 : 90, sort: (r) => r.system, render: (r, c) => { c.textContent = r.system; c.title = r.system; } },
+            // [improvements] supplyChain: Stalled / Short when the queue lacks resources.
+            ...(supplyOn
+                ? [{ id: 'supply', header: 'Supply', width: 52, sort: (r: ConstructionSiteRow) => siteSupplyLabel(snapSite(r.site)).text, title: 'Construction short of resources (Waiting For tab)', render: (r: ConstructionSiteRow, c: HTMLDivElement) => {
+                      const l = siteSupplyLabel(snapSite(r.site));
+                      c.textContent = l.text;
+                      c.title = l.title;
+                      if (l.cls) c.classList.add(l.cls);
+                  } }]
+                : []),
             { id: 'yards', header: 'Yards', width: 45, align: 'right', sort: (r) => r.yards, title: 'Construction yards (slipways)', render: (r, c) => { c.textContent = String(r.yards); } },
             { id: 'building', header: 'Building', width: 60, align: 'right', sort: (r) => r.building, title: 'Ships under construction', render: (r, c) => { c.textContent = String(r.building); } },
             { id: 'waiting', header: 'Waiting', width: 55, align: 'right', sort: (r) => r.waiting, title: 'Ships waiting to be constructed', render: (r, c) => { c.textContent = String(r.waiting); } },
             { id: 'speed', header: gt('Speed'), width: 45, align: 'right', sort: (r) => r.speed, title: 'Construction speed', render: (r, c) => { c.textContent = String(r.speed); } },
-            { id: 'progress', header: gt('Progress'), align: 'right', sort: (r) => r.progress, title: 'Mean progress of the ships under construction', render: (r, c) => progressCell(c, r.progress, 70, r.building > 0, ROW_H) },
+            { id: 'progress', header: gt('Progress'), align: 'right', sort: (r) => r.progress, title: 'Mean progress of the ships under construction', render: (r, c) => progressCell(c, r.progress, supplyOn ? 52 : 70, r.building > 0, ROW_H) },
         ],
         onSelect: (r) => {
             if (selected && siteTarget(selected) === siteTarget(r.site)) return;
@@ -691,6 +804,7 @@ function createConstructionYards(opts: ConstructionYardsOptions): OpenState {
             selectedYard = null;
             selectedWait = null;
             selectedComponent = null;
+            setFleet.reset(); // ctlBuiltObjectList_SelectionChanged_1
             refresh();
         },
         onDoubleClick: (r) => goTo(r.site),
@@ -724,6 +838,12 @@ function createConstructionYards(opts: ConstructionYardsOptions): OpenState {
         const sg = selectedBO()?.shipGroup as ShipGroup | null | undefined;
         if (sg && opts.onViewFleet) opts.onViewFleet(sg);
     });
+    // cmbBuiltObjectSetFleet (550, 308) 140 × 18 (method_178; items method_182): the selected ship / base.
+    const setFleet = createSetFleetCombo(galaxy, empire, () => {
+        const bo = selectedBO();
+        return bo !== null ? [bo] : [];
+    }, () => refresh());
+    body.appendChild(place(setFleet.el, 550, 308, 140, 21));
     const B2 = L.buttons2;
     const shipOp = (op: YardShipOrder) => () => {
         const bo = selectedBO();
@@ -784,14 +904,16 @@ function createConstructionYards(opts: ConstructionYardsOptions): OpenState {
     const pageYards = place(el('div', 'cy-page'), L.page.x, L.page.y, L.page.w, L.page.h);
     const pageFleets = place(el('div', 'cy-page'), L.page.x, L.page.y, L.page.w, L.page.h);
     const pageJobs = place(el('div', 'cy-page'), L.page.x, L.page.y, L.page.w, L.page.h);
+    const pageSupply = place(el('div', 'cy-page'), L.page.x, L.page.y, L.page.w, L.page.h); // [improvements] supplyChain
     // The shared Cargo / Components / Docking Bays / Troops / Weapons pages (builtObjectDataTabs.ts).
     const pageData = place(el('div', 'cy-page'), L.page.x, L.page.y, L.page.w, L.page.h);
-    body.append(pageYards, pageFleets, pageJobs, pageData);
+    body.append(pageYards, pageFleets, pageJobs, pageSupply, pageData);
     let dataKey = '';
     function showTab(): void {
         pageYards.hidden = tab !== 'yards';
         pageFleets.hidden = tab !== 'fleets';
         pageJobs.hidden = tab !== 'jobs';
+        pageSupply.hidden = tab !== 'supply';
         pageData.hidden = !isDataTab(tab);
         dataKey = '';
         refresh();
@@ -841,6 +963,7 @@ function createConstructionYards(opts: ConstructionYardsOptions): OpenState {
                 const order = r.shipObject ? fleetOrders.get(r.shipObject) : undefined;
                 c.title = order ? `${r.ship} (fleet build: ${order})` : r.ship;
                 if (order) c.classList.add('cy-fleet-build');
+                if (r.shipObject) markWaiting(c, r.shipObject);
             } },
             { id: 'progress', header: gt('Progress'), width: 70, align: 'right', sort: (r) => r.progress, render: (r, c) => progressCell(c, r.progress, 70, r.shipObject !== null, YARD_ROW_H) },
             { id: 'speed', header: gt('Speed'), width: 53, align: 'right', sort: (r) => r.speed, render: (r, c) => { c.textContent = String(r.speed); } },
@@ -868,6 +991,7 @@ function createConstructionYards(opts: ConstructionYardsOptions): OpenState {
                 const order = fleetOrders.get(r.builtObject);
                 c.title = order ? `${r.name} (fleet build: ${order})` : r.name;
                 if (order) c.classList.add('cy-fleet-build');
+                markWaiting(c, r.builtObject);
             } },
             { id: 'role', header: gt('Role'), width: 140, render: (r, c) => { c.textContent = r.type; c.title = `${r.type}, ${gt('X credits', Math.trunc(r.price).toFixed(0))}`; } },
         ],
@@ -903,6 +1027,10 @@ function createConstructionYards(opts: ConstructionYardsOptions): OpenState {
     const maxSize = text('', { size: FONT.tiny, color: COLORS.label, wrapWidth: 160 });
     pageYards.appendChild(place(maxSize, 515, 180));
     pageYards.appendChild(place(linkLabel(`${gt('Learn about Construction')}...`, () => openGalactopedia({ topic: gt('Construction') }), FONT.small), 515, 250));
+    // lblConstructionYardManufacturers (0, 345) + duExoPvEoA (0, 360) 555 × 150, lblConstructionYardManufacturerWaitQueue
+    // (0, 520) + ctlConstructionYardManufacturerWaitQueue (0, 535) 555 × 150 (method_169): below the page's 270 px.
+    pageYards.classList.add('dt-page-scroll');
+    const manufacturing = manufacturingGrids(pageYards, galaxy, empire);
 
     // Fleet Builds tab (ours): the running fleet-design build orders; the ships of each waiting at the selected yard.
     interface FleetRow {
@@ -928,7 +1056,7 @@ function createConstructionYards(opts: ConstructionYardsOptions): OpenState {
     });
     pageFleets.appendChild(place(fleetGrid.el, 0, 0, 540, 270));
     const btnCancelFleet = glassButton('Cancel Build', {
-        title: 'Stop the build order: waiting ships are removed and refunded, ships on a slipway finish unassigned',
+        title: 'Stop the build order: waiting ships are removed and refunded, ships on a slipway finish unassigned (a fleet\'s replacements: also turns off its auto-refill)',
         onClick: () => {
             const r = fleetGrid.selected;
             if (!r) return;
@@ -976,6 +1104,75 @@ function createConstructionYards(opts: ConstructionYardsOptions): OpenState {
         const r = jobGrid.selected;
         if (r?.ship) goToTarget(r.ship);
     });
+
+    // [improvements] supplyChain begin — Waiting For tab: what each queued ship lacks and what is bringing it.
+    function snapSite(site: ConstructionSite): SiteSupply | null {
+        if (!supplyChainEnabled()) return null;
+        return supplySnapshot(galaxy, empire)?.bySite.get(siteTarget(site)) ?? null;
+    }
+    /** A ship row's name cell: its waiting text in the tooltip, amber / red when short / stalled. */
+    function markWaiting(c: HTMLDivElement, ship: BuiltObject): void {
+        const item = siteSupply?.items.find((i) => i.ship === ship);
+        if (!item || item.needs.length === 0) return;
+        c.title = `${c.title}\n${itemStateText(item)} — waiting for: ${itemNeedsText(galaxy, item, 6)}`;
+        c.classList.add(item.stalled || item.needs.some((n) => n.uncovered > 0) ? 'cy-stalled' : 'cy-short');
+    }
+    const supplyGrid = new OwGrid<WaitingRow>({
+        key: (r) => r.key,
+        rowHeight: 22,
+        fontSize: FONT.small,
+        empty: 'Nothing is queued here.',
+        rowClass: (r) => `cy-need-${r.status}${r.first ? ' cy-need-first' : ''}`,
+        columns: [
+            { id: 'ship', header: gt('Ship'), width: 150, render: (r, c) => {
+                c.textContent = r.first ? r.shipText : '';
+                c.title = r.title;
+            } },
+            { id: 'state', header: 'State', width: 70, render: (r, c) => {
+                c.textContent = r.first ? r.state : '';
+                c.title = r.title;
+            } },
+            { id: 'resource', header: 'Resource', width: 110, render: (r, c) => {
+                c.textContent = r.resource;
+                c.title = r.resourceId !== null && resourceSupplyAvailable() ? `${r.resource}: where it is produced, held and needed (click)` : r.title;
+                if (r.resourceId !== null && resourceSupplyAvailable()) c.classList.add('cy-link');
+            }, onClick: (r) => {
+                if (r.resourceId !== null) openResourceSupply(r.resourceId);
+            } },
+            { id: 'missing', header: 'Missing', width: 58, align: 'right', render: (r, c) => { c.textContent = r.missing; c.title = r.title; } },
+            { id: 'coming', header: 'Coming', width: 58, align: 'right', render: (r, c) => { c.textContent = r.coming; c.title = r.title; } },
+            { id: 'from', header: 'From', render: (r, c) => { c.textContent = r.from; c.title = r.title; } },
+            { id: 'eta', header: 'ETA', width: 64, align: 'right', render: (r, c) => { c.textContent = r.eta; c.title = r.title; } },
+        ],
+        // Double click: the freighter bringing it (selected, the window stays), else the ship.
+        onDoubleClick: (r) => {
+            const f = r.delivery?.freighter ?? null;
+            const t = f !== null && !f.hasBeenDestroyed ? f : r.ship;
+            (opts.onSelectOnly ?? opts.onSelect)(t);
+        },
+    });
+    pageSupply.appendChild(place(supplyGrid.el, 0, 0, 674, 222));
+    const supplyNote = text('', { size: FONT.small, color: COLORS.label, wrapWidth: 668 });
+    pageSupply.appendChild(place(supplyNote, 3, 226));
+    function refreshSupplyPage(): void {
+        if (tab !== 'supply') return;
+        const rows = waitingRows(galaxy, siteSupply);
+        sync(supplyGrid, rows, (r) => `${r.key}|${r.shipText}|${r.state}|${r.missing}|${r.coming}|${r.from}|${r.eta}|${r.status}|${r.title}`, supplyGrid.selected?.key ?? null);
+        const s0 = siteSupply;
+        let note = '';
+        if (selected === null) note = '';
+        else if (s0 === null) note = 'Nothing is queued here.';
+        else if (s0.resources.length === 0) note = 'Every queued ship has its resources in stock (or its components ready). Double-click a row to select the ship.';
+        else {
+            const none = s0.resources.filter((r) => r.uncovered > 0);
+            note = `${siteHeadline(s0)}. `;
+            if (none.length > 0) note += `Nothing coming: ${none.slice(0, 3).map((r) => siteResourceText(galaxy, r, galaxy.playerEmpire).replace(/^[^:]*: /, `${resourceName(galaxy, r.resourceId)}: `)).join('; ')}${none.length > 3 ? ` (+${none.length - 3})` : ''}. `;
+            note += 'Double-click a row to select the freighter bringing it; click a resource to see its supply.';
+        }
+        setText(supplyNote, note);
+        supplyNote.classList.toggle('cy-note-alert', s0 !== null && (s0.stalled || s0.nothingComing));
+    }
+    // [improvements] supplyChain end
 
     // ---- Actions ----
     function goToTarget(t: BuiltObject | Habitat): void {
@@ -1070,6 +1267,8 @@ function createConstructionYards(opts: ConstructionYardsOptions): OpenState {
         btnViewDesign.disabled = bo === null;
         btnScrap.disabled = bo === null;
         btnViewFleet.disabled = !(bo !== null && bo.shipGroup != null && opts.onViewFleet);
+        // ctlBuiltObjectList_SelectionChanged: Enabled for a Military ship.
+        setFleet.update(bo !== null && bo.role === BuiltObjectRole.Military);
         btnRefuel.disabled = !mobile;
         btnRepair.disabled = !(mobile && bo!.damagedComponentCount > 0);
         btnRetrofit.disabled = bo === null || bo.owner === null;
@@ -1092,7 +1291,9 @@ function createConstructionYards(opts: ConstructionYardsOptions): OpenState {
     }
 
     function refreshDetail(r: ConstructionSiteRow | null): void {
-        const key = r ? `${r.name}|${r.type}|${r.system}|${r.yards}|${r.building}|${r.waiting}|${r.speed}|${Math.round(r.progress * 1000)}` : '';
+        const ss = siteSupply;
+        const supplyKey = ss === null ? '' : `${ss.stalled}|${ss.nothingComing}|${ss.resources.map((x) => `${x.resourceId}:${x.missing}`).join(',')}`;
+        const key = r ? `${r.name}|${r.type}|${r.system}|${r.yards}|${r.building}|${r.waiting}|${r.speed}|${Math.round(r.progress * 1000)}|${supplyKey}` : '';
         if (key === detailKey) return;
         detailKey = key;
         detail.replaceChildren();
@@ -1113,6 +1314,14 @@ function createConstructionYards(opts: ConstructionYardsOptions): OpenState {
         lines.forEach(([l, v], i) => valueRow(detail, l, v, 160, 118 + i * 22));
         if (r.site.kind === 'builtObject' && r.site.builtObject.topSpeed > 0) {
             detail.appendChild(place(text('A mobile yard: ships cannot be purchased here.', { size: FONT.tiny, color: COLORS.label, wrapWidth: 270 }), 12, 238));
+        }
+        // [improvements] supplyChain: the site's supply headline (Waiting For tab for the details).
+        if (ss !== null && ss.resources.length > 0) {
+            const t = text(`${ss.stalled ? 'Stalled' : 'Short'}: ${ss.resources.slice(0, 3).map((x) => `${resourceName(galaxy, x.resourceId)} ${formatUnits(x.missing)}`).join(', ')}${ss.resources.length > 3 ? '…' : ''}${ss.nothingComing ? ' — nothing coming' : ''}`, { size: FONT.tiny, wrapWidth: 276 });
+            t.classList.add(ss.stalled || ss.nothingComing ? 'cy-stalled' : 'cy-short', 'cy-link');
+            t.title = 'Open the Waiting For tab';
+            t.addEventListener('click', () => tabButtons[TAB_ORDER.indexOf('supply')].click());
+            detail.appendChild(place(t, 12, 258));
         }
     }
 
@@ -1172,7 +1381,9 @@ function createConstructionYards(opts: ConstructionYardsOptions): OpenState {
             selectedWait = null;
         }
         selected = row?.site ?? null;
-        sync(siteGrid, rows, (r) => `${r.name}|${r.type}|${r.system}|${r.yards}|${r.building}|${r.waiting}|${r.speed}|${Math.round(r.progress * 10000)}`, selected ? siteTarget(selected) : null);
+        siteSupply = selected !== null ? snapSite(selected) : null; // [improvements] supplyChain
+        const supplySig = (r: ConstructionSiteRow): string => (supplyOn ? siteSupplyLabel(snapSite(r.site)).text : '');
+        sync(siteGrid, rows, (r) => `${r.name}|${r.type}|${r.system}|${r.yards}|${r.building}|${r.waiting}|${r.speed}|${Math.round(r.progress * 10000)}|${supplySig(r)}`, selected ? siteTarget(selected) : null);
 
         const bo = selectedBO();
         if (document.activeElement !== nameBox) nameBox.value = bo?.name ?? (selected?.kind === 'colony' ? selected.habitat.name : '');
@@ -1180,10 +1391,14 @@ function createConstructionYards(opts: ConstructionYardsOptions): OpenState {
         fleetOrders = fleetOrderByShip(fleetDesignBook(empire).orders);
         const y = selected ? yardRows(selected, component) : [];
         if (selectedYard && !y.some((r) => r.yard === selectedYard)) selectedYard = null;
-        sync(yardGrid, y, (r) => `${objectId(r.yard)}|${r.ship}|${r.progressText}|${r.speed}|${r.shipObject ? (fleetOrders.get(r.shipObject) ?? '') : ''}`, selectedYard);
+        const waitSig = (b: BuiltObject | null): string => {
+            const it = b !== null ? siteSupply?.items.find((i) => i.ship === b) : undefined;
+            return it ? `${it.stalled}|${itemNeedsText(galaxy, it, 6)}` : '';
+        };
+        sync(yardGrid, y, (r) => `${objectId(r.yard)}|${r.ship}|${r.progressText}|${r.speed}|${r.shipObject ? (fleetOrders.get(r.shipObject) ?? '') : ''}|${waitSig(r.shipObject)}`, selectedYard);
         const w = selected ? waitRows(selected) : [];
         if (selectedWait && !w.some((r) => r.builtObject === selectedWait)) selectedWait = null;
-        sync(waitGrid, w, (r) => `${objectId(r.builtObject)}|${r.name}|${r.type}|${fleetOrders.get(r.builtObject) ?? ''}`, selectedWait);
+        sync(waitGrid, w, (r) => `${objectId(r.builtObject)}|${r.name}|${r.type}|${fleetOrders.get(r.builtObject) ?? ''}|${waitSig(r.builtObject)}`, selectedWait);
 
         const under = row ? row.building : 0;
         const labels = builtObjectTabLabels(selected ? siteTarget(selected) : null);
@@ -1207,9 +1422,17 @@ function createConstructionYards(opts: ConstructionYardsOptions): OpenState {
         const jobs = constructionJobRows(galaxy, empire);
         sync(jobGrid, jobs, (r) => `${r.id}|${r.label}|${r.state}|${r.shipName}|${r.etaMs === null ? '' : Math.round(r.etaMs / 1000)}`, jobGrid.selected?.id ?? null);
         setText(tabButtons[TAB_ORDER.indexOf('jobs')], `Construction Jobs${jobs.length > 0 ? ` (${jobs.length})` : ''}`);
+        // [improvements] supplyChain
+        const supplyBtn = tabButtons[TAB_ORDER.indexOf('supply')];
+        supplyBtn.hidden = !supplyChainEnabled();
+        const shortItems = siteSupply?.items.filter((i) => i.needs.length > 0).length ?? 0;
+        setText(supplyBtn, `Waiting For${shortItems > 0 ? ` (${shortItems}${siteSupply!.stalled || siteSupply!.nothingComing ? '!' : ''})` : ''}`);
+        supplyBtn.classList.toggle('cy-tab-alert', siteSupply !== null && (siteSupply.stalled || siteSupply.nothingComing));
+        refreshSupplyPage();
 
         setText(maxSize, maximumSizeText(empireMaximumSizes(empire)));
         refreshPurchaser();
+        manufacturing.bind(selected ? siteTarget(selected) : null);
         refreshDataPage();
         refreshDetail(row);
         drawMap();

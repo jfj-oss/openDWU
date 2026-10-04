@@ -16,7 +16,9 @@
 // - Paused ⇒ no frames (the C# loop keeps calling DoTasks with a frozen clock; with dt = 0 only the round-robin
 //   cursors would move).
 
+import { battleReportsFrameEnd } from '../battleReports/battleReports';
 import { processConstructionBoard } from '../player/constructionBoard';
+import { processFleetRefill } from '../player/fleetRefill';
 import { gameVictoryArgs } from '../victory';
 import type { Galaxy } from '../galaxy';
 import type { Empire } from '../empire';
@@ -467,11 +469,16 @@ function runSimFrameBody(galaxy: Galaxy, frameMs: number, opts: FrameOptions): v
     drainQueue(galaxy, state);
     // Not in the C#: the player's construction job board (O(1) unless it changed; player/constructionBoard.ts).
     processConstructionBoard(galaxy);
+    // Not in the C#: the player's fleets with "Auto-refill from template" on (O(1) unless one has; player/fleetRefill.ts).
+    processFleetRefill(galaxy);
     // Main's UI thread between two sim frames: what the sim sent the player this frame, in arrival order — the
     // BeginInvoke'd ReceiveMessageInternal / method_523 / PromptForAuthorizationInternal calls — then the advisor queue's
     // age expiry (playerMessages.ts; the C# runs them whenever its UI thread gets to them, the port at this fixed point
     // so that the game stays replayable).
     playerMessagesFrameEnd(galaxy);
+    // Mod layer (an Improvement, not in the C#): the battle-report observer — reads only, no Rnd, outside the digest;
+    // one comparison per frame, a scan once per game second (battleReports/battleReports.ts).
+    battleReportsFrameEnd(galaxy, frameMs);
     state.frames++;
 }
 

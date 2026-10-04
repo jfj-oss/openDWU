@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { tooltipText } from '../src/ui/mapTooltip';
+import { hoverPanelFill, tooltipText } from '../src/ui/mapTooltip';
 import { Habitat, HabitatCategoryType, HabitatType } from '../src/sim/types';
 
 // Task 12k: pure hover-tooltip text for a picked habitat.
@@ -47,5 +47,14 @@ describe('tooltipText (task 12k)', () => {
         const star = makeStar('Aldebaran');
         const planet = makePlanet(star, 'Aldebaran');
         expect(tooltipText(planet, 'Aldebaran')).toBe('Aldebaran');
+    });
+});
+// [uiwp6] HoverPanel.cs solidBrush_0: the owner's main colour at alpha 32, (64, 64, 64) at alpha 32 otherwise.
+describe('hoverPanelFill (HoverPanel.cs method_0 / method_13)', () => {
+    it('tints with the empire main colour at alpha 32', () => {
+        expect(hoverPanelFill(0xff8000)).toBe('rgba(255, 128, 0, 0.125)');
+    });
+    it('falls back to (64, 64, 64) at alpha 32', () => {
+        expect(hoverPanelFill(null)).toBe('rgba(64, 64, 64, 0.125)');
     });
 });

@@ -1,0 +1,19 @@
+/* Improvements "supplyChain": the resource supply panel (resourceSupply.ts) on the shared original-style window. */
+.ow-screen-resourcesupply .rs-picker {
+    z-index: 2;
+    font-size: 14px;
+}
+.ow-screen-resourcesupply .ow-grid-row.rs-short .ow-grid-cell {
+    color: rgb(255, 112, 96);
+}
+.ow-screen-resourcesupply .ow-grid-row.rs-short.ow-sel .ow-grid-cell {
+    color: rgb(255, 200, 96);
+}
+.ow-screen-resourcesupply .rs-on {
+    color: rgb(255, 255, 0);
+}
+.ow-screen-resourcesupply .ow-grid-cell {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}

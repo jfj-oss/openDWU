@@ -37,12 +37,15 @@ import { calculateAvailableAssaultPodAttackStrength } from '../sim/combat/attack
 import { shipGroupTotalTroopCapacity, shipGroupTotalTroopSpaceUsed } from '../sim/fleets/shipGroupTasks';
 import { troopCountsByType, troopCompositionDescription } from './screens/troops';
 import { fleetPostureDescription, fleetTotalFirepower } from './screens/fleetsList';
+import { fleetRefillStatus } from '../sim/player/fleetRefill';
+import { fleetTemplateSummary } from './fleetRefillControls';
 import { yardProgress } from './screens/constructionYards';
 import type { ConstructionQueue } from '../sim/construction/constructionQueue';
 import { builtObjectImageUrl, resolveDrawPictureRef } from '../render/builtObjectLayer';
 import { fighterImageUrl } from '../render/fighterLayer';
 import { FighterMissionType, Fighter, captainFightersBonus } from '../sim/combat/fighters';
 import { CharacterRole, CharacterSkillType } from '../sim/characters';
+import { builtObjectCharacterBonusDescription, fmtPlusMinusPct, shipGroupCharacterBonusDescription } from './characterBonusText';
 import { CHARACTER_ROLE, CHARACTER_SKILL, resolveEnumTextDescription } from '../sim/enumText';
 import { cloudUrls, habitatPictureUrl, mapStarUrls, starPictureUrls } from '../render/assets';
 import { racePortraitUrl } from './empireEmblem';
@@ -51,6 +54,8 @@ import { habitatTypeLabel, hyperjumpStatusText, invasionVsText, missionTargetTex
 import { wreckSalvageRows } from './scenario/wreckageUi'; // [wreckage]
 import { rimGoodMarker } from './scenario/rimTraderRows'; // [rimTrader]
 import { facilityGalactopediaTopic, facilityPanelHoverText } from './facilityHover';
+import { supplyChainEnabled, supplySnapshot } from './supplyChainCache'; // [improvements] supplyChain
+import { colonyTooltipLines, itemNeedsText, resourceName, siteTooltipLines } from './supplyChainText'; // [improvements] supplyChain
 
 // ---------------------------------------------------------------------------------------------------------------
 // Metrics (InfoPanel.cs SetContentSizeNormal 2420-2447) and colours (InfoPanel.cs fields / BaconInfoPanel.cs).
@@ -125,7 +130,12 @@ export type InfoTarget =
     | { kind: 'groundReport'; habitat: Habitat }
     /** A planetary facility hotspot (InfoPanel.cs 2604): Main.Part4.cs 3586-3597 → method_456, the Galactopedia at the
      *  "Wonders" or "Planetary Facilities" topic. */
-    | { kind: 'galactopedia'; topic: string };
+    | { kind: 'galactopedia'; topic: string }
+    /** [improvements] supplyChain: the Waiting row → the Construction Yards screen's Waiting For tab at this site. */
+    | { kind: 'supply'; target: Habitat | BuiltObject }
+    /** Not in the original: the player's fleet's "Template" row (fleetRefill.ts) opens the Fleets screen on the fleet,
+     *  where its template, auto-refill and Replenish are. */
+    | { kind: 'fleetTemplate'; fleet: ShipGroup };
 // (The same target serves the resource and race hotspots: Main.Part4.cs 3598-3607, method_456(resource / race Name).)
 
 /** One run of a row: text, an image, an empire flag, or a troop icon. */
@@ -412,6 +422,41 @@ function buildingRow(ctx: InfoContext, queue: ConstructionQueue | null): InfoRow
     return label('Building', segs);
 }
 
+// [improvements] supplyChain begin
+/** What the site's queued ships wait for (the player's own yards; ui/supplyChainCache.ts snapshot, ≤ 1 s old): one line
+ *  per short ship (at most 3), red when stalled or nothing is coming; the hover lists every resource, a click opens the
+ *  Construction Yards screen's Waiting For tab. */
+function waitingRows(ctx: InfoContext, target: Habitat | BuiltObject): InfoRow[] {
+    if (!supplyChainEnabled()) return [];
+    const site = supplySnapshot(ctx.galaxy, ctx.player)?.bySite.get(target);
+    if (site === undefined || site.resources.length === 0) return [];
+    const items = site.items.filter((i) => i.needs.length > 0);
+    const title = `${siteTooltipLines(ctx.galaxy, site, ctx.player, 8).join('\n')}\n(click: Construction Yards → Waiting For)`;
+    const goTo: InfoTarget = { kind: 'supply', target };
+    const rows: InfoRow[] = [];
+    items.slice(0, 3).forEach((it, i) => {
+        const bad = it.stalled || it.needs.some((n) => n.uncovered > 0);
+        rows.push(label(i === 0 ? 'Waiting' : '', [txt(`${it.ship.name}: ${itemNeedsText(ctx.galaxy, it, 2)}`, bad ? SUPPLY_ALERT : SUPPLY_SHORT)], { wrap: true, alert: bad, title, target: goTo }));
+    });
+    if (items.length > 3) rows.push(label('', [txt(`+${items.length - 3} more ships short of resources`, SUPPLY_SHORT)], { title, target: goTo }));
+    return rows;
+}
+
+/** A player colony short of luxuries: its luxury count against what development needs, and what is not coming. */
+function luxuryRow(ctx: InfoContext, h: Habitat): InfoRow | null {
+    if (!supplyChainEnabled()) return null;
+    const c = supplySnapshot(ctx.galaxy, ctx.player)?.byColony.get(h);
+    if (c === undefined || !c.short) return null;
+    const notComing = c.demanded.filter((d) => d.notComing).map((d) => resourceName(ctx.galaxy, d.resourceId));
+    const head = c.developmentFalling ? `${c.luxuryTypes} of ${c.typesForDevelopment} types: development falling` : `${c.luxuryTypes} types (wants ${c.typesWanted})`;
+    const tail = notComing.length > 0 ? `; not coming: ${notComing.slice(0, 2).join(', ')}${notComing.length > 2 ? ` +${notComing.length - 2}` : ''}` : '';
+    return label('Luxuries', [txt(`${head}${tail}`, c.developmentFalling ? SUPPLY_ALERT : SUPPLY_SHORT)], { wrap: true, alert: c.developmentFalling, title: colonyTooltipLines(ctx.galaxy, c, ctx.player, 8).join('\n') });
+}
+/** Text colours of those rows (the overlay's red / amber). */
+const SUPPLY_ALERT = 0xff6a50;
+const SUPPLY_SHORT = 0xffc040;
+// [improvements] supplyChain end
+
 function dockedRow(ctx: InfoContext, bays: { dockedShip: BuiltObject | null }[] | null, waitQueue: BuiltObject[] | null): InfoRow | null {
     if (bays === null || bays.length === 0) return null;
     const ships = bays.map((b) => b.dockedShip).filter((s): s is BuiltObject => s !== null);
@@ -484,7 +529,7 @@ function builtObjectKnown(ctx: InfoContext, bo: BuiltObject): boolean {
     return bo.empire !== null && ctx.player.empiresViewable.includes(bo.empire);
 }
 
-export function builtObjectInfo(ctx: InfoContext, bo: BuiltObject): InfoModel {
+export function builtObjectInfo(ctx: InfoContext, bo: BuiltObject, extended = false): InfoModel {
     const { galaxy, player } = ctx;
     const actual = shownEmpire(ctx, bo);
     const flag1 = builtObjectKnown(ctx, bo);
@@ -515,7 +560,10 @@ export function builtObjectInfo(ctx: InfoContext, bo: BuiltObject): InfoModel {
         if (actual === player || flag1 || targetsPlayer) {
             let text = missionDescription(m, actual ?? galaxy.independentEmpire);
             if (bo.role === BuiltObjectRole.Military) text += engageSuffix(bo.attackRangeSquared);
-            if (bo.subsequentMissions.length > 0) text += ` (${bo.subsequentMissions.length} queued)`;
+            if (bo.subsequentMissions.length > 0) {
+                if (extended) for (const sm of bo.subsequentMissions) text += `\nNEXT: ${missionDescription(sm as BuiltObjectMission, actual ?? galaxy.independentEmpire)}`; // BaconInfoPanel.cs 336
+                else text += ` (${bo.subsequentMissions.length} queued)`;
+            }
             rows.push({ kind: 'line', segs: [txt(text)], wrap: true });
         } else {
             rows.push({ kind: 'line', segs: [txt('(Unknown mission)', UNKNOWN_COLOR)] });
@@ -662,8 +710,14 @@ export function builtObjectInfo(ctx: InfoContext, bo: BuiltObject): InfoModel {
     // Building / Docked (BaconInfoPanel.cs:740-776).
     const building = buildingRow(ctx, bo.constructionQueue as ConstructionQueue | null);
     if (building !== null) rows.push(building);
+    if (building !== null && actual === player) rows.push(...waitingRows(ctx, bo)); // [improvements] supplyChain
     const docked = dockedRow(ctx, bo.dockingBays, bo.dockingBayWaitQueue);
     if (docked !== null) rows.push(docked);
+    // BaconInfoPanel.cs 777: DrawLabel("Bonuses") + the _CharacterBonuses text (Galaxy.2.cs 4152), ShowExtendedInfo only.
+    if (extended) {
+        const bonuses = builtObjectCharacterBonusDescription(bo);
+        if (bonuses !== '') rows.push(label('Bonuses', [txt(bonuses)], { wrap: true }));
+    }
 
     // Streamlined additions (not rows in the original): hyperdrive readiness, cargo, scenario threat markers.
     if (actual === player) {
@@ -796,10 +850,20 @@ export function shipGroupInfo(ctx: InfoContext, sg: ShipGroup, extended = false)
         }
     }
     if (pods > 0) rows.push(label('Boarding', [txt(`Strength: ${Math.round(podStrength)}`)]));
+    // Not in the original: the player's fleet design for the fleet, auto-refill and its replacements (fleetRefill.ts).
+    if (empire === player) {
+        const refill = fleetTemplateSummary(fleetRefillStatus(galaxy, player, sg));
+        if (refill !== '') rows.push(label('Template', [txt(refill)], { title: `${refill}\n(click for the fleet's template, auto-refill and Replenish)`, target: { kind: 'fleetTemplate', fleet: sg } }));
+    }
     rows.push({ kind: 'gap', h: Math.trunc(INFO.rowHeight / 4) });
     // Biggest ships first (user call), ties in fleet order.
     const byBiggest = sg.ships.filter((s) => s != null).map((s, i) => ({ s, i })).sort((a, b) => b.s.size - a.s.size || a.i - b.i).map((x) => x.s);
     rows.push({ kind: 'grid', indent: 1, cells: byBiggest.map((s) => shipCell(ctx, s, known, false)) });
+    // BaconInfoPanel.cs 1067: DrawLabel("Bonuses") + the fleet's _CharacterBonuses (Galaxy.2.cs 4084), ShowExtendedInfo only.
+    if (extended) {
+        const bonuses = shipGroupCharacterBonusDescription(sg);
+        if (bonuses !== '') rows.push(label('Bonuses', [txt(bonuses)], { wrap: true }));
+    }
 
     const title: InfoSeg[] = [{ text: sg.name ?? '(Unnamed fleet)', color }];
     if (sg.leadShip !== null) title.push({ text: `(${sg.leadShip.name})`, color, gap: 2, tiny: false, w: -1 });
@@ -873,13 +937,6 @@ export function fighterMissionDescription(f: Pick<Fighter, 'missionType' | 'curr
         default:
             return '';
     }
-}
-
-/** .NET `double.ToString("+0%;-0%")`: the percentage rounded half away from zero, "+" for zero and up. */
-function fmtPlusMinusPct(v: number): string {
-    const p = v * 100;
-    const r = Math.sign(p) * Math.round(Math.abs(p));
-    return r < 0 ? `-${-r}%` : `+${r}%`;
 }
 
 /**
@@ -1223,6 +1280,7 @@ export function habitatInfo(ctx: InfoContext, h: Habitat): InfoModel {
                     if (owner === player || flag || vis === SystemVisibilityStatus.Visible) {
                         const r = buildingRow(ctx, queue);
                         if (r !== null) rows.push(r);
+                        if (r !== null && owner === player) rows.push(...waitingRows(ctx, h)); // [improvements] supplyChain
                     } else rows.push(label('Building', [txt('(Unknown)', color)]));
                 }
             }
@@ -1231,6 +1289,10 @@ export function habitatInfo(ctx: InfoContext, h: Habitat): InfoModel {
                     const r = dockedRow(ctx, h.dockingBays, h.dockingBayWaitQueue);
                     if (r !== null) rows.push(r);
                 } else rows.push(label('Docked', [txt('(Unknown)', color)]));
+            }
+            if (owner === player) {
+                const lr = luxuryRow(ctx, h); // [improvements] supplyChain
+                if (lr !== null) rows.push(lr);
             }
             // Queued colony ship / bases (InfoPanel.cs 4560-4585).
             if (independent) {
@@ -1464,12 +1526,12 @@ export interface InfoSelection {
 }
 
 /** InfoPanel.DrawPanel's dispatch on the selected object. */
-export function buildInfoModel(ctx: InfoContext, sel: InfoSelection, creaturePicture: string | null = null): InfoModel {
+export function buildInfoModel(ctx: InfoContext, sel: InfoSelection, creaturePicture: string | null = null, extended = false): InfoModel {
     if (sel.builtObjects !== undefined && sel.builtObjects.length > 0) return multiShipInfo(ctx, sel.builtObjects);
     if (sel.creature !== undefined) return creatureInfo(ctx, sel.creature, creaturePicture);
     if (sel.fighter !== undefined) return fighterInfo(ctx, sel.fighter);
-    if (sel.shipGroup !== undefined) return shipGroupInfo(ctx, sel.shipGroup);
-    if (sel.builtObject !== undefined) return builtObjectInfo(ctx, sel.builtObject);
+    if (sel.shipGroup !== undefined) return shipGroupInfo(ctx, sel.shipGroup, extended);
+    if (sel.builtObject !== undefined) return builtObjectInfo(ctx, sel.builtObject, extended);
     if (sel.systemInfo === true && sel.habitat === sel.system.systemStar) return systemInfoModel(ctx, sel.system);
     return habitatInfo(ctx, sel.habitat);
 }

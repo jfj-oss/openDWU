@@ -34,6 +34,7 @@ import {
     type MessageStub,
     type StubListState,
 } from './messageStubs';
+import { pingMessage, unpingMessage } from './messageGoto';
 import { closeMessageCardFor, conversationHeading, conversationQueue, dismissConversation, openConversation, openMessageCard, openMessageKey } from './messagePopups';
 import { advisorSuggestionView, openAdvisorSuggestion, openAdvisorSuggestionKey } from './advisorSuggestions';
 
@@ -87,6 +88,18 @@ export function pushMessageStub(m: EmpireMessage, read = false): void {
     });
 }
 
+/** [improvements] Battle reports: the stub's opener by its UI-only key (ui/battleReports.ts). */
+const battleOpeners = new WeakMap<object, () => void>();
+
+/**
+ * A battle report arrived (an Improvement, ui/battleReports.ts): a stub "Battle report: <system>" that opens the report
+ * window. `key` is a UI-only token (no game message exists for it).
+ */
+export function pushBattleReportStub(key: object, title: string, tooltip: string, starDate: number, color: string | null, onOpen: () => void): void {
+    battleOpeners.set(key, onOpen);
+    addStub(state, { key: key as EmpireMessage, kind: 'battle', icon: '/assets/dwu/images/ui/chrome/attack.png', title, tooltip, starDate, color, needsAnswer: false });
+}
+
 /**
  * Dismiss the stub of `m` (a double right-click on it): the stub goes and does not come back; a conversation also leaves
  * the queue (a treaty offer stays answerable in the Diplomacy screen) and an open card / dialog for it closes.
@@ -129,6 +142,12 @@ export function installMessageStubList(opts: MessageStubListOptions): void {
 
     let hovered = false;
     let renderedKey = '';
+    // ScrollingLinkList: each link label's MouseEnter / MouseLeave = Main.method_247 / method_248 → method_242 / 244.
+    let pinged: EmpireMessage | null = null;
+    const clearPing = (): void => {
+        if (pinged !== null) unpingMessage(galaxy, pinged);
+        pinged = null;
+    };
     const rightClicks: RightClickTracker = { key: null, at: 0 };
     root.addEventListener('contextmenu', (e) => e.preventDefault()); // also over the gaps between rows
     root.addEventListener('mouseenter', () => (hovered = true));
@@ -176,6 +195,7 @@ export function installMessageStubList(opts: MessageStubListOptions): void {
         markStubRead(state, s.key);
         if (s.kind === 'message') openMessageCard(s.key);
         else if (s.kind === 'suggestion') openAdvisorSuggestion(s.key);
+        else if (s.kind === 'battle') battleOpeners.get(s.key)?.();
         else {
             const entry = conversationQueue().find((e) => e.message === s.key);
             if (entry) openConversation(entry);
@@ -200,6 +220,12 @@ export function installMessageStubList(opts: MessageStubListOptions): void {
         if (s.read) dot.classList.add('message-stub-dot-read');
         row.append(icon, el('span', 'message-stub-title', s.title), el('span', 'message-stub-date', resolveStarDateDescription(s.starDate)), dot);
         row.addEventListener('click', () => open(s));
+        row.addEventListener('mouseenter', () => {
+            clearPing();
+            pinged = s.key;
+            pingMessage(galaxy, s.key);
+        });
+        row.addEventListener('mouseleave', clearPing);
         // Double right-click dismisses the stub; the browser's context menu never shows over the list.
         const onRight = (e: MouseEvent): void => {
             if (!handleStubMouseEvent(e, rightClicks, s.key, performance.now())) return;
@@ -260,6 +286,7 @@ export function installMessageStubList(opts: MessageStubListOptions): void {
         const win = visibleStubs(state, visible);
         root.hidden = state.stubs.length === 0;
         if (root.hidden) {
+            clearPing();
             if (track.childElementCount > 0) track.replaceChildren();
             renderedKey = '';
             return;
@@ -269,6 +296,7 @@ export function installMessageStubList(opts: MessageStubListOptions): void {
         const key = rows.map((s) => `${idOf(s.key)}${s.read ? 'r' : ''}${s.key === active ? 'a' : ''}`).join(',') + `|${win.rows.length}`;
         if (key !== renderedKey) {
             renderedKey = key;
+            clearPing(); // the hovered label is replaced
             track.replaceChildren(...rows.map((s) => stubRow(s, s.key === active)));
             viewport.style.height = `${win.rows.length * TICKER_ROW_PX}px`;
             more.hidden = win.more === 0;
@@ -296,6 +324,7 @@ export function installMessageStubList(opts: MessageStubListOptions): void {
         root,
         timer: setInterval(frame, 50),
         cleanup: () => {
+            clearPing();
             window.removeEventListener('resize', place);
             offSettings();
         },

@@ -9,8 +9,9 @@
 // more zoomed out); here `Camera.zoom` is its reciprocal (pixels per world
 // unit). Layer crossfade windows below are expressed in that zoom.
 //
-// TODO(port): nebula-anchored gas-cloud placement / radiation fields —
-// Galaxy.4.cs GenerateGasCloud.
+// Black holes, super novae and gas clouds (the black hole's rotating layers, the super-nova location fill, the
+// generated gas clouds) are ported in stellarFx.ts. Gas clouds sit inside a NebulaCloud location (sim galaxy.ts
+// generateGasCloud, Galaxy.4.cs 2834-2844); the C# Main View draws no radiation field for them or for any star.
 
 import { fogOf } from './fog';
 import { AttachedChildren } from './renderGroups';
@@ -20,25 +21,22 @@ import { collectHitsUnderPoint, needsPickMenu, PICK_MENU_MAX_ROWS, type PickCand
 import { openPickMenu, closePickMenu, type PickMenuEntry } from '../ui/pickMenu';
 import { describeSubRole } from '../sim/player/orderMenu';
 import { BuiltObjectRole } from '../sim/data/designSpecifications';
-import { SystemVisibilityStatus } from '../sim/visibility';
+import { MAX_SOLAR_SYSTEM_SIZE, SystemVisibilityStatus, determineGalaxyLocationsInRangeAtPoint } from '../sim/visibility';
 import { playGridClick } from '../audio/gameAudio'; // [audio]
 import { Application, Container, Graphics, Sprite, Text, Texture } from 'pixi.js';
 import { Camera } from './camera';
+import { themedAssetUrl } from '../themeAssets';
 import {
     AssetStore,
     BACKDROP_URLS,
-    CLOUD_COLORS,
     PLANET_COLORS,
     STAR_COLORS,
-    cloudUrls,
     coronaFrameIndex,
     coronaFrameUrls,
     makeBackdropTexture,
-    makeCloudTexture,
     makeDotTexture,
     makeGlowTexture,
     makePlanetTexture,
-    makeStarSpriteTexture,
     manifestFiles,
     mapStarUrls,
     habitatPictureUrls,
@@ -46,8 +44,24 @@ import {
     scaleColour,
     starDiscUrl,
     starPictureUrls,
-    starSpriteUrls,
 } from './assets';
+import {
+    BlackHoleArt,
+    BlackHoleView,
+    GasCloudView,
+    NovaFill,
+    NOVA_ALPHA_BLEND_MIN_FACTOR,
+    NOVA_FILL_MAX_FACTOR,
+    loadStraightAsPremultiplied,
+    SYSTEM_PASS_MAX_FACTOR,
+    blackHoleGalaxyPx,
+    gasCloudBitmapSize,
+    gasCloudColorScheme,
+    novaFillRange,
+    supernovaGalaxyPx,
+    systemPassRadius,
+    type GasCloudFrameBudget,
+} from './stellarFx';
 import { DeepStarfield, deepStarfieldAlpha, systemPatchZoomAlpha, type PatchSystem } from './deepStarfield';
 import { Galaxy } from '../sim/galaxy';
 import type { Empire } from '../sim/empire';
@@ -57,7 +71,8 @@ import { NebulaCloudGenerator } from './nebulaClouds';
 import { SystemNebulaLayer, type NebulaSystem } from './systemNebula';
 import { EmpireLayer } from './empireLayer';
 import { OverlayLayer } from './overlayLayer';
-import { GalaxyMarkerLayer, SYSTEM_RING_MIN_FACTOR, clickSelection, doubleClickFleet } from './galaxyMarkers'; // [galaxymarkers]
+import { LocationMarkerLayer, MAP_LABEL_MIN_SPACING_PX, markerTooltip, type MapMarker } from './locationMarkers'; // [waypoints]
+import { GalaxyMarkerLayer, SYSTEM_RING_MIN_FACTOR, clickSelection, doubleClickFleet, gasCloudCrossHalfPx } from './galaxyMarkers'; // [galaxymarkers]
 import type { ShipGroup } from '../sim/fleets/shipGroup'; // [galaxymarkers]
 import { ArtBundleLayer } from './artBundleLayer'; // [19r]
 import { ArtBundleGallery, artGalleryView } from './artBundleGallery'; // [19r]
@@ -88,9 +103,12 @@ import { BuiltObject } from '../sim/builtObject';
 import type { Creature } from '../sim/creature';
 import { createMapOverlayState, type MapOverlayState } from '../ui/mapOverlays';
 import { getSettings, showRegionLabels, showSystemNames } from '../ui/settings';
+import { VOLCANIC_GLOW_SCALE, VolcanicGlowTextures, volcanicGlowIndex } from './volcanicGlow';
+import { galaxyViewGates } from './cleanGalaxyView';
 import { edgeScrollPixels, nebulaDetailScale, wheelNotches, wheelZoom, wheelZoomAnchor } from './viewInput'; // [gameoptions]
 import { hideMapTooltip, showMapTooltip, tooltipText } from '../ui/mapTooltip';
 import { freightTooltipText } from '../ui/freightText'; // [freightOverlay]
+import { shortageTooltip } from '../ui/supplyChainText'; // [improvements] supplyChain
 import { wreckTooltipText } from '../ui/scenario/wreckageUi'; // [wreckage]
 import type { FreightOverlay } from './freightOverlay'; // [freightOverlay]
 import { boundsOnScreen } from './drawCache';
@@ -343,9 +361,22 @@ export function starDrawnPx(star: Habitat, z: number): number {
     const f = 1 / z;
     const bhOrSn = star.type === HabitatType.BlackHole || star.type === HabitatType.SuperNova;
     if (!bhOrSn && f < starDiscMaxFactor(star.type)) return starSpritePx(star.diameter, z);
-    if (star.type === HabitatType.BlackHole && f < 150) return starSpritePx(star.diameter, z);
+    // Black hole: the system-pass layers (Diameter / f) below f 150, the galaxy-pass picture above (stellarFx.ts).
+    if (star.type === HabitatType.BlackHole) return f > 150 ? blackHoleGalaxyPx(f, MAX_SOLAR_SYSTEM_SIZE) : starSpritePx(star.diameter, z);
+    // Super nova: its picture above f 150; below, nothing is drawn and the C# pick takes the star's Diameter box
+    // (Main.Part11.cs method_146 / FindNearestHabitatInSystem).
+    if (star.type === HabitatType.SuperNova) return f > 150 ? supernovaGalaxyPx(star.novaProgression, f) : starSpritePx(star.diameter, z);
     if (f < 150) return starGalaxySpritePx(star.diameter, z);
     return clamp(star.diameter * z * 30, 2.5, 26);
+}
+
+/** On-screen size in px of a gas cloud: its system-pass cloud (Diameter wide, f < 500, stellarFx.ts GasCloudView)
+ *  and, above f 150, the galaxy-pass cross (galaxyMarkers.ts gasCloudCrossHalfPx) — the larger where both draw. */
+export function gasCloudDrawnPx(cloud: Habitat, z: number): number {
+    const f = 1 / z;
+    const art = f < SYSTEM_PASS_MAX_FACTOR ? cloud.diameter * z : 0;
+    const cross = f > 150 ? 2 * gasCloudCrossHalfPx(f, 0, MAX_SOLAR_SYSTEM_SIZE) : 0;
+    return Math.max(art, cross);
 }
 
 // Task 08f1 (MainView.2.cs 4675-4705): region/nebula location labels are
@@ -417,12 +448,25 @@ function starColors(type: HabitatType): { glow: string; core: string } {
     return STAR_COLORS[type] ?? STAR_COLORS[HabitatType.MainSequence];
 }
 
+/** method_50: the glow at its body's place, size / 1.025 of the body's picture, shown with it. */
+function syncVolcanicGlow(body: Sprite, glow: Sprite | null): void {
+    if (glow === null) return;
+    glow.visible = body.visible;
+    if (!glow.visible) return;
+    glow.position.copyFrom(body.position);
+    glow.alpha = body.alpha;
+    const pic = body.texture;
+    glow.scale.set((body.scale.x * pic.width * VOLCANIC_GLOW_SCALE) / glow.texture.width, (body.scale.y * pic.height * VOLCANIC_GLOW_SCALE) / glow.texture.height);
+}
+
 // ---------------------------------------------------------------------------
 
 class PlanetView {
     habitat: Habitat;
     dot: Sprite;
     sprite: Sprite;
+    /** The volcanic glow over `sprite` (MainView.cs method_50, volcanicGlow.ts), once loaded. */
+    glow: Sprite | null = null;
     label: Text;
     moons: MoonView[] = [];
     constructor(private system: SystemView, habitat: Habitat, dotTex: Texture) {
@@ -457,6 +501,8 @@ class PlanetView {
 class MoonView {
     habitat: Habitat;
     dot: Sprite;
+    /** The volcanic glow over `dot` (MainView.cs method_50, volcanicGlow.ts), once loaded. */
+    glow: Sprite | null = null;
     label: Text;
     constructor(private system: SystemView, habitat: Habitat, tex: Texture) {
         this.habitat = habitat;
@@ -492,7 +538,11 @@ class SystemView {
     system: SystemInfo;
     root: Container;
     mapIcon: Sprite;
-    starSprite: Sprite;
+    /** A black hole's system-pass art (stellarFx.ts BlackHoleView, MainView.1.cs 649-722); null for other stars. */
+    blackHole: BlackHoleView | null = null;
+    /** A super nova's picture as the galaxy pass blends it above f 500 (stellarFx.ts loadStraightAsPremultiplied). */
+    novaAlphaBlend: Texture | null = null;
+    novaPicture: Texture | null = null;
     nameLabel: Text;
     ring: Graphics;
     /** Planets, moons, their labels and the asteroid rocks, in habitat order (render: perf pass). One container so
@@ -528,7 +578,7 @@ class SystemView {
 
     // Task 02c2: system-zoom star = two tinted counter-rotating discs plus an
     // animated corona (MainView.1.cs ~740-782). Built lazily on first entry to
-    // the crossfade window; black holes keep the plain `starSprite` instead.
+    // the crossfade window; black holes draw their BlackHoleView instead.
     private starDiscs: Container | null = null;
     private discA: Sprite | null = null;
     private discB: Sprite | null = null;
@@ -555,11 +605,13 @@ class SystemView {
         this.mapIcon.visible = false;
         this.root.addChild(this.mapIcon);
 
-        this.starSprite = new Sprite(makeStarSpriteTexture(star.type));
-        this.starSprite.anchor.set(0.5);
-        this.starSprite.visible = false;
-        this.starSprite.alpha = 0;
-        this.root.addChild(this.starSprite);
+        if (star.type === HabitatType.BlackHole) {
+            // Under the map-star picture: the galaxy pass draws a black hole's picture on spriteBatch_1, over all of
+            // spriteBatch_0 (MainView.2.cs 5487-5489), so for a black hole `detail` goes below the picture too
+            // (setDetailAttached).
+            this.blackHole = new BlackHoleView(star.habitatIndex, view.blackHoleArt);
+            this.root.addChildAt(this.blackHole.root, 0);
+        }
 
         // Task 02c2: tinted rotating discs + corona for non-black-hole stars,
         // built lazily (see buildStarDiscs) so the corona frames are only
@@ -625,6 +677,8 @@ class SystemView {
             }
         }
 
+        // A super nova's galaxy-pass picture is 1.3 x the 2 * NovaProgression location (stellarFx.ts supernovaGalaxyPx).
+        if (star.type === HabitatType.SuperNova) radius = Math.max(radius, star.novaProgression * 1.3);
         this.drawRadius = radius;
 
         this.nameLabel = new Text({
@@ -655,7 +709,9 @@ class SystemView {
         // Task 12p (MainView.1.cs:735-785, MainView.2.cs:5465-5473): hard
         // bands on the original's zoom factor f = 1/z — no crossfade.
         //   f < discMax(type)      : rotating discs + corona (not BH/SN)
-        //   BH and f < 150         : plain star sprite
+        //   BH and f < 500         : the system pass's rotating layers + accretion frames (stellarFx.ts), and above
+        //                            f 150 the galaxy pass's map-star picture over them
+        //   SN                     : the nova picture above f 150 (world-linear), nothing of the star below
         //   f < 150                : galaxy-level map-star icon
         //   f >= 150               : small map icon (iconPx)
         const f = 1 / z;
@@ -667,31 +723,39 @@ class SystemView {
         // it). Not drawn here: only the map-star icon shows in that band.
         if (!isBHOrSN && f < starDiscMaxFactor(star.type)) {
             this.mapIcon.visible = false;
-            this.starSprite.visible = false;
             this.updateStarDiscs(1, S, z, dtSeconds);
-        } else if (star.type === HabitatType.BlackHole && f < 150) {
-            this.mapIcon.visible = false;
+        } else if (this.blackHole !== null) {
+            // MainView.1.cs 649-722: the system pass (f < 500) draws the layers whatever the zoom; MainView.2.cs 5491
+            // adds the map picture while f > method_60(BlackHole) = 150.
+            this.blackHole.update(f < SYSTEM_PASS_MAX_FACTOR, S, z, this.view.renderTime.renderNowMs, coronaFrameIndex);
+            this.mapIcon.visible = f > 150;
+            if (this.mapIcon.visible) {
+                this.mapIcon.alpha = 1;
+                const px = blackHoleGalaxyPx(f, this.systemRadius());
+                this.mapIcon.scale.set(px / (this.mapIcon.texture.width * z));
+            }
+        } else if (star.type === HabitatType.SuperNova) {
+            // MainView.2.cs 5491 draws the nova picture only while f > method_60(SuperNova) = 150, and the system
+            // pass (MainView.1.cs 730: `Type != SuperNova`) draws nothing for the star; below 150 the view is filled
+            // with the pulsing location colour instead (MainView.novaFill).
             this.updateStarDiscs(0, S, z, dtSeconds);
-            this.starSprite.visible = true;
-            this.starSprite.alpha = 1;
-            this.starSprite.scale.set(S / (this.starSprite.texture.width * z));
-        } else if (star.type === HabitatType.SuperNova && f < 150) {
-            // MainView.2.cs 5491 draws the nova flare art only while f > method_60(SuperNova) = 150, and the system
-            // pass (MainView.1.cs 728: `Type != SuperNova`) draws nothing for it: no flare sprite at system zoom
-            // (it was the 8-spike "lens flare" over the star).
-            this.updateStarDiscs(0, S, z, dtSeconds);
-            this.starSprite.visible = false;
-            this.mapIcon.visible = false;
+            this.mapIcon.visible = f > 150;
+            if (this.mapIcon.visible) {
+                this.mapIcon.alpha = 1;
+                const px = supernovaGalaxyPx(star.novaProgression, f);
+                const tex = f > NOVA_ALPHA_BLEND_MIN_FACTOR && this.novaAlphaBlend !== null ? this.novaAlphaBlend : this.novaPicture;
+                if (tex !== null && this.mapIcon.texture !== tex) this.mapIcon.texture = tex;
+                // rectangle2: px wide, px * h / w tall (num34) — the texture's own aspect.
+                this.mapIcon.scale.set(px / (this.mapIcon.texture.width * z));
+            }
         } else if (f < 150) {
             this.updateStarDiscs(0, S, z, dtSeconds);
-            this.starSprite.visible = false;
             this.mapIcon.visible = true;
             this.mapIcon.alpha = 1;
             const gpx = starGalaxySpritePx(star.diameter, z);
             this.mapIcon.scale.set(gpx / (this.mapIcon.texture.width * z));
         } else {
             this.updateStarDiscs(0, S, z, dtSeconds);
-            this.starSprite.visible = false;
             this.mapIcon.visible = true;
             this.mapIcon.alpha = 1;
             const iconPx = clamp(star.diameter * z * 30, 2.5, 26);
@@ -738,11 +802,28 @@ class SystemView {
         }
     }
 
+    /**
+     * The galaxy pass's system radius (MainView.2.cs 5235-5338, world units): the dominant empire's
+     * min(TSV, 1500000)^0.35 * 600 when the player knows the system and Clean Galaxy View is off, at least
+     * MaxSolarSystemSize.
+     */
+    private systemRadius(): number {
+        const g = this.view.galaxy;
+        const dom = this.system.dominantEmpire;
+        let tsv = 0;
+        if (dom != null && dom.empire != null && !getSettings().cleanGalaxyView) {
+            const vis = g.playerEmpire?.visibility ?? null;
+            const status = vis !== null ? vis.checkSystemVisibilityStatus(this.system.systemStar.systemIndex) : SystemVisibilityStatus.Visible;
+            if (status === SystemVisibilityStatus.Explored || status === SystemVisibilityStatus.Visible) tsv = dom.totalStrategicValue;
+        }
+        return systemPassRadius(tsv, g.maxSolarSystemSize);
+    }
+
     /** Attach `detail` (just below the name label) while any of it is drawn, else detach it (see `detail`). */
     private setDetailAttached(on: boolean): void {
         const attached = this.detail.parent === this.root;
         if (on === attached) return;
-        if (on) this.root.addChildAt(this.detail, this.root.getChildIndex(this.nameLabel));
+        if (on) this.root.addChildAt(this.detail, this.root.getChildIndex(this.blackHole !== null ? this.mapIcon : this.nameLabel));
         else this.root.removeChild(this.detail);
     }
 
@@ -818,9 +899,11 @@ class SystemView {
                 planet.sprite.visible = false;
                 planet.label.visible = false;
                 mg.visible = false;
+                syncVolcanicGlow(planet.sprite, planet.glow);
                 for (const moon of planet.moons) {
                     moon.dot.visible = false;
                     moon.label.visible = false;
+                    syncVolcanicGlow(moon.dot, moon.glow);
                 }
                 continue;
             }
@@ -835,6 +918,7 @@ class SystemView {
             planet.sprite.alpha = 1;
             planet.sprite.position.set(px, py);
             planet.sprite.scale.set(sprPx / (planet.sprite.texture.width * z));
+            syncVolcanicGlow(planet.sprite, planet.glow);
             // Label centred on the drawn rect's right edge (method_84),
             // vertically centred on the body.
             const populated = p.owner !== null && p.population.items.length > 0;
@@ -856,6 +940,7 @@ class SystemView {
                 if (!this.moonIsDrawn(pi, mk)) {
                     moon.dot.visible = false;
                     moon.label.visible = false;
+                    syncVolcanicGlow(moon.dot, moon.glow);
                     continue;
                 }
                 const m = moon.habitat;
@@ -867,6 +952,7 @@ class SystemView {
                 moon.dot.alpha = 1;
                 moon.dot.position.set(mx, my);
                 moon.dot.scale.set(mPx / (moon.dot.texture.width * z));
+                syncVolcanicGlow(moon.dot, moon.glow);
                 const mPopulated = m.owner !== null && m.population.items.length > 0;
                 moon.label.visible = labels && habitatLabelVisible(false, mPopulated, f);
                 moon.label.position.set(mx + (mPx / 2) / z, my);
@@ -1008,37 +1094,10 @@ class SystemView {
 /** Star corona (bloom) strength vs the original's alpha 240 (1 = original). */
 export const STAR_BLOOM_SCALE = 0.5;
 
-class CloudView {
-    cloud: Habitat;
-    sprite: Sprite;
-    constructor(private view: MainView, cloud: Habitat, texture: Texture) {
-        this.cloud = cloud;
-        this.sprite = new Sprite(texture);
-        this.sprite.anchor.set(0.5);
-        this.sprite.x = cloud.xpos;
-        this.sprite.y = cloud.ypos;
-        this.sprite.alpha = 0.5;
-        this.sprite.visible = false;
-        this.view.world.addChild(this.sprite);
-    }
-
-    update(zoom: number, cam: Camera): void {
-        const px = Math.min(this.cloud.diameter * zoom * 0.6, 2400);
-        const visible = px > 16;
-        // Culling margin of one cloud radius plus a screen margin.
-        const halfW = cam.width / 2 + px / 2 + 100;
-        const halfH = cam.height / 2 + px / 2 + 100;
-        this.sprite.visible =
-            visible &&
-            this.cloud.xpos > cam.x - halfW &&
-            this.cloud.xpos < cam.x + halfW &&
-            this.cloud.ypos > cam.y - halfH &&
-            this.cloud.ypos < cam.y + halfH;
-        if (this.sprite.visible) {
-            this.sprite.scale.set(px / (this.sprite.texture.width * zoom));
-        }
-    }
-}
+/** Per frame, the time the gas clouds' method_146 detail rendering may take (it is time-sliced over frames). */
+export const GAS_CLOUD_FRAME_BUDGET_MS = 4;
+/** The least time between two gas-cloud generations (GenerateNebulaBackdrop runs in one piece, ~0.1 s). */
+export const GAS_CLOUD_GENERATION_GAP_MS = 150;
 
 // Task 08f1 (MainView.2.cs 4675-4705): a GalaxyLocation name label in
 // screen space (the original draws text at fixed pixel sizes on top of the
@@ -1061,10 +1120,11 @@ class RegionLabel {
         layer.addChild(this.text);
     }
 
-    /** Update position/font/visibility for the current camera state. */
-    update(cam: Camera, factor: number, maxFactor: number): void {
+    /** Update position/font/visibility for the current camera state. `known`: MainView.2.cs 4680 / 5747
+     *  `GodMode || empire.KnownGalaxyLocations.Contains(galaxyLocation)`. */
+    update(cam: Camera, factor: number, maxFactor: number, known = true): void {
         const font = regionLabelFont(this.location.type, factor, maxFactor);
-        if (font === null || !this.location.showName) {
+        if (font === null || !this.location.showName || !known) {
             this.text.visible = false;
             return;
         }
@@ -1204,10 +1264,24 @@ export class MainView {
     /** Region-name label layer (task 08f1), screen-space. */
     regionLabels = new Container();
     private regionLabelViews: RegionLabel[] = [];
+    /** The player's KnownGalaxyLocations as a set (rebuilt when the list changes), for the region labels. */
+    private knownLocations: Set<GalaxyLocation> | null = null;
+    private knownLocationsOf: readonly GalaxyLocation[] | null = null;
+    private knownLocationsLen = -1;
+    /** [waypoints] The Waypoints & Known Locations overlay and the location-hint pulse (locationMarkers.ts). */
+    private locationMarkers: LocationMarkerLayer | null = null;
     systems: SystemView[] = [];
     /** Every SystemView root, in galaxy order; only the on-screen ones are attached (renderGroups.ts AttachedChildren). */
     readonly systemLayer = new AttachedChildren(new Container());
-    clouds: CloudView[] = [];
+    /** Gas clouds at system zoom (stellarFx.ts GasCloudView: the generated bitmap_2, method_146 detail). */
+    clouds: GasCloudView[] = [];
+    /** The shared black-hole art (star_blackhole_0 + the BlkHole accretion atlas), loaded on first use. */
+    readonly blackHoleArt: BlackHoleArt;
+    /** The super-nova location fill (MainView.1.cs method_76 94-139), just under the systems. */
+    private readonly novaFill = new NovaFill();
+    /** nebulaCloudGenerator_1 (MainView.cs 1446, seed 2): GenerateNebulaBackdrop for the gas clouds (method_135). */
+    private gasCloudGenerator: NebulaCloudGenerator | null = null;
+    private lastGasCloudGeneration = -Infinity;
     /** Task 08f2: nebula cloud images, world-space between backdrop and stars. */
     nebulae: NebulaView[] = [];
     /** Task M2e: empire ownership overlays (colony rings, markers, territory). */
@@ -1311,6 +1385,10 @@ export class MainView {
         private overlays: MapOverlayState = createMapOverlayState(),
     ) {
         installGlParameterCache(app.renderer); // texture set-up must not wait on the GPU (glParamCache.ts)
+        this.blackHoleArt = new BlackHoleArt(
+            (url) => store.loadFirst([url], () => Texture.EMPTY),
+            (url) => store.loadRawImage(themedAssetUrl(url)),
+        );
         // Nothing in the map takes Pixi pointer events (picking is MainView.pick on the camera): keep Pixi's EventSystem
         // from hit-testing the whole world / overlay scene graph on every wheel and pointer-move event.
         this.world.eventMode = 'none';
@@ -1353,6 +1431,9 @@ export class MainView {
         }
         if (h.category === HabitatCategoryType.Asteroid) {
             return z > ROCK_MIN_ZOOM ? asteroidDrawnPx(h.diameter, z) : 0;
+        }
+        if (h.category === HabitatCategoryType.GasCloud) {
+            return gasCloudDrawnPx(h, z);
         }
         // Gas clouds are not pickable.
         return 0;
@@ -1401,8 +1482,11 @@ export class MainView {
                 return hit;
             }
         }
-        // Stars: their drawn art, at least 12 px radius (the old galaxy-zoom pick reach).
+        // Stars: their drawn art, at least 12 px radius (the old galaxy-zoom pick reach). Gas clouds (their cloud /
+        // cross) too: the C# picks the nearest system star or gas cloud (Main.Part11.cs method_145, FastFindNearestSystem
+        // above f 100, FindNearestHabitatInSystem's Diameter box below) — the smaller drawn art wins here as elsewhere.
         const stars = this.systems.map((sv) => sv.system.systemStar);
+        for (const cv of this.clouds) stars.push(cv.cloud);
         return hitTestHabitats(stars, w.x, w.y, size, z, drawnAt, 12);
     }
 
@@ -1629,17 +1713,23 @@ export class MainView {
         // Behind every system root (orbits, planets, stars), above the backdrop / galaxy nebulae / grid.
         this.systemNebulae = new SystemNebulaLayer(this.galaxy.randomSeed, this.app.renderer.resolution, this.app.renderer);
         this.world.addChildAt(this.systemNebulae.root, this.world.getChildIndex(this.systemLayer.root));
+        // The super-nova fill covers the backdrop, the nebulae and the system nebula, under every system (method_76).
+        this.world.addChildAt(this.novaFill.sprite, this.world.getChildIndex(this.systemLayer.root));
         for (const habitat of this.galaxy.habitats) {
             if (habitat.category === HabitatCategoryType.GasCloud) {
-                // Generated fallback; the original art loads lazily below.
-                this.clouds.push(new CloudView(this, habitat, makeCloudTexture(CLOUD_COLORS[habitat.type] ?? '#88aaff')));
+                // Generated on first sight at system zoom (GasCloudView).
+                const cv = new GasCloudView(habitat, (h) => this.generateGasCloud(h));
+                this.world.addChild(cv.root);
+                this.clouds.push(cv);
             }
         }
 
         // Lazy per-habitat sprite loading: planets, moons and asteroids draw HabitatImageCache[PictureRef]
         // (assets.ts habitatPictureUrls); stars bitmap_196[MapPictureRef] (a super nova bitmap_206[NovaImageIndexMajor],
-        // MainView.2.cs 5429-5438: assets.ts starPictureUrls) and, for a black hole, its system-zoom sprite.
+        // MainView.2.cs 5429-5438: assets.ts starPictureUrls); a black hole's system-pass art loads on first use (BlackHoleArt).
         const lazyLoads: Promise<unknown>[] = [];
+        // bitmap_195, the volcanic glow drawn over a volcanic planet / moon picture (volcanicGlow.ts, method_50).
+        const glows = new VolcanicGlowTextures(store);
         for (const sv of this.systems) {
             const star = sv.system.systemStar;
             lazyLoads.push(
@@ -1647,15 +1737,12 @@ export class MainView {
                     .loadFirst(starPictureUrls(star), () => makeGlowTexture(starColors(star.type).glow, starColors(star.type).core))
                     .then((tex) => {
                         sv.mapIcon.texture = tex;
+                        if (star.type === HabitatType.SuperNova) sv.novaPicture = tex;
                     }),
             );
-            // Only a black hole shows starSprite (SystemView.update); the other stars' system art is the disc group.
-            if (star.type === HabitatType.BlackHole) {
-                lazyLoads.push(
-                    store.loadFirst(starSpriteUrls(star), () => makeStarSpriteTexture(star.type)).then((tex) => {
-                        sv.starSprite.texture = tex;
-                    }),
-                );
+            if (star.type === HabitatType.SuperNova && store.dwuPresent) {
+                const url = starPictureUrls(star)[0];
+                if (url !== undefined) lazyLoads.push(loadStraightAsPremultiplied(themedAssetUrl(url)).then((tex) => (sv.novaAlphaBlend = tex)));
             }
             for (const planet of sv.planets) {
                 lazyLoads.push(
@@ -1663,6 +1750,7 @@ export class MainView {
                         .loadFirst(habitatPictureUrls(planet.habitat), () => makePlanetTexture(PLANET_COLORS[planet.habitat.type] ?? '#888888'))
                         .then((tex) => {
                             planet.sprite.texture = tex;
+                            this.addVolcanicGlow(glows, planet);
                         }),
                 );
                 // Task 12p: moons use per-habitat planet art too.
@@ -1672,6 +1760,7 @@ export class MainView {
                             .loadFirst(habitatPictureUrls(moon.habitat), () => makePlanetTexture(PLANET_COLORS[moon.habitat.type] ?? '#888888'))
                             .then((tex) => {
                                 moon.dot.texture = tex;
+                                this.addVolcanicGlow(glows, moon);
                             }),
                     );
                 }
@@ -1689,19 +1778,10 @@ export class MainView {
                 );
             }
         }
-        for (const cloud of this.clouds) {
-            lazyLoads.push(
-                store
-                    .loadFirst(cloudUrls(cloud.cloud), () => makeCloudTexture(CLOUD_COLORS[cloud.cloud.type] ?? '#88aaff'))
-                    .then((tex) => {
-                        cloud.sprite.texture = tex;
-                    }),
-            );
-        }
         await Promise.all(lazyLoads);
 
-        // Task 08f1: region/nebula location name labels (screen-space layer).
-        // All locations are treated as known to the empire for now.
+        // Task 08f1: region/nebula location name labels (screen-space layer). Each is shown once the player knows the
+        // location (update: MainView.2.cs 4680 KnownGalaxyLocations, or GodMode = fog reveal).
         for (const location of this.galaxy.galaxyLocations) {
             this.regionLabelViews.push(new RegionLabel(location, this.regionLabels));
         }
@@ -1814,7 +1894,11 @@ export class MainView {
             const kids = this.world.children;
             this.markersFrontNext = (kids[kids.indexOf(this.galaxyMarkers.front) + 1] as Container | undefined) ?? null;
         }
-        this.world.addChild(this.overlayLayer.postureRoot);
+        this.world.addChild(this.overlayLayer.postureRoot, this.overlayLayer.root);
+        // [waypoints] above the other overlay marks (the overlay root is the last world child: above the ships).
+        this.locationMarkers = new LocationMarkerLayer(this.galaxy, this.overlays);
+        this.locationMarkers.regionNamed = (l) => this.regionLabels.visible && this.knownLocationSet()?.has(l) !== false && l.showName && regionLabelFont(l.type, 1 / this.camera.zoom, 1 / this.minZoom) !== null;
+        this.overlayLayer.root.addChild(this.locationMarkers.root);
 
         this.attachInput();
     }
@@ -1869,7 +1953,9 @@ export class MainView {
 
         // Faint sector grid: fades in over the galaxy zoom, out at mid zoom
         // (MainView.1.cs FadeSectorBackground).
-        const gridA = fadeIn(z, m * 2, m * 6) * fadeOut(z, 0.004, 0.015);
+        // GameOptions.CleanGalaxyView hides it (method_250 5155: `if (!flag)`, cleanGalaxyView.ts).
+        const clean = galaxyViewGates(getSettings().cleanGalaxyView);
+        const gridA = clean.sectorGrid ? fadeIn(z, m * 2, m * 6) * fadeOut(z, 0.004, 0.015) : 0;
         this.grid.alpha = gridA;
         this.grid.visible = gridA > 0.01;
         if (this.grid.visible && (this.lastGridZoom < 0 || Math.abs(z / this.lastGridZoom - 1) > 0.05)) {
@@ -1889,7 +1975,8 @@ export class MainView {
         // Systems: greedy 80 px label-overlap suppression across systems.
         const labelZoom = m * 4; // system names appear at ~sector zoom
         // Task 10f: the "Show system names" setting disables them entirely.
-        const namesOn = z > labelZoom && showSystemNames();
+        // Clean Galaxy view: no system names (method_250 5584: `flag26 && !flag`; they are drawn only at f > 150).
+        const namesOn = z > labelZoom && showSystemNames() && clean.systemNames;
         // Kept label positions as flat x, y pairs (reused across frames: no per-frame allocation).
         const kept = this.keptLabels;
         kept.length = 0;
@@ -1913,7 +2000,7 @@ export class MainView {
                 for (let i = 0; i < kept.length; i += 2) {
                     const dx = kept[i] - sx;
                     const dy = kept[i + 1] - sy;
-                    if (dx * dx + dy * dy < 80 * 80) {
+                    if (dx * dx + dy * dy < MAP_LABEL_MIN_SPACING_PX * MAP_LABEL_MIN_SPACING_PX) {
                         allow = false;
                         break;
                     }
@@ -1925,8 +2012,37 @@ export class MainView {
             sv.update(z, cam, allow, dtSeconds);
         }
         this.systemLayer.flush();
-        for (const cloud of this.clouds) {
-            cloud.update(z, cam);
+        {
+            // Gas clouds (system pass, f < 500) and the super-nova location fill (f < 150).
+            const f = 1 / z;
+            const view = { x: cam.x - cam.width / 2 / z, y: cam.y - cam.height / 2 / z, w: cam.width / z, h: cam.height / z };
+            if (f < SYSTEM_PASS_MAX_FACTOR) {
+                // One cloud generation (~0.1 s, not sliceable) at most every GAS_CLOUD_GENERATION_GAP_MS, nearest to the
+                // view centre first: the C# only ever builds the current system's cloud, the seamless map may show several.
+                const nowMs = performance.now();
+                let next: GasCloudView | null = null;
+                if (nowMs - this.lastGasCloudGeneration >= GAS_CLOUD_GENERATION_GAP_MS) {
+                    let best = Infinity;
+                    for (const cloud of this.clouds) {
+                        if (cloud.hasArt || !cloud.inView(f, view)) continue;
+                        const dd = (cloud.cloud.xpos - cam.x) ** 2 + (cloud.cloud.ypos - cam.y) ** 2;
+                        if (dd < best) {
+                            best = dd;
+                            next = cloud;
+                        }
+                    }
+                }
+                const budget: GasCloudFrameBudget = { ms: GAS_CLOUD_FRAME_BUDGET_MS, generations: 0 };
+                if (next !== null) {
+                    next.update(f, view, { ms: 0, generations: 1 });
+                    this.lastGasCloudGeneration = nowMs;
+                }
+                for (const cloud of this.clouds) cloud.update(f, view, budget);
+            } else {
+                for (const cloud of this.clouds) cloud.root.visible = false;
+            }
+            const inNova = f < NOVA_FILL_MAX_FACTOR && determineGalaxyLocationsInRangeAtPoint(this.galaxy, cam.x, cam.y, novaFillRange(cam.width, cam.height, f), GalaxyLocationType.SuperNova).length > 0;
+            this.novaFill.update(inNova, f, view, Date.now());
         }
 
         // Task 08f2: nebula clouds fade out over the same window the backdrop
@@ -1952,6 +2068,11 @@ export class MainView {
         // above).
         this.overlayLayer.update(z, cam);
         this.galaxyMarkers?.update(z, cam, this.systems); // [galaxymarkers]
+        if (this.locationMarkers !== null) {
+            // [waypoints]
+            this.locationMarkers.reveal = fogOf(this.galaxy).reveal;
+            this.locationMarkers.update(z, cam);
+        }
         // [ambientfx] begin
         this.ambientLayer.update(z, cam);
         // [ambientfx] end
@@ -1978,8 +2099,9 @@ export class MainView {
         if (showRegions) {
             const factor = 1 / z;
             const maxFactor = 1 / m;
+            const known = this.knownLocationSet();
             for (const rl of this.regionLabelViews) {
-                rl.update(cam, factor, maxFactor);
+                rl.update(cam, factor, maxFactor, known === null || known.has(rl.location));
             }
         }
 
@@ -2084,26 +2206,33 @@ export class MainView {
     private placePostureLayer(f: number): void {
         const w = this.world;
         const p = this.overlayLayer.postureRoot;
+        const o = this.overlayLayer.root;
         const front = this.galaxyMarkers?.front ?? null;
         const kids = w.children;
         const n = kids.length;
+        // The rest of method_250 — the travel vectors (5925-5956, 6335-6393) and the map overlays' rings / markers — is
+        // drawn after the discs and the galaxy-pass symbols, over everything method_76 drew: the overlay root is last.
         if (front !== null && f > SYSTEM_RING_MIN_FACTOR) {
-            if (kids[n - 1] === front && kids[n - 2] === p) return;
+            if (kids[n - 1] === o && kids[n - 2] === front && kids[n - 3] === p) return;
             w.removeChild(p);
             w.removeChild(front);
-            w.addChild(p, front);
+            w.removeChild(o);
+            w.addChild(p, front, o);
             return;
         }
-        if (front !== null && kids[n - 1] === front) {
+        if (front !== null && (kids[n - 1] === o ? kids[n - 2] === front : kids[n - 1] === front)) {
             // Back under the ship art: its place from init (right below the child that followed it then).
             w.removeChild(front);
             const next = this.markersFrontNext;
             const at = next !== null && next.parent === w ? w.getChildIndex(next) : w.getChildIndex(this.builtObjectLayer.root);
             w.addChildAt(front, at);
         }
-        if (w.children[w.children.length - 1] !== p) {
+        const k2 = w.children;
+        const m = k2.length;
+        if (k2[m - 1] !== o || k2[m - 2] !== p) {
             w.removeChild(p);
-            w.addChild(p);
+            w.removeChild(o);
+            w.addChild(p, o);
         }
     }
 
@@ -2250,6 +2379,25 @@ export class MainView {
             this.selectedBuiltObject = null;
             this.onSelectionChange?.(null);
         }
+    }
+
+    /**
+     * MainView.cs 2515 method_50: a volcanic planet / moon picture gets its bitmap_195 glow, (255, 64, 0) at the
+     * picture's alpha, size / 1.025, centred (a child of the body sprite, so it follows its position and scale).
+     */
+    private addVolcanicGlow(glows: VolcanicGlowTextures, view: PlanetView | MoonView): void {
+        const habitat = view.habitat;
+        if (volcanicGlowIndex(habitat) < 0 || habitatPictureUrls(habitat).length === 0) return;
+        void glows.textureFor(habitat).then((glow) => {
+            const body = view instanceof PlanetView ? view.sprite : view.dot;
+            if (glow === null || body.destroyed || body.parent === null) return;
+            const s = new Sprite(glow);
+            s.anchor.set(0.5);
+            s.visible = false;
+            // Right above its body (a Sprite takes no children in Pixi 8): syncVolcanicGlow follows it every frame.
+            body.parent.addChildAt(s, body.parent.getChildIndex(body) + 1);
+            view.glow = s;
+        });
     }
 
     private drawGrid(z: number): void {
@@ -2436,11 +2584,28 @@ export class MainView {
                     return;
                 }
                 this.onPointerRest?.(x, y, e.clientX, e.clientY); // [ordermenu]
+                // [waypoints] a waypoint / known-location marker (drawn above everything else in the map).
+                {
+                    const mk = this.locationMarkers?.hitTest(x, y) ?? null;
+                    if (mk !== null) {
+                        showMapTooltip(markerTooltip(this.galaxy, this.galaxy.playerEmpire, mk), e.clientX, e.clientY);
+                        return;
+                    }
+                }
                 // HoverPanel.cs 220 method_2: a creature under the cursor shows its name, size, strength and health.
                 const creature = this.pickCreature(x, y);
                 if (creature !== null) {
                     showMapTooltip(creatureTooltipText(creature), e.clientX, e.clientY);
                     return;
+                }
+                // [improvements] supplyChain — a Supply Shortages marker (it sits on a colony / yard: before the pick).
+                {
+                    const w = this.camera.screenToWorld(x, y);
+                    const sh = this.overlayLayer?.supply.hitTest(w.x, w.y, this.camera.zoom) ?? null;
+                    if (sh !== null) {
+                        showMapTooltip(shortageTooltip(this.galaxy, sh, this.galaxy.playerEmpire), e.clientX, e.clientY, true);
+                        return;
+                    }
                 }
                 const hit = this.pick(x, y);
                 if (hit === null) {
@@ -2459,6 +2624,13 @@ export class MainView {
                         return;
                     }
                     // [wreckage] end
+                    // [dw2overlays] begin — an Improvements overlay mark (refuelling point, colony target, resource icons).
+                    const im = this.overlayLayer?.improvementsHitTest(w.x, w.y, this.camera.zoom) ?? null;
+                    if (im !== null) {
+                        showMapTooltip(im, e.clientX, e.clientY);
+                        return;
+                    }
+                    // [dw2overlays] end
                     hideMapTooltip();
                     return;
                 }
@@ -2469,7 +2641,15 @@ export class MainView {
                 if (sys !== undefined) {
                     systemName = sys.systemStar.name;
                 }
-                showMapTooltip(tooltipText(hit, systemName), e.clientX, e.clientY);
+                // [dw2overlays] the Improvements overlays' lines for the hovered habitat (colony target, known resources).
+                const extra = this.overlayLayer?.habitatTooltipExtra(hit) ?? null;
+                const vis = this.galaxy.playerEmpire?.visibility ?? null;
+                const status = vis !== null && hit.systemIndex >= 0 ? vis.checkSystemVisibilityStatus(hit.systemIndex) : SystemVisibilityStatus.Visible;
+                const known = status === SystemVisibilityStatus.Explored || status === SystemVisibilityStatus.Visible;
+                const text = tooltipText(hit, systemName, known);
+                // HoverPanel method_13: the owner's main colour tints the fill (not for independents).
+                const owner = hit.empire !== null && hit.empire !== this.galaxy.independentEmpire ? hit.empire.mainColor : null;
+                showMapTooltip(extra !== null ? `${text}\n${extra}` : text, e.clientX, e.clientY, text.includes('\n'), owner);
             }, 120);
         }, { signal: this.windowInput.signal });
         window.addEventListener('mouseup', (e: MouseEvent) => {
@@ -2563,8 +2743,28 @@ export class MainView {
         // and survived game-view teardown.
     }
 
+    /** The WebGL context was restored (contextLoss.ts): rebuild what lived only on the GPU. */
+    onGpuContextRestored(): void {
+        this.systemNebulae?.onContextRestored();
+    }
+
+    /** Repeated context losses (contextLoss.ts): level 1 = CPU nebula path, level 2 = no system nebulae. */
+    useLowGpuMode(level: number): void {
+        if (level >= 1) this.systemNebulae?.useLowGpuMode();
+        if (level >= 2) this.systemNebulae?.disable();
+    }
+
+    /** method_135: bitmap_2 of a gas cloud — nebulaCloudGenerator_1.GenerateNebulaBackdrop(HabitatIndex, 255,
+     *  20 + scheme, min(100, Diameter), min(100, Diameter), transparent, isGasCloud). */
+    private generateGasCloud(h: Habitat): { image: Uint8ClampedArray; width: number; height: number } {
+        this.gasCloudGenerator ??= new NebulaCloudGenerator(2);
+        const size = gasCloudBitmapSize(h.diameter);
+        return this.gasCloudGenerator.generateNebulaBackdrop(h.habitatIndex, 255, gasCloudColorScheme(h.type) + 20, size, size, true, true, false);
+    }
+
     /** Task 12k: drop the hover tooltip when this view is torn down. */
     dispose(): void {
+        for (const cloud of this.clouds) cloud.release();
         closePickMenu();
         if (this.tooltipTimer !== undefined) {
             clearTimeout(this.tooltipTimer);
@@ -2572,8 +2772,41 @@ export class MainView {
         }
         hideMapTooltip();
         this.windowInput.abort();
+        this.locationMarkers?.destroy(); // [waypoints]
+        this.locationMarkers = null;
         this.overlayLayer?.destroy(); // [freightOverlay] stop recording contracts for this galaxy
     }
+
+    // [waypoints] begin
+    /** The Waypoints & Known Locations marker under screen point (sx, sy), or null. */
+    markerAt(sx: number, sy: number): MapMarker | null {
+        return this.locationMarkers?.hitTest(sx, sy) ?? null;
+    }
+
+    /** The mouse position over the map (screen px), or null when the pointer is outside it. */
+    get pointerScreen(): { x: number; y: number } | null {
+        return this.pointerInside ? { x: this.lastPointer.x, y: this.lastPointer.y } : null;
+    }
+
+    /** Rebuild the markers at the next frame (after a waypoint command). */
+    refreshMarkers(): void {
+        this.locationMarkers?.invalidate();
+    }
+
+    /** The player's KnownGalaxyLocations as a set (null = every location counts as known: GodMode, no player). */
+    private knownLocationSet(): Set<GalaxyLocation> | null {
+        const player = this.galaxy.playerEmpire;
+        if (player === null || fogOf(this.galaxy).reveal) return null;
+        const list = player.visibility?.knownGalaxyLocations ?? [];
+        const last = list.length > 0 ? list[list.length - 1] : null;
+        if (this.knownLocations === null || list !== this.knownLocationsOf || list.length !== this.knownLocationsLen || (last !== null && !this.knownLocations.has(last))) {
+            this.knownLocations = new Set(list);
+            this.knownLocationsOf = list;
+            this.knownLocationsLen = list.length;
+        }
+        return this.knownLocations;
+    }
+    // [waypoints] end
 
     // [freightOverlay] begin — task 19e-9: the panel / legend reach the Freight Flows overlay through the view.
     get freightOverlay(): FreightOverlay | null {

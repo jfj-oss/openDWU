@@ -14,8 +14,10 @@ import { bindAutoPauseClock } from './autoPause';
 import { HUD_FRAME_SIZE } from './topBar';
 import { GalaxyTime } from '../sim/clock';
 import { resolveStarDateDescription } from '../sim/galaxyTime';
-import { createMapOverlayState, OVERLAY_ROWS, toggleOverlay, type MapOverlayState, type OverlayKey, type OverlayRow } from './mapOverlays';
-import { IMPROVEMENTS_TITLE, onImprovementsChange, overlayRowSections } from './improvements'; // [improvements]
+import { createMapOverlayState, OVERLAY_ROWS, onOverlayChange, toggleOverlay, type MapOverlayState, type OverlayKey, type OverlayRow } from './mapOverlays';
+import { resourcePickerPanel, supplyShortagesPanel, type OverlayOptionPanel } from './overlayOptionPanels'; // [dw2overlays]
+import { waypointsOptionsPanel } from './waypoints'; // [improvements] waypoints
+import { IMPROVEMENTS_TITLE, improvementViewRows, onImprovementsChange, overlayRowSections, setImprovementEnabled, type Improvement } from './improvements'; // [improvements]
 import { Camera } from '../render/camera';
 import { followOnSelectionChanged, isFollowingTarget, toggleFollow, type FollowState, type FollowTarget } from '../render/followCamera';
 import { Galaxy } from '../sim/galaxy';
@@ -31,7 +33,10 @@ import { BuiltObjectRole } from '../sim/data/designSpecifications';
 import { BuiltObjectMissionType, COORD_UNSET_DOUBLE, builtObjectMission, type BuiltObjectMission } from '../sim/missions/mission';
 // [15c]
 import { ShipGroup } from '../sim/fleets/shipGroup';
-import { fleetCycleList, fleetShipAction, toggleFleetsList } from './screens/fleetsList';
+import { closeFleetsList, fleetCycleList, fleetShipAction, toggleFleetsList } from './screens/fleetsList';
+import { closeFleetSettings, isFleetSettingsOpen, openFleetSettings } from './screens/fleetSettings';
+import { fleetForSelection } from './screens/fleetSettingsModel';
+import { isImprovementEnabled } from './improvements';
 // [/15c]
 import { SystemVisibilityStatus } from '../sim/visibility';
 import { flagShapeUrl } from '../sim/startGameOptions';
@@ -66,14 +71,16 @@ import { toggleColoniesScreen } from './screens/coloniesScreen';
 import { toggleShipDesigns } from './screens/shipDesigns'; // [16b]
 import { closeShipsAndBasesList, toggleShipsAndBasesList, type BuiltObjectFilter } from './screens/shipsAndBasesList';
 import { toggleMessageHistory } from './screens/messageHistory';
-import { toggleBuildOrder } from './screens/buildOrder'; import { toggleConstructionYards, type ConstructionYardsOptions } from './screens/constructionYards'; // [16c]
+import { toggleBuildOrder } from './screens/buildOrder'; import { openConstructionYards, toggleConstructionYards, type ConstructionYardsOptions } from './screens/constructionYards'; // [16c]
 import { attachBuildQueueLauncher } from './screens/buildQueue'; // [buildQueue]
 import { toggleResearchScreen } from './screens/researchScreen'; // [15b]
 import { toggleEmpireComparison } from './screens/empireComparison';
 import { showToast } from './toast';
+import { toolStripHeading, toolStripItem, toolStripMenu } from './originalWindow'; // [uiwp6]
 import type { DispatchOption } from '../sim/player/habitatDispatch';
 // [troops] begin
 import { toggleTroopsScreen } from './screens/troops';
+import { sectorColumnName } from '../sim/sectorNames';
 import { confirmAutomationOff } from './orderMenu';
 import { galaxyStarDate } from '../sim/tick/simTime';
 import { createShipAction, ShipActionType } from '../sim/player/shipAction';
@@ -523,7 +530,51 @@ export function toggleFleets(selected?: ShipGroup): void {
             selectShipGroup(sg, false);
             void performAction(fleetShipAction(mode, sg), false);
         },
+        // The Fleet Settings panel (an Improvement; the button is hidden while it is off).
+        onOpenSettings: (sg) => openFleetSettingsFor(sg),
     });
+}
+
+/** The Fleet Settings panel (an Improvement, screens/fleetSettings.ts) on `sg` (else the first fleet); nothing while
+ *  the improvement is off. Pick on Map selects the fleet and arms the next map click, as the Fleets window does. */
+export function openFleetSettingsFor(sg: ShipGroup | null): void {
+    const src = getEmpireSummarySource();
+    if (!src || !isImprovementEnabled('fleetSettings')) return;
+    openFleetSettings({
+        empire: src.empire,
+        fleet: sg,
+        onPickPoint: (fleet, mode) => {
+            selectShipGroup(fleet, false);
+            void performAction(fleetShipAction(mode, fleet), false);
+        },
+        onSelectShip: (ship) => selectStellarObject(ship, true),
+        onOpenDesigns: () => toggleShipDesigns({ empire: src.empire }),
+        onOpenFleetDesigns: () => {
+            closeFleetsList();
+            toggleFleetsList({
+                empire: src.empire,
+                tab: 'designs',
+                onSelect: (f) => selectShipGroup(f, true),
+                onSelectOnly: (f) => selectShipGroup(f, false),
+            });
+        },
+    });
+}
+
+/** Q: the Fleet Settings panel on the selected fleet (or the selected own ship's fleet); a toast without one. */
+export function openFleetSettingsForSelection(): void {
+    const src = getEmpireSummarySource();
+    if (!src || !isImprovementEnabled('fleetSettings')) return;
+    if (isFleetSettingsOpen()) {
+        closeFleetSettings();
+        return;
+    }
+    const sg = fleetForSelection(src.empire, currentSelection);
+    if (sg === null) {
+        showToast('Select one of your fleets to open its Fleet Settings');
+        return;
+    }
+    openFleetSettingsFor(sg);
 }
 
 /** Build the HUD overlay and append it to document.body. */
@@ -580,8 +631,9 @@ export function createHud(wiring: HudWiring = {}): HudRefs {
         onMainMenu: wiring.onMainMenu,
         // [gameoptions] the Escape menu's Options opens the Game Options screen (same as O).
         onOptions: () => {
+            // Without a player empire (a view with no game behind it) the window edits the new-game defaults.
             const src = getEmpireSummarySource();
-            if (src) openGameOptionsPanel({ empire: src.empire });
+            openGameOptionsPanel({ empire: src?.empire ?? null });
         },
     });
     setGameMenuHandler(gameMenu.toggle);
@@ -1149,14 +1201,11 @@ function buildTopMoreButton(wiring: HudWiring): HTMLElement {
     btn.textContent = '•••';
     btn.style.width = '100%';
     btn.style.height = '100%';
-    const menu = document.createElement('div');
-    menu.className = 'top-more-menu';
+    // A ContextMenuStrip under the button (originalWindow.ts toolStripMenu, CustomToolStripRenderer).
+    const menu = toolStripMenu('top-more-menu');
     menu.hidden = true;
     for (const item of TOP_MORE_ITEMS) {
-        const row = document.createElement('button');
-        row.type = 'button';
-        row.className = 'top-more-item';
-        row.textContent = item.label;
+        const row = toolStripItem(item.label, { tag: 'button', className: 'top-more-item' });
         row.addEventListener('click', (e) => {
             e.stopPropagation();
             menu.hidden = true;
@@ -1452,6 +1501,11 @@ function buildSelectionPanel(wiring: HudWiring): HTMLElement {
     let dispatchSlots: SelectionExtraSlot[] = [];
     const extraSlots = (): SelectionExtraSlot[] => {
         const out: SelectionExtraSlot[] = [...dispatchSlots];
+        // The Fleet Settings panel for a selected player fleet (an Improvement, ui/improvements.ts).
+        const settingsFleet = currentSelection?.shipGroup ?? null;
+        if (settingsFleet !== null && isImprovementEnabled('fleetSettings') && settingsFleet.empire === (wiring.galaxy?.playerEmpire ?? null)) {
+            out.push({ label: 'Settings', title: 'Fleet Settings: posture, engagement, retreat, fuel, troops and resupply (Q)', onClick: () => openFleetSettingsFor(settingsFleet) });
+        }
         if (!charterButton.element.hidden) {
             const el = charterButton.element as HTMLButtonElement;
             out.push({ label: 'Charter', title: el.title || 'Charter a company…', disabled: el.disabled, onClick: () => el.click() });
@@ -1499,6 +1553,9 @@ function buildSelectionPanel(wiring: HudWiring): HTMLElement {
             more.hidden = !moreOpen || more.childElementCount === 0;
         },
     );
+
+    // An Improvement switched on / off in Game Options: its selection-panel button appears / goes.
+    onHudDestroyed(onImprovementsChange(() => refreshSelectionActionBar()));
 
     // [ordermenu] begin
     // 17c: btnSelectionAction1-8 (Main.Part3.cs 1120-3805, method_593), 35×28 each from (70, pnlInfoPanel.Bottom + 2).
@@ -1764,6 +1821,18 @@ function buildSelectionPanel(wiring: HudWiring): HTMLElement {
             openGalactopedia({ topic: t.topic });
             return;
         }
+        // [improvements] supplyChain: the Waiting row → Construction Yards, Waiting For tab, at the site.
+        if (t.kind === 'supply') {
+            const src = getEmpireSummarySource();
+            if (src) openConstructionYards({ ...constructionYardsOptions(src.empire), site: t.target, tab: 'supply' });
+            return;
+        }
+        // Not in the original: a fleet's "Template" row opens the Fleets screen on the fleet (fleetRefillControls.ts).
+        if (t.kind === 'fleetTemplate') {
+            closeFleetsList();
+            toggleFleets(t.fleet);
+            return;
+        }
         const o = t.obj;
         if (o instanceof ShipGroup) shipGroupSelectHandler?.(o, false);
         else if (o instanceof Habitat) habitatSelectHandler?.(o, false);
@@ -1916,27 +1985,17 @@ function creaturePictureUrl(c: Creature): string | null {
  *  Main.Part12.cs 2135-2199). The zoom buttons are the system map's own strip (hudSystemMap.ts). */
 function buildOptionsList(wiring: HudWiring): HTMLElement {
     const overlays = wiring.overlays ?? createMapOverlayState();
-    const panel = document.createElement('div');
-    panel.className = 'hud-panel hud-options';
+    // [uiwp6] A ToolStrip drop-down (originalWindow.ts toolStripMenu, CustomToolStripRenderer) of checked items.
+    const panel = toolStripMenu('hud-options');
 
     const section = (title: string): void => {
-        const head = document.createElement('div');
-        head.className = 'hud-section-head';
-        head.textContent = title;
-        panel.appendChild(head);
+        panel.appendChild(toolStripHeading(title, 'hud-section-head'));
     };
     const addRow = (row: OverlayRow): void => {
-        const item = document.createElement('button');
-        item.type = 'button';
-        item.className = 'hud-option-row';
+        const item = toolStripItem(row.label, { tag: 'button', checked: overlays[row.key], className: 'hud-option-row', labelClassName: 'hud-option-label' });
         item.dataset.overlay = row.key;
-        const check = document.createElement('span');
-        check.className = 'hud-option-check';
-        check.textContent = overlays[row.key] ? '✓' : '';
-        const lbl = document.createElement('span');
-        lbl.className = 'hud-option-label';
-        lbl.textContent = row.label;
-        item.append(check, lbl);
+        const check = item.querySelector<HTMLElement>('.ow-ts-check')!;
+        check.classList.add('hud-option-check');
         // [freightOverlay] begin — additions to the original nine carry a "+" badge (the Improvements section's rows do
         // not: the section says it); `panel` rows get a "…" opener.
         if (row.mod === true && row.improvement === undefined) {
@@ -1959,12 +2018,86 @@ function buildOptionsList(wiring: HudWiring): HTMLElement {
             item.appendChild(more);
         }
         // [freightOverlay] end
+        // [dw2overlays] begin — the Resources row's "…": an inline resource picker under the row (ui/overlayOptionPanels.ts).
+        let sub: OverlayOptionPanel | null = null;
+        if (row.panel === 'resources' && wiring.galaxy !== undefined) {
+            const picker = resourcePickerPanel(overlays, wiring.galaxy);
+            sub = picker;
+            picker.element.style.display = 'none';
+            const more = document.createElement('span');
+            more.className = 'hud-option-more';
+            more.textContent = '…';
+            more.title = 'Pick a resource';
+            more.setAttribute('role', 'button');
+            more.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const open = picker.element.style.display === 'none';
+                if (open) picker.refresh();
+                picker.element.style.display = open ? '' : 'none';
+            });
+            item.appendChild(more);
+        }
+        // [dw2overlays] end
+        // [improvements] supplyChain — the Supply Shortages row's "…": its colony sub-toggle.
+        if (row.panel === 'supplyShortages') {
+            const opts = supplyShortagesPanel();
+            sub = opts;
+            opts.element.style.display = 'none';
+            const more = document.createElement('span');
+            more.className = 'hud-option-more';
+            more.textContent = '…';
+            more.title = 'Supply Shortages options';
+            more.setAttribute('role', 'button');
+            more.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const open = opts.element.style.display === 'none';
+                if (open) opts.refresh();
+                opts.element.style.display = open ? '' : 'none';
+            });
+            item.appendChild(more);
+        }
+        // [improvements] waypoints — the Waypoints & Known Locations row's "…": its two sub-toggles and the list.
+        if (row.panel === 'waypoints') {
+            const opts = waypointsOptionsPanel();
+            sub = opts;
+            opts.element.style.display = 'none';
+            const more = document.createElement('span');
+            more.className = 'hud-option-more';
+            more.textContent = '…';
+            more.title = 'Waypoints & Known Locations options';
+            more.setAttribute('role', 'button');
+            more.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const open = opts.element.style.display === 'none';
+                if (open) opts.refresh();
+                opts.element.style.display = open ? '' : 'none';
+            });
+            item.appendChild(more);
+        }
         item.addEventListener('click', () => {
             toggleOverlay(overlays, row.key);
             check.textContent = overlays[row.key] ? '✓' : '';
             // Rendering lives in src/render/overlayLayer.ts (task M3, parity C3), which subscribes to onOverlayChange and
             // reads the state every frame (Fade civilian ships: builtObjectLayer.ts).
         });
+        panel.appendChild(item);
+        if (sub !== null) panel.appendChild(sub.element); // [dw2overlays]
+    };
+    // [improvements] An improvement with no overlay (Improvement.viewRow): its row switches the improvement itself.
+    const addImprovementRow = (imp: Improvement): void => {
+        const item = document.createElement('button');
+        item.type = 'button';
+        item.className = 'hud-option-row';
+        item.dataset.improvement = imp.id;
+        item.title = imp.description;
+        const check = document.createElement('span');
+        check.className = 'hud-option-check';
+        check.textContent = isImprovementEnabled(imp.id) ? '✓' : '';
+        const lbl = document.createElement('span');
+        lbl.className = 'hud-option-label';
+        lbl.textContent = imp.label;
+        item.append(check, lbl);
+        item.addEventListener('click', () => setImprovementEnabled(imp.id, !isImprovementEnabled(imp.id)));
         panel.appendChild(item);
     };
     // The original's overlays, then the Improvements section (ui/improvements.ts: DW2-inspired additions, each one
@@ -1974,15 +2107,26 @@ function buildOptionsList(wiring: HudWiring): HTMLElement {
         const { original, improvements } = overlayRowSections(OVERLAY_ROWS);
         section('Overlays');
         for (const row of original) addRow(row);
-        if (improvements.length > 0) {
+        const toggles = improvementViewRows();
+        if (improvements.length > 0 || toggles.length > 0) {
             section(IMPROVEMENTS_TITLE);
             for (const row of improvements) addRow(row);
+            for (const imp of toggles) addImprovementRow(imp);
         }
     };
     render();
     // Until the HUD is destroyed (hudLifetime.ts).
     const off = onImprovementsChange(() => render());
     onHudDestroyed(off);
+    // [dw2overlays] the checks follow changes made elsewhere (the resource picker turns its overlay on).
+    onHudDestroyed(
+        onOverlayChange(() => {
+            for (const el of panel.querySelectorAll<HTMLElement>('.hud-option-row[data-overlay]')) {
+                const c = el.querySelector('.hud-option-check');
+                if (c !== null) c.textContent = overlays[el.dataset.overlay as OverlayKey] ? '✓' : '';
+            }
+        }),
+    );
     return panel;
 }
 
@@ -1996,7 +2140,7 @@ function buildOptionsPopup(list: HTMLElement): HTMLElement {
     list.classList.add('hud-options-menu');
     const btn = document.createElement('button');
     btn.type = 'button';
-    btn.className = 'hud-panel hud-options-toggle';
+    btn.className = 'ow-glass hud-options-toggle'; // [uiwp6] a GlassButton
     btn.title = 'View and map overlays';
     const setOpen = (open: boolean): void => {
         wrap.classList.toggle('open', open);
@@ -2420,7 +2564,7 @@ export function missionTypeLabel(type: BuiltObjectMissionType): string {
 // Port of Galaxy.3.cs ResolveDescription(Empire, BuiltObjectMission) — target text only
 export function missionTargetText(mission: BuiltObjectMission, empire: Empire | null): string {
     const sector = mission.targetSector;
-    if (sector !== null) return `Sector ${String.fromCharCode(sector.x + 65)}${sector.y + 1}`;
+    if (sector !== null) return `Sector ${sectorColumnName(sector.x)}${sector.y + 1}`;
     // TODO(port): ShipGroup.Name — not in sim
     if (mission.targetShipGroup !== null) return '';
     const bo = mission.targetBuiltObject;

@@ -57,6 +57,13 @@
 // unowned + explored + colonizable type + quality >= 0.5 only.
 // TODO(overlay): fold in colony-ship design range and ruin/superluxury
 // bonuses once those are ported.
+//
+// [dw2overlays] The three marker sets are rebuilt when the player's knowledge changes (colonyTargets.ts
+// colonyTargetSignature: systems explored, colonies founded / lost, designs, a game month) instead of once at
+// construction, and Scenic / Research Locations only mark explored systems, as the C# (MainView.2.cs 4603:
+// empire.CheckSystemExplored(systemInfo.SystemStar)) does. The Improvements overlays (ui/improvements.ts) live here too:
+// Colony Target Scores (colonyScoreOverlay.ts; it takes over the Potential Colonies ring of every habitat it scores),
+// Resources (resourceOverlay.ts) and Fuel Range (fuelOverlay.ts).
 
 import { circleAtScreenRes, segmentCircle } from './screenCircle';
 import { drawnBuiltObjectPos, type MotionInterpolator } from './renderInterp';
@@ -100,6 +107,16 @@ import { threatKnownSites, type KnownThreatSite } from '../sim/scenario/threats/
 import { scenarioMapFeatures, type ScenarioMapMarker } from '../sim/scenario/mapFeatures';
 import { WRECK_MARKER_COLOR, visibleWreckFields, wreckFieldHit, wreckMarker } from '../ui/scenario/wreckageUi'; // [wreckage]
 import type { WreckField } from '../sim/scenario/wreckage/common'; // [wreckage]
+// [dw2overlays] begin
+import { ResourceOverlay } from './resourceOverlay';
+import { ColonyScoreOverlay } from './colonyScoreOverlay';
+import { FuelOverlay } from './fuelOverlay';
+import { colonyTargetSignature } from './colonyTargets';
+import { fogOf } from './fog';
+import { resourceTooltipText, knownResourceIndexFor } from './resourceOverlayData';
+import type { HabitatType } from '../sim/types';
+// [dw2overlays] end
+import { SupplyOverlay } from './supplyOverlay'; // [improvements] supplyChain
 
 /** Scenario threat markers (19b "Threats" overlay): suspected = amber, confirmed = red. */
 export const THREAT_SUSPECTED_COLOR = 0xffa020;
@@ -135,14 +152,15 @@ function drawnPx(h: Habitat, z: number): number {
  * (Empire.4.cs CanEmpireColonizeHabitat), simplified per the module doc
  * comment above: unowned (or independent-owned) + system explored + a
  * colonizable habitat type for the player race + quality >= 0.5. */
-export function isPotentialColony(h: Habitat, galaxy: Galaxy): boolean {
+export function isPotentialColony(h: Habitat, galaxy: Galaxy, colonizable?: readonly HabitatType[]): boolean {
     const empire = galaxy.playerEmpire;
     if (empire === null) return false;
     if (h.category !== HabitatCategoryType.Planet && h.category !== HabitatCategoryType.Moon) return false;
     const owner = h.owner ?? h.empire;
     if (owner !== null && owner !== undefined && owner !== galaxy.independentEmpire) return false;
     if (!empire.visibility.checkSystemExplored(h.systemIndex)) return false;
-    if (!empire.colonizableHabitatTypesForEmpire().includes(h.type)) return false;
+    // `colonizable`: ColonizableHabitatTypesForEmpire computed once for a whole pass.
+    if (!(colonizable ?? empire.colonizableHabitatTypesForEmpire()).includes(h.type)) return false;
     return h.quality >= 0.5;
 }
 
@@ -425,6 +443,16 @@ export class OverlayLayer {
     private wreckList: WreckField[] = [];
     private wreckFrame = 0;
     // [wreckage] end
+    // [dw2overlays] begin
+    readonly resources: ResourceOverlay;
+    readonly colonyScores: ColonyScoreOverlay;
+    readonly fuel: FuelOverlay;
+    /** colonyTargetSignature of the last marker rebuild (null: no player — built once). */
+    private markersSig: number | null = null;
+    private markersFrame = 0;
+    // [dw2overlays] end
+    /** [improvements] supplyChain: Supply Shortages markers (src/render/supplyOverlay.ts). */
+    readonly supply: SupplyOverlay;
 
     constructor(
         private galaxy: Galaxy,
@@ -432,11 +460,11 @@ export class OverlayLayer {
         private empireLayer: EmpireLayer,
         private state: MapOverlayState,
     ) {
-        world.addChild(this.root);
-        // The scanner discs first: just above the territory layer (empireLayer, added to world before this root), as
-        // they share the backdrop bitmap in the C#.
+        // The scanner discs stay put: just above the territory layer (empireLayer, added to world before), as they share
+        // the backdrop bitmap in the C#. The rest of this root is MainView's, placed above the ship art (placePostureLayer).
         this.lrsLayer.visible = false;
-        this.root.addChild(this.lrsLayer);
+        world.addChild(this.lrsLayer);
+        world.addChild(this.root);
         this.highlights = mapHighlightsOf(galaxy);
         // method_250 order: the posture discs (5221), then the pings (5777-5783) — both over the ship art.
         this.postureRoot.addChild(this.postureDiscs, this.postureLines, this.postureArrows, this.eventPings);
@@ -471,22 +499,14 @@ export class OverlayLayer {
         this.root.addChild(this.threats);
         this.root.addChild(this.scenarioMarkers);
         this.root.addChild(this.wrecks); // [wreckage]
-        // Eligibility is computed once from the galaxy as built: nothing in
-        // the current sim (no ship/colonization missions yet) changes
-        // ownership, quality or exploration after createGame runs.
-        // TODO(overlay): recompute when ships can colonize/explore (M3+).
-        for (const h of galaxy.habitats) {
-            if (
-                h.category !== HabitatCategoryType.Planet &&
-                h.category !== HabitatCategoryType.Moon &&
-                h.category !== HabitatCategoryType.Star
-            ) {
-                continue;
-            }
-            if (isPotentialColony(h, galaxy)) this.potentialColonies.push(new MarkerRing(h, this.root));
-            if (isScenicLocation(h)) this.scenicLocations.push(new MarkerRing(h, this.root));
-            if (isResearchLocation(h)) this.researchLocations.push(new MarkerRing(h, this.root));
-        }
+        // [dw2overlays] begin
+        this.colonyScores = new ColonyScoreOverlay(galaxy, this.root, state);
+        this.resources = new ResourceOverlay(galaxy, this.root, state);
+        this.fuel = new FuelOverlay(galaxy, this.root, state);
+        // [dw2overlays] end
+        // [dw2overlays] The marker sets are rebuilt as the player's knowledge changes (rebuildMarkersIfChanged).
+        this.rebuildMarkers();
+        this.supply = new SupplyOverlay(galaxy, this.root, state); // [improvements] supplyChain
         // React to a toggle immediately rather than waiting for the next
         // frame's update() (which reads `state` fresh anyway, but the
         // Empire Territory gate lives on EmpireLayer and only this layer
@@ -498,17 +518,95 @@ export class OverlayLayer {
         this.applyTerritoryToggle();
     }
 
+    // [dw2overlays] begin
+    /** Recompute the Potential Colonies / Scenic / Research marker sets (rings kept for habitats that stay). */
+    private rebuildMarkers(): void {
+        const galaxy = this.galaxy;
+        const player = galaxy.playerEmpire;
+        this.markersSig = player !== null ? colonyTargetSignature(galaxy, player) : null;
+        const reveal = fogOf(galaxy).reveal;
+        const explored = (h: Habitat): boolean => player === null || reveal || player.visibility.checkSystemExplored(h.systemIndex);
+        const colonizable = player !== null ? player.colonizableHabitatTypesForEmpire() : [];
+        const pc: Habitat[] = [];
+        const sc: Habitat[] = [];
+        const rs: Habitat[] = [];
+        for (const h of galaxy.habitats) {
+            if (h.category !== HabitatCategoryType.Planet && h.category !== HabitatCategoryType.Moon && h.category !== HabitatCategoryType.Star) continue;
+            if (isPotentialColony(h, galaxy, colonizable)) pc.push(h);
+            if (isScenicLocation(h) && explored(h)) sc.push(h);
+            if (isResearchLocation(h) && explored(h)) rs.push(h);
+        }
+        this.potentialColonies = this.syncMarkers(this.potentialColonies, pc);
+        this.scenicLocations = this.syncMarkers(this.scenicLocations, sc);
+        this.researchLocations = this.syncMarkers(this.researchLocations, rs);
+    }
+
+    private syncMarkers(old: MarkerRing[], habitats: readonly Habitat[]): MarkerRing[] {
+        const keep = new Map<Habitat, MarkerRing>();
+        for (const m of old) keep.set(m.habitat, m);
+        const out: MarkerRing[] = [];
+        for (const h of habitats) {
+            const m = keep.get(h);
+            if (m !== undefined) {
+                keep.delete(h);
+                out.push(m);
+            } else out.push(new MarkerRing(h, this.root));
+        }
+        for (const m of keep.values()) m.graphics.destroy();
+        return out;
+    }
+
+    /** Twice a second while a marker overlay is on: rebuild when the player's knowledge changed. */
+    private rebuildMarkersIfChanged(): void {
+        const st = this.state;
+        if (!st.potentialColonies && !st.scenicLocations && !st.researchLocations) return;
+        if (this.markersFrame++ % 30 !== 0) return;
+        const player = this.galaxy.playerEmpire;
+        if (player === null) return;
+        if (colonyTargetSignature(this.galaxy, player) !== this.markersSig) this.rebuildMarkers();
+    }
+
+    /** Hover text of an Improvements overlay mark under world (wx, wy) (nothing picked there), or null. */
+    improvementsHitTest(wx: number, wy: number, z: number): string | null {
+        return this.fuel.hitTest(wx, wy, z) ?? this.colonyScores.hitTest(wx, wy) ?? this.resources.hitTest(wx, wy);
+    }
+
+    /** Extra tooltip lines for a hovered habitat from the Improvements overlays that are on, or null. */
+    habitatTooltipExtra(h: Habitat): string | null {
+        const lines: string[] = [];
+        const c = this.colonyScores.habitatTooltipExtra(h);
+        if (c !== null) lines.push(c);
+        const player = this.galaxy.playerEmpire;
+        if (this.resources.root.visible && player !== null) {
+            const index = knownResourceIndexFor(this.galaxy, player, fogOf(this.galaxy).reveal);
+            const sys = index.bySystem.get(h.systemIndex);
+            const name = (id: number): string => this.galaxy.resourceSystem.byId.get(id)?.name ?? `#${id}`;
+            const star = sys?.star === h;
+            const own = sys?.habitats.find((x) => x.habitat === h);
+            if (sys !== undefined && star && 1 / this.lastZ >= 70) lines.push(resourceTooltipText('Known resources in the system:', sys.resources, name));
+            else if (own !== undefined) lines.push(resourceTooltipText('Known resources:', own.resources, name));
+        }
+        return lines.length > 0 ? lines.join('\n') : null;
+    }
+    private lastZ = 1;
+    // [dw2overlays] end
+
     private applyTerritoryToggle(): void {
         this.empireLayer.setTerritoryEnabled(this.state.empireTerritory);
     }
 
-    private updateGroup(markers: MarkerRing[], enabled: boolean, z: number, cam: Camera): void {
+    private updateGroup(markers: MarkerRing[], enabled: boolean, z: number, cam: Camera, skip: ReadonlyMap<Habitat, unknown> | null = null): void {
         for (const m of markers) {
             if (!enabled) {
                 m.graphics.visible = false;
                 continue;
             }
             const h = m.habitat;
+            // [dw2overlays] a habitat the Colony Target Scores overlay rings in its heat colour.
+            if (skip !== null && skip.has(h)) {
+                m.graphics.visible = false;
+                continue;
+            }
             const halfW = cam.width / (2 * z) + 200 / z;
             const halfH = cam.height / (2 * z) + 200 / z;
             // Around the drawn (render-interpolated orbit) body, else its committed position.
@@ -539,7 +637,18 @@ export class OverlayLayer {
      * system-zoom threshold): that's when habitats draw individually. */
     update(z: number, cam: Camera): void {
         const atSystemZoom = 1 / z < 70;
-        this.updateGroup(this.potentialColonies, atSystemZoom && this.state.potentialColonies, z, cam);
+        this.lastZ = z; // [dw2overlays]
+        // [dw2overlays] begin — the Improvements overlays (the colony scores first: Potential Colonies defers to them).
+        this.rebuildMarkersIfChanged();
+        this.colonyScores.motion = this.motion;
+        this.colonyScores.update(z, cam);
+        this.resources.motion = this.motion;
+        this.resources.update(z, cam);
+        this.fuel.motion = this.motion;
+        this.fuel.getSelection = this.getSelection;
+        this.fuel.update(z, cam);
+        // [dw2overlays] end
+        this.updateGroup(this.potentialColonies, atSystemZoom && this.state.potentialColonies, z, cam, this.colonyScores.active?.byHabitat ?? null);
         this.updateGroup(this.scenicLocations, atSystemZoom && this.state.scenicLocations, z, cam);
         this.updateGroup(this.researchLocations, atSystemZoom && this.state.researchLocations, z, cam);
         const f = 1 / z;
@@ -558,6 +667,8 @@ export class OverlayLayer {
         this.updateThreats(z);
         this.updateScenarioMarkers(z);
         this.updateWrecks(z); // [wreckage]
+        this.supply.motion = this.motion; // [improvements] supplyChain
+        this.supply.update(z, cam);
     }
 
     /** Scenario markers (src/sim/scenario/mapFeatures.ts): a double ring with a pennant, re-queried 4 times a second. */
@@ -1051,7 +1162,10 @@ export class OverlayLayer {
 
     /** Drop the overlay-change subscription (tests / view teardown). */
     destroy(): void {
+        this.lrsLayer.destroy({ children: true });
         this.unsubscribe();
         this.freight.destroy(); // [freightOverlay]
+        this.supply.destroy(); // [improvements] supplyChain
+        this.fuel.destroy(); // [dw2overlays]
     }
 }

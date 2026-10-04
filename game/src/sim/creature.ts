@@ -3,6 +3,7 @@
 // tick (task 08h). Combat (CheckForAttackers / CheckForTargets / AttackTarget, Creature.cs 1196-1345) is in
 // events.ts (M4u); DamageTarget (Creature.cs 1347) is an M4o stub.
 
+import { battleReportHooks } from './battleReports/hooks';
 import { baconMovementSettings } from './movement';
 import type { Galaxy } from './galaxy';
 import { GalaxyLocationEffectType } from './galaxyLocation';
@@ -734,6 +735,9 @@ export class Creature {
 
     // Port of Creature.cs CompleteTeardown (line 948).
     completeTeardown(): void {
+        // Mod layer (battle reports, an Improvement): reads only (battleReports/hooks.ts).
+        const battleHook = battleReportHooks.creatureTeardown;
+        if (battleHook !== null) battleHook(this.galaxy, this);
         if (this.currentTarget !== null) {
             const pursuers = stellarPursuers(this.currentTarget);
             if (pursuers !== null) removeFrom(pursuers, this as StellarObject);

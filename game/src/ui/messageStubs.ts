@@ -19,7 +19,8 @@ import { AdvisorMessageType } from '../sim/advisorQueue';
 import { REAL_SECONDS_IN_GALACTIC_YEAR } from '../sim/galaxyTime';
 import type { Empire } from '../sim/empire';
 
-export type StubKind = 'message' | 'conversation' | 'suggestion';
+/** 'battle': a battle report notification (an Improvement; ui/battleReports.ts), keyed by a UI-only token. */
+export type StubKind = 'message' | 'conversation' | 'suggestion' | 'battle';
 
 export interface MessageStub {
     /** Identity: the EmpireMessage (conversation stubs: the queue entry's message). */
@@ -477,7 +478,7 @@ export function advanceStubList(state: StubListState, dtMs: number, opts: Advanc
     if (opts.hovered || opts.paused || dtMs <= 0) return expired;
     const win = visibleStubs(state, opts.visible);
     for (const s of win.rows) {
-        if (s.kind !== 'message') continue;
+        if (s.kind !== 'message' && s.kind !== 'battle') continue;
         s.shownMs += dtMs;
         if (s.shownMs >= POPUP_DURATION_MS) expired.push(s);
     }

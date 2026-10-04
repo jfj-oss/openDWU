@@ -1,5 +1,8 @@
 // Stacked-object pick popup: a small DOM list next to the cursor. Esc / a click elsewhere closes it.
+// Drawn as the original's selectionMenu (Main.Part7.cs 3618 method_355: a ContextMenuStrip with CustomToolStripRenderer
+// and a 32 × 15 image margin) through originalWindow.ts toolStripMenu.
 import './pickMenu.css';
+import { toolStripItem, toolStripMenu } from './originalWindow';
 
 export interface PickMenuEntry {
     icon: string;
@@ -28,25 +31,20 @@ export function closePickMenu(): void {
 export function openPickMenu(entries: readonly PickMenuEntry[], clientX: number, clientY: number): void {
     closePickMenu();
     if (entries.length === 0) return;
-    const root = document.createElement('div');
-    root.className = 'pick-menu';
+    const root = toolStripMenu('pick-menu');
     let active = 0;
-    const rows: HTMLDivElement[] = [];
+    const rows: HTMLElement[] = [];
     const setActive = (i: number): void => {
         active = (i + rows.length) % rows.length;
-        rows.forEach((r, j) => r.classList.toggle('pick-menu-active', j === active));
+        rows.forEach((r, j) => {
+            r.classList.toggle('pick-menu-active', j === active);
+            r.classList.toggle('ow-ts-active', j === active);
+        });
         rows[active]?.scrollIntoView?.({ block: 'nearest' });
     };
     entries.forEach((en, i) => {
-        const row = document.createElement('div');
-        row.className = 'pick-menu-row';
-        const icon = document.createElement('span');
-        icon.className = 'pick-menu-icon';
-        icon.textContent = en.icon;
-        const name = document.createElement('span');
-        name.className = 'pick-menu-name';
-        name.textContent = en.name;
-        row.append(icon, name);
+        const row = toolStripItem(en.name, { image: en.icon, className: 'pick-menu-row', labelClassName: 'pick-menu-name' });
+        row.querySelector('.ow-ts-image')?.classList.add('pick-menu-icon');
         if (en.type !== '') {
             const type = document.createElement('span');
             type.className = 'pick-menu-type';

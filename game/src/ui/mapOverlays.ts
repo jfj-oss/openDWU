@@ -2,7 +2,7 @@
 // (btnMapOverlay1..8, btnMapCivilianFade in Main.Part12.cs) are replaced by a
 // list of named toggles; the overlays are drawn by src/render/overlayLayer.ts (and builtObjectLayer.ts / empireLayer.ts).
 
-import { isImprovementEnabled } from './improvements';
+import { isImprovementEnabled, registerImprovement } from './improvements';
 
 export interface MapOverlayState {
     fleetPostures: boolean;
@@ -26,6 +26,23 @@ export interface MapOverlayState {
     threats: boolean;
     /** Scenario 19e-7: debris fields of battle wreckage the player knows (wreck markers + hover tooltip). */
     wrecks: boolean;
+    // [dw2overlays] begin — Improvements (ui/improvements.ts; DW2-inspired, not in the original): UI-only reads of what
+    // the player knows.
+    /** Colony Target Scores: the Expansion Planner's colonization targets as rings coloured by their score, around the
+     *  habitat at system zoom and the system's best target at galaxy / sector zoom (render/colonyTargets.ts). Extends
+     *  Potential Colonies (whose plain rings give way to these on the scored habitats). */
+    colonyScores: boolean;
+    /** Known resources per system / habitat as icons (render/resourceOverlay.ts); the "…" panel picks one resource. */
+    resources: boolean;
+    /** The selected ship / fleet's fuel reach and the refuelling points it can use (render/fuelOverlay.ts). */
+    fuelRange: boolean;
+    // [dw2overlays] end
+    /** Improvements (supplyChain): the player's yards stalled for resources and colonies short of luxuries
+     *  (render/supplyOverlay.ts; hover tooltip). */
+    supplyShortages: boolean;
+    /** Improvements (waypoints): the player's waypoints and the locations the player knows of — location hints, debris
+     *  fields, planet destroyers, ... (render/locationMarkers.ts; the "…" panel picks which, ui/waypoints.ts). */
+    waypoints: boolean;
 }
 
 /** A fresh overlay state. Task M3: `empireTerritory` starts on, matching the
@@ -58,10 +75,20 @@ export function createMapOverlayState(): MapOverlayState {
         threats: true,
         // On, like Threats: only draws in a wreckage-scenario game.
         wrecks: true,
+        // [dw2overlays] begin — off, like every addition.
+        colonyScores: false,
+        resources: false,
+        fuelRange: false,
+        // [dw2overlays] end
+        supplyShortages: false,
+        // On: the player's own pins and what the player was told of (nothing to draw until there is some).
+        waypoints: true,
     };
 }
 
 export type OverlayKey = keyof MapOverlayState;
+
+export type OverlayPanel = 'tradeFlows' | 'resources' | 'supplyShortages' | 'waypoints';
 
 /** One row of the View popup's overlay list. */
 export interface OverlayRow {
@@ -69,8 +96,8 @@ export interface OverlayRow {
     label: string;
     /** An addition to the original (rendered with a small "+" badge). */
     mod?: boolean;
-    /** A screen the row's "…" button opens. */
-    panel?: 'tradeFlows';
+    /** What the row's "…" button opens: the Trade Flows screen, or the inline resource picker (ui/overlayOptionPanels.ts). */
+    panel?: OverlayPanel;
     /** The improvement (ui/improvements.ts) the overlay belongs to: listed in the popup's Improvements section (no "+"
      *  badge) and hidden — and not drawn, overlayActive — while the improvement is off. */
     improvement?: string;
@@ -96,7 +123,43 @@ export const OVERLAY_ROWS: OverlayRow[] = [
     { key: 'threats', label: 'Threats' },
     { key: 'wrecks', label: 'Wreck Fields', mod: true },
     // Improvements section (ui/improvements.ts): rows with `improvement: '<id>'` go here.
+    // [dw2overlays] begin
+    { key: 'colonyScores', label: 'Colony Target Scores', improvement: 'colonyTargetScores' },
+    { key: 'resources', label: 'Resources', improvement: 'resourcesOverlay', panel: 'resources' },
+    { key: 'fuelRange', label: 'Fuel Range', improvement: 'fuelRangeOverlay' },
+    // [dw2overlays] end
+    { key: 'supplyShortages', label: 'Supply Shortages', improvement: 'supplyChain', panel: 'supplyShortages' },
+    { key: 'waypoints', label: 'Waypoints & Known Locations', improvement: 'waypoints', panel: 'waypoints' },
 ];
+
+// Waypoints (ui/waypoints.ts): named map pins of the player's own, and the locations the player knows of.
+registerImprovement({
+    id: 'waypoints',
+    label: 'Waypoints & known locations',
+    description: 'Name places on the map (right-click empty space, or W at the cursor) and see the locations you were told of or found.',
+    default: true,
+});
+
+// [dw2overlays] begin — the three overlay improvements (on by default; each overlay's own toggle still starts off).
+registerImprovement({
+    id: 'colonyTargetScores',
+    label: 'Colony target scores overlay',
+    description: "Map overlay: the Expansion Planner's colonization targets, ringed in a colour from their score (green = best).",
+    default: true,
+});
+registerImprovement({
+    id: 'resourcesOverlay',
+    label: 'Resources overlay',
+    description: 'Map overlay: the resources you know of in each system, with rarity and abundance; pick one to find it.',
+    default: true,
+});
+registerImprovement({
+    id: 'fuelRangeOverlay',
+    label: 'Fuel range overlay',
+    description: "Map overlay: the selected ship's or fleet's reach on its fuel and the refuelling points it can use.",
+    default: true,
+});
+// [dw2overlays] end
 
 /** The overlay is on and, when it belongs to an improvement, that improvement is enabled (what the renderer draws). */
 export function overlayActive(state: MapOverlayState, key: OverlayKey): boolean {
@@ -124,3 +187,36 @@ export function onOverlayChange(fn: OverlayChangeListener): () => void {
     listeners.add(fn);
     return () => listeners.delete(fn);
 }
+
+// [dw2overlays] begin
+/** The non-boolean overlay settings of one MapOverlayState (the "…" panels). */
+export interface MapOverlayOptions {
+    /** Resources overlay: show only this resource id (null = every known resource). */
+    resourceFilter: number | null;
+}
+
+const overlayOptions = new WeakMap<MapOverlayState, MapOverlayOptions>();
+
+/** The options that go with `state` (created on first use: no filter). */
+export function overlayOptionsOf(state: MapOverlayState): MapOverlayOptions {
+    let o = overlayOptions.get(state);
+    if (o === undefined) {
+        o = { resourceFilter: null };
+        overlayOptions.set(state, o);
+    }
+    return o;
+}
+
+/** Set the Resources overlay's resource filter (null = all) and notify the subscribers, as a toggle does. */
+export function setOverlayResourceFilter(state: MapOverlayState, resourceId: number | null): void {
+    const o = overlayOptionsOf(state);
+    if (o.resourceFilter === resourceId) return;
+    o.resourceFilter = resourceId;
+    for (const fn of listeners) fn();
+}
+
+/** Turn one overlay flag on or off (no-op when it already is), notifying like toggleOverlay. */
+export function setOverlay(state: MapOverlayState, key: OverlayKey, on: boolean): void {
+    if (state[key] !== on) toggleOverlay(state, key);
+}
+// [dw2overlays] end

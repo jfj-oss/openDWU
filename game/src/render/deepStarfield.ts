@@ -26,8 +26,10 @@
 // scripts/starfield-shots.mjs). Layer 0 is prescaled to 32·r px (r = device resolution) and minified to 20 CSS px by
 // the GPU's linear sampler, as the original's sprite batch minifies 32 -> 20. Each layer is a ParticleContainer (one
 // draw call); star positions are integers (random.Next) and static; per frame each layer container only moves by its
-// wrapped parallax offset, snapped to whole CSS px like the original's (int) offsets (no particle writes, no
-// allocation). Particles are rebuilt only when the viewport size, the resolution or the density changes.
+// wrapped parallax offset, snapped to whole device pixels like the original's (int) screen-pixel offsets (no particle
+// writes, no allocation): the 'nearest' texels keep exact device-pixel edges (no shimmer) and on HiDPI a layer moves
+// in 1 / DPR CSS px steps instead of whole-CSS-px (2-device-px) jumps. Particles are rebuilt only when the viewport
+// size, the resolution or the density changes.
 //
 // The flare art is decoded with its embedded grey ICC profile ignored (served without it, desktop/colorProfile.cjs, and
 // decoded by AssetStore.loadRawImage), as the original's GDI+ load does; colour-managed, the halos come out ~17% brighter.
@@ -36,8 +38,15 @@
 //   - Star positions are deterministic from the galaxy seed (the original seeds from DateTime.Now.Ticks).
 //   - Layer 0's tint is fixed per star (the original re-rolls it from Galaxy.Rnd every frame — a sim-RNG draw in the
 //     renderer, which the port must not make; a per-frame colour flicker would also shimmer badly at 60 fps).
-//   - Layer 0 pans by cam·z/6 like the others (the original divides the world position by 6 without the zoom, which
-//     streaks the layer at up to 50× the map's speed at sector zoom).
+//   - Parallax source: the original offsets each layer by its ABSOLUTE camera screen position, (int)(cam / F / divisor)
+//     % tile (method_108; method_102 for layer 0 divides cam by 6 without the zoom, which streaks it at up to 50× the
+//     map's speed at sector zoom). Under a zoom, cam·z changes by cam·dz, i.e. in proportion to the camera's world
+//     position (~10^5 units): a 1 % zoom step slides the layers hundreds of px (~1300 device px a frame for layer 0
+//     at F = 2 under a trackpad pinch, scripts/starfield-jitter.mjs) — hidden by the original's 12 % wheel notches,
+//     which simply re-shuffle the field, but a violent swirl under trackpad / pinch zoom (many tiny steps). The port
+//     accumulates the map's actual pan instead (screenPanDelta: Σ Δcam·z, every layer, layer 0 included): a pan
+//     moves each layer by exactly the original's pan / divisor, a zoom about the view centre leaves the field still,
+//     a zoom at the cursor moves it by the centre's shift / divisor.
 //   - The hard cut at zoom factor 300 becomes the Main View's backdrop crossfade window (one seamless map, task 02b2):
 //     the stars fade in over the window the galaxy backdrop fades out over. Closer than F = 300 the brightness is
 //     exactly method_45; farther out (where the original draws no stars, only the backdrop) it holds method_45's value
@@ -49,6 +58,7 @@
 // Render-only: no sim state is read beyond system positions / star types, nothing is written, no sim RNG is drawn.
 
 import { Container, Particle, ParticleContainer, Rectangle, Sprite, Texture, type TextureSource } from 'pixi.js';
+import { makeTextureCanvas, textureFromCanvas } from './textureCanvas';
 import { useMinifyingFilter } from './assets';
 
 // --- pure part ------------------------------------------------------------------------------------------------------
@@ -233,11 +243,26 @@ export function generateStarLayer(
     return { tile, count, xs, ys, frames, tints };
 }
 
-/** Wrapped parallax offset of a layer in [0, tile): camera screen position / divisor, positive modulo (the caller
+/** Wrapped parallax offset of a layer in [0, tile): the map's screen-space pan / divisor, positive modulo (the caller
  *  snaps it to device pixels, as the original's (int) casts do). */
 export function layerOffset(camScreen: number, divisor: number, tile: number): number {
     const v = (camScreen / divisor) % tile;
     return v < 0 ? v + tile : v;
+}
+
+/** The map's pan in CSS px between two camera states (centre cam0 at zoom z0 -> cam1 at z1): how far the map content
+ *  at the view centre moved on screen, measured at the mean zoom (symmetric, so a zoom step and its reverse cancel).
+ *  A zoom about the view centre pans 0; a pan / a zoom-at-cursor pans by the centre's world shift × zoom. This is
+ *  d(cam·z) without the cam·dz term the original's absolute `cam·z / divisor` offset has (see update()). */
+export function screenPanDelta(cam0: number, z0: number, cam1: number, z1: number): number {
+    return (cam1 - cam0) * ((z0 + z1) / 2);
+}
+
+/** Snap a layer offset (CSS px) to the device-pixel grid of resolution `res`: whole device pixels, so the 'nearest'
+ *  layers' texels keep exact device-pixel edges (no shimmer) while the layer moves in 1 / res CSS px steps. */
+export function snapToDevicePixels(v: number, res: number): number {
+    const r = res > 0 && Number.isFinite(res) ? res : 1;
+    return Math.round(v * r) / r;
 }
 
 /** Number of tile copies (per axis) that cover a view of `extent` px at any offset in [0, tile). */
@@ -295,11 +320,9 @@ export interface PatchSystem {
     radius: number;
 }
 
+/** A software canvas (its 2D context made with willReadFrequently: no GPU surface; see textureCanvas.ts). */
 function makeCanvas(w: number, h: number): HTMLCanvasElement {
-    const c = document.createElement('canvas');
-    c.width = w;
-    c.height = h;
-    return c;
+    return makeTextureCanvas(w, h).canvas;
 }
 
 /** Procedural 4-point star glow for one atlas cell (no-install fallback). */
@@ -365,6 +388,13 @@ export class DeepStarfield {
     /** Game.StarFieldSize ("Star Density" in Game Options); a change rebuilds the layers (Main.Part6.cs:2497-2501:
      *  mainView.ClearMain(); mainView.method_14(StarFieldSize)). */
     private starFieldSize = DEFAULT_STAR_FIELD_SIZE;
+    /** The map's accumulated pan in CSS px (Σ screenPanDelta): the parallax source the layer offsets divide. */
+    private panX = 0;
+    private panY = 0;
+    /** Camera state at the previous update (NaN = none yet). */
+    private lastCamX = NaN;
+    private lastCamY = NaN;
+    private lastZ = NaN;
 
     constructor(private readonly seed: number) {
         this.root.addChild(this.patches, this.far, this.near);
@@ -424,7 +454,7 @@ export class DeepStarfield {
                     ctx.drawImage(pre, x, y);
                 }
             }
-            const atlas = Texture.from(canvas);
+            const atlas = textureFromCanvas(canvas);
             // 'nearest' layers: the original's pixels, one texel per CSS px (crisp blocks on HiDPI); layer 0 is
             // minified 32 -> 20 by the GPU like the original's sprite batch (no mip chain).
             atlas.source.scaleMode = spec.sampling;
@@ -455,7 +485,7 @@ export class DeepStarfield {
         }
         ctx.fillStyle = g;
         ctx.fillRect(0, 0, BLOB_SIZE, BLOB_SIZE);
-        const tex = Texture.from(c);
+        const tex = textureFromCanvas(c);
         useMinifyingFilter(tex);
         return tex;
     }
@@ -515,11 +545,24 @@ export class DeepStarfield {
     }
 
     /**
-     * Per frame. `alpha` = deepStarfieldAlpha; camera screen position = cam·z (the map's own pan in px); `resolution`
-     * = the renderer's device pixels per CSS px (the layer textures are built for it).
+     * Per frame. `alpha` = deepStarfieldAlpha; camX / camY / z = the camera (the layers pan by the map's own pan
+     * since the last frame, screenPanDelta, over their divisors); `resolution` = the renderer's device pixels per CSS
+     * px (the layer textures are built for it; offsets snap to its pixel grid).
      * Sets `far` / `near` alpha (the rim atmosphere may then scale them down further).
      */
     update(alpha: number, camX: number, camY: number, z: number, viewW: number, viewH: number, resolution = 1): void {
+        // Parallax source, tracked every frame (also while hidden, so the field is continuous when it fades in).
+        if (Number.isFinite(this.lastZ) && Number.isFinite(camX) && Number.isFinite(camY) && Number.isFinite(z)) {
+            this.panX += screenPanDelta(this.lastCamX, this.lastZ, camX, z);
+            this.panY += screenPanDelta(this.lastCamY, this.lastZ, camY, z);
+        } else {
+            // First frame: start from the original's absolute screen position (any start point is equivalent).
+            this.panX = camX * z;
+            this.panY = camY * z;
+        }
+        this.lastCamX = camX;
+        this.lastCamY = camY;
+        this.lastZ = z;
         const on = this.ready && alpha > 0.01;
         this.root.visible = on;
         this.far.alpha = alpha * STARFIELD_FLARE_SCALE;
@@ -528,16 +571,20 @@ export class DeepStarfield {
         const res = resolution > 0 && Number.isFinite(resolution) ? resolution : 1;
         if (res !== this.atlasRes) this.buildAtlases(res);
         if (viewW !== this.builtW || viewH !== this.builtH) this.build(viewW, viewH);
-        const sx = camX * z;
-        const sy = camY * z;
         for (let li = 0; li < this.layers.length; li++) {
             const d = this.layerData[li];
             const div = STAR_LAYERS[li].divisor;
-            // Whole CSS px, as the original's (int) offsets: the 'nearest' texels stay on the pixel grid.
-            const ox = Math.round(layerOffset(sx, div, d.tile));
-            const oy = Math.round(layerOffset(sy, div, d.tile));
+            // Whole DEVICE px (the original's (int) offsets are whole screen px): the 'nearest' texels keep exact
+            // device-pixel edges, and on HiDPI the layer moves in 1 / res CSS px steps instead of res-px jumps.
+            const ox = snapToDevicePixels(layerOffset(this.panX, div, d.tile), res);
+            const oy = snapToDevicePixels(layerOffset(this.panY, div, d.tile), res);
             this.layers[li].position.set(-ox, -oy);
         }
+    }
+
+    /** The accumulated parallax source (CSS px; the layer offsets are it / divisor, wrapped and snapped). */
+    get parallaxPan(): { x: number; y: number } {
+        return { x: this.panX, y: this.panY };
     }
 
     private patchesFor(index: number): SystemPatches {

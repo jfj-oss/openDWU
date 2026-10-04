@@ -8,6 +8,7 @@ import { Camera } from '../render/camera';
 import { isFollowing, stopFollow, type FollowState } from '../render/followCamera';
 import { keyScrollPixels } from '../render/viewInput'; // [gameoptions]
 import { getSettings } from './settings'; // [gameoptions]
+import { applyOverrides, bindingLabel, chordLabel } from './keyBindingModel';
 import { toggleExpansionPlanner } from './screens/expansionPlanner'; import { selectHabitat } from './hud'; // [16a]
 import { GalaxyTime } from '../sim/clock';
 import { toggleDiplomacyScreen } from './screens/diplomacyScreen'; // [15a]
@@ -35,6 +36,9 @@ import { toggleGroundReportFromKey } from './screens/groundReport';
 import { toggleGameOptionsPanel } from './screens/gameOptionsPanel'; // [16d]
 import { toggleEmpireComparison } from './screens/empireComparison'; // [15d]
 import { showToast } from './toast';
+import { CLOSE_BUTTON_SVG, installHudScaleVar } from './originalWindow'; // [uiwp6]
+import { isImprovementEnabled } from './improvements';
+import { openFleetSettingsForSelection } from './hud';
 // [advisor] begin
 import { toggleAdvisorPanel } from './advisorPanel';
 // [advisor] end
@@ -64,6 +68,8 @@ export interface KeyBinding {
     overlayKey?: string;
     /** Not listed in the shortcuts overlay (the other nine digits of a 0-9 row). */
     overlayHidden?: boolean;
+    /** An Improvement's key (ui/improvements.ts): inert and not listed while that improvement is off. */
+    improvement?: string;
 }
 
 const NONE: KeyModifiers = { ctrl: false, alt: false, shift: false };
@@ -105,6 +111,14 @@ export const KEY_BINDINGS: KeyBinding[] = [
     // original's CyclePanelVisibility; K is free in the original's and the Bacon / Expansion mods' default mappings.
     { key: 'K', modifiers: NONE, action: 'advisorChat', description: 'Talk to your fleet admiral (advisor chat, needs a local model server)' },
     // [advisor] end
+    // Improvements (ui/improvements.ts; not in the original): Q is free in the original's help table, its Main_KeyUp and
+    // the Bacon / Expansion mods' default key maps (GameHotKeysMappingFile.json, ExpansionHotKeysMappingFile.json,
+    // BaconModHotKeysMappingFile.json; J is the Expansion mod's construction queue editor).
+    { key: 'Q', modifiers: NONE, action: 'fleetSettings', description: "Fleet Settings: the selected fleet's posture, engagement, retreat, fuel, troop and resupply settings (Improvement)", improvement: 'fleetSettings' },
+    // Waypoints (an Improvement, ui/waypoints.ts): W and Shift+W are free in the original's help table and Main_KeyUp,
+    // and in the Bacon / Expansion mods' default key maps (BaconModHotKeysMappingFile.json has Ctrl+W, Alt+U only).
+    { key: 'W', modifiers: NONE, action: 'addWaypoint', description: 'Puts a named waypoint on the map at the mouse cursor (Improvement)', improvement: 'waypoints' },
+    { key: 'W', modifiers: SHIFT, action: 'toggleWaypointsOverlay', description: 'Shows or hides the Waypoints & Known Locations map overlay (Improvement)', improvement: 'waypoints' },
     // "Pause or Spacebar": both keys pause/resume.
     { key: 'Pause', modifiers: NONE, action: 'togglePause', description: 'Pauses or resumes the game' },
     { key: 'Space', modifiers: NONE, action: 'togglePause', description: 'Pauses or resumes the game' },
@@ -189,6 +203,15 @@ export type ControlGroupKeyKind = 'set' | 'select' | 'selectWithFocus';
 
 let controlGroupHandler: ((kind: ControlGroupKeyKind, index: number) => void) | null = null;
 
+/** The waypoint keys (ui/waypoints.ts): W adds one at the cursor, Shift+W toggles the overlay. */
+export type WaypointKeyAction = 'addWaypoint' | 'toggleWaypointsOverlay';
+let waypointKeyHandler: ((action: WaypointKeyAction) => void) | null = null;
+
+/** Register the game view's waypoint key handler (main.ts → ui/waypoints.ts; null on teardown). */
+export function setWaypointKeyHandler(h: ((action: WaypointKeyAction) => void) | null): void {
+    waypointKeyHandler = h;
+}
+
 /** Register the game view's control-group handler (main.ts → ui/controlGroups.ts; null on teardown). */
 export function setControlGroupHandler(h: ((kind: ControlGroupKeyKind, index: number) => void) | null): void {
     controlGroupHandler = h;
@@ -242,11 +265,16 @@ export function isTypingTarget(target: EventTarget | null): boolean {
     return !!el.isContentEditable;
 }
 
+/** The bindings in force: the default table with the Hotkeys screen's remaps applied (keyBindingModel.ts). */
+export function getEffectiveBindings(): readonly KeyBinding[] {
+    return applyOverrides(KEY_BINDINGS, getSettings().keyBindingOverrides);
+}
+
 /** Find the binding for a key+modifiers combo, or null. */
 export function findBinding(
     key: string,
     mods: KeyModifiers,
-    bindings: KeyBinding[] = KEY_BINDINGS,
+    bindings: readonly KeyBinding[] = getEffectiveBindings(),
 ): KeyBinding | null {
     // KeyboardEvent.key is lowercase for unshifted letters ('g'); the table
     // uses the original's key names (Keys.G), so compare letters uppercased.
@@ -269,7 +297,7 @@ export function findBinding(
 export function dispatchKey(
     event: Pick<KeyboardEvent, 'key' | 'ctrlKey' | 'altKey' | 'shiftKey' | 'target'> & { code?: string },
     handlers: KeyHandlers,
-    bindings: KeyBinding[] = KEY_BINDINGS,
+    bindings: readonly KeyBinding[] = getEffectiveBindings(),
 ): string | null {
     if (isTypingTarget(event.target)) return null;
     const binding = findBinding(eventBindingKey(event), {
@@ -278,6 +306,8 @@ export function dispatchKey(
         shift: event.shiftKey,
     }, bindings);
     if (!binding) return null;
+    // An Improvement switched off in Game Options: its key does nothing.
+    if (binding.improvement !== undefined && !isImprovementEnabled(binding.improvement)) return null;
     // Task 12n: the C/P/M/Y/X/F/I cycler keys route to the HUD's cycle
     // handler (registered by createHud) instead of the inert default branch.
     const cyc = cycleActionArgs(binding.action);
@@ -454,6 +484,17 @@ export function dispatchKey(
             break;
         }
         // [intel] end
+
+        // Q: the Fleet Settings panel (an Improvement, screens/fleetSettings.ts).
+        case 'fleetSettings':
+            openFleetSettingsForSelection();
+            break;
+        // W / Shift+W: waypoints (an Improvement, ui/waypoints.ts).
+        case 'addWaypoint':
+        case 'toggleWaypointsOverlay':
+            if (waypointKeyHandler) waypointKeyHandler(binding.action);
+            else console.info(`TODO(key): ${binding.action}`);
+            break;
 
         default:
             // Registered but not implemented yet.
@@ -702,6 +743,8 @@ export const IMPLEMENTED_KEY_ACTIONS: ReadonlySet<string> = new Set([
     // [intel] begin
     'intelligenceAgentsScreen',
     // [intel] end
+    'fleetSettings',
+    'addWaypoint', 'toggleWaypointsOverlay',
 ]);
 
 /** True when pressing the binding's key does something today. Pure. */
@@ -718,6 +761,7 @@ export function createShortcutsOverlay(): {
     toggle: () => boolean;
     destroy: () => void;
 } {
+    installHudScaleVar();
     const root = document.createElement('div');
     root.id = 'keyboard-shortcuts-overlay';
     root.className = 'hud-panel hud-keyboard-overlay';
@@ -730,46 +774,48 @@ export function createShortcutsOverlay(): {
 
     const close = document.createElement('button');
     close.type = 'button';
-    close.className = 'hud-btn hud-btn-glyph hud-keyboard-close';
+    // [uiwp6] The ScreenPanel's CloseButton (originalWindow.ts CLOSE_BUTTON_SVG).
+    close.className = 'ow-close hud-keyboard-close';
     close.title = 'Close';
-    close.textContent = '✕';
+    close.innerHTML = CLOSE_BUTTON_SVG;
     close.addEventListener('click', () => hide());
     root.appendChild(close);
 
     const list = document.createElement('div');
     list.className = 'hud-keyboard-rows';
-    for (const b of KEY_BINDINGS) {
-        if (b.overlayHidden) continue;
-        const row = document.createElement('div');
-        row.className = 'hud-keyboard-row';
-        if (!isKeyActionAvailable(b.action)) {
-            row.classList.add('hud-keyboard-row-unavailable');
-        }
-        const k = document.createElement('span');
-        k.className = 'hud-keyboard-key';
-        const modParts = [
-            b.modifiers.ctrl ? 'Ctrl+' : '',
-            b.modifiers.alt ? 'Alt+' : '',
-            b.modifiers.shift ? 'Shift+' : '',
-        ].join('');
-        k.textContent = `${modParts}${b.overlayKey ?? displayKeyName(b.key)}`;
-        const d = document.createElement('span');
-        d.className = 'hud-option-label';
-        d.textContent = b.description;
-        row.append(k, d);
-        if (!isKeyActionAvailable(b.action)) {
-            const tag = document.createElement('span');
-            tag.className = 'hud-keyboard-tag';
-            tag.textContent = 'not yet available';
-            row.appendChild(tag);
-        }
-        list.appendChild(row);
-    }
     root.appendChild(list);
-
     document.body.appendChild(root);
+    // Built on every show: an Improvement's key is listed only while that improvement is on.
+    const fill = (): void => {
+        list.replaceChildren();
+        for (const b of getEffectiveBindings()) {
+            if (b.overlayHidden) continue;
+            if (b.improvement !== undefined && !isImprovementEnabled(b.improvement)) continue;
+            const row = document.createElement('div');
+            row.className = 'hud-keyboard-row';
+            if (!isKeyActionAvailable(b.action)) {
+                row.classList.add('hud-keyboard-row-unavailable');
+            }
+            const k = document.createElement('span');
+            k.className = 'hud-keyboard-key';
+            k.textContent = b.overlayKey !== undefined ? `${chordLabel({ key: '', ...b.modifiers })}${b.overlayKey}` : bindingLabel(b);
+            const d = document.createElement('span');
+            d.className = 'hud-option-label';
+            d.textContent = b.description;
+            row.append(k, d);
+            if (!isKeyActionAvailable(b.action)) {
+                const tag = document.createElement('span');
+                tag.className = 'hud-keyboard-tag';
+                tag.textContent = 'not yet available';
+                row.appendChild(tag);
+            }
+            list.appendChild(row);
+        }
+    };
+    fill();
 
     function show(): void {
+        fill();
         root.style.display = '';
     }
     function hide(): void {
@@ -791,20 +837,4 @@ export function createShortcutsOverlay(): {
         toggle,
         destroy: () => root.remove(),
     };
-}
-
-/** Human display name for a DOM key value ('?' shows as '?', arrows named). */
-function displayKeyName(key: string): string {
-    switch (key) {
-        case 'ArrowUp': return '↑';
-        case 'ArrowDown': return '↓';
-        case 'ArrowLeft': return '←';
-        case 'ArrowRight': return '→';
-        case 'Escape': return 'Esc';
-        case 'PageUp': return 'PgUp';
-        case 'PageDown': return 'PgDn';
-        case 'Backspace': return 'Bksp';
-        case 'Pause': return 'Pause';
-        default: return key;
-    }
 }

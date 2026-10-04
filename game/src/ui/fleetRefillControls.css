@@ -1,0 +1,9 @@
+/* A fleet's template row (fleetRefillControls.ts) on the original-style windows. */
+.fr-row .fr-status {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.fr-row .ow-check {
+    white-space: nowrap;
+}

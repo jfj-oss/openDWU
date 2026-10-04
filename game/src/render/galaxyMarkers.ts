@@ -5,8 +5,8 @@
 //    has explored or sees, at f > 150 (num16, line 5153), a circle around the star in the dominant empire's MainColor
 //    (method_268, 6660-6672: pen width 3, dashed when SystemInfo.IsDisputed; drawn at line 5399) of radius
 //    val3 = max(Galaxy.MaxSolarSystemSize, TotalStrategicValue^0.35 * 600) / f px (5239-5240, 5337-5343), pushed out
-//    to (star icon px)/2 + 3 when it would hug the icon (5346-5374), at alpha int_15 = clamp((f - 70) * 1.2, 0, 255)
-//    (MainView.cs 1540-1548, the method_250 caller).
+//    to (star icon px)/2 + 3 when it would hug the icon (5346-5374), at FULL alpha: method_250 (5071) sets int_15 = 255,
+//    discarding the clamp((f - 70) * 1.2, 0, 255) its caller passes (MainView.cs 1540-1548).
 //
 // 2. System-name decorations — method_250 5550-5658: right of the ring (x = star + val3 + 1) come the capital icon
 //    (ui/chrome/capital.png at 20 px, 14 px from f >= 4000; fleetLeader.png for a secondary capital,
@@ -53,6 +53,7 @@ import { inOwnRenderGroup } from './renderGroups';
 import { circleAtScreenRes } from './screenCircle';
 import { SELECTION_CIRCLE_WIDTH_PX, applySelectionTint, buildSelectionCircles, symbolSelectionBox } from './selectionCircle';
 import { Container, Graphics, Particle, ParticleContainer, Rectangle, Sprite, Text, Texture } from 'pixi.js';
+import { makeTextureCanvas, textureFromCanvas } from './textureCanvas';
 import type { Camera } from './camera';
 import type { Galaxy } from '../sim/galaxy';
 import type { Empire } from '../sim/empire';
@@ -73,6 +74,7 @@ import { showsMapIndicators } from './mainViewDisplay';
 import { drawCrossedSwords, systemsUnderFire } from './battleIcons';
 import { builtObjectHiddenFromPick, warEmpires } from './builtObjectLayer';
 import { SystemLinkLayer } from './systemLinks';
+import { galaxyViewGates } from './cleanGalaxyView';
 
 // --- constants ----------------------------------------------------------------------------------------------------
 
@@ -249,9 +251,13 @@ export function galaxyOverlayAlpha(f: number): number {
     return Math.max(0, Math.min(255, Math.trunc((f - GALAXY_OVERLAY_MIN_FACTOR) * 1.2))) / 255;
 }
 
-/** Faction ring alpha: gated at f > 150 (MainView.2.cs:5153 / 5395) with method_250's int_15 ramp. */
+/**
+ * Faction ring alpha: gated at f > 150 (MainView.2.cs:5153 / 5395), then FULL: method_250 (5069-5071) and its GDI
+ * twin method_248 (3982-3984) overwrite the int_15 argument (the MainView.cs 1540 ramp) with 255 before method_268 /
+ * method_269 build the pen and brush from it.
+ */
 export function factionRingBandAlpha(f: number): number {
-    return f > SYSTEM_RING_MIN_FACTOR ? galaxyOverlayAlpha(f) : 0;
+    return f > SYSTEM_RING_MIN_FACTOR ? 1 : 0;
 }
 
 /** Presence disc alpha: the territory layer's 0.25 once zoomed out past system level (the backdrop pass, f > 70). */
@@ -559,11 +565,9 @@ const DISC_SIZE = 128;
 /** Atlas cell order: filled galaxy art, outline art, then the fleet icon. */
 const CELL_KEYS: readonly string[] = [...SYMBOL_ART.map((a) => `${a}_galaxy`), ...SYMBOL_ART, 'fleet'];
 
+/** A software canvas (its 2D context made with willReadFrequently: no GPU surface; see textureCanvas.ts). */
 function makeCanvas(w: number, h: number): HTMLCanvasElement {
-    const c = document.createElement('canvas');
-    c.width = w;
-    c.height = h;
-    return c;
+    return makeTextureCanvas(w, h).canvas;
 }
 
 function traceShape(ctx: CanvasRenderingContext2D, shape: MarkerShape | 'fleet', x0: number, y0: number, s: number): void {
@@ -651,7 +655,7 @@ async function buildSymbolAtlas(): Promise<{ frames: Texture[]; aspect: number[]
         }
         aspect.push(1);
     });
-    const atlas = Texture.from(canvas);
+    const atlas = textureFromCanvas(canvas);
     useMinifyingFilter(atlas);
     const frames = CELL_KEYS.map((_, i) => new Texture({ source: atlas.source, frame: new Rectangle(i * CELL, 0, CELL, CELL) }));
     return { frames, aspect };
@@ -669,7 +673,7 @@ function buildDiscFallback(): Texture {
     }
     ctx.fillStyle = g;
     ctx.fillRect(0, 0, DISC_SIZE, DISC_SIZE);
-    const tex = Texture.from(c);
+    const tex = textureFromCanvas(c);
     useMinifyingFilter(tex);
     return tex;
 }
@@ -758,6 +762,8 @@ export class GalaxyMarkerLayer {
     private lastRefresh = -Infinity;
     private dataVersion = 0;
     private ringKey = { z: NaN, v: -1, a: NaN, x0: 0, y0: 0, x1: 0, y1: 0, sig: '' };
+    /** Whether the owned / independent system rings are listed (method_250 5395: !CleanGalaxyView). */
+    private ringsGated = true;
     private discKey = { z: NaN, v: -1, x: NaN, y: NaN };
 
     constructor(
@@ -841,8 +847,8 @@ export class GalaxyMarkerLayer {
             }
             if (o !== null) {
                 this.owners.set(sys, { empire: o.empire, tsv: o.tsv, color: color! });
-                this.ringList.push({ sys, tsv: o.tsv, cross: false, pen });
-            } else if (explored(idx) && (sys.independentColonyCount ?? 0) > 0) {
+                if (this.ringsGated) this.ringList.push({ sys, tsv: o.tsv, cross: false, pen });
+            } else if (this.ringsGated && explored(idx) && (sys.independentColonyCount ?? 0) > 0) {
                 // 5395-5398: known independent colonies get the grey ring.
                 this.ringList.push({ sys, tsv: 0, cross: false, pen });
             }
@@ -869,15 +875,22 @@ export class GalaxyMarkerLayer {
         const f = 1 / z;
         const factionOn = this.overlays.factionMarkers;
         const presenceOn = stationPresenceVisible(this.overlays);
+        // GameOptions.CleanGalaxyView (method_250's flag, cleanGalaxyView.ts): no system rings, links or name decorations.
+        const gates = galaxyViewGates(getSettings().cleanGalaxyView);
         this.back.visible = f > GALAXY_OVERLAY_MIN_FACTOR && (factionOn || presenceOn);
         this.front.visible = factionOn;
         this.drawn = [];
         this.overlayG.clear();
         this.selBoxes.length = 0;
-        this.decorateLabels(systems, f, z, factionOn);
+        this.decorateLabels(systems, f, z, factionOn && gates.systemNames);
         if (!this.back.visible && !this.front.visible) return;
 
         const now = performance.now();
+        if (gates.systemRings !== this.ringsGated) {
+            // The ring list is rebuilt by refresh(): toggling the option takes effect at once.
+            this.ringsGated = gates.systemRings;
+            this.lastRefresh = -Infinity;
+        }
         if (now - this.lastRefresh >= REFRESH_MS) {
             this.lastRefresh = now;
             this.refresh();
@@ -889,7 +902,7 @@ export class GalaxyMarkerLayer {
         this.rings.visible = ringA > 0;
         if (this.rings.visible) this.updateRings(f, z, cam, ringA);
         // Same gate as the rings (method_250 5237: f > num16, in the rings' block), but MainColor at full alpha.
-        this.links.update(f, z, cam, factionOn);
+        this.links.update(f, z, cam, factionOn && gates.systemLinks);
         if (this.front.visible && this.frames.length > 0) this.updateSymbols(f, z, cam);
         this.drawSelectionCircles(z);
     }

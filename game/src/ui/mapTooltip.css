@@ -1,17 +1,29 @@
-/* Task 12k: Main View hover tooltip. Small dark translucent label next to
-   the cursor, styled like the HUD panels (cf. hud.css / toast.css). */
+/* Task 12k: Main View hover tooltip, drawn like the original's HoverPanel (HoverPanel.cs, mapTooltip.ts): a fill of
+   the owner's main colour at alpha 32 (set inline), no border, padding int_2 = 6, white text with the black (+1, +1)
+   drop shadow (method_11), font_0 = 18.67 px regular and the name line in font_1 = 18.67 px bold, at the original's
+   pixels × the HUD scale. */
 
 .dwu-map-tooltip {
     position: fixed;
     display: none;
     pointer-events: none;
     z-index: 100;
-    background: rgba(20, 22, 28, 0.95);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 4px;
-    padding: 3px 8px;
+    background: rgba(64, 64, 64, 0.125);
+    border: 0;
+    border-radius: 0;
+    padding: calc(6px * var(--ow-hud-k, 0.856));
     font-family: 'Forgotten Futurist', sans-serif;
-    font-size: 12px;
+    font-size: calc(18.67px * var(--ow-hud-k, 0.856));
+    line-height: 1.2;
     color: #fff;
-    white-space: nowrap;
+    text-shadow: 1px 1px 0 #000;
+    -webkit-font-smoothing: antialiased;
+    white-space: pre; /* [dw2overlays] multi-line texts keep their line breaks (single lines: unchanged) */
+}
+.dwu-map-tooltip-title {
+    font-weight: bold;
+}
+/* Several lines (the Supply Shortages tooltip, ui/supplyChainText.ts). */
+.dwu-map-tooltip.multiline {
+    line-height: 1.35;
 }

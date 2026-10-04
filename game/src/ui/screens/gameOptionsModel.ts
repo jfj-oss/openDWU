@@ -5,6 +5,7 @@
 import { AutomationLevel, type Empire } from '../../sim/empire';
 import { DEFAULT_GAME_OPTIONS_AUTOMATION, type GameOptionsAutomation } from '../../sim/game';
 import type { EmpireSettingField } from '../../sim/player/empireSettings';
+import { DESIGN_UPGRADE_KEYS, applyDesignUpgradePoliciesToGameOptions, type EmpirePolicy } from '../../sim/data/policies';
 import { AUTOMATION_ROWS, automationValue, type AutomationField, type MessageOptionRow, MESSAGE_OPTION_ROWS } from './gameOptionsPanel';
 
 /** One Automation control's value as the window holds it: the combo index (0 manual, 1 suggest, 2 full) or the check. */
@@ -199,5 +200,114 @@ export function newGameOptionsFromSettings(stored: Readonly<Record<string, numbe
             rec[key] = v === AutomationLevel.PartiallyAutomated || v === AutomationLevel.FullyAutomated ? v : AutomationLevel.Undefined;
         } else rec[key] = v;
     }
+    // GameOptions.DesignUpgrade* (default true; saved by the Empire Policy screen): kept when boolean.
+    for (const key of DESIGN_UPGRADE_KEYS) if (typeof stored[key] === 'boolean') out[key] = stored[key] as boolean;
     return out;
+}
+
+/** Port of Start.1.cs:2353 method_171: an AutomationLevel as the combo index (Manual 0, SemiAutomated 1, FullyAutomated 2). */
+export function automationLevelToIndex(level: AutomationLevel): number {
+    return level === AutomationLevel.PartiallyAutomated ? 1 : level === AutomationLevel.FullyAutomated ? 2 : 0;
+}
+
+/** Start.1.cs:1928-1943 (method_155 / PopulateOptionsValues): the main menu Options panel's 16 Automation controls for a GameOptions. */
+export function automationValuesFromGameOptions(o: Readonly<GameOptionsAutomation>): AutomationValues {
+    const L = automationLevelToIndex;
+    return {
+        controlMilitaryAttacks: L(o.controlAttacksOnEnemiesDefault),
+        controlColonization: L(o.controlColonizationDefault),
+        controlColonyTaxRates: o.controlColonyTaxRatesDefault,
+        controlStateConstruction: L(o.controlShipBuildingDefault),
+        controlDesigns: o.controlShipDesignDefault,
+        controlDiplomacyGifts: L(o.controlDiplomaticGiftsDefault),
+        controlDiplomacyOffense: L(o.controlWarTradeSanctionsDefault),
+        controlDiplomacyTreaties: L(o.controlTreatyNegotiationDefault),
+        controlMilitaryFleets: o.controlFleetFormationDefault,
+        controlTroopGeneration: o.controlTroopRecruitmentDefault,
+        controlAgentAssignment: L(o.controlAgentAssignmentDefault),
+        controlResearch: o.controlResearchDefault,
+        controlColonyFacilities: L(o.controlColonyFacilitiesDefault),
+        controlPopulationPolicy: o.controlPopulationPolicyDefault,
+        controlCharacterLocations: o.controlCharacterLocationsDefault,
+        controlOfferPirateMissions: L(o.controlOfferPirateMissionsDefault),
+    };
+}
+
+/** Start.1.cs:2116 method_163 (+ method_170): the 16 Control*Default fields from the panel's controls, the other fields kept. */
+export function gameOptionsWithAutomationValues(o: Readonly<GameOptionsAutomation>, v: Readonly<AutomationValues>): GameOptionsAutomation {
+    const lv = (x: number | boolean): AutomationLevel => (x === 1 ? AutomationLevel.PartiallyAutomated : x === 2 ? AutomationLevel.FullyAutomated : AutomationLevel.Undefined);
+    return {
+        ...o,
+        controlAttacksOnEnemiesDefault: lv(v.controlMilitaryAttacks),
+        controlColonizationDefault: lv(v.controlColonization),
+        controlColonyTaxRatesDefault: Boolean(v.controlColonyTaxRates),
+        controlShipBuildingDefault: lv(v.controlStateConstruction),
+        controlShipDesignDefault: Boolean(v.controlDesigns),
+        controlDiplomaticGiftsDefault: lv(v.controlDiplomacyGifts),
+        controlWarTradeSanctionsDefault: lv(v.controlDiplomacyOffense),
+        controlTreatyNegotiationDefault: lv(v.controlDiplomacyTreaties),
+        controlFleetFormationDefault: Boolean(v.controlMilitaryFleets),
+        controlTroopRecruitmentDefault: Boolean(v.controlTroopGeneration),
+        controlAgentAssignmentDefault: lv(v.controlAgentAssignment),
+        controlResearchDefault: Boolean(v.controlResearch),
+        controlColonyFacilitiesDefault: lv(v.controlColonyFacilities),
+        controlPopulationPolicyDefault: Boolean(v.controlPopulationPolicy),
+        controlCharacterLocationsDefault: Boolean(v.controlCharacterLocations),
+        controlOfferPirateMissionsDefault: lv(v.controlOfferPirateMissions),
+    };
+}
+
+/** The saved defaults as a full GameOptions (method_260's defaults for what was never saved). */
+export function currentNewGameOptions(stored: Readonly<Record<string, number | boolean>> | null): GameOptionsAutomation {
+    return newGameOptionsFromSettings(stored) ?? { ...DEFAULT_GAME_OPTIONS_AUTOMATION };
+}
+
+/** The settings map for a GameOptions (settings.newGameOptions; design-upgrade flags only when not the default true). */
+export function newGameOptionsToSettings(o: Readonly<GameOptionsAutomation>): Record<string, number | boolean> {
+    const out: Record<string, number | boolean> = {};
+    for (const [k, v] of Object.entries(o)) if (typeof v === 'number' || typeof v === 'boolean') out[k] = v;
+    return out;
+}
+
+/** The 14 Control*Default fields Main.Part3.cs:4179-4192 (method_597's tail) copies from the player empire. */
+const POLICY_APPLY_DEFAULTS: readonly [AutomationField, keyof GameOptionsAutomation, 'level' | 'bool'][] = [
+    ['controlAgentAssignment', 'controlAgentAssignmentDefault', 'level'],
+    ['controlMilitaryAttacks', 'controlAttacksOnEnemiesDefault', 'level'],
+    ['controlColonization', 'controlColonizationDefault', 'level'],
+    ['controlColonyFacilities', 'controlColonyFacilitiesDefault', 'level'],
+    ['controlColonyTaxRates', 'controlColonyTaxRatesDefault', 'bool'],
+    ['controlDiplomacyGifts', 'controlDiplomaticGiftsDefault', 'level'],
+    ['controlMilitaryFleets', 'controlFleetFormationDefault', 'bool'],
+    ['controlResearch', 'controlResearchDefault', 'bool'],
+    ['controlStateConstruction', 'controlShipBuildingDefault', 'level'],
+    ['controlDesigns', 'controlShipDesignDefault', 'bool'],
+    ['controlDiplomacyTreaties', 'controlTreatyNegotiationDefault', 'level'],
+    ['controlTroopGeneration', 'controlTroopRecruitmentDefault', 'bool'],
+    ['controlDiplomacyOffense', 'controlWarTradeSanctionsDefault', 'level'],
+    ['controlCharacterLocations', 'controlCharacterLocationsDefault', 'bool'],
+];
+
+/**
+ * Port of Main.Part3.cs:4179-4198 (method_597's tail, run on every Empire Policy apply) and Main.Part3.cs:3840 (after a
+ * policy file load: ApplyDesignUpgradePoliciesToGameOptions only): the GameOptions after the screen applied `policy`.
+ * `automation` are the values the screen just sent for the empire's controls (they win over the empire, which has not
+ * taken them yet: next frame boundary, or a round trip in sim-worker mode); `withControls` false = the load path.
+ * TODO(port): gameOptions_0.DefaultEmpirePolicy = policy.Clone() (4196-4198) — never read anywhere in the source.
+ */
+export function gameOptionsAfterPolicyApply(
+    stored: Readonly<Record<string, number | boolean>> | null,
+    empire: Empire,
+    policy: EmpirePolicy,
+    automation: Readonly<Partial<Record<AutomationField, number | boolean>>> | null,
+): Record<string, number | boolean> {
+    let o = currentNewGameOptions(stored);
+    if (automation !== null) {
+        const rec = o as unknown as Record<string, number | boolean>;
+        for (const [field, key] of POLICY_APPLY_DEFAULTS) {
+            const sent = automation[field];
+            rec[key] = sent !== undefined ? sent : (empire as unknown as Record<string, number | boolean>)[field];
+        }
+    }
+    o = applyDesignUpgradePoliciesToGameOptions(o, policy);
+    return newGameOptionsToSettings(o);
 }

@@ -1,86 +1,36 @@
-/* Message History panel (task 12i). Styling follows the Empires list /
-   tutorial-window dark-panel tokens. */
+/* Message History panel (task 12i) on the shared original-style window (originalWindow.css): a ListViewBase-coloured
+   list ((32, 32, 40) / (48, 48, 56) rows, (170, 170, 170) text) whose rows wrap long messages. */
 
-.message-history-wrap {
-    position: fixed;
-    inset: 0;
-    z-index: 1500; /* above the HUD, like the in-game tutorial window */
-    pointer-events: none;
-    font-family: 'Forgotten Futurist', sans-serif;
-    color: #e6e6e6;
+.ow-screen-messageHistory .mh-list {
+    background: rgb(32, 32, 40);
+    border: 1px solid rgb(24, 24, 24);
 }
 
-.message-history-window {
-    position: absolute;
-    top: 64px;
-    left: 16px;
-    width: 380px;
-    max-width: calc(100vw - 16px);
-    max-height: calc(100vh - 96px);
-    pointer-events: auto;
-    background: rgba(14, 16, 20, 0.94);
-    backdrop-filter: blur(6px);
-    -webkit-backdrop-filter: blur(6px);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 6px;
-    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6);
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-}
-
-.message-history-titlebar {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 8px 12px;
-    background: rgba(10, 11, 15, 0.9);
-    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-}
-
-.message-history-heading {
-    font-size: 13px;
-    color: #e8d24a;
-}
-
-.message-history-close {
-    background: transparent;
-    border: none;
-    color: #ccc;
-    font-size: 15px;
-    cursor: pointer;
-    padding: 2px 6px;
-}
-.message-history-close:hover {
-    color: #fff;
-}
-
-.message-history-body {
-    padding: 8px;
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-    overflow-y: auto;
-}
-
-.message-history-row {
+.ow-screen-messageHistory .mh-row {
     display: flex;
     align-items: baseline;
     gap: 8px;
-    padding: 5px 8px;
-    background: rgba(255, 255, 255, 0.04);
-    border: 1px solid rgba(255, 255, 255, 0.07);
-    border-radius: 4px;
+    padding: 3px 4px;
+    background: rgb(32, 32, 40);
+    color: rgb(170, 170, 170);
+    user-select: text;
+}
+.ow-screen-messageHistory .mh-row.mh-alt {
+    background: rgb(48, 48, 56);
 }
 
-.message-history-date {
-    font-size: 11px;
-    color: #777;
+.ow-screen-messageHistory .mh-date {
+    flex: none;
+    color: rgb(120, 120, 120);
     white-space: nowrap;
 }
 
-.message-history-text {
-    font-size: 13px;
-    color: #fff;
+.ow-screen-messageHistory .mh-text {
+    min-width: 0;
     overflow-wrap: anywhere;
+}
+
+.ow-screen-messageHistory .mh-empty {
+    padding: 8px;
+    color: rgb(120, 120, 120);
 }

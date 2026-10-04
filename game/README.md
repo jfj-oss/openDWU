@@ -19,6 +19,7 @@ game reads its art and data live from that install folder at
   install paths:
   - Linux: `~/.local/share/Steam/steamapps/common/Distant Worlds Universe`
   - macOS: `~/Library/Application Support/Steam/steamapps/common/Distant Worlds Universe`
+  - Windows: `C:\Program Files (x86)\Steam\steamapps\common\Distant Worlds Universe`
 - For the desktop build: **Electron** (installed automatically as a dev
   dependency by `npm install`; no separate download needed).
 
@@ -48,30 +49,39 @@ Development:
 npm run desktop:dev            # builds dist/, then launches electron desktop/main.cjs
 ```
 
-The desktop shell finds your DW:U install the same way as the browser build
-(`$DWU_DIR`, then a saved config, then platform default guesses, then an
-open-directory dialog). Packaging bakes in the install's file list, so set
-`DWU_DIR` (or run `npm run import-assets` once) before `npm run package:*`.
+The desktop shell finds your DW:U install by itself (`$DWU_DIR`, then the
+folder saved in its `config.json`, then the Steam libraries and usual
+folders of each OS), else shows a setup window to pick it. It builds the
+install's file listings (`asset-manifest.json`, `theme-manifest/`) from that
+folder when it starts, so the build itself never needs the install: release
+builds are made on GitHub's runners, which have none.
 
 ### Packaging
 
 ```sh
 npm run package:linux          # -> release/dwu-linux-x64/
-npm run package:mac            # -> release/dwu-darwin-arm64/ (cross-buildable from Linux)
+npm run package:mac            # -> release/dwu-darwin-arm64/ (cross-buildable from Linux; sign on the Mac)
+npm run package:win            # -> release/dwu-win32-x64/   (cross-buildable from Linux)
+npm run dist:linux             # + release/upload/: .AppImage and .tar.gz
+npm run dist:win               # + release/upload/: setup .exe (NSIS) and portable .zip
+npm run dist:mac               # + release/upload/: .dmg (on a Mac only: hdiutil)
 ```
 
-Both run `scripts/package-desktop.mjs`, which builds the game and packages a
+All run `scripts/package-desktop.mjs`, which builds the game and packages a
 minimal stage directory (no `node_modules`, so the output is a few hundred
-MB rather than ~3.5 GB). On Linux, run the packaged binary directly:
+MB rather than ~3.5 GB), checks that nothing from the original game is in
+it, and with `dist:*` makes the installers. Releases are built by GitHub
+Actions when a release is published: see [`../RELEASING.md`](../RELEASING.md).
+On Linux, run the packaged binary directly:
 
 ```sh
 release/dwu-linux-x64/dwu
 ```
 
-**macOS:** the packaged app is unsigned (packaging cross-platform from Linux
-leaves the binaries unsigned, and arm64 macOS refuses to run unsigned code
-untouched). Transfer it as a tarball (plain copies/`scp -r` flatten the
-Electron Framework's symlinks), then re-sign it ad hoc on the Mac:
+**macOS:** built on a Mac, the app is signed ad hoc automatically. Built on
+Linux, it is unsigned (arm64 macOS refuses to run unsigned code). Transfer
+it as a tarball (plain copies/`scp -r` flatten the Electron Framework's
+symlinks), then re-sign it ad hoc on the Mac:
 
 ```sh
 tar czf dwu-darwin-arm64.tgz -C release dwu-darwin-arm64    # on Linux
@@ -84,8 +94,8 @@ open dwu-darwin-arm64/dwu.app
 If Gatekeeper still complains (e.g. after transferring over the network),
 also run `xattr -dr com.apple.quarantine dwu-darwin-arm64/dwu.app`.
 
-See `desktop/README.md` for how the `dwu://` asset scheme and install-folder
-discovery work.
+See `desktop/README.md` for how the `dwu://` asset scheme, the install-folder
+discovery, the setup window and the update check work.
 
 ## Controls cheat sheet
 

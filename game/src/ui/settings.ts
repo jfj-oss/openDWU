@@ -7,6 +7,7 @@
 import { startEffects } from '../audio/effectsPlayer';
 import { simWorkerDefault } from '../systemMemory';
 import { applyMusicSettings } from '../audio/musicPlayer'; // [audio]
+import { sanitizeOverrides } from './keyBindingModel';
 
 /** One entry of the persisted settings blob. */
 export interface UiSettings {
@@ -81,6 +82,12 @@ export interface UiSettings {
     // [improvements] begin — the DW2-inspired additions (src/ui/improvements.ts): on / off per improvement id. A missing
     // id takes the improvement's default.
     improvements: Record<string, boolean>;
+    /** supplyChain: the Supply Shortages overlay also marks colonies short of luxuries (its "…" panel). */
+    supplyShowColonyShortages: boolean;
+    /** waypoints: the "Waypoints & Known Locations" overlay shows the player's waypoints / the known locations (its "…"
+     *  panel). */
+    waypointsShowPlayer: boolean;
+    waypointsShowKnown: boolean;
     // [improvements] end
 
     /** Run the simulation in a Web Worker (docs/sim-worker.md; the default). Off: the in-thread fallback, the sim on the
@@ -102,6 +109,9 @@ export interface UiSettings {
     galaxyViewDisplayAlwaysEnemyMilitaryShips: boolean;
     galaxyViewDisplayAlwaysPirates: boolean;
     // [galaxymarkers] end
+    /** GameOptions.CleanGalaxyView (Expanded's "Clean Galaxy view", Start.1.cs 2935 / 3001, default off): the galaxy
+     *  view without the sector grid, system rings, names and link lines (render/cleanGalaxyView.ts). */
+    cleanGalaxyView: boolean;
 
     // [gameoptions] begin — the Game Options screen's view / display options (Main.Part6.cs:2491-2515 method_418,
     // Main.Part4.cs:4690-4712 method_569; defaults Main.Part9.cs:2774-2807 method_260). UI-only: none reaches the sim.
@@ -136,6 +146,9 @@ export interface UiSettings {
     /** GameOptions.CustomizationSetName (GameOptions.cs 258): the theme chosen on the Change Theme panel (Start.cs
      *  method_2), "" = the stock game. */
     customizationSet: string;
+
+    /** Hotkeys screen (Bacon mod HotKeys/HotKeyManager.cs): the rows the player remapped, by row id (keyBindingModel.ts). */
+    keyBindingOverrides: Record<string, { key: string; ctrl: boolean; alt: boolean; shift: boolean }>;
 }
 
 /** [galaxymarkers] The GalaxyViewDisplay* keys, in the original's option order. */
@@ -203,6 +216,9 @@ export const DEFAULT_SETTINGS: UiSettings = {
     showWeaponRangeCircles: false,
     autoPauseInPopup: true,
     improvements: {}, // [improvements]
+    supplyShowColonyShortages: true, // [improvements] supplyChain
+    waypointsShowPlayer: true, // [improvements] waypoints
+    waypointsShowKnown: true,
     // On by default only with 16 GB+ of RAM (src/systemMemory.ts): on an 8 GB Mac the replica's extra memory caused severe
     // slowdown and WebGL context loss (2026-10-04); see docs/sim-worker.md §6.
     simWorker: simWorkerDefault(),
@@ -221,6 +237,7 @@ export const DEFAULT_SETTINGS: UiSettings = {
     galaxyViewDisplayAlwaysEnemyMilitaryShips: true,
     galaxyViewDisplayAlwaysPirates: true,
     // [galaxymarkers] end
+    cleanGalaxyView: false,
 
     // [gameoptions] begin — Main.Part9.cs:2774-2807 method_260; GameOptions.cs _MaximumFramerate = -1, _SystemNebulaeDetail = 0.
     mainViewScrollSpeed: 10,
@@ -234,6 +251,7 @@ export const DEFAULT_SETTINGS: UiSettings = {
     automationPromptResponses: {},
     newGameOptions: null,
     customizationSet: '',
+    keyBindingOverrides: {},
     // [gameoptions] end
 };
 
@@ -312,6 +330,7 @@ export function loadSettings(): UiSettings {
         // [freightOverlay] end
         if (typeof parsed.ditherGradients === 'boolean') out.ditherGradients = parsed.ditherGradients;
         if (typeof parsed.pullStationsToCentre === 'boolean') out.pullStationsToCentre = parsed.pullStationsToCentre;
+        if (typeof parsed.cleanGalaxyView === 'boolean') out.cleanGalaxyView = parsed.cleanGalaxyView;
         if (typeof parsed.showWeaponRangeCircles === 'boolean') out.showWeaponRangeCircles = parsed.showWeaponRangeCircles;
         if (typeof parsed.autoPauseInPopup === 'boolean') out.autoPauseInPopup = parsed.autoPauseInPopup;
         // [improvements] begin
@@ -320,6 +339,9 @@ export function loadSettings(): UiSettings {
             for (const [k, v] of Object.entries(parsed.improvements as Record<string, unknown>)) if (typeof v === 'boolean') m[k] = v;
             out.improvements = m;
         }
+        if (typeof parsed.supplyShowColonyShortages === 'boolean') out.supplyShowColonyShortages = parsed.supplyShowColonyShortages;
+        if (typeof parsed.waypointsShowPlayer === 'boolean') out.waypointsShowPlayer = parsed.waypointsShowPlayer;
+        if (typeof parsed.waypointsShowKnown === 'boolean') out.waypointsShowKnown = parsed.waypointsShowKnown;
         // [improvements] end
         // The worker became the default with SIM_WORKER_SETTING_VERSION 2: a stored value from before (the old default
         // `false`, written with every other setting) is not the player's choice and is ignored.
@@ -351,6 +373,7 @@ export function loadSettings(): UiSettings {
         }
         // [gameoptions] end
         if (typeof parsed.customizationSet === 'string') out.customizationSet = parsed.customizationSet;
+        out.keyBindingOverrides = sanitizeOverrides(parsed.keyBindingOverrides);
     } catch {
         // Corrupt blob: keep the defaults.
     }

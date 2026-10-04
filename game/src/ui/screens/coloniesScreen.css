@@ -210,3 +210,9 @@
 .ow-screen-colonies .cy-funds-short {
     background: rgb(255, 0, 0);
 }
+
+/* [improvements] supplyChain: resource names that open the supply panel. */
+.col-supply-link {
+    cursor: pointer;
+    text-decoration: underline dotted rgba(255, 192, 0, 0.7);
+}

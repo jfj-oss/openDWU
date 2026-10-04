@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { GalaxyTime } from '../src/sim/clock';
-import { buildOptionsPanel, pauseForMenu, restorePauseState } from '../src/ui/screens/gameMenu';
+import { GAME_MENU_BUTTONS, GAME_MENU_H, GAME_MENU_W, pauseForMenu, restorePauseState } from '../src/ui/screens/gameMenu';
 import {
     clearSettingsListeners,
     DEFAULT_SETTINGS,
@@ -145,11 +145,10 @@ describe('pause state restored on close (task 10c)', () => {
     });
 });
 
-// Task 06k: buildOptionsPanel is shared with the main menu's Options modal.
-// The DOM panel itself needs a browser (jsdom is not configured), so this
-// exercises its pure settings wiring: the controls it builds read from and
-// write to the same persisted settings the in-game Escape menu uses.
-describe('buildOptionsPanel settings wiring (task 06k)', () => {
+// The main menu's Options and the Escape menu's Options both open the Game Options window (gameOptionsPanel.ts), which
+// writes the same persisted settings the old inline Options panel did. The DOM needs a browser (jsdom is not
+// configured), so this exercises the settings wiring those controls use.
+describe('Options settings wiring (task 06k)', () => {
     let storage: ReturnType<typeof makeFakeStorage>;
 
     beforeEach(() => {
@@ -165,23 +164,39 @@ describe('buildOptionsPanel settings wiring (task 06k)', () => {
 
     it('reflects the persisted music volume and mute state', () => {
         updateSettings({ musicVolume: 0.8, musicMuted: true });
-        // The panel reads these values when built (verified via the same
-        // getters the builder uses); here we assert the stored state the
-        // controls would display.
         expect(getSettings().musicVolume).toBe(0.8);
         expect(getSettings().musicMuted).toBe(true);
     });
 
-    it('offers the four UI scale steps the panel renders', () => {
+    it('scales the UI by the GUI Scale percentage', () => {
         for (const pct of [90, 100, 110, 125]) {
             updateSettings({ uiScale: pct });
             expect(uiScaleFactor()).toBeCloseTo(pct / 100);
         }
     });
 
-    it('persists label toggles the way the panel checkboxes do', () => {
-        updateSettings({ showSystemNames: false, showRegionLabels: true });
+    it('persists the map label and multithreading toggles', () => {
+        updateSettings({ showSystemNames: false, showRegionLabels: true, simWorker: true });
         expect(loadSettings().showSystemNames).toBe(false);
         expect(loadSettings().showRegionLabels).toBe(true);
+        expect(loadSettings().simWorker).toBe(true);
+    });
+});
+
+// Main.Part7.cs:3668 method_356: pnlGameMenu's size and its eight buttons, top to bottom.
+describe('game menu layout (pnlGameMenu, method_356)', () => {
+    it('is 220 x 408 with the buttons 33 px apart from y 137', () => {
+        expect([GAME_MENU_W, GAME_MENU_H]).toEqual([220, 408]);
+        expect(GAME_MENU_BUTTONS.map((b) => b.text)).toEqual([
+            'Exit Distant Worlds',
+            'Exit to Main Menu',
+            'Load Game',
+            'Save Game',
+            'Save Game As',
+            'Options',
+            'Enter Game Editor',
+            'Resume Playing',
+        ]);
+        GAME_MENU_BUTTONS.forEach((b, i) => expect(b.y).toBe(137 + 33 * i));
     });
 });
