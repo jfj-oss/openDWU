@@ -16,7 +16,6 @@
 //
 // TODO(port): canColonizeBecauseAtWar — galaxy.checkEmpireTerritoryCanColonizeHabitat does not return the C# out parameter (Galaxy.cs 3613), so the "Colonization target in another empire's system" status never shows
 // TODO(port): method_539 purchases the colony ship at the colony with the best queue-time × sqrt(distance) to the target (Main.Part4.cs method_539); 'buildNewShips' picks the yard like the Build Order screen does
-// TODO(port): resource rows open the Resource Components panel for non-luxury resources (Main.Part4.cs method_541 → method_552); here every name opens the Galactopedia
 
 import { abundancePercentText } from '../resourceAbundance';
 import './expansionPlanner.css';
@@ -51,7 +50,6 @@ import { cargoAvailable, cargoIndexOf } from '../../sim/logistics/orders';
 import { ResourceGroup, resourceGroupOf } from '../../sim/resourceSystem';
 import { SystemVisibilityStatus } from '../../sim/visibility';
 import { formatNet, resolveGameText, tryGetText } from '../../sim/textResolver';
-import { BACKDROP_URLS } from '../../render/assets';
 import {
     FONT,
     OwGrid,
@@ -77,7 +75,9 @@ import { habitatTypeLabel, resourceIconUrl, rgbCss, selectHabitat, selectStellar
 import { showToast } from '../toast';
 import { mainResxImageUrl } from '../resxImage';
 import { openGalactopedia } from './galactopedia';
+import { openResourceLink } from './resourceComponents';
 import { CROSSHAIR_COLOR, GRID_COLOR, drawMapTerritory, galaxyMapScale, sectorColumnLabel, starBrushColor } from './galaxyMap';
+import { drawGalaxyMapLayers } from './galaxyMapLayers';
 import { requestSimRefresh } from '../../simworker/refresh';
 
 /** Main.Part4.cs:2721 method_538: cmbExpansionPlannerMode index → mode key. */
@@ -932,7 +932,8 @@ function createExpansionPlanner(opts: ExpansionPlannerOptions): OpenState {
                     header: T('Name'),
                     width: 110,
                     sort: (r) => r.name,
-                    render: (r, cell) => cell.appendChild(linkLabel(r.name, () => openGalactopedia({ topic: r.name }))),
+                    // Main.Part4.cs 2945 method_541: a luxury opens its Galactopedia topic, any other the Resource Components window.
+                    render: (r, cell) => cell.appendChild(linkLabel(r.name, () => openResourceLink(galaxy, player, r.resourceId))),
                 },
                 { id: 'type', header: T('Type'), width: 56, sort: (r) => (r.luxury ? 1 : 0), render: (r, cell) => cell.append(r.luxury ? T('Luxury') : T('Strategic')) },
                 { id: 'price', header: T('Price'), width: 42, align: 'right', sort: (r) => r.price, render: (r, cell) => cell.append(formatPrice(r.price)) },
@@ -1180,10 +1181,6 @@ function createExpansionPlanner(opts: ExpansionPlannerOptions): OpenState {
     // Galaxy mini map (gmapExpansionPlanner, GalaxyMap.cs method_6 at full-galaxy zoom)
     // ------------------------------------------------------------------------------------------------------------
 
-    const backdrop = new Image();
-    backdrop.onload = () => drawMap();
-    backdrop.src = BACKDROP_URLS[0];
-
     function drawMap(): void {
         const W = 275;
         const dpr = Math.min(3, window.devicePixelRatio || 1) * Math.max(1, win.scale);
@@ -1197,7 +1194,8 @@ function createExpansionPlanner(opts: ExpansionPlannerOptions): OpenState {
         ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
         ctx.clearRect(0, 0, W, W);
         const s = galaxyMapScale(galaxy, W);
-        if (backdrop.complete && backdrop.naturalWidth > 0) ctx.drawImage(backdrop, 0, 0, W, (galaxy.sizeY / s) | 0);
+        // GalaxyMap.cs method_6: bitmap_1 (backdrop) and bitmap_0 (nebulae), then the territory (galaxyMapLayers.ts).
+        drawGalaxyMapLayers(ctx, galaxy, s, 0, 0, { onChange: () => { if (mapCanvas.isConnected) drawMap(); } });
         drawMapTerritory(ctx, galaxy, W);
         // Sector grid + labels (pen_1 / solidBrush_0).
         const secPx = galaxy.sectorSize / s;

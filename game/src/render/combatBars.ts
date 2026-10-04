@@ -4,7 +4,7 @@
 //
 // Sources (DistantWorlds/Controls, the XNA path):
 //   MainView.1.cs 1251-1295 — per ship, inside the ship draw block, when double_0 <= 3:
-//     - int_34 < 1 (display type 0; the D-key cycle is not ported) and BuiltObject.InBattle:
+//     - int_34 < 1 (display type 0, mainViewDisplay.ts showsBattleBars) and BuiltObject.InBattle:
 //       · ShieldsCapacity > 0: method_194 at (left, top - 8), width = the ship image's width at zoom factor 1
 //         (bitmap5 = list_9, PrepareBuiltObjectImageNEW(..., 1.0), DetermineBuiltObjectSizeNEW at zoom 1)
 //       · AssaultDefenseValue > 0 || AssaultAttackValue > 0: method_195 at (left, top - 4) with
@@ -12,7 +12,7 @@
 //         — when AssaultAttackValue > 0, else when AssaultDefenseValueDefault > 0
 //       · AssaultAttackValue > 0: ui/chrome/assault.png (texture2D_25 = bitmap_88) at its own size, centred on the ship,
 //         tinted method_214(Red, Yellow, CurrentDateTime) — a 2 s red ↔ yellow pulse
-//     - int_34 < 2 and the ship leads its fleet: method_191 — ui/chrome/fleetLeader.png scaled to 20 x 20
+//     - int_34 < 2 (showsMapIndicators) and the ship leads its fleet: method_191 — ui/chrome/fleetLeader.png scaled to 20 x 20
 //       (texture2D_10, MainView.1.cs 2206-2208) with its top-left at (left + width + 2 - fleetLeader.png's own width,
 //       top - 2)
 //     where (left, top) = the ship centre (screen px, truncated) minus half that zoom-1 image.
@@ -33,6 +33,7 @@ import type { AssetStore } from './assets';
 import type { BuiltObject } from '../sim/builtObject';
 import type { Fighter } from '../sim/combat/fighters';
 import type { ShipGroup } from '../sim/fleets/shipGroup';
+import { showsBattleBars, showsMapIndicators } from './mainViewDisplay';
 
 /** MainView.1.cs 1251: the bars are drawn while the zoom factor is at most 3. */
 export const BATTLE_BARS_MAX_FACTOR = 3.0;
@@ -242,15 +243,19 @@ export class BattleBarLayer {
         this.used = 0;
         const k = 1 / z; // world units per screen px
         const tint = assaultIconTint(nowMs);
+        const bars = showsBattleBars();
+        const badges = showsMapIndicators();
         let any = false;
         for (const d of ships) {
             const bo = d.bo;
             const half = Math.trunc(d.unitPx / 2);
             const left = d.x - ox - half * k;
             const top = d.y - oy - half * k;
-            const lines = shipBattleBars(bo, d.unitPx, (this.scratch.length = 0, this.scratch));
-            for (const l of lines) any = this.addLine(g, left, top, l, k) || any;
-            if (showsAssaultIcon(bo) && this.assaultTex !== null) {
+            if (bars) {
+                const lines = shipBattleBars(bo, d.unitPx, (this.scratch.length = 0, this.scratch));
+                for (const l of lines) any = this.addLine(g, left, top, l, k) || any;
+            }
+            if (bars && showsAssaultIcon(bo) && this.assaultTex !== null) {
                 const t = this.assaultTex;
                 const s = this.sprite(t);
                 s.anchor.set(0, 0);
@@ -259,7 +264,7 @@ export class BattleBarLayer {
                 s.scale.set(k);
                 s.tint = tint;
             }
-            if (showsFleetLeaderBadge(bo) && this.badgeTex !== null) {
+            if (badges && showsFleetLeaderBadge(bo) && this.badgeTex !== null) {
                 const o = fleetLeaderBadgeOffset(d.unitPx);
                 const s = this.sprite(this.badgeTex);
                 s.anchor.set(0, 0);
@@ -268,7 +273,7 @@ export class BattleBarLayer {
                 s.tint = 0xffffff;
             }
         }
-        for (const d of fighters) {
+        for (const d of bars ? fighters : []) {
             const fi = d.fighter;
             if (!fi.inBattle || !(fi.specification.shieldsCapacity > 0)) continue;
             const half = Math.trunc(d.px / 2);

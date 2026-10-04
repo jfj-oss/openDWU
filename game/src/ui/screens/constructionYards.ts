@@ -9,11 +9,13 @@
 // Our additions in the same style: list columns for the yard counts / queue / build progress, a Fleet Builds tab (fleet
 // design build orders and which of their ships wait at the selected yard) and a Construction Jobs tab (the empire's
 // construction job board: construction ships acting as mobile yards).
-// TODO(port): the other detail tabs (Cargo / Components / Docking Bays / Troops / Weapons, Main.Part11.cs method_170-176),
-//             the Set Fleet combo, Scrap selected (btnBuiltObjectScrapSelected_Click) and the manufacturing plants grids
-//             (duExoPvEoA / ctlConstructionYardManufacturerWaitQueue, laid out below the visible tab page in method_169).
-// TODO(port): pirate purchasing at a controlled colony / private construction at a pirate base (method_169 empire /
-//             allowPrivateConstruction overrides).
+// The other pnlBuiltObjectInfo tabs (Cargo / Components / Docking Bays / Troops / Weapons, Main.Part11.cs method_170,
+// method_175, method_176, method_178) are the shared pages of builtObjectDataTabs.ts; Scrap is
+// btnBuiltObjectScrapSelected_Click (the 'scrapShips' op); the purchaser is yardPurchaser (also the Colonies screen's).
+// TODO(port): the Set Fleet combo and the manufacturing plants grids (duExoPvEoA / ctlConstructionYardManufacturerWaitQueue,
+//             laid out below the visible tab page in method_169).
+// The purchaser is bound as method_169 binds it (purchaserBinding): a pirate player buys at a colony it controls as itself,
+// and private ships (freighters, mining ships / stations, passenger ships) too at its own bases (allowPrivateConstruction).
 
 import './constructionYards.css';
 import type { Empire } from '../../sim/empire';
@@ -41,8 +43,11 @@ import { empireFlagUrl } from '../selectionInfoView';
 import { componentImageUrl } from './researchTreeModel';
 import { gt } from './researchBenefits';
 import { BUILT_OBJECT_FILTERS, formatEta, retrofitToastText } from './shipsAndBasesList';
-import { DIMMED_COLOR, SELECTED_COLOR, galaxyMapScale, starDotSizes } from './galaxyMap';
+import { DIMMED_COLOR, SELECTED_COLOR, drawMapTerritory, galaxyMapScale, starDotSizes } from './galaxyMap';
+import { drawGalaxyMapLayers } from './galaxyMapLayers';
 import { openGalactopedia } from './galactopedia';
+import { openConstructionSummary } from './designEditor';
+import { builtObjectTabLabels, dataTabContentKey, renderDataTab, type DataTabId } from './builtObjectDataTabs';
 import { showToast } from '../toast';
 import {
     COLORS,
@@ -300,6 +305,39 @@ export function purchaserDesigns(designs: readonly Design[], site: ConstructionS
     return out;
 }
 
+/** How method_169 binds the purchaser (ConstructionYardPurchaser.BindData's empire / allowPrivateConstruction), or null when
+ *  it is not bound. */
+export interface PurchaserBinding {
+    /** The empire whose designs and funds the purchaser uses. */
+    empire: Empire;
+    /** !allowPrivateConstruction. */
+    stateConstructionOnly: boolean;
+}
+
+/**
+ * Port of Main.Part11.cs 3366 method_169's purchaser binding. `shipsAndBases` is bool_28: the Ships and Bases / Construction
+ * Yards window (a site the player does not own is not bound; a mobile yard — TopSpeed > 0 — disables the purchaser); else the
+ * Colonies window's Construction Yard tab (the colony's owner). Either way a pirate player that controls the colony
+ * (PirateColonyControlList.CheckFactionHasControl) buys there as itself, and in the Ships and Bases window it may also
+ * buy private ships at its own bases (allowPrivateConstruction = pirate && the site is a Base).
+ */
+export function purchaserBinding(player: Empire, site: ConstructionSite, shipsAndBases: boolean): PurchaserBinding | null {
+    const isPirate = player.pirateEmpireBaseHabitat !== null;
+    if (shipsAndBases) {
+        const so = site.kind === 'colony' ? site.habitat : site.builtObject;
+        if (so.empire !== player) return null;
+        if (site.kind === 'builtObject' && site.builtObject.topSpeed > 0) return null;
+        let empire = so.empire as Empire;
+        if (isPirate && site.kind === 'colony' && site.habitat.pirateColonyControl.checkFactionHasControl(player)) empire = player;
+        const allowPrivateConstruction = isPirate && site.kind === 'builtObject' && site.builtObject.role === BuiltObjectRole.Base;
+        return { empire, stateConstructionOnly: !allowPrivateConstruction };
+    }
+    if (site.kind !== 'colony') return null;
+    let empire2 = site.habitat.empire as Empire | null;
+    if (isPirate && site.habitat.pirateColonyControl.checkFactionHasControl(player)) empire2 = player;
+    return empire2 === null ? null : { empire: empire2, stateConstructionOnly: true };
+}
+
 /** The purchaser combo's item text: "<sub-role>: <design> (<price> credits)". */
 export function purchaserLabel(design: Design, price: number): string {
     return `${resolveSubRoleDescription(design.subRole)}: ${design.name} (${gt('X credits', Math.trunc(price).toFixed(0))})`;
@@ -313,7 +351,7 @@ export function maximumSizeText(sizes: { any: number; civilian: number; military
     return `${gt('Maximum Ship size')}: ${t}\n${gt('Maximum Base size')}: ${sizes.base} (${gt('when not at colony')})`;
 }
 
-function empireMaximumSizes(empire: Empire): { any: number; civilian: number; military: number; base: number } {
+export function empireMaximumSizes(empire: Empire): { any: number; civilian: number; military: number; base: number } {
     return {
         any: empire.maximumConstructionSize(),
         civilian: empire.maximumConstructionSize(BuiltObjectSubRole.SmallFreighter),
@@ -335,6 +373,13 @@ export function purchaseAutomationTask(empire: Pick<Empire, 'controlColonization
     return empire.controlStateConstruction === AutomationLevel.FullyAutomated ? 'Ship Building' : null;
 }
 
+/** The screen's tab pages: method_178's (Cargo, Components, Construction Yards, Docking Bays, Troops, Weapons), then
+ *  our Fleet Builds and Construction Jobs. */
+export const TAB_ORDER = ['cargo', 'components', 'yards', 'docking', 'troops', 'weapons', 'fleets', 'jobs'] as const;
+function isDataTab(t: string): t is DataTabId {
+    return t === 'cargo' || t === 'components' || t === 'docking' || t === 'troops' || t === 'weapons';
+}
+
 /** Main.Part11.cs 4230 method_178 / 3366 method_169 layout, in body pixels of the 1024 × 756 ScreenPanel. */
 export const YARDS_LAYOUT = {
     window: { w: 1024, h: 756 },
@@ -350,6 +395,110 @@ export const YARDS_LAYOUT = {
     /** Tab page client origin (below the 26 px strip) and size. */
     page: { x: 13, y: 413, w: 674, h: 270 },
 } as const;
+
+// -------------------------------------------------------------------------------------------------------------------
+// ConstructionYardPurchaser (shared with the Colonies screen's Construction Yard tab)
+// -------------------------------------------------------------------------------------------------------------------
+
+/** A stable id per object (combo keys). */
+const objectIds = new WeakMap<object, number>();
+let nextObjectId = 1;
+function objectId(o: object): number {
+    let id = objectIds.get(o);
+    if (id === undefined) {
+        id = nextObjectId++;
+        objectIds.set(o, id);
+    }
+    return id;
+}
+
+export interface YardPurchaser {
+    /** The panel (place it where the screen's layout puts the purchaser). */
+    readonly el: HTMLDivElement;
+    /**
+     * BindData(empire, queue, colony, galaxy, allowPrivateConstruction) as method_169 binds it (purchaserBinding;
+     * `shipsAndBases` = bool_28): list the designs the bound empire can build at `site` (none for null, or when the
+     * binding is another empire's — it would spend that empire's funds), refresh the funds; `enabled` = Enabled.
+     */
+    bind(site: ConstructionSite | null, enabled: boolean, shipsAndBases: boolean): void;
+}
+
+/**
+ * Port of DistantWorlds.Controls ConstructionYardPurchaser.cs (DoLayout: "Available Funds" at (10, 8) and the funds at
+ * (105, 8); cmbDesigns (10, 27) Width - 20 × 21; btnPurchase (10, 56) Width - 20 × 25; PopulateDesigns;
+ * btnPurchase_Click: the automation prompt, then FlashAvailableFunds when unaffordable, else the purchase), a
+ * `width` × `height` GradientPanel. The purchase is the 'yardPurchase' command; `onPurchased` is PurchaseMade.
+ */
+export function yardPurchaser(empire: Empire, width: number, height: number, onPurchased: () => void): YardPurchaser {
+    const galaxy = empire.galaxy as Galaxy;
+    const panel = gradientPanel({ corners: { tl: true, tr: true, br: true, bl: true }, radius: 20, className: 'cy-purchaser' });
+    panel.style.width = `${width}px`;
+    panel.style.height = `${height}px`;
+    dropText(panel, gt('Available Funds'), 10, 8, { color: COLORS.label, size: FONT.small });
+    const funds = dropText(panel, '', 105, 8, { color: COLORS.label, bold: true, size: FONT.small });
+    let site: ConstructionSite | null = null;
+    let designs: Design[] = [];
+    let designsKey = '';
+    let enabled = false;
+    // cmbDesigns_SelectedIndexChanged: ClearAvailableFunds.
+    const designBox = dropDown([], '', () => funds.classList.remove('cy-funds-short'), 'Design to build at this yard');
+    panel.appendChild(place(designBox, 10, 27, width - 20, 21));
+    const btnPurchase = glassButton(gt('Purchase'), { onClick: () => void purchase() });
+    panel.appendChild(place(btnPurchase, 10, 56, width - 20, 25));
+
+    async function purchase(): Promise<void> {
+        const at = site;
+        const design = designs[Number(designBox.value)];
+        if (!at || !design) return;
+        // ConstructionYardPurchaser.btnPurchase_Click: the automation prompt first.
+        const task = purchaseAutomationTask(empire, design);
+        if (task !== null) {
+            const b = await messageBox({
+                caption: gt(task),
+                text: `${gt(task)} is automated. Turn off automation so your order is not overridden?`,
+                buttons: ['Turn off', 'Leave on'],
+                icon: 'question',
+            });
+            if (b === 'Turn off') issuePlayerCommand(galaxy, empire, 'automationOff', [task]);
+        }
+        if (design.calculateCurrentPurchasePrice(galaxy) > empire.stateMoney) {
+            funds.classList.add('cy-funds-short'); // FlashAvailableFunds
+            return;
+        }
+        issuePlayerCommand(galaxy, empire, 'yardPurchase', [design, siteTarget(at)], (bo) => {
+            if (bo === null) showToast(`${design.name}: cannot be built at ${siteTarget(at).name}`);
+            setText(funds, gt('X credits', Math.trunc(empire.stateMoney).toFixed(0)));
+            onPurchased();
+        });
+    }
+
+    function bind(next: ConstructionSite | null, isEnabled: boolean, shipsAndBases: boolean): void {
+        const binding = next === null ? null : purchaserBinding(empire, next, shipsAndBases);
+        site = binding !== null && binding.empire === empire ? next : null;
+        enabled = isEnabled && site !== null;
+        const list = site === null || binding === null ? [] : purchaserDesigns(binding.empire.designs, site, purchaserChecks(binding.empire), binding.stateConstructionOnly);
+        const prices = list.map((d) => d.calculateCurrentPurchasePrice(galaxy));
+        const key = list.map((d, i) => `${objectId(d)}:${Math.trunc(prices[i])}`).join('|') + `@${next ? objectId(siteTarget(next)) : ''}`;
+        if (key !== designsKey) {
+            const prev = designs[Number(designBox.value)];
+            designsKey = key;
+            designs = list;
+            designBox.replaceChildren(...list.map((d, i) => {
+                const o = el('option', '', purchaserLabel(d, prices[i]));
+                o.value = String(i);
+                return o;
+            }));
+            const keep = prev ? list.indexOf(prev) : -1;
+            designBox.value = String(keep >= 0 ? keep : 0);
+        }
+        setText(funds, gt('X credits', Math.trunc(empire.stateMoney).toFixed(0)));
+        const canBuy = enabled && designs.length > 0;
+        btnPurchase.disabled = !canBuy;
+        designBox.disabled = !canBuy;
+    }
+
+    return { el: panel, bind };
+}
 
 // -------------------------------------------------------------------------------------------------------------------
 // The screen
@@ -386,18 +535,6 @@ export function closeConstructionYards(): void {
     open?.close();
 }
 
-/** A stable id per object (combo keys). */
-const objectIds = new WeakMap<object, number>();
-let nextObjectId = 1;
-function objectId(o: object): number {
-    let id = objectIds.get(o);
-    if (id === undefined) {
-        id = nextObjectId++;
-        objectIds.set(o, id);
-    }
-    return id;
-}
-
 /** Empire flag pictures (async composites), cached by empire. */
 const flagUrls = new Map<Empire, string | null>();
 let flagsVersion = 0;
@@ -426,7 +563,7 @@ function img(url: string | null, cls: string, title = ''): HTMLElement {
     return i;
 }
 
-function shipPictureUrl(bo: BuiltObject): string | null {
+export function shipPictureUrl(bo: BuiltObject): string | null {
     // ConstructionYardListView: the retrofit design's picture while a retrofit is under way.
     if (bo.retrofitDesign !== null) return builtObjectImageUrl(bo.retrofitDesign.pictureRef);
     return builtObjectImageUrl(resolveDrawPictureRef(bo));
@@ -437,7 +574,7 @@ function sitePictureUrl(site: ConstructionSite): string | null {
 }
 
 /** The progress cell: the DataGridViewTextBoxDropShadowCell bar under the "p" formatted value. */
-function progressCell(cell: HTMLDivElement, progress: number, width: number, shown: boolean, h: number): void {
+export function progressCell(cell: HTMLDivElement, progress: number, width: number, shown: boolean, h: number): void {
     if (!shown) return;
     cell.appendChild(barGraph(progress, 1, width, h, 'rgb(96, 192, 96)'));
     cell.appendChild(el('span', 'cy-cell-text', formatProgressP(progress)));
@@ -454,7 +591,6 @@ function createConstructionYards(opts: ConstructionYardsOptions): OpenState {
     };
 
     let timer = 0;
-    let summary: OriginalWindow | null = null;
     const win = openOriginalWindow({
         id: 'yards',
         title: gt('Ships and Bases'),
@@ -463,7 +599,6 @@ function createConstructionYards(opts: ConstructionYardsOptions): OpenState {
         height: L.window.h,
         onClose: () => {
             window.clearInterval(timer);
-            summary?.close();
             open = null;
         },
     });
@@ -491,7 +626,9 @@ function createConstructionYards(opts: ConstructionYardsOptions): OpenState {
     let selected: ConstructionSite | null = null;
     let selectedYard: ConstructionYard | null = null;
     let selectedWait: BuiltObject | null = null;
-    let tab: 'yards' | 'fleets' | 'jobs' = 'yards';
+    let tab: DataTabId | 'yards' | 'fleets' | 'jobs' = 'yards';
+    /** Components tab: the selected component (ctlBuiltObjectComponents.SelectedComponent). */
+    let selectedComponent: number | null = null;
     const selectedTarget = (): BuiltObject | Habitat | null => (selected ? siteTarget(selected) : null);
     const selectedBO = (): BuiltObject | null => (selected?.kind === 'builtObject' ? selected.builtObject : null);
 
@@ -523,6 +660,7 @@ function createConstructionYards(opts: ConstructionYardsOptions): OpenState {
             selected = r.site;
             selectedYard = null;
             selectedWait = null;
+            selectedComponent = null;
             refresh();
         },
         onDoubleClick: (r) => goTo(r.site),
@@ -550,7 +688,7 @@ function createConstructionYards(opts: ConstructionYardsOptions): OpenState {
     });
     const btnViewDesign = btn(gt('View Design'), B.x + 2 * B.step, B.y, B.w, B.h, () => {
         const bo = selectedBO();
-        if (bo) showSummary(bo.design);
+        if (bo) openConstructionSummary(galaxy, bo.design);
     });
     const btnViewFleet = btn(gt('View Fleet'), B.x + 3 * B.step, B.y, B.w, B.h, () => {
         const sg = selectedBO()?.shipGroup as ShipGroup | null | undefined;
@@ -576,9 +714,8 @@ function createConstructionYards(opts: ConstructionYardsOptions): OpenState {
             if (b === 'Yes') retire();
         });
     });
-    // TODO(port): Main.Part3.cs btnBuiltObjectScrapSelected_Click (no scrap op yet).
-    const btnScrap = btn(gt('Scrap'), B2.x + 4 * B2.step, B2.y, 140, B2.h, () => undefined, 'Not available yet');
-    btnScrap.disabled = true;
+    // btnBuiltObjectScrapSelected (550, 350) 140 × 25: Main.Part3.cs 403 btnBuiltObjectScrapSelected_Click.
+    const btnScrap = btn(gt('Scrap'), B2.x + 4 * B2.step, B2.y, 140, B2.h, () => void scrapSelected());
 
     // ---- Name (700, 357) / (750, 355) 250 × 20 ----
     dropText(body, gt('Name'), L.nameLabel.x, L.nameLabel.y, { color: COLORS.label, bold: true });
@@ -601,11 +738,9 @@ function createConstructionYards(opts: ConstructionYardsOptions): OpenState {
 
     // ---- tabBuiltObjectData (10, 385) 680 × 300 ----
     const tabs = tabStrip(
-        [
-            { id: 'yards', label: gt('Construction Yards') },
-            { id: 'fleets', label: 'Fleet Builds' },
-            { id: 'jobs', label: 'Construction Jobs' },
-        ],
+        // method_178's tab pages in their Controls order (Cargo, Components, Construction Yards, Docking Bays, Troops,
+        // Weapons), then ours.
+        TAB_ORDER.map((id) => ({ id, label: id })),
         tab,
         (id) => {
             tab = id as typeof tab;
@@ -619,12 +754,39 @@ function createConstructionYards(opts: ConstructionYardsOptions): OpenState {
     const pageYards = place(el('div', 'cy-page'), L.page.x, L.page.y, L.page.w, L.page.h);
     const pageFleets = place(el('div', 'cy-page'), L.page.x, L.page.y, L.page.w, L.page.h);
     const pageJobs = place(el('div', 'cy-page'), L.page.x, L.page.y, L.page.w, L.page.h);
-    body.append(pageYards, pageFleets, pageJobs);
+    // The shared Cargo / Components / Docking Bays / Troops / Weapons pages (builtObjectDataTabs.ts).
+    const pageData = place(el('div', 'cy-page'), L.page.x, L.page.y, L.page.w, L.page.h);
+    body.append(pageYards, pageFleets, pageJobs, pageData);
+    let dataKey = '';
     function showTab(): void {
         pageYards.hidden = tab !== 'yards';
         pageFleets.hidden = tab !== 'fleets';
         pageJobs.hidden = tab !== 'jobs';
+        pageData.hidden = !isDataTab(tab);
+        dataKey = '';
         refresh();
+    }
+    function refreshDataPage(): void {
+        if (!isDataTab(tab)) return;
+        const o = selected ? siteTarget(selected) : null;
+        const key = `${tab}|${o ? objectId(o) : ''}|${dataTabContentKey(tab, o, selectedComponent)}`;
+        if (key === dataKey) return;
+        dataKey = key;
+        pageData.replaceChildren();
+        const t = tab;
+        renderDataTab(t, o, {
+            galaxy,
+            empire,
+            page: pageData,
+            rebuild: () => {
+                dataKey = '';
+                refreshDataPage();
+            },
+            selectedComponent,
+            setSelectedComponent: (i) => {
+                selectedComponent = i;
+            },
+        });
     }
 
     // Construction Yards tab: ctlConstructionYards (0, 0) 390 × 150.
@@ -686,17 +848,9 @@ function createConstructionYards(opts: ConstructionYardsOptions): OpenState {
     });
     pageYards.appendChild(place(waitGrid.el, 0, 180, 390, 90));
 
-    // pnlBuiltObjectConstructionYardPurchaser (395, 3) 270 × 90.
-    const purchaser = gradientPanel({ corners: { tl: true, tr: true, br: true, bl: true }, radius: 20, className: 'cy-purchaser' });
-    pageYards.appendChild(place(purchaser, 395, 3, 270, 90));
-    dropText(purchaser, gt('Available Funds'), 10, 8, { color: COLORS.label, size: FONT.small });
-    const funds = dropText(purchaser, '', 105, 8, { color: COLORS.label, bold: true, size: FONT.small });
-    let designs: Design[] = [];
-    let designsKey = '';
-    const designBox = dropDown([], '', () => funds.classList.remove('cy-funds-short'), 'Design to build at this yard');
-    purchaser.appendChild(place(designBox, 10, 27, 250, 21));
-    const btnPurchase = glassButton(gt('Purchase'), { onClick: () => void purchase() });
-    purchaser.appendChild(place(btnPurchase, 10, 56, 250, 25));
+    // pnlBuiltObjectConstructionYardPurchaser (395, 3) 270 × 90 (method_169).
+    const purchaser = yardPurchaser(empire, 270, 90, () => refresh());
+    pageYards.appendChild(place(purchaser.el, 395, 3, 270, 90));
 
     const yb = (label: string, x: number, y: number, w: number, h: number, onClick: () => void, title = ''): HTMLButtonElement => {
         const b = glassButton(label, { onClick, title });
@@ -706,7 +860,7 @@ function createConstructionYards(opts: ConstructionYardsOptions): OpenState {
     const btnScrapShip = yb(gt('Scrap Ship'), 395, 99, 230, 25, () => void scrapShip(), 'Scrap the selected ship under construction (no refund)');
     const btnSummary = yb(gt('Show Construction Summary'), 395, 126, 230, 25, () => {
         const s = selectedYard?.shipUnderConstruction ?? null;
-        if (s) showSummary(s.retrofitDesign ?? s.design);
+        if (s) openConstructionSummary(galaxy, s.retrofitDesign ?? s.design);
     });
     const move = (m: WaitQueueMove) => () => {
         const t = selectedTarget();
@@ -802,27 +956,27 @@ function createConstructionYards(opts: ConstructionYardsOptions): OpenState {
         goToTarget(siteTarget(site));
     }
 
-    async function purchase(): Promise<void> {
-        const site = selected;
-        const design = designs[Number(designBox.value)];
-        if (!site || !design) return;
-        // ConstructionYardPurchaser.btnPurchase_Click: the automation prompt first.
-        const task = purchaseAutomationTask(empire, design);
-        if (task !== null) {
-            const b = await messageBox({
-                caption: gt(task),
-                text: `${gt(task)} is automated. Turn off automation so your order is not overridden?`,
-                buttons: ['Turn off', 'Leave on'],
-                icon: 'question',
-            });
-            if (b === 'Turn off') issuePlayerCommand(galaxy, empire, 'automationOff', [task]);
-        }
-        if (design.calculateCurrentPurchasePrice(galaxy) > empire.stateMoney) {
-            funds.classList.add('cy-funds-short'); // FlashAvailableFunds
-            return;
-        }
-        issuePlayerCommand(galaxy, empire, 'yardPurchase', [design, siteTarget(site)], (bo) => {
-            if (bo === null) showToast(`${design.name}: cannot be built at ${siteTarget(site).name}`);
+    /** Main.Part3.cs 403 btnBuiltObjectScrapSelected_Click: confirm, scrap the selected ship / base ('scrapShips'), then
+     *  select the row before it (or the next one, when it is the first) as method_178(builtObject_, filter) does. */
+    async function scrapSelected(): Promise<void> {
+        const bo = selectedBO();
+        if (bo === null) return;
+        const answer = await messageBox({
+            caption: gt('Scrap selected ships and bases?'),
+            text: gt('Scrapping ships and bases permanently and immediately removes them from the game'),
+            buttons: ['Yes', 'No'],
+            defaultButton: 'No',
+            icon: 'warning',
+        });
+        if (answer !== 'Yes' || win.closed) return;
+        const shown = siteGrid.displayed;
+        const i = shown.findIndex((r) => siteTarget(r.site) === bo);
+        const next = i > 0 ? shown[i - 1] : i === 0 && shown.length > 1 ? shown[1] : null;
+        issuePlayerCommand(galaxy, empire, 'scrapShips', [[bo]], () => {
+            selected = next?.site ?? null;
+            selectedYard = null;
+            selectedWait = null;
+            selectedComponent = null;
             refresh();
         });
     }
@@ -864,37 +1018,6 @@ function createConstructionYards(opts: ConstructionYardsOptions): OpenState {
         issuePlayerCommand(galaxy, empire, 'yardScrapShip', [siteTarget(site), ship], () => refresh());
     }
 
-    /** Main.Part4.cs 3441 btnBuiltObjectConstructionShowSummary_Click → method_548(design): the design's summary. */
-    function showSummary(design: Design): void {
-        summary?.close();
-        const counts = new Map<number, { name: string; pictureRef: number; n: number }>();
-        for (const c of design.components) {
-            const e = counts.get(c.componentId);
-            if (e) e.n++;
-            else counts.set(c.componentId, { name: c.name, pictureRef: c.pictureRef, n: 1 });
-        }
-        const w = openOriginalWindow({ id: 'yards-summary', title: gt('Construction Summary'), icon: 'construction.png', width: 460, height: 560, onClose: () => { if (summary === w) summary = null; } });
-        summary = w;
-        const b = w.body;
-        const pic = img(builtObjectImageUrl(design.pictureRef), 'cy-summary-pic');
-        b.appendChild(place(pic, 12, 12, 96, 96));
-        dropText(b, design.name, 120, 12, { size: FONT.header, bold: true, color: 'rgb(255, 255, 255)' });
-        dropText(b, resolveSubRoleDescription(design.subRole), 120, 38, { color: COLORS.label });
-        valueRow(b, gt('Size'), String(design.size), 190, 62);
-        valueRow(b, gt('Cost'), gt('X credits', Math.trunc(design.calculateCurrentPurchasePrice(galaxy)).toFixed(0)), 190, 84);
-        const grid = new OwGrid<{ name: string; pictureRef: number; n: number }>({
-            key: (r) => r.name,
-            rowHeight: 24,
-            columns: [
-                { id: 'pic', header: '', width: 30, align: 'center', render: (r, c) => { c.appendChild(img(componentImageUrl(r.pictureRef), 'cy-comp')); } },
-                { id: 'name', header: gt('Component'), sort: (r) => r.name, render: (r, c) => { c.textContent = r.name; c.title = r.name; } },
-                { id: 'n', header: gt('Amount'), width: 70, align: 'right', sort: (r) => r.n, render: (r, c) => { c.textContent = String(r.n); } },
-            ],
-        });
-        b.appendChild(place(grid.el, 12, 120, w.bodySize.w - 24, w.bodySize.h - 132));
-        grid.setRows([...counts.values()]);
-    }
-
     // ---- Refresh ----
     let fleetOrders = new Map<BuiltObject, string>();
     let detailKey = '';
@@ -915,6 +1038,7 @@ function createConstructionYards(opts: ConstructionYardsOptions): OpenState {
         const mobile = bo !== null && bo.topSpeed > 0 && bo.role !== BuiltObjectRole.Base;
         btnSelect.disabled = selected === null;
         btnViewDesign.disabled = bo === null;
+        btnScrap.disabled = bo === null;
         btnViewFleet.disabled = !(bo !== null && bo.shipGroup != null && opts.onViewFleet);
         btnRefuel.disabled = !mobile;
         btnRepair.disabled = !(mobile && bo!.damagedComponentCount > 0);
@@ -926,10 +1050,6 @@ function createConstructionYards(opts: ConstructionYardsOptions): OpenState {
         btnSummary.disabled = ship === null;
         const hasWait = selectedWait !== null;
         btnTop.disabled = btnUp.disabled = btnDown.disabled = btnRemove.disabled = !hasWait;
-        // The purchaser is disabled at a mobile yard (a construction ship, method_169: TopSpeed > 0).
-        const canBuy = selected !== null && !(selected.kind === 'builtObject' && selected.builtObject.topSpeed > 0) && designs.length > 0;
-        btnPurchase.disabled = !canBuy;
-        designBox.disabled = !canBuy;
         btnCancelFleet.disabled = fleetGrid.selected === null;
         const job = jobGrid.selected;
         btnJobUp.disabled = btnJobCancel.disabled = job === null;
@@ -937,23 +1057,8 @@ function createConstructionYards(opts: ConstructionYardsOptions): OpenState {
     }
 
     function refreshPurchaser(): void {
-        const site = selected;
-        const list = site === null || (site.kind === 'builtObject' && site.builtObject.topSpeed > 0) ? [] : purchaserDesigns(empire.designs, site, purchaserChecks(empire));
-        const prices = list.map((d) => d.calculateCurrentPurchasePrice(galaxy));
-        const key = list.map((d, i) => `${objectId(d)}:${Math.trunc(prices[i])}`).join('|') + `@${site ? objectId(siteTarget(site)) : ''}`;
-        if (key !== designsKey) {
-            const prev = designs[Number(designBox.value)];
-            designsKey = key;
-            designs = list;
-            designBox.replaceChildren(...list.map((d, i) => {
-                const o = el('option', '', purchaserLabel(d, prices[i]));
-                o.value = String(i);
-                return o;
-            }));
-            const keep = prev ? list.indexOf(prev) : -1;
-            designBox.value = String(keep >= 0 ? keep : 0);
-        }
-        setText(funds, gt('X credits', Math.trunc(empire.stateMoney).toFixed(0)));
+        // method_169 (bool_28 true): not bound for a site the player does not own; disabled at a mobile yard (TopSpeed > 0).
+        purchaser.bind(selected, true, true);
     }
 
     function refreshDetail(r: ConstructionSiteRow | null): void {
@@ -995,6 +1100,9 @@ function createConstructionYards(opts: ConstructionYardsOptions): OpenState {
         ctx.fillStyle = '#000';
         ctx.fillRect(0, 0, W, W);
         const s = galaxyMapScale(galaxy, W);
+        // GalaxyMap.cs method_6: backdrop (bitmap_1), nebulae (bitmap_0) and territory (bitmap_2) under the dots.
+        drawGalaxyMapLayers(ctx, galaxy, s, 0, 0, { onChange: () => { if (map.isConnected) drawMap(); } });
+        drawMapTerritory(ctx, galaxy, W);
         const sizes = starDotSizes(W, true);
         const dot = (x: number, y: number, color: string, size: number): void => {
             ctx.fillStyle = color;
@@ -1048,7 +1156,11 @@ function createConstructionYards(opts: ConstructionYardsOptions): OpenState {
         sync(waitGrid, w, (r) => `${objectId(r.builtObject)}|${r.name}|${r.type}|${fleetOrders.get(r.builtObject) ?? ''}`, selectedWait);
 
         const under = row ? row.building : 0;
-        setText(tabButtons[0], `${gt('Construction Yards')}${under > 0 ? ` (${under})` : ''}`);
+        const labels = builtObjectTabLabels(selected ? siteTarget(selected) : null);
+        const caption: Record<string, string> = { cargo: labels.cargo, components: labels.components, yards: `${gt('Construction Yards')}${under > 0 ? ` (${under})` : ''}`, docking: labels.docking, troops: labels.troops, weapons: labels.weapons };
+        TAB_ORDER.forEach((id, i) => {
+            if (caption[id] !== undefined) setText(tabButtons[i], caption[id]);
+        });
         const orders = fleetDesignBook(empire).orders;
         const waitSet = new Set(w.map((r) => r.builtObject));
         for (const r of y) if (r.shipObject) waitSet.add(r.shipObject);
@@ -1061,13 +1173,14 @@ function createConstructionYards(opts: ConstructionYardsOptions): OpenState {
             (r) => `${r.id}|${r.name}|${r.built}|${r.total}|${r.building}|${r.here}`,
             fleetGrid.selected?.id ?? null,
         );
-        setText(tabButtons[1], `Fleet Builds${orders.length > 0 ? ` (${orders.length})` : ''}`);
+        setText(tabButtons[TAB_ORDER.indexOf('fleets')], `Fleet Builds${orders.length > 0 ? ` (${orders.length})` : ''}`);
         const jobs = constructionJobRows(galaxy, empire);
         sync(jobGrid, jobs, (r) => `${r.id}|${r.label}|${r.state}|${r.shipName}|${r.etaMs === null ? '' : Math.round(r.etaMs / 1000)}`, jobGrid.selected?.id ?? null);
-        setText(tabButtons[2], `Construction Jobs${jobs.length > 0 ? ` (${jobs.length})` : ''}`);
+        setText(tabButtons[TAB_ORDER.indexOf('jobs')], `Construction Jobs${jobs.length > 0 ? ` (${jobs.length})` : ''}`);
 
         setText(maxSize, maximumSizeText(empireMaximumSizes(empire)));
         refreshPurchaser();
+        refreshDataPage();
         refreshDetail(row);
         drawMap();
         updateButtons();

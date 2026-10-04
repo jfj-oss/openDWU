@@ -8,6 +8,7 @@
 // The builders only read the sim (no galaxy.rnd, no caches written): they run every 500 ms while something is
 // selected.
 
+import type { Ruin } from '../sim/ruins';
 import type { Galaxy } from '../sim/galaxy';
 import type { Empire } from '../sim/empire';
 import type { BuiltObject } from '../sim/builtObject';
@@ -47,6 +48,7 @@ import { abundancePercentText } from './resourceAbundance';
 import { habitatTypeLabel, hyperjumpStatusText, invasionVsText, missionTargetText, missionTypeLabel, resourceIconUrl, threatRows, troopStrengthText } from './hud';
 import { wreckSalvageRows } from './scenario/wreckageUi'; // [wreckage]
 import { rimGoodMarker } from './scenario/rimTraderRows'; // [rimTrader]
+import { facilityGalactopediaTopic, facilityPanelHoverText } from './facilityHover';
 
 // ---------------------------------------------------------------------------------------------------------------
 // Metrics (InfoPanel.cs SetContentSizeNormal 2420-2447) and colours (InfoPanel.cs fields / BaconInfoPanel.cs).
@@ -113,7 +115,16 @@ export function dropShadowColor(rgb: number): number {
 /** What a hotspot (InfoPanel.AddHotspot) does on click. */
 export type InfoTarget =
     | { kind: 'select'; obj: Habitat | BuiltObject | ShipGroup }
-    | { kind: 'empire'; empire: Empire };
+    | { kind: 'empire'; empire: Empire }
+    /** A ruin hotspot (InfoPanel.cs 4093 / 4263, "Name (click for details)"): Main.Part4.cs 3581 → method_550. */
+    | { kind: 'ruin'; ruin: Ruin }
+    /** InfoPanel.cs 4461 / 4497 `AddHotspot(..., new object[1] { habitat }, ...)`: the Ground / Battle Report
+     *  (Main.Part4.cs:3534 pnlDetailInfo_MouseClick → method_164(habitat), screens/groundReport.ts). */
+    | { kind: 'groundReport'; habitat: Habitat }
+    /** A planetary facility hotspot (InfoPanel.cs 2604): Main.Part4.cs 3586-3597 → method_456, the Galactopedia at the
+     *  "Wonders" or "Planetary Facilities" topic. */
+    | { kind: 'galactopedia'; topic: string };
+// (The same target serves the resource and race hotspots: Main.Part4.cs 3598-3607, method_456(resource / race Name).)
 
 /** One run of a row: text, an image, an empire flag, or a troop icon. */
 export interface InfoSeg {
@@ -173,6 +184,8 @@ export interface ColonySummaryItem {
     baseImg: string | null;
     resourceImg: string | null;
     resourceTitle: string;
+    /** The resource's Galactopedia topic (its name), null without a resource icon. */
+    resourceTopic: string | null;
     /** "?" when the base's resources are unknown. */
     resourceUnknown: boolean;
 }
@@ -420,7 +433,8 @@ function resourcesKnown(ctx: InfoContext, h: Habitat): boolean {
     return map != null && map.checkResourcesKnown(h);
 }
 
-/** InfoPanel.cs 3198 DrawResources: icon + tiny "abundance%" per resource on the dark strip. */
+/** InfoPanel.cs 3198 DrawResources: icon + tiny "abundance%" per resource on the dark strip. Each icon is a resource
+ *  hotspot (the abundance stays the tiny text after it, not in the hover message). */
 function resourceSegs(ctx: InfoContext, resources: { resourceId: number; abundance: number }[], color: number): InfoSeg[] {
     if (resources.length === 0) return [txt('(None)', color)];
     const segs: InfoSeg[] = [];
@@ -429,25 +443,27 @@ function resourceSegs(ctx: InfoContext, resources: { resourceId: number; abundan
         const name = def?.name ?? `Resource ${r.resourceId}`;
         const rimMark = rimGoodMarker(ctx.galaxy, r.resourceId); // [rimTrader]
         const pct = abundancePercentText(r.abundance) + (rimMark !== '' ? ` ${rimMark}` : '');
-        segs.push({ img: def ? resourceIconUrl(def.pictureRef) : undefined, title: `${name} (${pct})`, gap: segs.length > 0 ? 3 : 0 });
+        // 3226: the icon is a hotspot, "Name (click for details)"; a click opens the Galactopedia on the resource's
+        // page (Main.Part4.cs 3598 → method_456(resource.Name)).
+        segs.push({ img: def ? resourceIconUrl(def.pictureRef) : undefined, title: `${name} (click for details)`, target: { kind: 'galactopedia', topic: name }, gap: segs.length > 0 ? 3 : 0 });
         segs.push({ text: pct, tiny: true, color, gap: -2 });
     }
     return segs;
 }
 
-/** InfoPanel.cs 2552 DrawFacilities: facility icons (faded while under construction) on the dark strip. */
-function facilitySegs(h: Habitat): InfoSeg[] {
+/** InfoPanel.cs 2552 DrawFacilities: facility icons (faded while under construction) on the dark strip. Each icon is a
+ *  hotspot (AddHotspot(rect, planetaryFacility, text), 2575-2604): its hover message is facilityPanelHoverText and a
+ *  click opens the Galactopedia at "Wonders" / "Planetary Facilities" (Main.Part4.cs 3586 pnlDetailInfo_MouseClick). */
+function facilitySegs(galaxy: Galaxy, h: Habitat): InfoSeg[] {
     const list = (h.facilities ?? []).filter((f) => f != null);
     if (list.length === 0) return [txt('(None)')];
-    return list.map((f, i) => {
-        const building = f.constructionProgress < 1;
-        return {
-            img: facilityImageUrl(f.def.pictureRef),
-            faded: building,
-            gap: i > 0 ? 2 : 0,
-            title: building ? `${f.name} (${fmtPct(f.constructionProgress)} complete)` : f.name,
-        };
-    });
+    return list.map((f, i) => ({
+        img: facilityImageUrl(f.def.pictureRef),
+        faded: f.constructionProgress < 1,
+        gap: i > 0 ? 2 : 0,
+        title: facilityPanelHoverText(galaxy, h, f),
+        target: { kind: 'galactopedia', topic: facilityGalactopediaTopic(f) },
+    }));
 }
 
 /** The picture behind the rows: InfoPanel.SetData's _PictureSize (min 60, max 200 px) and FadeImage(0.33). */
@@ -989,7 +1005,8 @@ function populationRows(h: Habitat, color: number): InfoRow[] {
             growth = '';
         }
         rows.push(label(i === 0 ? 'Populace' : '', [
-            race !== null ? { img: raceImageUrl(race) ?? undefined, title: `${race.name} (click for details)` } : { width: INFO.imageSize },
+            // InfoPanel.cs 3137 / 3150: a race hotspot; Main.Part4.cs 3603 → method_456(race.Name).
+            race !== null ? { img: raceImageUrl(race) ?? undefined, title: `${race.name} (click for details)`, target: { kind: 'galactopedia', topic: race.name } } : { width: INFO.imageSize },
             { text: name, color, width: W },
             { text: amount, color, width: A },
             { text: growth, color: atMax ? 0xff0000 : color },
@@ -1044,10 +1061,15 @@ export function habitatInfo(ctx: InfoContext, h: Habitat): InfoModel {
     else if (h.population.totalAmount > 0) corner = { text: 'Independent', color };
 
     rows.push({ kind: 'gap', h: 3 });
-    rows.push({ kind: 'line', segs: [txt(habitatDescriptionLine(h), color)] });
+    // InfoPanel.cs 4089-4094: an explored / visible habitat's ruin picture after the description line, a hotspot
+    // "Name (click for details)" (Main.Part4.cs 3581 → method_550, the Ruin Detail window).
+    const descSegs: InfoSeg[] = [txt(habitatDescriptionLine(h), color)];
+    if (explored && h.ruin !== null) {
+        descSegs.push({ img: `/assets/dwu/images/environment/ruins/ruin_${h.ruin.pictureRef}.png`, w: 30, h: 18, gap: 8, title: `${h.ruin.name} (click for details)`, target: { kind: 'ruin', ruin: h.ruin } });
+    }
+    rows.push({ kind: 'line', segs: descSegs });
 
     if (explored) {
-        // Ruins icon on the description line's right (InfoPanel.cs 4090-4096): as a hint row suffix.
         // Plague (InfoPanel.cs 4097-4118).
         if (h.plagueId >= 0) {
             const plague = galaxyPlagues(galaxy)[h.plagueId] ?? null;
@@ -1077,7 +1099,8 @@ export function habitatInfo(ctx: InfoContext, h: Habitat): InfoModel {
                 const s = fmtSignedPct(h.scenicFactor);
                 rows.push(label('Scenery', [txt(h.scenicFeature !== '' ? `${s} from ${h.scenicFeature}` : s, color)]));
             }
-            if (h.ruin !== null) rows.push(label('Ruins', [txt(h.ruin.name, color)], { title: `${h.ruin.name}` }));
+            // InfoPanel.cs 4257-4264: the Ruins row, its name a "click for details" hotspot.
+            if (h.ruin !== null) rows.push(label('Ruins', [{ ...txt(h.ruin.name, color), target: { kind: 'ruin', ruin: h.ruin }, title: `${h.ruin.name} (click for details)` }]));
             rows.push({ kind: 'gap', h: 4 });
             if (h.population.totalAmount > 0) rows.push(...populationRows(h, color));
             if (independent) {
@@ -1139,7 +1162,7 @@ export function habitatInfo(ctx: InfoContext, h: Habitat): InfoModel {
                 rows.push({ kind: 'gap', h: 4 });
             }
             // Facilities.
-            rows.push(label('Facilities', facilitySegs(h), { strip: true }));
+            rows.push(label('Facilities', facilitySegs(galaxy, h), { strip: true }));
             // Troops (InfoPanel.cs 4404-4500).
             const troops = troopItems(h.troops);
             const recruit = troopItems(h.troopsToRecruit);
@@ -1150,10 +1173,11 @@ export function habitatInfo(ctx: InfoContext, h: Habitat): InfoModel {
                     const segs = troopSegs(troops, recruit, invading);
                     // The row's hotspot text: "Show <colony> Ground/Battle Report  (Strength: …)" (InfoPanel.cs 4419-4462).
                     const strength = troopStrengthText(h, galaxy);
-                    rows.push(label('Troops', segs.length > 0 ? segs : [txt('(None)', color)], { alert: invading.length > 0, title: strength?.text ?? `Show ${h.name} Ground Report` }));
+                    const report: InfoTarget = { kind: 'groundReport', habitat: h };
+                    rows.push(label('Troops', segs.length > 0 ? segs : [txt('(None)', color)], { alert: invading.length > 0, title: strength?.text ?? `Show ${h.name} Ground Report`, target: report }));
                     // The invasion "defend  vs  attack" row (InfoPanel.cs 4469-4499).
                     const vs = invasionVsText(h, galaxy, player);
-                    if (vs !== null) rows.push(label('', [txt(vs.text)], { alert: true, title: vs.title }));
+                    if (vs !== null) rows.push(label('', [txt(vs.text)], { alert: true, title: vs.title, target: report }));
                 } else rows.push(label('Troops', [txt('(Unknown)', color)]));
             }
             // Building / Docked (colonies with population).
@@ -1264,6 +1288,7 @@ function coloniesSummaryRow(ctx: InfoContext, systemStar: Habitat): InfoRow {
         const { pop, dev } = populationIndicator(h.population.totalAmount, habitatDevelopmentLevel(h));
         let resourceImg: string | null = null;
         let resourceTitle = '';
+        let resourceTopic: string | null = null;
         let resourceUnknown = false;
         if (race === null && base !== null && mining) {
             if (resourcesKnown(ctx, h)) {
@@ -1271,7 +1296,8 @@ function coloniesSummaryRow(ctx: InfoContext, systemStar: Habitat): InfoRow {
                 const def = r !== undefined ? ctx.resource(r.resourceId) : null;
                 if (def !== null) {
                     resourceImg = resourceIconUrl(def.pictureRef);
-                    resourceTitle = def.name;
+                    resourceTitle = `${def.name} (click for details)`;
+                    resourceTopic = def.name;
                 }
             } else resourceUnknown = true;
         }
@@ -1288,6 +1314,7 @@ function coloniesSummaryRow(ctx: InfoContext, systemStar: Habitat): InfoRow {
             baseImg: race === null && base !== null ? shipImageUrl(base) : null,
             resourceImg,
             resourceTitle,
+            resourceTopic,
             resourceUnknown,
         };
     });

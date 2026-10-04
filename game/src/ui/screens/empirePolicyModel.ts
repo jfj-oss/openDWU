@@ -15,13 +15,17 @@ import {
     ComponentCategoryType,
     defaultEmpirePolicy,
     resolveTechFocus,
+    resolveTechFocusIndexCategory,
+    resolveTechFocusIndexType,
     type EmpirePolicy as PolicyData,
 } from '../../sim/data/policies';
 import { ComponentType } from '../../sim/data/components';
 import { BuiltObjectFleeWhen } from '../../sim/data/designTemplates';
 import { IndustryType } from '../../sim/types';
 import { BuiltObjectSubRole } from '../../sim/builtObjectTypes';
-import { resolveSubRoleDescription } from '../../sim/designGeneration';
+import { canBuildDesign, resolveSubRoleDescription } from '../../sim/designGeneration';
+import type { Design } from '../../sim/design';
+import { BuiltObjectRole } from '../../sim/data/designSpecifications';
 import { formatNet, tryGetText } from '../../sim/textResolver';
 import { AUTOMATION_ROWS, automationFieldValue, setAutomationValue } from './gameOptionsPanel';
 
@@ -69,11 +73,13 @@ export interface NumericControl {
     max: number;
     value: number;
 }
-/** DesignDropDown (method_615 / dFwNhteflw): read-only here, see the TODO(port) in buildPolicyPanel. */
+/** DesignDropDown (method_615 / dFwNhteflw): BindData(designs, allowNullDesign: true) — "(None)" then the designs. */
 export interface DesignControl {
     kind: 'design';
     design: unknown | null;
     label: string;
+    /** The DesignDropDown's items after "(None)", in list order. */
+    designs: unknown[];
 }
 export type PolicyControl = ComboControl | CheckControl | NumericControl | DesignControl;
 
@@ -185,47 +191,8 @@ export function clampNumeric(value: number, min: number, max: number): number {
     return Math.min(max, Math.max(value, min));
 }
 
-// Port of Galaxy.4.cs:490-545 ResolveTechFocusIndex(ComponentType).
-export function resolveTechFocusIndexType(type: ComponentType): number {
-    switch (type) {
-        case ComponentType.WeaponPhaser: return 2;
-        case ComponentType.WeaponRailGun: return 3;
-        case ComponentType.WeaponBombard: return 5;
-        case ComponentType.WeaponMissile: return 6;
-        case ComponentType.Armor: return 10;
-        case ComponentType.EngineMainThrust: return 13;
-        case ComponentType.EngineVectoring: return 14;
-        case ComponentType.DamageControl: return 18;
-        case ComponentType.ComputerTargetting: return 19;
-        case ComponentType.ComputerCountermeasures: return 20;
-        case ComponentType.HabitationMedicalCenter: return 22;
-        case ComponentType.HabitationRecreationCenter: return 23;
-        case ComponentType.WeaponTractorBeam: return 24;
-        case ComponentType.AssaultPod: return 25;
-        case ComponentType.WeaponGravityBeam: return 26;
-        case ComponentType.WeaponAreaGravity: return 27;
-        default: return 0;
-    }
-}
-
-// Port of Galaxy.4.cs:547-590 ResolveTechFocusIndex(ComponentCategoryType).
-export function resolveTechFocusIndexCategory(category: ComponentCategoryType): number {
-    switch (category) {
-        case ComponentCategoryType.WeaponBeam: return 1;
-        case ComponentCategoryType.WeaponTorpedo: return 4;
-        case ComponentCategoryType.WeaponArea: return 7;
-        case ComponentCategoryType.WeaponIon: return 8;
-        case ComponentCategoryType.Fighter: return 9;
-        case ComponentCategoryType.Shields: return 11;
-        case ComponentCategoryType.Reactor: return 12;
-        case ComponentCategoryType.HyperDrive: return 15;
-        case ComponentCategoryType.HyperDisrupt: return 16;
-        case ComponentCategoryType.Construction: return 17;
-        case ComponentCategoryType.Sensor: return 21;
-        case ComponentCategoryType.AssaultPod: return 25;
-        default: return 0;
-    }
-}
+// Galaxy.4.cs ResolveTechFocusIndex (both overloads) live in sim/data/policies.ts (the policy file writer needs them).
+export { resolveTechFocusIndexCategory, resolveTechFocusIndexType };
 
 // ---------------------------------------------------------------------------------------------------------------
 // Read back: the method_597 control readers (Main.Part3.cs:4203-4486)
@@ -321,6 +288,11 @@ export function readWonder(c: PanelControls, name: string, ctx: PolicyPanelConte
         if (selectedIndex > 0 && selectedIndex <= ctx.facilities.length) return ctx.facilities[selectedIndex - 1].facilityId;
     }
     return -1;
+}
+
+/** A DesignDropDown item's text: the design name, "(None)" for the null item. */
+export function designLabel(design: unknown | null): string {
+    return design === null ? '(' + policyText('None') + ')' : String((design as { name?: string }).name ?? '');
 }
 
 // Port of Main.Part3.cs:4281-4292 dFwNhteflw (DesignDropDown.SelectedDesign; null when absent).
@@ -493,17 +465,16 @@ export function buildPolicyPanel(empire: Empire, policy: PolicyData, ctx: Policy
         priority('ColonizeVolcanicPriority', 'Volcanic Planet Priority', LOW_NORMAL_HIGH_VERYHIGH, p.colonizeVolcanicPriority);
         priority('ColonizeRuinsPriority', 'Planets with Ruins Priority', LOW_NORMAL_HIGH_VERYHIGH, p.colonizeRuinsPriority);
         check('ColonyActionForNewTroopRecruitment', 'When establish new colony, always recruit new Troops', p.colonyActionForNewTroopRecruitment);
-        // method_615 DesignDropDown of the player's buildable Base designs (Designs.GetDesignsByRoles(Base) +
-        // StripUnbuildableDesigns). Read-only: choosing a design makes the colonize mission call
-        // Empire.PurchaseNewBuiltObject, which is not ported (cmdTroops.ts throws on it).
-        // TODO(port): DesignList.GetDesignsByRoles / StripUnbuildableDesigns + Empire.PurchaseNewBuiltObject — Main.Part3.cs:4710-4716, Empire.6.cs 1991.
-        const design = p.colonyActionForNewBuildDesign;
+        // Main.Part3.cs:4710-4716: Designs.GetDesignsByRoles(Base) (not obsolete), StripUnbuildableDesigns(PlayerEmpire)
+        // (CanBuildDesign), plus the policy's design when it is not among them; method_615 binds them with "(None)".
+        const design = p.colonyActionForNewBuildDesign as Design | null;
+        const designsByRoles = ((e.designs ?? []) as (Design | null)[]).filter((d): d is Design => d != null && d.role === BuiltObjectRole.Base && !d.isObsolete && canBuildDesign(e, d));
+        if (design !== null && !designsByRoles.includes(design)) designsByRoles.push(design);
         push({
             name: 'ColonyActionForNewBuildDesign',
             label: t('When establish new colony, immediately build this base'),
             suffix: '',
-            control: { kind: 'design', design, label: design === null ? '(' + t('None') + ')' : String((design as { name?: string }).name ?? '') },
-            readOnly: true,
+            control: { kind: 'design', design, label: designLabel(design), designs: designsByRoles },
         });
         const population = (name: string, label: string, value: ColonyPopulationPolicy): void =>
             push({ name, label: t(label), suffix: '', control: { kind: 'combo', reader: 'population', options: POPULATION_POLICY_TEXT.map(t), index: POPULATION_POLICIES.indexOf(value) } });

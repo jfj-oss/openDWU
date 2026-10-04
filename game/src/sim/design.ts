@@ -120,6 +120,8 @@ export class Design {
     isManuallyCreated = false;
     optimizedDesign = 0;
     allowAutoRetrofit = true;
+    /** Design.cs 231 RepaitPriorityTemplateName (C# spelling; ExpansionMod repair-priority template, construction/repairPriority.ts). */
+    repaitPriorityTemplateName: string | null = null;
 
     // Derived by ReDefine (Design.cs field order).
     topSpeed = 0;

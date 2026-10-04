@@ -98,6 +98,7 @@ import { BuiltObjectIndex, registerBuiltObjectIndex } from './builtObjectIndex';
 import { MotionInterpolator, PresentationClock, copyRenderTime, createRenderTime, builtObjectDrawnOffsetBound, drawnBuiltObjectPos, habitatTouchClampSeconds, renderOrbitAngle, setStationPull, type RenderTime } from './renderInterp';
 import { isDrag, objectsInBox, resolveBoxSelection, screenBox, shiftClickSelection, type ScreenBox } from './boxSelect';
 import { isObjectVisibleToThisEmpire } from '../sim/independentTraders';
+import { showsMapIndicators } from './mainViewDisplay';
 import { createFollowState, followTargetAlive, followTargetPosition, isFollowing, stopFollow, type FollowState, type FollowTarget } from './followCamera';
 
 export function fadeIn(v: number, a: number, b: number): number {
@@ -794,6 +795,9 @@ class SystemView {
         // committed orbitAngle/lastTouch imply RIGHT NOW, not the possibly seconds-stale committed angle itself.
         const galaxy = this.view.galaxy;
         const clampSeconds = habitatTouchClampSeconds(galaxy.habitats.length);
+        // MainView.1.cs:1826 / 1891 (Main.int_34): display type 2 (D key, mainViewDisplay.ts) clears every habitat
+        // label / colony info flag (flag11-13).
+        const labels = showsMapIndicators();
         // renderNowMs: galaxy.nowMs plus the elapsed part of the next sim step (renderInterp.ts), so the angles also
         // advance between steps.
         const nowMs = this.view.renderTime.renderNowMs;
@@ -829,7 +833,7 @@ class SystemView {
             // Label centred on the drawn rect's right edge (method_84),
             // vertically centred on the body.
             const populated = p.owner !== null && p.population.items.length > 0;
-            planet.label.visible = habitatLabelVisible(true, populated, f);
+            planet.label.visible = labels && habitatLabelVisible(true, populated, f);
             planet.label.position.set(px + (sprPx / 2) / z, py);
             planet.label.scale.set(1 / z);
             if (planet.label.visible) {
@@ -859,7 +863,7 @@ class SystemView {
                 moon.dot.position.set(mx, my);
                 moon.dot.scale.set(mPx / (moon.dot.texture.width * z));
                 const mPopulated = m.owner !== null && m.population.items.length > 0;
-                moon.label.visible = habitatLabelVisible(false, mPopulated, f);
+                moon.label.visible = labels && habitatLabelVisible(false, mPopulated, f);
                 moon.label.position.set(mx + (mPx / 2) / z, my);
                 moon.label.scale.set(1 / z);
                 if (moon.label.visible) {

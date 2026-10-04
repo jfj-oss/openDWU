@@ -12,7 +12,8 @@ import type { Galaxy } from '../galaxy';
 import { Troop } from '../cargo';
 import { BuiltObjectSubRole } from '../builtObjectTypes';
 import { ResearchSystem, nodeIndustry, type TechNode } from '../researchSystem';
-import { DiplomaticRelation, DiplomaticRelationType } from '../diplomacy';
+import { DiplomaticRelation, DiplomaticRelationType, obtainDiplomaticRelation } from '../diplomacy';
+import type { Character } from '../characters';
 import { cancelBlockades, changeDiplomaticRelation, processEndOfWarWithEmpire, resetAttitudeLevelsAtEndOfWar } from '../diplomacyTick';
 import { galaxyStarDate } from '../tick/simTime';
 import { scenarioEmit } from '../scenario/hooks';
@@ -305,6 +306,31 @@ export function acceptProposal(player: Empire, other: Empire): boolean {
     }
     player.proposedDiplomaticRelations.remove(diplomaticRelation1);
     if (endedWar && galaxy.scenario !== null) scenarioEmit(galaxy, 'peaceSigned', { empire: player, other }); // mod layer
+    return true;
+}
+
+/** Port of TradeRestrictedResourcesPanel.cs chkTradeResources_CheckedChanged (the diplomacy screen's restricted-resource
+ *  checkbox): `PlayerEmpire.ObtainDiplomaticRelation(_Empire).SupplyRestrictedResources = Checked`. */
+export function setSupplyRestrictedResources(player: Empire, other: Empire, supply: boolean): boolean {
+    if (other === player) return false;
+    obtainDiplomaticRelation(player, other).supplyRestrictedResources = supply;
+    return true;
+}
+
+/** Port of Main.Part2.cs:4652 method_683 (btnRelationAllianceNameApply_Click, in game: the Locked checkbox is hidden
+ *  and disabled, method_682(false)): the name goes on the player's relation with `other` and on `other`'s relation
+ *  with the player (ObtainDiplomaticRelation both ways). */
+export function setAllianceName(player: Empire, other: Empire, name: string): boolean {
+    if (other === player) return false;
+    obtainDiplomaticRelation(player, other).allianceName = name;
+    obtainDiplomaticRelation(other, player).allianceName = name;
+    return true;
+}
+
+/** Port of CharacterSummary.cs txtName_Leave: `_Character.Name = txtName.Text` (any text, as the C# stores it). */
+export function renameCharacter(character: Character | null, name: string): boolean {
+    if (character === null) return false;
+    character.name = name;
     return true;
 }
 

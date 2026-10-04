@@ -175,3 +175,61 @@
     width: 10px;
     height: 7px;
 }
+/* The original's right-hand column (Main.Part11.cs method_131, x = 670): Back / Forward, picSystemMap 250 × 250,
+   the habitat info and pnlGalaxyMapHabitatPicture 250 × 174. */
+.gmap-detail {
+    width: 274px;
+    max-height: calc(100vh - 32px);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    overflow-y: auto;
+    box-sizing: border-box;
+}
+.gmap-detail .gmap-info {
+    align-self: stretch;
+    border-top: none;
+    padding-top: 0;
+}
+.gmap-nav {
+    align-self: stretch;
+    display: flex;
+    justify-content: flex-end;
+    gap: 5px;
+}
+.gmap-nav-btn {
+    width: 40px;
+    height: 30px;
+    padding: 0;
+    font-size: 13px;
+}
+.gmap-system-map {
+    display: block;
+    border: 2px solid rgb(67, 67, 77);
+    border-radius: 6px;
+    cursor: crosshair;
+    background: #000;
+}
+.gmap-landscape {
+    flex: none;
+    background-color: rgb(32, 32, 48);
+    background-position: center;
+    background-repeat: no-repeat;
+    border: 1px solid rgb(67, 67, 77);
+    box-sizing: border-box;
+}
+
+/* pnlHabitatInfo: the InfoPanel port (selectionPanel.css) at 250 × 240 (Main.Part11.cs 1080). */
+.gmap-detail .gmap-habitat-info {
+    position: relative;
+    width: 250px;
+    height: 240px;
+    margin: 0 auto;
+    font-size: 10px;
+    line-height: 15px;
+    color: rgb(200, 200, 200);
+    background: linear-gradient(to bottom, rgb(39, 40, 44), rgb(22, 21, 26) 50%, rgb(51, 54, 61));
+    border: 1px solid rgb(67, 67, 77);
+    overflow: hidden;
+}

@@ -9,6 +9,8 @@
 // Every EmpireMessageType that opens a conversation (messageRouting.ts classifyEmpireMessage) and its buttons:
 //   ProposeDiplomaticRelation (a pending proposal of the sender)   treaty labels below, Decline; peace also offers the
 //                                                                   subjugation demand
+//   ProposeDiplomaticRelation None at war, no valid proposal       WAR_END: end the war, demand subjugation, fight on
+//                                                                   (an AI's SubjugateRequest)
 //   PirateOfferProtection (protection / truce / extortion)         Accept, Open Diplomacy, Decline
 //   SellInfo* (7 kinds)                                            buy (cost), No thanks
 //   OfferTrade  list: DEAL_OFFER / DEAL_DEMAND / DEAL_THREAT       accept, reject (+ a different deal for DEAL_OFFER)
@@ -30,10 +32,11 @@ import { DiplomaticRelationType } from '../sim/diplomacy';
 import { TradeableItem } from '../sim/tradeItems';
 import { formatNet, tryGetText } from '../sim/textResolver';
 import { formatThousands } from '../sim/diplomacyTick';
-import { galaxyLocationKey, type ConversationRelated, type ConversationReplyPart } from '../sim/player/conversationReplies';
+import { attitudeGreeting, galaxyLocationKey, type ConversationRelated, type ConversationReplyPart, type ConversationReplyResult } from '../sim/player/conversationReplies';
 import { messageGoToTarget } from './messageGoto';
 import { pirateOfferMonthlyPrice, pirateProtectionPriceText, pirateProtectionYearlySuffix } from './pirateProtectionPrice';
 import type { DialogPartType } from './messageRouting';
+import type { DialogPartType as DialogPart } from '../sim/data/dialogSet';
 
 export type ConversationEffect =
     /** playerOrders.ts acceptProposal (the sender's pending proposal). */
@@ -229,6 +232,20 @@ export function conversationActions(entry: { message: EmpireMessage; conversatio
 
     if (message.messageType === EmpireMessageType.ProposeDiplomaticRelation && ctx.answerable && sender !== null) {
         out.push(...proposalActions(message, ctx));
+    } else if (
+        message.messageType === EmpireMessageType.ProposeDiplomaticRelation &&
+        conversation === 'WAR_END' &&
+        sender !== null &&
+        subject === DiplomaticRelationType.None &&
+        ctx.player.diplomaticRelations.byEmpire(sender)?.type === DiplomaticRelationType.War
+    ) {
+        // Main.Part9.cs:500 WAR_END without a pending end-of-war proposal (messagePipeline.ts isWarEndConversation: an
+        // AI's SubjugateRequest, Empire.8.cs 1527): the answers act on the war itself (Main.Part10.cs:4798).
+        out.push(
+            act('WAR_END_ACCEPT', t('We agree - this war ends now'), { kind: 'reply', part: 'WAR_END_ACCEPT', related: null, cost: 0 }),
+            act('WAR_END_SUBJUGATIONDEMAND', t('We agree to end this war only if you agree to become our Subjugated Dominion'), { kind: 'demandSubjugation' }),
+            act('WAR_END_REJECT', t('No, we will fight on'), { kind: 'close' }),
+        );
     } else if (ctx.pirateOffer) {
         out.push(...pirateActions(entry, ctx));
     } else if (INFO_OFFERS[conversation] !== undefined && sender !== null) {
@@ -306,4 +323,90 @@ export function conversationActions(entry: { message: EmpireMessage; conversatio
         out.push(act('Exit', t('Goodbye'), { kind: 'close' }));
     }
     return out;
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// The reply after a choice (Main.Part9.cs:731 method_241: method_237 → method_230 text → method_238 options)
+// ---------------------------------------------------------------------------------------------------------------
+
+/** The reply the talk panel shows after an answer: the DialogPart method_237 turned the option into (method_234)
+ *  and method_230's string.Format arguments; `close` = the conversation ends there (method_294 / no reply). */
+export type ConversationReplyView = { kind: 'reply'; part: DialogPart; args: string[] } | { kind: 'close' } | { kind: 'failed'; message: string };
+
+const view = (part: DialogPart, args: string[] = []): ConversationReplyView => ({ kind: 'reply', part, args });
+const CLOSE: ConversationReplyView = { kind: 'close' };
+
+/** The answers whose effect is only a reply (kind 'close' in conversationActions) and the reply part method_237 gives
+ *  them; anything else not listed here closes (Exit, WAR_END_REJECT, the history offers' rejects, Go to). */
+function textOnlyReply(a: ConversationAction, entry: { message: EmpireMessage; sender: Empire | null }, player: Empire): ConversationReplyView {
+    switch (a.id) {
+        // Main.Part10.cs:4600-4680: the joint-action requests' refusals.
+        case 'TRADESANCTIONS_REQUESTLIFTOTHER_REJECT':
+        case 'TRADESANCTIONS_REQUESTIMPOSEJOINT_REJECT':
+        case 'WAR_DECLARE_REQUESTJOINT_REJECT':
+            return view('TREATY_REJECTRESPONSE');
+        case 'WAR_END_REQUESTOTHER_REJECT': {
+            // No method_237 case: the part's own text, "{0}" the other empire (method_230).
+            const s = entry.message.subject;
+            const name = s !== null && typeof s === 'object' && 'diplomaticRelations' in (s as object) ? (s as Empire).name : '';
+            return view('WAR_END_REQUESTOTHER_REJECT', [name]);
+        }
+        case 'PIRATE_TRUCEREJECTRESPONSE':
+        case 'PIRATE_PROTECTIONREJECTRESPONSE':
+            return view(a.id);
+        case 'GIFT_THANKS':
+            // Main.Part10.cs GIFT_THANKS → method_236: the sender's greeting by its attitude to us.
+            return entry.sender !== null ? view(attitudeGreeting(null, entry.sender, player)) : CLOSE;
+        default:
+            return CLOSE;
+    }
+}
+
+/**
+ * Port of Main.Part10.cs:3957 method_237's reply (method_234) for the conversation answers: `result` is the executor's
+ * result for the action's command (undefined for a text-only answer). The treaty offers (acceptProposal /
+ * declineProposal: EmpireDetailView's accept path here) reply as their method_237 cases do: FREETRADE_ /
+ * PROTECTORATE_ / MUTUALDEFENSE_ACCEPT → TREATY_ACCEPTRESPONSE, SUBJUGATIONDEMAND_ACCEPT → ..._ACCEPT_RESPONSE,
+ * WAR_END_ACCEPT → WAR_END_ACCEPT_RESPONSE, SUBJUGATION_RELEASE → SUBJUGATION_RELEASE_RESPONSE, the rejects →
+ * TREATY_REJECTRESPONSE (WAR_END_REJECT closes, method_294).
+ */
+export function conversationReplyView(a: ConversationAction, entry: { message: EmpireMessage; sender: Empire | null }, player: Empire, result?: unknown): ConversationReplyView {
+    const e = a.effect;
+    switch (e.kind) {
+        case 'acceptProposal': {
+            if (result !== true) return { kind: 'failed', message: 'The offer is no longer available' };
+            if (a.id === 'SUBJUGATIONDEMAND_ACCEPT') return view('SUBJUGATIONDEMAND_ACCEPT_RESPONSE');
+            if (a.id === 'WAR_END_ACCEPT') return view('WAR_END_ACCEPT_RESPONSE');
+            if (a.id === 'SUBJUGATION_RELEASE') return view('SUBJUGATION_RELEASE_RESPONSE');
+            return view('TREATY_ACCEPTRESPONSE');
+        }
+        case 'declineProposal':
+            return a.id === 'WAR_END_REJECT' ? CLOSE : view('TREATY_REJECTRESPONSE');
+        case 'demandSubjugation': {
+            const r = result as { ok: boolean; reply: DialogPart | null; replyArgs: string[]; message: string } | undefined;
+            if (r === undefined || !r.ok) return { kind: 'failed', message: r?.message ?? '' };
+            return r.reply !== null ? view(r.reply, r.replyArgs) : CLOSE;
+        }
+        case 'acceptPirate': {
+            const r = result as { accepted: boolean; cost: number } | undefined;
+            // cost < 0: the order never reached the game (sim worker: simworker/commandFailure.ts).
+            if (r === undefined || r.cost < 0) return { kind: 'failed', message: 'The offer could not be answered (see the console)' };
+            // Main.Part10.cs:5132: an arrangement already in force → PIRATE_PROTECTIONALREADYPAID; else the part's text.
+            return view(r.accepted ? (a.id as DialogPart) : 'PIRATE_PROTECTIONALREADYPAID');
+        }
+        case 'reply': {
+            const r = result as ConversationReplyResult | undefined;
+            if (r === undefined) return { kind: 'failed', message: '' };
+            if (!r.ok && !r.noFunds) return { kind: 'failed', message: 'The offer is no longer available' };
+            if (r.reply === null) return CLOSE;
+            // Main.Part10.cs:4497: DEAL_REJECTCOMPLAIN → DEAL_REJECTDEMAND_RESPONSE (the executor answers DEAL_REJECT).
+            if (a.id === 'DEAL_REJECTCOMPLAIN' && r.reply === 'DEAL_REJECT_RESPONSE') return view('DEAL_REJECTDEMAND_RESPONSE');
+            return view(r.reply, r.replyArgs);
+        }
+        case 'close':
+            return textOnlyReply(a, entry, player);
+        case 'openDiplomacy':
+        case 'goto':
+            return CLOSE;
+    }
 }

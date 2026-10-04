@@ -21,7 +21,7 @@
 // 1110-1339; characters are generated later, at Start.2.cs 1483):
 // - Empire.Leader / Habitat.Characters: read through characters.ts (none before Start.2.cs 1483).
 // - Empire._WarWeariness 0, _CivilityRating 0, _LeaderChangeInfluence 0,
-//   _SpecialBonusHappiness 0 (ReviewSpecialBonusesRuinsWonders — TODO(port)).
+//   _SpecialBonusHappiness 0 (ReviewSpecialBonusesRuinsWonders, treasury.ts, sets it later).
 // - Habitat: _WarWithOurRace 0f (no wars), _CulturalDistressFactor 0f, ConqueredFactor 0f,
 //   RaceEventType Undefined, PlagueId -1, RaidCountdown 0, SlaveryBonusFactor 1f,
 //   _RestrictedResourcesPresent false, WonderForDevelopment null (no facilities),

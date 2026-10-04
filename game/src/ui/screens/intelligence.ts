@@ -60,6 +60,7 @@ import {
     CharacterSkillType,
     CharacterTraitType,
     IntelligenceMission,
+    determineEffectsOfCharacterTrait,
     getEmpireCharacters,
     type StellarObject,
 } from '../../sim/characters';
@@ -94,6 +95,7 @@ import { politicsDetail, politicsRowCells, politicsVisible } from '../emergentPo
 import { courtDetail } from '../courtView'; // [court]
 import type { SeatName } from '../../sim/scenario/court/court'; // [court]
 import { investigatorOptions, leadRows, securityVisible } from '../internalSecurityView'; // [security]
+import { landscapeImageUrl } from '../landscapeImages';
 
 const MT = IntelligenceMissionType;
 
@@ -316,6 +318,107 @@ export interface SkillLine {
 function signedPercent(level: number): string {
     const p = Math.round(Math.abs(level));
     return (level >= 0 ? '+' : '-') + p + '%';
+}
+
+/** `ToString("+#0;-#0")` of a whole-percent level. */
+function signedLevel(level: number): string {
+    const v = Math.round(level);
+    return (v < 0 ? '-' : '+') + Math.abs(v);
+}
+
+/**
+ * Port of Galaxy.2.cs:4608 ResolveCharacterDescription(character, includeName): the character tooltip text — the name
+ * and role (includeName), the untested note, SKILLS (including bonuses from traits) with their levels ("?%" while
+ * untested), then TRAITS with each trait's effect (the special texts, else up to three "+N% skill" per line).
+ */
+export function resolveCharacterDescription(character: Character | null, includeName = true): string {
+    let text = '';
+    if (character === null) return text;
+    if (includeName) {
+        text += `${character.name} (${resolveRoleDescription(character.role)})\n`;
+        text += '\n';
+    }
+    if (!character.bonusesKnown) text += `(${T('Character untested - skill levels and traits unknown')})\n\n`;
+    text += `${T('Skills').toUpperCase()} (`;
+    text += `${T('including bonuses from traits')})\n`;
+    const skill = (t: CharacterSkillType): string => resolveEnumTextDescription(CHARACTER_SKILL, CharacterSkillType[t]);
+    for (const type of character.resolveCharacterSkillTypes(false)) {
+        const skillLevel = character.getSkillLevel(type);
+        if (character.bonusesKnown) {
+            if (skillLevel !== 0) text += `${skill(type)}: ${signedLevel(skillLevel)}%\n`;
+        } else {
+            text += `${skill(type)}: ?%\n`;
+        }
+    }
+    if (character.traits.length > 0) {
+        text += '\n';
+        text += `${T('Traits').toUpperCase()}\n`;
+        if (character.bonusesKnown) {
+            for (const trait of character.traits) {
+                const effects = determineEffectsOfCharacterTrait(trait, character.role);
+                text += `${resolveEnumTextDescription(CHARACTER_TRAIT, CharacterTraitType[trait])}: `;
+                switch (trait) {
+                    case CharacterTraitType.Lazy:
+                    case CharacterTraitType.PoorTactician:
+                    case CharacterTraitType.Drunk:
+                    case CharacterTraitType.LaxDiscipline:
+                        text += T('Amount To All Skills', '-5%');
+                        break;
+                    case CharacterTraitType.Energetic:
+                    case CharacterTraitType.GoodTactician:
+                    case CharacterTraitType.ToughDiscipline:
+                        text += T('Amount To All Skills', '+5%');
+                        break;
+                    case CharacterTraitType.InspiringPresence:
+                        text += T('Character Trait Description InspiringPresence');
+                        break;
+                    case CharacterTraitType.Demoralizing:
+                        text += T('Character Trait Description Demoralizing');
+                        break;
+                    case CharacterTraitType.LocalDefenseTactics:
+                        text += T('Character Trait Description LocalDefenseTactics', '+20%');
+                        break;
+                    case CharacterTraitType.ForeignSpy:
+                        text += T('Character Trait Description ForeignSpy');
+                        break;
+                    case CharacterTraitType.Patriot:
+                        text += T('Character Trait Description Patriot');
+                        break;
+                    case CharacterTraitType.UltraGenius:
+                        text += T('Character Trait Description UltraGenius', '+20%');
+                        break;
+                    case CharacterTraitType.Creative:
+                        text += T('Character Trait Description Creative');
+                        break;
+                    case CharacterTraitType.Methodical:
+                        text += T('Character Trait Description Methodical');
+                        break;
+                    default: {
+                        let num = 0;
+                        for (const cs of effects.items) {
+                            if (cs == null) continue;
+                            if (num > 2) {
+                                text += '\n';
+                                num = 0;
+                            }
+                            text += `${signedLevel(cs.level)}% ${skill(cs.type)}, `;
+                            num++;
+                        }
+                        if (effects.items.length > 0) text = text.substring(0, text.length - 2);
+                        if (trait === CharacterTraitType.IntelligenceSober || trait === CharacterTraitType.IntelligenceAddict) {
+                            text += ` (${T('Character Trait Description OnlyAppliesToExistingSkills')})`;
+                        }
+                        break;
+                    }
+                }
+                text += '\n';
+            }
+        } else {
+            text += '?\n';
+        }
+    }
+    if (text.length > 1) text = text.substring(0, text.length - 1);
+    return text;
 }
 
 /** CharacterSkillsTraitsProgress.cs:73-87: "TRAITS: a, b" (or the untested text); '' without traits. */
@@ -625,30 +728,8 @@ export function canDismissCharacter(c: Character, player: Empire): boolean {
 // Role icons, portraits and OverlayRoleIcon: characterPortrait.ts (CharacterImageCache.cs).
 export { characterPortraitUrl, roleIconOverlayRect, roleIconUrl } from '../characterPortrait';
 
-/** Main.Part12.cs LoadEnvLandscapes: the landscape bitmaps in GalaxyImages LandscapeImageOffset order. */
-const LANDSCAPE_FOLDERS: readonly [string, number][] = [
-    ['barrenrock', 4],
-    ['continental', 4],
-    ['forest', 1],
-    ['frozengasgiant', 2],
-    ['gasgiant', 6],
-    ['iceglacial', 3],
-    ['marshyswamp', 3],
-    ['ocean', 2],
-    ['sandydesert', 3],
-    ['volcanic', 2],
-];
-
-/** Habitat.LandscapePictureRef → images/environment/landscapes/<type>/landscape_<i>.png; null when out of range. */
-export function landscapeImageUrl(ref: number): string | null {
-    if (!Number.isInteger(ref) || ref < 0) return null;
-    let i = ref;
-    for (const [folder, count] of LANDSCAPE_FOLDERS) {
-        if (i < count) return `/assets/dwu/images/environment/landscapes/${folder}/landscape_${i}.png`;
-        i -= count;
-    }
-    return null;
-}
+// Landscape pictures: landscapeImages.ts (Main.Part12.cs LoadEnvLandscapes), shared with the Galaxy Map.
+export { landscapeImageUrl };
 
 /** CharacterSummary.cs DrawCharacter: no location, a transfer under way or an agent on an offensive mission. */
 export function characterInTransitOrUnknown(c: Character): boolean {
@@ -786,7 +867,8 @@ export function canTransfer(c: Character, destination: StellarObject | null): bo
 // DOM (Main.Part6.cs:3098 method_425: pnlIntelligenceAgents, 1020 × 770)
 // ---------------------------------------------------------------------------------------------------------------
 
-// TODO(port): renaming in txtName (CharacterSummary.cs txtName_Leave) and the character tooltip (Galaxy.ResolveCharacterDescription) — Main.Part6.cs:3165.
+// The summary's name box renames (CharacterSummary.cs txtName_Enter / _Leave / _KeyDown, a renameCharacter player
+// command), and the summary's tooltip is Main.Part6.cs:3164-3170: "Name (Role)" over ResolveCharacterDescription.
 export interface IntelligenceScreenOptions {
     player: Empire;
     /** CharacterDoubleClicked: move the view to the character's location. */
@@ -975,8 +1057,27 @@ function createIntelligenceScreen(opts: IntelligenceScreenOptions): OpenState {
     summary.appendChild(place(pictureWrap, 10, 10, 250, 250));
     const sRole = dropText(summary, '', 270, 10, { size: FONT.large, bold: true, color: COLORS.label, className: 'ch-center' });
     sRole.style.width = '120px';
-    const sName = dropText(summary, '', 270, 38, { size: 25, bold: true, color: COLORS.label, shadow: false, className: 'ch-center ch-name' });
+    // txtName (270, 38) 120 × 62: multiline, centred, borderless until focused (txtName_Enter: FixedSingle + SelectAll);
+    // txtName_Leave stores the text as the name; Enter leaves the box (txtName_KeyDown → Focus()).
+    const sName = el('textarea', 'ch-center ch-name-box');
+    sName.spellcheck = false;
+    sName.rows = 2;
     place(sName, 270, 38, 120, 62);
+    summary.appendChild(sName);
+    sName.addEventListener('focus', () => sName.select());
+    sName.addEventListener('keydown', (e) => {
+        e.stopPropagation();
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            sName.blur();
+        }
+    });
+    sName.addEventListener('blur', () => {
+        const c = selected;
+        if (c === null || sName.value === c.name) return;
+        // Command log: queued, applied at the next frame boundary; the list shows the new name then.
+        issuePlayerCommand(galaxy, player, 'renameCharacter', [c, sName.value], () => render());
+    });
     const sTask = dropText(summary, '', 270, 108, { size: FONT.large, color: COLORS.label, shadow: false, wrapWidth: 120 });
     sTask.style.height = '152px';
     sTask.style.overflow = 'hidden';
@@ -1132,7 +1233,9 @@ function createIntelligenceScreen(opts: IntelligenceScreenOptions): OpenState {
         skills.style.height = agent ? '188px' : '270px';
         renderPicture(c);
         setText(sRole, resolveRoleDescription(c.role));
-        setText(sName, c.name);
+        if (document.activeElement !== sName && sName.value !== c.name) sName.value = c.name;
+        // Main.Part6.cs:3164-3170: toolTip_0 on ctlCharacterSummary (title "Name (Role)", ResolveCharacterDescription).
+        summary.title = `${c.name} (${resolveRoleDescription(c.role)})\n\n${resolveCharacterDescription(c, false)}`;
         const task = resolveDescriptionCharacterTask(c, galaxy);
         setText(sTask, task !== '' ? task : resolveCharacterLocationDescription(c));
         renderSkills(c);

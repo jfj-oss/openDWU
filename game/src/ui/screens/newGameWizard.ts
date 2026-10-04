@@ -404,6 +404,11 @@ export function createNewGameWizard(callbacks: NewGameWizardCallbacks): NewGameW
     // --- Page containers (built once, shown/hidden on navigation). ---
     const typePage = buildTypePage((t) => {
         applyEmpireTypeChoice(options, t);
+        // Start.cs 5374 btnStartNewGameIntroductory_Click starts the preset game at once (toCreateGameOptionsIntroductory).
+        if (t === 'Introductory') {
+            callbacks.onStartGame({ ...options });
+            return;
+        }
         showPage(empireTypeIsCustom(t) ? 'galaxy' : 'jumpstart');
     });
     const jumpStartPage = buildJumpStartPage(options);
@@ -562,7 +567,7 @@ async function ensureWizardGameText(): Promise<void> {
 }
 
 interface PlaystyleButtonSpec {
-    type: WizardEmpireType | 'AncientGalaxy' | 'Introductory';
+    type: WizardEmpireType | 'AncientGalaxy';
     titleTag: string;
     title: string;
     descTag: string;
@@ -610,10 +615,11 @@ function buildTypePage(onChoose: (type: WizardEmpireType) => void): HTMLDivEleme
         };
         btn.addEventListener('mouseenter', showDesc);
         btn.addEventListener('focus', showDesc);
-        if (spec.type === 'AncientGalaxy' || spec.type === 'Introductory') {
-            // TODO(port): The Ancient Galaxy (Start.cs 5583: switches to "The Ancient Galaxy" theme and starts its prebuilt
-            // galaxy map, method_221) and the Introductory Game (Start.cs 5363 btnStartNewGameIntroductory_Click preset) are
-            // not ported yet.
+        if (spec.type === 'AncientGalaxy') {
+            // TODO(port): The Ancient Galaxy (Start.cs 5583 btnStartNewGameYourEmpireTypeTheAncientGalaxy_Click: switches to
+            // the "The Ancient Galaxy" theme — Customization/The Ancient Galaxy, a mod set — and starts its prebuilt galaxy
+            // map maps/The Ancient Galaxy.dwg through method_221). Needs a reader for the .dwg (a .NET-serialized galaxy)
+            // and theme switching; neither exists in the port.
             btn.disabled = true;
             btn.title = 'Not available yet';
         } else {

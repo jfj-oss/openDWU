@@ -1,0 +1,26 @@
+/* The shared pnlBuiltObjectInfo data tab pages (builtObjectDataTabs.ts): Ships and Bases, Construction Yards. */
+
+/* DataGridViewImageColumn pictures (Zoom layout) and the SmallFlagPicture cells. */
+.dt-img {
+    object-fit: contain;
+    pointer-events: none;
+}
+.dt-flag {
+    width: 20px;
+    height: 12px;
+    object-fit: contain;
+    pointer-events: none;
+}
+/* lblBuiltObjectComponentsResources: TextAlign BottomLeft in its 205 × 45 box. */
+.dt-res-label {
+    display: flex;
+    align-items: flex-end;
+}
+.dt-res-label > .ow-text {
+    position: static;
+}
+/* WeaponListView DamageGraph: the 270 × 45 bitmap, Zoom layout in its cell. */
+.dt-damage-graph {
+    display: block;
+    pointer-events: none;
+}

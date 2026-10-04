@@ -65,6 +65,7 @@ import { getSettings, type UiSettings } from '../ui/settings';
 import { displayColorForEmpire } from '../sim/empireColors';
 import { useMinifyingFilter } from './assets';
 import { boundsOnScreen } from './drawCache';
+import { showsMapIndicators } from './mainViewDisplay';
 import { drawCrossedSwords, systemsUnderFire } from './battleIcons';
 import { builtObjectHiddenFromPick, warEmpires } from './builtObjectLayer';
 
@@ -1115,6 +1116,9 @@ export class GalaxyMarkerLayer {
         const selBo = sel?.shipGroup === undefined ? (sel?.builtObject ?? null) : null;
         const selGroup = sel?.shipGroup ?? null;
         const galaxyPass = band === 'galaxy';
+        // MainView.1.cs:1080 / 1253 (Main.int_34, mainViewDisplay.ts): display type 2 drops the per-ship symbols, 1 and 2
+        // the battle bars. The galaxy pass (MainView.2.cs method_250) does not read it.
+        const perShipSymbols = showsMapIndicators();
         // Particle / bar vertices are float32 in the container's local space, and galaxy coordinates run to millions
         // (spacing 0.06 - 0.5 world units), which shows as stepping when a ship glides a fraction of a px per frame.
         // So both containers sit at the camera centre and the markers are placed relative to it (small local numbers).
@@ -1144,6 +1148,7 @@ export class GalaxyMarkerLayer {
                 if (!galaxyViewTypeShown(bo.subRole, opts, enemy, f)) continue;
                 if (builtObjectHiddenFromPick(bo, g.systems, g.pirateEmpires, this.war)) continue;
             } else {
+                if (!perShipSymbols) continue;
                 // MainView.1.cs 1083-1088: beyond f = 20 the player's own private ships get no symbol.
                 if (f > 20 && !isBase && bo.owner === null && player !== null && bo.empire === player) continue;
             }

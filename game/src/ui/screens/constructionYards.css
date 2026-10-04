@@ -77,3 +77,15 @@
     object-fit: contain;
     transform: rotate(-90deg);
 }
+
+/* Eight tab pages (method_178's six + Fleet Builds / Construction Jobs) in the 680 px strip: tighter padding, and a tab
+   shrinks (ellipsis) rather than running past the strip when the counts make the captions long. */
+.ow-screen-yards .ow-tabs .ow-tab {
+    padding: 1px 6px 0;
+    font-size: 14px;
+    flex: 0 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}

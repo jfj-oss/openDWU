@@ -15,6 +15,7 @@
 // Galaxy.Rnd: only through callees (InvestigateAbandonedBuiltObject: research breakthroughs, the player's navigational
 // hint Next(0, 2) + Next(0, 11); mission assignment draws).
 
+import { generateHabitatLocationDescription, generateLocationDescription, generateRaceReport } from '../galaxyReports';
 import { cancelBlockadeColony } from '../fleets/blockades';
 import { checkPirateEmpireTerminated } from '../pirates/pirateGalaxyTick';
 import { clearAttackersFromEmpire } from '../fleets/militaryAI';
@@ -1080,12 +1081,6 @@ export function scanForNewOwnerBuiltObject(galaxy: Galaxy, builtObject: BuiltObj
 // Galaxy.5.cs 5240 InvestigateAbandonedBuiltObject (+ navigational hints)
 // ---------------------------------------------------------------------------------------------------------------
 
-/** Galaxy.5.cs 4815 GenerateLocationDescription(x, y) — message text only (TODO(port) M9: the nearest-habitat / sector wording). */
-function generateLocationDescription(galaxy: Galaxy, x: number, y: number): string {
-    void galaxy;
-    return `(${Math.trunc(x)}, ${Math.trunc(y)})`;
-}
-
 /** Galaxy.5.cs 4689 FindNearestUnknownIndependentColony(x, y, empire). No Rnd. */
 function findNearestUnknownIndependentColony(galaxy: Galaxy, x: number, y: number, empire: Empire): Habitat | null {
     let result: Habitat | null = null;
@@ -1176,7 +1171,7 @@ function generateNavigationalBonusMessage(galaxy: Galaxy, x: number, y: number, 
         case 2: {
             const habitat = findNearestUnknownRuin(galaxy, x, y, empire);
             if (habitat !== null) {
-                text += generateLocationDescription(galaxy, habitat.xpos, habitat.ypos);
+                text += generateHabitatLocationDescription(galaxy, habitat);
                 if (empire === galaxy.playerEmpire) addLocationHint(galaxy.playerEmpire, { x: Math.trunc(habitat.xpos), y: Math.trunc(habitat.ypos) });
             }
             break;
@@ -1194,7 +1189,7 @@ function generateNavigationalBonusMessage(galaxy: Galaxy, x: number, y: number, 
         case 6: {
             const habitat2 = findNearestUnknownIndependentColony(galaxy, x, y, empire);
             if (habitat2 !== null) {
-                text += generateLocationDescription(galaxy, habitat2.xpos, habitat2.ypos);
+                text += generateHabitatLocationDescription(galaxy, habitat2);
                 if (empire === galaxy.playerEmpire) addLocationHint(galaxy.playerEmpire, { x: Math.trunc(habitat2.xpos), y: Math.trunc(habitat2.ypos) });
             }
             break;
@@ -1203,7 +1198,7 @@ function generateNavigationalBonusMessage(galaxy: Galaxy, x: number, y: number, 
         case 8: {
             const empire2 = findNearestPirateFactionBaseUnknown(galaxy, empire, x, y, null);
             if (empire2 !== null && empire2.pirateEmpireBaseHabitat !== null) {
-                text += generateLocationDescription(galaxy, empire2.pirateEmpireBaseHabitat.xpos, empire2.pirateEmpireBaseHabitat.ypos);
+                text += generateHabitatLocationDescription(galaxy, empire2.pirateEmpireBaseHabitat);
                 if (empire === galaxy.playerEmpire) addLocationHint(galaxy.playerEmpire, { x: Math.trunc(empire2.pirateEmpireBaseHabitat.xpos), y: Math.trunc(empire2.pirateEmpireBaseHabitat.ypos) });
             }
             break;
@@ -1402,8 +1397,8 @@ export function investigateAbandonedBuiltObject(galaxy: Galaxy, investigatingEmp
         }
     }
     if (abandonedBuiltObject.subRole === BuiltObjectSubRole.ColonyShip && abandonedBuiltObject.nativeRace !== null) {
-        // GenerateRaceReport (text): TODO(port) M9.
         empty += '\n\n' + formatText(getText('Abandoned Ship Acquire Colony Ship'), abandonedBuiltObject.nativeRace.name);
+        empty += '\n\n' + generateRaceReport(galaxy, abandonedBuiltObject.nativeRace);
     }
     if (flag) {
         sendMessageToEmpire(investigatingEmpire, investigatingEmpire, EmpireMessageType.ExplorationBuiltObject, abandonedBuiltObject, empty);

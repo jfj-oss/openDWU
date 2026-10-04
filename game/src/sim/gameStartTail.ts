@@ -179,7 +179,7 @@ export function cloneDesign(source: Design): Design {
     design.isObsolete = source.isObsolete;
     design.isManuallyCreated = source.isManuallyCreated;
     design.allowAutoRetrofit = source.allowAutoRetrofit;
-    // TODO(port): RepaitPriorityTemplateName (repair-priority templates not modelled).
+    design.repaitPriorityTemplateName = source.repaitPriorityTemplateName;
     design.reDefine();
     return design;
 }

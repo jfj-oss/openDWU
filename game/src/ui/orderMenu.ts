@@ -32,6 +32,7 @@ import {
     type SelectionButton,
 } from '../sim/player/orderMenu';
 import { showToast } from './toast';
+import { openPirateSmugglingPicker } from './pirateSmugglingPicker';
 import { saveAutomationResponse, savedAutomationResponse } from './settings'; // [gameoptions]
 import { wreckSalvageMenuItem } from './scenario/wreckageUi'; // [wreckage]
 
@@ -491,9 +492,9 @@ export async function performAction(action: ShipAction, fromActionMenu: boolean,
         showToast(r.mouseHoverMode === 'SetFleetAttackPoint' ? T('Set Attack Target') : T('Set Home Base'));
     }
     if (r.showSmugglingResourceSelection) {
-        // TODO(port): Main.Part8.cs 5067 method_345 (the smuggling-mission resource picker panel) — use the colony's
-        // right-click menu ("Assign Mercenary Smuggling Mission") meanwhile.
-        showToast(T('Assign Mercenary Smuggling Mission'));
+        // Main.Part7.cs 1018 → Main.Part8.cs 5067 method_345: the smuggling-mission resource picker for the colony.
+        const target = action.target;
+        if (target instanceof Habitat && deps !== null) openPirateSmugglingPicker(deps.galaxy, deps.empire, target);
     }
     if (r.openForm !== undefined) {
         // TODO(port): the Bacon mod forms (planetCargoDataForm / CustomizeShipForm / InvasionCommandForm).

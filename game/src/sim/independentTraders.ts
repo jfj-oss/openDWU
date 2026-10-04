@@ -57,7 +57,7 @@ import { builtObjectCompleteTeardown } from './combat/teardown';
 import { empiresSharedVisibility } from './exploration';
 import { obtainPirateRelation, PirateRelationType } from './pirateRelations';
 import { Habitat, HabitatCategoryType } from './types';
-import { SystemVisibilityStatus, THREAT_RANGE } from './visibility';
+import { SystemVisibilityStatus, THREAT_RANGE, registerShipOutsideSystemScan } from './visibility';
 
 // ShipImageHelper.cs 43 / 25.
 const STANDARD_SHIP_IMAGE_START_INDEX = 72;
@@ -82,7 +82,6 @@ function isFighter(o: Habitat | BuiltObject | VisibilityFighter): o is Visibilit
 // Design.cs Clone (1986-2009). Copies the listed fields only (not Size / OptimizedDesign),
 // ComponentList.Clone (new Component per id: the TS components are shared static definitions,
 // so a shallow copy of the array is equivalent), then ReDefine. No Rnd.
-// TODO(port): RepaitPriorityTemplateName (repair-priority templates) is not modeled on the TS Design.
 export function cloneDesign(source: Design): Design {
     const design = new Design(source.name);
     design.imageScalingType = source.imageScalingType;
@@ -102,6 +101,7 @@ export function cloneDesign(source: Design): Design {
     design.isObsolete = source.isObsolete;
     design.isManuallyCreated = source.isManuallyCreated;
     design.allowAutoRetrofit = source.allowAutoRetrofit;
+    design.repaitPriorityTemplateName = source.repaitPriorityTemplateName;
     design.reDefine();
     return design;
 }
@@ -305,6 +305,10 @@ export function builtObjectVisibility(galaxy: Galaxy, empire: Empire, builtObjec
     }
     return BuiltObjectVisibility.None;
 }
+
+// Empire.9.cs 3444 FindShipOutsideSystemWithScanRange(x, y, rangeModifier) for the Creature visibility check
+// (visibility.ts EmpireVisibility.isCreatureVisible, Empire.9.cs 3037), which cannot import this module.
+registerShipOutsideSystemScan((empire, x, y, rangeModifier) => findShipOutsideSystemWithScanRange(empire.galaxy, empire, x, y, rangeModifier) !== null);
 
 // Empire.9.cs IsObjectVisibleToThisEmpireImprecise(StellarObject) (3065) for Habitat / BuiltObject.
 // A Fighter (combat/fighters.ts) is duck-typed here (this module cannot import it: circular) — only the members the

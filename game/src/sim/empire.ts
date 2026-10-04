@@ -33,7 +33,7 @@ import type { Design } from './design';
 import { BuiltObjectRole } from './data/designSpecifications';
 import { DesignNameState } from './designNames';
 import { loadDesignSpecification as loadDesignSpecificationData, type DesignSpecification } from './data/designSpecifications';
-import { EmpireVisibility, SystemVisibilityStatus, type SystemVisibility, type VisibilityOwner, type VisibilityUnit } from './visibility';
+import { EmpireVisibility, SystemVisibilityStatus, empireHasShipOutsideSystemWithScanRange, type SystemVisibility, type VisibilityOwner, type VisibilityUnit } from './visibility';
 import type { ForceStructureProjectionList } from './forceStructureProjection';
 import type { HabitatPrioritization } from './resourceTargets';
 import type { ColonizationTarget, PrioritizedTarget } from './civilianAI';
@@ -1030,8 +1030,10 @@ export class Empire {
                 }
                 return false;
             },
-            longRangeScanners: () => [],
-            hasShipOutsideSystemWithScanRange: () => false,
+            // Empire.9.cs 3037 IsObjectVisibleToThisEmpire(Creature): LongRangeScanners, then
+            // FindShipOutsideSystemWithScanRange((int)x, (int)y, 1.0).
+            longRangeScanners: () => this.longRangeScanners as BuiltObject[],
+            hasShipOutsideSystemWithScanRange: (x: number, y: number) => empireHasShipOutsideSystemWithScanRange(this, x, y),
         };
     }
 

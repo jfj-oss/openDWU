@@ -1,4 +1,6 @@
-import { computeHudLayout, VIEW_ROWS, type Rect, type ViewRowKey } from './hudLayout';
+import { computeHudLayout, OPTIONS_ABOVE_MAP_GAP, SYSTEM_MAP_PANEL_H, SYSTEM_MAP_PANEL_W, type Rect } from './hudLayout';
+import { buildHudSystemMap, setZoomFactor, SYSTEM_MAP_SMALL_SCALE, SYSTEM_MAP_STRIP, systemMapSmall } from './hudSystemMap';
+import { openRuinDetail } from './screens/ruinDetail';
 import { cornerRadiusCss, MONEY_POS, researchReadout, showViewSystemName, TOP_DATE_POS, TOP_ELEMENT_NAMES, TOP_LEFT_BUTTONS, TOP_ROW_BUTTONS, topBarLayout, topBarScale, viewSystemName, type CornerCurves } from './topBar';
 import './topBar.css';
 import { openGameOptionsPanel, toggleGameOptionsPanel } from './screens/gameOptionsPanel';
@@ -53,6 +55,7 @@ import { toggleExpansionPlanner } from './screens/expansionPlanner'; // [16a]
 import { setEmpireSummarySource, getEmpireSummarySource, toggleEmpireSummary } from './screens/empireSummary';
 // [leftovers] begin
 import { toggleGalacticHistory } from './screens/galacticHistory';
+import { openGroundReport } from './screens/groundReport'; // [parC1]
 // [leftovers] end
 import { formatThousandsK } from './screens/coloniesList';
 import { toggleColoniesScreen } from './screens/coloniesScreen';
@@ -216,15 +219,6 @@ export function cycleEmptyText(kind: CycleKind): string {
     return `No ${what[kind]} to cycle`;
 }
 
-/** View row key → original zoom-button control name (for its icon art). */
-const VIEW_ROW_CONTROL: Partial<Record<ViewRowKey, string>> = {
-    zoomSelection: 'btnZoomSelection',
-    zoomIn: 'btnZoomIn',
-    zoomOut: 'btnZoomOut',
-    zoomPlanet: 'btnZoomColony',
-    galaxyMap: 'tbtnGalaxyMap',
-};
-
 /** Planet-level ("100%") camera zoom: 1 px per world unit. */
 export const PLANET_LEVEL_ZOOM = 1;
 
@@ -242,7 +236,7 @@ const TOP_NAMES: ReadonlySet<string> = new Set(TOP_ELEMENT_NAMES);
 /** CSS `transform-origin` for a HUD element name given its layout rect. Pure
  * (no window access) so node-based tests can exercise the mapping. */
 export function hudTransformOrigin(name: string, _rect: Rect, _viewportWidth?: number): string {
-    if (name === 'pnlOptionsList') return '100% 100%'; // bottom-right anchored
+    if (name === 'pnlOptionsList' || name === 'pnlSystemMap') return '100% 100%'; // bottom-right anchored
     if (TOP_NAMES.has(name)) return '0 0'; // top strip: positioned at its scaled original position
     if (name === 'pnlSelection') return '0 100%'; // bottom-left anchored
     return '0 0'; // default: top-left anchored
@@ -273,17 +267,46 @@ function placeTopStrip(refs: HudRefs): void {
 export function applyHudScale(refs: HudRefs): void {
     const s = uiScaleFactor();
     const layout = computeHudLayout(window.innerWidth, window.innerHeight);
+    const selScale = selectionFrameScale(window.innerHeight, s, selectionPanelSmall());
+    const mapScale = systemMapFrameScale(window.innerWidth, window.innerHeight, s, systemMapSmall(), selScale);
     for (const [name, el] of refs.elements) {
         if (TOP_NAMES.has(name)) continue;
         const rect = layout[name];
         if (!rect) continue;
         el.style.transformOrigin = hudTransformOrigin(name, rect, window.innerWidth);
-        // The selection frame is drawn in the original's pixels and scales with the window height (4K / HiDPI).
-        const k = name === 'pnlSelection' ? selectionFrameScale(window.innerHeight, s, selectionPanelSmall()) : s;
+        // The selection frame and the system map are drawn in the original's pixels and scale with the window height
+        // (4K / HiDPI) like the top strip (HUD_FRAME_SIZE × UI scale).
+        const k = name === 'pnlSelection' ? selScale : name === 'pnlSystemMap' ? mapScale : s;
         el.style.transform = k === 1 ? '' : `scale(${k})`;
         if (name === 'pnlSelection') anchorSelectionPanel(el, rect);
     }
+    anchorOptionsAboveSystemMap(refs, s, mapScale);
     placeTopStrip(refs);
+}
+
+/** The "View" popup sits right above the system mini-map's top-right corner: its bottom is the map's scaled top (the
+ * map scales by `mapScale` from its bottom-right corner, both sizes) plus the gap at the popup's own scale. Without a
+ * map it keeps its own rect. */
+function anchorOptionsAboveSystemMap(refs: HudRefs, s: number, mapScale: number): void {
+    const opts = refs.elements.get('pnlOptionsList');
+    if (opts === undefined || !refs.elements.has('pnlSystemMap')) return;
+    const layout = computeHudLayout(window.innerWidth, window.innerHeight);
+    const map = layout['pnlSystemMap'];
+    if (map === undefined) return;
+    const mapBottom = Math.max(0, window.innerHeight - map.y - map.h);
+    opts.style.top = '';
+    opts.style.bottom = `${mapBottom + SYSTEM_MAP_PANEL_H * mapScale + OPTIONS_ABOVE_MAP_GAP * s}px`;
+}
+
+/** Right / bottom anchoring for the bottom-right elements (task 10e): they never clip past the screen edge. */
+function anchorBottomRight(el: HTMLElement, name: string, rect: Rect): void {
+    if (name !== 'pnlOptionsList' && name !== 'pnlSystemMap') return;
+    el.style.left = '';
+    el.style.right = `${Math.max(0, window.innerWidth - rect.x - rect.w)}px`;
+    if (name === 'pnlSystemMap' || rect.h === 0) {
+        el.style.top = '';
+        el.style.bottom = `${Math.max(0, window.innerHeight - rect.y - rect.h)}px`;
+    }
 }
 
 /** System-level view: zoom factor 50 (Main.Part9.cs btnZoomSystem_Click
@@ -511,10 +534,16 @@ export function toggleColoniesFromHud(empire: Empire, selected: Habitat | null =
         onGoTo: (h) => selectHabitat(h, true),
         onShowOnGalaxyMap: galaxyMapAt ?? undefined,
         onExpansionPlanner: () => toggleExpansionPlanner({ empire, onSelect: (h) => selectHabitat(h, true) }),
-        onConstructionSummary: () => toggleConstructionYards({ empire, onSelect: (t) => selectStellarObject(t, true) }),
         onHelp: (topic) => openGalactopedia({ topic }),
         confirmAutomationOff: (task) => confirmAutomationOff(task),
     });
+}
+
+/** btnMessageHistoryGoto_Click (Main.Part4.cs:1967): method_156(x, y) + method_4(1.0) — centre at planet zoom. */
+export function historyGoTo(cam: Camera | undefined, x: number, y: number): void {
+    if (!cam) return;
+    cam.centerOn(x, y);
+    cam.zoomAt(PLANET_LEVEL_ZOOM, cam.width / 2, cam.height / 2);
 }
 
 export function createHud(wiring: HudWiring = {}): HudRefs {
@@ -586,6 +615,22 @@ export function createHud(wiring: HudWiring = {}): HudRefs {
             case 'pnlOptionsList':
                 el = buildOptionsPopup(buildOptionsList({ ...wiring, overlays }));
                 break;
+            case 'pnlSystemMap':
+                // The original's bottom-right system mini-map (hudSystemMap.ts); needs the galaxy and the camera.
+                if (wiring.galaxy === undefined || wiring.camera === undefined) continue;
+                {
+                    const cam = wiring.camera;
+                    el = buildHudSystemMap({
+                        galaxy: wiring.galaxy,
+                        camera: cam,
+                        onGalaxyMap: wiring.onGalaxyMap,
+                        onZoomSelection: () => zoomToSelectedItem(cam),
+                        hasSelection: () => selectionViewTarget(currentSelection) !== null,
+                        // The size toggle: re-apply the frame scale (and the View popup's anchor above it).
+                        onResize: () => applyHudScale(refs),
+                    });
+                }
+                break;
             case 'tbtnEmpires':
                 el = buildDiplomacyButton(wiring);
                 break;
@@ -600,15 +645,8 @@ export function createHud(wiring: HudWiring = {}): HudRefs {
         // Task 10e: right-anchored panels position via `right` (not a computed
         // left) so they can never clip past the screen edge. The options list
         // is content-sized (rect.h === 0): anchor it to the window's
-        // bottom-right corner instead of a fixed top offset.
-        if (name === 'pnlOptionsList') {
-            el.style.left = '';
-            el.style.right = `${Math.max(0, window.innerWidth - rect.x - rect.w)}px`;
-        }
-        if (name === 'pnlOptionsList' && rect.h === 0) {
-            el.style.top = '';
-            el.style.bottom = `${Math.max(0, window.innerHeight - rect.y - rect.h)}px`;
-        }
+        // bottom-right corner instead of a fixed top offset; the mini-map too.
+        anchorBottomRight(el, name, rect);
         if (name === 'pnlSelection') anchorSelectionPanel(el, rect);
         root.appendChild(el);
         elements.set(name, el);
@@ -684,15 +722,8 @@ export function layoutHud(refs: HudRefs): void {
         if (TOP_NAMES.has(name)) continue; // placed by applyHudScale
         const rect = layout[name];
         if (rect) applyRect(el, rect);
-        // Task 10e: keep the right-anchored options list pinned to the right edge.
-        if (rect && name === 'pnlOptionsList') {
-            el.style.left = '';
-            el.style.right = `${Math.max(0, window.innerWidth - rect.x - rect.w)}px`;
-        }
-        if (name === 'pnlOptionsList' && rect && rect.h === 0) {
-            el.style.top = '';
-            el.style.bottom = `${Math.max(0, window.innerHeight - rect.y - rect.h)}px`;
-        }
+        // Task 10e: keep the right-anchored options list and mini-map pinned to the bottom-right corner.
+        if (rect) anchorBottomRight(el, name, rect);
         if (name === 'pnlSelection' && rect) anchorSelectionPanel(el, rect);
     }
     // Task 10f: keep the UI scale applied after a re-layout.
@@ -904,18 +935,7 @@ function openTopBarScreen(name: string, wiring: HudWiring): void {
             return;
         // [leftovers] btnGalacticHistory → Galactic History (Main.Part3.cs:46 btnGalacticHistory_Click).
         case 'btnGalacticHistory':
-            if (src) {
-                toggleGalacticHistory({
-                    empire: src.empire,
-                    // btnMessageHistoryGoto_Click: method_156(x, y) + method_4(1.0).
-                    onGoTo: (x, y) => {
-                        const cam = wiring.camera;
-                        if (!cam) return;
-                        cam.centerOn(x, y);
-                        cam.zoomAt(PLANET_LEVEL_ZOOM, cam.width / 2, cam.height / 2);
-                    },
-                });
-            }
+            if (src) toggleGalacticHistory({ empire: src.empire, mode: 'galactichistory', onGoTo: (x, y) => historyGoTo(wiring.camera, x, y) });
             return;
         // Main.Part9.cs tbtnColonies_Click: toggle the Colonies screen (pnlColonyInfo, Main.Part11.cs method_166).
         case 'tbtnColonies':
@@ -925,9 +945,10 @@ function openTopBarScreen(name: string, wiring: HudWiring): void {
         case 'btnEmpireSummary':
             toggleEmpireSummary();
             return;
-        // Main.Part4.cs btnHistoryMessages_Click.
+        // Main.Part4.cs:2016 btnHistoryMessages_Click: the same pnlMessageHistory as btnGalacticHistory, opened with
+        // method_528("either") (the last filter, unless it was Galactic History).
         case 'btnHistoryMessages':
-            toggleMessageHistory();
+            if (src) toggleGalacticHistory({ empire: src.empire, mode: 'either', onGoTo: (x, y) => historyGoTo(wiring.camera, x, y) });
             return;
         // Main.Part9.cs tbtnBuiltObjects_Click.
         case 'tbtnBuiltObjects':
@@ -993,7 +1014,7 @@ function openDiplomacy(wiring: HudWiring): void {
         onZoomTo: (habitat) => {
             const cam = wiring.camera;
             if (!cam) return;
-            // Same camera calls as doViewAction('zoomSelection').
+            // Centre on the habitat at System zoom.
             cam.centerOn(habitat.xpos, habitat.ypos);
             cam.zoomAt(SYSTEM_LEVEL_ZOOM, cam.width / 2, cam.height / 2);
         },
@@ -1063,7 +1084,7 @@ export const TOP_MORE_ITEMS: readonly { key: string; label: string }[] = [
     { key: 'galaxyMap', label: 'Galaxy Map (G)' },
     { key: 'empires', label: 'Empires list' },
     { key: 'gameOptions', label: 'Game Options (O)' },
-    { key: 'advisor', label: 'Talk to your admiral (T)' },
+    { key: 'advisor', label: 'Talk to your admiral (K)' },
     { key: 'shortcuts', label: 'Keyboard shortcuts (?)' },
 ];
 
@@ -1071,7 +1092,7 @@ function runTopMoreItem(key: string, wiring: HudWiring): void {
     const src = getEmpireSummarySource();
     switch (key) {
         case 'galaxyMap':
-            doViewAction('galaxyMap', wiring);
+            openGalaxyMap(wiring);
             return;
         case 'empires': {
             const galaxy = wiring.galaxy;
@@ -1263,6 +1284,17 @@ export function selectionFrameScale(viewportHeight: number, uiScale: number, sma
     return SELECTION_FRAME_BASE_SCALE * HUD_FRAME_SIZE * v * uiScale * (small ? 0.75 : 1);
 }
 
+/** The system map's CSS scale (hudSystemMap.ts): the selection frame's full-size scale (the same original pixels on
+ *  both bottom corners), × SYSTEM_MAP_SMALL_SCALE in the small size, and capped so that in a narrow window the map
+ *  with its zoom strip (13 px left of the panel) keeps 10 px clear of the selection frame (scaled by
+ *  `selectionScale`) instead of overlapping it. Both frames sit 10 px from their screen edges. */
+export function systemMapFrameScale(viewportWidth: number, viewportHeight: number, uiScale: number, small: boolean, selectionScale: number): number {
+    const k = selectionFrameScale(viewportHeight, uiScale, false) * (small ? SYSTEM_MAP_SMALL_SCALE : 1);
+    const frameW = SYSTEM_MAP_PANEL_W - SYSTEM_MAP_STRIP.x;
+    const room = (viewportWidth - 10 - SELECTION_FRAME.w * selectionScale - 10 - 10) / frameW;
+    return Math.max(0.25, Math.min(k, room));
+}
+
 /** The original's selection-panel cycle buttons, top to bottom (Main.Part12.cs 2003-2030). */
 export const SELECTION_CYCLE_BUTTONS: readonly { kind: CycleKind; image: string }[] = [
     { kind: 'colonies', image: 'cycleColonies' },
@@ -1314,6 +1346,54 @@ function buildSelectionPanel(wiring: HudWiring): HTMLElement {
     const content = document.createElement('div');
     content.className = 'sel-content-box';
     detail.appendChild(content);
+    // The main view's hover message over the selection panel (Main.Part10.cs 1141-1159, method_206 case
+    // "pnlDetailInfo" / "pnlInfoPanel": "Selection Panel: click to center view on selected item" while pnlDetailInfo
+    // is visible, replaced by the hovered hotspot's HoverMessage → string_17), drawn in yellow with a drop shadow at
+    // HoverMessageLocation = (10, height - (pnlInfoPanel + btnSelectionForward + btnSelectionAction1 heights + 4 +
+    // 35)), Main.Part12.cs 2103 / MainView.cs 1599: 19 px above this frame's top, at its left edge.
+    const hoverMsg = document.createElement('div');
+    hoverMsg.className = 'sel-hover-msg';
+    hoverMsg.hidden = true;
+    panel.appendChild(hoverMsg);
+    let hoverPoint: { x: number; y: number } | null = null;
+    const syncHoverMessage = (): void => {
+        let text = '';
+        if (hoverPoint !== null) {
+            const under = document.elementFromPoint(hoverPoint.x, hoverPoint.y);
+            if (under instanceof HTMLElement && (detail.contains(under) || infoFrame.contains(under)) && under.closest('button') === null) {
+                text = selectionPanelHint(under.closest<HTMLElement>('[data-hover]')?.dataset.hover);
+            }
+        }
+        if (hoverMsg.textContent !== text) hoverMsg.textContent = text;
+        hoverMsg.hidden = text === '';
+    };
+    for (const area of [detail, infoFrame]) {
+        area.addEventListener('mousemove', (e) => {
+            hoverPoint = { x: e.clientX, y: e.clientY };
+            syncHoverMessage();
+        });
+        area.addEventListener('mouseleave', () => {
+            hoverPoint = null;
+            syncHoverMessage();
+        });
+    }
+    // Main.Part4.cs 3525 pnlDetailInfo_MouseClick: a click off every hotspot moves the view to the selection
+    // (method_157(_Game.SelectedObject)); a hotspot with no object (a message only) does nothing; the hotspots'
+    // own clicks are attachTarget's (selectionInfoView.ts, they stop the event).
+    detail.addEventListener('click', (e) => {
+        if (!(e.target instanceof Element) || e.target.closest('button') !== null || e.target.closest('[data-hover]') !== null) return;
+        const cam = wiring.camera;
+        if (cam === undefined) return;
+        const t = selectionViewTarget(currentSelection);
+        if (t === null) return;
+        // method_157: `if (SelectedObject != null && UhvLmNjli7) UhvLmNjli7 = false` — the view lock comes off (here
+        // also the follow camera, our lock for a moving ship / fleet), then the view centres on it (no zoom change).
+        if (isViewLocked()) runShipCommand('lockView');
+        const follow = followTarget();
+        if (follow !== null && wiring.followState !== undefined && isFollowingTarget(wiring.followState, follow)) toggleFollow(wiring.followState, follow);
+        cam.centerOn(t.x, t.y);
+        syncLock();
+    });
     // Our controls with no button in the original (follow, the dispatch orders, charter) go into the action strip's
     // empty slots (orderMenu.ts setSelectionExtraSlots); any that don't fit overflow into this compact row.
     const extras = document.createElement('div');
@@ -1648,6 +1728,22 @@ function buildSelectionPanel(wiring: HudWiring): HTMLElement {
             else toggleDiplomacyScreen({ player, selectedEmpire: t.empire });
             return;
         }
+        if (t.kind === 'ruin') {
+            // Main.Part4.cs 3581: a Ruin hotspot opens the Ruin Detail window (method_550).
+            if (wiring.galaxy) openRuinDetail(wiring.galaxy, t.ruin);
+            return;
+        }
+        // [parC1] The Troops / battle rows: the Ground Report (method_164).
+        if (t.kind === 'groundReport') {
+            openGroundReport(t.habitat);
+            return;
+        }
+        // Main.Part4.cs 3586-3597: a planetary facility hotspot opens the Galactopedia (method_456) at "Wonders" or
+        // "Planetary Facilities".
+        if (t.kind === 'galactopedia') {
+            openGalactopedia({ topic: t.topic });
+            return;
+        }
         const o = t.obj;
         if (o instanceof ShipGroup) shipGroupSelectHandler?.(o, false);
         else if (o instanceof Habitat) habitatSelectHandler?.(o, false);
@@ -1679,10 +1775,12 @@ function buildSelectionPanel(wiring: HudWiring): HTMLElement {
             renderInfoModel(content, null, { galaxy: galaxy as Galaxy, onTarget });
         } else {
             const model = buildInfoModel({ galaxy, player, resource: resourceDef }, sel, sel.creature ? creaturePictureUrl(sel.creature) : null);
-            renderInfoModel(content, model, { galaxy, onTarget, onAutomate: model.automated ? toggleAutomation : undefined });
+            renderInfoModel(content, model, { galaxy, onTarget, onAutomate: model.automated ? toggleAutomation : undefined, hoverMessage: true });
             const next = content.querySelector('.sel-scroll');
             if (next !== null) next.scrollTop = lastScroll;
         }
+        // The hovered hotspot was redrawn: its (refreshed) message stays up while the cursor is still on it.
+        syncHoverMessage();
         // The stance button only for the player's military ship / fleet (Main.Part10.cs: btnCycleShipStance.Visible).
         const target = automationTarget();
         stanceBtn.style.visibility = target !== null && player !== null
@@ -1788,37 +1886,12 @@ function creaturePictureUrl(c: Creature): string | null {
     return set !== undefined ? (creatureFrameUrls(set)[0] ?? null) : null;
 }
 
-/** Bottom-right options list: View rows + overlay toggles. */
+/** Bottom-right options list: the map overlay toggles (the original's row of overlay buttons above pnlSystemMap,
+ *  Main.Part12.cs 2135-2199). The zoom buttons are the system map's own strip (hudSystemMap.ts). */
 function buildOptionsList(wiring: HudWiring): HTMLElement {
     const overlays = wiring.overlays ?? createMapOverlayState();
     const panel = document.createElement('div');
     panel.className = 'hud-panel hud-options';
-
-    const viewHead = document.createElement('div');
-    viewHead.className = 'hud-section-head';
-    viewHead.textContent = 'View';
-    panel.appendChild(viewHead);
-    for (const row of VIEW_ROWS) {
-        const item = document.createElement('button');
-        item.type = 'button';
-        item.className = 'hud-option-row';
-        const file = chromeButtonFile(VIEW_ROW_CONTROL[row.key] ?? '');
-        if (file) {
-            const img = document.createElement('img');
-            img.src = `/assets/dwu/images/ui/chrome/${file}`;
-            img.alt = '';
-            img.draggable = false;
-            item.appendChild(img);
-        }
-        const lbl = document.createElement('span');
-        lbl.className = 'hud-option-label';
-        lbl.textContent = row.label;
-        item.appendChild(lbl);
-        item.addEventListener('click', () => {
-            doViewAction(row.key, wiring);
-        });
-        panel.appendChild(item);
-    }
 
     const ovHead = document.createElement('div');
     ovHead.className = 'hud-section-head';
@@ -2447,47 +2520,38 @@ export function builtObjectStatusRows(bo: BuiltObject, player: Empire | null): {
 }
 
 /** Drive the camera for a View-list action. */
-function doViewAction(key: ViewRowKey, wiring: HudWiring): void {
-    const cam = wiring.camera;
-    if (!cam) return;
-    const cx = cam.width / 2;
-    const cy = cam.height / 2;
-    switch (key) {
-        case 'zoomIn':
-            cam.zoomAt(cam.zoom * 2, cx, cy);
-            break;
-        case 'zoomOut':
-            cam.zoomAt(cam.zoom / 2, cx, cy);
-            break;
-        case 'zoomPlanet':
-            cam.zoomAt(PLANET_LEVEL_ZOOM, cx, cy);
-            break;
-        case 'system':
-            cam.zoomAt(SYSTEM_LEVEL_ZOOM, cx, cy);
-            break;
-        case 'sector':
-            cam.zoomAt(SECTOR_LEVEL_ZOOM, cx, cy);
-            break;
-        case 'galaxyMap':
-            if (wiring.onGalaxyMap) {
-                wiring.onGalaxyMap();
-                break;
-            }
-            cam.zoomAt(GALAXY_LEVEL_ZOOM, cx, cy);
-            break;
-        case 'galaxy':
-            cam.zoomAt(GALAXY_LEVEL_ZOOM, cx, cy);
-            break;
-        case 'zoomSelection': {
-            const sel = currentSelection;
-            if (!sel) return;
-            // Task 13c: centre on the selected ship/base when one is set.
-            const t = sel.builtObject ?? sel.builtObjects?.[0] ?? sel.habitat;
-            cam.centerOn(t.xpos, t.ypos);
-            cam.zoomAt(SYSTEM_LEVEL_ZOOM, cx, cy);
-            break;
-        }
+/** The top-more menu's Galaxy Map item: the Galaxy Map window, or the whole galaxy on the Main View without one. */
+function openGalaxyMap(wiring: HudWiring): void {
+    if (wiring.onGalaxyMap) {
+        wiring.onGalaxyMap();
+        return;
     }
+    const cam = wiring.camera;
+    if (cam) cam.zoomAt(GALAXY_LEVEL_ZOOM, cam.width / 2, cam.height / 2);
+}
+
+/** The selection panel's hover message (Main.Part10.cs 1141-1159): the hovered hotspot's message, else the panel's
+ *  own hint. */
+export function selectionPanelHint(hotspotMessage: string | undefined): string {
+    return hotspotMessage !== undefined && hotspotMessage !== '' ? hotspotMessage : 'Selection Panel: click to center view on selected item';
+}
+
+/** Where method_157 moves the view for a selection (Main.Part11.cs 2241: the habitat / built object / creature's
+ *  position; a fleet's lead ship, the first of several ships); null without a selection. */
+export function selectionViewTarget(sel: Selection | null): { x: number; y: number } | null {
+    if (sel === null) return null;
+    const t = sel.builtObject ?? sel.builtObjects?.[0] ?? sel.creature ?? sel.habitat;
+    return { x: t.xpos, y: t.ypos };
+}
+
+/** btnZoomSelection_Click (Main.Part4.cs 2153; Backspace calls the same): with a selection, move the view to it
+ *  (method_157) unless the view is locked on it, then zoom to 100 % (method_4(1.0)). False when nothing is selected. */
+export function zoomToSelectedItem(cam: Camera): boolean {
+    const t = selectionViewTarget(currentSelection);
+    if (t === null) return false;
+    if (!isViewLocked()) cam.centerOn(t.x, t.y);
+    if (cam.zoom !== 1) setZoomFactor(cam, 1.0);
+    return true;
 }
 
 // ---------------------------------------------------------------------------

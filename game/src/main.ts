@@ -83,6 +83,8 @@ import { getMessageOptions } from './ui/messageRouting';
 // [audio] end
 import { createNewGameWizard } from './ui/screens/newGameWizard';
 import { openGalactopedia } from './ui/screens/galactopedia';
+import { habitatInfo } from './ui/selectionInfo';
+import { renderInfoModel } from './ui/selectionInfoView';
 import { colonizationRangeFor, defaultStartGameOptions, piratesFor, STARTING_TECH_LEVEL, toCreateGameOptions, type StartGameOptions, maximumEmpireAmountFor, starCountFor, defaultScenarioChoice, type StartScenarioChoice } from './sim/startGameOptions';
 import { serializeGame, deserializeGameSteps, savedScenarioId, savedScenarioInclude, type GameSaveJSON } from './sim/save/gameSave';
 import { loadScenarioIndex, loadScenarioOverlay } from './sim/scenario/fetchScenario';
@@ -128,6 +130,7 @@ import { setShipCommandHandler, setViewLockedQuery } from './ui/keyboard';
 import { refreshSelectionActionBar } from './ui/orderMenu';
 import { selectCreature, selectFighter, selectHabitat } from './ui/hud';
 import { createShipCommandKeys, type ShipCommandKeys } from './ui/shipCommandKeys';
+import { createControlGroupKeys } from './ui/controlGroups'; import { setControlGroupHandler } from './ui/keyboard'; import { resetPanelVisibility } from './ui/panelVisibility'; import { setMainViewDisplayType } from './render/mainViewDisplay'; import { closeGroundReport } from './ui/screens/groundReport'; import { playGridClick } from './audio/gameAudio'; // [parC1]
 import { showToast } from './ui/toast';
 // [fix6ui] end
 
@@ -458,6 +461,25 @@ function createGalaxyMapFor(galaxy: Galaxy, camera: Camera): GalaxyMapScreen {
         jumpTo: (x, y) => camera.centerOn(x, y),
         // The Main View hover tooltip would otherwise stay over the map.
         onOpen: () => hideMapTooltip(),
+        // pnlHabitatInfo: the InfoPanel for the selected habitat. The original's InfoPanel there has no mouse handler;
+        // here its hotspots keep their messages as tool tips, and the Galactopedia ones (resources, races, facilities —
+        // Main.Part4.cs 3586-3607) open their topic.
+        renderHabitatInfo: (box, h) => {
+            const player = galaxy.playerEmpire;
+            if (player === null) return;
+            const resource = (id: number): { name: string; pictureRef: number } | null => galaxy.resources.find((r) => r.resourceId === id) ?? null;
+            const model = habitatInfo({ galaxy, player, resource }, h);
+            renderInfoModel(box, model, { galaxy, onTarget: (t) => { if (t.kind === 'galactopedia') openGalactopedia({ topic: t.topic }); } });
+            // InfoPanel.DrawBackgroundPicture centres the picture in this 250 × 240 client area.
+            const pic = box.querySelector<HTMLImageElement>('.sel-picture');
+            if (pic !== null) {
+                const side = Math.min(parseFloat(pic.style.width) || 200, 234);
+                pic.style.width = `${side}px`;
+                pic.style.height = `${side}px`;
+                if (!pic.style.left.startsWith('-')) pic.style.left = `${Math.trunc((250 - side) / 2)}px`;
+                pic.style.top = `${Math.trunc((240 - side) / 2)}px`;
+            }
+        },
     });
     document.body.appendChild(galaxyMap.element);
     return galaxyMap;
@@ -819,6 +841,32 @@ export async function startGameView(
     setViewLockedQuery(() => activeShipKeys.locked);
     // [fix6ui] end
 
+    // [parC1] begin — control groups (Main.Part7.cs Main_KeyUp Set / SelectControlGroupN[WithFocus], ui/controlGroups.ts).
+    const controlGroupKeys = createControlGroupKeys({
+        galaxy,
+        player: game.playerEmpire,
+        camera,
+        getSelection: getHudSelection,
+        godMode: () => fogOf(galaxy).reveal,
+        playSetSound: () => playGridClick(),
+        // method_209(obj, bool_28: true) without method_157: select, keep the view.
+        select: (o) => {
+            if (o === null) hud.onSelectionChange?.(null);
+            else if (Array.isArray(o)) selectBuiltObjectList(o);
+            else if (o instanceof ShipGroup) selectShipGroup(o, false);
+            else if (o instanceof Habitat) selectHabitat(o, false);
+            else if (o instanceof Creature) selectCreature(o, false);
+            else if (o instanceof Fighter) return; // TODO(port): fighter selection — MainView.1.cs:1520 method_212 (parity #26)
+            else if ('systemStar' in o) hud.onSelectionChange?.({ habitat: o.systemStar, system: o, systemInfo: true });
+            else selectStellarObject(o, false);
+        },
+    });
+    setControlGroupHandler((kind, index) => controlGroupKeys.handle(kind, index));
+    // A new game view starts with every panel shown and the full display type (Main's defaults).
+    resetPanelVisibility();
+    setMainViewDisplayType(0);
+    // [parC1] end
+
     // Task 06l: extra boots run after the HUD/clock are wired (e.g. opening
     // a tutorial window that pauses/unpauses the clock).
     for (const boot of extraBoots ?? []) {
@@ -850,8 +898,9 @@ export async function startGameView(
             return;
         }
         const action = dispatchKey(e, keyHandlers);
-        // Space must not also activate a focused HUD button (a second toggle).
-        if (action === 'togglePause') e.preventDefault();
+        // Space must not also activate a focused HUD button (a second toggle). [parC1] Ctrl+digit must not reach the
+        // browser's / shell's own shortcut (where it can be cancelled).
+        if (action === 'togglePause' || (action !== null && action.startsWith('setControlGroup'))) e.preventDefault();
         if (action === 'togglePause' || action === 'speedUp' || action === 'speedDown') {
             refreshClockLabel();
         }
@@ -935,6 +984,9 @@ export async function startGameView(
         setShipCommandHandler(null);
         setViewLockedQuery(null);
         shipKeys = null;
+        setControlGroupHandler(null); // [parC1]
+        resetPanelVisibility(); // [parC1]
+        closeGroundReport(); // [parC1]
         // [fix6ui] end
         // Module-level panels hold the old game's Empire/camera and a
         // document keydown listener: close them and drop their source.

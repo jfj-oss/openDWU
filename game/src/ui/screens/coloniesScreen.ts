@@ -14,19 +14,23 @@
 //
 // Orders go through the command log (issuePlayerCommand): tax changes as ColonyTaxUp/Down actions (the only colony
 // tax command the sim has), recruiting and facility building as the selection panel's ShipActions, disband /
-// garrison as the Troops screen's ops, wait-queue moves as the Construction Yards screen's op.
+// garrison as the Troops screen's ops; the Construction Yard tab's purchaser (pnlColonyConstructionYardPurchaser, the
+// shared ConstructionYardPurchaser port of constructionYards.ts), Scrap Ship, Remove Ship and the wait-queue moves as
+// the Construction Yards screen's ops (Main.Part4.cs btnColonyConstructionScrap_Click / RemoveFromQueue_Click).
 // Kept from the earlier streamlined list (mod layer): the 19d2 shortage marker and the scenario approval breakdown
 // on the approval icon, the 19d1 governor-loyalty tooltip on the name.
 //
-// TODO(port): Construction Yard tab's purchaser panel (pnlColonyConstructionYardPurchaser), Scrap Ship / Remove Ship — Main.Part6.cs:3460-3560
-// TODO(port): Show Ruin Details window (method_550 pnlRuinDetail) — shown as a message box with the ruin's description here
 // TODO(port): character portraits in the Troops & Characters tab (CharacterImageCache) — CharacterTroopListIconView.cs
 // TODO(port): racial / wonder / resource bonus lines of the attitude summary — HabitatAttitudeSummary.cs DetermineHabitat*Bonuses
 
 import './coloniesScreen.css';
 import type { Empire } from '../../sim/empire';
 import type { Galaxy } from '../../sim/galaxy';
-import { HabitatCategoryType, type Habitat } from '../../sim/types';
+import { HabitatCategoryType, HabitatType, type Habitat } from '../../sim/types';
+import { PlanetaryFacilityType, WonderType } from '../../sim/researchSystem';
+import { ColonyResourceEffect } from '../../sim/developmentLevel';
+import { RaceEventType } from '../../sim/eventTypes';
+import { resolveDescription } from '../../sim/messages';
 import type { BuiltObject } from '../../sim/builtObject';
 import type { Troop } from '../../sim/cargo';
 import type { Race } from '../../sim/data/races';
@@ -51,7 +55,7 @@ import { getPlagueUnhappinessFactorWithPlague } from '../../sim/eventTypes';
 import { empireGovernmentAttributes } from '../../sim/empire';
 import { strategicValue } from '../../sim/territory';
 import { habitatAnnualRevenue } from '../../sim/forceStructure';
-import { calculatePlanetaryFacilityCost, type PlanetaryFacility } from '../../sim/construction/facilities';
+import { calculatePlanetaryFacilityCost, facilitiesFindBestPirateFacility, type PlanetaryFacility } from '../../sim/construction/facilities';
 import { resolveBuildableFacilities, resolveBuildableFacilitiesPirates, resolveBuildableWonders } from '../../sim/player/executeShipAction';
 import { ShipActionType, createShipAction } from '../../sim/player/shipAction';
 import { issuePlayerCommand } from '../../sim/player/playerCommands';
@@ -62,15 +66,24 @@ import { componentDefinitionsStatic } from '../../sim/designGeneration';
 import { troopImageUrl, wireTroopImageFallback } from '../../render/troopImages';
 import { raceHasConcordArt } from '../../render/concordArt';
 import { facilityImageUrl, habitatImageUrl, habitatInfo, type InfoTarget } from '../selectionInfo';
+import { facilityListItem } from '../facilityHover';
 import { empireFlagUrl, renderInfoModel } from '../selectionInfoView';
 import { racePortraitUrl } from '../empireEmblem';
+import { characterPortrait } from '../characterPortrait';
+import { resolveCharacterDescription, resolveMissionTypeDescription, resolveRoleDescription } from './intelligence';
+import { characterMission } from '../../sim/espionage';
 import { resourceIconUrl, formatMoney } from '../hud';
 import { governorLoyaltyText } from '../emergentPolitics'; // [emergent]
 import { approvalMood, colonyScenarioInfo, formatThousandsK, type ApprovalMood } from './coloniesList';
 import { habitatTypeDescription } from './expansionPlanner';
 import { drawSystemsMiniMap } from './galaxyMap';
 import { recruitOptions, troopTypeDescription } from './troops';
-import { siteQueue, waitRows, yardRows, type ConstructionSite } from './constructionYards';
+import { empireMaximumSizes, maximumSizeText, progressCell, shipPictureUrl, siteQueue, waitRows, yardPurchaser, yardRows, type ConstructionSite } from './constructionYards';
+import type { ConstructionYard } from '../../sim/construction/constructionYard';
+import { openConstructionSummary } from './designEditor';
+import { openRuinDetail } from './ruinDetail';
+import { componentImageUrl } from './designPanelsModel';
+import { gt } from './researchBenefits';
 import {
     COLORS,
     FONT,
@@ -92,6 +105,7 @@ import {
     textBox,
     type GridColumn,
     type OriginalWindow,
+    rgbCss,
 } from '../originalWindow';
 import { requestSimRefresh } from '../../simworker/refresh';
 
@@ -445,6 +459,131 @@ function colonyTabCounts(h: Habitat): ColonyTabCounts {
     };
 }
 
+/** .NET `ToString("+0%")` / `ToString("-0%")` of a fraction: a one-section custom format puts the literal sign before
+ *  the number and still adds the minus of a negative value (so the C#'s "-0%" of -0.2 reads "--20%"). */
+function signedPercentFormat(v: number, literal: '+' | '-'): string {
+    const n = roundAway(v * 100);
+    return `${n < 0 ? '-' : ''}${literal}${Math.abs(n)}%`;
+}
+
+/** Galaxy.5.cs:426 ResolveWonderDescriptionShort: "Wonder Description Colony / Empire" with the wonder's effect. */
+export function resolveWonderDescriptionShort(f: { name: string; wonderType: WonderType; value1: number; value2: number }): string {
+    const W = WonderType;
+    const colony = (effect: string): string => formatNet(T('Wonder Description Colony', '{0}: {1} at this colony'), [f.name, effect]);
+    const empire = (effect: string): string => formatNet(T('Wonder Description Empire', '{0}: {1} for the whole empire'), [f.name, effect]);
+    switch (f.wonderType) {
+        case W.ColonyConstructionSpeed: return colony(`+${f.value2}% ${T('Construction Speed', 'Construction Speed')}`);
+        case W.ColonyDefense: return colony(`+${f.value2 * 10}% ${T('Colony Defense', 'Colony Defense')}`);
+        case W.ColonyHappiness: return colony(`+${f.value2}% ${T('Colony Happiness', 'Colony Happiness')}`);
+        case W.ColonyIncome: return colony(`+${f.value2}% ${T('Colony Income', 'Colony Income')}`);
+        case W.ColonyPopulationGrowth: return colony(`+${f.value2}% ${T('Population Growth', 'Population Growth')}`);
+        case W.EmpireHappiness: return empire(`+${f.value2}% ${T('Empire Happiness', 'Empire Happiness')}`);
+        case W.EmpireIncome: return empire(`+${f.value2}% ${T('Empire Income', 'Empire Income')}`);
+        case W.EmpirePopulationGrowth: return empire(`+${f.value2}% ${T('Population Growth', 'Population Growth')}`);
+        case W.EmpireResearchEnergy: return empire(`+${f.value2}% ${T('Energy Research', 'Energy Research')}`);
+        case W.EmpireResearchHighTech: return empire(`+${f.value2}% ${T('HighTech Research', 'HighTech Research')}`);
+        case W.EmpireResearchWeapons: return empire(`+${f.value2}% ${T('Weapons Research', 'Weapons Research')}`);
+        case W.RaceAchievement: return colony(`+${f.value1}% ${T('Colony Development Bonus', 'Colony Development Bonus')}`);
+        default: return '';
+    }
+}
+
+/** HabitatAttitudeSummary.cs:180 DetermineHabitatWonderBonuses: each completed wonder at the colony. */
+export function habitatWonderBonuses(h: Habitat): string[] {
+    const out: string[] = [];
+    for (const f of (h.facilities ?? []) as (PlanetaryFacility | null)[]) {
+        if (f != null && f.constructionProgress >= 1.0 && f.type === PlanetaryFacilityType.Wonder) out.push(resolveWonderDescriptionShort(f));
+    }
+    return out;
+}
+
+/** HabitatAttitudeSummary.cs:198 DetermineHabitatResourceBonuses: every resource bonus but Happiness
+ *  (Galaxy.2.cs:5517 ResolveDescription(ResourceBonus): "Race Resource Bonus <Effect>[ Source]", the value "#0"). */
+export function habitatResourceBonuses(galaxy: Galaxy, h: Habitat): string[] {
+    const out: string[] = [];
+    for (const b of h.resourceBonuses ?? []) {
+        if (b == null || b.effect === ColonyResourceEffect.Happiness) continue;
+        const effect = ColonyResourceEffect[b.effect];
+        if (effect === undefined || b.effect === ColonyResourceEffect.Undefined) {
+            out.push('');
+            continue;
+        }
+        const name = galaxy.resourceSystem?.resources.find((r) => r.resourceId === b.resourceId)?.name ?? '';
+        const key = `Race Resource Bonus ${effect}${b.appliesOnlyToSources ? ' Source' : ''}`;
+        out.push(formatNet(T(key, key), [name, String(roundAway(b.value))]));
+    }
+    return out;
+}
+
+/** HabitatAttitudeSummary.cs:213 DetermineHabitatRacialBonuses (the dominant race's colony bonuses, in the C# order). */
+export function habitatRacialBonuses(h: Habitat): string[] {
+    const out: string[] = [];
+    const race = h.population?.dominantRace ?? null;
+    if (race === null) return out;
+    const empire = h.empire;
+    // Habitat.Characters.GetNonTransferringCharacters(ColonyGovernor)[0].
+    const governor = ((empire?.characters ?? []) as (Character | null)[]).find((c): c is Character => c != null && c.location === h && c.role === CharacterRole.ColonyGovernor && c.transferDestination == null);
+    if (governor !== undefined && governor !== null) out.push(formatNet(T('Colony governor provides bonuses to this colony', '{0} provides bonuses to this colony'), [governor.name]));
+    if (race.warWearinessAttenuation > 0) {
+        out.push(`${formatNet(T('The RACE give this colony lower war weariness', 'The {0} give this colony lower war weariness'), [race.name])} (-${formatPercent0(race.warWearinessAttenuation / 100.0)})`);
+    }
+    const R = RaceEventType;
+    const eventKey: Partial<Record<RaceEventType, string>> = {
+        [R.NepthysWineVintage]: 'Race Event Colony Description NepthysWineVintage',
+        [R.GreatHuntStrongTroops]: 'Race Event Colony Description GreatHuntStrongTroops',
+        [R.WarriorWaveTroopRecruitment]: 'Race Event Colony Description WarriorWave',
+        [R.AntiXenoRiotsExterminate]: 'Race Event Colony Description AntiXenoRiotsExterminate',
+        [R.XenophobiaNoAssimilate]: 'Race Event Colony Description XenophobiaNoAssimilate',
+        [R.TodashGalacticChampionships]: 'Race Event Colony Description TodashGalacticChampionships',
+        [R.DeathCultExterminate]: 'Race Event Colony Description DeathCultExterminate',
+        [R.PredictiveHistory]: 'Race Event Colony Description PredictiveHistory',
+    };
+    const key = eventKey[h.raceEventType as RaceEventType];
+    if (key !== undefined) out.push(formatNet(T(key, key), h.raceEventType === R.DeathCultExterminate ? [empire?.dominantRace?.name ?? ''] : []));
+    if (race.satisfactionModifier > 0) {
+        out.push(`${formatNet(T('The RACE give this colony higher happiness', 'The {0} give this colony higher happiness'), [race.name])} (+${formatPercent0(race.satisfactionModifier / 100.0)})`);
+    }
+    if (h.slaveryBonusFactor > 1.0) out.push(`${T('Slavery gives this colony higher income', 'Slavery gives this colony higher income')} (+${formatPercent0(Math.fround(h.slaveryBonusFactor - 1))})`);
+    const speed: Partial<Record<HabitatType, number>> = {
+        [HabitatType.Volcanic]: race.colonyConstructionSpeedFactorVolcanic,
+        [HabitatType.Desert]: race.colonyConstructionSpeedFactorDesert,
+        [HabitatType.MarshySwamp]: race.colonyConstructionSpeedFactorMarshySwamp,
+        [HabitatType.Continental]: race.colonyConstructionSpeedFactorContinental,
+        [HabitatType.Ocean]: race.colonyConstructionSpeedFactorOcean,
+        [HabitatType.Ice]: race.colonyConstructionSpeedFactorIce,
+    };
+    const factor = speed[h.type];
+    if (factor !== undefined) {
+        const typeName = resolveDescription(HabitatType as unknown as Record<number, string>, h.type);
+        if (factor > 1.0) out.push(formatNet(T('Race Colony Bonus ConstructionSpeed Increase', 'Race Colony Bonus ConstructionSpeed Increase'), [race.name, signedPercentFormat(factor - 1.0, '+'), typeName]));
+        else if (factor < 1.0) out.push(formatNet(T('Race Colony Bonus ConstructionSpeed Decrease', 'Race Colony Bonus ConstructionSpeed Decrease'), [race.name, signedPercentFormat(factor - 1.0, '-'), typeName]));
+    }
+    const EXT = ColonyPopulationPolicy.Exterminate;
+    if ((h.colonyPopulationPolicy === EXT || h.colonyPopulationPolicyRaceFamily === EXT) && race.colonyPopulationPolicyGrowthFactorExterminate !== 1.0) {
+        let flag = false;
+        for (const pop of h.population?.items ?? []) {
+            if (pop == null || pop.race == null) continue;
+            if (h.colonyPopulationPolicyRaceFamily === EXT && pop.race !== race && pop.race.raceFamily === race.raceFamily) {
+                flag = true;
+                break;
+            }
+            if (h.colonyPopulationPolicy === EXT && pop.race !== race && pop.race.raceFamily !== race.raceFamily) {
+                flag = true;
+                break;
+            }
+        }
+        if (flag) {
+            const g = race.colonyPopulationPolicyGrowthFactorExterminate;
+            if (g > 1.0) out.push(formatNet(T('Race Colony Bonus Extermination Growth Increase', 'Race Colony Bonus Extermination Growth Increase'), [race.name, signedPercentFormat(g - 1.0, '+')]));
+            else if (g < 1.0) out.push(formatNet(T('Race Colony Bonus Extermination Growth Decrease', 'Race Colony Bonus Extermination Growth Decrease'), [race.name, signedPercentFormat(g - 1.0, '-')]));
+        }
+    }
+    if (race.spaceportArmorStrengthFactor > 1.0) out.push(formatNet(T('Race Colony Bonus Spaceport Armor Strength Increase', 'Race Colony Bonus Spaceport Armor Strength Increase'), [race.name, signedPercentFormat(race.spaceportArmorStrengthFactor - 1.0, '+')]));
+    if (race.migrationFactor > 1.0) out.push(formatNet(T('Race Colony Bonus Migration Increase', 'Race Colony Bonus Migration Increase'), [race.name, signedPercentFormat(race.migrationFactor - 1.0, '+')]));
+    if (race.troopRegenerationFactor > 1.0) out.push(formatNet(T('Race Colony Bonus Troop Regeneration Increase', 'Race Colony Bonus Troop Regeneration Increase'), [race.name, signedPercentFormat(race.troopRegenerationFactor - 1.0, '+')]));
+    return out;
+}
+
 /** HabitatAttitudeSummary.DrawSummary: the header and the attitude factors (DetermineHabitatAttitudeFactors). */
 export function colonyAttitudeSummary(galaxy: Galaxy, h: Habitat): { header: string; notes: string[]; factors: AttitudeFactor[] } {
     const rating = safe(() => empireApprovalRating(galaxy, h), 0);
@@ -457,6 +596,17 @@ export function colonyAttitudeSummary(galaxy: Galaxy, h: Habitat): { header: str
         if (empire.economyEfficiency > 1) notes.push(`${T('Economy Efficiency Bonus Description', 'Our economy is running efficiently')} (+${formatPercent0(empire.economyEfficiency - 1)})`);
         else if (empire.economyEfficiency < 1) notes.push(`${T('Economy Efficiency Penalty Description', 'Our economy is running inefficiently')} (-${formatPercent0(1 - empire.economyEfficiency)})`);
     }
+    // DrawSummary 107-178: the pirate corruption line, then the wonder, racial and resource bonus lines.
+    const pirateControl = h.pirateColonyControl;
+    if (pirateControl.count > 0) {
+        let num = 0.0;
+        const highest = pirateControl.getHighestControl();
+        if (highest !== null) num = Math.fround(highest.controlLevel / 10);
+        const best = facilitiesFindBestPirateFacility(h.facilities ?? [], true, true);
+        if (best !== null) num += best.value3 / 100.0;
+        if (num > 0.0) notes.push(`${T('Pirate Corruption Description', 'Pirate corruption')} (+${formatPercent0(num)})`);
+    }
+    notes.push(...habitatWonderBonuses(h), ...habitatRacialBonuses(h), ...habitatResourceBonuses(galaxy, h));
     const factors: AttitudeFactor[] = [];
     const add = (value: number, description: string): void => {
         factors.push({ value, description });
@@ -552,8 +702,6 @@ export interface ColoniesScreenOptions {
     onShowOnGalaxyMap?: (h: Habitat) => void;
     /** Show Expansion Planner (method_160("colonies")). */
     onExpansionPlanner?: () => void;
-    /** Show Construction Summary (the Construction Yards screen). */
-    onConstructionSummary?: () => void;
     /** method_456(topic): open the Galactopedia on a topic. */
     onHelp?: (topic: string) => void;
     /** GenerateAutomationMessageBox: resolves true for "turn automation off". */
@@ -804,6 +952,16 @@ function createColoniesScreen(opts: ColoniesScreenOptions): OpenState {
     info.appendChild(infoBox);
     // InfoPanel clicks: a colony of ours selects its row; anything else is left to the main view.
     const onInfoTarget = (t: InfoTarget): void => {
+        if (t.kind === 'ruin') {
+            openRuinDetail(galaxy, t.ruin);
+            return;
+        }
+        // A facility icon: the Galactopedia, as the selection panel's (Main.Part4.cs 3586; pnlColonyHabitatInfo itself
+        // has no click handler in the original, but this panel's hotspots are live here like its ruin / colony ones).
+        if (t.kind === 'galactopedia') {
+            opts.onHelp?.(t.topic);
+            return;
+        }
         if (t.kind === 'select' && empire.colonies.includes(t.obj as Habitat)) {
             selectColony(t.obj as Habitat);
             grid.select(t.obj, true);
@@ -839,7 +997,8 @@ function createColoniesScreen(opts: ColoniesScreenOptions): OpenState {
                 issuePlayerCommand(galaxy, empire, 'setColonyAsCapital', [h], () => refreshAll());
                 return;
             case 'ruin':
-                if (h.ruin) void messageBox({ caption: h.ruin.name, text: h.ruin.description ?? h.ruin.name, icon: 'information', width: 520 });
+                // btnColonyShowRuin_Click → method_550.
+                if (h.ruin) openRuinDetail(galaxy, h.ruin);
                 return;
         }
     }
@@ -1111,11 +1270,25 @@ function createColoniesScreen(opts: ColoniesScreenOptions): OpenState {
         page.appendChild(place(box, 0, 0, 540, 271));
         const raceCount = galaxy.races.length;
         for (const c of colonyCharacters(h)) {
+            // CharacterTroopListIconView.cs GenerateCharacterItems: ObtainCharacterImage prescaled to the 56 px image list,
+            // the tooltip the role, a foreign character's empire, ResolveCharacterDescription and the mission.
             const t = el('div', 'col-icon col-icon-char');
-            const role = CharacterRole[c.role] ?? '';
-            t.appendChild(img(chromeImageUrl(`characterRole_${role}.png`), 'col-icon-img'));
-            t.appendChild(el('div', 'col-icon-label', c.name));
-            t.title = `${c.name} (${role.replace(/([a-z])([A-Z])/g, '$1 $2')})`;
+            const pic = characterPortrait(c, 'large', 56);
+            pic.classList.add('col-icon-img');
+            t.appendChild(pic);
+            const label = el('div', 'col-icon-label', c.name);
+            const foreign = c.empire !== null && c.empire !== h.empire;
+            if (foreign) {
+                label.style.color = rgbCss(c.empire!.mainColor);
+                label.style.fontWeight = 'bold';
+            }
+            t.appendChild(label);
+            let tipText = `${resolveRoleDescription(c.role)}\n`;
+            if (foreign) tipText += `${c.empire!.name}\n`;
+            tipText += resolveCharacterDescription(c);
+            const mission = characterMission(c);
+            if (mission !== null) tipText += `\n${T('Mission', 'Mission')}: ${resolveMissionTypeDescription(mission.type)}`;
+            t.title = tipText;
             if (selectedCharacter === c) t.classList.add('col-icon-sel');
             t.addEventListener('click', () => {
                 selectedCharacter = selectedCharacter === c ? null : c;
@@ -1217,53 +1390,142 @@ function createColoniesScreen(opts: ColoniesScreenOptions): OpenState {
         });
     }
 
-    // --- Construction Yard tab ----------------------------------------------------------------------------------------
+    // --- Construction Yard tab (Main.Part11.cs 2991-3040 layout; Main.Part4.cs btnColonyConstruction* handlers) -------
+    // The selections persist across the page's timer rebuilds (ctlColonyConstructionYard.SelectedConstructionYard,
+    // ctlColonyConstructionYardWaitQueue.SelectedBuiltObject), and so does the purchaser (an open drop-down).
+    let colYard: ConstructionYard | null = null;
+    let colWait: BuiltObject | null = null;
+    // pnlColonyConstructionYardPurchaser (395, 3) 262 × 90; PurchaseMade rebinds the yards and the wait queue.
+    const colonyPurchaser = yardPurchaser(empire, 262, 90, () => renderPage(true));
     function renderConstruction(h: Habitat): void {
         const site: ConstructionSite = { kind: 'colony', habitat: h };
         const comps = componentDefinitionsStatic(galaxy);
-        const yards = yardRows(site, (id) => comps.find((d) => d.componentId === id)?.name ?? '');
+        const yards = yardRows(site, (id) => {
+            const d = comps.find((x) => x.componentId === id);
+            return d ? { name: d.name, pictureRef: d.pictureRef } : null;
+        });
         type YardRow = (typeof yards)[number];
+        if (colYard !== null && !yards.some((r) => r.yard === colYard)) colYard = null;
+        // UnlxwvByxj_SelectionChanged 3321-3358: a pirate player's foreign colony disables the purchaser and the buttons.
+        const enabled = !(empire.pirateEmpireBaseHabitat !== null && h.empire !== empire);
+        // ctlColonyConstructionYard (0, 0) 390 × 50: ComponentPicture 30, ShipEmpire 30, ShipPicture 40, ShipName 162,
+        // Progress 70, Speed 58 (ConstructionYardListView.cs BindData).
         const yg = new OwGrid<YardRow>({
             columns: [
-                { id: 'ship', header: T('Ship', 'Ship'), fill: 192, render: (r, c) => cellText(c, r.ship) },
-                { id: 'progress', header: T('Progress', 'Progress'), fill: 70, align: 'right', render: (r, c) => cellText(c, r.ship !== '' ? formatPercent0(r.progress) : '') },
-                { id: 'speed', header: T('Speed', 'Speed'), fill: 58, align: 'right', render: (r, c) => cellText(c, String(Math.round(r.speed))) },
+                { id: 'component', header: '', width: 30, align: 'center', render: (r, c) => { if (r.componentPicture >= 0) c.appendChild(img(componentImageUrl(r.componentPicture), 'cy-comp', r.name)); } },
+                { id: 'empire', header: '', width: 30, align: 'center', render: (r, c) => { const e = r.shipObject?.empire ?? null; if (e) flagFor(e, c); } },
+                { id: 'picture', header: '', width: 40, align: 'center', render: (r, c) => { const u = r.shipObject ? shipPictureUrl(r.shipObject) : null; if (u) c.appendChild(img(u, 'cy-pic cy-rot')); } },
+                { id: 'ship', header: T('Ship', 'Ship'), width: 162, render: (r, c) => cellText(c, r.ship) },
+                { id: 'progress', header: T('Progress', 'Progress'), width: 70, align: 'right', render: (r, c) => progressCell(c, r.progress, 70, r.shipObject !== null, 20) },
+                { id: 'speed', header: T('Speed', 'Speed'), width: 58, align: 'right', render: (r, c) => cellText(c, String(r.speed)) },
             ],
-            key: (r) => r,
+            key: (r) => r.yard,
             rowHeight: 20,
-            empty: T('(None)', '(None)'),
+            onSelect: (r) => {
+                colYard = r.yard;
+                updateYardButtons();
+            },
         });
         yg.setRows(yards);
+        if (colYard !== null) yg.select(colYard, false);
         page.appendChild(place(yg.el, 0, 0, 390, 50));
-        dropText(page, T('Ships waiting to be constructed', 'Ships waiting to be constructed'), 0, 115, { color: COLORS.gridText });
+        // method_166 / UnlxwvByxj_SelectionChanged: bound to the colony's owner (or the pirate player that controls it).
+        colonyPurchaser.bind(h.constructionQueue ? site : null, enabled, false);
+        page.appendChild(place(colonyPurchaser.el, 395, 3, 262, 90));
+        // lblColonyMaximumSize (5, 55), MaximumSize 190 × 50: method_305.
+        page.appendChild(place(text(maximumSizeText(empireMaximumSizes(empire)), { size: FONT.tiny, color: COLORS.label, wrapWidth: 185 }), 5, 55, 190, 50));
+        const btnScrap = glassButton(T('Scrap Ship', 'Scrap Ship'), { onClick: () => void scrapShip(h) });
+        page.appendChild(place(btnScrap, 190, 54, 200, 22));
+        const btnSummary = glassButton(T('Show Construction Summary', 'Show Construction Summary'), {
+            // btnColonyConstructionShowSummary_Click → method_548: the design (or retrofit design) on the selected slipway.
+            onClick: () => {
+                const ship = colYard?.shipUnderConstruction ?? null;
+                if (ship) openConstructionSummary(galaxy, ship.retrofitDesign ?? ship.design);
+            },
+        });
+        page.appendChild(place(btnSummary, 190, 77, 200, 22));
+        dropText(page, T('Ships waiting to be constructed', 'Ships waiting to be constructed'), 0, 115, { size: FONT.header, bold: true, color: COLORS.gridText });
         const waits = waitRows(site);
         type WaitRow = (typeof waits)[number];
-        let selWait: BuiltObject | null = null;
+        if (colWait !== null && !waits.some((r) => r.builtObject === colWait)) colWait = null;
+        // ctlColonyConstructionYardWaitQueue (0, 135) 390 × 140: Empire 30, Picture 40, Name 170, Role 150.
         const wg = new OwGrid<WaitRow>({
             columns: [
-                { id: 'name', header: T('Name', 'Name'), fill: 170, render: (r, c) => cellText(c, r.name) },
-                { id: 'role', header: T('Role', 'Role'), fill: 150, render: (r, c) => cellText(c, r.type) },
+                { id: 'empire', header: '', width: 30, align: 'center', render: (r, c) => { const e = r.builtObject.empire; if (e) flagFor(e, c); } },
+                { id: 'picture', header: '', width: 40, align: 'center', render: (r, c) => { const u = shipPictureUrl(r.builtObject); if (u) c.appendChild(img(u, 'cy-pic cy-rot')); } },
+                { id: 'name', header: T('Name', 'Name'), width: 170, render: (r, c) => cellText(c, r.name) },
+                { id: 'role', header: T('Role', 'Role'), width: 150, render: (r, c) => cellText(c, r.type) },
             ],
             key: (r) => r.builtObject,
             rowHeight: 20,
             onSelect: (r) => {
-                selWait = r.builtObject;
+                colWait = r.builtObject;
+                updateYardButtons();
             },
         });
         wg.setRows(waits);
+        if (colWait !== null) wg.select(colWait, false);
         page.appendChild(place(wg.el, 0, 135, 390, 136));
-        const owned = h.empire === empire;
         const move = (m: 'up' | 'down'): void => {
-            if (selWait) issuePlayerCommand(galaxy, empire, 'moveWaitQueueItem', [h, selWait, m], () => renderPage(true));
+            if (colWait) issuePlayerCommand(galaxy, empire, 'moveWaitQueueItem', [h, colWait, m], () => renderPage(true));
         };
-        page.appendChild(place(glassButton(T('Move Up', 'Move Up'), { onClick: () => move('up'), disabled: !owned }), 395, 135, 110, 25));
-        page.appendChild(place(glassButton(T('Move Down', 'Move Down'), { onClick: () => move('down'), disabled: !owned }), 395, 165, 110, 25));
-        page.appendChild(place(glassButton(T('Remove Ship', 'Remove Ship'), { disabled: true, title: 'Not available yet' }), 395, 225, 110, 40));
-        page.appendChild(place(glassButton(T('Scrap Ship', 'Scrap Ship'), { disabled: true, title: 'Not available yet' }), 190, 54, 200, 22));
-        page.appendChild(place(glassButton(T('Show Construction Summary', 'Show Construction Summary'), { onClick: () => opts.onConstructionSummary?.(), disabled: !opts.onConstructionSummary }), 190, 77, 200, 22));
+        const btnUp = glassButton(T('Move Up', 'Move Up'), { onClick: () => move('up') });
+        const btnDown = glassButton(T('Move Down', 'Move Down'), { onClick: () => move('down') });
+        const btnRemove = glassButton(T('Remove Ship', 'Remove Ship'), { onClick: () => void removeShip(h) });
+        page.appendChild(place(btnUp, 395, 135, 110, 25));
+        page.appendChild(place(btnDown, 395, 165, 110, 25));
+        page.appendChild(place(btnRemove, 395, 225, 110, 40));
         const lnk = linkLabel(`${T('Learn about Construction', 'Learn about Construction')}...`, () => opts.onHelp?.(T('Construction', 'Construction')));
         lnk.classList.add('col-link-right');
         page.appendChild(place(lnk, 505, 228, 150, 42));
+        function updateYardButtons(): void {
+            btnScrap.disabled = !enabled;
+            btnSummary.disabled = !enabled;
+            btnUp.disabled = btnDown.disabled = btnRemove.disabled = !enabled;
+        }
+        updateYardButtons();
+    }
+
+    /** Main.Part4.cs 2244 btnColonyConstructionScrap_Click (its texts are not GameText keys). */
+    async function scrapShip(h: Habitat): Promise<void> {
+        if (h.constructionQueue == null) return;
+        const ship = colYard?.shipUnderConstruction ?? null;
+        if (ship === null) return;
+        if (ship.owner === null) {
+            await messageBox({
+                caption: 'Cannot scrap ship',
+                text: ship.empire !== null ? 'This ship is privately owned - it cannot be scrapped' : 'This ship is not owned by your empire - it cannot be scrapped',
+                icon: 'information',
+            });
+            return;
+        }
+        const t = `The purchase cost will not be refunded if you scrap this ship.\n\nAre you sure you want to scrap this ship? (${ship.name})`;
+        if ((await messageBox({ caption: 'Scrap Ship under Construction?', text: t, buttons: ['Yes', 'No'], icon: 'question' })) !== 'Yes') return;
+        issuePlayerCommand(galaxy, empire, 'yardScrapShip', [h, ship], () => {
+            colYard = null;
+            renderPage(true);
+        });
+    }
+
+    /** Main.Part4.cs 2276 btnColonyConstructionRemoveFromQueue_Click: refunds half the purchase price. */
+    async function removeShip(h: Habitat): Promise<void> {
+        if (h.constructionQueue == null) return;
+        const ship = colWait;
+        if (ship === null) return;
+        if (ship.owner === null) {
+            await messageBox({
+                caption: T('Cannot remove ship from queue', 'Cannot remove ship from queue'),
+                text: ship.empire !== null ? T('This ship is privately owned - it cannot be removed', 'This ship is privately owned - it cannot be removed') : T('This ship is not owned by your empire - it cannot be removed', 'This ship is not owned by your empire - it cannot be removed'),
+                icon: 'information',
+            });
+            return;
+        }
+        const t = `${gt('Removing this ship from the construction queue will refund half the purchase cost', (ship.purchasePrice * 0.5).toFixed(0))} (${ship.name})`;
+        if ((await messageBox({ caption: T('Remove Ship from Construction Queue?', 'Remove Ship from Construction Queue?'), text: t, buttons: ['Yes', 'No'], icon: 'question' })) !== 'Yes') return;
+        issuePlayerCommand(galaxy, empire, 'yardRemoveFromQueue', [h, ship], () => {
+            colWait = null;
+            renderPage(true);
+        });
     }
 
     // --- Docking Bay tab ----------------------------------------------------------------------------------------------
@@ -1310,11 +1572,11 @@ function createColoniesScreen(opts: ColoniesScreenOptions): OpenState {
                 renderPage(true);
             });
             t.appendChild(img(facilityImageUrl(f.def.pictureRef), 'col-icon-img'));
-            t.appendChild(el('div', 'col-icon-label', f.name));
-            let tip = '';
-            if (f.constructionProgress < 1) tip = `${formatPercent0(f.constructionProgress).replace('%', '')}% ${T('Complete', 'Complete').toLowerCase()}`;
-            if (f.maintenance > 0) tip += `${tip ? '\n' : ''}${T('Facility Maintenance Cost', 'Maintenance')}: ${formatMoney(f.maintenance)} ${T('credits', 'credits')}${f.constructionProgress < 1 ? ` (${T('when completed', 'when completed')})` : ''}`;
-            t.title = tip ? `${f.name}\n${tip}` : f.name;
+            // PlanetaryFacilityListIconView.GenerateFacilityItems: the label ("Name (Owned by X)" for a facility another
+            // faction owns) and the item's ToolTipText (owner / progress / wonder benefits / maintenance).
+            const item = facilityListItem(galaxy, h, f);
+            t.appendChild(el('div', 'col-icon-label', item.text));
+            t.title = item.toolTip !== '' ? item.toolTip : item.text;
             box.appendChild(t);
         }
         const defs = h.empire === empire || empire.pirateEmpireBaseHabitat !== null ? buildableFacilities(galaxy, empire, h) : [];
