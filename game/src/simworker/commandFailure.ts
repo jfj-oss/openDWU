@@ -40,6 +40,7 @@ export const COMMAND_FAILURE: FailureTable = {
     renameFleet: no,
     setFleetHomeColony: no,
     setFleetTroopLoadout: no,
+    setShipTroopLoadout: no,
     fleetLoadTroops: no,
     fleetRetrofit: no,
     fleetRepairAndRefuel: no,

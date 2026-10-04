@@ -34,7 +34,7 @@ import { Habitat } from '../../sim/types';
 import { BuiltObjectRole } from '../../sim/data/designSpecifications';
 import { BuiltObjectSubRole } from '../../sim/builtObjectTypes';
 import { BuiltObjectMissionType, builtObjectMission } from '../../sim/missions/mission';
-import { ShipGroup, empireShipGroups } from '../../sim/fleets/shipGroup';
+import { ShipGroup } from '../../sim/fleets/shipGroup';
 import { isPrivateDesignSubRole } from '../../sim/player/playerOrders';
 import { issuePlayerCommand } from '../../sim/player/playerCommands';
 import { PendingValues } from '../pendingCommands';
@@ -43,7 +43,6 @@ import { ShipAction, ShipActionType } from '../../sim/player/shipAction';
 import { getBuildableDesignsBySubRoles } from '../../sim/designGeneration';
 import { newDesignDraft } from '../../sim/player/designEditor';
 import { subRoleLabel, missionTypeLabel, habitatTypeLabel } from '../hud';
-import { confirmAutomationOff } from '../orderMenu';
 import { planRetrofit, type RetrofitPlanEntry, type RetrofitResult } from '../../sim/player/fleetOps';
 import { showToast } from '../toast';
 import {
@@ -72,7 +71,7 @@ import { CROSSHAIR_COLOR, DIMMED_COLOR, GRID_COLOR, drawMapTerritory, galaxyMapS
 import { drawGalaxyMapLayers } from './galaxyMapLayers';
 import { yardRows, waitRows, type ConstructionSite } from './constructionYards';
 import { openDesignEditor } from './designEditor';
-import { builtObjectTabLabels, dataTabContentKey, renderDataTab, type DataTabId } from './builtObjectDataTabs';
+import { builtObjectTabLabels, createSetFleetCombo, dataTabContentKey, manufacturingGrids, renderDataTab, type DataTabId } from './builtObjectDataTabs';
 import { gt } from './researchBenefits';
 import { requestSimRefresh } from '../../simworker/refresh';
 
@@ -452,14 +451,6 @@ export function closeShipsAndBasesList(): void {
     open?.close();
 }
 
-/** Issue a fleet-forming command, asking first to turn off Fleet Formation automation like the original. */
-async function withFleetFormationPrompt(empire: Empire, issue: () => void): Promise<void> {
-    if (empire.controlMilitaryFleets && (await confirmAutomationOff('Fleet Formation'))) {
-        issuePlayerCommand(empire.galaxy, empire, 'automationOff', ['Fleet Formation']);
-    }
-    issue();
-}
-
 /** method_178 sizes (body-relative original pixels). */
 const W = 1024;
 const H = 756;
@@ -663,6 +654,7 @@ function createShipsAndBasesList(opts: ShipsAndBasesListOptions): OpenState {
         rowClass: (r) => (r.nameState !== null ? `ships-name-${r.nameState}` : ''),
         onSelectionChange: (sel) => {
             current = sel;
+            setFleet.reset(); // ctlBuiltObjectList_SelectionChanged_1
             selectionChanged();
         },
         onDoubleClick: (r) => {
@@ -715,44 +707,11 @@ function createShipsAndBasesList(opts: ShipsAndBasesListOptions): OpenState {
             opts.onViewFleet(sg);
         }
     });
-    // cmbBuiltObjectSetFleet (method_182 items: Set Fleet..., (None), (New Fleet), the fleets).
-    const setFleet = el('select', 'ow-input ow-select ships-setfleet');
-    setFleet.title = 'Put the highlighted military ships in a new fleet, an existing fleet, or no fleet';
-    setFleet.addEventListener('keydown', (e) => e.stopPropagation());
-    body.appendChild(place(setFleet, 550, 308, 140, 21));
-    const fillSetFleet = (): void => {
-        setFleet.replaceChildren();
-        const add = (value: string, label: string): void => {
-            const o = el('option', '', label);
-            o.value = value;
-            setFleet.appendChild(o);
-        };
-        add('prompt', 'Set Fleet...');
-        add('none', '(None)');
-        add('new', '(New Fleet)');
-        empireShipGroups(empire).forEach((sg, i) => {
-            if (sg !== null) add(`fleet:${i}`, sg.name ?? '(Unnamed fleet)');
-        });
-        setFleet.value = 'prompt';
-    };
-    setFleet.addEventListener('change', () => {
-        const v = setFleet.value;
-        const ships = selectedShips(current);
-        setFleet.value = 'prompt';
-        if (v === 'prompt' || ships.length === 0) return;
-        let target: ShipGroup | 'new' | null;
-        if (v === 'new') target = 'new';
-        else if (v === 'none') target = null;
-        else {
-            const g = empireShipGroups(empire)[Number(v.slice(6))];
-            if (g === undefined || g === null) return;
-            target = g;
-        }
-        const issue = (): void => issuePlayerCommand(galaxy, empire, 'setShipsFleet', [ships, target], () => refresh());
-        // Leaving a fleet does not ask; forming / joining does (Main.Part6.cs 2903-2907, 2953-2957).
-        if (target === null) issue();
-        else void withFleetFormationPrompt(empire, issue);
-    });
+    // cmbBuiltObjectSetFleet (550, 308) 140 × 18 (method_178; items method_182, order
+    // cmbBuiltObjectSetFleet_SelectedIndexChanged): the shared combo of builtObjectDataTabs.ts.
+    const setFleet = createSetFleetCombo(galaxy, empire, () => selectedShips(current), () => refresh());
+    setFleet.el.classList.add('ships-setfleet');
+    body.appendChild(place(setFleet.el, 550, 308, 140, 21));
     // Not in the original (it toggles from the Automated column only): automate / unautomate the highlighted ships.
     const btnAutomate = glassButton('Automate', {
         size: FONT.small,
@@ -849,8 +808,16 @@ function createShipsAndBasesList(opts: ShipsAndBasesListOptions): OpenState {
             key += pageContentKey(activeTab, o, selectedComponent);
         }
         if (key === pageKey) return;
+        const sameTab = pageKey.startsWith(`${activeTab}|`);
         pageKey = key;
+        const scrollTop = page.scrollTop;
         page.replaceChildren();
+        // The Construction Yards page scrolls to the manufacturing grids method_169 lays out below its 270 px.
+        page.classList.toggle('dt-page-scroll', activeTab === 'yards');
+        buildPageContent(o);
+        if (sameTab) page.scrollTop = scrollTop;
+    }
+    function buildPageContent(o: BuiltObject | Habitat | null): void {
         switch (activeTab) {
             case 'cargo':
             case 'components':
@@ -886,6 +853,8 @@ function createShipsAndBasesList(opts: ShipsAndBasesListOptions): OpenState {
                     waits,
                     0, 180, 390, 94, '',
                 );
+                // duExoPvEoA / ctlConstructionYardManufacturerWaitQueue (method_169) at (0, 360) / (0, 535).
+                manufacturingGrids(page, galaxy, empire).bind(o);
                 break;
             }
             case 'jobs': {
@@ -1023,7 +992,7 @@ function createShipsAndBasesList(opts: ShipsAndBasesListOptions): OpenState {
         btnGoto.disabled = !any;
         btnDesign.disabled = !(current[0]?.builtObject ?? null);
         btnFleet.disabled = !st.viewFleet;
-        setFleet.disabled = !st.setFleet;
+        setFleet.update(st.setFleet);
         btnRefuel.disabled = !st.refuel;
         btnRepair.disabled = !st.repair;
         btnRetrofit.disabled = !st.retrofit;
@@ -1059,7 +1028,6 @@ function createShipsAndBasesList(opts: ShipsAndBasesListOptions): OpenState {
         grid.setRows(rows);
         grid.setSelection(keep);
         current = grid.selectedRows;
-        fillSetFleet();
         selectionChanged();
     }
 
@@ -1168,7 +1136,6 @@ function createShipsAndBasesList(opts: ShipsAndBasesListOptions): OpenState {
     const preselect = rows.find((r) => r.stellarObject === sel0) ?? null;
     if (preselect !== null) grid.setSelection([preselect.stellarObject], true);
     current = grid.selectedRows;
-    fillSetFleet();
     selectionChanged();
 
     return { win, close: () => win.close() };

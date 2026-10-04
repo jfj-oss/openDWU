@@ -199,7 +199,7 @@ describe('shared data tabs (BuiltObjectComponentListView, WeaponListView, method
         ]);
         const labels = builtObjectTabLabels(ship);
         expect(labels.weapons).toBe(`Weapons (${ship.weapons.length})`);
-        expect(builtObjectTabLabels(null).troops).toBe('Troops');
+        expect(builtObjectTabLabels(null).troops).toBe('Troops & Characters');
         expect(TAB_ORDER.slice(0, 6)).toEqual(['cargo', 'components', 'yards', 'docking', 'troops', 'weapons']);
     }, 300000);
 });

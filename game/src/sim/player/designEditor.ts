@@ -96,6 +96,40 @@ export interface DeleteDesignResult extends EditorResult {
 // Galaxy.ResolveDescription overloads the warnings format in (Galaxy.2.cs).
 // ---------------------------------------------------------------------------
 
+// Port of Galaxy.2.cs:2189 ResolveComponentCategoryAbbreviation (ComponentListView's Category column).
+export function resolveComponentCategoryAbbreviation(category: ComponentCategoryType): string {
+    switch (category) {
+        case C.Armor: return 'ARM';
+        case C.Computer: return 'CMP';
+        case C.Construction: return 'CST';
+        case C.EnergyCollector: return 'ECL';
+        case C.Engine: return 'ENG';
+        case C.Extractor: return 'EXT';
+        case C.Habitation: return 'HAB';
+        case C.HyperDrive: return 'HYP';
+        case C.Labs: return 'LAB';
+        case C.Manufacturer: return 'MNF';
+        case C.Reactor: return 'RCT';
+        case C.Sensor: return 'SEN';
+        case C.Shields: return 'SHD';
+        case C.ShieldRecharge: return 'SHR';
+        case C.Storage: return 'STR';
+        case C.WeaponArea: return 'WAR';
+        case C.WeaponBeam: return 'WBM';
+        case C.WeaponSuperArea: return 'WSA';
+        case C.WeaponSuperBeam: return 'WSB';
+        case C.WeaponSuperTorpedo: return 'WST';
+        case C.WeaponTorpedo: return 'WTP';
+        case C.Fighter: return 'FTR';
+        case C.WeaponPointDefense: return 'WPD';
+        case C.WeaponIon: return 'WIO';
+        case C.HyperDisrupt: return 'HDR';
+        case C.WeaponGravity: return 'WGR';
+        case C.AssaultPod: return 'ASP';
+        default: return '';
+    }
+}
+
 // Port of Galaxy.2.cs:2224 ResolveDescription(ComponentCategoryType).
 export function resolveComponentCategoryDescription(category: ComponentCategoryType): string {
     switch (category) {
