@@ -1,0 +1,225 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<!-- Setup window of the desktop shell (desktop/main.cjs): choose the Distant Worlds: Universe install folder.
+     Local page, no remote content; talks to the main process only through window.dwuSetup (setupPreload.cjs). -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src data:">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>openDWU — Distant Worlds: Universe folder</title>
+<style>
+    :root {
+        --bg: #0b1220;
+        --panel: #121c2f;
+        --line: #26344f;
+        --text: #dfe7f5;
+        --muted: #93a3bf;
+        --accent: #4fa3ff;
+        --accent-text: #04121f;
+        --ok: #58d39b;
+        --bad: #ff7a7a;
+        --code: #0a1424;
+        color-scheme: dark;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; }
+    body {
+        background: radial-gradient(circle at 85% -10%, #1b2c4d 0, var(--bg) 55%) fixed, var(--bg);
+        color: var(--text);
+        font: 14px/1.5 system-ui, -apple-system, "Segoe UI", Ubuntu, Cantarell, sans-serif;
+        display: flex;
+        flex-direction: column;
+    }
+    main { flex: 1; overflow-y: auto; padding: 26px 30px 12px; }
+    h1 { font-size: 21px; margin: 0 0 6px; font-weight: 650; letter-spacing: 0.01em; }
+    p { margin: 0 0 10px; }
+    .muted { color: var(--muted); }
+    .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 14px 16px; margin: 14px 0; }
+    .panel h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); margin: 0 0 8px; font-weight: 600; }
+    .panel ol, .panel ul { margin: 0; padding-left: 20px; }
+    .panel li { margin: 0 0 8px; }
+    code { background: var(--code); border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; font: 12.5px/1.6 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; overflow-wrap: anywhere; }
+    a { color: var(--accent); }
+    label { display: block; font-weight: 600; margin: 4px 0 6px; }
+    .row { display: flex; gap: 8px; }
+    input[type="text"] {
+        flex: 1; min-width: 0; background: var(--code); color: var(--text); border: 1px solid var(--line); border-radius: 6px;
+        padding: 8px 10px; font: 13px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    }
+    input[type="text"]:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+    button {
+        background: #1d2a42; color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 8px 14px;
+        font: inherit; font-weight: 550; cursor: pointer; white-space: nowrap;
+    }
+    button:hover:not(:disabled) { border-color: var(--accent); }
+    button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+    button.primary { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
+    button:disabled { opacity: 0.45; cursor: default; }
+    #status { min-height: 42px; margin: 8px 0 0; }
+    #status.ok { color: var(--ok); }
+    #status.bad { color: var(--bad); }
+    footer {
+        display: flex; align-items: center; gap: 8px; padding: 12px 30px 16px; border-top: 1px solid var(--line);
+        background: rgba(8, 14, 26, 0.85);
+    }
+    footer .spacer { flex: 1; }
+    footer .hint { font-size: 12.5px; color: var(--muted); }
+    [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<main>
+    <h1 id="title">openDWU needs your Distant Worlds: Universe files</h1>
+    <p id="lead">openDWU is a recreation of <em>Distant Worlds: Universe</em>. It ships none of the original game's art,
+        sounds or data: it reads them from your own copy of the game. Choose the folder where Distant Worlds: Universe is
+        installed, the one that contains the <code>images</code> folder and <code>races.txt</code>.</p>
+    <p id="previous" class="bad" hidden></p>
+    <p id="current" class="muted" hidden></p>
+
+    <section class="panel" id="where">
+        <h2>Where to find it</h2>
+        <div data-platform="win32" hidden>
+            <ul>
+                <li>Steam installs it to <code>C:\Program Files (x86)\Steam\steamapps\common\Distant Worlds Universe</code>,
+                    or <code>&lt;drive&gt;:\SteamLibrary\steamapps\common\Distant Worlds Universe</code> for another library.</li>
+                <li>In Steam: right-click <em>Distant Worlds: Universe</em> → <em>Manage</em> → <em>Browse local files</em>
+                    opens the folder; copy its path from the Explorer address bar.</li>
+            </ul>
+        </div>
+        <div data-platform="linux" hidden>
+            <ul>
+                <li>Steam installs it to <code>~/.local/share/Steam/steamapps/common/Distant Worlds Universe</code>
+                    (Flatpak Steam: <code>~/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common/Distant Worlds Universe</code>).</li>
+                <li>In Steam: right-click <em>Distant Worlds: Universe</em> → <em>Manage</em> → <em>Browse local files</em>
+                    opens the folder. The game does not have to run under Proton; only its files are read.</li>
+            </ul>
+        </div>
+        <div data-platform="darwin" hidden>
+            <p>Distant Worlds: Universe is a Windows game, so a Mac has no native install. openDWU only needs the
+                game's files, not a working Windows game. Either:</p>
+            <ol>
+                <li><strong>Install it with Steam for Windows inside a Wine wrapper</strong> such as
+                    <a href="https://getwhisky.app/" target="_blank">Whisky</a> or
+                    <a href="https://www.codeweavers.com/crossover" target="_blank">CrossOver</a>, then choose the folder
+                    inside the bottle:<br>
+                    Whisky: <code>~/Library/Containers/com.isaacmarovitz.Whisky/Bottles/&lt;bottle&gt;/drive_c/Program Files (x86)/Steam/steamapps/common/Distant Worlds Universe</code><br>
+                    CrossOver: <code>~/Library/Application Support/CrossOver/Bottles/&lt;bottle&gt;/drive_c/Program Files (x86)/Steam/steamapps/common/Distant Worlds Universe</code><br>
+                    <span class="muted">(Both are found automatically. In the folder picker, ⇧⌘G types a path and ⇧⌘. shows hidden folders such as Library.)</span></li>
+                <li><strong>Copy the folder from a Windows PC</strong> (in Steam there: right-click the game → <em>Manage</em> →
+                    <em>Browse local files</em>): copy the whole <code>Distant Worlds Universe</code> folder over a USB
+                    drive or the network to <code>~/Games/Distant Worlds Universe</code>, which openDWU also finds by itself.</li>
+            </ol>
+        </div>
+    </section>
+
+    <label for="dir">Game folder</label>
+    <div class="row">
+        <input type="text" id="dir" spellcheck="false" autocomplete="off" placeholder="Paste a path or choose a folder">
+        <button type="button" id="browse">Choose Folder…</button>
+    </div>
+    <p id="status" class="muted" aria-live="polite"></p>
+</main>
+<footer>
+    <span class="hint" id="hint"></span>
+    <span class="spacer"></span>
+    <button type="button" id="skip"></button>
+    <button type="button" id="quit"></button>
+    <button type="button" id="use" class="primary" disabled>Use This Folder</button>
+</footer>
+<script>
+'use strict';
+(async () => {
+    const $ = (id) => document.getElementById(id);
+    const api = window.dwuSetup;
+    const info = (await api.info()) || { mode: 'first-run', platform: 'linux', menuHint: 'Ctrl+Shift+O' };
+    const firstRun = info.mode === 'first-run';
+
+    for (const el of document.querySelectorAll('[data-platform]')) el.hidden = el.dataset.platform !== info.platform;
+    if (!firstRun) {
+        $('title').textContent = 'Distant Worlds: Universe folder';
+        $('lead').textContent = 'openDWU reads the original game\u2019s art, sounds and data from this folder. Choose another copy of Distant Worlds: Universe below.';
+        $('skip').hidden = true;
+        $('quit').textContent = 'Cancel';
+        $('hint').textContent = 'The game restarts with the new folder; unsaved progress is lost.';
+    } else {
+        $('skip').textContent = 'Continue Without';
+        $('skip').title = 'Start with generated placeholder art and no original game data';
+        $('quit').textContent = 'Quit';
+        $('hint').textContent = 'You can change it later: ' + info.menuHint + ' \u2192 Game Folder\u2026';
+    }
+    if (info.previous) {
+        $('previous').hidden = false;
+        $('previous').style.color = 'var(--bad)';
+        $('previous').textContent = 'The folder chosen before is no longer available: ' + info.previous;
+    } else if (firstRun) {
+        $('previous').hidden = false;
+        $('previous').className = 'muted';
+        $('previous').textContent = 'No copy was found in the ' + info.searched + ' usual places (Steam libraries and common folders).';
+    }
+    if (info.current) {
+        $('current').hidden = false;
+        $('current').textContent = 'Current folder: ' + info.current;
+        $('dir').value = info.current;
+    }
+
+    let checked = null; // { input, result }
+    let seq = 0;
+    const setStatus = (cls, text) => {
+        $('status').className = cls;
+        $('status').textContent = text;
+    };
+    async function validate() {
+        const value = $('dir').value.trim();
+        const my = ++seq;
+        if (value === '') {
+            checked = null;
+            $('use').disabled = true;
+            setStatus('muted', '');
+            return null;
+        }
+        const result = await api.check(value);
+        if (my !== seq) return null; // a newer edit superseded this check
+        checked = { input: value, result };
+        $('use').disabled = !result.ok;
+        if (result.ok) {
+            setStatus('ok', result.dir === value ? 'Found the game files in this folder.' : 'Found the game files in ' + result.dir);
+        } else {
+            setStatus('bad', result.problem);
+        }
+        return result;
+    }
+    let timer = 0;
+    $('dir').addEventListener('input', () => {
+        clearTimeout(timer);
+        $('use').disabled = true;
+        timer = setTimeout(validate, 250);
+    });
+    $('dir').addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') use();
+    });
+    $('browse').addEventListener('click', async () => {
+        const chosen = await api.browse($('dir').value.trim());
+        if (chosen) {
+            $('dir').value = chosen;
+            await validate();
+        }
+    });
+    async function use() {
+        const result = checked && checked.input === $('dir').value.trim() ? checked.result : await validate();
+        if (!result || !result.ok) return;
+        $('use').disabled = true;
+        const r = await api.use(result.dir);
+        if (r && !r.ok) {
+            setStatus('bad', r.problem);
+            $('use').disabled = false;
+        }
+    }
+    $('use').addEventListener('click', use);
+    $('skip').addEventListener('click', () => api.skip());
+    $('quit').addEventListener('click', () => api.quit());
+    if ($('dir').value) validate();
+    $('dir').focus();
+})();
+</script>
+</body>
+</html>

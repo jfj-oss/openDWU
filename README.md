@@ -13,15 +13,56 @@ repo (only if you have been given access).
 
 **Jump to your platform:** [Windows](#windows) · [macOS](#macos) · [Linux](#linux) · [Troubleshooting](#troubleshooting) · [Tests](#tests) · [About the project](#about-the-project)
 
-Each platform section is self-contained: install the prerequisites, get and
-link the game data, clone, run, optionally build the desktop app, and update.
-You need **Node.js 22.12 or newer** (Node 24 LTS is fine) and **git**.
+Each platform section starts with the **desktop app**: download it from the
+[Releases page](https://github.com/jfj-oss/openDWU/releases), point it at
+your game folder once, and play. The apps check for a new release once a day
+and offer to download it. Below that, **running from source** (for
+development, or to play the latest code in the browser) needs
+**Node.js 22.12 or newer** (Node 24 LTS is fine) and **git**.
+
+The apps are not code-signed (this is a free hobby project without Apple or
+Microsoft certificates), so macOS and Windows warn about them the first time;
+each section below says how to get past that once.
 
 ---
 
 ## Windows
 
-Run all commands in **PowerShell** (Start menu → "PowerShell").
+### Desktop app (Windows 10/11, 64-bit)
+
+**1. Download** `openDWU-<version>-windows-x64-setup.exe` from the
+[latest release](https://github.com/jfj-oss/openDWU/releases/latest). (There
+is also a portable `openDWU-<version>-windows-x64.zip`: extract it anywhere
+and run `dwu.exe`.) If your browser says the file "isn't commonly
+downloaded", choose **Keep**.
+
+**2. Run the installer.** The app is unsigned, so Windows SmartScreen shows
+"Windows protected your PC": click **More info**, then **Run anyway**. The
+installer needs no administrator rights: it installs for your user (by
+default to `%LOCALAPPDATA%\Programs\dwu`) and adds **openDWU** to the Start
+menu and the desktop.
+
+**3. First launch.** openDWU looks for your Distant Worlds: Universe folder in
+every Steam library (it reads Steam's location from the registry and the
+other libraries, e.g. on `D:`, from Steam's `libraryfolders.vdf`), then in
+`C:\Program Files (x86)\Steam\steamapps\common\Distant Worlds Universe`.
+If it finds none, a setup window asks for the folder: click
+**Choose Folder…** and pick the folder that contains `images` and
+`races.txt` (in Steam: right-click the game → **Manage** → **Browse local
+files** opens it). Picking the Steam library or `steamapps` folder above it
+also works. The choice is remembered.
+
+To use another folder later, press **Ctrl+Shift+O** in the game and choose
+**Game Folder…** (the same menu has **Check for Updates…**).
+
+**4. Updates.** When a new release is out, the app offers it at startup
+(at most once a day): **Download** opens the new installer in your browser;
+run it and it replaces the old version (settings and saves are kept).
+
+**Uninstall:** Settings → Apps → **openDWU**. Your settings and saves stay in
+`%APPDATA%\Distant Worlds Universe`; delete that folder too to remove them.
+
+### Run from source (browser)
 
 **1. Install Node.js and git**
 
@@ -80,10 +121,12 @@ Windows Firewall may ask about Node.js because the dev server also listens
 on your local network; allowing "Private networks" is enough. Stop the
 server with `Ctrl+C`.
 
-**5. Desktop app**
+**5. Optional: build the desktop app yourself**
 
-Not available on Windows: desktop packaging only supports macOS arm64 and
-Linux x86_64. Play in the browser (step 4).
+```powershell
+npm run package:win    # -> release\dwu-win32-x64\dwu.exe
+npm run dist:win       # also the installer and zip in release\upload\
+```
 
 **6. Update to the latest version**
 
@@ -102,7 +145,50 @@ repo, also run `git -C $HOME\dwu-assets pull`.
 
 ## macOS
 
-Run all commands in **Terminal** (zsh, the default shell).
+### Desktop app (Apple silicon: M1 and later)
+
+**1. Download** `openDWU-<version>-macos-arm64.dmg` from the
+[latest release](https://github.com/jfj-oss/openDWU/releases/latest), open
+it and drag **dwu** onto **Applications**. (Intel Macs: there is no Intel
+build; run from source in the browser below.)
+
+**2. First launch (once).** The app is not signed with an Apple Developer ID,
+so a plain double-click is refused ("dwu can't be opened" / "Apple could not
+verify…"). Open it once like this:
+
+- In **Applications**, **Control-click** (or right-click) **dwu** → **Open** →
+  **Open**.
+- On macOS 15 Sequoia and later, if there is no Open button: double-click
+  **dwu** once, then open **System Settings → Privacy & Security**, scroll to
+  the message about "dwu", click **Open Anyway** and confirm.
+- Or in Terminal: `xattr -dr com.apple.quarantine /Applications/dwu.app`
+
+After that it opens normally (also after updates installed the same way).
+
+**3. Game files.** Distant Worlds: Universe is a Windows game, so a Mac has no
+native install; openDWU only needs its files, not a working Windows game. On
+first launch a setup window asks for the folder and explains the options:
+
+- **Steam for Windows inside [Whisky](https://getwhisky.app/) or
+  [CrossOver](https://www.codeweavers.com/crossover):** install DW:U there;
+  openDWU finds it inside the bottle automatically
+  (`…/drive_c/Program Files (x86)/Steam/steamapps/common/Distant Worlds Universe`).
+- **A copy from a Windows PC:** copy the whole `Distant Worlds Universe`
+  folder (Steam → right-click the game → Manage → Browse local files) to
+  `~/Games/Distant Worlds Universe`, which is also found automatically, or
+  anywhere else and pick it with **Choose Folder…**.
+- **The private assets repo** (if you have access): clone it and pick the
+  clone.
+
+To use another folder later: **Distant Worlds Universe** menu → **Game
+Folder…** (next to **Check for Updates…**).
+
+**4. Updates.** When a new release is out, the app offers it at startup (at
+most once a day): **Download** opens the new disk image in your browser;
+drag **dwu** to Applications again, replacing the old one, and repeat the
+one-time step 2. Settings and saves are kept.
+
+### Run from source (browser)
 
 **1. Install Node.js and git**
 
@@ -172,27 +258,16 @@ npm run dev
 
 Open the URL it prints (normally <http://localhost:5173/>). Stop it with `Ctrl+C`.
 
-**5. Optional: native desktop app (Apple Silicon only)**
+**5. Optional: build the desktop app yourself (Apple silicon)**
 
 ```sh
-npm run package:mac
+npm run package:mac    # -> release/dwu-darwin-arm64/dwu.app (signed ad hoc when built on the Mac)
+npm run dist:mac       # also the disk image in release/upload/
 open release/dwu-darwin-arm64/dwu.app
 ```
 
-If macOS refuses to open it ("damaged" or "unidentified developer"),
-re-sign it ad hoc and clear the quarantine flag:
-
-```sh
-xattr -cr release/dwu-darwin-arm64/dwu.app
-codesign --force --deep -s - release/dwu-darwin-arm64/dwu.app
-```
-
-On first launch the app looks for the game data in
-`~/Library/Application Support/Steam/steamapps/common/Distant Worlds Universe`
-and `~/Games/Distant Worlds Universe`, otherwise it asks you to pick the
-folder (pick `~/dwu-assets` if you use the assets repo). Intel Macs: use the
-browser version; there is no Intel package script. See
-[`game/desktop/README.md`](game/desktop/README.md) for details.
+See [`game/desktop/README.md`](game/desktop/README.md) for details, e.g.
+building the Mac app on Linux and re-signing it on the Mac.
 
 **6. Update to the latest version**
 
@@ -210,7 +285,44 @@ If you use the assets repo, also run `git -C ~/dwu-assets pull`.
 
 ## Linux
 
-Run all commands in a terminal (bash).
+### Desktop app (x86_64)
+
+**1. Download** from the
+[latest release](https://github.com/jfj-oss/openDWU/releases/latest) either
+
+- `openDWU-<version>-linux-x64.AppImage`: one file; make it executable and
+  run it:
+
+  ```bash
+  chmod +x openDWU-*-linux-x64.AppImage
+  ./openDWU-*-linux-x64.AppImage
+  ```
+
+  AppImages need FUSE 2: if it does not start, install it
+  (Ubuntu 24.04: `sudo apt install libfuse2t64`; Ubuntu 22.04 / Debian:
+  `libfuse2`; Fedora: `fuse-libs`; Arch: `fuse2`), or run it with
+  `--appimage-extract-and-run`.
+
+- or `openDWU-<version>-linux-x64.tar.gz`: extract it anywhere and run
+  `openDWU-<version>-linux-x64/dwu`.
+
+**2. First launch.** openDWU looks for the game in every Steam library it can
+find (`~/.local/share/Steam`, `~/.steam/steam`, Flatpak and Snap Steam, and
+the extra libraries listed in Steam's `libraryfolders.vdf`), plus
+`~/Games/Distant Worlds Universe`. If it finds none, a setup window asks for
+the folder: click **Choose Folder…** and pick the folder containing
+`images` and `races.txt` (in Steam: right-click the game → Manage → Browse
+local files), or paste its path. The choice is remembered.
+
+To use another folder later, press **Ctrl+Shift+O** in the game and choose
+**Game Folder…** (the same menu has **Check for Updates…**).
+
+**3. Updates.** When a new release is out, the app offers it at startup (at
+most once a day): **Download** opens the new AppImage (or tar.gz) in your
+browser; replace the old file with it. Settings and saves
+(`~/.config/Distant Worlds Universe`) are kept.
+
+### Run from source (browser)
 
 **1. Install Node.js and git**
 
@@ -283,18 +395,17 @@ npm run dev
 
 Open the URL it prints (normally <http://localhost:5173/>). Stop it with `Ctrl+C`.
 
-**5. Optional: native desktop app (x86_64)**
+**5. Optional: build the desktop app yourself (x86_64)**
 
 ```bash
-npm run package:linux
+npm run package:linux   # -> release/dwu-linux-x64/dwu
+npm run dist:linux      # also the AppImage and tar.gz in release/upload/
 release/dwu-linux-x64/dwu
 ```
 
-The app finds the data via `$DWU_DIR`, then the Steam default paths
-(`~/.local/share/Steam/...` and `~/Steam/...`), otherwise it asks you to
-pick the folder. You can also build the macOS app from Linux with
-`npm run package:mac`; see [`game/desktop/README.md`](game/desktop/README.md)
-for transferring and re-signing it.
+The Windows app (`npm run package:win` / `dist:win`) also builds on Linux;
+the Mac app (`npm run package:mac`) too, but it must be re-signed on the Mac,
+see [`game/desktop/README.md`](game/desktop/README.md).
 
 **6. Update to the latest version**
 
@@ -311,6 +422,34 @@ If you use the assets repo, also run `git -C ~/dwu-assets pull`.
 ---
 
 ## Troubleshooting
+
+Desktop app:
+
+- **macOS: "dwu can't be opened" / "is damaged" / "Apple could not verify".**
+  The app is unsigned; do the one-time step 2 of [macOS](#macos). If it
+  still says "damaged", run `xattr -dr com.apple.quarantine /Applications/dwu.app`.
+- **Windows: "Windows protected your PC".** Click **More info** → **Run
+  anyway** (unsigned app, see [Windows](#windows) step 2).
+- **Linux: the AppImage does nothing / mentions `libfuse.so.2`.** Install FUSE
+  2 (see [Linux](#linux) step 1) or use the tar.gz.
+- **Linux tar.gz: "The SUID sandbox helper binary was found, but is not
+  configured correctly".** Your distro restricts user namespaces (e.g. Ubuntu
+  24.04). Start it as `./dwu --no-sandbox`, use the AppImage (which does this
+  automatically when needed), or make the helper setuid:
+  `sudo chown root:root chrome-sandbox && sudo chmod 4755 chrome-sandbox`.
+- **Placeholder art in the desktop app / wrong game folder.** Open the game
+  folder setting (macOS: app menu → **Game Folder…**; Windows/Linux:
+  **Ctrl+Shift+O** → **Game Folder…**) and pick the folder with `images`
+  and `races.txt`.
+- **No update prompts.** The check runs at most once a day and only offers
+  full releases (not pre-releases); use **Check for Updates…** in the same
+  menu to check now. To turn the daily check off, add
+  `"checkForUpdates": false` to `config.json` in the settings folder
+  (Windows `%APPDATA%\Distant Worlds Universe`, macOS
+  `~/Library/Application Support/Distant Worlds Universe`, Linux
+  `~/.config/Distant Worlds Universe`).
+
+From source:
 
 - **Planets, ships and UI show plain generated placeholder art.** The game
   data isn't linked. Redo step 3 for your platform, then restart
@@ -449,8 +588,10 @@ For running the desktop shell in development (`npm run desktop:dev`) see
 
 ### Status
 
-There is no fixed release; the project is under continuous development on
-the default branch, `main`. See [`game/tasks/`](game/tasks/) for the
+Desktop apps are published on the
+[Releases page](https://github.com/jfj-oss/openDWU/releases) from time to
+time (how: [`RELEASING.md`](RELEASING.md)); the project is under continuous
+development on the default branch, `main`. See [`game/tasks/`](game/tasks/) for the
 implementation plan, current status and design notes —
 `game/tasks/19-mod-layer-scenarios.md` in particular tracks the
 scenario/mod layer, and `game/tasks/M4-deferred-plan.md` tracks deferred

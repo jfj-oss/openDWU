@@ -1,0 +1,8 @@
+{
+  "name": "dwu-installer-tools",
+  "private": true,
+  "description": "Installer tooling for scripts/desktop-installers.mjs (AppImage, Windows NSIS + zip), kept out of the game's own dependencies: only release builds (npm run dist:*) install it. Pinned with its own package-lock.json.",
+  "devDependencies": {
+    "electron-builder": "26.16.1"
+  }
+}

@@ -1,5 +1,8 @@
 // Usage: node scripts/desktop-check.mjs [--app=release/dwu-linux-x64/dwu] [--port=9333]
 //                                       [--socket=dwu-pkg] [--compare-dev] [--unpacked]
+//                                       [--skip-game] [--skip-setup] [--skip-update]
+//
+// --app may also be the AppImage (release/upload/openDWU-<v>-linux-x64.AppImage).
 //
 // --unpacked runs `electron desktop/main.cjs` from node_modules over the built dist/ (what `npm run desktop:dev`
 // launches; build it first with `npm run build`) instead of the packaged app.
@@ -19,8 +22,17 @@
 //   4. the bottom-right system map; F5 Diplomacy, F8 Designs, V Empire Comparison, Construction Yards and G Galaxy
 //      Map open and close
 //   5. profiled PNG/JPEG art is served stripped (desktop/colorProfile.cjs, byte-compared)
-//   6. ?simWorker=1: the module Web Worker loads under dwu:// and the replica galaxy advances; the default boot (no
+//   6. asset-manifest.json / theme-manifest/ are built from the install at runtime (equal to desktop/assetManifest.cjs
+//      and desktop/themeIndex.cjs for it; the packaged dist/ has no copy) and our own art (art/...) is served
+//   7. ?simWorker=1: the module Web Worker loads under dwu:// and the replica galaxy advances; the default boot (no
 //      ?simWorker) runs in the worker too, a command's reply reaches the replica and the worker saves
+// then two more launches each:
+//   - first run with no install found (empty $HOME, no $DWU_DIR): the setup window opens, refuses a folder without
+//     the game, accepts the install's parent folder (finding the game inside), saves it to config.json and opens the
+//     game; the next launch goes straight to the game;
+//   - the update check against a local fake of the GitHub Releases API (DWU_UPDATE_URL) with a newer release: the
+//     offer names this platform's download, the check time is saved, and a second launch within a day does not ask
+//     GitHub again (the dialog itself is native and is not clicked).
 // saving 1920x1080 captures to shots/pkg-*.png. Every request whose URL has
 // /assets/dwu/ must go through dwu:// and succeed; console errors, page errors
 // and failed/4xx requests fail the check (exit 1) — except 404s for files the
@@ -47,7 +59,11 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join, resolve } from 'node:path';
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, statSync } from 'node:fs';
 import { createRequire } from 'node:module';
-const { stripColorProfile, isProfiledImagePath } = createRequire(import.meta.url)('../desktop/colorProfile.cjs');
+const requireCjs = createRequire(import.meta.url);
+const { stripColorProfile, isProfiledImagePath } = requireCjs('../desktop/colorProfile.cjs');
+const { buildAssetManifest } = requireCjs('../desktop/assetManifest.cjs');
+const themeIndexLib = requireCjs('../desktop/themeIndex.cjs');
+const { assetFileNames } = requireCjs('../desktop/updateCheck.cjs');
 import os from 'node:os';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -298,6 +314,35 @@ async function runFlow(page, base, tag, results) {
         bad('colour profile stripped art', err);
     }
 
+    // Install listings: asset-manifest.json and theme-manifest/ come from the install at runtime (desktop shell:
+    // desktop/assetManifest.cjs + desktop/themeIndex.cjs built in main.cjs; dev: gen-asset-manifest.mjs and the theme
+    // middleware) and must equal the shared builders' answer for this install; our own art (public/art/) is served.
+    try {
+        const got = await page.evaluate(async (b) => {
+            const get = async (u) => {
+                const r = await fetch(b + u);
+                return { status: r.status, body: r.ok ? await r.json() : null };
+            };
+            const m = await get('asset-manifest.json');
+            const t = await get('theme-manifest/index.json');
+            const first = Array.isArray(t.body) && t.body.length > 0 ? await get(`theme-manifest/${encodeURIComponent(t.body[0])}.json`) : null;
+            const art = (await fetch(`${b}art/herder/portrait.png`)).status;
+            return { m, t, first, art };
+        }, base);
+        const want = buildAssetManifest(dwuDir);
+        if (got.m.status !== 200 || JSON.stringify(got.m.body) !== JSON.stringify(want)) {
+            throw new Error(`asset-manifest.json (HTTP ${got.m.status}, ${Object.keys(got.m.body ?? {}).length} folders) differs from buildAssetManifest(install) (${Object.keys(want).length} folders)`);
+        }
+        const themes = themeIndexLib.listThemes(dwuDir);
+        if (JSON.stringify(got.t.body) !== JSON.stringify(themes)) throw new Error(`theme-manifest/index.json ${JSON.stringify(got.t.body)} != ${JSON.stringify(themes)}`);
+        if (themes.length > 0 && JSON.stringify(got.first?.body) !== JSON.stringify(themeIndexLib.buildThemeIndex(dwuDir, themes[0]))) throw new Error(`theme-manifest/${themes[0]}.json differs`);
+        if (got.art !== 200) throw new Error(`art/herder/portrait.png: HTTP ${got.art}`);
+        const files = Object.values(want).reduce((n, l) => n + l.length, 0);
+        ok(`install listings built at runtime (asset manifest: ${Object.keys(want).length} folders / ${files} files; ${themes.length} theme(s)); own art served`);
+    } catch (err) {
+        bad('install listings built at runtime', err);
+    }
+
     // Web Worker: ?simWorker=1 runs the sim in a module worker (dist/assets/worker-*.js) loaded over the same scheme.
     try {
         const workerUrls = [];
@@ -307,7 +352,9 @@ async function runFlow(page, base, tag, results) {
         // Pixi also starts blob: workers (image decoding); the sim worker is the script file from dist/assets/.
         const simUrls = workerUrls.filter((u) => !u.startsWith('blob:'));
         if (simUrls.length === 0) throw new Error(`no sim worker script was loaded (workers: ${workerUrls.slice(0, 3).join(' ')})`);
-        if (!simUrls.every((u) => u.startsWith(base) && /\/assets\/worker-[^/]+\.js$/.test(u))) throw new Error(`unexpected worker script: ${simUrls.join(' ')}`);
+        // Built: dist/assets/worker-<hash>.js; the dev server serves the module source instead.
+        const workerRe = tag === 'dev' ? /\/src\/simworker\/worker\.ts\?worker_file&type=module$/ : /\/assets\/worker-[^/]+\.js$/;
+        if (!simUrls.every((u) => u.startsWith(base) && workerRe.test(u))) throw new Error(`unexpected worker script: ${simUrls.join(' ')}`);
         await page.waitForTimeout(1500);
         await page.evaluate(() => { window.__dwu.time.paused = false; });
         const nowMs = () => page.evaluate(() => window.__dwu?.game?.galaxy?.nowMs ?? -1);
@@ -443,6 +490,59 @@ function checkCollector(c, tag, results, { requireScheme } = {}) {
 // Packaged app on kwin_wayland --virtual
 // ---------------------------------------------------------------------------
 
+/** Start the app on the compositor; returns { app, log(), browser(), stop() }. */
+async function launchApp({ socketName: sock, runtimeDir, userDataDir, env: extraEnv = {}, unsetEnv = [], cdp = true }) {
+    const appEnv = { ...process.env, XDG_RUNTIME_DIR: runtimeDir, WAYLAND_DISPLAY: sock, DWU_UPDATE_CHECK: '0', ...extraEnv };
+    delete appEnv.DISPLAY;
+    for (const k of unsetEnv) delete appEnv[k];
+    const child = spawn(appBin, [...appArgs, '--ozone-platform=wayland', `--remote-debugging-port=${cdpPort}`, `--user-data-dir=${userDataDir}`], {
+        env: appEnv,
+        stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    let log = '';
+    child.stdout.on('data', (d) => (log += d));
+    child.stderr.on('data', (d) => (log += d));
+    console.log(`  app pid ${child.pid}`);
+    let browser = null;
+    const handle = {
+        app: child,
+        log: () => log,
+        browser: () => browser,
+        async stop() {
+            if (browser) await browser.close().catch(() => {});
+            await stop(child, 'app');
+            // An AppImage's runtime starts the real app as a child: make sure nothing keeps the CDP port.
+            await waitFor(async () => {
+                try {
+                    await fetch(`http://127.0.0.1:${cdpPort}/json/version`);
+                    return false;
+                } catch {
+                    return true;
+                }
+            }, 10000, 'CDP port to close').catch(() => console.log('  (CDP port still open after stop)'));
+        },
+    };
+    if (!cdp) return handle;
+    await waitFor(
+        async () => {
+            if (child.exitCode !== null || child.signalCode) throw new Error('app exited');
+            return (await fetch(`http://127.0.0.1:${cdpPort}/json/version`)).ok;
+        },
+        30000,
+        'CDP endpoint',
+    ).catch(async (err) => {
+        await handle.stop();
+        throw new Error(`${err.message}\n--- app log ---\n${log}`);
+    });
+    browser = await chromium.connectOverCDP(`http://127.0.0.1:${cdpPort}`);
+    return handle;
+}
+
+/** The first page of the app whose URL matches `re` (waits for it). */
+async function pageMatching(browser, re, timeoutMs = 20000) {
+    return waitFor(() => browser.contexts().flatMap((c) => c.pages()).find((p) => re.test(p.url())), timeoutMs, `a page matching ${re}`);
+}
+
 async function checkPackaged(results) {
     if (!existsSync(appBin)) throw new Error(`${appBin} not found — run \`npm run package:linux\` first`);
     if (unpacked && !existsSync(join(root, 'dist', 'index.html'))) throw new Error('dist/index.html not found — run `npm run build` first');
@@ -450,12 +550,20 @@ async function checkPackaged(results) {
     const socketPath = join(runtimeDir, socketName);
     if (existsSync(socketPath)) throw new Error(`Wayland socket ${socketPath} already exists (another check running?)`);
     console.log(`App: ${appBin}\nDWU_DIR: ${dwuDir}\nWayland socket: ${socketName}, CDP port ${cdpPort}`);
+    const rec = (name, ok, detail) => {
+        results.push({ name: `pkg: ${name}`, ok });
+        console.log(`${ok ? 'PASS' : 'FAIL'}: pkg: ${name}${detail ? ` — ${detail}` : ''}`);
+    };
 
-    const userDataDir = mkdtempSync(join(os.tmpdir(), 'dwu-desktop-check-'));
+    // The build carries no install-derived listing (they are built at runtime).
+    const distDir = unpacked ? join(root, 'dist') : appBin.endsWith('.AppImage') ? null : join(dirname(appBin), 'resources', 'dwu-dist');
+    if (distDir && existsSync(distDir)) {
+        const leaked = ['asset-manifest.json', 'theme-manifest'].filter((n) => existsSync(join(distDir, n)));
+        rec('the built game carries no install listing (asset-manifest.json, theme-manifest/)', leaked.length === 0, leaked.join(', '));
+    }
+
+    const tmpRoot = mkdtempSync(join(os.tmpdir(), 'dwu-desktop-check-'));
     let kwin = null;
-    let app = null;
-    let browser = null;
-    let appLog = '';
     let collector = null;
     try {
         const kwinEnv = { ...process.env, XDG_RUNTIME_DIR: runtimeDir };
@@ -470,42 +578,144 @@ async function checkPackaged(results) {
         console.log(`  kwin_wayland pid ${kwin.pid}`);
         await waitFor(() => existsSync(socketPath) || kwin.exitCode !== null, 15000, 'kwin_wayland socket');
         if (kwin.exitCode !== null) throw new Error(`kwin_wayland exited (${kwin.exitCode}):\n${kwinLog}`);
+        const common = { socketName, runtimeDir };
 
-        const appEnv = { ...process.env, XDG_RUNTIME_DIR: runtimeDir, WAYLAND_DISPLAY: socketName, DWU_DIR: dwuDir };
-        delete appEnv.DISPLAY;
-        app = spawn(
-            appBin,
-            [...appArgs, '--ozone-platform=wayland', `--remote-debugging-port=${cdpPort}`, `--user-data-dir=${userDataDir}`],
-            { env: appEnv, stdio: ['ignore', 'pipe', 'pipe'] },
-        );
-        app.stdout.on('data', (d) => (appLog += d));
-        app.stderr.on('data', (d) => (appLog += d));
-        console.log(`  app pid ${app.pid}`);
-        await waitFor(
-            async () => {
-                if (app.exitCode !== null || app.signalCode) throw new Error('app exited');
-                return (await fetch(`http://127.0.0.1:${cdpPort}/json/version`)).ok;
-            },
-            30000,
-            'CDP endpoint',
-        ).catch((err) => {
-            throw new Error(`${err.message}\n--- app log ---\n${appLog}`);
-        });
+        // 1. The game flow with DWU_DIR set.
+        if (!args['skip-game']) {
+            const userDataDir = join(tmpRoot, 'profile-game');
+            const h = await launchApp({ ...common, userDataDir, env: { DWU_DIR: dwuDir } });
+            try {
+                const ctx = h.browser().contexts()[0];
+                const page = ctx.pages()[0] ?? (await ctx.waitForEvent('page', { timeout: 15000 }));
+                collector = watchPage(page, 'pkg');
+                await runFlow(page, 'dwu://app/', 'pkg', results);
+            } finally {
+                await h.stop();
+                const mainErrors = h.log().split('\n').filter((l) => /dwu:\/\/ handler error|DWU_DIR=|No DW:U install/.test(l));
+                for (const l of mainErrors) console.log(`  [main] ${l}`);
+            }
+        }
 
-        browser = await chromium.connectOverCDP(`http://127.0.0.1:${cdpPort}`);
-        const ctx = browser.contexts()[0];
-        const page = ctx.pages()[0] ?? (await ctx.waitForEvent('page', { timeout: 15000 }));
-        collector = watchPage(page, 'pkg');
-        await runFlow(page, 'dwu://app/', 'pkg', results);
+        // 2. First run without any install found: the setup window validates a typed folder, accepts the install's
+        //    parent folder (resolving the game folder inside it), saves it, opens the game; the next launch remembers it.
+        if (!args['skip-setup']) await checkSetupFlow(results, rec, common, tmpRoot);
+
+        // 3. The update check: a fake GitHub API with a newer release; the offer names this platform's download; the
+        //    next launch within a day does not ask again.
+        if (!args['skip-update']) await checkUpdateFlow(results, rec, common, tmpRoot);
     } finally {
-        if (browser) await browser.close().catch(() => {});
-        await stop(app, 'app');
         await stop(kwin, 'kwin_wayland');
-        rmSync(userDataDir, { recursive: true, force: true });
-        const mainErrors = appLog.split('\n').filter((l) => /dwu:\/\/ handler error|DWU_DIR=|No DW:U install/.test(l));
-        for (const l of mainErrors) console.log(`  [main] ${l}`);
+        rmSync(tmpRoot, { recursive: true, force: true });
     }
     return collector ? checkCollector(collector, 'pkg', results, { requireScheme: 'dwu://app/assets/dwu/' }) : new Set();
+}
+
+async function checkSetupFlow(results, rec, common, tmpRoot) {
+    const home = join(tmpRoot, 'home-empty'); // no Steam, no ~/Games: nothing to find
+    mkdirSync(home, { recursive: true });
+    const userDataDir = join(tmpRoot, 'profile-setup');
+    const env = { HOME: home, XDG_DATA_HOME: join(home, '.local', 'share'), XDG_CONFIG_HOME: join(home, '.config'), XDG_CACHE_HOME: join(home, '.cache') };
+    const unsetEnv = ['DWU_DIR', 'WINEPREFIX'];
+    let h = await launchApp({ ...common, userDataDir, env, unsetEnv });
+    try {
+        const page = await pageMatching(h.browser(), /setup\.html$/);
+        await page.waitForSelector('#dir', { state: 'visible', timeout: 10000 });
+        const title = await page.textContent('#title');
+        const platformShown = await page.evaluate(() => [...document.querySelectorAll('[data-platform]')].filter((e) => !e.hidden).map((e) => e.dataset.platform).join(','));
+        rec('first run without an install opens the setup window', /needs your Distant Worlds/.test(title ?? '') && platformShown === 'linux', `title "${title}", platform help ${platformShown}`);
+        await page.screenshot({ path: join(shotsDir, 'pkg-setup.png') });
+        console.log('  screenshot: shots/pkg-setup.png');
+
+        await page.fill('#dir', home);
+        await page.waitForFunction(() => document.getElementById('status').className === 'bad', null, { timeout: 5000 });
+        const bad = await page.textContent('#status');
+        const disabled = await page.isDisabled('#use');
+        rec('a folder without the game files is refused', disabled && /not a Distant Worlds/.test(bad ?? ''), bad ?? '');
+
+        const parent = dirname(dwuDir);
+        await page.fill('#dir', parent);
+        await page.waitForFunction(() => document.getElementById('status').className === 'ok', null, { timeout: 5000 });
+        const good = await page.textContent('#status');
+        rec('the install\'s parent folder is accepted (game folder found inside)', (good ?? '').includes(dwuDir), good ?? '');
+        await page.screenshot({ path: join(shotsDir, 'pkg-setup-ok.png') });
+        await page.click('#use');
+        const game = await pageMatching(h.browser(), /^dwu:\/\/app\/index\.html/, 20000);
+        await game.waitForSelector('button[data-id="startNewGame"]', { state: 'visible', timeout: 30000 });
+        const cfg = JSON.parse(readFileSync(join(userDataDir, 'config.json'), 'utf8'));
+        const art = await game.evaluate(async () => (await fetch('dwu://app/assets/dwu/races.txt')).status);
+        rec('choosing the folder saves it and opens the game with its files', cfg.installDir === dwuDir && art === 200, `config.installDir=${cfg.installDir}, races.txt HTTP ${art}`);
+    } catch (err) {
+        rec('setup window flow', false, `${err.message}\n--- app log ---\n${h.log().slice(-2000)}`);
+    } finally {
+        await h.stop();
+    }
+    // Second launch: straight to the game, no setup window.
+    h = await launchApp({ ...common, userDataDir, env, unsetEnv });
+    try {
+        const game = await pageMatching(h.browser(), /^dwu:\/\/app\/index\.html/, 20000);
+        await game.waitForSelector('button[data-id="startNewGame"]', { state: 'visible', timeout: 30000 });
+        const setupOpen = h.browser().contexts().flatMap((c) => c.pages()).some((p) => /setup\.html$/.test(p.url()));
+        rec('the next launch remembers the folder (no setup window)', !setupOpen);
+    } catch (err) {
+        rec('the next launch remembers the folder', false, err.message);
+    } finally {
+        await h.stop();
+    }
+}
+
+async function checkUpdateFlow(results, rec, common, tmpRoot) {
+    const { createServer: createHttpServer } = await import('node:http');
+    const v = '99.0.0';
+    const names = assetFileNames(v);
+    const requests = [];
+    const srv = createHttpServer((req, res) => {
+        requests.push({ url: req.url, ua: req.headers['user-agent'] ?? '' });
+        res.setHeader('Content-Type', 'application/json');
+        res.end(
+            JSON.stringify({
+                tag_name: `v${v}`,
+                name: `openDWU ${v}`,
+                html_url: `https://github.com/jfj-oss/openDWU/releases/tag/v${v}`,
+                draft: false,
+                prerelease: false,
+                body: 'Test release notes.',
+                assets: Object.values(names).map((n) => ({ name: n, size: 1, browser_download_url: `https://github.com/jfj-oss/openDWU/releases/download/v${v}/${n}` })),
+            }),
+        );
+    });
+    await new Promise((r) => srv.listen(0, '127.0.0.1', r));
+    const url = `http://127.0.0.1:${srv.address().port}/repos/x/y/releases/latest`;
+    const userDataDir = join(tmpRoot, 'profile-update');
+    const env = { DWU_DIR: dwuDir, DWU_UPDATE_CHECK: '1', DWU_UPDATE_URL: url };
+    try {
+        let h = await launchApp({ ...common, userDataDir, env, cdp: false });
+        try {
+            await waitFor(() => /\[update\] offering /.test(h.log()) || /\[update\] check failed/.test(h.log()), 60000, 'the update offer');
+            const offer = /\[update\] offering (\S+)/.exec(h.log())?.[1];
+            const want = appBin.endsWith('.AppImage') ? names.linuxAppImage : names.linuxTarGz;
+            const ua = requests[0]?.ua ?? '';
+            rec('a newer release on GitHub is offered with this platform\'s download', offer === want && /^openDWU\/\d+\.\d+\.\d+/.test(ua), `offered ${offer}, expected ${want}; User-Agent "${ua}"`);
+            await sleep(500);
+            const cfg = JSON.parse(readFileSync(join(userDataDir, 'config.json'), 'utf8'));
+            rec('the check time is recorded', typeof cfg.lastUpdateCheck === 'number' && Date.now() - cfg.lastUpdateCheck < 120000, `lastUpdateCheck=${cfg.lastUpdateCheck}`);
+        } finally {
+            await h.stop();
+        }
+        const before = requests.length;
+        h = await launchApp({ ...common, userDataDir, env, cdp: false });
+        try {
+            await waitFor(() => /\[update\] checked less than a day ago/.test(h.log()), 60000, 'the throttled check');
+            rec('a second launch within a day does not query GitHub again', requests.length === before, `${requests.length - before} new request(s)`);
+        } catch (err) {
+            rec('a second launch within a day does not query GitHub again', false, `${err.message}\n${h.log().slice(-1500)}`);
+        } finally {
+            await h.stop();
+        }
+    } catch (err) {
+        rec('update check flow', false, err.message);
+    } finally {
+        srv.close();
+    }
 }
 
 // ---------------------------------------------------------------------------
