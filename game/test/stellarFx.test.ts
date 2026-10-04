@@ -26,6 +26,7 @@ import {
     supernovaPulseColour,
     systemPassRadius,
     novaFillRange,
+    pargbRoundTrip,
     type RgbaImage,
 } from '../src/render/stellarFx';
 import { CFractal } from '../src/render/fbmNoise';
@@ -289,5 +290,17 @@ describe('gas cloud (MainView.1.cs method_135 / 136, MainView.2.cs method_146)',
         expect(gasCloudTooltipText(gasCloud(HabitatType.NitrogenOxygen, 9000), true)).toBe('AG928\nNitrogen Oxygen Gas Cloud');
         expect(gasCloudTooltipText(gasCloud(HabitatType.Hydrogen, 9000), false)).toBe('(Unexplored Gas Cloud)');
         expect(tooltipText(gasCloud(HabitatType.CarbonDioxide, 9000), 'AG928', true)).toBe('AG928\nCarbon Dioxide Gas Cloud');
+    });
+});
+
+describe('pargbRoundTrip (Main.Part13.cs method_21, Format32bppPArgb)', () => {
+    it('clears the colour of fully transparent pixels and keeps opaque ones', () => {
+        const px = new Uint8ClampedArray([255, 255, 255, 0, 10, 200, 30, 255, 200, 100, 50, 128]);
+        pargbRoundTrip(px);
+        expect(Array.from(px.slice(0, 4))).toEqual([0, 0, 0, 0]);
+        expect(Array.from(px.slice(4, 8))).toEqual([10, 200, 30, 255]);
+        // Half-transparent: premultiplied to 8 bits and back (within one step of the straight value).
+        for (let c = 0; c < 3; c++) expect(Math.abs(px[8 + c] - [200, 100, 50][c])).toBeLessThanOrEqual(1);
+        expect(px[11]).toBe(128);
     });
 });

@@ -38,7 +38,7 @@
 //
 // Render-only: nothing here touches sim state or the sim's random streams.
 
-import { Container, ImageSource, Sprite, Texture, Rectangle } from 'pixi.js';
+import { BufferImageSource, Container, Sprite, Texture, Rectangle } from 'pixi.js';
 import { HabitatType, type Habitat } from '../sim/types';
 import { CFractal } from './fbmNoise';
 import { textureFromRgbaPixels, makeTextureCanvas, textureFromCanvas } from './textureCanvas';
@@ -247,15 +247,44 @@ export function supernovaGalaxyPx(novaProgression: number, f: number): number {
  * the nova texture texture2D_20 = BitmapToTexture (a PNG round trip through Texture2D.FromStream, which keeps straight
  * alpha) — so the picture's straight colour is added: dst * (1 - a) + rgb. From f 500 in (NonPremultiplied) it blends
  * normally. This loads the picture with its straight samples uploaded as if premultiplied, which gives that blend.
+ *
+ * The samples are the ones bitmap_206 holds, not the PNG's: LoadSuperNovae (Main.Part13.cs 1203-1214) copies each
+ * picture through method_21 (983) into a Format32bppPArgb bitmap, so every sample is premultiplied and back. A fully
+ * transparent pixel loses its colour that way (11 of the 20 stock NovaCloud PNGs store white there, which the additive
+ * blend would draw as a white square), and faint pixels are quantised the same way a premultiplied canvas does it.
  */
 export const NOVA_ALPHA_BLEND_MIN_FACTOR = 500;
+
+/** method_21's Format32bppPArgb copy on straight RGBA, in place: premultiply to 8 bits and back; alpha 0 -> 0,0,0,0. */
+export function pargbRoundTrip(rgba: Uint8ClampedArray | Uint8Array): void {
+    for (let i = 0; i < rgba.length; i += 4) {
+        const a = rgba[i + 3];
+        if (a === 255) continue;
+        for (let c = 0; c < 3; c++) {
+            if (a === 0) {
+                rgba[i + c] = 0;
+                continue;
+            }
+            const p = Math.round((rgba[i + c] * a) / 255);
+            rgba[i + c] = Math.min(255, Math.round((p * 255) / a));
+        }
+    }
+}
 
 export async function loadStraightAsPremultiplied(url: string): Promise<Texture | null> {
     try {
         const r = await fetch(url);
         if (!r.ok) return null;
         const bmp = await createImageBitmap(await r.blob(), { premultiplyAlpha: 'none', colorSpaceConversion: 'none' });
-        const tex = new Texture({ source: new ImageSource({ resource: bmp, alphaMode: 'premultiplied-alpha' }), label: `${url} (xna alpha blend)` });
+        // A software canvas stores premultiplied pixels; reading them back gives straight samples (alpha 0 -> black),
+        // and pargbRoundTrip makes the method_21 result explicit whatever the browser's canvas storage.
+        const { ctx } = makeTextureCanvas(bmp.width, bmp.height);
+        ctx.drawImage(bmp, 0, 0);
+        bmp.close();
+        const data = ctx.getImageData(0, 0, ctx.canvas.width, ctx.canvas.height).data;
+        pargbRoundTrip(data);
+        const source = new BufferImageSource({ resource: new Uint8Array(data.buffer), width: ctx.canvas.width, height: ctx.canvas.height, alphaMode: 'premultiplied-alpha' });
+        const tex = new Texture({ source, label: `${url} (xna alpha blend)` });
         useMinifyingFilter(tex);
         return tex;
     } catch {
