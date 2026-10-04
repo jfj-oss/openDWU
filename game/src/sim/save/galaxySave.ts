@@ -69,6 +69,7 @@ import { Habitat } from '../types';
 import { migrateLegacyLandscapePictureRef, migratePreMapPictureRef, migratePrePortPictureRef } from '../galaxyImages';
 import { EmpireVisibility, GalaxyResourceMap, SystemVisibility } from '../visibility';
 import { Weapon } from '../weapon';
+import { battleReportState, restoreBattleReportState, type BattleReportState } from '../battleReports/battleReports';
 
 export interface GalaxySaveJSON {
     version: 2;
@@ -503,6 +504,10 @@ interface SideTables {
     raceFields?: Record<string, string | number | boolean>[];
     /** Random.drawCount of every saved stream (a non-enumerable diagnostic counter; the harness reports deltas). */
     randomDraws: Map<Random, number>;
+    /** Mod layer (battle reports, an Improvement; battleReports/battleReports.ts): the open battles and the last reports.
+     *  Absent until the game's first battle — so a game that never fought saves the same text as before — and in
+     *  older saves. */
+    battleReports?: BattleReportState;
 }
 
 function collectSideTables(galaxy: Galaxy, visited: readonly object[]): SideTables {
@@ -534,6 +539,8 @@ function collectSideTables(galaxy: Galaxy, visited: readonly object[]): SideTabl
     const state = galaxyStates.get(galaxy);
     if (state !== undefined) out.randomDraws.set(state.rndStatic, state.rndStatic.drawCount);
     if (state !== undefined) out.characterState = { raceAvailableCharacters: state.raceAvailableCharacters, rndStatic: state.rndStatic };
+    const battles = battleReportState(galaxy);
+    if (battles !== undefined) out.battleReports = battles;
     return out;
 }
 
@@ -561,6 +568,7 @@ function restoreSideTables(galaxy: Galaxy, t: SideTables): void {
     t.plagueLatestTechLevelUpdate.forEach((v, i) => {
         if (i < plagues.length) plagues[i].latestTechLevelUpdate = v;
     });
+    if (t.battleReports !== undefined) restoreBattleReportState(galaxy, t.battleReports);
 }
 
 type TerritoryGrid = Uint8Array[] | null;

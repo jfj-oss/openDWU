@@ -16,6 +16,7 @@
 // - Paused ⇒ no frames (the C# loop keeps calling DoTasks with a frozen clock; with dt = 0 only the round-robin
 //   cursors would move).
 
+import { battleReportsFrameEnd } from '../battleReports/battleReports';
 import { processConstructionBoard } from '../player/constructionBoard';
 import { gameVictoryArgs } from '../victory';
 import type { Galaxy } from '../galaxy';
@@ -472,6 +473,9 @@ function runSimFrameBody(galaxy: Galaxy, frameMs: number, opts: FrameOptions): v
     // age expiry (playerMessages.ts; the C# runs them whenever its UI thread gets to them, the port at this fixed point
     // so that the game stays replayable).
     playerMessagesFrameEnd(galaxy);
+    // Mod layer (an Improvement, not in the C#): the battle-report observer — reads only, no Rnd, outside the digest;
+    // one comparison per frame, a scan once per game second (battleReports/battleReports.ts).
+    battleReportsFrameEnd(galaxy, frameMs);
     state.frames++;
 }
 
