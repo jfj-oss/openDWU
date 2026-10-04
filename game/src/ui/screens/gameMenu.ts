@@ -1,72 +1,48 @@
-// In-game Escape menu (task 10c). A centred modal that dims the map behind
-// at 55%, pauses GalaxyTime while open and restores the previous paused state
-// on close. Buttons: Resume, Save Game, Load Game, Options, Main Menu, Exit.
-// The Options sub-panel edits src/ui/settings.ts (persisted) and drives the
-// music player + UI scale.
+// In-game Escape menu (task 10c), restyled as the original's pnlGameMenu: a BorderPanel (BackColor (48, 48, 64) under
+// Main.resx's striped BackgroundImage, 3 px alpha-96 border) laid out by Main.Part7.cs:3668 method_356 — 220 × 408,
+// centred on the main view; picGameMenuHeader (Main.resx picGameMenuHeader.BackgroundImage, 196 × 118) at (12, 10),
+// lblGameMenuTitle hidden; eight 200 × 30 GlassButtons in font_2 (18.67 px bold) at x 10, y 137 + 33 i:
+// Exit Distant Worlds, Exit to Main Menu, Load Game, Save Game, Save Game As, Options, Enter Game Editor, Resume
+// Playing (texts Main.Part3.cs:621, 879-885; method_356 renames Cancel to "Resume Playing").
+// Opening it pauses GalaxyTime and closing restores the previous paused state (the original pauses only with
+// AutoPauseWhenInPopupWindow on; ours always did and still does). No dim layer (the original draws none), but the
+// full-screen layer still keeps clicks off the map while the menu is open.
+// Handlers (Main.Part7.cs): btnGameMenuQuit_Click / btnGameMenuStartMenu_Click ask with MessageBoxEx Yes / No first;
+// Load / Save / Save As open the shared Save/Load window (saveLoad.ts; the original opens the Windows file dialogs —
+// Save Game re-saves string_2, the current game's file, which our window pre-fills); Options opens the Game Options
+// window (method_402, gameOptionsPanel.ts); the Game Editor (method_506 / method_476) is not ported: its button is
+// shown disabled with a tooltip.
 import './gameMenu.css';
-import { systemMemoryGiB } from '../../systemMemory';
 import { GalaxyTime } from '../../sim/clock';
-import { musicControls, stopAllMusic } from '../../audio/musicPlayer';
-import { startEffects } from '../../audio/effectsPlayer';
-import { getSettings, updateSettings, uiScaleFactor, type GalaxyViewDisplayKey } from '../settings';
-
-/** [galaxymarkers] The original's "Galaxy View - Ship Display" check boxes (Main.InitializeComponent.cs 9931-10041). */
-const GALAXY_VIEW_DISPLAY_ROWS: ReadonlyArray<[string, GalaxyViewDisplayKey]> = [
-    ['Fleets', 'galaxyViewDisplayFleets'],
-    ['Military ships', 'galaxyViewDisplayMilitaryShips'],
-    ['Resupply ships', 'galaxyViewDisplayResupplyShips'],
-    ['Space ports', 'galaxyViewDisplaySpacePorts'],
-    ['Other bases', 'galaxyViewDisplayOtherBases'],
-    ['Exploration ships', 'galaxyViewDisplayExplorationShips'],
-    ['Colony ships', 'galaxyViewDisplayColonyShips'],
-    ['Construction ships', 'galaxyViewDisplayConstructionShips'],
-    ['Civilian ships', 'galaxyViewDisplayCivilianShips'],
-    ['Always show enemy Fleets', 'galaxyViewDisplayAlwaysEnemyFleets'],
-    ['Always show enemy Military ships', 'galaxyViewDisplayAlwaysEnemyMilitaryShips'],
-    ['Always show Pirates', 'galaxyViewDisplayAlwaysPirates'],
-];
+import { stopAllMusic } from '../../audio/musicPlayer';
+import { uiScaleFactor, onSettingsChange } from '../settings';
+import { el, glassButton, messageBox, originalWindowScale, place } from '../originalWindow';
+import { mainResxImageUrl } from '../resxImage';
+import { tryGetText } from '../../sim/textResolver';
 import { showToast } from '../toast';
 import { getSaveLoadProvider } from './saveLoad';
 
-/** Music volume adapter so the screen stays import-safe in node tests. */
+/** Music volume adapter (kept for callers typing an audio stand-in; the options apply through ui/settings.ts). */
 export interface MusicAdapter {
     setVolume(v: number): void;
     mute(): void;
     unmute(): void;
 }
 
-/** Lazily fetch the real music player (musicPlayer.ts musicControls: both players). */
-function defaultMusic(): MusicAdapter | null {
-    try {
-        return musicControls();
-    } catch {
-        return null;
-    }
-}
-
-/** Sound effects adapter so the screen stays import-safe in node tests. */
+/** Sound effects adapter (see MusicAdapter). */
 export interface EffectsAdapter {
     setVolume(v: number): void;
     mute(): void;
     unmute(): void;
 }
 
-/** Lazily fetch the real effects player (created by startEffects at boot). */
-function defaultEffects(): EffectsAdapter | null {
-    try {
-        return startEffects();
-    } catch {
-        return null;
-    }
-}
-
 export interface GameMenuCallbacks {
-    /** Called when "Main Menu" is confirmed (return to the main menu screen). */
+    /** Called when "Exit to Main Menu" is confirmed (return to the main menu screen). */
     onMainMenu?: () => void;
-    /** Called when "Exit" is confirmed (window.close / browser toast). */
+    /** Called when "Exit Distant Worlds" is confirmed (default: window.close / browser toast). */
     onExit?: () => void;
     /** "Options" (Main.Part7.cs:4507 btnGameMenuOptions_Click → method_402): open the Game Options screen
-     *  (gameOptionsPanel.ts). Without it the button toggles the inline settings panel (buildOptionsPanel). */
+     *  (gameOptionsPanel.ts). */
     onOptions?: () => void;
 }
 
@@ -96,13 +72,26 @@ export function restorePauseState(clock: GalaxyTime, prevPaused: boolean): void 
     clock.paused = prevPaused;
 }
 
-/** True when focus is inside an input/textarea/contenteditable element. */
-function isTypingTarget(target: EventTarget | null): boolean {
-    const el = target as Partial<Pick<HTMLElement, 'tagName' | 'isContentEditable'>> | null;
-    if (!el || typeof el.tagName !== 'string') return false;
-    if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') return true;
-    return !!el.isContentEditable;
-}
+/** pnlGameMenu.Size (Main.Part7.cs method_356). */
+export const GAME_MENU_W = 220;
+export const GAME_MENU_H = 408;
+
+export type GameMenuButtonId = 'quit' | 'startMenu' | 'load' | 'save' | 'saveAs' | 'options' | 'editor' | 'cancel';
+
+/** The eight buttons of method_356, top to bottom: id, GameText key, y (x 10, 200 × 30). */
+export const GAME_MENU_BUTTONS: readonly { id: GameMenuButtonId; text: string; y: number }[] = [
+    { id: 'quit', text: 'Exit Distant Worlds', y: 137 },
+    { id: 'startMenu', text: 'Exit to Main Menu', y: 170 },
+    { id: 'load', text: 'Load Game', y: 203 },
+    { id: 'save', text: 'Save Game', y: 236 },
+    { id: 'saveAs', text: 'Save Game As', y: 269 },
+    { id: 'options', text: 'Options', y: 302 },
+    { id: 'editor', text: 'Enter Game Editor', y: 335 },
+    { id: 'cancel', text: 'Resume Playing', y: 368 },
+];
+
+/** Main font_2 (Main.Part12.cs:1523 GenerateFont(18.67, bold)). */
+const FONT_2 = 18.67;
 
 /** Electron sets a distinctive UA token; used to pick the Exit behaviour. */
 function isDesktopShell(): boolean {
@@ -117,182 +106,10 @@ function applyUiScaleToHudRoot(): void {
     }
 }
 
-/**
- * Build the Options sub-panel (music volume/mute, sound effects volume/mute,
- * UI scale, label toggles).
- * Task 06k: extracted from createGameMenu so the main menu's "Options" item
- * can open the same panel as a centred modal. The returned element carries
- * the `game-menu-options` class and its own rows; callers append it to their
- * own container. `music` / `effects` may be null (menu-only contexts without
- * a player); they are only touched inside event handlers, keeping the panel
- * import-safe in node tests.
- */
-export function buildOptionsPanel(
-    music: MusicAdapter | null,
-    effects: EffectsAdapter | null = null,
-): HTMLElement {
-    const optionsPanel = document.createElement('div');
-    optionsPanel.className = 'game-menu-options';
-
-    const settings = getSettings();
-
-    // Music volume slider + mute.
-    const musicRow = document.createElement('div');
-    musicRow.className = 'game-menu-option-row';
-    const musicLabel = document.createElement('span');
-    musicLabel.className = 'game-menu-option-label';
-    musicLabel.textContent = 'Music Volume';
-    const volSlider = document.createElement('input');
-    volSlider.type = 'range';
-    volSlider.min = '0';
-    volSlider.max = '1';
-    volSlider.step = '0.05';
-    volSlider.value = String(settings.musicVolume);
-    volSlider.setAttribute('aria-label', 'Music volume');
-    volSlider.addEventListener('input', () => {
-        const v = parseFloat(volSlider.value);
-        updateSettings({ musicVolume: v, musicMuted: false });
-        music?.setVolume(v);
-        music?.unmute();
-    });
-    const muteBtn = document.createElement('button');
-    muteBtn.type = 'button';
-    muteBtn.className = 'game-menu-mute';
-    muteBtn.textContent = settings.musicMuted ? 'Unmute' : 'Mute';
-    muteBtn.addEventListener('click', () => {
-        const nowMuted = !getSettings().musicMuted;
-        updateSettings({ musicMuted: nowMuted });
-        if (nowMuted) {
-            music?.mute();
-        } else {
-            music?.unmute();
-        }
-        muteBtn.textContent = nowMuted ? 'Unmute' : 'Mute';
-    });
-    musicRow.append(musicLabel, volSlider, muteBtn);
-    optionsPanel.appendChild(musicRow);
-
-    // Sound effects volume slider + mute (task 12h). Built exactly like the
-    // music row; it writes soundVolume/soundMuted and drives the effects
-    // player. startEffects is only called inside the handlers via the
-    // defaultEffects adapter, so panel build stays import-safe in node tests.
-    const effectsAdapter = effects ?? defaultEffects();
-    const sfxRow = document.createElement('div');
-    sfxRow.className = 'game-menu-option-row';
-    const sfxLabel = document.createElement('span');
-    sfxLabel.className = 'game-menu-option-label';
-    sfxLabel.textContent = 'Sound Effects Volume';
-    const sfxSlider = document.createElement('input');
-    sfxSlider.type = 'range';
-    sfxSlider.min = '0';
-    sfxSlider.max = '1';
-    sfxSlider.step = '0.05';
-    sfxSlider.value = String(settings.soundVolume);
-    sfxSlider.setAttribute('aria-label', 'Sound effects volume');
-    sfxSlider.addEventListener('input', () => {
-        const v = parseFloat(sfxSlider.value);
-        updateSettings({ soundVolume: v, soundMuted: false });
-        effectsAdapter?.setVolume(v);
-        effectsAdapter?.unmute();
-    });
-    const sfxMuteBtn = document.createElement('button');
-    sfxMuteBtn.type = 'button';
-    sfxMuteBtn.className = 'game-menu-mute';
-    sfxMuteBtn.textContent = settings.soundMuted ? 'Unmute' : 'Mute';
-    sfxMuteBtn.addEventListener('click', () => {
-        const nowMuted = !getSettings().soundMuted;
-        updateSettings({ soundMuted: nowMuted });
-        if (nowMuted) {
-            effectsAdapter?.mute();
-        } else {
-            effectsAdapter?.unmute();
-        }
-        sfxMuteBtn.textContent = nowMuted ? 'Unmute' : 'Mute';
-    });
-    sfxRow.append(sfxLabel, sfxSlider, sfxMuteBtn);
-    optionsPanel.appendChild(sfxRow);
-
-    // UI scale (90/100/110/125%).
-    const scaleRow = document.createElement('div');
-    scaleRow.className = 'game-menu-option-row';
-    const scaleLabel = document.createElement('span');
-    scaleLabel.className = 'game-menu-option-label';
-    scaleLabel.textContent = 'UI Scale';
-    // Slider 50% - 200% (100% = the default size).
-    const scaleSelect = document.createElement('input');
-    scaleSelect.type = 'range';
-    scaleSelect.min = '50';
-    scaleSelect.max = '200';
-    scaleSelect.step = '5';
-    scaleSelect.value = String(settings.uiScale);
-    scaleSelect.setAttribute('aria-label', 'UI scale');
-    const scaleValue = document.createElement('span');
-    scaleValue.className = 'game-menu-option-value';
-    scaleValue.textContent = `${settings.uiScale}%`;
-    scaleSelect.addEventListener('input', () => {
-        const pct = parseInt(scaleSelect.value, 10) || 100;
-        scaleValue.textContent = `${pct}%`;
-        updateSettings({ uiScale: pct });
-        applyUiScaleToHudRoot();
-    });
-    scaleRow.append(scaleLabel, scaleSelect, scaleValue);
-    optionsPanel.appendChild(scaleRow);
-
-    // Show system names / region labels toggles.
-    const makeToggle = (labelText: string, key: 'showSystemNames' | 'showRegionLabels' | 'freightFlowsDefault' | 'ditherGradients' | 'pullStationsToCentre' | 'showWeaponRangeCircles' | 'autoPauseInPopup' | 'simWorker' | GalaxyViewDisplayKey): HTMLElement => {
-        const row = document.createElement('div');
-        row.className = 'game-menu-option-row';
-        const lbl = document.createElement('span');
-        lbl.className = 'game-menu-option-label';
-        lbl.textContent = labelText;
-        const chk = document.createElement('input');
-        chk.type = 'checkbox';
-        chk.checked = getSettings()[key];
-        chk.setAttribute('aria-label', labelText);
-        chk.addEventListener('change', () => {
-            updateSettings({ [key]: chk.checked } as Partial<typeof settings>);
-            // Task 10f: the Main View renderer reads these flags per frame
-            // (src/render/mainView.ts), so no extra wiring is needed here.
-        });
-        row.append(lbl, chk);
-        return row;
-    };
-    optionsPanel.appendChild(makeToggle('Pause game when a screen is open', 'autoPauseInPopup'));
-    optionsPanel.appendChild(makeToggle('Show system names', 'showSystemNames'));
-    optionsPanel.appendChild(makeToggle('Show region labels', 'showRegionLabels'));
-    optionsPanel.appendChild(makeToggle('Freight flows overlay on at start', 'freightFlowsDefault')); // [freightOverlay]
-    // Applied live by main.ts (onSettingsChange → render/outputDither.ts setOutputDither).
-    optionsPanel.appendChild(makeToggle('Dither gradients (no banding)', 'ditherGradients'));
-    optionsPanel.appendChild(makeToggle('Draw stations closer to their planet / moon', 'pullStationsToCentre'));
-    optionsPanel.appendChild(makeToggle('Show weapon range circles for the selected ship', 'showWeaponRangeCircles'));
-    // docs/sim-worker.md: read by main.ts when the next game starts or loads; off = the in-thread fallback.
-    // The sim worker (docs/sim-worker.md): on by default only with 16 GB+ of RAM (src/systemMemory.ts).
-    const mtRow = makeToggle('Multithreading (next game)', 'simWorker');
-    const mtNote = document.createElement('span');
-    mtNote.className = 'game-menu-option-note';
-    const mem = systemMemoryGiB();
-    mtNote.textContent = `Only turn on with 16 GB+ RAM${mem !== null ? ` (this computer: ${Math.round(mem)} GB)` : ''}`;
-    mtRow.insertBefore(mtNote, mtRow.lastChild);
-    optionsPanel.appendChild(mtRow);
-    // [galaxymarkers] begin — Main.InitializeComponent.cs 9922-10041: grpGameOptionsAdvancedDisplaySettingsGalaxyIcons.
-    const gvHead = document.createElement('div');
-    gvHead.className = 'game-menu-option-label';
-    gvHead.textContent = 'Galaxy View - Ship Display';
-    optionsPanel.appendChild(gvHead);
-    for (const [label, key] of GALAXY_VIEW_DISPLAY_ROWS) optionsPanel.appendChild(makeToggle(label, key));
-    // [galaxymarkers] end
-
-    return optionsPanel;
-}
+const gameText = (key: string): string => tryGetText(key) ?? key;
 
 /** Build the in-game game menu and append it to document.body. */
-export function createGameMenu(
-    clock: GalaxyTime,
-    callbacks: GameMenuCallbacks = {},
-    music: MusicAdapter | null = null,
-): GameMenuRefs {
-    const resolvedMusic = music ?? defaultMusic();
-    const resolvedEffects = defaultEffects();
+export function createGameMenu(clock: GalaxyTime, callbacks: GameMenuCallbacks = {}): GameMenuRefs {
     let prevPaused = false;
     let open = false;
 
@@ -300,111 +117,122 @@ export function createGameMenu(
     root.id = 'game-menu-overlay';
     root.style.display = 'none';
 
-    // Dim layer (55%) behind the panel.
-    const dim = document.createElement('div');
-    dim.className = 'game-menu-dim';
-    root.appendChild(dim);
+    // The click shield over the map (transparent: the original does not dim the view).
+    root.appendChild(el('div', 'game-menu-dim'));
 
-    const panel = document.createElement('div');
-    panel.className = 'game-menu-panel';
+    // pnlGameMenu: a BorderPanel (ow-screen draws the 3 px border) with the striped background image.
+    const panel = el('div', 'ow-screen ow-stripes game-menu-panel');
+    panel.dataset.ow = 'gamemenu';
+    panel.style.width = `${GAME_MENU_W}px`;
+    panel.style.height = `${GAME_MENU_H}px`;
 
-    const title = document.createElement('div');
-    title.className = 'game-menu-title';
-    title.textContent = 'Game Menu';
+    // picGameMenuHeader (12, 10) 196 × 118; the title text stands in while the resource loads or when it is missing.
+    const title = place(el('div', 'game-menu-title', gameText('Game Menu')), 12, 10, 196, 118);
     panel.appendChild(title);
+    const header = place(el('img', 'game-menu-header'), 12, 10, 196, 118);
+    header.alt = '';
+    header.draggable = false;
+    header.style.display = 'none';
+    panel.appendChild(header);
+    void mainResxImageUrl('picGameMenuHeader.BackgroundImage').then((url) => {
+        if (url === null) return;
+        header.src = url;
+        header.style.display = '';
+        title.style.display = 'none';
+    });
 
-    const list = document.createElement('div');
-    list.className = 'game-menu-list';
-    panel.appendChild(list);
-
-    // --- Options sub-panel (task 06k: shared buildOptionsPanel) -----------
-    const optionsPanel = buildOptionsPanel(resolvedMusic, resolvedEffects);
-    optionsPanel.style.display = 'none';
-
-    // --- Button row -------------------------------------------------------
-    const makeButton = (label: string, onClick: () => void): HTMLButtonElement => {
-        const btn = document.createElement('button');
-        btn.type = 'button';
-        btn.className = 'game-menu-btn';
-        btn.textContent = label;
-        btn.addEventListener('click', onClick);
-        return btn;
+    const openSaveLoad = (mode: 'save' | 'load', saveAs = false): void => {
+        const provider = getSaveLoadProvider();
+        if (provider) provider.open(mode, { saveAs });
+        else showToast(`${mode === 'save' ? 'Save Game' : 'Load Game'} not available in this mode`, root);
     };
 
-    const resumeBtn = makeButton('Resume', () => hide());
-    // Task 11a3: open the shared Save/Load panel (registered by src/main.ts
-    // after booting a game view); fall back to a toast when no provider is
-    // registered (e.g. the URL-param boot path without a full Game object).
-    const saveBtn = makeButton('Save Game', () => {
-        const provider = getSaveLoadProvider();
-        if (provider) {
-            provider.open('save');
-        } else {
-            showToast('Save Game not available in this mode', root);
-        }
-    });
-    const loadBtn = makeButton('Load Game', () => {
-        const provider = getSaveLoadProvider();
-        if (provider) {
-            provider.open('load');
-        } else {
-            showToast('Load Game not available in this mode', root);
-        }
-    });
-    const optionsBtn = makeButton('Options', () => {
-        if (callbacks.onOptions) {
+    const actions: Record<GameMenuButtonId, () => void> = {
+        quit: () => {
+            // btnGameMenuQuit_Click: method_372 (Yes / No, question icon).
+            void messageBox({
+                caption: gameText('Exit Distant Worlds'),
+                text: gameText('Are you sure that you wish to exit this game?'),
+                buttons: ['Yes', 'No'],
+                icon: 'question',
+            }).then((r) => {
+                if (r !== 'Yes') return;
+                hide();
+                stopAllMusic(); // [audio] Main.Part7.cs:4568 btnGameMenuQuit: musicPlayer_0.Stop(); musicPlayer_1.Stop()
+                if (callbacks.onExit) callbacks.onExit();
+                else if (isDesktopShell()) window.close();
+                else showToast('Close this tab to exit', document.body);
+            });
+        },
+        startMenu: () => {
+            // btnGameMenuStartMenu_Click: method_372, then back to the start screen.
+            void messageBox({
+                caption: gameText('Exit to main menu'),
+                text: gameText('Are you sure that you wish to exit to the main menu?'),
+                buttons: ['Yes', 'No'],
+                icon: 'question',
+            }).then((r) => {
+                if (r !== 'Yes') return;
+                hide();
+                callbacks.onMainMenu?.();
+            });
+        },
+        load: () => openSaveLoad('load'),
+        save: () => openSaveLoad('save'),
+        saveAs: () => openSaveLoad('save', true),
+        options: () => {
             // The Game Options window pauses by itself (AutoPauseWhenInPopupWindow); the menu closes behind it.
             hide();
-            callbacks.onOptions();
-            return;
-        }
-        optionsPanel.style.display = optionsPanel.style.display === 'none' ? '' : 'none';
-    });
-    const mainMenuBtn = makeButton('Main Menu', () => {
-        const ok = window.confirm('Return to the main menu? Unsaved progress will be lost.');
-        if (ok) {
-            hide();
-            callbacks.onMainMenu?.();
-        }
-    });
-    const exitBtn = makeButton('Exit', () => {
-        const ok = window.confirm('Exit the game?');
-        if (ok) {
-            hide();
-            stopAllMusic(); // [audio] Main.Part7.cs:4568 btnGameMenuQuit: musicPlayer_0.Stop(); musicPlayer_1.Stop()
-            if (callbacks.onExit) {
-                callbacks.onExit();
-            } else if (isDesktopShell()) {
-                window.close();
-            } else {
-                showToast('Close this tab to exit', root);
-            }
-        }
-    });
-    list.append(resumeBtn, saveBtn, loadBtn, optionsBtn, mainMenuBtn, exitBtn);
+            callbacks.onOptions?.();
+        },
+        editor: () => undefined,
+        cancel: () => hide(), // btnGameMenuCancel_Click → method_357
+    };
 
-    panel.appendChild(optionsPanel);
+    for (const b of GAME_MENU_BUTTONS) {
+        const btn = glassButton(gameText(b.text), { onClick: actions[b.id], size: FONT_2, className: 'game-menu-btn' });
+        btn.dataset.id = b.id;
+        if (b.id === 'editor') {
+            // The Game Editor (pnlGameEditor, method_476 / method_506) is not ported: disabled, with the tooltip on a
+            // wrapper because a disabled button gets no hover.
+            btn.disabled = true;
+            const wrap = place(el('div', 'game-menu-btn-wrap'), 10, b.y, 200, 30);
+            wrap.title = 'The Game Editor is not available in this recreation yet';
+            wrap.appendChild(place(btn, 0, 0, 200, 30));
+            panel.appendChild(wrap);
+            continue;
+        }
+        panel.appendChild(place(btn, 10, b.y, 200, 30));
+    }
+
     root.appendChild(panel);
-
-    // Close button (top-right of the panel).
-    const closeBtn = document.createElement('button');
-    closeBtn.type = 'button';
-    closeBtn.className = 'game-menu-close';
-    closeBtn.title = 'Close';
-    closeBtn.textContent = '✕';
-    closeBtn.addEventListener('click', () => hide());
-    panel.appendChild(closeBtn);
-
     document.body.appendChild(root);
 
     // Apply the persisted UI scale once at creation so the HUD reflects it.
     applyUiScaleToHudRoot();
+
+    /** Centre and scale the panel like the screen windows (originalWindow.ts originalWindowScale). */
+    function layout(): void {
+        if (!open) return;
+        const vw = window.innerWidth;
+        const vh = window.innerHeight;
+        const k = originalWindowScale(vw, vh, uiScaleFactor(), GAME_MENU_W, GAME_MENU_H);
+        panel.style.left = `${Math.round((vw - GAME_MENU_W * k) / 2)}px`;
+        panel.style.top = `${Math.round((vh - GAME_MENU_H * k) / 2)}px`;
+        panel.style.transform = k === 1 ? '' : `scale(${k})`;
+    }
+    window.addEventListener('resize', layout);
+    const offSettings = onSettingsChange(() => {
+        layout();
+        applyUiScaleToHudRoot();
+    });
 
     function show(): void {
         if (open) return;
         open = true;
         prevPaused = pauseForMenu(clock);
         root.style.display = '';
+        layout();
     }
 
     function hide(): void {
@@ -430,6 +258,8 @@ export function createGameMenu(
         hide,
         toggle,
         destroy: () => {
+            window.removeEventListener('resize', layout);
+            offSettings();
             root.remove();
         },
     };

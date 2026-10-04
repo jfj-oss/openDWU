@@ -630,8 +630,9 @@ export function createHud(wiring: HudWiring = {}): HudRefs {
         onMainMenu: wiring.onMainMenu,
         // [gameoptions] the Escape menu's Options opens the Game Options screen (same as O).
         onOptions: () => {
+            // Without a player empire (a view with no game behind it) the window edits the new-game defaults.
             const src = getEmpireSummarySource();
-            if (src) openGameOptionsPanel({ empire: src.empire });
+            openGameOptionsPanel({ empire: src?.empire ?? null });
         },
     });
     setGameMenuHandler(gameMenu.toggle);

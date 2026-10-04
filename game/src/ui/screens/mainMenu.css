@@ -70,7 +70,6 @@
 }
 
 .main-menu-corner {
-    position: absolute;
     background: transparent;
     border: none;
     padding: 0;
@@ -82,67 +81,44 @@
     display: block;
 }
 
-.main-menu-galactopedia {
-    top: 10px;
-    left: 10px;
-}
-
-.main-menu-updates {
+/* pnlTopLeftCorner / pnlBottomLeftCorner (Start.cs:1238-1248): square panels in BackColor (144, 0, 0, 0), sized
+   135 × 117 / 135 × 112 × s inline, the menu item centred in each. */
+.main-menu-corner-panel {
     position: absolute;
-    bottom: 10px;
-    left: 10px;
-    text-align: center;
+    left: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 0, 0, 0.565);
 }
 
-.main-menu-updates button {
-    background: transparent;
-    border: none;
-    padding: 0;
-    cursor: pointer;
+.main-menu-corner-tl {
+    top: 0;
 }
 
+.main-menu-corner-bl {
+    bottom: 0;
+}
+
+/* lblVersion: (255, 160, 0), centred along the panel's bottom (two lines: the recreation tag is longer). */
 .main-menu-version {
-    font-size: 11px;
-    color: #ccc;
-    margin-top: 4px;
-    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    text-align: center;
+    color: rgb(255, 160, 0);
+    white-space: pre-line;
+    line-height: 1.15;
+    pointer-events: none;
 }
 
+/* menuCredits: 105 × 60 at (W - 115, H - 70), its art centred. */
 .main-menu-credits {
+    position: absolute;
     bottom: 10px;
     right: 10px;
-}
-
-/* Task 06k: Options modal over the main menu. Reuses the in-game game-menu
-   panel styles (gameMenu.css) for the rows/controls; only the overlay, dim
-   and sizing are specific to the menu context. */
-.main-menu-options-overlay {
-    position: fixed;
-    inset: 0;
-    z-index: 1002; /* above the menu chrome buttons */
-}
-
-.main-menu-options-dim {
-    position: absolute;
-    inset: 0;
-    background: rgba(0, 0, 0, 0.55);
-}
-
-.main-menu-options-panel {
-    width: min(420px, calc(100vw - 40px));
-}
-
-.main-menu-newgame-defaults {
-    margin-top: 12px;
-    width: 100%;
-    padding: 8px 10px;
-    color: #d8e4f0;
-    background: rgba(40, 60, 90, 0.7);
-    border: 1px solid rgba(160, 190, 230, 0.5);
-    cursor: pointer;
-    font: inherit;
-}
-
-.main-menu-newgame-defaults:hover {
-    background: rgba(70, 100, 150, 0.8);
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }

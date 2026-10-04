@@ -598,3 +598,10 @@
     box-sizing: border-box;
     vertical-align: middle;
 }
+
+/* A BorderPanel with Main.resx's tiled BackgroundImage (pnlGameMenu, pnlSaveLoadProgress, pnlSystemMap …): a 20 × 12
+   bitmap of alternating 1 px rows (21, 21, 21) / (34, 34, 34) from the top, over BackColor (48, 48, 64). */
+.ow-stripes {
+    background-color: rgb(48, 48, 64);
+    background-image: repeating-linear-gradient(to bottom, rgb(21, 21, 21) 0 1px, rgb(34, 34, 34) 1px 2px);
+}

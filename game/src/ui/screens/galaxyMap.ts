@@ -9,9 +9,12 @@
 // close), and Main.Part9.cs cmbGalaxyMapViewMode_SelectedValueChanged (the
 // 11 view modes / filters).
 //
-// The chrome is streamlined (modern HUD panel style from hud.css) rather
-// than a 1:1 copy of the 945x760 ScreenPanel: one full-screen overlay with
-// the map on the left and a side panel on the right.
+// The chrome is the original's pnlGalaxyMap ScreenPanel (945 x 760, Main.Part11.cs method_131 positions; the shared
+// toolkit in ui/originalWindow.ts): the View / habitat type combos, Map Key and Go to selected item buttons and
+// Back / Forward in the body's top row, the 650 x 650 map at (10, 40) and, in the right-hand column, picSystemMap,
+// pnlHabitatInfo and pnlGalaxyMapHabitatPicture. pnlGalaxyMapKey is a 300 x 418 BorderPanel over it
+// (method_129). Recreation additions keep the same style: the Nebulae / Region names toggles in the header and the
+// match list (a column that widens the window while a view filter is active).
 
 import { drawGalaxyMapMarkers } from '../waypoints'; // [waypoints]
 import type { Galaxy } from '../../sim/galaxy';
@@ -27,6 +30,20 @@ import { drawSystemView, findNearestHabitatNear, systemViewWorldAt } from '../sy
 import { territoryColorFn } from '../../render/empireLayer';
 import { drawTerritoryOnMap } from '../../render/territoryRaster';
 import './galaxyMap.css';
+import {
+    COLORS,
+    FONT,
+    OwGrid,
+    checkBox,
+    dropDown,
+    glassButton,
+    gradientPanel,
+    openOriginalWindow,
+    place,
+    setText,
+    text as owText,
+    type OriginalWindow,
+} from '../originalWindow';
 import { countLabel } from '../plural';
 import { sectorColumnName } from '../../sim/sectorNames';
 
@@ -500,6 +517,8 @@ export function galaxyMapSystemScale(galaxy: Galaxy, width = SYSTEM_MAP_PX): num
 }
 /** pnlGalaxyMapHabitatPicture 250 × 174 at (670, 516), BackColor (32, 32, 48), ImageLayout.Center. */
 export const LANDSCAPE_PICTURE = { w: 250, h: 174 } as const;
+/** Main.Part11.cs 1043: gmapMain.Size 650 × 650. */
+export const MAP_PX = 650;
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, text?: string): HTMLElementTagNameMap[K] {
     const e = document.createElement(tag);
@@ -536,137 +555,131 @@ export function createGalaxyMap(opts: GalaxyMapOptions): GalaxyMapScreen {
     let showNebulae = true;
     let showRegions = true;
 
-    const root = el('div', 'gmap-overlay');
+    // The screen's element stays an inert host (main.ts appends it); the window is opened per open() (originalWindow.ts).
+    const root = el('div', 'gmap-host');
     root.hidden = true;
-    const mapWrap = el('div', 'gmap-map');
+    let win: OriginalWindow | null = null;
+    let keyWin: OriginalWindow | null = null;
+
+    // Body-relative positions: Main.Part11.cs method_131 (the ScreenPanel reparents its controls into the body).
+    const WIN_W = 945;
+    const WIN_H = 760;
+    const LIST_W = 240;
+    let listShown = false;
+    const setShown = (e: HTMLElement, shown: boolean): void => {
+        e.style.display = shown ? '' : 'none';
+    };
+
+    const mapWrap = place(el('div', 'gmap-map'), 10, 40, MAP_PX, MAP_PX);
     const canvas = el('canvas', 'gmap-canvas');
     mapWrap.appendChild(canvas);
-    // The original's right-hand column (Main.Part11.cs method_131, x = 670): picSystemMap (250 × 250), the habitat
-    // info (pnlHabitatInfo) and pnlGalaxyMapHabitatPicture (250 × 174), with Back / Forward above it.
-    const detail = el('div', 'hud-panel gmap-detail');
-    const side = el('div', 'hud-panel gmap-side');
-    root.append(mapWrap, detail, side);
 
-    // Side panel: title + close, view mode, secondary filter, toggles,
-    // selection list, go-to, key.
-    const head = el('div', 'gmap-head');
-    head.append(el('div', 'gmap-title', 'Galaxy Map'));
-    const closeBtn = el('button', 'gmap-btn gmap-close', '✕');
-    closeBtn.type = 'button';
-    closeBtn.title = 'Close (G / Esc)';
-    head.appendChild(closeBtn);
-    side.appendChild(head);
-
-    const viewRow = el('label', 'gmap-field');
-    viewRow.append(el('span', 'gmap-field-label', 'View'));
-    const viewSel = el('select', 'gmap-select');
-    VIEW_MODE_LABELS.forEach((label, i) => viewSel.add(new Option(label, String(i))));
-    viewRow.appendChild(viewSel);
-    side.appendChild(viewRow);
-
-    const typeRow = el('label', 'gmap-field');
-    typeRow.append(el('span', 'gmap-field-label', 'Type'));
-    const typeSel = el('select', 'gmap-select');
-    COLONY_TYPE_FILTERS.forEach((f, i) => typeSel.add(new Option(f.label, String(i))));
-    typeRow.appendChild(typeSel);
-    side.appendChild(typeRow);
-
-    const resRow = el('label', 'gmap-field');
-    resRow.append(el('span', 'gmap-field-label', 'Resource'));
-    const resSel = el('select', 'gmap-select');
+    // lblGalaxyMapViewModeLabel (10, 10) + cmbGalaxyMapViewMode (65, 8, 130 x 20).
+    const viewLabel = place(owText('View', { bold: true, color: COLORS.label }), 10, 10);
+    const viewSel = place(
+        dropDown(
+            VIEW_MODE_LABELS.map((label, i) => ({ value: String(i), label })),
+            String(mode),
+            (v) => {
+                mode = Number(v) as GalaxyMapViewMode;
+                recompute();
+            },
+        ),
+        65,
+        8,
+        130,
+        20,
+    );
+    // cmbGalaxyMapHabitatType / the resource combo (omjYcxcvXH), both at (205, 8, 115 x 20).
+    const typeSel = place(
+        dropDown(
+            COLONY_TYPE_FILTERS.map((f, i) => ({ value: String(i), label: f.label })),
+            '0',
+            (v) => {
+                colonyType = COLONY_TYPE_FILTERS[Number(v)].type;
+                recompute();
+            },
+        ),
+        205,
+        8,
+        115,
+        20,
+    );
     // Main.Part12.cs 2340-2353: resources sorted by name.
     const resources = [...galaxy.resources].sort((a, b) => a.name.localeCompare(b.name));
-    for (const r of resources) resSel.add(new Option(r.name, String(r.resourceId)));
-    resRow.appendChild(resSel);
-    side.appendChild(resRow);
+    const resSel = place(
+        dropDown(
+            resources.map((r) => ({ value: String(r.resourceId), label: r.name })),
+            resources.length > 0 ? String(resources[0].resourceId) : '',
+            (v) => {
+                resourceId = Number(v);
+                recompute();
+            },
+        ),
+        205,
+        8,
+        115,
+        20,
+    );
 
-    const toggles = el('div', 'gmap-toggles');
-    const mkToggle = (label: string, get: () => boolean, set: (v: boolean) => void): void => {
-        const b = el('button', 'gmap-toggle');
-        b.type = 'button';
-        const refresh = (): void => {
-            b.textContent = `${get() ? '✓' : '·'} ${label}`;
-            b.classList.toggle('on', get());
-        };
-        b.addEventListener('click', () => {
-            set(!get());
-            refresh();
-            draw();
-        });
-        refresh();
-        toggles.appendChild(b);
-    };
-    mkToggle('Nebulae', () => showNebulae, (v) => (showNebulae = v));
-    mkToggle('Region names', () => showRegions, (v) => (showRegions = v));
-    side.appendChild(toggles);
+    // btnGalaxyMapKey (330, 8, 75 x 25), btnGalaxyMapGoto (410, 8, 140 x 25).
+    const keyBtn = place(glassButton('Map Key', { size: FONT.small, onClick: () => toggleKey() }), 330, 8, 75, 25);
+    const gotoBtn = place(
+        glassButton('Go to selected item', {
+            size: FONT.tiny,
+            onClick: () => {
+                const h = selectedHabitat ?? selectedSystem;
+                if (h !== null) jump(h);
+            },
+        }),
+        410,
+        8,
+        140,
+        25,
+    );
 
-    const list = el('div', 'gmap-list');
-    side.appendChild(list);
-
-    const actions = el('div', 'gmap-actions');
-    const gotoBtn = el('button', 'gmap-btn gmap-goto', 'Go to selected');
-    gotoBtn.type = 'button';
-    const keyBtn = el('button', 'gmap-btn', 'Key');
-    keyBtn.type = 'button';
-    actions.append(gotoBtn, keyBtn);
-    side.appendChild(actions);
-
-    // Detail column: Back / Forward (btnGalaxyMapBack / btnGalaxyMapForward, 40 × 30), the system map, the info,
-    // the landscape picture.
-    const nav = el('div', 'gmap-nav');
-    const backBtn = el('button', 'gmap-btn gmap-nav-btn', '◀');
-    backBtn.type = 'button';
-    backBtn.title = 'Back';
+    // btnGalaxyMapBack (575, 6) / btnGalaxyMapForward (620, 6), 40 x 30.
+    const backBtn = place(glassButton('', { image: 'back.png', title: 'Back' }), 575, 6, 40, 30);
     backBtn.dataset.gmap = 'back';
-    const fwdBtn = el('button', 'gmap-btn gmap-nav-btn', '▶');
-    fwdBtn.type = 'button';
-    fwdBtn.title = 'Forward';
+    const fwdBtn = place(glassButton('', { image: 'forward.png', title: 'Forward' }), 620, 6, 40, 30);
     fwdBtn.dataset.gmap = 'forward';
-    nav.append(backBtn, fwdBtn);
-    detail.appendChild(nav);
-    const sysCanvas = el('canvas', 'gmap-system-map');
+
+    // Recreation additions (header-parented, like the other screens' filters): the map layer toggles.
+    const nebulaToggle = place(checkBox('Nebulae', showNebulae, (v) => { showNebulae = v; draw(); }), 330, 15);
+    const regionToggle = place(checkBox('Region names', showRegions, (v) => { showRegions = v; draw(); }), 440, 15);
+
+    // picSystemMap (670, 8, 250 x 250), pnlHabitatInfo (670, 267, 250 x 240), pnlGalaxyMapHabitatPicture (670, 516).
+    const sysCanvas = place(el('canvas', 'gmap-system-map'), 670, 8, SYSTEM_MAP_PX, SYSTEM_MAP_PX);
     sysCanvas.title = 'Click a planet or moon to select it. Double-click to go there.';
-    detail.appendChild(sysCanvas);
-    const info = el('div', 'gmap-info');
-    detail.appendChild(info);
-    const landscape = el('div', 'gmap-landscape');
-    landscape.style.width = `${LANDSCAPE_PICTURE.w}px`;
-    landscape.style.height = `${LANDSCAPE_PICTURE.h}px`;
-    detail.appendChild(landscape);
+    const info = place(el('div', 'gmap-info'), 670, 267, 250, 240);
+    const landscape = place(el('div', 'gmap-landscape'), 670, 516, LANDSCAPE_PICTURE.w, LANDSCAPE_PICTURE.h);
 
-    // Key (legend) popover: pnlGalaxyMapKey (Main.Part11.cs method_129).
-    const key = el('div', 'gmap-key');
-    key.hidden = true;
-    key.append(el('div', 'gmap-title', 'Map Key'));
-    const legend: [string, string][] = [
-        ['rgb(255, 255, 0)', 'Main sequence star'],
-        ['rgb(255, 0, 0)', 'Red giant / super giant'],
-        ['rgb(255, 255, 255)', 'White dwarf'],
-        ['rgb(0, 255, 255)', 'Neutron star'],
-        ['rgb(0, 0, 176)', 'Black hole'],
-        ['rgb(128, 0, 128)', 'Super nova'],
-        ['rgb(238, 130, 238)', 'Gas cloud'],
-        [SELECTED_COLOR, 'Matches the current view filter'],
-        [DIMMED_COLOR, 'Other systems (filter active)'],
-    ];
-    for (const [c, label] of legend) {
-        const row = el('div', 'gmap-key-row');
-        const sw = el('span', 'gmap-swatch');
-        sw.style.background = c;
-        row.append(sw, el('span', '', label));
-        key.appendChild(row);
-    }
-    const viewKey = el('div', 'gmap-key-row');
-    const vsw = el('span', 'gmap-swatch gmap-swatch-rect');
-    viewKey.append(vsw, el('span', '', 'Current Main View'));
-    key.appendChild(viewKey);
-    side.insertBefore(key, actions);
+    // The match list (the recreation's lvwHabitats): its own column to the right of the picture column.
+    const listPanel = place(gradientPanel({ corners: { tr: true, br: true }, className: 'gmap-list-panel' }), 930, 40, LIST_W - 10, MAP_PX);
+    const listHead = place(owText('', { color: COLORS.label }), 935, 10);
+    const listGrid = new OwGrid<Habitat>({
+        columns: [{ id: 'name', header: 'Name', render: (h, c) => { c.textContent = h.name; } }],
+        key: (h) => h,
+        headers: false,
+        fontSize: FONT.small,
+        // lvwHabitats_SelectedIndexChanged: habitat_7 = its system, habitat_8 = the habitat.
+        onSelect: (h) => showHabitat(galaxyMapSystemOf(galaxy, h), h, true),
+        onDoubleClick: (h) => jump(h),
+    });
+    place(listGrid.el, 0, 0, LIST_W - 14, MAP_PX - 4);
+    listPanel.appendChild(listGrid.el);
 
-    let mapPx = 600;
+    /** Fill the opened window's body / header with the screen's controls. */
+    const mount = (w: OriginalWindow): void => {
+        w.body.append(mapWrap, viewLabel, viewSel, typeSel, resSel, keyBtn, gotoBtn, backBtn, fwdBtn, sysCanvas, info, landscape, listHead, listPanel);
+        w.header?.append(nebulaToggle, regionToggle);
+    };
+
+    const mapPx = MAP_PX;
 
     const updateFilterVisibility = (): void => {
-        typeRow.hidden = mode !== GalaxyMapViewMode.PotentialColonies;
-        resRow.hidden = mode !== GalaxyMapViewMode.KnownResources;
+        setShown(typeSel, mode === GalaxyMapViewMode.PotentialColonies);
+        setShown(resSel, mode === GalaxyMapViewMode.KnownResources);
     };
 
     const recompute = (): void => {
@@ -682,7 +695,7 @@ export function createGalaxyMap(opts: GalaxyMapOptions): GalaxyMapScreen {
         const sys = selectedSystem;
         const h = selectedHabitat ?? sys;
         if (sys === null || h === null) {
-            info.append(el('div', 'gmap-muted', 'Click a system to select it. Double-click to go there.'));
+            info.append(el('div', 'gmap-muted gmap-hint', 'Click a system to select it. Double-click to go there.'));
             gotoBtn.disabled = true;
             return;
         }
@@ -730,38 +743,38 @@ export function createGalaxyMap(opts: GalaxyMapOptions): GalaxyMapScreen {
     };
 
     const renderList = (): void => {
-        list.replaceChildren();
         const hs = selection.habitats;
+        setListColumn(hs !== null);
         if (hs === null) {
-            list.hidden = true;
+            listGrid.setRows([]);
             return;
         }
-        list.hidden = false;
-        list.append(el('div', 'gmap-list-head', `${hs.length} ${hs.length === 1 ? 'match' : 'matches'} in ${countLabel(selection.systems?.length ?? 0, 'system')}`));
-        for (const h of hs.slice(0, 200)) {
-            const b = el('button', 'gmap-list-row', h.name);
-            b.type = 'button';
-            // lvwHabitats_SelectedIndexChanged: habitat_7 = its system, habitat_8 = the habitat.
-            b.addEventListener('click', () => showHabitat(galaxyMapSystemOf(galaxy, h), h, true));
-            b.addEventListener('dblclick', () => jump(h));
-            list.appendChild(b);
+        setText(listHead, `${hs.length} ${hs.length === 1 ? 'match' : 'matches'} in ${countLabel(selection.systems?.length ?? 0, 'system')}`);
+        listGrid.setRows(hs.slice(0, 200));
+    };
+
+    /** Widen the window by the list column while a view filter lists habitats. */
+    const setListColumn = (show: boolean): void => {
+        listShown = show;
+        setShown(listHead, show);
+        setShown(listPanel, show);
+        if (win !== null) {
+            win.setSize(show ? WIN_W + LIST_W : WIN_W, WIN_H);
+            resizeCanvases();
         }
     };
 
-    const layout = (): void => {
-        const w = root.clientWidth || window.innerWidth;
-        const h = root.clientHeight || window.innerHeight;
-        // Map + detail column (250 + padding) + side panel (320) + gaps.
-        mapPx = Math.max(200, Math.floor(Math.min(h - 32, w - 320 - (SYSTEM_MAP_PX + 24) - 3 * 16 - 32)));
-        const dpr = window.devicePixelRatio || 1;
-        canvas.style.width = `${mapPx}px`;
-        canvas.style.height = `${mapPx}px`;
-        canvas.width = Math.round(mapPx * dpr);
-        canvas.height = Math.round(mapPx * dpr);
-        sysCanvas.style.width = `${SYSTEM_MAP_PX}px`;
-        sysCanvas.style.height = `${SYSTEM_MAP_PX}px`;
-        sysCanvas.width = Math.round(SYSTEM_MAP_PX * dpr);
-        sysCanvas.height = Math.round(SYSTEM_MAP_PX * dpr);
+    /** Back the canvases at the window's scale (the window is scaled as one with a CSS transform). */
+    const resizeCanvases = (): void => {
+        const k = Math.min(3, Math.max(1, (window.devicePixelRatio || 1) * (win?.scale ?? 1)));
+        canvas.style.width = `${MAP_PX}px`;
+        canvas.style.height = `${MAP_PX}px`;
+        canvas.width = Math.round(MAP_PX * k);
+        canvas.height = Math.round(MAP_PX * k);
+        sysCanvas.width = Math.round(SYSTEM_MAP_PX * k);
+        sysCanvas.height = Math.round(SYSTEM_MAP_PX * k);
+        draw();
+        drawSystemMap();
     };
 
     // Port of GalaxyMap.cs method_6 for the whole-galaxy case (int_8 = int_10 = 0).
@@ -943,7 +956,8 @@ export function createGalaxyMap(opts: GalaxyMapOptions): GalaxyMapScreen {
 
     const eventToWorld = (e: MouseEvent): { x: number; y: number } => {
         const r = canvas.getBoundingClientRect();
-        return mapToWorld(galaxy, mapPx, e.clientX - r.left, e.clientY - r.top);
+        const k = r.width > 0 ? mapPx / r.width : 1; // the window is CSS-scaled
+        return mapToWorld(galaxy, mapPx, (e.clientX - r.left) * k, (e.clientY - r.top) * k);
     };
     canvas.addEventListener('mouseup', (e) => {
         if (e.button !== 0) return;
@@ -989,56 +1003,107 @@ export function createGalaxyMap(opts: GalaxyMapOptions): GalaxyMapScreen {
         if (h !== null) showHabitat(galaxy.determineHabitatSystemStar(h) ?? h, h, false);
         renderNav();
     });
-    viewSel.addEventListener('change', () => {
-        mode = Number(viewSel.value) as GalaxyMapViewMode;
-        recompute();
-    });
-    typeSel.addEventListener('change', () => {
-        colonyType = COLONY_TYPE_FILTERS[Number(typeSel.value)].type;
-        recompute();
-    });
-    resSel.addEventListener('change', () => {
-        resourceId = Number(resSel.value);
-        recompute();
-    });
-    closeBtn.addEventListener('click', () => close());
-    gotoBtn.addEventListener('click', () => {
-        const h = selectedHabitat ?? selectedSystem;
-        if (h !== null) jump(h);
-    });
-    keyBtn.addEventListener('click', () => {
-        key.hidden = !key.hidden;
-    });
-    // Keys typed inside the overlay (e.g. in a <select>) don't reach the game;
-    // Esc still closes the screen.
-    root.addEventListener('keydown', (e) => {
-        e.stopPropagation();
-        if (e.key === 'Escape') {
-            e.preventDefault();
-            close();
-        }
-    });
-    const onResize = (): void => {
-        if (isOpen) {
-            layout();
-            draw();
-            drawSystemMap();
-        }
+    // pnlGalaxyMapKey (Main.Part11.cs method_129 / method_130): a 300 x 418 BorderPanel with the title, the MapKey
+    // control (pnlGalaxyMapKeyActual 280 x 368, here 280 x 386 inside a 300 x 436 panel for the extra Current Main View row at (10, 40)) and a Close button (140, 10).
+    const closeKey = (): void => {
+        const k = keyWin;
+        keyWin = null;
+        k?.close();
     };
-    window.addEventListener('resize', onResize);
+    const toggleKey = (): void => {
+        if (keyWin !== null) {
+            closeKey();
+            return;
+        }
+        const kw = openOriginalWindow({ id: 'galaxymap-key', title: 'Map Key', width: 300, height: 436, headerless: true, noAutoPause: true, onClose: () => { if (keyWin === kw) keyWin = null; } });
+        keyWin = kw;
+        kw.root.classList.add('gmap-key-layer');
+        kw.frame.classList.add('gmap-key');
+        kw.body.append(
+            place(owText('Map Key', { size: FONT.header, bold: true, color: '#fff' }), 7, 7),
+            place(glassButton('Close', { size: FONT.small, onClick: closeKey }), 137, 7, 150, 25),
+        );
+        const actual = place(gradientPanel({ corners: { tl: true, br: true } }), 7, 37, 280, 386);
+        actual.classList.add('gmap-key-actual');
+        const section = (title: string, y: number): number => {
+            actual.appendChild(place(owText(title, { size: FONT.large, bold: true, color: '#fff' }), 10, y));
+            return y + 21; // RowHeight * 1.5
+        };
+        const item = (c: string, label: string, y: number, rect = false): number => {
+            const sw = place(el('span', rect ? 'gmap-swatch gmap-swatch-rect' : 'gmap-swatch'), 10, y + 3);
+            if (!rect) sw.style.background = c;
+            actual.append(sw, place(owText(label, { size: FONT.tiny, color: COLORS.gridText, shadow: false }), 26, y));
+            return y + 14; // MapKey._RowHeight
+        };
+        // MapKey.DrawColorKey: three sections of rows.
+        let y = section('Galaxy Map', 10);
+        for (const [c, l] of [
+            ['rgb(255, 255, 0)', 'Main Sequence star system'],
+            ['rgb(255, 0, 0)', 'Red Giant or Super Giant star system'],
+            ['rgb(255, 255, 255)', 'White Dwarf star system'],
+            ['rgb(0, 255, 255)', 'Neutron star system'],
+            ['rgb(128, 0, 128)', 'Supernova star'],
+            ['rgb(0, 0, 176)', 'Black Hole'],
+            ['rgb(238, 130, 238)', 'Gas Cloud'],
+        ] as const) y = item(c, l, y);
+        y = item('', 'Current Main View', y, true) + 14;
+        y = section('System Map', y);
+        for (const [c, l] of [
+            ['rgb(0, 128, 0)', 'Continental planet or moon'],
+            ['rgb(255, 255, 0)', 'Marshy Swamp planet or moon'],
+            ['rgb(244, 164, 96)', 'Desert planet or moon'],
+            ['rgb(0, 0, 255)', 'Ocean planet or moon'],
+            ['rgb(0, 255, 255)', 'Ice planet or moon'],
+            ['rgb(255, 69, 0)', 'Volcanic planet or moon'],
+            ['rgb(64, 64, 64)', 'Barren Rock planet, moon or Asteroid'],
+            ['rgb(255, 0, 0)', 'Gas Giant planet'],
+            ['rgb(255, 20, 147)', 'Frozen Gas Giant planet'],
+        ] as const) y = item(c, l, y);
+        y = section('Filtered View Items', y + 14);
+        y = item(SELECTED_COLOR, 'Item matching view filter', y);
+        item(DIMMED_COLOR, 'Item not matching view filter', y);
+        kw.body.appendChild(actual);
+    };
+
+    backBtn.addEventListener('click', () => {
+        const h = galaxyMapHistoryBack(history);
+        if (h !== null) showHabitat(galaxy.determineHabitatSystemStar(h) ?? h, h, false);
+        renderNav();
+    });
+    fwdBtn.addEventListener('click', () => {
+        const h = galaxyMapHistoryForward(history);
+        if (h !== null) showHabitat(galaxy.determineHabitatSystemStar(h) ?? h, h, false);
+        renderNav();
+    });
 
     function open(selected: Habitat | null = null): void {
         if (isOpen) return;
         isOpen = true;
-        root.hidden = false;
         opts.onOpen?.();
         if (resourceId === null && resources.length > 0) resourceId = resources[0].resourceId;
-        layout();
+        // pnlGalaxyMap: ScreenPanel 945 × 760 (method_131), HeaderIcon galaxyMap.png.
+        const w = openOriginalWindow({
+            id: 'galaxymap',
+            title: 'Galaxy Map',
+            icon: 'galaxyMap.png',
+            width: WIN_W + (listShown ? LIST_W : 0),
+            height: WIN_H,
+            onResize: () => resizeCanvases(),
+            onClose: () => close(),
+        });
+        win = w;
+        w.root.classList.add('gmap-overlay');
+        // Keys typed inside the window (e.g. in a combo) don't reach the game; Esc still closes it.
+        w.root.addEventListener('keydown', (e) => {
+            if (e.key !== 'Escape') e.stopPropagation();
+        });
+        mount(w);
         // method_131 → method_152(habitat_9): the selected habitat's system and the habitat itself.
         if (selected !== null) {
             selectedSystem = galaxyMapSystemOf(galaxy, selected);
             selectedHabitat = selected;
         }
+        resizeCanvases();
         recompute();
         renderNav();
         renderInfo();
@@ -1048,8 +1113,10 @@ export function createGalaxyMap(opts: GalaxyMapOptions): GalaxyMapScreen {
     function close(): void {
         if (!isOpen) return;
         isOpen = false;
-        root.hidden = true;
-        key.hidden = true;
+        closeKey();
+        const w = win;
+        win = null;
+        w?.close();
         // method_132: habitatList_0.Clear(); int_24 = 0.
         galaxyMapHistoryClear(history);
         opts.onClose?.();
@@ -1064,7 +1131,6 @@ export function createGalaxyMap(opts: GalaxyMapOptions): GalaxyMapScreen {
         close,
         destroy: () => {
             close();
-            window.removeEventListener('resize', onResize);
             root.remove();
         },
         toggle: (selected?: Habitat | null) => (isOpen ? close() : open(selected ?? null)),
