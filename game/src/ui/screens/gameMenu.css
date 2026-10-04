@@ -89,6 +89,14 @@
     color: #cfd6df;
 }
 
+/* A short hint beside an option (e.g. Multithreading's RAM note). */
+.game-menu-option-note {
+    flex: 1 1 auto;
+    font-size: 11px;
+    color: #9aa3ad;
+    font-style: italic;
+}
+
 /* Volume slider. */
 .game-menu-option-row input[type='range'] {
     flex: 1;

@@ -4,6 +4,7 @@
 // The Options sub-panel edits src/ui/settings.ts (persisted) and drives the
 // music player + UI scale.
 import './gameMenu.css';
+import { systemMemoryGiB } from '../../systemMemory';
 import { GalaxyTime } from '../../sim/clock';
 import { musicControls, stopAllMusic } from '../../audio/musicPlayer';
 import { startEffects } from '../../audio/effectsPlayer';
@@ -265,7 +266,14 @@ export function buildOptionsPanel(
     optionsPanel.appendChild(makeToggle('Draw stations closer to their planet / moon', 'pullStationsToCentre'));
     optionsPanel.appendChild(makeToggle('Show weapon range circles for the selected ship', 'showWeaponRangeCircles'));
     // docs/sim-worker.md: read by main.ts when the next game starts or loads; off = the in-thread fallback.
-    optionsPanel.appendChild(makeToggle('Simulation in a worker thread (experimental, next game)', 'simWorker'));
+    // The sim worker (docs/sim-worker.md): on by default only with 16 GB+ of RAM (src/systemMemory.ts).
+    const mtRow = makeToggle('Multithreading (next game)', 'simWorker');
+    const mtNote = document.createElement('span');
+    mtNote.className = 'game-menu-option-note';
+    const mem = systemMemoryGiB();
+    mtNote.textContent = `Only turn on with 16 GB+ RAM${mem !== null ? ` (this computer: ${Math.round(mem)} GB)` : ''}`;
+    mtRow.insertBefore(mtNote, mtRow.lastChild);
+    optionsPanel.appendChild(mtRow);
     // [galaxymarkers] begin — Main.InitializeComponent.cs 9922-10041: grpGameOptionsAdvancedDisplaySettingsGalaxyIcons.
     const gvHead = document.createElement('div');
     gvHead.className = 'game-menu-option-label';

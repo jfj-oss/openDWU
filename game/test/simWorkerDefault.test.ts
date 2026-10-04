@@ -1,4 +1,5 @@
-// The sim worker is opt-in again (docs/sim-worker.md §6; it was the default briefly): the setting's default, its migration from the experimental era
+// The sim worker's default depends on the machine's RAM (src/systemMemory.ts; docs/sim-worker.md §6). In node the RAM is
+// unknown, so the default here is off: the setting's default, its migration from the experimental era
 // (a stored `false` written with every other setting before the flip is not a choice), the in-thread fallback through
 // the setting and through `?simWorker=0`.
 import { afterEach, describe, expect, it } from 'vitest';

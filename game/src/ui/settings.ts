@@ -5,6 +5,7 @@
 // real localStorage.
 
 import { startEffects } from '../audio/effectsPlayer';
+import { simWorkerDefault } from '../systemMemory';
 import { applyMusicSettings } from '../audio/musicPlayer'; // [audio]
 
 /** One entry of the persisted settings blob. */
@@ -196,8 +197,9 @@ export const DEFAULT_SETTINGS: UiSettings = {
     pullStationsToCentre: false,
     showWeaponRangeCircles: false,
     autoPauseInPopup: true,
-    // Off by default again (2026-10-04): severe slowdown and WebGL context loss on macOS; see docs/sim-worker.md §6.
-    simWorker: false,
+    // On by default only with 16 GB+ of RAM (src/systemMemory.ts): on an 8 GB Mac the replica's extra memory caused severe
+    // slowdown and WebGL context loss (2026-10-04); see docs/sim-worker.md §6.
+    simWorker: simWorkerDefault(),
 
     // [galaxymarkers] begin — GameOptions.cs 74-96 / Main.Part9.cs 2793-2804: all on except civilian ships.
     galaxyViewDisplayFleets: true,
@@ -390,8 +392,8 @@ export function saveSettings(settings: UiSettings): void {
     storage?.setItem(STORAGE_KEY, JSON.stringify({ ...settings, simWorkerVersion: SIM_WORKER_SETTING_VERSION }));
 }
 
-/** Stored next to `simWorker` (loadSettings): 2 = saved while the worker was the default, 3 = saved since it went back
- *  to opt-in (values stored under 1-2 are ignored, so everyone starts in-thread again). */
+/** Stored next to `simWorker` (loadSettings): 2 = saved while the worker was the default, 3 = saved since the default
+ *  depends on the machine's RAM (values stored under 1-2 are ignored, so everyone gets the RAM-based default). */
 export const SIM_WORKER_SETTING_VERSION = 3;
 
 /** Current in-memory copy of the settings (loaded once at first use). */
