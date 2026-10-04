@@ -5,9 +5,13 @@
 //   labelledTrackBar()  DistantWorlds.Controls.LabelledTrackBar: a GradientPanel with a bold caption, a ColorSlider
 //                       and one label + tick per step (LabelledTrackBar.cs Setup / DoLayout / OnPaint)
 //   checkBoxRight()     a CheckBox with CheckAlign = MiddleRight (text first, box on the right)
+//   radioButton()       System.Windows.Forms.RadioButton in the CheckBox colours
+//   roundRectanglePanel() DistantWorlds.Controls.RoundRectanglePanel (a rounded frame in its ForeColor)
+//   raceDropDown()      DistantWorlds.Controls.RaceDropDown (race picture + name per item, "(Random)" first)
+//   colorDropDown()     DistantWorlds.Controls.ColorDropDown (one colour swatch per item)
 
 import './originalWindowControls.css';
-import { checkBox, el, FONT, gradientPanel, place } from './originalWindow';
+import { checkBox, el, FONT, gradientPanel, imageCombo, linkLabel, place, type ImageCombo, type ImageComboItem } from './originalWindow';
 
 // -------------------------------------------------------------------------------------------------------------------
 // Pure helpers (tested)
@@ -26,11 +30,11 @@ export function sliderValueAt(x: number, min: number, max: number, width: number
     return Math.max(min, Math.min(max, v));
 }
 
-/** LabelledTrackBar.DoLayout (LinkWidth 0): the slider's rect inside a trackbar of w × h. */
-export function trackBarSliderRect(w: number, h: number, labelWidth: number, sliderOffset = 25): { x: number; y: number; w: number; h: number } {
+/** LabelledTrackBar.DoLayout: the slider's rect inside a trackbar of w × h (LinkWidth `linkWidth`, default 0). */
+export function trackBarSliderRect(w: number, h: number, labelWidth: number, sliderOffset = 25, linkWidth = 0): { x: number; y: number; w: number; h: number } {
     const padding = 3;
     const sliderHeight = 22;
-    return { x: padding + labelWidth + sliderOffset, y: h - (sliderHeight + padding), w: Math.max(1, w - (padding * 2 + labelWidth + sliderOffset * 2)), h: sliderHeight };
+    return { x: padding + labelWidth + sliderOffset, y: h - (sliderHeight + padding), w: Math.max(1, w - (padding * 2 + labelWidth + sliderOffset * 2 + linkWidth)), h: sliderHeight };
 }
 
 /** LabelledTrackBar.OnPaint: the x of step `index`'s tick / label centre. */
@@ -205,6 +209,13 @@ export interface LabelledTrackBarOptions {
     /** The control's Font size (font_4 on the Options screens). */
     size?: number;
     onChange?: (v: number) => void;
+    /** SliderOffset (Setup(sliderOffset)); default 25. */
+    sliderOffset?: number;
+    /** LinkWidth: room kept right of the slider for the LinkLabel; default 0. */
+    linkWidth?: number;
+    /** LinkText: the LinkLabel drawn in that room (vertically centred, at Width - (LinkWidth + 3)); LinkClicked. */
+    linkText?: string;
+    onLink?: () => void;
 }
 
 /** LabelledTrackBar after Setup(): a GradientPanel ((39, 40, 44) / (36, 35, 40) / (51, 54, 61), 1 px (67, 67, 77) border,
@@ -227,16 +238,29 @@ export function labelledTrackBar(o: LabelledTrackBarOptions): { el: HTMLDivEleme
     const caption = el('div', 'owc-trackbar-caption', o.labelText);
     place(caption, -B, -B, o.labelWidth, o.height);
     p.appendChild(caption);
-    const r = trackBarSliderRect(o.width, o.height, o.labelWidth);
+    const linkWidth = o.linkWidth ?? 0;
+    const r = trackBarSliderRect(o.width, o.height, o.labelWidth, o.sliderOffset ?? 25, linkWidth);
     const thumb = 10;
     const n = o.labels.length;
+    // OnPaint: each label measured in a layout width of Slider.Width / (count - 1) (so a long one wraps), centred on its
+    // tick, at y = Padding.
+    const labelW = n > 1 ? Math.trunc(r.w / (n - 1)) : r.w;
     for (let i = 0; i < n; i++) {
         const x = trackBarTickX(i, n, r.x, r.w, thumb);
         p.appendChild(place(el('div', 'owc-trackbar-tick'), x - B, r.y - B, 2, 7));
-        p.appendChild(place(el('div', 'owc-trackbar-label', o.labels[i]), x - B, 3 - B));
+        const lab = place(el('div', 'owc-trackbar-label', o.labels[i]), x - B, 3 - B);
+        lab.style.maxWidth = `${labelW}px`;
+        p.appendChild(lab);
     }
     const slider = colorSlider({ value: o.value, min: 0, max: Math.max(1, n - 1), width: r.w, height: r.h, thumbSize: thumb, largeChange: 1, wheelPartitions: Math.max(1, n - 1), onChange: o.onChange });
     p.appendChild(place(slider.el, r.x - B, r.y - B));
+    if (o.linkText) {
+        const onLink = o.onLink;
+        const link = linkLabel(o.linkText, () => onLink?.(), size);
+        link.classList.add('owc-trackbar-link');
+        // LinkLabel MaximumSize (LinkWidth × Height): wraps inside the room, centred vertically.
+        p.appendChild(place(link, o.width - (linkWidth + 3) - B, -B, linkWidth, o.height));
+    }
     return { el: p, slider };
 }
 
@@ -249,4 +273,152 @@ export function checkBoxRight(label: string, checked: boolean, onChange: ((v: bo
     const c = checkBox(label, checked, onChange, size);
     c.classList.add('owc-check-right');
     return c;
+}
+
+// -------------------------------------------------------------------------------------------------------------------
+// RadioButton
+// -------------------------------------------------------------------------------------------------------------------
+
+/** A RadioButton (ForeColor (170, 170, 170), the CheckBox look): `group` is the radio group's name. */
+export function radioButton(label: string, group: string, checked: boolean, onChange: (() => void) | null, size: number = FONT.normal): HTMLLabelElement {
+    const l = el('label', 'ow-check owc-radio');
+    l.style.fontSize = `${size}px`;
+    const r = el('input');
+    r.type = 'radio';
+    r.name = group;
+    r.checked = checked;
+    r.disabled = onChange === null;
+    if (onChange) r.addEventListener('change', () => r.checked && onChange());
+    l.append(r, el('span', '', label));
+    return l;
+}
+
+// -------------------------------------------------------------------------------------------------------------------
+// RoundRectanglePanel
+// -------------------------------------------------------------------------------------------------------------------
+
+/** RoundRectanglePanel.DrawBorder: a `borderWidth` pen in `color` along a rounded rectangle inset by half the pen,
+ *  corner radius CornerCurveRadius - 1 at the pen's centre. Children are placed inside it. */
+export function roundRectanglePanel(color: string, borderWidth = 5, cornerRadius = 5): HTMLDivElement {
+    const p = el('div', 'owc-roundrect');
+    p.style.border = `${borderWidth}px solid ${color}`;
+    p.style.borderRadius = `${Math.max(0, cornerRadius - 1 + borderWidth / 2)}px`;
+    return p;
+}
+
+// -------------------------------------------------------------------------------------------------------------------
+// RaceDropDown
+// -------------------------------------------------------------------------------------------------------------------
+
+export interface RaceDropDownRace {
+    name: string;
+    /** The race's picture (RaceImageCache: images/units/races/race_<PictureRef>.png). */
+    pictureUrl: string | null;
+}
+
+export interface RaceDropDownOptions {
+    /** In list order (BindData sorts the RaceList by name). */
+    races: readonly RaceDropDownRace[];
+    /** The selected race name; '' = "(Random)" (when `randomText` is set). */
+    value: string;
+    /** allowRandomRace: the first item, drawn as this text ("(Random)"). */
+    randomText?: string;
+    /** The ComboBox height (ClientRectangle.Height): items are Height - 2 tall, the name at x = Height. */
+    height: number;
+    size?: number;
+    maxItems?: number;
+    listParent?: () => HTMLElement | null;
+    onChange: (raceName: string) => void;
+}
+
+/** RaceDropDown.OnDrawItem: (22, 21, 26) back, the race picture scaled to the item height at (3, y + 1) and the name
+ *  at x = ClientRectangle.Height; "(Random)" text only. Value '' is the random item. */
+export function raceDropDown(o: RaceDropDownOptions): ImageCombo & { setRaces(races: readonly RaceDropDownRace[]): void } {
+    const ih = Math.max(1, o.height - 2);
+    const items = (races: readonly RaceDropDownRace[]): ImageComboItem[] => [
+        ...(o.randomText !== undefined ? [{ value: '', label: o.randomText }] : []),
+        ...races.map((r) => ({ value: r.name, label: r.name, pictures: r.pictureUrl ? [{ url: r.pictureUrl, x: 3 }] : [] })),
+    ];
+    const combo = imageCombo({ items: items(o.races), value: o.value, onChange: o.onChange, itemHeight: ih, textX: o.height, size: o.size, maxItems: o.maxItems ?? 12, className: 'owc-race-combo', listParent: o.listParent });
+    return Object.assign(combo, { setRaces: (races: readonly RaceDropDownRace[]) => combo.setItems(items(races)) });
+}
+
+// -------------------------------------------------------------------------------------------------------------------
+// ColorDropDown
+// -------------------------------------------------------------------------------------------------------------------
+
+export interface ColorDropDownOptions {
+    /** The palette (ResolveColors), as CSS colours ('#rrggbb'). */
+    colors: readonly string[];
+    /** The selected colour; added to the list when it is not in the palette (Ignite's includeColor). */
+    value: string;
+    onChange: (color: string) => void;
+    /** A last "Custom..." item that opens the system colour picker (recreation extra). */
+    allowCustom?: boolean;
+    maxItems?: number;
+    listParent?: () => HTMLElement | null;
+}
+
+/** ColorDropDown: (48, 48, 64) / (170, 170, 170), items 19 px tall, each FillRectangle(colour, (1, y + 1, w - 2,
+ *  h - 2)); the box shows the selected swatch. Values are lower-case '#rrggbb'. */
+export function colorDropDown(o: ColorDropDownOptions): ImageCombo & { setColor(color: string): void } {
+    const ih = 19;
+    const norm = (c: string): string => c.trim().toLowerCase();
+    let value = norm(o.value);
+    const picker = el('input', 'owc-color-picker');
+    picker.type = 'color';
+    picker.tabIndex = -1;
+    const CUSTOM = '__custom__';
+    const swatch = (color: string) => (row: HTMLDivElement, h: number): void => {
+        const s = el('div', 'owc-color-swatch');
+        place(s, 1, 1, undefined, h - 2);
+        s.style.right = '1px';
+        s.style.background = color;
+        row.appendChild(s);
+    };
+    const build = (): ImageComboItem[] => {
+        const list = o.colors.map(norm);
+        if (value !== '' && !list.includes(value)) list.push(value);
+        const out: ImageComboItem[] = list.map((c) => ({ value: c, label: c, title: c, draw: swatch(c) }));
+        if (o.allowCustom) out.push({ value: CUSTOM, label: 'Custom...', title: 'Pick any colour' });
+        return out;
+    };
+    const combo = imageCombo({
+        items: build(),
+        value,
+        itemHeight: ih,
+        maxItems: o.maxItems ?? 12,
+        className: 'owc-color-combo',
+        listParent: o.listParent,
+        onChange: (v) => {
+            if (v === CUSTOM) {
+                combo.setValue(value);
+                picker.value = /^#[0-9a-f]{6}$/.test(value) ? value : '#808080';
+                try {
+                    picker.showPicker();
+                } catch {
+                    picker.click();
+                }
+                return;
+            }
+            value = v;
+            o.onChange(v);
+        },
+    });
+    picker.addEventListener('click', (e) => e.stopPropagation());
+    picker.addEventListener('pointerdown', (e) => e.stopPropagation());
+    picker.addEventListener('input', () => {
+        value = norm(picker.value);
+        combo.setItems(build());
+        combo.setValue(value);
+        o.onChange(value);
+    });
+    combo.el.appendChild(picker);
+    return Object.assign(combo, {
+        setColor(color: string) {
+            value = norm(color);
+            combo.setItems(build());
+            combo.setValue(value);
+        },
+    });
 }

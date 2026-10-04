@@ -151,6 +151,8 @@ async function main() {
         try {
             await page.click('button[data-id="startNewGame"]');
             await page.waitForSelector('.wizard-window', { state: 'visible', timeout: 10000 });
+            // The Playstyle page: a custom game continues with The Galaxy.
+            await page.click('.wizard-type-btn[data-type="CustomStandard"]');
             await shot(page, 'wizard opened (The Galaxy)');
 
             const nextSel = '.wizard-btn-primary';
@@ -163,15 +165,15 @@ async function main() {
                     .waitForFunction(() => !document.querySelector('.wizard-race-loading'), { timeout: 10000 })
                     .catch(() => {});
                 const label = await page.textContent(nextSel);
-                if (label === 'Start Game') break;
+                if (label === 'Start the Game!') break;
                 await page.click(nextSel);
                 await page.waitForTimeout(150);
             }
             await shot(page, 'wizard last page (Start)');
 
             const finalLabel = await page.textContent(nextSel);
-            if (finalLabel !== 'Start Game') {
-                throw new Error(`expected the forward button to read "Start Game" on the last page, got "${finalLabel}"`);
+            if (finalLabel !== 'Start the Game!') {
+                throw new Error(`expected the forward button to read "Start the Game!" on the last page, got "${finalLabel}"`);
             }
             await page.click(nextSel);
             await page.waitForSelector('#hud', { state: 'attached', timeout: 60000 });
