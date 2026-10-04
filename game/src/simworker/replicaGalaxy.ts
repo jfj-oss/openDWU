@@ -53,7 +53,7 @@ export function hotGates(): Record<string, { gate: string; children: readonly st
 /**
  * Hot fields of the hot classes with a FIXED list (fixedHotClasses below): what the main view reads every frame —
  * render/renderInterp.ts MovingBuiltObject / MovingCreature / MovingFighter / MovingShot (position, heading, speeds,
- * parent frame, last touch), the hyperjump / docking / shield-strike / ion-strike / combat state the ship, effects and
+ * parent frame, last touch, a fighter's leash: mission and in-view flag), the hyperjump / docking / shield-strike / ion-strike / combat state the ship, effects and
  * overlay layers draw (effectsLayer.ts weaponDrawCommand / fighterWeaponDrawCommand / drawExplosion, combatBars.ts battle
  * bars incl. the boarding values,
  * shipOverlays.ts, liveryLayer.ts lightning scars), owner / fleet / role changes, and what
@@ -78,7 +78,7 @@ export function alwaysHotFields(): Set<string> {
     add('Creature', `xpos ypos currentHeading targetHeading currentSpeed targetSpeed movementSpeed hyperSpeed lungeSpeed currentTarget
         parentHabitat parentX parentY lastTouch hasBeenDestroyed damage isVisible turnDirection distanceToTarget nearestSystemStar`);
     add('Fighter', `xpos ypos heading targetHeading currentSpeed _targetSpeed topSpeed hasBeenDestroyed onboardCarrier lastTouch health
-        currentShields lastShieldStrike lastShieldStrikeDirection currentTarget parentBuiltObject empire inBattle`);
+        currentShields lastShieldStrike lastShieldStrikeDirection currentTarget parentBuiltObject empire inBattle missionType inView`);
     // Shots in flight (compared with their firer, render/effectsLayer.ts weaponDrawCommand + sampleShot).
     add('Weapon', 'x y heading lastFired distanceTravelled target power willHitTarget _resetNext');
     add('FighterWeapon', 'x y heading lastFired distanceTravelled power willHitTarget resetNext');

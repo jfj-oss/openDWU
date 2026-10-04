@@ -30,7 +30,7 @@ import { builtObjectMission } from '../src/sim/missions/mission';
 import { BuiltObjectFleeWhen } from '../src/sim/data/designSpecifications';
 import { ComponentCategoryType } from '../src/sim/data/policies';
 import { ComponentStatus } from '../src/sim/builtObjectComponent';
-import { MotionInterpolator, createRenderTime, habitatTouchClampSeconds, sampleBuiltObject, sampleCreature, sampleFighter, sampleShot, type RenderTime } from '../src/render/renderInterp';
+import { MotionInterpolator, createRenderTime, extrapolateMover, fighterTurnRate, habitatTouchClampSeconds, sampleBuiltObject, sampleCreature, sampleFighter, sampleShot, type MovingFighter, type RenderTime } from '../src/render/renderInterp';
 import { fighterShotFlightSpeed, shotFlightSpeed } from '../src/render/effectsLayer';
 import { creatureAnimSeconds } from '../src/render/creatureLayer';
 
@@ -251,7 +251,10 @@ describe('fighters, shots and creatures are drawn smoothly between round-robin t
         expect(a.fighters.reversals).toBeLessThanOrEqual(b.fighters.reversals);
         expect(a.fighters.maxJerk).toBeLessThan(b.fighters.maxJerk / 2);
         // Includes the out-of-view leash reset when the fight ends (Fighter.cs 1805: every fighter beyond 600 of its
-        // carrier moved onto that circle in one step, 40-180 units): eased out (FIGHTER_SOFT_SNAP_MS), not a pop.
+        // carrier moved onto that circle in one step, 200-340 units): eased out (FIGHTER_SOFT_SNAP_MS, longer for a long
+        // reset), not a pop; the patrol after it, the fighters sliding round that circle (extrapolated on the leash, not
+        // past it); and the carrier — a base at its planet — stepping along the planet's orbit every habitat round-robin,
+        // the fighters on its leash with it (drawn round the drawn base instead).
         expect(a.fighters.maxJerk).toBeLessThan(0.25);
         expect(b.shots.stalls).toBeGreaterThan(50);
         expect(a.shots.stalls).toBe(0);
@@ -280,6 +283,128 @@ describe('space creatures on the seed-1 harness galaxy (moved every ceil(creatur
         expect(a.maxJerk).toBeLessThan(b.maxJerk / 2);
         expect(a.maxJerk).toBeLessThan(0.1);
     }, 1_800_000);
+});
+
+describe('fighters on the out-of-view leash of a base at an orbiting planet (synthetic: no galaxy generation)', () => {
+    // A stand-in for the sim, as Fighter.cs 1783 DoMovement / BuiltObject.DoTasks / the round-robins move them: the base
+    // is parked at a planet (ParentHabitat + ParentOffset) and touched every 2 steps (with its fighters: move, then the
+    // leash — 600 on patrol, 1500 on attack — along the base → fighter line); the planet is touched every 60 steps (the
+    // habitat round-robin), so the base's committed position steps along the orbit at its first touch after.
+    // Six patrol fighters press outward against the leash and slide round it; four attack fighters at 850 fly round
+    // the base until the fight ends (step 100: Attack → Patrol, their next touch puts them back on the 600 circle).
+    // Each fighter is drawn twice: as MainView draws it, and with no MissionType (the leash ignored: how sampleFighter
+    // drew them before it knew about it).
+    const STEPS = 420;
+    const ORBIT = 100_000;
+    const APS = 1e-4; // 10 units / s along the orbit: a 10-unit step of the base per habitat round-robin
+    interface SimFighter {
+        xpos: number;
+        ypos: number;
+        heading: number;
+        targetHeading: number;
+        currentSpeed: number;
+        targetSpeed: number;
+        topSpeed: number;
+        lastTouch: number;
+        onboardCarrier: boolean;
+        inView: boolean;
+        missionType: number | undefined;
+        specification: { turnRate: number; accelerationRate: number };
+        parentBuiltObject: unknown;
+    }
+    function run(): { leash: Stats; ignored: Stats; resetMax: number } {
+        const star = { parent: null, xpos: 0, ypos: 0, orbitAngle: 0, anglePerSecond: 0, orbitDirection: true, orbitDistance: 0, lastTouch: 0 };
+        const planet = { parent: star, xpos: ORBIT, ypos: 0, orbitAngle: 0, anglePerSecond: APS, orbitDirection: true, orbitDistance: ORBIT, lastTouch: 0, hasBeenDestroyed: false };
+        const base = {
+            xpos: ORBIT + 20, ypos: 22, heading: 0, topSpeed: 0, warpSpeed: 0, currentSpeed: 0, parentHabitat: planet, parentOffsetX: 20, parentOffsetY: 22,
+            lastTouch: 0, dockedAt: null, parentBuiltObject: null, hasBeenDestroyed: false,
+        };
+        const fighters: SimFighter[] = [];
+        const add = (bearing: number, d: number, heading: number, targetHeading: number, missionType: number) =>
+            fighters.push({
+                xpos: base.xpos + Math.cos(bearing) * d, ypos: base.ypos + Math.sin(bearing) * d, heading, targetHeading, currentSpeed: 52.5, targetSpeed: 52.5, topSpeed: 105,
+                lastTouch: 0, onboardCarrier: false, inView: false, missionType, specification: { turnRate: 0.3, accelerationRate: 40 }, parentBuiltObject: base,
+            });
+        for (let i = 0; i < 6; i++) add((i * Math.PI) / 3, 600, (i * Math.PI) / 3 + 0.35, (i * Math.PI) / 3 + 2.2, 2);
+        for (let i = 0; i < 4; i++) add((i * Math.PI) / 2 + 0.4, 850, (i * Math.PI) / 2 + 0.4 + Math.PI / 2, (i * Math.PI) / 2 + 0.4 + Math.PI / 2 + 0.25, 1);
+        const views = fighters.map((f) => ({ leash: { ...f }, ignored: { ...f, missionType: undefined } }));
+        const leash = new MotionInterpolator();
+        const ignored = new MotionInterpolator();
+        const jl = fighters.map(() => new Jitter());
+        const ji = fighters.map(() => new Jitter());
+        const rt = createRenderTime();
+        rt.stepGameMs = STEP_MS;
+        let now = 0;
+        let resetMax = 0;
+        for (let s = 1; s <= STEPS; s++) {
+            now += STEP_MS;
+            if (s % 2 === 0) {
+                // The base's DoTasks: placed at its planet's committed position + offset, then its fighters.
+                base.xpos = planet.xpos + base.parentOffsetX;
+                base.ypos = planet.ypos + base.parentOffsetY;
+                base.lastTouch = now;
+                for (const f of fighters) {
+                    const dt = (now - f.lastTouch) / 1000;
+                    const p = extrapolateMover(f.xpos, f.ypos, f.heading, f.targetHeading, fighterTurnRate(f.specification.turnRate, f.currentSpeed, f.topSpeed), f.currentSpeed, f.targetSpeed, f.specification.accelerationRate, dt, { x: 0, y: 0, heading: 0 });
+                    f.xpos = p.x;
+                    f.ypos = p.y;
+                    f.heading = p.heading;
+                    const r = f.missionType === 2 ? 600 : 1500;
+                    const d = Math.hypot(f.xpos - base.xpos, f.ypos - base.ypos);
+                    if (d > r) {
+                        const a = Math.atan2(f.ypos - base.ypos, f.xpos - base.xpos);
+                        f.xpos = base.xpos + Math.cos(a) * r;
+                        f.ypos = base.ypos + Math.sin(a) * r;
+                        resetMax = Math.max(resetMax, d - r);
+                    }
+                    f.lastTouch = now;
+                    if (s >= 100 && f.missionType === 1) f.missionType = 2;
+                }
+            }
+            if (s % 60 === 7) {
+                // The planet's round-robin touch.
+                planet.orbitAngle += APS * ((now - planet.lastTouch) / 1000);
+                planet.lastTouch = now;
+                planet.xpos = Math.cos(planet.orbitAngle) * ORBIT;
+                planet.ypos = Math.sin(planet.orbitAngle) * ORBIT;
+            }
+            fighters.forEach((f, i) => {
+                Object.assign(views[i].leash, f);
+                Object.assign(views[i].ignored, f, { missionType: undefined });
+            });
+            for (let k = 0; k < SUBFRAMES; k++) {
+                rt.alpha = k / SUBFRAMES;
+                rt.stepSerial += k === 0 ? 1 : 0;
+                rt.simNowMs = now;
+                rt.renderNowMs = now + rt.alpha * STEP_MS;
+                for (const [m, which, js] of [[leash, 'leash', jl], [ignored, 'ignored', ji]] as const) {
+                    m.begin(rt, habitatTouchClampSeconds(60_000), 1500, 0, 60_000);
+                    views.forEach((v, i) => {
+                        const st = sampleFighter(m, v[which] as MovingFighter);
+                        js[i].add(st.x, st.y);
+                    });
+                }
+            }
+        }
+        return { leash: total(new Map(), jl), ignored: total(new Map(), ji), resetMax };
+    }
+
+    it('slide round the leash with no reversal, carried with the drawn base; the fight-end reset eases out', () => {
+        const { leash, ignored, resetMax } = run();
+        console.log(`[leash synthetic] reset up to ${resetMax.toFixed(0)} units\n  leash ignored: ${fmt(ignored)}\n  leash:         ${fmt(leash)}`);
+        expect(leash.frames).toBeGreaterThan(10 * (STEPS - 2) * SUBFRAMES - 100);
+        expect(resetMax).toBeGreaterThan(200);
+        // Ignoring the leash, the extrapolation carries the fighters pressing outward past the circle and every touch
+        // pulls them back: a reversal per touch.
+        expect(ignored.reversals).toBeGreaterThan(100);
+        expect(leash.reversals).toBe(0);
+        expect(leash.stalls).toBe(0);
+        // The largest frame-to-frame change is the reset's: its ease (SOFT_SNAP_MAX_ACCEL, 8000 units / s²: 0.145 a frame²
+        // here) and the fighters' turn from round the base at 850 to sliding round the 600 circle (0.2 in all). Ignoring
+        // the leash, the base's 10-unit steps along the orbit move the fighters on it a few units a frame.
+        expect(leash.maxJerk).toBeLessThan(0.25);
+        expect(leash.maxJerk).toBeLessThan(ignored.maxJerk / 4);
+    });
 });
 
 describe('creature animation clock (creatureLayer.ts)', () => {

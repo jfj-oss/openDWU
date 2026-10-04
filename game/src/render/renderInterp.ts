@@ -21,7 +21,8 @@
 // - Objects the background round-robin moves only every few steps — ships in galaxies over 1000 built objects, their
 //   fighters and shots (moved in their carrier / firer's DoTasks), habitat-fired shots, creatures (50 a step) — are
 //   sampled where their next touch will put them (extrapolated from their LastTouch), so they glide instead of moving in
-//   bursts; a fighter's position reset by the out-of-view leash is eased out (soft snap) instead of popping.
+//   bursts. A fighter's extrapolation is kept on its out-of-view leash, a fighter on the leash is drawn round the drawn
+//   carrier, and its position reset by the leash is eased out (soft snap) instead of popping.
 
 import { FRAME_REAL_MS, FRAMES_PER_SECOND, HABITAT_TICK_BATCH_SIZE } from '../sim/tick/scheduler';
 import { MIN_TIME, spanSeconds } from '../sim/tick/simTime';
@@ -456,6 +457,12 @@ export const MAX_BURST_STEPS = 120;
  * (PresentationClock's delay covers about half a burst plus the irregularity). */
 export const MOTION_HISTORY = 8;
 
+/** Largest acceleration (world units / game s²) of a soft snap's easing offset (sample's `softSnapMs`): a jump too long
+ * to ease within `softSnapMs` under it takes longer, up to SOFT_SNAP_MAX_MS. */
+export const SOFT_SNAP_MAX_ACCEL = 8000;
+/** Longest a soft snap eases (game ms). */
+export const SOFT_SNAP_MAX_MS = 1500;
+
 /** What MotionInterpolator.advance did with a new sim position. */
 const enum Advance {
     /** Lerping on (or nothing new). */
@@ -492,14 +499,21 @@ export interface MotionState {
     x: number;
     y: number;
     heading: number;
-    /** Soft snap (sample's `softSnapMs`): the drawn-minus-new offset (galaxy units) at a jump, eased out to 0 over
-     * `eMs` game ms from render instant `eStart`. eMs 0: none. */
+    /** Soft snap (sample's `softSnapMs`): the drawn position is the history track plus an offset that starts at
+     * (ex, ey) with velocity (evx, evy) (galaxy units, per step) at presented serial `eStart` and comes to rest eLen
+     * steps later (cubic Hermite, easeOffset). eLen 0: none. */
     ex: number;
     ey: number;
+    evx: number;
+    evy: number;
     eStart: number;
-    eMs: number;
-    /** RenderTime.renderNowMs of the last sample. */
-    renderMs: number;
+    eLen: number;
+    /** The history track (without the offset) at the last sample, and its velocity there (per step; trackVelocity):
+     * where the drawn object was heading, for a soft snap's start. Kept for soft-snapping objects only. */
+    tx: number;
+    ty: number;
+    tvx: number;
+    tvy: number;
     /** The presented serial the last sample was drawn at. */
     atSerial: number;
     /** The samples, oldest first: (serial, x, y, heading) × hn, in `frame` coordinates. */
@@ -507,11 +521,28 @@ export interface MotionState {
     hn: number;
 }
 
-/** Ease-out weight of a soft snap's offset at fraction u of its span (1 → 0, smoothstep: no velocity step at either end). */
-function softSnapWeight(u: number): number {
-    if (!(u < 1)) return 0;
-    if (!(u > 0)) return 1;
-    return 1 - u * u * (3 - 2 * u);
+/** Scratch for easeOffset: the offset and its velocity (per step). */
+const easeScratch = { x: 0, y: 0, vx: 0, vy: 0 };
+
+/** `st`'s correction offset at presented serial `at` and its velocity (per step): the cubic Hermite from (ex, ey) with
+ * velocity (evx, evy) at eStart to (0, 0) at rest eLen steps later — no position or velocity step at either end. */
+function easeOffset(st: MotionState, at: number, out: { x: number; y: number; vx: number; vy: number }): { x: number; y: number; vx: number; vy: number } {
+    const T = st.eLen;
+    const u = T > 0 ? (at - st.eStart) / T : 1;
+    if (!(u < 1)) {
+        out.x = out.y = out.vx = out.vy = 0;
+        return out;
+    }
+    const w = u > 0 ? u : 0;
+    const h00 = 1 - w * w * (3 - 2 * w);
+    const h10 = w * (1 - w) * (1 - w);
+    const d00 = (6 * w * (w - 1)) / T;
+    const d10 = 1 - w * (4 - 3 * w);
+    out.x = h00 * st.ex + h10 * T * st.evx;
+    out.y = h00 * st.ey + h10 * T * st.evy;
+    out.vx = d00 * st.ex + d10 * st.evx;
+    out.vy = d00 * st.ey + d10 * st.evy;
+    return out;
 }
 
 /** Scratch pose for history reads. */
@@ -545,6 +576,28 @@ function historyAt(st: MotionState, at: number, out: { x: number; y: number; hea
     out.heading = lerpAngle(h[i + 3], h[j + 3], t);
     return out;
 }
+
+/** The velocity (frame units per step) of `st`'s history track at serial `at`: the segment `at` lies on (the later one at
+ * a sample), the last one at or past the newest sample; 0 before the oldest (the track holds there) or with one sample. */
+function trackVelocity(st: MotionState, at: number, out: { x: number; y: number }): { x: number; y: number } {
+    const h = st.hs;
+    const n = st.hn;
+    out.x = 0;
+    out.y = 0;
+    if (n < 2 || at < h[0]) return out;
+    let j = 4;
+    while (j < (n - 1) * 4 && !(at < h[j])) j += 4;
+    const i = j - 4;
+    const ds = h[j] - h[i];
+    if (ds > 0) {
+        out.x = (h[j + 1] - h[i + 1]) / ds;
+        out.y = (h[j + 2] - h[i + 2]) / ds;
+    }
+    return out;
+}
+
+/** Scratch for trackVelocity. */
+const velScratch: Point = { x: 0, y: 0 };
 
 /** Start `st`'s history over at one sample. */
 function snapTo(st: MotionState, serial: number, x: number, y: number, heading: number): void {
@@ -599,6 +652,8 @@ function pushSample(st: MotionState, serial: number, x: number, y: number, headi
  */
 export class MotionInterpolator {
     private states = new WeakMap<object, MotionState>();
+    /** Per fighter: leashWeight's state. */
+    private leash = new WeakMap<object, { atMs: number; w: number }>();
     private renderFrame = 0;
     serial = 0;
     alpha = 0;
@@ -648,18 +703,22 @@ export class MotionInterpolator {
      * heading set to the drawn values.
      *
      * `softSnapMs` > 0: a jump (isJump) of an object drawn last frame is not shown as a pop but eased out over that many
-     * game ms — the drawn position starts where it was last frame and converges on the new one (render time: it holds
-     * while paused). First sight, a long gap, a new epoch and moves made without a step still snap at once.
+     * game ms, with no step in the drawn position or velocity: the track goes on from the new position along
+     * (`jumpVx`, `jumpVy`) per step — the object's own motion there, which its next samples follow (NaN: its last
+     * step's) — and an offset that starts at the drawn-minus-new position, with the drawn-minus-new velocity, eases to
+     * rest (easeOffset). Presented time: it holds while paused. First sight, a long gap, a new epoch and moves made
+     * without a step still snap at once.
      */
-    sample(obj: object, x: number, y: number, heading: number, maxSpeed: number, frame: object | null = null, originX = 0, originY = 0, epoch = 0, softSnapMs = 0): MotionState {
+    sample(obj: object, x: number, y: number, heading: number, maxSpeed: number, frame: object | null = null, originX = 0, originY = 0, epoch = 0, softSnapMs = 0, jumpVx = Number.NaN, jumpVy = Number.NaN): MotionState {
         let st = this.states.get(obj);
+        let jumped = false;
         if (st === undefined) {
-            st = { px: x, py: y, ph: heading, cx: x, cy: y, ch: heading, frame, ox: originX, oy: originY, serial: this.serial, epoch, renderFrame: 0, x, y, heading, ex: 0, ey: 0, eStart: 0, eMs: 0, renderMs: this.renderNowMs, atSerial: this.at, hs: new Float64Array(MOTION_HISTORY * 4), hn: 0 };
+            st = { px: x, py: y, ph: heading, cx: x, cy: y, ch: heading, frame, ox: originX, oy: originY, serial: this.serial, epoch, renderFrame: 0, x, y, heading, ex: 0, ey: 0, evx: 0, evy: 0, eStart: 0, eLen: 0, tx: x, ty: y, tvx: 0, tvy: 0, atSerial: this.at, hs: new Float64Array(MOTION_HISTORY * 4), hn: 0 };
             snapTo(st, this.serial, x, y, heading);
             this.states.set(obj, st);
         } else if (st.epoch !== epoch) {
             snapTo(st, this.serial, x, y, heading);
-            st.eMs = 0;
+            st.eLen = 0;
             st.frame = frame;
             st.epoch = epoch;
         } else {
@@ -679,54 +738,83 @@ export class MotionInterpolator {
                 st.py += dy;
                 st.cx += dx;
                 st.cy += dy;
+                st.tx += dx;
+                st.ty += dy;
                 st.frame = frame;
             }
             const drawnLastFrame = st.renderFrame === this.renderFrame - 1;
-            const lastX = st.x;
-            const lastY = st.y;
-            // The object's own motion over its last step (frame coordinates), kept through a soft snap.
+            // The object's own motion over its last step (frame coordinates): the fallback for the track after a jump.
             const vx = st.cx - st.px;
             const vy = st.cy - st.py;
             const vh = st.ch;
             const r = this.advance(st, x, y, heading, maxSpeed, drawnLastFrame);
             if (r === Advance.Jump && softSnapMs > 0 && drawnLastFrame) {
-                // Go on along the old per-step velocity into the new position (no step standing still): a sample one
-                // step back (or back to last frame's presented instant, if that is earlier) on that line; and offset the
-                // drawn track so that at last frame's instant it was where it was drawn; the offset then eases out
-                // (which may restart an ease already running: last frame's position includes it).
+                // The track: on from the new position along its motion there — a sample one step back (or back to last
+                // frame's presented instant, if that is earlier) on that line, the heading turning over the step.
+                const jx = jumpVx === jumpVx ? jumpVx : vx;
+                const jy = jumpVy === jumpVy ? jumpVy : vy;
                 const s1 = this.serial;
                 const s0 = Math.min(s1 - 1, Math.floor(st.atSerial));
                 const back = s1 - s0;
-                snapTo(st, s0, x - vx * back, y - vy * back, vh);
+                snapTo(st, s0, x - jx * back, y - jy * back, vh);
                 pushSample(st, s1, x, y, heading, this.at);
-                const p = historyAt(st, st.atSerial, poseScratch);
-                st.ex = lastX - (originX + p.x);
-                st.ey = lastY - (originY + p.y);
-                st.eStart = st.renderMs;
-                st.eMs = softSnapMs;
+                jumped = true;
             } else if (r !== Advance.Lerp) {
-                st.eMs = 0;
+                st.eLen = 0;
             }
+        }
+        const p = historyAt(st, this.at, poseScratch);
+        if (softSnapMs > 0) {
+            const v = trackVelocity(st, this.at, velScratch);
+            if (jumped) this.easeJump(st, p, v, softSnapMs);
+            st.tx = p.x;
+            st.ty = p.y;
+            st.tvx = v.x;
+            st.tvy = v.y;
         }
         st.ox = originX;
         st.oy = originY;
         st.renderFrame = this.renderFrame;
-        st.renderMs = this.renderNowMs;
         st.atSerial = this.at;
-        const p = historyAt(st, this.at, poseScratch);
         st.x = originX + p.x;
         st.y = originY + p.y;
         st.heading = p.heading;
-        if (st.eMs > 0) {
-            const w = softSnapWeight((this.renderNowMs - st.eStart) / st.eMs);
-            if (w > 0) {
-                st.x += st.ex * w;
-                st.y += st.ey * w;
+        if (st.eLen > 0) {
+            if (st.eStart + st.eLen > this.at) {
+                const e = easeOffset(st, this.at, easeScratch);
+                st.x += e.x;
+                st.y += e.y;
             } else {
-                st.eMs = 0;
+                st.eLen = 0;
             }
         }
         return st;
+    }
+
+    /**
+     * A soft snap's offset: the track this frame (`p`, velocity `v` per step, after the jump) against where last frame's
+     * drawn object was heading — last frame's track (tx / ty, tvx / tvy) carried over the presented steps since, plus
+     * the offset already easing (an ease running is restarted from where it is) — so the drawn object goes on exactly
+     * as it was moving; the offset comes to rest `softSnapMs` game ms later, or later for a long jump.
+     */
+    private easeJump(st: MotionState, p: { x: number; y: number }, v: Point, softSnapMs: number): void {
+        const dAt = this.at - st.atSerial;
+        const e = st.eLen > 0 ? easeOffset(st, this.at, easeScratch) : null;
+        st.ex = st.tx + st.tvx * dAt - p.x + (e !== null ? e.x : 0);
+        st.ey = st.ty + st.tvy * dAt - p.y + (e !== null ? e.y : 0);
+        st.evx = st.tvx - v.x + (e !== null ? e.vx : 0);
+        st.evy = st.tvy - v.y + (e !== null ? e.vy : 0);
+        st.eStart = this.at;
+        // At least softSnapMs; longer for a long jump, so the offset's acceleration stays within SOFT_SNAP_MAX_ACCEL
+        // (a cubic from rest offset e with velocity ev peaks at its start: (6 e + 4 T ev) / T²); at most SOFT_SNAP_MAX_MS.
+        const stepS = this.stepSeconds > 0 ? this.stepSeconds : 1 / FRAMES_PER_SECOND;
+        const a = SOFT_SNAP_MAX_ACCEL * stepS * stepS;
+        const e0 = Math.hypot(st.ex, st.ey);
+        const ev = Math.hypot(st.evx, st.evy);
+        const need = (4 * ev + Math.sqrt(16 * ev * ev + 24 * a * e0)) / (2 * a);
+        const lo = Math.max(1, softSnapMs / 1000 / stepS);
+        const hi = Math.max(lo, SOFT_SNAP_MAX_MS / 1000 / stepS);
+        st.eLen = need > lo ? (need < hi ? need : hi) : lo;
     }
 
     /** Take the sim's (x, y, heading) into `st` (same frame): a new step adds a sample, snapping on a jump, a long gap
@@ -749,6 +837,28 @@ export class MotionInterpolator {
             return Advance.Snap;
         }
         return Advance.Lerp;
+    }
+
+    /**
+     * How far (0..1) a fighter is drawn as on its leash around the drawn carrier (sampleFighter): eased toward 1 while
+     * `onLeash`, toward 0 while not, by the game time since its previous sample over FIGHTER_LEASH_EASE_MS — so coming
+     * onto or off the leash never steps the drawn fighter by the carrier's drawn-minus-committed offset. `atMs`: the
+     * game instant the sample stands for (LastTouch + the extrapolated time), which a step's frames share (the sample
+     * stays the same through a step) and which does not move while the fighter stands untouched and unextrapolated.
+     * First seen, or back in time: at once.
+     */
+    leashWeight(obj: object, atMs: number, onLeash: boolean): number {
+        let r = this.leash.get(obj);
+        if (r === undefined) {
+            r = { atMs, w: onLeash ? 1 : 0 };
+            this.leash.set(obj, r);
+        } else if (r.atMs !== atMs) {
+            const d = (atMs - r.atMs) / FIGHTER_LEASH_EASE_MS;
+            if (!(d > 0)) r.w = onLeash ? 1 : 0;
+            else r.w = onLeash ? Math.min(1, r.w + d) : Math.max(0, r.w - d);
+            r.atMs = atMs;
+        }
+        return r.w;
     }
 
     /** The record sampled for `obj` this render frame, or null (not drawn yet this frame: use its sim position). */
@@ -1168,6 +1278,12 @@ export interface MovingFighter {
     lastTouch: number;
     onboardCarrier: boolean;
     readonly specification: { readonly turnRate: number; readonly accelerationRate: number };
+    /** Fighter.InView of its last DoTasks (the leash below applies only off view). Absent: not in view. */
+    inView?: boolean;
+    /** Fighter.MissionType (FighterMissionType: 2 Patrol), which sets the leash radius. Absent: no leash. */
+    missionType?: number;
+    /** The carrier (Fighter.ParentBuiltObject): the leash centre. */
+    parentBuiltObject?: MovingBuiltObject | null;
 }
 
 /** Fighter.cs 2069 GetCurrentTurnRate(speed): ×4 at or below 12 % of top speed, ×2.6 below 25 %, ×1.6 below 50 %. */
@@ -1183,30 +1299,218 @@ export function fighterTurnRate(turnRate: number, speed: number, topSpeed: numbe
  * Sample a fighter (galaxy coordinates). Fighters move only when their carrier's DoTasks runs (builtObjectTick.ts:
  * Fighter.DoTasks for each of bo.fighters), so in a galaxy with more than 1000 built objects a fighter moves every
  * ceil(n / 1000) steps like its carrier — several steps' motion in one, then standing still. It is sampled where its
- * next DoMovement will put it (extrapolateMover from its LastTouch, bounded like the carrier's extrapolation), so it
- * glides between touches and turns smoothly; a touched-this-step fighter is sampled at its committed position.
+ * next DoMovement will put it (extrapolateMover from its LastTouch, bounded like the carrier's extrapolation, then the
+ * leash: fighterLeashOf), so it glides between touches and turns smoothly; a touched-this-step fighter is sampled at
+ * its committed position. Its motion over the next step goes with the sample, for the track of a soft snap.
  */
 export function sampleFighter(m: MotionInterpolator, f: MovingFighter): MotionState {
     const maxSpeed = Math.max(f.topSpeed, Math.abs(f.currentSpeed));
-    if (!f.onboardCarrier) {
-        const dt = untouchedSeconds(m, f.lastTouch, m.untouchedMaxMs);
-        if (dt > 0) {
-            const spec = f.specification;
-            const p = extrapolateMover(f.xpos, f.ypos, f.heading, f.targetHeading, fighterTurnRate(spec.turnRate, f.currentSpeed, f.topSpeed), f.currentSpeed, f.targetSpeed, spec.accelerationRate, dt, moverScratch);
-            return m.sample(f, p.x, p.y, p.heading, maxSpeed, null, 0, 0, 0, FIGHTER_SOFT_SNAP_MS);
-        }
+    if (f.onboardCarrier) return m.sample(f, f.xpos, f.ypos, f.heading, maxSpeed, null, 0, 0, 0, FIGHTER_SOFT_SNAP_MS);
+    const dt = untouchedSeconds(m, f.lastTouch, m.untouchedMaxMs);
+    const stepS = m.stepSeconds > 0 ? m.stepSeconds : 1 / FRAMES_PER_SECOND;
+    // The game instant the sample stands for: its LastTouch + dt (the committed position is LastTouch's).
+    const t0 = f.lastTouch > MIN_TIME ? f.lastTouch : m.simNowMs;
+    const atMs = t0 + dt * 1000;
+    const lp = fighterLeashOf(m, f, atMs, leashP);
+    const p = fighterAt(f, dt, lp, fighterPoseA);
+    const clamped = leashClamped;
+    const lq = lp === null ? null : fighterLeashOf(m, f, t0 + (dt + stepS) * 1000, leashQ);
+    const q = fighterAt(f, dt + stepS, lq, fighterPoseB);
+    if (lp !== null && lq !== null && lp.framed) {
+        // On the leash: where the next touch puts it (or, at its committed position, where its last touch did).
+        const lw = m.leashWeight(f, atMs, dt > 0 ? clamped : onLeash(f, lp));
+        // Smoothstep: no kink in the drawn motion where the weight starts or stops moving.
+        const w = lw * lw * (3 - 2 * lw);
+        toDrawnLeash(p, dt > 0 ? lp.nextX : lp.comX, dt > 0 ? lp.nextY : lp.comY, lp, w);
+        toDrawnLeash(q, lq.nextX, lq.nextY, lq, w);
     }
-    return m.sample(f, f.xpos, f.ypos, f.heading, maxSpeed, null, 0, 0, 0, FIGHTER_SOFT_SNAP_MS);
+    return m.sample(f, p.x, p.y, p.heading, maxSpeed, null, 0, 0, 0, FIGHTER_SOFT_SNAP_MS, q.x - p.x, q.y - p.y);
+}
+
+/** The leash a fighter's next DoMovement applies (fighterLeashOf; a scratch record). */
+interface FighterLeash {
+    /** Leash radius (Fighter.cs 1805-1829: 600 on patrol, else 1500). */
+    r: number;
+    /** The carrier's committed position: what the fighter's committed position was put on the circle around. */
+    comX: number;
+    comY: number;
+    /** Where the carrier's next touch puts it (it moves before its fighters, in the same DoTasks), extrapolated to the
+     * instant: the centre of the leash on an extrapolated fighter position. */
+    nextX: number;
+    nextY: number;
+    /** Whether the carrier is placed relative to an orbiting habitat (carrierHabitat). */
+    framed: boolean;
+    /** The carrier as drawn at the instant: on its habitat's drawn orbit when framed, else `next`. The circle a fighter
+     * on the leash is drawn on. */
+    drawnX: number;
+    drawnY: number;
+}
+
+const leashP: FighterLeash = { r: 0, comX: 0, comY: 0, nextX: 0, nextY: 0, framed: false, drawnX: 0, drawnY: 0 };
+const leashQ: FighterLeash = { r: 0, comX: 0, comY: 0, nextX: 0, nextY: 0, framed: false, drawnX: 0, drawnY: 0 };
+const fighterPoseA: MoverPose = { x: 0, y: 0, heading: 0 };
+const fighterPoseB: MoverPose = { x: 0, y: 0, heading: 0 };
+const leashHabitatScratch: Point = { x: 0, y: 0 };
+/** Whether the last fighterAt call put its extrapolated position back on the leash. */
+let leashClamped = false;
+
+/** FighterMissionType.Patrol (sim/combat/fighters.ts; not imported: render reads it as a number). */
+const FIGHTER_MISSION_PATROL = 2;
+/** Fighter.cs 1805-1829 DoMovement leash radii: 600 on patrol, 1500 otherwise. */
+const FIGHTER_LEASH_PATROL = 600;
+const FIGHTER_LEASH_OTHER = 1500;
+/** Game ms over which a fighter coming onto its leash (or leaving it) goes over to being drawn on the drawn carrier's
+ * circle (or back to where it is): MotionInterpolator.leashWeight. */
+export const FIGHTER_LEASH_EASE_MS = 500;
+
+/**
+ * The leash the next DoMovement applies to `f` (Fighter.cs 1805-1829: a fighter not in view that ends its move
+ * outside the circle around its carrier is put on the circle, along the carrier → fighter line), its carrier taken
+ * at game instant `tMs`; null when none applies (in view, on board, no carrier). Writes `out`.
+ *
+ * A carrier placed relative to an orbiting habitat (a base at its planet, a ship parked or docked there) has its
+ * committed position moved only when it is touched after its habitat was (the habitat round-robin: every
+ * ceil(habitats / 1000) steps), so it steps along the orbit — and with it every fighter on its leash, a few units in one
+ * step — while the carrier itself is drawn on the habitat's interpolated orbit (sampleBuiltObject). `drawn` is that
+ * smooth position, for toDrawnLeash to draw the fighters on the leash around.
+ */
+function fighterLeashOf(m: MotionInterpolator, f: MovingFighter, tMs: number, out: FighterLeash): FighterLeash | null {
+    const c = f.parentBuiltObject;
+    if (c == null || f.inView === true || f.missionType === undefined) return null;
+    out.r = f.missionType === FIGHTER_MISSION_PATROL ? FIGHTER_LEASH_PATROL : FIGHTER_LEASH_OTHER;
+    out.comX = c.xpos;
+    out.comY = c.ypos;
+    const moving = c.lastTouch !== undefined && c.currentSpeed > 0;
+    const h = carrierHabitat(c);
+    out.framed = h !== null;
+    if (h !== null) {
+        let ox = c.parentOffsetX;
+        let oy = c.parentOffsetY;
+        if (moving) {
+            const q = extrapolateUntouched(ox, oy, c.heading, c.currentSpeed, c.lastTouch!, tMs, m.untouchedMaxMs, extrapScratch);
+            ox = q.x;
+            oy = q.y;
+        }
+        out.nextX = h.xpos + ox;
+        out.nextY = h.ypos + oy;
+        const hp = renderHabitatPos(h, tMs, m.clampSeconds, leashHabitatScratch);
+        out.drawnX = hp.x + ox;
+        out.drawnY = hp.y + oy;
+        return out;
+    }
+    if (moving) {
+        const q = extrapolateUntouched(c.xpos, c.ypos, c.heading, c.currentSpeed, c.lastTouch!, tMs, m.untouchedMaxMs, extrapScratch);
+        out.nextX = q.x;
+        out.nextY = q.y;
+    } else {
+        out.nextX = c.xpos;
+        out.nextY = c.ypos;
+    }
+    out.drawnX = out.nextX;
+    out.drawnY = out.nextY;
+    return out;
+}
+
+/** The orbiting habitat `bo`'s committed position follows (sampleBuiltObject's habitat frames: DockedAt, else
+ * ParentHabitat, each + ParentOffset), or null. */
+function carrierHabitat(bo: MovingBuiltObject): OrbitingBody | null {
+    const ox = bo.parentOffsetX;
+    const oy = bo.parentOffsetY;
+    if (!(ox > PARENT_OFFSET_UNSET && oy > PARENT_OFFSET_UNSET)) return null;
+    const dock = bo.dockedAt ?? null;
+    if (dock !== null && isOrbitingBody(dock) && dock.parent !== null && followsParent(bo, dock, ox, oy)) return dock;
+    const h = bo.parentHabitat;
+    if (h !== null && h.parent !== null && !h.hasBeenDestroyed && followsParent(bo, h, ox, oy)) return h;
+    return null;
 }
 
 /**
- * Game ms over which a fighter's position reset is eased out instead of popping. Fighter.cs 1805-1829 DoMovement: a
- * fighter whose carrier is not in view (`!InView`) is put back on a circle around its carrier — 600 units on patrol,
- * 1500 on attack — whenever it strays outside it, so when a fight ends (Attack → Patrol) every fighter beyond 600 is
- * moved there in one step (40-180 units seen on the 4000-star test galaxy). The original only does this off screen
- * (on-screen carriers are ticked with InView, Main.Part11.cs ProcessMain); this port ticks every object as not in view
- * unless `?simView=1` (simLoop.ts), so on-screen fighters get the reset too. The sim stays as it is (the off-view tick is
- * what replay needs); the drawn fighter slides to its new place.
+ * Where `f` will be `dt` game s after its LastTouch (0: its committed position): extrapolated (extrapolateMover) and
+ * put back on the leash circle around where the carrier will be, as its next DoMovement will — the extrapolation would
+ * otherwise carry a fighter flying outward past the circle between touches, and every touch pull it back: a small
+ * reversal per touch while it slides round the circle. Sets leashClamped. Writes `out`.
+ */
+function fighterAt(f: MovingFighter, dt: number, leash: FighterLeash | null, out: MoverPose): MoverPose {
+    leashClamped = false;
+    if (!(dt > 0)) {
+        out.x = f.xpos;
+        out.y = f.ypos;
+        out.heading = f.heading;
+        return out;
+    }
+    const spec = f.specification;
+    extrapolateMover(f.xpos, f.ypos, f.heading, f.targetHeading, fighterTurnRate(spec.turnRate, f.currentSpeed, f.topSpeed), f.currentSpeed, f.targetSpeed, spec.accelerationRate, dt, out);
+    if (leash === null) return out;
+    const r = leash.r;
+    const dx = out.x - leash.nextX;
+    const dy = out.y - leash.nextY;
+    const d2 = dx * dx + dy * dy;
+    if (d2 > r * r) {
+        const k = r / Math.sqrt(d2);
+        out.x = leash.nextX + dx * k;
+        out.y = leash.nextY + dy * k;
+        leashClamped = true;
+    }
+    return out;
+}
+
+/** Whether `f`'s committed position is on its leash circle around its committed carrier (put there by its last touch). */
+function onLeash(f: MovingFighter, leash: FighterLeash): boolean {
+    const d = Math.hypot(f.xpos - leash.comX, f.ypos - leash.comY);
+    return d >= leash.r * (1 - 1e-9);
+}
+
+/**
+ * Fighter position `p` drawn on the leash around the carrier as drawn (FighterLeash.drawn) rather than around its
+ * committed position (the sim's circle around (cx, cy)), which steps:
+ * - moved by weight `w` (0..1: on the leash) onto the drawn circle, along the drawn carrier → fighter line. To first
+ *   order a step of the sim's centre moves the fighters on its circle only radially, which this takes out; and as it
+ *   depends on `p` and the drawn carrier only, not on the sim's centre, a fighter the carrier steps away from (inside
+ *   the new circle: let go) stays where it was drawn while `w` eases it off;
+ * - then kept inside the drawn circle, as the sim keeps it inside its own at each touch: a fighter the drawn carrier
+ *   moves away from is carried along as the circle reaches it, not pulled in at the carrier's next step.
+ * One outside the sim's circle (a reset pending: its mission's leash just shrank) is moved as its point on that circle
+ * would be, and not kept inside (its reset is shown when the sim makes it: a soft snap). Writes `p`.
+ */
+function toDrawnLeash(p: MoverPose, cx: number, cy: number, leash: FighterLeash, w: number): void {
+    const r = leash.r;
+    let bx = p.x;
+    let by = p.y;
+    const dx = bx - cx;
+    const dy = by - cy;
+    const d = Math.sqrt(dx * dx + dy * dy);
+    const pending = d > r * (1 + 1e-9);
+    if (pending) {
+        bx = cx + (dx * r) / d;
+        by = cy + (dy * r) / d;
+    }
+    let ex = bx - leash.drawnX;
+    let ey = by - leash.drawnY;
+    let e = Math.sqrt(ex * ex + ey * ey);
+    if (!(e > 0)) return;
+    if (w > 0) {
+        p.x += (leash.drawnX + (ex * r) / e - bx) * w;
+        p.y += (leash.drawnY + (ey * r) / e - by) * w;
+    }
+    if (pending) return;
+    ex = p.x - leash.drawnX;
+    ey = p.y - leash.drawnY;
+    e = Math.sqrt(ex * ex + ey * ey);
+    if (e > r) {
+        p.x = leash.drawnX + (ex * r) / e;
+        p.y = leash.drawnY + (ey * r) / e;
+    }
+}
+
+/**
+ * Game ms over which a fighter's position reset is eased out instead of popping (at least: a longer reset takes longer,
+ * MotionInterpolator.easeJump). Fighter.cs 1805-1829 DoMovement: a fighter whose carrier is not in view (`!InView`) is
+ * put back on a circle around its carrier — 600 units on patrol, 1500 on attack — whenever it strays outside it, so
+ * when a fight ends (Attack → Patrol) every fighter beyond 600 is moved there in one step (200-340 units seen on the
+ * 4000-star test galaxy: eased over 410-520 ms). The original only does this off screen (on-screen carriers are ticked
+ * with InView, Main.Part11.cs ProcessMain); this port ticks every object as not in view unless `?simView=1`
+ * (simLoop.ts), so on-screen fighters get the reset too. The sim stays as it is (the off-view tick is what replay
+ * needs); the drawn fighter slides to its new place.
  */
 export const FIGHTER_SOFT_SNAP_MS = 400;
 
