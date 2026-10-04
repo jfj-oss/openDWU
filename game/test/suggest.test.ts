@@ -13,6 +13,9 @@ import { BuiltObject } from '../src/sim/builtObject';
 import { BuiltObjectSubRole } from '../src/sim/builtObjectTypes';
 import { directConstruction, queueOf } from '../src/sim/construction/empireConstruction';
 import { checkTaskAuthorized } from '../src/sim/diplomacyTick';
+// The prompts reach the advisor queue through the player's message pipeline (Main's BeginInvoke queue), which the
+// frame's end drains (sim/playerMessages.ts); these direct calls drain it themselves.
+import { processPlayerMessages } from '../src/sim/playerMessages';
 import { galaxyStarDate } from '../src/sim/tick/simTime';
 import { EmpireMessage, EmpireMessageType } from '../src/sim/messages';
 import {
@@ -102,13 +105,13 @@ describe('checkTaskAuthorized (Empire.8.cs 4395)', () => {
         const q0 = q.length;
         const d0 = e.declinedTasks.length;
         const draws0 = g.rnd.drawCount;
-        expect(checkTaskAuthorized(g, e, FULL, { value: 0 }, 'x', h, AdvisorMessageType.BuildOneOff)).toBe(true);
-        expect(checkTaskAuthorized(g, e, MANUAL, { value: 0 }, 'x', h, AdvisorMessageType.BuildOneOff)).toBe(false);
+        expect(checkTaskAuthorized(g, e, FULL, { value: 0 }, 'x', h, AdvisorMessageType.BuildOneOff)).toBe(true); processPlayerMessages(g);
+        expect(checkTaskAuthorized(g, e, MANUAL, { value: 0 }, 'x', h, AdvisorMessageType.BuildOneOff)).toBe(false); processPlayerMessages(g);
         expect(q.length).toBe(q0);
         expect(e.declinedTasks.length).toBe(d0);
 
         const refusal = { value: 0 };
-        expect(checkTaskAuthorized(g, e, SEMI, refusal, 'Build it', h, AdvisorMessageType.BuildOneOff, other, 'data', 'data2')).toBe(false);
+        expect(checkTaskAuthorized(g, e, SEMI, refusal, 'Build it', h, AdvisorMessageType.BuildOneOff, other, 'data', 'data2')).toBe(false); processPlayerMessages(g);
         expect(refusal.value).toBe(1);
         expect(q.length).toBe(q0 + 1);
         const m = q[q.length - 1];
@@ -127,18 +130,18 @@ describe('checkTaskAuthorized (Empire.8.cs 4395)', () => {
             [h, null, now + 600000],
         ]);
         // The refusal cap (Galaxy.MaximumMissionRefusals = 1) and the declined target both block a second suggestion.
-        expect(checkTaskAuthorized(g, e, SEMI, refusal, 'again', other, AdvisorMessageType.TreatyOffer)).toBe(false);
-        expect(checkTaskAuthorized(g, e, SEMI, { value: 0 }, 'again', h, AdvisorMessageType.BuildOneOff)).toBe(false);
+        expect(checkTaskAuthorized(g, e, SEMI, refusal, 'again', other, AdvisorMessageType.TreatyOffer)).toBe(false); processPlayerMessages(g);
+        expect(checkTaskAuthorized(g, e, SEMI, { value: 0 }, 'again', h, AdvisorMessageType.BuildOneOff)).toBe(false); processPlayerMessages(g);
         expect(q.length).toBe(q0 + 1);
         // A non-player empire at SemiAutomated is answered Yes.
-        expect(checkTaskAuthorized(g, other, SEMI, { value: 0 }, 'x', h, AdvisorMessageType.BuildOneOff)).toBe(true);
+        expect(checkTaskAuthorized(g, other, SEMI, { value: 0 }, 'x', h, AdvisorMessageType.BuildOneOff)).toBe(true); processPlayerMessages(g);
         expect(g.rnd.drawCount).toBe(draws0);
     }, 300000);
 
     it('DiplomaticGift carries the amount in Money (4417)', () => {
         const { galaxy: g, playerEmpire: e } = createTickGame(gameData);
         const other = g.empires.find((x) => x !== e)!;
-        checkTaskAuthorized(g, e, SEMI, { value: 0 }, 'gift', other, AdvisorMessageType.DiplomaticGift, null, 1234.9, null);
+        checkTaskAuthorized(g, e, SEMI, { value: 0 }, 'gift', other, AdvisorMessageType.DiplomaticGift, null, 1234.9, null); processPlayerMessages(g);
         const m = advisorSuggestions(e).at(-1)!;
         expect(m.money).toBe(1234);
         expect(m.advisorMessageData).toBeNull();
@@ -195,7 +198,7 @@ describe('a SemiAutomated player is advised instead of building (Empire.6.cs 258
     it('FullyAutomated builds the research station; SemiAutomated queues a BuildOneOff suggestion; Manual does neither', () => {
         const full = forcedGame(FULL);
         const n0 = full.galaxy.builtObjects.length;
-        directConstruction(full.galaxy, full.playerEmpire);
+        directConstruction(full.galaxy, full.playerEmpire); processPlayerMessages(full.galaxy);
         const fullBuilt = builtSince(full, n0);
         expect(fullBuilt.length).toBe(1);
         // Which lab the seed-1 capital lacks depends on the galaxy layout (Weapons since the todosweep galaxy fixes,
@@ -206,7 +209,7 @@ describe('a SemiAutomated player is advised instead of building (Empire.6.cs 258
 
         const semi = forcedGame(SEMI);
         const s0 = semi.galaxy.builtObjects.length;
-        directConstruction(semi.galaxy, semi.playerEmpire);
+        directConstruction(semi.galaxy, semi.playerEmpire); processPlayerMessages(semi.galaxy);
         expect(builtSince(semi, s0)).toEqual([]);
         const q = advisorSuggestions(semi.playerEmpire);
         expect(q.length).toBe(1);
@@ -221,7 +224,7 @@ describe('a SemiAutomated player is advised instead of building (Empire.6.cs 258
 
         const manual = forcedGame(MANUAL);
         const m0 = manual.galaxy.builtObjects.length;
-        directConstruction(manual.galaxy, manual.playerEmpire);
+        directConstruction(manual.galaxy, manual.playerEmpire); processPlayerMessages(manual.galaxy);
         expect(builtSince(manual, m0)).toEqual([]);
         expect(advisorSuggestions(manual.playerEmpire).length).toBe(0);
     }, 300000);
@@ -230,12 +233,12 @@ describe('a SemiAutomated player is advised instead of building (Empire.6.cs 258
         const full = forcedGame(FULL);
         const fMoney = full.playerEmpire.stateMoney;
         const n0 = full.galaxy.builtObjects.length;
-        directConstruction(full.galaxy, full.playerEmpire);
+        directConstruction(full.galaxy, full.playerEmpire); processPlayerMessages(full.galaxy);
         const fullBuilt = builtSince(full, n0);
 
         const semi = forcedGame(SEMI);
         const { galaxy: g, playerEmpire: e } = semi;
-        directConstruction(g, e);
+        directConstruction(g, e); processPlayerMessages(g);
         const m = advisorSuggestions(e)[0];
         const money0 = e.stateMoney;
         const s0 = g.builtObjects.length;
@@ -256,20 +259,20 @@ describe('a SemiAutomated player is advised instead of building (Empire.6.cs 258
     it('Decline records Sol 2 for 600 000; DirectConstruction does not re-suggest within the window, and does after it', () => {
         const semi = forcedGame(SEMI);
         const { galaxy: g, playerEmpire: e } = semi;
-        directConstruction(g, e);
+        directConstruction(g, e); processPlayerMessages(g);
         const m = advisorSuggestions(e)[0];
         const now = galaxyStarDate(g);
         expect(declineSuggestion(g, e, m)).toBe(true);
         expect(advisorSuggestions(e).length).toBe(0);
         const decl = e.declinedTasks.filter((t) => t.taskTarget === e.capital);
         expect(decl.map((t) => t.expiryDate)).toEqual([now + 600000, now + 600000]); // the prompt's record + the decline's
-        directConstruction(g, e);
+        directConstruction(g, e); processPlayerMessages(g);
         expect(advisorSuggestions(e).length).toBe(0);
         g.nowMs += 600000; // still within: ExpiryDate >= starDate
-        directConstruction(g, e);
+        directConstruction(g, e); processPlayerMessages(g);
         expect(advisorSuggestions(e).length).toBe(0);
         g.nowMs += 1;
-        directConstruction(g, e);
+        directConstruction(g, e); processPlayerMessages(g);
         expect(advisorSuggestions(e).length).toBe(1);
     }, 300000);
 });
@@ -278,9 +281,9 @@ describe('save round trip', () => {
     it('the player suggestion queue and declined tasks survive galaxyToJSON / galaxyFromJSON', () => {
         const semi = forcedGame(SEMI);
         const { galaxy: g, playerEmpire: e } = semi;
-        directConstruction(g, e);
+        directConstruction(g, e); processPlayerMessages(g);
         const other = g.empires.find((x) => x !== e)!;
-        checkTaskAuthorized(g, e, SEMI, { value: 0 }, 'protect', other, AdvisorMessageType.TreatyOffer, null, new BoxedPirateRelationType(1), null);
+        checkTaskAuthorized(g, e, SEMI, { value: 0 }, 'protect', other, AdvisorMessageType.TreatyOffer, null, new BoxedPirateRelationType(1), null); processPlayerMessages(g);
         const json = JSON.stringify(galaxyToJSON(g));
         const g2 = galaxyFromJSON(JSON.parse(json), gameData);
         const e2 = g2.playerEmpire!;
@@ -305,7 +308,7 @@ describe('the Advisor Suggestion window content (Main.Part2.cs 2781 method_649)'
     it('title, resolved text with its arguments, cost, Show target and automation row', () => {
         const semi = forcedGame(SEMI);
         const { galaxy: g, playerEmpire: e } = semi;
-        directConstruction(g, e);
+        directConstruction(g, e); processPlayerMessages(g);
         const m = advisorSuggestions(e)[0];
         const v = advisorSuggestionView(g, e, m);
         // GameText.txt 3651 "Advisor Message BuildOneOff" / 1606 "Automation Construction Colony" (string.Format).

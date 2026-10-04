@@ -1,15 +1,15 @@
-// Worker mode (docs/sim-worker.md §9 chunk 4): the main thread's end of the player's message pipeline
-// (messagePipeline.ts). The worker is the player's message and event recipient and does the UI's sim writes; this
-// turns its events into what the in-thread UI reads:
+// Worker mode (docs/sim-worker.md §4.5): the main thread's end of the player's message pipeline. The pipeline is sim
+// code (sim/playerMessages.ts) and runs in the worker's tick, as it runs in the in-thread tick; this turns the worker's
+// events into what the UI reads:
 //
-// - 'playerMessages': each message the player received (once) joins the replica player's PlayerMessageStream, which
-//   the ticker (empireMessageFeed.ts), the popups and stubs (messagePopups.ts) read instead of Empire.Messages; each
-//   event message goes to the replica player's event recipient (eventMessages.ts, and the audio stings that chain
-//   on it), as the sim would call it in-thread;
-// - 'gameEnd': the music, the comparison window's outcome overlay and the Game End panel (screens/empireComparison.ts presentGameEnd) — the worker already paused,
-//   ended the game and reviewed the achievements;
-// - the Game Options message filters, which decide what the worker records, are mirrored to it (sent now and on
-//   every change).
+// - 'playerMessages': each message the pipeline handled (once) joins the replica player's PlayerMessageStream, which
+//   the ticker (empireMessageFeed.ts), the popups and stubs (messagePopups.ts) read; each event goes to the replica
+//   player's event recipient (eventMessages.ts, and the audio stings that chain on it), as the sim calls it in-thread;
+// - 'gameEnd': the music, the comparison window's outcome overlay and the Game End panel (screens/empireComparison.ts
+//   presentGameEnd) — the worker already paused, ended the game and reviewed the achievements.
+//
+// Nothing here writes the game: the message options are the game's (Galaxy.messageOptions, changed by the journaled
+// setMessageOptions command), and the history trim and the advisor expiry are commands too.
 //
 // No Pixi; the DOM only through presentGameEnd.
 
@@ -17,8 +17,7 @@ import type { Empire } from '../sim/empire';
 import type { EmpireMessage } from '../sim/messages';
 import type { Galaxy } from '../sim/galaxy';
 import { GameEndEventArgs, type GameEndOutcome } from '../sim/victory';
-import { getMessageOptions } from './messageRouting';
-import { PlayerMessageStream, setPlayerMessageStream, type PlayerMessageUiOp } from './messagePipeline';
+import { PlayerMessageStream, setPlayerMessageStream } from './messagePipeline';
 import { presentGameEnd } from './screens/empireComparison';
 import type { WorkerEvent } from '../simworker/protocol';
 
@@ -26,8 +25,6 @@ export interface WorkerMessageUi {
     readonly stream: PlayerMessageStream;
     /** Handle a worker event; false when it is not one of this module's. */
     onEvent(e: WorkerEvent, resolve: (a: unknown) => unknown): boolean;
-    /** Send the message options now if they changed since the last send. */
-    syncOptions(): void;
     dispose(): void;
 }
 
@@ -37,28 +34,13 @@ export interface WorkerMessageUiOptions {
     galaxy: Galaxy;
     /** The HUD clock (the banner's Continue unpauses it; the worker adopts it). */
     time: { paused: boolean };
-    /** Send a UI op to the worker (SimClientCore.postUiOp). */
-    post: (op: PlayerMessageUiOp, args: unknown[]) => void;
     now?: () => number;
-    /** Options re-check period (ms; 0: only at install and on syncOptions()). Default 250, the UI timers' rate. */
-    optionsPollMs?: number;
 }
 
 export function installWorkerMessageUi(opts: WorkerMessageUiOptions): WorkerMessageUi {
-    const { player, galaxy, time, post } = opts;
-    const stream = new PlayerMessageStream(post, opts.now);
+    const { player, galaxy, time } = opts;
+    const stream = new PlayerMessageStream(opts.now);
     setPlayerMessageStream(player, stream);
-    let sentOptions = '';
-    const syncOptions = (): void => {
-        const o = getMessageOptions();
-        const key = JSON.stringify(o);
-        if (key === sentOptions) return;
-        sentOptions = key;
-        post('messageOptions', [JSON.parse(key) as unknown]);
-    };
-    syncOptions();
-    const pollMs = opts.optionsPollMs ?? 250;
-    const timer = pollMs > 0 ? setInterval(syncOptions, pollMs) : null;
     const tryResolve = (resolve: (a: unknown) => unknown, a: unknown): unknown => {
         try {
             return resolve(a);
@@ -69,14 +51,13 @@ export function installWorkerMessageUi(opts: WorkerMessageUiOptions): WorkerMess
     let disposed = false;
     return {
         stream,
-        syncOptions,
         onEvent(e, resolve) {
             if (disposed) return false;
             if (e.kind === 'playerMessages') {
                 for (const r of e.receipts) {
                     const message = tryResolve(resolve, r.m) as EmpireMessage | null;
                     if (message === null || message === undefined) continue;
-                    stream.push({ message, ticker: r.ticker, popupPass: r.popupPass, advisor: r.advisor, route: r.route, action: r.action });
+                    stream.push({ message, ticker: r.ticker, advisor: r.advisor, route: r.route, action: r.action });
                 }
                 for (const ev of e.events) {
                     // Main.Part4.cs:481 ReceiveEventMessage: the UI's recipient (eventMessages.ts → the event panel; the
@@ -100,7 +81,6 @@ export function installWorkerMessageUi(opts: WorkerMessageUiOptions): WorkerMess
         dispose() {
             if (disposed) return;
             disposed = true;
-            if (timer !== null) clearInterval(timer);
             setPlayerMessageStream(player, null);
         },
     };

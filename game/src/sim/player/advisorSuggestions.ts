@@ -84,7 +84,7 @@ import { canEmpireColonizeHabitatRange } from '../exploration';
 import { checkColonizationLikeliness } from '../tradeItems';
 import { canBuiltObjectColonizeHabitat } from '../construction/constructionQueue';
 import { BUILD_COLONY_SHIP_POPULATION_REQUIREMENT } from '../empire';
-import { AdvisorMessageType, BoxedPirateRelationType, advisorSuggestions, expireAdvisorSuggestionsForEmpire, removeAdvisorSuggestion, resolveAdvisorTargetEmpire } from '../advisorQueue';
+import { AdvisorMessageType, BoxedPirateRelationType, advisorSuggestionsView, expireAdvisorSuggestionsForEmpire, removeAdvisorSuggestion, resolveAdvisorTargetEmpire } from '../advisorQueue';
 import { addDeclinedTasks } from '../missions/distress';
 
 /** What Approve did. */
@@ -908,6 +908,6 @@ function approveColonyFacility(galaxy: Galaxy, player: Empire, habitat8: Habitat
 
 /** Convenience for the UI: the player's queue, newest last (advisorQueue.ts). */
 export function pendingAdvisorSuggestions(player: Empire): readonly EmpireMessage[] {
-    return advisorSuggestions(player);
+    return advisorSuggestionsView(player);
 }
 

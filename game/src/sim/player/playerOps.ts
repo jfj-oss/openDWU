@@ -68,7 +68,10 @@ import { setControlGroup, type ControlGroupObject } from './controlGroups';
 import { initiateCrashResearchProgram } from '../researchTick';
 import type { EmpireMessage } from '../messages';
 import { approveSuggestion, declineSuggestion } from './advisorSuggestions';
-import { expireOldAdvisorSuggestions } from '../advisorQueue';
+import { expireAdvisorSuggestionsForEmpire, expireOldAdvisorSuggestions } from '../advisorQueue';
+import { empireMessageHistory, removeOldHistoryMessages } from '../messages';
+import { copyMessageOptions, type MessageOptions } from '../messageRouting';
+import { storeChronicleYear, type ChronicleYear } from '../scenario/llm/chronicle';
 import { galaxyStarDate } from '../tick/simTime';
 import { enemyTargetAttack, enemyTargetCancel, enemyTargetObjects } from './enemyTargets';
 import type { PrioritizedTargetObject } from '../civilianAI';
@@ -385,6 +388,34 @@ export const PLAYER_OPS = {
     declineSuggestion: (galaxy: Galaxy, empire: Empire, message: EmpireMessage) => declineSuggestion(galaxy, empire, message),
     /** DiplomaticMessageQueue.cs 864 method_3: drop suggestions older than their lifetime (at this boundary's date). */
     expireAdvisorSuggestions: (galaxy: Galaxy, empire: Empire) => expireOldAdvisorSuggestions(empire, galaxyStarDate(galaxy)),
+    /**
+     * DiplomaticMessageQueue.cs 344 ExpireDiplomacyMessagesForEmpire(other), the AdvisorSuggestion cases (357-380): the
+     * UI calls it after a diplomacy exchange with `other` (Main.Part10.cs 4171 …, Main.Part2.cs 1919 …); the queue's other
+     * entries are the UI's conversation queue (ui/messagePopups.ts). Returns how many suggestions left.
+     */
+    expireAdvisorSuggestionsForEmpire: (_galaxy: Galaxy, empire: Empire, other: Empire | null) => expireAdvisorSuggestionsForEmpire(empire, other),
+
+    // --- The player's messages (sim/playerMessages.ts: the pipeline in the tick reads these) ---
+    /** Main.Part4.cs:2986 method_542 (the Galactic History screen binds its list) → Empire.cs 4708 RemoveOldHistoryMessages. */
+    removeOldHistoryMessages: (_galaxy: Galaxy, empire: Empire) => {
+        removeOldHistoryMessages(empire);
+        return empireMessageHistory(empire).length;
+    },
+    /**
+     * Main.Part6.cs:2406-2489 (the Message Settings window writes _Game.DisplayMessage* / DisplayPopup*; the Empire
+     * Settings window GameOptions.SuppressAllPopups): this game's message options (Galaxy.messageOptions).
+     */
+    setMessageOptions: (galaxy: Galaxy, _empire: Empire, options: MessageOptions) => {
+        galaxy.messageOptions = copyMessageOptions(options);
+        return true;
+    },
+
+    // --- Mod layer: the local model's chronicle (19s-1) ---
+    /** llm/chronicleJob.ts: store one year of the chronicle in the event-log state (the model's text arrives by value). */
+    storeChronicleYear: (galaxy: Galaxy, _empire: Empire, entry: ChronicleYear) => {
+        storeChronicleYear(galaxy, entry);
+        return true;
+    },
 
     // --- The local model (18a advisor chat, 18b diplomat counter-proposal) ---
     advisorCommands: (galaxy: Galaxy, empire: Empire, brief: AdvisorBrief, commands: (AdvisorCommand | ValidatedCommand)[]) => executeAdvisorCommands(galaxy, empire, brief, commands),

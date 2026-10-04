@@ -13,7 +13,6 @@ import type { Galaxy } from '../sim/galaxy';
 import type { Empire } from '../sim/empire';
 import type { EmpireMessage } from '../sim/messages';
 import { applyStrategicDecisions, type StrategicDecision, type StrategicDecisionResult } from '../sim/player/strategicDecisions';
-import { storeChronicleYear, type ChronicleYear } from '../sim/scenario/llm/chronicle';
 import type { VoiceCue } from '../sim/scenario/llm/voiceCues';
 import { applyVoiceToMessage } from '../llm/voiceJob';
 
@@ -24,11 +23,6 @@ export const HOST_OPS = {
     /** 18c (ui/aiAdvisorDriver.ts runStrategicTurn): apply the model's validated decisions for AI empire `ai`. */
     strategicDecisions: (galaxy: Galaxy, ai: Empire, decisions: StrategicDecision[], rationale: string): StrategicDecisionResult[] =>
         applyStrategicDecisions(galaxy, ai, decisions, rationale),
-    /** 19s-1 (llm/chronicleJob.ts): store one year of the chronicle in the event-log state. */
-    chronicleYear: (galaxy: Galaxy, entry: ChronicleYear): true => {
-        storeChronicleYear(galaxy, entry);
-        return true;
-    },
     /** 19s-2 (llm/voiceJob.ts): upgrade a message's text in place with the voiced paragraph (false: it moved on). */
     voiceMessage: (_galaxy: Galaxy, message: EmpireMessage, cue: VoiceUpgrade, text: string): boolean => applyVoiceToMessage(message, cue as VoiceCue, text),
 };

@@ -66,6 +66,7 @@ import type { Blockade } from './fleets/blockades';
 import { createGalaxyOrderList, type OrderList } from './logistics/orders';
 import { GameEventList, type EventActionExecutionPackage } from './story/gameEventModel';
 import type { GalaxyScenario } from './scenario/state';
+import type { MessageOptions } from './messageRouting';
 import { scenarioAcceptStarPosition, scenarioAfterNebulae, scenarioResourceAllowed } from './scenario/hooks';
 import { DiplomaticRelationType, obtainDiplomaticRelation } from './diplomacy';
 
@@ -186,6 +187,14 @@ export class Galaxy {
     pirateEmpires: Empire[] = [];
     independentEmpire: Empire | null = null;
     playerEmpire: Empire | null = null;
+    /**
+     * Game.cs:71-127 Game.DisplayPopup<Category> / DisplayMessage<Category> / GameOptions.SuppressAllPopups: what the
+     * player's message pipeline (playerMessages.ts) stamps and records. Start.2.cs 2147-2188 copy them from the GameOptions
+     * at a new game (CreateGameOptions.messageOptions); the Game Options window changes them with the journaled
+     * setMessageOptions command. null (and a save from before the field): method_260's defaults (messageRouting.ts
+     * galaxyMessageOptions).
+     */
+    messageOptions: MessageOptions | null = null;
     colonyNames: string[] | null = null;
     colonyNameIndex = 0;
     // Task C2a: Galaxy.ResourceSystem (strategic/luxury lists, RelativeImportance).

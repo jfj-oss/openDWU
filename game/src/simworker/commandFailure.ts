@@ -111,6 +111,10 @@ export const COMMAND_FAILURE: FailureTable = {
     approveSuggestion: () => ({ handled: false, expireDiplomacyFor: [] }),
     declineSuggestion: no,
     expireAdvisorSuggestions: zero,
+    expireAdvisorSuggestionsForEmpire: zero,
+    removeOldHistoryMessages: () => -1,
+    setMessageOptions: no,
+    storeChronicleYear: no,
     advisorCommands: (message, [, commands]) =>
         commands.map((c) => {
             const id = 'command' in c ? c.command.id : c.id;

@@ -33,6 +33,7 @@ import { galaxyStarDate } from '../tick/simTime';
 import { resolveTechFocus, type EmpirePolicy } from '../data/policies';
 import { appendCommandLog, type StrategicCommand } from './commandLog';
 import { withPureSimReads, withSimWrites } from '../readOnlyQuery';
+import { processPlayerMessages } from '../playerMessages';
 import {
     PRIORITY_LEVELS,
     STRATEGIC_POLICY_FIELDS,
@@ -325,6 +326,8 @@ export function applyStrategicDecisions(galaxy: Galaxy, ai: Empire, decisions: r
         const cmd = commandFor(opt, d.targetId);
         // Sim code, as when a replay applies the entry (playerCommands.ts): the lazy lookups write (readOnlyQuery.ts).
         const r = withSimWrites(() => applyStrategicCommand(galaxy, ai, cmd));
+        // What it sent the player is handled now, before the next command (playerMessages.ts; the replay does the same).
+        processPlayerMessages(galaxy);
         appendCommandLog(galaxy, {
             starDate: galaxyStarDate(galaxy),
             nowMs: galaxy.nowMs,

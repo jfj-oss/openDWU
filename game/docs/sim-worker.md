@@ -300,7 +300,8 @@ Each delta has a `hot` part and a `cold` part, and each part has shells (new obj
 
 Main → worker:
 
-- `init {boot: create(options without gameData, scenario, flagShapeIndex) | load(save text, scenario), startOptions, clock?, sync?}`
+- `init {boot: create(options without gameData, scenario) | load(save text, scenario), startOptions, clock?, sync?}` (the
+  wizard's flag pick and message options are createGame options: `playerFlagShape`, `messageOptions`)
 - `clock {seq, speed, paused}`
 - `command {id, empire: syncId, op, args: RemoteArg[]}`
 - `save {id}`
@@ -398,6 +399,67 @@ reads** (`sim/readOnlyQuery.ts`) that run on the replica in worker mode and on t
 (Before this, these calls were *queries* — `simworker/simQuery.ts`, run directly in-thread and in the worker on a
 replica, never journaled, so a replay of seed + log missed their writes. The query protocol is gone.)
 
+**The player's message pipeline is sim code** (`sim/playerMessages.ts`, 2026-10-03). The game-state half of the C#
+Main's handling of what the sim sends the player — ReceiveMessageInternal (Main.Part9.cs 1572: the advisor queue at
+2226, the defeat game end at 1994-2020, the conversation stamp at 2361, the ticker line's stamp and history entry at
+2404-2410 / method_251), method_523's event history message (Main.Part4.cs:487, 1311 / 1496) and
+PromptForAuthorizationInternal (Main.Part9.cs 1053) — runs in the sim, the same code in every mode:
+
+- *Where.* In the C#, Main is the player's IMessageRecipient / IEventMessageRecipient / IAutomationAuthorizer
+  (Main.Part12.cs:2881), and each call from the sim threads is BeginInvoke'd onto the UI thread (Main.Part9.cs 1535
+  ReceiveMessage, Main.Part4.cs:481 ReceiveEventMessage, Main.Part9.cs 1046 PromptForAuthorization), which handles
+  them one at a time in arrival order whenever it gets to them — no fixed point. The port keeps that queue (the
+  player's inbox, `messages.ts playerInbox`: SendMessageToEmpire, SendEventMessageToEmpire and
+  PromptPlayerForAuthorization append to it) and drains it at fixed points, in arrival order: at the **end of every
+  sim frame** (`scheduler.ts runSimFrame → playerMessagesFrameEnd`: the UI thread runs between the sim's frames),
+  **after every applied command** (`playerCommands.ts applyOp`, the ai-advisor commands: a click handler finishes
+  before the UI thread takes the next queued call), and before a save (`serializeGame`), so the inbox is empty at
+  every save point and is not saved. A message sent while draining (an event's history message) joins the end of the
+  queue and is handled in the same drain, as a BeginInvoke from the UI thread is. The inbox is attached when the
+  game view would attach Main: at the end of createGame, on load, and lazily at the first frame or boundary.
+- *Age expiry.* The advisor queue's age expiry (DiplomaticMessageQueue.cs 864 method_3) runs in the C# on every
+  DrawMessages of the queue, i.e. on the UI's draw timer: it is sim-driven, at the end of every frame, after the drain.
+  The `expireAdvisorSuggestions` command is no longer issued (kept for old logs).
+- *The UI-triggered writes are journaled commands*, issued where the C# UI makes them: `removeOldHistoryMessages`
+  (Galactic History's rebind, Main.Part4.cs:2986 method_542 → Empire.cs 4708; only when there is something to trim),
+  `expireAdvisorSuggestionsForEmpire` (the advisor cases of ExpireDiplomacyMessagesForEmpire after a diplomacy
+  exchange, DiplomaticMessageQueue.cs 344 / 357-380, called from Main.Part10.cs 4171 … and Main.Part2.cs 1919 …),
+  `setMessageOptions` (the Message Settings and Suppress-all checkboxes, Main.Part6.cs:2406-2489). The `uiOp` message
+  is gone.
+- *Message options are game state.* What is stamped and recorded depends on Game.DisplayMessage* / DisplayPopup*
+  (Game.cs:71-127), which the C# saves with the game and copies from the GameOptions at a new game (Start.2.cs
+  2147-2188). They are `Galaxy.messageOptions` (saved; null = method_260's defaults), set at creation from
+  `CreateGameOptions.messageOptions` and changed by `setMessageOptions`; the UI keeps a mirror
+  (`ui/messageRouting.ts`) that adopts the game's options when a game view starts. The routing rules moved to
+  `sim/messageRouting.ts`.
+- *Stable suggestion ids.* A queued suggestion gets `EmpireMessage.advisorSuggestionId` from
+  `Empire.nextAdvisorSuggestionId` (`advisorQueue.ts assignAdvisorSuggestionId`); commands name it as
+  `{r: 'advid', k: [empire, id]}` (`commandCodec.ts`), so `approveSuggestion` / `declineSuggestion` find it however
+  the queue changed around it. Logs from before the ids say `'adv'` (queue index), which still decodes.
+- *The UI only reads and draws.* The pipeline hands each handled message's receipt (advisor / route / conversation
+  action / ticker) and each event to the galaxy's listener (`setPlayerMessageListener`). In-thread
+  `ui/messagePipeline.ts installLocalMessageStream` turns them into the game view's `PlayerMessageStream`; in worker
+  mode the host sends them as `playerMessages` events (§4.5). The ticker (`empireMessageFeed.ts`), the popups and
+  stubs (`messagePopups.ts`), the advisor window and the event panel read; none of them writes the game.
+- *Deviations kept.* The C# also overwrites the message's Description with the formatted ticker line and fills an
+  empty Title (method_251): the port keeps the sim's gameText() encoding and formats both when drawing. A popup
+  message without a date is stamped when it arrives (port-only, for its stub's date).
+- *Other open writes, closed here.* The chronicle store (`llm/chronicleJob.ts`) is the journaled `storeChronicleYear`
+  command (the entry by value: seed + log replays the model's text; `runPlayerCommand` in-thread, `remote.command` in
+  worker mode; the `chronicleYear` host op is gone). The wizard's flag pick is `CreateGameOptions.playerFlagShape`,
+  written at the end of createGame (it was a write after createGame in main.ts and `workerBoot.ts`).
+- *Save compatibility.* No version bump: the new fields are default-filled on load (`galaxySave.ts
+  migrateEmpireMessageFields`: `nextAdvisorSuggestionId`, ids for the queued suggestions in queue order, the UI
+  recipient fields as null; `Galaxy.messageOptions` reads as the defaults when absent). The UI recipient fields
+  (`messageRecipient`, `eventMessageRecipient`) are no longer saved (CODEC skip list), so the save text is the same in
+  both modes without the worker's old recipient toggling.
+- Gates: `test/playerMessagePipeline.test.ts` (the arrival order; headless seed + log replays the history, the
+  advisor queue and the options exactly, with suggestions approved / declined by id, the trim and the expiry;
+  `'advid'` / `'adv'` decoding; a save written before the change, `test/fixtures/before-sim-message-pipeline.dwusave.gz`,
+  loads, runs on and round-trips), `test/simWorkerMessages.test.ts` (headless = in-thread = worker: digest, log, save
+  text and galaxy, each message delivered once in order; the UI-triggered writes are commands in worker mode; no
+  replica writes), `test/llmChronicle.test.ts` (the chronicle command replays).
+
 **Freshness of `onApplied`.** The host compares what a command named and returned (`ReplicaEncoder.compareNow`: the
 issuing empire to depth 1, arguments and results to depth 2) in the delta of the tick that applied it, and the main
 thread applies the cold parts through that delta before it runs the command replies (`GalaxyReplica.applyThrough`).
@@ -437,16 +499,13 @@ These run in the worker on the authoritative game, and the main thread gets an e
 
 - The game-end handler: pause, `doGameEnd`, `reviewAchievements`. The `gameEnd` event carries the args (victor,
   outcome, text); the main thread plays the music and shows the outcome (the comparison window's overlay and the Game End panel) (`empireComparison.ts presentGameEnd`).
-- The player's message pipeline (chunk 4, `ui/messagePipeline.ts`): the worker is the player's message and event
-  recipient (hidden `messageRecipient` / `eventMessageRecipient` fields, set before the sync first sees the empire, so
-  the replica never has them). After every tick it runs the UI timers' sim writes in their in-thread order — the
-  ticker pass (star date, history), the popup pass (advisor queue, defeat game end, star dates), the event pass (the
-  event's history message) — and sends one `playerMessages` event: each received message once (also those
-  ProcessMessages emptied before any sync), with its ticker line and routing, plus the event messages. The main
-  thread's `PlayerMessageStream` (`ui/workerMessages.ts`) feeds the ticker, popups, stubs and the event recipient,
-  which then only draw. Game Options message filters are mirrored to the worker; Galactic History's trim and the
-  advisor expiry are unjournaled `uiOp` messages, applied on receipt as the in-thread direct writes are. The worker's
-  save toggles `messageRecipient` back to a plain null so its text equals an in-thread save.
+- The player's message pipeline (`sim/playerMessages.ts`, §4.4): it runs in the worker's tick as it runs in-thread
+  and headless; the host only listens (`setPlayerMessageListener`) and, after each tick, sends one `playerMessages`
+  event: each handled message once (also those ProcessMessages emptied before any sync), with its receipt (advisor,
+  route, conversation action, ticker), plus the events, encoded after the tick so a message is born on the main
+  thread with its final stamp. The main thread's `PlayerMessageStream` (`ui/workerMessages.ts`) feeds the ticker,
+  popups and stubs, and the events go to the replica player's event recipient (the UI's hidden field); they only
+  draw. The message options, the history trim and the advisor expiry are journaled commands (§4.4).
 - The location-pinged hook: the main thread centres the camera on the replica object.
 - A sim error: the worker pauses and the main thread shows a toast.
 
@@ -538,17 +597,26 @@ The only behaviour changes in this mode are:
     instead of inside the call.
   - Every other UI read is read-only (`sim/readOnlyQuery.ts`): on the replica as before, and on the in-thread game
     (`simLoop.ts` marks it) whenever no sim code runs (outside a frame, outside a command's executor, which
-    `playerCommands.ts` runs in `withSimWrites`). The player message pipeline keeps its writes on purpose
-    (`ui/messagePipeline.ts` runs them in `withSimWrites`, as the worker does). Port-only reads (the local-model
+    `playerCommands.ts` runs in `withSimWrites`). The player message pipeline is sim code now (§4.4; it runs inside
+    the frame or a command, in `withSimWrites`). Port-only reads (the local-model
     briefs, `llm/replicaReads.ts`) are `withPureSimReads`.
   - The `simQuery` protocol (query message, `SimHost.query` / `flush`, `ui/workerQueryCache.ts`) is gone.
   - `repin --check`: 0 pins move (the harness has no UI). Write detector (`scripts/simworker-smoke.mjs
     --detect-writes`, with a UI tour of every panel and screen): 0 unexpected keys on a fresh game and on
     `late2500.dwusave`, replica digest = worker digest after the tour; the tour's in-thread save-text probe
     (`--inthread --detect-writes`) shows a state change only in steps that applied one of the commands above.
-  - Left: the message pipeline's writes and `uiOp`s, the chronicle store and the wizard's `flagShape` are still
-    outside the journal (audit §4.1); an `approveSuggestion` names the suggestion by its place in the queue the
-    pipeline fills, so seed + log replays it only once the pipeline runs sim-side.
+  - Closed (2026-10-03, §4.4): the message pipeline runs in the sim tick at fixed points (the end of each frame, after
+    each command, before a save) in every mode; its UI-triggered writes (the history trim, the advisor expiry of a
+    diplomacy exchange, the message options) are journaled commands and the age expiry is sim-driven; the `uiOp`
+    message is gone; `approveSuggestion` names the suggestion by a stable id; the chronicle store is a command; the
+    wizard's flag pick is a createGame option. Seed + log now replays the message history, the advisor queue and the
+    options (`test/playerMessagePipeline.test.ts`); headless = in-thread = worker (`test/simWorkerMessages.test.ts`).
+    `repin`: 1 pin moved (`tickDeterminism.digest600`: the deferred authorization prompts and the frame-end age expiry change
+    what the 600 s harness run reaches). Write detector: no pipeline
+    writes outside the sim and commands (`scripts/simworker-smoke.mjs --detect-writes`, `--inthread --detect-writes`).
+  - Left: the voice job's message upgrade (`hostOps.ts voiceMessage`, `applyVoiceToMessage` rewrites a message's text
+    in the worker, unjournaled; a stable message id would make it a command); the conversation queue is UI state, as
+    the C# queue is (not saved), so its expiry stays UI-side.
 - **Not ported (§9):** synchronous advisor commands, tutorials (they still boot in-thread), the
   `__dwu.sim` / `simBudget` debug hooks (null in worker mode), and `__dwu.commands.log` (the replica has no log).
 - **Command replies.** Every command issued on the replica with a callback is answered exactly once, in issue order

@@ -51,7 +51,8 @@ import {
     processRelationChange,
     resolveEmpiresToDefendAgainst,
 } from './diplomacy';
-import { addAdvisorSuggestion, AdvisorMessageType, advisorText } from './advisorQueue';
+import { AdvisorMessageType, advisorText } from './advisorQueue';
+import { promptPlayerForAuthorization } from './playerMessages';
 import { addDeclinedTasks, declinedTasksCheckAttackEmpireTargetValid, declinedTasksCheckTaskTargetValid } from './missions/distress';
 import { EmpireMessage, EmpireMessageType, resolveDescription, sendEmpireMessage, sendMessageToEmpire, sendMessageToEmpireWithTitle } from './messages';
 import { empireWarWeariness } from './taxes';
@@ -418,8 +419,9 @@ export function checkTaskAuthorized(
                 if (advisorMessageType === AdvisorMessageType.DiplomaticGift) empireMessage.money = Math.trunc(advisorMessageData as number);
                 else empireMessage.advisorMessageData = advisorMessageData;
                 empireMessage.advisorMessageData2 = advisorMessageData2;
-                // Empire.7.cs 3836 PromptPlayerForAuthorization → Main.Part9.cs 1053 PromptForAuthorizationInternal.
-                addAdvisorSuggestion(self, empireMessage);
+                // Empire.7.cs 3836 PromptPlayerForAuthorization → Main.Part9.cs 1046 PromptForAuthorization (BeginInvoke) →
+                // 1053 PromptForAuthorizationInternal, at the player's message pipeline's next drain (playerMessages.ts).
+                promptPlayerForAuthorization(self, empireMessage);
                 // 4425-4449
                 addDeclinedTasks(self.declinedTasks, currentStarDate, taskTarget, attackEmpireTarget);
                 return false;

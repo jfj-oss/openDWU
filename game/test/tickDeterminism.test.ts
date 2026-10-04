@@ -249,6 +249,7 @@ describe('determinism (single seeded galaxy.rnd, fixed-order scheduler)', () => 
         // Moved "7e33f79b0cd5b5a3" → "0a197d262536cac8": orbits spaced so planets/moons never overlap (user deviation) (2026-10-03)
         // Moved "0a197d262536cac8" → "89d3bfddd78f6edc": parity A2: spaceport threat check, race periodic traits, wonders scenic, race wonders, garrisons, maintenance, retrofit design (2026-10-03)
         // Moved "89d3bfddd78f6edc" → "3a9cc8b9c4f924da": parity A1: creature combat, threat warp bonus, captain range, design torpedo order, keep in-use designs (2026-10-03)
+        // Moved "3a9cc8b9c4f924da" → "e3f6e6fa3f5b926b": message pipeline runs inside the sim tick (determinism; worker parity) (2026-10-04)
         expect(summary.digest).toMatchPin('tickDeterminism.digest600');
         // (counts and Galaxy.Rnd draws pinned with the digest, tasks/M4-plan.md §5.3.4.)
         // Moved #f1aebd5dcd → #d21f9fe281: 17d: human player starts with C# automation defaults (Start.2.cs:2122) (2026-09-25)

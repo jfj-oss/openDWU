@@ -11,8 +11,8 @@
 //   Advanced Display Settings (pnlGameOptionsAdvancedDisplaySettings, 440 × 500; Main.Part4.cs:4579-4747
 //     method_568-569): Maximum Framerate, system nebulae on / detail, Galaxy View - Ship Display.
 // Deviations: options apply as they change (the original applies when a window closes); the sim-affecting ones (the
-// Automation controls and every Empire Settings value) go through journaled player commands (setEmpireControl /
-// setEmpireSetting), the rest are UI settings (ui/settings.ts). Our own options join the window the original
+// Automation controls, every Empire Settings value and the message settings) go through journaled player commands
+// (setEmpireControl / setEmpireSetting / setMessageOptions), the rest are UI settings (ui/settings.ts). Our own options join the window the original
 // would hold them in: GUI Scale is the Expanded build's fourth Display slider (Start.1.cs:1530-1568), the mute boxes
 // sit beside the volume sliders, "Auto Pause in Game Screens" (hidden in the original) is shown, the map label /
 // overlay / dither toggles are a "Map Display" group under Advanced Display Settings, and "Open messages
@@ -43,7 +43,7 @@ import {
     type EmpireSettingField,
 } from '../../sim/player/empireSettings';
 import { clampAutoSaveMinutes, clampMaximumFramerate, getSettings, resetAutomationResponses, updateSettings, type GalaxyViewDisplayKey, type UiSettings } from '../settings';
-import { getMessageOptions, MessageCategory, setMessageOption, setSuppressAllPopups, type MessageOptions } from '../messageRouting';
+import { copyMessageOptions, getMessageOptions, MessageCategory, setMessageOption, setSuppressAllPopups, type MessageOptions } from '../messageRouting';
 import { COLORS, checkBox, dropDown, el, glassButton, messageBox, numericUpDown, openOriginalWindow, place, text, type OriginalWindow } from '../originalWindow';
 import { checkBoxRight, colorSlider, groupBox, labelledTrackBar } from '../originalWindowControls';
 import { AUTOMATION_MODE_ITEMS, AUTOMATION_PRESETS, detectAutomationMode, empireAutomationValues, gameOptionsFromEmpire, messageSettingsRows, type PendingEmpireValues } from './gameOptionsModel';
@@ -330,6 +330,15 @@ function slider(parent: HTMLElement, value: number, min: number, max: number, x:
     return s;
 }
 
+/**
+ * The game's message options (Game.DisplayMessage* / DisplayPopup*, GameOptions.SuppressAllPopups; Galaxy.messageOptions)
+ * are what the player's message pipeline records by (sim/playerMessages.ts): every change of the UI's copy goes to the
+ * game as the journaled setMessageOptions command.
+ */
+function issueMessageOptions(empire: Empire): void {
+    issuePlayerCommand(empire.galaxy, empire, 'setMessageOptions', [copyMessageOptions(getMessageOptions())]);
+}
+
 /** The player's empire changes through the command log (setEmpireControl / setEmpireSetting). */
 function issueSetting(empire: Empire, field: EmpireSettingField, value: number | boolean): void {
     pendingEmpireValues[field] = value;
@@ -434,7 +443,7 @@ function createGameOptionsPanel(opts: GameOptionsPanelOptions): OpenState {
         openSubWindow('advanced', () => createAdvancedDisplaySettings());
     }
     function openMessageSettings(): void {
-        openSubWindow('messages', () => createMessageSettings());
+        openSubWindow('messages', () => createMessageSettings(empire));
     }
 
     function buildAutomationGroup(parent: HTMLElement, emp: Empire): void {
@@ -629,7 +638,8 @@ function createEmpireSettings(empire: Empire): OriginalWindow {
     check(body, 'Newly built ships are automated', empire.newShipsAutomated, 10, 645, (v) => issueSetting(empire, 'newShipsAutomated', v));
     check(body, 'Suppress all pop-up screens', suppress, 10, 670, (v) => {
         suppress = v;
-        setSuppressAllPopups(v); // GameOptions.SuppressAllPopups (UI: ui/messageRouting.ts)
+        setSuppressAllPopups(v); // GameOptions.SuppressAllPopups (the UI's copy: ui/messageRouting.ts)
+        issueMessageOptions(empire); // and the game's
         // chkOptionsSuppressAllPopups_CheckedChanged (Main.Part2.cs:4098).
         if (v) {
             const r = discoveryIndexWithSuppressedPopups(Number(ruins.value), empire.discoveryActionRuin, true);
@@ -657,7 +667,7 @@ function createEmpireSettings(empire: Empire): OriginalWindow {
 // Message Settings (pnlGameOptionsMessages, method_566)
 // ---------------------------------------------------------------------------
 
-function createMessageSettings(): OriginalWindow {
+function createMessageSettings(empire: Empire): OriginalWindow {
     const win = openOriginalWindow({
         id: 'gameoptions-messages',
         title: 'Message Settings',
@@ -677,7 +687,10 @@ function createMessageSettings(): OriginalWindow {
     for (const [kind, caption, x] of groups) {
         const g = place(groupBox(caption, 340, 412, F2), x, 10);
         body.appendChild(g);
-        rows.forEach((row, i) => check(g, row.label, messageRowValue(options, row, kind), 7, 22 + 20 * i, (v) => setMessageRowValue(row, kind, v)));
+        rows.forEach((row, i) => check(g, row.label, messageRowValue(options, row, kind), 7, 22 + 20 * i, (v) => {
+            setMessageRowValue(row, kind, v);
+            issueMessageOptions(empire);
+        }));
     }
     // Ours: the popup stubs (ui/messageStubList.ts).
     const st = getSettings();

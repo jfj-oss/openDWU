@@ -78,6 +78,12 @@ export class EmpireMessage {
     title = '';
     starDate = 0;
     supressPopup = false;
+    /**
+     * Not in the C#: the stable id of a queued advisor suggestion (Empire.nextAdvisorSuggestionId; set when it joins
+     * Empire.advisorSuggestions, advisorQueue.ts). Only queued suggestions carry the field, so other messages save as
+     * before. Commands name a suggestion by it (player/commandCodec.ts 'advid').
+     */
+    declare advisorSuggestionId?: number;
     private habitatSubject: Habitat | null = null;
     private builtObjectSubject: BuiltObject | null = null;
     private empireSubject: Empire | null = null;
@@ -184,6 +190,47 @@ export function setEmpireMessageTap(tap: EmpireMessageTap | null): void {
     empireMessageTap = tap;
 }
 
+// ---------------------------------------------------------------------------------------------------------------
+// The player's inbox (playerMessages.ts processes it)
+// ---------------------------------------------------------------------------------------------------------------
+
+/** One Empire.SendEventMessageToEmpire call (events.ts), as Main.ReceiveEventMessage queued it. */
+export interface QueuedEvent {
+    type: number;
+    title: string;
+    message: string;
+    additionalData: unknown;
+    location: unknown;
+}
+
+/** What the player's inbox holds, in arrival order: a message, an event, or an authorization prompt (an advisor suggestion). */
+export type PlayerInboxItem =
+    | { message: EmpireMessage; event?: undefined; prompt?: undefined }
+    | { message?: undefined; event: QueuedEvent; prompt?: undefined }
+    | { message?: undefined; event?: undefined; prompt: EmpireMessage };
+
+/**
+ * The C# Main is the player's IMessageRecipient / IEventMessageRecipient (Main.Part12.cs:2881) and queues every call
+ * for its UI thread (Main.Part9.cs 1535 ReceiveMessage / Main.Part4.cs:481 ReceiveEventMessage → BeginInvoke), which
+ * then handles them one by one, in arrival order (ReceiveMessageInternal / method_523). The port keeps that queue in
+ * the sim: SendMessageToEmpire / SendEventMessageToEmpire / PromptPlayerForAuthorization append to the player's inbox, and the sim drains it at fixed
+ * points (playerMessages.ts processPlayerMessages: the end of every frame, after every applied command), so the
+ * handling is part of the deterministic, replayable game. Per game run state, never saved: it is empty whenever a game
+ * is saved (serializeGame drains it first). Attached for galaxy.playerEmpire (playerMessages.ts ensurePlayerInbox).
+ */
+const playerInboxes = new WeakMap<Empire, PlayerInboxItem[]>();
+
+/** Start (or with false stop) collecting `empire`'s messages and events in its inbox. Idempotent. */
+export function attachPlayerInbox(empire: Empire, on = true): void {
+    if (!on) playerInboxes.delete(empire);
+    else if (!playerInboxes.has(empire)) playerInboxes.set(empire, []);
+}
+
+/** `empire`'s inbox (undefined: none attached). */
+export function playerInbox(empire: Empire): PlayerInboxItem[] | undefined {
+    return playerInboxes.get(empire);
+}
+
 // Empire.7.cs 2946-2959 SendMessageToEmpire(EmpireMessage message, Empire recipientEmpire).
 export function sendEmpireMessage(message: EmpireMessage, recipientEmpire: Empire | null): void {
     if (recipientEmpire !== null && empireMessageTap != null) empireMessageTap(message, recipientEmpire); // 19p (mod layer)
@@ -191,7 +238,9 @@ export function sendEmpireMessage(message: EmpireMessage, recipientEmpire: Empir
         if (recipientEmpire.messages !== null) {
             recipientEmpire.messages.push(message);
         }
-        if (recipientEmpire.messageRecipient !== null) {
+        // _MessageRecipient.ReceiveMessage: the player's Main queues it (the inbox above).
+        playerInboxes.get(recipientEmpire)?.push({ message });
+        if (recipientEmpire.messageRecipient != null) {
             recipientEmpire.messageRecipient.receiveMessage(message);
         }
     }

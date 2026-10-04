@@ -24,6 +24,7 @@ import { PLAYER_OPS, type PlayerOpArgs, type PlayerOpName, type PlayerOpResult }
 import { applyStrategicCommand } from './strategicDecisions';
 import { noteConstructionBoardCommand } from './constructionBoard';
 import { setUiRecordSender, withSimWrites } from '../readOnlyQuery';
+import { ensurePlayerInbox, processPlayerMessages } from '../playerMessages';
 
 interface Pending {
     empire: Empire;
@@ -117,6 +118,7 @@ export function runPlayerCommand<K extends PlayerOpName>(galaxy: Galaxy, empire:
 function drain(galaxy: Galaxy): void {
     const q = queues.get(galaxy);
     if (q === undefined || q.draining) return;
+    ensurePlayerInbox(galaxy);
     q.draining = true;
     try {
         while (q.scheduled.length > 0 && q.scheduled[0].nowMs <= galaxy.nowMs) {
@@ -145,6 +147,9 @@ function applyOp(galaxy: Galaxy, empire: Empire, op: PlayerOpName, args: unknown
     const result = withSimWrites(() => fn(galaxy, empire, ...args));
     // Any order may have replaced a construction-board job: re-check the board at the next frame (no-op without jobs).
     noteConstructionBoardCommand(galaxy, empire);
+    // What the order sent the player is handled before the next command, as the C# UI thread handles its BeginInvoke
+    // queue after the click handler returns (playerMessages.ts). Live and replayed alike, so seed + log replays it.
+    processPlayerMessages(galaxy);
     return result;
 }
 
@@ -200,6 +205,7 @@ function replayEntry(galaxy: Galaxy, e: CommandLogEntry): void {
             const empire = flatEmpireList(galaxy).find((x) => x.empireId === e.empireId);
             if (empire === undefined) throw new Error(`command log replay: no empire id ${e.empireId}`);
             const r = withSimWrites(() => applyStrategicCommand(galaxy, empire, e.command));
+            processPlayerMessages(galaxy); // as applyStrategicDecisions does after each command
             appendCommandLog(galaxy, { ...(copyCommandLogEntry(e) as typeof e), status: r.status });
             return;
         }

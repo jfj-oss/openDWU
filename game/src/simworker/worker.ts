@@ -183,10 +183,6 @@ function dispatch(m: ToWorker): void {
             host!.command(m);
             kick();
             return;
-        case 'uiOp':
-            host!.uiOp(m);
-            kick();
-            return;
         case 'refresh':
             host!.refresh(m);
             kick();

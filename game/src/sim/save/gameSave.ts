@@ -16,6 +16,7 @@ import { GalaxyTime } from '../galaxyTime';
 import { encodedField, flatEmpireList, galaxyFromJSON, galaxyToJSON, type GalaxySaveJSON } from './galaxySave';
 import { commandLog, copyCommandLogEntry, restoreCommandLog, type CommandLogEntry } from '../player/commandLog';
 import { flushPlayerCommands } from '../player/playerCommands';
+import { ensurePlayerInbox, processPlayerMessages } from '../playerMessages';
 import { COMPOSITE_SCENARIO_ID } from '../scenario/addons';
 
 /** Bumped to 2 when the galaxy graph (M3 state) replaced the index-based
@@ -37,6 +38,10 @@ export function serializeGame(game: Game, time: GalaxyTime, startOptions: StartG
     // Player commands still queued apply now: saving happens between frames, at the same boundary (galaxy.nowMs) the
     // next frame would apply them at, so the saved game and its log match the game that keeps running.
     flushPlayerCommands(game.galaxy);
+    // The player's inbox too (playerMessages.ts): a save point has handled everything sent so far, so the inbox (per
+    // run, not saved) is empty and the loaded game goes on as this one does. Nothing to do unless something was sent
+    // outside the sim's frames and commands.
+    processPlayerMessages(game.galaxy);
     const save: GameSaveJSON = {
         version: GAME_SAVE_VERSION,
         galaxy: galaxyToJSON(game.galaxy),
@@ -107,6 +112,9 @@ export function deserializeGame(save: string | GameSaveJSON, gameData: GameData)
     time.paused = obj.time.paused;
 
     const playerEmpire: Empire | null = obj.playerEmpireIndex < 0 ? null : galaxy.playerEmpire;
+    // Main.Part12.cs:2881: the loaded game's player gets its recipient (playerMessages.ts); what Empire.Messages holds
+    // was handled before the save.
+    ensurePlayerInbox(galaxy);
 
     return {
         game: {

@@ -4,7 +4,8 @@
 // takes that year's events as the player's court knew them (sim/scenario/llm/chronicle.ts chronicleInput over
 // chronicleExport), the player's grounding digest and the historian's voice (government / race, the briefs' persona
 // lines), and asks the model through the queue (priority 'background': budgeted, cached by situation hash) for an
-// in-character history. The answer is validated (JSON {title, text}) and stored in the event-log state; no model, a
+// in-character history. The answer is validated (JSON {title, text}) and stored in the event-log state (the journaled
+// storeChronicleYear command); no model, a
 // refusal, a timeout or a bad answer → the scripted fallback (the plain digest of the year) is stored instead, and is
 // upgraded to the model's text on a later poll once a model answers. One year at a time.
 
@@ -22,7 +23,6 @@ import {
     chronicleOn,
     dueChronicleYear,
     fallbackChronicle,
-    storeChronicleYear,
     type ChronicleInput,
     type ChronicleYear,
 } from '../sim/scenario/llm/chronicle';
@@ -30,6 +30,7 @@ import { CHRONICLE_PROMPT_VERSION, CHRONICLE_SCHEMA, CHRONICLE_SYSTEM, CHRONICLE
 import type { ChatMessage } from '../ui/advisorClient';
 import type { LlmQueue, LlmResult } from './queue';
 import { remoteSimHost } from '../simworker/remoteHost';
+import { runPlayerCommand } from '../sim/player/playerCommands';
 import { readReplica } from './replicaReads';
 
 /** The chronicle's system + user messages for one year. */
@@ -156,15 +157,19 @@ export class ChronicleJob {
                       written: galaxyStarDate(galaxy),
                   }
                 : readReplica(galaxy, () => fallbackChronicle(galaxy, empire, input));
-        // Only missing or fallback years are written, so a model text is never replaced.
+        // Only missing or fallback years are written, so a model text is never replaced. The store is game state (the
+        // event-log state, saved), so it is the journaled storeChronicleYear command (the entry by value: seed + log
+        // replays the text the model wrote; docs/sim-worker.md §8).
         const remote = remoteSimHost(galaxy);
-        if (remote === null) storeChronicleYear(galaxy, entry);
-        else {
-            // Sim worker (docs/sim-worker.md §9 chunk 8): `galaxy` is the replica; the store is a host op on the worker's
-            // game (between two ticks, as here in-thread), and the replica gets the entry with the event-log state.
+        if (remote === null) {
+            // In-thread: this continuation runs between frames; apply it now, at the boundary the next frame starts from.
+            runPlayerCommand(galaxy, empire, 'storeChronicleYear', [entry]);
+        } else {
+            // Sim worker (docs/sim-worker.md §9 chunk 8): `galaxy` is the replica; the command runs on the worker's game,
+            // and the replica gets the entry with the event-log state.
             this.awaitingSync.set(year, entry.source);
             try {
-                await remote.hostOp('chronicleYear', [entry]);
+                await remote.command(empire, 'storeChronicleYear', [entry]);
             } catch {
                 this.awaitingSync.delete(year);
                 return null;

@@ -26,7 +26,17 @@ import { countLabel } from '../src/ui/plural';
 import { formatComparisonValue } from '../src/ui/screens/empireComparison';
 import { EmpireMessage, EmpireMessageType } from '../src/sim/messages';
 import type { Empire } from '../src/sim/empire';
-import { recordTickerMessage, savedHistoryLines } from '../src/ui/empireMessageFeed';
+import { savedHistoryLines } from '../src/ui/empireMessageFeed';
+import { receivePlayerMessage } from '../src/sim/playerMessages';
+import { defaultMessageOptions } from '../src/sim/messageRouting';
+import { startStarDateForAge } from '../src/sim/galaxyTime';
+import type { Galaxy } from '../src/sim/galaxy';
+
+/** The ticker half of the player's message pipeline (sim/playerMessages.ts) at star date `starDate`. */
+function recordTickerMessage(player: Empire, m: EmpireMessage, starDate: number): void {
+    const galaxy = { age: 1, nowMs: starDate - startStarDateForAge(1), empires: [] } as unknown as Galaxy;
+    receivePlayerMessage(galaxy, player, m, defaultMessageOptions());
+}
 
 describe('#5 Space toggles pause (Main.Part7.cs Main_KeyUp)', () => {
     it("maps KeyboardEvent.key ' ' to the Space binding", () => {

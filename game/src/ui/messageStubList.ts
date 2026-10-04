@@ -10,7 +10,7 @@ import type { EmpireMessage } from '../sim/messages';
 import { galaxyStarDate } from '../sim/tick/simTime';
 import { resolveStarDateDescription } from '../sim/galaxyTime';
 import { resolveGameText } from '../sim/textResolver';
-import { advisorSuggestions } from '../sim/advisorQueue';
+import { advisorSuggestionsView } from '../sim/advisorQueue';
 import { issuePlayerCommand } from '../sim/player/playerCommands';
 import { computeHudLayout } from './hudLayout';
 import { getSettings, onSettingsChange, uiScaleFactor } from './settings';
@@ -94,7 +94,7 @@ export function pushMessageStub(m: EmpireMessage, read = false): void {
 export function dismissMessageStub(m: EmpireMessage, galaxy?: Galaxy): boolean {
     const removed = dismissStub(state, m);
     // An advisor suggestion is declined (btnAdvisorSuggestionDecline_Click: RemoveMessage + the DeclinedTasks records).
-    if (galaxy !== undefined && player !== null && advisorSuggestions(player).includes(m)) issuePlayerCommand(galaxy, player, 'declineSuggestion', [m]);
+    if (galaxy !== undefined && player !== null && advisorSuggestionsView(player).includes(m)) issuePlayerCommand(galaxy, player, 'declineSuggestion', [m]);
     dismissConversation(m);
     closeMessageCardFor(m);
     return removed;
@@ -240,7 +240,7 @@ export function installMessageStubList(opts: MessageStubListOptions): void {
                 };
             },
         );
-        syncStubs(state, 'suggestion', advisorSuggestions(p), (m) => {
+        syncStubs(state, 'suggestion', advisorSuggestionsView(p), (m) => {
             const view = advisorSuggestionView(galaxy, p, m);
             return {
                 key: m,

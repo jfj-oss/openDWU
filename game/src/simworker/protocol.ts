@@ -7,7 +7,7 @@ import type { CommandLogEntry } from '../sim/player/commandLog';
 import type { StartGameOptions } from '../sim/startGameOptions';
 import type { ReplicaDelta } from './replicaSync';
 import type { RemoteArg } from './remoteArgs';
-import type { MessageRoute } from '../ui/messageRouting';
+import type { MessageRoute } from '../sim/messageRouting';
 
 /** How the worker gets its game. */
 export type WorkerBoot =
@@ -17,8 +17,6 @@ export type WorkerBoot =
           options: Omit<CreateGameOptions, 'gameData'>;
           /** Mod layer: scenario overlay applied to the base data (id, and the add-on list of a composite one). */
           scenario: { id: string; include: string[] | null } | null;
-          /** The wizard's flag pick (Empire.flagShape), applied after createGame as main.ts does. */
-          flagShapeIndex?: number;
       }
     | {
           kind: 'load';
@@ -129,17 +127,7 @@ export interface HostOpMessage {
     args: RemoteArg[];
 }
 
-/**
- * A UI-side sim write the in-thread UI does directly, outside the command queue (docs/sim-worker.md §9 chunk 4,
- * ui/messagePipeline.ts applyPlayerMessageUiOp): applied by the worker on receipt, unjournaled — as in-thread.
- */
-export interface UiOpMessage {
-    type: 'uiOp';
-    op: string;
-    args: RemoteArg[];
-}
-
-export type ToWorker = InitMessage | ClockMessage | CommandMessage | HostOpMessage | RefreshRequest | SaveRequest | DigestRequest | TradeFlowsMessage | DebugRequest | CommandLogRequest | UiOpMessage | { type: 'dispose' };
+export type ToWorker = InitMessage | ClockMessage | CommandMessage | HostOpMessage | RefreshRequest | SaveRequest | DigestRequest | TradeFlowsMessage | DebugRequest | CommandLogRequest | { type: 'dispose' };
 
 export interface ProgressMessage {
     type: 'progress';
@@ -189,11 +177,10 @@ export interface StepMessage {
     events: WorkerEvent[];
 }
 
-/** One message the player received, with what the worker's pipeline decided for it (ui/messagePipeline.ts). */
+/** One message the player's pipeline handled, with what it decided (sim/playerMessages.ts PlayerMessageReceipt). */
 export interface PlayerMessageWire {
     m: RemoteArg;
-    ticker: string | null;
-    popupPass: boolean;
+    ticker: boolean;
     advisor: boolean;
     route: MessageRoute | null;
     action: 'queue' | 'open' | 'none';
@@ -211,7 +198,7 @@ export interface PlayerEventWire {
 export type WorkerEvent =
     /** Galaxy.GameEnd (the worker already paused, ran DoGameEnd and reviewed the achievements); `args` for the banner. */
     | { kind: 'gameEnd'; args?: { victor: RemoteArg; outcome: number; description: string; code: number } }
-    /** The player's message pipeline after a tick (each message once, in arrival order). */
+    /** What the player's message pipeline handled since the last step (each message once, in arrival order). */
     | { kind: 'playerMessages'; receipts: PlayerMessageWire[]; events: PlayerEventWire[] }
     | { kind: 'locationPinged'; target: RemoteArg }
     | { kind: 'simError'; message: string }

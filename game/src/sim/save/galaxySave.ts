@@ -50,7 +50,7 @@ import { GalaxyLocation } from '../galaxyLocation';
 import { Contract } from '../logistics/contracts';
 import { ComponentRef, Order, OrderList } from '../logistics/orders';
 import { Manufacturer, ManufacturingQueue, ResourceDatePair, ResourceDatePairList } from '../manufacturingQueue';
-import { BoxedPirateRelationType } from '../advisorQueue';
+import { BoxedPirateRelationType, assignAdvisorSuggestionId } from '../advisorQueue';
 import { EmpireMessage } from '../messages';
 import { DeclinedTask, DistressSignal } from '../missions/distress';
 import { BuiltObjectMission, Command, Sector } from '../missions/mission';
@@ -278,6 +278,9 @@ const CODEC_OPTIONS: GraphCodecOptions = {
         // it is NOT a pure function of the saved state — incremental ReviewEmpireTerritoryUpdate / onlySystems passes
         // leave it partial, and recomputing it on load would also rewrite every colony's colonyInfluenceRadius.
         [EmpireTerritory.prototype, new Set<string>(['territory'])],
+        // Empire.cs 31 / 37 _MessageRecipient / _EventMessageRecipient: the UI's callbacks, not game state (the C# nulls
+        // them before saving, Main.Part12.cs:4080). Restored as null on load (galaxyFromJSON).
+        [Empire.prototype, new Set<string>(['messageRecipient', 'eventMessageRecipient'])],
     ]),
 };
 
@@ -600,6 +603,24 @@ export function replicaSkipFields(): Map<object, ReadonlySet<string>> {
     return out;
 }
 
+/**
+ * Defaults for Empire fields of the player's message pipeline that older saves lack (sim/playerMessages.ts):
+ * - the UI recipients (not saved: CODEC_OPTIONS.skipFields) are null, as on a new Empire (a save from before the skip
+ *   has them as null already);
+ * - nextAdvisorSuggestionId, and a stable id for each queued advisor suggestion without one (advisorQueue.ts), in queue
+ *   order: a save from before the ids loads with its queue numbered 1..n.
+ */
+function migrateEmpireMessageFields(empire: Empire): void {
+    const e = empire as unknown as Record<string, unknown>;
+    for (const field of ['messageRecipient', 'eventMessageRecipient']) {
+        if (!Object.prototype.hasOwnProperty.call(e, field)) Object.defineProperty(e, field, { value: null, writable: true, enumerable: true, configurable: true });
+    }
+    if (typeof e.nextAdvisorSuggestionId !== 'number') Object.defineProperty(e, 'nextAdvisorSuggestionId', { value: 1, writable: true, enumerable: true, configurable: true });
+    if (Array.isArray(empire.advisorSuggestions)) {
+        for (const m of empire.advisorSuggestions as EmpireMessage[]) if (m instanceof EmpireMessage) assignAdvisorSuggestionId(empire, m);
+    }
+}
+
 /** The save's class registry and revive hooks, for the replica decoder (same prototypes as a loaded save). */
 export function replicaCodecOptions(): Pick<GraphCodecOptions, 'classes' | 'revive'> {
     return { classes: CLASSES, revive: CODEC_OPTIONS.revive };
@@ -683,6 +704,7 @@ export function galaxyFromJSON(obj: GalaxySaveJSON, gameData: GameData, codec: {
     // --- Visibility owner hooks (closures over the empire; see Empire ctor).
     for (const empire of flatEmpireList(galaxy)) {
         empire.visibility.owner = empire.visibilityOwner(empire === galaxy.independentEmpire);
+        migrateEmpireMessageFields(empire);
     }
     // --- Territory grid: restored as saved. Saves without it (older version-2 files) fall back to a full
     //     ReviewEmpireTerritory (Start.2.cs 1485), which also recalculates the colony influence radii.

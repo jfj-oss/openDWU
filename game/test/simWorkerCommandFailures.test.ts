@@ -466,7 +466,7 @@ describe('sim worker: pending replies when the worker stops, the game is closed 
         issuePlayerCommand(w.client.galaxy, p, 'saveDesign', [newDesignDraft(w.client.galaxy, p, { kind: 'copy', design: p.designs[0] })], calls.cb('save'));
         issuePlayerCommand(w.client.galaxy, p, 'renameColony', [ownColony(p), 'Waiting'], calls.cb('rename'));
         const promised = remoteSimHost(w.client.galaxy)!.command(p, 'empireRename', ['Promised']).then(() => 'resolved', (e: Error) => e.message);
-        const hostOp = remoteSimHost(w.client.galaxy)!.hostOp('chronicleYear', [{ year: 1 } as never]).then(() => 'resolved', (e: Error) => e.message);
+        const hostOp = remoteSimHost(w.client.galaxy)!.hostOp('voiceMessage', [null as never, {} as never, '']).then(() => 'resolved', (e: Error) => e.message);
         const answered: unknown[] = [];
         issuePlayerCommand(w.client.galaxy, p, 'moneyPanel', [], (r) => answered.push(r));
         let fresh = 0;
