@@ -6,6 +6,9 @@
 // class defaults while a fresh launch generates its first galaxy. The TS models that fresh-launch case for every game:
 // createGame calls resetBaconSettings before generating and baconInitializeSettings at the end; deserializeGame calls
 // baconInitializeSettings after loading.
+// Ours: every game keeps its own values on top of the file (Galaxy.baconSettingsOverrides, written only where they
+// differ), changed at any time by the journaled setBaconSettings command, which runs BaconInitialize again at its frame
+// boundary (applyBaconSettingsCommand). The sim worker's main-thread replica follows them (applyBaconSettingsStatics).
 //
 // The delayed actions BaconInitialize queues, in C# order: BaconMain.cs 686-697 "SaveStats" when saveStats (no Rnd),
 // 700-715 "ProcessEmpireScienceShips" when researchPerLab > 0 (Galaxy.Rnd.Next(26, 35); baconScienceShips.ts), and
@@ -15,7 +18,7 @@
 // (1070-1071).
 
 import type { Galaxy } from './galaxy';
-import { type BaconSettings, baconSettings, defaultBaconSettings, setBaconSettings } from './data/baconSettings';
+import { type BaconSettings, type BaconSettingsOverrides, baconSettings, baconSettingsOverrides, defaultBaconSettings, mergeBaconSettings, setBaconSettings } from './data/baconSettings';
 import { baconMovementSettings } from './movement';
 import { scheduleProcessEmpireScienceShips } from './baconScienceShips';
 import { EventAction, EventActionExecutionPackage, EventActionType, GameEvent } from './story/gameEventModel';
@@ -81,13 +84,24 @@ export function resetBaconSettings(): void {
     syncMovementSettings();
 }
 
+/** The install's settings the last BaconInitialize started from (BaconSettings.txt as parsed; the per-game overrides'
+ *  base). Process-wide like the statics. */
+let installSettings: BaconSettings = defaultBaconSettings();
+
+/** The install's BaconSettings.txt values (the base a game's overrides apply to; the C# defaults with no file). */
+export function installBaconSettings(): Readonly<BaconSettings> {
+    return installSettings;
+}
+
 /**
  * BaconMain.cs 605-1062: the statics take the loaded file's values (`settings` null/undefined = no BaconSettings.txt:
- * every static at its C# default), and 614-617 IndependentEmpire.Policy.TroopGarrisonMinimumPerColony when that key
- * parsed. `galaxy` null applies only the statics.
+ * every static at its C# default) with this game's overrides on top (Galaxy.baconSettingsOverrides, ours), and 614-617
+ * IndependentEmpire.Policy.TroopGarrisonMinimumPerColony when that key parsed. `galaxy` null applies only the statics
+ * (from the file alone).
  */
 export function baconInitializeSettings(galaxy: Galaxy | null, settings: BaconSettings | null | undefined): void {
-    setBaconSettings(settings ?? defaultBaconSettings());
+    installSettings = { ...(settings ?? defaultBaconSettings()) };
+    setBaconSettings(mergeBaconSettings(installSettings, galaxy?.baconSettingsOverrides));
     syncMovementSettings();
     const independent = galaxy?.independentEmpire ?? null;
     if (baconSettings.troopGarrisonMinimumPerColony !== null && independent !== null && independent.policy !== null) {
@@ -99,4 +113,30 @@ export function baconInitializeSettings(galaxy: Galaxy | null, settings: BaconSe
         scheduleProcessEmpireScienceShips(galaxy);
         addOtherDelayedEvents(galaxy);
     }
+}
+
+/**
+ * Statics only, for a galaxy whose state lives elsewhere (the sim worker's main-thread replica): the install's file with
+ * `overrides` on top, as the worker's BaconInitialize set them. No scheduling, no policy write.
+ */
+export function applyBaconSettingsStatics(overrides: BaconSettingsOverrides | null | undefined): void {
+    setBaconSettings(mergeBaconSettings(installSettings, overrides));
+    syncMovementSettings();
+}
+
+/**
+ * The journaled setBaconSettings command (ours; the Bacon Mod Settings window): `requested` becomes this game's whole
+ * override set (keys absent from it go back to the install's value; {} = the file's values), stored only where a value
+ * differs from the file. Then BaconInitialize runs again at the command's frame boundary, as the C# does when a game is
+ * loaded: every static takes its new value (the code reads them at use time), TroopGarrisonMinimumPerColony is written
+ * to the independent empire's policy, and the SaveStats / ProcessEmpireScienceShips / ClearShipsAboutToBeDestroyed
+ * actions are queued when missing (a Galaxy.Rnd draw only when one is queued, at this deterministic point). Returns the
+ * stored overrides.
+ */
+export function applyBaconSettingsCommand(galaxy: Galaxy, requested: BaconSettingsOverrides): BaconSettingsOverrides {
+    const stored = baconSettingsOverrides(installSettings, requested);
+    if (Object.keys(stored).length > 0) galaxy.baconSettingsOverrides = stored;
+    else delete galaxy.baconSettingsOverrides;
+    baconInitializeSettings(galaxy, installSettings);
+    return { ...stored };
 }

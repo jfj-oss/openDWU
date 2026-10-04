@@ -528,3 +528,236 @@ export const baconSettings: BaconSettings = defaultBaconSettings();
 export function setBaconSettings(settings: BaconSettings): void {
     Object.assign(baconSettings, settings);
 }
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Per-game settings (ours; the C# has one process-wide set of statics read from the install's file). A game stores the
+// keys it changed (Galaxy.baconSettingsOverrides, only those that differ from the install's BaconSettings.txt) and the
+// in-game Bacon Mod Settings window changes them with the journaled setBaconSettings command (sim/baconSettings.ts).
+// ---------------------------------------------------------------------------------------------------------------------
+
+/** How a field is parsed in BaconInitialize (605-1062): the TryParse used and the clamp applied after it. */
+export type BaconSettingType = 'int' | 'intOrNull' | 'short' | 'long' | 'float' | 'double' | 'bool' | 'string' | 'derived';
+
+export interface BaconSettingField {
+    /** The BaconSettings.txt key (BaconMain.cs TryGetValue name). */
+    fileKey: string;
+    type: BaconSettingType;
+    min?: number;
+    max?: number;
+    /** The C# lower-cases the value (the bay labels, 899-910). */
+    lowerCase?: boolean;
+}
+
+const fld = (fileKey: string, type: BaconSettingType, min?: number, max?: number): BaconSettingField => ({ fileKey, type, min, max });
+const F01: [number, number] = [f(0.1), f(1)];
+
+/** Every BaconSettings field, in BaconInitialize order, with its file key, parse type and clamps (parseBaconSettings). */
+export const BACON_SETTING_FIELDS: { readonly [K in keyof BaconSettings]: BaconSettingField } = {
+    hyperJumpThreshhold: fld('HyperJumpThreshhold', 'int'),
+    baseHyperJumpAccuracy: fld('BaseHyperJumpAccuracy', 'int'),
+    troopGarrisonMinimumPerColony: fld('TroopGarrisonMinimumPerColony', 'intOrNull'),
+    useStarGravityWells: fld('useStarGravityWells', 'bool'),
+    smallShipsJumpSooner: fld('smallShipsJumpSooner', 'bool'),
+    priceReductionFactor: fld('priceReductionFactor', 'int'),
+    sublightFuelBurnDivisor: fld('sublightFuelBurnDivisor', 'float'),
+    fighterRangeMultiple: fld('fighterRangeMultiple', 'double'),
+    ammoExhaustChanceMissile: fld('ammoExhaustChanceMissile', 'float'),
+    ammoExhaustChanceTorpedo: fld('ammoExhaustChanceTorpedo', 'float'),
+    fighterBuildCost: fld('fighterBuildCost', 'int'),
+    fighterBuildSpeedDivisor: fld('fighterBuildSpeedDivisor', 'float'),
+    shadow: fld('Shadow', 'bool'),
+    saveStats: fld('saveStats', 'bool'),
+    statSaveIntervalInGameDays: fld('saveInterval', 'short', 10),
+    researchPerLab: fld('researchPerLab', 'int'),
+    fighterOnBomberDamageMultiplier: fld('fighterOnBomberViolence', 'float'),
+    backgroundStarsAtZoomLevel: fld('backgroundStarsAtZoomLevel', 'double'),
+    lowStarCount: fld('lowStarCount', 'int', 10, 100),
+    alwaysShowAsteroidColonies: fld('alwaysShowAsteroidColonies', 'bool'),
+    allowAsteroidColonies: fld('allowAsteroidColonies', 'bool'),
+    asteroidColonyCost: fld('asteroidColonyCost', 'int'),
+    scientificDataForResourceSurvey: fld('scientificDataForResourceSurvey', 'int'),
+    scientificDataForRuins: fld('scientificDataForRuins', 'int'),
+    tradeEverything: fld('tradeEverything', 'bool'),
+    shipMaintenanceCostPerSizeUnit: fld('shipMaintenanceCostPerSizeUnit', 'float'),
+    shipMarkupFactor: fld('shipMarkupFactor', 'float'),
+    shipMarkupFactorPirates: fld('shipMarkupFactorPirates', 'float'),
+    warWearinessMaximum: fld('warWearinessMax', 'float'),
+    asteroidColonyPrevalenceDivisor: fld('asteroidColonyPrevalenceDivisor', 'float'),
+    lowIndependentLifeValue: fld('lowIndependentLifeValue', 'int'),
+    warWearinessReduction: fld('warWearinessReduction', 'int'),
+    spyCaptureChance: fld('spyCaptureChance', 'float'),
+    spyBaseEscapeChance: fld('capturedSpyEscapeChance', 'float'),
+    spyBaseDefectChance: fld('capturedSpyDefectChance', 'float'),
+    spyBaseValue: fld('spyBaseValue', 'int'),
+    tradeTax: fld('tradeTax', 'double'),
+    subjugationTributePercentage: fld('SubjugationTributePercentage', 'double'),
+    weaponRangeMultiplierForBases: fld('weaponRangeMultiplierForBases', 'float'),
+    allowInfrastructureImprovements: fld('allowInfrastructureImprovements', 'bool'),
+    infrastructureSpendingPerDevelopmentLevel: fld('infrastructureSpendingPerDevelopmentLevel', 'int', 10000),
+    maxInfrastructureInvestmentAllowed: fld('maxInfrastructureInvestmentAllowed', 'int', 10000),
+    infrasetuctureDurability: fld('infrastuctureDurability', 'float', ...F01),
+    marketPriceUpdateChance: fld('marketPriceUpdateChance', 'double'),
+    maximumResourceLevelToStockAtBaseNotAtColony: fld('maximumResourceLevelToStockAtBaseNotAtColony', 'int'),
+    noFuelCruiseSpeedMultiplier: fld('noFuelCruiseSpeedMultiplier', 'float', ...F01),
+    noFuelTopSpeedMultiplier: fld('noFuelTopSpeedMultiplier', 'float', ...F01),
+    noFuelHyperSpeedMultiplier: fld('noFuelHyperSpeedMultiplier', 'float', ...F01),
+    pirateControlLevelToBuildShipsAtIndependentPlanets: fld('pirateControlLevelToBuildShipsAtIndependentPlanets', 'float', ...F01),
+    shipFreeRepairTimeFromCrewSkillAverage: fld('shipFreeRepairTimeFromCrewSkillAverage', 'int'),
+    shipFreeRepairTimeFromCrewSkillExperienced: fld('shipFreeRepairTimeFromCrewSkillExperienced', 'int'),
+    shipFreeRepairTimeFromCrewSkillVeteran: fld('shipFreeRepairTimeFromCrewSkillVeteran', 'int'),
+    shipFreeRepairTimeFromCrewSkillElite: fld('shipFreeRepairTimeFromCrewSkillElite', 'int'),
+    shipFreeRepairTimeFromCrewSkillLegendary: fld('shipFreeRepairTimeFromCrewSkillLegendary', 'int'),
+    fighterBayLabel: { fileKey: 'fighterBayLabel', type: 'string', lowerCase: true },
+    bomberBayLabel: { fileKey: 'bomberBayLabel', type: 'string', lowerCase: true },
+    mixedBayLabel: { fileKey: 'mixedBayLabel', type: 'string', lowerCase: true },
+    pointDefenseAffectsMissiles: fld('pointDefenseAffectsMissiles', 'bool'),
+    orbitalAsteroidCost: fld('orbitalAsteroidCost', 'int'),
+    privateBuildCostToStateMoney: fld('privateBuildCostToStateMoney', 'double', 0, 1),
+    addSalesTax: fld('addSalesTax', 'bool'),
+    newIDCost: fld('newIDCost', 'int'),
+    baseShipOfficerCost: fld('baseShipOfficerCost', 'int'),
+    componentEquipCost: fld('componentEquipCost', 'int'),
+    invasionStrategyResult: fld('invasionStrategyResult', 'float'),
+    invasionStrategyRemainingGuesses: fld('invasionStrategyRemainingGuesses', 'float', 0),
+    useInvasionModifierReputation: fld('useInvasionModifierReputation', 'bool'),
+    quartersOfCashAvailable: fld('quartersOfCashAvailable', 'int'),
+    limitNewFighterBuildToColonies: fld('limitNewFighterBuildToColonies', 'bool'),
+    tailGunnerResearch: fld('tailGunnerReasearch', 'string'),
+    useStargates: fld('useStargates', 'bool'),
+    pirateBaseTroops: fld('pirateBaseTroops', 'int'),
+    pirateFortressTroops: fld('pirateFortressTroops', 'int'),
+    pirateCriminalNetworkTroops: fld('pirateCriminalNetworkTroops', 'int'),
+    drawWeaponRangeCircles: fld('showRangeCircles', 'bool'),
+    // 999-1015: set from showRangeCircles (0.9 on, 5.0 off), never by its own key.
+    minZoomLevelForWeaponsCircles: fld('showRangeCircles', 'derived'),
+    pirateMaxPopulationInfluence: fld('pirateMaxPopulationInfluence', 'long'),
+    customDifficultyColonyCorruptionFactor: fld('customDifficultyColonyCorruptionFactor', 'double', 0.01, 10),
+    customDifficultyWarWearinessFactor: fld('customDifficultyWarWearinessFactor', 'double', 0.01, 10),
+    customDifficultyResearchRate: fld('customDifficultyResearchRate', 'double', 0.01, 10),
+    customDifficultyPopulationGrowthRate: fld('customDifficultyPopulationGrowthRate', 'double', 0.01, 10),
+    customDifficultyMiningRate: fld('customDifficultyMiningRate', 'double', 0.01, 10),
+    customDifficultyTargettingFactor: fld('customDifficultyTargettingFactor', 'double', 0.01, 10),
+    customDifficultyCountermeasuresFactor: fld('customDifficultyCountermeasuresFactor', 'double', 0.01, 10),
+    customDifficultyColonyShipBuildSpeedRate: fld('customDifficultyColonyShipBuildSpeedRate', 'double', 0.01, 10),
+    customDifficultyColonyIncomeFactor: fld('customDifficultyColonyIncomeFactor', 'double', 0.01, 10),
+    allowPrivateShipAssigment: fld('AllowPrivateShipAssigment', 'bool'),
+};
+
+export type BaconSettingKey = keyof BaconSettings;
+export type BaconSettingsOverrides = Partial<{ [K in BaconSettingKey]: BaconSettings[K] }>;
+
+const isBaconSettingKey = (k: string): k is BaconSettingKey => Object.prototype.hasOwnProperty.call(BACON_SETTING_FIELDS, k);
+
+/**
+ * One value as BaconInitialize would store it after its TryParse and clamp (the field's type, Math.fround for a float
+ * field, the min / max clamps); undefined when the value would not parse (the static keeps its value). Floats clamp in
+ * float arithmetic as the C# Math.Min(Math.Max(v, 0.1f), 1f) does.
+ */
+export function normalizeBaconSettingValue(key: BaconSettingKey, value: unknown): BaconSettings[BaconSettingKey] | undefined {
+    const d = BACON_SETTING_FIELDS[key];
+    const integer = (lo: number, hi: number): number | undefined => (typeof value === 'number' && Number.isInteger(value) && value >= lo && value <= hi ? value : undefined);
+    const clamp = (v: number): number => {
+        if (d.min !== undefined && v < d.min) v = d.min;
+        if (d.max !== undefined && v > d.max) v = d.max;
+        return v;
+    };
+    switch (d.type) {
+        case 'int': {
+            const v = integer(-2147483648, 2147483647);
+            if (v === undefined) return undefined;
+            return key === 'researchPerLab' ? f(v) : clamp(v);
+        }
+        case 'intOrNull':
+            return value === null ? null : integer(-2147483648, 2147483647);
+        case 'short': {
+            const v = integer(-32768, 32767);
+            return v === undefined ? undefined : clamp(v);
+        }
+        case 'long':
+            return typeof value === 'number' && Number.isInteger(value) ? value : undefined;
+        case 'float': {
+            if (typeof value !== 'number' || !Number.isFinite(value)) return undefined;
+            const v = f(value);
+            if (!Number.isFinite(v)) return undefined;
+            return f(clamp(v));
+        }
+        case 'double':
+            return typeof value === 'number' && !Number.isNaN(value) ? clamp(value) : undefined;
+        case 'bool':
+            return typeof value === 'boolean' ? value : undefined;
+        case 'string':
+            return typeof value === 'string' ? (d.lowerCase === true ? value.toLowerCase() : value) : undefined;
+        case 'derived':
+            return undefined;
+    }
+}
+
+/**
+ * The settings a game runs with: the install's (BaconSettings.txt as parsed) with the game's overrides applied the way
+ * BaconInitialize applies a key (normalizeBaconSettingValue; an override that does not parse is ignored), plus the two
+ * cross-key rules: showRangeCircles sets minZoomLevelForWeaponsCircles (999-1015) and the no-fuel top speed multiplier
+ * is never below the cruise one (863-870).
+ */
+export function mergeBaconSettings(install: BaconSettings, overrides: BaconSettingsOverrides | null | undefined): BaconSettings {
+    const s: BaconSettings = { ...install };
+    if (overrides === null || overrides === undefined) return s;
+    const out = s as unknown as Record<string, unknown>;
+    for (const k of Object.keys(overrides)) {
+        if (!isBaconSettingKey(k)) continue;
+        const v = normalizeBaconSettingValue(k, (overrides as Record<string, unknown>)[k]);
+        if (v !== undefined) out[k] = v;
+    }
+    if (overrides.drawWeaponRangeCircles !== undefined) s.minZoomLevelForWeaponsCircles = s.drawWeaponRangeCircles ? 0.9 : 5.0;
+    if (overrides.noFuelTopSpeedMultiplier !== undefined || overrides.noFuelCruiseSpeedMultiplier !== undefined) {
+        if (s.noFuelTopSpeedMultiplier < s.noFuelCruiseSpeedMultiplier) s.noFuelTopSpeedMultiplier = s.noFuelCruiseSpeedMultiplier;
+    }
+    return s;
+}
+
+/**
+ * The overrides a game stores for `requested` on top of `install`: each key that parses (normalizeBaconSettingValue),
+ * as merged, and only when it differs from the install's value (so an unchanged game writes nothing). Key order =
+ * BACON_SETTING_FIELDS order (deterministic save text).
+ */
+export function baconSettingsOverrides(install: BaconSettings, requested: BaconSettingsOverrides | null | undefined): BaconSettingsOverrides {
+    const merged = mergeBaconSettings(install, requested);
+    const out: Record<string, unknown> = {};
+    if (requested === null || requested === undefined) return out;
+    for (const k of Object.keys(BACON_SETTING_FIELDS) as BaconSettingKey[]) {
+        if (BACON_SETTING_FIELDS[k].type === 'derived') continue;
+        if (!Object.prototype.hasOwnProperty.call(requested, k)) continue;
+        if (!Object.is(merged[k], install[k])) out[k] = merged[k];
+    }
+    return out as BaconSettingsOverrides;
+}
+
+/**
+ * The file's own comment text for each key: the `//` lines above a key (a block of comment lines, then the key lines
+ * that follow it up to the next comment or blank line, share it), joined into one string. Keys with no comment above
+ * them are absent. A blank line ends a comment block, so the header blocks (format, European decimals) attach to no key.
+ */
+export function readBaconSettingsComments(text: string | null): Record<string, string> {
+    const out: Record<string, string> = {};
+    if (text === null) return out;
+    if (text.charCodeAt(0) === 0xfeff) text = text.slice(1);
+    let comment: string[] = [];
+    let afterKey = false;
+    for (const raw of text.split(/\r\n|\r|\n/)) {
+        const line = raw.trim();
+        if (line === '') {
+            comment = [];
+            afterKey = false;
+            continue;
+        }
+        if (line.startsWith('//')) {
+            if (afterKey) comment = [];
+            afterKey = false;
+            comment.push(line.replace(/^\/\/\s?/, '').trim());
+            continue;
+        }
+        const key = raw.split('=')[0];
+        if (comment.length > 0 && !(key in out)) out[key] = comment.join(' ');
+        afterKey = true;
+    }
+    return out;
+}

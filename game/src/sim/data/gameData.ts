@@ -42,7 +42,7 @@ export const DEFAULT_RACE_FILES: readonly string[] = [
 import { DESIGN_SPECIFICATION_MISSING, designSpecificationFallbackFiles } from './designSpecifications';
 import { parseCharacterFile, parseCharacterNames, type CharacterFileRow, type CharacterNames } from './characters';
 import { loadText } from '../textResolver';
-import { parseBaconSettings, type BaconSettings } from './baconSettings';
+import { parseBaconSettings, readBaconSettingsComments, type BaconSettings } from './baconSettings';
 
 // Sub role names Empire.GenerateDesignSpecifications (Empire.cs 4108) loads a
 // design template for, plus "PlanetDestroyer" (same method,
@@ -114,6 +114,9 @@ export interface GameData {
      * gives the defaults. Absent (hand-built GameData) = the defaults. Applied at game start (sim/baconInitialize.ts).
      */
     baconSettings?: BaconSettings;
+    /** BaconSettings.txt's own comment above each key (by file key; readBaconSettingsComments): the Bacon Mod Settings
+     *  window's descriptions. Absent with no file. */
+    baconSettingsComments?: Record<string, string>;
     /**
      * Mod layer (tasks/MODLAYER-DESIGN.md): the raw text of the key;value files a scenario overlay may patch, keyed by
      * lower-cased install-relative path ("races/human.txt", "policy/human.txt", "policy/pirate/human.txt" — policies by
@@ -521,6 +524,7 @@ export async function loadGameData(
 
     return {
         baconSettings: parseBaconSettings(baconSettingsText === null || isMissingResponse(baconSettingsText) ? null : baconSettingsText),
+        baconSettingsComments: readBaconSettingsComments(baconSettingsText === null || isMissingResponse(baconSettingsText) ? null : baconSettingsText),
         characterNames,
         characterFiles,
         designNames,

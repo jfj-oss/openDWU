@@ -119,6 +119,7 @@ import { closeEmpireComparison, closeGameEndBanner, installGameEndHandler, remov
 import { setGameEndExitHandler } from './ui/screens/gameEndPanel'; // [15d]
 import { closeIntroductionPanel, openIntroductionPanel } from './ui/screens/introductionPanel'; // [intro]
 import { installMessagePopups, removeMessagePopups } from './ui/messagePopups'; import { closeGameOptionsPanel, setAllowSameSystemSource } from './ui/screens/gameOptionsPanel'; // [16d]
+import { setBaconSettingsCommentsSource } from './ui/screens/baconSettingsWindow';
 import { installOrderUi, selectionTarget } from './ui/orderMenu'; import { getSelection as getHudSelection, selectBuiltObjectList, selectShipGroup, selectStellarObject } from './ui/hud'; import { ShipGroup } from './sim/fleets/shipGroup'; import { Fighter } from './sim/combat/fighters'; // [ordermenu]
 // [suggest] begin
 import { installAdvisorSuggestions, removeAdvisorSuggestions } from './ui/advisorSuggestions';
@@ -458,6 +459,8 @@ async function startGameViewWithOverlay(...args: Parameters<typeof startGameView
 let lastStartOptions: StartGameOptions | null = null;
 // [gameoptions] Game Options → Empire Settings shows this game's same-system start option read-only.
 setAllowSameSystemSource(() => lastStartOptions?.colonization.allowSameSystemAsOtherEmpires ?? null);
+// Game Options → Bacon Mod Settings: the descriptions are BaconSettings.txt's own comments.
+setBaconSettingsCommentsSource(() => (lastPlayedGameData ?? lastGameData)?.baconSettingsComments ?? null);
 let activeSavePanel: ReturnType<typeof createSaveLoadPanel> | null = null;
 /** Saves that could not be written to localStorage (quota), kept for this
  * session and shared by every save/load panel (in-game and main menu). */

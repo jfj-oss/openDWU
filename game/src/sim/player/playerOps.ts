@@ -77,6 +77,8 @@ import { empireMessageHistory, removeOldHistoryMessages } from '../messages';
 import { copyMessageOptions, type MessageOptions } from '../messageRouting';
 import { storeChronicleYear, type ChronicleYear } from '../scenario/llm/chronicle';
 import { galaxyStarDate } from '../tick/simTime';
+import { applyBaconSettingsCommand } from '../baconSettings';
+import type { BaconSettingsOverrides } from '../data/baconSettings';
 import { enemyTargetAttack, enemyTargetCancel, enemyTargetObjects } from './enemyTargets';
 import type { PrioritizedTargetObject } from '../civilianAI';
 import { purchaseAtYard, removeFromYardQueue, scrapBuiltObjects, scrapShipUnderConstruction } from './yardOrders'; // [yards]
@@ -446,6 +448,9 @@ export const PLAYER_OPS = {
      * Main.Part6.cs:2406-2489 (the Message Settings window writes _Game.DisplayMessage* / DisplayPopup*; the Empire
      * Settings window GameOptions.SuppressAllPopups): this game's message options (Galaxy.messageOptions).
      */
+    /** Ours: Game Options → Bacon Mod Settings. This game's BaconSettings.txt values (the whole override set; keys left
+     *  out take the install file's value), then BaconInitialize again at this frame boundary (sim/baconSettings.ts). */
+    setBaconSettings: (galaxy: Galaxy, _empire: Empire, overrides: BaconSettingsOverrides) => applyBaconSettingsCommand(galaxy, overrides),
     setMessageOptions: (galaxy: Galaxy, _empire: Empire, options: MessageOptions) => {
         galaxy.messageOptions = copyMessageOptions(options);
         return true;

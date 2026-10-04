@@ -21,6 +21,7 @@
 
 import { rebuildIndexes } from './indexRebuild';
 import { baconInitializeSettings, resetBaconSettings } from './baconSettings';
+import { baconSettingsOverrides, defaultBaconSettings, type BaconSettingsOverrides } from './data/baconSettings';
 import { applyVictoryConditionsToGalaxy, type VictoryConditions } from './victory';
 import { reviewComponentPrices, reviewResourcePrices } from './market';
 import { selectPopularDesignCandidates } from './independentTraders';
@@ -194,6 +195,9 @@ export interface CreateGameOptions {
     gameOptions?: Readonly<GameOptionsAutomation>;
     /** Start.2.cs 2147-2188: the new game's Display* message options (GameOptions; Galaxy.messageOptions). Unset: defaults. */
     messageOptions?: MessageOptions | null;
+    /** This game's BaconSettings.txt values (ours; Galaxy.baconSettingsOverrides — only the keys that differ from the
+     *  install's file are kept). Unset: the file's values. */
+    baconSettingsOverrides?: BaconSettingsOverrides | null;
     /** The wizard's flag shape (StartGameOptions.flagShapeIndex), written last (see createGameSteps' end). -1 / unset: none. */
     playerFlagShape?: number;
     // [todosweep2] begin
@@ -1534,7 +1538,11 @@ export function* createGameSteps(opts: CreateGameOptions): Generator<GameStartPr
     applyDesignUpgradeGameOptionsToPolicies(opts.gameOptions, empire2.policy ?? null);
     // TODO(port): the rest of CreateGameFromSettings (see header).
     // Main.Part12.cs 3151 BaconMain.BaconInitialize(this) once Main starts the new game: the loaded BaconSettings.txt
-    // takes effect (baconSettings.ts; the settings part only).
+    // takes effect (baconSettings.ts; the settings part only), with this game's own values on top (ours).
+    if (opts.baconSettingsOverrides !== undefined && opts.baconSettingsOverrides !== null) {
+        const stored = baconSettingsOverrides(gd.baconSettings ?? defaultBaconSettings(), opts.baconSettingsOverrides);
+        if (Object.keys(stored).length > 0) galaxy.baconSettingsOverrides = stored;
+    }
     baconInitializeSettings(galaxy, gd.baconSettings);
     // Mod layer: the scenario game-start hook (after every stock start step, before the first frame; no-op without one).
     if (galaxy.scenario !== null) scenarioGameStart(galaxy, { randomPointInRing, inNebula, startTechLevel: opts.player.techLevel });

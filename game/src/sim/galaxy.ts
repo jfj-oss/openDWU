@@ -49,6 +49,7 @@ function compareGroupNames(a: Habitat[], b: Habitat[]): number {
 }
 import type { Empire } from './empire';
 import type { GameData } from './data/gameData';
+import type { BaconSettingsOverrides } from './data/baconSettings';
 import type { CharacterFileRow, CharacterNames } from './data/characters';
 import type { Design } from './design';
 import { findNewestCanBuild, resolveSubRoleDescription } from './designGeneration';
@@ -294,6 +295,13 @@ export class Galaxy {
      * galaxyMessageOptions).
      */
     messageOptions: MessageOptions | null = null;
+    /**
+     * This game's BaconSettings.txt values that differ from the install's file (ours: the C# statics are process-wide;
+     * data/baconSettings.ts baconSettingsOverrides). Set at a new game (CreateGameOptions.baconSettingsOverrides) and by the
+     * journaled setBaconSettings command (the Bacon Mod Settings window). `declare`d, so the property exists only while
+     * the game has overrides and a game without them saves exactly as before.
+     */
+    declare baconSettingsOverrides?: BaconSettingsOverrides;
     colonyNames: string[] | null = null;
     colonyNameIndex = 0;
     // Task C2a: Galaxy.ResourceSystem (strategic/luxury lists, RelativeImportance).

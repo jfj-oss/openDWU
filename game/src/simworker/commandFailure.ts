@@ -123,6 +123,7 @@ export const COMMAND_FAILURE: FailureTable = {
     expireAdvisorSuggestionsForEmpire: zero,
     removeOldHistoryMessages: () => -1,
     setMessageOptions: no,
+    setBaconSettings: () => ({}),
     storeChronicleYear: no,
     advisorCommands: (message, [, commands]) =>
         commands.map((c) => {

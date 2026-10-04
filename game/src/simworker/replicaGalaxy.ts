@@ -6,7 +6,7 @@
 
 import type { Galaxy } from '../sim/galaxy';
 import type { GameData } from '../sim/data/gameData';
-import { baconInitializeSettings } from '../sim/baconSettings';
+import { applyBaconSettingsStatics, baconInitializeSettings } from '../sim/baconSettings';
 import { applyReplicaSideTables, galaxyExternals, replicaCodecOptions, replicaSideTables, replicaSkipFields, replicaStatics, wireReplicaVisibility } from '../sim/save/galaxySave';
 import { Galaxy as GalaxyClass } from '../sim/galaxy';
 import { BuiltObject } from '../sim/builtObject';
@@ -335,6 +335,8 @@ export class GalaxyReplica {
     /** Applies since the side tables last went onto the replica (afterApply), and cold pumps with nothing to apply since. */
     private sideStale = false;
     private sideIdlePumps = 0;
+    /** JSON of the Galaxy.baconSettingsOverrides the statics were last set from ('' = none). */
+    private baconOverridesSeen = '';
 
     constructor(gameData: GameData, baseTechCost: number) {
         this.statics = replicaStatics(gameData, baseTechCost);
@@ -381,6 +383,13 @@ export class GalaxyReplica {
         if (!this.wired) {
             this.statics.wire(g);
             this.wired = true;
+        }
+        // This game's BaconSettings overrides (Galaxy.baconSettingsOverrides: the save's, or a setBaconSettings command
+        // the worker applied): the main thread's statics follow them (statics only, as in the constructor).
+        const bacon = g.baconSettingsOverrides === undefined ? '' : JSON.stringify(g.baconSettingsOverrides);
+        if (bacon !== this.baconOverridesSeen) {
+            this.baconOverridesSeen = bacon;
+            applyBaconSettingsStatics(g.baconSettingsOverrides);
         }
         // New empires (pirates appearing, rebels) need their visibility owner hooks.
         const n = g.empires.length + g.pirateEmpires.length;

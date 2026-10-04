@@ -31,6 +31,7 @@
 
 import './gameOptionsPanel.css';
 import { openHotkeysScreen } from './hotkeysScreen';
+import { openBaconSettingsWindow } from './baconSettingsWindow';
 import { AutomationLevel, type Empire } from '../../sim/empire';
 import { issuePlayerCommand } from '../../sim/player/playerCommands';
 import {
@@ -251,7 +252,7 @@ interface OpenState {
 
 let open: OpenState | null = null;
 /** The open sub-windows (closed with the Options window, like method_413). */
-type SubWindowKind = 'empire' | 'messages' | 'advanced' | 'improvements';
+type SubWindowKind = 'empire' | 'messages' | 'advanced' | 'improvements' | 'bacon';
 const subWindows = new Map<SubWindowKind, OriginalWindow>();
 /** The values this Options session issued as commands (gameOptionsModel.ts gameOptionsFromEmpire). */
 let pendingEmpireValues: PendingEmpireValues = {};
@@ -454,10 +455,17 @@ function createGameOptionsPanel(opts: GameOptionsPanelOptions): OpenState {
     if (empire !== null) buildAutomationGroup(body, empire);
     else buildNewGameAutomationGroup(body, 12, 288);
 
-    // btnGameOptionsShowMessages (12, 589) 660 × 35 — shortened to 325 for our [improvements] button beside it.
-    button(body, 'Show Message Settings', 12, 589, 325, 35, () => openMessageSettings());
+    // btnGameOptionsShowMessages (12, 589) 660 × 35 — shortened for our [improvements] and Bacon Mod Settings buttons
+    // beside it (the latter only in a game: the settings are the game's).
+    const bottomW = empire !== null ? 213 : 325;
+    button(body, 'Show Message Settings', 12, 589, bottomW, 35, () => openMessageSettings());
     // [improvements] Game Options → Improvements (ui/improvements.ts): the DW2-inspired additions, each on / off.
-    button(body, `${IMPROVEMENTS_TITLE}...`, 347, 589, 325, 35, () => openSubWindow('improvements', () => createImprovementsWindow()));
+    button(body, `${IMPROVEMENTS_TITLE}...`, 12 + bottomW + 10, 589, bottomW, 35, () => openSubWindow('improvements', () => createImprovementsWindow()));
+    // Game Options → Bacon Mod Settings (ours, baconSettingsWindow.ts): this game's BaconSettings.txt values.
+    if (empire !== null) {
+        const emp = empire;
+        button(body, 'Bacon Mod Settings...', 12 + 2 * (bottomW + 10), 589, bottomW, 35, () => openSubWindow('bacon', () => openBaconSettingsWindow(emp, () => subWindows.delete('bacon'))));
+    }
 
     function openAdvancedDisplaySettings(): void {
         openSubWindow('advanced', () => createAdvancedDisplaySettings());
