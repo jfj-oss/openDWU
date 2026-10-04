@@ -9,6 +9,9 @@
 // dotted frame follow the mouse (CheckHovered), the size glyph cycles the three sizes. Read only: the panel never
 // attaches Habitat.colonyInvasion (see groundReportModel.ts for why). Sim worker: the panel reads the replica and asks
 // for a refresh of the colony every second (simworker/refresh.ts).
+//
+// The animation (explosions, weapon shots, landing pods: groundReportAnim.ts) is a canvas over the pictures, drawn
+// each animation frame while something plays; it reads the same state (the replica in worker mode) and never writes.
 
 import './groundReport.css';
 import type { Empire } from '../../sim/empire';
@@ -29,6 +32,10 @@ import { getEmpireSummarySource } from './empireSummary';
 import { selectedGameObject } from '../controlGroups';
 import { el, originalVirtualSize, openOriginalWindow, place, type OriginalWindow } from '../originalWindow';
 import { uiScaleFactor } from '../settings';
+import { themedAssetUrl } from '../../themeAssets';
+import { explosionFrameUrl } from '../../render/effectsLayer';
+import { TroopType } from '../../sim/cargo';
+import { EXPLOSION_FRAME_COUNT, EXPLOSION_SET_COUNT, GroundAnimClock, GroundReportAnimator, type GroundAnimFrame } from './groundReportAnim';
 import { tryGetText } from '../../sim/textResolver';
 import type { Race } from '../../sim/data/races';
 import {
@@ -44,6 +51,42 @@ import {
 
 const CHROME = '/assets/dwu/images/ui/chrome';
 const PLANET_MAPS = '/assets/dwu/images/environment/planetmaps';
+const WEAPONS = '/assets/dwu/images/effects/weapons';
+
+// The animation pictures (Main.Part12.cs: bitmap_19 the explosion sets, bitmap_104 assaultpod_landing.png, bitmap_16
+// the Troop_<type>_0.png shots), loaded on first use and shared by every opening.
+const images = new Map<string, HTMLImageElement>();
+function image(url: string): HTMLImageElement | null {
+    let img = images.get(url);
+    if (img === undefined) {
+        img = new Image();
+        img.src = themedAssetUrl(url);
+        images.set(url, img);
+    }
+    return img.complete && img.naturalWidth > 0 ? img : null;
+}
+let prefetched = false;
+/** Fetch every animation picture once (the C# loads them all at start-up), when the first animation is queued. */
+function prefetchAnimationImages(): void {
+    if (prefetched) return;
+    prefetched = true;
+    image(`${CHROME}/assaultpod_landing.png`);
+    for (const t of [TroopType.Infantry, TroopType.Armored, TroopType.Artillery, TroopType.SpecialForces]) image(shotUrl(t));
+    for (let s = 0; s < EXPLOSION_SET_COUNT; s++) for (let i = 0; i < EXPLOSION_FRAME_COUNT; i++) image(explosionFrameUrl(s, i));
+}
+/** bitmap_16[0..3]: the infantry (also pirate raiders), armored, artillery ("planetary defense") and special forces shots. */
+function shotUrl(type: TroopType): string {
+    switch (type) {
+        case TroopType.Armored:
+            return `${WEAPONS}/troop_armored_0.png`;
+        case TroopType.Artillery:
+            return `${WEAPONS}/troop_artillery_0.png`;
+        case TroopType.SpecialForces:
+            return `${WEAPONS}/troop_specialforces_0.png`;
+        default:
+            return `${WEAPONS}/troop_infantry_0.png`;
+    }
+}
 
 interface OpenState {
     win: OriginalWindow;
@@ -114,6 +157,7 @@ function createGroundReport(galaxy: Galaxy, player: Empire | null, colony: Habit
         onClose: () => {
             clearInterval(timer);
             clearInterval(refreshTimer);
+            cancelAnimationFrame(raf);
             if (open !== null && open.win === win) open = null;
         },
     });
@@ -122,7 +166,11 @@ function createGroundReport(galaxy: Galaxy, player: Empire | null, colony: Habit
     const content = el('div', 'gr-content');
     const hoverText = el('div', 'gr-hover-text');
     const hoverBox = el('div', 'gr-hover-box');
-    view.append(content, hoverBox, hoverText);
+    const fx = el('canvas', 'gr-fx');
+    view.append(content, fx, hoverBox, hoverText);
+    const clock = new GroundAnimClock();
+    const animNow = (): number => clock.now(galaxy.nowMs, performance.now());
+    const anim = new GroundReportAnimator(colony, animNow());
 
     let model: GroundReportModel | null = null;
     let mouse: { x: number; y: number } | null = null;
@@ -153,6 +201,7 @@ function createGroundReport(galaxy: Galaxy, player: Empire | null, colony: Habit
         win.setTitle(title());
         const m = buildGroundReport({ galaxy, colony, panelSize, habitatTypeName: HabitatType[colony.type] ?? '' });
         model = m;
+        anim.setModel(m);
         place(view, 5, 5, m.size.w, m.size.h);
         content.replaceChildren();
         const W = m.size.w;
@@ -190,6 +239,7 @@ function createGroundReport(galaxy: Galaxy, player: Empire | null, colony: Habit
         if (m.shield !== null) content.appendChild(box('gr-shield', m.shield));
         // The pictures, in Draw's order (later ones on top).
         for (const item of m.items) {
+            if (anim.isLanding(item.obj)) continue; // in its pod: drawn by the animation
             if (item.fill !== null) {
                 const f = box('gr-fill', item.rect);
                 f.style.background = rgb(item.fill, 32 / 255);
@@ -271,7 +321,84 @@ function createGroundReport(galaxy: Galaxy, player: Empire | null, colony: Habit
         render();
     });
 
+    // The animation layer: diff the colony about ten times a second, draw while something plays.
+    let lastObserve = -Infinity;
+    let drawn = false;
+    const drawFrame = (f: GroundAnimFrame): void => {
+        const m = model;
+        if (m === null) return;
+        const r = view.getBoundingClientRect();
+        const k = (r.width > 0 ? r.width / m.size.w : 1) * (window.devicePixelRatio || 1);
+        const pw = Math.max(1, Math.round(m.size.w * k));
+        const ph = Math.max(1, Math.round(m.size.h * k));
+        if (fx.width !== pw || fx.height !== ph) {
+            fx.width = pw;
+            fx.height = ph;
+        }
+        place(fx, 0, 0, m.size.w, m.size.h);
+        const ctx = fx.getContext('2d');
+        if (ctx === null) return;
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        ctx.clearRect(0, 0, pw, ph);
+        ctx.setTransform(k, 0, 0, k, 0, 0);
+        const pod = image(`${CHROME}/assaultpod_landing.png`);
+        for (const p of f.pods) {
+            if (p.fill !== null) {
+                ctx.fillStyle = rgb(p.fill, 32 / 255);
+                ctx.fillRect(p.rect.x, p.rect.y, p.rect.w, p.rect.h);
+            }
+            if (pod !== null) ctx.drawImage(pod, p.rect.x, p.rect.y, p.rect.w, p.rect.h);
+            if (p.readiness !== null) {
+                const w = Math.trunc((p.readiness / 100) * m.columns.troop);
+                if (p.readiness < 100) {
+                    ctx.fillStyle = 'rgb(255, 0, 0)';
+                    ctx.fillRect(p.rect.x, p.rect.y, p.rect.w, 2);
+                }
+                ctx.fillStyle = 'rgb(0, 255, 0)';
+                ctx.fillRect(p.rect.x, p.rect.y, Math.max(0, w), 2);
+            }
+        }
+        // Shots under the explosions (Draw 1508 before DoAnimations); the pictures were turned 90° clockwise at load.
+        for (const s of f.shots) {
+            const img = image(shotUrl(s.type));
+            if (img === null) continue;
+            ctx.save();
+            ctx.translate(s.cx, s.cy);
+            ctx.rotate(s.angle + Math.PI / 2);
+            ctx.drawImage(img, -s.size / 2, -s.size / 2, s.size, s.size);
+            ctx.restore();
+        }
+        for (const e of f.explosions) {
+            const img = image(explosionFrameUrl(e.set, e.frame));
+            if (img !== null) ctx.drawImage(img, e.x, e.y, e.size, e.size);
+        }
+    };
+    const tick = (): void => {
+        if (win.closed) return;
+        raf = requestAnimationFrame(tick);
+        const now = animNow();
+        const real = performance.now();
+        if (real - lastObserve >= 100) {
+            lastObserve = real;
+            if (anim.observe(now)) render();
+        }
+        if (anim.busy) prefetchAnimationImages();
+        // Draw 1110: the landing progress advances every paint, drawn or not.
+        const f = anim.frame(now);
+        if (f.landed) render();
+        const any = f.pods.length + f.shots.length + f.explosions.length > 0;
+        if (any) drawFrame(f);
+        else if (drawn) {
+            const ctx = fx.getContext('2d');
+            ctx?.setTransform(1, 0, 0, 1, 0, 0);
+            ctx?.clearRect(0, 0, fx.width, fx.height);
+        }
+        drawn = any;
+    };
+    let raf = 0;
+
     render();
+    raf = requestAnimationFrame(tick);
     // ColonyInvasionPanel repaints continuously; twice a second is enough for strengths, readiness and casualties.
     const timer = setInterval(() => {
         if (!win.closed) render();
