@@ -32,7 +32,14 @@ export interface Improvement {
 export const IMPROVEMENTS_TITLE = 'Improvements';
 
 /** The registry, in display order. */
-const IMPROVEMENTS: Improvement[] = [];
+const IMPROVEMENTS: Improvement[] = [
+    {
+        id: 'supplyChain',
+        label: 'Supply chain visibility',
+        description: 'What construction is waiting for, the Supply Shortages map overlay and the per-resource supply panel.',
+        default: true,
+    },
+];
 
 /** Add an improvement (or replace the one with the same id). Returns it. */
 export function registerImprovement(imp: Improvement): Improvement {

@@ -78,6 +78,8 @@ import {
     type BonusLine,
 } from './empireSummaryModel';
 import { requestSimRefresh } from '../../simworker/refresh';
+import { openResourceSupply, resourceSupplyAvailable } from './resourceSupply'; // [improvements] supplyChain
+import { supplySnapshot } from '../supplyChainCache'; // [improvements] supplyChain
 
 /** The data the panel displays: the player's empire plus its government's
  * display name (null when unknown). */
@@ -256,6 +258,19 @@ export function isEmpireSummaryOpen(): boolean {
     return open !== null;
 }
 
+// [improvements] supplyChain: the resource the empire's construction lacks most (nothing coming first), for the link.
+function mostNeededResource(galaxy: Galaxy, empire: Empire): number {
+    const snap = supplySnapshot(galaxy, empire);
+    let best = -1;
+    let bestScore = 0;
+    const score = new Map<number, number>();
+    for (const s of snap?.sites ?? []) for (const r of s.resources) score.set(r.resourceId, (score.get(r.resourceId) ?? 0) + r.missing + 10 * r.uncovered);
+    for (const [id, v] of score) if (v > bestScore) [best, bestScore] = [id, v];
+    if (best >= 0) return best;
+    const first = [...galaxy.resourceSystem.resources].sort((a, b) => (a.name < b.name ? -1 : 1))[0];
+    return first?.resourceId ?? 0;
+}
+
 // [freightOverlay] begin — task 19e-9: "Where does the money go?" link to the Trade Flows panel (main.ts wires it).
 let openTradeFlowsLink: (() => void) | null = null;
 export function setEmpireSummaryTradeFlowsLink(fn: (() => void) | null): void {
@@ -377,6 +392,13 @@ function createEmpireSummary(src: EmpireSummarySource): OpenState {
         body.appendChild(place(link, 450, 20));
     }
     // [freightOverlay] end
+    // [improvements] supplyChain: the resource supply panel, on the resource with the most unmet need (else the first).
+    if (resourceSupplyAvailable()) {
+        const link = linkLabel('Supply by resource →', () => openResourceSupply(mostNeededResource(galaxy, empire)), F.normal);
+        link.classList.add('es-supply');
+        link.title = 'Where each resource is produced, held and needed in your empire';
+        body.appendChild(place(link, 450, 36));
+    }
 
     // pnlEmpireSummaryColony: (10, 40) 420 × 300, transparent, no border (Ignite).
     const colony = el('div', 'es-colony');

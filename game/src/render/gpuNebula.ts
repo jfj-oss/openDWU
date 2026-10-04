@@ -19,12 +19,17 @@ export interface GpuPatchInput {
     envOuter: number;
 }
 
+// Portability (checked on ANGLE Metal, ANGLE GL / SwiftShader): GLSL ES 3.00; highp float and int in both stages
+// (Pixi prepends a default float precision before ours, so it is asked for highp too and the two agree); no uniform is
+// declared in both stages (a stage-shared uniform must match precision exactly, a link error on some drivers); the
+// integer lattice index wraps with `& 63` (two's complement, defined for negative ints in ES 3.00); the octave loop has
+// a constant bound. A failed compile or link throws from warm() (assertLinked) and the layer uses the CPU path.
 const VERT = `#version 300 es
+precision highp float;
 in vec2 aPosition;
 uniform mat3 uProjectionMatrix;
 uniform mat3 uWorldTransformMatrix;
 uniform mat3 uTransformMatrix;
-uniform float uSize;
 out vec2 vPix;
 void main() {
     mat3 mvp = uProjectionMatrix * uWorldTransformMatrix * uTransformMatrix;
@@ -135,7 +140,7 @@ export class GpuNebula {
     constructor(private readonly renderer: Renderer) {
         const gl = (renderer as unknown as { gl?: WebGL2RenderingContext }).gl;
         this.format = gl?.getExtension('EXT_color_buffer_float') ? 'rgba16float' : 'rgba8unorm';
-        this.program = GlProgram.from({ vertex: VERT, fragment: FRAG, name: 'system-nebula-patch' });
+        this.program = GlProgram.from({ vertex: VERT, fragment: FRAG, name: 'system-nebula-patch', preferredVertexPrecision: 'highp', preferredFragmentPrecision: 'highp' });
     }
 
     /**
@@ -147,6 +152,20 @@ export class GpuNebula {
     warm(): void {
         const z: [number, number, number] = [0, 0, 0];
         this.render({ lattice: new Float32Array(4096), warp: 0, freq: 1, threshold: 0, opacity: 0, c1: z, c2: z, extent: 1, envOuter: 1 }, 256).destroy(true);
+        this.assertLinked();
+    }
+
+    /**
+     * Throws when the patch program failed to compile or link on a live context (Pixi only logs it and then draws
+     * nothing, which would leave every patch blank). A lost context fails every query: no verdict then.
+     */
+    assertLinked(): void {
+        const gl = (this.renderer as unknown as { gl?: WebGL2RenderingContext }).gl;
+        const shader = (this.renderer as unknown as { shader?: { _getProgramData?: (p: GlProgram) => { program: WebGLProgram } } }).shader;
+        if (!gl || gl.isContextLost() || typeof shader?._getProgramData !== 'function') return;
+        const program = shader._getProgramData(this.program).program;
+        if (gl.getProgramParameter(program, gl.LINK_STATUS) === true || gl.isContextLost()) return;
+        throw new Error(`system-nebula-patch: link failed: ${gl.getProgramInfoLog(program) ?? ''}`);
     }
 
     /** Renders one patch to a premultiplied-alpha RenderTexture (square, `size` px, mipmapped). */

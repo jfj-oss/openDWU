@@ -35,6 +35,8 @@ import { toggleGroundReportFromKey } from './screens/groundReport';
 import { toggleGameOptionsPanel } from './screens/gameOptionsPanel'; // [16d]
 import { toggleEmpireComparison } from './screens/empireComparison'; // [15d]
 import { showToast } from './toast';
+import { isImprovementEnabled } from './improvements';
+import { openFleetSettingsForSelection } from './hud';
 // [advisor] begin
 import { toggleAdvisorPanel } from './advisorPanel';
 // [advisor] end
@@ -64,6 +66,8 @@ export interface KeyBinding {
     overlayKey?: string;
     /** Not listed in the shortcuts overlay (the other nine digits of a 0-9 row). */
     overlayHidden?: boolean;
+    /** An Improvement's key (ui/improvements.ts): inert and not listed while that improvement is off. */
+    improvement?: string;
 }
 
 const NONE: KeyModifiers = { ctrl: false, alt: false, shift: false };
@@ -105,6 +109,10 @@ export const KEY_BINDINGS: KeyBinding[] = [
     // original's CyclePanelVisibility; K is free in the original's and the Bacon / Expansion mods' default mappings.
     { key: 'K', modifiers: NONE, action: 'advisorChat', description: 'Talk to your fleet admiral (advisor chat, needs a local model server)' },
     // [advisor] end
+    // Improvements (ui/improvements.ts; not in the original): Q is free in the original's help table, its Main_KeyUp and
+    // the Bacon / Expansion mods' default key maps (GameHotKeysMappingFile.json, ExpansionHotKeysMappingFile.json,
+    // BaconModHotKeysMappingFile.json; J is the Expansion mod's construction queue editor).
+    { key: 'Q', modifiers: NONE, action: 'fleetSettings', description: "Fleet Settings: the selected fleet's posture, engagement, retreat, fuel, troop and resupply settings (Improvement)", improvement: 'fleetSettings' },
     // "Pause or Spacebar": both keys pause/resume.
     { key: 'Pause', modifiers: NONE, action: 'togglePause', description: 'Pauses or resumes the game' },
     { key: 'Space', modifiers: NONE, action: 'togglePause', description: 'Pauses or resumes the game' },
@@ -278,6 +286,8 @@ export function dispatchKey(
         shift: event.shiftKey,
     }, bindings);
     if (!binding) return null;
+    // An Improvement switched off in Game Options: its key does nothing.
+    if (binding.improvement !== undefined && !isImprovementEnabled(binding.improvement)) return null;
     // Task 12n: the C/P/M/Y/X/F/I cycler keys route to the HUD's cycle
     // handler (registered by createHud) instead of the inert default branch.
     const cyc = cycleActionArgs(binding.action);
@@ -454,6 +464,11 @@ export function dispatchKey(
             break;
         }
         // [intel] end
+
+        // Q: the Fleet Settings panel (an Improvement, screens/fleetSettings.ts).
+        case 'fleetSettings':
+            openFleetSettingsForSelection();
+            break;
 
         default:
             // Registered but not implemented yet.
@@ -702,6 +717,7 @@ export const IMPLEMENTED_KEY_ACTIONS: ReadonlySet<string> = new Set([
     // [intel] begin
     'intelligenceAgentsScreen',
     // [intel] end
+    'fleetSettings',
 ]);
 
 /** True when pressing the binding's key does something today. Pure. */
@@ -738,38 +754,44 @@ export function createShortcutsOverlay(): {
 
     const list = document.createElement('div');
     list.className = 'hud-keyboard-rows';
-    for (const b of KEY_BINDINGS) {
-        if (b.overlayHidden) continue;
-        const row = document.createElement('div');
-        row.className = 'hud-keyboard-row';
-        if (!isKeyActionAvailable(b.action)) {
-            row.classList.add('hud-keyboard-row-unavailable');
-        }
-        const k = document.createElement('span');
-        k.className = 'hud-keyboard-key';
-        const modParts = [
-            b.modifiers.ctrl ? 'Ctrl+' : '',
-            b.modifiers.alt ? 'Alt+' : '',
-            b.modifiers.shift ? 'Shift+' : '',
-        ].join('');
-        k.textContent = `${modParts}${b.overlayKey ?? displayKeyName(b.key)}`;
-        const d = document.createElement('span');
-        d.className = 'hud-option-label';
-        d.textContent = b.description;
-        row.append(k, d);
-        if (!isKeyActionAvailable(b.action)) {
-            const tag = document.createElement('span');
-            tag.className = 'hud-keyboard-tag';
-            tag.textContent = 'not yet available';
-            row.appendChild(tag);
-        }
-        list.appendChild(row);
-    }
     root.appendChild(list);
-
     document.body.appendChild(root);
+    // Built on every show: an Improvement's key is listed only while that improvement is on.
+    const fill = (): void => {
+        list.replaceChildren();
+        for (const b of KEY_BINDINGS) {
+            if (b.overlayHidden) continue;
+            if (b.improvement !== undefined && !isImprovementEnabled(b.improvement)) continue;
+            const row = document.createElement('div');
+            row.className = 'hud-keyboard-row';
+            if (!isKeyActionAvailable(b.action)) {
+                row.classList.add('hud-keyboard-row-unavailable');
+            }
+            const k = document.createElement('span');
+            k.className = 'hud-keyboard-key';
+            const modParts = [
+                b.modifiers.ctrl ? 'Ctrl+' : '',
+                b.modifiers.alt ? 'Alt+' : '',
+                b.modifiers.shift ? 'Shift+' : '',
+            ].join('');
+            k.textContent = `${modParts}${b.overlayKey ?? displayKeyName(b.key)}`;
+            const d = document.createElement('span');
+            d.className = 'hud-option-label';
+            d.textContent = b.description;
+            row.append(k, d);
+            if (!isKeyActionAvailable(b.action)) {
+                const tag = document.createElement('span');
+                tag.className = 'hud-keyboard-tag';
+                tag.textContent = 'not yet available';
+                row.appendChild(tag);
+            }
+            list.appendChild(row);
+        }
+    };
+    fill();
 
     function show(): void {
+        fill();
         root.style.display = '';
     }
     function hide(): void {

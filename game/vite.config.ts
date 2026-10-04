@@ -5,12 +5,16 @@
 //
 // Build notes for the Electron shell (desktop/main.cjs):
 // - base './' so dist/index.html works under dwu://app/ (relative asset URLs).
-// - copyPublicDir: false keeps the 4 GB public/assets/dwu symlink out of
-//   dist/. The generated public/asset-manifest.json is still copied into
-//   dist/ by the copyAssetManifest plugin below, so the packaged app keeps
-//   real-art rendering (without it loadManifest() no-ops and the game falls
-//   back to generated textures).
-import { existsSync, statSync, copyFileSync, readdirSync, readFileSync, createReadStream, mkdirSync, writeFileSync } from 'node:fs';
+// - The build never reads the DW:U install: release builds run on GitHub's
+//   runners, which have none, and nothing derived from it may ship. dist/ is
+//   the game code, the repo's scenarios/ (assets/scenarios/) and our own art
+//   (public/art/ -> art/). The install-derived listings — asset-manifest.json
+//   and theme-manifest/ — are built by the desktop shell from the player's
+//   install folder at launch (desktop/assetManifest.cjs, desktop/themeIndex.cjs)
+//   and by the dev server / gen-asset-manifest.mjs under `npm run dev`.
+// - copyPublicDir: false keeps the 4 GB public/assets/dwu symlink (and the
+//   generated public/asset-manifest.json, public/theme-manifest/) out of dist/.
+import { existsSync, statSync, copyFileSync, cpSync, readdirSync, readFileSync, createReadStream, mkdirSync, writeFileSync } from 'node:fs';
 import { readFile, stat } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import os from 'node:os';
@@ -200,7 +204,7 @@ function dwuProbe(): Plugin {
 /**
  * Themes (customization sets): /theme-manifest/index.json (the Customization subfolders) and
  * /theme-manifest/<set>.json (one theme's file index), built from the linked install by desktop/themeIndex.cjs —
- * the same module the desktop shell serves them with from the user's install. Written into dist/ at build too.
+ * the same module the desktop shell serves them with from the user's install (dev server only: dist/ has no copy).
  */
 // The machine's total RAM for the sim-worker default (src/systemMemory.ts): browsers cap navigator.deviceMemory at 8 GB,
 // so the dev server writes it into the page. The desktop shell does the same for dwu://app/index.html (desktop/main.cjs).
@@ -218,12 +222,9 @@ function systemMemoryMeta(): Plugin {
 function themeManifest(): Plugin {
     const dwuRoot = path.join(here, 'public', 'assets', 'dwu');
     const lib = themeIndexLib as { listThemes(root: string): string[]; buildThemeIndex(root: string, set: string): unknown };
-    let isBuild = false;
     return {
         name: 'theme-manifest',
-        configResolved(config) {
-            isBuild = config.command === 'build';
-        },
+        apply: 'serve',
         configureServer(server) {
             const cache = new Map<string, string | null>();
             server.middlewares.use((req: IncomingMessage, res: ServerResponse, next) => {
@@ -256,29 +257,21 @@ function themeManifest(): Plugin {
                 res.end(body);
             });
         },
-        closeBundle() {
-            if (!isBuild || !existsSync(path.join(here, 'dist'))) return;
-            const out = path.join(here, 'dist', 'theme-manifest');
-            mkdirSync(out, { recursive: true });
-            const themes = lib.listThemes(dwuRoot);
-            writeFileSync(path.join(out, 'index.json'), JSON.stringify(themes));
-            for (const t of themes) {
-                const idx = lib.buildThemeIndex(dwuRoot, t);
-                if (idx !== null) writeFileSync(path.join(out, `${t}.json`), JSON.stringify(idx));
-            }
-        },
     };
 }
 
-/** Copy public/asset-manifest.json into dist/ after build (see header note). */
-function copyAssetManifest(): Plugin {
+/**
+ * Copy our own art (public/art/, e.g. the Ossuvan herders' portrait: src/ui/empireEmblem.ts) into dist/art/ after build:
+ * copyPublicDir is off (see header), so without this the desktop shell answers /art/... with 404. Never the install.
+ */
+function copyOwnArt(): Plugin {
     return {
-        name: 'copy-asset-manifest',
+        name: 'copy-own-art',
         apply: 'build',
         closeBundle() {
-            const src = path.join(here, 'public', 'asset-manifest.json');
-            if (!existsSync(src)) return;
-            copyFileSync(src, path.join(here, 'dist', 'asset-manifest.json'));
+            const src = path.join(here, 'public', 'art');
+            if (!existsSync(src) || !existsSync(path.join(here, 'dist'))) return;
+            cpSync(src, path.join(here, 'dist', 'art'), { recursive: true, dereference: false });
         },
     };
 }
@@ -365,10 +358,10 @@ export default defineConfig({
         setupFiles: ['test/pins/pin.ts'],
         ...testTier(),
     },
-    plugins: [dwuProbe(), dwuAssets(), copyAssetManifest(), scenarioAssets(), themeManifest(), systemMemoryMeta()],
+    plugins: [dwuProbe(), dwuAssets(), copyOwnArt(), scenarioAssets(), themeManifest(), systemMemoryMeta()],
     build: {
-        // Do not copy public/ (the assets/dwu symlink is ~4 GB); only the
-        // small asset-manifest.json matters in dist/, handled above.
+        // Do not copy public/ (the assets/dwu symlink is ~4 GB, plus the generated install listings); our own
+        // public/art/ is copied by copyOwnArt above.
         copyPublicDir: false,
     },
     server: {

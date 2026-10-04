@@ -9,6 +9,7 @@ import { goToMessage, messageGoToTarget } from './ui/messageGoto';
 import { Application } from 'pixi.js';
 import { Camera } from './render/camera';
 import { MainView } from './render/mainView';
+import { installContextLossRecovery, releasePixiTestContext } from './render/contextLoss';
 import { AssetStore, loadManifest } from './render/assets';
 import { generateGalaxy } from './sim/galaxy';
 import { Galaxy } from './sim/galaxy';
@@ -30,7 +31,7 @@ import type { RenderTime } from './render/renderInterp';
 import { SECTOR_LEVEL_ZOOM, SYSTEM_LEVEL_ZOOM, historyGoTo, type Selection } from './ui/hud';
 import { setTextIfChanged } from './render/drawCache';
 import { Habitat, HabitatCategoryType } from './sim/types';
-import { createMapOverlayState, type MapOverlayState, type OverlayKey } from './ui/mapOverlays';
+import { createMapOverlayState, overlayOptionsOf, type MapOverlayState, type OverlayKey } from './ui/mapOverlays';
 import { buildDefaultHandlers, createShortcutsOverlay, dispatchKey, setCycleHandler, setGameMenuHandler } from './ui/keyboard';
 import { closeEmpiresList } from './ui/screens/empiresList';
 import { closeCharterPanels } from './ui/screens/charters'; // [charters]
@@ -112,6 +113,8 @@ import { registerLocationPingedHook } from './sim/story/eventActions';
 import { createGalaxyMap, type GalaxyMapScreen } from './ui/screens/galaxyMap';
 import { hideMapTooltip } from './ui/mapTooltip';
 import { closeTradeFlows, mountFreightLegend, openTradeFlows, toggleTradeFlows } from './ui/screens/tradeFlows'; // [freightOverlay]
+import { openResourceSupply, setResourceSupplyHost } from './ui/screens/resourceSupply'; // [improvements] supplyChain
+import { invalidateSupply, supplySnapshot, supplyStats } from './ui/supplyChainCache'; // [improvements] supplyChain
 import { closeEmpireComparison, closeGameEndBanner, installGameEndHandler, removeGameEndHandler } from './ui/screens/empireComparison'; // [15d]
 import { setGameEndExitHandler } from './ui/screens/gameEndPanel'; // [15d]
 import { closeIntroductionPanel, openIntroductionPanel } from './ui/screens/introductionPanel'; // [intro]
@@ -515,6 +518,14 @@ const OVERLAY_PARAM_ALIASES: Record<string, OverlayKey> = {
     hubs: 'tradeHubs',
     tradeHubs: 'tradeHubs',
     // [freightOverlay] end
+    // [dw2overlays] begin
+    resources: 'resources',
+    fuel: 'fuelRange',
+    fuelRange: 'fuelRange',
+    colonyScores: 'colonyScores',
+    // [dw2overlays] end
+    supply: 'supplyShortages', // [improvements] supplyChain
+    supplyShortages: 'supplyShortages',
 };
 
 /** Screenshot / dev hook: `?overlays=potentialColonies,scenic,research`
@@ -529,6 +540,16 @@ function applyOverlaysUrlParam(overlays: MapOverlayState): void {
         const key = OVERLAY_PARAM_ALIASES[off ? token.slice(1) : token];
         if (key !== undefined) overlays[key] = !off;
     }
+}
+
+/** [dw2overlays] Screenshot / dev hook: `?resourceFilter=Caslon` (a resource name or id) picks the Resources overlay's
+ * resource, as its "…" panel does. */
+function applyResourceFilterUrlParam(overlays: MapOverlayState, galaxy: Galaxy): void {
+    const raw = new URLSearchParams(window.location.search).get('resourceFilter');
+    if (raw === null || raw === '') return;
+    const n = Number(raw);
+    const r = Number.isInteger(n) ? galaxy.resourceSystem.byId.get(n) : galaxy.resourceSystem.resources.find((x) => x.name.toLowerCase() === raw.toLowerCase());
+    if (r !== undefined) overlayOptionsOf(overlays).resourceFilter = r.resourceId;
 }
 
 /** Task C3: the Galaxy Map screen for a game view (G key / HUD row); closes
@@ -566,6 +587,16 @@ function createGalaxyMapFor(galaxy: Galaxy, camera: Camera): GalaxyMapScreen {
     });
     document.body.appendChild(galaxyMap.element);
     return galaxyMap;
+}
+
+/**
+ * WebGL context-loss recovery for a game view (render/contextLoss.ts): regenerate GPU-only content on restore, step
+ * detail down when losses recur. Also drops Pixi's capability-probe context (getTestContext: a second WebGL context
+ * kept for the page's lifetime once the renderer has read its limits; Pixi makes a new one if it ever asks again).
+ */
+function installGpuRecovery(app: Application, view: MainView): ReturnType<typeof installContextLossRecovery> {
+    releasePixiTestContext(app.renderer);
+    return installContextLossRecovery(app.canvas, app.renderer, view, { notify: showToast });
 }
 
 /** Task M2e2: one shared boot used by the wizard Start, `?autostart=1` and
@@ -643,8 +674,10 @@ export async function startGameView(
     const overlays = createMapOverlayState();
     overlays.freightFlows = getSettings().freightFlowsDefault; // [freightOverlay] settings default (19e-9)
     applyOverlaysUrlParam(overlays);
+    applyResourceFilterUrlParam(overlays, galaxy); // [dw2overlays]
     const view = new MainView(app, camera, galaxy, store, overlays);
     await view.init();
+    const contextLoss = installGpuRecovery(app, view);
 
     // One clock: the HUD's GalaxyTime is bound to galaxy.nowMs by createSimLoop (the scheduler advances it).
     const time = new GalaxyTime();
@@ -676,7 +709,7 @@ export async function startGameView(
     // window's "Play This Game" button can unpause it.
     (window as unknown as { __dwu?: unknown }).__dwu = buildDwuDebugObject({ camera, galaxy, view, app, game, time });
     // [simworker] in worker mode `sim` / `simBudget` stand in for the worker's driver / budget (SimWorkerClient.debugObject).
-    Object.assign((window as unknown as { __dwu: Record<string, unknown> }).__dwu, { sim: inThreadLoop?.driver ?? simClient?.debugObject('sim') ?? null, simStats: simLoop.stats, simWorker: simClient ?? null });
+    Object.assign((window as unknown as { __dwu: Record<string, unknown> }).__dwu, { sim: inThreadLoop?.driver ?? simClient?.debugObject('sim') ?? null, simStats: simLoop.stats, simWorker: simClient ?? null, gpuContext: contextLoss.state });
     // The game's message options (Game.DisplayMessage* / DisplayPopup*, saved with it): what the Game Options window
     // shows and edits (ui/messageRouting.ts).
     adoptGameMessageOptions(galaxy);
@@ -741,6 +774,18 @@ export async function startGameView(
     const removeFreightLegend = mountFreightLegend(overlays, () => openTradeFlows(tradeFlowsOpts));
     setEmpireSummaryTradeFlowsLink(() => openTradeFlows(tradeFlowsOpts));
     // [freightOverlay] end
+    // [improvements] supplyChain — the resource supply panel's game-view hooks, and a dev / perf handle.
+    setResourceSupplyHost({
+        galaxy,
+        goTo: (t) => selectStellarObject(t, true),
+        jumpTo: (x, y) => camera.centerOn(x, y),
+        freight: () => view.freightOverlay,
+        overlays,
+        openTradeFlows: () => openTradeFlows(tradeFlowsOpts),
+    });
+    Object.assign((window as unknown as { __dwu: Record<string, unknown> }).__dwu, {
+        supply: { stats: supplyStats, snapshot: (force = false) => supplySnapshot(galaxy, galaxy.playerEmpire, force), invalidate: () => invalidateSupply(galaxy), openResource: openResourceSupply },
+    });
     const hud: HudRefs = createHud({
         clock: time,
         overlays,
@@ -1072,6 +1117,7 @@ export async function startGameView(
         clearInterval(refreshHudTimer);
         clearInterval(refreshClockTimer);
         view.dispose(); // Task 12k: remove the hover tooltip div.
+        contextLoss.dispose();
         galaxyMap.destroy();
         // The HUD selection is module state: don't show the old game's
         // object in the next game's panel.
@@ -1113,6 +1159,7 @@ export async function startGameView(
         removeFreightLegend();
         setEmpireSummaryTradeFlowsLink(null);
         // [freightOverlay] end
+        setResourceSupplyHost(null); // [improvements] supplyChain
         closeMessageHistory();
         closeFleetsList(); // [15c]
         closeBuildOrder(); closeConstructionYards(); // [16c]
@@ -1819,6 +1866,7 @@ async function bootGameWithOptions(opts: BootOptions): Promise<void> {
     applyOverlaysUrlParam(overlays);
     const view = new MainView(app, camera, galaxy, store, overlays);
     await view.init();
+    installGpuRecovery(app, view);
 
     // Debug / screenshot hook: the camera and the generated galaxy model.
     const debugHook: Record<string, unknown> = { camera, galaxy, view, app };

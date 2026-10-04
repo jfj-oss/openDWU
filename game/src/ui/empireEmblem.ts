@@ -195,7 +195,8 @@ export function rgbaToDataUrl(img: RgbaImage): string {
     const c = document.createElement('canvas');
     c.width = img.w;
     c.height = img.h;
-    const ctx = c.getContext('2d');
+    // Encoded once and dropped: a software canvas (no GPU surface; render/textureCanvas.ts).
+    const ctx = c.getContext('2d', { willReadFrequently: true });
     if (ctx === null) return '';
     ctx.putImageData(new ImageData(new Uint8ClampedArray(img.data), img.w, img.h), 0, 0);
     return c.toDataURL('image/png');

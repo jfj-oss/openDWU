@@ -75,6 +75,7 @@ import { characterPortrait } from '../characterPortrait';
 import { resolveCharacterDescription, resolveMissionTypeDescription, resolveRoleDescription } from './intelligence';
 import { characterMission } from '../../sim/espionage';
 import { resourceIconUrl, formatMoney } from '../hud';
+import { openResourceSupply, resourceSupplyAvailable } from './resourceSupply'; // [improvements] supplyChain
 import { governorLoyaltyText } from '../emergentPolitics'; // [emergent]
 import { approvalMood, colonyScenarioInfo, formatThousandsK, type ApprovalMood } from './coloniesList';
 import { habitatTypeDescription } from './expansionPlanner';
@@ -1227,6 +1228,16 @@ function createColoniesScreen(opts: ColoniesScreenOptions): OpenState {
         page.appendChild(place(lnk, 455, 250, 200, 21));
     }
 
+    // [improvements] supplyChain: a resource name opens its supply panel (resourceSupply.ts).
+    function supplyLinkCell(c: HTMLDivElement, resourceId: number | null, name: string): void {
+        if (resourceId === null || !resourceSupplyAvailable()) return;
+        c.classList.add('col-supply-link');
+        c.title = `${name}: where it is produced, held and needed in your empire (click)`;
+    }
+    function openSupplyFor(resourceId: number | null): void {
+        if (resourceId !== null && resourceSupplyAvailable()) openResourceSupply(resourceId);
+    }
+
     // --- Cargo tab (ctlColonyCargo) -----------------------------------------------------------------------------------
     function renderCargo(h: Habitat): void {
         interface CargoRow {
@@ -1236,16 +1247,18 @@ function createColoniesScreen(opts: ColoniesScreenOptions): OpenState {
             name: string;
             amount: number;
             reserved: number;
+            /** Resource cargo: its id (the supply panel link); null for components. */
+            resourceId: number | null;
         }
         const comps = componentDefinitionsStatic(galaxy);
         const rows: CargoRow[] = (h.cargo?.items ?? []).map((c, i) => {
             if (c.commodityComponent !== null) {
                 const id = c.commodityComponent.componentId;
                 const def = comps.find((d) => d.componentId === id);
-                return { key: i, empire: c.empire as Empire | null, picture: def ? `/assets/dwu/images/ui/components/Component_${(def as { pictureRef?: number }).pictureRef ?? id}.bmp` : null, name: def?.name ?? '', amount: c.amount, reserved: c.reserved };
+                return { key: i, empire: c.empire as Empire | null, picture: def ? `/assets/dwu/images/ui/components/Component_${(def as { pictureRef?: number }).pictureRef ?? id}.bmp` : null, name: def?.name ?? '', amount: c.amount, reserved: c.reserved, resourceId: null };
             }
             const r = galaxy.resources.find((x) => x.resourceId === c.commodity.resourceId);
-            return { key: i, empire: c.empire as Empire | null, picture: r ? resourceIconUrl(r.pictureRef) : null, name: r?.name ?? '', amount: c.amount, reserved: c.reserved };
+            return { key: i, empire: c.empire as Empire | null, picture: r ? resourceIconUrl(r.pictureRef) : null, name: r?.name ?? '', amount: c.amount, reserved: c.reserved, resourceId: r ? r.resourceId : null };
         });
         const g = new OwGrid<CargoRow>({
             columns: [
@@ -1266,7 +1279,10 @@ function createColoniesScreen(opts: ColoniesScreenOptions): OpenState {
                         if (r.picture) c.appendChild(img(r.picture, 'col-res'));
                     },
                 },
-                { id: 'name', header: T('Name', 'Name'), fill: 160, sort: (r) => r.name, render: (r, c) => cellText(c, r.name) },
+                { id: 'name', header: T('Name', 'Name'), fill: 160, sort: (r) => r.name, render: (r, c) => {
+                    cellText(c, r.name);
+                    supplyLinkCell(c, r.resourceId, r.name);
+                }, onClick: (r) => openSupplyFor(r.resourceId) },
                 { id: 'amount', header: T('Amount Abbreviation', 'Amt'), fill: 60, align: 'right', sort: (r) => r.amount, render: (r, c) => cellText(c, formatMoney(r.amount)) },
                 { id: 'reserved', header: T('Reserved Abbreviation', 'Rsvd'), fill: 60, align: 'right', sort: (r) => r.reserved, render: (r, c) => cellText(c, formatMoney(r.reserved)) },
             ],
@@ -1296,7 +1312,10 @@ function createColoniesScreen(opts: ColoniesScreenOptions): OpenState {
         const g = new OwGrid<ResRow>({
             columns: [
                 { id: 'picture', header: '', fill: 50, align: 'center', render: (r, c) => c.appendChild(img(resourceIconUrl(r.picture), 'col-res')) },
-                { id: 'name', header: T('Type', 'Type'), fill: 190, sort: (r) => r.name, render: (r, c) => cellText(c, r.name) },
+                { id: 'name', header: T('Type', 'Type'), fill: 190, sort: (r) => r.name, render: (r, c) => {
+                    cellText(c, r.name);
+                    supplyLinkCell(c, r.id, r.name);
+                }, onClick: (r) => openSupplyFor(r.id) },
                 // HabitatResourceListView: Abundance (0..1000) / 10 in "##0".
                 { id: 'abundance', header: '%', fill: 60, align: 'right', sort: (r) => r.abundance, render: (r, c) => cellText(c, String(Math.round(r.abundance / 10))) },
             ],

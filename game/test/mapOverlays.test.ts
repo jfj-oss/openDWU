@@ -38,7 +38,7 @@ describe('map overlay state (task 05c)', () => {
         expect(calls).toBe(2);
     });
 
-    it('lists the original nine overlays in display order, then the 19e-9 additions and the scenario Threats', () => {
+    it('lists the original nine overlays in display order, then the 19e-9 additions, the scenario Threats and the Improvements rows', () => {
         expect(OVERLAY_ROWS.map((r) => r.key)).toEqual([
             'fleetPostures',
             'travelVectorsState',
@@ -55,7 +55,12 @@ describe('map overlay state (task 05c)', () => {
             'tradeHubs',
             'threats',
             'wrecks',
+            'colonyScores',
+            'resources',
+            'fuelRange',
+            'supplyShortages',
         ]);
         expect(OVERLAY_ROWS.filter((r) => r.mod === true).map((r) => r.key)).toEqual(['factionMarkers', 'stationPresence', 'freightFlows', 'tradeHubs', 'wrecks']);
+        expect(OVERLAY_ROWS.filter((r) => r.improvement !== undefined).map((r) => [r.key, r.improvement])).toContainEqual(['supplyShortages', 'supplyChain']);
     });
 });

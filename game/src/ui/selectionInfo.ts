@@ -53,6 +53,8 @@ import { habitatTypeLabel, hyperjumpStatusText, invasionVsText, missionTargetTex
 import { wreckSalvageRows } from './scenario/wreckageUi'; // [wreckage]
 import { rimGoodMarker } from './scenario/rimTraderRows'; // [rimTrader]
 import { facilityGalactopediaTopic, facilityPanelHoverText } from './facilityHover';
+import { supplyChainEnabled, supplySnapshot } from './supplyChainCache'; // [improvements] supplyChain
+import { colonyTooltipLines, itemNeedsText, resourceName, siteTooltipLines } from './supplyChainText'; // [improvements] supplyChain
 
 // ---------------------------------------------------------------------------------------------------------------
 // Metrics (InfoPanel.cs SetContentSizeNormal 2420-2447) and colours (InfoPanel.cs fields / BaconInfoPanel.cs).
@@ -128,6 +130,8 @@ export type InfoTarget =
     /** A planetary facility hotspot (InfoPanel.cs 2604): Main.Part4.cs 3586-3597 → method_456, the Galactopedia at the
      *  "Wonders" or "Planetary Facilities" topic. */
     | { kind: 'galactopedia'; topic: string }
+    /** [improvements] supplyChain: the Waiting row → the Construction Yards screen's Waiting For tab at this site. */
+    | { kind: 'supply'; target: Habitat | BuiltObject }
     /** Not in the original: the player's fleet's "Template" row (fleetRefill.ts) opens the Fleets screen on the fleet,
      *  where its template, auto-refill and Replenish are. */
     | { kind: 'fleetTemplate'; fleet: ShipGroup };
@@ -417,6 +421,41 @@ function buildingRow(ctx: InfoContext, queue: ConstructionQueue | null): InfoRow
     return label('Building', segs);
 }
 
+// [improvements] supplyChain begin
+/** What the site's queued ships wait for (the player's own yards; ui/supplyChainCache.ts snapshot, ≤ 1 s old): one line
+ *  per short ship (at most 3), red when stalled or nothing is coming; the hover lists every resource, a click opens the
+ *  Construction Yards screen's Waiting For tab. */
+function waitingRows(ctx: InfoContext, target: Habitat | BuiltObject): InfoRow[] {
+    if (!supplyChainEnabled()) return [];
+    const site = supplySnapshot(ctx.galaxy, ctx.player)?.bySite.get(target);
+    if (site === undefined || site.resources.length === 0) return [];
+    const items = site.items.filter((i) => i.needs.length > 0);
+    const title = `${siteTooltipLines(ctx.galaxy, site, ctx.player, 8).join('\n')}\n(click: Construction Yards → Waiting For)`;
+    const goTo: InfoTarget = { kind: 'supply', target };
+    const rows: InfoRow[] = [];
+    items.slice(0, 3).forEach((it, i) => {
+        const bad = it.stalled || it.needs.some((n) => n.uncovered > 0);
+        rows.push(label(i === 0 ? 'Waiting' : '', [txt(`${it.ship.name}: ${itemNeedsText(ctx.galaxy, it, 2)}`, bad ? SUPPLY_ALERT : SUPPLY_SHORT)], { wrap: true, alert: bad, title, target: goTo }));
+    });
+    if (items.length > 3) rows.push(label('', [txt(`+${items.length - 3} more ships short of resources`, SUPPLY_SHORT)], { title, target: goTo }));
+    return rows;
+}
+
+/** A player colony short of luxuries: its luxury count against what development needs, and what is not coming. */
+function luxuryRow(ctx: InfoContext, h: Habitat): InfoRow | null {
+    if (!supplyChainEnabled()) return null;
+    const c = supplySnapshot(ctx.galaxy, ctx.player)?.byColony.get(h);
+    if (c === undefined || !c.short) return null;
+    const notComing = c.demanded.filter((d) => d.notComing).map((d) => resourceName(ctx.galaxy, d.resourceId));
+    const head = c.developmentFalling ? `${c.luxuryTypes} of ${c.typesForDevelopment} types: development falling` : `${c.luxuryTypes} types (wants ${c.typesWanted})`;
+    const tail = notComing.length > 0 ? `; not coming: ${notComing.slice(0, 2).join(', ')}${notComing.length > 2 ? ` +${notComing.length - 2}` : ''}` : '';
+    return label('Luxuries', [txt(`${head}${tail}`, c.developmentFalling ? SUPPLY_ALERT : SUPPLY_SHORT)], { wrap: true, alert: c.developmentFalling, title: colonyTooltipLines(ctx.galaxy, c, ctx.player, 8).join('\n') });
+}
+/** Text colours of those rows (the overlay's red / amber). */
+const SUPPLY_ALERT = 0xff6a50;
+const SUPPLY_SHORT = 0xffc040;
+// [improvements] supplyChain end
+
 function dockedRow(ctx: InfoContext, bays: { dockedShip: BuiltObject | null }[] | null, waitQueue: BuiltObject[] | null): InfoRow | null {
     if (bays === null || bays.length === 0) return null;
     const ships = bays.map((b) => b.dockedShip).filter((s): s is BuiltObject => s !== null);
@@ -667,6 +706,7 @@ export function builtObjectInfo(ctx: InfoContext, bo: BuiltObject): InfoModel {
     // Building / Docked (BaconInfoPanel.cs:740-776).
     const building = buildingRow(ctx, bo.constructionQueue as ConstructionQueue | null);
     if (building !== null) rows.push(building);
+    if (building !== null && actual === player) rows.push(...waitingRows(ctx, bo)); // [improvements] supplyChain
     const docked = dockedRow(ctx, bo.dockingBays, bo.dockingBayWaitQueue);
     if (docked !== null) rows.push(docked);
 
@@ -1233,6 +1273,7 @@ export function habitatInfo(ctx: InfoContext, h: Habitat): InfoModel {
                     if (owner === player || flag || vis === SystemVisibilityStatus.Visible) {
                         const r = buildingRow(ctx, queue);
                         if (r !== null) rows.push(r);
+                        if (r !== null && owner === player) rows.push(...waitingRows(ctx, h)); // [improvements] supplyChain
                     } else rows.push(label('Building', [txt('(Unknown)', color)]));
                 }
             }
@@ -1241,6 +1282,10 @@ export function habitatInfo(ctx: InfoContext, h: Habitat): InfoModel {
                     const r = dockedRow(ctx, h.dockingBays, h.dockingBayWaitQueue);
                     if (r !== null) rows.push(r);
                 } else rows.push(label('Docked', [txt('(Unknown)', color)]));
+            }
+            if (owner === player) {
+                const lr = luxuryRow(ctx, h); // [improvements] supplyChain
+                if (lr !== null) rows.push(lr);
             }
             // Queued colony ship / bases (InfoPanel.cs 4560-4585).
             if (independent) {

@@ -16,6 +16,7 @@
 // at most that large and the sprite scaled up; the C# draws up to a 2000 px bitmap every frame).
 
 import { Texture } from 'pixi.js';
+import { makeTextureCanvas, textureFromCanvas } from './textureCanvas';
 import { Random } from '../sim/random';
 import { MIN_TIME } from '../sim/tick/simTime';
 
@@ -199,13 +200,15 @@ export class LightningTextures {
         }
         const img = generateLightning(seed, size);
         const px = Math.min(img.size, LIGHTNING_MAX_TEXTURE_PX);
-        const canvas = document.createElement('canvas');
-        canvas.width = px;
-        canvas.height = px;
-        const ctx = canvas.getContext('2d');
-        if (ctx === null) return null;
+        let made: ReturnType<typeof makeTextureCanvas>;
+        try {
+            made = makeTextureCanvas(px, px);
+        } catch {
+            return null; // no DOM / no 2D context
+        }
+        const { canvas, ctx } = made;
         rasterize(ctx, img, px);
-        tex = Texture.from(canvas);
+        tex = textureFromCanvas(canvas);
         this.cache.set(key, tex);
         while (this.cache.size > this.max) {
             const oldest = this.cache.keys().next().value as string;
