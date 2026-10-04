@@ -27,6 +27,7 @@ import {
     type TechNode,
 } from '../../sim/researchSystem';
 import { benefitCount, countRequiredParents } from './researchBenefits';
+import { HabitatImageOffsetContinental, HabitatImageOffsetDesert, HabitatImageOffsetIce, HabitatImageOffsetMarshySwamp, HabitatImageOffsetOcean, HabitatImageOffsetVolcanic, habitatImageFile } from '../../sim/galaxyImages';
 
 /** ResearchTree.BindData sizes (original pixels). */
 export const TREE = {
@@ -336,15 +337,16 @@ export interface NodeImage {
     tile: boolean;
 }
 
-/** Main.Part6.cs method_396: the six habitat pictures (Continental, MarshySwamp, Ocean, Desert, Ice, Volcanic). */
-export const HABITAT_TYPE_IMAGES = [
-    '/assets/dwu/images/environment/planets/continental/Continental-0001.png',
-    '/assets/dwu/images/environment/planets/marshyswamp/Marsh-0001.png',
-    '/assets/dwu/images/environment/planets/ocean/Ocean-0001.png',
-    '/assets/dwu/images/environment/planets/sandydesert/Desert-0001.png',
-    '/assets/dwu/images/environment/planets/iceglacial/Glacial-0001.png',
-    '/assets/dwu/images/environment/planets/volcanic/Volcanic-0001.png',
-] as const;
+/** Main.Part6.cs method_396 (1568-1573): habitatImageCache.ObtainImageSmall(HabitatImageOffset<Type>) — the first picture
+ *  of Continental, MarshySwamp, Ocean, Desert, Ice, Volcanic. */
+export const HABITAT_TYPE_IMAGES: readonly string[] = [
+    HabitatImageOffsetContinental,
+    HabitatImageOffsetMarshySwamp,
+    HabitatImageOffsetOcean,
+    HabitatImageOffsetDesert,
+    HabitatImageOffsetIce,
+    HabitatImageOffsetVolcanic,
+].map((ref) => `/assets/dwu/images/environment/${habitatImageFile(ref)}`);
 
 export const componentImageUrl = (pictureRef: number): string => `/assets/dwu/images/ui/components/Component_${pictureRef}.bmp`;
 export const facilityImageUrl = (pictureRef: number): string => `/assets/dwu/images/environment/planetaryfacilities/facility_${pictureRef}.png`;

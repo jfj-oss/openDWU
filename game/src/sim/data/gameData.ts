@@ -29,6 +29,7 @@ import { parseAgentNames, parseColonyNames, parseShipNames } from './names';
 import type { DesignSpecification } from './designTemplates';
 import { parseDesignSpecification } from './designTemplates';
 import { BuiltObjectSubRole } from './names';
+import { CustomizationSet, customizationFileUrl, normalizeCustomizationSetName } from './customization';
 
 /** Race files shipped in the stock DW:U install (`races/`). */
 export const DEFAULT_RACE_FILES: readonly string[] = [
@@ -38,7 +39,7 @@ export const DEFAULT_RACE_FILES: readonly string[] = [
     'teekan.txt', 'ugnari.txt', 'wekkarus.txt', 'zenox.txt',
 ];
 
-import { designSpecificationFallbackFiles } from './designSpecifications';
+import { DESIGN_SPECIFICATION_MISSING, designSpecificationFallbackFiles } from './designSpecifications';
 import { parseCharacterFile, parseCharacterNames, type CharacterFileRow, type CharacterNames } from './characters';
 import { loadText } from '../textResolver';
 import { parseBaconSettings, type BaconSettings } from './baconSettings';
@@ -123,6 +124,22 @@ export interface GameData {
     scenario?: import('../scenario/overlay').LoadedScenario;
 }
 
+/** `fetchText` with at most `max` calls pending at once. */
+function limitConcurrency(fetchText: FetchText, max: number): FetchText {
+    let inFlight = 0;
+    const waiting: Array<() => void> = [];
+    return async (candidates) => {
+        if (inFlight >= max) await new Promise<void>((resolve) => waiting.push(resolve));
+        inFlight++;
+        try {
+            return await fetchText(candidates);
+        } finally {
+            inFlight--;
+            waiting.shift()?.();
+        }
+    };
+}
+
 /** Shape of public/asset-manifest.json entries this loader consumes. */
 type AssetManifest = Record<string, string[]>;
 
@@ -167,7 +184,9 @@ export function manifestFileLookup(manifest: AssetManifest | null, relPath: stri
 /**
  * Load all game data from remote URLs via fetch.
  * @param fetchText Browser fetch wrapper that tries multiple candidate URLs
- * @param customizationSet Optional customization folder name (e.g. "DistantWorldsExpanded")
+ * @param customizationSet The active customization set (theme): its CustomizationSet index (the original's per-file
+ *   File.Exists / Directory.Exists rules below are answered from it), or a bare folder name (legacy: every file is
+ *   requested customized-first, then the base copy). Absent / "" / "default" = the stock game.
  * @param raceFileNames Optional list of race file names (e.g. ["human.txt", "mechanoid.txt", ...]).
  *   If not provided, uses public/asset-manifest.json's "races" list when available,
  *   else a default hardcoded list.
@@ -181,13 +200,26 @@ export function manifestFileLookup(manifest: AssetManifest | null, relPath: stri
  */
 export async function loadGameData(
     fetchText: FetchText,
-    customizationSet?: string,
+    customizationSet?: string | CustomizationSet,
     raceFileNames?: string[],
     designTemplateFiles?: string[],
     policyFileNames?: string[]
 ): Promise<GameData> {
     // Import path resolution here to avoid circular dependencies
-    const { resolveDataUrl } = await import('./paths');
+    const { resolveDataUrl: resolveDataUrlRaw } = await import('./paths');
+    // A theme given by its index: every customized file is probed in it (File.Exists), the base copy is used otherwise.
+    const theme = customizationSet instanceof CustomizationSet ? customizationSet : null;
+    const setName = theme !== null ? "" : normalizeCustomizationSetName(customizationSet as string | undefined);
+    // Galaxy.3.cs Initialize* / Galaxy.4.cs Load*: Customization\<set>\<file> when File.Exists, else <install>\<file>.
+    const resolveDataUrl = (file: string, set?: string): string[] => {
+        if (theme === null) return resolveDataUrlRaw(file, set);
+        const custom = theme.fileUrl(file);
+        return custom !== null ? [custom] : resolveDataUrlRaw(file);
+    };
+    customizationSet = setName;
+    // A theme can bring dozens of extra races, each with ~60 design-template probes: keep the requests in flight
+    // bounded (a browser refuses thousands at once, net::ERR_INSUFFICIENT_RESOURCES). Same files, same results.
+    if (theme !== null) fetchText = limitConcurrency(fetchText, 24);
 
     // The manifest is only needed to fill in defaults for parameters the
     // caller did not supply explicitly; skip the fetch entirely when every
@@ -196,11 +228,18 @@ export async function loadGameData(
     const needManifest = raceFileNames === undefined || designTemplateFiles === undefined || policyFileNames === undefined;
     const manifest = needManifest ? await fetchManifest(fetchText) : null;
     // File.Exists stand-in (see manifestFileLookup); undefined = unknown, request the file.
-    const exists = (relPath: string): string | null | undefined => manifestFileLookup(manifest, relPath, customizationSet);
+    // With a theme index: the theme's copy (its URL resolves through resolveDataUrl) else the base manifest's answer.
+    const exists = (relPath: string): string | null | undefined =>
+        theme !== null && theme.fileExists(relPath) ? relPath : manifestFileLookup(manifest, relPath, customizationSet as string);
 
     // Default: the manifest's races/ listing when available, else the 22
     // race files of the stock DW:U install.
-    const raceFiles = raceFileNames ?? manifest?.races ?? [...DEFAULT_RACE_FILES];
+    // Galaxy.4.cs LoadRaces (1176): Customization\<set>\races\ when that folder exists — it then REPLACES the stock
+    // races\ folder (every *.txt in it, Directory.GetFiles order), else <install>\races\.
+    const themeRaces = theme !== null && theme.dirExists('races');
+    const raceFiles = themeRaces ? theme!.listFiles('races', '.txt') : (raceFileNames ?? manifest?.races ?? [...DEFAULT_RACE_FILES]);
+    const raceFileUrls = (fileName: string): string[] =>
+        themeRaces ? [theme!.listedFileUrl('races', fileName)] : resolveDataUrl(`races/${fileName}`, customizationSet as string);
 
     // Default: the manifest's designTemplates/DEFAULT listing (strip .txt),
     // else no design templates.
@@ -260,8 +299,10 @@ export async function loadGameData(
         // 04d1 name-list files. LoadColonyNames / LoadShipNames return an empty
         // result when the file is missing (no fallback throw), so a failed fetch
         // is tolerated here; agent/design names are required by the engine.
-        fetchText(resolveDataUrl('colonyNames.txt', customizationSet)).catch(() => ''),
-        fetchText(resolveDataUrl('shipNames.txt', customizationSet)).catch(() => ''),
+        // Galaxy.4.cs LoadColonyNames (234) / LoadShipNames (280): with a set active ONLY Customization\<set>\<file> is
+        // read (no fallback to the stock file): a theme without one has no colony / ship names.
+        theme !== null ? (theme.fileUrl('colonyNames.txt') === null ? Promise.resolve('') : fetchText([theme.fileUrl('colonyNames.txt')!]).catch(() => '')) : fetchText(resolveDataUrl('colonyNames.txt', customizationSet)).catch(() => ''),
+        theme !== null ? (theme.fileUrl('shipNames.txt') === null ? Promise.resolve('') : fetchText([theme.fileUrl('shipNames.txt')!]).catch(() => '')) : fetchText(resolveDataUrl('shipNames.txt', customizationSet)).catch(() => ''),
         fetchText(resolveDataUrl('characterNames.txt', customizationSet)),
         fetchText(resolveDataUrl('designNames.txt', customizationSet)),
 
@@ -271,7 +312,7 @@ export async function loadGameData(
         ),
 
         // Individual race files
-        Promise.all(raceFiles.map((fileName) => fetchText(resolveDataUrl(`races/${fileName}`, customizationSet)))),
+        Promise.all(raceFiles.map((fileName) => fetchText(raceFileUrls(fileName)))),
 
         // Start.cs 885-899: TextResolver.LoadText(GameText.txt), the customization set's copy replacing the
         // stock one when present (LoadText clears first). Display text only; a missing file leaves tags unresolved.
@@ -279,7 +320,7 @@ export async function loadGameData(
 
         // BaconMain.cs 1107: new StreamReader("BaconSettings.txt") — relative to the working directory (the install
         // root), never a customization set; FileNotFoundException → empty dictionary → every setting at its default.
-        fetchText(resolveDataUrl('BaconSettings.txt')).catch(() => null),
+        fetchText(resolveDataUrlRaw('BaconSettings.txt')).catch(() => null),
     ]);
     if (gameTextText !== '') loadText(gameTextText);
 
@@ -375,7 +416,55 @@ export async function loadGameData(
             }
         }
     }
-    await Promise.all(
+    // With a theme index, DesignSpecification.cs 197-214 exactly: non-pirate = Customization\<set>\designTemplates\<race>\
+    // <sub>.txt when it exists, else the stock race file; pirate = the set's pirate\ file, else the stock pirate\ file,
+    // else the STOCK race file (never the set's non-pirate one). Each canonical key below then holds that resolution;
+    // a pirate key whose three candidates are all missing is marked DESIGN_SPECIFICATION_MISSING so the lookup does
+    // not fall through to the set's non-pirate file.
+    const themeTemplateText = async (rel: string): Promise<string | null> => {
+        const url = theme!.fileUrl(rel);
+        if (url === null) return null;
+        try {
+            const text = await fetchText([url]);
+            return isMissingResponse(text) ? null : text;
+        } catch {
+            return null;
+        }
+    };
+    // The manifest lists every stock designTemplates\<race>\ folder: a race folder it lacks does not exist.
+    const manifestHasTemplates = manifest !== null && Object.keys(manifest).some((k) => k.toLowerCase().startsWith('designtemplates/'));
+    const baseTemplateText = async (rel: string): Promise<string | null> => {
+        const found = manifestFileLookup(manifest, rel);
+        if (found === null || (found === undefined && manifestHasTemplates)) return null;
+        try {
+            const text = await fetchText(resolveDataUrlRaw(found ?? rel));
+            return isMissingResponse(text) ? null : text;
+        } catch {
+            return null;
+        }
+    };
+    if (theme !== null) {
+        const baseCache = new Map<string, Promise<string | null>>();
+        const base = (rel: string): Promise<string | null> => {
+            let p = baseCache.get(rel);
+            if (p === undefined) baseCache.set(rel, (p = baseTemplateText(rel)));
+            return p;
+        };
+        await Promise.all(
+            [...designSpecificationFiles].map(async (file) => {
+                const m = /^designTemplates\/([^/]+)\/(pirate\/)?([^/]+)$/.exec(file);
+                if (m === null) return;
+                const raceFile = `designTemplates/${m[1]}/${m[3]}`;
+                if (m[2] === undefined) {
+                    const text = (await themeTemplateText(raceFile)) ?? (await base(raceFile));
+                    if (text !== null) designSpecificationTexts.set(file, text);
+                } else {
+                    const text = (await themeTemplateText(file)) ?? (await base(file)) ?? (await base(raceFile));
+                    designSpecificationTexts.set(file, text ?? DESIGN_SPECIFICATION_MISSING);
+                }
+            }),
+        );
+    } else await Promise.all(
         [...designSpecificationFiles].map(async (file) => {
             // DesignSpecification.cs 206-216: File.Exists picks the pirate / race file; a missing one is never opened.
             const found = exists(file);

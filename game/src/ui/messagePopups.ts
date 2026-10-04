@@ -35,7 +35,8 @@ import { flagImage, raceImage } from './screens/diplomacyScreen';
 import { diplomacyBackgroundColor } from './screens/diplomacyRelationsView';
 import { empireFlagUrl } from './selectionInfoView';
 import { habitatImageUrl, shipImageUrl } from './selectionInfo';
-import { landscapeImageUrl } from './screens/intelligence';
+import { habitatPictureUrl } from '../render/assets';
+import { landscapeImageUrl } from './landscapeImages';
 import { characterPortraitUrl } from './characterPortrait';
 import { messageCardFlagEmpire, messageCardText, messageImageUrl, messagePicture, type MessagePicture } from './messagePicture';
 import { CARD, CARD_STRIP_H, EVENT, TALK, cardHeight, cardPosition, eventButtonRects, eventPanelLayout } from './messageWindowLayout';
@@ -283,6 +284,9 @@ export function eventPictureElement(p: EventPicture, galaxy: Galaxy, className =
             break;
         case 'habitat':
             box.appendChild(zoom(pictureImg(habitatImageUrl(p.habitat))));
+            break;
+        case 'habitatPicture':
+            box.appendChild(zoom(pictureImg(habitatPictureUrl(p.ref))));
             break;
         case 'landscape':
             box.appendChild(zoom(pictureImg(landscapeImageUrl(p.ref))));

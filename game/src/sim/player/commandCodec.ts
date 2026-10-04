@@ -5,7 +5,8 @@
 // - Sim entities are references by a stable key that exists in the save too: BuiltObject → builtObjectID, Habitat →
 //   habitatIndex, Empire → index in the flat empire list (galaxySave.flatEmpireList), ShipGroup / Design / Character /
 //   Troop / TechNode → owner empire + index in its list, Creature / SystemInfo → galaxy list index, a queued advisor
-//   suggestion → owner empire + its stable id (EmpireMessage.advisorSuggestionId). Every key is
+//   suggestion → owner empire + its stable id (EmpireMessage.advisorSuggestionId), Fighter → its carrier's builtObjectID +
+//   its fighterID (Galaxy.GetNextFighterID; a fighter lives only in its carrier's Fighters list). Every key is
 //   resolved back when it is written and must give the same object, else the command is not replayable (throws).
 // - Static data (races, components, facilities, plagues, …) → the save's externals ({kind, key}).
 // - Other class instances of the save registry (plus ShipAction, TradeableItem) and plain objects / arrays → by value.
@@ -19,6 +20,7 @@ import { Habitat, type SystemInfo } from '../types';
 import { ShipGroup } from '../fleets/shipGroup';
 import { Design } from '../design';
 import { Creature } from '../creature';
+import { Fighter } from '../combat/fighters';
 import { Character } from '../characters';
 import { Troop } from '../cargo';
 import { TradeableItem } from '../tradeItems';
@@ -122,6 +124,11 @@ function entityKey(galaxy: Galaxy, v: object): [string, number | number[]] | nul
         return null;
     }
     if (v instanceof Creature) return ['cr', galaxy.creatures.indexOf(v)];
+    if (v instanceof Fighter) {
+        const carrier = v.parentBuiltObject;
+        if (carrier === null) throw new CommandEncodeError('command argument: a Fighter with no carrier');
+        return ['fi', [carrier.builtObjectID, v.fighterID]];
+    }
     if (isSystemInfo(galaxy, v)) return ['sys', v.systemStar.systemIndex];
     if (isTechNode(v)) {
         for (let i = 0; i < empires.length; i++) {
@@ -172,6 +179,11 @@ function resolveEntity(galaxy: Galaxy, kind: string, key: number | number[]): un
         }
         case 'cr':
             return galaxy.creatures[key as number] ?? null;
+        case 'fi': {
+            const [carrierId, fighterId] = key as number[];
+            const carrier = findBuiltObject(galaxy, carrierId);
+            return (carrier?.fighters as Fighter[] | null | undefined)?.find((f) => f.fighterID === fighterId) ?? null;
+        }
         case 'sys':
             return galaxy.systems[key as number] ?? null;
         case 'tn': {

@@ -16,6 +16,12 @@ Worlds: Universe install folder via the privileged `dwu://` scheme.
   served without its embedded colour profile (iCCP/sRGB/gAMA/cHRM chunks,
   JPEG ICC segments; `desktop/colorProfile.cjs`, shared with the Vite dev
   server), so the renderer decodes raw values like the original's GDI+ load.
+- Themes (customization sets): `dwu://app/theme-manifest/index.json` lists the
+  install's `Customization/` subfolders and `theme-manifest/<set>.json` one
+  theme's file index, both built live from YOUR install by
+  `desktop/themeIndex.cjs` (the browser cannot list folders; the game answers
+  the original's File.Exists / Directory.Exists checks from these). The theme
+  files themselves come through `assets/dwu/Customization/<set>/…` as above.
 - Install dir discovery: `$DWU_DIR` (not saved; used by
   `scripts/desktop-check.mjs`) → `<userData>/config.json`
   (`{"installDir": "..."}`) → platform default guesses (Steam library paths, `~/Games/...` on macOS)
@@ -85,8 +91,11 @@ node scripts/desktop-check.mjs               # add --compare-dev to diff against
 
 It starts `kwin_wayland --virtual` on a private socket, runs the package with
 `--ozone-platform=wayland --remote-debugging-port=9333` and `DWU_DIR` set,
-drives it over CDP (main menu → `?autostart=1` game → unpause → F5 / F8) and
-saves 1920×1080 captures to `shots/pkg-*.png`. It fails on page/console
+drives it over CDP (main menu → `?autostart=1&simWorker=0` game → unpause →
+bottom-right system map → F5 / F8 / V / Construction Yards / G screens → stripped
+colour-profile art byte-compared against `colorProfile.cjs` → `?simWorker=1`, which
+must load the module sim worker `assets/worker-*.js` over `dwu://` and advance the
+replica clock) and saves 1920×1080 captures to `shots/pkg-*.png`. It fails on page/console
 errors and on any `/assets/dwu/` request that does not go through `dwu://` or
 fails; 404s for optional files the install lacks (e.g.
 `designTemplates/<race>/pirate/planetdestroyer.txt`) are listed but tolerated.

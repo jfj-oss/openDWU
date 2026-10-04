@@ -13,6 +13,7 @@
 // PNG. There is no empire tint: PrepareBuiltObjectImageNEW ignores its colour
 // arguments (only the civilian fade below applies).
 
+import { activeCustomizationSet, type CustomizationSet } from '../sim/data/customization';
 import type { PickCandidate } from './pickStack';
 import { BuiltObjectRole } from '../sim/data/designSpecifications';
 import { sampleBuiltObject, type MotionInterpolator } from './renderInterp';
@@ -114,9 +115,66 @@ export function builtObjectImagePath(pictureRef: number): string | null {
     if (pictureRef <= 71) {
         return `other/MajorSets/PhantomPirates/${PHANTOM_PIRATE_FILES[pictureRef - 64]}.png`;
     }
+    const theme = activeCustomizationSet();
+    if (theme !== null) return themeShipFamilyPaths(theme)[pictureRef - STANDARD_SHIP_IMAGE_START_INDEX] ?? null;
     const n = Math.floor((pictureRef - STANDARD_SHIP_IMAGE_START_INDEX) / SHIP_SET_IMAGE_COUNT);
     if (n >= STANDARD_FAMILY_COUNT) return null;
     return `family${n}/${SHIP_SET_FILES[(pictureRef - STANDARD_SHIP_IMAGE_START_INDEX) % SHIP_SET_IMAGE_COUNT]}.png`;
+}
+
+/** AddMoreImages' role names (BaconBuiltObjectImageCache.cs 26-52), the SHIP_SET_FILES order. */
+const SHIP_ROLE_NAMES = [
+    'Escort', 'Frigate', 'Destroyer', 'Cruiser', 'CapitalShip', 'TroopTransport', 'Carrier', 'ResupplyShip', 'ExplorationShip',
+    'SmallFreighter', 'MediumFreighter', 'LargeFreighter', 'ColonyShip', 'PassengerShip', 'ConstructionShip', 'GasMiningShip',
+    'MiningShip', 'GasMiningStation', 'MiningStation', 'SmallSpacePort', 'MediumSpacePort', 'LargeSpacePort', 'ResortBase', 'GenericBase',
+] as const;
+
+/**
+ * BuiltObjectImageCache.cs 1115-1157 with a theme: the family numbers of the stock images\units\ships\family* folders
+ * united with the theme's (int.TryParse(name.Substring(6)), distinct, sorted), each existing folder in turn.
+ * The stock install has family0..family26.
+ */
+export function themeShipFamilyNumbers(theme: CustomizationSet): number[] {
+    const nums = new Set<number>(Array.from({ length: STANDARD_FAMILY_COUNT }, (_, i) => i));
+    for (const d of theme.subfolders('images/units/ships')) {
+        if (!d.toLowerCase().startsWith('family')) continue;
+        const n = /^[+-]?\d+$/.test(d.slice(6).trim()) ? parseInt(d.slice(6), 10) : 0; // int.TryParse failure leaves 0
+        nums.add(n);
+    }
+    return [...nums].sort((a, b) => a - b);
+}
+
+const themeShipPathCache = new WeakMap<CustomizationSet, string[]>();
+
+/**
+ * The ship pictures from index 72 on with a theme (paths under images/units/ships/): BaconBuiltObjectImageCache.cs
+ * AddMoreImages walks each family's 24 roles × variants "", 1..4 and takes a picture slot ONLY for a file that exists
+ * in the stock or the theme's folder (.png or .bmp; File.Exists, 65-67) — so a theme's extra variants or missing roles
+ * shift every later index, exactly as in the original. The stock families hold the 24 roles and no variants.
+ * Each slot then loads the theme's copy when it has one (CheckLoadSmallImage, BuiltObjectImageCache.cs 494-517).
+ */
+export function themeShipFamilyPaths(theme: CustomizationSet): string[] {
+    const hit = themeShipPathCache.get(theme);
+    if (hit !== undefined) return hit;
+    const paths: string[] = [];
+    for (const num of themeShipFamilyNumbers(theme)) {
+        const dir = `images/units/ships/family${num}`;
+        const stock = num >= 0 && num < STANDARD_FAMILY_COUNT;
+        if (!stock && !theme.dirExists(dir)) continue;
+        SHIP_ROLE_NAMES.forEach((role, r) => {
+            for (let v = 0; v < 5; v++) {
+                const name = `${role}${v === 0 ? '' : v}`;
+                const stockHas = stock && v === 0;
+                const png = theme.fileExists(`${dir}/${name}.png`);
+                const bmp = !png && theme.fileExists(`${dir}/${name}.bmp`);
+                if (!stockHas && !png && !bmp) continue;
+                // the stock file name (lower-case on disk); the theme's copy is picked per file by themedAssetUrl
+                paths.push(png || bmp ? `family${num}/${name}.${png ? 'png' : 'bmp'}` : `family${num}/${SHIP_SET_FILES[r]}.png`);
+            }
+        });
+    }
+    themeShipPathCache.set(theme, paths);
+    return paths;
 }
 
 /** Full URL of the ship art for a pictureRef, or null when there is none. */

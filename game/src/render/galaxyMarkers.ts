@@ -48,6 +48,7 @@
 import type { BuiltObjectIndex } from './builtObjectIndex';
 import { inOwnRenderGroup } from './renderGroups';
 import { circleAtScreenRes } from './screenCircle';
+import { SELECTION_CIRCLE_WIDTH_PX, applySelectionTint, buildSelectionCircles, symbolSelectionBox } from './selectionCircle';
 import { Container, Graphics, Particle, ParticleContainer, Rectangle, Sprite, Text, Texture } from 'pixi.js';
 import type { Camera } from './camera';
 import type { Galaxy } from '../sim/galaxy';
@@ -85,8 +86,6 @@ export const PRESENCE_ALPHA = 0.4; // more noticeable (user call; the original's
 export const SYSTEM_INFLUENCE_RADIUS = (150000 * 1.1) / 2;
 /** Color.Gray: ResolveShipSymbolColor's colour for unowned / independent objects (MainView.2.cs:2160). */
 export const UNOWNED_SYMBOL_COLOR = 0x808080;
-/** The selection box yellow (MainView.cs color_2, Color.FromArgb(255, 255, 255, 0)), used by method_212. */
-const SELECT_COLOR = 0xffff00;
 
 // --- pure helpers -------------------------------------------------------------------------------------------------
 
@@ -691,7 +690,7 @@ export interface SystemLabelView {
 /** How often the per-system data (owners, presence, visibility, war list) is recollected. */
 const REFRESH_MS = 1000;
 
-type SelectionLike = { builtObject?: BuiltObject; shipGroup?: ShipGroup } | null;
+type SelectionLike = { builtObject?: BuiltObject; shipGroup?: ShipGroup; builtObjects?: BuiltObject[] } | null;
 
 export class GalaxyMarkerLayer {
     /** Background part (presence discs, faction rings): inserted under the empire layer. */
@@ -717,6 +716,13 @@ export class GalaxyMarkerLayer {
     private readonly symbols: ParticleContainer;
     private readonly rings = new Graphics();
     private readonly overlayG = new Graphics();
+    /** method_212 circles (selectionCircle.ts) of the galaxy pass: world space, tinted with method_213's pulse. */
+    private readonly selG = new Graphics();
+    /** Flat [x, y, box px] of this frame's selection circles (world x / y, screen-px box). */
+    private selBoxes: number[] = [];
+    /** The selected BuiltObjectList as a set (rebuilt when the selection's array changes). */
+    private selListFor: BuiltObject[] | null = null;
+    private selListSet: Set<BuiltObject> | null = null;
     /** Shield / hull bars, drawn relative to `symbols.position` (see updateSymbols: the same camera-local origin). */
     private readonly iconLayer = new Container();
     private readonly countLayer = new Container();
@@ -762,7 +768,7 @@ export class GalaxyMarkerLayer {
         this.back.addChild(this.discs, this.rings);
         // overlayG is cleared and redrawn every frame: in its own render group (renderGroups.ts). (The battle bars over the
         // ships are combatBars.ts BattleBarLayer, MainView.1.cs 1251-1295.)
-        this.front.addChild(this.symbols, this.countLayer, inOwnRenderGroup(this.overlayG), this.iconLayer);
+        this.front.addChild(this.symbols, this.countLayer, inOwnRenderGroup(this.overlayG), this.iconLayer, inOwnRenderGroup(this.selG));
         const idx = below !== null ? world.children.indexOf(below) : -1;
         if (idx >= 0) world.addChildAt(this.back, idx);
         else world.addChild(this.back);
@@ -860,6 +866,7 @@ export class GalaxyMarkerLayer {
         this.front.visible = factionOn;
         this.drawn = [];
         this.overlayG.clear();
+        this.selBoxes.length = 0;
         this.decorateLabels(systems, f, z, factionOn);
         if (!this.back.visible && !this.front.visible) return;
 
@@ -875,6 +882,7 @@ export class GalaxyMarkerLayer {
         this.rings.visible = ringA > 0;
         if (this.rings.visible) this.updateRings(f, z, cam, ringA);
         if (this.front.visible && this.frames.length > 0) this.updateSymbols(f, z, cam);
+        this.drawSelectionCircles(z);
     }
 
     // Presence discs ------------------------------------------------------------------------------------------------
@@ -1115,6 +1123,12 @@ export class GalaxyMarkerLayer {
         const sel = this.getSelection();
         const selBo = sel?.shipGroup === undefined ? (sel?.builtObject ?? null) : null;
         const selGroup = sel?.shipGroup ?? null;
+        const selList = sel?.builtObjects ?? null;
+        if (selList !== this.selListFor) {
+            this.selListFor = selList;
+            this.selListSet = selList !== null ? new Set(selList) : null;
+        }
+        const selSet = this.selListSet;
         const galaxyPass = band === 'galaxy';
         // MainView.1.cs:1080 / 1253 (Main.int_34, mainViewDisplay.ts): display type 2 drops the per-ship symbols, 1 and 2
         // the battle bars. The galaxy pass (MainView.2.cs method_250) does not read it.
@@ -1174,7 +1188,8 @@ export class GalaxyMarkerLayer {
             }
             if (galaxyPass) {
                 this.drawn.push({ bo, group: null, x: pos.x, y: pos.y, halfPx: heightPx / 2 });
-                if (bo === selBo) this.selectBox(pos.x, pos.y, heightPx * 1.6, z); // 5998-6006
+                // 5984-5996 / 6004-6016: method_212 around the selected ship's symbol, or one of the selected BuiltObjectList.
+                if (bo === selBo || (selSet !== null && selSet.has(bo))) this.selBoxes.push(pos.x, pos.y, symbolSelectionBox(heightPx));
             }
         }
         let counts = 0;
@@ -1195,7 +1210,7 @@ export class GalaxyMarkerLayer {
                 if (color === 0x010101) color = 0x080808;
                 this.pushSymbol(n++, cell, pos.x - ox, pos.y - oy, iconH, z, color, 1);
                 this.drawn.push({ bo: lead, group: sg, x: pos.x, y: pos.y, halfPx: iconH / 2 });
-                if (sg === selGroup) this.selectBox(pos.x, pos.y, iconH, z); // 6384-6387
+                if (sg === selGroup) this.selBoxes.push(pos.x, pos.y, iconH); // 6395-6398 method_212 over the icon box
                 if (f < 6000) {
                     const t = this.countText(counts++);
                     const s = String(sg.ships.length);
@@ -1253,10 +1268,22 @@ export class GalaxyMarkerLayer {
         return t;
     }
 
-    /** method_212: the yellow selection box around a selected symbol / fleet icon. */
-    private selectBox(x: number, y: number, sizePx: number, z: number): void {
-        const h = sizePx / 2 / z;
-        this.overlayG.rect(x - h, y - h, 2 * h, 2 * h).stroke({ width: 1.5 / z, color: SELECT_COLOR, alpha: 1 });
+    /** This frame's method_212 circles (MainView.2.cs 3132): world-space, 5 screen px wide, in method_213's colour. */
+    private drawSelectionCircles(z: number): void {
+        const g = this.selG;
+        const b = this.selBoxes;
+        if (b.length === 0) {
+            if (g.visible) {
+                g.clear();
+                g.visible = false;
+            }
+            return;
+        }
+        // Box widths are screen px: the circle radius in world units is box / 2 / z.
+        for (let i = 2; i < b.length; i += 3) b[i] = b[i] / z;
+        buildSelectionCircles(g, b, SELECTION_CIRCLE_WIDTH_PX / z);
+        applySelectionTint(g, new Date());
+        g.visible = true;
     }
 
     /** The symbol or fleet icon drawn at world point (wx, wy) in the last frame (galaxy/sector zoom only). */

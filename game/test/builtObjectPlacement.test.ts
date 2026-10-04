@@ -176,10 +176,13 @@ describe('CreateStateShips / CreatePrivateShips at game start (tech 0.5, age 1)'
         // Moved #e05c0a51f3 → #682cb4ef8d: per-empire/race ship naming styles (shipNameStyle.ts deviation): registry prefixes + race word lists; name strings only, Rnd draws unchanged (2026-10-01)
         // Moved #682cb4ef8d → #693c620a91: orbits spaced so planets/moons never overlap (user deviation) (2026-10-03)
         // Moved #693c620a91 → #02eb9f7977: parity A2: spaceport threat check, race periodic traits, wonders scenic, race wonders, garrisons, maintenance, retrofit design (2026-10-03)
+        // Moved #02eb9f7977 → #90aaf9bd13: SetupSun SelectHabitatPictures (Galaxy.5.cs 1323): star PictureRef/MapPictureRef draws (2026-10-04)
         expect(own.filter((b) => !MILITARY.has(b.subRole)).slice(0, 9).map((b) => [S[b.subRole], b.name])).toMatchPin('builtObjectPlacement.playerCivilianNames');
         // M4x (Galaxy.Age 1): the projection now includes 2 Escorts / Frigates / Destroyers and explorers, 2 construction ships
         // (4 explorers since the star-spacing fix of FindNearestSystemGasCloudAsteroid put fewer systems around Sol).
-        expect(own.map((b) => S[b.subRole])).toEqual(['Escort', 'Escort', 'Frigate', 'Frigate', 'Destroyer', 'Destroyer', ...Array(4).fill('ExplorationShip'), ...Array(2).fill('ConstructionShip')]);
+        // (SetupSun's SelectHabitatPictures(star) draws, Galaxy.5.cs 1328, moved the galaxy: the player's start is smaller
+        // now — one Escort / Frigate / Destroyer, 3 explorers, 1 construction ship.)
+        expect(own.map((b) => S[b.subRole])).toEqual(['Escort', 'Frigate', 'Destroyer', ...Array(3).fill('ExplorationShip'), 'ConstructionShip']);
         // ProjectPrivateForceStructure sizes the freighter fleet by Galaxy.Orders.GetOrders(this).Count (Empire.9.cs 4772):
         // the capital's orders placed before CreatePrivateShips add 6 small and 4 medium freighters.
         expect(priv.map((b) => S[b.subRole])).toEqual([...Array(7).fill('SmallFreighter'), ...Array(4).fill('MediumFreighter'), 'GasMiningShip', 'GasMiningShip', 'MiningShip', 'MiningShip']);

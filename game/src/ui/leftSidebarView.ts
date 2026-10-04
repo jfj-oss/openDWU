@@ -32,6 +32,7 @@ import { issuePlayerCommand } from '../sim/player/playerCommands';
 import { enemyTargetListDrawsRandom, resolveAssignedFleet } from '../sim/player/enemyTargets';
 import { empireFlagUrl } from './selectionInfoView';
 import { onSettingsChange, uiScaleFactor } from './settings';
+import { itemListHoverChanged } from './listHover';
 import { css } from './selectionInfo';
 import {
     PLANET_LEVEL_ZOOM,
@@ -284,6 +285,7 @@ export function createLeftSidebar(wiring: LeftSidebarWiring): HTMLElement {
         state.open = id;
         state.scroll = 0;
         state.hovered = -1;
+        syncHoverItem();
         save('open', id);
         for (const b of buttons.querySelectorAll<HTMLButtonElement>('.ls-button')) {
             const d = defs.find((x) => x.id === b.dataset.panel);
@@ -396,9 +398,31 @@ export function createLeftSidebar(wiring: LeftSidebarWiring): HTMLElement {
 
     /** The hovered item (ItemListPanel object_0): highlighted by class, without redrawing the rows. */
     const setHovered = (i: number): void => {
-        if (i === state.hovered) return;
+        if (i === state.hovered) {
+            syncHoverItem();
+            return;
+        }
         state.hovered = i;
         for (const r of panelEls?.items.querySelectorAll<HTMLElement>('.ls-row') ?? []) r.classList.toggle('ls-hover', Number(r.dataset.index) === i);
+        syncHoverItem();
+    };
+    /** The item the main-view highlights were made for (ItemListPanel object_0). */
+    let hoverItem: PanelItem | null = null;
+    /** ItemListPanel.cs 2291 `if (hoveredItem != object_0)`: the pings / red vectors follow the item under the mouse
+     *  (listHover.ts) — also when a list refresh puts another item under it. */
+    const syncHoverItem = (): void => {
+        const item = state.open !== null && state.hovered >= 0 ? (state.items[state.hovered] ?? null) : null;
+        if (item === hoverItem) return;
+        const galaxy = wiring.galaxy;
+        const p = player();
+        const prev = hoverItem;
+        hoverItem = item;
+        if (!galaxy || !p) return;
+        try {
+            itemListHoverChanged(galaxy, p, prev, item);
+        } catch (err) {
+            console.warn('item list hover', err);
+        }
     };
 
     const place = (e: HTMLElement, r: { x: number; y: number; w: number; h: number }): void => {
@@ -522,6 +546,7 @@ export function createLeftSidebar(wiring: LeftSidebarWiring): HTMLElement {
         });
         renderBars();
         renderRows();
+        syncHoverItem();
     };
 
     const renderBars = (): void => {

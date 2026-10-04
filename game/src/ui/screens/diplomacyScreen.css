@@ -146,7 +146,7 @@
     position: static;
 }
 .dip-talk-race {
-    object-fit: contain;
+    overflow: hidden;
 }
 /* MessagePanel: 18.67 px, padding 12, black at alpha 80. */
 .dip-talk-response {

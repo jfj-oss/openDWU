@@ -16,6 +16,7 @@ import {
     pirateAmbitionGlobal,
     pirateAmbitionState,
     pirateAmbitionYearly,
+    pirateWarshipCount,
 } from '../src/sim/scenario/lively/pirateAmbition';
 import { festivalState, livingCalendarYearly } from '../src/sim/scenario/lively/livingCalendar';
 
@@ -26,6 +27,12 @@ beforeAll(async () => {
 
 function lively(flags: Record<string, boolean>, params: Record<string, number> = {}): Galaxy {
     return createScenarioGame(base, { scenario: 'lively-galaxy', flags, params }).game.galaxy;
+}
+
+/** The factions pirateAmbitionYearly considers: active, with a base, not the super pirates, and armed (the
+ *  pirateAmbitionShips gate is at least 1 warship; which factions start with one depends on the seed's galaxy). */
+function armedPirates(g: Galaxy): Empire[] {
+    return g.pirateEmpires.filter((e) => e !== null && e.active && e.pirateEmpireBaseHabitat !== null && !e.pirateEmpireSuperPirates && pirateWarshipCount(e) > 0);
 }
 
 function aiEmpires(g: Galaxy): Empire[] {
@@ -50,7 +57,7 @@ function forcedNearbyIndependents(g: Galaxy, pirateEmpire: Empire, n: number, sk
 describe('19l pirateAmbition', () => {
     it('a rich, armed faction seizes and holds an independent colony as a base', () => {
         const g = lively({ pirateAmbition: true }, { pirateAmbitionMoney: 0, pirateAmbitionShips: 0, pirateAmbitionColonyCap: 1 });
-        const pirate = g.pirateEmpires.find((e) => e !== null && e.active && e.pirateEmpireBaseHabitat !== null)!;
+        const pirate = armedPirates(g)[0];
         expect(pirate).toBeDefined();
         const [target] = forcedNearbyIndependents(g, pirate, 1);
         pirate.stateMoney = 1e6;
@@ -75,7 +82,7 @@ describe('19l pirateAmbition', () => {
             { pirateAmbition: true },
             { pirateAmbitionMoney: 0, pirateAmbitionShips: 0, pirateAmbitionColonyCap: 3, pirateAmbitionCooldownYears: 8, pirateAmbitionSeizeRadiusFraction: 0.001 },
         );
-        const pirates = g.pirateEmpires.filter((e) => e !== null && e.active && e.pirateEmpireBaseHabitat !== null);
+        const pirates = armedPirates(g);
         expect(pirates.length).toBeGreaterThanOrEqual(2);
         const [p1, p2] = pirates;
         p1.stateMoney = 1e6;

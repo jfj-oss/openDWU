@@ -23,6 +23,7 @@
 // the read-only replica under ?simWorker=1.
 // The Code 1 ending (Main.Part12.cs 3428 DoGameEnd) also shows the Shakturi story panel: presentGameEnd / shakturiEndingStory.
 
+import { activeCustomizationSet } from '../../sim/data/customization';
 import './empireComparison.css';
 import type { Empire } from '../../sim/empire';
 import type { Galaxy } from '../../sim/galaxy';
@@ -66,7 +67,7 @@ import { strategicValue } from '../../sim/territory';
 import { habitatDevelopmentLevel } from '../../sim/developmentLevel';
 import { planetaryFacilityDefinitionsStatic } from '../../sim/construction/facilities';
 import type { RaceVictoryCondition } from '../../sim/data/races';
-import { asteroidUrls, planetUrls } from '../../render/assets';
+import { habitatPictureUrl } from '../../render/assets';
 import { applyEmpireEmblem } from '../empireEmblem';
 import { openOriginalWindow, place, tabStrip } from '../originalWindow';
 import { victoryConditionDescription } from './galactopedia';
@@ -333,7 +334,8 @@ let loadedText: GameText | null = null;
 /** GameText.txt, fetched once; null on any error. */
 export function loadGameText(): Promise<GameText | null> {
     if (gameTextCache === null) {
-        gameTextCache = fetch('/assets/dwu/GameText.txt')
+        // Start.cs 885-899: the theme's GameText.txt replaces the stock one.
+        gameTextCache = fetch(activeCustomizationSet()?.fileUrl('GameText.txt') ?? '/assets/dwu/GameText.txt')
             .then((r) => (r.ok ? r.text() : Promise.reject(new Error(`HTTP ${r.status}`))))
             .then((src) => parseGameText(src).text)
             .catch(() => null);
@@ -1269,8 +1271,7 @@ const COMPARISON_TITLE_KEYS: Record<ComparisonKind, string> = {
 
 /** The small habitat picture (habitatImageCache GetImagesSmall[PictureRef]): colonies are planets, moons or asteroids. */
 function colonyImageUrl(h: Habitat): string | null {
-    const urls = h.category === HabitatCategoryType.Asteroid ? asteroidUrls(h) : planetUrls(h);
-    return urls[0] ?? null;
+    return habitatPictureUrl(h.pictureRef);
 }
 
 /** TopColonies.cs DrawColonies. */

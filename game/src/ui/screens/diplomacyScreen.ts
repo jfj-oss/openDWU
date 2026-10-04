@@ -21,6 +21,7 @@
 // list, Decline, Go-to, the Empires list button, the war goals / charter / Concord / council / reputation / incident
 // blocks under the factors, the independent leagues.
 
+import { activeCustomizationSet, activeCustomizationSetName } from '../../sim/data/customization';
 import './diplomacyScreen.css';
 import type { Empire } from '../../sim/empire';
 import type { Galaxy } from '../../sim/galaxy';
@@ -39,7 +40,8 @@ import {
 } from '../../sim/diplomacy';
 import { determineDesiredDiplomaticRelationTypical, MANUAL } from '../../sim/diplomacyTick';
 import { galaxyStarDate } from '../../sim/tick/simTime';
-import { applyEmpireEmblem, racePortraitUrl } from '../empireEmblem';
+import { applyEmpireEmblem, racePortraitUrl, resolveEmpireEmblem, stockEmblem } from '../empireEmblem';
+import { empireRacePicture } from '../raceLandscapePicture';
 import type { Habitat } from '../../sim/types';
 import { BuiltObjectRole } from '../../sim/data/designSpecifications';
 import { totalColonyStrategicValue } from '../../sim/forceStructure';
@@ -481,8 +483,16 @@ export function setDiplomacyMessageExpiry(fn: ((empire: Empire) => void) | null)
 
 // DialogSet.cs:21 Initialize: base_dialog.txt plus the race's file, loaded on first use.
 let dialogLoad: Promise<DialogSet | null> | null = null;
+let dialogTheme = '';
 const raceDialogLoads = new Map<string, Promise<void>>();
 export function loadDialogSet(raceName: string): Promise<DialogSet | null> {
+    if (dialogTheme !== activeCustomizationSetName()) {
+        // Main.Part12.cs method_66 drops dialogSet_0 on a theme switch; method_83 rebuilds it for the game's set.
+        dialogLoad = null;
+        raceDialogLoads.clear();
+        dialogTheme = activeCustomizationSetName();
+    }
+    // DialogSet.cs 22: base_dialog.txt always from the stock dialog\ folder.
     dialogLoad ??= fetchText(resolveDataUrl('dialog/base_dialog.txt'))
         .then((t) => new DialogSet(t))
         .catch(() => null);
@@ -490,7 +500,9 @@ export function loadDialogSet(raceName: string): Promise<DialogSet | null> {
         if (set === null || raceName === '' || set.hasRace(raceName)) return set;
         let p = raceDialogLoads.get(raceName);
         if (!p) {
-            p = fetchText(resolveDataUrl(`dialog/${raceDialogFileName(raceName)}`))
+            // DialogSet.cs 25-39: Customization\<set>\dialog\<race>.txt when it exists, else the stock file.
+            const custom = activeCustomizationSet()?.fileUrl(`dialog/${raceDialogFileName(raceName)}`) ?? null;
+            p = fetchText(custom !== null ? [custom] : resolveDataUrl(`dialog/${raceDialogFileName(raceName)}`))
                 .then((t) => set.addRace(raceName, t))
                 .catch(() => undefined);
             raceDialogLoads.set(raceName, p);
@@ -1547,7 +1559,18 @@ function createDiplomacyScreen(opts: DiplomacyScreenOptions): OpenState {
         const head = place(el('div', 'dip-talk-head'), 0, 8, 410, 34);
         head.append(flagImage(other, 50, 30, 'dip-talk-flag'), text(other.name, { size: FONT.title, bold: true, color: '#fff', className: 'dip-talk-name' }));
         panel.appendChild(head);
-        const portrait = place(raceImage(other, 280, 'dip-talk-race'), 65, 45, 280, 280);
+        // picRace (280 × 280 at y 45, CenterImage): method_118(empire, DominantRace, 280, 280, bitmap_31, 7, pirate) — the
+        // race on its native landscape (a pirate faction on storyEvent.jpg) in the panel frame, scaled to 282 × 282
+        // (PrecacheScaledBitmap) and centred, so a pixel of each edge is cut (Main.Part8.cs 495-501).
+        const portrait = place(el('div', 'dip-talk-race'), 65, 45, 280, 280);
+        const emblem = other.pirateEmpireBaseHabitat === null && player.galaxy.scenario != null
+            ? resolveEmpireEmblem(player.galaxy, other).then((e) => (e.portraitUrl !== stockEmblem(other).portraitUrl ? e.portraitUrl : null))
+            : undefined;
+        const composite = empireRacePicture(other, 280, 280, 7, 'dip-talk-race-picture', emblem);
+        composite.style.width = '282px';
+        composite.style.height = '282px';
+        place(composite, -1, -1, 282, 282);
+        portrait.appendChild(composite);
         panel.appendChild(portrait);
 
         // pnlDiplomaticConversationResponse (MessagePanel): 18.67 px text, padding 12, black at alpha 80.

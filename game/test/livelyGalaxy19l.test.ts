@@ -39,9 +39,16 @@ beforeAll(async () => {
 }, 120000);
 
 
-function lively(flags: Record<string, boolean>, params: Record<string, number> = {}): Galaxy {
-    return createScenarioGame(base, { scenario: 'lively-galaxy', flags, params }).game.galaxy;
+function lively(flags: Record<string, boolean>, params: Record<string, number> = {}, seed = 1): Galaxy {
+    return createScenarioGame(base, { scenario: 'lively-galaxy', flags, params, options: seed === 1 ? undefined : (o) => ({ ...o, seed }) }).game.galaxy;
 }
+
+/**
+ * The seed of the forced-border tests (forcedBorder): one whose strongest AI has an independent colony within reach of
+ * its capital, so the colony handed to B borders A. Seed 1 had one 0.42M away until SetupSun's SelectHabitatPictures
+ * (star) draws (Galaxy.5.cs 1328) moved its galaxy (now 3.5M away, no border); seed 2's is 0.79M away.
+ */
+const BORDER_SEED = 2;
 
 function aiEmpires(g: Galaxy): Empire[] {
     return g.empires.filter((e) => e !== null && e.active && e !== g.playerEmpire && e !== g.independentEmpire && e.pirateEmpireBaseHabitat === null);
@@ -113,7 +120,7 @@ function singleShipDefendFleets(g: Galaxy, e: Empire, n: number): void {
     }
 }
 
-/** A's goodwill toward B in the war test: attitude +5, num6 -6.7 above the stock num9 -13.2 (aggression 76). */
+/** A's goodwill toward B in the war test (BORDER_SEED): attitude 15, num6 8.1 above the stock num9 -12.5 (aggression 80). */
 const GOODWILL = 30;
 
 describe('19l ambitionPressure', () => {
@@ -146,7 +153,7 @@ describe('19l ambitionPressure', () => {
 
     it('the relaxed war-review gate (Empire.8.cs 100/139) turns a peaceful strong AI to Conquer, and the war follows', () => {
         const run = (ambition: number) => {
-            const g = lively({ ambitionPressure: true, smallerInvasions: true }, { ambitionWarFactor: 1, ambitionThreshold: 5, invasionMinShips: 4, invasionWeakTroops: 1e9, invasionTroopRatio: 0.35 });
+            const g = lively({ ambitionPressure: true, smallerInvasions: true }, { ambitionWarFactor: 1, ambitionThreshold: 5, invasionMinShips: 4, invasionWeakTroops: 1e9, invasionTroopRatio: 0.35 }, BORDER_SEED);
             const { a, b, colony } = forcedBorder(g);
             // Only B is met, so the one-Conquer-at-a-time rule (Empire.8.cs 283) cannot pick another target.
             for (let i = 0; i < a.diplomaticRelations.count; i++) {
@@ -167,7 +174,9 @@ describe('19l ambitionPressure', () => {
         expect(calm.rel.strategy).toBe(DiplomaticStrategy.Undefined); // stock gate: no fight
         expect(calm.sg.attackPoint === null).toBe(true);
 
-        const restless = run(20);
+        // Ambition 30 (relax 30): BORDER_SEED's A (aggression 80) needs num6 8.1 below the relaxed num9 (-12.5 + 30)
+        // and its war attitude (15 - 30) below -5 (Empire.8.cs, relative strength 1).
+        const restless = run(30);
         expect(restless.rel.strategy).toBe(DiplomaticStrategy.Conquer);
         expect(restless.rel.warObjective).toBe(WarObjective.CaptureObjectives);
         expect(restless.rel.warObjectiveColonies.includes(restless.colony)).toBe(true);
@@ -183,13 +192,13 @@ describe('19l ambitionPressure', () => {
         reviewDiplomaticSituations(g, a);
         expect(obtainDiplomaticRelation(a, b).type).toBe(DiplomaticRelationType.War);
         // The new war spent A's ambition.
-        expect(ambitionState(g)[String(a.empireId)].ambition).toBeCloseTo(14);
+        expect(ambitionState(g)[String(a.empireId)].ambition).toBeCloseTo(24);
     }, 120000);
 });
 
 describe('19l borderFriction', () => {
     it('a forced overlap rolls incidents that lower relations, count toward the war review, and can seize an unescorted station', () => {
-        const g = lively({ borderFriction: true }, { frictionChance: 1, frictionMaxChance: 1, frictionOverlapRef: 1, incidentRelationDrop: 4, incidentWarFactor: 1.5 });
+        const g = lively({ borderFriction: true }, { frictionChance: 1, frictionMaxChance: 1, frictionOverlapRef: 1, incidentRelationDrop: 4, incidentWarFactor: 1.5 }, BORDER_SEED);
         const { a, b, colony } = forcedBorder(g);
         const pair = borderOverlaps(g).find((p) => (p.a === a && p.b === b) || (p.a === b && p.b === a));
         expect(pair !== undefined).toBe(true);
@@ -245,7 +254,7 @@ describe('19l borderFriction', () => {
 describe('19l smallerInvasions', () => {
     it('a 4-ship troop fleet is prepared against a weak colony only with the smaller-invasion rule', () => {
         const run = (flags: Record<string, boolean>, params: Record<string, number>) => {
-            const g = lively(flags, params);
+            const g = lively(flags, params, BORDER_SEED);
             const { a, b, colony } = forcedBorder(g);
             const sg = fourShipTroopFleet(g, a, 1e7);
             const rel = obtainDiplomaticRelation(a, b);

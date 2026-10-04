@@ -1,19 +1,17 @@
 {
     "builtObjectPlacement": {
         "playerCivilianNames": [
-            ["ExplorationShip", "RSR Morning Mariner"],
-            ["ExplorationShip", "RSR Faithful Pioneer"],
-            ["ExplorationShip", "RSR Prosperous Harbour"],
-            ["ExplorationShip", "RSR Bright Tide"],
-            ["ConstructionShip", "RSC Sol Heron"],
-            ["ConstructionShip", "RSC Lucky Pioneer"]
+            ["ExplorationShip", "SSR Voyager of S184"],
+            ["ExplorationShip", "SSR Morning Endurance"],
+            ["ExplorationShip", "SSR S184 Discovery"],
+            ["ConstructionShip", "SSC S184 Discovery"]
         ]
     },
     "characters": {
-        "drawsPerEmpire": [67, 49, 45, 27],
+        "drawsPerEmpire": [49, 58, 50, 26],
         "humanSummary": {
             "race": "Human",
-            "leader": "Yuri Redan",
+            "leader": "Yuri Mankara",
             "characters": [
                 {
                     "role": "Ambassador",
@@ -21,25 +19,25 @@
                     "race": "Human",
                     "skills": ["Diplomacy:25"],
                     "traits": ["Tolerant", "EloquentSpeaker"],
-                    "location": "Skaif",
+                    "location": "S184 2",
                     "bonusesKnown": false
                 },
                 {
                     "role": "Leader",
-                    "name": "Yuri Redan",
+                    "name": "Yuri Mankara",
                     "race": "Human",
-                    "skills": ["CivilianBaseMaintenance:2", "PopulationGrowth:-2", "ColonyHappiness:9", "ColonyIncome:7"],
-                    "traits": ["LaborOriented"],
-                    "location": "Skaif",
+                    "skills": ["ColonyIncome:2"],
+                    "traits": ["Xenophobic", "Isolationist"],
+                    "location": "S184 2",
                     "bonusesKnown": true
                 },
                 {
                     "role": "IntelligenceAgent",
-                    "name": "Lorien Obarria",
+                    "name": "Indo Lukadi",
                     "race": "Human",
-                    "skills": ["Espionage:13", "Sabotage:-4", "CounterEspionage:5"],
-                    "traits": ["IntelligenceWeak", "IntelligencePoorSpeaker"],
-                    "location": "Skaif",
+                    "skills": ["Sabotage:8", "Espionage:11", "Concealment:8"],
+                    "traits": ["IntelligenceEloquentSpeaker"],
+                    "location": "S184 2",
                     "bonusesKnown": false
                 }
             ]
@@ -47,77 +45,77 @@
         "otherEmpires": [
             [
                 "Haakonish",
-                "Wunta Argria",
-                ["ColonyGovernor:Yentor Zhukziban", "Leader:Wunta Argria", "IntelligenceAgent:Ebari Ghazzik"]
+                "Yentor Takruan",
+                ["ColonyGovernor:Yentor Zhukziban", "Leader:Yentor Takruan", "IntelligenceAgent:Zeek Rustov"]
             ],
             [
                 "Dhayut",
-                "Iko Losit",
-                ["TroopGeneral:Maqtor Aklon", "Leader:Iko Losit", "IntelligenceAgent:Asunka Poldan"]
+                "Edi Diitak",
+                ["TroopGeneral:Maqtor Aklon", "Leader:Edi Diitak", "IntelligenceAgent:Oro Nassiki"]
             ],
-            ["Ugnari", "Udy Assari", ["IntelligenceAgent:Tek Ixito", "Leader:Udy Assari"]]
+            ["Ugnari", "Udy Corras", ["IntelligenceAgent:Tek Ixito", "Leader:Udy Corras"]]
         ],
         "drawLog60": [
             "0,31=7",
-            "0,26=25",
-            "0,2=1",
-            "0,2=1",
-            "0,2=1",
-            "0,3=1",
-            "0,20=17",
+            "0,26=4",
+            "0,2=0",
             "0,3=2",
-            "0,4=3",
-            "0,3=0",
-            "0,4=2",
-            "0,3=0",
-            "0,4=3",
-            "0,3=2",
-            "0,4=2",
-            "0,3=0",
             "0,4=1",
             "0,4=0",
             "2,10=2",
-            "0,4=1",
-            "-5,-1=-2",
-            "0,4=2",
-            "2,10=9",
-            "0,4=2",
-            "2,10=7",
-            "0,2=0",
-            "0,41=28",
-            "0,4=0",
-            "0,31=3",
-            "0,26=15",
             "0,2=1",
-            "0,2=1",
-            "0,2=0",
-            "0,3=0",
-            "0,3=0",
-            "0,3=0",
-            "0,3=2",
-            "0,3=2",
-            "0,3=1",
-            "0,4=0",
-            "5,16=13",
-            "0,4=1",
-            "-5,-1=-4",
+            "0,41=36",
+            "0,41=36",
+            "0,41=11",
             "0,4=3",
-            "5,16=5",
+            "0,31=18",
+            "0,26=11",
             "0,2=1",
-            "0,14=7",
-            "0,14=7",
-            "0,14=11",
-            "0,5=0",
-            "0,20=0",
-            "0,80=40",
-            "0,5=1",
-            "0,20=14",
-            "0,80=26",
+            "0,2=1",
+            "0,2=0",
+            "0,3=2",
+            "0,3=2",
+            "0,3=0",
+            "0,3=0",
+            "0,3=1",
+            "0,3=1",
+            "0,4=2",
+            "5,16=8",
+            "0,4=3",
+            "5,16=11",
+            "0,4=3",
+            "5,16=8",
+            "0,2=0",
+            "0,14=10",
             "0,5=2",
-            "0,20=0",
-            "0,80=31",
-            "0,5=4",
-            "0,20=12"
+            "0,20=13",
+            "0,80=39",
+            "0,5=0",
+            "0,20=16",
+            "0,80=68",
+            "0,5=0",
+            "0,20=8",
+            "0,80=73",
+            "0,5=1",
+            "0,20=11",
+            "0,80=30",
+            "0,5=0",
+            "0,20=3",
+            "0,80=57",
+            "0,5=0",
+            "0,20=10",
+            "0,80=27",
+            "0,38=4",
+            "0,29=6",
+            "0,2=0",
+            "0,3=2",
+            "0,4=0",
+            "0,4=3",
+            "2,10=7",
+            "0,2=1",
+            "0,41=20",
+            "0,41=23",
+            "0,4=1"
         ],
         "pirateRoles": ["PirateLeader", "IntelligenceAgent"]
     },
@@ -125,56 +123,56 @@
         "summary": {
             "empires": [
                 {
-                    "name": "Royal Sol Commonwealth",
+                    "name": "S184 Sovereignty",
                     "race": "Human",
                     "colonies": 1,
                     "spacePorts": 1,
                     "researchStations": 1,
                     "miningStations": 6,
-                    "stateShips": {"Escort": 2, "Frigate": 2, "Destroyer": 2, "ExplorationShip": 4, "ConstructionShip": 2},
+                    "stateShips": {"Escort": 1, "Frigate": 1, "Destroyer": 1, "ExplorationShip": 3, "ConstructionShip": 1},
                     "privateShips": {"SmallFreighter": 7, "MediumFreighter": 4, "GasMiningShip": 2, "MiningShip": 2},
-                    "troops": 6,
+                    "troops": 7,
                     "characters": 3,
-                    "taxRates": [0.28999999165534973]
+                    "taxRates": [0.2199999988079071]
                 },
                 {
-                    "name": "S78 Consortium",
+                    "name": "Haakonish Industries",
                     "race": "Haakonish",
                     "colonies": 1,
                     "spacePorts": 1,
                     "researchStations": 1,
                     "miningStations": 6,
                     "stateShips": {"Escort": 4, "Frigate": 5, "ExplorationShip": 7, "ConstructionShip": 3},
-                    "privateShips": {"SmallFreighter": 9, "MediumFreighter": 4, "GasMiningShip": 2, "MiningShip": 2},
-                    "troops": 6,
+                    "privateShips": {"SmallFreighter": 7, "MediumFreighter": 4, "GasMiningShip": 2, "MiningShip": 2},
+                    "troops": 7,
                     "characters": 3,
                     "taxRates": [0.2800000011920929]
                 },
                 {
-                    "name": "Great S105 Authority",
+                    "name": "Dhayut Authority",
                     "race": "Dhayut",
                     "colonies": 1,
                     "spacePorts": 1,
                     "researchStations": 1,
                     "miningStations": 6,
-                    "stateShips": {"Escort": 2, "Frigate": 3, "ExplorationShip": 3, "ConstructionShip": 1},
+                    "stateShips": {"Escort": 3, "Frigate": 4, "ExplorationShip": 4, "ConstructionShip": 2},
                     "privateShips": {
                         "SmallFreighter": 6,
-                        "MediumFreighter": 5,
+                        "MediumFreighter": 4,
                         "LargeFreighter": 3,
                         "GasMiningShip": 2,
                         "MiningShip": 2
                     },
-                    "troops": 3,
+                    "troops": 8,
                     "characters": 3,
-                    "taxRates": [0.2199999988079071]
+                    "taxRates": [0.23000000417232513]
                 },
                 {
-                    "name": "Free S65 Consortium",
+                    "name": "Ugnari Corporation",
                     "race": "Ugnari",
                     "colonies": 1,
                     "spacePorts": 1,
-                    "researchStations": 0,
+                    "researchStations": 1,
                     "miningStations": 6,
                     "stateShips": {"Escort": 3, "Frigate": 3, "Destroyer": 3, "ExplorationShip": 7, "ConstructionShip": 3},
                     "privateShips": {
@@ -184,106 +182,120 @@
                         "GasMiningShip": 2,
                         "MiningShip": 2
                     },
-                    "troops": 4,
+                    "troops": 5,
                     "characters": 2,
                     "taxRates": [0.3100000023841858]
                 }
             ],
             "pirates": [
                 {
-                    "name": "Dread Storm Security",
+                    "name": "S119 Salvage",
                     "bases": 1,
-                    "fleet": {"Escort": 1, "ExplorationShip": 1, "ConstructionShip": 1},
-                    "private": {"SmallFreighter": 2, "MiningShip": 1, "GasMiningShip": 1, "GasMiningStation": 2},
-                    "characters": 2
-                },
-                {
-                    "name": "Fierce Network",
-                    "bases": 1,
-                    "fleet": {"Escort": 1, "ExplorationShip": 1, "ConstructionShip": 1},
-                    "private": {"SmallFreighter": 2, "MiningShip": 1, "GasMiningShip": 1, "GasMiningStation": 2},
-                    "characters": 2
-                },
-                {
-                    "name": "S83 Confederation",
-                    "bases": 1,
-                    "fleet": {"Escort": 1, "ExplorationShip": 1, "ConstructionShip": 1},
+                    "fleet": {"ExplorationShip": 1, "ConstructionShip": 1},
                     "private": {
-                        "SmallFreighter": 2,
+                        "SmallFreighter": 4,
                         "MiningShip": 1,
                         "GasMiningShip": 1,
-                        "GasMiningStation": 1,
+                        "GasMiningStation": 2,
                         "MiningStation": 1
                     },
                     "characters": 2
                 },
                 {
-                    "name": "S65 Confederation",
+                    "name": "S167 Force",
+                    "bases": 1,
+                    "fleet": {"Escort": 1, "ExplorationShip": 1, "ConstructionShip": 1},
+                    "private": {"SmallFreighter": 2, "MiningShip": 1, "GasMiningShip": 1, "MiningStation": 2},
+                    "characters": 2
+                },
+                {
+                    "name": "Lone Star Exports",
+                    "bases": 1,
+                    "fleet": {"ExplorationShip": 1, "ConstructionShip": 1},
+                    "private": {
+                        "SmallFreighter": 4,
+                        "MiningShip": 1,
+                        "GasMiningShip": 1,
+                        "GasMiningStation": 2,
+                        "MiningStation": 1
+                    },
+                    "characters": 2
+                },
+                {
+                    "name": "S183 Mining",
+                    "bases": 1,
+                    "fleet": {"ExplorationShip": 1, "ConstructionShip": 1},
+                    "private": {
+                        "SmallFreighter": 4,
+                        "MiningShip": 1,
+                        "GasMiningShip": 1,
+                        "GasMiningStation": 2,
+                        "MiningStation": 1
+                    },
+                    "characters": 2
+                },
+                {
+                    "name": "Grim Claw Salvage",
+                    "bases": 1,
+                    "fleet": {"ExplorationShip": 1, "ConstructionShip": 1},
+                    "private": {"SmallFreighter": 4, "MiningShip": 1, "GasMiningShip": 1, "GasMiningStation": 3},
+                    "characters": 2
+                },
+                {
+                    "name": "Dark League",
                     "bases": 1,
                     "fleet": {"Escort": 1, "ExplorationShip": 1, "ConstructionShip": 1},
                     "private": {"SmallFreighter": 2, "MiningShip": 1, "GasMiningShip": 1, "GasMiningStation": 2},
                     "characters": 2
                 },
                 {
-                    "name": "Lost Moon Pillagers",
+                    "name": "Dark League",
                     "bases": 1,
                     "fleet": {"Escort": 1, "ExplorationShip": 1, "ConstructionShip": 1},
-                    "private": {
-                        "SmallFreighter": 1,
-                        "MiningShip": 1,
-                        "GasMiningShip": 1,
-                        "GasMiningStation": 1,
-                        "MiningStation": 1
-                    },
+                    "private": {"SmallFreighter": 2, "MiningShip": 1, "GasMiningShip": 1, "GasMiningStation": 2},
                     "characters": 2
                 },
                 {
-                    "name": "Dhayu Pirates",
-                    "bases": 1,
-                    "fleet": {"Escort": 1, "ExplorationShip": 1, "ConstructionShip": 1},
-                    "private": {"SmallFreighter": 1, "MiningShip": 1, "GasMiningShip": 1, "GasMiningStation": 2},
-                    "characters": 2
-                },
-                {
-                    "name": "Dread Invaders",
+                    "name": "Murderous Corsairs",
                     "bases": 1,
                     "fleet": {"Escort": 2, "ConstructionShip": 1},
                     "private": {"SmallFreighter": 1, "GasMiningStation": 1},
                     "characters": 2
                 }
             ],
-            "independentTraders": 150,
-            "unownedBuiltObjects": 20,
-            "builtObjects": 393,
-            "ruins": 22
+            "independentTraders": 165,
+            "unownedBuiltObjects": 21,
+            "builtObjects": 426,
+            "ruins": 25
         }
     },
-    "empireLifecycle": {"aiSplitDigest": "4a8493f807d8696f:288778"},
+    "empireLifecycle": {"aiSplitDigest": "1bde03cd0ed7b23e:262117"},
     "forceStructure": {
         "playerPrivate": [["SmallFreighter", 3], ["MediumFreighter", 1], ["GasMiningShip", 2], ["MiningShip", 2]],
         "age0Private": [[], [], [], []]
     },
-    "game": {"capitals": ["Sol", "S78", "S1", "S81"]},
+    "game": {"capitals": ["S184", "S263", "S119", "S26"]},
     "independentTraders": {
-        "popularSmallFreighters": ["AJ1000 Merchant Freighter", "FE1000 Light Trader", "KS1000 Light Transport"],
-        "popularMediumFreighters": ["JN1000 Cargo Ferry", "AS1000 Cargo Ferry", "NI1000 Freight Hauler"],
+        "popularSmallFreighters": ["IS1000 Light Trader", "VE1000 Light Freighter", "PO1000 Light Hauler"],
+        "popularMediumFreighters": ["GW1000 Cargo Hauler", "IN1000 Freight Hauler", "TQ1000 Cargo Ferry"],
         "perColony": {
-            "S269 2": 16,
-            "S269 4": 18,
-            "S1 3": 14,
-            "Dhayu 3": 18,
-            "S1 2": 20,
-            "Eroy": 16,
-            "Haako 4": 13,
-            "Atoaklo": 12,
-            "Toinsa": 18,
-            "S83 12": 5
+            "Egel": 14,
+            "Rouyerf": 21,
+            "S299 1": 18,
+            "S58 3": 15,
+            "Adduhi": 9,
+            "Ugnar 3": 15,
+            "Oheiward": 11,
+            "S51 1": 12,
+            "S261 2": 19,
+            "Dhayu 6": 10,
+            "Haako 1": 21
         },
-        "firstTraders": [["S269 Traveller", "AS1000 Cargo Ferry"], ["Nightstar of S269", "KS1000 Light Transport"]],
+        "firstTraders": [["Friendly Voyager", "IS1000 Light Trader"], ["S152 Trader", "IS1000 Light Trader"]],
         "lastDraws": [
-            "Next(0,0)=0",
             "Next(0,2)=1",
             "Next(0,0)=0",
+            "Next(0,2)=0",
             "Next(0,2)=1",
             "Next(0,0)=0",
             "Next(0,2)=1",
@@ -292,446 +304,461 @@
             "Next(0,0)=0",
             "Next(0,2)=0",
             "Next(0,2)=0",
-            "Next(0,2)=1",
-            "Next(0,0)=0",
             "Next(0,2)=0",
             "Next(0,2)=0",
-            "Next(0,30)=18",
-            "Next(0,30)=23",
+            "Next(0,2)=0",
+            "Next(0,30)=1",
+            "Next(0,30)=27",
+            "Next(0,30)=12",
+            "Next(0,30)=4",
             "Next(0,30)=6",
+            "Next(0,30)=3",
+            "Next(0,30)=11",
             "Next(0,30)=9",
-            "Next(0,30)=17",
-            "Next(0,30)=20",
-            "Next(0,30)=18",
-            "Next(0,30)=15",
-            "Next(0,30)=21",
-            "Next(0,30)=26"
+            "Next(0,30)=0",
+            "Next(0,30)=8",
+            "Next(0,30)=28"
         ],
         "firstDraws": [
-            "Next(0,3)=1",
-            "Next(0,3)=1",
-            "Next(0,10)=5",
-            "Next(0,127)=51",
-            "Next(0,125)=8",
+            "Next(0,3)=0",
+            "Next(0,3)=0",
+            "Next(0,11)=2",
+            "Next(0,127)=11",
+            "Next(0,125)=9",
+            "Next(0,7)=5",
+            "NextDouble",
+            "NextDouble",
+            "Next(0,2)=0",
+            "NextDouble",
+            "Next(0,3)=0",
+            "Next(0,3)=0",
+            "Next(0,11)=2",
+            "Next(0,127)=4",
+            "Next(0,125)=13",
             "Next(0,7)=1",
             "Next(0,3)=2",
             "NextDouble",
             "NextDouble",
             "Next(0,2)=1",
             "NextDouble",
-            "Next(0,3)=2",
-            "Next(0,3)=2",
-            "Next(0,10)=6",
-            "Next(0,127)=19",
-            "Next(0,125)=97",
-            "Next(0,7)=1",
-            "Next(0,3)=1",
-            "NextDouble",
-            "NextDouble",
-            "Next(0,2)=1",
-            "NextDouble"
+            "Next(0,3)=2"
         ]
     },
     "pirateBases": {
         "fleets": [
             [
-                "SmallSpacePort:Secluded Base|Escort:Rusty Kraken|ExplorationShip:Stolen Smuggler|ConstructionShip:Contraband Racket",
-                "SmallFreighter:Dubious Bandit|SmallFreighter:Shabby Scoundrel|MiningShip:Crafty Bandit|GasMiningShip:Hidden Stash|GasMiningStation:QQ485 Gas Mining Station|GasMiningStation:S226 5 Gas Mining Station"
+                "SmallSpacePort:Desperado Haven|ExplorationShip:Wily Scoundrel|ConstructionShip:Stolen Fence",
+                "SmallFreighter:Contraband Rogue|SmallFreighter:Hidden Smuggler|SmallFreighter:S287 Booty|SmallFreighter:Hidden Loot|MiningShip:Shabby Swindle|GasMiningShip:S287 Smuggler|GasMiningStation:S212 3 Gas Mining Station|GasMiningStation:CN457 Gas Mining Station|MiningStation:JC456 Mining Station"
             ],
             [
-                "SmallSpacePort:S158 Cave|Escort:Crooked Blackheart|ExplorationShip:Booty of S158|ConstructionShip:Stolen Smuggler",
-                "SmallFreighter:Slippery Smuggler|SmallFreighter:S158 Booty|MiningShip:Slippery Swindle|GasMiningShip:Sneaky Stash|GasMiningStation:HU627 Gas Mining Station|GasMiningStation:YB251 Gas Mining Station"
+                "SmallSpacePort:Secret Retreat|Escort:Mad Corsair|ExplorationShip:Slippery Smuggler|ConstructionShip:Stolen Rat",
+                "SmallFreighter:Rumrunner of S115|SmallFreighter:Stolen Rat|MiningShip:S115 Racket|GasMiningShip:Smuggled Rogue|MiningStation:Epoddenea Mining Station|MiningStation:S207 3 Mining Station"
             ],
             [
-                "SmallSpacePort:Bandits Haunt|Escort:Dread Cutlass|ExplorationShip:Shady Rogue|ConstructionShip:Smuggled Rumrunner",
-                "SmallFreighter:Crafty Racket|SmallFreighter:Hidden Rat|MiningShip:Contraband Stash|GasMiningShip:Shabby Bandit|GasMiningStation:S50 3 Gas Mining Station|MiningStation:Omeut Mining Station"
+                "SmallSpacePort:S206 Cave|ExplorationShip:Hidden Swindle|ConstructionShip:Rogue of S206",
+                "SmallFreighter:Grimy Rat|SmallFreighter:S206 Rascal|SmallFreighter:S206 Scoundrel|SmallFreighter:Racket of S206|MiningShip:Hidden Haul|GasMiningShip:Grimy Booty|GasMiningStation:S206 3 Gas Mining Station|GasMiningStation:S206 5 Gas Mining Station|MiningStation:Lihadans Mining Station"
             ],
             [
-                "SmallSpacePort:Secret End|Escort:Dread Kraken|ExplorationShip:Crafty Bandit|ConstructionShip:Grimy Loot",
-                "SmallFreighter:Grimy Scoundrel|SmallFreighter:Slippery Stash|MiningShip:Shady Stash|GasMiningShip:Dubious Rat|GasMiningStation:S230 6 Gas Mining Station|GasMiningStation:GG332 Gas Mining Station"
+                "SmallSpacePort:S172 Station|ExplorationShip:Grimy Rumrunner|ConstructionShip:Smuggled Bandit",
+                "SmallFreighter:Sneaky Smuggler|SmallFreighter:Dubious Booty|SmallFreighter:Hidden Smuggler|SmallFreighter:S172 Scoundrel|MiningShip:Slippery Rogue|GasMiningShip:Smuggled Stash|GasMiningStation:S124 5 Gas Mining Station|GasMiningStation:S124 3 Gas Mining Station|MiningStation:S172 1 Mining Station"
             ],
             [
-                "SmallSpacePort:Gamblers Cove|Escort:Rusty Corsair|ExplorationShip:Hidden Smuggler|ConstructionShip:Stolen Booty",
-                "SmallFreighter:Grimy Rumrunner|MiningShip:Wily Racket|GasMiningShip:Stolen Rogue|GasMiningStation:RQ18 Gas Mining Station|MiningStation:S191 1 Mining Station"
+                "SmallSpacePort:Bandits Station|ExplorationShip:Shabby Booty|ConstructionShip:Contraband Haul",
+                "SmallFreighter:Slippery Racket|SmallFreighter:Wily Swindle|SmallFreighter:Stolen Scoundrel|SmallFreighter:Wily Booty|MiningShip:Contraband Haul|GasMiningShip:Stolen Rogue|GasMiningStation:S219 9 Gas Mining Station|GasMiningStation:DD758 Gas Mining Station|GasMiningStation:S219 8 Gas Mining Station"
             ],
             [
-                "SmallSpacePort:Smugglers End|Escort:Grinning Hook|ExplorationShip:Smuggled Racket|ConstructionShip:Grimy Rogue",
-                "SmallFreighter:Sneaky Scoundrel|MiningShip:Wily Fence|GasMiningShip:Wily Bandit|GasMiningStation:Dhayu 8 Gas Mining Station|GasMiningStation:Dhayu 9 Gas Mining Station"
+                "SmallSpacePort:S50 Station|Escort:One-Eyed Cutlass|ExplorationShip:S50 Rogue|ConstructionShip:Shabby Swindle",
+                "SmallFreighter:S50 Fence|SmallFreighter:S50 Smuggler|MiningShip:S50 Rascal|GasMiningShip:Shady Rumrunner|GasMiningStation:S188 5 Gas Mining Station|GasMiningStation:S50 2 Gas Mining Station"
             ],
             [
-                "SmallSpacePort:Secret Cave|Escort:Rusty Hook|Escort:Mad Revenge|ConstructionShip:Grimy Fence",
-                "SmallFreighter:Hidden Rascal|GasMiningStation:LN137 Gas Mining Station"
+                "SmallSpacePort:Lonely Base|Escort:Jagged Revenge|ExplorationShip:Crafty Scoundrel|ConstructionShip:Dubious Scoundrel",
+                "SmallFreighter:Shady Rat|SmallFreighter:Contraband Haul|MiningShip:Smuggler of S81|GasMiningShip:S81 Rat|GasMiningStation:S81 6 Gas Mining Station|GasMiningStation:S118 3 Gas Mining Station"
+            ],
+            [
+                "SmallSpacePort:Bounty Hunters Cave|Escort:Lawless Cutlass|Escort:One-Eyed Plunder|ConstructionShip:Rogue of Ugnar",
+                "SmallFreighter:Rascal of Ugnar|GasMiningStation:CD291 Gas Mining Station"
             ]
         ]
     },
     "pirates": {
         "factions": [
-            ["Dread Storm Security", "S82 4", "Ikkuro", 26112],
-            ["Fierce Network", "S158 2", "Kiadian", 88],
-            ["S83 Confederation", "S50 4", "Human", 8308],
-            ["S65 Confederation", "GU149", "Human", 5579530],
-            ["Lost Moon Pillagers", "RD27", "Boskara", 3674214],
-            ["Dhayu Pirates", "WZ331", "Naxxilian", 4331580],
-            ["Dread Invaders", "BB826", "Gizurean", 8355600]
+            ["S119 Salvage", "S287 3", "Ketarov", 16384],
+            ["S167 Force", "S115 6", "Human", 8308],
+            ["Lone Star Exports", "S206 4", "Teekan", 3153920],
+            ["S183 Mining", "S172 3", "Securan", 16511],
+            ["Grim Claw Salvage", "KZ299", "Securan", 11008],
+            ["Dark League", "S50 3", "Kiadian", 88],
+            ["Dark League", "S81 5", "Human", 5570645],
+            ["Murderous Corsairs", "Ugnar 2", "Mortalen", 4390912]
         ]
     },
-    "startingColonies": {"colonyCounts": [2, 2, 2, 2], "colonyTypes": [[11, 11], [11, 11], [10, 11], [9, 11]]},
+    "startingColonies": {"colonyCounts": [2, 2, 2, 2], "colonyTypes": [[11, 11], [11, 10], [10, 11], [9, 11]]},
     "stationPlacement": {
         "bases": [
             [
-                151,
-                "Royal Sol Commonwealth",
-                "MediumSpacePort",
-                "Skaif Space Port",
-                "Skaif",
-                4575800,
-                3461540,
-                0.578035295009613
-            ],
-            [
-                152,
-                "Royal Sol Commonwealth",
-                "WeaponsResearchStation",
-                "S185 Survey Institute",
-                "S185 3",
-                4709103,
-                2980976,
-                2.479820489883423
-            ],
-            [
-                153,
-                "Royal Sol Commonwealth",
-                "GasMiningStation",
-                "Sol 7 Gas Mining Station",
-                "Sol 7",
-                4550979,
-                3478569,
-                -1.5496275424957275
-            ],
-            [
-                154,
-                "Royal Sol Commonwealth",
-                "GasMiningStation",
-                "RD27 Gas Mining Station",
-                "RD27",
-                4373986,
-                3872929,
-                -2.080127716064453
-            ],
-            [
-                155,
-                "Royal Sol Commonwealth",
-                "GasMiningStation",
-                "JW690 Gas Mining Station",
-                "JW690",
-                4539710,
-                4266464,
-                0.960326075553894
-            ],
-            [
-                156,
-                "Royal Sol Commonwealth",
-                "GasMiningStation",
-                "Sol 6 Gas Mining Station",
-                "Sol 6",
-                4572711,
-                3483485,
-                -2.334869623184204
-            ],
-            [
-                157,
-                "Royal Sol Commonwealth",
-                "GasMiningStation",
-                "Sol 5 Gas Mining Station",
-                "Sol 5",
-                4575217,
-                3460320,
-                2.230720281600952
-            ],
-            [
-                158,
-                "Royal Sol Commonwealth",
-                "MiningStation",
-                "Immeinis Mining Station",
-                "Immeinis",
-                4576161,
-                3460789,
-                -0.8723347783088684
-            ],
-            [
-                159,
-                "S78 Consortium",
-                "MediumSpacePort",
-                "S78 4 Space Port",
-                "S78 4",
-                4852995,
-                11693720,
-                2.5919344425201416
-            ],
-            [
-                160,
-                "S78 Consortium",
-                "EnergyResearchStation",
-                "S254 Innovation Hub",
-                "S254 3",
-                4459386,
-                12699616,
-                -1.0283880233764648
-            ],
-            [
-                161,
-                "S78 Consortium",
-                "GasMiningStation",
-                "S78 6 Gas Mining Station",
-                "S78 6",
-                4859695,
-                11685931,
-                2.9913270473480225
-            ],
-            [
-                162,
-                "S78 Consortium",
-                "GasMiningStation",
-                "S78 5 Gas Mining Station",
-                "S78 5",
-                4867465,
-                11698559,
-                2.335735321044922
-            ],
-            [
-                163,
-                "S78 Consortium",
-                "MiningStation",
-                "JM403 Mining Station",
-                "JM403",
-                4860010,
-                11691372,
-                0.19018535315990448
-            ],
-            [
-                164,
-                "S78 Consortium",
-                "MiningStation",
-                "Enaire Mining Station",
-                "Enaire",
-                4854805,
-                11698858,
-                1.3279527425765991
-            ],
-            [
-                165,
-                "S78 Consortium",
-                "MiningStation",
-                "YK15 Mining Station",
-                "YK15",
-                4845929,
-                11692313,
-                -1.2239867448806763
-            ],
-            [
                 166,
-                "S78 Consortium",
-                "MiningStation",
-                "Senoi Mining Station",
-                "Senoi",
-                4868066,
-                11697746,
-                -0.25674372911453247
+                "S184 Sovereignty",
+                "MediumSpacePort",
+                "S184 2 Space Port",
+                "S184 2",
+                5322099,
+                5518906,
+                -0.9467818737030029
             ],
             [
                 167,
-                "Great S105 Authority",
-                "MediumSpacePort",
-                "S105 3 Space Port",
-                "S105 3",
-                8822638,
-                14199232,
-                -2.183434247970581
+                "S184 Sovereignty",
+                "EnergyResearchStation",
+                "S147 Observatory",
+                "S147 3",
+                5417700,
+                5889183,
+                -0.13086779415607452
             ],
             [
                 168,
-                "Great S105 Authority",
-                "EnergyResearchStation",
-                "S229 Thought Chamber",
-                "S229 1",
-                9143363,
-                14461977,
-                2.3011810779571533
+                "S184 Sovereignty",
+                "MiningStation",
+                "Mipath Mining Station",
+                "Mipath",
+                5315801,
+                5530669,
+                2.687793016433716
             ],
             [
                 169,
-                "Great S105 Authority",
-                "GasMiningStation",
-                "S105 5 Gas Mining Station",
-                "S105 5",
-                8818110,
-                14216423,
-                -2.8853933811187744
+                "S184 Sovereignty",
+                "MiningStation",
+                "Isooso Mining Station",
+                "Isooso",
+                5342586,
+                5537365,
+                -2.196577548980713
             ],
             [
                 170,
-                "Great S105 Authority",
+                "S184 Sovereignty",
                 "MiningStation",
-                "Onau Mining Station",
-                "Onau",
-                8815470,
-                14207656,
-                0.8037983179092407
+                "BB286 Mining Station",
+                "BB286",
+                5332799,
+                5532278,
+                -2.6371958255767822
             ],
             [
                 171,
-                "Great S105 Authority",
+                "S184 Sovereignty",
                 "MiningStation",
-                "Edulta Mining Station",
-                "Edulta",
-                8817413,
-                14216773,
-                1.3917838335037231
+                "PL628 Mining Station",
+                "PL628",
+                5319032,
+                5536773,
+                2.2298240661621094
             ],
             [
                 172,
-                "Great S105 Authority",
+                "S184 Sovereignty",
                 "MiningStation",
-                "LI463 Mining Station",
-                "LI463",
-                8831470,
-                14205667,
-                -1.6628038883209229
+                "Acis Mining Station",
+                "Acis",
+                5325121,
+                5531367,
+                0.15289069712162018
             ],
             [
                 173,
-                "Great S105 Authority",
+                "S184 Sovereignty",
                 "MiningStation",
-                "S105 2 Mining Station",
-                "S105 2",
-                8817496,
-                14205538,
-                -2.7571234703063965
+                "Ircie Mining Station",
+                "Ircie",
+                5342345,
+                5537718,
+                -0.4555090069770813
             ],
             [
                 174,
-                "Great S105 Authority",
-                "MiningStation",
-                "OJ722 Mining Station",
-                "OJ722",
-                8831284,
-                14203103,
-                2.4797861576080322
+                "Haakonish Industries",
+                "MediumSpacePort",
+                "S167 6 Space Port",
+                "S167 6",
+                7623039,
+                2513862,
+                -2.2361507415771484
             ],
             [
                 175,
-                "Free S65 Consortium",
-                "MediumSpacePort",
-                "S65 11 Space Port",
-                "S65 11",
-                9419206,
-                3145520,
-                -2.652439832687378
+                "Haakonish Industries",
+                "WeaponsResearchStation",
+                "S161 Development Lab",
+                "S161 2",
+                7190247,
+                2753350,
+                2.1502621173858643
             ],
             [
                 176,
-                "Free S65 Consortium",
+                "Haakonish Industries",
                 "GasMiningStation",
-                "S65 5 Gas Mining Station",
-                "S65 5",
-                9430848,
-                3162026,
-                1.198515772819519
+                "S167 9 Gas Mining Station",
+                "S167 9",
+                7646207,
+                2517020,
+                2.0031087398529053
             ],
             [
                 177,
-                "Free S65 Consortium",
+                "Haakonish Industries",
                 "GasMiningStation",
-                "S65 4 Gas Mining Station",
-                "S65 4",
-                9414865,
-                3162543,
-                0.9072098731994629
+                "S167 10 Gas Mining Station",
+                "S167 10",
+                7628587,
+                2500273,
+                1.9861564636230469
             ],
             [
                 178,
-                "Free S65 Consortium",
+                "Haakonish Industries",
                 "GasMiningStation",
-                "S65 6 Gas Mining Station",
-                "S65 6",
-                9425047,
-                3193904,
-                1.975771427154541
+                "Dhayu 8 Gas Mining Station",
+                "Dhayu 8",
+                8091215,
+                2903535,
+                -2.496415615081787
             ],
             [
                 179,
-                "Free S65 Consortium",
+                "Haakonish Industries",
                 "MiningStation",
-                "Croi Mining Station",
-                "Croi",
-                9430082,
-                3180131,
-                1.5784025192260742
+                "S167 8 Mining Station",
+                "S167 8",
+                7629395,
+                2505444,
+                2.156128168106079
             ],
             [
                 180,
-                "Free S65 Consortium",
+                "Haakonish Industries",
                 "MiningStation",
-                "S65 3 Mining Station",
-                "S65 3",
-                9409490,
-                3173079,
-                0.0009160047047771513
+                "Smeif Mining Station",
+                "Smeif",
+                7626155,
+                2515015,
+                0.44175985455513
             ],
             [
                 181,
-                "Free S65 Consortium",
+                "Haakonish Industries",
                 "MiningStation",
-                "Selm Mining Station",
-                "Selm",
-                9409953,
-                3173428,
-                2.612617254257202
+                "S167 7 Mining Station",
+                "S167 7",
+                7623385,
+                2519014,
+                -1.9986482858657837
+            ],
+            [
+                182,
+                "Dhayut Authority",
+                "MediumSpacePort",
+                "S119 2 Space Port",
+                "S119 2",
+                9997729,
+                6857119,
+                -1.0676064491271973
+            ],
+            [
+                183,
+                "Dhayut Authority",
+                "EnergyResearchStation",
+                "Perilous Inferno Gene Vat",
+                "Perilous Inferno",
+                9751570,
+                6880984,
+                2.5149919986724854
+            ],
+            [
+                184,
+                "Dhayut Authority",
+                "GasMiningStation",
+                "S119 3 Gas Mining Station",
+                "S119 3",
+                10016895,
+                6865290,
+                -3.095214366912842
+            ],
+            [
+                185,
+                "Dhayut Authority",
+                "MiningStation",
+                "Shis Mining Station",
+                "Shis",
+                9997724,
+                6857493,
+                -2.8585801124572754
+            ],
+            [
+                186,
+                "Dhayut Authority",
+                "MiningStation",
+                "S119 1 Mining Station",
+                "S119 1",
+                9998756,
+                6857653,
+                -0.772720992565155
+            ],
+            [
+                187,
+                "Dhayut Authority",
+                "MiningStation",
+                "Exxanesau Mining Station",
+                "Exxanesau",
+                10017243,
+                6864300,
+                1.0312597751617432
+            ],
+            [
+                188,
+                "Dhayut Authority",
+                "MiningStation",
+                "S210 1 Mining Station",
+                "S210 1",
+                10016508,
+                6697024,
+                1.0284324884414673
+            ],
+            [
+                189,
+                "Dhayut Authority",
+                "GasMiningStation",
+                "S119 5 Gas Mining Station",
+                "S119 5",
+                10023084,
+                6856645,
+                0.035496361553668976
+            ],
+            [
+                190,
+                "Ugnari Corporation",
+                "MediumSpacePort",
+                "S84 7 Space Port",
+                "S84 7",
+                12130934,
+                11121533,
+                -2.457228422164917
+            ],
+            [
+                191,
+                "Ugnari Corporation",
+                "HighTechResearchStation",
+                "S236 Research Station",
+                "S236 4",
+                12270186,
+                10076014,
+                1.0683605670928955
+            ],
+            [
+                192,
+                "Ugnari Corporation",
+                "GasMiningStation",
+                "S84 5 Gas Mining Station",
+                "S84 5",
+                12100965,
+                11114561,
+                -2.0450265407562256
+            ],
+            [
+                193,
+                "Ugnari Corporation",
+                "GasMiningStation",
+                "S84 4 Gas Mining Station",
+                "S84 4",
+                12102153,
+                11116871,
+                -0.9304375648498535
+            ],
+            [
+                194,
+                "Ugnari Corporation",
+                "GasMiningStation",
+                "BR881 Gas Mining Station",
+                "BR881",
+                12566416,
+                10889870,
+                2.12713885307312
+            ],
+            [
+                195,
+                "Ugnari Corporation",
+                "GasMiningStation",
+                "VD603 Gas Mining Station",
+                "VD603",
+                13050866,
+                10673858,
+                -0.4584573209285736
+            ],
+            [
+                196,
+                "Ugnari Corporation",
+                "MiningStation",
+                "Ippai Mining Station",
+                "Ippai",
+                12100461,
+                11114057,
+                -2.549123764038086
+            ],
+            [
+                197,
+                "Ugnari Corporation",
+                "MiningStation",
+                "YN857 Mining Station",
+                "YN857",
+                12100409,
+                11128679,
+                -0.202006995677948
             ]
         ],
-        "researchPhases": ["research", "research", "research", "none"],
-        "miningPhases": ["mining6", "mining6plusSkip", "mining6plusSkip", "mining6"]
+        "researchPhases": ["research", "research", ["NextDouble", "Next(0,2)", "NextDouble", "Next(0,4)", "NextDouble"], "research"],
+        "miningPhases": ["mining6plusSkip", "mining6plusSkip", "mining6", "mining6plusSkip"]
     },
     "superPirates": {
         "faction": [
             [
-                "Escort:Sabre II:32",
-                "Frigate:Senator II:43",
-                "Destroyer:Argossia II:55",
-                "Cruiser:Dominator:90",
-                "CapitalShip:Quaestor:137",
-                "Carrier:CX-2 Carrier:109",
+                "Escort:Venator II:32",
+                "Frigate:Decurion II:44",
+                "Destroyer:Excelsior II:54",
+                "Cruiser:Titan:89",
+                "CapitalShip:Javelin:136",
+                "Carrier:CX-2 Carrier:108",
                 "DefensiveBase:Phantom Pirate Defensive Base:123",
                 "GenericBase:Phantom Pirate Base:217"
             ],
             [
-                "GenericBase:Desperado Refuge",
-                "DefensiveBase:Dhayu 7 Defense Battery",
-                "DefensiveBase:Dhayu 7 Defense Battery",
-                "DefensiveBase:Dhayu 7 Weapons Platform",
-                "Frigate:Wicked Buccaneer",
-                "Frigate:Mad Scallywag",
-                "Destroyer:Lawless Corsair",
-                "Destroyer:Crooked Scallywag"
+                "GenericBase:Brigands Hideaway",
+                "DefensiveBase:Haako 2 Weapons Platform",
+                "DefensiveBase:Haako 2 Defensive Base",
+                "DefensiveBase:Haako 2 Weapons Platform",
+                "Destroyer:Grinning Reaver",
+                "Destroyer:Drunken Gallows",
+                "Cruiser:Lawless Raider",
+                "Frigate:Crooked Scallywag"
             ],
-            30
+            27
         ]
     },
-    "taxes": {"taxRates": [0.28999999165534973, 0.2800000011920929, 0.18000000715255737, 0.3100000023841858]},
+    "taxes": {"taxRates": [0.2199999988079071, 0.2800000011920929, 0.23999999463558197, 0.3100000023841858]},
     "tickDeterminism": {
-        "digest600": "e3f6e6fa3f5b926b",
-        "counts600": {"empires": 4, "pirateEmpires": 7, "habitats": 13326, "builtObjects": 577, "creatures": 334, "colonies": 4},
-        "rndDraws600": 572462,
-        "digest120": "492736eb90d9ba45",
-        "rndDraws120": 7948
+        "digest600": "941f2dd4ba1f5a6b",
+        "counts600": {"empires": 4, "pirateEmpires": 8, "habitats": 12060, "builtObjects": 617, "creatures": 237, "colonies": 4},
+        "rndDraws600": 611011,
+        "digest120": "8dd9c58d04b0fb29",
+        "rndDraws120": 33302
     },
     "troops": {
-        "capitals": [[1177, 882, 6], [1564, 1173, 8], [1758, 1318, 0], [660, 495, 10]],
-        "colonyTroops": [8, 10, 9, 6],
-        "maintenance": [14000, 16200, 7650, 14400],
+        "capitals": [[1142, 856, 3], [1544, 1158, 3], [1806, 1354, 1], [616, 462, 11]],
+        "colonyTroops": [5, 6, 16, 3],
+        "maintenance": [6800, 8100, 14450, 12600],
         "processDraws": ["", "", "", ""],
-        "recruitCapitalTroops": [6, 7, 8, 5],
-        "recruitMaintenance": [6000, 6300, 6800, 4500],
-        "recruitProcessDraws": ["", "", "", ""]
+        "recruitCapitalTroops": [3, 2, 1, 2],
+        "recruitMaintenance": [2550, 1800, 850, 1800],
+        "recruitProcessDraws": ["", "Next(0,70)=15 Next(0,70)=6", "Next(0,70)=51 Next(0,70)=67", "Next(0,70)=19"]
     }
 }

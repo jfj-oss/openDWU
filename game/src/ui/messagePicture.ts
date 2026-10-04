@@ -18,6 +18,7 @@ import { Character } from '../sim/characters';
 import { Empire } from '../sim/empire';
 import { PlanetaryFacility } from '../sim/construction/facilities';
 import { ResearchAbilityType, abilityTypeFromFile, type TechNode } from '../sim/researchSystem';
+import { HabitatImageOffsetContinental, HabitatImageOffsetDesert, HabitatImageOffsetIce, HabitatImageOffsetMarshySwamp, HabitatImageOffsetOcean, HabitatImageOffsetVolcanic, habitatImageFile } from '../sim/galaxyImages';
 
 const MSG = '/assets/dwu/images/ui/messages/';
 
@@ -36,15 +37,16 @@ export function messageImageUrl(i: number): string {
     return MSG + MESSAGE_IMAGE_FILES[i];
 }
 
-/** Main.Part6.cs method_396: the six habitat-type pictures (Continental, MarshySwamp, Ocean, Desert, Ice, Volcanic). */
-const HABITAT_TYPE_IMAGES = [
-    '/assets/dwu/images/environment/planets/continental/Continental-0001.png',
-    '/assets/dwu/images/environment/planets/marshyswamp/Marsh-0001.png',
-    '/assets/dwu/images/environment/planets/ocean/Ocean-0001.png',
-    '/assets/dwu/images/environment/planets/sandydesert/Desert-0001.png',
-    '/assets/dwu/images/environment/planets/iceglacial/Glacial-0001.png',
-    '/assets/dwu/images/environment/planets/volcanic/Volcanic-0001.png',
-] as const;
+/** Main.Part6.cs method_396 (1568-1573): habitatImageCache.ObtainImageSmall(HabitatImageOffset<Type>) — the first picture
+ *  of Continental, MarshySwamp, Ocean, Desert, Ice, Volcanic. */
+const HABITAT_TYPE_IMAGES: readonly string[] = [
+    HabitatImageOffsetContinental,
+    HabitatImageOffsetMarshySwamp,
+    HabitatImageOffsetOcean,
+    HabitatImageOffsetDesert,
+    HabitatImageOffsetIce,
+    HabitatImageOffsetVolcanic,
+].map((ref) => `/assets/dwu/images/environment/${habitatImageFile(ref)}`);
 
 const facilityUrl = (pictureRef: number): string => `/assets/dwu/images/environment/planetaryfacilities/facility_${pictureRef}.png`;
 const componentUrl = (pictureRef: number): string => `/assets/dwu/images/ui/components/Component_${pictureRef}.bmp`;

@@ -22,6 +22,8 @@
 // pointerdown/keydown is retried on that gesture.
 
 import { getSettings } from '../ui/settings';
+import { themeMusicFolder, themedAssetUrl } from '../themeAssets';
+import { encodePathSegments } from '../sim/data/customization';
 import { pickRimWeightedTrack } from './rimAtmosphereMix'; // [rimatmo-wiring] 19i item 8 (pure; no render/Pixi import)
 
 /** Track files in Sounds/Music/ (MusicPlayer.cs:107 Directory.GetFiles(folder, "*.mp3")). */
@@ -155,7 +157,7 @@ export class HtmlMediaBackend implements MediaBackend {
         this.wantPlaying = true;
         this.loading = true;
         this.el.pause();
-        fetch(url)
+        fetch(themedAssetUrl(url)) // stings: the theme's sounds\effects copy (Main.Part4.cs 273-458); music URLs pass through
             .then((r) => (r.ok ? r.blob() : null))
             .catch(() => null)
             .then((blob) => {
@@ -488,7 +490,10 @@ function ensurePlayers(): { music: MusicPlayer; stings: MusicPlayer } {
         }
     }
     if (music0 === null) {
-        music0 = new MusicPlayer();
+        // Main.Part12.cs 1342 method_68: the active theme's sounds\music\ tracks replace the stock list when it holds
+        // an *.mp3 (theme track DistantWorldsTheme.mp3, else its first file).
+        const theme = themeMusicFolder();
+        music0 = theme === null ? new MusicPlayer() : new MusicPlayer({ files: theme.files.map((f) => encodePathSegments(f)), folder: theme.urlOf('').replace(/[^/]*$/, ''), themeFile: encodePathSegments(theme.themeFile) });
         music0.setUserVolume(userVolume);
         if (userMuted) music0.mute();
     }
@@ -586,6 +591,15 @@ export function eventStingClosed(): void {
     } else if (!music.isPlaying) {
         music.forceSwitch();
     }
+}
+
+/**
+ * Theme switch (Main.Part12.cs method_67 → method_68(set, true)): drop the music player so the next use builds it on
+ * the active theme's sounds\music\ folder; the sting player (musicPlayer_1, always the stock folder) stays.
+ */
+export function resetMusicForTheme(): void {
+    music0?.dispose();
+    music0 = null;
 }
 
 /** Test hook: forget the app players. */

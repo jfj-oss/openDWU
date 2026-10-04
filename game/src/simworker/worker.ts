@@ -7,6 +7,8 @@
 // No DOM: only fetch, timers and postMessage.
 
 import { loadGameData, type FetchText, type GameData } from '../sim/data/gameData';
+import { activeCustomizationSet } from '../sim/data/customization';
+import { activateTheme } from '../themeLoader';
 import { loadScenarioIndex, loadScenarioOverlay } from '../sim/scenario/fetchScenario';
 import type { ScenarioOverlay } from '../sim/scenario/overlay';
 import { FRAME_REAL_MS } from '../sim/tick/scheduler';
@@ -42,7 +44,8 @@ const fetchText: FetchText = async (candidates: string[]): Promise<string> => {
 let baseData: Promise<GameData> | null = null;
 let overlays: Promise<Map<string, ScenarioOverlay>> | null = null;
 const bootDeps = {
-    baseData: (): Promise<GameData> => (baseData ??= loadGameData(fetchText)),
+    // The theme the main thread runs (InitMessage.customizationSet, activated in init before any data loads).
+    baseData: (): Promise<GameData> => (baseData ??= loadGameData(fetchText, activeCustomizationSet() ?? undefined)),
     overlays: (): Promise<Map<string, ScenarioOverlay>> =>
         (overlays ??= (async () => {
             const out = new Map<string, ScenarioOverlay>();
@@ -66,6 +69,7 @@ let last = 0;
 const early: ToWorker[] = [];
 
 async function init(m: InitMessage): Promise<void> {
+    if (m.customizationSet !== undefined && m.customizationSet !== '') await activateTheme(m.customizationSet);
     // A load's save text is dropped once parsed (bootWorkerGame): the worker keeps only the game (a late save is 100+ MB).
     const booted = await bootWorkerGame(m.boot, bootDeps);
     const time = booted.time;

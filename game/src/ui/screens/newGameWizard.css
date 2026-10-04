@@ -988,7 +988,6 @@
 .wizard-jumpstart-race-img {
     width: 120px;
     height: 120px;
-    object-fit: contain;
 }
 .wizard-select-row {
     display: flex;
@@ -1021,7 +1020,22 @@
 .wizard-pirate-playstyle-img {
     width: 150px;
     height: 150px;
-    object-fit: contain;
+    flex: none;
+}
+/* method_119's composite (ui/raceLandscapePicture.ts), drawn at the original's picture-box size and zoomed to the slot
+   (PictureBoxSizeMode.Zoom). */
+.wizard-jumpstart-race-img .wizard-race-picture,
+.wizard-pirate-playstyle-img .wizard-race-picture {
+    width: 100% !important;
+    height: 100% !important;
+    display: block;
+}
+.wizard-race-portrait.wizard-race-picture {
+    width: 160px !important;
+    height: 160px !important;
+    background: none;
+    border: none;
+    display: block;
 }
 .wizard-checkbox input[type='checkbox']:disabled + span {
     opacity: 0.45;

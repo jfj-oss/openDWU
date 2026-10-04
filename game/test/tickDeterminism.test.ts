@@ -63,6 +63,7 @@ describe('determinism (single seeded galaxy.rnd, fixed-order scheduler)', () => 
         // Moved "fc924a497a41e134" → "4fb8e86d41e4c0d9": Habitat.cs 924-935/986-998 OrbitDistance/OrbitSpeed property setters recompute _AnglePerSecond on every reassignment; Galaxy.5.cs 1689/1730 sets a moon's real OrbitDistance well after construction (ctor gets a placeholder Rnd.Next(5,32)) relying on that recompute -- types.ts previously had these as plain fields, so moons kept the angular speed implied by the tiny placeholder radius applied to their real, much larger orbit (up to ~240x too fast); fixed by making orbitDistance/orbitSpeed real accessor properties (2026-09-28)
         // Moved "4fb8e86d41e4c0d9" → "dc89b652838d37f4": orbits spaced so planets/moons never overlap (user deviation) (2026-10-03)
         // Moved "dc89b652838d37f4" → "492736eb90d9ba45": parity A2: spaceport threat check, race periodic traits, wonders scenic, race wonders, garrisons, maintenance, retrofit design (2026-10-03)
+        // Moved "492736eb90d9ba45" → "8dd9c58d04b0fb29": SetupSun SelectHabitatPictures (Galaxy.5.cs 1323): star PictureRef/MapPictureRef draws (2026-10-04)
         expect(digest120).toMatchPin('tickDeterminism.digest120');
         // Moved 5019 → 4959: 17d: human player starts with C# automation defaults (Start.2.cs:2122) (2026-09-25)
         // Moved 4959 → 6067: fix4sim: BaconMain.cs 605-640/859-874 BaconInitialize applies the stock BaconSettings.txt (useStarGravityWells=false, HyperJumpThreshhold=4000, BaseHyperJumpAccuracy=666, sublightFuelBurnDivisor=20, noFuel* 0.9/0.9/0.5) after createGame; Galaxy.5.cs 1609-1616/1747-1752 populated planets/moons get Cargo/Troop lists (2026-09-25)
@@ -75,6 +76,7 @@ describe('determinism (single seeded galaxy.rnd, fixed-order scheduler)', () => 
         // Moved 11133 → 11524: Habitat.cs 924-935/986-998 OrbitDistance/OrbitSpeed property setters recompute _AnglePerSecond on every reassignment; Galaxy.5.cs 1689/1730 sets a moon's real OrbitDistance well after construction (ctor gets a placeholder Rnd.Next(5,32)) relying on that recompute -- types.ts previously had these as plain fields, so moons kept the angular speed implied by the tiny placeholder radius applied to their real, much larger orbit (up to ~240x too fast); fixed by making orbitDistance/orbitSpeed real accessor properties (2026-09-28)
         // Moved 11524 → 8503: orbits spaced so planets/moons never overlap (user deviation) (2026-10-03)
         // Moved 8503 → 7948: parity A2: spaceport threat check, race periodic traits, wonders scenic, race wonders, garrisons, maintenance, retrofit design (2026-10-03)
+        // Moved 7948 → 33302: SetupSun SelectHabitatPictures (Galaxy.5.cs 1323): star PictureRef/MapPictureRef draws (2026-10-04)
         expect(ra.rndDraws).toMatchPin('tickDeterminism.rndDraws120');
         expect(stateDigest(b)).toBe(digest120);
         long = a;
@@ -250,6 +252,7 @@ describe('determinism (single seeded galaxy.rnd, fixed-order scheduler)', () => 
         // Moved "0a197d262536cac8" → "89d3bfddd78f6edc": parity A2: spaceport threat check, race periodic traits, wonders scenic, race wonders, garrisons, maintenance, retrofit design (2026-10-03)
         // Moved "89d3bfddd78f6edc" → "3a9cc8b9c4f924da": parity A1: creature combat, threat warp bonus, captain range, design torpedo order, keep in-use designs (2026-10-03)
         // Moved "3a9cc8b9c4f924da" → "e3f6e6fa3f5b926b": message pipeline runs inside the sim tick (determinism; worker parity) (2026-10-04)
+        // Moved "e3f6e6fa3f5b926b" → "941f2dd4ba1f5a6b": SetupSun SelectHabitatPictures (Galaxy.5.cs 1323): star PictureRef/MapPictureRef draws (2026-10-04)
         expect(summary.digest).toMatchPin('tickDeterminism.digest600');
         // (counts and Galaxy.Rnd draws pinned with the digest, tasks/M4-plan.md §5.3.4.)
         // Moved #f1aebd5dcd → #d21f9fe281: 17d: human player starts with C# automation defaults (Start.2.cs:2122) (2026-09-25)
@@ -268,6 +271,7 @@ describe('determinism (single seeded galaxy.rnd, fixed-order scheduler)', () => 
         // Moved #30732dcefb → #873f307b0e: orbits spaced so planets/moons never overlap (user deviation) (2026-10-03)
         // Moved #873f307b0e → #f78b172cc4: parity A2: spaceport threat check, race periodic traits, wonders scenic, race wonders, garrisons, maintenance, retrofit design (2026-10-03)
         // Moved #f78b172cc4 → #32e802a26c: parity A1: creature combat, threat warp bonus, captain range, design torpedo order, keep in-use designs (2026-10-03)
+        // Moved #32e802a26c → #de5a1ff6a2: SetupSun SelectHabitatPictures (Galaxy.5.cs 1323): star PictureRef/MapPictureRef draws (2026-10-04)
         expect(summary.counts).toMatchPin('tickDeterminism.counts600');
         // Moved 389082 → 384537: 17d: human player starts with C# automation defaults (Start.2.cs:2122) (2026-09-25)
         // Moved 384537 → 571596: fix4sim: BaconMain.cs 605-640/859-874 BaconInitialize applies the stock BaconSettings.txt (useStarGravityWells=false, HyperJumpThreshhold=4000, BaseHyperJumpAccuracy=666, sublightFuelBurnDivisor=20, noFuel* 0.9/0.9/0.5) after createGame; Galaxy.5.cs 1609-1616/1747-1752 populated planets/moons get Cargo/Troop lists (2026-09-25)
@@ -285,6 +289,7 @@ describe('determinism (single seeded galaxy.rnd, fixed-order scheduler)', () => 
         // Moved 635176 → 566691: orbits spaced so planets/moons never overlap (user deviation) (2026-10-03)
         // Moved 566691 → 579423: parity A2: spaceport threat check, race periodic traits, wonders scenic, race wonders, garrisons, maintenance, retrofit design (2026-10-03)
         // Moved 579423 → 572462: parity A1: creature combat, threat warp bonus, captain range, design torpedo order, keep in-use designs (2026-10-03)
+        // Moved 572462 → 611011: SetupSun SelectHabitatPictures (Galaxy.5.cs 1323): star PictureRef/MapPictureRef draws (2026-10-04)
         expect(summary.rndDraws).toMatchPin('tickDeterminism.rndDraws600');
         // The test game cache's 600 s game (one createGame + runGameSeconds(600) call, saved and loaded; the harness
         // smokes of other files use it) is this state. Checked when another file has built it (not built here: that

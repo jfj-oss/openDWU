@@ -24,10 +24,8 @@ import { CargoList, TroopList } from './cargo';
 import { ensureHabitatManufacturingQueue } from './manufacturingQueue';
 import { createHabitatDockingBays } from './logistics/dockingBays';
 import { Habitat, HabitatCategoryType, HabitatType, IndustryType } from './types';
+import { HabitatImageCountAsteroidsNormal, HabitatImageOffsetAsteroidsNormal } from './galaxyImages';
 
-// GalaxyImages.cs 30 / 55.
-const HABITAT_IMAGE_OFFSET_ASTEROIDS_NORMAL = 249;
-const HABITAT_IMAGE_COUNT_ASTEROIDS_NORMAL = 200;
 
 type PlanetSelection = { type: HabitatType; diameter: number; minOrbitDistance: number; maxOrbitDistance: number; pictureRef: number; landscapePictureRef: number };
 type PlanetSelector = 'selectGasGiantPlanet' | 'selectFrozenGasGiantPlanet' | 'selectDesertPlanet' | 'selectOceanPlanet' | 'selectMarshySwampPlanet' | 'selectBarrenRockPlanet' | 'selectVolcanicPlanet' | 'selectIcePlanet';
@@ -117,7 +115,7 @@ export function generateIcePlanet(galaxy: Galaxy, sun: Habitat): Habitat {
 export function generateAsteroid(galaxy: Galaxy, sun: Habitat, type: HabitatType): Habitat {
     const rnd = galaxy.rnd;
     const num = rnd.next(20, 35);
-    const num2 = HABITAT_IMAGE_OFFSET_ASTEROIDS_NORMAL + rnd.next(0, HABITAT_IMAGE_COUNT_ASTEROIDS_NORMAL);
+    const num2 = HabitatImageOffsetAsteroidsNormal + rnd.next(0, HabitatImageCountAsteroidsNormal);
     rnd.next(9500, 11500);
     switch (type) {
         case HabitatType.Ice:

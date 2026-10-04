@@ -56,15 +56,17 @@ describe('buildAdvisorBrief (seed-1 harness game)', () => {
         expect(stateDigest(galaxy)).toBe(before);
         expect(briefTokenEstimate(brief)).toBeLessThan(4000);
         expect(brief.empire.name).toBe(player.name);
-        expect(brief.admiral).toEqual({ name: 'Caran Ikkuros', role: 'Leader' });
-        // 12 mobile ships, none in a fleet; bases are not ships.
-        expect(brief.ships.length).toBe(12);
+        // Seed-1 values (re-measured when SetupSun's SelectHabitatPictures(star) draws, Galaxy.5.cs 1328, moved the
+        // galaxy: the player is now the S184 Sovereignty).
+        expect(brief.admiral).toEqual({ name: 'Thassun Mankara', role: 'Leader' });
+        // 7 mobile ships, none in a fleet; bases are not ships.
+        expect(brief.ships.length).toBe(7);
         expect(brief.ships.every((s) => s.ref.startsWith('s'))).toBe(true);
-        expect(brief.ships.find((s) => s.ref === shipRef(explorer()))).toMatchObject({ type: 'ExplorationShip', fuel: 100, at: 'Sol', mission: 'Explore' });
+        expect(brief.ships.find((s) => s.ref === shipRef(explorer()))).toMatchObject({ type: 'ExplorationShip', fuel: 100, at: 'S184', mission: 'Explore' });
         // fix7: the start explorer has an Explore mission (FastFindNearestUnexploredHabitat finds star-only systems, Galaxy.6.cs 4611).
         expect(brief.ships.find((s) => s.ref === shipRef(explorer()))!.idle).toBeFalsy();
-        expect(brief.places.find((p) => p.name === 'Sol')).toMatchObject({ kind: 'System', explored: true, owner: 'you' });
-        expect(brief.places.find((p) => p.name === 'Skaif Space Port')).toMatchObject({ kind: 'MediumSpacePort', refuel: true });
+        expect(brief.places.find((p) => p.name === 'S184')).toMatchObject({ kind: 'System', explored: true, owner: 'you' });
+        expect(brief.places.find((p) => p.name === 'S184 2 Space Port')).toMatchObject({ kind: 'MediumSpacePort', refuel: true });
         // Ids are unique and every ref in the orders resolves.
         expect(new Set(brief.commands.map((c) => c.id)).size).toBe(brief.commands.length);
         for (const c of brief.commands) {
@@ -100,13 +102,13 @@ describe('validateAdvisorResponse', () => {
         const patrolFrigate = commandFor(brief, brief.ships.find((s) => s.ref === shipRef(player.builtObjects.find((b) => b.subRole === BuiltObjectSubRole.Frigate)!))!.ref, 'Patrol');
         const v = validateAdvisorResponse(brief, {
             reply: 'At once.',
-            commands: [{ id: 'c9999' }, { id: move, targetId: 'RD27' }, { id: patrolFrigate, targetId: 'h999999' }],
+            commands: [{ id: 'c9999' }, { id: move, targetId: 'LN912' }, { id: patrolFrigate, targetId: 'h999999' }],
         });
         expect(v.reply).toBe('At once.');
         expect(v.clarify).toBeUndefined();
         expect(v.rejected.map((r) => r.reason)).toEqual(['unknown command id c9999', expect.stringContaining('not a valid Patrol target')]);
         expect(v.commands).toHaveLength(1);
-        expect(v.commands[0].target).toBe(brief.places.find((p) => p.name === 'RD27')!.ref);
+        expect(v.commands[0].target).toBe(brief.places.find((p) => p.name === 'LN912')!.ref);
     });
 
     it('asks instead of acting when a target is missing or one ship gets two immediate orders', () => {
@@ -191,7 +193,7 @@ describe('executeAdvisorCommands (scripted model replies)', () => {
         const before = player.builtObjects.length;
         const [r] = executeAdvisorCommands(galaxy, player, brief, [{ id, count: 2 }]);
         expect(r.ok).toBe(true);
-        expect(r.text).toBe('Royal Sol Commonwealth: Build 2× Praefectus');
+        expect(r.text).toBe('S184 Sovereignty: Build 2× Senator');
         expect(player.builtObjects.length).toBe(before + 2);
         player.stateMoney = 0;
         const [r2] = executeAdvisorCommands(galaxy, player, brief, [{ id }]);
@@ -217,12 +219,12 @@ describe('executeAdvisorCommands (scripted model replies)', () => {
     it('a Move to a place targets the habitat itself (method_315 offset 0)', () => {
         const brief = buildAdvisorBrief(galaxy, player, null);
         const ship = explorer();
-        const rd27 = brief.places.find((p) => p.name === 'RD27')!;
-        const [r] = executeAdvisorCommands(galaxy, player, brief, [{ id: commandFor(brief, shipRef(ship), 'Move'), targetId: rd27.ref }]);
+        const place = brief.places.find((p) => p.name === 'LN912')!;
+        const [r] = executeAdvisorCommands(galaxy, player, brief, [{ id: commandFor(brief, shipRef(ship), 'Move'), targetId: place.ref }]);
         expect(r.ok).toBe(true);
         const m = builtObjectMission(ship.mission)!;
         expect(m.type).toBe(BuiltObjectMissionType.Move);
         expect(m.targetHabitat).toBeInstanceOf(Habitat);
-        expect(m.targetHabitat!.name).toBe('RD27');
+        expect(m.targetHabitat!.name).toBe('LN912');
     });
 });

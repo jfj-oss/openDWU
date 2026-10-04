@@ -542,7 +542,8 @@ describe('19h rim frontier — pirate faction cap (hooks.ts pirateFactionCount, 
         // has its capital before the game-start pirate tick runs), so Math.trunc(num3 * val) undershoots the 40 cap
         // by 1 here — not a flaw in the cap, the same shortfall the stock (uncapped) formula would show for any
         // target. 39 is deterministic for this seed/settings (task-set: seed 1, 1400 stars, 30 empires).
-        expect(g.pirateEmpires.length).toBe(39);
+        // (38 since SetupSun's SelectHabitatPictures(star) draws, Galaxy.5.cs 1328, moved the galaxy.)
+        expect(g.pirateEmpires.length).toBe(38);
         expect(g.pirateEmpires.length).toBeLessThanOrEqual(40); // the cap itself is never exceeded
 
         // Same seed/settings with the cap off (rimPirateFactionCap 0, stock rule): the stock target (60) is not

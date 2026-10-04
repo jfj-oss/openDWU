@@ -213,3 +213,69 @@ Appended by `npm run repin -- --reason "<why>"` (scripts/repin.mjs).
 ## 2026-10-04 — message pipeline runs inside the sim tick (determinism; worker parity)
 
 - `tickDeterminism.digest600` (test/tickDeterminism.test.ts): Moved "3a9cc8b9c4f924da" → "e3f6e6fa3f5b926b": message pipeline runs inside the sim tick (determinism; worker parity)
+
+## 2026-10-04 — faithful habitat pictureRef (Galaxy.6.cs)
+
+- `landscapeRefs.seed5Habitats` (test/landscapePictureRefs.test.ts): Moved #c1c7b97f32 → #3f3ecd6438: faithful habitat pictureRef (Galaxy.6.cs)
+- `landscapeRefs.seed1SaveWithoutLandscapes` (test/landscapePictureRefs.test.ts): Moved #f49403b7b3 → #869ba44598: faithful habitat pictureRef (Galaxy.6.cs)
+
+## 2026-10-04 — SetupSun SelectHabitatPictures (Galaxy.5.cs 1323): star PictureRef/MapPictureRef draws
+
+- `builtObjectPlacement.playerCivilianNames` (test/builtObjectPlacement.test.ts): Moved #02eb9f7977 → #90aaf9bd13: SetupSun SelectHabitatPictures (Galaxy.5.cs 1323): star PictureRef/MapPictureRef draws
+- `characters.drawsPerEmpire` (test/characters.test.ts): Moved [67,49,45,27] → [49,58,50,26]: SetupSun SelectHabitatPictures (Galaxy.5.cs 1323): star PictureRef/MapPictureRef draws
+- `characters.humanSummary` (test/characters.test.ts): Moved #cfbdaffa37 → #b8cebf0fc6: SetupSun SelectHabitatPictures (Galaxy.5.cs 1323): star PictureRef/MapPictureRef draws
+- `characters.otherEmpires` (test/characters.test.ts): Moved #25e9872cfe → #8813640a82: SetupSun SelectHabitatPictures (Galaxy.5.cs 1323): star PictureRef/MapPictureRef draws
+- `characters.drawLog60` (test/characters.test.ts): Moved #ff6ff3f142 → #5d56d45b17: SetupSun SelectHabitatPictures (Galaxy.5.cs 1323): star PictureRef/MapPictureRef draws
+- `characters.activationsAt` (test/characters.test.ts): Moved 49 → 31: SetupSun SelectHabitatPictures (Galaxy.5.cs 1323): star PictureRef/MapPictureRef draws
+- `characters.dhayutLeaderColonyHappiness` (test/characters.test.ts): Moved 10 → 0: SetupSun SelectHabitatPictures (Galaxy.5.cs 1323): star PictureRef/MapPictureRef draws
+- `createGameFull.summary` (test/createGameFull.test.ts): Moved #f6392efece → #3c2722770c: SetupSun SelectHabitatPictures (Galaxy.5.cs 1323): star PictureRef/MapPictureRef draws
+- `empireLifecycle.aiSplitDigest` (test/empireLifecycleExtras.test.ts): Moved "4a8493f807d8696f:288778" → "1bde03cd0ed7b23e:262117": SetupSun SelectHabitatPictures (Galaxy.5.cs 1323): star PictureRef/MapPictureRef draws
+- `forceStructure.playerTargets` (test/forceStructure.test.ts): Moved 25 → 83: SetupSun SelectHabitatPictures (Galaxy.5.cs 1323): star PictureRef/MapPictureRef draws
+- `forceStructure.capitalTaxRate` (test/forceStructure.test.ts): Moved 0.09000000357627869 → 0.029999999329447746: SetupSun SelectHabitatPictures (Galaxy.5.cs 1323): star PictureRef/MapPictureRef draws
+- `forceStructure.capitalTaxRevenue` (test/forceStructure.test.ts): Moved 4593.410891068567 → 183.11541350972084: SetupSun SelectHabitatPictures (Galaxy.5.cs 1323): star PictureRef/MapPictureRef draws
+- `game.capitals` (test/game.test.ts): Moved ["Sol","S78","S1","S81"] → ["S184","S263","S119","S26"]: SetupSun SelectHabitatPictures (Galaxy.5.cs 1323): star PictureRef/MapPictureRef draws
+- `pictureRefs.seed5Draws` (test/habitatPictureRefs.test.ts): Moved {"rnd":175856,"crypto":364815} → {"rnd":169111,"crypto":352715}: SetupSun SelectHabitatPictures (Galaxy.5.cs 1323): star PictureRef/MapPictureRef draws
+- `pictureRefs.seed5Digest` (test/habitatPictureRefs.test.ts): Moved "92e5c3c9a325a220" → "563e841e53e25225": SetupSun SelectHabitatPictures (Galaxy.5.cs 1323): star PictureRef/MapPictureRef draws
+- `pictureRefs.seed5HabitatsWithoutPictures` (test/habitatPictureRefs.test.ts): Moved #b9b595ffcb → #3a26d844ee: SetupSun SelectHabitatPictures (Galaxy.5.cs 1323): star PictureRef/MapPictureRef draws
+- `pictureRefs.seed1Draws` (test/habitatPictureRefs.test.ts): Moved {"rnd":288729,"crypto":587179} → {"rnd":262043,"crypto":528421}: SetupSun SelectHabitatPictures (Galaxy.5.cs 1323): star PictureRef/MapPictureRef draws
+- `pictureRefs.seed1Digest` (test/habitatPictureRefs.test.ts): Moved "0cecc3d70b1487e6" → "4948f3713d8cdf2d": SetupSun SelectHabitatPictures (Galaxy.5.cs 1323): star PictureRef/MapPictureRef draws
+- `pictureRefs.seed1SaveWithoutPictures` (test/habitatPictureRefs.test.ts): Moved #91c58990ed → #ff3777c6bb: SetupSun SelectHabitatPictures (Galaxy.5.cs 1323): star PictureRef/MapPictureRef draws
+- `independentTraders.popularSmallFreighters` (test/independentTraders.test.ts): Moved #e30e50f005 → #638ab2ce61: SetupSun SelectHabitatPictures (Galaxy.5.cs 1323): star PictureRef/MapPictureRef draws
+- `independentTraders.popularMediumFreighters` (test/independentTraders.test.ts): Moved #8a97afb3af → #f973ea5456: SetupSun SelectHabitatPictures (Galaxy.5.cs 1323): star PictureRef/MapPictureRef draws
+- `independentTraders.independentColonies` (test/independentTraders.test.ts): Moved 10 → 11: SetupSun SelectHabitatPictures (Galaxy.5.cs 1323): star PictureRef/MapPictureRef draws
+- `independentTraders.target` (test/independentTraders.test.ts): Moved 150 → 165: SetupSun SelectHabitatPictures (Galaxy.5.cs 1323): star PictureRef/MapPictureRef draws
+- `independentTraders.traders` (test/independentTraders.test.ts): Moved 150 → 165: SetupSun SelectHabitatPictures (Galaxy.5.cs 1323): star PictureRef/MapPictureRef draws
+- `independentTraders.perColony` (test/independentTraders.test.ts): Moved #a3a571ee73 → #df4ffe8e27: SetupSun SelectHabitatPictures (Galaxy.5.cs 1323): star PictureRef/MapPictureRef draws
+- `independentTraders.firstTraders` (test/independentTraders.test.ts): Moved #e3eac5ad5c → #e3d88357e5: SetupSun SelectHabitatPictures (Galaxy.5.cs 1323): star PictureRef/MapPictureRef draws
+- `independentTraders.draws` (test/independentTraders.test.ts): Moved 1570 → 1727: SetupSun SelectHabitatPictures (Galaxy.5.cs 1323): star PictureRef/MapPictureRef draws
+- `independentTraders.lastDraws` (test/independentTraders.test.ts): Moved #85538cabed → #823e91476e: SetupSun SelectHabitatPictures (Galaxy.5.cs 1323): star PictureRef/MapPictureRef draws
+- `independentTraders.firstDraws` (test/independentTraders.test.ts): Moved #05d294f000 → #2dfe34e64c: SetupSun SelectHabitatPictures (Galaxy.5.cs 1323): star PictureRef/MapPictureRef draws
+- `independentTraders.tradersAfterSecondCall` (test/independentTraders.test.ts): Moved 150 → 165: SetupSun SelectHabitatPictures (Galaxy.5.cs 1323): star PictureRef/MapPictureRef draws
+- `independentTraders.fallbackTraders` (test/independentTraders.test.ts): Moved 150 → 165: SetupSun SelectHabitatPictures (Galaxy.5.cs 1323): star PictureRef/MapPictureRef draws
+- `landscapeRefs.seed5Draws` (test/landscapePictureRefs.test.ts): Moved {"rnd":175856,"crypto":364815} → {"rnd":169111,"crypto":352715}: SetupSun SelectHabitatPictures (Galaxy.5.cs 1323): star PictureRef/MapPictureRef draws
+- `landscapeRefs.seed5Digest` (test/landscapePictureRefs.test.ts): Moved "92e5c3c9a325a220" → "563e841e53e25225": SetupSun SelectHabitatPictures (Galaxy.5.cs 1323): star PictureRef/MapPictureRef draws
+- `landscapeRefs.seed5Habitats` (test/landscapePictureRefs.test.ts): Moved #3f3ecd6438 → #49cd310363: SetupSun SelectHabitatPictures (Galaxy.5.cs 1323): star PictureRef/MapPictureRef draws
+- `landscapeRefs.seed1Draws` (test/landscapePictureRefs.test.ts): Moved {"rnd":288729,"crypto":587179} → {"rnd":262043,"crypto":528421}: SetupSun SelectHabitatPictures (Galaxy.5.cs 1323): star PictureRef/MapPictureRef draws
+- `landscapeRefs.seed1Digest` (test/landscapePictureRefs.test.ts): Moved "0cecc3d70b1487e6" → "4948f3713d8cdf2d": SetupSun SelectHabitatPictures (Galaxy.5.cs 1323): star PictureRef/MapPictureRef draws
+- `landscapeRefs.seed1SaveWithoutLandscapes` (test/landscapePictureRefs.test.ts): Moved #869ba44598 → #47ed84cdb0: SetupSun SelectHabitatPictures (Galaxy.5.cs 1323): star PictureRef/MapPictureRef draws
+- `pirateBases.fleets` (test/pirateBases.test.ts): Moved #6d85abdace → #5c194bb2af: SetupSun SelectHabitatPictures (Galaxy.5.cs 1323): star PictureRef/MapPictureRef draws
+- `pirates.factions` (test/pirates.test.ts): Moved #80cfa6435b → #1d4581e78f: SetupSun SelectHabitatPictures (Galaxy.5.cs 1323): star PictureRef/MapPictureRef draws
+- `darkFarms.seed1FarmColony` (test/scenarioDarkFarms.test.ts): Moved "S265 1" → "Stapagai": SetupSun SelectHabitatPictures (Galaxy.5.cs 1323): star PictureRef/MapPictureRef draws
+- `startingColonies.alreadyInhabitedExceptions` (test/startingColonies.test.ts): Moved 2 → 3: SetupSun SelectHabitatPictures (Galaxy.5.cs 1323): star PictureRef/MapPictureRef draws
+- `startingColonies.colonyTypes` (test/startingColonies.test.ts): Moved [[11,11],[11,11],[10,11],[9,11]] → [[11,11],[11,10],[10,11],[9,11]]: SetupSun SelectHabitatPictures (Galaxy.5.cs 1323): star PictureRef/MapPictureRef draws
+- `stationPlacement.bases` (test/stationPlacement.test.ts): Moved #3f5132e2af → #af21ba95fd: SetupSun SelectHabitatPictures (Galaxy.5.cs 1323): star PictureRef/MapPictureRef draws
+- `stationPlacement.researchPhases` (test/stationPlacement.test.ts): Moved #86a82870fa → #ed6251e3ed: SetupSun SelectHabitatPictures (Galaxy.5.cs 1323): star PictureRef/MapPictureRef draws
+- `stationPlacement.miningPhases` (test/stationPlacement.test.ts): Moved #e490b742cb → #0142197027: SetupSun SelectHabitatPictures (Galaxy.5.cs 1323): star PictureRef/MapPictureRef draws
+- `superPirates.faction` (test/superPirates.test.ts): Moved #6df472ecb9 → #5831bec672: SetupSun SelectHabitatPictures (Galaxy.5.cs 1323): star PictureRef/MapPictureRef draws
+- `taxes.taxRates` (test/taxes.test.ts): Moved #2266880c4a → #2aca7377b4: SetupSun SelectHabitatPictures (Galaxy.5.cs 1323): star PictureRef/MapPictureRef draws
+- `tickDeterminism.digest120` (test/tickDeterminism.test.ts): Moved "492736eb90d9ba45" → "8dd9c58d04b0fb29": SetupSun SelectHabitatPictures (Galaxy.5.cs 1323): star PictureRef/MapPictureRef draws
+- `tickDeterminism.rndDraws120` (test/tickDeterminism.test.ts): Moved 7948 → 33302: SetupSun SelectHabitatPictures (Galaxy.5.cs 1323): star PictureRef/MapPictureRef draws
+- `tickDeterminism.digest600` (test/tickDeterminism.test.ts): Moved "e3f6e6fa3f5b926b" → "941f2dd4ba1f5a6b": SetupSun SelectHabitatPictures (Galaxy.5.cs 1323): star PictureRef/MapPictureRef draws
+- `tickDeterminism.counts600` (test/tickDeterminism.test.ts): Moved #32e802a26c → #de5a1ff6a2: SetupSun SelectHabitatPictures (Galaxy.5.cs 1323): star PictureRef/MapPictureRef draws
+- `tickDeterminism.rndDraws600` (test/tickDeterminism.test.ts): Moved 572462 → 611011: SetupSun SelectHabitatPictures (Galaxy.5.cs 1323): star PictureRef/MapPictureRef draws
+- `troops.capitals` (test/troops.test.ts): Moved #2e28be26b3 → #2b6f4f6d20: SetupSun SelectHabitatPictures (Galaxy.5.cs 1323): star PictureRef/MapPictureRef draws
+- `troops.colonyTroops` (test/troops.test.ts): Moved [8,10,9,6] → [5,6,16,3]: SetupSun SelectHabitatPictures (Galaxy.5.cs 1323): star PictureRef/MapPictureRef draws
+- `troops.maintenance` (test/troops.test.ts): Moved [14000,16200,7650,14400] → [6800,8100,14450,12600]: SetupSun SelectHabitatPictures (Galaxy.5.cs 1323): star PictureRef/MapPictureRef draws
+- `troops.recruitCapitalTroops` (test/troops.test.ts): Moved [6,7,8,5] → [3,2,1,2]: SetupSun SelectHabitatPictures (Galaxy.5.cs 1323): star PictureRef/MapPictureRef draws
+- `troops.recruitMaintenance` (test/troops.test.ts): Moved [6000,6300,6800,4500] → [2550,1800,850,1800]: SetupSun SelectHabitatPictures (Galaxy.5.cs 1323): star PictureRef/MapPictureRef draws
+- `troops.recruitProcessDraws` (test/troops.test.ts): Moved ["","","",""] → #c4769d44ed: SetupSun SelectHabitatPictures (Galaxy.5.cs 1323): star PictureRef/MapPictureRef draws

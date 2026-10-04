@@ -3,8 +3,10 @@
 //
 // Fleet Postures / Long Range Scanners (parity C3): MainView.2.cs 3921 method_247 and the scanner discs baked into the
 // galaxy / sector backdrops (MainView.1.cs 4006, MainView.2.cs 277) — pure parts in postureOverlay.ts. The posture
-// discs and lines sit in this layer's root, below the ship sprites (the C#'s method_250 draws them after method_76's
-// ships; they are translucent, and this keeps them under the galaxy-zoom symbols as in the C#).
+// discs and lines are their own container (postureRoot), which MainView places as the C# draws them: method_250
+// (MainView.cs 1538) runs after method_76 (the habitats, ships, fighters, creatures and their bars, f < 1000), and
+// method_247 is its first pass (MainView.2.cs 5221), before the galaxy-pass symbols / fleet icons (5830-6020, 6140).
+// So the discs are above the close-zoom ship art, and below the galaxy-pass symbols (MainView.placePostureLayer).
 //
 // Travel Vectors (task 14c, parity C3): port of MainView.2.cs method_250's per-ship pass (5925-5956: the viewing
 // empire's non-fleet ships, in red, 2 px, when SpecialHighlightBuiltObjects holds them) + method_258's fleet pass
@@ -12,9 +14,11 @@
 // selected one in yellow) + BaconMainView.cs method_253 (dashed, with the arrowhead texture2D_35); see travelVectorsFor
 // / fleetTravelVector. method_258 6371-6393 also draws, for fleets in the viewer's IncomingEnemyFleetsAndPlanetDestroyers
 // that attack / bombard it, a dashed 2 px red (128, 255, 0, 0) line to their target (incomingAttackLine).
-// SpecialHighlightBuiltObjects (MainView.cs field; Main.Part9.cs 870 method_246): set when the selection changes
-// (Main.Part10.cs 1323-1331) to the player's ships travelling to the selected StellarObject
-// (Empire.6.cs 1165 DetermineShipsMovingToDestination; shipsMovingToDestination below).
+// SpecialHighlightBuiltObjects (MainView.cs field; Main.Part9.cs 870 method_246; mapHighlights.ts): set when the
+// selection changes (Main.Part10.cs 1323-1331) to the player's ships travelling to the selected StellarObject — a ship,
+// habitat, creature or fighter (Empire.6.cs 1165 DetermineShipsMovingToDestination) — and by the left-sidebar list hover
+// (ui/listHover.ts, ItemListPanel.cs 2384-2389). The hovered row's EventLocations ping (MainView.2.cs 3500 method_232)
+// is drawn here too (updateEventPings).
 //
 // Weapon-range circles / gravity-well ring for the selected ship (BaconMain.cs 404-470): weaponRangeCircles.ts.
 //
@@ -64,11 +68,27 @@ import { BuiltObjectMission, BuiltObjectMissionType } from '../sim/missions/miss
 import { getSettings } from '../ui/settings';
 import type { Camera } from './camera';
 import type { Galaxy } from '../sim/galaxy';
-import { HabitatCategoryType, type Habitat } from '../sim/types';
+import { Habitat, HabitatCategoryType } from '../sim/types';
 import { onOverlayChange, type MapOverlayState } from '../ui/mapOverlays';
 import type { EmpireLayer } from './empireLayer';
 import { moonDotPx, planetSpritePx, starSpritePx } from './mainView';
-import type { BuiltObject } from '../sim/builtObject';
+import { BuiltObject } from '../sim/builtObject';
+import type { Creature } from '../sim/creature';
+import type { Fighter } from '../sim/combat/fighters';
+import {
+    EVENT_PING_COLOR,
+    EVENT_PING_MARGIN_PX,
+    EVENT_PING_SIDES,
+    EVENT_PING_WIDTH_PX,
+    EventPingClock,
+    mapHighlightsOf,
+    selectedStellarObject,
+    shipsMovingToDestination,
+    type MapHighlights,
+    type SelectedObjectLike,
+} from './mapHighlights';
+// Moved to mapHighlights.ts (the list hover shares them); re-exported for the existing importers.
+export { checkShipTravellingToDestination, selectedStellarObject, shipsMovingToDestination, type SelectedObjectLike } from './mapHighlights';
 import type { Empire } from '../sim/empire';
 import type { ShipGroup } from '../sim/fleets/shipGroup';
 import { builtObjectMission } from '../sim/missions/mission';
@@ -223,15 +243,6 @@ export function travelVectorFor(bo: BuiltObject): TravelVector | null {
  * vector (BaconMainView.method_253 with bool_13 true, so a fleet member selected alone is not excluded). */
 export const SELECTED_TRAVEL_VECTOR_COLOR = 0xffff00;
 export const SELECTED_TRAVEL_VECTOR_MIN_FACTOR = 0.9;
-export type SelectedObjectLike = {
-    builtObject?: BuiltObject;
-    shipGroup?: ShipGroup;
-    habitat?: Habitat;
-    creature?: unknown;
-    fighter?: unknown;
-    builtObjects?: BuiltObject[];
-    systemInfo?: boolean;
-} | null;
 export function selectedTravelVectorFor(sel: SelectedObjectLike, player: Empire | null, f: number): TravelVector | null {
     if (sel === null || player === null || !(f > SELECTED_TRAVEL_VECTOR_MIN_FACTOR)) return null;
     const bo = (sel.shipGroup !== undefined ? sel.shipGroup.leadShip : sel.builtObject) ?? null;
@@ -304,35 +315,6 @@ export function incomingAttackLine(sg: ShipGroup, viewer: Pick<Empire, 'incoming
     if (t !== BuiltObjectMissionType.Attack && t !== BuiltObjectMissionType.WaitAndAttack && t !== BuiltObjectMissionType.Bombard && t !== BuiltObjectMissionType.WaitAndBombard) return null;
     if (BuiltObjectMission.resolveMissionTargetEmpire(m) !== viewer) return null;
     return m.resolveTargetCoordinates(m);
-}
-
-/**
- * The C# SelectedObject as a StellarObject (Main.Part10.cs 1328: SpecialHighlightBuiltObjects is only filled for one):
- * the selected ship / base or habitat. A fleet, a multi-selection, a system (SystemInfo) or nothing is none.
- */
-export function selectedStellarObject(sel: SelectedObjectLike): BuiltObject | Habitat | null {
-    if (sel === null || sel.shipGroup !== undefined || sel.builtObjects !== undefined || sel.systemInfo === true) return null;
-    if (sel.creature !== undefined || sel.fighter !== undefined) return null; // TODO(port): creature / fighter destinations
-    return sel.builtObject ?? sel.habitat ?? null;
-}
-
-/** Port of Empire.6.cs 1186 CheckShipTravellingToDestination. */
-export function checkShipTravellingToDestination(bo: BuiltObject | null, destination: { hasBeenDestroyed: boolean } | null): boolean {
-    if (bo === null || bo.hasBeenDestroyed || destination === null || destination.hasBeenDestroyed) return false;
-    const m = builtObjectMission(bo.mission);
-    if (m === null || m.type === BuiltObjectMissionType.Undefined) return false;
-    if (m.target === destination) return m.type !== BuiltObjectMissionType.Transport;
-    if (m.secondaryTarget === destination) return m.type === BuiltObjectMissionType.Transport;
-    return false;
-}
-
-/** Port of Empire.6.cs 1165 DetermineShipsMovingToDestination: the empire's state then private ships heading there. */
-export function shipsMovingToDestination(empire: Pick<Empire, 'builtObjects' | 'privateBuiltObjects'>, destination: { hasBeenDestroyed: boolean } | null): Set<BuiltObject> {
-    const out = new Set<BuiltObject>();
-    if (destination === null) return out;
-    for (const bo of empire.builtObjects) if (checkShipTravellingToDestination(bo, destination)) out.add(bo);
-    for (const bo of empire.privateBuiltObjects) if (checkShipTravellingToDestination(bo, destination)) out.add(bo);
-    return out;
 }
 
 // BaconMainView.cs method_253 length gate; f = 1 / z (C# zoom factor).
@@ -413,7 +395,9 @@ export class OverlayLayer {
     private lrsFilter: ColorMatrixFilter | null = null;
     private lrsSprites: Sprite[] = [];
     private lrsTex: Texture | null = null;
-    /** Fleet Postures: the discs (sprites of lrs.png, tinted), their circles and the gather → attack lines. */
+    /** Fleet Postures: the discs (sprites of lrs.png, tinted), their circles and the gather → attack lines, then the
+     *  EventLocations pings — in their own world container, which MainView places above the ship art (file header). */
+    readonly postureRoot = new Container();
     private postureDiscs = new Container();
     private postureSprites: Sprite[] = [];
     private postureLines = new Graphics();
@@ -423,9 +407,13 @@ export class OverlayLayer {
     private incomingLines = new Graphics();
     /** Another empire's selected fleet's vector (yellow; method_258 6352-6365). */
     private foreignSelVector = new Graphics();
-    /** SpecialHighlightBuiltObjects (MainView.cs): rebuilt when the selection changes (Main.Part10.cs 1323-1331). */
-    private specialHighlight: Set<BuiltObject> = new Set();
+    /** SpecialHighlightBuiltObjects / EventLocations (mapHighlights.ts): set on a selection change (below) and by
+     *  the left-sidebar list hover (ui/listHover.ts). */
+    private readonly highlights: MapHighlights;
     private highlightFor: unknown = undefined;
+    /** EventLocations pings (method_232) and their shared phase. */
+    private eventPings = new Graphics();
+    private readonly pingClock = new EventPingClock();
     /** method_258's fleets the player can see (IsObjectVisibleToThisEmpire(lead, true, false)), refreshed once a second. */
     private visibleFleets: ShipGroup[] = [];
     private fleetsRefreshedAt = -Infinity;
@@ -449,7 +437,11 @@ export class OverlayLayer {
         // they share the backdrop bitmap in the C#.
         this.lrsLayer.visible = false;
         this.root.addChild(this.lrsLayer);
-        this.root.addChild(this.postureDiscs, this.postureLines, this.postureArrows);
+        this.highlights = mapHighlightsOf(galaxy);
+        // method_250 order: the posture discs (5221), then the pings (5777-5783) — both over the ship art.
+        this.postureRoot.addChild(this.postureDiscs, this.postureLines, this.postureArrows, this.eventPings);
+        // Until MainView places it (headless tests: the layer alone), right above this root.
+        world.addChild(this.postureRoot);
         this.root.addChild(this.travelVectors);
         this.root.addChild(this.highlightVectors);
         this.root.addChild(this.incomingLines);
@@ -553,6 +545,7 @@ export class OverlayLayer {
         this.updatePostures(z, cam, overlays);
         this.arrowCount = 0;
         this.refreshSpecialHighlight();
+        this.updateEventPings(z, cam, overlays);
         this.updateTravelVectors(z, cam, overlays);
         this.updateSelectedVector(z);
         this.updateRangeCircles(z, overlays);
@@ -688,7 +681,45 @@ export class OverlayLayer {
         if (target === this.highlightFor) return;
         this.highlightFor = target;
         const player = this.galaxy.playerEmpire;
-        this.specialHighlight = player !== null && target !== null ? shipsMovingToDestination(player, target) : new Set();
+        this.highlights.setSpecialHighlight(player !== null && target !== null ? shipsMovingToDestination(player, target) : null);
+    }
+
+    /**
+     * MainView.2.cs 5777-5783: the EventLocations pings (method_232, within method_250), each a yellow circle 3 px wide
+     * growing from 1 to 101 px over 1.6 s and fading out over its second half, at the point it was added (the drawn
+     * position of its ship / habitat at the first frame that draws it, mapHighlights.ts). Skipped more than 40 px off
+     * screen. Wall clock (DateTime.Now).
+     */
+    private updateEventPings(z: number, cam: Camera, overlays: boolean): void {
+        const g = this.eventPings;
+        if (g.visible) g.clear();
+        const now = performance.now() / 1000;
+        const pings = this.highlights.eventLocations;
+        if (!overlays) {
+            g.visible = false;
+            return; // method_250 did not run: dateTime_3 keeps its time
+        }
+        let any = false;
+        const left = cam.x - cam.width / (2 * z);
+        const top = cam.y - cam.height / (2 * z);
+        for (const p of pings) {
+            if (p.x === null || p.y === null) {
+                const o = p.obj;
+                const at = o instanceof BuiltObject ? this.drawnPos(o) : o instanceof Habitat ? (this.motion !== null ? this.motion.habitatPos(o) : { x: o.xpos, y: o.ypos }) : o;
+                p.x = Math.trunc(at.x);
+                p.y = Math.trunc(at.y);
+            }
+            // num / num2: (int)((x - viewLeft) / double_15).
+            const sx = Math.trunc((p.x - left) * z);
+            const sy = Math.trunc((p.y - top) * z);
+            if (sx < -EVENT_PING_MARGIN_PX || sx > cam.width + EVENT_PING_MARGIN_PX || sy < -EVENT_PING_MARGIN_PX || sy > cam.height + EVENT_PING_MARGIN_PX) continue;
+            const { radius, alpha } = this.pingClock.advance(now);
+            // A negative num5 (the first frame after a gap wraps the phase below 0) is still a circle of |num5| px.
+            segmentCircle(g, left + sx / z, top + sy / z, Math.abs(radius) / z, EVENT_PING_SIDES).stroke({ width: EVENT_PING_WIDTH_PX / z, color: EVENT_PING_COLOR, alpha: Math.max(0, alpha) / 255 });
+            any = true;
+        }
+        this.pingClock.endFrame(now);
+        g.visible = any;
     }
 
     /** Where `bo` is drawn this frame (renderInterp.ts drawnBuiltObjectPos), else its sim position. */
@@ -734,7 +765,8 @@ export class OverlayLayer {
                     v.x1 = d.x;
                     v.y1 = d.y;
                     if (!inView(v.x1, v.y1) || !travelVectorLongEnough(v, f)) continue;
-                    if (this.specialHighlight.size > 0 && this.specialHighlight.has(v.builtObject)) {
+                    const hi = this.highlights.specialHighlight;
+                    if (hi.size > 0 && hi.has(v.builtObject)) {
                         if (this.dashed(hg, v.x1, v.y1, v.x2, v.y2, f)) this.placeArrow(v.x1, v.y1, v.x2, v.y2, SPECIAL_HIGHLIGHT_VECTOR_COLOR, 1, SPECIAL_HIGHLIGHT_VECTOR_WIDTH, f);
                         anyHi = true;
                     } else {

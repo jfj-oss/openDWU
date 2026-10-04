@@ -126,6 +126,10 @@ export interface UiSettings {
      *  method_260 defaults. */
     newGameOptions: Record<string, number | boolean> | null;
     // [gameoptions] end
+
+    /** GameOptions.CustomizationSetName (GameOptions.cs 258): the theme chosen on the Change Theme panel (Start.cs
+     *  method_2), "" = the stock game. */
+    customizationSet: string;
 }
 
 /** [galaxymarkers] The GalaxyViewDisplay* keys, in the original's option order. */
@@ -220,6 +224,7 @@ export const DEFAULT_SETTINGS: UiSettings = {
     loadedGamesPaused: true,
     automationPromptResponses: {},
     newGameOptions: null,
+    customizationSet: '',
     // [gameoptions] end
 };
 
@@ -329,6 +334,7 @@ export function loadSettings(): UiSettings {
             out.newGameOptions = o;
         }
         // [gameoptions] end
+        if (typeof parsed.customizationSet === 'string') out.customizationSet = parsed.customizationSet;
     } catch {
         // Corrupt blob: keep the defaults.
     }

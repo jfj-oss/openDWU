@@ -14,7 +14,7 @@
 
 import { fogOf } from './fog';
 import { AttachedChildren } from './renderGroups';
-import { circleAtScreenRes, segmentCircle } from './screenCircle';
+import { circleAtScreenRes } from './screenCircle';
 import { installGlParameterCache } from './glParamCache';
 import { collectHitsUnderPoint, needsPickMenu, PICK_MENU_MAX_ROWS, type PickCandidate, type PickHit } from './pickStack';
 import { openPickMenu, closePickMenu, type PickMenuEntry } from '../ui/pickMenu';
@@ -30,7 +30,6 @@ import {
     CLOUD_COLORS,
     PLANET_COLORS,
     STAR_COLORS,
-    asteroidUrls,
     cloudUrls,
     coronaFrameIndex,
     coronaFrameUrls,
@@ -42,10 +41,11 @@ import {
     makeStarSpriteTexture,
     manifestFiles,
     mapStarUrls,
-    planetUrls,
+    habitatPictureUrls,
     sampleCentreColour,
     scaleColour,
     starDiscUrl,
+    starPictureUrls,
     starSpriteUrls,
 } from './assets';
 import { DeepStarfield, deepStarfieldAlpha, systemPatchZoomAlpha, type PatchSystem } from './deepStarfield';
@@ -57,7 +57,7 @@ import { NebulaCloudGenerator } from './nebulaClouds';
 import { SystemNebulaLayer, type NebulaSystem } from './systemNebula';
 import { EmpireLayer } from './empireLayer';
 import { OverlayLayer } from './overlayLayer';
-import { GalaxyMarkerLayer, clickSelection, doubleClickFleet } from './galaxyMarkers'; // [galaxymarkers]
+import { GalaxyMarkerLayer, SYSTEM_RING_MIN_FACTOR, clickSelection, doubleClickFleet } from './galaxyMarkers'; // [galaxymarkers]
 import type { ShipGroup } from '../sim/fleets/shipGroup'; // [galaxymarkers]
 import { ArtBundleLayer } from './artBundleLayer'; // [19r]
 import { ArtBundleGallery, artGalleryView } from './artBundleGallery'; // [19r]
@@ -67,7 +67,8 @@ import { AmbientLayer } from './ambientLayer';
 // [ambientfx] end
 // [fightersfx] begin
 import { FighterLayer } from './fighterLayer';
-import { BattleBarLayer, pulseColor } from './combatBars';
+import { BattleBarLayer } from './combatBars';
+import { applySelectionTint, buildSelectionCircles, creatureSelectionBox, habitatSelectionBox, sameBoxes, shipSelectionBox, systemSelectionBox } from './selectionCircle';
 import { ScreenShake } from './screenShake';
 import type { Fighter } from '../sim/combat/fighters';
 import { WhalePilotLayer, whalePilotEnabled } from './whalePilotLayer'; // [whalepilot]
@@ -92,7 +93,7 @@ import { hideMapTooltip, showMapTooltip, tooltipText } from '../ui/mapTooltip';
 import { freightTooltipText } from '../ui/freightText'; // [freightOverlay]
 import { wreckTooltipText } from '../ui/scenario/wreckageUi'; // [wreckage]
 import type { FreightOverlay } from './freightOverlay'; // [freightOverlay]
-import { boundsOnScreen, DrawKey } from './drawCache';
+import { boundsOnScreen } from './drawCache';
 import { drawRangeRings, fleetRangeRadii } from './rangeRings';
 import { BuiltObjectIndex, registerBuiltObjectIndex } from './builtObjectIndex';
 import { MotionInterpolator, PresentationClock, copyRenderTime, createRenderTime, builtObjectDrawnOffsetBound, drawnBuiltObjectPos, habitatTouchClampSeconds, renderOrbitAngle, setStationPull, type RenderTime } from './renderInterp';
@@ -660,6 +661,10 @@ class SystemView {
         const f = 1 / z;
         const S = starSpritePx(star.diameter, z);
         const isBHOrSN = star.type === HabitatType.BlackHole || star.type === HabitatType.SuperNova;
+        // TODO(port): between method_60 and factor 500 the C# system pass also draws a disc-type star's list_6 texture,
+        // HabitatImageCache.FastGetImage(PictureRef) (MainView.1.cs method_78 / 783-786) — a habitat picture (0-13: a
+        // barren rock) under the galaxy pass's bitmap_196[MapPictureRef] icon (MainView.2.cs 5490-5500, drawn after
+        // it). Not drawn here: only the map-star icon shows in that band.
         if (!isBHOrSN && f < starDiscMaxFactor(star.type)) {
             this.mapIcon.visible = false;
             this.starSprite.visible = false;
@@ -1174,16 +1179,15 @@ function pickTypeLabel(it: Creature | BuiltObject | Habitat): string {
 export class MainView {
     world = new Container();
     fx = new Container();
-    /** Task 08g: thin selection ring around the picked object (screen-space). */
+    /** The method_212 selection circles (selectionCircle.ts) of the close-zoom passes (screen space). */
     selectionRing = new Graphics();
+    /** This frame's / the drawn selection circles: flat [x, y, box] in screen px. */
+    private selectionBoxes: number[] = [];
+    private drawnSelectionBoxes: number[] = [];
     /** Left-drag box selection (boxSelect.ts): the thin screen-space rectangle while the left button drags. */
     private selectionBox = new Graphics();
-    /** Rings around each ship of a multi-selection (selectedBuiltObjects), redrawn every frame. */
-    private multiSelectionRings = new Graphics();
     /** Dashed yellow hyperjump range rings (45% / 100% of current fuel) for the selected ship / fleet. */
     private rangeRingsG = new Graphics();
-    /** MainView.1.cs 1518-1521 method_212: the pulsing circle around the selected fighter (screen space). */
-    private fighterSelectionRing = new Graphics();
     /** Explosion screen shake (screenShake.ts, Main.method_217 / method_219). */
     readonly shake = new ScreenShake();
     /** Battle bars at zoom factor <= 3 (combatBars.ts, MainView.1.cs 1251-1295). */
@@ -1212,7 +1216,7 @@ export class MainView {
      * colonies, scenic/research markers, empire territory visibility). */
     private overlayLayer!: OverlayLayer;
     /** The HUD selection (main.ts sets it): the selected ship / fleet gets its travel vector drawn (overlayLayer.ts). */
-    getHudSelection: () => { builtObject?: BuiltObject; shipGroup?: ShipGroup } | null = () => null;
+    getHudSelection: () => { builtObject?: BuiltObject; shipGroup?: ShipGroup; builtObjects?: BuiltObject[]; systemInfo?: boolean } | null = () => null;
     /** [galaxymarkers] faction rings, ship/base symbols, fleet icons, name decorations, station-presence discs. */
     galaxyMarkers: GalaxyMarkerLayer | null = null;
     /** [galaxymarkers] a fleet icon click, or a double click on one of the player's fleet ships, selects the fleet. */
@@ -1243,8 +1247,8 @@ export class MainView {
     private lastGridZoom = -1;
     /** Screen x, y pairs of the system labels kept this frame (reused). */
     private keptLabels: number[] = [];
-    /** Last parameters the selection ring was drawn with (redrawn only on change). */
-    private selectionKey = new DrawKey();
+    /** The world child that followed the markers' front layer at init (placePostureLayer puts it back before it). */
+    private markersFrontNext: Container | null = null;
     private dragging = false;
     private lastPointer = { x: 0, y: 0 };
     private lastDragX = 0;
@@ -1315,11 +1319,7 @@ export class MainView {
         this.world.addChildAt(this.backdrop, 0);
         this.selectionRing.visible = false;
         this.fx.addChild(this.selectionRing);
-        this.multiSelectionRings.visible = false;
         this.fx.addChild(this.rangeRingsG);
-        this.fx.addChild(this.multiSelectionRings);
-        this.fighterSelectionRing.visible = false;
-        this.fx.addChild(this.fighterSelectionRing);
         this.selectionBox.visible = false;
         this.fx.addChild(this.selectionBox);
     }
@@ -1471,6 +1471,9 @@ export class MainView {
 
     /** Open the stacked-object popup when 2+ objects lie under the point; false (nothing opened) otherwise. */
     private tryPickMenu(sx: number, sy: number, clientX: number, clientY: number, choose: (item: Creature | BuiltObject | Habitat) => void): boolean {
+        // Main.Part11.cs 1579-1600: a launched fighter under the point is method_145's answer at once (before any ship /
+        // habitat is compared), so there is nothing to choose between: the click goes to it.
+        if (this.pickCreature(sx, sy) === null && this.pickFighter(sx, sy) !== null) return false;
         const hits = this.pickAllAt(sx, sy);
         if (!needsPickMenu(hits)) return false;
         openPickMenu(this.pickMenuEntries(hits.slice(0, PICK_MENU_MAX_ROWS * 4), choose), clientX, clientY);
@@ -1518,6 +1521,11 @@ export class MainView {
         // 2751 / 3082 / 3289 then offer "Attack X" on it).
         const creature = this.pickCreature(sx, sy);
         if (creature !== null) return creature;
+        // Main.Part11.cs 1579-1600: at f < 50 a launched fighter under the point is returned before any ship (it is
+        // tested inside the ship loop and returned at once; ships are only collected). The order menu then has the
+        // Fighter as its target (Main.Part8.cs method_344: "Move to X" etc. via method_311 / method_315).
+        const fighter = this.pickFighter(sx, sy);
+        if (fighter !== null) return fighter;
         const bo = this.pickBuiltObject(sx, sy);
         if (bo !== null) {
             const g = bo.shipGroup as { leadShip?: BuiltObject | null } | null;
@@ -1625,26 +1633,31 @@ export class MainView {
             }
         }
 
-        // Lazy per-habitat sprite loading (pictureRef-selected art).
+        // Lazy per-habitat sprite loading: planets, moons and asteroids draw HabitatImageCache[PictureRef]
+        // (assets.ts habitatPictureUrls); stars bitmap_196[MapPictureRef] (a super nova bitmap_206[NovaImageIndexMajor],
+        // MainView.2.cs 5429-5438: assets.ts starPictureUrls) and, for a black hole, its system-zoom sprite.
         const lazyLoads: Promise<unknown>[] = [];
         for (const sv of this.systems) {
             const star = sv.system.systemStar;
             lazyLoads.push(
                 store
-                    .loadFirst(mapStarUrls(star), () => makeGlowTexture(starColors(star.type).glow, starColors(star.type).core))
+                    .loadFirst(starPictureUrls(star), () => makeGlowTexture(starColors(star.type).glow, starColors(star.type).core))
                     .then((tex) => {
                         sv.mapIcon.texture = tex;
                     }),
             );
-            lazyLoads.push(
-                store.loadFirst(starSpriteUrls(star), () => makeStarSpriteTexture(star.type)).then((tex) => {
-                    sv.starSprite.texture = tex;
-                }),
-            );
+            // Only a black hole shows starSprite (SystemView.update); the other stars' system art is the disc group.
+            if (star.type === HabitatType.BlackHole) {
+                lazyLoads.push(
+                    store.loadFirst(starSpriteUrls(star), () => makeStarSpriteTexture(star.type)).then((tex) => {
+                        sv.starSprite.texture = tex;
+                    }),
+                );
+            }
             for (const planet of sv.planets) {
                 lazyLoads.push(
                     store
-                        .loadFirst(planetUrls(planet.habitat), () => makePlanetTexture(PLANET_COLORS[planet.habitat.type] ?? '#888888'))
+                        .loadFirst(habitatPictureUrls(planet.habitat), () => makePlanetTexture(PLANET_COLORS[planet.habitat.type] ?? '#888888'))
                         .then((tex) => {
                             planet.sprite.texture = tex;
                         }),
@@ -1653,7 +1666,7 @@ export class MainView {
                 for (const moon of planet.moons) {
                     lazyLoads.push(
                         store
-                            .loadFirst(planetUrls(moon.habitat), () => makePlanetTexture(PLANET_COLORS[moon.habitat.type] ?? '#888888'))
+                            .loadFirst(habitatPictureUrls(moon.habitat), () => makePlanetTexture(PLANET_COLORS[moon.habitat.type] ?? '#888888'))
                             .then((tex) => {
                                 moon.dot.texture = tex;
                             }),
@@ -1665,7 +1678,7 @@ export class MainView {
                 const h = sv.rockHabitats[i];
                 lazyLoads.push(
                     store
-                        .loadFirst(asteroidUrls(h), () => this.textures.rock)
+                        .loadFirst(habitatPictureUrls(h), () => this.textures.rock)
                         .then((tex) => {
                             rock.texture = tex;
                             rock.scale.set((h.diameter * 0.45) / tex.width);
@@ -1792,6 +1805,13 @@ export class MainView {
             this.whalePilot.motion = this.motion;
         }
         // [whalepilot] end
+
+        // The Fleet Postures discs above every world layer (placePostureLayer); remember the markers' home.
+        if (this.galaxyMarkers !== null) {
+            const kids = this.world.children;
+            this.markersFrontNext = (kids[kids.indexOf(this.galaxyMarkers.front) + 1] as Container | undefined) ?? null;
+        }
+        this.world.addChild(this.overlayLayer.postureRoot);
 
         this.attachInput();
     }
@@ -1960,39 +1980,11 @@ export class MainView {
             }
         }
 
-        // Task 08g / 13d: keep the selection ring around the selected habitat or ship.
-        const selBo = this.selectedBuiltObject;
-        const sel = this.selectedHabitat;
-        const selC = this.selectedCreature;
-        if (selC !== null) {
-            // MainView.1.cs 1717-1720 method_212: a circle over the box 1.5 x the drawn size, only while it is drawn.
-            const px = selC.hasBeenDestroyed ? 0 : this.creatureLayer.drawnSizePx(selC);
-            if (px > 0) {
-                // Around the drawn (render-interpolated) creature.
-                const d = this.motion.drawn(selC);
-                const s = cam.worldToScreen(d !== null ? d.x : selC.xpos, d !== null ? d.y : selC.ypos);
-                this.drawSelectionRing(s.x, s.y, Math.max(px * 1.5, 8) * 0.5);
-            } else {
-                this.selectionRing.visible = false;
-            }
-        } else if (selBo !== null && !selBo.hasBeenDestroyed && 1 / z < BUILT_OBJECT_MAX_FACTOR) {
-            // The same drawn position as the ship sprite and its marker (sampled by BuiltObjectLayer above this frame).
-            const d = drawnBuiltObjectPos(this.motion, selBo);
-            const s = cam.worldToScreen(d.x, d.y);
-            const r = Math.max(this.builtObjectLayer.drawnSizePx(selBo), 8) * 0.5 + 4;
-            this.drawSelectionRing(s.x, s.y, r);
-        } else if (sel === null) {
-            this.selectionRing.visible = false;
-        } else {
-            // Around the drawn planet / moon (render-interpolated orbit).
-            const hp = this.motion.habitatPos(sel);
-            const s = cam.worldToScreen(hp.x, hp.y);
-            const r = this.drawnSize(sel, z) * 0.5 + 4;
-            this.drawSelectionRing(s.x, s.y, r);
-        }
+        this.placePostureLayer(1 / z);
 
-        this.drawMultiSelectionRings(z, cam);
-        this.drawFighterSelection(cam);
+        // method_212 (MainView.2.cs 3132): the pulsing circle around the selection (ships, fleet ships, creatures,
+        // fighters, habitats) at the drawn (render-interpolated) positions sampled above this frame.
+        this.drawSelectionCircles(z, cam);
         this.updateRangeRings(z, cam);
 
         // Screen-edge auto-scroll (original control scheme).
@@ -2079,38 +2071,112 @@ export class MainView {
     }
 
     /**
-     * MainView.1.cs 1518-1521 method_212 for the selected fighter: XnaDrawingHelper.DrawCircle (50 segments, 5 px) over
-     * the box 1.3 x its drawn size, in method_213's colour (color_7 (128, 112, 0, 160) ↔ color_8 (224, 255, 32, 112) over
-     * 2 s of real UTC time). Only while the fighter is drawn.
+     * The Fleet Postures discs' place among the world layers (MainView.cs 1535-1550): method_250, whose first pass is
+     * method_247's discs (MainView.2.cs 5221), runs after method_76 (habitats, ships, fighters, creatures, their bars
+     * and effects): the discs go above every world layer. Its galaxy-pass symbols and fleet icons (f > 150, 5830-6020 /
+     * 6140) come after the discs: at that zoom the markers' front layer moves above the discs; below it (where it holds
+     * the close-zoom per-ship symbols, which method_76 draws under each ship) it stays under the ship art. Children are
+     * moved only when out of place (a zoom across f = 150, or a layer added later).
      */
-    private drawFighterSelection(cam: Camera): void {
-        const g = this.fighterSelectionRing;
+    private placePostureLayer(f: number): void {
+        const w = this.world;
+        const p = this.overlayLayer.postureRoot;
+        const front = this.galaxyMarkers?.front ?? null;
+        const kids = w.children;
+        const n = kids.length;
+        if (front !== null && f > SYSTEM_RING_MIN_FACTOR) {
+            if (kids[n - 1] === front && kids[n - 2] === p) return;
+            w.removeChild(p);
+            w.removeChild(front);
+            w.addChild(p, front);
+            return;
+        }
+        if (front !== null && kids[n - 1] === front) {
+            // Back under the ship art: its place from init (right below the child that followed it then).
+            w.removeChild(front);
+            const next = this.markersFrontNext;
+            const at = next !== null && next.parent === w ? w.getChildIndex(next) : w.getChildIndex(this.builtObjectLayer.root);
+            w.addChildAt(front, at);
+        }
+        if (w.children[w.children.length - 1] !== p) {
+            w.removeChild(p);
+            w.addChild(p);
+        }
+    }
+
+    /**
+     * The method_212 circles of the close-zoom passes (MainView.1.cs method_76, f < 1000), one Graphics in screen space
+     * (selectionCircle.ts): only around objects drawn this frame (their drawn size > 0), sized from the drawn size:
+     * - the selected creature (1715-1720): (int)(px * 1.5);
+     * - every drawn ship of the selected fleet (1141-1147), of the BuiltObjectList (1149-1156), or the selected ship /
+     *   base (1158-1161): (int)(px * 1.3);
+     * - the selected fighter (1518-1521): (int)(px * 1.3);
+     * - the selected habitat (823-826): its drawn body + 20; a SystemInfo selection at f > 150 (MainView.2.cs
+     *   5536-5546): the star's drawn size + 7.
+     * The galaxy-pass symbols / fleet icons get theirs from galaxyMarkers.ts. Geometry is rebuilt only when a box moves;
+     * the colour (method_213) is the Graphics' tint.
+     */
+    private drawSelectionCircles(z: number, cam: Camera): void {
+        const boxes = this.selectionBoxes;
+        boxes.length = 0;
+        const f = 1 / z;
+        const hud = this.getHudSelection();
+        const pushShip = (bo: BuiltObject): void => {
+            if (bo.hasBeenDestroyed) return;
+            const px = this.builtObjectLayer.drawnSizePx(bo);
+            if (px <= 0) return;
+            const d = drawnBuiltObjectPos(this.motion, bo);
+            const sp = cam.worldToScreen(d.x, d.y);
+            boxes.push(sp.x, sp.y, shipSelectionBox(px));
+        };
+        const selC = this.selectedCreature;
         const fi = this.selectedFighter;
-        const d = fi !== null ? this.fighterLayer.drawnFighters.find((r) => r.fighter === fi) : undefined;
-        if (d === undefined) {
+        const group = hud?.shipGroup ?? null;
+        const list = this.selectedBuiltObjects;
+        if (selC !== null) {
+            const px = selC.hasBeenDestroyed ? 0 : this.creatureLayer.drawnSizePx(selC);
+            if (px > 0) {
+                const d = this.motion.drawn(selC);
+                const sp = cam.worldToScreen(d !== null ? d.x : selC.xpos, d !== null ? d.y : selC.ypos);
+                boxes.push(sp.x, sp.y, creatureSelectionBox(px));
+            }
+        } else if (fi !== null) {
+            const d = this.fighterLayer.drawnFighters.find((r) => r.fighter === fi);
+            if (d !== undefined) {
+                const sp = cam.worldToScreen(d.x, d.y);
+                boxes.push(sp.x, sp.y, shipSelectionBox(d.px));
+            }
+        } else if (group !== null) {
+            for (const bo of group.ships) pushShip(bo);
+        } else if (list !== null && list.length > 0) {
+            for (const bo of list) pushShip(bo);
+        } else if (this.selectedBuiltObject !== null) {
+            pushShip(this.selectedBuiltObject);
+        } else if (this.selectedHabitat !== null) {
+            const h = this.selectedHabitat;
+            const px = this.drawnSize(h, z);
+            const systemInfo = hud?.systemInfo === true;
+            if (px > 0 && (!systemInfo || f > SYSTEM_RING_MIN_FACTOR)) {
+                const hp = this.motion.habitatPos(h);
+                const sp = cam.worldToScreen(hp.x, hp.y);
+                boxes.push(sp.x, sp.y, systemInfo ? systemSelectionBox(px) : habitatSelectionBox(px));
+            }
+        }
+        const g = this.selectionRing;
+        if (boxes.length === 0) {
             if (g.visible) {
                 g.clear();
                 g.visible = false;
+                this.drawnSelectionBoxes.length = 0;
             }
             return;
         }
-        const s = cam.worldToScreen(d.x, d.y);
-        const box = Math.trunc(d.px * 1.3);
-        const now = new Date();
-        const argb = pulseColor(0x807000a0, 0xe0ff2070, now.getUTCSeconds(), now.getUTCMilliseconds());
-        g.clear();
-        segmentCircle(g, s.x, s.y, box / 2, 50);
-        g.stroke({ width: 5, color: argb & 0xffffff, alpha: ((argb >>> 24) & 0xff) / 255 });
-        g.visible = true;
-    }
-
-    /** The selection ring at screen (x, y) with radius r; the geometry is rebuilt only when one of them changes. */
-    private drawSelectionRing(x: number, y: number, r: number): void {
-        if (this.selectionKey.changed(x, y, r)) {
-            this.selectionRing.clear();
-            this.selectionRing.circle(x, y, r).stroke({ width: 1.5, color: 0x4fc3f7 });
+        if (!sameBoxes(boxes, this.drawnSelectionBoxes)) {
+            buildSelectionCircles(g, boxes);
+            this.drawnSelectionBoxes = boxes.slice();
         }
-        this.selectionRing.visible = true;
+        applySelectionTint(g, new Date());
+        g.visible = true;
     }
 
     /** Range rings for the selected ship / fleet / multi-selection (the minimum over its ships), centred on the
@@ -2141,31 +2207,6 @@ export class MainView {
         const s = cam.worldToScreen(d.x, d.y);
         drawRangeRings(g, s.x, s.y, { range45: radii.range45 * z, range100: radii.range100 * z }, cam.width, cam.height);
         g.visible = true;
-    }
-
-    /** A ring around every live ship of the multi-selection, at its drawn position (ship size at system zoom, a small
-     * fixed ring over the galaxy / sector symbols). */
-    private drawMultiSelectionRings(z: number, cam: Camera): void {
-        const g = this.multiSelectionRings;
-        const list = this.selectedBuiltObjects;
-        g.clear();
-        if (list === null || list.length === 0) {
-            g.visible = false;
-            return;
-        }
-        const shipArt = 1 / z < BUILT_OBJECT_MAX_FACTOR;
-        let any = false;
-        for (const bo of list) {
-            if (bo.hasBeenDestroyed) continue;
-            const d = drawnBuiltObjectPos(this.motion, bo);
-            const s = cam.worldToScreen(d.x, d.y);
-            const r = shipArt ? Math.max(this.builtObjectLayer.drawnSizePx(bo), 8) * 0.5 + 4 : 7;
-            if (s.x < -r || s.y < -r || s.x > cam.width + r || s.y > cam.height + r) continue;
-            g.circle(s.x, s.y, r);
-            any = true;
-        }
-        if (any) g.stroke({ width: 1.5, color: 0x4fc3f7 });
-        g.visible = any;
     }
 
     /** The drag rectangle from the press point to the pointer (thin, subtle; screen space). */

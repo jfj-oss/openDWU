@@ -52,6 +52,7 @@ describe('initiateEmpireSplitAt (Empire.1.cs 1102 / 2883, split for targeted sec
         // Moved "42159d821d5440d8:288980" → "df5e591362688597:288980": Habitat.cs 924-935/986-998 OrbitDistance/OrbitSpeed property setters recompute _AnglePerSecond on every reassignment; Galaxy.5.cs 1689/1730 sets a moon's real OrbitDistance well after construction (ctor gets a placeholder Rnd.Next(5,32)) relying on that recompute -- types.ts previously had these as plain fields, so moons kept the angular speed implied by the tiny placeholder radius applied to their real, much larger orbit (up to ~240x too fast); fixed by making orbitDistance/orbitSpeed real accessor properties (2026-09-28)
         // Moved "df5e591362688597:288980" → "4985362bf65f2a5a:288778": orbits spaced so planets/moons never overlap (user deviation) (2026-10-03)
         // Moved "4985362bf65f2a5a:288778" → "4a8493f807d8696f:288778": parity A2: spaceport threat check, race periodic traits, wonders scenic, race wonders, garrisons, maintenance, retrofit design (2026-10-03)
+        // Moved "4a8493f807d8696f:288778" → "1bde03cd0ed7b23e:262117": SetupSun SelectHabitatPictures (Galaxy.5.cs 1323): star PictureRef/MapPictureRef draws (2026-10-04)
         expect(`${stateDigest(galaxy)}:${galaxy.rnd.drawCount}`).toMatchPin('empireLifecycle.aiSplitDigest');
     }, 300000);
 

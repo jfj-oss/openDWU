@@ -5,7 +5,8 @@
 // folder), and the player's own saves live in browser storage (the same "name ;value" text SaveToFile writes, keyed by
 // file name). Storage can be missing or throw (private window, blocked site data): every access is guarded.
 
-import { resolveDataUrl } from '../sim/data/paths';
+import { activeCustomizationSet } from '../sim/data/customization';
+import { resolveDataUrl, resolveThemedDataUrl } from '../sim/data/paths';
 
 /** One entry of the Load list: an install file (fetched) or a saved file (browser storage). */
 export interface PolicyFileEntry {
@@ -78,6 +79,13 @@ export function writeSavedPolicyFile(name: string, text: string, storage: Storag
 /** The Load list: the saved files, then the install's Policy/*.txt and Policy/pirate/*.txt (the manifest's lists). */
 export function policyFileEntries(manifest: Readonly<Record<string, readonly string[] | undefined>>, storage: StorageLike | null = defaultStorage()): PolicyFileEntry[] {
     const out: PolicyFileEntry[] = savedPolicyFiles(storage).map((name) => ({ name, source: 'saved' as const }));
+    // Main.Part3.cs 3815: with a theme the dialog opens on <customPath>Policy\ (no existence check).
+    const theme = activeCustomizationSet();
+    if (theme !== null) {
+        for (const f of theme.listFiles('policy', '.txt')) out.push({ name: f, source: 'install' });
+        for (const f of theme.listFiles('policy/pirate', '.txt')) out.push({ name: `pirate/${f}`, source: 'install' });
+        return out;
+    }
     for (const f of manifest['Policy'] ?? []) out.push({ name: f, source: 'install' });
     for (const f of manifest['Policy/pirate'] ?? []) out.push({ name: `pirate/${f}`, source: 'install' });
     return out;
@@ -91,7 +99,8 @@ export async function readPolicyFileEntry(entry: PolicyFileEntry, customizationS
         if (t === null) throw new Error(`no saved policy ${entry.name}`);
         return t;
     }
-    for (const url of resolveDataUrl(`Policy/${entry.name}`, customizationSet)) {
+    const urls = customizationSet === undefined ? resolveThemedDataUrl(`Policy/${entry.name}`) : resolveDataUrl(`Policy/${entry.name}`, customizationSet);
+    for (const url of urls) {
         try {
             const r = await fetcher(url);
             if (r.ok) return await r.text();
