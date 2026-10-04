@@ -1815,7 +1815,7 @@ export class MainView {
             const kids = this.world.children;
             this.markersFrontNext = (kids[kids.indexOf(this.galaxyMarkers.front) + 1] as Container | undefined) ?? null;
         }
-        this.world.addChild(this.overlayLayer.postureRoot);
+        this.world.addChild(this.overlayLayer.postureRoot, this.overlayLayer.root);
 
         this.attachInput();
     }
@@ -2085,26 +2085,33 @@ export class MainView {
     private placePostureLayer(f: number): void {
         const w = this.world;
         const p = this.overlayLayer.postureRoot;
+        const o = this.overlayLayer.root;
         const front = this.galaxyMarkers?.front ?? null;
         const kids = w.children;
         const n = kids.length;
+        // The rest of method_250 — the travel vectors (5925-5956, 6335-6393) and the map overlays' rings / markers — is
+        // drawn after the discs and the galaxy-pass symbols, over everything method_76 drew: the overlay root is last.
         if (front !== null && f > SYSTEM_RING_MIN_FACTOR) {
-            if (kids[n - 1] === front && kids[n - 2] === p) return;
+            if (kids[n - 1] === o && kids[n - 2] === front && kids[n - 3] === p) return;
             w.removeChild(p);
             w.removeChild(front);
-            w.addChild(p, front);
+            w.removeChild(o);
+            w.addChild(p, front, o);
             return;
         }
-        if (front !== null && kids[n - 1] === front) {
+        if (front !== null && (kids[n - 1] === o ? kids[n - 2] === front : kids[n - 1] === front)) {
             // Back under the ship art: its place from init (right below the child that followed it then).
             w.removeChild(front);
             const next = this.markersFrontNext;
             const at = next !== null && next.parent === w ? w.getChildIndex(next) : w.getChildIndex(this.builtObjectLayer.root);
             w.addChildAt(front, at);
         }
-        if (w.children[w.children.length - 1] !== p) {
+        const k2 = w.children;
+        const m = k2.length;
+        if (k2[m - 1] !== o || k2[m - 2] !== p) {
             w.removeChild(p);
-            w.addChild(p);
+            w.removeChild(o);
+            w.addChild(p, o);
         }
     }
 

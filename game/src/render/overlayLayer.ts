@@ -460,11 +460,11 @@ export class OverlayLayer {
         private empireLayer: EmpireLayer,
         private state: MapOverlayState,
     ) {
-        world.addChild(this.root);
-        // The scanner discs first: just above the territory layer (empireLayer, added to world before this root), as
-        // they share the backdrop bitmap in the C#.
+        // The scanner discs stay put: just above the territory layer (empireLayer, added to world before), as they share
+        // the backdrop bitmap in the C#. The rest of this root is MainView's, placed above the ship art (placePostureLayer).
         this.lrsLayer.visible = false;
-        this.root.addChild(this.lrsLayer);
+        world.addChild(this.lrsLayer);
+        world.addChild(this.root);
         this.highlights = mapHighlightsOf(galaxy);
         // method_250 order: the posture discs (5221), then the pings (5777-5783) — both over the ship art.
         this.postureRoot.addChild(this.postureDiscs, this.postureLines, this.postureArrows, this.eventPings);
@@ -1162,6 +1162,7 @@ export class OverlayLayer {
 
     /** Drop the overlay-change subscription (tests / view teardown). */
     destroy(): void {
+        this.lrsLayer.destroy({ children: true });
         this.unsubscribe();
         this.freight.destroy(); // [freightOverlay]
         this.supply.destroy(); // [improvements] supplyChain
