@@ -63,6 +63,7 @@ import {
 import { baconIsMyShip, calculateBuiltObjectLootingValue, empireColonyIncomeFactor, identifyPirateSpaceport, inflictDamageFull } from './damage';
 import { colonyInvasionUi, doRaidBonuses, empireRaidBonusFactor, failPirateDefendMission, generateDefensivePirateRaiders, getNearestBuiltObject, InvasionStats, invasionStatsOf, pirateColonyControl, takeOwnershipOfBuiltObject } from './invasion';
 import { handleAIPrisoners, handlePlayerPrisoners } from '../espionagePrisoners';
+import { formatNetGrouped0 } from '../netNumberFormat';
 
 const f32 = Math.fround;
 
@@ -668,7 +669,7 @@ function boardingCapture(galaxy: Galaxy, self: BuiltObject, empireById: Empire, 
         const parent = self.parentHabitat!;
         if (empireById.pirateEmpireBaseHabitat !== null) {
             const num4 = scrapCapturedForLoot(galaxy, self, empireById);
-            const message2 = formatText(getText('Boarded Base Self Destructs Capture Loot'), self.name, parent.name, habitat2.name, num4.toFixed(0));
+            const message2 = formatText(getText('Boarded Base Self Destructs Capture Loot'), self.name, parent.name, habitat2.name, formatNetGrouped0(num4)); // BuiltObject.1.cs 3108 "###,##0"
             sendEventMessageToEmpire(empireById, EventMessageType.GeneralDiscovery, getText('Boarded Base Self Destructs Title'), message2, self, parent);
         } else {
             const message3 = formatText(getText('Boarded Base Self Destructs Capture'), self.name, parent.name, habitat2.name);

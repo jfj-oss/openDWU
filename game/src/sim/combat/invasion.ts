@@ -1188,7 +1188,7 @@ export function chanceNewTroopGeneralFromInvasion(galaxy: Galaxy, empire: Empire
             const title = formatText(getText('New Character Event Title'), resolveDescription(CharacterRole, character.role));
             const empty = !invading
                 ? formatText(getText('New Character Event Defense Troop General'), invadedColony.name, habitat.name, character.name)
-                : formatText(getText('New Character Event Invasion Troop General'), resolveDescription(HabitatType, invadedColony.type).toLowerCase(), invadedColony.name, habitat.name, character.name);
+                : formatText(getText('New Character Event Invasion Troop General'), resolveDescription(HabitatType, invadedColony.type).toLowerCase(), resolveDescription(HabitatCategoryDesc, invadedColony.category).toLowerCase(), invadedColony.name, habitat.name, character.name); // Galaxy.2.cs 5211
             sendMessageToEmpireWithTitle(empire, empire, EmpireMessageType.CharacterAppearance, character, empty, title);
             return true;
         }
@@ -1903,14 +1903,17 @@ function conquerColony(galaxy: Galaxy, self: Habitat, defender: Empire | null, i
 
 /** Empire.10.cs 3777 GenerateAutomationMessageInvadeIndependent(habitat, invasionFleet) — advisor text (UI). */
 function generateAutomationMessageInvadeIndependent(galaxy: Galaxy, habitat: Habitat | null, invasionFleet: ShipGroup | null): string {
-    const system = habitat !== null ? galaxy.determineHabitatSystemStar(habitat) : null;
+    const habitat2 = habitat !== null ? galaxy.determineHabitatSystemStar(habitat) : null;
     const race = habitat !== null && habitat.population != null ? habitat.population.dominantRace : null;
+    // {0} ResolveDescription(Type), {1} ResolveDescription(Category).ToLower(Invariant), {2} name, {3} system, {4} race, {5} fleet.
     return formatText(
         getText('Automation Invade Independent'),
-        system !== null ? system.name : '',
+        habitat !== null ? resolveDescription(HabitatType, habitat.type) : '',
+        habitat !== null ? resolveDescription(HabitatCategoryDesc, habitat.category).toLowerCase() : '',
+        habitat !== null ? habitat.name : '',
+        habitat2 !== null ? habitat2.name : '',
         race !== null ? race.name : '',
         invasionFleet !== null ? invasionFleet.name : '',
-        habitat !== null ? habitat.name : '',
     );
 }
 

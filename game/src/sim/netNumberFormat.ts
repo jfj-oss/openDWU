@@ -63,3 +63,10 @@ export function formatNet0(value: number): string {
 export function formatNetPercent0(value: number): string {
     return formatNetFixed(value, 0, 2) + '%';
 }
+
+/** `value.ToString("###,###,###,##0")` (and "###,###,##0", "#,##0", …): ToString("0") with en-US thousands groups. */
+export function formatNetGrouped0(value: number): string {
+    const s = formatNet0(value);
+    const neg = s.startsWith('-') ? '-' : '';
+    return neg + (neg ? s.substring(1) : s).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+}

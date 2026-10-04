@@ -1741,7 +1741,7 @@ export function applyIntelligenceMissionEffect(galaxy: Galaxy, self: Empire, mis
                 let arg2 = '';
                 if (habitat4 !== null) arg2 = habitat4.name;
                 const description2 = formatGameTextNow('Base Destroyed Sabotage Description', [builtObject2.name, arg2]);
-                const title2 = gameText('Base Destroyed Sabotage') + '!';
+                const title2 = formatGameTextNow('Base Destroyed Sabotage') + '!'; // Empire.6.cs 173: GetText(...) + "!"
                 sendMessageToEmpire(builtObject2.empire, builtObject2.empire, EmpireMessageType.BattleUnderAttack, builtObject2, description2, { x: Math.trunc(builtObject2.xpos), y: Math.trunc(builtObject2.ypos) }, '', title2);
             }
             inflictDamageFull(galaxy, builtObject2, builtObject2, null, 100000.0, galaxyNow(galaxy), 0, true, 0.0, false);

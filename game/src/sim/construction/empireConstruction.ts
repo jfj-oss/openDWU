@@ -81,6 +81,7 @@ import { RaceEventType } from '../eventTypes';
 import { gameText, racePeriodicRaceEvent } from '../colonyTick';
 import { raceChangePeriodActive } from '../racePeriodic';
 import { EmpireMessage, EmpireMessageType, resolveDescription, sendEmpireMessage } from '../messages';
+import { formatNetGrouped0 } from '../netNumberFormat';
 import { advisorText } from '../advisorQueue';
 import { ConstructionQueue, canBuiltObjectColonizeHabitat, resolveBuildSpeed } from './constructionQueue';
 import { componentListDiff, resolveComponentList } from './constructionYard';
@@ -826,11 +827,11 @@ export function checkBuildoutResearchCapacityAtColonies(galaxy: Galaxy, empire: 
     return { result: false, researchStationDesignToBuild: null, colonyToBuildAt: null };
 }
 
-// ---- advisor texts (Empire.10.cs 3640-3677). TODO(port) M9: GameText formatting (ResolveDescription, "###,###,##0"
-// money) — only the player reads these; the GameText key stands in for the format string. ----
+// ---- advisor texts (Empire.10.cs 3640-3677). ----
 
+/** `value.ToString("###,###,###,##0")`, the advisor / message money format. */
 export function formatMoney(value: number): string {
-    return Math.round(value).toString();
+    return formatNetGrouped0(value);
 }
 
 /** Empire.10.cs 3640 GenerateAutomationMessageDefensiveBase(colony, baseDesign). */
@@ -839,12 +840,17 @@ function generateAutomationMessageDefensiveBase(galaxy: Galaxy, colony: Habitat,
     return formatText(getText('Automation Defensive Base'), colony.name, habitat.name, formatMoney(baseDesign.calculateCurrentPurchasePrice(galaxy)));
 }
 
-/** Empire.10.cs 3646 GenerateAutomationMessageColonization(newColony, colonyShip, colonyShipBuildLocation). */
-function generateAutomationMessageColonization(galaxy: Galaxy, newColony: Habitat, colonyShip: BuiltObject | null, colonyShipBuildLocation: Habitat | null): string {
+/**
+ * Empire.10.cs 3646 GenerateAutomationMessageColonization(newColony, colonyShip, colonyShipBuildLocation): the type and
+ * category as ResolveDescription(...).ToLower(Invariant).
+ */
+export function generateAutomationMessageColonization(galaxy: Galaxy, newColony: Habitat, colonyShip: BuiltObject | null, colonyShipBuildLocation: Habitat | null): string {
     const habitat = galaxy.determineHabitatSystemStar(newColony);
+    const type = resolveDescription(HabitatType as unknown as Record<number, string>, newColony.type).toLowerCase();
+    const category = resolveDescription(HabitatCategoryType as unknown as Record<number, string>, newColony.category).toLowerCase();
     let result = '';
-    if (colonyShip !== null) result = formatText(getText('Automation Colonization Existing Ship'), newColony.type, newColony.category, newColony.name, habitat.name, colonyShip.name);
-    else if (colonyShipBuildLocation !== null) result = formatText(getText('Automation Colonization New Ship'), newColony.type, newColony.category, newColony.name, habitat.name, colonyShipBuildLocation.name, galaxy.determineHabitatSystemStar(colonyShipBuildLocation).name);
+    if (colonyShip !== null) result = formatText(getText('Automation Colonization Existing Ship'), type, category, newColony.name, habitat.name, colonyShip.name);
+    else if (colonyShipBuildLocation !== null) result = formatText(getText('Automation Colonization New Ship'), type, category, newColony.name, habitat.name, colonyShipBuildLocation.name, galaxy.determineHabitatSystemStar(colonyShipBuildLocation).name);
     return result;
 }
 

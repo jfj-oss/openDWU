@@ -18,7 +18,11 @@ import type { Habitat } from '../src/sim/types';
 import { HabitatCategoryType } from '../src/sim/types';
 import { EventMessageType } from '../src/sim/eventTypes';
 import { sendNewEmpireRaceAbilityEvent } from '../src/sim/events';
-import { formatNet0, formatNetFixed, formatNetPercent0 } from '../src/sim/netNumberFormat';
+import { formatNet0, formatNetFixed, formatNetGrouped0, formatNetPercent0 } from '../src/sim/netNumberFormat';
+import { resolveDescription } from '../src/sim/messages';
+import { TroopType } from '../src/sim/cargo';
+import { HabitatType, IndustryType } from '../src/sim/types';
+import { generateAutomationMessageColonization } from '../src/sim/construction/empireConstruction';
 import { formatNet, getText, resolveGameText } from '../src/sim/textResolver';
 import {
     resolveEmpireAbilityBonusDescriptionEspionage,
@@ -99,6 +103,12 @@ describe('netNumberFormat: .NET Framework custom numeric formats', () => {
         expect(formatNetFixed(3, 2)).toBe('3.00');
         expect(formatNetFixed(1e-7, 2)).toBe('0.00');
         expect(formatNetFixed(99.995, 2)).toBe('100.00');
+    });
+    it('ToString("###,###,###,##0")', () => {
+        expect(formatNetGrouped0(0)).toBe('0');
+        expect(formatNetGrouped0(999.5)).toBe('1,000');
+        expect(formatNetGrouped0(1234567.4)).toBe('1,234,567');
+        expect(formatNetGrouped0(-25000)).toBe('-25,000');
     });
 });
 
@@ -219,5 +229,30 @@ describe('textkeys: ability bonus texts (Galaxy.ResolveEmpireAbilityBonusDescrip
             'Our recent colonization of the planet Haako 2 has brought the Haakonish race into our empire, imparting new special abilities to us:\n\n' +
                 'Master Engineers: ship maintenance -2%\nCunning Schemers: better spies +1%',
         );
+    });
+});
+
+describe('textkeys: enum and argument texts found in the same audit', () => {
+    it('ResolveDescription(TroopType) / (IndustryType) use their GameText cases (Galaxy.7.cs 5406, Galaxy.2.cs 2327)', () => {
+        const troop = TroopType as unknown as Record<number, string>;
+        expect(resolveDescription(troop, TroopType.Armored)).toBe('Armored Forces');
+        expect(resolveDescription(troop, TroopType.Artillery)).toBe('Planetary Defense Unit');
+        expect(resolveDescription(troop, TroopType.SpecialForces)).toBe('Special Forces');
+        expect(resolveDescription(troop, TroopType.PirateRaider)).toBe('Pirate Raider');
+        expect(resolveDescription(IndustryType as unknown as Record<number, string>, IndustryType.Weapon)).toBe('Weapons');
+    });
+
+    it('a template without items ignores surplus deferred arguments, like string.Format', () => {
+        expect(resolveGameText('GameEventAction Title UnlockTech|Hyperdrive')).toBe('New Tech unlocked');
+        expectShown('UnlockTech title', resolveGameText('GameEventAction Title UnlockTech|Hyperdrive'));
+    });
+
+    it('the colonization advisor text names the planet type and category (Empire.10.cs 3646)', () => {
+        const star = { name: 'Sol' };
+        const galaxy = { determineHabitatSystemStar: () => star } as unknown as Galaxy;
+        const target = { name: 'Earth', type: HabitatType.Continental, category: HabitatCategoryType.Planet } as unknown as Habitat;
+        const text = generateAutomationMessageColonization(galaxy, target, { name: 'Colony Ship 1' } as never, null);
+        expectShown('Automation Colonization Existing Ship', text);
+        expect(text).toBe(formatNet(getText('Automation Colonization Existing Ship'), ['continental', 'planet', 'Earth', 'Sol', 'Colony Ship 1']));
     });
 });

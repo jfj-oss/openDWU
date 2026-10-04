@@ -9,7 +9,8 @@
 import type { Empire } from './empire';
 import type { Galaxy } from './galaxy';
 import { BuiltObject } from './builtObject';
-import { Habitat, HabitatCategoryType, HabitatType } from './types';
+import { Habitat, HabitatCategoryType, HabitatType, IndustryType } from './types';
+import { TroopType } from './cargo';
 import { Empire as EmpireClass, registerShipBasePurchasedMessageSender } from './empire';
 import { galaxyStarDate } from './tick/simTime';
 import { netSort } from './netSort';
@@ -306,6 +307,8 @@ function enumTextTable(enumType: object): EnumText | undefined {
             [HabitatCategoryType, ET.HABITAT_CATEGORY],
             [HabitatType, ET.HABITAT_TYPE],
             [RaceEventType, ET.RACE_EVENT],
+            [TroopType, ET.TROOP_TYPE],
+            [IndustryType, ET.INDUSTRY_TYPE],
         ]);
     }
     return enumTexts.get(enumType);
