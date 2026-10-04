@@ -390,6 +390,9 @@ function installMotionProbe() {
     // Heading: per drawn ship, its touches (LastTouch, committed heading) and its drawn frames (frame number, drawn game
     // instant, drawn heading); summary() compares them (headingSummary).
     let hShips = [];
+    /** Per frame number: the frame's rAF time and the camera zoom (CSS px per world unit). */
+    let frameReal = [];
+    let frameZoom = [];
     let hRec = new WeakMap();
     let hValues = 0;
     const H_CAP = 6000000;
@@ -417,6 +420,8 @@ function installMotionProbe() {
         const running = !d.time.paused && rate > 0 && dt > 0;
         const steps = lastSerial < 0 ? 0 : rt.stepSerial - lastSerial;
         lastSerial = rt.stepSerial;
+        frameReal[frameNo] = t;
+        frameZoom[frameNo] = d.camera.zoom;
         if (running) {
             data.frames++;
             data.steps[Math.min(4, Math.max(0, steps))]++;
@@ -445,7 +450,7 @@ function installMotionProbe() {
             if (s === null) continue;
             let hr = hRec.get(bo);
             if (hr === undefined) {
-                hr = { tau: [], th: [], fN: [], fT: [], fH: [], fF: [], lastTouch: NaN };
+                hr = { tau: [], th: [], fN: [], fT: [], fH: [], fF: [], fX: [], fY: [], fJ: [], lastTouch: NaN };
                 hRec.set(bo, hr);
                 hShips.push(hr);
             }
@@ -462,7 +467,11 @@ function installMotionProbe() {
                 hr.fH.push(s.heading);
                 // (2: snapped this frame — a teleport, first sight: the history starts over at one sample.)
                 hr.fF.push(s.hn === 1 ? 2 : s.frame === null ? 0 : 1);
-                hValues += 4;
+                // Visible jumps: the drawn galaxy position, and whether a hyperjump leg is on (prepare / warp / exit).
+                hr.fX.push(s.x);
+                hr.fY.push(s.y);
+                hr.fJ.push(bo.hyperjumpPrepare || bo.hyperjumpJustExited || bo.hyperEnterStartAnimation || bo.hyperExitStartAnimation || bo.currentSpeed > bo.topSpeed ? 1 : 0);
+                hValues += 7;
             }
             const speed = bo.currentSpeed;
             let r = ships.get(bo);
@@ -658,6 +667,84 @@ function installMotionProbe() {
             popPct: all ? (100 * pop) / all : NaN,
         };
     };
+    /**
+     * Visible jumps (position + heading). For each drawn ship, each frame's on-screen move (CSS px: world move × the
+     * camera zoom) and rotation, both per frame time, against the frame before and the frame after: how far the move
+     * lies off the segment between theirs (in velocity space, less 5 % of its own length; the rotation, outside their range). Smooth motion —
+     * steady, turning, starting, stopping, a speed change — stays on it; a pop, a one-frame stall or a surge does not.
+     * A frame counts as a visible jump over 1 px or 1.5° (severe: 4 px or 6°), put down to the first that applies: the
+     * ship snapped (teleport, first sight), a hyperjump leg, a frame hitch (a frame time over 1.6 × the median), the
+     * drawn clock (its game ms per real ms changed by over 30 % across the frames), a touch of the ship's (LastTouch)
+     * between the drawn instants, or none of these.
+     */
+    const visibleJumps = (list) => {
+        const TWO_PI = Math.PI * 2;
+        const wrap = (d) => {
+            d %= TWO_PI;
+            if (d > Math.PI) d -= TWO_PI;
+            else if (d < -Math.PI) d += TWO_PI;
+            return d;
+        };
+        const dts = [];
+        for (let k = 1; k < frameReal.length; k++) if (frameReal[k] !== undefined && frameReal[k - 1] !== undefined) dts.push(frameReal[k] - frameReal[k - 1]);
+        dts.sort((a, b) => a - b);
+        const medDt = dts.length ? dts[dts.length >> 1] : 16.7;
+        const causes = ['snap', 'hyper', 'hitch', 'clock', 'touch', 'other'];
+        const mk = () => Object.fromEntries(causes.map((c) => [c, 0]));
+        const out = { samples: 0, pos: 0, posSevere: 0, head: 0, headSevere: 0, posBy: mk(), headBy: mk(), posP99: NaN, headP99: NaN, posMax: 0, headMax: 0 };
+        const ps = [];
+        const hs = [];
+        for (const hr of list) {
+            const { fN, fT, fH, fF, fX, fY, fJ, tau } = hr;
+            for (let i = 2; i + 1 < fN.length; i++) {
+                if (fN[i - 1] !== fN[i - 2] + 1 || fN[i] !== fN[i - 1] + 1 || fN[i + 1] !== fN[i] + 1) continue;
+                const n = [fN[i - 2], fN[i - 1], fN[i], fN[i + 1]];
+                const dt = [frameReal[n[1]] - frameReal[n[0]], frameReal[n[2]] - frameReal[n[1]], frameReal[n[3]] - frameReal[n[2]]];
+                if (!(dt[0] > 0 && dt[1] > 0 && dt[2] > 0)) continue;
+                const z = frameZoom[n[2]];
+                // Moves per median frame (CSS px) and rotations (rad): w before, u this frame (i-1 → i), v after.
+                const mv = (j, k) => [((fX[j + 1] - fX[j]) / dt[k]) * medDt * z, ((fY[j + 1] - fY[j]) / dt[k]) * medDt * z, (wrap(fH[j + 1] - fH[j]) / dt[k]) * medDt];
+                const w = mv(i - 2, 0), u = mv(i - 1, 1), v = mv(i, 2);
+                const sx = v[0] - w[0], sy = v[1] - w[1];
+                const L = sx * sx + sy * sy;
+                const t = L > 0 ? Math.max(0, Math.min(1, ((u[0] - w[0]) * sx + (u[1] - w[1]) * sy) / L)) : 0;
+                // (Less 5 % of the frame's own move: a ship at warp crossing the screen in a frame or two, its move
+                // wobbling by a few px with the drawn clock, is no visible jump.)
+                const pp = Math.max(0, Math.hypot(u[0] - (w[0] + sx * t), u[1] - (w[1] + sy * t)) - 0.05 * Math.hypot(u[0], u[1]));
+                const hh = (Math.max(0, u[2] - Math.max(w[2], v[2]), Math.min(w[2], v[2]) - u[2]) * 180) / Math.PI;
+                out.samples++;
+                ps.push(pp);
+                hs.push(hh);
+                out.posMax = Math.max(out.posMax, pp);
+                out.headMax = Math.max(out.headMax, hh);
+                if (!(pp > 1 || hh > 1.5)) continue;
+                let cause = 'other';
+                const js = [i - 2, i - 1, i, i + 1];
+                if (js.some((j) => fF[j] === 2)) cause = 'snap';
+                else if (js.some((j) => fJ[j])) cause = 'hyper';
+                else if (Math.max(...dt) > 1.6 * medDt) cause = 'hitch';
+                else {
+                    const c = [0, 1, 2].map((k) => (fT[js[k + 1]] - fT[js[k]]) / dt[k]);
+                    const cMax = Math.max(...c.map(Math.abs), 1e-9);
+                    if (Math.max(...c) - Math.min(...c) > 0.3 * cMax) cause = 'clock';
+                    else if (tau.some((x) => x > fT[i - 2] && x <= fT[i + 1])) cause = 'touch';
+                }
+                if (pp > 1) {
+                    out.pos++;
+                    out.posBy[cause]++;
+                    if (pp > 4) out.posSevere++;
+                }
+                if (hh > 1.5) {
+                    out.head++;
+                    out.headBy[cause]++;
+                    if (hh > 6) out.headSevere++;
+                }
+            }
+        }
+        out.posP99 = pct(ps, 0.99);
+        out.headP99 = pct(hs, 0.99);
+        return out;
+    };
     const pct = (a, f) => {
         if (a.length === 0) return NaN;
         const s = Float64Array.from(a).sort();
@@ -669,6 +756,8 @@ function installMotionProbe() {
             data = fresh();
             hShips = [];
             hRec = new WeakMap();
+            frameReal = [];
+            frameZoom = [];
             hValues = 0;
         },
         summary() {
@@ -694,6 +783,7 @@ function installMotionProbe() {
                 lag: { mean: mean(data.lag), p50: pct(data.lag, 0.5), p95: pct(data.lag, 0.95) },
                 starved: (view.presentClock?.starved ?? 0) - data.starved0,
                 heading: headingSummary(hShips),
+                visible: visibleJumps(hShips),
             };
         },
     };
@@ -712,6 +802,14 @@ function printMotion(rows) {
         const h = r.motion?.heading;
         if (!h) continue;
         console.log(`${r.zoom.padEnd(8)} ${String(h.samples).padEnd(8)} ${String(h.ships).padEnd(6)} ${String(h.turningShips).padEnd(8)} ${f(h.q.p1)}${f(h.q.p5)}${f(h.q.p50)}${f(h.q.p95)}${f(h.q.p99)}${f(h.q.rms, 9)}${f(h.stallPct)}${f(h.jumpPct)}${f(h.revPct)}${f(h.jerk.mean, 10)}${f(h.jerk.p95)}${f(h.jerk.p99)}| ${f(h.stepDegP99, 9)}${f(h.stepDegMax)}| ${String(h.stillPairs).padEnd(11)} ${f(h.falseTurnPct, 10, 3)} | ${String(h.stopPairs).padEnd(10)} ${f(h.stopMovePct, 9, 2)} ${f(h.stopAwayPct, 5, 2)} | ${f(h.popPct, 6, 3)}`);
+    }
+    console.log('\nvisible  samples   pos>1px %  >4px %  p99 px  max px  | head>1.5° % >6° %  p99 °  max °  | pos jumps by snap/hyper/hitch/clock/touch/other | heading jumps by …');
+    for (const r of rows) {
+        const v = r.motion?.visible;
+        if (!v) continue;
+        const pc = (x) => (v.samples ? ((100 * x) / v.samples).toFixed(3) : '-');
+        const by = (o) => ['snap', 'hyper', 'hitch', 'clock', 'touch', 'other'].map((c) => o[c]).join('/');
+        console.log(`${r.zoom.padEnd(8)} ${String(v.samples).padEnd(9)} ${pc(v.pos).padEnd(10)} ${pc(v.posSevere).padEnd(7)} ${f(v.posP99)}${f(v.posMax, 8)}| ${pc(v.head).padEnd(10)} ${pc(v.headSevere).padEnd(6)} ${f(v.headP99)}${f(v.headMax)}| ${by(v.posBy).padEnd(47)} | ${by(v.headBy)}`);
     }
     console.log('\nclock    frames  q p1   q p50  q p99  rms(q-1) back%  stall%  jump%  jerk mean p95    | delay ms mean p5     p95    | steps/frame 0,1,2,3,4+ | lag steps mean p50 p95 | starved');
     for (const r of rows) {
