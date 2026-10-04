@@ -41,6 +41,7 @@ import { CharacterRole, CharacterTraitType, checkCharactersForTrait, getEmpireCh
 import { ColonyResourceEffect } from '../../sim/developmentLevel';
 import { formatMoney, selectStellarObject } from '../hud';
 import { issuePlayerCommand } from '../../sim/player/playerCommands';
+import { PendingValues } from '../pendingCommands';
 import { checkNodeValidForRace, queueResearchProject, dequeueResearchProject } from '../../sim/player/playerOrders';
 import {
     COLORS,
@@ -986,17 +987,29 @@ function createResearchScreen(opts: ResearchScreenOptions): OpenState {
         info.style.top = `${pos.y}px`;
     }
 
+    // Tree clicks that queued (true) / removed (false) a node, until their reply lands.
+    const pendingQueued = new PendingValues<TechNode, boolean>();
     /** ResearchTree.OnMouseClick outside edit mode. */
     async function clickNode(n: TechNode, right: boolean): Promise<void> {
         if (n.isResearched) return;
-        const items = rs.researchQueueFor(nodeIndustry(n)) ?? [];
-        const done = (): void => refresh();
+        // The queue as the clicks see it: with the nodes queued / removed by clicks whose reply has not landed yet
+        // (pendingCommands.ts) — a quick second click on a node just queued asks the crash question as in-thread.
+        const queued = rs.researchQueueFor(nodeIndustry(n)) ?? [];
+        const items = queued.filter((x) => pendingQueued.value(x, true));
+        if (pendingQueued.value(n, false) && !items.includes(n)) items.push(n);
+        const issue = (op: 'queueResearch' | 'dequeueResearch'): void => {
+            const settle = pendingQueued.send(n, op === 'queueResearch');
+            issuePlayerCommand(galaxy, empire, op, [n], () => {
+                settle();
+                refresh();
+            });
+        };
         if (!right && !items.includes(n)) {
-            if (nodeValidForRace(galaxy, n, race) && rs.canResearchNode(n)) issuePlayerCommand(galaxy, empire, 'queueResearch', [n], done);
+            if (nodeValidForRace(galaxy, n, race) && rs.canResearchNode(n)) issue('queueResearch');
         } else if (!right && items.includes(n)) {
             if (items.indexOf(n) === 0 && !n.isRushing) await startCrash(n);
         } else if (right && items.includes(n) && !n.isRushing) {
-            issuePlayerCommand(galaxy, empire, 'dequeueResearch', [n], done);
+            issue('dequeueResearch');
         }
     }
 

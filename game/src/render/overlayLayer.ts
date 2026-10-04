@@ -1,13 +1,22 @@
-// Task M3 — render three of the nine "Overlays" HUD toggles
-// (src/ui/mapOverlays.ts) against real sim data. The others (Fleet
-// Postures, Long Range Scanners, Fade civilian ships) need ship state
-// this renderer has not ported yet; their click handler in src/ui/hud.ts
-// just keeps the toggle state and leaves a
-// `// TODO(overlay): needs ships (M3)` note — no rendering happens here for
-// them.
+// Task M3 — the "Overlays" HUD toggles (src/ui/mapOverlays.ts) drawn against real sim data. Fade civilian ships is
+// builtObjectLayer.ts's sprite alpha.
 //
-// Travel Vectors (task 14c): port of MainView.2.cs method_250 per-ship pass +
-// BaconMainView.cs method_253; see travelVectorsFor.
+// Fleet Postures / Long Range Scanners (parity C3): MainView.2.cs 3921 method_247 and the scanner discs baked into the
+// galaxy / sector backdrops (MainView.1.cs 4006, MainView.2.cs 277) — pure parts in postureOverlay.ts. The posture
+// discs and lines sit in this layer's root, below the ship sprites (the C#'s method_250 draws them after method_76's
+// ships; they are translucent, and this keeps them under the galaxy-zoom symbols as in the C#).
+//
+// Travel Vectors (task 14c, parity C3): port of MainView.2.cs method_250's per-ship pass (5925-5956: the viewing
+// empire's non-fleet ships, in red, 2 px, when SpecialHighlightBuiltObjects holds them) + method_258's fleet pass
+// (6335-6370, f > 150 only: every fleet the player can see — IsObjectVisibleToThisEmpire(lead, true, false) — the
+// selected one in yellow) + BaconMainView.cs method_253 (dashed, with the arrowhead texture2D_35); see travelVectorsFor
+// / fleetTravelVector. method_258 6371-6393 also draws, for fleets in the viewer's IncomingEnemyFleetsAndPlanetDestroyers
+// that attack / bombard it, a dashed 2 px red (128, 255, 0, 0) line to their target (incomingAttackLine).
+// SpecialHighlightBuiltObjects (MainView.cs field; Main.Part9.cs 870 method_246): set when the selection changes
+// (Main.Part10.cs 1323-1331) to the player's ships travelling to the selected StellarObject
+// (Empire.6.cs 1165 DetermineShipsMovingToDestination; shipsMovingToDestination below).
+//
+// Weapon-range circles / gravity-well ring for the selected ship (BaconMain.cs 404-470): weaponRangeCircles.ts.
 //
 // Empire Territory (Controls/MainView.2.cs / GalaxyMap.cs): the original's
 // GameOptions.MapOverlayEmpireTerritory defaults *false*, but it does not
@@ -45,9 +54,14 @@
 // TODO(overlay): fold in colony-ship design range and ruin/superluxury
 // bonuses once those are ported.
 
-import { circleAtScreenRes } from './screenCircle';
-import type { MotionInterpolator } from './renderInterp';
-import { Container, Graphics, Sprite, Texture } from 'pixi.js';
+import { circleAtScreenRes, segmentCircle } from './screenCircle';
+import { drawnBuiltObjectPos, type MotionInterpolator } from './renderInterp';
+import { ColorMatrixFilter, Container, Graphics, Sprite, Texture } from 'pixi.js';
+import { LRS_DISC_URL, LRS_LAYER_ALPHA, POSTURE_ALPHA, POSTURE_LINE_WIDTH_PX, fleetPostureMarks, longRangeScannerDiscs, scannerLayerFade } from './postureOverlay';
+import { WEAPON_CIRCLES_MIN_FACTOR, drawRangeCircle, gravityWellRing, weaponRangeCircles } from './weaponRangeCircles';
+import { isObjectVisibleToThisEmpire } from '../sim/independentTraders';
+import { BuiltObjectMission, BuiltObjectMissionType } from '../sim/missions/mission';
+import { getSettings } from '../ui/settings';
 import type { Camera } from './camera';
 import type { Galaxy } from '../sim/galaxy';
 import { HabitatCategoryType, type Habitat } from '../sim/types';
@@ -60,6 +74,7 @@ import type { ShipGroup } from '../sim/fleets/shipGroup';
 import { builtObjectMission } from '../sim/missions/mission';
 import { BuiltObjectRole } from '../sim/data/designSpecifications';
 import { DrawKey } from './drawCache';
+import { warEmpires } from './builtObjectLayer';
 import { FreightOverlay } from './freightOverlay'; // [freightOverlay]
 import { threatKnownSites, type KnownThreatSite } from '../sim/scenario/threats/framework';
 import { scenarioMapFeatures, type ScenarioMapMarker } from '../sim/scenario/mapFeatures';
@@ -208,7 +223,15 @@ export function travelVectorFor(bo: BuiltObject): TravelVector | null {
  * vector (BaconMainView.method_253 with bool_13 true, so a fleet member selected alone is not excluded). */
 export const SELECTED_TRAVEL_VECTOR_COLOR = 0xffff00;
 export const SELECTED_TRAVEL_VECTOR_MIN_FACTOR = 0.9;
-export type SelectedObjectLike = { builtObject?: BuiltObject; shipGroup?: ShipGroup } | null;
+export type SelectedObjectLike = {
+    builtObject?: BuiltObject;
+    shipGroup?: ShipGroup;
+    habitat?: Habitat;
+    creature?: unknown;
+    fighter?: unknown;
+    builtObjects?: BuiltObject[];
+    systemInfo?: boolean;
+} | null;
 export function selectedTravelVectorFor(sel: SelectedObjectLike, player: Empire | null, f: number): TravelVector | null {
     if (sel === null || player === null || !(f > SELECTED_TRAVEL_VECTOR_MIN_FACTOR)) return null;
     const bo = (sel.shipGroup !== undefined ? sel.shipGroup.leadShip : sel.builtObject) ?? null;
@@ -217,8 +240,9 @@ export function selectedTravelVectorFor(sel: SelectedObjectLike, player: Empire 
     return v !== null && travelVectorLongEnough(v, f) ? v : null;
 }
 
-// TODO(port): other empires' fleets (method_258 + IsObjectVisibleToThisEmpire), selected-fleet yellow, SpecialHighlightBuiltObjects red, arrow head (texture2D_35)
-// Port of MainView.2.cs method_250 (5925-5956) travel-vector filter + method_258 (player fleets, State only)
+// Port of MainView.2.cs method_250's per-ship pass (5925-5956): the viewing empire's ships outside a fleet (a fleet's
+// ships are drawn by method_258's fleet pass: lead ships are skipped there, 5932-5935, and members fail method_253's
+// ShipGroup clause), State = with an Owner, Private = without.
 export function travelVectorsFor(
     galaxy: { builtObjects: readonly (BuiltObject | null)[] },
     player: Empire | null,
@@ -229,18 +253,85 @@ export function travelVectorsFor(
     for (const bo of galaxy.builtObjects) {
         if (bo === null || bo === undefined) continue;
         const group = bo.shipGroup as ShipGroup | null;
-        let include: boolean;
-        if (group !== null && group !== undefined) {
-            // method_258: fleet lead ships ignore Owner; other members are
-            // skipped (method_253's ShipGroup clause).
-            include = kind === 'state' && group.leadShip === bo && group.empire === player;
-        } else {
-            include = bo.actualEmpire === player && (kind === 'private' ? bo.owner === null : bo.owner !== null);
-        }
-        if (!include) continue;
+        if (group !== null && group !== undefined) continue;
+        if (bo.actualEmpire !== player || (kind === 'private' ? bo.owner !== null : bo.owner === null)) continue;
         const v = travelVectorFor(bo);
         if (v !== null) out.push(v);
     }
+    return out;
+}
+
+/** MainView.2.cs 5939-5942: SpecialHighlightBuiltObjects vectors are red (255, 0, 0) and 2 px. */
+export const SPECIAL_HIGHLIGHT_VECTOR_COLOR = 0xff0000;
+export const SPECIAL_HIGHLIGHT_VECTOR_WIDTH = 2;
+/** MainView.2.cs 6162: method_258 (fleet icons, fleet travel vectors, incoming attacks) runs only at f > 150 (num16). */
+export const FLEET_PASS_MIN_FACTOR = 150;
+/** method_258 6390: Color.FromArgb(128, 255, 0, 0), 2 px, dashed. */
+export const INCOMING_ATTACK_COLOR = 0xff0000;
+export const INCOMING_ATTACK_ALPHA = 128 / 255;
+export const INCOMING_ATTACK_WIDTH = 2;
+
+/**
+ * Port of MainView.2.cs 6335-6370 (method_258, the Travel Vectors (State) part): a visible fleet's lead-ship vector —
+ * yellow when the fleet is the selection, else the 170-grey (method_251); method_253's guards with bool_13 false
+ * (a lead ship passes the ShipGroup clause).
+ */
+export function fleetTravelVector(sg: ShipGroup, selected: boolean): { v: TravelVector; color: number } | null {
+    const lead = sg.leadShip;
+    if (lead === null) return null;
+    const v = travelVectorFor(lead);
+    if (v === null) return null;
+    return { v, color: selected ? SELECTED_TRAVEL_VECTOR_COLOR : TRAVEL_VECTOR_COLOR };
+}
+
+/**
+ * Port of MainView.2.cs 6371-6393: when `viewer`'s IncomingEnemyFleetsAndPlanetDestroyers holds this fleet and the
+ * fleet's mission attacks / bombards the viewer (ResolveMissionTargetEmpire), the line from its lead ship to the
+ * mission target (ResolveTargetCoordinates). Null otherwise.
+ */
+export function incomingAttackLine(sg: ShipGroup, viewer: Pick<Empire, 'incomingEnemyFleetsAndPlanetDestroyers'>): { x: number; y: number } | null {
+    let inList = false;
+    for (const fa of viewer.incomingEnemyFleetsAndPlanetDestroyers) {
+        if ((fa as { fleet: ShipGroup | null }).fleet === sg) {
+            inList = true;
+            break;
+        }
+    }
+    if (!inList) return null;
+    const m = sg.mission;
+    if (m === null) return null;
+    const t = m.type;
+    if (t !== BuiltObjectMissionType.Attack && t !== BuiltObjectMissionType.WaitAndAttack && t !== BuiltObjectMissionType.Bombard && t !== BuiltObjectMissionType.WaitAndBombard) return null;
+    if (BuiltObjectMission.resolveMissionTargetEmpire(m) !== viewer) return null;
+    return m.resolveTargetCoordinates(m);
+}
+
+/**
+ * The C# SelectedObject as a StellarObject (Main.Part10.cs 1328: SpecialHighlightBuiltObjects is only filled for one):
+ * the selected ship / base or habitat. A fleet, a multi-selection, a system (SystemInfo) or nothing is none.
+ */
+export function selectedStellarObject(sel: SelectedObjectLike): BuiltObject | Habitat | null {
+    if (sel === null || sel.shipGroup !== undefined || sel.builtObjects !== undefined || sel.systemInfo === true) return null;
+    if (sel.creature !== undefined || sel.fighter !== undefined) return null; // TODO(port): creature / fighter destinations
+    return sel.builtObject ?? sel.habitat ?? null;
+}
+
+/** Port of Empire.6.cs 1186 CheckShipTravellingToDestination. */
+export function checkShipTravellingToDestination(bo: BuiltObject | null, destination: { hasBeenDestroyed: boolean } | null): boolean {
+    if (bo === null || bo.hasBeenDestroyed || destination === null || destination.hasBeenDestroyed) return false;
+    const m = builtObjectMission(bo.mission);
+    if (m === null || m.type === BuiltObjectMissionType.Undefined) return false;
+    if (m.target === destination) return m.type !== BuiltObjectMissionType.Transport;
+    if (m.secondaryTarget === destination) return m.type === BuiltObjectMissionType.Transport;
+    return false;
+}
+
+/** Port of Empire.6.cs 1165 DetermineShipsMovingToDestination: the empire's state then private ships heading there. */
+export function shipsMovingToDestination(empire: Pick<Empire, 'builtObjects' | 'privateBuiltObjects'>, destination: { hasBeenDestroyed: boolean } | null): Set<BuiltObject> {
+    const out = new Set<BuiltObject>();
+    if (destination === null) return out;
+    for (const bo of empire.builtObjects) if (checkShipTravellingToDestination(bo, destination)) out.add(bo);
+    for (const bo of empire.privateBuiltObjects) if (checkShipTravellingToDestination(bo, destination)) out.add(bo);
     return out;
 }
 
@@ -279,6 +370,13 @@ export function dashSegments(
     return out;
 }
 
+/** The weapon-range circles are opt-in (BaconMain.drawWeaponRangeCircles stand-in): the setting, or `?rangeCircles=1`. */
+let rangeCirclesParam: boolean | null = null;
+export function weaponCirclesEnabled(): boolean {
+    if (rangeCirclesParam === null) rangeCirclesParam = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('rangeCircles') === '1';
+    return rangeCirclesParam || getSettings().showWeaponRangeCircles;
+}
+
 export class OverlayLayer {
     /** World-space layer: marker rings live above everything else. */
     root = new Container();
@@ -308,6 +406,32 @@ export class OverlayLayer {
     private scenarioMarkers = new Graphics();
     private scenarioMarkerList: ScenarioMapMarker[] = [];
     private scenarioFrame = 0;
+    /** Long Range Scanners: lrs.png discs composited as one layer, then (one colour matrix) RGB set to white — method_221
+     *  — and alpha x 13 % — method_236(0.13) — as the C#'s separate bitmap. */
+    private lrsLayer = new Container();
+    /** Created on first use (a filter compiles a GL program; headless tests build the layer without a GL context). */
+    private lrsFilter: ColorMatrixFilter | null = null;
+    private lrsSprites: Sprite[] = [];
+    private lrsTex: Texture | null = null;
+    /** Fleet Postures: the discs (sprites of lrs.png, tinted), their circles and the gather → attack lines. */
+    private postureDiscs = new Container();
+    private postureSprites: Sprite[] = [];
+    private postureLines = new Graphics();
+    private postureArrows = new Container();
+    /** Red 2 px vectors of SpecialHighlightBuiltObjects and the incoming-attack lines (their own strokes). */
+    private highlightVectors = new Graphics();
+    private incomingLines = new Graphics();
+    /** Another empire's selected fleet's vector (yellow; method_258 6352-6365). */
+    private foreignSelVector = new Graphics();
+    /** SpecialHighlightBuiltObjects (MainView.cs): rebuilt when the selection changes (Main.Part10.cs 1323-1331). */
+    private specialHighlight: Set<BuiltObject> = new Set();
+    private highlightFor: unknown = undefined;
+    /** method_258's fleets the player can see (IsObjectVisibleToThisEmpire(lead, true, false)), refreshed once a second. */
+    private visibleFleets: ShipGroup[] = [];
+    private fleetsRefreshedAt = -Infinity;
+    /** Weapon-range circles (centred on the selected ship) and the gravity-well ring (on its nearest star). */
+    private weaponCircles = new Graphics();
+    private gravityRing = new Graphics();
     // [wreckage] begin — scenario 19e-7 wreck-field markers.
     private wrecks = new Graphics();
     private wreckList: WreckField[] = [];
@@ -321,15 +445,29 @@ export class OverlayLayer {
         private state: MapOverlayState,
     ) {
         world.addChild(this.root);
+        // The scanner discs first: just above the territory layer (empireLayer, added to world before this root), as
+        // they share the backdrop bitmap in the C#.
+        this.lrsLayer.visible = false;
+        this.root.addChild(this.lrsLayer);
+        this.root.addChild(this.postureDiscs, this.postureLines, this.postureArrows);
         this.root.addChild(this.travelVectors);
+        this.root.addChild(this.highlightVectors);
+        this.root.addChild(this.incomingLines);
+        this.root.addChild(this.foreignSelVector);
         this.root.addChild(this.arrowheads);
         this.root.addChild(this.selVector);
+        this.root.addChild(this.weaponCircles, this.gravityRing);
         if (typeof Image !== 'undefined') {
             const img = new Image();
             img.onload = () => {
                 this.arrowTex = Texture.from(img);
             };
             img.src = ARROWHEAD_URL;
+            const disc = new Image();
+            disc.onload = () => {
+                this.lrsTex = Texture.from(disc);
+            };
+            disc.src = LRS_DISC_URL;
         }
         // [freightOverlay] begin
         this.freight = new FreightOverlay(galaxy, this.root, state);
@@ -408,8 +546,16 @@ export class OverlayLayer {
         this.updateGroup(this.potentialColonies, atSystemZoom && this.state.potentialColonies, z, cam);
         this.updateGroup(this.scenicLocations, atSystemZoom && this.state.scenicLocations, z, cam);
         this.updateGroup(this.researchLocations, atSystemZoom && this.state.researchLocations, z, cam);
-        this.updateTravelVectors(z, cam);
+        const f = 1 / z;
+        // MainView.cs 1538: method_250 (everything below but the scanner discs) runs above minZoomLevelForWeaponsCircles.
+        const overlays = f > WEAPON_CIRCLES_MIN_FACTOR;
+        this.updateScanners(z, cam);
+        this.updatePostures(z, cam, overlays);
+        this.arrowCount = 0;
+        this.refreshSpecialHighlight();
+        this.updateTravelVectors(z, cam, overlays);
         this.updateSelectedVector(z);
+        this.updateRangeCircles(z, overlays);
         this.freight.motion = this.motion; // [freightOverlay] leaders follow the drawn freighters
         this.freight.update(z, cam); // [freightOverlay]
         this.updateThreats(z);
@@ -507,66 +653,323 @@ export class OverlayLayer {
         g.visible = true;
     }
 
-    /** Travel Vectors (State / Private): dashed grey line from each of the
-     * player's hyperspeed ships to its current command target, redrawn every
-     * frame. MainView.2.cs method_250 draws above zoom factor 0.9 (always). */
-    private updateTravelVectors(z: number, cam: Camera): void {
-        const g = this.travelVectors;
-        const player = this.galaxy.playerEmpire;
-        if ((!this.state.travelVectorsState && !this.state.travelVectorsPrivate) || player === null) {
-            // Off (the default): clear once, not every frame (clearing marks the geometry for a rebuild).
-            if (g.visible) {
-                g.clear();
-                g.visible = false;
-            }
-            this.arrowheads.visible = false;
-            return;
-        }
-        g.clear();
-        let arrows = 0;
+    /** A pooled arrowhead sprite (texture2D_35) at the end of a vector, tinted with the line colour. */
+    private arrowCount = 0;
+    private placeArrow(x1: number, y1: number, x2: number, y2: number, color: number, alpha: number, lineThickness: number, f: number): void {
         const tex = this.arrowTex;
-        const kinds: TravelVectorKind[] = [];
-        if (this.state.travelVectorsState) kinds.push('state');
-        if (this.state.travelVectorsPrivate) kinds.push('private');
+        if (tex === null) return;
+        const a = arrowheadPlacement(x1, y1, x2, y2, tex.width, tex.height, lineThickness, f);
+        let sp = this.arrowheads.children[this.arrowCount] as Sprite | undefined;
+        if (sp === undefined) {
+            sp = new Sprite(tex);
+            sp.anchor.set(0.5);
+            this.arrowheads.addChild(sp);
+        }
+        sp.visible = true;
+        sp.tint = color;
+        sp.alpha = alpha;
+        sp.position.set(a.x, a.y);
+        sp.rotation = a.rotation;
+        sp.scale.set(a.scale * f);
+        this.arrowCount++;
+    }
+
+    /** XnaDrawingHelper.DrawLine(dashed: true): 6 px dashes and gaps. Returns false when shorter than one step (no
+     * arrowhead then: the C# loop does not run). */
+    private dashed(g: Graphics, x1: number, y1: number, x2: number, y2: number, f: number): boolean {
+        const segs = dashSegments(x1, y1, x2, y2, TRAVEL_VECTOR_DASH_PX * f, TRAVEL_VECTOR_DASH_PX * f);
+        for (const [ax, ay, bx, by] of segs) g.moveTo(ax, ay).lineTo(bx, by);
+        return Math.hypot(x2 - x1, y2 - y1) >= TRAVEL_VECTOR_DASH_PX * f;
+    }
+
+    /** SpecialHighlightBuiltObjects: recomputed when the selected object changes (Main.Part10.cs 1323-1331, 1501). */
+    private refreshSpecialHighlight(): void {
+        const target = selectedStellarObject(this.getSelection());
+        if (target === this.highlightFor) return;
+        this.highlightFor = target;
+        const player = this.galaxy.playerEmpire;
+        this.specialHighlight = player !== null && target !== null ? shipsMovingToDestination(player, target) : new Set();
+    }
+
+    /** Where `bo` is drawn this frame (renderInterp.ts drawnBuiltObjectPos), else its sim position. */
+    private drawnPos(bo: BuiltObject): { x: number; y: number } {
+        return this.motion !== null ? drawnBuiltObjectPos(this.motion, bo) : { x: bo.xpos, y: bo.ypos };
+    }
+
+    /**
+     * Travel Vectors (State / Private) and method_258's fleet lines, redrawn every frame:
+     * - the per-ship pass (method_250 5925-5956) for the player's non-fleet ships: 1 px grey, 2 px red when special-
+     *   highlighted, only ships inside the view;
+     * - at f > 150 the fleet pass (method_258): for every fleet the player sees, with State on, its lead ship's vector
+     *   (yellow when selected), and — whatever the toggles — the red incoming-attack line.
+     */
+    private updateTravelVectors(z: number, cam: Camera, overlays: boolean): void {
+        const g = this.travelVectors;
+        const hg = this.highlightVectors;
+        const ig = this.incomingLines;
+        // Clearing marks a Graphics for re-tessellation: only those drawn last frame.
+        if (g.visible) g.clear();
+        if (hg.visible) hg.clear();
+        if (ig.visible) ig.clear();
+        const player = this.galaxy.playerEmpire;
         const f = 1 / z;
         const halfW = cam.width / (2 * z);
         const halfH = cam.height / (2 * z);
-        for (const kind of kinds) {
-            for (const v of travelVectorsFor(this.galaxy, player, kind)) {
-                // Start at the drawn (render-interpolated) ship when BuiltObjectLayer drew it this frame.
-                const d = this.motion !== null ? this.motion.drawn(v.builtObject) : null;
-                if (d !== null) {
+        const inView = (x: number, y: number): boolean => !(x < cam.x - halfW || x > cam.x + halfW || y < cam.y - halfH || y > cam.y + halfH);
+        let any = false;
+        let anyHi = false;
+        let anyIn = false;
+        let anySel = false;
+        const sg2 = this.foreignSelVector;
+        if (sg2.visible) sg2.clear();
+        if (overlays && player !== null && (this.state.travelVectorsState || this.state.travelVectorsPrivate)) {
+            const kinds: TravelVectorKind[] = [];
+            if (this.state.travelVectorsState) kinds.push('state');
+            if (this.state.travelVectorsPrivate) kinds.push('private');
+            for (const kind of kinds) {
+                for (const v of travelVectorsFor(this.galaxy, player, kind)) {
+                    // Cull on the committed position first (cheap), then start at the drawn ship.
+                    if (!inView(v.x1, v.y1)) continue;
+                    const d = this.drawnPos(v.builtObject);
                     v.x1 = d.x;
                     v.y1 = d.y;
+                    if (!inView(v.x1, v.y1) || !travelVectorLongEnough(v, f)) continue;
+                    if (this.specialHighlight.size > 0 && this.specialHighlight.has(v.builtObject)) {
+                        if (this.dashed(hg, v.x1, v.y1, v.x2, v.y2, f)) this.placeArrow(v.x1, v.y1, v.x2, v.y2, SPECIAL_HIGHLIGHT_VECTOR_COLOR, 1, SPECIAL_HIGHLIGHT_VECTOR_WIDTH, f);
+                        anyHi = true;
+                    } else {
+                        if (this.dashed(g, v.x1, v.y1, v.x2, v.y2, f)) this.placeArrow(v.x1, v.y1, v.x2, v.y2, TRAVEL_VECTOR_COLOR, 1, 1, f);
+                        any = true;
+                    }
                 }
-                // MainView.2.cs: only ships inside the view get a vector.
-                if (v.x1 < cam.x - halfW || v.x1 > cam.x + halfW || v.y1 < cam.y - halfH || v.y1 > cam.y + halfH) continue;
-                if (!travelVectorLongEnough(v, f)) continue;
-                for (const [ax, ay, bx, by] of dashSegments(v.x1, v.y1, v.x2, v.y2, TRAVEL_VECTOR_DASH_PX * f, TRAVEL_VECTOR_DASH_PX * f)) {
-                    g.moveTo(ax, ay).lineTo(bx, by);
+            }
+        }
+        if (overlays && player !== null && f > FLEET_PASS_MIN_FACTOR) {
+            const now = performance.now();
+            if (now - this.fleetsRefreshedAt >= 1000) {
+                this.fleetsRefreshedAt = now;
+                this.refreshVisibleFleets(player);
+            }
+            const sel = this.getSelection();
+            const selGroup = sel?.shipGroup ?? null;
+            const opts = getSettings();
+            for (const sg of this.visibleFleets) {
+                const lead = sg.leadShip;
+                if (lead === null || lead.hasBeenDestroyed) continue;
+                // method_250 6127-6160: the GalaxyViewDisplay options (beyond f = 3500) gate the whole method_258 call.
+                if (f > 3500 && !opts.galaxyViewDisplayFleets && !(this.war.has(sg.empire) && opts.galaxyViewDisplayAlwaysEnemyFleets)) continue;
+                if (!inView(lead.xpos, lead.ypos)) continue;
+                const p = this.drawnPos(lead);
+                const lx = p.x;
+                const ly = p.y;
+                if (!inView(lx, ly)) continue;
+                if (this.state.travelVectorsState) {
+                    const fv = fleetTravelVector(sg, sg === selGroup);
+                    if (fv !== null) {
+                        fv.v.x1 = lx;
+                        fv.v.y1 = ly;
+                        if (travelVectorLongEnough(fv.v, f)) {
+                            if (fv.color === SELECTED_TRAVEL_VECTOR_COLOR && sg.empire === player) {
+                                // The player's selected fleet: the selected-object vector (updateSelectedVector) draws the
+                                // same yellow line (the C# draws both); one suffices.
+                            } else if (fv.color === SELECTED_TRAVEL_VECTOR_COLOR) {
+                                // Another empire's selected fleet: yellow, here only.
+                                if (this.dashed(sg2, lx, ly, fv.v.x2, fv.v.y2, f)) this.placeArrow(lx, ly, fv.v.x2, fv.v.y2, fv.color, 1, 1, f);
+                                anySel = true;
+                            } else {
+                                if (this.dashed(g, lx, ly, fv.v.x2, fv.v.y2, f)) this.placeArrow(lx, ly, fv.v.x2, fv.v.y2, fv.color, 1, 1, f);
+                                any = true;
+                            }
+                        }
+                    }
                 }
+                const t = incomingAttackLine(sg, player);
+                if (t !== null) {
+                    this.dashed(ig, lx, ly, t.x, t.y, f);
+                    anyIn = true;
+                }
+            }
+        }
+        for (let i = this.arrowCount; i < this.arrowheads.children.length; i++) this.arrowheads.children[i].visible = false;
+        this.arrowheads.visible = this.arrowCount > 0;
+        const dpr = typeof window !== 'undefined' ? window.devicePixelRatio : 1;
+        if (any) g.stroke({ width: f * travelVectorWidthPx(dpr), color: TRAVEL_VECTOR_COLOR, alpha: 1 });
+        if (anyHi) hg.stroke({ width: f * SPECIAL_HIGHLIGHT_VECTOR_WIDTH, color: SPECIAL_HIGHLIGHT_VECTOR_COLOR, alpha: 1 });
+        if (anySel) sg2.stroke({ width: f * travelVectorWidthPx(dpr), color: SELECTED_TRAVEL_VECTOR_COLOR, alpha: 1 });
+        sg2.visible = anySel;
+        if (anyIn) ig.stroke({ width: f * INCOMING_ATTACK_WIDTH, color: INCOMING_ATTACK_COLOR, alpha: INCOMING_ATTACK_ALPHA });
+        g.visible = any;
+        hg.visible = anyHi;
+        ig.visible = anyIn;
+    }
+
+    /** method_258 6340: the fleets of every empire the player can see (its own always). */
+    private refreshVisibleFleets(player: Empire): void {
+        const out: ShipGroup[] = [];
+        // The player's own fleets first (method_258(empire)), then the other empires' (MainView.2.cs 6136-6158).
+        const empires = [player, ...this.galaxy.empires.filter((e) => e !== null && e !== player)];
+        for (const e of empires) {
+            for (const sgU of (e as Empire).shipGroups) {
+                const sg = sgU as ShipGroup | null;
+                if (sg === null || sg.leadShip === null || sg.leadShip.hasBeenDestroyed) continue;
+                if (sg.empire !== player && !isObjectVisibleToThisEmpire(this.galaxy, player, sg.leadShip, true, false)) continue;
+                out.push(sg);
+            }
+        }
+        this.visibleFleets = out;
+        this.war = new Set(warEmpires(player.diplomaticRelations));
+    }
+    private war = new Set<Empire | null>();
+
+    /**
+     * Long Range Scanners (MainView.1.cs 4006-4058 / MainView.2.cs 277-322): the white discs, composited at 13 %, with
+     * the backdrop's fade, at f > 70.
+     */
+    private updateScanners(z: number, cam: Camera): void {
+        const player = this.galaxy.playerEmpire;
+        const fade = scannerLayerFade(1 / z);
+        const tex = this.lrsTex;
+        if (!this.state.longRangeScanners || player === null || fade <= 0 || tex === null) {
+            this.lrsLayer.visible = false;
+            return;
+        }
+        let n = 0;
+        // method_123(method_125(), 2): the view rectangle doubled.
+        const halfW = cam.width / z;
+        const halfH = cam.height / z;
+        for (const d of longRangeScannerDiscs(player)) {
+            if (d.x + d.radius < cam.x - halfW || d.x - d.radius > cam.x + halfW || d.y + d.radius < cam.y - halfH || d.y - d.radius > cam.y + halfH) continue;
+            let sp = this.lrsSprites[n];
+            if (sp === undefined) {
+                sp = new Sprite(tex);
+                sp.anchor.set(0.5);
+                this.lrsSprites.push(sp);
+                this.lrsLayer.addChild(sp);
+            }
+            sp.texture = tex;
+            sp.visible = true;
+            sp.position.set(d.x, d.y);
+            sp.scale.set((2 * d.radius) / (tex.width || 1), (2 * d.radius) / (tex.height || 1));
+            n++;
+        }
+        for (let i = n; i < this.lrsSprites.length; i++) this.lrsSprites[i].visible = false;
+        const a = LRS_LAYER_ALPHA * fade;
+        if (this.lrsFilter === null) {
+            this.lrsFilter = new ColorMatrixFilter();
+            this.lrsLayer.filters = [this.lrsFilter];
+        }
+        if (this.lrsFilter.matrix[18] !== a) this.lrsFilter.matrix = [0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, a, 0];
+        this.lrsLayer.visible = n > 0;
+    }
+
+    /** Fleet Postures (MainView.2.cs 3921 method_247): the player's fleets' attack / defend discs and gather lines. */
+    private updatePostures(z: number, cam: Camera, overlays: boolean): void {
+        const g = this.postureLines;
+        const player = this.galaxy.playerEmpire;
+        const tex = this.lrsTex;
+        if (g.visible) g.clear();
+        if (!overlays || !this.state.fleetPostures || player === null) {
+            this.postureDiscs.visible = false;
+            this.postureArrows.visible = false;
+            g.visible = false;
+            return;
+        }
+        const f = 1 / z;
+        const halfW = cam.width / (2 * z);
+        const halfH = cam.height / (2 * z);
+        let n = 0;
+        let arrows = 0;
+        let any = false;
+        for (const m of fleetPostureMarks(player)) {
+            const r = m.radius;
+            if (r > 0 && m.x + r > cam.x - halfW && m.x - r < cam.x + halfW && m.y + r > cam.y - halfH && m.y - r < cam.y + halfH) {
                 if (tex !== null) {
-                    const a = arrowheadPlacement(v.x1, v.y1, v.x2, v.y2, tex.width, tex.height, 1, f);
-                    let sp = this.arrowheads.children[arrows] as Sprite | undefined;
+                    let sp = this.postureSprites[n];
                     if (sp === undefined) {
                         sp = new Sprite(tex);
                         sp.anchor.set(0.5);
-                        sp.tint = TRAVEL_VECTOR_COLOR;
-                        this.arrowheads.addChild(sp);
+                        this.postureSprites.push(sp);
+                        this.postureDiscs.addChild(sp);
+                    }
+                    sp.texture = tex;
+                    sp.visible = true;
+                    sp.position.set(m.x, m.y);
+                    sp.scale.set((2 * r) / (tex.width || 1), (2 * r) / (tex.height || 1));
+                    sp.tint = m.color;
+                    sp.alpha = POSTURE_ALPHA;
+                    n++;
+                }
+                // XnaDrawingHelper.DrawCircle(rect, 100 segments, color, 1).
+                segmentCircle(g, m.x, m.y, r, 100).stroke({ width: f, color: m.color, alpha: POSTURE_ALPHA });
+                any = true;
+            }
+            if (m.from !== null) {
+                // DrawLine(gather → attack, color, 3, dashed, texture2D_35).
+                if (this.dashed(g, m.from.x, m.from.y, m.x, m.y, f) && this.arrowTex !== null) {
+                    const at = this.arrowTex;
+                    const a = arrowheadPlacement(m.from.x, m.from.y, m.x, m.y, at.width, at.height, POSTURE_LINE_WIDTH_PX, f);
+                    let sp = this.postureArrows.children[arrows] as Sprite | undefined;
+                    if (sp === undefined) {
+                        sp = new Sprite(at);
+                        sp.anchor.set(0.5);
+                        this.postureArrows.addChild(sp);
                     }
                     sp.visible = true;
+                    sp.tint = m.color;
+                    sp.alpha = POSTURE_ALPHA;
                     sp.position.set(a.x, a.y);
                     sp.rotation = a.rotation;
                     sp.scale.set(a.scale * f);
                     arrows++;
                 }
+                g.stroke({ width: POSTURE_LINE_WIDTH_PX * f, color: m.color, alpha: POSTURE_ALPHA });
+                any = true;
             }
         }
-        for (let i = arrows; i < this.arrowheads.children.length; i++) this.arrowheads.children[i].visible = false;
-        this.arrowheads.visible = true;
-        const dpr = typeof window !== 'undefined' ? window.devicePixelRatio : 1;
-        g.stroke({ width: f * travelVectorWidthPx(dpr), color: TRAVEL_VECTOR_COLOR, alpha: 1 });
-        g.visible = true;
+        for (let i = n; i < this.postureSprites.length; i++) this.postureSprites[i].visible = false;
+        for (let i = arrows; i < this.postureArrows.children.length; i++) this.postureArrows.children[i].visible = false;
+        this.postureDiscs.visible = n > 0;
+        this.postureArrows.visible = arrows > 0;
+        g.visible = any;
+    }
+
+    /**
+     * BaconMain.cs 442 DrawWeaponRanges (opt-in: the showWeaponRangeCircles setting, or `?rangeCircles=1`) around the
+     * selected ship's drawn position and 404 DrawGravityWellRange around its nearest star (useStarGravityWells).
+     */
+    private updateRangeCircles(z: number, overlays: boolean): void {
+        const wg = this.weaponCircles;
+        const gg = this.gravityRing;
+        if (wg.visible) wg.clear();
+        if (gg.visible) gg.clear();
+        wg.visible = false;
+        gg.visible = false;
+        if (!overlays) return;
+        const sel = this.getSelection();
+        const f = 1 / z;
+        if (weaponCirclesEnabled() && sel !== null && sel.builtObject !== undefined && sel.shipGroup === undefined && sel.builtObjects === undefined) {
+            const bo = sel.builtObject;
+            if (!bo.hasBeenDestroyed) {
+                const circles = weaponRangeCircles(bo as unknown as Parameters<typeof weaponRangeCircles>[0], f);
+                if (circles.length > 0) {
+                    const p = this.drawnPos(bo);
+                    // Drawn around (0, 0) and moved there: galaxy coordinates run to millions (float32 vertices).
+                    wg.position.set(p.x, p.y);
+                    for (const c of circles) {
+                        drawRangeCircle(wg, 0, 0, c, z);
+                        wg.stroke({ width: f, color: c.color, alpha: 1 });
+                    }
+                    wg.visible = true;
+                }
+            }
+        }
+        const ring = gravityWellRing(sel, this.galaxy.playerEmpire);
+        if (ring !== null) {
+            gg.position.set(ring.star.xpos, ring.star.ypos);
+            drawRangeCircle(gg, 0, 0, { radius: ring.radius, color: 0x0000ff, dashed: true }, z);
+            gg.stroke({ width: f, color: 0x0000ff, alpha: 1 });
+            gg.visible = true;
+        }
     }
 
     /** The selected ship / fleet's yellow travel vector (MainView.2.cs method_250 selected-object block). */
@@ -582,11 +985,9 @@ export class OverlayLayer {
             if (this.selArrow !== null) this.selArrow.visible = false;
             return;
         }
-        const d = this.motion !== null ? this.motion.drawn(v.builtObject) : null;
-        if (d !== null) {
-            v.x1 = d.x;
-            v.y1 = d.y;
-        }
+        const d = this.drawnPos(v.builtObject);
+        v.x1 = d.x;
+        v.y1 = d.y;
         g.clear();
         for (const [ax, ay, bx, by] of dashSegments(v.x1, v.y1, v.x2, v.y2, TRAVEL_VECTOR_DASH_PX * f, TRAVEL_VECTOR_DASH_PX * f)) {
             g.moveTo(ax, ay).lineTo(bx, by);

@@ -74,6 +74,7 @@ import { confirmAutomationOff } from './orderMenu';
 import { galaxyStarDate } from '../sim/tick/simTime';
 import { createShipAction, ShipActionType } from '../sim/player/shipAction';
 import { issuePlayerCommand } from '../sim/player/playerCommands';
+import { PendingOnce, PendingValues } from './pendingCommands';
 // [troops] end
 import { moneyPanelIncome, moneyPanelWriteDue } from '../sim/treasury';
 import { countLabel } from './plural';
@@ -93,6 +94,7 @@ import { createCharterButton } from './screens/charters'; // [charters]
 import { setTextIfChanged } from '../render/drawCache';
 import { CREATURE_FRAME_SETS, creatureFrameSetIndexes, creatureFrameUrls } from '../render/creatureLayer';
 import type { Creature } from '../sim/creature';
+import type { Fighter } from '../sim/combat/fighters';
 
 // Port of Main.Part12.cs LoadUiChromeButtons (381–520): the control → chrome
 // button image mapping. The original loads each control's image from
@@ -374,6 +376,9 @@ export interface Selection {
     shipGroup?: ShipGroup;
     /** A selected space creature (InfoPanel.cs DrawCreature). `habitat` is then its nearest system's star. */
     creature?: Creature;
+    /** A selected launched fighter (InfoPanel.cs 3495 DrawFighter; picked on the map, Main.Part11.cs 1579-1600).
+     *  `habitat` is then its nearest system's star. */
+    fighter?: Fighter;
     /** Several selected ships (the C# BuiltObjectList selection: a left-drag box or Shift-clicks), 2+ entries;
      * `builtObject` / `shipGroup` are then unset and `habitat` is the first ship's nearest system star. */
     builtObjects?: BuiltObject[];
@@ -437,6 +442,12 @@ export function setSelection(sel: Selection | null): void {
 let creatureSelectHandler: ((c: Creature, moveView: boolean) => void) | null = null;
 export function selectCreature(c: Creature, moveView = false): void {
     creatureSelectHandler?.(c, moveView);
+}
+
+// Fighter selection hook: buildSelectionPanel registers it; the Main View's fighter click calls selectFighter.
+let fighterSelectHandler: ((f: Fighter) => void) | null = null;
+export function selectFighter(f: Fighter): void {
+    fighterSelectHandler?.(f);
 }
 
 // [15c] Fleet selection hook: buildSelectionPanel registers it; the Fleets list,
@@ -1336,6 +1347,54 @@ function buildSelectionPanel(wiring: HudWiring): HTMLElement {
     const content = document.createElement('div');
     content.className = 'sel-content-box';
     detail.appendChild(content);
+    // The main view's hover message over the selection panel (Main.Part10.cs 1141-1159, method_206 case
+    // "pnlDetailInfo" / "pnlInfoPanel": "Selection Panel: click to center view on selected item" while pnlDetailInfo
+    // is visible, replaced by the hovered hotspot's HoverMessage → string_17), drawn in yellow with a drop shadow at
+    // HoverMessageLocation = (10, height - (pnlInfoPanel + btnSelectionForward + btnSelectionAction1 heights + 4 +
+    // 35)), Main.Part12.cs 2103 / MainView.cs 1599: 19 px above this frame's top, at its left edge.
+    const hoverMsg = document.createElement('div');
+    hoverMsg.className = 'sel-hover-msg';
+    hoverMsg.hidden = true;
+    panel.appendChild(hoverMsg);
+    let hoverPoint: { x: number; y: number } | null = null;
+    const syncHoverMessage = (): void => {
+        let text = '';
+        if (hoverPoint !== null) {
+            const under = document.elementFromPoint(hoverPoint.x, hoverPoint.y);
+            if (under instanceof HTMLElement && (detail.contains(under) || infoFrame.contains(under)) && under.closest('button') === null) {
+                text = selectionPanelHint(under.closest<HTMLElement>('[data-hover]')?.dataset.hover);
+            }
+        }
+        if (hoverMsg.textContent !== text) hoverMsg.textContent = text;
+        hoverMsg.hidden = text === '';
+    };
+    for (const area of [detail, infoFrame]) {
+        area.addEventListener('mousemove', (e) => {
+            hoverPoint = { x: e.clientX, y: e.clientY };
+            syncHoverMessage();
+        });
+        area.addEventListener('mouseleave', () => {
+            hoverPoint = null;
+            syncHoverMessage();
+        });
+    }
+    // Main.Part4.cs 3525 pnlDetailInfo_MouseClick: a click off every hotspot moves the view to the selection
+    // (method_157(_Game.SelectedObject)); a hotspot with no object (a message only) does nothing; the hotspots'
+    // own clicks are attachTarget's (selectionInfoView.ts, they stop the event).
+    detail.addEventListener('click', (e) => {
+        if (!(e.target instanceof Element) || e.target.closest('button') !== null || e.target.closest('[data-hover]') !== null) return;
+        const cam = wiring.camera;
+        if (cam === undefined) return;
+        const t = selectionViewTarget(currentSelection);
+        if (t === null) return;
+        // method_157: `if (SelectedObject != null && UhvLmNjli7) UhvLmNjli7 = false` — the view lock comes off (here
+        // also the follow camera, our lock for a moving ship / fleet), then the view centres on it (no zoom change).
+        if (isViewLocked()) runShipCommand('lockView');
+        const follow = followTarget();
+        if (follow !== null && wiring.followState !== undefined && isFollowingTarget(wiring.followState, follow)) toggleFollow(wiring.followState, follow);
+        cam.centerOn(t.x, t.y);
+        syncLock();
+    });
     // Our controls with no button in the original (follow, the dispatch orders, charter) go into the action strip's
     // empty slots (orderMenu.ts setSelectionExtraSlots); any that don't fit overflow into this compact row.
     const extras = document.createElement('div');
@@ -1364,7 +1423,7 @@ function buildSelectionPanel(wiring: HudWiring): HTMLElement {
         () => ({
             galaxy: wiring.galaxy ?? null,
             player: wiring.galaxy?.playerEmpire ?? null,
-            habitat: currentSelection !== null && currentSelection.builtObject === undefined && currentSelection.shipGroup === undefined && currentSelection.builtObjects === undefined && currentSelection.creature === undefined ? currentSelection.habitat : null,
+            habitat: currentSelection !== null && currentSelection.builtObject === undefined && currentSelection.shipGroup === undefined && currentSelection.builtObjects === undefined && currentSelection.creature === undefined && currentSelection.fighter === undefined ? currentSelection.habitat : null,
         }),
         (id) => wiring.gameData?.resources.find((d) => d.resourceId === id)?.name ?? `#${id}`,
     );
@@ -1639,6 +1698,14 @@ function buildSelectionPanel(wiring: HudWiring): HTMLElement {
         }
     };
     // [/16a]
+    // Select a fighter (Main.Part10.cs method_208 for a Fighter): its nearest system's star as `habitat`.
+    fighterSelectHandler = (f) => {
+        const galaxy = wiring.galaxy;
+        if (!galaxy) return;
+        const system = nearestSystem(galaxy.systems, f.xpos, f.ypos);
+        if (!system) return;
+        wiring.onSelectionChange?.({ habitat: system.systemStar, system, fighter: f });
+    };
     // Select a creature: its nearest system's star as `habitat`, `creature` set (the map ring and live refresh follow it).
     creatureSelectHandler = (c, moveView) => {
         const galaxy = wiring.galaxy;
@@ -1672,18 +1739,29 @@ function buildSelectionPanel(wiring: HudWiring): HTMLElement {
             openGroundReport(t.habitat);
             return;
         }
+        // Main.Part4.cs 3586-3597: a planetary facility hotspot opens the Galactopedia (method_456) at "Wonders" or
+        // "Planetary Facilities".
+        if (t.kind === 'galactopedia') {
+            openGalactopedia({ topic: t.topic });
+            return;
+        }
         const o = t.obj;
         if (o instanceof ShipGroup) shipGroupSelectHandler?.(o, false);
         else if (o instanceof Habitat) habitatSelectHandler?.(o, false);
         else stellarObjectSelectHandler?.(o, false);
     };
     const automationTarget = (): BuiltObject | ShipGroup | null => currentSelection?.shipGroup ?? currentSelection?.builtObject ?? null;
+    // The toggle's state last sent per ship / fleet until its reply lands (pendingCommands.ts): a quick second click
+    // turns it back, as it does in-thread a frame later.
+    const pendingAutomated = new PendingValues<BuiltObject | ShipGroup, boolean>();
     const toggleAutomation = (): void => {
         const target = automationTarget();
         const player = wiring.galaxy?.playerEmpire;
         if (!target || !player) return;
-        const { automated } = automationToggleLabel(target);
+        const automated = pendingAutomated.value(target, automationToggleLabel(target).automated);
+        const settle = pendingAutomated.send(target, !automated);
         issuePlayerCommand(player.galaxy, player, 'shipAction', [target, createShipAction(automated ? ShipActionType.UnautomateShip : ShipActionType.AutomateShip, target), false, undefined], () => {
+            settle();
             refresh();
             refreshSelectionActionBar();
         });
@@ -1703,10 +1781,12 @@ function buildSelectionPanel(wiring: HudWiring): HTMLElement {
             renderInfoModel(content, null, { galaxy: galaxy as Galaxy, onTarget });
         } else {
             const model = buildInfoModel({ galaxy, player, resource: resourceDef }, sel, sel.creature ? creaturePictureUrl(sel.creature) : null);
-            renderInfoModel(content, model, { galaxy, onTarget, onAutomate: model.automated ? toggleAutomation : undefined });
+            renderInfoModel(content, model, { galaxy, onTarget, onAutomate: model.automated ? toggleAutomation : undefined, hoverMessage: true });
             const next = content.querySelector('.sel-scroll');
             if (next !== null) next.scrollTop = lastScroll;
         }
+        // The hovered hotspot was redrawn: its (refreshed) message stays up while the cursor is still on it.
+        syncHoverMessage();
         // The stance button only for the player's military ship / fleet (Main.Part10.cs: btnCycleShipStance.Visible).
         const target = automationTarget();
         stanceBtn.style.visibility = target !== null && player !== null
@@ -1718,7 +1798,7 @@ function buildSelectionPanel(wiring: HudWiring): HTMLElement {
         const sel = currentSelection;
         const galaxy = wiring.galaxy;
         const player = galaxy?.playerEmpire ?? null;
-        if (sel && galaxy && player !== null && !sel.creature && !sel.shipGroup && !sel.builtObject && !sel.builtObjects) {
+        if (sel && galaxy && player !== null && !sel.creature && !sel.fighter && !sel.shipGroup && !sel.builtObject && !sel.builtObjects) {
             // The options come from a command (at the next frame boundary; in worker mode from the authoritative game
             // one round trip later), then the strip is redrawn — a reply for a selection already left is dropped.
             dispatchSlots = [];
@@ -1749,7 +1829,7 @@ function buildSelectionPanel(wiring: HudWiring): HTMLElement {
     wiring.onSelectionChange = (sel) => {
         // A star picked at galaxy / sector zoom is the C# SystemInfo selection (DrawSystemInfo); at system zoom the
         // star itself (DrawHabitat).
-        if (sel !== null && sel.systemInfo === undefined && sel.habitat === sel.system.systemStar && !sel.builtObject && !sel.shipGroup && !sel.creature && !sel.builtObjects) {
+        if (sel !== null && sel.systemInfo === undefined && sel.habitat === sel.system.systemStar && !sel.builtObject && !sel.shipGroup && !sel.creature && !sel.fighter && !sel.builtObjects) {
             const cam = wiring.camera;
             sel = { ...sel, systemInfo: cam !== undefined && cam.zoom < SYSTEM_INFO_ZOOM };
         }
@@ -1769,6 +1849,12 @@ function buildSelectionPanel(wiring: HudWiring): HTMLElement {
     const liveTimer = setInterval(() => {
         if (!panel.isConnected) {
             clearInterval(liveTimer);
+            return;
+        }
+        if (currentSelection?.fighter) {
+            // InfoPanel.cs 3497 DrawFighter: a destroyed fighter clears the selection.
+            if (currentSelection.fighter.hasBeenDestroyed) wiring.onSelectionChange?.(null);
+            else refresh();
             return;
         }
         if (currentSelection?.creature) {
@@ -1808,17 +1894,6 @@ function creaturePictureUrl(c: Creature): string | null {
 
 /** Bottom-right options list: the map overlay toggles (the original's row of overlay buttons above pnlSystemMap,
  *  Main.Part12.cs 2135-2199). The zoom buttons are the system map's own strip (hudSystemMap.ts). */
-/** Task M3: overlays that need ship state (fleets, travel vectors) not yet
- * ported — their toggle just flips the checkbox; src/render/overlayLayer.ts
- * does not draw anything for them. */
-const OVERLAY_NEEDS_SHIPS: ReadonlySet<OverlayKey> = new Set([
-    'fleetPostures',
-    'travelVectorsState',
-    'travelVectorsPrivate',
-    'longRangeScanners',
-    'fadeCivilianShips',
-]);
-
 function buildOptionsList(wiring: HudWiring): HTMLElement {
     const overlays = wiring.overlays ?? createMapOverlayState();
     const panel = document.createElement('div');
@@ -1863,13 +1938,8 @@ function buildOptionsList(wiring: HudWiring): HTMLElement {
         item.addEventListener('click', () => {
             toggleOverlay(overlays, row.key);
             check.textContent = overlays[row.key] ? '✓' : '';
-            // Rendering lives in src/render/overlayLayer.ts (task M3), which
-            // subscribes to onOverlayChange and reacts to this toggle
-            // immediately. Empire Territory / Potential Colonies / Scenic
-            // Locations / Research Locations are implemented there.
-            if (OVERLAY_NEEDS_SHIPS.has(row.key)) {
-                // TODO(overlay): needs ships (M3).
-            }
+            // Rendering lives in src/render/overlayLayer.ts (task M3, parity C3), which subscribes to onOverlayChange and
+            // reads the state every frame (Fade civilian ships: builtObjectLayer.ts).
         });
         panel.appendChild(item);
     }
@@ -2466,6 +2536,12 @@ function openGalaxyMap(wiring: HudWiring): void {
     if (cam) cam.zoomAt(GALAXY_LEVEL_ZOOM, cam.width / 2, cam.height / 2);
 }
 
+/** The selection panel's hover message (Main.Part10.cs 1141-1159): the hovered hotspot's message, else the panel's
+ *  own hint. */
+export function selectionPanelHint(hotspotMessage: string | undefined): string {
+    return hotspotMessage !== undefined && hotspotMessage !== '' ? hotspotMessage : 'Selection Panel: click to center view on selected item';
+}
+
 /** Where method_157 moves the view for a selection (Main.Part11.cs 2241: the habitat / built object / creature's
  *  position; a fleet's lead ship, the first of several ships); null without a selection. */
 export function selectionViewTarget(sel: Selection | null): { x: number; y: number } | null {
@@ -2782,15 +2858,23 @@ function habitatDispatchSlots(galaxy: Galaxy, player: Empire, h: Habitat, done: 
         icon: dispatchIcon(o.id, o.action?.design ?? null),
         disabled: o.ship === null,
         onClick: () => {
+            // One order per slot until its reply lands (pendingCommands.ts): a double click sends one ship, in both
+            // modes (the second click would re-resolve before the first order reached the game).
+            const end = dispatchBusy.start(`${h.habitatIndex}|${o.id}`);
+            if (end === null) return;
             // Re-resolve at click time: ships' queues and positions have moved since the panel was drawn.
-            issuePlayerCommand(galaxy, player, 'habitatDispatch', [h], (now) => dispatchOrder(galaxy, player, h, o, now.find((x) => x.id === o.id)));
+            issuePlayerCommand(galaxy, player, 'habitatDispatch', [h], (now) => dispatchOrder(galaxy, player, h, o, now.find((x) => x.id === o.id), end));
         },
     }))));
 }
 
-/** Give the dispatch order `o` as re-resolved at click time (`fresh`). */
-function dispatchOrder(galaxy: Galaxy, player: Empire, h: Habitat, o: DispatchOption, fresh: DispatchOption | undefined): void {
+/** Dispatch slot orders on their way (habitat index | option id). */
+const dispatchBusy = new PendingOnce<string>();
+
+/** Give the dispatch order `o` as re-resolved at click time (`fresh`); `end` once its reply landed. */
+function dispatchOrder(galaxy: Galaxy, player: Empire, h: Habitat, o: DispatchOption, fresh: DispatchOption | undefined, end: () => void = () => {}): void {
     if (!fresh || fresh.ship === null || fresh.action === null) {
+        end();
         showToast(`No available ${o.role}`);
         return;
     }
@@ -2802,11 +2886,13 @@ function dispatchOrder(galaxy: Galaxy, player: Empire, h: Habitat, o: DispatchOp
         const p = fresh.action.position;
         const zero = p.x === 0 && p.y === 0;
         issuePlayerCommand(galaxy, player, 'constructionJobAdd', [design, h, zero ? COORD_UNSET_DOUBLE : p.x, zero ? COORD_UNSET_DOUBLE : p.y], (id) => {
+            end();
             showToast(id === 0 ? `${o.label} ${h.name}: not possible` : `Construction job added: ${o.label} at ${h.name}`);
         });
         return;
     }
     issuePlayerCommand(galaxy, player, 'shipAction', [ship, fresh.action, true, { x: h.xpos, y: h.ypos }], (r) => {
+        end();
         showToast(r.ok === false ? `${ship.name}: ${r.message ?? 'order refused'}` : `${ship.name} sent: ${o.label} ${h.name}`);
     });
 }

@@ -4,7 +4,24 @@ import { describe, expect, it } from 'vitest';
 import type { BuiltObject } from '../src/sim/builtObject';
 import type { Empire } from '../src/sim/empire';
 import { BuiltObjectRole } from '../src/sim/data/designSpecifications';
-import { dashSegments, travelVectorFor, travelVectorLongEnough, travelVectorsFor, travelVectorWidthPx, TRAVEL_VECTOR_DASH_PX, type TravelVector } from '../src/render/overlayLayer';
+import {
+    SELECTED_TRAVEL_VECTOR_COLOR,
+    TRAVEL_VECTOR_COLOR,
+    checkShipTravellingToDestination,
+    dashSegments,
+    fleetTravelVector,
+    incomingAttackLine,
+    selectedStellarObject,
+    shipsMovingToDestination,
+    travelVectorFor,
+    travelVectorLongEnough,
+    travelVectorsFor,
+    travelVectorWidthPx,
+    TRAVEL_VECTOR_DASH_PX,
+    type TravelVector,
+} from '../src/render/overlayLayer';
+import type { ShipGroup } from '../src/sim/fleets/shipGroup';
+import { BuiltObjectMissionType } from '../src/sim/missions/mission';
 
 const player = {} as unknown as Empire;
 const other = {} as unknown as Empire;
@@ -77,16 +94,66 @@ describe('travelVectorsFor', () => {
         expect(travelVectorsFor(galaxy, null, 'state')).toEqual([]);
     });
 
-    it('draws only the player fleet lead ship, State only', () => {
+    it('leaves fleet ships to the fleet pass (method_258)', () => {
         const grp: { leadShip: BuiltObject | null; empire: Empire } = { leadShip: null, empire: player };
         const lead = ship({ shipGroup: grp });
         const member = ship({ shipGroup: grp });
         grp.leadShip = lead;
         const g = { builtObjects: [lead, member] };
-        expect(objs(travelVectorsFor(g, player, 'state'))).toEqual([lead]);
-        expect(objs(travelVectorsFor(g, player, 'private'))).toEqual([]);
-        grp.empire = other;
         expect(objs(travelVectorsFor(g, player, 'state'))).toEqual([]);
+        expect(objs(travelVectorsFor(g, player, 'private'))).toEqual([]);
+    });
+});
+
+describe('fleet pass (method_258)', () => {
+    it('the lead ship vector, yellow for the selected fleet', () => {
+        const lead = ship();
+        const sg = { leadShip: lead } as unknown as ShipGroup;
+        expect(fleetTravelVector(sg, false)).toMatchObject({ color: TRAVEL_VECTOR_COLOR, v: { builtObject: lead, x2: 50000 } });
+        expect(fleetTravelVector(sg, true)?.color).toBe(SELECTED_TRAVEL_VECTOR_COLOR);
+        expect(fleetTravelVector({ leadShip: null } as unknown as ShipGroup, false)).toBeNull();
+        expect(fleetTravelVector({ leadShip: ship({ currentSpeed: 1 }) } as unknown as ShipGroup, false)).toBeNull();
+    });
+    it('the incoming-attack line: listed, attacking the viewer', () => {
+        const viewer = { incomingEnemyFleetsAndPlanetDestroyers: [] as unknown[] } as unknown as Empire;
+        const target = { empire: viewer, xpos: 0, ypos: 0 };
+        const mission = { type: BuiltObjectMissionType.Attack, targetBuiltObject: target, targetHabitat: null, targetShipGroup: null, resolveTargetCoordinates: () => ({ x: 7, y: 8 }) };
+        const sg = { leadShip: ship(), mission } as unknown as ShipGroup;
+        expect(incomingAttackLine(sg, viewer)).toBeNull();
+        (viewer.incomingEnemyFleetsAndPlanetDestroyers as unknown[]).push({ fleet: sg });
+        expect(incomingAttackLine(sg, viewer)).toEqual({ x: 7, y: 8 });
+        mission.type = BuiltObjectMissionType.Move;
+        expect(incomingAttackLine(sg, viewer)).toBeNull();
+        mission.type = BuiltObjectMissionType.Bombard;
+        target.empire = other;
+        expect(incomingAttackLine(sg, viewer)).toBeNull();
+    });
+});
+
+describe('SpecialHighlightBuiltObjects (Empire.6.cs 1165)', () => {
+    const dest = { hasBeenDestroyed: false };
+    const m = (type: BuiltObjectMissionType, target: unknown, secondaryTarget: unknown = null) => ({ type, target, secondaryTarget });
+    it('ships whose mission target (secondary target for Transport) is the destination', () => {
+        const a = ship({ mission: m(BuiltObjectMissionType.Move, dest) });
+        const b = ship({ mission: m(BuiltObjectMissionType.Transport, dest) });
+        const c = ship({ mission: m(BuiltObjectMissionType.Transport, null, dest) });
+        const d = ship({ mission: m(BuiltObjectMissionType.Move, null, dest) });
+        expect(checkShipTravellingToDestination(a, dest)).toBe(true);
+        expect(checkShipTravellingToDestination(b, dest)).toBe(false);
+        expect(checkShipTravellingToDestination(c, dest)).toBe(true);
+        expect(checkShipTravellingToDestination(d, dest)).toBe(false);
+        expect(checkShipTravellingToDestination(a, { hasBeenDestroyed: true })).toBe(false);
+        expect([...shipsMovingToDestination({ builtObjects: [a, b], privateBuiltObjects: [c, d] } as never, dest)]).toEqual([a, c]);
+    });
+    it('only a selected ship / habitat counts as the destination', () => {
+        const h = { hasBeenDestroyed: false } as never;
+        const bo = ship();
+        expect(selectedStellarObject({ habitat: h })).toBe(h);
+        expect(selectedStellarObject({ habitat: h, builtObject: bo })).toBe(bo);
+        expect(selectedStellarObject({ habitat: h, systemInfo: true })).toBeNull();
+        expect(selectedStellarObject({ habitat: h, shipGroup: {} as never })).toBeNull();
+        expect(selectedStellarObject({ habitat: h, builtObjects: [bo] })).toBeNull();
+        expect(selectedStellarObject(null)).toBeNull();
     });
 });
 

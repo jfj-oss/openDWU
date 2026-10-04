@@ -59,6 +59,8 @@ import { calculatePlanetaryFacilityCost, facilitiesFindBestPirateFacility, type 
 import { resolveBuildableFacilities, resolveBuildableFacilitiesPirates, resolveBuildableWonders } from '../../sim/player/executeShipAction';
 import { ShipActionType, createShipAction } from '../../sim/player/shipAction';
 import { issuePlayerCommand } from '../../sim/player/playerCommands';
+import { PendingValues } from '../pendingCommands';
+import { showToast } from '../toast';
 import { checkFacilityOwnedByColonyOwner, colonyPopulationPolicyLocked, colonyTroopTransports } from '../../sim/player/colonyOrders';
 import { checkCanInitiateAttackAgainstPirateFacilities } from '../../sim/pirates/pirateEmpireAI';
 import { formatNet, tryGetText } from '../../sim/textResolver';
@@ -66,6 +68,7 @@ import { componentDefinitionsStatic } from '../../sim/designGeneration';
 import { troopImageUrl, wireTroopImageFallback } from '../../render/troopImages';
 import { raceHasConcordArt } from '../../render/concordArt';
 import { facilityImageUrl, habitatImageUrl, habitatInfo, type InfoTarget } from '../selectionInfo';
+import { facilityListItem } from '../facilityHover';
 import { empireFlagUrl, renderInfoModel } from '../selectionInfoView';
 import { racePortraitUrl } from '../empireEmblem';
 import { characterPortrait } from '../characterPortrait';
@@ -76,7 +79,7 @@ import { governorLoyaltyText } from '../emergentPolitics'; // [emergent]
 import { approvalMood, colonyScenarioInfo, formatThousandsK, type ApprovalMood } from './coloniesList';
 import { habitatTypeDescription } from './expansionPlanner';
 import { drawSystemsMiniMap } from './galaxyMap';
-import { recruitOptions, troopTypeDescription } from './troops';
+import { recruitOptions, recruitRefusalText, troopTypeDescription } from './troops';
 import { empireMaximumSizes, maximumSizeText, progressCell, shipPictureUrl, siteQueue, waitRows, yardPurchaser, yardRows, type ConstructionSite } from './constructionYards';
 import type { ConstructionYard } from '../../sim/construction/constructionYard';
 import { openConstructionSummary } from './designEditor';
@@ -347,8 +350,23 @@ export function sortAttitudeFactors(factors: readonly AttitudeFactor[]): Attitud
 /** The tax change as ColonyTaxUp5 / Up1 / Down5 / Down1 steps from `currentRate` to `targetPercent` (clamped to the
  *  0..50% the action allows, Main.Part7.cs 830-862): fives first, then ones. */
 export function taxSteps(currentRate: number, targetPercent: number): ShipActionType[] {
-    const from = roundAway(currentRate * 100);
-    const to = Math.max(0, Math.min(50, Math.round(targetPercent)));
+    return taxStepsFromPercent(colonyTaxPercent(currentRate), targetPercent);
+}
+
+/** The rate as the tax box shows it (whole percent; numColonyTaxRate.Value = Max(0, TaxRate) * 100). */
+export function colonyTaxPercent(rate: number): number {
+    return roundAway(Math.max(0, rate) * 100);
+}
+
+/** The 0..50% a tax change can reach (Main.Part7.cs 830-862 clamps the steps there). */
+function clampTaxPercent(targetPercent: number): number {
+    return Math.max(0, Math.min(50, Math.round(targetPercent)));
+}
+
+/** taxSteps from a whole-percent rate. */
+export function taxStepsFromPercent(fromPercent: number, targetPercent: number): ShipActionType[] {
+    const from = fromPercent;
+    const to = clampTaxPercent(targetPercent);
     let d = to - from;
     const steps: ShipActionType[] = [];
     while (d >= 5) {
@@ -368,6 +386,33 @@ export function taxSteps(currentRate: number, targetPercent: number): ShipAction
         d += 1;
     }
     return steps;
+}
+
+/**
+ * The tax box's value for colony `h`: the rate last sent for it while its reply has not landed (pendingCommands.ts),
+ * else the colony's rate.
+ */
+export function displayedColonyTaxPercent(h: Habitat, pending: PendingValues<Habitat, number>): number {
+    return pending.value(h, colonyTaxPercent(h.taxRate));
+}
+
+/**
+ * numColonyTaxRate_Leave's rate change as ColonyTax steps (relative orders, Main.Part7.cs 830-862) from the rate the box
+ * shows — the last one sent while its reply is on the way, so quick repeated spinner clicks each move one step (in
+ * sim-worker mode the colony's rate on the replica is a round trip behind). Returns whether anything was issued;
+ * `done` runs once the last step's reply landed.
+ */
+export function issueColonyTaxRate(galaxy: Galaxy, empire: Empire, h: Habitat, targetPercent: number, pending: PendingValues<Habitat, number>, done?: () => void): boolean {
+    const steps = taxStepsFromPercent(displayedColonyTaxPercent(h, pending), targetPercent);
+    if (steps.length === 0) return false;
+    const settle = pending.send(h, clampTaxPercent(targetPercent));
+    steps.forEach((s, i) =>
+        issuePlayerCommand(galaxy, empire, 'shipAction', [h, createShipAction(s, h), false], i === steps.length - 1 ? () => {
+            settle();
+            done?.();
+        } : undefined),
+    );
+    return true;
 }
 
 // -------------------------------------------------------------------------------------------------------------------
@@ -905,6 +950,8 @@ function createColoniesScreen(opts: ColoniesScreenOptions): OpenState {
     });
     body.appendChild(place(nameBox, L.nameBox.x, L.nameBox.y, L.nameBox.w, L.nameBox.h));
     dropText(body, T('Tax', 'Tax'), L.taxLabel.x, L.taxLabel.y, { color: COLORS.gridText });
+    // The rate last sent per colony until its reply lands (quick spinner clicks: docs/sim-worker.md §4.4 "Quick repeats").
+    const pendingTax = new PendingValues<Habitat, number>();
     const taxBox = el('input', 'ow-input col-tax');
     taxBox.type = 'number';
     taxBox.min = '0';
@@ -955,6 +1002,12 @@ function createColoniesScreen(opts: ColoniesScreenOptions): OpenState {
             openRuinDetail(galaxy, t.ruin);
             return;
         }
+        // A facility icon: the Galactopedia, as the selection panel's (Main.Part4.cs 3586; pnlColonyHabitatInfo itself
+        // has no click handler in the original, but this panel's hotspots are live here like its ruin / colony ones).
+        if (t.kind === 'galactopedia') {
+            opts.onHelp?.(t.topic);
+            return;
+        }
         if (t.kind === 'select' && empire.colonies.includes(t.obj as Habitat)) {
             selectColony(t.obj as Habitat);
             grid.select(t.obj, true);
@@ -1001,13 +1054,13 @@ function createColoniesScreen(opts: ColoniesScreenOptions): OpenState {
         if (!h) return;
         const target = Number(taxBox.value);
         if (!Number.isFinite(target)) return;
-        const steps = taxSteps(h.taxRate, target);
-        if (steps.length === 0) return;
+        if (taxStepsFromPercent(displayedColonyTaxPercent(h, pendingTax), target).length === 0) return;
         // numColonyTaxRate_Leave: the automation question first, then the new rate.
         if (empire.controlColonyTaxRates && opts.confirmAutomationOff && (await opts.confirmAutomationOff(T('Colony Tax Rates', 'Colony Tax Rates')))) {
             issuePlayerCommand(galaxy, empire, 'setEmpireControl', ['controlColonyTaxRates', false]);
         }
-        steps.forEach((s, i) => issuePlayerCommand(galaxy, empire, 'shipAction', [h, createShipAction(s, h), false], i === steps.length - 1 ? () => refreshAll() : undefined));
+        // From the rate the box shows (the last one sent while its reply is on the way), so each spinner click is a step.
+        issueColonyTaxRate(galaxy, empire, h, target, pendingTax, () => refreshAll());
     }
 
     // --- Refresh ------------------------------------------------------------------------------------------------------
@@ -1035,7 +1088,7 @@ function createColoniesScreen(opts: ColoniesScreenOptions): OpenState {
         buttons.ruin.disabled = !h || h.ruin === null;
         if (document.activeElement !== nameBox && nameBox.value !== (h?.name ?? '')) nameBox.value = h?.name ?? '';
         nameBox.disabled = !h || h.empire !== empire;
-        if (document.activeElement !== taxBox) taxBox.value = h ? String(roundAway(Math.max(0, h.taxRate) * 100)) : '0';
+        if (document.activeElement !== taxBox) taxBox.value = h ? String(displayedColonyTaxPercent(h, pendingTax)) : '0';
         taxBox.disabled = !h || (empire.pirateEmpireBaseHabitat !== null && h.empire !== empire);
         renderStrip();
         renderInfo();
@@ -1365,8 +1418,10 @@ function createColoniesScreen(opts: ColoniesScreenOptions): OpenState {
 
     async function recruitSelected(h: Habitat, action: ReturnType<typeof createShipAction> | undefined): Promise<void> {
         if (!action) return;
-        const r = await new Promise<{ automationPrompts: string[] }>((resolve) => issuePlayerCommand(galaxy, empire, 'shipAction', [h, action, false], resolve));
+        const r = await new Promise<{ ok: boolean; message?: string; automationPrompts: string[] }>((resolve) => issuePlayerCommand(galaxy, empire, 'shipAction', [h, action, false], resolve));
         refreshAll();
+        // A refusal says why (troops.ts recruitRefusalText).
+        if (r.ok === false) showToast(recruitRefusalText(h, r));
         for (const task of r.automationPrompts) {
             if (opts.confirmAutomationOff && (await opts.confirmAutomationOff(T(task, task)))) issuePlayerCommand(galaxy, empire, 'automationOff', [task], () => refreshAll());
         }
@@ -1565,11 +1620,11 @@ function createColoniesScreen(opts: ColoniesScreenOptions): OpenState {
                 renderPage(true);
             });
             t.appendChild(img(facilityImageUrl(f.def.pictureRef), 'col-icon-img'));
-            t.appendChild(el('div', 'col-icon-label', f.name));
-            let tip = '';
-            if (f.constructionProgress < 1) tip = `${formatPercent0(f.constructionProgress).replace('%', '')}% ${T('Complete', 'Complete').toLowerCase()}`;
-            if (f.maintenance > 0) tip += `${tip ? '\n' : ''}${T('Facility Maintenance Cost', 'Maintenance')}: ${formatMoney(f.maintenance)} ${T('credits', 'credits')}${f.constructionProgress < 1 ? ` (${T('when completed', 'when completed')})` : ''}`;
-            t.title = tip ? `${f.name}\n${tip}` : f.name;
+            // PlanetaryFacilityListIconView.GenerateFacilityItems: the label ("Name (Owned by X)" for a facility another
+            // faction owns) and the item's ToolTipText (owner / progress / wonder benefits / maintenance).
+            const item = facilityListItem(galaxy, h, f);
+            t.appendChild(el('div', 'col-icon-label', item.text));
+            t.title = item.toolTip !== '' ? item.toolTip : item.text;
             box.appendChild(t);
         }
         const defs = h.empire === empire || empire.pirateEmpireBaseHabitat !== null ? buildableFacilities(galaxy, empire, h) : [];

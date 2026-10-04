@@ -1,87 +1,117 @@
-// Shield / hull bars under ship markers (render/combatBars.ts): fractions, colour ramp, in-combat rule.
+// Battle bars at zoom factor <= 3 (render/combatBars.ts): ports of MainView.2.cs method_194 / method_195 / method_191 /
+// method_214 and the per-ship rules of MainView.1.cs 1251-1295.
 import { describe, expect, it } from 'vitest';
-import { barRects, barWidthPx, combatBarAlpha, COMBAT_FADE_S, COMBAT_HOLD_S, hullColor, hullFraction, lastCombatMs, shieldFraction, SHIELD_BAR_COLOR } from '../src/render/combatBars';
-import { MIN_TIME } from '../src/sim/tick/simTime';
+import {
+    ASSAULT_BAR_OFFSET_PX,
+    COLOR_10,
+    COLOR_11,
+    COLOR_12,
+    COLOR_13,
+    COLOR_14,
+    COLOR_9,
+    SHIELD_LINE_OFFSET_PX,
+    assaultBar,
+    assaultIconTint,
+    fleetLeaderBadgeOffset,
+    pulseColor,
+    shieldLine,
+    shipBattleBars,
+    showsAssaultIcon,
+    showsFleetLeaderBadge,
+} from '../src/render/combatBars';
 
-const ship = (o: Partial<Record<string, unknown>> = {}) =>
-    ({ currentShields: 0, shieldsCapacity: 0, components: { items: new Array(10).fill(0) }, damagedComponentCount: 0, weapons: [], lastShieldStrike: MIN_TIME, attackers: [], ...o }) as never;
+const ship = (o: Record<string, unknown> = {}) =>
+    ({
+        inBattle: true,
+        shieldsCapacity: 0,
+        currentShields: 0,
+        assaultDefenseValue: 0,
+        assaultDefenseValueFixed: 0,
+        assaultDefenseValueDefault: 0,
+        assaultAttackValue: 0,
+        shipGroup: null,
+        ...o,
+    }) as never;
 
-describe('fractions', () => {
-    it('shield fraction is charge / capacity, null without shields, clamped', () => {
-        expect(shieldFraction(ship())).toBeNull();
-        expect(shieldFraction(ship({ shieldsCapacity: 200, currentShields: 50 }))).toBe(0.25);
-        expect(shieldFraction(ship({ shieldsCapacity: 200, currentShields: -5 }))).toBe(0);
-        expect(shieldFraction(ship({ shieldsCapacity: 200, currentShields: 999 }))).toBe(1);
+describe('method_194 shield line', () => {
+    it('is blue up to the charge and red for the rest', () => {
+        expect(shieldLine(40, 200, 50, -8)).toEqual([
+            { x1: 10, x2: 40, y: -8, color: COLOR_10 },
+            { x1: 0, x2: 10, y: -8, color: COLOR_9 },
+        ]);
     });
-    it('hull fraction is the undamaged component share', () => {
-        expect(hullFraction(ship())).toBe(1);
-        expect(hullFraction(ship({ damagedComponentCount: 3 }))).toBeCloseTo(0.7);
-        expect(hullFraction(ship({ damagedComponentCount: 10 }))).toBe(0);
-        expect(hullFraction(ship({ components: { items: [] } }))).toBe(1);
+    it('has no red part at full charge', () => {
+        expect(shieldLine(40, 200, 200, -8)).toEqual([{ x1: 0, x2: 40, y: -8, color: COLOR_9 }]);
+    });
+    it('truncates the split point', () => {
+        expect(shieldLine(33, 100, 50, 0)[1].x2).toBe(16);
     });
 });
 
-describe('colour ramp', () => {
-    it('is green at full, yellow at half, red at zero, clamped', () => {
-        expect(hullColor(1)).toBe(0x00ff30);
-        expect(hullColor(0.5)).toBe(0xffff30);
-        expect(hullColor(0)).toBe(0xff0030);
-        expect(hullColor(2)).toBe(hullColor(1));
-        expect(hullColor(-1)).toBe(hullColor(0));
+describe('method_195 boarding bar', () => {
+    it('splits fixed / rest / attack shares while boarding', () => {
+        // num = 10 + 30 + 60 = 100 → 10 % and 30 % of 50 px, then the attack remainder in orange.
+        expect(assaultBar(50, 40, 10, 30, 60, -4)).toEqual([
+            { x1: 0, x2: 5, y: -4, color: COLOR_11 },
+            { x1: 5, x2: 20, y: -4, color: COLOR_12 },
+            { x1: 20, x2: 50, y: -4, color: COLOR_14 },
+        ]);
     });
-    it('goes green -> yellow by losing green-to-red mix monotonically', () => {
-        let prevR = 256;
-        for (let t = 1; t >= 0.5; t -= 0.05) {
-            const r = (hullColor(t) >> 16) & 255;
-            expect(r).toBeLessThanOrEqual(prevR === 256 ? 255 : 255);
-            expect(r).toBeGreaterThanOrEqual(prevR === 256 ? 0 : prevR);
-            prevR = r;
-        }
-        let prevG = 256;
-        for (let t = 0.5; t >= 0; t -= 0.05) {
-            const g = (hullColor(t) >> 8) & 255;
-            if (prevG !== 256) expect(g).toBeLessThanOrEqual(prevG);
-            prevG = g;
-        }
+    it('shows the defence against its default otherwise', () => {
+        expect(assaultBar(50, 100, 20, 30, 0, -4)).toEqual([
+            { x1: 0, x2: 10, y: -4, color: COLOR_11 },
+            { x1: 10, x2: 25, y: -4, color: COLOR_12 },
+            { x1: 25, x2: 50, y: -4, color: COLOR_13 },
+        ]);
+    });
+    it('caps a share at the full width and draws nothing without attack or default', () => {
+        expect(assaultBar(50, 10, 30, 0, 0, 0)[0].x2).toBe(50);
+        expect(assaultBar(50, 0, 0, 0, 0, 0)).toEqual([]);
     });
 });
 
-describe('in-combat rule', () => {
-    const now = 100_000;
-    it('no activity ever means no bars', () => {
-        expect(combatBarAlpha(ship(), now)).toBe(0);
+describe('ship bars (MainView.1.cs 1251-1295)', () => {
+    it('draws nothing outside battle', () => {
+        expect(shipBattleBars(ship({ inBattle: false, shieldsCapacity: 100, currentShields: 50 }), 40)).toEqual([]);
     });
-    it('a live attacker means combat now; a destroyed one does not', () => {
-        expect(lastCombatMs(ship({ attackers: [{ hasBeenDestroyed: false }] }), now)).toBe(now);
-        expect(combatBarAlpha(ship({ attackers: [{ hasBeenDestroyed: true }] }), now)).toBe(0);
+    it('puts the shield line 8 px and the boarding bar 4 px above the zoom-1 image', () => {
+        const lines = shipBattleBars(ship({ shieldsCapacity: 100, currentShields: 100, assaultDefenseValue: 20, assaultDefenseValueFixed: 5, assaultDefenseValueDefault: 20 }), 40);
+        expect(lines.filter((l) => l.y === -SHIELD_LINE_OFFSET_PX)).toHaveLength(1);
+        expect(lines.filter((l) => l.y === -ASSAULT_BAR_OFFSET_PX)).toHaveLength(3);
     });
-    it('firing or a shield strike holds the bars, then fades them out', () => {
-        const fired = ship({ weapons: [{ lastFired: now - 1000 }, { lastFired: MIN_TIME }] });
-        expect(combatBarAlpha(fired, now)).toBe(1);
-        const hit = (ageS: number) => ship({ lastShieldStrike: now - ageS * 1000 });
-        expect(combatBarAlpha(hit(COMBAT_HOLD_S), now)).toBe(1);
-        expect(combatBarAlpha(hit(COMBAT_HOLD_S + COMBAT_FADE_S / 2), now)).toBeCloseTo(0.5);
-        expect(combatBarAlpha(hit(COMBAT_HOLD_S + COMBAT_FADE_S), now)).toBe(0);
+    it('passes max(0, defence - fixed) as the second share', () => {
+        const lines = shipBattleBars(ship({ assaultDefenseValue: 3, assaultDefenseValueFixed: 5, assaultDefenseValueDefault: 10 }), 40);
+        expect(lines[1]).toMatchObject({ x1: 20, x2: 20 });
     });
-    it('uses the later of the shot and the strike', () => {
-        expect(lastCombatMs(ship({ lastShieldStrike: 10, weapons: [{ lastFired: 20 }] }), now)).toBe(20);
-        expect(lastCombatMs(ship({ lastShieldStrike: 30, weapons: [{ lastFired: 20 }] }), now)).toBe(30);
+    it('flashes the boarding icon only while boarding in battle', () => {
+        expect(showsAssaultIcon(ship({ assaultAttackValue: 4 }))).toBe(true);
+        expect(showsAssaultIcon(ship({ assaultAttackValue: 4, inBattle: false }))).toBe(false);
+        expect(showsAssaultIcon(ship())).toBe(false);
+    });
+    it('badges the fleet lead ship, at width + 2 - 14 px, 2 px above', () => {
+        const group: { leadShip: unknown } = { leadShip: null };
+        const lead = ship({ shipGroup: group });
+        group.leadShip = lead;
+        expect(showsFleetLeaderBadge(lead)).toBe(true);
+        expect(showsFleetLeaderBadge(ship({ shipGroup: group }))).toBe(false);
+        expect(showsFleetLeaderBadge(ship())).toBe(false);
+        expect(fleetLeaderBadgeOffset(40)).toEqual({ x: 28, y: -2 });
     });
 });
 
-describe('layout', () => {
-    it('sizes the bar width from the marker, clamped', () => {
-        expect(barWidthPx(4)).toBe(14);
-        expect(barWidthPx(20)).toBe(24);
-        expect(barWidthPx(500)).toBe(40);
+describe('method_214 pulse', () => {
+    it('is the end colour on the even second, the start colour one second later', () => {
+        expect(pulseColor(0xffff0000, 0xffffff00, 0, 0)).toBe(0xffffff00);
+        expect(pulseColor(0xffff0000, 0xffffff00, 1, 0)).toBe(0xffff0000);
+        expect(pulseColor(0xffff0000, 0xffffff00, 0, 500)).toBe(0xffff7f00);
     });
-    it('puts shields over hull under the marker, centred; shieldless ships get the hull bar only', () => {
-        const r = barRects(ship({ shieldsCapacity: 100, currentShields: 100 }), 10);
-        expect(r).toHaveLength(2);
-        expect(r[0].color).toBe(SHIELD_BAR_COLOR);
-        expect(r[0].y).toBe(7);
-        expect(r[1].y).toBe(10);
-        expect(r[0].x).toBe(-r[0].w / 2);
-        expect(barRects(ship(), 10)).toHaveLength(1);
+    it('keeps the C# byte arithmetic for a falling channel', () => {
+        // color_7 (128, 112, 0, 160) -> color_8 (224, 255, 32, 112) halfway: alpha 176, R 183, G 16, B 136.
+        const c = pulseColor(0x807000a0, 0xe0ff2070, 1, 500);
+        expect([(c >>> 24) & 255, (c >>> 16) & 255, (c >>> 8) & 255, c & 255]).toEqual([176, 183, 16, 136]);
+    });
+    it('the boarding icon tint runs red ↔ yellow on game time', () => {
+        expect(assaultIconTint(0)).toBe(0xffff00);
+        expect(assaultIconTint(1000)).toBe(0xff0000);
     });
 });

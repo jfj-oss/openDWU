@@ -76,7 +76,9 @@ describe('construction job board', () => {
         const [a, b] = ships;
         for (const s of ships) makeIdle(game, s);
         // Ship B starts far from the sites (only the estimates read the position).
-        b.xpos += 300000;
+        // Far enough that even at warp (~240 s) B is slower than A cruising to the nearest site in A's system: the
+        // sites are unowned habitats (own colonies are refused for mining stations, BuiltObject.2.cs 1456-1463).
+        b.xpos += 3000000;
         const sites = miningSites(game, 5, a.xpos, a.ypos);
         for (const h of sites) expect(addJob(game, h)).toBeGreaterThan(0);
         // Every add went through the command log, replayably.

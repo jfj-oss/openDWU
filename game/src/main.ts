@@ -83,6 +83,8 @@ import { adoptGameMessageOptions, copyMessageOptions, getMessageOptions } from '
 // [audio] end
 import { createNewGameWizard } from './ui/screens/newGameWizard';
 import { openGalactopedia } from './ui/screens/galactopedia';
+import { habitatInfo } from './ui/selectionInfo';
+import { renderInfoModel } from './ui/selectionInfoView';
 import { colonizationRangeFor, defaultStartGameOptions, piratesFor, STARTING_TECH_LEVEL, toCreateGameOptions, type StartGameOptions, maximumEmpireAmountFor, starCountFor, defaultScenarioChoice, type StartScenarioChoice } from './sim/startGameOptions';
 import { serializeGame, deserializeGameSteps, savedScenarioId, savedScenarioInclude, type GameSaveJSON } from './sim/save/gameSave';
 import { loadScenarioIndex, loadScenarioOverlay } from './sim/scenario/fetchScenario';
@@ -94,7 +96,9 @@ import { installEventLogDevHook } from './ui/eventLogDev';
 import { installEventMessages, removeEventMessages } from './ui/eventMessages';
 import { installWorkerMessageUi } from './ui/workerMessages'; // [simworker] chunk 4
 import { installLocalMessageStream } from './ui/messagePipeline';
-import { installAutosave, removeAutosave } from './ui/autosave';
+import { currentGameAutosave, installAutosave, readAutosave, removeAutosave } from './ui/autosave';
+import { messageBox } from './ui/originalWindow';
+import { restartFromSources, restartPromptText, restartSources } from './simworker/restart';
 import { isGameOptionsPanelOpen } from './ui/screens/gameOptionsPanel';
 import { newGameOptionsFromSettings } from './ui/screens/gameOptionsModel'; // [gameoptions]
 // [leftovers] end
@@ -127,7 +131,7 @@ import { installMessageStubList, removeMessageStubList } from './ui/messageStubL
 // [fix6ui] begin
 import { setShipCommandHandler, setViewLockedQuery } from './ui/keyboard';
 import { refreshSelectionActionBar } from './ui/orderMenu';
-import { selectCreature, selectHabitat } from './ui/hud';
+import { selectCreature, selectFighter, selectHabitat } from './ui/hud';
 import { createShipCommandKeys, type ShipCommandKeys } from './ui/shipCommandKeys';
 import { createControlGroupKeys } from './ui/controlGroups'; import { setControlGroupHandler } from './ui/keyboard'; import { resetPanelVisibility } from './ui/panelVisibility'; import { setMainViewDisplayType } from './render/mainViewDisplay'; import { closeGroundReport } from './ui/screens/groundReport'; import { playGridClick } from './audio/gameAudio'; // [parC1]
 import { showToast } from './ui/toast';
@@ -349,6 +353,53 @@ async function loadSaveInWorker(source: { text: string } | { url: string }): Pro
     return { game: client.core.game, time, startOptions: startOptions ?? defaultStartGameOptions(), simClient: client };
 }
 
+/** The restart prompt is open (one per stopped worker). */
+let restartPromptFor: SimWorkerClient | null = null;
+
+/**
+ * [simworker] The worker stopped for good (simworker/restart.ts, docs/sim-worker.md §4.6): every request waiting on it
+ * has failed. A message box (the original's MessageBoxEx) offers Restart — the game in a new worker from the best save
+ * text there is: the worker's own last state, else the replica as the view last showed it, else this game's last
+ * autosave — resumed paused, or Main Menu.
+ */
+async function offerWorkerRestart(simClient: SimWorkerClient, game: Game, time: GalaxyTime, reason: string): Promise<void> {
+    if (restartPromptFor === simClient) return;
+    restartPromptFor = simClient;
+    time.paused = true;
+    const startOptions = lastStartOptions;
+    const auto = currentGameAutosave();
+    const sources = restartSources({
+        rescue: simClient.rescueSave,
+        // Serialized only if chosen (a late game takes seconds), while this view still holds the replica.
+        replica: startOptions !== null ? () => serializeGame(game, time, startOptions) : null,
+        autosave: auto === null ? null : { ...auto, read: () => readAutosave(auto.name) },
+    });
+    const RESTART = 'Restart';
+    const MENU = 'Main Menu';
+    const answer = await messageBox({ caption: 'Simulation Stopped', text: restartPromptText(reason, sources), buttons: sources.length > 0 ? [RESTART, MENU] : [MENU], icon: 'stop', width: 540, buttonWidth: 120 });
+    const toMenu = (): void => {
+        teardownActiveGameView();
+        showMainMenu();
+    };
+    if (answer !== RESTART) {
+        toMenu();
+        return;
+    }
+    const r = await restartFromSources(sources, (text) => loadSaveInWorker({ text }));
+    for (const f of r.failed) console.warn(`sim worker restart: ${f.source.label}: ${f.error}`);
+    if (r.result === null) {
+        await messageBox({ caption: 'Restart Failed', text: `The game could not be restarted:\n${r.failed.map((f) => `- ${f.source.label}: ${f.error}`).join('\n')}`, icon: 'stop', width: 540 });
+        toMenu();
+        return;
+    }
+    const loaded = r.result;
+    lastStartOptions = loaded.startOptions;
+    teardownActiveGameView();
+    await startGameViewWithOverlay(loaded.game, undefined, undefined, { speed: loaded.time.speed, paused: true }, loaded.simClient);
+    showToast(`Restarted from ${r.source.label} — paused`);
+    console.info(`sim worker restart: restarted from ${r.source.label} (${r.source.kind})`);
+}
+
 /** createGame in the worker (autostart / wizard): the options minus gameData, and the scenario to apply to its data. */
 async function createGameInWorker(opts: CreateGameOptions, scenario: { id: string; include: string[] | null } | null, startOptions: StartGameOptions): Promise<{ game: Game; simClient: SimWorkerClient }> {
     const client = await bootWorker('Creating galaxy', { kind: 'create', options: workerCreateOptions(opts), scenario }, opts.gameData, startOptions);
@@ -460,6 +511,25 @@ function createGalaxyMapFor(galaxy: Galaxy, camera: Camera): GalaxyMapScreen {
         jumpTo: (x, y) => camera.centerOn(x, y),
         // The Main View hover tooltip would otherwise stay over the map.
         onOpen: () => hideMapTooltip(),
+        // pnlHabitatInfo: the InfoPanel for the selected habitat. The original's InfoPanel there has no mouse handler;
+        // here its hotspots keep their messages as tool tips, and the Galactopedia ones (resources, races, facilities —
+        // Main.Part4.cs 3586-3607) open their topic.
+        renderHabitatInfo: (box, h) => {
+            const player = galaxy.playerEmpire;
+            if (player === null) return;
+            const resource = (id: number): { name: string; pictureRef: number } | null => galaxy.resources.find((r) => r.resourceId === id) ?? null;
+            const model = habitatInfo({ galaxy, player, resource }, h);
+            renderInfoModel(box, model, { galaxy, onTarget: (t) => { if (t.kind === 'galactopedia') openGalactopedia({ topic: t.topic }); } });
+            // InfoPanel.DrawBackgroundPicture centres the picture in this 250 × 240 client area.
+            const pic = box.querySelector<HTMLImageElement>('.sel-picture');
+            if (pic !== null) {
+                const side = Math.min(parseFloat(pic.style.width) || 200, 234);
+                pic.style.width = `${side}px`;
+                pic.style.height = `${side}px`;
+                if (!pic.style.left.startsWith('-')) pic.style.left = `${Math.trunc((250 - side) / 2)}px`;
+                pic.style.top = `${Math.trunc((240 - side) / 2)}px`;
+            }
+        },
     });
     document.body.appendChild(galaxyMap.element);
     return galaxyMap;
@@ -588,8 +658,12 @@ export async function startGameView(
             const t = resolve(e.target) as { xpos: number; ypos: number } | null;
             if (t !== null) camera.centerOn(t.xpos, t.ypos);
         } else if (e.kind === 'simError') showToast('Simulation error — game paused (see the worker console)');
-        // The worker itself stopped (docs/sim-worker.md §4.4 "Failed commands"): orders in flight have failed.
-        else if (e.kind === 'workerStopped') showToast('The simulation stopped — the game cannot continue; return to the main menu (see the console)');
+        // The worker itself stopped (docs/sim-worker.md §4.4 "Failed commands"): orders in flight have failed. Offer to
+        // restart the game in a new worker (§4.6).
+        else if (e.kind === 'workerStopped') {
+            showToast('The simulation stopped — the orders on their way were not carried out (see the console)');
+            void offerWorkerRestart(simClient, game, time, e.message);
+        }
     });
     // 19p event log: `?eventLog=dump` logs the chronicle digest; __dwu.eventLog.dump() / .export(since).
     (window as unknown as { __dwu: Record<string, unknown> }).__dwu.eventLog = installEventLogDevHook(galaxy, window.location.search);
@@ -651,7 +725,8 @@ export async function startGameView(
         afterSelectionChange: (sel) => {
             view.selectedBuiltObject = sel?.builtObject ?? null;
             view.selectedCreature = sel?.creature ?? null;
-            view.selectedHabitat = sel && !sel.builtObject && !sel.creature && !sel.builtObjects ? sel.habitat : null;
+            view.selectedFighter = sel?.fighter ?? null;
+            view.selectedHabitat = sel && !sel.builtObject && !sel.creature && !sel.fighter && !sel.builtObjects ? sel.habitat : null;
             view.selectedBuiltObjects = sel?.builtObjects ?? null;
             shipKeys?.afterSelectionChange(sel); // [fix6ui] selection history + view lock
         },
@@ -676,11 +751,13 @@ export async function startGameView(
     };
     // A clicked creature selects it (InfoPanel.cs DrawCreature in the selection panel).
     view.onCreatureSelect = (c) => selectCreature(c, false);
+    // A clicked fighter selects it (Main.Part11.cs 1579-1600 → InfoPanel.cs DrawFighter).
+    view.onFighterSelect = (f) => selectFighter(f);
     // Left-drag box / Shift-click multi-selection (Main.Part10.cs 2989 mainView_MouseUp, BuiltObjectList).
     view.onBuiltObjectListSelect = (list) => selectBuiltObjectList(list);
     view.getSelectedShips = () => {
         const s = getHudSelection();
-        if (s === null || s.shipGroup !== undefined || s.creature !== undefined) return null;
+        if (s === null || s.shipGroup !== undefined || s.creature !== undefined || s.fighter !== undefined) return null;
         return s.builtObjects ?? s.builtObject ?? null;
     };
     // [galaxymarkers] fleet icons / double-clicked fleet ships select the fleet; symbols highlight the HUD selection.

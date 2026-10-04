@@ -56,6 +56,8 @@ interface Installed {
     timer: ReturnType<typeof setInterval>;
     idle: number | null;
     disposed: boolean;
+    /** The last autosave this game view wrote (stored), for the sim-worker restart (simworker/restart.ts). */
+    lastWritten: { name: string; savedAt: number } | null;
 }
 
 let installed: Installed | null = null;
@@ -79,7 +81,7 @@ export function installAutosave(opts: AutosaveOptions): void {
     removeAutosave();
     // dateTime_6: DateTime.MinValue until the first check with autosave on.
     let last: number | null = null;
-    const state: Installed = { timer: 0 as unknown as ReturnType<typeof setInterval>, idle: null, disposed: false };
+    const state: Installed = { timer: 0 as unknown as ReturnType<typeof setInterval>, idle: null, disposed: false, lastWritten: null };
 
     async function save(): Promise<void> {
         state.idle = null;
@@ -99,8 +101,12 @@ export function installAutosave(opts: AutosaveOptions): void {
         if (text === null) return;
         lastSlot = slot;
         console.info(`[autosave] ${name}: serialized ${(text.length / 1048576).toFixed(1)} MB in ${ms.toFixed(0)} ms`);
-        void writeAutosave(name, text, window.localStorage as unknown as SaveStorage, defaultSaveTextStore(), new Date().toISOString()).then(
-            () => showToast(`Autosaved (${name})`),
+        const savedAt = Date.now();
+        void writeAutosave(name, text, window.localStorage as unknown as SaveStorage, defaultSaveTextStore(), new Date(savedAt).toISOString()).then(
+            () => {
+                state.lastWritten = { name, savedAt };
+                showToast(`Autosaved (${name})`);
+            },
             (err: unknown) => console.warn('Autosave could not be written', err),
         );
     }
@@ -123,6 +129,19 @@ export function installAutosave(opts: AutosaveOptions): void {
 
     state.timer = setInterval(check, 5000);
     installed = state;
+}
+
+/**
+ * The last autosave the running game view wrote (its name and wall time), or null — the sim-worker restart's last
+ * fallback (simworker/restart.ts). Read the text with `readAutosave`.
+ */
+export function currentGameAutosave(): { name: string; savedAt: number } | null {
+    return installed?.lastWritten ?? null;
+}
+
+/** An autosave's text from the save store (null when it is gone). */
+export async function readAutosave(name: string, store: SaveTextStore = defaultSaveTextStore()): Promise<string | null> {
+    return (await store.get(name)) ?? null;
 }
 
 /** Stop the autosave check (game teardown). */

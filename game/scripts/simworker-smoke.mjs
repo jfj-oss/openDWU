@@ -15,8 +15,11 @@
 //        [--no-commands]           skip the command reply checks (game mode, docs/sim-worker.md §4.4 "Failed commands"):
 //                                  Recruit from the Troops screen and Save from the Design Editor reply (success and a
 //                                  refusal), an order naming an object gone from the game replies with its failure
-//                                  value, and — worker mode, last — after a simulated worker crash Save and Recruit
-//                                  still answer (failure message, Save usable again) and nothing is left waiting.
+//                                  value; five tax spinner clicks in one frame give five steps (quick repeats); and —
+//                                  worker mode, last — the worker stops twice (a fatal error with its own save, then a
+//                                  hard crash): the order in flight fails, "Simulation Stopped" offers Restart / Main
+//                                  Menu, Restart resumes the game paused in a new worker (from the worker's save, then
+//                                  from the replica), it runs and Recruit works; nothing is left waiting.
 import { chromium } from 'playwright-core';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -473,26 +476,122 @@ async function commandReplies() {
         const box2 = await clickSave();
         check(box2 !== null, 'design editor Save answers again after a refusal (not stuck "saving")');
         await page.screenshot({ path: `${out}/design-editor-refused.png` });
-        // 4. Worker mode: the worker crashes (simulated: SimWorkerClient.stop) with the editor open.
-        if (!inThread) {
-            crashLogFrom = logs.length;
-            await page.evaluate(() => window.__dwu.simWorker.stop('smoke: simulated crash'));
-            await page.waitForTimeout(500);
-            const box3 = await clickSave();
-            check(box3 !== null && /could not be carried out/.test(box3) && /stopped/.test(box3), `after a worker crash, Save answers with the failure (${String(box3).slice(0, 120)})`);
-            const box4 = await clickSave();
-            check(box4 !== null, 'after a worker crash, Save is still usable (answers again)');
-            await page.screenshot({ path: `${out}/design-editor-after-crash.png` });
-        }
     } else check(false, 'design editor opens (blank)');
     await closeAll();
+    // 4. Quick repeated clicks (docs/sim-worker.md §4.4 "Quick repeats"): five Colonies tax spinner clicks inside one
+    //    frame give five steps (the box steps from the rate last sent, not the replica's, which is a round trip behind).
+    await quickTaxClicks(pending, closeAll);
+    // 5. Worker mode: the worker stops (a fatal error in its loop, with its rescue save), the restart is offered and
+    //    taken; then it crashes hard (terminated, no save of its own) and restarts from the replica.
     if (!inThread) {
-        const r2 = await recruit('after-crash');
-        check(r2.opened, 'troops screen opens after the crash');
-        check((await pending()) === 0, 'after the crash nothing is left waiting (recruit, save answered)');
-        const toast = logs.slice(crashLogFrom).some((l) => l.includes('STOPPED'));
-        check(toast, 'the crash is reported loudly in the console');
+        crashLogFrom = logs.length;
+        await crashAndRestart('fatal', pending, recruit);
+        await crashAndRestart('hard', pending, recruit);
     }
+}
+
+/** Five tax spinner clicks in one frame on the Colonies screen: the selected colony's rate moves by exactly five. */
+async function quickTaxClicks(pending, closeAll) {
+    // The automation would set the rates itself (and ask first): off.
+    await page.evaluate(() => {
+        const d = window.__dwu;
+        d.commands.issue(d.galaxy, d.game.playerEmpire, 'setEmpireControl', ['controlColonyTaxRates', false]);
+    });
+    await page.waitForTimeout(800);
+    await page.click('[data-hud="tbtnColonies"]');
+    const opened = await page.waitForSelector('[data-ow="colonies"] input.col-tax', { timeout: 15000 }).then(() => true, () => false);
+    check(opened, 'colonies screen opens (tax box)');
+    if (!opened) return;
+    await page.waitForTimeout(1000);
+    const before = await page.evaluate(() => {
+        const p = window.__dwu.game.playerEmpire;
+        const box = document.querySelector('[data-ow="colonies"] input.col-tax');
+        return { shown: Number(box.value), rates: p.colonies.map((h) => Math.round(Math.max(0, h.taxRate) * 100)), log: 0 };
+    });
+    const dir = before.shown > 40 ? -1 : 1;
+    const logBefore = (await logOps()).length;
+    await page.evaluate((dir) => {
+        // As the spinner's arrows: the browser steps the box's own value, each step fires 'change'.
+        const box = document.querySelector('[data-ow="colonies"] input.col-tax');
+        box.focus();
+        for (let i = 0; i < 5; i++) {
+            if (dir > 0) box.stepUp();
+            else box.stepDown();
+            box.dispatchEvent(new Event('change'));
+        }
+        box.blur();
+    }, dir);
+    await page.waitForTimeout(2500);
+    const after = await page.evaluate(() => {
+        const p = window.__dwu.game.playerEmpire;
+        const box = document.querySelector('[data-ow="colonies"] input.col-tax');
+        return { shown: Number(box.value), rates: p.colonies.map((h) => Math.round(Math.max(0, h.taxRate) * 100)) };
+    });
+    const changed = after.rates.map((r, i) => r - before.rates[i]).filter((d) => d !== 0);
+    const steps = (await logOps()).slice(logBefore).filter((op) => op === 'shipAction').length;
+    check(changed.length === 1 && changed[0] === 5 * dir && after.shown === before.shown + 5 * dir, `quick clicks: 5 tax spinner clicks in one frame move the colony's rate by ${changed.join(',') || 0} (${before.shown} → ${after.shown}), want ${5 * dir}`);
+    check(steps === 5, `quick clicks: 5 tax steps journaled (${steps})`);
+    check((await pending()) === 0, 'quick clicks: nothing left waiting');
+    await page.screenshot({ path: `${out}/colonies-quick-tax.png` });
+    await closeAll();
+}
+
+/**
+ * The worker stops ('fatal': SimWorkerClient.simulateFatal — its loop fails, it sends its own save; 'hard':
+ * SimWorkerClient.stop — terminated, no save of its own): every order on its way fails, the "Simulation Stopped" box
+ * offers Restart / Main Menu, Restart boots the game in a new worker (from the worker's save / the replica), paused,
+ * and the restarted game runs and takes orders.
+ */
+async function crashAndRestart(kind, pending, recruit) {
+    const old = await page.evaluate(() => {
+        const d = window.__dwu;
+        window.__oldSimWorker = d.simWorker;
+        return { nowMs: d.galaxy.nowMs, colonies: d.game.playerEmpire.colonies.length };
+    });
+    // An order in flight as it stops (the worker does not answer it: its callback gets the failure value).
+    await page.evaluate((kind) => {
+        const d = window.__dwu;
+        const p = d.game.playerEmpire;
+        window.__inFlight = '(no reply)';
+        d.commands.issue(d.galaxy, p, 'renameColony', [p.colonies[0], `In Flight ${kind}`], (r) => { window.__inFlight = r; });
+        if (kind === 'fatal') d.simWorker.simulateFatal('smoke: simulated fatal error');
+        else d.simWorker.stop('smoke: simulated crash');
+    }, kind);
+    const box = page.locator('[data-ow="msgbox"]', { hasText: 'Simulation Stopped' });
+    const shown = await box.waitFor({ timeout: 60000 }).then(() => true, () => false);
+    check(shown, `${kind} crash: the "Simulation Stopped" box is shown`);
+    if (!shown) return;
+    const text = await box.innerText();
+    const buttons = await box.locator('.ow-glass').allInnerTexts();
+    check(buttons.map((b) => b.trim()).join('|') === 'Restart|Main Menu', `${kind} crash: Restart / Main Menu (${buttons.join(' / ')})`);
+    const want = kind === 'fatal' ? "the simulation's last state" : 'the game as last shown';
+    check(text.includes(`Restart from ${want}`), `${kind} crash: offers ${want} (${text.replace(/\s+/g, ' ').slice(0, 160)})`);
+    // The order may have reached a boundary before the worker stopped (its reply then says so: true), else it fails
+    // (false); either way it got exactly one answer, and the restarted game agrees with it (below).
+    const inFlight = await page.evaluate(() => window.__inFlight);
+    check(inFlight === false || inFlight === true, `${kind} crash: the order in flight was answered (${JSON.stringify(inFlight)})`);
+    check((await pending()) === 0, `${kind} crash: nothing left waiting`);
+    await page.screenshot({ path: `${out}/restart-prompt-${kind}.png` });
+    await box.locator('.ow-glass', { hasText: 'Restart' }).click();
+    const restarted = await page.waitForFunction(() => {
+        const d = window.__dwu;
+        return d?.simWorker != null && d.simWorker !== window.__oldSimWorker && d.simWorker.stopReason === null && d.time !== undefined;
+    }, null, { timeout: 600000 }).then(() => true, () => false);
+    check(restarted, `${kind} crash: the game restarted in a new worker`);
+    if (!restarted) return;
+    await page.waitForTimeout(1500);
+    const st = await page.evaluate(() => {
+        const d = window.__dwu;
+        return { paused: d.time.paused, nowMs: d.galaxy.nowMs, colonies: d.game.playerEmpire.colonies.length, name: d.game.playerEmpire.colonies[0].name };
+    });
+    check(st.paused, `${kind} restart: the game resumes paused`);
+    check(st.colonies === old.colonies && Math.abs(st.nowMs - old.nowMs) < 5000, `${kind} restart: the same game (${st.colonies} colonies, nowMs ${old.nowMs} → ${st.nowMs})`);
+    check((st.name === `In Flight ${kind}`) === (inFlight === true), `${kind} restart: the restarted game agrees with the in-flight order's answer (${JSON.stringify(inFlight)}; colony "${st.name}")`);
+    await checkRuns(`${kind} restart: the restarted game `);
+    await page.evaluate(() => { window.__dwu.time.paused = true; });
+    const r = await recruit(`after-${kind}-restart`);
+    check(r.opened && r.after === r.before + 1, `${kind} restart: recruit works in the restarted game (${r.before} → ${r.after})`);
+    check((await pending()) === 0, `${kind} restart: nothing left waiting`);
 }
 
 async function combatViews() {

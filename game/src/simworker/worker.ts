@@ -96,7 +96,15 @@ function fatal(where: string, err: unknown): void {
     console.error(`sim worker: STOPPED (${where})`, err);
     if (timer !== null) clearTimeout(timer);
     timer = null;
-    post({ type: 'error', message: dead, fatal: true });
+    // The sim's own errors are contained by SimHost.tick, so the game is usually intact here (the sync or the host
+    // failed): save it for the main thread's restart offer (restart.ts), if it still serializes.
+    let rescue: string | null = null;
+    try {
+        rescue = host !== null ? host.rescueSave() : null;
+    } catch (err) {
+        console.error('sim worker: the game could not be saved for a restart', err);
+    }
+    post({ type: 'error', message: dead, fatal: true, rescue });
 }
 
 function loop(): void {
@@ -212,6 +220,9 @@ function dispatch(m: ToWorker): void {
             return;
         case 'commandLog':
             post({ type: 'commandLog', id: m.id, log: host!.commandLog() });
+            return;
+        case 'simulateFatal':
+            fatal('step loop', new Error(m.message));
             return;
         case 'dispose':
             if (timer !== null) clearTimeout(timer);

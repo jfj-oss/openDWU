@@ -38,6 +38,11 @@ import type { ReplicaEncoderOptions } from './replicaSync';
 export interface SimHostOptions {
     /** Wall clock (performance.now in the worker; a fake one in tests). */
     now?: () => number;
+    /**
+     * Epoch wall clock for command deadlines (CommandMessage.deadline; default `performance.timeOrigin +
+     * performance.now()`, the main thread's clock too). Read once per frame boundary.
+     */
+    wallNow?: () => number;
     sync?: Partial<Pick<ReplicaEncoderOptions, 'coldBudgetMs' | 'coldMaxSets' | 'markBudgetMs'>>;
     /**
      * Send the main thread what the player's message pipeline handled ('playerMessages' events: each message's receipt
@@ -75,6 +80,14 @@ export class SimHost {
     private results: StepMessage['results'] = [];
     /** Commands issued on the galaxy's player queue and not applied yet, in issue order (settleCommands). */
     private readonly queued: { id: number; op: string; done: boolean }[] = [];
+    /**
+     * Commands received (decoded) and not yet admitted to the player queue: admitCommands hands them on at the next
+     * frame boundary, after the deadline check (the timeout policy, docs/sim-worker.md §4.4).
+     */
+    private readonly arrived: { m: CommandMessage; empire: Empire; args: unknown[] }[] = [];
+    private readonly wallNow: () => number;
+    /** Commands rejected for their deadline so far (tests, the smoke). */
+    expiredCommands = 0;
     private events: WorkerEvent[] = [];
     private readonly naming: RemoteNaming;
     private readonly externalsByRef: Map<string, object>;
@@ -100,6 +113,7 @@ export class SimHost {
     constructor(readonly game: Game, time: GalaxyTime, private readonly startOptions: StartGameOptions, opts: SimHostOptions = {}) {
         this.galaxy = game.galaxy;
         this.now = opts.now ?? (() => performance.now());
+        this.wallNow = opts.wallNow ?? (() => performance.timeOrigin + performance.now());
         // The clock is a view over galaxy.nowMs, as in-thread (simLoop.ts createSimLoop).
         this.time = time;
         time.bindGalaxy(this.galaxy);
@@ -189,6 +203,34 @@ export class SimHost {
             // queues): compareReach.
             for (const a of args) this.noteFresh(a);
             this.noteFresh(empire);
+            // Queued on the galaxy at the next frame boundary (admitCommands), unless its deadline has passed by then.
+            this.arrived.push({ m, empire, args });
+        } catch (err) {
+            if (m.id !== 0) this.results.push({ id: m.id, result: null, error: err instanceof Error ? err.message : String(err) });
+            else console.error('sim worker: command failed', err);
+        }
+        this.dirty = true;
+    }
+
+    /**
+     * The frame boundary's admission (the timeout policy, docs/sim-worker.md §4.4 "Failed commands"): the commands
+     * received since the last boundary go to the galaxy's player queue in arrival order — and are applied by the
+     * drain that follows, exactly where they were applied before — except those whose deadline (CommandMessage.deadline,
+     * the main thread's REPLY_TIMEOUT_MS after it sent them) has passed at this boundary: they are rejected, not
+     * applied and not journaled (seed + command log replays the game without them), with an `expired` reply that the
+     * main thread delivers as the op's failure value, and a warning here. The wall clock is read once per boundary.
+     */
+    private admitCommands(): void {
+        if (this.arrived.length === 0) return;
+        const wall = this.wallNow();
+        for (const { m, empire, args } of this.arrived.splice(0)) {
+            if (m.deadline !== undefined && wall > m.deadline) {
+                this.expiredCommands++;
+                const late = Math.round(wall - m.deadline);
+                console.warn(`sim worker: command ${m.op}${m.id !== 0 ? ` (request ${m.id})` : ''} rejected: it reached a frame boundary ${late} ms after its deadline (not applied, not journaled)`);
+                if (m.id !== 0) this.results.push({ id: m.id, result: null, error: `not applied: it reached the simulation ${late} ms after its deadline`, expired: true });
+                continue;
+            }
             const entry = { id: m.id, op: m.op, done: false };
             // A callback even without a reply id: settleCommands tells an applied command from one whose executor threw.
             // (It changes nothing in the sim: applyLive calls it after the executor, as it calls the in-thread UI's.)
@@ -197,9 +239,6 @@ export class SimHost {
                 if (m.id !== 0) this.results.push(this.commandReply(m.id, m.op, result));
             });
             this.queued.push(entry);
-        } catch (err) {
-            if (m.id !== 0) this.results.push({ id: m.id, result: null, error: err instanceof Error ? err.message : String(err) });
-            else console.error('sim worker: command failed', err);
         }
         this.dirty = true;
     }
@@ -239,7 +278,7 @@ export class SimHost {
 
     /** Commands queued on the galaxy that have no reply yet (tests). */
     get commandsInFlight(): number {
-        return this.queued.length;
+        return this.queued.length + this.arrived.length;
     }
 
     /** Compare these replica objects (sync ids) and what they reach before the next delta; reply to `m.id` with it. */
@@ -373,6 +412,7 @@ export class SimHost {
         driver.isPaused = () => time.paused;
         let failure: unknown;
         try {
+            this.admitCommands();
             drainCommandBoundary(this.galaxy);
             // The queued commands have been applied with their by-value arguments.
             this.commandValues.boundary();
@@ -440,6 +480,8 @@ export class SimHost {
 
     /** serializeGame of the authoritative game (between ticks: queued commands apply first, as in-thread). */
     save(): string {
+        // serializeGame applies the queued commands first (a boundary): admit what arrived, as a tick would.
+        this.admitCommands();
         try {
             const text = serializeGame(this.game, this.time, this.startOptions);
             this.settleCommands();
@@ -449,6 +491,19 @@ export class SimHost {
             this.settleCommands(err);
             throw err;
         }
+    }
+
+    /**
+     * The game's save for the restart after a fatal error (worker.ts fatal; restart.ts): the state as of the last frame,
+     * WITHOUT the commands that have not been applied — the main thread fails every order still on its way when the
+     * worker stops, so they must not be in the save either. The commands received since the last boundary are dropped;
+     * if some were already handed to the galaxy's queue (the stop came inside a boundary), a consistent save cannot be
+     * made: null (the restart then uses the replica or the autosave).
+     */
+    rescueSave(): string | null {
+        this.arrived.length = 0;
+        if (pendingPlayerCommands(this.galaxy) > 0) return null;
+        return this.save();
     }
 
     digest(): string {
@@ -469,6 +524,8 @@ export class SimHost {
         const target = (m.target === 'sim' ? this.driver : this.budget) as unknown as Record<string, unknown>;
         let value: unknown;
         let error: string | undefined;
+        // `advance` runs frames (boundaries): admit what arrived first, as a tick would.
+        this.admitCommands();
         try {
             if (m.op === 'get') value = m.name === undefined ? undefined : target[m.name];
             else if (m.op === 'set') {

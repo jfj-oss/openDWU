@@ -721,7 +721,7 @@ const GALAXY_ICON_BOXES: [string, GalaxyViewDisplayKey, number, number][] = [
     ['Always show Pirates', 'galaxyViewDisplayAlwaysPirates', 10, 198],
 ];
 
-type MapDisplayKey = 'showSystemNames' | 'showRegionLabels' | 'freightFlowsDefault' | 'ditherGradients' | 'pullStationsToCentre';
+type MapDisplayKey = 'showSystemNames' | 'showRegionLabels' | 'freightFlowsDefault' | 'ditherGradients' | 'pullStationsToCentre' | 'showWeaponRangeCircles';
 
 function createAdvancedDisplaySettings(): OriginalWindow {
     const win = openOriginalWindow({
@@ -785,6 +785,7 @@ function createAdvancedDisplaySettings(): OriginalWindow {
         ['Freight flows overlay on at start', 'freightFlowsDefault'],
         ['Dither gradients (no banding)', 'ditherGradients'],
         ['Draw stations closer to their planet / moon', 'pullStationsToCentre'],
+        ['Show weapon range circles for the selected ship', 'showWeaponRangeCircles'],
     ];
     mapBoxes.forEach(([caption, key], i) => check(map, caption, st[key], 10, 22 + 22 * i, (v) => updateSettings({ [key]: v } as Partial<UiSettings>)));
     return win;

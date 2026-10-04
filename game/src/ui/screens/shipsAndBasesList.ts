@@ -37,6 +37,7 @@ import { BuiltObjectMissionType, builtObjectMission } from '../../sim/missions/m
 import { ShipGroup, empireShipGroups } from '../../sim/fleets/shipGroup';
 import { isPrivateDesignSubRole } from '../../sim/player/playerOrders';
 import { issuePlayerCommand } from '../../sim/player/playerCommands';
+import { PendingValues } from '../pendingCommands';
 import { constructionJobRows } from '../../sim/player/constructionBoard';
 import { ShipAction, ShipActionType } from '../../sim/player/shipAction';
 import { getBuildableDesignsBySubRoles } from '../../sim/designGeneration';
@@ -589,9 +590,17 @@ function createShipsAndBasesList(opts: ShipsAndBasesListOptions): OpenState {
             issuePlayerCommand(galaxy, empire, 'shipAction', [b, action(b), false, undefined], i === ships.length - 1 ? () => done() : undefined);
         });
     };
+    // Automation as the toggles see it: the state last sent per ship until its reply lands (pendingCommands.ts), so a
+    // quick second click turns it back, as in-thread a frame later.
+    const pendingAutomated = new PendingValues<BuiltObject, boolean>();
+    const automatedShown = (b: BuiltObject): boolean => pendingAutomated.value(b, b.isAutoControlled);
     const toggleAutomation = (ships: BuiltObject[], on: boolean): void => {
         const own = ships.filter((b) => b.owner === empire && b.role !== BuiltObjectRole.Base);
-        shipActions(own, (b) => ShipAction.forAction(on ? ShipActionType.AutomateShip : ShipActionType.UnautomateShip, b), () => refresh());
+        const settles = own.map((b) => pendingAutomated.send(b, on));
+        shipActions(own, (b) => ShipAction.forAction(on ? ShipActionType.AutomateShip : ShipActionType.UnautomateShip, b), () => {
+            for (const settle of settles) settle();
+            refresh();
+        });
     };
     const columns: GridColumn<ShipsAndBasesRow>[] = [
         { id: 'empire', header: 'Empire', width: 25, align: 'center', sort: (r) => (r.stellarObject.empire as Empire | null)?.name ?? '', render: (r, c) => flagCell(galaxy, c, (r.stellarObject.empire as Empire | null) ?? null) },
@@ -639,7 +648,7 @@ function createShipsAndBasesList(opts: ShipsAndBasesListOptions): OpenState {
             onClick: (r) => {
                 const b = r.builtObject;
                 if (b === null || b.owner !== empire || b.role === BuiltObjectRole.Base) return;
-                toggleAutomation([b], !b.isAutoControlled);
+                toggleAutomation([b], !automatedShown(b));
             },
         },
     ];
@@ -749,7 +758,7 @@ function createShipsAndBasesList(opts: ShipsAndBasesListOptions): OpenState {
         onClick: () => {
             const ships = selectedShips(current).filter((b) => b.owner === empire && b.role !== BuiltObjectRole.Base);
             if (ships.length === 0) return;
-            toggleAutomation(ships, !ships.every((b) => b.isAutoControlled));
+            toggleAutomation(ships, !ships.every((b) => automatedShown(b)));
         },
     });
     body.appendChild(place(btnAutomate, 550, 331, 140, 17));
@@ -1022,7 +1031,7 @@ function createShipsAndBasesList(opts: ShipsAndBasesListOptions): OpenState {
         btnRefitAll.disabled = selectedShips(rows).length === 0;
         const own = ships.filter((b) => b.owner === empire && b.role !== BuiltObjectRole.Base);
         btnAutomate.disabled = own.length === 0;
-        setButtonLabel(btnAutomate, own.length > 0 && own.every((b) => b.isAutoControlled) ? 'Unautomate' : 'Automate');
+        setButtonLabel(btnAutomate, own.length > 0 && own.every((b) => automatedShown(b)) ? 'Unautomate' : 'Automate');
     }
 
     function selectionChanged(): void {

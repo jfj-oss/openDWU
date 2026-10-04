@@ -430,7 +430,7 @@ export class MainViewSounds {
             const b = bd(this.explosionPoint(x, y, e, view, f));
             req(this.player.resolveExplosion(e.explosionSize, b.balance, b.distance));
             this.marks.markExplosion(e);
-            // TODO(port): screen shake for ExplosionSize > 150 — Main.method_217 (MainView.2.cs:2811).
+            // (The screen shake for ExplosionSize > 150, Main.method_217, is render/screenShake.ts via effectsLayer.ts.)
         }
     }
 

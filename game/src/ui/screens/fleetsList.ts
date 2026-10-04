@@ -35,6 +35,7 @@ import type { Galaxy } from '../../sim/galaxy';
 import { missionTypeLabel, missionTargetText } from '../hud';
 import { ShipAction, ShipActionType } from '../../sim/player/shipAction';
 import { issuePlayerCommand } from '../../sim/player/playerCommands';
+import { PendingValues } from '../pendingCommands';
 import type { TroopLoadout } from '../../sim/player/fleetOps';
 import type { Habitat } from '../../sim/types';
 import { getFleetAdmiralsAndGenerals, shipGroupGetTroopLoadoutTargetAmounts, shipGroupTotalTroopCapacity } from '../../sim/fleets/shipGroupTasks';
@@ -240,6 +241,27 @@ export function troopLoadoutMaxima(l: TroopLoadout): TroopLoadout {
     const left = 100 - (l.infantry + l.armored + l.artillery + l.specialForces);
     const m = (v: number): number => Math.min(100, v + left);
     return { infantry: m(l.infantry), armored: m(l.armored), artillery: m(l.artillery), specialForces: m(l.specialForces) };
+}
+
+/** A loadout spinner's new value for type `k` (clamped to what is left of the 100 percent, method_265). */
+export function fleetLoadoutSpin(l: TroopLoadout, k: keyof TroopLoadout, v: number): TroopLoadout {
+    const max = troopLoadoutMaxima(l);
+    return { ...l, [k]: Math.min(max[k], Math.max(0, v)) };
+}
+
+/** The loadout the group shows: the one last sent for the fleet while its reply is on the way (pendingCommands.ts),
+ *  else the fleet's. */
+export function displayedFleetTroopLoadout(sg: ShipGroup, pending: PendingValues<ShipGroup, TroopLoadout | null>): TroopLoadout | null {
+    return pending.value(sg, fleetTroopLoadout(sg));
+}
+
+/** setFleetTroopLoadout, noting the loadout as sent until the reply lands (quick spinner clicks each count). */
+export function issueFleetTroopLoadout(galaxy: Galaxy, empire: Empire, sg: ShipGroup, loadout: TroopLoadout | null, pending: PendingValues<ShipGroup, TroopLoadout | null>, done?: () => void): void {
+    const settle = pending.send(sg, loadout === null ? null : { ...loadout });
+    issuePlayerCommand(galaxy, empire, 'setFleetTroopLoadout', [sg, loadout], () => {
+        settle();
+        done?.();
+    });
 }
 
 /** Main.Part9.cs method_267: the spinner labels "% Infantry  (= N units)" (GetTroopLoadoutTargetAmounts with
@@ -587,11 +609,11 @@ function createFleetsList(opts: FleetsListOptions): OpenState {
     useCheck.style.fontWeight = 'bold';
     useCheck.append(useCheckInput, el('span', '', 'Use Troop Loadouts'));
     fleetsPage.appendChild(place(useCheck, 358, 505));
-    // uuGypgjgrb: on = 100 % infantry; off = all four 255.
+    // uuGypgjgrb: on = 100 % infantry; off = all four 255. The loadout last sent counts until its reply lands
+    // (pendingCommands.ts): quick repeated clicks on the spinners / the check box each take effect.
+    const pendingLoadout = new PendingValues<ShipGroup, TroopLoadout | null>();
     useCheckInput.addEventListener('change', () =>
-        withFleet((sg) =>
-            issuePlayerCommand(galaxy, empire, 'setFleetTroopLoadout', [sg, useCheckInput.checked ? { infantry: 100, armored: 0, artillery: 0, specialForces: 0 } : null], () => refresh()),
-        ),
+        withFleet((sg) => issueFleetTroopLoadout(galaxy, empire, sg, useCheckInput.checked ? { infantry: 100, armored: 0, artillery: 0, specialForces: 0 } : null, pendingLoadout, () => refresh())),
     );
     const keys: (keyof TroopLoadout)[] = ['infantry', 'armored', 'artillery', 'specialForces'];
     const spinners = {} as Record<keyof TroopLoadout, HTMLInputElement>;
@@ -600,10 +622,9 @@ function createFleetsList(opts: FleetsListOptions): OpenState {
         // numShipGroupTroopLoadout* (10, 23 + 30 i) 40 × 25; lblShipGroupTroopLoadout* (50, 28 + 30 i).
         const n = spinner((v) =>
             withFleet((sg) => {
-                const l = fleetTroopLoadout(sg);
+                const l = displayedFleetTroopLoadout(sg, pendingLoadout);
                 if (l === null) return;
-                const max = troopLoadoutMaxima(l);
-                issuePlayerCommand(galaxy, empire, 'setFleetTroopLoadout', [sg, { ...l, [k]: Math.min(max[k], Math.max(0, v)) }], () => refresh());
+                issueFleetTroopLoadout(galaxy, empire, sg, fleetLoadoutSpin(l, k, v), pendingLoadout, () => refresh());
             }),
         );
         n.style.fontSize = `${FONT.large}px`;
@@ -623,12 +644,19 @@ function createFleetsList(opts: FleetsListOptions): OpenState {
     // ---------------------------------------------------------------------------------------------------------------
     // Our fleet orders row (the selection panel's fleet buttons).
     // ---------------------------------------------------------------------------------------------------------------
+    // The Automate toggle's state last sent per fleet, until its reply lands (pendingCommands.ts).
+    const pendingAutomated = new PendingValues<ShipGroup, boolean>();
     const orderSpecs: { id: FleetActionId; label: string; icon: string; title: string; run: (sg: ShipGroup) => void }[] = [
         { id: 'posture', label: 'Posture', icon: 'fleetAttackPosture.png', title: 'Toggle the fleet posture between Attack and Defend', run: (sg) => shipAction(sg, fleetShipAction('posture', sg)) },
         { id: 'range', label: 'Range', icon: 'fleetRangeAny.png', title: 'How far from its base or attack point the fleet takes missions (cycles)', run: (sg) => shipAction(sg, fleetShipAction('range', sg)) },
         { id: 'attackPoint', label: 'Attack Point', icon: 'fleetAttackPoint.png', title: 'Click an enemy base or colony on the map (click empty space to clear)', run: (sg) => { close(); opts.onPickPoint?.(sg, 'attackPoint'); } },
         { id: 'homeBase', label: 'Home Base', icon: 'fleetHomeBase.png', title: 'Click a friendly base or colony on the map (click empty space to clear)', run: (sg) => { close(); opts.onPickPoint?.(sg, 'homeBase'); } },
-        { id: 'automate', label: 'Automate', icon: 'automate.png', title: 'Toggle whether the fleet is controlled by the AI', run: (sg) => shipAction(sg, fleetShipAction(fleetAutomated(sg) ? 'unautomate' : 'automate', sg)) },
+        { id: 'automate', label: 'Automate', icon: 'automate.png', title: 'Toggle whether the fleet is controlled by the AI', run: (sg) => {
+            // A toggle: from the state last sent while its reply is on the way (a quick second click turns it back).
+            const on = !pendingAutomated.value(sg, fleetAutomated(sg));
+            const settle = pendingAutomated.send(sg, on);
+            shipAction(sg, fleetShipAction(on ? 'automate' : 'unautomate', sg), settle);
+        } },
         { id: 'stop', label: 'Stop', icon: 'stop.png', title: 'Cancel the fleet mission and hold', run: (sg) => shipAction(sg, fleetShipAction('stop', sg)) },
         { id: 'disband', label: 'Disband Fleet', icon: 'leavefleet.png', title: 'Disband the fleet; its ships stay in service', run: (sg) => { current = null; shipAction(sg, fleetShipAction('disband', sg)); } },
     ];
@@ -657,8 +685,11 @@ function createFleetsList(opts: FleetsListOptions): OpenState {
         if (sg !== null) fn(sg);
     }
     /** Issue a shipAction on the fleet (the orders row), then redraw. */
-    function shipAction(sg: ShipGroup, action: ShipAction): void {
-        issuePlayerCommand(galaxy, empire, 'shipAction', [sg, action, false], () => refresh());
+    function shipAction(sg: ShipGroup, action: ShipAction, replied?: () => void): void {
+        issuePlayerCommand(galaxy, empire, 'shipAction', [sg, action, false], () => {
+            replied?.();
+            refresh();
+        });
     }
 
     let infoKey = '';
@@ -697,7 +728,7 @@ function createFleetsList(opts: FleetsListOptions): OpenState {
 
         // Troops: report, loadout group.
         setText(troopReport, ungarrisonedTroopReport(empire.troops?.items ?? [], sg));
-        const loadout = sg !== null ? fleetTroopLoadout(sg) : null;
+        const loadout = sg !== null ? displayedFleetTroopLoadout(sg, pendingLoadout) : null;
         useCheckInput.checked = loadout !== null;
         useCheckInput.disabled = sg === null;
         group.classList.toggle('fl-disabled', loadout === null);
@@ -730,9 +761,10 @@ function createFleetsList(opts: FleetsListOptions): OpenState {
             icon('range', fleetRangeIcon(sg.postureRangeSquared));
             minor('attackPoint', sg.attackPoint?.name ?? '(None)');
             minor('homeBase', sg.gatherPoint?.name ?? '(None)');
-            minor('automate', state.automated ? 'On' : 'Off');
-            setButtonLabel(orderButtons.get('automate')!, state.automated ? 'Automated' : 'Automate');
-            icon('automate', state.automated ? 'unautomate.png' : 'automate.png');
+            const automated = pendingAutomated.value(sg, state.automated);
+            minor('automate', automated ? 'On' : 'Off');
+            setButtonLabel(orderButtons.get('automate')!, automated ? 'Automated' : 'Automate');
+            icon('automate', automated ? 'unautomate.png' : 'automate.png');
             minor('stop', sg.mission !== null && sg.mission.type !== BuiltObjectMissionType.Undefined ? missionTypeLabel(sg.mission.type) : '(No mission)');
             minor('disband', `${sg.ships.length} ships`);
         } else {

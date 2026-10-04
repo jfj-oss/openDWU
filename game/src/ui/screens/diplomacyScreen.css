@@ -133,6 +133,8 @@
 .dip-talk-panel .dip-talk-close {
     right: 8px;
     top: 8px;
+    /* Above the full-width name row (dip-talk-head), which is added after it and used to swallow its clicks. */
+    z-index: 2;
 }
 .dip-talk-head {
     display: flex;

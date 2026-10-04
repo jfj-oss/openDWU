@@ -70,6 +70,9 @@ export interface UiSettings {
     ditherGradients: boolean;
     /** Cosmetic (not in the original): draw stations pulled in toward their planet's / moon's centre. */
     pullStationsToCentre: boolean;
+    /** Bacon mod (BaconMain.cs 442 DrawWeaponRanges, opt-in like its showRangeCircles / "!rangecircles"): weapon-range
+     *  circles around the selected ship (render/weaponRangeCircles.ts). */
+    showWeaponRangeCircles: boolean;
 
     /** GameOptions.AutoPauseWhenInPopupWindow (default true, Main.Part9.cs:2714): pause a running game while a screen window is open. */
     autoPauseInPopup: boolean;
@@ -187,6 +190,7 @@ export const DEFAULT_SETTINGS: UiSettings = {
 
     ditherGradients: true,
     pullStationsToCentre: false,
+    showWeaponRangeCircles: false,
     autoPauseInPopup: true,
     simWorker: false,
 
@@ -294,6 +298,7 @@ export function loadSettings(): UiSettings {
         // [freightOverlay] end
         if (typeof parsed.ditherGradients === 'boolean') out.ditherGradients = parsed.ditherGradients;
         if (typeof parsed.pullStationsToCentre === 'boolean') out.pullStationsToCentre = parsed.pullStationsToCentre;
+        if (typeof parsed.showWeaponRangeCircles === 'boolean') out.showWeaponRangeCircles = parsed.showWeaponRangeCircles;
         if (typeof parsed.autoPauseInPopup === 'boolean') out.autoPauseInPopup = parsed.autoPauseInPopup;
         if (typeof parsed.simWorker === 'boolean') out.simWorker = parsed.simWorker;
         // [galaxymarkers] begin

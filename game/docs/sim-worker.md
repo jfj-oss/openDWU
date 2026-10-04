@@ -484,9 +484,62 @@ of the commands ahead of it, as one boundary applies them in order).
 | The executor threw, or an unknown op | none, as in-thread. The worker pauses with a `simError` (toast) and replies `threw`, so nothing is left waiting; the commands after it apply at the next boundary | rejects |
 | An argument cannot be sent (dropped object, unregistered class) or the worker cannot resolve it (stale sync id, unknown static), or the issuing empire is gone | the op's **failure value** (`COMMAND_FAILURE`: the value its executor returns when it refuses, with the reason as the message where the result has one) | rejects |
 | The result has a part that cannot cross exactly (an unregistered class, a function) | the result with those parts made plain, logged loudly (`console.error`: make the type sendable) | resolves |
-| No reply after `REPLY_TIMEOUT_MS` (30 s; a lost message) | the failure value, logged loudly. A reply that still comes is dropped with a warning (the order may still have been applied) | rejects |
-| The worker stopped (`worker.ts` fatal: its loop or the sync threw; an uncaught error; a message that could not be read; `SimWorkerClient.stop`) | the failure value, at once. Later commands fail in a microtask, and a `workerStopped` event shows a toast | rejects |
+| The command reached a frame boundary after its deadline (`REPLY_TIMEOUT_MS`, 30 s after it was sent: the timeout policy below) | the failure value; the worker did not apply it and says so (`expired`) | rejects |
+| No reply `REPLY_TIMEOUT_MS + REPLY_GRACE_MS` (60 s) after it was sent (the worker runs no frames: hung, or a lost message) | the failure value: the worker is declared unresponsive and stopped (next row) | rejects |
+| The worker stopped (`worker.ts` fatal: its loop or the sync threw; an uncaught error; a message that could not be read; `SimWorkerClient.stop`) | the failure value, at once. Later commands fail in a microtask, and a `workerStopped` event shows a toast and the restart box (§4.6) | rejects |
 | The game is closed, reloaded or a new one started (`SimClientCore.dispose`) | the failure value, in a microtask after the teardown. The command sink stays installed, so a command issued on the closed replica fails the same way | rejects |
+
+**The timeout policy (deterministic: the worker decides).** Every command message carries a `deadline` (epoch ms,
+`performance.timeOrigin + performance.now()`, the same clock in both threads: the send time plus `REPLY_TIMEOUT_MS`).
+`SimHost.command` only decodes it; the frame boundary admits it (`SimHost.admitCommands`, called right before the
+boundary's drain in `tick`, and before a save's or a debug `advance`'s flush): the boundary reads the wall clock once,
+hands the commands whose deadline has not passed to the player queue in arrival order — they are applied by the drain
+that follows, at exactly the boundary they were applied at before — and rejects the others: not applied, not journaled
+(seed + command log replays the game without them), a console warning in the worker (`rejected: it reached a frame
+boundary N ms after its deadline`) and an `expired` reply, which the main thread delivers as the op's failure value.
+The main thread never fails a command on a clock of its own while the worker runs: a worker that runs frames answers
+every command by its first boundary after the deadline (applied, or expired), so a callback that got the failure value
+can no longer see the order land, and a slow reply to an order applied in time is delivered as applied. Only when no
+reply has come `REPLY_GRACE_MS` (30 s) after the deadline — the worker runs no frames at all — the main thread declares
+it unresponsive (`SimClientCore.checkReplyTimeouts` → `onUnresponsive` → `SimWorkerClient.stop`: terminated, so it
+cannot apply anything later), every waiting request fails, and the restart is offered (§4.6). In-thread nothing changes:
+commands always reach the next boundary. Tests: `test/simWorkerCommandFailures.test.ts` (a command delayed past its
+deadline is rejected and not journaled, the next one applies; an order applied in time with a slow reply is delivered as
+applied; a lost message trips the backstop).
+
+**Quick repeats** (`src/ui/pendingCommands.ts`, `test/simWorkerQuickClicks.test.ts`). A control that computes its next
+value from what the game shows — a stepper adds one to the current count, a toggle sends the opposite of the current
+flag, a purchase button is enabled while nothing was bought for the target — reads state one reply behind: in-thread for
+the rest of the frame, on a replica for a round trip. Such controls keep the last value they sent per key
+(`PendingValues`) until that command's reply lands (any outcome; an earlier reply never clears a later send), compute
+from it and show it; one-shot actions are busy (`PendingOnce`) from the click until the reply that settles them. In-thread
+an entry lives less than a frame, so only clicks inside one frame (which used to compute from the old value too) see it.
+The controls (audit of every `issuePlayerCommand` in `src/ui` next to a read of the game):
+
+| Control | Was | Now |
+|---|---|---|
+| Colonies tax box / spinner (`coloniesScreen.ts issueColonyTaxRate`) | ColonyTax steps from the replica's rate to the box's value: overshoot / lost steps | steps from the rate last sent; the box shows it |
+| Fleets troop-loadout spinners and "Use Troop Loadouts" (`fleetsList.ts issueFleetTroopLoadout`) | the other types from the replica's loadout | from the loadout last sent; the group shows it |
+| Fleets "Automate" order button | the direction from the replica | from the state last sent |
+| Fleet Designs − / + / Add Design (`fleetDesignsTab.ts FleetTemplateCounts`) | count ± 1 from the replica | from the count last sent; the grid shows it |
+| Expansion Planner Build / Action (`expansionPlanner.ts plannerBuildColonyShip`, `plannerQueueMiningStation`) | enabled for two round trips; Build bought a ship per click (`buildNewShips` + a separate colonize order) | busy per target until the reply; Build is the BuildColonize order (method_539 in the game, after Main.Part7.cs's "a colony ship is on its way" check — so even two orders reaching one boundary buy one ship) |
+| Selection panel Automate (`hud.ts`), Ships and Bases Automate (row and button), Ship Designs Upgrade (per sub-role) | toggled from the replica | from the state last sent |
+| Diplomacy "trade restricted resources" check box | the 1 s re-render reset it to the replica's value | shows the value last sent |
+| Research tree click (queue / dequeue / crash question) | membership from the replica: a quick second click queued again | the queue with the clicks in flight (a second click on a node just queued asks the crash question, as in-thread) |
+| Selection panel order buttons (`orderMenu.ts`) | a second click repeated the stale button (a toggle's direction, the old page) | ignored until the order's reply (a new selection starts afresh) |
+| HUD dispatch slots | a second click re-resolved before the first order landed | busy per slot until the order's reply |
+| Empire Policy automation combos (`empirePolicyModel.ts issuePolicyPanel`) | sent values remembered for as long as the panel was open | until each reply lands; in-thread and worker logs are the same (`setEmpireControl` in both modes) |
+
+Not changed, by design: commands whose arguments are the control's own value (combo boxes, check boxes the user sets,
+renames, the Game Options window, which also keeps its sent values) and relative orders the executor resolves in the game
+(fleet posture / range, wait-queue and job moves, ship order keys); purchases the C# allows once per click (yard
+purchases, Build Facility: the executor checks money and limits).
+
+**Failure texts.** Recruit refusals now say why (`executeShipAction.ts recruitTroops`: "Recruit Troops at X: …", shown by
+the Troops and Colonies screens and the order menu; the C# returns silently, no state change either way). Construction
+Yards Refuel / Repair / Retire name the destination ("Refuel at X", "Repair at X", "Retire at X") or the reason the ship
+was skipped, with the C# Mission column's "(None)" (`constructionYards.ts yardShipOrderText`). The Expansion Planner's
+mining job refusal is "Cannot build here: X (reason)" with the construction board's reason (`plannerCannotBuildText`).
 
 Refresh requests never call `onFresh` on a failure, as in-thread; they are removed from the waiting table, and the
 timeout covers them too. Save / digest / debug / commandLog requests reject when the worker stops or the
@@ -508,6 +561,31 @@ These run in the worker on the authoritative game, and the main thread gets an e
   draw. The message options, the history trim and the advisor expiry are journaled commands (§4.4).
 - The location-pinged hook: the main thread centres the camera on the replica object.
 - A sim error: the worker pauses and the main thread shows a toast.
+
+### 4.6 Restart after the worker stopped (`src/simworker/restart.ts`, `main.ts offerWorkerRestart`)
+
+A worker that stopped for good (its loop or the sync threw, an uncaught error, a message that could not be read, the
+reply backstop) cannot be resumed. The main thread has already failed every request waiting on it (§4.4); then:
+
+- a toast, and the original-style message box "Simulation Stopped" (MessageBoxEx: `originalWindow.ts messageBox`) with
+  the reason, the source it would restart from (and the fallbacks), and **Restart** / **Main Menu**;
+- Restart tries the sources best first (`restartSources` / `restartFromSources`): **the worker's own save of its last
+  state** (`worker.ts fatal` → `SimHost.rescueSave`, sent with the fatal error when the game still serializes — the sim's
+  errors are contained by `SimHost.tick`, so a fatal error is usually the sync's or the host's; the commands not applied
+  yet are dropped from it, since they were failed on the main thread, and no rescue save is made if some were already on
+  the galaxy's queue), else **the replica** serialized on the main thread (`serializeGame` of the replica: hot data
+  current, cold data up to a cold cycle older, no command log — the restarted game's log starts at the restart; exact
+  after a full compare, test), else **this game's last autosave** (`autosave.ts currentGameAutosave`). A source whose text
+  cannot be had or that the new worker cannot load gives way to the next;
+- the chosen text boots a new worker exactly as a load does (`loadSaveInWorker`: snapshot, new replica — the re-sync),
+  the old view is torn down (its client disposed: anything still waiting fails) and the game view starts on the new
+  replica, **paused**; a toast names the source. Main Menu (or nothing loadable) returns to the main menu.
+
+Tests: `test/simWorkerRestart.test.ts` (a crash with orders in flight: each fails once, promises reject; the restart from
+the worker's save is exact, paused and playable — the clock runs, an order applies and replies; the replica fallback is
+exact after a full compare; a source that throws or does not load gives way to the autosave). Smoke:
+`scripts/simworker-smoke.mjs` crashes the worker twice (`SimWorkerClient.simulateFatal`: from the worker's save;
+`SimWorkerClient.stop`: from the replica), restarts through the box and recruits in the restarted game.
 
 ## 5. Determinism, the command log, saves and replays
 
@@ -563,6 +641,9 @@ The only behaviour changes in this mode are:
 | `src/simworker/workerClient.ts` | Main-side Worker wrapper, boot with progress, frame loop, async save / digest, the flag |
 | `src/simworker/remoteArgs.ts` | Command arguments and replies across the boundary (sync ids) |
 | `src/simworker/commandFailure.ts` | Each player op's failure value, for commands the worker could not apply (§4.4 "Failed commands") |
+| `src/simworker/restart.ts` | The restart after the worker stopped: sources, prompt text, fallbacks (§4.6) |
+| `src/ui/pendingCommands.ts` | `PendingValues` / `PendingOnce`: the values controls sent until their replies land (§4.4 "Quick repeats") |
+| `test/simWorkerQuickClicks.test.ts`, `test/simWorkerRestart.test.ts` | Quick repeats in both modes; the restart flow |
 | `src/simworker/bootOptions.ts` | createGame options across the boundary |
 | `src/sim/readOnlyQuery.ts` | Read-only UI reads (replica; the in-thread game between frames), record requests, `withSimWrites` / `withPureSimReads` (§4.4, §8) |
 | `src/simworker/tradeFlowSync.ts` | Trade-flow recording in the worker; the ledger as a side table (chunk 3) |
@@ -627,20 +708,25 @@ The only behaviour changes in this mode are:
   `requestSimRefresh` and `remoteSimHost` (about 140 sites). They take the failure value on their existing refusal
   path, and none keeps a busy state past it. Smoke: `scripts/simworker-smoke.mjs` (game mode, both modes; `--no-commands`
   skips it) recruits from the Troops screen, saves from the Design Editor (a copy, then a refused blank design twice),
-  and in worker mode crashes the worker (`SimWorkerClient.stop`) and checks that Save and Recruit still answer.
+  and in worker mode crashes the worker twice and restarts it (§4.6).
   Remaining limits:
-  - A timed-out command may still be applied by the worker after its callback got the failure value.
-  - An executor that throws leaves the waiting flows stuck in both modes (`designEditor.ts` `saving`), as in-thread.
-  - Worker latency makes some UI computations from replica state lossy under quick repeats within one round trip:
-    - the Colonies tax steps from `h.taxRate`;
-    - Fleets troop loadout spinners from the replica loadout;
-    - Fleet Designs ± counts;
-    - Expansion Planner "Build" stays enabled for two round trips, so a double click buys two colony ships.
-    The Empire Policy combos now compare with the values they sent.
-  - In-thread, `empirePolicy.ts` writes the automation `control*` fields directly, while worker mode issues
-    `setEmpireControl` commands, so the two modes' command logs differ there.
-  - Some failure texts are generic: Recruit refusals are silent in both modes; Construction Yards "no suitable
-    destination" for a refuel / repair / retire that failed; Expansion Planner "Cannot build here".
+  - An executor that throws leaves the waiting flows stuck in both modes (`designEditor.ts` `saving`), as in-thread; the
+    quick-repeat overlays of such a command stay until the screen closes (the selection bar's until the selection
+    changes).
+- **Command flow (2026-10-03).** Fixed: the timeout policy (§4.4: the worker rejects commands past their deadline at the
+  frame boundary; the main thread delivers the worker's verdict, and only a worker that runs no frames is stopped after
+  the grace); quick repeated clicks (§4.4 "Quick repeats": every UI control that computes the next value from the game
+  — tax steps, troop-loadout spinners, Fleet Designs ±, toggles, the research tree, the selection bar, dispatch slots,
+  Expansion Planner Build — computes from what it last sent; N clicks give N steps in both modes, a double-clicked colony
+  ship purchase buys one); the Empire Policy automation combos journal the same `setEmpireControl` commands in both
+  modes (test); the restart after the worker stopped (§4.6); informative Recruit / Construction Yards / Expansion Planner
+  failure texts. `repin --check`: 0 (the recruit refusal's result message is not state).
+  Left:
+  - the replica restart source can carry cold data up to a cold cycle old and has no command log;
+  - a hard crash (terminated worker, `onerror`, a lost message) has no rescue save of the worker's own (the replica or the
+    autosave is used); the autosave fallback covers only autosaves this game view wrote;
+  - the overlays cover what a click computes; displays that are not the control itself (labels elsewhere, other open
+    screens) still show the replica's value until the reply.
 
 ## 9. Porting work list (parallel chunks)
 

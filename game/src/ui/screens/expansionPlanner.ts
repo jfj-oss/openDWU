@@ -41,8 +41,11 @@ import { canEmpireColonizeHabitat, canEmpireColonizeHabitatRange, habitatResourc
 import { checkColonizationLikeliness, determineResourceValue } from '../../sim/tradeItems';
 import { countResourceSourcesForEmpire, fastFindNearestSpacePort } from '../../sim/stationPlacement';
 import { BuiltObjectMissionPriority, BuiltObjectMissionType, COORD_UNSET_DOUBLE } from '../../sim/missions/mission';
-import { ShipAction } from '../../sim/player/shipAction';
+import { ShipAction, ShipActionType, createShipAction } from '../../sim/player/shipAction';
 import { issuePlayerCommand } from '../../sim/player/playerCommands';
+import { PendingOnce } from '../pendingCommands';
+import { jobInvalidReason } from '../../sim/player/constructionBoard';
+import type { Design } from '../../sim/design';
 import { findNewestCanBuild } from '../../sim/designGeneration';
 import { canBuiltObjectColonizeHabitat } from '../../sim/construction/constructionQueue';
 import { galaxyResourceCurrentPrices } from '../../sim/design';
@@ -699,6 +702,86 @@ function miningStationDesign(galaxy: Galaxy, player: Empire, habitat: Habitat): 
 }
 
 // ---------------------------------------------------------------------------
+// Orders (DOM-free: the screen's buttons and the tests)
+// ---------------------------------------------------------------------------
+
+/** What a planner order's reply tells the player (a toast). */
+export interface PlannerOrderReply {
+    ok: boolean;
+    text: string;
+}
+
+/**
+ * "Cannot build here" (Main.Part4.cs 2592 / 2618, the Action / Build button text when the C# refuses the target) with
+ * the reason the construction board gives (constructionBoard.ts jobInvalidReason, read on what the game shows once the
+ * reply landed), e.g. "Cannot build here: Ixa III (another empire has a base at Ixa III)".
+ */
+export function plannerCannotBuildText(galaxy: Galaxy, player: Empire, design: Design, h: Habitat): string {
+    let why: string | null = null;
+    if (h.category === HabitatCategoryType.Star) why = 'mining stations cannot be built at a star';
+    else {
+        try {
+            why = jobInvalidReason(galaxy, player, { id: 0, design, habitat: h, x: COORD_UNSET_DOUBLE, y: COORD_UNSET_DOUBLE, ship: null, active: false, basesAtStart: 0, attempts: 0 });
+        } catch {
+            why = null;
+        }
+    }
+    return `${T('Cannot build here')}: ${h.name}${why !== null ? ` (${why})` : ''}`;
+}
+
+/** The player colony ship whose mission is to colonize `h` (Main.Part7.cs 885-892), or null. */
+export function colonyShipAssignedTo(player: Empire, h: Habitat): BuiltObject | null {
+    for (const b of player.builtObjects) {
+        if (b == null || b.subRole !== BuiltObjectSubRole.ColonyShip) continue;
+        const m = b.mission as { type?: number; targetHabitat?: Habitat | null } | null;
+        if (m != null && m.type === BuiltObjectMissionType.Colonize && m.targetHabitat === h) return b;
+    }
+    return null;
+}
+
+/**
+ * btnExpansionPlannerBuildColonyShip_Click in "colonies" mode: method_539(target) — buy the newest colony ship at the
+ * best colony and send it to colonize `h` — as the BuildColonize order on the target (executeShipAction.ts
+ * buildColonyShipFor, the same method_539, after Main.Part7.cs 883-897's check that no colony ship is on its way
+ * there yet: one command, applied in the game, so even two orders reaching one boundary buy one ship). A one-shot per
+ * target besides: `busy` holds it from the click until the reply (in sim-worker mode a round trip; in-thread one
+ * frame) and the buttons stay off meanwhile, as the C# button is off once the target has its colony ship. Returns
+ * whether the order was issued; `done` gets the reply's text.
+ */
+export function plannerBuildColonyShip(galaxy: Galaxy, player: Empire, h: Habitat, busy: PendingOnce<Habitat>, done: (r: PlannerOrderReply) => void): boolean {
+    const design = findNewestCanBuild(player.designs, BuiltObjectSubRole.ColonyShip, player);
+    if (design === null || !canEmpireColonizeHabitat(galaxy, player, player, h, player.colonizableHabitatTypesForEmpire(), design)) return false;
+    // A colony ship already on its way there: the button shows "(Colony Ship already assigned)".
+    if (colonyShipAssignedTo(player, h) !== null) return false;
+    const end = busy.start(h);
+    if (end === null) return false;
+    issuePlayerCommand(galaxy, player, 'shipAction', [h, createShipAction(ShipActionType.BuildColonize, h), false], (r) => {
+        end();
+        // The reply's state: the ship it bought, on its way (the C# shows no message either way).
+        const ship = r.ok === false ? null : colonyShipAssignedTo(player, h);
+        if (ship !== null) done({ ok: true, text: formatNet(T('Send X to colonize Y', 'Send {0} to colonize {1}'), [ship.name, h.name]) });
+        else done({ ok: false, text: `${T('Build and Send Colony Ship')}: ${r.ok === false && r.message ? resolveGameText(r.message) : 'not possible'}` });
+    });
+    return true;
+}
+
+/**
+ * btnExpansionPlannerBuildColonyShip_Click in the resource modes (method_540(null, target)): a construction job for the
+ * newest mining station at `h` (the port's construction board picks the ship). One-shot per target as above.
+ */
+export function plannerQueueMiningStation(galaxy: Galaxy, player: Empire, h: Habitat, busy: PendingOnce<Habitat>, done: (r: PlannerOrderReply) => void): boolean {
+    const design = miningStationDesign(galaxy, player, h);
+    if (design === null) return false;
+    const end = busy.start(h);
+    if (end === null) return false;
+    issuePlayerCommand(galaxy, player, 'constructionJobAdd', [design, h, COORD_UNSET_DOUBLE, COORD_UNSET_DOUBLE], (id) => {
+        end();
+        done(id === 0 ? { ok: false, text: plannerCannotBuildText(galaxy, player, design, h) } : { ok: true, text: `Construction job added: ${design.name} at ${h.name}` });
+    });
+    return true;
+}
+
+// ---------------------------------------------------------------------------
 // DOM
 // ---------------------------------------------------------------------------
 
@@ -1147,6 +1230,10 @@ function createExpansionPlanner(opts: ExpansionPlannerOptions): OpenState {
         return { action, build };
     }
 
+    // One order per target until its reply lands (pendingCommands.ts): a double click on Build buys one ship, and the
+    // buttons stay off meanwhile (the row shows the assigned ship only with the reply).
+    const busy = new PendingOnce<Habitat>();
+
     function refreshButtons(): void {
         const row = selectedRow();
         const { action, build } = inputsFor(row);
@@ -1154,6 +1241,11 @@ function createExpansionPlanner(opts: ExpansionPlannerOptions): OpenState {
         actionBtn.disabled = !action.enabled;
         setButtonLabel(buildBtn, build.text);
         buildBtn.disabled = !build.enabled;
+        // An order for this target is on its way (its reply re-binds the row).
+        if (row !== null && busy.busy(row.habitat)) {
+            actionBtn.disabled = true;
+            buildBtn.disabled = true;
+        }
         selectBtn.disabled = row === null;
         gotoBtn.disabled = row === null;
         const t = plannerModeTexts(mode, ships.length > 0);
@@ -1291,7 +1383,11 @@ function createExpansionPlanner(opts: ExpansionPlannerOptions): OpenState {
         } else if (mode === 'colonies') {
             action = ShipAction.forMission(BuiltObjectMissionType.Colonize, h);
         } else return;
+        const end = busy.start(h);
+        if (end === null) return;
+        refreshButtons();
         issuePlayerCommand(galaxy, player, 'shipAction', [ship, action, false], (r) => {
+            end();
             if (r.ok === false) showToast(`${ship.name}: ${r.message ?? 'order refused'}`);
             afterOrder();
         });
@@ -1302,29 +1398,14 @@ function createExpansionPlanner(opts: ExpansionPlannerOptions): OpenState {
         const row = selectedRow();
         if (row === null) return;
         const h = row.habitat;
-        if (mode === 'colonies') {
-            const design = findNewestCanBuild(player.designs, BuiltObjectSubRole.ColonyShip, player);
-            if (design === null || !canEmpireColonizeHabitat(galaxy, player, player, h, player.colonizableHabitatTypesForEmpire(), design)) return;
-            issuePlayerCommand(galaxy, player, 'buildNewShips', [[design], [1]], (r) => {
-                const ship = r.built[0];
-                if (!r.ok || ship === undefined) {
-                    showToast(r.message ? resolveGameText(r.message) : `${T('Build and Send Colony Ship')}: not possible`);
-                    afterOrder();
-                } else {
-                    // Re-bind once the colonize order has landed too (in worker mode it reaches a later boundary, so
-                    // the row only shows the assigned ship then — and Build stays off for it).
-                    issuePlayerCommand(galaxy, player, 'shipAction', [ship, ShipAction.forMission(BuiltObjectMissionType.Colonize, h), false], () => afterOrder());
-                    showToast(formatNet(T('Send X to colonize Y', 'Send {0} to colonize {1}'), [ship.name, h.name]));
-                }
-            });
-        } else if (mode === 'resourcesyou' || mode === 'resourcesgalaxy') {
-            const design = miningStationDesign(galaxy, player, h);
-            if (design === null) return;
-            issuePlayerCommand(galaxy, player, 'constructionJobAdd', [design, h, COORD_UNSET_DOUBLE, COORD_UNSET_DOUBLE], (id) => {
-                showToast(id === 0 ? `${T('Cannot build here')}: ${h.name}` : `Construction job added: ${design.name} at ${h.name}`);
-                afterOrder();
-            });
-        }
+        const replied = (r: PlannerOrderReply): void => {
+            showToast(r.text);
+            afterOrder();
+        };
+        let issued = false;
+        if (mode === 'colonies') issued = plannerBuildColonyShip(galaxy, player, h, busy, replied);
+        else if (mode === 'resourcesyou' || mode === 'resourcesgalaxy') issued = plannerQueueMiningStation(galaxy, player, h, busy, replied);
+        if (issued) refreshButtons();
     }
 
     // btnExpansionPlannerSelectTarget_Click: method_208 (select, the planner stays open).

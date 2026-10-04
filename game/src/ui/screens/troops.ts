@@ -33,7 +33,8 @@ import { resolveLeaderTroopMaintenanceFactor, resolveTroopLocationMaintenanceDiv
 import { type ShipGroup, empireShipGroups } from '../../sim/fleets/shipGroup';
 import { compareShipGroups } from '../../sim/fleets/shipGroupTasks';
 import { netSort } from '../../sim/netSort';
-import { tryGetText } from '../../sim/textResolver';
+import { formatNet, resolveGameText, tryGetText } from '../../sim/textResolver';
+import { showToast } from '../toast';
 import { ShipActionType, createShipAction, type ShipAction } from '../../sim/player/shipAction';
 import type { ShipActionResult } from '../../sim/player/executeShipAction';
 import { issuePlayerCommand } from '../../sim/player/playerCommands';
@@ -354,6 +355,13 @@ export interface RecruitOption {
     extra: string;
     /** The recruited troop's annual maintenance once trained (the grid's Maintenance formula for the template). */
     maintenance: number;
+}
+
+/** The toast for a Recruit order that was refused: the executor's reason ("Recruit Troops at X: …"), else GameText
+ *  "Recruit Troops at {0}" with "not possible". */
+export function recruitRefusalText(colony: Habitat, r: { message?: string }): string {
+    if (r.message !== undefined && r.message !== '') return resolveGameText(r.message);
+    return `${formatNet(tryGetText('Recruit Troops at X') ?? 'Recruit Troops at {0}', [colony.name])}: not possible`;
 }
 
 /**
@@ -805,6 +813,8 @@ function createTroopsScreen(opts: TroopsScreenOptions): OpenState {
         if (win.closed) return;
         recruitSig = '';
         refresh();
+        // A refusal says why (the executor's reason, or why a sim-worker order could not be carried out).
+        if (r.ok === false) showToast(recruitRefusalText(colony, r));
         for (const task of r.automationPrompts) {
             if (opts.confirmAutomationOff && (await opts.confirmAutomationOff(T(task, task)))) issuePlayerCommand(galaxy, empire, 'automationOff', [task], () => !win.closed && refresh());
         }

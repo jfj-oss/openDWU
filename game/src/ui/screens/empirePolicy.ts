@@ -16,11 +16,11 @@ import { MANIFEST } from '../../render/assets';
 import { policyFileEntries, policyFileName, readPolicyFileEntry, savedPolicyFiles, writeSavedPolicyFile } from '../policyFiles';
 import { showToast } from '../toast';
 import { issuePlayerCommand } from '../../sim/player/playerCommands';
+import { PendingValues } from '../pendingCommands';
 import {
     applyPolicyPanel,
     buildPolicyPanel,
-    policyAutomationChange,
-    type PolicyAutomationChange,
+    issuePolicyPanel,
     clampNumeric,
     designLabel,
     panelControls,
@@ -74,25 +74,11 @@ function createEmpirePolicy(opts: EmpirePolicyOptions): OpenState {
     const controls = panelControls(sections);
     const playerIsPirate = (galaxy.playerEmpire ?? empire).pirateEmpireBaseHabitat !== null;
 
-    // Worker mode: the automation values this panel has issued (the replica shows them one round trip later).
-    const sentControls = new Map<string, unknown>();
+    // The automation values this panel sent, until their replies land (pendingCommands.ts): a change X → Y → X within
+    // one reply still sends the X (in sim-worker mode the replica shows a change a round trip later).
+    const sentControls = new PendingValues<string, unknown>();
     // Main.Part2.cs WqesexberY_Click: _Game.PlayerEmpire.Policy = method_597(panel, PlayerEmpire) — run on every change.
-    const apply = (): void => {
-        // The automation combos (which the C# method_597 writes into the empire) become setEmpireControl commands (only
-        // the values that change), then the policy: a screen never writes the game (in-thread the write would bypass
-        // the command log and a replay would drift; in worker mode the replica is read-only — docs/sim-worker.md §8).
-        const changes: PolicyAutomationChange[] = [];
-        const policy = applyPolicyPanel(empire, playerIsPirate, controls, ctx, (field, value) => {
-            const c = policyAutomationChange(empire, field, value, sentControls);
-            if (c !== null) changes.push(c);
-        });
-        // Command log: queued, applied at the next frame boundary.
-        for (const c of changes) {
-            sentControls.set(c.field, c.value);
-            issuePlayerCommand(galaxy, empire, 'setEmpireControl', [c.field, c.value]);
-        }
-        issuePlayerCommand(galaxy, empire, 'setPolicy', [policy]);
-    };
+    const apply = (): void => issuePolicyPanel(empire, playerIsPirate, controls, ctx, sentControls);
 
     const root = el('div', 'policy-wrap');
     const win = el('div', 'policy-window');
