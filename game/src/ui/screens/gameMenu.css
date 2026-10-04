@@ -1,162 +1,47 @@
-/* In-game Escape menu (task 10c). Centred modal over the map; a 55% dim
-   layer sits behind the panel. Modern dark-panel style matching the HUD. */
+/* In-game Escape menu (task 10c) as the original's pnlGameMenu (gameMenu.ts): a 220 × 408 BorderPanel (.ow-screen +
+   .ow-stripes, originalWindow.css) scaled as one like the screen windows, with GlassButtons. */
 
 #game-menu-overlay {
     position: fixed;
     inset: 0;
-    z-index: 1001; /* above the HUD (#hud) and the main menu overlay */
+    z-index: 1001; /* above the HUD (#hud) and the main menu overlay; the screen windows (1500) stack above it */
     font-family: 'Forgotten Futurist', sans-serif;
     color: #fff;
 }
 
+/* The original draws no dim layer: this only keeps clicks off the map while the menu is open. */
 .game-menu-dim {
     position: absolute;
     inset: 0;
-    background: rgba(0, 0, 0, 0.55);
+    background: transparent;
 }
 
 .game-menu-panel {
     position: absolute;
-    left: 50%;
-    top: 50%;
-    transform: translate(-50%, -50%);
-    width: min(360px, calc(100vw - 40px));
-    max-height: calc(100vh - 80px);
-    overflow-y: auto;
-    background: rgba(14, 16, 20, 0.96);
-    backdrop-filter: blur(8px);
-    -webkit-backdrop-filter: blur(8px);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 10px;
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
-    padding: 18px 20px 20px;
+    left: 0;
+    top: 0;
+    box-shadow: none;
 }
 
+/* lblGameMenuTitle stand-in while picGameMenuHeader's resource loads (or when the install has no Main.resx). */
 .game-menu-title {
-    font-size: 18px;
-    font-weight: bold;
-    text-align: center;
-    margin-bottom: 14px;
-    letter-spacing: 0.04em;
-}
-
-.game-menu-list {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-}
-
-.game-menu-btn {
-    pointer-events: auto;
-    background: rgba(30, 33, 40, 0.9);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: 6px;
-    cursor: pointer;
-    padding: 8px 12px;
-    font-size: 14px;
-    font-family: inherit;
-    color: #fff;
-    text-align: center;
-    transition: background 0.12s ease, border-color 0.12s ease;
-}
-.game-menu-btn:hover {
-    background: rgba(44, 49, 58, 0.95);
-    border-color: rgba(120, 170, 255, 0.5);
-}
-.game-menu-btn:active {
-    background: rgba(56, 62, 74, 0.95);
-}
-
-/* Options sub-panel: shown below the button list when "Options" is clicked. */
-.game-menu-options {
-    margin-top: 14px;
-    padding-top: 12px;
-    border-top: 1px solid rgba(255, 255, 255, 0.1);
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-}
-
-.game-menu-option-row {
     display: flex;
     align-items: center;
-    gap: 10px;
-}
-
-.game-menu-option-label {
-    flex: 0 0 120px;
-    font-size: 13px;
-    color: #cfd6df;
-}
-
-/* A short hint beside an option (e.g. Multithreading's RAM note). */
-.game-menu-option-note {
-    flex: 1 1 auto;
-    font-size: 11px;
-    color: #9aa3ad;
-    font-style: italic;
-}
-
-/* Volume slider. */
-.game-menu-option-row input[type='range'] {
-    flex: 1;
-    accent-color: #7fb2ff;
-    cursor: pointer;
-}
-
-.game-menu-mute {
-    pointer-events: auto;
-    background: rgba(30, 33, 40, 0.9);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: 6px;
-    cursor: pointer;
-    padding: 4px 10px;
-    font-size: 12px;
-    font-family: inherit;
+    justify-content: center;
+    font-size: 22.67px;
+    font-weight: bold;
     color: #fff;
-    min-width: 64px;
-}
-.game-menu-mute:hover {
-    background: rgba(44, 49, 58, 0.95);
 }
 
-/* UI scale select. */
-.game-menu-option-row select {
-    flex: 0 0 90px;
-    background: rgba(30, 33, 40, 0.9);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: 6px;
-    color: #fff;
-    font-family: inherit;
-    font-size: 13px;
-    padding: 4px 8px;
-    cursor: pointer;
+.game-menu-header {
+    display: block;
+    pointer-events: none;
 }
 
-/* Toggle checkboxes. */
-.game-menu-option-row input[type='checkbox'] {
-    accent-color: #7fb2ff;
-    cursor: pointer;
-    width: 16px;
-    height: 16px;
-}
-
-/* Close (✕) button, top-right of the panel. */
-.game-menu-close {
+/* The disabled "Enter Game Editor": the wrapper carries the tooltip. */
+.game-menu-btn-wrap {
     position: absolute;
-    top: 10px;
-    right: 10px;
-    pointer-events: auto;
-    background: transparent;
-    border: none;
-    border-radius: 6px;
-    cursor: pointer;
-    min-width: 26px;
-    min-height: 26px;
-    font-size: 13px;
-    color: #9aa3ad;
 }
-.game-menu-close:hover {
-    background: rgba(255, 255, 255, 0.08);
-    color: #fff;
+.game-menu-btn-wrap .game-menu-btn {
+    pointer-events: none;
 }

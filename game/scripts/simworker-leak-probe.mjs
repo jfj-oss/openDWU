@@ -120,7 +120,7 @@ for (let r = 0; r < rounds; r++) {
     await page.evaluate(() => { window.__dwu.time.paused = true; });
     await page.mouse.move(700, 400);
     await page.keyboard.press('Escape');
-    await page.locator('.game-menu-btn', { hasText: 'Save Game' }).click();
+    await page.locator('.game-menu-btn', { hasText: /^Save Game$/ }).click();
     await page.fill('.save-load-name-input', name);
     await page.locator('#save-load-overlay button.save-load-btn', { hasText: /^Save$/ }).click();
     await page.waitForFunction((n) => JSON.parse(localStorage.getItem('dwu.saveIndex') ?? '[]').some((e) => e.name === n), name, { timeout: 300000 });
@@ -128,11 +128,12 @@ for (let r = 0; r < rounds; r++) {
     await page.waitForTimeout(500);
     if (!(await page.locator('#game-menu-overlay').isVisible())) await page.keyboard.press('Escape');
     const prev = await page.evaluate(() => window.__dwu.__probeId);
-    await page.locator('.game-menu-btn', { hasText: 'Main Menu' }).click();
+    await page.locator('.game-menu-btn', { hasText: 'Exit to Main Menu' }).click();
+    await page.locator('[data-ow="msgbox"] button', { hasText: 'Yes' }).click();
     await page.waitForSelector('.main-menu-item[data-id="loadGame"]', { timeout: 60000 });
     await count(`main menu ${r + 1}`);
     await page.click('.main-menu-item[data-id="loadGame"]');
-    await page.locator(`#save-load-overlay .save-row:has(.save-row-name:text-is("${name}")) .save-row-btn:text-is("Load")`).click();
+    await page.locator(`#save-load-overlay .ow-grid-row:has(.ow-grid-cell:text-is("${name}"))`).dblclick();
     await waitGame(prev);
     await tag();
     await page.waitForTimeout(3000);
