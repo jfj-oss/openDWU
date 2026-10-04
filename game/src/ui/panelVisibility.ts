@@ -11,8 +11,8 @@
 // buttons and the diplomatic message queue. method_472(false) hides those as well. What MainView draws itself
 // (method_18: the star date and speed text, the money / cashflow block and the system name) stays in every step.
 //
-// Port: the system map corner is pnlSystemMap (hudSystemMap.ts) plus our options list (pnlOptionsList: the zoom rows
-// and the overlay toggles), the message stub list (messageStubList.ts) for the diplomatic message queue; the date text of
+// Port: the system map corner is pnlSystemMap (hudSystemMap.ts: the panel, its zoom strip and our size toggle) plus our options list (pnlOptionsList: the overlay toggles, the original's row
+// of overlay buttons), the message stub list (messageStubList.ts) for the diplomatic message queue; the date text of
 // pnlTopLeftBar and pnlMoney are the MainView-drawn parts. The state is a data attribute on <body> read by hud.css.
 //
 // Changed at the user's request (not the original's order): T cycles all → everything but the system map → no UI →
