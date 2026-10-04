@@ -10,6 +10,7 @@ import type { GalaxyTime } from '../sim/galaxyTime';
 import { BuiltObject } from '../sim/builtObject';
 import { Habitat } from '../sim/types';
 import { ShipGroup } from '../sim/fleets/shipGroup';
+import type { Fighter } from '../sim/combat/fighters';
 import { BuiltObjectMissionType } from '../sim/missions/mission';
 import { BuiltObjectRole } from '../sim/data/designSpecifications';
 import { FleetPosture } from '../sim/diplomacyTick';
@@ -758,16 +759,16 @@ interface SelectionBar {
 }
 
 /** The selected object the buttons act on, as the C# SelectedObject (fleet, else ship / base, else habitat). */
-export function selectionTarget(sel: { habitat: Habitat; builtObject?: BuiltObject; shipGroup?: ShipGroup; creature?: unknown; fighter?: unknown; builtObjects?: BuiltObject[] } | null): ShipActionSelection {
+export function selectionTarget(sel: { habitat: Habitat; builtObject?: BuiltObject; shipGroup?: ShipGroup; creature?: unknown; fighter?: Fighter; builtObjects?: BuiltObject[] } | null): ShipActionSelection {
     if (sel === null) return null;
     // Several ships (a drag box / Shift-clicks): the BuiltObjectList selection the list orders act on (the same array
     // instance while the selection lasts, so the action bar keeps its page).
     if (sel.builtObjects !== undefined && sel.builtObjects.length > 0) return sel.builtObjects;
     // Main.Part3.cs 3616: a selected Creature gets eight empty buttons (method_585 with nulls), as with no selection.
     if (sel.creature !== undefined) return null;
-    // TODO(port): a selected Fighter's buttons (Main.Part3.cs 3601-3614: Launch / Retrieve Fighters|Bombers and Retire
-    // for the player's own) — none here yet, as for a creature.
-    if (sel.fighter !== undefined) return null;
+    // Main.Part3.cs 3602-3614: a selected Fighter (the C# SelectedObject): Launch / Retrieve this Fighter|Bomber and
+    // Retire for the player's own (sim/player/orderMenu.ts selectionActions), method_347's Fighter branch on click.
+    if (sel.fighter !== undefined) return sel.fighter;
     return sel.shipGroup ?? sel.builtObject ?? sel.habitat;
 }
 

@@ -46,6 +46,7 @@ import { troopCountsByType, troopCompositionDescription } from './screens/troops
 import { resolveEmpireEmblem } from './empireEmblem';
 import { createGameMenu, type GameMenuRefs } from './screens/gameMenu';
 import { createLeftSidebar, relayoutLeftSidebar } from './leftSidebarView';
+import { setListHoverSelectionSource } from './listHover';
 import { setGameMenuHandler, setCycleHandler, runShipCommand, isViewLocked, type CycleKind } from './keyboard';
 import { uiClickSounds } from '../audio/effectsPlayer';
 import { helpTopicKeyForHabitat, openGalactopedia, toggleGalactopedia } from './screens/galactopedia';
@@ -94,7 +95,7 @@ import { createCharterButton } from './screens/charters'; // [charters]
 import { setTextIfChanged } from '../render/drawCache';
 import { CREATURE_FRAME_SETS, creatureFrameSetIndexes, creatureFrameUrls } from '../render/creatureLayer';
 import type { Creature } from '../sim/creature';
-import type { Fighter } from '../sim/combat/fighters';
+import { Fighter } from '../sim/combat/fighters';
 
 // Port of Main.Part12.cs LoadUiChromeButtons (381–520): the control → chrome
 // button image mapping. The original loads each control's image from
@@ -509,7 +510,9 @@ export function toggleFleets(selected?: ShipGroup): void {
         onSelectOnly: (sg) => selectShipGroup(sg, false),
         // The info panel's hotspots: a ship selects it; the fleet itself is the selection already.
         onTarget: (t) => {
-            if (t.kind === 'select' && !(t.obj instanceof ShipGroup)) selectStellarObject(t.obj, false);
+            if (t.kind !== 'select' || t.obj instanceof ShipGroup) return;
+            if (t.obj instanceof Fighter) selectFighter(t.obj);
+            else selectStellarObject(t.obj, false);
         },
         // Home Base / Attack Point (Main.Part7.cs SetFleetHomeBase / SetFleetAttackPoint): the fleet is selected and the
         // next map click picks the point.
@@ -654,6 +657,8 @@ export function createHud(wiring: HudWiring = {}): HudRefs {
     }
 
     // The left sidebar (the original's Empire Navigation Tool, ItemListCollectionPanel): category buttons + item list.
+    // ItemListPanel.cs 2384: a hovered row's red travel vectors fall back to the ships flying to the selection.
+    setListHoverSelectionSource(() => currentSelection);
     const leftSidebar = createLeftSidebar(wiring);
     root.appendChild(leftSidebar);
     elements.get('pnlSelection')?.addEventListener('sel-resize', () => relayoutLeftSidebar(leftSidebar));
@@ -1748,6 +1753,7 @@ function buildSelectionPanel(wiring: HudWiring): HTMLElement {
         const o = t.obj;
         if (o instanceof ShipGroup) shipGroupSelectHandler?.(o, false);
         else if (o instanceof Habitat) habitatSelectHandler?.(o, false);
+        else if (o instanceof Fighter) fighterSelectHandler?.(o); // Main.Part4.cs 3547: a Fighters-row picture
         else stellarObjectSelectHandler?.(o, false);
     };
     const automationTarget = (): BuiltObject | ShipGroup | null => currentSelection?.shipGroup ?? currentSelection?.builtObject ?? null;
