@@ -3,7 +3,9 @@
 // Serves the built game (dist/) over a privileged custom scheme, dwu://app/…,
 // and maps dwu://app/assets/dwu/<path> to <DW:U install dir>/<path> so the
 // renderer can fetch original data/art by URL exactly like it does under
-// `npm run dev` (where Vite serves the public/assets/dwu symlink).
+// `npm run dev` (where Vite serves the public/assets/dwu symlink). PNG/JPEG
+// art is served without its embedded colour profile (colorProfile.cjs), as
+// the original decodes it.
 //
 // The renderer stays platform-neutral: no Node APIs in src/, everything goes
 // through URLs under /assets/dwu/.
@@ -13,6 +15,7 @@ const path = require('node:path');
 const fs = require('node:fs');
 const os = require('node:os');
 const { pathToFileURL } = require('node:url');
+const { stripColorProfile, isProfiledImagePath } = require('./colorProfile.cjs');
 
 // dist/ lives next to desktop/ in the repo; when packaged it is copied into
 // resources/ by @electron/packager (extraResources below).
@@ -194,6 +197,14 @@ app.whenReady().then(() => {
                 }
                 if (!fs.statSync(resolved).isFile()) {
                     return new Response(`Not a file: ${fileRel}`, { status: 404 });
+                }
+                if (isProfiledImagePath(resolved)) {
+                    // Original art with its embedded colour profile removed: the original's GDI+ load ignores it,
+                    // so the renderer must decode raw values too (desktop/colorProfile.cjs; same as the Vite dev
+                    // server's /assets/dwu/ middleware in vite.config.ts).
+                    const body = stripColorProfile(await fs.promises.readFile(resolved));
+                    const type = /\.png$/i.test(resolved) ? 'image/png' : 'image/jpeg';
+                    return new Response(body, { status: 200, headers: { 'Content-Type': type, 'Content-Length': String(body.length) } });
                 }
                 return net.fetch(pathToFileURL(resolved).href, request);
             }

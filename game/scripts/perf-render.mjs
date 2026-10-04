@@ -26,6 +26,8 @@
 //   update ms       — MainView.update (JS scene update, per frame),
 //   render ms       — app.renderer.render (Pixi JS traversal + GL command submission, per frame),
 //   sim ms          — the sim's wall ms per render frame (window.__dwu.simStats),
+// It also prints the boot time (navigation to window.__dwu.game) and, at the end, the original-art load cost
+// (printArtLoad: every /assets/dwu/ image request's timing and bytes, page and loader worker, and the JS heap).
 // With --profile, a CPU profile (Chrome DevTools protocol Profiler) is taken during each measurement and the top
 // self-time functions are printed. --paused measures with the sim paused (render cost only). The load average is
 // printed first because the numbers depend on how busy the machine is.
@@ -165,8 +167,11 @@ async function main() {
             copyFileSync(LOAD, join(root, 'public/dev-saves', basename(LOAD)));
             bootQs = `load=/dev-saves/${encodeURIComponent(basename(LOAD))}${args.qs ? `&${args.qs}` : ''}`;
         }
+        const artReqs = trackArtRequests(page);
+        const bootT0 = Date.now();
         await page.goto(`${base.replace(/\/$/, '')}/?${bootQs}`);
         await page.waitForFunction(() => !!window.__dwu?.game && !!window.__dwu?.time, null, { timeout: 120000 });
+        console.log(`boot: ${Date.now() - bootT0} ms from navigation to window.__dwu.game`);
         const gl = await page.evaluate(() => {
             const c = document.createElement('canvas').getContext('webgl2');
             const ext = c?.getExtension('WEBGL_debug_renderer_info');
@@ -254,7 +259,7 @@ async function main() {
         }
 
         if (SWEEP) {
-            await runSweep(page, cdp, browser);
+            await runSweep(page, cdp, browser, artReqs);
             return;
         }
         const zooms = ZOOMS;
@@ -357,6 +362,7 @@ async function main() {
             }
         }
         if (MOTION) printMotion(rows);
+        await printArtLoad(page, artReqs);
         console.log(`load average after: ${loadavg().map((v) => v.toFixed(2)).join(' ')}`);
     } finally {
         await browser.close();
@@ -592,7 +598,7 @@ async function installLayerTimers(page) {
 }
 
 /** --sweep: wheel-zoom galaxy -> 100% -> galaxy, SWEEPS times, measuring each sweep. */
-async function runSweep(page, cdp, browser) {
+async function runSweep(page, cdp, browser, artReqs) {
     if (LAYERS) await installLayerTimers(page);
     await page.evaluate(() => {
         window.__longTasks = [];
@@ -781,7 +787,39 @@ async function runSweep(page, cdp, browser) {
             `${String(r.sweep).padEnd(5)} ${String(r.frames).padEnd(6)} ${f(r.mean)}${f(r.p50)}${f(r.p95)}${f(r.p99)}${f(r.max)}| ${f(r.updMean, 9)}${f(r.updP95, 6)}${f(r.updMax)}| ${f(r.rndMean, 9)}${f(r.rndP95, 6)}${f(r.rndMax)}| ${r.longTasks} (${r.longTaskMs.toFixed(0)}, ${r.longTaskMax.toFixed(0)})`,
         );
     }
+    await printArtLoad(page, artReqs);
     console.log(`load average after: ${loadavg().map((v) => v.toFixed(2)).join(' ')}`);
+}
+
+/**
+ * Original-art requests (every /assets/dwu/ image, page and Pixi's loader worker alike), recorded from Playwright's
+ * request events: start time, duration (request start to response end) and body bytes.
+ */
+function trackArtRequests(page) {
+    const reqs = [];
+    page.on('requestfinished', async (req) => {
+        if (!req.url().includes('/assets/dwu/') || !/\.(png|jpe?g|bmp)(\?|$)/i.test(req.url())) return;
+        const t = req.timing();
+        const entry = { start: t.startTime, ms: t.responseEnd, bytes: 0 };
+        reqs.push(entry);
+        try {
+            entry.bytes = (await req.sizes()).responseBodySize;
+        } catch {
+            // page closed
+        }
+    });
+    return reqs;
+}
+
+/** Original-art load cost so far: count, bytes, request ms (sum / p95 / max), when the last one finished, JS heap. */
+async function printArtLoad(page, reqs) {
+    const heapMb = await page.evaluate(() => (performance.memory ? performance.memory.usedJSHeapSize / 1048576 : NaN));
+    const ms = reqs.map((r) => r.ms).filter((v) => v >= 0).sort((a, b) => a - b);
+    const t0 = Math.min(...reqs.map((r) => r.start));
+    const lastEnd = Math.max(...reqs.map((r) => r.start + Math.max(0, r.ms)));
+    console.log(
+        `art load: ${reqs.length} images, ${(reqs.reduce((t, r) => t + r.bytes, 0) / 1024).toFixed(0)} KB, request ms sum ${ms.reduce((a, b) => a + b, 0).toFixed(0)} / p50 ${(ms[Math.floor(ms.length / 2)] ?? 0).toFixed(1)} / p95 ${(ms[Math.floor(ms.length * 0.95)] ?? 0).toFixed(1)} / max ${(ms[ms.length - 1] ?? 0).toFixed(1)}, first to last ${reqs.length ? (lastEnd - t0).toFixed(0) : 0} ms; JS heap ${heapMb.toFixed(1)} MB`,
+    );
 }
 
 main().catch((err) => {

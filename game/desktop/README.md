@@ -12,7 +12,10 @@ Worlds: Universe install folder via the privileged `dwu://` scheme.
   resolves `<path>` inside your DW:U install dir (case-insensitively, since
   the original is a Windows game) and streams the file with
   `net.fetch(pathToFileURL(...))`. Path traversal is blocked: the resolved
-  path must stay inside the install root.
+  path must stay inside the install root. PNG/JPEG art is read whole and
+  served without its embedded colour profile (iCCP/sRGB/gAMA/cHRM chunks,
+  JPEG ICC segments; `desktop/colorProfile.cjs`, shared with the Vite dev
+  server), so the renderer decodes raw values like the original's GDI+ load.
 - Install dir discovery: `$DWU_DIR` (not saved; used by
   `scripts/desktop-check.mjs`) → `<userData>/config.json`
   (`{"installDir": "..."}`) → platform default guesses (Steam library paths, `~/Games/...` on macOS)
