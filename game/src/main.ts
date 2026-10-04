@@ -31,7 +31,7 @@ import type { RenderTime } from './render/renderInterp';
 import { SECTOR_LEVEL_ZOOM, SYSTEM_LEVEL_ZOOM, type Selection } from './ui/hud';
 import { setTextIfChanged } from './render/drawCache';
 import { Habitat, HabitatCategoryType } from './sim/types';
-import { createMapOverlayState, type MapOverlayState, type OverlayKey } from './ui/mapOverlays';
+import { createMapOverlayState, overlayOptionsOf, type MapOverlayState, type OverlayKey } from './ui/mapOverlays';
 import { buildDefaultHandlers, createShortcutsOverlay, dispatchKey, setCycleHandler, setGameMenuHandler } from './ui/keyboard';
 import { closeEmpiresList } from './ui/screens/empiresList';
 import { closeCharterPanels } from './ui/screens/charters'; // [charters]
@@ -509,6 +509,12 @@ const OVERLAY_PARAM_ALIASES: Record<string, OverlayKey> = {
     hubs: 'tradeHubs',
     tradeHubs: 'tradeHubs',
     // [freightOverlay] end
+    // [dw2overlays] begin
+    resources: 'resources',
+    fuel: 'fuelRange',
+    fuelRange: 'fuelRange',
+    colonyScores: 'colonyScores',
+    // [dw2overlays] end
 };
 
 /** Screenshot / dev hook: `?overlays=potentialColonies,scenic,research`
@@ -523,6 +529,16 @@ function applyOverlaysUrlParam(overlays: MapOverlayState): void {
         const key = OVERLAY_PARAM_ALIASES[off ? token.slice(1) : token];
         if (key !== undefined) overlays[key] = !off;
     }
+}
+
+/** [dw2overlays] Screenshot / dev hook: `?resourceFilter=Caslon` (a resource name or id) picks the Resources overlay's
+ * resource, as its "…" panel does. */
+function applyResourceFilterUrlParam(overlays: MapOverlayState, galaxy: Galaxy): void {
+    const raw = new URLSearchParams(window.location.search).get('resourceFilter');
+    if (raw === null || raw === '') return;
+    const n = Number(raw);
+    const r = Number.isInteger(n) ? galaxy.resourceSystem.byId.get(n) : galaxy.resourceSystem.resources.find((x) => x.name.toLowerCase() === raw.toLowerCase());
+    if (r !== undefined) overlayOptionsOf(overlays).resourceFilter = r.resourceId;
 }
 
 /** Task C3: the Galaxy Map screen for a game view (G key / HUD row); closes
@@ -647,6 +663,7 @@ export async function startGameView(
     const overlays = createMapOverlayState();
     overlays.freightFlows = getSettings().freightFlowsDefault; // [freightOverlay] settings default (19e-9)
     applyOverlaysUrlParam(overlays);
+    applyResourceFilterUrlParam(overlays, galaxy); // [dw2overlays]
     const view = new MainView(app, camera, galaxy, store, overlays);
     await view.init();
     const contextLoss = installGpuRecovery(app, view);
