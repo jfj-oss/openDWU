@@ -23,6 +23,32 @@ openDWU is ported directly from the game's decompiled engine source
 (formulas, constants, generation order and RNG sequence), with an opt-in
 mod/scenario layer on top. The code lives under [`game/`](game/).
 
+## Why this exists
+
+First off, I'm not an experienced game developer by any stretch of the
+imagination. I'm a university student who loves this game. Over the years I
+watched it slowly lose compatibility: every new Windows version or update
+seemed to add another problem. I worried that eventually it would become hard
+enough to run that it would fade from people's memory, left to a tiny niche
+willing to jump through hoops just to get it working.
+
+While digging through the forums to learn what the community loves, hates and
+still dreams about, I figured that if I was rebuilding it anyway, I might as
+well make it run on Linux and macOS too, and open it up to as many players as
+possible.
+
+I also couldn't resist adding a few things from my own wishlist: much bigger
+galaxies (up to 90×90 sectors and 8,000 star systems), some new kinds of
+content, and deeper changes to some of the game's systems. Every one of them
+is optional and can be switched off, so you can always play a completely
+authentic game of DW:U.
+
+None of this would have been realistic for one student without generative AI.
+It did most of the heavy lifting on the code, while I steered, tested and
+played. I hope you won't write this off as AI slop. I hope you can see the
+passion behind it: a faithful recreation of a game I love, by whatever means
+it took.
+
 ## What's here
 
 - **A faithful port of DW:U 1.9.5**: the original engine's formulas,
