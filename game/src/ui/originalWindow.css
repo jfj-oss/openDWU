@@ -598,3 +598,115 @@
     box-sizing: border-box;
     vertical-align: middle;
 }
+
+/* ContextMenuStrip / ToolStripDropDown (CustomToolStripRenderer.cs; originalWindow.ts toolStripMenu): the original's
+   pixels × --ow-ts-k (the HUD scale for page-level popups; 1 inside an already scaled element). Background and item
+   background: a horizontal gradient (16,16,24) → (56,56,72); no border (OnRenderToolStripBorder draws nothing; the
+   drop-down keeps the system drop shadow). Selected item: (64,64,80) → (128,128,144), text and arrow Yellow; normal
+   text and arrow (170,170,170); disabled text GrayText. Font Main.font_3 = 15.33 px regular. */
+.ow-toolstrip {
+    --ow-ts-k: var(--ow-hud-k, 0.856);
+    box-sizing: border-box;
+    padding: calc(2px * var(--ow-ts-k)) 0;
+    background: linear-gradient(to right, rgb(16, 16, 24), rgb(56, 56, 72));
+    border: 0;
+    border-radius: 0;
+    box-shadow: 2px 2px 4px rgba(0, 0, 0, 0.55);
+    color: rgb(170, 170, 170);
+    font-family: 'Forgotten Futurist', sans-serif;
+    font-size: calc(15.33px * var(--ow-ts-k));
+    font-weight: normal;
+    line-height: normal;
+    -webkit-font-smoothing: antialiased;
+    user-select: none;
+    scrollbar-width: thin;
+    scrollbar-color: rgb(96, 96, 112) rgb(32, 32, 40);
+}
+.ow-toolstrip,
+.ow-toolstrip * {
+    box-sizing: border-box;
+}
+.ow-ts-item {
+    display: flex;
+    align-items: center;
+    gap: 0;
+    width: 100%;
+    min-height: calc(22px * var(--ow-ts-k));
+    margin: 0;
+    padding: 0 calc(8px * var(--ow-ts-k)) 0 calc(10px * var(--ow-ts-k));
+    font: inherit;
+    color: rgb(170, 170, 170);
+    background: transparent;
+    border: 0;
+    border-radius: 0;
+    text-align: left;
+    white-space: nowrap;
+    cursor: default;
+    outline: none;
+}
+.ow-ts-item:hover:not(.ow-ts-disabled),
+.ow-ts-item.ow-ts-active:not(.ow-ts-disabled) {
+    color: rgb(255, 255, 0);
+    background: linear-gradient(to right, rgb(64, 64, 80), rgb(128, 128, 144));
+}
+.ow-ts-item.ow-ts-disabled {
+    color: rgb(109, 109, 109);
+}
+.ow-ts-label {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.ow-ts-check {
+    flex: none;
+    width: calc(18px * var(--ow-ts-k));
+    margin-left: calc(-4px * var(--ow-ts-k));
+    text-align: center;
+}
+.ow-ts-image {
+    flex: none;
+    width: calc(32px * var(--ow-ts-k));
+    margin-right: calc(6px * var(--ow-ts-k));
+    text-align: center;
+}
+.ow-ts-shortcut {
+    flex: none;
+    margin-left: calc(24px * var(--ow-ts-k));
+}
+/* OnRenderArrow: the small right-pointing triangle of a drop-down item, in the text colour. */
+.ow-ts-arrow {
+    flex: none;
+    width: 0;
+    height: 0;
+    margin-left: calc(18px * var(--ow-ts-k));
+    border-style: solid;
+    border-width: calc(4px * var(--ow-ts-k)) 0 calc(4px * var(--ow-ts-k)) calc(4px * var(--ow-ts-k));
+    border-color: transparent transparent transparent currentColor;
+    font-size: 0;
+}
+/* OnRenderSeparator: Gray (128,128,128) from x 4 to Width - 8 at mid-height. */
+.ow-ts-sep {
+    height: calc(6px * var(--ow-ts-k));
+    margin: 0 calc(8px * var(--ow-ts-k)) 0 calc(4px * var(--ow-ts-k));
+    background: linear-gradient(rgb(128, 128, 128), rgb(128, 128, 128)) center / 100% 1px no-repeat;
+}
+.ow-ts-heading {
+    padding: calc(3px * var(--ow-ts-k)) calc(4px * var(--ow-ts-k)) calc(3px * var(--ow-ts-k)) calc(6px * var(--ow-ts-k));
+    margin: 0 calc(8px * var(--ow-ts-k)) calc(2px * var(--ow-ts-k)) calc(4px * var(--ow-ts-k));
+    color: rgb(255, 255, 255);
+    font-weight: bold;
+    white-space: nowrap;
+    border-bottom: 1px solid rgb(128, 128, 128);
+}
+
+/* BorderPanel (BorderPanel.cs) as a plain CSS box for HUD popups: BackColor (48,48,64), 3 px border top
+   (200,200,200) / right (80,80,80) / bottom (20,20,20) / left (140,140,140), all alpha 96. */
+.ow-border-panel {
+    background: rgb(48, 48, 64);
+    border: 3px solid;
+    border-color: rgba(200, 200, 200, 0.376) rgba(80, 80, 80, 0.376) rgba(20, 20, 20, 0.376) rgba(140, 140, 140, 0.376);
+    border-radius: 0;
+    color: rgb(170, 170, 170);
+    font-family: 'Forgotten Futurist', sans-serif;
+}

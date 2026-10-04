@@ -1,35 +1,54 @@
 /* Waypoints & Known Locations (an Improvement, ui/waypoints.ts). */
 
+/* The name dialog reuses the order menu's MessageBoxEx look (orderMenu.css .order-confirm-*); its TextBox is the
+   original's (48,48,64) / (170,170,170) input (originalWindow.css .ow-input). */
 .waypoint-name-input {
     box-sizing: border-box;
     width: 100%;
     font-family: inherit;
-    font-size: 13px;
-    color: #e6e6e6;
-    background: rgba(0, 0, 0, 0.5);
-    border: 1px solid rgba(255, 255, 255, 0.25);
-    border-radius: 4px;
-    padding: 5px 8px;
+    font-size: inherit;
+    color: rgb(170, 170, 170);
+    background: rgb(48, 48, 64);
+    border: 1px solid rgb(96, 96, 112);
+    border-radius: 0;
+    padding: 4px 6px;
     outline: none;
 }
 .waypoint-name-input:focus {
-    border-color: rgba(70, 216, 255, 0.8);
+    border-color: rgb(140, 140, 160);
 }
 
+/* Small GlassButtons (originalWindow.css .ow-glass) in the View popup's "…" panel and the Waypoints list. */
+.hud-option-panel-button,
+.waypoints-btn {
+    font-family: inherit;
+    font-weight: bold;
+    color: rgb(120, 120, 120);
+    border: 1px solid rgb(0, 0, 16);
+    border-radius: 5px;
+    background:
+        linear-gradient(to bottom, rgba(112, 112, 128, 0.6), rgba(112, 112, 128, 0.2) 50%, transparent 50%),
+        rgb(0, 0, 16);
+    box-shadow: inset 0 0 0 1px rgb(67, 67, 77);
+    cursor: pointer;
+    transition: color 0.2s;
+}
 .hud-option-panel-button {
     margin-top: 4px;
-    font-family: inherit;
-    font-size: 11px;
-    color: #c8d0da;
-    background: rgba(255, 255, 255, 0.06);
-    border: 1px solid rgba(255, 255, 255, 0.2);
-    border-radius: 4px;
-    padding: 1px 8px;
-    cursor: pointer;
+    font-size: 1em;
+    padding: 2px 10px;
 }
-.hud-option-panel-button:hover {
-    background: rgba(255, 255, 255, 0.14);
+.waypoints-btn {
+    font-size: 10px;
+    padding: 1px 6px;
+}
+.hud-option-panel-button:hover,
+.waypoints-btn:hover {
     color: #fff;
+    background:
+        linear-gradient(to bottom, rgba(112, 112, 128, 0.6), rgba(112, 112, 128, 0.2) 50%, transparent 50%),
+        radial-gradient(ellipse 85% 115% at 50% 100%, rgba(48, 48, 128, 0.7), rgba(48, 48, 128, 0) 100%),
+        rgb(0, 0, 16);
 }
 
 .waypoints-panel {
@@ -43,10 +62,13 @@
     flex-direction: column;
     z-index: 1200;
     font-family: 'Forgotten Futurist', sans-serif;
-    color: #d8dee6;
+    color: rgb(170, 170, 170);
 }
 .waypoints-head {
     padding-right: 24px;
+    color: #fff;
+    font-size: 13px;
+    font-weight: bold;
 }
 .waypoints-close {
     position: absolute;
@@ -60,11 +82,12 @@
 .waypoints-sec {
     margin: 6px 0 2px;
     font-size: 11px;
-    color: #e8d24a;
+    font-weight: bold;
+    color: rgb(255, 255, 255);
 }
 .waypoints-empty {
     font-size: 11px;
-    color: #8a939e;
+    color: rgb(140, 140, 150);
     padding: 2px 0 4px;
 }
 .waypoints-row {
@@ -92,20 +115,6 @@
 }
 .waypoints-kind {
     font-size: 10px;
-    color: #8a939e;
+    color: rgb(140, 140, 150);
     white-space: nowrap;
-}
-.waypoints-btn {
-    font-family: inherit;
-    font-size: 10px;
-    color: #c8d0da;
-    background: rgba(255, 255, 255, 0.06);
-    border: 1px solid rgba(255, 255, 255, 0.18);
-    border-radius: 3px;
-    padding: 0 5px;
-    cursor: pointer;
-}
-.waypoints-btn:hover {
-    background: rgba(255, 255, 255, 0.14);
-    color: #fff;
 }

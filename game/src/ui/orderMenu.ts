@@ -34,6 +34,7 @@ import {
     type SelectionButton,
 } from '../sim/player/orderMenu';
 import { showToast } from './toast';
+import { glassButton, installHudScaleVar, setToolStripActive, toolStripItem, toolStripMenu, toolStripSeparator } from './originalWindow';
 import { PendingOnce } from './pendingCommands';
 import { openPirateSmugglingPicker } from './pirateSmugglingPicker';
 import { saveAutomationResponse, savedAutomationResponse } from './settings'; // [gameoptions]
@@ -97,32 +98,23 @@ export function openOrderMenu(items: OrderMenuItem[], clientX: number, clientY: 
     /** Open the panel for `list` at depth `level` next to `anchor` (null = at the cursor). */
     const showPanel = (list: OrderMenuItem[], level: number, anchor: HTMLElement | null): void => {
         while (state.panels.length > level) state.panels.pop()!.remove();
-        const panel = document.createElement('div');
-        panel.className = 'order-menu-panel';
-        panel.setAttribute('role', 'menu');
+        // CustomToolStripRenderer look (originalWindow.ts toolStripMenu); the order-menu-* classes are what the
+        // rest of the game (audio/uiClicks.ts, scripts) look for.
+        const panel = toolStripMenu('order-menu-panel');
         for (const item of list) {
             if (item.separator) {
-                const sep = document.createElement('div');
-                sep.className = 'order-menu-sep';
-                panel.appendChild(sep);
+                panel.appendChild(toolStripSeparator('order-menu-sep'));
                 continue;
             }
-            const row = document.createElement('div');
-            row.className = 'order-menu-item';
-            row.setAttribute('role', 'menuitem');
-            row.tabIndex = -1;
-            const text = document.createElement('span');
-            text.className = 'order-menu-label';
-            text.textContent = item.label;
-            row.appendChild(text);
-            if (item.children.length > 0) {
-                const arrow = document.createElement('span');
-                arrow.className = 'order-menu-arrow';
-                arrow.textContent = '›';
-                row.appendChild(arrow);
-            }
+            const row = toolStripItem(item.label, {
+                enabled: item.enabled,
+                submenu: item.children.length > 0,
+                title: item.hint ?? undefined,
+                className: 'order-menu-item',
+                labelClassName: 'order-menu-label',
+                arrowClassName: 'order-menu-arrow',
+            });
             if (!item.enabled) row.classList.add('order-menu-disabled');
-            if (item.hint) row.title = item.hint;
             const activate = (shift: boolean): void => {
                 if (!item.enabled) return;
                 if (item.children.length > 0) {
@@ -173,7 +165,7 @@ export function openOrderMenu(items: OrderMenuItem[], clientX: number, clientY: 
 
     const rowsOf = (panel: HTMLElement): HTMLElement[] => Array.from(panel.querySelectorAll<HTMLElement>('.order-menu-item'));
     const setActive = (panel: HTMLElement, row: HTMLElement | null): void => {
-        for (const r of rowsOf(panel)) r.classList.toggle('order-menu-active', r === row);
+        setToolStripActive(panel, row, 'order-menu-active');
         row?.focus({ preventScroll: true });
     };
     const focusFirst = (level: number): void => {
@@ -230,6 +222,7 @@ export function confirmAutomationOff(taskText: string): Promise<boolean> {
     const saved = savedAutomationResponse(taskText);
     if (saved !== null) return Promise.resolve(saved);
     return new Promise((resolve) => {
+        installHudScaleVar();
         const wrap = document.createElement('div');
         wrap.className = 'order-confirm-wrap';
         const win = document.createElement('div');
@@ -254,12 +247,10 @@ export function confirmAutomationOff(taskText: string): Promise<boolean> {
             if (rememberBox.checked) saveAutomationResponse(taskText, v);
             resolve(v);
         };
+        // MessageBoxEx's GlassButtons (originalWindow.ts glassButton).
         const mk = (text: string, v: boolean): HTMLButtonElement => {
-            const b = document.createElement('button');
-            b.type = 'button';
-            b.className = 'order-confirm-button';
-            b.textContent = text;
-            b.addEventListener('click', () => finish(v));
+            const b = glassButton(text, { className: 'order-confirm-button', onClick: () => finish(v) });
+            b.style.fontSize = '';
             buttons.appendChild(b);
             return b;
         };
@@ -346,6 +337,7 @@ export function installOrderUi(d: OrderUiDeps, view: OrderMainView, camera: Orde
     statusEl = document.createElement('div');
     statusEl.className = 'order-status';
     statusEl.hidden = true;
+    installHudScaleVar();
     document.body.appendChild(statusEl);
 
     // The action menu is built by the journaled 'actionMenu' command (playerOps.ts): building it draws galaxy.rnd and

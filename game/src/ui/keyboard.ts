@@ -36,6 +36,7 @@ import { toggleGroundReportFromKey } from './screens/groundReport';
 import { toggleGameOptionsPanel } from './screens/gameOptionsPanel'; // [16d]
 import { toggleEmpireComparison } from './screens/empireComparison'; // [15d]
 import { showToast } from './toast';
+import { CLOSE_BUTTON_SVG, installHudScaleVar } from './originalWindow'; // [uiwp6]
 import { isImprovementEnabled } from './improvements';
 import { openFleetSettingsForSelection } from './hud';
 // [advisor] begin
@@ -760,6 +761,7 @@ export function createShortcutsOverlay(): {
     toggle: () => boolean;
     destroy: () => void;
 } {
+    installHudScaleVar();
     const root = document.createElement('div');
     root.id = 'keyboard-shortcuts-overlay';
     root.className = 'hud-panel hud-keyboard-overlay';
@@ -772,9 +774,10 @@ export function createShortcutsOverlay(): {
 
     const close = document.createElement('button');
     close.type = 'button';
-    close.className = 'hud-btn hud-btn-glyph hud-keyboard-close';
+    // [uiwp6] The ScreenPanel's CloseButton (originalWindow.ts CLOSE_BUTTON_SVG).
+    close.className = 'ow-close hud-keyboard-close';
     close.title = 'Close';
-    close.textContent = '✕';
+    close.innerHTML = CLOSE_BUTTON_SVG;
     close.addEventListener('click', () => hide());
     root.appendChild(close);
 

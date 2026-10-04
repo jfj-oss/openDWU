@@ -76,6 +76,7 @@ import { attachBuildQueueLauncher } from './screens/buildQueue'; // [buildQueue]
 import { toggleResearchScreen } from './screens/researchScreen'; // [15b]
 import { toggleEmpireComparison } from './screens/empireComparison';
 import { showToast } from './toast';
+import { toolStripHeading, toolStripItem, toolStripMenu } from './originalWindow'; // [uiwp6]
 import type { DispatchOption } from '../sim/player/habitatDispatch';
 // [troops] begin
 import { toggleTroopsScreen } from './screens/troops';
@@ -1199,14 +1200,11 @@ function buildTopMoreButton(wiring: HudWiring): HTMLElement {
     btn.textContent = '•••';
     btn.style.width = '100%';
     btn.style.height = '100%';
-    const menu = document.createElement('div');
-    menu.className = 'top-more-menu';
+    // A ContextMenuStrip under the button (originalWindow.ts toolStripMenu, CustomToolStripRenderer).
+    const menu = toolStripMenu('top-more-menu');
     menu.hidden = true;
     for (const item of TOP_MORE_ITEMS) {
-        const row = document.createElement('button');
-        row.type = 'button';
-        row.className = 'top-more-item';
-        row.textContent = item.label;
+        const row = toolStripItem(item.label, { tag: 'button', className: 'top-more-item' });
         row.addEventListener('click', (e) => {
             e.stopPropagation();
             menu.hidden = true;
@@ -1986,27 +1984,17 @@ function creaturePictureUrl(c: Creature): string | null {
  *  Main.Part12.cs 2135-2199). The zoom buttons are the system map's own strip (hudSystemMap.ts). */
 function buildOptionsList(wiring: HudWiring): HTMLElement {
     const overlays = wiring.overlays ?? createMapOverlayState();
-    const panel = document.createElement('div');
-    panel.className = 'hud-panel hud-options';
+    // [uiwp6] A ToolStrip drop-down (originalWindow.ts toolStripMenu, CustomToolStripRenderer) of checked items.
+    const panel = toolStripMenu('hud-options');
 
     const section = (title: string): void => {
-        const head = document.createElement('div');
-        head.className = 'hud-section-head';
-        head.textContent = title;
-        panel.appendChild(head);
+        panel.appendChild(toolStripHeading(title, 'hud-section-head'));
     };
     const addRow = (row: OverlayRow): void => {
-        const item = document.createElement('button');
-        item.type = 'button';
-        item.className = 'hud-option-row';
+        const item = toolStripItem(row.label, { tag: 'button', checked: overlays[row.key], className: 'hud-option-row', labelClassName: 'hud-option-label' });
         item.dataset.overlay = row.key;
-        const check = document.createElement('span');
-        check.className = 'hud-option-check';
-        check.textContent = overlays[row.key] ? '✓' : '';
-        const lbl = document.createElement('span');
-        lbl.className = 'hud-option-label';
-        lbl.textContent = row.label;
-        item.append(check, lbl);
+        const check = item.querySelector<HTMLElement>('.ow-ts-check')!;
+        check.classList.add('hud-option-check');
         // [freightOverlay] begin — additions to the original nine carry a "+" badge (the Improvements section's rows do
         // not: the section says it); `panel` rows get a "…" opener.
         if (row.mod === true && row.improvement === undefined) {
@@ -2132,7 +2120,7 @@ function buildOptionsPopup(list: HTMLElement): HTMLElement {
     list.classList.add('hud-options-menu');
     const btn = document.createElement('button');
     btn.type = 'button';
-    btn.className = 'hud-panel hud-options-toggle';
+    btn.className = 'ow-glass hud-options-toggle'; // [uiwp6] a GlassButton
     btn.title = 'View and map overlays';
     const setOpen = (open: boolean): void => {
         wrap.classList.toggle('open', open);

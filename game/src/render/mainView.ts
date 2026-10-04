@@ -2569,7 +2569,9 @@ export class MainView {
                 }
                 // [dw2overlays] the Improvements overlays' lines for the hovered habitat (colony target, known resources).
                 const extra = this.overlayLayer?.habitatTooltipExtra(hit) ?? null;
-                showMapTooltip(extra !== null ? `${tooltipText(hit, systemName)}\n${extra}` : tooltipText(hit, systemName), e.clientX, e.clientY);
+                // HoverPanel method_13: the owner's main colour tints the fill (not for independents).
+                const owner = hit.empire !== null && hit.empire !== this.galaxy.independentEmpire ? hit.empire.mainColor : null;
+                showMapTooltip(extra !== null ? `${tooltipText(hit, systemName)}\n${extra}` : tooltipText(hit, systemName), e.clientX, e.clientY, false, owner);
             }, 120);
         }, { signal: this.windowInput.signal });
         window.addEventListener('mouseup', (e: MouseEvent) => {
