@@ -245,3 +245,33 @@ export function themeOtherPlanetUrls(): string[] {
     if (!set.dirExists(dir)) return [];
     return set.listFiles(dir, '.png').map((f) => set.listedFileUrl(dir, f));
 }
+
+/**
+ * Main.Part12.cs LoadEnvLandscapes 287-310: after the 30 fixed landscapes (GalaxyImages LandscapeImageOffset* /
+ * Count*, each themed per file by method_10) bitmap_29 gets every *.png (Directory.GetFiles order) of the theme's
+ * images\environment\landscapes\other\ folder when it exists, else of the stock one — which DW:U 1.9.5 does not ship,
+ * so with no theme (or a theme without the folder) nothing follows the 30. Bitmap 30 + i is the i-th. The theme's file
+ * URLs, [] otherwise.
+ */
+export function themeOtherLandscapeUrls(): string[] {
+    const set = activeCustomizationSet();
+    if (set === null) return [];
+    const dir = 'images/environment/landscapes/other';
+    if (!set.dirExists(dir)) return [];
+    return set.listFiles(dir, '.png').map((f) => set.listedFileUrl(dir, f));
+}
+
+/**
+ * Main.Part4.cs 369-458 method_521 (the diplomacy mood sting): the file under Sounds\Effects\ it plays for mood file
+ * `file` and the other empire's DominantRace `raceName`. Later probes win: the stock file, the stock
+ * sounds\effects\<Race>\<file>, the theme's sounds\effects\<file>, the theme's sounds\effects\<Race>\<file>
+ * (File.Exists each, case-insensitive). DW:U 1.9.5 ships no race subfolders, so without the theme's race copy the
+ * answer is `file` itself, which themedAssetUrl then resolves (the theme's copy, else the stock one).
+ */
+export function diplomacyMoodSoundFile(file: string, raceName: string | null | undefined): string {
+    const set = activeCustomizationSet();
+    if (set === null || raceName === null || raceName === undefined || raceName === '') return file;
+    const rel = `sounds/effects/${raceName}/${file}`;
+    const actual = set.actualPath(rel);
+    return actual === null ? file : actual.slice('sounds/effects/'.length);
+}

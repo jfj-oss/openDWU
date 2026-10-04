@@ -129,6 +129,42 @@ export function setFleetTroopLoadout(empire: Empire, fleet: ShipGroup, loadout: 
     return true;
 }
 
+/** Port of Main.Part11.cs 4521 method_180: the troop capacity a ship's loadout spinners take — Infantry and Special
+ *  Forces 100 each, Armored 200, Artillery 400 per unit. */
+export function shipTroopLoadoutSize(loadout: TroopLoadout): number {
+    let num = 0;
+    num = 0 + loadout.infantry * 100;
+    num += loadout.armored * 200;
+    num += loadout.artillery * 400;
+    return num + loadout.specialForces * 100;
+}
+
+/**
+ * Main.Part11.cs chkUseTroopLoadouts_CheckedChanged and the four numTroopLoadout*_ValueChanged handlers (the Ships and
+ * Bases window's Troops tab, method_179): a ship's own troop loadout, in UNITS of each type (BuiltObject.TroopLoadout*
+ * bytes). null switches it off (255 each: the ship recruits by the empire's policy); ticking the box starts at
+ * TroopCapacity / 100 Infantry; a spinner sets one byte. The spinners never let method_180 exceed TroopCapacity (their
+ * ValueChanged handlers back the value off first), so a loadout over it is refused here. Own ships only.
+ */
+export function setShipTroopLoadout(empire: Empire, ship: BuiltObject, loadout: TroopLoadout | null): boolean {
+    if (ship.empire !== empire) return false;
+    if (loadout === null) {
+        ship.troopLoadoutInfantry = 255;
+        ship.troopLoadoutArmored = 255;
+        ship.troopLoadoutArtillery = 255;
+        ship.troopLoadoutSpecialForces = 255;
+        return true;
+    }
+    const isByte = (v: number): boolean => Number.isInteger(v) && v >= 0 && v <= 255;
+    if (!isByte(loadout.infantry) || !isByte(loadout.armored) || !isByte(loadout.artillery) || !isByte(loadout.specialForces)) return false;
+    if (shipTroopLoadoutSize(loadout) > ship.troopCapacity) return false;
+    ship.troopLoadoutInfantry = loadout.infantry;
+    ship.troopLoadoutArmored = loadout.armored;
+    ship.troopLoadoutArtillery = loadout.artillery;
+    ship.troopLoadoutSpecialForces = loadout.specialForces;
+    return true;
+}
+
 /** Main.Part3.cs XxYlcNpSu4_Click (btnShipGroupLoadTroops): AssignFleetLoadTroops(fleet, manuallyAssigned: true). */
 export function fleetLoadTroops(galaxy: Galaxy, empire: Empire, fleet: ShipGroup): boolean {
     if (fleet.empire !== empire) return false;

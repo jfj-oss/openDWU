@@ -27,6 +27,7 @@ import { Container, Texture } from 'pixi.js';
 import type { Camera } from './camera';
 import type { AssetStore } from './assets';
 import { SpritePool } from './fxCommon';
+import { STOCK_ENGINE_THRUSTER_COUNT, engineThrusterUrls } from './effectFrames';
 import { BUILT_OBJECT_DRAW_RESIZE_FACTOR, BUILT_OBJECT_MAX_FACTOR, STANDARD_FAMILY_COUNT, themeShipFamilyNumbers } from './builtObjectLayer';
 import { activeCustomizationSet } from '../sim/data/customization';
 import { exhaustRect, type ExhaustRect } from './ambientLayer';
@@ -42,8 +43,8 @@ const IMG = '/assets/dwu/images';
 /** LoadFighters loads a fighter and a bomber per family folder (ShipImageHelper.ShipSetFighterImageCount = 2). */
 export const FIGHTER_IMAGES_PER_FAMILY = 2;
 export const FIGHTER_IMAGE_COUNT = STANDARD_FAMILY_COUNT * FIGHTER_IMAGES_PER_FAMILY;
-/** effects/enginethrusters/<i>.png that exist in the install (bitmap_209). */
-export const ENGINE_THRUSTER_IMAGE_COUNT = 6;
+/** effects/enginethrusters/<i>.png that exist in the install (bitmap_209; a theme's folder re-counts it, effectFrames.ts). */
+export const ENGINE_THRUSTER_IMAGE_COUNT = STOCK_ENGINE_THRUSTER_COUNT;
 /** MainView.1.cs 1337: fighters are culled 50 px outside the view. */
 const CULL_MARGIN_PX = 50;
 /** Main.Part11.cs 1579: fighters are picked only while the zoom factor < 50. */
@@ -119,9 +120,9 @@ export function fighterExhaustLengthPx(preparedPx: number, targetSpeed: number, 
     return num5;
 }
 
-/** Engine-thruster art index of a fighter (PrepareEngineExhaust: out of range → 0). */
-export function fighterExhaustIndex(engineExhaustImageIndex: number): number {
-    return engineExhaustImageIndex >= 0 && engineExhaustImageIndex < ENGINE_THRUSTER_IMAGE_COUNT ? engineExhaustImageIndex : 0;
+/** Engine-thruster art index of a fighter (PrepareEngineExhaust: out of range of bitmap_209 → 0). */
+export function fighterExhaustIndex(engineExhaustImageIndex: number, count: number = ENGINE_THRUSTER_IMAGE_COUNT): number {
+    return engineExhaustImageIndex >= 0 && engineExhaustImageIndex < count ? engineExhaustImageIndex : 0;
 }
 
 /** A fighter drawn this frame: its drawn (render-interpolated) centre and drawn size in px. */
@@ -177,7 +178,9 @@ export class FighterLayer {
     private bodies: SpritePool;
     private damage: DamageOverlays<Fighter>;
     private damageFx = false;
-    private engineTextures: (Texture | null)[] = new Array<Texture | null>(ENGINE_THRUSTER_IMAGE_COUNT).fill(null);
+    /** bitmap_209 (Main.Part13.cs LoadEffects): the stock or a theme's engine thruster pictures. */
+    private engineUrls = engineThrusterUrls();
+    private engineTextures: (Texture | null)[] = new Array<Texture | null>(this.engineUrls.length).fill(null);
     private engineRequested = false;
     /** Fighters given a drawn size last frame (their entry is cleared when they stop being drawn). */
     private drawnLast = new Set<Fighter>();
@@ -205,13 +208,13 @@ export class FighterLayer {
     private engineTexture(i: number): Texture | null {
         if (!this.engineRequested) {
             this.engineRequested = true;
-            for (let k = 0; k < ENGINE_THRUSTER_IMAGE_COUNT; k++) {
-                void this.store.loadFirst([`${IMG}/effects/enginethrusters/${k}.png`], () => Texture.EMPTY).then((t) => {
+            this.engineUrls.forEach((url, k) => {
+                void this.store.loadFirst([url], () => Texture.EMPTY).then((t) => {
                     this.engineTextures[k] = t === Texture.EMPTY ? null : t;
                 });
-            }
+            });
         }
-        return this.engineTextures[i];
+        return this.engineTextures[i] ?? null;
     }
 
     update(z: number, cam: Camera): void {
@@ -304,7 +307,7 @@ export class FighterLayer {
 
         // Engine exhaust under the fighter while TargetSpeed > 0 (MainView.1.cs 1508-1517).
         if (fighter.targetSpeed > 0 && mk.thrusters.length > 0) {
-            const tex = this.engineTexture(fighterExhaustIndex(fighter.specification.engineExhaustImageIndex));
+            const tex = this.engineTexture(fighterExhaustIndex(fighter.specification.engineExhaustImageIndex, this.engineUrls.length));
             const num5 = fighterExhaustLengthPx(px, fighter.targetSpeed, fighter.topSpeed);
             if (tex !== null && num5 > 0) {
                 for (const t of mk.thrusters) {

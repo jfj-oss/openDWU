@@ -22,6 +22,7 @@ import { startEffects, type EffectsPlayer, type SoundEffectRequest } from './eff
 import { ambientMusicAction, MainViewSounds, ReplicaSoundMarks, simFlagSoundMarks, type SoundMarks, type SoundView } from './mainViewSounds';
 import { hasRemoteCommandSink } from '../sim/player/playerCommands';
 import { eventStingClosed, musicGameStarted, musicPlayer, playEventSting, stingPlayer } from './musicPlayer';
+import { diplomacyMoodSoundFile } from '../themeAssets';
 // [rimatmo-wiring] begin — 19i items 8/9/10 (data/wiring; render half in src/render/rimAtmosphereLayer.ts, not edited here)
 import { scenarioParam } from '../sim/scenario/state';
 import { rimWeightAt, rimWeightAtCapital } from './rimAtmosphereGeometry';
@@ -125,7 +126,7 @@ export function diplomacyMoodFile(isPirate: boolean, reclusive: boolean, overall
     if (overallAttitude < -10.0) return 'diplomacyMoodAngry.mp3';
     if (overallAttitude < 10.0) return 'diplomacyMoodNeutral.mp3';
     return 'diplomacyMoodHappy.mp3';
-    // Race subfolders (Sounds/Effects/<Race>/…) and Customization sets: none ship with DW:U 1.9.5.
+    // The race subfolder (Sounds/Effects/<Race>/…) and the theme's copies: themeAssets.ts diplomacyMoodSoundFile.
 }
 
 /**
@@ -188,7 +189,8 @@ export function playDiplomacyMood(galaxy: Galaxy, other: Empire | null, player: 
     const evaluation = empireEvaluationByEmpire(empireEvaluationsOf(other), player);
     const attitude = evaluation !== null ? evaluation.overallAttitude : 0.0;
     try {
-        playEventSting(diplomacyMoodFile(other.pirateEmpireBaseHabitat !== null, other.reclusive, attitude));
+        // method_521: the mood file, then the race's copy (<DominantRace.Name>\\<file>) — a theme's (STPE ships them).
+        playEventSting(diplomacyMoodSoundFile(diplomacyMoodFile(other.pirateEmpireBaseHabitat !== null, other.reclusive, attitude), other.dominantRace?.name));
     } catch {
         // no audio
     }

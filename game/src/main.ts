@@ -86,7 +86,7 @@ import { createNewGameWizard } from './ui/screens/newGameWizard';
 import { openGalactopedia } from './ui/screens/galactopedia';
 import { habitatInfo } from './ui/selectionInfo';
 import { renderInfoModel } from './ui/selectionInfoView';
-import { colonizationRangeFor, defaultStartGameOptions, piratesFor, STARTING_TECH_LEVEL, toCreateGameOptions, type StartGameOptions, maximumEmpireAmountFor, starCountFor, defaultScenarioChoice, type StartScenarioChoice } from './sim/startGameOptions';
+import { colonizationRangeFor, defaultStartGameOptions, wizardStartGameOptions, piratesFor, STARTING_TECH_LEVEL, toCreateGameOptions, type StartGameOptions, maximumEmpireAmountFor, starCountFor, defaultScenarioChoice, type StartScenarioChoice } from './sim/startGameOptions';
 import { serializeGame, deserializeGameSteps, savedCustomizationSet, savedScenarioId, savedScenarioInclude, type GameSaveJSON } from './sim/save/gameSave';
 import { loadScenarioIndex, loadScenarioOverlay } from './sim/scenario/fetchScenario';
 import { applyScenarioOverlay, type ScenarioOverlay } from './sim/scenario/overlay';
@@ -143,7 +143,7 @@ import { showToast } from './ui/toast';
 // [fix6ui] end
 
 import './ui/hud.css';
-import { activateTheme, bootTheme } from './themeLoader';
+import { activateTheme, bootTheme, fetchThemeList, themeToRestoreOnLeave } from './themeLoader';
 import { activeCustomizationSet, activeCustomizationSetName, normalizeCustomizationSetName } from './sim/data/customization';
 import { setThemeChromeRace } from './themeAssets';
 import { resetMusicForTheme } from './audio/musicPlayer';
@@ -414,8 +414,7 @@ async function offerWorkerRestartOnce(simClient: SimWorkerClient, game: Game, ti
     const MENU = 'Main Menu';
     const answer = await messageBox({ caption: 'Simulation Stopped', text: restartPromptText(reason, sources), buttons: sources.length > 0 ? [RESTART, MENU] : [MENU], icon: 'stop', width: 540, buttonWidth: 120 });
     const toMenu = (): void => {
-        teardownActiveGameView();
-        showMainMenu();
+        void leaveGameToMenu();
     };
     if (answer !== RESTART) {
         toMenu();
@@ -798,8 +797,7 @@ export async function startGameView(
         onGalaxyMap: () => galaxyMap.toggle(),
         openGalaxyMapAt: (h) => galaxyMap.open(h),
         onMainMenu: () => {
-            teardownActiveGameView();
-            showMainMenu();
+            void leaveGameToMenu();
         },
         // Keep the Main View selection ring on whatever the panel shows.
         afterSelectionChange: (sel) => {
@@ -880,8 +878,7 @@ export async function startGameView(
     if (simClient === undefined) installGameEndHandler(galaxy, time);
     // Main.Part6.cs:4050 btnGameEndExit_Click: the Game End panel's "Exit to main menu" leaves like the menu's Main Menu.
     setGameEndExitHandler(() => {
-        teardownActiveGameView();
-        showMainMenu();
+        void leaveGameToMenu();
     });
     // [/15d]
     // [16d] Player messages → popups + the diplomatic conversation queue (Main.Part9.cs ReceiveMessageInternal).
@@ -1442,6 +1439,18 @@ async function switchTheme(name: string, persist: boolean): Promise<void> {
     await ensureStaticData();
 }
 
+/**
+ * Leave the running game for the main menu (the game menu's Main Menu, the Game End panel's exit, a stopped
+ * simulation): Main.Part12.cs 3181-3184 first loads GameOptions.CustomizationSetName's theme again when the game ran on
+ * another one (a ?theme= game; themeLoader.ts themeToRestoreOnLeave), not persisting it.
+ */
+async function leaveGameToMenu(): Promise<void> {
+    teardownActiveGameView();
+    const restore = themeToRestoreOnLeave(activeCustomizationSetName(), getSettings().customizationSet, await fetchThemeList());
+    if (restore !== null) await switchTheme(restore, false);
+    showMainMenu();
+}
+
 async function main(): Promise<void> {
     const params = new URLSearchParams(window.location.search);
     // The stored theme (GameOptions.CustomizationSetName), cleared when its folder is gone (Main.Part12.cs 1932-1938).
@@ -1461,7 +1470,7 @@ async function main(): Promise<void> {
         // wizard defaults overridden by this JSON, e.g. the big late start
         // ?newgame={"seed":1,"starCountIndex":5,"dimensionIndex":4,"galaxyExpansionIndex":4,"empireExpansionIndex":4,"otherEmpires":{"empireCount":19}}
         const o = JSON.parse(newGame) as Partial<StartGameOptions> & { otherEmpires?: Partial<StartGameOptions['otherEmpires']> };
-        const base = defaultStartGameOptions();
+        const base = wizardStartGameOptions();
         void bootGameFromWizard({ ...base, raceName: 'Human', empireName: 'Human Empire', ...o, otherEmpires: { ...base.otherEmpires, ...o.otherEmpires } });
         return;
     }

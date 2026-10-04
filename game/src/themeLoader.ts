@@ -72,6 +72,18 @@ export async function bootTheme(stored: string, clear: () => void): Promise<Cust
     return activateTheme(list.find((t) => t.toLowerCase() === set.toLowerCase()) ?? set);
 }
 
+/**
+ * Main.Part12.cs 3181-3184, after the game loop ends (back to the Start screen): when the theme in use (string_3)
+ * differs from GameOptions.CustomizationSetName — a game started with the session-only ?theme= — method_66(options'
+ * set, bool_28: false) brings the options' theme back. The set to switch to ("" = the stock game), or null to stay.
+ * A stored set whose folder is gone counts as "" (Main.Part12.cs 1932-1938 clears it at start-up).
+ */
+export function themeToRestoreOnLeave(active: string, stored: string, themes: readonly string[]): string | null {
+    let want = normalizeCustomizationSetName(stored);
+    if (want !== '') want = themes.find((t) => t.toLowerCase() === want.toLowerCase()) ?? '';
+    return want === normalizeCustomizationSetName(active) ? null : want;
+}
+
 /** about.txt / about.png of a theme (Start.cs method_29), null parts when absent. */
 export async function fetchThemeAbout(name: string): Promise<{ text: string; imageUrl: string | null }> {
     const theme = await fetchThemeIndex(name);

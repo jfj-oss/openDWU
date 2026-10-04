@@ -22,6 +22,7 @@ import {
     COLONY_INFLUENCE_RANGE_PCT_MIN,
     defaultRaceName,
     defaultStartGameOptions,
+    wizardStartGameOptions,
     FLAG_COLOR_PALETTE,
     scenarioChoiceSummary,
     flagShapeUrl,
@@ -376,7 +377,7 @@ function isRaceFileText(text: string): boolean {
  * wizard starts on the named page (screenshot/dev hook; main.ts does not pass
  * the page). */
 export function createNewGameWizard(callbacks: NewGameWizardCallbacks): NewGameWizardRefs {
-    const options: StartGameOptions = defaultStartGameOptions();
+    const options: StartGameOptions = wizardStartGameOptions();
     let page: WizardPageId = 'type';
     try {
         const params = new URLSearchParams(window.location.search);
@@ -2346,6 +2347,9 @@ function buildVictoryPage(options: StartGameOptions): HTMLDivElement {
     makeVictoryCheckbox(sectionGame, wt('Allow Giant Kaltors at game start', 'Allow Giant Kaltors at game start'), () => options.allowGiantKaltorGeneration ?? true, (x) => {
         options.allowGiantKaltorGeneration = x;
     });
+    makeVictoryCheckbox(sectionGame, wt('Scale debris fields with galaxy size', 'Scale debris fields with galaxy size'), () => options.scaleDebrisFields ?? false, (x) => {
+        options.scaleDebrisFields = x;
+    });
 
     // Start.cs 3770 method_45 (pirate start: Return of the Shakturi unchecked and disabled, pirate-specific conditions,
     // the pirate explanation) and Start.1.cs 3098 btnStartNewGameOtherEmpiresNext_Click (Shadows only in a PreWarp galaxy).
@@ -2612,6 +2616,7 @@ function buildStartPage(options: StartGameOptions): HTMLDivElement {
                 (options.spawnNewEmpires ?? true) ? 'new empires during game' : 'no new empires',
                 (options.allowTechTrading ?? true) ? 'tech trading' : 'no tech trading',
                 (options.allowGiantKaltorGeneration ?? true) ? 'Giant Kaltors' : 'no Giant Kaltors',
+                (options.scaleDebrisFields ?? false) ? 'scaled debris fields' : 'standard debris fields',
             ].join(', ')],
             ['Empire Name', options.empireName || '(generated at start)'],
             ['Government', options.governmentId >= 0 ? `#${options.governmentId}` : '(not chosen)'],
