@@ -13,6 +13,7 @@
 // than a 1:1 copy of the 945x760 ScreenPanel: one full-screen overlay with
 // the map on the left and a side panel on the right.
 
+import { drawGalaxyMapMarkers } from '../waypoints'; // [waypoints]
 import type { Galaxy } from '../../sim/galaxy';
 import type { Empire } from '../../sim/empire';
 import { DiplomaticRelationType } from '../../sim/diplomacy';
@@ -399,6 +400,8 @@ export interface GalaxyMapScreen {
     /** btnGalaxyMapBack / btnGalaxyMapForward. */
     back(): void;
     forward(): void;
+    /** Redraw the map (when open): the waypoint overlay changed (ui/waypoints.ts). */
+    redraw(): void;
 }
 
 // ---------------------------------------------------------------------------
@@ -840,6 +843,8 @@ export function createGalaxyMap(opts: GalaxyMapOptions): GalaxyMapScreen {
         for (const h of galaxy.habitats) if (h.category === HabitatCategoryType.GasCloud && h.parent === null && !drawn.has(h)) drawDot(h);
         // Selected systems on top so they are never hidden by dimmed ones.
         if (filterActive) for (const h of selection.systems!) drawDot(h);
+        // [waypoints] the Waypoints & Known Locations overlay (an Improvement, ui/waypoints.ts), over the systems.
+        drawGalaxyMapMarkers(ctx, galaxy, s);
         // Current Main View rectangle (pen_2).
         const vr = opts.getViewRect();
         ctx.strokeStyle = CROSSHAIR_COLOR;
@@ -1064,6 +1069,7 @@ export function createGalaxyMap(opts: GalaxyMapOptions): GalaxyMapScreen {
         },
         back: () => backBtn.click(),
         forward: () => fwdBtn.click(),
+        redraw: () => draw(),
     };
 }
 

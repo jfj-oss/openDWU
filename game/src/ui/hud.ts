@@ -16,6 +16,7 @@ import { GalaxyTime } from '../sim/clock';
 import { resolveStarDateDescription } from '../sim/galaxyTime';
 import { createMapOverlayState, OVERLAY_ROWS, onOverlayChange, toggleOverlay, type MapOverlayState, type OverlayKey, type OverlayRow } from './mapOverlays';
 import { resourcePickerPanel, supplyShortagesPanel, type OverlayOptionPanel } from './overlayOptionPanels'; // [dw2overlays]
+import { waypointsOptionsPanel } from './waypoints'; // [improvements] waypoints
 import { IMPROVEMENTS_TITLE, onImprovementsChange, overlayRowSections } from './improvements'; // [improvements]
 import { Camera } from '../render/camera';
 import { followOnSelectionChanged, isFollowingTarget, toggleFollow, type FollowState, type FollowTarget } from '../render/followCamera';
@@ -2056,6 +2057,24 @@ function buildOptionsList(wiring: HudWiring): HTMLElement {
             more.className = 'hud-option-more';
             more.textContent = '…';
             more.title = 'Supply Shortages options';
+            more.setAttribute('role', 'button');
+            more.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const open = opts.element.style.display === 'none';
+                if (open) opts.refresh();
+                opts.element.style.display = open ? '' : 'none';
+            });
+            item.appendChild(more);
+        }
+        // [improvements] waypoints — the Waypoints & Known Locations row's "…": its two sub-toggles and the list.
+        if (row.panel === 'waypoints') {
+            const opts = waypointsOptionsPanel();
+            sub = opts;
+            opts.element.style.display = 'none';
+            const more = document.createElement('span');
+            more.className = 'hud-option-more';
+            more.textContent = '…';
+            more.title = 'Waypoints & Known Locations options';
             more.setAttribute('role', 'button');
             more.addEventListener('click', (e) => {
                 e.stopPropagation();

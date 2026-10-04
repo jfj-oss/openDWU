@@ -138,6 +138,7 @@ import { setShipCommandHandler, setViewLockedQuery } from './ui/keyboard';
 import { refreshSelectionActionBar } from './ui/orderMenu';
 import { selectCreature, selectFighter, selectHabitat } from './ui/hud';
 import { createShipCommandKeys, type ShipCommandKeys } from './ui/shipCommandKeys';
+import { installWaypointUi } from './ui/waypoints'; // [waypoints]
 import { createControlGroupKeys } from './ui/controlGroups'; import { setControlGroupHandler } from './ui/keyboard'; import { resetPanelVisibility } from './ui/panelVisibility'; import { setMainViewDisplayType } from './render/mainViewDisplay'; import { closeGroundReport } from './ui/screens/groundReport'; import { playGridClick } from './audio/gameAudio'; // [parC1]
 import { showToast } from './ui/toast';
 // [fix6ui] end
@@ -526,6 +527,7 @@ const OVERLAY_PARAM_ALIASES: Record<string, OverlayKey> = {
     // [dw2overlays] end
     supply: 'supplyShortages', // [improvements] supplyChain
     supplyShortages: 'supplyShortages',
+    waypoints: 'waypoints', // [improvements] waypoints
 };
 
 /** Screenshot / dev hook: `?overlays=potentialColonies,scenic,research`
@@ -965,6 +967,10 @@ export async function startGameView(
     );
     // [ordermenu] end
 
+    // [waypoints] Waypoints & Known Locations (an Improvement, ui/waypoints.ts): the W / Shift+W keys, the name dialog,
+    // the right-click entries (ui/orderMenu.ts) and the Waypoints list.
+    const waypointUiCleanup = installWaypointUi({ galaxy, empire: game.playerEmpire, camera, view, overlays, redrawGalaxyMap: () => galaxyMap.isOpen && galaxyMap.redraw() });
+
     // [fix6ui] begin — N2: E/R/A/S/, orders and Z/N/B/L selection keys (Main.Part7.cs Main_KeyUp).
     shipKeys = createShipCommandKeys({
         galaxy,
@@ -1214,6 +1220,7 @@ export async function startGameView(
         // [aiadvisor] end
         llmLayer.dispose(); // [llm]
         orderUiCleanup(); // [ordermenu]
+        waypointUiCleanup(); // [waypoints]
 
         gameAudio.dispose(); // [audio]
         workerMessageUi?.dispose(); // [simworker]

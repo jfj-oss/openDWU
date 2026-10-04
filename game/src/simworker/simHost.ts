@@ -24,6 +24,7 @@ import { setGameEndHandler } from '../sim/victory';
 import { registerLocationPingedHook } from '../sim/story/eventActions';
 import { SimFrameBudget } from '../simFrameBudget';
 import { commandFreshRoots } from './commandReach';
+import { WAYPOINT_OPS, liveWaypointState } from '../sim/player/waypoints';
 import { GalaxySyncSource } from './replicaGalaxy';
 import { TRADE_FLOWS_SIDE_KEY, TradeFlowSyncSource } from './tradeFlowSync';
 import { installRimAtmosphereData } from '../render/rimAtmosphereWiring';
@@ -101,6 +102,8 @@ export class SimHost {
      * replica with the command's reply instead of a cold cycle later.
      */
     private freshRoots: object[] = [];
+    /** A waypoint op was applied since the last delta (player/waypoints.ts: a side table, freshened before the next one). */
+    private waypointsFresh = false;
     /** Graph objects the commands since the last tick named or returned, with how deep to compare them (encoder
      *  compareNow) in that tick's delta: the issuing empire 1 (its lists), arguments and results 2 (a colony's
      *  construction queue and its wait list, a ship's mission and queued missions). */
@@ -237,6 +240,8 @@ export class SimHost {
                 // What the op changed past its arguments' reach (an id into a book: commandReach.ts), read now that
                 // the executor ran, for this tick's delta.
                 for (const o of commandFreshRoots(m.op, empire)) this.noteFresh(o);
+                // The waypoints live in a side table (outside the graph): freshened before this tick's delta.
+                if (WAYPOINT_OPS.has(m.op)) this.waypointsFresh = true;
                 if (m.id !== 0) this.results.push(this.commandReply(m.id, m.op, result));
             });
             this.queued.push(entry);
@@ -452,6 +457,10 @@ export class SimHost {
         // What this tick's commands touched is compared now, so its effect travels in this delta, ahead of the
         // command replies (the main thread runs onApplied with the replica as of this boundary or later).
         this.tradeFlows.refresh();
+        if (this.waypointsFresh) {
+            this.waypointsFresh = false;
+            this.sync.freshenSideTable('waypoints', liveWaypointState(this.galaxy));
+        }
         for (const [o, depth] of this.touched) this.sync.encoder.compareNow(o, depth);
         this.touched.clear();
         return this.message(steps, t1 - t0);
