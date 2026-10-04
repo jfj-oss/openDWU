@@ -227,7 +227,7 @@ describe('ExecuteEventAction per action type (Galaxy.9.cs 1503-2860)', () => {
         ev.description = 'Details';
         executeEventAction(g, action(EventActionType.FindMoneyTreasure, null, { moneyAmount: 2500 }), e, ev);
         expect(e.stateMoney).toBe(money + 2500);
-        expect(msgs).toEqual([{ type: EventMessageType.GeneralDiscovery, title: 'Found it', message: 'GameEventAction Description FindMoneyTreasure|2500\n\nDetails' }]);
+        expect(msgs).toEqual([{ type: EventMessageType.GeneralDiscovery, title: 'Found it', message: 'GameEventAction Description FindMoneyTreasure|2,500\n\nDetails' }]); // MoneyAmount.ToString("###,###,##0") (Galaxy.9.cs 1934)
         // MessageTitle / MessageText override everything.
         executeEventAction(g, action(EventActionType.FindMoneyTreasure, null, { moneyAmount: 1, messageTitle: 'T', messageText: 'X' }), e, ev);
         expect(msgs[1]).toEqual({ type: EventMessageType.GeneralDiscovery, title: 'T', message: 'X' });

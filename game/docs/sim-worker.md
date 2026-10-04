@@ -204,6 +204,50 @@ Most of the "before" stalls are ships drawn in a planet's frame (ParentOffset) b
 (StepPacer held messages back; the clock trails them); its frames that still stand still follow a main-thread hitch
 (a 112 ms cold apply in that sector run). Worker lag figures come from separate runs of the same setup.
 
+**Headings (2026-10-04).** CalculateCurrentHeading (BuiltObject.2.cs 7433) turns a ship by GetCurrentTurnRate × the
+whole time since its last touch, so on a 10 000-object galaxy a turning ship held its heading for ~11 steps and then
+swung by the whole turn at its next touch (positions were already extrapolated between touches, headings were not).
+`sampleBuiltObject` now samples a ship the sim turned at its latest touch (its committed heading changed from the
+touch before: a ship whose command does not turn it — waiting, docked — keeps a TargetHeading it does not face) at the
+heading its next touch gives it: toward TargetHeading at the C# rate (`builtObjectTurnRate`: speed bands, fleet and
+captain bonuses), clamped on the target, and moves it along that heading as DoMovement does; a ship preparing a
+hyperjump accelerates first (`nextTouchSpeed`, the HyperTo leg's order). What the next touch decides that the samples
+could not show — a turn begun or re-aimed there, a command that does not turn the ship for a touch (SetParent between
+HyperTo and MoveTo, a Dock waiting for its bay) — is eased at 2 × the turn rate (`HEADING_EASE_FACTOR`,
+`MotionInterpolator.sample` turnLimit; `easeHeadings` off for A/B) instead of turned in one step; teleports and warp
+legs still snap. Fighters and creatures already extrapolated their turns (extrapolateMover); they get the same ease,
+and the creature's unwrapped CalculateCurrentHeading (Creature.cs 685) is now ported exactly (`turnHeading`). Worker
+mode needs nothing new: `_heading`, `targetHeading`, `currentSpeed`, `_targetSpeed`, `hyperjumpPrepare` and
+`lastTouch` are fixed hot fields gated by lastTouch, so they travel in the step that touched the ship — the only step
+they change in; TurnRate / AccelerationRate (design values), the fleet bonus and the captain side table travel cold.
+Tests: `test/renderInterp-heading.test.ts` (the sim's own CalculateCurrentHeading on a synthetic round-robin fleet, both
+loop modes; the ports against movement.ts / Creature / Fighter; a real 4000-star galaxy padded to 10 763 objects,
+in-thread and end to end through SimHost / SimClientCore; fighters in a fight; creatures).
+
+`scripts/perf-render.mjs --motion` now also measures headings: the sim's continuous heading is its committed heading at
+each touch lerped between touches; on a steady turn (every touch interval around the drawn instant turned at one rate)
+q = drawn heading change per frame / the sim's, stall q < 0.25, jump q > 2.05 (the ease runs at exactly 2), reversal
+q < 0, jerk |Δq|. `late4000.dwusave` (`scripts/lategame-start.mjs --stars 4000 --seconds 1200`: 5 458 systems, 142 k
+habitats, 10 763 built objects), 60 Hz headless compositor, before → after:
+
+| mode, speed, zoom | stall % | jump % | reversal % | jerk p95 | largest step per frame p99 / max (°) |
+|---|---|---|---|---|---|
+| worker, 4×, system | 59.0 → 0.36 | 13.4 → 0.21 | 3.72 → 0.00 | 8.03 → 0.02 | 6.9 / 29.8 → 2.0 / 4.3 |
+| worker, 4×, sector | 60.5 → 0.55 | 15.2 → 0.27 | 2.61 → 0.02 | 7.01 → 0.03 | 6.6 / 11.7 → 1.4 / 4.1 |
+| worker, 1×, system | 73.4 → 0.00 | 17.4 → 0.06 | 0.93 → 0.00 | 7.66 → 0.10 | 1.7 / 4.4 → 0.5 / 1.0 |
+| worker, 1×, sector | 70.1 → 0.00 | 18.5 → 0.06 | 0.52 → 0.00 | 5.07 → 0.09 | 1.4 / 2.0 → 0.3 / 1.1 |
+| in-thread, 4×, system | 82.4 → 0.16 | 9.5 → 0.16 | 0 → 0 | 10.18 → 0.00 | 10.7 / 28.8 → 1.9 / 4.1 |
+| in-thread, 4×, sector | 82.3 → 0.25 | 9.3 → 0.30 | 0 → 0 | 9.88 → 0.00 | 6.8 / 11.5 → 1.4 / 4.1 |
+| in-thread, 1×, system | 82.1 → 0.00 | 9.3 → 0.07 | 0 → 0 | 10.08 → 0.01 | 1.8 / 5.2 → 0.5 / 0.6 |
+| in-thread, 1×, sector | 82.0 → 0.00 | 9.3 → 0.34 | 0 → 0 | 9.70 → 0.01 | 1.7 / 7.3 → 0.8 / 1.5 |
+
+Ships drawn turning that the sim did not turn: 0.00-0.07 % of the frame pairs in still intervals; turning on away
+from where a turn stopped (a command that did not turn the ship): 0-0.7 % of the pairs just after a stop. Position
+motion and the clock are unchanged (q p50 1.00-1.02; position stalls only where the clock starved after a worker
+hiccup, ≤ 0.8 %), and MainView.update is too (galaxy zoom 4.87 /
+4.87 → 4.89 / 4.32 ms, system 3.36 / 3.91 → 3.46 / 3.08 ms, alternated runs); sampling all 10 654 ships in node costs
+3-17 % more (0.1-0.5 ms a frame), while the view samples only those on screen.
+
 ### 2.6 Chunk 9: sync performance in big late games (2026-10-03)
 
 What was wrong on the late saves (`late2500`: 9.8 k ships; `late2500-1200`: the same galaxy 1 200 s later, 144 MB):

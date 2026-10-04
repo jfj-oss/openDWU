@@ -2224,7 +2224,9 @@ export function checkSendPreWarpProgressEventMessage(galaxy: Galaxy, self: Empir
                     sendEventMessageToEmpire(self, EventMessageType.GeneralDiscovery, text7, message6, subject, subject);
                 } else {
                     const text8 = gameText('PreWarpProgressEvent Title FirstContactNormalEmpire');
-                    const message7 = gameText('PreWarpProgressEvent Message FirstContactNormalEmpire', empire.name, empire.dominantRace!.name);
+                    // Empire.7.cs 3728 passes two arguments to a template that uses {2} (a .NET FormatException); {2} reads
+                    // "contact the {2} from the Diplomacy screen", so it gets the empire's name rather than showing "{2}".
+                    const message7 = gameText('PreWarpProgressEvent Message FirstContactNormalEmpire', empire.name, empire.dominantRace!.name, empire.name);
                     sendEventMessageToEmpire(self, EventMessageType.GeneralDiscovery, text8, message7, subject, subject);
                 }
             }

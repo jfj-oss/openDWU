@@ -41,6 +41,9 @@
 //    (method_236(0.25), MainView.2.cs 241 / 365). Here one disc per empire with KNOWN bases or colonies in the
 //    system, its radius growing with sqrt(count) from that size (addition: the original draws one fixed disc).
 //
+// 6. System link lines — method_250 5237-5336: the dotted lines in each empire's MainColor between its linked systems
+//    (SystemVisibility.LinkSystemStars), at f > 150 under the rings: systemLinks.ts.
+//
 // Batching: the symbols (and fleet icons) are particles of one ParticleContainer over a runtime atlas of the
 // original symbol art (procedural shapes when the art is missing), the discs a second one; rings one Graphics
 // rebuilt only on zoom / data / view changes. Everything lives in world space and is sized by /z in screen px.
@@ -70,6 +73,7 @@ import { boundsOnScreen } from './drawCache';
 import { showsMapIndicators } from './mainViewDisplay';
 import { drawCrossedSwords, systemsUnderFire } from './battleIcons';
 import { builtObjectHiddenFromPick, warEmpires } from './builtObjectLayer';
+import { SystemLinkLayer } from './systemLinks';
 
 // --- constants ----------------------------------------------------------------------------------------------------
 
@@ -714,6 +718,8 @@ export class GalaxyMarkerLayer {
     private readonly discs: ParticleContainer;
     private readonly symbols: ParticleContainer;
     private readonly rings = new Graphics();
+    /** The dotted system link lines (systemLinks.ts, method_250 5237-5336), under the rings. */
+    readonly links: SystemLinkLayer;
     private readonly overlayG = new Graphics();
     /** method_212 circles (selectionCircle.ts) of the galaxy pass: world space, tinted with method_213's pulse. */
     private readonly selG = new Graphics();
@@ -764,7 +770,8 @@ export class GalaxyMarkerLayer {
         const dyn = { position: true, vertex: true, rotation: false, uvs: true, color: true };
         this.discs = new ParticleContainer({ texture: this.discTex, dynamicProperties: dyn });
         this.symbols = new ParticleContainer({ texture: Texture.WHITE, dynamicProperties: dyn });
-        this.back.addChild(this.discs, this.rings);
+        this.links = new SystemLinkLayer(galaxy);
+        this.back.addChild(this.discs, this.links.root, this.rings);
         // overlayG is cleared and redrawn every frame: in its own render group (renderGroups.ts). (The battle bars over the
         // ships are combatBars.ts BattleBarLayer, MainView.1.cs 1251-1295.)
         this.front.addChild(this.symbols, this.countLayer, inOwnRenderGroup(this.overlayG), this.iconLayer, inOwnRenderGroup(this.selG));
@@ -880,6 +887,8 @@ export class GalaxyMarkerLayer {
         const ringA = factionOn ? factionRingBandAlpha(f) : 0;
         this.rings.visible = ringA > 0;
         if (this.rings.visible) this.updateRings(f, z, cam, ringA);
+        // Same gate as the rings (method_250 5237: f > num16, in the rings' block), but MainColor at full alpha.
+        this.links.update(f, z, cam, factionOn);
         if (this.front.visible && this.frames.length > 0) this.updateSymbols(f, z, cam);
         this.drawSelectionCircles(z);
     }

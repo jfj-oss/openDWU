@@ -60,7 +60,7 @@ import {
 import { assignMission, initiateUndeploy, recordRevertMission } from '../missions/assign';
 import { BuiltObjectRole } from '../data/designSpecifications';
 import { BuiltObjectSubRole } from '../builtObjectTypes';
-import { HabitatCategoryType } from '../types';
+import { HabitatCategoryType, HabitatType } from '../types';
 import { netSort } from '../netSort';
 import { AutomationLevel } from '../empire';
 import { DiplomaticRelationType, DiplomaticStrategy, WarObjective, obtainDiplomaticRelation, obtainEmpireEvaluation } from '../diplomacy';
@@ -86,7 +86,8 @@ import {
 } from '../diplomacyTick';
 import { PirateRelationType, obtainPirateRelation } from '../pirateRelations';
 import { EmpireActivityType } from '../pirates/empireActivity';
-import { EmpireMessageType, sendMessageToEmpire, sendMessageToEmpireWithTitle } from '../messages';
+import { EmpireMessageType, resolveDescription, sendMessageToEmpire, sendMessageToEmpireWithTitle } from '../messages';
+import { generateHabitatLocationDescription } from '../galaxyReports';
 import { isObjectVisibleToThisEmpire } from '../independentTraders';
 import { arraySortKeysItems, currentRange, getNearestBuiltObjectWithinRange, sortStellarObjectsByDistance, ultraFastFindNearestRefuellingLocation, warpSpeedWithBonuses, withinFuelRangeAndRefuel } from '../movement';
 import {
@@ -601,6 +602,16 @@ export function generateAutomationMessageAttackEnemyBase(galaxy: Galaxy, builtOb
     return formatText(getText('Automation Attack Enemy Base'), builtObject.name, text3, text, text2);
 }
 
+/** Galaxy.ResolveDescription(habitat.Type) (not lower-cased: Empire.10.cs 4058-4135 pass it as is). */
+function habitatTypeText(habitat: Habitat): string {
+    return resolveDescription(HabitatType as unknown as Record<number, string>, habitat.type);
+}
+
+/** Galaxy.ResolveDescription(habitat.Category). */
+function habitatCategoryText(habitat: Habitat): string {
+    return resolveDescription(HabitatCategoryType as unknown as Record<number, string>, habitat.category);
+}
+
 /** Empire.10.cs 3998/4117 GenerateAutomationMessageAttackEnemy(Habitat habitat[, blockade], attackFleet). */
 export function generateAutomationMessageAttackEnemyColony(galaxy: Galaxy, habitat: Habitat, blockade: boolean, attackFleet: ShipGroup | null): string {
     void galaxy;
@@ -609,8 +620,8 @@ export function generateAutomationMessageAttackEnemyColony(galaxy: Galaxy, habit
     const habitat2 = determineHabitatSystemStar(habitat);
     let text2 = '';
     if (habitat !== null && habitat.empire !== null) text2 = habitat.empire.name;
-    if (blockade) return formatText(getText('Automation Blockade Enemy Colony'), habitat.type, habitat.category, habitat.name, text2, habitat2!.name, text);
-    return formatText(getText('Automation Attack Enemy Colony'), habitat.type, habitat.category, habitat.name, text2, habitat2!.name, text);
+    if (blockade) return formatText(getText('Automation Blockade Enemy Colony'), habitatTypeText(habitat), habitatCategoryText(habitat), habitat.name, text2, habitat2!.name, text);
+    return formatText(getText('Automation Attack Enemy Colony'), habitatTypeText(habitat), habitatCategoryText(habitat), habitat.name, text2, habitat2!.name, text);
 }
 
 /** Empire.10.cs 4050 GenerateAutomationMessageDestroyPlanet(habitat, planetDestroyer). */
@@ -618,7 +629,7 @@ function generateAutomationMessageDestroyPlanet(habitat: Habitat, planetDestroye
     const habitat2 = determineHabitatSystemStar(habitat);
     let text = '';
     if (habitat !== null && habitat.empire !== null) text = habitat.empire.name;
-    return formatText(getText('Automation Destroy Planet'), habitat.type, habitat.category, habitat.name, text, habitat2!.name, planetDestroyer.name);
+    return formatText(getText('Automation Destroy Planet'), habitatTypeText(habitat), habitatCategoryText(habitat).toLowerCase(), habitat.name, text, habitat2!.name, planetDestroyer.name);
 }
 
 /** Empire.10.cs 4061 GenerateAutomationMessageBombardColony(habitat, attackFleet). */
@@ -626,7 +637,7 @@ function generateAutomationMessageBombardColony(habitat: Habitat, attackFleet: S
     const habitat2 = determineHabitatSystemStar(habitat);
     let text = '';
     if (habitat.population !== null && habitat.population.dominantRace !== null) text = habitat.population.dominantRace.name;
-    return formatText(getText('Automation Bombard Colony'), habitat.type, habitat.category, habitat.name, habitat.empire!.name, habitat2!.name, text, attackFleet.name);
+    return formatText(getText('Automation Bombard Colony'), habitatTypeText(habitat), habitatCategoryText(habitat), habitat.name, habitat.empire!.name, habitat2!.name, text, attackFleet.name);
 }
 
 /** Empire.10.cs 4072 GenerateAutomationMessageAttackEnemyWithWaypoint(target, blockade, attackFleet, waypoint). */
@@ -637,7 +648,7 @@ function generateAutomationMessageAttackEnemyWithWaypoint(target: StellarObject,
     if (blockade) {
         if (isHabitat(target)) {
             const habitat2 = determineHabitatSystemStar(target);
-            return formatText(getText('Automation Blockade Enemy Colony With Waypoint'), target.type, target.category, target.name, targetEmpireName, habitat2!.name, text, waypoint.name);
+            return formatText(getText('Automation Blockade Enemy Colony With Waypoint'), habitatTypeText(target), habitatCategoryText(target), target.name, targetEmpireName, habitat2!.name, text, waypoint.name);
         }
         let text2 = '';
         if (isBuiltObject(target) && target.nearestSystemStar !== null) text2 = target.nearestSystemStar.name;
@@ -645,7 +656,7 @@ function generateAutomationMessageAttackEnemyWithWaypoint(target: StellarObject,
     }
     if (isHabitat(target)) {
         const habitat4 = determineHabitatSystemStar(target);
-        return formatText(getText('Automation Attack Enemy Colony With Waypoint'), target.type, target.category, target.name, targetEmpireName, habitat4!.name, text, waypoint.name);
+        return formatText(getText('Automation Attack Enemy Colony With Waypoint'), habitatTypeText(target), habitatCategoryText(target), target.name, targetEmpireName, habitat4!.name, text, waypoint.name);
     }
     let text3 = '';
     if (isBuiltObject(target) && target.nearestSystemStar !== null) text3 = target.nearestSystemStar.name;
@@ -1895,17 +1906,16 @@ function fleetAttackIndexOf(list: readonly FleetAttack[], attacker: ShipGroup | 
 }
 
 /** Empire.6.cs 1932 ResolveAttackWarningDescription(fleetAttack, targetEmpire). */
-function resolveAttackWarningDescription(fleetAttack: FleetAttack): string {
+function resolveAttackWarningDescription(galaxy: Galaxy, fleetAttack: FleetAttack): string {
     let result = '';
     const describeTarget = (m: BuiltObjectMission): string => {
         let arg = '';
         if (m.targetBuiltObject !== null) arg = m.targetBuiltObject.name;
         else if (m.targetCreature !== null) arg = m.targetCreature.name;
         else if (m.targetHabitat !== null) {
-            const targetHabitat = m.targetHabitat;
-            const habitat = determineHabitatSystemStar(targetHabitat);
-            // TODO(port) M9: Galaxy.ResolveSectorDescription(ResolveSector(x, y)) and ResolveDescription(Type/Category) text.
-            arg = formatText(getText('Location Planet'), targetHabitat.type, targetHabitat.category, targetHabitat.name, habitat!.name, '');
+            // Empire.6.cs 1952-1956: "Location Planet" with ResolveDescription(Type / Category).ToLower(Invariant), the
+            // name, the system and ResolveSectorDescription(ResolveSector(x, y)) (galaxyReports.ts, the same format).
+            arg = generateHabitatLocationDescription(galaxy, m.targetHabitat);
         } else if (m.targetShipGroup !== null) arg = m.targetShipGroup.name ?? '';
         return arg;
     };
@@ -1982,7 +1992,7 @@ export function warnOfIncomingEnemyFleetsAndPlanetDestroyers(galaxy: Galaxy, emp
                 if (fleetAttack.target === mission!.target || mission!.target === null || obtainDiplomaticRelation(empire2, builtObject.empire).type !== DiplomaticRelationType.War || !isObjectVisibleToThisEmpire(galaxy, empire2, builtObject)) continue;
                 fleetAttack.target = mission!.target;
                 fleetAttack.warningDate = galaxyStarDate(galaxy);
-                const description = resolveAttackWarningDescription(fleetAttack);
+                const description = resolveAttackWarningDescription(galaxy, fleetAttack);
                 sendMessageToEmpire(empire2, empire2, EmpireMessageType.IncomingEnemyFleet, builtObject, description);
                 if (!flag2) continue;
                 warnMutualDefenseAlliesOfPlanetDestroyer(galaxy, empire2, builtObject, mission!.target, description);
@@ -1990,7 +2000,7 @@ export function warnOfIncomingEnemyFleetsAndPlanetDestroyers(galaxy: Galaxy, emp
                 if (obtainDiplomaticRelation(empire2, builtObject.empire).type !== DiplomaticRelationType.War || !isObjectVisibleToThisEmpire(galaxy, empire2, builtObject)) continue;
                 const fleetAttack2 = new FleetAttack(builtObject, mission!.target, galaxyStarDate(galaxy));
                 incoming.push(fleetAttack2);
-                const description2 = resolveAttackWarningDescription(fleetAttack2);
+                const description2 = resolveAttackWarningDescription(galaxy, fleetAttack2);
                 sendMessageToEmpire(empire2, empire2, EmpireMessageType.IncomingEnemyFleet, builtObject, description2);
                 if (!flag2) continue;
                 warnMutualDefenseAlliesOfPlanetDestroyer(galaxy, empire2, builtObject, mission!.target, description2);
@@ -2018,13 +2028,13 @@ export function warnOfIncomingEnemyFleetsAndPlanetDestroyers(galaxy: Galaxy, emp
             if (fleetAttack3.target !== shipGroup.mission.target && shipGroup.mission.target !== null && obtainDiplomaticRelation(empire3, shipGroup.empire).type === DiplomaticRelationType.War && isObjectVisibleToThisEmpire(galaxy, empire3, shipGroup.leadShip)) {
                 fleetAttack3.target = shipGroup.mission.target;
                 fleetAttack3.warningDate = galaxyStarDate(galaxy);
-                const description3 = resolveAttackWarningDescription(fleetAttack3);
+                const description3 = resolveAttackWarningDescription(galaxy, fleetAttack3);
                 sendMessageToEmpire(empire3, empire3, EmpireMessageType.IncomingEnemyFleet, shipGroup, description3);
             }
         } else if (obtainDiplomaticRelation(empire3, shipGroup.empire).type === DiplomaticRelationType.War && isObjectVisibleToThisEmpire(galaxy, empire3, shipGroup.leadShip)) {
             const fleetAttack4 = new FleetAttack(shipGroup, shipGroup.mission.target, galaxyStarDate(galaxy));
             incoming2.push(fleetAttack4);
-            const description4 = resolveAttackWarningDescription(fleetAttack4);
+            const description4 = resolveAttackWarningDescription(galaxy, fleetAttack4);
             sendMessageToEmpire(empire3, empire3, EmpireMessageType.IncomingEnemyFleet, shipGroup, description4);
         }
     }

@@ -14,7 +14,6 @@
 import type { Galaxy } from '../galaxy';
 import type { Empire } from '../empire';
 import type { Habitat } from '../types';
-import { HabitatCategoryType } from '../types';
 import type { Race } from '../data/races';
 import { Cargo, CargoList, ResourceRef, TroopType } from '../cargo';
 import { Population, PopulationList } from '../population';
@@ -32,7 +31,7 @@ import { generateNewTroop, habitatGenerateNewTroop, reviewColonyTroopGarrison, c
 import { doResearchBreakthrough } from '../researchTick';
 import { EmpireMessageType, resolveDescription, sendMessageToEmpire, sendMessageToEmpireWithTitle } from '../messages';
 import { formatGameTextNow } from '../textResolver';
-import { EventMessageType, sendEventMessageToEmpire } from '../events';
+import { sendNewEmpireRaceAbilityEvent } from '../events';
 import { reviewEmpireAbilityBonusesFull } from '../treasury';
 import { raceAggressionLevel } from '../racePeriodic';
 import { setColonyTaxRate } from '../taxes';
@@ -203,10 +202,8 @@ export const cmdColonize: CommandHandler = (ctx) => {
                                     }
                                 }
                                 if (flag34) {
-                                    let text3 = formatGameTextNow('Colonization Race Ability Bonus', [resolveDescription(HabitatCategoryType as unknown as Record<number, string>, targetHabitat10.category).toLowerCase(), targetHabitat10.name, raceChanged.name]);
-                                    text3 += ':\n';
-                                    for (const item2 of list2) text3 = text3 + '\n' + item2;
-                                    sendEventMessageToEmpire(empire, EventMessageType.NewEmpireRaceAbility, formatGameTextNow('New Ability for our Empire'), text3, raceChanged, targetHabitat10);
+                                    // BuiltObject.2.cs 1074-1080.
+                                    sendNewEmpireRaceAbilityEvent(empire, 'Colonization Race Ability Bonus', ':\n', targetHabitat10, raceChanged, list2);
                                 }
                             }
                         }

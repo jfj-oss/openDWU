@@ -68,7 +68,7 @@ import { AutomationLevel } from '../empire';
 import { CharacterEventType, CharacterSkillType, doCharacterEventForList, empireLeader, getHighestSkillLevelExcludeLeaders, getHighestSkillLevelExcludeRole, identifyPirateBase } from '../characters';
 import { identifyPirateSpaceport, inflictWarDamageHabitat, empireColonyIncomeFactor } from './damage';
 import { checkIonCannonReadyToFire, checkTargetInRange, habitatFireWeaponsAtTarget } from './weapons';
-import { EventMessageType, sendEventMessageToEmpire } from '../events';
+import { sendNewEmpireRaceAbilityEvent } from '../events';
 import { resolveStandardRaceBias } from '../raceBias';
 import { reviewEmpireTerritory } from '../exploration';
 import { reviewEmpireAbilityBonusesFull } from '../treasury';
@@ -1188,7 +1188,7 @@ export function chanceNewTroopGeneralFromInvasion(galaxy: Galaxy, empire: Empire
             const title = formatText(getText('New Character Event Title'), resolveDescription(CharacterRole, character.role));
             const empty = !invading
                 ? formatText(getText('New Character Event Defense Troop General'), invadedColony.name, habitat.name, character.name)
-                : formatText(getText('New Character Event Invasion Troop General'), resolveDescription(HabitatType, invadedColony.type).toLowerCase(), invadedColony.name, habitat.name, character.name);
+                : formatText(getText('New Character Event Invasion Troop General'), resolveDescription(HabitatType, invadedColony.type).toLowerCase(), resolveDescription(HabitatCategoryDesc, invadedColony.category).toLowerCase(), invadedColony.name, habitat.name, character.name); // Galaxy.2.cs 5211
             sendMessageToEmpireWithTitle(empire, empire, EmpireMessageType.CharacterAppearance, character, empty, title);
             return true;
         }
@@ -1882,11 +1882,8 @@ function conquerColony(galaxy: Galaxy, self: Habitat, defender: Empire | null, i
         if (self.population != null && self.population.dominantRace !== null) {
             const { descriptions: list2, raceChanged } = reviewEmpireAbilityBonusesFull(galaxy, empire3);
             if (list2.length > 0 && raceChanged !== null) {
-                let text = formatText(getText('Conquest New Race Ability'), resolveDescription(HabitatCategoryDesc, self.category).toLowerCase(), self.name, raceChanged.name);
-                if (flag2) text = formatText(getText('Conquest New Race Ability Militia'), resolveDescription(HabitatCategoryDesc, self.category).toLowerCase(), self.name, raceChanged.name);
-                text += '\n';
-                for (const item2 of list2) text = text + '\n' + item2;
-                sendEventMessageToEmpire(empire3, EventMessageType.NewEmpireRaceAbility, getText('New Ability for our Empire'), text, raceChanged, self);
+                // Habitat.cs 4287-4297.
+                sendNewEmpireRaceAbilityEvent(empire3, flag2 ? 'Conquest New Race Ability Militia' : 'Conquest New Race Ability', '\n', self, raceChanged, list2);
             }
         }
         if (self.population != null && self.population.totalAmount > 100000000 && self.empire !== null && self.empire !== galaxy.independentEmpire && galaxy.rnd.next(0, 8) === 1 && charactersCanGenerateAmountNonIntelligenceAgent(empire3) > 0) {
@@ -1905,15 +1902,18 @@ function conquerColony(galaxy: Galaxy, self: Habitat, defender: Empire | null, i
 // ---------------------------------------------------------------------------------------------------------------
 
 /** Empire.10.cs 3777 GenerateAutomationMessageInvadeIndependent(habitat, invasionFleet) — advisor text (UI). */
-function generateAutomationMessageInvadeIndependent(galaxy: Galaxy, habitat: Habitat | null, invasionFleet: ShipGroup | null): string {
-    const system = habitat !== null ? galaxy.determineHabitatSystemStar(habitat) : null;
+export function generateAutomationMessageInvadeIndependent(galaxy: Galaxy, habitat: Habitat | null, invasionFleet: ShipGroup | null): string {
+    const habitat2 = habitat !== null ? galaxy.determineHabitatSystemStar(habitat) : null;
     const race = habitat !== null && habitat.population != null ? habitat.population.dominantRace : null;
+    // {0} ResolveDescription(Type), {1} ResolveDescription(Category).ToLower(Invariant), {2} name, {3} system, {4} race, {5} fleet.
     return formatText(
         getText('Automation Invade Independent'),
-        system !== null ? system.name : '',
+        habitat !== null ? resolveDescription(HabitatType, habitat.type) : '',
+        habitat !== null ? resolveDescription(HabitatCategoryDesc, habitat.category).toLowerCase() : '',
+        habitat !== null ? habitat.name : '',
+        habitat2 !== null ? habitat2.name : '',
         race !== null ? race.name : '',
         invasionFleet !== null ? invasionFleet.name : '',
-        habitat !== null ? habitat.name : '',
     );
 }
 

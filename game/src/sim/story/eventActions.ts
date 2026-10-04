@@ -35,7 +35,7 @@ import { planetsOf, type Habitat } from '../types';
 import type { BuiltObject } from '../builtObject';
 import { BuiltObject as BuiltObjectClass } from '../builtObject';
 import type { Creature } from '../creature';
-import { CreatureType } from '../creature';
+import { CreatureType, resolveCreatureDescription } from '../creature';
 import type { Character } from '../characters';
 import { CharacterEventType, CharacterRole, applyRandomCharacterSkillsTraits, doCharacterEvent, generateNewCharacterRandom, identifyPirateBase, raceAvailableCharacters } from '../characters';
 import type { Race } from '../data/races';
@@ -106,6 +106,7 @@ import { withinFuelRangeAndRefuel } from '../movement';
 import { generateCivilianConvoy, generateMilitaryConvoy } from './storyEvents';
 import type { Design } from '../design';
 import { formatGameTextNow } from '../textResolver';
+import { formatNetGrouped0 } from '../netNumberFormat';
 
 registerStellarObjectKinds({ isHabitat, isBuiltObject, isCreature });
 
@@ -884,7 +885,7 @@ export function executeEventAction(galaxy: Galaxy, eventAction: EventAction, tri
             if (eventAction.moneyAmount > 0.0 && triggerEmpire !== null) {
                 triggerEmpire.stateMoney += eventAction.moneyAmount;
                 triggerEmpire.pirateEconomy.performIncome(eventAction.moneyAmount, PirateIncomeType.Undefined, galaxyStarDate(galaxy));
-                text = gameText('GameEventAction Description FindMoneyTreasure', eventAction.moneyAmount.toFixed(0));
+                text = gameText('GameEventAction Description FindMoneyTreasure', formatNetGrouped0(eventAction.moneyAmount)); // Galaxy.9.cs 1934 "###,###,##0"
                 title = gameText('GameEventAction Title FindMoneyTreasure');
                 additionalData = null;
                 location = null;
@@ -919,7 +920,7 @@ export function executeEventAction(galaxy: Galaxy, eventAction: EventAction, tri
                 for (let m = 0; m < num7; m++) {
                     const habitat21 = galaxy.determineHabitatSystemStar(habitat);
                     creature = galaxy.generateCreatureAtHabitat(eventAction.creatureType, habitat, false);
-                    const ct = resolveDescription(CreatureType as unknown as Record<number, string>, eventAction.creatureType);
+                    const ct = resolveCreatureDescription(eventAction.creatureType); // Galaxy.2.cs 2557 ResolveDescription(CreatureType)
                     text = gameText('GameEventAction Description GenerateCreatureSwarm', ct, habitat.name, habitat21.name);
                     title = gameText('GameEventAction Title GenerateCreatureSwarm', ct);
                     additionalData = creature;

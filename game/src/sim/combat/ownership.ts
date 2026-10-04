@@ -79,6 +79,7 @@ import { addLocationHint } from '../tradeItems';
 import { GalaxyLocationType } from '../galaxyLocation';
 import { netSort } from '../netSort';
 import { scenarioEmit } from '../scenario/hooks';
+import { formatNetGrouped0 } from '../netNumberFormat';
 
 // ---------------------------------------------------------------------------------------------------------------
 // Small helpers
@@ -1348,7 +1349,7 @@ export function investigateAbandonedBuiltObject(galaxy: Galaxy, investigatingEmp
     if (moneyBonus > 0) {
         investigatingEmpire.stateMoney += moneyBonus;
         pirateEconomyPerformIncome(galaxy, investigatingEmpire, moneyBonus, PirateIncomeType.Undefined, galaxyStarDate(galaxy));
-        empty += '\n\n' + formatText(getText('Abandoned Ship Acquire Money'), text.toLowerCase(), String(moneyBonus));
+        empty += '\n\n' + formatText(getText('Abandoned Ship Acquire Money'), text.toLowerCase(), formatNetGrouped0(moneyBonus)); // Galaxy.5.cs 5417 "###,###,##0"
         abandonedBuiltObject.encounterMoneyBonus = 0;
     }
     const techAdvanceCount = abandonedBuiltObject.encounterTechAdvanceCount ?? 0;
