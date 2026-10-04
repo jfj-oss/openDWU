@@ -9,16 +9,14 @@
 // with their readiness bars, the resize glyph and the hover message — the ResolveLocation* placements (611-1080) and
 // the resize hotspot's size choice (ColonyInvasionPanel.cs OnClick).
 //
-// Not ported (the view's animation, fed by the sim only while a view is attached): the explosions and weapon shots
-// (AddExplosion / ProcessExplosions / the AnimationSystem) and the landing pods (AddInvaderLanding /
-// UpdateInvaderLandingProgress). In the C# opening the panel sets Habitat.ColonyInvasion (BindData), which hands that
-// colony's ground battle to the panel's paint loop (Habitat.cs 1464: DoTasks skips ProcessColonyTroops /
-// ResolveInvasionBattles while it is set; ColonyInvasion.Update runs them from ColonyInvasionPanel.OnPaint once at
-// least 1 s of game time passed) and adds a Galaxy.Rnd draw per landing hit (BuiltObject.1.cs 2875 firer pick). That
-// would make the sim depend on when the UI paints, so the port never attaches a view: the battle resolves in the tick
-// exactly as with the panel closed, and the panel only reads. TODO(port): the explosion / landing animation, driven
-// from the sim's own events without moving the battle out of the tick — ColonyInvasion.cs AddExplosionCore /
-// AddInvaderLanding / ProcessExplosions.
+// The view's animation (the explosions and weapon shots, AddExplosion / ProcessExplosions / the AnimationSystem, and
+// the landing pods, AddInvaderLanding / UpdateInvaderLandingProgress) is groundReportAnim.ts. In the C# opening the
+// panel sets Habitat.ColonyInvasion (BindData), which hands that colony's ground battle to the panel's paint loop
+// (Habitat.cs 1464: DoTasks skips ProcessColonyTroops / ResolveInvasionBattles while it is set; ColonyInvasion.Update
+// runs them from ColonyInvasionPanel.OnPaint once at least 1 s of game time passed) and adds a Galaxy.Rnd draw per
+// landing hit (BuiltObject.1.cs 2875 firer pick). That would make the sim depend on when the UI paints, so the port
+// never attaches a view: the battle resolves in the tick exactly as with the panel closed, and the panel only reads —
+// the animation is driven from the colony's state as the tick leaves it, with render-local randomness.
 
 import type { Galaxy } from '../../sim/galaxy';
 import type { Empire } from '../../sim/empire';
@@ -260,6 +258,8 @@ export interface GroundReportHotspot {
 }
 
 export interface GroundReportModel {
+    /** ColonyInvasion.PanelSize (0 / 1 / 2). */
+    panelSize: number;
     size: { w: number; h: number };
     columns: GroundReportColumns;
     /** The (32, 32, 32) header fill (only for an owned colony, Draw 1115-1119). */
@@ -505,7 +505,7 @@ export function buildGroundReport(input: GroundReportInput): GroundReportModel {
         });
     }
 
-    // Invading troops (ResolveLocationAttackingTroop: no landing offsets here, see the header).
+    // Invading troops (ResolveLocationAttackingTroop at landing offset 0: a landing pod is groundReportAnim.ts's).
     const as = splitTroopsByType(invadingTroops, true);
     for (const troop of invadingTroops.items) {
         if (troop == null) continue;
@@ -543,6 +543,7 @@ export function buildGroundReport(input: GroundReportInput): GroundReportModel {
     hotspots.push({ rect: resizeRect, message: panelSize > 0 ? text('Shrink Screen', 'Shrink Screen') : text('Expand Screen', 'Expand Screen'), target: 'resize' });
 
     return {
+        panelSize,
         size,
         columns: c,
         headerFill: empire !== null,
