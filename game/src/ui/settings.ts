@@ -5,6 +5,7 @@
 // real localStorage.
 
 import { startEffects } from '../audio/effectsPlayer';
+import { simWorkerDefault } from '../systemMemory';
 import { applyMusicSettings } from '../audio/musicPlayer'; // [audio]
 
 /** One entry of the persisted settings blob. */
@@ -76,6 +77,11 @@ export interface UiSettings {
 
     /** GameOptions.AutoPauseWhenInPopupWindow (default true, Main.Part9.cs:2714): pause a running game while a screen window is open. */
     autoPauseInPopup: boolean;
+
+    // [improvements] begin — the DW2-inspired additions (src/ui/improvements.ts): on / off per improvement id. A missing
+    // id takes the improvement's default.
+    improvements: Record<string, boolean>;
+    // [improvements] end
 
     /** Run the simulation in a Web Worker (docs/sim-worker.md; the default). Off: the in-thread fallback, the sim on the
      *  main thread as before. Applies to the next game started or loaded; `?simWorker=1|0` overrides. */
@@ -196,7 +202,10 @@ export const DEFAULT_SETTINGS: UiSettings = {
     pullStationsToCentre: false,
     showWeaponRangeCircles: false,
     autoPauseInPopup: true,
-    simWorker: true,
+    improvements: {}, // [improvements]
+    // On by default only with 16 GB+ of RAM (src/systemMemory.ts): on an 8 GB Mac the replica's extra memory caused severe
+    // slowdown and WebGL context loss (2026-10-04); see docs/sim-worker.md §6.
+    simWorker: simWorkerDefault(),
 
     // [galaxymarkers] begin — GameOptions.cs 74-96 / Main.Part9.cs 2793-2804: all on except civilian ships.
     galaxyViewDisplayFleets: true,
@@ -305,6 +314,13 @@ export function loadSettings(): UiSettings {
         if (typeof parsed.pullStationsToCentre === 'boolean') out.pullStationsToCentre = parsed.pullStationsToCentre;
         if (typeof parsed.showWeaponRangeCircles === 'boolean') out.showWeaponRangeCircles = parsed.showWeaponRangeCircles;
         if (typeof parsed.autoPauseInPopup === 'boolean') out.autoPauseInPopup = parsed.autoPauseInPopup;
+        // [improvements] begin
+        if (parsed.improvements !== null && typeof parsed.improvements === 'object' && !Array.isArray(parsed.improvements)) {
+            const m: Record<string, boolean> = {};
+            for (const [k, v] of Object.entries(parsed.improvements as Record<string, unknown>)) if (typeof v === 'boolean') m[k] = v;
+            out.improvements = m;
+        }
+        // [improvements] end
         // The worker became the default with SIM_WORKER_SETTING_VERSION 2: a stored value from before (the old default
         // `false`, written with every other setting) is not the player's choice and is ignored.
         if (typeof parsed.simWorker === 'boolean' && (parsed as { simWorkerVersion?: unknown }).simWorkerVersion === SIM_WORKER_SETTING_VERSION) out.simWorker = parsed.simWorker;
@@ -389,8 +405,9 @@ export function saveSettings(settings: UiSettings): void {
     storage?.setItem(STORAGE_KEY, JSON.stringify({ ...settings, simWorkerVersion: SIM_WORKER_SETTING_VERSION }));
 }
 
-/** Stored next to `simWorker` (loadSettings): 2 = saved since the worker became the default. */
-export const SIM_WORKER_SETTING_VERSION = 2;
+/** Stored next to `simWorker` (loadSettings): 2 = saved while the worker was the default, 3 = saved since the default
+ *  depends on the machine's RAM (values stored under 1-2 are ignored, so everyone gets the RAM-based default). */
+export const SIM_WORKER_SETTING_VERSION = 3;
 
 /** Current in-memory copy of the settings (loaded once at first use). */
 let current: UiSettings | null = null;

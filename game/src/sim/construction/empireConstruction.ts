@@ -49,7 +49,7 @@ import { galaxyNow, galaxyStarDate } from '../tick/simTime';
 import { REAL_SECONDS_IN_GALACTIC_YEAR } from '../galaxyTime';
 import { netSort } from '../netSort';
 import { ComponentType } from '../data/components';
-import { ShipDesignFocus } from '../researchSystem';
+import { ShipDesignFocus, type TechNode } from '../researchSystem';
 import { ResourceGroup } from '../resourceSystem';
 import { findNewestCanBuild, findNewestCanBuildFullEvaluate, canBuildDesign, createNewDesigns } from '../designGeneration';
 import {
@@ -81,6 +81,7 @@ import { RaceEventType } from '../eventTypes';
 import { gameText, racePeriodicRaceEvent } from '../colonyTick';
 import { raceChangePeriodActive } from '../racePeriodic';
 import { EmpireMessage, EmpireMessageType, resolveDescription, sendEmpireMessage } from '../messages';
+import { formatNetGrouped0 } from '../netNumberFormat';
 import { advisorText } from '../advisorQueue';
 import { ConstructionQueue, canBuiltObjectColonizeHabitat, resolveBuildSpeed } from './constructionQueue';
 import { componentListDiff, resolveComponentList } from './constructionYard';
@@ -826,11 +827,34 @@ export function checkBuildoutResearchCapacityAtColonies(galaxy: Galaxy, empire: 
     return { result: false, researchStationDesignToBuild: null, colonyToBuildAt: null };
 }
 
-// ---- advisor texts (Empire.10.cs 3640-3677). TODO(port) M9: GameText formatting (ResolveDescription, "###,###,##0"
-// money) — only the player reads these; the GameText key stands in for the format string. ----
+// ---- advisor texts (Empire.10.cs 3640-3677). ----
 
+/** `value.ToString("###,###,###,##0")`, the advisor / message money format. */
 export function formatMoney(value: number): string {
-    return Math.round(value).toString();
+    return formatNetGrouped0(value);
+}
+
+/**
+ * Empire.6.cs 3418-3448: the retrofit advisor text — "Retrofit Recommendation Message Components" listing the components
+ * RecentProjects unlocked ("    <name>\n" each; "Retrofit Recommendation Message" without any), followed directly by
+ * "Retrofit Recommendation Explanation" (or "… Partial") with the cost as ToString("###,###,###,##0").
+ */
+export function generateRetrofitRecommendationText(galaxy: Galaxy, recentProjects: readonly TechNode[] | null, partial: boolean, cost: number): string {
+    const componentNames: string[] = [];
+    if (recentProjects != null) {
+        for (const researchNode of recentProjects) {
+            for (const id of researchNode.def.components) componentNames.push(galaxy.researchStatic?.componentsById.get(id)?.name ?? '');
+        }
+    }
+    let empty: string;
+    if (componentNames.length > 0) {
+        let text = '';
+        for (const name of componentNames) text = text + '    ' + name + '\n';
+        empty = formatText(getText('Retrofit Recommendation Message Components'), text);
+    } else {
+        empty = getText('Retrofit Recommendation Message');
+    }
+    return empty + formatText(getText(partial ? 'Retrofit Recommendation Explanation Partial' : 'Retrofit Recommendation Explanation'), formatMoney(cost));
 }
 
 /** Empire.10.cs 3640 GenerateAutomationMessageDefensiveBase(colony, baseDesign). */
@@ -839,12 +863,17 @@ function generateAutomationMessageDefensiveBase(galaxy: Galaxy, colony: Habitat,
     return formatText(getText('Automation Defensive Base'), colony.name, habitat.name, formatMoney(baseDesign.calculateCurrentPurchasePrice(galaxy)));
 }
 
-/** Empire.10.cs 3646 GenerateAutomationMessageColonization(newColony, colonyShip, colonyShipBuildLocation). */
-function generateAutomationMessageColonization(galaxy: Galaxy, newColony: Habitat, colonyShip: BuiltObject | null, colonyShipBuildLocation: Habitat | null): string {
+/**
+ * Empire.10.cs 3646 GenerateAutomationMessageColonization(newColony, colonyShip, colonyShipBuildLocation): the type and
+ * category as ResolveDescription(...).ToLower(Invariant).
+ */
+export function generateAutomationMessageColonization(galaxy: Galaxy, newColony: Habitat, colonyShip: BuiltObject | null, colonyShipBuildLocation: Habitat | null): string {
     const habitat = galaxy.determineHabitatSystemStar(newColony);
+    const type = resolveDescription(HabitatType as unknown as Record<number, string>, newColony.type).toLowerCase();
+    const category = resolveDescription(HabitatCategoryType as unknown as Record<number, string>, newColony.category).toLowerCase();
     let result = '';
-    if (colonyShip !== null) result = formatText(getText('Automation Colonization Existing Ship'), newColony.type, newColony.category, newColony.name, habitat.name, colonyShip.name);
-    else if (colonyShipBuildLocation !== null) result = formatText(getText('Automation Colonization New Ship'), newColony.type, newColony.category, newColony.name, habitat.name, colonyShipBuildLocation.name, galaxy.determineHabitatSystemStar(colonyShipBuildLocation).name);
+    if (colonyShip !== null) result = formatText(getText('Automation Colonization Existing Ship'), type, category, newColony.name, habitat.name, colonyShip.name);
+    else if (colonyShipBuildLocation !== null) result = formatText(getText('Automation Colonization New Ship'), type, category, newColony.name, habitat.name, colonyShipBuildLocation.name, galaxy.determineHabitatSystemStar(colonyShipBuildLocation).name);
     return result;
 }
 
@@ -1341,10 +1370,11 @@ export function retrofitBuiltObjects(galaxy: Galaxy, empire: Empire, stateRetrof
         }
         if (empire === galaxy.playerEmpire) {
             if (empire.stateMoney >= num2) {
-                // 3409-3437: the advisor text lists RecentProjects' components. TODO(port) M9: GameText formatting.
-                const text = getText(builtObjectList2.length === builtObjects.length ? 'Retrofit Recommendation Explanation' : 'Retrofit Recommendation Explanation Partial');
+                // Empire.6.cs 3418-3448: the advisor text lists the components RecentProjects unlocked, then the cost
+                // (num8.ToString("###,###,###,##0")).
+                const taskDescription = generateRetrofitRecommendationText(galaxy, recentProjects, builtObjectList2.length !== builtObjects.length, Math.max(0.0, num2));
                 const refusalCount: RefCount = { value: 0 };
-                if (checkTaskAuthorized(galaxy, empire, empire.controlStateConstruction, refusalCount, formatText(text, formatMoney(Math.max(0.0, num2))), builtObjectList2, AdvisorMessageType.Retrofit)) {
+                if (checkTaskAuthorized(galaxy, empire, empire.controlStateConstruction, refusalCount, taskDescription, builtObjectList2, AdvisorMessageType.Retrofit)) {
                     flag = true;
                     if (empire.controlStateConstruction !== AutomationLevel.FullyAutomated) stateRetrofitAge = 0;
                 }

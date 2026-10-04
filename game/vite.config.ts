@@ -13,6 +13,7 @@
 import { existsSync, statSync, copyFileSync, readdirSync, readFileSync, createReadStream, mkdirSync, writeFileSync } from 'node:fs';
 import { readFile, stat } from 'node:fs/promises';
 import { createRequire } from 'node:module';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { IncomingMessage, ServerResponse } from 'node:http';
@@ -201,6 +202,19 @@ function dwuProbe(): Plugin {
  * /theme-manifest/<set>.json (one theme's file index), built from the linked install by desktop/themeIndex.cjs —
  * the same module the desktop shell serves them with from the user's install. Written into dist/ at build too.
  */
+// The machine's total RAM for the sim-worker default (src/systemMemory.ts): browsers cap navigator.deviceMemory at 8 GB,
+// so the dev server writes it into the page. The desktop shell does the same for dwu://app/index.html (desktop/main.cjs).
+function systemMemoryMeta(): Plugin {
+    return {
+        name: 'system-memory-meta',
+        apply: 'serve',
+        transformIndexHtml(html) {
+            const gib = (os.totalmem() / 2 ** 30).toFixed(1);
+            return html.replace('</head>', `<meta name="dwu-system-memory-gib" content="${gib}">\n</head>`);
+        },
+    };
+}
+
 function themeManifest(): Plugin {
     const dwuRoot = path.join(here, 'public', 'assets', 'dwu');
     const lib = themeIndexLib as { listThemes(root: string): string[]; buildThemeIndex(root: string, set: string): unknown };
@@ -351,7 +365,7 @@ export default defineConfig({
         setupFiles: ['test/pins/pin.ts'],
         ...testTier(),
     },
-    plugins: [dwuProbe(), dwuAssets(), copyAssetManifest(), scenarioAssets(), themeManifest()],
+    plugins: [dwuProbe(), dwuAssets(), copyAssetManifest(), scenarioAssets(), themeManifest(), systemMemoryMeta()],
     build: {
         // Do not copy public/ (the assets/dwu symlink is ~4 GB); only the
         // small asset-manifest.json matters in dist/, handled above.

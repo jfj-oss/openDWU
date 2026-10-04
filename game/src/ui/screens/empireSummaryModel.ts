@@ -27,6 +27,14 @@ import { civilityDescription } from '../../sim/empireRelationshipFactors';
 import { PiratePlayStyle, pirateFactionModifiers } from '../../sim/pirates';
 import { comparisonValue, knownEmpires, rankDescending, type ComparisonKind } from './empireComparison';
 import { formatK, formatM, formatSignedPercent, gt } from './researchBenefits';
+import { formatNetPercent0 } from '../../sim/netNumberFormat';
+import {
+    resolveEmpireAbilityBonusDescriptionEspionage,
+    resolveEmpireAbilityBonusDescriptionResearch,
+    resolveEmpireAbilityBonusDescriptionResourceExtraction,
+    resolveEmpireAbilityBonusDescriptionShipMaintenance,
+    resolveEmpireAbilityBonusDescriptionTrade,
+} from '../../sim/treasury';
 
 // -------------------------------------------------------------------------------------------------------------------
 // Colours (the controls' SolidBrushes)
@@ -54,9 +62,9 @@ export function percentOrNormal(v: number): string {
     return r < 0 ? `-${-r}%` : `+${r}%`;
 }
 
-/** `v.ToString("0%")`. */
+/** `v.ToString("0%")` (netNumberFormat.ts: from the double's 15 significant digits, half away from zero). */
 export function percent0(v: number): string {
-    return `${roundAway(v * 100)}%`;
+    return formatNetPercent0(v);
 }
 
 /** `v.ToString("0")`. */
@@ -360,17 +368,17 @@ export interface BonusLine {
 /** Empire.cs 2834 ResolveEmpireAbilityBonusDescriptions(includeDominantRaceInDescriptions, out bonusRaces). */
 export function abilityBonusLines(e: Empire, includeDominantRace: boolean): BonusLine[] {
     const out: BonusLine[] = [];
-    const add = (value: number, race: Race | null, tag: string, sign: '+' | '-'): void => {
+    const add = (value: number, race: Race | null, resolve: (value: number) => string): void => {
         if (!(value > 0)) return;
-        let text = gt(tag, sign + percent0(value));
+        let text = resolve(value);
         if (race !== null && (includeDominantRace || race !== e.dominantRace)) text += ` (${gt('BONUS from RACE', race.name)})`;
         out.push({ text, image: race !== null ? { kind: 'race', pictureIndex: race.pictureIndex } : null });
     };
-    add(e.shipMaintenanceSavings, e.shipMaintenanceSavingsRace, 'Ship Maintenance Ability Bonus', '-');
-    add(e.resourceExtractionBonus, e.resourceExtractionBonusRace, 'Resource Extraction Ability Bonus', '+');
-    add(e.researchBonus, e.researchBonusRace, 'Research Ability Bonus', '+');
-    add(e.espionageBonus, e.espionageBonusRace, 'Espionage Ability Bonus', '+');
-    add(e.tradeBonus, e.tradeBonusRace, 'Trade Ability Bonus', '+');
+    add(e.shipMaintenanceSavings, e.shipMaintenanceSavingsRace, resolveEmpireAbilityBonusDescriptionShipMaintenance);
+    add(e.resourceExtractionBonus, e.resourceExtractionBonusRace, resolveEmpireAbilityBonusDescriptionResourceExtraction);
+    add(e.researchBonus, e.researchBonusRace, resolveEmpireAbilityBonusDescriptionResearch);
+    add(e.espionageBonus, e.espionageBonusRace, resolveEmpireAbilityBonusDescriptionEspionage);
+    add(e.tradeBonus, e.tradeBonusRace, resolveEmpireAbilityBonusDescriptionTrade);
     return out;
 }
 

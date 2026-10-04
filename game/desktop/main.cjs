@@ -230,6 +230,13 @@ app.whenReady().then(() => {
             if (!resolved || !fs.existsSync(resolved) || !fs.statSync(resolved).isFile()) {
                 return new Response(`Not found: ${rest}`, { status: 404 });
             }
+            // The page itself carries the machine's total RAM (src/systemMemory.ts: the sim-worker default needs
+            // 16 GB+; navigator.deviceMemory is capped at 8).
+            if ((rest || 'index.html') === 'index.html') {
+                const gib = (os.totalmem() / 2 ** 30).toFixed(1);
+                const html = (await fs.promises.readFile(resolved, 'utf8')).replace('</head>', `<meta name="dwu-system-memory-gib" content="${gib}">\n</head>`);
+                return new Response(html, { status: 200, headers: { 'Content-Type': 'text/html; charset=utf-8' } });
+            }
             return net.fetch(pathToFileURL(resolved).href, request);
         } catch (err) {
             console.error('dwu:// handler error:', err);

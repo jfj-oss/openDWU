@@ -137,7 +137,12 @@ export function resolveGameText(s: string): string {
             head = next.tag;
             continue;
         }
-        if (i < parts.length) return out + split.prefix + formatNet(template, args) + '|' + parts.slice(i).join('|');
+        if (i < parts.length) {
+            // A template without items sent with arguments (string.Format ignores them, e.g. Galaxy.9.cs 2349
+            // GetText("GameEventAction Title UnlockTech") with the tech name): drop them when no tag follows.
+            if (parts.slice(i).every((x) => splitTrailingTag(x) === null)) return out + split.prefix + formatNet(template, args);
+            return out + split.prefix + formatNet(template, args) + '|' + parts.slice(i).join('|');
+        }
         return out + split.prefix + formatNet(template, args);
     }
 }

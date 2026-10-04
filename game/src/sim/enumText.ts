@@ -328,6 +328,23 @@ export const RACE_EVENT: EnumText = { fallback: 'empty', tags: {
     WarriorWaveTroopRecruitment: 'Race Event Title WarriorWaveTroopRecruitment',
     XenophobiaNoAssimilate: 'Race Event Title XenophobiaNoAssimilate',
 } };
+/** Galaxy.7.cs 5406 ResolveDescription(TroopType): switch statement, other members → string.Empty. */
+export const TROOP_TYPE: EnumText = { fallback: 'empty', tags: {
+    Infantry: 'TroopType Infantry',
+    Armored: 'TroopType Armored',
+    Artillery: 'TroopType Artillery',
+    SpecialForces: 'TroopType SpecialForces',
+    PirateRaider: 'TroopType PirateRaider',
+} };
+
+/** Galaxy.2.cs 2327 ResolveDescription(IndustryType): switch expression, `_ => SplitString(industry.ToString())`. */
+export const INDUSTRY_TYPE: EnumText = { fallback: 'split', tags: {
+    Energy: 'Energy',
+    HighTech: 'HighTech',
+    Weapon: 'Weapons',
+    Undefined: 'None',
+} };
+
 /** Galaxy.2.cs ResolveDescription(<enum> member) for the C# member name `name` (undefined: not a member). */
 export function resolveEnumTextDescription(table: EnumText, name: string | undefined): string {
     if (name !== undefined) {

@@ -1,4 +1,5 @@
-// The sim worker is the default (docs/sim-worker.md §6): the setting's default, its migration from the experimental era
+// The sim worker's default depends on the machine's RAM (src/systemMemory.ts; docs/sim-worker.md §6). In node the RAM is
+// unknown, so the default here is off: the setting's default, its migration from the experimental era
 // (a stored `false` written with every other setting before the flip is not a choice), the in-thread fallback through
 // the setting and through `?simWorker=0`.
 import { afterEach, describe, expect, it } from 'vitest';
@@ -17,21 +18,26 @@ function memoryStorage(init: Record<string, string> = {}): SettingsStorage & { d
 
 afterEach(() => setSettingsStorage(null));
 
-describe('the sim worker is the default', () => {
-    it('the setting defaults to on', () => {
-        expect(DEFAULT_SETTINGS.simWorker).toBe(true);
+describe('the sim worker setting', () => {
+    it('the setting defaults to off', () => {
+        expect(DEFAULT_SETTINGS.simWorker).toBe(false);
         setSettingsStorage(memoryStorage());
-        expect(loadSettings().simWorker).toBe(true);
+        expect(loadSettings().simWorker).toBe(false);
     });
 
-    it('a value stored before the flip (no version: the old default) is ignored', () => {
-        setSettingsStorage(memoryStorage({ 'dwu-ui-settings': JSON.stringify({ ...DEFAULT_SETTINGS, simWorker: false, musicVolume: 0.3 }) }));
+    it('a value stored while the worker was the default (version 2) is ignored', () => {
+        setSettingsStorage(memoryStorage({ 'dwu-ui-settings': JSON.stringify({ ...DEFAULT_SETTINGS, simWorker: true, simWorkerVersion: 2 }) }));
+        expect(loadSettings().simWorker).toBe(false);
+    });
+
+    it('a value stored with no version is ignored', () => {
+        setSettingsStorage(memoryStorage({ 'dwu-ui-settings': JSON.stringify({ ...DEFAULT_SETTINGS, simWorker: true, musicVolume: 0.3 }) }));
         const s = loadSettings();
-        expect(s.simWorker).toBe(true);
+        expect(s.simWorker).toBe(false);
         expect(s.musicVolume).toBe(0.3);
     });
 
-    it('the player turning it off is kept (the in-thread fallback)', () => {
+    it('the player\'s choice is kept once saved', () => {
         const st = memoryStorage();
         setSettingsStorage(st);
         saveSettings({ ...DEFAULT_SETTINGS, simWorker: false });

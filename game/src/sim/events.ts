@@ -20,6 +20,7 @@ import type { Galaxy } from './galaxy';
 import type { Empire } from './empire';
 import type { BuiltObject } from './builtObject';
 import type { Habitat } from './types';
+import type { Race } from './data/races';
 import { GalaxyLocationEffectType, GalaxyLocationType, type GalaxyLocation } from './galaxyLocation';
 import { getBuiltObjectsAtLocation } from './stationPlacement';
 import { MAX_SOLAR_SYSTEM_SIZE } from './visibility';
@@ -92,6 +93,26 @@ export function sendEventMessageToEmpire(empire: Empire, eventMessageType: Event
     if (empire.eventMessageRecipient != null) {
         empire.eventMessageRecipient.receiveEventMessage(eventMessageType, title, message, additionalData, location);
     }
+}
+
+/**
+ * The NewEmpireRaceAbility event the four C# senders build inline after ReviewEmpireAbilityBonuses reports a new
+ * race's bonus: `string.Format(GetText(headerTag), ResolveDescription(habitat.Category).ToLower(Invariant),
+ * habitat.Name, raceChanged.Name) + headerSuffix`, then "\n" + one resolved ability line per bonus
+ * (ReviewEmpireAbilityBonuses' list, Galaxy.ResolveEmpireAbilityBonusDescription*), titled
+ * GetText("New Ability for our Empire"). headerTag / headerSuffix per sender:
+ * - BuiltObject.2.cs 1074 colonization: "Colonization Race Ability Bonus", ":\n";
+ * - Habitat.cs 4287 / 4290 conquest: "Conquest New Race Ability" / "Conquest New Race Ability Militia", "\n";
+ * - Habitat.cs 5975 LeaveEmpire (revolt): "Revolt New Race Ability", "\n";
+ * - Empire.cs 4861 cultural revolution: "The recent revolt PLANETTYPE NAME RACE", ":\n".
+ * Resolved now (formatGameTextNow): the template's last {2} is followed by more text, so the ability lines cannot
+ * ride in the deferred gameText() encoding.
+ */
+export function sendNewEmpireRaceAbilityEvent(empire: Empire, headerTag: string, headerSuffix: string, habitat: Habitat, raceChanged: Race, abilityDescriptions: readonly string[]): void {
+    const category = resolveDescription(HabitatCategoryType as unknown as Record<number, string>, habitat.category).toLowerCase();
+    let text = formatGameTextNow(headerTag, [category, habitat.name, raceChanged.name]) + headerSuffix;
+    for (const item of abilityDescriptions) text = text + '\n' + item;
+    sendEventMessageToEmpire(empire, EventMessageType.NewEmpireRaceAbility, formatGameTextNow('New Ability for our Empire'), text, raceChanged, habitat);
 }
 
 // ---------------------------------------------------------------------------
@@ -1613,11 +1634,7 @@ export function leaveEmpire(galaxy: Galaxy, habitat: Habitat): void {
         const list = r.descriptions;
         const raceChanged = r.raceChanged;
         if (list.length <= 0 || raceChanged === null) return;
-        let text = gameText('Revolt New Race Ability', resolveDescription(HabitatCategoryType as unknown as Record<number, string>, habitat.category).toLowerCase(), habitat.name, raceChanged.name);
-        text += '\n';
-        for (const item of list) text = text + '\n' + item;
-        const text2 = gameText('New Ability for our Empire');
-        sendEventMessageToEmpire(empire!, EventMessageType.NewEmpireRaceAbility, text2, text, raceChanged, habitat);
+        sendNewEmpireRaceAbilityEvent(empire!, 'Revolt New Race Ability', '\n', habitat, raceChanged, list); // Habitat.cs 5975-5981
     } else {
         const description2 = gameText('Colony Leaves Empire Independent', habitat.name);
         sendMessageToEmpire(habitat.owner, habitat.owner, EmpireMessageType.ColonyLost, habitat, description2);

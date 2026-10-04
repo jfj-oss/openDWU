@@ -42,6 +42,7 @@ import {
     reviewPlanetaryFacilities,
     sortedHabitatsDescending,
 } from './facilities';
+import { formatNetGrouped0 } from '../netNumberFormat';
 
 // ---------------------------------------------------------------------------------------------------------------
 // Galaxy._WondersBuilt
@@ -175,7 +176,7 @@ export function checkCancelWonderBuilding(galaxy: Galaxy, completedWonder: Plane
                         } else {
                             num = 25000.0;
                             empire.stateMoney += num;
-                            text = gameText('Wonder Cancel Substitute Money', num);
+                            text = gameText('Wonder Cancel Substitute Money', formatNetGrouped0(num)); // Galaxy.5.cs 229-241 "###,###,###,##0"
                         }
                         break;
                     }
@@ -184,14 +185,14 @@ export function checkCancelWonderBuilding(galaxy: Galaxy, completedWonder: Plane
                     case WonderType.ColonyPopulationGrowth:
                         num = 25000.0;
                         empire.stateMoney += num;
-                        text = gameText('Wonder Cancel Substitute Money', num);
+                        text = gameText('Wonder Cancel Substitute Money', formatNetGrouped0(num)); // Galaxy.5.cs 229-241 "###,###,###,##0"
                         break;
                     case WonderType.EmpireHappiness:
                     case WonderType.EmpireIncome:
                     case WonderType.EmpirePopulationGrowth:
                         num = 50000.0;
                         empire.stateMoney += num;
-                        text = gameText('Wonder Cancel Substitute Money', num);
+                        text = gameText('Wonder Cancel Substitute Money', formatNetGrouped0(num)); // Galaxy.5.cs 229-241 "###,###,###,##0"
                         break;
                     case WonderType.EmpireResearchEnergy:
                         researchNode = selectRandomNextResearchProjectExcludeSuperWeaponsByIndustry(galaxy, empire, IndustryType.Energy);
