@@ -2459,6 +2459,13 @@ export class MainView {
                         return;
                     }
                     // [wreckage] end
+                    // [dw2overlays] begin — an Improvements overlay mark (refuelling point, colony target, resource icons).
+                    const im = this.overlayLayer?.improvementsHitTest(w.x, w.y, this.camera.zoom) ?? null;
+                    if (im !== null) {
+                        showMapTooltip(im, e.clientX, e.clientY);
+                        return;
+                    }
+                    // [dw2overlays] end
                     hideMapTooltip();
                     return;
                 }
@@ -2469,7 +2476,9 @@ export class MainView {
                 if (sys !== undefined) {
                     systemName = sys.systemStar.name;
                 }
-                showMapTooltip(tooltipText(hit, systemName), e.clientX, e.clientY);
+                // [dw2overlays] the Improvements overlays' lines for the hovered habitat (colony target, known resources).
+                const extra = this.overlayLayer?.habitatTooltipExtra(hit) ?? null;
+                showMapTooltip(extra !== null ? `${tooltipText(hit, systemName)}\n${extra}` : tooltipText(hit, systemName), e.clientX, e.clientY);
             }, 120);
         }, { signal: this.windowInput.signal });
         window.addEventListener('mouseup', (e: MouseEvent) => {

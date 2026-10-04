@@ -14,7 +14,9 @@ import { bindAutoPauseClock } from './autoPause';
 import { HUD_FRAME_SIZE } from './topBar';
 import { GalaxyTime } from '../sim/clock';
 import { resolveStarDateDescription } from '../sim/galaxyTime';
-import { createMapOverlayState, OVERLAY_ROWS, toggleOverlay, type MapOverlayState, type OverlayKey } from './mapOverlays';
+import { createMapOverlayState, IMPROVEMENT_OVERLAY_ROWS, OVERLAY_ROWS, onOverlayChange, toggleOverlay, type MapOverlayState, type OverlayKey, type OverlayPanel } from './mapOverlays';
+import { improvementsSection } from './improvements'; // [dw2overlays]
+import { resourcePickerPanel, type OverlayOptionPanel } from './overlayOptionPanels'; // [dw2overlays]
 import { Camera } from '../render/camera';
 import { followOnSelectionChanged, isFollowingTarget, toggleFollow, type FollowState, type FollowTarget } from '../render/followCamera';
 import { Galaxy } from '../sim/galaxy';
@@ -1922,7 +1924,7 @@ function buildOptionsList(wiring: HudWiring): HTMLElement {
     ovHead.className = 'hud-section-head';
     ovHead.textContent = 'Overlays';
     panel.appendChild(ovHead);
-    for (const row of OVERLAY_ROWS) {
+    const makeRow = (row: { key: OverlayKey; label: string; mod?: boolean; panel?: OverlayPanel }): HTMLElement => {
         const item = document.createElement('button');
         item.type = 'button';
         item.className = 'hud-option-row';
@@ -1954,14 +1956,43 @@ function buildOptionsList(wiring: HudWiring): HTMLElement {
             item.appendChild(more);
         }
         // [freightOverlay] end
+        // [dw2overlays] begin — an inline options panel under the row (ui/overlayOptionPanels.ts).
+        let sub: OverlayOptionPanel | null = null;
+        if (row.panel === 'resources' && wiring.galaxy !== undefined) {
+            sub = resourcePickerPanel(overlays, wiring.galaxy);
+            sub.element.style.display = 'none';
+            const more = document.createElement('span');
+            more.className = 'hud-option-more';
+            more.textContent = '…';
+            more.title = 'Pick a resource';
+            more.setAttribute('role', 'button');
+            more.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const open = sub!.element.style.display === 'none';
+                if (open) sub!.refresh();
+                sub!.element.style.display = open ? '' : 'none';
+            });
+            item.appendChild(more);
+        }
+        // [dw2overlays] end
         item.addEventListener('click', () => {
             toggleOverlay(overlays, row.key);
-            check.textContent = overlays[row.key] ? '✓' : '';
             // Rendering lives in src/render/overlayLayer.ts (task M3, parity C3), which subscribes to onOverlayChange and
             // reads the state every frame (Fade civilian ships: builtObjectLayer.ts).
         });
-        panel.appendChild(item);
-    }
+        // [dw2overlays] the check follows any change (a "…" panel can turn its overlay on).
+        onHudDestroyed(onOverlayChange(() => {
+            check.textContent = overlays[row.key] ? '✓' : '';
+        }));
+        if (sub === null) return item;
+        const box = document.createElement('div');
+        box.className = 'hud-option-group';
+        box.append(item, sub.element);
+        return box;
+    };
+    for (const row of OVERLAY_ROWS) panel.appendChild(makeRow(row));
+    // [dw2overlays] The Improvements category (ui/improvements.ts): its own section below the original's overlays.
+    panel.appendChild(improvementsSection(IMPROVEMENT_OVERLAY_ROWS.map((row) => ({ improvement: row.improvement, element: makeRow(row) })), hudSignal()));
     return panel;
 }
 

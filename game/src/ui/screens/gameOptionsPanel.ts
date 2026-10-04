@@ -46,6 +46,7 @@ import { clampAutoSaveMinutes, clampMaximumFramerate, getSettings, resetAutomati
 import { copyMessageOptions, getMessageOptions, MessageCategory, setMessageOption, setSuppressAllPopups, type MessageOptions } from '../messageRouting';
 import { COLORS, checkBox, dropDown, el, glassButton, messageBox, numericUpDown, openOriginalWindow, place, text, type OriginalWindow } from '../originalWindow';
 import { checkBoxRight, colorSlider, groupBox, labelledTrackBar } from '../originalWindowControls';
+import { improvementsOptionsGroup, improvementsOptionsGroupHeight } from '../improvements'; // [dw2overlays]
 import { AUTOMATION_MODE_ITEMS, AUTOMATION_PRESETS, detectAutomationMode, empireAutomationValues, gameOptionsFromEmpire, messageSettingsRows, type PendingEmpireValues } from './gameOptionsModel';
 
 export type AutomationField =
@@ -232,7 +233,7 @@ const EMPIRE_H = 769 + 25;
 const MESSAGES_W = 735;
 const MESSAGES_H = 502 + 43;
 const ADVANCED_W = 440;
-const ADVANCED_H = 500 + 110;
+const ADVANCED_H = 500 + 110 + 10 + improvementsOptionsGroupHeight(); // [dw2overlays] + the Improvements group
 
 interface OpenState {
     win: OriginalWindow;
@@ -788,5 +789,8 @@ function createAdvancedDisplaySettings(): OriginalWindow {
         ['Show weapon range circles for the selected ship', 'showWeaponRangeCircles'],
     ];
     mapBoxes.forEach(([caption, key], i) => check(map, caption, st[key], 10, 22 + 22 * i, (v) => updateSettings({ [key]: v } as Partial<UiSettings>)));
+    // [dw2overlays] Ours: the Improvements category (ui/improvements.ts) — the Distant Worlds 2-inspired additions, each
+    // on or off; an improvement that is off hides its rows from the View popup.
+    body.appendChild(place(improvementsOptionsGroup({ groupBox, checkBox: (l, c, fn, size) => checkBox(l, c, fn, size), place }, 400, F2, F4), 12, 569));
     return win;
 }
