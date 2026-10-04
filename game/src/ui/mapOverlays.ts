@@ -83,7 +83,7 @@ export function createMapOverlayState(): MapOverlayState {
 
 export type OverlayKey = keyof MapOverlayState;
 
-export type OverlayPanel = 'tradeFlows' | 'resources';
+export type OverlayPanel = 'tradeFlows' | 'resources' | 'supplyShortages';
 
 /** One row of the View popup's overlay list. */
 export interface OverlayRow {
@@ -123,7 +123,7 @@ export const OVERLAY_ROWS: OverlayRow[] = [
     { key: 'resources', label: 'Resources', improvement: 'resourcesOverlay', panel: 'resources' },
     { key: 'fuelRange', label: 'Fuel Range', improvement: 'fuelRangeOverlay' },
     // [dw2overlays] end
-    { key: 'supplyShortages', label: 'Supply Shortages', improvement: 'supplyChain' },
+    { key: 'supplyShortages', label: 'Supply Shortages', improvement: 'supplyChain', panel: 'supplyShortages' },
 ];
 
 // [dw2overlays] begin — the three overlay improvements (on by default; each overlay's own toggle still starts off).

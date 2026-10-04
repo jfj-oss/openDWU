@@ -23,7 +23,6 @@ import {
     constructionSupply,
     deliveryEtaMs,
     empireResourceStock,
-    LUXURY_WAIT_MS,
     empireConstructionTargets,
     empireSupplySnapshot,
     queueItems,
@@ -212,37 +211,54 @@ describe('construction: a stalled yard and what it waits for', () => {
 });
 
 describe('colonies short of luxuries', () => {
-    it('development falling below DevelopmentLevel / 5 luxury types; a luxury held elsewhere but not coming', () => {
+    it('short only when development falls for lack of luxuries AND a luxury it orders, held elsewhere, is not coming', () => {
         const { galaxy } = cachedTickGame(gameData, { seconds: 60 });
         const empire = galaxy.playerEmpire!;
         const colony = empire.colonies.find((h) => h.population.totalAmount > 0)!;
-        const base = colonyLuxuryStatus(galaxy, colony)!;
-        colony.developmentLevel = (base.luxuryTypes + 3) * 5;
-        const st = colonyLuxuryStatus(galaxy, colony, null, 1)!;
-        expect(st.typesForDevelopment).toBe(base.luxuryTypes + 3);
-        expect(st.developmentFalling).toBe(true);
-        expect(st.short).toBe(true);
-        expect(colonyLuxuryStatus(galaxy, colony, null, 0)!.developmentFalling).toBe(false);
-        // A luxury order for one the colony lacks, while another of the empire's objects holds some.
+        // The colony orders a luxury it lacks; another of the empire's objects holds some; nothing contracted.
         const lux = galaxy.resourceSystem.resources.find((r) => resourceGroupOf(r) === ResourceGroup.Luxury && !(colony.cargo?.items ?? []).some((c) => c.commodity.resourceId === r.resourceId))!;
         const holder = [...empire.colonies, ...empire.builtObjects].find((o) => o !== colony && o.cargo !== null && o.cargo !== colony.cargo)!;
         holder.cargo!.add(new Cargo(new ResourceRef(lux.resourceId), 900, empire));
         for (const o of [...galaxy.orders.items]) if (o.requestingColony === colony && o.commodityResource?.resourceId === lux.resourceId) galaxy.orders.remove(o);
-        const luxOrder = empireCreateOrder(galaxy, empire, colony, new ResourceRef(lux.resourceId), 300, false, OrderType.Standard, true);
-        colony.developmentLevel = 0;
-        // A fresh order is normal: not "not coming" yet.
-        expect(colonyLuxuryStatus(galaxy, colony, null, 1, empireResourceStock(empire))!.demanded.find((d) => d.resourceId === lux.resourceId)!.notComing).toBe(false);
-        luxOrder.expiryDate -= LUXURY_WAIT_MS + 1;
+        const order = empireCreateOrder(galaxy, empire, colony, new ResourceRef(lux.resourceId), 300, false, OrderType.Standard, true);
+        const stock = empireResourceStock(empire);
+        const types = colonyLuxuryStatus(galaxy, colony)!.luxuryTypes;
+        // Development holds (DevelopmentLevel / 5 ≤ luxury types): not short, though the luxury is not coming.
+        colony.developmentLevel = types * 5;
+        let st = colonyLuxuryStatus(galaxy, colony, null, 1, stock)!;
+        expect(st.developmentFalling).toBe(false);
+        expect(st.demanded.find((d) => d.resourceId === lux.resourceId)!.notComing).toBe(true);
+        expect(st.short).toBe(false);
+        // Development falls: short.
+        colony.developmentLevel = (types + 3) * 5;
+        st = colonyLuxuryStatus(galaxy, colony, null, 1, stock)!;
+        expect(st.typesForDevelopment).toBe(types + 3);
+        expect(st.developmentFalling).toBe(true);
+        expect(st.short).toBe(true);
+        // No strategic supply (development cannot change) or EconomyEfficiency < 0.9 (it falls whatever the luxuries): not short.
+        expect(colonyLuxuryStatus(galaxy, colony, null, 0, stock)!.short).toBe(false);
+        empire.economyEfficiency = 0.8;
+        expect(colonyLuxuryStatus(galaxy, colony, null, 1, stock)!.short).toBe(false);
+        empire.economyEfficiency = 1;
+        // A contract for it: on its way, not short.
+        const c = new Contract(holder, 300, lux.resourceId, -1, empire.empireId);
+        order.contracts.push(c);
+        expect(colonyLuxuryStatus(galaxy, colony, null, 1, stock)!.short).toBe(false);
+        order.contracts.length = 0;
+        // Held nowhere else in the empire: nothing the empire could send, not short.
+        holder.cargo!.items = holder.cargo!.items.filter((x) => x.commodity.resourceId !== lux.resourceId);
+        const st2 = colonyLuxuryStatus(galaxy, colony, null, 1, empireResourceStock(empire))!;
+        if (!st2.demanded.some((d) => d.notComing)) expect(st2.short).toBe(false);
+        holder.cargo!.add(new Cargo(new ResourceRef(lux.resourceId), 900, empire));
+        // The snapshot and the overlay marker (amber; hidden with colonies off).
         const snap = empireSupplySnapshot(galaxy, empire);
         const cs = snap.byColony.get(colony)!;
-        const need = cs.demanded.find((d) => d.resourceId === lux.resourceId)!;
-        expect(need.notComing).toBe(true);
-        expect(need.availableElsewhere).toBeGreaterThanOrEqual(900);
         expect(cs.short).toBe(true);
         expect(snap.shortColonies).toContain(cs);
         const marker = shortageMarkers(snap).find((m) => m.target === colony)!;
         expect(marker.colony).toBe(cs);
         expect(marker.severity).toBe('short');
+        expect(shortageMarkers(snap, false).some((m) => m.target === colony && m.site === null)).toBe(false);
         expect(shortageTooltip(galaxy, marker, empire)).toMatch(new RegExp(`${lux.name}: not coming`));
     });
 });

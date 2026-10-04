@@ -74,6 +74,8 @@ async function census() {
             nothingComingSites: sites.filter((s) => s.nothingComing).length,
             deliveries,
             shortColonies: snap.shortColonies.length,
+            // The looser rules this replaced, for comparison: development falling OR a demanded luxury not coming.
+            looseShortColonies: [...snap.byColony.values()].filter((c) => c.developmentFalling || c.demanded.some((x) => x.notComing)).length,
             fallingColonies: snap.shortColonies.filter((c) => c.developmentFalling).length,
             pick: pick === null ? null : { name: pick.name, x: pick.target.xpos, y: pick.target.ypos, stalled: pick.stalled, resources: pick.resources.length },
             topRes,
@@ -204,6 +206,27 @@ try {
         await page.mouse.move(5, 500);
     } else {
         console.log('no shortage anywhere in the player empire: overlay shots show no markers');
+    }
+
+    // --- The "…" sub-toggle: colony luxury shortages off, then on again ---
+    {
+        await view(p.x, p.y, 'min');
+        if (!(await page.locator('.hud-options-pop.open').count())) await toggle.click();
+        await page.waitForTimeout(300);
+        await page.locator('.hud-options [data-overlay="supplyShortages"] .hud-option-more').click();
+        await page.waitForTimeout(300);
+        await shot('overlay-options');
+        const box = page.locator('.hud-options [data-panel="supplyShortages"] input');
+        const count = () => page.evaluate(() => ({ all: window.__dwu.view.overlayLayer.supply.currentMarkers.length, colonies: window.__dwu.view.overlayLayer.supply.currentMarkers.filter((m) => m.site === null).length }));
+        const on = await count();
+        await box.click();
+        await page.waitForTimeout(1500);
+        const offC = await count();
+        check(offC.colonies === 0 && offC.all === on.all - on.colonies, `"Show colony luxury shortages" off: ${on.all} → ${offC.all} markers (colony-only ${on.colonies} → ${offC.colonies})`);
+        await box.click();
+        await page.waitForTimeout(1500);
+        check((await count()).colonies === on.colonies, 'and back on');
+        await toggle.click();
     }
 
     // --- Construction Yards → Waiting For ---

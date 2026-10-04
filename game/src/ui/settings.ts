@@ -81,6 +81,8 @@ export interface UiSettings {
     // [improvements] begin — the DW2-inspired additions (src/ui/improvements.ts): on / off per improvement id. A missing
     // id takes the improvement's default.
     improvements: Record<string, boolean>;
+    /** supplyChain: the Supply Shortages overlay also marks colonies short of luxuries (its "…" panel). */
+    supplyShowColonyShortages: boolean;
     // [improvements] end
 
     /** Run the simulation in a Web Worker (docs/sim-worker.md; the default). Off: the in-thread fallback, the sim on the
@@ -203,6 +205,7 @@ export const DEFAULT_SETTINGS: UiSettings = {
     showWeaponRangeCircles: false,
     autoPauseInPopup: true,
     improvements: {}, // [improvements]
+    supplyShowColonyShortages: true, // [improvements] supplyChain
     // On by default only with 16 GB+ of RAM (src/systemMemory.ts): on an 8 GB Mac the replica's extra memory caused severe
     // slowdown and WebGL context loss (2026-10-04); see docs/sim-worker.md §6.
     simWorker: simWorkerDefault(),
@@ -320,6 +323,7 @@ export function loadSettings(): UiSettings {
             for (const [k, v] of Object.entries(parsed.improvements as Record<string, unknown>)) if (typeof v === 'boolean') m[k] = v;
             out.improvements = m;
         }
+        if (typeof parsed.supplyShowColonyShortages === 'boolean') out.supplyShowColonyShortages = parsed.supplyShowColonyShortages;
         // [improvements] end
         // The worker became the default with SIM_WORKER_SETTING_VERSION 2: a stored value from before (the old default
         // `false`, written with every other setting) is not the player's choice and is ignored.

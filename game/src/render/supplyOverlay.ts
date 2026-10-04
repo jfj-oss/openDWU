@@ -14,6 +14,7 @@ import { BuiltObject } from '../sim/builtObject';
 import { shortageMarkers, type ShortageMarker } from '../sim/logistics/supplyChain';
 import { overlayActive, type MapOverlayState } from '../ui/mapOverlays';
 import { SUPPLY_REFRESH_MS, supplySnapshot } from '../ui/supplyChainCache';
+import { getSettings, onSettingsChange } from '../ui/settings';
 
 export const SHORTAGE_STALLED_COLOR = 0xff4a3a;
 export const SHORTAGE_SHORT_COLOR = 0xffb428;
@@ -61,6 +62,19 @@ export class SupplyOverlay {
     ) {
         this.g.visible = false;
         root.addChild(this.g);
+        // The colony sub-toggle (View popup "…"): re-query at the next frame.
+        let colonies = getSettings().supplyShowColonyShortages;
+        this.offSettings = onSettingsChange((st) => {
+            if (st.supplyShowColonyShortages === colonies) return;
+            colonies = st.supplyShowColonyShortages;
+            this.queriedAt = -Infinity;
+        });
+    }
+
+    private offSettings: () => void;
+
+    destroy(): void {
+        this.offSettings();
     }
 
     update(z: number, cam: Camera): void {
@@ -78,7 +92,7 @@ export class SupplyOverlay {
         if (t - this.queriedAt >= SUPPLY_REFRESH_MS) {
             this.queriedAt = t;
             const snap = supplySnapshot(this.galaxy);
-            this.markers = snap !== null ? shortageMarkers(snap) : [];
+            this.markers = snap !== null ? shortageMarkers(snap, getSettings().supplyShowColonyShortages) : [];
         }
         const g = this.g;
         g.clear();
@@ -99,13 +113,19 @@ export class SupplyOverlay {
                 const y = p.y;
                 this.drawn.push({ m, x, y });
                 const color = shortageColor(m);
-                if (o instanceof BuiltObject && m.site !== null) {
+                if (m.site === null) {
+                    // A colony short of luxuries only: a small amber ring, no "!" (subordinate to the yards).
+                    const rc = r * 0.6;
+                    g.circle(x, y, rc).fill({ color: 0x000000, alpha: 0.25 }).stroke({ width: 1.5 * f, color: SHORTAGE_SHORT_COLOR, alpha: 0.85 });
+                    continue;
+                }
+                if (o instanceof BuiltObject) {
                     // A yard: a diamond.
                     g.poly([x, y - r * 1.15, x + r * 1.15, y, x, y + r * 1.15, x - r * 1.15, y]).fill({ color: 0x000000, alpha: 0.35 }).stroke({ width: 2 * f, color, alpha: 0.95 });
                 } else {
+                    // A colony's own yard short of resources: a ring with an inner ring.
                     g.circle(x, y, r).fill({ color: 0x000000, alpha: 0.35 }).stroke({ width: 2 * f, color, alpha: 0.95 });
-                    // A colony whose yard is short as well: an inner ring.
-                    if (m.site !== null) g.circle(x, y, r * 0.6).stroke({ width: 1.5 * f, color, alpha: 0.9 });
+                    g.circle(x, y, r * 0.6).stroke({ width: 1.5 * f, color, alpha: 0.9 });
                 }
                 // The "!" above the marker.
                 const top = y - r - 12 * f;

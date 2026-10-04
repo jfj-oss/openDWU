@@ -454,7 +454,7 @@ export interface ColonyLuxuryNeed {
     /** Held elsewhere in the empire (other colonies, bases, mining stations): the units and the largest holder. */
     availableElsewhere: number;
     availableAt: SupplyTarget | null;
-    /** None in stock, nothing contracted for LUXURY_WAIT_MS, yet the empire holds some elsewhere: a freighter could bring it. */
+    /** None in stock, nothing contracted, yet the empire holds some elsewhere: a freighter could bring it. */
     notComing: boolean;
     /** None in stock, nothing contracted and none anywhere in the empire. */
     unavailable: boolean;
@@ -468,16 +468,17 @@ export interface ColonyLuxuryStatus {
     typesForDevelopment: number;
     /** Types the colony aims for (Empire.4.cs 3195: 10, or 5 under 200 M people). */
     typesWanted: number;
-    /** Development falls for lack of luxury types (and strategic supply lets it change at all). */
+    /** Development falls for lack of luxury types (Empire.4.cs 3040-3060: num11 = luxury types − DevelopmentLevel / 5
+     *  < 0, applied only while CalculateStrategicResourceSupplyGrowthFactor > 0; with EconomyEfficiency < 0.9 it falls
+     *  by 1 whatever the luxuries, so that case is not a luxury shortage). */
     developmentFalling: boolean;
     /** The luxuries it has open orders for (it or its space port): not coming first, then unavailable, then the rest. */
     demanded: ColonyLuxuryNeed[];
-    /** Short: development falling, or a demanded luxury the empire holds elsewhere is not on its way. */
+    /** Short — a shortage the empire could fix: development falling for lack of luxury types AND a luxury the colony
+     *  demands (an open order) that the empire holds elsewhere has nothing contracted. (The original's colony screen
+     *  marks no luxury shortage at all; only the development rule above makes one hurt.) */
     short: boolean;
 }
-
-/** A luxury order with nothing contracted counts as "not coming" once it is this old (game ms: 60 days). */
-export const LUXURY_WAIT_MS = (60 * 600000) / 360;
 
 /** Units of each resource the empire holds, and the largest holder (one entry per cargo list). */
 export type EmpireStock = Map<number, { amount: number; at: SupplyTarget; atAmount: number; byCargo: Map<object, number> }>;
@@ -555,8 +556,8 @@ export function colonyLuxuryStatus(
         const st = held.get(ro.resourceId) ?? 0;
         const es = stock?.get(ro.resourceId);
         const elsewhere = es === undefined ? 0 : es.amount - (own !== null ? (es.byCargo.get(own) ?? 0) : 0);
-        // Not coming: none held, nothing contracted, and the order has waited LUXURY_WAIT_MS (a fresh order is normal).
-        const none = st <= 0 && ro.deliveries.length === 0 && ro.oldestOrderAgeMs >= LUXURY_WAIT_MS;
+        // Nothing contracted and none held (the order's age is kept for the texts: ResourceOrders.oldestOrderAgeMs).
+        const none = st <= 0 && ro.deliveries.length === 0;
         demanded.push({
             resourceId: ro.resourceId,
             stock: st,
@@ -570,7 +571,7 @@ export function colonyLuxuryStatus(
     }
     const rank = (d: ColonyLuxuryNeed): number => (d.notComing ? 0 : d.unavailable ? 1 : 2);
     demanded.sort((a, b) => rank(a) - rank(b) || a.stock - b.stock || a.resourceId - b.resourceId);
-    const falling = growth > 0 && types < forDev;
+    const falling = growth > 0 && owner.economyEfficiency >= 0.9 && types < forDev;
     return {
         colony,
         luxuryTypes: types,
@@ -578,7 +579,7 @@ export function colonyLuxuryStatus(
         typesWanted: colony.population.totalAmount < 200000000 ? 5 : 10,
         developmentFalling: falling,
         demanded,
-        short: falling || demanded.some((d) => d.notComing),
+        short: falling && demanded.some((d) => d.notComing),
     };
 }
 
@@ -638,22 +639,22 @@ export interface ShortageMarker {
     colony: ColonyLuxuryStatus | null;
 }
 
-/** The overlay's markers: yards whose queue lacks resources (stalled, or nothing coming = red) and short colonies
- *  (development falling = red). One marker per object; a colony that is both gets both parts. */
-export function shortageMarkers(snap: EmpireSupplySnapshot): ShortageMarker[] {
+/** The overlay's markers: yards whose queue lacks resources (stalled, or nothing coming = red; else amber) and, unless
+ *  `colonies` is false, short colonies (always amber: subordinate to the yards). One marker per object; a colony that
+ *  is both gets both parts and keeps the yard's severity. */
+export function shortageMarkers(snap: EmpireSupplySnapshot, colonies = true): ShortageMarker[] {
     const out = new Map<SupplyTarget, ShortageMarker>();
     for (const s of snap.sites) {
         if (s.resources.length === 0) continue;
         const sev: ShortageSeverity = s.stalled || s.nothingComing ? 'stalled' : 'short';
         out.set(s.target, { target: s.target, x: s.target.xpos, y: s.target.ypos, severity: sev, site: s, colony: null });
     }
-    for (const c of snap.shortColonies) {
-        const sev: ShortageSeverity = c.developmentFalling ? 'stalled' : 'short';
-        const m = out.get(c.colony);
-        if (m !== undefined) {
-            m.colony = c;
-            if (sev === 'stalled') m.severity = 'stalled';
-        } else out.set(c.colony, { target: c.colony, x: c.colony.xpos, y: c.colony.ypos, severity: sev, site: null, colony: c });
+    if (colonies) {
+        for (const c of snap.shortColonies) {
+            const m = out.get(c.colony);
+            if (m !== undefined) m.colony = c;
+            else out.set(c.colony, { target: c.colony, x: c.colony.xpos, y: c.colony.ypos, severity: 'short', site: null, colony: c });
+        }
     }
     return [...out.values()];
 }

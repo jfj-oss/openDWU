@@ -1164,6 +1164,7 @@ export class OverlayLayer {
     destroy(): void {
         this.unsubscribe();
         this.freight.destroy(); // [freightOverlay]
+        this.supply.destroy(); // [improvements] supplyChain
         this.fuel.destroy(); // [dw2overlays]
     }
 }

@@ -6,7 +6,34 @@
 import type { Galaxy } from '../sim/galaxy';
 import { fogOf } from '../render/fog';
 import { RARITY_LABELS, knownResourceIndexFor, resourcePickerOptions } from '../render/resourceOverlayData';
+import { getSettings, updateSettings } from './settings';
 import { overlayOptionsOf, setOverlay, setOverlayResourceFilter, type MapOverlayState } from './mapOverlays';
+
+/** [improvements] supplyChain: the Supply Shortages row's options — "Show colony luxury shortages" (UI setting
+ *  supplyShowColonyShortages, default on). Yards short of resources are always marked. */
+export function supplyShortagesPanel(): OverlayOptionPanel {
+    const wrap = document.createElement('div');
+    wrap.className = 'hud-option-panel';
+    wrap.dataset.panel = 'supplyShortages';
+    const lbl = document.createElement('label');
+    lbl.className = 'hud-option-panel-label';
+    const box = document.createElement('input');
+    box.type = 'checkbox';
+    box.checked = getSettings().supplyShowColonyShortages;
+    box.addEventListener('change', () => updateSettings({ supplyShowColonyShortages: box.checked }));
+    lbl.append(box, document.createTextNode(' Show colony luxury shortages'));
+    wrap.appendChild(lbl);
+    const note = document.createElement('div');
+    note.className = 'hud-option-panel-note';
+    note.textContent = 'Red diamond: yard stalled / nothing coming; amber: short. Small amber ring: colony losing development for lack of a luxury your empire holds but no freighter brings.';
+    wrap.appendChild(note);
+    return {
+        element: wrap,
+        refresh: () => {
+            box.checked = getSettings().supplyShowColonyShortages;
+        },
+    };
+}
 
 export interface OverlayOptionPanel {
     element: HTMLElement;
