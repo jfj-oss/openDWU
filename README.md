@@ -41,6 +41,9 @@ mod/scenario layer on top. The code lives under [`game/`](game/).
   visibility, waypoints, a Fleet Settings panel, and resource, fuel-range and
   colony-score overlays. You can switch each one off in Game Options →
   Improvements.
+- **Modded themes work out of the box.** Any theme in your install's
+  `Customization` folder (Star Trek, Mass Effect, Warhammer 40,000, …) can
+  be switched on from the main menu ([how](#themes-modded-content)).
 - **Bacon mod settings per game.** Every game keeps its own
   `BaconSettings.txt` values, and you can edit them at any time from Game
   Options.
@@ -70,7 +73,7 @@ mod/scenario layer on top. The code lives under [`game/`](game/).
 
 ## Install
 
-**Jump to your platform:** [Windows](#windows) · [macOS](#macos) · [Linux](#linux) · [Troubleshooting](#troubleshooting) · [Tests](#tests) · [About the project](#about-the-project)
+**Jump to your platform:** [Windows](#windows) · [macOS](#macos) · [Linux](#linux) · [Themes](#themes-modded-content) · [Troubleshooting](#troubleshooting) · [Tests](#tests) · [About the project](#about-the-project)
 
 Each platform section starts with the **desktop app**: download it from the
 [Releases page](https://github.com/jfj-oss/openDWU/releases), point it at
@@ -493,6 +496,42 @@ npm run dev
 ```
 
 If you use the assets repo, also run `git -C ~/dwu-assets pull`.
+
+</details>
+
+---
+
+## Themes (modded content)
+
+Themes made for the original game, also called customization sets, work in
+openDWU unchanged. A theme can replace races, empire policies, ship designs
+and names, and the game's art, sounds and music.
+
+<details>
+<summary><b>How to install and switch themes</b></summary>
+
+1. **Put the theme in your install's `Customization` folder.** That is the
+   folder of the Distant Worlds: Universe install openDWU uses: in Steam,
+   right-click the game → **Manage** → **Browse local files** → `Customization`.
+   It already holds the themes that ship with the game, such as
+   `Distant Worlds Original`. A theme is one folder inside it, for example
+   `Customization/Mass Effect 4 Mod/`. If a download unpacks to an extra
+   folder level, move the theme folder up so that its `about.txt`, `images`
+   and so on sit directly inside it.
+2. **Switch to it in the game.** On the main menu, click **Change Theme**,
+   pick the theme on the left (its description and picture show on the
+   right) and click **Switch Theme**. The game reloads with the theme
+   active and remembers it for next time.
+3. **Back to the original:** **Change Theme** → **(Default)** → **Switch
+   Theme**.
+
+Notes:
+
+- Files load the way the original loads them: each one comes from the theme
+  when the theme has it, and from the base game otherwise. Partial themes
+  (art only, music only) work too.
+- Some themes include prebuilt galaxy maps (`maps/*.dwg`). Those can't be
+  loaded yet; the rest of such a theme works.
 
 </details>
 
