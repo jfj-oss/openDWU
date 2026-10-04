@@ -26,6 +26,7 @@ import { defaultStartGameOptions } from '../src/sim/startGameOptions';
 import { deserializeGame, serializeGame } from '../src/sim/save/gameSave';
 import { FRAME_REAL_MS } from '../src/sim/tick/scheduler';
 import { QUIET_MS, battleReportState, battleReports, setBattleReportsEnabled, type BattleReport } from '../src/sim/battleReports/battleReports';
+import { builtObjectCompleteTeardown } from '../src/sim/combat/teardown';
 import { announceBattleReport, unseenReports } from '../src/ui/battleReports';
 import { clearHudMessages, getHudMessages } from '../src/ui/hud';
 import { battleReportSummary, unitFateText } from '../src/ui/screens/battleReportModel';
@@ -290,5 +291,19 @@ describe('battle reports: a boarding capture (combatScenarios (4) staging)', () 
         const player = r.sides.find((s) => s.kind === 'player')!;
         expect([player.units, player.captured, player.destroyed]).toEqual([1, 1, 0]);
         expect(r.sides.find((s) => s.kind === 'pirate')!.camp).toBe('enemy');
+    }, 300000);
+});
+
+describe('battle reports: a retired / scrapped ship is not a combat loss', () => {
+    it('a second teardown of a scrapped ship (cleanup passes) opens no report', () => {
+        const g = cachedTickGame(gameData).galaxy;
+        const player = g.playerEmpire!;
+        const ship = player.builtObjects.find((b) => b != null && b.subRole === BuiltObjectSubRole.ConstructionShip)!;
+        expect(ship).toBeTruthy();
+        const before = battleReports(g, true).length;
+        builtObjectCompleteTeardown(g, ship, false); // the yard's scrap completion (constructionQueue.ts)
+        builtObjectCompleteTeardown(g, ship, true); // a later cleanup teardown: HasBeenDestroyed is now set
+        runGameSeconds(g, 30);
+        expect(battleReports(g, true).length).toBe(before);
     }, 300000);
 });

@@ -755,8 +755,20 @@ function onRemoved(galaxy: Galaxy, o: BuiltObject | Creature, destroyed: boolean
     u.gone = true;
 }
 
-battleReportHooks.builtObjectTeardown = (galaxy, bo) => onRemoved(galaxy, bo, bo.hasBeenDestroyed);
-battleReportHooks.creatureTeardown = (galaxy, c) => onRemoved(galaxy, c, c.hasBeenDestroyed);
+// Only an object's FIRST teardown counts. builtObjectCompleteTeardown sets HasBeenDestroyed on everything it tears
+// down, so a later teardown of the same object (cleanup passes) would read a retired / scrapped ship as destroyed and
+// open a battle report for it.
+const tornDown = new WeakSet<object>();
+battleReportHooks.builtObjectTeardown = (galaxy, bo) => {
+    if (tornDown.has(bo)) return;
+    tornDown.add(bo);
+    onRemoved(galaxy, bo, bo.hasBeenDestroyed);
+};
+battleReportHooks.creatureTeardown = (galaxy, c) => {
+    if (tornDown.has(c)) return;
+    tornDown.add(c);
+    onRemoved(galaxy, c, c.hasBeenDestroyed);
+};
 
 // ---------------------------------------------------------------------------------------------------------------
 // End of a battle
