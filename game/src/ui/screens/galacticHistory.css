@@ -281,3 +281,15 @@
     display: flex;
     gap: 6px;
 }
+/* [improvements] Battle Reports tab (DW2-inspired). */
+.galactic-history-tab-improvement {
+    font-style: italic;
+}
+.galactic-history-improvement-note {
+    color: rgb(140, 140, 150);
+    font-size: 12px;
+    margin: 2px 0 4px;
+}
+.galactic-history-row-minor .galactic-history-title {
+    color: rgb(130, 130, 130);
+}

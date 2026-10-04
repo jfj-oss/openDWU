@@ -27,7 +27,7 @@ import { workerCreateOptions } from './simworker/bootOptions';
 import type { ScenarioRef, WorkerBoot } from './simworker/protocol';
 import type { RenderTime } from './render/renderInterp';
 // [simworker] end
-import { SECTOR_LEVEL_ZOOM, SYSTEM_LEVEL_ZOOM, type Selection } from './ui/hud';
+import { SECTOR_LEVEL_ZOOM, SYSTEM_LEVEL_ZOOM, historyGoTo, type Selection } from './ui/hud';
 import { setTextIfChanged } from './render/drawCache';
 import { Habitat, HabitatCategoryType } from './sim/types';
 import { createMapOverlayState, type MapOverlayState, type OverlayKey } from './ui/mapOverlays';
@@ -125,6 +125,8 @@ import { Creature } from './sim/creature';
 // [suggest] end
 
 // [popupstubs] begin
+import { installBattleReportNotifier, removeBattleReportNotifier } from './ui/battleReports';
+import { setBattleReportsEnabled } from './sim/battleReports/hooks';
 import { installMessageStubList, removeMessageStubList } from './ui/messageStubList';
 // [popupstubs] end
 
@@ -313,6 +315,11 @@ async function loadSaveWithProgress(text: string): Promise<LoadedGame> {
     return (await runStepsWithProgress('Loading game', deserializeGameSteps(text, gameDataForSave))) as unknown as LoadedGame;
 }
 
+/** [improvements] The battle-report observer's kill switch: `?battleReports=0` turns the sim-side recording off. */
+function battleReportsObserverOn(): boolean {
+    return new URLSearchParams(window.location.search).get('battleReports') !== '0';
+}
+
 // [simworker] begin
 /** Whether the next game runs its sim in a worker (`?simWorker=1|0`, else Settings → simulation in a worker thread). */
 function useSimWorker(): boolean {
@@ -326,7 +333,7 @@ async function bootWorker(title: string, boot: WorkerBoot, playData: ReplicaGame
         overlay.update({ step: 'Starting simulation thread', fraction: 0 });
         await nextPaint();
         // The worker loads the same theme's data (Main.Part12.cs CustomizationSetName()).
-        return await SimWorkerClient.boot({ type: 'init', boot, startOptions, clock, customizationSet: activeCustomizationSetName() }, playData, { update: (p) => overlay.update(p), paint: nextPaint });
+        return await SimWorkerClient.boot({ type: 'init', boot, startOptions, clock, customizationSet: activeCustomizationSetName(), battleReports: battleReportsObserverOn() }, playData, { update: (p) => overlay.update(p), paint: nextPaint });
     } finally {
         overlay.close();
     }
@@ -876,6 +883,11 @@ export async function startGameView(
     // Messages, conversations and advisor suggestions first appear as one-line stubs under the top-right panel.
     installMessageStubList({ player: game.playerEmpire, galaxy, clock: time });
     // [popupstubs] end
+    // [improvements] Battle reports (DW2-inspired): the sim records them; this announces new ones and opens the window.
+    setBattleReportsEnabled(battleReportsObserverOn());
+    installBattleReportNotifier({ galaxy, player: game.playerEmpire, goTo: (x, y) => historyGoTo(camera, x, y) });
+    // Dev / screenshot hook (scripts/battlereports-shots.mjs): the current game's save text (both modes).
+    Object.assign((window as unknown as { __dwu: Record<string, unknown> }).__dwu, { serialize: serializeCurrent });
 
     // [leftovers] begin
     // The player's EventMessageRecipient (Main.Part12.cs:2881) → history messages + the wonder-built popup.
@@ -1125,6 +1137,7 @@ export async function startGameView(
         // [popupstubs] begin
         removeMessageStubList();
         // [popupstubs] end
+        removeBattleReportNotifier(); // [improvements]
 
         // [leftovers] begin
         removeEventMessages();

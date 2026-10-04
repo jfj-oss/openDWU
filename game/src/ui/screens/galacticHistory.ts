@@ -30,6 +30,16 @@ import { askArchivist } from '../../llm/archivist';
 import { confirmOrder, interpretOrder } from '../../llm/orders';
 import { currentLlmLayer } from '../../llm/llmLayer';
 import { advisorSelectionFromHud } from '../advisorPanel';
+import { battleReportsOn } from '../battleReports';
+import { battleReports as listBattleReports, type BattleReport } from '../../sim/battleReports/battleReports';
+import { battleListTitle, battleReportSummary, RESULT_COLORS } from './battleReportModel';
+import { openBattleReport } from './battleReport';
+import { IMPROVEMENTS_TITLE } from '../improvements';
+
+/** [improvements] The Battle Reports tab's rows, newest first (skirmishes when asked). */
+export function battleReportRows(galaxy: Galaxy, withSkirmishes: boolean): { report: BattleReport; title: string; date: string; color: string }[] {
+    return listBattleReports(galaxy, withSkirmishes).map((r) => ({ report: r, title: battleListTitle(r), date: resolveStarDateDescription(r.endStarDate), color: RESULT_COLORS[r.result] }));
+}
 
 // ---------------------------------------------------------------------------
 // Pure logic
@@ -503,7 +513,7 @@ export function galacticHistoryHasChronicle(galaxy: Galaxy | null | undefined): 
     return chronicleOn(galaxy);
 }
 
-export type GalacticHistoryTab = 'history' | 'chronicle' | 'ask' | 'orders';
+export type GalacticHistoryTab = 'history' | 'chronicle' | 'ask' | 'orders' | 'battles';
 
 /** The screen's tabs: History always; Chronicle (19s-1), Ask and Orders (19s-4, flag llmArchivist) when on. */
 export function galacticHistoryTabs(galaxy: Galaxy | null | undefined): GalacticHistoryTab[] {
@@ -511,6 +521,8 @@ export function galacticHistoryTabs(galaxy: Galaxy | null | undefined): Galactic
     if (chronicleOn(galaxy)) tabs.push('chronicle');
     if (archiveQuestionsOn(galaxy)) tabs.push('ask');
     if (archivistOn(galaxy)) tabs.push('orders');
+    // [improvements] Battle Reports (DW2-inspired, ui/battleReports.ts): while the improvement is on.
+    if (battleReportsOn()) tabs.push('battles');
     return tabs;
 }
 
@@ -652,7 +664,10 @@ function createGalacticHistory(opts: GalacticHistoryOptions): OpenState {
     const tabChronicle = tabButton('Chronicle Tab Chronicle', 'Chronicle');
     const tabAsk = tabButton('Chronicle Tab Ask', 'Ask');
     const tabOrders = tabButton('Chronicle Tab Orders', 'Orders');
-    const tabButtons: Record<GalacticHistoryTab, HTMLButtonElement> = { history: tabHistory, chronicle: tabChronicle, ask: tabAsk, orders: tabOrders };
+    const tabBattles = tabButton('Battle Reports Tab', 'Battle Reports');
+    tabBattles.title = `${IMPROVEMENTS_TITLE}: Battle reports (inspired by Distant Worlds 2)`;
+    tabBattles.classList.add('galactic-history-tab-improvement');
+    const tabButtons: Record<GalacticHistoryTab, HTMLButtonElement> = { history: tabHistory, chronicle: tabChronicle, ask: tabAsk, orders: tabOrders, battles: tabBattles };
     for (const t of tabList) tabs.appendChild(tabButtons[t]);
     if (tabList.length > 1) titlebar.append(heading, tabs, closeBtn);
     else titlebar.append(heading, closeBtn);
@@ -751,7 +766,33 @@ function createGalacticHistory(opts: GalacticHistoryOptions): OpenState {
     ordActions.style.display = 'none';
     ordBody.append(ordForm, ordLine, ordActions);
     ordBody.style.display = 'none';
-    win.append(titlebar, body, chronBody, askBody, ordBody);
+    // [improvements] Battle Reports view: the last reports | the selected one's summary + Open Report / Go To.
+    const batBody = el('div', 'galactic-history-body');
+    const batLeft = el('div', 'galactic-history-left');
+    const batFilter = document.createElement('select');
+    batFilter.className = 'galactic-history-filter';
+    for (const [v, label] of [['battles', 'Battles'], ['all', 'Battles and skirmishes']] as const) {
+        const o = document.createElement('option');
+        o.value = v;
+        o.textContent = label;
+        batFilter.appendChild(o);
+    }
+    const batImprovement = el('div', 'galactic-history-improvement-note', `${IMPROVEMENTS_TITLE} — inspired by Distant Worlds 2`);
+    const batList = el('div', 'galactic-history-list');
+    batLeft.append(batFilter, batImprovement, batList);
+    const batRight = el('div', 'galactic-history-right');
+    const batHeading = el('div', 'galactic-history-msg-heading');
+    const batText = el('div', 'galactic-history-msg-text galactic-history-chronicle-text');
+    const batButtons = el('div', 'galactic-history-ask-actions');
+    const batOpen = el('button', 'galactic-history-goto', 'Open Report') as HTMLButtonElement;
+    const batGoto = el('button', 'galactic-history-goto', 'Go To') as HTMLButtonElement;
+    batOpen.type = 'button';
+    batGoto.type = 'button';
+    batButtons.append(batOpen, batGoto);
+    batRight.append(batHeading, batText, batButtons);
+    batBody.append(batLeft, batRight);
+    batBody.style.display = 'none';
+    win.append(titlebar, body, chronBody, askBody, ordBody, batBody);
     root.appendChild(win);
     document.body.appendChild(root);
 
@@ -937,11 +978,59 @@ function createGalacticHistory(opts: GalacticHistoryOptions): OpenState {
         chronBody.style.display = t === 'chronicle' ? '' : 'none';
         askBody.style.display = t === 'ask' ? '' : 'none';
         ordBody.style.display = t === 'orders' ? '' : 'none';
+        batBody.style.display = t === 'battles' ? '' : 'none';
+        if (t === 'battles') renderBattles();
         if (t === 'chronicle') renderChronicle();
         if (t === 'ask') askInput.focus();
         if (t === 'orders') ordInput.focus();
     }
     for (const k of Object.keys(tabButtons) as GalacticHistoryTab[]) tabButtons[k].addEventListener('click', () => setTab(k));
+
+    // [improvements] Battle Reports tab.
+    let batSelected: number | null = null;
+    let batKey = '';
+    function battlesKey(): string {
+        return listBattleReports(empire.galaxy, true).map((r) => r.id).join(',') + `|${batFilter.value}`;
+    }
+    function renderBattles(): void {
+        batKey = battlesKey();
+        const brows = battleReportRows(empire.galaxy, batFilter.value === 'all');
+        if (batSelected === null || !brows.some((r) => r.report.id === batSelected)) batSelected = brows[0]?.report.id ?? null;
+        batList.replaceChildren();
+        if (brows.length === 0) batList.appendChild(el('div', 'galactic-history-empty', 'No battles yet'));
+        for (const r of brows) {
+            const line = el('div', 'galactic-history-row');
+            if (r.report.id === batSelected) line.classList.add('galactic-history-row-selected');
+            if (r.report.minor) line.classList.add('galactic-history-row-minor');
+            const icon = el('span', 'galactic-history-icon');
+            const sw = el('span', 'galactic-history-swatch');
+            sw.style.background = r.color;
+            icon.appendChild(sw);
+            line.append(icon, el('span', 'galactic-history-title', r.title), el('span', 'galactic-history-date', r.date));
+            line.addEventListener('click', () => {
+                batSelected = r.report.id;
+                renderBattles();
+            });
+            line.addEventListener('dblclick', () => openBattleReport(r.report));
+            batList.appendChild(line);
+        }
+        const cur = brows.find((r) => r.report.id === batSelected)?.report ?? null;
+        batHeading.textContent = cur !== null ? battleListTitle(cur) : '';
+        batText.textContent = cur !== null ? battleReportSummary(cur) : '';
+        batOpen.disabled = cur === null;
+        batGoto.disabled = cur === null;
+    }
+    batFilter.addEventListener('change', () => renderBattles());
+    batOpen.addEventListener('click', () => {
+        const cur = listBattleReports(empire.galaxy, true).find((r) => r.id === batSelected);
+        if (cur !== undefined) openBattleReport(cur);
+    });
+    batGoto.addEventListener('click', () => {
+        const cur = listBattleReports(empire.galaxy, true).find((r) => r.id === batSelected);
+        if (cur === undefined) return;
+        onGoTo(cur.x, cur.y);
+        close();
+    });
 
     // 19s-4 Ask: one question at a time; the answer arrives between frames (the queue's promise) and only reads.
     let closed = false;
@@ -1018,6 +1107,10 @@ function createGalacticHistory(opts: GalacticHistoryOptions): OpenState {
     const timer = setInterval(() => {
         if (tab === 'chronicle') {
             if (chronicleKey() !== chronKey) renderChronicle();
+            return;
+        }
+        if (tab === 'battles') {
+            if (battlesKey() !== batKey) renderBattles();
             return;
         }
         const k = currentHistoryKey();

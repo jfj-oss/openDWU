@@ -1,0 +1,14 @@
+/* Battle Report window (an Improvement, DW2-inspired): see battleReport.ts. */
+.ow-screen-battleReport .br-head {
+    position: absolute;
+}
+.ow-screen-battleReport .br-swatch {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border: 1px solid rgb(0, 0, 0);
+    vertical-align: middle;
+}
+.ow-screen-battleReport .ow-glass:disabled {
+    opacity: 0.5;
+}

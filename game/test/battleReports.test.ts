@@ -26,6 +26,9 @@ import { defaultStartGameOptions } from '../src/sim/startGameOptions';
 import { deserializeGame, serializeGame } from '../src/sim/save/gameSave';
 import { FRAME_REAL_MS } from '../src/sim/tick/scheduler';
 import { QUIET_MS, battleReportState, battleReports, setBattleReportsEnabled, type BattleReport } from '../src/sim/battleReports/battleReports';
+import { announceBattleReport, unseenReports } from '../src/ui/battleReports';
+import { clearHudMessages, getHudMessages } from '../src/ui/hud';
+import { battleReportSummary, unitFateText } from '../src/ui/screens/battleReportModel';
 import { MERCENARY, pirateExplorer, pirateFaction, pirateRaider, playerShip } from './helpers/combatCast';
 import { ComponentType } from '../src/sim/data/components';
 import { assignMission } from '../src/sim/missions/assign';
@@ -189,6 +192,17 @@ describe('battle reports: modes, save / load, determinism', () => {
             expect(plain(rReplica)).toEqual(plain(rT));
             expect(plain(rT)).toEqual(plain(headless));
             expect(rReplica.units.find((u) => u.id === w.pir.builtObjectID)!.fate).toBe('destroyed');
+            // The UI's notifier sees it on the replica: "Battle report: <system>" in the ticker, the summary text.
+            const fresh = unseenReports(inW.galaxy, 0).filter((x) => x.id === rReplica.id);
+            expect(fresh.length).toBe(1);
+            clearHudMessages();
+            announceBattleReport(inW.galaxy, fresh[0]);
+            expect(getHudMessages()).toEqual([`Battle report: deep space near ${rReplica.locationName} — Victory`]);
+            const summary = battleReportSummary(rReplica);
+            expect(summary).toContain('Result: Victory');
+            expect(summary).toContain('Losses: 1 destroyed');
+            expect(summary).toContain(`Deep space near ${rReplica.locationName}`);
+            expect(unitFateText(rReplica.units.find((u) => u.id === w.pir.builtObjectID)!)).toBe('Destroyed');
             // The UI only reads: no main-thread write to the replica.
             expect((inW as ReturnType<typeof inWorker>).replicaWrites()).toEqual([]);
         } finally {

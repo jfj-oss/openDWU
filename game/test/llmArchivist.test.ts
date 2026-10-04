@@ -80,10 +80,10 @@ describe('flags off = faithful game', () => {
         expect(f?.default).toBe(false);
         const { g } = game(false);
         expect(archivistOn(g)).toBe(false);
-        expect(galacticHistoryTabs(g)).toEqual(['history']);
+        expect(galacticHistoryTabs(g)).toEqual(['history', 'battles']) // + the Battle Reports improvement (on by default);
         const only = createScenarioGame(base, { scenario: SC, flags: { ...ALL_OFF, eventLog: true, llmArchivist: true } }).game.galaxy;
         expect(archivistOn(only)).toBe(false);
-        expect(galacticHistoryTabs(game().g)).toEqual(['history', 'chronicle', 'ask', 'orders']);
+        expect(galacticHistoryTabs(game().g)).toEqual(['history', 'chronicle', 'ask', 'orders', 'battles']);
     });
 });
 

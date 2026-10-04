@@ -87,6 +87,18 @@ export function pushMessageStub(m: EmpireMessage, read = false): void {
     });
 }
 
+/** [improvements] Battle reports: the stub's opener by its UI-only key (ui/battleReports.ts). */
+const battleOpeners = new WeakMap<object, () => void>();
+
+/**
+ * A battle report arrived (an Improvement, ui/battleReports.ts): a stub "Battle report: <system>" that opens the report
+ * window. `key` is a UI-only token (no game message exists for it).
+ */
+export function pushBattleReportStub(key: object, title: string, tooltip: string, starDate: number, color: string | null, onOpen: () => void): void {
+    battleOpeners.set(key, onOpen);
+    addStub(state, { key: key as EmpireMessage, kind: 'battle', icon: '/assets/dwu/images/ui/chrome/attack.png', title, tooltip, starDate, color, needsAnswer: false });
+}
+
 /**
  * Dismiss the stub of `m` (a double right-click on it): the stub goes and does not come back; a conversation also leaves
  * the queue (a treaty offer stays answerable in the Diplomacy screen) and an open card / dialog for it closes.
@@ -176,6 +188,7 @@ export function installMessageStubList(opts: MessageStubListOptions): void {
         markStubRead(state, s.key);
         if (s.kind === 'message') openMessageCard(s.key);
         else if (s.kind === 'suggestion') openAdvisorSuggestion(s.key);
+        else if (s.kind === 'battle') battleOpeners.get(s.key)?.();
         else {
             const entry = conversationQueue().find((e) => e.message === s.key);
             if (entry) openConversation(entry);
