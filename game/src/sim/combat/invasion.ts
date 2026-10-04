@@ -68,7 +68,7 @@ import { AutomationLevel } from '../empire';
 import { CharacterEventType, CharacterSkillType, doCharacterEventForList, empireLeader, getHighestSkillLevelExcludeLeaders, getHighestSkillLevelExcludeRole, identifyPirateBase } from '../characters';
 import { identifyPirateSpaceport, inflictWarDamageHabitat, empireColonyIncomeFactor } from './damage';
 import { checkIonCannonReadyToFire, checkTargetInRange, habitatFireWeaponsAtTarget } from './weapons';
-import { EventMessageType, sendEventMessageToEmpire } from '../events';
+import { sendNewEmpireRaceAbilityEvent } from '../events';
 import { resolveStandardRaceBias } from '../raceBias';
 import { reviewEmpireTerritory } from '../exploration';
 import { reviewEmpireAbilityBonusesFull } from '../treasury';
@@ -1882,11 +1882,8 @@ function conquerColony(galaxy: Galaxy, self: Habitat, defender: Empire | null, i
         if (self.population != null && self.population.dominantRace !== null) {
             const { descriptions: list2, raceChanged } = reviewEmpireAbilityBonusesFull(galaxy, empire3);
             if (list2.length > 0 && raceChanged !== null) {
-                let text = formatText(getText('Conquest New Race Ability'), resolveDescription(HabitatCategoryDesc, self.category).toLowerCase(), self.name, raceChanged.name);
-                if (flag2) text = formatText(getText('Conquest New Race Ability Militia'), resolveDescription(HabitatCategoryDesc, self.category).toLowerCase(), self.name, raceChanged.name);
-                text += '\n';
-                for (const item2 of list2) text = text + '\n' + item2;
-                sendEventMessageToEmpire(empire3, EventMessageType.NewEmpireRaceAbility, getText('New Ability for our Empire'), text, raceChanged, self);
+                // Habitat.cs 4287-4297.
+                sendNewEmpireRaceAbilityEvent(empire3, flag2 ? 'Conquest New Race Ability Militia' : 'Conquest New Race Ability', '\n', self, raceChanged, list2);
             }
         }
         if (self.population != null && self.population.totalAmount > 100000000 && self.empire !== null && self.empire !== galaxy.independentEmpire && galaxy.rnd.next(0, 8) === 1 && charactersCanGenerateAmountNonIntelligenceAgent(empire3) > 0) {

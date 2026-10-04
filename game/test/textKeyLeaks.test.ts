@@ -3,64 +3,30 @@
 // conversations, message popups' title/text), advisor suggestions (title + text), Galactic NewsNet broadcasts and
 // event pop-ups (SendEventMessageToEmpire title/message) — is rendered the way the UI renders it (resolveGameText /
 // formatEmpireMessage / advisorSuggestionTitle) and must not still hold a GameText key, a `|`-encoded gameText()
-// fragment, an unfilled `{n}` item, a key placeholder word (EMPIRE, SHIPTYPE, …) or a PascalCase data key
-// (StoryClue3). Offenders are printed with the sender site (the first stack frame outside messages.ts / events.ts).
+// fragment, an unfilled `{n}` item, a key placeholder word (EMPIRE, SHIPTYPE, …), a PascalCase data key
+// (StoryClue3, EmpireAbilityBonusEspionage) or a raw double's float tail (0.010000000000000002) where the C# formats
+// the number (test/helpers/textLeak.ts; the fast textKeyLeaksNumbers.test.ts generates the number-formatting texts
+// directly). Offenders are printed with the sender site (the first stack frame outside messages.ts / events.ts).
 import { beforeAll, describe, expect, it } from 'vitest';
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
 import { loadGameDataFs } from './helpers/loadGameDataFs';
 import { tickGameOptions } from './helpers/tickGame';
+import { loadTextLeakContext, textLeak, type TextLeakContext } from './helpers/textLeak';
 import { createGame } from '../src/sim/game';
 import type { GameData } from '../src/sim/data/gameData';
 import type { Empire } from '../src/sim/empire';
 import { runGameSeconds } from '../src/sim/tick/harness';
 import { EmpireMessageType, type EmpireMessage } from '../src/sim/messages';
-import { resolveGameText, tryGetText } from '../src/sim/textResolver';
+import { resolveGameText } from '../src/sim/textResolver';
 import { formatEmpireMessage } from '../src/ui/empireMessageFeed';
 import { advisorSuggestionTitle } from '../src/sim/player/advisorSuggestions';
-import { parseGameText } from '../src/sim/data/gameText';
 
 let gameData: GameData;
-let placeholderWords: Set<string>;
-let gameTexts: Set<string>;
+let leakContext: TextLeakContext;
 
 beforeAll(async () => {
     gameData = await loadGameDataFs();
-    // All-caps words of GameText keys that no text uses: the keys' placeholders (EMPIRE, SHIPTYPE, PLANETTYPE, …).
-    const lines = readFileSync(resolve(__dirname, '../public/assets/dwu/GameText.txt'), 'utf8').split(/\r?\n/);
-    const inKeys = new Set<string>();
-    const inTexts = new Set<string>();
-    for (const line of lines) {
-        if (line.startsWith("'") || !line.includes(';')) continue;
-        const i = line.indexOf(';');
-        for (const w of line.substring(0, i).match(/\b[A-Z]{3,}\b/g) ?? []) inKeys.add(w);
-        for (const w of line.substring(i + 1).match(/\b[A-Z]{3,}\b/g) ?? []) inTexts.add(w);
-    }
-    placeholderWords = new Set([...inKeys].filter((w) => !inTexts.has(w)));
-    gameTexts = new Set(parseGameText(lines.join('\n')).text.values());
+    leakContext = loadTextLeakContext();
 }, 180000);
-
-/** Why `text` (as shown) still holds an unresolved GameText key, or null. */
-export function textLeak(text: string, placeholders: ReadonlySet<string>): string | null {
-    if (text.includes('KEY NOT FOUND')) return 'KEY NOT FOUND';
-    if (text.includes('|')) return '|-encoded fragment';
-    const item = text.match(/\{\d+[^}]*\}/);
-    if (item !== null) return `unfilled ${item[0]}`;
-    const pascal = text.match(/\b[A-Z][a-z]+(?:[A-Z][a-z]*)+\d+\b/);
-    if (pascal !== null) return `PascalCase key ${pascal[0]}`;
-    for (const w of text.match(/\b[A-Z]{3,}\b/g) ?? []) if (placeholders.has(w)) return `key placeholder ${w}`;
-    // A whole token (the text, a line of it, or the part after "<sender> says: ") that is itself a key with other text
-    // (and not also the resolved text of another key, e.g. "We can put you in contact with another empire").
-    const tokens = new Set<string>([text.trim(), ...text.split(/\r?\n/).map((s) => s.trim())]);
-    const says = text.indexOf(': ');
-    if (says >= 0) tokens.add(text.substring(says + 2).trim());
-    for (const tok of tokens) {
-        if (tok === '') continue;
-        const t = tryGetText(tok);
-        if (t !== null && t !== tok && !gameTexts.has(tok)) return `GameText key "${tok}"`;
-    }
-    return null;
-}
 
 interface Shown {
     what: string;
@@ -130,7 +96,7 @@ describe('textkeys: no raw GameText key in a player-visible text (600 s, story e
         }
         const offenders = new Map<string, string>();
         for (const s of shown) {
-            const why = textLeak(s.text, placeholderWords);
+            const why = textLeak(s.text, leakContext);
             if (why === null) continue;
             const key = `${s.site} | ${s.what.replace(/\(.*\)/, '')} | ${why}`;
             if (!offenders.has(key)) offenders.set(key, s.text);

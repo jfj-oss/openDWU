@@ -48,6 +48,8 @@ import { calculateOverallStrengthFactorWithoutShields } from './combat/threats';
 import { calculatePirateCashflow, pirateEconomyPerformExpense } from './pirates/pirateAI';
 import { PlanetaryFacilityType, WonderType } from './researchSystem';
 import { baconSettings } from './data/baconSettings';
+import { formatGameTextNow } from './textResolver';
+import { formatNetPercent0 } from './netNumberFormat';
 
 // ---------------------------------------------------------------------------
 // Money (Empire intermediate / long blocks)
@@ -588,8 +590,72 @@ export function haveRevolution(galaxy: Galaxy, empire: Empire, dominantRace: Rac
 // ---------------------------------------------------------------------------
 
 /**
+ * Galaxy.cs 2234-2312 ResolveEmpireAbilityBonusDescription*(value): `string.Format(TextResolver.GetText(tag), sign +
+ * value.ToString("0%"))`, string.Empty when value <= 0. Resolved now (formatGameTextNow): every caller splices the
+ * line into a larger text (the event message body, one line per bonus), which the deferred gameText() encoding cannot
+ * nest into. Without a loaded GameText table (headless) the line is the `tag|±n%` encoding.
+ */
+function resolveAbilityBonusDescription(tag: string, sign: '+' | '-', value: number): string {
+    return value > 0.0 ? formatGameTextNow(tag, [sign + formatNetPercent0(value)]) : '';
+}
+
+/** Galaxy.cs 2234 ResolveEmpireAbilityBonusDescriptionShipMaintenance ("-" + ToString("0%")). */
+export function resolveEmpireAbilityBonusDescriptionShipMaintenance(value: number): string {
+    return resolveAbilityBonusDescription('Ship Maintenance Ability Bonus', '-', value);
+}
+
+/** Galaxy.cs 2244 ResolveEmpireAbilityBonusDescriptionTroopMaintenance ("-" + ToString("0%")). */
+export function resolveEmpireAbilityBonusDescriptionTroopMaintenance(value: number): string {
+    return resolveAbilityBonusDescription('Troop Maintenance Ability Bonus', '-', value);
+}
+
+/** Galaxy.cs 2254 ResolveEmpireAbilityBonusDescriptionResourceExtraction ("+" + ToString("0%")). */
+export function resolveEmpireAbilityBonusDescriptionResourceExtraction(value: number): string {
+    return resolveAbilityBonusDescription('Resource Extraction Ability Bonus', '+', value);
+}
+
+/** Galaxy.cs 2264 ResolveEmpireAbilityBonusDescriptionWarWeariness ("-" + ToString("0%")). */
+export function resolveEmpireAbilityBonusDescriptionWarWeariness(value: number): string {
+    return resolveAbilityBonusDescription('War Weariness Ability Bonus', '-', value);
+}
+
+/** Galaxy.cs 2274 ResolveEmpireAbilityBonusDescriptionSatisfaction ("+" + ToString("0%")). */
+export function resolveEmpireAbilityBonusDescriptionSatisfaction(value: number): string {
+    return resolveAbilityBonusDescription('Satisfaction Ability Bonus', '+', value);
+}
+
+/** Galaxy.cs 2284 ResolveEmpireAbilityBonusDescriptionResearch ("+" + ToString("0%")). */
+export function resolveEmpireAbilityBonusDescriptionResearch(value: number): string {
+    return resolveAbilityBonusDescription('Research Ability Bonus', '+', value);
+}
+
+/** Galaxy.cs 2294 ResolveEmpireAbilityBonusDescriptionEspionage ("+" + ToString("0%")). */
+export function resolveEmpireAbilityBonusDescriptionEspionage(value: number): string {
+    return resolveAbilityBonusDescription('Espionage Ability Bonus', '+', value);
+}
+
+/** Galaxy.cs 2304 ResolveEmpireAbilityBonusDescriptionTrade ("+" + ToString("0%")). */
+export function resolveEmpireAbilityBonusDescriptionTrade(value: number): string {
+    return resolveAbilityBonusDescription('Trade Ability Bonus', '+', value);
+}
+
+/** Galaxy.cs 2196 ResolveRaceBonuses(race): the race's own ability lines (each race bonus field / 100). */
+export function resolveRaceBonuses(race: Race): string[] {
+    const list: string[] = [];
+    if (race.espionageBonus > 0) list.push(resolveEmpireAbilityBonusDescriptionEspionage(race.espionageBonus / 100.0));
+    if (race.researchBonus > 0) list.push(resolveEmpireAbilityBonusDescriptionResearch(race.researchBonus / 100.0));
+    if (race.resourceExtractionBonus > 0) list.push(resolveEmpireAbilityBonusDescriptionResourceExtraction(race.resourceExtractionBonus / 100.0));
+    if (race.satisfactionModifier > 0) list.push(resolveEmpireAbilityBonusDescriptionSatisfaction(race.satisfactionModifier / 100.0));
+    if (race.shipMaintenanceSavings > 0) list.push(resolveEmpireAbilityBonusDescriptionShipMaintenance(race.shipMaintenanceSavings / 100.0));
+    if (race.troopMaintenanceSavings > 0) list.push(resolveEmpireAbilityBonusDescriptionTroopMaintenance(race.troopMaintenanceSavings / 100.0));
+    if (race.warWearinessAttenuation > 0) list.push(resolveEmpireAbilityBonusDescriptionWarWeariness(race.warWearinessAttenuation / 100.0));
+    if (race.tradeBonus > 0) list.push(resolveEmpireAbilityBonusDescriptionTrade(race.tradeBonus / 100.0));
+    return list;
+}
+
+/**
  * Empire.cs 2897 ReviewEmpireAbilityBonuses(out newAbilityRaces, out raceChanged) — returns the description list
- * (Galaxy.ResolveEmpireAbilityBonusDescription* → GameText keys) and the out values.
+ * (one resolved Galaxy.ResolveEmpireAbilityBonusDescription* line per bonus that rose) and the out values.
  */
 export function reviewEmpireAbilityBonusesFull(galaxy: Galaxy, empire: Empire): { descriptions: string[]; newAbilityRaces: Race[]; raceChanged: Race | null } {
     const newAbilityRaces: Race[] = [];
@@ -667,7 +733,7 @@ export function reviewEmpireAbilityBonusesFull(galaxy: Galaxy, empire: Empire): 
         if (race !== empire.shipMaintenanceSavingsRace) raceChanged = race;
         empire.shipMaintenanceSavings = num;
         empire.shipMaintenanceSavingsRace = race;
-        list2.push(`EmpireAbilityBonusShipMaintenance|${num}`);
+        list2.push(resolveEmpireAbilityBonusDescriptionShipMaintenance(num));
         newAbilityRaces.push(race!);
     } else if (num <= 0.0) {
         empire.shipMaintenanceSavings = 0.0;
@@ -677,7 +743,7 @@ export function reviewEmpireAbilityBonusesFull(galaxy: Galaxy, empire: Empire): 
         if (race2 !== empire.resourceExtractionBonusRace) raceChanged = race2;
         empire.resourceExtractionBonus = num2;
         empire.resourceExtractionBonusRace = race2;
-        list2.push(`EmpireAbilityBonusResourceExtraction|${num2}`);
+        list2.push(resolveEmpireAbilityBonusDescriptionResourceExtraction(num2));
         newAbilityRaces.push(race2!);
     } else if (num2 <= 0.0) {
         empire.resourceExtractionBonus = 0.0;
@@ -687,7 +753,7 @@ export function reviewEmpireAbilityBonusesFull(galaxy: Galaxy, empire: Empire): 
         if (race3 !== empire.researchBonusRace) raceChanged = race3;
         empire.researchBonus = num3;
         empire.researchBonusRace = race3;
-        list2.push(`EmpireAbilityBonusResearch|${num3}`);
+        list2.push(resolveEmpireAbilityBonusDescriptionResearch(num3));
         newAbilityRaces.push(race3!);
     } else if (num3 <= 0.0) {
         empire.researchBonus = 0.0;
@@ -697,7 +763,7 @@ export function reviewEmpireAbilityBonusesFull(galaxy: Galaxy, empire: Empire): 
         if (race4 !== empire.espionageBonusRace) raceChanged = race4;
         empire.espionageBonus = num4;
         empire.espionageBonusRace = race4;
-        list2.push(`EmpireAbilityBonusEspionage|${num4}`);
+        list2.push(resolveEmpireAbilityBonusDescriptionEspionage(num4));
         newAbilityRaces.push(race4!);
     } else if (num4 <= 0.0) {
         empire.espionageBonus = 0.0;
@@ -707,7 +773,7 @@ export function reviewEmpireAbilityBonusesFull(galaxy: Galaxy, empire: Empire): 
         if (race5 !== empire.tradeBonusRace) raceChanged = race5;
         empire.tradeBonus = num5;
         empire.tradeBonusRace = race5;
-        list2.push(`EmpireAbilityBonusTrade|${num5}`);
+        list2.push(resolveEmpireAbilityBonusDescriptionTrade(num5));
         newAbilityRaces.push(race5!);
     } else if (num5 <= 0.0) {
         empire.tradeBonus = 0.0;

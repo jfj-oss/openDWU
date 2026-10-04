@@ -21,7 +21,7 @@
 import { doSingleEmpireEncounterShakturiStory, checkForStoryLocationHint, investigateRuinsStoryClue, investigateRuinsStoryEvent } from './story/storyEvents';
 import { resolveDescription } from './messages';
 import { EventMessageType, DisasterEventType, RaceEventType } from './eventTypes';
-import { sendEventMessageToEmpire, sendNewsBroadcast } from './events';
+import { sendEventMessageToEmpire, sendNewEmpireRaceAbilityEvent, sendNewsBroadcast } from './events';
 import { pirateEconomyPerformIncome } from './pirates/pirateAI';
 import { PirateIncomeType } from './pirates/pirateEconomy';
 import { selectRandomNextResearchProjectExcludeSuperWeapons } from './construction/constructionQueue';
@@ -66,7 +66,7 @@ import { EmpireMessageType, sendMessageToEmpire } from './messages';
 import { changeDiplomaticRelation } from './diplomacyTick';
 import { checkSendPreWarpProgressEventMessage } from './events';
 import { evaluateSystemThreats, fastFindNearestColony } from './combat/threats';
-import { reviewEmpireAbilityBonuses } from './treasury';
+import { reviewEmpireAbilityBonusesFull } from './treasury';
 import { determineEmpireSystems } from './forceStructure';
 import { strategicValue } from './territory';
 import { generateDesignFromSpec } from './designGeneration';
@@ -559,9 +559,11 @@ export function exertCulturalInfluence(galaxy: Galaxy, empire: Empire): void {
             sendMessageToEmpire(empire, empire, EmpireMessageType.ColonyGained, habitat4, text + ' - ' + formatGameTextNow('the inhabitants have switched allegiance and joined us!'));
             sendMessageToEmpire(previousOwner, previousOwner, EmpireMessageType.ColonyLost, habitat4, text + ' - ' + formatGameTextNow('the inhabitants have treacherously betrayed us and joined the X', [empire.name]));
             if (habitat4.population == null || habitat4.population.dominantRace === null) continue;
-            // Empire.cs 2891 ReviewEmpireAbilityBonuses(out newAbilityRaces, out raceChanged) (M4j). Its returned list
-            // only feeds a UI event message (SendEventMessageToEmpire NewEmpireRaceAbility).
-            reviewEmpireAbilityBonuses(galaxy, empire);
+            // Empire.cs 4854-4867: ReviewEmpireAbilityBonuses(out newAbilityRaces, out raceChanged); a new bonus from a
+            // new race raises the NewEmpireRaceAbility event, one resolved ability line per bonus.
+            const { descriptions: list2, raceChanged } = reviewEmpireAbilityBonusesFull(galaxy, empire);
+            if (list2.length <= 0 || raceChanged === null) continue;
+            sendNewEmpireRaceAbilityEvent(empire, 'The recent revolt PLANETTYPE NAME RACE', ':\n', habitat4, raceChanged, list2);
         }
     }
 }
