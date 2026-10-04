@@ -318,7 +318,10 @@ describe('Improvements registry and overlay state', () => {
         setImprovementEnabled('resourcesOverlay', false);
         expect(calls).toBe(1);
         expect(overlayActive(s, 'resources')).toBe(false);
-        expect(overlayRowSections(OVERLAY_ROWS).improvements.map((r) => r.key)).toEqual(['colonyScores', 'fuelRange']);
+        // Other improvements (e.g. supplyShortages) share the section: check ours only.
+        const keys = overlayRowSections(OVERLAY_ROWS).improvements.map((r) => r.key);
+        expect(keys).not.toContain('resources');
+        expect(keys).toEqual(expect.arrayContaining(['colonyScores', 'fuelRange']));
         setImprovementEnabled('resourcesOverlay', true);
         off();
         expect(calls).toBe(2);
@@ -328,11 +331,11 @@ describe('Improvements registry and overlay state', () => {
         const s = createMapOverlayState();
         expect([s.colonyScores, s.resources, s.fuelRange]).toEqual([false, false, false]);
         const { original, improvements } = overlayRowSections(OVERLAY_ROWS);
-        expect(improvements.map((r) => [r.key, r.improvement])).toEqual([
+        expect(improvements.map((r) => [r.key, r.improvement])).toEqual(expect.arrayContaining([
             ['colonyScores', 'colonyTargetScores'],
             ['resources', 'resourcesOverlay'],
             ['fuelRange', 'fuelRangeOverlay'],
-        ]);
+        ]));
         for (const k of ['colonyScores', 'resources', 'fuelRange']) expect(original.some((o) => o.key === k)).toBe(false);
         expect(improvements.every((r) => r.mod === undefined)).toBe(true); // no "+" badge: the section says it
     });
