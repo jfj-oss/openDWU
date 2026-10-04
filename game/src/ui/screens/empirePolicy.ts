@@ -6,7 +6,8 @@
 // method_597 mapping (the original applies on OK). Load / Save (Main.Part3.cs:3807 btnEmpirePolicyLoad_Click / 3859
 // btnEmpirePolicySave_Click): the install's Policy/ files (read-only) and the player's own files in browser storage
 // (../policyFiles.ts), in EmpirePolicy.cs's file format (sim/data/policies.ts writeEmpirePolicyFile / loadEmpirePolicyFile).
-// TODO(port): Galaxy.ApplyDesignUpgradePoliciesToGameOptions after a load (Main.Part3.cs:3840) — GameOptions persistence.
+// GameOptions persistence: every apply saves the Control*Default fields and the design-upgrade flags into the new-game
+// defaults (Main.Part3.cs:4179-4198), a load the design-upgrade flags (Main.Part3.cs:3840); settings.newGameOptions.
 
 import './empirePolicy.css';
 import type { Empire } from '../../sim/empire';
@@ -17,6 +18,8 @@ import { policyFileEntries, policyFileName, readPolicyFileEntry, savedPolicyFile
 import { showToast } from '../toast';
 import { issuePlayerCommand } from '../../sim/player/playerCommands';
 import { PendingValues } from '../pendingCommands';
+import { getSettings, updateSettings } from '../settings';
+import { gameOptionsAfterPolicyApply } from './gameOptionsModel';
 import {
     applyPolicyPanel,
     buildPolicyPanel,
@@ -78,7 +81,11 @@ function createEmpirePolicy(opts: EmpirePolicyOptions): OpenState {
     // one reply still sends the X (in sim-worker mode the replica shows a change a round trip later).
     const sentControls = new PendingValues<string, unknown>();
     // Main.Part2.cs WqesexberY_Click: _Game.PlayerEmpire.Policy = method_597(panel, PlayerEmpire) — run on every change.
-    const apply = (): void => issuePolicyPanel(empire, playerIsPirate, controls, ctx, sentControls);
+    const apply = (): void => {
+        const issued = issuePolicyPanel(empire, playerIsPirate, controls, ctx, sentControls);
+        // Main.Part3.cs:4179-4198: gameOptions_0.Control*Default = the empire's, ApplyDesignUpgradePoliciesToGameOptions.
+        updateSettings({ newGameOptions: gameOptionsAfterPolicyApply(getSettings().newGameOptions, empire, issued.policy, issued.automation) });
+    };
 
     const root = el('div', 'policy-wrap');
     const win = el('div', 'policy-window');
@@ -174,6 +181,8 @@ function createEmpirePolicy(opts: EmpirePolicyOptions): OpenState {
                     (text) => {
                         // EmpirePolicy.LoadFromFile on the player's policy, then method_595 re-binds the panel.
                         const policy = loadEmpirePolicyFile(empire.policy ?? defaultEmpirePolicy(), text);
+                        // Main.Part3.cs:3840 Galaxy.ApplyDesignUpgradePoliciesToGameOptions(gameOptions_0, Policy): the flags only.
+                        updateSettings({ newGameOptions: gameOptionsAfterPolicyApply(getSettings().newGameOptions, empire, policy, null) });
                         issuePlayerCommand(galaxy, empire, 'setPolicy', [policy], () => {
                             if (open === null || open.root !== root) return;
                             close();
