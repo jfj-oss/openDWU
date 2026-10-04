@@ -14,7 +14,8 @@ import { bindAutoPauseClock } from './autoPause';
 import { HUD_FRAME_SIZE } from './topBar';
 import { GalaxyTime } from '../sim/clock';
 import { resolveStarDateDescription } from '../sim/galaxyTime';
-import { createMapOverlayState, OVERLAY_ROWS, toggleOverlay, type MapOverlayState, type OverlayKey } from './mapOverlays';
+import { createMapOverlayState, OVERLAY_ROWS, toggleOverlay, type MapOverlayState, type OverlayKey, type OverlayRow } from './mapOverlays';
+import { IMPROVEMENTS_TITLE, onImprovementsChange, overlayRowSections } from './improvements'; // [improvements]
 import { Camera } from '../render/camera';
 import { followOnSelectionChanged, isFollowingTarget, toggleFollow, type FollowState, type FollowTarget } from '../render/followCamera';
 import { Galaxy } from '../sim/galaxy';
@@ -1918,14 +1919,17 @@ function buildOptionsList(wiring: HudWiring): HTMLElement {
     const panel = document.createElement('div');
     panel.className = 'hud-panel hud-options';
 
-    const ovHead = document.createElement('div');
-    ovHead.className = 'hud-section-head';
-    ovHead.textContent = 'Overlays';
-    panel.appendChild(ovHead);
-    for (const row of OVERLAY_ROWS) {
+    const section = (title: string): void => {
+        const head = document.createElement('div');
+        head.className = 'hud-section-head';
+        head.textContent = title;
+        panel.appendChild(head);
+    };
+    const addRow = (row: OverlayRow): void => {
         const item = document.createElement('button');
         item.type = 'button';
         item.className = 'hud-option-row';
+        item.dataset.overlay = row.key;
         const check = document.createElement('span');
         check.className = 'hud-option-check';
         check.textContent = overlays[row.key] ? '✓' : '';
@@ -1933,8 +1937,9 @@ function buildOptionsList(wiring: HudWiring): HTMLElement {
         lbl.className = 'hud-option-label';
         lbl.textContent = row.label;
         item.append(check, lbl);
-        // [freightOverlay] begin — additions to the original nine carry a "+" badge; `panel` rows get a "…" opener.
-        if (row.mod === true) {
+        // [freightOverlay] begin — additions to the original nine carry a "+" badge (the Improvements section's rows do
+        // not: the section says it); `panel` rows get a "…" opener.
+        if (row.mod === true && row.improvement === undefined) {
             const badge = document.createElement('span');
             badge.className = 'hud-option-mod';
             badge.textContent = '+';
@@ -1961,7 +1966,23 @@ function buildOptionsList(wiring: HudWiring): HTMLElement {
             // reads the state every frame (Fade civilian ships: builtObjectLayer.ts).
         });
         panel.appendChild(item);
-    }
+    };
+    // The original's overlays, then the Improvements section (ui/improvements.ts: DW2-inspired additions, each one
+    // listed only while it is enabled in Game Options → Improvements).
+    const render = (): void => {
+        panel.replaceChildren();
+        const { original, improvements } = overlayRowSections(OVERLAY_ROWS);
+        section('Overlays');
+        for (const row of original) addRow(row);
+        if (improvements.length > 0) {
+            section(IMPROVEMENTS_TITLE);
+            for (const row of improvements) addRow(row);
+        }
+    };
+    render();
+    // Until the HUD is destroyed (hudLifetime.ts).
+    const off = onImprovementsChange(() => render());
+    onHudDestroyed(off);
     return panel;
 }
 
