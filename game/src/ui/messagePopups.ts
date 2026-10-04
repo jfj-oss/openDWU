@@ -11,6 +11,9 @@
 // After a choice the talk panel stays open with the reply (Main.Part9.cs:731 method_241: method_237's reply part,
 // Main.Part10.cs:3590 method_230's text from the dialog files in the response panel, method_238's follow-ups: "Let's
 // discuss something else..." and "Goodbye"); conversationActions.ts conversationReplyView picks the part.
+// "Let's discuss something else..." (GREETING_NEUTRAL) keeps the conversation in this panel: its text and the greeting
+// menu (method_238, conversationActions.ts greetingMenuLinks over sim/player/diplomacyProposals.ts listProposals), the
+// options submitted as submitProposal commands and answered as the Diplomacy screen's talk panel does.
 
 import { closeEventSting, playDiplomacyMood, playMessageSounds } from '../audio/gameAudio'; // [audio]
 import './messagePopups.css';
@@ -21,7 +24,7 @@ import type { Galaxy } from '../sim/galaxy';
 import { galaxyStarDate } from '../sim/tick/simTime';
 import { resolveStarDateDescription } from '../sim/galaxyTime';
 import { resolveGameText, tryGetText } from '../sim/textResolver';
-import { dialogReplyText, proposalLabel, relationTypeLabel, setDiplomacyMessageExpiry, toggleDiplomacyScreen } from './screens/diplomacyScreen';
+import { dialogReplyText, loadDialogSet, proposalLabel, proposalReplyText, relationTypeLabel, setDiplomacyMessageExpiry, toggleDiplomacyScreen } from './screens/diplomacyScreen';
 import { issuePlayerCommand } from '../sim/player/playerCommands';
 // [proposals] begin
 // [proposals] end
@@ -42,7 +45,20 @@ import { messageCardFlagEmpire, messageCardText, messageImageUrl, messagePicture
 import { CARD, CARD_STRIP_H, EVENT, TALK, cardHeight, cardPosition, eventButtonRects, eventPanelLayout } from './messageWindowLayout';
 import type { EventPicture } from './eventMessagePresentation';
 import { autoPauseClose, autoPauseOpen } from './autoPause';
-import { conversationActions, conversationReplyView, pirateOfferPriceLine, type ConversationAction } from './conversationActions';
+import {
+    conversationActions,
+    conversationReplyView,
+    greetingMenuLinks,
+    isGreetingPart,
+    pirateOfferPriceLine,
+    proposalReplyLinks,
+    type ConversationAction,
+    type TalkLink,
+} from './conversationActions';
+import { listProposals, type ProposalOption, type ProposalResult } from '../sim/player/diplomacyProposals';
+import type { DialogPartType as DialogPart } from '../sim/data/dialogSet';
+import { openTradePanel } from './screens/tradePanel';
+import { pirateProtectionYearlySuffix } from './pirateProtectionPrice';
 import { goToMessage, messageGoToTarget } from './messageGoto';
 import { ShipGroup } from '../sim/fleets/shipGroup';
 import { selectShipGroup, selectStellarObject } from './hud';
@@ -498,7 +514,14 @@ export function installMessagePopups(opts: MessagePopupsOptions): void {
     // The effect of a conversation button. Every sim change goes through the command queue (applied at the next frame
     // boundary, journaled), so seed + command log replays it. An answer leaves the queue and the panel shows the reply
     // (`reply`: the command's result, or undefined for a text-only answer; one worker round trip later on a replica).
-    function runConversationAction(a: ConversationAction, entry: ConversationEntry, needsAnswer: boolean, finish: () => void, reply: (result?: unknown) => void): void {
+    function runConversationAction(
+        a: ConversationAction,
+        entry: ConversationEntry,
+        needsAnswer: boolean,
+        finish: () => void,
+        reply: (result?: unknown) => void,
+        greeting: () => void,
+    ): void {
         const sender = entry.sender;
         const e = a.effect;
         const answered = (): void => {
@@ -546,6 +569,11 @@ export function installMessagePopups(opts: MessagePopupsOptions): void {
                 if (sender !== null) openDiplomacyForPirateOffer(player, sender);
                 if (needsAnswer) closeDialog();
                 else finish();
+                return;
+            case 'greeting':
+                // The conversation goes on in this panel; an offer that still asks for an answer stays queued.
+                if (!needsAnswer) removeEntry(entry);
+                greeting();
                 return;
             case 'goto':
                 goToMessage(entry.message, galaxy);
@@ -648,9 +676,99 @@ export function installMessagePopups(opts: MessagePopupsOptions): void {
             });
             return link;
         };
+        // The response panel's text (method_230): a dialog line of the sender's race ('…' while the dialog files load).
+        const showText = (part: DialogPart, args: string[] = []): void => {
+            resp.replaceChildren();
+            const line = el('div', 'msg-talk-text msg-talk-reply', '…');
+            line.dataset.reply = part;
+            resp.appendChild(line);
+            void dialogReplyText(sender?.dominantRace?.name ?? '', part, args).then((t) => {
+                line.textContent = resolveGameText(t);
+            });
+        };
+        // The HyperlinkOptionsBox while the player leads (conversationActions.ts TalkLink).
+        const renderLinks = (links: readonly TalkLink[]): void => {
+            inner.replaceChildren();
+            for (const l of links) {
+                switch (l.kind) {
+                    case 'submit': {
+                        // A priced pirate protection option also names the price per year (the label has it per month).
+                        const o = l.option;
+                        const yearly = o.part === 'PIRATE_PROTECTIONPROPOSE_OFFER' || o.part === 'PIRATE_PROTECTIONACCEPTRESPONSE' ? pirateProtectionYearlySuffix(o.cost) : '';
+                        const link = optionLink(resolveGameText(o.label) + yearly, o.id, 'msg-talk-submit', () => submitOption(o));
+                        if (o.hint) link.title = o.hint;
+                        inner.appendChild(link);
+                        break;
+                    }
+                    case 'menu':
+                        inner.appendChild(
+                            optionLink(resolveGameText(l.label), l.part, 'msg-talk-menu', () => {
+                                // method_241 → method_230 (the entry's own line, e.g. TREATY_PROPOSAL "What do you
+                                // propose?") → method_238 (its options and the default lines).
+                                if (sender === null) return;
+                                showText(l.part);
+                                renderLinks(greetingMenuLinks(listProposals(galaxy, player, sender), l.label));
+                            }),
+                        );
+                        break;
+                    case 'greeting':
+                        inner.appendChild(optionLink(l.label, 'GREETING_NEUTRAL', 'msg-talk-greeting', () => showGreeting('GREETING_NEUTRAL')));
+                        break;
+                    case 'exit':
+                        inner.appendChild(optionLink(l.label, 'Exit', 'msg-talk-close', () => closeDialog()));
+                        break;
+                }
+            }
+        };
+        // Main.Part9.cs:731 method_241 with GREETING_NEUTRAL ("Let's discuss something else..."): method_237 leaves the
+        // option as it is, method_230 shows its text and method_238 rebuilds the greeting menu (Main.Part9.cs:166-258) in
+        // this panel. The menu is listProposals (a UI read in both modes; the records the C# adds become a journaled
+        // command, sim/readOnlyQuery.ts).
+        const showGreeting = (part: DialogPart, args: string[] = []): void => {
+            if (dialogEntry !== entry || dialogWin !== win || sender === null) return;
+            dialogReplying = true;
+            showText(part, args);
+            renderLinks(greetingMenuLinks(listProposals(galaxy, player, sender), null));
+        };
+        // A greeting-menu option: submitProposal through the command queue (applied at the next frame boundary,
+        // journaled), then method_241's reply (proposalReplyLinks).
+        const submitOption = (o: ProposalOption): void => {
+            if (sender === null) return;
+            inner.replaceChildren();
+            issuePlayerCommand(galaxy, player, 'submitProposal', [sender, o.id], (res) => showProposalReply(res));
+        };
+        const showProposalReply = (res: ProposalResult): void => {
+            if (dialogEntry !== entry || dialogWin !== win || sender === null) return;
+            if (res.expireMessagesFor !== null) expireDiplomacyMessagesForEmpire(queue, res.expireMessagesFor);
+            // DEAL_BEGIN (Main.Part10.cs:4324 method_302): the trade trees open beside the conversation.
+            if (res.ok && res.trade !== null) {
+                openTradePanel({
+                    galaxy,
+                    negotiation: res.trade,
+                    resolveReply: (part: DialogPart, e: Empire) => dialogReplyText(e.dominantRace?.name ?? '', part, []),
+                    expireMessagesFor: (e) => expireDiplomacyMessagesForEmpire(queue, e),
+                });
+            }
+            const next = proposalReplyLinks(res);
+            if (next.greeting) {
+                showGreeting(res.reply!, res.replyArgs);
+                return;
+            }
+            resp.replaceChildren();
+            const line = el('div', 'msg-talk-text msg-talk-reply', res.ok ? '…' : res.message);
+            if (res.reply !== null) line.dataset.reply = res.reply;
+            resp.appendChild(line);
+            if (res.ok) {
+                const raceName = sender.dominantRace?.name ?? '';
+                void loadDialogSet(raceName).then((set) => {
+                    line.textContent = resolveGameText(proposalReplyText(set, res, raceName));
+                });
+            }
+            renderLinks(next.links);
+        };
         // Main.Part9.cs:731 method_241 after the answer: method_230 shows the reply text in the response panel and
         // method_238 builds the options for it — the default lines (Main.Part9.cs:629-636): "Let's discuss something
-        // else..." (the Diplomacy talk panel on the sender here) and "Goodbye".
+        // else..." (the greeting menu above) and "Goodbye"; a greeting reply (GIFT_THANKS) rebuilds the greeting menu.
         const showReply = (a: ConversationAction, result: unknown): void => {
             if (dialogEntry !== entry || dialogWin !== win) return;
             const v = conversationReplyView(a, entry, player, result);
@@ -663,31 +781,23 @@ export function installMessagePopups(opts: MessagePopupsOptions): void {
                 closeDialog();
                 return;
             }
-            resp.replaceChildren();
-            const line = el('div', 'msg-talk-text msg-talk-reply', '…');
-            line.dataset.reply = v.part;
-            resp.appendChild(line);
-            void dialogReplyText(sender?.dominantRace?.name ?? '', v.part, v.args).then((t) => {
-                line.textContent = resolveGameText(t);
-            });
-            inner.replaceChildren();
-            if (sender !== null && sender !== player) {
-                inner.appendChild(
-                    optionLink(gt("Let's discuss something else..."), 'GREETING_NEUTRAL', 'msg-talk-openDiplomacy', () => {
-                        openDiplomacyForPirateOffer(player, sender);
-                        closeDialog();
-                    }),
-                );
+            if (sender !== null && sender !== player && isGreetingPart(v.part)) {
+                showGreeting(v.part, v.args);
+                return;
             }
-            inner.appendChild(optionLink(gt('Goodbye'), 'Exit', 'msg-talk-close', () => closeDialog()));
+            showText(v.part, v.args);
+            const links: TalkLink[] = [];
+            if (sender !== null && sender !== player) links.push({ kind: 'greeting', label: gt("Let's discuss something else...") });
+            links.push({ kind: 'exit', label: gt('Goodbye') });
+            renderLinks(links);
         };
         for (const a of actions) {
             inner.appendChild(
                 optionLink(a.label, a.id, `msg-talk-${a.effect.kind}`, () => {
                     if (dialogReplying) return;
                     // While the command is on its way: the options go (an answer is given once).
-                    runConversationAction(a, entry, needsAnswer, finish, (result) => showReply(a, result));
-                    if (dialogReplying && dialogEntry === entry) {
+                    runConversationAction(a, entry, needsAnswer, finish, (result) => showReply(a, result), () => showGreeting('GREETING_NEUTRAL'));
+                    if (a.effect.kind !== 'greeting' && dialogReplying && dialogEntry === entry) {
                         inner.replaceChildren();
                         if (a.effect.kind !== 'close') resp.replaceChildren(el('div', 'msg-talk-text msg-talk-reply', '…'));
                     }

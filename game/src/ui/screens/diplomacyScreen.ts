@@ -255,6 +255,62 @@ export interface DiplomacyRow {
     outgoing: DiplomaticRelation | null;
     outgoingText: string;
     factors: RelationshipFactor[];
+    /** A pirate player's row for a standard empire (EmpireDetailView.cs:512-570): what rect5 shows; null otherwise. */
+    piratePlayer: PiratePlayerRelationView | null;
+}
+
+/** EmpireDetailView.cs:512-570 (`PlayerEmpire.PirateEmpireBaseHabitat != null`, a standard empire selected): the
+ *  "Current Relationship With Us" block of a pirate player. */
+export interface PiratePlayerRelationView {
+    /** pirateRelation1 = PlayerEmpire.ObtainPirateRelation(empire): its Type. */
+    type: PirateRelationType;
+    /** text7: NotMet '' (tan), None "None" (_NoneColor), Protection "Pirate Protection" (_PirateProtectionColor). */
+    relationText: string;
+    relationColor: number;
+    /** text8: "FEELING with us" from empire.ObtainPirateRelation(PlayerEmpire) (ResolveFeelingDescription, Evaluation). */
+    feeling: string;
+    /** text9 under Protection: "Pirate Protection Payment Description" (pirateRelation1.MonthlyProtectionFeeToThisEmpire,
+     *  × 12), else null. */
+    payment: string | null;
+    /** PlayerEmpire.DetermineEmpireRelationshipFactors(empire) (Empire.7.cs:4270 pirate branch): description + value,
+     *  red below 0, light green otherwise. */
+    factors: { value: number; text: string }[];
+}
+
+/** C# `x.ToString("0")`: round half away from zero. */
+function format0(v: number): string {
+    const n = Math.sign(v) * Math.round(Math.abs(v));
+    return String(n === 0 ? 0 : n);
+}
+
+/** Port of EmpireDetailView.cs:512-570 DrawEmpireDetail, the pirate player's relation block for a standard empire. Read
+ *  only: ObtainPirateRelation's lazy record reads as a fresh NotMet relation (Evaluation 0). */
+export function piratePlayerRelationView(player: Empire, empire: Empire): PiratePlayerRelationView {
+    const pr1 = player.pirateRelations?.getRelationByOtherEmpire(empire) ?? null;
+    const type = pr1?.type ?? PirateRelationType.NotMet;
+    let relationText = '';
+    let relationColor = 0xd2b48c; // _NotMetColor (Color.Tan)
+    switch (type) {
+        case PirateRelationType.None:
+            relationColor = 0x808080; // _NoneColor
+            relationText = resolveGameText('None');
+            break;
+        case PirateRelationType.Protection:
+            relationColor = 0xa0a0ff; // _PirateProtectionColor (160, 160, 255)
+            relationText = resolveGameText('Pirate Protection');
+            break;
+    }
+    const pr2 = empire.pirateRelations?.getRelationByOtherEmpire(player) ?? null;
+    const evaluation = pr2?.evaluation ?? 0;
+    // Empire.4.cs:15 ResolveFeelingDescription(PirateRelation): (int)Evaluation; "+0;-0;0" rounds.
+    const feeling = `${resolveGameText(gameTextKey('FEELING with us', resolveGameText(feelingDescription(Math.trunc(evaluation)))))} (${formatSigned(evaluation)})`;
+    let payment: string | null = null;
+    if (type === PirateRelationType.Protection) {
+        const fee = pr1?.monthlyProtectionFeeToThisEmpire ?? 0;
+        payment = resolveGameText(gameTextKey('Pirate Protection Payment Description', format0(fee), format0(fee * 12.0)));
+    }
+    const factors = determineEmpireRelationshipFactors(player, empire).map((f) => ({ value: f.value, text: `${resolveGameText(f.description)} (${formatSigned(f.value)})` }));
+    return { type, relationText, relationColor, feeling, payment, factors };
 }
 
 function strategyLabel(strategy: DiplomaticStrategy): string {
@@ -291,10 +347,13 @@ function protectionFeeOf(player: Empire, other: Empire): number {
 }
 
 /** Rows for the panel: every met, active, non-independent empire (diplomatic relation not NotMet) and every met pirate faction
- *  (pirate relation not NotMet; DiplomaticRelationListView.cs:164-176), sorted by name. */
+ *  (pirate relation not NotMet; DiplomaticRelationListView.cs:164-176), sorted by name. A pirate player's PirateRelations
+ *  list the standard empires it has met too (the same loop: any OtherEmpire but the independents); their rows carry
+ *  the pirate-player detail (piratePlayerRelationView). */
 export function diplomacyRows(player: Empire, starDate: number, playerGovernmentName: string): DiplomacyRow[] {
     const rels: Array<{ other: Empire; rel: DiplomaticRelation | null; pirateType: PirateRelationType }> = [];
     const seen = new Set<Empire>();
+    const piratePlayer = player.pirateEmpireBaseHabitat !== null;
     for (const rel of player.diplomaticRelations) {
         if (rel.type === DiplomaticRelationType.NotMet) continue;
         const other = rel.otherEmpire;
@@ -308,7 +367,7 @@ export function diplomacyRows(player: Empire, starDate: number, playerGovernment
         const other = pr.otherEmpire;
         if (pr.type === PirateRelationType.NotMet || other === null || !other.active) continue;
         if (other === player.galaxy.independentEmpire || other === player || seen.has(other)) continue;
-        if (other.pirateEmpireBaseHabitat === null) continue;
+        if (other.pirateEmpireBaseHabitat === null && !piratePlayer) continue;
         rels.push({ other, rel: null, pirateType: pr.type });
         seen.add(other);
     }
@@ -316,6 +375,33 @@ export function diplomacyRows(player: Empire, starDate: number, playerGovernment
 
     return rels.map(({ other, rel: relOrNull, pirateType }) => {
         const governmentName = other.governmentId >= 0 ? (getGovernmentsStatic()[other.governmentId]?.name ?? '') : '';
+        if (piratePlayer && other.pirateEmpireBaseHabitat === null) {
+            // EmpireDetailView.cs:512: a pirate player sees every standard empire through its PirateRelation.
+            const view = piratePlayerRelationView(player, other);
+            return {
+                empire: other,
+                isPirate: false,
+                governmentName,
+                pirateRelationType: view.type,
+                protectionFeePerMonth: protectionFeeOf(player, other),
+                name: other.name,
+                color: displayColorForEmpire(other),
+                relationType: relOrNull?.type ?? DiplomaticRelationType.NotMet,
+                relationText: view.relationText,
+                relationColor: view.relationColor,
+                attitude: null,
+                feeling: view.feeling,
+                ourStrategy: '',
+                treaties: [],
+                incoming: null,
+                incomingText: '',
+                incomingMessage: '',
+                outgoing: null,
+                outgoingText: '',
+                factors: [],
+                piratePlayer: view,
+            };
+        }
         if (relOrNull === null) {
             const fee = protectionFeeOf(player, other);
             return {
@@ -339,6 +425,7 @@ export function diplomacyRows(player: Empire, starDate: number, playerGovernment
                 outgoing: null,
                 outgoingText: '',
                 factors: [],
+                piratePlayer: null,
             };
         }
         const rel = relOrNull;
@@ -396,6 +483,7 @@ export function diplomacyRows(player: Empire, starDate: number, playerGovernment
             outgoing,
             outgoingText,
             factors: relationshipFactors(player, other, playerGovernmentName),
+            piratePlayer: null,
         };
     });
 }
@@ -439,25 +527,9 @@ export function playerGovernmentName(player: Empire): string {
 }
 
 // [proposals] begin
-export interface ProposalGroup {
-    /** The greeting-menu entry (GameText key, resolveGameText for display). */
-    label: string;
-    options: ProposalOption[];
-}
-
-/** Main.Part9.cs:208-249 greeting menu: listProposals' options grouped under their menu entry, in list order. */
-export function proposalGroups(options: readonly ProposalOption[]): ProposalGroup[] {
-    const groups: ProposalGroup[] = [];
-    for (const o of options) {
-        let g = groups.find((x) => x.label === o.menuLabel);
-        if (!g) {
-            g = { label: o.menuLabel, options: [] };
-            groups.push(g);
-        }
-        g.options.push(o);
-    }
-    return groups;
-}
+// Moved to ../conversationActions.ts (shared with the message dialog's greeting menu).
+export { proposalGroups, type ProposalGroup } from '../conversationActions';
+import { proposalGroups } from '../conversationActions';
 
 /** Main.Part10.cs:3590 method_230: the reply line, string.Format(dialogSet.ResolveDialog(type, race), args); a refused
  *  submit shows its hint; null set = dialog files not loaded yet. */
@@ -1168,6 +1240,10 @@ function createDiplomacyScreen(opts: DiplomacyScreenOptions): OpenState {
         const rr = lay.relation;
         detail.appendChild(place(darkRect(), rr.x, rr.y, rr.w, rr.h));
         dropText(detail, 'Current Relationship With Us', 20, rr.y + 5, { size: f.header, bold: true, color: HEADER_TEXT });
+        if (row.piratePlayer !== null) {
+            renderPiratePlayerRelation(empire, row.piratePlayer);
+            return;
+        }
         dropText(detail, row.relationText + warRowSuffix(player, empire), 25, rr.y + 28, { size: f.large, bold: true, color: rgb(row.relationColor) }); // [wargoals]
         // The player's ambassador at their capital (role / name / diplomacy bonus at rect5.Right - 88).
         const amb = ambassadorAt<Character>(player, empire);
@@ -1222,6 +1298,45 @@ function createDiplomacyScreen(opts: DiplomacyScreenOptions): OpenState {
         appendExtras(extras, empire, row);
         detail.appendChild(extras);
         extras.scrollTop = extrasScroll;
+        renderRestrictedLines(empire, restricted);
+    }
+
+    /** EmpireDetailView.cs:512-570: the pirate player's rect5 for a standard empire — the PirateRelation type (text7,
+     *  16.67 px bold at (25, rect5.Top + 28)), their feeling at (20, y16), the protection payment num16 below it under
+     *  Protection, then the relationship factors from y16 + num17. No treaty on offer and no ambassador. */
+    function renderPiratePlayerRelation(empire: Empire, v: PiratePlayerRelationView): void {
+        const f = lay.fonts;
+        const rr = lay.relation;
+        if (v.relationText !== '') dropText(detail, v.relationText, 25, rr.y + 28, { size: f.large, bold: true, color: rgb(v.relationColor) });
+        let y16 = lay.feelingY;
+        dropText(detail, v.feeling, 20, y16, { size: f.normal, bold: true, color: TEXT });
+        if (v.payment !== null) {
+            y16 += lay.feeStep;
+            // this.Font (the panel's own, regular).
+            dropText(detail, v.payment, 20, y16, { size: f.normal, color: TEXT });
+        }
+        const restricted = restrictedResourceLines(player, empire);
+        const restrictedH = restricted.length * 18;
+        const top = y16 + lay.factorGap;
+        const bottom = lay.detail.h - (restrictedH > 0 ? 15 + restrictedH + 4 : 6);
+        const box = place(scrollPanel('dip-extras dip-pirate-player'), 14, top, lay.detail.w - 22, Math.max(30, bottom - top));
+        box.style.fontSize = `${f.normal}px`;
+        for (const fac of v.factors) {
+            const line = el('div', 'dip-factor ow-shadow', fac.text);
+            line.style.color = fac.value < 0 ? RED : LIGHT_GREEN;
+            line.style.maxWidth = `${lay.textWidth}px`;
+            box.appendChild(line);
+        }
+        detail.appendChild(box);
+        box.scrollTop = extrasScroll;
+        // BindData: the TradeRestrictedResourcesPanel shows for any standard empire but the player.
+        renderRestrictedLines(empire, restricted);
+    }
+
+    /** TradeRestrictedResourcesPanel at (20, Height - (15 + its height)), 18 px a line. */
+    function renderRestrictedLines(empire: Empire, restricted: ReturnType<typeof restrictedResourceLines>): void {
+        const f = lay.fonts;
+        const restrictedH = restricted.length * 18;
         restricted.forEach((ln, i) => {
             const y0 = lay.detail.h - 15 - restrictedH + i * 18 - 6;
             if (ln.kind === 'label') dropText(detail, ln.text, 20, y0, { size: f.normal, color: TEXT, shadow: false });
