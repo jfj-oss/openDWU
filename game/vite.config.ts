@@ -11,6 +11,8 @@
 //   real-art rendering (without it loadManifest() no-ops and the game falls
 //   back to generated textures).
 import { existsSync, statSync, copyFileSync, readdirSync, readFileSync, createReadStream, mkdirSync, writeFileSync } from 'node:fs';
+import { readFile, stat } from 'node:fs/promises';
+import { createRequire } from 'node:module';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { IncomingMessage, ServerResponse } from 'node:http';
@@ -20,6 +22,8 @@ import { buildScenarioIndex, listScenarioFiles } from './scripts/scenarioIndex.m
 import themeIndexLib from './desktop/themeIndex.cjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
+// Shared with the Electron protocol handler (desktop/main.cjs): original art without its embedded colour profile.
+const { stripColorProfile, isProfiledImagePath } = createRequire(import.meta.url)('./desktop/colorProfile.cjs') as typeof import('./desktop/colorProfile.cjs');
 
 /**
  * Resolve a relative path under `root` case-insensitively, segment by
@@ -72,6 +76,7 @@ export function resolveCaseInsensitive(
 const CONTENT_TYPES: Record<string, string> = {
     '.png': 'image/png',
     '.jpg': 'image/jpeg',
+    '.jpeg': 'image/jpeg',
     '.txt': 'text/plain; charset=utf-8',
     '.ttf': 'font/ttf',
     '.wav': 'audio/wav',
@@ -79,57 +84,96 @@ const CONTENT_TYPES: Record<string, string> = {
 };
 
 /**
- * Dev-server middleware: serve /assets/dwu/... case-insensitively. The
- * Electron shell already resolves paths this way (desktop/main.cjs); Vite's
- * static serving does not, which breaks chrome art referenced with the
- * original's (wrong-case) file names. Runs before Vite's static serving:
- * exact path -> next(); otherwise resolve each segment against fs.readdirSync
- * of the parent (directory listings cached per process) and stream the match
- * with its Content-Type; no match -> next().
+ * Serve one original image with its embedded colour profile removed (desktop/colorProfile.cjs: the original's GDI+
+ * load ignores it, so the browser must decode raw values too). Same caching headers as Vite's static serving (ETag +
+ * Last-Modified, Cache-Control: no-cache); the ETag is marked so a browser that cached the unstripped file
+ * revalidates instead of reusing it.
  */
-function dwuCaseInsensitive(): Plugin {
+async function serveRawImage(abs: string, req: IncomingMessage, res: ServerResponse): Promise<void> {
+    const st = await stat(abs);
+    const etag = `W/"${st.size}-${Math.floor(st.mtimeMs)}-raw"`;
+    res.setHeader('Content-Type', CONTENT_TYPES[path.extname(abs).toLowerCase()] ?? 'application/octet-stream');
+    res.setHeader('Last-Modified', st.mtime.toUTCString());
+    res.setHeader('ETag', etag);
+    res.setHeader('Cache-Control', 'no-cache');
+    if (req.headers['if-none-match'] === etag) {
+        res.statusCode = 304;
+        res.end();
+        return;
+    }
+    const body = stripColorProfile(await readFile(abs));
+    res.statusCode = 200;
+    res.setHeader('Content-Length', body.length);
+    res.end(req.method === 'HEAD' ? undefined : body);
+}
+
+/**
+ * Dev-server middleware for /assets/dwu/... (the DW:U install), mirroring the Electron shell's dwu:// handler
+ * (desktop/main.cjs):
+ * - paths resolve case-insensitively: the original references files with wrong letter case (e.g.
+ *   shipsAndBasesButton.png for ShipsAndBasesButton.png), which Vite's static serving does not resolve — exact path
+ *   first, otherwise each segment against fs.readdirSync of the parent (directory listings cached per process);
+ * - PNG / JPEG art is served through serveRawImage (colour profile removed);
+ * - any other existing file goes to Vite's static serving (exact path) or is streamed with its Content-Type
+ *   (case-corrected path); no match -> next().
+ * `root` is the install folder (public/assets/dwu); exported for the tests.
+ */
+export function dwuAssetsMiddleware(root: string): (req: IncomingMessage, res: ServerResponse, next: () => void) => void {
+    // Directory listing cache: dir -> entries (never invalidated; the install folder is static during a dev session).
+    const listings = new Map<string, string[]>();
+    const readdirCached = (dir: string): string[] => {
+        let list = listings.get(dir);
+        if (!list) {
+            list = readdirSync(dir);
+            listings.set(dir, list);
+        }
+        return list;
+    };
+    return (req, res, next) => {
+        const url = req.url ?? '';
+        if (!url.startsWith('/assets/dwu/') || (req.method !== 'GET' && req.method !== 'HEAD')) {
+            next();
+            return;
+        }
+        let rel: string;
+        try {
+            rel = decodeURIComponent(url.slice('/assets/dwu/'.length).split('?')[0]);
+        } catch {
+            next();
+            return;
+        }
+        if (rel === '' || rel.includes('..')) {
+            next();
+            return;
+        }
+        const exact = path.join(root, rel);
+        const exactExists = existsSync(exact);
+        if (exactExists && !isProfiledImagePath(exact)) {
+            // Exact path, not art: let Vite's static serving handle it.
+            next();
+            return;
+        }
+        const abs = exactExists ? exact : resolveCaseInsensitive(root, rel, readdirCached);
+        if (!abs || !statSync(abs).isFile()) {
+            next();
+            return;
+        }
+        if (isProfiledImagePath(abs)) {
+            serveRawImage(abs, req, res).catch(() => next());
+            return;
+        }
+        const ext = path.extname(abs).toLowerCase();
+        res.statusCode = 200;
+        res.setHeader('Content-Type', CONTENT_TYPES[ext] ?? 'application/octet-stream');
+        createReadStream(abs).pipe(res);
+    };
+}
+
+function dwuAssets(): Plugin {
     return {
-        name: 'dwu-case-insensitive',
+        name: 'dwu-assets',
         configureServer(server) {
-            const root = path.join(here, 'public', 'assets', 'dwu');
-            // Directory listing cache: dir -> entries (never invalidated; the
-            // install folder is static during a dev session).
-            const listings = new Map<string, string[]>();
-            const readdirCached = (dir: string): string[] => {
-                let list = listings.get(dir);
-                if (!list) {
-                    list = readdirSync(dir);
-                    listings.set(dir, list);
-                }
-                return list;
-            };
-            server.middlewares.use((req: IncomingMessage, res: ServerResponse, next) => {
-                const url = req.url ?? '';
-                if (!url.startsWith('/assets/dwu/')) {
-                    next();
-                    return;
-                }
-                const prefixLen = '/assets/dwu/'.length;
-                let rel = decodeURIComponent(url.slice(prefixLen).split('?')[0]);
-                if (rel === '' || rel.includes('..')) {
-                    next();
-                    return;
-                }
-                // Exact path exists: let Vite's static serving handle it.
-                if (existsSync(path.join(root, rel))) {
-                    next();
-                    return;
-                }
-                const abs = resolveCaseInsensitive(root, rel, readdirCached);
-                if (!abs) {
-                    next();
-                    return;
-                }
-                const ext = path.extname(abs).toLowerCase();
-                res.statusCode = 200;
-                res.setHeader('Content-Type', CONTENT_TYPES[ext] ?? 'application/octet-stream');
-                createReadStream(abs).pipe(res);
-            });
+            server.middlewares.use(dwuAssetsMiddleware(path.join(here, 'public', 'assets', 'dwu')));
         },
     };
 }
@@ -307,7 +351,7 @@ export default defineConfig({
         setupFiles: ['test/pins/pin.ts'],
         ...testTier(),
     },
-    plugins: [dwuProbe(), dwuCaseInsensitive(), copyAssetManifest(), scenarioAssets(), themeManifest()],
+    plugins: [dwuProbe(), dwuAssets(), copyAssetManifest(), scenarioAssets(), themeManifest()],
     build: {
         // Do not copy public/ (the assets/dwu symlink is ~4 GB); only the
         // small asset-manifest.json matters in dist/, handled above.

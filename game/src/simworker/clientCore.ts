@@ -148,6 +148,14 @@ export interface ClientCoreOptions {
     now?: () => number;
     /** Wall ms per render frame for applying queued cold parts (default 0.5; grows with the backlog). */
     coldBudgetMs?: number;
+    /**
+     * Wall ms per render frame for the cold parts a command reply waits for (default 4): a reply's callback reads the
+     * replica as of the boundary that applied it, so it runs once the cold parts through its delta are applied —
+     * spread over frames instead of all at once (docs/sim-worker.md §4.3).
+     */
+    replyBudgetMs?: number;
+    /** Wall ms per render frame for the cold births a hot part depends on (default 4; the message waits meanwhile). */
+    depBudgetMs?: number;
     /** The command deadline (default REPLY_TIMEOUT_MS). */
     replyTimeoutMs?: number;
     /** The backstop after the deadline (default REPLY_GRACE_MS). */
@@ -192,11 +200,18 @@ export class SimClientCore {
     private paused: boolean;
     private speed: number;
     private readonly inbox: StepMessage[] = [];
+    /**
+     * Applied step messages whose replies and events wait for the cold parts through their delta (in order): the
+     * replies' callbacks read the replica as of their boundary, and the events stay behind them (the in-thread order).
+     */
+    private readonly settling: { seq: number; results: StepMessage['results']; events: WorkerEvent[] }[] = [];
     /** Main-thread arrival time of each inbox message. */
     private readonly naming: RemoteNaming;
     private readonly resolving: RemoteResolving;
     private readonly now: () => number;
     private readonly coldBudgetMs: number;
+    private readonly replyBudgetMs: number;
+    private readonly depBudgetMs: number;
     private disposed = false;
     /**
      * [simworker chunk 1] Optimistic pause: the clock seq of a pause sent and not yet acknowledged (0: none). While it
@@ -214,6 +229,8 @@ export class SimClientCore {
     constructor(gameData: GameData, snapshot: SnapshotMessage, private readonly opts: ClientCoreOptions) {
         this.now = opts.now ?? (() => performance.now());
         this.coldBudgetMs = opts.coldBudgetMs ?? 0.5;
+        this.replyBudgetMs = opts.replyBudgetMs ?? 4;
+        this.depBudgetMs = opts.depBudgetMs ?? 4;
         this.pauseHoldMaxMs = opts.pauseHoldMaxMs ?? 500;
         this.replyTimeoutMs = opts.replyTimeoutMs ?? REPLY_TIMEOUT_MS;
         this.replyGraceMs = opts.replyGraceMs ?? REPLY_GRACE_MS;
@@ -442,6 +459,13 @@ export class SimClientCore {
     workerFailed(reason: string): void {
         if (this.disposed || this.stopped !== null) return;
         this.stopped = `the simulation worker stopped (${reason})`;
+        // Replies already received are answered as they came (their cold parts applied now), before the rest fail.
+        while (this.settling.length > 0) {
+            const seq = this.settling[0].seq;
+            this.replica.pumpCold(Infinity, this.now, seq, false);
+            if (!this.replica.decoder.coldThrough(seq)) break;
+            this.settleApplied();
+        }
         console.error(`sim worker: STOPPED — ${reason}. ${this.waiting.size} waiting request(s) fail; the game cannot continue in this session.`);
         this.failAll(this.stopped);
         const e: WorkerEvent = { kind: 'workerStopped', message: reason };
@@ -581,8 +605,9 @@ export class SimClientCore {
 
     /**
      * Once per render frame: apply the step messages received since the last frame (hot parts at once), pump the cold
-     * queue for its budget, adopt the worker's pause / speed when our last clock change has reached it, and refresh
-     * renderTime. Returns the sim steps that landed.
+     * queue for its budget (and, under replyBudgetMs, the cold parts the waiting command replies need), answer the
+     * replies whose cold parts are all applied, adopt the worker's pause / speed when our last clock change has reached
+     * it, and refresh renderTime. Returns the sim steps that landed.
      */
     frame(time: ClockControls): number {
         const t0 = this.now();
@@ -602,16 +627,18 @@ export class SimClientCore {
                 this.holdSeq = 0;
             } else holding = true;
         }
-        // Every message received is applied now (replies too: their onApplied runs this frame). Smoothing the drawn
-        // time over uneven arrivals is the render side's job (renderInterp.ts PresentationClock, in MainView).
+        // Every message received is applied now, its hot part at once (smoothing the drawn time over uneven arrivals is
+        // the render side's job: renderInterp.ts PresentationClock, in MainView) — except when its hot part names objects
+        // born in cold parts not applied yet: their births are applied first, under depBudgetMs per frame, and the
+        // message (with those after it) waits for the next frame meanwhile.
         const take = holding ? 0 : this.inbox.length;
+        let applied = 0;
         for (let k = 0; k < take; k++) {
             const m = this.inbox[k];
-            // Command replies: their onApplied reads the replica, so the cold parts through this delta (which carry
-            // what the commands changed, simHost.ts touched) are applied first.
-            const fresh = m.results.length > 0;
-            const st: ApplyStats = fresh ? this.replica.applyThrough(m.delta) : this.replica.apply(m.delta);
+            const st: ApplyStats = this.replica.apply(m.delta, false, this.depBudgetMs, this.now);
             hotMs += st.applyMs;
+            if (st.pending) break;
+            applied++;
             steps += m.steps;
             this.stats.deltas++;
             this.stats.workerStepMs = m.stepMs;
@@ -631,12 +658,29 @@ export class SimClientCore {
                     time.speed = m.speed;
                 }
             }
-            for (const r of m.results) this.settle(r);
-            for (const e of m.events) this.emit(e);
+            // Replies (their onApplied reads the replica as of the boundary that applied the commands, so the cold parts
+            // through this delta — which carry what the commands changed, simHost.ts touched — come first) and events,
+            // in order.
+            if (m.results.length > 0 || m.events.length > 0) this.settling.push({ seq: m.delta.seq, results: m.results, events: m.events });
         }
-        const last = take > 0 ? this.inbox[take - 1] : null;
-        this.inbox.splice(0, take);
-        const cold = this.replica.pumpCold(this.coldBudgetMs);
+        const last = applied > 0 ? this.inbox[applied - 1] : null;
+        this.inbox.splice(0, applied);
+        // Events (and replies whose cold parts are in) now, as their message lands; then the cold parts the waiting
+        // replies need, under their own budget, then the regular pump. A waiting entry bounds the pumps: a message's
+        // events are delivered before its own cold part applies (its drops among them), a reply after it.
+        this.settleApplied();
+        let coldMs = 0;
+        const replyDeadline = this.now() + this.replyBudgetMs;
+        while (this.settling.length > 0) {
+            const seq = this.settling[0].seq;
+            const left = replyDeadline - this.now();
+            if (left <= 0) break;
+            coldMs += this.replica.pumpCold(left, this.now, seq, false).applyMs;
+            if (!this.replica.decoder.coldThrough(seq)) break;
+            this.settleApplied();
+        }
+        coldMs += this.replica.pumpCold(this.coldBudgetMs, this.now, this.settling.length > 0 ? this.settling[0].seq : Infinity).applyMs;
+        this.settleApplied();
         if (this.waiting.size > 0) this.checkReplyTimeouts(t0);
         const t2 = this.now();
         // A held pause is drawn as paused from the frame it was pressed, as the in-thread loop does (the presentation
@@ -652,9 +696,9 @@ export class SimClientCore {
         s.renderFrames++;
         s.simFrames += steps;
         s.hotApplyMs += hotMs;
-        s.coldPumpMs += cold.applyMs;
+        s.coldPumpMs += coldMs;
         if (hotMs > s.maxHotApplyMs) s.maxHotApplyMs = hotMs;
-        if (cold.applyMs > s.maxColdPumpMs) s.maxColdPumpMs = cold.applyMs;
+        if (coldMs > s.maxColdPumpMs) s.maxColdPumpMs = coldMs;
         const dt = t2 - t0;
         s.simWallMs += dt;
         s.avgSyncMsPerRenderFrame += (dt - s.avgSyncMsPerRenderFrame) * 0.05;
@@ -662,6 +706,22 @@ export class SimClientCore {
         if (dt > s.maxSimMsPerRenderFrame) s.maxSimMsPerRenderFrame = dt;
         s.coldBacklog = this.replica.decoder.coldBacklog;
         return steps;
+    }
+
+    /** Deliver the replies and events of the applied messages whose cold parts are all applied (in order). */
+    private settleApplied(): void {
+        while (this.settling.length > 0) {
+            const e = this.settling[0];
+            if (e.results.length > 0 && !this.replica.decoder.coldThrough(e.seq)) return;
+            this.settling.shift();
+            for (const r of e.results) this.settle(r);
+            for (const ev of e.events) this.emit(ev);
+        }
+    }
+
+    /** Messages applied whose replies / events wait for cold parts (tests, the smoke). */
+    get settlingMessages(): number {
+        return this.settling.length;
     }
 
     /** A reply from a step message (its delta applied): the waiting request's callback, once. */
@@ -707,7 +767,8 @@ export class SimClientCore {
         let late: { id: number; w: Waiting } | null = null;
         for (const [id, w] of this.waiting) {
             if (w.outcome !== undefined || nowMs - w.sentAt < this.replyTimeoutMs + this.replyGraceMs) continue;
-            inInbox ??= new Set(this.inbox.flatMap((m) => m.results.map((r) => r.id)));
+            // (A reply received and waiting for its cold parts, settling, is not late.)
+            inInbox ??= new Set([...this.inbox, ...this.settling].flatMap((m) => m.results.map((r) => r.id)));
             if (!inInbox.has(id)) {
                 late = { id, w };
                 break;

@@ -487,8 +487,10 @@ export class AssetStore {
      * Decode an original image with its embedded colour profile ignored (raw sample values), or null when there is
      * no install / the file is missing. The original loads art with `new Bitmap(path)` (DistantWorlds.Types
      * GraphicsHelper.cs LoadImageFromFilePath), i.e. GDI+ without ICM, so the iCCP profiles most DW:U PNGs carry are
-     * never applied; the browser applies them by default (e.g. the grey mapstars/flares profile brightens their
-     * halos ~17%). Not cached: callers bake the result into their own texture.
+     * never applied (e.g. the grey mapstars/flares profile would brighten their halos ~17%). Every /assets/dwu/ PNG
+     * and JPEG is already served without its colour chunks (desktop/colorProfile.cjs, used by the Vite dev server and
+     * the Electron dwu:// handler), so every load path decodes raw values; colorSpaceConversion 'none' keeps this
+     * one raw even from a server that does not strip them. Not cached: callers bake the result into their own texture.
      */
     async loadRawImage(url: string): Promise<ImageBitmap | null> {
         if (!this.dwuPresent) return null;

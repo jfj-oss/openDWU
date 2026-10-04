@@ -29,8 +29,8 @@
 // wrapped parallax offset, snapped to whole CSS px like the original's (int) offsets (no particle writes, no
 // allocation). Particles are rebuilt only when the viewport size, the resolution or the density changes.
 //
-// The flare art is decoded with its embedded grey ICC profile ignored (AssetStore.loadRawImage), as the original's
-// GDI+ load does; the browser's default colour management brightens the halos ~17%.
+// The flare art is decoded with its embedded grey ICC profile ignored (served without it, desktop/colorProfile.cjs, and
+// decoded by AssetStore.loadRawImage), as the original's GDI+ load does; colour-managed, the halos come out ~17% brighter.
 //
 // Deviations (documented):
 //   - Star positions are deterministic from the galaxy seed (the original seeds from DateTime.Now.Ticks).

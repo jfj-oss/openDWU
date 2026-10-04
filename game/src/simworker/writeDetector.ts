@@ -84,8 +84,8 @@ export interface WriteDetectorOptions {
 /** What the detector wraps: the replica's decoder and its apply / pump entry points (GalaxyReplica's shape). */
 export interface WatchedReplica {
     readonly decoder: ReplicaDecoder;
-    apply(d: ReplicaDelta, all?: boolean): ApplyStats;
-    pumpCold(budgetMs: number): ApplyStats;
+    apply(d: ReplicaDelta, all?: boolean, budgetMs?: number, now?: () => number): ApplyStats;
+    pumpCold(budgetMs: number, now?: () => number, throughSeq?: number, scale?: boolean): ApplyStats;
 }
 
 const enum MK {
@@ -221,17 +221,18 @@ export class ReplicaWriteDetector {
         const r = replica as { apply: WatchedReplica['apply']; pumpCold: WatchedReplica['pumpCold'] };
         const apply = r.apply;
         const pump = r.pumpCold;
-        r.apply = (d, all2) => this.during(() => apply.call(replica, d, all2));
-        r.pumpCold = (budgetMs) => {
+        // (Every argument passed through: a budgeted apply, a pump through a reply's delta.)
+        r.apply = (...a) => this.during(() => apply.apply(replica, a));
+        r.pumpCold = (...a) => {
             this.sweep();
-            return this.during(() => pump.call(replica, budgetMs));
+            return this.during(() => pump.apply(replica, a));
         };
         // The decoder itself too (callers that bypass the replica wrapper, tests).
         const dr = dec as { apply: ReplicaDecoder['apply']; pumpCold: ReplicaDecoder['pumpCold'] };
         const dApply = dr.apply;
         const dPump = dr.pumpCold;
-        dr.apply = (d, all2, now) => this.during(() => dApply.call(dec, d, all2, now));
-        dr.pumpCold = (b, now) => this.during(() => dPump.call(dec, b, now));
+        dr.apply = (...a) => this.during(() => dApply.apply(dec, a));
+        dr.pumpCold = (...a) => this.during(() => dPump.apply(dec, a));
         dec.watch = (id, slot) => this.watch(id, slot);
         this.restore.push(() => {
             delete (r as Partial<typeof r>).apply;

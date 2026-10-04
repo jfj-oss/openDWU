@@ -202,6 +202,107 @@ Most of the "before" stalls are ships drawn in a planet's frame (ParentOffset) b
 (StepPacer held messages back; the clock trails them); its frames that still stand still follow a main-thread hitch
 (a 112 ms cold apply in that sector run). Worker lag figures come from separate runs of the same setup.
 
+### 2.6 Chunk 9: sync performance in big late games (2026-10-03)
+
+What was wrong on the late saves (`late2500`: 9.8 k ships; `late2500-1200`: the same galaxy 1 200 s later, 144 MB):
+
+- **Main-thread hitches of 17-112 ms** (435 ms at worst in node) whenever a command reply landed — the HUD's own
+  commands (money panel, UI records) included: `applyThrough` applied the whole cold backlog in that frame, and the
+  backlog sat at 20-30 parts because the pump's budget grew too slowly. A cold part with many newborns cost far more
+  than its size: the decoder's object → id **WeakMap** (2.4 M keys) took ~5 µs per insert and stalled for up to a
+  second under churn, and its id array went sparse (dictionary mode) whenever a later hot part's ids landed first.
+- **270 KB of hot part per step**: 40 bytes per field set (five float64s), and 2 100 of the ~6 500 hot sets a step were
+  idle weapons' `resetNext` flipping on every touch.
+- **Worker diff 12-16 ms per tick, 8-10 ms of it the hot pass**: every gated ship's and every hot array's shadow was
+  read every step, although the sim touches about a tenth of them.
+
+The fixes (§3.2-§3.4, §4.3): a compact wire format (uint32 codes, f64 lane only for numbers that need it, one Set record
+per object), guarded hot fields, probe registries for the hot pass, a dense decoder with a Map, budgeted dependency
+births, command replies that wait for their cold parts under their own budget, and a faster-growing cold pump budget.
+
+`node scripts/sync-measure.mjs <save> --steps 300 --verify` (worker and main thread in one process; load average 10-20):
+
+| late2500 | before | after |
+|---|---|---|
+| hot part KB per step (mean / p95 / max) | 272 / 500 / 549 | **56 / 68 / 144** |
+| delta KB per step (mean / p95) | 447 / 819 | **121 / 190** |
+| main hot apply ms (mean / p95 / max) | 0.42 / 0.77 / 6.6 | 0.42 / 0.66 / 3.6 |
+| main cold pump ms per frame (mean / p95 / max), backlog parts p95 / max | 0.80 / 1.74 / 2.83, 23 / 29 | **0.25 / 0.53 / 3.75, 0 / 2** |
+| snapshot: size, main-thread apply | 425 MB, 2.7 s | **201 MB, 1.0 s** |
+| `--verify` (replica save text, digest) | identical | identical |
+
+`node scripts/sync-measure.mjs <save> --client --steps 600 --replies 30 [--verify]` — new: SimHost and SimClientCore
+end to end, as the browser runs them (each message structured-cloned, `frame()` timed, a command with a reply every
+30 steps, one frame per step):
+
+| late2500, 1× | before | after |
+|---|---|---|
+| main `frame()` ms (mean / p95 / max) | 4.52 / 9.96 / 435.6 | **0.84 / 2.25 / 8.8** |
+| frames over 8 / 16 ms (of 600) | 35 / 19 | **2 / 0** |
+| of which hot apply (mean / p95 / max) | 3.41 / 5.36 / 435.5 | 0.41 / 0.56 / 8.3 |
+| of which cold pump (mean / p95 / max) | 0.94 / 2.49 / 11.9 | 0.34 / 1.03 / 6.8 |
+| the frame that answers a reply (mean / max ms) | 80 / 436 | **1.5 / 6.5** |
+| reply latency | the frame it lands | 1.1 frames mean, 2 at p95 |
+| replica built from the snapshot | 7.2 s | 1.7 s |
+| `--verify` | identical | identical |
+| at 4× speed: `frame()` max, frames over 16 ms, reply frame mean (two runs each) | 104 / 186 ms, 13 / 11, 42 / 44 ms | 11 / 11 ms, 0 / 0, 2.3 / 2.0 ms |
+
+| late2500-1200 (load average 6-10) | before | after |
+|---|---|---|
+| hot part KB per step (mean / p95 / max) | 283 / 521 / 544 | **57 / 69 / 153** |
+| delta KB per step (mean / p95) | 498 / 881 | **143 / 212** |
+| main hot apply ms (mean / p95 / max) | 0.34 / 0.52 / 6.2 | **0.22 / 0.33 / 1.9** |
+| main cold pump ms per frame (mean / p95 / max), backlog p95 / max | 0.47 / 1.10 / 3.5, 11 / 19 | 0.18 / 0.51 / 4.1, 0 / 1 |
+| snapshot: size, main-thread apply | 449 MB, 2.3 s | **213 MB, 0.73 s** |
+| client mode: `frame()` ms (mean / p95 / max), frames over 16 ms | 1.31 / 1.87 / 48.2, 7 of 600 | **0.43 / 1.00 / 4.9, 0** |
+| client mode: the frame that answers a reply (mean / max ms) | 13.4 / 48.2 | **0.87 / 2.8** |
+| client mode: worker hot pass / diff ms (mean) | 4.41 / 7.80 | 3.76 / 7.19 |
+| `--verify` (both modes) | identical | identical |
+
+Worker, the same client runs alternated base / chunk 9 (1×, 400 steps): hot pass 10.5 / 9.4 → 8.4 / 6.7 ms mean, diff
+15.6 / 14.3 → 13.9 / 11.5 ms mean (the probe registries alone, A/B in one process: hot pass −21 %). The cold pass keeps
+its 3 ms budget per tick.
+
+Browser, `scripts/perf-render.mjs --load=<save> --motion --gpu=egl --speed=4 --qs=simWorker=1` (60 Hz headless
+compositor; `--eval` of a script that ignores pause writes, as the late saves raise an event popup that pauses the game
+after about 20 s; base and chunk 9 alternated, load average 9-18):
+
+| zoom | hot ms/frame | cold ms/frame | max hot / max cold / max sync ms | delta KB (last message) | lag steps (mean) | clock stall % |
+|---|---|---|---|---|---|---|
+| late2500 galaxy | 0.27 → 0.30 | 0.37 → 0.21 | 1.5 / 4.4 / 4.4 → 6.7 / 2.2 / 7.2 | 765 → 133 | 7.8 → 12.2 | 0 → 0 |
+| late2500 sector | 0.28 → 0.30 | 0.31 → 0.17 | 3.7 / 7.3 / 7.8 → 4.8 / 2.4 / 6.9 | 1 111 → 316 | 7.2 → 9.3 | 0.57 → 0 |
+| late2500 system | 0.33 → 0.26 | 0.33 → 0.18 | 1.6 / 1.3 / 2.5 → 2.5 / 1.1 / 3.0 | 459 → 212 | 4.0 → 11.2 | 0 → 0 |
+| late2500 planet | 0.41 → 0.15 | 0.31 → 0.21 | 4.4 / 4.1 / 6.1 → 0.9 / 1.3 / 1.4 | 2 127 → 127 | 10.7 → 10.2 | 0 → 0 |
+| late2500-1200 galaxy | 0.37 → 0.22 | 0.24 → 0.20 | 4.7 / 1.3 / 5.2 → 4.0 / 2.0 / 4.6 | 1 459 → 197 | 11.1 → 10.7 | 0.28 → 2.22 |
+| late2500-1200 sector | 0.30 → 0.27 | 0.27 → 0.15 | 2.1 / 0.9 / 2.7 → 5.9 / 1.5 / 6.2 | 1 817 → 383 | 9.6 → 12.5 | 0 → 1.76 |
+| late2500-1200 system | 0.38 → 0.21 | 0.71 → 0.19 | 5.1 / **165.6** / **165.6** → 2.2 / 1.2 / 3.0 | 829 → 205 | 11.3 → 10.9 | 0.85 → 0 |
+| late2500-1200 planet | 0.42 → 0.20 | 0.19 → 0.13 | 5.2 / 0.6 / 5.7 → 2.4 / 1.5 / 2.9 | 1 288 → 280 | 12.9 → 12.0 | 1.66 → 0 |
+
+fps is 56-60 at every zoom in both (vsync-bound); the worker ran 60 steps/s in both. The main thread's sync cost per
+frame is down by about a third and its worst frame by an order of magnitude where the old path hit a big cold apply.
+The drawn lag and the clock's stalls did not move: they follow the worker's per-tick cost on this loaded machine (step
+3-37 ms + diff 7-33 ms per tick in these runs, so the messages carry 2-4+ steps and the clock's playout buffer holds
+about two bursts), and they swing with the machine's load between runs (base 4.0-12.9 steps, chunk 9 9.3-12.5 in the
+same pairs; §2.5's runs: 6.6-11.9).
+
+**The presentation clock (tried, not changed).** On the synthetic arrival patterns of the clock tests (bursts of 4-6
+steps every 60-90 ms, 1-8 at 30-130 ms, a worker behind with 1-4) the dip-based delay holds about twice what the clock
+needs: lag 10.1 steps where the burst needs ~5. Trimming the headroom the clock never used over its window
+(and a lower slack) brought it to 7.0-7.4 without a stall on those patterns, but with occasional worker gaps (a
+150-270 ms hiccup every few seconds, as these runs show) it starved 3-4× as often, and in the browser it raised the
+clock stall % at two of four zooms; holding the trim off for 10 s after a starve left a 7 % gain. Not worth the
+stutter: the clock is unchanged, and the lag comes down with the worker's per-tick cost (§8 "Worker headroom").
+
+`scripts/simworker-smoke.mjs <url> --load=/dev-saves/late2500.dwusave --gpu=egl`: SMOKE OK; render pacing mean / p95 /
+max |drawn − wall × rate| 0.51 / 1.28 / 3.62 ms → 0.38 / 1.00 / 2.79 ms, no frame standing still; worst hot apply over
+the run (command replies, screens, the UI flows) 11.0 → 5.8 ms, worst cold pump 5.1 → 1.8 ms. With `--detect-writes`
+(the UI tour): 0 unexpected keys, replica digest = worker digest after the tour.
+
+**SharedArrayBuffer.** `crossOriginIsolated` is false in Vite dev and in the Electron shell (neither sends COOP / COEP;
+`desktop/main.cjs` serves `dwu://` through `protocol.handle` without them), so `SharedArrayBuffer` is not defined there.
+It is not used: the delta streams are already transferred (zero copy), and the hot part is now ~56 KB, so a shared ring
+would save one allocation per message at the cost of cross-origin isolation for every asset; nothing needs to degrade.
+
 ## 3. The replica sync (src/simworker/replicaSync.ts, replicaGalaxy.ts)
 
 ### 3.1 Identity and the shadow
@@ -259,7 +360,29 @@ What is synced and what is not:
    runs. It is followed by an incremental sweep. Unreachable objects are dropped on both sides, so neither side leaks.
 
 Change detection uses SameValue: NaN equals NaN, and −0 differs from 0, because the digest hashes the sign bit.
-Values travel as a tag plus a payload in Float64 streams; strings and typed-array contents ride alongside.
+
+**Wire format (chunk 9).** Records are uint32 codes: a header (`op + 8 · n`) and the object's id, then the record's
+values. Consecutive sets of one object share one Set record of n (key, value) pairs, key = slot · 16 + tag. A value is
+its tag, then its payload in the narrowest lane that holds it exactly: an integer in [0, 2³²) or a float32-exact number
+(the sim's C# `float` fields) is one code, any other number goes to the stream's f64 lane, a ref / string / static is
+one code (sync id, string index), true / false / null / undefined none. So a moved ship's position, heading and touch
+cost about 40 bytes instead of 200, and every value arrives bit-exact (−0, NaN and ±Infinity included). Strings and
+typed-array contents ride alongside, as before.
+
+**Hot pass registries (chunk 9).** Gated objects (BuiltObject, Fighter, Creature) are not walked through their shadows
+every step: each gated class keeps a dense list with the values its ungated fields (the gate, hasBeenDestroyed) had at
+the last gate compare, numbers in an f64 lane. The hot pass probes each object against that record (one read of the
+object, no shadow or shape lookup) and runs the gate compare only for those that changed: about a tenth of the ships on
+a late galaxy. Hot arrays (ships' and fighters' explosion lists, a system's creatures, …) are listed densely with their
+length at the last compare: an array that was empty then and is empty now is skipped. Both are exact: any other compare
+that changes the object's shadow (the cold pass, compareNow, a touch) invalidates its entry (emitSet / writeContents),
+so "unchanged since the last compare" means "equal to the shadow". `hotRegistries: false` turns them off (A/B).
+
+**Guarded hot fields (chunk 9).** `hotFieldGuards` (replicaGalaxy.ts): a fixed hot field compared at the step rate only
+while its guard field is ≥ 0. Weapon.resetNext / FighterWeapon.resetNext flip on every touch of an idle weapon (no
+target: reset next, then reset), 2 000+ sets a step on a late galaxy; the view reads them only for a shot in flight
+(effectsLayer.ts shotFlightSpeed: distanceTravelled > 1; reset() sets −1). The cold pass still compares them, in the hot
+stream (a fixed class's pinned slot), so the replica is exact within a cycle.
 
 ### 3.3 Two streams and their ordering rules
 
@@ -281,16 +404,27 @@ Each delta has a `hot` part and a `cold` part, and each part has shells (new obj
   record refers to an object born in a cold part the main thread may not have applied yet, the delta carries
   `coldDep`. The main thread then applies the hot shells, then **only the shells and births** of the cold parts up to
   `coldDep` (their bodies stay queued for the pump: a body only sets fields of objects that existed before its part),
-  then the hot body.
+  then the hot body. Since chunk 9 those births are budgeted (`depBudgetMs`, 4 ms a frame): when they do not fit,
+  `apply` returns `pending` and the message — and every message after it — waits for the next frame, where the same
+  call continues. Nothing references the newborns until the hot body is applied, so readers never see a half-built
+  object; the replica's hot state stays at the previous message meanwhile, and the cold pump waits.
 - **Main thread, per delta:** register the shapes, apply the hot part, queue the cold part.
-- **Main thread, per frame:** pump the cold queue for 0.5 ms. The budget grows by 10 % per queued part beyond 4, up to
-  4×. A part may be left half-applied, but only between objects: never between an array's new length and its element
-  sets.
+- **Main thread, per frame:** pump the cold queue for 0.5 ms. The budget grows by 50 % per queued part beyond 2, up to
+  8× (`coldPumpScale`; it was +10 % beyond 4, up to 4×, and the queue then sat at 20-30 parts on the late save: a
+  third of a second of cold data, all of which a command reply applied at once). A part may be left half-applied, but
+  only between objects: never between an array's new length and its element sets.
+- **Command replies** wait for the cold parts through their delta (§4.3 "Freshness of `onApplied`"): those parts are
+  pumped first, under `replyBudgetMs` (4 ms a frame), and the replies — with the events of their message and of the
+  messages after it, in order — are delivered once they are in. A message's events are delivered before its own cold
+  part applies (its drops among them), a reply after it.
 
 ### 3.4 Decoding (main thread)
 
 - Class instances are built by generated per-shape constructors (one hidden class per shape, as save loading does),
   so the replica is as fast to read as a loaded game.
+- The id tables are dense (`objs` is filled with null ahead of ids not born here yet, kinds / shapes are typed arrays)
+  and the reverse map (replica object → sync id) is a Map: at 2.4 M keys a WeakMap insert cost about 5 µs, with GC
+  stalls of up to a second under churn — it was 80 % of the cold pump and most of the snapshot apply.
 - Field sets go through generated per-shape setters.
 - Save revive hooks (Cargo, Random) are honoured.
 
@@ -363,8 +497,8 @@ not to the local queue.
   new fleet template went into. Both compares reshape a class instance that has gained a lazily set `declare`d
   field (e.g. `Empire.fleetDesigns`, `constructionBoard`). The round-robin cold pass does not notice new fields.
 - **Refresh on open** (`simworker/refresh.ts requestSimRefresh`, message `refresh`): when a screen opens, it asks the
-  worker to `compareReach` the objects it shows. It re-renders once they have arrived: the reply is applied with
-  `applyThrough`, as a command reply is. In-thread this is a no-op.
+  worker to `compareReach` the objects it shows. It re-renders once they have arrived: the reply waits for the cold
+  parts through its delta, as a command reply does (§4.3 "Freshness of `onApplied`"). In-thread this is a no-op.
 - **`runPlayerCommand`** (synchronous result) throws on a replica. Its two callers, the advisor chat and the diplomat
   voice, are in §9 chunk 8.
 - **By-value identity** (`remoteArgs.ts RemoteValues`). By-value objects carry a main-thread value id. Shared or cyclic
@@ -386,8 +520,8 @@ command queue (§8 "UI sim writes"): they are either **journaled player commands
 reads** (`sim/readOnlyQuery.ts`) that run on the replica in worker mode and on the in-thread game between frames:
 
 - A command is applied at the next frame boundary in both modes, journaled and replayed; in worker mode its reply comes
-  one round trip later (applied with `applyThrough`, as every reply). A reply for a right-click or a selection / page the
-  UI has left since is not shown.
+  one round trip later (once the cold parts through its delta are applied, as every reply). A reply for a right-click
+  or a selection / page the UI has left since is not shown.
 - A read-only lookup answers with the value it would give (a detached record, the aged figure) and writes nothing. The
   records the C# UI's lookups add are asked for (`requestUiRecord`) and added by one `obtainUiRecords` command per UI
   task, the same in both modes. Port-only reads (the local-model briefs) use `withPureSimReads`: they ask for nothing.
@@ -462,8 +596,11 @@ PromptForAuthorizationInternal (Main.Part9.cs 1053) — runs in the sim, the sam
 
 **Freshness of `onApplied`.** The host compares what a command named and returned (`ReplicaEncoder.compareNow`: the
 issuing empire to depth 1, arguments and results to depth 2) in the delta of the tick that applied it, and the main
-thread applies the cold parts through that delta before it runs the command replies (`GalaxyReplica.applyThrough`).
-So a callback reads the replica as of that boundary (one step later than in-thread), including cold fields.
+thread runs the command replies once the cold parts through that delta are applied. So a callback reads the replica as
+of that boundary or later (one step or more later than in-thread), including cold fields. Until chunk 9 this was
+`GalaxyReplica.applyThrough`, which applied the whole cold backlog in the frame the reply landed (17-112 ms on the late
+save, 435 ms at worst); now the parts are pumped under `replyBudgetMs` a frame and the reply waits for them: about one
+frame on the late save (§2.6).
 
 **Dropped objects.** A BuiltObject, Habitat, ShipGroup, Creature, Fighter or Empire the replica no longer knows (destroyed
 and dropped by the mark while the HUD still held it) is never sent by value. In a top-level array argument (a ships
@@ -650,7 +787,8 @@ The only behaviour changes in this mode are:
 | `src/simworker/protocol.ts` | Message types |
 | `src/simworker/refresh.ts` | Refresh-on-open requests from the screens (`requestSimRefresh`; no-op in-thread) |
 | `src/simFrameBudget.ts` | SimFrameBudget, shared by both modes |
-| `scripts/sync-measure.mjs` | Sync cost on a save (`--compare-options`, `--verify`, `--census`, `--hot-fields`) |
+| `scripts/sync-measure.mjs` | Sync cost on a save (`--compare-options`, `--verify`, `--census`, `--hot-fields`; `--client`: SimHost + SimClientCore end to end, with command replies, §2.6) |
+| `test/replicaSyncChunk9.test.ts` | Chunk 9: the compact wire format's exactness, guarded hot fields, the hot pass registries, budgeted dependency births, replies waiting for their cold parts |
 | `scripts/simworker-smoke.mjs` | Browser smoke: boots with the flag, checks run / speed / pause / move order, screenshots |
 | `test/simWorkerCommandFailures.test.ts` | Failed commands: refusals, throws, unknown ops, dropped / stale arguments, unsendable results, timeout, worker stop, close / reload (§4.4) |
 | `test/simWorker.test.ts`, `test/replicaSync.test.ts` | Determinism, fidelity and save gates; codec fuzz (8 seeds × 400 steps by default; `FUZZ_SEEDS` / `FUZZ_STEPS`) |
@@ -658,15 +796,21 @@ The only behaviour changes in this mode are:
 
 ## 8. Known limits of phase 1 (also in §9)
 
-- **Boot cost.** A late save's snapshot is about 4–5 s on top of the worker's own load, and the main thread is busy
-  for about 2 s applying it. A streamed or incremental snapshot would fix that.
+- **Boot cost.** A late save's snapshot is about 3–4 s to encode on top of the worker's own load (201 MB since chunk
+  9, 425 MB before), and the main thread is busy for about 1–1.7 s applying it (2–7 s before). A streamed or
+  incremental snapshot would fix the rest.
 - **Occasional hot-apply spikes (3–14 ms)** — addressed in chunk 2: the birth bursts (missions with their commands,
   research-improved weapon stats) now travel cold, the usual dependencies (new designs and fleets, fighter launches,
   refits) are gone, and a remaining dependency applies only births (§3.3). What is left is the hot part's own volume
-  on a busy step (about 5 000 sets) and GC pauses (§2.4).
+  on a busy step (about 5 000 sets) and GC pauses (§2.4). Since chunk 9 a dependency's births are budgeted across
+  frames and command replies no longer apply the cold backlog at once (§2.6): the worst main-thread sync frame on the
+  late saves is 4–11 ms (it was 17–165 ms in the browser, 435 ms in node).
 - **Worker headroom.** Step plus diff is 10–20 ms per step on the loaded machine at 60 steps/s. Above that the worker
   falls behind and the budget catches up, exactly as the in-thread loop does. Tuning knobs: `coldBudgetMs`,
-  `coldMaxSets`, `markBudgetMs`.
+  `coldMaxSets`, `markBudgetMs`. Behind, a tick carries several steps and the presentation clock trails about two
+  bursts (6–12 steps on the late saves under load, §2.6): the lag comes down only with the worker's per-tick cost. The
+  hot pass is now mostly the ~1 000 touched ships' own compares (their 52 hot fields, their weapons), memory-bound
+  reads of the sim objects and their shadows.
 - **Cold staleness.** Cold data is up to one cycle old (about 1–1.5 s), plus any pump backlog. A paused game settles
   to exact: the worker keeps comparing for two full cycles after the last change.
 - **UI sim writes (2026-10-03).** No UI path writes the game, or draws `galaxy.rnd`, outside the journaled command
@@ -953,9 +1097,51 @@ Original brief:
   brief builders run on the replica (read-only) or in the worker.
 - Test: advisor turn through the host; aiAdvisor18c's import-walk test still holds.
 
-**Chunk 9 — sync performance** (independent of the others).
-- Files: `src/simworker/*`.
-- Work: a streamed snapshot (boot); fewer forced cold dependencies (cold-kind births in the cold stream); time-sliced
-  forced parts; a SharedArrayBuffer ring for hot positions if cross-origin isolation is enabled in the desktop shell
-  (`desktop/main.cjs` can set COOP/COEP); worker GC (the shadows roughly double the worker heap).
-- Test: `scripts/sync-measure.mjs --verify` stays identical; perf-render numbers in this document.
+**Chunk 9 — sync performance** (independent of the others). *Done* (2026-10-03; numbers in §2.6).
+- Files: `src/simworker/replicaSync.ts`, `replicaGalaxy.ts`, `clientCore.ts`, `writeDetector.ts`;
+  `scripts/sync-measure.mjs --client`, `scripts/simworker-smoke.mjs` (sync stats before the simulated crash).
+- **Time-sliced forced applies, replica kept consistent.**
+  - Command and refresh replies no longer apply the cold backlog at once (`applyThrough` is gone). A message's replies
+    wait in `SimClientCore.settling` until the cold parts through its delta are applied; those parts are pumped first,
+    under `replyBudgetMs` (4 ms a frame), then the regular pump. Replies and events stay in order. A message's events go
+    out before its own cold part applies (its drops among them), as before; a reply after it, as before. A worker that
+    stops answers the replies already received first.
+  - A hot part that depends on cold births applies them under `depBudgetMs` (4 ms a frame). If they do not fit,
+    `ReplicaDecoder.apply` returns `pending`, the message and those after it wait, and the next frame continues the same
+    call. The newborns are unreferenced shells until the hot body is applied, and the pump waits meanwhile.
+  - The cold pump's budget grows faster with the queue (×1 up to 2 parts, +50 % a part, at most ×8), so the queue stays
+    at 0–2 parts instead of 20–30, and a reply waits about a frame.
+  - The decoder's reverse map is a Map (was a WeakMap: 5 µs inserts, GC stalls up to a second at 2.4 M keys), and its
+    id tables are dense (the sparse `objs` array had fallen into dictionary mode). That was most of the cold pump's
+    cost and of the 112–165 ms cold applies, and it makes the snapshot apply 2–4× faster.
+- **A smaller hot stream.**
+  - The compact wire format (§3.2): uint32 codes, an f64 lane only for the numbers that need it, integers and
+    float32-exact numbers in one code, and one Set record per object. Exact: `--verify` gives the identical save text
+    and digest.
+  - Guarded hot fields (`hotFieldGuards`): idle weapons' `resetNext` (2 100 sets a step) travel only while the shot is
+    drawn.
+  - Hot part 272 → 56 KB a step, delta 447 → 121 KB, snapshot 425 → 201 MB.
+  - Not done, on purpose: quantizing or lossy delta-encoding positions. Lossless deltas of full doubles do not shrink.
+    A lossy one would break consumers that compare positions exactly (the parent-frame test in `renderInterp.ts
+    followsParent`, UI distance reads), for ~10 KB a step more.
+- **Worker diff.** Probe registries for gated objects and hot arrays (§3.2): the hot pass skips untouched ships without
+  reading their shadows (−20–30 % hot pass, A/B and alternated runs). The guard removes a third of the hot sets.
+- **Presentation clock.** Tried trimming the delay's unused headroom. It is not kept, because of the stall trade-off
+  (§2.6): the lag follows the worker's per-tick cost.
+- **SharedArrayBuffer.** Not cross-origin isolated in Vite dev or Electron; not used, and not needed after the above
+  (§2.6).
+- **Tests.**
+  - `test/replicaSyncChunk9.test.ts`: every lane exact (−0, NaN, ±Infinity, 2³², 5e-324, statics, refs); one Set
+    record per object; guards; registry exactness with a value changed back after another compare sent it; registries
+    on = off over a randomized run; dependency births over several budgeted calls; a reply waiting for its cold parts
+    over several frames, in issue order.
+  - `test/simWorkerMainView.test.ts` checks `resetNext` only for shots in flight.
+  - All of `test/simWorker*`, `test/replica*` and `test/renderInterp*` pass.
+  - Write detector (smoke `--detect-writes`, late save, UI tour): 0 unexpected keys, digests equal.
+  - `repin --check`: 0.
+- **Still open.**
+  - A streamed snapshot (boot is still 3–4 s of encode and 1–1.7 s of main-thread apply).
+  - The worker's hot pass: the touched ships' own compares (§8 "Worker headroom"). A typed per-shape shadow for the
+    hot numeric slots would cut its memory traffic.
+  - Worker GC: the shadows roughly double the worker heap.
+  - Single frames of 5–10 ms remain: a birth burst in the hot part, or a GC pause.

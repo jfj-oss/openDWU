@@ -370,6 +370,16 @@ async function checkPacing() {
     }
 }
 
+/** The main thread's sync cost since boot (window.__dwu.simStats; worker mode): per frame, and the worst frame's hot apply
+ *  (with any cold births it waited for) and cold pump (with the cold parts command replies waited for). */
+async function printSyncStats(when) {
+    const s = await page.evaluate(() => {
+        const st = window.__dwu.simStats;
+        return { frames: st.renderFrames, deltas: st.deltas, hot: st.hotApplyMs / Math.max(1, st.renderFrames), cold: st.coldPumpMs / Math.max(1, st.renderFrames), maxHot: st.maxHotApplyMs, maxCold: st.maxColdPumpMs, maxSync: st.maxSimMsPerRenderFrame, workerStep: st.workerStepMs, workerDiff: st.workerDiffMs, kb: st.deltaBytes / 1024, hotKb: st.hotBytes / 1024, backlog: st.coldBacklog, pauseHolds: st.pauseHolds, lastPauseAckMs: st.lastPauseAckMs };
+    });
+    console.log(`sync stats (${when}): ${JSON.stringify(s)}`);
+}
+
 /** Console lines from here on that the simulated crash is expected to log (not counted as errors). */
 let crashLogFrom = -1;
 
@@ -484,6 +494,7 @@ async function commandReplies() {
     // 5. Worker mode: the worker stops (a fatal error in its loop, with its rescue save), the restart is offered and
     //    taken; then it crashes hard (terminated, no save of its own) and restarts from the replica.
     if (!inThread) {
+        await printSyncStats('before the simulated crash');
         crashLogFrom = logs.length;
         await crashAndRestart('fatal', pending, recruit);
         await crashAndRestart('hard', pending, recruit);
@@ -754,13 +765,7 @@ try {
         await shots([['generated-galaxy', null]]);
     }
     await dumpWrites('end of run');
-    if (!inThread && crashLogFrom < 0) {
-        const s = await page.evaluate(() => {
-            const st = window.__dwu.simStats;
-            return { frames: st.renderFrames, deltas: st.deltas, hot: st.hotApplyMs / Math.max(1, st.renderFrames), cold: st.coldPumpMs / Math.max(1, st.renderFrames), maxHot: st.maxHotApplyMs, maxCold: st.maxColdPumpMs, workerStep: st.workerStepMs, workerDiff: st.workerDiffMs, kb: st.deltaBytes / 1024, backlog: st.coldBacklog, pauseHolds: st.pauseHolds, lastPauseAckMs: st.lastPauseAckMs };
-        });
-        console.log(`sync stats: ${JSON.stringify(s)}`);
-    }
+    if (!inThread && crashLogFrom < 0) await printSyncStats('end of run');
 } finally {
     await browser.close();
     // The simulated crash's own errors (the worker STOPPED report, the failed requests) are expected.

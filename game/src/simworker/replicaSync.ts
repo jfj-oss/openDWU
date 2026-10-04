@@ -39,7 +39,13 @@ export const enum Kind {
     Typed = 5,
 }
 
-/** Value tags (each value is a tag followed by one payload number). */
+/**
+ * Value tags. A value is its tag code, then its payload: Num — the next number of the stream's f64 lane; F32 — one
+ * code holding the float32 bits (a number Math.fround leaves unchanged: the sim's C# `float` fields); Int — one code
+ * holding the number (an integer in [0, 2^32): ids, counters, game-ms timestamps); Str / Ext — one code, the index
+ * into the part's strings; Ref — one code, the sync id; True / False / Null / Undef — none. Every number keeps its
+ * exact value (the lanes are chosen by what represents it exactly), so the replica is exact.
+ */
 const enum Tag {
     Num = 0,
     Str = 1,
@@ -49,22 +55,39 @@ const enum Tag {
     Undef = 5,
     Ref = 6,
     Ext = 7,
+    F32 = 8,
+    Int = 9,
 }
 
-/** Record opcodes of the body stream. */
+/** Bits of a Set pair's key code below the slot (the value's tag). */
+const TAG_BITS = 4;
+/** Highest shape slot / array index a Set pair can name (the key code is slot · 16 + tag, a uint32). */
+const MAX_SLOT = 2 ** (32 - TAG_BITS) - 1;
+/** Bits of a record header below its count (header = op + n · 8). */
+const OP_BITS = 3;
+const MAX_COUNT = 2 ** (32 - OP_BITS) - 1;
+
+/**
+ * Record opcodes of the births / body streams. A record is a header code (`op + n · 8`) and the object's id, then:
+ */
 const enum Op {
-    /** id, n, n values: the fields (shape order) / elements / [k, v] pairs / items of a new object, or of an existing
-     *  Map / Set / reshaped object (refill). */
+    /** n values: the fields (shape order) / elements / [k, v] pairs / items of a new object, or of an existing Map /
+     *  Set / reshaped object (refill). */
     Fill = 1,
-    /** id, slot, value: one field (shape slot) or array element. */
+    /** n (key, value) pairs, key = slot · 16 + tag: fields (shape slots) or array elements of one object, in the order
+     *  compared (consecutive sets of one object share one record). */
     Set = 2,
-    /** id, length: an array's new length (before its element sets). */
+    /** (n = 0) length: an array's new length (before its element sets). */
     Len = 3,
-    /** id, typed payload index: a typed array's new contents (same length). */
+    /** (n = 0) typed payload index: a typed array's new contents (same length). */
     Typed = 4,
-    /** id, shape: an object's field list changed (followed by a Fill with the new shape's values). */
+    /** (n = 0) shape: an object's field list changed (followed by a Fill with the new shape's values). */
     Reshape = 5,
 }
+
+/** Float32 bits ↔ number (the F32 tag's payload code). */
+const F32_BOX = new Float32Array(1);
+const F32_BITS = new Uint32Array(F32_BOX.buffer);
 
 /** Typed-array constructors by index (shell / Typed records). */
 const TYPED_CTORS = [Int8Array, Uint8Array, Int16Array, Uint16Array, Int32Array, Uint32Array, Float32Array, Float64Array, Uint8ClampedArray] as const;
@@ -79,16 +102,19 @@ function typedIndex(o: object): number {
 export type ReplicaShape = [Kind, string, ...string[]];
 
 /**
- * One stream's share of a delta. `shells` and `body` are Float64 streams; strings and typed-array contents ride beside
- * them. All of it is transferable / cheap to structured-clone.
+ * One stream's share of a delta. Records are uint32 codes (`Op`, `Tag`); the numbers that need all 64 bits ride in an
+ * f64 lane beside each code stream, strings and typed-array contents beside them. All of it is transferable / cheap
+ * to structured-clone.
  */
 export interface ReplicaPart {
     /** Shell records: kind, id, then Class/Plain: shape · Array: length · Map/Set: — · Typed: ctor, payload index. */
-    shells: Float64Array;
+    shells: Uint32Array;
     /** Fill records of the objects born in this part (applied before `body`: until `body` references them, a
-     *  half-filled newborn is invisible, so a cold part may be paused anywhere in here). */
-    births: Float64Array;
-    body: Float64Array;
+     *  half-filled newborn is invisible, so a cold part may be paused anywhere in here), and their f64 numbers. */
+    births: Uint32Array;
+    birthNums: Float64Array;
+    body: Uint32Array;
+    bodyNums: Float64Array;
     strs: string[];
     typed: AnyTyped[];
     /** Ids no longer reachable (forgotten by the encoder; cold stream only). */
@@ -130,16 +156,40 @@ export interface DeltaStats {
     hotBytes: number;
 }
 
+/** A record stream under construction: uint32 codes and their f64 lane, plus the Set record still open for appending. */
+class RecordWriter {
+    readonly codes = new U32Stream();
+    readonly nums = new F64Stream();
+    /** The open Set record: its header's index, its object, and where the codes ended after its last pair (-1: none). */
+    openAt = -1;
+    openId = -1;
+    openEnd = -1;
+    reset(): void {
+        this.openAt = this.openId = this.openEnd = -1;
+    }
+}
+
 /** One stream's writer (ReplicaPart under construction). */
 class PartWriter {
-    shells = new F64Stream();
-    births = new F64Stream();
-    body = new F64Stream();
+    shells = new U32Stream();
+    births = new RecordWriter();
+    body = new RecordWriter();
     strs: string[] = [];
     typed: AnyTyped[] = [];
     drops: number[] = [];
     take(): ReplicaPart {
-        const out: ReplicaPart = { shells: this.shells.take(), births: this.births.take(), body: this.body.take(), strs: this.strs, typed: this.typed, drops: this.drops };
+        const out: ReplicaPart = {
+            shells: this.shells.take(),
+            births: this.births.codes.take(),
+            birthNums: this.births.nums.take(),
+            body: this.body.codes.take(),
+            bodyNums: this.body.nums.take(),
+            strs: this.strs,
+            typed: this.typed,
+            drops: this.drops,
+        };
+        this.births.reset();
+        this.body.reset();
         this.strs = [];
         this.typed = [];
         this.drops = [];
@@ -148,7 +198,7 @@ class PartWriter {
 }
 
 function partBytes(p: ReplicaPart): number {
-    let bytes = (p.shells.length + p.births.length + p.body.length) * 8 + p.drops.length * 8;
+    let bytes = (p.shells.length + p.births.length + p.body.length) * 4 + (p.birthNums.length + p.bodyNums.length) * 8 + p.drops.length * 8;
     for (const s of p.strs) bytes += s.length * 2 + 8;
     for (const t of p.typed) bytes += t.byteLength;
     return bytes;
@@ -161,16 +211,11 @@ export function partEmpty(p: ReplicaPart): boolean {
 
 /** A growable Float64 stream. */
 class F64Stream {
-    buf = new Float64Array(1 << 14);
+    buf = new Float64Array(1 << 12);
     n = 0;
     push(x: number): void {
         if (this.n === this.buf.length) this.grow();
         this.buf[this.n++] = x;
-    }
-    push2(a: number, b: number): void {
-        if (this.n + 2 > this.buf.length) this.grow();
-        this.buf[this.n++] = a;
-        this.buf[this.n++] = b;
     }
     private grow(): void {
         const b = new Float64Array(this.buf.length * 2);
@@ -182,6 +227,43 @@ class F64Stream {
         this.n = 0;
         return out;
     }
+}
+
+/** A growable uint32 stream (values are stored as uint32: callers pass integers in [0, 2^32)). */
+class U32Stream {
+    buf = new Uint32Array(1 << 14);
+    n = 0;
+    push(x: number): void {
+        if (this.n === this.buf.length) this.grow();
+        this.buf[this.n++] = x;
+    }
+    push2(a: number, b: number): void {
+        if (this.n + 2 > this.buf.length) this.grow();
+        this.buf[this.n++] = a;
+        this.buf[this.n++] = b;
+    }
+    push3(a: number, b: number, c: number): void {
+        if (this.n + 3 > this.buf.length) this.grow();
+        this.buf[this.n++] = a;
+        this.buf[this.n++] = b;
+        this.buf[this.n++] = c;
+    }
+    private grow(): void {
+        const b = new Uint32Array(this.buf.length * 2);
+        b.set(this.buf);
+        this.buf = b;
+    }
+    take(): Uint32Array {
+        const out = this.buf.slice(0, this.n);
+        this.n = 0;
+        return out;
+    }
+}
+
+/** Record header code. */
+function header(op: Op, n: number): number {
+    if (n > MAX_COUNT) throw new Error(`replica sync: a record of ${n} values is too long`);
+    return op + n * (1 << OP_BITS);
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -265,6 +347,17 @@ export interface ReplicaEncoderOptions {
     ungatedFields?: ReadonlySet<string>;
     /** Hot class names whose hot fields are exactly their alwaysHotFields (no adaptive fields). */
     fixedHotClasses?: readonly string[];
+    /**
+     * `Class.field` → `guard`: a fixed hot field compared by the hot and touch compares only while the object's
+     * `guard` field is ≥ 0 — a flag that only matters to the view while the object is drawn (a shot in flight:
+     * Weapon.resetNext flips on every touch of an idle weapon, distanceTravelled −1). The cold pass still compares it
+     * (in the hot stream, as every slot of a fixed hot class's pinned fields), so the replica stays exact within a
+     * cold cycle, and the moment the guard turns ≥ 0 the field is compared with it.
+     */
+    hotFieldGuards?: Readonly<Record<string, string>>;
+    /** Probe gated hot objects and hot arrays through their dense registries (default true; false: compare each in
+     *  full every step, as before — A/B measurements). */
+    hotRegistries?: boolean;
     /** Hot classes compared only as gated children (not on their own every step), e.g. Weapon. */
     childHotClasses?: readonly object[];
     /** A field becomes hot when, over a cold cycle, it changed (in any instance) at least this many times per step
@@ -333,6 +426,47 @@ const enum MarkPhase {
     Sweeping = 2,
 }
 
+/** A registry entry's "never compared" marker (ungated values) — differs from every value. */
+const INVALID: unique symbol = Symbol('replica sync: not compared');
+/** A registry entry's "a number, in the f64 lane" marker. */
+const NUM: unique symbol = Symbol('replica sync: number');
+
+/**
+ * Hot objects of one gated class, densely (docs/sim-worker.md §3.2 "Gates"): each with the values its ungated fields
+ * (the gate, ungatedFields) had at its last gate compare. The hot pass probes them here — one read of the object, none
+ * of its shadow — and runs the gate compare only for those that changed: on a late galaxy the sim touches about a tenth
+ * of the ships a step, and the shadow / shape lookups of the others were most of the hot pass (cache misses over
+ * 2.4 M-entry tables). Exact: an entry is valid only while no other compare changed the object's shadow since
+ * (emitSet / writeContents invalidate it), so "unchanged since the last gate compare" means "equal to the shadow".
+ */
+interface GateRegistry {
+    /** Ungated field names (the gate first). */
+    names: string[];
+    objs: (object | null)[];
+    ids: number[];
+    /** Per entry × names: the value at the last gate compare, NUM (then in `num`), or INVALID. */
+    seen: unknown[];
+    num: Float64Array;
+    probe: (o: object, seen: unknown[], num: Float64Array, base: number, NUMS: symbol) => boolean;
+    record: (o: object, seen: unknown[], num: Float64Array, base: number, NUMS: symbol) => void;
+}
+
+function makeGateRegistry(names: string[]): GateRegistry {
+    const access = (k: string): string => (/^[A-Za-z_$][\w$]*$/.test(k) ? `.${k}` : `[${JSON.stringify(k)}]`);
+    // SameValue against the recorded value: numbers in the f64 lane (no boxed doubles to chase), the rest by identity.
+    const probe = names.map((k, u) => `v = o${access(k)}; if (typeof v === 'number' ? seen[b + ${u}] !== NUMS || (v !== num[b + ${u}] || (v === 0 && 1 / v !== 1 / num[b + ${u}])) : seen[b + ${u}] !== v) return true;`);
+    const record = names.map((k, u) => `v = o${access(k)}; if (typeof v === 'number') { seen[b + ${u}] = NUMS; num[b + ${u}] = v; } else seen[b + ${u}] = v;`);
+    return {
+        names,
+        objs: [],
+        ids: [],
+        seen: [],
+        num: new Float64Array(1024),
+        probe: new Function('o', 'seen', 'num', 'b', 'NUMS', `let v;\n${probe.join('\n')}\nreturn false;`) as GateRegistry['probe'],
+        record: new Function('o', 'seen', 'num', 'b', 'NUMS', `let v;\n${record.join('\n')}`) as GateRegistry['record'],
+    };
+}
+
 export class ReplicaEncoder {
     private readonly ids = new Map<object, number>();
     private objs: (object | null)[] = [];
@@ -347,7 +481,23 @@ export class ReplicaEncoder {
     /** Labels of gated classes' child containers (`Class.field`): compared through their gate, streamed hot. */
     private readonly childLabels = new Set<string>();
     private readonly alwaysHot: ReadonlySet<string>;
+    /** Hot objects compared every step that are in no registry below (non-gated hot classes, Maps / Sets / plain
+     *  hot containers). */
     private hotIds: number[] = [];
+    /** Gated hot objects, by class (GateRegistry), and per id its registry (1 + index into gateRegs; 0: none, see
+     *  regOf) and entry. */
+    private readonly gateRegs: GateRegistry[] = [];
+    private readonly gateRegByClass = new Map<string, number>();
+    /**
+     * Hot arrays (hot containers), densely, with their length at the last compare (−1: invalid). An array that was
+     * empty then and is empty now is unchanged without reading its shadow (most ships' explosion lists).
+     */
+    private arrObjs: (unknown[] | null)[] = [];
+    private arrIds: number[] = [];
+    private arrLen: Int32Array = new Int32Array(1024);
+    /** Per id: its registry (0 none, 1 hot arrays, 2 + g gate registry g) and its entry there. */
+    private regOf: Uint8Array = new Uint8Array(1 << 16);
+    private regAt: Int32Array = new Int32Array(1 << 16).fill(-1);
     /** Every class instance / cold container (hot-class instances are here too: their full compare). */
     private coldIds: number[] = [];
     private coldCursor = 0;
@@ -472,7 +622,10 @@ export class ReplicaEncoder {
     }
 
     get hotCount(): number {
-        return this.hotIds.length;
+        let n = this.hotIds.length;
+        for (const o of this.arrObjs) if (o !== null) n++;
+        for (const r of this.gateRegs) for (const o of r.objs) if (o !== null) n++;
+        return n;
     }
 
     /** Cold cycles completed. */
@@ -614,9 +767,8 @@ export class ReplicaEncoder {
         const t0 = now();
         this.cycleStepCount++;
         this.stamp++;
-        const hotIds = this.hotIds;
-        for (let i = 0; i < hotIds.length; i++) this.compareHot(hotIds[i]);
-        this.stats.hotCompared += hotIds.length;
+        const hotN = this.hotPass();
+        this.stats.hotCompared += hotN;
         if (this.onHotPass !== null) this.onHotPass(this);
         const t1 = now();
         this.stats.hotMs = t1 - t0;
@@ -647,6 +799,151 @@ export class ReplicaEncoder {
         const d = this.takeDelta();
         d.stats.diffMs = now() - t0;
         return d;
+    }
+
+    /** The per-step compare of every hot object (diff): the gate registries' probes, the hot arrays, the rest.
+     *  Returns the objects compared. */
+    private hotPass(): number {
+        let n = 0;
+        for (const r of this.gateRegs) {
+            const objs = r.objs;
+            const u = r.names.length;
+            const probe = r.probe;
+            for (let k = 0; k < objs.length; k++) {
+                const o = objs[k];
+                if (o === null) continue;
+                const b = k * u;
+                if (!probe(o, r.seen, r.num, b, NUM)) continue;
+                this.compareHot(r.ids[k]);
+                r.record(o, r.seen, r.num, b, NUM);
+                n++;
+            }
+        }
+        const arrs = this.arrObjs;
+        for (let k = 0; k < arrs.length; k++) {
+            const a = arrs[k];
+            if (a === null || (a.length === 0 && this.arrLen[k] === 0)) continue;
+            this.compare(this.arrIds[k]);
+            this.arrLen[k] = a.length;
+            n++;
+        }
+        const hotIds = this.hotIds;
+        for (let i = 0; i < hotIds.length; i++) this.compareHot(hotIds[i]);
+        return n + hotIds.length;
+    }
+
+    /** Register hot object `id` (idOf): a gated class instance with a gate, a hot array, or the plain hot list. */
+    private registerHot(id: number, o: object, kind: Kind, info: ShapeInfo | null): void {
+        if (this.opts.hotRegistries === false) {
+            this.hotIds.push(id);
+            return;
+        }
+        if (kind === Kind.Array) {
+            const k = this.arrObjs.length;
+            this.arrObjs.push(o as unknown[]);
+            this.arrIds.push(id);
+            if (k >= this.arrLen.length) {
+                const a = new Int32Array(this.arrLen.length * 2);
+                a.set(this.arrLen);
+                this.arrLen = a;
+            }
+            this.arrLen[k] = -1;
+            this.regOf[id] = 1;
+            this.regAt[id] = k;
+            return;
+        }
+        if (kind === Kind.Class && info !== null && info.gateDiff !== null) {
+            const name = this.nameByProto.get(info.proto!)!;
+            let g = this.gateRegByClass.get(name);
+            if (g === undefined) {
+                const gate = this.opts.gates![name].gate;
+                const names = [gate, ...info.keys.filter((key, i) => info.ungated[i] === 1 && key !== gate)];
+                g = this.gateRegs.length;
+                this.gateRegs.push(makeGateRegistry(names));
+                this.gateRegByClass.set(name, g);
+            }
+            const r = this.gateRegs[g];
+            const k = r.objs.length;
+            r.objs.push(o);
+            r.ids.push(id);
+            const u = r.names.length;
+            for (let x = 0; x < u; x++) r.seen.push(INVALID);
+            if ((k + 1) * u > r.num.length) {
+                const a = new Float64Array(Math.max(r.num.length * 2, (k + 1) * u));
+                a.set(r.num);
+                r.num = a;
+            }
+            this.regOf[id] = 2 + g;
+            this.regAt[id] = k;
+            return;
+        }
+        this.hotIds.push(id);
+    }
+
+    /** Object `id`'s shadow changed outside its registry's own compare: its registry entry no longer tells. */
+    private invalidate(id: number): void {
+        const r = this.regOf[id];
+        if (r === 0) return;
+        const k = this.regAt[id];
+        if (r === 1) this.arrLen[k] = -1;
+        else {
+            const g = this.gateRegs[r - 2];
+            g.seen[k * g.names.length] = INVALID;
+        }
+    }
+
+    /** Drop object `id` from its registry (swept, or reshaped out of its gate). */
+    private unregister(id: number): void {
+        const r = this.regOf[id];
+        if (r === 0) return;
+        const k = this.regAt[id];
+        if (r === 1) this.arrObjs[k] = null;
+        else this.gateRegs[r - 2].objs[k] = null;
+        this.regOf[id] = 0;
+        this.regAt[id] = -1;
+    }
+
+    /** Compact the registries after a sweep. */
+    private compactRegistries(): void {
+        const objs: (unknown[] | null)[] = [];
+        const ids: number[] = [];
+        const len = new Int32Array(Math.max(1024, this.arrObjs.length));
+        for (let k = 0; k < this.arrObjs.length; k++) {
+            const a = this.arrObjs[k];
+            if (a === null) continue;
+            const id = this.arrIds[k];
+            len[objs.length] = this.arrLen[k];
+            this.regAt[id] = objs.length;
+            objs.push(a);
+            ids.push(id);
+        }
+        this.arrObjs = objs;
+        this.arrIds = ids;
+        this.arrLen = len;
+        for (const r of this.gateRegs) {
+            const u = r.names.length;
+            const o2: (object | null)[] = [];
+            const i2: number[] = [];
+            const seen: unknown[] = [];
+            const num = new Float64Array(Math.max(1024, r.objs.length * u));
+            for (let k = 0; k < r.objs.length; k++) {
+                const o = r.objs[k];
+                if (o === null) continue;
+                const id = r.ids[k];
+                const b = o2.length * u;
+                for (let x = 0; x < u; x++) {
+                    seen.push(r.seen[k * u + x]);
+                    num[b + x] = r.num[k * u + x];
+                }
+                this.regAt[id] = o2.length;
+                o2.push(o);
+                i2.push(id);
+            }
+            r.objs = o2;
+            r.ids = i2;
+            r.seen = seen;
+            r.num = num;
+        }
     }
 
     private endCycle(): void {
@@ -737,6 +1034,7 @@ export class ReplicaEncoder {
             if (o !== null && (id >= seen.length || seen[id] === 0)) {
                 this.ids.delete(o);
                 if (this.tracked.size > 0) this.tracked.get(Object.getPrototypeOf(o) as object)?.delete(o);
+                this.unregister(id);
                 this.objs[id] = null;
                 this.shadows[id] = undefined;
                 // Ids are never reused: a cold part still queued on the main thread may name this one.
@@ -751,6 +1049,7 @@ export class ReplicaEncoder {
             const at = this.coldIds[this.coldCursor];
             this.hotIds = this.hotIds.filter(live);
             this.coldIds = this.coldIds.filter(live);
+            this.compactRegistries();
             // Keep the cold cursor near where it was.
             const i = at === undefined ? 0 : this.coldIds.indexOf(at);
             this.coldCursor = i < 0 ? 0 : i;
@@ -789,6 +1088,12 @@ export class ReplicaEncoder {
             const mc = new Uint8Array(n);
             mc.set(this.mixedCold);
             this.mixedCold = mc;
+            const ro = new Uint8Array(n);
+            ro.set(this.regOf);
+            this.regOf = ro;
+            const ra = new Int32Array(n).fill(-1);
+            ra.set(this.regAt);
+            this.regAt = ra;
         }
         if (this.markPhase !== MarkPhase.Idle) {
             // Created during a mark: live by definition (and what it references is greyed as it is written).
@@ -839,7 +1144,7 @@ export class ReplicaEncoder {
         }
         // Hot containers are compared whole every step; hot-class instances compare their hot slots every step and
         // everything in the cold cycle.
-        if (hot) this.hotIds.push(id);
+        if (hot) this.registerHot(id, o, kind, kind === Kind.Class ? this.shapes[shape] : null);
         if (!hot || hotClass) this.coldIds.push(id);
         this.stats.newObjects++;
         this.pending.push(id, this.curStream);
@@ -871,6 +1176,7 @@ export class ReplicaEncoder {
     private writeContents(id: number, birth = false): void {
         const o = this.objs[id]!;
         const kind = this.kinds[id];
+        if (this.regOf[id] !== 0) this.invalidate(id);
         if (kind === Kind.Typed) {
             this.shadows[id] = Array.from(o as AnyTyped);
             return;
@@ -893,9 +1199,8 @@ export class ReplicaEncoder {
         }
         this.shadows[id] = vals;
         const b = birth ? this.cur.births : this.cur.body;
-        b.push2(Op.Fill, id);
-        b.push(vals.length);
-        for (let i = 0; i < vals.length; i++) this.writeValue(vals[i], id, i, b);
+        b.codes.push2(header(Op.Fill, vals.length), id);
+        for (let i = 0; i < vals.length; i++) this.writeValue(vals[i], id, i, b, 0);
     }
 
     /** The discovery label of a container found at `slot` of object `owner` (see hotContainers). */
@@ -906,41 +1211,54 @@ export class ReplicaEncoder {
         return `${this.labels[owner]}[]`;
     }
 
-    private writeValue(v: unknown, owner: number, slot: number, b: F64Stream): void {
+    /** Write value `v` (field / element `slot` of `owner`) as its tag code `key + tag` and its payload (Tag). `key`:
+     *  0 for a Fill's values, slot · 16 for a Set pair. */
+    private writeValue(v: unknown, owner: number, slot: number, b: RecordWriter, key: number): void {
         const w = this.cur;
+        const c = b.codes;
         switch (typeof v) {
             case 'number':
-                b.push2(Tag.Num, v);
+                // The narrowest lane that holds the number exactly (-0 is not an Int: the sign bit is state).
+                if ((v >>> 0) === v && (v !== 0 || 1 / v > 0)) c.push2(key + Tag.Int, v);
+                else if (Math.fround(v) === v) {
+                    F32_BOX[0] = v;
+                    c.push2(key + Tag.F32, F32_BITS[0]);
+                } else {
+                    c.push(key + Tag.Num);
+                    b.nums.push(v);
+                }
                 return;
             case 'string':
-                b.push2(Tag.Str, w.strs.length);
+                c.push2(key + Tag.Str, w.strs.length);
                 w.strs.push(v);
                 return;
             case 'boolean':
-                b.push2(v ? Tag.True : Tag.False, 0);
+                c.push(key + (v ? Tag.True : Tag.False));
                 return;
             case 'undefined':
-                b.push2(Tag.Undef, 0);
+                c.push(key + Tag.Undef);
                 return;
             case 'object': {
                 if (v === null) {
-                    b.push2(Tag.Null, 0);
+                    c.push(key + Tag.Null);
                     return;
                 }
                 const known = this.ids.get(v);
                 if (known !== undefined) {
                     if (this.markPhase !== MarkPhase.Idle) this.markGrey(known);
                     if (this.curStream === 0) this.noteHotUse(known);
-                    b.push2(Tag.Ref, known);
+                    c.push2(key + Tag.Ref, known);
                     return;
                 }
                 const ext = this.opts.externals.get(v);
                 if (ext !== undefined) {
-                    b.push2(Tag.Ext, w.strs.length);
+                    c.push2(key + Tag.Ext, w.strs.length);
                     w.strs.push(`${ext.kind}:${ext.key}`);
                     return;
                 }
-                b.push2(Tag.Ref, this.idOf(v, this.labelOf(owner, slot)));
+                // A new object: its shell goes to this part's shells now, its contents to its births (flushPending).
+                const id = this.idOf(v, this.labelOf(owner, slot));
+                c.push2(key + Tag.Ref, id);
                 return;
             }
             default:
@@ -1008,13 +1326,21 @@ export class ReplicaEncoder {
         // the hot pass, which then compares the children), else a cold class's hot-stream slots.
         const touchSlots = hotClass ? (fixed ? hotSlots.filter((i) => i !== gateSlot) : []) : [...hotStreamSlots, ...mixedSlots].sort((a, b) => a - b);
         const childNames = plain ? undefined : this.opts.touchChildren?.[name];
+        // Guarded hot slots (hotFieldGuards): compared hot only while the guard field is ≥ 0.
+        let guards: Map<number, string> | undefined;
+        if (fixed && this.opts.hotFieldGuards !== undefined) {
+            for (const i of hotSlots) {
+                const g = this.opts.hotFieldGuards[`${name}.${keys[i]}`];
+                if (g !== undefined && keys.includes(g)) (guards ??= new Map()).set(i, g);
+            }
+        }
         const info: ShapeInfo = {
             id,
             proto,
             keys,
             diff: makeDiffFn(keys, null),
             // Until a cold cycle has seen which fields change, a new (adaptive) hot shape compares everything every step.
-            hotDiff: hotClass ? makeDiffFn(keys, fixed ? hotSlots : null) : null,
+            hotDiff: hotClass ? makeDiffFn(keys, fixed ? hotSlots : null, guards) : null,
             hotSlots: hotClass && !fixed ? keys.map((_, i) => i) : hotSlots,
             fixed,
             gateDiff: gateSlot >= 0 ? makeGateFn(keys, ungated, gateSlot) : null,
@@ -1028,7 +1354,7 @@ export class ReplicaEncoder {
             mixed: maskOf(mixedSlots),
             mixedSlots,
             coldStream: maskOf(coldStreamSlots),
-            touchDiff: touchSlots.length > 0 ? makeDiffFn(keys, touchSlots) : null,
+            touchDiff: touchSlots.length > 0 ? makeDiffFn(keys, touchSlots, guards) : null,
             relatedSlots: slotsOf(this.opts.relatedFields),
             touchChildSlots: childNames === undefined ? [] : childNames.map((c) => keys.indexOf(c)).filter((i) => i >= 0),
         };
@@ -1042,6 +1368,7 @@ export class ReplicaEncoder {
 
     /** Called by the generated diff functions: field `slot` of object `id` changed from `old` to `v`. */
     emitSet(id: number, slot: number, v: unknown, old: unknown): void {
+        if (this.regOf[id] !== 0) this.invalidate(id);
         this.target(id);
         if (this.kinds[id] === Kind.Class) {
             // A fixed-hot-field class's other fields (found by the cold pass) travel cold, and so do its coldStreamFields;
@@ -1064,10 +1391,18 @@ export class ReplicaEncoder {
         }
         if (this.curStream === 0) this.noteHotUse(id);
         const b = this.cur.body;
-        b.push2(Op.Set, id);
-        b.push(slot);
+        const c = b.codes;
+        // Consecutive sets of one object share a Set record: append while nothing else was written to this stream.
+        if (b.openId !== id || b.openEnd !== c.n) {
+            b.openAt = c.n;
+            b.openId = id;
+            c.push2(header(Op.Set, 0), id);
+        }
+        if (slot > MAX_SLOT) throw new Error(`replica sync: slot ${slot} out of range`);
         if (this.markPhase === MarkPhase.Marking) this.greyValue(old);
-        this.writeValue(v, id, slot, b);
+        this.writeValue(v, id, slot, b, slot * (1 << TAG_BITS));
+        c.buf[b.openAt] += 1 << OP_BITS;
+        b.openEnd = c.n;
         this.stats.sets++;
         const k = this.kinds[id];
         if (k === Kind.Class) this.shapes[this.shapeOf[id]].counts[slot]++;
@@ -1204,9 +1539,8 @@ export class ReplicaEncoder {
                 if (n !== sh.length) {
                     this.target(id);
                     if (this.curStream === 0) this.noteHotUse(id);
-                    const b = this.cur.body;
-                    b.push2(Op.Len, id);
-                    b.push(n);
+                    this.cur.body.codes.push3(header(Op.Len, 0), id, n);
+                    if (this.regOf[id] !== 0) this.invalidate(id);
                     if (n < sh.length && this.markPhase === MarkPhase.Marking) for (let i = n; i < sh.length; i++) this.greyValue(sh[i]);
                 }
                 const m = Math.min(n, sh.length);
@@ -1270,8 +1604,7 @@ export class ReplicaEncoder {
                     this.target(id);
                     if (this.curStream === 0) this.noteHotUse(id);
                     const w = this.cur;
-                    w.body.push2(Op.Typed, id);
-                    w.body.push(w.typed.length);
+                    w.body.codes.push3(header(Op.Typed, 0), id, w.typed.length);
                     w.typed.push(t.slice() as AnyTyped);
                     this.stats.sets++;
                 }
@@ -1291,10 +1624,13 @@ export class ReplicaEncoder {
     private reshape(id: number, o: object): void {
         const info = this.shapeFor(o, Object.getPrototypeOf(o) as object | null);
         this.shapeOf[id] = info.id;
+        // A gate registry entry probes by field name; one whose new shape has no gate is compared in full every step.
+        if (this.regOf[id] >= 2 && info.gateDiff === null) {
+            this.unregister(id);
+            this.hotIds.push(id);
+        }
         this.target(id);
-        const b = this.cur.body;
-        b.push2(Op.Reshape, id);
-        b.push(info.id);
+        this.cur.body.codes.push3(header(Op.Reshape, 0), id, info.id);
         this.writeContents(id);
         this.stats.sets++;
     }
@@ -1348,16 +1684,22 @@ function makeGateFn(keys: readonly string[], pinned: Uint8Array, gateSlot: numbe
 }
 
 /** A generated field-by-field compare for one shape — all of its fields, or only `slots` (monomorphic property loads;
- *  see the file header). */
-function makeDiffFn(keys: readonly string[], slots: readonly number[] | null): DiffFn {
+ *  see the file header); a slot in `guards` is compared only while that guard field is ≥ 0 (hotFieldGuards). */
+function makeDiffFn(keys: readonly string[], slots: readonly number[] | null, guards?: ReadonlyMap<number, string>): DiffFn {
     const access = (k: string): string => (/^[A-Za-z_$][\w$]*$/.test(k) ? `.${k}` : `[${JSON.stringify(k)}]`);
     const which = slots ?? keys.map((_, i) => i);
-    const lines = which.map((i) => `v = o${access(keys[i])}; w = s[${i}]; if (v !== w ? v === v || w === w : v === 0 && 1 / v !== 1 / w) { s[${i}] = v; enc.emitSet(id, ${i}, v, w); }`);
+    const lines = which.map((i) => {
+        const line = `v = o${access(keys[i])}; w = s[${i}]; if (v !== w ? v === v || w === w : v === 0 && 1 / v !== 1 / w) { s[${i}] = v; enc.emitSet(id, ${i}, v, w); }`;
+        const g = guards?.get(i);
+        return g === undefined ? line : `if (o${access(g)} >= 0) { ${line} }`;
+    });
     try {
         return new Function('o', 's', 'enc', 'id', `let v, w;\n${lines.join('\n')}`) as DiffFn;
     } catch {
         return (o, s, enc, id) => {
             for (const i of which) {
+                const g = guards?.get(i);
+                if (g !== undefined && !((o[g] as number) >= 0)) continue;
                 const v = o[keys[i]];
                 const w = s[i];
                 if (changed(v, w)) {
@@ -1404,10 +1746,19 @@ export interface ApplyStats {
     newObjects: number;
     sets: number;
     drops: number;
-    /** Cold parts applied by this call (a hot part's dependency, or the per-frame pump). */
+    /** Cold parts applied by this call (the per-frame pump, or all of them for a full apply). */
     coldParts: number;
     /** Cold parts whose births alone a hot part's dependency applied ahead of the pump. */
     bornParts: number;
+    /**
+     * apply() with a budget: the delta's hot part is not applied yet — the births of the cold parts it depends on did
+     * not fit (they continue at the next call with the same delta; until then its newborns are unreferenced shells).
+     */
+    pending: boolean;
+}
+
+function emptyApplyStats(): ApplyStats {
+    return { applyMs: 0, newObjects: 0, sets: 0, drops: 0, coldParts: 0, bornParts: 0, pending: false };
 }
 
 /** A cold part queued on the main thread, applied in order, possibly over several frames. */
@@ -1416,16 +1767,37 @@ interface QueuedPart {
     part: ReplicaPart;
     /** 0 shells, 1 births, 2 body, 3 drops. */
     phase: number;
-    /** Index into the phase's stream. */
+    /** Index into the phase's code stream, and into its f64 lane. */
     i: number;
+    j: number;
+}
+
+/** A delta whose hot part waits for the births of the cold parts it depends on (apply with a budget). */
+interface StagedDelta {
+    d: ReplicaDelta;
+    /** Objects created so far (onNewObject runs once the hot part is applied). */
+    fresh: object[];
+    /** Its own cold part is queued already (a dependency on its own births). */
+    ownQueued: boolean;
+}
+
+/** Cold-pump budget multiplier for `queued` parts waiting: ×1 up to 2 parts, +0.5 per part beyond, at most ×8 — the
+ *  pump keeps up with what the worker sends with a short queue (a command reply waits for the queue: §3.3). */
+export function coldPumpScale(queued: number): number {
+    return Math.min(8, 1 + Math.max(0, queued - 2) * 0.5);
 }
 
 export class ReplicaDecoder {
+    /** By sync id. Kept dense (filled with null ahead of the ids not born here yet: a cold part's newborns arrive after
+     *  a later hot part's), so the array never turns sparse (a dictionary-mode array made every lookup a hash probe). */
     private objs: (object | null)[] = [];
-    private kinds: number[] = [];
-    private shapeOf: number[] = [];
+    private kinds: Uint8Array = new Uint8Array(1 << 16);
+    private shapeOf: Int32Array = new Int32Array(1 << 16);
     private readonly shapes: DecShape[] = [];
-    private readonly idByObj = new WeakMap<object, number>();
+    /** Replica object → sync id. A Map, not a WeakMap: entries are deleted with their drop anyway, and at 2.4 M keys a
+     *  WeakMap insert cost ~5 µs with GC stalls up to a second under churn (a Map: ~0.2 µs; growing it rehashes, ~20 ms
+     *  once per million or so births). */
+    private readonly idByObj = new Map<object, number>();
     private readonly coldQueue: QueuedPart[] = [];
     /** Mixed fields: per object, the seq of the last hot part that set one of them. */
     private readonly mixedHotSeq = new Map<number, number>();
@@ -1434,14 +1806,18 @@ export class ReplicaDecoder {
     /** Seq of the last cold part whose shells and births are applied (≥ coldApplied: a hot part's dependency applies
      *  only those, see apply). */
     private coldBorn = -1;
+    /** The delta being applied over several calls (apply with a budget), else null. */
+    private staged: StagedDelta | null = null;
     private readonly scratch: unknown[] = [];
+    /** Where the last bodyOf stopped in the f64 lane. */
+    private numsAt = 0;
     /** Called with each new object once it is filled (e.g. to wire a new Empire's visibility hooks). */
     onNewObject: ((o: object) => void) | null = null;
     /** Dev-only (writeDetector.ts, docs/sim-worker.md §9 chunk 0): called with an object's id right before each shell /
      *  record that creates or changes it, so the detector can check it against the values last applied; `slot` is the
      *  shape slot of a class / plain object's field set (fieldName), -1 for any other record. Null: off. */
     watch: ((id: number, slot: number) => void) | null = null;
-    private stats: ApplyStats = { applyMs: 0, newObjects: 0, sets: 0, drops: 0, coldParts: 0, bornParts: 0 };
+    private stats: ApplyStats = emptyApplyStats();
 
     constructor(private readonly opts: ReplicaDecoderOptions) {}
 
@@ -1476,49 +1852,78 @@ export class ReplicaDecoder {
         return this.coldQueue.length;
     }
 
+    /** Whether a delta's hot part is waiting for its dependencies' births (apply with a budget returned pending). */
+    get applying(): boolean {
+        return this.staged !== null;
+    }
+
+    /** Whether every cold part up to delta `seq`'s is applied completely (what a command reply needs, §4.3). */
+    coldThrough(seq: number): boolean {
+        return this.coldQueue.length === 0 || this.coldQueue[0].seq > seq;
+    }
+
     /**
-     * Apply a delta: its shapes, its hot part now (after the cold parts it depends on), and queue its cold part — or
-     * apply everything now with `all` (the snapshot, tests, a save). Returns this call's stats.
+     * Apply a delta: its shapes, its hot part now (after the births of the cold parts it depends on), and queue its
+     * cold part — or apply everything now with `all` (the snapshot, tests, a save). With a finite `budgetMs`, the births
+     * of the cold parts the hot part depends on are applied for up to that long; when they do not fit, the call returns
+     * with `pending` and the next call with the same delta continues (nothing references the newborns until the hot
+     * body is applied, so readers never see a half-filled object; the pump waits meanwhile). Returns this call's stats.
      */
-    apply(d: ReplicaDelta, all = false, now: () => number = () => performance.now()): ApplyStats {
+    apply(d: ReplicaDelta, all = false, now: () => number = () => performance.now(), budgetMs = Infinity): ApplyStats {
         const t0 = now();
-        this.stats = { applyMs: 0, newObjects: 0, sets: 0, drops: 0, coldParts: 0, bornParts: 0 };
-        for (const [id, shape] of d.shapes) this.addShape(id, shape);
-        const fresh: object[] = [];
-        this.shellsOf(d.hot, 0, Infinity, fresh, now);
-        if (d.coldDep >= 0 && d.coldDep > this.coldBorn) {
+        this.stats = emptyApplyStats();
+        let st = this.staged;
+        if (st !== null && st.d !== d) throw new Error(`replica sync: delta ${d.seq} applied while delta ${st.d.seq} is still being applied`);
+        if (st === null) {
+            for (const [id, shape] of d.shapes) this.addShape(id, shape);
+            st = { d, fresh: [], ownQueued: false };
+            this.shellsOf(d.hot, 0, Infinity, st.fresh, now);
             // The hot part names objects born in cold parts up to coldDep (possibly this delta's own). Only their births
             // are needed (shells, then the newborns' first contents): the bodies — sets on objects that already existed —
             // stay queued for the pump, so a dependency costs the births it needs, not whole parts.
-            if (d.coldDep >= d.seq) this.coldQueue.push({ seq: d.seq, part: d.cold, phase: 0, i: 0 });
-            this.bornUntil(d.coldDep, fresh, now);
-            this.bodyOf(d.hot, d.hot.births, 0, Infinity, now, false, d.seq, true);
-            this.bodyOf(d.hot, d.hot.body, 0, Infinity, now, false, d.seq, true);
-            if (d.coldDep < d.seq && !partEmpty(d.cold)) this.coldQueue.push({ seq: d.seq, part: d.cold, phase: 0, i: 0 });
-        } else {
-            this.bodyOf(d.hot, d.hot.births, 0, Infinity, now, false, d.seq, true);
-            this.bodyOf(d.hot, d.hot.body, 0, Infinity, now, false, d.seq, true);
-            if (!partEmpty(d.cold)) this.coldQueue.push({ seq: d.seq, part: d.cold, phase: 0, i: 0 });
+            if (d.coldDep >= 0 && d.coldDep > this.coldBorn && d.coldDep >= d.seq) {
+                this.coldQueue.push({ seq: d.seq, part: d.cold, phase: 0, i: 0, j: 0 });
+                st.ownQueued = true;
+            }
+            this.staged = st;
+        }
+        if (d.coldDep >= 0 && d.coldDep > this.coldBorn) {
+            const deadline = budgetMs === Infinity || all ? Infinity : t0 + budgetMs;
+            if (!this.bornUntil(d.coldDep, st.fresh, deadline, now)) {
+                this.stats.pending = true;
+                this.stats.applyMs = now() - t0;
+                return this.stats;
+            }
+        }
+        this.staged = null;
+        this.numsAt = 0;
+        this.bodyOf(d.hot, d.hot.births, d.hot.birthNums, 0, Infinity, now, false, d.seq, true);
+        this.numsAt = 0;
+        this.bodyOf(d.hot, d.hot.body, d.hot.bodyNums, 0, Infinity, now, false, d.seq, true);
+        if (!st.ownQueued) {
+            if (!partEmpty(d.cold)) this.coldQueue.push({ seq: d.seq, part: d.cold, phase: 0, i: 0, j: 0 });
             else if (this.coldQueue.length === 0) this.coldApplied = this.coldBorn = d.seq;
         }
-        if (all) this.pumpColdUntil(Infinity, fresh, now);
-        if (this.onNewObject !== null) for (const o of fresh) this.onNewObject(o);
+        if (all) this.pumpColdUntil(Infinity, st.fresh, now);
+        if (this.onNewObject !== null) for (const o of st.fresh) this.onNewObject(o);
         this.stats.applyMs = now() - t0;
         return this.stats;
     }
 
     /**
      * Apply queued cold parts, in order, for up to `budgetMs` (a part may be left half-applied and resumed). The budget
-     * grows with the backlog (+10% per part queued beyond 4, up to 4×), so the replica's cold data never falls far
-     * behind.
+     * grows with the backlog (coldPumpScale; `scale` false: exactly `budgetMs`), so the replica's cold data never falls
+     * far behind. With `throughSeq`, only the parts up to that delta's (what a command reply waits for). While a delta's
+     * hot part waits for its dependencies' births (apply with a budget), nothing is pumped: those births come first.
      */
-    pumpCold(budgetMs: number, now: () => number = () => performance.now()): ApplyStats {
+    pumpCold(budgetMs: number, now: () => number = () => performance.now(), throughSeq = Infinity, scale = true): ApplyStats {
         const t0 = now();
-        budgetMs *= Math.min(4, 1 + Math.max(0, this.coldQueue.length - 4) * 0.1);
-        this.stats = { applyMs: 0, newObjects: 0, sets: 0, drops: 0, coldParts: 0, bornParts: 0 };
+        this.stats = emptyApplyStats();
+        if (this.staged !== null) return this.stats;
+        if (scale) budgetMs *= coldPumpScale(this.coldQueue.length);
         const fresh: object[] = [];
         const deadline = t0 + budgetMs;
-        while (this.coldQueue.length > 0) {
+        while (this.coldQueue.length > 0 && this.coldQueue[0].seq <= throughSeq) {
             if (!this.advance(this.coldQueue[0], deadline, fresh, now)) break;
             this.partDone(this.coldQueue.shift()!.seq);
             this.stats.coldParts++;
@@ -1544,25 +1949,31 @@ export class ReplicaDecoder {
 
     /**
      * Apply the shells and births of the queued cold parts up to `seq`, in order, leaving their bodies and drops to the
-     * pump. Safe out of order with those bodies: a part's births only fill objects born in it (with what it and the
-     * parts before it know), and a body only sets fields of objects that existed before its part.
+     * pump, until `deadline` (false: not done, continue later). Safe out of order with those bodies: a part's births
+     * only fill objects born in it (with what it and the parts before it know), and a body only sets fields of objects
+     * that existed before its part.
      */
-    private bornUntil(seq: number, fresh: object[], now: () => number): void {
+    private bornUntil(seq: number, fresh: object[], deadline: number, now: () => number): boolean {
         for (const q of this.coldQueue) {
             if (q.seq > seq) break;
             if (q.phase === 0) {
-                q.i = this.shellsOf(q.part, q.i, Infinity, fresh, now);
+                q.i = this.shellsOf(q.part, q.i, deadline, fresh, now);
+                if (q.i < q.part.shells.length) return false;
                 q.phase = 1;
-                q.i = 0;
+                q.i = q.j = 0;
             }
             if (q.phase === 1) {
-                q.i = this.bodyOf(q.part, q.part.births, q.i, Infinity, now, true, q.seq, false);
+                this.numsAt = q.j;
+                q.i = this.bodyOf(q.part, q.part.births, q.part.birthNums, q.i, deadline, now, true, q.seq, false);
+                q.j = this.numsAt;
+                if (q.i < q.part.births.length) return false;
                 q.phase = 2;
-                q.i = 0;
+                q.i = q.j = 0;
                 this.stats.bornParts++;
             }
             if (q.seq > this.coldBorn) this.coldBorn = q.seq;
         }
+        return true;
     }
 
     /** Continue a queued part until done (true) or the deadline (false). */
@@ -1571,16 +1982,20 @@ export class ReplicaDecoder {
             q.i = this.shellsOf(q.part, q.i, deadline, fresh, now);
             if (q.i < q.part.shells.length) return false;
             q.phase = 1;
-            q.i = 0;
+            q.i = q.j = 0;
         }
         if (q.phase === 1) {
-            q.i = this.bodyOf(q.part, q.part.births, q.i, deadline, now, true, q.seq, false);
+            this.numsAt = q.j;
+            q.i = this.bodyOf(q.part, q.part.births, q.part.birthNums, q.i, deadline, now, true, q.seq, false);
+            q.j = this.numsAt;
             if (q.i < q.part.births.length) return false;
             q.phase = 2;
-            q.i = 0;
+            q.i = q.j = 0;
         }
         if (q.phase === 2) {
-            q.i = this.bodyOf(q.part, q.part.body, q.i, deadline, now, false, q.seq, false);
+            this.numsAt = q.j;
+            q.i = this.bodyOf(q.part, q.part.body, q.part.bodyNums, q.i, deadline, now, false, q.seq, false);
+            q.j = this.numsAt;
             if (q.i < q.part.body.length) return false;
             q.phase = 3;
         }
@@ -1593,10 +2008,26 @@ export class ReplicaDecoder {
         return true;
     }
 
+    /** Room for sync id `id`: `objs` filled densely with null up to it, the per-id typed arrays grown. */
+    private reserve(id: number): void {
+        const objs = this.objs;
+        while (objs.length <= id) objs.push(null);
+        if (id >= this.kinds.length) {
+            const n = Math.max(this.kinds.length * 2, id + 1);
+            const k = new Uint8Array(n);
+            k.set(this.kinds);
+            this.kinds = k;
+            const sh = new Int32Array(n);
+            sh.set(this.shapeOf);
+            this.shapeOf = sh;
+        }
+    }
+
     /** Create the shells of a part from index `i` (every new object exists before any reference to it resolves). */
     private shellsOf(p: ReplicaPart, i: number, deadline: number, fresh: object[], now: () => number): number {
         const sh = p.shells;
         let k = 0;
+        const every = this.opts.sliceRecords ?? 32;
         while (i < sh.length) {
             const kind = sh[i++] as Kind;
             const id = sh[i++];
@@ -1607,6 +2038,7 @@ export class ReplicaDecoder {
                     const s = sh[i++];
                     const shape = this.shapes[s];
                     o = shape.ctor !== null ? shape.ctor() : this.slowShell(shape);
+                    if (id >= this.shapeOf.length) this.reserve(id);
                     this.shapeOf[id] = s;
                     break;
                 }
@@ -1626,21 +2058,25 @@ export class ReplicaDecoder {
                 default:
                     throw new Error(`replica sync: bad shell kind ${String(kind)}`);
             }
+            if (id >= this.objs.length) this.reserve(id);
             this.objs[id] = o;
             this.kinds[id] = kind;
             this.idByObj.set(o, id);
             if (this.watch !== null) this.watch(id, -1);
             fresh.push(o);
             this.stats.newObjects++;
-            if (++k % (this.opts.sliceRecords ?? 32) === 0 && deadline !== Infinity && now() >= deadline) break;
+            if (++k % every === 0 && deadline !== Infinity && now() >= deadline) break;
         }
         return i;
     }
 
-    /** Apply the records of a part's births / body stream `b` from index `start`; returns where it stopped (the end when
-     *  done). `anywhere`: may stop between any two records (the births stream), else only between objects. `seq` / `hot`:
-     *  the delta and stream of the part (mixed fields: a hot set is remembered, an older cold one dropped). */
-    private bodyOf(p: ReplicaPart, b: Float64Array, start: number, deadline: number, now: () => number, anywhere: boolean, seq: number, hot: boolean): number {
+    /**
+     * Apply the records of a part's births / body stream (`c`, its f64 lane `nums` from this.numsAt) from code index
+     * `start`; returns where it stopped (the end when done; this.numsAt: the lane's position). `anywhere`: may stop
+     * between any two records (the births stream), else only between objects. `seq` / `hot`: the delta and stream of the
+     * part (mixed fields: a hot set is remembered, an older cold one dropped).
+     */
+    private bodyOf(p: ReplicaPart, c: Uint32Array, nums: Float64Array, start: number, deadline: number, now: () => number, anywhere: boolean, seq: number, hot: boolean): number {
         const mixedHot = this.mixedHotSeq;
         const strs = p.strs;
         const ext = this.opts.externals;
@@ -1649,23 +2085,28 @@ export class ReplicaDecoder {
         const shapeOf = this.shapeOf;
         const shapes = this.shapes;
         let i = start;
+        let j = this.numsAt;
         let k = 0;
         const every = this.opts.sliceRecords ?? 64;
         let nextCheck = every;
-        const value = (): unknown => {
-            const tag = b[i];
-            const v = b[i + 1];
-            i += 2;
+        // A value's payload, after its tag (wire format: Tag).
+        const payload = (tag: number): unknown => {
             switch (tag) {
                 case Tag.Num:
-                    return v;
+                    return nums[j++];
+                case Tag.Int:
+                    return c[i++];
+                case Tag.F32:
+                    F32_BITS[0] = c[i++];
+                    return F32_BOX[0];
                 case Tag.Ref: {
-                    const o = objs[v];
-                    if (o == null) throw new Error(`replica sync: reference to unknown id ${v}`);
+                    const id = c[i++];
+                    const o = objs[id];
+                    if (o == null) throw new Error(`replica sync: reference to unknown id ${id}`);
                     return o;
                 }
                 case Tag.Str:
-                    return strs[v];
+                    return strs[c[i++]];
                 case Tag.True:
                     return true;
                 case Tag.False:
@@ -1675,8 +2116,9 @@ export class ReplicaDecoder {
                 case Tag.Undef:
                     return undefined;
                 case Tag.Ext: {
-                    const o = ext.get(strs[v]);
-                    if (o === undefined) throw new Error(`replica sync: unknown static ${strs[v]}`);
+                    const key = strs[c[i++]];
+                    const o = ext.get(key);
+                    if (o === undefined) throw new Error(`replica sync: unknown static ${key}`);
                     return o;
                 }
             }
@@ -1684,74 +2126,87 @@ export class ReplicaDecoder {
         };
         const scratch = this.scratch;
         const watch = this.watch;
-        while (i < b.length) {
-            const op = b[i];
-            const id = b[i + 1];
+        while (i < c.length) {
+            const h = c[i];
+            const op = h & ((1 << OP_BITS) - 1);
+            const n = h >>> OP_BITS;
+            const id = c[i + 1];
             i += 2;
             const o = objs[id];
             if (o == null) throw new Error(`replica sync: op ${op} on unknown id ${id}`);
-            if (watch !== null) watch(id, op === Op.Set && kinds[id] !== Kind.Array ? b[i] : -1);
             switch (op) {
                 case Op.Set: {
-                    const slot = b[i++];
-                    const v = value();
-                    if (kinds[id] === Kind.Array) (o as unknown[])[slot] = v;
-                    else {
+                    const kind = kinds[id];
+                    if (kind === Kind.Array) {
+                        if (watch !== null) watch(id, -1);
+                        const a = o as unknown[];
+                        for (let x = 0; x < n; x++) {
+                            const key = c[i++];
+                            a[key >>> TAG_BITS] = payload(key & ((1 << TAG_BITS) - 1));
+                        }
+                    } else {
                         const shape = shapes[shapeOf[id]];
                         const mixed = shape.mixed;
-                        if (mixed !== null && mixed[slot] === 1) {
-                            if (hot) mixedHot.set(id, seq);
-                            else {
-                                // A cold set older than the object's last hot send of its mixed fields: superseded.
-                                const h = mixedHot.get(id);
-                                if (h !== undefined && h > seq) break;
+                        for (let x = 0; x < n; x++) {
+                            const key = c[i++];
+                            const slot = key >>> TAG_BITS;
+                            if (watch !== null) watch(id, slot);
+                            const v = payload(key & ((1 << TAG_BITS) - 1));
+                            if (mixed !== null && mixed[slot] === 1) {
+                                if (hot) mixedHot.set(id, seq);
+                                else {
+                                    // A cold set older than the object's last hot send of its mixed fields: superseded.
+                                    const hs = mixedHot.get(id);
+                                    if (hs !== undefined && hs > seq) continue;
+                                }
                             }
+                            shape.set(o as Record<string, unknown>, slot, v);
                         }
-                        shape.set(o as Record<string, unknown>, slot, v);
                     }
-                    this.stats.sets++;
+                    this.stats.sets += n;
                     break;
                 }
                 case Op.Fill: {
-                    const n = b[i++];
+                    if (watch !== null) watch(id, -1);
                     const kind = kinds[id];
                     if (kind === Kind.Class || kind === Kind.Plain) {
                         scratch.length = n;
-                        for (let x = 0; x < n; x++) scratch[x] = value();
+                        for (let x = 0; x < n; x++) scratch[x] = payload(c[i++]);
                         shapes[shapeOf[id]].fill(o as Record<string, unknown>, scratch);
                     } else if (kind === Kind.Array) {
                         const a = o as unknown[];
                         a.length = n;
-                        for (let x = 0; x < n; x++) a[x] = value();
+                        for (let x = 0; x < n; x++) a[x] = payload(c[i++]);
                     } else if (kind === Kind.Map) {
                         const m = o as Map<unknown, unknown>;
                         m.clear();
                         for (let x = 0; x < n; x += 2) {
-                            const key = value();
-                            m.set(key, value());
+                            const key = payload(c[i++]);
+                            m.set(key, payload(c[i++]));
                         }
                     } else if (kind === Kind.Set) {
                         const st = o as Set<unknown>;
                         st.clear();
-                        for (let x = 0; x < n; x++) st.add(value());
+                        for (let x = 0; x < n; x++) st.add(payload(c[i++]));
                     }
                     break;
                 }
                 case Op.Len:
-                    (o as unknown[]).length = b[i++];
+                    if (watch !== null) watch(id, -1);
+                    (o as unknown[]).length = c[i++];
                     break;
                 case Op.Typed:
-                    (o as AnyTyped).set(p.typed[b[i++]] as never);
+                    if (watch !== null) watch(id, -1);
+                    (o as AnyTyped).set(p.typed[c[i++]] as never);
                     this.stats.sets++;
                     break;
                 case Op.Reshape: {
-                    const s = b[i++];
+                    if (watch !== null) watch(id, -1);
+                    const s = c[i++];
                     const old = shapes[shapeOf[id]];
-                    const next = shapes[s];
                     // Drop every old field: the Fill that follows re-adds them in the new shape's order (key order is
                     // state — a plain object's keys are saved in order).
                     for (const key of old.keys) delete (o as Record<string, unknown>)[key];
-                    void next;
                     shapeOf[id] = s;
                     break;
                 }
@@ -1761,11 +2216,12 @@ export class ReplicaDecoder {
             // Stop only between objects (never between an array's new length and its element sets), so a half-applied
             // cold part never shows a half-updated object.
             k++;
-            if (deadline !== Infinity && k >= nextCheck && i < b.length && (anywhere || b[i + 1] !== id)) {
+            if (deadline !== Infinity && k >= nextCheck && i < c.length && (anywhere || c[i + 1] !== id)) {
                 nextCheck = k + every;
                 if (now() >= deadline) break;
             }
         }
+        this.numsAt = j;
         return i;
     }
 
@@ -1837,7 +2293,7 @@ function assignmentIntercepted(proto: object | null, key: string): boolean {
 export function deltaTransferables(d: ReplicaDelta): ArrayBuffer[] {
     const out: ArrayBuffer[] = [];
     for (const p of [d.hot, d.cold]) {
-        out.push(p.shells.buffer as ArrayBuffer, p.births.buffer as ArrayBuffer, p.body.buffer as ArrayBuffer);
+        out.push(p.shells.buffer as ArrayBuffer, p.births.buffer as ArrayBuffer, p.birthNums.buffer as ArrayBuffer, p.body.buffer as ArrayBuffer, p.bodyNums.buffer as ArrayBuffer);
         for (const t of p.typed) if (!out.includes(t.buffer as ArrayBuffer)) out.push(t.buffer as ArrayBuffer);
     }
     return out;
