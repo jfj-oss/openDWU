@@ -454,7 +454,7 @@ export interface ColonyLuxuryNeed {
     /** Held elsewhere in the empire (other colonies, bases, mining stations): the units and the largest holder. */
     availableElsewhere: number;
     availableAt: SupplyTarget | null;
-    /** None in stock, nothing contracted, yet the empire holds some elsewhere: a freighter could bring it. */
+    /** None in stock, nothing contracted for LUXURY_WAIT_MS, yet the empire holds some elsewhere: a freighter could bring it. */
     notComing: boolean;
     /** None in stock, nothing contracted and none anywhere in the empire. */
     unavailable: boolean;
@@ -475,6 +475,9 @@ export interface ColonyLuxuryStatus {
     /** Short: development falling, or a demanded luxury the empire holds elsewhere is not on its way. */
     short: boolean;
 }
+
+/** A luxury order with nothing contracted counts as "not coming" once it is this old (game ms: 60 days). */
+export const LUXURY_WAIT_MS = (60 * 600000) / 360;
 
 /** Units of each resource the empire holds, and the largest holder (one entry per cargo list). */
 export type EmpireStock = Map<number, { amount: number; at: SupplyTarget; atAmount: number; byCargo: Map<object, number> }>;
@@ -552,7 +555,8 @@ export function colonyLuxuryStatus(
         const st = held.get(ro.resourceId) ?? 0;
         const es = stock?.get(ro.resourceId);
         const elsewhere = es === undefined ? 0 : es.amount - (own !== null ? (es.byCargo.get(own) ?? 0) : 0);
-        const none = st <= 0 && ro.deliveries.length === 0;
+        // Not coming: none held, nothing contracted, and the order has waited LUXURY_WAIT_MS (a fresh order is normal).
+        const none = st <= 0 && ro.deliveries.length === 0 && ro.oldestOrderAgeMs >= LUXURY_WAIT_MS;
         demanded.push({
             resourceId: ro.resourceId,
             stock: st,

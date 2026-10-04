@@ -39,12 +39,9 @@ const shot = async (name) => {
     shots.push(path);
 };
 const closeWindows = async () => {
-    for (let i = 0; i < 4; i++) {
-        await page.keyboard.press('Escape');
-        await page.waitForTimeout(150);
-    }
-    await page.evaluate(() => document.querySelectorAll('.ow-layer').forEach((l) => l.querySelector('.ow-close')?.click()));
-    await page.waitForTimeout(200);
+    // The windows' close buttons (Escape on no window would open the game menu).
+    await page.evaluate(() => document.querySelectorAll('.ow-layer .ow-close').forEach((b) => b.click()));
+    await page.waitForTimeout(300);
 };
 
 /** The supply census of the player's empire (forced recompute) and the cost of computing it. */
@@ -235,7 +232,7 @@ try {
     await shot('yards-waiting');
 
     // Go to the site: the selection panel's Waiting row.
-    await page.locator('[data-ow="yards"] .ow-glass', { hasText: 'Go to Ship' }).click();
+    await page.locator('[data-ow="yards"] .ow-glass', { hasText: 'Go to Ship' }).first().click();
     await page.waitForTimeout(1500);
     const selText = await page.evaluate(() => document.body.innerText.match(/Waiting[^\n]*\n?[^\n]*/)?.[0] ?? '');
     console.log(`selection panel: ${JSON.stringify(selText.slice(0, 200))}`);

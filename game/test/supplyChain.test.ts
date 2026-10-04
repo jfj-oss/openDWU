@@ -22,6 +22,8 @@ import {
     componentsStillToBuild,
     constructionSupply,
     deliveryEtaMs,
+    empireResourceStock,
+    LUXURY_WAIT_MS,
     empireConstructionTargets,
     empireSupplySnapshot,
     queueItems,
@@ -226,8 +228,11 @@ describe('colonies short of luxuries', () => {
         const holder = [...empire.colonies, ...empire.builtObjects].find((o) => o !== colony && o.cargo !== null && o.cargo !== colony.cargo)!;
         holder.cargo!.add(new Cargo(new ResourceRef(lux.resourceId), 900, empire));
         for (const o of [...galaxy.orders.items]) if (o.requestingColony === colony && o.commodityResource?.resourceId === lux.resourceId) galaxy.orders.remove(o);
-        empireCreateOrder(galaxy, empire, colony, new ResourceRef(lux.resourceId), 300, false, OrderType.Standard, true);
+        const luxOrder = empireCreateOrder(galaxy, empire, colony, new ResourceRef(lux.resourceId), 300, false, OrderType.Standard, true);
         colony.developmentLevel = 0;
+        // A fresh order is normal: not "not coming" yet.
+        expect(colonyLuxuryStatus(galaxy, colony, null, 1, empireResourceStock(empire))!.demanded.find((d) => d.resourceId === lux.resourceId)!.notComing).toBe(false);
+        luxOrder.expiryDate -= LUXURY_WAIT_MS + 1;
         const snap = empireSupplySnapshot(galaxy, empire);
         const cs = snap.byColony.get(colony)!;
         const need = cs.demanded.find((d) => d.resourceId === lux.resourceId)!;
