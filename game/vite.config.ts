@@ -17,6 +17,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import { defineConfig, type Plugin } from 'vite';
 import type {} from 'vitest/config'; // types the `test` block below
 import { buildScenarioIndex, listScenarioFiles } from './scripts/scenarioIndex.mjs';
+import themeIndexLib from './desktop/themeIndex.cjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 
@@ -151,6 +152,66 @@ function dwuProbe(): Plugin {
     };
 }
 
+/**
+ * Themes (customization sets): /theme-manifest/index.json (the Customization subfolders) and
+ * /theme-manifest/<set>.json (one theme's file index), built from the linked install by desktop/themeIndex.cjs —
+ * the same module the desktop shell serves them with from the user's install. Written into dist/ at build too.
+ */
+function themeManifest(): Plugin {
+    const dwuRoot = path.join(here, 'public', 'assets', 'dwu');
+    const lib = themeIndexLib as { listThemes(root: string): string[]; buildThemeIndex(root: string, set: string): unknown };
+    let isBuild = false;
+    return {
+        name: 'theme-manifest',
+        configResolved(config) {
+            isBuild = config.command === 'build';
+        },
+        configureServer(server) {
+            const cache = new Map<string, string | null>();
+            server.middlewares.use((req: IncomingMessage, res: ServerResponse, next) => {
+                const url = (req.url ?? '').split('?')[0];
+                if (!url.startsWith('/theme-manifest/')) {
+                    next();
+                    return;
+                }
+                let name: string;
+                try {
+                    name = decodeURIComponent(url.slice('/theme-manifest/'.length));
+                } catch {
+                    name = '';
+                }
+                let body = cache.get(name);
+                if (body === undefined) {
+                    if (name === 'index.json') body = JSON.stringify(lib.listThemes(dwuRoot));
+                    else if (name.endsWith('.json')) {
+                        const idx = lib.buildThemeIndex(dwuRoot, name.slice(0, -'.json'.length));
+                        body = idx === null ? null : JSON.stringify(idx);
+                    } else body = null;
+                    cache.set(name, body);
+                }
+                if (body === null) {
+                    res.statusCode = 404;
+                    res.end('Not found');
+                    return;
+                }
+                res.setHeader('Content-Type', 'application/json');
+                res.end(body);
+            });
+        },
+        closeBundle() {
+            if (!isBuild || !existsSync(path.join(here, 'dist'))) return;
+            const out = path.join(here, 'dist', 'theme-manifest');
+            mkdirSync(out, { recursive: true });
+            const themes = lib.listThemes(dwuRoot);
+            writeFileSync(path.join(out, 'index.json'), JSON.stringify(themes));
+            for (const t of themes) {
+                const idx = lib.buildThemeIndex(dwuRoot, t);
+                if (idx !== null) writeFileSync(path.join(out, `${t}.json`), JSON.stringify(idx));
+            }
+        },
+    };
+}
+
 /** Copy public/asset-manifest.json into dist/ after build (see header note). */
 function copyAssetManifest(): Plugin {
     return {
@@ -246,7 +307,7 @@ export default defineConfig({
         setupFiles: ['test/pins/pin.ts'],
         ...testTier(),
     },
-    plugins: [dwuProbe(), dwuCaseInsensitive(), copyAssetManifest(), scenarioAssets()],
+    plugins: [dwuProbe(), dwuCaseInsensitive(), copyAssetManifest(), scenarioAssets(), themeManifest()],
     build: {
         // Do not copy public/ (the assets/dwu symlink is ~4 GB); only the
         // small asset-manifest.json matters in dist/, handled above.

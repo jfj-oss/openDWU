@@ -1,4 +1,5 @@
 // New-game wizard options (task 06b). Headless — no DOM/Pixi imports.
+import { themeFlagShapeUrls } from '../themeAssets';
 import { VictoryConditions as RuntimeVictoryConditions, victoryConditionsFromWizard } from './victory';
 import { PiratePlayStyle } from './pirates';
 import { REAL_SECONDS_IN_GALACTIC_YEAR, startStarDateForAge } from './galaxyTime';
@@ -784,6 +785,9 @@ export function defaultFlagColors(raceIndex: number): { primary: string; seconda
 
 /** Task 06e: URL of a flag shape tile (flagNN.png, two-digit index). */
 export function flagShapeUrl(index: number): string {
+    // Galaxy.4.cs LoadFlagShapes: a theme's images\ui\flagshapes\ folder replaces the stock list (themeAssets.ts).
+    const themed = themeFlagShapeUrls(false);
+    if (themed !== null && themed.length > 0) return themed[Math.min(Math.max(0, index), themed.length - 1)];
     return `/assets/dwu/images/ui/flagshapes/flag${String(index).padStart(2, '0')}.png`;
 }
 

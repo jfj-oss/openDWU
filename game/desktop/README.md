@@ -13,6 +13,12 @@ Worlds: Universe install folder via the privileged `dwu://` scheme.
   the original is a Windows game) and streams the file with
   `net.fetch(pathToFileURL(...))`. Path traversal is blocked: the resolved
   path must stay inside the install root.
+- Themes (customization sets): `dwu://app/theme-manifest/index.json` lists the
+  install's `Customization/` subfolders and `theme-manifest/<set>.json` one
+  theme's file index, both built live from YOUR install by
+  `desktop/themeIndex.cjs` (the browser cannot list folders; the game answers
+  the original's File.Exists / Directory.Exists checks from these). The theme
+  files themselves come through `assets/dwu/Customization/<set>/…` as above.
 - Install dir discovery: `$DWU_DIR` (not saved; used by
   `scripts/desktop-check.mjs`) → `<userData>/config.json`
   (`{"installDir": "..."}`) → platform default guesses (Steam library paths, `~/Games/...` on macOS)

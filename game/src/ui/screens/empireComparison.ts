@@ -23,6 +23,7 @@
 // the read-only replica under ?simWorker=1.
 // The Code 1 ending (Main.Part12.cs 3428 DoGameEnd) also shows the Shakturi story panel: presentGameEnd / shakturiEndingStory.
 
+import { activeCustomizationSet } from '../../sim/data/customization';
 import './empireComparison.css';
 import type { Empire } from '../../sim/empire';
 import type { Galaxy } from '../../sim/galaxy';
@@ -335,7 +336,8 @@ let loadedText: GameText | null = null;
 /** GameText.txt, fetched once; null on any error. */
 export function loadGameText(): Promise<GameText | null> {
     if (gameTextCache === null) {
-        gameTextCache = fetch('/assets/dwu/GameText.txt')
+        // Start.cs 885-899: the theme's GameText.txt replaces the stock one.
+        gameTextCache = fetch(activeCustomizationSet()?.fileUrl('GameText.txt') ?? '/assets/dwu/GameText.txt')
             .then((r) => (r.ok ? r.text() : Promise.reject(new Error(`HTTP ${r.status}`))))
             .then((src) => parseGameText(src).text)
             .catch(() => null);

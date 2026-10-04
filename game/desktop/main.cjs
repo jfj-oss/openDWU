@@ -13,6 +13,7 @@ const path = require('node:path');
 const fs = require('node:fs');
 const os = require('node:os');
 const { pathToFileURL } = require('node:url');
+const themeIndex = require('./themeIndex.cjs');
 
 // dist/ lives next to desktop/ in the repo; when packaged it is copied into
 // resources/ by @electron/packager (extraResources below).
@@ -196,6 +197,21 @@ app.whenReady().then(() => {
                     return new Response(`Not a file: ${fileRel}`, { status: 404 });
                 }
                 return net.fetch(pathToFileURL(resolved).href, request);
+            }
+
+            if (rest.startsWith('theme-manifest/')) {
+                // Themes of the USER's install (Customization subfolders + each one's file index), built live:
+                // dist/'s copy describes the build machine's install. desktop/themeIndex.cjs.
+                if (!installDir) return new Response('[]', { status: 200, headers: { 'Content-Type': 'application/json' } });
+                const name = rest.slice('theme-manifest/'.length);
+                let body = null;
+                if (name === 'index.json') body = JSON.stringify(themeIndex.listThemes(installDir));
+                else if (name.endsWith('.json')) {
+                    const idx = themeIndex.buildThemeIndex(installDir, name.slice(0, -'.json'.length));
+                    if (idx !== null) body = JSON.stringify(idx);
+                }
+                if (body === null) return new Response(`Not found: ${rest}`, { status: 404 });
+                return new Response(body, { status: 200, headers: { 'Content-Type': 'application/json' } });
             }
 
             // Everything else: the built game from dist/.
