@@ -93,7 +93,9 @@ import { closeGalacticHistory } from './ui/screens/galacticHistory';
 import { installEventLogDevHook } from './ui/eventLogDev';
 import { installEventMessages, removeEventMessages } from './ui/eventMessages';
 import { installWorkerMessageUi } from './ui/workerMessages'; // [simworker] chunk 4
-import { installAutosave, removeAutosave } from './ui/autosave';
+import { currentGameAutosave, installAutosave, readAutosave, removeAutosave } from './ui/autosave';
+import { messageBox } from './ui/originalWindow';
+import { restartFromSources, restartPromptText, restartSources } from './simworker/restart';
 import { isGameOptionsPanelOpen } from './ui/screens/gameOptionsPanel';
 import { newGameOptionsFromSettings } from './ui/screens/gameOptionsModel'; // [gameoptions]
 // [leftovers] end
@@ -348,6 +350,53 @@ async function loadSaveInWorker(source: { text: string } | { url: string }): Pro
     return { game: client.core.game, time, startOptions: startOptions ?? defaultStartGameOptions(), simClient: client };
 }
 
+/** The restart prompt is open (one per stopped worker). */
+let restartPromptFor: SimWorkerClient | null = null;
+
+/**
+ * [simworker] The worker stopped for good (simworker/restart.ts, docs/sim-worker.md §4.6): every request waiting on it
+ * has failed. A message box (the original's MessageBoxEx) offers Restart — the game in a new worker from the best save
+ * text there is: the worker's own last state, else the replica as the view last showed it, else this game's last
+ * autosave — resumed paused, or Main Menu.
+ */
+async function offerWorkerRestart(simClient: SimWorkerClient, game: Game, time: GalaxyTime, reason: string): Promise<void> {
+    if (restartPromptFor === simClient) return;
+    restartPromptFor = simClient;
+    time.paused = true;
+    const startOptions = lastStartOptions;
+    const auto = currentGameAutosave();
+    const sources = restartSources({
+        rescue: simClient.rescueSave,
+        // Serialized only if chosen (a late game takes seconds), while this view still holds the replica.
+        replica: startOptions !== null ? () => serializeGame(game, time, startOptions) : null,
+        autosave: auto === null ? null : { ...auto, read: () => readAutosave(auto.name) },
+    });
+    const RESTART = 'Restart';
+    const MENU = 'Main Menu';
+    const answer = await messageBox({ caption: 'Simulation Stopped', text: restartPromptText(reason, sources), buttons: sources.length > 0 ? [RESTART, MENU] : [MENU], icon: 'stop', width: 540, buttonWidth: 120 });
+    const toMenu = (): void => {
+        teardownActiveGameView();
+        showMainMenu();
+    };
+    if (answer !== RESTART) {
+        toMenu();
+        return;
+    }
+    const r = await restartFromSources(sources, (text) => loadSaveInWorker({ text }));
+    for (const f of r.failed) console.warn(`sim worker restart: ${f.source.label}: ${f.error}`);
+    if (r.result === null) {
+        await messageBox({ caption: 'Restart Failed', text: `The game could not be restarted:\n${r.failed.map((f) => `- ${f.source.label}: ${f.error}`).join('\n')}`, icon: 'stop', width: 540 });
+        toMenu();
+        return;
+    }
+    const loaded = r.result;
+    lastStartOptions = loaded.startOptions;
+    teardownActiveGameView();
+    await startGameViewWithOverlay(loaded.game, undefined, undefined, { speed: loaded.time.speed, paused: true }, loaded.simClient);
+    showToast(`Restarted from ${r.source.label} — paused`);
+    console.info(`sim worker restart: restarted from ${r.source.label} (${r.source.kind})`);
+}
+
 /** createGame in the worker (autostart / wizard): the options minus gameData, and the scenario to apply to its data. */
 async function createGameInWorker(opts: CreateGameOptions, scenario: { id: string; include: string[] | null } | null, startOptions: StartGameOptions, flagShapeIndex?: number): Promise<{ game: Game; simClient: SimWorkerClient }> {
     const client = await bootWorker('Creating galaxy', { kind: 'create', options: workerCreateOptions(opts), scenario, flagShapeIndex }, opts.gameData, startOptions);
@@ -580,8 +629,12 @@ export async function startGameView(
             const t = resolve(e.target) as { xpos: number; ypos: number } | null;
             if (t !== null) camera.centerOn(t.xpos, t.ypos);
         } else if (e.kind === 'simError') showToast('Simulation error — game paused (see the worker console)');
-        // The worker itself stopped (docs/sim-worker.md §4.4 "Failed commands"): orders in flight have failed.
-        else if (e.kind === 'workerStopped') showToast('The simulation stopped — the game cannot continue; return to the main menu (see the console)');
+        // The worker itself stopped (docs/sim-worker.md §4.4 "Failed commands"): orders in flight have failed. Offer to
+        // restart the game in a new worker (§4.6).
+        else if (e.kind === 'workerStopped') {
+            showToast('The simulation stopped — the orders on their way were not carried out (see the console)');
+            void offerWorkerRestart(simClient, game, time, e.message);
+        }
     });
     // 19p event log: `?eventLog=dump` logs the chronicle digest; __dwu.eventLog.dump() / .export(since).
     (window as unknown as { __dwu: Record<string, unknown> }).__dwu.eventLog = installEventLogDevHook(galaxy, window.location.search);

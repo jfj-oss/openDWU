@@ -74,6 +74,7 @@ import { confirmAutomationOff } from './orderMenu';
 import { galaxyStarDate } from '../sim/tick/simTime';
 import { createShipAction, ShipActionType } from '../sim/player/shipAction';
 import { issuePlayerCommand } from '../sim/player/playerCommands';
+import { PendingOnce, PendingValues } from './pendingCommands';
 // [troops] end
 import { moneyPanelIncome, moneyPanelWriteDue } from '../sim/treasury';
 import { countLabel } from './plural';
@@ -1678,12 +1679,17 @@ function buildSelectionPanel(wiring: HudWiring): HTMLElement {
         else stellarObjectSelectHandler?.(o, false);
     };
     const automationTarget = (): BuiltObject | ShipGroup | null => currentSelection?.shipGroup ?? currentSelection?.builtObject ?? null;
+    // The toggle's state last sent per ship / fleet until its reply lands (pendingCommands.ts): a quick second click
+    // turns it back, as it does in-thread a frame later.
+    const pendingAutomated = new PendingValues<BuiltObject | ShipGroup, boolean>();
     const toggleAutomation = (): void => {
         const target = automationTarget();
         const player = wiring.galaxy?.playerEmpire;
         if (!target || !player) return;
-        const { automated } = automationToggleLabel(target);
+        const automated = pendingAutomated.value(target, automationToggleLabel(target).automated);
+        const settle = pendingAutomated.send(target, !automated);
         issuePlayerCommand(player.galaxy, player, 'shipAction', [target, createShipAction(automated ? ShipActionType.UnautomateShip : ShipActionType.AutomateShip, target), false, undefined], () => {
+            settle();
             refresh();
             refreshSelectionActionBar();
         });
@@ -2782,15 +2788,23 @@ function habitatDispatchSlots(galaxy: Galaxy, player: Empire, h: Habitat, done: 
         icon: dispatchIcon(o.id, o.action?.design ?? null),
         disabled: o.ship === null,
         onClick: () => {
+            // One order per slot until its reply lands (pendingCommands.ts): a double click sends one ship, in both
+            // modes (the second click would re-resolve before the first order reached the game).
+            const end = dispatchBusy.start(`${h.habitatIndex}|${o.id}`);
+            if (end === null) return;
             // Re-resolve at click time: ships' queues and positions have moved since the panel was drawn.
-            issuePlayerCommand(galaxy, player, 'habitatDispatch', [h], (now) => dispatchOrder(galaxy, player, h, o, now.find((x) => x.id === o.id)));
+            issuePlayerCommand(galaxy, player, 'habitatDispatch', [h], (now) => dispatchOrder(galaxy, player, h, o, now.find((x) => x.id === o.id), end));
         },
     }))));
 }
 
-/** Give the dispatch order `o` as re-resolved at click time (`fresh`). */
-function dispatchOrder(galaxy: Galaxy, player: Empire, h: Habitat, o: DispatchOption, fresh: DispatchOption | undefined): void {
+/** Dispatch slot orders on their way (habitat index | option id). */
+const dispatchBusy = new PendingOnce<string>();
+
+/** Give the dispatch order `o` as re-resolved at click time (`fresh`); `end` once its reply landed. */
+function dispatchOrder(galaxy: Galaxy, player: Empire, h: Habitat, o: DispatchOption, fresh: DispatchOption | undefined, end: () => void = () => {}): void {
     if (!fresh || fresh.ship === null || fresh.action === null) {
+        end();
         showToast(`No available ${o.role}`);
         return;
     }
@@ -2802,11 +2816,13 @@ function dispatchOrder(galaxy: Galaxy, player: Empire, h: Habitat, o: DispatchOp
         const p = fresh.action.position;
         const zero = p.x === 0 && p.y === 0;
         issuePlayerCommand(galaxy, player, 'constructionJobAdd', [design, h, zero ? COORD_UNSET_DOUBLE : p.x, zero ? COORD_UNSET_DOUBLE : p.y], (id) => {
+            end();
             showToast(id === 0 ? `${o.label} ${h.name}: not possible` : `Construction job added: ${o.label} at ${h.name}`);
         });
         return;
     }
     issuePlayerCommand(galaxy, player, 'shipAction', [ship, fresh.action, true, { x: h.xpos, y: h.ypos }], (r) => {
+        end();
         showToast(r.ok === false ? `${ship.name}: ${r.message ?? 'order refused'}` : `${ship.name} sent: ${o.label} ${h.name}`);
     });
 }

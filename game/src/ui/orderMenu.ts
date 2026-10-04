@@ -32,6 +32,7 @@ import {
     type SelectionButton,
 } from '../sim/player/orderMenu';
 import { showToast } from './toast';
+import { PendingOnce } from './pendingCommands';
 import { openPirateSmugglingPicker } from './pirateSmugglingPicker';
 import { saveAutomationResponse, savedAutomationResponse } from './settings'; // [gameoptions]
 import { wreckSalvageMenuItem } from './scenario/wreckageUi'; // [wreckage]
@@ -476,8 +477,11 @@ export function installOrderUi(d: OrderUiDeps, view: OrderMainView, camera: Orde
  * the selection buttons' page, the fleet point-pick mode, messages, and the automation prompts (asked after the
  * order with the game paused — the C# message box is modal).
  */
-export async function performAction(action: ShipAction, fromActionMenu: boolean, actionMenuPoint?: { x: number; y: number }): Promise<void> {
-    if (deps === null) return;
+export async function performAction(action: ShipAction, fromActionMenu: boolean, actionMenuPoint?: { x: number; y: number }, replied?: () => void): Promise<void> {
+    if (deps === null) {
+        replied?.();
+        return;
+    }
     const { galaxy, empire } = deps;
     const selected = deps.getSelected();
     playOrderSting(galaxy, empire, selected, action); // [audio] Main.Part7.cs:504 / 515 investigate → discovery.mp3
@@ -485,6 +489,7 @@ export async function performAction(action: ShipAction, fromActionMenu: boolean,
     const r = await new Promise<ShipActionResult>((resolve) => {
         issuePlayerCommand(galaxy, empire, 'shipAction', [selected, action, fromActionMenu, actionMenuPoint], resolve);
     });
+    replied?.();
     if (deps === null) return;
     if (r.message !== undefined && r.message !== '') showToast(resolveGameText(r.message));
     if (r.mouseHoverMode !== undefined && selected instanceof ShipGroup) {
@@ -769,6 +774,8 @@ export function createSelectionActionBar(): HTMLElement {
     element.className = 'order-actions';
     let buttons: SelectionButton[] = [];
     let lastSel: ShipActionSelection = null;
+    // A button order on its way (see the click handler); a new selection starts afresh.
+    const barOrders = new PendingOnce<SelectionBar>();
     /** Sim worker: the selection and page the current `buttons` answer (a reply arrives one round trip after render). */
     let buttonsSel: ShipActionSelection = null;
     let buttonsPage: ShipAction | null = null;
@@ -786,6 +793,7 @@ export function createSelectionActionBar(): HTMLElement {
             const selected = deps.getSelected();
             if (selected !== lastSel) {
                 lastSel = selected;
+                barOrders.clear();
                 self.page = null; // method_209 → method_592
                 force = true;
             }
@@ -834,7 +842,12 @@ export function createSelectionActionBar(): HTMLElement {
             }
             const b = buttons[i];
             if (b === undefined || b.action === null || !b.enabled) return;
-            void performAction(b.action, false); // method_594 → method_347(action, false)
+            // The buttons are a picture of the game when they were drawn (a toggle's direction, the page): until the
+            // order's reply lands and the bar is redrawn (in-thread the next frame, in sim-worker mode a round trip),
+            // a second click would repeat the stale button — it is ignored (pendingCommands.ts).
+            const end = barOrders.start(self);
+            if (end === null) return;
+            void performAction(b.action, false, undefined, end); // method_594 → method_347(action, false)
         });
         btns.push(btn);
     }

@@ -65,6 +65,13 @@ export interface CommandMessage {
     empire: number;
     op: string;
     args: RemoteArg[];
+    /**
+     * Wall-clock deadline (epoch ms, `performance.timeOrigin + performance.now()`: the same clock in the worker): the
+     * worker applies the command only at a frame boundary that starts by then, else rejects it (`expired` reply, not
+     * applied, not journaled) — so a command the main thread stopped waiting for can never land later
+     * (docs/sim-worker.md §4.4 "Failed commands", the timeout policy). Absent: no deadline (tests, old senders).
+     */
+    deadline?: number;
 }
 
 export interface SaveRequest {
@@ -139,7 +146,21 @@ export interface UiOpMessage {
     args: RemoteArg[];
 }
 
-export type ToWorker = InitMessage | ClockMessage | CommandMessage | HostOpMessage | RefreshRequest | SaveRequest | DigestRequest | TradeFlowsMessage | DebugRequest | CommandLogRequest | UiOpMessage | { type: 'dispose' };
+export type ToWorker =
+    | InitMessage
+    | ClockMessage
+    | CommandMessage
+    | HostOpMessage
+    | RefreshRequest
+    | SaveRequest
+    | DigestRequest
+    | TradeFlowsMessage
+    | DebugRequest
+    | CommandLogRequest
+    | UiOpMessage
+    | { type: 'dispose' }
+    /** Tests / the smoke: stop the game as a fatal error in the step loop would (worker.ts fatal, with its rescue save). */
+    | { type: 'simulateFatal'; message: string };
 
 export interface ProgressMessage {
     type: 'progress';
@@ -183,8 +204,9 @@ export interface StepMessage {
     /** onApplied results of commands applied at this tick's boundary and refresh replies, resolved after `delta`. A
      *  result makes the main thread apply the queued cold parts through this delta first. `error`: the command / host op
      *  failed (docs/sim-worker.md §4.4 "Failed commands"); `threw`: the command's executor threw at the boundary (the
-     *  worker paused with a simulation error; as in-thread, no callback runs). */
-    results: { id: number; result: RemoteArg; error?: string; threw?: boolean }[];
+     *  worker paused with a simulation error; as in-thread, no callback runs); `expired`: the command reached a frame
+     *  boundary after its deadline and was not applied (CommandMessage.deadline). */
+    results: { id: number; result: RemoteArg; error?: string; threw?: boolean; expired?: boolean }[];
     /** Sim → UI events raised during the tick (resolved after `delta`). */
     events: WorkerEvent[];
 }
@@ -231,10 +253,11 @@ export type FromWorker =
     | { type: 'commandLog'; id: number; log: CommandLogEntry[] }
     /**
      * Something failed in the worker. `fatal`: the worker's game stopped (its step loop or the sync threw; nothing more
-     * will come — the main thread fails what waits on it). `id`: the save / digest / debug / commandLog request that
-     * failed (its promise rejects). Neither: a message handler failed (logged).
+     * will come — the main thread fails what waits on it; `rescue`: the worker's save of its game as it stopped, when
+     * it could still serialize it — the restart's first choice, restart.ts). `id`: the save / digest / debug /
+     * commandLog request that failed (its promise rejects). Neither: a message handler failed (logged).
      */
-    | { type: 'error'; message: string; fatal?: boolean; id?: number };
+    | { type: 'error'; message: string; fatal?: boolean; id?: number; rescue?: string | null };
 
 /** Reply to a DebugRequest: the member's value (or the call's result) and the target's plain fields after the op. */
 export interface DebugReply {

@@ -35,6 +35,7 @@ import {
 } from '../../sim/designGeneration';
 import { designCalculateMaintenanceCosts } from '../../sim/construction/empireConstruction';
 import { issuePlayerCommand } from '../../sim/player/playerCommands';
+import { PendingValues } from '../pendingCommands';
 import { formatMoney } from '../hud';
 import { resolveGameText } from '../../sim/textResolver';
 import {
@@ -447,6 +448,9 @@ function createShipDesigns(opts: ShipDesignsOptions): OpenState {
     body.appendChild(place(glassButton(gt('Show Empire Policy'), { onClick: () => toggleEmpirePolicy({ empire: player }) }), 635, 62, 320, 40));
 
     // ctlDesignsList (10, 122) 945 × 450 with method_307's column widths (Name takes what the scrollbar leaves).
+    // The Upgrade toggle per sub-role as last sent, until its reply lands (pendingCommands.ts).
+    const pendingUpgrade = new PendingValues<number, boolean>();
+    const upgradeShown = (subRole: number): boolean => pendingUpgrade.value(subRole, checkDesignSubRoleShouldBeUpgraded(player, subRole));
     const grid = new OwGrid<DesignRow>({
         key: (r) => r.design,
         multiSelect: true,
@@ -482,9 +486,14 @@ function createShipDesigns(opts: ShipDesignsOptions): OpenState {
                 id: 'Upgrade', header: gt('Upgrade'), width: 65, align: 'center', sort: (r) => r.upgrade,
                 render: (r, cell) => tip(cell, r, gt(r.upgrade)),
                 onClick: (r) => {
-                    // ctlDesignsList_CellClick "Upgrade": SetDesignSubRoleShouldBeUpgraded(SubRole, !current).
-                    const now = checkDesignSubRoleShouldBeUpgraded(player, r.design.subRole);
-                    issuePlayerCommand(galaxy, player, 'setDesignSubRoleUpgrade', [r.design.subRole, !now], () => refreshList());
+                    // ctlDesignsList_CellClick "Upgrade": SetDesignSubRoleShouldBeUpgraded(SubRole, !current) — current as
+                    // last sent while its reply is on the way (a quick second click turns it back).
+                    const now = upgradeShown(r.design.subRole);
+                    const settle = pendingUpgrade.send(r.design.subRole, !now);
+                    issuePlayerCommand(galaxy, player, 'setDesignSubRoleUpgrade', [r.design.subRole, !now], () => {
+                        settle();
+                        refreshList();
+                    });
                 },
             },
             {
@@ -618,7 +627,11 @@ function createShipDesigns(opts: ShipDesignsOptions): OpenState {
     function refreshList(selectDesign: Design | null = null): void {
         const designs = filterDesigns(player, filterIndex, typeFilterIndex);
         const prev = selectDesign ?? grid.selected?.design ?? null;
-        grid.setRows(designs.map((d) => designRow(d, player, galaxy)));
+        grid.setRows(designs.map((d) => {
+            const row = designRow(d, player, galaxy);
+            if (pendingUpgrade.has(d.subRole)) row.upgrade = upgradeShown(d.subRole) ? 'Automatic' : 'Manual';
+            return row;
+        }));
         // The grid keeps its (multi-)selection by key across re-binds; select only a new design or when none is left.
         if (selectDesign !== null && designs.includes(selectDesign)) grid.select(selectDesign, true);
         else if (designs.length > 0 && (prev === null || !designs.includes(prev))) grid.select(designs[0], false);
