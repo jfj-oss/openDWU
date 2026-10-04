@@ -8,6 +8,7 @@ import type { Galaxy } from '../sim/galaxy';
 import type { GameData } from '../sim/data/gameData';
 import type { Game } from '../sim/game';
 import { setRemoteCommandSink } from '../sim/player/playerCommands';
+import { setRemoteWaypoints, type WaypointState } from '../sim/player/waypoints';
 import { FRAME_REAL_MS } from '../sim/tick/scheduler';
 import { createRenderTime, updateRenderTime, type RenderTime } from '../render/renderInterp';
 import { GalaxyReplica } from './replicaGalaxy';
@@ -291,6 +292,10 @@ export class SimClientCore {
             (record) => this.opts.post({ type: 'tradeFlows', record }),
         );
         setRemoteSimHost(galaxy, this.remoteHost());
+        // The player's waypoints (a side table, sim/player/waypoints.ts): read straight from the synced side-tables root,
+        // which the worker freshens with each waypoint command's delta (the replica's own copy lands only with the
+        // periodic side-table apply).
+        setRemoteWaypoints(galaxy, () => ((this.replica.decoder.object(1) as Record<string, unknown> | null)?.waypoints as WaypointState | null | undefined) ?? null);
     }
 
     /** The replica's handle for the local-model paths (remoteHost.ts): commands and host ops with promised results. */
