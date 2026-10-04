@@ -309,7 +309,7 @@ describe('dispatchKey (task 10a)', () => {
 
     it('returns null for unbound keys and runs TODO actions inertly', () => {
         const handlers = buildDefaultHandlers(new Camera(), makeClock());
-        expect(dispatchKey(fakeEvent('Q'), handlers)).toBeNull();
+        expect(dispatchKey(fakeEvent('W'), handlers)).toBeNull();
         // A bound but unimplemented action still reports its action id.
         expect(dispatchKey(fakeEvent('L'), handlers)).toBe('lockView');
     });

@@ -131,6 +131,10 @@ export interface UiSettings {
     /** GameOptions.CustomizationSetName (GameOptions.cs 258): the theme chosen on the Change Theme panel (Start.cs
      *  method_2), "" = the stock game. */
     customizationSet: string;
+
+    /** The "Improvements" switches (ui/improvements.ts): additions not in the original, by id; a missing id takes the
+     *  improvement's default. */
+    improvements: Record<string, boolean>;
 }
 
 /** [galaxymarkers] The GalaxyViewDisplay* keys, in the original's option order. */
@@ -229,6 +233,7 @@ export const DEFAULT_SETTINGS: UiSettings = {
     newGameOptions: null,
     customizationSet: '',
     // [gameoptions] end
+    improvements: {},
 };
 
 /** Minimal storage shape (localStorage-compatible). */
@@ -338,6 +343,11 @@ export function loadSettings(): UiSettings {
         }
         // [gameoptions] end
         if (typeof parsed.customizationSet === 'string') out.customizationSet = parsed.customizationSet;
+        if (parsed.improvements !== null && typeof parsed.improvements === 'object' && !Array.isArray(parsed.improvements)) {
+            const r: Record<string, boolean> = {};
+            for (const [k, v] of Object.entries(parsed.improvements)) if (typeof v === 'boolean') r[k] = v;
+            out.improvements = r;
+        }
     } catch {
         // Corrupt blob: keep the defaults.
     }

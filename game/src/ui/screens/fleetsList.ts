@@ -71,6 +71,7 @@ import {
     type OriginalWindow,
 } from '../originalWindow';
 import { requestSimRefresh } from '../../simworker/refresh';
+import { isImprovementEnabled } from '../improvements';
 
 // -------------------------------------------------------------------------------------------------------------------
 // Pure helpers (tested)
@@ -301,7 +302,7 @@ export function ungarrisonedTroopReport(troops: readonly Troop[], sg: ShipGroup 
 /** The action buttons of the window (its own + the fleet orders row) as data. */
 export type FleetActionId =
     | 'select' | 'goto' | 'setHomeColony' | 'repairRefuel' | 'retrofit' | 'loadTroops'
-    | 'homeBase' | 'attackPoint' | 'posture' | 'range' | 'automate' | 'stop' | 'disband';
+    | 'homeBase' | 'attackPoint' | 'posture' | 'range' | 'automate' | 'stop' | 'disband' | 'settings';
 
 export interface FleetPanelState {
     /** Enabled flag per action (method_270: all of them need a selected fleet). */
@@ -319,6 +320,7 @@ export function fleetPanelState(sg: ShipGroup | null, troopSpaceRemaining = 100)
         homeBase: on, attackPoint: on, posture: on, range: on, automate: on,
         stop: on && sg.mission !== null && sg.mission.type !== BuiltObjectMissionType.Undefined,
         disband: on,
+        settings: on,
     };
     return { enabled, automated: sg !== null && fleetAutomated(sg) };
 }
@@ -385,6 +387,8 @@ export interface FleetsListOptions {
     onPickPoint?: (sg: ShipGroup, mode: 'homeBase' | 'attackPoint') => void;
     /** The tab to open on (default the last one shown). */
     tab?: 'fleets' | 'designs';
+    /** The Fleet Settings panel on the fleet (an Improvement, ui/improvements.ts; no button without it or while off). */
+    onOpenSettings?: (sg: ShipGroup) => void;
 }
 
 interface OpenState {
@@ -660,6 +664,12 @@ function createFleetsList(opts: FleetsListOptions): OpenState {
         { id: 'stop', label: 'Stop', icon: 'stop.png', title: 'Cancel the fleet mission and hold', run: (sg) => shipAction(sg, fleetShipAction('stop', sg)) },
         { id: 'disband', label: 'Disband Fleet', icon: 'leavefleet.png', title: 'Disband the fleet; its ships stay in service', run: (sg) => { current = null; shipAction(sg, fleetShipAction('disband', sg)); } },
     ];
+    // An Improvement (ui/improvements.ts 'fleetSettings'): the Fleet Settings panel, all of the fleet's behaviour
+    // settings in one window. Not shown while the improvement is off.
+    if (opts.onOpenSettings !== undefined && isImprovementEnabled('fleetSettings')) {
+        const openSettings = opts.onOpenSettings;
+        orderSpecs.push({ id: 'settings', label: 'Settings', icon: 'fleetposture.png', title: 'Fleet Settings: posture, engagement, retreat, fuel, troops and resupply in one window (Q)', run: (sg) => openSettings(sg) });
+    }
     const orderButtons = new Map<FleetActionId, HTMLButtonElement>();
     rowButtonLayout(orderSpecs.length).forEach(({ x, w }, i) => {
         const s = orderSpecs[i];
@@ -767,6 +777,7 @@ function createFleetsList(opts: FleetsListOptions): OpenState {
             icon('automate', automated ? 'unautomate.png' : 'automate.png');
             minor('stop', sg.mission !== null && sg.mission.type !== BuiltObjectMissionType.Undefined ? missionTypeLabel(sg.mission.type) : '(No mission)');
             minor('disband', `${sg.ships.length} ships`);
+            if (orderButtons.has('settings')) minor('settings', 'All settings');
         } else {
             for (const s of orderSpecs) minor(s.id, '');
         }

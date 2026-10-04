@@ -46,6 +46,7 @@ import { clampAutoSaveMinutes, clampMaximumFramerate, getSettings, resetAutomati
 import { copyMessageOptions, getMessageOptions, MessageCategory, setMessageOption, setSuppressAllPopups, type MessageOptions } from '../messageRouting';
 import { COLORS, checkBox, dropDown, el, glassButton, messageBox, numericUpDown, openOriginalWindow, place, text, type OriginalWindow } from '../originalWindow';
 import { checkBoxRight, colorSlider, groupBox, labelledTrackBar } from '../originalWindowControls';
+import { improvementsGroupHeight, improvementsOptionsGroup } from '../improvements';
 import { AUTOMATION_MODE_ITEMS, AUTOMATION_PRESETS, detectAutomationMode, empireAutomationValues, gameOptionsFromEmpire, messageSettingsRows, type PendingEmpireValues } from './gameOptionsModel';
 
 export type AutomationField =
@@ -226,7 +227,8 @@ const F19 = 19;
 /** pnlGameOptions.Size (method_402) and the sub-windows' (method_556 / 566 / 568). The Empire Settings, Message
  *  Settings and Advanced Display windows are taller than the original's by the rows we add (see the file header). */
 const OPTIONS_W = 700;
-const OPTIONS_H = 696;
+/** The original's 696, plus our "Improvements" group under Show Message Settings (ui/improvements.ts). */
+const OPTIONS_H = 696 + improvementsGroupHeight() + 10;
 const EMPIRE_W = 500;
 const EMPIRE_H = 769 + 25;
 const MESSAGES_W = 735;
@@ -438,6 +440,9 @@ function createGameOptionsPanel(opts: GameOptionsPanelOptions): OpenState {
 
     // btnGameOptionsShowMessages (12, 589) 660 × 35.
     button(body, 'Show Message Settings', 12, 589, 660, 35, () => openMessageSettings());
+
+    // Not in the original: the "Improvements" group (ui/improvements.ts), one switch per addition not in DW:U.
+    body.appendChild(place(improvementsOptionsGroup(659, F4), 12, 634));
 
     function openAdvancedDisplaySettings(): void {
         openSubWindow('advanced', () => createAdvancedDisplaySettings());
