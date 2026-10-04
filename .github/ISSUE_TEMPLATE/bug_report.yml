@@ -1,0 +1,35 @@
+name: Bug report
+description: "Something in openDWU behaves differently from Distant Worlds: Universe, crashes, or looks wrong"
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you saw, and what you expected instead (if it differs from the original game, how the original does it).
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: How to reproduce
+      description: Steps, galaxy settings or seed if you know them. Attaching a save (.dwusave) helps a lot.
+  - type: input
+    id: version
+    attributes:
+      label: openDWU version
+      description: The release you downloaded (e.g. 0.1.0), or the commit if you run from source.
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      options:
+        - macOS (desktop app)
+        - Windows (desktop app)
+        - Linux (desktop app)
+        - Browser (running from source)
+  - type: textarea
+    id: logs
+    attributes:
+      label: Console errors or screenshots
+      description: Optional. When running from source in a browser, the browser's developer console (F12) shows errors.
