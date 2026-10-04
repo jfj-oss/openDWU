@@ -109,6 +109,9 @@ export interface UiSettings {
     galaxyViewDisplayAlwaysEnemyMilitaryShips: boolean;
     galaxyViewDisplayAlwaysPirates: boolean;
     // [galaxymarkers] end
+    /** GameOptions.CleanGalaxyView (Expanded's "Clean Galaxy view", Start.1.cs 2935 / 3001, default off): the galaxy
+     *  view without the sector grid, system rings, names and link lines (render/cleanGalaxyView.ts). */
+    cleanGalaxyView: boolean;
 
     // [gameoptions] begin — the Game Options screen's view / display options (Main.Part6.cs:2491-2515 method_418,
     // Main.Part4.cs:4690-4712 method_569; defaults Main.Part9.cs:2774-2807 method_260). UI-only: none reaches the sim.
@@ -234,6 +237,7 @@ export const DEFAULT_SETTINGS: UiSettings = {
     galaxyViewDisplayAlwaysEnemyMilitaryShips: true,
     galaxyViewDisplayAlwaysPirates: true,
     // [galaxymarkers] end
+    cleanGalaxyView: false,
 
     // [gameoptions] begin — Main.Part9.cs:2774-2807 method_260; GameOptions.cs _MaximumFramerate = -1, _SystemNebulaeDetail = 0.
     mainViewScrollSpeed: 10,
@@ -326,6 +330,7 @@ export function loadSettings(): UiSettings {
         // [freightOverlay] end
         if (typeof parsed.ditherGradients === 'boolean') out.ditherGradients = parsed.ditherGradients;
         if (typeof parsed.pullStationsToCentre === 'boolean') out.pullStationsToCentre = parsed.pullStationsToCentre;
+        if (typeof parsed.cleanGalaxyView === 'boolean') out.cleanGalaxyView = parsed.cleanGalaxyView;
         if (typeof parsed.showWeaponRangeCircles === 'boolean') out.showWeaponRangeCircles = parsed.showWeaponRangeCircles;
         if (typeof parsed.autoPauseInPopup === 'boolean') out.autoPauseInPopup = parsed.autoPauseInPopup;
         // [improvements] begin

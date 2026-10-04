@@ -169,9 +169,8 @@ describe('19h rim frontier — generation', () => {
         });
         const g = createScenarioGame(base, { scenario: 'rim-frontier', params: { rimFrontierExtent: 1.7, rimFrontierStarCount: 4000 }, options: big }).game.galaxy;
         expect(starsBeyond(g, 0).total).toBe(4000);
-        // 15 (the wizard's max) * 1.7 = 25.5 → round → 26 = SCENARIO_MAX_SECTORS: sector labels stay one letter (A..Z),
-        // never the two-letter (AA..) range a >26 count would need (galaxyMap.ts sectorColumnLabel, empireEvents.ts
-        // resolveSectorDescription, hud.ts missionTargetText all assume String.fromCharCode(i + 65)).
+        // 15 (the wizard's largest preset) * 1.7 = 25.5 → round → 26 (the base custom-size path, Galaxy.setCustomGalaxyDimensions):
+        // sector labels stay one letter (A..Z); past 26 columns they continue AA, AB, … (sectorNames.ts sectorColumnName).
         expect(g.sectorWidth).toBe(26);
         expect(g.sectorHeight).toBe(26);
         const labels = new Set<string>();

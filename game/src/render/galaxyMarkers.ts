@@ -74,6 +74,7 @@ import { showsMapIndicators } from './mainViewDisplay';
 import { drawCrossedSwords, systemsUnderFire } from './battleIcons';
 import { builtObjectHiddenFromPick, warEmpires } from './builtObjectLayer';
 import { SystemLinkLayer } from './systemLinks';
+import { galaxyViewGates } from './cleanGalaxyView';
 
 // --- constants ----------------------------------------------------------------------------------------------------
 
@@ -761,6 +762,8 @@ export class GalaxyMarkerLayer {
     private lastRefresh = -Infinity;
     private dataVersion = 0;
     private ringKey = { z: NaN, v: -1, a: NaN, x0: 0, y0: 0, x1: 0, y1: 0, sig: '' };
+    /** Whether the owned / independent system rings are listed (method_250 5395: !CleanGalaxyView). */
+    private ringsGated = true;
     private discKey = { z: NaN, v: -1, x: NaN, y: NaN };
 
     constructor(
@@ -844,8 +847,8 @@ export class GalaxyMarkerLayer {
             }
             if (o !== null) {
                 this.owners.set(sys, { empire: o.empire, tsv: o.tsv, color: color! });
-                this.ringList.push({ sys, tsv: o.tsv, cross: false, pen });
-            } else if (explored(idx) && (sys.independentColonyCount ?? 0) > 0) {
+                if (this.ringsGated) this.ringList.push({ sys, tsv: o.tsv, cross: false, pen });
+            } else if (this.ringsGated && explored(idx) && (sys.independentColonyCount ?? 0) > 0) {
                 // 5395-5398: known independent colonies get the grey ring.
                 this.ringList.push({ sys, tsv: 0, cross: false, pen });
             }
@@ -872,15 +875,22 @@ export class GalaxyMarkerLayer {
         const f = 1 / z;
         const factionOn = this.overlays.factionMarkers;
         const presenceOn = stationPresenceVisible(this.overlays);
+        // GameOptions.CleanGalaxyView (method_250's flag, cleanGalaxyView.ts): no system rings, links or name decorations.
+        const gates = galaxyViewGates(getSettings().cleanGalaxyView);
         this.back.visible = f > GALAXY_OVERLAY_MIN_FACTOR && (factionOn || presenceOn);
         this.front.visible = factionOn;
         this.drawn = [];
         this.overlayG.clear();
         this.selBoxes.length = 0;
-        this.decorateLabels(systems, f, z, factionOn);
+        this.decorateLabels(systems, f, z, factionOn && gates.systemNames);
         if (!this.back.visible && !this.front.visible) return;
 
         const now = performance.now();
+        if (gates.systemRings !== this.ringsGated) {
+            // The ring list is rebuilt by refresh(): toggling the option takes effect at once.
+            this.ringsGated = gates.systemRings;
+            this.lastRefresh = -Infinity;
+        }
         if (now - this.lastRefresh >= REFRESH_MS) {
             this.lastRefresh = now;
             this.refresh();
@@ -892,7 +902,7 @@ export class GalaxyMarkerLayer {
         this.rings.visible = ringA > 0;
         if (this.rings.visible) this.updateRings(f, z, cam, ringA);
         // Same gate as the rings (method_250 5237: f > num16, in the rings' block), but MainColor at full alpha.
-        this.links.update(f, z, cam, factionOn);
+        this.links.update(f, z, cam, factionOn && gates.systemLinks);
         if (this.front.visible && this.frames.length > 0) this.updateSymbols(f, z, cam);
         this.drawSelectionCircles(z);
     }

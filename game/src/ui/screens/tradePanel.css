@@ -1,86 +1,36 @@
-/* Trade negotiation panel (task 17e2). Dark-panel tokens as diplomacyScreen.css; sits above the Diplomacy screen. */
-
-.trade-wrap {
-    position: fixed;
-    inset: 0;
-    z-index: 1600; /* above the Diplomacy screen (1500) */
-    pointer-events: none;
-    font-family: 'Forgotten Futurist', sans-serif;
-    color: #e6e6e6;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
-
-.trade-window {
-    pointer-events: auto;
-    width: 820px;
-    max-width: calc(100vw - 16px);
-    height: 640px;
-    max-height: calc(100vh - 96px);
-    background: rgba(14, 16, 20, 0.96);
-    backdrop-filter: blur(6px);
-    -webkit-backdrop-filter: blur(6px);
-    border: 1px solid rgba(255, 255, 255, 0.12);
-    border-radius: 6px;
-    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.7);
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-}
-
-.trade-titlebar {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 8px 12px;
-    background: rgba(10, 11, 15, 0.9);
-    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-}
-.trade-heading {
-    font-size: 13px;
-    color: #e8d24a;
-}
-.trade-close {
-    background: transparent;
-    border: none;
-    color: #ccc;
-    font-size: 15px;
-    cursor: pointer;
-    padding: 2px 6px;
-}
-.trade-close:hover {
-    color: #fff;
-}
+/* Trade negotiation panel (task 17e2) in the original window style (ui/originalWindow.ts ScreenPanel). Inside: the
+   reply line, the two empires' columns as dark (32, 32, 40) lists with the original palette, glass buttons. */
 
 .trade-body {
+    box-sizing: border-box;
+    overflow: hidden;
     display: flex;
     flex-direction: column;
-    gap: 6px;
+    gap: 8px;
     padding: 8px;
-    min-height: 0;
-    flex: 1 1 auto;
+    font-size: 15.33px;
+    color: rgb(170, 170, 170);
 }
 
 .trade-reply {
-    font-size: 12px;
-    padding: 4px 6px;
-    border-left: 2px solid #888;
-    background: rgba(255, 255, 255, 0.04);
+    padding: 4px 8px;
+    border-left: 3px solid rgb(120, 120, 130);
+    background: rgb(32, 32, 40);
+    color: rgb(220, 220, 220);
     white-space: pre-line;
 }
 .trade-reply-accepted {
-    border-left-color: #90ee90;
+    border-left-color: rgb(144, 238, 144);
 }
 .trade-reply-refused {
-    border-left-color: #ffa500;
+    border-left-color: rgb(255, 165, 0);
 }
 .trade-reply-error {
-    border-left-color: #ff4040;
-    color: #aaa;
+    border-left-color: rgb(255, 64, 64);
+    color: rgb(170, 170, 170);
 }
 .trade-reply-speaker {
-    color: #e8d24a;
+    color: rgb(255, 192, 0);
     margin-right: 6px;
 }
 
@@ -95,52 +45,52 @@
     display: flex;
     flex-direction: column;
     min-height: 0;
-    background: rgba(255, 255, 255, 0.03);
-    border: 1px solid rgba(255, 255, 255, 0.06);
-    border-radius: 4px;
+    background: rgb(32, 32, 40);
+    border: 1px solid rgb(67, 67, 77);
     padding: 6px;
 }
 .trade-column-title {
     display: flex;
     align-items: center;
     gap: 6px;
-    font-size: 13px;
+    font-size: 16.67px;
+    font-weight: bold;
+    color: rgb(255, 255, 255);
     margin-bottom: 4px;
 }
 .trade-swatch {
-    width: 10px;
-    height: 10px;
-    border-radius: 2px;
+    width: 12px;
+    height: 12px;
+    border: 1px solid rgb(120, 120, 130);
     flex: 0 0 auto;
 }
 .trade-offered-heading {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    font-size: 11px;
-    color: #e8d24a;
+    color: rgb(255, 192, 0);
     padding: 2px 0;
+    background: rgb(24, 24, 24);
 }
 .trade-offered {
-    min-height: 44px;
-    max-height: 120px;
+    min-height: 56px;
+    max-height: 140px;
     overflow-y: auto;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    border-bottom: 1px solid rgb(67, 67, 77);
     margin-bottom: 4px;
     padding-bottom: 4px;
 }
 .trade-offered-item {
-    font-size: 11px;
     padding: 1px 4px;
     cursor: pointer;
-    border-radius: 3px;
 }
 .trade-offered-item:hover {
-    background: rgba(255, 64, 64, 0.14);
+    background: rgb(96, 96, 96);
+    color: rgb(255, 255, 0);
 }
 .trade-required,
 .trade-required:hover {
-    color: #e8d24a;
+    color: rgb(255, 192, 0);
     background: none;
     cursor: default;
 }
@@ -150,55 +100,36 @@
     flex: 1 1 auto;
 }
 .trade-group {
-    font-size: 11px;
-    color: #aaa;
+    color: rgb(255, 255, 255);
     padding: 4px 0 1px;
 }
 .trade-item {
-    font-size: 11px;
-    padding: 1px 4px 1px 14px;
+    padding: 1px 4px 1px 16px;
     cursor: pointer;
-    border-radius: 3px;
 }
 .trade-item-single {
     padding-left: 4px;
-    color: #cfd8e8;
+    color: rgb(200, 200, 200);
 }
 .trade-item:hover:not(.trade-disabled):not(.trade-muted) {
-    background: rgba(232, 210, 74, 0.16);
+    background: rgb(96, 96, 96);
+    color: rgb(255, 255, 0);
 }
 .trade-disabled {
-    color: #777;
+    color: rgb(110, 110, 120);
     cursor: default;
 }
 .trade-muted {
-    color: #777;
-    font-size: 11px;
+    color: rgb(110, 110, 120);
     cursor: default;
 }
 
-.trade-small,
-.trade-propose {
-    font-family: inherit;
-    color: #e6e6e6;
-    background: rgba(255, 255, 255, 0.06);
-    border: 1px solid rgba(255, 255, 255, 0.2);
-    border-radius: 4px;
-    cursor: pointer;
-}
 .trade-small {
-    font-size: 10px;
-    padding: 1px 6px;
+    margin-left: 6px;
 }
 .trade-propose {
-    font-size: 12px;
-    padding: 4px 14px;
-}
-.trade-small:hover,
-.trade-propose:hover {
-    background: rgba(232, 210, 74, 0.16);
-    border-color: rgba(232, 210, 74, 0.55);
-    color: #fff;
+    min-width: 280px;
+    height: 32px;
 }
 .trade-footer {
     display: flex;

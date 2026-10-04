@@ -36,6 +36,7 @@ import { HabitatType, type Habitat } from '../../types';
 import { Random } from '../../random';
 import { radiusFraction, registerScenarioGeneration, registerScenarioQuery, registerScenarioYearly } from '../hooks';
 import type { GalaxyScenario } from '../state';
+import type { ScenarioGenerationSetup } from '../hooks';
 import { RIM_RACE } from '../rimTrade/common';
 import { creatureAlive, herdMembers, peekRimFaunaState, type RimHerd } from '../rimFauna/common';
 import { BuiltObjectRole } from '../../data/designSpecifications';
@@ -79,12 +80,17 @@ function setupParam(s: GalaxyScenario, name: RimFrontierParam): number {
     return typeof v === 'number' ? v : RIM_FRONTIER_DEFAULTS[name];
 }
 
-/** 19h-6 map scale + 19h-4 fuel bias: before generation. */
-function frontierSetup(s: GalaxyScenario, resources: readonly { name: string; resourceId: number }[], o: { starCount: number; sectorWidth: number; sectorHeight: number }): void {
+/**
+ * 19h-6 map scale + 19h-4 fuel bias: before generation. The extent and star-count params feed the base game's custom
+ * galaxy size (the same CreateGameOptions fields the wizard's "Sectors: W × H" / star boxes fill): an extent past the C#
+ * 15-sector clamp turns customGalaxyDimensions on (Galaxy.setCustomGalaxyDimensions, up to CUSTOM_MAX_SECTORS).
+ */
+function frontierSetup(s: GalaxyScenario, resources: readonly { name: string; resourceId: number }[], o: ScenarioGenerationSetup): void {
     const extent = setupParam(s, 'rimFrontierExtent');
     if (extent !== 1.0) {
         o.sectorWidth = Math.round(o.sectorWidth * extent);
         o.sectorHeight = Math.round(o.sectorHeight * extent);
+        if (o.sectorWidth > 15 || o.sectorHeight > 15) o.customGalaxyDimensions = true;
     }
     const stars = Math.trunc(setupParam(s, 'rimFrontierStarCount'));
     if (stars > 0) o.starCount = stars;

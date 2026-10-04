@@ -29,6 +29,16 @@
 //   MainView.2.cs 2680/2718/2811    — a newly drawn explosion > 150 shakes the view (screenShake.ts; `onShake`)
 
 import { themeArtFolder } from '../themeAssets';
+import {
+    EXPLOSION_SET_DIRS,
+    STOCK_CONSTRUCTION_FRAME_COUNT,
+    STOCK_TRACTOR_STRIKE_FRAME_COUNT,
+    constructionFrameUrls,
+    explosionSetUrls,
+    hyperFrameUrls,
+    planetDestroyUrls,
+    tractorStrikeFrameUrls,
+} from './effectFrames';
 import { activeCustomizationSet } from '../sim/data/customization';
 import { sampleShot, type MotionInterpolator } from './renderInterp';
 import { Container, Graphics, Texture } from 'pixi.js';
@@ -42,7 +52,7 @@ import { Habitat, HabitatCategoryType } from '../sim/types';
 import { habitatSystemIndex } from './habitatIndex';
 import type { Weapon } from '../sim/weapon';
 import { ComponentType } from '../sim/data/components';
-import { EXPLOSION_HABITAT_IMAGE_COUNT, EXPLOSION_IMAGE_COUNT, type Explosion } from '../sim/combat/damage';
+import { EXPLOSION_IMAGE_COUNT, type Explosion } from '../sim/combat/damage';
 import { MIN_TIME, galaxyStarDate } from '../sim/tick/simTime';
 import { fightersOf, type Fighter } from '../sim/combat/fighters';
 import { ComponentCategoryType } from '../sim/data/policies';
@@ -70,24 +80,17 @@ export const TORPEDO_IMAGE_COUNT = 8;
 export const BEAM_IMAGE_COUNT = 13;
 /** area_*.png (texture2D_3). */
 export const AREA_IMAGE_COUNT = 4;
-/** effects/explosions/<dir>: Directory.GetDirectories in NTFS (case-insensitive ordinal) order = ExplosionImageIndex. */
-export const EXPLOSION_SET_DIRS = [
-    'Expl01', 'Expl01b', 'Expl01c', 'Expl01d', 'Expl01e',
-    'Expl02a', 'Expl02b', 'Expl02c', 'Expl02d',
-    'Expl05a', 'Expl05b', 'Expl05c', 'Expl05d', 'Expl05e',
-    'Expl07c', 'Expl07d', 'Expl07e', 'Expl07f', 'Expl07g', 'Expl07h',
-] as const;
-/** effects/hyperenter/<k>/frame_<n>.png and hyperexit/<k>/ file counts of the install's folders 0..3 (the C# loads
- * folders "0", "1", … until one is missing, Main.Part13.cs 1296-1330; Design.HyperDriveIndex picks one). */
-export const HYPER_ENTER_FRAME_COUNTS = [50, 32, 40, 43] as const;
-export const HYPER_EXIT_FRAME_COUNTS = [35, 31, 43, 42] as const;
-/** effects/construction/Frame_001..090 (texture2D_33 — the phaser hull-hit spark). */
-export const CONSTRUCTION_FRAME_COUNT = 90;
-/** effects/tractorbeamstrike/01..12.PNG (texture2D_34). */
-export const TRACTOR_STRIKE_FRAME_COUNT = 12;
+// effects/explosions, planetdestroy, hyperenter / hyperexit, construction and tractorbeamstrike: the frame lists the
+// original's loaders count from the folder in use (the stock one, or a theme's replacing it) — effectFrames.ts.
+export { EXPLOSION_SET_DIRS, HYPER_ENTER_FRAME_COUNTS, HYPER_EXIT_FRAME_COUNTS } from './effectFrames';
+/** effects/construction/Frame_001..090 (texture2D_33 — the phaser hull-hit spark), stock. */
+export const CONSTRUCTION_FRAME_COUNT = STOCK_CONSTRUCTION_FRAME_COUNT;
+/** effects/tractorbeamstrike/01..21.PNG (texture2D_34 = bitmap_215: GetFiles("*.png").Length frames), stock. */
+export const TRACTOR_STRIKE_FRAME_COUNT = STOCK_TRACTOR_STRIKE_FRAME_COUNT;
 /** environment/stars/blackhole/BlkHole-0001..0100 (texture2D_13, the area-gravity vortex). */
 export const BLACKHOLE_FRAME_COUNT = 100;
 
+/** A stock explosion frame (set = ExplosionImageIndex 0..19, frame 0..19). */
 export function explosionFrameUrl(set: number, frame: number): string {
     const dir = EXPLOSION_SET_DIRS[set] ?? EXPLOSION_SET_DIRS[0];
     return `${IMG}/effects/explosions/${dir}/${dir}${String(frame + 1).padStart(4, '0')}.png`;
@@ -843,15 +846,15 @@ export class EffectsLayer {
         this.loadOne(`${W}/assaultpod_0.png`, (t) => (this.assaultPod = t));
         this.loadOne(`${IMG}/effects/other/shieldstrike.png`, (t) => (this.shieldStrike = t));
 
-        this.explosionSets = EXPLOSION_SET_DIRS.map((_, s) => new FrameSet(store, Array.from({ length: EXPLOSION_IMAGE_COUNT }, (_u, i) => explosionFrameUrl(s, i))));
-        this.planetDestroy = new FrameSet(
-            store,
-            Array.from({ length: EXPLOSION_HABITAT_IMAGE_COUNT }, (_u, i) => `${IMG}/effects/planetdestroy/ExplPlanet04${String(i + 1).padStart(4, '0')}.png`),
-        );
-        this.hyperEnter = HYPER_ENTER_FRAME_COUNTS.map((n, k) => new FrameSet(store, Array.from({ length: n }, (_u, i) => `${IMG}/effects/hyperenter/${k}/frame_${i}.png`)));
-        this.hyperExit = HYPER_EXIT_FRAME_COUNTS.map((n, k) => new FrameSet(store, Array.from({ length: n }, (_u, i) => `${IMG}/effects/hyperexit/${k}/frame_${i}.png`)));
-        this.construction = new FrameSet(store, Array.from({ length: CONSTRUCTION_FRAME_COUNT }, (_u, i) => `${IMG}/effects/construction/Frame_${String(i + 1).padStart(3, '0')}.png`));
-        this.tractorStrike = new FrameSet(store, Array.from({ length: TRACTOR_STRIKE_FRAME_COUNT }, (_u, i) => `${IMG}/effects/tractorbeamstrike/${String(i + 1).padStart(2, '0')}.PNG`));
+        // LoadEffectsExplosion / LoadHyperEffects / LoadEffects: the frames of the folder in use (a theme's replacing
+        // the stock one is re-counted, effectFrames.ts).
+        this.explosionSets = explosionSetUrls().map((urls) => new FrameSet(store, urls));
+        this.planetDestroy = new FrameSet(store, planetDestroyUrls());
+        const hyper = hyperFrameUrls();
+        this.hyperEnter = hyper.enter.map((urls) => new FrameSet(store, urls));
+        this.hyperExit = hyper.exit.map((urls) => new FrameSet(store, urls));
+        this.construction = new FrameSet(store, constructionFrameUrls());
+        this.tractorStrike = new FrameSet(store, tractorStrikeFrameUrls());
         this.blackholeVortex = new FrameSet(store, Array.from({ length: BLACKHOLE_FRAME_COUNT }, (_u, i) => `${IMG}/environment/stars/blackhole/BlkHole-${String(i + 1).padStart(4, '0')}.png`));
     }
 
@@ -1348,7 +1351,7 @@ export class EffectsLayer {
             placeSprite(s, bx, by, w, w, dir - Math.PI / 2);
         }
         if (pull) {
-            const tex = this.tractorStrike.frame(loopFrameIndex(nowMs, TRACTOR_STRIKE_FRAME_COUNT, 10));
+            const tex = this.tractorStrike.frame(loopFrameIndex(nowMs, this.tractorStrike.length, 10));
             if (tex !== null) {
                 const s = this.sprites.acquire(tex);
                 // Load-rotated frames drawn at (direction - 90°).
@@ -1380,12 +1383,14 @@ export class EffectsLayer {
         const idx = bo.design?.hyperDriveIndex ?? 0;
         if (enterDue && st.enteredCountdown !== bo.hyperjumpCountdown) {
             st.enteredCountdown = bo.hyperjumpCountdown;
-            if (onScreen) this.addHyper(this.hyperEnter[idx] ?? this.hyperEnter[0], bo, nowMs);
+            const frames = this.hyperEnter[idx] ?? this.hyperEnter[0];
+            if (onScreen && frames !== undefined) this.addHyper(frames, bo, nowMs);
         }
         const newExit = exitFlag && ((bo.hyperjumpJustExited && !st.exitLatched) || !st.exitFlag);
         if (newExit) {
             st.exitLatched = true;
-            if (onScreen) this.addHyper(this.hyperExit[idx] ?? this.hyperExit[0], bo, nowMs);
+            const frames = this.hyperExit[idx] ?? this.hyperExit[0];
+            if (onScreen && frames !== undefined) this.addHyper(frames, bo, nowMs);
         }
         if (!bo.hyperjumpJustExited) st.exitLatched = false;
         st.exitFlag = exitFlag;
