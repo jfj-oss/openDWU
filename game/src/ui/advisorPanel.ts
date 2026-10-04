@@ -14,6 +14,7 @@ import { issuePlayerCommand } from '../sim/player/playerCommands';
 import { probeAdvisorEndpoint, runAdvisorTurn, type AdvisorApi, type ChatMessage } from './advisorClient';
 import { getSettings } from './settings';
 import { getSelection } from './hud';
+import { FONT, el, glassButton, openOriginalWindow, place, scrollPanel, textBox } from './originalWindow';
 
 export interface AdvisorPanelOptions {
     galaxy: Galaxy;
@@ -79,70 +80,72 @@ function createAdvisorPanel(opts: AdvisorPanelOptions): OpenState {
     let lastBrief: AdvisorBrief | null = null;
     const abort = new AbortController();
 
-    const root = document.createElement('div');
-    root.className = 'advisor-wrap';
-    const win = document.createElement('div');
-    win.className = 'advisor-window';
+    // Original-style ScreenPanel (ui/originalWindow.ts); the chat does not pause the game.
+    const W = 560;
+    const H = 640;
+    const owin = openOriginalWindow({
+        id: 'advisor',
+        title: admiral !== null ? `Advisor — ${admiral.name}` : 'Advisor — Fleet Admiral',
+        icon: 'diplomacy.png',
+        width: W,
+        height: H,
+        noAutoPause: true,
+        escapeCloses: true,
+        onClose: () => close(),
+    });
+    const root = owin.root;
+    root.classList.add('advisor-wrap');
+    const body = owin.body;
+    const bw = owin.bodySize.w;
+    const bh = owin.bodySize.h;
 
-    const titlebar = document.createElement('div');
-    titlebar.className = 'advisor-titlebar';
-    const heading = document.createElement('div');
-    heading.className = 'advisor-heading';
-    heading.textContent = admiral !== null ? `Advisor — ${admiral.name}` : 'Advisor — Fleet Admiral';
-    const status = document.createElement('span');
-    status.className = 'advisor-status';
+    const status = place(el('div', 'advisor-status'), 12, 8);
     status.textContent = 'connecting…';
-    const closeBtn = document.createElement('button');
-    closeBtn.type = 'button';
-    closeBtn.className = 'advisor-close';
-    closeBtn.title = 'Close';
-    closeBtn.textContent = '✕';
-    titlebar.append(heading, status, closeBtn);
+    body.appendChild(status);
 
-    const list = document.createElement('div');
-    list.className = 'advisor-messages';
+    const list = scrollPanel('advisor-messages');
+    place(list, 8, 34, bw - 16, bh - 34 - 50);
+    body.appendChild(list);
 
-    const form = document.createElement('form');
-    form.className = 'advisor-input-row';
-    const input = document.createElement('input');
-    input.type = 'text';
-    input.className = 'advisor-input';
-    input.placeholder = 'Give an order…';
+    const form = el('form', 'advisor-input-row');
+    place(form, 8, bh - 42, bw - 16, 34);
+    const input = textBox('', 'Give an order…', () => {});
+    input.classList.add('advisor-input');
+    place(input, 0, 0, bw - 16 - 98, 34);
+    input.style.fontSize = `${FONT.normal}px`;
     input.disabled = true;
-    const send = document.createElement('button');
+    const send = glassButton('Send', { size: FONT.normal });
     send.type = 'submit';
-    send.className = 'advisor-send';
-    send.textContent = 'Send';
+    send.classList.add('advisor-send');
+    place(send, bw - 16 - 90, 0, 90, 34);
     send.disabled = true;
     form.append(input, send);
-
-    win.append(titlebar, list, form);
-    root.appendChild(win);
-    document.body.appendChild(root);
+    body.appendChild(form);
 
     function renderLine(l: AdvisorLine): HTMLElement {
-        const el = document.createElement('div');
-        el.className = `advisor-line advisor-${l.kind}`;
-        el.textContent = l.text;
+        const row = document.createElement('div');
+        row.className = `advisor-line advisor-${l.kind}`;
+        row.textContent = l.text;
         if (l.kind === 'confirm' && l.confirmId !== undefined) {
-            const chip = document.createElement('button');
-            chip.type = 'button';
-            chip.className = 'advisor-confirm-chip';
-            chip.textContent = 'Confirm';
             const id = l.confirmId;
-            chip.addEventListener('click', () => {
-                chip.disabled = true;
-                if (lastBrief === null) return;
-                // Command log: queued, applied at the next frame boundary.
-                issuePlayerCommand(opts.galaxy, opts.player, 'advisorCommands', [lastBrief, [{ id, confirm: true }]], (results) => {
-                    history.push({ role: 'user', content: 'Confirmed.' });
-                    history.push({ role: 'assistant', content: results.map((r) => `[${r.ok ? 'done' : 'failed'}: ${r.text}]`).join(' ') });
-                    add(...resultLines(results));
-                });
+            const chip = glassButton('Confirm', {
+                size: FONT.tiny,
+                className: 'ow-flow advisor-confirm-chip',
+                colors: { outer: 0x601810, shine: 0xc04030, glow: 0xc04030 },
+                onClick: () => {
+                    chip.disabled = true;
+                    if (lastBrief === null) return;
+                    // Command log: queued, applied at the next frame boundary.
+                    issuePlayerCommand(opts.galaxy, opts.player, 'advisorCommands', [lastBrief, [{ id, confirm: true }]], (results) => {
+                        history.push({ role: 'user', content: 'Confirmed.' });
+                        history.push({ role: 'assistant', content: results.map((r) => `[${r.ok ? 'done' : 'failed'}: ${r.text}]`).join(' ') });
+                        add(...resultLines(results));
+                    });
+                },
             });
-            el.appendChild(chip);
+            row.appendChild(chip);
         }
-        return el;
+        return row;
     }
     function add(...ls: AdvisorLine[]): void {
         for (const l of ls) {
@@ -219,21 +222,14 @@ function createAdvisorPanel(opts: AdvisorPanelOptions): OpenState {
         if (e.key !== 'Escape') e.stopPropagation();
     });
 
+    let closing = false;
     function close(): void {
-        document.removeEventListener('keydown', onKeyDown);
+        if (closing) return;
+        closing = true;
         abort.abort();
-        root.remove();
+        if (!owin.closed) owin.close();
         open = null;
     }
-    function onKeyDown(e: KeyboardEvent): void {
-        if (e.key === 'Escape') {
-            e.preventDefault();
-            e.stopImmediatePropagation();
-            close();
-        }
-    }
-    document.addEventListener('keydown', onKeyDown);
-    closeBtn.addEventListener('click', () => close());
 
     const state: OpenState = { root, close };
     open = state;

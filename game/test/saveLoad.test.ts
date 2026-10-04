@@ -11,6 +11,8 @@ import {
     deleteSave,
     parseSaveFileText,
     createMemorySaveStore,
+    initialSaveName,
+    saveNameFromFileName,
     type SaveStorage,
 } from '../src/ui/screens/saveLoad';
 
@@ -174,5 +176,18 @@ describe('parseSaveFileText', () => {
         let called = false;
         expect(() => parseSaveFileText('not json', () => (called = true, { game: null, time: null, startOptions: null }))).toThrow();
         expect(called).toBe(false);
+    });
+});
+// Main.Part7.cs btnGameMenuSave_Click re-saves string_2 (the game's current file); Save Game As starts empty.
+describe('initialSaveName / saveNameFromFileName', () => {
+    it('starts Save Game from the current save name and Save Game As empty', () => {
+        expect(initialSaveName('Empire', false)).toBe('Empire');
+        expect(initialSaveName('Empire', true)).toBe('');
+        expect(initialSaveName(null, false)).toBe('');
+    });
+
+    it('drops the .dwusave extension of an opened file', () => {
+        expect(saveNameFromFileName('My Galaxy.dwusave')).toBe('My Galaxy');
+        expect(saveNameFromFileName('backup.json')).toBe('backup.json');
     });
 });

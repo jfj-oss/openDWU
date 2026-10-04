@@ -107,7 +107,7 @@ import { issuePlayerCommand } from './sim/player/playerCommands';
 import { createMissionShipActionAt } from './sim/player/shipAction';
 import { BuiltObjectMissionType } from './sim/missions/mission';
 import { commandLog } from './sim/player/commandLog';
-import { setSaveLoadProvider, createSaveLoadPanel, type LoadedGame } from './ui/screens/saveLoad';
+import { setSaveLoadProvider, createSaveLoadPanel, setCurrentSaveName, type LoadedGame } from './ui/screens/saveLoad';
 import { type Game } from './sim/game';
 import { registerLocationPingedHook } from './sim/story/eventActions';
 import { createGalaxyMap, type GalaxyMapScreen } from './ui/screens/galaxyMap';
@@ -129,6 +129,7 @@ import { Creature } from './sim/creature';
 
 // [popupstubs] begin
 import { installBattleReportNotifier, removeBattleReportNotifier } from './ui/battleReports';
+import { installDesignLineUpgradeSync, removeDesignLineUpgradeSync } from './ui/designLineUpgrade'; // [improvements]
 import { setBattleReportsEnabled } from './sim/battleReports/hooks';
 import { installMessageStubList, removeMessageStubList } from './ui/messageStubList';
 // [popupstubs] end
@@ -138,6 +139,7 @@ import { setShipCommandHandler, setViewLockedQuery } from './ui/keyboard';
 import { refreshSelectionActionBar } from './ui/orderMenu';
 import { selectCreature, selectFighter, selectHabitat } from './ui/hud';
 import { createShipCommandKeys, type ShipCommandKeys } from './ui/shipCommandKeys';
+import { installWaypointUi } from './ui/waypoints'; // [waypoints]
 import { createControlGroupKeys } from './ui/controlGroups'; import { setControlGroupHandler } from './ui/keyboard'; import { resetPanelVisibility } from './ui/panelVisibility'; import { setMainViewDisplayType } from './render/mainViewDisplay'; import { closeGroundReport } from './ui/screens/groundReport'; import { playGridClick } from './audio/gameAudio'; // [parC1]
 import { showToast } from './ui/toast';
 // [fix6ui] end
@@ -525,6 +527,7 @@ const OVERLAY_PARAM_ALIASES: Record<string, OverlayKey> = {
     // [dw2overlays] end
     supply: 'supplyShortages', // [improvements] supplyChain
     supplyShortages: 'supplyShortages',
+    waypoints: 'waypoints', // [improvements] waypoints
 };
 
 /** Screenshot / dev hook: `?overlays=potentialColonies,scenic,research`
@@ -928,6 +931,7 @@ export async function startGameView(
     // [improvements] Battle reports (DW2-inspired): the sim records them; this announces new ones and opens the window.
     setBattleReportsEnabled(battleReportsObserverOn());
     installBattleReportNotifier({ galaxy, player: game.playerEmpire, goTo: (x, y) => historyGoTo(camera, x, y) });
+    installDesignLineUpgradeSync(galaxy, game.playerEmpire); // [improvements] designLineUpgrade: the switch → the sim (journaled)
     // Dev / screenshot hook (scripts/battlereports-shots.mjs): the current game's save text (both modes).
     Object.assign((window as unknown as { __dwu: Record<string, unknown> }).__dwu, { serialize: serializeCurrent });
 
@@ -961,6 +965,10 @@ export async function startGameView(
         camera,
     );
     // [ordermenu] end
+
+    // [waypoints] Waypoints & Known Locations (an Improvement, ui/waypoints.ts): the W / Shift+W keys, the name dialog,
+    // the right-click entries (ui/orderMenu.ts) and the Waypoints list.
+    const waypointUiCleanup = installWaypointUi({ galaxy, empire: game.playerEmpire, camera, view, overlays, redrawGalaxyMap: () => galaxyMap.isOpen && galaxyMap.redraw() });
 
     // [fix6ui] begin — N2: E/R/A/S/, orders and Z/N/B/L selection keys (Main.Part7.cs Main_KeyUp).
     shipKeys = createShipCommandKeys({
@@ -1095,9 +1103,9 @@ export async function startGameView(
         return savePanel;
     }
     setSaveLoadProvider({
-        open: (_mode) => {
+        open: (mode, opts) => {
             const panel = getSavePanel();
-            panel.show();
+            panel.show(mode, opts);
         },
         serialize: () => serializeCurrent(),
         loadSave: (text) => {
@@ -1182,6 +1190,7 @@ export async function startGameView(
         removeMessageStubList();
         // [popupstubs] end
         removeBattleReportNotifier(); // [improvements]
+        removeDesignLineUpgradeSync(); // [improvements] designLineUpgrade
 
         // [leftovers] begin
         removeEventMessages();
@@ -1211,6 +1220,7 @@ export async function startGameView(
         // [aiadvisor] end
         llmLayer.dispose(); // [llm]
         orderUiCleanup(); // [ordermenu]
+        waypointUiCleanup(); // [waypoints]
 
         gameAudio.dispose(); // [audio]
         workerMessageUi?.dispose(); // [simworker]
@@ -1265,6 +1275,7 @@ function openWizard(onBackToMenu: () => void): void {
  * boot (task M2e2). The URL-param boot path (bootGameWithOptions) still uses
  * generateGalaxy only. */
 async function bootGameFromWizard(startOptions: StartGameOptions): Promise<void> {
+    setCurrentSaveName(null); // a new game has no save file yet (Main.string_2)
     const dwuPresent = await detectDwuPresent();
     const systemNames = await loadSystemNames(dwuPresent);
     const gameData = await loadGameDataOrNone(dwuPresent);
@@ -1341,6 +1352,7 @@ function showIntroduction(game: Game, time: GalaxyTime, kind: { playAsAPirate: b
  * empires, like ?autostart=1) and open the given tutorial's window over it.
  * Used by the Tutorials screen's Start buttons. */
 async function startTutorialGame(file: string): Promise<void> {
+    setCurrentSaveName(null); // a new game has no save file yet (Main.string_2)
     const dwuPresent = await detectDwuPresent();
     const systemNames = await loadSystemNames(dwuPresent);
     const gameData = await loadGameDataOrNone(dwuPresent);
@@ -1577,14 +1589,14 @@ function showMainMenu(): void {
             await ensureStaticData();
             // Register a load-only provider for the main menu context.
             setSaveLoadProvider({
-                open: (_mode) => {
-                    getMainMenuSavePanel().show();
+                open: () => {
+                    getMainMenuSavePanel().show('load');
                 },
                 loadSave: (text) => {
                     return loadSaveWithProgress(text);
                 },
             });
-            getMainMenuSavePanel().show();
+            getMainMenuSavePanel().show('load');
         },
     });
     activeMainMenu = menu;
@@ -1760,6 +1772,7 @@ async function buildAutostartGame(
     try {
         // Saves need start options (metadata only; the galaxy itself is saved).
         const startOptions = { ...defaultStartGameOptions(), seed, scenario: scenarioChoice };
+        setCurrentSaveName(null); // a new game has no save file yet (Main.string_2)
         if (useSimWorker()) {
             // [simworker] the same options, created in the worker (its data gets the same scenario overlay).
             const scenario = scenarioChoice === null ? null : { id: scenarioChoice.id, include: choiceInclude(scenarioChoice) };

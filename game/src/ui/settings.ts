@@ -84,6 +84,10 @@ export interface UiSettings {
     improvements: Record<string, boolean>;
     /** supplyChain: the Supply Shortages overlay also marks colonies short of luxuries (its "…" panel). */
     supplyShowColonyShortages: boolean;
+    /** waypoints: the "Waypoints & Known Locations" overlay shows the player's waypoints / the known locations (its "…"
+     *  panel). */
+    waypointsShowPlayer: boolean;
+    waypointsShowKnown: boolean;
     // [improvements] end
 
     /** Run the simulation in a Web Worker (docs/sim-worker.md; the default). Off: the in-thread fallback, the sim on the
@@ -213,6 +217,8 @@ export const DEFAULT_SETTINGS: UiSettings = {
     autoPauseInPopup: true,
     improvements: {}, // [improvements]
     supplyShowColonyShortages: true, // [improvements] supplyChain
+    waypointsShowPlayer: true, // [improvements] waypoints
+    waypointsShowKnown: true,
     // On by default only with 16 GB+ of RAM (src/systemMemory.ts): on an 8 GB Mac the replica's extra memory caused severe
     // slowdown and WebGL context loss (2026-10-04); see docs/sim-worker.md §6.
     simWorker: simWorkerDefault(),
@@ -334,6 +340,8 @@ export function loadSettings(): UiSettings {
             out.improvements = m;
         }
         if (typeof parsed.supplyShowColonyShortages === 'boolean') out.supplyShowColonyShortages = parsed.supplyShowColonyShortages;
+        if (typeof parsed.waypointsShowPlayer === 'boolean') out.waypointsShowPlayer = parsed.waypointsShowPlayer;
+        if (typeof parsed.waypointsShowKnown === 'boolean') out.waypointsShowKnown = parsed.waypointsShowKnown;
         // [improvements] end
         // The worker became the default with SIM_WORKER_SETTING_VERSION 2: a stored value from before (the old default
         // `false`, written with every other setting) is not the player's choice and is ignored.

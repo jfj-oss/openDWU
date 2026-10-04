@@ -141,7 +141,7 @@ await page.waitForTimeout(500);
 await page.click('.policy-load');
 await page.waitForTimeout(300);
 await shot('policy-load-list-after-save');
-await page.locator('.policy-file-entry', { hasText: 'Human.txt' }).first().click();
+await page.locator('.policy-file-entry', { hasText: 'Human.txt' }).first().dblclick();
 await page.waitForTimeout(1500);
 await shot('policy-after-load');
 await page.keyboard.press('Escape');

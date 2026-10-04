@@ -30,6 +30,10 @@
 //   creatures turn the same way in extrapolateMover (turnHeading, the creature's unwrapped difference included). A heading
 //   the next touch disagrees with (a turn begun or re-aimed there, a command that stops turning) is eased at
 //   HEADING_EASE_FACTOR × the turn rate instead of turned in one step (MotionInterpolator.sample `turnLimit`).
+// - Hyperjump legs: the first warp touch moves the ship at warp speed for the whole time since its last touch, a leg
+//   re-aimed at a touch went that time along its new heading, and a short jump enters and leaves warp in one touch —
+//   each soft-snapped (eased in: jumpNext, WARP_ENTRY_EASE_MS) instead of drawn as a teleport or a surge; the warp
+//   extrapolation stops at the exit point (LastHyperDistance), which it used to overshoot and come back from.
 
 import { FRAME_REAL_MS, FRAMES_PER_SECOND, HABITAT_TICK_BATCH_SIZE } from '../sim/tick/scheduler';
 import { MIN_TIME, spanSeconds } from '../sim/tick/simTime';
@@ -546,6 +550,11 @@ export interface MotionState {
     tRate: number;
     tRateAny: number;
     tLimit: number;
+    /** Hyperjump legs (turnedAtLastTouch): whether the latest touch left the object on a warp leg, whether that touch
+     * began it (the first warp touch: warpEntry), and how far the exit point lies ahead (warpLeft; Infinity: unknown). */
+    tWarp: boolean;
+    tEntry: boolean;
+    tWarpLeft: number;
 }
 
 /** Scratch for easeOffset: the offset and its velocity (per step). */
@@ -701,6 +710,12 @@ export class MotionInterpolator {
     touchGapMs = 0;
     /** Whether sample()'s turnLimit eases drawn headings (false: they follow the samples at once — A/B comparisons). */
     easeHeadings = true;
+    /** The object whose next sample() takes its new step as a jump (soft-snapped when it passes softSnapMs): a warp
+     * leg's first touch (sampleBuiltObject). Consumed by that sample. */
+    jumpNext: object | null = null;
+    /** Whether hyperjump legs are eased (warp entry / re-aim / short-jump soft snaps, the exit clamp: sampleBuiltObject).
+     * False: as before — A/B comparisons. */
+    easeWarp = true;
     /** Longest a creature's position is extrapolated past its LastTouch (one creature round-robin + a step). */
     creatureUntouchedMaxMs = 0;
     /** Longest a habitat-fired shot is extrapolated past the habitat's LastTouch (one habitat round-robin + a step). */
@@ -778,7 +793,7 @@ export class MotionInterpolator {
         /** Whether the drawn heading may be eased (turnLimit): drawn last frame and not snapped. */
         let easeHeading = false;
         if (st === undefined) {
-            st = { px: x, py: y, ph: heading, cx: x, cy: y, ch: heading, frame, ox: originX, oy: originY, serial: this.serial, epoch, renderFrame: 0, x, y, heading, ex: 0, ey: 0, evx: 0, evy: 0, eStart: 0, eLen: 0, tx: x, ty: y, tvx: 0, tvy: 0, atSerial: this.at, hs: new Float64Array(MOTION_HISTORY * 4), hn: 0, tTouch: Number.NaN, tHeading: 0, tTurning: false, tSpeed: 0, tRate: 0, tRateAny: 0, tLimit: 0 };
+            st = { px: x, py: y, ph: heading, cx: x, cy: y, ch: heading, frame, ox: originX, oy: originY, serial: this.serial, epoch, renderFrame: 0, x, y, heading, ex: 0, ey: 0, evx: 0, evy: 0, eStart: 0, eLen: 0, tx: x, ty: y, tvx: 0, tvy: 0, atSerial: this.at, hs: new Float64Array(MOTION_HISTORY * 4), hn: 0, tTouch: Number.NaN, tHeading: 0, tTurning: false, tSpeed: 0, tRate: 0, tRateAny: 0, tLimit: 0, tWarp: false, tEntry: false, tWarpLeft: Infinity };
             snapTo(st, this.serial, x, y, heading);
             this.states.set(obj, st);
         } else if (st.epoch !== epoch) {
@@ -812,7 +827,21 @@ export class MotionInterpolator {
             const vx = st.cx - st.px;
             const vy = st.cy - st.py;
             const vh = st.ch;
-            const r = this.advance(st, x, y, heading, maxSpeed, drawnLastFrame);
+            const force = this.jumpNext === obj;
+            if (force) {
+                this.jumpNext = null;
+                if (softSnapMs > 0 && drawnLastFrame) {
+                    // An object soft-snapped only now (a ship's warp entry, re-aim) has no track kept: last frame's
+                    // track is its drawn position (in this frame's coordinates) less the offset easing then (the ease
+                    // goes on into the new one: easeJump), moving as its last step did.
+                    const e = st.eLen > 0 && st.eStart + st.eLen > st.atSerial ? easeOffset(st, st.atSerial, easeScratch) : null;
+                    st.tx = st.x - st.ox - (e !== null ? e.x : 0);
+                    st.ty = st.y - st.oy - (e !== null ? e.y : 0);
+                    st.tvx = st.cx - st.px;
+                    st.tvy = st.cy - st.py;
+                }
+            }
+            const r = this.advance(st, x, y, heading, maxSpeed, drawnLastFrame, force);
             if (r === Advance.Jump && softSnapMs > 0 && drawnLastFrame) {
                 // The track: on from the new position along its motion there — a sample one step back (or back to last
                 // frame's presented instant, if that is earlier) on that line, the heading turning over the step.
@@ -894,14 +923,14 @@ export class MotionInterpolator {
 
     /** Take the sim's (x, y, heading) into `st` (same frame): a new step adds a sample, snapping on a jump, a long gap
      * (not drawn for MAX_INTERP_STEPS steps; MAX_BURST_STEPS when drawn last frame) or a move made without a step. */
-    private advance(st: MotionState, x: number, y: number, heading: number, maxSpeed: number, drawnLastFrame: boolean): Advance {
+    private advance(st: MotionState, x: number, y: number, heading: number, maxSpeed: number, drawnLastFrame: boolean, forceJump = false): Advance {
         if (st.serial !== this.serial) {
             const k = this.serial - st.serial;
             if (k < 0 || (k > MAX_INTERP_STEPS && !(drawnLastFrame && k <= MAX_BURST_STEPS))) {
                 snapTo(st, this.serial, x, y, heading);
                 return Advance.Snap;
             }
-            if (isJump(x - st.cx, y - st.cy, k, maxSpeed, this.stepSeconds)) {
+            if (forceJump || isJump(x - st.cx, y - st.cy, k, maxSpeed, this.stepSeconds)) {
                 snapTo(st, this.serial, x, y, heading);
                 return Advance.Jump;
             }
@@ -1020,6 +1049,11 @@ export interface MovingBuiltObject {
     targetSpeed?: number;
     accelerationRate?: number;
     hyperjumpPrepare?: boolean;
+    /** BuiltObject.LastHyperDistance: on a warp leg, the distance to its exit point before the latest touch's move
+     * (cmdMovement.ts HyperTo): where the warp extrapolation stops. */
+    lastHyperDistance?: number;
+    /** BuiltObject.HyperjumpJustExited: the latest touch ended a warp leg at its exit point. */
+    hyperjumpJustExited?: boolean;
 }
 
 // Cosmetic option (not in the original, off by default): draw a base at a planet / moon pulled in toward its centre.
@@ -1159,6 +1193,15 @@ export function builtObjectTurnRate(bo: MovingBuiltObject, speed = bo.currentSpe
     return r * ((captainBonuses(bo as BuiltObject)?.shipManeuvering ?? 100) / 100.0);
 }
 
+/**
+ * Game ms (at least) over which a warp leg's first touch is eased in: that touch sets CurrentSpeed to the warp speed and
+ * moves the ship at it for the whole time since its last touch (cmdMovement.ts HyperTo) — on a 10 000-object galaxy
+ * at 4× some 14 000 units in one touch, which the sample would draw as a teleport (isJump) or a surge at several times
+ * the warp speed. Soft-snapped instead (MotionInterpolator.easeJump: longer for a long jump, up to SOFT_SNAP_MAX_MS),
+ * the drawn ship accelerates into warp along its heading.
+ */
+export const WARP_ENTRY_EASE_MS = 400;
+
 /** The drawn heading of an object turns at most this many times the fastest the sim turns it (MotionInterpolator.sample
  * `turnLimit`): an ordinary turn (extrapolated) never reaches it; a heading the next touch disagrees with eases. */
 export const HEADING_EASE_FACTOR = 2;
@@ -1198,6 +1241,7 @@ function turnedAtLastTouch(m: MotionInterpolator, bo: MovingBuiltObject, st: Mot
     if (t === undefined) return 0;
     if (t !== st.tTouch) {
         const prev = st.tTouch;
+        const prevHeading = st.tHeading;
         st.tTurning = prev === prev && t > prev && t - prev <= 3 * m.untouchedMaxMs && bo.heading !== st.tHeading && bo.role !== BuiltObjectRole.Base;
         st.tTouch = t;
         st.tHeading = bo.heading;
@@ -1207,6 +1251,27 @@ function turnedAtLastTouch(m: MotionInterpolator, bo: MovingBuiltObject, st: Mot
         st.tRate = st.tTurning ? r : 0;
         st.tLimit = bo.currentSpeed > bo.topSpeed ? 0 : HEADING_EASE_FACTOR * Math.max(r, st.tRateAny);
         st.tRateAny = r;
+        // Warp legs (cmdMovement.ts HyperTo): the first warp touch moves the ship at warp speed for the whole time since
+        // its last touch (CurrentSpeed is set first) — a jump the sample eases (warpEntry); each warp touch measures the
+        // distance to the exit point before it moves (LastHyperDistance), so the exit lies that minus the touch's move
+        // ahead, where the touch after it puts the ship (the extrapolation stops there instead of overshooting).
+        const warp = bo.currentSpeed > bo.topSpeed;
+        const consecutive = prev === prev && t > prev && t - prev <= m.untouchedMaxMs;
+        // (A short jump enters and leaves warp in one touch: HyperjumpJustExited after a sub-light touch, the ship moved
+        // from where it stood to the exit point — eased the same way. A warp leg re-aimed at a touch — toward a moving
+        // target — went the whole time since the touch before along the new heading: a corner the extrapolation could not
+        // foresee, some 3 000 units sideways at 4×; eased too, its heading turned over about one round-robin.)
+        const reaim = consecutive && st.tWarp && warp && bo.heading !== prevHeading;
+        // (An exit while the drawn ship is still being eased in — a short leg — restarts the ease from where it is drawn,
+        // toward the exit point: the ease running was planned for a ship going on at warp, and would carry it back.)
+        const exitEasing = consecutive && st.tWarp && !warp && bo.hyperjumpJustExited === true && st.eLen > 0 && st.eStart + st.eLen > m.at;
+        st.tEntry = (consecutive && !st.tWarp && (warp || bo.hyperjumpJustExited === true)) || reaim || exitEasing;
+        // (Its heading too — the warp leg's first touch sets it toward the exit outright — turned over about one
+        // round-robin while the drawn ship is eased in.)
+        if (st.tEntry && bo.heading !== prevHeading) st.tLimit = HEADING_EASE_FACTOR * Math.max(r, Math.abs(wrapAngle(bo.heading - prevHeading)) / ((t - prev) / 1000));
+        st.tWarp = warp;
+        const lh = bo.lastHyperDistance;
+        st.tWarpLeft = warp && consecutive && typeof lh === 'number' && lh < 536870911 ? Math.max(0, lh - (bo.currentSpeed * (t - prev)) / 1000) : Infinity;
     }
     return st.tTurning && bo.heading !== bo.targetHeading ? st.tRate : 0;
 }
@@ -1235,13 +1300,13 @@ function builtObjectTurnLimit(bo: MovingBuiltObject): number {
  * Objects touched this step (lastTouch = nowMs), stopped or never touched stay at their committed position. Writes
  * `out` and returns it. Render-only: nothing is written to the object.
  */
-export function extrapolateUntouched(xpos: number, ypos: number, heading: number, currentSpeed: number, lastTouch: number, nowMs: number, maxMs: number, out: Point): Point {
+export function extrapolateUntouched(xpos: number, ypos: number, heading: number, currentSpeed: number, lastTouch: number, nowMs: number, maxMs: number, out: Point, maxDist = Infinity): Point {
     out.x = xpos;
     out.y = ypos;
     if (!(currentSpeed > 0) || !(maxMs > 0) || lastTouch <= MIN_TIME) return out;
     const dt = nowMs - lastTouch;
     if (!(dt > 0) || !Number.isFinite(dt)) return out;
-    const d = (currentSpeed * Math.min(dt, maxMs)) / 1000;
+    const d = Math.min((currentSpeed * Math.min(dt, maxMs)) / 1000, maxDist);
     out.x += Math.cos(heading) * d;
     out.y += Math.sin(heading) * d;
     return out;
@@ -1279,14 +1344,23 @@ export function sampleBuiltObject(m: MotionInterpolator, bo: MovingBuiltObject, 
     const limit = st0 === undefined ? 0 : tracked ? st0.tLimit : builtObjectTurnLimit(bo);
     // (A hyperjump leg's acceleration first, nextTouchSpeed; otherwise the committed speed as it stands.)
     const speed = tracked && bo.hyperjumpPrepare === true ? st0.tSpeed : bo.currentSpeed;
-    const st = sampleBuiltObjectAs(m, bo, depth, heading, speed, limit);
+    // A warp leg stops at its exit point; its first touch is eased in (WARP_ENTRY_EASE_MS) rather than jumped.
+    const maxDist = tracked && m.easeWarp ? st0.tWarpLeft : Infinity;
+    let soft = 0;
+    if (tracked && st0.tEntry && m.easeWarp) {
+        st0.tEntry = false;
+        m.jumpNext = bo;
+        soft = WARP_ENTRY_EASE_MS;
+    }
+    const st = sampleBuiltObjectAs(m, bo, depth, heading, speed, limit, maxDist, soft);
+    if (m.jumpNext === bo) m.jumpNext = null;
     // First sight: its latest touch is the one the next is compared with (turnedAtLastTouch).
     if (st0 === undefined) turnedAtLastTouch(m, bo, st);
     return st;
 }
 
 /** sampleBuiltObject's placement (parent frames, extrapolated position) at drawn `heading`, extrapolation `speed`. */
-function sampleBuiltObjectAs(m: MotionInterpolator, bo: MovingBuiltObject, depth: number, heading: number, speed: number, limit: number): MotionState {
+function sampleBuiltObjectAs(m: MotionInterpolator, bo: MovingBuiltObject, depth: number, heading: number, speed: number, limit: number, maxDist: number, soft: number): MotionState {
     const maxSpeed = Math.max(bo.topSpeed, bo.warpSpeed, Math.abs(bo.currentSpeed));
     if (bo.parentOffsetX > PARENT_OFFSET_UNSET && bo.parentOffsetY > PARENT_OFFSET_UNSET) {
         const ox = bo.parentOffsetX;
@@ -1297,7 +1371,7 @@ function sampleBuiltObjectAs(m: MotionInterpolator, bo: MovingBuiltObject, depth
         let fx = ox;
         let fy = oy;
         if (bo.lastTouch !== undefined && speed > 0) {
-            const p = extrapolateUntouched(ox, oy, heading, speed, bo.lastTouch, m.simNowMs, m.untouchedMaxMs, extrapScratch);
+            const p = extrapolateUntouched(ox, oy, heading, speed, bo.lastTouch, m.simNowMs, m.untouchedMaxMs, extrapScratch, maxDist);
             fx = p.x;
             fy = p.y;
         }
@@ -1333,10 +1407,12 @@ function sampleBuiltObjectAs(m: MotionInterpolator, bo: MovingBuiltObject, depth
         }
     }
     if (bo.lastTouch !== undefined && speed > 0) {
-        const p = extrapolateUntouched(bo.xpos, bo.ypos, heading, speed, bo.lastTouch, m.simNowMs, m.untouchedMaxMs, extrapScratch);
-        return m.sample(bo, p.x, p.y, heading, maxSpeed, null, 0, 0, 0, 0, Number.NaN, Number.NaN, limit);
+        const p = extrapolateUntouched(bo.xpos, bo.ypos, heading, speed, bo.lastTouch, m.simNowMs, m.untouchedMaxMs, extrapScratch, maxDist);
+        // (A soft jump's track goes on at the warp speed from the new position.)
+        const vs = speed * (m.stepSeconds > 0 ? m.stepSeconds : 1 / FRAMES_PER_SECOND);
+        return m.sample(bo, p.x, p.y, heading, maxSpeed, null, 0, 0, 0, soft, soft > 0 ? Math.cos(heading) * vs : Number.NaN, soft > 0 ? Math.sin(heading) * vs : Number.NaN, limit);
     }
-    return m.sample(bo, bo.xpos, bo.ypos, heading, maxSpeed, null, 0, 0, 0, 0, Number.NaN, Number.NaN, limit);
+    return m.sample(bo, bo.xpos, bo.ypos, heading, maxSpeed, null, 0, 0, 0, soft, Number.NaN, Number.NaN, limit);
 }
 
 /** Game seconds of one sim step at the fastest game speed (4×): stepSeconds bound for records taken at any speed. */

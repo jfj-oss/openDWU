@@ -248,6 +248,47 @@ hiccup, ≤ 0.8 %), and MainView.update is too (galaxy zoom 4.87 /
 4.87 → 4.89 / 4.32 ms, system 3.36 / 3.91 → 3.46 / 3.08 ms, alternated runs); sampling all 10 654 ships in node costs
 3-17 % more (0.1-0.5 ms a frame), while the view samples only those on screen.
 
+**Visible jumps at 4× (2026-10-04, follow-up: "ships sometimes hitch or jump around visually when turning").**
+`perf-render.mjs --motion` now also counts visible jumps: each drawn ship's on-screen move (CSS px) and rotation per
+frame against the frames before and after — how far the move lies off the segment between theirs (in velocity space,
+less 5 % of its own length) and the rotation outside their range, so a smooth start, stop, turn or speed change does not
+count and a pop, a one-frame stall or a surge does — over 1 px or 1.5°, put down to a snap, a hyperjump leg, a frame
+hitch, the drawn clock, a touch or none. On late4000 at 4× nearly all were hyperjump legs, not turns at touches:
+- the first warp touch moves the ship at warp speed for the whole time since its last touch (cmdMovement.ts HyperTo:
+  CurrentSpeed first, then the move): ~14 000 units in one touch, drawn as a teleport (isJump) in-thread or a surge at
+  2-3× the warp speed over a worker burst — now soft-snapped (`jumpNext`, `WARP_ENTRY_EASE_MS`): the drawn ship
+  accelerates into warp along its heading, its heading eased with it;
+- the warp extrapolation ran past the exit point, and the exit touch put the ship back on it (a reversal of ~800 units
+  a frame for several frames) — now it stops there: each warp touch's LastHyperDistance (the distance to the exit
+  before its move; made a hot field so the worker's replica has it with the touch) less that touch's move;
+- a leg re-aimed at every touch (a moving target) went the whole gap along the new heading: a corner ~3 000 units
+  sideways and a heading snap — eased the same way (an ease running goes on into the new one); a short jump that
+  enters and leaves warp in one touch is eased instead of teleporting; an exit while the entry ease runs restarts it
+  toward the exit point (it would carry the ship back).
+Re-timing the turns decided at a touch, an ease of every touch's position disagreement (tried: it misfired at parent
+frame changes and turn ends) and a speed-dependent ease factor were not needed: those frames do not register as jumps
+(a turn begun at a touch is a start, eased at 2 × the rate; in-thread a re-aim of 2-4° in a frame or two is the ship's
+own turn rate at 4×), nor did frame hitches or the clock. Left: a warp leg another object's tick cuts short (the ship's
+speed drops without its own touch — a new mission — and the extrapolation had passed its committed position): rare
+(about one per run near the capital at planet zoom, in-thread).
+
+late4000, 4×, 60 Hz, visible jumps as % of drawn ship frames, before (c3cdd7c) → after:
+
+| mode, zoom | position > 1 px | max px | heading > 1.5° | max ° |
+|---|---|---|---|---|
+| worker, system | 0.024-0.174 → 0.009-0.043 | 229-247 → 14-25 | 0.015-0.031 → 0.000-0.026 | 18-38 → 1.0-3.1 |
+| worker, planet | 0.106-0.131 → 0.011-0.109 | 11 401-12 413 → 15-32 | 0.004-0.015 → 0.000-0.004 | 2.5-3.7 → 0.7-2.3 |
+| worker, sector | 0.000-0.006 → 0.000 | 3.8 → 0.1-0.3 | 0.000-0.004 → 0.000-0.012 | 0.9-3.6 → 0.9-3.2 |
+| in-thread, system | 0.179-0.293 → 0.005-0.013 | 192-382 → 2.1-2.3 | 0.125-0.510 → 0.012-0.071 | 36-72 → 2.3-4.4 |
+| in-thread, planet | 0.360-0.374 → 0.286-0.301 | 9 627 → 4 218-4 255 | 0.020-0.031 → 0.019 | 3.2 → 3.2-3.5 |
+| in-thread, sector | 0.009 → 0.000 | 3.2 → 0.04 | 0.009-0.010 → 0.004 | 5.9-6.6 → 2.7 |
+
+(Ranges: two runs each; the counts swing with which ships jump in the 10 s window.) At planet zoom the remaining
+counts are ships at or near warp speed (hundreds of px a frame), whose moves change by more than 1 px plus 5 %
+as they ease in or out. Tests: `test/renderInterp-hyperjump.test.ts` (entry, a one-touch jump, a re-aimed leg, the
+exit; both loop modes; `easeWarp` off for the before), and the visible-jump counts on the real 4000-star galaxy in
+`renderInterp-heading.test.ts`.
+
 ### 2.6 Chunk 9: sync performance in big late games (2026-10-03)
 
 What was wrong on the late saves (`late2500`: 9.8 k ships; `late2500-1200`: the same galaxy 1 200 s later, 144 MB):

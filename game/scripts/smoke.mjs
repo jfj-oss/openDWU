@@ -301,7 +301,7 @@ async function main() {
             await page.keyboard.press('Escape');
             await page.waitForSelector('#game-menu-overlay', { state: 'visible', timeout: 5000 });
             await shot(page, 'game menu open');
-            await page.getByRole('button', { name: 'Resume', exact: true }).click();
+            await page.getByRole('button', { name: 'Resume Playing', exact: true }).click();
             await page.waitForSelector('#game-menu-overlay', { state: 'hidden', timeout: 5000 });
             await shot(page, 'game menu closed (Resume)');
             pass('5. Escape opens the game menu, Resume hides it');
@@ -367,7 +367,7 @@ async function main() {
             if (closed !== false) {
                 throw new Error(`expected the galaxy map to close on Escape, isOpen=${closed}`);
             }
-            const menuOpen = await page.getByRole('button', { name: 'Resume' }).isVisible();
+            const menuOpen = await page.getByRole('button', { name: 'Resume Playing' }).isVisible();
             if (menuOpen) {
                 throw new Error('Escape on the galaxy map also opened the game menu');
             }
@@ -438,14 +438,15 @@ async function main() {
 
             await page.keyboard.press('Escape');
             await page.waitForSelector('#game-menu-overlay', { state: 'visible', timeout: 5000 });
-            await page.getByRole('button', { name: 'Save Game' }).click();
+            await page.getByRole('button', { name: 'Save Game', exact: true }).click();
             await page.fill('input[placeholder]', 'smoke-save');
             await page.locator('button', { hasText: /^Save$/ }).last().click();
             await page.waitForTimeout(1500);
             await shot(page, 'saved from the game menu');
 
-            await page.locator('#save-load-overlay button', { hasText: '✕' }).click();
-            await page.getByRole('button', { name: 'Main Menu' }).click();
+            await page.keyboard.press('Escape'); // closes the Save/Load window; the game menu stays open
+            await page.getByRole('button', { name: 'Exit to Main Menu', exact: true }).click();
+            await page.locator('[data-ow="msgbox"] button', { hasText: 'Yes' }).click();
             await page.waitForTimeout(2500);
 
             const loadEntryCount = await page.locator('[data-id=loadGame]').count();
@@ -460,7 +461,7 @@ async function main() {
 
             await page.locator('[data-id=loadGame]').click();
             await page.waitForTimeout(1500);
-            await page.locator('.save-row button', { hasText: 'Load' }).first().click();
+            await page.locator('#save-load-overlay .ow-grid-row').first().dblclick();
             await page.waitForTimeout(8000);
 
             const reloadedCapital = await page.evaluate(() => window.__dwu?.game?.playerEmpire?.capital?.name);

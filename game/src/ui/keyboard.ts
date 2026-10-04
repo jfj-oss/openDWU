@@ -36,6 +36,7 @@ import { toggleGroundReportFromKey } from './screens/groundReport';
 import { toggleGameOptionsPanel } from './screens/gameOptionsPanel'; // [16d]
 import { toggleEmpireComparison } from './screens/empireComparison'; // [15d]
 import { showToast } from './toast';
+import { CLOSE_BUTTON_SVG, installHudScaleVar } from './originalWindow'; // [uiwp6]
 import { isImprovementEnabled } from './improvements';
 import { openFleetSettingsForSelection } from './hud';
 // [advisor] begin
@@ -114,6 +115,10 @@ export const KEY_BINDINGS: KeyBinding[] = [
     // the Bacon / Expansion mods' default key maps (GameHotKeysMappingFile.json, ExpansionHotKeysMappingFile.json,
     // BaconModHotKeysMappingFile.json; J is the Expansion mod's construction queue editor).
     { key: 'Q', modifiers: NONE, action: 'fleetSettings', description: "Fleet Settings: the selected fleet's posture, engagement, retreat, fuel, troop and resupply settings (Improvement)", improvement: 'fleetSettings' },
+    // Waypoints (an Improvement, ui/waypoints.ts): W and Shift+W are free in the original's help table and Main_KeyUp,
+    // and in the Bacon / Expansion mods' default key maps (BaconModHotKeysMappingFile.json has Ctrl+W, Alt+U only).
+    { key: 'W', modifiers: NONE, action: 'addWaypoint', description: 'Puts a named waypoint on the map at the mouse cursor (Improvement)', improvement: 'waypoints' },
+    { key: 'W', modifiers: SHIFT, action: 'toggleWaypointsOverlay', description: 'Shows or hides the Waypoints & Known Locations map overlay (Improvement)', improvement: 'waypoints' },
     // "Pause or Spacebar": both keys pause/resume.
     { key: 'Pause', modifiers: NONE, action: 'togglePause', description: 'Pauses or resumes the game' },
     { key: 'Space', modifiers: NONE, action: 'togglePause', description: 'Pauses or resumes the game' },
@@ -197,6 +202,15 @@ export function controlGroupActionArgs(action: string): { kind: ControlGroupKeyK
 export type ControlGroupKeyKind = 'set' | 'select' | 'selectWithFocus';
 
 let controlGroupHandler: ((kind: ControlGroupKeyKind, index: number) => void) | null = null;
+
+/** The waypoint keys (ui/waypoints.ts): W adds one at the cursor, Shift+W toggles the overlay. */
+export type WaypointKeyAction = 'addWaypoint' | 'toggleWaypointsOverlay';
+let waypointKeyHandler: ((action: WaypointKeyAction) => void) | null = null;
+
+/** Register the game view's waypoint key handler (main.ts → ui/waypoints.ts; null on teardown). */
+export function setWaypointKeyHandler(h: ((action: WaypointKeyAction) => void) | null): void {
+    waypointKeyHandler = h;
+}
 
 /** Register the game view's control-group handler (main.ts → ui/controlGroups.ts; null on teardown). */
 export function setControlGroupHandler(h: ((kind: ControlGroupKeyKind, index: number) => void) | null): void {
@@ -475,6 +489,12 @@ export function dispatchKey(
         case 'fleetSettings':
             openFleetSettingsForSelection();
             break;
+        // W / Shift+W: waypoints (an Improvement, ui/waypoints.ts).
+        case 'addWaypoint':
+        case 'toggleWaypointsOverlay':
+            if (waypointKeyHandler) waypointKeyHandler(binding.action);
+            else console.info(`TODO(key): ${binding.action}`);
+            break;
 
         default:
             // Registered but not implemented yet.
@@ -724,6 +744,7 @@ export const IMPLEMENTED_KEY_ACTIONS: ReadonlySet<string> = new Set([
     'intelligenceAgentsScreen',
     // [intel] end
     'fleetSettings',
+    'addWaypoint', 'toggleWaypointsOverlay',
 ]);
 
 /** True when pressing the binding's key does something today. Pure. */
@@ -740,6 +761,7 @@ export function createShortcutsOverlay(): {
     toggle: () => boolean;
     destroy: () => void;
 } {
+    installHudScaleVar();
     const root = document.createElement('div');
     root.id = 'keyboard-shortcuts-overlay';
     root.className = 'hud-panel hud-keyboard-overlay';
@@ -752,9 +774,10 @@ export function createShortcutsOverlay(): {
 
     const close = document.createElement('button');
     close.type = 'button';
-    close.className = 'hud-btn hud-btn-glyph hud-keyboard-close';
+    // [uiwp6] The ScreenPanel's CloseButton (originalWindow.ts CLOSE_BUTTON_SVG).
+    close.className = 'ow-close hud-keyboard-close';
     close.title = 'Close';
-    close.textContent = '✕';
+    close.innerHTML = CLOSE_BUTTON_SVG;
     close.addEventListener('click', () => hide());
     root.appendChild(close);
 

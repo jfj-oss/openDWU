@@ -250,6 +250,60 @@ const pc = (x: number, n: number): string => (n ? ((100 * x) / n).toFixed(2) : '
 const fmt = (s: HeadingStats): string =>
     `objects=${s.objects} steady=${s.steady} stall%=${pc(s.stall, s.steady)} jump%=${pc(s.jump, s.steady)} rev%=${pc(s.rev, s.steady)} q50=${s.qP50.toFixed(3)} jerkP95=${s.jerkP95.toFixed(3)} | still=${s.still} false%=${pc(s.falseTurn, s.still)} | stop=${s.stop} away%=${pc(s.stopAway, s.stop)} | pairs=${s.pairs} pops%=${pc(s.pops, s.pairs)} maxStep=${s.maxStep.toFixed(3)}`;
 
+/**
+ * Visible jumps (scripts/perf-render.mjs --motion's visibleJumps, online): each frame's drawn move and rotation (per
+ * frame time) against the frame before and the frame after — how far the move lies off the segment between theirs, less
+ * 5 % of its own length, and the rotation outside their range. Smooth motion (steady, turning, starting, stopping,
+ * speeding up) stays on it; a pop, a one-frame stall or a surge does not. Counted over 50 world units (a pixel at system
+ * zoom) and 1.5°; frames next to a snap (teleport, first sight) are left out.
+ */
+class VisibleJumps {
+    private last = new Map<object, { n: number[]; t: number[]; x: number[]; y: number[]; h: number[]; snap: boolean[] }>();
+    samples = 0;
+    pos = 0;
+    head = 0;
+    note(obj: object, frame: number, t: number, x: number, y: number, h: number, snapped: boolean): void {
+        let r = this.last.get(obj);
+        if (r === undefined) this.last.set(obj, (r = { n: [], t: [], x: [], y: [], h: [], snap: [] }));
+        r.n.push(frame);
+        r.t.push(t);
+        r.x.push(x);
+        r.y.push(y);
+        r.h.push(h);
+        r.snap.push(snapped);
+        if (r.n.length > 4) {
+            r.n.shift();
+            r.t.shift();
+            r.x.shift();
+            r.y.shift();
+            r.h.shift();
+            r.snap.shift();
+        }
+        if (r.n.length < 4 || r.n[3] - r.n[0] !== 3 || r.snap.some((v) => v)) return;
+        const med = 1000 / 60;
+        const mv = (j: number): [number, number, number] => {
+            const dt = r!.t[j + 1] - r!.t[j];
+            return [((r!.x[j + 1] - r!.x[j]) / dt) * med, ((r!.y[j + 1] - r!.y[j]) / dt) * med, (wrapAngle(r!.h[j + 1] - r!.h[j]) / dt) * med];
+        };
+        const w = mv(0);
+        const u = mv(1);
+        const v = mv(2);
+        const sx = v[0] - w[0];
+        const sy = v[1] - w[1];
+        const L = sx * sx + sy * sy;
+        const k = L > 0 ? Math.max(0, Math.min(1, ((u[0] - w[0]) * sx + (u[1] - w[1]) * sy) / L)) : 0;
+        const pp = Math.hypot(u[0] - (w[0] + sx * k), u[1] - (w[1] + sy * k)) - 0.05 * Math.hypot(u[0], u[1]);
+        const hh = (Math.max(0, u[2] - Math.max(w[2], v[2]), Math.min(w[2], v[2]) - u[2]) * 180) / Math.PI;
+        this.samples++;
+        if (pp > 50) this.pos++;
+        if (hh > 1.5) this.head++;
+    }
+    summary(): string {
+        const pc = (x: number): string => (this.samples ? ((100 * x) / this.samples).toFixed(4) : '-');
+        return `visible jumps: frames ${this.samples}, position > 50 units ${this.pos} (${pc(this.pos)} %), heading > 1.5° ${this.head} (${pc(this.head)} %)`;
+    }
+}
+
 // ---------------------------------------------------------------------------------------------- synthetic fleet
 
 /** A ship as sampleBuiltObject reads it, turned and moved by the sim's own CalculateCurrentHeading (movement.ts). */
@@ -716,6 +770,7 @@ describe('ship headings on a real 4000-star galaxy (> 10 000 objects round-robin
         readonly off = new MotionInterpolator();
         readonly probeOn = new HeadingProbe();
         readonly probeOff = new HeadingProbe();
+        readonly visible = new VisibleJumps();
         private out = createRenderTime();
         private frame = 0;
         draw(g: Galaxy, raw: RenderTime, t: number): void {
@@ -732,6 +787,7 @@ describe('ship headings on a real 4000-star galaxy (> 10 000 objects round-robin
                     if (bo === null || bo.hasBeenDestroyed) continue;
                     const st = sampleBuiltObject(m, bo);
                     probe.note(bo, bo.lastTouch, bo.heading, this.frame, drawnMs, st.heading, ctxOf(st));
+                    if (extrapolate) this.visible.note(bo, this.frame, t, st.x, st.y, st.heading, st.hn === 1);
                 }
             }
         }
@@ -740,7 +796,13 @@ describe('ship headings on a real 4000-star galaxy (> 10 000 objects round-robin
     function expectSmooth(label: string, v: RealView): void {
         const on = v.probeOn.summary();
         const off = v.probeOff.summary();
-        log(`[heading 4000-star ${label}]\n  on:  ${fmt(on)}\n  off: ${fmt(off)}`);
+        log(`[heading 4000-star ${label}]\n  on:  ${fmt(on)}\n  off: ${fmt(off)}\n  ${v.visible.summary()}`);
+        // Positions and headings with no visible jump — the hyperjump legs' entry, re-aim and exit included
+        // (renderInterp-hyperjump.test.ts) — but a handful a run: a warp leg another object's tick cut short (its speed
+        // dropped without its own touch: the ship stands at its committed position, which the extrapolation had passed).
+        expect(v.visible.samples).toBeGreaterThan(100000);
+        expect(v.visible.pos).toBeLessThan(v.visible.samples * 0.0002);
+        expect(v.visible.head).toBeLessThan(v.visible.samples * 0.0005);
         if (process.env.HDEBUG) log(v.probeOn.debug.join('\n'));
         expect(on.steady).toBeGreaterThan(5000);
         // What remains is the sim deciding at a touch what the samples could not show before it — a turn begun there,

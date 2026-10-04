@@ -65,8 +65,10 @@ import { proposeDiplomatCounter } from './diplomatCounter';
 import type { DiplomatBrief } from './diplomatBrief';
 import { deleteDesign, saveDesign, setDesignSubRoleShouldBeUpgraded, type DesignDraft } from './designEditor';
 import { autoUpgradeDesigns, loadDesignFile } from './designTools';
+import { isPlayerMadeDesign, markPlayerDesignSubRole, setDesignLineUpgrade } from './designLineUpgrade'; // [improvements]
 import { executeShipOrderKey, type ShipOrderKeyAction } from './shipHotkeys';
 import { setControlGroup, type ControlGroupObject } from './controlGroups';
+import { addWaypoint, deleteWaypoint, renameWaypoint } from './waypoints';
 import { initiateCrashResearchProgram } from '../researchTick';
 import type { EmpireMessage } from '../messages';
 import { approveSuggestion, declineSuggestion } from './advisorSuggestions';
@@ -183,7 +185,10 @@ export const PLAYER_OPS = {
     setShipsFleet: (galaxy: Galaxy, empire: Empire, ships: BuiltObject[], target: SetFleetTarget) => setShipsFleet(galaxy, empire, ships, target),
     refuelShips: (galaxy: Galaxy, empire: Empire, ships: BuiltObject[]) => refuelSelectedShips(galaxy, empire, ships),
     repairShips: (galaxy: Galaxy, empire: Empire, ships: BuiltObject[]) => repairSelectedShips(galaxy, empire, ships),
-    retrofitShips: (galaxy: Galaxy, empire: Empire, ships: BuiltObject[], design: Design | null = null) => retrofitSelectedShips(galaxy, empire, ships, design),
+    retrofitShips: (galaxy: Galaxy, empire: Empire, ships: BuiltObject[], design: Design | null = null) => {
+        if (isPlayerMadeDesign(design)) markPlayerDesignSubRole(galaxy, empire, design.subRole); // [improvements] designLineUpgrade
+        return retrofitSelectedShips(galaxy, empire, ships, design);
+    },
     /** Main.Part11.cs hvhxxedjqS_Leave: rename a ship / base from the Ships and Bases window. */
     renameShip: (_galaxy: Galaxy, empire: Empire, ship: BuiltObject, name: string) => renameShip(empire, ship, name),
     /** Main.Part11.cs mUwHhIdjxs: the Retrofit Stance combo (applies only to a single selected own ship). */
@@ -208,6 +213,11 @@ export const PLAYER_OPS = {
     shipOrderKey: (galaxy: Galaxy, empire: Empire, selected: ShipActionSelection, action: ShipOrderKeyAction) => executeShipOrderKey(galaxy, empire, selected, action),
     /** Main_KeyUp SetControlGroup0..9 (Ctrl+digit): `_Game.PlayerHotkeyN = _Game.SelectedObject` (controlGroups.ts). */
     setControlGroup: (galaxy: Galaxy, _empire: Empire, index: number, obj: ControlGroupObject | null) => setControlGroup(galaxy, index, obj),
+    // Waypoints (an Improvement; player/waypoints.ts): named map pins, player data saved with the game in a side table;
+    // nothing in the sim reads them (no Rnd, nothing the digest hashes). addWaypoint returns the new id (0 = refused).
+    addWaypoint: (galaxy: Galaxy, empire: Empire, x: number, y: number, name: string) => addWaypoint(galaxy, empire, x, y, name),
+    renameWaypoint: (galaxy: Galaxy, empire: Empire, id: number, name: string) => renameWaypoint(galaxy, empire, id, name),
+    deleteWaypoint: (galaxy: Galaxy, empire: Empire, id: number) => deleteWaypoint(galaxy, empire, id),
 
     // --- Automation ---
     /** GenerateAutomationMessageBox "Turn off automation". */
@@ -279,7 +289,16 @@ export const PLAYER_OPS = {
     constructionJobMoveUp: (galaxy: Galaxy, empire: Empire, jobId: number) => moveConstructionJobUp(galaxy, empire, jobId),
 
     // --- Designs ---
-    saveDesign: (galaxy: Galaxy, empire: Empire, draft: DesignDraft) => saveDesign(galaxy, empire, draft),
+    saveDesign: (galaxy: Galaxy, empire: Empire, draft: DesignDraft) => {
+        // [improvements] designLineUpgrade: the sub-role becomes the player's; an Upgrade-Manual save links its lineage.
+        const replaces = draft.replaces;
+        const result = saveDesign(galaxy, empire, draft);
+        if (result.ok && result.design !== null) {
+            markPlayerDesignSubRole(galaxy, empire, result.design.subRole);
+            if (replaces !== null && replaces !== result.design && empire === galaxy.playerEmpire) result.design.upgradedFrom = replaces;
+        }
+        return result;
+    },
     deleteDesign: (_galaxy: Galaxy, empire: Empire, designs: Design[]) => deleteDesign(empire, designs),
     toggleDesignObsolete: (_galaxy: Galaxy, _empire: Empire, design: Design) => {
         toggleDesignObsolete(design);
@@ -291,9 +310,18 @@ export const PLAYER_OPS = {
         return true;
     },
     /** BaconMain.cs:2471 btnDesignsUpgrade_Click (player/designTools.ts). */
-    autoUpgradeDesigns: (galaxy: Galaxy, empire: Empire, designs: Design[]) => autoUpgradeDesigns(galaxy, empire, designs),
+    autoUpgradeDesigns: (galaxy: Galaxy, empire: Empire, designs: Design[]) => {
+        for (const d of designs) markPlayerDesignSubRole(galaxy, empire, d.subRole); // [improvements] designLineUpgrade
+        return autoUpgradeDesigns(galaxy, empire, designs);
+    },
+    /** [improvements] designLineUpgrade on / off for the player empire (issued by the game view, ui/designLineUpgrade.ts). */
+    setDesignLineUpgrade: (galaxy: Galaxy, empire: Empire, on: boolean) => setDesignLineUpgrade(galaxy, empire, on),
     /** Main.Part4.cs:1682 Load Designs... with the picked file's text (player/designTools.ts). */
-    loadDesignFile: (galaxy: Galaxy, empire: Empire, text: string) => loadDesignFile(galaxy, empire, text),
+    loadDesignFile: (galaxy: Galaxy, empire: Empire, text: string) => {
+        const result = loadDesignFile(galaxy, empire, text);
+        for (const d of result.loaded) markPlayerDesignSubRole(galaxy, empire, d.subRole); // [improvements] designLineUpgrade
+        return result;
+    },
 
     // --- Empire Summary (player/playerOrders.ts) ---
     /** Main.Part9.cs:4306 txtEmpireSummaryName_Leave. */

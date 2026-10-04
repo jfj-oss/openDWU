@@ -21,7 +21,12 @@
 // read-only, reflecting this game's setting.
 // Closing the window saves the player empire's settings as the next new game's defaults (YxwyUefOyQ + method_257;
 // settings.newGameOptions, read by main.ts for the wizard's games).
-// The main menu's Options panel edits those defaults before a game (Start.1.cs:1928-1960; newGameDefaultsPanel.ts).
+// The main menu's Options (Start.1.cs:1528 method_153) open this same window with no game: its Automation group then
+// edits those defaults (Start.1.cs:1928-1960; newGameDefaultsPanel.ts buildNewGameAutomationGroup), Empire Settings
+// opens the defaults' Empire Settings (method_181) and Message Settings edits the UI's message options, which the next
+// new game starts with (Start.1.cs:2480 method_167; main.ts copies them into createGame).
+// Recreation-only options sit where the original would hold them: the map toggles and "Multithreading (next game)"
+// (Performance) under Advanced Display Settings, the DW2-inspired additions in the Improvements window.
 // The HotKeys button opens the key remapping screen (BaconDistantWorlds/HotKeys, hotkeysScreen.ts).
 
 import './gameOptionsPanel.css';
@@ -48,6 +53,8 @@ import { copyMessageOptions, getMessageOptions, MessageCategory, setMessageOptio
 import { COLORS, checkBox, dropDown, el, glassButton, messageBox, numericUpDown, openOriginalWindow, place, text, type OriginalWindow } from '../originalWindow';
 import { checkBoxRight, colorSlider, groupBox, labelledTrackBar } from '../originalWindowControls';
 import { IMPROVEMENTS_TITLE, buildImprovementsGroup, improvementsGroupHeight } from '../improvements'; // [improvements]
+import { systemMemoryGiB } from '../../systemMemory';
+import { buildNewGameAutomationGroup, closeNewGameEmpireSettings } from './newGameDefaultsPanel';
 import { AUTOMATION_MODE_ITEMS, AUTOMATION_PRESETS, currentNewGameOptions, detectAutomationMode, empireAutomationValues, gameOptionsFromEmpire, newGameOptionsToSettings, messageSettingsRows, type PendingEmpireValues } from './gameOptionsModel';
 
 export type AutomationField =
@@ -214,7 +221,8 @@ export function setMessageRowValue(row: MessageOptionRow, kind: 'popup' | 'ticke
 // ---------------------------------------------------------------------------
 
 export interface GameOptionsPanelOptions {
-    empire: Empire;
+    /** The player's empire; null on the main menu (no game: the Automation group edits the new-game defaults). */
+    empire: Empire | null;
 }
 
 /** GenerateFont sizes the windows use (Main.Part12.cs:1521-1534): font_2, font_4, font_7, the GlassButton font, and
@@ -234,7 +242,7 @@ const EMPIRE_H = 769 + 25;
 const MESSAGES_W = 735;
 const MESSAGES_H = 502 + 43;
 const ADVANCED_W = 440;
-const ADVANCED_H = 500 + 110 + 25;
+const ADVANCED_H = 500 + 110 + 25 + 120;
 
 interface OpenState {
     win: OriginalWindow;
@@ -338,7 +346,8 @@ function slider(parent: HTMLElement, value: number, min: number, max: number, x:
  * are what the player's message pipeline records by (sim/playerMessages.ts): every change of the UI's copy goes to the
  * game as the journaled setMessageOptions command.
  */
-function issueMessageOptions(empire: Empire): void {
+function issueMessageOptions(empire: Empire | null): void {
+    if (empire === null) return; // main menu: the UI's options are the next new game's (main.ts createGame)
     issuePlayerCommand(empire.galaxy, empire, 'setMessageOptions', [copyMessageOptions(getMessageOptions())]);
 }
 
@@ -361,6 +370,9 @@ function createGameOptionsPanel(opts: GameOptionsPanelOptions): OpenState {
         onClose: () => {
             open = null;
             for (const w of [...subWindows.values()]) w.close();
+            closeNewGameEmpireSettings();
+            // Main menu: the Automation group saved every edit as it was made (Start.1.cs method_164).
+            if (empire === null) return;
             // method_413 → method_418's tail: YxwyUefOyQ (the player empire's settings become the GameOptions
             // defaults of the next new game) and method_257 (save the defaultOptions file).
             // GameOptions keeps the fields this window does not write (the Empire Policy screen's design-upgrade flags).
@@ -437,8 +449,10 @@ function createGameOptionsPanel(opts: GameOptionsPanelOptions): OpenState {
         updateSettings({ mouseScrollWheelBehaviour: i }),
     );
 
-    // --- grpOptionsControl "Automation" (12, 288) 659 × 291.
-    buildAutomationGroup(body, empire);
+    // --- grpOptionsControl "Automation" (12, 288) 659 × 291: the empire's controls, or on the main menu the new-game
+    // defaults (Start.1.cs method_153 / method_155).
+    if (empire !== null) buildAutomationGroup(body, empire);
+    else buildNewGameAutomationGroup(body, 12, 288);
 
     // btnGameOptionsShowMessages (12, 589) 660 × 35 — shortened to 325 for our [improvements] button beside it.
     button(body, 'Show Message Settings', 12, 589, 325, 35, () => openMessageSettings());
@@ -673,7 +687,7 @@ function createEmpireSettings(empire: Empire): OriginalWindow {
 // Message Settings (pnlGameOptionsMessages, method_566)
 // ---------------------------------------------------------------------------
 
-function createMessageSettings(empire: Empire): OriginalWindow {
+function createMessageSettings(empire: Empire | null): OriginalWindow {
     const win = openOriginalWindow({
         id: 'gameoptions-messages',
         title: 'Message Settings',
@@ -808,7 +822,7 @@ function createAdvancedDisplaySettings(): OriginalWindow {
     check(body, 'Clean Galaxy view', st.cleanGalaxyView, 12, 425, (v) => updateSettings({ cleanGalaxyView: v }));
 
     // Ours: the map label / overlay / output toggles (were in the Escape menu's Options panel), below it.
-    const map = place(groupBox('Map Display', 400, 134, F2), 12, 450);
+    const map = place(groupBox('Map Display', 400, 158, F2), 12, 450);
     body.appendChild(map);
     const mapBoxes: [string, MapDisplayKey][] = [
         ['Show system names', 'showSystemNames'],
@@ -819,5 +833,13 @@ function createAdvancedDisplaySettings(): OriginalWindow {
         ['Show weapon range circles for the selected ship', 'showWeaponRangeCircles'],
     ];
     mapBoxes.forEach(([caption, key], i) => check(map, caption, st[key], 10, 22 + 22 * i, (v) => updateSettings({ [key]: v } as Partial<UiSettings>)));
+
+    // Ours: the sim worker (docs/sim-worker.md), read by main.ts when the next game starts or loads; on by default only
+    // with 16 GB+ of RAM (src/systemMemory.ts). Was in the old Escape menu's Options panel.
+    const perf = place(groupBox('Performance', 400, 66, F2), 12, 616);
+    body.appendChild(perf);
+    check(perf, 'Multithreading (next game)', st.simWorker, 10, 22, (v) => updateSettings({ simWorker: v }));
+    const mem = systemMemoryGiB();
+    label(perf, `Only turn on with 16 GB+ RAM${mem !== null ? ` (this computer: ${Math.round(mem)} GB)` : ''}`, 30, 44, F7 - 2);
     return win;
 }

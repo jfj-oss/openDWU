@@ -1,24 +1,15 @@
-/* 18b diplomat voice: the "original" toggle, the voicing indicator and the counter-proposal note. */
-.dv-toggle {
-    margin-left: 6px;
-    padding: 0 5px;
-    font-size: 10px;
-    line-height: 15px;
-    color: #9fb4c8;
-    background: transparent;
-    border: 1px solid rgba(159, 180, 200, 0.45);
-    border-radius: 3px;
-    cursor: pointer;
+/* 18b diplomat voice: the "original" toggle (a small original GlassButton), the voicing indicator, the counter-proposal
+   note and the "AI voice" check box (originalWindow.ts checkBox), in the original palette. */
+.dv-toggle.ow-glass {
+    margin-left: 8px;
+    height: 20px;
+    padding: 0 8px;
     vertical-align: 1px;
-}
-.dv-toggle:hover {
-    color: #fff;
-    border-color: #cfe0f0;
 }
 .dv-pending {
     margin-left: 6px;
-    font-size: 10px;
-    color: #8a9aa8;
+    font-size: 13.33px;
+    color: rgb(150, 150, 160);
     font-style: italic;
 }
 .dv-voiced {
@@ -26,23 +17,16 @@
 }
 .dv-counter {
     margin-top: 3px;
-    font-size: 11px;
-    color: #c8b46a;
+    font-size: 13.33px;
+    color: rgb(255, 192, 0);
 }
 .dv-counter-muted {
-    color: #8a8a8a;
+    color: rgb(130, 130, 140);
 }
-.dv-switch {
+.dv-switch.ow-check {
     float: right;
-    font-size: 10px;
     font-weight: normal;
-    color: #9fb4c8;
-    cursor: pointer;
-    user-select: none;
     text-transform: none;
     letter-spacing: 0;
-}
-.dv-switch input {
-    vertical-align: -2px;
-    margin: 0 3px 0 0;
+    user-select: none;
 }

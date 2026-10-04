@@ -36,6 +36,7 @@
 //        numericUpDown()  NumericUpDown (clamped integer, up / down buttons, arrow keys / wheel)
 //        imageCombo()     an owner-drawn ComboBox (DesignDropDown / ResourceDropDown: pictures + text per item, or an
 //                         item `draw` hook for swatches / flags)
+//        toolStripMenu() / toolStripItem() / toolStripSeparator()  ContextMenuStrip menus (CustomToolStripRenderer)
 //      and in originalWindowControls.ts: groupBox(), colorSlider(), labelledTrackBar(), checkBoxRight(), radioButton(),
 //        roundRectanglePanel(), raceDropDown(), colorDropDown()
 //   4. Fonts: the game's font (Forgotten Futurist, loaded by hud.css) at the GenerateFont pixel sizes from the source
@@ -400,6 +401,103 @@ export function linkLabel(label: string, onClick: () => void, size: number = FON
 export function scrollPanel(className = ''): HTMLDivElement {
     return el('div', `ow-scroll${className ? ` ${className}` : ''}`);
 }
+
+// -------------------------------------------------------------------------------------------------------------------
+// ToolStrip / ContextMenuStrip menus (the map's actionMenu / selectionMenu and our other popup menus)
+// -------------------------------------------------------------------------------------------------------------------
+// Sources: CustomToolStripRenderer.cs (OnRenderToolStripBackground: horizontal LinearGradientBrush (16, 16, 24) →
+// (56, 56, 72); OnRenderToolStripBorder: nothing; OnRenderMenuItemBackground: the same gradient, selected / pressed
+// (64, 64, 80) → (128, 128, 144); OnRenderItemText / OnRenderArrow: (170, 170, 170), Color.Yellow when selected;
+// OnRenderSeparator: a Gray line from x 4 to Width - 8 at mid-height), its font Main.font_3 = GenerateFont(15.33)
+// (Main.Part12.cs 1526), set on actionMenu (Main.Part8.cs 3207 method_344) and selectionMenu (Main.Part7.cs 3623
+// method_355); Main.InitializeComponent.cs 1259-1272 (BackColor (64, 64, 80), ShowImageMargin false; selectionMenu
+// turns its image margin on with 32 × 15 images). WinForms draws a disabled item's text in SystemColors.GrayText.
+//
+// The menus are DOM, positioned in CSS px at the cursor; their size is the original's pixels × `--ow-ts-k`. A menu
+// at the top level of the page takes the HUD's scale (`--ow-hud-k`, kept on <html> by installHudScaleVar); a menu
+// inside an element that is already scaled (the top strip) sets `--ow-ts-k: 1` in its own CSS.
+
+let hudScaleVarInstalled = false;
+
+/** Keep `--ow-hud-k` (hudScale for the window height and UI scale) on <html> for the original-pixel popups. */
+export function installHudScaleVar(): void {
+    if (typeof document === 'undefined' || typeof window === 'undefined') return;
+    const apply = (): void => {
+        document.documentElement.style.setProperty('--ow-hud-k', String(hudScale(window.innerHeight, uiScaleFactor())));
+    };
+    apply();
+    if (hudScaleVarInstalled) return;
+    hudScaleVarInstalled = true;
+    window.addEventListener('resize', apply);
+    onSettingsChange(apply);
+}
+
+export interface ToolStripItemOptions {
+    /** ToolStripItem.Enabled (default true): disabled items draw in GrayText and are never selected. */
+    enabled?: boolean;
+    /** Has DropDownItems: the arrow on the right (OnRenderArrow). */
+    submenu?: boolean;
+    /** ToolStripMenuItem.Checked: a check mark in the check margin (null / undefined = no check column). */
+    checked?: boolean | null;
+    /** ShortcutKeyDisplayString, right-aligned. */
+    shortcut?: string;
+    /** selectionMenu's image margin: a glyph left of the text. */
+    image?: string;
+    title?: string;
+    /** 'div' (default) or 'button' (keeps a button's focus / click semantics). */
+    tag?: 'div' | 'button';
+    className?: string;
+    labelClassName?: string;
+    arrowClassName?: string;
+}
+
+/** A ContextMenuStrip / ToolStripDropDown panel (CustomToolStripRenderer background, no border). */
+export function toolStripMenu(className = ''): HTMLDivElement {
+    installHudScaleVar();
+    const m = el('div', `ow-toolstrip${className ? ` ${className}` : ''}`);
+    m.setAttribute('role', 'menu');
+    return m;
+}
+
+/** A ToolStripMenuItem row: [check] [image] text [shortcut] [arrow]. Hover / `.ow-ts-active` = Selected. */
+export function toolStripItem(label: string, o: ToolStripItemOptions = {}): HTMLElement {
+    const row: HTMLElement = el(o.tag ?? 'div', `ow-ts-item${o.className ? ` ${o.className}` : ''}`);
+    if (row instanceof HTMLButtonElement) row.type = 'button';
+    else row.setAttribute('role', 'menuitem');
+    row.tabIndex = -1;
+    if (o.checked !== undefined && o.checked !== null) row.appendChild(el('span', 'ow-ts-check', o.checked ? '✓' : ''));
+    if (o.image !== undefined) row.appendChild(el('span', 'ow-ts-image', o.image));
+    row.appendChild(el('span', `ow-ts-label${o.labelClassName ? ` ${o.labelClassName}` : ''}`, label));
+    if (o.shortcut !== undefined && o.shortcut !== '') row.appendChild(el('span', 'ow-ts-shortcut', o.shortcut));
+    if (o.submenu === true) row.appendChild(el('span', `ow-ts-arrow${o.arrowClassName ? ` ${o.arrowClassName}` : ''}`));
+    if (o.enabled === false) row.classList.add('ow-ts-disabled');
+    if (o.title !== undefined && o.title !== '') row.title = o.title;
+    return row;
+}
+
+/** A ToolStripSeparator (OnRenderSeparator). */
+export function toolStripSeparator(className = ''): HTMLDivElement {
+    return el('div', `ow-ts-sep${className ? ` ${className}` : ''}`);
+}
+
+/** A section caption inside a menu (a ToolStripLabel in the item colour with a separator line under it). */
+export function toolStripHeading(text: string, className = ''): HTMLDivElement {
+    return el('div', `ow-ts-heading${className ? ` ${className}` : ''}`, text);
+}
+
+/** Mark `row` as the menu's Selected item (keyboard navigation), clearing the other rows of `menu`. */
+export function setToolStripActive(menu: HTMLElement, row: HTMLElement | null, extraClass = ''): void {
+    for (const r of menu.querySelectorAll<HTMLElement>('.ow-ts-item')) {
+        const on = r === row;
+        r.classList.toggle('ow-ts-active', on);
+        if (extraClass !== '') r.classList.toggle(extraClass, on);
+    }
+}
+
+/** The original's CloseButton (CloseButton.cs: rounded rect radius 8, the cross), as drawn in the ScreenPanel header. */
+export const CLOSE_BUTTON_SVG =
+    '<svg viewBox="0 0 30 30" width="30" height="30" aria-hidden="true"><rect x="2" y="2" width="26" height="26" rx="8" ry="8"/>' +
+    '<path class="ow-close-x" d="M8 8 L22 22 M8 22 L22 8"/></svg>';
 
 /** The amount bar of DataGridViewTextBoxDropShadowCell: a horizontal gradient of the text colour from alpha 32 to 128,
  *  3 px inset top and bottom. Position it under the cell's text. */
@@ -799,9 +897,7 @@ export function openOriginalWindow(o: OriginalWindowOptions): OriginalWindow {
         const closeBtn = el('button', 'ow-close');
         closeBtn.type = 'button';
         closeBtn.title = 'Close';
-        closeBtn.innerHTML =
-            '<svg viewBox="0 0 30 30" width="30" height="30" aria-hidden="true"><rect x="2" y="2" width="26" height="26" rx="8" ry="8"/>' +
-            '<path class="ow-close-x" d="M8 8 L22 22 M8 22 L22 8"/></svg>';
+        closeBtn.innerHTML = CLOSE_BUTTON_SVG;
         closeBtn.addEventListener('click', (e) => {
             e.stopPropagation();
             win.close();

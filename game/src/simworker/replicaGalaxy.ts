@@ -53,7 +53,8 @@ export function hotGates(): Record<string, { gate: string; children: readonly st
 /**
  * Hot fields of the hot classes with a FIXED list (fixedHotClasses below): what the main view reads every frame —
  * render/renderInterp.ts MovingBuiltObject / MovingCreature / MovingFighter / MovingShot (position, heading, speeds,
- * parent frame, last touch, a fighter's leash: mission and in-view flag), the hyperjump / docking / shield-strike / ion-strike / combat state the ship, effects and
+ * parent frame, last touch, a warp leg's distance to its exit point (lastHyperDistance: where the drawn warp stops),
+ * a fighter's leash: mission and in-view flag), the hyperjump / docking / shield-strike / ion-strike / combat state the ship, effects and
  * overlay layers draw (effectsLayer.ts weaponDrawCommand / fighterWeaponDrawCommand / drawExplosion, combatBars.ts battle
  * bars incl. the boarding values,
  * shipOverlays.ts, liveryLayer.ts lightning scars), owner / fleet / role changes, and what
@@ -74,7 +75,7 @@ export function alwaysHotFields(): Set<string> {
         hyperjumpX hyperjumpY canHyperJump lastShieldStrike lastShieldStrikeDirection currentShields shieldsCapacity damagedComponentCount
         unbuiltComponentCount dateRetrofit isFunctional lastIonStrike lastLocationEffectTouch
         nearestSystemStar attackers stealth sensorLongRange sensorProximityArrayRange doingMining doingGasMining doingConstruction
-        engineType builtAt mission assaultAttackValue assaultDefenseValue`);
+        engineType builtAt mission assaultAttackValue assaultDefenseValue lastHyperDistance`);
     add('Creature', `xpos ypos currentHeading targetHeading currentSpeed targetSpeed movementSpeed hyperSpeed lungeSpeed currentTarget
         parentHabitat parentX parentY lastTouch hasBeenDestroyed damage isVisible turnDirection distanceToTarget nearestSystemStar`);
     add('Fighter', `xpos ypos heading targetHeading currentSpeed _targetSpeed topSpeed hasBeenDestroyed onboardCarrier lastTouch health
@@ -271,6 +272,18 @@ export class GalaxySyncSource {
     setSideTable(key: string, value: unknown): void {
         if (value === null) delete this.side[key];
         else this.side[key] = value;
+    }
+
+    /**
+     * A save side table a player command just changed (the waypoints, sim/player/waypoints.ts): put its live object
+     * under `key` in the side-tables root now — the cold cycle would only recollect it at its next start — and compare
+     * the root (its keys only) and the table (`depth` levels down), so the change travels in the next delta, ahead of
+     * the command's reply. Read-only on the sim.
+     */
+    freshenSideTable(key: string, value: object | null, depth = 2): void {
+        this.side[key] = value;
+        this.encoder.compareNow(this.side, 0);
+        if (value !== null) this.encoder.compareNow(value, depth);
     }
 
     /** The initial snapshot (everything discovered so far, incl. the side tables). */

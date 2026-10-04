@@ -1,50 +1,29 @@
-/* Stacked-object pick popup next to the cursor. Streamlined HUD style (cf. orderMenu.css / hud.css). */
+/* Stacked-object pick popup next to the cursor: the original's selectionMenu (ContextMenuStrip, CustomToolStripRenderer;
+   rows / selection colours in originalWindow.css .ow-toolstrip). Its image margin (32 × 15) holds the object glyph;
+   our type / owner columns follow the text in the item colour, dimmed, and turn Yellow with the row. */
 .pick-menu {
     position: fixed;
     z-index: 1650;
-    min-width: 180px;
-    max-width: 360px;
-    max-height: 288px; /* 12 rows */
+    min-width: calc(180px * var(--ow-ts-k));
+    max-width: calc(420px * var(--ow-ts-k));
+    max-height: calc(12 * 22px * var(--ow-ts-k) + 4px * var(--ow-ts-k)); /* 12 rows */
     overflow-y: auto;
-    padding: 4px 0;
-    background: rgba(18, 20, 26, 0.96);
-    border: 1px solid rgba(255, 255, 255, 0.12);
-    border-radius: 6px;
-    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6);
-    color: #e6e6e6;
-    font-family: 'Forgotten Futurist', sans-serif;
-    font-size: 12px;
 }
 .pick-menu-row {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    height: 24px;
-    padding: 0 12px;
-    cursor: pointer;
-    white-space: nowrap;
+    gap: calc(8px * var(--ow-ts-k));
 }
-.pick-menu-row:hover,
-.pick-menu-row.pick-menu-active {
-    background: rgba(120, 170, 255, 0.18);
-    color: #fff;
+.pick-menu-row .pick-menu-icon {
+    margin-right: 0;
 }
-.pick-menu-icon {
-    flex: none;
-    width: 14px;
-    text-align: center;
-    color: #9aa3ad;
-}
-.pick-menu-name {
-    flex: 1;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-.pick-menu-type {
-    color: #c8b468;
-    font-size: 11px;
-}
+.pick-menu-type,
 .pick-menu-owner {
-    color: #9aa3ad;
-    font-size: 11px;
+    flex: none;
+    font-size: calc(14px * var(--ow-ts-k));
+    color: rgb(130, 130, 140);
+}
+.pick-menu-row:hover .pick-menu-type,
+.pick-menu-row:hover .pick-menu-owner,
+.pick-menu-row.pick-menu-active .pick-menu-type,
+.pick-menu-row.pick-menu-active .pick-menu-owner {
+    color: inherit;
 }
