@@ -35,9 +35,12 @@ describe('19a Concord — flag off is byte-identical', () => {
     // every digest moved (start and 1 year). The pre-feature values from 4c1ffbc were 2726246819d1c846/10b1026d25ff71f1
     // (wizard Oranthi) and 4fd8498a373af023/bd3751a3fd90f0d5 (Concord created at start); the test passes unchanged at
     // c5cff32^ and the only sim change since is c5cff32, so the flag-off path is still identical to the feature-free game.
+    // Repinned again at 990fb8c: f2aa5bc (orbit spacing so bodies never overlap, a requested deviation) changes generation,
+    // and later deliberate generation changes (0198eda SelectHabitatPictures and others, each repinned in the golden pins)
+    // shift the Rnd stream; the c5cff32 values were 2477059f19d2da47/fe7c3e8fd4b91dbb and 4a9c0d151a4302cf/9029719465f2dcd0.
     const PINS: [boolean, string, string][] = [
-        [true, '2477059f19d2da47', 'fe7c3e8fd4b91dbb'],
-        [false, '4a9c0d151a4302cf', '9029719465f2dcd0'],
+        [true, 'aae3cd943610cba5', '7ebf83ea39581249'],
+        [false, 'af20ac37e16a82a1', '9494f88633de1e94'],
     ];
     for (const [forced, d0, d1] of PINS) {
         it(`passive off, 1 starting colony, cap 4 (${forced ? 'wizard Oranthi' : 'Concord created at start'}): 1 year matches the pre-feature digests`, () => {

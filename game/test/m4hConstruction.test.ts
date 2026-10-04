@@ -229,7 +229,9 @@ describe('M4h milestone on the headless harness', () => {
         // (M4q: with the seed-1 stream shifted by InvadeUnwillingColonizationTargets' NextDouble, the empire's design review
         // may already have queued the new escort for a Retrofit to a newer design.)
         expect(m === null || m.type === BuiltObjectMissionType.Move || m.type === BuiltObjectMissionType.Undefined || m.type === BuiltObjectMissionType.Attack || m.type === BuiltObjectMissionType.Escape || m.type === BuiltObjectMissionType.Refuel || m.type === BuiltObjectMissionType.Patrol || m.type === BuiltObjectMissionType.Escort || m.type === BuiltObjectMissionType.Retrofit).toBe(true);
-        expect(g.builtObjects).toContain(bo);
+        // Still in the galaxy, or lost in combat: since 0198eda (SelectHabitatPictures shifts the seed-1 Rnd stream) pirates
+        // capture and later destroy this escort within the 1200 s.
+        expect(g.builtObjects.includes(bo) || bo.hasBeenDestroyed).toBe(true);
     }, 1800000); // 30 min: runs at a fraction of speed while other suites load the machine
 
     it('retrofit: a queued ship swaps to the new design components', () => {
