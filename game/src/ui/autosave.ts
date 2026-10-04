@@ -10,7 +10,7 @@
 
 import { writeSaveIndexEntry, defaultSaveTextStore, type SaveStorage, type SaveTextStore } from './screens/saveLoad';
 import { getSettings, type UiSettings } from './settings';
-import { showToast } from './toast';
+import { hideToast, showToast } from './toast';
 import { tryGetText } from '../sim/textResolver';
 
 /** int_59 cycles 1..5 (Main.Part12.cs:4038-4041). */
@@ -88,17 +88,25 @@ export function installAutosave(opts: AutosaveOptions): void {
         if (state.disposed) return;
         const slot = nextAutosaveSlot(lastSlot);
         const name = autosaveName(slot);
+        // Say it is happening first: in-thread, serializing a big galaxy blocks the page for seconds, so the notice is
+        // painted (two animation frames) before the work starts.
+        showToast('Autosaving…', document.body, 60000);
+        await new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
         const t0 = performance.now();
         let text: string | null = null;
         try {
             text = await opts.serialize(); // sim worker mode: the worker serializes (main.ts)
         } catch (err) {
             console.error('Autosave failed', err);
+            showToast('Autosave failed');
         }
         const ms = performance.now() - t0;
         // 4116: dateTime_6 = DateTime.Now after the attempt.
         last = Date.now();
-        if (text === null) return;
+        if (text === null) {
+            hideToast();
+            return;
+        }
         lastSlot = slot;
         console.info(`[autosave] ${name}: serialized ${(text.length / 1048576).toFixed(1)} MB in ${ms.toFixed(0)} ms`);
         const savedAt = Date.now();
@@ -107,7 +115,10 @@ export function installAutosave(opts: AutosaveOptions): void {
                 state.lastWritten = { name, savedAt };
                 showToast(`Autosaved (${name})`);
             },
-            (err: unknown) => console.warn('Autosave could not be written', err),
+            (err: unknown) => {
+                console.warn('Autosave could not be written', err);
+                showToast('Autosave could not be written');
+            },
         );
     }
 

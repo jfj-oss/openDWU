@@ -535,12 +535,40 @@ export function createSaveLoadPanel(mode: 'save' | 'load', wiring: SavePanelWiri
         refreshLists();
     }
 
+    /** While a save / download runs: buttons off, a persistent "Saving…" line and the busy cursor. Serializing a big
+     *  galaxy blocks the page for seconds, so the line is painted (two animation frames) before the work starts. */
+    async function whileBusy<T>(message: string, work: () => Promise<T>): Promise<T> {
+        if (statusTimer !== undefined) clearTimeout(statusTimer);
+        statusTimer = undefined;
+        status.textContent = message;
+        status.classList.add('save-load-busy');
+        saveBtn.disabled = true;
+        downloadBtn.disabled = true;
+        root.style.cursor = 'progress';
+        document.documentElement.style.cursor = 'progress';
+        await new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
+        try {
+            return await work();
+        } finally {
+            status.classList.remove('save-load-busy');
+            saveBtn.disabled = false;
+            downloadBtn.disabled = false;
+            root.style.cursor = '';
+            document.documentElement.style.cursor = '';
+        }
+    }
+
     async function doSave(): Promise<void> {
+        if (saveBtn.disabled) return;
         const name = nameInput.value.trim();
         if (name === '') {
             showToast('Enter a save name first');
             return;
         }
+        await whileBusy(`Saving "${name}"…`, () => doSaveNow(name));
+    }
+
+    async function doSaveNow(name: string): Promise<void> {
         const saveText = (await serialize?.()) ?? null;
         if (saveText === null) {
             showToast('Nothing to save yet');
@@ -567,7 +595,12 @@ export function createSaveLoadPanel(mode: 'save' | 'load', wiring: SavePanelWiri
     }
 
     async function doDownload(): Promise<void> {
+        if (downloadBtn.disabled) return;
         const name = nameInput.value.trim() || 'save';
+        await whileBusy(`Preparing "${name}.dwusave"…`, () => doDownloadNow(name));
+    }
+
+    async function doDownloadNow(name: string): Promise<void> {
         const saveText = (await serialize?.()) ?? null;
         if (saveText === null) {
             showToast('Nothing to download yet');

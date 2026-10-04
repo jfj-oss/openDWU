@@ -32,3 +32,14 @@ export function showToast(text: string, root: HTMLElement = document.body, ms = 
         }, 300);
     }, ms);
 }
+/** Remove the current toast now (e.g. an "in progress" notice whose work ended without a result). */
+export function hideToast(): void {
+    if (currentToast) {
+        currentToast.remove();
+        currentToast = null;
+    }
+    if (toastTimer !== undefined) {
+        clearTimeout(toastTimer);
+        toastTimer = undefined;
+    }
+}

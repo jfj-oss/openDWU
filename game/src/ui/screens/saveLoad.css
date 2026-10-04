@@ -19,3 +19,13 @@
 .save-load-status {
     white-space: pre-line;
 }
+
+/* The status line while a save / download runs (saveLoad.ts whileBusy): the original's yellow, gently pulsing. */
+.save-load-busy {
+    color: #ffd700;
+    animation: save-load-busy-pulse 1s ease-in-out infinite alternate;
+}
+@keyframes save-load-busy-pulse {
+    from { opacity: 1; }
+    to { opacity: 0.45; }
+}
