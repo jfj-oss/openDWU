@@ -83,6 +83,8 @@ import { getMessageOptions } from './ui/messageRouting';
 // [audio] end
 import { createNewGameWizard } from './ui/screens/newGameWizard';
 import { openGalactopedia } from './ui/screens/galactopedia';
+import { habitatInfo } from './ui/selectionInfo';
+import { renderInfoModel } from './ui/selectionInfoView';
 import { colonizationRangeFor, defaultStartGameOptions, piratesFor, STARTING_TECH_LEVEL, toCreateGameOptions, type StartGameOptions, maximumEmpireAmountFor, starCountFor, defaultScenarioChoice, type StartScenarioChoice } from './sim/startGameOptions';
 import { serializeGame, deserializeGameSteps, savedScenarioId, savedScenarioInclude, type GameSaveJSON } from './sim/save/gameSave';
 import { loadScenarioIndex, loadScenarioOverlay } from './sim/scenario/fetchScenario';
@@ -459,6 +461,25 @@ function createGalaxyMapFor(galaxy: Galaxy, camera: Camera): GalaxyMapScreen {
         jumpTo: (x, y) => camera.centerOn(x, y),
         // The Main View hover tooltip would otherwise stay over the map.
         onOpen: () => hideMapTooltip(),
+        // pnlHabitatInfo: the InfoPanel for the selected habitat. The original's InfoPanel there has no mouse handler;
+        // here its hotspots keep their messages as tool tips, and the Galactopedia ones (resources, races, facilities —
+        // Main.Part4.cs 3586-3607) open their topic.
+        renderHabitatInfo: (box, h) => {
+            const player = galaxy.playerEmpire;
+            if (player === null) return;
+            const resource = (id: number): { name: string; pictureRef: number } | null => galaxy.resources.find((r) => r.resourceId === id) ?? null;
+            const model = habitatInfo({ galaxy, player, resource }, h);
+            renderInfoModel(box, model, { galaxy, onTarget: (t) => { if (t.kind === 'galactopedia') openGalactopedia({ topic: t.topic }); } });
+            // InfoPanel.DrawBackgroundPicture centres the picture in this 250 × 240 client area.
+            const pic = box.querySelector<HTMLImageElement>('.sel-picture');
+            if (pic !== null) {
+                const side = Math.min(parseFloat(pic.style.width) || 200, 234);
+                pic.style.width = `${side}px`;
+                pic.style.height = `${side}px`;
+                if (!pic.style.left.startsWith('-')) pic.style.left = `${Math.trunc((250 - side) / 2)}px`;
+                pic.style.top = `${Math.trunc((240 - side) / 2)}px`;
+            }
+        },
     });
     document.body.appendChild(galaxyMap.element);
     return galaxyMap;

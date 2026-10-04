@@ -118,3 +118,68 @@ describe('facility hover texts (InfoPanel DrawFacilities / PlanetaryFacilityList
         expect(none.segs.map((s) => s.text)).toEqual(['(None)']);
     }, 300000);
 });
+
+// The resource / race hotspots (InfoPanel.cs 3198 DrawResources 3226, 3137 / 3150 population races, 3811 the colony
+// summary's base resource): "Name (click for details)", and a click opens the Galactopedia on the resource's / race's
+// own page (Main.Part4.cs 3598-3607 → method_456(Name)). The selection panel hint (Main.Part10.cs 1143).
+import { selectionPanelHint } from '../src/ui/hud';
+import { systemInfoModel } from '../src/ui/selectionInfo';
+
+describe('resource hotspots (InfoPanel DrawResources)', () => {
+    it('each resource icon: hover message and Galactopedia topic; the abundance stays the tiny text', () => {
+        const { game } = setup();
+        const g = game.galaxy;
+        const player = game.playerEmpire;
+        const ctx: InfoContext = { galaxy: g, player, resource: (id) => gameData.resources.find((r) => r.resourceId === id) ?? null };
+        const h = player.capital!;
+        expect(h.resources.length).toBeGreaterThan(0);
+        const before = stateDigest(g);
+        const m = habitatInfo(ctx, h);
+        const row = m.rows.find((r): r is Extract<InfoRow, { kind: 'row' }> => r.kind === 'row' && r.label === 'Resource')!;
+        const icons = row.segs.filter((s) => s.img !== undefined);
+        expect(icons.length).toBe(h.resources.length);
+        h.resources.forEach((hr, i) => {
+            const name = gameData.resources.find((r) => r.resourceId === hr.resourceId)!.name;
+            expect(icons[i]).toMatchObject({ title: `${name} (click for details)`, target: { kind: 'galactopedia', topic: name } });
+        });
+        const tiny = row.segs.filter((s) => s.tiny === true);
+        expect(tiny.length).toBe(h.resources.length);
+        expect(tiny.every((s) => /^\d+%/.test(s.text ?? '') && s.target === undefined)).toBe(true);
+        // The population race: a Galactopedia hotspot too.
+        const pop = m.rows.find((r): r is Extract<InfoRow, { kind: 'row' }> => r.kind === 'row' && r.label === 'Populace')!;
+        const race = h.population.dominantRace!;
+        expect(pop.segs[0]).toMatchObject({ title: `${race.name} (click for details)`, target: { kind: 'galactopedia', topic: race.name } });
+        expect(stateDigest(g)).toBe(before);
+    }, 300000);
+
+    it('the system summary: a mining base\'s resource is a Galactopedia hotspot', () => {
+        const { game } = setup();
+        const g = game.galaxy;
+        const player = game.playerEmpire;
+        const ctx: InfoContext = { galaxy: g, player, resource: (id) => gameData.resources.find((r) => r.resourceId === id) ?? null };
+        let found = 0;
+        // God's view of the resources (the summary shows a base's resource only when the player knows it).
+        const known = player.resourceMap.checkResourcesKnown.bind(player.resourceMap);
+        player.resourceMap.checkResourcesKnown = () => true;
+        for (const sys of g.systems) {
+            const m = systemInfoModel(ctx, sys);
+            for (const row of m.rows) {
+                if (row.kind !== 'colonies') continue;
+                for (const it of row.items) {
+                    if (it.resourceImg === null) continue;
+                    found++;
+                    expect(it.resourceTopic).not.toBeNull();
+                    expect(it.resourceTitle).toBe(`${it.resourceTopic} (click for details)`);
+                }
+            }
+        }
+        player.resourceMap.checkResourcesKnown = known;
+        expect(found).toBeGreaterThan(0);
+    }, 300000);
+
+    it('the selection panel hint: the hotspot message, else "click to center view"', () => {
+        expect(selectionPanelHint(undefined)).toBe('Selection Panel: click to center view on selected item');
+        expect(selectionPanelHint('')).toBe('Selection Panel: click to center view on selected item');
+        expect(selectionPanelHint('Steel (click for details)')).toBe('Steel (click for details)');
+    });
+});

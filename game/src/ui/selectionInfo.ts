@@ -123,6 +123,7 @@ export type InfoTarget =
     /** A planetary facility hotspot (InfoPanel.cs 2604): Main.Part4.cs 3586-3597 → method_456, the Galactopedia at the
      *  "Wonders" or "Planetary Facilities" topic. */
     | { kind: 'galactopedia'; topic: string };
+// (The same target serves the resource and race hotspots: Main.Part4.cs 3598-3607, method_456(resource / race Name).)
 
 /** One run of a row: text, an image, an empire flag, or a troop icon. */
 export interface InfoSeg {
@@ -182,6 +183,8 @@ export interface ColonySummaryItem {
     baseImg: string | null;
     resourceImg: string | null;
     resourceTitle: string;
+    /** The resource's Galactopedia topic (its name), null without a resource icon. */
+    resourceTopic: string | null;
     /** "?" when the base's resources are unknown. */
     resourceUnknown: boolean;
 }
@@ -429,7 +432,8 @@ function resourcesKnown(ctx: InfoContext, h: Habitat): boolean {
     return map != null && map.checkResourcesKnown(h);
 }
 
-/** InfoPanel.cs 3198 DrawResources: icon + tiny "abundance%" per resource on the dark strip. */
+/** InfoPanel.cs 3198 DrawResources: icon + tiny "abundance%" per resource on the dark strip. Each icon is a resource
+ *  hotspot (the abundance stays the tiny text after it, not in the hover message). */
 function resourceSegs(ctx: InfoContext, resources: { resourceId: number; abundance: number }[], color: number): InfoSeg[] {
     if (resources.length === 0) return [txt('(None)', color)];
     const segs: InfoSeg[] = [];
@@ -438,7 +442,9 @@ function resourceSegs(ctx: InfoContext, resources: { resourceId: number; abundan
         const name = def?.name ?? `Resource ${r.resourceId}`;
         const rimMark = rimGoodMarker(ctx.galaxy, r.resourceId); // [rimTrader]
         const pct = abundancePercentText(r.abundance) + (rimMark !== '' ? ` ${rimMark}` : '');
-        segs.push({ img: def ? resourceIconUrl(def.pictureRef) : undefined, title: `${name} (${pct})`, gap: segs.length > 0 ? 3 : 0 });
+        // 3226: the icon is a hotspot, "Name (click for details)"; a click opens the Galactopedia on the resource's
+        // page (Main.Part4.cs 3598 → method_456(resource.Name)).
+        segs.push({ img: def ? resourceIconUrl(def.pictureRef) : undefined, title: `${name} (click for details)`, target: { kind: 'galactopedia', topic: name }, gap: segs.length > 0 ? 3 : 0 });
         segs.push({ text: pct, tiny: true, color, gap: -2 });
     }
     return segs;
@@ -934,7 +940,8 @@ function populationRows(h: Habitat, color: number): InfoRow[] {
             growth = '';
         }
         rows.push(label(i === 0 ? 'Populace' : '', [
-            race !== null ? { img: raceImageUrl(race) ?? undefined, title: `${race.name} (click for details)` } : { width: INFO.imageSize },
+            // InfoPanel.cs 3137 / 3150: a race hotspot; Main.Part4.cs 3603 → method_456(race.Name).
+            race !== null ? { img: raceImageUrl(race) ?? undefined, title: `${race.name} (click for details)`, target: { kind: 'galactopedia', topic: race.name } } : { width: INFO.imageSize },
             { text: name, color, width: W },
             { text: amount, color, width: A },
             { text: growth, color: atMax ? 0xff0000 : color },
@@ -1216,6 +1223,7 @@ function coloniesSummaryRow(ctx: InfoContext, systemStar: Habitat): InfoRow {
         const { pop, dev } = populationIndicator(h.population.totalAmount, habitatDevelopmentLevel(h));
         let resourceImg: string | null = null;
         let resourceTitle = '';
+        let resourceTopic: string | null = null;
         let resourceUnknown = false;
         if (race === null && base !== null && mining) {
             if (resourcesKnown(ctx, h)) {
@@ -1223,7 +1231,8 @@ function coloniesSummaryRow(ctx: InfoContext, systemStar: Habitat): InfoRow {
                 const def = r !== undefined ? ctx.resource(r.resourceId) : null;
                 if (def !== null) {
                     resourceImg = resourceIconUrl(def.pictureRef);
-                    resourceTitle = def.name;
+                    resourceTitle = `${def.name} (click for details)`;
+                    resourceTopic = def.name;
                 }
             } else resourceUnknown = true;
         }
@@ -1240,6 +1249,7 @@ function coloniesSummaryRow(ctx: InfoContext, systemStar: Habitat): InfoRow {
             baseImg: race === null && base !== null ? shipImageUrl(base) : null,
             resourceImg,
             resourceTitle,
+            resourceTopic,
             resourceUnknown,
         };
     });

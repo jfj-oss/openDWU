@@ -29,6 +29,9 @@ export interface InfoViewOptions {
     onTarget: (t: InfoTarget) => void;
     /** Click on the automate icon (the player's automated ship / fleet). */
     onAutomate?: () => void;
+    /** Hotspot messages as `data-hover` for a hover-message line (the main view's selection panel) instead of tool
+     *  tips. */
+    hoverMessage?: boolean;
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -86,8 +89,17 @@ export function setHoverMessage(el: HTMLElement, text: string | undefined): void
     if (text !== undefined && text !== '') el.dataset.hover = text;
 }
 
+/** The panel shows its hotspot messages in a hover-message line (`data-hover`), or — in a window with no such line
+ *  (the Colonies screen's pnlColonyHabitatInfo, the Galaxy Map's pnlHabitatInfo, ...) — as tool tips. */
+let hoverAsTitle = true;
+function setHover(el: HTMLElement, text: string | undefined): void {
+    if (hoverAsTitle) {
+        if (text !== undefined && text !== '') el.title = text;
+    } else setHoverMessage(el, text);
+}
+
 function attachTarget(el: HTMLElement, target: InfoTarget | undefined, title: string | undefined, o: InfoViewOptions): void {
-    setHoverMessage(el, title);
+    setHover(el, title);
     if (target === undefined) return;
     el.classList.add('sel-hot');
     el.addEventListener('click', (e) => {
@@ -266,7 +278,8 @@ function colonyColumn(item: ColonySummaryItem, x: number, o: InfoViewOptions): H
         race.src = item.raceImg;
         race.alt = '';
         race.draggable = false;
-        if (item.race !== null) setHoverMessage(race, `${item.race.name}`);
+        // InfoPanel.cs 3781: the dominant race, "Name (click for details)" → the Galactopedia (Main.Part4.cs 3603).
+        if (item.race !== null) attachTarget(race, { kind: 'galactopedia', topic: item.race.name }, `${item.race.name} (click for details)`, o);
         detail.appendChild(race);
         // DrawPopulationIndicator: a 5×5 grid, population columns × development rows lit.
         const grid = document.createElement('div');
@@ -278,7 +291,7 @@ function colonyColumn(item: ColonySummaryItem, x: number, o: InfoViewOptions): H
                 grid.appendChild(c);
             }
         }
-        setHoverMessage(grid, 'Population / development');
+        setHover(grid, 'Population / development');
         detail.appendChild(grid);
     } else if (item.base !== null) {
         const base = document.createElement('img');
@@ -293,7 +306,8 @@ function colonyColumn(item: ColonySummaryItem, x: number, o: InfoViewOptions): H
             r.className = 'sel-colony-res';
             r.src = item.resourceImg;
             r.alt = '';
-            setHoverMessage(r, item.resourceTitle);
+            // InfoPanel.cs 3811: the base's first resource, a "Name (click for details)" hotspot → the Galactopedia.
+            attachTarget(r, item.resourceTopic !== null ? { kind: 'galactopedia', topic: item.resourceTopic } : undefined, item.resourceTitle, o);
             detail.appendChild(r);
         } else if (item.resourceUnknown) {
             const q = document.createElement('div');
@@ -384,6 +398,15 @@ function rowElement(row: InfoRow, labelWidth: number, o: InfoViewOptions, banded
 
 /** Fill `panel` (the 280 × 240 pnlDetailInfo box) with the model. */
 export function renderInfoModel(panel: HTMLElement, model: InfoModel | null, o: InfoViewOptions): void {
+    hoverAsTitle = o.hoverMessage !== true;
+    try {
+        renderInfoModelInner(panel, model, o);
+    } finally {
+        hoverAsTitle = true;
+    }
+}
+
+function renderInfoModelInner(panel: HTMLElement, model: InfoModel | null, o: InfoViewOptions): void {
     panel.replaceChildren();
     if (model === null) return;
     // Background picture (DrawBackgroundPicture): centred in the panel, faded; a star 55% off the left edge.
@@ -457,7 +480,7 @@ export function renderInfoModel(panel: HTMLElement, model: InfoModel | null, o: 
         auto.src = chromeUrl('automate.png');
         auto.alt = '';
         auto.draggable = false;
-        setHoverMessage(auto, 'Automated (click to turn off)');
+        setHover(auto, 'Automated (click to turn off)');
         if (o.onAutomate !== undefined) {
             auto.classList.add('sel-hot');
             const onAutomate = o.onAutomate;
