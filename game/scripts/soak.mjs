@@ -18,7 +18,12 @@
 //   Class.field, negative Cargo / Population amounts, references from live objects to destroyed / detached ships,
 //   habitats, creatures, removed empires and disbanded fleets by Class.field) plus hard invariants (list membership
 //   and owner back-pointers, NaN positions / money / population);
-// - heap after a forced GC each scan (memory growth), wall ms per game year and the slowest frames (tick blowups);
+// - heap after a forced GC each scan (memory growth), wall ms per game year and the slowest frames (tick blowups;
+//   a frame's time is measured from the end of the previous frame of the same chunk, so the scans, save checks and
+//   hooks between chunks are not counted as a frame — before 2026-10-04 the first frame after a scan carried the scan
+//   and its forced GC, the soak's "4 s frames");
+// - `--hook scripts/soak-timing-hook.mjs`: per-year frame-time percentiles, CPU and per-pass ms, and the passes /
+//   CPU-profile functions behind each slow frame (report.timing);
 // - at `--save-at` (fraction of the run, default 0.5): serializeGame → deserializeGame, re-serialize the loaded game
 //   (round-trip identity), then run the original and the loaded copy `--save-run` game seconds each and compare
 //   stateDigest and the full save text (divergence), with the first differing field path when they differ.
@@ -288,9 +293,11 @@ async function runOne(name) {
         const g = game.galaxy;
         report.start = { stars: g.starCount, empires: g.empires.length, pirates: g.pirateEmpires.length, counts: stateCounts(g), player: g.playerEmpire?.name, race: so.raceName };
         // --hook file.mjs: a debug module; its start(ctx) runs after createGame, chunk(ctx) after every chunk (return
-        // 'stop' from either to end the run).
+        // 'stop' from either to end the run), frame(ctx, wallMs, galaxy) after every sim frame (synchronous, e.g.
+        // scripts/soak-timing-hook.mjs). ctx.chunkSeconds is the --chunk length.
         const hook = arg('hook', null) === null ? null : await import(resolve(String(arg('hook'))));
-        const hookCtx = { game, g, gameData, so, load, report };
+        const hookCtx = { game, g, gameData, so, load, report, chunkSeconds: chunk };
+        const hookFrame = typeof hook?.frame === 'function' ? hook.frame : null;
         console.log(`config ${name}: seed ${cfg.seed}, ${g.starCount} stars, ${g.empires.length} empires, ${g.pirateEmpires.length} pirates, create ${report.createMs.toFixed(0)} ms, digest ${stateDigest(g)}`);
 
         const total = years * YEAR_S;
@@ -303,6 +310,7 @@ async function runOne(name) {
             lastFrameT = now;
             if (dt > maxFrame) { maxFrame = dt; maxFrameDay = gal.nowMs / (YEAR_S * 1000 / 360); }
             if (dt > 1000 && report.slowFrames.length < 50) report.slowFrames.push({ day: +(gal.nowMs / (YEAR_S * 1000 / 360)).toFixed(1), ms: Math.round(dt) });
+            hookFrame?.(hookCtx, dt, gal);
         };
         const day = () => g.nowMs / ((YEAR_S * 1000) / 360);
         const startMs = g.nowMs;
@@ -310,6 +318,21 @@ async function runOne(name) {
         let lastExcKey = null;
         let yearT = performance.now();
         let yearCpu = process.cpuUsage();
+        // Wall / CPU ms spent between chunks on the soak's own checks (periodic scans, save checks, hook chunk calls):
+        // left out of the per-year figures (yearMs / yearCpuMs), which are the sim's; reported per year as yearOverheadMs.
+        report.overhead = { wallMs: 0, cpuMs: 0 };
+        let yearOverhead = { wallMs: 0, cpuMs: 0 };
+        const overhead = async (fn) => {
+            const w0 = performance.now();
+            const c0 = process.cpuUsage();
+            try {
+                return await fn();
+            } finally {
+                const c = process.cpuUsage(c0);
+                report.overhead.wallMs += performance.now() - w0;
+                report.overhead.cpuMs += (c.user + c.system) / 1000;
+            }
+        };
         let yearIdx = 0;
         const doScan = (label) => {
             globalThis.gc?.();
@@ -338,6 +361,8 @@ async function runOne(name) {
         if ((await hook?.start?.(hookCtx)) === 'stop') return;
         doScan('start');
         for (let s = 0; s < total; s += chunk) {
+            // Frame times exclude the scans / save checks / hooks between chunks.
+            lastFrameT = performance.now();
             try {
                 runGameSeconds(g, Math.min(chunk, total - s), { onFrame });
             } catch (e) {
@@ -349,21 +374,25 @@ async function runOne(name) {
                 if (atKey === lastExcKey) { report.stuck = true; console.log(`! STUCK at d${day().toFixed(1)}`); break; }
                 lastExcKey = atKey;
             }
-            if ((await hook?.chunk?.(hookCtx)) === 'stop') break;
+            if ((await overhead(() => hook?.chunk?.(hookCtx))) === 'stop') break;
             const elapsedS = (g.nowMs - startMs) / 1000;
             report.yearsRun = elapsedS / YEAR_S;
             if (Math.floor(elapsedS / YEAR_S) > yearIdx) {
                 yearIdx = Math.floor(elapsedS / YEAR_S);
-                const ms = performance.now() - yearT;
+                const ovWall = report.overhead.wallMs - yearOverhead.wallMs;
+                const ovCpu = report.overhead.cpuMs - yearOverhead.cpuMs;
+                yearOverhead = { ...report.overhead };
+                const ms = performance.now() - yearT - ovWall;
                 report.yearMs.push(Math.round(ms));
                 const cpu = process.cpuUsage();
-                (report.yearCpuMs ??= []).push(Math.round((cpu.user + cpu.system - (yearCpu.user + yearCpu.system)) / 1000));
+                (report.yearCpuMs ??= []).push(Math.round((cpu.user + cpu.system - (yearCpu.user + yearCpu.system)) / 1000 - ovCpu));
+                (report.yearOverheadMs ??= []).push(Math.round(ovWall));
                 yearCpu = cpu;
                 yearT = performance.now();
-                console.log(`= year ${yearIdx} ${(ms / 1000).toFixed(0)} s wall, maxFrame ${maxFrame.toFixed(0)} ms (d${maxFrameDay.toFixed(0)}), exc ${report.exceptions.reduce((a, x) => a + x.count, 0)}`);
+                console.log(`= year ${yearIdx} ${(ms / 1000).toFixed(0)} s wall (+${(ovWall / 1000).toFixed(0)} s scans / save checks), maxFrame ${maxFrame.toFixed(0)} ms (d${maxFrameDay.toFixed(0)}), exc ${report.exceptions.reduce((a, x) => a + x.count, 0)}`);
             }
-            if (day() - lastScanDay >= scanDays) { lastScanDay = day(); doScan('periodic'); }
-            if (saveAtS.has(s + chunk)) {
+            if (day() - lastScanDay >= scanDays) { lastScanDay = day(); await overhead(() => doScan('periodic')); }
+            if (saveAtS.has(s + chunk)) await overhead(() => {
                 try {
                     report.saveCheck = saveCheck(game, so, gameData, saveRun, { serializeGame, deserializeGame, stateDigest, runGameSeconds, GalaxyTime });
                     const sc = report.saveCheck;
@@ -376,7 +405,7 @@ async function runOne(name) {
                 }
                 lastFrameT = performance.now();
                 flush();
-            }
+            });
         }
         doScan('end');
         report.maxFrameMs = maxFrame;

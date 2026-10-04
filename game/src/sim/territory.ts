@@ -71,7 +71,7 @@ export function colonyInfluenceAtPoint(influenceRadius: number, colonyX: number,
     return num4 >= num3 ? Math.fround(num4 / num3) : 0;
 }
 
-interface Rect {
+export interface Rect {
     x: number;
     y: number;
     w: number;
@@ -118,6 +118,43 @@ function calculateEmpireTerritoryGridIndex(galaxy: Galaxy, section: Rect, influe
     const size = TERRITORY_INDEX_SIZE;
     if (influence === null) influence = Array.from({ length: size }, () => new Uint8Array(size));
     const num1 = galaxy.sizeX / size;
+    const list = territoryColonyList(galaxy, section, onlySystems);
+    if (onlySystems) {
+        // EmpireTerritory.cs 162-201: claim each system star's cell for the colony with the highest influence there.
+        let num4 = 0;
+        for (let index3 = 0; index3 < galaxy.systems.length; index3++) {
+            const system = galaxy.systems[index3];
+            if (system == null || system.systemStar == null) continue;
+            // Rectangle.Contains(Point((int)Xpos, (int)Ypos)).
+            const px = Math.trunc(system.systemStar.xpos);
+            const py = Math.trunc(system.systemStar.ypos);
+            if (!(px >= section.x && px < section.x + section.w && py >= section.y && py < section.y + section.h)) continue;
+            const indexX = Math.trunc(system.systemStar.xpos / (galaxy.sizeX / size));
+            const indexY = Math.trunc(system.systemStar.ypos / (galaxy.sizeY / size));
+            if (influence[indexX][indexY] !== 0) continue;
+            let num5 = 0;
+            for (const { colony } of list) {
+                if (colony.empire === null) continue;
+                const influenceAtPoint = colonyInfluenceAtPoint(colony.colonyInfluenceRadius, colony.xpos, colony.ypos, system.systemStar.xpos, system.systemStar.ypos);
+                if (influenceAtPoint > num5) {
+                    num4 = colony.empire.empireId + 1;
+                    num5 = influenceAtPoint;
+                }
+            }
+            if (num5 > 0) influence[indexX][indexY] = num4;
+        }
+        return influence;
+    }
+    fillTerritoryCells(influence, list, galaxy.sizeX / size, galaxy.sizeY / size, num1, size);
+    return influence;
+}
+
+/**
+ * EmpireTerritory.cs CalculateEmpireTerritoryGridIndex (105) up to the cell pass: the colonies' influence radii
+ * (RecalculateColonyInfluenceRadius), BuildColonyIndex and, for each colony of an active empire whose influence
+ * square meets `section`, DetermineOverlappingColonies (none in the systems-only pass).
+ */
+export function territoryColonyList(galaxy: Galaxy, section: Rect, onlySystems: boolean): { colony: Habitat; overlapping: Habitat[] }[] {
     for (const empire of galaxy.empires) {
         if (empire.active) {
             for (const c of empire.colonies) recalculateColonyInfluenceRadius(galaxy, c, empire.hasHyperDriveTech);
@@ -165,37 +202,66 @@ function calculateEmpireTerritoryGridIndex(galaxy: Galaxy, section: Rect, influe
             list.push({ colony, overlapping });
         }
     }
-    if (onlySystems) {
-        // EmpireTerritory.cs 162-201: claim each system star's cell for the colony with the highest influence there.
-        let num4 = 0;
-        for (let index3 = 0; index3 < galaxy.systems.length; index3++) {
-            const system = galaxy.systems[index3];
-            if (system == null || system.systemStar == null) continue;
-            // Rectangle.Contains(Point((int)Xpos, (int)Ypos)).
-            const px = Math.trunc(system.systemStar.xpos);
-            const py = Math.trunc(system.systemStar.ypos);
-            if (!(px >= section.x && px < section.x + section.w && py >= section.y && py < section.y + section.h)) continue;
-            const indexX = Math.trunc(system.systemStar.xpos / (galaxy.sizeX / size));
-            const indexY = Math.trunc(system.systemStar.ypos / (galaxy.sizeY / size));
-            if (influence[indexX][indexY] !== 0) continue;
-            let num5 = 0;
-            for (const { colony } of list) {
-                if (colony.empire === null) continue;
-                const influenceAtPoint = colonyInfluenceAtPoint(colony.colonyInfluenceRadius, colony.xpos, colony.ypos, system.systemStar.xpos, system.systemStar.ypos);
-                if (influenceAtPoint > num5) {
-                    num4 = colony.empire.empireId + 1;
-                    num5 = influenceAtPoint;
-                }
-            }
-            if (num5 > 0) influence[indexX][indexY] = num4;
-        }
-        return influence;
-    }
+    return list;
+}
+
+/**
+ * Cell-column bounds [lo, hi] on one grid row outside which a colony has no influence. `fy`: the colony's float32 y;
+ * `rem`: its float32 squared radius × (1 + 1e-6) minus the row's squared x offset (the dx·dx double of
+ * CalculateColonyInfluenceAtPoint). A cell outside lies more than B + num6 from fy, B = sqrt(rem)·(1 + 1e-6) +
+ * 1e-6·(|fy| + size·num6) + 1, so the float32 dy of the cell (y2 = fround(i·num6) and fround(fy − y2) each move it by
+ * less than 6e-8 relative) still has dy² > rem: dy² + dx² > r²(1 + 1e-6), hence Max(1, fround(dy² + dx²)) > r² and
+ * the influence is 0. Non-finite inputs give no bound (the whole row).
+ */
+function cellRangeLo(fy: number, rem: number, num6: number, size: number): number {
+    if (!(num6 > 0) || !Number.isFinite(fy) || !Number.isFinite(rem)) return -Infinity;
+    const b = Math.sqrt(Math.max(0, rem)) * 1.000001 + 1e-6 * (Math.abs(fy) + size * num6) + 1;
+    return Math.floor((fy - b) / num6) - 1;
+}
+function cellRangeHi(fy: number, rem: number, num6: number, size: number): number {
+    if (!(num6 > 0) || !Number.isFinite(fy) || !Number.isFinite(rem)) return Infinity;
+    const b = Math.sqrt(Math.max(0, rem)) * 1.000001 + 1e-6 * (Math.abs(fy) + size * num6) + 1;
+    return Math.ceil((fy + b) / num6) + 1;
+}
+
+/**
+ * EmpireTerritory.cs CalculateEmpireTerritoryGridIndex (105), the cell pass: each colony in turn claims the still
+ * unclaimed cells of its square where its influence is > 0, for the empire with the highest influence there among the
+ * colony and its overlapping colonies (ties: the first in list order). No Rnd, no writes outside `influence`.
+ * Perf: the same cells and owners as the per-cell colonyInfluenceAtPoint loop (test/territoryFill.test.ts keeps that
+ * loop as the reference and compares the grids). It was 100-400 ms per call in a 700-star old galaxy at war (every
+ * conquest, Galaxy.DoTasks' huge block): the soak's slowest frames.
+ * - colonyInfluenceAtPoint inlined, with the float32 colony coordinates and squared radii computed once per colony
+ *   instead of once per cell;
+ * - a colony is skipped on a whole grid row x2 where its squared x offset alone exceeds its squared radius:
+ *   Max(1, fround(dy² + dx²)) >= fround(dx²) > fround(r²) (fround is monotonic), so its influence there is 0 in every
+ *   cell. A 0 neither claims a cell (the colony itself) nor wins one (`inf > num19` with num19 > 0: the overlapping
+ *   colonies), so leaving those out — and the overlapping colonies with no empire, which the loop skipped per cell —
+ *   changes nothing;
+ * - in the same way, on each row a colony is skipped on the cells outside [cellRangeLo, cellRangeHi].
+ */
+export function fillTerritoryCells(
+    influence: Uint8Array[],
+    list: readonly { colony: Habitat; overlapping: readonly Habitat[] }[],
+    cellSizeX: number,
+    cellSizeY: number,
+    num1: number,
+    size: number,
+): void {
     const num6 = Math.fround(num1);
+    // Scratch: the overlapping colonies (with an empire) of the current colony — float32 position, squared radius and
+    // owner id — and, per row, those with a non-zero influence somewhere on it with their cell bounds there.
+    let oFx = new Float64Array(16);
+    let oFy = new Float64Array(16);
+    let oR2 = new Float64Array(16);
+    let oId = new Int32Array(16);
+    let active = new Int32Array(16);
+    let aLo = new Float64Array(16);
+    let aHi = new Float64Array(16);
     for (const { colony, overlapping } of list) {
         const num9 = colony.empire !== null ? colony.empire.empireId + 1 : 0;
-        const indexX = Math.trunc(colony.xpos / (galaxy.sizeX / size));
-        const indexY = Math.trunc(colony.ypos / (galaxy.sizeY / size));
+        const indexX = Math.trunc(colony.xpos / cellSizeX);
+        const indexY = Math.trunc(colony.ypos / cellSizeY);
         const num10 = Math.trunc(colony.colonyInfluenceRadius / num1);
         const radius = colony.colonyInfluenceRadius;
         const num11 = num10 * 2 + 2;
@@ -203,26 +269,73 @@ function calculateEmpireTerritoryGridIndex(galaxy: Galaxy, section: Rect, influe
         const num14 = Math.max(indexY - num10, 0);
         const num17 = num13 + (Math.min(size, num13 + num11) - num13);
         const num18 = num14 + (Math.min(size, num14 + num11) - num14);
+        // colonyInfluenceAtPoint(radius, colony.xpos, colony.ypos, x2, y2) terms that do not depend on the cell.
+        const cFx = Math.fround(colony.xpos);
+        const cFy = Math.fround(colony.ypos);
+        const cR2 = Math.fround(radius * radius);
+        if (overlapping.length > oFx.length) {
+            const n = overlapping.length * 2;
+            oFx = new Float64Array(n);
+            oFy = new Float64Array(n);
+            oR2 = new Float64Array(n);
+            oId = new Int32Array(n);
+            active = new Int32Array(n);
+            aLo = new Float64Array(n);
+            aHi = new Float64Array(n);
+        }
+        let nO = 0;
+        for (const o of overlapping) {
+            if (o.empire === null) continue;
+            oFx[nO] = Math.fround(o.xpos);
+            oFy[nO] = Math.fround(o.ypos);
+            oR2[nO] = Math.fround(o.colonyInfluenceRadius * o.colonyInfluenceRadius);
+            oId[nO] = o.empire.empireId + 1;
+            nO++;
+        }
         for (let i6 = num13; i6 < num17; i6++) {
             const x2 = Math.fround(i6 * num6);
-            for (let i7 = num14; i7 < num18; i7++) {
-                if (influence[i6][i7] !== 0) continue;
+            const dx = Math.fround(cFx - x2);
+            const dx2 = dx * dx;
+            if (Math.fround(dx2) > cR2) continue;
+            let nActive = 0;
+            for (let k = 0; k < nO; k++) {
+                const odx = Math.fround(oFx[k] - x2);
+                const odx2 = odx * odx;
+                if (Math.fround(odx2) <= oR2[k]) {
+                    active[nActive] = k;
+                    aLo[nActive] = cellRangeLo(oFy[k], oR2[k] * 1.000001 - odx2, num6, size);
+                    aHi[nActive] = cellRangeHi(oFy[k], oR2[k] * 1.000001 - odx2, num6, size);
+                    nActive++;
+                }
+            }
+            // (Integers in [0, size]: keeps the loop counter a small integer.)
+            const i7From = Math.max(num14, cellRangeLo(cFy, cR2 * 1.000001 - dx2, num6, size)) | 0;
+            const i7To = Math.min(num18, cellRangeHi(cFy, cR2 * 1.000001 - dx2, num6, size) + 1) | 0;
+            const row = influence[i6];
+            for (let i7 = i7From; i7 < i7To; i7++) {
+                if (row[i7] !== 0) continue;
                 const y2 = Math.fround(i7 * num6);
-                let num19 = colonyInfluenceAtPoint(radius, colony.xpos, colony.ypos, x2, y2);
+                const dy = Math.fround(cFy - y2);
+                const d2 = Math.max(1, Math.fround(dy * dy + dx2));
+                if (!(cR2 >= d2)) continue;
+                let num19 = Math.fround(cR2 / d2);
                 if (num19 > 0) {
                     let num20 = num9;
-                    for (const o of overlapping) {
-                        if (o.empire === null) continue;
-                        const inf = colonyInfluenceAtPoint(o.colonyInfluenceRadius, o.xpos, o.ypos, x2, y2);
+                    for (let a = 0; a < nActive; a++) {
+                        if (i7 < aLo[a] || i7 > aHi[a]) continue;
+                        const k = active[a];
+                        const odx = Math.fround(oFx[k] - x2);
+                        const ody = Math.fround(oFy[k] - y2);
+                        const od2 = Math.max(1, Math.fround(ody * ody + odx * odx));
+                        const inf = oR2[k] >= od2 ? Math.fround(oR2[k] / od2) : 0;
                         if (inf > num19) {
                             num19 = inf;
-                            num20 = o.empire.empireId + 1;
+                            num20 = oId[k];
                         }
                     }
-                    if (num19 > 0) influence[i6][i7] = num20;
+                    if (num19 > 0) row[i7] = num20;
                 }
             }
         }
     }
-    return influence;
 }
