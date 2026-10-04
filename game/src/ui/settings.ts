@@ -7,6 +7,7 @@
 import { startEffects } from '../audio/effectsPlayer';
 import { simWorkerDefault } from '../systemMemory';
 import { applyMusicSettings } from '../audio/musicPlayer'; // [audio]
+import { sanitizeOverrides } from './keyBindingModel';
 
 /** One entry of the persisted settings blob. */
 export interface UiSettings {
@@ -138,6 +139,9 @@ export interface UiSettings {
     /** GameOptions.CustomizationSetName (GameOptions.cs 258): the theme chosen on the Change Theme panel (Start.cs
      *  method_2), "" = the stock game. */
     customizationSet: string;
+
+    /** Hotkeys screen (Bacon mod HotKeys/HotKeyManager.cs): the rows the player remapped, by row id (keyBindingModel.ts). */
+    keyBindingOverrides: Record<string, { key: string; ctrl: boolean; alt: boolean; shift: boolean }>;
 }
 
 /** [galaxymarkers] The GalaxyViewDisplay* keys, in the original's option order. */
@@ -237,6 +241,7 @@ export const DEFAULT_SETTINGS: UiSettings = {
     automationPromptResponses: {},
     newGameOptions: null,
     customizationSet: '',
+    keyBindingOverrides: {},
     // [gameoptions] end
 };
 
@@ -355,6 +360,7 @@ export function loadSettings(): UiSettings {
         }
         // [gameoptions] end
         if (typeof parsed.customizationSet === 'string') out.customizationSet = parsed.customizationSet;
+        out.keyBindingOverrides = sanitizeOverrides(parsed.keyBindingOverrides);
     } catch {
         // Corrupt blob: keep the defaults.
     }

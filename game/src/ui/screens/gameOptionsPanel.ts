@@ -22,9 +22,10 @@
 // Closing the window saves the player empire's settings as the next new game's defaults (YxwyUefOyQ + method_257;
 // settings.newGameOptions, read by main.ts for the wizard's games).
 // TODO(port): the main menu's Options panel editing those defaults before a game (Start.1.cs:1928-1960) — mainMenu.ts;
-// the HotKeys button opens our shortcut list (BaconDistantWorlds/HotKeys remapping is not ported).
+// the HotKeys button opens the key remapping screen (BaconDistantWorlds/HotKeys, hotkeysScreen.ts).
 
 import './gameOptionsPanel.css';
+import { openHotkeysScreen } from './hotkeysScreen';
 import { AutomationLevel, type Empire } from '../../sim/empire';
 import { issuePlayerCommand } from '../../sim/player/playerCommands';
 import {
@@ -384,8 +385,8 @@ function createGameOptionsPanel(opts: GameOptionsPanelOptions): OpenState {
         slider(display, value, min, max, 130, 26 + 22 * i, 515, fn);
     });
     // btnHotKeys / btnGameOptionsAdvancedDisplaySettings (Main.Part6.cs:1787-1790: 250 × 26 at x 15 / 395), below the
-    // fourth row. HotKeys opens the keyboard shortcut list (the "?" overlay, hud.ts 'shortcuts').
-    button(display, 'HotKeys', 15, 110, 250, 22, () => window.dispatchEvent(new KeyboardEvent('keydown', { key: '?' })));
+    // fourth row. HotKeys opens the remapping screen (hotkeysScreen.ts; the "?" overlay lists the current keys).
+    button(display, 'HotKeys', 15, 110, 250, 22, () => openHotkeysScreen());
     button(display, 'Advanced Settings...', 395, 110, 250, 22, () => openAdvancedDisplaySettings());
 
     // --- grpOptionsVolume (12, 147) 659 × 74: Music (17, 22) / Effects (17, 47), sliders (81, 24 / 49). The sliders
