@@ -885,8 +885,11 @@ The only behaviour changes in this mode are:
   - Left: the voice job's message upgrade (`hostOps.ts voiceMessage`, `applyVoiceToMessage` rewrites a message's text
     in the worker, unjournaled; a stable message id would make it a command); the conversation queue is UI state, as
     the C# queue is (not saved), so its expiry stays UI-side.
-- **Not ported (§9):** synchronous advisor commands, tutorials (they still boot in-thread), the
-  `__dwu.sim` / `simBudget` debug hooks (null in worker mode), and `__dwu.commands.log` (the replica has no log).
+- **Ported since phase 1:** the advisor and diplomat-voice commands go through the worker (`remote.command`; in-thread
+  `runPlayerCommand`), tutorials boot in the worker (chunk 1), `__dwu.sim` / `__dwu.simBudget` are worker stand-ins and
+  `__dwu.commands.log()` returns a Promise of the worker's log (chunk 1). Dev scripts that write `__dwu.galaxy`
+  directly (screenshot set-ups under `withSimWrites`) write the replica in worker mode, which the worker never sees:
+  they need `?simWorker=0` now that the worker is the default.
 - **Command replies.** Every command issued on the replica with a callback is answered exactly once, in issue order
   (§4.4 "Failed commands"). Before this fix, an error reply (a result that could not be encoded, a stale argument)
   only logged a warning. The worker dying, a reload or a lost message left the callback waiting forever, so the flows

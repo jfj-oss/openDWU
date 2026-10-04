@@ -450,13 +450,17 @@ export class OverlayLayer {
         this.root.addChild(this.selVector);
         this.root.addChild(this.weaponCircles, this.gravityRing);
         if (typeof Image !== 'undefined') {
+            // Texture.from keeps the image in Pixi's global cache: the handler is dropped once it ran, else the cached
+            // image kept this layer — the main view, its galaxy — alive after the game view was torn down.
             const img = new Image();
             img.onload = () => {
+                img.onload = null;
                 this.arrowTex = Texture.from(img);
             };
             img.src = ARROWHEAD_URL;
             const disc = new Image();
             disc.onload = () => {
+                disc.onload = null;
                 this.lrsTex = Texture.from(disc);
             };
             disc.src = LRS_DISC_URL;

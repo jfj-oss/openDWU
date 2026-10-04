@@ -298,6 +298,8 @@ export class SimWorkerClient {
         this.worker.terminate();
         this.core.dispose();
         this.rejectWaiting('the game was closed');
+        // The game view's event handler (its closure holds the view and the game): a closed client delivers nothing.
+        this.eventHandler = null;
     }
 }
 

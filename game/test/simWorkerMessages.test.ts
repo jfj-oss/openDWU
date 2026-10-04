@@ -106,6 +106,7 @@ function aiOf(g: Galaxy, player: Empire): Empire {
 }
 
 /** The scripted sim events, at fixed frames (the same frame boundary on both sides, before the frame runs). */
+const ADVICE_TICK = 160;
 const DEFEAT_TICK = 1500;
 function inject(g: Galaxy, player: Empire, tick: number): void {
     const ai = aiOf(g, player);
@@ -127,7 +128,7 @@ function inject(g: Galaxy, player: Empire, tick: number): void {
             sendEventMessageToEmpire(player, EventMessageType.EncounterRuins, 'Ancient ruins', 'Our explorers found ruins', h, h);
             return;
         }
-        case 160: {
+        case ADVICE_TICK: {
             const m = new EmpireMessage(player, EmpireMessageType.AdvisorSuggestion, player.capital);
             m.advisorMessageType = AdvisorMessageType.BuildOrder;
             m.description = 'Build more ships';
@@ -199,9 +200,11 @@ describe('sim worker: the player message pipeline', () => {
         // A main-side ticker consumer (main.ts refreshHud's feed).
         const feed = createEmpireMessageFeed();
         const tickerLines: string[] = [];
+        let injectedAdvice: EmpireMessage | null = null;
         for (let t = 0; t < END_TICKS; t++) {
             inject(game.galaxy, game.playerEmpire, t);
             w.tick();
+            if (t === ADVICE_TICK) injectedAdvice = advisorSuggestions(game.playerEmpire).find((m) => m.description === 'Build more ships') ?? null;
             if (t % 15 === 0) for (const l of feed.poll(w.client.game.playerEmpire)) tickerLines.push(l);
         }
         for (const l of feed.poll(w.client.game.playerEmpire)) tickerLines.push(l);
@@ -224,7 +227,13 @@ describe('sim worker: the player message pipeline', () => {
         expect(history.some((m) => m.description === 'A gift for you')).toBe(true); // caught although emptied
         expect(history.some((m) => m.messageType === EmpireMessageType.ExplorationRuins)).toBe(true); // the event, recorded
         expect(history.some((m) => m.messageType === EmpireMessageType.Informational)).toBe(false);
-        expect(advisorSuggestions(game.playerEmpire).some((m) => m.description === 'Build more ships')).toBe(true);
+        // The injected advice joined the queue in its frame (the pipeline's ReceiveMessageInternal); it is still queued at
+        // the end unless the game's own, newer BuildOrder advice (Empire.6.cs 2754) superseded it (ExpireInvalidMessages:
+        // one BuildOrder suggestion at a time).
+        expect(injectedAdvice, 'the injected advice was queued').not.toBeNull();
+        const buildOrders = advisorSuggestions(game.playerEmpire).filter((m) => m.advisorMessageType === AdvisorMessageType.BuildOrder);
+        expect(buildOrders).toHaveLength(1);
+        if (buildOrders[0] !== injectedAdvice) expect(buildOrders[0].starDate).toBeGreaterThan(injectedAdvice!.starDate);
         expect(game.galaxy.gameIsFinished).toBe(true);
         expect(w.host.time.paused).toBe(true);
 

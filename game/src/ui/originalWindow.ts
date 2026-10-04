@@ -930,8 +930,9 @@ export function openOriginalWindow(o: OriginalWindowOptions): OriginalWindow {
     if (!keyListening) {
         keyListening = true;
         document.addEventListener('keydown', onKeyDown);
-        // The UI scale slider re-scales every open window.
-        onSettingsChange(() => relayoutOriginalWindows());
+        // The UI scale slider re-scales every open window. (The module function itself: an arrow here would capture
+        // this first window's scope — its options, its screen, the game — for the rest of the session.)
+        onSettingsChange(relayoutAllOnSettings);
     }
     // Bring to front on click (several screens can be open, like the original's BringToFront).
     // The windows above this one move below it instead of this one moving to the end: re-inserting the pressed
@@ -949,6 +950,10 @@ export function openOriginalWindow(o: OriginalWindowOptions): OriginalWindow {
 }
 
 /** Re-scale every open window (the UI scale setting changed). */
+function relayoutAllOnSettings(): void {
+    relayoutOriginalWindows();
+}
+
 export function relayoutOriginalWindows(): void {
     window.dispatchEvent(new Event('resize'));
 }

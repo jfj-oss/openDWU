@@ -17,6 +17,9 @@ import type { GameData } from '../src/sim/data/gameData';
 import type { Game } from '../src/sim/game';
 import type { Empire } from '../src/sim/empire';
 import { commandLog } from '../src/sim/player/commandLog';
+import { empireShipGroups } from '../src/sim/fleets/shipGroup';
+import { setShipsFleet } from '../src/sim/player/fleetOps';
+import { BuiltObjectRole } from '../src/sim/data/designSpecifications';
 import { issuePlayerCommand } from '../src/sim/player/playerCommands';
 import { galaxyToJSON } from '../src/sim/save/galaxySave';
 import { RemoteValues, decodeRemoteArg, encodeRemoteArg, type RemoteNaming, type RemoteResolving } from '../src/simworker/remoteArgs';
@@ -280,6 +283,13 @@ describe('sim worker chunk 7: screen command flows through the replica = in-thre
             // An admiral waiting at the capital, to transfer to a fleet (character locations not automated).
             game.playerEmpire.controlCharacterLocations = false;
             new Character('Admiral A', CharacterRole.FleetAdmiral, '', game.playerEmpire.dominantRace, null, null, 0).activate(g, game.playerEmpire, game.playerEmpire.capital);
+            // A fleet to transfer the admiral to, kept (the Fleet Formation automation would disband an idle fleet it counts
+            // as surplus: Empire.9.cs MaintainShipGroups): the player's idle warships into a new fleet when it has none.
+            game.playerEmpire.controlMilitaryFleets = false;
+            if (empireShipGroups(game.playerEmpire).length === 0) {
+                const ships = game.playerEmpire.builtObjects.filter((b) => b != null && b.role === BuiltObjectRole.Military && b.shipGroup === null).slice(0, 2);
+                expect(setShipsFleet(g, game.playerEmpire, ships, 'new'), 'the player forms a fleet').not.toBeNull();
+            }
             return game;
         };
         const ga = mk();

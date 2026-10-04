@@ -3,7 +3,8 @@
 // dev server, worker mode (default) or in-thread (--inthread), to compare the two. Built on scripts/simworker-smoke.mjs.
 //
 //   node scripts/simworker-campaign.mjs <base url> --game=<kind> [--inthread] [--detect-writes] [--years=1.5]
-//        [--out=shots/campaign/<kind>-<mode>] [--gpu=swiftshader|egl] [--no-crash] [--no-replay]
+//        [--out=shots/campaign/<kind>-<mode>] [--gpu=swiftshader|egl] [--no-crash] [--no-replay] [--seed=4242]
+//        [--only=<step,...>] [--warm=<game s>]
 //
 // <kind>: standard (main menu → wizard, Custom Standard) · intro (main menu → wizard → Introductory Game) · pirate
 // (Custom Pirate) · prewarp (a PreWarp galaxy and empire) · shakturi (Return of the Shakturi) · gameend (a time-limit
@@ -43,7 +44,7 @@ const detectWrites = flag('detect-writes') && !inThread;
 const years = Number(opt('years', kind === 'late2500' ? '0.25' : '1.5'));
 const out = opt('out', `shots/campaign/${kind}-${mode}`);
 mkdirSync(out, { recursive: true });
-const gpuArgs = opt('gpu', 'swiftshader') === 'egl' ? ['--use-gl=angle', '--use-angle=gl-egl', '--ignore-gpu-blocklist', '--enable-gpu'] : ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'];
+const gpuArgs = [...(opt('gpu', 'swiftshader') === 'egl' ? ['--use-gl=angle', '--use-angle=gl-egl', '--ignore-gpu-blocklist', '--enable-gpu'] : ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader']), '--js-flags=--expose-gc', '--enable-precise-memory-info'];
 const sw = `simWorker=${inThread ? 0 : 1}${detectWrites ? '&detectWrites=1' : ''}`;
 const GAME_YEAR_MS = 600_000;
 
@@ -540,7 +541,9 @@ async function stepColonies() {
     const rate = await ev(() => {
         const sel = document.querySelector('[data-ow="colonies"] .ow-grid-row.ow-sel');
         const p = window.__dwu.game.playerEmpire;
-        const h = p.colonies.find((c) => sel && sel.textContent.includes(c.name)) ?? null;
+        // The selected row's own name cell (a substring match picks "Ash" for "Ash 2").
+        const cells = sel ? [...sel.children].map((c) => c.textContent.trim()) : [];
+        const h = p.colonies.find((c) => cells.includes(c.name)) ?? p.colonies.find((c) => sel && sel.textContent.includes(c.name)) ?? null;
         return h ? Math.round(Math.max(0, h.taxRate) * 100) : null;
     });
     check(after === before + 3 * dir && rate === after, `colonies: tax ${before} → ${after} shown, colony rate ${rate}`);
@@ -883,7 +886,15 @@ async function stepExpansion() {
             const spent = money0 - (await ev(() => window.__dwu.game.playerEmpire.stateMoney));
             await wait(1000);
             const toast = (await ev((t0) => window.__campaignToasts.slice(t0), toasts0)).join(' | ');
-            check(ok || /colonize/i.test(toast), `expansion planner: Build and Send Colony Ship (spent ${spent.toFixed(0)}; toast "${toast.slice(0, 160)}")`);
+            // Without a colony ship design it can build (a pirate faction) the button is on but the click does nothing,
+            // as the C# (Main.Part11.cs method_161 enables it, Main.Part4.cs method_539 returns).
+            const noDesign = await ev(async () => {
+                const { findNewestCanBuild } = await import('/src/sim/designGeneration.ts');
+                const p = window.__dwu.game.playerEmpire;
+                return findNewestCanBuild(p.designs, window.__SR.ColonyShip, p) === null;
+            });
+            if (noDesign && !ok) note('expansion planner: Build and Send Colony Ship without a buildable colony ship design does nothing (as method_539)');
+            else check(ok || /colonize/i.test(toast), `expansion planner: Build and Send Colony Ship (spent ${spent.toFixed(0)}; toast "${toast.slice(0, 160)}")`);
             done = true;
         }
     }
@@ -1461,7 +1472,15 @@ async function stepAutosave() {
 }
 
 /** Worker mode: the worker stops (fatal with its own save; hard), the restart box, Restart, the game goes on. */
+let heapBeforeCrash = 0;
 async function stepCrash(kindOfCrash) {
+    heapBeforeCrash = await ev(async () => {
+        for (let i = 0; i < 3; i++) {
+            window.gc?.();
+            await new Promise((r) => setTimeout(r, 300));
+        }
+        return Math.round((performance.memory?.usedJSHeapSize ?? 0) / 1048576);
+    });
     expectCrashLines = true;
     const old = await ev((k) => {
         const d = window.__dwu;
@@ -1486,6 +1505,30 @@ async function stepCrash(kindOfCrash) {
     const st = await ev(() => ({ paused: window.__dwu.time.paused, nowMs: window.__dwu.galaxy.nowMs, colonies: window.__dwu.game.playerEmpire.colonies.length, inFlight: window.__inFlight, name: window.__dwu.game.playerEmpire.name, worker: window.__dwu.simWorker !== window.__oldSimWorker }));
     check(st.worker && st.paused && st.colonies === old.colonies && Math.abs(st.nowMs - old.nowMs) < 10000, `${kindOfCrash} restart: a new worker, paused, the same game (${JSON.stringify(st)})`);
     check((st.name === `In Flight ${kindOfCrash}`) === (st.inFlight === true), `${kindOfCrash} restart: agrees with the in-flight order's answer (${st.inFlight})`);
+    // Nothing of the old game may stay alive (a late galaxy's replica is a few GB): drop the script's own reference,
+    // collect, and report the heap.
+    await wait(5000); // the restart's own flow lets go of the old game once the new view has started
+    const heap = await ev(async () => {
+        window.__oldSimWorker = null;
+        for (let i = 0; i < 3; i++) {
+            window.gc?.();
+            await new Promise((r) => setTimeout(r, 300));
+        }
+        return Math.round((performance.memory?.usedJSHeapSize ?? 0) / 1048576);
+    });
+    note(`${kindOfCrash} restart: main-thread JS heap after a GC ${heap} MB (before the crash ${heapBeforeCrash} MB)`);
+    // --snapshot-after-crash=<file>: a heap snapshot here (diagnosis of what the old game is still held by).
+    if (opt('snapshot-after-crash', '') !== '' && kindOfCrash === 'fatal') {
+        const { openSync, writeSync, closeSync } = await import('node:fs');
+        const cdp = await context.newCDPSession(page);
+        for (let i = 0; i < 3; i++) await cdp.send('HeapProfiler.collectGarbage');
+        const fd = openSync(opt('snapshot-after-crash', ''), 'w');
+        cdp.on('HeapProfiler.addHeapSnapshotChunk', (e) => writeSync(fd, e.chunk));
+        await cdp.send('HeapProfiler.takeHeapSnapshot', { reportProgress: false });
+        closeSync(fd);
+        await cdp.detach();
+        note(`heap snapshot ${opt('snapshot-after-crash', '')}`);
+    }
     expectCrashLines = false;
 }
 
@@ -1651,6 +1694,8 @@ try {
     step = 'boot';
     const info = await act('boot', boot, { timeoutMs: 900000, settleReplies: false });
     void info;
+    // --warm=<game s>: play that long at 4× before the session (a later game for --only probes).
+    if (Number(opt('warm', '0')) > 0) await act('warm up 4x', () => play(Number(opt('warm', '0')) * 1000, 4), { timeoutMs: 3600000 });
     const totalMs = years * GAME_YEAR_MS;
     const speeds = [1, 2, 4];
     // Play and use the UI in turns: a segment of play, then the next UI step (some with the clock running).

@@ -571,7 +571,8 @@ const TEXT = COLORS.text;
 const HEADER_TEXT = 'rgb(200, 200, 200)';
 
 // Empire flags as URLs, resolved once (empireFlagUrl composes the stock flag / scenario emblem asynchronously).
-const flagUrls = new Map<Empire, string>();
+// Keyed weakly: a strong Map kept every empire of every game played this session (and through it the game view).
+const flagUrls = new WeakMap<Empire, string>();
 export function flagImage(empire: Empire, w: number, h: number, className = 'dip-flag'): HTMLImageElement {
     const img = el('img', className);
     img.alt = '';

@@ -304,7 +304,15 @@ describe('global victory (Galaxy.1.cs 88-584)', () => {
         const list = generateVictoryConditionProgresses(galaxy, vc, false);
         const top = Math.max(...list.map((p) => p.totalProgress));
         expect(list.find((p) => p.empire === events[0].victorEmpire)!.totalProgress).toBe(top);
-        expect(events[0].description).toBe(formatGameTextNow(events[0].victorEmpire === galaxy.playerEmpire ? 'Victory Conditions Threshold Win' : 'Victory Conditions Threshold Lose'));
+        // Galaxy.1.cs 482-489: "You have achieved victory", or string.Format("The {0} has achieved victory", victor.Name).
+        expect(events[0].description).toBe(
+            events[0].victorEmpire === galaxy.playerEmpire
+                ? formatGameTextNow('Victory Conditions Threshold Win')
+                : formatGameTextNow('Victory Conditions Threshold Lose', [events[0].victorEmpire!.name]),
+        );
+        // OnGameEnd ran DoGameEnd's model part in the sim (IsFinished, Victor = the latest event's victor).
+        expect(galaxy.gameIsFinished).toBe(true);
+        expect(galaxy.gameVictor).toBe(events[0].victorEmpire);
         doGameEnd(galaxy, events[0]);
         expect(galaxy.gameIsFinished).toBe(true);
         galaxy.gameIsFinished = false;

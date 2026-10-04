@@ -17,7 +17,8 @@ page.on('console', (m) => {
     if (m.type() === 'error') logs.push(`[${m.type()}] ${m.text()}`);
 });
 page.on('pageerror', (e) => logs.push(`[pageerror] ${e.message}`));
-await page.goto(`${base}?autostart=1`);
+// The set-up below writes the game directly (in-thread only: a sim-worker replica would not pass it on).
+await page.goto(`${base}?autostart=1&simWorker=0`);
 await page.waitForFunction(() => window.__dwu?.game?.playerEmpire !== undefined, null, { timeout: 240000 });
 await page.waitForTimeout(3000);
 const shot = async (name) => {
