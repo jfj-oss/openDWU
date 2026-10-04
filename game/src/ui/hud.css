@@ -310,11 +310,7 @@
     margin-top: 6px;
 }
 
-/* T key: Main.Part7.cs:3085 CyclePanelVisibility (ui/panelVisibility.ts). 'map' = method_472(true): every HUD panel
-   and button but the system-map corner (pnlSystemMap and our options list with its zoom / overlay rows) and the diplomatic message queue (the stub list); 'none' =
-   method_472(false): those too. The star date (pnlTopLeftBar's text) and the money block are drawn by MainView itself
-   (method_18) and stay. */
-/* T cycle (panelVisibility.ts): 'nomap' hides only the system map; 'none' hides every panel but the MainView-drawn
+/* T cycle (panelVisibility.ts): 'nomap' hides only the system map (the panel with its zoom strip and size toggle); 'none' hides every panel but the MainView-drawn
    date / money. */
 body[data-panels="nomap"] #hud > [data-hud="pnlSystemMap"],
 body[data-panels="none"] #hud > .hud-el:not([data-hud="pnlMoney"]):not([data-hud="pnlTopLeftBar"]),
@@ -326,28 +322,78 @@ body[data-panels="none"] .message-stubs {
 body[data-panels="nomap"] #hud > [data-hud="pnlOptionsList"] {
     bottom: 10px !important;
 }
-/* The system mini-map (hudSystemMap.ts): pnlSystemMap 330 × 290, BackColor (48, 48, 64), a 3 px bevelled border
-   (BorderColor1-4 at alpha 96, drawn inside the panel), picSystem 280 × 280 at (45, 5). */
+/* The system mini-map (hudSystemMap.ts), in the original's pixels and scaled as one from its bottom-right corner
+   (hud.ts systemMapFrameScale): the 330 × 290 element is pnlSystemMap's rect; the zoom strip hangs 13 px out of its
+   left edge (Main.Part12.cs 2107-2122). */
 .hud-sysmap {
     position: absolute;
     box-sizing: border-box;
-    padding: 0;
-    background: rgb(48, 48, 64);
-    border: none;
-    border-radius: 0;
-    backdrop-filter: none;
-    -webkit-backdrop-filter: none;
-    box-shadow:
-        inset 1px 1px 0 rgba(200, 200, 200, 0.376),
-        inset -1px -1px 0 rgba(20, 20, 20, 0.376),
-        inset 2px 2px 0 rgba(140, 140, 140, 0.376),
-        inset -2px -2px 0 rgba(80, 80, 80, 0.376),
-        0 2px 8px rgba(0, 0, 0, 0.4);
-    overflow: hidden;
+    pointer-events: none;
+    overflow: visible;
+    font-family: 'Forgotten Futurist', sans-serif;
 }
+/* pnlSystemMap (BorderPanel): BackColor (48, 48, 64) under the tiled Main.resx BackgroundImage — alternating 1 px rows
+   (21, 21, 21) / (34, 34, 34) from the top — and BorderPanel.OnPaint's 3 px of 1 px lines, top BorderColor1
+   (200, 200, 200), left BorderColor2 (140, 140, 140), bottom BorderColor3 (20, 20, 20), right BorderColor4
+   (80, 80, 80), all at alpha 96. */
+.hud-sysmap-panel {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 330px;
+    height: 290px;
+    box-sizing: border-box;
+    pointer-events: auto;
+    background-color: rgb(48, 48, 64);
+    background-image: repeating-linear-gradient(to bottom, rgb(21, 21, 21) 0 1px, rgb(34, 34, 34) 1px 2px);
+}
+.hud-sysmap-panel::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    box-sizing: border-box;
+    border: 3px solid;
+    border-color: rgba(200, 200, 200, 0.376) rgba(80, 80, 80, 0.376) rgba(20, 20, 20, 0.376) rgba(140, 140, 140, 0.376);
+    pointer-events: none;
+}
+/* picSystem (SystemView): 280 × 280 at (45, 5), black. */
 .hud-sysmap-pic {
     position: absolute;
     display: block;
     background: #000;
     cursor: crosshair;
+}
+/* The strip's GlassButtons: SetCornerCurves(topLeft, bottomLeft) (radius 6 under 30 px high, 7 for tbtnGalaxyMap),
+   ClipBackground (black outline) and IntensifyColors (glow (128, 128, 255)), Main.Part12.cs 1815-1870. */
+.hud-sysmap .sysmap-btn {
+    --glow: 128, 128, 255;
+    border-color: #000;
+    color: rgb(150, 150, 150);
+    font-size: 10px;
+    z-index: 1;
+}
+.hud-sysmap .sysmap-btn.sysmap-btn-r6 {
+    border-radius: 6px 0 0 6px;
+}
+.hud-sysmap .sysmap-btn img {
+    flex: none;
+    max-width: none;
+    max-height: none;
+}
+.hud-sysmap .sysmap-btn:hover:not(:disabled) {
+    color: #fff;
+}
+/* Disabled (btnZoomSelection without a selection): the shine at 40 % and the image through GlassButton's grey
+   ColorMatrix (luminance at half strength plus 0.38). */
+.hud-sysmap .sysmap-btn:disabled {
+    cursor: default;
+    background:
+        linear-gradient(to bottom, rgba(var(--shine), 0.24), rgba(var(--shine), 0.08) 50%, transparent 50%),
+        linear-gradient(to bottom, rgb(18, 18, 26), rgb(4, 4, 14));
+}
+.hud-sysmap .sysmap-btn:disabled img {
+    filter: grayscale(1) contrast(0.4) brightness(1.266);
+}
+.sysmap-btn-text {
+    pointer-events: none;
 }

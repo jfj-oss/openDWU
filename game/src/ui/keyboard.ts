@@ -17,6 +17,7 @@ import {
     SECTOR_LEVEL_ZOOM,
     SYSTEM_LEVEL_ZOOM,
     getSelection,
+    zoomToSelectedItem,
 } from './hud';
 import { helpTopicKeyForHabitat, toggleGalactopedia } from './screens/galactopedia';
 import { toggleShipDesigns } from './screens/shipDesigns'; // [16b]
@@ -490,16 +491,10 @@ export function buildDefaultHandlers(
         // PageUp/PageDown: discrete zoom steps (Main.Part11.cs zoomStep).
         zoomIn: () => camera.zoomStep(1),
         zoomOut: () => camera.zoomStep(-1),
+        // Backspace: Main_KeyUp ZoomToSelected → btnZoomSelection_Click (the system map's zoom strip button, hud.ts
+        // zoomToSelectedItem): move to the selection unless the view is locked, then zoom to 100 %.
         zoomToSelection: () => {
-            // Task 10g: centre on the selected habitat at System zoom — the
-            // same two calls as the HUD's "Zoom to selection" row (hud.ts
-            // doViewAction 'zoomSelection'). No-op when nothing is selected.
-            const sel = getSelection();
-            if (!sel) return;
-            // Task 13c: a ship/base selection centres on the built object.
-            const t = sel.builtObject ?? sel.builtObjects?.[0] ?? sel.habitat;
-            camera.centerOn(t.xpos, t.ypos);
-            camera.zoomAt(SYSTEM_LEVEL_ZOOM, cx(), cy());
+            zoomToSelectedItem(camera);
         },
         zoomSystemLevel: () => camera.zoomAt(SYSTEM_LEVEL_ZOOM, cx(), cy()),
         zoomSectorLevel: () => camera.zoomAt(SECTOR_LEVEL_ZOOM, cx(), cy()),
