@@ -196,7 +196,8 @@ export const DEFAULT_SETTINGS: UiSettings = {
     pullStationsToCentre: false,
     showWeaponRangeCircles: false,
     autoPauseInPopup: true,
-    simWorker: true,
+    // Off by default again (2026-10-04): severe slowdown and WebGL context loss on macOS; see docs/sim-worker.md §6.
+    simWorker: false,
 
     // [galaxymarkers] begin — GameOptions.cs 74-96 / Main.Part9.cs 2793-2804: all on except civilian ships.
     galaxyViewDisplayFleets: true,
@@ -389,8 +390,9 @@ export function saveSettings(settings: UiSettings): void {
     storage?.setItem(STORAGE_KEY, JSON.stringify({ ...settings, simWorkerVersion: SIM_WORKER_SETTING_VERSION }));
 }
 
-/** Stored next to `simWorker` (loadSettings): 2 = saved since the worker became the default. */
-export const SIM_WORKER_SETTING_VERSION = 2;
+/** Stored next to `simWorker` (loadSettings): 2 = saved while the worker was the default, 3 = saved since it went back
+ *  to opt-in (values stored under 1-2 are ignored, so everyone starts in-thread again). */
+export const SIM_WORKER_SETTING_VERSION = 3;
 
 /** Current in-memory copy of the settings (loaded once at first use). */
 let current: UiSettings | null = null;
