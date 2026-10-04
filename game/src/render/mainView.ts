@@ -2115,7 +2115,7 @@ export class MainView {
         // Screen-edge auto-scroll (original control scheme).
         let edgeDx = 0;
         let edgeDy = 0;
-        if (!this.dragging && this.pointerInside) {
+        if (!this.dragging && this.pointerInside && getSettings().edgeScroll) {
             const edge = 24;
             const speed = edgeScrollPixels(getSettings().mainViewScrollSpeed); // [gameoptions] Scroll Speed
             if (this.lastPointer.x < edge) {

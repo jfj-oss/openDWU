@@ -243,7 +243,7 @@ const EMPIRE_H = 769 + 25;
 const MESSAGES_W = 735;
 const MESSAGES_H = 502 + 43;
 const ADVANCED_W = 440;
-const ADVANCED_H = 500 + 110 + 25 + 120;
+const ADVANCED_H = 500 + 110 + 25 + 120 + 22;
 
 interface OpenState {
     win: OriginalWindow;
@@ -749,7 +749,7 @@ const GALAXY_ICON_BOXES: [string, GalaxyViewDisplayKey, number, number][] = [
     ['Always show Pirates', 'galaxyViewDisplayAlwaysPirates', 10, 198],
 ];
 
-type MapDisplayKey = 'showSystemNames' | 'showRegionLabels' | 'freightFlowsDefault' | 'ditherGradients' | 'pullStationsToCentre' | 'showWeaponRangeCircles';
+type MapDisplayKey = 'showSystemNames' | 'showRegionLabels' | 'freightFlowsDefault' | 'ditherGradients' | 'pullStationsToCentre' | 'showWeaponRangeCircles' | 'edgeScroll';
 
 // [improvements] begin
 /** Game Options → Improvements (ours): the "Improvements" group (ui/improvements.ts buildImprovementsGroup), one
@@ -830,7 +830,7 @@ function createAdvancedDisplaySettings(): OriginalWindow {
     check(body, 'Clean Galaxy view', st.cleanGalaxyView, 12, 425, (v) => updateSettings({ cleanGalaxyView: v }));
 
     // Ours: the map label / overlay / output toggles (were in the Escape menu's Options panel), below it.
-    const map = place(groupBox('Map Display', 400, 158, F2), 12, 450);
+    const map = place(groupBox('Map Display', 400, 180, F2), 12, 450);
     body.appendChild(map);
     const mapBoxes: [string, MapDisplayKey][] = [
         ['Show system names', 'showSystemNames'],
@@ -839,12 +839,13 @@ function createAdvancedDisplaySettings(): OriginalWindow {
         ['Dither gradients (no banding)', 'ditherGradients'],
         ['Draw stations closer to their planet / moon', 'pullStationsToCentre'],
         ['Show weapon range circles for the selected ship', 'showWeaponRangeCircles'],
+        ['Scroll the map at the screen edges (mouse)', 'edgeScroll'],
     ];
     mapBoxes.forEach(([caption, key], i) => check(map, caption, st[key], 10, 22 + 22 * i, (v) => updateSettings({ [key]: v } as Partial<UiSettings>)));
 
     // Ours: the sim worker (docs/sim-worker.md), read by main.ts when the next game starts or loads; on by default only
     // with 16 GB+ of RAM (src/systemMemory.ts). Was in the old Escape menu's Options panel.
-    const perf = place(groupBox('Performance', 400, 66, F2), 12, 616);
+    const perf = place(groupBox('Performance', 400, 66, F2), 12, 638);
     body.appendChild(perf);
     check(perf, 'Multithreading (next game)', st.simWorker, 10, 22, (v) => updateSettings({ simWorker: v }));
     const mem = systemMemoryGiB();
