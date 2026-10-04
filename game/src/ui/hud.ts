@@ -78,6 +78,7 @@ import { showToast } from './toast';
 import type { DispatchOption } from '../sim/player/habitatDispatch';
 // [troops] begin
 import { toggleTroopsScreen } from './screens/troops';
+import { sectorColumnName } from '../sim/sectorNames';
 import { confirmAutomationOff } from './orderMenu';
 import { galaxyStarDate } from '../sim/tick/simTime';
 import { createShipAction, ShipActionType } from '../sim/player/shipAction';
@@ -2536,7 +2537,7 @@ export function missionTypeLabel(type: BuiltObjectMissionType): string {
 // Port of Galaxy.3.cs ResolveDescription(Empire, BuiltObjectMission) — target text only
 export function missionTargetText(mission: BuiltObjectMission, empire: Empire | null): string {
     const sector = mission.targetSector;
-    if (sector !== null) return `Sector ${String.fromCharCode(sector.x + 65)}${sector.y + 1}`;
+    if (sector !== null) return `Sector ${sectorColumnName(sector.x)}${sector.y + 1}`;
     // TODO(port): ShipGroup.Name — not in sim
     if (mission.targetShipGroup !== null) return '';
     const bo = mission.targetBuiltObject;

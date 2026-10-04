@@ -27,6 +27,7 @@ import { territoryColorFn } from '../../render/empireLayer';
 import { drawTerritoryOnMap } from '../../render/territoryRaster';
 import './galaxyMap.css';
 import { countLabel } from '../plural';
+import { sectorColumnName } from '../../sim/sectorNames';
 
 // ---------------------------------------------------------------------------
 // Pure helpers (tested)
@@ -121,8 +122,18 @@ export function drawSystemsMiniMap(canvas: HTMLCanvasElement, galaxy: Galaxy, w:
 }
 
 // Sector-grid label for column i (GalaxyMap.cs: (char)(i + 65)) and row j (j + 1).
+// Past Z (custom sizes only) the columns go AA, AB, … (sectorNames.ts).
 export function sectorColumnLabel(i: number): string {
-    return String.fromCharCode(i + 65);
+    return sectorColumnName(i);
+}
+
+/**
+ * Custom galaxy size (not a port): label every n-th sector column / row once a big custom galaxy makes the cells too
+ * small for a label each (the C# draws every label; its galaxies have at most 15 sectors a side, which always get 1).
+ */
+export function sectorLabelStride(count: number, cellPx: number): number {
+    if (count <= 15) return 1;
+    return Math.max(1, Math.ceil(16 / Math.max(cellPx, 1e-6)));
 }
 
 // Main.Part3.cs 1036-1049: the View combo (cmbGalaxyMapViewMode).
@@ -791,10 +802,12 @@ export function createGalaxyMap(opts: GalaxyMapOptions): GalaxyMapScreen {
         }
         ctx.stroke();
         ctx.fillStyle = 'rgb(96, 96, 170)'; // labels a little brighter than the grid for legibility
-        for (let i = 0; i < cols; i++) {
+        const colStep = sectorLabelStride(cols, secPx);
+        const rowStep = sectorLabelStride(rows, secPx);
+        for (let i = 0; i < cols; i += colStep) {
             ctx.fillText(sectorColumnLabel(i), Math.trunc(i * secPx + secPx / 2 - 3), 2);
         }
-        for (let j = 0; j < rows; j++) {
+        for (let j = 0; j < rows; j += rowStep) {
             ctx.fillText(String(j + 1), 2, Math.trunc(j * secPx + secPx / 2 - 5));
         }
         // Region names (08f1 data: named GalaxyLocations).

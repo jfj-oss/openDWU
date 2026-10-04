@@ -29,6 +29,7 @@ import { setShipConstructedHook, type ConstructionQueue } from '../construction/
 import { builtObjectCompleteTeardown } from '../combat/teardown';
 import { findNewestCanBuild, getBuildableDesignsBySubRoles } from '../designGeneration';
 import { setShipsFleet } from './fleetOps';
+import { sectorColumnName } from '../sectorNames';
 
 export interface FleetTemplateEntry {
     design: Design;
@@ -380,7 +381,7 @@ export function sectorOf(galaxy: Galaxy, x: number, y: number): SectorRef {
 
 /** Galaxy.7.cs ResolveSectorDescription: column letter + row number ("C4"). */
 export function sectorLabel(s: SectorRef): string {
-    return String.fromCharCode(s.x + 65) + String(s.y + 1);
+    return sectorColumnName(s.x) + String(s.y + 1);
 }
 
 function inSector(galaxy: Galaxy, o: { xpos: number; ypos: number }, s: SectorRef): boolean {

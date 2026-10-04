@@ -79,7 +79,7 @@ import { showToast } from '../toast';
 import { mainResxImageUrl } from '../resxImage';
 import { openGalactopedia } from './galactopedia';
 import { openResourceLink } from './resourceComponents';
-import { CROSSHAIR_COLOR, GRID_COLOR, drawMapTerritory, galaxyMapScale, sectorColumnLabel, starBrushColor } from './galaxyMap';
+import { CROSSHAIR_COLOR, GRID_COLOR, drawMapTerritory, galaxyMapScale, sectorColumnLabel, sectorLabelStride, starBrushColor } from './galaxyMap';
 import { drawGalaxyMapLayers } from './galaxyMapLayers';
 import { requestSimRefresh } from '../../simworker/refresh';
 
@@ -1308,8 +1308,8 @@ function createExpansionPlanner(opts: ExpansionPlannerOptions): OpenState {
         ctx.fillStyle = 'rgb(96, 96, 170)';
         ctx.font = '9px Verdana, sans-serif';
         ctx.textBaseline = 'top';
-        for (let i = 0; i < galaxy.sectorWidth; i++) ctx.fillText(sectorColumnLabel(i), Math.trunc(i * secPx + secPx / 2 - 3), 2);
-        for (let j = 0; j < galaxy.sectorHeight; j++) ctx.fillText(String(j + 1), 2, Math.trunc(j * secPx + secPx / 2 - 5));
+        for (let i = 0; i < galaxy.sectorWidth; i += sectorLabelStride(galaxy.sectorWidth, secPx)) ctx.fillText(sectorColumnLabel(i), Math.trunc(i * secPx + secPx / 2 - 3), 2);
+        for (let j = 0; j < galaxy.sectorHeight; j += sectorLabelStride(galaxy.sectorHeight, secPx)) ctx.fillText(String(j + 1), 2, Math.trunc(j * secPx + secPx / 2 - 5));
         // Systems: star-type dots, a ring in the dominant empire's colour where the player has seen it (dashed when
         // shared with other empires).
         const dot = 2;

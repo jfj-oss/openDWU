@@ -10,6 +10,7 @@ import type { CreateGameOptions, EmpireStartOptions } from './game';
 import { Random } from './random';
 import type { ScenarioManifest } from './scenario/manifest';
 import { addonCatalog, addonPickerModel } from './scenario/addons';
+import { CUSTOM_MAX_SECTORS, CUSTOM_MIN_SECTORS, clampCustomSectors } from './galaxy';
 
 export interface StartGameOptions {
     shape: GalaxyShape;
@@ -17,6 +18,19 @@ export interface StartGameOptions {
     starCountIndex: number;
     /** Index into the physical-size slider (0..4), see sectorsFor. */
     dimensionIndex: number;
+    /**
+     * Custom galaxy size (not a port; the wizard's star-count box): the star count when it is not one of the starCountFor
+     * presets. Unset = starCountFor(starCountIndex) — every preset leaves it unset, so a preset game is the original.
+     * Read through galaxyStarCount; written through setGalaxyStarCount (which keeps starCountIndex at its bracket).
+     */
+    customStarCount?: number;
+    /**
+     * Custom galaxy size (not a port; the wizard's "Sectors: W × H" boxes): sectors across / down when they are not one of
+     * the sectorsFor preset squares, CUSTOM_MIN_SECTORS..CUSTOM_MAX_SECTORS each (past the C# 4..15 clamp; each sector
+     * stays the C# 2,000,000). Both set or both unset. Read through galaxySectorCounts; written through setGalaxySectors.
+     */
+    customSectorWidth?: number;
+    customSectorHeight?: number;
     seed: number;
     /** Task 06d: name of the player's race (a parsed races/*.txt Name).
      *  Empty until a race is chosen on the wizard's "Your Race" page. */
@@ -106,6 +120,10 @@ export interface StartGameOptions {
     /** cmbYourEmpireStartLocation index into startLocationsForShape(shape) (0 = (Random)). Unset = 0 (Main.Part9.cs 2682). */
     startLocationIndex?: number;
     // [wizardB1] end
+    /** Our addition: "Scale debris fields with galaxy size" (Distant Worlds story). The wizard starts it ON
+     *  (wizardStartGameOptions); defaultStartGameOptions (harness, test saves, pins) leaves it unset = off = the original fixed
+     *  bands, so the pinned seed-1 saves stay byte-identical. It is part of the saved start options. */
+    scaleDebrisFields?: boolean;
     /**
      * Mod layer (tasks/MODLAYER-DESIGN.md §3): the wizard's "Scenario" page. Absent / null = None (the faithful game).
      * The caller loads the scenario's overlay into the GameData it passes to toCreateGameOptions.
@@ -414,6 +432,142 @@ export function starCountFor(index: number): number {
         default:
             return 400;
     }
+}
+
+// ---- Custom galaxy size (not a port): the wizard's number boxes for the star count and the sector counts ----
+
+/** The star-amount slider's presets (starCountFor 0..5) and the physical-size slider's (sectorsFor 0..4). */
+export const STAR_COUNT_PRESETS: readonly number[] = [0, 1, 2, 3, 4, 5].map(starCountFor);
+export const SECTOR_PRESETS: readonly number[] = [0, 1, 2, 3, 4].map(sectorsFor);
+/** The star-count box's range. Below 50 the empire placement runs out of systems for a 10-empire start ("Could not locate
+ *  capital!"); 8000 generates in ~25 s headless on 90×90 (4000: ~10 s; the Rim Frontier scenario's former cap). */
+export const GALAXY_STAR_COUNT_MIN = 50;
+export const GALAXY_STAR_COUNT_MAX = 8000;
+/** A custom size's hard density cap (stars per sector): game-start placement (gameStartTail findLonely*, ring searches
+ *  over crowded index cells) grows super-linearly with density — 4000 stars on 1×1 takes ~6 minutes. The original's
+ *  densest preset is 87.5 (1400 stars on 4×4). */
+export const GALAXY_MAX_STARS_PER_SECTOR = 100;
+/** The density the original's presets span (stars per sector): 100 stars on 15×15 to 1400 on 4×4. The wizard warns outside. */
+export const ORIGINAL_MIN_STARS_PER_SECTOR = 100 / (15 * 15);
+export const ORIGINAL_MAX_STARS_PER_SECTOR = 1400 / (4 * 4);
+export { CUSTOM_MIN_SECTORS, CUSTOM_MAX_SECTORS };
+
+/** The galaxy's star count: the custom box value (clamped to the box's range for the sectors), else the preset. */
+export function galaxyStarCount(o: Pick<StartGameOptions, 'starCountIndex' | 'customStarCount' | 'dimensionIndex' | 'customSectorWidth' | 'customSectorHeight'>): number {
+    if (o.customStarCount === undefined) return starCountFor(o.starCountIndex);
+    const { width, height } = galaxySectorCounts(o);
+    return Math.min(clampStarCount(o.customStarCount), starCountMaxForSectors(width, height));
+}
+
+/** The galaxy's sector counts: the custom boxes, else the preset square. */
+export function galaxySectorCounts(o: Pick<StartGameOptions, 'dimensionIndex' | 'customSectorWidth' | 'customSectorHeight'>): { width: number; height: number } {
+    if (o.customSectorWidth !== undefined || o.customSectorHeight !== undefined) {
+        const preset = sectorsFor(o.dimensionIndex);
+        return { width: clampCustomSectors(o.customSectorWidth ?? preset), height: clampCustomSectors(o.customSectorHeight ?? preset) };
+    }
+    const n = sectorsFor(o.dimensionIndex);
+    return { width: n, height: n };
+}
+
+/** True when the sector counts are not a preset square (the generation then bypasses the C# 4..15 clamp). */
+export function galaxySectorsAreCustom(o: Pick<StartGameOptions, 'customSectorWidth' | 'customSectorHeight'>): boolean {
+    return o.customSectorWidth !== undefined || o.customSectorHeight !== undefined;
+}
+
+/** True when the star count or the sector counts are not presets. */
+export function galaxySizeIsCustom(o: Pick<StartGameOptions, 'customStarCount' | 'customSectorWidth' | 'customSectorHeight'>): boolean {
+    return o.customStarCount !== undefined || galaxySectorsAreCustom(o);
+}
+
+function clampStarCount(n: number): number {
+    const v = Math.round(Number.isFinite(n) ? n : 700);
+    return Math.max(GALAXY_STAR_COUNT_MIN, Math.min(GALAXY_STAR_COUNT_MAX, v));
+}
+
+/** The star-count box's maximum for a sector area: GALAXY_STAR_COUNT_MAX, or less on a small custom galaxy. */
+export function starCountMaxForSectors(width: number, height: number): number {
+    return Math.max(GALAXY_STAR_COUNT_MIN, Math.min(GALAXY_STAR_COUNT_MAX, Math.floor(GALAXY_MAX_STARS_PER_SECTOR * width * height)));
+}
+
+/** The largest preset index whose star count is at most n (0 below the first): the slider bracket of a custom count. */
+export function starCountIndexForCount(n: number): number {
+    let best = 0;
+    for (let i = 0; i < STAR_COUNT_PRESETS.length; i++) if (STAR_COUNT_PRESETS[i] <= n) best = i;
+    return best;
+}
+
+/** The slider index whose sector preset is nearest to n (the bracket of a custom size). */
+function dimensionIndexForSectors(n: number): number {
+    let best = 0;
+    for (let i = 0; i < SECTOR_PRESETS.length; i++) if (Math.abs(SECTOR_PRESETS[i] - n) < Math.abs(SECTOR_PRESETS[best] - n)) best = i;
+    return best;
+}
+
+/** The star-amount index the game uses for the slider-keyed values (maximumEmpireAmountFor): the slider's own index for a
+ *  preset count, its bracket for a custom one. */
+function effectiveStarCountIndex(o: StartGameOptions): number {
+    return o.customStarCount !== undefined ? starCountIndexForCount(galaxyStarCount(o)) : o.starCountIndex;
+}
+
+/** The star-count box's upper bound for the options' current sectors (GALAXY_MAX_STARS_PER_SECTOR per sector, at most
+ *  GALAXY_STAR_COUNT_MAX). Every original preset is within it: the densest is 87.5 per sector. */
+export function galaxyStarCountMax(o: Pick<StartGameOptions, 'dimensionIndex' | 'customSectorWidth' | 'customSectorHeight'>): number {
+    const { width, height } = galaxySectorCounts(o);
+    return starCountMaxForSectors(width, height);
+}
+
+/**
+ * The star-count box: a preset value selects its slider index (and clears the custom value, so the game is the
+ * original's); anything else is a custom count, clamped to GALAXY_STAR_COUNT_MIN..galaxyStarCountMax. Returns the stored count.
+ */
+export function setGalaxyStarCount(o: StartGameOptions, n: number): number {
+    const v = Math.min(clampStarCount(n), galaxyStarCountMax(o));
+    const preset = STAR_COUNT_PRESETS.indexOf(v);
+    if (preset >= 0) {
+        o.starCountIndex = preset;
+        delete o.customStarCount;
+    } else {
+        o.starCountIndex = starCountIndexForCount(v);
+        o.customStarCount = v;
+    }
+    return v;
+}
+
+/**
+ * The "Sectors: W × H" boxes: a preset square selects its slider index (and clears the custom size); anything else is a
+ * custom size, CUSTOM_MIN_SECTORS..CUSTOM_MAX_SECTORS each. The star count is re-clamped to the new size's density cap.
+ */
+export function setGalaxySectors(o: StartGameOptions, width: number, height: number): { width: number; height: number } {
+    const w = clampCustomSectors(width);
+    const h = clampCustomSectors(height);
+    const preset = w === h ? SECTOR_PRESETS.indexOf(w) : -1;
+    if (preset >= 0) {
+        o.dimensionIndex = preset;
+        delete o.customSectorWidth;
+        delete o.customSectorHeight;
+    } else {
+        o.dimensionIndex = dimensionIndexForSectors(Math.max(w, h));
+        o.customSectorWidth = w;
+        o.customSectorHeight = h;
+    }
+    const stars = o.customStarCount ?? starCountFor(o.starCountIndex);
+    if (stars > galaxyStarCountMax(o)) setGalaxyStarCount(o, stars);
+    return { width: w, height: h };
+}
+
+/** The wizard's density warning: outside the original presets' stars-per-sector range, or null. */
+export function galaxyDensityWarning(o: StartGameOptions): { kind: 'dense' | 'sparse'; starsPerSector: number; text: string } | null {
+    if (!galaxySizeIsCustom(o)) return null;
+    const { width, height } = galaxySectorCounts(o);
+    const d = galaxyStarCount(o) / (width * height);
+    if (d > ORIGINAL_MAX_STARS_PER_SECTOR) {
+        return { kind: 'dense', starsPerSector: d, text: `Very dense: ${d.toFixed(0)} stars per sector (the original's densest is ${ORIGINAL_MAX_STARS_PER_SECTOR.toFixed(1)}). Systems crowd together and the galaxy may take a long time to generate.` };
+    }
+    if (d < ORIGINAL_MIN_STARS_PER_SECTOR) {
+        const per = 1 / d;
+        return { kind: 'sparse', starsPerSector: d, text: `Very sparse: one star per ${per.toFixed(1)} sectors (the original's sparsest is one per ${(1 / ORIGINAL_MIN_STARS_PER_SECTOR).toFixed(1)}). Empires may be unable to reach other systems.` };
+    }
+    return null;
 }
 
 // [todosweep2] begin
@@ -829,6 +983,11 @@ export function applyEmpireDefaults(options: StartGameOptions, raceIndex: number
  * unchecked = sandbox mode; see defaultVictoryConditions). Task 06h:
  * colonization and other-empires options start at the wizard control
  * defaults (see defaultColonizationOptions / defaultOtherEmpiresOptions). */
+/** The new-game wizard's initial options: defaultStartGameOptions plus our additions that default ON for real games. */
+export function wizardStartGameOptions(): StartGameOptions {
+    return { ...defaultStartGameOptions(), scaleDebrisFields: true };
+}
+
 export function defaultStartGameOptions(): StartGameOptions {
     return {
         // Original defaults (Main.Part9.cs method_259): Elliptical, GalaxySize 3 (700 stars), GalaxyDimensions 3 (10x10).
@@ -994,14 +1153,18 @@ export function toCreateGameOptions(
         shape: o.shape,
         // Start.2.cs 113 `galaxy_0.Age = int_5` (int_5 = the Expansion slider value, Start.1.cs 3845).
         galaxyAge: value,
-        starCount: starCountFor(o.starCountIndex),
-        sectorWidth: sectorsFor(o.dimensionIndex),
-        sectorHeight: sectorsFor(o.dimensionIndex),
+        // Start.1.cs 3686 method_60(star density) / 3690 method_69(physical size); a custom size (the wizard's number boxes,
+        // not a port) passes its own counts and bypasses the Galaxy ctor's 4..15 clamp.
+        starCount: galaxyStarCount(o),
+        sectorWidth: galaxySectorCounts(o).width,
+        sectorHeight: galaxySectorCounts(o).height,
+        ...(galaxySectorsAreCustom(o) ? { customGalaxyDimensions: true } : {}),
         systemNames,
         gameData,
         colonyPrevalence: colonyPrevalenceFor(o.colonyPrevalenceIndex),
         // Start.1.cs 3688 num2 = method_61(star density, playable races) → Galaxy.MaximumEmpireAmount (Start.2.cs 115).
-        maximumEmpireAmount: maximumEmpireAmountFor(o.starCountIndex, gameData.races.filter((r) => r.playable).length),
+        // A custom star count uses its slider bracket (starCountIndexForCount).
+        maximumEmpireAmount: maximumEmpireAmountFor(effectiveStarCountIndex(o), gameData.races.filter((r) => r.playable).length),
         player,
         aiEmpires,
         allowEmpiresInSameSystem: o.colonization.allowSameSystemAsOtherEmpires,
@@ -1020,6 +1183,7 @@ export function toCreateGameOptions(
         spawnNewEmpires: o.spawnNewEmpires ?? true, // @checked = chkGalaxyNewEmpiresDuringGame
         allowTechTrading: o.allowTechTrading ?? true,
         allowGiantKaltorGeneration: o.allowGiantKaltorGeneration ?? true,
+        scaleDebrisFields: o.scaleDebrisFields ?? false,
         destroyedPiratesDoNotRespawn: o.destroyedPiratesDoNotRespawn ?? false,
         // Start.1.cs 3818-3821: method_104 runs on the auto-generated list only.
         autogeneratedAiEmpires: manual.length === 0,
@@ -1070,9 +1234,9 @@ export function toCreateGameOptionsJumpStart(o: StartGameOptions, gameData: Game
     const bool3 = empireTypeIsShadows(type);
     // Start.cs 5619 random_ (clock-seeded → seeded from the galaxy seed, as toCreateGameOptions does).
     const random_ = new Random((o.seed ^ 0x5619) | 0);
-    const num = starCountFor(o.starCountIndex); // 5621 method_60(star density)
+    const num = galaxyStarCount(o); // 5621 method_60(star density) (or the custom star count)
     const playable = gameData.races.filter((r) => r.playable).length;
-    const num2 = maximumEmpireAmountFor(o.starCountIndex, playable); // 5622 method_61
+    const num2 = maximumEmpireAmountFor(effectiveStarCountIndex(o), playable); // 5622 method_61
     let num3 = colonyPrevalenceFor(2); // 5624 method_64(2)
     let num4 = alienLifeFor(2); // 5625 method_67(2)
     const num5 = spaceCreaturesFor(2); // 5626 method_62(2)
@@ -1081,7 +1245,7 @@ export function toCreateGameOptionsJumpStart(o: StartGameOptions, gameData: Game
     const num8 = 120000.0; // 5629 base tech cost
     let num9 = aggressionFor(1); // 5630 method_71(1)
     const num10 = bool3 ? 0 : 1; // 5631-5635 galaxy Expansion
-    const sectors = sectorsFor(o.dimensionIndex); // 5676 method_69
+    const { width: sectorsX, height: sectorsY } = galaxySectorCounts(o); // 5676 method_69 (or the custom sectors)
     // 5650-5661 player: Starting age (PreWarp in a PreWarp galaxy), Normal tech (PreWarp for a Shadows standard empire).
     const playerAge = num10 === 0 ? 0 : 1;
     const playerTechLevel = bool3 && !bool2 ? 0.0 : 0.5;
@@ -1182,8 +1346,9 @@ export function toCreateGameOptionsJumpStart(o: StartGameOptions, gameData: Game
         shape: o.shape,
         galaxyAge: num10,
         starCount: num,
-        sectorWidth: sectors,
-        sectorHeight: sectors,
+        sectorWidth: sectorsX,
+        sectorHeight: sectorsY,
+        ...(galaxySectorsAreCustom(o) ? { customGalaxyDimensions: true } : {}),
         systemNames,
         gameData,
         colonyPrevalence: num3,
@@ -1193,8 +1358,9 @@ export function toCreateGameOptionsJumpStart(o: StartGameOptions, gameData: Game
         victoryConditions,
         difficultyLevelScalesAsPlayerApproachesVictory: o.difficultyScaling,
         storyDistantWorldsEnabled: flag2,
+        scaleDebrisFields: o.scaleDebrisFields ?? false,
         // 5679: EmpireTerritoryColonyInfluenceRangeFactor = (float)method_189(num, sectors, sectors).
-        empireTerritoryColonyInfluenceRangeFactor: Math.fround(colonyInfluenceRangeSuggestion(num, sectors, sectors)),
+        empireTerritoryColonyInfluenceRangeFactor: Math.fround(colonyInfluenceRangeSuggestion(num, sectorsX, sectorsY)),
         piratePrevalence: num6,
         pirateProximity: num7,
         pirateShipMaintenanceFactor: 0.4, // 5670
