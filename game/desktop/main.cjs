@@ -51,12 +51,6 @@ const APP_VERSION = app.isPackaged ? app.getVersion() : String(PKG.version ?? ap
 const UPDATE_REPO = updates.repoSlug(PKG.repository) ?? 'jfj-oss/openDWU';
 const APP_ID = 'local.dwureup.dwu';
 const PRODUCT = 'openDWU';
-// JavaScript heap ceiling for the game page and its sim worker. V8's default (about 4 GB) is too small for the
-// largest galaxies (100k+ habitats, 140 MB saves), and hitting it kills the page: the window goes black. Allow up to
-// half the machine's RAM, between 4 and 16 GB. Must be set before the app is ready.
-const JS_HEAP_MB = Math.max(4096, Math.min(16384, Math.floor(os.totalmem() / 1024 / 1024 / 2)));
-app.commandLine.appendSwitch('js-flags', `--max-old-space-size=${JS_HEAP_MB}`);
-
 // Where the shell menu is, for the setup window's hint (macOS: the app menu, titled with the product name).
 const MENU_SHORTCUT_LABEL = process.platform === 'darwin' ? `the ${app.name} menu` : 'Ctrl+Shift+O';
 
@@ -597,7 +591,7 @@ function createWindow() {
     // The game page died (out of memory, a crash, killed): instead of leaving a black window, log why and offer a
     // reload. The last autosave or manual save is where to continue from.
     win.webContents.on('render-process-gone', async (_event, details) => {
-        const line = `${new Date().toISOString()} render-process-gone reason=${details.reason} exitCode=${details.exitCode} heapLimitMB=${JS_HEAP_MB} version=${APP_VERSION}\n`;
+        const line = `${new Date().toISOString()} render-process-gone reason=${details.reason} exitCode=${details.exitCode} version=${APP_VERSION}\n`;
         console.error(`[crash] ${line.trim()}`);
         try {
             fs.appendFileSync(path.join(app.getPath('userData'), 'crash-log.txt'), line);
