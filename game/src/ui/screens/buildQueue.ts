@@ -274,7 +274,7 @@ function createBuildQueue(opts: BuildQueueOptions): OriginalWindow {
     place(gridC.el, 10, 644, gridW, 88);
     body.appendChild(gridC.el);
     const btnOrderCancel = glassButton('Cancel Order', {
-        title: 'Stop the order: ships still waiting for a yard are removed and refunded; ships on a slipway finish unassigned',
+        title: 'Stop the order: ships still waiting for a yard are removed and refunded; ships on a slipway finish unassigned (a fleet\'s replacements: also turns off its auto-refill)',
         onClick: () => {
             const o = gridC.selected;
             if (o !== null) {

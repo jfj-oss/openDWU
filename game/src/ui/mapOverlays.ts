@@ -2,6 +2,8 @@
 // (btnMapOverlay1..8, btnMapCivilianFade in Main.Part12.cs) are replaced by a
 // list of named toggles; the overlays are drawn by src/render/overlayLayer.ts (and builtObjectLayer.ts / empireLayer.ts).
 
+import { isImprovementEnabled } from './improvements';
+
 export interface MapOverlayState {
     fleetPostures: boolean;
     travelVectorsState: boolean;
@@ -61,9 +63,21 @@ export function createMapOverlayState(): MapOverlayState {
 
 export type OverlayKey = keyof MapOverlayState;
 
-/** Human label per overlay key, in display order for the options list. `mod: true` marks rows that are additions to
- * the original (rendered with a small "+" badge); `panel` names a screen the row's "…" button opens. */
-export const OVERLAY_ROWS: Array<{ key: OverlayKey; label: string; mod?: boolean; panel?: 'tradeFlows' }> = [
+/** One row of the View popup's overlay list. */
+export interface OverlayRow {
+    key: OverlayKey;
+    label: string;
+    /** An addition to the original (rendered with a small "+" badge). */
+    mod?: boolean;
+    /** A screen the row's "…" button opens. */
+    panel?: 'tradeFlows';
+    /** The improvement (ui/improvements.ts) the overlay belongs to: listed in the popup's Improvements section (no "+"
+     *  badge) and hidden — and not drawn, overlayActive — while the improvement is off. */
+    improvement?: string;
+}
+
+/** Human label per overlay key, in display order for the options list. */
+export const OVERLAY_ROWS: OverlayRow[] = [
     { key: 'fleetPostures', label: 'Fleet Postures' },
     { key: 'travelVectorsState', label: 'Travel Vectors (State)' },
     { key: 'travelVectorsPrivate', label: 'Travel Vectors (Private)' },
@@ -81,7 +95,15 @@ export const OVERLAY_ROWS: Array<{ key: OverlayKey; label: string; mod?: boolean
     // [freightOverlay] end
     { key: 'threats', label: 'Threats' },
     { key: 'wrecks', label: 'Wreck Fields', mod: true },
+    // Improvements section (ui/improvements.ts): rows with `improvement: '<id>'` go here.
 ];
+
+/** The overlay is on and, when it belongs to an improvement, that improvement is enabled (what the renderer draws). */
+export function overlayActive(state: MapOverlayState, key: OverlayKey): boolean {
+    if (!state[key]) return false;
+    const row = OVERLAY_ROWS.find((r) => r.key === key);
+    return row?.improvement === undefined || isImprovementEnabled(row.improvement);
+}
 
 /** Toggle one overlay flag in place, then notify subscribers (task M3: lets
  * overlayLayer.ts react to a toggle without waiting for the next frame that
