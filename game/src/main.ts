@@ -129,6 +129,7 @@ import { Creature } from './sim/creature';
 
 // [popupstubs] begin
 import { installBattleReportNotifier, removeBattleReportNotifier } from './ui/battleReports';
+import { installDesignLineUpgradeSync, removeDesignLineUpgradeSync } from './ui/designLineUpgrade'; // [improvements]
 import { setBattleReportsEnabled } from './sim/battleReports/hooks';
 import { installMessageStubList, removeMessageStubList } from './ui/messageStubList';
 // [popupstubs] end
@@ -930,6 +931,7 @@ export async function startGameView(
     // [improvements] Battle reports (DW2-inspired): the sim records them; this announces new ones and opens the window.
     setBattleReportsEnabled(battleReportsObserverOn());
     installBattleReportNotifier({ galaxy, player: game.playerEmpire, goTo: (x, y) => historyGoTo(camera, x, y) });
+    installDesignLineUpgradeSync(galaxy, game.playerEmpire); // [improvements] designLineUpgrade: the switch → the sim (journaled)
     // Dev / screenshot hook (scripts/battlereports-shots.mjs): the current game's save text (both modes).
     Object.assign((window as unknown as { __dwu: Record<string, unknown> }).__dwu, { serialize: serializeCurrent });
 
@@ -1188,6 +1190,7 @@ export async function startGameView(
         removeMessageStubList();
         // [popupstubs] end
         removeBattleReportNotifier(); // [improvements]
+        removeDesignLineUpgradeSync(); // [improvements] designLineUpgrade
 
         // [leftovers] begin
         removeEventMessages();

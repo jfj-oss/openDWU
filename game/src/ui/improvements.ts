@@ -1,5 +1,6 @@
 // "Improvements": the one category every Distant Worlds 2-inspired addition goes under. NOT a port: DW:U has none of
-// them. They are UI only (no game rules change) and each can be switched off in Game Options → Improvements.
+// them. Most are UI only; one that changes the player's game (designLineUpgrade) reaches the sim only through a
+// journaled player command. Each can be switched off in Game Options → Improvements.
 //
 // The shared scaffolding (reuse it for a new improvement):
 //   1. Add an entry to IMPROVEMENTS below (or call registerImprovement from the feature's module): a stable `id`, the
@@ -26,6 +27,9 @@ export interface Improvement {
     description: string;
     /** On unless the player turned it off. */
     default: boolean;
+    /** List a row in the View popup's Improvements section that switches the improvement itself (one with no map
+     *  overlay of its own; always listed, its check = on / off). */
+    viewRow?: boolean;
 }
 
 /** Title of the overlay section and of the options group. */
@@ -38,6 +42,14 @@ const IMPROVEMENTS: Improvement[] = [
         label: 'Supply chain visibility',
         description: 'What construction is waiting for, the Supply Shortages map overlay and the per-resource supply panel.',
         default: true,
+    },
+    {
+        // [improvements] designLineUpgrade (sim/player/designLineUpgrade.ts; ui/designLineUpgrade.ts syncs it to the sim).
+        id: 'designLineUpgrade',
+        label: 'Automatic design upgrades (same tech line)',
+        description: 'New research upgrades the parts of the design types you made along their own tech line (blaster → phaser, missile → missile); automation stops replacing those types.',
+        default: true,
+        viewRow: true,
     },
 ];
 
@@ -90,6 +102,11 @@ export function overlayRowSections<R extends { improvement?: string }>(rows: rea
         else if (isImprovementEnabled(r.improvement)) extra.push(r);
     }
     return { original, improvements: extra };
+}
+
+/** The improvements that list their own on / off row in the View popup (Improvement.viewRow), in display order. */
+export function improvementViewRows(): Improvement[] {
+    return IMPROVEMENTS.filter((i) => i.viewRow === true);
 }
 
 /** Row pitch of the options group (check box line + up to two wrapped description lines). */

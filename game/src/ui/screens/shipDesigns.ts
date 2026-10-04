@@ -70,6 +70,7 @@ import {
 } from '../originalWindow';
 import { componentImageUrl, gt, maximumSizeText } from './designPanelsModel';
 import { requestSimRefresh } from '../../simworker/refresh';
+import { designLineUpgradeHint } from '../designLineUpgrade'; // [improvements]
 export { isPrivateDesignSubRole, toggleDesignObsolete, toggleDesignAutoRetrofit };
 
 /** cmbDesignsFilter items (Main.Part8.cs:1006-1028). */
@@ -476,7 +477,20 @@ function createShipDesigns(opts: ShipDesignsOptions): OpenState {
             { id: 'Picture', header: '', width: 30, render: (r, cell) => cell.appendChild(shipPicture(designPictureUrl(r.design), 'dsg-ship-row')) },
             { id: 'Name', header: gt('Name'), sort: (r) => r.name, render: (r, cell) => tip(cell, r, r.name) },
             { id: 'Role', header: gt('Role'), width: 80, sort: (r) => r.role, render: (r, cell) => tip(cell, r, r.role) },
-            { id: 'SubRole', header: gt('SubRole'), width: 140, sort: (r) => r.subRole, render: (r, cell) => tip(cell, r, r.subRole) },
+            {
+                id: 'SubRole', header: gt('SubRole'), width: 140, sort: (r) => r.subRole,
+                render: (r, cell) => {
+                    // [improvements] designLineUpgrade: a design type the player made — a small mark and its tooltip.
+                    const hint = designLineUpgradeHint(player, r.design);
+                    if (hint !== null) cell.title = hint;
+                    tip(cell, r, r.subRole);
+                    if (hint !== null) {
+                        const mark = el('span', 'dsg-line-mark', ' •');
+                        mark.style.color = COLORS.label;
+                        cell.appendChild(mark);
+                    }
+                },
+            },
             { id: 'Cost', header: gt('Cost'), width: 50, align: 'right', sort: (r) => r.cost, render: (r, cell) => tip(cell, r, String(Math.round(r.cost))) },
             { id: 'Maintenance', header: gt('Maintenance Abbreviation'), width: 50, align: 'right', sort: (r) => r.maintenance, render: (r, cell) => tip(cell, r, String(Math.round(r.maintenance))) },
             { id: 'DateCreated', header: gt('Date Created'), width: 80, sort: (r) => r.design.dateCreated, render: (r, cell) => tip(cell, r, r.dateCreated) },
