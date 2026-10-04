@@ -7,7 +7,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('pixi.js', () => ({ Assets: { load: vi.fn() }, Texture: class {} }));
 
-const { MANIFEST, pickFromFolder, mapStarUrls, mapStarImageUrls, starPictureUrls, starSpriteUrls, habitatPictureUrl, habitatPictureUrls, cloudUrls } = await import(
+const { MANIFEST, pickFromFolder, mapStarUrls, mapStarImageUrls, starPictureUrls, habitatPictureUrl, habitatPictureUrls, cloudUrls } = await import(
     '../src/render/assets'
 );
 import type { Habitat } from '../src/sim/types';
@@ -83,12 +83,6 @@ describe('URL builders with a loaded manifest', () => {
         expect(starPictureUrls(star(HabitatType.WhiteDwarf, 9))).toEqual(['/assets/dwu/images/environment/mapstars/whitedwarf/StarDisk_136.png']);
     });
 
-    it('black holes: a still accretion frame, then star_blackhole_0; no other star uses starSpriteUrls', () => {
-        MANIFEST['stars/blackhole'] = ['BlkHole-0001.png', 'BlkHole-0002.png'];
-        expect(starSpriteUrls(star(HabitatType.BlackHole, 13))).toEqual(['/assets/dwu/images/environment/stars/blackhole/BlkHole-0001.png', '/assets/dwu/images/environment/stars/star_blackhole_0.png']);
-        expect(starSpriteUrls(star(HabitatType.RedGiant, 6))).toEqual([]);
-    });
-
     it('planets, moons and asteroids draw HabitatImageCache[PictureRef] (GalaxyImages index, no modulo)', () => {
         MANIFEST['planets/sandydesert'] = ['Desert-0001.png', 'Desert-0002.png', 'Desert-0026.png'];
         // HabitatImageOffsetDesert = 204: 205 is the second desert picture, whatever the habitat's type.
@@ -120,8 +114,6 @@ describe('URL builders with a loaded manifest', () => {
         for (const k of Object.keys(MANIFEST)) delete MANIFEST[k];
         expect(mapStarUrls(star(HabitatType.MainSequence, 3))).toEqual([]);
         expect(starPictureUrls(star(HabitatType.SuperNova, 0, 1))).toEqual([]);
-        // Black holes keep the fixed disc.
-        expect(starSpriteUrls(star(HabitatType.BlackHole, 13))).toEqual(['/assets/dwu/images/environment/stars/star_blackhole_0.png']);
         expect(habitatPictureUrls(habitat(HabitatType.Ocean, 190))).toEqual([]);
         expect(cloudUrls(habitat(HabitatType.Hydrogen, 79))).toEqual([]);
         expect(habitatPictureUrls(habitat(HabitatType.BarrenRock, 249, HabitatCategoryType.Asteroid))).toEqual([]);
