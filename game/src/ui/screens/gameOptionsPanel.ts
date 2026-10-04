@@ -21,8 +21,8 @@
 // read-only, reflecting this game's setting.
 // Closing the window saves the player empire's settings as the next new game's defaults (YxwyUefOyQ + method_257;
 // settings.newGameOptions, read by main.ts for the wizard's games).
-// TODO(port): the main menu's Options panel editing those defaults before a game (Start.1.cs:1928-1960) — mainMenu.ts;
-// the HotKeys button opens the key remapping screen (BaconDistantWorlds/HotKeys, hotkeysScreen.ts).
+// The main menu's Options panel edits those defaults before a game (Start.1.cs:1928-1960; newGameDefaultsPanel.ts).
+// The HotKeys button opens the key remapping screen (BaconDistantWorlds/HotKeys, hotkeysScreen.ts).
 
 import './gameOptionsPanel.css';
 import { openHotkeysScreen } from './hotkeysScreen';
@@ -48,7 +48,7 @@ import { copyMessageOptions, getMessageOptions, MessageCategory, setMessageOptio
 import { COLORS, checkBox, dropDown, el, glassButton, messageBox, numericUpDown, openOriginalWindow, place, text, type OriginalWindow } from '../originalWindow';
 import { checkBoxRight, colorSlider, groupBox, labelledTrackBar } from '../originalWindowControls';
 import { IMPROVEMENTS_TITLE, buildImprovementsGroup, improvementsGroupHeight } from '../improvements'; // [improvements]
-import { AUTOMATION_MODE_ITEMS, AUTOMATION_PRESETS, detectAutomationMode, empireAutomationValues, gameOptionsFromEmpire, messageSettingsRows, type PendingEmpireValues } from './gameOptionsModel';
+import { AUTOMATION_MODE_ITEMS, AUTOMATION_PRESETS, currentNewGameOptions, detectAutomationMode, empireAutomationValues, gameOptionsFromEmpire, newGameOptionsToSettings, messageSettingsRows, type PendingEmpireValues } from './gameOptionsModel';
 
 export type AutomationField =
     | 'controlMilitaryAttacks'
@@ -219,11 +219,11 @@ export interface GameOptionsPanelOptions {
 
 /** GenerateFont sizes the windows use (Main.Part12.cs:1521-1534): font_2, font_4, font_7, the GlassButton font, and
  *  the 19 px bold of the Empire Settings group captions (Main.Part4.cs:4174). */
-const F2 = 18.67;
-const F4 = 20.77;
-const F7 = 16.67;
-const FBUTTON = 15.83;
-const F19 = 19;
+export const F2 = 18.67;
+export const F4 = 20.77;
+export const F7 = 16.67;
+export const FBUTTON = 15.83;
+export const F19 = 19;
 
 /** pnlGameOptions.Size (method_402) and the sub-windows' (method_556 / 566 / 568). The Empire Settings, Message
  *  Settings and Advanced Display windows are taller than the original's by the rows we add (see the file header). */
@@ -284,14 +284,14 @@ export function setAllowSameSystemSource(source: (() => boolean | null) | null):
 }
 
 /** A label at (x, y) in font_4, (170, 170, 170), no drop shadow (WinForms Label). */
-function label(parent: HTMLElement, content: string, x: number, y: number, size = F4, bold = false): HTMLDivElement {
+export function label(parent: HTMLElement, content: string, x: number, y: number, size = F4, bold = false): HTMLDivElement {
     const t = text(content, { size, bold, color: COLORS.label, shadow: false, className: 'go-label' });
     parent.appendChild(place(t, x, y));
     return t;
 }
 
 /** A Label with AutoSize off and TextAlign MiddleRight in a w × h box (method_404). */
-function rightLabel(parent: HTMLElement, content: string, x: number, y: number, w: number, h: number): HTMLDivElement {
+export function rightLabel(parent: HTMLElement, content: string, x: number, y: number, w: number, h: number): HTMLDivElement {
     const t = text(content, { size: F4, color: COLORS.label, shadow: false, className: 'go-label go-label-right' });
     parent.appendChild(place(t, x, y, w, h));
     return t;
@@ -301,7 +301,7 @@ function rightLabel(parent: HTMLElement, content: string, x: number, y: number, 
  *  text is drawn at font_8's 18.67 px to keep its descenders inside. */
 const FCOMBO = 18.67;
 
-function combo(parent: HTMLElement, items: readonly string[], index: number, x: number, y: number, w: number, h: number, onChange: (i: number) => void, size = FCOMBO): HTMLSelectElement {
+export function combo(parent: HTMLElement, items: readonly string[], index: number, x: number, y: number, w: number, h: number, onChange: (i: number) => void, size = FCOMBO): HTMLSelectElement {
     const s = dropDown(
         items.map((label, i) => ({ value: String(i), label })),
         String(index),
@@ -314,14 +314,14 @@ function combo(parent: HTMLElement, items: readonly string[], index: number, x: 
     return s;
 }
 
-function check(parent: HTMLElement, content: string, checked: boolean, x: number, y: number, onChange: ((v: boolean) => void) | null, size = F4): HTMLLabelElement {
+export function check(parent: HTMLElement, content: string, checked: boolean, x: number, y: number, onChange: ((v: boolean) => void) | null, size = F4): HTMLLabelElement {
     const c = checkBox(content, checked, onChange, size);
     c.classList.add('go-check');
     parent.appendChild(place(c, x, y));
     return c;
 }
 
-function button(parent: HTMLElement, content: string, x: number, y: number, w: number, h: number, onClick: () => void): HTMLButtonElement {
+export function button(parent: HTMLElement, content: string, x: number, y: number, w: number, h: number, onClick: () => void): HTMLButtonElement {
     const b = glassButton(content, { onClick, size: FBUTTON, className: 'go-button' });
     parent.appendChild(place(b, x, y, w, h));
     return b;
@@ -363,7 +363,8 @@ function createGameOptionsPanel(opts: GameOptionsPanelOptions): OpenState {
             for (const w of [...subWindows.values()]) w.close();
             // method_413 → method_418's tail: YxwyUefOyQ (the player empire's settings become the GameOptions
             // defaults of the next new game) and method_257 (save the defaultOptions file).
-            updateSettings({ newGameOptions: { ...gameOptionsFromEmpire(empire, pendingEmpireValues) } });
+            // GameOptions keeps the fields this window does not write (the Empire Policy screen's design-upgrade flags).
+            updateSettings({ newGameOptions: newGameOptionsToSettings({ ...currentNewGameOptions(getSettings().newGameOptions), ...gameOptionsFromEmpire(empire, pendingEmpireValues) }) });
             pendingEmpireValues = {};
         },
     });

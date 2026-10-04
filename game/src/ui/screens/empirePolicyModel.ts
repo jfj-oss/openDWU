@@ -27,7 +27,7 @@ import { canBuildDesign, resolveSubRoleDescription } from '../../sim/designGener
 import type { Design } from '../../sim/design';
 import { BuiltObjectRole } from '../../sim/data/designSpecifications';
 import { formatNet, tryGetText } from '../../sim/textResolver';
-import { AUTOMATION_ROWS, automationFieldValue, setAutomationValue } from './gameOptionsPanel';
+import { AUTOMATION_ROWS, automationFieldValue, setAutomationValue, type AutomationField } from './gameOptionsPanel';
 import { PendingValues } from '../pendingCommands';
 import { issuePlayerCommand } from '../../sim/player/playerCommands';
 
@@ -712,10 +712,13 @@ export function policyAutomationChange(empire: Empire, field: PolicyAutomationFi
  * would bypass the command log and a replay would drift; in worker mode the replica is read-only (docs/sim-worker.md
  * §8). So the command log is the same in both modes (test/simWorkerQuickClicks.test.ts).
  */
-export function issuePolicyPanel(empire: Empire, playerIsPirate: boolean, c: PanelControls, ctx: PolicyPanelContext, sent: PendingValues<string, unknown>): void {
+export function issuePolicyPanel(empire: Empire, playerIsPirate: boolean, c: PanelControls, ctx: PolicyPanelContext, sent: PendingValues<string, unknown>): IssuedPolicyPanel {
     const galaxy = empire.galaxy;
     const changes: PolicyAutomationChange[] = [];
+    const automation: Partial<Record<AutomationField, number | boolean>> = {};
     const policy = applyPolicyPanel(empire, playerIsPirate, c, ctx, (field, value) => {
+        const row = AUTOMATION_ROWS.find((r) => r.field === field);
+        if (row !== undefined) automation[field] = automationFieldValue(row, value).value;
         const change = policyAutomationChange(empire, field, value, sent);
         if (change !== null) changes.push(change);
     });
@@ -725,6 +728,13 @@ export function issuePolicyPanel(empire: Empire, playerIsPirate: boolean, c: Pan
         issuePlayerCommand(galaxy, empire, 'setEmpireControl', [change.field, change.value], () => settle());
     }
     issuePlayerCommand(galaxy, empire, 'setPolicy', [policy]);
+    return { policy, automation };
+}
+
+/** What issuePolicyPanel sent: the policy and the automation values (AutomationLevel / boolean per field) the panel holds. */
+export interface IssuedPolicyPanel {
+    policy: PolicyData;
+    automation: Partial<Record<AutomationField, number | boolean>>;
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -880,8 +890,8 @@ export function applyPolicyPanel(
     p.troopGarrisonLevel = lvl('TroopGarrisonLevel');
     p.useExplorationShipsToScoutEnemySystems = chk('UseExplorationShipsToScoutEnemySystems');
     p.buildPlanetDestroyers = chk('BuildPlanetDestroyers');
-    // TODO(port): gameOptions_0.Control*Default / ApplyDesignUpgradePoliciesToGameOptions / DefaultEmpirePolicy
-    // (Main.Part3.cs:4179-4198) — GameOptions persistence is not ported.
+    // Main.Part3.cs:4179-4198 (Control*Default / ApplyDesignUpgradePoliciesToGameOptions / DefaultEmpirePolicy) is the caller's:
+    // empirePolicy.ts persists them into settings.newGameOptions (gameOptionsModel.ts gameOptionsAfterPolicyApply).
     return p;
 }
 
