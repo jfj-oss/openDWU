@@ -338,12 +338,12 @@ export function recalculateDistanceFactorWithCapitals(galaxy: Galaxy, h: Habitat
             const num2 = galaxy.calculateDistance(h.xpos, h.ypos, cap.xpos, cap.ypos);
             if (num2 < num) num = num2;
         }
-        const num3 = galaxy.sizeX * 0.6;
+        const num3 = galaxy.sizeScale * 0.6; // C# SizeX; sizeScale = SizeX when square
         h.distanceFactor = f32(Math.max(0.0, Math.min(1.0, num / num3)));
     } else if (h.empire !== null && h.empire.pirateEmpireBaseHabitat !== null) {
         const b = h.empire.pirateEmpireBaseHabitat;
         const num4 = galaxy.calculateDistance(h.xpos, h.ypos, b.xpos, b.ypos);
-        const num5 = galaxy.sizeX * 0.6;
+        const num5 = galaxy.sizeScale * 0.6; // C# SizeX; sizeScale = SizeX when square
         h.distanceFactor = f32(Math.max(0.0, Math.min(1.0, num4 / num5)));
     } else {
         h.distanceFactor = 0;

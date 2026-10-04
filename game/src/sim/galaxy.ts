@@ -465,6 +465,24 @@ export class Galaxy {
         return Math.trunc(this.sizeY / INDEX_SIZE);
     }
 
+    /**
+     * The ring searches' step limit: C# `if (num2 > IndexMaxX) break;` (Galaxy.7.cs 2505 and every FindNearest* copy).
+     * Custom size (not a port): the C# galaxy is square, so IndexMaxX rings reach every cell; on a non-square galaxy the
+     * rings grow one cell per step on each axis, so the longer axis bounds them (= IndexMaxX when square).
+     */
+    get ringSearchMaxSteps(): number {
+        return Math.max(this.indexMaxX, this.indexMaxY);
+    }
+
+    /**
+     * Custom size (not a port): the length the C# uses SizeX for as a galaxy-wide distance scale (search radii, separation
+     * thresholds, normalisers). The C# galaxy is square; for W != H this is the side of the square of the same area
+     * (sqrt(SizeX * SizeY)), so a radius still covers the same share of the galaxy. Exactly SizeX when square.
+     */
+    get sizeScale(): number {
+        return this.sizeX === this.sizeY ? this.sizeX : Math.sqrt(this.sizeX * this.sizeY);
+    }
+
     // Task M3c: C# BuiltObjectList[][] BuiltObjectIndex, sized like HabitatIndex
     // (Galaxy.4.cs 2110-2114).
     builtObjectIndexGrid: BuiltObject[][][] = [];
@@ -680,6 +698,11 @@ export class Galaxy {
         let num2 = 0;
         let num3 = 0;
         let iterationCount = 0;
+        const nonSquare = maxX !== maxY;
+        let prevL = l;
+        let prevR = r;
+        let prevT = t;
+        let prevB = b;
         while (iterationCount < 10000 && (iterationCount++, num > num3)) {
             // DetermineSectorBoundaries
             let row = -1;
@@ -690,6 +713,10 @@ export class Galaxy {
                 num3 = this.closestIndexEdgesInto(edges, ix, iy, l, r, t, b);
             } else {
                 this.closestIndexEdgesInto(edges, ix, iy, l, r, t, b);
+                prevL = l;
+                prevR = r;
+                prevT = t;
+                prevB = b;
                 const nx = edges[1];
                 const ny = edges[2];
                 if (nx === -1) {
@@ -727,6 +754,14 @@ export class Galaxy {
                     } else row = b;
                 }
                 num3 = this.closestIndexEdgesInto(edges, ix, iy, l, r, t, b);
+                // Custom size (not a port): once a non-square galaxy's short axis is spanned, the C# keeps re-scanning
+                // the clamped edge column (or row) over the whole range every step — O(n²) on a thin strip. Those cells
+                // were all searched before (and a re-scan never changes the result: `<` keeps the first best), so skip
+                // them. Square galaxies keep the C# visits (the per-cell searches may draw Rnd).
+                if (nonSquare) {
+                    if (l === prevL && r === prevR) col = -1;
+                    if (t === prevT && b === prevB) row = -1;
+                }
             }
             // BuildIndexListForSearching: row l..r, then column col over t..b except the row.
             // C# indexes the jagged arrays directly; -1 rows/cols never occur because both edges always move on a
@@ -751,7 +786,7 @@ export class Galaxy {
                 }
             }
             num2++;
-            if (num2 > maxX) break;
+            if (num2 > this.ringSearchMaxSteps) break;
         }
         return result;
     }
@@ -4683,7 +4718,8 @@ export class Galaxy {
             return;
         }
         const clusterCount = Math.min(20, Math.max(5, Math.trunc(starCount / 55)));
-        const minSeparation = this.sizeX / (Math.sqrt(clusterCount) * 3.0);
+        // C# SizeX; sizeScale = SizeX when square (custom size, not a port).
+        const minSeparation = this.sizeScale / (Math.sqrt(clusterCount) * 3.0);
         let portionTotal = 0.0;
         for (let i = 0; i < clusterCount; i++) {
             let placed = false;
@@ -4704,7 +4740,7 @@ export class Galaxy {
                 for (let j = 0; j < this.starClusterLocations.length; j++) {
                     const loc = this.starClusterLocations[j];
                     const dist = this.calculateDistance(x, y, loc.x, loc.y);
-                    const existingRadius = Math.sqrt(this.starClusterPortions[j]) * this.sizeX * 0.4;
+                    const existingRadius = Math.sqrt(this.starClusterPortions[j]) * this.sizeScale * 0.4;
                     if (dist < minSeparation + existingRadius) {
                         placed = false;
                         break;

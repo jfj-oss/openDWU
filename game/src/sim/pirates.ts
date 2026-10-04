@@ -282,7 +282,7 @@ export function pirateReviewColoniesToControl(galaxy: Galaxy, empire: Empire, in
             }
             if (!flag) return;
             const num2 = galaxy.calculateDistance(base.xpos, base.ypos, colony.xpos, colony.ypos);
-            let num3 = galaxy.sizeX * 0.25;
+            let num3 = galaxy.sizeScale * 0.25; // C# SizeX; sizeScale = SizeX when square
             if (empire.piratePlayStyle === PiratePlayStyle.Balanced) num3 *= 1.4;
             if (num2 < num3) {
                 let num4 = Math.sqrt(num3 - num2) * (colony.population.totalAmount / 1000.0);
@@ -892,7 +892,7 @@ export function generateNewPirateEmpires(galaxy: Galaxy, ctx: PirateGenerationCo
     if (galaxy.pirateEmpires.length >= num) return;
     let num3 = num - galaxy.pirateEmpires.length;
     let num4 = galaxy.maxSolarSystemSize * 2.1;
-    let num5 = galaxy.sizeX / 50.0;
+    let num5 = galaxy.sizeScale / 50.0; // C# SizeX; sizeScale = SizeX when square
     switch (settings.pirateProximity) {
         case 0:
             num4 *= 1.0;

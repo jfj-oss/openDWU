@@ -528,7 +528,8 @@ export function calculateMaximumOrderFulfillmentDistance(galaxy: Galaxy, xPos: n
         case GalaxyShape.Spiral: {
             // C# oddity: the distance is measured to (yPos, yPos), not (xPos, yPos).
             const num2 = csInt(galaxy.calculateDistance(Math.trunc(galaxy.sizeX / 2), Math.trunc(galaxy.sizeY / 2), yPos, yPos));
-            num = Math.min(1, Math.trunc(num2 / Math.trunc(galaxy.sizeX / 4))) * TYPICAL_MAXIMUM_ORDER_FULFILLMENT_DISTANCE;
+            // C# SizeX / 4; sizeScale = SizeX when square (custom size, not a port).
+            num = Math.min(1, Math.trunc(num2 / Math.trunc(galaxy.sizeScale / 4))) * TYPICAL_MAXIMUM_ORDER_FULFILLMENT_DISTANCE;
             break;
         }
     }

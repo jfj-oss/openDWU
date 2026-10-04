@@ -37,13 +37,15 @@ export class GalaxyNebulaeGenerator {
         this.sizeY = sizeY;
         void starCount; // dead on the generateImage=false path
 
-        // C# int division (sizeX/35 etc. are int ops in the source).
-        const minSize1 = Math.trunc(sizeX / 35);
-        const maxSize1 = Math.trunc(sizeX / 15);
-        const minSize2 = Math.trunc(sizeX / 30);
-        const maxSize2 = Math.trunc(sizeX / 15);
-        const maxValue = Math.trunc(sizeX / 30);
-        const maximumCloudSize = Math.trunc(sizeX / 10);
+        // C# int division (sizeX/35 etc. are int ops in the source). Custom size (not a port): the C# galaxy is square;
+        // on a non-square one the cloud sizes scale with sqrt(sizeX * sizeY) (Galaxy.sizeScale; = sizeX when square).
+        const scale = sizeX === sizeY ? sizeX : Math.sqrt(sizeX * sizeY);
+        const minSize1 = Math.trunc(scale / 35);
+        const maxSize1 = Math.trunc(scale / 15);
+        const minSize2 = Math.trunc(scale / 30);
+        const maxSize2 = Math.trunc(scale / 15);
+        const maxValue = Math.trunc(scale / 30);
+        const maximumCloudSize = Math.trunc(scale / 10);
 
         const locations: GalaxyLocation[] = [];
         if (galaxyShape === GalaxyShape.Elliptical || galaxyShape === GalaxyShape.Spiral) {
@@ -127,8 +129,10 @@ export class GalaxyNebulaeGenerator {
         const x = Math.trunc(sizeX / 2);
         const y = Math.trunc(sizeY / 2);
         const startRadius = Math.trunc(sizeX / 27);
-        this.drawSpiralArm(0.0, startRadius, x, y, 0, 1, maximumCloudSize, locations);
-        this.drawSpiralArm(Math.PI, startRadius, x, y, 0, -1, maximumCloudSize, locations);
+        // Custom size (not a port): a non-square galaxy squashes the arms' y offsets by sizeY / sizeX (1 when square).
+        const yScale = sizeX === sizeY ? 1 : sizeY / sizeX;
+        this.drawSpiralArm(0.0, startRadius, x, y, 0, 1, maximumCloudSize, locations, yScale);
+        this.drawSpiralArm(Math.PI, startRadius, x, y, 0, -1, maximumCloudSize, locations, yScale);
     }
 
     // Port of GalaxyNebulaeGenerator.DrawSpiralArm (generateImage=false
@@ -142,6 +146,7 @@ export class GalaxyNebulaeGenerator {
         offsetChangeY: number,
         maximumCloudSize: number,
         locations: GalaxyLocation[],
+        yScale = 1,
     ): void {
         const armName = this.generateArmName();
         const num1 = 3;
@@ -169,7 +174,7 @@ export class GalaxyNebulaeGenerator {
                 num5 = num15;
                 num7 -= num6;
                 x += offsetChangeX * num16;
-                y += offsetChangeY * num16;
+                y += yScale === 1 ? offsetChangeY * num16 : offsetChangeY * num16 * yScale;
                 switch (offsetChangeX) {
                     case -1:
                         offsetChangeX = 0;
@@ -194,7 +199,7 @@ export class GalaxyNebulaeGenerator {
                 }
             }
             const x1 = Math.trunc(x + Math.cos(num8) * num5);
-            const y1 = Math.trunc(y + Math.sin(num8) * num5);
+            const y1 = Math.trunc(yScale === 1 ? y + Math.sin(num8) * num5 : y + Math.sin(num8) * num5 * yScale);
             const num17 = Math.trunc(maximumCloudSize * (0.6 + this.rnd.nextDouble() * 0.4));
             let name = armName;
             let effectType = GalaxyLocationEffectType.None;

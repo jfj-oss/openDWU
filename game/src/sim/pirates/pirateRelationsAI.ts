@@ -306,7 +306,7 @@ function automationMessage(key: string, ...args: unknown[]): string {
 /** Empire.2.cs 2510 PirateReviewEmpireRelations(starDate, timePassed). No Rnd. */
 export function pirateReviewEmpireRelationsCore(galaxy: Galaxy, empire: Empire, starDate: number, timePassed: number): void {
     if (empire.pirateRelations == null) return;
-    let num = Math.max(SECTOR_SIZE * 2.0, galaxy.sizeX * 0.2);
+    let num = Math.max(SECTOR_SIZE * 2.0, galaxy.sizeScale * 0.2); // C# SizeX; sizeScale = SizeX when square
     const piratePlayStyle = empire.piratePlayStyle;
     if (piratePlayStyle === PiratePlayStyle.Balanced || piratePlayStyle === PiratePlayStyle.Smuggler) num *= 2.0;
     // `long num2 = RealSecondsInGalacticYear * 1.0 * 1000.0` — unused.

@@ -116,7 +116,7 @@ export function setupAlienRacePopulations(galaxy: Galaxy, empireStarts: EmpireSt
     let flag = false;
     let val = Math.sqrt(1400.0) / Math.sqrt(galaxy.starCount);
     val = Math.max(1.0, Math.min(val, 3.0));
-    const num3 = 0.85 * (galaxy.sizeX / Math.sqrt(empireStarts.length));
+    const num3 = 0.85 * (galaxy.sizeScale / Math.sqrt(empireStarts.length)); // C# SizeX; sizeScale = SizeX when square
     const radiusFromCenterMaximum = 1.0;
     let location: GalaxyLocation | null = null;
     const totalColonyAmount_ = totalColonyAmount(empireStarts);

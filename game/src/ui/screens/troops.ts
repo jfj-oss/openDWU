@@ -688,7 +688,7 @@ function createTroopsScreen(opts: TroopsScreenOptions): OpenState {
         btnUngarrison.disabled = !any;
         nameInput.disabled = t === null;
         const target = t !== null ? troopGoToTarget(t) : null;
-        const p = target !== null ? miniMapPoint(galaxy.sizeX, MAP.size, target.xpos, target.ypos) : null;
+        const p = target !== null ? miniMapPoint(Math.max(galaxy.sizeX, galaxy.sizeY), MAP.size, target.xpos, target.ypos) : null;
         if (p?.x !== mapPoint?.x || p?.y !== mapPoint?.y) {
             mapPoint = p;
             drawMap();

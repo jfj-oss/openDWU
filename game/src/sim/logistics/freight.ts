@@ -580,7 +580,9 @@ function attemptToFulfillOrderAtTradingPost(ctx: FulfillContext, tradingPost: St
             const diplomaticRelation = obtainDiplomaticRelation(tradingPostEmpire, empire);
             if (!diplomaticRelation.supplyRestrictedResources) return 0;
         }
-        allowableRangeSquared = galaxy.sizeX * 1.415 * (galaxy.sizeX * 1.415);
+        // C# SizeX * 1.415 (~ the square galaxy's diagonal). Custom size (not a port): the rectangle's diagonal when W != H.
+        const diagonal = galaxy.sizeX === galaxy.sizeY ? galaxy.sizeX * 1.415 : Math.hypot(galaxy.sizeX, galaxy.sizeY) * (1.415 / Math.SQRT2);
+        allowableRangeSquared = diagonal * diagonal;
     }
     const num = galaxy.calculateDistanceSquared(tradingPost.xpos, tradingPost.ypos, x, y);
     if (num > allowableRangeSquared) return 0;

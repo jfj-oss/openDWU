@@ -29,13 +29,17 @@ import { battleReportHooks } from '../battleReports/hooks';
 /** Galaxy.3.cs 4959 IndexSize (galaxy.ts / movement.ts keep private copies). */
 const INDEX_SIZE = 400_000;
 
-/** Galaxy.6.cs 3802 CorrectIndexCoords(ref x, ref y): clamp into [0, IndexMaxX-1] (both axes use IndexMaxX). */
+/**
+ * Galaxy.6.cs 3802 CorrectIndexCoords(ref x, ref y): clamp into [0, IndexMaxX-1] (the C# clamps both axes with IndexMaxX,
+ * the galaxy being square). Custom size (not a port): y is clamped with IndexMaxY (= IndexMaxX when square).
+ */
 export function correctIndexCoords(galaxy: Galaxy, x: number, y: number): { x: number; y: number } {
     const indexMaxX = galaxy.indexMaxX;
+    const indexMaxY = galaxy.indexMaxY;
     if (x < 0) x = 0;
     else if (x >= indexMaxX) x = indexMaxX - 1;
     if (y < 0) y = 0;
-    else if (y >= indexMaxX) y = indexMaxX - 1;
+    else if (y >= indexMaxY) y = indexMaxY - 1;
     return { x, y };
 }
 
@@ -381,7 +385,8 @@ export function builtObjectCompleteTeardown(galaxy: Galaxy, builtObject: BuiltOb
     num12 = !(self.xpos % INDEX_SIZE > Math.trunc(INDEX_SIZE / 2)) ? x - 1 : x + 1;
     num13 = !(self.ypos % INDEX_SIZE > Math.trunc(INDEX_SIZE / 2)) ? y - 1 : y + 1;
     num12 = Math.max(0, Math.min(galaxy.indexMaxX - 1, num12));
-    num13 = Math.max(0, Math.min(galaxy.indexMaxX - 1, num13));
+    // C# clamps y with IndexMaxX too (square galaxy); IndexMaxY on a custom non-square size (= IndexMaxX when square).
+    num13 = Math.max(0, Math.min(galaxy.indexMaxY - 1, num13));
     galaxyIndexList.push({ x, y: num13 });
     galaxyIndexList.push({ x: num12, y });
     galaxyIndexList.push({ x: num12, y: num13 });

@@ -1250,6 +1250,8 @@ export function method93(galaxy: Galaxy, double1: number, double2: number): { x:
     const num7 = galaxy.rnd.nextDouble() * Math.PI * 2.0;
     let num8 = Math.cos(num7) * num6;
     let num9 = Math.sin(num7) * num6;
+    // Custom size (not a port): a non-square galaxy stretches the ring's y offset by SizeY / SizeX (the C# galaxy is square).
+    if (galaxy.sizeX !== galaxy.sizeY) num9 *= galaxy.sizeY / galaxy.sizeX;
     if (galaxy.rnd.next(0, 2) === 1) num8 *= -1.0;
     if (galaxy.rnd.next(0, 2) === 1) num9 *= -1.0;
     return { x: num + num8, y: num2 + num9 };

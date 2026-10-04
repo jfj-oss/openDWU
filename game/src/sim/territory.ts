@@ -145,7 +145,7 @@ function calculateEmpireTerritoryGridIndex(galaxy: Galaxy, section: Rect, influe
         }
         return influence;
     }
-    fillTerritoryCells(influence, list, galaxy.sizeX / size, galaxy.sizeY / size, num1, size);
+    fillTerritoryCells(influence, list, galaxy.sizeX / size, galaxy.sizeY / size, num1, size, galaxy.sizeY / size);
     return influence;
 }
 
@@ -247,8 +247,12 @@ export function fillTerritoryCells(
     cellSizeY: number,
     num1: number,
     size: number,
+    num1Y: number = num1,
 ): void {
     const num6 = Math.fround(num1);
+    // Custom size (not a port): the C# grid's cells are square (num1 = SizeX / 2000 on both axes, the galaxy being
+    // square); a non-square galaxy has num1Y = SizeY / 2000 for the rows (= num1 when square).
+    const num6Y = num1Y === num1 ? num6 : Math.fround(num1Y);
     // Scratch: the overlapping colonies (with an empire) of the current colony — float32 position, squared radius and
     // owner id — and, per row, those with a non-zero influence somewhere on it with their cell bounds there.
     let oFx = new Float64Array(16);
@@ -263,12 +267,14 @@ export function fillTerritoryCells(
         const indexX = Math.trunc(colony.xpos / cellSizeX);
         const indexY = Math.trunc(colony.ypos / cellSizeY);
         const num10 = Math.trunc(colony.colonyInfluenceRadius / num1);
+        const num10Y = num1Y === num1 ? num10 : Math.trunc(colony.colonyInfluenceRadius / num1Y);
         const radius = colony.colonyInfluenceRadius;
         const num11 = num10 * 2 + 2;
+        const num12 = num10Y * 2 + 2;
         const num13 = Math.max(indexX - num10, 0);
-        const num14 = Math.max(indexY - num10, 0);
+        const num14 = Math.max(indexY - num10Y, 0);
         const num17 = num13 + (Math.min(size, num13 + num11) - num13);
-        const num18 = num14 + (Math.min(size, num14 + num11) - num14);
+        const num18 = num14 + (Math.min(size, num14 + num12) - num14);
         // colonyInfluenceAtPoint(radius, colony.xpos, colony.ypos, x2, y2) terms that do not depend on the cell.
         const cFx = Math.fround(colony.xpos);
         const cFy = Math.fround(colony.ypos);
@@ -303,18 +309,18 @@ export function fillTerritoryCells(
                 const odx2 = odx * odx;
                 if (Math.fround(odx2) <= oR2[k]) {
                     active[nActive] = k;
-                    aLo[nActive] = cellRangeLo(oFy[k], oR2[k] * 1.000001 - odx2, num6, size);
-                    aHi[nActive] = cellRangeHi(oFy[k], oR2[k] * 1.000001 - odx2, num6, size);
+                    aLo[nActive] = cellRangeLo(oFy[k], oR2[k] * 1.000001 - odx2, num6Y, size);
+                    aHi[nActive] = cellRangeHi(oFy[k], oR2[k] * 1.000001 - odx2, num6Y, size);
                     nActive++;
                 }
             }
             // (Integers in [0, size]: keeps the loop counter a small integer.)
-            const i7From = Math.max(num14, cellRangeLo(cFy, cR2 * 1.000001 - dx2, num6, size)) | 0;
-            const i7To = Math.min(num18, cellRangeHi(cFy, cR2 * 1.000001 - dx2, num6, size) + 1) | 0;
+            const i7From = Math.max(num14, cellRangeLo(cFy, cR2 * 1.000001 - dx2, num6Y, size)) | 0;
+            const i7To = Math.min(num18, cellRangeHi(cFy, cR2 * 1.000001 - dx2, num6Y, size) + 1) | 0;
             const row = influence[i6];
             for (let i7 = i7From; i7 < i7To; i7++) {
                 if (row[i7] !== 0) continue;
-                const y2 = Math.fround(i7 * num6);
+                const y2 = Math.fround(i7 * num6Y);
                 const dy = Math.fround(cFy - y2);
                 const d2 = Math.max(1, Math.fround(dy * dy + dx2));
                 if (!(cR2 >= d2)) continue;

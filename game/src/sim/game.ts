@@ -455,6 +455,8 @@ function randomPointInRing(galaxy: Galaxy, min: number, max: number): { x: numbe
     const num7 = rnd.nextDouble() * Math.PI * 2.0;
     let num8 = Math.cos(num7) * num6;
     let num9 = Math.sin(num7) * num6;
+    // Custom size (not a port): a non-square galaxy stretches the ring's y offset by SizeY / SizeX (the C# galaxy is square).
+    if (galaxy.sizeX !== galaxy.sizeY) num9 *= galaxy.sizeY / galaxy.sizeX;
     if (rnd.next(0, 2) === 1) num8 *= -1.0;
     if (rnd.next(0, 2) === 1) num9 *= -1.0;
     return { x: num + num8, y: num2 + num9 };
@@ -516,7 +518,7 @@ function proximityDistance(galaxy: Galaxy, s: string): { distance: number; secto
         num3 = 1.0;
     } else if (s === 'Same System') {
         num2 = 0.0;
-        num3 = (galaxy.sizeX / 20000000.0) * 0.0024;
+        num3 = (galaxy.sizeScale / 20000000.0) * 0.0024; // C# SizeX; sizeScale = SizeX when square
     } else if (s === 'Nearby') {
         num2 = 0.03;
         num3 = 0.11;
@@ -538,8 +540,9 @@ function proximityDistance(galaxy: Galaxy, s: string): { distance: number; secto
             if (!Number.isNaN(row)) sector = { x: col, y: row - 1 };
         }
     }
-    const num5 = galaxy.sizeX * (num3 - num2);
-    const num6 = galaxy.sizeX * num2;
+    // C# SizeX; sizeScale = SizeX when square (custom size, not a port).
+    const num5 = galaxy.sizeScale * (num3 - num2);
+    const num6 = galaxy.sizeScale * num2;
     return { distance: num6 + num5 * galaxy.rnd.nextDouble(), sector };
 }
 
@@ -567,7 +570,7 @@ function findAiCapital(
     let flag = false;
     const sectorSize = galaxy.sectorSize;
     if (proximity === RANDOM) {
-        const num = 0.75 * (galaxy.sizeX / (Math.sqrt(empireCount) - 1.0));
+        const num = 0.75 * (galaxy.sizeScale / (Math.sqrt(empireCount) - 1.0)); // C# SizeX; sizeScale = SizeX when square
         let num2 = 0;
         while (!flag && num2 < 200) {
             const factor = Math.min(1.0, num2 / 100.0);
@@ -1301,7 +1304,7 @@ export function* createGameSteps(opts: CreateGameOptions): Generator<GameStartPr
         const capital = empireList[m].capital!;
         list10.push([galaxy.determineHabitatSystemStar(capital)]);
         const num22 = num16 > 0 ? list5[m] / num16 : 0;
-        list9.push(1400000000.0 / galaxy.starCount + num22 * 1.0 * galaxy.sizeX);
+        list9.push(1400000000.0 / galaxy.starCount + num22 * 1.0 * galaxy.sizeScale); // C# SizeX; sizeScale = SizeX when square
     }
     galaxy.empireTerritory.reviewEmpireTerritory(galaxy);
     for (let n = 0; n < list8.length; n++) {

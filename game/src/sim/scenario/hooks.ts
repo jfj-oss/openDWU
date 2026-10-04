@@ -624,6 +624,8 @@ export function scenarioAcceptStarPosition(galaxy: Galaxy, x: number, y: number)
 export function radiusFraction(galaxy: Galaxy, x: number, y: number): number {
     const cx = galaxy.sizeX / 2.0;
     const cy = galaxy.sizeY / 2.0;
+    // Non-square custom size: the fraction of the inscribed ellipse (randomPointInRing stretches y by SizeY / SizeX).
+    if (galaxy.sizeX !== galaxy.sizeY) return Math.hypot((x - cx) / cx, (y - cy) / cy);
     return Math.sqrt((x - cx) * (x - cx) + (y - cy) * (y - cy)) / cx;
 }
 

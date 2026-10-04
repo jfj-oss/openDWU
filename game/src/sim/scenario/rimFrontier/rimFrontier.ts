@@ -131,7 +131,7 @@ function ringPoint(galaxy: Galaxy, rnd: Random, fMin: number, fMax: number): { x
     const cy = galaxy.sizeY / 2.0;
     const f = fMin + rnd.nextDouble() * (fMax - fMin);
     const a = rnd.nextDouble() * Math.PI * 2.0;
-    return { x: cx + Math.cos(a) * f * cx, y: cy + Math.sin(a) * f * cx };
+    return { x: cx + Math.cos(a) * f * cx, y: cy + Math.sin(a) * f * cy }; // cy = cx when square
 }
 
 function insideGalaxy(galaxy: Galaxy, x: number, y: number, w: number): boolean {
@@ -157,8 +157,8 @@ function frontierAfterNebulae(galaxy: Galaxy): void {
         }
         // Plus new storm clouds in the belt (3 per sector column at density 1), sized like scattered clouds.
         const count = Math.round(density * 3 * galaxy.sectorWidth);
-        const minSize = Math.trunc(galaxy.sizeX / 35);
-        const maxSize = Math.trunc(galaxy.sizeX / 15);
+        const minSize = Math.trunc(galaxy.sizeScale / 35);
+        const maxSize = Math.trunc(galaxy.sizeScale / 15);
         for (let i = 0, tries = 0; i < count && tries < count * 10; tries++) {
             const p = ringPoint(galaxy, rnd, inner, 0.98);
             const size = rnd.next(minSize, maxSize);
@@ -174,7 +174,7 @@ function frontierAfterNebulae(galaxy: Galaxy): void {
         }
     }
     const shoals = Math.trunc(frontierParam(galaxy, 'rimFrontierShoalCount'));
-    const diameter = Math.trunc(galaxy.sizeX * SHOAL_DIAMETER_FRACTION);
+    const diameter = Math.trunc(galaxy.sizeScale * SHOAL_DIAMETER_FRACTION);
     for (let i = 0, tries = 0; i < shoals && tries < shoals * 20; tries++) {
         const p = ringPoint(galaxy, rnd, SHOAL_MIN_RADIUS, SHOAL_MAX_RADIUS);
         const x = p.x - diameter / 2;

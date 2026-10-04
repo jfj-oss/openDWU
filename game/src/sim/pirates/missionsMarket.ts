@@ -1178,7 +1178,7 @@ export function piratesMakeAttackOffers(galaxy: Galaxy, empire: Empire, starDate
 export function pirateCheckAcceptDefendMission(galaxy: Galaxy, empire: Empire, defendMission: EmpireActivity | null, pirateEmpireStrength: number): boolean {
     const baseHabitat = empire.pirateEmpireBaseHabitat;
     if (baseHabitat === null || defendMission === null || defendMission.requestingEmpire === null || defendMission.target === null || !(empireShipGroups(empire).length > 0) || !determineOfferPirateDefendMissionToPirateFaction(galaxy, defendMission.requestingEmpire, empire)) return false;
-    let num = Math.max(galaxy.sectorSize * 2.0, galaxy.sizeX * 0.2);
+    let num = Math.max(galaxy.sectorSize * 2.0, galaxy.sizeScale * 0.2); // C# SizeX; sizeScale = SizeX when square
     if (empire.piratePlayStyle === PiratePlayStyle.Mercenary) num *= 1.5;
     if (targetEmpireOf(defendMission.target) === empire) return false;
     let pirateRelation: PirateRelation | null = null;
@@ -1204,7 +1204,7 @@ export function pirateCheckAcceptDefendMission(galaxy: Galaxy, empire: Empire, d
 export function pirateCheckAcceptAttackMission(galaxy: Galaxy, empire: Empire, attackMission: EmpireActivity | null, pirateEmpireStrength: number): boolean {
     const baseHabitat = empire.pirateEmpireBaseHabitat;
     if (baseHabitat === null || attackMission === null || attackMission.target === null || !(empireShipGroups(empire).length > 0)) return false;
-    let num = Math.max(galaxy.sectorSize * 3.0, galaxy.sizeX * 0.3);
+    let num = Math.max(galaxy.sectorSize * 3.0, galaxy.sizeScale * 0.3); // C# SizeX; sizeScale = SizeX when square
     if (empire.piratePlayStyle === PiratePlayStyle.Mercenary) num *= 1.5;
     let targetEmpire = targetEmpireOf(attackMission.target);
     if (attackMission.target instanceof BuiltObject) targetEmpire = attackMission.target.actualEmpire;

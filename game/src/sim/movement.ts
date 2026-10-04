@@ -1725,6 +1725,10 @@ export function fastFindNearestRefuellingPoint(
             col = l;
             num6 = e.d;
         } else {
+            const prevL = l;
+            const prevR = r;
+            const prevT = t;
+            const prevB = b;
             if (e.nx === -1) {
                 l--;
                 if (l < 0) {
@@ -1761,12 +1765,18 @@ export function fastFindNearestRefuellingPoint(
             }
             e = closestIndexEdges(galaxy, ix, iy, l, r, t, b);
             num6 = e.d;
+            // Custom size (not a port): skip the C#'s re-scan of an already spanned short axis on a non-square galaxy
+            // (see Galaxy.ringSearch); square galaxies keep the C# visits.
+            if (indexMaxX !== indexMaxY) {
+                if (l === prevL && r === prevR) col = -1;
+                if (t === prevT && b === prevB) row = -1;
+            }
         }
         // BuildIndexListForSearching: the row cells, then the column cells (without the row's).
         for (let i = l; i <= r; i++) visit(i, row);
         for (let j = t; j <= b; j++) if (j !== row) visit(col, j);
         num5++;
-        if (num5 > indexMaxX) break;
+        if (num5 > galaxy.ringSearchMaxSteps) break; // C# IndexMaxX (square); the longer axis when W != H
     }
     return stellarObject;
 }

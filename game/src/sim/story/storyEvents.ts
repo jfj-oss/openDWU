@@ -151,8 +151,11 @@ export function findNearestGalaxyEdgeCoords(galaxy: Galaxy, x: number, y: number
     const hy = Math.trunc(galaxy.sizeY / 2);
     const num = determineAngle(x, y, hx, hy);
     const num2 = galaxy.calculateDistance(x, y, hx, hy);
-    const num3 = hx - num2;
     const num4 = num - Math.PI;
+    // Custom size (not a port): a non-square galaxy's rim is the inscribed ellipse, so the rim radius along num4 is the
+    // ellipse's (the C# circle of radius SizeX / 2 when square).
+    const rim = hx === hy ? hx : (hx * hy) / Math.hypot(hy * Math.cos(num4), hx * Math.sin(num4));
+    const num3 = rim - num2;
     const num5 = x + Math.cos(num4) * num3;
     const num6 = y + Math.sin(num4) * num3;
     let val = Math.trunc(num5);

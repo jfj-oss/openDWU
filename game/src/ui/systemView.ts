@@ -587,9 +587,10 @@ export function drawRegionView(ctx: CanvasRenderingContext2D, p: RegionViewParam
     }
     let gx0 = 0;
     let gx1 = W;
-    // The C# tests the column bound against SectorMaxY too (num8 >= Galaxy.SectorMaxY - 1); kept.
+    // The C# tests the column bound against SectorMaxY too (num8 >= Galaxy.SectorMaxY - 1; the same on its square
+    // galaxy). Custom size (not a port): a non-square galaxy needs the column count, SectorMaxX.
     if (s7 <= 1) gx0 = Math.trunc((s7 * SS - i7) / num);
-    if (s8 >= galaxy.sectorHeight - 1) {
+    if (s8 >= galaxy.sectorWidth - 1) {
         gx1 = Math.trunc(((s8 + 1) * SS - i7) / num);
         flag = true;
     }

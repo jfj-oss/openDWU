@@ -921,7 +921,7 @@ function createGalacticHistory(opts: GalacticHistoryOptions): OpenState {
             msgText.scrollTop = 0;
         }
         gotoBtn.disabled = row === null || row.loc === null;
-        const p = historyMapPoint(galaxy.sizeX, MAP.size, row?.loc ?? null);
+        const p = historyMapPoint(Math.max(galaxy.sizeX, galaxy.sizeY), MAP.size, row?.loc ?? null);
         if (p?.x !== mapPoint?.x || p?.y !== mapPoint?.y || !mapDrawn) {
             mapPoint = p;
             mapDrawn = true;
@@ -1216,7 +1216,7 @@ function createGalacticHistory(opts: GalacticHistoryOptions): OpenState {
         setText(batText, cur !== null ? battleReportSummary(cur) : '');
         batOpen.disabled = cur === null;
         batGoto.disabled = cur === null;
-        batPoint = historyMapPoint(galaxy.sizeX, MAP.size, cur !== null ? { x: cur.x, y: cur.y } : null);
+        batPoint = historyMapPoint(Math.max(galaxy.sizeX, galaxy.sizeY), MAP.size, cur !== null ? { x: cur.x, y: cur.y } : null);
         drawBattleMap();
     }
     function renderBattles(): void {

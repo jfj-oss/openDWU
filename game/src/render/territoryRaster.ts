@@ -439,7 +439,7 @@ export function getTerritoryCanvas(galaxy: Galaxy, viewer: Empire | null, colorO
 export function drawTerritoryOnMap(ctx: CanvasRenderingContext2D, galaxy: Galaxy, viewer: Empire | null, colorOf: (owner: number) => number, mapW: number, alpha = 0.4): void {
     const t = getTerritoryCanvas(galaxy, viewer, colorOf);
     if (t === null) return;
-    const k = mapW / galaxy.sizeX;
+    const k = mapW / Math.max(galaxy.sizeX, galaxy.sizeY); // galaxyMapScale: the longer side fits a square map
     ctx.save();
     ctx.globalAlpha = alpha;
     ctx.imageSmoothingEnabled = true;

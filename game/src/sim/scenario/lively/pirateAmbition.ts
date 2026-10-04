@@ -106,7 +106,7 @@ export function pickAmbitionTarget(galaxy: Galaxy, pirateEmpire: Empire): Habita
         }
     }
     if (best !== null) return best;
-    const radius = galaxy.sizeX * scenarioParam(galaxy, 'pirateAmbitionSeizeRadiusFraction', 0.25);
+    const radius = galaxy.sizeScale * scenarioParam(galaxy, 'pirateAmbitionSeizeRadiusFraction', 0.25);
     let weakest: Habitat | null = null;
     let weakestPop = Infinity;
     for (const h of galaxy.independentColonies) {

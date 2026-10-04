@@ -94,9 +94,10 @@ export function starDotSizes(mapWidthPx: number, hasSelection: boolean, starView
 }
 
 // GalaxyMap.cs Ignite: double_4 = Galaxy.SizeX / ClientRectangle.Width (world
-// units per map pixel; the same factor is used for y).
+// units per map pixel; the same factor is used for y). Custom size (not a port): the maps are square and the C# galaxy
+// is too; a non-square galaxy is fitted by its longer side (= SizeX when square), so the whole galaxy stays on the map.
 export function galaxyMapScale(galaxy: Galaxy, mapWidthPx: number): number {
-    return galaxy.sizeX / mapWidthPx;
+    return Math.max(galaxy.sizeX, galaxy.sizeY) / mapWidthPx;
 }
 
 /**
