@@ -141,6 +141,11 @@ If it finds none, a setup window asks for the folder: click
 files** opens it). Picking the Steam library or `steamapps` folder above it
 also works. The choice is remembered.
 
+No Steam install, but access to the private assets repo? Clone it in
+PowerShell with `git clone https://github.com/jfj-oss/dwu-assets.git
+$HOME\dwu-assets`, then pick that `dwu-assets` folder in the setup window.
+You don't need Node.js or npm for the app.
+
 To use another folder later, press **Ctrl+Shift+O** in the game and choose
 **Game Folder…** (the same menu has **Check for Updates…**).
 
@@ -272,8 +277,10 @@ first launch a setup window asks for the folder and explains the options:
   folder (Steam → right-click the game → Manage → Browse local files) to
   `~/Games/Distant Worlds Universe`, which is also found automatically, or
   anywhere else and pick it with **Choose Folder…**.
-- **The private assets repo** (if you have access): clone it and pick the
-  clone.
+- **The private assets repo** (if you have access): clone it in Terminal
+  with `git clone https://github.com/jfj-oss/dwu-assets.git ~/dwu-assets`,
+  then pick the `dwu-assets` folder in your home folder. You don't need
+  Node.js or npm for the app.
 
 To use another folder later: **Distant Worlds Universe** menu → **Game
 Folder…** (next to **Check for Updates…**).
@@ -392,9 +399,10 @@ If you use the assets repo, also run `git -C ~/dwu-assets pull`.
 [latest release](https://github.com/jfj-oss/openDWU/releases/latest) either
 
 - `openDWU-<version>-linux-x64.AppImage`: one file; make it executable and
-  run it:
+  run it from the folder you downloaded it to:
 
   ```bash
+  cd ~/Downloads
   chmod +x openDWU-*-linux-x64.AppImage
   ./openDWU-*-linux-x64.AppImage
   ```
@@ -414,6 +422,11 @@ the extra libraries listed in Steam's `libraryfolders.vdf`), plus
 the folder: click **Choose Folder…** and pick the folder containing
 `images` and `races.txt` (in Steam: right-click the game → Manage → Browse
 local files), or paste its path. The choice is remembered.
+
+No Steam install, but access to the private assets repo? Clone it with
+`git clone https://github.com/jfj-oss/dwu-assets.git ~/dwu-assets`, then pick
+`~/dwu-assets` in the setup window. You don't need Node.js or npm for the
+app.
 
 To use another folder later, press **Ctrl+Shift+O** in the game and choose
 **Game Folder…** (the same menu has **Check for Updates…**).
