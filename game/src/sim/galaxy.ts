@@ -69,6 +69,27 @@ import type { GalaxyScenario } from './scenario/state';
 import type { MessageOptions } from './messageRouting';
 import { scenarioAcceptStarPosition, scenarioAfterNebulae, scenarioResourceAllowed } from './scenario/hooks';
 import { DiplomaticRelationType, obtainDiplomaticRelation } from './diplomacy';
+import {
+    LandscapeImageCountBarrenRock,
+    LandscapeImageCountContinental,
+    LandscapeImageCountDesert,
+    LandscapeImageCountForest,
+    LandscapeImageCountFrozenGasGiant,
+    LandscapeImageCountGasGiant,
+    LandscapeImageCountIce,
+    LandscapeImageCountMarshySwamp,
+    LandscapeImageCountOcean,
+    LandscapeImageCountVolcanic,
+    LandscapeImageOffsetBarrenRock,
+    LandscapeImageOffsetContinental,
+    LandscapeImageOffsetDesert,
+    LandscapeImageOffsetFrozenGasGiant,
+    LandscapeImageOffsetGasGiant,
+    LandscapeImageOffsetIce,
+    LandscapeImageOffsetMarshySwamp,
+    LandscapeImageOffsetOcean,
+    LandscapeImageOffsetVolcanic,
+} from './galaxyImages';
 
 // Port of Galaxy.cs static fields (Galaxy.3.cs InitializeStatics sets
 // these): SectorSizeX = SectorSizeY = 2_000_000, IndexSize = 400_000.
@@ -2584,12 +2605,18 @@ export class Galaxy {
         return false;
     }
 
+    // Galaxy.6.cs 1956-2272 SelectXxxPlanet: each draws Rnd.Next(diameter range), then the picture
+    // (HabitatImageOffsetX + Rnd.Next(0, HabitatImageCountX)), then the landscape (GalaxyImages
+    // LandscapeImageOffsetX + Rnd.Next(0, LandscapeImageCountX), galaxyImages.ts) — one Rnd sample each.
+    // TODO(port): pictureRef keeps the port's placeholder (<hundreds> + Rnd.Next(0, 10), same draw) instead of the
+    // GalaxyImages.HabitatImageOffset*/Count* index; render/assets.ts pickFromFolder reads it modulo the folder's file
+    // count — Galaxy.6.cs SelectXxxPlanet / SelectHabitatPictures.
+
     // Port of Galaxy.6.cs SelectBarrenRockPlanet(diameter, out pictureRef, out landscapePictureRef)
     private selectBarrenRockPictures(): { pictureRef: number; landscapePictureRef: number } {
-        return { pictureRef: 100 + this.rnd.next(0, 10), landscapePictureRef: 200 + this.rnd.next(0, 10) };
+        return { pictureRef: 100 + this.rnd.next(0, 10), landscapePictureRef: LandscapeImageOffsetBarrenRock + this.rnd.next(0, LandscapeImageCountBarrenRock) };
     }
 
-    // Port of Galaxy.6.cs SelectBarrenRockPlanet(out type, out pictureRef, out diameter, out minOrbitDistance, out maxOrbitDistance, out landscapePictureRef)
     /** Galaxy.7.cs GenerateEmpire starting-colony switch (Volcanic/Desert/MarshySwamp/Continental/Ocean/Ice, default Desert). */
     selectPlanetOfType(type: HabitatType) {
         switch (type) {
@@ -2603,6 +2630,7 @@ export class Galaxy {
         }
     }
 
+    // Port of Galaxy.6.cs SelectBarrenRockPlanet(out type, out pictureRef, out diameter, out minOrbitDistance, out maxOrbitDistance, out landscapePictureRef)
     selectBarrenRockPlanet(): { type: HabitatType; diameter: number; minOrbitDistance: number; maxOrbitDistance: number; pictureRef: number; landscapePictureRef: number } {
         const diameter = this.rnd.next(80, 340);
         const minOrbitDistance = 2500;
@@ -2615,7 +2643,7 @@ export class Galaxy {
     private selectContinentalPlanet(): { type: HabitatType; diameter: number; minOrbitDistance: number; maxOrbitDistance: number; pictureRef: number; landscapePictureRef: number } {
         const diameter = this.rnd.next(200, 320);
         const pictureRef = 300 + this.rnd.next(0, 10);
-        const landscapePictureRef = 400 + this.rnd.next(0, 10);
+        const landscapePictureRef = LandscapeImageOffsetContinental + this.rnd.next(0, LandscapeImageCountContinental);
         return { type: HabitatType.Continental, diameter, minOrbitDistance: 5000, maxOrbitDistance: 10000, pictureRef, landscapePictureRef };
     }
 
@@ -2623,7 +2651,7 @@ export class Galaxy {
     private selectIcePlanet(): { type: HabitatType; diameter: number; minOrbitDistance: number; maxOrbitDistance: number; pictureRef: number; landscapePictureRef: number } {
         const diameter = this.rnd.next(180, 320);
         const pictureRef = 500 + this.rnd.next(0, 10);
-        const landscapePictureRef = 600 + this.rnd.next(0, 10);
+        const landscapePictureRef = LandscapeImageOffsetIce + this.rnd.next(0, LandscapeImageCountIce);
         return { type: HabitatType.Ice, diameter, minOrbitDistance: 18000, maxOrbitDistance: 23000, pictureRef, landscapePictureRef };
     }
 
@@ -2631,7 +2659,7 @@ export class Galaxy {
     private selectMarshySwampPlanet(): { type: HabitatType; diameter: number; minOrbitDistance: number; maxOrbitDistance: number; pictureRef: number; landscapePictureRef: number } {
         const diameter = this.rnd.next(200, 320);
         const pictureRef = 700 + this.rnd.next(0, 10);
-        const landscapePictureRef = 800 + this.rnd.next(0, 10);
+        const landscapePictureRef = LandscapeImageOffsetMarshySwamp + this.rnd.next(0, LandscapeImageCountMarshySwamp);
         return { type: HabitatType.MarshySwamp, diameter, minOrbitDistance: 5000, maxOrbitDistance: 9500, pictureRef, landscapePictureRef };
     }
 
@@ -2639,7 +2667,7 @@ export class Galaxy {
     private selectOceanPlanet(): { type: HabitatType; diameter: number; minOrbitDistance: number; maxOrbitDistance: number; pictureRef: number; landscapePictureRef: number } {
         const diameter = this.rnd.next(200, 320);
         const pictureRef = 900 + this.rnd.next(0, 10);
-        const landscapePictureRef = 1000 + this.rnd.next(0, 10);
+        const landscapePictureRef = LandscapeImageOffsetOcean + this.rnd.next(0, LandscapeImageCountOcean);
         return { type: HabitatType.Ocean, diameter, minOrbitDistance: 5000, maxOrbitDistance: 10000, pictureRef, landscapePictureRef };
     }
 
@@ -2647,7 +2675,7 @@ export class Galaxy {
     private selectDesertPlanet(): { type: HabitatType; diameter: number; minOrbitDistance: number; maxOrbitDistance: number; pictureRef: number; landscapePictureRef: number } {
         const diameter = this.rnd.next(180, 330);
         const pictureRef = 1100 + this.rnd.next(0, 10);
-        const landscapePictureRef = 1200 + this.rnd.next(0, 10);
+        const landscapePictureRef = LandscapeImageOffsetDesert + this.rnd.next(0, LandscapeImageCountDesert);
         return { type: HabitatType.Desert, diameter, minOrbitDistance: 3000, maxOrbitDistance: 10300, pictureRef, landscapePictureRef };
     }
 
@@ -2655,7 +2683,7 @@ export class Galaxy {
     private selectVolcanicPlanet(): { type: HabitatType; diameter: number; minOrbitDistance: number; maxOrbitDistance: number; pictureRef: number; landscapePictureRef: number } {
         const diameter = this.rnd.next(160, 330);
         const pictureRef = 1300 + this.rnd.next(0, 10);
-        const landscapePictureRef = 1400 + this.rnd.next(0, 10);
+        const landscapePictureRef = LandscapeImageOffsetVolcanic + this.rnd.next(0, LandscapeImageCountVolcanic);
         return { type: HabitatType.Volcanic, diameter, minOrbitDistance: 1250, maxOrbitDistance: 3500, pictureRef, landscapePictureRef };
     }
 
@@ -2663,7 +2691,7 @@ export class Galaxy {
     private selectGasGiantPlanet(): { type: HabitatType; diameter: number; minOrbitDistance: number; maxOrbitDistance: number; pictureRef: number; landscapePictureRef: number } {
         const diameter = this.rnd.next(550, 970);
         const pictureRef = 1500 + this.rnd.next(0, 10);
-        const landscapePictureRef = 1600 + this.rnd.next(0, 10);
+        const landscapePictureRef = LandscapeImageOffsetGasGiant + this.rnd.next(0, LandscapeImageCountGasGiant);
         return { type: HabitatType.GasGiant, diameter, minOrbitDistance: 12000, maxOrbitDistance: 17000, pictureRef, landscapePictureRef };
     }
 
@@ -2671,7 +2699,7 @@ export class Galaxy {
     private selectFrozenGasGiantPlanet(): { type: HabitatType; diameter: number; minOrbitDistance: number; maxOrbitDistance: number; pictureRef: number; landscapePictureRef: number } {
         const diameter = this.rnd.next(480, 680);
         const pictureRef = 1700 + this.rnd.next(0, 10);
-        const landscapePictureRef = 1800 + this.rnd.next(0, 10);
+        const landscapePictureRef = LandscapeImageOffsetFrozenGasGiant + this.rnd.next(0, LandscapeImageCountFrozenGasGiant);
         return { type: HabitatType.FrozenGasGiant, diameter, minOrbitDistance: 17500, maxOrbitDistance: 22000, pictureRef, landscapePictureRef };
     }
 
@@ -3094,19 +3122,19 @@ export class Galaxy {
             switch (habitat.type) {
                 case HabitatType.BarrenRock:
                     habitat.pictureRef = 2000 + this.rnd.next(0, 10);
-                    habitat.landscapePictureRef = 200 + this.rnd.next(0, 10);
+                    habitat.landscapePictureRef = LandscapeImageOffsetBarrenRock + this.rnd.next(0, LandscapeImageCountBarrenRock);
                     break;
                 case HabitatType.Ice:
                     habitat.pictureRef = 2100 + this.rnd.next(0, 10);
-                    habitat.landscapePictureRef = 200 + this.rnd.next(0, 10);
+                    habitat.landscapePictureRef = LandscapeImageOffsetBarrenRock + this.rnd.next(0, LandscapeImageCountBarrenRock);
                     break;
                 case HabitatType.Metal:
                     habitat.pictureRef = 2200 + this.rnd.next(0, 10);
-                    habitat.landscapePictureRef = 200 + this.rnd.next(0, 10);
+                    habitat.landscapePictureRef = LandscapeImageOffsetBarrenRock + this.rnd.next(0, LandscapeImageCountBarrenRock);
                     break;
                 default:
                     habitat.pictureRef = 2000 + this.rnd.next(0, 10);
-                    habitat.landscapePictureRef = 200 + this.rnd.next(0, 10);
+                    habitat.landscapePictureRef = LandscapeImageOffsetBarrenRock + this.rnd.next(0, LandscapeImageCountBarrenRock);
                     break;
             }
             return;
@@ -3114,18 +3142,19 @@ export class Galaxy {
         switch (habitat.type) {
             case HabitatType.BarrenRock:
                 habitat.pictureRef = 100 + this.rnd.next(0, 10);
-                habitat.landscapePictureRef = 200 + this.rnd.next(0, 10);
+                habitat.landscapePictureRef = LandscapeImageOffsetBarrenRock + this.rnd.next(0, LandscapeImageCountBarrenRock);
                 break;
             case HabitatType.Continental:
                 habitat.pictureRef = 300 + this.rnd.next(0, 10);
-                habitat.landscapePictureRef = 400 + this.rnd.next(0, 10);
+                // Galaxy.6.cs 2095: Continental + Forest — the forest landscape (index 8) follows the continental four.
+                habitat.landscapePictureRef = LandscapeImageOffsetContinental + this.rnd.next(0, LandscapeImageCountContinental + LandscapeImageCountForest);
                 break;
             case HabitatType.FrozenGasGiant:
                 // Port of Galaxy.6.cs SelectHabitatPictures FrozenGasGiant
                 // case (2097-2143). GalaxyImages constants: landscape
                 // 9+Next(0,2); pictures Argon 67/10, Helium 77/10, Krypton
                 // 87/11, Tyderios 98/13, Any 111/10.
-                habitat.landscapePictureRef = 9 + this.rnd.next(0, 2);
+                habitat.landscapePictureRef = LandscapeImageOffsetFrozenGasGiant + this.rnd.next(0, LandscapeImageCountFrozenGasGiant);
                 if (habitat.resources.length > 0) {
                     if (this.rnd.next(0, 5) === 1) {
                         habitat.pictureRef = 111 + this.rnd.next(0, 10);
@@ -3165,7 +3194,7 @@ export class Galaxy {
                 // (2144-2193). GalaxyImages constants: landscape 11+Next(0,6);
                 // pictures Argon 121/5, Caslon 126/5, Helium 131/8, Hydrogen
                 // 139/8, Krypton 147/5, Any 152/2.
-                habitat.landscapePictureRef = 11 + this.rnd.next(0, 6);
+                habitat.landscapePictureRef = LandscapeImageOffsetGasGiant + this.rnd.next(0, LandscapeImageCountGasGiant);
                 if (habitat.resources.length > 0) {
                     if (this.rnd.next(0, 5) === 1) {
                         habitat.pictureRef = 152 + this.rnd.next(0, 2);
@@ -3205,23 +3234,23 @@ export class Galaxy {
                 break;
             case HabitatType.Ice:
                 habitat.pictureRef = 500 + this.rnd.next(0, 10);
-                habitat.landscapePictureRef = 600 + this.rnd.next(0, 10);
+                habitat.landscapePictureRef = LandscapeImageOffsetIce + this.rnd.next(0, LandscapeImageCountIce);
                 break;
             case HabitatType.MarshySwamp:
                 habitat.pictureRef = 700 + this.rnd.next(0, 10);
-                habitat.landscapePictureRef = 800 + this.rnd.next(0, 10);
+                habitat.landscapePictureRef = LandscapeImageOffsetMarshySwamp + this.rnd.next(0, LandscapeImageCountMarshySwamp);
                 break;
             case HabitatType.Ocean:
                 habitat.pictureRef = 900 + this.rnd.next(0, 10);
-                habitat.landscapePictureRef = 1000 + this.rnd.next(0, 10);
+                habitat.landscapePictureRef = LandscapeImageOffsetOcean + this.rnd.next(0, LandscapeImageCountOcean);
                 break;
             case HabitatType.Desert:
                 habitat.pictureRef = 1100 + this.rnd.next(0, 10);
-                habitat.landscapePictureRef = 1200 + this.rnd.next(0, 10);
+                habitat.landscapePictureRef = LandscapeImageOffsetDesert + this.rnd.next(0, LandscapeImageCountDesert);
                 break;
             case HabitatType.Volcanic:
                 habitat.pictureRef = 1300 + this.rnd.next(0, 10);
-                habitat.landscapePictureRef = 1400 + this.rnd.next(0, 10);
+                habitat.landscapePictureRef = LandscapeImageOffsetVolcanic + this.rnd.next(0, LandscapeImageCountVolcanic);
                 break;
             // MainSequence/RedGiant/SuperGiant/WhiteDwarf/Neutron/BlackHole
             // (stars) and SuperNova aren't reachable here: SetupSolarSystem
@@ -3313,7 +3342,7 @@ export class Galaxy {
         }
         const habitat = new Habitat(HabitatCategoryType.Asteroid, HabitatType.Metal, 'Asteroid', sun, orbitAngle, orbitDirection, orbitDistance, orbitSpeed, doInitialMove);
         habitat.diameter = this.rnd.next(35, 50);
-        habitat.landscapePictureRef = 0 + this.rnd.next(0, 4);
+        habitat.landscapePictureRef = LandscapeImageOffsetBarrenRock + this.rnd.next(0, LandscapeImageCountBarrenRock);
         const abundance = this.rnd.next(800, 1000);
         if (byName2 === null) {
             // byName is non-null: the both-null case returned above.

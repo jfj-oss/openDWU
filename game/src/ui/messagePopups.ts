@@ -35,7 +35,7 @@ import { flagImage, raceImage } from './screens/diplomacyScreen';
 import { diplomacyBackgroundColor } from './screens/diplomacyRelationsView';
 import { empireFlagUrl } from './selectionInfoView';
 import { habitatImageUrl, shipImageUrl } from './selectionInfo';
-import { landscapeImageUrl } from './screens/intelligence';
+import { landscapeImageUrl } from './landscapeImages';
 import { characterPortraitUrl } from './characterPortrait';
 import { messageCardFlagEmpire, messageCardText, messageImageUrl, messagePicture, type MessagePicture } from './messagePicture';
 import { CARD, CARD_STRIP_H, EVENT, TALK, cardHeight, cardPosition, eventButtonRects, eventPanelLayout } from './messageWindowLayout';

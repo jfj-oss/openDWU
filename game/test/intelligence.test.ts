@@ -258,8 +258,10 @@ describe('pictures (CharacterImageCache.cs, CharacterSummary.cs)', () => {
         expect(characterPortraitUrl(agent)).toBe(`/assets/dwu/images/units/races/race_${a.dominantRace!.pictureIndex}.png`);
         expect(characterInTransitOrUnknown(agent)).toBe(false);
         const cap = a.capital!;
+        // The capital's own landscape (a GalaxyImages index: sim/galaxy.ts SelectXxxPlanet), not the space fallback.
         const land = landscapeImageUrl(cap.landscapePictureRef);
-        expect(characterBackdropUrl(agent)).toBe(land ?? '/assets/dwu/images/ui/chrome/storyEvent.jpg');
+        expect(land).not.toBeNull();
+        expect(characterBackdropUrl(agent)).toBe(land);
         agent.mission = newIntelligenceMissionAgainstEmpire(a, agent, T.StealGalaxyMap, galaxyCurrentStarDate(galaxy), b);
         expect(characterInTransitOrUnknown(agent)).toBe(true);
         expect(characterBackdropUrl(agent)).toBe('/assets/dwu/images/ui/chrome/storyEvent.jpg');

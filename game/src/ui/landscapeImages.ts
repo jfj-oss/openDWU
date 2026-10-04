@@ -1,63 +1,24 @@
 // Habitat.LandscapePictureRef → the landscape picture (Main.Part12.cs LoadEnvLandscapes, bitmap_29). Used by the
-// Intelligence screen, the message popups and the Galaxy Map (pnlGalaxyMapHabitatPicture).
+// Galaxy Map (pnlGalaxyMapHabitatPicture, Main.Part10.cs 1807 / Part11.cs 1967-2101), the Intelligence screen
+// (CharacterSummary, Galaxy.4.cs SelectCharacterLandscapeImageIndex) and the message popups (MessagePopup.cs 294-307,
+// Main.Part4.cs 681-1197). The sim stores the GalaxyImages index itself (sim/galaxy.ts SelectXxxPlanet /
+// SelectHabitatPictures, Galaxy.6.cs 1956-2272); saves from before the port are migrated on load
+// (sim/galaxyImages.ts migrateLegacyLandscapePictureRef), so the index is used as it is, as bitmap_29[ref].
+// LoadEnvLandscapes also appends images/environment/landscapes/other/*.png after the 30 fixed pictures; the shipped
+// game has no such folder and only the habitat editor (not ported) can pick one, so indices 30+ show nothing.
+// TODO(port): the race picture composite on a native-planet landscape, bitmap_29[LandscapeImageOffset<NativeType> +
+// race.PictureRef % LandscapeImageCount<NativeType>] — Main.Part11.cs method_119 / method_121 (Start screens' race images).
 
-/** Main.Part12.cs LoadEnvLandscapes: the landscape bitmaps in GalaxyImages LandscapeImageOffset order. */
-export const LANDSCAPE_FOLDERS: readonly [string, number][] = [
-    ['barrenrock', 4],
-    ['continental', 4],
-    ['forest', 1],
-    ['frozengasgiant', 2],
-    ['gasgiant', 6],
-    ['iceglacial', 3],
-    ['marshyswamp', 3],
-    ['ocean', 2],
-    ['sandydesert', 3],
-    ['volcanic', 2],
-];
+import { LANDSCAPE_IMAGE_FOLDERS } from '../sim/galaxyImages';
 
-/** Habitat.LandscapePictureRef → images/environment/landscapes/<type>/landscape_<i>.png; null when out of range. */
+/** Main.Part12.cs LoadEnvLandscapes: the landscape folders in bitmap_29 order, with their file counts. */
+export const LANDSCAPE_FOLDERS: readonly [string, number][] = LANDSCAPE_IMAGE_FOLDERS.map(({ folder, count }) => [folder, count]);
+
+/** Habitat.LandscapePictureRef → images/environment/landscapes/<type>/landscape_<i>.png; null when none / out of range. */
 export function landscapeImageUrl(ref: number): string | null {
     if (!Number.isInteger(ref) || ref < 0) return null;
-    let i = ref;
-    for (const [folder, count] of LANDSCAPE_FOLDERS) {
-        if (i < count) return `/assets/dwu/images/environment/landscapes/${folder}/landscape_${i}.png`;
-        i -= count;
+    for (const { folder, offset, count } of LANDSCAPE_IMAGE_FOLDERS) {
+        if (ref >= offset && ref < offset + count) return `/assets/dwu/images/environment/landscapes/${folder}/landscape_${ref - offset}.png`;
     }
     return null;
-}
-
-/** GalaxyImages.cs LandscapeImageOffset* / LandscapeImageCount* keyed by the placeholder hundreds the sim's planet
- * selectors store (sim/galaxy.ts SelectXxxPlanet: 200 + Rnd.Next(0, 10), 400 + …). */
-const PLACEHOLDER_LANDSCAPES: Readonly<Record<number, readonly [number, number]>> = {
-    200: [0, 4], // BarrenRock
-    400: [4, 4], // Continental
-    600: [17, 3], // Ice
-    800: [20, 3], // MarshySwamp
-    1000: [23, 2], // Ocean
-    1200: [25, 3], // Desert
-    1400: [28, 2], // Volcanic
-    1600: [11, 6], // GasGiant
-    1800: [9, 2], // FrozenGasGiant
-};
-
-/**
- * A habitat's LandscapePictureRef as a bitmap_29 index. Galaxy.6.cs 1969-2059 picks GalaxyImages
- * LandscapeImageOffsetX + Rnd.Next(0, LandscapeImageCountX); the sim's generation still stores a placeholder
- * (hundreds + Rnd.Next(0, 10)) for most planet types, so those map to the type's range here, the sample's tenth
- * scaled to the type's count (the original's Rnd.Next(0, count) of the same sample, to within a picture).
- * TODO(port): store the GalaxyImages index in sim/galaxy.ts SelectXxxPlanet (Galaxy.6.cs 1969-2059) — a sim change.
- */
-export function resolveLandscapeRef(ref: number): number {
-    if (!Number.isInteger(ref) || ref < 0) return -1;
-    if (ref < 30) return ref;
-    const base = Math.trunc(ref / 100) * 100;
-    const r = PLACEHOLDER_LANDSCAPES[base];
-    if (r === undefined) return -1;
-    const tenth = (ref - base) % 10;
-    return r[0] + Math.min(r[1] - 1, Math.trunc(((tenth + 0.5) * r[1]) / 10));
-}
-
-/** The landscape picture of a LandscapePictureRef, placeholder refs included (resolveLandscapeRef). */
-export function habitatLandscapeImageUrl(ref: number): string | null {
-    return landscapeImageUrl(resolveLandscapeRef(ref));
 }
