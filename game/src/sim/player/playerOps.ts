@@ -68,7 +68,7 @@ import { autoUpgradeDesigns, loadDesignFile } from './designTools';
 import { isPlayerMadeDesign, markPlayerDesignSubRole, setDesignLineUpgrade } from './designLineUpgrade'; // [improvements]
 import { executeShipOrderKey, type ShipOrderKeyAction } from './shipHotkeys';
 import { setControlGroup, type ControlGroupObject } from './controlGroups';
-import { addWaypoint, deleteWaypoint, renameWaypoint } from './waypoints';
+import { addWaypoint, deleteWaypoint, dismissMarker, renameWaypoint } from './waypoints';
 import { initiateCrashResearchProgram } from '../researchTick';
 import type { EmpireMessage } from '../messages';
 import { approveSuggestion, declineSuggestion } from './advisorSuggestions';
@@ -220,6 +220,8 @@ export const PLAYER_OPS = {
     addWaypoint: (galaxy: Galaxy, empire: Empire, x: number, y: number, name: string) => addWaypoint(galaxy, empire, x, y, name),
     renameWaypoint: (galaxy: Galaxy, empire: Empire, id: number, name: string) => renameWaypoint(galaxy, empire, id, name),
     deleteWaypoint: (galaxy: Galaxy, empire: Empire, id: number) => deleteWaypoint(galaxy, empire, id),
+    /** Hide / restore a hint or known-location marker on our overlay (player/waypoints.ts dismissMarker; side table only). */
+    dismissMarker: (galaxy: Galaxy, empire: Empire, key: string, dismiss: boolean) => dismissMarker(galaxy, empire, key, dismiss),
 
     // --- Automation ---
     /** GenerateAutomationMessageBox "Turn off automation". */

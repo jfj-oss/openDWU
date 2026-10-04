@@ -66,8 +66,9 @@ export function installWaypointUi(d: WaypointUiDeps): () => void {
         (window as unknown as { __dwuWaypoints?: unknown }).__dwuWaypoints = {
             add: (x: number, y: number, name: string) => issueAdd(x, y, name),
             list: () => waypoints(d.galaxy, d.empire).map((w) => ({ ...w })),
-            known: () => knownLocations(d.galaxy, d.empire, fogOf(d.galaxy).reveal).map((k) => ({ kind: k.kind, name: k.name, x: k.x, y: k.y })),
+            known: () => knownLocations(d.galaxy, d.empire, fogOf(d.galaxy).reveal).map((k) => ({ kind: k.kind, key: k.key, name: k.name, x: k.x, y: k.y })),
             openList: () => openWaypointsList(),
+            dismiss: (key: string, v = true) => issuePlayerCommand(d.galaxy, d.empire, 'dismissMarker', [key, v], () => changed()),
         };
     }
     return () => {
@@ -172,13 +173,43 @@ export function toggleWaypointsOverlay(): void {
 // ---------------------------------------------------------------------------------------------------------------
 
 function menuItem(label: string, hint: string | null = null): OrderMenuItem {
-    return { key: label, label, hint, enabled: true, action: null, children: [], separator: false };
+    return { key: label, label, hint, enabled: true, action: null, children: [], separator: false, custom: true };
 }
 
 /** The waypoint marker under screen (sx, sy) of the main view (the overlay shown), or null. */
 export function waypointAtScreen(sx: number, sy: number): Waypoint | null {
     if (deps === null || !waypointsEnabled()) return null;
     return deps.view.markerAt(sx, sy)?.waypoint ?? null;
+}
+
+/** The menu entries for the marker under screen (sx, sy): a waypoint's, or "Dismiss marker" for a hint / known location. */
+export function markerMenuAtScreen(sx: number, sy: number): { items: OrderMenuItem[]; pick(item: OrderMenuItem): boolean } | null {
+    if (deps === null || !waypointsEnabled()) return null;
+    const m = deps.view.markerAt(sx, sy);
+    if (m === null) return null;
+    if (m.waypoint !== null) return waypointMenu(m.waypoint);
+    if (m.known === null) return null;
+    const k = m.known;
+    const item = menuItem(`Dismiss marker "${k.name}"`, 'Hide it from the map (restore it in the Waypoints list)');
+    return {
+        items: [item],
+        pick: (it) => {
+            if (it !== item) return false;
+            setDismissed(k, true);
+            return true;
+        },
+    };
+}
+
+/** Dismiss / restore a hint or known-location marker (journaled dismissMarker; our overlay only). */
+export function setDismissed(k: KnownLocation, dismiss: boolean): void {
+    if (deps === null) return;
+    issuePlayerCommand(deps.galaxy, deps.empire, 'dismissMarker', [k.key, dismiss], (ok) => {
+        if (ok) {
+            changed();
+            showToast(`${dismiss ? 'Marker dismissed' : 'Marker restored'}: ${k.name}`);
+        }
+    });
 }
 
 /** A waypoint's own menu entries (Rename… / Delete) and what picking one does. */
@@ -361,8 +392,8 @@ export function toggleWaypointsList(): void {
 }
 
 /** The rows the list shows (pure; tests): the player's waypoints, then the known locations. */
-export function waypointListRows(galaxy: Galaxy, empire: Empire, reveal = false): { waypoints: Waypoint[]; known: KnownLocation[] } {
-    return { waypoints: [...waypoints(galaxy, empire)], known: knownLocations(galaxy, empire, reveal) };
+export function waypointListRows(galaxy: Galaxy, empire: Empire, reveal = false, showDismissed = false): { waypoints: Waypoint[]; known: KnownLocation[] } {
+    return { waypoints: [...waypoints(galaxy, empire)], known: knownLocations(galaxy, empire, reveal, showDismissed) };
 }
 
 export function openWaypointsList(): void {
@@ -383,7 +414,14 @@ export function openWaypointsList(): void {
     close.addEventListener('click', () => closeWaypointsList());
     const body = document.createElement('div');
     body.className = 'waypoints-body';
-    root.append(head, close, body);
+    const dlbl = document.createElement('label');
+    dlbl.className = 'waypoints-dismissed-toggle';
+    const dbox = document.createElement('input');
+    dbox.type = 'checkbox';
+    dbox.dataset.option = 'showDismissed';
+    dbox.addEventListener('change', () => render(true));
+    dlbl.append(dbox, document.createTextNode(' Show dismissed'));
+    root.append(head, close, dlbl, body);
     document.body.appendChild(root);
     listEl = root;
     let sig = '';
@@ -400,8 +438,8 @@ export function openWaypointsList(): void {
         return b;
     };
     const render = (force = false): void => {
-        const rows = waypointListRows(d.galaxy, d.empire, fogOf(d.galaxy).reveal);
-        const s = rows.waypoints.map((w) => `${w.id}:${w.name}`).join(';') + '|' + rows.known.map((k) => k.key + k.name).join(';');
+        const rows = waypointListRows(d.galaxy, d.empire, fogOf(d.galaxy).reveal, dbox.checked);
+        const s = rows.waypoints.map((w) => `${w.id}:${w.name}`).join(';') + '|' + rows.known.map((k) => k.key + k.name + (k.dismissed === true ? '!' : '')).join(';');
         if (!force && s === sig) return;
         sig = s;
         body.replaceChildren();
@@ -440,6 +478,8 @@ export function openWaypointsList(): void {
         for (const k of rows.known) {
             const row = document.createElement('div');
             row.className = 'waypoints-row';
+            row.dataset.marker = k.key;
+            if (k.dismissed === true) row.classList.add('waypoints-row-dismissed');
             const name = document.createElement('span');
             name.className = `waypoints-name waypoints-name-${k.kind}`;
             name.textContent = k.kind === 'hint' ? `? ${k.name}` : k.name;
@@ -449,6 +489,8 @@ export function openWaypointsList(): void {
             kind.className = 'waypoints-kind';
             kind.textContent = k.typeLabel;
             row.append(name, kind, btn('Go to', 'Centre the map on it', () => goToLocation(k.x, k.y)));
+            if (k.dismissed === true) row.append(btn('Restore', 'Show its marker on the map again', () => setDismissed(k, false)));
+            else row.append(btn('Dismiss', 'Hide its marker from the map', () => setDismissed(k, true)));
             body.appendChild(row);
         }
     };

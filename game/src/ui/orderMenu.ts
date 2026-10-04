@@ -4,7 +4,7 @@
 // (src/sim/player/orderMenu.ts) returns; this file only draws it and reports the picked entry.
 // Also the small automation confirm dialog (GenerateAutomationMessageBox) used after an order.
 import './orderMenu.css';
-import { addWaypointMenu, waypointAtScreen, waypointMenu } from './waypoints'; // [waypoints]
+import { addWaypointMenu, markerMenuAtScreen } from './waypoints'; // [waypoints]
 import type { Galaxy } from '../sim/galaxy';
 import type { Empire } from '../sim/empire';
 import type { GalaxyTime } from '../sim/galaxyTime';
@@ -122,7 +122,7 @@ export function openOrderMenu(items: OrderMenuItem[], clientX: number, clientY: 
                     focusFirst(level + 1);
                     return;
                 }
-                if (item.action === null && item.select === undefined) return;
+                if (item.action === null && item.select === undefined && item.custom !== true) return;
                 const h = state.handlers;
                 closeOrderMenu();
                 h.onPick(item, shift);
@@ -360,9 +360,8 @@ export function installOrderUi(d: OrderUiDeps, view: OrderMainView, camera: Orde
         const keys = { ctrl: e.ctrlKey, alt: e.altKey };
         // [waypoints] begin — a right-click on one of the player's waypoint markers: Rename… / Delete on top of the full
         // action menu (the default order is not given on that click, as for a debris field below).
-        const wp = waypointAtScreen(sx, sy);
-        if (wp !== null) {
-            const own = waypointMenu(wp);
+        const own = markerMenuAtScreen(sx, sy); // a waypoint (Rename / Delete) or a hint / known location (Dismiss marker)
+        if (own !== null) {
             issuePlayerCommand(galaxy, empire, 'actionMenu', [selected, x, y, view.zoomFactor, target, hover.action, true], (menu) => {
                 if (!current()) return;
                 const rest = menu ?? [];

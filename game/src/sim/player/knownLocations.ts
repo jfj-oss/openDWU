@@ -29,12 +29,15 @@ import { GalaxyLocationType, type GalaxyLocation } from '../galaxyLocation';
 import { MAX_SOLAR_SYSTEM_SIZE } from '../visibility';
 import { generateLocationDescription } from '../galaxyReports';
 import { resolveStarDateDescription } from '../galaxyTime';
+import { isMarkerDismissed } from './waypoints';
 import { EmpireMessageType, type EmpireMessage } from '../messages';
 
 export type KnownLocationKind = 'hint' | 'location';
 
 export interface KnownLocation {
     kind: KnownLocationKind;
+    /** Dismissed by the player (hidden from the overlay; listed only with includeDismissed). */
+    dismissed?: boolean;
     /** Stable while the location is listed: `h:<x>,<y>` / `l:<GalaxyLocation index>`. */
     key: string;
     /** Galaxy coordinates of the marker (a hint's point; a location's centre). */
@@ -130,7 +133,7 @@ function markedLocations(galaxy: Galaxy, empire: Empire, reveal: boolean): Galax
  * Every location the player knows of: the point-like known GalaxyLocations, then the location hints (a hint at — within
  * MaxSolarSystemSize of the centre of — a listed location points at it). `reveal` lists every location (GodMode).
  */
-export function knownLocations(galaxy: Galaxy, empire: Empire | null, reveal = false): KnownLocation[] {
+export function knownLocations(galaxy: Galaxy, empire: Empire | null, reveal = false, includeDismissed = false): KnownLocation[] {
     if (empire === null) return [];
     const out: KnownLocation[] = [];
     const locs = markedLocations(galaxy, empire, reveal);
@@ -138,8 +141,11 @@ export function knownLocations(galaxy: Galaxy, empire: Empire | null, reveal = f
     for (const l of locs) {
         const c = l.resolveLocationCenter();
         const typeLabel = galaxyLocationTypeLabel(l.type);
-        out.push({ kind: 'location', key: `l:${index.get(l) ?? -1}`, x: c.x, y: c.y, name: l.name !== '' && l.name != null ? l.name : typeLabel, typeLabel, location: l });
+        const key = `l:${index.get(l) ?? -1}`;
+        const dismissed = isMarkerDismissed(galaxy, key);
+        out.push({ kind: 'location', key, dismissed, x: c.x, y: c.y, name: l.name !== '' && l.name != null ? l.name : typeLabel, typeLabel, location: l });
     }
+    // Dismissed locations stay in `listed` (a hint at one still points at it); they are dropped on return.
     const listed = out.slice();
     const r2 = MAX_SOLAR_SYSTEM_SIZE * MAX_SOLAR_SYSTEM_SIZE;
     for (const p of empire.locationHints ?? []) {
@@ -153,9 +159,13 @@ export function knownLocations(galaxy: Galaxy, empire: Empire | null, reveal = f
                 break;
             }
         }
+        const key = `h:${p.x},${p.y}`;
+        const dismissed = isMarkerDismissed(galaxy, key);
+        if (dismissed && !includeDismissed) continue;
         out.push({
             kind: 'hint',
-            key: `h:${p.x},${p.y}`,
+            key,
+            dismissed,
             x: p.x,
             y: p.y,
             name: at !== null ? at.name : hintPlaceName(galaxy, p.x, p.y),
@@ -163,7 +173,7 @@ export function knownLocations(galaxy: Galaxy, empire: Empire | null, reveal = f
             location: at?.location ?? null,
         });
     }
-    return out;
+    return includeDismissed ? out : out.filter((k) => k.dismissed !== true);
 }
 
 /** A cheap change key for the player's hints and known locations (counts and end points; read every few frames). */
@@ -243,5 +253,6 @@ export function knownLocationTooltip(galaxy: Galaxy, empire: Empire | null, loc:
     else if (loc.kind === 'hint') lines.push('From: a location you were told of (a diplomatic exchange, information bought from pirates, a story clue or an investigation)');
     else lines.push('From: found by your ships, or shared through diplomacy or pirate information');
     if (loc.kind === 'hint') lines.push('Cleared when one of your ships gets there.');
+    lines.push('Right-click: dismiss this marker (restore it in the Waypoints list).');
     return lines.join('\n');
 }

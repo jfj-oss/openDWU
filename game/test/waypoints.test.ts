@@ -16,6 +16,7 @@ import {
     addWaypoint,
     defaultWaypointName,
     deleteWaypoint,
+    dismissMarker,
     renameWaypoint,
     sanitizeWaypointName,
     waypointState,
@@ -266,4 +267,57 @@ describe('waypoint keys and the overlay row', () => {
         expect(st.waypoints).toBe(true);
         expect(overlayActive(st, 'waypoints')).toBe(true);
     });
+});
+
+describe('waypoints: dismissed hint / known-location markers', () => {
+    it('hidden from markers and the list, restorable, saved, journaled, replayed; the original hints untouched; no digest effect', () => {
+        const game = cachedTickGame(gameData);
+        const g = game.galaxy;
+        const p = game.playerEmpire;
+        const side = inThread(game);
+        addLocationHint(p, { x: 3000, y: 4000 });
+        addLocationHint(p, { x: 9000, y: 1000 });
+        const hintsBefore = JSON.stringify(p.locationHints);
+        const before = JSON.stringify(galaxyToJSON(g));
+        expect(before).not.toContain('"dismissed"');
+        const digest = stateDigest(g);
+        const draws = g.rnd.drawCount;
+        // The op itself changes neither the digest nor the Rnd (checked before any tick runs).
+        expect(dismissMarker(g, p, 'h:1,1', true)).toBe(true);
+        expect(stateDigest(g)).toBe(digest);
+        expect(g.rnd.drawCount).toBe(draws);
+        expect(dismissMarker(g, p, 'h:1,1', false)).toBe(true);
+        const hints = () => mapMarkers(g, p, true, true).filter((m) => m.key.startsWith('h:'));
+        const n = hints().length;
+        expect(n).toBeGreaterThanOrEqual(1);
+        side.tick();
+        issuePlayerCommand(g, p, 'dismissMarker', ['h:3000,4000', true]);
+        issuePlayerCommand(g, p, 'dismissMarker', ['bogus', true]);
+        side.tick();
+        side.tick();
+        expect(hints().map((m) => m.key)).not.toContain('h:3000,4000');
+        expect(hints()).toHaveLength(n - 1); expect(p.locationHints.length).toBeGreaterThanOrEqual(1);
+        expect(knownLocations(g, p).some((k) => k.key === 'h:3000,4000')).toBe(false);
+        expect(knownLocations(g, p, false, true).find((k) => k.key === 'h:3000,4000')?.dismissed).toBe(true);
+        expect(JSON.stringify(p.locationHints)).toBe(hintsBefore);
+        // Saved with the game (table written although no waypoint exists).
+        const loaded = galaxyFromJSON(JSON.parse(JSON.stringify(galaxyToJSON(g))), gameData);
+        expect(waypointState(loaded)?.dismissed).toEqual(['h:3000,4000']);
+        // Journaled and replayed.
+        const ops = commandLog(g).filter((e) => e.source === 'player').map((e) => (e.source === 'player' ? e.op : null));
+        expect(ops.filter((o) => o === 'dismissMarker')).toHaveLength(2);
+        const fresh = cachedTickGame(gameData);
+        addLocationHint(fresh.playerEmpire, { x: 3000, y: 4000 });
+        addLocationHint(fresh.playerEmpire, { x: 9000, y: 1000 });
+        scheduleCommandLog(fresh.galaxy, commandLog(g));
+        runScheduledUntil(fresh.galaxy, g.nowMs);
+        expect(waypointState(fresh.galaxy)?.dismissed).toEqual(['h:3000,4000']);
+        // Restore: back on the map, and the save is as before.
+        issuePlayerCommand(g, p, 'dismissMarker', ['h:3000,4000', false]);
+        side.tick();
+        side.tick();
+        expect(hints()).toHaveLength(n);
+        expect(JSON.stringify(galaxyToJSON(g))).not.toContain('"dismissed"'); // nothing dismissed: nothing written
+        side.dispose();
+    }, 600000);
 });

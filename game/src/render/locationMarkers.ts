@@ -21,7 +21,7 @@ import { Container, Graphics, Text } from 'pixi.js';
 import type { Camera } from './camera';
 import type { Galaxy } from '../sim/galaxy';
 import type { Empire } from '../sim/empire';
-import { waypointState, type Waypoint } from '../sim/player/waypoints';
+import { isMarkerDismissed, waypointState, type Waypoint } from '../sim/player/waypoints';
 import { knownLocationTooltip, knownLocations, knownLocationsSignature, type KnownLocation } from '../sim/player/knownLocations';
 import type { GalaxyLocation } from '../sim/galaxyLocation';
 import { resolveStarDateDescription } from '../sim/galaxyTime';
@@ -122,7 +122,7 @@ export function markerTooltip(galaxy: Galaxy, player: Empire | null, m: MapMarke
 function markerSignature(galaxy: Galaxy, player: Empire | null, showWaypoints: boolean, showKnown: boolean, reveal: boolean): string {
     let s = `${showWaypoints ? 1 : 0}${showKnown ? 1 : 0}|`;
     if (showWaypoints) for (const w of waypointState(galaxy)?.list ?? []) s += `${w.id}:${w.x},${w.y}:${w.empireId}:${w.name};`;
-    if (showKnown) s += `|${knownLocationsSignature(player, reveal)}`;
+    if (showKnown) s += `|${knownLocationsSignature(player, reveal)}|${waypointState(galaxy)?.dismissed?.join(',') ?? ''}`;
     return s;
 }
 
@@ -299,6 +299,7 @@ export class LocationMarkerLayer {
         const step = (Math.PI * 2) / HINT_PULSE_SIDES;
         let any = false;
         for (const p of hints) {
+            if (isMarkerDismissed(this.galaxy, `h:${p.x},${p.y}`)) continue;
             // num / num2: (int)((x - viewLeft) / double_15).
             const sx = Math.trunc((p.x - left) * z);
             const sy = Math.trunc((p.y - top) * z);

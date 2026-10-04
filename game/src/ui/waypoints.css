@@ -118,3 +118,6 @@
     color: rgb(140, 140, 150);
     white-space: nowrap;
 }
+
+.waypoints-dismissed-toggle { display: block; margin: 2px 8px; font-size: 11px; opacity: 0.85; }
+.waypoints-row-dismissed .waypoints-name { opacity: 0.5; text-decoration: line-through; }

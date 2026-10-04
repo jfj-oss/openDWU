@@ -131,6 +131,8 @@ export interface OrderMenuItem {
     separator: boolean;
     /** method_354 idle-ships picker: the ship to select instead of an action. */
     select?: BuiltObject;
+    /** A UI-only entry (the waypoint menu's Rename / Delete / Dismiss): picked through onPick although it has no action. */
+    custom?: boolean;
 }
 
 /** What the menu is built for: the player, the selection and the thing under the cursor. */

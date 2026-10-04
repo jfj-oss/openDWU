@@ -52,6 +52,7 @@ export const COMMAND_FAILURE: FailureTable = {
     addWaypoint: zero,
     renameWaypoint: no,
     deleteWaypoint: no,
+    dismissMarker: no,
     automationOff: no,
     setEmpireControl: no,
     setEmpireSetting: no,

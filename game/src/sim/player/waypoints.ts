@@ -38,6 +38,9 @@ export interface WaypointState {
     nextId: number;
     /** In creation order. */
     list: Waypoint[];
+    /** Dismissed map markers (hint `h:<x>,<y>` / known location `l:<index>`; knownLocations.ts keys), hidden from our
+     *  overlay only: the original's LocationHints / KnownGalaxyLocations are untouched. Absent / empty = none. */
+    dismissed?: string[];
 }
 
 /** Longest name kept (the rest is cut). */
@@ -140,10 +143,36 @@ export function deleteWaypoint(galaxy: Galaxy, empire: Empire, id: number): bool
     return true;
 }
 
-/** What the save writes: the table while it holds a waypoint, else undefined (no key: the save is unchanged). */
+/** The dismissed marker keys (empty when none). Read-only for the UI; works on the replica. */
+export function dismissedMarkers(galaxy: Galaxy | null | undefined): readonly string[] {
+    return waypointState(galaxy)?.dismissed ?? [];
+}
+
+export function isMarkerDismissed(galaxy: Galaxy | null | undefined, key: string): boolean {
+    return dismissedMarkers(galaxy).includes(key);
+}
+
+const MARKER_KEY = /^(h:-?\d+,-?\d+|l:\d+)$/;
+
+/** Op dismissMarker: hide (dismiss = true) or restore a hint / known-location marker. False when nothing changed. */
+export function dismissMarker(galaxy: Galaxy, _empire: Empire, key: string, dismiss: boolean): boolean {
+    if (typeof key !== 'string' || !MARKER_KEY.test(key)) return false;
+    let st = states.get(galaxy);
+    const has = st?.dismissed?.includes(key) === true;
+    if (dismiss === has) return false;
+    if (st === undefined) {
+        st = { version: 1, nextId: 1, list: [] };
+        states.set(galaxy, st);
+    }
+    if (dismiss) (st.dismissed ??= []).push(key);
+    else st.dismissed = st.dismissed!.filter((k) => k !== key);
+    return true;
+}
+
+/** What the save writes: the table while it holds a waypoint or a dismissed marker, else undefined (no key). */
 export function savedWaypointState(galaxy: Galaxy): WaypointState | undefined {
     const st = states.get(galaxy);
-    return st !== undefined && st.list.length > 0 ? st : undefined;
+    return st !== undefined && (st.list.length > 0 || (st.dismissed?.length ?? 0) > 0) ? st : undefined;
 }
 
 /** What the replica sync carries: the live table (also while empty, so a delete of the last one reaches the replica). */
@@ -161,4 +190,4 @@ export function restoreWaypointState(galaxy: Galaxy, st: WaypointState | null | 
 }
 
 /** The ops that change the table (simworker/simHost.ts freshens the side-tables root after them). */
-export const WAYPOINT_OPS: ReadonlySet<string> = new Set(['addWaypoint', 'renameWaypoint', 'deleteWaypoint']);
+export const WAYPOINT_OPS: ReadonlySet<string> = new Set(['addWaypoint', 'renameWaypoint', 'deleteWaypoint', 'dismissMarker']);
