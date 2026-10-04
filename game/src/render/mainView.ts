@@ -14,7 +14,7 @@
 
 import { fogOf } from './fog';
 import { AttachedChildren } from './renderGroups';
-import { circleAtScreenRes } from './screenCircle';
+import { circleAtScreenRes, segmentCircle } from './screenCircle';
 import { installGlParameterCache } from './glParamCache';
 import { collectHitsUnderPoint, needsPickMenu, PICK_MENU_MAX_ROWS, type PickCandidate, type PickHit } from './pickStack';
 import { openPickMenu, closePickMenu, type PickMenuEntry } from '../ui/pickMenu';
@@ -67,6 +67,9 @@ import { AmbientLayer } from './ambientLayer';
 // [ambientfx] end
 // [fightersfx] begin
 import { FighterLayer } from './fighterLayer';
+import { BattleBarLayer, pulseColor } from './combatBars';
+import { ScreenShake } from './screenShake';
+import type { Fighter } from '../sim/combat/fighters';
 import { WhalePilotLayer, whalePilotEnabled } from './whalePilotLayer'; // [whalepilot]
 import { CreatureLayer, creatureTooltipText, creatureVariantName } from './creatureLayer';
 import { FaunaGallery, faunaGalleryEnabled } from './faunaGallery'; // [newfauna]
@@ -1179,6 +1182,12 @@ export class MainView {
     private multiSelectionRings = new Graphics();
     /** Dashed yellow hyperjump range rings (45% / 100% of current fuel) for the selected ship / fleet. */
     private rangeRingsG = new Graphics();
+    /** MainView.1.cs 1518-1521 method_212: the pulsing circle around the selected fighter (screen space). */
+    private fighterSelectionRing = new Graphics();
+    /** Explosion screen shake (screenShake.ts, Main.method_217 / method_219). */
+    readonly shake = new ScreenShake();
+    /** Battle bars at zoom factor <= 3 (combatBars.ts, MainView.1.cs 1251-1295). */
+    private battleBars!: BattleBarLayer;
     private backdrop: Sprite;
     private grid = new Graphics();
     /** Screen-space deep starfield behind the world (deepStarfield.ts; port of the original's close-zoom stars). */
@@ -1266,6 +1275,8 @@ export class MainView {
     onBuiltObjectSelect?: (bo: BuiltObject) => void;
     /** Set by main.ts — receives the creature picked on left click. */
     onCreatureSelect?: (c: Creature) => void;
+    /** Set by main.ts — receives the fighter picked on left click (Main.Part11.cs 1579-1600, zoom factor < 50). */
+    onFighterSelect?: (f: Fighter) => void;
     /** Set by main.ts — receives the ships a drag box / Shift-click selects when there are several (BuiltObjectList). */
     onBuiltObjectListSelect?: (list: BuiltObject[]) => void;
     /** Set by main.ts — the current selection as ships (the list, the one selected ship, else null): the base a
@@ -1307,6 +1318,8 @@ export class MainView {
         this.multiSelectionRings.visible = false;
         this.fx.addChild(this.rangeRingsG);
         this.fx.addChild(this.multiSelectionRings);
+        this.fighterSelectionRing.visible = false;
+        this.fx.addChild(this.fighterSelectionRing);
         this.selectionBox.visible = false;
         this.fx.addChild(this.selectionBox);
     }
@@ -1319,6 +1332,8 @@ export class MainView {
     selectedBuiltObjects: BuiltObject[] | null = null;
     /** The creature currently selected in the Main View (null = none). */
     selectedCreature: Creature | null = null;
+    /** The fighter currently selected in the Main View (null = none). */
+    selectedFighter: Fighter | null = null;
 
     /** Drawn on-screen size of a habitat at the current zoom — the same size
      * functions the renderer uses (planets >= 14 px, moons >= 7 px, star
@@ -1394,6 +1409,12 @@ export class MainView {
         const bo = this.builtObjectLayer.pick(w.x, w.y, 1 / this.camera.zoom, this.galaxy.playerEmpire);
         // [galaxymarkers] beyond the ship art (galaxy/sector zoom) the drawn symbols / fleet icons are the pick targets.
         return bo ?? this.galaxyMarkers?.pickAt(w.x, w.y, this.camera.zoom)?.bo ?? null;
+    }
+
+    /** Main.Part11.cs 1579-1600 (method_145, f < 50): the launched fighter under the screen point (before any ship). */
+    pickFighter(screenX: number, screenY: number): Fighter | null {
+        const w = this.camera.screenToWorld(screenX, screenY);
+        return this.fighterLayer.pick(w.x, w.y, 1 / this.camera.zoom);
     }
 
     /** Main.Part11.cs method_145 (f <= 100): the creature under the screen point. Creatures win over ships. */
@@ -1734,6 +1755,8 @@ export class MainView {
         this.fighterLayer = new FighterLayer(this.galaxy, this.world, this.store);
         // MainView.1.cs 1559: creatures are drawn after the ships and fighters.
         this.creatureLayer = new CreatureLayer(this.galaxy, this.world, this.store.dwuPresent);
+        // MainView.1.cs 1251-1295 / 1542-1547: the battle bars belong to the ship / fighter draw blocks; one layer above both.
+        this.battleBars = new BattleBarLayer(this.world, this.store);
         // Render interpolation between sim steps: the layers drawing moving objects share one interpolator.
         this.builtObjectLayer.motion = this.motion;
         this.builtObjectLayer.index = this.builtObjectIndex;
@@ -1813,6 +1836,11 @@ export class MainView {
         this.world.scale.set(z);
         this.world.x = cam.width / 2 - cam.x * z;
         this.world.y = cam.height / 2 - cam.y * z;
+        // Main.Part10.cs method_219 (once per program-loop pass, before the draw): the explosion shake's view-centre
+        // offset, in world units — every map pass draws at (int_13 + int_21, int_14 + vhadzRiecM), so the whole picture
+        // moves by -offset / zoom factor px.
+        this.shake.step();
+        this.app.stage.position.set(-this.shake.dx * z, -this.shake.dy * z);
 
         // Galaxy backdrop: bright at full-galaxy zoom, fading out as the
         // sector view takes over (MainView.1.cs FadeGalaxyBackground).
@@ -1911,13 +1939,15 @@ export class MainView {
         // [fightersfx] begin
         this.fighterLayer.update(z, cam);
         // [fightersfx] end
+        this.battleBars.update(z, cam, this.builtObjectLayer.battleBarShips, this.fighterLayer.drawnFighters, this.galaxy.nowMs);
         this.creatureLayer.update(z, cam);
         this.artBundleLayer.update(z, cam); // [19r]
         this.artGallery?.update(); // [19r]
         this.whalePilot?.update(z, cam); // [whalepilot]
         // [combatfx] begin
         // Combat effects (weapon fire, explosions, shield strikes, hyperjump flashes) above the ships.
-        updateCombatEffects(this.galaxy, this.world, this.store, this.builtObjectLayer, z, cam);
+        const effects = updateCombatEffects(this.galaxy, this.world, this.store, this.builtObjectLayer, z, cam);
+        if (effects.onShake === null) effects.onShake = (amp) => this.shake.trigger(amp);
         // [combatfx] end
 
         // Region/nebula location name labels (task 08f1): visible while the
@@ -1966,6 +1996,7 @@ export class MainView {
         }
 
         this.drawMultiSelectionRings(z, cam);
+        this.drawFighterSelection(cam);
         this.updateRangeRings(z, cam);
 
         // Screen-edge auto-scroll (original control scheme).
@@ -2049,6 +2080,32 @@ export class MainView {
      * gone — task followcam). A no-op while already off. */
     private stopFollowing(): void {
         if (isFollowing(this.followState)) stopFollow(this.followState);
+    }
+
+    /**
+     * MainView.1.cs 1518-1521 method_212 for the selected fighter: XnaDrawingHelper.DrawCircle (50 segments, 5 px) over
+     * the box 1.3 x its drawn size, in method_213's colour (color_7 (128, 112, 0, 160) ↔ color_8 (224, 255, 32, 112) over
+     * 2 s of real UTC time). Only while the fighter is drawn.
+     */
+    private drawFighterSelection(cam: Camera): void {
+        const g = this.fighterSelectionRing;
+        const fi = this.selectedFighter;
+        const d = fi !== null ? this.fighterLayer.drawnFighters.find((r) => r.fighter === fi) : undefined;
+        if (d === undefined) {
+            if (g.visible) {
+                g.clear();
+                g.visible = false;
+            }
+            return;
+        }
+        const s = cam.worldToScreen(d.x, d.y);
+        const box = Math.trunc(d.px * 1.3);
+        const now = new Date();
+        const argb = pulseColor(0x807000a0, 0xe0ff2070, now.getUTCSeconds(), now.getUTCMilliseconds());
+        g.clear();
+        segmentCircle(g, s.x, s.y, box / 2, 50);
+        g.stroke({ width: 5, color: argb & 0xffffff, alpha: ((argb >>> 24) & 0xff) / 255 });
+        g.visible = true;
     }
 
     /** The selection ring at screen (x, y) with radius r; the geometry is rebuilt only when one of them changes. */
@@ -2184,6 +2241,16 @@ export class MainView {
             return;
         }
         this.selectedCreature = null;
+        // Main.Part11.cs 1579-1600: at zoom factor < 50 a launched fighter under the cursor is picked before any ship.
+        const fighter = this.pickFighter(x, y);
+        if (fighter !== null && this.onFighterSelect !== undefined) {
+            playGridClick(); // [audio]
+            this.selectedHabitat = null;
+            this.selectedBuiltObject = null;
+            this.selectedFighter = fighter;
+            this.onFighterSelect(fighter);
+            return;
+        }
         // [galaxymarkers] begin — a fleet icon (galaxy/sector zoom) selects its fleet (method_258 / 145).
         const wp = this.camera.screenToWorld(x, y);
         const sym = this.galaxyMarkers?.pickAt(wp.x, wp.y, this.camera.zoom) ?? null;

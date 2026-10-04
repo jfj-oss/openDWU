@@ -41,12 +41,14 @@ import { yardProgress } from './screens/constructionYards';
 import type { ConstructionQueue } from '../sim/construction/constructionQueue';
 import { builtObjectImageUrl, resolveDrawPictureRef } from '../render/builtObjectLayer';
 import { fighterImageUrl } from '../render/fighterLayer';
+import { FighterMissionType, type Fighter } from '../sim/combat/fighters';
 import { asteroidUrls, cloudUrls, mapStarUrls, planetUrls } from '../render/assets';
 import { racePortraitUrl } from './empireEmblem';
 import { abundancePercentText } from './resourceAbundance';
 import { habitatTypeLabel, hyperjumpStatusText, invasionVsText, missionTargetText, missionTypeLabel, resourceIconUrl, threatRows, troopStrengthText } from './hud';
 import { wreckSalvageRows } from './scenario/wreckageUi'; // [wreckage]
 import { rimGoodMarker } from './scenario/rimTraderRows'; // [rimTrader]
+import { facilityGalactopediaTopic, facilityPanelHoverText } from './facilityHover';
 
 // ---------------------------------------------------------------------------------------------------------------
 // Metrics (InfoPanel.cs SetContentSizeNormal 2420-2447) and colours (InfoPanel.cs fields / BaconInfoPanel.cs).
@@ -118,7 +120,11 @@ export type InfoTarget =
     | { kind: 'ruin'; ruin: Ruin }
     /** InfoPanel.cs 4461 / 4497 `AddHotspot(..., new object[1] { habitat }, ...)`: the Ground / Battle Report
      *  (Main.Part4.cs:3534 pnlDetailInfo_MouseClick → method_164(habitat), screens/groundReport.ts). */
-    | { kind: 'groundReport'; habitat: Habitat };
+    | { kind: 'groundReport'; habitat: Habitat }
+    /** A planetary facility hotspot (InfoPanel.cs 2604): Main.Part4.cs 3586-3597 → method_456, the Galactopedia at the
+     *  "Wonders" or "Planetary Facilities" topic. */
+    | { kind: 'galactopedia'; topic: string };
+// (The same target serves the resource and race hotspots: Main.Part4.cs 3598-3607, method_456(resource / race Name).)
 
 /** One run of a row: text, an image, an empire flag, or a troop icon. */
 export interface InfoSeg {
@@ -178,6 +184,8 @@ export interface ColonySummaryItem {
     baseImg: string | null;
     resourceImg: string | null;
     resourceTitle: string;
+    /** The resource's Galactopedia topic (its name), null without a resource icon. */
+    resourceTopic: string | null;
     /** "?" when the base's resources are unknown. */
     resourceUnknown: boolean;
 }
@@ -425,7 +433,8 @@ function resourcesKnown(ctx: InfoContext, h: Habitat): boolean {
     return map != null && map.checkResourcesKnown(h);
 }
 
-/** InfoPanel.cs 3198 DrawResources: icon + tiny "abundance%" per resource on the dark strip. */
+/** InfoPanel.cs 3198 DrawResources: icon + tiny "abundance%" per resource on the dark strip. Each icon is a resource
+ *  hotspot (the abundance stays the tiny text after it, not in the hover message). */
 function resourceSegs(ctx: InfoContext, resources: { resourceId: number; abundance: number }[], color: number): InfoSeg[] {
     if (resources.length === 0) return [txt('(None)', color)];
     const segs: InfoSeg[] = [];
@@ -434,25 +443,27 @@ function resourceSegs(ctx: InfoContext, resources: { resourceId: number; abundan
         const name = def?.name ?? `Resource ${r.resourceId}`;
         const rimMark = rimGoodMarker(ctx.galaxy, r.resourceId); // [rimTrader]
         const pct = abundancePercentText(r.abundance) + (rimMark !== '' ? ` ${rimMark}` : '');
-        segs.push({ img: def ? resourceIconUrl(def.pictureRef) : undefined, title: `${name} (${pct})`, gap: segs.length > 0 ? 3 : 0 });
+        // 3226: the icon is a hotspot, "Name (click for details)"; a click opens the Galactopedia on the resource's
+        // page (Main.Part4.cs 3598 → method_456(resource.Name)).
+        segs.push({ img: def ? resourceIconUrl(def.pictureRef) : undefined, title: `${name} (click for details)`, target: { kind: 'galactopedia', topic: name }, gap: segs.length > 0 ? 3 : 0 });
         segs.push({ text: pct, tiny: true, color, gap: -2 });
     }
     return segs;
 }
 
-/** InfoPanel.cs 2552 DrawFacilities: facility icons (faded while under construction) on the dark strip. */
-function facilitySegs(h: Habitat): InfoSeg[] {
+/** InfoPanel.cs 2552 DrawFacilities: facility icons (faded while under construction) on the dark strip. Each icon is a
+ *  hotspot (AddHotspot(rect, planetaryFacility, text), 2575-2604): its hover message is facilityPanelHoverText and a
+ *  click opens the Galactopedia at "Wonders" / "Planetary Facilities" (Main.Part4.cs 3586 pnlDetailInfo_MouseClick). */
+function facilitySegs(galaxy: Galaxy, h: Habitat): InfoSeg[] {
     const list = (h.facilities ?? []).filter((f) => f != null);
     if (list.length === 0) return [txt('(None)')];
-    return list.map((f, i) => {
-        const building = f.constructionProgress < 1;
-        return {
-            img: facilityImageUrl(f.def.pictureRef),
-            faded: building,
-            gap: i > 0 ? 2 : 0,
-            title: building ? `${f.name} (${fmtPct(f.constructionProgress)} complete)` : f.name,
-        };
-    });
+    return list.map((f, i) => ({
+        img: facilityImageUrl(f.def.pictureRef),
+        faded: f.constructionProgress < 1,
+        gap: i > 0 ? 2 : 0,
+        title: facilityPanelHoverText(galaxy, h, f),
+        target: { kind: 'galactopedia', topic: facilityGalactopediaTopic(f) },
+    }));
 }
 
 /** The picture behind the rows: InfoPanel.SetData's _PictureSize (min 60, max 200 px) and FadeImage(0.33). */
@@ -845,6 +856,70 @@ export function multiShipInfo(ctx: InfoContext, ships: readonly BuiltObject[]): 
 }
 
 // ---------------------------------------------------------------------------------------------------------------
+// Fighter (InfoPanel.cs 3495 DrawFighter)
+// ---------------------------------------------------------------------------------------------------------------
+
+/** Port of Galaxy.2.cs 5675 ResolveMissionDescription(Fighter). */
+export function fighterMissionDescription(f: Pick<Fighter, 'missionType' | 'currentTarget' | 'parentBuiltObject'>): string {
+    switch (f.missionType) {
+        case FighterMissionType.Undefined:
+            return '(No mission)';
+        case FighterMissionType.Attack: {
+            const t = f.currentTarget as { name?: string } | null;
+            return t === null ? 'Attack' : `Attack ${t.name ?? ''}`;
+        }
+        case FighterMissionType.Patrol:
+            return f.parentBuiltObject === null ? 'Patrol' : `Patrol ${f.parentBuiltObject.name}`;
+        case FighterMissionType.ReturnToCarrier:
+            return f.parentBuiltObject !== null ? `Return to carrier (${f.parentBuiltObject.name})` : 'Return to carrier';
+        default:
+            return '';
+    }
+}
+
+/** Port of InfoPanel.cs 3495 DrawFighter (the character-bonus line, _CharacterBonuses, is not ported). */
+export function fighterInfo(ctx: InfoContext, fi: Fighter): InfoModel {
+    const { galaxy, player } = ctx;
+    const e = fi.empire;
+    // flag: another empire's fighter the player can view (EmpiresViewable).
+    const viewable = e !== player && e !== null && player.empiresViewable.includes(e);
+    const known = e === player || viewable;
+    let corner: InfoModel['corner'] = null;
+    if (e !== null && e === galaxy.independentEmpire) corner = { text: e.name, color: WHITE };
+    else if (e !== null) corner = { flagOf: e, target: { kind: 'empire', empire: e } };
+    const rows: InfoRow[] = [{ kind: 'gap', h: 8 }];
+    rows.push(known ? { kind: 'line', segs: [txt(fighterMissionDescription(fi))] } : { kind: 'line', segs: [txt('(Unknown mission)', UNKNOWN_COLOR)] });
+    rows.push({ kind: 'gap', h: 5 });
+    rows.push({ kind: 'band' });
+    const empireText = e === null ? '(Abandoned)' : e === galaxy.independentEmpire ? '(Independent)' : e.name;
+    rows.push(label('Empire', [txt(empireText)]));
+    rows.push({ kind: 'gap', h: 5 });
+    if (known) {
+        const hp = Math.trunc(fi.health * 100);
+        rows.push({ kind: 'bar', label: 'Health', max: 100, current: hp, inner: `${hp}${fi.underConstruction ? ' (under construction)' : ''}`, right: '100', fill: BAR_FILL });
+        const en = Math.max(0, Math.trunc(fi.currentEnergy));
+        rows.push({ kind: 'bar', label: 'Energy', max: fi.specification.energyCapacity, current: en, inner: String(en), right: String(fi.specification.energyCapacity), fill: BAR_FILL });
+    } else {
+        rows.push(label('Health', [txt('(Unknown)', UNKNOWN_COLOR)]));
+        rows.push(label('Energy', [txt('(Unknown)', UNKNOWN_COLOR)]));
+    }
+    const sh = Math.trunc(fi.currentShields);
+    rows.push({ kind: 'bar', label: 'Shields', max: fi.specification.shieldsCapacity, current: sh, inner: `${sh}${fi.shieldsReducedLocation ? ' (reducing)' : ''}`, right: String(fi.specification.shieldsCapacity), fill: BAR_FILL });
+    const sp = Math.trunc(fi.currentSpeed);
+    rows.push({ kind: 'bar', label: 'Speed', max: fi.topSpeed, current: sp, inner: `${sp}${fi.movementSlowedLocation ? ' (slowed)' : ''}`, right: String(fi.topSpeed), fill: BAR_FILL });
+    rows.push({ kind: 'gap', h: 5 });
+    rows.push(label('Weapons', [txt(fi.firepowerRaw === 0 ? '(None)' : `Firepower: ${fi.firepowerRaw}, Range: ${fi.specification.weaponRange}`)]));
+    return {
+        title: [{ text: fi.name, color: empireTitleColor(galaxy, e) }],
+        corner,
+        picture: picture(fighterImageUrl(fi.pictureRef), fi.size / 0.6, (fi.heading * 180) / Math.PI + 90),
+        rows,
+        labelWidth: 52,
+        automated: false,
+    };
+}
+
+// ---------------------------------------------------------------------------------------------------------------
 // Creature (InfoPanel.cs 3453 DrawCreature)
 // ---------------------------------------------------------------------------------------------------------------
 
@@ -930,7 +1005,8 @@ function populationRows(h: Habitat, color: number): InfoRow[] {
             growth = '';
         }
         rows.push(label(i === 0 ? 'Populace' : '', [
-            race !== null ? { img: raceImageUrl(race) ?? undefined, title: `${race.name} (click for details)` } : { width: INFO.imageSize },
+            // InfoPanel.cs 3137 / 3150: a race hotspot; Main.Part4.cs 3603 → method_456(race.Name).
+            race !== null ? { img: raceImageUrl(race) ?? undefined, title: `${race.name} (click for details)`, target: { kind: 'galactopedia', topic: race.name } } : { width: INFO.imageSize },
             { text: name, color, width: W },
             { text: amount, color, width: A },
             { text: growth, color: atMax ? 0xff0000 : color },
@@ -1086,7 +1162,7 @@ export function habitatInfo(ctx: InfoContext, h: Habitat): InfoModel {
                 rows.push({ kind: 'gap', h: 4 });
             }
             // Facilities.
-            rows.push(label('Facilities', facilitySegs(h), { strip: true }));
+            rows.push(label('Facilities', facilitySegs(galaxy, h), { strip: true }));
             // Troops (InfoPanel.cs 4404-4500).
             const troops = troopItems(h.troops);
             const recruit = troopItems(h.troopsToRecruit);
@@ -1212,6 +1288,7 @@ function coloniesSummaryRow(ctx: InfoContext, systemStar: Habitat): InfoRow {
         const { pop, dev } = populationIndicator(h.population.totalAmount, habitatDevelopmentLevel(h));
         let resourceImg: string | null = null;
         let resourceTitle = '';
+        let resourceTopic: string | null = null;
         let resourceUnknown = false;
         if (race === null && base !== null && mining) {
             if (resourcesKnown(ctx, h)) {
@@ -1219,7 +1296,8 @@ function coloniesSummaryRow(ctx: InfoContext, systemStar: Habitat): InfoRow {
                 const def = r !== undefined ? ctx.resource(r.resourceId) : null;
                 if (def !== null) {
                     resourceImg = resourceIconUrl(def.pictureRef);
-                    resourceTitle = def.name;
+                    resourceTitle = `${def.name} (click for details)`;
+                    resourceTopic = def.name;
                 }
             } else resourceUnknown = true;
         }
@@ -1236,6 +1314,7 @@ function coloniesSummaryRow(ctx: InfoContext, systemStar: Habitat): InfoRow {
             baseImg: race === null && base !== null ? shipImageUrl(base) : null,
             resourceImg,
             resourceTitle,
+            resourceTopic,
             resourceUnknown,
         };
     });
@@ -1340,6 +1419,7 @@ export interface InfoSelection {
     builtObject?: BuiltObject;
     shipGroup?: ShipGroup;
     creature?: Creature;
+    fighter?: Fighter;
     builtObjects?: BuiltObject[];
     /** The system was selected as a whole (a star clicked at galaxy zoom: the C# SystemInfo selection). */
     systemInfo?: boolean;
@@ -1349,6 +1429,7 @@ export interface InfoSelection {
 export function buildInfoModel(ctx: InfoContext, sel: InfoSelection, creaturePicture: string | null = null): InfoModel {
     if (sel.builtObjects !== undefined && sel.builtObjects.length > 0) return multiShipInfo(ctx, sel.builtObjects);
     if (sel.creature !== undefined) return creatureInfo(ctx, sel.creature, creaturePicture);
+    if (sel.fighter !== undefined) return fighterInfo(ctx, sel.fighter);
     if (sel.shipGroup !== undefined) return shipGroupInfo(ctx, sel.shipGroup);
     if (sel.builtObject !== undefined) return builtObjectInfo(ctx, sel.builtObject);
     if (sel.systemInfo === true && sel.habitat === sel.system.systemStar) return systemInfoModel(ctx, sel.system);

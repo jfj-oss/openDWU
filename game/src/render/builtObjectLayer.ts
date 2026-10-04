@@ -37,6 +37,7 @@ import { DiplomaticRelationType } from '../sim/diplomacy';
 import type { Empire } from '../sim/empire';
 import type { SystemInfo } from '../sim/types';
 import type { MapOverlayState } from '../ui/mapOverlays';
+import { BATTLE_BARS_MAX_FACTOR, type DrawnBarShip } from './combatBars';
 
 // Galaxy.BuiltObjectDrawResizeFactor (Galaxy.1.cs).
 export const BUILT_OBJECT_DRAW_RESIZE_FACTOR = 8.0;
@@ -472,6 +473,10 @@ export class BuiltObjectLayer {
     // [concordArt] end
     /** Render interpolation between sim steps (renderInterp.ts; set by MainView). Null: draw the sim positions. */
     motion: MotionInterpolator | null = null;
+    /** At zoom factor <= 3: the ships / bases drawn this frame with their drawn centre and their image side at zoom
+     * factor 1 (MainView.1.cs 1251-1295 bitmap5 — combatBars.ts BattleBarLayer). Pooled records; empty above f = 3. */
+    readonly battleBarShips: DrawnBarShip[] = [];
+    private barPool: DrawnBarShip[] = [];
 
     constructor(
         private galaxy: Galaxy,
@@ -558,6 +563,8 @@ export class BuiltObjectLayer {
             for (const bo of index !== null ? index.live : this.galaxy.builtObjects) if (bo !== null && !bo.hasBeenDestroyed) this.liveries.observe(bo);
         }
         this.drawnPx.clear();
+        this.battleBarShips.length = 0;
+        const bars = f <= BATTLE_BARS_MAX_FACTOR;
         const shown = this.shownNow;
         shown.clear();
         for (const bo of list) {
@@ -642,6 +649,22 @@ export class BuiltObjectLayer {
                 bo.design?.imageScalingFactor ?? 1,
             );
             this.drawnPx.set(bo, px);
+            if (bars) {
+                // PrepareBuiltObjectImageNEW(..., 1.0): the image at zoom factor 1 (DetermineBuiltObjectSizeNEW).
+                const unitPx = builtObjectSizePx(bo.size, metrics.areaRatio, 1, bo.design?.imageScalingType ?? DesignImageScalingMode.None, bo.design?.imageScalingFactor ?? 1);
+                const n = this.battleBarShips.length;
+                let rec = this.barPool[n];
+                if (rec === undefined) {
+                    rec = { bo, x, y, unitPx };
+                    this.barPool.push(rec);
+                } else {
+                    rec.bo = bo;
+                    rec.x = x;
+                    rec.y = y;
+                    rec.unitPx = unitPx;
+                }
+                this.battleBarShips.push(rec);
+            }
             if (px < 1) {
                 sprite.visible = false;
                 continue;

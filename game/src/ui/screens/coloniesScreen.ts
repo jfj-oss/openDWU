@@ -68,6 +68,7 @@ import { componentDefinitionsStatic } from '../../sim/designGeneration';
 import { troopImageUrl, wireTroopImageFallback } from '../../render/troopImages';
 import { raceHasConcordArt } from '../../render/concordArt';
 import { facilityImageUrl, habitatImageUrl, habitatInfo, type InfoTarget } from '../selectionInfo';
+import { facilityListItem } from '../facilityHover';
 import { empireFlagUrl, renderInfoModel } from '../selectionInfoView';
 import { racePortraitUrl } from '../empireEmblem';
 import { characterPortrait } from '../characterPortrait';
@@ -1001,6 +1002,12 @@ function createColoniesScreen(opts: ColoniesScreenOptions): OpenState {
             openRuinDetail(galaxy, t.ruin);
             return;
         }
+        // A facility icon: the Galactopedia, as the selection panel's (Main.Part4.cs 3586; pnlColonyHabitatInfo itself
+        // has no click handler in the original, but this panel's hotspots are live here like its ruin / colony ones).
+        if (t.kind === 'galactopedia') {
+            opts.onHelp?.(t.topic);
+            return;
+        }
         if (t.kind === 'select' && empire.colonies.includes(t.obj as Habitat)) {
             selectColony(t.obj as Habitat);
             grid.select(t.obj, true);
@@ -1613,11 +1620,11 @@ function createColoniesScreen(opts: ColoniesScreenOptions): OpenState {
                 renderPage(true);
             });
             t.appendChild(img(facilityImageUrl(f.def.pictureRef), 'col-icon-img'));
-            t.appendChild(el('div', 'col-icon-label', f.name));
-            let tip = '';
-            if (f.constructionProgress < 1) tip = `${formatPercent0(f.constructionProgress).replace('%', '')}% ${T('Complete', 'Complete').toLowerCase()}`;
-            if (f.maintenance > 0) tip += `${tip ? '\n' : ''}${T('Facility Maintenance Cost', 'Maintenance')}: ${formatMoney(f.maintenance)} ${T('credits', 'credits')}${f.constructionProgress < 1 ? ` (${T('when completed', 'when completed')})` : ''}`;
-            t.title = tip ? `${f.name}\n${tip}` : f.name;
+            // PlanetaryFacilityListIconView.GenerateFacilityItems: the label ("Name (Owned by X)" for a facility another
+            // faction owns) and the item's ToolTipText (owner / progress / wonder benefits / maintenance).
+            const item = facilityListItem(galaxy, h, f);
+            t.appendChild(el('div', 'col-icon-label', item.text));
+            t.title = item.toolTip !== '' ? item.toolTip : item.text;
             box.appendChild(t);
         }
         const defs = h.empire === empire || empire.pirateEmpireBaseHabitat !== null ? buildableFacilities(galaxy, empire, h) : [];

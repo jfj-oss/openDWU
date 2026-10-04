@@ -376,6 +376,10 @@ export interface GalaxyMapOptions {
     /** Galaxy-time pause while the popup is open (C# AutoPauseWhenInPopupWindow). */
     onOpen?: () => void;
     onClose?: () => void;
+    /** pnlHabitatInfo (Main.Part10.cs 1799 method_214 → InfoPanel.SetData(habitat_8), 250 × 240 at (670, 267)): draw the
+     *  selected habitat's InfoPanel into `box` (main.ts: selectionInfo habitatInfo + renderInfoModel). Without it the
+     *  map shows a short text summary. */
+    renderHabitatInfo?: (box: HTMLElement, h: Habitat) => void;
 }
 
 export interface GalaxyMapScreen {
@@ -669,6 +673,12 @@ export function createGalaxyMap(opts: GalaxyMapOptions): GalaxyMapScreen {
             return;
         }
         gotoBtn.disabled = false;
+        if (opts.renderHabitatInfo !== undefined) {
+            const box = el('div', 'sel-content-box gmap-habitat-info');
+            info.appendChild(box);
+            opts.renderHabitatInfo(box, h);
+            return;
+        }
         info.append(el('div', 'gmap-sel-name', h.name));
         const sx = Math.trunc(h.xpos / galaxy.sectorSize);
         const sy = Math.trunc(h.ypos / galaxy.sectorSize);

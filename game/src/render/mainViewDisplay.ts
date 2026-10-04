@@ -7,7 +7,7 @@
 //               ship in battle (1253), a fighter's shield bar (1542)            → here: render/combatBars.ts
 //   int_34 < 2  a habitat's owner circle at f < 100 (792)                       → render/empireLayer.ts colony rings
 //               a ship's role symbol in the per-ship pass (1080)                → render/galaxyMarkers.ts (f < 150)
-//               the fleet-leader badge (method_191, 1290)                       → not drawn by the port (parity #8)
+//               the fleet-leader badge (method_191, 1290)                       → render/combatBars.ts
 //               the habitat labels / colony info images (flag11-13, 1826 / 1891) → render/mainView.ts body labels
 // So 0 = everything, 1 = no battle bars, 2 = the bare view.
 // No DOM / Pixi imports.

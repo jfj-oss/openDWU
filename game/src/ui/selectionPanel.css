@@ -236,6 +236,21 @@ span.sel-corner.sel-text {
     50% { background-color: rgba(255, 0, 0, 0.63); }
 }
 
+/* The main view's hover message for a hovered hotspot (string_17, MainView.cs 1599: DrawStringDropShadow in
+   Color.Yellow at HoverMessageLocation, 19 px above this frame's top, Main.Part12.cs 2103). One line, never clipped. */
+.sel-frame .sel-hover-msg {
+    position: absolute;
+    left: 0;
+    top: -19px;
+    white-space: pre;
+    pointer-events: none;
+    color: rgb(255, 255, 0);
+    text-shadow: 1px 1px 0 #000;
+}
+.sel-frame .sel-hover-msg[hidden] {
+    display: none;
+}
+
 /* Hotspots: the dotted (170,170,170) hover rectangle (DrawHotspotHoverRegions). */
 .sel-hot {
     cursor: pointer;

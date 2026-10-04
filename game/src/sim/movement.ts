@@ -869,6 +869,20 @@ function getGravityWellReductionForSmallShip(ship: BuiltObject): number {
     throw new Error('TODO(port): BaconBuiltObject.GetGravityWellReductionForSmallShip with smallShipsJumpSooner');
 }
 
+/**
+ * BaconMain.cs 533 CalculateGravityWellSize(main, ship): the radius of the nearest star's gravity well for this ship (the
+ * ring BaconMain.DrawGravityWellRange draws around the star; render/weaponRangeCircles.ts). 0 without a nearest star.
+ * Read-only.
+ */
+export function calculateGravityWellSize(ship: BuiltObject): number {
+    const gravityWellReductionForSmallShip = getGravityWellReductionForSmallShip(ship);
+    const nearestSystemStar = ship.nearestSystemStar;
+    if (nearestSystemStar === null) return 0.0;
+    const gravityWellMitigationForHyperDrive = getGravityWellMitigationForHyperDrive(ship);
+    const num = nearestSystemStar.solarRadiation + nearestSystemStar.microwaveRadiation + nearestSystemStar.xrayRadiation;
+    return Math.sqrt(STAR_GRAVITY_WELL_RANGE_SQUARED) * (num / 100.0) * gravityWellReductionForSmallShip * gravityWellMitigationForHyperDrive;
+}
+
 /** Galaxy.CalculateDistanceSquaredStatic. */
 function distSq(x1: number, y1: number, x2: number, y2: number): number {
     const dx = x1 - x2;
