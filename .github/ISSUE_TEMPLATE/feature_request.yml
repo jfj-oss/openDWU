@@ -1,0 +1,20 @@
+name: Feature request
+description: Something from the original game that is missing, or an idea for an optional Improvement
+labels: [enhancement]
+body:
+  - type: dropdown
+    id: kind
+    attributes:
+      label: Kind
+      options:
+        - Missing from the original game (port gap)
+        - New optional Improvement (not in the original)
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: Description
+      description: What it is and how it works in the original game (if it exists there), or what you would like.
+    validations:
+      required: true

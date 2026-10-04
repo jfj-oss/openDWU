@@ -1,0 +1,34 @@
+# Quick check on every push and pull request: install and typecheck, plus the tests that need no game files.
+# The full test suite needs the original Distant Worlds: Universe data files, which GitHub's runners do not have,
+# so it runs locally (see game/CLAUDE.md "Conventions").
+name: check
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: check-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  typecheck:
+    name: Typecheck
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: game
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: game/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - name: Tests that need no game files
+        run: npx vitest run test/desktopShell.test.ts test/colorProfile.test.ts
