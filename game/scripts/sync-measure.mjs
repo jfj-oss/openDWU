@@ -6,6 +6,7 @@
 // a full cold compare and checks that the two save texts are identical.
 //
 //   node scripts/sync-measure.mjs <save> [--steps 300] [--speed 1] [--warm 60] [--cold-ms 3] [--pump-ms 0.5] [--hot-fields] [--compare-options] [--verify] [--census]
+//   node scripts/sync-measure.mjs <save> --client [--steps 300] [--replies 30] [--steps-per-msg 1] [--frames 1] [--verify]   (host + client end to end)
 import { build } from 'rolldown';
 import { tmpdir } from 'node:os';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
@@ -37,6 +38,10 @@ const MODULES = {
     scheduler: '/src/sim/tick/scheduler.ts',
     digest: '/src/sim/tick/digest.ts',
     replica: '/src/simworker/replicaGalaxy.ts',
+    host: '/src/simworker/simHost.ts',
+    client: '/src/simworker/clientCore.ts',
+    commands: '/src/sim/player/playerCommands.ts',
+    galaxyTime: '/src/sim/galaxyTime.ts',
 };
 const bundleDir = mkdtempSync(resolve(tmpdir(), 'dwu-sync-measure-'));
 const stat = (xs) => {
@@ -66,6 +71,10 @@ try {
     console.log(`loaded ${file} in ${(performance.now() - t0).toFixed(0)} ms: ${g.systems.length} systems, ${g.builtObjects.length} built objects, ${g.creatures.length} creatures`);
     const step = () => runSimFrame(g, nextFrameMs(schedulerState(g), speed));
     for (let i = 0; i < warm; i++) step();
+    if (arg('client', false) === true) {
+        await clientMode(game, gameData, { load, stat, fmt, galaxyToJSON, stateDigest });
+        process.exit(process.exitCode ?? 0);
+    }
 
     t0 = performance.now();
     const source = new GalaxySyncSource(g, { coldBudgetMs });
@@ -218,4 +227,114 @@ try {
     }
 } finally {
     rmSync(bundleDir, { recursive: true, force: true });
+}
+
+/**
+ * --client: the whole pipeline in this process, as the browser runs it — SimHost (the worker side: tick, diff, the step
+ * message) and SimClientCore (the main thread: frame() applies the message, pumps the cold queue, settles command
+ * replies), each message structured-cloned as postMessage copies it. Every --replies steps the replica's player issues
+ * a command with a reply (obtainUiRecords, which changes nothing), as the HUD does. Reports the main thread's work per
+ * render frame (frame() wall ms: hot apply + cold pump + replies + side tables), the spikes, the reply latency, and the
+ * worker's diff / bytes per message. --steps-per-msg K: the worker runs K steps per tick (it is behind); --frames N:
+ * render frames per message.
+ */
+async function clientMode(game, gameData, { load, stat, fmt, galaxyToJSON, stateDigest }) {
+    const { SimHost } = await load('host');
+    const { SimClientCore } = await load('client');
+    const { issuePlayerCommand } = await load('commands');
+    const { GalaxyTime } = await load('galaxyTime');
+    const { FRAME_REAL_MS } = await load('scheduler');
+    const k = Number(arg('steps-per-msg', 1));
+    const framesPerMsg = Number(arg('frames', 1));
+    const replyEvery = Number(arg('replies', 30));
+    const msgs = Math.ceil(steps / k);
+    let ft = 0;
+    const fake = () => (ft += 0.001);
+    const time = new GalaxyTime();
+    time.paused = false;
+    time.speed = speed;
+    const host = new SimHost(game, time, {}, { now: fake, sync: { coldBudgetMs } });
+    let t0 = performance.now();
+    const snap = host.snapshot();
+    console.log(`client mode: snapshot ${(performance.now() - t0).toFixed(0)} ms encode`);
+    const toHost = (m) => {
+        const c = structuredClone(m);
+        if (c.type === 'command') host.command(c);
+        else if (c.type === 'clock') host.clock(c);
+        else if (c.type === 'refresh') host.refresh(c);
+    };
+    t0 = performance.now();
+    const client = new SimClientCore(gameData, structuredClone(snap), { post: toHost, coldBudgetMs: pumpMs });
+    console.log(`client mode: replica built in ${(performance.now() - t0).toFixed(0)} ms`);
+    const ui = new GalaxyTime();
+    ui.bindGalaxy(client.galaxy);
+    ui.speed = speed;
+    ui.paused = false;
+    client.bindClock(ui);
+    const frameMs = [], hotMs = [], coldMs = [], tickMs = [], diffMs = [], workerHotMs = [], hotKB = [], kb = [], backlog = [], replyFrames = [], replyFrameMs = [];
+    let frame = 0;
+    let issued = 0, answered = 0;
+    const s = client.stats;
+    for (let i = 0; i < msgs; i++) {
+        if (replyEvery > 0 && i % replyEvery === 0) {
+            const at = frame;
+            issued++;
+            issuePlayerCommand(client.galaxy, client.game.playerEmpire, 'obtainUiRecords', [[]], () => {
+                answered++;
+                replyFrames.push(frame - at);
+                replyFrameMs.push(-1);
+            });
+        }
+        const w0 = performance.now();
+        const m = host.tick(FRAME_REAL_MS * k);
+        tickMs.push(performance.now() - w0);
+        if (m !== null) {
+            diffMs.push(m.diffMs);
+            workerHotMs.push(m.delta.stats.hotMs);
+            hotKB.push(m.delta.stats.hotBytes / 1024);
+            kb.push(m.delta.stats.bytes / 1024);
+            client.receive(structuredClone(m));
+        }
+        for (let f = 0; f < framesPerMsg; f++) {
+            frame++;
+            const h0 = s.hotApplyMs, c0 = s.coldPumpMs;
+            const a = performance.now();
+            client.frame(ui);
+            const dt = performance.now() - a;
+            frameMs.push(dt);
+            hotMs.push(s.hotApplyMs - h0);
+            coldMs.push(s.coldPumpMs - c0);
+            backlog.push(client.replica.decoder.coldBacklog);
+            for (let r = 0; r < replyFrameMs.length; r++) if (replyFrameMs[r] < 0) replyFrameMs[r] = dt;
+        }
+    }
+    // Let the last replies land.
+    for (let f = 0; f < 600 && answered < issued; f++) {
+        frame++;
+        client.frame(ui);
+    }
+    const over = (xs, ms) => xs.filter((x) => x > ms).length;
+    console.log(`${msgs} messages × ${k} step(s), ${framesPerMsg} frame(s) per message, a reply every ${replyEvery} messages (${answered}/${issued} answered):`);
+    console.log(`  worker tick ms (step + diff) ${fmt(stat(tickMs))}`);
+    console.log(`  worker diff ms   ${fmt(stat(diffMs))}`);
+    console.log(`  of which hot ms  ${fmt(stat(workerHotMs))}`);
+    console.log(`  delta KB         ${fmt(stat(kb), 1)}`);
+    console.log(`  hot part KB      ${fmt(stat(hotKB), 1)}`);
+    console.log(`  main frame() ms  ${fmt(stat(frameMs))}; frames over 4 / 8 / 16 ms: ${over(frameMs, 4)} / ${over(frameMs, 8)} / ${over(frameMs, 16)} of ${frameMs.length}`);
+    console.log(`  of which hot apply ms ${fmt(stat(hotMs))}`);
+    console.log(`  of which cold pump ms ${fmt(stat(coldMs))}`);
+    console.log(`  cold backlog parts ${fmt(stat(backlog), 0)}`);
+    console.log(`  reply latency frames ${fmt(stat(replyFrames), 1)}; frame() ms of the frame that answered ${fmt(stat(replyFrameMs))}`);
+    if (verify) {
+        const full = host.sync.delta(true);
+        client.replica.apply(structuredClone(full), true);
+        const a = JSON.stringify(galaxyToJSON(game.galaxy));
+        const b = JSON.stringify(galaxyToJSON(client.galaxy));
+        let at = -1;
+        for (let i = 0; i < Math.max(a.length, b.length); i++) if (a[i] !== b[i]) { at = i; break; }
+        console.log(at < 0 ? `verify: replica save text identical (${(a.length / 1048576).toFixed(0)} MB); digest ${stateDigest(game.galaxy)} / replica ${stateDigest(client.galaxy)}` : `verify: MISMATCH at ${at}: auth …${a.slice(Math.max(0, at - 200), at + 100)}…\n replica …${b.slice(Math.max(0, at - 200), at + 100)}…`);
+        if (at >= 0 || stateDigest(game.galaxy) !== stateDigest(client.galaxy)) process.exitCode = 1;
+    }
+    client.dispose();
+    host.dispose();
 }

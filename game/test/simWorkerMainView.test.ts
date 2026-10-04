@@ -76,7 +76,10 @@ describe('sim worker: the Main View’s per-frame fields arrive with the hot par
                         const rw = r.weapons[k];
                         if (rw === undefined) continue;
                         checkedShots++;
-                        expect([rw.x, rw.y, rw.distanceTravelled, rw.lastFired, rw.resetNext]).toEqual([w.x, w.y, w.distanceTravelled, w.lastFired, w.resetNext]);
+                        expect([rw.x, rw.y, rw.distanceTravelled, rw.lastFired]).toEqual([w.x, w.y, w.distanceTravelled, w.lastFired]);
+                        // resetNext travels at the step rate only for a shot in flight (replicaGalaxy.ts hotFieldGuards):
+                        // an idle weapon's flips on every touch, and the view reads it only while the shot is drawn.
+                        if (w.distanceTravelled >= 0) expect(rw.resetNext).toBe(w.resetNext);
                     }
                     const h = bo.parentHabitat as Habitat | null;
                     if (h !== null) {

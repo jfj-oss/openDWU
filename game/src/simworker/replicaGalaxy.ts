@@ -136,6 +136,17 @@ export function coldStreamFields(): Set<string> {
 }
 
 /**
+ * Hot fields compared at the step rate only while the shot is drawn (replicaSync.ts hotFieldGuards): an idle weapon's
+ * resetNext flips on every touch of its ship (BuiltObject.1.cs HandleWeaponsFiring: no target → ResetNext, then the next
+ * touch resets it), 2000+ sets a step on a late galaxy, but the view reads it only for a shot in flight
+ * (effectsLayer.ts shotFlightSpeed / fighterShotFlightSpeed: distanceTravelled > 1; reset() sets −1). The cold pass
+ * still brings it exactly.
+ */
+export function hotFieldGuards(): Record<string, string> {
+    return { 'Weapon._resetNext': 'distanceTravelled', 'FighterWeapon.resetNext': 'distanceTravelled' };
+}
+
+/**
  * References whose target is compared with the holder (replicaSync.ts relatedFields): a shot's / fighter's / creature's
  * target (shield strikes, bombardment explosions show at once), and a ship's parent habitat / dock (its position, which
  * the ship's was just derived from).
@@ -190,6 +201,7 @@ export class GalaxySyncSource {
                 coldStreamClasses: opts.coldStreamClasses ?? [Empire.prototype, ShipGroup.prototype],
                 alwaysHotFields: opts.alwaysHotFields ?? alwaysHotFields(),
                 fixedHotClasses: opts.fixedHotClasses ?? fixedHotClasses(),
+                hotFieldGuards: opts.hotFieldGuards ?? hotFieldGuards(),
                 hotStreamFields: opts.hotStreamFields ?? hotStreamFields(),
                 mixedStreamFields: opts.mixedStreamFields ?? mixedStreamFields(),
                 coldStreamFields: opts.coldStreamFields ?? coldStreamFields(),
@@ -325,27 +337,21 @@ export class GalaxyReplica {
         return (this.decoder.object(0) as Galaxy | null) ?? null;
     }
 
-    /** Apply a delta (hot part now, cold part queued; `all`: everything now — the snapshot, a save, tests). */
-    apply(d: ReplicaDelta, all = false): ApplyStats {
-        const st = this.decoder.apply(d, all);
-        this.afterApply(all);
-        return st;
-    }
-
     /**
-     * Apply a delta and every cold part queued up to it, now (a step message carrying command replies: the onApplied
-     * callbacks then read the replica as of the boundary that applied the commands). The side tables keep their own
-     * cadence.
+     * Apply a delta (hot part now, cold part queued; `all`: everything now — the snapshot, a save, tests). With a finite
+     * `budgetMs`, a hot part that depends on cold births not applied yet may return `pending` (ReplicaDecoder.apply):
+     * call again with the same delta (next frame) to continue.
      */
-    applyThrough(d: ReplicaDelta): ApplyStats {
-        const st = this.decoder.apply(d, true);
-        this.afterApply(false);
+    apply(d: ReplicaDelta, all = false, budgetMs = Infinity, now: () => number = () => performance.now()): ApplyStats {
+        const st = this.decoder.apply(d, all, now, budgetMs);
+        if (!st.pending) this.afterApply(all);
         return st;
     }
 
-    /** Apply queued cold parts for up to `budgetMs` (once per render frame). */
-    pumpCold(budgetMs: number): ApplyStats {
-        const st = this.decoder.pumpCold(budgetMs);
+    /** Apply queued cold parts for up to `budgetMs` (once per render frame; ReplicaDecoder.pumpCold), with
+     *  `throughSeq` only those up to that delta's (a command reply waiting for them). */
+    pumpCold(budgetMs: number, now: () => number = () => performance.now(), throughSeq = Infinity, scale = true): ApplyStats {
+        const st = this.decoder.pumpCold(budgetMs, now, throughSeq, scale);
         if (st.coldParts > 0) this.afterApply(false);
         return st;
     }
