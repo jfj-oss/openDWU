@@ -1,5 +1,8 @@
 // Usage: node scripts/desktop-check.mjs [--app=release/dwu-linux-x64/dwu] [--port=9333]
-//                                       [--socket=dwu-pkg] [--compare-dev]
+//                                       [--socket=dwu-pkg] [--compare-dev] [--unpacked]
+//
+// --unpacked runs `electron desktop/main.cjs` from node_modules over the built dist/ (what `npm run desktop:dev`
+// launches; build it first with `npm run build`) instead of the packaged app.
 //
 // Headless check of the PACKAGED Linux desktop app (build it first with
 // `npm run package:linux`). Electron's --ozone-platform=headless segfaults on
@@ -13,7 +16,8 @@
 //   1. main menu at dwu://app/index.html
 //   2. dwu://app/index.html?autostart=1 -> game view (window.__dwu.game)
 //   3. Play -> galaxy.nowMs advances within 60 s
-//   4. F5 (Diplomacy) and F8 (Ship Designs) open and close on Escape
+//   4. the simulation runs in its Web Worker (a command and its reply, a worker save); ?simWorker=0 runs in-thread
+//   5. F5 (Diplomacy) and F8 (Ship Designs) open and close on Escape
 // saving 1920x1080 captures to shots/pkg-*.png. Every request whose URL has
 // /assets/dwu/ must go through dwu:// and succeed; console errors, page errors
 // and failed/4xx requests fail the check (exit 1) — except 404s for files the
@@ -53,7 +57,9 @@ const args = Object.fromEntries(
         return [m[1], m[2] ?? true];
     }),
 );
-const appBin = resolve(root, args.app ?? 'release/dwu-linux-x64/dwu');
+const unpacked = args.unpacked === true;
+const appBin = unpacked ? resolve(root, 'node_modules/electron/dist/electron') : resolve(root, args.app ?? 'release/dwu-linux-x64/dwu');
+const appArgs = unpacked ? [resolve(root, 'desktop/main.cjs')] : [];
 const cdpPort = Number(args.port ?? 9333);
 const socketName = args.socket ?? 'dwu-pkg';
 const W = 1920;
@@ -210,9 +216,51 @@ async function runFlow(page, base, tag, results) {
         await shot('running-failed').catch(() => {});
     }
 
+    // The simulation runs in its Web Worker by default (docs/sim-worker.md §6): the module worker loads from dist/
+    // (dwu://app/assets/worker-*.js), a command goes through it and its reply comes back, and the worker saves.
+    try {
+        const w = await page.evaluate(async () => {
+            const d = window.__dwu;
+            const sw = d.simWorker ?? null;
+            if (sw === null) return { worker: false };
+            const p = d.game.playerEmpire;
+            const reply = await new Promise((res) => {
+                d.commands.issue(d.galaxy, p, 'empireRename', ['Desktop Worker Check'], () => res(p.name));
+                setTimeout(() => res('(no reply)'), 20000);
+            });
+            const text = await sw.save();
+            const dg = await sw.digest();
+            return { worker: true, reply, saveKb: text ? Math.round(text.length / 1024) : 0, stepSerial: dg.stepSerial };
+        });
+        if (!w.worker) throw new Error('window.__dwu.simWorker is null: the game runs in-thread');
+        if (w.reply !== 'Desktop Worker Check') throw new Error(`the command's reply did not reach the replica (${w.reply})`);
+        if (!(w.saveKb > 0)) throw new Error('the worker did not save');
+        ok(`the simulation runs in the worker (a command's reply reaches the replica; worker save ${w.saveKb} KB at step ${w.stepSerial})`);
+    } catch (err) {
+        bad('the simulation runs in the worker', err);
+    }
+    // The in-thread fallback still boots (?simWorker=0).
+    try {
+        await page.goto(`${base}index.html?autostart=1&simWorker=0`, { waitUntil: 'domcontentloaded' });
+        await page.waitForFunction(() => !!window.__dwu?.game?.galaxy && window.__dwu?.time !== undefined, null, { timeout: 90000 });
+        const inThread = await page.evaluate(() => window.__dwu.simWorker == null);
+        if (!inThread) throw new Error('?simWorker=0 still runs a worker');
+        const t0 = await page.evaluate(() => window.__dwu.galaxy.nowMs);
+        await page.evaluate(() => { window.__dwu.time.paused = false; });
+        await page.waitForTimeout(3000);
+        const t1 = await page.evaluate(() => window.__dwu.galaxy.nowMs);
+        if (!(t1 > t0)) throw new Error(`the in-thread clock did not move (${t0} -> ${t1})`);
+        ok(`?simWorker=0 runs in-thread (nowMs ${t0} -> ${t1})`);
+        await page.goto(`${base}index.html?autostart=1`, { waitUntil: 'domcontentloaded' });
+        await page.waitForFunction(() => !!window.__dwu?.game?.galaxy, null, { timeout: 90000 });
+        await page.waitForTimeout(1500);
+    } catch (err) {
+        bad('?simWorker=0 in-thread fallback', err);
+    }
+
     for (const [key, sel, label] of [
-        ['F5', '.diplomacy-wrap', 'f5-diplomacy'],
-        ['F8', '.ship-designs-wrap', 'f8-ship-designs'],
+        ['F5', '[data-ow="diplomacy"]', 'f5-diplomacy'],
+        ['F8', '[data-ow="designs"]', 'f8-ship-designs'],
     ]) {
         try {
             await page.keyboard.press(key);
@@ -296,6 +344,7 @@ function checkCollector(c, tag, results, { requireScheme } = {}) {
 
 async function checkPackaged(results) {
     if (!existsSync(appBin)) throw new Error(`${appBin} not found — run \`npm run package:linux\` first`);
+    if (unpacked && !existsSync(join(root, 'dist', 'index.html'))) throw new Error('dist/index.html not found — run `npm run build` first');
     const runtimeDir = process.env.XDG_RUNTIME_DIR || `/run/user/${process.getuid()}`;
     const socketPath = join(runtimeDir, socketName);
     if (existsSync(socketPath)) throw new Error(`Wayland socket ${socketPath} already exists (another check running?)`);
@@ -325,7 +374,7 @@ async function checkPackaged(results) {
         delete appEnv.DISPLAY;
         app = spawn(
             appBin,
-            ['--ozone-platform=wayland', `--remote-debugging-port=${cdpPort}`, `--user-data-dir=${userDataDir}`],
+            [...appArgs, '--ozone-platform=wayland', `--remote-debugging-port=${cdpPort}`, `--user-data-dir=${userDataDir}`],
             { env: appEnv, stdio: ['ignore', 'pipe', 'pipe'] },
         );
         app.stdout.on('data', (d) => (appLog += d));

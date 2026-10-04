@@ -20,10 +20,10 @@ import type { PlayerOpName } from '../sim/player/playerOps';
 import { serializeGame } from '../sim/save/gameSave';
 import { galaxyExternals, saveClassPrototypes } from '../sim/save/galaxySave';
 import { stateDigest } from '../sim/tick/digest';
-import { setGameEndHandler, doGameEnd } from '../sim/victory';
-import { reviewAchievements } from '../sim/achievements';
+import { setGameEndHandler } from '../sim/victory';
 import { registerLocationPingedHook } from '../sim/story/eventActions';
 import { SimFrameBudget } from '../simFrameBudget';
+import { commandFreshRoots } from './commandReach';
 import { GalaxySyncSource } from './replicaGalaxy';
 import { TRADE_FLOWS_SIDE_KEY, TradeFlowSyncSource } from './tradeFlowSync';
 import { installRimAtmosphereData } from '../render/rimAtmosphereWiring';
@@ -138,12 +138,10 @@ export class SimHost {
             external: (o) => ext.byObject.get(o),
         };
         // Sim → UI hooks that change sim state run here, on the authoritative game; the main thread gets an event.
-        // Main.Part12.cs DoGameEnd (ui/screens/empireComparison.ts installGameEndHandler): pause, end the game, review
-        // achievements — the banner is the main thread's.
+        // Main.Part12.cs DoGameEnd (ui/screens/empireComparison.ts installGameEndHandler): the sim has ended the game and
+        // reviewed the achievements (victory.ts onGameEnd); the pause is the clock's, here; the banner is the main thread's.
         setGameEndHandler(this.galaxy, (e) => {
             this.time.paused = true;
-            doGameEnd(this.galaxy, e);
-            reviewAchievements(this.galaxy);
             this.events.push({ kind: 'gameEnd', args: { victor: this.encodeOrNull(e.victorEmpire), outcome: e.outcomeForPlayer, description: e.description, code: e.code } });
             this.dirty = true;
         });
@@ -236,6 +234,9 @@ export class SimHost {
             // (It changes nothing in the sim: applyLive calls it after the executor, as it calls the in-thread UI's.)
             issuePlayerCommand(this.galaxy, empire, m.op as PlayerOpName, args as never, (result: unknown) => {
                 entry.done = true;
+                // What the op changed past its arguments' reach (an id into a book: commandReach.ts), read now that
+                // the executor ran, for this tick's delta.
+                for (const o of commandFreshRoots(m.op, empire)) this.noteFresh(o);
                 if (m.id !== 0) this.results.push(this.commandReply(m.id, m.op, result));
             });
             this.queued.push(entry);

@@ -21,7 +21,7 @@ import { clearHudMessages, createHud, refreshTopLeftControls, topSystemNameText,
 import { GalaxyTime } from './sim/clock';
 import { resolveStarDateDescription } from './sim/galaxyTime';
 import { createSimLoop, simViewEnabledFromUrl } from './simLoop';
-// [simworker] begin — docs/sim-worker.md: the sim in a Web Worker behind ?simWorker=1 / Settings (default off).
+// [simworker] begin — docs/sim-worker.md: the sim in a Web Worker (the default; ?simWorker=0 or Settings → off selects the in-thread fallback).
 import { SimWorkerClient, simWorkerEnabled, type ReplicaGameData } from './simworker/workerClient';
 import { workerCreateOptions } from './simworker/bootOptions';
 import type { ScenarioRef, WorkerBoot } from './simworker/protocol';

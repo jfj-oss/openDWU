@@ -302,7 +302,7 @@ export class SimWorkerClient {
 }
 
 
-/** `?simWorker=1|0` overrides the Settings toggle (default off). */
+/** `?simWorker=1|0` overrides the Settings toggle (default on; off = the in-thread fallback). */
 export function simWorkerEnabled(search: string, setting: boolean): boolean {
     const q = new URLSearchParams(search).get('simWorker');
     if (q === '1' || q === 'true') return true;

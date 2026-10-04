@@ -32,8 +32,7 @@ import { sendEventMessageToEmpire } from '../src/sim/events';
 import { EventMessageType } from '../src/sim/eventTypes';
 import { AdvisorMessageType, advisorSuggestions } from '../src/sim/advisorQueue';
 import { DiplomaticRelation, DiplomaticRelationList, DiplomaticRelationType, DiplomaticStrategy } from '../src/sim/diplomacy';
-import { GameEndOutcome, doGameEnd, setGameEndHandler } from '../src/sim/victory';
-import { reviewAchievements } from '../src/sim/achievements';
+import { GameEndOutcome, setGameEndHandler } from '../src/sim/victory';
 import { SimHost } from '../src/simworker/simHost';
 import { SimClientCore } from '../src/simworker/clientCore';
 import type { ToWorker, WorkerEvent } from '../src/simworker/protocol';
@@ -150,12 +149,10 @@ describe('sim worker: the player message pipeline', () => {
         const head = cachedTickGame(gameData);
         const headNotes: PlayerMessageNote[] = [];
         setPlayerMessageListener(head.galaxy, (n) => void headNotes.push(n));
-        // Galaxy.GameEnd's subscriber, as the app and the worker install it (empireComparison.ts / simHost.ts): end the
-        // game, review the achievements, pause (here: no more frames).
+        // The sim ends the game and reviews the achievements itself (victory.ts onGameEnd); Galaxy.GameEnd's subscriber,
+        // as the app and the worker install it (empireComparison.ts / simHost.ts), pauses (here: no more frames).
         let headPaused = false;
-        setGameEndHandler(head.galaxy, (e) => {
-            doGameEnd(head.galaxy, e);
-            reviewAchievements(head.galaxy);
+        setGameEndHandler(head.galaxy, () => {
             headPaused = true;
         });
         for (let t = 0; t < END_TICKS; t++) {

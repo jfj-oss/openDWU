@@ -124,6 +124,50 @@ describe('sim worker: host + replica vs the in-thread loop', () => {
         w.host.dispose();
     }, 600000);
 
+    it('a paused game settles to the exact game without a full compare (side tables included)', () => {
+        // docs/sim-worker.md §8 "Cold staleness": after the last change the worker keeps comparing for two cold cycles,
+        // then goes quiet; the replica must then be the authoritative game — also the side tables (Random draw counts,
+        // prices, characters). They went onto the replica's objects only every 60th apply, so once the stream stopped
+        // the last values never landed (GalaxyReplica now also applies them when the stream goes idle); and the worker
+        // recollected them at the delta after a cold cycle wrapped, after the new cycle had already compared them.
+        const game = cachedTickGame(gameData);
+        const time = new GalaxyTime();
+        time.paused = false;
+        time.speed = 4;
+        const w = connect(game, time);
+        w.time.speed = 4;
+        w.time.paused = false;
+        while (game.galaxy.nowMs < 20_000) w.tick();
+        w.time.paused = true;
+        let quiet = 0;
+        let ticks = 0;
+        while (quiet < 20 && ticks < 20000) {
+            w.client.syncClock(w.time);
+            const m = w.host.tick(FRAME_REAL_MS);
+            if (m !== null) {
+                w.client.receive(structuredClone(m));
+                quiet = 0;
+            } else quiet++;
+            w.client.frame(w.time);
+            ticks++;
+        }
+        // The cold queue pumped out.
+        for (let i = 0; i < 200; i++) w.client.frame(w.time);
+        expect(quiet).toBe(20);
+        const rep = JSON.stringify(galaxyToJSON(w.client.galaxy));
+        const auth = JSON.stringify(galaxyToJSON(game.galaxy));
+        if (rep !== auth) {
+            // Name the first difference (a side table is at the end of the text).
+            let i = 0;
+            while (i < rep.length && rep[i] === auth[i]) i++;
+            console.log(`replica / game differ at ${i}: ${rep.slice(i - 160, i + 60)} ||| ${auth.slice(i - 160, i + 60)}`);
+        }
+        expect(rep === auth).toBe(true);
+        expect(stateDigest(w.client.galaxy)).toBe(w.host.digest());
+        w.client.dispose();
+        w.host.dispose();
+    }, 600000);
+
     it('a save from the host loads into a new host that continues identically', () => {
         const game = cachedTickGame(gameData);
         const time = new GalaxyTime();

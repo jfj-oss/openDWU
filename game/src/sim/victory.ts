@@ -49,6 +49,7 @@ import { habitatCompareTo } from './stationPlacement';
 import { LONG_MAX_VALUE, type DiplomacyCounters } from './diplomacy';
 import type { VictoryConditions as WizardVictoryConditions } from './startGameOptions';
 import type { TechNode } from './researchSystem';
+import { reviewAchievements } from './achievements';
 import type { Troop } from './cargo';
 import { decimateEmpire } from './story/freedomAlliance';
 import { guardiansDepart } from './empireAbsorb';
@@ -233,16 +234,25 @@ export function setGameEndHandler(galaxy: Galaxy, handler: ((e: GameEndEventArgs
     else gameEndHandlers.set(galaxy, handler);
 }
 
-/** Galaxy.cs 1274 OnGameEnd(e): raise GameEnd if anyone subscribed. */
+/**
+ * Galaxy.cs 1274 OnGameEnd(e): GameEnd is raised to its subscriber, Main.Galaxy_GameEnd → DoGameEnd (Main.Part12.cs
+ * 2910 / 3423). Main subscribes to every game it runs, and DoGameEnd's model part changes the game — IsFinished stops
+ * the yearly CheckVictoryConditions (Galaxy.cs DoTasks(gameFinished, …)), method_436 reviews the achievements — so it
+ * runs here, in the sim, the same in every mode: in-thread, in the sim worker and headless (a replay of a game that
+ * ended gives the same game; it ran only where the UI had installed a handler). The subscriber (setGameEndHandler) gets
+ * the rest: the pause, the music, the banner (ui/screens/empireComparison.ts, simworker/simHost.ts).
+ */
 export function onGameEnd(galaxy: Galaxy, e: GameEndEventArgs): void {
+    doGameEnd(galaxy, e);
+    reviewAchievements(galaxy); // method_436's first line
     const handler = gameEndHandlers.get(galaxy);
     if (handler !== undefined) handler(e);
 }
 
 /**
- * Main.Part12.cs 3423 DoGameEnd(e), model part: `_Game.IsFinished = true; _Game.Victor = e.VictorEmpire`. The rest
- * (the music, the game-end banner and, for Code 1, the Shakturi ending story panel with GenerateMajorStoryVictoryMessage)
- * is UI: ui/screens/empireComparison.ts presentGameEnd.
+ * Main.Part12.cs 3423 DoGameEnd(e), model part: `_Game.IsFinished = true; _Game.Victor = e.VictorEmpire` (onGameEnd
+ * runs it). The rest (the music, the game-end banner and, for Code 1, the Shakturi ending story panel with
+ * GenerateMajorStoryVictoryMessage) is UI: ui/screens/empireComparison.ts presentGameEnd.
  */
 export function doGameEnd(galaxy: Galaxy, e: GameEndEventArgs): void {
     galaxy.gameIsFinished = true;

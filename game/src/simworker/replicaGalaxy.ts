@@ -180,7 +180,6 @@ type SideRoot = Record<string, unknown>;
 export class GalaxySyncSource {
     readonly encoder: ReplicaEncoder;
     private readonly side: SideRoot;
-    private sideCycle = -1;
 
     constructor(readonly galaxy: Galaxy, opts: Partial<Omit<ReplicaEncoderOptions, 'classes' | 'skipFields' | 'externals' | 'hotClasses'> & { hotClasses?: readonly object[] }> = {}) {
         const codec = replicaCodecOptions();
@@ -211,6 +210,8 @@ export class GalaxySyncSource {
             [galaxy, this.side],
         );
         this.encoder.onHotPass = (enc) => this.hotPass(enc);
+        // The side tables are recollected at the start of every cold cycle (and before a full compare).
+        this.encoder.onCycleStart = () => this.refreshSideTables();
         this.refreshSideTables();
     }
 
@@ -278,12 +279,10 @@ export class GalaxySyncSource {
         return this.encoder.diff(true);
     }
 
-    /** The delta after a step; the side tables are recollected once per cold cycle (before a full compare). */
+    /** The delta after a step; the side tables are recollected as each cold cycle starts (encoder.onCycleStart) and
+     *  before a full compare. */
     delta(fullCold = false): ReplicaDelta {
-        if (fullCold || this.encoder.cycleCount !== this.sideCycle) {
-            this.refreshSideTables();
-            this.sideCycle = this.encoder.cycleCount;
-        }
+        if (fullCold) this.refreshSideTables();
         return this.encoder.diff(fullCold);
     }
 }
@@ -311,12 +310,18 @@ function assignInPlace(dst: Record<string, unknown>, src: Record<string, unknown
 }
 
 /** The main-thread replica: a decoder plus the replica Galaxy's static wiring. */
+/** Idle cold pumps (render frames with nothing to apply) after which side tables still pending go onto the replica. */
+const SIDE_IDLE_PUMPS = 30;
+
 export class GalaxyReplica {
     readonly decoder: ReplicaDecoder;
     private readonly statics: ReturnType<typeof replicaStatics>;
     private wired = false;
     private empiresSeen = 0;
     private sideCountdown = 0;
+    /** Applies since the side tables last went onto the replica (afterApply), and cold pumps with nothing to apply since. */
+    private sideStale = false;
+    private sideIdlePumps = 0;
 
     constructor(gameData: GameData, baseTechCost: number) {
         this.statics = replicaStatics(gameData, baseTechCost);
@@ -353,6 +358,7 @@ export class GalaxyReplica {
     pumpCold(budgetMs: number, now: () => number = () => performance.now(), throughSeq = Infinity, scale = true): ApplyStats {
         const st = this.decoder.pumpCold(budgetMs, now, throughSeq, scale);
         if (st.coldParts > 0) this.afterApply(false);
+        else if (this.sideStale && this.decoder.coldBacklog === 0 && ++this.sideIdlePumps >= SIDE_IDLE_PUMPS) this.applySideTables();
         return st;
     }
 
@@ -369,10 +375,21 @@ export class GalaxyReplica {
             this.empiresSeen = n;
             wireReplicaVisibility(g);
         }
+        // The side tables go onto the replica's objects (Random draw counts, the price arrays, characters, …) every 60
+        // applies with the cold queue empty — and once the stream has gone quiet (a paused game: the worker's last
+        // values must land even though no further apply comes to count the 60 down).
+        this.sideIdlePumps = 0;
+        if (all || (--this.sideCountdown <= 0 && this.decoder.coldBacklog === 0)) this.applySideTables();
+        else this.sideStale = true;
+    }
+
+    private applySideTables(): void {
+        const g = this.galaxy;
         const side = this.decoder.object(1);
-        if (side !== null && (all || (--this.sideCountdown <= 0 && this.decoder.coldBacklog === 0)) && Object.keys(side).length > 0) {
-            applyReplicaSideTables(g, side);
-            this.sideCountdown = 60;
-        }
+        this.sideStale = false;
+        this.sideIdlePumps = 0;
+        if (g === null || side === null || Object.keys(side).length === 0) return;
+        applyReplicaSideTables(g, side);
+        this.sideCountdown = 60;
     }
 }

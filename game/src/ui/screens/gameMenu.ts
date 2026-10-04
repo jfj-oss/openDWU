@@ -264,8 +264,8 @@ export function buildOptionsPanel(
     optionsPanel.appendChild(makeToggle('Dither gradients (no banding)', 'ditherGradients'));
     optionsPanel.appendChild(makeToggle('Draw stations closer to their planet / moon', 'pullStationsToCentre'));
     optionsPanel.appendChild(makeToggle('Show weapon range circles for the selected ship', 'showWeaponRangeCircles'));
-    // Experimental (docs/sim-worker.md): read by main.ts when the next game starts or loads.
-    optionsPanel.appendChild(makeToggle('Simulation in a worker thread (experimental, next game)', 'simWorker'));
+    // docs/sim-worker.md: read by main.ts when the next game starts or loads; off = the in-thread fallback.
+    optionsPanel.appendChild(makeToggle('Simulation in a worker thread (next game)', 'simWorker'));
     // [galaxymarkers] begin — Main.InitializeComponent.cs 9922-10041: grpGameOptionsAdvancedDisplaySettingsGalaxyIcons.
     const gvHead = document.createElement('div');
     gvHead.className = 'game-menu-option-label';

@@ -1,8 +1,10 @@
 # Sim worker: the simulation on its own thread
 
-Status: **phase 1 (foundation) done, behind a flag.** Turn it on with `?simWorker=1`, or with Game Menu → Options →
-"Simulation in a worker thread (experimental, next game)". It is off by default. `?simWorker=0` forces it off.
-With the flag off, the game runs exactly as before: one thread, the same code path.
+Status: **the default (2026-10-03, after the final check in §10).** Every game (new, loaded, tutorial, restarted) runs
+its simulation in a Web Worker, in the browser and in the desktop app. The in-thread mode stays as the fallback (§6):
+`?simWorker=0`, or Options → "Simulation in a worker thread (next game)" unticked (main menu Options or the game menu's
+option list). With it, the game runs exactly as before the worker: one thread, the same code path. `?simWorker=1`
+forces the worker whatever the setting says.
 
 Companion document: [sim-worker-consumer-audit.md](sim-worker-consumer-audit.md) lists every render and UI file's
 sim reads by frequency, the per-frame field set, the direct sim writes and the identity dependencies. The work list in
@@ -417,6 +419,14 @@ Each delta has a `hot` part and a `cold` part, and each part has shells (new obj
   pumped first, under `replyBudgetMs` (4 ms a frame), and the replies — with the events of their message and of the
   messages after it, in order — are delivered once they are in. A message's events are delivered before its own cold
   part applies (its drops among them), a reply after it.
+- **The side tables** (what the save keeps beside the graph: prices, characters, captain bonuses, Random draw counts,
+  race fields, plague levels) are recollected into the side root as each cold cycle starts (`ReplicaEncoder
+  .onCycleStart`, inside the diff, before the cycle's first compare; and before a full compare), and go onto the
+  replica's objects every 60th apply with the cold queue empty, or once the stream has been idle for 30 cold pumps
+  (`GalaxyReplica.pumpCold`). Before §10 they were recollected at the delta after the wrap — after the new cycle had
+  already compared the side root (low ids) in the same call — and applied only on the 60th apply, so a paused game,
+  whose stream stops one full cycle after its last change, kept the previous draw counts on the replica for good
+  (replica digest ≠ worker digest while paused; `test/simWorker.test.ts` "a paused game settles").
 
 ### 3.4 Decoding (main thread)
 
@@ -496,6 +506,12 @@ not to the local queue.
   3000 objects (`ReplicaEncoder.compareReach`). So a screen's refresh in `onApplied` sees, for example, the list a
   new fleet template went into. Both compares reshape a class instance that has gained a lazily set `declare`d
   field (e.g. `Empire.fleetDesigns`, `constructionBoard`). The round-robin cold pass does not notice new fields.
+  Ops that name what they change by a number add the book it points into, read after the executor ran
+  (`simworker/commandReach.ts commandFreshRoots`): `fleetTemplate*` the fleet design book with every template and build
+  order, `constructionJob*` the construction board and its jobs. A template's rows are past the reach of the ids and
+  the empire (on a real empire the 3000 objects go to the empire's own lists first), so before §10 the Fleet Designs
+  tab re-rendered in Add Design's reply on the old rows and the new row did not show (`test/simWorkerScreens.test.ts`
+  "by id").
 - **Refresh on open** (`simworker/refresh.ts requestSimRefresh`, message `refresh`): when a screen opens, it asks the
   worker to `compareReach` the objects it shows. It re-renders once they have arrived: the reply waits for the cold
   parts through its delta, as a command reply does (§4.3 "Freshness of `onApplied`"). In-thread this is a no-op.
@@ -687,8 +703,11 @@ op does not compile without one.
 
 These run in the worker on the authoritative game, and the main thread gets an event:
 
-- The game-end handler: pause, `doGameEnd`, `reviewAchievements`. The `gameEnd` event carries the args (victor,
-  outcome, text); the main thread plays the music and shows the outcome (the comparison window's overlay and the Game End panel) (`empireComparison.ts presentGameEnd`).
+- The game end: the sim ends the game itself (`victory.ts onGameEnd`: DoGameEnd's model part, `gameIsFinished` and
+  the victor, and method_436's `reviewAchievements`, in every mode and headless — §10.2); the host's handler pauses
+  the worker's clock and sends the `gameEnd` event with the args (victor, outcome, text); the main thread plays the
+  music and shows the outcome (the comparison window's overlay and the Game End panel)
+  (`empireComparison.ts presentGameEnd`).
 - The player's message pipeline (`sim/playerMessages.ts`, §4.4): it runs in the worker's tick as it runs in-thread
   and headless; the host only listens (`setPlayerMessageListener`) and, after each tick, sends one `playerMessages`
   event: each handled message once (also those ProcessMessages emptied before any sync), with its receipt (advisor,
@@ -752,13 +771,20 @@ exact after a full compare; a source that throws or does not load gives way to t
   loads its own from the same URLs, with the same scenario overlay) and rebuilds class-typed options
   (`VictoryConditions`). Test: the cloned options build a byte-identical game, and the test fails without the rebuild.
 - **Replays** are unchanged: `replayCommandLog` runs headless from seed plus log. The log a worker game writes is the
-  in-thread log.
+  in-thread log. A browser session replays bit-exact headless **in the same engine** (§10.3: the campaign's replay in a
+  page with no game view gives the worker's digest and save text); in node it does not, in either mode, because node's
+  V8 and Chromium's give different last bits for `Math.sin`, `cos`, `tan`, `asin`, `exp`, `log`, `atan2`, `pow`, … on
+  a few percent of arguments (§8 "Cross-engine replays").
 
 ## 6. Fallback in-thread mode
 
-With the flag off (the default), `startGameView` creates the in-thread `createSimLoop` exactly as before. `SimHost`,
-the worker and the replica are not created. `issuePlayerCommand` takes the local queue, because no remote sink is
-registered.
+With the flag off (`?simWorker=0`, or the setting unticked), `startGameView` creates the in-thread `createSimLoop`
+exactly as before. `SimHost`, the worker and the replica are not created. `issuePlayerCommand` takes the local queue,
+because no remote sink is registered.
+
+The setting (`ui/settings.ts simWorker`, default on) is stored with `simWorkerVersion: 2`: a stored `simWorker` from
+before the flip (the old default `false`, written with every other setting whenever one changed) is not a choice and is
+ignored, so existing players get the worker; one they untick afterwards is kept (`test/simWorkerDefault.test.ts`).
 
 The only behaviour changes in this mode are:
 
@@ -793,8 +819,25 @@ The only behaviour changes in this mode are:
 | `test/simWorkerCommandFailures.test.ts` | Failed commands: refusals, throws, unknown ops, dropped / stale arguments, unsendable results, timeout, worker stop, close / reload (§4.4) |
 | `test/simWorker.test.ts`, `test/replicaSync.test.ts` | Determinism, fidelity and save gates; codec fuzz (8 seeds × 400 steps by default; `FUZZ_SEEDS` / `FUZZ_STEPS`) |
 | `src/simworker/writeDetector.ts`, `test/replicaWriteDetector.test.ts` | Dev-only replica write detector (`?detectWrites=1`, §9 chunk 0) and its tests |
+| `src/simworker/commandReach.ts` | What a command's reply must carry beyond its arguments (ops that name a template / job by id, §4.3) |
+| `scripts/simworker-campaign.mjs` | The final check's long play session (§10): new games of each kind, years at 1×-4×, every screen and panel with real orders, save / load, autosave, crashes, the write detector, the headless replay |
+| `scripts/simworker-campaign-compare.mjs` | Two campaign runs side by side (worker against in-thread): differing checks, ops per step, errors, popups |
+| `scripts/simworker-replay-check.mjs` | A campaign session's seed + command log replayed headless in node, digest and save text compared (cross-engine: §8) |
+| `scripts/desktop-check.mjs` | The desktop app (packaged, or `--unpacked`: `electron desktop/main.cjs` over dist/): the worker boots, a command replies, the worker saves; `?simWorker=0` runs in-thread |
+| `test/simWorkerDefault.test.ts` | The default: the setting, its migration, the `?simWorker` override |
 
 ## 8. Known limits of phase 1 (also in §9)
+
+- **Cross-engine replays (not the worker's: both modes).** The sim calls `Math.sin` / `cos` / `tan` / `asin` /
+  `atan2` / `exp` / `log` / `pow` (about 190 call sites, orbits and headings among them), whose last bit differs
+  between engines: node 22 (V8 12.4) against the headless Chromium 151 here differ on up to 18 % of sampled arguments
+  (`sin` / `cos` 3–4 %, `exp` / `pow` 9–10 %, `atan2` 18 %; `sqrt`, `hypot` none; node 26 agrees with Chromium on `pow`
+  only); a page's main thread and its workers always
+  agree. So a browser or desktop session's command log replays bit-exact only in the same engine — the campaign's
+  browser replay (§10.3) is exact; `scripts/simworker-replay-check.mjs` in node is not (the first difference is a star
+  position at galaxy creation). The node harness and its pins are unaffected (node against node). Making it hold
+  across engines needs sim-owned deterministic transcendental functions (a JS port of fdlibm for the ~190 call sites,
+  a sim change that moves every pin, with a cost in the late-game step) — left as a decision for the project.
 
 - **Boot cost.** A late save's snapshot is about 3–4 s to encode on top of the worker's own load (201 MB since chunk
   9, 425 MB before), and the main thread is busy for about 1–1.7 s applying it (2–7 s before). A streamed or

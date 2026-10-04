@@ -242,10 +242,14 @@ describe('game end', () => {
         expect(galaxy.gameIsFinished).toBe(true);
         expect(galaxy.gameVictor).toBe(victor);
         expect(time.paused).toBe(true);
+        // Without a subscriber the sim still ends the game (DoGameEnd's model part is the sim's: victory.ts onGameEnd);
+        // only the UI part (the pause, the banner) is gone.
         galaxy.gameIsFinished = false;
+        time.paused = false;
         removeGameEndHandler(galaxy);
         onGameEnd(galaxy, new GameEndEventArgs(victor, GameEndOutcome.Defeat, 'x', 0));
-        expect(galaxy.gameIsFinished).toBe(false);
+        expect(galaxy.gameIsFinished).toBe(true);
+        expect(time.paused).toBe(false);
     });
 });
 
