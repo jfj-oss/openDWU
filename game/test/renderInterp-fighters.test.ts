@@ -108,7 +108,11 @@ class Run {
     frame(g: Galaxy, rt: RenderTime, watched: ReadonlySet<BuiltObject> | null): void {
         const m = this.m;
         m.begin(rt, habitatTouchClampSeconds(g.habitats.length), g.builtObjects.length, g.creatures.length, g.habitats.length);
-        if (!this.extrapolate) m.untouchedMaxMs = m.creatureUntouchedMaxMs = m.habitatUntouchedMaxMs = 0;
+        if (!this.extrapolate) {
+            m.untouchedMaxMs = m.creatureUntouchedMaxMs = m.habitatUntouchedMaxMs = 0;
+            // (The burst-lerp as it was: no easing of a creature's touch either.)
+            m.easeCreatures = false;
+        }
         for (const bo of g.builtObjects) {
             if (bo === null || bo.hasBeenDestroyed) continue;
             sampleBuiltObject(m, bo);

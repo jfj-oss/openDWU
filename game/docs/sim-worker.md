@@ -289,6 +289,31 @@ as they ease in or out. Tests: `test/renderInterp-hyperjump.test.ts` (entry, a o
 exit; both loop modes; `easeWarp` off for the before), and the visible-jump counts on the real 4000-star galaxy in
 `renderInterp-heading.test.ts`.
 
+**Patrols and creatures (2026-10-04, follow-up: "a destroyer patrolling my colony twitches while it's moving straight
+at 4×", "creatures hitch; the giant Kaltor teleports, even at 1×").** Measured in node on the user's save
+(`test2.dwusave`: 3 788 built objects, 101 652 habitats, 2 548 creatures, 1 489 of them Kaltors), in-thread, one step
+per 60 Hz frame through the presentation clock, with the visible-jump metric above (world units):
+- the patrol (MoveTo legs relative to the colony, flown in its frame): DoMovement aims from the ship's committed xpos,
+  which the move commands do not first re-place at parent + ParentOffset (executeCommands.ts 413-431,
+  BuiltObject.2.cs ExecuteCommands) — so the ship's first touch after the planet's own round-robin touch aims from where
+  it stood before the planet moved (~25 units at 4×), and its heading flicks 1-2° off and back once per habitat
+  round-robin (every ~1.7 s). The sim stays the C#'s; `staleFrameAim` (renderInterp.ts) draws that touch at the aim the
+  frame gives (the command's TargetRelativeXpos / Ypos less the previous ParentOffset, checked against the sim's own
+  TargetHeading plus the parent's move) and the turn back after it from there. 20 s at 4×: heading jumps > 0.5° 15 → 1
+  (the one left: a new waypoint's turn begun at a touch); worker mode max 0.50° → 0.03°.
+- creatures: one round-robin of 50 a step, so each was touched once in 51 steps (0.85 game s at 1×, 3.4 s at 4×). A
+  touch re-aims a wanderer (Move turns it toward a new TargetHeading at once), starts it from or brings it to rest at
+  its planet (drawn round the planet's drawn orbit at rest; its committed position trails that by the planet's
+  round-robin), and the unwrapped CalculateCurrentHeading lands on its target between touches — so the next touch lay
+  50-250 units off the extrapolation: over isJump's ~30 units at 1× a snap (the "teleport"), under it a one-frame pop.
+  `sampleCreature` now eases each of these out over the round-robin (soft snap, its heading turned over the same time);
+  a hyperspeed leg (relocation) still snaps. 15 s, all creatures, position jumps > 2 units / creatures with one over 50
+  units / heading jumps > 1.5°: 1× 1 077 / 0 / – → 0 / 0 / 5; 4× 5 968 / 393 / 2 470 → 0 / 0 / 49 (largest Kaltor
+  jump 247 → 1.1 units); worker mode 4× 1 545 → 0 position jumps (largest 211 → 0.3 units).
+Tests: `test/renderInterp-patrolCreature.test.ts` (a frigate ordered to patrol a colony through the player command path
+on the seed-1 harness galaxy, 0 heading jumps flying straight; creatures padded to the save's 2 548 slots, 0 position
+jumps at 1× and 4×; `fixFrameAim` / `easeCreatures` off for the before).
+
 ### 2.6 Chunk 9: sync performance in big late games (2026-10-03)
 
 What was wrong on the late saves (`late2500`: 9.8 k ships; `late2500-1200`: the same galaxy 1 200 s later, 144 MB):

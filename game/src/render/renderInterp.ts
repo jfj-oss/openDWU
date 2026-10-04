@@ -559,6 +559,17 @@ export interface MotionState {
     tWarp: boolean;
     tEntry: boolean;
     tWarpLeft: number;
+    /** Parent-frame aim (turnedAtLastTouch, staleFrameAim): the committed position and ParentOffset at the latest touch
+     * (NaN: none), and whether that touch's heading / TargetHeading were aimed from a stale position — then the heading
+     * and TargetHeading drawn instead (tFixHeading / tFixTarget), while the committed heading is still tFixFrom. */
+    tX: number;
+    tY: number;
+    tOx: number;
+    tOy: number;
+    tFix: boolean;
+    tFixFrom: number;
+    tFixHeading: number;
+    tFixTarget: number;
 }
 
 /** Scratch for easeOffset: the offset and its velocity (per step). */
@@ -720,6 +731,11 @@ export class MotionInterpolator {
     /** Whether hyperjump legs are eased (warp entry / re-aim / short-jump soft snaps, the exit clamp: sampleBuiltObject).
      * False: as before — A/B comparisons. */
     easeWarp = true;
+    /** Whether a move in a parent's frame aimed from a stale position is drawn at the frame's aim (staleFrameAim). False:
+     * as the sim aimed it — A/B comparisons. */
+    fixFrameAim = true;
+    /** Whether a moving creature's touch is eased out (sampleCreature). False: as before — A/B comparisons. */
+    easeCreatures = true;
     /** Longest a creature's position is extrapolated past its LastTouch (one creature round-robin + a step). */
     creatureUntouchedMaxMs = 0;
     /** Longest a habitat-fired shot is extrapolated past the habitat's LastTouch (one habitat round-robin + a step). */
@@ -797,7 +813,7 @@ export class MotionInterpolator {
         /** Whether the drawn heading may be eased (turnLimit): drawn last frame and not snapped. */
         let easeHeading = false;
         if (st === undefined) {
-            st = { px: x, py: y, ph: heading, cx: x, cy: y, ch: heading, frame, ox: originX, oy: originY, serial: this.serial, epoch, renderFrame: 0, x, y, heading, ex: 0, ey: 0, evx: 0, evy: 0, eStart: 0, eLen: 0, tx: x, ty: y, tvx: 0, tvy: 0, atSerial: this.at, hs: new Float64Array(MOTION_HISTORY * 4), hn: 0, tTouch: Number.NaN, tHeading: 0, tTurning: false, tSpeed: 0, tRate: 0, tRateAny: 0, tLimit: 0, tWarp: false, tEntry: false, tWarpLeft: Infinity };
+            st = { px: x, py: y, ph: heading, cx: x, cy: y, ch: heading, frame, ox: originX, oy: originY, serial: this.serial, epoch, renderFrame: 0, x, y, heading, ex: 0, ey: 0, evx: 0, evy: 0, eStart: 0, eLen: 0, tx: x, ty: y, tvx: 0, tvy: 0, atSerial: this.at, hs: new Float64Array(MOTION_HISTORY * 4), hn: 0, tTouch: Number.NaN, tHeading: 0, tTurning: false, tSpeed: 0, tRate: 0, tRateAny: 0, tLimit: 0, tWarp: false, tEntry: false, tWarpLeft: Infinity, tX: Number.NaN, tY: Number.NaN, tOx: Number.NaN, tOy: Number.NaN, tFix: false, tFixFrom: 0, tFixHeading: 0, tFixTarget: 0 };
             snapTo(st, this.serial, x, y, heading);
             this.states.set(obj, st);
         } else if (st.epoch !== epoch) {
@@ -806,6 +822,9 @@ export class MotionInterpolator {
             st.frame = frame;
             st.epoch = epoch;
         } else {
+            /** The frame's origin the track of last frame is read against (the old one's, converted below). */
+            let trackOx = st.ox;
+            let trackOy = st.oy;
             if (st.frame !== frame) {
                 // Entering / leaving a parent's frame (parking at or leaving a planet, docking at a base): carry the
                 // samples over into the new frame (through galaxy coordinates, at the old frame's last drawn origin) and
@@ -825,6 +844,8 @@ export class MotionInterpolator {
                 st.tx += dx;
                 st.ty += dy;
                 st.frame = frame;
+                trackOx = originX;
+                trackOy = originY;
             }
             const drawnLastFrame = st.renderFrame === this.renderFrame - 1;
             // The object's own motion over its last step (frame coordinates): the fallback for the track after a jump.
@@ -839,8 +860,8 @@ export class MotionInterpolator {
                     // track is its drawn position (in this frame's coordinates) less the offset easing then (the ease
                     // goes on into the new one: easeJump), moving as its last step did.
                     const e = st.eLen > 0 && st.eStart + st.eLen > st.atSerial ? easeOffset(st, st.atSerial, easeScratch) : null;
-                    st.tx = st.x - st.ox - (e !== null ? e.x : 0);
-                    st.ty = st.y - st.oy - (e !== null ? e.y : 0);
+                    st.tx = st.x - trackOx - (e !== null ? e.x : 0);
+                    st.ty = st.y - trackOy - (e !== null ? e.y : 0);
                     st.tvx = st.cx - st.px;
                     st.tvy = st.cy - st.py;
                 }
@@ -1058,6 +1079,9 @@ export interface MovingBuiltObject {
     lastHyperDistance?: number;
     /** BuiltObject.HyperjumpJustExited: the latest touch ended a warp leg at its exit point. */
     hyperjumpJustExited?: boolean;
+    /** BuiltObject.Mission: its current command's TargetRelativeXpos / Ypos, the target a move in the parent's frame aims
+     * at (staleFrameAim). */
+    mission?: unknown;
 }
 
 // Cosmetic option (not in the original, off by default): draw a base at a planet / moon pulled in toward its centre.
@@ -1254,6 +1278,7 @@ function turnedAtLastTouch(m: MotionInterpolator, bo: MovingBuiltObject, st: Mot
         st.tSpeed = v;
         st.tRate = st.tTurning ? r : 0;
         st.tLimit = bo.currentSpeed > bo.topSpeed ? 0 : HEADING_EASE_FACTOR * Math.max(r, st.tRateAny);
+        const prevRateAny = st.tRateAny;
         st.tRateAny = r;
         // Warp legs (cmdMovement.ts HyperTo): the first warp touch moves the ship at warp speed for the whole time since
         // its last touch (CurrentSpeed is set first) — a jump the sample eases (warpEntry); each warp touch measures the
@@ -1276,17 +1301,90 @@ function turnedAtLastTouch(m: MotionInterpolator, bo: MovingBuiltObject, st: Mot
         st.tWarp = warp;
         const lh = bo.lastHyperDistance;
         st.tWarpLeft = warp && consecutive && typeof lh === 'number' && lh < 536870911 ? Math.max(0, lh - (bo.currentSpeed * (t - prev)) / 1000) : Infinity;
+        // A move in the parent's frame aimed from where the ship stood before its parent moved (staleFrameAim): drawn at
+        // the aim the frame gives, which the next touch takes up (prevRateAny: the rate this touch turned at).
+        st.tFix = m.fixFrameAim && t - prev <= 3 * m.untouchedMaxMs && staleFrameAim(bo, st, prevHeading, prevRateAny, (t - prev) / 1000);
+        if (st.tFix && st.tFixHeading === bo.heading && st.tFixTarget === bo.targetHeading) st.tFix = false;
+        st.tFixFrom = bo.heading;
+        st.tX = bo.xpos;
+        st.tY = bo.ypos;
+        st.tOx = bo.parentOffsetX;
+        st.tOy = bo.parentOffsetY;
     }
-    return st.tTurning && bo.heading !== bo.targetHeading ? st.tRate : 0;
+    return st.tTurning && drawnCommittedHeading(bo, st) !== drawnTargetHeading(bo, st) ? st.tRate : 0;
+}
+
+/** `bo`'s committed heading as drawn: its heading, or the frame's aim when its latest touch aimed from a stale position
+ * (turnedAtLastTouch, staleFrameAim) and the sim has not changed the heading since. */
+function drawnCommittedHeading(bo: MovingBuiltObject, st: MotionState | undefined): number {
+    return st !== undefined && st.tFix && bo.heading === st.tFixFrom ? st.tFixHeading : bo.heading;
+}
+
+/** `bo`'s TargetHeading as drawn (drawnCommittedHeading's counterpart). */
+function drawnTargetHeading(bo: MovingBuiltObject, st: MotionState | undefined): number | undefined {
+    return st !== undefined && st.tFix && bo.heading === st.tFixFrom ? st.tFixTarget : bo.targetHeading;
+}
+
+/**
+ * A ship moving relative to its parent (DoMovement with evaluateRelativeToParent: the target is the parent's position +
+ * the command's TargetRelativeXpos / Ypos) aims from its committed xpos / ypos, which the move commands do not first
+ * re-place at parent + ParentOffset (executeCommands.ts 413-431, BuiltObject.2.cs ExecuteCommands: MoveTo, ImpulseTo,
+ * SprintTo, Escort and the hyperjump legs are left out) — so when the habitat's round-robin touch has moved the parent
+ * since the ship's previous touch, the ship aims from where it stood before the parent moved: off by the parent's
+ * move, and back on the frame's aim at the next touch (its position is parent + offset again). On a large galaxy at 4×
+ * a planet moves ~25 units between its touches: a patrolling ship's heading flicks by 1-2° and back once per habitat
+ * round-robin while it flies straight. The sim is the C#'s; the drawn ship takes the aim the frame gives instead:
+ * TargetHeading from the previous touch's offset to the command's relative target, and the heading turned toward it as
+ * far as this touch turned (CalculateCurrentHeading at `rate` over `dtSeconds` when it reached its target). Only when
+ * the sim's TargetHeading is exactly that aim plus the parent's move (the command and positions read are the ones the
+ * touch used — a command completed since, or a cold-synced one, fails it): writes st.tFixHeading / tFixTarget and
+ * returns true. Render-only.
+ */
+function staleFrameAim(bo: MovingBuiltObject, st: MotionState, prevHeading: number, rate: number, dtSeconds: number): boolean {
+    const th = bo.targetHeading;
+    // The heading the previous touch was drawn at, if it was fixed: the turns go on from there.
+    const basis = st.tFix && st.tFixFrom === prevHeading ? st.tFixHeading : prevHeading;
+    const turned = Math.abs(wrapAngle(bo.heading - prevHeading));
+    const turn = bo.heading === th ? Math.max(turned, rate * dtSeconds) : turned;
+    const pox = st.tOx;
+    const poy = st.tOy;
+    if (th === undefined || !(pox > PARENT_OFFSET_UNSET && poy > PARENT_OFFSET_UNSET) || !(bo.parentOffsetX > PARENT_OFFSET_UNSET && bo.parentOffsetY > PARENT_OFFSET_UNSET)) return false;
+    if (bo.role === BuiltObjectRole.Base || !(bo.currentSpeed > 0) || bo.currentSpeed > bo.topSpeed) return false;
+    const mission = bo.mission as { fastPeekCurrentCommand?: () => { targetRelativeXpos?: number; targetRelativeYpos?: number } | null } | null | undefined;
+    const cmd = mission != null && typeof mission.fastPeekCurrentCommand === 'function' ? mission.fastPeekCurrentCommand() : null;
+    const rx = cmd?.targetRelativeXpos;
+    const ry = cmd?.targetRelativeYpos;
+    if (typeof rx !== 'number' || typeof ry !== 'number') return false;
+    // The parent's position this touch used (moveToward: xpos = parent + ParentOffset after the move) and the previous one.
+    const dpx = bo.xpos - bo.parentOffsetX - (st.tX - pox);
+    const dpy = bo.ypos - bo.parentOffsetY - (st.tY - poy);
+    if (!(Math.abs(dpx) + Math.abs(dpy) > 1e-6)) {
+        // The parent did not move: aimed right — but a ship the previous touch turned off its aim is still turning back
+        // (CalculateCurrentHeading at its rate): drawn turning on from the aim it was drawn at instead.
+        if (basis === prevHeading) return false;
+        st.tFixTarget = th;
+        st.tFixHeading = turnHeading(basis, th, turn);
+        return true;
+    }
+    // DoMovement's aim (determineAngle from the stale xpos, stored as a float) — or this is not that move.
+    const ax = rx - pox;
+    const ay = ry - poy;
+    if (!(Math.abs(wrapAngle(Math.fround(Math.atan2(ay + dpy, ax + dpx)) - th)) < 1e-5)) return false;
+    const aim = Math.fround(Math.atan2(ay, ax));
+    st.tFixTarget = aim;
+    st.tFixHeading = turnHeading(basis, aim, turn);
+    return true;
 }
 
 /**
  * The heading `bo`'s next touch gives it after `dtSeconds` untouched, if its orders hold: turned toward its
  * TargetHeading at `rate` (turnedAtLastTouch; 0: not turning) by turnHeading, else its committed heading.
  */
-function untouchedHeading(bo: MovingBuiltObject, dtSeconds: number, rate: number): number {
-    if (!(rate > 0) || !(dtSeconds > 0) || bo.targetHeading === undefined) return bo.heading;
-    return turnHeading(bo.heading, bo.targetHeading, rate * dtSeconds);
+function untouchedHeading(bo: MovingBuiltObject, dtSeconds: number, rate: number, st?: MotionState): number {
+    const h = drawnCommittedHeading(bo, st);
+    const target = drawnTargetHeading(bo, st);
+    if (!(rate > 0) || !(dtSeconds > 0) || target === undefined) return h;
+    return turnHeading(h, target, rate * dtSeconds);
 }
 
 /** sample()'s turnLimit for a built object not tracked by touch (no LastTouch): HEADING_EASE_FACTOR × the fastest it
@@ -1342,7 +1440,7 @@ const PARENT_FRAME_MAX_DRIFT = 500;
 export function sampleBuiltObject(m: MotionInterpolator, bo: MovingBuiltObject, depth = 0): MotionState {
     const st0 = m.peek(bo);
     const rate = turnedAtLastTouch(m, bo, st0);
-    const heading = rate > 0 ? untouchedHeading(bo, untouchedSeconds(m, bo.lastTouch!, m.untouchedMaxMs), rate) : bo.heading;
+    const heading = rate > 0 ? untouchedHeading(bo, untouchedSeconds(m, bo.lastTouch!, m.untouchedMaxMs), rate, st0) : drawnCommittedHeading(bo, st0);
     // Taken at the latest touch (turnedAtLastTouch); none before the first sample, which snaps anyway.
     const tracked = st0 !== undefined && bo.lastTouch !== undefined;
     const limit = st0 === undefined ? 0 : tracked ? st0.tLimit : builtObjectTurnLimit(bo);
@@ -1542,6 +1640,8 @@ export function sampleCreature(m: MotionInterpolator, c: MovingCreature): Motion
     let x = inFrame ? c.parentX : c.xpos;
     let y = inFrame ? c.parentY : c.ypos;
     let heading = c.currentHeading;
+    /** Whether the extrapolated turn has reached TargetHeading (turnHeading lands on it once the turn passes it). */
+    let landed = false;
     if (c.lastTouch !== undefined && moving && c.currentSpeed <= Math.max(c.movementSpeed, c.lungeSpeed)) {
         // Sub-light only: a hyperspeed leg ends in a relocation to a hyperjump exit, never where the line points.
         const dt = untouchedSeconds(m, c.lastTouch * 1000, m.creatureUntouchedMaxMs);
@@ -1554,16 +1654,72 @@ export function sampleCreature(m: MotionInterpolator, c: MovingCreature): Motion
             x = p.x;
             y = p.y;
             heading = p.heading;
+            landed = c.targetHeading !== undefined && p.heading === c.targetHeading && c.currentHeading !== c.targetHeading;
         }
     }
-    // The drawn heading turns at most HEADING_EASE_FACTOR × the creature's TurnRate (a touch it did not lead up to eases).
-    const turnLimit = HEADING_EASE_FACTOR * (c.turnRate ?? 0);
+    // The drawn heading turns at most HEADING_EASE_FACTOR × the creature's TurnRate (a touch it did not lead up to eases)
+    // — or, after an eased touch (below), at the rate that spreads the touch's disagreement over the same round-robin.
+    let turnLimit = HEADING_EASE_FACTOR * (c.turnRate ?? 0);
+    const frame = inFrame ? h : null;
+    let ox = 0;
+    let oy = 0;
     if (inFrame) {
         const o = m.habitatPos(h);
-        return m.sample(c, x, y, heading, maxSpeed, h, o.x, o.y, 0, 0, Number.NaN, Number.NaN, turnLimit);
+        ox = o.x;
+        oy = o.y;
     }
-    return m.sample(c, x, y, heading, maxSpeed, null, 0, 0, 0, 0, Number.NaN, Number.NaN, turnLimit);
+    // What a touch decided that the extrapolation could not foresee is eased out over the round-robin to the creature's
+    // next touch (CREATURE_TOUCH_EASE_MIN_MS at least) instead of drawn as a jump (isJump snapped one over ~30 units at
+    // 1×: a teleport) or a one-frame pop:
+    // - a new touch of a creature moving at sub-light speed: Move re-aims a wandering creature (a new TargetHeading,
+    //   turned toward at once). On a galaxy of 2 548 creatures each is touched once in 51 steps (0.85 game s at 1×,
+    //   3.4 s at 4×), so the turn it makes can lie 50-250 units off the extrapolated one;
+    // - starting from or coming to rest at its ParentHabitat: at rest it is drawn around the planet's drawn orbit, while
+    //   its committed position (ParentHabitat's committed xpos + parentX) trails that by the planet's round-robin.
+    // - the extrapolated turn landing on TargetHeading between touches: Creature.cs CalculateCurrentHeading does not wrap
+    //   target − heading, so a turn the long way round runs on until it passes the target's unwrapped distance and then
+    //   lands on it outright — the heading the next touch moves the creature along (the whole time since its last touch)
+    //   steps by up to π, and the extrapolated position with it.
+    // A move far beyond what the creature could make in a round-robin still snaps.
+    let soft = 0;
+    let jvx = Number.NaN;
+    let jvy = Number.NaN;
+    const st0 = m.peek(c);
+    if (st0 !== undefined) {
+        const touched = c.lastTouch !== undefined && c.lastTouch !== st0.tTouch;
+        if (touched) st0.tTouch = c.lastTouch!;
+        const subLight = c.currentSpeed <= Math.max(c.movementSpeed, c.lungeSpeed);
+        const reframed = st0.frame !== frame;
+        // (st.tTurning holds, for a creature, whether its extrapolated turn had landed last frame.)
+        const landedNow = landed && !st0.tTurning && !touched;
+        st0.tTurning = landed;
+        if (m.easeCreatures && subLight && (reframed || (moving && frame === null && (touched || landedNow)))) {
+            const gapMs = Math.max(CREATURE_TOUCH_EASE_MIN_MS, m.creatureUntouchedMaxMs);
+            const reach = 3 * maxSpeed * (gapMs / 1000) + 500;
+            if (Math.abs(ox + x - st0.x) + Math.abs(oy + y - st0.y) < reach) {
+                m.jumpNext = c;
+                soft = gapMs;
+                const vs = moving ? c.currentSpeed * (m.stepSeconds > 0 ? m.stepSeconds : 1 / FRAMES_PER_SECOND) : 0;
+                jvx = Math.cos(heading) * vs;
+                jvy = Math.sin(heading) * vs;
+                // (st.tLimit holds, for a creature, the drawn heading's turn limit until its next eased touch: no slower
+                // than its TurnRate while its extrapolated turn runs at that rate.)
+                const spread = Math.abs(wrapAngle(heading - st0.heading)) / (gapMs / 1000);
+                st0.tLimit = Math.max(c.currentHeading !== c.targetHeading ? (c.turnRate ?? 0) : 0, spread, 1e-6);
+            }
+        }
+        if (!m.easeCreatures || !moving) st0.tLimit = 0;
+        if (st0.tLimit > 0) turnLimit = st0.tLimit;
+    }
+    const st = m.sample(c, x, y, heading, maxSpeed, frame, ox, oy, 0, soft, jvx, jvy, turnLimit);
+    if (m.jumpNext === c) m.jumpNext = null;
+    // First sight: its latest touch is the one the next is compared with.
+    if (st0 === undefined) st.tTouch = c.lastTouch ?? Number.NaN;
+    return st;
 }
+
+/** Least game ms a creature's touch is eased over (sampleCreature; else the creature round-robin's length). */
+export const CREATURE_TOUCH_EASE_MIN_MS = 250;
 
 /** Fighter fields read by sampleFighter. */
 export interface MovingFighter {
@@ -1688,7 +1844,7 @@ function fighterLeashOf(m: MotionInterpolator, f: MovingFighter, tMs: number, ou
     const rate = turnedAtLastTouch(m, c, cs);
     const cv = cs !== undefined && c.hyperjumpPrepare === true ? cs.tSpeed : c.currentSpeed;
     const moving = c.lastTouch !== undefined && cv > 0;
-    const ch = moving && rate > 0 ? untouchedHeading(c, Math.max(0, Math.min(tMs - c.lastTouch!, m.untouchedMaxMs)) / 1000, rate) : c.heading;
+    const ch = moving && rate > 0 ? untouchedHeading(c, Math.max(0, Math.min(tMs - c.lastTouch!, m.untouchedMaxMs)) / 1000, rate, cs) : drawnCommittedHeading(c, cs);
     const h = carrierHabitat(c);
     out.framed = h !== null;
     if (h !== null) {
