@@ -1,235 +1,88 @@
-/* Galaxy Map screen (task C3): streamlined full-screen overlay in the HUD
-   panel style (hud.css .hud-panel). */
-.gmap-overlay {
-    position: fixed;
-    inset: 0;
-    z-index: 50;
-    display: flex;
-    gap: 16px;
-    align-items: center;
-    justify-content: center;
-    padding: 16px;
-    background: rgba(4, 5, 8, 0.93);
-    font-family: 'Forgotten Futurist', sans-serif;
-    color: #fff;
-}
-.gmap-overlay[hidden] {
+/* Galaxy Map window (pnlGalaxyMap, Main.Part11.cs method_131): the chrome comes from the shared original-style window
+   (originalWindow.css); this file only styles what the screen adds inside it. Positions are set inline, in the
+   original's pixels, from the method_131 locations. */
+.gmap-host {
     display: none;
 }
 .gmap-map {
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: 6px;
     overflow: hidden;
-    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.6);
     line-height: 0;
+    background: #000;
 }
 .gmap-canvas {
     cursor: crosshair;
     display: block;
 }
-.gmap-side {
-    width: 320px;
-    max-height: calc(100vh - 32px);
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    overflow: hidden;
-    box-sizing: border-box;
-}
-.gmap-head {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-}
-.gmap-title {
-    font-size: 15px;
-    font-weight: bold;
-    letter-spacing: 0.04em;
-}
-.gmap-field {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-}
-.gmap-field[hidden] {
-    display: none;
-}
-.gmap-field-label {
-    width: 64px;
-    color: #9aa3ad;
-    font-size: 11px;
-}
-.gmap-select {
-    flex: 1;
-    min-width: 0;
-    background: rgba(38, 42, 48, 0.9);
-    color: #d6dbe0;
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 4px;
-    padding: 3px 6px;
-    font: inherit;
-    font-size: 12px;
-}
-.gmap-toggles {
-    display: flex;
-    gap: 6px;
-}
-.gmap-toggle,
-.gmap-btn,
-.gmap-list-row {
-    background: rgba(24, 26, 30, 0.85);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: 6px;
-    color: #9aa3ad;
-    font: inherit;
-    font-size: 11px;
-    padding: 4px 8px;
-    cursor: pointer;
-}
-.gmap-toggle:hover,
-.gmap-btn:hover,
-.gmap-list-row:hover {
-    background: rgba(38, 42, 48, 0.9);
-    color: #fff;
-}
-.gmap-toggle.on {
-    color: #d6dbe0;
-}
-.gmap-btn:disabled {
-    opacity: 0.4;
-    cursor: default;
-}
-.gmap-close {
-    padding: 2px 8px;
-}
-.gmap-info {
-    border-top: 1px solid rgba(255, 255, 255, 0.06);
-    padding-top: 8px;
-    min-height: 54px;
-}
-.gmap-sel-name {
-    font-size: 14px;
-    font-weight: bold;
-}
-.gmap-muted {
-    color: #9aa3ad;
-    font-size: 11px;
-}
-.gmap-list {
-    flex: 1;
-    min-height: 0;
-    overflow-y: auto;
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-}
-.gmap-list[hidden] {
-    display: none;
-}
-.gmap-list-head {
-    color: #9aa3ad;
-    font-size: 11px;
-    margin-bottom: 4px;
-}
-.gmap-list-row {
-    text-align: left;
-    border-radius: 4px;
-}
-.gmap-actions {
-    display: flex;
-    gap: 6px;
-}
-.gmap-goto {
-    flex: 1;
-}
-.gmap-key {
-    border-top: 1px solid rgba(255, 255, 255, 0.06);
-    padding-top: 6px;
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 2px 8px;
-}
-.gmap-key .gmap-title {
-    grid-column: 1 / -1;
-    font-size: 12px;
-}
-.gmap-key[hidden] {
-    display: none;
-}
-.gmap-key-row {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    font-size: 11px;
-    color: #d6dbe0;
-}
-.gmap-swatch {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    flex: none;
-}
-.gmap-swatch-rect {
-    border-radius: 0;
-    border: 1px solid rgb(96, 96, 255);
-    width: 10px;
-    height: 7px;
-}
-/* The original's right-hand column (Main.Part11.cs method_131, x = 670): Back / Forward, picSystemMap 250 × 250,
-   the habitat info and pnlGalaxyMapHabitatPicture 250 × 174. */
-.gmap-detail {
-    width: 274px;
-    max-height: calc(100vh - 32px);
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 8px;
-    overflow-y: auto;
-    box-sizing: border-box;
-}
-.gmap-detail .gmap-info {
-    align-self: stretch;
-    border-top: none;
-    padding-top: 0;
-}
-.gmap-nav {
-    align-self: stretch;
-    display: flex;
-    justify-content: flex-end;
-    gap: 5px;
-}
-.gmap-nav-btn {
-    width: 40px;
-    height: 30px;
-    padding: 0;
-    font-size: 13px;
-}
 .gmap-system-map {
     display: block;
     border: 2px solid rgb(67, 67, 77);
-    border-radius: 6px;
+    box-sizing: border-box;
     cursor: crosshair;
     background: #000;
 }
+/* pnlHabitatInfo: the InfoPanel port (selectionPanel.css) at 250 x 240 (Main.Part11.cs 1080), CurveMode
+   BottomRight_TopLeft. */
+.gmap-info {
+    position: absolute;
+    overflow: hidden;
+}
+.gmap-info .gmap-habitat-info {
+    position: relative;
+    width: 250px;
+    height: 240px;
+    font-size: 10px;
+    line-height: 15px;
+    color: rgb(200, 200, 200);
+    background: linear-gradient(to bottom, rgb(39, 40, 44), rgb(22, 21, 26) 50%, rgb(51, 54, 61));
+    border: 1px solid rgb(67, 67, 77);
+    border-radius: 20px 0 20px 0;
+    overflow: hidden;
+}
+.gmap-info .gmap-sel-name {
+    font-size: 16.67px;
+    font-weight: bold;
+    color: #fff;
+    text-shadow: 1px 1px 0 #000;
+}
+.gmap-info .gmap-muted,
+.gmap-info .gmap-hint {
+    color: rgb(170, 170, 170);
+    font-size: 14px;
+    text-shadow: 1px 1px 0 #000;
+}
+.gmap-info .gmap-hint {
+    padding: 10px;
+}
+/* pnlGalaxyMapHabitatPicture: BackColor (32, 32, 48), FixedSingle border, picture centred. */
 .gmap-landscape {
-    flex: none;
+    position: absolute;
     background-color: rgb(32, 32, 48);
     background-position: center;
     background-repeat: no-repeat;
     border: 1px solid rgb(67, 67, 77);
     box-sizing: border-box;
 }
-
-/* pnlHabitatInfo: the InfoPanel port (selectionPanel.css) at 250 × 240 (Main.Part11.cs 1080). */
-.gmap-detail .gmap-habitat-info {
-    position: relative;
-    width: 250px;
-    height: 240px;
-    margin: 0 auto;
-    font-size: 10px;
-    line-height: 15px;
-    color: rgb(200, 200, 200);
-    background: linear-gradient(to bottom, rgb(39, 40, 44), rgb(22, 21, 26) 50%, rgb(51, 54, 61));
-    border: 1px solid rgb(67, 67, 77);
+/* The match list column (recreation addition). */
+.gmap-list-panel {
     overflow: hidden;
+}
+.gmap-list-panel .ow-grid {
+    position: absolute;
+}
+/* pnlGalaxyMapKey: a bare BorderPanel centred over the map; the MapKey rows. */
+.gmap-key-layer {
+    z-index: 1520;
+}
+.gmap-swatch {
+    position: absolute;
+    width: 10px;
+    height: 10px;
+    border-radius: 0;
+    flex: none;
+}
+.gmap-swatch-rect {
+    border: 1px solid rgb(96, 96, 255);
+    width: 10px;
+    height: 7px;
+    top: 5px;
 }

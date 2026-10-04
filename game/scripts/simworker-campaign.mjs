@@ -978,7 +978,7 @@ async function stepPolicy() {
     const entry = page.locator('.policy-file-entry', { hasText: 'Campaign.txt' }).first();
     check((await entry.count()) > 0, 'policy: the saved file is listed by Load');
     if ((await entry.count()) > 0) {
-        await entry.click();
+        await entry.dblclick();
         await wait(2500);
     }
     // A built-in policy too.
@@ -988,7 +988,7 @@ async function stepPolicy() {
         const inst = page.locator('.policy-file-entry.policy-file-install').first();
         if ((await inst.count()) > 0) {
             note(`policy: loading ${await inst.innerText()}`);
-            await inst.click();
+            await inst.dblclick();
             await wait(2500);
         }
     }
@@ -1423,7 +1423,7 @@ async function stepSaveLoad() {
     await page.mouse.move(800, 450);
     await page.keyboard.press('Escape');
     await page.waitForSelector('#game-menu-overlay .game-menu-btn', { timeout: 10000 });
-    await page.locator('.game-menu-btn', { hasText: 'Save Game' }).click();
+    await page.locator('.game-menu-btn', { hasText: /^Save Game$/ }).click();
     await page.waitForSelector('#save-load-overlay .save-load-name-input', { timeout: 10000 });
     await page.fill('.save-load-name-input', name);
     const t1 = Date.now();
@@ -1434,20 +1434,21 @@ async function stepSaveLoad() {
     const at = await ev(async () => ({ nowMs: window.__dwu.galaxy.nowMs, digest: window.__dwu.simWorker ? (await window.__dwu.simWorker.digest()).digest : null, colonies: window.__dwu.game.playerEmpire.colonies.length, empire: window.__dwu.game.playerEmpire.name }));
     if (await page.locator('#save-load-overlay').isVisible().catch(() => false)) await page.keyboard.press('Escape');
     await wait(500);
-    // Main menu (the game menu's Main Menu: a confirm, accepted by the dialog handler).
+    // Main menu (the game menu's Exit to Main Menu, confirmed in its message box).
     if (!(await page.locator('#game-menu-overlay').isVisible().catch(() => false))) {
         await page.mouse.move(800, 450);
         await page.keyboard.press('Escape');
     }
-    await page.locator('.game-menu-btn', { hasText: 'Main Menu' }).click();
+    await page.locator('.game-menu-btn', { hasText: 'Exit to Main Menu' }).click();
+    await page.locator('[data-ow="msgbox"] button', { hasText: 'Yes' }).click();
     const menu = await page.waitForSelector('.main-menu-item[data-id="loadGame"]', { timeout: 30000 }).then(() => true, () => false);
     check(menu, 'Main Menu returns to the main menu');
     await shot('main-menu-again');
     const prev = await ev(() => window.__dwu?.__campaignId ?? null);
     await page.click('.main-menu-item[data-id="loadGame"]');
-    const row = page.locator(`#save-load-overlay .save-row:has(.save-row-name:text-is("${name}")) .save-row-btn:text-is("Load")`);
+    const row = page.locator(`#save-load-overlay .ow-grid-row:has(.ow-grid-cell:text-is("${name}"))`);
     if (!check(await row.waitFor({ timeout: 20000 }).then(() => true, () => false), 'the Load list shows the save')) return;
-    await row.click();
+    await row.dblclick();
     await waitGame(prev);
     await tagView();
     await installFrameCounter();

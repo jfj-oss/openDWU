@@ -29,6 +29,7 @@ import { determineFuelRequired } from '../logistics/refuel';
 import { formatText } from '../diplomacyTick';
 import { netSort } from '../netSort';
 import { assignFleetLoadTroops } from './executeShipAction';
+import { lineRetrofitDesign } from './designLineUpgrade'; // [improvements]
 
 function sortShipGroups(empire: Empire): void {
     netSort(empireShipGroups(empire), compareShipGroups);
@@ -315,7 +316,7 @@ export function planRetrofit(galaxy: Galaxy, empire: Empire, ships: readonly Bui
         if (ship.retrofitDesign !== null) { entry('already refitting'); continue; }
         if (ship.builtAt !== null) { entry('under construction'); continue; }
         if (ship.role !== BuiltObjectRole.Base && ship.topSpeed <= 0) { entry('immobile'); continue; }
-        const design = chosen !== null ? (chosen.subRole === ship.subRole ? chosen : null) : findNewestCanBuildFullEvaluate(empire.designs, ship.subRole, ship.parentHabitat);
+        const design = chosen !== null ? (chosen.subRole === ship.subRole ? chosen : null) : lineRetrofitDesign(galaxy, empire, ship, findNewestCanBuildFullEvaluate(empire.designs, ship.subRole, ship.parentHabitat), ship.parentHabitat); // [improvements] own lineage
         if (design === null) { entry('no buildable design'); continue; }
         if (ship.design === design) { entry('already latest design', design); continue; }
         const aff = determineRetrofitAffordability(galaxy, empire, ship, design);

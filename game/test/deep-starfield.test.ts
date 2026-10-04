@@ -1,11 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import {
+    DeepStarfield,
     deepStarfieldAlpha,
     generateStarLayer,
     generateSystemPatches,
     layerOffset,
     layerTexelSizes,
     resampleNearest,
+    screenPanDelta,
+    snapToDevicePixels,
     starBrightness,
     STAR_BRIGHTNESS_AT_CUT,
     STARFIELD_FLARE_SCALE,
@@ -16,6 +19,8 @@ import {
     tileCopies,
 } from '../src/render/deepStarfield';
 import { backdropAlpha } from '../src/render/mainView';
+import { Camera } from '../src/render/camera';
+import { wheelNotches, wheelZoom } from '../src/render/viewInput';
 
 describe('deep starfield fade curve', () => {
     const m = 1.2e-4; // seed-1 galaxy on a 1920x1080 view
@@ -151,5 +156,93 @@ describe('deep starfield per-star textures (Main.Part13.cs bitmap_197/198 + Main
         for (let i = 0; i < 16; i++) ramp16[i * 4] = i;
         const six = resampleNearest(ramp16, 16, 1, 6, 1);
         expect([0, 1, 2, 3, 4, 5].map((i) => six[i * 4])).toEqual([1, 4, 6, 9, 12, 14]);
+    });
+});
+
+describe('deep starfield parallax under trackpad zoom and pans (Mac report: stars swirl on tiny zoom steps)', () => {
+    // A camera far from the origin, like a real system (the original's absolute cam·z / divisor offset moves the
+    // layers by cam·dz there: hundreds of px per tiny zoom step).
+    const makeCam = (zoom: number): Camera => {
+        const cam = new Camera();
+        cam.setViewport(1440, 900);
+        cam.minZoom = 1e-4;
+        cam.centerOn(312_345.6, 187_654.3);
+        cam.zoom = zoom;
+        return cam;
+    };
+    const track = (sf: DeepStarfield, cam: Camera): void => sf.update(0, cam.x, cam.y, cam.zoom, cam.width, cam.height, 2);
+
+    it('keeps the field still during a pinch about the view centre (many tiny ctrl+wheel deltas)', () => {
+        for (const z0 of [1 / 50, 1 / 2, 1]) {
+            const cam = makeCam(z0);
+            const sf = new DeepStarfield(1);
+            track(sf, cam);
+            const start = sf.parallaxPan;
+            for (let i = 0; i < 200; i++) {
+                // Trackpad pinch: fractional pixel deltas, in then out.
+                const dy = i < 100 ? -1.3 : 1.1;
+                cam.zoomAt(cam.clampZoom(wheelZoom(cam.zoom, wheelNotches(dy, 0), 12)), cam.width / 2, cam.height / 2);
+                track(sf, cam);
+                const p = sf.parallaxPan;
+                expect(Math.abs(p.x - start.x)).toBeLessThan(1e-6);
+                expect(Math.abs(p.y - start.y)).toBeLessThan(1e-6);
+            }
+        }
+    });
+
+    it('moves the field by the map centre\'s shift (tiny, smooth) during a zoom at the cursor, and back on the reverse', () => {
+        const cam = makeCam(1 / 50);
+        const sf = new DeepStarfield(1);
+        track(sf, cam);
+        const start = sf.parallaxPan;
+        const zooms: number[] = [];
+        for (let i = 0; i < 100; i++) {
+            const before = { x: cam.x, z: cam.zoom };
+            cam.zoomAt(wheelZoom(cam.zoom, wheelNotches(-1.5, 0), 12), 1100, 300);
+            zooms.push(cam.zoom);
+            const p0 = sf.parallaxPan.x;
+            track(sf, cam);
+            // Per step: the centre's world shift × zoom, which is < the cursor's offset from the centre × the step.
+            const step = sf.parallaxPan.x - p0;
+            expect(step).toBeCloseTo((cam.x - before.x) * ((before.z + cam.zoom) / 2), 9);
+            expect(Math.abs(step)).toBeLessThan((1100 - 720) * 0.01);
+        }
+        // Reverse the same steps (anchored at the same cursor): back to the start.
+        for (let i = zooms.length - 2; i >= -1; i--) {
+            cam.zoomAt(i >= 0 ? zooms[i] : 1 / 50, 1100, 300);
+            track(sf, cam);
+        }
+        expect(sf.parallaxPan.x - start.x).toBeCloseTo(0, 6);
+        expect(sf.parallaxPan.y - start.y).toBeCloseTo(0, 6);
+    });
+
+    it('pans by exactly the map\'s screen pan (the original\'s pan / divisor per layer)', () => {
+        const cam = makeCam(1 / 7);
+        const sf = new DeepStarfield(1);
+        track(sf, cam);
+        const start = sf.parallaxPan;
+        for (let i = 0; i < 50; i++) {
+            cam.panByScreen(-1.25, 0.5); // drag left / down: the camera moves right / up
+            track(sf, cam);
+        }
+        expect(sf.parallaxPan.x - start.x).toBeCloseTo(62.5, 6);
+        expect(sf.parallaxPan.y - start.y).toBeCloseTo(-25, 6);
+        expect(screenPanDelta(100, 0.5, 104, 0.5)).toBe(2);
+        expect(screenPanDelta(100, 0.5, 100, 0.9)).toBe(0); // a zoom about the centre pans nothing
+    });
+
+    it('snaps offsets to the device-pixel grid (1 / DPR CSS px), not whole CSS px', () => {
+        expect(snapToDevicePixels(10.3, 1)).toBe(10);
+        expect(snapToDevicePixels(10.3, 2)).toBe(10.5);
+        expect(snapToDevicePixels(10.2, 2)).toBe(10);
+        expect(snapToDevicePixels(10.4, 1.5)).toBeCloseTo(10.6667, 4);
+        expect(snapToDevicePixels(10.3, 0)).toBe(10);
+        // At DPR 2 a slow pan of 1 CSS px a frame moves layer 0 (divisor 38) by at most 1 device px per frame.
+        let prev = snapToDevicePixels(layerOffset(0, 38, 1010), 2);
+        for (let x = 1; x < 400; x++) {
+            const o = snapToDevicePixels(layerOffset(x, 38, 1010), 2);
+            expect(Math.abs(o - prev) * 2).toBeLessThanOrEqual(1);
+            prev = o;
+        }
     });
 });

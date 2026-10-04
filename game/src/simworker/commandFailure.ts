@@ -87,6 +87,7 @@ export const COMMAND_FAILURE: FailureTable = {
     toggleDesignAutoRetrofit: no,
     setDesignSubRoleUpgrade: no,
     autoUpgradeDesigns: () => ({ added: [], select: null }),
+    setDesignLineUpgrade: no,
     loadDesignFile: (message) => ({ ok: false, loaded: [], message, title: 'Cannot Load Designs' }),
     empireRename: no,
     empireChangeGovernment: () => -1,

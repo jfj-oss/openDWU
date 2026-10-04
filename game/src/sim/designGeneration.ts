@@ -27,6 +27,7 @@ import { ComponentType } from './data/components';
 import type { ResearchNode as ResearchNodeDefinition } from './data/research';
 import { BattleTactics, BuiltObjectFleeWhen, BuiltObjectRole, InvasionTactics, type DesignSpecification } from './data/designSpecifications';
 import { ComponentCategoryType, resolveTechFocuses } from './data/policies';
+import { designLineOwnsSubRole } from './player/designLineUpgrade';
 import { Design, BuiltObjectStance, determineHabModulesRequired, determineLifeSupportRequired, findNewest } from './design';
 import { generateDesignName, type PreviousDesignForNaming } from './designNames';
 import { placeComponentsOnDesignSized, placeComponentsOnDesignWithTech, selectPreferredSuperWeapon, type DesignPlacementEmpire } from './designPlacement';
@@ -654,6 +655,9 @@ export function createNewDesigns(galaxy: Galaxy, empire: Empire, designDate: num
             empire.latestDesigns[design1.subRole] = design1;
         }
         if (!(currentStarDate >= num5)) continue;
+        // [improvements] designLineUpgrade: a player-owned design type is upgraded along its tech lines instead
+        // (player/designLineUpgrade.ts); false unless the UI switched it on for the player empire.
+        if (designLineOwnsSubRole(galaxy, empire, spec.subRole)) continue;
         const name = `${race.name} ${resolveSubRoleDescription(spec.subRole)}`;
         if (spec.subRole === BuiltObjectSubRole.MonitoringStation && empire.research.evaluateDesiredComponent(ComponentType.SensorLongRange, ShipDesignFocus.Balanced) === null) continue;
         if (spec.subRole === BuiltObjectSubRole.Carrier && empire.research.evaluateDesiredComponent(ComponentType.FighterBay, ShipDesignFocus.Balanced) === null) continue;

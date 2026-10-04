@@ -17,7 +17,7 @@ import { resolveStarDateDescription } from '../sim/galaxyTime';
 import { createMapOverlayState, OVERLAY_ROWS, onOverlayChange, toggleOverlay, type MapOverlayState, type OverlayKey, type OverlayRow } from './mapOverlays';
 import { resourcePickerPanel, supplyShortagesPanel, type OverlayOptionPanel } from './overlayOptionPanels'; // [dw2overlays]
 import { waypointsOptionsPanel } from './waypoints'; // [improvements] waypoints
-import { IMPROVEMENTS_TITLE, onImprovementsChange, overlayRowSections } from './improvements'; // [improvements]
+import { IMPROVEMENTS_TITLE, improvementViewRows, onImprovementsChange, overlayRowSections, setImprovementEnabled, type Improvement } from './improvements'; // [improvements]
 import { Camera } from '../render/camera';
 import { followOnSelectionChanged, isFollowingTarget, toggleFollow, type FollowState, type FollowTarget } from '../render/followCamera';
 import { Galaxy } from '../sim/galaxy';
@@ -631,8 +631,9 @@ export function createHud(wiring: HudWiring = {}): HudRefs {
         onMainMenu: wiring.onMainMenu,
         // [gameoptions] the Escape menu's Options opens the Game Options screen (same as O).
         onOptions: () => {
+            // Without a player empire (a view with no game behind it) the window edits the new-game defaults.
             const src = getEmpireSummarySource();
-            if (src) openGameOptionsPanel({ empire: src.empire });
+            openGameOptionsPanel({ empire: src?.empire ?? null });
         },
     });
     setGameMenuHandler(gameMenu.toggle);
@@ -2082,6 +2083,23 @@ function buildOptionsList(wiring: HudWiring): HTMLElement {
         panel.appendChild(item);
         if (sub !== null) panel.appendChild(sub.element); // [dw2overlays]
     };
+    // [improvements] An improvement with no overlay (Improvement.viewRow): its row switches the improvement itself.
+    const addImprovementRow = (imp: Improvement): void => {
+        const item = document.createElement('button');
+        item.type = 'button';
+        item.className = 'hud-option-row';
+        item.dataset.improvement = imp.id;
+        item.title = imp.description;
+        const check = document.createElement('span');
+        check.className = 'hud-option-check';
+        check.textContent = isImprovementEnabled(imp.id) ? '✓' : '';
+        const lbl = document.createElement('span');
+        lbl.className = 'hud-option-label';
+        lbl.textContent = imp.label;
+        item.append(check, lbl);
+        item.addEventListener('click', () => setImprovementEnabled(imp.id, !isImprovementEnabled(imp.id)));
+        panel.appendChild(item);
+    };
     // The original's overlays, then the Improvements section (ui/improvements.ts: DW2-inspired additions, each one
     // listed only while it is enabled in Game Options → Improvements).
     const render = (): void => {
@@ -2089,9 +2107,11 @@ function buildOptionsList(wiring: HudWiring): HTMLElement {
         const { original, improvements } = overlayRowSections(OVERLAY_ROWS);
         section('Overlays');
         for (const row of original) addRow(row);
-        if (improvements.length > 0) {
+        const toggles = improvementViewRows();
+        if (improvements.length > 0 || toggles.length > 0) {
             section(IMPROVEMENTS_TITLE);
             for (const row of improvements) addRow(row);
+            for (const imp of toggles) addImprovementRow(imp);
         }
     };
     render();

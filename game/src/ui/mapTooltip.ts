@@ -4,7 +4,7 @@
 // SetData(Creature)), padding int_2 = 6, white text with a black copy at (+1, +1) (method_11), the name in bold
 // (font_1 = GenerateFont(18.67, bold)), the other lines in font_0 = GenerateFont(18.67) (method_12).
 import './mapTooltip.css';
-import { HabitatCategoryType, type Habitat } from '../sim/types';
+import { HabitatCategoryType, HabitatType, type Habitat } from '../sim/types';
 import { installHudScaleVar } from './originalWindow';
 
 /** HoverPanel solidBrush_0: the empire's main colour (0xRRGGBB) at alpha 32, or (64, 64, 64) at alpha 32. Pure. */
@@ -18,10 +18,11 @@ export function hoverPanelFill(tint: number | null): string {
  * - anything else: name, then " — <empire>" when it has a named empire,
  *   then " (<systemName>)" when systemName is given and differs from the
  *   habitat's own name. */
-export function tooltipText(h: Habitat, systemName: string | null): string {
+export function tooltipText(h: Habitat, systemName: string | null, known = true): string {
     if (h.category === HabitatCategoryType.Star) {
         return h.name;
     }
+    if (h.category === HabitatCategoryType.GasCloud) return gasCloudTooltipText(h, known);
     let text = h.name;
     if (h.empire !== null && h.empire.name !== '') {
         text += ` — ${h.empire.name}`;
@@ -30,6 +31,18 @@ export function tooltipText(h: Habitat, systemName: string | null): string {
         text += ` (${systemName})`;
     }
     return text;
+}
+
+/**
+ * A gas cloud, as HoverPanel.cs method_3 names it: its name, then Galaxy.ResolveDescription(Type) + " " +
+ * ResolveDescription(Category) ("Hydrogen Gas Cloud", GameText.txt "HabitatType …" / "HabitatCategoryType GasCloud");
+ * in a system the player has not explored, "(Unexplored Gas Cloud)" (GameText "UnexploredLocation" = "Unexplored {0}",
+ * also the C# current-system label, Main.Part11.cs 1789-1794).
+ */
+export function gasCloudTooltipText(h: Habitat, known: boolean): string {
+    if (!known) return '(Unexplored Gas Cloud)';
+    const key = (HabitatType as unknown as Record<number, string>)[h.type] ?? '';
+    return `${h.name}\n${key.replace(/([a-z])([A-Z])/g, '$1 $2')} Gas Cloud`;
 }
 
 let tooltipEl: HTMLDivElement | null = null;

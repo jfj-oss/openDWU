@@ -26,8 +26,8 @@ const watch = (page, tag) => {
     await page.goto(base);
     await page.waitForSelector('.main-menu-item[data-id="options"]', { timeout: 120000 });
     await page.click('.main-menu-item[data-id="options"]');
-    await page.click('.main-menu-newgame-defaults');
-    await page.waitForSelector('.go-mode-panel');
+    // The main menu's Options window (Start.1.cs method_153) holds the new-game Automation group itself.
+    await page.waitForSelector('[data-ow="gameoptions"] .go-mode-panel');
     await page.screenshot({ path: `${outDir}/menudefaults-1-options.png` });
     const mode = page.locator('select[data-go="mode"]');
     await mode.selectOption({ label: 'Expert (none)' });
