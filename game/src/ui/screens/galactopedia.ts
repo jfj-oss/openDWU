@@ -40,6 +40,7 @@ import { CreatureType } from '../../sim/creature';
 import { HabitatCategoryType, HabitatType, IndustryType } from '../../sim/types';
 import { manifestFiles } from '../../render/assets';
 import { activeCustomizationSet, activeCustomizationSetName } from '../../sim/data/customization';
+import { FONT, el, glassButton, gradientPanel, linkLabel, openOriginalWindow, place, textBox } from '../originalWindow';
 import { fileNameOf, findMhtPart, parseMht, type MhtDocument } from './mht';
 
 const DWU = '/assets/dwu/';
@@ -1151,57 +1152,53 @@ export function toggleGalactopedia(topic?: string): void {
     }
 }
 
-function el<K extends keyof HTMLElementTagNameMap>(tag: K, className?: string, text?: string): HTMLElementTagNameMap[K] {
-    const e = document.createElement(tag);
-    if (className) e.className = className;
-    if (text !== undefined) e.textContent = text;
-    return e;
-}
-
+// Port of Start.1.cs method_127 / Main.Part5.cs method_456: pnlEncyclopedia is a 995 x 730 ScreenPanel whose controls
+// (body-relative) are the content browser at (10, 10) 705 x 505, the related-items box at (10, 527) 705 x 100, the topic
+// tree at (730, 48) 240 x 579 on the RIGHT and the Back (730, 10) / Forward (775, 10) / Home (930, 10) 40 x 28 glass buttons.
+// Recreation extras: the search box (above the tree) and the topic chips as link labels.
 function createGalactopedia(opts: GalactopediaOptions): OpenState {
-    const root = el('div');
+    const win = openOriginalWindow({
+        id: 'galactopedia',
+        title: 'Galactopedia',
+        icon: 'galactopedia.png',
+        width: 995,
+        height: 730,
+        escapeCloses: false, // the capture-phase key handler below owns Escape (it first clears the search box)
+        noAutoPause: true,
+        onClose: () => {
+            window.removeEventListener('keydown', onKey, true);
+            open = null;
+            opts.onClose?.();
+        },
+    });
+    const root = win.root;
     root.id = 'galactopedia';
+    root.classList.add('ow-modal');
+    root.style.background = 'rgba(0, 0, 0, 0.45)';
     root.setAttribute('role', 'dialog');
     root.setAttribute('aria-modal', 'true');
-    const dim = el('div', 'gp-dim');
-    const win = el('div', 'gp-window');
-    root.append(dim, win);
+    const body = win.body;
+    const titleEl = { set textContent(t: string) { win.setTitle(t === '' ? 'Galactopedia' : `Galactopedia: ${t}`); } };
 
-    // Header: title | back forward home | close.
-    const header = el('div', 'gp-header');
-    const brand = el('div', 'gp-brand', 'Galactopedia');
-    const titleEl = el('div', 'gp-topic-title', '');
-    const nav = el('div', 'gp-nav');
-    const mkBtn = (label: string, title: string, cls = ''): HTMLButtonElement => {
-        const b = el('button', `gp-btn ${cls}`.trim(), label);
-        b.type = 'button';
-        b.title = title;
+    const mkNav = (image: string, title: string, x: number): HTMLButtonElement => {
+        const b = glassButton('', { image, title, corners: { tl: true, tr: true, br: true, bl: true } });
         b.setAttribute('aria-label', title);
+        body.appendChild(place(b, x, 10, 40, 28));
         return b;
     };
-    const btnBack = mkBtn('‹', 'Back (Backspace)');
-    const btnForward = mkBtn('›', 'Forward');
-    const btnHome = mkBtn('⌂', 'Home');
-    const btnClose = mkBtn('×', 'Close (Esc)', 'gp-btn-close');
-    nav.append(btnBack, btnForward, btnHome);
-    header.append(brand, titleEl, nav, btnClose);
+    const btnBack = mkNav('back.png', 'Back (Backspace)', 730);
+    const btnForward = mkNav('forward.png', 'Forward', 775);
+    const btnHome = mkNav('galactopediaHome.png', 'Home', 930);
 
-    const body = el('div', 'gp-body');
-    const side = el('aside', 'gp-side');
-    const search = el('input', 'gp-search');
+    const content = el('article', 'gp-content ow-scroll');
+    body.appendChild(place(content, 10, 10, 705, 505));
+    const related = gradientPanel({ radius: 20, className: 'gp-related' });
+    body.appendChild(place(related, 10, 527, 705, 100));
+    const search = textBox('', 'Search topics', () => renderTree());
     search.type = 'search';
-    search.placeholder = 'Search topics';
-    search.spellcheck = false;
-    const tree = el('div', 'gp-tree');
-    side.append(search, tree);
-
-    const main = el('div', 'gp-main');
-    const content = el('article', 'gp-content');
-    const related = el('div', 'gp-related');
-    main.append(content, related);
-    body.append(side, main);
-    win.append(header, body);
-    document.body.appendChild(root);
+    body.appendChild(place(search, 730, 48, 240, 26));
+    const tree = el('div', 'gp-tree ow-scroll');
+    body.appendChild(place(tree, 730, 80, 240, 547));
 
     const history = new TopicHistory<EncyclopediaItem>();
     let data: GalactopediaData | null = null;
@@ -1263,9 +1260,8 @@ function createGalactopedia(opts: GalactopediaOptions): OpenState {
         const label = el('div', 'gp-related-label', data ? getText(data.text, 'Related Topics') : 'Related Topics');
         const list = el('div', 'gp-related-list');
         for (const r of links) {
-            const a = el('button', 'gp-chip', r.title);
-            a.type = 'button';
-            a.addEventListener('click', () => select(r));
+            const a = linkLabel(r.title, () => select(r), FONT.tiny);
+            a.classList.add('gp-chip');
             list.appendChild(a);
         }
         related.append(label, list);
@@ -1351,7 +1347,6 @@ function createGalactopedia(opts: GalactopediaOptions): OpenState {
         if (it) show(it);
     });
     btnHome.addEventListener('click', () => show(null));
-    search.addEventListener('input', () => renderTree());
     search.addEventListener('keydown', (e) => {
         if (e.key === 'Enter' && data) {
             const first = tree.querySelector<HTMLButtonElement>('.gp-topic') ?? tree.querySelector<HTMLButtonElement>('.gp-cat');
@@ -1388,15 +1383,12 @@ function createGalactopedia(opts: GalactopediaOptions): OpenState {
         e.stopPropagation();
     };
     window.addEventListener('keydown', onKey, true);
-    dim.addEventListener('click', () => close());
-    btnClose.addEventListener('click', () => close());
+    // A click on the dimmed backdrop (outside the ScreenPanel) closes it, as before.
+    root.addEventListener('click', (e) => {
+        if (e.target === root) close();
+    });
 
-    const close = (): void => {
-        window.removeEventListener('keydown', onKey, true);
-        root.remove();
-        open = null;
-        opts.onClose?.();
-    };
+    const close = (): void => win.close();
 
     content.appendChild(el('p', 'gp-missing', 'Loading…'));
     updateNavButtons();
