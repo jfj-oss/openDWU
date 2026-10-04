@@ -50,51 +50,57 @@
     user-select: none;
     -webkit-user-drag: none;
 }
-/* Controls with no chrome image: a small dark button so they stay clickable. */
+/* Controls with no chrome image (.hud-btn-bare) and text-glyph buttons (.hud-btn-glyph: play / pause, speed, cycler
+   arrows): the original's GlassButton (originalWindow.css .ow-glass): (0,0,16) glass, (112,112,128) shine on the top
+   half, inner border (67,67,77), grey (120,120,120) bold text turning white over a (48,48,128) glow on hover. */
+.hud-btn.hud-btn-bare,
+.hud-btn.hud-btn-glyph {
+    border: 1px solid rgb(0, 0, 16);
+    border-radius: 7px;
+    background:
+        linear-gradient(to bottom, rgba(112, 112, 128, 0.6), rgba(112, 112, 128, 0.2) 50%, transparent 50%),
+        rgb(0, 0, 16);
+    box-shadow: inset 0 0 0 1px rgb(67, 67, 77);
+    color: rgb(120, 120, 120);
+    font-weight: bold;
+    transition: color 0.2s;
+}
 .hud-btn.hud-btn-bare {
-    background: rgba(24, 26, 30, 0.85);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: 6px;
     font-size: 11px;
-    color: #9aa3ad;
     padding: 0 8px;
     min-height: 24px;
 }
-.hud-btn.hud-btn-bare:hover {
-    background: rgba(38, 42, 48, 0.9);
-}
-
-/* Text-glyph buttons (play/pause, speed, cycler arrows). */
 .hud-btn.hud-btn-glyph {
-    background: rgba(24, 26, 30, 0.85);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: 6px;
     font-size: 12px;
-    color: #fff;
     min-width: 26px;
     min-height: 26px;
     padding: 0 6px;
 }
+.hud-btn.hud-btn-bare:hover,
 .hud-btn.hud-btn-glyph:hover {
-    background: rgba(38, 42, 48, 0.9);
+    color: #fff;
+    background:
+        linear-gradient(to bottom, rgba(112, 112, 128, 0.6), rgba(112, 112, 128, 0.2) 50%, transparent 50%),
+        radial-gradient(ellipse 85% 115% at 50% 100%, rgba(48, 48, 128, 0.7), rgba(48, 48, 128, 0) 100%),
+        rgb(0, 0, 16);
 }
 
-/* Panels: dark, near-opaque boxes so map star labels don't show through
-   (task 05d); a slight blur keeps any bleed-through soft. */
+/* Panels: the original's BorderPanel (BorderPanel.cs: BackColor (48,48,64), 3 px border of alpha-96 greys — top
+   (200,200,200), left (140,140,140), bottom (20,20,20), right (80,80,80)), opaque so map labels don't show through. */
 .hud-panel {
-    background: rgba(14, 16, 20, 0.94);
-    backdrop-filter: blur(6px);
-    -webkit-backdrop-filter: blur(6px);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: 6px;
+    background: rgb(48, 48, 64);
+    border: 3px solid;
+    border-color: rgba(200, 200, 200, 0.376) rgba(80, 80, 80, 0.376) rgba(20, 20, 20, 0.376) rgba(140, 140, 140, 0.376);
+    border-radius: 0;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
     padding: 8px;
     font-size: 12px;
     line-height: 1.5;
+    color: rgb(200, 200, 200);
     pointer-events: auto;
 }
 .hud-label {
-    color: #9aa3ad;
+    color: rgb(170, 170, 170);
     font-size: 12px;
 }
 .hud-value {
@@ -102,15 +108,18 @@
     font-size: 12px;
 }
 .hud-muted {
-    color: #9aa3ad;
+    color: rgb(170, 170, 170);
 }
 
-/* Options list (bottom-right). Content-sized (task 05d): the layout gives it
-   no fixed height; if the window is shorter than the list it scrolls. */
+/* Options list (bottom-right): a ToolStrip drop-down of checked items (originalWindow.css .ow-toolstrip), in the
+   options list's own pixels (the list scales with the UI scale as a whole). Content-sized (task 05d): the layout gives
+   it no fixed height; if the window is shorter than the list it scrolls. */
 .hud-options {
+    --ow-ts-k: 0.8;
     height: auto !important;
     max-height: calc(100vh - 140px);
     overflow-y: auto;
+    pointer-events: auto;
 }
 /* The options list pops up from a "View" button in the bottom-right corner. */
 .hud-options-pop {
@@ -129,47 +138,32 @@
 .hud-options-pop.open .hud-options-menu {
     display: block;
 }
-.hud-options-toggle {
+/* The "View" button: a GlassButton (originalWindow.css .ow-glass), drawn toggled-on while the list is open. */
+.hud-options-toggle.ow-glass {
+    position: relative;
     pointer-events: auto;
-    cursor: pointer;
-    color: #fff;
-    font-family: inherit;
-    padding: 3px 12px;
+    height: 24px;
+    padding: 0 14px;
+    font-size: 12.27px;
+    border-radius: 7px;
 }
-.hud-options-toggle:hover,
-.hud-options-pop.open .hud-options-toggle {
-    background: rgba(38, 42, 48, 0.96);
+.hud-options-pop.open .hud-options-toggle.ow-glass {
+    color: #fff;
+    background:
+        linear-gradient(to bottom, rgba(var(--shine), 0.6), rgba(var(--shine), 0.2) 50%, transparent 50%),
+        radial-gradient(ellipse 85% 115% at 50% 100%, rgba(var(--glow), 0.7), rgba(var(--glow), 0) 100%),
+        var(--outer);
 }
 .hud-section-head {
-    color: #9aa3ad;
-    font-size: 11px;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    margin: 8px 0 2px;
+    margin-top: calc(6px * var(--ow-ts-k, 1));
 }
 .hud-section-head:first-child {
     margin-top: 0;
 }
-.hud-option-row {
+.hud-option-row.ow-ts-item {
     pointer-events: auto;
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    width: 100%;
-    background: transparent;
-    border: none;
-    border-radius: 6px;
     cursor: pointer;
-    padding: 0 6px;
-    height: 20px;
-    line-height: 20px;
-    color: #fff;
-    font-size: 12px;
-    font-family: inherit;
-    text-align: left;
-}
-.hud-option-row:hover {
-    background: rgba(38, 42, 48, 0.9);
+    gap: calc(4px * var(--ow-ts-k));
 }
 .hud-option-row img {
     width: 18px;
@@ -177,11 +171,6 @@
     object-fit: contain;
     user-select: none;
     -webkit-user-drag: none;
-}
-.hud-option-check {
-    width: 14px;
-    color: #7fb2ff;
-    font-size: 12px;
 }
 .hud-option-label {
     flex: 1;
@@ -191,108 +180,170 @@
 }
 /* [freightOverlay] begin — task 19e-9: "+" badge on overlay rows added to the original, "…" panel opener. */
 .hud-option-mod {
-    color: #e8d24a;
-    font-size: 10px;
-    opacity: 0.8;
+    flex: none;
+    color: rgb(255, 192, 0);
+    font-size: 0.8em;
 }
 .hud-option-more {
-    color: #aaa;
-    padding: 0 4px;
-    border-radius: 3px;
+    flex: none;
+    padding: 0 0.3em;
+    color: inherit;
+    border: 1px solid transparent;
 }
 .hud-option-more:hover {
-    color: #fff;
-    background: rgba(255, 255, 255, 0.12);
+    color: rgb(255, 255, 0);
+    border-color: rgb(128, 128, 128);
+    background: rgba(0, 0, 16, 0.6);
 }
 /* [freightOverlay] end */
-/* [dw2overlays] begin — the Improvements section's inline "…" panels (ui/overlayOptionPanels.ts). */
+/* [dw2overlays] begin — the Improvements section's inline "…" panels (ui/overlayOptionPanels.ts): a small BorderPanel
+   under the row, with the original's (48,48,64) / (170,170,170) input controls (originalWindow.css .ow-input). */
 .hud-option-panel {
     pointer-events: auto;
-    margin: 0 4px 4px 26px;
-    padding: 4px 6px;
-    border-radius: 6px;
-    background: rgba(20, 23, 28, 0.9);
-    font-size: 11px;
-    color: #c8d0da;
+    margin: calc(2px * var(--ow-ts-k, 1)) calc(6px * var(--ow-ts-k, 1)) calc(4px * var(--ow-ts-k, 1)) calc(22px * var(--ow-ts-k, 1));
+    padding: calc(4px * var(--ow-ts-k, 1)) calc(6px * var(--ow-ts-k, 1));
+    background: rgb(48, 48, 64);
+    border: 2px solid;
+    border-color: rgba(200, 200, 200, 0.376) rgba(80, 80, 80, 0.376) rgba(20, 20, 20, 0.376) rgba(140, 140, 140, 0.376);
+    font-size: 0.9em;
+    color: rgb(170, 170, 170);
+    white-space: normal;
 }
 .hud-option-panel-label {
     display: flex;
     align-items: center;
     gap: 6px;
+    cursor: pointer;
+}
+.hud-option-panel input[type='checkbox'] {
+    margin: 0;
+    accent-color: rgb(96, 96, 112);
 }
 .hud-option-select {
     flex: 1;
     min-width: 0;
     max-width: 210px;
     font: inherit;
-    font-size: 11px;
-    color: #fff;
-    background: #1b1f26;
-    border: 1px solid rgba(255, 255, 255, 0.18);
-    border-radius: 4px;
+    color: rgb(170, 170, 170);
+    background: rgb(48, 48, 64);
+    border: 1px solid rgb(96, 96, 112);
+    border-radius: 0;
     padding: 1px 2px;
+    outline: none;
+}
+.hud-option-select:focus {
+    border-color: rgb(140, 140, 160);
+}
+.hud-option-select option,
+.hud-option-select optgroup {
+    background: rgb(48, 48, 64);
+    color: rgb(170, 170, 170);
 }
 .hud-option-select .hud-option-none {
-    color: #7d8590;
+    color: rgb(110, 110, 120);
 }
 .hud-option-panel-note {
     margin-top: 3px;
-    color: #8a939e;
-    font-size: 10px;
+    color: rgb(140, 140, 150);
+    font-size: 0.9em;
     white-space: normal;
 }
 /* [dw2overlays] end */
 
-/* "Keyboard shortcuts" overlay (task 10a): centered, content-sized panel. */
+/* "Keyboard shortcuts" overlay (task 10a): centered, content-sized, in the ScreenPanel look (originalWindow.css
+   .ow-screen / .ow-header / .ow-close / ListViewBase rows) at the original's pixels × the HUD scale. */
 #keyboard-shortcuts-overlay {
-    /* Appended to <body>, outside #hud: carry the HUD font/colour itself,
-       sit above the HUD and be opaque. */
+    /* Appended to <body>, outside #hud: carry the HUD font/colour itself, sit above the HUD and be opaque. */
+    --kb-k: var(--ow-hud-k, 0.856);
     font-family: 'Forgotten Futurist', sans-serif;
-    color: #fff;
-    background: rgb(14, 16, 20);
+    font-size: calc(15.33px * var(--kb-k));
+    color: rgb(170, 170, 170);
     position: fixed;
     left: 50%;
     top: 50%;
     transform: translate(-50%, -50%);
-    width: min(640px, calc(100vw - 40px));
+    width: min(calc(720px * var(--kb-k)), calc(100vw - 40px));
     max-height: calc(100vh - 80px);
-    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    box-sizing: border-box;
+    padding: calc(8px * var(--kb-k)) calc(7px * var(--kb-k)) calc(4px * var(--kb-k));
+    overflow: hidden;
+    -webkit-font-smoothing: antialiased;
     z-index: 1500; /* above the HUD, like the other screens */
 }
-.hud-keyboard-close {
-    position: absolute;
-    top: 6px;
-    right: 6px;
-    min-width: 22px;
-    min-height: 22px;
-    font-size: 11px;
+/* HeaderPanel: black, (96,96,104) shine on the top half, inner border (67,67,77); title 22.67 px bold white. */
+#keyboard-shortcuts-overlay .hud-section-head {
+    flex: none;
+    position: relative;
+    height: calc(51px * var(--kb-k));
+    margin: 0;
+    padding: 0 calc(50px * var(--kb-k)) 0 calc(10px * var(--kb-k));
+    display: flex;
+    align-items: center;
+    box-sizing: border-box;
+    border: 1px solid rgb(0, 0, 16);
+    background: linear-gradient(to bottom, rgba(96, 96, 104, 0.6), rgba(96, 96, 104, 0.2) 50%, transparent 50%), #000;
+    box-shadow: inset 0 0 0 1px rgb(67, 67, 77);
+    color: #fff;
+    font-size: calc(22.67px * var(--kb-k));
+    font-weight: bold;
+    white-space: nowrap;
 }
+.hud-keyboard-close.ow-close {
+    top: calc(8px * var(--kb-k) + 9px * var(--kb-k));
+    right: calc(7px * var(--kb-k) + 10px * var(--kb-k));
+    width: calc(30px * var(--kb-k));
+    height: calc(30px * var(--kb-k));
+}
+.hud-keyboard-close.ow-close svg {
+    width: 100%;
+    height: 100%;
+}
+/* The body: a GradientPanel holding a ListViewBase-style list ((32,32,40) rows, (48,48,56) alternate rows). */
 .hud-keyboard-rows {
-    margin-top: 4px;
+    flex: 1 1 auto;
+    min-height: 0;
+    margin-top: calc(1px * var(--kb-k));
+    padding: calc(6px * var(--kb-k));
+    overflow-y: auto;
+    border: 1px solid rgb(67, 67, 77);
+    background: linear-gradient(to bottom, rgb(39, 40, 44), rgb(22, 21, 26) 50%, rgb(51, 54, 61));
+    scrollbar-width: thin;
+    scrollbar-color: rgb(96, 96, 112) rgb(32, 32, 40);
 }
 .hud-keyboard-row {
     display: flex;
     align-items: center;
-    gap: 10px;
-    padding: 1px 6px;
-    border-radius: 4px;
+    gap: calc(10px * var(--kb-k));
+    min-height: calc(20px * var(--kb-k));
+    padding: 0 calc(6px * var(--kb-k));
+    background: rgb(32, 32, 40);
+    color: rgb(170, 170, 170);
+}
+.hud-keyboard-row:nth-child(even) {
+    background: rgb(48, 48, 56);
 }
 .hud-keyboard-row:hover {
-    background: rgba(38, 42, 48, 0.9);
+    background: rgb(96, 96, 96);
+    color: rgb(255, 255, 0);
 }
 .hud-keyboard-key {
-    flex: 0 0 72px;
-    color: #7fb2ff;
-    font-size: 12px;
+    flex: 0 0 calc(110px * var(--kb-k));
+    color: #fff;
+    font-weight: bold;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
 }
+.hud-keyboard-row:hover .hud-keyboard-key {
+    color: inherit;
+}
 .hud-keyboard-row-unavailable { opacity: 0.45; }
 .hud-keyboard-tag {
     flex: 0 0 auto;
-    font-size: 10px;
-    color: #9aa3ad;
+    font-size: calc(13.33px * var(--kb-k));
+    color: rgb(140, 140, 150);
     white-space: nowrap;
 }
 .hud-automation-toggle {

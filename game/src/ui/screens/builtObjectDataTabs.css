@@ -30,3 +30,107 @@
     cursor: pointer;
     text-decoration: underline dotted rgba(255, 192, 0, 0.7);
 }
+
+/* CharacterTroopListIconView (ctlBuiltObjectCharactersTroops): a LargeIcon list view on (48, 48, 64), 56 px pictures. */
+.dt-icons {
+    position: absolute;
+    display: flex;
+    flex-wrap: wrap;
+    align-content: flex-start;
+    gap: 4px;
+    padding: 4px;
+    box-sizing: border-box;
+    background: rgb(48, 48, 64);
+}
+.dt-icon {
+    width: 100px;
+    min-height: 86px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 2px;
+    border: 1px solid transparent;
+    color: rgb(170, 170, 170);
+    cursor: default;
+    box-sizing: border-box;
+}
+.dt-icon-img {
+    width: 56px;
+    height: 56px;
+    object-fit: contain;
+    flex: none;
+    pointer-events: none;
+}
+.dt-icon-label {
+    font-size: 12.67px;
+    line-height: 13px;
+    text-align: center;
+    max-width: 100%;
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    word-break: break-word;
+}
+/* The selected item: the full label (a LargeIcon ListView shows the whole text of the selected item). */
+.dt-icon-sel {
+    background: rgb(96, 96, 96);
+    border-color: rgb(140, 140, 150);
+    color: rgb(255, 255, 0);
+}
+.dt-icon-sel .dt-icon-label {
+    -webkit-line-clamp: unset;
+}
+/* FadeImage(image, 0.35f): troops being recruited. */
+.dt-icon-faded .dt-icon-img {
+    opacity: 0.35;
+}
+/* A garrisoned troop: ListViewItem.BackColor (0, 192, 0). */
+.dt-icon-garrisoned .dt-icon-label {
+    background: rgb(0, 192, 0);
+    color: rgb(255, 255, 255);
+}
+
+/* grpUseTroopLoadouts: a GroupBox (disabled children greyed while chkUseTroopLoadouts is off). */
+.dt-group {
+    border: 1px solid rgb(96, 96, 112);
+    box-shadow: inset 1px 1px 0 rgba(0, 0, 0, 0.5);
+    border-radius: 3px;
+}
+.dt-group.dt-disabled .ow-text {
+    color: rgb(100, 100, 108) !important;
+}
+.dt-group-caption {
+    padding: 0 6px 0 2px;
+    background: rgb(48, 48, 64);
+    z-index: 1;
+}
+.ow-input.dt-num {
+    padding: 0 2px;
+    text-align: right;
+}
+
+/* lblBuiltObjectCargoConstructionResourceShortage: wraps in its 300 × 200 MaximumSize. */
+.dt-shortage {
+    max-height: 200px;
+    overflow: hidden;
+    white-space: pre-wrap;
+}
+
+/* ComponentListView's Name column: a DataGridViewLinkColumn (AlwaysUnderline, the cell's fore colour). */
+.dt-link-cell {
+    text-decoration: underline;
+}
+
+/* The Construction Yards tab page: the manufacturing grids lie below the 270 px the page shows (method_169). */
+.dt-page-scroll {
+    overflow-x: hidden !important;
+    overflow-y: auto !important;
+    scrollbar-width: thin;
+    scrollbar-color: rgb(96, 96, 112) rgb(32, 32, 40);
+}
+
+/* cmbBuiltObjectSetFleet: Verdana 8.25 pt. */
+.dt-setfleet {
+    font-size: 13.33px;
+}

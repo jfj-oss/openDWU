@@ -34,7 +34,11 @@
 //        dropDown() / textBox() / checkBox()  the (48, 48, 64) / (170, 170, 170) input controls
 //        darkRect()       the translucent black blocks EmpireDetailView fills behind each section
 //        numericUpDown()  NumericUpDown (clamped integer, up / down buttons, arrow keys / wheel)
-//        imageCombo()     an owner-drawn ComboBox (DesignDropDown / ResourceDropDown: pictures + text per item)
+//        imageCombo()     an owner-drawn ComboBox (DesignDropDown / ResourceDropDown: pictures + text per item, or an
+//                         item `draw` hook for swatches / flags)
+//        toolStripMenu() / toolStripItem() / toolStripSeparator()  ContextMenuStrip menus (CustomToolStripRenderer)
+//      and in originalWindowControls.ts: groupBox(), colorSlider(), labelledTrackBar(), checkBoxRight(), radioButton(),
+//        roundRectanglePanel(), raceDropDown(), colorDropDown()
 //   4. Fonts: the game's font (Forgotten Futurist, loaded by hud.css) at the GenerateFont pixel sizes from the source
 //      (FONT.normal 15.33, FONT.large 16.67, FONT.header 18.67, FONT.title 22.67 …). Colours: the source's
 //      Color.FromArgb values; reuse the COLORS constants here.
@@ -397,6 +401,103 @@ export function linkLabel(label: string, onClick: () => void, size: number = FON
 export function scrollPanel(className = ''): HTMLDivElement {
     return el('div', `ow-scroll${className ? ` ${className}` : ''}`);
 }
+
+// -------------------------------------------------------------------------------------------------------------------
+// ToolStrip / ContextMenuStrip menus (the map's actionMenu / selectionMenu and our other popup menus)
+// -------------------------------------------------------------------------------------------------------------------
+// Sources: CustomToolStripRenderer.cs (OnRenderToolStripBackground: horizontal LinearGradientBrush (16, 16, 24) →
+// (56, 56, 72); OnRenderToolStripBorder: nothing; OnRenderMenuItemBackground: the same gradient, selected / pressed
+// (64, 64, 80) → (128, 128, 144); OnRenderItemText / OnRenderArrow: (170, 170, 170), Color.Yellow when selected;
+// OnRenderSeparator: a Gray line from x 4 to Width - 8 at mid-height), its font Main.font_3 = GenerateFont(15.33)
+// (Main.Part12.cs 1526), set on actionMenu (Main.Part8.cs 3207 method_344) and selectionMenu (Main.Part7.cs 3623
+// method_355); Main.InitializeComponent.cs 1259-1272 (BackColor (64, 64, 80), ShowImageMargin false; selectionMenu
+// turns its image margin on with 32 × 15 images). WinForms draws a disabled item's text in SystemColors.GrayText.
+//
+// The menus are DOM, positioned in CSS px at the cursor; their size is the original's pixels × `--ow-ts-k`. A menu
+// at the top level of the page takes the HUD's scale (`--ow-hud-k`, kept on <html> by installHudScaleVar); a menu
+// inside an element that is already scaled (the top strip) sets `--ow-ts-k: 1` in its own CSS.
+
+let hudScaleVarInstalled = false;
+
+/** Keep `--ow-hud-k` (hudScale for the window height and UI scale) on <html> for the original-pixel popups. */
+export function installHudScaleVar(): void {
+    if (typeof document === 'undefined' || typeof window === 'undefined') return;
+    const apply = (): void => {
+        document.documentElement.style.setProperty('--ow-hud-k', String(hudScale(window.innerHeight, uiScaleFactor())));
+    };
+    apply();
+    if (hudScaleVarInstalled) return;
+    hudScaleVarInstalled = true;
+    window.addEventListener('resize', apply);
+    onSettingsChange(apply);
+}
+
+export interface ToolStripItemOptions {
+    /** ToolStripItem.Enabled (default true): disabled items draw in GrayText and are never selected. */
+    enabled?: boolean;
+    /** Has DropDownItems: the arrow on the right (OnRenderArrow). */
+    submenu?: boolean;
+    /** ToolStripMenuItem.Checked: a check mark in the check margin (null / undefined = no check column). */
+    checked?: boolean | null;
+    /** ShortcutKeyDisplayString, right-aligned. */
+    shortcut?: string;
+    /** selectionMenu's image margin: a glyph left of the text. */
+    image?: string;
+    title?: string;
+    /** 'div' (default) or 'button' (keeps a button's focus / click semantics). */
+    tag?: 'div' | 'button';
+    className?: string;
+    labelClassName?: string;
+    arrowClassName?: string;
+}
+
+/** A ContextMenuStrip / ToolStripDropDown panel (CustomToolStripRenderer background, no border). */
+export function toolStripMenu(className = ''): HTMLDivElement {
+    installHudScaleVar();
+    const m = el('div', `ow-toolstrip${className ? ` ${className}` : ''}`);
+    m.setAttribute('role', 'menu');
+    return m;
+}
+
+/** A ToolStripMenuItem row: [check] [image] text [shortcut] [arrow]. Hover / `.ow-ts-active` = Selected. */
+export function toolStripItem(label: string, o: ToolStripItemOptions = {}): HTMLElement {
+    const row: HTMLElement = el(o.tag ?? 'div', `ow-ts-item${o.className ? ` ${o.className}` : ''}`);
+    if (row instanceof HTMLButtonElement) row.type = 'button';
+    else row.setAttribute('role', 'menuitem');
+    row.tabIndex = -1;
+    if (o.checked !== undefined && o.checked !== null) row.appendChild(el('span', 'ow-ts-check', o.checked ? '✓' : ''));
+    if (o.image !== undefined) row.appendChild(el('span', 'ow-ts-image', o.image));
+    row.appendChild(el('span', `ow-ts-label${o.labelClassName ? ` ${o.labelClassName}` : ''}`, label));
+    if (o.shortcut !== undefined && o.shortcut !== '') row.appendChild(el('span', 'ow-ts-shortcut', o.shortcut));
+    if (o.submenu === true) row.appendChild(el('span', `ow-ts-arrow${o.arrowClassName ? ` ${o.arrowClassName}` : ''}`));
+    if (o.enabled === false) row.classList.add('ow-ts-disabled');
+    if (o.title !== undefined && o.title !== '') row.title = o.title;
+    return row;
+}
+
+/** A ToolStripSeparator (OnRenderSeparator). */
+export function toolStripSeparator(className = ''): HTMLDivElement {
+    return el('div', `ow-ts-sep${className ? ` ${className}` : ''}`);
+}
+
+/** A section caption inside a menu (a ToolStripLabel in the item colour with a separator line under it). */
+export function toolStripHeading(text: string, className = ''): HTMLDivElement {
+    return el('div', `ow-ts-heading${className ? ` ${className}` : ''}`, text);
+}
+
+/** Mark `row` as the menu's Selected item (keyboard navigation), clearing the other rows of `menu`. */
+export function setToolStripActive(menu: HTMLElement, row: HTMLElement | null, extraClass = ''): void {
+    for (const r of menu.querySelectorAll<HTMLElement>('.ow-ts-item')) {
+        const on = r === row;
+        r.classList.toggle('ow-ts-active', on);
+        if (extraClass !== '') r.classList.toggle(extraClass, on);
+    }
+}
+
+/** The original's CloseButton (CloseButton.cs: rounded rect radius 8, the cross), as drawn in the ScreenPanel header. */
+export const CLOSE_BUTTON_SVG =
+    '<svg viewBox="0 0 30 30" width="30" height="30" aria-hidden="true"><rect x="2" y="2" width="26" height="26" rx="8" ry="8"/>' +
+    '<path class="ow-close-x" d="M8 8 L22 22 M8 22 L22 8"/></svg>';
 
 /** The amount bar of DataGridViewTextBoxDropShadowCell: a horizontal gradient of the text colour from alpha 32 to 128,
  *  3 px inset top and bottom. Position it under the cell's text. */
@@ -796,9 +897,7 @@ export function openOriginalWindow(o: OriginalWindowOptions): OriginalWindow {
         const closeBtn = el('button', 'ow-close');
         closeBtn.type = 'button';
         closeBtn.title = 'Close';
-        closeBtn.innerHTML =
-            '<svg viewBox="0 0 30 30" width="30" height="30" aria-hidden="true"><rect x="2" y="2" width="26" height="26" rx="8" ry="8"/>' +
-            '<path class="ow-close-x" d="M8 8 L22 22 M8 22 L22 8"/></svg>';
+        closeBtn.innerHTML = CLOSE_BUTTON_SVG;
         closeBtn.addEventListener('click', (e) => {
             e.stopPropagation();
             win.close();
@@ -1186,6 +1285,9 @@ export interface ImageComboItem {
     label: string;
     pictures?: ImageComboPicture[];
     title?: string;
+    /** OnDrawItem for items that are not pictures + text (ColorDropDown's swatch, cmbFlagShape's flag): draws into the
+     *  item's row (`height` = ItemHeight); the label is then not drawn. */
+    draw?: (row: HTMLDivElement, height: number) => void;
 }
 
 export interface ImageComboOptions {
@@ -1199,18 +1301,33 @@ export interface ImageComboOptions {
     size?: number;
     /** Rows shown before the list scrolls (MaxDropDownItems); default 8. */
     maxItems?: number;
+    /** Extra class on the box and its list (e.g. a control's own BackColor). */
+    className?: string;
+    /** Where the open list is placed (default the box's offsetParent): a container that does not clip it, e.g. the
+     *  window body when the combo sits in a GradientPanel (overflow hidden). */
+    listParent?: () => HTMLElement | null;
 }
 
 export interface ImageCombo {
     readonly el: HTMLDivElement;
     get value(): string;
     setValue(v: string): void;
+    /** Replace the items (ComboBox.Items after a BindData / Ignite); keeps the value. */
+    setItems(items: readonly ImageComboItem[]): void;
+    /** Redraw the shown item and the open list (an owner-drawn item changed, e.g. the flag colours). */
+    refresh(): void;
+    setEnabled(enabled: boolean): void;
     close(): void;
 }
 
 function comboItemRow(item: ImageComboItem, height: number, textX: number): HTMLDivElement {
     const row = el('div', 'ow-combo-item');
     row.style.height = `${height}px`;
+    if (item.draw) {
+        item.draw(row, height);
+        if (item.title) row.title = item.title;
+        return row;
+    }
     const ph = Math.max(1, height - 2);
     for (const p of item.pictures ?? []) {
         if (p.url === null) continue;
@@ -1242,7 +1359,8 @@ function comboItemRow(item: ImageComboItem, height: number, textX: number): HTML
 export function imageCombo(o: ImageComboOptions): ImageCombo {
     const ih = o.itemHeight ?? 21;
     const textX = o.textX ?? 4;
-    const box = el('div', 'ow-combo');
+    let items: readonly ImageComboItem[] = o.items;
+    const box = el('div', `ow-combo${o.className ? ` ${o.className}` : ''}`);
     box.tabIndex = 0;
     box.style.fontSize = `${o.size ?? FONT.normal}px`;
     const shown = el('div', 'ow-combo-shown');
@@ -1251,7 +1369,7 @@ export function imageCombo(o: ImageComboOptions): ImageCombo {
     let value = o.value;
     let list: HTMLDivElement | null = null;
     const render = (): void => {
-        const item = o.items.find((i) => i.value === value);
+        const item = items.find((i) => i.value === value);
         shown.replaceChildren(...(item ? [comboItemRow(item, ih, textX)] : []));
         box.title = item?.title ?? item?.label ?? '';
     };
@@ -1280,12 +1398,9 @@ export function imageCombo(o: ImageComboOptions): ImageCombo {
         document.removeEventListener('pointerdown', onOutside, true);
         window.removeEventListener('keydown', onEsc, true);
     }
-    const open = (): void => {
-        const parent = box.offsetParent as HTMLElement | null;
-        if (!parent || o.items.length === 0) return;
-        list = el('div', 'ow-combo-list ow-scroll');
-        list.style.fontSize = box.style.fontSize;
-        for (const item of o.items) {
+    const fillList = (l: HTMLDivElement): void => {
+        l.replaceChildren();
+        for (const item of items) {
             const row = comboItemRow(item, ih, textX);
             if (item.value === value) row.classList.add('ow-combo-sel');
             row.addEventListener('pointerdown', (e) => e.stopPropagation());
@@ -1293,15 +1408,42 @@ export function imageCombo(o: ImageComboOptions): ImageCombo {
                 e.stopPropagation();
                 pick(item.value);
             });
-            list.appendChild(row);
+            l.appendChild(row);
         }
-        // Under the box, or above it when it would leave the parent.
-        const rows = Math.min(o.items.length, o.maxItems ?? 8);
-        const h = rows * ih + 2;
-        const below = box.offsetTop + box.offsetHeight;
-        const top = below + h > parent.clientHeight && box.offsetTop - h >= 0 ? box.offsetTop - h : below;
-        place(list, box.offsetLeft, top, box.offsetWidth, h);
+    };
+    /** The box's rect in `parent`'s own (unscaled) pixels. */
+    const boxRectIn = (parent: HTMLElement): { x: number; y: number; w: number; h: number } => {
+        if (parent === box.offsetParent) return { x: box.offsetLeft, y: box.offsetTop, w: box.offsetWidth, h: box.offsetHeight };
+        const pr = parent.getBoundingClientRect();
+        const br = box.getBoundingClientRect();
+        const k = pr.width > 0 ? parent.offsetWidth / pr.width : 1;
+        return { x: (br.left - pr.left) * k - parent.clientLeft, y: (br.top - pr.top) * k - parent.clientTop, w: box.offsetWidth, h: box.offsetHeight };
+    };
+    const open = (): void => {
+        const parent = o.listParent?.() ?? (box.offsetParent as HTMLElement | null);
+        if (!parent || items.length === 0) return;
+        list = el('div', `ow-combo-list ow-scroll${o.className ? ` ${o.className}` : ''}`);
+        list.style.fontSize = box.style.fontSize;
+        fillList(list);
+        // Under the box, or above it when it would leave the parent; shortened to whole rows when neither side has room.
+        const rows = Math.min(items.length, o.maxItems ?? 8);
+        let h = rows * ih + 2;
+        const r = boxRectIn(parent);
+        const below = r.y + r.h;
+        const spaceBelow = parent.clientHeight - below;
+        let top = below;
+        if (h > spaceBelow) {
+            if (r.y >= h) top = r.y - h;
+            else if (spaceBelow >= r.y) h = Math.max(1, Math.floor((spaceBelow - 2) / ih)) * ih + 2;
+            else {
+                h = Math.max(1, Math.floor((r.y - 2) / ih)) * ih + 2;
+                top = r.y - h;
+            }
+        }
+        place(list, r.x, top, r.w, h);
         parent.appendChild(list);
+        const sel = list.querySelector<HTMLElement>('.ow-combo-sel');
+        if (sel && sel.offsetTop + ih > h) list.scrollTop = sel.offsetTop - h + ih + 2;
         box.classList.add('ow-combo-open');
         document.addEventListener('pointerdown', onOutside, true);
         window.addEventListener('keydown', onEsc, true);
@@ -1315,9 +1457,9 @@ export function imageCombo(o: ImageComboOptions): ImageCombo {
     box.addEventListener('keydown', (e) => {
         if (e.key === 'Escape') return;
         e.stopPropagation();
-        const i = o.items.findIndex((x) => x.value === value);
-        if (e.key === 'ArrowDown' && i < o.items.length - 1) pick(o.items[i + 1].value);
-        else if (e.key === 'ArrowUp' && i > 0) pick(o.items[i - 1].value);
+        const i = items.findIndex((x) => x.value === value);
+        if (e.key === 'ArrowDown' && i < items.length - 1) pick(items[i + 1].value);
+        else if (e.key === 'ArrowUp' && i > 0) pick(items[i - 1].value);
         else if (e.key === 'Enter' || e.key === ' ') list ? close() : open();
         else return;
         e.preventDefault();
@@ -1332,6 +1474,20 @@ export function imageCombo(o: ImageComboOptions): ImageCombo {
             if (v === value) return;
             value = v;
             render();
+        },
+        setItems(next: readonly ImageComboItem[]) {
+            items = next;
+            render();
+            if (list) fillList(list);
+        },
+        refresh() {
+            render();
+            if (list) fillList(list);
+        },
+        setEnabled(enabled: boolean) {
+            box.classList.toggle('ow-disabled', !enabled);
+            box.tabIndex = enabled ? 0 : -1;
+            if (!enabled) close();
         },
         close,
     };

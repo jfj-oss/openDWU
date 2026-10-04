@@ -6,7 +6,7 @@
 
 import type { Galaxy } from '../sim/galaxy';
 import type { GameData } from '../sim/data/gameData';
-import { baconInitializeSettings } from '../sim/baconSettings';
+import { applyBaconSettingsStatics, baconInitializeSettings } from '../sim/baconSettings';
 import { applyReplicaSideTables, galaxyExternals, replicaCodecOptions, replicaSideTables, replicaSkipFields, replicaStatics, wireReplicaVisibility } from '../sim/save/galaxySave';
 import { Galaxy as GalaxyClass } from '../sim/galaxy';
 import { BuiltObject } from '../sim/builtObject';
@@ -53,7 +53,8 @@ export function hotGates(): Record<string, { gate: string; children: readonly st
 /**
  * Hot fields of the hot classes with a FIXED list (fixedHotClasses below): what the main view reads every frame —
  * render/renderInterp.ts MovingBuiltObject / MovingCreature / MovingFighter / MovingShot (position, heading, speeds,
- * parent frame, last touch, a fighter's leash: mission and in-view flag), the hyperjump / docking / shield-strike / ion-strike / combat state the ship, effects and
+ * parent frame, last touch, a warp leg's distance to its exit point (lastHyperDistance: where the drawn warp stops),
+ * a fighter's leash: mission and in-view flag), the hyperjump / docking / shield-strike / ion-strike / combat state the ship, effects and
  * overlay layers draw (effectsLayer.ts weaponDrawCommand / fighterWeaponDrawCommand / drawExplosion, combatBars.ts battle
  * bars incl. the boarding values,
  * shipOverlays.ts, liveryLayer.ts lightning scars), owner / fleet / role changes, and what
@@ -74,7 +75,7 @@ export function alwaysHotFields(): Set<string> {
         hyperjumpX hyperjumpY canHyperJump lastShieldStrike lastShieldStrikeDirection currentShields shieldsCapacity damagedComponentCount
         unbuiltComponentCount dateRetrofit isFunctional lastIonStrike lastLocationEffectTouch
         nearestSystemStar attackers stealth sensorLongRange sensorProximityArrayRange doingMining doingGasMining doingConstruction
-        engineType builtAt mission assaultAttackValue assaultDefenseValue`);
+        engineType builtAt mission assaultAttackValue assaultDefenseValue lastHyperDistance`);
     add('Creature', `xpos ypos currentHeading targetHeading currentSpeed targetSpeed movementSpeed hyperSpeed lungeSpeed currentTarget
         parentHabitat parentX parentY lastTouch hasBeenDestroyed damage isVisible turnDirection distanceToTarget nearestSystemStar`);
     add('Fighter', `xpos ypos heading targetHeading currentSpeed _targetSpeed topSpeed hasBeenDestroyed onboardCarrier lastTouch health
@@ -273,6 +274,18 @@ export class GalaxySyncSource {
         else this.side[key] = value;
     }
 
+    /**
+     * A save side table a player command just changed (the waypoints, sim/player/waypoints.ts): put its live object
+     * under `key` in the side-tables root now — the cold cycle would only recollect it at its next start — and compare
+     * the root (its keys only) and the table (`depth` levels down), so the change travels in the next delta, ahead of
+     * the command's reply. Read-only on the sim.
+     */
+    freshenSideTable(key: string, value: object | null, depth = 2): void {
+        this.side[key] = value;
+        this.encoder.compareNow(this.side, 0);
+        if (value !== null) this.encoder.compareNow(value, depth);
+    }
+
     /** The initial snapshot (everything discovered so far, incl. the side tables). */
     snapshot(): ReplicaDelta {
         // The side root was filled after the encoder discovered it empty: a full compare sends its contents.
@@ -322,6 +335,8 @@ export class GalaxyReplica {
     /** Applies since the side tables last went onto the replica (afterApply), and cold pumps with nothing to apply since. */
     private sideStale = false;
     private sideIdlePumps = 0;
+    /** JSON of the Galaxy.baconSettingsOverrides the statics were last set from ('' = none). */
+    private baconOverridesSeen = '';
 
     constructor(gameData: GameData, baseTechCost: number) {
         this.statics = replicaStatics(gameData, baseTechCost);
@@ -368,6 +383,13 @@ export class GalaxyReplica {
         if (!this.wired) {
             this.statics.wire(g);
             this.wired = true;
+        }
+        // This game's BaconSettings overrides (Galaxy.baconSettingsOverrides: the save's, or a setBaconSettings command
+        // the worker applied): the main thread's statics follow them (statics only, as in the constructor).
+        const bacon = g.baconSettingsOverrides === undefined ? '' : JSON.stringify(g.baconSettingsOverrides);
+        if (bacon !== this.baconOverridesSeen) {
+            this.baconOverridesSeen = bacon;
+            applyBaconSettingsStatics(g.baconSettingsOverrides);
         }
         // New empires (pirates appearing, rebels) need their visibility owner hooks.
         const n = g.empires.length + g.pirateEmpires.length;

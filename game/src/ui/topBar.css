@@ -193,37 +193,20 @@
     font-size: 10px;
     letter-spacing: 1px;
 }
-.top-more-menu {
+/* A ContextMenuStrip (originalWindow.css .ow-toolstrip): already in the strip's scaled original pixels. */
+.top-more-menu.ow-toolstrip {
+    --ow-ts-k: 1;
     position: absolute;
     right: 0;
     top: 34px;
-    min-width: 150px;
+    min-width: 190px;
     pointer-events: auto;
-    padding: 3px;
-    background: linear-gradient(to bottom, rgb(39, 40, 44), rgb(22, 21, 26) 50%, rgb(51, 54, 61));
-    border: 1px solid rgb(67, 67, 77);
-    border-radius: 4px;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.6);
     display: flex;
     flex-direction: column;
 }
 .top-more-menu[hidden] {
     display: none;
 }
-.top-more-item {
-    font-family: 'Forgotten Futurist', sans-serif;
-    font-size: 10px;
-    line-height: 16px;
-    text-align: left;
-    white-space: nowrap;
-    color: rgb(200, 200, 200);
-    background: transparent;
-    border: 0;
-    border-radius: 2px;
-    padding: 1px 6px;
+.top-more-item.ow-ts-item {
     cursor: pointer;
-}
-.top-more-item:hover {
-    background: rgba(48, 48, 128, 0.7);
-    color: #fff;
 }

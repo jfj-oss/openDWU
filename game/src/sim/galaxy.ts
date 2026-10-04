@@ -49,6 +49,7 @@ function compareGroupNames(a: Habitat[], b: Habitat[]): number {
 }
 import type { Empire } from './empire';
 import type { GameData } from './data/gameData';
+import type { BaconSettingsOverrides } from './data/baconSettings';
 import type { CharacterFileRow, CharacterNames } from './data/characters';
 import type { Design } from './design';
 import { findNewestCanBuild, resolveSubRoleDescription } from './designGeneration';
@@ -156,8 +157,13 @@ import {
 // Port of Galaxy.cs static fields (Galaxy.3.cs InitializeStatics sets
 // these): SectorSizeX = SectorSizeY = 2_000_000, IndexSize = 400_000.
 const SECTOR_SIZE = 2_000_000;
-/** Mod layer (19h map scale): the largest sector count a scenario extent may reach (the C# clamps to 15). */
-export const SCENARIO_MAX_SECTORS = 26; // sector labels are one letter (empireEvents.ts resolveSectorDescription)
+/**
+ * Custom galaxy size (not a port; the wizard's "Sectors: W × H" boxes, startGameOptions.ts): the sector-count range a
+ * custom size may use per axis. The C# ctor clamps to 4..15 (SetGalaxyPhysicalDimensions); a custom size goes 1..6× that
+ * maximum. Sectors past Z are named AA, AB, … (sectorColumnName).
+ */
+export const CUSTOM_MIN_SECTORS = 1;
+export const CUSTOM_MAX_SECTORS = 90;
 const INDEX_SIZE = 400_000;
 const MAXIMUM_EMPIRE_COUNT = 255; // Galaxy.3.cs:5034
 // Port of Galaxy.3.cs InitializeStatics: MaxSolarSystemSize = 23000.
@@ -170,6 +176,12 @@ const MAX_MOON_ORBIT_SIZE = 1200;
 // Port of Galaxy.3.cs InitializeStatics: MovementDecelerationRange = 150 (Galaxy.3.cs:4983;
 // Galaxy.cs:170 `public static readonly int`).
 export const MOVEMENT_DECELERATION_RANGE = 150;
+
+/** Custom galaxy size: a sector count rounded and clamped to CUSTOM_MIN_SECTORS..CUSTOM_MAX_SECTORS. */
+export function clampCustomSectors(n: number): number {
+    const v = Math.round(Number.isFinite(n) ? n : 10);
+    return Math.max(CUSTOM_MIN_SECTORS, Math.min(CUSTOM_MAX_SECTORS, v));
+}
 
 // C# int.ToString("000") for the non-negative Design.BuildCount.
 function buildCount000(n: number): string {
@@ -225,6 +237,11 @@ export interface GenerateGalaxyOptions {
     races?: Race[];
     /** Mod layer: the scenario (galaxy.scenario) set before generation so its placement rules apply. Omitted = none. */
     scenario?: GalaxyScenario | null;
+    /**
+     * Custom galaxy size (not a port): sectorWidth / sectorHeight bypass the C# ctor's 4..15 clamp (setCustomGalaxyDimensions,
+     * CUSTOM_MIN_SECTORS..CUSTOM_MAX_SECTORS). Omitted / false = the faithful clamp.
+     */
+    customGalaxyDimensions?: boolean;
     // Galaxy.4.cs 2088 ctor arguments the wizard sets (Start.1.cs 3685-3739 → Start.2.cs 485), applied before generation as
     // the ctor does. Each omitted value keeps the C# ctor / field default.
     /** `int lifePrevalence` → _LifePrevalence (Galaxy.4.cs 2141; the Alien Life slider, Start.cs method_67). Default 1000. */
@@ -278,6 +295,13 @@ export class Galaxy {
      * galaxyMessageOptions).
      */
     messageOptions: MessageOptions | null = null;
+    /**
+     * This game's BaconSettings.txt values that differ from the install's file (ours: the C# statics are process-wide;
+     * data/baconSettings.ts baconSettingsOverrides). Set at a new game (CreateGameOptions.baconSettingsOverrides) and by the
+     * journaled setBaconSettings command (the Bacon Mod Settings window). `declare`d, so the property exists only while
+     * the game has overrides and a game without them saves exactly as before.
+     */
+    declare baconSettingsOverrides?: BaconSettingsOverrides;
     colonyNames: string[] | null = null;
     colonyNameIndex = 0;
     // Task C2a: Galaxy.ResourceSystem (strategic/luxury lists, RelativeImportance).
@@ -1691,18 +1715,20 @@ export class Galaxy {
         this.stepOrderDirty = false;
     }
 
-    // Port of Galaxy.3.cs SetGalaxyPhysicalDimensions
     /**
-     * Mod layer (19h map scale, not a port): a scenario's extent beyond the C# 15-sector clamp. SectorSize stays the C#
-     * constant; every index grid derives from sizeX / sizeY. Only generateGalaxy calls it, before generation.
+     * Custom galaxy size (not a port): SetGalaxyPhysicalDimensions without the C# 4..15 clamp, for a size the wizard's
+     * sector boxes (or a scenario extent, 19h) asked for — CUSTOM_MIN_SECTORS..CUSTOM_MAX_SECTORS per axis. SectorSize
+     * stays the C# constant (more sectors, not bigger ones); every index grid derives from sizeX / sizeY. Only
+     * generateGalaxy calls it, before generation. For 4..15 it sets exactly what the ctor's clamp set.
      */
-    setScenarioGalaxyDimensions(sectorWidth: number, sectorHeight: number): void {
-        this.sectorWidth = Math.max(4, Math.min(SCENARIO_MAX_SECTORS, Math.round(sectorWidth)));
-        this.sectorHeight = Math.max(4, Math.min(SCENARIO_MAX_SECTORS, Math.round(sectorHeight)));
+    setCustomGalaxyDimensions(sectorWidth: number, sectorHeight: number): void {
+        this.sectorWidth = clampCustomSectors(sectorWidth);
+        this.sectorHeight = clampCustomSectors(sectorHeight);
         this.sizeX = this.sectorWidth * SECTOR_SIZE;
         this.sizeY = this.sectorHeight * SECTOR_SIZE;
     }
 
+    // Port of Galaxy.3.cs SetGalaxyPhysicalDimensions
     private setGalaxyPhysicalDimensions(sectorWidth: number, sectorHeight: number): void {
         sectorWidth = Math.max(4, Math.min(15, sectorWidth));
         sectorHeight = Math.max(4, Math.min(15, sectorHeight));
@@ -1727,7 +1753,8 @@ export class Galaxy {
         const radius = minRadius + extraRadius;
         const angle = this.rnd.nextDouble() * Math.PI * 2.0;
         const x = halfX + Math.cos(angle) * radius;
-        const y = halfY + Math.sin(angle) * radius;
+        // Custom size (not a port): a non-square galaxy stretches the y offset by SizeY / SizeX (the C# galaxy is square).
+        const y = this.sizeX === this.sizeY ? halfY + Math.sin(angle) * radius : halfY + Math.sin(angle) * radius * (this.sizeY / this.sizeX);
         return { x, y };
     }
 
@@ -1950,6 +1977,17 @@ export class Galaxy {
         return dx * dx + dy * dy;
     }
 
+    /**
+     * SetupSun's radial point `x = SizeY / 2 + dy; y = SizeX / 2 + dx` (Galaxy.5.cs, the Ring / Elliptical branches; the
+     * radius comes from SizeX). The C# galaxy is always square. Custom size (not a port): a non-square galaxy centres the
+     * point and stretches the y offset by SizeY / SizeX, so the ring / ellipse fills the rectangle instead of being centred
+     * on the wrong axis. Same Rnd draws either way; a square galaxy is exactly the C# expression.
+     */
+    private setupSunRadialPoint(dy: number, dx: number): { x: number; y: number } {
+        if (this.sizeX === this.sizeY) return { x: this.sizeY / 2 + dy, y: this.sizeX / 2 + dx };
+        return { x: this.sizeX / 2 + dy, y: this.sizeY / 2 + dx * (this.sizeY / this.sizeX) };
+    }
+
     // Port of Galaxy.5.cs SetupSun(galaxyShape).
     private setupSun(galaxyShape: GalaxyShape): Habitat {
         let x = 0;
@@ -1994,8 +2032,7 @@ export class Galaxy {
                         const angle = this.rnd.nextDouble() * Math.PI * 2.0;
                         const dy = Math.sin(angle) * radius;
                         const dx = Math.cos(angle) * radius;
-                        x = this.sizeY / 2 + dy;
-                        y = this.sizeX / 2 + dx;
+                        ({ x, y } = this.setupSunRadialPoint(dy, dx));
                         break;
                     }
                     const spreadX = (this.rnd.next(2, 10) / 10.0) * (this.rnd.next(2, 10) / 10.0) * this.rnd.nextDouble() * this.sizeX / 2.0;
@@ -2044,15 +2081,13 @@ export class Galaxy {
                         const angle = this.rnd.nextDouble() * Math.PI * 2.0;
                         const dy = Math.sin(angle) * radius;
                         const dx = Math.cos(angle) * radius;
-                        x = this.sizeY / 2 + dy;
-                        y = this.sizeX / 2 + dx;
+                        ({ x, y } = this.setupSunRadialPoint(dy, dx));
                     } else {
                         const radius = (this.sizeX / 2) * (0.25 + this.rnd.nextDouble() * 0.6);
                         const angle = this.rnd.nextDouble() * Math.PI * 2.0;
                         const dy = Math.sin(angle) * radius;
                         const dx = Math.cos(angle) * radius;
-                        x = this.sizeY / 2 + dy;
-                        y = this.sizeX / 2 + dx;
+                        ({ x, y } = this.setupSunRadialPoint(dy, dx));
                     }
                     break;
                 }
@@ -5014,8 +5049,8 @@ export function generateGalaxy(options: GenerateGalaxyOptions): Galaxy {
     if (options.creaturePrevalence !== undefined) galaxy.creaturePrevalence = options.creaturePrevalence;
     if (options.allowGiantKaltorGeneration !== undefined) galaxy.allowGiantKaltorGeneration = options.allowGiantKaltorGeneration;
     if (options.spawnNewEmpires !== undefined) galaxy.spawnNewEmpires = options.spawnNewEmpires;
-    // Mod layer (19h map scale): a scenario extent beyond the constructor's 15-sector clamp.
-    if (galaxy.scenario !== null && (sectorWidth > 15 || sectorHeight > 15)) galaxy.setScenarioGalaxyDimensions(sectorWidth, sectorHeight);
+    // Custom galaxy size (the wizard's sector boxes, a scenario extent): past the constructor's 4..15 clamp.
+    if (options.customGalaxyDimensions === true) galaxy.setCustomGalaxyDimensions(sectorWidth, sectorHeight);
     // Galaxy.4.cs 2132 `Races = LoadRaces(...)`: the galaxy's own Race objects (mutated in play, saved with the game).
     let empireStarts = options.empireStarts ?? [];
     let races = options.races;

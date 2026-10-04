@@ -93,6 +93,21 @@ describe('selectionInfo formatting (InfoPanel / .NET formats)', () => {
 });
 
 describe('selectionInfo models (harness game)', () => {
+    it('Bonuses row (BaconInfoPanel.cs 777) only in the extended panels (ShowExtendedInfo)', () => {
+        const ship = player.builtObjects.find((b) => b.role !== BuiltObjectRole.Base && b.unbuiltComponentCount === 0)!;
+        const saved = ship.shipGroup;
+        try {
+            ship.shipGroup = { targetingBonus: 1.1, countermeasuresBonus: 1, shipManeuveringBonus: 1, fightersBonus: 1, shipEnergyUsageBonus: 1, weaponsDamageBonus: 1, weaponsRangeBonus: 1, shieldRechargeRateBonus: 1, damageControlBonus: 1, repairBonus: 1, hyperjumpSpeedBonus: 1 };
+            const has = (m: InfoModel): boolean => m.rows.some((r) => r.kind === 'row' && r.label === 'Bonuses');
+            expect(has(buildInfoModel(ctx, { builtObject: ship } as never))).toBe(false);
+            const ext = buildInfoModel(ctx, { builtObject: ship } as never, null, true);
+            expect(has(ext)).toBe(true);
+            const row = ext.rows.find((r) => r.kind === 'row' && r.label === 'Bonuses')!;
+            expect(rowText(row)).toMatch(/\+10%/);
+        } finally {
+            ship.shipGroup = saved;
+        }
+    });
     it('a player ship: BaconInfoPanel.DrawBuiltObject rows and bar graphs', () => {
         const ship = player.builtObjects.find((b) => b.role !== BuiltObjectRole.Base && b.unbuiltComponentCount === 0)!;
         const m = builtObjectInfo(ctx, ship);

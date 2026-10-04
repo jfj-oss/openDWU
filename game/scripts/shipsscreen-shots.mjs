@@ -67,7 +67,7 @@ await page.locator('[data-ow="msgbox"] .ow-glass', { hasText: 'No' }).click();
 await page.waitForTimeout(300);
 
 // Set Fleet -> (New Fleet) through the command queue (Fleet Formation automation prompt first).
-await page.selectOption(`${win} .ships-setfleet`, 'new');
+await page.selectOption(`${win} .ships-setfleet`, { label: '(New Fleet)' });
 const prompt = await page.waitForSelector('.order-confirm-button', { timeout: 3000 }).catch(() => null);
 if (prompt) await page.click('.order-confirm-button:has-text("Turn off automation")');
 await page.waitForTimeout(1000);

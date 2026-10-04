@@ -12,6 +12,7 @@ import { Habitat } from '../sim/types';
 import { ShipGroup } from '../sim/fleets/shipGroup';
 import { Empire } from '../sim/empire';
 import { selectShipGroup, selectStellarObject } from './hud';
+import { mapHighlightsOf } from '../render/mapHighlights';
 
 export type GoToTarget =
     | { kind: 'stellar'; object: Habitat | BuiltObject }
@@ -56,4 +57,26 @@ export function goToTarget(target: GoToTarget, galaxy: Galaxy): boolean {
 export function goToMessage(message: EmpireMessage, galaxy: Galaxy): boolean {
     const t = messageGoToTarget(message);
     return t === null ? false : goToTarget(t, galaxy);
+}
+
+/**
+ * The object a message's hover pings (Main.Part9.cs 742 method_242 / 777 method_244): the Subject; a relation-type
+ * subject (and a Money offer) is about the Sender; an Empire (the sender included) falls back to the Location point.
+ */
+export function messagePingObject(message: EmpireMessage): unknown {
+    let obj: unknown = message.subject;
+    if (typeof obj === 'number') obj = message.sender;
+    if (message.money > 0) obj = message.sender;
+    if (obj instanceof Empire) obj = message.location;
+    return obj;
+}
+
+/** method_242: the message's object gets the yellow ping (MainView.EventLocations). */
+export function pingMessage(galaxy: Galaxy, message: EmpireMessage): void {
+    mapHighlightsOf(galaxy).addEventPing(messagePingObject(message));
+}
+
+/** method_244: the message's ping goes. */
+export function unpingMessage(galaxy: Galaxy, message: EmpireMessage): void {
+    mapHighlightsOf(galaxy).removeEventPings(messagePingObject(message));
 }

@@ -1,1050 +1,501 @@
-/* New-game wizard: The Galaxy page (task 06b). Modernized dark panel styling
-   consistent with src/ui/hud.css. */
+/* New-game wizard (newGameWizard.ts) on the original-style window (originalWindow.css / originalWindowControls.css):
+   pnlNewGame (ScreenPanel 927 × 768) and its 900 × 660 page panels in the original's pixels. Colours are the
+   controls' Color.FromArgb values (Start.InitializeComponent.cs). */
 
-/* Task 06c: MainBackground.jpg (cover) behind the wizard window with a 55%
-   black overlay, instead of plain black. */
+/* The Start form's background (MainBackground.jpg) behind pnlNewGame. */
 .wizard-overlay {
     position: fixed;
     inset: 0;
     z-index: 1100;
-    display: flex;
-    align-items: center;
-    justify-content: center;
     background: url('/assets/dwu/images/ui/chrome/MainBackground.jpg') center / cover no-repeat #000;
-    font-family: 'Forgotten Futurist', sans-serif;
-    color: #e6e6e6;
 }
 
-.wizard-overlay::before {
-    content: '';
+/* --- Shared --------------------------------------------------------------------------------------------------- */
+
+.wizard-page {
     position: absolute;
-    inset: 0;
-    background: rgba(0, 0, 0, 0.55);
 }
 
-/* Sized to fit every page's content without scrolling on a typical desktop
-   viewport while still respecting the 96vw/92vh caps on smaller windows;
-   colors match the HUD panel tokens (src/ui/hud.css .hud-panel) so the
-   wizard reads as part of the same UI system, not a separate skin. */
-.wizard-window {
-    position: relative; /* above the ::before overlay */
-    width: 1040px;
-    max-width: 96vw;
-    height: 740px;
-    max-height: 92vh;
-    background: rgba(14, 16, 20, 0.94);
-    backdrop-filter: blur(6px);
-    -webkit-backdrop-filter: blur(6px);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: 6px;
-    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6);
-    display: flex;
-    flex-direction: column;
+.wizard-window .ow-text {
+    line-height: 1.12;
+}
+
+/* lblHelpDescription: MaximumSize (900 - Left, 32) — two lines at most. */
+.wizard-help-desc {
+    white-space: normal !important;
+    max-height: 32px;
+    overflow: hidden;
+    line-height: 16px !important;
+}
+.wizard-help-title {
+    white-space: nowrap;
+}
+
+/* Labels with a layout width wrap (SmoothLabel MaximumSize); their extra text is clipped like the original's. */
+.wizard-window .ow-text[style*='width'] {
     overflow: hidden;
 }
 
-.wizard-titlebar {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 10px 16px;
-    background: rgba(10, 11, 15, 0.9);
-    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-    font-size: 15px;
-    color: #e8d24a;
+/* WinForms CheckBox / RadioButton: a 13 px box, the text 4 px right of it. */
+.wizard-window .ow-check {
+    gap: 4px;
+    line-height: 1.1;
+}
+.wizard-window .ow-check input {
+    width: 13px;
+    height: 13px;
+    flex: none;
+}
+.wizard-window .ow-check input:disabled + span {
+    color: rgb(110, 110, 110);
+}
+.wizard-check-wrap {
+    white-space: normal;
+}
+.wizard-checkbox.wizard-flow {
+    position: static;
+    margin: 2px 0;
 }
 
-.wizard-close {
-    background: transparent;
-    border: none;
-    color: #ccc;
-    font-size: 16px;
-    cursor: pointer;
-    padding: 2px 6px;
-}
-.wizard-close:hover {
-    color: #fff;
+/* ComboBoxes (FlatStyle Popup). */
+.wizard-window .wizard-combo,
+.wizard-window .wizard-size-preset {
+    box-sizing: border-box;
+    padding: 0 2px;
+    line-height: 1;
 }
 
-.wizard-body {
-    flex: 1;
-    overflow-y: auto;
-    padding: 16px 20px;
-    display: flex;
-    flex-direction: column;
-    gap: 18px;
+/* NumericUpDown-looking number boxes. */
+.wizard-spin .ow-spin-input {
+    font-size: 15.33px;
+}
+.wizard-spin.wizard-flow-spin {
+    position: relative;
+    display: inline-block;
+    width: 90px;
+    height: 21px;
+    vertical-align: middle;
 }
 
-.wizard-shape-row {
-    display: flex;
-    gap: 20px;
+/* Prev / Next GlassButtons. */
+.wizard-btn .ow-glass-text {
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
+
+/* PictureBoxes showing the Start.resx pictures (SizeMode Normal / Zoom / CenterImage). */
+.wizard-picture {
+    position: absolute;
+    overflow: hidden;
+    pointer-events: none;
+}
+.wizard-picture img {
+    display: block;
+    width: 100%;
+    height: 100%;
+}
+.wizard-picture-normal img {
+    object-fit: none;
+    object-position: 0 0;
+}
+.wizard-picture-zoom img {
+    object-fit: contain;
+}
+.wizard-picture-center img {
+    object-fit: none;
+    object-position: 50% 50%;
+}
+
+/* The race-on-landscape pictures (ui/raceLandscapePicture.ts) drawn at the original's picture-box size and zoomed to
+   the slot (PictureBoxSizeMode.Zoom). */
+.wizard-jumpstart-race-img,
+.wizard-pirate-playstyle-img,
+.wizard-race-portrait-wrap {
+    position: absolute;
+}
+.wizard-jumpstart-race-img .wizard-race-picture,
+.wizard-pirate-playstyle-img .wizard-race-picture,
+.wizard-race-portrait-wrap .wizard-race-picture {
+    width: 100% !important;
+    height: 100% !important;
+    display: block;
+}
+
+/* LinkLabels that wrap inside their MaximumSize. */
+.wizard-link {
+    line-height: 1.1;
+}
+
+/* --- Playstyle ------------------------------------------------------------------------------------------------ */
+
+/* The playstyle GlassButtons: the Image centred, the text over it (TextImageRelation Overlay), wrapping in the
+   button's width. */
+.wizard-type-btn {
+    padding: 0 6px;
+}
+.wizard-type-btn .wizard-type-img {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+}
+.wizard-type-btn .wizard-type-img-fallback {
+    max-width: calc(100% - 20px);
+    max-height: calc(100% - 20px);
+}
+.wizard-type-btn:disabled .wizard-type-img {
+    /* GlassButton's disabled ColorMatrix: luminance + 0.38. */
+    filter: grayscale(1) brightness(1.45);
+    opacity: 0.8;
+}
+.wizard-type-btn .ow-glass-text {
+    position: relative;
+    z-index: 1;
+    white-space: normal;
+    text-align: center;
+    line-height: 1.12;
+    overflow: visible;
+}
+.wizard-type-eras,
+.wizard-type-custom {
+    pointer-events: none;
+}
+.wizard-type-eras > *,
+.wizard-type-custom > * {
+    pointer-events: auto;
+}
+.wizard-type-theme {
+    white-space: nowrap;
+}
+
+/* --- The Galaxy / Jump Start ---------------------------------------------------------------------------------- */
 
 .wizard-shape-list {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    min-width: 180px;
+    position: absolute;
 }
-
-.wizard-shape-item {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    cursor: pointer;
-    font-size: 13px;
-}
-
 .wizard-shape-preview {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 8px;
+    position: absolute;
 }
-
 .wizard-shape-preview img {
-    width: 180px;
-    height: 180px;
-    object-fit: contain;
-    background: rgba(0, 0, 0, 0.3);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 6px;
-}
-
-.wizard-shape-desc {
-    font-size: 12px;
-    color: #aaa;
-    max-width: 220px;
-    text-align: center;
-}
-
-/* The Galaxy page: 8 sliders in two columns instead of one long column, so
-   the whole page fits without scrolling (task: fix overflow). */
-.wizard-slider-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 14px 28px;
-}
-
-.wizard-slider {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-}
-
-.wizard-slider-title {
-    font-size: 13px;
-    color: #e8d24a;
-}
-
-/* Title + value badge on one line (Colonization page sliders). */
-.wizard-slider-title-row {
-    display: flex;
-    align-items: baseline;
-    justify-content: space-between;
-    gap: 8px;
-}
-
-.wizard-slider input[type='range'] {
-    width: 100%;
-}
-
-/* Tick labels: 12 px, readable, spread evenly under the slider (task 06c). */
-.wizard-slider-ticks {
-    display: flex;
-    justify-content: space-between;
-    font-size: 12px;
-    color: #c9d1d9;
-}
-
-.wizard-seed-row {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-}
-
-/* Task 06f: "Difficulty scales as player nears victory" checkbox row. */
-.wizard-checkbox {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    font-size: 13px;
-    color: #c9d1d9;
-    cursor: pointer;
-}
-
-.wizard-checkbox input[type='checkbox'] {
-    width: 15px;
-    height: 15px;
-    accent-color: #4f9a4f;
-}
-
-.wizard-seed-input {
-    background: rgba(0, 0, 0, 0.4);
-    border: 1px solid rgba(255, 255, 255, 0.15);
-    border-radius: 4px;
-    color: #fff;
-    padding: 4px 8px;
-    width: 140px;
-}
-
-.wizard-seed-reroll {
-    background: transparent;
-    border: 1px solid rgba(255, 255, 255, 0.15);
-    border-radius: 4px;
-    cursor: pointer;
-    padding: 4px 8px;
-    font-size: 14px;
-}
-
-.wizard-todo {
-    font-size: 11px;
-    color: #777;
-    font-style: italic;
-}
-
-/* --- Your Race page (task 06d) --- */
-
-.wizard-page {
-    display: flex;
-    flex-direction: column;
-    gap: 18px;
-}
-
-.wizard-race-row {
-    display: flex;
-    gap: 20px;
-    flex: 1;
-    min-height: 0; /* let the list scroll inside the fixed window height */
-}
-
-.wizard-race-list {
-    width: 240px;
-    flex-shrink: 0;
-    overflow-y: auto;
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-    padding-right: 6px;
-    background: rgba(0, 0, 0, 0.25);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 6px;
-    padding: 6px;
-}
-
-.wizard-race-item {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    background: transparent;
-    border: 1px solid transparent;
-    border-radius: 4px;
-    cursor: pointer;
-    padding: 3px 6px;
-    color: #e6e6e6;
-    font-size: 13px;
-    text-align: left;
-    font-family: inherit;
-}
-
-.wizard-race-item:hover {
-    background: rgba(255, 255, 255, 0.06);
-}
-
-.wizard-race-item.selected {
-    background: rgba(79, 154, 79, 0.2);
-    border-color: #4f9a4f;
-}
-
-.wizard-race-thumb {
-    width: 32px;
-    height: 32px;
-    object-fit: contain;
-    background: rgba(0, 0, 0, 0.3);
-    border-radius: 4px;
-    flex-shrink: 0;
-}
-
-.wizard-race-detail {
-    flex: 1;
-    min-width: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-    overflow-y: auto;
-    padding-left: 4px;
-}
-
-.wizard-race-portrait-wrap {
-    display: flex;
-    justify-content: center;
-}
-
-.wizard-race-portrait {
-    width: 160px;
-    height: 160px;
-    object-fit: contain;
-    background: rgba(0, 0, 0, 0.3);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 6px;
-}
-
-.wizard-race-name {
-    font-size: 20px;
-    color: #e8d24a;
-    text-align: center;
-}
-
-.wizard-race-family {
-    font-size: 13px;
-    color: #aaa;
-    text-align: center;
-}
-
-/* Two-column grid of every numeric race stat field. */
-.wizard-race-stats {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 6px 16px;
-}
-
-.wizard-race-stat {
-    display: flex;
-    justify-content: space-between;
-    gap: 8px;
-    font-size: 12px;
-    padding: 3px 8px;
-    background: rgba(0, 0, 0, 0.25);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: 4px;
-}
-
-.wizard-race-stat-label {
-    color: #c9d1d9;
-}
-
-.wizard-race-stat-value {
-    color: #fff;
-    font-variant-numeric: tabular-nums;
-}
-
-.wizard-race-loading,
-.wizard-race-error {
-    margin: auto;
-    font-size: 14px;
-    color: #aaa;
-}
-
-.wizard-race-error {
-    color: #e07a7a;
-}
-
-/* Note listing race files absent from this install (partial asset tree). */
-.wizard-race-missing {
-    flex-shrink: 0;
-    margin-top: 4px;
-    font-size: 11px;
-    color: #b8a24a;
-    font-style: italic;
-    text-align: center;
-    line-height: 1.4;
-}
-
-/* --- Your Empire page (task 06e): name, government, flag. --- */
-
-.wizard-empire-label {
-    font-size: 13px;
-    color: #e8d24a;
-}
-
-.wizard-empire-name-row {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-}
-
-.wizard-empire-name-input {
-    background: rgba(0, 0, 0, 0.4);
-    border: 1px solid rgba(255, 255, 255, 0.15);
-    border-radius: 4px;
-    color: #fff;
-    padding: 4px 8px;
-    width: 280px;
-    font-family: inherit;
-}
-
-.wizard-empire-gov {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-}
-
-.wizard-empire-gov-select {
-    background: rgba(0, 0, 0, 0.4);
-    border: 1px solid rgba(255, 255, 255, 0.15);
-    border-radius: 4px;
-    color: #fff;
-    padding: 4px 8px;
-    width: 280px;
-    font-family: inherit;
-}
-
-/* Small two-column table of the selected government's key modifiers. */
-.wizard-empire-gov-table {
-    border-collapse: collapse;
-    font-size: 12px;
-    max-width: 420px;
-}
-
-.wizard-empire-gov-table td {
-    padding: 3px 10px;
-    background: rgba(0, 0, 0, 0.25);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-}
-
-.wizard-empire-gov-table td:first-child {
-    color: #c9d1d9;
-}
-
-.wizard-empire-gov-table td:last-child {
-    color: #fff;
-    font-variant-numeric: tabular-nums;
-    text-align: right;
-}
-
-.wizard-empire-flag {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-}
-
-/* Colour pickers + live preview, above the flag grid so they're always
-   visible regardless of how far the grid below is scrolled. */
-.wizard-empire-flag-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 20px;
-}
-
-/* Grid of the 83 flag shape tiles, capped and independently scrollable so
-   it can't push the colour pickers / preview above it off the page
-   (overflow fix — it used to sit between them and the page bottom). */
-.wizard-empire-flag-grid {
-    display: grid;
-    grid-template-columns: repeat(17, 1fr);
-    align-content: start;
-    gap: 3px;
-    max-height: 220px;
-    overflow-y: auto;
-    background: rgba(0, 0, 0, 0.25);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 6px;
-    padding: 6px;
-}
-
-.wizard-empire-flag-tile {
-    aspect-ratio: 1;
-    background: transparent;
-    border: 1px solid transparent;
-    border-radius: 3px;
-    cursor: pointer;
-    padding: 1px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
-
-.wizard-empire-flag-tile img {
+    display: block;
     width: 100%;
     height: 100%;
     object-fit: contain;
 }
-
-.wizard-empire-flag-tile:hover {
-    background: rgba(255, 255, 255, 0.08);
+.wizard-shape-desc {
+    line-height: 1.2 !important;
 }
 
-.wizard-empire-flag-tile.selected {
-    background: rgba(79, 154, 79, 0.25);
-    border-color: #4f9a4f;
-}
-
-.wizard-empire-color-row {
-    display: flex;
-    gap: 24px;
-}
-
-.wizard-empire-color-cell {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    font-size: 12px;
-    color: #c9d1d9;
-}
-
-.wizard-empire-color-input {
-    width: 48px;
-    height: 28px;
-    padding: 2px;
-    background: rgba(0, 0, 0, 0.4);
-    border: 1px solid rgba(255, 255, 255, 0.15);
-    border-radius: 4px;
-    cursor: pointer;
-}
-
-/* Flag preview: primary colour background with the shape tinted in the
-   secondary colour via a CSS mask of the chosen flag png. */
-.wizard-empire-flag-preview-wrap {
-    position: relative;
-    width: 120px;
-    height: 80px;
-    border: 1px solid rgba(255, 255, 255, 0.15);
-    border-radius: 4px;
-    overflow: hidden;
-}
-
-.wizard-empire-flag-preview-bg {
+/* The custom galaxy size boxes in the trackbar panels they replace. */
+.wizard-size-control .owc-trackbar-caption {
     position: absolute;
-    inset: 0;
+}
+.wizard-density-warning {
+    color: rgb(255, 160, 64) !important;
+    line-height: 1.2 !important;
+}
+.wizard-density-warning-inline {
+    max-height: 48px;
+}
+.wizard-density-warning[hidden] {
+    display: none;
 }
 
-.wizard-empire-flag-preview-shape {
-    position: absolute;
-    inset: 0;
-}
-
-/* --- Colonization and Territory page (task 06h). --- */
-
-/* Shared boxed-panel look for grouped controls: Colonization range limits,
-   Other Empires auto-generate, and Victory Conditions sections all use it,
-   so the three pages that group checkboxes/sliders into panels look like
-   one consistent pattern rather than three near-identical ad-hoc ones. */
-.wizard-colonization-group,
-.wizard-panel-group,
-.wizard-victory-section {
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-    padding: 12px 14px;
-    background: rgba(0, 0, 0, 0.25);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 6px;
-}
-
-/* Value badge shown next to each colonization slider's title ("4000K" / "100%"). */
-.wizard-colonization-value {
-    font-size: 13px;
-    color: #fff;
-    font-variant-numeric: tabular-nums;
-}
-
-/* "Suggestion" hint next to the colony influence range (lbl…Suggestion). */
-.wizard-colonization-suggestion {
-    font-size: 11px;
-    color: #777;
-    font-style: italic;
-}
-
-/* Pages whose content is much shorter than the Race/Empire pages the window
-   is sized for: fill the remaining height and center vertically instead of
-   leaving a big dead gap under a top-aligned block. */
-.wizard-page.wizard-empires-page,
-.wizard-page.wizard-colonization-page {
-    flex: 1;
-    justify-content: center;
-}
-
-.wizard-empires-count-row {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    font-size: 13px;
-    color: #c9d1d9;
-}
-
-.wizard-empires-count-input {
-    width: 80px;
-    background: rgba(0, 0, 0, 0.4);
-    border: 1px solid rgba(255, 255, 255, 0.15);
-    border-radius: 4px;
-    color: #fff;
-    padding: 3px 8px;
-    font-family: inherit;
-    font-variant-numeric: tabular-nums;
-}
-
-.wizard-empires-or {
-    font-size: 12px;
-    color: #b8a24a;
-    font-style: italic;
-}
-
-/* Read-only preview of the AI empire list (auto-generate count). */
-.wizard-empires-list-preview {
-    font-size: 13px;
-    color: #c9d1d9;
-    padding: 8px 12px;
-    background: rgba(0, 0, 0, 0.25);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: 6px;
-}
-
-/* Task 06j: editable manual AI-empire list below the auto-generate controls. */
-.wizard-empires-manual-wrap {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    max-height: 240px;
-    overflow-y: auto;
-    padding: 8px 12px;
-    background: rgba(0, 0, 0, 0.25);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: 6px;
-}
-
-.wizard-empires-row {
-    display: grid;
-    grid-template-columns: minmax(120px, 1fr) minmax(140px, 1.2fr) minmax(140px, 1.2fr) auto;
-    align-items: center;
-    gap: 8px;
-}
-
-.wizard-empires-race-select,
-.wizard-empires-gov-select {
-    width: 100%;
-    background: rgba(0, 0, 0, 0.4);
-    border: 1px solid rgba(255, 255, 255, 0.15);
-    border-radius: 4px;
-    color: #fff;
-    padding: 3px 6px;
-    font-family: inherit;
-    font-size: 13px;
-}
-
-.wizard-empires-name-input {
-    width: 100%;
-    background: rgba(0, 0, 0, 0.4);
-    border: 1px solid rgba(255, 255, 255, 0.15);
-    border-radius: 4px;
-    color: #fff;
-    padding: 3px 8px;
-    font-family: inherit;
-    font-size: 13px;
-}
-
-.wizard-empires-remove-btn {
-    width: 26px;
-    height: 26px;
-    background: rgba(120, 30, 30, 0.5);
-    border: 1px solid rgba(255, 100, 100, 0.3);
-    border-radius: 4px;
-    color: #ff8a8a;
-    font-size: 13px;
-    line-height: 1;
-    cursor: pointer;
-}
-
-.wizard-empires-remove-btn:hover {
-    background: rgba(160, 40, 40, 0.6);
-}
-
-.wizard-empires-add-btn {
-    align-self: flex-start;
-    margin-top: 4px;
-}
-
-/* --- Victory Conditions page (task 06g). --- */
-
-.wizard-victory-sandbox {
-    font-size: 12px;
-    color: #b8a24a;
-    font-style: italic;
-    text-align: center;
-}
-
-
-/* "… <number input> years/%" row under a victory-type checkbox. */
-.wizard-victory-number-row {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    font-size: 13px;
-    color: #c9d1d9;
-    padding-left: 23px; /* indent under the checkbox */
-}
-
-.wizard-victory-number-input {
-    width: 70px;
-    background: rgba(0, 0, 0, 0.4);
-    border: 1px solid rgba(255, 255, 255, 0.15);
-    border-radius: 4px;
-    color: #fff;
-    padding: 3px 8px;
-    font-family: inherit;
-    font-variant-numeric: tabular-nums;
-}
-
-/* --- Start page (task 06d): options summary before booting. --- */
-
-.wizard-start-heading {
-    font-size: 18px;
-    color: #e8d24a;
-    text-align: center;
-}
-
-/* Two columns so the ~17 summary rows fit without scrolling on the wizard's
-   fixed window height (a single centered column ran well past the fold). */
-.wizard-start-summary {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 8px 16px;
-    max-width: 820px;
-    margin: 0 auto;
-    width: 100%;
-}
-
-.wizard-start-line {
-    display: flex;
-    justify-content: space-between;
-    gap: 12px;
-    font-size: 13px;
-    padding: 6px 12px;
-    background: rgba(0, 0, 0, 0.25);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: 4px;
-}
-
-.wizard-start-key {
-    color: #c9d1d9;
-}
-
-.wizard-start-value {
-    color: #fff;
-}
-
-.wizard-footer {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 12px 20px;
-    background: rgba(10, 11, 15, 0.9);
-    border-top: 1px solid rgba(255, 255, 255, 0.1);
-}
-
-.wizard-btn {
-    border-radius: 6px;
-    padding: 8px 18px;
-    font-size: 13px;
-    cursor: pointer;
-    border: 1px solid rgba(255, 255, 255, 0.15);
-    background: rgba(255, 255, 255, 0.06);
-    color: #eee;
-}
-
-.wizard-btn-primary {
-    background: #3a6f3a;
-    border-color: #4f9a4f;
-    color: #fff;
-    font-weight: bold;
-}
-
-.wizard-btn:hover {
-    filter: brightness(1.15);
-}
-
-/* --- Scenario page (mod layer, tasks/MODLAYER-DESIGN.md §3). --- */
-.wizard-page.wizard-scenario-page {
-    flex: 1;
-    justify-content: center;
-}
-
-.wizard-scenario-description {
-    font-size: 13px;
-    color: #c9d1d9;
-    line-height: 1.4;
-}
-
-.wizard-scenario-note {
-    padding-left: 23px; /* indent under the checkbox */
-}
-
-/* --- Add-on picker (Scenario page; src/sim/scenario/addons.ts). --- */
-.wizard-page.wizard-scenario-page {
+/* chkStartNewGameTheGalaxyPiratesRespawn: 105 × 60, the text right-aligned left of the box, wrapping. */
+.wizard-respawn {
+    white-space: normal;
+    text-align: right;
     justify-content: flex-start;
 }
 
-.wizard-addon-summary {
-    font-size: 13px;
-    color: #e6edf3;
-    padding: 6px 10px;
-    background: rgba(79, 154, 79, 0.12);
-    border: 1px solid rgba(79, 154, 79, 0.35);
-    border-radius: 4px;
+/* --- Colonization --------------------------------------------------------------------------------------------- */
+
+.wizard-colonization-group .owc-group-title {
+    font-weight: normal;
+    margin-left: 7px;
+    white-space: pre;
+}
+.wizard-colonization-enforce {
+    z-index: 1;
+}
+.wizard-colonization-suggestion {
+    text-align: right;
 }
 
-.wizard-addon-list {
-    gap: 6px;
-}
+/* --- Your Race / race summaries (RaceSummaryPanel) ------------------------------------------------------------ */
 
-.wizard-addon-group {
-    font-size: 12px;
+.wizard-race-summary-section {
+    margin-bottom: 10px;
+}
+.wizard-race-summary-heading {
+    font-size: 18.67px;
     font-weight: bold;
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
-    color: #8fb98f;
-    margin-top: 6px;
-    padding-bottom: 2px;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    color: rgb(170, 170, 170);
+    text-shadow: 1px 1px 0 #000;
+    line-height: 1.15;
+}
+.wizard-race-summary-item {
+    padding-left: 20px;
+    font-size: 16.67px;
+    color: rgb(170, 170, 170);
+    text-shadow: 1px 1px 0 #000;
+    line-height: 1.15;
+}
+.wizard-jumpstart-empire .wizard-race-summary-heading {
+    font-size: 16.67px;
+}
+.wizard-jumpstart-empire .wizard-race-summary-item {
+    font-size: 15.33px;
+}
+.wizard-pirate-playstyle-text {
+    font-size: 16.67px;
+    color: rgb(170, 170, 170);
+    white-space: pre-line;
+    line-height: 1.15;
+}
+.wizard-jumpstart-page .wizard-pirate-playstyle-text {
+    font-size: 15.33px;
+}
+.wizard-race-summary-scroll {
+    position: absolute;
+}
+.wizard-race-error {
+    color: rgb(255, 96, 96) !important;
+}
+.wizard-race-missing {
+    font-style: italic;
 }
 
+/* --- Your Empire ---------------------------------------------------------------------------------------------- */
+
+/* cmbFlagShape items: the flag (GenerateEmpireFlag) centred, Height - 2 tall. */
+.wizard-flag {
+    position: absolute;
+    top: 1px;
+    left: 50%;
+    transform: translateX(-50%);
+    overflow: hidden;
+}
+.wizard-flag-shape {
+    position: absolute;
+    inset: 0;
+    mask-size: contain;
+    -webkit-mask-size: contain;
+    mask-repeat: no-repeat;
+    -webkit-mask-repeat: no-repeat;
+    mask-position: center;
+    -webkit-mask-position: center;
+}
+.ow-combo.wizard-flag-combo .ow-combo-shown {
+    top: 0;
+    bottom: 0;
+    transform: none;
+}
+.ow-combo.wizard-flag-combo .ow-combo-item {
+    height: 100% !important;
+}
+.wizard-location-picture {
+    position: absolute;
+    object-fit: contain;
+}
+.wizard-empire-gov-table {
+    line-height: 1.25 !important;
+}
+
+/* --- Other Empires (StartingEmpiresListView) ------------------------------------------------------------------ */
+
+.wizard-empires-grid .ow-grid-row {
+    height: 25px;
+}
+.wizard-empires-grid .ow-grid-cell {
+    padding: 1px 2px;
+}
+.wizard-empires-grid .ow-input {
+    position: static;
+    width: 100%;
+    height: 21px;
+    font-size: 15.33px;
+    box-sizing: border-box;
+}
+.wizard-empires-remove-btn {
+    width: 22px;
+    height: 22px;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    cursor: pointer;
+}
+.wizard-empires-remove-btn img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+}
+.wizard-empires-remove-btn:hover {
+    filter: brightness(1.4);
+}
+.wizard-empires-grid .wizard-race-loading,
+.wizard-empires-grid .wizard-race-error {
+    padding: 6px;
+    color: rgb(170, 170, 170);
+}
+
+/* --- Victory Conditions --------------------------------------------------------------------------------------- */
+
+/* pnlStartNewGameVictoryConditionsGroup: BackColor (80, 0, 40). */
+.wizard-victory-group {
+    position: absolute;
+    background: rgb(80, 0, 40);
+}
+.wizard-victory-events {
+    pointer-events: none;
+}
+.wizard-victory-events > * {
+    pointer-events: auto;
+}
+
+/* --- Scenario (add-ons) --------------------------------------------------------------------------------------- */
+
+.wizard-scenario-intro {
+    color: rgb(170, 170, 170);
+}
+.wizard-addon-summary {
+    white-space: nowrap !important;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.wizard-scenario-list,
+.wizard-scenario-detail {
+    position: absolute;
+    color: rgb(170, 170, 170);
+    font-size: 15.33px;
+}
+/* Group captions like a GroupBox's: bold, a thin rule under them. */
+.wizard-addon-group {
+    font-size: 16.67px;
+    font-weight: bold;
+    color: rgb(170, 170, 170);
+    margin: 6px 0 4px;
+    padding-bottom: 2px;
+    border-bottom: 1px solid rgba(208, 208, 216, 0.35);
+}
 .wizard-addon-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-    gap: 4px 16px;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 2px 12px;
 }
-
 .wizard-addon-row {
     display: flex;
     align-items: flex-start;
-    gap: 8px;
-    padding: 4px 6px;
-    border-radius: 4px;
+    gap: 4px;
+    padding: 3px 4px;
     cursor: pointer;
     min-width: 0;
 }
-
 .wizard-addon-row:hover {
-    background: rgba(255, 255, 255, 0.04);
+    background: rgba(96, 96, 112, 0.25);
 }
-
 .wizard-addon-row input[type='checkbox'] {
-    width: 15px;
-    height: 15px;
-    margin-top: 2px;
+    width: 13px;
+    height: 13px;
+    margin: 2px 0 0;
     flex: none;
-    accent-color: #4f9a4f;
+    accent-color: rgb(96, 96, 112);
 }
-
 .wizard-addon-row.is-locked,
 .wizard-addon-row.is-disabled {
     cursor: not-allowed;
 }
-
 .wizard-addon-row.is-disabled {
     opacity: 0.45;
 }
-
 .wizard-addon-text {
     display: flex;
     flex-direction: column;
     min-width: 0;
     flex: 1;
 }
-
 .wizard-addon-head {
     display: flex;
     flex-wrap: wrap;
     align-items: baseline;
-    gap: 2px 8px;
+    gap: 0 6px;
 }
-
 .wizard-addon-name {
-    font-size: 13px;
-    color: #e6edf3;
+    font-size: 15.33px;
+    color: rgb(200, 200, 200);
 }
-
+.wizard-addon-row:has(input:checked) .wizard-addon-name {
+    color: rgb(255, 255, 0);
+}
 .wizard-addon-needs {
-    font-size: 11px;
-    color: #7d8590;
+    font-size: 13.33px;
+    color: rgb(120, 120, 130);
 }
-
 .wizard-addon-desc {
-    font-size: 11px;
-    color: #9da7b1;
+    font-size: 13.33px;
+    color: rgb(150, 150, 150);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
 }
-
 .wizard-addon-note {
-    font-size: 11px;
-    color: #c8a24a;
+    font-size: 13.33px;
+    color: rgb(255, 192, 0);
 }
-
+.wizard-scenario-description {
+    font-size: 16.67px;
+    font-weight: bold;
+    color: rgb(170, 170, 170);
+    margin-bottom: 6px;
+}
 .wizard-addon-panel {
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: 4px;
-    padding: 4px 8px;
+    border-top: 1px solid rgba(208, 208, 216, 0.25);
+    padding: 3px 2px;
 }
-
 .wizard-addon-panel > summary {
     cursor: pointer;
-    font-size: 13px;
-    color: #c9d1d9;
+    font-size: 15.33px;
+    font-weight: bold;
+    color: rgb(200, 200, 200);
 }
-
+.wizard-addon-panel[open] > summary {
+    color: rgb(255, 255, 0);
+}
 .wizard-addon-panel-body {
     display: flex;
     flex-direction: column;
-    gap: 8px;
-    padding: 8px 0 4px;
+    gap: 4px;
+    padding: 4px 0 4px 16px;
 }
-
-/* --- [wizardB1] Playstyle page (Start.cs pnlStartNewGameYourEmpireType, method_41 layout): the Introductory button on
-   top, six era buttons in a row, the description under them, the two Custom buttons at the bottom. --- */
-.wizard-type-page {
-    gap: 12px;
-}
-.wizard-type-intro,
-.wizard-type-custom {
-    display: flex;
-    justify-content: center;
-    gap: 60px;
-}
-.wizard-type-eras {
-    display: grid;
-    grid-template-columns: repeat(6, 1fr);
-    gap: 8px;
-}
-.wizard-type-btn {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: flex-end;
-    gap: 6px;
-    padding: 8px;
-    border-radius: 6px;
-    border: 1px solid rgba(255, 255, 255, 0.15);
-    background: rgba(255, 255, 255, 0.05);
-    color: #e6e6e6;
-    font-family: inherit;
-    font-size: 12px;
-    cursor: pointer;
-    text-align: center;
-}
-.wizard-type-btn:hover:not(:disabled),
-.wizard-type-btn:focus-visible {
-    border-color: #e8d24a;
-    background: rgba(232, 210, 74, 0.08);
-}
-.wizard-type-btn:disabled {
-    opacity: 0.45;
-    cursor: default;
-}
-.wizard-type-btn img {
-    width: 100%;
-    object-fit: contain;
-}
-.wizard-type-btn-era {
-    height: 230px;
-}
-.wizard-type-btn-era img {
-    flex: 1;
-    min-height: 0;
-}
-.wizard-type-btn-custom {
-    width: 340px;
-    height: 120px;
-    flex-direction: row;
-    font-size: 14px;
-}
-.wizard-type-btn-custom img {
-    width: 140px;
-    height: 100%;
-}
-.wizard-type-btn-intro {
-    width: 420px;
-    padding: 14px;
-    font-size: 15px;
-}
-.wizard-type-desc {
-    min-height: 90px;
-    font-size: 12px;
-    color: #c9d1d9;
-    white-space: pre-line;
-    padding: 8px 12px;
-    background: rgba(0, 0, 0, 0.3);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: 6px;
-}
-.wizard-type-note {
-    font-size: 12px;
-    color: #aaa;
-    text-align: center;
-}
-
-/* --- [wizardB1] Jump Start page and shared controls --- */
-.wizard-jumpstart-top {
-    display: flex;
-    gap: 28px;
-}
-.wizard-jumpstart-empire {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-}
-.wizard-jumpstart-race-img {
-    width: 120px;
-    height: 120px;
-}
-.wizard-select-row {
+.wizard-victory-number-row {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: 8px;
+    font-size: 15.33px;
+    color: rgb(170, 170, 170);
 }
-.wizard-galaxy-pirate-row {
-    display: flex;
-    flex-direction: column;
-    justify-content: flex-end;
-    gap: 12px;
-    margin-left: auto;
-    padding-bottom: 8px;
+.wizard-todo {
+    font-size: 13.33px;
+    color: rgb(120, 120, 130);
+    font-style: italic;
 }
-.wizard-pirate-playstyle {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-}
-.wizard-pirate-playstyle-body {
-    display: flex;
-    gap: 12px;
-}
-.wizard-pirate-playstyle-desc {
-    flex: 1;
-    font-size: 12px;
-    color: #c9d1d9;
-    white-space: pre-line;
-}
-.wizard-pirate-playstyle-img {
-    width: 150px;
-    height: 150px;
-    flex: none;
-}
-/* method_119's composite (ui/raceLandscapePicture.ts), drawn at the original's picture-box size and zoomed to the slot
-   (PictureBoxSizeMode.Zoom). */
-.wizard-jumpstart-race-img .wizard-race-picture,
-.wizard-pirate-playstyle-img .wizard-race-picture {
-    width: 100% !important;
-    height: 100% !important;
-    display: block;
-}
-.wizard-race-portrait.wizard-race-picture {
-    width: 160px !important;
-    height: 160px !important;
-    background: none;
-    border: none;
-    display: block;
-}
-.wizard-checkbox input[type='checkbox']:disabled + span {
-    opacity: 0.45;
+.wizard-scenario-note {
+    padding-left: 17px;
 }
 
-/* [wizardB1] the story / event / game-option checkboxes in two columns (the original puts tech trading and Giant
-   Kaltors on the right, Start.cs 3752-3759). */
-.wizard-victory-section.wizard-victory-events {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 10px 24px;
+/* --- Start ---------------------------------------------------------------------------------------------------- */
+
+.wizard-start-summary .wizard-start-key {
+    color: rgb(170, 170, 170);
+}
+.wizard-start-summary .wizard-start-value {
+    color: rgb(200, 200, 200);
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.wizard-start-summary .ow-grid-row.ow-sel .wizard-start-key,
+.wizard-start-summary .ow-grid-row.ow-sel .wizard-start-value {
+    color: rgb(255, 255, 0);
 }

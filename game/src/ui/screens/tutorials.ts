@@ -6,9 +6,8 @@
 // only (see TODO(tutorial) notes in src/sim/data/tutorials.ts).
 
 import './tutorials.css';
+import { COLORS, FONT, dropText, glassButton, linkLabel, openOriginalWindow, place, text } from '../originalWindow';
 import { Tutorial, TUTORIALS, loadTutorialFile, tutorialSummary } from '../../sim/data/tutorials';
-
-const CHROME = '/assets/dwu/images/ui/chrome/';
 
 export interface TutorialsScreenCallbacks {
     /** Start a game with default options for this tutorial file and open the
@@ -21,96 +20,65 @@ export interface TutorialsScreenRefs {
     destroy: () => void;
 }
 
-/** Build the Tutorials list screen and append it to document.body. */
+/** Build the Tutorials list screen and append it to document.body.
+ *  Port of Start.2.cs method_119: pnlTutorialStart (a ScreenPanel, "Tutorials") with bold 15 px LinkLabels at x = 35,
+ *  38 px apart from y = 20, and a 100 x 25 Cancel glass button at the bottom right. Recreation extras: the intro line,
+ *  the per-tutorial step summary under each link, and the Basic / Advanced entries (so the panel is wider and taller
+ *  than the original's 385 x 481). */
 export function createTutorialsScreen(callbacks: TutorialsScreenCallbacks): TutorialsScreenRefs {
-    const root = document.createElement('div');
-    root.className = 'tutorials-overlay';
+    const INTRO_H = 44;
+    const PITCH = 38;
+    const W = 520;
+    const listTop = 20 + INTRO_H;
+    const cancelY = listTop + TUTORIALS.length * PITCH + 10;
+    const H = cancelY + 25 + 16 + 63; // body = H - 63 (ScreenPanel.DoLayout)
+    const win = openOriginalWindow({
+        id: 'tutorials',
+        title: 'Tutorials',
+        width: W,
+        height: H,
+        noAutoPause: true,
+        onClose: () => undefined,
+    });
+    const root = win.root;
+    root.classList.add('tutorials-overlay', 'ow-modal');
+    root.style.background = 'rgba(0, 0, 0, 0.55)';
+    root.addEventListener('click', (e) => {
+        if (e.target === root) win.close();
+    });
+    const body = win.body;
 
-    // Menu background behind everything (same art as the main menu/wizard).
-    const dim = document.createElement('div');
-    dim.className = 'tutorials-dim';
-    root.appendChild(dim);
+    // Menu intro (recreation extra; the original menu shows no description).
+    dropText(body, 'Choose a tutorial to start a new game and learn how Distant Worlds works. Each tutorial guides you through its topics step by step.', 35, 12, {
+        size: FONT.tiny,
+        color: COLORS.label,
+        wrapWidth: W - 16 - 70,
+    });
 
-    const win = document.createElement('div');
-    win.className = 'tutorials-window';
-
-    const titlebar = document.createElement('div');
-    titlebar.className = 'tutorials-titlebar';
-    const title = document.createElement('div');
-    title.className = 'tutorials-title';
-    title.textContent = 'Tutorials';
-    titlebar.appendChild(title);
-
-    const closeBtn = document.createElement('button');
-    closeBtn.type = 'button';
-    closeBtn.className = 'tutorials-close';
-    closeBtn.title = 'Close';
-    closeBtn.textContent = '✕';
-    titlebar.appendChild(closeBtn);
-    win.appendChild(titlebar);
-
-    const body = document.createElement('div');
-    body.className = 'tutorials-body';
-
-    const intro = document.createElement('p');
-    intro.className = 'tutorials-intro';
-    intro.textContent = 'Choose a tutorial to start a new game and learn how Distant Worlds works. Each tutorial guides you through its topics step by step.';
-    body.appendChild(intro);
-
-    const list = document.createElement('div');
-    list.className = 'tutorials-list';
-    for (const entry of TUTORIALS) {
-        const row = document.createElement('div');
-        row.className = 'tutorials-row';
-
-        const info = document.createElement('div');
-        info.className = 'tutorials-row-info';
-        const name = document.createElement('div');
-        name.className = 'tutorials-row-name';
-        name.textContent = entry.displayName;
-        const desc = document.createElement('div');
-        desc.className = 'tutorials-row-desc';
-        // Filled in from the file's step titles once it loads (the original
-        // menu shows no description; this is a recreation convenience).
+    TUTORIALS.forEach((entry, i) => {
+        const y = listTop + i * PITCH;
+        const link = place(linkLabel(entry.displayName, () => callbacks.onStartTutorial(entry.file), 15), 35, y);
+        link.style.fontWeight = 'bold';
+        link.classList.add('tutorials-row-name');
+        const desc = place(text('', { size: FONT.tiny - 1, color: COLORS.label, className: 'tutorials-row-desc' }), 35, y + 19);
+        desc.style.maxWidth = `${W - 16 - 70}px`;
+        desc.style.overflow = 'hidden';
+        desc.style.textOverflow = 'ellipsis';
+        // Filled in from the file's step titles once it loads.
         void loadTutorialFile(entry.file).then((items) => {
             desc.textContent = tutorialSummary(items);
         }).catch(() => {
             desc.textContent = '';
         });
-        info.append(name, desc);
+        body.append(link, desc);
+    });
 
-        const start = document.createElement('button');
-        start.type = 'button';
-        start.className = 'tutorials-start-btn';
-        start.textContent = 'Start';
-        start.addEventListener('click', () => callbacks.onStartTutorial(entry.file));
-
-        row.append(info, start);
-        list.appendChild(row);
-    }
-    body.appendChild(list);
-    win.appendChild(body);
-    root.appendChild(win);
-
-    function onKeyDown(e: KeyboardEvent): void {
-        if (e.key === 'Escape') {
-            e.preventDefault();
-            close();
-        }
-    }
-    document.addEventListener('keydown', onKeyDown);
-    closeBtn.addEventListener('click', () => close());
-
-    function close(): void {
-        document.removeEventListener('keydown', onKeyDown);
-        root.remove();
-    }
-
-    document.body.appendChild(root);
+    const cancel = glassButton('Cancel', { onClick: () => win.close() });
+    body.appendChild(place(cancel, W - 16 - 100 - 25, cancelY, 100, 25));
 
     return {
         root,
-        destroy: () => root.remove(),
+        destroy: () => win.close(),
     };
 }
 

@@ -115,8 +115,10 @@ function measure(extrapolate: boolean): { worst: number; samples: number; bad: n
                 if (s > 1 && prev !== undefined && moving && prev.speed > 0) {
                     const dx = st.x - x0;
                     const dy = st.y - y0;
-                    // A snap (isJump over one step) is the interpolator's intended discontinuity: not motion.
-                    if (!isJump(dx, dy, 1, Math.max(bo.topSpeed, bo.warpSpeed), STEP_MS / 1000)) {
+                    // A snap (isJump over one step) is the interpolator's intended discontinuity: not motion; nor is a
+                    // hyperjump leg's soft snap easing out (the warp entry, a one-touch jump: renderInterp-hyperjump.test.ts).
+                    const easing = st.eLen > 0 && st.eStart + st.eLen > m.at;
+                    if (!easing && !isJump(dx, dy, 1, Math.max(bo.topSpeed, bo.warpSpeed), STEP_MS / 1000)) {
                         const expected = (recent * STEP_MS) / 1000 / SUBFRAMES;
                         const move = Math.hypot(dx, dy);
                         let allowed: number;

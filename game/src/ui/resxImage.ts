@@ -1,10 +1,14 @@
 // Images embedded in the original's WinForms resources (DistantWorlds/Main.resx), read at runtime from the user's
 // install through /assets/dwu/ (CLAUDE.md "Art": never copied into the repo). A resx bitmap is a base64 BinaryFormatter
 // blob of System.Drawing.Bitmap whose payload is the PNG file; the PNG is cut out of it by its signature and IEND chunk.
-// Used for pictures the original draws from its resources rather than from images/ (e.g. picExpansionPlannerImage).
+// Used for pictures the original draws from its resources rather than from images/ (e.g. picExpansionPlannerImage,
+// and Start.resx's new-game pictures: the Playstyle buttons, the timeline and the page images).
 
+const RESX_DIR = '/assets/dwu/Customization/DistantWorldsExpanded-main/DistantWorldsExpanded/DistantWorlds/';
 /** URL of the decompiled Main.resx inside the install (the Customization tree ships with the decompiled source). */
-export const MAIN_RESX_URL = '/assets/dwu/Customization/DistantWorldsExpanded-main/DistantWorldsExpanded/DistantWorlds/Main.resx';
+export const MAIN_RESX_URL = `${RESX_DIR}Main.resx`;
+/** URL of the decompiled Start.resx (the start screens: main menu, new game, options). */
+export const START_RESX_URL = `${RESX_DIR}Start.resx`;
 
 const PNG_SIGNATURE = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
 
@@ -47,17 +51,34 @@ function decodeBase64(b64: string): Uint8Array {
     return out;
 }
 
-let resxText: Promise<string | null> | null = null;
+const resxTexts = new Map<string, Promise<string | null>>();
 const urls = new Map<string, Promise<string | null>>();
 
 /** An object URL of the PNG resource `name` of Main.resx (e.g. 'picExpansionPlannerImage.Image'); null when the
  *  install has no decompiled source or the entry is missing. Cached. */
 export function mainResxImageUrl(name: string): Promise<string | null> {
-    let u = urls.get(name);
+    return resxImageUrl(MAIN_RESX_URL, name);
+}
+
+/** The same for a resource of Start.resx (e.g. 'picStartNewGameYourEmpireTypeTimeline.Image'). */
+export function startResxImageUrl(name: string): Promise<string | null> {
+    return resxImageUrl(START_RESX_URL, name);
+}
+
+/** An object URL of the PNG resource `name` of the resx document at `resxUrl`; null when absent. Cached per file. */
+export function resxImageUrl(resxUrl: string, name: string): Promise<string | null> {
+    const key = `${resxUrl}#${name}`;
+    let u = urls.get(key);
     if (u === undefined) {
-        resxText ??= fetch(MAIN_RESX_URL)
-            .then((r) => (r.ok ? r.text() : null))
-            .catch(() => null);
+        let resxText = resxTexts.get(resxUrl);
+        if (resxText === undefined) {
+            // The dev server answers a missing file with its SPA index.html: only a resx document counts.
+            resxText = fetch(resxUrl)
+                .then((r) => (r.ok ? r.text() : null))
+                .then((t) => (t !== null && t.includes('<data name=') ? t : null))
+                .catch(() => null);
+            resxTexts.set(resxUrl, resxText);
+        }
         u = resxText.then((t) => {
             if (t === null) return null;
             const b64 = resxDataBase64(t, name);
@@ -65,7 +86,7 @@ export function mainResxImageUrl(name: string): Promise<string | null> {
             const png = pngFromBlob(decodeBase64(b64));
             return png === null ? null : URL.createObjectURL(new Blob([png as BlobPart], { type: 'image/png' }));
         });
-        urls.set(name, u);
+        urls.set(key, u);
     }
     return u;
 }

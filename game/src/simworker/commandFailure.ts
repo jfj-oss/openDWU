@@ -40,6 +40,7 @@ export const COMMAND_FAILURE: FailureTable = {
     renameFleet: no,
     setFleetHomeColony: no,
     setFleetTroopLoadout: no,
+    setShipTroopLoadout: no,
     fleetLoadTroops: no,
     fleetRetrofit: no,
     fleetRepairAndRefuel: no,
@@ -48,6 +49,9 @@ export const COMMAND_FAILURE: FailureTable = {
     enemyTargetCancel: no,
     shipOrderKey: no,
     setControlGroup: no,
+    addWaypoint: zero,
+    renameWaypoint: no,
+    deleteWaypoint: no,
     automationOff: no,
     setEmpireControl: no,
     setEmpireSetting: no,
@@ -83,6 +87,7 @@ export const COMMAND_FAILURE: FailureTable = {
     toggleDesignAutoRetrofit: no,
     setDesignSubRoleUpgrade: no,
     autoUpgradeDesigns: () => ({ added: [], select: null }),
+    setDesignLineUpgrade: no,
     loadDesignFile: (message) => ({ ok: false, loaded: [], message, title: 'Cannot Load Designs' }),
     empireRename: no,
     empireChangeGovernment: () => -1,
@@ -118,6 +123,7 @@ export const COMMAND_FAILURE: FailureTable = {
     expireAdvisorSuggestionsForEmpire: zero,
     removeOldHistoryMessages: () => -1,
     setMessageOptions: no,
+    setBaconSettings: () => ({}),
     storeChronicleYear: no,
     advisorCommands: (message, [, commands]) =>
         commands.map((c) => {

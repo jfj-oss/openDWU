@@ -108,6 +108,7 @@ import { checkColonizationLikeliness } from '../tradeItems';
 import { type ShipGroup, empireShipGroups } from '../fleets/shipGroup';
 import { shipGroupAssignMissionFull, shipGroupQueueMission } from '../fleets/shipGroupTasks';
 import { baconSettings } from '../data/baconSettings';
+import { lineRetrofitDesign, processDesignLineUpgrades } from '../player/designLineUpgrade'; // [improvements]
 
 // ---------------------------------------------------------------------------------------------------------------
 // Constants (Galaxy.3.cs 4996-5138 defaults)
@@ -951,7 +952,7 @@ export function checkFleetNeedsRetrofit(galaxy: Galaxy, empire: Empire, fleet: S
             const builtObject = fleet.ships[i];
             if (builtObject != null) {
                 let flag = true;
-                const design = findNewestCanBuildFullEvaluate(fleet.empire.designs, builtObject.subRole, null);
+                const design = lineRetrofitDesign(galaxy, fleet.empire, builtObject, findNewestCanBuildFullEvaluate(fleet.empire.designs, builtObject.subRole, null)); // [improvements]
                 const num = buildSpeed(galaxy, empire, builtObject);
                 if (num > 1.0 && (design === null || design.warpSpeed <= 0 || builtObject.design === null || builtObject.design.warpSpeed > 0)) flag = false;
                 if (isAutoRetrofit && builtObject.suppressAutoRetrofit) flag = false;
@@ -967,7 +968,7 @@ export function assignFleetRetrofit(galaxy: Galaxy, empire: Empire, fleet: ShipG
     if (fleet !== null) {
         if (shipYard === null) shipYard = findNearestShipYard(galaxy, fleet.empire!, fleet.leadShip!, true, false);
         if (shipYard !== null && shipYard instanceof BuiltObject) {
-            let design = findNewestCanBuildFullEvaluate(fleet.empire!.designs, fleet.leadShip!.subRole, null);
+            let design = lineRetrofitDesign(galaxy, fleet.empire!, fleet.leadShip!, findNewestCanBuildFullEvaluate(fleet.empire!.designs, fleet.leadShip!.subRole, null)); // [improvements]
             // ShipGroup.cs 2060 AssignMission(Retrofit, shipYard, null, design, High, manuallyAssigned: true) → 2083 → 2097
             // (cargo null, x/y unset, starDate -1): the fleet mission carries the lead ship's retrofit design.
             shipGroupAssignMissionFull(galaxy, fleet, BuiltObjectMissionType.Retrofit, shipYard, null, null, design, COORD_UNSET_DOUBLE, COORD_UNSET_DOUBLE, -1, BuiltObjectMissionPriority.High, true);
@@ -975,7 +976,7 @@ export function assignFleetRetrofit(galaxy: Galaxy, empire: Empire, fleet: ShipG
                 const builtObject = fleet.ships[i];
                 if (builtObject.builtAt === null && builtObject.retrofitDesign === null) {
                     let flag = true;
-                    design = findNewestCanBuildFullEvaluate(fleet.empire!.designs, builtObject.subRole, null);
+                    design = lineRetrofitDesign(galaxy, fleet.empire!, builtObject, findNewestCanBuildFullEvaluate(fleet.empire!.designs, builtObject.subRole, null)); // [improvements]
                     const num = buildSpeed(galaxy, empire, builtObject);
                     if (num > 1.0 && (design === null || design.warpSpeed <= 0 || builtObject.design === null || builtObject.design.warpSpeed > 0)) flag = false;
                     if (isAutoRetrofit && builtObject.suppressAutoRetrofit) flag = false;
@@ -1195,7 +1196,7 @@ export function determineRetrofitAffordability(galaxy: Galaxy, empire: Empire, b
 
 /** Empire.5.cs 13 CalculateRetrofitCost(builtObject). */
 function calculateRetrofitCost(galaxy: Galaxy, empire: Empire, builtObject: BuiltObject): number {
-    const design = dlFindNewestCanBuild(empire.designs, builtObject.subRole, builtObject.parentHabitat);
+    const design = lineRetrofitDesign(galaxy, empire, builtObject, dlFindNewestCanBuild(empire.designs, builtObject.subRole, builtObject.parentHabitat), builtObject.parentHabitat); // [improvements]
     return determineRetrofitAffordability(galaxy, empire, builtObject, design).cost;
 }
 
@@ -1236,7 +1237,7 @@ function payForRetrofit(galaxy: Galaxy, builtObject: BuiltObject, cost: number):
  * No Rnd.
  */
 export function assignRetrofitMission(galaxy: Galaxy, empire: Empire, builtObject: BuiltObject, design?: Design | null, location: StellarObject | null = null, forceUseOfYard = false): boolean {
-    if (design === undefined) design = dlFindNewestCanBuild(empire.designs, builtObject.subRole, builtObject.parentHabitat);
+    if (design === undefined) design = lineRetrofitDesign(galaxy, empire, builtObject, dlFindNewestCanBuild(empire.designs, builtObject.subRole, builtObject.parentHabitat), builtObject.parentHabitat); // [improvements]
     builtObject.retrofitForNextMission = false;
     if (builtObject.empire === null || (builtObject.empire === galaxy.independentEmpire && builtObject.pirateEmpireId === 0)) return false;
     if (builtObject.role !== BuiltObjectRole.Base && builtObject.topSpeed <= 0) return false;
@@ -1471,7 +1472,7 @@ export function doRetrofit(galaxy: Galaxy, empire: Empire, builtObjects: BuiltOb
                     if (design5 !== null && design5 !== builtObject.design && assignRetrofitMission(galaxy, empire, builtObject, design5, null, true)) builtObject.dateRetrofit = galaxyStarDate(galaxy);
                     builtObject.retrofitForNextMission = false;
                 } else {
-                    const design6 = findNewestCanBuild(designs, builtObject.subRole, builtObject.actualEmpire, builtObject.parentHabitat);
+                    const design6 = lineRetrofitDesign(galaxy, empire, builtObject, findNewestCanBuild(designs, builtObject.subRole, builtObject.actualEmpire, builtObject.parentHabitat), builtObject.parentHabitat); // [improvements]
                     if (design6 !== null && design6 !== builtObject.design && assignRetrofitMission(galaxy, empire, builtObject, design6, null, true)) builtObject.dateRetrofit = galaxyStarDate(galaxy);
                 }
             } else {
@@ -1503,7 +1504,7 @@ export function doRetrofit(galaxy: Galaxy, empire: Empire, builtObjects: BuiltOb
             if (assignRetrofitMission(galaxy, empire, builtObject)) builtObject.dateRetrofit = galaxyStarDate(galaxy);
         } else {
             if (mission2.type === BuiltObjectMissionType.Retrofit || missionListContainsType(builtObject.subsequentMissions as BuiltObjectMission[], BuiltObjectMissionType.Retrofit)) continue;
-            const design7 = findNewestCanBuild(designs, builtObject.subRole, builtObject.actualEmpire);
+            const design7 = lineRetrofitDesign(galaxy, empire, builtObject, findNewestCanBuild(designs, builtObject.subRole, builtObject.actualEmpire)); // [improvements]
             if (design7 !== null && design7 !== builtObject.design) {
                 let stellarObject: StellarObject | null = null;
                 switch (builtObject.subRole) {
@@ -1534,6 +1535,8 @@ export function reviewDesignsAndRetrofit(galaxy: Galaxy, empire: Empire): void {
             const starDate = galaxyStarDate(galaxy);
             createNewDesigns(galaxy, empire, starDate, starDate);
         }
+        // [improvements] designLineUpgrade: the player's own design types follow their tech lines (no-op unless on).
+        if (processDesignLineUpgrades(galaxy, empire).length > 0) reviewLatestDesigns(galaxy, empire);
         let privateRetrofitAge = REAL_SECONDS_IN_GALACTIC_YEAR * 1000 * 2;
         if (empire.reviewDesignsAndRetrofitImportantBreakthrough) privateRetrofitAge = 0;
         retrofitBuiltObjects(galaxy, empire, 0, privateRetrofitAge, true);

@@ -30,7 +30,7 @@ import { doResearchBreakthrough, reviewDesignsBuiltObjectsImprovedComponents } f
 import { galaxyStarDate } from '../tick/simTime';
 import { EmpireMessage, EmpireMessageType, sendEmpireMessage, sendMessageToEmpire } from '../messages';
 import { getText } from '../textResolver';
-import { generateBuiltObjectStoryClue, generateMajorStoryItem } from '../story/storyEvents';
+import { checkForStoryLocationHint, generateBuiltObjectStoryClue, generateMajorStoryItem } from '../story/storyEvents';
 import type { BuiltObject } from '../builtObject';
 import { GalaxyLocation } from '../galaxyLocation';
 import type { DialogPartType } from '../data/dialogSet';
@@ -57,6 +57,7 @@ export type ConversationReplyPart =
     | 'WAR_DECLARE_REQUESTJOINT_ACCEPT'
     | 'WAR_END_REQUESTOTHER_ACCEPT'
     | 'WAR_END_ACCEPT'
+    | 'HISTORY_OFFER_LOCATIONHINT_ACCEPT'
     | 'HISTORY_OFFER_STORYCLUE_ACCEPT'
     | 'HISTORY_OFFER_STORYMESSAGE_ACCEPT';
 
@@ -330,6 +331,13 @@ export function answerConversationReply(
             if (galaxy.scenario !== null) scenarioEmit(galaxy, 'peaceSigned', { empire: player, other: sender }); // mod layer, as acceptProposal
             break;
         }
+        case 'HISTORY_OFFER_LOCATIONHINT_ACCEPT': {
+            // Main.Part10.cs:4988: method_234(HISTORY_LOCATIONHINT); method_241 then shows its text (method_230, Main.Part10.cs
+            // 3844: string.Format(dialog, Galaxy.CheckForStoryLocationHint()) — which adds the player's location hint).
+            result.replyArgs = [checkForStoryLocationHint(galaxy)];
+            result.ok = true;
+            break;
+        }
         case 'HISTORY_OFFER_STORYCLUE_ACCEPT': {
             // Main.Part10.cs:4994 (method_571 shows the text; the GalacticHistory message keeps it).
             const clue = generateBuiltObjectStoryClue(galaxy, null as unknown as BuiltObject);
@@ -420,6 +428,9 @@ function conversationReplyPart(galaxy: Galaxy, player: Empire, sender: Empire, p
             return;
         case 'WAR_END_ACCEPT':
             set('WAR_END_ACCEPT_RESPONSE');
+            return;
+        case 'HISTORY_OFFER_LOCATIONHINT_ACCEPT':
+            set('HISTORY_LOCATIONHINT', result.replyArgs);
             return;
         default:
             // HISTORY_OFFER_*_ACCEPT: Main.Part9.cs:731 method_241 shows no reply (the history dialog instead).

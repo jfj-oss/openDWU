@@ -29,6 +29,15 @@ import { habitatSystemIndex } from './habitatIndex';
 import { habitatDrawnOffsetBound, type MotionInterpolator } from './renderInterp';
 import { Container, Sprite, Texture } from 'pixi.js';
 import { textureFromRgbaPixels } from './textureCanvas';
+import {
+    STOCK_CONSTRUCTION_FRAME_COUNT,
+    STOCK_GAS_MINING_FRAME_COUNT,
+    STOCK_MINING_FRAME_COUNT,
+    constructionFrameUrls,
+    engineThrusterUrls,
+    gasMiningFrameUrls,
+    miningFrameUrls,
+} from './effectFrames';
 import type { Camera } from './camera';
 import { AssetStore, useMinifyingFilter } from './assets';
 import {
@@ -58,10 +67,11 @@ export const LIGHT_ON_SECONDS = 1.5;
 export const LIGHT_OFF_SECONDS = 1.0;
 // MainView.1.cs:2966/2993/3050: every ambient animation plays at 30 fps.
 export const AMBIENT_ANIMATION_FPS = 30;
-// Frame counts of the install's effect folders (LoadEffects enumerates *.png).
-export const MINING_FRAME_COUNT = 120;
-export const GAS_MINING_FRAME_COUNT = 90;
-export const CONSTRUCTION_FRAME_COUNT = 90;
+// Frame counts of the install's effect folders (LoadEffects enumerates *.png; a theme's folder re-counts them,
+// effectFrames.ts).
+export const MINING_FRAME_COUNT = STOCK_MINING_FRAME_COUNT;
+export const GAS_MINING_FRAME_COUNT = STOCK_GAS_MINING_FRAME_COUNT;
+export const CONSTRUCTION_FRAME_COUNT = STOCK_CONSTRUCTION_FRAME_COUNT;
 // MainView.1.cs:2951/2989/3034/2847 NextSoundTime* spacing (star-date ms).
 export const CONSTRUCTION_SPAWN_INTERVAL_MS = 4100;
 export const MINING_SPAWN_INTERVAL_MS = 3000;
@@ -392,11 +402,6 @@ interface SpawnTimes {
     gasMining: number;
 }
 
-function frameUrls(folder: string, count: number): string[] {
-    const out: string[] = [];
-    for (let i = 1; i <= count; i++) out.push(`${FX}/${folder}/Frame_${String(i).padStart(3, '0')}.png`);
-    return out;
-}
 
 /** Render-local random (the C# draws Galaxy.Rnd, which would perturb the deterministic sim). */
 class RenderRandom {
@@ -420,7 +425,9 @@ export class AmbientLayer {
     readonly over = new Container();
     private shipArt = new Map<string, ShipArt | null>();
     private shipArtLoading = new Set<string>();
-    private engineTextures: (Texture | null)[] = [null, null, null, null, null, null];
+    /** bitmap_209 (Main.Part13.cs LoadEffects): the stock or a theme's engine thruster pictures (effectFrames.ts). */
+    private engineUrls = engineThrusterUrls();
+    private engineTextures: (Texture | null)[] = new Array<Texture | null>(this.engineUrls.length).fill(null);
     private lightTexture: Texture | null = null;
     private shieldTexture: Texture | null = null;
     private exhaustPool: Sprite[] = [];
@@ -433,9 +440,10 @@ export class AmbientLayer {
     private animCount = 0;
     private spawnTimes = new Map<BuiltObject | Habitat, SpawnTimes>();
     private rnd = new RenderRandom();
-    private mining: FrameSet = { urls: frameUrls('mining', MINING_FRAME_COUNT), textures: null, loading: false };
-    private gasMining: FrameSet = { urls: frameUrls('gasmining', GAS_MINING_FRAME_COUNT), textures: null, loading: false };
-    private construction: FrameSet = { urls: frameUrls('construction', CONSTRUCTION_FRAME_COUNT), textures: null, loading: false };
+    // bitmap_210 / 211 / 212 (Main.Part13.cs LoadEffects): the stock or a theme's frames (effectFrames.ts).
+    private mining: FrameSet = { urls: miningFrameUrls(), textures: null, loading: false };
+    private gasMining: FrameSet = { urls: gasMiningFrameUrls(), textures: null, loading: false };
+    private construction: FrameSet = { urls: constructionFrameUrls(), textures: null, loading: false };
     private shieldHabitats: Habitat[] | null = null;
     private nearHabitats: Habitat[] = [];
     private systemScratch: number[] = [];
@@ -460,11 +468,11 @@ export class AmbientLayer {
     }
 
     private loadStaticArt(): void {
-        for (let i = 0; i < 6; i++) {
-            void this.store.loadFirst([`${FX}/enginethrusters/${i}.png`], () => Texture.EMPTY).then((t) => {
+        this.engineUrls.forEach((url, i) => {
+            void this.store.loadFirst([url], () => Texture.EMPTY).then((t) => {
                 this.engineTextures[i] = t === Texture.EMPTY ? null : t;
             });
-        }
+        });
         void this.store.loadFirst([`${FX}/other/planetaryshield_0.png`], () => Texture.EMPTY).then((t) => {
             this.shieldTexture = t === Texture.EMPTY ? null : t;
         });
@@ -575,7 +583,7 @@ export class AmbientLayer {
                 // Engine exhaust (MainView.1.cs:1113-1121: only while TargetSpeed > 0, under the ship).
                 if (bo.targetSpeed > 0 && mk.thrusters.length > 0) {
                     const ei = engineExhaustIndex(bo.engineType);
-                    const tex = ei >= 0 ? this.engineTextures[ei] : null;
+                    const tex = ei >= 0 ? (this.engineTextures[ei] ?? null) : null;
                     const num5 = exhaustLengthPx(p1, exhaustSpeedFactor(bo.targetSpeed, bo.cruiseSpeed, bo.topSpeed));
                     if (tex !== null && num5 > 0) {
                         for (const t of mk.thrusters) {

@@ -163,20 +163,8 @@ export function starPictureUrls(habitat: Habitat): string[] {
     return mapStarUrls(habitat);
 }
 
-/**
- * The black hole's system-zoom sprite (f < 150, MainView.1.cs 649-722): a still accretion frame
- * (stars/blackhole/BlkHole-0001.png, the first of the method_117 animation frames), else star_blackhole_0.png.
- * TODO(port): the C# animates it — star_blackhole_0 (texture2D_12[0]) drawn three times rotating, tinted by
- * HabitatIndex % 4, under the BlkHole-* frames (texture2D_13) at 15 fps — MainView.1.cs method_76 649-722. [] for any
- * other star (their system-zoom art is the disc + corona group, mainView.ts buildStarDiscs).
- */
-export function starSpriteUrls(habitat: Habitat): string[] {
-    if (habitat.type !== HabitatType.BlackHole) return [];
-    const frames = MANIFEST['stars/blackhole'] ?? [];
-    const urls = frames.length > 0 ? [`${IMG}/environment/stars/blackhole/${frames[0]}`] : [];
-    urls.push(`${IMG}/environment/stars/star_blackhole_0.png`);
-    return urls;
-}
+// A black hole's system-zoom art (star_blackhole_0 drawn three times rotating and tinted, under the BlkHole-*
+// accretion frames, MainView.1.cs method_76 649-722) is stellarFx.ts BlackHoleArt / BlackHoleView.
 
 // Task 02c2: the GPU renderer draws system-zoom stars as two tinted,
 // counter-rotating discs (star_disc_2 under star_disc_0) plus an animated
@@ -286,6 +274,14 @@ export function habitatPictureUrl(pictureRef: number): string | null {
     }
     if (!Number.isInteger(pictureRef) || pictureRef < HABITAT_IMAGE_COUNT) return null;
     return themeOtherPlanetUrls()[pictureRef - HABITAT_IMAGE_COUNT] ?? null;
+}
+
+/**
+ * HabitatImageCache._Filepaths.Count (GetImagesSmall().Length, scrEditHabitatPicture.Maximum + 1, Main.Part5.cs 3770):
+ * the 665 fixed pictures plus a theme's planets/other/*.png.
+ */
+export function habitatPictureCount(): number {
+    return HABITAT_IMAGE_COUNT + themeOtherPlanetUrls().length;
 }
 
 /** The planet / moon / asteroid sprite of `habitat` (habitatPictureUrl of its PictureRef) as a loadFirst list. */
