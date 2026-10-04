@@ -38,7 +38,7 @@ well make it run on Linux and macOS too, and open it up to as many players as
 possible.
 
 I also couldn't resist adding a few things from my own wishlist: much bigger
-galaxies (up to 90×90 sectors and 8,000 star systems), some new kinds of
+galaxies (up to 90×90 sectors, 8,000 star systems and 60 empires), some new kinds of
 content, and deeper changes to some of the game's systems. Every one of them
 is optional and can be switched off, so you can always play a completely
 authentic game of DW:U.
