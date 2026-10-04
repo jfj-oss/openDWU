@@ -18,8 +18,8 @@ import {
     portionToPercent,
     stanceIndexToAttackRange,
 } from '../../sim/player/empireSettings';
-import { getSettings, updateSettings } from '../settings';
-import { numericUpDown, openOriginalWindow, place, type OriginalWindow } from '../originalWindow';
+import { getSettings, resetAutomationResponses, updateSettings } from '../settings';
+import { messageBox, numericUpDown, openOriginalWindow, place, type OriginalWindow } from '../originalWindow';
 import { groupBox, labelledTrackBar } from '../originalWindowControls';
 import { F19, F2, F4, F7, AUTOMATION_ROWS, button, check, combo, label, rightLabel, type AutomationField } from './gameOptionsPanel';
 import {
@@ -52,23 +52,18 @@ export function setGameOptionsControl(o: Readonly<GameOptionsAutomation>, field:
 const OPTIONS_W = 700;
 const AUTOMATION_H = 291;
 const EMPIRE_W = 500;
-const EMPIRE_H = 700;
+const EMPIRE_H = 725; // room for "Newly built ships are automated" at y 645
 
 let openWin: OriginalWindow | null = null;
 let openEmpireWin: OriginalWindow | null = null;
 
-/** Open the "Automation" new-game defaults window (the main menu's Options panel). Brings it to the front when open. */
+/** Open the "Automation" new-game defaults window on its own (the Automation group of the main menu's Options window,
+ *  gameOptionsPanel.ts openMenuOptionsPanel, is the same group). Brings it to the front when open. */
 export function openNewGameDefaultsPanel(): OriginalWindow {
     if (openWin && !openWin.closed) {
         document.body.appendChild(openWin.root);
         return openWin;
     }
-    // The GameOptions being edited, as the saved defaults give it (method_260's defaults when none were saved).
-    let go = currentNewGameOptions(getSettings().newGameOptions);
-    const commit = (next: GameOptionsAutomation): void => {
-        go = next;
-        saveNewGameOptions(go);
-    };
     const win = openOriginalWindow({
         id: 'newgame-defaults',
         title: 'Options',
@@ -76,7 +71,7 @@ export function openNewGameDefaultsPanel(): OriginalWindow {
         width: OPTIONS_W,
         height: AUTOMATION_H + 59 + 70,
         onClose: () => {
-            openEmpireWin?.close();
+            closeNewGameEmpireSettings();
             openWin = null;
         },
     });
@@ -84,10 +79,26 @@ export function openNewGameDefaultsPanel(): OriginalWindow {
     const body = win.body;
     body.classList.add('go-body');
     label(body, 'These are the settings your next new game starts with.', 14, 8, F4 - 3);
+    buildNewGameAutomationGroup(body, 12, 36);
+    return win;
+}
 
-    // grpOptionsControl "Automation" (12, 288 in the game window; here at the top) 659 × 291.
-    const g = place(groupBox('Automation', 659, AUTOMATION_H, F2), 12, 36);
-    body.appendChild(g);
+/** Close the new-game Empire Settings window when it is open (its Options window closed). */
+export function closeNewGameEmpireSettings(): void {
+    openEmpireWin?.close();
+}
+
+/** grpOptionsControl "Automation" (659 × 291) over the next new game's GameOptions, at (x, y) in `parent` (the main
+ *  menu's Options window puts it at (12, 288) like the in-game one). Every edit is saved at once. */
+export function buildNewGameAutomationGroup(parent: HTMLElement, x: number, y: number): HTMLDivElement {
+    // The GameOptions being edited, as the saved defaults give it (method_260's defaults when none were saved).
+    let go = currentNewGameOptions(getSettings().newGameOptions);
+    const commit = (next: GameOptionsAutomation): void => {
+        go = next;
+        saveNewGameOptions(go);
+    };
+    const g = place(groupBox('Automation', 659, AUTOMATION_H, F2), x, y);
+    parent.appendChild(g);
     const modePanel = place(document.createElement('div'), 10, 21, 217, 41);
     modePanel.className = 'go-mode-panel';
     g.appendChild(modePanel);
@@ -112,6 +123,19 @@ export function openNewGameDefaultsPanel(): OriginalWindow {
         commit(setGameOptionsControl(go, row.field, v));
         mode.value = String(detectAutomationMode(values)); // uwcbgxAbxH
     };
+    // btnGameOptionsResetAutomationMessages (228, 20) 73 × 40 (Start.1.cs btnGameOptionsResetAutomationMessages_Click).
+    const reset = button(g, 'Reset Warnings', 228, 20, 73, 40, () => {
+        void messageBox({
+            caption: 'Reset Automation Messages?',
+            text: 'This will reenable all automation prompts, informing you when you attempt to manually control an automated function.\n\nAre you sure that you want to do this?',
+            buttons: ['Yes', 'No'],
+            icon: 'question',
+            width: 520,
+        }).then((r) => {
+            if (r === 'Yes') resetAutomationResponses(); // MessageBoxExManager.ResetAllSavedResponses()
+        });
+    });
+    reset.classList.add('go-button-wrap');
     const checkY: Partial<Record<AutomationField, number>> = {
         controlColonyTaxRates: 73, controlPopulationPolicy: 96, controlDesigns: 119, controlTroopGeneration: 142,
         controlMilitaryFleets: 165, controlResearch: 188, controlCharacterLocations: 211,
@@ -133,7 +157,7 @@ export function openNewGameDefaultsPanel(): OriginalWindow {
         controls.set(field, combo(g, row.options ?? [], Number(values[field]), 429, cy, 220, 24, (i) => edited(row, i)));
     }
     button(g, 'Empire Settings', 7, 250, 179, 35, () => openNewGameEmpireSettings(() => go, commit));
-    return win;
+    return g;
 }
 
 /** Start.1.cs:2730 method_181 / 174: the Empire Settings window over the GameOptions (stances, fleet attack, overmatch, discoveries, new ships). */

@@ -1,11 +1,11 @@
-// Message History panel (task 12i): the original's "Historical messages"
-// window (Main.Part5.cs), opened by the H key or a click on the top-middle
-// message ticker. It lists every pushed HUD message, newest first, with the
-// message date dimmed before it when present. Styling follows the Empires
-// list / tutorial-window dark-panel tokens.
+// Message History panel (task 12i): every line the top-middle message ticker showed, newest first, with its date;
+// opened by a click on the ticker (the H key opens the original's Messages window, galacticHistory.ts). Not in the
+// original: drawn as one of its ScreenPanels (originalWindow.ts) with ListViewBase's row colours, beside the ticker,
+// without pausing the game.
 
 import './messageHistory.css';
 import { getHudMessageHistory, type HudMessageEntry } from '../hud';
+import { el, FONT, openOriginalWindow, place, scrollPanel, type OriginalWindow } from '../originalWindow';
 
 /** One displayed row of the panel. Pure so the row logic is testable without
  * a DOM (jsdom is not configured). */
@@ -21,7 +21,7 @@ export function historyRows(entries: ReadonlyArray<HudMessageEntry>): HistoryRow
 }
 
 interface OpenState {
-    root: HTMLElement;
+    win: OriginalWindow;
     close: () => void;
 }
 
@@ -42,67 +42,36 @@ export function closeMessageHistory(): void {
     open?.close();
 }
 
+/** ScreenPanel size (original pixels); the list fills the body less a 10 px margin. */
+const WIN = { w: 520, h: 600 };
+
 function createMessageHistory(): OpenState {
-    const root = document.createElement('div');
-    root.className = 'message-history-wrap';
-
-    const win = document.createElement('div');
-    win.className = 'message-history-window';
-
-    const titlebar = document.createElement('div');
-    titlebar.className = 'message-history-titlebar';
-    const heading = document.createElement('div');
-    heading.className = 'message-history-heading';
-    heading.textContent = 'Message History';
-    titlebar.appendChild(heading);
-
-    const closeBtn = document.createElement('button');
-    closeBtn.type = 'button';
-    closeBtn.className = 'message-history-close';
-    closeBtn.title = 'Close';
-    closeBtn.textContent = '✕';
-    titlebar.appendChild(closeBtn);
-    win.appendChild(titlebar);
-
-    const body = document.createElement('div');
-    body.className = 'message-history-body';
-
-    for (const row of historyRows(getHudMessageHistory())) {
-        const line = document.createElement('div');
-        line.className = 'message-history-row';
-        if (row.at !== '') {
-            const date = document.createElement('span');
-            date.className = 'message-history-date';
-            date.textContent = row.at;
-            line.appendChild(date);
-        }
-        const text = document.createElement('span');
-        text.className = 'message-history-text';
-        text.textContent = row.text;
-        line.appendChild(text);
-        body.appendChild(line);
-    }
-    win.appendChild(body);
-    root.appendChild(win);
-    document.body.appendChild(root);
-
-    function close(): void {
-        document.removeEventListener('keydown', onKeyDown);
-        root.remove();
-        open = null;
-    }
-
-    // Escape closes the panel; stopImmediatePropagation keeps the global game-menu (and other open panels)
-    // Escape handler (registered in createHud) from opening as well.
-    function onKeyDown(e: KeyboardEvent): void {
-        if (e.key === 'Escape') {
-            e.preventDefault();
-            e.stopImmediatePropagation();
-            close();
-        }
-    }
-    document.addEventListener('keydown', onKeyDown);
-    closeBtn.addEventListener('click', () => close());
-
-    return { root, close };
+    const win = openOriginalWindow({
+        id: 'messageHistory',
+        title: 'Message History',
+        icon: 'messages.png',
+        width: WIN.w,
+        height: WIN.h,
+        // The ticker's own list: it does not pause the game (it opened as a side panel before).
+        noAutoPause: true,
+        // Top left, under the time controls.
+        anchor: () => ({ left: 16, top: 130 }),
+        onClose: () => {
+            if (open !== null && open.win === win) open = null;
+        },
+    });
+    // Hook kept from the earlier DOM (scripts find the panel by it).
+    win.frame.classList.add('message-history-wrap');
+    const list = place(scrollPanel('mh-list'), 10, 10, win.bodySize.w - 20, win.bodySize.h - 20);
+    const rows = historyRows(getHudMessageHistory());
+    if (rows.length === 0) list.appendChild(el('div', 'mh-empty', 'No messages'));
+    rows.forEach((row, i) => {
+        const line = el('div', `mh-row message-history-row${i % 2 === 1 ? ' mh-alt' : ''}`);
+        line.style.fontSize = `${FONT.normal}px`;
+        if (row.at !== '') line.appendChild(el('span', 'mh-date message-history-date', row.at));
+        line.appendChild(el('span', 'mh-text message-history-text', row.text));
+        list.appendChild(line);
+    });
+    win.body.appendChild(list);
+    return { win, close: () => win.close() };
 }

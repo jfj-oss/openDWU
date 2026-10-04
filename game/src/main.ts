@@ -107,7 +107,7 @@ import { issuePlayerCommand } from './sim/player/playerCommands';
 import { createMissionShipActionAt } from './sim/player/shipAction';
 import { BuiltObjectMissionType } from './sim/missions/mission';
 import { commandLog } from './sim/player/commandLog';
-import { setSaveLoadProvider, createSaveLoadPanel, type LoadedGame } from './ui/screens/saveLoad';
+import { setSaveLoadProvider, createSaveLoadPanel, setCurrentSaveName, type LoadedGame } from './ui/screens/saveLoad';
 import { type Game } from './sim/game';
 import { registerLocationPingedHook } from './sim/story/eventActions';
 import { createGalaxyMap, type GalaxyMapScreen } from './ui/screens/galaxyMap';
@@ -1101,9 +1101,9 @@ export async function startGameView(
         return savePanel;
     }
     setSaveLoadProvider({
-        open: (_mode) => {
+        open: (mode, opts) => {
             const panel = getSavePanel();
-            panel.show();
+            panel.show(mode, opts);
         },
         serialize: () => serializeCurrent(),
         loadSave: (text) => {
@@ -1272,6 +1272,7 @@ function openWizard(onBackToMenu: () => void): void {
  * boot (task M2e2). The URL-param boot path (bootGameWithOptions) still uses
  * generateGalaxy only. */
 async function bootGameFromWizard(startOptions: StartGameOptions): Promise<void> {
+    setCurrentSaveName(null); // a new game has no save file yet (Main.string_2)
     const dwuPresent = await detectDwuPresent();
     const systemNames = await loadSystemNames(dwuPresent);
     const gameData = await loadGameDataOrNone(dwuPresent);
@@ -1348,6 +1349,7 @@ function showIntroduction(game: Game, time: GalaxyTime, kind: { playAsAPirate: b
  * empires, like ?autostart=1) and open the given tutorial's window over it.
  * Used by the Tutorials screen's Start buttons. */
 async function startTutorialGame(file: string): Promise<void> {
+    setCurrentSaveName(null); // a new game has no save file yet (Main.string_2)
     const dwuPresent = await detectDwuPresent();
     const systemNames = await loadSystemNames(dwuPresent);
     const gameData = await loadGameDataOrNone(dwuPresent);
@@ -1584,14 +1586,14 @@ function showMainMenu(): void {
             await ensureStaticData();
             // Register a load-only provider for the main menu context.
             setSaveLoadProvider({
-                open: (_mode) => {
-                    getMainMenuSavePanel().show();
+                open: () => {
+                    getMainMenuSavePanel().show('load');
                 },
                 loadSave: (text) => {
                     return loadSaveWithProgress(text);
                 },
             });
-            getMainMenuSavePanel().show();
+            getMainMenuSavePanel().show('load');
         },
     });
     activeMainMenu = menu;
@@ -1767,6 +1769,7 @@ async function buildAutostartGame(
     try {
         // Saves need start options (metadata only; the galaxy itself is saved).
         const startOptions = { ...defaultStartGameOptions(), seed, scenario: scenarioChoice };
+        setCurrentSaveName(null); // a new game has no save file yet (Main.string_2)
         if (useSimWorker()) {
             // [simworker] the same options, created in the worker (its data gets the same scenario overlay).
             const scenario = scenarioChoice === null ? null : { id: scenarioChoice.id, include: choiceInclude(scenarioChoice) };
