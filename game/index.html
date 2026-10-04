@@ -16,7 +16,16 @@
             canvas {
                 display: block;
             }
+            /* Game art is never a draggable web image (the main menu background, chrome buttons, portraits). */
+            img {
+                -webkit-user-drag: none;
+                user-select: none;
+            }
         </style>
+        <script>
+            // No part of the game uses HTML drag and drop: stop the browser's own image / selection drag everywhere.
+            document.addEventListener('dragstart', (e) => e.preventDefault(), true);
+        </script>
     </head>
     <body>
         <script type="module" src="/src/main.ts"></script>
