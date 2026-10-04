@@ -222,7 +222,7 @@ export function createFleetDesignsTab(container: HTMLElement, empire: Empire, si
         orders.forEach((o, i) => {
             const p = fleetBuildProgress(empire, o);
             const row = place(el('div', `fl-order-row${i % 2 === 1 ? ' fl-alt' : ''}`), 0, i * 30, W - 36, 30);
-            const where = o.sector === null ? 'any sector' : `sector ${sectorLabel(o.sector)}`;
+            const where = o.refillLinkId !== undefined ? 'replacements' : o.sector === null ? 'any sector' : `sector ${sectorLabel(o.sector)}`;
             const name = text(o.name, { size: FONT.normal, bold: true, color: COLORS.text });
             row.appendChild(place(name, 8, 6, 200));
             name.classList.add('fl-ellipsis');
@@ -265,7 +265,7 @@ export function createFleetDesignsTab(container: HTMLElement, empire: Empire, si
             if (nameInput.value.trim() !== '' && nameInput.value !== t.name) issue('fleetTemplateRename', [t.id, nameInput.value]);
         });
         detail.appendChild(nameInput);
-        detail.appendChild(place(button('Delete', 'Delete this fleet design (running build orders continue)', () => {
+        detail.appendChild(place(button('Delete', 'Delete this fleet design (running build orders continue; fleets kept to it lose it and their auto-refill)', () => {
             selectedId = null;
             issue('fleetTemplateDelete', [t.id]);
         }), DW - 110, 6, 100, 32));
@@ -329,6 +329,16 @@ export function createFleetDesignsTab(container: HTMLElement, empire: Empire, si
             if (d === undefined) return;
             counts.step(empire, t, d, 1, () => render());
         }, all.length > 0), 410, 224, 140, 32));
+
+        // The fleets kept to this design (their auto-refill and Replenish are on the Fleets page, fleetRefillControls.ts).
+        const users = (fleetDesignBook(empire).links ?? []).filter((l) => l.templateId === t.id);
+        if (users.length > 0) {
+            const names = users.map((l) => `${l.fleet?.name ?? `${l.name} (re-forming)`}${l.autoRefill ? ' (auto-refill)' : ''}`).join(', ');
+            const u = dropText(detail, `Fleets: ${names}`, 560, 233, { size: FONT.normal, color: COLORS.label, shadow: false });
+            u.classList.add('fl-ellipsis');
+            u.style.width = `${DW - 570}px`;
+            u.title = names;
+        }
 
         // Totals.
         const tot = fleetTemplateTotals(galaxy, t);

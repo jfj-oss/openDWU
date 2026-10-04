@@ -54,6 +54,7 @@ import {
     type FleetBuildMode,
     type SectorRef,
 } from './fleetTemplates';
+import { assignFleetTemplate, replenishFleet, setFleetAutoRefill, setFleetRefillYard } from './fleetRefill';
 import { submitProposal } from './diplomacyProposals';
 import { answerConversationReply, type ConversationRelated, type ConversationReplyPart } from './conversationReplies';
 import { submitTradeOffer, type TradeNegotiation } from './tradeNegotiation';
@@ -233,6 +234,15 @@ export const PLAYER_OPS = {
     fleetTemplateBuild: (galaxy: Galaxy, empire: Empire, id: number, mode: FleetBuildMode, sector: SectorRef | null, rally: Habitat | null, allowSubstitutes: boolean) =>
         buildFleetFromTemplate(galaxy, empire, id, mode, sector, rally, allowSubstitutes),
     fleetTemplateCancelOrder: (galaxy: Galaxy, empire: Empire, orderId: number) => cancelFleetBuildOrder(galaxy, empire, orderId),
+    // A fleet's template, auto-refill and Replenish (player/fleetRefill.ts; a gameplay addition, not in the original).
+    /** Assign a fleet design to one of the player's fleets (templateId <= 0: none). Changes nothing else by itself. */
+    fleetTemplateAssign: (galaxy: Galaxy, empire: Empire, fleet: ShipGroup, templateId: number) => assignFleetTemplate(galaxy, empire, fleet, templateId),
+    /** The fleet's "Auto-refill from template" toggle (off by default). */
+    fleetTemplateAutoRefill: (galaxy: Galaxy, empire: Empire, fleet: ShipGroup, on: boolean) => setFleetAutoRefill(galaxy, empire, fleet, on),
+    /** The yard the fleet's replacements are queued at (null: the one nearest the fleet). */
+    fleetTemplateRefillYard: (galaxy: Galaxy, empire: Empire, fleet: ShipGroup, yard: BuiltObject | null) => setFleetRefillYard(galaxy, empire, fleet, yard),
+    /** "Replenish": queue the fleet's missing ships once, now (Build Order purchase path, all or nothing). */
+    fleetTemplateReplenish: (galaxy: Galaxy, empire: Empire, fleet: ShipGroup) => replenishFleet(galaxy, empire, fleet),
     /** Main.Part2.cs 1135 btnBuildOrderPurchase_Click. */
     buildNewShips: (galaxy: Galaxy, empire: Empire, designs: (Design | null)[], amounts: number[]) => buildNewShips(galaxy, empire, designs, amounts),
     /** Main.Part5.cs 2147-2213: the site's construction wait queue order. */
