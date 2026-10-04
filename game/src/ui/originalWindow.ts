@@ -1216,12 +1216,22 @@ export function numericUpDown(o: NumericUpDownOptions): NumericUpDown {
             commit(value - 1);
         } else if (e.key === 'Enter') commit(input.value);
     });
-    input.addEventListener(
+    // The mouse wheel steps the value while the pointer is over the box or its arrows (no click needed). A wheel notch
+    // is one step; trackpad pixel deltas are accumulated so a swipe doesn't jump by dozens.
+    let wheelAcc = 0;
+    wrap.addEventListener(
         'wheel',
         (e) => {
-            if (document.activeElement !== input) return;
+            if (input.disabled) return;
             e.preventDefault();
-            commit(value + (e.deltaY < 0 ? 1 : -1));
+            e.stopPropagation();
+            // Browsers report a mouse-wheel notch as ~100 px (deltaMode 0) or 3 lines (deltaMode 1).
+            const notch = e.deltaMode === WheelEvent.DOM_DELTA_PIXEL ? 100 : e.deltaMode === WheelEvent.DOM_DELTA_LINE ? 3 : 1;
+            wheelAcc += e.deltaY / notch;
+            const steps = Math.trunc(wheelAcc);
+            if (steps === 0) return;
+            wheelAcc -= steps;
+            commit(value - steps);
         },
         { passive: false },
     );
