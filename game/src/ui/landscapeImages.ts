@@ -4,8 +4,9 @@
 // Main.Part4.cs 681-1197). The sim stores the GalaxyImages index itself (sim/galaxy.ts SelectXxxPlanet /
 // SelectHabitatPictures, Galaxy.6.cs 1956-2272); saves from before the port are migrated on load
 // (sim/galaxyImages.ts migrateLegacyLandscapePictureRef), so the index is used as it is, as bitmap_29[ref].
-// LoadEnvLandscapes also appends images/environment/landscapes/other/*.png after the 30 fixed pictures; the shipped
-// game has no such folder and only the habitat editor (not ported) can pick one, so indices 30+ show nothing.
+// LoadEnvLandscapes also appends images/environment/landscapes/other/*.png after the 30 fixed pictures (the stock game
+// has no such folder; a theme set may, themeAssets.ts); only the habitat editor (not ported) can pick one, so indices
+// 30+ show nothing. A theme's copies of the 30 come through the DOM URL hook (ui/themeUrlHook.ts).
 // TODO(port): the race picture composite on a native-planet landscape, bitmap_29[LandscapeImageOffset<NativeType> +
 // race.PictureRef % LandscapeImageCount<NativeType>] — Main.Part11.cs method_119 / method_121 (Start screens' race images).
 
