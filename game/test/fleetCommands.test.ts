@@ -3,6 +3,7 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import { loadGameDataFs } from './helpers/loadGameDataFs';
 import { cachedTickGame } from './helpers/gameCache';
+import { ensureShips } from './helpers/ensureShips';
 import type { GameData } from '../src/sim/data/gameData';
 import { flushPlayerCommands, issuePlayerCommand, pendingPlayerCommands } from '../src/sim/player/playerCommands';
 import { commandLog, type PlayerLogEntry } from '../src/sim/player/commandLog';
@@ -23,10 +24,13 @@ beforeAll(async () => {
     gameData = await loadGameDataFs();
 }, 120000);
 
+/** The harness game and at least 4 player warships (escorts built from the player's design when the start fleet is smaller). */
 function fresh(): { game: Game; mil: BuiltObject[] } {
     const game = cachedTickGame(gameData);
-    const mil = game.playerEmpire.builtObjects.filter((b) => b !== null && b.role === BuiltObjectRole.Military);
-    return { game, mil };
+    const military = () => game.playerEmpire.builtObjects.filter((b) => b !== null && b.role === BuiltObjectRole.Military);
+    const short = 4 - military().length;
+    if (short > 0) ensureShips(game.galaxy, game.playerEmpire, BuiltObjectSubRole.Escort, game.playerEmpire.builtObjects.filter((b) => b !== null && b.subRole === BuiltObjectSubRole.Escort).length + short);
+    return { game, mil: military() };
 }
 function apply(game: Game, op: Parameters<typeof issuePlayerCommand>[2], args: unknown[]): void {
     issuePlayerCommand(game.galaxy, game.playerEmpire, op, args as never);

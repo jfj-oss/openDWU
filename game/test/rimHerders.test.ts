@@ -40,6 +40,7 @@ import {
     isTamedCreatureShip,
     raceHasTrait,
     rimGuideAboard,
+    herderParam,
     rimHerdersState,
 } from '../src/sim/scenario/rimHerders/common';
 import {
@@ -63,8 +64,9 @@ import { processMessages } from '../src/sim/diplomacyTick';
 let base: GameData;
 /** Shared flag-on game: every rim independent is a herder, migration season on the last day (tests drive it). */
 let shared: Game;
-/** rimHerdersCount 3 = every rim independent colony on seed 1 (radius fraction ≥ rimHerdersRimInner), so `shared` keeps
- *  the pre-count "all rim independents are herders" behaviour the other (2)-(6) tests rely on. */
+/** rimHerdersCount 3 ≥ every rim independent colony on seed 1 (radius fraction ≥ rimHerdersRimInner; 2 since SetupSun's
+ *  SelectHabitatPictures draws moved the galaxy), so `shared` keeps the pre-count "all rim independents are herders"
+ *  behaviour the other (2)-(6) tests rely on. */
 const PARAMS = { rimHerdersCount: 3, rimFaunaMigrationDay: 359, rimHerdersConquestChance: 1 };
 
 beforeAll(async () => {
@@ -112,20 +114,27 @@ describe('19j rim herders — (1) herder colonies and their herds', () => {
         expect(st.stats.defences).toBe(1);
     });
 
-    it('rimHerdersCount picks exactly N herder colonies on seed 1 (Fisher-Yates shuffle of the rim independents, galaxy.rnd)', () => {
-        const g3 = createScenarioGame(base, { scenario: 'rim-herders', params: { ...PARAMS, rimHerdersCount: 3 } }).game.galaxy;
-        expect(rimHerdersState(g3).colonies.length).toBe(3);
-
+    it('rimHerdersCount picks exactly N herder colonies (Fisher-Yates shuffle of the rim independents, galaxy.rnd)', () => {
+        // The rim independents of this galaxy (rimHerdersGameStart's own rule: populated independent colonies at radius
+        // fraction ≥ rimHerdersRimInner); how many there are is a property of the galaxy layout.
         const g0 = createScenarioGame(base, { scenario: 'rim-herders', params: { ...PARAMS, rimHerdersCount: 0 } }).game.galaxy;
         expect(rimHerdersState(g0).colonies.length).toBe(0);
+        const rim = g0.independentColonies.filter((c) => c.empire === g0.independentEmpire && c.population.items.length > 0 && radiusFraction(g0, c.xpos, c.ypos) >= herderParam(g0, 'rimHerdersRimInner'));
+        expect(rim.length).toBeGreaterThanOrEqual(2);
+
+        // Fewer than there are: exactly N of them.
+        const n = rim.length - 1;
+        const gN = createScenarioGame(base, { scenario: 'rim-herders', params: { ...PARAMS, rimHerdersCount: n } }).game.galaxy;
+        expect(rimHerdersState(gN).colonies.length).toBe(n);
+        for (const hc of rimHerdersState(gN).colonies) expect(rim.map((c) => c.habitatIndex)).toContain(hc.colony.habitatIndex);
 
         const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
         const gAll = createScenarioGame(base, { scenario: 'rim-herders', params: { ...PARAMS, rimHerdersCount: 20 } }).game.galaxy;
-        // Only 3 rim independent colonies exist on seed 1: fewer than the requested 20, so all of them become herders.
-        expect(rimHerdersState(gAll).colonies.length).toBe(3);
+        // Fewer rim independent colonies than the requested 20: all of them become herders, with one warning.
+        expect(rimHerdersState(gAll).colonies.length).toBe(rim.length);
         expect(warn).toHaveBeenCalledTimes(1);
         expect(warn.mock.calls[0][0]).toContain('20');
-        expect(warn.mock.calls[0][0]).toContain('3');
+        expect(warn.mock.calls[0][0]).toContain(String(rim.length));
         warn.mockRestore();
     });
 });

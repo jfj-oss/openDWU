@@ -39,8 +39,15 @@ function countsTowardFirepower(design: Design, i: number): boolean {
     return false;
 }
 
+/** A design's component counts by name: picks a design by its make-up instead of its (randomly drawn) name. */
+function makeup(d: Design): Record<string, number> {
+    const m: Record<string, number> = {};
+    for (const c of d.components) m[c.name] = (m[c.name] ?? 0) + 1;
+    return m;
+}
+
 describe('Design.ReDefine hand-worked values (seed 1 tick game)', () => {
-    it("player Escort 'Praefectus'", () => {
+    it('the player\'s starting Escort design (Human, tech 0.5)', () => {
         // Components (improved values at the player's starting tech):
         //  2x Maxos Blaster (beam, size 5, V1 5 V2 190)      3x Standard Armor (size 1, V1 10 V2 2)
         //  1x Corvidian Shields (size 10, V1 100 V2 3)       6x Proton Thruster (size 7, V1 1000 V2 5 V3 560 V4 2)
@@ -48,8 +55,13 @@ describe('Design.ReDefine hand-worked values (seed 1 tick game)', () => {
         //  2x Fission Reactor (size 22, V1 60 V2 105 V3 400) 1x Energy Collector (size 8, V1 24)
         //  2x Standard Fuel Cell (size 6, V1 65)             1x Command Center (size 2, energy 2)
         //  2x Life Support (size 1, energy 1, improved V1 85) 3x Hab Module (size 2, energy 1, V1 60)
-        const d = galaxy.empires[0].designs.find((x) => x.name === 'Praefectus')!;
+        // The player's escort design (its name is drawn from the race's ship names: Praefectus, Senator, ...).
+        const d = galaxy.playerEmpire!.designs.find((x) => x.subRole === BuiltObjectSubRole.Escort)!;
         expect(d.subRole).toBe(BuiltObjectSubRole.Escort);
+        expect(makeup(d)).toEqual({
+            'Maxos Blaster': 2, 'Standard Armor': 3, 'Corvidian Shields': 1, 'Proton Thruster': 6, 'Thrust Vector': 1, 'Gerax HyperDrive': 1,
+            'Fission Reactor': 2, 'Energy Collector': 1, 'Standard Fuel Cell': 2, 'Command Center': 1, 'Life Support': 2, 'Hab Module': 3,
+        });
         expect(d.size).toBe(2 * 5 + 3 + 10 + 6 * 7 + 2 + 11 + 2 * 22 + 8 + 2 * 6 + 2 + 2 + 3 * 2); // 152
         expect(d.staticEnergyConsumption).toBe(2 + 2 * 1 + 3 * 1); // 7
         expect(d.reactorPowerOutput).toBe(120);
@@ -83,13 +95,21 @@ describe('Design.ReDefine hand-worked values (seed 1 tick game)', () => {
         expect(designStatRows(d).find((r) => r.label === 'Firepower')?.value).toBe('10');
     });
 
-    it("pirate TroopTransport 'Venator'", () => {
+    it('a pirate TroopTransport design with assault pods', () => {
         //  2x Maxos Blaster, 20x Standard Armor, 5x Corvidian Shields, 8x Proton Thruster, 2x Thrust Vector,
         //  1x Gerax HyperDrive, 2x Fission Reactor, 1x Energy Collector, 3x Standard Fuel Cell,
         //  3x Standard Troop Compartment (size 8, V1 100), 1x Command Center, 4x Life Support (V1 85),
         //  5x Hab Module, 1x Medical Center (size 4, energy 3, V1 100), 4x Assault Pod (size 8, V1 50 V2 140 V5 20).
-        const isRoyale = (x: { name: string; subRole: BuiltObjectSubRole }) => x.name === 'Venator' && x.subRole === BuiltObjectSubRole.TroopTransport;
+        // Picked by its make-up (pirate design names are random draws): the first pirate troop transport with exactly these
+        // components (seed 1 has had it as 'Venator', 'Javelin', 'Colossia').
+        const want = {
+            'Maxos Blaster': 2, 'Standard Armor': 20, 'Corvidian Shields': 5, 'Proton Thruster': 8, 'Thrust Vector': 2, 'Gerax HyperDrive': 1,
+            'Fission Reactor': 2, 'Energy Collector': 1, 'Standard Fuel Cell': 3, 'Standard Troop Compartment': 3, 'Command Center': 1,
+            'Life Support': 4, 'Hab Module': 5, 'Medical Center': 1, 'Assault Pod': 4,
+        };
+        const isRoyale = (x: Design) => x.subRole === BuiltObjectSubRole.TroopTransport && JSON.stringify(Object.entries(makeup(x)).sort()) === JSON.stringify(Object.entries(want).sort());
         const owner = galaxy.pirateEmpires.find((e) => e.designs.some(isRoyale))!;
+        expect(owner).toBeDefined();
         const d = owner.designs.find(isRoyale)!;
         expect(d.subRole).toBe(BuiltObjectSubRole.TroopTransport);
         expect(d.size).toBe(2 * 5 + 20 + 5 * 10 + 8 * 7 + 2 * 2 + 11 + 2 * 22 + 8 + 3 * 6 + 3 * 8 + 2 + 4 + 5 * 2 + 4 + 4 * 8); // 297

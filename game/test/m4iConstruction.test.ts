@@ -8,7 +8,7 @@ import { runGameSeconds } from '../src/sim/tick/harness';
 import type { GameData } from '../src/sim/data/gameData';
 import type { Galaxy } from '../src/sim/galaxy';
 import type { Empire } from '../src/sim/empire';
-import { empireGovernmentAttributes } from '../src/sim/empire';
+import { AutomationLevel, empireGovernmentAttributes } from '../src/sim/empire';
 import { BuiltObject } from '../src/sim/builtObject';
 import { BuiltObjectSubRole } from '../src/sim/builtObjectTypes';
 import { ForceStructureProjection, ForceStructureProjectionList } from '../src/sim/forceStructureProjection';
@@ -201,9 +201,11 @@ describe('M4i harness: empire construction entry points', () => {
         // so which empires have re-projected by t=60 depends on the galaxy (after M4u it is no longer empires[0]).
         // Since the harness models the true age-1 default (galaxy age 1, M4y), the long blocks before t=60 may already have
         // queued an empire's whole shortfall (seed 1: Sol Commonwealth), leaving DirectConstruction nothing to add: also
-        // require a warship projection left unmet by the empire's current (built + queued) state force structure.
+        // require a warship projection left unmet by the empire's current (built + queued) state force structure, and an
+        // empire that builds for itself: DirectConstruction queues the force structure only under FullyAutomated (the
+        // harness player is PartiallyAutomated and gets a BuildOrder suggestion instead, Empire.6.cs 2736-2839).
         const warships = [BuiltObjectSubRole.Escort, BuiltObjectSubRole.Frigate, BuiltObjectSubRole.Destroyer, BuiltObjectSubRole.Cruiser, BuiltObjectSubRole.CapitalShip, BuiltObjectSubRole.Carrier];
-        const e = g.empires.find((x) => (x.stateForceStructureProjections?.count ?? 0) > 0 && x.spacePorts.length > 0
+        const e = g.empires.find((x) => x.controlStateConstruction === AutomationLevel.FullyAutomated && (x.stateForceStructureProjections?.count ?? 0) > 0 && x.spacePorts.length > 0
             && x.stateForceStructureProjections!.diff(currentStateForceStructure(x, galaxyStarDate(g)).projections).items.some((p) => warships.includes(p.subRole) && p.amount > 0))!;
         expect(e).toBeDefined();
         e.stateMoney = 5e6;

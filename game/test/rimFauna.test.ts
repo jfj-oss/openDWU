@@ -208,23 +208,30 @@ describe('19g-7 rim fauna — faithful path, save', () => {
         const a = createScenarioGame(base, { scenario: 'rim-fauna', params }).game;
         runGameSeconds(a.galaxy, 20);
         const st = rimFaunaState(a.galaxy);
-        const herd = st.herds[0];
+        // The herd and destination: for each herd the nearest system more than 150 000 from its home range, and of those
+        // the closest pair, so the migration ends inside the 195 s run (a rim system can be isolated: seed 1's first herd
+        // has no other system within 1.1 M).
+        let k = -1;
         let far = -1;
         let farD = Number.MAX_VALUE;
-        a.galaxy.systems.forEach((s, i) => {
-            const d = a.galaxy.calculateDistance(s.systemStar.xpos, s.systemStar.ypos, herd.homeX, herd.homeY);
-            if (i !== herd.homeSystemIndex && d > 150000 && d < farD) {
-                far = i;
-                farD = d;
-            }
+        st.herds.forEach((h, hi) => {
+            a.galaxy.systems.forEach((s, i) => {
+                const d = a.galaxy.calculateDistance(s.systemStar.xpos, s.systemStar.ypos, h.homeX, h.homeY);
+                if (i !== h.homeSystemIndex && d > 150000 && d < farD) {
+                    k = hi;
+                    far = i;
+                    farD = d;
+                }
+            });
         });
         expect(far).toBeGreaterThanOrEqual(0);
+        const herd = st.herds[k];
         startRimHerdMigration(a.galaxy, herd, far, false);
         runGameSeconds(a.galaxy, 15);
         expect(herd.migration).not.toBeNull();
         const text = saveText(a, params);
         const loaded = deserializeGame(text, scenarioGameData(base, 'rim-fauna')).game;
-        const lherd = rimFaunaState(loaded.galaxy).herds[0];
+        const lherd = rimFaunaState(loaded.galaxy).herds[k];
         expect(lherd.migration).toEqual(herd.migration);
         expect(rimHerdOfCreature(loaded.galaxy, lherd.leader!)).toBe(lherd);
         expect(loaded.galaxy.creatures).toContain(lherd.leader);

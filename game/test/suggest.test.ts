@@ -198,12 +198,13 @@ describe('a SemiAutomated player is advised instead of building (Empire.6.cs 258
     it('FullyAutomated builds the research station; SemiAutomated queues a BuildOneOff suggestion; Manual does neither', () => {
         const full = forcedGame(FULL);
         const n0 = full.galaxy.builtObjects.length;
+        const labs = [BuiltObjectSubRole.WeaponsResearchStation, BuiltObjectSubRole.EnergyResearchStation, BuiltObjectSubRole.HighTechResearchStation];
         directConstruction(full.galaxy, full.playerEmpire); processPlayerMessages(full.galaxy);
         const fullBuilt = builtSince(full, n0);
         expect(fullBuilt.length).toBe(1);
-        // Which lab the seed-1 capital lacks depends on the galaxy layout (Weapons since the todosweep galaxy fixes,
-        // Energy since the orbit-spacing deviation).
-        expect(fullBuilt[0].subRole).toBe(BuiltObjectSubRole.EnergyResearchStation);
+        // Which lab it builds depends on the galaxy layout (AnalyzeNewResearchFacilities: the industry with the least
+        // research potential; seed 1 has had Weapons, Energy and HighTech here): any research station.
+        expect(labs).toContain(fullBuilt[0].subRole);
         expect(fullBuilt[0].builtAt).toBe(full.playerEmpire.capital);
         expect(advisorSuggestions(full.playerEmpire).length).toBe(0);
 

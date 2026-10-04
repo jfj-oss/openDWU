@@ -8,6 +8,7 @@ import type { Empire } from '../../src/sim/empire';
 import type { Habitat } from '../../src/sim/types';
 import { BuiltObjectSubRole } from '../../src/sim/builtObjectTypes';
 import { ComponentType } from '../../src/sim/data/components';
+import { ensureShips } from './ensureShips';
 
 const live = (list: readonly (BuiltObject | null)[]) => list.filter((b): b is BuiltObject => b !== null && !b.hasBeenDestroyed);
 const hasWeapon = (b: BuiltObject, t: ComponentType) => b.weapons.some((w) => w.component.type === t);
@@ -18,9 +19,14 @@ function pick<T>(list: T[], what: string, k = 0): T {
     return list[k];
 }
 
-/** The player's k-th ship of `subRole` (empire list order). */
+/**
+ * The player's k-th ship of `subRole` (empire list order). When the start fleet has fewer (seed 1's player starts with one
+ * Escort / Frigate / Destroyer since SetupSun's star picture draws moved the galaxy), the missing ones are built from the
+ * player's own design of that sub-role (test/helpers/ensureShips.ts), so a scenario that needs "a second escort" still
+ * gets one of the player's escorts. Idempotent: a second call finds the ship built by the first.
+ */
 export function playerShip(g: Galaxy, subRole: BuiltObjectSubRole, k = 0): BuiltObject {
-    return pick(live(g.playerEmpire!.builtObjects).filter((b) => b.subRole === subRole), `player ${BuiltObjectSubRole[subRole]}`, k);
+    return pick(ensureShips(g, g.playerEmpire!, subRole, k + 1), `player ${BuiltObjectSubRole[subRole]}`, k);
 }
 
 /** The player's k-th destroyer that carries missiles. */

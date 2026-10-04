@@ -212,7 +212,9 @@ describe('BaconBuiltObject.cs 777 ResetAssaultPods', () => {
 
 describe('BuiltObject.1.cs 2954 ProcessBoardingAssault / Empire.1.cs 524 TakeOwnershipOfBuiltObject', () => {
     it('a won boarding hands the ship to the boarders (or scraps it by policy)', () => {
-        const ship = galaxy.pirateEmpires[0].builtObjects.find((b) => b.role === BuiltObjectRole.Military && !b.hasBeenDestroyed)!;
+        // A pirate warship (any faction: which factions start with one depends on the galaxy).
+        const ship = galaxy.pirateEmpires.flatMap((e) => e.builtObjects).find((b) => b !== null && b.role === BuiltObjectRole.Military && !b.hasBeenDestroyed)!;
+        expect(ship).toBeDefined();
         const captor = galaxy.empires[0];
         const oldOwner = ship.actualEmpire!;
         ship.assaultAttackValue = 3000;

@@ -44,11 +44,11 @@ describe('17f design editor', () => {
     it('drafts an escort from the newest escort template (btnDesignsUpgradeManual_Click)', () => {
         const { g, p } = game();
         const template = findNewest(p.designs, S.Escort)!;
-        expect(template.name).toBe('Praefectus'); // seed 1
+        expect(template.subRole).toBe(S.Escort); // seed 1: 'Senator' (the name is a random draw from the race's ship names)
         const draft = newDesignDraft(g, p, { kind: 'upgrade', design: template });
         expect(draft.mode).toBe('copyasnew');
         expect(draft.replaces).toBe(template);
-        expect(draft.design.name).toBe('Praefectus Mk2');
+        expect(draft.design.name).toBe(`${template.name} Mk2`);
         expect(draft.design.subRole).toBe(S.Escort);
         expect(draft.design.components.map((c) => c.componentId)).toEqual(template.components.map((c) => c.componentId));
         expect(draft.design.isObsolete).toBe(false);
@@ -68,11 +68,17 @@ describe('17f design editor', () => {
     it('warns like GetDesignWarningMessages: no engine (red) and over the size limit (advisory)', () => {
         const { g, p } = game();
         const draft = copyDesign(g, p, findNewest(p.designs, S.Escort)!);
-        // The seed-1 player supplies none of these, so the resources line is the template's only warning.
+        // The starting player does not supply every resource the template's components need (which ones depends on the
+        // galaxy: seed 1 has lacked Polymer, Carbon Fibre, Helium, Nekros Stone, Chromium and Silicon, Helium, Nekros Stone,
+        // Chromium), so the resources line is the template's only warning.
         const base = designWarnings(g, p, draft.design);
         expect(base.mustDo).toEqual([]);
-        expect(base.shouldDo).toEqual(['We do not have a supply of all required resources|(Polymer, Carbon Fibre, Helium, Nekros Stone, Chromium)']);
-        expect(resolveGameText(base.shouldDo[0])).toBe('We do not have a supply of required resources (Polymer, Carbon Fibre, Helium, Nekros Stone, Chromium)');
+        expect(base.shouldDo).toHaveLength(1);
+        const missing = /^We do not have a supply of all required resources\|\((.+)\)$/.exec(base.shouldDo[0]);
+        expect(missing).not.toBeNull();
+        const resourceNames = g.resourceSystem.resources.filter((r) => r != null).map((r) => r.name);
+        for (const name of missing![1].split(', ')) expect(resourceNames).toContain(name);
+        expect(resolveGameText(base.shouldDo[0])).toBe(`We do not have a supply of required resources (${missing![1]})`);
 
         // Remove all 6 Proton Thrusters (EngineMainThrust): list (must-have types) → "Must have a {0} component".
         const thruster = draft.design.components.find((c) => c.type === ComponentType.EngineMainThrust)!;
@@ -150,7 +156,7 @@ describe('17f design editor', () => {
         expect(listed).toContain(saved);
         expect(listed).not.toContain(template);
         const row = designRow(saved, p, g);
-        expect(row).toMatchObject({ name: 'Praefectus Mk2', role: 'Military', subRole: 'Escort', size: saved.size, manual: true, obsolete: 'Not obsolete' });
+        expect(row).toMatchObject({ name: `${template.name} Mk2`, role: 'Military', subRole: 'Escort', size: saved.size, manual: true, obsolete: 'Not obsolete' });
 
         expect(g.rnd.drawCount).toBe(draws);
         expect(g.rnd.snapshotState()).toEqual(rnd);

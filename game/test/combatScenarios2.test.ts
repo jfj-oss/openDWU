@@ -68,6 +68,7 @@ import { executeShipAction } from '../src/sim/player/executeShipAction';
 import { CreatureType } from '../src/sim/creature';
 import { BuiltObjectSubRole } from '../src/sim/builtObjectTypes';
 import { BALANCED, MERCENARY, PIRATE, SMUGGLER, aiCapital, pirateConstructionShip, pirateEscort, pirateExplorer, pirateFaction, pirateRaider, playerCarrierPort, playerMissileShip, playerShip } from './helpers/combatCast';
+import { PiratePlayStyle, pirateFactionModifiers } from '../src/sim/pirates';
 
 let gameData: GameData;
 let componentDefs: Map<number, ComponentDefinition>;
@@ -143,10 +144,10 @@ const damagedCount = (b: BuiltObject) => b.components.items.filter((c) => c.stat
 
 describe('(1) area weapons', () => {
     /**
-     * The player's Praefectus 001 (the player's first escort) carries an Intimidator Surgewave (components.txt id 19, WeaponAreaDestruction: Value1 damage 35,
-     * Value2 range 220, Value3 energy 54, Value4 expansion speed 120, Value5 13, Value6 fire rate 8200). The target is S269
-     * Confederacy's the pirate explorer 150 ahead; another faction's explorer sits 50 beyond the target (a second enemy)
-     * and the player's own Praefectus 002 is the friendly ship. All shields 100, no fleets, no captains.
+     * The player's first escort carries an Intimidator Surgewave (components.txt id 19, WeaponAreaDestruction: Value1 damage 35,
+     * Value2 range 220, Value3 energy 54, Value4 expansion speed 120, Value5 13, Value6 fire rate 8200). The target is the first
+     * unarmed pirate explorer, 150 ahead; another faction's explorer sits 50 beyond the target (a second enemy)
+     * and the player's second escort (built from its escort design when the start fleet has one) is the friendly ship. All shields 100, no fleets, no captains.
      */
     function stage() {
         const g = cachedTickGame(gameData).galaxy;
@@ -193,7 +194,7 @@ describe('(1) area weapons', () => {
     it('the blast: centred on the target, a ring growing 1 then Speed × dt per step; each ship is struck once as the ring passes it, for 35 × (1 − ring/Range); friendly ships inside are struck too; shields absorb; the ring overshoots Range with zero power (BuiltObject.1.cs 4340-4388)', () => {
         const { g, esc, tgt, enemy2, friend, area } = stage();
         const s0 = { x: tgt.xpos, y: tgt.ypos };
-        // The friendly Praefectus 002 wanders into the blast after the shot (the gate only checks at firing time): 100 from
+        // The friendly second escort wanders into the blast after the shot (the gate only checks at firing time): 100 from
         // the epicentre. A fourth ship, a pirate construction ship, stands 215 out, just inside Range 220.
         place(g, friend, s0.x, s0.y + 100);
         const far = pirateConstructionShip(g, 0);
@@ -281,7 +282,7 @@ describe('(1) area weapons', () => {
 
 describe('(2) missiles and point defence', () => {
     /**
-     * The player's Venator 001 (the player's first missile ship: Destroyer: 5 beams + 2 Concussion Missiles — components.txt id 10: damage 6, range 520,
+     * The player's first missile ship (Destroyer: 5 beams + 2 Concussion Missiles — components.txt id 10: damage 6, range 520,
      * energy 18, speed 120, fire rate 2700) fires one missile at a stationary target `d` ahead. Stepped by hand at 0.1 s:
      * the firer's HandleWeaponsFiring (BuiltObject.1.cs 3737), then the target's InterceptMissiles (BuiltObject.cs 3819 →
      * BaconBuiltObject.cs 5032) — the order of one DoTasks pass each. Out of view (headless).
@@ -667,9 +668,10 @@ describe('(4) pirate raids', () => {
     }
 
     /**
-     * The Mercenary faction (seed-1: Dread Invaders; play style: RaidStrengthFactor 1.25, RaidBonusFactor 0.75, LootingFactor 1.33 —
-     * Galaxy.8.cs 4396 SetPirateFactionModifiers) raid the player's capital with its escort's Assault Pod
-     * (components.txt id 114: Value1 strength 50, speed 50). Dominant race troop strength 92.
+     * The Mercenary faction (seed-1: Murderous Corsairs, before that Dread Invaders; play style: RaidStrengthFactor 1.25,
+     * RaidBonusFactor 0.75, LootingFactor 1.33 — Galaxy.8.cs 4396 SetPirateFactionModifiers) raid the player's capital with
+     * its escort's Assault Pod (components.txt id 114: Value1 strength 50, speed 50). Its dominant race's troop strength
+     * (seed 1: Mortalen 138, before that 92) scales the pod.
      */
     function stage() {
         const g = cachedTickGame(gameData).galaxy;
@@ -684,17 +686,28 @@ describe('(4) pirate raids', () => {
     it('play-style factors: Mercenary raids at 1.25 strength / 0.75 loot and loots at 1.33, Smuggler 0.75 / 0.75 / 0.75, Pirate 1.25 / 1.4 / 1.0 (Galaxy.8.cs 4396, BaconEmpire.cs 59-84)', () => {
         const { g, pe } = stage();
         expect(pe).toBe(pirateFaction(g, MERCENARY));
-        expect(pe.dominantRace!.troopStrength).toBe(92);
         const f = (e: Empire) => [empireRaidStrengthFactor(e), empireRaidBonusFactor(e), empireLootingFactor(e)];
         expect(f(pe)).toEqual([1.25, 0.75, 1.33]); // Mercenary
-        // Seed 1 has no Smuggler faction since the orbit-spacing deviation; every faction still reads one of the four tables.
+        // Every faction reads one of the four tables (which play styles a galaxy has varies: seed 1 has had no Smuggler,
+        // and now no Pirate faction).
         for (const e of g.pirateEmpires) expect([MERCENARY, PIRATE, SMUGGLER, BALANCED]).toContainEqual(f(e));
-        expect(f(pirateFaction(g, PIRATE))).toEqual([1.25, 1.4, 1.0]); // Pirate
-        expect(f(pirateFaction(g, BALANCED))).toEqual([1.0, 1.0, 1.0]); // Balanced
+        // Each table read through the same Empire factors, on a faction given that play style's modifiers.
+        const styled = (style: PiratePlayStyle) => {
+            const e = g.pirateEmpires[0];
+            const saved = e.pirateFactionModifiers;
+            e.pirateFactionModifiers = pirateFactionModifiers(style);
+            const r = f(e);
+            e.pirateFactionModifiers = saved;
+            return r;
+        };
+        expect(styled(PiratePlayStyle.Mercenary)).toEqual([1.25, 0.75, 1.33]);
+        expect(styled(PiratePlayStyle.Pirate)).toEqual([1.25, 1.4, 1.0]);
+        expect(styled(PiratePlayStyle.Smuggler)).toEqual([0.75, 0.75, 0.75]);
+        expect(styled(PiratePlayStyle.Balanced)).toEqual([1.0, 1.0, 1.0]);
         expect(f(g.playerEmpire!)).toEqual([1.0, 1.0, 1.0]); // not a pirate: the Empire.cs 431-455 defaults
     });
 
-    it('a pod landing on a colony becomes a Pirate Raider troop of (int)(50 × 0.92 × 1.25) = 57 (BuiltObject.1.cs 2696-2733); a pod does not raid a colony its own empire is invading with regular troops', () => {
+    it('a pod landing on a colony becomes a Pirate Raider troop of (int)(50 × TroopStrength/100 × 1.25), e.g. 57 for TroopStrength 92 (BuiltObject.1.cs 2696-2733); a pod does not raid a colony its own empire is invading with regular troops', () => {
         const { g, wf, capital, pe } = stage();
         const pod = wf.weapons.find((w) => w.component.type === ComponentType.AssaultPod)!;
         place(g, wf, capital.xpos + 50, capital.ypos);
@@ -707,8 +720,8 @@ describe('(4) pirate raids', () => {
         expect(pod.distanceTravelled).toBe(-1); // Weapon.Reset after landing (2736)
         const raiders = capital.invadingTroops!.items.filter((t) => t.type === TroopType.PirateRaider && t.empire === pe);
         expect(raiders.length).toBe(1);
-        expect(raiders[0].attackStrength).toBe(Math.trunc(50 * 1.0 * (92 / 100.0) * 1.0 * 1.25));
-        expect(raiders[0].attackStrength).toBe(57);
+        const ts = pe.dominantRace!.troopStrength;
+        expect(raiders[0].attackStrength).toBe(Math.trunc(50 * 1.0 * (ts / 100.0) * 1.0 * 1.25)); // 92 → 57, 138 → 86
         expect(raiders[0].colony).toBe(capital);
         expect(pe.troops.count).toBe(troops0 + 1);
         // Same empire already invading with a regular troop (2705-2717): the pod is spent without raiding.
@@ -889,7 +902,7 @@ describe('(5) AI retargeting', () => {
         assignMission(g, jav, BuiltObjectMissionType.Attack, a, null, BuiltObjectMissionPriority.Normal);
         const mission = builtObjectMission(jav.mission)!;
         expect(mission.targetBuiltObject).toBe(a);
-        // Levels (Galaxy.7.cs 3681 DetermineThreatLevel, viewer Praefectus): num = level of the current target A,
+        // Levels (Galaxy.7.cs 3681 DetermineThreatLevel, viewer: the escort): num = level of the current target A,
         // num2 = level of the threat B; the escort is not a base (no ÷ 6).
         const num = determineThreatLevel(g, a, jav);
         const num2 = determineThreatLevel(g, b, jav);
@@ -1102,7 +1115,7 @@ describe('(6) repair and retreat', () => {
         const damagedIdx = [1, 4, 7, items.length - 1];
         for (const i of damagedIdx) items[i].status = ComponentStatus.Damaged;
         jav.reDefine();
-        (jav as unknown as { _damageRepair: number })._damageRepair = 10; // seconds per component (ReDefine sets it from DamageControl components; the Praefectus has none)
+        (jav as unknown as { _damageRepair: number })._damageRepair = 10; // seconds per component (ReDefine sets it from DamageControl components; the escort design has none)
         expect(calculateCrewLevel(jav)).toBe('green'); // no crew-skill override (4769-4787)
         const bonus = shipGroupRepairBonus(fleet);
         const perComponent = 10 / bonus / 1.0; // no captain

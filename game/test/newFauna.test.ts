@@ -32,6 +32,7 @@ import {
     faunaVariantName,
     faunaVariantOfCreature,
     faunaVariantTable,
+    newFaunaParam,
     newFaunaState,
 } from '../src/sim/scenario/newFauna/common';
 import {
@@ -305,9 +306,18 @@ describe('19g-7b new fauna — behaviours (forced short runs)', () => {
 
     it('8 brood carrier: travels and seeds a hunter pack at a planet it passes', () => {
         const g = shared.galaxy;
+        // A system with an unowned planet that has another system within newFaunaBroodRange (where the carrier looks for its
+        // next destination): picked by property, the galaxy layout decides which.
+        const range = newFaunaParam(g, 'newFaunaBroodRange');
+        const free = (i: number) => g.systemHabitatsOf(i).find((h) => h.category === HabitatCategoryType.Planet && h.empire === null);
+        const neighbour = (i: number, h: { xpos: number; ypos: number; diameter: number }) => g.systems.some((s, j) => j !== i && g.calculateDistance(s.systemStar.xpos, s.systemStar.ypos, h.xpos + h.diameter + 3000, h.ypos) < range - 1000);
         let sys = -1;
-        for (let i = 0; i < g.systems.length && sys < 0; i++) if (g.systemHabitatsOf(i).some((h) => h.category === HabitatCategoryType.Planet && h.empire === null)) sys = i;
-        const planet = g.systemHabitatsOf(sys).find((h) => h.category === HabitatCategoryType.Planet && h.empire === null)!;
+        for (let i = 0; i < g.systems.length && sys < 0; i++) {
+            const h = free(i);
+            if (h !== undefined && neighbour(i, h)) sys = i;
+        }
+        expect(sys).toBeGreaterThanOrEqual(0);
+        const planet = free(sys)!;
         const herd = spawnVariantHerd(g, FaunaVariant.BroodCarrier, sys, 1, { x: planet.xpos + planet.diameter + 3000, y: planet.ypos })!;
         const inf = info(g, herd);
         g.scenario!.params.newFaunaBroodMaxPacks = 10000;

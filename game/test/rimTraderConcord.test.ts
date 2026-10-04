@@ -18,8 +18,9 @@ import { Blockade } from '../src/sim/fleets/blockades';
 import { IntelligenceMissionType } from '../src/sim/espionage';
 import { empireMessages } from '../src/sim/messages';
 import { galaxyStarDate } from '../src/sim/tick/simTime';
-import { scenarioEmit, scenarioText } from '../src/sim/scenario';
+import { radiusFraction, scenarioEmit, scenarioText } from '../src/sim/scenario';
 import {
+    RIM_MIN_RADIUS,
     isRimTraderAI,
     rareGoodIds,
     rimAngerState,
@@ -84,11 +85,13 @@ describe('19a Concord — starting colonies', () => {
         expect(r.colonies.length).toBe(6);
         const q = r.colonies.filter((c) => c !== r.capital).map((c) => c.quality);
         for (const x of q) expect(x).toBeGreaterThanOrEqual(RIM_START_MIN_QUALITY);
-        // No uncolonized candidate left is of a better tier than the worst chosen one (high before merely good).
+        // No uncolonized candidate left is of a better tier than the worst chosen one, in concordStartColonyCandidates'
+        // order: rim worlds (radius ≥ RIM_MIN_RADIUS) before core worlds, then high quality before merely good (a rim world
+        // of quality 0.5-0.7 is taken before a core world of 0.7+).
+        const tier = (h: Habitat) => (radiusFraction(g, h.xpos, h.ypos) >= RIM_MIN_RADIUS ? 0 : 2) + (h.quality >= RIM_START_HIGH_QUALITY ? 0 : 1);
+        const worst = Math.max(...r.colonies.filter((c) => c !== r.capital).map(tier));
         const left = concordStartColonyCandidates(g, r, 50);
-        if (q.some((x) => x < RIM_START_HIGH_QUALITY)) {
-            expect(left.filter((h) => h.quality >= RIM_START_HIGH_QUALITY && g.calculateDistance(h.xpos, h.ypos, r.capital!.xpos, r.capital!.ypos) <= g.sectorSize * 3).length).toBe(0);
-        }
+        for (const h of left) expect(tier(h), h.name).toBeGreaterThanOrEqual(worst);
     }, 600000);
 
     it('a wizard-generated Oranthi AI is topped up to the slider', () => {

@@ -7,7 +7,8 @@ import { BuiltObjectSubRole } from '../src/sim/builtObjectTypes';
 import { loadGameDataFs } from './helpers/loadGameDataFs';
 import { cachedTickGame } from './helpers/gameCache';
 import { BuiltObjectMissionType, builtObjectMission } from '../src/sim/missions/mission';
-import type { AdvisorBrief } from '../src/sim/player/advisorBrief';
+import { advisorCharacter, type AdvisorBrief } from '../src/sim/player/advisorBrief';
+import { CharacterRole } from '../src/sim/characters';
 import { ADVISOR_RESPONSE_SCHEMA } from '../src/sim/player/advisorCommands';
 import {
     buildAdvisorMessages,
@@ -129,7 +130,11 @@ describe('runAdvisorTurn (harness game, scripted model)', () => {
         // History and the new message follow the system prompt.
         const sent = requests[requests.length - 1].body as { messages: ChatMessage[] };
         expect(sent.messages.map((m) => m.role)).toEqual(['system', 'user']);
-        expect(sent.messages[0].content).toContain('You are Caran Ikkuros, ruling Leader acting as fleet admiral of the Royal Sol Commonwealth');
+        // The advisor speaks as the empire's Fleet Admiral, else its Leader (seed 1: the Leader); names come from the galaxy.
+        const admiral = advisorCharacter(player)!;
+        expect(admiral).not.toBeNull();
+        const title = admiral.role === CharacterRole.FleetAdmiral ? 'Fleet Admiral' : 'ruling Leader acting as fleet admiral';
+        expect(sent.messages[0].content).toContain(`You are ${admiral.name}, ${title} of the ${player.name}`);
         expect(sent.messages[0].content).toContain('EARLIER IN THIS CHAT (context only, do not copy):\nPlayer said: status?\nYou answered: All quiet.');
     }, 120000);
 

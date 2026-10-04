@@ -82,6 +82,16 @@ function rimFounder(g: Galaxy): { founder: Empire; target: Habitat } {
     throw new Error('no AI empire with a rim charter target');
 }
 
+/** The first AI empire with at least `n` charter targets (how many an empire has depends on the galaxy around it). */
+function founderWithTargets(g: Galaxy, n: number): Empire {
+    for (const e of g.empires) {
+        if (e === g.playerEmpire) continue;
+        e.stateMoney = Math.max(e.stateMoney, 1e6);
+        if (charterTargets(g, e).length >= n) return e;
+    }
+    throw new Error(`no AI empire with ${n} charter targets`);
+}
+
 function exploreAll(g: Galaxy, e: Empire): void {
     for (const sys of g.systems) e.visibility.setSystemVisibility(sys.systemStar, SystemVisibilityStatus.Explored);
 }
@@ -303,7 +313,8 @@ describe('subject relationship: war rules (C4), autonomy (C6), expiry (C5)', () 
         const game = fresh();
         const g = game.galaxy;
         g.scenario!.params.maxCompaniesPerFounder = 6;
-        const { founder } = rimFounder(g);
+        // Two charters are granted below (renew / nationalise, then release): a founder with two targets.
+        const founder = founderWithTargets(g, 2);
         const terms = { kind: 'dominion' as const, tariffPct: 15, durationYears: 1 };
         const targets = charterTargets(g, founder);
         const a = grantCharter(g, founder, targets[0], terms).company!;

@@ -177,9 +177,12 @@ describe('RemoveColoniesFromSystem order cleanup (Empire.3.cs 4587-4630)', () =>
 describe('EnsureStrategicResourceSupply (Empire.6.cs 1656)', () => {
     it('a fuel shortage sends an idle construction ship to build a mining station at the top resource target holding it', () => {
         const g = newGalaxy();
-        const empire = g.empires[1];
-        const fuel = g.resourceSystem.fuelResources.find((r) => countResourceSourcesForEmpire(empire, r.resourceId) < 2 + Math.trunc(empire.colonies.length / 3))!;
-        expect(fuel).toBeDefined();
+        // An AI empire short of some fuel (fewer sources than 2 + colonies / 3, Empire.6.cs 1656) with an idle automated
+        // construction ship: picked by property, which empire that is depends on the galaxy.
+        const short = (e: (typeof g.empires)[number]) => g.resourceSystem.fuelResources.find((r) => countResourceSourcesForEmpire(e, r.resourceId) < 2 + Math.trunc(e.colonies.length / 3));
+        const empire = g.empires.find((e) => e !== g.playerEmpire && short(e) !== undefined && (e.constructionShips as BuiltObject[]).some((b) => b.subRole === BuiltObjectSubRole.ConstructionShip && b.isShipYard && b.isAutoControlled))!;
+        expect(empire).toBeDefined();
+        const fuel = short(empire)!;
         const mined = new Set((empire.miningStations as BuiltObject[]).map((b) => b.parentHabitat));
         const target = g.habitats.find((h) => h.empire === null && !mined.has(h) && h.resources.some((r) => r.resourceId === fuel.resourceId))!;
         empire.resourceTargets.unshift(new HabitatPrioritization(target, 1000));
@@ -200,9 +203,11 @@ describe('EnsureStrategicResourceSupply (Empire.6.cs 1656)', () => {
 describe('FindNearestAvailableConstructionShip (Empire.9.cs 4631)', () => {
     it('returns the nearest mission-less construction ship not attached to a yard, else null', () => {
         const g = newGalaxy();
-        const empire = g.empires[0];
-        const ships = (empire.builtObjects as BuiltObject[]).filter((b) => b.subRole === BuiltObjectSubRole.ConstructionShip);
-        expect(ships.length).toBeGreaterThan(1);
+        // An empire with at least two construction ships (seed 1's player has one since SetupSun's star picture draws).
+        const cships = (e: (typeof g.empires)[number]) => (e.builtObjects as BuiltObject[]).filter((b) => b !== null && b.subRole === BuiltObjectSubRole.ConstructionShip);
+        const empire = g.empires.find((e) => cships(e).length > 1)!;
+        expect(empire).toBeDefined();
+        const ships = cships(empire);
         for (const b of ships) { b.mission = null; b.builtAt = null; }
         const far = ships[ships.length - 1];
         expect(findNearestAvailableConstructionShip(g, empire, far.xpos + 1, far.ypos)).toBe(far);

@@ -4,6 +4,7 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import { loadGameDataFs } from './helpers/loadGameDataFs';
 import { cachedTickGame } from './helpers/gameCache';
+import { ensureShips } from './helpers/ensureShips';
 import type { GameData } from '../src/sim/data/gameData';
 import type { Game } from '../src/sim/game';
 import type { BuiltObject } from '../src/sim/builtObject';
@@ -28,8 +29,11 @@ beforeAll(async () => {
     gameData = await loadGameDataFs();
 }, 120000);
 
+/** The player's board-eligible construction ships, at least two (the second built from the player's construction-ship
+ *  design when the start fleet has one, as seed 1's does since SetupSun's star picture draws: test/helpers/ensureShips.ts). */
 function constructionShips(game: Game): BuiltObject[] {
     const p = game.playerEmpire;
+    ensureShips(game.galaxy, p, BuiltObjectSubRole.ConstructionShip, 2);
     return (p.constructionShips as BuiltObject[]).filter((s) => boardShipEligible(p, s));
 }
 
