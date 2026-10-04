@@ -30,6 +30,18 @@ import {
     type ManualEmpireStart,
     sectorsFor,
     starCountFor,
+    CUSTOM_MAX_SECTORS,
+    CUSTOM_MIN_SECTORS,
+    GALAXY_STAR_COUNT_MIN,
+    STAR_COUNT_PRESETS,
+    SECTOR_PRESETS,
+    galaxyDensityWarning,
+    galaxySectorCounts,
+    galaxySizeIsCustom,
+    galaxyStarCount,
+    galaxyStarCountMax,
+    setGalaxySectors,
+    setGalaxyStarCount,
     VICTORY_PERCENT_MIN,
     VICTORY_TIME_LIMIT_YEARS_MAX,
     VICTORY_TIME_LIMIT_YEARS_MIN,
@@ -854,8 +866,10 @@ function buildJumpStartPage(options: StartGameOptions): HTMLDivElement {
     function buildSliders(): void {
         for (const el of sliders) el.remove();
         sliders = [
-            makeWizardSlider('Star Amount', STAR_AMOUNT_TICKS, options.starCountIndex, (i) => { options.starCountIndex = i; }),
-            makeWizardSlider('Physical Size', PHYSICAL_SIZE_TICKS, options.dimensionIndex, (i) => { options.dimensionIndex = i; }),
+            ...(() => {
+                const size = makeGalaxySizeControls(options);
+                return [size.stars, size.size];
+            })(),
             makeWizardSlider('Difficulty', DIFFICULTY_TICKS, options.difficultyIndex, (i) => { options.difficultyIndex = i; }),
         ];
         for (const el of sliders) grid.appendChild(el);
@@ -896,6 +910,128 @@ function buildJumpStartPage(options: StartGameOptions): HTMLDivElement {
 // ---------------------------------------------------------------------------
 
 // A titled range slider with one label per tick (task 06c/06f; shared by the galaxy and empire pages).
+/**
+ * Custom galaxy size (not a port): the "Star Amount" and "Physical Size" controls as number boxes — a star-count box and
+ * "Sectors: W × H" — each with a preset list holding the original slider values (Start.cs method_60 / method_69), so a
+ * preset still starts the original game. A density warning shows when a custom size leaves the presets' range.
+ */
+function makeGalaxySizeControls(options: StartGameOptions): { stars: HTMLDivElement; size: HTMLDivElement; sync: () => void } {
+    const numberBox = (cls: string, min: number, max: number): HTMLInputElement => {
+        const box = document.createElement('input');
+        box.type = 'number';
+        box.className = `wizard-size-box ${cls}`;
+        box.min = String(min);
+        box.max = String(max);
+        box.step = '1';
+        return box;
+    };
+    const presetSelect = (cls: string, labels: readonly string[]): HTMLSelectElement => {
+        const sel = document.createElement('select');
+        sel.className = `wizard-size-preset ${cls}`;
+        sel.replaceChildren(...['Custom', ...labels].map((t, i) => {
+            const opt = document.createElement('option');
+            opt.value = String(i - 1);
+            opt.textContent = t;
+            if (i === 0) opt.disabled = true;
+            return opt;
+        }));
+        return sel;
+    };
+    const block = (title: string): { wrap: HTMLDivElement; row: HTMLDivElement } => {
+        const wrap = document.createElement('div');
+        wrap.className = 'wizard-slider wizard-size-control';
+        const label = document.createElement('div');
+        label.className = 'wizard-slider-title';
+        label.textContent = title;
+        wrap.appendChild(label);
+        const row = document.createElement('div');
+        row.className = 'wizard-size-row';
+        wrap.appendChild(row);
+        return { wrap, row };
+    };
+
+    // Star Amount: [count] [preset].
+    const starBlock = block('Star Amount');
+    const starBox = numberBox('wizard-star-count', GALAXY_STAR_COUNT_MIN, galaxyStarCountMax(options));
+    const starPreset = presetSelect('wizard-star-preset', STAR_AMOUNT_TICKS);
+    const starUnit = document.createElement('span');
+    starUnit.className = 'wizard-size-unit';
+    starUnit.textContent = 'stars';
+    starBlock.row.append(starBox, starUnit, starPreset);
+
+    // Physical Size: Sectors: [W] × [H] [preset].
+    const sizeBlock = block('Physical Size');
+    const sectorsLabel = document.createElement('span');
+    sectorsLabel.className = 'wizard-size-unit';
+    sectorsLabel.textContent = 'Sectors:';
+    const wBox = numberBox('wizard-sectors-w', CUSTOM_MIN_SECTORS, CUSTOM_MAX_SECTORS);
+    const times = document.createElement('span');
+    times.className = 'wizard-size-unit';
+    times.textContent = '×';
+    const hBox = numberBox('wizard-sectors-h', CUSTOM_MIN_SECTORS, CUSTOM_MAX_SECTORS);
+    const sizePreset = presetSelect('wizard-sectors-preset', PHYSICAL_SIZE_TICKS.map((t) => t.replace(/ sectors$/, '')));
+    sizeBlock.row.append(sectorsLabel, wBox, times, hBox, sizePreset);
+    const warning = document.createElement('div');
+    warning.className = 'wizard-density-warning';
+    sizeBlock.wrap.appendChild(warning);
+
+    /** Re-reads the options; `boxes` false leaves the number boxes as typed (while the user is still typing). */
+    function sync(boxes = true): void {
+        const { width, height } = galaxySectorCounts(options);
+        const stars = galaxyStarCount(options);
+        if (boxes) {
+            starBox.value = String(stars);
+            wBox.value = String(width);
+            hBox.value = String(height);
+        }
+        starBox.max = String(galaxyStarCountMax(options));
+        starPreset.value = String(options.customStarCount === undefined ? STAR_COUNT_PRESETS.indexOf(stars) : -1);
+        sizePreset.value = String(width === height && options.customSectorWidth === undefined ? SECTOR_PRESETS.indexOf(width) : -1);
+        const warn = galaxyDensityWarning(options);
+        warning.textContent = warn?.text ?? '';
+        warning.dataset.kind = warn?.kind ?? '';
+        warning.hidden = warn === null;
+        sizeBlock.wrap.classList.toggle('wizard-size-custom', galaxySizeIsCustom(options));
+    }
+    const readInt = (box: HTMLInputElement): number | null => {
+        const v = parseInt(box.value, 10);
+        return Number.isNaN(v) ? null : v;
+    };
+    const applyStars = (commit: boolean): void => {
+        const v = readInt(starBox);
+        if (v !== null) setGalaxyStarCount(options, v);
+        sync(commit);
+    };
+    const applySectors = (commit: boolean): void => {
+        const w = readInt(wBox);
+        const h = readInt(hBox);
+        if (w !== null && h !== null) {
+            setGalaxySectors(options, w, h);
+            // The star box shows the count the new size allows.
+            starBox.value = String(galaxyStarCount(options));
+        }
+        sync(commit);
+    };
+    starBox.addEventListener('input', () => applyStars(false));
+    starBox.addEventListener('change', () => applyStars(true));
+    wBox.addEventListener('input', () => applySectors(false));
+    hBox.addEventListener('input', () => applySectors(false));
+    wBox.addEventListener('change', () => applySectors(true));
+    hBox.addEventListener('change', () => applySectors(true));
+    starPreset.addEventListener('change', () => {
+        const i = parseInt(starPreset.value, 10);
+        if (i >= 0) setGalaxyStarCount(options, STAR_COUNT_PRESETS[i]);
+        sync();
+    });
+    sizePreset.addEventListener('change', () => {
+        const i = parseInt(sizePreset.value, 10);
+        if (i >= 0) setGalaxySectors(options, SECTOR_PRESETS[i], SECTOR_PRESETS[i]);
+        sync();
+    });
+    sync();
+    return { stars: starBlock.wrap, size: sizeBlock.wrap, sync };
+}
+
 function makeWizardSlider(title: string, ticks: string[], defaultIndex: number, onChange: (i: number) => void): HTMLDivElement {
     const sliderWrap = document.createElement('div');
     sliderWrap.className = 'wizard-slider';
@@ -986,12 +1122,10 @@ function buildGalaxyPage(options: StartGameOptions): HTMLDivElement {
     sliderGrid.className = 'wizard-slider-grid';
     wrap.appendChild(sliderGrid);
 
-    sliderGrid.appendChild(makeSlider('Star Amount', STAR_AMOUNT_TICKS, options.starCountIndex, (i) => {
-        options.starCountIndex = i;
-    }));
-    sliderGrid.appendChild(makeSlider('Physical Size', PHYSICAL_SIZE_TICKS, options.dimensionIndex, (i) => {
-        options.dimensionIndex = i;
-    }));
+    // Star Amount / Physical Size: number boxes with the original slider values as presets (makeGalaxySizeControls).
+    const sizeControls = makeGalaxySizeControls(options);
+    sliderGrid.appendChild(sizeControls.stars);
+    sliderGrid.appendChild(sizeControls.size);
     sliderGrid.appendChild(makeSlider('Colony Prevalence', COLONY_PREVALENCE_TICKS, options.colonyPrevalenceIndex, (i) => {
         options.colonyPrevalenceIndex = i;
     }));
@@ -1110,6 +1244,7 @@ function buildGalaxyPage(options: StartGameOptions): HTMLDivElement {
     (wrap as unknown as { __onShow?: () => void }).__onShow = () => {
         for (const r of shapeList.querySelectorAll<HTMLInputElement>('input[type=radio]')) r.checked = Number(r.value) === options.shape;
         updatePreview();
+        sizeControls.sync();
     };
 
     return wrap;
@@ -2459,8 +2594,8 @@ function buildStartPage(options: StartGameOptions): HTMLDivElement {
             ['Playstyle', typeSpec !== undefined ? wt(typeSpec.titleTag, typeSpec.title) : String(options.empireType)],
             ...(pirate ? [['Pirate Playstyle', PIRATE_PLAYSTYLE_NAMES[options.piratePlayStyleIndex ?? 0] ?? 'Balanced'] as [string, string]] : []),
             ['Galaxy Shape', shapeOpt.label],
-            ['Star Amount', STAR_AMOUNT_TICKS[options.starCountIndex] ?? `${starCountFor(options.starCountIndex)} stars`],
-            ['Physical Size', PHYSICAL_SIZE_TICKS[options.dimensionIndex] ?? `${sectorsFor(options.dimensionIndex)}×${sectorsFor(options.dimensionIndex)} sectors`],
+            ['Star Amount', options.customStarCount === undefined ? STAR_AMOUNT_TICKS[options.starCountIndex] ?? `${starCountFor(options.starCountIndex)} stars` : `${galaxyStarCount(options)} stars`],
+            ['Physical Size', options.customSectorWidth === undefined && options.customSectorHeight === undefined ? PHYSICAL_SIZE_TICKS[options.dimensionIndex] ?? `${sectorsFor(options.dimensionIndex)}×${sectorsFor(options.dimensionIndex)} sectors` : `${galaxySectorCounts(options).width}×${galaxySectorCounts(options).height} sectors`],
             ['Colony Prevalence', COLONY_PREVALENCE_TICKS[options.colonyPrevalenceIndex] ?? `index ${options.colonyPrevalenceIndex}`],
             ['Alien Life', ALIEN_LIFE_TICKS[options.alienLifeIndex] ?? `index ${options.alienLifeIndex}`],
             ['Space Creatures', SPACE_CREATURES_TICKS[options.spaceCreaturesIndex] ?? `index ${options.spaceCreaturesIndex}`],

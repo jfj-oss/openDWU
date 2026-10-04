@@ -68,7 +68,7 @@ import {
 import { buildInfoModel } from '../selectionInfo';
 import { empireFlagUrl, renderInfoModel } from '../selectionInfoView';
 import { habitatImageUrl, shipImageUrl } from '../selectionInfo';
-import { CROSSHAIR_COLOR, DIMMED_COLOR, GRID_COLOR, drawMapTerritory, galaxyMapScale, sectorColumnLabel, starBrushColor, starDotSizes } from './galaxyMap';
+import { CROSSHAIR_COLOR, DIMMED_COLOR, GRID_COLOR, drawMapTerritory, galaxyMapScale, sectorColumnLabel, sectorLabelStride, starBrushColor, starDotSizes } from './galaxyMap';
 import { drawGalaxyMapLayers } from './galaxyMapLayers';
 import { yardRows, waitRows, type ConstructionSite } from './constructionYards';
 import { openDesignEditor } from './designEditor';
@@ -973,7 +973,7 @@ function createShipsAndBasesList(opts: ShipsAndBasesListOptions): OpenState {
             ctx.moveTo(x, 0);
             ctx.lineTo(x, N);
             ctx.stroke();
-            if (i < nx) ctx.fillText(sectorColumnLabel(i), x + 2, 9);
+            if (i < nx && i % sectorLabelStride(nx, sec) === 0) ctx.fillText(sectorColumnLabel(i), x + 2, 9);
         }
         for (let j = 0; j <= ny; j++) {
             const y = Math.round(j * sec) + 0.5;
@@ -981,7 +981,7 @@ function createShipsAndBasesList(opts: ShipsAndBasesListOptions): OpenState {
             ctx.moveTo(0, y);
             ctx.lineTo(N, y);
             ctx.stroke();
-            if (j < ny && j > 0) ctx.fillText(String(j + 1), 2, y + 9);
+            if (j < ny && j > 0 && j % sectorLabelStride(ny, sec) === 0) ctx.fillText(String(j + 1), 2, y + 9);
         }
         const locations = filter !== FILTER_ALL ? rows.map((r) => r.stellarObject) : [];
         const sizes = starDotSizes(N, false);
