@@ -9,7 +9,9 @@ import { loadGameData } from '../../src/sim/data/gameData';
 import { CustomizationSet } from '../../src/sim/data/customization';
 import { createRequire } from 'node:module';
 
-const themeIndexLib = createRequire(import.meta.url)('../../desktop/themeIndex.cjs') as {
+// Resolved from __dirname (as dwuRoot below), not import.meta.url: the headless scripts (scripts/sim-run.mjs, soak.mjs,
+// lategame-start.mjs, ai-parity.mjs) bundle this file into a temp dir and define __dirname as test/helpers.
+const themeIndexLib = createRequire(resolve(__dirname, 'loadGameDataFs.ts'))('../../desktop/themeIndex.cjs') as {
     listThemes(root: string): string[];
     buildThemeIndex(root: string, set: string): { set: string; files: string[]; dirs: string[] } | null;
 };

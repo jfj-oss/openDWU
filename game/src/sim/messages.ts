@@ -105,7 +105,7 @@ export class EmpireMessage {
         if (subject instanceof Habitat) this.habitatSubject = subject;
         else if (subject instanceof BuiltObject) this.builtObjectSubject = subject;
         else if (subject instanceof EmpireClass) this.empireSubject = subject;
-        else if (isPoint(subject)) this.pointSubject = subject;
+        else if (isPoint(subject)) this.pointSubject = { x: subject.x, y: subject.y };
         else if (subject !== null && subject !== undefined) this.otherSubject = subject;
     }
 
@@ -114,8 +114,11 @@ export class EmpireMessage {
         return this.pointSubject;
     }
 
+    // C# Point is a struct: the message keeps its own copy. Holding the caller's object aliased every message sent with a
+    // shared constant (diplomacyTick.ts NO_POINT, civilianAI.ts POINT_EMPTY), so a save of a game that had been loaded
+    // encoded those messages differently from the game that kept running (the 2026-10-04 soak's save → load check).
     set location(value: Point) {
-        this.pointSubject = value;
+        this.pointSubject = { x: value.x, y: value.y };
     }
 
     // Subject getter: C# priority order among the kept slots (… Empire, Habitat, BuiltObject, …, Point).
