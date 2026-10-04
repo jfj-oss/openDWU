@@ -1,19 +1,21 @@
 // Texture loading/caching for the Main View. Original art is served from
 // `/assets/dwu/images/...` (mapped by the desktop shell / vite public
-// symlink to the user's DW:U install folder, see CLAUDE.md). The browser can't
-// enumerate the install's art folders, so `scripts/gen-asset-manifest.mjs`
-// (predev/prebuild) writes public/asset-manifest.json = { "<folder under
-// images/environment/>": [sorted file names] }; loadManifest() fetches it at
-// boot and the URL builders below pick a REAL file out of each folder via
-// pictureRef modulo the folder's file count (the port's pictureRef values
-// don't match the original engine's offset scheme, so direct indexing would
-// 404). Without a manifest (no install) every builder returns [] and the
-// store falls back to generated textures — the view must render (and stay
-// console-clean) with or without the install.
+// symlink to the user's DW:U install folder, see CLAUDE.md). Planets, moons and
+// asteroids use Habitat.PictureRef directly as the original's HabitatImageCache
+// index (habitatPictureUrls, sim/galaxyImages.ts HABITAT_IMAGE_SETS). The
+// browser can't enumerate the install's art folders, so
+// `scripts/gen-asset-manifest.mjs` (predev/prebuild) writes
+// public/asset-manifest.json = { "<folder under images/environment/>": [sorted
+// file names] }; loadManifest() fetches it at boot and the star / gas-cloud URL
+// builders below pick a real file out of their folder via pictureRef modulo
+// the folder's file count. Without a manifest (no install) every builder
+// returns [] and the store falls back to generated textures — the view must
+// render (and stay console-clean) with or without the install.
 
 import { Assets, Texture } from 'pixi.js';
 import { Habitat, HabitatType } from '../sim/types';
-import { themedAssetUrl } from '../themeAssets';
+import { HABITAT_IMAGE_COUNT, habitatImageFile } from '../sim/galaxyImages';
+import { themedAssetUrl, themeOtherPlanetUrls } from '../themeAssets';
 
 // ---------------------------------------------------------------------------
 // Fallback colors (match the original art palettes: yellow/white main
@@ -82,9 +84,9 @@ export async function loadManifest(): Promise<void> {
 
 /**
  * Pick a real file from a manifest folder: `pictureRef` modulo the folder's
- * file count (task 02b1 — the port's pictureRef values don't align with the
- * original engine's offset scheme, so direct indexing would 404). Returns []
- * when the folder is unknown or empty.
+ * file count (stars and gas clouds: the port does not model their own picture
+ * indices, see sim/galaxy.ts SetupSun). Returns [] when the folder is unknown
+ * or empty.
  */
 export function pickFromFolder(folder: string, pictureRef: number): string[] {
     const files = MANIFEST[folder];
@@ -113,26 +115,6 @@ const STAR_MAP_FOLDERS: Record<string, string> = {
     [HabitatType.Neutron]: 'neutron',
     [HabitatType.BlackHole]: 'blackhole',
     [HabitatType.SuperNova]: 'flares',
-};
-
-// Planet/moon art folders per type (real install names under planets/).
-const PLANET_FOLDERS: Record<string, string> = {
-    [HabitatType.Volcanic]: 'volcanic',
-    [HabitatType.Desert]: 'sandydesert',
-    [HabitatType.MarshySwamp]: 'marshyswamp',
-    [HabitatType.Continental]: 'continental',
-    [HabitatType.Ocean]: 'ocean',
-    [HabitatType.BarrenRock]: 'barrenrock',
-    [HabitatType.Ice]: 'iceglacial',
-    [HabitatType.GasGiant]: 'gasgiant',
-    [HabitatType.FrozenGasGiant]: 'frozengasgiant',
-};
-
-// Asteroid belt art per composition (real install folders under asteroids/).
-const ASTEROID_FOLDERS: Record<string, string> = {
-    [HabitatType.BarrenRock]: 'rocky',
-    [HabitatType.Ice]: 'ice',
-    [HabitatType.Metal]: 'metal',
 };
 
 export function mapStarUrls(habitat: Habitat): string[] {
@@ -238,10 +220,38 @@ export async function sampleCentreColour(url: string): Promise<number> {
     return p;
 }
 
-/** Planet/moon sprite: type folder, index = pictureRef modulo file count. */
-export function planetUrls(habitat: Habitat): string[] {
-    const folder = `planets/${PLANET_FOLDERS[habitat.type] ?? 'ocean'}`;
-    return pickFromFolder(folder, habitat.pictureRef);
+const manifestSets = new WeakMap<string[], Set<string>>();
+/** Whether the manifest lists images/environment/`file` (folder/name). */
+function manifestHasFile(file: string): boolean {
+    const slash = file.lastIndexOf('/');
+    const files = MANIFEST[file.slice(0, slash)];
+    if (files === undefined) return false;
+    let set = manifestSets.get(files);
+    if (set === undefined) manifestSets.set(files, (set = new Set(files)));
+    return set.has(file.slice(slash + 1));
+}
+
+/**
+ * HabitatImageCache.ObtainImage(habitat.PictureRef) / ResolveImageFilename (HabitatImageCache.cs 236-268): the planet,
+ * moon or asteroid picture `pictureRef` — a fixed GalaxyImages picture (0-664, images/environment/<folder>/<file>, a
+ * theme's copy through themedAssetUrl) or a theme's planets/other picture (665+). Null when there is none: out of
+ * range (the C#'s empty file name), or the file is missing — LoadImage's File.Exists, answered by the asset manifest
+ * (so without an install, no manifest: null, and the views draw their generated fallback) or the active theme.
+ */
+export function habitatPictureUrl(pictureRef: number): string | null {
+    const file = habitatImageFile(pictureRef);
+    if (file !== null) {
+        const url = `${IMG}/environment/${file}`;
+        return manifestHasFile(file) || themedAssetUrl(url) !== url ? url : null;
+    }
+    if (!Number.isInteger(pictureRef) || pictureRef < HABITAT_IMAGE_COUNT) return null;
+    return themeOtherPlanetUrls()[pictureRef - HABITAT_IMAGE_COUNT] ?? null;
+}
+
+/** The planet / moon / asteroid sprite of `habitat` (habitatPictureUrl of its PictureRef) as a loadFirst list. */
+export function habitatPictureUrls(habitat: Habitat): string[] {
+    const url = habitatPictureUrl(habitat.pictureRef);
+    return url === null ? [] : [url];
 }
 
 /**
@@ -250,11 +260,6 @@ export function planetUrls(habitat: Habitat): string[] {
  */
 export function cloudUrls(habitat: Habitat): string[] {
     return pickFromFolder('nebulae', habitat.pictureRef);
-}
-
-export function asteroidUrls(habitat: Habitat): string[] {
-    const folder = `asteroids/${ASTEROID_FOLDERS[habitat.type] ?? 'rocky'}`;
-    return pickFromFolder(folder, habitat.pictureRef);
 }
 
 export const BACKDROP_URLS = [`${IMG}/environment/galaxybackdrops/galaxy_backdrop.jpg`];

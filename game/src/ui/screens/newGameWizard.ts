@@ -52,7 +52,7 @@ import {
 } from '../../sim/startGameOptions';
 import { isTextLoaded, loadText, tryGetText } from '../../sim/textResolver';
 import { pirateModifierLines } from './empireSummaryModel';
-import { piratePortraitUrl } from './diplomacyRelationsView';
+import { racePictureCanvas, racePicturePlan } from '../raceLandscapePicture';
 import { PIRATE_FLAG_SHAPES, pirateFlagShapeUrl } from '../empireEmblem';
 // [wizardB1] end
 import { parseRace, type Race } from '../../sim/data/races';
@@ -658,8 +658,9 @@ function buildTypePage(onChoose: (type: WizardEmpireType) => void): HTMLDivEleme
 }
 
 /** The pirate playstyle combo + its description and portrait (Start.cs 3384-3397 cmbVictoryPiratePlayStyle /
- *  lblPiratePlaystyleDescription / picStartNewGameYourEmpirePiratePlaystyle; text from Start.2.cs 3147 method_101). */
-function buildPiratePlaystyleSection(options: StartGameOptions): HTMLDivElement {
+ *  lblPiratePlaystyleDescription / picStartNewGameYourEmpirePiratePlaystyle; text from Start.2.cs 3147 method_101).
+ *  `pictureSize`: the picture box the C# composes into (300 Your Empire, 160 Jump Start; Start.cs 3397 / 3035). */
+function buildPiratePlaystyleSection(options: StartGameOptions, pictureSize: number): HTMLDivElement {
     const section = document.createElement('div');
     section.className = 'wizard-pirate-playstyle';
     const row = document.createElement('div');
@@ -683,9 +684,8 @@ function buildPiratePlaystyleSection(options: StartGameOptions): HTMLDivElement 
     body.className = 'wizard-pirate-playstyle-body';
     const text = document.createElement('div');
     text.className = 'wizard-pirate-playstyle-desc';
-    const img = document.createElement('img');
+    const img = document.createElement('div');
     img.className = 'wizard-pirate-playstyle-img';
-    img.alt = '';
     body.appendChild(text);
     body.appendChild(img);
     section.appendChild(body);
@@ -701,7 +701,11 @@ function buildPiratePlaystyleSection(options: StartGameOptions): HTMLDivElement 
         const style = piratePlayStyleFor(i);
         const lines = [wt(`Pirate Playstyle Description ${DESC_TAGS[i] ?? 'Balanced'}`, DESC_FALLBACK[i] ?? DESC_FALLBACK[0]), '', ...pirateModifierLines(style).map((l) => l.text)];
         text.textContent = lines.join('\n').trim();
-        img.src = piratePortraitUrl(style);
+        // Start.2.cs 3191 / 3201: method_119(null, the selected race, size, size, bitmap_31, 6, pirate: true, style) — the
+        // playstyle's pirate image on storyEvent.jpg in the panel frame; nothing for "(Random)" (no race).
+        const race = cachedRaces?.find((r) => r.name === options.raceName) ?? null;
+        if (cachedRaces === null) void loadWizardRaceData().then(paint, () => {});
+        img.replaceChildren(racePictureCanvas(racePicturePlan({ empire: null, race, width: pictureSize, height: pictureSize, inset: 6, pirate: true, piratePlayStyle: style }), 'wizard-race-picture'));
     }
     select.addEventListener('change', () => {
         options.piratePlayStyleIndex = parseInt(select.value, 10);
@@ -810,25 +814,20 @@ function buildJumpStartPage(options: StartGameOptions): HTMLDivElement {
     top.appendChild(empireCol);
     const raceSel = makeWizardSelect('Race', ['(Random)'], () => 0, () => {});
     empireCol.appendChild(raceSel.row);
-    const raceImg = document.createElement('img');
+    const raceImg = document.createElement('div');
     raceImg.className = 'wizard-jumpstart-race-img';
-    raceImg.alt = '';
     empireCol.appendChild(raceImg);
     const govSel = makeWizardSelect('Government', ['(Random)'], () => 0, () => {});
     empireCol.appendChild(govSel.row);
-    const pirateSection = buildPiratePlaystyleSection(options);
+    const pirateSection = buildPiratePlaystyleSection(options, 160);
     empireCol.appendChild(pirateSection);
     let races: Race[] = [];
     let governments: Government[] = [];
     function paintRace(): void {
-        const race = races.find((r) => r.name === options.raceName);
-        if (race === undefined) {
-            raceImg.removeAttribute('src');
-            raceImg.style.visibility = 'hidden';
-        } else {
-            raceImg.style.visibility = '';
-            raceImg.src = racePortraitUrls(race.pictureIndex)[0];
-        }
+        // Start.cs 5152: picJumpStartYourEmpireRace (160 × 160) = method_118(null, race, 160, 160, bitmap_31, 6, false) —
+        // the race on its native landscape in the panel frame; empty for "(Random)".
+        const race = races.find((r) => r.name === options.raceName) ?? null;
+        raceImg.replaceChildren(racePictureCanvas(racePicturePlan({ empire: null, race, width: 160, height: 160, inset: 6, pirate: false }), 'wizard-race-picture'));
     }
     raceSel.select.addEventListener('change', () => {
         const i = parseInt(raceSel.select.value, 10);
@@ -1595,7 +1594,9 @@ function renderRacePage(
 
     function selectRace(race: Race): void {
         options.raceName = race.name;
-        detailPortrait.replaceChildren(makeRacePortrait(race.pictureIndex, race.name, 'wizard-race-portrait'));
+        // picStartNewGameYourEmpireRace (300 × 300, Start.cs 3579): method_118(null, race, 300, 300, bitmap_31, 6, false)
+        // (Start.1.cs 4189) — the race on its native landscape in the panel frame.
+        detailPortrait.replaceChildren(racePictureCanvas(racePicturePlan({ empire: null, race, width: 300, height: 300, inset: 6, pirate: false }), 'wizard-race-picture wizard-race-portrait'));
         detailName.textContent = race.name;
         detailFamily.textContent = `Family: ${familyName(race.raceFamily)}`;
         statsGrid.replaceChildren(...buildStatsCells(race));
@@ -1738,7 +1739,7 @@ function buildEmpirePage(options: StartGameOptions): HTMLDivElement {
     wrap.appendChild(eraGrid);
     // [wizardB1] the pirate playstyle (Start.cs 3384-3420 method_40: shown instead of government / home system / size /
     // corruption for a pirate start).
-    const pirateSection = buildPiratePlaystyleSection(options);
+    const pirateSection = buildPiratePlaystyleSection(options, 300);
     wrap.appendChild(pirateSection);
 
     // --- Government (dropdown + modifier table) ---
@@ -1969,6 +1970,8 @@ function buildEmpirePage(options: StartGameOptions): HTMLDivElement {
             }
         }
         updateFlagPreview();
+        // Start.1.cs 4176 method_207 → method_101: the pirate playstyle picture shows the selected race.
+        (pirateSection as unknown as { __paint?: () => void }).__paint?.();
     }
     (wrap as unknown as { __onRaceChanged?: WizardRaceChangedHandler }).__onRaceChanged = onRaceChanged;
 

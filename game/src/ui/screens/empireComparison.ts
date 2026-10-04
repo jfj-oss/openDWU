@@ -69,7 +69,7 @@ import { strategicValue } from '../../sim/territory';
 import { habitatDevelopmentLevel } from '../../sim/developmentLevel';
 import { planetaryFacilityDefinitionsStatic } from '../../sim/construction/facilities';
 import type { RaceVictoryCondition } from '../../sim/data/races';
-import { asteroidUrls, planetUrls } from '../../render/assets';
+import { habitatPictureUrl } from '../../render/assets';
 import { applyEmpireEmblem } from '../empireEmblem';
 import { openOriginalWindow, place, tabStrip } from '../originalWindow';
 import { victoryConditionDescription } from './galactopedia';
@@ -1274,8 +1274,7 @@ const COMPARISON_TITLE_KEYS: Record<ComparisonKind, string> = {
 
 /** The small habitat picture (habitatImageCache GetImagesSmall[PictureRef]): colonies are planets, moons or asteroids. */
 function colonyImageUrl(h: Habitat): string | null {
-    const urls = h.category === HabitatCategoryType.Asteroid ? asteroidUrls(h) : planetUrls(h);
-    return urls[0] ?? null;
+    return habitatPictureUrl(h.pictureRef);
 }
 
 /** TopColonies.cs DrawColonies. */

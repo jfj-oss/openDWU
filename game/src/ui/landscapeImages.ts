@@ -7,8 +7,8 @@
 // LoadEnvLandscapes also appends images/environment/landscapes/other/*.png after the 30 fixed pictures (the stock game
 // has no such folder; a theme set may, themeAssets.ts); only the habitat editor (not ported) can pick one, so indices
 // 30+ show nothing. A theme's copies of the 30 come through the DOM URL hook (ui/themeUrlHook.ts).
-// TODO(port): the race picture composite on a native-planet landscape, bitmap_29[LandscapeImageOffset<NativeType> +
-// race.PictureRef % LandscapeImageCount<NativeType>] — Main.Part11.cs method_119 / method_121 (Start screens' race images).
+// The race picture on its native landscape (bitmap_29[method_121(race)], Main.Part11.cs method_119 — the diplomacy talk
+// panel and the start screens) is ui/raceLandscapePicture.ts.
 
 import { LANDSCAPE_IMAGE_FOLDERS } from '../sim/galaxyImages';
 

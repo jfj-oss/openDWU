@@ -1,19 +1,19 @@
-// Index math for the real-art URL builders (task 02b1): pictureRef is taken
-// modulo the manifest folder's file count, so any pictureRef value maps onto
-// an existing file. The builders live in src/render/assets.ts which imports
-// pixi.js, so this test stubs that module before importing them.
+// Index math for the real-art URL builders: planets, moons and asteroids index the original's HabitatImageCache table
+// by Habitat.PictureRef (GalaxyImages.cs, habitatPictureUrls); stars and gas clouds take pictureRef modulo the
+// manifest folder's file count (task 02b1). The builders live in src/render/assets.ts which imports pixi.js, so this
+// test stubs that module before importing them.
 import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('pixi.js', () => ({ Assets: { load: vi.fn() }, Texture: class {} }));
 
-const { MANIFEST, pickFromFolder, mapStarUrls, starSpriteUrls, planetUrls, cloudUrls, asteroidUrls } = await import(
+const { MANIFEST, pickFromFolder, mapStarUrls, starSpriteUrls, habitatPictureUrl, habitatPictureUrls, cloudUrls } = await import(
     '../src/render/assets'
 );
 import type { Habitat } from '../src/sim/types';
-import { HabitatType } from '../src/sim/types';
+import { HabitatCategoryType, HabitatType } from '../src/sim/types';
 
-function habitat(type: HabitatType, pictureRef: number): Habitat {
-    return { type, pictureRef } as unknown as Habitat;
+function habitat(type: HabitatType, pictureRef: number, category = HabitatCategoryType.Planet): Habitat {
+    return { type, pictureRef, category } as unknown as Habitat;
 }
 
 describe('pickFromFolder (pictureRef % fileCount)', () => {
@@ -69,11 +69,17 @@ describe('URL builders with a loaded manifest', () => {
         expect(urls).toContain('/assets/dwu/images/environment/stars/star_blackhole_0.png');
     });
 
-    it('planets use the type folder with real install names', () => {
-        MANIFEST['planets/sandydesert'] = ['Desert-0001.png', 'Desert-0002.png'];
-        expect(planetUrls(habitat(HabitatType.Desert, 1105))).toEqual([
-            '/assets/dwu/images/environment/planets/sandydesert/Desert-0002.png', // 1105 % 2 = 1
-        ]);
+    it('planets, moons and asteroids draw HabitatImageCache[PictureRef] (GalaxyImages index, no modulo)', () => {
+        MANIFEST['planets/sandydesert'] = ['Desert-0001.png', 'Desert-0002.png', 'Desert-0026.png'];
+        // HabitatImageOffsetDesert = 204: 205 is the second desert picture, whatever the habitat's type.
+        expect(habitatPictureUrls(habitat(HabitatType.Desert, 205))).toEqual(['/assets/dwu/images/environment/planets/sandydesert/Desert-0002.png']);
+        expect(habitatPictureUrls(habitat(HabitatType.Ocean, 204, HabitatCategoryType.Moon))).toEqual(['/assets/dwu/images/environment/planets/sandydesert/Desert-0001.png']);
+        // LoadImage's File.Exists: a picture missing from the install (manifest) is no image.
+        expect(habitatPictureUrls(habitat(HabitatType.Desert, 206))).toEqual([]);
+        // Out of the table (no theme planets/other images): none, and no wrap-around.
+        expect(habitatPictureUrl(665)).toBeNull();
+        expect(habitatPictureUrl(-1)).toBeNull();
+        expect(habitatPictureUrl(1105)).toBeNull();
     });
 
     it('gas clouds share the flat nebulae folder', () => {
@@ -83,11 +89,11 @@ describe('URL builders with a loaded manifest', () => {
         ]);
     });
 
-    it('asteroids index per composition folder', () => {
-        MANIFEST['asteroids/metal'] = ['AstCryst-0001.png', 'AstCryst-0002.png', 'AstCryst-0003.png'];
-        expect(asteroidUrls(habitat(HabitatType.Metal, 2200))).toEqual([
-            '/assets/dwu/images/environment/asteroids/metal/AstCryst-0002.png', // 2200 % 3 = 1
-        ]);
+    it('asteroids: AsteroidsMetal 549, Gold 649, Crystal 657 all live in asteroids/metal', () => {
+        MANIFEST['asteroids/metal'] = ['AstCryst-0001.png', 'AstCryst-0002.png', 'AstGold-0008.png', 'AstMtl-0001.png'];
+        expect(habitatPictureUrls(habitat(HabitatType.Metal, 658, HabitatCategoryType.Asteroid))).toEqual(['/assets/dwu/images/environment/asteroids/metal/AstCryst-0002.png']);
+        expect(habitatPictureUrls(habitat(HabitatType.Metal, 656, HabitatCategoryType.Asteroid))).toEqual(['/assets/dwu/images/environment/asteroids/metal/AstGold-0008.png']);
+        expect(habitatPictureUrls(habitat(HabitatType.Metal, 549, HabitatCategoryType.Asteroid))).toEqual(['/assets/dwu/images/environment/asteroids/metal/AstMtl-0001.png']);
     });
 
     it('all builders return [] when no manifest is loaded', () => {
@@ -96,8 +102,8 @@ describe('URL builders with a loaded manifest', () => {
         // Non-black-hole stars still emit the shared disc URL; black holes only the fixed disc.
         expect(starSpriteUrls(habitat(HabitatType.RedGiant, 85))).toEqual(['/assets/dwu/images/environment/stars/star_disc_1.png']);
         expect(starSpriteUrls(habitat(HabitatType.BlackHole, 95))).toEqual(['/assets/dwu/images/environment/stars/star_blackhole_0.png']);
-        expect(planetUrls(habitat(HabitatType.Ocean, 900))).toEqual([]);
+        expect(habitatPictureUrls(habitat(HabitatType.Ocean, 190))).toEqual([]);
         expect(cloudUrls(habitat(HabitatType.Hydrogen, 79))).toEqual([]);
-        expect(asteroidUrls(habitat(HabitatType.BarrenRock, 2000))).toEqual([]);
+        expect(habitatPictureUrls(habitat(HabitatType.BarrenRock, 249, HabitatCategoryType.Asteroid))).toEqual([]);
     });
 });

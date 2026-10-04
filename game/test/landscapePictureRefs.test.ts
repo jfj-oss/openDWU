@@ -209,9 +209,12 @@ describe('draw order (Galaxy.6.cs SelectXxxPlanet / SelectHabitatPictures)', () 
 
     it('generation draws exactly as before the port (counts and state measured on the pre-port code)', () => {
         // Values measured on commit c602b02 (placeholder landscape refs); the port changed only the landscape values.
+        // seed5Habitats and seed1SaveWithoutLandscapes also hold Habitat.PictureRef: re-measured after the faithful
+        // pictureRef port, which test/habitatPictureRefs.test.ts checks with the picture refs blanked as well.
         expect(measured.seed5Draws).toMatchPin('landscapeRefs.seed5Draws', { rnd: 175856, crypto: 364815 });
         expect(measured.seed5Digest).toMatchPin('landscapeRefs.seed5Digest', '92e5c3c9a325a220');
-        expect(measured.seed5Habitats).toMatchPin('landscapeRefs.seed5Habitats', '653464fabe0e725ad2b8d49e6b5ba6a72f7711bb');
+        // Moved #c1c7b97f32 → #3f3ecd6438: faithful habitat pictureRef (Galaxy.6.cs) (2026-10-04)
+        expect(measured.seed5Habitats).toMatchPin('landscapeRefs.seed5Habitats', "fc670e93621db6127454131478fb742e5dfe49ff");
         expect(measured.seed1Draws).toMatchPin('landscapeRefs.seed1Draws', { rnd: 288729, crypto: 587179 });
         expect(measured.seed1Digest).toMatchPin('landscapeRefs.seed1Digest', '0cecc3d70b1487e6');
         // The whole saved game, landscape refs blanked (on a loaded copy, so `game` keeps its refs).
@@ -220,7 +223,8 @@ describe('draw order (Galaxy.6.cs SelectXxxPlanet / SelectHabitatPictures)', () 
         const start = { ...defaultStartGameOptions(), seed: 1 };
         const copy = deserializeGame(serializeGame(game, time, start), gameData);
         for (const h of copy.game.galaxy.habitats) h.landscapePictureRef = -2;
-        expect(sha(serializeGame(copy.game, copy.time, start))).toMatchPin('landscapeRefs.seed1SaveWithoutLandscapes', 'c9579e8c66bc8d8322591bc7f6ab35f498b38f08');
+        // Moved #f49403b7b3 → #869ba44598: faithful habitat pictureRef (Galaxy.6.cs) (2026-10-04)
+        expect(sha(serializeGame(copy.game, copy.time, start))).toMatchPin('landscapeRefs.seed1SaveWithoutLandscapes', "807e8031584be1083a010eeea94c4bb06ab0b8d8");
     });
 });
 

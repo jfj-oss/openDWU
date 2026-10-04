@@ -42,7 +42,7 @@ import type { ConstructionQueue } from '../sim/construction/constructionQueue';
 import { builtObjectImageUrl, resolveDrawPictureRef } from '../render/builtObjectLayer';
 import { fighterImageUrl } from '../render/fighterLayer';
 import { FighterMissionType, type Fighter } from '../sim/combat/fighters';
-import { asteroidUrls, cloudUrls, mapStarUrls, planetUrls } from '../render/assets';
+import { cloudUrls, habitatPictureUrl, mapStarUrls } from '../render/assets';
 import { racePortraitUrl } from './empireEmblem';
 import { abundancePercentText } from './resourceAbundance';
 import { habitatTypeLabel, hyperjumpStatusText, invasionVsText, missionTargetText, missionTypeLabel, resourceIconUrl, threatRows, troopStrengthText } from './hud';
@@ -279,21 +279,15 @@ export function facilityImageUrl(pictureRef: number): string {
 /** The small picture of a habitat (habitatImageCache GetImagesSmall): the planet / moon / asteroid / cloud sprite, a
  *  star's map icon. Null without art. */
 export function habitatImageUrl(h: Habitat): string | null {
-    let urls: string[];
     switch (h.category) {
         case HabitatCategoryType.Star:
-            urls = mapStarUrls(h);
-            break;
-        case HabitatCategoryType.Asteroid:
-            urls = asteroidUrls(h);
-            break;
+            return mapStarUrls(h)[0] ?? null;
         case HabitatCategoryType.GasCloud:
-            urls = cloudUrls(h);
-            break;
+            return cloudUrls(h)[0] ?? null;
         default:
-            urls = planetUrls(h);
+            // Planets, moons, asteroids: HabitatImageCache[habitat.PictureRef].
+            return habitatPictureUrl(h.pictureRef);
     }
-    return urls[0] ?? null;
 }
 
 export function shipImageUrl(bo: BuiltObject): string | null {

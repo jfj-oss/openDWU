@@ -213,3 +213,8 @@ Appended by `npm run repin -- --reason "<why>"` (scripts/repin.mjs).
 ## 2026-10-04 — message pipeline runs inside the sim tick (determinism; worker parity)
 
 - `tickDeterminism.digest600` (test/tickDeterminism.test.ts): Moved "3a9cc8b9c4f924da" → "e3f6e6fa3f5b926b": message pipeline runs inside the sim tick (determinism; worker parity)
+
+## 2026-10-04 — faithful habitat pictureRef (Galaxy.6.cs)
+
+- `landscapeRefs.seed5Habitats` (test/landscapePictureRefs.test.ts): Moved #c1c7b97f32 → #3f3ecd6438: faithful habitat pictureRef (Galaxy.6.cs)
+- `landscapeRefs.seed1SaveWithoutLandscapes` (test/landscapePictureRefs.test.ts): Moved #f49403b7b3 → #869ba44598: faithful habitat pictureRef (Galaxy.6.cs)

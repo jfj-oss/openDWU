@@ -20,7 +20,7 @@ import { BuiltObjectRole } from '../sim/data/designSpecifications';
 import { findAbandonedShipsInDebrisField } from '../sim/events';
 import type { Galaxy } from '../sim/galaxy';
 import type { TechNode } from '../sim/researchSystem';
-import { LandscapeImageOffsetOcean } from '../sim/galaxyImages';
+import { HabitatImageOffsetContinental, HabitatImageOffsetOcean, LandscapeImageOffsetOcean } from '../sim/galaxyImages';
 
 const CHROME = '/assets/dwu/images/ui/chrome/';
 const MESSAGES = '/assets/dwu/images/ui/messages/';
@@ -56,6 +56,8 @@ export type EventPicture =
     | { kind: 'ship'; builtObject: BuiltObject }
     /** habitatImageCache.ObtainImage(habitat). */
     | { kind: 'habitat'; habitat: Habitat }
+    /** habitatImageCache.ObtainImage(pictureRef): a fixed GalaxyImages habitat picture. */
+    | { kind: 'habitatPicture'; ref: number }
     /** bitmap_29[Habitat.LandscapePictureRef]. */
     | { kind: 'landscape'; ref: number }
     /** characterImageCache.ObtainCharacterImage. */
@@ -193,10 +195,10 @@ function raceEventPicture(type: RaceEventType, player: Empire, galaxy: Galaxy | 
     };
     switch (type) {
         case R.NepthysWineVintage: {
-            // An ocean planet beside the Nepthys Wine picture.
+            // Main.Part4.cs:1186-1192: method_654(habitatImageCache.ObtainImage(HabitatImageOffsetOcean + 1) 150 × 150,
+            // the Nepthys Wine picture) — the second ocean planet beside the resource; nothing without the resource.
             const wine = galaxy?.resourceSystem.resources.find((r) => r.name === 'Nepthys Wine') ?? null;
-            // TODO(port): habitatImageCache.ObtainImage(HabitatImageOffsetOcean + 1) — the generic ocean planet picture
-            return wine !== null ? url(resourceImageUrl(wine.pictureRef)) : null;
+            return wine !== null ? { kind: 'pair', left: { kind: 'habitatPicture', ref: HabitatImageOffsetOcean + 1 }, right: url(resourceImageUrl(wine.pictureRef)) } : null;
         }
         case R.UnderwaterLeviathan:
             // Main.Part4.cs:1197: bitmap_29[LandscapeImageOffsetOcean + 1] — the second ocean landscape.
@@ -205,8 +207,9 @@ function raceEventPicture(type: RaceEventType, player: Empire, galaxy: Galaxy | 
             // TODO(port): the empire's standard frigate picture (ShipImageHelper.ResolveStandardShipImageByFamilyAndSubRole) — Main.Part4.cs:1191-1197
             return null;
         case R.NaturalHarmonyColonyQualityIncreased:
-            // TODO(port): the generic continental planet picture (HabitatImageOffsetContinental + 1) — Main.Part4.cs:1199
-            return null;
+            // Main.Part4.cs:1207-1208: habitatImageCache.ObtainImage(HabitatImageOffsetContinental + 1), the second
+            // continental planet.
+            return { kind: 'habitatPicture', ref: HabitatImageOffsetContinental + 1 };
         case R.ForcedRetirementLeaderReplaced: {
             const c = eventCharacter();
             if (c !== null) return c;

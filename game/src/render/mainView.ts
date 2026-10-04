@@ -30,7 +30,6 @@ import {
     CLOUD_COLORS,
     PLANET_COLORS,
     STAR_COLORS,
-    asteroidUrls,
     cloudUrls,
     coronaFrameIndex,
     coronaFrameUrls,
@@ -42,7 +41,7 @@ import {
     makeStarSpriteTexture,
     manifestFiles,
     mapStarUrls,
-    planetUrls,
+    habitatPictureUrls,
     sampleCentreColour,
     scaleColour,
     starDiscUrl,
@@ -1625,7 +1624,8 @@ export class MainView {
             }
         }
 
-        // Lazy per-habitat sprite loading (pictureRef-selected art).
+        // Lazy per-habitat sprite loading: planets, moons and asteroids draw HabitatImageCache[PictureRef]
+        // (assets.ts habitatPictureUrls); stars their map / system art.
         const lazyLoads: Promise<unknown>[] = [];
         for (const sv of this.systems) {
             const star = sv.system.systemStar;
@@ -1644,7 +1644,7 @@ export class MainView {
             for (const planet of sv.planets) {
                 lazyLoads.push(
                     store
-                        .loadFirst(planetUrls(planet.habitat), () => makePlanetTexture(PLANET_COLORS[planet.habitat.type] ?? '#888888'))
+                        .loadFirst(habitatPictureUrls(planet.habitat), () => makePlanetTexture(PLANET_COLORS[planet.habitat.type] ?? '#888888'))
                         .then((tex) => {
                             planet.sprite.texture = tex;
                         }),
@@ -1653,7 +1653,7 @@ export class MainView {
                 for (const moon of planet.moons) {
                     lazyLoads.push(
                         store
-                            .loadFirst(planetUrls(moon.habitat), () => makePlanetTexture(PLANET_COLORS[moon.habitat.type] ?? '#888888'))
+                            .loadFirst(habitatPictureUrls(moon.habitat), () => makePlanetTexture(PLANET_COLORS[moon.habitat.type] ?? '#888888'))
                             .then((tex) => {
                                 moon.dot.texture = tex;
                             }),
@@ -1665,7 +1665,7 @@ export class MainView {
                 const h = sv.rockHabitats[i];
                 lazyLoads.push(
                     store
-                        .loadFirst(asteroidUrls(h), () => this.textures.rock)
+                        .loadFirst(habitatPictureUrls(h), () => this.textures.rock)
                         .then((tex) => {
                             rock.texture = tex;
                             rock.scale.set((h.diameter * 0.45) / tex.width);

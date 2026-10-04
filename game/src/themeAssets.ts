@@ -231,3 +231,17 @@ export function themeArtFolder(relDir: string): { files: string[]; subfolders: s
 export function themeMenuBackgroundUrl(): string | null {
     return activeCustomizationSet()?.fileUrl('images/customBackgroundImage.jpg') ?? null;
 }
+
+/**
+ * HabitatImageCache.cs GenerateHabitatImageFilepaths 334-343: with a theme whose images\environment\planets\other\
+ * folder exists, its *.png (Directory.GetFiles order) follow the 665 fixed habitat pictures — Habitat.PictureRef
+ * HabitatImageOffsetOTHER + i is the i-th (GalaxyImages.cs 35). The theme's file URLs, [] with no theme or no folder.
+ * (The fixed pictures are themed per file, GetFilePathForImage: themedAssetUrl's default rule.)
+ */
+export function themeOtherPlanetUrls(): string[] {
+    const set = activeCustomizationSet();
+    if (set === null) return [];
+    const dir = 'images/environment/planets/other';
+    if (!set.dirExists(dir)) return [];
+    return set.listFiles(dir, '.png').map((f) => set.listedFileUrl(dir, f));
+}

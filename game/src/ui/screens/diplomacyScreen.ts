@@ -40,7 +40,8 @@ import {
 } from '../../sim/diplomacy';
 import { determineDesiredDiplomaticRelationTypical, MANUAL } from '../../sim/diplomacyTick';
 import { galaxyStarDate } from '../../sim/tick/simTime';
-import { applyEmpireEmblem, racePortraitUrl } from '../empireEmblem';
+import { applyEmpireEmblem, racePortraitUrl, resolveEmpireEmblem, stockEmblem } from '../empireEmblem';
+import { empireRacePicture } from '../raceLandscapePicture';
 import type { Habitat } from '../../sim/types';
 import { BuiltObjectRole } from '../../sim/data/designSpecifications';
 import { totalColonyStrategicValue } from '../../sim/forceStructure';
@@ -1558,7 +1559,18 @@ function createDiplomacyScreen(opts: DiplomacyScreenOptions): OpenState {
         const head = place(el('div', 'dip-talk-head'), 0, 8, 410, 34);
         head.append(flagImage(other, 50, 30, 'dip-talk-flag'), text(other.name, { size: FONT.title, bold: true, color: '#fff', className: 'dip-talk-name' }));
         panel.appendChild(head);
-        const portrait = place(raceImage(other, 280, 'dip-talk-race'), 65, 45, 280, 280);
+        // picRace (280 × 280 at y 45, CenterImage): method_118(empire, DominantRace, 280, 280, bitmap_31, 7, pirate) — the
+        // race on its native landscape (a pirate faction on storyEvent.jpg) in the panel frame, scaled to 282 × 282
+        // (PrecacheScaledBitmap) and centred, so a pixel of each edge is cut (Main.Part8.cs 495-501).
+        const portrait = place(el('div', 'dip-talk-race'), 65, 45, 280, 280);
+        const emblem = other.pirateEmpireBaseHabitat === null && player.galaxy.scenario != null
+            ? resolveEmpireEmblem(player.galaxy, other).then((e) => (e.portraitUrl !== stockEmblem(other).portraitUrl ? e.portraitUrl : null))
+            : undefined;
+        const composite = empireRacePicture(other, 280, 280, 7, 'dip-talk-race-picture', emblem);
+        composite.style.width = '282px';
+        composite.style.height = '282px';
+        place(composite, -1, -1, 282, 282);
+        portrait.appendChild(composite);
         panel.appendChild(portrait);
 
         // pnlDiplomaticConversationResponse (MessagePanel): 18.67 px text, padding 12, black at alpha 80.
