@@ -11,6 +11,7 @@
 // Nothing here writes sim state; no galaxy.rnd (own hash noise).
 
 import { Container, Graphics, MeshRope, Point, Sprite, Texture } from 'pixi.js';
+import { textureFromRgbaPixels } from './textureCanvas';
 import { useMinifyingFilter } from './assets';
 import { lightsOn } from './ambientLayer';
 
@@ -1015,13 +1016,7 @@ export function containerRgba(ramp: Rgb[], w: number, h: number, k: number): Rgb
 // Pixi side.
 
 export function textureFromRgba(img: RgbaImage): Texture {
-    const c = document.createElement('canvas');
-    c.width = img.w;
-    c.height = img.h;
-    const ctx = c.getContext('2d');
-    if (ctx === null) throw new Error('creatureRig: no 2d context');
-    ctx.putImageData(new ImageData(new Uint8ClampedArray(img.data), img.w, img.h), 0, 0);
-    const t = Texture.from(c);
+    const t = textureFromRgbaPixels(img.data, img.w, img.h);
     useMinifyingFilter(t);
     return t;
 }

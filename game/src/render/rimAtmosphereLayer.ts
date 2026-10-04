@@ -35,6 +35,7 @@
 // rimWeight, rimParams.
 
 import { Container, Sprite, Texture, TilingSprite } from 'pixi.js';
+import { makeTextureCanvas, textureFromCanvas, textureFromRgbaPixels } from './textureCanvas';
 import type { Camera } from './camera';
 import type { AssetStore } from './assets';
 import { boundsOnScreen, DrawKey } from './drawCache';
@@ -355,20 +356,14 @@ export function eyeSystemSeed(seed: number, systemIndex: number): number {
 // --- procedural textures (canvas; generated once, only when the flag is on) ------------------------------------
 
 function canvasTexture(size: number, draw: (ctx: CanvasRenderingContext2D, s: number) => void): Texture {
-    const canvas = document.createElement('canvas');
-    canvas.width = size;
-    canvas.height = size;
-    draw(canvas.getContext('2d')!, size);
-    return Texture.from(canvas);
+    const { canvas, ctx } = makeTextureCanvas(size, size);
+    draw(ctx, size);
+    return textureFromCanvas(canvas);
 }
 
-/** A straight-alpha RGBA buffer as a mip-mapped, linearly filtered canvas texture. */
+/** A straight-alpha RGBA buffer as a mip-mapped, linearly filtered texture. */
 function rgbaTexture(rgba: Uint8ClampedArray, size: number): Texture {
-    const tex = canvasTexture(size, (ctx) => {
-        const img = ctx.createImageData(size, size);
-        img.data.set(rgba);
-        ctx.putImageData(img, 0, 0);
-    });
+    const tex = textureFromRgbaPixels(rgba, size, size);
     useMinifyingFilter(tex);
     return tex;
 }

@@ -28,6 +28,7 @@ import { fogOf } from './fog';
 import { habitatSystemIndex } from './habitatIndex';
 import { habitatDrawnOffsetBound, type MotionInterpolator } from './renderInterp';
 import { Container, Sprite, Texture } from 'pixi.js';
+import { textureFromRgbaPixels } from './textureCanvas';
 import type { Camera } from './camera';
 import { AssetStore, useMinifyingFilter } from './assets';
 import {
@@ -470,19 +471,14 @@ export class AmbientLayer {
         // method_221 colour matrix: RGB replaced by the light colour, alpha kept — a white silhouette tinted per empire.
         void loadRgba(`${FX}/lights/light.png`).then(
             ({ data, w, h }) => {
-                const canvas = document.createElement('canvas');
-                canvas.width = w;
-                canvas.height = h;
-                const ctx = canvas.getContext('2d')!;
-                const img = ctx.createImageData(w, h);
-                for (let i = 0; i < data.length; i += 4) {
-                    img.data[i] = 255;
-                    img.data[i + 1] = 255;
-                    img.data[i + 2] = 255;
-                    img.data[i + 3] = data[i + 3];
+                const px = new Uint8ClampedArray(w * h * 4);
+                for (let i = 0; i < px.length; i += 4) {
+                    px[i] = 255;
+                    px[i + 1] = 255;
+                    px[i + 2] = 255;
+                    px[i + 3] = data[i + 3];
                 }
-                ctx.putImageData(img, 0, 0);
-                const tex = Texture.from(canvas);
+                const tex = textureFromRgbaPixels(px, w, h);
                 useMinifyingFilter(tex);
                 this.lightTexture = tex;
             },
@@ -873,7 +869,8 @@ async function loadRgba(url: string): Promise<{ data: Uint8ClampedArray; w: numb
     const canvas = typeof OffscreenCanvas !== 'undefined' ? new OffscreenCanvas(w, h) : document.createElement('canvas');
     canvas.width = w;
     canvas.height = h;
-    const ctx = canvas.getContext('2d') as CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D;
+    // Read back once: a software canvas (no GPU surface).
+    const ctx = canvas.getContext('2d', { willReadFrequently: true }) as CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D;
     ctx.drawImage(img, 0, 0);
     return { data: ctx.getImageData(0, 0, w, h).data, w, h };
 }

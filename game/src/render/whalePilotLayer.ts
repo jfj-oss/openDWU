@@ -20,6 +20,7 @@
 //   Main.Part11.cs:475 CalculateCreatureZoomFactor — divisor max(3, f / 2) above f = 3, width capped at 240 / f.
 
 import { Container, MeshRope, Point, Sprite, Texture } from 'pixi.js';
+import { textureFromCanvas } from './textureCanvas';
 import type { Camera } from './camera';
 import { useMinifyingFilter } from './assets';
 import type { Galaxy } from '../sim/galaxy';
@@ -390,7 +391,7 @@ function drawRestPose(
 }
 
 function canvasTexture(c: HTMLCanvasElement): Texture {
-    const t = Texture.from(c);
+    const t = textureFromCanvas(c);
     useMinifyingFilter(t);
     return t;
 }
