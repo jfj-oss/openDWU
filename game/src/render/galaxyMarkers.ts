@@ -730,6 +730,13 @@ export class GalaxyMarkerLayer {
     private readonly selG = new Graphics();
     /** Flat [x, y, box px] of this frame's selection circles (world x / y, screen-px box). */
     private selBoxes: number[] = [];
+    /** The render-group wrappers of overlayG / selG: their vertices are group-local float32 and the group matrix goes to
+     *  the GPU in float32, so the Graphics are drawn relative to (ox, oy) (the camera centre) and the wrappers sit there
+     *  (float64 on the CPU) -- else world coords near 1.8e8 (a 90x90-sector galaxy) quantize to 16 units. */
+    private readonly overlayGroup: Container;
+    private readonly selGroup: Container;
+    private ox = 0;
+    private oy = 0;
     /** The selected BuiltObjectList as a set (rebuilt when the selection's array changes). */
     private selListFor: BuiltObject[] | null = null;
     private selListSet: Set<BuiltObject> | null = null;
@@ -781,7 +788,9 @@ export class GalaxyMarkerLayer {
         this.back.addChild(this.discs, this.links.root, this.rings);
         // overlayG is cleared and redrawn every frame: in its own render group (renderGroups.ts). (The battle bars over the
         // ships are combatBars.ts BattleBarLayer, MainView.1.cs 1251-1295.)
-        this.front.addChild(this.symbols, this.countLayer, inOwnRenderGroup(this.overlayG), this.iconLayer, inOwnRenderGroup(this.selG));
+        this.overlayGroup = inOwnRenderGroup(this.overlayG);
+        this.selGroup = inOwnRenderGroup(this.selG);
+        this.front.addChild(this.symbols, this.countLayer, this.overlayGroup, this.iconLayer, this.selGroup);
         const idx = below !== null ? world.children.indexOf(below) : -1;
         if (idx >= 0) world.addChildAt(this.back, idx);
         else world.addChild(this.back);
@@ -881,6 +890,10 @@ export class GalaxyMarkerLayer {
         this.front.visible = factionOn;
         this.drawn = [];
         this.overlayG.clear();
+        this.ox = cam.x;
+        this.oy = cam.y;
+        this.overlayGroup.position.set(cam.x, cam.y);
+        this.selGroup.position.set(cam.x, cam.y);
         this.selBoxes.length = 0;
         this.decorateLabels(systems, f, z, factionOn && gates.systemNames);
         if (!this.back.visible && !this.front.visible) return;
@@ -1080,14 +1093,14 @@ export class GalaxyMarkerLayer {
                 const swordPx = f < 4000 ? 18 : 14;
                 const pulse = 0.8 + 0.2 * Math.sin(performance.now() / 250);
                 const off = (ringPx + swordPx / 2) * Math.SQRT1_2;
-                drawCrossedSwords(this.overlayG, star.xpos + off / z, star.ypos + off / z, swordPx, z, fire * pulse);
+                drawCrossedSwords(this.overlayG, star.xpos - this.ox + off / z, star.ypos - this.oy + off / z, swordPx, z, fire * pulse);
             }
             // Ruins glyph "∴" (5645-5657): three small squares in the name colour right after the name.
             if (sys.hasRuins === true) {
                 const q = f < 4000 ? 3 : 2;
                 // label.width / height are world units (the label is scaled 1/z); num42 = 3 px below the text top.
-                const nx = star.xpos + x / z + label.width + 1 / z;
-                const ny = star.ypos + 1 / z - label.height + 3 / z;
+                const nx = star.xpos - this.ox + x / z + label.width + 1 / z;
+                const ny = star.ypos - this.oy + 1 / z - label.height + 3 / z;
                 const g = this.overlayG;
                 for (const [dx, dy] of [
                     [0, 5],
@@ -1211,7 +1224,7 @@ export class GalaxyMarkerLayer {
             if (galaxyPass) {
                 this.drawn.push({ bo, group: null, x: pos.x, y: pos.y, halfPx: heightPx / 2 });
                 // 5984-5996 / 6004-6016: method_212 around the selected ship's symbol, or one of the selected BuiltObjectList.
-                if (bo === selBo || (selSet !== null && selSet.has(bo))) this.selBoxes.push(pos.x, pos.y, symbolSelectionBox(heightPx));
+                if (bo === selBo || (selSet !== null && selSet.has(bo))) this.selBoxes.push(pos.x - this.ox, pos.y - this.oy, symbolSelectionBox(heightPx));
             }
         }
         let counts = 0;
@@ -1232,7 +1245,7 @@ export class GalaxyMarkerLayer {
                 if (color === 0x010101) color = 0x080808;
                 this.pushSymbol(n++, cell, pos.x - ox, pos.y - oy, iconH, z, color, 1);
                 this.drawn.push({ bo: lead, group: sg, x: pos.x, y: pos.y, halfPx: iconH / 2 });
-                if (sg === selGroup) this.selBoxes.push(pos.x, pos.y, iconH); // 6395-6398 method_212 over the icon box
+                if (sg === selGroup) this.selBoxes.push(pos.x - this.ox, pos.y - this.oy, iconH); // 6395-6398 method_212 over the icon box
                 if (f < 6000) {
                     const t = this.countText(counts++);
                     const s = String(sg.ships.length);

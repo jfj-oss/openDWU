@@ -458,12 +458,12 @@ async function boot() {
                 const seedBox = page.locator('.wizard-seed-input');
                 if ((await seedBox.count()) > 0 && (await seedBox.isVisible())) await seedBox.fill(opt('seed', '4242'));
                 const label = (await page.textContent('.wizard-btn-primary'))?.trim();
-                if (label === 'Start Game') break;
+                if (label === 'Start the Game!') break;
                 await page.click('.wizard-btn-primary');
                 await wait(200);
             }
             await shot('wizard-start-page');
-            check((await page.textContent('.wizard-btn-primary'))?.trim() === 'Start Game', 'the wizard reaches Start Game');
+            check((await page.textContent('.wizard-btn-primary'))?.trim() === 'Start the Game!', 'the wizard reaches Start the Game!');
             await page.click('.wizard-btn-primary');
         }
     } else if (kind === 'late2500') {

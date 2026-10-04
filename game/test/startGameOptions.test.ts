@@ -637,33 +637,33 @@ describe('wizard page order (task 06h, Start.InitializeComponent.cs navigation)'
         });
     });
 
-    it('back labels point at the previous page in that order', () => {
+    it('back labels are the original "<< Previous: <page>" (Start.1.cs SetControlLocalizedLabels) in that order', () => {
         expect(WIZARD_BACK_LABELS).toEqual({
-            type: '← Main Menu',
-            jumpstart: '← Playstyle',
-            galaxy: '← Playstyle',
-            colonization: '← The Galaxy',
-            race: '← Colonization and Territory',
-            empire: '← Your Race',
-            empires: '← Your Empire',
-            victory: '← Other Empires',
-            scenario: '← Victory Conditions',
-            start: '← Scenario',
+            type: '<< Main Menu',
+            jumpstart: '<< Previous: Playstyle',
+            galaxy: '<< Previous: Playstyle',
+            colonization: '<< Previous: The Galaxy',
+            race: '<< Previous: Colonization and Territory',
+            empire: '<< Previous: Your Race',
+            empires: '<< Previous: Your Empire',
+            victory: '<< Previous: Other Empires',
+            scenario: '<< Previous: Victory Conditions',
+            start: '<< Previous: Scenario',
         });
     });
 
-    it('forward labels name the next page in that order, except the final page, which starts the game', () => {
+    it('forward labels are "Next: <page> >>", and "Start the Game!" (btnStartNewGameStart) where the game starts', () => {
         expect(WIZARD_FORWARD_LABELS).toEqual({
             type: '',
-            jumpstart: 'Start Game',
-            galaxy: 'Colonization and Territory →',
-            colonization: 'Your Race →',
-            race: 'Your Empire →',
-            empire: 'Other Empires →',
-            empires: 'Victory Conditions →',
-            victory: 'Scenario →',
-            scenario: 'Start →',
-            start: 'Start Game',
+            jumpstart: 'Start the Game!',
+            galaxy: 'Next: Colonization and Territory >>',
+            colonization: 'Next: Your Race >>',
+            race: 'Next: Your Empire >>',
+            empire: 'Next: Other Empires >>',
+            empires: 'Next: Victory Conditions >>',
+            victory: 'Next: Scenario >>',
+            scenario: 'Next: Start >>',
+            start: 'Start the Game!',
         });
     });
 });

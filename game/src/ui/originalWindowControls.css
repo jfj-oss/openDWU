@@ -87,7 +87,9 @@
 }
 .owc-trackbar-label {
     transform: translateX(-50%);
-    white-space: nowrap;
+    width: max-content;
+    white-space: pre-line;
+    text-align: center;
     line-height: 1.1;
     pointer-events: none;
 }
@@ -95,4 +97,57 @@
 /* CheckBox with CheckAlign MiddleRight. */
 .ow-check.owc-check-right {
     flex-direction: row-reverse;
+}
+
+/* LabelledTrackBar LinkLabel: in its LinkWidth column, centred vertically, wrapping. */
+.owc-trackbar .owc-trackbar-link {
+    display: flex;
+    align-items: center;
+    white-space: normal;
+    line-height: 1.05;
+}
+
+/* RadioButton: the CheckBox look with a round box. */
+.ow-check.owc-radio input {
+    border-radius: 50%;
+}
+
+/* RoundRectanglePanel. */
+.owc-roundrect {
+    position: absolute;
+    box-sizing: border-box;
+    background: transparent;
+}
+
+/* RaceDropDown: BackColor (22, 21, 26). */
+.ow-combo.owc-race-combo,
+.ow-combo-list.owc-race-combo {
+    background: rgb(22, 21, 26);
+}
+
+/* ColorDropDown: swatch items; the system colour picker behind "Custom...". */
+.owc-color-swatch {
+    position: absolute;
+    pointer-events: none;
+}
+.ow-combo-list.owc-color-combo .ow-combo-item {
+    background: rgb(48, 48, 64);
+}
+.ow-combo-list.owc-color-combo .ow-combo-item:hover,
+.ow-combo-list.owc-color-combo .ow-combo-sel {
+    background: rgb(51, 153, 255);
+}
+.ow-combo-list.owc-color-combo .ow-combo-item:not(:has(.owc-color-swatch)) .ow-combo-text {
+    left: 4px;
+}
+.owc-color-picker {
+    position: absolute;
+    left: 0;
+    bottom: 0;
+    width: 1px;
+    height: 1px;
+    opacity: 0;
+    pointer-events: none;
+    border: 0;
+    padding: 0;
 }

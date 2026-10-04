@@ -34,8 +34,11 @@
 //        dropDown() / textBox() / checkBox()  the (48, 48, 64) / (170, 170, 170) input controls
 //        darkRect()       the translucent black blocks EmpireDetailView fills behind each section
 //        numericUpDown()  NumericUpDown (clamped integer, up / down buttons, arrow keys / wheel)
-//        imageCombo()     an owner-drawn ComboBox (DesignDropDown / ResourceDropDown: pictures + text per item)
+//        imageCombo()     an owner-drawn ComboBox (DesignDropDown / ResourceDropDown: pictures + text per item, or an
+//                         item `draw` hook for swatches / flags)
 //        toolStripMenu() / toolStripItem() / toolStripSeparator()  ContextMenuStrip menus (CustomToolStripRenderer)
+//      and in originalWindowControls.ts: groupBox(), colorSlider(), labelledTrackBar(), checkBoxRight(), radioButton(),
+//        roundRectanglePanel(), raceDropDown(), colorDropDown()
 //   4. Fonts: the game's font (Forgotten Futurist, loaded by hud.css) at the GenerateFont pixel sizes from the source
 //      (FONT.normal 15.33, FONT.large 16.67, FONT.header 18.67, FONT.title 22.67 …). Colours: the source's
 //      Color.FromArgb values; reuse the COLORS constants here.
@@ -1282,6 +1285,9 @@ export interface ImageComboItem {
     label: string;
     pictures?: ImageComboPicture[];
     title?: string;
+    /** OnDrawItem for items that are not pictures + text (ColorDropDown's swatch, cmbFlagShape's flag): draws into the
+     *  item's row (`height` = ItemHeight); the label is then not drawn. */
+    draw?: (row: HTMLDivElement, height: number) => void;
 }
 
 export interface ImageComboOptions {
@@ -1295,18 +1301,33 @@ export interface ImageComboOptions {
     size?: number;
     /** Rows shown before the list scrolls (MaxDropDownItems); default 8. */
     maxItems?: number;
+    /** Extra class on the box and its list (e.g. a control's own BackColor). */
+    className?: string;
+    /** Where the open list is placed (default the box's offsetParent): a container that does not clip it, e.g. the
+     *  window body when the combo sits in a GradientPanel (overflow hidden). */
+    listParent?: () => HTMLElement | null;
 }
 
 export interface ImageCombo {
     readonly el: HTMLDivElement;
     get value(): string;
     setValue(v: string): void;
+    /** Replace the items (ComboBox.Items after a BindData / Ignite); keeps the value. */
+    setItems(items: readonly ImageComboItem[]): void;
+    /** Redraw the shown item and the open list (an owner-drawn item changed, e.g. the flag colours). */
+    refresh(): void;
+    setEnabled(enabled: boolean): void;
     close(): void;
 }
 
 function comboItemRow(item: ImageComboItem, height: number, textX: number): HTMLDivElement {
     const row = el('div', 'ow-combo-item');
     row.style.height = `${height}px`;
+    if (item.draw) {
+        item.draw(row, height);
+        if (item.title) row.title = item.title;
+        return row;
+    }
     const ph = Math.max(1, height - 2);
     for (const p of item.pictures ?? []) {
         if (p.url === null) continue;
@@ -1338,7 +1359,8 @@ function comboItemRow(item: ImageComboItem, height: number, textX: number): HTML
 export function imageCombo(o: ImageComboOptions): ImageCombo {
     const ih = o.itemHeight ?? 21;
     const textX = o.textX ?? 4;
-    const box = el('div', 'ow-combo');
+    let items: readonly ImageComboItem[] = o.items;
+    const box = el('div', `ow-combo${o.className ? ` ${o.className}` : ''}`);
     box.tabIndex = 0;
     box.style.fontSize = `${o.size ?? FONT.normal}px`;
     const shown = el('div', 'ow-combo-shown');
@@ -1347,7 +1369,7 @@ export function imageCombo(o: ImageComboOptions): ImageCombo {
     let value = o.value;
     let list: HTMLDivElement | null = null;
     const render = (): void => {
-        const item = o.items.find((i) => i.value === value);
+        const item = items.find((i) => i.value === value);
         shown.replaceChildren(...(item ? [comboItemRow(item, ih, textX)] : []));
         box.title = item?.title ?? item?.label ?? '';
     };
@@ -1376,12 +1398,9 @@ export function imageCombo(o: ImageComboOptions): ImageCombo {
         document.removeEventListener('pointerdown', onOutside, true);
         window.removeEventListener('keydown', onEsc, true);
     }
-    const open = (): void => {
-        const parent = box.offsetParent as HTMLElement | null;
-        if (!parent || o.items.length === 0) return;
-        list = el('div', 'ow-combo-list ow-scroll');
-        list.style.fontSize = box.style.fontSize;
-        for (const item of o.items) {
+    const fillList = (l: HTMLDivElement): void => {
+        l.replaceChildren();
+        for (const item of items) {
             const row = comboItemRow(item, ih, textX);
             if (item.value === value) row.classList.add('ow-combo-sel');
             row.addEventListener('pointerdown', (e) => e.stopPropagation());
@@ -1389,15 +1408,42 @@ export function imageCombo(o: ImageComboOptions): ImageCombo {
                 e.stopPropagation();
                 pick(item.value);
             });
-            list.appendChild(row);
+            l.appendChild(row);
         }
-        // Under the box, or above it when it would leave the parent.
-        const rows = Math.min(o.items.length, o.maxItems ?? 8);
-        const h = rows * ih + 2;
-        const below = box.offsetTop + box.offsetHeight;
-        const top = below + h > parent.clientHeight && box.offsetTop - h >= 0 ? box.offsetTop - h : below;
-        place(list, box.offsetLeft, top, box.offsetWidth, h);
+    };
+    /** The box's rect in `parent`'s own (unscaled) pixels. */
+    const boxRectIn = (parent: HTMLElement): { x: number; y: number; w: number; h: number } => {
+        if (parent === box.offsetParent) return { x: box.offsetLeft, y: box.offsetTop, w: box.offsetWidth, h: box.offsetHeight };
+        const pr = parent.getBoundingClientRect();
+        const br = box.getBoundingClientRect();
+        const k = pr.width > 0 ? parent.offsetWidth / pr.width : 1;
+        return { x: (br.left - pr.left) * k - parent.clientLeft, y: (br.top - pr.top) * k - parent.clientTop, w: box.offsetWidth, h: box.offsetHeight };
+    };
+    const open = (): void => {
+        const parent = o.listParent?.() ?? (box.offsetParent as HTMLElement | null);
+        if (!parent || items.length === 0) return;
+        list = el('div', `ow-combo-list ow-scroll${o.className ? ` ${o.className}` : ''}`);
+        list.style.fontSize = box.style.fontSize;
+        fillList(list);
+        // Under the box, or above it when it would leave the parent; shortened to whole rows when neither side has room.
+        const rows = Math.min(items.length, o.maxItems ?? 8);
+        let h = rows * ih + 2;
+        const r = boxRectIn(parent);
+        const below = r.y + r.h;
+        const spaceBelow = parent.clientHeight - below;
+        let top = below;
+        if (h > spaceBelow) {
+            if (r.y >= h) top = r.y - h;
+            else if (spaceBelow >= r.y) h = Math.max(1, Math.floor((spaceBelow - 2) / ih)) * ih + 2;
+            else {
+                h = Math.max(1, Math.floor((r.y - 2) / ih)) * ih + 2;
+                top = r.y - h;
+            }
+        }
+        place(list, r.x, top, r.w, h);
         parent.appendChild(list);
+        const sel = list.querySelector<HTMLElement>('.ow-combo-sel');
+        if (sel && sel.offsetTop + ih > h) list.scrollTop = sel.offsetTop - h + ih + 2;
         box.classList.add('ow-combo-open');
         document.addEventListener('pointerdown', onOutside, true);
         window.addEventListener('keydown', onEsc, true);
@@ -1411,9 +1457,9 @@ export function imageCombo(o: ImageComboOptions): ImageCombo {
     box.addEventListener('keydown', (e) => {
         if (e.key === 'Escape') return;
         e.stopPropagation();
-        const i = o.items.findIndex((x) => x.value === value);
-        if (e.key === 'ArrowDown' && i < o.items.length - 1) pick(o.items[i + 1].value);
-        else if (e.key === 'ArrowUp' && i > 0) pick(o.items[i - 1].value);
+        const i = items.findIndex((x) => x.value === value);
+        if (e.key === 'ArrowDown' && i < items.length - 1) pick(items[i + 1].value);
+        else if (e.key === 'ArrowUp' && i > 0) pick(items[i - 1].value);
         else if (e.key === 'Enter' || e.key === ' ') list ? close() : open();
         else return;
         e.preventDefault();
@@ -1428,6 +1474,20 @@ export function imageCombo(o: ImageComboOptions): ImageCombo {
             if (v === value) return;
             value = v;
             render();
+        },
+        setItems(next: readonly ImageComboItem[]) {
+            items = next;
+            render();
+            if (list) fillList(list);
+        },
+        refresh() {
+            render();
+            if (list) fillList(list);
+        },
+        setEnabled(enabled: boolean) {
+            box.classList.toggle('ow-disabled', !enabled);
+            box.tabIndex = enabled ? 0 : -1;
+            if (!enabled) close();
         },
         close,
     };
