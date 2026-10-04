@@ -38,6 +38,7 @@ import {
     retireSelectedShips,
     setFleetHomeColony,
     setFleetTroopLoadout,
+    setShipTroopLoadout,
     setShipsFleet,
     type SetFleetTarget,
     type TroopLoadout,
@@ -191,6 +192,8 @@ export const PLAYER_OPS = {
     renameFleet: (_galaxy: Galaxy, _empire: Empire, fleet: ShipGroup, name: string) => renameFleet(fleet, name),
     setFleetHomeColony: (_galaxy: Galaxy, empire: Empire, fleet: ShipGroup, colony: Habitat) => setFleetHomeColony(empire, fleet, colony),
     setFleetTroopLoadout: (_galaxy: Galaxy, empire: Empire, fleet: ShipGroup, loadout: TroopLoadout | null) => setFleetTroopLoadout(empire, fleet, loadout),
+    /** Main.Part11.cs chkUseTroopLoadouts / numTroopLoadout*: a ship's own troop loadout (Troops tab, method_179). */
+    setShipTroopLoadout: (_galaxy: Galaxy, empire: Empire, ship: BuiltObject, loadout: TroopLoadout | null) => setShipTroopLoadout(empire, ship, loadout),
     fleetLoadTroops: (galaxy: Galaxy, empire: Empire, fleet: ShipGroup) => fleetLoadTroops(galaxy, empire, fleet),
     fleetRetrofit: (galaxy: Galaxy, empire: Empire, fleet: ShipGroup) => fleetRetrofit(galaxy, empire, fleet),
     fleetRepairAndRefuel: (galaxy: Galaxy, empire: Empire, fleet: ShipGroup) => fleetRepairAndRefuel(galaxy, empire, fleet),

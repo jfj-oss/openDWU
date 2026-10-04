@@ -180,34 +180,39 @@ describe('MainView.placePostureLayer: the posture discs over the ships, under th
         const ships = new Container();
         const creatures = new Container();
         const posture = new Container();
+        const overlayRoot = new Container();
         world.addChild(back, overlay, front, ambientUnder, ships, creatures);
         const view = {
             world,
-            overlayLayer: { postureRoot: posture },
+            overlayLayer: { postureRoot: posture, root: overlayRoot },
             galaxyMarkers: { front },
             builtObjectLayer: { root: ships },
             markersFrontNext: ambientUnder,
         };
-        world.addChild(posture);
-        return { view, world, front, posture, ships, ambientUnder };
+        world.addChild(posture, overlayRoot);
+        return { view, world, front, posture, ships, ambientUnder, overlayRoot };
     }
     const place = (view: unknown, f: number): void => (MainView.prototype as unknown as { placePostureLayer(this: unknown, f: number): void }).placePostureLayer.call(view, f);
-    it('close zoom: the discs last (over ships and creatures), the markers under the ship art; f > 150: markers above the discs', () => {
-        const { view, world, front, posture, ambientUnder } = fakeView();
+    it('close zoom: the discs then the travel-vector / overlay root last (over ships and creatures), the markers under the ship art; f > 150: markers above the discs, the root above them', () => {
+        const { view, world, front, posture, ambientUnder, overlayRoot } = fakeView();
         place(view, 10);
-        expect(world.children.at(-1)).toBe(posture);
+        expect(world.children.at(-1)).toBe(overlayRoot);
+        expect(world.children.at(-2)).toBe(posture);
         expect(world.getChildIndex(front)).toBe(world.getChildIndex(ambientUnder) - 1);
         place(view, 400);
-        expect(world.children.at(-1)).toBe(front);
-        expect(world.children.at(-2)).toBe(posture);
+        expect(world.children.at(-1)).toBe(overlayRoot);
+        expect(world.children.at(-2)).toBe(front);
+        expect(world.children.at(-3)).toBe(posture);
         place(view, 10);
-        expect(world.children.at(-1)).toBe(posture);
+        expect(world.children.at(-1)).toBe(overlayRoot);
+        expect(world.children.at(-2)).toBe(posture);
         expect(world.getChildIndex(front)).toBe(world.getChildIndex(ambientUnder) - 1);
         // A layer added later (the effects layer) goes under the discs at the next frame.
         const late = new Container();
         world.addChild(late);
         place(view, 10);
-        expect(world.children.at(-1)).toBe(posture);
-        expect(world.children.at(-2)).toBe(late);
+        expect(world.children.at(-1)).toBe(overlayRoot);
+        expect(world.children.at(-2)).toBe(posture);
+        expect(world.children.at(-3)).toBe(late);
     });
 });

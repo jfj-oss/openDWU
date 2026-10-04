@@ -1073,3 +1073,37 @@ export function loadEmpirePolicyFile(current: EmpirePolicy, text: string): Empir
     applyEmpirePolicyText(policy, text);
     return policy;
 }
+
+// ---------------------------------------------------------------------------------------------------------------
+// Galaxy.7.cs:5006 ApplyDesignUpgradePoliciesToGameOptions / 5042 ApplyDesignUpgradeGameOptionsToPolicies
+// ---------------------------------------------------------------------------------------------------------------
+
+/** The EmpirePolicy.DesignUpgrade* / GameOptions.DesignUpgrade* flags (Galaxy.7.cs:5008-5036; alphabetical there). */
+export const DESIGN_UPGRADE_KEYS = [
+    'designUpgradeCapitalShip', 'designUpgradeCarrier', 'designUpgradeColonyShip', 'designUpgradeConstructionShip',
+    'designUpgradeCruiser', 'designUpgradeDefensiveBase', 'designUpgradeDestroyer', 'designUpgradeEnergyResearchStation',
+    'designUpgradeEscort', 'designUpgradeExplorationShip', 'designUpgradeFrigate', 'designUpgradeGasMiningShip',
+    'designUpgradeGasMiningStation', 'designUpgradeGenericBase', 'designUpgradeHighTechResearchStation',
+    'designUpgradeLargeFreighter', 'designUpgradeLargeSpacePort', 'designUpgradeMediumFreighter',
+    'designUpgradeMediumSpacePort', 'designUpgradeMiningShip', 'designUpgradeMiningStation',
+    'designUpgradeMonitoringStation', 'designUpgradePassengerShip', 'designUpgradeResortBase',
+    'designUpgradeResupplyShip', 'designUpgradeSmallFreighter', 'designUpgradeSmallSpacePort',
+    'designUpgradeTroopTransport', 'designUpgradeWeaponsResearchStation',
+] as const;
+export type DesignUpgradeKey = (typeof DESIGN_UPGRADE_KEYS)[number];
+/** GameOptions' DesignUpgrade* fields (GameOptions.cs:121-224: every one defaults to true; unset here = true). */
+export type GameOptionsDesignUpgrades = Partial<Record<DesignUpgradeKey, boolean>>;
+
+/** Port of Galaxy.7.cs:5006 ApplyDesignUpgradePoliciesToGameOptions: the policy's flags become the GameOptions' (returns the new options). */
+export function applyDesignUpgradePoliciesToGameOptions<T extends GameOptionsDesignUpgrades>(gameOptions: T, policy: EmpirePolicy | null): T {
+    if (policy === null) return gameOptions;
+    const out = { ...gameOptions };
+    for (const k of DESIGN_UPGRADE_KEYS) out[k] = policy[k];
+    return out;
+}
+
+/** Port of Galaxy.7.cs:5042 ApplyDesignUpgradeGameOptionsToPolicies: the GameOptions' flags are written onto the policy (in place). */
+export function applyDesignUpgradeGameOptionsToPolicies(gameOptions: Readonly<GameOptionsDesignUpgrades> | null | undefined, policy: EmpirePolicy | null): void {
+    if (gameOptions === null || gameOptions === undefined || policy === null) return;
+    for (const k of DESIGN_UPGRADE_KEYS) policy[k] = gameOptions[k] ?? true;
+}

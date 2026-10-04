@@ -8,6 +8,7 @@ import { Camera } from '../render/camera';
 import { isFollowing, stopFollow, type FollowState } from '../render/followCamera';
 import { keyScrollPixels } from '../render/viewInput'; // [gameoptions]
 import { getSettings } from './settings'; // [gameoptions]
+import { applyOverrides, bindingLabel, chordLabel } from './keyBindingModel';
 import { toggleExpansionPlanner } from './screens/expansionPlanner'; import { selectHabitat } from './hud'; // [16a]
 import { GalaxyTime } from '../sim/clock';
 import { toggleDiplomacyScreen } from './screens/diplomacyScreen'; // [15a]
@@ -250,11 +251,16 @@ export function isTypingTarget(target: EventTarget | null): boolean {
     return !!el.isContentEditable;
 }
 
+/** The bindings in force: the default table with the Hotkeys screen's remaps applied (keyBindingModel.ts). */
+export function getEffectiveBindings(): readonly KeyBinding[] {
+    return applyOverrides(KEY_BINDINGS, getSettings().keyBindingOverrides);
+}
+
 /** Find the binding for a key+modifiers combo, or null. */
 export function findBinding(
     key: string,
     mods: KeyModifiers,
-    bindings: KeyBinding[] = KEY_BINDINGS,
+    bindings: readonly KeyBinding[] = getEffectiveBindings(),
 ): KeyBinding | null {
     // KeyboardEvent.key is lowercase for unshifted letters ('g'); the table
     // uses the original's key names (Keys.G), so compare letters uppercased.
@@ -277,7 +283,7 @@ export function findBinding(
 export function dispatchKey(
     event: Pick<KeyboardEvent, 'key' | 'ctrlKey' | 'altKey' | 'shiftKey' | 'target'> & { code?: string },
     handlers: KeyHandlers,
-    bindings: KeyBinding[] = KEY_BINDINGS,
+    bindings: readonly KeyBinding[] = getEffectiveBindings(),
 ): string | null {
     if (isTypingTarget(event.target)) return null;
     const binding = findBinding(eventBindingKey(event), {
@@ -759,7 +765,7 @@ export function createShortcutsOverlay(): {
     // Built on every show: an Improvement's key is listed only while that improvement is on.
     const fill = (): void => {
         list.replaceChildren();
-        for (const b of KEY_BINDINGS) {
+        for (const b of getEffectiveBindings()) {
             if (b.overlayHidden) continue;
             if (b.improvement !== undefined && !isImprovementEnabled(b.improvement)) continue;
             const row = document.createElement('div');
@@ -769,12 +775,7 @@ export function createShortcutsOverlay(): {
             }
             const k = document.createElement('span');
             k.className = 'hud-keyboard-key';
-            const modParts = [
-                b.modifiers.ctrl ? 'Ctrl+' : '',
-                b.modifiers.alt ? 'Alt+' : '',
-                b.modifiers.shift ? 'Shift+' : '',
-            ].join('');
-            k.textContent = `${modParts}${b.overlayKey ?? displayKeyName(b.key)}`;
+            k.textContent = b.overlayKey !== undefined ? `${chordLabel({ key: '', ...b.modifiers })}${b.overlayKey}` : bindingLabel(b);
             const d = document.createElement('span');
             d.className = 'hud-option-label';
             d.textContent = b.description;
@@ -813,20 +814,4 @@ export function createShortcutsOverlay(): {
         toggle,
         destroy: () => root.remove(),
     };
-}
-
-/** Human display name for a DOM key value ('?' shows as '?', arrows named). */
-function displayKeyName(key: string): string {
-    switch (key) {
-        case 'ArrowUp': return '↑';
-        case 'ArrowDown': return '↓';
-        case 'ArrowLeft': return '←';
-        case 'ArrowRight': return '→';
-        case 'Escape': return 'Esc';
-        case 'PageUp': return 'PgUp';
-        case 'PageDown': return 'PgDn';
-        case 'Backspace': return 'Bksp';
-        case 'Pause': return 'Pause';
-        default: return key;
-    }
 }

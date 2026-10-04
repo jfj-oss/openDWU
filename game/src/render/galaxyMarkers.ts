@@ -5,8 +5,8 @@
 //    has explored or sees, at f > 150 (num16, line 5153), a circle around the star in the dominant empire's MainColor
 //    (method_268, 6660-6672: pen width 3, dashed when SystemInfo.IsDisputed; drawn at line 5399) of radius
 //    val3 = max(Galaxy.MaxSolarSystemSize, TotalStrategicValue^0.35 * 600) / f px (5239-5240, 5337-5343), pushed out
-//    to (star icon px)/2 + 3 when it would hug the icon (5346-5374), at alpha int_15 = clamp((f - 70) * 1.2, 0, 255)
-//    (MainView.cs 1540-1548, the method_250 caller).
+//    to (star icon px)/2 + 3 when it would hug the icon (5346-5374), at FULL alpha: method_250 (5071) sets int_15 = 255,
+//    discarding the clamp((f - 70) * 1.2, 0, 255) its caller passes (MainView.cs 1540-1548).
 //
 // 2. System-name decorations — method_250 5550-5658: right of the ring (x = star + val3 + 1) come the capital icon
 //    (ui/chrome/capital.png at 20 px, 14 px from f >= 4000; fleetLeader.png for a secondary capital,
@@ -251,9 +251,13 @@ export function galaxyOverlayAlpha(f: number): number {
     return Math.max(0, Math.min(255, Math.trunc((f - GALAXY_OVERLAY_MIN_FACTOR) * 1.2))) / 255;
 }
 
-/** Faction ring alpha: gated at f > 150 (MainView.2.cs:5153 / 5395) with method_250's int_15 ramp. */
+/**
+ * Faction ring alpha: gated at f > 150 (MainView.2.cs:5153 / 5395), then FULL: method_250 (5069-5071) and its GDI
+ * twin method_248 (3982-3984) overwrite the int_15 argument (the MainView.cs 1540 ramp) with 255 before method_268 /
+ * method_269 build the pen and brush from it.
+ */
 export function factionRingBandAlpha(f: number): number {
-    return f > SYSTEM_RING_MIN_FACTOR ? galaxyOverlayAlpha(f) : 0;
+    return f > SYSTEM_RING_MIN_FACTOR ? 1 : 0;
 }
 
 /** Presence disc alpha: the territory layer's 0.25 once zoomed out past system level (the backdrop pass, f > 70). */

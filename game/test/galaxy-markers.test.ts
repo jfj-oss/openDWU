@@ -151,7 +151,7 @@ describe('alpha / style by zoom band', () => {
     });
     it('faction rings only beyond f = 150 (num16, MainView.2.cs:5153)', () => {
         expect(factionRingBandAlpha(150)).toBe(0);
-        expect(factionRingBandAlpha(151)).toBeCloseTo(galaxyOverlayAlpha(151));
+        expect(factionRingBandAlpha(151)).toBe(1); // method_250 5071: int_15 = 255, not the f - 70 ramp (0.07 here)
         expect(factionRingBandAlpha(2000)).toBe(1);
     });
     it('presence discs at PRESENCE_ALPHA (raised from the original 0.25, user call) once past system zoom', () => {

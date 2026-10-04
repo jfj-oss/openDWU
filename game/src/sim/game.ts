@@ -52,6 +52,7 @@ import { makeHabitatIntoColony } from './colony';
 import { netSort } from './netSort';
 import { Random } from './random';
 import type { GameData } from './data/gameData';
+import { applyDesignUpgradeGameOptionsToPolicies, type GameOptionsDesignUpgrades } from './data/policies';
 import { cloneGalaxyRaces, type Race } from './data/races';
 import type { Government } from './data/governments';
 import { setGovernmentsStatic } from './empire';
@@ -823,7 +824,7 @@ function spawnPirateNearPlayer(galaxy: Galaxy, ctx: PirateGenerationContext, xpo
 }
 
 /** The GameOptions automation fields Start.2.cs 2122-2146 copies onto the human player's empire. */
-export interface GameOptionsAutomation {
+export interface GameOptionsAutomation extends GameOptionsDesignUpgrades {
     controlColonizationDefault: AutomationLevel;
     controlColonyTaxRatesDefault: boolean;
     controlShipDesignDefault: boolean;
@@ -1515,6 +1516,9 @@ export function* createGameSteps(opts: CreateGameOptions): Generator<GameStartPr
     // 17d: Start.2.cs 2122-2146 — the human player's automation settings come from GameOptions (the defaults of
     // Main.Part9.cs method_260 when no options file exists); AI empires keep the ctor's FullyAutomated.
     applyStartAutomationSettings(empire2, opts.gameOptions ?? DEFAULT_GAME_OPTIONS_AUTOMATION);
+    // Start.2.cs 1489-1492 Galaxy.ApplyDesignUpgradeGameOptionsToPolicies(gameOptions_0, empire2.Policy): the saved design-upgrade
+    // flags (the Empire Policy screen writes them, Main.Part3.cs:3840/4195) become the player's policy. No Rnd.
+    applyDesignUpgradeGameOptionsToPolicies(opts.gameOptions, empire2.policy ?? null);
     // TODO(port): the rest of CreateGameFromSettings (see header).
     // Main.Part12.cs 3151 BaconMain.BaconInitialize(this) once Main starts the new game: the loaded BaconSettings.txt
     // takes effect (baconSettings.ts; the settings part only).

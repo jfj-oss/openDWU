@@ -78,3 +78,8 @@
     stroke: rgb(170, 170, 170);
     stroke-width: 3;
 }
+/* The animation layer (groundReportAnim.ts): explosions, shots and pods over the pictures. */
+.ow-screen-groundReport .gr-fx {
+    position: absolute;
+    pointer-events: none;
+}

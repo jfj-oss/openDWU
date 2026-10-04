@@ -1,8 +1,9 @@
 // The buttons of a conversation dialog (messagePopups.ts) for an incoming diplomatic message. Pure: no DOM.
 // Port of the option lists Main.Part9.cs:46 method_238 builds after the opening DialogPartType of a queued conversation
 // (labels are the TextResolver keys it passes to ConversationOption), including the two lines it appends to every part
-// outside the `break` list at Main.Part9.cs:629-659 ("Let's discuss something else..." = the full Diplomacy talk panel on
-// the sender, "Goodbye" = Exit). Each button carries the effect the UI runs through issuePlayerCommand; the sim side is
+// outside the `break` list at Main.Part9.cs:629-659 ("Let's discuss something else..." = GREETING_NEUTRAL: method_241 →
+// method_230 shows its text and method_238 rebuilds the greeting menu in the same talk panel, greetingMenuLinks below;
+// "Goodbye" = Exit). Each button carries the effect the UI runs through issuePlayerCommand; the sim side is
 // playerOrders.ts acceptProposal / declineProposal (the treaty offers, sender's pending proposal), playerOps.ts
 // acceptPirateOfferProtection and answerConversation (player/conversationReplies.ts, Main.Part10.cs:3957 method_237).
 //
@@ -37,6 +38,7 @@ import { messageGoToTarget } from './messageGoto';
 import { pirateOfferMonthlyPrice, pirateProtectionPriceText, pirateProtectionYearlySuffix } from './pirateProtectionPrice';
 import type { DialogPartType } from './messageRouting';
 import type { DialogPartType as DialogPart } from '../sim/data/dialogSet';
+import type { ProposalOption, ProposalResult } from '../sim/player/diplomacyProposals';
 
 export type ConversationEffect =
     /** playerOrders.ts acceptProposal (the sender's pending proposal). */
@@ -51,6 +53,8 @@ export type ConversationEffect =
     | { kind: 'reply'; part: ConversationReplyPart; related: ConversationRelated; cost: number; expireSender?: boolean }
     /** The Diplomacy talk panel on the sender (Main.Part8.cs:449 method_296). */
     | { kind: 'openDiplomacy' }
+    /** "Let's discuss something else..." (GREETING_NEUTRAL): the greeting menu in the same dialog (greetingMenuLinks). */
+    | { kind: 'greeting' }
     /** Main.Part10.cs:4980 GOTO_TARGET / the message link click. */
     | { kind: 'goto' }
     /** Exit / a rejection whose only effect is a text reply. */
@@ -80,7 +84,8 @@ function t(key: string, ...args: unknown[]): string {
 const act = (id: string, label: string, effect: ConversationEffect): ConversationAction => ({ id, label, effect });
 
 // Main.Part9.cs:629-659: the parts that keep only their own options (no discuss / goodbye lines).
-const NO_EXTRA_LINES: ReadonlySet<DialogPartType> = new Set<DialogPartType>([
+// (string: some are the replies of the player's own proposals, sim/data/dialogSet.ts DialogPartType.)
+const NO_EXTRA_LINES: ReadonlySet<string> = new Set<string>([
     'INFO_OFFER_UNMETEMPIRE',
     'INFO_OFFER_INDEPENDENTCOLONY',
     'INFO_OFFER_SYSTEMMAPS',
@@ -107,7 +112,17 @@ const NO_EXTRA_LINES: ReadonlySet<DialogPartType> = new Set<DialogPartType>([
     'HISTORY_OFFER_STORYMESSAGE',
     'PIRATE_EXTORTPROTECTION',
     'PIRATE_TRUCEPROPOSEINITIATE',
+    'PIRATE_PROTECTIONPROPOSE',
+    'OFFER_DEAL',
+    'WAR_END_SUBJUGATIONOFFER',
+    'SUBJUGATION_REQUESTRELEASE',
+    'PIRATE_TRUCEPROPOSE',
 ]);
+
+/** Main.Part9.cs:629-634: the greeting parts get "Goodbye" but not "Let's discuss something else...". */
+export function isGreetingPart(part: string): boolean {
+    return part === 'GREETING_ANGRY' || part === 'GREETING_FRIENDLY' || part === 'GREETING_INTRODUCTION' || part === 'GREETING_NEUTRAL';
+}
 
 // method_238's INFO_OFFER_* → (INFO_ response, the option's GameText key). RelatedInfo: the message subject.
 const INFO_OFFERS: Partial<Record<DialogPartType, [ConversationReplyPart, string]>> = {
@@ -298,9 +313,7 @@ export function conversationActions(entry: { message: EmpireMessage; conversatio
         const part: ConversationReplyPart | null =
             conversation === 'HISTORY_OFFER_STORYCLUE' ? 'HISTORY_OFFER_STORYCLUE_ACCEPT' : conversation === 'HISTORY_OFFER_STORYMESSAGE' ? 'HISTORY_OFFER_STORYMESSAGE_ACCEPT' : null;
         out.push(
-            part !== null
-                ? act(part, t('Tell us more'), { kind: 'reply', part, related: null, cost: 0 })
-                : act('HISTORY_OFFER_LOCATIONHINT_ACCEPT', t('Tell us more'), { kind: 'close' }),
+            act(part ?? 'HISTORY_OFFER_LOCATIONHINT_ACCEPT', t('Tell us more'), { kind: 'reply', part: part ?? 'HISTORY_OFFER_LOCATIONHINT_ACCEPT', related: null, cost: 0 }),
             act(`${conversation}_REJECT`, t('We are not interested'), { kind: 'close' }),
         );
     }
@@ -316,7 +329,7 @@ export function conversationActions(entry: { message: EmpireMessage; conversatio
     }
 
     if (!NO_EXTRA_LINES.has(conversation)) {
-        if (sender !== null && sender !== ctx.player) out.push(act('GREETING_NEUTRAL', t("Let's discuss something else..."), { kind: 'openDiplomacy' }));
+        if (sender !== null && sender !== ctx.player && !isGreetingPart(conversation)) out.push(act('GREETING_NEUTRAL', t("Let's discuss something else..."), { kind: 'greeting' }));
         out.push(act('Exit', t('Goodbye'), { kind: 'close' }));
     } else if (out.length === 0) {
         // An offer whose data is gone (an expired proposal): the panel still needs a way out.
@@ -407,6 +420,79 @@ export function conversationReplyView(a: ConversationAction, entry: { message: E
             return textOnlyReply(a, entry, player);
         case 'openDiplomacy':
         case 'goto':
+        case 'greeting':
             return CLOSE;
     }
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// "Let's discuss something else..." (Main.Part9.cs:731 method_241 with a GREETING_NEUTRAL option: method_237 leaves it as
+// it is, method_230 shows GREETING_NEUTRAL's text, method_238 builds the greeting menu, Main.Part9.cs:166-258)
+// ---------------------------------------------------------------------------------------------------------------
+
+/** A link of the talk panel's HyperlinkOptionsBox while the player leads the conversation: a proposal option
+ *  (submitProposal), a greeting-menu entry that opens its sub-menu, "Let's discuss something else..." or "Goodbye". */
+export type TalkLink =
+    | { kind: 'submit'; option: ProposalOption }
+    /** `part`: the entry's own DialogPartType (TREATY_PROPOSAL, GIFT_PROPOSE, WARNING, DEAL_BEGIN, OFFER_DEAL), whose
+     *  dialog line method_230 shows when it is picked. */
+    | { kind: 'menu'; label: string; part: DialogPart }
+    | { kind: 'greeting'; label: string }
+    | { kind: 'exit'; label: string };
+
+export interface ProposalGroup {
+    /** The greeting-menu entry (GameText key, resolveGameText for display). */
+    label: string;
+    options: ProposalOption[];
+}
+
+/** Main.Part9.cs:208-249 greeting menu: listProposals' options grouped under their menu entry, in list order. */
+export function proposalGroups(options: readonly ProposalOption[]): ProposalGroup[] {
+    const groups: ProposalGroup[] = [];
+    for (const o of options) {
+        let g = groups.find((x) => x.label === o.menuLabel);
+        if (!g) {
+            g = { label: o.menuLabel, options: [] };
+            groups.push(g);
+        }
+        g.options.push(o);
+    }
+    return groups;
+}
+
+const greetingLink = (): TalkLink => ({ kind: 'greeting', label: t("Let's discuss something else...") });
+const exitLink = (): TalkLink => ({ kind: 'exit', label: t('Goodbye') });
+
+/**
+ * method_238 for the greeting menu (`menu` null: GREETING_* — the entries, then only "Goodbye") or one of its entries
+ * (TREATY_PROPOSAL / GIFT_PROPOSE / WARNING / …: its options, then "Let's discuss something else..." and "Goodbye", the
+ * default lines). listProposals flattens the sub-menus (an entry whose only option is itself acts at once); the
+ * entries the C# does not offer in this state (listProposals' disabled placeholders) are left out, as method_238 never
+ * adds them.
+ */
+export function greetingMenuLinks(options: readonly ProposalOption[], menu: string | null): TalkLink[] {
+    const groups = proposalGroups(options.filter((o) => o.enabled));
+    const group = menu !== null ? groups.find((g) => g.label === menu) ?? null : null;
+    if (group !== null) return [...group.options.map((option): TalkLink => ({ kind: 'submit', option })), greetingLink(), exitLink()];
+    const out: TalkLink[] = [];
+    for (const g of groups) {
+        if (g.options.length === 1 && g.options[0].label === g.label) out.push({ kind: 'submit', option: g.options[0] });
+        else out.push({ kind: 'menu', label: g.label, part: g.options[0].menu as DialogPart });
+    }
+    out.push(exitLink());
+    return out;
+}
+
+/**
+ * method_241 after a proposal option: method_237's reply (`result`), then method_238 on it — the reply's own options
+ * (`followUps`), then the default lines unless the reply part is on the `break` list (Main.Part9.cs:637-659). A
+ * greeting reply (a gift's thanks, Main.Part10.cs GIFT_GIVE → GREETING_FRIENDLY / _ANGRY) rebuilds the greeting menu.
+ * `greeting`: true when the reply is a greeting (show greetingMenuLinks(options, null) under it).
+ */
+export function proposalReplyLinks(result: ProposalResult): { greeting: boolean; links: TalkLink[] } {
+    if (result.ok && result.reply !== null && isGreetingPart(result.reply)) return { greeting: true, links: [] };
+    const links: TalkLink[] = result.ok ? result.followUps.filter((o) => o.enabled).map((option): TalkLink => ({ kind: 'submit', option })) : [];
+    if (!result.ok || result.reply === null || !NO_EXTRA_LINES.has(result.reply)) links.push(greetingLink(), exitLink());
+    else if (links.length === 0) links.push(exitLink());
+    return { greeting: false, links };
 }

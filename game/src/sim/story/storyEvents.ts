@@ -1124,6 +1124,12 @@ export function checkStoryLocationHintExists(galaxy: Galaxy): boolean {
     return false;
 }
 
+/** C# `x.ToString("0,K")`. */
+function format0K(v: number): string {
+    const r = Math.sign(v) * Math.floor(Math.abs(v) / 1000 + 0.5);
+    return `${r === 0 ? 0 : r}K`;
+}
+
 /**
  * Galaxy.5.cs 3672 CheckForStoryLocationHint(): the next unused clue location's coordinates (and a player location hint), or
  * '' while story clues are off. No Rnd.
@@ -1135,7 +1141,8 @@ export function checkForStoryLocationHint(galaxy: Galaxy): string {
         if (num >= 0) {
             const stellarObject = galaxy.storyClueLocations[num]!;
             if (!stellarObject.hasBeenDestroyed) {
-                result = formatGameTextNow('coordinates X,Y', [Math.trunc(stellarObject.xpos / 1000), Math.trunc(stellarObject.ypos / 1000)]);
+                // Xpos.ToString("0,K"): scaled by 1000 (the trailing comma), rounded half away from zero, then the literal K.
+                result = formatGameTextNow('coordinates X,Y', [format0K(stellarObject.xpos), format0K(stellarObject.ypos)]);
                 result = result + ', ' + generateLocationDescription(galaxy, stellarObject.xpos, stellarObject.ypos, true);
                 addLocationHint(galaxy.playerEmpire!, { x: Math.trunc(stellarObject.xpos), y: Math.trunc(stellarObject.ypos) });
             }

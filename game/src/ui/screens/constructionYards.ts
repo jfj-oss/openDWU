@@ -12,8 +12,9 @@
 // The other pnlBuiltObjectInfo tabs (Cargo / Components / Docking Bays / Troops / Weapons, Main.Part11.cs method_170,
 // method_175, method_176, method_178) are the shared pages of builtObjectDataTabs.ts; Scrap is
 // btnBuiltObjectScrapSelected_Click (the 'scrapShips' op); the purchaser is yardPurchaser (also the Colonies screen's).
-// TODO(port): the Set Fleet combo and the manufacturing plants grids (duExoPvEoA / ctlConstructionYardManufacturerWaitQueue,
-//             laid out below the visible tab page in method_169).
+// The Set Fleet combo (cmbBuiltObjectSetFleet, method_182) and the manufacturing plants grids (duExoPvEoA /
+// ctlConstructionYardManufacturerWaitQueue, laid out below the visible tab page in method_169: the page scrolls to them
+// here) are the shared ones of builtObjectDataTabs.ts.
 // The purchaser is bound as method_169 binds it (purchaserBinding): a pirate player buys at a colony it controls as itself,
 // and private ships (freighters, mining ships / stations, passenger ships) too at its own bases (allowPrivateConstruction).
 
@@ -47,7 +48,7 @@ import { DIMMED_COLOR, SELECTED_COLOR, drawMapTerritory, galaxyMapScale, starDot
 import { drawGalaxyMapLayers } from './galaxyMapLayers';
 import { openGalactopedia } from './galactopedia';
 import { openConstructionSummary } from './designEditor';
-import { builtObjectTabLabels, dataTabContentKey, renderDataTab, type DataTabId } from './builtObjectDataTabs';
+import { builtObjectTabLabels, createSetFleetCombo, dataTabContentKey, manufacturingGrids, renderDataTab, type DataTabId } from './builtObjectDataTabs';
 import { showToast } from '../toast';
 import { formatNet, tryGetText } from '../../sim/textResolver';
 import {
@@ -803,6 +804,7 @@ function createConstructionYards(opts: ConstructionYardsOptions): OpenState {
             selectedYard = null;
             selectedWait = null;
             selectedComponent = null;
+            setFleet.reset(); // ctlBuiltObjectList_SelectionChanged_1
             refresh();
         },
         onDoubleClick: (r) => goTo(r.site),
@@ -836,6 +838,12 @@ function createConstructionYards(opts: ConstructionYardsOptions): OpenState {
         const sg = selectedBO()?.shipGroup as ShipGroup | null | undefined;
         if (sg && opts.onViewFleet) opts.onViewFleet(sg);
     });
+    // cmbBuiltObjectSetFleet (550, 308) 140 × 18 (method_178; items method_182): the selected ship / base.
+    const setFleet = createSetFleetCombo(galaxy, empire, () => {
+        const bo = selectedBO();
+        return bo !== null ? [bo] : [];
+    }, () => refresh());
+    body.appendChild(place(setFleet.el, 550, 308, 140, 21));
     const B2 = L.buttons2;
     const shipOp = (op: YardShipOrder) => () => {
         const bo = selectedBO();
@@ -1019,6 +1027,10 @@ function createConstructionYards(opts: ConstructionYardsOptions): OpenState {
     const maxSize = text('', { size: FONT.tiny, color: COLORS.label, wrapWidth: 160 });
     pageYards.appendChild(place(maxSize, 515, 180));
     pageYards.appendChild(place(linkLabel(`${gt('Learn about Construction')}...`, () => openGalactopedia({ topic: gt('Construction') }), FONT.small), 515, 250));
+    // lblConstructionYardManufacturers (0, 345) + duExoPvEoA (0, 360) 555 × 150, lblConstructionYardManufacturerWaitQueue
+    // (0, 520) + ctlConstructionYardManufacturerWaitQueue (0, 535) 555 × 150 (method_169): below the page's 270 px.
+    pageYards.classList.add('dt-page-scroll');
+    const manufacturing = manufacturingGrids(pageYards, galaxy, empire);
 
     // Fleet Builds tab (ours): the running fleet-design build orders; the ships of each waiting at the selected yard.
     interface FleetRow {
@@ -1255,6 +1267,8 @@ function createConstructionYards(opts: ConstructionYardsOptions): OpenState {
         btnViewDesign.disabled = bo === null;
         btnScrap.disabled = bo === null;
         btnViewFleet.disabled = !(bo !== null && bo.shipGroup != null && opts.onViewFleet);
+        // ctlBuiltObjectList_SelectionChanged: Enabled for a Military ship.
+        setFleet.update(bo !== null && bo.role === BuiltObjectRole.Military);
         btnRefuel.disabled = !mobile;
         btnRepair.disabled = !(mobile && bo!.damagedComponentCount > 0);
         btnRetrofit.disabled = bo === null || bo.owner === null;
@@ -1418,6 +1432,7 @@ function createConstructionYards(opts: ConstructionYardsOptions): OpenState {
 
         setText(maxSize, maximumSizeText(empireMaximumSizes(empire)));
         refreshPurchaser();
+        manufacturing.bind(selected ? siteTarget(selected) : null);
         refreshDataPage();
         refreshDetail(row);
         drawMap();
