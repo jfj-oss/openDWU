@@ -19,7 +19,8 @@
 //   inflated by 10 % of that side on every side (radius 1.2 x SensorLongRange), all into one transparent layer, which is
 //   then composited at 13 % (method_236(0.13)). The backgrounds are drawn at zoom factor > 70 (MainView.cs 1520
 //   method_132) and the sector one fades in below f = 210 (FadeSectorBackground: (f - 70) / 210; scannerLayerFade).
-//   Here: sprites under one AlphaFilter (the group composite) above the territory layer.
+//   Here: sprites in one container whose ColorMatrixFilter (the group composite) sets RGB to white and alpha x 0.13,
+//   above the territory layer.
 
 import type { Empire } from '../sim/empire';
 import type { ShipGroup } from '../sim/fleets/shipGroup';

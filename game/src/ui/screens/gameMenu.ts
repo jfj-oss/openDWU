@@ -238,7 +238,7 @@ export function buildOptionsPanel(
     optionsPanel.appendChild(scaleRow);
 
     // Show system names / region labels toggles.
-    const makeToggle = (labelText: string, key: 'showSystemNames' | 'showRegionLabels' | 'freightFlowsDefault' | 'ditherGradients' | 'pullStationsToCentre' | 'autoPauseInPopup' | 'simWorker' | GalaxyViewDisplayKey): HTMLElement => {
+    const makeToggle = (labelText: string, key: 'showSystemNames' | 'showRegionLabels' | 'freightFlowsDefault' | 'ditherGradients' | 'pullStationsToCentre' | 'showWeaponRangeCircles' | 'autoPauseInPopup' | 'simWorker' | GalaxyViewDisplayKey): HTMLElement => {
         const row = document.createElement('div');
         row.className = 'game-menu-option-row';
         const lbl = document.createElement('span');
@@ -263,6 +263,7 @@ export function buildOptionsPanel(
     // Applied live by main.ts (onSettingsChange → render/outputDither.ts setOutputDither).
     optionsPanel.appendChild(makeToggle('Dither gradients (no banding)', 'ditherGradients'));
     optionsPanel.appendChild(makeToggle('Draw stations closer to their planet / moon', 'pullStationsToCentre'));
+    optionsPanel.appendChild(makeToggle('Show weapon range circles for the selected ship', 'showWeaponRangeCircles'));
     // Experimental (docs/sim-worker.md): read by main.ts when the next game starts or loads.
     optionsPanel.appendChild(makeToggle('Simulation in a worker thread (experimental, next game)', 'simWorker'));
     // [galaxymarkers] begin — Main.InitializeComponent.cs 9922-10041: grpGameOptionsAdvancedDisplaySettingsGalaxyIcons.

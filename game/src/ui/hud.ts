@@ -1789,17 +1789,6 @@ function creaturePictureUrl(c: Creature): string | null {
 }
 
 /** Bottom-right options list: View rows + overlay toggles. */
-/** Task M3: overlays that need ship state (fleets, travel vectors) not yet
- * ported — their toggle just flips the checkbox; src/render/overlayLayer.ts
- * does not draw anything for them. */
-const OVERLAY_NEEDS_SHIPS: ReadonlySet<OverlayKey> = new Set([
-    'fleetPostures',
-    'travelVectorsState',
-    'travelVectorsPrivate',
-    'longRangeScanners',
-    'fadeCivilianShips',
-]);
-
 function buildOptionsList(wiring: HudWiring): HTMLElement {
     const overlays = wiring.overlays ?? createMapOverlayState();
     const panel = document.createElement('div');
@@ -1870,13 +1859,8 @@ function buildOptionsList(wiring: HudWiring): HTMLElement {
         item.addEventListener('click', () => {
             toggleOverlay(overlays, row.key);
             check.textContent = overlays[row.key] ? '✓' : '';
-            // Rendering lives in src/render/overlayLayer.ts (task M3), which
-            // subscribes to onOverlayChange and reacts to this toggle
-            // immediately. Empire Territory / Potential Colonies / Scenic
-            // Locations / Research Locations are implemented there.
-            if (OVERLAY_NEEDS_SHIPS.has(row.key)) {
-                // TODO(overlay): needs ships (M3).
-            }
+            // Rendering lives in src/render/overlayLayer.ts (task M3, parity C3), which subscribes to onOverlayChange and
+            // reads the state every frame (Fade civilian ships: builtObjectLayer.ts).
         });
         panel.appendChild(item);
     }

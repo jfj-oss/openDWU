@@ -1,6 +1,6 @@
 // Map overlay toggle state (task 05c). The original's minimap-area buttons
 // (btnMapOverlay1..8, btnMapCivilianFade in Main.Part12.cs) are replaced by a
-// list of named toggles; rendering of the overlays themselves comes later.
+// list of named toggles; the overlays are drawn by src/render/overlayLayer.ts (and builtObjectLayer.ts / empireLayer.ts).
 
 export interface MapOverlayState {
     fleetPostures: boolean;
