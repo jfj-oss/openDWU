@@ -24,7 +24,9 @@ import {
     shipGroupListResolveFleetsWithWaitTarget,
     shipGroupTotalTroopAttackStrengthNearby,
 } from '../fleets/shipGroupTasks';
-import { assignFleetRefuellingExcludeGatheringShips, calculateDefendingStrength, ensureBaseDefendedByFleet, findNearestAvailableFleet, isShipGroupAvailable } from '../fleets/militaryAI';
+import { assignFleetRefuellingExcludeGatheringShips, calculateDefendingStrength, ensureBaseDefendedByFleet, findNearestAvailableFleet, generateAutomationMessageAttackEnemyColony, isShipGroupAvailable } from '../fleets/militaryAI';
+import { generateAutomationMessageInvadeIndependent } from '../combat/invasion';
+import { formatGameTextNow } from '../textResolver';
 import { FleetPosture, AdvisorMessageType, checkTaskAuthorized, type RefCount } from '../diplomacyTick';
 import { DiplomaticRelationType, DiplomaticStrategy, obtainDiplomaticRelation } from '../diplomacy';
 import { PirateRelationType, obtainPirateRelation } from '../pirateRelations';
@@ -36,8 +38,7 @@ import { determineMiningStationAtHabitat, HabitatPrioritization } from '../resou
 import { determineBaseStrengthAtHabitat, determineDefendingStrength } from '../combat/threats';
 import { estimatedDefensiveForceRequired, troopLevelRequired } from '../troops';
 import { netSort } from '../netSort';
-import { gameText } from '../colonyTick';
-import { EmpireActivityType } from './empireActivity';
+import { EmpireActivityType, type EmpireActivity } from './empireActivity';
 import { calculateOverallStrengthFactor } from './missionsMarket';
 import { findNearestKnownBaseForPirateAttackOwn } from './pirateShipMissions';
 
@@ -161,9 +162,45 @@ export function identifyRaidableColonies(galaxy: Galaxy, empire: Empire, maximum
     return habitatPrioritizationList;
 }
 
-/** Empire.10.cs GenerateAutomationMessage* (advisor texts for the player; GameText keys). */
-function automationMessage(key: string, ...args: unknown[]): string {
-    return gameText(key, ...args);
+// Empire.10.cs GenerateAutomationMessage* for the pirate tasks (advisor texts for the player), resolved now
+// (formatGameTextNow, the C#'s string.Format(TextResolver.GetText(...), ...)).
+
+/** `target.ParentHabitat` → DetermineHabitatSystemStar(...).Name, or "" (StellarObject.ParentHabitat). */
+function parentSystemName(galaxy: Galaxy, target: unknown): string {
+    const parent = (target as { parentHabitat?: Habitat | null } | null)?.parentHabitat ?? null;
+    return parent !== null ? galaxy.determineHabitatSystemStar(parent).name : '';
+}
+
+/** Empire.10.cs 3926 / 3946 GenerateAutomationMessagePiratesAttackMission / PiratesDefendMission(mission, fleet). */
+export function generateAutomationMessagePiratesMission(galaxy: Galaxy, tag: 'Automation Pirate Attack Mission' | 'Automation Pirate Defend Mission', mission: EmpireActivity, fleet: ShipGroup): string {
+    let text = '';
+    let text2 = '';
+    let text3 = '';
+    let text4 = '';
+    if (mission.targetEmpire !== null && mission.requestingEmpire !== null && mission.target !== null) {
+        text4 = mission.targetEmpire.name;
+        text = mission.target.name;
+        text3 = mission.requestingEmpire.name;
+        text2 = parentSystemName(galaxy, mission.target);
+    }
+    return formatGameTextNow(tag, [text3, text, text4, text2, fleet.name]);
+}
+
+/** Empire.10.cs 3915 GenerateAutomationMessagePiratesAttackPirates(attackTarget, attackFleet). */
+export function generateAutomationMessagePiratesAttackPirates(galaxy: Galaxy, attackTarget: BuiltObject, attackFleet: ShipGroup): string {
+    return formatGameTextNow('Automation Pirate Attack Pirate', [attackTarget.empire!.name, attackTarget.name, parentSystemName(galaxy, attackTarget), attackFleet.name]);
+}
+
+/** Empire.10.cs 3861 GenerateAutomationMessageRaidBase(target, attackFleet). */
+export function generateAutomationMessageRaidBase(galaxy: Galaxy, target: BuiltObject, attackFleet: ShipGroup): string {
+    return formatGameTextNow('Automation Raid Base', [target.name, target.empire !== null ? target.empire.name : '', parentSystemName(galaxy, target), attackFleet.name]);
+}
+
+/** Empire.10.cs 3876 GenerateAutomationMessageRaidColony(target, attackFleet). */
+export function generateAutomationMessageRaidColony(galaxy: Galaxy, target: Habitat, attackFleet: ShipGroup): string {
+    const name = galaxy.determineHabitatSystemStar(target).name;
+    if (target.empire === galaxy.independentEmpire) return formatGameTextNow('Automation Raid Independent Colony', [target.name, name, attackFleet.name]);
+    return formatGameTextNow('Automation Raid Colony', [target.name, target.empire !== null ? target.empire.name : '', name, attackFleet.name]);
 }
 
 /** Empire.9.cs 904 PirateTaskFleets. Rnd: in callees only (FindNearestAvailableFleet — M4m; ShipGroup.AssignMission's). */
@@ -202,7 +239,7 @@ export function pirateTaskFleetsCore(galaxy: Galaxy, empire: Empire): void {
                     if (shipGroup3 !== null && shipGroup3.leadShip !== null) {
                         let missionType2 = BuiltObjectMissionType.Attack;
                         if (targetIsBuiltObject) missionType2 = determineDestroyOrCaptureTargetForFleet(galaxy, empire, shipGroup3, target as BuiltObject);
-                        if ((isAiControlled(shipGroup3.leadShip) || empire.controlMilitaryAttacks === AutomationLevel.PartiallyAutomated) && checkTaskAuthorized(galaxy, empire, empire.controlMilitaryAttacks, refusalCount, automationMessage('Automation Pirates Attack Mission', target.name), target, AdvisorMessageType.EnemyAttack, null, shipGroup3, null)) {
+                        if ((isAiControlled(shipGroup3.leadShip) || empire.controlMilitaryAttacks === AutomationLevel.PartiallyAutomated) && checkTaskAuthorized(galaxy, empire, empire.controlMilitaryAttacks, refusalCount, generateAutomationMessagePiratesMission(galaxy, 'Automation Pirate Attack Mission', empireActivity, shipGroup3), target, AdvisorMessageType.EnemyAttack, null, shipGroup3, null)) {
                             shipGroupAssignMission(galaxy, shipGroup3, missionType2, target as MissionTarget, null, BuiltObjectMissionPriority.High, false);
                         }
                     }
@@ -218,7 +255,7 @@ export function pirateTaskFleetsCore(galaxy: Galaxy, empire: Empire): void {
                         if (isAiControlled(shipGroup2.leadShip) && empire.controlMilitaryFleets) {
                             const expiryDate = empireActivity.expiryDate;
                             shipGroupAssignMission(galaxy, shipGroup2, missionType, target as MissionTarget, null, BuiltObjectMissionPriority.High, false, null, expiryDate);
-                        } else if (checkTaskAuthorized(galaxy, empire, AutomationLevel.PartiallyAutomated, refusalCount, automationMessage('Automation Pirates Defend Mission', target.name), target, AdvisorMessageType.DefendTarget, null, shipGroup2, null)) {
+                        } else if (checkTaskAuthorized(galaxy, empire, AutomationLevel.PartiallyAutomated, refusalCount, generateAutomationMessagePiratesMission(galaxy, 'Automation Pirate Defend Mission', empireActivity, shipGroup2), target, AdvisorMessageType.DefendTarget, null, shipGroup2, null)) {
                             const expiryDate2 = empireActivity.expiryDate;
                             shipGroupAssignMission(galaxy, shipGroup2, missionType, target as MissionTarget, null, BuiltObjectMissionPriority.High, false, null, expiryDate2);
                         }
@@ -245,7 +282,7 @@ export function pirateTaskFleetsCore(galaxy: Galaxy, empire: Empire): void {
             if (!flag) continue;
             const shipGroup4 = findNearestAvailableFleet(galaxy, empire, habitat.xpos, habitat.ypos, BuiltObjectMissionPriority.Normal, 0, FleetPosture.Attack, ...fleetArgs(troopLevelRequired(galaxy, habitat, galaxy.difficultyLevel) * 100));
             if (shipGroup4 !== null && (isAiControlled(shipGroup4.leadShip!) || empire.controlMilitaryAttacks === AutomationLevel.PartiallyAutomated)) {
-                const taskDescription = habitat.empire !== galaxy.independentEmpire ? automationMessage('Automation Attack Enemy', habitat.name) : automationMessage('Automation Invade Independent', habitat.name);
+                const taskDescription = habitat.empire !== galaxy.independentEmpire ? generateAutomationMessageAttackEnemyColony(galaxy, habitat, false, shipGroup4) : generateAutomationMessageInvadeIndependent(galaxy, habitat, shipGroup4); // Empire.9.cs 1037
                 if (checkTaskAuthorized(galaxy, empire, empire.controlMilitaryAttacks, refusalCount, taskDescription, habitat, AdvisorMessageType.EnemyAttack, null, shipGroup4, null)) {
                     shipGroupAssignMission(galaxy, shipGroup4, BuiltObjectMissionType.Attack, habitat, null, BuiltObjectMissionPriority.High, false);
                 }
@@ -277,7 +314,7 @@ export function pirateTaskFleetsCore(galaxy: Galaxy, empire: Empire): void {
             if (shipGroup5 === null || !shipGroupCheckFleetTargetWithinFuelRangeAndRefuel(galaxy, shipGroup5, builtObject2.xpos, builtObject2.ypos, 0.1) || (!isAiControlled(shipGroup5.leadShip!) && empire.controlMilitaryAttacks !== AutomationLevel.PartiallyAutomated)) continue;
             const firstByTargetAndType = empire.pirateMissions.getFirstByTargetAndType(builtObject2, EmpireActivityType.Defend);
             if (firstByTargetAndType === null) {
-                if (checkTaskAuthorized(galaxy, empire, empire.controlMilitaryAttacks, refusalCount, automationMessage('Automation Raid Base', builtObject2.name), builtObject2, AdvisorMessageType.PirateRaid, null, shipGroup5, null)) {
+                if (checkTaskAuthorized(galaxy, empire, empire.controlMilitaryAttacks, refusalCount, generateAutomationMessageRaidBase(galaxy, builtObject2, shipGroup5), builtObject2, AdvisorMessageType.PirateRaid, null, shipGroup5, null)) {
                     shipGroupAssignMission(galaxy, shipGroup5, BuiltObjectMissionType.Raid, builtObject2, null, BuiltObjectMissionPriority.High, false);
                 }
                 break;
@@ -298,7 +335,7 @@ export function pirateTaskFleetsCore(galaxy: Galaxy, empire: Empire): void {
             if (shipGroup6 === null || !shipGroupCheckFleetTargetWithinFuelRangeAndRefuel(galaxy, shipGroup6, h2.xpos, h2.ypos, 0.1) || (!isAiControlled(shipGroup6.leadShip!) && empire.controlMilitaryAttacks !== AutomationLevel.PartiallyAutomated)) continue;
             const firstByTargetAndType2 = empire.pirateMissions.getFirstByTargetAndType(h2, EmpireActivityType.Defend);
             if (firstByTargetAndType2 === null) {
-                if (checkTaskAuthorized(galaxy, empire, empire.controlMilitaryAttacks, refusalCount, automationMessage('Automation Raid Colony', h2.name), h2, AdvisorMessageType.PirateRaid, null, shipGroup6, null)) {
+                if (checkTaskAuthorized(galaxy, empire, empire.controlMilitaryAttacks, refusalCount, generateAutomationMessageRaidColony(galaxy, h2, shipGroup6), h2, AdvisorMessageType.PirateRaid, null, shipGroup6, null)) {
                     shipGroupAssignMission(galaxy, shipGroup6, BuiltObjectMissionType.Raid, h2, null, BuiltObjectMissionPriority.High, false);
                 }
                 break;
@@ -317,7 +354,7 @@ export function pirateTaskFleetsCore(galaxy: Galaxy, empire: Empire): void {
             const shipGroup7 = findNearestAvailableFleet(galaxy, empire, builtObject3.xpos, builtObject3.ypos, BuiltObjectMissionPriority.Normal, overallStrength4, FleetPosture.Attack, ...fleetArgs(0));
             if (shipGroup7 !== null && shipGroup7.leadShip !== null) {
                 const missionType3 = determineDestroyOrCaptureTargetForFleet(galaxy, empire, shipGroup7, builtObject3);
-                if ((isAiControlled(shipGroup7.leadShip) || empire.controlMilitaryAttacks === AutomationLevel.PartiallyAutomated) && checkTaskAuthorized(galaxy, empire, empire.controlMilitaryAttacks, refusalCount, automationMessage('Automation Pirates Attack Pirates', builtObject3.name), builtObject3, AdvisorMessageType.EnemyAttack, null, shipGroup7, null)) {
+                if ((isAiControlled(shipGroup7.leadShip) || empire.controlMilitaryAttacks === AutomationLevel.PartiallyAutomated) && checkTaskAuthorized(galaxy, empire, empire.controlMilitaryAttacks, refusalCount, generateAutomationMessagePiratesAttackPirates(galaxy, builtObject3, shipGroup7), builtObject3, AdvisorMessageType.EnemyAttack, null, shipGroup7, null)) {
                     shipGroupAssignMission(galaxy, shipGroup7, missionType3, builtObject3, null, BuiltObjectMissionPriority.High, false);
                 }
             }

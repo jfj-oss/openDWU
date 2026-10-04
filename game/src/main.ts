@@ -9,6 +9,7 @@ import { goToMessage, messageGoToTarget } from './ui/messageGoto';
 import { Application } from 'pixi.js';
 import { Camera } from './render/camera';
 import { MainView } from './render/mainView';
+import { installContextLossRecovery, releasePixiTestContext } from './render/contextLoss';
 import { AssetStore, loadManifest } from './render/assets';
 import { generateGalaxy } from './sim/galaxy';
 import { Galaxy } from './sim/galaxy';
@@ -561,6 +562,16 @@ function createGalaxyMapFor(galaxy: Galaxy, camera: Camera): GalaxyMapScreen {
     return galaxyMap;
 }
 
+/**
+ * WebGL context-loss recovery for a game view (render/contextLoss.ts): regenerate GPU-only content on restore, step
+ * detail down when losses recur. Also drops Pixi's capability-probe context (getTestContext: a second WebGL context
+ * kept for the page's lifetime once the renderer has read its limits; Pixi makes a new one if it ever asks again).
+ */
+function installGpuRecovery(app: Application, view: MainView): ReturnType<typeof installContextLossRecovery> {
+    releasePixiTestContext(app.renderer);
+    return installContextLossRecovery(app.canvas, app.renderer, view, { notify: showToast });
+}
+
 /** Task M2e2: one shared boot used by the wizard Start, `?autostart=1` and
  * save-load — centres the camera on the player's capital at Sector zoom,
  * wires the HUD/clock/input, and sets `window.__dwu` (camera, galaxy, view,
@@ -638,6 +649,7 @@ export async function startGameView(
     applyOverlaysUrlParam(overlays);
     const view = new MainView(app, camera, galaxy, store, overlays);
     await view.init();
+    const contextLoss = installGpuRecovery(app, view);
 
     // One clock: the HUD's GalaxyTime is bound to galaxy.nowMs by createSimLoop (the scheduler advances it).
     const time = new GalaxyTime();
@@ -669,7 +681,7 @@ export async function startGameView(
     // window's "Play This Game" button can unpause it.
     (window as unknown as { __dwu?: unknown }).__dwu = buildDwuDebugObject({ camera, galaxy, view, app, game, time });
     // [simworker] in worker mode `sim` / `simBudget` stand in for the worker's driver / budget (SimWorkerClient.debugObject).
-    Object.assign((window as unknown as { __dwu: Record<string, unknown> }).__dwu, { sim: inThreadLoop?.driver ?? simClient?.debugObject('sim') ?? null, simStats: simLoop.stats, simWorker: simClient ?? null });
+    Object.assign((window as unknown as { __dwu: Record<string, unknown> }).__dwu, { sim: inThreadLoop?.driver ?? simClient?.debugObject('sim') ?? null, simStats: simLoop.stats, simWorker: simClient ?? null, gpuContext: contextLoss.state });
     // The game's message options (Game.DisplayMessage* / DisplayPopup*, saved with it): what the Game Options window
     // shows and edits (ui/messageRouting.ts).
     adoptGameMessageOptions(galaxy);
@@ -1060,6 +1072,7 @@ export async function startGameView(
         clearInterval(refreshHudTimer);
         clearInterval(refreshClockTimer);
         view.dispose(); // Task 12k: remove the hover tooltip div.
+        contextLoss.dispose();
         galaxyMap.destroy();
         // The HUD selection is module state: don't show the old game's
         // object in the next game's panel.
@@ -1806,6 +1819,7 @@ async function bootGameWithOptions(opts: BootOptions): Promise<void> {
     applyOverlaysUrlParam(overlays);
     const view = new MainView(app, camera, galaxy, store, overlays);
     await view.init();
+    installGpuRecovery(app, view);
 
     // Debug / screenshot hook: the camera and the generated galaxy model.
     const debugHook: Record<string, unknown> = { camera, galaxy, view, app };

@@ -20,7 +20,7 @@ import type { Galaxy } from '../galaxy';
 import type { BuiltObject } from '../builtObject';
 import type { Empire } from '../empire';
 import type { Habitat } from '../types';
-import { HabitatCategoryType } from '../types';
+import { HabitatCategoryType, HabitatType } from '../types';
 import type { Weapon } from '../weapon';
 import { CreatureType, resolveCreatureDescription } from '../creature';
 import { gameText } from '../colonyTick';
@@ -34,7 +34,8 @@ import { researchComponentTechPoints, resolveSubRoleDescription } from '../desig
 import { DiplomaticRelationType, obtainDiplomaticRelation } from '../diplomacy';
 import { PirateRelationType, obtainPirateRelation } from '../pirateRelations';
 import { checkSystemOwnership } from '../stationPlacement';
-import { EmpireMessageType, sendMessageToEmpire } from '../messages';
+import { EmpireMessageType, resolveDescription, sendMessageToEmpire } from '../messages';
+import { formatGameTextNow } from '../textResolver';
 import { galaxyStarDate } from '../tick/simTime';
 import { PreWarpProgressEventType } from '../exploration';
 import { checkSendPreWarpProgressEventMessage } from '../events';
@@ -480,10 +481,11 @@ export function notifyOfAttackHabitat(galaxy: Galaxy, attacker: StellarObject | 
             } else {
                 let text = '';
                 if (isBuiltObject(attacker)) {
+                    // Galaxy.7.cs 3098-3102: GetText("Pirate") + " " + ResolveDescription(SubRole).ToLower(Invariant).
                     if (attacker.empire!.pirateEmpireBaseHabitat !== null) {
-                        text = text + 'Pirate ';
+                        text = text + formatGameTextNow('Pirate') + ' ';
                     }
-                    text += `${attacker.subRole}`;
+                    text += resolveSubRoleDescription(attacker.subRole).toLowerCase();
                     text = text + ' (' + attacker.name + ')';
                 } else if (isCreature(attacker)) {
                     text += resolveCreatureDescription(attacker.type); // Galaxy.7.cs ResolveDescription(creature2.Type)
@@ -972,31 +974,40 @@ export function shouldCounterAttack(bo: BuiltObject): boolean {
 }
 
 /**
- * BuiltObject.2.cs 314 CheckColonyShipMissionCancelled(cancelReasonCode) → 338 SendMessageCannotColonize. The C# only
- * composes a message (TODO(port) M9 TextResolver "Colony Failure …" texts); the message is queued with the code as text.
+ * BuiltObject.2.cs 314 CheckColonyShipMissionCancelled(cancelReasonCode) → 338 SendMessageCannotColonize: the
+ * "Colony Failure Message" + ". " + the reason text, sent as a ColonyShipMissionCancelled message.
  */
 export function checkColonyShipMissionCancelled(galaxy: Galaxy, bo: BuiltObject, cancelReasonCode: number): void {
     const mission = builtObjectMission(bo.mission);
     if (bo.subRole === BuiltObjectSubRole.ColonyShip && mission !== null && mission.type === BuiltObjectMissionType.Colonize && mission.targetHabitat !== null) {
+        // BuiltObject.2.cs 318-333 / 344-345: resolved now (formatGameTextNow) — the ". " join of two texts cannot ride in
+        // the deferred gameText() encoding (resolveGameText only splits literal text between encodings at a newline).
+        const category = (h: Habitat): string => resolveDescription(HabitatCategoryType as unknown as Record<number, string>, h.category).toLowerCase();
         let failureReason = '';
         switch (cancelReasonCode) {
             case 0:
-                failureReason = 'Colony Failure Under Attack';
+                failureReason = formatGameTextNow('Colony Failure Under Attack');
                 break;
             case 1:
-                failureReason = `Colony Failure Already Colonized|${mission.targetHabitat.category}`;
+                failureReason = formatGameTextNow('Colony Failure Already Colonized', [category(mission.targetHabitat)]);
                 break;
             case 2:
-                failureReason = `Colony Failure Cannot Colonize|${mission.targetHabitat.category}`;
+                failureReason = formatGameTextNow('Colony Failure Cannot Colonize', [category(mission.targetHabitat)]);
                 break;
             case 3:
-                failureReason = `Colony Failure Colony Destroyed|${mission.targetHabitat.category}`;
+                failureReason = formatGameTextNow('Colony Failure Colony Destroyed', [category(mission.targetHabitat)]);
                 break;
         }
         const colonizationTarget = mission.targetHabitat;
         if (colonizationTarget !== null && bo.empire !== null) {
             const habitat = galaxy.determineHabitatSystemStar(colonizationTarget);
-            let empty = `Colony Failure Message|${bo.name}|${colonizationTarget.type}|${colonizationTarget.category}|${colonizationTarget.name}|${habitat.name}`;
+            let empty = formatGameTextNow('Colony Failure Message', [
+                bo.name,
+                resolveDescription(HabitatType as unknown as Record<number, string>, colonizationTarget.type).toLowerCase(),
+                category(colonizationTarget),
+                colonizationTarget.name,
+                habitat.name,
+            ]);
             empty = empty + '. ' + failureReason;
             sendMessageToEmpire(bo.empire, bo.empire, EmpireMessageType.ColonyShipMissionCancelled, bo, empty, { x: Math.trunc(colonizationTarget.xpos), y: Math.trunc(colonizationTarget.ypos) }, '');
         }

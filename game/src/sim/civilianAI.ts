@@ -116,6 +116,7 @@ import { ColonyPopulationPolicy } from './data/policy';
 import { ComponentCategoryType } from './data/policies';
 import { PlanetaryFacilityType, ShipDesignFocus } from './researchSystem';
 import { facilitiesCountByType } from './construction/facilities';
+import { generateAutomationMessageColonization } from './construction/empireConstruction';
 import { LazyNetSortOrder, netSort } from './netSort';
 import { GalaxyLocationType, type GalaxyLocation } from './galaxyLocation';
 import { ForceStructureProjectionList } from './forceStructureProjection';
@@ -817,22 +818,7 @@ function assignMissionColonyShip(galaxy: Galaxy, empire: Empire, ship: BuiltObje
     }
 }
 
-/**
- * Empire.10.cs 3646 GenerateAutomationMessageColonization(newColony, colonyShip, colonyShipBuildLocation).
- * TODO(port) M9 (UI): the TextResolver strings ("Automation Colonization Existing Ship" / "New Ship") are UI text; the
- * message only feeds the player's advisor prompt, so the names are joined without the localized template.
- */
-function generateAutomationMessageColonization(galaxy: Galaxy, newColony: Habitat, colonyShip: BuiltObject | null, colonyShipBuildLocation: Habitat | null): string {
-    const habitat = galaxy.determineHabitatSystemStar(newColony);
-    let result = '';
-    if (colonyShip !== null) {
-        result = `${newColony.name} ${habitat.name} ${colonyShip.name}`;
-    } else if (colonyShipBuildLocation !== null) {
-        const habitat2 = galaxy.determineHabitatSystemStar(colonyShipBuildLocation);
-        result = `${newColony.name} ${habitat.name} ${colonyShipBuildLocation.name} ${habitat2.name}`;
-    }
-    return result;
-}
+// Empire.10.cs 3646 GenerateAutomationMessageColonization: construction/empireConstruction.ts.
 
 /** Empire.4.cs 4776 CheckColonizingHabitat(habitat). */
 export function checkColonizingHabitat(empire: Empire, habitat: Habitat): BuiltObject | null {

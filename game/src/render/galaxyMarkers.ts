@@ -41,6 +41,9 @@
 //    (method_236(0.25), MainView.2.cs 241 / 365). Here one disc per empire with KNOWN bases or colonies in the
 //    system, its radius growing with sqrt(count) from that size (addition: the original draws one fixed disc).
 //
+// 6. System link lines — method_250 5237-5336: the dotted lines in each empire's MainColor between its linked systems
+//    (SystemVisibility.LinkSystemStars), at f > 150 under the rings: systemLinks.ts.
+//
 // Batching: the symbols (and fleet icons) are particles of one ParticleContainer over a runtime atlas of the
 // original symbol art (procedural shapes when the art is missing), the discs a second one; rings one Graphics
 // rebuilt only on zoom / data / view changes. Everything lives in world space and is sized by /z in screen px.
@@ -50,6 +53,7 @@ import { inOwnRenderGroup } from './renderGroups';
 import { circleAtScreenRes } from './screenCircle';
 import { SELECTION_CIRCLE_WIDTH_PX, applySelectionTint, buildSelectionCircles, symbolSelectionBox } from './selectionCircle';
 import { Container, Graphics, Particle, ParticleContainer, Rectangle, Sprite, Text, Texture } from 'pixi.js';
+import { makeTextureCanvas, textureFromCanvas } from './textureCanvas';
 import type { Camera } from './camera';
 import type { Galaxy } from '../sim/galaxy';
 import type { Empire } from '../sim/empire';
@@ -69,6 +73,7 @@ import { boundsOnScreen } from './drawCache';
 import { showsMapIndicators } from './mainViewDisplay';
 import { drawCrossedSwords, systemsUnderFire } from './battleIcons';
 import { builtObjectHiddenFromPick, warEmpires } from './builtObjectLayer';
+import { SystemLinkLayer } from './systemLinks';
 
 // --- constants ----------------------------------------------------------------------------------------------------
 
@@ -555,11 +560,9 @@ const DISC_SIZE = 128;
 /** Atlas cell order: filled galaxy art, outline art, then the fleet icon. */
 const CELL_KEYS: readonly string[] = [...SYMBOL_ART.map((a) => `${a}_galaxy`), ...SYMBOL_ART, 'fleet'];
 
+/** A software canvas (its 2D context made with willReadFrequently: no GPU surface; see textureCanvas.ts). */
 function makeCanvas(w: number, h: number): HTMLCanvasElement {
-    const c = document.createElement('canvas');
-    c.width = w;
-    c.height = h;
-    return c;
+    return makeTextureCanvas(w, h).canvas;
 }
 
 function traceShape(ctx: CanvasRenderingContext2D, shape: MarkerShape | 'fleet', x0: number, y0: number, s: number): void {
@@ -647,7 +650,7 @@ async function buildSymbolAtlas(): Promise<{ frames: Texture[]; aspect: number[]
         }
         aspect.push(1);
     });
-    const atlas = Texture.from(canvas);
+    const atlas = textureFromCanvas(canvas);
     useMinifyingFilter(atlas);
     const frames = CELL_KEYS.map((_, i) => new Texture({ source: atlas.source, frame: new Rectangle(i * CELL, 0, CELL, CELL) }));
     return { frames, aspect };
@@ -665,7 +668,7 @@ function buildDiscFallback(): Texture {
     }
     ctx.fillStyle = g;
     ctx.fillRect(0, 0, DISC_SIZE, DISC_SIZE);
-    const tex = Texture.from(c);
+    const tex = textureFromCanvas(c);
     useMinifyingFilter(tex);
     return tex;
 }
@@ -715,6 +718,8 @@ export class GalaxyMarkerLayer {
     private readonly discs: ParticleContainer;
     private readonly symbols: ParticleContainer;
     private readonly rings = new Graphics();
+    /** The dotted system link lines (systemLinks.ts, method_250 5237-5336), under the rings. */
+    readonly links: SystemLinkLayer;
     private readonly overlayG = new Graphics();
     /** method_212 circles (selectionCircle.ts) of the galaxy pass: world space, tinted with method_213's pulse. */
     private readonly selG = new Graphics();
@@ -765,7 +770,8 @@ export class GalaxyMarkerLayer {
         const dyn = { position: true, vertex: true, rotation: false, uvs: true, color: true };
         this.discs = new ParticleContainer({ texture: this.discTex, dynamicProperties: dyn });
         this.symbols = new ParticleContainer({ texture: Texture.WHITE, dynamicProperties: dyn });
-        this.back.addChild(this.discs, this.rings);
+        this.links = new SystemLinkLayer(galaxy);
+        this.back.addChild(this.discs, this.links.root, this.rings);
         // overlayG is cleared and redrawn every frame: in its own render group (renderGroups.ts). (The battle bars over the
         // ships are combatBars.ts BattleBarLayer, MainView.1.cs 1251-1295.)
         this.front.addChild(this.symbols, this.countLayer, inOwnRenderGroup(this.overlayG), this.iconLayer, inOwnRenderGroup(this.selG));
@@ -881,6 +887,8 @@ export class GalaxyMarkerLayer {
         const ringA = factionOn ? factionRingBandAlpha(f) : 0;
         this.rings.visible = ringA > 0;
         if (this.rings.visible) this.updateRings(f, z, cam, ringA);
+        // Same gate as the rings (method_250 5237: f > num16, in the rings' block), but MainColor at full alpha.
+        this.links.update(f, z, cam, factionOn);
         if (this.front.visible && this.frames.length > 0) this.updateSymbols(f, z, cam);
         this.drawSelectionCircles(z);
     }

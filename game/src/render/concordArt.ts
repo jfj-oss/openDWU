@@ -37,6 +37,7 @@
 // reads galaxy.rnd or writes sim state.
 
 import { Container, Texture } from 'pixi.js';
+import { makeTextureCanvas, textureFromRgbaPixels } from './textureCanvas';
 import type { Galaxy } from '../sim/galaxy';
 import type { Empire } from '../sim/empire';
 import { BuiltObjectSubRole } from '../sim/builtObjectTypes';
@@ -2761,14 +2762,7 @@ let buildFrame = -1;
 let buildsThisFrame = 0;
 
 function toCanvasTexture(img: RgbaImage): Texture {
-    const canvas = document.createElement('canvas');
-    canvas.width = img.w;
-    canvas.height = img.h;
-    const ctx = canvas.getContext('2d')!;
-    const id = ctx.createImageData(img.w, img.h);
-    id.data.set(img.data);
-    ctx.putImageData(id, 0, 0);
-    const t = Texture.from(canvas);
+    const t = textureFromRgbaPixels(img.data, img.w, img.h);
     useMinifyingFilter(t);
     return t;
 }
@@ -2895,10 +2889,7 @@ export interface RaceDisplayArt {
 let raceArt: RaceDisplayArt | null = null;
 
 function toDataUrl(img: RgbaImage): string {
-    const canvas = document.createElement('canvas');
-    canvas.width = img.w;
-    canvas.height = img.h;
-    const ctx = canvas.getContext('2d')!;
+    const { canvas, ctx } = makeTextureCanvas(img.w, img.h);
     const id = ctx.createImageData(img.w, img.h);
     id.data.set(img.data);
     ctx.putImageData(id, 0, 0);

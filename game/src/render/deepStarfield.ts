@@ -49,6 +49,7 @@
 // Render-only: no sim state is read beyond system positions / star types, nothing is written, no sim RNG is drawn.
 
 import { Container, Particle, ParticleContainer, Rectangle, Sprite, Texture, type TextureSource } from 'pixi.js';
+import { makeTextureCanvas, textureFromCanvas } from './textureCanvas';
 import { useMinifyingFilter } from './assets';
 
 // --- pure part ------------------------------------------------------------------------------------------------------
@@ -295,11 +296,9 @@ export interface PatchSystem {
     radius: number;
 }
 
+/** A software canvas (its 2D context made with willReadFrequently: no GPU surface; see textureCanvas.ts). */
 function makeCanvas(w: number, h: number): HTMLCanvasElement {
-    const c = document.createElement('canvas');
-    c.width = w;
-    c.height = h;
-    return c;
+    return makeTextureCanvas(w, h).canvas;
 }
 
 /** Procedural 4-point star glow for one atlas cell (no-install fallback). */
@@ -424,7 +423,7 @@ export class DeepStarfield {
                     ctx.drawImage(pre, x, y);
                 }
             }
-            const atlas = Texture.from(canvas);
+            const atlas = textureFromCanvas(canvas);
             // 'nearest' layers: the original's pixels, one texel per CSS px (crisp blocks on HiDPI); layer 0 is
             // minified 32 -> 20 by the GPU like the original's sprite batch (no mip chain).
             atlas.source.scaleMode = spec.sampling;
@@ -455,7 +454,7 @@ export class DeepStarfield {
         }
         ctx.fillStyle = g;
         ctx.fillRect(0, 0, BLOB_SIZE, BLOB_SIZE);
-        const tex = Texture.from(c);
+        const tex = textureFromCanvas(c);
         useMinifyingFilter(tex);
         return tex;
     }
