@@ -42,6 +42,7 @@ import { determineEmpireSystems } from '../forceStructure';
 import { SystemVisibilityStatus } from '../visibility';
 import { mergeGalaxyMap } from '../exploration';
 import { doResearchBreakthrough, reviewDesignsBuiltObjectsImprovedComponents } from '../researchTick';
+import { resolveSectorDescription } from '../empireEvents';
 import {
     TradeableItem,
     TradeableItemType,
@@ -142,9 +143,9 @@ export function tradeItemLabel(galaxy: Galaxy, item: TradeableItem, showValue = 
             break;
         }
         case TradeableItemType.Base: {
-            // TODO(port): "Trade Description Base With Sector" also names Galaxy.ResolveSectorDescriptionStatic(x, y).
+            // "Trade Description Base With Sector" with Galaxy.ResolveSectorDescriptionStatic(x, y).
             const bo = item.item as BuiltObject;
-            str1 = gameText('Trade Description Base', bo.name, bo.nearestSystemStar?.name ?? '');
+            str1 = gameText('Trade Description Base With Sector', bo.name, bo.nearestSystemStar?.name ?? '', resolveSectorDescription(galaxy, bo.xpos, bo.ypos));
             break;
         }
         case TradeableItemType.TerritoryMap:

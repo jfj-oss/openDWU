@@ -9,7 +9,9 @@
 // --motion: also measure drawn-motion smoothness per zoom (installMotionProbe below): per frame, each steadily moving
 // free-flying ship's drawn displacement against its true velocity × the sim's measured game rate × the frame's real
 // time (q = 1 is perfectly even motion), with stalls (q < 0.25), jumps (q > 2), reversals and jerk |Δq|, plus the
-// same for the render clock (renderNowMs) and the render delay behind the committed sim time.
+// same for the render clock (renderNowMs) and the render delay behind the committed sim time. Headings too: each drawn
+// ship's per-frame heading change against the sim's own turn (its committed heading at each LastTouch, lerped between
+// touches at the drawn instant), on ships turning steadily (installMotionProbe: heading stats).
 // --save-profile: also write each zoom's CPU profile to DIR/<zoom>.cpuprofile (scripts/cpuprofile-summary.mjs).
 // --sweep: instead of the fixed zoom levels, a scripted wheel-zoom sweep: continuous wheel events on the canvas (at the
 // player's capital) zoom from the whole galaxy down to 100% and back out over --sweep-secs, repeated --sweeps times
@@ -36,7 +38,7 @@ import { spawn, execFileSync } from 'node:child_process';
 import { createServer } from 'node:net';
 import { fileURLToPath } from 'node:url';
 import { basename, dirname, join } from 'node:path';
-import { copyFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { loadavg } from 'node:os';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -164,7 +166,9 @@ async function main() {
         let bootQs = `autostart=1${BOOT_QS}`;
         if (LOAD) {
             mkdirSync(join(root, 'public/dev-saves'), { recursive: true });
-            copyFileSync(LOAD, join(root, 'public/dev-saves', basename(LOAD)));
+            const dest = join(root, 'public/dev-saves', basename(LOAD));
+            // (Not onto itself: a save already in public/dev-saves, or a link to it there.)
+            if (!existsSync(dest) || realpathSync(dest) !== realpathSync(LOAD)) copyFileSync(LOAD, dest);
             bootQs = `load=/dev-saves/${encodeURIComponent(basename(LOAD))}${args.qs ? `&${args.qs}` : ''}`;
         }
         const artReqs = trackArtRequests(page);
@@ -383,6 +387,12 @@ function installMotionProbe() {
     const d = window.__dwu;
     const view = d.view;
     const CAP = 400000;
+    // Heading: per drawn ship, its touches (LastTouch, committed heading) and its drawn frames (frame number, drawn game
+    // instant, drawn heading); summary() compares them (headingSummary).
+    let hShips = [];
+    let hRec = new WeakMap();
+    let hValues = 0;
+    const H_CAP = 6000000;
     const fresh = () => ({ lag: [], starved0: view.presentClock?.starved ?? 0, framedN: 0, framedStall: 0, frames: 0, q: [], dq: [], stall: 0, jump: 0, rev: 0, clock: [], clockDq: [], clockBack: 0, clockStall: 0, clockJump: 0, steps: [0, 0, 0, 0, 0], delay: [], rates: [], shipsPerFrame: 0 });
     let data = fresh();
     const ships = new WeakMap();
@@ -433,6 +443,27 @@ function installMotionProbe() {
             if (bo === null || bo === undefined || bo.hasBeenDestroyed) continue;
             const s = m.drawn(bo);
             if (s === null) continue;
+            let hr = hRec.get(bo);
+            if (hr === undefined) {
+                hr = { tau: [], th: [], fN: [], fT: [], fH: [], fF: [], lastTouch: NaN };
+                hRec.set(bo, hr);
+                hShips.push(hr);
+            }
+            if (bo.lastTouch !== hr.lastTouch && hValues < H_CAP) {
+                hr.lastTouch = bo.lastTouch;
+                hr.tau.push(bo.lastTouch);
+                hr.th.push(bo.heading);
+                hValues += 2;
+            }
+            if (running && hValues < H_CAP) {
+                // The drawn instant: the presented step's game time (renderNowMs is the step after it).
+                hr.fN.push(frameNo);
+                hr.fT.push(rt.renderNowMs - rt.stepGameMs);
+                hr.fH.push(s.heading);
+                // (2: snapped this frame — a teleport, first sight: the history starts over at one sample.)
+                hr.fF.push(s.hn === 1 ? 2 : s.frame === null ? 0 : 1);
+                hValues += 4;
+            }
             const speed = bo.currentSpeed;
             let r = ships.get(bo);
             if (r === undefined) {
@@ -480,6 +511,153 @@ function installMotionProbe() {
         }
         if (running) data.shipsPerFrame += n;
     };
+    /**
+     * Heading smoothness. The sim's continuous heading H(T) is its committed heading at each touch (LastTouch, heading)
+     * lerped along the shorter arc between touches. A frame pair (consecutive frames, drawn instants T0 < T1) counts as
+     * a steady turn when every touch interval from the one before T0's through T1's turned at one rate (same sign,
+     * within 10 %): the renderer had seen the turn going on at its latest touch. q = drawn heading change / H(T1) − H(T0):
+     * stall q < 0.25, jump q > 2.05 (an eased catch-up runs at exactly 2: renderInterp.ts HEADING_EASE_FACTOR), reversal
+ * q < 0, jerk |Δq| over a ship's consecutive steady pairs. Frame pairs in
+     * intervals where the committed heading did not change at all: `falseTurn` counts drawn changes over 0.003 rad (a
+     * ship drawn turning that the sim does not turn); `stopMove` the same just after a turn stopped (the interval before
+ * turned, the ones the pair spans did not: a turn still being eased out), `stopAway` those moving away from the
+ * heading it stopped at (a turn carried on that the sim did not make). `pop`: any frame pair (known intervals) whose drawn change exceeds
+     * 2 × the fastest rate around it × the time + 0.01 rad.
+     */
+    const headingSummary = (list) => {
+        const TWO_PI = Math.PI * 2;
+        const wrap = (d) => {
+            d %= TWO_PI;
+            if (d > Math.PI) d -= TWO_PI;
+            else if (d < -Math.PI) d += TWO_PI;
+            return d;
+        };
+        const q = [];
+        const dq = [];
+        const stepDeg = [];
+        let stall = 0;
+        let jump = 0;
+        let rev = 0;
+        let still = 0;
+        let falseTurn = 0;
+        let stop = 0;
+        let stopMove = 0;
+        let stopAway = 0;
+        let all = 0;
+        let pop = 0;
+        let turningShips = 0;
+        for (const hr of list) {
+            const { tau, th, fN, fT, fH, fF } = hr;
+            const nT = tau.length;
+            if (nT < 3) continue;
+            // Interval rates (rad per game ms).
+            const r = new Float64Array(nT - 1);
+            for (let k = 0; k + 1 < nT; k++) r[k] = tau[k + 1] > tau[k] ? wrap(th[k + 1] - th[k]) / (tau[k + 1] - tau[k]) : NaN;
+            const at = (T) => {
+                // Last k with tau[k] <= T (binary search), -1 if before the first.
+                let lo = 0;
+                let hi = nT - 1;
+                if (!(T >= tau[0])) return -1;
+                while (lo < hi) {
+                    const mid = (lo + hi + 1) >> 1;
+                    if (tau[mid] <= T) lo = mid;
+                    else hi = mid - 1;
+                }
+                return lo;
+            };
+            const H = (k, T) => th[k] + r[k] * (T - tau[k]);
+            let lastQ = NaN;
+            let turned = false;
+            for (let i = 1; i < fN.length; i++) {
+                if (fN[i] !== fN[i - 1] + 1 || fF[i] !== fF[i - 1] || fF[i] === 2) {
+                    lastQ = NaN;
+                    continue;
+                }
+                const T0 = fT[i - 1];
+                const T1 = fT[i];
+                if (!(T1 > T0)) continue;
+                const k0 = at(T0);
+                const k1 = at(T1);
+                if (k0 < 1 || k1 < 0 || k1 + 1 >= nT) {
+                    lastQ = NaN;
+                    continue;
+                }
+                let dH = 0;
+                for (let k = k0; k <= k1; k++) dH += H(k, Math.min(T1, tau[k + 1])) - H(k, Math.max(T0, tau[k]));
+                const dh = wrap(fH[i] - fH[i - 1]);
+                let rMin = Infinity;
+                let rMax = -Infinity;
+                let aMax = 0;
+                for (let k = k0 - 1; k <= k1; k++) {
+                    const v = r[k];
+                    if (v < rMin) rMin = v;
+                    if (v > rMax) rMax = v;
+                    if (Math.abs(v) > aMax) aMax = Math.abs(v);
+                }
+                if (!Number.isFinite(rMin) || !Number.isFinite(rMax)) {
+                    lastQ = NaN;
+                    continue;
+                }
+                all++;
+                if (Math.abs(dh) > 2 * aMax * (T1 - T0) + 0.01) pop++;
+                if (rMin === 0 && rMax === 0) {
+                    still++;
+                    if (Math.abs(dh) > 0.003) falseTurn++;
+                    lastQ = NaN;
+                    continue;
+                }
+                let restStill = true;
+                for (let k = k0; k <= k1; k++) if (r[k] !== 0) restStill = false;
+                if (restStill) {
+                    // The turn stopped at touch k0 (it ended, or the ship's next command does not turn it).
+                    stop++;
+                    if (Math.abs(dh) > 0.003) {
+                        stopMove++;
+                        // Away from the heading the turn stopped at (a turn carried on that the sim did not make).
+                        if (Math.abs(wrap(fH[i] - th[k0])) > Math.abs(wrap(fH[i - 1] - th[k0])) + 1e-9) stopAway++;
+                    }
+                    lastQ = NaN;
+                    continue;
+                }
+                // (At least 0.01 rad / game s: a ship reaching a target its every touch re-aims wobbles by less.)
+                const steady = rMin * rMax > 0 && Math.min(Math.abs(rMin), Math.abs(rMax)) >= 1e-5 && Math.max(Math.abs(rMin), Math.abs(rMax)) <= 1.1 * Math.min(Math.abs(rMin), Math.abs(rMax));
+                if (!steady || Math.abs(dH) < 1e-6) {
+                    lastQ = NaN;
+                    continue;
+                }
+                turned = true;
+                const v = dh / dH;
+                q.push(v);
+                stepDeg.push((Math.abs(dh) * 180) / Math.PI);
+                if (v < 0) rev++;
+                else if (v < 0.25) stall++;
+                else if (v > 2.05) jump++;
+                if (Number.isFinite(lastQ)) dq.push(Math.abs(v - lastQ));
+                lastQ = v;
+            }
+            if (turned) turningShips++;
+        }
+        const n = q.length;
+        return {
+            ships: list.length,
+            turningShips,
+            samples: n,
+            q: { p1: pct(q, 0.01), p5: pct(q, 0.05), p50: pct(q, 0.5), p95: pct(q, 0.95), p99: pct(q, 0.99), rms: n ? Math.sqrt(q.reduce((s, x) => s + (x - 1) * (x - 1), 0) / n) : NaN },
+            stallPct: n ? (100 * stall) / n : NaN,
+            jumpPct: n ? (100 * jump) / n : NaN,
+            revPct: n ? (100 * rev) / n : NaN,
+            jerk: { mean: mean(dq), p95: pct(dq, 0.95), p99: pct(dq, 0.99) },
+            stepDegP99: pct(stepDeg, 0.99),
+            stepDegMax: stepDeg.length ? Math.max(...stepDeg) : NaN,
+            stillPairs: still,
+            falseTurnPct: still ? (100 * falseTurn) / still : NaN,
+            stopPairs: stop,
+            stopMovePct: stop ? (100 * stopMove) / stop : NaN,
+            stopAwayPct: stop ? (100 * stopAway) / stop : NaN,
+            pairs: all,
+            popPct: all ? (100 * pop) / all : NaN,
+        };
+    };
     const pct = (a, f) => {
         if (a.length === 0) return NaN;
         const s = Float64Array.from(a).sort();
@@ -489,6 +667,9 @@ function installMotionProbe() {
     window.__motionProbe = {
         reset() {
             data = fresh();
+            hShips = [];
+            hRec = new WeakMap();
+            hValues = 0;
         },
         summary() {
             const n = data.q.length;
@@ -512,6 +693,7 @@ function installMotionProbe() {
                 rate: mean(data.rates),
                 lag: { mean: mean(data.lag), p50: pct(data.lag, 0.5), p95: pct(data.lag, 0.95) },
                 starved: (view.presentClock?.starved ?? 0) - data.starved0,
+                heading: headingSummary(hShips),
             };
         },
     };
@@ -524,6 +706,12 @@ function printMotion(rows) {
         const m = r.motion;
         if (!m) continue;
         console.log(`${r.zoom.padEnd(8)} ${String(m.samples).padEnd(8)} ${f(m.shipsPerFrame, 9, 0)} ${f(m.q.p1)}${f(m.q.p5)}${f(m.q.p50)}${f(m.q.p95)}${f(m.q.p99)}${f(m.q.rms, 9)}${f(m.stallPct)}${f(m.jumpPct)}${f(m.revPct)}${f(m.jerk.mean, 10)}${f(m.jerk.p95)}${f(m.jerk.p99)}| ${f(m.rate, 9, 3)} | ${f(m.framedPct, 5, 0)} (${f(m.framedStallPct, 4, 1)})`);
+    }
+    console.log('\nheading  samples  ships  turning  q p1    q p5   q p50  q p95  q p99  rms(q-1) stall%  jump%  rev%   jerk mean p95    p99    | step° p99  max   | still pairs falseTurn% | stop pairs stopMove% away% | pop%');
+    for (const r of rows) {
+        const h = r.motion?.heading;
+        if (!h) continue;
+        console.log(`${r.zoom.padEnd(8)} ${String(h.samples).padEnd(8)} ${String(h.ships).padEnd(6)} ${String(h.turningShips).padEnd(8)} ${f(h.q.p1)}${f(h.q.p5)}${f(h.q.p50)}${f(h.q.p95)}${f(h.q.p99)}${f(h.q.rms, 9)}${f(h.stallPct)}${f(h.jumpPct)}${f(h.revPct)}${f(h.jerk.mean, 10)}${f(h.jerk.p95)}${f(h.jerk.p99)}| ${f(h.stepDegP99, 9)}${f(h.stepDegMax)}| ${String(h.stillPairs).padEnd(11)} ${f(h.falseTurnPct, 10, 3)} | ${String(h.stopPairs).padEnd(10)} ${f(h.stopMovePct, 9, 2)} ${f(h.stopAwayPct, 5, 2)} | ${f(h.popPct, 6, 3)}`);
     }
     console.log('\nclock    frames  q p1   q p50  q p99  rms(q-1) back%  stall%  jump%  jerk mean p95    | delay ms mean p5     p95    | steps/frame 0,1,2,3,4+ | lag steps mean p50 p95 | starved');
     for (const r of rows) {
