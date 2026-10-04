@@ -1142,6 +1142,9 @@ export function getDefaultDesignSpecificationBySubRole(
 
 // Canonical (customization-set-independent) relative file paths to try, in
 // priority order, for a given sub role / race / pirate combination.
+/** designSpecificationTexts marker: the C# resolution found no file for this key (themes only, see data/gameData.ts). */
+export const DESIGN_SPECIFICATION_MISSING = '\u0000missing';
+
 export function designSpecificationFallbackFiles(
     subRoleName: string,
     raceNameOverride: string,
@@ -1192,6 +1195,7 @@ export function loadDesignSpecification(
         const files = designSpecificationFallbackFiles(subRoleName, raceNameOverride, isPirate);
         for (const file of files) {
             const text = texts.get(file);
+            if (text === DESIGN_SPECIFICATION_MISSING) break; // theme: File.Exists(path4) false (data/gameData.ts)
             if (text !== undefined) {
                 return parseDesignSpecification(text, subRole, isMobile, file);
             }

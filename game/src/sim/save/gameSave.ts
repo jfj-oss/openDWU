@@ -23,6 +23,8 @@ import { COMPOSITE_SCENARIO_ID } from '../scenario/addons';
  *  format; version-1 saves predate ships/bases/characters and are rejected. */
 export const GAME_SAVE_VERSION = 2;
 
+import { activeCustomizationSetName } from '../data/customization';
+
 export interface GameSaveJSON {
     version: typeof GAME_SAVE_VERSION;
     galaxy: GalaxySaveJSON;
@@ -31,6 +33,12 @@ export interface GameSaveJSON {
     playerEmpireIndex: number; // -1 = none (index into the flat empire list)
     /** External commands applied at frame boundaries (player/commandLog.ts); present only when non-empty. */
     commandLog?: CommandLogEntry[];
+    /**
+     * Game.CustomizationSetName (Game.cs 129) — the theme the game was made with, written into the save header
+     * (GalaxySummary.WriteGalaxySummary's ThemeName, Main.Part7.cs 3721); present only for a theme, always the last key
+     * (savedCustomizationSet reads it without parsing the save).
+     */
+    customizationSet?: string;
 }
 
 /** Serialize a whole game to a JSON string (see GameSaveJSON). */
@@ -56,7 +64,27 @@ export function serializeGame(game: Game, time: GalaxyTime, startOptions: StartG
     };
     const log = commandLog(game.galaxy);
     if (log.length > 0) save.commandLog = log.map(copyCommandLogEntry);
+    // The game's theme is the one loaded while it runs (a load switches to the save's set first, Start.cs 1777).
+    const theme = activeCustomizationSetName();
+    if (theme !== '') save.customizationSet = theme;
     return JSON.stringify(save);
+}
+
+/**
+ * The theme a save was made with ("" = the stock game): GalaxySummary.ReadGalaxySummary's ThemeName (Start.cs 1777 /
+ * Main.Part7.cs 3941 LoadFromFile compare it to the loaded theme before deserializing). A save text is read from its
+ * tail only (the key is written last), so a large save is not parsed twice.
+ */
+export function savedCustomizationSet(save: string | GameSaveJSON): string {
+    if (typeof save !== 'string') return typeof save.customizationSet === 'string' ? save.customizationSet : '';
+    const m = /"customizationSet":("(?:[^"\\]|\\.)*")\}\s*$/.exec(save.slice(-4096));
+    if (m === null) return '';
+    try {
+        const v = JSON.parse(m[1]) as unknown;
+        return typeof v === 'string' ? v : '';
+    } catch {
+        return '';
+    }
 }
 
 /**

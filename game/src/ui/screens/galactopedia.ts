@@ -39,6 +39,7 @@ import type { Facility } from '../../sim/data/facilities';
 import { CreatureType } from '../../sim/creature';
 import { HabitatCategoryType, HabitatType, IndustryType } from '../../sim/types';
 import { manifestFiles } from '../../render/assets';
+import { activeCustomizationSet, activeCustomizationSetName } from '../../sim/data/customization';
 import { fileNameOf, findMhtPart, parseMht, type MhtDocument } from './mht';
 
 const DWU = '/assets/dwu/';
@@ -84,14 +85,17 @@ async function fetchFirstText(candidates: string[]): Promise<string> {
 /** File.Exists for Help/<file>: a HEAD request that is OK and not the dev
  *  server's HTML fallback. */
 function helpFileExists(file: string): Promise<boolean> {
+    // Galaxy.9.cs AddRaceTopics 844 / AddGovernmentTopics / AddResourceTopics: the set's help\<file> OR Help\<file>.
+    if (activeCustomizationSet()?.fileExists(`help/${file}`) === true) return Promise.resolve(true);
     return urlExists(`${HELP}${file}`);
 }
 
-/** The customization set whose Customization/<set>/help/ folder the
- *  Galactopedia reads (the original's _Game.CustomizationSetName).
- *  TODO(port): wire to the active customization set once themes can be
- *  chosen — Main.Part5.cs method_459 / method_465 (string_31). */
-const CUSTOMIZATION_SET: string | undefined = undefined;
+/** The customization set whose Customization/<set>/help/ folder the Galactopedia reads (Main.Part5.cs method_459 /
+ *  method_465: the active theme), undefined for the stock game. */
+function customizationSetForHelp(): string | undefined {
+    const name = activeCustomizationSetName();
+    return name === '' ? undefined : name;
+}
 
 function customHelpDir(set: string): string {
     return `${DWU}Customization/${encodeURIComponent(set)}/help/`;
@@ -154,6 +158,11 @@ export function helpListingFromManifest(
 async function probeHelpListing(set: string | undefined): Promise<HelpFolderListing> {
     const hasSet = set !== undefined && set.trim() !== '' && set.trim().toLowerCase() !== '(default)';
     const helpList = manifestFiles('Help');
+    const theme = activeCustomizationSet();
+    if (hasSet && theme !== null && theme.name === set && helpList !== undefined) {
+        // The theme's index lists Customization\<set>\help\ (Directory.GetFiles(..., "*.mht")).
+        return helpListingFromManifest(set, helpList, theme.listFiles('help', '.mht'));
+    }
     if (helpList !== undefined) {
         // Manifest loaded: use its Help/ + Customization/<set>/help/ lists.
         return helpListingFromManifest(set, helpList, hasSet ? manifestFiles(`Customization/${set}/help`) : undefined);
@@ -177,11 +186,12 @@ async function probeHelpListing(set: string | undefined): Promise<HelpFolderList
 }
 
 async function loadGalactopediaData(): Promise<GalactopediaData> {
-    const gtSource = await fetchFirstText([`${DWU}GameText.txt`]);
+    // Start.cs 885-899: the theme's GameText.txt replaces the stock one.
+    const gtSource = await fetchFirstText([...(activeCustomizationSet()?.fileUrl('GameText.txt') !== null && activeCustomizationSet() !== null ? [activeCustomizationSet()!.fileUrl('GameText.txt')!] : []), `${DWU}GameText.txt`]);
     const { text } = parseGameText(gtSource);
     let gameData: GameData | null = null;
     try {
-        gameData = await loadGameData(fetchFirstText, undefined, RACE_FILES);
+        gameData = await loadGameData(fetchFirstText, activeCustomizationSet() ?? undefined, RACE_FILES);
     } catch (err) {
         console.warn('Galactopedia: game data unavailable; race/resource/government topics omitted', err);
     }
@@ -196,7 +206,7 @@ async function loadGalactopediaData(): Promise<GalactopediaData> {
                 if (await helpFileExists(f)) existing.add(f.toLowerCase());
             }),
         ),
-        probeHelpListing(CUSTOMIZATION_SET),
+        probeHelpListing(customizationSetForHelp()),
     ]);
     const items = buildEncyclopediaItems(text, {
         resources: gameData?.resources ?? [],
@@ -222,7 +232,15 @@ async function loadGalactopediaData(): Promise<GalactopediaData> {
     };
 }
 
+let dataTheme = '';
+
 function getData(): Promise<GalactopediaData> {
+    if (dataTheme !== activeCustomizationSetName()) {
+        // the theme changed (Start.cs method_2 rebuilds the encyclopedia, method_465): rebuild for it
+        dataPromise = null;
+        pageCache.clear();
+        dataTheme = activeCustomizationSetName();
+    }
     if (!dataPromise) {
         dataPromise = loadGalactopediaData().catch((err) => {
             dataPromise = null;
@@ -252,9 +270,10 @@ function loadPage(filename: string): Promise<LoadedPage | null> {
     let p = pageCache.get(key);
     if (!p) {
         p = (async () => {
-            const set = CUSTOMIZATION_SET;
+            const set = customizationSetForHelp();
+            const themeUrl = set !== undefined ? (activeCustomizationSet()?.fileUrl(`help/${filename}`) ?? null) : null;
             const urls = [
-                ...(set && set.trim() !== '' && set.trim().toLowerCase() !== '(default)' ? [`${customHelpDir(set)}${filename}`] : []),
+                ...(themeUrl !== null ? [themeUrl] : set !== undefined && activeCustomizationSet() === null ? [`${customHelpDir(set)}${filename}`] : []),
                 ...['', 'DE_', 'FR_', 'ES_'].map((prefix) => `${HELP}${prefix}${filename}`),
             ];
             for (const url of urls) {
@@ -1389,6 +1408,14 @@ function createGalactopedia(opts: GalactopediaOptions): OpenState {
             if (opts.topic) {
                 const key = getText(d.text, opts.topic);
                 item = resolveEncyclopediaTopic(d.items, key.startsWith('KEY NOT FOUND') ? opts.topic : key);
+            } else {
+                // Main.Part5.cs 634-643 method_459: with a theme and no topic, its "THEMENAME Theme" page first.
+                const set = customizationSetForHelp();
+                if (set !== undefined) {
+                    const fmt = getText(d.text, 'THEMENAME Theme');
+                    const title = (fmt.startsWith('KEY NOT FOUND') ? '{0} Theme' : fmt).replace('{0}', set);
+                    item = d.items.find((i) => i.title === title) ?? null;
+                }
             }
             if (item) history.visit(item);
             show(item);

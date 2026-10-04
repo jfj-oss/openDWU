@@ -66,6 +66,7 @@ import { Ruin } from '../ruins';
 import { EmpireTerritory } from '../territory';
 import { TradeableItem } from '../tradeItems';
 import { Habitat } from '../types';
+import { migrateLegacyLandscapePictureRef } from '../galaxyImages';
 import { EmpireVisibility, GalaxyResourceMap, SystemVisibility } from '../visibility';
 import { Weapon } from '../weapon';
 
@@ -621,6 +622,18 @@ function migrateEmpireMessageFields(empire: Empire): void {
     }
 }
 
+/**
+ * Habitat.LandscapePictureRef of a save written before the faithful GalaxyImages port (sim/galaxy.ts SelectXxxPlanet,
+ * Galaxy.6.cs 1956-2272): its placeholder (<hundreds> + Rnd.Next(0, 10)) becomes a GalaxyImages index of the same
+ * planet type (galaxyImages.ts migrateLegacyLandscapePictureRef); faithful refs are left as they are.
+ */
+function migrateLandscapePictureRefs(galaxy: Galaxy): void {
+    for (const habitat of galaxy.habitats) {
+        const ref = migrateLegacyLandscapePictureRef(habitat.landscapePictureRef, habitat.type);
+        if (ref !== habitat.landscapePictureRef) habitat.landscapePictureRef = ref;
+    }
+}
+
 /** The save's class registry and revive hooks, for the replica decoder (same prototypes as a loaded save). */
 export function replicaCodecOptions(): Pick<GraphCodecOptions, 'classes' | 'revive'> {
     return { classes: CLASSES, revive: CODEC_OPTIONS.revive };
@@ -706,6 +719,7 @@ export function galaxyFromJSON(obj: GalaxySaveJSON, gameData: GameData, codec: {
         empire.visibility.owner = empire.visibilityOwner(empire === galaxy.independentEmpire);
         migrateEmpireMessageFields(empire);
     }
+    migrateLandscapePictureRefs(galaxy);
     // --- Territory grid: restored as saved. Saves without it (older version-2 files) fall back to a full
     //     ReviewEmpireTerritory (Start.2.cs 1485), which also recalculates the colony influence radii.
     const territory = galaxy.empireTerritory as unknown as { territory: TerritoryGrid };

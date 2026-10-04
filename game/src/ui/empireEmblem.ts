@@ -6,6 +6,7 @@
 // Ossuvan herders' portrait (our own generated art, public/art/herder/portrait.png) and horned-herd flag (procedural,
 // data: URL, cached).
 
+import { themeFlagShapeUrls } from '../themeAssets';
 import type { Galaxy } from '../sim/galaxy';
 import type { Empire } from '../sim/empire';
 import { flagShapeUrl } from '../sim/startGameOptions';
@@ -82,6 +83,9 @@ export const PIRATE_FLAG_SHAPES = [
 ];
 
 export function pirateFlagShapeUrl(index: number): string {
+    // Galaxy.4.cs LoadFlagShapesPirates: a theme's images\ui\flagshapes\pirate\ folder replaces the stock list.
+    const themed = themeFlagShapeUrls(true);
+    if (themed !== null && themed.length > 0) return themed[((index % themed.length) + themed.length) % themed.length];
     return `/assets/dwu/images/ui/flagshapes/pirate/${PIRATE_FLAG_SHAPES[index] ?? PIRATE_FLAG_SHAPES[0]}.png`;
 }
 

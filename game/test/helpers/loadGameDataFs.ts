@@ -6,6 +6,13 @@ import { resolve } from 'node:path';
 
 import type { GameData, FetchText } from '../../src/sim/data/gameData';
 import { loadGameData } from '../../src/sim/data/gameData';
+import { CustomizationSet } from '../../src/sim/data/customization';
+import { createRequire } from 'node:module';
+
+const themeIndexLib = createRequire(import.meta.url)('../../desktop/themeIndex.cjs') as {
+    listThemes(root: string): string[];
+    buildThemeIndex(root: string, set: string): { set: string; files: string[]; dirs: string[] } | null;
+};
 
 const dwuRoot = resolve(__dirname, '../../public/assets/dwu');
 
@@ -30,7 +37,7 @@ const fetchTextFs = (reads: Map<string, string>): FetchText => async (candidates
     for (const candidate of candidates) {
         try {
             // Convert /assets/dwu/... to file path
-            let relPath = candidate.replace(/^\/assets\/dwu\/?/, '');
+            let relPath = decodeURIComponent(candidate.replace(/^\/assets\/dwu\/?/, ''));
             // Handle special case: resolve 'races' directory path
             // (resolveDataUrl might return multiple candidates for customization fallback)
             const filePath = resolve(dwuRoot, relPath);
@@ -51,7 +58,18 @@ const fetchTextFs = (reads: Map<string, string>): FetchText => async (candidates
 /**
  * Load all game data from filesystem for testing.
  */
-export async function loadGameDataFs(customizationSet?: string): Promise<GameData> {
+/** The installed themes (Customization subfolders, Start.cs method_28 order); [] without the install. */
+export function installedThemes(): string[] {
+    return themeIndexLib.listThemes(dwuRoot);
+}
+
+/** The CustomizationSet of an installed theme (desktop/themeIndex.cjs, as served at /theme-manifest/<set>.json). */
+export function themeIndexFs(set: string): CustomizationSet | null {
+    const index = themeIndexLib.buildThemeIndex(dwuRoot, set);
+    return index === null ? null : new CustomizationSet(index);
+}
+
+export async function loadGameDataFs(customizationSet?: string | CustomizationSet): Promise<GameData> {
     // Discover race file names from the races directory
     const racesDir = resolve(dwuRoot, 'races');
     const raceFileNames = readdirSync(racesDir)
@@ -92,7 +110,8 @@ export async function loadGameDataFs(customizationSet?: string): Promise<GameDat
 
     const reads = new Map<string, string>();
     const gameData = await loadGameData(fetchTextFs(reads), customizationSet, raceFileNames, designTemplateFiles, policyFileNames);
-    const hash = createHash('sha1').update(`customization:${customizationSet ?? ''}\0`);
+    const setKey = customizationSet instanceof CustomizationSet ? `theme:${customizationSet.name}` : (customizationSet ?? '');
+    const hash = createHash('sha1').update(`customization:${setKey}\0`);
     for (const path of [...reads.keys()].sort()) hash.update(`${path}\0${reads.get(path)!}\0`);
     fingerprints.set(gameData, hash.digest('hex'));
     return gameData;

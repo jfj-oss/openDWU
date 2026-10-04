@@ -6,6 +6,7 @@
 // portrait/stats detail) is task 06d; "Your Empire" (name / government /
 // flag) and the final summary "Start" page are tasks 06e/06d; "Other
 // Empires" is task 06h.
+import { themeFlagShapeUrls } from '../../themeAssets';
 import './newGameWizard.css';
 import { GalaxyShape, HabitatType } from '../../sim/types';
 
@@ -58,7 +59,7 @@ import { parseRace, type Race } from '../../sim/data/races';
 import { parseRaceFamilies, type RaceFamily } from '../../sim/data/raceFamilies';
 import { parseGovernments, type Government } from '../../sim/data/governments';
 import { fetchText } from '../../sim/data/fetchData';
-import { resolveDataUrl } from '../../sim/data/paths';
+import { resolveDataUrl, resolveThemedDataUrl, themedRaceFiles } from '../../sim/data/paths';
 import { DEFAULT_RACE_FILES } from '../../sim/data/gameData';
 import { loadScenarioIndex } from '../../sim/scenario/fetchScenario';
 import type { ScenarioManifest } from '../../sim/scenario/manifest';
@@ -284,6 +285,8 @@ export const STOCK_FLAG_SHAPE_COUNT = 41;
  * fills cmbFlagShape with one item per loaded shape. The listing comes from
  * the asset manifest ("ui/flagshapes"); without it the stock 41 files. */
 export function flagShapeTileUrls(manifestFlagShapes: unknown): string[] {
+    const themed = themeFlagShapeUrls(false); // the active theme's folder replaces the stock list
+    if (themed !== null && themed.length > 0) return themed;
     if (Array.isArray(manifestFlagShapes)) {
         const files = manifestFlagShapes.filter((f): f is string => typeof f === 'string' && /\.png$/i.test(f));
         if (files.length > 0) return files.map((f) => `/assets/dwu/images/ui/flagshapes/${f}`);
@@ -327,12 +330,13 @@ export function playableRacesSorted(races: readonly Race[]): Race[] {
 async function loadWizardRaceData(): Promise<{ races: Race[]; families: RaceFamily[]; missing: string[] }> {
     // Galaxy.LoadRaces (Start.cs 1318) reads every file of the races/ folder;
     // the asset manifest is that folder listing (same source loadGameData uses).
-    const raceFiles = wizardRaceFiles((await loadWizardManifest())?.races);
-    const familyText = await fetchText(resolveDataUrl('raceFamilies.txt'));
+    // With a theme: its races\ folder replaces the stock one (themedRaceFiles), its raceFamilies.txt the stock file.
+    const raceSource = themedRaceFiles(wizardRaceFiles((await loadWizardManifest())?.races));
+    const familyText = await fetchText(resolveThemedDataUrl('raceFamilies.txt'));
     const races: Race[] = [];
     const missing: string[] = [];
-    for (const f of raceFiles) {
-        const text = await fetchText(resolveDataUrl(`races/${f}`));
+    for (const f of raceSource.files) {
+        const text = await fetchText(raceSource.url(f));
         if (!isRaceFileText(text)) {
             missing.push(f);
             continue;
@@ -559,7 +563,7 @@ function wt(tag: string, fallback: string): string {
 async function ensureWizardGameText(): Promise<void> {
     if (isTextLoaded()) return;
     try {
-        const text = await fetchText(resolveDataUrl('GameText.txt'));
+        const text = await fetchText(resolveThemedDataUrl('GameText.txt'));
         if (!isTextLoaded() && isRaceFileText(text)) loadText(text);
     } catch {
         // keep the English fallbacks
@@ -1674,7 +1678,7 @@ function loadWizardRacesSync(): Race[] {
 }
 
 async function loadWizardGovernments(): Promise<Government[]> {
-    const text = await fetchText(resolveDataUrl('governments.txt'));
+    const text = await fetchText(resolveThemedDataUrl('governments.txt'));
     if (!isRaceFileText(text)) {
         return [];
     }
@@ -1908,7 +1912,7 @@ function buildEmpirePage(options: StartGameOptions): HTMLDivElement {
 
     let stockFlagUrls: string[] = flagShapeTileUrls(undefined);
     // [wizardB1] Start.1.cs 3912 method_204: a pirate start lists Galaxy.FlagShapesPirates instead.
-    const pirateFlagUrls = PIRATE_FLAG_SHAPES.map((_, i) => pirateFlagShapeUrl(i));
+    const pirateFlagUrls = themeFlagShapeUrls(true) ?? PIRATE_FLAG_SHAPES.map((_, i) => pirateFlagShapeUrl(i)); // a theme's pirate folder replaces the list
     let flagUrls: string[] = empireTypeIsPirate(options.empireType) ? pirateFlagUrls : stockFlagUrls;
     const shapeUrl = (i: number): string => flagUrls[i] ?? flagShapeUrl(i);
     function buildFlagTiles(): void {

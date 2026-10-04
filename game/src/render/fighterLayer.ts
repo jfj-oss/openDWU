@@ -27,7 +27,8 @@ import { Container, Texture } from 'pixi.js';
 import type { Camera } from './camera';
 import type { AssetStore } from './assets';
 import { SpritePool } from './fxCommon';
-import { BUILT_OBJECT_DRAW_RESIZE_FACTOR, BUILT_OBJECT_MAX_FACTOR, STANDARD_FAMILY_COUNT } from './builtObjectLayer';
+import { BUILT_OBJECT_DRAW_RESIZE_FACTOR, BUILT_OBJECT_MAX_FACTOR, STANDARD_FAMILY_COUNT, themeShipFamilyNumbers } from './builtObjectLayer';
+import { activeCustomizationSet } from '../sim/data/customization';
 import { exhaustRect, type ExhaustRect } from './ambientLayer';
 import { loadShipArt, shipArtIfLoaded } from './shipArt';
 import { DamageOverlays, fighterDamageSubject } from './shipOverlays';
@@ -54,9 +55,22 @@ export const FIGHTER_PICK_MAX_FACTOR = 50.0;
 
 /** URL of fighter art `pictureRef` (LoadFighters order: family<N>/fighter, family<N>/bomber), or null out of range. */
 export function fighterImageUrl(pictureRef: number): string | null {
-    if (!Number.isInteger(pictureRef) || pictureRef < 0 || pictureRef >= FIGHTER_IMAGE_COUNT) return null;
-    const family = Math.floor(pictureRef / FIGHTER_IMAGES_PER_FAMILY);
+    if (!Number.isInteger(pictureRef) || pictureRef < 0 || pictureRef >= fighterImageCount()) return null;
+    const family = fighterFamilies()[Math.floor(pictureRef / FIGHTER_IMAGES_PER_FAMILY)];
     return `${IMG}/units/ships/family${family}/${pictureRef % FIGHTER_IMAGES_PER_FAMILY === 0 ? 'fighter' : 'bomber'}.png`;
+}
+
+/** Main.Part13.cs 1934-1987 LoadFighters: one fighter + bomber per family folder of the stock ∪ theme family list. */
+function fighterFamilies(): number[] {
+    const theme = activeCustomizationSet();
+    if (theme === null) return STOCK_FIGHTER_FAMILIES;
+    return themeShipFamilyNumbers(theme).filter((n) => (n >= 0 && n < STANDARD_FAMILY_COUNT) || theme.dirExists(`images/units/ships/family${n}`));
+}
+const STOCK_FIGHTER_FAMILIES = Array.from({ length: STANDARD_FAMILY_COUNT }, (_, i) => i);
+
+/** Loaded fighter pictures (FIGHTER_IMAGE_COUNT for the stock game). */
+export function fighterImageCount(): number {
+    return activeCustomizationSet() === null ? FIGHTER_IMAGE_COUNT : fighterFamilies().length * FIGHTER_IMAGES_PER_FAMILY;
 }
 
 /**
@@ -64,9 +78,10 @@ export function fighterImageUrl(pictureRef: number): string | null {
  * (ShipImageHelper.ResolveNewFighterImageIndex(DominantRace) = DesignsPictureFamilyIndex × 2), else 0.
  */
 export function resolveFighterPictureRef(pictureRef: number, familyIndex: number | null): number {
-    if (pictureRef >= 0 && pictureRef < FIGHTER_IMAGE_COUNT) return pictureRef;
+    const count = fighterImageCount();
+    if (pictureRef >= 0 && pictureRef < count) return pictureRef;
     const p = familyIndex !== null ? familyIndex * FIGHTER_IMAGES_PER_FAMILY : 0;
-    return p >= 0 && p < FIGHTER_IMAGE_COUNT ? p : 0;
+    return p >= 0 && p < count ? p : 0;
 }
 
 /**

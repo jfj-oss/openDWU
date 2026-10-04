@@ -40,6 +40,9 @@
 import { readdirSync, writeFileSync, lstatSync, realpathSync, existsSync, mkdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
+import { createRequire } from 'node:module';
+
+const themeIndexLib = createRequire(import.meta.url)('../desktop/themeIndex.cjs');
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = join(here, '..');
@@ -218,6 +221,21 @@ if (dwuRoot) {
             manifest[`Customization/${set}/help`] = files;
         }
     }
+}
+
+// Themes (customization sets): public/theme-manifest/index.json + <set>.json, every theme folder indexed by
+// desktop/themeIndex.cjs (the dev server and the desktop shell build the same answers live; dist/ gets a copy at
+// build). The browser's File.Exists / Directory.Exists for Customization\<set>\ (src/sim/data/customization.ts).
+if (dwuRoot && !process.env.ASSET_MANIFEST_OUT) {
+    const themeDir = join(root, 'public', 'theme-manifest');
+    mkdirSync(themeDir, { recursive: true });
+    const themes = themeIndexLib.listThemes(dwuRoot);
+    writeFileSync(join(themeDir, 'index.json'), JSON.stringify(themes) + '\n');
+    for (const t of themes) {
+        const idx = themeIndexLib.buildThemeIndex(dwuRoot, t);
+        if (idx !== null) writeFileSync(join(themeDir, `${t}.json`), JSON.stringify(idx) + '\n');
+    }
+    console.log(`theme-manifest: ${themes.length} themes -> ${themeDir}`);
 }
 
 mkdirSync(dirname(outPath), { recursive: true }); // public/ is fully gitignored, so a fresh clone lacks it

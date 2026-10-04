@@ -860,13 +860,32 @@ function getGravityWellMitigationForHyperDrive(ship: BuiltObject): number {
     return mitigationForHyperDrive;
 }
 
-/** BaconBuiltObject.cs 3704 GetGravityWellReductionForSmallShip. */
+/** BaconRace.cs 16 / 24 MilitaryShipSizeMultiplier / CivilianShipSizeMultiplier (myMilitary/myCivilianShipSizeMultiplier = 3.0). */
+function baconRaceShipSizeMultiplier(empire: Empire | null): number {
+    return empire !== null && empire.name.includes('Romulan') ? 3.0 : 1.0;
+}
+
+/**
+ * BaconBuiltObject.cs 3704 GetGravityWellReductionForSmallShip: with BaconSettings smallShipsJumpSooner (e.g. the
+ * RetreatUE Bacon theme's Das_BaconSettings) a star's gravity well shrinks by ship size / the empire's largest
+ * buildable size × its race's ship-size factor (a fleet uses its largest ship).
+ */
 function getGravityWellReductionForSmallShip(ship: BuiltObject): number {
     if (!baconMovementSettings.smallShipsJumpSooner) return 1.0;
-    // TODO(port) M4c: the smallShipsJumpSooner branch (race ship-size factors, BaconRace multipliers,
-    // Empire.MaximumConstructionSize) — BaconSettings option, off by default.
-    void ship;
-    throw new Error('TODO(port): BaconBuiltObject.GetGravityWellReductionForSmallShip with smallShipsJumpSooner');
+    const shipGroup = ship.shipGroup as ShipGroup | null;
+    const empire = ship.empire === null || !(ship.empire.name !== 'Independent') ? ship.actualEmpire : ship.empire;
+    let size = ship.size;
+    const race = empire?.dominantRace ?? null;
+    const factor = ship.role === BuiltObjectRole.Military || ship.role === BuiltObjectRole.Exploration ? race?.militaryShipSizeFactor : race?.civilianShipSizeFactor;
+    const num1 = factor !== undefined ? factor * baconRaceShipSizeMultiplier(empire) : 1.0;
+    const num2 = empire !== null ? empire.maximumConstructionSize() : 230.0;
+    if (shipGroup !== null && shipGroup.ships.length > 0) {
+        // ShipGroup.Ships.OrderBy(x => x.Size).Last().Size
+        let max = shipGroup.ships[0].size;
+        for (const s of shipGroup.ships) if (s.size >= max) max = s.size;
+        size = max;
+    }
+    return size / (num2 * num1);
 }
 
 /**

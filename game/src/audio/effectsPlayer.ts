@@ -17,6 +17,7 @@
 
 import { getSettings } from '../ui/settings';
 import { Random } from '../sim/random';
+import { themedAssetUrl } from '../themeAssets';
 
 export const EFFECTS_BASE_URL = '/assets/dwu/Sounds/Effects/';
 
@@ -169,7 +170,7 @@ export class EffectsPlayer {
         const key = filename.toLowerCase();
         let p = this.sfxBank.get(key);
         if (p === undefined) {
-            p = this.backend.load(this.baseUrl + filename);
+            p = this.backend.load(themedAssetUrl(this.baseUrl + filename)); // EffectsPlayer.cs 810-826: the set's copy first
             this.sfxBank.set(key, p);
         }
         return p;
@@ -452,7 +453,7 @@ export class UiClickSounds {
         const file = UI_CLICK_SOUND[kind];
         let p = this.buffers.get(file);
         if (p === undefined) {
-            p = this.backend.load(this.baseUrl + file);
+            p = this.backend.load(themedAssetUrl(this.baseUrl + file)); // Start.cs method_5/6: the set's button sound first
             this.buffers.set(file, p);
         }
         const buf = await p;

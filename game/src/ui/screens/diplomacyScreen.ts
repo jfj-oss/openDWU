@@ -21,6 +21,7 @@
 // list, Decline, Go-to, the Empires list button, the war goals / charter / Concord / council / reputation / incident
 // blocks under the factors, the independent leagues.
 
+import { activeCustomizationSet, activeCustomizationSetName } from '../../sim/data/customization';
 import './diplomacyScreen.css';
 import type { Empire } from '../../sim/empire';
 import type { Galaxy } from '../../sim/galaxy';
@@ -481,8 +482,16 @@ export function setDiplomacyMessageExpiry(fn: ((empire: Empire) => void) | null)
 
 // DialogSet.cs:21 Initialize: base_dialog.txt plus the race's file, loaded on first use.
 let dialogLoad: Promise<DialogSet | null> | null = null;
+let dialogTheme = '';
 const raceDialogLoads = new Map<string, Promise<void>>();
 export function loadDialogSet(raceName: string): Promise<DialogSet | null> {
+    if (dialogTheme !== activeCustomizationSetName()) {
+        // Main.Part12.cs method_66 drops dialogSet_0 on a theme switch; method_83 rebuilds it for the game's set.
+        dialogLoad = null;
+        raceDialogLoads.clear();
+        dialogTheme = activeCustomizationSetName();
+    }
+    // DialogSet.cs 22: base_dialog.txt always from the stock dialog\ folder.
     dialogLoad ??= fetchText(resolveDataUrl('dialog/base_dialog.txt'))
         .then((t) => new DialogSet(t))
         .catch(() => null);
@@ -490,7 +499,9 @@ export function loadDialogSet(raceName: string): Promise<DialogSet | null> {
         if (set === null || raceName === '' || set.hasRace(raceName)) return set;
         let p = raceDialogLoads.get(raceName);
         if (!p) {
-            p = fetchText(resolveDataUrl(`dialog/${raceDialogFileName(raceName)}`))
+            // DialogSet.cs 25-39: Customization\<set>\dialog\<race>.txt when it exists, else the stock file.
+            const custom = activeCustomizationSet()?.fileUrl(`dialog/${raceDialogFileName(raceName)}`) ?? null;
+            p = fetchText(custom !== null ? [custom] : resolveDataUrl(`dialog/${raceDialogFileName(raceName)}`))
                 .then((t) => set.addRace(raceName, t))
                 .catch(() => undefined);
             raceDialogLoads.set(raceName, p);

@@ -20,6 +20,7 @@ import { BuiltObjectRole } from '../sim/data/designSpecifications';
 import { findAbandonedShipsInDebrisField } from '../sim/events';
 import type { Galaxy } from '../sim/galaxy';
 import type { TechNode } from '../sim/researchSystem';
+import { LandscapeImageOffsetOcean } from '../sim/galaxyImages';
 
 const CHROME = '/assets/dwu/images/ui/chrome/';
 const MESSAGES = '/assets/dwu/images/ui/messages/';
@@ -198,8 +199,8 @@ function raceEventPicture(type: RaceEventType, player: Empire, galaxy: Galaxy | 
             return wine !== null ? url(resourceImageUrl(wine.pictureRef)) : null;
         }
         case R.UnderwaterLeviathan:
-            // TODO(port): bitmap_29[LandscapeImageOffsetOcean + 1] (the ocean landscape) — Main.Part4.cs:1189
-            return null;
+            // Main.Part4.cs:1197: bitmap_29[LandscapeImageOffsetOcean + 1] — the second ocean landscape.
+            return { kind: 'landscape', ref: LandscapeImageOffsetOcean + 1 };
         case R.StrengthInNumbersMaintenanceLowerForSmallShips:
             // TODO(port): the empire's standard frigate picture (ShipImageHelper.ResolveStandardShipImageByFamilyAndSubRole) — Main.Part4.cs:1191-1197
             return null;
