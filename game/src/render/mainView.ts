@@ -1256,6 +1256,9 @@ export class MainView {
     private pointerInside = false;
     /** Task 12k: debounce timer for the hover tooltip pick. */
     private tooltipTimer: number | undefined;
+    /** The view's window-level input listeners (mousemove / mouseup), removed by dispose: left attached, they kept the
+     *  torn-down view — and its galaxy — alive after every load, new game or sim-worker restart. */
+    private readonly windowInput = new AbortController();
     /** Elapsed seconds since boot (disc rotation / corona frame clock). */
     private elapsedSeconds = 0;
     private lastUpdateMs = -1;
@@ -2468,7 +2471,7 @@ export class MainView {
                 }
                 showMapTooltip(tooltipText(hit, systemName), e.clientX, e.clientY);
             }, 120);
-        });
+        }, { signal: this.windowInput.signal });
         window.addEventListener('mouseup', (e: MouseEvent) => {
             if (this.tooltipTimer !== undefined) {
                 clearTimeout(this.tooltipTimer);
@@ -2534,7 +2537,7 @@ export class MainView {
                 if (this.tryPickMenu(x, y, e.clientX, e.clientY, (item) => this.selectPicked(item))) return;
                 this.clickSelect(x, y);
             }
-        });
+        }, { signal: this.windowInput.signal });
         canvas.addEventListener('dblclick', (e: MouseEvent) => {
             // Double-click a star at galaxy/sector zoom -> zoom to System
             // level centred on it.
@@ -2568,6 +2571,7 @@ export class MainView {
             this.tooltipTimer = undefined;
         }
         hideMapTooltip();
+        this.windowInput.abort();
         this.overlayLayer?.destroy(); // [freightOverlay] stop recording contracts for this galaxy
     }
 

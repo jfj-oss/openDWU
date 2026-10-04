@@ -1,8 +1,10 @@
 # Sim worker: the simulation on its own thread
 
-Status: **phase 1 (foundation) done, behind a flag.** Turn it on with `?simWorker=1`, or with Game Menu → Options →
-"Simulation in a worker thread (experimental, next game)". It is off by default. `?simWorker=0` forces it off.
-With the flag off, the game runs exactly as before: one thread, the same code path.
+Status: **the default (2026-10-03, after the final check in §10).** Every game (new, loaded, tutorial, restarted) runs
+its simulation in a Web Worker, in the browser and in the desktop app. The in-thread mode stays as the fallback (§6):
+`?simWorker=0`, or Options → "Simulation in a worker thread (next game)" unticked (main menu Options or the game menu's
+option list). With it, the game runs exactly as before the worker: one thread, the same code path. `?simWorker=1`
+forces the worker whatever the setting says.
 
 Companion document: [sim-worker-consumer-audit.md](sim-worker-consumer-audit.md) lists every render and UI file's
 sim reads by frequency, the per-frame field set, the direct sim writes and the identity dependencies. The work list in
@@ -417,6 +419,14 @@ Each delta has a `hot` part and a `cold` part, and each part has shells (new obj
   pumped first, under `replyBudgetMs` (4 ms a frame), and the replies — with the events of their message and of the
   messages after it, in order — are delivered once they are in. A message's events are delivered before its own cold
   part applies (its drops among them), a reply after it.
+- **The side tables** (what the save keeps beside the graph: prices, characters, captain bonuses, Random draw counts,
+  race fields, plague levels) are recollected into the side root as each cold cycle starts (`ReplicaEncoder
+  .onCycleStart`, inside the diff, before the cycle's first compare; and before a full compare), and go onto the
+  replica's objects every 60th apply with the cold queue empty, or once the stream has been idle for 30 cold pumps
+  (`GalaxyReplica.pumpCold`). Before §10 they were recollected at the delta after the wrap — after the new cycle had
+  already compared the side root (low ids) in the same call — and applied only on the 60th apply, so a paused game,
+  whose stream stops one full cycle after its last change, kept the previous draw counts on the replica for good
+  (replica digest ≠ worker digest while paused; `test/simWorker.test.ts` "a paused game settles").
 
 ### 3.4 Decoding (main thread)
 
@@ -496,6 +506,12 @@ not to the local queue.
   3000 objects (`ReplicaEncoder.compareReach`). So a screen's refresh in `onApplied` sees, for example, the list a
   new fleet template went into. Both compares reshape a class instance that has gained a lazily set `declare`d
   field (e.g. `Empire.fleetDesigns`, `constructionBoard`). The round-robin cold pass does not notice new fields.
+  Ops that name what they change by a number add the book it points into, read after the executor ran
+  (`simworker/commandReach.ts commandFreshRoots`): `fleetTemplate*` the fleet design book with every template and build
+  order, `constructionJob*` the construction board and its jobs. A template's rows are past the reach of the ids and
+  the empire (on a real empire the 3000 objects go to the empire's own lists first), so before §10 the Fleet Designs
+  tab re-rendered in Add Design's reply on the old rows and the new row did not show (`test/simWorkerScreens.test.ts`
+  "by id").
 - **Refresh on open** (`simworker/refresh.ts requestSimRefresh`, message `refresh`): when a screen opens, it asks the
   worker to `compareReach` the objects it shows. It re-renders once they have arrived: the reply waits for the cold
   parts through its delta, as a command reply does (§4.3 "Freshness of `onApplied`"). In-thread this is a no-op.
@@ -687,8 +703,11 @@ op does not compile without one.
 
 These run in the worker on the authoritative game, and the main thread gets an event:
 
-- The game-end handler: pause, `doGameEnd`, `reviewAchievements`. The `gameEnd` event carries the args (victor,
-  outcome, text); the main thread plays the music and shows the outcome (the comparison window's overlay and the Game End panel) (`empireComparison.ts presentGameEnd`).
+- The game end: the sim ends the game itself (`victory.ts onGameEnd`: DoGameEnd's model part, `gameIsFinished` and
+  the victor, and method_436's `reviewAchievements`, in every mode and headless — §10.2); the host's handler pauses
+  the worker's clock and sends the `gameEnd` event with the args (victor, outcome, text); the main thread plays the
+  music and shows the outcome (the comparison window's overlay and the Game End panel)
+  (`empireComparison.ts presentGameEnd`).
 - The player's message pipeline (`sim/playerMessages.ts`, §4.4): it runs in the worker's tick as it runs in-thread
   and headless; the host only listens (`setPlayerMessageListener`) and, after each tick, sends one `playerMessages`
   event: each handled message once (also those ProcessMessages emptied before any sync), with its receipt (advisor,
@@ -752,13 +771,20 @@ exact after a full compare; a source that throws or does not load gives way to t
   loads its own from the same URLs, with the same scenario overlay) and rebuilds class-typed options
   (`VictoryConditions`). Test: the cloned options build a byte-identical game, and the test fails without the rebuild.
 - **Replays** are unchanged: `replayCommandLog` runs headless from seed plus log. The log a worker game writes is the
-  in-thread log.
+  in-thread log. A browser session replays bit-exact headless **in the same engine** (§10.3: the campaign's replay in a
+  page with no game view gives the worker's digest and save text); in node it does not, in either mode, because node's
+  V8 and Chromium's give different last bits for `Math.sin`, `cos`, `tan`, `asin`, `exp`, `log`, `atan2`, `pow`, … on
+  a few percent of arguments (§8 "Cross-engine replays").
 
 ## 6. Fallback in-thread mode
 
-With the flag off (the default), `startGameView` creates the in-thread `createSimLoop` exactly as before. `SimHost`,
-the worker and the replica are not created. `issuePlayerCommand` takes the local queue, because no remote sink is
-registered.
+With the flag off (`?simWorker=0`, or the setting unticked), `startGameView` creates the in-thread `createSimLoop`
+exactly as before. `SimHost`, the worker and the replica are not created. `issuePlayerCommand` takes the local queue,
+because no remote sink is registered.
+
+The setting (`ui/settings.ts simWorker`, default on) is stored with `simWorkerVersion: 2`: a stored `simWorker` from
+before the flip (the old default `false`, written with every other setting whenever one changed) is not a choice and is
+ignored, so existing players get the worker; one they untick afterwards is kept (`test/simWorkerDefault.test.ts`).
 
 The only behaviour changes in this mode are:
 
@@ -793,8 +819,25 @@ The only behaviour changes in this mode are:
 | `test/simWorkerCommandFailures.test.ts` | Failed commands: refusals, throws, unknown ops, dropped / stale arguments, unsendable results, timeout, worker stop, close / reload (§4.4) |
 | `test/simWorker.test.ts`, `test/replicaSync.test.ts` | Determinism, fidelity and save gates; codec fuzz (8 seeds × 400 steps by default; `FUZZ_SEEDS` / `FUZZ_STEPS`) |
 | `src/simworker/writeDetector.ts`, `test/replicaWriteDetector.test.ts` | Dev-only replica write detector (`?detectWrites=1`, §9 chunk 0) and its tests |
+| `src/simworker/commandReach.ts` | What a command's reply must carry beyond its arguments (ops that name a template / job by id, §4.3) |
+| `scripts/simworker-campaign.mjs` | The final check's long play session (§10): new games of each kind, years at 1×-4×, every screen and panel with real orders, save / load, autosave, crashes, the write detector, the headless replay |
+| `scripts/simworker-campaign-compare.mjs` | Two campaign runs side by side (worker against in-thread): differing checks, ops per step, errors, popups |
+| `scripts/simworker-replay-check.mjs` | A campaign session's seed + command log replayed headless in node, digest and save text compared (cross-engine: §8) |
+| `scripts/desktop-check.mjs` | The desktop app (packaged, or `--unpacked`: `electron desktop/main.cjs` over dist/): the worker boots, a command replies, the worker saves; `?simWorker=0` runs in-thread |
+| `test/simWorkerDefault.test.ts` | The default: the setting, its migration, the `?simWorker` override |
 
 ## 8. Known limits of phase 1 (also in §9)
+
+- **Cross-engine replays (not the worker's: both modes).** The sim calls `Math.sin` / `cos` / `tan` / `asin` /
+  `atan2` / `exp` / `log` / `pow` (about 190 call sites, orbits and headings among them), whose last bit differs
+  between engines: node 22 (V8 12.4) against the headless Chromium 151 here differ on up to 18 % of sampled arguments
+  (`sin` / `cos` 3–4 %, `exp` / `pow` 9–10 %, `atan2` 18 %; `sqrt`, `hypot` none; node 26 agrees with Chromium on `pow`
+  only); a page's main thread and its workers always
+  agree. So a browser or desktop session's command log replays bit-exact only in the same engine — the campaign's
+  browser replay (§10.3) is exact; `scripts/simworker-replay-check.mjs` in node is not (the first difference is a star
+  position at galaxy creation). The node harness and its pins are unaffected (node against node). Making it hold
+  across engines needs sim-owned deterministic transcendental functions (a JS port of fdlibm for the ~190 call sites,
+  a sim change that moves every pin, with a cost in the late-game step) — left as a decision for the project.
 
 - **Boot cost.** A late save's snapshot is about 3–4 s to encode on top of the worker's own load (201 MB since chunk
   9, 425 MB before), and the main thread is busy for about 1–1.7 s applying it (2–7 s before). A streamed or
@@ -842,8 +885,11 @@ The only behaviour changes in this mode are:
   - Left: the voice job's message upgrade (`hostOps.ts voiceMessage`, `applyVoiceToMessage` rewrites a message's text
     in the worker, unjournaled; a stable message id would make it a command); the conversation queue is UI state, as
     the C# queue is (not saved), so its expiry stays UI-side.
-- **Not ported (§9):** synchronous advisor commands, tutorials (they still boot in-thread), the
-  `__dwu.sim` / `simBudget` debug hooks (null in worker mode), and `__dwu.commands.log` (the replica has no log).
+- **Ported since phase 1:** the advisor and diplomat-voice commands go through the worker (`remote.command`; in-thread
+  `runPlayerCommand`), tutorials boot in the worker (chunk 1), `__dwu.sim` / `__dwu.simBudget` are worker stand-ins and
+  `__dwu.commands.log()` returns a Promise of the worker's log (chunk 1). Dev scripts that write `__dwu.galaxy`
+  directly (screenshot set-ups under `withSimWrites`) write the replica in worker mode, which the worker never sees:
+  they need `?simWorker=0` now that the worker is the default.
 - **Command replies.** Every command issued on the replica with a callback is answered exactly once, in issue order
   (§4.4 "Failed commands"). Before this fix, an error reply (a result that could not be encoded, a stale argument)
   only logged a warning. The worker dying, a reload or a lost message left the callback waiting forever, so the flows
@@ -1145,3 +1191,133 @@ Original brief:
     hot numeric slots would cut its memory traffic.
   - Worker GC: the shadows roughly double the worker heap.
   - Single frames of 5–10 ms remain: a birth burst in the hot part, or a GC pause.
+
+## 10. Final check before the default (2026-10-03/04)
+
+### 10.1 What was run
+
+`scripts/simworker-campaign.mjs` (long scripted sessions in headless Chromium 151, swiftshader, 1600×900), each kind
+in worker mode (`--detect-writes`) and in-thread, with the same seed, on a machine at load average 13–26:
+
+| Game | Game time played | Worker: checks ok / failed | In-thread: ok / failed | Console errors | Popups taken (choices) |
+|---|---|---|---|---|---|
+| Standard (main menu → wizard, Custom Standard, seed 4242) | 3 years (1 840 s) at 1×, 2×, 4× | 115 / 0 | 93 / 0 | 0 / 0 | 25 (9) / 15 (4) |
+| Introductory (wizard → Introductory Game) | 1.5 years | 110 / 0 | 90 / 0 | 0 / 0 | 14 (5) / 13 (3) |
+| Return of the Shakturi (+ the story panel's choice) | 1.5 years | 109 / 1 ¹ | 90 / 1 ¹ | 0 / 0 | 11 (3) / 12 (3) |
+| Pre-warp (PreWarp galaxy and empire) | 1.5 years | 97 / 3 ¹ | 76 / 3 ¹ | 0 / 0 | 5 / 5 |
+| Pirate faction (Custom Pirate) | 0.3–0.5 years | 79 / 2 ¹ | 63 / 1 ¹ | 0 / 0 | pirate missions |
+| Time-limit game end (the sim ends the game in its first long tick) | 0.3 years | 94 / 1 ² | 71 / 2 ¹ | 0 / 0 | the Game End panel |
+| late2500 (`/dev-saves/late2500.dwusave`, 9.8 k ships), loaded from `?load=` | 150 s at 1×–4× (the sim kept 0.99–3.9× real time) | 90 / 5 ³; without the detector: all ok | 76 / 0 | 1 ³ / 0 | events |
+
+¹ Script selectors fixed afterwards (a pre-warp start has no ships to list or build; the Galactopedia's root; a window
+left open by the game end), re-run clean on the merged tree. ² The game-end replay (§10.2, fixed). ³ With the write
+detector (which roughly doubles the replica's heap) and Playwright's console handles (below), the tab ran out of memory
+at the second restart; without the detector the whole run, both restarts included, passed (fix 4 below).
+
+After merging origin (SetupSun's picture draws changed every seed's galaxy), worker runs again: standard (1 year),
+pirate (0.5), game end (worker and in-thread), pre-warp and Shakturi (0.5 each), late2500: all checks pass, 0 console
+errors, 0 unexpected replica writes, replica digest = worker digest, every browser replay identical; the original
+`scripts/simworker-smoke.mjs --load=/dev-saves/late2500.dwusave --detect-writes`: SMOKE OK.
+
+Each session: new game through the real menus (the wizard for standard and Introductory, `?newgame=` for the others),
+the Introduction panel; play segments at 1×, 2× and 4× alternating with UI steps (every other step with the clock
+running), each step checking its effect on the game and the redraw, a hang watchdog (the clock must move while running;
+no animation frame for 20 s fails), every command reply settled within 10 s (no stuck waits), every console error
+recorded with its step:
+
+- every top-bar screen with real orders: Colonies (tax by the spinner, rename), Ships and Bases (Automate / Unautomate
+  flipping the button, Refuel), Fleets → Fleet Designs (New Fleet Design, Add Design, three quick +), Ship Designs →
+  Copy As New → Design Editor → Save, Build Order (Purchase, or the cannot-afford box), Construction Yards (Purchase ×2,
+  Remove Ship → Yes, the Fleet Builds / Construction Jobs tabs), Troops (Recruit, with the automation question),
+  Research (three tree clicks queue, a queue drag the game allows reorders the queue and the panel), Expansion Planner
+  (Build and Send Colony Ship, or a mining-station job), Empire Summary (rename), Empire Policy (a policy combo, an
+  automation combo, Save, Load the saved file, Load an installed one), Diplomacy (every row, Speak → a small gift with
+  its reply and the treasury, a pirate faction's protection talk), Characters, Graphs, Galactic History, Message
+  History, the game-editor button, the top strip's overflow menu (Galaxy Map, Empires list, Game Options, the admiral,
+  the shortcuts), F1 Galactopedia, G Galaxy Map;
+- every left-sidebar panel: opened, row 0 clicked (selects) and double-clicked (centres), Pirate Missions' row button;
+- the selection panel (Explore), a plain right-click on a body (the default order or the menu), Ctrl-right-click →
+  the action menu (through the pick popup when objects are stacked) → a leaf item;
+- control groups (Ctrl+1 / Ctrl+2, 1 selects, Shift+2 selects and centres), the Ground Report ([, hover, resize, [),
+  T (panels cycle), D (display type ×3), H (message history, every tab), Game Options (O: an Empire Settings combo, a
+  Message Settings check box twice);
+- popups as they come: story popups (Galactic History revealed …), event choices (Investigate Ruins / Base), pirate
+  protection conversations accepted (the tribute: `acceptPirateOfferProtection`), events and cards closed; the Return
+  of the Shakturi story panel's Yes (`storyEventAction`);
+- save from the game menu → Main Menu → Load Game → the save → the same game (nowMs, empire, colonies; worker: the
+  worker's digest) → continue; an autosave (1-minute interval) written and listed;
+- worker mode: the write detector (0 unexpected keys in every run), the replica digest = the worker's once paused, the
+  headless replays (§10.3), then a fatal stop (the worker's save) and a hard stop (the replica) with Restart, play and
+  orders in each restarted game.
+
+`scripts/simworker-campaign-compare.mjs` lines two runs up. With the same seed the worker and in-thread runs journal
+the same ops step by step (standard, Shakturi, pre-warp: identical op sets per step but for the money panel's
+`moneyPanel`, which is due by time); the games then drift apart as the replies land a round trip later (the standard
+in-thread run ended with a negative treasury and so had no gift option).
+
+The desktop app: `scripts/desktop-check.mjs --unpacked` (Electron 44 over the built dist/, on a virtual Wayland
+compositor): the worker boots by default under `dwu://`, a command's reply reaches the replica, the worker saves, and
+`?simWorker=0` runs in-thread; no console or page errors.
+
+### 10.2 Bugs found and fixed
+
+1. **Fleet Designs: Add Design did not show the row (worker only).** The reply of `fleetTemplateSetEntry [id, design,
+   n]` ran before the template's rows reached the replica: the ops name the template by id, and its rows are past the
+   reach of the arguments and the empire (§4.3). `simworker/commandReach.ts` adds the books such ops point into
+   (fleet templates and build orders, the construction board) to the reply's compare. Test:
+   `simWorkerScreens.test.ts` "by id" (fails without it).
+2. **A paused game's replica never became exact (worker only).** The side tables (Random draw counts, prices,
+   characters, …) went onto the replica's objects only every 60th apply, and the worker recollected them at the delta
+   after a cold cycle wrapped — after the new cycle had compared them; a paused stream stops a cycle after the last
+   change, so the replica kept old draw counts (replica digest ≠ worker digest for good). Now recollected as each
+   cycle starts (`ReplicaEncoder.onCycleStart`) and applied once the stream is idle (§3.3). Test: `simWorker.test.ts`
+   "a paused game settles".
+3. **A game that ended did not replay headless (both modes; sim).** DoGameEnd's model part (IsFinished, the victor,
+   the achievement review) ran only in the handlers the app and the worker install, so seed + log of such a session
+   replayed to another game (`gameIsFinished` false, the victory check raised every long tick). It runs in
+   `victory.ts onGameEnd` now (§4.5); the handlers keep the pause and the banner. `repin --check`: 0 pins move. Test:
+   `gameEndReplay.test.ts`.
+4. **Every replaced game view stayed in memory (both modes).** After a load, a new game or a restart the old galaxy,
+   main view and (worker) replica stayed alive: +140 MB per view on a small game, +530 MB on late2500, so a few restarts
+   or loads of a late game ran the tab out of memory (the campaign's late2500 run crashed the page at the second
+   restart). Retainers (heap snapshots): HUD timers and document listeners, settings subscriptions, the left sidebar's
+   timer and resize listener, MainView's window listeners, images kept with their onload closures in Pixi's texture
+   cache, the Pixi stage destroyed without its children (Texts stay listeners of the TextStyles Pixi's text-metrics
+   cache keeps), module caches keyed by Empire, a once-registered listener capturing the first window's scope, the
+   restart prompt's guard and a disposed client's event handler. Fixed at each (`ui/hudLifetime.ts`, …);
+   `scripts/simworker-leak-probe.mjs` (live instances counted with CDP `queryObjects` after a GC, `--tour` of every
+   screen, `--snapshot`): one game alive after two restarts of each kind and two loads, in both modes. (A Playwright
+   page with a `console` listener keeps console arguments alive through DevTools handles, which can hold a closed
+   window and through it a game: the campaign's own heap figures are higher for that reason, not the app's.)
+5. **The setting's default.** Flipping `simWorker` to true alone would not have reached existing players: every save
+   of the settings wrote the old default `false`. A stored value counts only with `simWorkerVersion: 2` (§6).
+
+Script-only findings, not bugs: `parc2-shots.mjs` looked for the old game-end overlay class; desktop-check's F5 / F8
+selectors (also fixed on origin); `researchdrag-shots.mjs` and `parD3-shots.mjs` write the game directly and now pin
+`?simWorker=0`. The Expansion Planner's Build button is on for a pirate faction without a buildable colony ship design
+and does nothing on a click — as the C# (Main.Part11.cs method_161 enables it, Main.Part4.cs method_539 returns).
+
+### 10.3 Determinism
+
+For every new-game session in worker mode, before the crashes: the createGame options the page posted to the worker
+(captured from the `init` message), the worker's save and digest. Seed + the save's command log replayed headless
+(`createGame` + `replayCommandLog`, no game view) **in the same browser engine**: the same digest and the same save
+text, byte for byte, in all of standard (3 years, 1 872 s, 102+ log entries), Introductory, Shakturi, pre-warp, pirate
+and — after fix 3 — the game-end session; again on the merged tree (standard, pirate, game end). In node
+(`scripts/simworker-replay-check.mjs`) the replay differs from the first star position on, in both modes: §8
+"Cross-engine replays".
+
+### 10.4 Remaining known differences between the modes
+
+- A command's reply comes one round trip later (one to two frames; the late save: about a frame, §2.6) — the games of
+  a scripted session drift apart as the same clicks land at later boundaries; quick repeats are covered (§4.4).
+- The drawn picture trails the simulation by the presentation clock's playout buffer in worker mode (§2.5, §2.6).
+- Cold data on the replica is up to a cold cycle old while running (§8 "Cold staleness"); paused, it is exact.
+- `__dwu.galaxy` is the replica: writes to it from the console or a dev script reach nothing (§8).
+- The Pixi "BindGroup … destroyed while still bound" warnings at a teardown (both modes).
+
+Not the worker's, found on the way: `renderInterp-fighters.test.ts` fails after origin's SetupSun change (its new
+galaxy ends the fight in a ~200-unit leash reset): `sampleFighter` extrapolates a fighter that is out of view past its
+carrier's leash circle (600 Patrol / 1 500) between round-robin touches, which the next touch pulls back (18 small
+reversals); clamping the extrapolation to the circle, as `fighterDoMovement` does, removes 17 of them, but the test's
+jerk bound also catches the reset's ease and a burst-moving port — left to the render owner.

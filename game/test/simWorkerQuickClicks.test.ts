@@ -31,6 +31,7 @@ import { BuiltObjectRole } from '../src/sim/data/designSpecifications';
 import { BuiltObjectSubRole } from '../src/sim/builtObjectTypes';
 import { findNewestCanBuild } from '../src/sim/designGeneration';
 import { canEmpireColonizeHabitat } from '../src/sim/exploration';
+import { SystemVisibilityStatus } from '../src/sim/visibility';
 import { defaultEmpirePolicy } from '../src/sim/data/policies';
 import { planetaryFacilityDefinitionsStatic } from '../src/sim/construction/facilities';
 import { createSimLoop } from '../src/simLoop';
@@ -148,6 +149,10 @@ function firstFleet(p: Empire): ShipGroup | null {
 const formFleetIfNone: Click = {
     tick: 0,
     run: (g, p) => {
+        // The Fleet Formation automation would disband an idle fleet of AI-controlled ships that it counts as surplus
+        // (Empire.9.cs MaintainShipGroups, shipGroupTasks.ts maintainShipGroups): off first (both modes), as the tax
+        // test turns off the tax automation.
+        issuePlayerCommand(g, p, 'setEmpireControl', ['controlMilitaryFleets', false]);
         if (firstFleet(p) !== null) return;
         const ships = p.builtObjects.filter((b) => b != null && b.role === BuiltObjectRole.Military && b.shipGroup === null).slice(0, 2);
         issuePlayerCommand(g, p, 'setShipsFleet', [ships, 'new']);
@@ -294,17 +299,46 @@ describe('sim worker: quick repeated clicks — N clicks give N steps in both mo
 
 describe('sim worker: one-shot purchases', () => {
     it('a double-clicked "Build and Send Colony Ship" buys one ship in both modes (one order; the game refuses a second)', () => {
-        // A target the player can colonize with its newest colony ship (the planner's own checks), by index. (The age-2
-        // harness game has one in reach; the standard one has explored none it can settle yet.)
+        // A target the player can colonize with its newest colony ship (the planner's own checks), by index: one it has
+        // explored, or else (the harness game's player may have explored none it can settle yet) the nearest one it could
+        // settle once its system is explored — that system is then explored in every copy of the game (the
+        // ResolveSystemVisibility outcome of a scout's visit), before the clicks.
         const key = { age: 2 };
         const probe = cachedTickGame(gameData, key);
         const pp = probe.playerEmpire;
         const ship = findNewestCanBuild(pp.designs, BuiltObjectSubRole.ColonyShip, pp);
         expect(ship, 'the player can build a colony ship').not.toBeNull();
         const types = pp.colonizableHabitatTypesForEmpire();
-        const index = probe.galaxy.habitats.findIndex((h) => h != null && canEmpireColonizeHabitat(probe.galaxy, pp, pp, h, types, ship!));
+        const colonizable = (h: Habitat | null): boolean => h != null && canEmpireColonizeHabitat(probe.galaxy, pp, pp, h, types, ship!);
+        let index = probe.galaxy.habitats.findIndex(colonizable);
+        let explore: number | null = null;
+        if (index < 0) {
+            const cap = pp.capital!;
+            let best = Infinity;
+            probe.galaxy.habitats.forEach((h, i) => {
+                if (h == null || pp.visibility.checkSystemExplored(h.systemIndex)) return;
+                const v = pp.visibility.systemVisibility[h.systemIndex];
+                const was = v.status;
+                v.status = SystemVisibilityStatus.Explored;
+                const d = probe.galaxy.calculateDistance(cap.xpos, cap.ypos, h.xpos, h.ypos);
+                if (colonizable(h) && d < best) {
+                    best = d;
+                    index = i;
+                    explore = h.systemIndex;
+                }
+                v.status = was;
+            });
+        }
         expect(index, 'a colonizable target').toBeGreaterThanOrEqual(0);
         expect(pp.stateMoney).toBeGreaterThan(ship!.calculateCurrentPurchasePrice(probe.galaxy));
+        const game = (): Game => {
+            const g = cachedTickGame(gameData, key);
+            if (explore !== null) g.playerEmpire.visibility.systemVisibility[explore].status = SystemVisibilityStatus.Explored;
+            const gp = g.playerEmpire;
+            const gs = findNewestCanBuild(gp.designs, BuiltObjectSubRole.ColonyShip, gp);
+            expect(canEmpireColonizeHabitat(g.galaxy, gp, gp, g.galaxy.habitats[index], gp.colonizableHabitatTypesForEmpire(), gs), 'the target is colonizable').toBe(true);
+            return g;
+        };
         const build: Click['run'] = (g, p, ui) => {
             plannerBuildColonyShip(g, p, g.habitats[index], ui.naive ? new PendingOnce<Habitat>() : ui.busy, (r) => ui.replies.push(r.text));
         };
@@ -318,8 +352,8 @@ describe('sim worker: one-shot purchases', () => {
         const ticks = 12;
         const orders = (log: string): number => (JSON.parse(log) as { op?: string }[]).filter((e) => e.op === 'shipAction').length;
         const shipsFor = (g: Game): number => g.playerEmpire.builtObjects.filter((b) => b != null && b.subRole === BuiltObjectSubRole.ColonyShip && (b.mission as { targetHabitat?: unknown } | null)?.targetHabitat === g.galaxy.habitats[index]).length;
-        const ref = runInThread(cachedTickGame(gameData, key), clicks, ticks);
-        const wk = runWorker(cachedTickGame(gameData, key), clicks, ticks, 3);
+        const ref = runInThread(game(), clicks, ticks);
+        const wk = runWorker(game(), clicks, ticks, 3);
         expect(shipsFor(ref.game)).toBe(1);
         expect(shipsFor(wk.host.game)).toBe(1);
         // One order in both modes (the button is busy until its reply / the target has its ship).
@@ -338,7 +372,7 @@ describe('sim worker: one-shot purchases', () => {
         // Without the busy guard the stale replica lets three orders through — and the game still buys one ship (method_539
         // runs in the game, after BuildColonize's "a colony ship is on its way" check). The old planner bought one per
         // order (a buildNewShips + a separate colonize order).
-        const naive = runWorker(cachedTickGame(gameData, key), clicks, ticks, 3, new Ui(true));
+        const naive = runWorker(game(), clicks, ticks, 3, new Ui(true));
         expect(orders(naive.log)).toBe(3);
         expect(shipsFor(naive.host.game)).toBe(1);
         naive.client.dispose();

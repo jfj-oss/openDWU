@@ -77,8 +77,8 @@ export interface UiSettings {
     /** GameOptions.AutoPauseWhenInPopupWindow (default true, Main.Part9.cs:2714): pause a running game while a screen window is open. */
     autoPauseInPopup: boolean;
 
-    /** Experimental (docs/sim-worker.md): run the simulation in a Web Worker (applies to the next game started or
-     *  loaded; `?simWorker=1|0` overrides). Off until every screen is ported. */
+    /** Run the simulation in a Web Worker (docs/sim-worker.md; the default). Off: the in-thread fallback, the sim on the
+     *  main thread as before. Applies to the next game started or loaded; `?simWorker=1|0` overrides. */
     simWorker: boolean;
 
     // [galaxymarkers] begin — GameOptions.GalaxyViewDisplay* (GameOptions.cs 74-96, "Galaxy View - Ship Display"):
@@ -196,7 +196,7 @@ export const DEFAULT_SETTINGS: UiSettings = {
     pullStationsToCentre: false,
     showWeaponRangeCircles: false,
     autoPauseInPopup: true,
-    simWorker: false,
+    simWorker: true,
 
     // [galaxymarkers] begin — GameOptions.cs 74-96 / Main.Part9.cs 2793-2804: all on except civilian ships.
     galaxyViewDisplayFleets: true,
@@ -305,7 +305,9 @@ export function loadSettings(): UiSettings {
         if (typeof parsed.pullStationsToCentre === 'boolean') out.pullStationsToCentre = parsed.pullStationsToCentre;
         if (typeof parsed.showWeaponRangeCircles === 'boolean') out.showWeaponRangeCircles = parsed.showWeaponRangeCircles;
         if (typeof parsed.autoPauseInPopup === 'boolean') out.autoPauseInPopup = parsed.autoPauseInPopup;
-        if (typeof parsed.simWorker === 'boolean') out.simWorker = parsed.simWorker;
+        // The worker became the default with SIM_WORKER_SETTING_VERSION 2: a stored value from before (the old default
+        // `false`, written with every other setting) is not the player's choice and is ignored.
+        if (typeof parsed.simWorker === 'boolean' && (parsed as { simWorkerVersion?: unknown }).simWorkerVersion === SIM_WORKER_SETTING_VERSION) out.simWorker = parsed.simWorker;
         // [galaxymarkers] begin
         for (const k of GALAXY_VIEW_DISPLAY_KEYS) if (typeof parsed[k] === 'boolean') out[k] = parsed[k];
         // [galaxymarkers] end
@@ -384,8 +386,11 @@ export function clampAutoSaveMinutes(v: number): number {
 
 /** Persist the given settings to storage. */
 export function saveSettings(settings: UiSettings): void {
-    storage?.setItem(STORAGE_KEY, JSON.stringify(settings));
+    storage?.setItem(STORAGE_KEY, JSON.stringify({ ...settings, simWorkerVersion: SIM_WORKER_SETTING_VERSION }));
 }
+
+/** Stored next to `simWorker` (loadSettings): 2 = saved since the worker became the default. */
+export const SIM_WORKER_SETTING_VERSION = 2;
 
 /** Current in-memory copy of the settings (loaded once at first use). */
 let current: UiSettings | null = null;

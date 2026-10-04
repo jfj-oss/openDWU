@@ -10,7 +10,8 @@ const browser = await chromium.launch({
 });
 const page = await browser.newPage({ viewport: { width: 1920, height: 1080 } });
 page.on('pageerror', (e) => console.log(`[pageerror] ${e.message}`));
-await page.goto(`${base}?autostart=1`);
+// The set-up below writes the game directly (in-thread only: a sim-worker replica would not pass it on).
+await page.goto(`${base}?autostart=1&simWorker=0`);
 await page.waitForFunction(() => window.__dwu?.game?.playerEmpire !== undefined, null, { timeout: 240000 });
 await page.waitForTimeout(3000);
 await page.click('[data-hud="tbtnResearch"]');

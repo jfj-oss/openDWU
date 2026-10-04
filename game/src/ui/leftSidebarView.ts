@@ -32,6 +32,7 @@ import { issuePlayerCommand } from '../sim/player/playerCommands';
 import { enemyTargetListDrawsRandom, resolveAssignedFleet } from '../sim/player/enemyTargets';
 import { empireFlagUrl } from './selectionInfoView';
 import { onSettingsChange, uiScaleFactor } from './settings';
+import { hudInterval, hudSignal, onHudDestroyed } from './hudLifetime';
 import { itemListHoverChanged } from './listHover';
 import { css } from './selectionInfo';
 import {
@@ -808,11 +809,11 @@ export function createLeftSidebar(wiring: LeftSidebarWiring): HTMLElement {
     layout();
     bind(true);
     render();
-    window.addEventListener('resize', () => {
-        layout();
-    });
-    onSettingsChange(() => layout());
-    window.setInterval(() => {
+    // The resize / settings listeners and the refresh timer end with the HUD (hudLifetime.ts): left registered, their
+    // closures kept the whole game of every replaced view alive.
+    window.addEventListener('resize', () => layout(), { signal: hudSignal() });
+    onHudDestroyed(onSettingsChange(() => layout()));
+    hudInterval(() => {
         if (!root.isConnected || state.open === null) return;
         bind(false);
         render();

@@ -1,5 +1,8 @@
 // Usage: node scripts/desktop-check.mjs [--app=release/dwu-linux-x64/dwu] [--port=9333]
-//                                       [--socket=dwu-pkg] [--compare-dev]
+//                                       [--socket=dwu-pkg] [--compare-dev] [--unpacked]
+//
+// --unpacked runs `electron desktop/main.cjs` from node_modules over the built dist/ (what `npm run desktop:dev`
+// launches; build it first with `npm run build`) instead of the packaged app.
 //
 // Headless check of the PACKAGED Linux desktop app (build it first with
 // `npm run package:linux`). Electron's --ozone-platform=headless segfaults on
@@ -16,7 +19,8 @@
 //   4. the bottom-right system map; F5 Diplomacy, F8 Designs, V Empire Comparison, Construction Yards and G Galaxy
 //      Map open and close
 //   5. profiled PNG/JPEG art is served stripped (desktop/colorProfile.cjs, byte-compared)
-//   6. ?simWorker=1: the module Web Worker loads under dwu:// and the replica galaxy advances
+//   6. ?simWorker=1: the module Web Worker loads under dwu:// and the replica galaxy advances; the default boot (no
+//      ?simWorker) runs in the worker too, a command's reply reaches the replica and the worker saves
 // saving 1920x1080 captures to shots/pkg-*.png. Every request whose URL has
 // /assets/dwu/ must go through dwu:// and succeed; console errors, page errors
 // and failed/4xx requests fail the check (exit 1) — except 404s for files the
@@ -58,7 +62,9 @@ const args = Object.fromEntries(
         return [m[1], m[2] ?? true];
     }),
 );
-const appBin = resolve(root, args.app ?? 'release/dwu-linux-x64/dwu');
+const unpacked = args.unpacked === true;
+const appBin = unpacked ? resolve(root, 'node_modules/electron/dist/electron') : resolve(root, args.app ?? 'release/dwu-linux-x64/dwu');
+const appArgs = unpacked ? [resolve(root, 'desktop/main.cjs')] : [];
 const cdpPort = Number(args.port ?? 9333);
 const socketName = args.socket ?? 'dwu-pkg';
 const W = 1920;
@@ -320,6 +326,31 @@ async function runFlow(page, base, tag, results) {
         bad('?simWorker=1 sim worker', err);
         await shot('worker-failed').catch(() => {});
     }
+
+    // The worker is the default (docs/sim-worker.md §6): no ?simWorker runs it; a command goes through it and its reply
+    // comes back to the replica; the worker saves.
+    try {
+        await page.goto(`${base}index.html?autostart=1`, { waitUntil: 'domcontentloaded' });
+        await page.waitForFunction(() => !!window.__dwu?.game?.galaxy && window.__dwu?.time !== undefined, null, { timeout: 120000 });
+        const w = await page.evaluate(async () => {
+            const d = window.__dwu;
+            const sw = d.simWorker ?? null;
+            if (sw === null) return { worker: false };
+            const p = d.game.playerEmpire;
+            const reply = await new Promise((res) => {
+                d.commands.issue(d.galaxy, p, 'empireRename', ['Desktop Worker Check'], () => res(p.name));
+                setTimeout(() => res('(no reply)'), 20000);
+            });
+            const text = await sw.save();
+            return { worker: true, reply, saveKb: text ? Math.round(text.length / 1024) : 0 };
+        });
+        if (!w.worker) throw new Error('window.__dwu.simWorker is null: the default boot runs in-thread');
+        if (w.reply !== 'Desktop Worker Check') throw new Error(`the command's reply did not reach the replica (${w.reply})`);
+        if (!(w.saveKb > 0)) throw new Error('the worker did not save');
+        ok(`the default boot runs the worker (a command's reply reaches the replica; worker save ${w.saveKb} KB)`);
+    } catch (err) {
+        bad('the default boot runs the worker', err);
+    }
 }
 
 /** A few profiled images from the install (PNG with colour chunks, JPEG with an ICC APP2) that strip shrinks. */
@@ -414,6 +445,7 @@ function checkCollector(c, tag, results, { requireScheme } = {}) {
 
 async function checkPackaged(results) {
     if (!existsSync(appBin)) throw new Error(`${appBin} not found — run \`npm run package:linux\` first`);
+    if (unpacked && !existsSync(join(root, 'dist', 'index.html'))) throw new Error('dist/index.html not found — run `npm run build` first');
     const runtimeDir = process.env.XDG_RUNTIME_DIR || `/run/user/${process.getuid()}`;
     const socketPath = join(runtimeDir, socketName);
     if (existsSync(socketPath)) throw new Error(`Wayland socket ${socketPath} already exists (another check running?)`);
@@ -443,7 +475,7 @@ async function checkPackaged(results) {
         delete appEnv.DISPLAY;
         app = spawn(
             appBin,
-            ['--ozone-platform=wayland', `--remote-debugging-port=${cdpPort}`, `--user-data-dir=${userDataDir}`],
+            [...appArgs, '--ozone-platform=wayland', `--remote-debugging-port=${cdpPort}`, `--user-data-dir=${userDataDir}`],
             { env: appEnv, stdio: ['ignore', 'pipe', 'pipe'] },
         );
         app.stdout.on('data', (d) => (appLog += d));

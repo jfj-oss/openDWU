@@ -248,6 +248,57 @@ describe('sim worker chunk 6: replies and refreshes see current cold data', () =
     }, 600000);
 });
 
+describe('sim worker: replies of ops that name what they change by id', () => {
+    it('a fleet template row added by id is on the replica when the reply runs (commandReach.ts)', () => {
+        // The Fleet Designs tab re-renders in the reply of Add Design (fleetTemplateSetEntry [templateId, design, n]):
+        // the template's rows are past the reach of the arguments and the empire, so the reply ran on the old rows.
+        const game = cachedTickGame(gameData);
+        const time = new GalaxyTime();
+        time.paused = false;
+        const host = new SimHost(game, time, START_OPTIONS, { now: fakeClock(), sync: { coldBudgetMs: 0, coldMaxSets: 1 } });
+        const client = new SimClientCore(gameData, structuredClone(host.snapshot()), {
+            post: (m) => {
+                const c = structuredClone(m);
+                if (c.type === 'command') host.command(c);
+            },
+            now: fakeClock(),
+            coldBudgetMs: 0.002,
+        });
+        const ui = new GalaxyTime();
+        ui.bindGalaxy(client.galaxy);
+        ui.paused = false;
+        const tick = (): void => {
+            const m = host.tick(FRAME_REAL_MS);
+            if (m !== null) client.receive(structuredClone(m));
+            client.frame(ui);
+        };
+        const p = client.game.playerEmpire;
+        tick();
+        let id: number | null = null;
+        issuePlayerCommand(client.galaxy, p, 'fleetTemplateCreate', ['Reach'], (r) => {
+            id = r as number;
+        });
+        for (let i = 0; i < 40 && id === null; i++) tick();
+        expect(id).not.toBeNull();
+        const design = p.designs.find((d) => d.role === 0 /* Military */ || d.subRole === 2) ?? p.designs[0];
+        const steps: { count: number | null; rows: number }[] = [];
+        for (const n of [1, 3]) {
+            let seen: { count: number | null; rows: number } | null = null;
+            issuePlayerCommand(client.galaxy, p, 'fleetTemplateSetEntry', [id!, design, n], () => {
+                const t = p.fleetDesigns?.templates.find((x) => x.id === id) ?? null;
+                seen = { rows: t?.entries.length ?? -1, count: t?.entries[0]?.count ?? null };
+            });
+            for (let i = 0; i < 40 && seen === null; i++) tick();
+            steps.push(seen!);
+        }
+        const auth = game.playerEmpire.fleetDesigns!.templates.find((x) => x.id === id)!;
+        expect(auth.entries.length).toBe(1);
+        expect(steps).toEqual([{ rows: 1, count: 1 }, { rows: 1, count: 3 }]);
+        client.dispose();
+        host.dispose();
+    }, 600000);
+});
+
 describe('sim worker chunk 6: screen reads leave the replica untouched', () => {
     it('the screens\' models and sim queries do not write the replica or draw its RNG', () => {
         const game = cachedTickGame(gameData);

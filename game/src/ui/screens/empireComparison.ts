@@ -30,7 +30,6 @@ import type { Galaxy } from '../../sim/galaxy';
 import type { Habitat } from '../../sim/types';
 import { HabitatCategoryType } from '../../sim/types';
 import {
-    doGameEnd,
     GameEndOutcome,
     generateVictoryConditionProgresses,
     setGameEndHandler,
@@ -43,7 +42,6 @@ import {
     determineAchievementLevel,
     determineAchievementValueForLevel,
     resolveAchievementLevelDescription,
-    reviewAchievements,
 } from '../../sim/achievements';
 import type { Achievement } from '../../sim/achievements';
 import { privateAnnualRevenue, totalColonyStrategicValue } from '../../sim/forceStructure';
@@ -363,13 +361,12 @@ export function canContinueAfterGameEnd(e: GameEndEventArgs, player: Empire | nu
     return !(e.outcomeForPlayer === GameEndOutcome.Defeat && player !== null && (player.colonies.length <= 0 || !player.active));
 }
 
-/** Subscribe Main.Galaxy_GameEnd → DoGameEnd. A second GameEnd in the same
- * check replaces the banner (the C# DoGameEnd would also run twice). */
+/** Subscribe Main.Galaxy_GameEnd → DoGameEnd's UI part (the model part — IsFinished, the victor, the achievements —
+ * runs in the sim: victory.ts onGameEnd). A second GameEnd in the same check replaces the banner (the C# DoGameEnd
+ * would also run twice). */
 export function installGameEndHandler(galaxy: Galaxy, time: { paused: boolean }): void {
     setGameEndHandler(galaxy, (e) => {
         time.paused = true; // method_154
-        doGameEnd(galaxy, e);
-        reviewAchievements(galaxy); // method_436's first line
         presentGameEnd(galaxy, time, e);
     });
 }

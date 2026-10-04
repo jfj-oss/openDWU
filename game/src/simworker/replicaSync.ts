@@ -518,6 +518,14 @@ export class ReplicaEncoder {
     /** Called during diff() right after the hot pass (and before the cold slice): the binding's own per-step compares
      *  (touch() / touchId() of the objects the sim processed this step that no gate sees). */
     onHotPass: ((enc: ReplicaEncoder) => void) | null = null;
+    /**
+     * Called when the round-robin cold pass starts a new cycle, before it compares the cycle's first object (inside
+     * diff()): the binding recollects what it keeps outside the graph (the side tables) here, so every cycle compares
+     * the values as of its own start. Recollecting at the next diff instead left the objects the new cycle had already
+     * compared in the same call (the side root and its tables have low ids) a cycle behind — and a paused game, which
+     * stops diffing one full cycle after the last change, then never sent the last values.
+     */
+    onCycleStart: ((enc: ReplicaEncoder) => void) | null = null;
 
     private readonly nameByProto = new Map<object, string>();
     private readonly hotProtos: Set<object>;
@@ -780,6 +788,7 @@ export class ReplicaEncoder {
             n = cold.length;
             this.coldCursor = 0;
             this.endCycle();
+            if (this.onCycleStart !== null) this.onCycleStart(this);
         } else {
             const minSlice = Math.ceil(cold.length / this.minColdSlices);
             const setsAtCold = this.stats.sets + this.stats.newObjects;
@@ -787,6 +796,7 @@ export class ReplicaEncoder {
                 if (this.coldCursor >= cold.length) {
                     this.coldCursor = 0;
                     this.endCycle();
+                    if (this.onCycleStart !== null) this.onCycleStart(this);
                 }
                 this.compare(cold[this.coldCursor++]);
                 n++;

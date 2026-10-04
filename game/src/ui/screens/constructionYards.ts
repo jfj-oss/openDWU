@@ -566,7 +566,7 @@ export function closeConstructionYards(): void {
 }
 
 /** Empire flag pictures (async composites), cached by empire. */
-const flagUrls = new Map<Empire, string | null>();
+const flagUrls = new WeakMap<Empire, string | null>(); // weak: per game (a Map kept every game's empires)
 let flagsVersion = 0;
 function flagUrl(galaxy: Galaxy, empire: Empire | null): string | null {
     if (empire === null) return null;

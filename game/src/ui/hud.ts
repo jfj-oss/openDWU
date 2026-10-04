@@ -8,6 +8,8 @@ import { toggleAdvisorPanel } from './advisorPanel';
 import { empireFlagUrl } from './selectionInfoView';
 import { threatKnownSites } from '../sim/scenario/threats/framework';
 import { getSettings, onSettingsChange, uiScaleFactor } from './settings';
+import { destroyHudListeners, hudInterval, hudSignal, onHudDestroyed } from './hudLifetime';
+export { destroyHudListeners } from './hudLifetime';
 import { bindAutoPauseClock } from './autoPause';
 import { HUD_FRAME_SIZE } from './topBar';
 import { GalaxyTime } from '../sim/clock';
@@ -551,6 +553,7 @@ export function historyGoTo(cam: Camera | undefined, x: number, y: number): void
 }
 
 export function createHud(wiring: HudWiring = {}): HudRefs {
+    destroyHudListeners(); // a HUD still running from a view that was not torn down (hudLifetime.ts)
     galaxyMapAt = wiring.openGalaxyMapAt ?? null;
     const root = document.createElement('div');
     root.id = 'hud';
@@ -686,7 +689,7 @@ export function createHud(wiring: HudWiring = {}): HudRefs {
     // Task 10f: apply the persisted UI scale on startup and re-apply it
     // immediately whenever a settings change updates it (Escape menu).
     applyHudScale(refs);
-    onSettingsChange(() => applyHudScale(refs));
+    onHudDestroyed(onSettingsChange(() => applyHudScale(refs)));
 
     document.body.appendChild(root);
     return refs;
@@ -1080,8 +1083,18 @@ function buildResearchButton(wiring: HudWiring): HTMLElement {
         });
     };
     refresh();
-    if (wiring.game) setInterval(refresh, 500);
+    if (wiring.game) whileInDocument(btn, refresh, 500);
     return btn;
+}
+
+/** addEventListener on `target` until the HUD is destroyed (hudLifetime.ts). */
+function listenWhileInDocument<K extends keyof DocumentEventMap>(_el: HTMLElement, target: Document, type: K, fn: (e: DocumentEventMap[K]) => void, capture = false): void {
+    target.addEventListener(type, fn, { capture, signal: hudSignal() });
+}
+
+/** setInterval(fn, ms) until the HUD is destroyed (hudLifetime.ts). */
+function whileInDocument(_el: HTMLElement, fn: () => void, ms: number): void {
+    hudInterval(fn, ms);
 }
 
 /** Our screens with no top-strip button in the original, behind one overflow button (small tweak): each runs the
@@ -1154,7 +1167,7 @@ function buildTopMoreButton(wiring: HudWiring): HTMLElement {
         e.stopPropagation();
         menu.hidden = !menu.hidden;
     });
-    document.addEventListener('pointerdown', (e) => {
+    listenWhileInDocument(wrap, document, 'pointerdown', (e) => {
         if (!menu.hidden && !wrap.contains(e.target as Node)) menu.hidden = true;
     });
     wrap.append(btn, menu);
@@ -1246,7 +1259,7 @@ function buildMoneyPanel(game?: { playerEmpire: { name: string; mainColor: numbe
             showIncome(moneyPanelIncome(galaxy, player));
         };
         refreshMoney();
-        setInterval(refreshMoney, 250);
+        whileInDocument(panel, refreshMoney, 250);
     }
     return panel;
 }
@@ -1982,7 +1995,9 @@ function buildOptionsPopup(list: HTMLElement): HTMLElement {
     }
     setOpen(initial);
     btn.addEventListener('click', () => setOpen(!wrap.classList.contains('open')));
-    document.addEventListener(
+    listenWhileInDocument(
+        wrap,
+        document,
         'pointerdown',
         (e) => {
             if (wrap.classList.contains('open') && !wrap.contains(e.target as Node)) setOpen(false);

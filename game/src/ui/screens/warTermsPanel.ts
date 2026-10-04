@@ -22,8 +22,8 @@ interface Draft {
     release: boolean;
 }
 
-const drafts = new Map<Empire, Draft>();
-const replies = new Map<Empire, PeaceTermsResult>();
+const drafts = new WeakMap<Empire, Draft>(); // weak: per game (a Map kept every game's empires)
+const replies = new WeakMap<Empire, PeaceTermsResult>();
 let version = 0;
 let built: { other: Empire; key: string; node: HTMLElement } | null = null;
 

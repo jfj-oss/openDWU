@@ -17,11 +17,11 @@ import { runStepsWithProgress, showLoadingOverlay, nextPaint } from './ui/loadin
 import { parseSystemNames } from './sim/data';
 import { loadGameData, type FetchText, type GameData } from './sim/data/gameData';
 import { GalaxyShape } from './sim/types';
-import { clearHudMessages, createHud, refreshTopLeftControls, topSystemNameText, layoutHud, nearestSystem, pushHudMessage, setSelection as setHudSelection, type HudRefs } from './ui/hud';
+import { clearHudMessages, createHud, destroyHudListeners, refreshTopLeftControls, topSystemNameText, layoutHud, nearestSystem, pushHudMessage, setSelection as setHudSelection, type HudRefs } from './ui/hud';
 import { GalaxyTime } from './sim/clock';
 import { resolveStarDateDescription } from './sim/galaxyTime';
 import { createSimLoop, simViewEnabledFromUrl } from './simLoop';
-// [simworker] begin — docs/sim-worker.md: the sim in a Web Worker behind ?simWorker=1 / Settings (default off).
+// [simworker] begin — docs/sim-worker.md: the sim in a Web Worker (the default; ?simWorker=0 or Settings → off selects the in-thread fallback).
 import { SimWorkerClient, simWorkerEnabled, type ReplicaGameData } from './simworker/workerClient';
 import { workerCreateOptions } from './simworker/bootOptions';
 import type { ScenarioRef, WorkerBoot } from './simworker/protocol';
@@ -381,6 +381,16 @@ let restartPromptFor: SimWorkerClient | null = null;
 async function offerWorkerRestart(simClient: SimWorkerClient, game: Game, time: GalaxyTime, reason: string): Promise<void> {
     if (restartPromptFor === simClient) return;
     restartPromptFor = simClient;
+    try {
+        await offerWorkerRestartOnce(simClient, game, time, reason);
+    } finally {
+        // Only while the prompt is up: kept afterwards, it held the stopped client — and through it the old view and
+        // game — until the next crash.
+        if (restartPromptFor === simClient) restartPromptFor = null;
+    }
+}
+
+async function offerWorkerRestartOnce(simClient: SimWorkerClient, game: Game, time: GalaxyTime, reason: string): Promise<void> {
     time.paused = true;
     const startOptions = lastStartOptions;
     const auto = currentGameAutosave();
@@ -1054,8 +1064,12 @@ export async function startGameView(
         // The HUD selection is module state: don't show the old game's
         // object in the next game's panel.
         setHudSelection(null);
-        app.destroy(true);
+        // The scene graph too (not the textures: the art caches are shared): a Text that is not destroyed stays a
+        // listener of its TextStyle, which Pixi's text-metrics cache keeps, and through its parents the old view, its
+        // layers and its galaxy stayed alive after a load or a sim-worker restart.
+        app.destroy(true, { children: true });
         hud.root.remove();
+        destroyHudListeners();
         shortcuts.destroy();
         hud.gameMenu?.destroy();
         setGameMenuHandler(null);
