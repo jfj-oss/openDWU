@@ -7,6 +7,7 @@
 // rebuilt only when their signature (drawn-size bucket, damage budget, flags) changes, with a per-frame rebuild cap.
 
 import { Container, Sprite, Texture } from 'pixi.js';
+import { textureFromRgbaPixels } from './textureCanvas';
 import type { ShipArt } from './shipArt';
 import {
     HATCH_BRUSH,
@@ -20,17 +21,10 @@ import {
 } from './damageOverlay';
 import { buildConstructionMaskLayer, constructionPercentBuilt, constructionRevealFloor } from './constructionOverlay';
 
-/** A canvas-backed texture from RGBA; `nearest` keeps the C#'s hard pixel clusters crisp when scaled. */
+/** A texture from straight-alpha RGBA (no canvas, textureCanvas.ts); `nearest` keeps the C#'s hard pixel clusters
+ *  crisp when scaled. */
 export function textureFromPixels(rgba: Uint8ClampedArray, w: number, h: number, nearest: boolean): Texture {
-    const c = document.createElement('canvas');
-    c.width = w;
-    c.height = h;
-    const ctx = c.getContext('2d');
-    if (ctx === null) throw new Error('shipOverlays: no 2d context');
-    ctx.putImageData(new ImageData(new Uint8ClampedArray(rgba), w, h), 0, 0);
-    const t = Texture.from(c);
-    if (nearest) t.source.scaleMode = 'nearest';
-    return t;
+    return textureFromRgbaPixels(rgba, w, h, nearest);
 }
 
 /** Seconds the ember glow of a fresh hit lasts (damageFx). */

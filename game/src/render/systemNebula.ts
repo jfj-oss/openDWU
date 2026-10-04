@@ -342,6 +342,15 @@ export interface NebulaSystem {
 
 /** Most systems with textures kept (least recently seen are destroyed first). */
 const CACHE_LIMIT = 10;
+/** GPU memory the cached patch textures may hold (bytes, mip chains included): least recently seen systems are
+ *  destroyed first, never one on screen. A GPU patch is up to 1024 px of RGBA16F + mips (~11 MB), so ten 3-patch
+ *  systems could hold ~300 MB — too much next to everything else on an 8 GB unified-memory Mac. */
+export const NEBULA_TEXTURE_BUDGET_BYTES = 64 * 1024 * 1024;
+
+/** Bytes of a square `size` px texture with a full mip chain, `bpp` bytes per texel. */
+export function mippedTextureBytes(size: number, bpp: number): number {
+    return Math.ceil((size * size * bpp * 4) / 3);
+}
 /** Seconds for a freshly generated system to fade up (no pop-in). */
 const READY_FADE_S = 0.6;
 /** Idle-slice budget, ms. */
@@ -360,6 +369,8 @@ interface Entry {
     shownFrame: number;
     /** Generation time (ms, summed over slices) — for the perf budget check. */
     genMs: number;
+    /** GPU memory of `textures` (mippedTextureBytes). */
+    bytes: number;
 }
 
 type IdleDeadline = { timeRemaining(): number; didTimeout?: boolean };
@@ -380,6 +391,12 @@ export class SystemNebulaLayer {
     private detailScale = 1;
     /** WebGL fragment-shader rasteriser (one pass per patch); null = CPU idle-slice path (tests / headless / WebGPU). */
     private gpu: GpuNebula | null;
+    /** Sum of the entries' `bytes`. */
+    private bytes = 0;
+    private budgetBytes = NEBULA_TEXTURE_BUDGET_BYTES;
+    private disabled = false;
+    /** Released textures waiting to be destroyed (release). */
+    private trash: Array<{ textures: Texture[]; frame: number }> = [];
 
     constructor(
         private readonly galaxySeed: number,
@@ -413,15 +430,65 @@ export class SystemNebulaLayer {
 
     /** Drop every cached cloud (they regenerate on demand at the current size). */
     private clear(): void {
-        for (const e of this.entries.values()) {
-            if (e.container) {
-                this.root.removeChild(e.container);
-                e.container.destroy({ children: true });
-            }
-            for (const t of e.textures) t.destroy(true);
-        }
+        for (const e of this.entries.values()) this.release(e);
         this.entries.clear();
         this.queue.length = 0;
+        this.bytes = 0;
+    }
+
+    /**
+     * The WebGL context was restored: GPU-rendered patches (render textures) came back blank, so drop every cached
+     * cloud; they regenerate on demand. (Uploaded CPU rasters would survive, but are cheap to rebuild too.)
+     */
+    onContextRestored(): void {
+        this.clear();
+    }
+
+    /**
+     * Reduced-detail mode after repeated context losses: the CPU raster path (8-bit textures at the CPU size, no
+     * render-to-texture) and half the texture budget. Irreversible for this view.
+     */
+    useLowGpuMode(): void {
+        this.gpu = null;
+        this.budgetBytes = NEBULA_TEXTURE_BUDGET_BYTES / 2;
+        this.clear();
+    }
+
+    /** Lowest detail: no system nebulae at all for this view (contextLoss.ts level 2). */
+    disable(): void {
+        this.disabled = true;
+        this.clear();
+        this.root.visible = false;
+    }
+
+    /** Cached patch texture memory in bytes (diagnostics / tests). */
+    textureBytes(): number {
+        return this.bytes;
+    }
+
+    /** Whether patches are rendered on the GPU (false: CPU path). */
+    get usesGpu(): boolean {
+        return this.gpu !== null;
+    }
+
+    private release(e: Entry): void {
+        if (e.container) {
+            this.root.removeChild(e.container);
+            e.container.destroy({ children: true });
+            e.container = null;
+        }
+        // Destroyed two frames later: the last frame's batches may still hold them (Pixi warns when a bound texture
+        // source is destroyed; clear() runs from a context restore or a settings change, mid-flight).
+        if (e.textures.length > 0) this.trash.push({ textures: e.textures, frame: this.frame });
+        e.textures = [];
+        this.bytes -= e.bytes;
+        e.bytes = 0;
+    }
+
+    private emptyTrash(all = false): void {
+        while (this.trash.length > 0 && (all || this.trash[0].frame <= this.frame - 2)) {
+            for (const t of this.trash.shift()!.textures) t.destroy(true);
+        }
     }
 
     /** Generation time of a system's textures in ms (undefined until finished) — perf diagnostics. */
@@ -436,7 +503,8 @@ export class SystemNebulaLayer {
      */
     update(z: number, camX: number, camY: number, viewW: number, viewH: number, systems: readonly NebulaSystem[], nowMs: number): void {
         this.frame++;
-        const zoomA = this.shown ? systemNebulaZoomAlpha(z) : 0;
+        if (this.trash.length > 0) this.emptyTrash();
+        const zoomA = this.shown && !this.disabled ? systemNebulaZoomAlpha(z) : 0;
         const on = zoomA > 0.004;
         this.root.visible = on;
         if (!on) return;
@@ -480,27 +548,26 @@ export class SystemNebulaLayer {
             lastSeen: this.frame,
             shownFrame: -1,
             genMs: 0,
+            bytes: 0,
         };
         this.entries.set(sys.index, e);
         this.queue.push(e);
         return e;
     }
 
-    private evict(): void {
+    /** Destroy the least recently seen system not seen this frame (and not `keep`); false when there is none. */
+    private evict(keep: Entry | null = null): boolean {
         let victim: Entry | null = null;
         for (const e of this.entries.values()) {
-            if (e.lastSeen === this.frame) continue;
+            if (e.lastSeen === this.frame || e === keep) continue;
             if (victim === null || e.lastSeen < victim.lastSeen) victim = e;
         }
-        if (victim === null) return;
+        if (victim === null) return false;
         this.entries.delete(victim.sys.index);
         const qi = this.queue.indexOf(victim);
         if (qi >= 0) this.queue.splice(qi, 1);
-        if (victim.container) {
-            this.root.removeChild(victim.container);
-            victim.container.destroy({ children: true });
-        }
-        for (const t of victim.textures) t.destroy(true);
+        this.release(victim);
+        return true;
     }
 
     private schedule(): void {
@@ -546,6 +613,7 @@ export class SystemNebulaLayer {
                 e.textures = [];
                 this.gpuFailed(e);
             }
+            // A pass during a context loss renders nothing (and throws nothing): onContextRestored regenerates it.
             if (this.queue.length > 0) this.schedule();
             return;
         }
@@ -611,5 +679,13 @@ export class SystemNebulaLayer {
         this.root.addChild(c);
         e.ready = true;
         e.genMs += performance.now() - s0;
+        // Texture memory: half floats (8 B) from the GPU path when it renders to them, else 8-bit; mips included.
+        let bytes = 0;
+        for (const t of e.textures) bytes += mippedTextureBytes(t.source.pixelWidth, gpuTex && t.source.format === 'rgba16float' ? 8 : 4);
+        e.bytes = bytes;
+        this.bytes += bytes;
+        while (this.bytes > this.budgetBytes && this.evict(e)) {
+            /* least recently seen first */
+        }
     }
 }
