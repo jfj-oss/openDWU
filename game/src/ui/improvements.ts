@@ -1,163 +1,112 @@
-// "Improvements": every Distant Worlds 2-inspired addition that is NOT in the original game, in one category. Each one
-// is listed here once ({id, label, description, default}); the player turns it on or off in Game Options → Advanced
-// Display Settings → "Improvements" (improvementsOptionsGroup), and the ones that are map overlays get their own
-// "Improvements" section in the HUD's View popup, below the original's Overlays (improvementsSection; the rows are
-// ui/mapOverlays.ts IMPROVEMENT_OVERLAY_ROWS). A disabled improvement hides its rows and draws nothing.
+// "Improvements": the one category every Distant Worlds 2-inspired addition goes under. NOT a port: DW:U has none of
+// them. They are UI only (no game rules change) and each can be switched off in Game Options → Improvements.
 //
-// UI-only: nothing here reads or writes the game. The enabled flags persist in localStorage under their own key (the
-// storage is optional: tests and private windows keep them in memory).
+// The shared scaffolding (reuse it for a new improvement):
+//   1. Add an entry to IMPROVEMENTS below (or call registerImprovement from the feature's module): a stable `id`, the
+//      label and one-line description the Game Options group shows, and the default (on).
+//   2. A map overlay that belongs to it: give its OVERLAY_ROWS row `improvement: '<id>'` (mapOverlays.ts). The View
+//      popup (hud.ts buildOptionsList) lists those rows in an "Improvements" section below the original's Overlays,
+//      without the "+" badge, and hides them while the improvement is off; mapOverlays.ts overlayActive(state, key) is
+//      false then, so the renderer draws nothing.
+//   3. Panels / rows: gate them with isImprovementEnabled('<id>'), and react to a toggle with onImprovementsChange.
+// The on / off choices persist in the UI settings (settings.ts `improvements`, id → boolean; a missing id = default).
 //
-// No DOM access at import time (render layers and node tests import the registry); the section / group helpers build
-// DOM only when called.
+// The Game Options group is buildImprovementsGroup (screens/gameOptionsPanel.ts opens it from "Improvements...").
 
-/** One improvement. `default`: enabled until the player changes it. */
-export interface ImprovementDef {
-    id: ImprovementId;
+import { getSettings, onSettingsChange, updateSettings } from './settings';
+import { COLORS, FONT, checkBox, el, place, text } from './originalWindow';
+import { groupBox } from './originalWindowControls';
+
+export interface Improvement {
+    /** Stable id (settings key, OVERLAY_ROWS `improvement`). */
+    id: string;
+    /** Name in Game Options → Improvements. */
     label: string;
+    /** One line under the name. */
     description: string;
+    /** On unless the player turned it off. */
     default: boolean;
 }
 
-export type ImprovementId = 'colonyTargetScores' | 'resourcesOverlay' | 'fuelRangeOverlay';
+/** Title of the overlay section and of the options group. */
+export const IMPROVEMENTS_TITLE = 'Improvements';
 
-/** The registry, in display order. Enabled by default: each one's overlay toggle itself still starts off. */
-export const IMPROVEMENTS: readonly ImprovementDef[] = [
-    {
-        id: 'colonyTargetScores',
-        label: 'Colony target scores',
-        description: "Map overlay: the Expansion Planner's colonization targets, ringed in a colour from their score (green = best)",
-        default: true,
-    },
-    {
-        id: 'resourcesOverlay',
-        label: 'Resources overlay',
-        description: 'Map overlay: the resources you know of in each system, with rarity and abundance; pick one resource to find it',
-        default: true,
-    },
-    {
-        id: 'fuelRangeOverlay',
-        label: 'Fuel range overlay',
-        description: "Map overlay: the selected ship's or fleet's reach on its current fuel and the refuelling points it can use",
-        default: true,
-    },
-];
+/** The registry, in display order. */
+const IMPROVEMENTS: Improvement[] = [];
 
-const STORAGE_KEY = 'dwu.improvements';
+/** Add an improvement (or replace the one with the same id). Returns it. */
+export function registerImprovement(imp: Improvement): Improvement {
+    const i = IMPROVEMENTS.findIndex((x) => x.id === imp.id);
+    if (i >= 0) IMPROVEMENTS[i] = imp;
+    else IMPROVEMENTS.push(imp);
+    return imp;
+}
 
-let enabled: Map<ImprovementId, boolean> | null = null;
-const listeners = new Set<() => void>();
+/** Every registered improvement, in display order. */
+export function improvements(): readonly Improvement[] {
+    return IMPROVEMENTS;
+}
 
-function storage(): Storage | null {
-    try {
-        return typeof localStorage !== 'undefined' ? localStorage : null;
-    } catch {
-        return null;
+export function improvementById(id: string): Improvement | null {
+    return IMPROVEMENTS.find((x) => x.id === id) ?? null;
+}
+
+/** On / off for `id`: the player's choice, else the default (an unknown id is on). */
+export function isImprovementEnabled(id: string): boolean {
+    const v = getSettings().improvements?.[id];
+    if (typeof v === 'boolean') return v;
+    return improvementById(id)?.default ?? true;
+}
+
+export function setImprovementEnabled(id: string, on: boolean): void {
+    if (isImprovementEnabled(id) === on) return;
+    updateSettings({ improvements: { ...(getSettings().improvements ?? {}), [id]: on } });
+}
+
+/** Called after any improvement was switched (with its id), until the returned function unsubscribes. */
+export function onImprovementsChange(cb: (id: string, on: boolean) => void): () => void {
+    let last = new Map(IMPROVEMENTS.map((i) => [i.id, isImprovementEnabled(i.id)]));
+    return onSettingsChange(() => {
+        const next = new Map(IMPROVEMENTS.map((i) => [i.id, isImprovementEnabled(i.id)]));
+        const prev = last;
+        last = next;
+        for (const [id, on] of next) if (prev.get(id) !== on) cb(id, on);
+    });
+}
+
+/** Split overlay rows into the original's and the Improvements section (only the enabled improvements' rows). */
+export function overlayRowSections<R extends { improvement?: string }>(rows: readonly R[]): { original: R[]; improvements: R[] } {
+    const original: R[] = [];
+    const extra: R[] = [];
+    for (const r of rows) {
+        if (r.improvement === undefined) original.push(r);
+        else if (isImprovementEnabled(r.improvement)) extra.push(r);
     }
+    return { original, improvements: extra };
 }
 
-function load(): Map<ImprovementId, boolean> {
-    const out = new Map<ImprovementId, boolean>();
-    for (const d of IMPROVEMENTS) out.set(d.id, d.default);
-    try {
-        const raw = storage()?.getItem(STORAGE_KEY);
-        if (raw) {
-            const parsed = JSON.parse(raw) as Record<string, unknown>;
-            for (const d of IMPROVEMENTS) if (typeof parsed[d.id] === 'boolean') out.set(d.id, parsed[d.id] as boolean);
-        }
-    } catch {
-        /* unreadable: the defaults */
-    }
-    return out;
-}
+/** Row pitch of the options group (check box line + description line). */
+const ROW_H = 40;
 
-function flags(): Map<ImprovementId, boolean> {
-    if (enabled === null) enabled = load();
-    return enabled;
-}
-
-export function improvementDef(id: ImprovementId): ImprovementDef | undefined {
-    return IMPROVEMENTS.find((d) => d.id === id);
-}
-
-/** Whether the player has this improvement on (Game Options). */
-export function improvementEnabled(id: ImprovementId): boolean {
-    return flags().get(id) ?? improvementDef(id)?.default ?? false;
-}
-
-/** Turn an improvement on / off, persist it and notify the subscribers. */
-export function setImprovementEnabled(id: ImprovementId, on: boolean): void {
-    const f = flags();
-    if (f.get(id) === on) return;
-    f.set(id, on);
-    try {
-        storage()?.setItem(STORAGE_KEY, JSON.stringify(Object.fromEntries(f)));
-    } catch {
-        /* storage unavailable */
-    }
-    for (const fn of listeners) fn();
-}
-
-/** Subscribe to improvement on / off changes. Returns the unsubscribe function. */
-export function onImprovementsChange(fn: () => void): () => void {
-    listeners.add(fn);
-    return () => listeners.delete(fn);
-}
-
-/** Tests: forget the loaded flags (re-read from storage / defaults on next use). */
-export function resetImprovementsForTest(): void {
-    enabled = null;
+/** Height of the options group for `n` improvements. */
+export function improvementsGroupHeight(n = IMPROVEMENTS.length): number {
+    return 30 + Math.max(1, n) * ROW_H;
 }
 
 /**
- * The View popup's "Improvements" section: a section head and the given rows (one element per improvement), each row
- * hidden while its improvement is disabled, and the whole section while all are. The rows follow later Game Options
- * changes until `signal` aborts (the HUD's lifetime, ui/hudLifetime.ts).
+ * The Game Options "Improvements" group: one check box per improvement (its label) with its description below, in the
+ * original-window style (originalWindowControls.groupBox / originalWindow.checkBox). Toggling saves at once.
  */
-export function improvementsSection(rows: readonly { improvement: ImprovementId; element: HTMLElement }[], signal?: AbortSignal): HTMLElement {
-    const wrap = document.createElement('div');
-    wrap.className = 'hud-improvements';
-    const head = document.createElement('div');
-    head.className = 'hud-section-head';
-    head.textContent = 'Improvements';
-    head.title = 'Additions inspired by Distant Worlds 2 (not in the original game); turn them on or off in Game Options';
-    wrap.appendChild(head);
-    for (const r of rows) wrap.appendChild(r.element);
-    const sync = (): void => {
-        let any = false;
-        for (const r of rows) {
-            const on = improvementEnabled(r.improvement);
-            r.element.style.display = on ? '' : 'none';
-            any ||= on;
-        }
-        wrap.style.display = any ? '' : 'none';
-    };
-    sync();
-    const off = onImprovementsChange(sync);
-    signal?.addEventListener('abort', off, { once: true });
-    return wrap;
-}
-
-/** What improvementsOptionsGroup draws with (the original-style window's controls, passed in to keep this module light). */
-export interface OptionsGroupControls {
-    groupBox(title: string, w: number, h: number, size?: number): HTMLElement;
-    checkBox(label: string, checked: boolean, onChange: (v: boolean) => void, size?: number): HTMLElement;
-    place<T extends HTMLElement>(e: T, x: number, y: number, w?: number, h?: number): T;
-}
-
-/** Height of improvementsOptionsGroup for the current registry. */
-export function improvementsOptionsGroupHeight(): number {
-    return 30 + 22 * IMPROVEMENTS.length;
-}
-
-/** Game Options' "Improvements" group: one checkbox per improvement (its description as the tooltip). */
-export function improvementsOptionsGroup(c: OptionsGroupControls, width: number, titleSize?: number, checkSize?: number): HTMLElement {
-    const g = c.groupBox('Improvements', width, improvementsOptionsGroupHeight(), titleSize);
-    g.title = 'Additions inspired by Distant Worlds 2 — not in the original game';
-    IMPROVEMENTS.forEach((d, i) => {
-        const box = c.checkBox(d.label, improvementEnabled(d.id), (v) => setImprovementEnabled(d.id, v), checkSize);
-        box.title = d.description;
-        box.classList.add('go-check');
-        g.appendChild(c.place(box, 10, 22 + 22 * i));
+export function buildImprovementsGroup(width: number, size: number = FONT.normal): HTMLDivElement {
+    const g = groupBox(IMPROVEMENTS_TITLE, width, improvementsGroupHeight(), FONT.header);
+    g.classList.add('improvements-group');
+    IMPROVEMENTS.forEach((imp, i) => {
+        const y = 24 + i * ROW_H;
+        const c = checkBox(imp.label, isImprovementEnabled(imp.id), (v) => setImprovementEnabled(imp.id, v), size);
+        c.dataset.improvement = imp.id;
+        g.appendChild(place(c, 10, y));
+        g.appendChild(place(text(imp.description, { size: FONT.tiny, color: COLORS.label, wrapWidth: width - 50 }), 34, y + 19));
     });
+    if (IMPROVEMENTS.length === 0) g.appendChild(place(el('div', 'ow-text', '(none)'), 10, 24));
     return g;
 }

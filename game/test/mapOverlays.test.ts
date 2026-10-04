@@ -55,6 +55,9 @@ describe('map overlay state (task 05c)', () => {
             'tradeHubs',
             'threats',
             'wrecks',
+            'colonyScores',
+            'resources',
+            'fuelRange',
         ]);
         expect(OVERLAY_ROWS.filter((r) => r.mod === true).map((r) => r.key)).toEqual(['factionMarkers', 'stationPresence', 'freightFlows', 'tradeHubs', 'wrecks']);
     });

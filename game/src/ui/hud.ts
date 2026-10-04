@@ -14,9 +14,9 @@ import { bindAutoPauseClock } from './autoPause';
 import { HUD_FRAME_SIZE } from './topBar';
 import { GalaxyTime } from '../sim/clock';
 import { resolveStarDateDescription } from '../sim/galaxyTime';
-import { createMapOverlayState, IMPROVEMENT_OVERLAY_ROWS, OVERLAY_ROWS, onOverlayChange, toggleOverlay, type MapOverlayState, type OverlayKey, type OverlayPanel } from './mapOverlays';
-import { improvementsSection } from './improvements'; // [dw2overlays]
+import { createMapOverlayState, OVERLAY_ROWS, onOverlayChange, toggleOverlay, type MapOverlayState, type OverlayKey, type OverlayRow } from './mapOverlays';
 import { resourcePickerPanel, type OverlayOptionPanel } from './overlayOptionPanels'; // [dw2overlays]
+import { IMPROVEMENTS_TITLE, onImprovementsChange, overlayRowSections } from './improvements'; // [improvements]
 import { Camera } from '../render/camera';
 import { followOnSelectionChanged, isFollowingTarget, toggleFollow, type FollowState, type FollowTarget } from '../render/followCamera';
 import { Galaxy } from '../sim/galaxy';
@@ -32,7 +32,7 @@ import { BuiltObjectRole } from '../sim/data/designSpecifications';
 import { BuiltObjectMissionType, COORD_UNSET_DOUBLE, builtObjectMission, type BuiltObjectMission } from '../sim/missions/mission';
 // [15c]
 import { ShipGroup } from '../sim/fleets/shipGroup';
-import { fleetCycleList, fleetShipAction, toggleFleetsList } from './screens/fleetsList';
+import { closeFleetsList, fleetCycleList, fleetShipAction, toggleFleetsList } from './screens/fleetsList';
 // [/15c]
 import { SystemVisibilityStatus } from '../sim/visibility';
 import { flagShapeUrl } from '../sim/startGameOptions';
@@ -1765,6 +1765,12 @@ function buildSelectionPanel(wiring: HudWiring): HTMLElement {
             openGalactopedia({ topic: t.topic });
             return;
         }
+        // Not in the original: a fleet's "Template" row opens the Fleets screen on the fleet (fleetRefillControls.ts).
+        if (t.kind === 'fleetTemplate') {
+            closeFleetsList();
+            toggleFleets(t.fleet);
+            return;
+        }
         const o = t.obj;
         if (o instanceof ShipGroup) shipGroupSelectHandler?.(o, false);
         else if (o instanceof Habitat) habitatSelectHandler?.(o, false);
@@ -1920,14 +1926,17 @@ function buildOptionsList(wiring: HudWiring): HTMLElement {
     const panel = document.createElement('div');
     panel.className = 'hud-panel hud-options';
 
-    const ovHead = document.createElement('div');
-    ovHead.className = 'hud-section-head';
-    ovHead.textContent = 'Overlays';
-    panel.appendChild(ovHead);
-    const makeRow = (row: { key: OverlayKey; label: string; mod?: boolean; panel?: OverlayPanel }): HTMLElement => {
+    const section = (title: string): void => {
+        const head = document.createElement('div');
+        head.className = 'hud-section-head';
+        head.textContent = title;
+        panel.appendChild(head);
+    };
+    const addRow = (row: OverlayRow): void => {
         const item = document.createElement('button');
         item.type = 'button';
         item.className = 'hud-option-row';
+        item.dataset.overlay = row.key;
         const check = document.createElement('span');
         check.className = 'hud-option-check';
         check.textContent = overlays[row.key] ? '✓' : '';
@@ -1935,8 +1944,9 @@ function buildOptionsList(wiring: HudWiring): HTMLElement {
         lbl.className = 'hud-option-label';
         lbl.textContent = row.label;
         item.append(check, lbl);
-        // [freightOverlay] begin — additions to the original nine carry a "+" badge; `panel` rows get a "…" opener.
-        if (row.mod === true) {
+        // [freightOverlay] begin — additions to the original nine carry a "+" badge (the Improvements section's rows do
+        // not: the section says it); `panel` rows get a "…" opener.
+        if (row.mod === true && row.improvement === undefined) {
             const badge = document.createElement('span');
             badge.className = 'hud-option-mod';
             badge.textContent = '+';
@@ -1956,11 +1966,12 @@ function buildOptionsList(wiring: HudWiring): HTMLElement {
             item.appendChild(more);
         }
         // [freightOverlay] end
-        // [dw2overlays] begin — an inline options panel under the row (ui/overlayOptionPanels.ts).
+        // [dw2overlays] begin — the Resources row's "…": an inline resource picker under the row (ui/overlayOptionPanels.ts).
         let sub: OverlayOptionPanel | null = null;
         if (row.panel === 'resources' && wiring.galaxy !== undefined) {
-            sub = resourcePickerPanel(overlays, wiring.galaxy);
-            sub.element.style.display = 'none';
+            const picker = resourcePickerPanel(overlays, wiring.galaxy);
+            sub = picker;
+            picker.element.style.display = 'none';
             const more = document.createElement('span');
             more.className = 'hud-option-more';
             more.textContent = '…';
@@ -1968,31 +1979,47 @@ function buildOptionsList(wiring: HudWiring): HTMLElement {
             more.setAttribute('role', 'button');
             more.addEventListener('click', (e) => {
                 e.stopPropagation();
-                const open = sub!.element.style.display === 'none';
-                if (open) sub!.refresh();
-                sub!.element.style.display = open ? '' : 'none';
+                const open = picker.element.style.display === 'none';
+                if (open) picker.refresh();
+                picker.element.style.display = open ? '' : 'none';
             });
             item.appendChild(more);
         }
         // [dw2overlays] end
         item.addEventListener('click', () => {
             toggleOverlay(overlays, row.key);
+            check.textContent = overlays[row.key] ? '✓' : '';
             // Rendering lives in src/render/overlayLayer.ts (task M3, parity C3), which subscribes to onOverlayChange and
             // reads the state every frame (Fade civilian ships: builtObjectLayer.ts).
         });
-        // [dw2overlays] the check follows any change (a "…" panel can turn its overlay on).
-        onHudDestroyed(onOverlayChange(() => {
-            check.textContent = overlays[row.key] ? '✓' : '';
-        }));
-        if (sub === null) return item;
-        const box = document.createElement('div');
-        box.className = 'hud-option-group';
-        box.append(item, sub.element);
-        return box;
+        panel.appendChild(item);
+        if (sub !== null) panel.appendChild(sub.element); // [dw2overlays]
     };
-    for (const row of OVERLAY_ROWS) panel.appendChild(makeRow(row));
-    // [dw2overlays] The Improvements category (ui/improvements.ts): its own section below the original's overlays.
-    panel.appendChild(improvementsSection(IMPROVEMENT_OVERLAY_ROWS.map((row) => ({ improvement: row.improvement, element: makeRow(row) })), hudSignal()));
+    // The original's overlays, then the Improvements section (ui/improvements.ts: DW2-inspired additions, each one
+    // listed only while it is enabled in Game Options → Improvements).
+    const render = (): void => {
+        panel.replaceChildren();
+        const { original, improvements } = overlayRowSections(OVERLAY_ROWS);
+        section('Overlays');
+        for (const row of original) addRow(row);
+        if (improvements.length > 0) {
+            section(IMPROVEMENTS_TITLE);
+            for (const row of improvements) addRow(row);
+        }
+    };
+    render();
+    // Until the HUD is destroyed (hudLifetime.ts).
+    const off = onImprovementsChange(() => render());
+    onHudDestroyed(off);
+    // [dw2overlays] the checks follow changes made elsewhere (the resource picker turns its overlay on).
+    onHudDestroyed(
+        onOverlayChange(() => {
+            for (const el of panel.querySelectorAll<HTMLElement>('.hud-option-row[data-overlay]')) {
+                const c = el.querySelector('.hud-option-check');
+                if (c !== null) c.textContent = overlays[el.dataset.overlay as OverlayKey] ? '✓' : '';
+            }
+        }),
+    );
     return panel;
 }
 

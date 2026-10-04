@@ -2,7 +2,7 @@
 // (btnMapOverlay1..8, btnMapCivilianFade in Main.Part12.cs) are replaced by a
 // list of named toggles; the overlays are drawn by src/render/overlayLayer.ts (and builtObjectLayer.ts / empireLayer.ts).
 
-import { improvementEnabled, type ImprovementId } from './improvements'; // [dw2overlays]
+import { isImprovementEnabled, registerImprovement } from './improvements';
 
 export interface MapOverlayState {
     fleetPostures: boolean;
@@ -26,7 +26,8 @@ export interface MapOverlayState {
     threats: boolean;
     /** Scenario 19e-7: debris fields of battle wreckage the player knows (wreck markers + hover tooltip). */
     wrecks: boolean;
-    // [dw2overlays] begin — Distant Worlds 2-style additions (not in the original): UI-only reads of what the player knows.
+    // [dw2overlays] begin — Improvements (ui/improvements.ts; DW2-inspired, not in the original): UI-only reads of what
+    // the player knows.
     /** Colony Target Scores: the Expansion Planner's colonization targets as rings coloured by their score, around the
      *  habitat at system zoom and the system's best target at galaxy / sector zoom (render/colonyTargets.ts). Extends
      *  Potential Colonies (whose plain rings give way to these on the scored habitats). */
@@ -78,13 +79,23 @@ export function createMapOverlayState(): MapOverlayState {
 
 export type OverlayKey = keyof MapOverlayState;
 
-/** What a row's "…" button opens: the Trade Flows screen, or an inline options panel under the row
- * (ui/overlayOptionPanels.ts). */
 export type OverlayPanel = 'tradeFlows' | 'resources';
 
-/** Human label per overlay key, in display order for the options list. `mod: true` marks rows that are additions to
- * the original (rendered with a small "+" badge); `panel` names what the row's "…" button opens. */
-export const OVERLAY_ROWS: Array<{ key: OverlayKey; label: string; mod?: boolean; panel?: OverlayPanel }> = [
+/** One row of the View popup's overlay list. */
+export interface OverlayRow {
+    key: OverlayKey;
+    label: string;
+    /** An addition to the original (rendered with a small "+" badge). */
+    mod?: boolean;
+    /** What the row's "…" button opens: the Trade Flows screen, or the inline resource picker (ui/overlayOptionPanels.ts). */
+    panel?: OverlayPanel;
+    /** The improvement (ui/improvements.ts) the overlay belongs to: listed in the popup's Improvements section (no "+"
+     *  badge) and hidden — and not drawn, overlayActive — while the improvement is off. */
+    improvement?: string;
+}
+
+/** Human label per overlay key, in display order for the options list. */
+export const OVERLAY_ROWS: OverlayRow[] = [
     { key: 'fleetPostures', label: 'Fleet Postures' },
     { key: 'travelVectorsState', label: 'Travel Vectors (State)' },
     { key: 'travelVectorsPrivate', label: 'Travel Vectors (Private)' },
@@ -102,24 +113,61 @@ export const OVERLAY_ROWS: Array<{ key: OverlayKey; label: string; mod?: boolean
     // [freightOverlay] end
     { key: 'threats', label: 'Threats' },
     { key: 'wrecks', label: 'Wreck Fields', mod: true },
-];
-
-// [dw2overlays] begin
-/** The overlays of the "Improvements" category (ui/improvements.ts): their own section of the View popup, below the
- * original's Overlays, each shown only while its improvement is enabled in Game Options. */
-export const IMPROVEMENT_OVERLAY_ROWS: Array<{ key: OverlayKey; label: string; improvement: ImprovementId; panel?: OverlayPanel }> = [
+    // Improvements section (ui/improvements.ts): rows with `improvement: '<id>'` go here.
+    // [dw2overlays] begin
     { key: 'colonyScores', label: 'Colony Target Scores', improvement: 'colonyTargetScores' },
     { key: 'resources', label: 'Resources', improvement: 'resourcesOverlay', panel: 'resources' },
     { key: 'fuelRange', label: 'Fuel Range', improvement: 'fuelRangeOverlay' },
+    // [dw2overlays] end
 ];
 
-/** An Improvements overlay draws while its toggle is on and its improvement is enabled. */
-export function improvementOverlayOn(state: MapOverlayState, key: OverlayKey): boolean {
-    if (!state[key]) return false;
-    const row = IMPROVEMENT_OVERLAY_ROWS.find((r) => r.key === key);
-    return row === undefined || improvementEnabled(row.improvement);
-}
+// [dw2overlays] begin — the three overlay improvements (on by default; each overlay's own toggle still starts off).
+registerImprovement({
+    id: 'colonyTargetScores',
+    label: 'Colony target scores overlay',
+    description: "Map overlay: the Expansion Planner's colonization targets, ringed in a colour from their score (green = best).",
+    default: true,
+});
+registerImprovement({
+    id: 'resourcesOverlay',
+    label: 'Resources overlay',
+    description: 'Map overlay: the resources you know of in each system, with rarity and abundance; pick one to find it.',
+    default: true,
+});
+registerImprovement({
+    id: 'fuelRangeOverlay',
+    label: 'Fuel range overlay',
+    description: "Map overlay: the selected ship's or fleet's reach on its fuel and the refuelling points it can use.",
+    default: true,
+});
 // [dw2overlays] end
+
+/** The overlay is on and, when it belongs to an improvement, that improvement is enabled (what the renderer draws). */
+export function overlayActive(state: MapOverlayState, key: OverlayKey): boolean {
+    if (!state[key]) return false;
+    const row = OVERLAY_ROWS.find((r) => r.key === key);
+    return row?.improvement === undefined || isImprovementEnabled(row.improvement);
+}
+
+/** Toggle one overlay flag in place, then notify subscribers (task M3: lets
+ * overlayLayer.ts react to a toggle without waiting for the next frame that
+ * happens to re-read the state anyway). */
+export function toggleOverlay(state: MapOverlayState, key: OverlayKey): void {
+    state[key] = !state[key];
+    for (const fn of listeners) fn();
+}
+
+type OverlayChangeListener = () => void;
+const listeners = new Set<OverlayChangeListener>();
+
+/** Subscribe to overlay toggles (any key). Returns an unsubscribe function.
+ * Task M3: module-level, since the app only ever runs one overlay state at a
+ * time (main.ts creates one `MapOverlayState` and shares it with the HUD and
+ * the Main View). */
+export function onOverlayChange(fn: OverlayChangeListener): () => void {
+    listeners.add(fn);
+    return () => listeners.delete(fn);
+}
 
 // [dw2overlays] begin
 /** The non-boolean overlay settings of one MapOverlayState (the "…" panels). */
@@ -153,23 +201,3 @@ export function setOverlay(state: MapOverlayState, key: OverlayKey, on: boolean)
     if (state[key] !== on) toggleOverlay(state, key);
 }
 // [dw2overlays] end
-
-/** Toggle one overlay flag in place, then notify subscribers (task M3: lets
- * overlayLayer.ts react to a toggle without waiting for the next frame that
- * happens to re-read the state anyway). */
-export function toggleOverlay(state: MapOverlayState, key: OverlayKey): void {
-    state[key] = !state[key];
-    for (const fn of listeners) fn();
-}
-
-type OverlayChangeListener = () => void;
-const listeners = new Set<OverlayChangeListener>();
-
-/** Subscribe to overlay toggles (any key). Returns an unsubscribe function.
- * Task M3: module-level, since the app only ever runs one overlay state at a
- * time (main.ts creates one `MapOverlayState` and shares it with the HUD and
- * the Main View). */
-export function onOverlayChange(fn: OverlayChangeListener): () => void {
-    listeners.add(fn);
-    return () => listeners.delete(fn);
-}

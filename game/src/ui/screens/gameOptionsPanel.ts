@@ -46,7 +46,7 @@ import { clampAutoSaveMinutes, clampMaximumFramerate, getSettings, resetAutomati
 import { copyMessageOptions, getMessageOptions, MessageCategory, setMessageOption, setSuppressAllPopups, type MessageOptions } from '../messageRouting';
 import { COLORS, checkBox, dropDown, el, glassButton, messageBox, numericUpDown, openOriginalWindow, place, text, type OriginalWindow } from '../originalWindow';
 import { checkBoxRight, colorSlider, groupBox, labelledTrackBar } from '../originalWindowControls';
-import { improvementsOptionsGroup, improvementsOptionsGroupHeight } from '../improvements'; // [dw2overlays]
+import { IMPROVEMENTS_TITLE, buildImprovementsGroup, improvementsGroupHeight } from '../improvements'; // [improvements]
 import { AUTOMATION_MODE_ITEMS, AUTOMATION_PRESETS, detectAutomationMode, empireAutomationValues, gameOptionsFromEmpire, messageSettingsRows, type PendingEmpireValues } from './gameOptionsModel';
 
 export type AutomationField =
@@ -233,7 +233,7 @@ const EMPIRE_H = 769 + 25;
 const MESSAGES_W = 735;
 const MESSAGES_H = 502 + 43;
 const ADVANCED_W = 440;
-const ADVANCED_H = 500 + 110 + 10 + improvementsOptionsGroupHeight(); // [dw2overlays] + the Improvements group
+const ADVANCED_H = 500 + 110;
 
 interface OpenState {
     win: OriginalWindow;
@@ -242,7 +242,8 @@ interface OpenState {
 
 let open: OpenState | null = null;
 /** The open sub-windows (closed with the Options window, like method_413). */
-const subWindows = new Map<'empire' | 'messages' | 'advanced', OriginalWindow>();
+type SubWindowKind = 'empire' | 'messages' | 'advanced' | 'improvements';
+const subWindows = new Map<SubWindowKind, OriginalWindow>();
 /** The values this Options session issued as commands (gameOptionsModel.ts gameOptionsFromEmpire). */
 let pendingEmpireValues: PendingEmpireValues = {};
 /** This game's "Allow colonization and mining stations in other empires systems" start option (main.ts registers it). */
@@ -437,8 +438,10 @@ function createGameOptionsPanel(opts: GameOptionsPanelOptions): OpenState {
     // --- grpOptionsControl "Automation" (12, 288) 659 × 291.
     buildAutomationGroup(body, empire);
 
-    // btnGameOptionsShowMessages (12, 589) 660 × 35.
-    button(body, 'Show Message Settings', 12, 589, 660, 35, () => openMessageSettings());
+    // btnGameOptionsShowMessages (12, 589) 660 × 35 — shortened to 325 for our [improvements] button beside it.
+    button(body, 'Show Message Settings', 12, 589, 325, 35, () => openMessageSettings());
+    // [improvements] Game Options → Improvements (ui/improvements.ts): the DW2-inspired additions, each on / off.
+    button(body, `${IMPROVEMENTS_TITLE}...`, 347, 589, 325, 35, () => openSubWindow('improvements', () => createImprovementsWindow()));
 
     function openAdvancedDisplaySettings(): void {
         openSubWindow('advanced', () => createAdvancedDisplaySettings());
@@ -545,7 +548,7 @@ function createGameOptionsPanel(opts: GameOptionsPanelOptions): OpenState {
 }
 
 /** Open (or bring to the front) one of the Options sub-windows. */
-function openSubWindow(kind: 'empire' | 'messages' | 'advanced', create: () => OriginalWindow): void {
+function openSubWindow(kind: SubWindowKind, create: () => OriginalWindow): void {
     const existing = subWindows.get(kind);
     if (existing && !existing.closed) {
         document.body.appendChild(existing.root);
@@ -724,6 +727,27 @@ const GALAXY_ICON_BOXES: [string, GalaxyViewDisplayKey, number, number][] = [
 
 type MapDisplayKey = 'showSystemNames' | 'showRegionLabels' | 'freightFlowsDefault' | 'ditherGradients' | 'pullStationsToCentre' | 'showWeaponRangeCircles';
 
+// [improvements] begin
+/** Game Options → Improvements (ours): the "Improvements" group (ui/improvements.ts buildImprovementsGroup), one
+ *  check box per DW2-inspired addition; a feature that is off shows none of its panels or overlays. */
+function createImprovementsWindow(): OriginalWindow {
+    const w = 460;
+    const groupH = improvementsGroupHeight();
+    const win = openOriginalWindow({
+        id: 'gameoptions-improvements',
+        title: IMPROVEMENTS_TITLE,
+        width: w,
+        height: Math.min(760, groupH + 59 + 8 + 60),
+        onClose: () => subWindows.delete('improvements'),
+    });
+    const body = win.body;
+    body.classList.add('go-body');
+    label(body, 'Additions inspired by Distant Worlds 2 (not in the original game).', 12, 8, F4 - 2);
+    body.appendChild(place(buildImprovementsGroup(w - 40, F4), 12, 34));
+    return win;
+}
+// [improvements] end
+
 function createAdvancedDisplaySettings(): OriginalWindow {
     const win = openOriginalWindow({
         id: 'gameoptions-advanced',
@@ -789,8 +813,5 @@ function createAdvancedDisplaySettings(): OriginalWindow {
         ['Show weapon range circles for the selected ship', 'showWeaponRangeCircles'],
     ];
     mapBoxes.forEach(([caption, key], i) => check(map, caption, st[key], 10, 22 + 22 * i, (v) => updateSettings({ [key]: v } as Partial<UiSettings>)));
-    // [dw2overlays] Ours: the Improvements category (ui/improvements.ts) — the Distant Worlds 2-inspired additions, each
-    // on or off; an improvement that is off hides its rows from the View popup.
-    body.appendChild(place(improvementsOptionsGroup({ groupBox, checkBox: (l, c, fn, size) => checkBox(l, c, fn, size), place }, 400, F2, F4), 12, 569));
     return win;
 }

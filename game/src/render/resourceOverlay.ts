@@ -14,7 +14,7 @@ import type { Galaxy } from '../sim/galaxy';
 import type { Habitat } from '../sim/types';
 import type { MotionInterpolator } from './renderInterp';
 import { fogOf } from './fog';
-import { improvementOverlayOn, overlayOptionsOf, type MapOverlayState } from '../ui/mapOverlays';
+import { overlayActive, overlayOptionsOf, type MapOverlayState } from '../ui/mapOverlays';
 import { SpritePool, drawnHabitatPx, resourceIconTexture, ringTexture, sizeSprite } from './dw2OverlayArt';
 import {
     RARITY_COLORS,
@@ -85,7 +85,7 @@ export class ResourceOverlay {
 
     update(z: number, cam: Camera): void {
         const player = this.galaxy.playerEmpire;
-        if (!improvementOverlayOn(this.state, 'resources') || player === null) {
+        if (!overlayActive(this.state, 'resources') || player === null) {
             this.hide();
             return;
         }

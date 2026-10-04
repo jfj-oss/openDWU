@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Improvements map overlays (Distant Worlds 2-inspired; ui/improvements.ts): Resources (all, filtered, system zoom),
 // Fuel Range (a selected fleet, the network with nothing selected), Colony Target Scores, the View popup's Improvements
-// section with the resource picker, and Game Options' Improvements group. Also measures the overlay layer's per-frame
+// section with the resource picker, and the Game Options Improvements window. Also measures the overlay layer's per-frame
 // cost with each overlay on. Saves PNGs and prints the page's console errors and the timings — it does not judge them.
 //
 //   node scripts/dw2overlays-shots.mjs <base url> [--load=/dev-saves/late2500.dwusave] [--out=shots/dw2overlays] [--worker]
@@ -22,7 +22,7 @@ const out = opt('out', 'shots/dw2overlays');
 mkdirSync(out, { recursive: true });
 const prefix = colonies ? 'colonies-' : worker ? 'worker-' : '';
 const url = colonies
-    ? `${base}?autostart=1&simWorker=0&overlays=colonyScores,potentialColonies`
+    ? `${base}?autostart=1&simWorker=0&overlays=potentialColonies`
     : `${base}?load=${encodeURIComponent(load)}&simWorker=${worker ? 1 : 0}`;
 const browser = await chromium.launch({ executablePath: process.env.CHROMIUM || '/usr/bin/chromium', args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
 const page = await browser.newPage({ viewport: { width: 1600, height: 900 } });
@@ -126,6 +126,8 @@ try {
             return out;
         });
         console.log(`staged targets: ${JSON.stringify(staged)}`);
+        // On only now: its list is cached until an input it watches changes (staged type / quality are not among them).
+        await overlays({ colonyScores: true });
         if (staged.length > 0) {
             await view(staged[0].x, staged[0].y, 30);
             await shot('colony-scores-system');
@@ -161,9 +163,9 @@ try {
             // Through the HUD: the View popup's Improvements section, the Resources row's "…" picker.
             await page.click('.hud-options-toggle');
             await page.waitForTimeout(300);
-            await page.click('.hud-improvements .hud-option-more');
+            await page.click('.hud-option-row[data-overlay="resources"] .hud-option-more');
             await page.waitForTimeout(300);
-            await page.selectOption('.hud-improvements select.hud-option-select', String(pick.id));
+            await page.selectOption('select.hud-option-select', String(pick.id));
             await shot('view-popup-resource-picker', 800);
             await page.click('.hud-options-toggle');
             await view(home.x, home.y, 1500);
@@ -172,7 +174,7 @@ try {
             // Back to all.
             await page.click('.hud-options-toggle');
             await page.waitForTimeout(200);
-            await page.selectOption('.hud-improvements select.hud-option-select', '');
+            await page.selectOption('select.hud-option-select', '');
             await page.click('.hud-options-toggle');
         }
         // System zoom on the known system with the most resource habitats.
@@ -221,14 +223,14 @@ try {
         await overlays({ resources: false, fuelRange: false, colonyScores: false, potentialColonies: false });
         timings.allOff = await timeOverlay(180);
 
-        // Game Options → Advanced Display Settings → Improvements.
+        // Game Options → Improvements...
         await page.keyboard.press('o');
         await page.waitForTimeout(800);
-        const adv = page.getByText('Advanced Settings...', { exact: true });
+        const adv = page.getByText('Improvements...', { exact: true });
         if ((await adv.count()) > 0) {
             await adv.first().click();
             await shot('game-options-improvements', 1200);
-        } else console.log('Advanced Settings button not found');
+        } else console.log('Improvements... button not found');
     }
     console.log(`timings (overlayLayer.update ms/frame): ${JSON.stringify(timings)}`);
 } catch (e) {

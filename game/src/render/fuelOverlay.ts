@@ -16,7 +16,7 @@ import type { Galaxy } from '../sim/galaxy';
 import type { BuiltObject } from '../sim/builtObject';
 import type { Habitat } from '../sim/types';
 import { drawnBuiltObjectPos, type MotionInterpolator } from './renderInterp';
-import { improvementOverlayOn, type MapOverlayState } from '../ui/mapOverlays';
+import { overlayActive, type MapOverlayState } from '../ui/mapOverlays';
 import type { SelectedObjectLike } from './mapHighlights';
 import { dashSegments } from './overlayLayer';
 import { circleAtScreenRes } from './screenCircle';
@@ -110,7 +110,7 @@ export class FuelOverlay {
 
     update(z: number, cam: Camera): void {
         const player = this.galaxy.playerEmpire;
-        if (!improvementOverlayOn(this.state, 'fuelRange') || player === null) {
+        if (!overlayActive(this.state, 'fuelRange') || player === null) {
             if (this.root.visible) {
                 this.root.visible = false;
                 this.markers.clear();

@@ -59,6 +59,8 @@ import { SECTOR_SIZE, applyCorruptionToIncome } from '../logistics/orders';
 import { selectRandomNextResearchProjectExcludeSuperWeapons } from '../construction/constructionQueue';
 import { doResearchBreakthrough, reviewDesignsBuiltObjectsImprovedComponents } from '../researchTick';
 import { generateDesignFromSpec } from '../designGeneration';
+import { pirateBaseBonusAbandonedShipText, pirateBaseBonusExplorationText, pirateBaseBonusFactionJoinsText, pirateBaseBonusMoneyText } from './pirateBaseBonusText';
+import { addLocationHint } from '../tradeItems';
 import { generateAbandonedBuiltObject, getMonitoringStationDesignSpec } from '../gameStartTail';
 import { findLonelyColonyLocation } from '../civilianAI';
 import { getEmpireById } from '../logistics/contracts';
@@ -715,9 +717,9 @@ export function provideBonusFromPirateBase(galaxy: Galaxy, self: BuiltObject, de
                         // Random (designGeneration.ts uses 0 too).
                         design.pictureRef = 0;
                         const builtObject = generateAbandonedBuiltObject(galaxy, habitat3, design);
-                        // ResolveSectorDescription / AddLocationHint (player map hint) are UI text — TODO(port) M9.
-                        empty2 = `${pirateBase.name}: a lost ${builtObject.name} lies abandoned near ${habitat4.name}`;
-                        empty = 'Lost Ship Location Revealed';
+                        // BuiltObject.2.cs 5022-5029 / Fighter.cs 979-986.
+                        ({ message: empty2, title: empty } = pirateBaseBonusAbandonedShipText(galaxy, pirateBase, builtObject, habitat4));
+                        if (destroyingEmpire === galaxy.playerEmpire) addLocationHint(galaxy.playerEmpire, { x: Math.trunc(builtObject.xpos), y: Math.trunc(builtObject.ypos) });
                         sendEventMessageToEmpire(destroyingEmpire, EventMessageType.LostBuiltObjectCoordinates, empty, empty2, pirateBase, pirateBase.empire.pirateEmpireBaseHabitat);
                     }
                     break;
@@ -729,8 +731,7 @@ export function provideBonusFromPirateBase(galaxy: Galaxy, self: BuiltObject, de
                     num5 = applyCorruptionToIncome(destroyingEmpire, num5);
                     destroyingEmpire.stateMoney += num5;
                     destroyingEmpire.pirateEconomy.performIncome(num5, PirateIncomeType.Looting, galaxyStarDate(galaxy));
-                    empty2 = `${pirateBase.name}: treasure worth ${num5.toFixed(0)} recovered`;
-                    empty = 'Valuable Treasure Discovered';
+                    ({ message: empty2, title: empty } = pirateBaseBonusMoneyText(pirateBase, num5));
                     sendEventMessageToEmpire(destroyingEmpire, EventMessageType.TreasureFound, empty, empty2, pirateBase, pirateBase.empire.pirateEmpireBaseHabitat);
                     break;
                 }
@@ -751,8 +752,7 @@ export function provideBonusFromPirateBase(galaxy: Galaxy, self: BuiltObject, de
                         const num4 = num2 / num3;
                         if (num4 > 2.0 && num3 < 400 && empire2.spacePorts.length <= 1 && empire2 !== null && !empire2.pirateEmpireSuperPirates && empire2 !== galaxy.playerEmpire) {
                             pirateFactionJoinsEmpire(galaxy, destroyingEmpire, empire2);
-                            empty2 = `${pirateBase.name}: the ${empire2.name} join your empire`;
-                            empty = 'Pirate Faction Joins Your Empire';
+                            ({ message: empty2, title: empty } = pirateBaseBonusFactionJoinsText(pirateBase, empire2));
                             sendEventMessageToEmpire(destroyingEmpire, EventMessageType.PirateFactionJoinsYou, empty, empty2, pirateBase, pirateBase.empire.pirateEmpireBaseHabitat);
                         }
                     }
@@ -766,10 +766,8 @@ export function provideBonusFromPirateBase(galaxy: Galaxy, self: BuiltObject, de
                     let race = null;
                     if (habitat!.population !== null && habitat!.population.items.length > 0 && habitat!.population.dominantRace !== null) race = habitat!.population.dominantRace;
                     if (race !== null) {
-                        const habitat2 = galaxy.determineHabitatSystemStar(habitat!);
-                        empty2 = `${pirateBase.name}: an independent colony of ${race.name} at ${habitat2.name}`;
-                        empty = `Independent Colony of ${race.name}`;
-                        // AddLocationHint (player map hint) — UI, TODO(port) M9.
+                        ({ message: empty2, title: empty } = pirateBaseBonusExplorationText(galaxy, pirateBase, habitat!, race));
+                        if (destroyingEmpire === galaxy.playerEmpire) addLocationHint(galaxy.playerEmpire, { x: Math.trunc(habitat!.xpos), y: Math.trunc(habitat!.ypos) });
                         sendEventMessageToEmpire(destroyingEmpire, EventMessageType.IndependentPopulation, empty, empty2, race, pirateBase.empire.pirateEmpireBaseHabitat);
                     }
                     break;

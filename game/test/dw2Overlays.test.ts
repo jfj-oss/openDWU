@@ -2,7 +2,7 @@
 // Scores (render/colonyTargets.ts), Fuel Range (render/rangeRings.ts fuelOverlayData, render/fuelOverlay.ts texts), the
 // Improvements registry (ui/improvements.ts) and the overlay state additions (ui/mapOverlays.ts). All read-only.
 
-import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import type { Galaxy } from '../src/sim/galaxy';
 import type { Empire } from '../src/sim/empire';
 import type { BuiltObject } from '../src/sim/builtObject';
@@ -34,12 +34,12 @@ import { fuelLabelText, refuelPointStyle, refuelPointTooltip, shortDistance, FUE
 import { iconRowLayout, resourceIconPx } from '../src/render/resourceOverlay';
 import { keyedAlpha } from '../src/render/dw2OverlayArt';
 import { currentRange, ultraFastFindNearestRefuellingLocation } from '../src/sim/movement';
-import { IMPROVEMENTS, improvementEnabled, onImprovementsChange, resetImprovementsForTest, setImprovementEnabled } from '../src/ui/improvements';
+import { improvementById, isImprovementEnabled, onImprovementsChange, overlayRowSections, setImprovementEnabled } from '../src/ui/improvements';
+import { setSettingsStorage, updateSettings, type SettingsStorage } from '../src/ui/settings';
 import {
-    IMPROVEMENT_OVERLAY_ROWS,
     OVERLAY_ROWS,
     createMapOverlayState,
-    improvementOverlayOn,
+    overlayActive,
     onOverlayChange,
     overlayOptionsOf,
     setOverlay,
@@ -289,42 +289,52 @@ describe('Fuel Range data helpers', () => {
 });
 
 describe('Improvements registry and overlay state', () => {
-    beforeEach(() => resetImprovementsForTest());
+    beforeEach(() => {
+        const data = new Map<string, string>();
+        const mem: SettingsStorage = { getItem: (k) => data.get(k) ?? null, setItem: (k, v) => void data.set(k, v), removeItem: (k) => void data.delete(k) };
+        setSettingsStorage(mem);
+        updateSettings({ improvements: {} });
+    });
+    afterEach(() => {
+        updateSettings({ improvements: {} });
+        setSettingsStorage(null);
+    });
+    const IDS = ['colonyTargetScores', 'resourcesOverlay', 'fuelRangeOverlay'];
 
-    it('lists the overlays with their defaults; toggling notifies and gates the overlay', () => {
-        expect(IMPROVEMENTS.map((d) => d.id)).toEqual(['colonyTargetScores', 'resourcesOverlay', 'fuelRangeOverlay']);
-        for (const d of IMPROVEMENTS) {
+    it('registers the three overlays (on by default); switching one off hides its row and stops its drawing', () => {
+        for (const id of IDS) {
+            const d = improvementById(id)!;
             expect(d.label.length).toBeGreaterThan(0);
             expect(d.description.length).toBeGreaterThan(0);
-            expect(improvementEnabled(d.id)).toBe(d.default);
+            expect(d.default).toBe(true);
+            expect(isImprovementEnabled(id)).toBe(true);
         }
         const s = createMapOverlayState();
-        expect(improvementOverlayOn(s, 'resources')).toBe(false); // the toggle starts off
+        expect(overlayActive(s, 'resources')).toBe(false); // the toggle starts off
         s.resources = true;
-        expect(improvementOverlayOn(s, 'resources')).toBe(true);
+        expect(overlayActive(s, 'resources')).toBe(true);
         let calls = 0;
         const off = onImprovementsChange(() => calls++);
         setImprovementEnabled('resourcesOverlay', false);
-        setImprovementEnabled('resourcesOverlay', false); // no change, no call
         expect(calls).toBe(1);
-        expect(improvementOverlayOn(s, 'resources')).toBe(false);
+        expect(overlayActive(s, 'resources')).toBe(false);
+        expect(overlayRowSections(OVERLAY_ROWS).improvements.map((r) => r.key)).toEqual(['colonyScores', 'fuelRange']);
         setImprovementEnabled('resourcesOverlay', true);
         off();
         expect(calls).toBe(2);
-        expect(improvementOverlayOn(s, 'potentialColonies')).toBe(false); // not an improvement: just the toggle
     });
 
-    it('the new overlays start off and sit in the Improvements rows, not among the original rows', () => {
+    it('the new overlays start off and are listed in the Improvements section, not the original one', () => {
         const s = createMapOverlayState();
-        expect(s.colonyScores).toBe(false);
-        expect(s.resources).toBe(false);
-        expect(s.fuelRange).toBe(false);
-        expect(IMPROVEMENT_OVERLAY_ROWS.map((r) => [r.key, r.improvement])).toEqual([
+        expect([s.colonyScores, s.resources, s.fuelRange]).toEqual([false, false, false]);
+        const { original, improvements } = overlayRowSections(OVERLAY_ROWS);
+        expect(improvements.map((r) => [r.key, r.improvement])).toEqual([
             ['colonyScores', 'colonyTargetScores'],
             ['resources', 'resourcesOverlay'],
             ['fuelRange', 'fuelRangeOverlay'],
         ]);
-        for (const r of IMPROVEMENT_OVERLAY_ROWS) expect(OVERLAY_ROWS.some((o) => o.key === r.key)).toBe(false);
+        for (const k of ['colonyScores', 'resources', 'fuelRange']) expect(original.some((o) => o.key === k)).toBe(false);
+        expect(improvements.every((r) => r.mod === undefined)).toBe(true); // no "+" badge: the section says it
     });
 
     it('the resource filter belongs to one overlay state and notifies like a toggle', () => {

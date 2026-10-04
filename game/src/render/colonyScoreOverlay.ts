@@ -13,7 +13,7 @@ import type { Camera } from './camera';
 import type { Galaxy } from '../sim/galaxy';
 import type { Habitat } from '../sim/types';
 import type { MotionInterpolator } from './renderInterp';
-import { improvementOverlayOn, type MapOverlayState } from '../ui/mapOverlays';
+import { overlayActive, type MapOverlayState } from '../ui/mapOverlays';
 import { SpritePool, drawnHabitatPx, ringTexture, sizeSprite } from './dw2OverlayArt';
 import { colonyTargetScoresFor, colonyTargetTooltip, heatColor, type ColonyTargetScore, type ColonyTargetScores } from './colonyTargets';
 
@@ -50,7 +50,7 @@ export class ColonyScoreOverlay {
 
     update(z: number, cam: Camera): void {
         const player = this.galaxy.playerEmpire;
-        if (!improvementOverlayOn(this.state, 'colonyScores') || player === null) {
+        if (!overlayActive(this.state, 'colonyScores') || player === null) {
             if (this.root.visible) {
                 this.root.visible = false;
                 this.drawn = [];
