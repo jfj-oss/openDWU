@@ -33,6 +33,9 @@ import { BuiltObjectMissionType, COORD_UNSET_DOUBLE, builtObjectMission, type Bu
 // [15c]
 import { ShipGroup } from '../sim/fleets/shipGroup';
 import { closeFleetsList, fleetCycleList, fleetShipAction, toggleFleetsList } from './screens/fleetsList';
+import { closeFleetSettings, isFleetSettingsOpen, openFleetSettings } from './screens/fleetSettings';
+import { fleetForSelection } from './screens/fleetSettingsModel';
+import { isImprovementEnabled } from './improvements';
 // [/15c]
 import { SystemVisibilityStatus } from '../sim/visibility';
 import { flagShapeUrl } from '../sim/startGameOptions';
@@ -524,7 +527,51 @@ export function toggleFleets(selected?: ShipGroup): void {
             selectShipGroup(sg, false);
             void performAction(fleetShipAction(mode, sg), false);
         },
+        // The Fleet Settings panel (an Improvement; the button is hidden while it is off).
+        onOpenSettings: (sg) => openFleetSettingsFor(sg),
     });
+}
+
+/** The Fleet Settings panel (an Improvement, screens/fleetSettings.ts) on `sg` (else the first fleet); nothing while
+ *  the improvement is off. Pick on Map selects the fleet and arms the next map click, as the Fleets window does. */
+export function openFleetSettingsFor(sg: ShipGroup | null): void {
+    const src = getEmpireSummarySource();
+    if (!src || !isImprovementEnabled('fleetSettings')) return;
+    openFleetSettings({
+        empire: src.empire,
+        fleet: sg,
+        onPickPoint: (fleet, mode) => {
+            selectShipGroup(fleet, false);
+            void performAction(fleetShipAction(mode, fleet), false);
+        },
+        onSelectShip: (ship) => selectStellarObject(ship, true),
+        onOpenDesigns: () => toggleShipDesigns({ empire: src.empire }),
+        onOpenFleetDesigns: () => {
+            closeFleetsList();
+            toggleFleetsList({
+                empire: src.empire,
+                tab: 'designs',
+                onSelect: (f) => selectShipGroup(f, true),
+                onSelectOnly: (f) => selectShipGroup(f, false),
+            });
+        },
+    });
+}
+
+/** Q: the Fleet Settings panel on the selected fleet (or the selected own ship's fleet); a toast without one. */
+export function openFleetSettingsForSelection(): void {
+    const src = getEmpireSummarySource();
+    if (!src || !isImprovementEnabled('fleetSettings')) return;
+    if (isFleetSettingsOpen()) {
+        closeFleetSettings();
+        return;
+    }
+    const sg = fleetForSelection(src.empire, currentSelection);
+    if (sg === null) {
+        showToast('Select one of your fleets to open its Fleet Settings');
+        return;
+    }
+    openFleetSettingsFor(sg);
 }
 
 /** Build the HUD overlay and append it to document.body. */
@@ -1453,6 +1500,11 @@ function buildSelectionPanel(wiring: HudWiring): HTMLElement {
     let dispatchSlots: SelectionExtraSlot[] = [];
     const extraSlots = (): SelectionExtraSlot[] => {
         const out: SelectionExtraSlot[] = [...dispatchSlots];
+        // The Fleet Settings panel for a selected player fleet (an Improvement, ui/improvements.ts).
+        const settingsFleet = currentSelection?.shipGroup ?? null;
+        if (settingsFleet !== null && isImprovementEnabled('fleetSettings') && settingsFleet.empire === (wiring.galaxy?.playerEmpire ?? null)) {
+            out.push({ label: 'Settings', title: 'Fleet Settings: posture, engagement, retreat, fuel, troops and resupply (Q)', onClick: () => openFleetSettingsFor(settingsFleet) });
+        }
         if (!charterButton.element.hidden) {
             const el = charterButton.element as HTMLButtonElement;
             out.push({ label: 'Charter', title: el.title || 'Charter a company…', disabled: el.disabled, onClick: () => el.click() });
@@ -1500,6 +1552,9 @@ function buildSelectionPanel(wiring: HudWiring): HTMLElement {
             more.hidden = !moreOpen || more.childElementCount === 0;
         },
     );
+
+    // An Improvement switched on / off in Game Options: its selection-panel button appears / goes.
+    onHudDestroyed(onImprovementsChange(() => refreshSelectionActionBar()));
 
     // [ordermenu] begin
     // 17c: btnSelectionAction1-8 (Main.Part3.cs 1120-3805, method_593), 35×28 each from (70, pnlInfoPanel.Bottom + 2).

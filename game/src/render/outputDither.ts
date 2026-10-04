@@ -48,16 +48,23 @@ export const ditherBitGl = {
     name: 'dwu-output-dither-bit',
     fragment: {
         header: /* glsl */ `
-            // Hoskins hash12 (no sin: stable at large gl_FragCoord on every GPU).
-            float dwuHash12(vec2 p) {
-                vec3 p3 = fract(vec3(p.xyx) * 0.1031);
+            // Hoskins hash12 (no sin: stable at large gl_FragCoord on every GPU). In highp: Pixi's batch shaders
+            // default to mediump, which Apple GPUs (ANGLE Metal) may run as 16-bit floats — exact only up to 2048, so
+            // the pixel coordinate of a Retina-wide canvas and the hash itself would degrade to a visible pattern.
+            #if defined(GL_FRAGMENT_PRECISION_HIGH) || __VERSION__ >= 300
+            #define DWU_HP highp
+            #else
+            #define DWU_HP mediump
+            #endif
+            float dwuHash12(DWU_HP vec2 p) {
+                DWU_HP vec3 p3 = fract(vec3(p.xyx) * 0.1031);
                 p3 += dot(p3, p3.yzx + 33.33);
                 return fract((p3.x + p3.y) * p3.z);
             }
         `,
         end: /* glsl */ `
             {
-                vec2 dwuP = floor(gl_FragCoord.xy);
+                DWU_HP vec2 dwuP = floor(gl_FragCoord.xy);
                 // Triangular PDF in (-1, 1): sum of two independent uniforms minus 1.
                 float dwuN = dwuHash12(dwuP) + dwuHash12(dwuP + vec2(37.0, 113.0)) - 1.0;
                 // No noise where the fragment adds nothing (transparent texels): full strength from ~1 step up.

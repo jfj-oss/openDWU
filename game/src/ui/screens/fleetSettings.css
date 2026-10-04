@@ -1,0 +1,88 @@
+/* Fleet Settings panel (fleetSettings.ts) on the shared original-style window: only what the widgets do not cover. */
+
+.fs-body .fs-explain,
+.fs-body .fs-value,
+.fs-body .fs-status,
+.fs-body .fs-label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    pointer-events: auto;
+}
+.fs-body .fs-explain {
+    font-style: italic;
+    cursor: help;
+}
+.fs-body .fs-combo {
+    font-size: 15.33px;
+}
+.fs-body .fs-combo-small {
+    font-size: 13.33px;
+}
+.fs-body .ow-glass.fs-btn {
+    padding: 0 4px;
+    white-space: nowrap;
+    overflow: hidden;
+}
+/* The lit button of a segment row (the current value). */
+.fs-body .ow-glass.fs-seg.fs-on {
+    --outer: rgb(40, 56, 96);
+    color: rgb(255, 255, 0);
+    box-shadow: inset 0 0 0 1px rgb(150, 150, 60);
+}
+.fs-body .ow-glass.fs-seg.fs-on .ow-glass-text {
+    color: rgb(255, 255, 0);
+}
+.fs-body .fs-list {
+    position: absolute;
+    overflow-y: auto;
+    overflow-x: hidden;
+    background: rgba(0, 0, 0, 0.376);
+    border: 1px solid rgb(67, 67, 77);
+    padding: 2px 4px;
+    box-sizing: border-box;
+    font-size: 13.33px;
+    color: rgb(200, 200, 200);
+}
+.fs-body .fs-list-row {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    line-height: 1.3;
+}
+.fs-body .fs-dim {
+    color: rgb(120, 120, 130);
+}
+.fs-body .fs-supply-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+    height: 22px;
+}
+.fs-body .fs-supply-row .ow-link {
+    position: static;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.fs-body .ow-glass.fs-remove {
+    position: static;
+    flex: none;
+    width: 64px;
+    height: 19px;
+}
+.fs-body .fs-small {
+    font-size: 13.33px !important;
+}
+/* The five range steps share 316 px: a smaller font so "Anywhere" fits. */
+.fs-body .ow-glass.fs-seg.fs-seg-small {
+    font-size: 12.5px !important;
+}
+.fs-body .fs-list-head {
+    font-weight: bold;
+    color: rgb(170, 170, 170);
+}
+.fs-body .fs-list-sub {
+    padding-left: 10px;
+}

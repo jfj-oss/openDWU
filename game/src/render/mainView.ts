@@ -2572,6 +2572,17 @@ export class MainView {
         // and survived game-view teardown.
     }
 
+    /** The WebGL context was restored (contextLoss.ts): rebuild what lived only on the GPU. */
+    onGpuContextRestored(): void {
+        this.systemNebulae?.onContextRestored();
+    }
+
+    /** Repeated context losses (contextLoss.ts): level 1 = CPU nebula path, level 2 = no system nebulae. */
+    useLowGpuMode(level: number): void {
+        if (level >= 1) this.systemNebulae?.useLowGpuMode();
+        if (level >= 2) this.systemNebulae?.disable();
+    }
+
     /** Task 12k: drop the hover tooltip when this view is torn down. */
     dispose(): void {
         closePickMenu();

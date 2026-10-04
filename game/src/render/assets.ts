@@ -16,6 +16,7 @@ import { Assets, Texture } from 'pixi.js';
 import { Habitat, HabitatCategoryType, HabitatType } from '../sim/types';
 import { HABITAT_IMAGE_COUNT, MAP_STAR_IMAGE_FOLDERS, habitatImageFile } from '../sim/galaxyImages';
 import { themeArtFolder, themedAssetUrl, themeOtherPlanetUrls } from '../themeAssets';
+import { makeTextureCanvas, textureFromCanvas } from './textureCanvas';
 
 // ---------------------------------------------------------------------------
 // Fallback colors (match the original art palettes: yellow/white main
@@ -245,7 +246,8 @@ export async function sampleCentreColour(url: string): Promise<number> {
                 const canvas = typeof OffscreenCanvas !== 'undefined' ? new OffscreenCanvas(w, h) : document.createElement('canvas');
                 canvas.width = w;
                 canvas.height = h;
-                const ctx = canvas.getContext('2d')!;
+                // Read back once: a software canvas (no GPU surface).
+                const ctx = canvas.getContext('2d', { willReadFrequently: true }) as CanvasRenderingContext2D;
                 ctx.drawImage(img, 0, 0);
                 const px = ctx.getImageData(Math.floor(w / 2), Math.floor(h / 2), 1, 1).data;
                 return (px[0] << 16) | (px[1] << 8) | px[2];
@@ -314,13 +316,26 @@ export function warnMissing(url: string): void {
 // ---------------------------------------------------------------------------
 // Generated fallback textures (canvas-based, deterministic).
 
-function canvasTexture(size: number, draw: (ctx: CanvasRenderingContext2D, size: number) => void): Texture {
-    const canvas = document.createElement('canvas');
-    canvas.width = size;
-    canvas.height = size;
-    const ctx = canvas.getContext('2d')!;
+// One shared texture per distinct fallback (kind + colours + size), never one per view: the Main View builds a
+// PlanetView / MoonView / SystemView per body and each used to draw its own placeholder canvas, which Pixi's
+// Texture.from cache then kept for good — ~18.8k GPU-backed canvases on a late save, enough to exhaust macOS's
+// IOSurfaces and lose the WebGL context every few seconds (textureCanvas.ts). Shared, there are a few dozen.
+const fallbackCache = new Map<string, Texture>();
+
+/** Distinct generated fallback textures made so far (tests / diagnostics). */
+export function fallbackTextureCount(): number {
+    return fallbackCache.size;
+}
+
+function canvasTexture(key: string, size: number, draw: (ctx: CanvasRenderingContext2D, size: number) => void): Texture {
+    const cacheKey = `${key}|${size}`;
+    const hit = fallbackCache.get(cacheKey);
+    if (hit !== undefined && !hit.destroyed) return hit;
+    const { canvas, ctx } = makeTextureCanvas(size, size);
     draw(ctx, size);
-    return Texture.from(canvas);
+    const texture = textureFromCanvas(canvas, `fallback:${cacheKey}`);
+    fallbackCache.set(cacheKey, texture);
+    return texture;
 }
 
 function rgba(hex: string, alpha: number): string {
@@ -332,7 +347,7 @@ function rgba(hex: string, alpha: number): string {
 
 /** Soft circular glow disc (star icon / planet dot fallback). */
 export function makeGlowTexture(glowColor: string, coreColor: string, size = 128): Texture {
-    return canvasTexture(size, (ctx, s) => {
+    return canvasTexture(`glow:${glowColor}:${coreColor}`, size, (ctx, s) => {
         const c = s / 2;
         const grad = ctx.createRadialGradient(c, c, 0, c, c, c);
         grad.addColorStop(0.0, rgba(coreColor, 1));
@@ -347,7 +362,7 @@ export function makeGlowTexture(glowColor: string, coreColor: string, size = 128
 
 /** Small flat dot (planets at mid zoom, moons, asteroids). */
 export function makeDotTexture(color: string, size = 64): Texture {
-    return canvasTexture(size, (ctx, s) => {
+    return canvasTexture(`dot:${color}`, size, (ctx, s) => {
         const c = s / 2;
         const grad = ctx.createRadialGradient(c, c, 0, c, c, c);
         grad.addColorStop(0.0, rgba(color, 1));
@@ -364,7 +379,7 @@ export function makeStarSpriteTexture(type: HabitatType): Texture {
     const colors = STAR_COLORS[type] ?? STAR_COLORS[HabitatType.MainSequence];
     if (type === HabitatType.BlackHole) {
         // Event horizon (black) with a glowing accretion rim.
-        return canvasTexture(256, (ctx, s) => {
+        return canvasTexture('star:blackhole', 256, (ctx, s) => {
             const c = s / 2;
             const rim = ctx.createRadialGradient(c, c, s * 0.30, c, c, s * 0.48);
             rim.addColorStop(0.0, 'rgba(0,0,0,0)');
@@ -379,7 +394,7 @@ export function makeStarSpriteTexture(type: HabitatType): Texture {
             ctx.fill();
         });
     }
-    return canvasTexture(256, (ctx, s) => {
+    return canvasTexture(`star:${colors.glow}:${colors.core}`, 256, (ctx, s) => {
         const c = s / 2;
         const corona = ctx.createRadialGradient(c, c, 0, c, c, c);
         corona.addColorStop(0.0, rgba(colors.core, 1));
@@ -395,7 +410,7 @@ export function makeStarSpriteTexture(type: HabitatType): Texture {
 
 /** Shaded sphere fallback for planet sprites. */
 export function makePlanetTexture(color: string): Texture {
-    return canvasTexture(128, (ctx, s) => {
+    return canvasTexture(`planet:${color}`, 128, (ctx, s) => {
         const c = s / 2;
         const light = ctx.createRadialGradient(c * 0.7, c * 0.7, s * 0.05, c, c, c);
         light.addColorStop(0.0, rgba('#ffffff', 0.25));
@@ -411,7 +426,7 @@ export function makePlanetTexture(color: string): Texture {
 
 /** Soft irregular nebula blob fallback for gas clouds. */
 export function makeCloudTexture(color: string): Texture {
-    return canvasTexture(256, (ctx, s) => {
+    return canvasTexture(`cloud:${color}`, 256, (ctx, s) => {
         const blobs = 7;
         for (let i = 0; i < blobs; i++) {
             const x = s * (0.25 + 0.5 * pseudo(i * 3 + 1));
@@ -429,7 +444,7 @@ export function makeCloudTexture(color: string): Texture {
 
 /** Dim blue/teal nebula wash fallback for the galaxy backdrop. */
 export function makeBackdropTexture(): Texture {
-    return canvasTexture(512, (ctx, s) => {
+    return canvasTexture('backdrop', 512, (ctx, s) => {
         ctx.fillStyle = '#05070f';
         ctx.fillRect(0, 0, s, s);
         const wash = (x: number, y: number, r: number, color: string, a: number) => {

@@ -382,13 +382,21 @@ export function rasterToRgba8Straight(r: TerritoryRaster): Uint8ClampedArray {
 interface CacheEntry {
     sig: number;
     raster: TerritoryRaster;
+    /** One canvas per galaxy, repainted when the raster changes (a new 1024 px canvas per rebuild piled up until GC). */
     canvas: HTMLCanvasElement | null;
+    /** The raster the canvas shows (null = stale). */
+    canvasRaster: TerritoryRaster | null;
 }
 const cache = new WeakMap<Galaxy, CacheEntry>();
 
+function setRaster(galaxy: Galaxy, sig: number, raster: TerritoryRaster): void {
+    const old = cache.get(galaxy);
+    cache.set(galaxy, { sig, raster, canvas: old?.canvas ?? null, canvasRaster: old?.canvasRaster === raster ? raster : null });
+}
+
 /** The Main View layer publishes the bitmap it just built so the mini maps reuse it. */
 export function publishTerritoryRaster(galaxy: Galaxy, sig: number, raster: TerritoryRaster): void {
-    cache.set(galaxy, { sig, raster, canvas: null });
+    setRaster(galaxy, sig, raster);
 }
 
 /** territorySignature with the grid cell the Main View layer uses (TerritoryGrid default cells). */
@@ -403,7 +411,7 @@ export function getTerritoryRaster(galaxy: Galaxy, viewer: Empire | null, colorO
     const hit = cache.get(galaxy);
     if (hit !== undefined && hit.sig === sig) return hit.raster;
     const raster = buildTerritoryRasterSync(sources, galaxy.sizeX, galaxy.sizeY, colorOf);
-    cache.set(galaxy, { sig, raster, canvas: null });
+    setRaster(galaxy, sig, raster);
     return raster;
 }
 
@@ -413,14 +421,16 @@ export function getTerritoryCanvas(galaxy: Galaxy, viewer: Empire | null, colorO
     if (typeof document === 'undefined') return null;
     const raster = getTerritoryRaster(galaxy, viewer, colorOf);
     const entry = cache.get(galaxy)!;
-    if (entry.canvas === null) {
-        const c = document.createElement('canvas');
-        c.width = raster.width;
-        c.height = raster.height;
-        const ctx = c.getContext('2d');
+    if (entry.canvasRaster !== raster || entry.canvas === null) {
+        // Software canvas (willReadFrequently): it is only ever a drawImage source, no GPU surface needed.
+        const c = entry.canvas ?? document.createElement('canvas');
+        if (c.width !== raster.width) c.width = raster.width;
+        if (c.height !== raster.height) c.height = raster.height;
+        const ctx = c.getContext('2d', { willReadFrequently: true });
         if (ctx === null) return null;
         ctx.putImageData(new ImageData(rasterToRgba8Straight(raster) as Uint8ClampedArray<ArrayBuffer>, raster.width, raster.height), 0, 0);
         entry.canvas = c;
+        entry.canvasRaster = raster;
     }
     return { canvas: entry.canvas, raster };
 }
