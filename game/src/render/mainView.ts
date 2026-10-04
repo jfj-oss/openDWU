@@ -71,6 +71,7 @@ import { NebulaCloudGenerator } from './nebulaClouds';
 import { SystemNebulaLayer, type NebulaSystem } from './systemNebula';
 import { EmpireLayer } from './empireLayer';
 import { OverlayLayer } from './overlayLayer';
+import { LocationMarkerLayer, MAP_LABEL_MIN_SPACING_PX, markerTooltip, type MapMarker } from './locationMarkers'; // [waypoints]
 import { GalaxyMarkerLayer, SYSTEM_RING_MIN_FACTOR, clickSelection, doubleClickFleet, gasCloudCrossHalfPx } from './galaxyMarkers'; // [galaxymarkers]
 import type { ShipGroup } from '../sim/fleets/shipGroup'; // [galaxymarkers]
 import { ArtBundleLayer } from './artBundleLayer'; // [19r]
@@ -1119,10 +1120,11 @@ class RegionLabel {
         layer.addChild(this.text);
     }
 
-    /** Update position/font/visibility for the current camera state. */
-    update(cam: Camera, factor: number, maxFactor: number): void {
+    /** Update position/font/visibility for the current camera state. `known`: MainView.2.cs 4680 / 5747
+     *  `GodMode || empire.KnownGalaxyLocations.Contains(galaxyLocation)`. */
+    update(cam: Camera, factor: number, maxFactor: number, known = true): void {
         const font = regionLabelFont(this.location.type, factor, maxFactor);
-        if (font === null || !this.location.showName) {
+        if (font === null || !this.location.showName || !known) {
             this.text.visible = false;
             return;
         }
@@ -1262,6 +1264,12 @@ export class MainView {
     /** Region-name label layer (task 08f1), screen-space. */
     regionLabels = new Container();
     private regionLabelViews: RegionLabel[] = [];
+    /** The player's KnownGalaxyLocations as a set (rebuilt when the list changes), for the region labels. */
+    private knownLocations: Set<GalaxyLocation> | null = null;
+    private knownLocationsOf: readonly GalaxyLocation[] | null = null;
+    private knownLocationsLen = -1;
+    /** [waypoints] The Waypoints & Known Locations overlay and the location-hint pulse (locationMarkers.ts). */
+    private locationMarkers: LocationMarkerLayer | null = null;
     systems: SystemView[] = [];
     /** Every SystemView root, in galaxy order; only the on-screen ones are attached (renderGroups.ts AttachedChildren). */
     readonly systemLayer = new AttachedChildren(new Container());
@@ -1772,8 +1780,8 @@ export class MainView {
         }
         await Promise.all(lazyLoads);
 
-        // Task 08f1: region/nebula location name labels (screen-space layer).
-        // All locations are treated as known to the empire for now.
+        // Task 08f1: region/nebula location name labels (screen-space layer). Each is shown once the player knows the
+        // location (update: MainView.2.cs 4680 KnownGalaxyLocations, or GodMode = fog reveal).
         for (const location of this.galaxy.galaxyLocations) {
             this.regionLabelViews.push(new RegionLabel(location, this.regionLabels));
         }
@@ -1887,6 +1895,10 @@ export class MainView {
             this.markersFrontNext = (kids[kids.indexOf(this.galaxyMarkers.front) + 1] as Container | undefined) ?? null;
         }
         this.world.addChild(this.overlayLayer.postureRoot, this.overlayLayer.root);
+        // [waypoints] above the other overlay marks (the overlay root is the last world child: above the ships).
+        this.locationMarkers = new LocationMarkerLayer(this.galaxy, this.overlays);
+        this.locationMarkers.regionNamed = (l) => this.regionLabels.visible && this.knownLocationSet()?.has(l) !== false && l.showName && regionLabelFont(l.type, 1 / this.camera.zoom, 1 / this.minZoom) !== null;
+        this.overlayLayer.root.addChild(this.locationMarkers.root);
 
         this.attachInput();
     }
@@ -1988,7 +2000,7 @@ export class MainView {
                 for (let i = 0; i < kept.length; i += 2) {
                     const dx = kept[i] - sx;
                     const dy = kept[i + 1] - sy;
-                    if (dx * dx + dy * dy < 80 * 80) {
+                    if (dx * dx + dy * dy < MAP_LABEL_MIN_SPACING_PX * MAP_LABEL_MIN_SPACING_PX) {
                         allow = false;
                         break;
                     }
@@ -2056,6 +2068,11 @@ export class MainView {
         // above).
         this.overlayLayer.update(z, cam);
         this.galaxyMarkers?.update(z, cam, this.systems); // [galaxymarkers]
+        if (this.locationMarkers !== null) {
+            // [waypoints]
+            this.locationMarkers.reveal = fogOf(this.galaxy).reveal;
+            this.locationMarkers.update(z, cam);
+        }
         // [ambientfx] begin
         this.ambientLayer.update(z, cam);
         // [ambientfx] end
@@ -2082,8 +2099,9 @@ export class MainView {
         if (showRegions) {
             const factor = 1 / z;
             const maxFactor = 1 / m;
+            const known = this.knownLocationSet();
             for (const rl of this.regionLabelViews) {
-                rl.update(cam, factor, maxFactor);
+                rl.update(cam, factor, maxFactor, known === null || known.has(rl.location));
             }
         }
 
@@ -2566,6 +2584,14 @@ export class MainView {
                     return;
                 }
                 this.onPointerRest?.(x, y, e.clientX, e.clientY); // [ordermenu]
+                // [waypoints] a waypoint / known-location marker (drawn above everything else in the map).
+                {
+                    const mk = this.locationMarkers?.hitTest(x, y) ?? null;
+                    if (mk !== null) {
+                        showMapTooltip(markerTooltip(this.galaxy, this.galaxy.playerEmpire, mk), e.clientX, e.clientY);
+                        return;
+                    }
+                }
                 // HoverPanel.cs 220 method_2: a creature under the cursor shows its name, size, strength and health.
                 const creature = this.pickCreature(x, y);
                 if (creature !== null) {
@@ -2744,8 +2770,41 @@ export class MainView {
         }
         hideMapTooltip();
         this.windowInput.abort();
+        this.locationMarkers?.destroy(); // [waypoints]
+        this.locationMarkers = null;
         this.overlayLayer?.destroy(); // [freightOverlay] stop recording contracts for this galaxy
     }
+
+    // [waypoints] begin
+    /** The Waypoints & Known Locations marker under screen point (sx, sy), or null. */
+    markerAt(sx: number, sy: number): MapMarker | null {
+        return this.locationMarkers?.hitTest(sx, sy) ?? null;
+    }
+
+    /** The mouse position over the map (screen px), or null when the pointer is outside it. */
+    get pointerScreen(): { x: number; y: number } | null {
+        return this.pointerInside ? { x: this.lastPointer.x, y: this.lastPointer.y } : null;
+    }
+
+    /** Rebuild the markers at the next frame (after a waypoint command). */
+    refreshMarkers(): void {
+        this.locationMarkers?.invalidate();
+    }
+
+    /** The player's KnownGalaxyLocations as a set (null = every location counts as known: GodMode, no player). */
+    private knownLocationSet(): Set<GalaxyLocation> | null {
+        const player = this.galaxy.playerEmpire;
+        if (player === null || fogOf(this.galaxy).reveal) return null;
+        const list = player.visibility?.knownGalaxyLocations ?? [];
+        const last = list.length > 0 ? list[list.length - 1] : null;
+        if (this.knownLocations === null || list !== this.knownLocationsOf || list.length !== this.knownLocationsLen || (last !== null && !this.knownLocations.has(last))) {
+            this.knownLocations = new Set(list);
+            this.knownLocationsOf = list;
+            this.knownLocationsLen = list.length;
+        }
+        return this.knownLocations;
+    }
+    // [waypoints] end
 
     // [freightOverlay] begin — task 19e-9: the panel / legend reach the Freight Flows overlay through the view.
     get freightOverlay(): FreightOverlay | null {

@@ -67,6 +67,7 @@ import { deleteDesign, saveDesign, setDesignSubRoleShouldBeUpgraded, type Design
 import { autoUpgradeDesigns, loadDesignFile } from './designTools';
 import { executeShipOrderKey, type ShipOrderKeyAction } from './shipHotkeys';
 import { setControlGroup, type ControlGroupObject } from './controlGroups';
+import { addWaypoint, deleteWaypoint, renameWaypoint } from './waypoints';
 import { initiateCrashResearchProgram } from '../researchTick';
 import type { EmpireMessage } from '../messages';
 import { approveSuggestion, declineSuggestion } from './advisorSuggestions';
@@ -208,6 +209,11 @@ export const PLAYER_OPS = {
     shipOrderKey: (galaxy: Galaxy, empire: Empire, selected: ShipActionSelection, action: ShipOrderKeyAction) => executeShipOrderKey(galaxy, empire, selected, action),
     /** Main_KeyUp SetControlGroup0..9 (Ctrl+digit): `_Game.PlayerHotkeyN = _Game.SelectedObject` (controlGroups.ts). */
     setControlGroup: (galaxy: Galaxy, _empire: Empire, index: number, obj: ControlGroupObject | null) => setControlGroup(galaxy, index, obj),
+    // Waypoints (an Improvement; player/waypoints.ts): named map pins, player data saved with the game in a side table;
+    // nothing in the sim reads them (no Rnd, nothing the digest hashes). addWaypoint returns the new id (0 = refused).
+    addWaypoint: (galaxy: Galaxy, empire: Empire, x: number, y: number, name: string) => addWaypoint(galaxy, empire, x, y, name),
+    renameWaypoint: (galaxy: Galaxy, empire: Empire, id: number, name: string) => renameWaypoint(galaxy, empire, id, name),
+    deleteWaypoint: (galaxy: Galaxy, empire: Empire, id: number) => deleteWaypoint(galaxy, empire, id),
 
     // --- Automation ---
     /** GenerateAutomationMessageBox "Turn off automation". */

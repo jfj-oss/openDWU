@@ -16,6 +16,7 @@ import { GalaxyTime } from '../sim/clock';
 import { resolveStarDateDescription } from '../sim/galaxyTime';
 import { createMapOverlayState, OVERLAY_ROWS, onOverlayChange, toggleOverlay, type MapOverlayState, type OverlayKey, type OverlayRow } from './mapOverlays';
 import { resourcePickerPanel, supplyShortagesPanel, type OverlayOptionPanel } from './overlayOptionPanels'; // [dw2overlays]
+import { waypointsOptionsPanel } from './waypoints'; // [improvements] waypoints
 import { IMPROVEMENTS_TITLE, onImprovementsChange, overlayRowSections } from './improvements'; // [improvements]
 import { Camera } from '../render/camera';
 import { followOnSelectionChanged, isFollowingTarget, toggleFollow, type FollowState, type FollowTarget } from '../render/followCamera';
@@ -78,6 +79,7 @@ import { showToast } from './toast';
 import type { DispatchOption } from '../sim/player/habitatDispatch';
 // [troops] begin
 import { toggleTroopsScreen } from './screens/troops';
+import { sectorColumnName } from '../sim/sectorNames';
 import { confirmAutomationOff } from './orderMenu';
 import { galaxyStarDate } from '../sim/tick/simTime';
 import { createShipAction, ShipActionType } from '../sim/player/shipAction';
@@ -628,8 +630,9 @@ export function createHud(wiring: HudWiring = {}): HudRefs {
         onMainMenu: wiring.onMainMenu,
         // [gameoptions] the Escape menu's Options opens the Game Options screen (same as O).
         onOptions: () => {
+            // Without a player empire (a view with no game behind it) the window edits the new-game defaults.
             const src = getEmpireSummarySource();
-            if (src) openGameOptionsPanel({ empire: src.empire });
+            openGameOptionsPanel({ empire: src?.empire ?? null });
         },
     });
     setGameMenuHandler(gameMenu.toggle);
@@ -2065,6 +2068,24 @@ function buildOptionsList(wiring: HudWiring): HTMLElement {
             });
             item.appendChild(more);
         }
+        // [improvements] waypoints — the Waypoints & Known Locations row's "…": its two sub-toggles and the list.
+        if (row.panel === 'waypoints') {
+            const opts = waypointsOptionsPanel();
+            sub = opts;
+            opts.element.style.display = 'none';
+            const more = document.createElement('span');
+            more.className = 'hud-option-more';
+            more.textContent = '…';
+            more.title = 'Waypoints & Known Locations options';
+            more.setAttribute('role', 'button');
+            more.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const open = opts.element.style.display === 'none';
+                if (open) opts.refresh();
+                opts.element.style.display = open ? '' : 'none';
+            });
+            item.appendChild(more);
+        }
         item.addEventListener('click', () => {
             toggleOverlay(overlays, row.key);
             check.textContent = overlays[row.key] ? '✓' : '';
@@ -2536,7 +2557,7 @@ export function missionTypeLabel(type: BuiltObjectMissionType): string {
 // Port of Galaxy.3.cs ResolveDescription(Empire, BuiltObjectMission) — target text only
 export function missionTargetText(mission: BuiltObjectMission, empire: Empire | null): string {
     const sector = mission.targetSector;
-    if (sector !== null) return `Sector ${String.fromCharCode(sector.x + 65)}${sector.y + 1}`;
+    if (sector !== null) return `Sector ${sectorColumnName(sector.x)}${sector.y + 1}`;
     // TODO(port): ShipGroup.Name — not in sim
     if (mission.targetShipGroup !== null) return '';
     const bo = mission.targetBuiltObject;

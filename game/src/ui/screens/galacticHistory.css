@@ -1,295 +1,83 @@
-/* Galactic History screen (pnlMessageHistory): list | message text. Dark-panel tokens as the Colonies list. */
+/* Galactic History / Messages (pnlMessageHistory, Main.Part4.cs method_528) on the shared original-style window
+   (originalWindow.css). Only what the toolkit does not draw itself. */
 
-.galactic-history-wrap {
-    position: fixed;
-    inset: 0;
-    z-index: 1500;
-    pointer-events: none;
-    font-family: 'Forgotten Futurist', sans-serif;
-    color: #e6e6e6;
-}
-
-.galactic-history-window {
-    position: absolute;
-    top: 64px;
-    left: 50%;
-    transform: translateX(-50%);
-    width: 760px;
-    max-width: calc(100vw - 16px);
-    height: min(560px, calc(100vh - 96px));
-    pointer-events: auto;
-    background: rgba(14, 16, 20, 0.94);
-    backdrop-filter: blur(6px);
-    -webkit-backdrop-filter: blur(6px);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 6px;
-    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6);
-    display: flex;
-    flex-direction: column;
+.ow-screen-galacticHistory .gh-page {
     overflow: hidden;
 }
 
-.galactic-history-titlebar {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 8px 12px;
-    background: rgba(10, 11, 15, 0.9);
-    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-}
-
-.galactic-history-heading {
-    font-size: 13px;
-    color: #e8d24a;
-}
-
-.galactic-history-close {
-    background: transparent;
-    border: none;
-    color: #ccc;
-    font-size: 15px;
-    cursor: pointer;
-    padding: 2px 6px;
-}
-.galactic-history-close:hover {
-    color: #fff;
-}
-
-.galactic-history-body {
-    flex: 1;
-    min-height: 0;
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-    gap: 10px;
-    padding: 8px;
-}
-
-.galactic-history-left,
-.galactic-history-right {
-    display: flex;
-    flex-direction: column;
-    min-height: 0;
-    gap: 4px;
-}
-
-.galactic-history-filter {
-    font: inherit;
-    font-size: 12px;
-    color: #e6e6e6;
-    background: rgba(255, 255, 255, 0.06);
-    border: 1px solid rgba(255, 255, 255, 0.12);
-    border-radius: 3px;
-    padding: 3px 4px;
-}
-.galactic-history-filter option {
-    background: #15171c;
-}
-
-.galactic-history-header,
-.galactic-history-row {
-    display: grid;
-    grid-template-columns: 34px minmax(0, 1fr) 6.5em;
-    align-items: center;
-    gap: 6px;
-    padding: 0 6px;
-}
-
-.galactic-history-header-cell {
-    font: inherit;
-    font-size: 10px;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    color: #777;
-    white-space: nowrap;
-    background: none;
-    border: none;
-    padding: 2px 0;
-    text-align: left;
-}
-.galactic-history-sortable {
-    cursor: pointer;
-}
-.galactic-history-sortable:hover {
-    color: #bbb;
-}
-
-.galactic-history-list {
-    flex: 1;
-    min-height: 0;
-    overflow-y: auto;
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-}
-
-.galactic-history-row {
-    min-height: 26px;
-    background: rgba(255, 255, 255, 0.04);
-    border: 1px solid rgba(255, 255, 255, 0.07);
-    border-radius: 3px;
-    cursor: pointer;
-}
-.galactic-history-row:hover {
-    background: rgba(255, 255, 255, 0.08);
-}
-.galactic-history-row-selected {
-    background: rgba(232, 210, 74, 0.14);
-    border-color: rgba(232, 210, 74, 0.4);
-}
-
-.galactic-history-icon {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    height: 22px;
-}
-.galactic-history-icon img {
-    max-width: 32px;
-    max-height: 22px;
+/* EmpireMessageListView: the message images Zoom-fitted into the 35 px Icon column (prescaled to 25 px high). */
+.ow-screen-galacticHistory .gh-icon {
+    max-width: 33px;
+    max-height: 18px;
     object-fit: contain;
+    pointer-events: none;
 }
-.galactic-history-swatch {
+.ow-screen-galacticHistory .gh-swatch {
+    display: block;
     width: 24px;
     height: 14px;
-    border-radius: 2px;
-    border: 1px solid rgba(255, 255, 255, 0.3);
+    border: 1px solid rgba(0, 0, 0, 0.6);
 }
 
-.galactic-history-title {
-    font-size: 12px;
-    color: #fff;
-    white-space: nowrap;
+/* lblMessageHistoryHeading: one line, clipped at the window. */
+.ow-screen-galacticHistory .gh-heading {
     overflow: hidden;
     text-overflow: ellipsis;
 }
 
-.galactic-history-date {
-    font-size: 11px;
-    color: #999;
-    white-space: nowrap;
-    text-align: right;
-}
-
-.galactic-history-empty {
-    padding: 12px;
-    font-size: 12px;
-    color: #777;
-}
-
-.galactic-history-msg-heading {
-    font-size: 13px;
-    color: #e8d24a;
-    min-height: 1.4em;
-}
-
-.galactic-history-msg-text {
-    flex: 1;
-    min-height: 0;
-    overflow-y: auto;
-    padding: 8px;
-    font-size: 12px;
-    line-height: 1.45;
+/* txtMessageHistoryText: a read-only multiline TextBox, FixedSingle border, (48, 48, 64) / (170, 170, 170), font_6. */
+.ow-screen-galacticHistory .gh-textbox {
+    background: rgb(48, 48, 64);
+    color: rgb(170, 170, 170);
+    border: 1px solid rgb(96, 96, 112);
+    font-size: 16.67px;
+    line-height: 1.25;
+    padding: 2px 4px;
     white-space: pre-line;
-    color: #bbb;
-    background: rgba(48, 48, 64, 0.35);
-    border: 1px solid rgba(255, 255, 255, 0.07);
-    border-radius: 3px;
+    overflow-wrap: anywhere;
+    user-select: text;
 }
-
-.galactic-history-goto {
-    align-self: flex-end;
-    padding: 4px 16px;
-    font: inherit;
-    font-size: 12px;
-    color: #e6e6e6;
-    background: rgba(255, 255, 255, 0.08);
-    border: 1px solid rgba(255, 255, 255, 0.15);
-    border-radius: 3px;
-    cursor: pointer;
-}
-.galactic-history-goto:hover:not(:disabled) {
-    background: rgba(255, 255, 255, 0.16);
-}
-.galactic-history-goto:disabled {
-    opacity: 0.4;
-    cursor: default;
-}
-
-/* 19s-1 History | Chronicle tabs. */
-.galactic-history-tabs {
-    display: flex;
-    gap: 4px;
-    margin-left: auto;
-    margin-right: 8px;
-}
-.galactic-history-tab {
-    font: inherit;
-    font-size: 12px;
-    color: #bbb;
-    background: rgba(255, 255, 255, 0.04);
-    border: 1px solid rgba(255, 255, 255, 0.12);
-    border-radius: 3px;
-    padding: 2px 10px;
-    cursor: pointer;
-}
-.galactic-history-tab-active {
-    color: #e8d24a;
-    border-color: rgba(232, 210, 74, 0.5);
-}
-.galactic-history-chronicle-text {
+.ow-screen-galacticHistory .gh-textbox.gh-prewrap {
     white-space: pre-wrap;
 }
 
-/* 19s-4 Ask / Orders tabs: an input row, the answer, cited records. */
-.galactic-history-body.galactic-history-ask {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    overflow-y: auto;
+/* gmapMessageHistory: GalaxyMap, black, (67, 67, 77) border. */
+.ow-screen-galacticHistory .gh-map {
+    box-sizing: border-box;
+    background: #000;
+    border: 2px solid rgb(67, 67, 77);
+    overflow: hidden;
 }
-.galactic-history-ask-form {
-    display: flex;
-    gap: 6px;
+.ow-screen-galacticHistory .gh-map-canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
 }
-.galactic-history-ask-input {
-    flex: 1;
-    min-width: 0;
-    font: inherit;
-    font-size: 13px;
-    color: #e6e6e6;
-    background: rgba(0, 0, 0, 0.35);
-    border: 1px solid rgba(255, 255, 255, 0.18);
-    border-radius: 3px;
-    padding: 4px 8px;
+
+/* 19s-1 Chronicle: the year the chronicler is still writing (not selectable). */
+.ow-screen-galacticHistory .ow-grid-row.gh-pending {
+    color: rgb(120, 120, 120);
+    font-style: italic;
 }
-.galactic-history-ask-answer {
-    flex: none;
-    white-space: pre-wrap;
-}
-.galactic-history-ask-cited {
+
+/* 19s-4 Ask: the cited records. */
+.ow-screen-galacticHistory .gh-cited {
     display: flex;
     flex-direction: column;
     gap: 3px;
 }
-.galactic-history-ask-line {
-    font-size: 12px;
-    color: #cfcfcf;
-    border-left: 2px solid rgba(232, 210, 74, 0.5);
+.ow-screen-galacticHistory .gh-cited-line {
+    font-size: 15.33px;
+    color: rgb(170, 170, 170);
+    border-left: 2px solid rgb(96, 96, 112);
     padding-left: 6px;
+    white-space: pre-wrap;
 }
-.galactic-history-ask-actions {
-    display: flex;
-    gap: 6px;
+
+/* [improvements] Battle Reports: skirmishes dimmed (as in the report list). */
+.ow-screen-galacticHistory .ow-grid-row.gh-minor:not(.ow-sel) {
+    color: rgb(120, 120, 120);
 }
-/* [improvements] Battle Reports tab (DW2-inspired). */
-.galactic-history-tab-improvement {
+.ow-screen-galacticHistory .galactic-history-tab-improvement {
     font-style: italic;
-}
-.galactic-history-improvement-note {
-    color: rgb(140, 140, 150);
-    font-size: 12px;
-    margin: 2px 0 4px;
-}
-.galactic-history-row-minor .galactic-history-title {
-    color: rgb(130, 130, 130);
 }

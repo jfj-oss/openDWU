@@ -1,0 +1,111 @@
+/* Waypoints & Known Locations (an Improvement, ui/waypoints.ts). */
+
+.waypoint-name-input {
+    box-sizing: border-box;
+    width: 100%;
+    font-family: inherit;
+    font-size: 13px;
+    color: #e6e6e6;
+    background: rgba(0, 0, 0, 0.5);
+    border: 1px solid rgba(255, 255, 255, 0.25);
+    border-radius: 4px;
+    padding: 5px 8px;
+    outline: none;
+}
+.waypoint-name-input:focus {
+    border-color: rgba(70, 216, 255, 0.8);
+}
+
+.hud-option-panel-button {
+    margin-top: 4px;
+    font-family: inherit;
+    font-size: 11px;
+    color: #c8d0da;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 4px;
+    padding: 1px 8px;
+    cursor: pointer;
+}
+.hud-option-panel-button:hover {
+    background: rgba(255, 255, 255, 0.14);
+    color: #fff;
+}
+
+.waypoints-panel {
+    position: fixed;
+    right: 16px;
+    top: 96px;
+    width: 340px;
+    max-width: calc(100vw - 32px);
+    max-height: 60vh;
+    display: flex;
+    flex-direction: column;
+    z-index: 1200;
+    font-family: 'Forgotten Futurist', sans-serif;
+    color: #d8dee6;
+}
+.waypoints-head {
+    padding-right: 24px;
+}
+.waypoints-close {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+}
+.waypoints-body {
+    overflow-y: auto;
+    min-height: 0;
+}
+.waypoints-sec {
+    margin: 6px 0 2px;
+    font-size: 11px;
+    color: #e8d24a;
+}
+.waypoints-empty {
+    font-size: 11px;
+    color: #8a939e;
+    padding: 2px 0 4px;
+}
+.waypoints-row {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 1px 0;
+}
+.waypoints-name {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    cursor: default;
+}
+.waypoints-name-own {
+    color: #c8f4ff;
+}
+.waypoints-name-location {
+    color: #ffe0a8;
+}
+.waypoints-name-hint {
+    color: #c4b8ff;
+}
+.waypoints-kind {
+    font-size: 10px;
+    color: #8a939e;
+    white-space: nowrap;
+}
+.waypoints-btn {
+    font-family: inherit;
+    font-size: 10px;
+    color: #c8d0da;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    border-radius: 3px;
+    padding: 0 5px;
+    cursor: pointer;
+}
+.waypoints-btn:hover {
+    background: rgba(255, 255, 255, 0.14);
+    color: #fff;
+}

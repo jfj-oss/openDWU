@@ -563,6 +563,9 @@ export interface ScenarioGenerationSetup {
     starCount: number;
     sectorWidth: number;
     sectorHeight: number;
+    /** The base game's custom-size switch (CreateGameOptions.customGalaxyDimensions): a set-up that takes the sector
+     *  counts past the C# 4..15 clamp turns it on, as the wizard's sector boxes do. */
+    customGalaxyDimensions?: boolean;
 }
 
 /**

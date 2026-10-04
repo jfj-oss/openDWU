@@ -564,3 +564,44 @@
 .ow-combo.ow-disabled {
     opacity: 0.55;
 }
+
+/* In-flow variants: the glass button / input / check box laid out by flow or flex (recreation-only panels with
+   variable-length lists) instead of place()d at original pixels. */
+.ow-glass.ow-flow,
+.ow-input.ow-flow,
+.ow-check.ow-flow {
+    position: relative;
+}
+.ow-glass.ow-flow {
+    display: inline-flex;
+    padding: 0 10px;
+    height: 24px;
+    vertical-align: middle;
+}
+.ow-input.ow-flow {
+    height: 24px;
+    box-sizing: border-box;
+}
+.ow-check.ow-flow {
+    display: inline-flex;
+}
+.ow-glass.ow-flow[hidden],
+.ow-input.ow-flow[hidden],
+.ow-check.ow-flow[hidden] {
+    display: none;
+}
+.ow-spin.ow-flow {
+    position: relative;
+    display: inline-block;
+    width: 90px;
+    height: 24px;
+    box-sizing: border-box;
+    vertical-align: middle;
+}
+
+/* A BorderPanel with Main.resx's tiled BackgroundImage (pnlGameMenu, pnlSaveLoadProgress, pnlSystemMap …): a 20 × 12
+   bitmap of alternating 1 px rows (21, 21, 21) / (34, 34, 34) from the top, over BackColor (48, 48, 64). */
+.ow-stripes {
+    background-color: rgb(48, 48, 64);
+    background-image: repeating-linear-gradient(to bottom, rgb(21, 21, 21) 0 1px, rgb(34, 34, 34) 1px 2px);
+}

@@ -3,7 +3,7 @@
 // screen (Main.Part5.cs) is a full diplomacy window; this streamlined version
 // shows one row per empire — colour swatch, name ("(you)" for the player),
 // colony count and capital name — and zooms to the clicked empire's capital.
-// Styling follows the tutorial window / HUD dark-panel tokens.
+// Original-style ScreenPanel + OwGrid (ui/originalWindow.ts).
 
 import './empiresList.css';
 import type { Empire } from '../../sim/empire';
@@ -18,6 +18,7 @@ import { applyEmpireEmblem } from '../empireEmblem';
 import { leagueSection } from '../leagueRows';
 import { rimTraderTag } from '../scenario/rimTraderRows';
 import { displayColorForEmpire } from '../../sim/empireColors';
+import { FONT, OwGrid, glassButton, openOriginalWindow, place, textBox } from '../originalWindow';
 
 export interface EmpiresListOptions {
     /** galaxy.empires — every empire in the galaxy. */
@@ -106,162 +107,130 @@ export function closeEmpiresList(): void {
 }
 
 function createEmpiresList(opts: EmpiresListOptions): OpenState {
-    const root = document.createElement('div');
-    root.className = 'empires-list-wrap';
-
-    const win = document.createElement('div');
-    win.className = 'empires-list-window';
-
-    const titlebar = document.createElement('div');
-    titlebar.className = 'empires-list-titlebar';
-    const heading = document.createElement('div');
-    heading.className = 'empires-list-heading';
-    heading.textContent = 'Empires';
-    titlebar.appendChild(heading);
+    // Original-style ScreenPanel (ui/originalWindow.ts); an OwGrid of the known empires like the Diplomacy list.
+    const W = 600;
+    const H = 640;
+    const owin = openOriginalWindow({
+        id: 'empires',
+        title: 'Empires',
+        icon: 'diplomacy.png',
+        width: W,
+        height: H,
+        noAutoPause: true,
+        onClose: () => close(),
+    });
+    const root = owin.root;
+    root.classList.add('empires-list-wrap');
+    const body = owin.body;
+    const bw = owin.bodySize.w;
+    const bh = owin.bodySize.h;
     // [charters] begin
     // Scenario 19c: the Charters screen button (tasks/19c-chartered-companies.md §8.3).
     const charterGalaxy = opts.playerEmpire.galaxy ?? null;
-    if (charterGalaxy !== null && scenarioFlag(charterGalaxy, 'charteredCompanies')) {
-        const chartersBtn = document.createElement('button');
-        chartersBtn.type = 'button';
-        chartersBtn.className = 'charters-btn charters-header-btn';
-        chartersBtn.textContent = 'Charters';
-        chartersBtn.addEventListener('click', () => toggleChartersScreen(charterGalaxy, opts.playerEmpire));
-        titlebar.appendChild(chartersBtn);
+    if (charterGalaxy !== null && owin.header !== null && scenarioFlag(charterGalaxy, 'charteredCompanies')) {
+        const chartersBtn = glassButton('Charters', { size: FONT.normal, className: 'charters-btn charters-header-btn', onClick: () => toggleChartersScreen(charterGalaxy, opts.playerEmpire) });
+        place(chartersBtn, owin.header.clientWidth > 0 ? owin.header.clientWidth - 41 - 128 : W - 14 - 41 - 128, 10, 120, 30);
+        owin.header.appendChild(chartersBtn);
     }
     // [charters] end
 
-    const closeBtn = document.createElement('button');
-    closeBtn.type = 'button';
-    closeBtn.className = 'empires-list-close';
-    closeBtn.title = 'Close';
-    closeBtn.textContent = '✕';
-    titlebar.appendChild(closeBtn);
-    win.appendChild(titlebar);
-
-    // Task 19k-1d (Big Galaxies): a filter box, so a 60-empire list stays
-    // usable — filters by name or capital (filterEmpireRows).
-    const filterInput = document.createElement('input');
-    filterInput.type = 'text';
-    filterInput.className = 'empires-list-filter';
-    filterInput.placeholder = 'Filter by name or capital…';
-    filterInput.autocomplete = 'off';
-    win.appendChild(filterInput);
-
-    const body = document.createElement('div');
-    body.className = 'empires-list-body';
-
-    // Task 12g: column headers, same grid as the rows (blank swatch column).
-    const header = document.createElement('div');
-    header.className = 'empires-list-header';
-    const blank = document.createElement('span');
-    blank.className = 'empires-list-header-swatch';
-    const hName = document.createElement('span');
-    hName.className = 'empires-list-header-cell';
-    hName.textContent = 'Empire';
-    const hColonies = document.createElement('span');
-    hColonies.className = 'empires-list-header-cell empires-list-header-colonies';
-    hColonies.textContent = 'Colonies';
-    const hCapital = document.createElement('span');
-    hCapital.className = 'empires-list-header-cell';
-    hCapital.textContent = 'Capital';
-    header.append(blank, hName, hColonies, hCapital);
-    body.appendChild(header);
-
-    const allRows = empireRows(opts.empires, opts.playerEmpire);
-    const rowsList = document.createElement('div');
-    rowsList.className = 'empires-list-rows';
-    body.appendChild(rowsList);
-
-    function renderRows(): void {
-        rowsList.replaceChildren();
-        const rows = filterEmpireRows(allRows, filterInput.value);
-        for (const row of rows) {
-            const line = document.createElement('div');
-            line.className = 'empires-list-row';
-
-            // Colour swatch: the empire's display colour (its own mainColor, or — with the big-galaxies scenario's
-            // extendedPalette flag on — a distinct extra colour once the 20 key colours are spent, task 19k-1b).
-            const c = displayColorForEmpire(row.empire);
-            const swatch = document.createElement('span');
-            swatch.className = 'empires-list-swatch';
-            swatch.style.background = `rgb(${(c >> 16) & 255}, ${((c >> 8) & 255)}, ${(c & 255)})`;
-
-            const name = document.createElement('span');
-            name.className = 'empires-list-name';
-            name.textContent = row.label;
-            // [charters] begin
-            const tag = charterGalaxy !== null ? companyTag(charterGalaxy, row.empire) : '';
-            if (tag !== '') name.textContent = `${row.label} — ${tag}`;
-            // [charters] end
-            // 19r: the empire's flag (derived / scenario flags through the emblem overrides — after the charters tag's
-            // textContent assignment above, since that would wipe out a prepended child node).
-            if (row.empire.galaxy?.scenario != null) {
-                const flag = document.createElement('img');
-                flag.className = 'empires-list-flag';
-                flag.alt = '';
-                flag.draggable = false;
-                flag.style.cssText = 'width:24px;height:14px;margin-right:6px;vertical-align:middle';
-                flag.addEventListener('error', () => flag.remove());
-                applyEmpireEmblem(flag, row.empire.galaxy, row.empire, 'flag');
-                name.prepend(flag);
-            }
-            // [rimTrader] begin
-            const rimTag = row.empire.galaxy != null ? rimTraderTag(row.empire.galaxy, row.empire) : '';
-            if (rimTag !== '') name.appendChild(Object.assign(document.createElement('span'), { className: 'empires-list-tag', textContent: rimTag }));
-            // [rimTrader] end
-
-            const count = document.createElement('span');
-            count.className = 'empires-list-colonies';
-            count.textContent = String(row.colonies);
-
-            const capital = document.createElement('span');
-            capital.className = 'empires-list-capital';
-            capital.textContent = row.capitalName;
-
-            line.append(swatch, name, count, capital);
-            line.addEventListener('click', () => {
-                const capitalHabitat = row.empire.capital;
-                if (!capitalHabitat) return;
-                close();
-                opts.onZoomTo(capitalHabitat);
-            });
-            rowsList.appendChild(line);
-        }
-        if (rows.length === 0) {
-            const empty = document.createElement('div');
-            empty.className = 'empires-list-empty';
-            empty.textContent = 'No empires match this filter.';
-            rowsList.appendChild(empty);
-        }
-    }
-    filterInput.addEventListener('input', renderRows);
-    renderRows();
+    // Task 19k-1d (Big Galaxies): a filter box, so a 60-empire list stays usable — filters by name or capital
+    // (filterEmpireRows).
+    const filterInput = textBox('', 'Filter by name or capital…', () => renderRows());
+    filterInput.classList.add('empires-list-filter');
+    filterInput.style.fontSize = `${FONT.normal}px`;
+    place(filterInput, 8, 8, bw - 16, 28);
+    body.appendChild(filterInput);
 
     // 19r: the independent leagues (19k-3) with their flags, when any exist.
     const leagues = leagueSection(opts.playerEmpire.galaxy, 'empires-list');
-    if (leagues !== null) body.appendChild(leagues);
-    win.appendChild(body);
-    root.appendChild(win);
-    document.body.appendChild(root);
+    const leagueH = leagues !== null ? Math.min(150, 34 + (leagues.children.length - 1) * 24) : 0;
+    const gridH = bh - 44 - 8 - (leagueH > 0 ? leagueH + 6 : 0);
 
+    // Task 12g column headers + rows (the swatch column has no header).
+    const allRows = empireRows(opts.empires, opts.playerEmpire);
+    const grid = new OwGrid<EmpireRow>({
+        key: (r) => r.empire,
+        rowHeight: 26,
+        fontSize: FONT.normal,
+        empty: 'No empires match this filter.',
+        onSelect: (row) => {
+            const capitalHabitat = row.empire.capital;
+            if (!capitalHabitat) return;
+            close();
+            opts.onZoomTo(capitalHabitat);
+        },
+        columns: [
+            {
+                id: 'swatch',
+                header: '',
+                width: 26,
+                align: 'center',
+                // Colour swatch: the empire's display colour (its own mainColor, or — with the big-galaxies
+                // scenario's extendedPalette flag on — a distinct extra colour once the 20 key colours are spent,
+                // task 19k-1b).
+                render: (row, cell) => {
+                    const c = displayColorForEmpire(row.empire);
+                    const swatch = document.createElement('span');
+                    swatch.className = 'empires-list-swatch';
+                    swatch.style.background = `rgb(${(c >> 16) & 255}, ${(c >> 8) & 255}, ${c & 255})`;
+                    cell.appendChild(swatch);
+                },
+            },
+            {
+                id: 'name',
+                header: 'Empire',
+                fill: 1.3,
+                render: (row, cell) => {
+                    const name = document.createElement('span');
+                    name.className = 'empires-list-name';
+                    name.textContent = row.label;
+                    // [charters] begin
+                    const tag = charterGalaxy !== null ? companyTag(charterGalaxy, row.empire) : '';
+                    if (tag !== '') name.textContent = `${row.label} — ${tag}`;
+                    // [charters] end
+                    // 19r: the empire's flag (derived / scenario flags through the emblem overrides — after the
+                    // charters tag's textContent assignment above, since that would wipe out a prepended child node).
+                    if (row.empire.galaxy?.scenario != null) {
+                        const flag = document.createElement('img');
+                        flag.className = 'empires-list-flag';
+                        flag.alt = '';
+                        flag.draggable = false;
+                        flag.style.cssText = 'width:24px;height:14px;margin-right:6px;vertical-align:middle';
+                        flag.addEventListener('error', () => flag.remove());
+                        applyEmpireEmblem(flag, row.empire.galaxy, row.empire, 'flag');
+                        name.prepend(flag);
+                    }
+                    // [rimTrader] begin
+                    const rimTag = row.empire.galaxy != null ? rimTraderTag(row.empire.galaxy, row.empire) : '';
+                    if (rimTag !== '') name.appendChild(Object.assign(document.createElement('span'), { className: 'empires-list-tag', textContent: rimTag }));
+                    // [rimTrader] end
+                    cell.appendChild(name);
+                },
+            },
+            { id: 'colonies', header: 'Colonies', width: 80, align: 'right', render: (row, cell) => (cell.textContent = String(row.colonies)) },
+            { id: 'capital', header: 'Capital', fill: 1, render: (row, cell) => { cell.textContent = row.capitalName; cell.style.paddingLeft = '16px'; } },
+        ],
+    });
+    place(grid.el, 8, 44, bw - 16, gridH);
+    body.appendChild(grid.el);
+    function renderRows(): void {
+        grid.setRows(filterEmpireRows(allRows, filterInput.value));
+    }
+    renderRows();
+
+    if (leagues !== null) {
+        leagues.classList.add('empires-list-leagues-box');
+        place(leagues, 8, bh - leagueH - 8, bw - 16, leagueH);
+        body.appendChild(leagues);
+    }
+
+    let closing = false;
     function close(): void {
-        document.removeEventListener('keydown', onKeyDown);
-        root.remove();
+        if (closing) return;
+        closing = true;
+        if (!owin.closed) owin.close();
         open = null;
     }
-
-    // Escape closes the panel; stopImmediatePropagation keeps the global game-menu (and other open panels)
-    // Escape handler (registered in createHud) from opening as well.
-    function onKeyDown(e: KeyboardEvent): void {
-        if (e.key === 'Escape') {
-            e.preventDefault();
-            e.stopImmediatePropagation();
-            close();
-        }
-    }
-    document.addEventListener('keydown', onKeyDown);
-    closeBtn.addEventListener('click', () => close());
-
     return { root, close };
 }

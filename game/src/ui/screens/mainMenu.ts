@@ -1,12 +1,13 @@
 // Main menu screen (task 06a). Port of the visual layout of Main.Part*.cs /
 // Start.InitializeComponent.cs's pnlMainMenu, using the original chrome art
 // served from /assets/dwu/images/ui/chrome/. Task 06k adds the Credits
-// screen and the Options modal.
+// screen and the Options window. The corners follow Start.cs:1240-1300: pnlTopLeftCorner (135 × 117, Galactopedia)
+// and pnlBottomLeftCorner (135 × 112, Check for Updates + lblVersion) are plain panels in BackColor (144, 0, 0, 0);
+// menuCredits (105 × 60) sits 10 px in from the bottom-right corner and hides while the credits roll.
 import './mainMenu.css';
-import { buildOptionsPanel, type MusicAdapter } from './gameMenu';
 import { createCreditsScreen } from './credits';
 import { createTutorialsScreen } from './tutorials';
-import { musicControls, stopAllMusic } from '../../audio/musicPlayer';
+import { stopAllMusic } from '../../audio/musicPlayer';
 import { openGalactopedia } from './galactopedia';
 import { showToast } from '../toast';
 import { openChangeTheme } from './changeTheme';
@@ -14,7 +15,8 @@ import { activeCustomizationSetName } from '../../sim/data/customization';
 import { themeMenuBackgroundUrl } from '../../themeAssets';
 import { getSettings } from '../settings';
 import { tryGetText } from '../../sim/textResolver';
-import { openNewGameDefaultsPanel } from './newGameDefaultsPanel';
+import { openGameOptionsPanel } from './gameOptionsPanel';
+import { messageBox } from '../originalWindow';
 
 const CHROME = '/assets/dwu/images/ui/chrome/';
 
@@ -78,71 +80,17 @@ function preloadImage(src: string): void {
     img.src = src;
 }
 
-/** Lazily fetch the real music player for the Options panel (created by
- * musicPlayer.ts musicControls); null if audio is unavailable. */
-function menuMusic(): MusicAdapter | null {
-    try {
-        return musicControls();
-    } catch {
-        return null;
-    }
+/** The main menu's Options (Start.1.cs:1528 method_153): the same pnlGameOptions window as in game
+ * (gameOptionsPanel.ts), with no game — its Automation group edits the next new game's defaults. Esc or the close
+ * button closes it and returns to the menu. (`_root` is kept for the ?screen=options hook's call.) */
+export function openOptionsModal(_root?: HTMLElement): void {
+    openGameOptionsPanel({ empire: null });
 }
 
-/** Task 06k: open the Options sub-panel (shared with the in-game Escape
- * menu) as a centred modal over the main menu. Esc or ✕ closes it and
- * returns to the menu. */
-export function openOptionsModal(root: HTMLElement): void {
-    const overlay = document.createElement('div');
-    overlay.className = 'main-menu-options-overlay';
-
-    const dim = document.createElement('div');
-    dim.className = 'main-menu-options-dim';
-    overlay.appendChild(dim);
-
-    const panel = document.createElement('div');
-    panel.className = 'game-menu-panel main-menu-options-panel';
-
-    const title = document.createElement('div');
-    title.className = 'game-menu-title';
-    title.textContent = 'Options';
-    panel.appendChild(title);
-
-    // The same rows the in-game Escape menu shows (music volume/mute, UI
-    // scale, label toggles).
-    panel.appendChild(buildOptionsPanel(menuMusic()));
-
-    // Start.1.cs:1928-1960: the main menu's Options edit the Automation / Empire Settings defaults of the next new game.
-    const defaultsBtn = document.createElement('button');
-    defaultsBtn.type = 'button';
-    defaultsBtn.className = 'main-menu-newgame-defaults';
-    defaultsBtn.textContent = 'Automation & New Game Defaults...';
-    defaultsBtn.addEventListener('click', () => openNewGameDefaultsPanel());
-    panel.appendChild(defaultsBtn);
-
-    const closeBtn = document.createElement('button');
-    closeBtn.type = 'button';
-    closeBtn.className = 'game-menu-close';
-    closeBtn.title = 'Close';
-    closeBtn.textContent = '✕';
-    closeBtn.addEventListener('click', () => close());
-    panel.appendChild(closeBtn);
-
-    overlay.appendChild(panel);
-    root.appendChild(overlay);
-
-    function onKeyDown(e: KeyboardEvent): void {
-        if (e.key === 'Escape') {
-            e.preventDefault();
-            close();
-        }
-    }
-    document.addEventListener('keydown', onKeyDown);
-
-    function close(): void {
-        document.removeEventListener('keydown', onKeyDown);
-        overlay.remove();
-    }
-}
+/** The recreation's version label (Start.cs:1287 lblVersion: "Version" + Application.ProductVersion). */
+export const MENU_VERSION_TEXT = 'Version 1.9.5 (recreation)';
+/** The label's two lines (the recreation tag does not fit the 135 px corner on one line). */
+const MENU_VERSION_LINES = 'Version 1.9.5\n(recreation)';
 
 /** Build the main menu screen and append it to document.body. */
 export function createMainMenu(callbacks: MainMenuCallbacks): MainMenuRefs {
@@ -208,7 +156,7 @@ export function createMainMenu(callbacks: MainMenuCallbacks): MainMenuRefs {
                     callbacks.onStartNewGame();
                     break;
                 case 'options':
-                    // Task 06k: same options panel as the in-game Escape menu.
+                    // Start.1.cs method_153: the Game Options window, editing the new-game defaults.
                     openOptionsModal(root);
                     break;
                 case 'loadGame':
@@ -253,7 +201,16 @@ export function createMainMenu(callbacks: MainMenuCallbacks): MainMenuRefs {
     title.style.width = `min(${482 * s}px, 40vw)`;
     root.appendChild(title);
 
-    // Corner items.
+    // Corner items (Start.cs:1240-1300). pnlTopLeftCorner: 135 × 117 at (0, 0), Galactopedia centred.
+    const corner = (cls: string, w: number, h: number): HTMLDivElement => {
+        const c = document.createElement('div');
+        c.className = `main-menu-corner-panel ${cls}`;
+        c.style.width = `${w * s}px`;
+        c.style.height = `${h * s}px`;
+        root.appendChild(c);
+        return c;
+    };
+    const topLeft = corner('main-menu-corner-tl', 135, 117);
     const galactopedia = document.createElement('button');
     galactopedia.className = 'main-menu-corner main-menu-galactopedia';
     galactopedia.type = 'button';
@@ -272,12 +229,14 @@ export function createMainMenu(callbacks: MainMenuCallbacks): MainMenuRefs {
     });
     // Start.cs menuGalactopedia_Click: method_127("") -> the home page.
     galactopedia.addEventListener('click', () => openGalactopedia());
-    root.appendChild(galactopedia);
+    topLeft.appendChild(galactopedia);
 
-    const updatesWrap = document.createElement('div');
-    updatesWrap.className = 'main-menu-corner main-menu-updates';
+    // pnlBottomLeftCorner: 135 × 112 at (0, H - 112); menuCheckForUpdates centred, lblVersion along the bottom
+    // ((255, 160, 0), font_2, TopCenter, 30 px from the bottom).
+    const updatesWrap = corner('main-menu-corner-bl main-menu-updates', 135, 112);
     const updates = document.createElement('button');
     updates.type = 'button';
+    updates.className = 'main-menu-corner';
     const updatesImg = document.createElement('img');
     updatesImg.src = `${CHROME}Menu_CheckForUpdates_Inactive.png`;
     updatesImg.alt = 'Check for Updates';
@@ -291,18 +250,31 @@ export function createMainMenu(callbacks: MainMenuCallbacks): MainMenuRefs {
     updates.addEventListener('mouseleave', () => {
         updatesImg.src = `${CHROME}Menu_CheckForUpdates_Inactive.png`;
     });
-    // The original checks its update server; this recreation has none.
-    updates.addEventListener('click', () => showToast('No updates: this is the recreation build', root));
+    // menuCheckForUpdates_Click opens CodeForce's version check page; this recreation has no update server, so it says
+    // so in a MessageBoxEx.
+    updates.addEventListener('click', () => {
+        void messageBox({
+            caption: 'Check for Updates',
+            text: `No updates: this is the recreation build.\n\n${MENU_VERSION_TEXT}`,
+            buttons: ['OK'],
+            icon: 'information',
+        });
+    });
     const version = document.createElement('div');
     version.className = 'main-menu-version';
-    version.textContent = 'Version 1.9.5 (recreation)';
+    version.textContent = MENU_VERSION_LINES;
+    version.style.fontSize = `${13.33 * s}px`;
+    version.style.bottom = `${4 * s}px`;
+    updates.style.marginBottom = `${24 * s}px`;
     updatesWrap.appendChild(updates);
     updatesWrap.appendChild(version);
-    root.appendChild(updatesWrap);
 
+    // menuCredits: 105 × 60 at (W - 115, H - 70).
     const credits = document.createElement('button');
     credits.className = 'main-menu-corner main-menu-credits';
     credits.type = 'button';
+    credits.style.width = `${105 * s}px`;
+    credits.style.height = `${60 * s}px`;
     const creditsImg = document.createElement('img');
     creditsImg.src = `${CHROME}Menu_Credits_Inactive.png`;
     creditsImg.alt = 'Credits';
@@ -317,8 +289,11 @@ export function createMainMenu(callbacks: MainMenuCallbacks): MainMenuRefs {
         creditsImg.src = `${CHROME}Menu_Credits_Inactive.png`;
     });
     credits.addEventListener('click', () => {
-        // Task 06k: scrolling credits screen (port of ScrollingCreditsPanel).
-        const screen = createCreditsScreen(() => undefined);
+        // menuCredits_Click: the button hides, the credits roll (Start.1.cs method_138); method_140 shows it again.
+        credits.style.visibility = 'hidden';
+        createCreditsScreen(() => {
+            credits.style.visibility = '';
+        });
     });
     root.appendChild(credits);
 

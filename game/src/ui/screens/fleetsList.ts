@@ -47,7 +47,7 @@ import { createFleetDesignsTab } from './fleetDesignsTab';
 import { createFleetRefillControls } from '../fleetRefillControls';
 import { troopCompositionDescription, troopCountsByType } from './troops';
 import { openGalactopedia } from './galactopedia';
-import { CROSSHAIR_COLOR, GRID_COLOR, drawMapTerritory, galaxyMapScale, sectorColumnLabel, starBrushColor, starDotSizes } from './galaxyMap';
+import { CROSSHAIR_COLOR, GRID_COLOR, drawMapTerritory, galaxyMapScale, sectorColumnLabel, sectorLabelStride, starBrushColor, starDotSizes } from './galaxyMap';
 import { drawGalaxyMapLayers } from './galaxyMapLayers';
 import { fmtK, missionDescription, shipGroupInfo, type InfoTarget } from '../selectionInfo';
 import { renderInfoModel } from '../selectionInfoView';
@@ -838,8 +838,8 @@ function createFleetsList(opts: FleetsListOptions): OpenState {
         ctx.fillStyle = 'rgb(96, 96, 170)';
         ctx.font = '9px Verdana, sans-serif';
         ctx.textBaseline = 'top';
-        for (let i = 0; i < galaxy.sectorWidth; i++) ctx.fillText(sectorColumnLabel(i), Math.trunc(i * sec + sec / 2 - 3), 2);
-        for (let j = 0; j < galaxy.sectorHeight; j++) ctx.fillText(String(j + 1), 2, Math.trunc(j * sec + sec / 2 - 5));
+        for (let i = 0; i < galaxy.sectorWidth; i += sectorLabelStride(galaxy.sectorWidth, sec)) ctx.fillText(sectorColumnLabel(i), Math.trunc(i * sec + sec / 2 - 3), 2);
+        for (let j = 0; j < galaxy.sectorHeight; j += sectorLabelStride(galaxy.sectorHeight, sec)) ctx.fillText(String(j + 1), 2, Math.trunc(j * sec + sec / 2 - 5));
         // method_5: the fleets' posture ranges.
         for (const sg of fleetCycleList(empire)) {
             const c = fleetPostureCircle(sg);

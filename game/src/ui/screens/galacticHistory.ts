@@ -1,8 +1,11 @@
 // Galactic History screen: the original's pnlMessageHistory opened by btnGalacticHistory (Main.Part3.cs:46
 // btnGalacticHistory_Click → Main.Part4.cs:1856 method_528("galactichistory")) — the player's saved
 // Empire.MessageHistory in an EmpireMessageListView (Icon | Subject | Star Date), a filter combo
-// (All / Non-Battle / Galactic History), the selected message's title + text, and Go To.
-// TODO(port): the small galaxy map beside the text (gmapMessageHistory, Main.Part4.cs:1921-1923 / 1996) — Main.Part4.cs:method_531
+// (All / Non-Battle / Galactic History), the selected message's title + text, the small galaxy map with the message's
+// location (gmapMessageHistory) and Go to Location. Built on the shared original-style window (originalWindow.ts:
+// ScreenPanel 965 × 580, OwGrid, dropDown, glassButton) at method_528's positions. Our additions keep the same look: a tab
+// strip (EnhancedTabControl) above the original layout for Chronicle / Ask / Orders (19s) and Battle Reports
+// ([improvements]), each tab laid out on the same grid as the History page.
 
 import './galacticHistory.css';
 import { EmpireMessageType, empireMessageHistory, type EmpireMessage } from '../../sim/messages';
@@ -19,7 +22,6 @@ import { BuiltObjectRole } from '../../sim/data/designSpecifications';
 import { netSort } from '../../sim/netSort';
 import { resolveStarDateDescription } from '../../sim/galaxyTime';
 import { formatNet, resolveGameText, tryGetText } from '../../sim/textResolver';
-import { rgbCss } from '../hud';
 import type { Galaxy } from '../../sim/galaxy';
 import { EVENT_CATEGORIES, eventLogEntries, eventLogOn, eventsKnownTo, findEmpireById, type EventCategory, type EventLogEntry } from '../../sim/scenario/eventLog/log';
 import { categoryLabel, resolveEntryText, resolveEntryTitle } from '../../sim/scenario/eventLog/chronicle';
@@ -32,9 +34,30 @@ import { currentLlmLayer } from '../../llm/llmLayer';
 import { advisorSelectionFromHud } from '../advisorPanel';
 import { battleReportsOn } from '../battleReports';
 import { battleReports as listBattleReports, type BattleReport } from '../../sim/battleReports/battleReports';
-import { battleListTitle, battleReportSummary, RESULT_COLORS } from './battleReportModel';
+import { battleListTitle, battleReportSummary, RESULT_COLORS, RESULT_LABELS } from './battleReportModel';
 import { openBattleReport } from './battleReport';
 import { IMPROVEMENTS_TITLE } from '../improvements';
+import {
+    chromeImageUrl,
+    dropDown,
+    el as owEl,
+    FONT,
+    glassButton,
+    openOriginalWindow,
+    OwGrid,
+    place,
+    rgbCss,
+    scrollPanel,
+    setText,
+    tabStrip,
+    text as owText,
+    textBox,
+    type GridColumn,
+    type OriginalWindow,
+} from '../originalWindow';
+import { CROSSHAIR_COLOR, GRID_COLOR, galaxyMapScale, starBrushColor, starDotSizes } from './galaxyMap';
+import { drawGalaxyMapLayers } from './galaxyMapLayers';
+import { empireFlagUrl } from '../selectionInfoView';
 
 /** [improvements] The Battle Reports tab's rows, newest first (skirmishes when asked). */
 export function battleReportRows(galaxy: Galaxy, withSkirmishes: boolean): { report: BattleReport; title: string; date: string; color: string }[] {
@@ -612,26 +635,103 @@ export function isGalacticHistoryOpen(): boolean {
     return open !== null;
 }
 
-function el(tag: string, className: string, content?: string): HTMLElement {
-    const e = document.createElement(tag);
-    e.className = className;
-    if (content !== undefined) e.textContent = content;
-    return e;
+// --- Layout (Main.Part4.cs:1856 method_528: pnlMessageHistory 965 × 580, body-relative positions) ---------------------
+const WIN = { w: 965, h: 580 };
+const FILTER = { x: 10, y: 9, w: 310, h: 21 }; // cmbMessageHistoryFilter
+const LIST = { x: 10, y: 35, w: 310, h: 475 }; // ctlMessageHistoryMessages (Icon 35 | Title 195 | StarDate 80)
+const HEADING = { x: 330, y: 10, w: 610 }; // lblMessageHistoryHeading: font_2, color_1
+const TEXT = { x: 330, y: 35, w: 350, h: 475 }; // txtMessageHistoryText: font_6, (48, 48, 64) / (170, 170, 170)
+const MAP = { x: 690, y: 35, size: 250 }; // gmapMessageHistory
+const GOTO = { x: 690, y: 295, w: 250, h: 25 }; // btnMessageHistoryGoto
+/** Our tab strip (History | Chronicle | Ask | Orders | Battle Reports) above the original layout: 26 px + 5 px gap. */
+const TABS_H = 31;
+/** color_1 (Main.Part13.cs:157). */
+const HEADING_COLOR = 'rgb(120, 120, 120)';
+
+/** GalaxyMap.cs SetPosition + method_6: a world point in the `mapPx`-wide map (trunc(x / scale) + 1); none for (0, 0). */
+export function historyMapPoint(galaxySizeX: number, mapPx: number, loc: { x: number; y: number } | null): { x: number; y: number } | null {
+    if (loc === null || !(loc.x > 0 && loc.y > 0)) return null;
+    const s = galaxySizeX / mapPx;
+    return { x: Math.trunc(loc.x / s) + 1, y: Math.trunc(loc.y / s) + 1 };
+}
+
+/** gmapMessageHistory (GalaxyMap.cs method_6, ShowEmpireTerritory = false): backdrop, nebulae, sector grid, the system
+ *  stars and the pen_2 crosshair on the selected message's location. */
+function drawHistoryMap(canvas: HTMLCanvasElement, galaxy: Galaxy, scale: number, point: { x: number; y: number } | null, isClosed: () => boolean): void {
+    const W = MAP.size;
+    const px = Math.max(1, Math.round(W * scale * (window.devicePixelRatio || 1)));
+    if (canvas.width !== px) {
+        canvas.width = px;
+        canvas.height = px;
+    }
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    const k = px / W;
+    ctx.setTransform(k, 0, 0, k, 0, 0);
+    const s = galaxyMapScale(galaxy, W);
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, W, W);
+    drawGalaxyMapLayers(ctx, galaxy, s, 0, 0, { onChange: () => { if (!isClosed() && canvas.isConnected) drawHistoryMap(canvas, galaxy, scale, point, isClosed); } });
+    const sec = galaxy.sectorSize / s;
+    ctx.strokeStyle = GRID_COLOR;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    for (let i = 0; i <= galaxy.sectorWidth; i++) {
+        const x = Math.trunc(i * sec) + 0.5;
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, Math.min(W, galaxy.sectorHeight * sec));
+    }
+    for (let j = 0; j <= galaxy.sectorHeight; j++) {
+        const y = Math.trunc(j * sec) + 0.5;
+        ctx.moveTo(0, y);
+        ctx.lineTo(Math.min(W, galaxy.sectorWidth * sec), y);
+    }
+    ctx.stroke();
+    const dot = starDotSizes(W, false).normal;
+    for (const sys of galaxy.systems) {
+        const c = starBrushColor(sys.systemStar);
+        if (c === null) continue;
+        ctx.fillStyle = c;
+        ctx.fillRect(sys.systemStar.xpos / s - dot / 2, sys.systemStar.ypos / s - dot / 2, dot, dot);
+    }
+    if (point !== null) {
+        ctx.strokeStyle = CROSSHAIR_COLOR;
+        ctx.beginPath();
+        ctx.moveTo(point.x + 0.5, 0);
+        ctx.lineTo(point.x + 0.5, W);
+        ctx.moveTo(0, point.y + 0.5);
+        ctx.lineTo(W, point.y + 0.5);
+        ctx.stroke();
+    }
+}
+
+/** A read-only multiline TextBox (txtMessageHistoryText: FixedSingle, vertical scroll bar). */
+function readOnlyText(x: number, y: number, w: number, h: number, extra = ''): HTMLDivElement {
+    const t = owEl('div', `gh-textbox ow-scroll${extra ? ` ${extra}` : ''}`);
+    return place(t, x, y, w, h);
+}
+
+/** The heading label (lblMessageHistoryHeading). */
+function headingLabel(x: number, y: number, w: number): HTMLDivElement {
+    const t = owText('', { size: FONT.header, bold: true, color: HEADING_COLOR, shadow: false, className: 'gh-heading' });
+    return place(t, x, y, w);
 }
 
 function createGalacticHistory(opts: GalacticHistoryOptions): OpenState {
     const { empire, onGoTo } = opts;
+    const galaxy = empire.galaxy;
     // 19p: with the event log on, the list reads the log (category filter + importance sort).
-    const logMode = galacticHistoryUsesEventLog(empire.galaxy);
+    const logMode = galacticHistoryUsesEventLog(galaxy);
     comboIndex = opts.filter ?? resolveHistoryOpenFilter(comboIndex, opts.mode ?? 'galactichistory');
     let filter = comboIndex;
     let category: HistoryCategoryFilter = 'all';
     let logSort: HistoryLogSort = 'date';
-    let sort: HistorySort | null = null;
     /** The selected row's key: an EmpireMessage (faithful list) or an EventLogEntry (log list). */
     let selected: unknown = null;
     let rows: ViewRow[] = [];
     let historyKey = '';
+    let closed = false;
+    let timer = 0;
 
     interface ViewRow {
         key: unknown;
@@ -644,228 +744,194 @@ function createGalacticHistory(opts: GalacticHistoryOptions): OpenState {
         loc: { x: number; y: number } | null;
     }
 
-    const root = el('div', 'galactic-history-wrap');
-    const win = el('div', 'galactic-history-window');
-    const titlebar = el('div', 'galactic-history-titlebar');
-    const heading = el('div', 'galactic-history-heading');
-    const closeBtn = el('button', 'galactic-history-close', '✕') as HTMLButtonElement;
-    closeBtn.type = 'button';
-    closeBtn.title = 'Close';
-    // 19s-1: History | Chronicle tabs (only with the chronicle on); 19s-4: Ask | Orders (flag llmArchivist).
-    const tabList = galacticHistoryTabs(empire.galaxy);
-    const tabs = el('div', 'galactic-history-tabs');
-    const tabButton = (tag: string, fallback: string): HTMLButtonElement => {
-        const b = el('button', 'galactic-history-tab', tryGetText(tag) ?? fallback) as HTMLButtonElement;
-        b.type = 'button';
-        return b;
+    // 19s-1: History | Chronicle tabs (only with the chronicle on); 19s-4: Ask | Orders (flag llmArchivist);
+    // [improvements] Battle Reports. One tab: the original window as it is.
+    const tabList = galacticHistoryTabs(galaxy);
+    const oy = tabList.length > 1 ? TABS_H : 0;
+    const headerTitle = (): string => (logMode ? text('Galactic History') : historyHeaderTitle(filter));
+    const headerIcon = (): string => chromeImageUrl(logMode || filter === HistoryFilter.GalacticHistory ? 'galacticHistory.png' : 'messages.png');
+    const win: OriginalWindow = openOriginalWindow({
+        id: 'galacticHistory',
+        title: headerTitle(),
+        iconUrl: headerIcon(),
+        width: WIN.w,
+        height: WIN.h + oy,
+        onClose: () => {
+            closed = true;
+            window.clearInterval(timer);
+            if (open !== null && open.close === close) open = null;
+        },
+        onResize: () => {
+            drawMap();
+            drawBattleMap();
+        },
+    });
+    // Hooks kept from the earlier DOM (scripts / tests find the screen by them).
+    win.frame.classList.add('galactic-history-window');
+    win.frame.querySelector('.ow-close')?.classList.add('galactic-history-close');
+    const body = win.body;
+    const close = (): void => win.close();
+
+    const page = (): HTMLDivElement => {
+        const p = place(owEl('div', 'gh-page'), 0, oy, win.bodySize.w, win.bodySize.h - oy);
+        body.appendChild(p);
+        return p;
     };
-    const tabHistory = tabButton('Chronicle Tab History', 'History');
-    tabHistory.classList.add('galactic-history-tab-active');
-    const tabChronicle = tabButton('Chronicle Tab Chronicle', 'Chronicle');
-    const tabAsk = tabButton('Chronicle Tab Ask', 'Ask');
-    const tabOrders = tabButton('Chronicle Tab Orders', 'Orders');
-    const tabBattles = tabButton('Battle Reports Tab', 'Battle Reports');
-    tabBattles.title = `${IMPROVEMENTS_TITLE}: Battle reports (inspired by Distant Worlds 2)`;
-    tabBattles.classList.add('galactic-history-tab-improvement');
-    const tabButtons: Record<GalacticHistoryTab, HTMLButtonElement> = { history: tabHistory, chronicle: tabChronicle, ask: tabAsk, orders: tabOrders, battles: tabBattles };
-    for (const t of tabList) tabs.appendChild(tabButtons[t]);
-    if (tabList.length > 1) titlebar.append(heading, tabs, closeBtn);
-    else titlebar.append(heading, closeBtn);
+    const pageHistory = page();
+    const pageChronicle = page();
+    const pageAsk = page();
+    const pageOrders = page();
+    const pageBattles = page();
+    const pages: Record<GalacticHistoryTab, HTMLDivElement> = { history: pageHistory, chronicle: pageChronicle, ask: pageAsk, orders: pageOrders, battles: pageBattles };
 
-    const body = el('div', 'galactic-history-body');
-    const left = el('div', 'galactic-history-left');
-    const select = document.createElement('select');
-    select.className = 'galactic-history-filter';
-    if (logMode) {
-        for (const c of historyCategoryOptions()) {
-            const o = document.createElement('option');
-            o.value = c.value;
-            o.textContent = c.label;
-            select.appendChild(o);
-        }
-    } else {
-        HISTORY_FILTER_LABELS.forEach((label, i) => {
-            const o = document.createElement('option');
-            o.value = String(i);
-            o.textContent = text(label);
-            select.appendChild(o);
+    let tab: GalacticHistoryTab = 'history';
+    if (tabList.length > 1) {
+        const labels: Record<GalacticHistoryTab, string> = {
+            history: tryGetText('Chronicle Tab History') ?? 'History',
+            chronicle: tryGetText('Chronicle Tab Chronicle') ?? 'Chronicle',
+            ask: tryGetText('Chronicle Tab Ask') ?? 'Ask',
+            orders: tryGetText('Chronicle Tab Orders') ?? 'Orders',
+            battles: tryGetText('Battle Reports Tab') ?? 'Battle Reports',
+        };
+        const strip = tabStrip(tabList.map((t) => ({ id: t, label: labels[t] })), tab, (id) => setTab(id as GalacticHistoryTab));
+        tabList.forEach((t, i) => {
+            const b = strip.children[i] as HTMLElement;
+            b.classList.add('galactic-history-tab');
+            if (t === 'battles') {
+                b.classList.add('galactic-history-tab-improvement');
+                b.title = `${IMPROVEMENTS_TITLE}: Battle reports (inspired by Distant Worlds 2)`;
+            }
         });
+        body.appendChild(place(strip, 10, 4, win.bodySize.w - 20));
     }
-    const sortSelect = document.createElement('select');
-    sortSelect.className = 'galactic-history-filter';
-    for (const [v, tag, fallback] of [['date', 'EventLog Sort Date', 'Sort by Date'], ['importance', 'EventLog Sort Importance', 'Sort by Importance']] as const) {
-        const o = document.createElement('option');
-        o.value = v;
-        o.textContent = tryGetText(tag) ?? fallback;
-        sortSelect.appendChild(o);
-    }
-    const header = el('div', 'galactic-history-header');
-    const hIcon = el('span', 'galactic-history-header-cell');
-    const hTitle = el('button', 'galactic-history-header-cell galactic-history-sortable') as HTMLButtonElement;
-    const hDate = el('button', 'galactic-history-header-cell galactic-history-sortable galactic-history-date') as HTMLButtonElement;
-    hTitle.type = 'button';
-    hDate.type = 'button';
-    header.append(hIcon, hTitle, hDate);
-    const list = el('div', 'galactic-history-list');
-    if (logMode) left.append(select, sortSelect, header, list);
-    else left.append(select, header, list);
 
-    const right = el('div', 'galactic-history-right');
-    const msgHeading = el('div', 'galactic-history-msg-heading');
-    const msgText = el('div', 'galactic-history-msg-text');
-    const gotoBtn = el('button', 'galactic-history-goto', 'Go To') as HTMLButtonElement;
-    gotoBtn.type = 'button';
-    right.append(msgHeading, msgText, gotoBtn);
-    body.append(left, right);
-    // 19s-1 Chronicle view: years | the year's text + Export Markdown.
-    const chronBody = el('div', 'galactic-history-body');
-    const chronLeft = el('div', 'galactic-history-left');
-    const chronList = el('div', 'galactic-history-list');
-    const exportBtn = el('button', 'galactic-history-goto', tryGetText('Chronicle Export') ?? 'Export Markdown') as HTMLButtonElement;
-    exportBtn.type = 'button';
-    chronLeft.append(chronList, exportBtn);
-    const chronRight = el('div', 'galactic-history-right');
-    const chronHeading = el('div', 'galactic-history-msg-heading');
-    const chronText = el('div', 'galactic-history-msg-text galactic-history-chronicle-text');
-    chronRight.append(chronHeading, chronText);
-    chronBody.append(chronLeft, chronRight);
-    chronBody.style.display = 'none';
-    // 19s-4 Ask view: question box | answer + cited records.
-    const askBody = el('div', 'galactic-history-body galactic-history-ask');
-    const askForm = el('form', 'galactic-history-ask-form') as HTMLFormElement;
-    const askInput = document.createElement('input');
-    askInput.type = 'text';
-    askInput.className = 'galactic-history-ask-input';
-    askInput.maxLength = 400;
-    askInput.placeholder = tryGetText('Chronicle Ask Placeholder') ?? 'Ask the archive';
-    const askBtn = el('button', 'galactic-history-goto', tryGetText('Chronicle Ask Button') ?? 'Ask') as HTMLButtonElement;
-    askBtn.type = 'submit';
-    askForm.append(askInput, askBtn);
-    const askAnswer = el('div', 'galactic-history-msg-text galactic-history-chronicle-text galactic-history-ask-answer');
-    const askCited = el('div', 'galactic-history-ask-cited');
-    askBody.append(askForm, askAnswer, askCited);
-    askBody.style.display = 'none';
-    // 19s-4 Orders view: order box | the mapped order + Confirm / Cancel, or the clerk's question.
-    const ordBody = el('div', 'galactic-history-body galactic-history-ask');
-    const ordForm = el('form', 'galactic-history-ask-form') as HTMLFormElement;
-    const ordInput = document.createElement('input');
-    ordInput.type = 'text';
-    ordInput.className = 'galactic-history-ask-input';
-    ordInput.maxLength = 400;
-    ordInput.placeholder = tryGetText('Chronicle Orders Placeholder') ?? 'Give an order';
-    const ordBtn = el('button', 'galactic-history-goto', tryGetText('Chronicle Orders Button') ?? 'Interpret') as HTMLButtonElement;
-    ordBtn.type = 'submit';
-    ordForm.append(ordInput, ordBtn);
-    const ordLine = el('div', 'galactic-history-msg-text galactic-history-ask-answer');
-    const ordActions = el('div', 'galactic-history-ask-actions');
-    const ordConfirm = el('button', 'galactic-history-goto', tryGetText('Chronicle Orders Confirm') ?? 'Confirm') as HTMLButtonElement;
-    const ordCancel = el('button', 'galactic-history-goto', tryGetText('Chronicle Orders Cancel') ?? 'Cancel') as HTMLButtonElement;
-    ordConfirm.type = 'button';
-    ordCancel.type = 'button';
-    ordActions.append(ordConfirm, ordCancel);
-    ordActions.style.display = 'none';
-    ordBody.append(ordForm, ordLine, ordActions);
-    ordBody.style.display = 'none';
-    // [improvements] Battle Reports view: the last reports | the selected one's summary + Open Report / Go To.
-    const batBody = el('div', 'galactic-history-body');
-    const batLeft = el('div', 'galactic-history-left');
-    const batFilter = document.createElement('select');
-    batFilter.className = 'galactic-history-filter';
-    for (const [v, label] of [['battles', 'Battles'], ['all', 'Battles and skirmishes']] as const) {
-        const o = document.createElement('option');
-        o.value = v;
-        o.textContent = label;
-        batFilter.appendChild(o);
-    }
-    const batImprovement = el('div', 'galactic-history-improvement-note', `${IMPROVEMENTS_TITLE} — inspired by Distant Worlds 2`);
-    const batList = el('div', 'galactic-history-list');
-    batLeft.append(batFilter, batImprovement, batList);
-    const batRight = el('div', 'galactic-history-right');
-    const batHeading = el('div', 'galactic-history-msg-heading');
-    const batText = el('div', 'galactic-history-msg-text galactic-history-chronicle-text');
-    const batButtons = el('div', 'galactic-history-ask-actions');
-    const batOpen = el('button', 'galactic-history-goto', 'Open Report') as HTMLButtonElement;
-    const batGoto = el('button', 'galactic-history-goto', 'Go To') as HTMLButtonElement;
-    batOpen.type = 'button';
-    batGoto.type = 'button';
-    batButtons.append(batOpen, batGoto);
-    batRight.append(batHeading, batText, batButtons);
-    batBody.append(batLeft, batRight);
-    batBody.style.display = 'none';
-    win.append(titlebar, body, chronBody, askBody, ordBody, batBody);
-    root.appendChild(win);
-    document.body.appendChild(root);
+    // ---- History page (the original pnlMessageHistory) ----
+    const filterSelect = logMode
+        ? dropDown(historyCategoryOptions().map((c) => ({ value: c.value, label: c.label })), category, (v) => {
+              category = v as HistoryCategoryFilter;
+              selected = null;
+              rebind();
+          })
+        : dropDown(HISTORY_FILTER_LABELS.map((label, i) => ({ value: String(i), label: text(label) })), String(filter), (v) => {
+              filter = comboIndex = Number(v) as HistoryFilter;
+              selected = null;
+              rebind();
+          });
+    filterSelect.classList.add('galactic-history-filter');
+    if (logMode) {
+        // 19p: the category filter and the importance sort share the combo's row.
+        pageHistory.appendChild(place(filterSelect, FILTER.x, FILTER.y, 200, FILTER.h));
+        const sortSelect = dropDown(
+            [
+                { value: 'date', label: tryGetText('EventLog Sort Date') ?? 'Sort by Date' },
+                { value: 'importance', label: tryGetText('EventLog Sort Importance') ?? 'Sort by Importance' },
+            ],
+            logSort,
+            (v) => {
+                logSort = v as HistoryLogSort;
+                rebind();
+            },
+        );
+        sortSelect.classList.add('galactic-history-filter');
+        pageHistory.appendChild(place(sortSelect, FILTER.x + 205, FILTER.y, FILTER.w - 205, FILTER.h));
+    } else pageHistory.appendChild(place(filterSelect, FILTER.x, FILTER.y, FILTER.w, FILTER.h));
 
-    function renderHeader(): void {
-        const arrow = (c: HistorySortColumn): string => (!logMode && sort?.column === c ? (sort.ascending ? ' ▲' : ' ▼') : '');
-        hTitle.textContent = text('Subject') + arrow('title');
-        hDate.textContent = text('Star Date') + arrow('starDate');
+    // EmpireMessageListView: Icon (NotSortable) | Subject | Star Date (SortMode.Automatic; the log list keeps its order).
+    const flagUrls = new Map<Empire, Promise<string | null>>();
+    const flagUrl = (e: Empire): Promise<string | null> => {
+        let p = flagUrls.get(e);
+        if (p === undefined) {
+            p = empireFlagUrl(galaxy, e).catch(() => null);
+            flagUrls.set(e, p);
+        }
+        return p;
+    };
+    const renderIcon = (icon: HistoryIcon | null, cell: HTMLDivElement): void => {
+        if (icon === null) return;
+        const img = owEl('img', 'gh-icon');
+        img.alt = '';
+        img.draggable = false;
+        if (icon.kind === 'image') img.src = icon.url;
+        else {
+            img.title = icon.empire.name;
+            void flagUrl(icon.empire).then((u) => {
+                if (u !== null) img.src = u;
+                else {
+                    const sw = owEl('span', 'gh-swatch');
+                    sw.style.background = rgbCss(icon.empire.mainColor);
+                    sw.title = icon.empire.name;
+                    img.replaceWith(sw);
+                }
+            });
+        }
+        cell.appendChild(img);
+    };
+    const columns: GridColumn<ViewRow>[] = [
+        { id: 'icon', header: '', width: 35, align: 'center', render: (r, c) => renderIcon(r.icon, c) },
+        { id: 'title', header: text('Subject'), fill: 1, ...(logMode ? {} : { sort: (r: ViewRow) => r.title }), render: (r, c) => void (c.textContent = r.title) },
+        { id: 'starDate', header: text('Star Date'), width: 80, ...(logMode ? {} : { sort: (r: ViewRow) => r.starDate }), render: (r, c) => void (c.textContent = r.date) },
+    ];
+    const grid = new OwGrid<ViewRow>({
+        columns,
+        key: (r) => r.key,
+        rowHeight: 20,
+        empty: 'No messages',
+        onSelect: (r) => {
+            selected = r.key;
+            showSelected();
+        },
+    });
+    grid.el.classList.add('gh-grid');
+    pageHistory.appendChild(place(grid.el, LIST.x, LIST.y, LIST.w, LIST.h));
+    const msgHeading = headingLabel(HEADING.x, HEADING.y, HEADING.w);
+    const msgText = readOnlyText(TEXT.x, TEXT.y, TEXT.w, TEXT.h);
+    pageHistory.append(msgHeading, msgText);
+    const mapBox = place(owEl('div', 'gh-map'), MAP.x, MAP.y, MAP.size, MAP.size);
+    const mapCanvas = owEl('canvas', 'gh-map-canvas');
+    mapBox.appendChild(mapCanvas);
+    pageHistory.appendChild(mapBox);
+    const gotoBtn = glassButton(text('Go to Location'), {
+        className: 'galactic-history-goto',
+        disabled: true,
+        onClick: () => {
+            const row = selectedRow();
+            if (row === null || row.loc === null) return;
+            onGoTo(row.loc.x, row.loc.y);
+            close();
+        },
+    });
+    pageHistory.appendChild(place(gotoBtn, GOTO.x, GOTO.y, GOTO.w, GOTO.h));
+
+    let mapPoint: { x: number; y: number } | null = null;
+    let mapDrawn = false;
+    function drawMap(): void {
+        if (!closed && tab === 'history') drawHistoryMap(mapCanvas, galaxy, win.scale, mapPoint, () => closed);
     }
 
     function selectedRow(): ViewRow | null {
         return rows.find((r) => r.key === selected) ?? null;
     }
 
-    // Port of Main.Part4.cs:1982 method_531: heading, text and Go To for the selected message.
+    // Port of Main.Part4.cs:1982 method_531: heading, text, map position and Go To for the selected message.
     function showSelected(): void {
         const row = selectedRow();
-        if (row === null) {
-            msgHeading.textContent = '';
-            msgText.textContent = '';
-            gotoBtn.disabled = true;
-            return;
+        setText(msgHeading, row?.heading ?? '');
+        if (msgText.textContent !== (row?.body ?? '')) {
+            msgText.textContent = row?.body ?? '';
+            msgText.scrollTop = 0;
         }
-        msgHeading.textContent = row.heading;
-        msgText.textContent = row.body;
-        gotoBtn.disabled = row.loc === null;
-    }
-
-    /** The rows in display order (the faithful list applies the column sort; the log list is ordered by its builder). */
-    function shownRows(): ViewRow[] {
-        if (logMode) return rows;
-        const byKey = new Map(rows.map((r) => [r.key, r] as const));
-        return sortHistoryRows(
-            rows.map((r) => ({ message: r.key as EmpireMessage, title: r.title, starDate: r.starDate, date: r.date, icon: r.icon })),
-            sort,
-        ).map((r) => byKey.get(r.message)!);
-    }
-
-    function renderList(): void {
-        heading.textContent = logMode ? text('Galactic History') : historyHeaderTitle(filter);
-        renderHeader();
-        const shown = shownRows();
-        list.replaceChildren();
-        if (shown.length === 0) list.appendChild(el('div', 'galactic-history-empty', 'No messages'));
-        for (const row of shown) {
-            const line = el('div', 'galactic-history-row');
-            if (row.key === selected) line.classList.add('galactic-history-row-selected');
-            const icon = el('span', 'galactic-history-icon');
-            if (row.icon?.kind === 'image') {
-                const img = document.createElement('img');
-                img.src = row.icon.url;
-                img.alt = '';
-                img.draggable = false;
-                icon.appendChild(img);
-            } else if (row.icon?.kind === 'flag') {
-                const sw = el('span', 'galactic-history-swatch');
-                sw.style.background = rgbCss(row.icon.empire.mainColor);
-                sw.title = row.icon.empire.name;
-                icon.appendChild(sw);
-            }
-            line.append(icon, el('span', 'galactic-history-title', row.title), el('span', 'galactic-history-date', row.date));
-            line.addEventListener('click', () => {
-                selected = row.key;
-                for (const r of list.children) r.classList.remove('galactic-history-row-selected');
-                line.classList.add('galactic-history-row-selected');
-                showSelected();
-            });
-            list.appendChild(line);
+        gotoBtn.disabled = row === null || row.loc === null;
+        const p = historyMapPoint(galaxy.sizeX, MAP.size, row?.loc ?? null);
+        if (p?.x !== mapPoint?.x || p?.y !== mapPoint?.y || !mapDrawn) {
+            mapPoint = p;
+            mapDrawn = true;
+            drawMap();
         }
     }
 
     function buildRows(): ViewRow[] {
         if (logMode) {
-            return eventLogHistoryRows(empire.galaxy, empire, category, logSort).map((r) => ({
+            return eventLogHistoryRows(galaxy, empire, category, logSort).map((r) => ({
                 key: r.entry,
                 title: r.importance > 0 ? `${'!'.repeat(r.importance)} ${r.title}` : r.title,
                 date: r.date,
@@ -894,217 +960,289 @@ function createGalacticHistory(opts: GalacticHistoryOptions): OpenState {
     // else selects the first row (the grid's default current row).
     function rebind(): void {
         // The command only when there is something to trim (RemoveOldHistoryMessages is a no-op otherwise).
-        if (!logMode && empireMessageHistory(empire).length > empire.maximumHistoryMessages) trimMessageHistory(empire.galaxy, empire);
+        if (!logMode && empireMessageHistory(empire).length > empire.maximumHistoryMessages) trimMessageHistory(galaxy, empire);
         rows = buildRows();
-        if (selected === null || !rows.some((r) => r.key === selected)) selected = shownRows()[0]?.key ?? null;
-        renderList();
+        win.setTitle(headerTitle());
+        win.setIcon(headerIcon());
+        grid.setRows(rows);
+        if (selected === null || !rows.some((r) => r.key === selected)) selected = grid.displayed[0]?.key ?? null;
+        grid.setSelection(selected === null ? [] : [selected]);
         showSelected();
     }
 
     function currentHistoryKey(): string {
         if (logMode) {
-            const entries = eventLogEntries(empire.galaxy);
+            const entries = eventLogEntries(galaxy);
             return `${entries.length}:${entries.length > 0 ? entries[entries.length - 1].id : 0}`;
         }
         const h = empireMessageHistory(empire);
         return `${h.length}:${h.length > 0 ? h[h.length - 1]?.starDate : 0}`;
     }
 
-    select.value = logMode ? category : String(filter);
-    select.addEventListener('change', () => {
-        if (logMode) category = select.value as HistoryCategoryFilter;
-        else filter = comboIndex = Number(select.value) as HistoryFilter;
-        selected = null;
-        rebind();
-    });
-    sortSelect.value = logSort;
-    sortSelect.addEventListener('change', () => {
-        logSort = sortSelect.value as HistoryLogSort;
-        rebind();
-    });
-    hTitle.addEventListener('click', () => {
-        if (logMode) return;
-        sort = nextHistorySort(sort, 'title');
-        renderList();
-    });
-    hDate.addEventListener('click', () => {
-        if (logMode) return;
-        sort = nextHistorySort(sort, 'starDate');
-        renderList();
-    });
-    gotoBtn.addEventListener('click', () => {
-        const row = selectedRow();
-        if (row === null || row.loc === null) return;
-        onGoTo(row.loc.x, row.loc.y);
-        close();
-    });
-
-    // 19s-1 Chronicle tab.
-    let tab: GalacticHistoryTab = 'history';
+    // ---- 19s-1 Chronicle page: years | the year's text + Export Markdown ----
     let chronYear: number | null = null;
     let chronKey = '';
+    const chronGrid = new OwGrid<ChronicleRow>({
+        columns: [
+            { id: 'title', header: tryGetText('Chronicle Tab Chronicle') ?? 'Chronicle', fill: 1, render: (r, c) => void (c.textContent = r.title) },
+            { id: 'year', header: text('Star Date'), width: 80, align: 'right', render: (r, c) => void (c.textContent = String(r.year)) },
+        ],
+        key: (r) => `${r.year}:${r.source}`,
+        rowHeight: 20,
+        empty: tryGetText('Chronicle Empty') ?? 'No year has ended yet',
+        rowClass: (r) => (r.source === 'pending' ? 'gh-pending' : ''),
+        onSelect: (r) => {
+            if (r.source !== 'pending') chronYear = r.year;
+            renderChronicle(true);
+        },
+    });
+    pageChronicle.appendChild(place(chronGrid.el, LIST.x, FILTER.y, LIST.w, LIST.y + LIST.h - FILTER.y - 35));
+    const exportBtn = glassButton(tryGetText('Chronicle Export') ?? 'Export Markdown', {
+        className: 'galactic-history-goto',
+        onClick: () => {
+            const blob = new Blob([chronicleMarkdown(galaxy, empire)], { type: 'text/markdown' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = chronicleFileName(empire);
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            setTimeout(() => URL.revokeObjectURL(url), 1000);
+        },
+    });
+    pageChronicle.appendChild(place(exportBtn, LIST.x, LIST.y + LIST.h - 25, LIST.w, 25));
+    const chronHeading = headingLabel(HEADING.x, HEADING.y, HEADING.w);
+    const chronText = readOnlyText(TEXT.x, TEXT.y, MAP.x + MAP.size - TEXT.x, TEXT.h, 'gh-prewrap');
+    pageChronicle.append(chronHeading, chronText);
+
     function chronicleKey(): string {
-        const ys = chronicleYears(empire.galaxy, empire);
-        return ys.map((c) => `${c.year}:${c.source}:${c.written}`).join(',') + `|${dueChronicleYear(empire.galaxy, empire) ?? ''}`;
+        const ys = chronicleYears(galaxy, empire);
+        return ys.map((c) => `${c.year}:${c.source}:${c.written}`).join(',') + `|${dueChronicleYear(galaxy, empire) ?? ''}`;
     }
-    function renderChronicle(): void {
-        chronKey = chronicleKey();
-        const crow = chronicleRows(empire.galaxy, empire);
+    function renderChronicle(selectionOnly = false): void {
+        const crow = chronicleRows(galaxy, empire);
         if (chronYear === null || !crow.some((r) => r.year === chronYear)) chronYear = crow.find((r) => r.source !== 'pending')?.year ?? crow[0]?.year ?? null;
-        chronList.replaceChildren();
-        if (crow.length === 0) chronList.appendChild(el('div', 'galactic-history-empty', tryGetText('Chronicle Empty') ?? 'No year has ended yet'));
-        for (const r of crow) {
-            const line = el('div', 'galactic-history-row');
-            if (r.year === chronYear && r.source !== 'pending') line.classList.add('galactic-history-row-selected');
-            line.append(el('span', 'galactic-history-icon'), el('span', 'galactic-history-title', r.title), el('span', 'galactic-history-date', String(r.year)));
-            if (r.source !== 'pending') {
-                line.addEventListener('click', () => {
-                    chronYear = r.year;
-                    renderChronicle();
-                });
-            }
-            chronList.appendChild(line);
+        if (!selectionOnly) {
+            chronKey = chronicleKey();
+            chronGrid.setRows(crow);
         }
         const cur = crow.find((r) => r.year === chronYear && r.source !== 'pending') ?? null;
-        chronHeading.textContent = cur !== null ? `${cur.year} — ${cur.title}` : '';
-        chronText.textContent = cur !== null ? cur.text : '';
-        if (cur !== null && cur.source === 'fallback') chronText.textContent += `\n\n${tryGetText('Chronicle Fallback Note') ?? '(A plain record: no chronicler model answered.)'}`;
+        chronGrid.setSelection(cur !== null ? [`${cur.year}:${cur.source}`] : []);
+        setText(chronHeading, cur !== null ? `${cur.year} — ${cur.title}` : '');
+        let t = cur !== null ? cur.text : '';
+        if (cur !== null && cur.source === 'fallback') t += `\n\n${tryGetText('Chronicle Fallback Note') ?? '(A plain record: no chronicler model answered.)'}`;
+        setText(chronText, t);
         exportBtn.disabled = !crow.some((r) => r.source !== 'pending');
     }
-    function setTab(t: GalacticHistoryTab): void {
-        tab = t;
-        for (const k of Object.keys(tabButtons) as GalacticHistoryTab[]) tabButtons[k].classList.toggle('galactic-history-tab-active', t === k);
-        body.style.display = t === 'history' ? '' : 'none';
-        chronBody.style.display = t === 'chronicle' ? '' : 'none';
-        askBody.style.display = t === 'ask' ? '' : 'none';
-        ordBody.style.display = t === 'orders' ? '' : 'none';
-        batBody.style.display = t === 'battles' ? '' : 'none';
-        if (t === 'battles') renderBattles();
-        if (t === 'chronicle') renderChronicle();
-        if (t === 'ask') askInput.focus();
-        if (t === 'orders') ordInput.focus();
-    }
-    for (const k of Object.keys(tabButtons) as GalacticHistoryTab[]) tabButtons[k].addEventListener('click', () => setTab(k));
 
-    // [improvements] Battle Reports tab.
-    let batSelected: number | null = null;
-    let batKey = '';
-    function battlesKey(): string {
-        return listBattleReports(empire.galaxy, true).map((r) => r.id).join(',') + `|${batFilter.value}`;
-    }
-    function renderBattles(): void {
-        batKey = battlesKey();
-        const brows = battleReportRows(empire.galaxy, batFilter.value === 'all');
-        if (batSelected === null || !brows.some((r) => r.report.id === batSelected)) batSelected = brows[0]?.report.id ?? null;
-        batList.replaceChildren();
-        if (brows.length === 0) batList.appendChild(el('div', 'galactic-history-empty', 'No battles yet'));
-        for (const r of brows) {
-            const line = el('div', 'galactic-history-row');
-            if (r.report.id === batSelected) line.classList.add('galactic-history-row-selected');
-            if (r.report.minor) line.classList.add('galactic-history-row-minor');
-            const icon = el('span', 'galactic-history-icon');
-            const sw = el('span', 'galactic-history-swatch');
-            sw.style.background = r.color;
-            icon.appendChild(sw);
-            line.append(icon, el('span', 'galactic-history-title', r.title), el('span', 'galactic-history-date', r.date));
-            line.addEventListener('click', () => {
-                batSelected = r.report.id;
-                renderBattles();
-            });
-            line.addEventListener('dblclick', () => openBattleReport(r.report));
-            batList.appendChild(line);
+    // ---- 19s-4 Ask page: question box | answer + cited records ----
+    const askInput = textBox('', tryGetText('Chronicle Ask Placeholder') ?? 'Ask the archive', () => {});
+    askInput.classList.add('galactic-history-ask-input');
+    askInput.maxLength = 400;
+    pageAsk.appendChild(place(askInput, 10, FILTER.y, 820, 25));
+    const askBtn = glassButton(tryGetText('Chronicle Ask Button') ?? 'Ask', { className: 'galactic-history-goto', onClick: () => submitAsk() });
+    pageAsk.appendChild(place(askBtn, 840, FILTER.y, 100, 25));
+    const askAnswer = readOnlyText(10, 44, 930, 290, 'gh-prewrap galactic-history-ask-answer');
+    pageAsk.appendChild(askAnswer);
+    const askCitedHeading = headingLabel(10, 344, 930);
+    const askCited = place(scrollPanel('gh-cited'), 10, 370, 930, 140);
+    pageAsk.append(askCitedHeading, askCited);
+    askInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            submitAsk();
         }
-        const cur = brows.find((r) => r.report.id === batSelected)?.report ?? null;
-        batHeading.textContent = cur !== null ? battleListTitle(cur) : '';
-        batText.textContent = cur !== null ? battleReportSummary(cur) : '';
-        batOpen.disabled = cur === null;
-        batGoto.disabled = cur === null;
-    }
-    batFilter.addEventListener('change', () => renderBattles());
-    batOpen.addEventListener('click', () => {
-        const cur = listBattleReports(empire.galaxy, true).find((r) => r.id === batSelected);
-        if (cur !== undefined) openBattleReport(cur);
     });
-    batGoto.addEventListener('click', () => {
-        const cur = listBattleReports(empire.galaxy, true).find((r) => r.id === batSelected);
-        if (cur === undefined) return;
-        onGoTo(cur.x, cur.y);
-        close();
-    });
-
-    // 19s-4 Ask: one question at a time; the answer arrives between frames (the queue's promise) and only reads.
-    let closed = false;
+    // One question at a time; the answer arrives between frames (the queue's promise) and only reads.
     let asking = false;
-    askForm.addEventListener('submit', (e) => {
-        e.preventDefault();
+    function submitAsk(): void {
         const q = askInput.value.trim();
         if (asking || q === '') return;
         asking = true;
         askBtn.disabled = true;
         askAnswer.textContent = tryGetText('Chronicle Ask Waiting') ?? 'The archivist is searching the records…';
+        askCitedHeading.textContent = '';
         askCited.replaceChildren();
-        void askArchivist(empire.galaxy, empire, currentLlmLayer()?.queue ?? null, q).then((a) => {
+        void askArchivist(galaxy, empire, currentLlmLayer()?.queue ?? null, q).then((a) => {
             asking = false;
             askBtn.disabled = false;
             if (closed) return;
             askAnswer.textContent = a.answer;
             askCited.replaceChildren();
-            if (a.citations.length > 0) {
-                askCited.appendChild(el('div', 'galactic-history-msg-heading', tryGetText('Chronicle Ask Cited') ?? 'Cited records'));
-                for (const c of a.citations) askCited.appendChild(el('div', 'galactic-history-ask-line', archiveLineText(c)));
-            }
+            askCitedHeading.textContent = a.citations.length > 0 ? (tryGetText('Chronicle Ask Cited') ?? 'Cited records') : '';
+            for (const c of a.citations) askCited.appendChild(owEl('div', 'gh-cited-line galactic-history-ask-line', archiveLineText(c)));
         });
-    });
+    }
 
-    // 19s-4 Orders: interpret → the confirmation line; only Confirm issues the command (through the command queue).
+    // ---- 19s-4 Orders page: order box | the mapped order + Confirm / Cancel, or the clerk's question ----
+    const ordInput = textBox('', tryGetText('Chronicle Orders Placeholder') ?? 'Give an order', () => {});
+    ordInput.classList.add('galactic-history-ask-input');
+    ordInput.maxLength = 400;
+    pageOrders.appendChild(place(ordInput, 10, FILTER.y, 820, 25));
+    const ordBtn = glassButton(tryGetText('Chronicle Orders Button') ?? 'Interpret', { className: 'galactic-history-goto', onClick: () => submitOrder() });
+    pageOrders.appendChild(place(ordBtn, 840, FILTER.y, 100, 25));
+    const ordLine = readOnlyText(10, 44, 930, 120, 'gh-prewrap galactic-history-ask-answer');
+    pageOrders.appendChild(ordLine);
+    const ordConfirm = glassButton(tryGetText('Chronicle Orders Confirm') ?? 'Confirm', {
+        className: 'galactic-history-goto',
+        onClick: () => {
+            const order = pendingOrder;
+            if (order === null) return;
+            showOrder(tryGetText('Chronicle Orders Issued') ?? 'Order issued.', null);
+            confirmOrder(galaxy, empire, order, (r) => {
+                if (!closed) ordLine.textContent = `${r.ok ? '✓' : '✗'} ${r.message}`;
+            });
+            ordInput.value = '';
+        },
+    });
+    const ordCancel = glassButton(tryGetText('Chronicle Orders Cancel') ?? 'Cancel', { className: 'galactic-history-goto', onClick: () => showOrder('', null) });
+    pageOrders.append(place(ordConfirm, 10, 174, 150, 25), place(ordCancel, 170, 174, 150, 25));
+    ordInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            submitOrder();
+        }
+    });
+    // Interpret → the confirmation line; only Confirm issues the command (through the command queue).
     let pendingOrder: PendingOrder | null = null;
     let interpreting = false;
-    function showOrder(text: string, order: PendingOrder | null): void {
+    function showOrder(line: string, order: PendingOrder | null): void {
         pendingOrder = order;
-        ordLine.textContent = order !== null ? `${text} — confirm?` : text;
-        ordActions.style.display = order !== null ? '' : 'none';
+        ordLine.textContent = order !== null ? `${line} — confirm?` : line;
+        ordConfirm.style.display = ordCancel.style.display = order !== null ? '' : 'none';
     }
-    ordForm.addEventListener('submit', (e) => {
-        e.preventDefault();
-        const text = ordInput.value.trim();
-        if (interpreting || text === '') return;
+    showOrder('', null);
+    function submitOrder(): void {
+        const t = ordInput.value.trim();
+        if (interpreting || t === '') return;
         interpreting = true;
         ordBtn.disabled = true;
         showOrder(tryGetText('Chronicle Orders Waiting') ?? 'The order clerk is reading your order…', null);
-        void interpretOrder(empire.galaxy, empire, currentLlmLayer()?.queue ?? null, advisorSelectionFromHud(), text).then((r) => {
+        void interpretOrder(galaxy, empire, currentLlmLayer()?.queue ?? null, advisorSelectionFromHud(), t).then((r) => {
             interpreting = false;
             ordBtn.disabled = false;
             if (closed) return;
             if (r.status === 'confirm') showOrder(r.line, r.order);
             else showOrder(r.text, null);
         });
+    }
+
+    // ---- [improvements] Battle Reports page: the reports | the selected one's summary, map, Open Report / Go To ----
+    type BattleRow = ReturnType<typeof battleReportRows>[number];
+    let batSelected: number | null = null;
+    let batKey = '';
+    let batWithSkirmishes = false;
+    const batFilter = dropDown(
+        [
+            { value: 'battles', label: 'Battles' },
+            { value: 'all', label: 'Battles and skirmishes' },
+        ],
+        'battles',
+        (v) => {
+            batWithSkirmishes = v === 'all';
+            renderBattles();
+        },
+    );
+    batFilter.classList.add('galactic-history-filter');
+    pageBattles.appendChild(place(batFilter, FILTER.x, FILTER.y, FILTER.w, FILTER.h));
+    const batGrid = new OwGrid<BattleRow>({
+        columns: [
+            {
+                id: 'result',
+                header: '',
+                width: 35,
+                align: 'center',
+                render: (r, c) => {
+                    const sw = owEl('span', 'gh-swatch');
+                    sw.style.background = r.color;
+                    sw.title = RESULT_LABELS[r.report.result];
+                    c.appendChild(sw);
+                },
+            },
+            { id: 'title', header: text('Subject'), fill: 1, sort: (r) => r.title, render: (r, c) => void (c.textContent = r.title) },
+            { id: 'date', header: text('Star Date'), width: 80, sort: (r) => r.report.endStarDate, render: (r, c) => void (c.textContent = r.date) },
+        ],
+        key: (r) => r.report.id,
+        rowHeight: 20,
+        empty: 'No battles yet',
+        rowClass: (r) => (r.report.minor ? 'galactic-history-row-minor gh-minor' : ''),
+        onSelect: (r) => {
+            batSelected = r.report.id;
+            showBattle();
+        },
+        onDoubleClick: (r) => openBattleReport(r.report),
     });
-    ordConfirm.addEventListener('click', () => {
-        const order = pendingOrder;
-        if (order === null) return;
-        showOrder(tryGetText('Chronicle Orders Issued') ?? 'Order issued.', null);
-        confirmOrder(empire.galaxy, empire, order, (r) => {
-            if (!closed) ordLine.textContent = `${r.ok ? '✓' : '✗'} ${r.message}`;
-        });
-        ordInput.value = '';
+    batGrid.el.classList.add('gh-grid');
+    pageBattles.appendChild(place(batGrid.el, LIST.x, LIST.y, LIST.w, LIST.h));
+    const batHeading = headingLabel(HEADING.x, HEADING.y, HEADING.w);
+    const batText = readOnlyText(TEXT.x, TEXT.y, TEXT.w, TEXT.h, 'gh-prewrap');
+    pageBattles.append(batHeading, batText);
+    const batMapBox = place(owEl('div', 'gh-map'), MAP.x, MAP.y, MAP.size, MAP.size);
+    const batCanvas = owEl('canvas', 'gh-map-canvas');
+    batMapBox.appendChild(batCanvas);
+    pageBattles.appendChild(batMapBox);
+    const batOpen = glassButton('Open Report', {
+        className: 'galactic-history-goto',
+        onClick: () => {
+            const cur = listBattleReports(galaxy, true).find((r) => r.id === batSelected);
+            if (cur !== undefined) openBattleReport(cur);
+        },
     });
-    ordCancel.addEventListener('click', () => showOrder('', null));
-    exportBtn.addEventListener('click', () => {
-        const blob = new Blob([chronicleMarkdown(empire.galaxy, empire)], { type: 'text/markdown' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = chronicleFileName(empire);
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-        setTimeout(() => URL.revokeObjectURL(url), 1000);
+    const batGoto = glassButton(text('Go to Location'), {
+        className: 'galactic-history-goto',
+        onClick: () => {
+            const cur = listBattleReports(galaxy, true).find((r) => r.id === batSelected);
+            if (cur === undefined) return;
+            onGoTo(cur.x, cur.y);
+            close();
+        },
     });
+    pageBattles.append(place(batOpen, GOTO.x, GOTO.y, GOTO.w, GOTO.h), place(batGoto, GOTO.x, GOTO.y + 30, GOTO.w, GOTO.h));
+    pageBattles.appendChild(
+        place(owText(`${IMPROVEMENTS_TITLE} — inspired by Distant Worlds 2`, { size: FONT.tiny, color: HEADING_COLOR, shadow: false, wrapWidth: MAP.size, className: 'galactic-history-improvement-note' }), GOTO.x, GOTO.y + 64),
+    );
+
+    let batPoint: { x: number; y: number } | null = null;
+    function drawBattleMap(): void {
+        if (!closed && tab === 'battles') drawHistoryMap(batCanvas, galaxy, win.scale, batPoint, () => closed);
+    }
+    function battlesKey(): string {
+        return listBattleReports(galaxy, true).map((r) => r.id).join(',') + `|${batWithSkirmishes ? 'all' : 'battles'}`;
+    }
+    function showBattle(): void {
+        const cur = listBattleReports(galaxy, true).find((r) => r.id === batSelected) ?? null;
+        setText(batHeading, cur !== null ? battleListTitle(cur) : '');
+        setText(batText, cur !== null ? battleReportSummary(cur) : '');
+        batOpen.disabled = cur === null;
+        batGoto.disabled = cur === null;
+        batPoint = historyMapPoint(galaxy.sizeX, MAP.size, cur !== null ? { x: cur.x, y: cur.y } : null);
+        drawBattleMap();
+    }
+    function renderBattles(): void {
+        batKey = battlesKey();
+        const brows = battleReportRows(galaxy, batWithSkirmishes);
+        batGrid.setRows(brows);
+        if (batSelected === null || !brows.some((r) => r.report.id === batSelected)) batSelected = brows[0]?.report.id ?? null;
+        batGrid.setSelection(batSelected === null ? [] : [batSelected]);
+        showBattle();
+    }
+
+    function setTab(t: GalacticHistoryTab): void {
+        tab = t;
+        for (const k of Object.keys(pages) as GalacticHistoryTab[]) pages[k].style.display = t === k ? '' : 'none';
+        if (t === 'history') drawMap();
+        if (t === 'battles') renderBattles();
+        if (t === 'chronicle') renderChronicle();
+        if (t === 'ask') askInput.focus();
+        if (t === 'orders') ordInput.focus();
+    }
 
     historyKey = currentHistoryKey();
+    setTab('history');
     rebind();
     // New history entries while open: rebind only when the history changed (no per-tick DOM rebuild).
-    const timer = setInterval(() => {
+    timer = window.setInterval(() => {
         if (tab === 'chronicle') {
             if (chronicleKey() !== chronKey) renderChronicle();
             return;
@@ -1118,25 +1256,6 @@ function createGalacticHistory(opts: GalacticHistoryOptions): OpenState {
         historyKey = k;
         rebind();
     }, 1000);
-
-    function close(): void {
-        closed = true;
-        clearInterval(timer);
-        document.removeEventListener('keydown', onKeyDown);
-        root.remove();
-        open = null;
-    }
-
-    // Escape closes the panel; stopImmediatePropagation keeps the global game-menu Escape handler from opening too.
-    function onKeyDown(e: KeyboardEvent): void {
-        if (e.key === 'Escape') {
-            e.preventDefault();
-            e.stopImmediatePropagation();
-            close();
-        }
-    }
-    document.addEventListener('keydown', onKeyDown);
-    closeBtn.addEventListener('click', () => close());
 
     return { close };
 }

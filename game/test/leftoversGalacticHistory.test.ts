@@ -10,6 +10,7 @@ import {
     defaultMessageTitle,
     filterHistoryMessages,
     historyHeaderTitle,
+    historyMapPoint,
     messageIcon,
     messageLocation,
     messageTitle,
@@ -126,5 +127,17 @@ describe('eventHistoryMessageType (method_523)', () => {
         expect(eventHistoryMessageType(EventMessageType.EncounterBuiltObject, null)).toBeNull();
         expect(eventHistoryMessageType(EventMessageType.UncoverKnownLocation, null)).toBe(EmpireMessageType.ExplorationLocation);
         expect(eventHistoryMessageType(EventMessageType.GeneralDiscovery, null)).toBe(EmpireMessageType.ExplorationRuins);
+    });
+});
+
+describe('historyMapPoint (gmapMessageHistory: GalaxyMap.cs SetPosition + method_6 crosshair)', () => {
+    it('maps a world point to trunc(x / (SizeX / width)) + 1', () => {
+        expect(historyMapPoint(500000, 250, { x: 100000, y: 250000 })).toEqual({ x: 51, y: 126 });
+        expect(historyMapPoint(500000, 250, { x: 1999, y: 1 })).toEqual({ x: 1, y: 1 });
+    });
+    it('draws no crosshair without a location or with a zero coordinate (double_0 > 0 && double_1 > 0)', () => {
+        expect(historyMapPoint(500000, 250, null)).toBeNull();
+        expect(historyMapPoint(500000, 250, { x: 0, y: 0 })).toBeNull();
+        expect(historyMapPoint(500000, 250, { x: 1000, y: 0 })).toBeNull();
     });
 });

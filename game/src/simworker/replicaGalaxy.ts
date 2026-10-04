@@ -273,6 +273,18 @@ export class GalaxySyncSource {
         else this.side[key] = value;
     }
 
+    /**
+     * A save side table a player command just changed (the waypoints, sim/player/waypoints.ts): put its live object
+     * under `key` in the side-tables root now — the cold cycle would only recollect it at its next start — and compare
+     * the root (its keys only) and the table (`depth` levels down), so the change travels in the next delta, ahead of
+     * the command's reply. Read-only on the sim.
+     */
+    freshenSideTable(key: string, value: object | null, depth = 2): void {
+        this.side[key] = value;
+        this.encoder.compareNow(this.side, 0);
+        if (value !== null) this.encoder.compareNow(value, depth);
+    }
+
     /** The initial snapshot (everything discovered so far, incl. the side tables). */
     snapshot(): ReplicaDelta {
         // The side root was filled after the encoder discovered it empty: a full compare sends its contents.

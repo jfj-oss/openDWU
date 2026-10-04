@@ -1,7 +1,7 @@
 // Task 19e-9: Trade Flows panel + the Freight Flows map legend. NOT a port (DW:U has no such screen): it lists what
 // src/sim/logistics/tradeFlows.ts records — top routes (contracts at Empire.4.cs:1135 InitiateContract), top trade
 // hubs (BuiltObject.cs:3415 currentYearsIncome) and empire-pair yearly totals (DiplomaticRelation.cs:101
-// YearlyTradeValueList). House style of empiresList.ts; rows refresh in place once a second; Escape closes.
+// YearlyTradeValueList). Original-style ScreenPanel (ui/originalWindow.ts); rows refresh in place once a second; Escape closes.
 import './tradeFlows.css';
 import type { Galaxy } from '../../sim/galaxy';
 import type { Empire } from '../../sim/empire';
@@ -18,6 +18,7 @@ import {
 import { flowColor, FLOW_COLORS, type FreightOverlay } from '../../render/freightOverlay';
 import { flowTableRows, hubTableRows, pairTableRows } from '../freightText';
 import { onOverlayChange, type MapOverlayState } from '../mapOverlays';
+import { FONT, dropDown, glassButton, openOriginalWindow, place, scrollPanel } from '../originalWindow';
 
 export interface TradeFlowsOptions {
     galaxy: Galaxy;
@@ -123,36 +124,37 @@ class RowPool {
 
 function createTradeFlows(opts: TradeFlowsOptions): OpenState {
     const { galaxy } = opts;
-    const root = el('div', 'trade-flows-wrap');
-    const win = el('div', 'trade-flows-window');
-    const titlebar = el('div', 'trade-flows-titlebar');
-    titlebar.appendChild(el('div', 'trade-flows-heading', 'Trade Flows'));
-    const closeBtn = el('button', 'trade-flows-close', '✕');
-    closeBtn.type = 'button';
-    closeBtn.title = 'Close';
-    titlebar.appendChild(closeBtn);
-    win.appendChild(titlebar);
+    // Original-style ScreenPanel (ui/originalWindow.ts); does not pause the game.
+    const owin = openOriginalWindow({
+        id: 'tradeflows',
+        title: 'Trade Flows',
+        icon: 'diplomacy.png',
+        width: 640,
+        height: 760,
+        noAutoPause: true,
+        onClose: () => close(),
+    });
+    const root = owin.root;
+    root.classList.add('trade-flows-wrap');
+    const bw = owin.bodySize.w;
+    const bh = owin.bodySize.h;
 
-    const body = el('div', 'trade-flows-body');
     // Filters.
-    const filters = el('div', 'trade-flows-filters');
-    const catSel = el('select', 'trade-flows-select');
-    catSel.setAttribute('aria-label', 'Goods');
-    catSel.appendChild(new Option('All goods', ''));
-    for (const c of DEFAULT_FLOW_CATEGORIES) catSel.appendChild(new Option(c.label, c.key));
-    const empSel = el('select', 'trade-flows-select');
-    empSel.setAttribute('aria-label', 'Empire');
-    empSel.appendChild(new Option('All empires', 'all'));
-    if (opts.playerEmpire !== null) empSel.appendChild(new Option('My empire', 'mine'));
-    const winSel = el('select', 'trade-flows-select');
-    winSel.setAttribute('aria-label', 'Window');
-    for (const w of TRADE_FLOW_WINDOWS) winSel.appendChild(new Option(w.label, String(w.months)));
     const ov0 = opts.overlay();
-    winSel.value = String(ov0?.windowMonths ?? 12);
-    catSel.value = ov0?.filter.category ?? '';
-    empSel.value = ov0?.filter.empire != null ? 'mine' : 'all';
-    filters.append(catSel, empSel, winSel);
-    body.appendChild(filters);
+    const catSel = dropDown([{ value: '', label: 'All goods' }, ...DEFAULT_FLOW_CATEGORIES.map((c) => ({ value: c.key, label: c.label }))], ov0?.filter.category ?? '', () => {}, 'Goods');
+    catSel.setAttribute('aria-label', 'Goods');
+    const empSel = dropDown([{ value: 'all', label: 'All empires' }, ...(opts.playerEmpire !== null ? [{ value: 'mine', label: 'My empire' }] : [])], ov0?.filter.empire != null ? 'mine' : 'all', () => {}, 'Empire');
+    empSel.setAttribute('aria-label', 'Empire');
+    const winSel = dropDown(TRADE_FLOW_WINDOWS.map((w) => ({ value: String(w.months), label: w.label })), String(ov0?.windowMonths ?? 12), () => {}, 'Window');
+    winSel.setAttribute('aria-label', 'Window');
+    const fw = Math.floor((bw - 16 - 12) / 3);
+    owin.body.append(place(catSel, 8, 8, fw, 28), place(empSel, 8 + fw + 6, 8, fw, 28), place(winSel, 8 + 2 * (fw + 6), 8, fw, 28));
+    for (const s of [catSel, empSel, winSel]) s.style.fontSize = `${FONT.normal}px`;
+
+    // Everything below the filters scrolls.
+    const body = scrollPanel('trade-flows-body');
+    place(body, 8, 44, bw - 16, bh - 52);
+    owin.body.appendChild(body);
 
     // Legend.
     const legend = el('div', 'trade-flows-legend');
@@ -171,9 +173,6 @@ function createTradeFlows(opts: TradeFlowsOptions): OpenState {
     const flowsT = new RowPool(body, 'Top routes', ['Route', 'Goods', 'cr/yr', 'Contracts'], true, jump);
     const hubsT = new RowPool(body, 'Trade hubs (income this year)', ['Port', 'Owner', 'Income'], false, jump);
     const pairsT = new RowPool(body, 'Empire trade this year', ['Empire', 'Empire', 'Value'], false, () => {});
-    win.appendChild(body);
-    root.appendChild(win);
-    document.body.appendChild(root);
 
     const categoryOf = (r: number, c: number) => flowCategory(galaxy, r, c);
     function applyFilters(): void {
@@ -229,26 +228,19 @@ function createTradeFlows(opts: TradeFlowsOptions): OpenState {
     refresh();
     const timer = window.setInterval(refresh, 1000);
 
+    let closing = false;
     function close(): void {
+        if (closing) return;
+        closing = true;
         window.clearInterval(timer);
-        document.removeEventListener('keydown', onKeyDown);
         const o = opts.overlay();
         if (o !== null) {
             o.keepRecording = false;
             o.syncRecording();
         }
-        root.remove();
+        if (!owin.closed) owin.close();
         open = null;
     }
-    function onKeyDown(e: KeyboardEvent): void {
-        if (e.key === 'Escape') {
-            e.preventDefault();
-            e.stopImmediatePropagation();
-            close();
-        }
-    }
-    document.addEventListener('keydown', onKeyDown);
-    closeBtn.addEventListener('click', () => close());
     return { close };
 }
 
@@ -267,9 +259,7 @@ export function mountFreightLegend(state: MapOverlayState, onOpenPanel: () => vo
         item.append(sw, document.createTextNode(c.label));
         box.appendChild(item);
     }
-    const more = el('button', 'freight-legend-more', 'Top routes…');
-    more.type = 'button';
-    more.addEventListener('click', onOpenPanel);
+    const more = glassButton('Top routes…', { size: FONT.tiny, className: 'ow-flow freight-legend-more', onClick: onOpenPanel });
     box.appendChild(more);
     document.body.appendChild(box);
     const sync = () => {
