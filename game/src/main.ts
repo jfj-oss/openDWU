@@ -112,6 +112,8 @@ import { registerLocationPingedHook } from './sim/story/eventActions';
 import { createGalaxyMap, type GalaxyMapScreen } from './ui/screens/galaxyMap';
 import { hideMapTooltip } from './ui/mapTooltip';
 import { closeTradeFlows, mountFreightLegend, openTradeFlows, toggleTradeFlows } from './ui/screens/tradeFlows'; // [freightOverlay]
+import { openResourceSupply, setResourceSupplyHost } from './ui/screens/resourceSupply'; // [improvements] supplyChain
+import { invalidateSupply, supplySnapshot, supplyStats } from './ui/supplyChainCache'; // [improvements] supplyChain
 import { closeEmpireComparison, closeGameEndBanner, installGameEndHandler, removeGameEndHandler } from './ui/screens/empireComparison'; // [15d]
 import { setGameEndExitHandler } from './ui/screens/gameEndPanel'; // [15d]
 import { closeIntroductionPanel, openIntroductionPanel } from './ui/screens/introductionPanel'; // [intro]
@@ -508,6 +510,8 @@ const OVERLAY_PARAM_ALIASES: Record<string, OverlayKey> = {
     hubs: 'tradeHubs',
     tradeHubs: 'tradeHubs',
     // [freightOverlay] end
+    supply: 'supplyShortages', // [improvements] supplyChain
+    supplyShortages: 'supplyShortages',
 };
 
 /** Screenshot / dev hook: `?overlays=potentialColonies,scenic,research`
@@ -734,6 +738,18 @@ export async function startGameView(
     const removeFreightLegend = mountFreightLegend(overlays, () => openTradeFlows(tradeFlowsOpts));
     setEmpireSummaryTradeFlowsLink(() => openTradeFlows(tradeFlowsOpts));
     // [freightOverlay] end
+    // [improvements] supplyChain — the resource supply panel's game-view hooks, and a dev / perf handle.
+    setResourceSupplyHost({
+        galaxy,
+        goTo: (t) => selectStellarObject(t, true),
+        jumpTo: (x, y) => camera.centerOn(x, y),
+        freight: () => view.freightOverlay,
+        overlays,
+        openTradeFlows: () => openTradeFlows(tradeFlowsOpts),
+    });
+    Object.assign((window as unknown as { __dwu: Record<string, unknown> }).__dwu, {
+        supply: { stats: supplyStats, snapshot: (force = false) => supplySnapshot(galaxy, galaxy.playerEmpire, force), invalidate: () => invalidateSupply(galaxy), openResource: openResourceSupply },
+    });
     const hud: HudRefs = createHud({
         clock: time,
         overlays,
@@ -1101,6 +1117,7 @@ export async function startGameView(
         removeFreightLegend();
         setEmpireSummaryTradeFlowsLink(null);
         // [freightOverlay] end
+        setResourceSupplyHost(null); // [improvements] supplyChain
         closeMessageHistory();
         closeFleetsList(); // [15c]
         closeBuildOrder(); closeConstructionYards(); // [16c]

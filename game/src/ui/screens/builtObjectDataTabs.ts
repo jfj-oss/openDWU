@@ -33,6 +33,7 @@ import { issuePlayerCommand } from '../../sim/player/playerCommands';
 import { resolveComponentCategoryDescription } from '../../sim/player/designEditor';
 import { componentDefinitionsStatic } from '../../sim/designGeneration';
 import { missionTypeLabel, resourceIconUrl, subRoleLabel } from '../hud';
+import { openResourceSupply, resourceSupplyAvailable } from './resourceSupply'; // [improvements] supplyChain
 import { shipImageUrl } from '../selectionInfo';
 import { empireFlagUrl } from '../selectionInfoView';
 import { COLORS, FONT, OwGrid, dropDown, dropText, el, place, text, type GridColumn } from '../originalWindow';
@@ -281,7 +282,7 @@ export function renderDataTab(tab: DataTabId, o: BuiltObject | Habitat | null, c
     switch (tab) {
         case 'cargo': {
             // ctlBuiltObjectCargo (350 × 275): Empire 30, Picture 40, Name 160, Amount 60, Reserved 60.
-            type CargoRow = { empire: Empire | null; url: string | null; name: string; amount: number; reserved: number };
+            type CargoRow = { empire: Empire | null; url: string | null; name: string; amount: number; reserved: number; resourceId: number | null };
             const items = ((o?.cargo as { items?: { commodity: { resourceId: number }; commodityComponent: { componentId: number } | null; amount: number; reserved: number; empire: unknown }[] } | null)?.items ?? []).map((c): CargoRow => {
                 const res = c.commodityComponent === null ? galaxy.resources.find((r) => r.resourceId === c.commodity.resourceId) : undefined;
                 const comp = c.commodityComponent !== null ? galaxy.researchStatic?.componentsById.get(c.commodityComponent.componentId) : undefined;
@@ -291,6 +292,7 @@ export function renderDataTab(tab: DataTabId, o: BuiltObject | Habitat | null, c
                     name: res?.name ?? (comp as { name?: string } | undefined)?.name ?? '',
                     amount: c.amount,
                     reserved: c.reserved,
+                    resourceId: res ? res.resourceId : null,
                 };
             });
             pageGrid<CargoRow>(
@@ -298,7 +300,16 @@ export function renderDataTab(tab: DataTabId, o: BuiltObject | Habitat | null, c
                 [
                     { id: 'e', header: gt('Empire'), width: 30, render: (r, c) => flagCell(galaxy, c, r.empire) },
                     { id: 'p', header: '', width: 40, align: 'center', render: (r, c) => imageCell(c, r.url, 22) },
-                    { id: 'n', header: gt('Name'), width: 160, sort: (r) => r.name, render: (r, c) => textCell(c, r.name) },
+                    { id: 'n', header: gt('Name'), width: 160, sort: (r) => r.name, render: (r, c) => {
+                        textCell(c, r.name);
+                        // [improvements] supplyChain: a resource name opens its supply panel.
+                        if (r.resourceId !== null && resourceSupplyAvailable()) {
+                            c.classList.add('dt-supply-link');
+                            c.title = `${r.name}: where it is produced, held and needed in your empire (click)`;
+                        }
+                    }, onClick: (r) => {
+                        if (r.resourceId !== null && resourceSupplyAvailable()) openResourceSupply(r.resourceId);
+                    } },
                     { id: 'a', header: gt('Amount Abbreviation'), width: 60, align: 'right', sort: (r) => r.amount, render: (r, c) => textCell(c, r.amount.toLocaleString('en-US')) },
                     { id: 'r', header: gt('Reserved Abbreviation'), width: 60, align: 'right', sort: (r) => r.reserved, render: (r, c) => textCell(c, r.reserved.toLocaleString('en-US')) },
                 ],

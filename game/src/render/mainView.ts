@@ -91,6 +91,7 @@ import { getSettings, showRegionLabels, showSystemNames } from '../ui/settings';
 import { edgeScrollPixels, nebulaDetailScale, wheelNotches, wheelZoom, wheelZoomAnchor } from './viewInput'; // [gameoptions]
 import { hideMapTooltip, showMapTooltip, tooltipText } from '../ui/mapTooltip';
 import { freightTooltipText } from '../ui/freightText'; // [freightOverlay]
+import { shortageTooltip } from '../ui/supplyChainText'; // [improvements] supplyChain
 import { wreckTooltipText } from '../ui/scenario/wreckageUi'; // [wreckage]
 import type { FreightOverlay } from './freightOverlay'; // [freightOverlay]
 import { boundsOnScreen } from './drawCache';
@@ -2441,6 +2442,15 @@ export class MainView {
                 if (creature !== null) {
                     showMapTooltip(creatureTooltipText(creature), e.clientX, e.clientY);
                     return;
+                }
+                // [improvements] supplyChain — a Supply Shortages marker (it sits on a colony / yard: before the pick).
+                {
+                    const w = this.camera.screenToWorld(x, y);
+                    const sh = this.overlayLayer?.supply.hitTest(w.x, w.y, this.camera.zoom) ?? null;
+                    if (sh !== null) {
+                        showMapTooltip(shortageTooltip(this.galaxy, sh, this.galaxy.playerEmpire), e.clientX, e.clientY, true);
+                        return;
+                    }
                 }
                 const hit = this.pick(x, y);
                 if (hit === null) {

@@ -210,6 +210,12 @@ export class FreightOverlay {
     /** Scenario routes (mod layer: the 19a treasure fleet's circuit), dashed, the leg sailed drawn solid. */
     private routes = new Graphics();
     private routesAt = 0;
+    /** [improvements] supplyChain: one resource's live routes (the resource supply panel's "Highlight on map"),
+     *  drawn as bright dashed arcs over the recorded flows while Freight Flows is on. */
+    private highlightG = new Graphics();
+    private highlightDrawnZ = NaN;
+    private highlightDirty = false;
+    private _highlight: { color: number; routes: ReadonlyArray<{ fromX: number; fromY: number; toX: number; toY: number }> } | null = null;
     private rows: FlowRow[] = [];
     private hubRows: HubRow[] = [];
     private arcs: FlowArc[] = [];
@@ -241,8 +247,8 @@ export class FreightOverlay {
         private state: MapOverlayState,
     ) {
         this.filter = { categoryOf: (r, c) => flowCategory(galaxy, r, c) };
-        root.addChild(this.flows, this.hubs, this.leaders, this.routes);
-        this.flows.visible = this.hubs.visible = this.leaders.visible = this.routes.visible = false;
+        root.addChild(this.flows, this.hubs, this.leaders, this.routes, this.highlightG);
+        this.flows.visible = this.hubs.visible = this.leaders.visible = this.routes.visible = this.highlightG.visible = false;
         this.syncRecording();
     }
 
@@ -261,6 +267,41 @@ export class FreightOverlay {
         }
     }
 
+    /** [improvements] supplyChain: highlight these routes (null clears). */
+    setHighlight(h: { color: number; routes: ReadonlyArray<{ fromX: number; fromY: number; toX: number; toY: number }> } | null): void {
+        this._highlight = h;
+        this.highlightDirty = true;
+    }
+    get highlight(): { color: number; routes: ReadonlyArray<{ fromX: number; fromY: number; toX: number; toY: number }> } | null {
+        return this._highlight;
+    }
+
+    private updateHighlight(z: number, flowsOn: boolean): void {
+        const g = this.highlightG;
+        const h = this._highlight;
+        if (!flowsOn || h === null || h.routes.length === 0) {
+            if (g.visible) {
+                g.clear();
+                g.visible = false;
+            }
+            return;
+        }
+        if (!this.highlightDirty && g.visible && Math.abs(z / this.highlightDrawnZ - 1) < 0.15) return;
+        this.highlightDirty = false;
+        this.highlightDrawnZ = z;
+        g.clear();
+        const f = 1 / z;
+        for (const r of h.routes) {
+            if (!Number.isFinite(r.fromX) || !Number.isFinite(r.toX) || (r.fromX === r.toX && r.fromY === r.toY)) continue;
+            const a = flowArcFor(r.fromX, r.fromY, r.toX, r.toY);
+            g.moveTo(a.x1, a.y1).quadraticCurveTo(a.cx, a.cy, a.x2, a.y2).stroke({ width: 7 * f, color: 0x000000, alpha: 0.45 });
+            g.moveTo(a.x1, a.y1).quadraticCurveTo(a.cx, a.cy, a.x2, a.y2).stroke({ width: 3.5 * f, color: h.color, alpha: 1 });
+            circleAtScreenRes(g, a.x2, a.y2, 6 * f, z).fill({ color: h.color, alpha: 1 });
+            circleAtScreenRes(g, a.x1, a.y1, 4 * f, z).stroke({ width: 2 * f, color: h.color, alpha: 1 });
+        }
+        g.visible = true;
+    }
+
     /** Force a re-query (filter changed). */
     invalidate(): void {
         this.queriedDay = NaN;
@@ -276,7 +317,8 @@ export class FreightOverlay {
                 this.hubs.clear();
                 this.leaders.clear();
                 this.routes.clear();
-                this.flows.visible = this.hubs.visible = this.leaders.visible = this.routes.visible = false;
+                this.highlightG.clear();
+                this.flows.visible = this.hubs.visible = this.leaders.visible = this.routes.visible = this.highlightG.visible = false;
                 this.arcs = [];
                 this.discs = [];
                 this.dirty = true;
@@ -307,6 +349,7 @@ export class FreightOverlay {
         this.flows.visible = flowsOn;
         this.hubs.visible = hubsOn;
         this.updateRoutes(z, flowsOn);
+        this.updateHighlight(z, flowsOn); // [improvements] supplyChain
         // In-flight leaders (system zoom only).
         if (flowsOn && level === 'post' && ledger !== null) {
             const t = performance.now();

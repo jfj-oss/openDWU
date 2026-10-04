@@ -25,17 +25,24 @@ export function tooltipText(h: Habitat, systemName: string | null): string {
 let tooltipEl: HTMLDivElement | null = null;
 
 /** Show the map tooltip with `text` at 14 px right / 14 px below the
- * cursor position (clientX/clientY). Replaces any existing one. */
-export function showMapTooltip(text: string, x: number, y: number): void {
+ * cursor position (clientX/clientY). Replaces any existing one. `multiline`: keep the text's line breaks. */
+export function showMapTooltip(text: string, x: number, y: number, multiline = false): void {
     if (tooltipEl === null) {
         tooltipEl = document.createElement('div');
         tooltipEl.className = 'dwu-map-tooltip';
         document.body.appendChild(tooltipEl);
     }
     tooltipEl.textContent = text;
+    tooltipEl.classList.toggle('multiline', multiline);
     tooltipEl.style.left = `${x + 14}px`;
     tooltipEl.style.top = `${y + 14}px`;
     tooltipEl.style.display = 'block';
+    if (multiline && typeof window !== 'undefined') {
+        // A wide multi-line tooltip near the right / bottom edge: keep it on screen.
+        const r = tooltipEl.getBoundingClientRect();
+        if (r.right > window.innerWidth - 4) tooltipEl.style.left = `${Math.max(4, x - 14 - r.width)}px`;
+        if (r.bottom > window.innerHeight - 4) tooltipEl.style.top = `${Math.max(4, y - 14 - r.height)}px`;
+    }
 }
 
 /** Hide (and remove) the map tooltip. */

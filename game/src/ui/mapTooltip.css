@@ -15,3 +15,8 @@
     color: #fff;
     white-space: nowrap;
 }
+/* Several lines (the Supply Shortages tooltip, ui/supplyChainText.ts). */
+.dwu-map-tooltip.multiline {
+    white-space: pre;
+    line-height: 1.35;
+}

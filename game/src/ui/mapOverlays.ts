@@ -26,6 +26,9 @@ export interface MapOverlayState {
     threats: boolean;
     /** Scenario 19e-7: debris fields of battle wreckage the player knows (wreck markers + hover tooltip). */
     wrecks: boolean;
+    /** Improvements (supplyChain): the player's yards stalled for resources and colonies short of luxuries
+     *  (render/supplyOverlay.ts; hover tooltip). */
+    supplyShortages: boolean;
 }
 
 /** A fresh overlay state. Task M3: `empireTerritory` starts on, matching the
@@ -58,6 +61,7 @@ export function createMapOverlayState(): MapOverlayState {
         threats: true,
         // On, like Threats: only draws in a wreckage-scenario game.
         wrecks: true,
+        supplyShortages: false,
     };
 }
 
@@ -95,7 +99,8 @@ export const OVERLAY_ROWS: OverlayRow[] = [
     // [freightOverlay] end
     { key: 'threats', label: 'Threats' },
     { key: 'wrecks', label: 'Wreck Fields', mod: true },
-    // Improvements section (ui/improvements.ts): rows with `improvement: '<id>'` go here.
+    // Improvements section (ui/improvements.ts).
+    { key: 'supplyShortages', label: 'Supply Shortages', improvement: 'supplyChain' },
 ];
 
 /** The overlay is on and, when it belongs to an improvement, that improvement is enabled (what the renderer draws). */

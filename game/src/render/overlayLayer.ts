@@ -100,6 +100,7 @@ import { threatKnownSites, type KnownThreatSite } from '../sim/scenario/threats/
 import { scenarioMapFeatures, type ScenarioMapMarker } from '../sim/scenario/mapFeatures';
 import { WRECK_MARKER_COLOR, visibleWreckFields, wreckFieldHit, wreckMarker } from '../ui/scenario/wreckageUi'; // [wreckage]
 import type { WreckField } from '../sim/scenario/wreckage/common'; // [wreckage]
+import { SupplyOverlay } from './supplyOverlay'; // [improvements] supplyChain
 
 /** Scenario threat markers (19b "Threats" overlay): suspected = amber, confirmed = red. */
 export const THREAT_SUSPECTED_COLOR = 0xffa020;
@@ -425,6 +426,8 @@ export class OverlayLayer {
     private wreckList: WreckField[] = [];
     private wreckFrame = 0;
     // [wreckage] end
+    /** [improvements] supplyChain: Supply Shortages markers (src/render/supplyOverlay.ts). */
+    readonly supply: SupplyOverlay;
 
     constructor(
         private galaxy: Galaxy,
@@ -471,6 +474,7 @@ export class OverlayLayer {
         this.root.addChild(this.threats);
         this.root.addChild(this.scenarioMarkers);
         this.root.addChild(this.wrecks); // [wreckage]
+        this.supply = new SupplyOverlay(galaxy, this.root, state); // [improvements] supplyChain
         // Eligibility is computed once from the galaxy as built: nothing in
         // the current sim (no ship/colonization missions yet) changes
         // ownership, quality or exploration after createGame runs.
@@ -558,6 +562,8 @@ export class OverlayLayer {
         this.updateThreats(z);
         this.updateScenarioMarkers(z);
         this.updateWrecks(z); // [wreckage]
+        this.supply.motion = this.motion; // [improvements] supplyChain
+        this.supply.update(z, cam);
     }
 
     /** Scenario markers (src/sim/scenario/mapFeatures.ts): a double ring with a pennant, re-queried 4 times a second. */

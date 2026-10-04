@@ -89,3 +89,47 @@
     text-overflow: ellipsis;
     white-space: nowrap;
 }
+
+/* [improvements] supplyChain: the Waiting For tab, the Supply column, the ship rows' waiting marks. */
+.ow-screen-yards .ow-tab {
+    padding: 1px 7px 0;
+    white-space: nowrap;
+}
+.ow-screen-yards .ow-tab[hidden] {
+    display: none;
+}
+.ow-screen-yards .ow-tab.cy-tab-alert {
+    color: rgb(255, 128, 96);
+}
+.ow-screen-yards .ow-tab.cy-tab-alert.ow-tab-on {
+    color: rgb(255, 200, 96);
+}
+.ow-screen-yards .cy-short {
+    color: rgb(255, 192, 64);
+}
+.ow-screen-yards .cy-stalled {
+    color: rgb(255, 96, 80);
+}
+.ow-screen-yards .cy-link {
+    cursor: pointer;
+    text-decoration: underline dotted;
+}
+.ow-screen-yards .ow-grid-row.cy-need-none .ow-grid-cell {
+    color: rgb(255, 96, 80);
+}
+.ow-screen-yards .ow-grid-row.cy-need-partial .ow-grid-cell,
+.ow-screen-yards .ow-grid-row.cy-need-ordered .ow-grid-cell {
+    color: rgb(255, 192, 64);
+}
+.ow-screen-yards .ow-grid-row.cy-need-ok .ow-grid-cell {
+    color: rgb(140, 200, 140);
+}
+.ow-screen-yards .ow-grid-row.ow-sel .ow-grid-cell {
+    color: rgb(255, 255, 0);
+}
+.ow-screen-yards .ow-grid-row.cy-need-first {
+    box-shadow: inset 0 1px 0 rgba(160, 160, 176, 0.35);
+}
+.ow-screen-yards .cy-note-alert {
+    color: rgb(255, 128, 96);
+}

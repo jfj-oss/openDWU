@@ -66,7 +66,7 @@ import { toggleColoniesScreen } from './screens/coloniesScreen';
 import { toggleShipDesigns } from './screens/shipDesigns'; // [16b]
 import { closeShipsAndBasesList, toggleShipsAndBasesList, type BuiltObjectFilter } from './screens/shipsAndBasesList';
 import { toggleMessageHistory } from './screens/messageHistory';
-import { toggleBuildOrder } from './screens/buildOrder'; import { toggleConstructionYards, type ConstructionYardsOptions } from './screens/constructionYards'; // [16c]
+import { toggleBuildOrder } from './screens/buildOrder'; import { openConstructionYards, toggleConstructionYards, type ConstructionYardsOptions } from './screens/constructionYards'; // [16c]
 import { attachBuildQueueLauncher } from './screens/buildQueue'; // [buildQueue]
 import { toggleResearchScreen } from './screens/researchScreen'; // [15b]
 import { toggleEmpireComparison } from './screens/empireComparison';
@@ -1762,6 +1762,12 @@ function buildSelectionPanel(wiring: HudWiring): HTMLElement {
         // "Planetary Facilities".
         if (t.kind === 'galactopedia') {
             openGalactopedia({ topic: t.topic });
+            return;
+        }
+        // [improvements] supplyChain: the Waiting row → Construction Yards, Waiting For tab, at the site.
+        if (t.kind === 'supply') {
+            const src = getEmpireSummarySource();
+            if (src) openConstructionYards({ ...constructionYardsOptions(src.empire), site: t.target, tab: 'supply' });
             return;
         }
         const o = t.obj;

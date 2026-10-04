@@ -24,3 +24,9 @@
     display: block;
     pointer-events: none;
 }
+
+/* [improvements] supplyChain: resource names that open the supply panel. */
+.dt-supply-link {
+    cursor: pointer;
+    text-decoration: underline dotted rgba(255, 192, 0, 0.7);
+}
