@@ -19,8 +19,9 @@
 // Fog of war (MainView.1.cs 1337 `GodMode || IsObjectVisibleToThisEmpire(fighter)`): fog.ts — unseen fighters are skipped.
 // 19r: the damage overlay on a hurt fighter (MainView.cs 3204 method_70 → Main.Part12.cs 5002 method_107 with the
 // bitmap_7 mask) — shipOverlays.ts DamageOverlays, drawn above the bodies.
-// TODO(port): fighter shield bar (method_194) at zoom factor <= 3 in battle — MainView.1.cs 1542-1547.
-// TODO(port): selection brackets on a selected fighter (method_212) and fighter picking — MainView.1.cs 1520.
+// The fighter shield line at zoom factor <= 3 in battle (method_194, MainView.1.cs 1542-1547) is drawn by combatBars.ts
+// from `drawnFighters`; the selection circle (method_212, MainView.1.cs 1518-1521) by mainView.ts. Picking: pick() below
+// (Main.Part11.cs 1579-1600).
 
 import { Container, Texture } from 'pixi.js';
 import type { Camera } from './camera';
@@ -44,6 +45,8 @@ export const FIGHTER_IMAGE_COUNT = STANDARD_FAMILY_COUNT * FIGHTER_IMAGES_PER_FA
 export const ENGINE_THRUSTER_IMAGE_COUNT = 6;
 /** MainView.1.cs 1337: fighters are culled 50 px outside the view. */
 const CULL_MARGIN_PX = 50;
+/** Main.Part11.cs 1579: fighters are picked only while the zoom factor < 50. */
+export const FIGHTER_PICK_MAX_FACTOR = 50.0;
 
 // ---------------------------------------------------------------------------------------------------------------
 // Pure parts (unit-tested)
@@ -106,6 +109,36 @@ export function fighterExhaustIndex(engineExhaustImageIndex: number): number {
     return engineExhaustImageIndex >= 0 && engineExhaustImageIndex < ENGINE_THRUSTER_IMAGE_COUNT ? engineExhaustImageIndex : 0;
 }
 
+/** A fighter drawn this frame: its drawn (render-interpolated) centre and drawn size in px. */
+export interface DrawnFighter {
+    fighter: Fighter;
+    x: number;
+    y: number;
+    px: number;
+}
+
+/**
+ * Port of Main.Part11.cs 1579-1600 (method_145, zoom factor < 50): the first launched fighter (in carrier order) whose
+ * drawn rect — its drawn size in world units, padded by (int)(f x 1.3) — contains the world point. The C# returns it
+ * before any ship (inside the ship loop, ahead of the carrier's own hit test); unseen fighters are not drawn, so not
+ * pickable (`GodMode || IsObjectVisibleToThisEmpire(fighter)`).
+ */
+export function pickDrawnFighter(drawn: readonly DrawnFighter[], wx: number, wy: number, f: number): Fighter | null {
+    if (!(f < FIGHTER_PICK_MAX_FACTOR)) return null;
+    const x = Math.trunc(wx);
+    const y = Math.trunc(wy);
+    const pad = Math.trunc(f * 1.3);
+    for (const d of drawn) {
+        if (d.fighter.onboardCarrier || d.fighter.hasBeenDestroyed) continue;
+        const w = Math.trunc(d.px * f);
+        const half = Math.trunc(w / 2);
+        const cx = Math.trunc(d.x);
+        const cy = Math.trunc(d.y);
+        if (x >= cx - half - pad && x <= cx + half + pad && y >= cy - half - pad && y <= cy + half + pad) return d.fighter;
+    }
+    return null;
+}
+
 // ---------------------------------------------------------------------------------------------------------------
 // Drawn sizes shared with the effects layer (shield strikes are drawn at the fighter's size)
 // ---------------------------------------------------------------------------------------------------------------
@@ -136,6 +169,9 @@ export class FighterLayer {
     private drawnNow = new Set<Fighter>();
     /** Render interpolation between sim steps (renderInterp.ts; set by MainView). Null: draw the sim positions. */
     motion: MotionInterpolator | null = null;
+    /** The fighters drawn this frame, in draw order (pooled records; battle bars, picking, the selection circle). */
+    readonly drawnFighters: DrawnFighter[] = [];
+    private drawnPool: DrawnFighter[] = [];
 
     constructor(
         private galaxy: Galaxy,
@@ -173,6 +209,7 @@ export class FighterLayer {
         this.damageFx = artBundleFlag(this.galaxy, 'damageFx');
         const now = this.drawnNow;
         now.clear();
+        this.drawnFighters.length = 0;
         if (visible) {
             const halfW = cam.width / 2;
             const halfH = cam.height / 2;
@@ -213,6 +250,11 @@ export class FighterLayer {
         this.damage.end();
     }
 
+    /** Main.Part11.cs 1579-1600: the fighter drawn under world point (wx, wy) at zoom factor f, or null. */
+    pick(wx: number, wy: number, f: number): Fighter | null {
+        return pickDrawnFighter(this.drawnFighters, wx, wy, f);
+    }
+
     private drawFighter(fighter: Fighter, f: number, z: number, sx: number, sy: number, cam: Camera, x: number, y: number, heading: number): void {
         const pictureRef = resolveFighterPictureRef(fighter.pictureRef, fighter.empire?.dominantRace?.designsPictureFamilyIndex ?? null);
         const url = fighterImageUrl(pictureRef);
@@ -228,6 +270,18 @@ export class FighterLayer {
         if (sx + half < -CULL_MARGIN_PX || sx - half > cam.width + CULL_MARGIN_PX || sy + half < -CULL_MARGIN_PX || sy - half > cam.height + CULL_MARGIN_PX) return;
         drawnPx.set(fighter, px);
         this.drawnNow.add(fighter);
+        const n = this.drawnFighters.length;
+        let rec = this.drawnPool[n];
+        if (rec === undefined) {
+            rec = { fighter, x, y, px };
+            this.drawnPool.push(rec);
+        } else {
+            rec.fighter = fighter;
+            rec.x = x;
+            rec.y = y;
+            rec.px = px;
+        }
+        this.drawnFighters.push(rec);
         const cos = Math.cos(heading);
         const sin = Math.sin(heading);
         const k = 1 / z; // world units per drawn px

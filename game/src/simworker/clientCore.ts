@@ -102,11 +102,20 @@ function createSyncStats(): SyncStats {
 const IDENTITY_PROTOS: ReadonlySet<object> = new Set<object>([BuiltObject.prototype, Habitat.prototype, ShipGroup.prototype, Creature.prototype, Fighter.prototype, EmpireClass.prototype]);
 
 /**
- * Safety net: a reply the worker has not sent after this long (real ms) is given up — loudly (console.error) — and
- * failed as if the worker had reported an error (docs/sim-worker.md §4.4 "Failed commands"). Replies normally come
- * with the next tick (tens of ms; a few seconds while the worker saves a late game).
+ * The command deadline (real ms after it is sent; docs/sim-worker.md §4.4 "Failed commands", the timeout policy): every
+ * command carries `deadline = now + REPLY_TIMEOUT_MS` and the worker applies it only at a frame boundary that starts by
+ * then — a later one rejects it (`expired`: not applied, not journaled, the callback gets the op's failure value). So the
+ * worker decides, once, and the main thread delivers its verdict: a command is never reported failed and then applied
+ * after all. Replies normally come with the next tick (tens of ms; a few seconds while the worker saves a late game).
  */
 export const REPLY_TIMEOUT_MS = 30000;
+
+/**
+ * The backstop: a request still unanswered REPLY_TIMEOUT_MS + REPLY_GRACE_MS after it was sent means the worker is not
+ * running its frames at all (hung, or a lost message): it is declared stopped (`onUnresponsive`: SimWorkerClient
+ * terminates it), so it can never apply anything later, every waiting request fails, and the restart is offered.
+ */
+export const REPLY_GRACE_MS = 30000;
 
 /** A request to the worker that waits for its reply in a step message's `results`. */
 interface Waiting {
@@ -139,8 +148,17 @@ export interface ClientCoreOptions {
     now?: () => number;
     /** Wall ms per render frame for applying queued cold parts (default 0.5; grows with the backlog). */
     coldBudgetMs?: number;
-    /** Reply safety net (default REPLY_TIMEOUT_MS). */
+    /** The command deadline (default REPLY_TIMEOUT_MS). */
     replyTimeoutMs?: number;
+    /** The backstop after the deadline (default REPLY_GRACE_MS). */
+    replyGraceMs?: number;
+    /** Epoch wall clock for the deadlines (default `performance.timeOrigin + performance.now()`, as in the worker). */
+    wallNow?: () => number;
+    /**
+     * The backstop fired: the worker is unresponsive. SimWorkerClient terminates it and calls workerFailed; without
+     * this hook (tests) the core calls workerFailed itself.
+     */
+    onUnresponsive?: (reason: string) => void;
     onEvent?: (e: WorkerEvent, resolve: (a: unknown) => unknown) => void;
     /** Longest the optimistic pause holds the replica without the worker's ack (default 500 ms; then deltas apply). */
     pauseHoldMaxMs?: number;
@@ -153,12 +171,14 @@ export class SimClientCore {
     readonly game: Game;
     /** Requests waiting for their reply, by id (commands with a callback, queries, refreshes, host ops). */
     private readonly waiting = new Map<number, Waiting>();
-    /** Ids given up by the reply timeout (a reply that still comes is dropped with a warning). */
-    private readonly timedOut = new Set<number>();
     /** Why the worker is gone (workerFailed), else null: requests fail at once. */
     private stopped: string | null = null;
     private warnedUnavailable = false;
     private readonly replyTimeoutMs: number;
+    private readonly replyGraceMs: number;
+    private readonly wallNow: () => number;
+    /** Commands the worker rejected for their deadline (tests, the smoke). */
+    expiredCommands = 0;
     /** Main-thread identity of the by-value objects sent in commands (remoteArgs.ts valueId). */
     private readonly valueIds = new WeakMap<object, number>();
     private nextValueId = 0;
@@ -196,6 +216,8 @@ export class SimClientCore {
         this.coldBudgetMs = opts.coldBudgetMs ?? 0.5;
         this.pauseHoldMaxMs = opts.pauseHoldMaxMs ?? 500;
         this.replyTimeoutMs = opts.replyTimeoutMs ?? REPLY_TIMEOUT_MS;
+        this.replyGraceMs = opts.replyGraceMs ?? REPLY_GRACE_MS;
+        this.wallNow = opts.wallNow ?? (() => performance.timeOrigin + performance.now());
         this.replica = new GalaxyReplica(gameData, snapshot.baseTechCost);
         this.replica.apply(snapshot.delta, true);
         const galaxy = this.replica.galaxy;
@@ -484,7 +506,8 @@ export class SimClientCore {
         }
         const empireId = this.replica.decoder.idOf(empire);
         const id = onApplied === undefined && onFailed === undefined ? 0 : this.expect({ kind: 'command', op, reply: onApplied, reject: onFailed, args });
-        const msg: CommandMessage = { type: 'command', id, empire: empireId, op, args: encoded };
+        // The deadline (the timeout policy): past it the worker rejects the command instead of applying it.
+        const msg: CommandMessage = { type: 'command', id, empire: empireId, op, args: encoded, deadline: this.wallNow() + this.replyTimeoutMs };
         this.opts.post(msg);
     }
 
@@ -502,12 +525,6 @@ export class SimClientCore {
         const id = onFresh === undefined ? 0 : this.expect({ kind: 'refresh', op: 'refresh', reply: () => onFresh() });
         const m: RefreshRequest = { type: 'refresh', id, objects: ids };
         this.opts.post(m);
-    }
-
-    /** A UI-side sim write for the worker to apply on receipt, unjournaled (protocol.ts UiOpMessage). */
-    postUiOp(op: string, args: unknown[]): void {
-        if (this.unavailable() !== null) return;
-        this.opts.post({ type: 'uiOp', op, args: args.map((a) => encodeRemoteArg(a, this.naming)) });
     }
 
     /** Hand the worker the HUD clock's pause / speed when they changed. */
@@ -651,12 +668,17 @@ export class SimClientCore {
     private settle(r: StepMessage['results'][number]): void {
         const w = this.waiting.get(r.id);
         if (w === undefined) {
-            if (this.timedOut.delete(r.id)) console.warn(`sim worker: reply ${r.id} came after its timeout (already failed); dropped`);
+            // Answered already (the worker stopped or the game was closed meanwhile: failed then).
+            if (this.unavailable() === null) console.warn(`sim worker: reply ${r.id} for no waiting request; dropped`);
             return;
         }
-        if (w.outcome !== undefined) return; // failed already (timed out), waiting for its turn
+        if (w.outcome !== undefined) return; // failed already, waiting for its turn
         if (r.error !== undefined) {
-            if (r.threw === true) console.error(`sim worker: ${w.kind} ${w.op}: ${r.error}`);
+            if (r.expired === true) {
+                // The worker's verdict on a command that reached it after its deadline: never applied (the timeout policy).
+                this.expiredCommands++;
+                console.warn(`sim worker: ${w.kind} ${w.op} (request ${r.id}) was not applied: ${r.error}`);
+            } else if (r.threw === true) console.error(`sim worker: ${w.kind} ${w.op}: ${r.error}`);
             else console.warn(`sim worker: ${w.kind} ${w.op} failed: ${r.error}`);
             this.finish(r.id, w, { ok: false, reason: r.error, threw: r.threw === true });
             return;
@@ -674,23 +696,29 @@ export class SimClientCore {
         this.finish(r.id, w, { ok: true, value });
     }
 
-    /** The reply safety net: requests older than replyTimeoutMs whose reply is not in the inbox fail, loudly. */
+    /**
+     * The backstop: a request older than the deadline plus the grace with no reply in the inbox means the worker runs no
+     * frames (the worker answers every command by its first boundary after the deadline: applied or expired). The
+     * worker is declared unresponsive — terminated by onUnresponsive, so it cannot apply anything later — and every
+     * waiting request fails (workerFailed), loudly.
+     */
     private checkReplyTimeouts(nowMs: number): void {
         let inInbox: Set<number> | null = null;
-        const late: [number, Waiting][] = [];
+        let late: { id: number; w: Waiting } | null = null;
         for (const [id, w] of this.waiting) {
-            if (w.outcome !== undefined || nowMs - w.sentAt < this.replyTimeoutMs) continue;
+            if (w.outcome !== undefined || nowMs - w.sentAt < this.replyTimeoutMs + this.replyGraceMs) continue;
             inInbox ??= new Set(this.inbox.flatMap((m) => m.results.map((r) => r.id)));
-            if (!inInbox.has(id)) late.push([id, w]);
+            if (!inInbox.has(id)) {
+                late = { id, w };
+                break;
+            }
         }
-        for (const [id, w] of late) {
-            this.timedOut.add(id);
-            const s = Math.round((nowMs - w.sentAt) / 1000);
-            console.error(`sim worker: ${w.kind} ${w.op} (request ${id}): no reply from the simulation worker after ${s} s — giving up on it (a lost reply is a bug: please report it)`);
-            // A late command may still be applied by the worker: the message says so.
-            const why = `no reply from the simulation worker after ${s} s; it may still be applied`;
-            if (this.waiting.has(id)) this.finish(id, w, { ok: false, reason: why, threw: false });
-        }
+        if (late === null) return;
+        const s = Math.round((nowMs - late.w.sentAt) / 1000);
+        const reason = `no reply from the simulation worker after ${s} s (${late.w.kind} ${late.w.op}, request ${late.id}): it is not running`;
+        console.error(`sim worker: ${reason} — stopping it (a hung worker or a lost message is a bug: please report it)`);
+        if (this.opts.onUnresponsive !== undefined) this.opts.onUnresponsive(reason);
+        else this.workerFailed(reason);
     }
 
     dispose(): void {
@@ -701,7 +729,6 @@ export class SimClientCore {
         if (this.waiting.size > 0) console.warn(`sim worker: the game was closed with ${this.waiting.size} request(s) waiting for the worker; they fail`);
         // In a microtask: after the teardown that called dispose() (main.ts closes the screens first), not inside it.
         queueMicrotask(() => this.failAll('the game was closed'));
-        this.timedOut.clear();
         this.unbindClock?.();
         // The command sink stays: a command issued on this closed replica (a screen of the old game still open) fails
         // cleanly through sendCommand instead of waiting in a local queue nothing drains.

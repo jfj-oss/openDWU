@@ -5,8 +5,9 @@
 // first pirate raid — all GeneralDiscovery events).
 //
 // Like the C# (BeginInvoke) the events are handled after the sim call returns: queued here, drained on a timer.
-// Each event is recorded as a suppressed-popup EmpireMessage of the method_523 type (so it reaches the ticker and the
-// saved MessageHistory, which the Galactic History screen lists), then shown as method_523 does
+// The recording half of method_523 — the event as a suppressed-popup EmpireMessage of its type, for the ticker and the
+// saved MessageHistory the Galactic History screen lists — is game state and runs in the sim tick
+// (sim/playerMessages.ts recordEventMessage, every mode). Here each event is only shown, as method_523 does
 // (eventMessagePresentation.ts): the event panel (pnlEventMessage) with its picture and Close / Go to Event Location
 // (method_508), the two choice buttons of the encounters and decision events (method_509-511), or the full-view story
 // panel (pnlStoryEvent, method_570 / 571). The audio stings are gameAudio.ts's (it chains on this recipient).
@@ -25,10 +26,8 @@ import { showEventMessagePopup, showStoryEventPopup, type EventPopup, type Story
 import { issuePlayerCommand } from '../sim/player/playerCommands';
 import { resolveGameText } from '../sim/textResolver';
 import { EVENT_CHROME, eventGoToTarget, eventMessagePresentation, eventPopupShown, type EventChoice, type EventGoToTarget } from './eventMessagePresentation';
-// [simworker] chunk 4: the recording half is messagePipeline.ts (the sim worker records the events itself and hands the
-// main thread's recipient each one to show).
-import { playerMessageStream, recordEventMessage, type QueuedEvent } from './messagePipeline';
-export { eventHistoryMessageType } from './messagePipeline';
+import type { QueuedEvent } from '../sim/playerMessages';
+export { eventHistoryMessageType } from '../sim/playerMessages';
 
 /** The WonderBuilt event picture: bitmap_8[facility.PictureRef] (Main.Part4.cs:1277), loaded from
  *  environment/planetaryfacilities/facility_<n>.png (Main.Part13.cs:1736 LoadPlanetaryFacilities). */
@@ -174,10 +173,8 @@ export function installEventMessages(opts: EventMessagesOptions): void {
     };
     Object.defineProperty(player, 'eventMessageRecipient', { value: recipient, enumerable: false, writable: true, configurable: true });
 
-    // Port of Main.Part4.cs:487 method_523.
+    // Port of Main.Part4.cs:487 method_523, the showing half (the sim recorded it: playerMessages.ts).
     function handle(e: QueuedEvent): void {
-        // 1311 / 1496: _Game.DisplayMessageExploration gates recording. Worker mode: the worker recorded it.
-        if (playerMessageStream(player) === undefined) recordEventMessage(player, e, getMessageOptions());
         presentEventMessage(e, opts);
     }
 

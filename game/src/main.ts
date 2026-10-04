@@ -59,7 +59,7 @@ import { closeMessageHistory } from './ui/screens/messageHistory';
 import { closeFleetsList } from './ui/screens/fleetsList'; // [15c]
 import { closeBuildQueue } from './ui/screens/buildQueue'; // [buildQueue]
 import { closeBuildOrder } from './ui/screens/buildOrder'; import { closeConstructionYards } from './ui/screens/constructionYards'; // [16c]
-import { createEmpireMessageFeed, recordTickerMessage, savedHistoryLines } from './ui/empireMessageFeed';
+import { createEmpireMessageFeed, savedHistoryLines } from './ui/empireMessageFeed';
 // [policy] begin
 import { closeEmpirePolicy } from './ui/screens/empirePolicy';
 // [policy] end
@@ -79,7 +79,7 @@ import { startMusic } from './audio/musicPlayer';
 import { installGameAudio } from './audio/gameAudio';
 import { installUiClickSounds } from './audio/uiClicks';
 import { soundRequestStats } from './audio/effectsPlayer';
-import { getMessageOptions } from './ui/messageRouting';
+import { adoptGameMessageOptions, copyMessageOptions, getMessageOptions } from './ui/messageRouting';
 // [audio] end
 import { createNewGameWizard } from './ui/screens/newGameWizard';
 import { openGalactopedia } from './ui/screens/galactopedia';
@@ -95,7 +95,10 @@ import { closeGalacticHistory } from './ui/screens/galacticHistory';
 import { installEventLogDevHook } from './ui/eventLogDev';
 import { installEventMessages, removeEventMessages } from './ui/eventMessages';
 import { installWorkerMessageUi } from './ui/workerMessages'; // [simworker] chunk 4
-import { installAutosave, removeAutosave } from './ui/autosave';
+import { installLocalMessageStream } from './ui/messagePipeline';
+import { currentGameAutosave, installAutosave, readAutosave, removeAutosave } from './ui/autosave';
+import { messageBox } from './ui/originalWindow';
+import { restartFromSources, restartPromptText, restartSources } from './simworker/restart';
 import { isGameOptionsPanelOpen } from './ui/screens/gameOptionsPanel';
 import { newGameOptionsFromSettings } from './ui/screens/gameOptionsModel'; // [gameoptions]
 // [leftovers] end
@@ -128,7 +131,7 @@ import { installMessageStubList, removeMessageStubList } from './ui/messageStubL
 // [fix6ui] begin
 import { setShipCommandHandler, setViewLockedQuery } from './ui/keyboard';
 import { refreshSelectionActionBar } from './ui/orderMenu';
-import { selectCreature, selectHabitat } from './ui/hud';
+import { selectCreature, selectFighter, selectHabitat } from './ui/hud';
 import { createShipCommandKeys, type ShipCommandKeys } from './ui/shipCommandKeys';
 import { createControlGroupKeys } from './ui/controlGroups'; import { setControlGroupHandler } from './ui/keyboard'; import { resetPanelVisibility } from './ui/panelVisibility'; import { setMainViewDisplayType } from './render/mainViewDisplay'; import { closeGroundReport } from './ui/screens/groundReport'; import { playGridClick } from './audio/gameAudio'; // [parC1]
 import { showToast } from './ui/toast';
@@ -350,9 +353,56 @@ async function loadSaveInWorker(source: { text: string } | { url: string }): Pro
     return { game: client.core.game, time, startOptions: startOptions ?? defaultStartGameOptions(), simClient: client };
 }
 
+/** The restart prompt is open (one per stopped worker). */
+let restartPromptFor: SimWorkerClient | null = null;
+
+/**
+ * [simworker] The worker stopped for good (simworker/restart.ts, docs/sim-worker.md §4.6): every request waiting on it
+ * has failed. A message box (the original's MessageBoxEx) offers Restart — the game in a new worker from the best save
+ * text there is: the worker's own last state, else the replica as the view last showed it, else this game's last
+ * autosave — resumed paused, or Main Menu.
+ */
+async function offerWorkerRestart(simClient: SimWorkerClient, game: Game, time: GalaxyTime, reason: string): Promise<void> {
+    if (restartPromptFor === simClient) return;
+    restartPromptFor = simClient;
+    time.paused = true;
+    const startOptions = lastStartOptions;
+    const auto = currentGameAutosave();
+    const sources = restartSources({
+        rescue: simClient.rescueSave,
+        // Serialized only if chosen (a late game takes seconds), while this view still holds the replica.
+        replica: startOptions !== null ? () => serializeGame(game, time, startOptions) : null,
+        autosave: auto === null ? null : { ...auto, read: () => readAutosave(auto.name) },
+    });
+    const RESTART = 'Restart';
+    const MENU = 'Main Menu';
+    const answer = await messageBox({ caption: 'Simulation Stopped', text: restartPromptText(reason, sources), buttons: sources.length > 0 ? [RESTART, MENU] : [MENU], icon: 'stop', width: 540, buttonWidth: 120 });
+    const toMenu = (): void => {
+        teardownActiveGameView();
+        showMainMenu();
+    };
+    if (answer !== RESTART) {
+        toMenu();
+        return;
+    }
+    const r = await restartFromSources(sources, (text) => loadSaveInWorker({ text }));
+    for (const f of r.failed) console.warn(`sim worker restart: ${f.source.label}: ${f.error}`);
+    if (r.result === null) {
+        await messageBox({ caption: 'Restart Failed', text: `The game could not be restarted:\n${r.failed.map((f) => `- ${f.source.label}: ${f.error}`).join('\n')}`, icon: 'stop', width: 540 });
+        toMenu();
+        return;
+    }
+    const loaded = r.result;
+    lastStartOptions = loaded.startOptions;
+    teardownActiveGameView();
+    await startGameViewWithOverlay(loaded.game, undefined, undefined, { speed: loaded.time.speed, paused: true }, loaded.simClient);
+    showToast(`Restarted from ${r.source.label} — paused`);
+    console.info(`sim worker restart: restarted from ${r.source.label} (${r.source.kind})`);
+}
+
 /** createGame in the worker (autostart / wizard): the options minus gameData, and the scenario to apply to its data. */
-async function createGameInWorker(opts: CreateGameOptions, scenario: { id: string; include: string[] | null } | null, startOptions: StartGameOptions, flagShapeIndex?: number): Promise<{ game: Game; simClient: SimWorkerClient }> {
-    const client = await bootWorker('Creating galaxy', { kind: 'create', options: workerCreateOptions(opts), scenario, flagShapeIndex }, opts.gameData, startOptions);
+async function createGameInWorker(opts: CreateGameOptions, scenario: { id: string; include: string[] | null } | null, startOptions: StartGameOptions): Promise<{ game: Game; simClient: SimWorkerClient }> {
+    const client = await bootWorker('Creating galaxy', { kind: 'create', options: workerCreateOptions(opts), scenario }, opts.gameData, startOptions);
     return { game: client.core.game, simClient: client };
 }
 // [simworker] end
@@ -592,17 +642,28 @@ export async function startGameView(
     (window as unknown as { __dwu?: unknown }).__dwu = buildDwuDebugObject({ camera, galaxy, view, app, game, time });
     // [simworker] in worker mode `sim` / `simBudget` stand in for the worker's driver / budget (SimWorkerClient.debugObject).
     Object.assign((window as unknown as { __dwu: Record<string, unknown> }).__dwu, { sim: inThreadLoop?.driver ?? simClient?.debugObject('sim') ?? null, simStats: simLoop.stats, simWorker: simClient ?? null });
-    // [simworker] Sim → UI events from the worker (the sim-side handling already ran there). The player's messages,
-    // events and the game end are ui/workerMessages.ts (installed before the ticker / popups first read the messages).
-    const workerMessageUi = simClient !== undefined ? installWorkerMessageUi({ player: game.playerEmpire, galaxy, time, post: (op, args) => simClient.core.postUiOp(op, args) }) : null;
+    // The game's message options (Game.DisplayMessage* / DisplayPopup*, saved with it): what the Game Options window
+    // shows and edits (ui/messageRouting.ts).
+    adoptGameMessageOptions(galaxy);
+    // The player's message pipeline runs in the sim tick (sim/playerMessages.ts); the ticker / popups / stubs read what
+    // it handled from a PlayerMessageStream. In-thread the game's pipeline feeds it; in worker mode the worker's
+    // 'playerMessages' events do (ui/workerMessages.ts, with the events and the game end). Installed before the
+    // consumers first read it.
+    const localMessages = simClient === undefined ? installLocalMessageStream(galaxy, game.playerEmpire) : null;
+    // [simworker] Sim → UI events from the worker (the sim-side handling already ran there).
+    const workerMessageUi = simClient !== undefined ? installWorkerMessageUi({ player: game.playerEmpire, galaxy, time }) : null;
     simClient?.onEvent((e, resolve) => {
         if (workerMessageUi?.onEvent(e, resolve) === true) return;
         if (e.kind === 'locationPinged') {
             const t = resolve(e.target) as { xpos: number; ypos: number } | null;
             if (t !== null) camera.centerOn(t.xpos, t.ypos);
         } else if (e.kind === 'simError') showToast('Simulation error — game paused (see the worker console)');
-        // The worker itself stopped (docs/sim-worker.md §4.4 "Failed commands"): orders in flight have failed.
-        else if (e.kind === 'workerStopped') showToast('The simulation stopped — the game cannot continue; return to the main menu (see the console)');
+        // The worker itself stopped (docs/sim-worker.md §4.4 "Failed commands"): orders in flight have failed. Offer to
+        // restart the game in a new worker (§4.6).
+        else if (e.kind === 'workerStopped') {
+            showToast('The simulation stopped — the orders on their way were not carried out (see the console)');
+            void offerWorkerRestart(simClient, game, time, e.message);
+        }
     });
     // 19p event log: `?eventLog=dump` logs the chronicle digest; __dwu.eventLog.dump() / .export(since).
     (window as unknown as { __dwu: Record<string, unknown> }).__dwu.eventLog = installEventLogDevHook(galaxy, window.location.search);
@@ -664,7 +725,8 @@ export async function startGameView(
         afterSelectionChange: (sel) => {
             view.selectedBuiltObject = sel?.builtObject ?? null;
             view.selectedCreature = sel?.creature ?? null;
-            view.selectedHabitat = sel && !sel.builtObject && !sel.creature && !sel.builtObjects ? sel.habitat : null;
+            view.selectedFighter = sel?.fighter ?? null;
+            view.selectedHabitat = sel && !sel.builtObject && !sel.creature && !sel.fighter && !sel.builtObjects ? sel.habitat : null;
             view.selectedBuiltObjects = sel?.builtObjects ?? null;
             shipKeys?.afterSelectionChange(sel); // [fix6ui] selection history + view lock
         },
@@ -689,11 +751,13 @@ export async function startGameView(
     };
     // A clicked creature selects it (InfoPanel.cs DrawCreature in the selection panel).
     view.onCreatureSelect = (c) => selectCreature(c, false);
+    // A clicked fighter selects it (Main.Part11.cs 1579-1600 → InfoPanel.cs DrawFighter).
+    view.onFighterSelect = (f) => selectFighter(f);
     // Left-drag box / Shift-click multi-selection (Main.Part10.cs 2989 mainView_MouseUp, BuiltObjectList).
     view.onBuiltObjectListSelect = (list) => selectBuiltObjectList(list);
     view.getSelectedShips = () => {
         const s = getHudSelection();
-        if (s === null || s.shipGroup !== undefined || s.creature !== undefined) return null;
+        if (s === null || s.shipGroup !== undefined || s.creature !== undefined || s.fighter !== undefined) return null;
         return s.builtObjects ?? s.builtObject ?? null;
     };
     // [galaxymarkers] fleet icons / double-clicked fleet ships select the fleet; symbols highlight the HUD selection.
@@ -705,8 +769,8 @@ export async function startGameView(
         camera.centerOn(star.xpos, star.ypos);
         camera.zoomAt(SYSTEM_LEVEL_ZOOM, camera.width / 2, camera.height / 2);
     };
-    // Task 14a: the player's EmpireMessage queue feeds the ticker. The sim empties the
-    // queue in processMessages, so poll on every HUD refresh (4x a second).
+    // Task 14a: the messages the player's pipeline handled feed the ticker (4x a second; the line's date is the
+    // message's star date, stamped by the pipeline).
     const messageFeed = createEmpireMessageFeed();
     const refreshHud = (): void => {
         // Fog of war (Main.Part10.cs method_209): no panel for a ship / fleet / creature the player no longer sees.
@@ -716,9 +780,8 @@ export async function startGameView(
             setTextIfChanged(systemNameEl, topSystemNameText(galaxy, camera.x, camera.y, camera.zoom));
         }
         for (const { message, text } of messageFeed.pollMessages(game.playerEmpire)) {
-            recordTickerMessage(game.playerEmpire, message, time.currentStarDate);
             const goTo = messageGoToTarget(message) !== null ? (): boolean => goToMessage(message, galaxy) : null;
-            pushHudMessage(text, resolveStarDateDescription(time.currentStarDate), goTo);
+            pushHudMessage(text, resolveStarDateDescription(message.starDate > 0 ? message.starDate : time.currentStarDate), goTo);
         }
     };
     refreshHud();
@@ -1060,6 +1123,7 @@ export async function startGameView(
 
         gameAudio.dispose(); // [audio]
         workerMessageUi?.dispose(); // [simworker]
+        localMessages?.dispose();
         simClient?.dispose(); // [simworker]
     };
 
@@ -1147,23 +1211,24 @@ async function bootGameFromWizard(startOptions: StartGameOptions): Promise<void>
     try {
         // [gameoptions] Start.2.cs 1352-1363 / 2122-2146: the player empire starts with the GameOptions defaults the
         // in-game Options window saved (Main.Part9.cs YxwyUefOyQ / method_257; undefined = method_260's defaults).
-        createOpts = { ...toCreateGameOptions(startOptions, playData, systemNames), gameOptions: newGameOptionsFromSettings(getSettings().newGameOptions) };
+        // Start.2.cs 2147-2188: the message options too (Game.DisplayMessage* / DisplayPopup*, sim state since the player's
+        // message pipeline runs in the tick); and the wizard's flag pick, written at the end of createGame.
+        createOpts = {
+            ...toCreateGameOptions(startOptions, playData, systemNames),
+            gameOptions: newGameOptionsFromSettings(getSettings().newGameOptions),
+            messageOptions: copyMessageOptions(getMessageOptions()),
+            playerFlagShape: startOptions.flagShapeIndex,
+        };
         if (useSimWorker()) {
             const sc = startOptions.scenario;
             const scenario = sc == null ? null : { id: sc.id, include: choiceInclude(sc) };
-            ({ game, simClient } = await createGameInWorker(createOpts, scenario, startOptions, startOptions.flagShapeIndex));
+            ({ game, simClient } = await createGameInWorker(createOpts, scenario, startOptions));
         } else game = await runStepsWithProgress('Creating galaxy', createGameSteps(createOpts));
     } catch (err) {
         console.error('Galaxy creation failed', err);
         showToast('Could not create the galaxy — see console');
         showMainMenu();
         return;
-    }
-    // Task 10d: the wizard's chosen flag shape/colour is not forwarded to
-    // createGame yet (see TODO(createGame) in startGameOptions.ts), so apply
-    // it to the player empire here for the HUD's empires button.
-    if (startOptions.flagShapeIndex >= 0 && simClient === undefined) {
-        game.playerEmpire.flagShape = startOptions.flagShapeIndex;
     }
     const time = await startGameViewWithOverlay(game, undefined, undefined, undefined, simClient);
     // Main.Part12.cs:4248-4258: a new (non-tutorial) game pauses and shows the Introduction panel once the main view is

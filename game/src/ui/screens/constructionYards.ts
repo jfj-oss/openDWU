@@ -49,6 +49,7 @@ import { openGalactopedia } from './galactopedia';
 import { openConstructionSummary } from './designEditor';
 import { builtObjectTabLabels, dataTabContentKey, renderDataTab, type DataTabId } from './builtObjectDataTabs';
 import { showToast } from '../toast';
+import { formatNet, tryGetText } from '../../sim/textResolver';
 import {
     COLORS,
     FONT,
@@ -71,6 +72,35 @@ import {
     type OriginalWindow,
 } from '../originalWindow';
 import { requestSimRefresh } from '../../simworker/refresh';
+/** The Construction Yards ship orders (the Ships and Bases buttons on the selected yard ship). */
+export type YardShipOrder = 'refuelShips' | 'repairShips' | 'retireShips';
+
+/**
+ * The toast after Refuel / Repair / Retire for `bo` (`sent`: the command's result, the ships given the order). Main.Part3.cs
+ * btnBuiltObjectRefuelSelected_Click / RepairSelected / RetireSelected show the result in the list's Mission column — the
+ * new mission (Galaxy.ResolveDescription(Mission.Type)) or "(None)" when the ship was skipped — so the toast names the
+ * mission and its destination, or says why the ship was skipped (the conditions those handlers test, read once the reply
+ * landed): not a mobile ship, no damage to repair, no refuelling point / ship yard found.
+ */
+export function yardShipOrderText(op: YardShipOrder, bo: BuiltObject, sent: number): string {
+    const what = op === 'refuelShips' ? gt('Refuel') : op === 'repairShips' ? gt('Repair') : gt('Retire');
+    if (sent > 0) {
+        const m = bo.mission;
+        const target = m !== null && m !== undefined ? ((m as { targetStellarObject?: { name?: string } | null }).targetStellarObject ?? null) : null;
+        if (!target?.name) return `${bo.name}: ${what}`;
+        // GameText "Refuel at X" / "Repair at X" / "Retire at X" (the mission descriptions).
+        const tag = op === 'refuelShips' ? 'Refuel at X' : op === 'repairShips' ? 'Repair at X' : 'Retire at X';
+        const fallback = op === 'refuelShips' ? 'Refuel at {0}' : op === 'repairShips' ? 'Repair at {0}' : 'Retire at {0}';
+        return `${bo.name}: ${formatNet(tryGetText(tag) ?? fallback, [target.name])}`;
+    }
+    const mobile = bo.topSpeed > 0 && bo.owner !== null && bo.role !== BuiltObjectRole.Base;
+    let why: string;
+    if (op === 'repairShips') why = !(bo.damagedComponentCount > 0) ? 'nothing to repair' : !(bo.topSpeed > 0) ? 'it cannot move' : 'no ship yard that can repair it was found';
+    else if (!mobile) why = bo.role === BuiltObjectRole.Base ? 'bases cannot move' : 'it cannot move';
+    else why = op === 'refuelShips' ? 'no refuelling point with its fuel was found' : 'no ship yard was found';
+    return `${bo.name}: ${what} — ${why} (${gt('Mission')}: (${gt('None')}))`;
+}
+
 export { moveWaitQueueItem, type WaitQueueMove };
 
 // -------------------------------------------------------------------------------------------------------------------
@@ -695,18 +725,18 @@ function createConstructionYards(opts: ConstructionYardsOptions): OpenState {
         if (sg && opts.onViewFleet) opts.onViewFleet(sg);
     });
     const B2 = L.buttons2;
-    const shipOp = (op: 'refuelShips' | 'repairShips' | 'retireShips', done: string) => () => {
+    const shipOp = (op: YardShipOrder) => () => {
         const bo = selectedBO();
         if (!bo) return;
-        issuePlayerCommand(galaxy, empire, op, [[bo]], (n) => showToast(n > 0 ? `${bo.name}: ${done}` : `${bo.name}: no suitable destination`));
+        issuePlayerCommand(galaxy, empire, op, [[bo]], (n) => showToast(yardShipOrderText(op, bo, n)));
     };
-    const btnRefuel = btn(gt('Refuel'), B2.x, B2.y, B2.w, B2.h, shipOp('refuelShips', 'sent to refuel'));
-    const btnRepair = btn(gt('Repair'), B2.x + B2.step, B2.y, B2.w, B2.h, shipOp('repairShips', 'sent for repair'));
+    const btnRefuel = btn(gt('Refuel'), B2.x, B2.y, B2.w, B2.h, shipOp('refuelShips'));
+    const btnRepair = btn(gt('Repair'), B2.x + B2.step, B2.y, B2.w, B2.h, shipOp('repairShips'));
     const btnRetrofit = btn(gt('Retrofit'), B2.x + 2 * B2.step, B2.y, B2.w, B2.h, () => {
         const bo = selectedBO();
         if (bo) issuePlayerCommand(galaxy, empire, 'retrofitShips', [[bo]], (res) => showToast(retrofitToastText(res)));
     }, 'Retrofit to the latest design of its type');
-    const retire = shipOp('retireShips', 'sent to retire');
+    const retire = shipOp('retireShips');
     const btnRetire = btn(gt('Retire'), B2.x + 3 * B2.step, B2.y, B2.w, B2.h, () => {
         const bo = selectedBO();
         if (!bo) return;

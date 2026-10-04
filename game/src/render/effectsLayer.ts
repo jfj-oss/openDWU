@@ -25,7 +25,8 @@
 //   MainView.2.cs 2783 method_184 → method_185 — a fighter's explosions; MainView.1.cs 1522-1541 — its shield strike
 // Fighters themselves are drawn by fighterLayer.ts; their shots, explosions and shield strikes are drawn here, from the
 // same Fighter records (Fighter.Weapons / Explosions / LastShieldStrike) the sim keeps.
-// TODO(port): ion-strike lightning overlay (LastIonStrike, LightningGenerator) — MainView.1.cs 1162-1201
+//   MainView.1.cs 1162-1201         — the ion-strike lightning over a ship for 1.4 s after LastIonStrike (lightning.ts)
+//   MainView.2.cs 2680/2718/2811    — a newly drawn explosion > 150 shakes the view (screenShake.ts; `onShake`)
 
 import { sampleShot, type MotionInterpolator } from './renderInterp';
 import { Container, Graphics, Texture } from 'pixi.js';
@@ -45,6 +46,8 @@ import { fightersOf, type Fighter } from '../sim/combat/fighters';
 import { ComponentCategoryType } from '../sim/data/policies';
 import { fighterDrawnSizePx } from './fighterLayer';
 import { fogOf } from './fog';
+import { LightningTextures, ionStrikeAlpha, ionStrikeSeed, ionStrikeSizePx, ionStrikeVisible } from './lightning';
+import { explosionShakeAmplitude } from './screenShake';
 
 const IMG = '/assets/dwu/images';
 /** The original rotates weapon / hyper art 90° clockwise at load (RotateFlip(Rotate90FlipNone)); drawing the raw
@@ -782,6 +785,13 @@ export class EffectsLayer {
     private candLength = -1;
     private candFrames = 0;
 
+    /** Ion-strike bolts (lightning.ts), cached per (seed, size). */
+    private lightning = new LightningTextures();
+    /** Explosions drawn at least once (the C# Explosion.ExplosionSoundPlayed, set where it is first drawn). */
+    private explosionsSeen = new WeakSet<Explosion>();
+    /** Main.method_217: a newly drawn explosion > 150 asks the Main View to shake (screenShake.ts); set by MainView. */
+    onShake: ((amplitude: number) => void) | null = null;
+
     private cmd = newWeaponDraw();
     private bounds: ViewBounds = { left: 0, top: 0, right: 0, bottom: 0 };
     private rect = { left: 0, top: 0, size: 0 };
@@ -882,6 +892,7 @@ export class EffectsLayer {
             if (bo === null) continue;
             const explosions = bo.explosions as Explosion[];
             if (!bo.hasBeenDestroyed) {
+                this.drawIonStrike(bo, nowMs);
                 this.drawStrikes(bo, nowMs);
                 this.checkHyper(bo, starDate, nowMs);
             }
@@ -1010,7 +1021,7 @@ export class EffectsLayer {
             if (bo === null) continue;
             let need = (bo.explosions as Explosion[]).length > 0;
             if (!need && !bo.hasBeenDestroyed) {
-                need = shieldStrikeVisible(bo.lastShieldStrike, nowMs) || this.hyperPending(bo, starDate) || this.strikeBos.has(bo);
+                need = shieldStrikeVisible(bo.lastShieldStrike, nowMs) || ionStrikeVisible(bo.lastIonStrike, nowMs) || this.hyperPending(bo, starDate) || this.strikeBos.has(bo);
                 const weapons = bo.weapons;
                 if (!need && weapons !== null) {
                     for (let i = 0; i < weapons.length; i++) {
@@ -1236,6 +1247,7 @@ export class EffectsLayer {
         if (img < 0) return;
         const r = explosionWorldRect(x, y, e, f, zoomFactor, this.rect);
         if (r.size <= 0 || !circleInView(this.bounds, r.left + r.size / 2, r.top + r.size / 2, r.size)) return;
+        this.firstDraw(e);
         const set = this.explosionSets[e.explosionImageIndex] ?? this.explosionSets[0];
         const tex = set.frame(img);
         if (tex === null) return;
@@ -1256,6 +1268,35 @@ export class EffectsLayer {
         s.anchor.set(0, 0);
         s.position.set(r.left, r.top);
         s.scale.set(r.size / (tex.width || 1), r.size / (tex.height || 1));
+    }
+
+    /** MainView.2.cs 2807-2816: the first time an explosion is drawn (its sound plays), one larger than 150 shakes the view. */
+    private firstDraw(e: Explosion): void {
+        if (this.explosionsSeen.has(e)) return;
+        this.explosionsSeen.add(e);
+        const amp = explosionShakeAmplitude(e.explosionSize);
+        if (amp > 0) this.onShake?.(amp);
+    }
+
+    /**
+     * MainView.1.cs 1162-1201: the ion-strike lightning for 1.4 s after LastIonStrike — a bolt 1.4 x the drawn width,
+     * centred on the drawn ship, re-seeded every 3 s, flickering every 250 ms. (The C# also plays the ion-strike sound
+     * here: audio/mainViewSounds.ts.)
+     */
+    private drawIonStrike(bo: BuiltObject, nowMs: number): void {
+        if (!ionStrikeVisible(bo.lastIonStrike, nowMs)) return;
+        const px = this.shipSizePx(bo);
+        if (px <= 0) return;
+        const size = ionStrikeSizePx(px);
+        if (size < 1) return;
+        const at = this.drawnAt(bo);
+        const w = size * this.f;
+        if (!circleInView(this.bounds, at.xpos, at.ypos, w)) return;
+        const tex = this.lightning.get(ionStrikeSeed(bo.builtObjectID, nowMs), size);
+        if (tex === null) return;
+        const s = this.sprites.acquire(tex);
+        placeSprite(s, at.xpos, at.ypos, w, w, 0);
+        s.alpha = ionStrikeAlpha(nowMs - bo.lastIonStrike);
     }
 
     /** Shield-strike (200 ms) and tractor-strike (2 s, looping at 10 fps) overlays at the ship's drawn size. */
@@ -1334,9 +1375,10 @@ export class EffectsLayer {
         this.animations.add(frames, nowMs, 30, bo.xpos + p.dx, bo.ypos + p.dy, p.size, p.size, bo.targetHeading + ROT90);
     }
 
-    /** Drop running one-shot animations (e.g. on game teardown). */
+    /** Drop running one-shot animations and cached bolts (e.g. on game teardown). */
     clear(): void {
         this.animations.clear();
+        this.lightning.clear();
     }
 }
 

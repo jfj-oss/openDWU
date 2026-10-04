@@ -6,8 +6,8 @@
 
 import './galacticHistory.css';
 import { EmpireMessageType, empireMessageHistory, type EmpireMessage } from '../../sim/messages';
-// [simworker] chunk 4: the rebind's RemoveOldHistoryMessages runs in the sim worker when the sim is there.
-import { playerMessageStream, trimMessageHistory, trimmedHistoryView } from '../messagePipeline';
+// The rebind's RemoveOldHistoryMessages is game state: the journaled removeOldHistoryMessages command (both modes).
+import { trimMessageHistory, trimmedHistoryView } from '../messagePipeline';
 import { Empire } from '../../sim/empire';
 import { BuiltObject } from '../../sim/builtObject';
 import { Habitat } from '../../sim/types';
@@ -835,8 +835,8 @@ function createGalacticHistory(opts: GalacticHistoryOptions): OpenState {
                 loc: r.location,
             }));
         }
-        // Worker mode: the list as the worker's trim leaves it (the replica's catches up with the next sync).
-        const history = playerMessageStream(empire) !== undefined ? trimmedHistoryView(empire) : undefined;
+        // The list as the trim leaves it: the command lands at the next boundary (in worker mode a round trip later).
+        const history = trimmedHistoryView(empire);
         return galacticHistoryRows(empire, filter, history).map((r) => ({
             key: r.message,
             title: r.title,
@@ -852,7 +852,8 @@ function createGalacticHistory(opts: GalacticHistoryOptions): OpenState {
     // method_542: RemoveOldHistoryMessages (Empire.cs:4708), then rebind. Keeps the selection when still listed,
     // else selects the first row (the grid's default current row).
     function rebind(): void {
-        if (!logMode) trimMessageHistory(empire);
+        // The command only when there is something to trim (RemoveOldHistoryMessages is a no-op otherwise).
+        if (!logMode && empireMessageHistory(empire).length > empire.maximumHistoryMessages) trimMessageHistory(empire.galaxy, empire);
         rows = buildRows();
         if (selected === null || !rows.some((r) => r.key === selected)) selected = shownRows()[0]?.key ?? null;
         renderList();

@@ -28,6 +28,8 @@ import type { Design } from '../../sim/design';
 import { BuiltObjectRole } from '../../sim/data/designSpecifications';
 import { formatNet, tryGetText } from '../../sim/textResolver';
 import { AUTOMATION_ROWS, automationFieldValue, setAutomationValue } from './gameOptionsPanel';
+import { PendingValues } from '../pendingCommands';
+import { issuePlayerCommand } from '../../sim/player/playerCommands';
 
 // ---------------------------------------------------------------------------------------------------------------
 // Text
@@ -693,12 +695,36 @@ export interface PolicyAutomationChange {
  * `sent`: values already issued for a field and possibly not on the replica yet (a change X → Y → X within one worker
  * round trip must still send the X).
  */
-export function policyAutomationChange(empire: Empire, field: PolicyAutomationField, value: number | boolean, sent?: ReadonlyMap<string, unknown>): PolicyAutomationChange | null {
+export function policyAutomationChange(empire: Empire, field: PolicyAutomationField, value: number | boolean, sent?: PendingValues<string, unknown>): PolicyAutomationChange | null {
     const row = AUTOMATION_ROWS.find((r) => r.field === field);
     if (row === undefined) throw new Error(`no Game Options automation row for ${field}`);
     const fv = automationFieldValue(row, value);
-    const current = sent !== undefined && sent.has(fv.field) ? sent.get(fv.field) : (empire as unknown as Record<string, unknown>)[fv.field];
+    const own = (empire as unknown as Record<string, unknown>)[fv.field];
+    const current = sent !== undefined ? sent.value(fv.field, own) : own;
     return current === fv.value ? null : { field: fv.field, value: fv.value };
+}
+
+/**
+ * WqesexberY_Click (`_Game.PlayerEmpire.Policy = method_597(panel, PlayerEmpire)`), run on every change of the panel, as
+ * player commands in both modes: the automation combos method_597 writes into the empire become `setEmpireControl`
+ * commands (only the values that change — against the value last sent for the field while its reply is on the way,
+ * pendingCommands.ts), then `setPolicy` with the rebuilt policy. A screen never writes the game: in-thread the write
+ * would bypass the command log and a replay would drift; in worker mode the replica is read-only (docs/sim-worker.md
+ * §8). So the command log is the same in both modes (test/simWorkerQuickClicks.test.ts).
+ */
+export function issuePolicyPanel(empire: Empire, playerIsPirate: boolean, c: PanelControls, ctx: PolicyPanelContext, sent: PendingValues<string, unknown>): void {
+    const galaxy = empire.galaxy;
+    const changes: PolicyAutomationChange[] = [];
+    const policy = applyPolicyPanel(empire, playerIsPirate, c, ctx, (field, value) => {
+        const change = policyAutomationChange(empire, field, value, sent);
+        if (change !== null) changes.push(change);
+    });
+    // Command log: queued, applied at the next frame boundary.
+    for (const change of changes) {
+        const settle = sent.send(change.field, change.value);
+        issuePlayerCommand(galaxy, empire, 'setEmpireControl', [change.field, change.value], () => settle());
+    }
+    issuePlayerCommand(galaxy, empire, 'setPolicy', [policy]);
 }
 
 // ---------------------------------------------------------------------------------------------------------------

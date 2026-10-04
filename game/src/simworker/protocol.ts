@@ -7,7 +7,7 @@ import type { CommandLogEntry } from '../sim/player/commandLog';
 import type { StartGameOptions } from '../sim/startGameOptions';
 import type { ReplicaDelta } from './replicaSync';
 import type { RemoteArg } from './remoteArgs';
-import type { MessageRoute } from '../ui/messageRouting';
+import type { MessageRoute } from '../sim/messageRouting';
 
 /** How the worker gets its game. */
 export type WorkerBoot =
@@ -17,8 +17,6 @@ export type WorkerBoot =
           options: Omit<CreateGameOptions, 'gameData'>;
           /** Mod layer: scenario overlay applied to the base data (id, and the add-on list of a composite one). */
           scenario: { id: string; include: string[] | null } | null;
-          /** The wizard's flag pick (Empire.flagShape), applied after createGame as main.ts does. */
-          flagShapeIndex?: number;
       }
     | {
           kind: 'load';
@@ -65,6 +63,13 @@ export interface CommandMessage {
     empire: number;
     op: string;
     args: RemoteArg[];
+    /**
+     * Wall-clock deadline (epoch ms, `performance.timeOrigin + performance.now()`: the same clock in the worker): the
+     * worker applies the command only at a frame boundary that starts by then, else rejects it (`expired` reply, not
+     * applied, not journaled) — so a command the main thread stopped waiting for can never land later
+     * (docs/sim-worker.md §4.4 "Failed commands", the timeout policy). Absent: no deadline (tests, old senders).
+     */
+    deadline?: number;
 }
 
 export interface SaveRequest {
@@ -129,17 +134,20 @@ export interface HostOpMessage {
     args: RemoteArg[];
 }
 
-/**
- * A UI-side sim write the in-thread UI does directly, outside the command queue (docs/sim-worker.md §9 chunk 4,
- * ui/messagePipeline.ts applyPlayerMessageUiOp): applied by the worker on receipt, unjournaled — as in-thread.
- */
-export interface UiOpMessage {
-    type: 'uiOp';
-    op: string;
-    args: RemoteArg[];
-}
-
-export type ToWorker = InitMessage | ClockMessage | CommandMessage | HostOpMessage | RefreshRequest | SaveRequest | DigestRequest | TradeFlowsMessage | DebugRequest | CommandLogRequest | UiOpMessage | { type: 'dispose' };
+export type ToWorker =
+    | InitMessage
+    | ClockMessage
+    | CommandMessage
+    | HostOpMessage
+    | RefreshRequest
+    | SaveRequest
+    | DigestRequest
+    | TradeFlowsMessage
+    | DebugRequest
+    | CommandLogRequest
+    | { type: 'dispose' }
+    /** Tests / the smoke: stop the game as a fatal error in the step loop would (worker.ts fatal, with its rescue save). */
+    | { type: 'simulateFatal'; message: string };
 
 export interface ProgressMessage {
     type: 'progress';
@@ -183,17 +191,17 @@ export interface StepMessage {
     /** onApplied results of commands applied at this tick's boundary and refresh replies, resolved after `delta`. A
      *  result makes the main thread apply the queued cold parts through this delta first. `error`: the command / host op
      *  failed (docs/sim-worker.md §4.4 "Failed commands"); `threw`: the command's executor threw at the boundary (the
-     *  worker paused with a simulation error; as in-thread, no callback runs). */
-    results: { id: number; result: RemoteArg; error?: string; threw?: boolean }[];
+     *  worker paused with a simulation error; as in-thread, no callback runs); `expired`: the command reached a frame
+     *  boundary after its deadline and was not applied (CommandMessage.deadline). */
+    results: { id: number; result: RemoteArg; error?: string; threw?: boolean; expired?: boolean }[];
     /** Sim → UI events raised during the tick (resolved after `delta`). */
     events: WorkerEvent[];
 }
 
-/** One message the player received, with what the worker's pipeline decided for it (ui/messagePipeline.ts). */
+/** One message the player's pipeline handled, with what it decided (sim/playerMessages.ts PlayerMessageReceipt). */
 export interface PlayerMessageWire {
     m: RemoteArg;
-    ticker: string | null;
-    popupPass: boolean;
+    ticker: boolean;
     advisor: boolean;
     route: MessageRoute | null;
     action: 'queue' | 'open' | 'none';
@@ -211,7 +219,7 @@ export interface PlayerEventWire {
 export type WorkerEvent =
     /** Galaxy.GameEnd (the worker already paused, ran DoGameEnd and reviewed the achievements); `args` for the banner. */
     | { kind: 'gameEnd'; args?: { victor: RemoteArg; outcome: number; description: string; code: number } }
-    /** The player's message pipeline after a tick (each message once, in arrival order). */
+    /** What the player's message pipeline handled since the last step (each message once, in arrival order). */
     | { kind: 'playerMessages'; receipts: PlayerMessageWire[]; events: PlayerEventWire[] }
     | { kind: 'locationPinged'; target: RemoteArg }
     | { kind: 'simError'; message: string }
@@ -231,10 +239,11 @@ export type FromWorker =
     | { type: 'commandLog'; id: number; log: CommandLogEntry[] }
     /**
      * Something failed in the worker. `fatal`: the worker's game stopped (its step loop or the sync threw; nothing more
-     * will come — the main thread fails what waits on it). `id`: the save / digest / debug / commandLog request that
-     * failed (its promise rejects). Neither: a message handler failed (logged).
+     * will come — the main thread fails what waits on it; `rescue`: the worker's save of its game as it stopped, when
+     * it could still serialize it — the restart's first choice, restart.ts). `id`: the save / digest / debug /
+     * commandLog request that failed (its promise rejects). Neither: a message handler failed (logged).
      */
-    | { type: 'error'; message: string; fatal?: boolean; id?: number };
+    | { type: 'error'; message: string; fatal?: boolean; id?: number; rescue?: string | null };
 
 /** Reply to a DebugRequest: the member's value (or the call's result) and the target's plain fields after the op. */
 export interface DebugReply {

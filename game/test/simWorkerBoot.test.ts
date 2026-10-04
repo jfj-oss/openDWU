@@ -294,11 +294,11 @@ describe('sim worker chunk 1: boot and load', () => {
         expect(stateDigest(booted.game.galaxy)).toBe(stateDigest(game.galaxy));
     }, 600000);
 
-    it('a create boot builds the game createGame builds here, with the wizard flag applied after', async () => {
-        const opts = { ...tickGameOptions(gameData), starCount: 80, sectorWidth: 4, sectorHeight: 4 };
+    it('a create boot builds the game createGame builds here, with the wizard flag in the options (written last)', async () => {
+        const opts = { ...tickGameOptions(gameData), starCount: 80, sectorWidth: 4, sectorHeight: 4, playerFlagShape: 5 };
         const here = createGame(opts);
-        here.playerEmpire.flagShape = 5;
-        const booted = await bootWorkerGame({ kind: 'create', options: structuredClone(workerCreateOptions(opts)), scenario: null, flagShapeIndex: 5 }, deps());
+        expect(here.playerEmpire.flagShape).toBe(5);
+        const booted = await bootWorkerGame({ kind: 'create', options: structuredClone(workerCreateOptions(opts)), scenario: null }, deps());
         expect(booted.game.playerEmpire.flagShape).toBe(5);
         expect(booted.time.paused).toBe(true);
         const t = (g: Game): string => serializeGame(g, new GalaxyTime().bindGalaxy(g.galaxy), START_OPTIONS);

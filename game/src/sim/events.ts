@@ -62,7 +62,7 @@ import type { Population } from './population';
 import { gameText } from './colonyTick';
 import { CreatureType } from './creature';
 import { REAL_SECONDS_IN_GALACTIC_YEAR, galaxyNow } from './tick/simTime';
-import { EmpireMessage, EmpireMessageType, sendEmpireMessage, sendMessageToEmpire, sendMessageToEmpireWithTitle } from './messages';
+import { EmpireMessage, EmpireMessageType, playerInbox, sendEmpireMessage, sendMessageToEmpire, sendMessageToEmpireWithTitle } from './messages';
 import { clearColony } from './combat/invasion';
 import { DiplomaticRelation, obtainDiplomaticRelation, obtainEmpireEvaluation, processRelationChange, type EmpireEvaluation } from './diplomacy';
 import { obtainPirateRelation, PirateRelationType } from './pirateRelations';
@@ -82,9 +82,14 @@ import type { GalaxyResourceMap } from './visibility';
 import { formatGameTextNow } from './textResolver';
 import { scenarioEmit, scenarioQuery } from './scenario/hooks';
 
-/** Empire.7.cs 3400 SendEventMessageToEmpire(eventMessageType, title, message, additionalData, location): only the attached UI recipient sees it. */
+/**
+ * Empire.7.cs 3400 SendEventMessageToEmpire(eventMessageType, title, message, additionalData, location): the player's
+ * inbox gets it (Main.ReceiveEventMessage queues it; playerMessages.ts records it at the next drain), and an attached
+ * observer (the in-thread UI's event panel, a test) sees the call.
+ */
 export function sendEventMessageToEmpire(empire: Empire, eventMessageType: EventMessageType, title: string, message: string, additionalData: unknown, location: unknown): void {
-    if (empire.eventMessageRecipient !== null) {
+    playerInbox(empire)?.push({ event: { type: eventMessageType, title, message, additionalData, location } });
+    if (empire.eventMessageRecipient != null) {
         empire.eventMessageRecipient.receiveEventMessage(eventMessageType, title, message, additionalData, location);
     }
 }

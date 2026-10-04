@@ -41,6 +41,7 @@ import { yardProgress } from './screens/constructionYards';
 import type { ConstructionQueue } from '../sim/construction/constructionQueue';
 import { builtObjectImageUrl, resolveDrawPictureRef } from '../render/builtObjectLayer';
 import { fighterImageUrl } from '../render/fighterLayer';
+import { FighterMissionType, type Fighter } from '../sim/combat/fighters';
 import { asteroidUrls, cloudUrls, mapStarUrls, planetUrls } from '../render/assets';
 import { racePortraitUrl } from './empireEmblem';
 import { abundancePercentText } from './resourceAbundance';
@@ -855,6 +856,70 @@ export function multiShipInfo(ctx: InfoContext, ships: readonly BuiltObject[]): 
 }
 
 // ---------------------------------------------------------------------------------------------------------------
+// Fighter (InfoPanel.cs 3495 DrawFighter)
+// ---------------------------------------------------------------------------------------------------------------
+
+/** Port of Galaxy.2.cs 5675 ResolveMissionDescription(Fighter). */
+export function fighterMissionDescription(f: Pick<Fighter, 'missionType' | 'currentTarget' | 'parentBuiltObject'>): string {
+    switch (f.missionType) {
+        case FighterMissionType.Undefined:
+            return '(No mission)';
+        case FighterMissionType.Attack: {
+            const t = f.currentTarget as { name?: string } | null;
+            return t === null ? 'Attack' : `Attack ${t.name ?? ''}`;
+        }
+        case FighterMissionType.Patrol:
+            return f.parentBuiltObject === null ? 'Patrol' : `Patrol ${f.parentBuiltObject.name}`;
+        case FighterMissionType.ReturnToCarrier:
+            return f.parentBuiltObject !== null ? `Return to carrier (${f.parentBuiltObject.name})` : 'Return to carrier';
+        default:
+            return '';
+    }
+}
+
+/** Port of InfoPanel.cs 3495 DrawFighter (the character-bonus line, _CharacterBonuses, is not ported). */
+export function fighterInfo(ctx: InfoContext, fi: Fighter): InfoModel {
+    const { galaxy, player } = ctx;
+    const e = fi.empire;
+    // flag: another empire's fighter the player can view (EmpiresViewable).
+    const viewable = e !== player && e !== null && player.empiresViewable.includes(e);
+    const known = e === player || viewable;
+    let corner: InfoModel['corner'] = null;
+    if (e !== null && e === galaxy.independentEmpire) corner = { text: e.name, color: WHITE };
+    else if (e !== null) corner = { flagOf: e, target: { kind: 'empire', empire: e } };
+    const rows: InfoRow[] = [{ kind: 'gap', h: 8 }];
+    rows.push(known ? { kind: 'line', segs: [txt(fighterMissionDescription(fi))] } : { kind: 'line', segs: [txt('(Unknown mission)', UNKNOWN_COLOR)] });
+    rows.push({ kind: 'gap', h: 5 });
+    rows.push({ kind: 'band' });
+    const empireText = e === null ? '(Abandoned)' : e === galaxy.independentEmpire ? '(Independent)' : e.name;
+    rows.push(label('Empire', [txt(empireText)]));
+    rows.push({ kind: 'gap', h: 5 });
+    if (known) {
+        const hp = Math.trunc(fi.health * 100);
+        rows.push({ kind: 'bar', label: 'Health', max: 100, current: hp, inner: `${hp}${fi.underConstruction ? ' (under construction)' : ''}`, right: '100', fill: BAR_FILL });
+        const en = Math.max(0, Math.trunc(fi.currentEnergy));
+        rows.push({ kind: 'bar', label: 'Energy', max: fi.specification.energyCapacity, current: en, inner: String(en), right: String(fi.specification.energyCapacity), fill: BAR_FILL });
+    } else {
+        rows.push(label('Health', [txt('(Unknown)', UNKNOWN_COLOR)]));
+        rows.push(label('Energy', [txt('(Unknown)', UNKNOWN_COLOR)]));
+    }
+    const sh = Math.trunc(fi.currentShields);
+    rows.push({ kind: 'bar', label: 'Shields', max: fi.specification.shieldsCapacity, current: sh, inner: `${sh}${fi.shieldsReducedLocation ? ' (reducing)' : ''}`, right: String(fi.specification.shieldsCapacity), fill: BAR_FILL });
+    const sp = Math.trunc(fi.currentSpeed);
+    rows.push({ kind: 'bar', label: 'Speed', max: fi.topSpeed, current: sp, inner: `${sp}${fi.movementSlowedLocation ? ' (slowed)' : ''}`, right: String(fi.topSpeed), fill: BAR_FILL });
+    rows.push({ kind: 'gap', h: 5 });
+    rows.push(label('Weapons', [txt(fi.firepowerRaw === 0 ? '(None)' : `Firepower: ${fi.firepowerRaw}, Range: ${fi.specification.weaponRange}`)]));
+    return {
+        title: [{ text: fi.name, color: empireTitleColor(galaxy, e) }],
+        corner,
+        picture: picture(fighterImageUrl(fi.pictureRef), fi.size / 0.6, (fi.heading * 180) / Math.PI + 90),
+        rows,
+        labelWidth: 52,
+        automated: false,
+    };
+}
+
+// ---------------------------------------------------------------------------------------------------------------
 // Creature (InfoPanel.cs 3453 DrawCreature)
 // ---------------------------------------------------------------------------------------------------------------
 
@@ -1354,6 +1419,7 @@ export interface InfoSelection {
     builtObject?: BuiltObject;
     shipGroup?: ShipGroup;
     creature?: Creature;
+    fighter?: Fighter;
     builtObjects?: BuiltObject[];
     /** The system was selected as a whole (a star clicked at galaxy zoom: the C# SystemInfo selection). */
     systemInfo?: boolean;
@@ -1363,6 +1429,7 @@ export interface InfoSelection {
 export function buildInfoModel(ctx: InfoContext, sel: InfoSelection, creaturePicture: string | null = null): InfoModel {
     if (sel.builtObjects !== undefined && sel.builtObjects.length > 0) return multiShipInfo(ctx, sel.builtObjects);
     if (sel.creature !== undefined) return creatureInfo(ctx, sel.creature, creaturePicture);
+    if (sel.fighter !== undefined) return fighterInfo(ctx, sel.fighter);
     if (sel.shipGroup !== undefined) return shipGroupInfo(ctx, sel.shipGroup);
     if (sel.builtObject !== undefined) return builtObjectInfo(ctx, sel.builtObject);
     if (sel.systemInfo === true && sel.habitat === sel.system.systemStar) return systemInfoModel(ctx, sel.system);

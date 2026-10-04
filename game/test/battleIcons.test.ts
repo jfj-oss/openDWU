@@ -26,3 +26,23 @@ describe('systemsUnderFire', () => {
         expect(systemsUnderFire(null, [], h, 0).size).toBe(0);
     });
 });
+
+// The combat-activity window (moved here from the retired combatBars.ts shield/hull bars design).
+import { COMBAT_FADE_S, COMBAT_HOLD_S, combatActivityAlpha, lastCombatMs } from '../src/render/battleIcons';
+
+describe('combat activity window', () => {
+    const now = 100_000;
+    const s = (o: Record<string, unknown> = {}) => ({ weapons: [], lastShieldStrike: MIN_TIME, attackers: [], ...o }) as never;
+    it('no activity ever means 0; a live attacker means now', () => {
+        expect(combatActivityAlpha(s(), now)).toBe(0);
+        expect(lastCombatMs(s({ attackers: [{ hasBeenDestroyed: false }] }), now)).toBe(now);
+        expect(combatActivityAlpha(s({ attackers: [{ hasBeenDestroyed: true }] }), now)).toBe(0);
+    });
+    it('holds, then fades', () => {
+        const hit = (ageS: number) => s({ lastShieldStrike: now - ageS * 1000 });
+        expect(combatActivityAlpha(hit(COMBAT_HOLD_S), now)).toBe(1);
+        expect(combatActivityAlpha(hit(COMBAT_HOLD_S + COMBAT_FADE_S / 2), now)).toBeCloseTo(0.5);
+        expect(combatActivityAlpha(hit(COMBAT_HOLD_S + COMBAT_FADE_S), now)).toBe(0);
+        expect(lastCombatMs(s({ lastShieldStrike: 10, weapons: [{ lastFired: 20 }] }), now)).toBe(20);
+    });
+});

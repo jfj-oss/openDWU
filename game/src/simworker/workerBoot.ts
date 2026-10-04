@@ -81,8 +81,6 @@ export async function bootWorkerGame(boot: WorkerBoot, deps: WorkerBootDeps): Pr
                 progress(r.value.step, r.value.fraction);
             }
         }
-        // main.ts bootGameFromWizard: the wizard's flag pick is applied after createGame.
-        if (boot.flagShapeIndex !== undefined && boot.flagShapeIndex >= 0) game.playerEmpire.flagShape = boot.flagShapeIndex;
         return { game, time: new GalaxyTime(), gameData, scenario: boot.scenario, startOptions: null };
     }
     if (boot.kind === 'generate') {

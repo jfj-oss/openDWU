@@ -24,6 +24,7 @@ import { takeOwnershipOfColonyFull } from '../src/sim/combat/ownership';
 import { strategicValue } from '../src/sim/territory';
 import { reviewPirateRelations } from '../src/sim/pirates/missionsMarket';
 import { advisorSuggestions, AdvisorMessageType } from '../src/sim/advisorQueue';
+import { processPlayerMessages } from '../src/sim/playerMessages';
 import { AutomationLevel } from '../src/sim/empire';
 import { galaxyCurrentStarDate } from '../src/sim/pirateRelations';
 import * as orders from '../src/sim/logistics/orders';
@@ -360,6 +361,7 @@ describe('Empire.8.cs 4395 CheckTaskAuthorized: one implementation (diplomacyTic
         obtainPirateRelation(pirate, e).monthlyProtectionFeeToThisEmpire = 1e12; // far above the cash-flow share
         const before = advisorSuggestions(e).length;
         reviewPirateRelations(gal, e, galaxyCurrentStarDate(gal), 0);
+        processPlayerMessages(gal); // the prompt reaches the queue through the player's message pipeline (frame end)
         expect(rel.type).toBe(PirateRelationType.Protection); // the player decides
         const added = advisorSuggestions(e).slice(before);
         expect(added.length).toBe(1);

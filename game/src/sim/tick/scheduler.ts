@@ -32,6 +32,7 @@ import { empireShipGroups } from '../fleets/shipGroup';
 import { identifyMechanoidEmpire, warnOfIncomingEnemyFleetsAndPlanetDestroyers } from '../fleets/militaryAI';
 import { getBuiltObjectsAtLocation } from '../stationPlacement';
 import { drainCommandBoundary, enterSimFrame, leaveSimFrame } from './commandBoundary';
+import { ensurePlayerInbox, playerMessagesFrameEnd } from '../playerMessages';
 
 /**
  * Optional per-pass timer (harness `profile`): accumulated wall ms per frame-driver pass. The wall clock is injected
@@ -440,6 +441,8 @@ export interface FrameOptions {
 export function runSimFrame(galaxy: Galaxy, frameMs: number, opts: FrameOptions = {}): void {
     // Command log (tasks/M4-agent-brief.md): queued external commands apply here, at the frame boundary, stamped with
     // the sim time before the clock advances. Nothing queued ⇒ nothing happens (the no-command digest is unchanged).
+    // The player's message pipeline receives from here on (playerMessages.ts; a no-op once attached).
+    ensurePlayerInbox(galaxy);
     drainCommandBoundary(galaxy);
     enterSimFrame();
     try {
@@ -464,6 +467,11 @@ function runSimFrameBody(galaxy: Galaxy, frameMs: number, opts: FrameOptions): v
     drainQueue(galaxy, state);
     // Not in the C#: the player's construction job board (O(1) unless it changed; player/constructionBoard.ts).
     processConstructionBoard(galaxy);
+    // Main's UI thread between two sim frames: what the sim sent the player this frame, in arrival order — the
+    // BeginInvoke'd ReceiveMessageInternal / method_523 / PromptForAuthorizationInternal calls — then the advisor queue's
+    // age expiry (playerMessages.ts; the C# runs them whenever its UI thread gets to them, the port at this fixed point
+    // so that the game stays replayable).
+    playerMessagesFrameEnd(galaxy);
     state.frames++;
 }
 

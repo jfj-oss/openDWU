@@ -1707,6 +1707,10 @@ function recruitTroops(ctx: Ctx, habitat4: Habitat, action: ShipAction): void {
         empire.controlTroopGeneration = false;
     }
     if (habitat4.empire === null || habitat4.empire === galaxy.independentEmpire || habitat4.troopsToRecruit === null) {
+        // The C# returns without a word (the button just does nothing); the port says why (ShipActionResult.message,
+        // "Recruit Troops at {0}" is the GameText the order menu shows for this order). No state change either way.
+        const why = habitat4.empire === null ? 'the colony has no owner' : habitat4.empire === galaxy.independentEmpire ? 'independent colonies cannot recruit troops' : 'this colony cannot recruit troops';
+        ctx.fail(`Recruit Troops at ${habitat4.name}: ${why}`);
         return;
     }
     const dominantRace = habitat4.population.dominantRace as Race;

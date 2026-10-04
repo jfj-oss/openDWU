@@ -99,6 +99,7 @@ import { empireIntel, formatMillions } from './empireIntel';
 // [proposals] begin
 import { listProposals, type ProposalOption, type ProposalResult } from '../../sim/player/diplomacyProposals';
 import { issuePlayerCommand } from '../../sim/player/playerCommands';
+import { PendingValues } from '../pendingCommands';
 import { companyHeaderLine, toggleChartersScreen } from './charters'; // [charters]
 import { charterOfCompany } from '../../sim/scenario/charteredCompanies/charters'; // [charters]
 import { DialogSet, raceDialogFileName } from '../../sim/data/dialogSet';
@@ -845,6 +846,8 @@ function createDiplomacyScreen(opts: DiplomacyScreenOptions): OpenState {
     let governmentFilter = '';
     let extrasScroll = 0;
     let closed = false;
+    // "Trade restricted resources" per empire as last sent, until its reply lands (pendingCommands.ts).
+    const pendingRestricted = new PendingValues<Empire, boolean>();
     // listProposals (method_238 obtains the relations it lists) and the protection price (ObtainPirateRelation) are UI
     // reads in both modes (on the replica in worker mode): the lookups do not write, and the records the C# adds here
     // become a journaled command (sim/readOnlyQuery.ts requestUiRecord; docs/sim-worker.md §8).
@@ -1213,7 +1216,14 @@ function createDiplomacyScreen(opts: DiplomacyScreenOptions): OpenState {
                 // TradeRestrictedResourcesPanel.chkTradeResources_CheckedChanged: our SupplyRestrictedResources towards
                 // them (a player command, applied at the next frame boundary).
                 const other = empire;
-                const box = checkBox(ln.text, ln.checked, (v) => issuePlayerCommand(player.galaxy, player, 'setSupplyRestrictedResources', [other, v], () => render()), f.normal);
+                // The value last sent shows until its reply lands (the 1 s re-render reads the game: pendingCommands.ts).
+                const box = checkBox(ln.text, pendingRestricted.value(other, ln.checked), (v) => {
+                    const settle = pendingRestricted.send(other, v);
+                    issuePlayerCommand(player.galaxy, player, 'setSupplyRestrictedResources', [other, v], () => {
+                        settle();
+                        render();
+                    });
+                }, f.normal);
                 box.classList.add('dip-restricted-check');
                 detail.appendChild(place(box, 20, y0));
             }

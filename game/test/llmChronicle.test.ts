@@ -19,6 +19,8 @@ import { DEFAULT_LLM_POLICY, LlmQueue, galaxyLlmClock, type LlmRequest, type Llm
 import { startLlmLayer } from '../src/llm/llmLayer';
 import { historianVoice } from '../src/llm/prompts/chronicle';
 import { governmentName } from '../src/sim/player/diplomatBrief';
+import { commandLog, type PlayerLogEntry } from '../src/sim/player/commandLog';
+import { flushPlayerCommands, scheduleCommandLog } from '../src/sim/player/playerCommands';
 import { chronicleFileName, chronicleRows, galacticHistoryHasChronicle } from '../src/ui/screens/galacticHistory';
 
 const SC = 'llm-layer';
@@ -92,6 +94,22 @@ describe('chronicle job', () => {
         job.poll();
         expect(job.pending).toBeNull();
         expect(t.reqs).toHaveLength(1);
+    });
+
+    it('the store is the journaled storeChronicleYear command: the same game plus the log has the same chronicle', async () => {
+        const a = game();
+        endYear(a.g);
+        await runJob(a.g, a.p, transport(() => GOOD));
+        const log = commandLog(a.g) as PlayerLogEntry[];
+        expect(log.map((e) => e.op)).toEqual(['storeChronicleYear']);
+        expect(log[0].nowMs).toBe(a.g.nowMs);
+        // The same start (same scenario game, same events, same date), then the log: the model's text replays by value.
+        const b = game();
+        endYear(b.g);
+        scheduleCommandLog(b.g, log);
+        flushPlayerCommands(b.g);
+        expect(chronicleYears(b.g, b.p)).toEqual(chronicleYears(a.g, a.p));
+        expect(chronicleYears(b.g, b.p)[0].text).toContain('Vega');
     });
 
     it('the prompt carries the historian voice, the digest and only the events the player knew; schema-constrained, background priority', async () => {

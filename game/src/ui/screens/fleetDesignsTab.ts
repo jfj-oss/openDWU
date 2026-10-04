@@ -12,6 +12,7 @@ import type { Habitat } from '../../sim/types';
 import { BuiltObjectRole } from '../../sim/data/designSpecifications';
 import { resolveSubRoleDescription } from '../../sim/designGeneration';
 import { issuePlayerCommand } from '../../sim/player/playerCommands';
+import { PendingValues } from '../pendingCommands';
 import type { PlayerOpArgs, PlayerOpName } from '../../sim/player/playerOps';
 import {
     fleetBuildProgress,
@@ -53,6 +54,41 @@ async function withFleetFormationPrompt(empire: Empire, issue: () => void): Prom
     issue();
 }
 
+
+/**
+ * The design counts of the fleet designs as the − / + / Add buttons see them: the count last sent for a (template, design)
+ * while its reply is on the way, else the template's (pendingCommands.ts) — so quick repeated clicks each add or remove
+ * one ship (in sim-worker mode the replica's template is a round trip behind).
+ */
+export class FleetTemplateCounts {
+    private readonly byTemplate = new Map<number, PendingValues<Design, number>>();
+
+    /** The count shown for `design` in `t` (0: not in the template). */
+    count(t: FleetTemplate, design: Design): number {
+        const cur = t.entries.find((e) => e.design === design)?.count ?? 0;
+        return this.byTemplate.get(t.id)?.value(design, cur) ?? cur;
+    }
+
+    /** fleetTemplateSetEntry with `count` (clamped as the executor does), noted as sent until its reply lands. */
+    set(empire: Empire, templateId: number, design: Design, count: number, done?: (r: boolean) => void): void {
+        let pv = this.byTemplate.get(templateId);
+        if (pv === undefined) {
+            pv = new PendingValues<Design, number>();
+            this.byTemplate.set(templateId, pv);
+        }
+        const n = Math.max(0, Math.min(999, Math.trunc(count)));
+        const settle = pv.send(design, n);
+        issuePlayerCommand(empire.galaxy, empire, 'fleetTemplateSetEntry', [templateId, design, n], (r) => {
+            settle();
+            done?.(r);
+        });
+    }
+
+    /** One more (+1) / one fewer (−1) than shown. */
+    step(empire: Empire, t: FleetTemplate, design: Design, by: number, done?: (r: boolean) => void): void {
+        this.set(empire, t.id, design, this.count(t, design) + by, done);
+    }
+}
 /** The warship designs a template row can use, grouped by subrole (Set Fleet only takes Military ships). */
 export function fleetTemplateDesignGroups(empire: Empire): { label: string; designs: Design[] }[] {
     const designs = empire.designs
@@ -132,6 +168,8 @@ export function createFleetDesignsTab(container: HTMLElement, empire: Empire, si
     const H = size.h;
     const ordersTop = H - 210;
 
+    // The − / + / Add counts last sent, until their replies land (quick repeated clicks).
+    const counts = new FleetTemplateCounts();
     const issue = <K extends PlayerOpName>(op: K, args: PlayerOpArgs<K>, after?: (r: unknown) => void): void => {
         issuePlayerCommand(galaxy, empire, op, args, (r) => {
             after?.(r);
@@ -250,11 +288,11 @@ export function createFleetDesignsTab(container: HTMLElement, empire: Empire, si
                 {
                     id: 'count', header: 'Count', width: 100, align: 'center', render: ({ i }, c) => {
                         const e = t.entries[i];
-                        const minus = button('−', 'One fewer (0 removes the row)', () => issue('fleetTemplateSetEntry', [t.id, e.design, e.count - 1]));
-                        const plus = button('+', 'One more', () => issue('fleetTemplateSetEntry', [t.id, e.design, e.count + 1]));
+                        const minus = button('−', 'One fewer (0 removes the row)', () => counts.step(empire, t, e.design, -1, () => render()));
+                        const plus = button('+', 'One more', () => counts.step(empire, t, e.design, 1, () => render()));
                         minus.classList.add('fl-step');
                         plus.classList.add('fl-step');
-                        c.append(minus, el('span', 'fl-count', String(e.count)), plus);
+                        c.append(minus, el('span', 'fl-count', String(counts.count(t, e.design))), plus);
                     },
                 },
                 { id: 'cost', header: 'Unit cost', width: 90, align: 'right', render: ({ i }, c) => { c.textContent = formatMoney(t.entries[i].design.calculateCurrentPurchasePrice(galaxy)); } },
@@ -289,8 +327,7 @@ export function createFleetDesignsTab(container: HTMLElement, empire: Empire, si
         detail.appendChild(place(button('Add Design', 'Add one ship of the chosen design', () => {
             const d = all[Number(designSel.value)];
             if (d === undefined) return;
-            const cur = t.entries.find((x) => x.design === d)?.count ?? 0;
-            issue('fleetTemplateSetEntry', [t.id, d, cur + 1]);
+            counts.step(empire, t, d, 1, () => render());
         }, all.length > 0), 410, 224, 140, 32));
 
         // Totals.

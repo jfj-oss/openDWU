@@ -20,3 +20,15 @@ export function circleAtScreenRes(g: Graphics, x: number, y: number, r: number, 
     g.context.restore();
     return g;
 }
+
+/**
+ * XnaDrawingHelper.DrawCircle(x, y, w, h, color, thickness, segmentCount) (XnaDrawingHelper.cs 777-811): the circle as
+ * `segments` chords from angle 0 (a closed polygon; stroke it as usual). Coordinates in the Graphics' own units.
+ */
+export function segmentCircle(g: Graphics, cx: number, cy: number, r: number, segments: number): Graphics {
+    const step = (Math.PI * 2) / segments;
+    g.moveTo(cx + r, cy);
+    for (let i = 1; i < segments; i++) g.lineTo(cx + r * Math.cos(i * step), cy + r * Math.sin(i * step));
+    g.closePath();
+    return g;
+}

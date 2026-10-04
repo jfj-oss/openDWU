@@ -4,7 +4,8 @@
 //
 // - Sim entities are references by a stable key that exists in the save too: BuiltObject → builtObjectID, Habitat →
 //   habitatIndex, Empire → index in the flat empire list (galaxySave.flatEmpireList), ShipGroup / Design / Character /
-//   Troop / TechNode → owner empire + index in its list, Creature / SystemInfo → galaxy list index. Every key is
+//   Troop / TechNode → owner empire + index in its list, Creature / SystemInfo → galaxy list index, a queued advisor
+//   suggestion → owner empire + its stable id (EmpireMessage.advisorSuggestionId). Every key is
 //   resolved back when it is written and must give the same object, else the command is not replayable (throws).
 // - Static data (races, components, facilities, plagues, …) → the save's externals ({kind, key}).
 // - Other class instances of the save registry (plus ShipAction, TradeableItem) and plain objects / arrays → by value.
@@ -22,6 +23,7 @@ import { Character } from '../characters';
 import { Troop } from '../cargo';
 import { TradeableItem } from '../tradeItems';
 import { EmpireMessage } from '../messages';
+import { findAdvisorSuggestion } from '../advisorQueue';
 import { ShipAction } from './shipAction';
 import { flatEmpireList, galaxyExternals, saveClassPrototypes } from '../save/galaxySave';
 import type { TechNode } from '../researchSystem';
@@ -109,10 +111,13 @@ function entityKey(galaxy: Galaxy, v: object): [string, number | number[]] | nul
         throw new CommandEncodeError('command argument: a Troop in no empire list');
     }
     if (v instanceof EmpireMessage) {
-        // A queued advisor suggestion (Empire.advisorSuggestions) by position; any other message by value.
+        // A queued advisor suggestion (Empire.advisorSuggestions) by its stable id (advisorQueue.ts; 'advid'), or by
+        // position when it has none (a suggestion queued without addAdvisorSuggestion; logs from before the ids also
+        // say 'adv'); any other message by value.
         for (let i = 0; i < empires.length; i++) {
             const j = (empires[i].advisorSuggestions as unknown[]).indexOf(v);
-            if (j >= 0) return ['adv', [i, j]];
+            if (j < 0) continue;
+            return typeof v.advisorSuggestionId === 'number' ? ['advid', [i, v.advisorSuggestionId]] : ['adv', [i, j]];
         }
         return null;
     }
@@ -160,6 +165,10 @@ function resolveEntity(galaxy: Galaxy, kind: string, key: number | number[]): un
         case 'adv': {
             const [e, j] = pair(key);
             return (e?.advisorSuggestions as unknown[] | undefined)?.[j] ?? null;
+        }
+        case 'advid': {
+            const [e, id] = pair(key);
+            return e === undefined ? null : findAdvisorSuggestion(e, id);
         }
         case 'cr':
             return galaxy.creatures[key as number] ?? null;

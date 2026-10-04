@@ -1,7 +1,7 @@
 // Task 16d: popup card (Main.Part9.cs:2381 pnlMessagePopup), conversation queue (DiplomaticMessageQueue.cs)
 // and conversation dialog (method_254) for the player's EmpireMessages, routed by messageRouting.ts.
-// Like the ticker feed (empireMessageFeed.ts) it polls Empire.Messages, dedupes by identity and resolves the
-// sim's gameText() encodings (textResolver.ts).
+// Like the ticker feed (empireMessageFeed.ts) it reads the messages the player's pipeline handled (the game view's
+// PlayerMessageStream), dedupes by identity and resolves the sim's gameText() encodings (textResolver.ts).
 // The conversation buttons are conversationActions.ts (the option lists of Main.Part9.cs:46 method_238); their sim effects
 // go through issuePlayerCommand. The popup card's text and a Go to button jump to the message's subject (messageGoto.ts).
 // The windows follow the original: the card is pnlMessagePopup (MessagePopup.cs: 335 × 280, the message picture over the
@@ -50,17 +50,16 @@ import { pushMessageStub, markMessageStubRead } from './messageStubList';
 import { getSettings } from './settings';
 import { isScenarioDecision } from '../sim/scenario/decisions';
 // [popupstubs] end
-// [simworker] chunk 4: the sim writes of the tick are messagePipeline.ts (shared with the sim worker, which runs them
-// itself when the sim is in a worker; the tick then reads the worker's receipts and only draws).
+// The game-state half of ReceiveMessageInternal (the advisor queue, the defeat game end, the star-date stamps) runs in
+// the sim tick (sim/playerMessages.ts, every mode); the tick here reads what it handled (the PlayerMessageStream) and
+// only draws.
 import {
     expirePlayerAdvisorSuggestionsFor,
     isAnswerableProposal,
     playerMessageStream,
     pruneConversationQueue,
     rebuildConversationQueue,
-    receivePopupMessage,
     type ConversationEntry,
-    type PopupReceipt,
 } from './messagePipeline';
 export { isAnswerableProposal, pruneConversationQueue, rebuildConversationQueue, type ConversationEntry } from './messagePipeline';
 
@@ -818,26 +817,13 @@ export function installMessagePopups(opts: MessagePopupsOptions): void {
     function tick(): void {
         const options = getMessageOptions();
         let toOpen: ConversationEntry | null = null;
-        // [simworker] worker mode: the messages the worker received, with what its pass decided (and wrote).
-        const stream = playerMessageStream(player);
-        const receipts = stream?.receipts();
-        const list: readonly EmpireMessage[] = receipts !== undefined ? receipts.map((r) => r.message) : empireMessages(player);
-        for (let i = 0; i < list.length; i++) {
-            const m = list[i];
+        // What the player's pipeline handled (sim/playerMessages.ts receivePlayerMessage: Main.Part9.cs 2226 the advisor
+        // queue, 1994-2020 the defeat game end, 2361 / 2408 the star-date stamps), with its decisions.
+        const receipts = playerMessageStream(player)?.receipts() ?? [];
+        for (const p of receipts) {
+            const m = p.message;
             if (m == null || seen.has(m)) continue;
             seen.add(m);
-            let p: PopupReceipt;
-            if (receipts !== undefined) {
-                const r = receipts[i];
-                if (!r.popupPass) continue; // a loaded game's queued conversation (the worker skipped it too)
-                p = r;
-            } else {
-                // The sim side, in the original order (messagePipeline.ts): Main.Part9.cs 2226 ReceiveMessageInternal,
-                // case AdvisorSuggestion (the BuildOrder advice joins the advisor queue, advisorSuggestions.ts shows it);
-                // 1994-2020 the player's own EmpireDefeated → Galaxy_GameEnd(defeat); the popup and conversation star
-                // date stamps (2361).
-                p = receivePopupMessage(galaxy, player, m, options);
-            }
             // [suggest] begin
             if (p.advisor) continue;
             // [suggest] end
@@ -887,7 +873,7 @@ export function installMessagePopups(opts: MessagePopupsOptions): void {
     // The player's own conversation (17e) expires the other empire's pending messages, as the C# does.
     setDiplomacyMessageExpiry((empire) => {
         // [suggest] begin
-        expirePlayerAdvisorSuggestionsFor(player, empire); // DiplomaticMessageQueue.cs 357-380 (the advisor cases)
+        expirePlayerAdvisorSuggestionsFor(galaxy, player, empire); // DiplomaticMessageQueue.cs 357-380 (the advisor cases; a command)
         // [suggest] end
         if (expireDiplomacyMessagesForEmpire(queue, empire) === 0) return;
         if (dialogEntry !== null && !dialogReplying && !queue.includes(dialogEntry)) closeDialog();

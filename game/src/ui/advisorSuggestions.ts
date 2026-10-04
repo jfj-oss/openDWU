@@ -18,15 +18,13 @@ import './advisorSuggestions.css';
 import type { Galaxy } from '../sim/galaxy';
 import type { Empire } from '../sim/empire';
 import type { EmpireMessage } from '../sim/messages';
-import { galaxyStarDate } from '../sim/tick/simTime';
 import { resolveGameText } from '../sim/textResolver';
 import { formatThousands } from '../sim/diplomacyTick';
-import { ADVISOR_SUGGESTION_LIFETIME, AdvisorMessageType, advisorSuggestions } from '../sim/advisorQueue';
+import { AdvisorMessageType, advisorSuggestionsView } from '../sim/advisorQueue';
 import { issuePlayerCommand } from '../sim/player/playerCommands';
 import { Habitat } from '../sim/types';
 import { COLORS, FONT, el, glassButton, openOriginalWindow, place, scrollPanel, text, type OriginalWindow } from './originalWindow';
 import { advisorIconUrl } from './messageStubs';
-import { playerMessageStream } from './messagePipeline';
 import { habitatImageUrl } from './selectionInfo';
 import {
     advisorSuggestionCost,
@@ -160,10 +158,6 @@ export function installAdvisorSuggestions(opts: AdvisorSuggestionsOptions): void
 
     let current: EmpireMessage | null = null;
     let win: OriginalWindow | null = null;
-    let expiryQueued = false;
-    // [simworker] worker mode: the replica's queue shows the expiry only with the next cold sync (about a second after
-    // the reply); hold off re-issuing until then, so the log does not collect duplicate expiries.
-    let expiryHoldUntil = 0;
     let restoreView: (() => void) | null = null;
 
     // Main.Part2.cs 1363 pnlAdvisorSuggestion_CloseButtonClicked / method_644 + method_660.
@@ -268,18 +262,10 @@ export function installAdvisorSuggestions(opts: AdvisorSuggestionsOptions): void
     }
 
     function tick(): void {
-        // DiplomaticMessageQueue.cs 864 method_3: expire old entries.
-        // The expiry changes saved state, so it is a command too (issued only when an entry is due, so the log stays small).
-        const due = galaxyStarDate(galaxy) - ADVISOR_SUGGESTION_LIFETIME;
-        const remote = playerMessageStream(player) !== undefined;
-        if (advisorSuggestions(player).some((x) => x != null && x.starDate < due) && !expiryQueued && (!remote || performance.now() >= expiryHoldUntil)) {
-            expiryQueued = true;
-            issuePlayerCommand(galaxy, player, 'expireAdvisorSuggestions', [], () => {
-                expiryQueued = false;
-                if (remote) expiryHoldUntil = performance.now() + 2000;
-            });
-        }
-        if (current !== null && !advisorSuggestions(player).includes(current)) close();
+        // DiplomaticMessageQueue.cs 864 method_3 (the age expiry its DrawMessages runs on every draw) is sim-driven: the
+        // player's message pipeline runs it at the end of every frame (sim/playerMessages.ts). An entry that left the
+        // queue closes its window.
+        if (current !== null && !advisorSuggestionsView(player).includes(current)) close();
     }
 
     const timer = setInterval(tick, 250);

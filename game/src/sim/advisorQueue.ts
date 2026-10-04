@@ -4,13 +4,14 @@
 // C# flow: Empire.8.cs 4395 CheckTaskAuthorized (SemiAutomated, player) → Empire.7.cs 3836 PromptPlayerForAuthorization
 // → Main.Part9.cs 1053 PromptForAuthorizationInternal = diplomaticMessageQueue_0.AddMessage(message) +
 // ExpireInvalidMessages(message). The BuildOrder suggestion (Empire.6.cs 2754) is sent with SendMessageToEmpire instead
-// and reaches the same queue through Main.Part9.cs 2226 ReceiveMessageInternal (case AdvisorSuggestion) — the UI calls
-// `receiveAdvisorSuggestionMessage` for it. An entry leaves the queue when the player approves / declines it
+// and reaches the same queue through Main.Part9.cs 2226 ReceiveMessageInternal (case AdvisorSuggestion) — the player's
+// message pipeline (playerMessages.ts) calls `receiveAdvisorSuggestionMessage` for it. An entry leaves the queue when the player approves / declines it
 // (Main.Part2.cs 1369 / 2732 RemoveMessage), when a newer equivalent suggestion replaces it (ExpireInvalidMessages), when
 // a diplomacy exchange with its target empire expires it (ExpireDiplomacyMessagesForEmpire) or when it is older than
 // 250 × RealSecondsInGalacticYear (DiplomaticMessageQueue.cs 671 method_3).
 //
-// Headless, no Rnd: nothing here is read by the sim tick (the queue is the player's inbox), so it cannot move a pin.
+// Headless, no Rnd. The BuildOrder advice joins the queue in the sim tick (playerMessages.ts, the player's message
+// pipeline); nothing else in the tick reads the queue.
 
 import type { Empire } from './empire';
 import { EmpireMessage, EmpireMessageType } from './messages';
@@ -103,6 +104,29 @@ export const ADVISOR_SUGGESTION_LIFETIME = 250 * REAL_SECONDS_IN_GALACTIC_YEAR;
 export function advisorSuggestions(empire: Empire): EmpireMessage[] {
     if (!Array.isArray(empire.advisorSuggestions)) empire.advisorSuggestions = [];
     return empire.advisorSuggestions as EmpireMessage[];
+}
+
+const NO_SUGGESTIONS: readonly EmpireMessage[] = Object.freeze([]);
+
+/** advisorSuggestions for a reader that must not write (the UI): never creates the list. */
+export function advisorSuggestionsView(empire: Empire): readonly EmpireMessage[] {
+    return Array.isArray(empire.advisorSuggestions) ? (empire.advisorSuggestions as EmpireMessage[]) : NO_SUGGESTIONS;
+}
+
+/**
+ * Give a queued suggestion its stable id (EmpireMessage.advisorSuggestionId) from the empire's counter, unless it has
+ * one. Not in the C# (its UI holds the object): commands name a suggestion by it (player/commandCodec.ts 'advid').
+ */
+export function assignAdvisorSuggestionId(empire: Empire, message: EmpireMessage): void {
+    if (typeof message.advisorSuggestionId === 'number') return;
+    if (typeof empire.nextAdvisorSuggestionId !== 'number' || !(empire.nextAdvisorSuggestionId >= 1)) empire.nextAdvisorSuggestionId = 1;
+    message.advisorSuggestionId = empire.nextAdvisorSuggestionId++;
+}
+
+/** The queued suggestion of `empire` with stable id `id` (null: not queued, e.g. approved or expired since). */
+export function findAdvisorSuggestion(empire: Empire, id: number): EmpireMessage | null {
+    for (const m of advisorSuggestionsView(empire)) if (m != null && m.advisorSuggestionId === id) return m;
+    return null;
 }
 
 /** The star date at which a queued suggestion expires (method_3: removed once StarDate < now − lifetime). */
@@ -201,6 +225,7 @@ export function expireInvalidAdvisorSuggestions(queue: EmpireMessage[], newMessa
 /** Main.Part9.cs 1053 PromptForAuthorizationInternal: DiplomaticMessageQueue.AddMessage + ExpireInvalidMessages. */
 export function addAdvisorSuggestion(empire: Empire, message: EmpireMessage): void {
     const queue = advisorSuggestions(empire);
+    assignAdvisorSuggestionId(empire, message);
     queue.push(message);
     expireInvalidAdvisorSuggestions(queue, message);
 }

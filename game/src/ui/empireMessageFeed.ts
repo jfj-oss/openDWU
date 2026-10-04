@@ -1,36 +1,24 @@
-// Task 14a: the player's EmpireMessage queue -> the top-middle HUD ticker
-// (Main.Part9.cs ReceiveMessageInternal / method_250).
-// The C# Main registers itself as the player's IMessageRecipient. Here we poll the queue
-// instead, because Empire.messageRecipient is saved by the save codec and a function on it
-// cannot be serialized. The feed never mutates the messages; like the C# receiver (Main.Part9.cs 1508-1517) it adds
-// each one except Informational to the player's saved Empire.MessageHistory.
-// With the sim in a worker (docs/sim-worker.md §9 chunk 4) the worker is the recipient (messagePipeline.ts): the feed
-// reads the messages it delivered, with the line it formatted, and the worker records them.
-import { EmpireMessageType, addHistoryMessage, empireMessages, type EmpireMessage } from '../sim/messages';
+// Task 14a: the player's messages -> the top-middle HUD ticker (Main.Part9.cs ReceiveMessageInternal / method_250).
+// The player's message pipeline (sim/playerMessages.ts) handles each message in the sim tick — the star-date stamp and
+// the Empire.MessageHistory entry of a ticker line (Main.Part9.cs 2404-2410, 1508-1517) are game state — and the feed
+// reads what it handled (the game view's PlayerMessageStream, both modes) and formats the line. It writes nothing.
+import { EmpireMessageType, type EmpireMessage } from '../sim/messages';
 import type { Empire } from '../sim/empire';
 import { formatNet, resolveGameText, tryGetText } from '../sim/textResolver';
-import { getMessageOptions, routeEmpireMessage } from './messageRouting';
+import { getMessageOptions, routeEmpireMessage, tickerShown } from './messageRouting';
 import { playerMessageStream } from './messagePipeline';
 
 // Task 16d: the DisplayMessage<Category> options filter the ticker (messageRouting.ts); popups and the conversation queue are messagePopups.ts.
 // Port of Main.Part9.cs ReceiveMessageInternal (ticker text + bool_2) and method_250
 export function formatEmpireMessage(message: EmpireMessage, player: Empire | null): string | null {
+    // [16d] Game.DisplayMessage<Category> (Main.Part9.cs:1572 bool_2): sim/messageRouting.ts tickerShown.
+    if (!tickerShown(message, routeEmpireMessage(message, player, getMessageOptions()))) return null;
+    return tickerLineText(message, player);
+}
+
+/** The ticker line of a message the pipeline gave one (PlayerMessageReceipt.ticker); null when it reads empty. */
+export function tickerLineText(message: EmpireMessage, player: Empire | null): string | null {
     const t = message.messageType;
-    if (t === EmpireMessageType.AdvisorSuggestion) return null;
-    // [16d] Game.DisplayMessage<Category> (Main.Part9.cs:1572 bool_2): a category switched off in Game
-    // Options hides the line. Uncategorised messages and conversations keep the 14a behaviour.
-    const route = routeEmpireMessage(message, player, getMessageOptions());
-    if (route.category !== null && route.conversation === null && !route.ticker) return null;
-    // [/16d]
-    if (
-        (t === EmpireMessageType.DiplomaticRelationChange ||
-            t === EmpireMessageType.ProposeDiplomaticRelation ||
-            t === EmpireMessageType.AcceptDiplomaticRelation ||
-            t === EmpireMessageType.RefuseDiplomaticRelation) &&
-        typeof message.subject !== 'number'
-    ) {
-        return null;
-    }
     // The C# sender built Description with string.Format(TextResolver.GetText(tag), args); the sim keeps the
     // gameText() "tag|arg0|…" encoding (M9 localises), resolved here against GameText.txt (textResolver.ts).
     const description = resolveGameText(message.description);
@@ -62,20 +50,14 @@ export function createEmpireMessageFeed(): EmpireMessageFeed {
         if (empire === null) return [];
         const out: Array<{ message: EmpireMessage; text: string }> = [];
         const stream = playerMessageStream(empire);
-        if (stream !== undefined) {
-            // Worker mode: every message the worker received, once, with the ticker line it formatted (and recorded).
-            for (const r of stream.receipts()) {
-                if (seen.has(r.message)) continue;
-                seen.add(r.message);
-                if (r.ticker !== null) out.push({ message: r.message, text: r.ticker });
-            }
-            return out;
-        }
-        for (const m of empireMessages(empire)) {
-            if (m == null || seen.has(m)) continue;
-            seen.add(m);
-            const text = formatEmpireMessage(m, empire);
-            if (text !== null) out.push({ message: m, text });
+        if (stream === undefined) return out;
+        // Every message the pipeline handled, once, with its line when the pipeline gave it one (and recorded it).
+        for (const r of stream.receipts()) {
+            if (seen.has(r.message)) continue;
+            seen.add(r.message);
+            if (!r.ticker) continue;
+            const text = tickerLineText(r.message, empire);
+            if (text !== null) out.push({ message: r.message, text });
         }
         return out;
     };
@@ -96,18 +78,6 @@ function messageHistoryOf(empire: Empire): EmpireMessage[] | null {
         return [...(h as Iterable<EmpireMessage>)];
     }
     return null;
-}
-
-/** Port of Main.Part9.cs ReceiveMessageInternal 2404-2410 + 1512-1518: a
- * message shown in the ticker is stamped with the current star date and,
- * unless it is Informational, added to the player's message history
- * (Empire.AddHistoryMessage, which skips duplicates). */
-export function recordTickerMessage(player: Empire, message: EmpireMessage, currentStarDate: number): void {
-    // Worker mode: the replica is read-only; the worker already did this when it received the message.
-    if (playerMessageStream(player) !== undefined) return;
-    message.starDate = currentStarDate;
-    if (message.messageType === EmpireMessageType.Informational) return;
-    addHistoryMessage(player, message); // Empire.cs 4697 (sim port; skips duplicates)
 }
 
 /** Ticker/history lines rebuilt from a loaded game's persisted message

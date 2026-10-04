@@ -36,6 +36,9 @@ export class SimWorkerClient {
     private disposed = false;
     /** Why the worker is gone (stop()), else null. */
     private stopped: string | null = null;
+    /** The worker's save of its game as it stopped (sent with its fatal error), else null: the restart's first choice
+     *  (restart.ts). */
+    rescueSave: string | null = null;
 
     private constructor(
         private readonly worker: Worker,
@@ -78,7 +81,13 @@ export class SimWorkerClient {
                     if (failed) return;
                     const data = typeof gameData === 'function' ? gameData(m) : gameData;
                     let c: SimWorkerClient | null = null;
-                    const core = new SimClientCore(data, m, { post, onEvent: (ev, res) => c?.eventHandler?.(ev, res) });
+                    const core = new SimClientCore(data, m, {
+                        post,
+                        onEvent: (ev, res) => c?.eventHandler?.(ev, res),
+                        // The reply backstop: a worker that runs no frames is stopped (terminated) — it can never apply
+                        // a command later (docs/sim-worker.md §4.4, the timeout policy).
+                        onUnresponsive: (reason) => c?.stop(reason),
+                    });
                     c = new SimWorkerClient(worker, core);
                     // Dev only: `&detectWrites=1|all` reports main-thread writes to the replica (writeDetector.ts).
                     if (import.meta.env.DEV) {
@@ -136,6 +145,7 @@ export class SimWorkerClient {
             }
             case 'error': {
                 if (m.fatal === true) {
+                    this.rescueSave = m.rescue ?? null;
                     this.stop(m.message);
                     return;
                 }
@@ -198,6 +208,17 @@ export class SimWorkerClient {
         this.worker.terminate();
         this.core.workerFailed(reason);
         this.rejectWaiting(`the simulation worker stopped (${reason})`);
+    }
+
+    /** Why the worker stopped (stop()), else null. */
+    get stopReason(): string | null {
+        return this.stopped;
+    }
+
+    /** Tests / the smoke: make the worker stop as a fatal error in its step loop would (with its rescue save). */
+    simulateFatal(message = 'simulated fatal error'): void {
+        if (this.disposed || this.stopped !== null) return;
+        this.worker.postMessage({ type: 'simulateFatal', message } satisfies ToWorker);
     }
 
     /** [simworker chunk 1] The authoritative game's command log (`__dwu.commands.log()` in worker mode). */

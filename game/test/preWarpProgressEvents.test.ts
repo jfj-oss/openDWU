@@ -32,7 +32,7 @@ import { checkReviewSpecialPirateEvents, checkSendPreWarpProgressEventMessage, p
 import { doResearchBreakthrough } from '../src/sim/researchTick';
 import { resolveGameText } from '../src/sim/textResolver';
 import { defaultMessageOptions } from '../src/ui/messageRouting';
-import { recordEventMessage, type QueuedEvent } from '../src/ui/messagePipeline';
+import { recordEventMessage, type QueuedEvent } from '../src/sim/playerMessages';
 import { EVENT_CHROME, eventGoToTarget, eventMessagePresentation, eventPopupShown } from '../src/ui/eventMessagePresentation';
 import { presentEventMessage, type EventPanelSink } from '../src/ui/eventMessages';
 import type { EventPopup, StoryEventPopup } from '../src/ui/messagePopups';
@@ -408,14 +408,13 @@ describe('pre-warp progress events in worker mode (ui/workerMessages.ts)', () =>
             const c = structuredClone(m);
             if (c.type === 'command') host.command(c);
             else if (c.type === 'clock') host.clock(c);
-            else if (c.type === 'uiOp') host.uiOp(c);
         };
         let ui: ReturnType<typeof installWorkerMessageUi> | null = null;
         const client = new SimClientCore(gameData, snap, { post: toHost, now, onEvent: (e: WorkerEvent, resolve) => void ui?.onEvent(e, resolve) });
         const uiTime = new GalaxyTime();
         uiTime.bindGalaxy(client.galaxy);
         uiTime.paused = false;
-        ui = installWorkerMessageUi({ player: client.game.playerEmpire, galaxy: client.galaxy, time: uiTime, post: (op, args) => client.postUiOp(op, args), optionsPollMs: 0 });
+        ui = installWorkerMessageUi({ player: client.game.playerEmpire, galaxy: client.galaxy, time: uiTime });
         // The main thread's recipient (eventMessages.ts installs one on the replica player; here a recorder).
         const replicaPlayer = client.game.playerEmpire;
         const received: QueuedEvent[] = [];

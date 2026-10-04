@@ -125,17 +125,20 @@ export interface FogSelection {
     builtObject?: BuiltObject;
     shipGroup?: { leadShip?: BuiltObject | null } | null;
     creature?: Creature;
+    fighter?: Fighter;
 }
 
 /**
- * Main.Part10.cs method_209 (1270-1300): the selection panel shows no information on a ship, fleet (its lead ship) or
- * creature the player cannot see — true when the selection should be dropped. Habitat selections are decided at pick
+ * Main.Part10.cs method_209 (1270-1300): the selection panel shows no information on a ship, fleet (its lead ship),
+ * fighter or creature the player cannot see — true when the selection should be dropped. Habitat selections are decided at pick
  * time (habitatInfoKnown), not here.
  */
 export function selectionUnseen(galaxy: Galaxy, player: Empire | null, sel: FogSelection | null): boolean {
     if (sel === null || player === null) return false;
     const bo = sel.shipGroup?.leadShip ?? sel.builtObject;
     if (sel.creature !== undefined) return !creatureVisibleToPlayer(galaxy, player, sel.creature);
+    // method_209 1281-1287 (and InfoPanel.cs 3497 DrawFighter: a destroyed fighter clears the selection).
+    if (sel.fighter !== undefined) return sel.fighter.hasBeenDestroyed || !fighterVisibleToPlayer(galaxy, player, sel.fighter);
     if (bo !== undefined && bo !== null) return bo.hasBeenDestroyed ? false : !builtObjectVisibleToPlayer(galaxy, player, bo);
     return false;
 }

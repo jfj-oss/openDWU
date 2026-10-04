@@ -209,3 +209,7 @@ Appended by `npm run repin -- --reason "<why>"` (scripts/repin.mjs).
 - `tickDeterminism.digest600` (test/tickDeterminism.test.ts): Moved "89d3bfddd78f6edc" → "3a9cc8b9c4f924da": parity A1: creature combat, threat warp bonus, captain range, design torpedo order, keep in-use designs
 - `tickDeterminism.counts600` (test/tickDeterminism.test.ts): Moved #f78b172cc4 → #32e802a26c: parity A1: creature combat, threat warp bonus, captain range, design torpedo order, keep in-use designs
 - `tickDeterminism.rndDraws600` (test/tickDeterminism.test.ts): Moved 579423 → 572462: parity A1: creature combat, threat warp bonus, captain range, design torpedo order, keep in-use designs
+
+## 2026-10-04 — message pipeline runs inside the sim tick (determinism; worker parity)
+
+- `tickDeterminism.digest600` (test/tickDeterminism.test.ts): Moved "3a9cc8b9c4f924da" → "e3f6e6fa3f5b926b": message pipeline runs inside the sim tick (determinism; worker parity)

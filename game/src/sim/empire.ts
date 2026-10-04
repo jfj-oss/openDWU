@@ -1833,6 +1833,12 @@ export class Empire {
     /** The AdvisorSuggestion entries of the C# DiplomaticMessageQueue (Main.Part9.cs 1053 / 2226): EmpireMessage[]
      *  awaiting the player's Approve / Decline (player/advisorSuggestions.ts). */
     advisorSuggestions: unknown[] = [];
+    /**
+     * Not in the C#: the id the next queued suggestion gets (EmpireMessage.advisorSuggestionId, advisorQueue.ts), so a
+     * command names a suggestion by a stable id rather than by its place in the queue (player/commandCodec.ts 'advid').
+     * A save from before the field gets it on load (save/galaxySave.ts).
+     */
+    nextAdvisorSuggestionId = 1;
     // ---- M4c fields (movement, fuel) ----
     /** Empire.cs 729 FuelSystemsUpdating (volatile guard around UpdateSystemFuelSourceStatus). */
     fuelSystemsUpdating = false;

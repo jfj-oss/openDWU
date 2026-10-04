@@ -61,6 +61,8 @@ import { GalaxyLocationType } from './galaxyLocation';
 import { GalaxyShape, HabitatCategoryType, HabitatType, type Habitat } from './types';
 import { Cargo, CargoList, ResourceRef } from './cargo';
 import { createGalaxyScenario } from './scenario/state';
+import { copyMessageOptions, type MessageOptions } from './messageRouting';
+import { ensurePlayerInbox } from './playerMessages';
 import { scenarioAfterGeneration, scenarioFindHomeHabitat, scenarioGameStart, scenarioGenerationSetup, scenarioQuery } from './scenario/hooks';
 import './scenario/packages'; // mod layer: registers the scenario packages' hooks
 
@@ -178,6 +180,10 @@ export interface CreateGameOptions {
      * (Main.Part6.cs:2540 YxwyUefOyQ + method_257). Unset = DEFAULT_GAME_OPTIONS_AUTOMATION.
      */
     gameOptions?: Readonly<GameOptionsAutomation>;
+    /** Start.2.cs 2147-2188: the new game's Display* message options (GameOptions; Galaxy.messageOptions). Unset: defaults. */
+    messageOptions?: MessageOptions | null;
+    /** The wizard's flag shape (StartGameOptions.flagShapeIndex), written last (see createGameSteps' end). -1 / unset: none. */
+    playerFlagShape?: number;
     // [todosweep2] begin
     /** Start.2.cs 446 CreateGameFromSettings double_4 = the wizard's research-cost box × 1000 (Start.1.cs 3693): the
      *  Galaxy ctor's baseTechCost (research costs, component tech points, Galaxy.BaseTechCost). Unset = 120000
@@ -1515,6 +1521,14 @@ export function* createGameSteps(opts: CreateGameOptions): Generator<GameStartPr
     baconInitializeSettings(galaxy, gd.baconSettings);
     // Mod layer: the scenario game-start hook (after every stock start step, before the first frame; no-op without one).
     if (galaxy.scenario !== null) scenarioGameStart(galaxy, { randomPointInRing, inNebula, startTechLevel: opts.player.techLevel });
+    // Start.2.cs 2147-2190: game2.DisplayMessage* / DisplayPopup* = gameOptions_0's (the Game Options the player saved;
+    // unset: method_260's defaults). The player's message pipeline reads them (playerMessages.ts).
+    if (opts.messageOptions !== undefined && opts.messageOptions !== null) galaxy.messageOptions = copyMessageOptions(opts.messageOptions);
+    // The wizard's flag pick for the empire types whose options do not carry it (main.ts used to write it after
+    // createGame; as an option it replays): the last write, as it was.
+    if (opts.playerFlagShape !== undefined && opts.playerFlagShape >= 0) empire2.flagShape = opts.playerFlagShape;
+    // Main.Part12.cs:2881 (the game view starts): the player's message / event recipient from here on.
+    ensurePlayerInbox(galaxy);
     stopAt('tail');
     return result();
 }

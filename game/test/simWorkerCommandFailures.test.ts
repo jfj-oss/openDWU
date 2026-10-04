@@ -4,7 +4,8 @@
 // - an executor that throws, or an unknown op: in both modes the frame stops (pause, "Simulation error"), the callback
 //   never runs, the command log is the same, and the commands after it apply at the next boundary;
 // - what only worker mode can hit — an argument the replica or the worker no longer knows, a result that cannot cross
-//   exactly, a lost reply (the timeout), the worker stopping, the game closed or reloaded — gives the op's failure value
+//   exactly, a command that reaches the worker after its deadline (the timeout policy: rejected there, never applied
+//   later), a lost message (the backstop stops the worker), the worker stopping, the game closed or reloaded — gives the op's failure value
 //   (commandFailure.ts), never synchronously and never twice; promised replies reject; nothing is left waiting.
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 
@@ -83,10 +84,14 @@ interface Wired {
  * Host + client in-process (messages structured-cloned as postMessage would). `intercept` may change or drop (null) a
  * message on its way to the worker (a lost or corrupt message).
  */
-function connect(game: Game, opts: { intercept?: (m: ToWorker) => ToWorker | null; replyTimeoutMs?: number; paused?: boolean } = {}): Wired {
+function connect(game: Game, opts: { intercept?: (m: ToWorker) => ToWorker | null; replyTimeoutMs?: number; replyGraceMs?: number; paused?: boolean; onUnresponsive?: (reason: string) => void } = {}): Wired {
     const time = new GalaxyTime();
     time.paused = opts.paused ?? false;
-    const host = new SimHost(game, time, START_OPTIONS, { now: fakeClock() });
+    const wall = { t: 0 };
+    // One epoch clock for both sides (as performance.timeOrigin + performance.now() is in the browser): the command
+    // deadlines (the timeout policy) follow the fake main-thread wall clock.
+    const wallNow = (): number => 1_000_000 + wall.t;
+    const host = new SimHost(game, time, START_OPTIONS, { now: fakeClock(), wallNow });
     const snap = structuredClone(host.snapshot());
     const toHost = (m0: ToWorker): void => {
         const m = opts.intercept === undefined ? m0 : opts.intercept(m0);
@@ -97,9 +102,8 @@ function connect(game: Game, opts: { intercept?: (m: ToWorker) => ToWorker | nul
         else if (c.type === 'refresh') host.refresh(c);
         else if (c.type === 'hostOp') host.hostOp(c);
     };
-    const wall = { t: 0 };
     const events: WorkerEvent[] = [];
-    const client = new SimClientCore(gameData, snap, { post: toHost, now: () => wall.t, replyTimeoutMs: opts.replyTimeoutMs, onEvent: (e) => events.push(e) });
+    const client = new SimClientCore(gameData, snap, { post: toHost, now: () => wall.t, wallNow, replyTimeoutMs: opts.replyTimeoutMs, replyGraceMs: opts.replyGraceMs, onUnresponsive: opts.onUnresponsive, onEvent: (e) => events.push(e) });
     const ui = new GalaxyTime();
     ui.bindGalaxy(client.galaxy);
     ui.speed = time.speed;
@@ -421,36 +425,106 @@ describe('sim worker: failures only worker mode can hit give the op\'s failure v
         w.host.dispose();
     }, 600000);
 
-    it('a lost reply: the timeout fails it loudly with the failure value; a late reply is dropped', () => {
-        const err = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    it('the timeout policy: a command that reaches the worker after its deadline is rejected there — not applied, not journaled, the failure value once', () => {
         const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
         let held: ToWorker | null = null;
         const w = connect(cachedTickGame(gameData), {
             replyTimeoutMs: 2000,
             intercept: (m) => {
-                if (m.type === 'command' && m.op === 'renameColony') {
-                    held = m; // lost on the way
+                if (m.type === 'command' && m.op === 'renameColony' && held === null) {
+                    held = m; // delayed on the way (a worker busy for longer than the deadline)
                     return null;
                 }
                 return m;
             },
         });
         const p = w.client.game.playerEmpire;
+        const colony = ownColony(w.host.game.playerEmpire);
+        const before = colony.name;
+        const calls = new Calls();
+        issuePlayerCommand(w.client.galaxy, p, 'renameColony', [ownColony(p), 'Too Late'], calls.cb('late'));
+        expect((held as unknown as { deadline: number }).deadline).toBe(1_000_000 + w.wall.t + 2000);
+        for (let i = 0; i < 10; i++) w.tick();
+        // The main thread waits for the worker's verdict (no reply yet: nothing is failed early).
+        expect(calls.get('late')).toEqual([]);
+        expect(w.client.pendingReplies).toBe(1);
+        // The command reaches the worker after its deadline.
+        w.wall.t += 2500;
+        w.host.command(structuredClone(held!) as never);
+        w.tick();
+        expect(calls.get('late')).toEqual([false]);
+        expect(w.client.pendingReplies).toBe(0);
+        expect(w.client.expiredCommands).toBe(1);
+        expect(w.host.expiredCommands).toBe(1);
+        // Not applied, not journaled: seed + log replays the game without it.
+        expect(colony.name).toBe(before);
+        expect(commandLog(w.host.galaxy).some((e) => e.source === 'player' && e.op === 'renameColony')).toBe(false);
+        expect(warn.mock.calls.some((c) => /rejected: it reached a frame boundary \d+ ms after its deadline/.test(String(c[0])))).toBe(true);
+        // A command in time still applies.
+        issuePlayerCommand(w.client.galaxy, p, 'renameColony', [ownColony(p), 'In Time'], calls.cb('in time'));
+        for (let i = 0; i < 3; i++) w.tick();
+        expect(calls.get('in time')).toEqual([true]);
+        expect(colony.name).toBe('In Time');
+        for (let i = 0; i < 5; i++) w.tick();
+        expect(calls.get('late')).toHaveLength(1);
+        w.client.dispose();
+        w.host.dispose();
+    }, 600000);
+
+    it('the timeout policy: a command applied in time whose reply is slow is delivered as applied (never failed first)', () => {
+        const w = connect(cachedTickGame(gameData), { replyTimeoutMs: 2000, replyGraceMs: 5000 });
+        const p = w.client.game.playerEmpire;
+        const calls = new Calls();
+        issuePlayerCommand(w.client.galaxy, p, 'renameColony', [ownColony(p), 'Slow Reply'], calls.cb('slow'));
+        // The worker applies it at once; its step messages are slow to reach the main thread (past the deadline).
+        const delayed: ReturnType<SimHost['tick']>[] = [];
+        for (let i = 0; i < 3; i++) delayed.push(w.host.tick(FRAME_REAL_MS));
+        w.wall.t += 3000;
+        w.client.frame(w.ui);
+        expect(calls.get('slow')).toEqual([]);
+        expect(w.client.workerStopped).toBe(false);
+        for (const m of delayed) if (m !== null) w.client.receive(structuredClone(m));
+        w.tick();
+        expect(calls.get('slow')).toEqual([true]);
+        expect(ownColony(w.host.game.playerEmpire).name).toBe('Slow Reply');
+        expect(w.client.pendingReplies).toBe(0);
+        w.client.dispose();
+        w.host.dispose();
+    }, 600000);
+
+    it('the backstop: no reply by the deadline plus the grace (a lost message) stops the worker — everything waiting fails once', () => {
+        const err = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+        vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+        const unresponsive: string[] = [];
+        let w: Wired | null = null;
+        w = connect(cachedTickGame(gameData), {
+            replyTimeoutMs: 2000,
+            replyGraceMs: 3000,
+            intercept: (m) => (m.type === 'command' && m.op === 'renameColony' ? null : m), // lost
+            // As SimWorkerClient: terminate the worker, then fail what waits (workerFailed).
+            onUnresponsive: (reason) => {
+                unresponsive.push(reason);
+                w!.client.workerFailed(reason);
+            },
+        });
+        const p = w.client.game.playerEmpire;
         const calls = new Calls();
         issuePlayerCommand(w.client.galaxy, p, 'renameColony', [ownColony(p), 'Lost'], calls.cb('lost'));
-        for (let i = 0; i < 10; i++) w.tick();
-        expect(calls.get('lost')).toEqual([]);
-        expect(w.client.pendingReplies).toBe(1);
-        w.wall.t += 2500;
+        w.wall.t += 2500; // past the deadline, within the grace: still waiting for the worker's verdict
         w.tick();
+        expect(calls.get('lost')).toEqual([]);
+        expect(unresponsive).toEqual([]);
+        w.wall.t += 3000;
+        w.tick();
+        expect(unresponsive).toHaveLength(1);
+        expect(unresponsive[0]).toMatch(/no reply from the simulation worker after \d+ s/);
         expect(calls.get('lost')).toEqual([false]);
+        expect(w.client.workerStopped).toBe(true);
         expect(w.client.pendingReplies).toBe(0);
-        expect(err.mock.calls.some((c) => /no reply from the simulation worker after \d+ s/.test(String(c[0])))).toBe(true);
-        // The message turns up after all: applied in the worker, but its reply is not delivered a second time.
-        w.host.command(structuredClone(held!) as never);
-        for (let i = 0; i < 5; i++) w.tick();
-        expect(calls.get('lost')).toEqual([false]);
-        expect(warn.mock.calls.some((c) => String(c[0]).includes('after its timeout'))).toBe(true);
+        expect(w.events.filter((e) => e.kind === 'workerStopped')).toHaveLength(1);
+        expect(err.mock.calls.some((c) => String(c[0]).includes('stopping it'))).toBe(true);
+        for (let i = 0; i < 3; i++) w.tick();
+        expect(calls.get('lost')).toHaveLength(1);
         w.client.dispose();
         w.host.dispose();
     }, 600000);
@@ -466,7 +540,7 @@ describe('sim worker: pending replies when the worker stops, the game is closed 
         issuePlayerCommand(w.client.galaxy, p, 'saveDesign', [newDesignDraft(w.client.galaxy, p, { kind: 'copy', design: p.designs[0] })], calls.cb('save'));
         issuePlayerCommand(w.client.galaxy, p, 'renameColony', [ownColony(p), 'Waiting'], calls.cb('rename'));
         const promised = remoteSimHost(w.client.galaxy)!.command(p, 'empireRename', ['Promised']).then(() => 'resolved', (e: Error) => e.message);
-        const hostOp = remoteSimHost(w.client.galaxy)!.hostOp('chronicleYear', [{ year: 1 } as never]).then(() => 'resolved', (e: Error) => e.message);
+        const hostOp = remoteSimHost(w.client.galaxy)!.hostOp('voiceMessage', [null as never, {} as never, '']).then(() => 'resolved', (e: Error) => e.message);
         const answered: unknown[] = [];
         issuePlayerCommand(w.client.galaxy, p, 'moneyPanel', [], (r) => answered.push(r));
         let fresh = 0;

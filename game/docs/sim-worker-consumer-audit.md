@@ -23,7 +23,7 @@ This audit is written against that design. It also applies to a typed-array snap
 
    Everything else is a timer (50 ms to 5 s) or a user action.
 2. **There are 27 direct sim mutations or sim-side registrations that bypass `issuePlayerCommand`** (full list in §4). The serious ones:
-   - **Message pipeline, 4 Hz:** stamps `EmpireMessage.starDate`, pushes into `Empire.messageHistory` and `Empire.advisorSuggestions`, calls `sendEmpireMessage`, and fires `onGameEnd`.
+   - **Message pipeline, 4 Hz:** stamps `EmpireMessage.starDate`, pushes into `Empire.messageHistory` and `Empire.advisorSuggestions`, calls `sendEmpireMessage`, and fires `onGameEnd`. **Done (2026-10-03):** sim code in the tick (`sim/playerMessages.ts`, §4.1).
    - **Audio, every frame:** writes `*SoundPlayed` flags on Weapon, Explosion and BuiltObject.
    - **Order menus:** draw `galaxy.rnd` when building menus, on user input.
    - **Synchronous execution:** `runPlayerCommand` and `applyStrategicDecisions` run directly from the advisor and LLM paths.
@@ -94,7 +94,7 @@ This audit is written against that design. It also applies to a typed-array snap
   - `issuePlayerCommand` (exposed on `__dwu.commands.issue`) and `commandLog(galaxy)` (debug)
   - `expireConversationsForEmpire`
   - **MUTATIONS:**
-    - `game.playerEmpire.flagShape = startOptions.flagShapeIndex` (wizard boot, before the view starts)
+    - `game.playerEmpire.flagShape = startOptions.flagShapeIndex` (wizard boot, before the view starts). **Done:** `CreateGameOptions.playerFlagShape`.
     - `registerLocationPingedHook(cb)`: the sim calls it during a tick
     - `installGameEndHandler`
     - `installEventMessages`, which puts `eventMessageRecipient` on the player Empire
@@ -292,18 +292,24 @@ This audit is written against that design. It also applies to a typed-array snap
 1. `src/audio/mainViewSounds.ts` (every frame): `weapon.soundEffectPlayed`, `explosion.explosionSoundPlayed`, `bo.ionStrikeSoundPlayed`, `bo.hyperjumpAboutToEnterSoundPlayed`. On a replica these writes are overwritten by the sync, so sounds may replay. Move this to a render-side `WeakSet`, or let the worker emit sound events.
    **Done (chunk 2):** on a replica the sound pass keeps render-side marks (`mainViewSounds.ts ReplicaSoundMarks`, keyed by a shot's LastFired, the explosion object, LastIonStrike and the jump's countdown) and writes nothing; in-thread it still uses the sim's flags (`simFlagSoundMarks`).
 2. `src/main.ts` `refreshHud` at 4 Hz → `ui/empireMessageFeed.ts recordTickerMessage`: `message.starDate = …`; `addHistoryMessage` (`Empire.messageHistory.push`).
+   **Done (§4.1):** the sim's pipeline stamps and records (`sim/playerMessages.ts receivePlayerMessage`); the feed only formats.
 3. `ui/messagePopups.ts tick` at 4 Hz:
    - `m.starDate = galaxyStarDate(galaxy)` (two sites);
    - `receiveAdvisorSuggestionMessage` → `Empire.advisorSuggestions` push;
    - `onGameEnd(galaxy, defeat)`, which runs the handler in item 9.
+   **Done (§4.1):** in the sim's pipeline; the popups read its receipts.
 4. `ui/messagePopups.ts` `setDiplomacyMessageExpiry` callback → `expireAdvisorSuggestionsForEmpire` (splices `advisorSuggestions`). It is reached from `diplomacyScreen.ts` (submitProposal `onApplied`, `expireMessagesFor`) and from conversation actions.
+   **Done (§4.1):** the journaled `expireAdvisorSuggestionsForEmpire` command.
 5. `sim/advisorQueue.ts advisorSuggestions(empire)` lazily sets `empire.advisorSuggestions = []`. It is called at 4 Hz by `messageStubList` and `advisorSuggestions` (benign, but a write).
+   **Done:** the UI reads `advisorSuggestionsView` (never creates the list); the age expiry the UI issued is sim-driven (§4.1).
 6. `ui/eventMessages.ts`:
    - defines a non-enumerable `player.eventMessageRecipient`, which the sim calls synchronously in a tick;
    - its 4 Hz handler builds an `EmpireMessage` and calls `sendEmpireMessage(m, player)` → `Empire.messages.push`, plus `empireMessageTap` (event-log append).
+   **Done (§4.1):** the recording is the sim pipeline's (`recordEventMessage`); the recipient only shows the event.
 
 **On user action, screen open or boot**
 7. `ui/screens/galacticHistory.ts rebind` → `removeOldHistoryMessages(empire)` (sorts, reverses and splices `Empire.messageHistory`).
+   **Done (§4.1):** the journaled `removeOldHistoryMessages` command (only when there is something to trim).
 8. `render/freightOverlay.ts` → `enableTradeFlowRecording` / `disableTradeFlowRecording`: creates the ledger in a sim-module `WeakMap` and registers or unregisters a sim contract listener. `ui/screens/tradeFlows.ts` keeps it on through `keepRecording`.
 9. `ui/screens/empireComparison.ts installGameEndHandler` → `setGameEndHandler(galaxy, h)`. The sim calls `h` during a tick. `h` runs `doGameEnd` (`galaxy.gameIsFinished`, `gameVictor`) and `reviewAchievements` (every empire's `achievements`/`score`), then sets `time.paused`.
 10. `main.ts registerLocationPingedHook` (story events call it during a tick to centre the camera).
@@ -314,9 +320,11 @@ This audit is written against that design. It also applies to a typed-array snap
 14. `ui/diplomatVoice.ts`: `runPlayerCommand(…, 'diplomatCounter', …)` executes synchronously.
 15. `ui/aiAdvisorDriver.ts`: `applyStrategicDecisions` → `applyStrategicCommand` plus `appendCommandLog`, run directly.
 16. `llm/chronicleJob.ts`: `storeChronicleYear` (event-log `chronicle` list in `scenario.state`).
+    **Done (§4.1):** the journaled `storeChronicleYear` command (the entry by value).
 17. `llm/voiceJob.ts`: `drainVoiceCues` consumes the sim-side cue queue (module `WeakMap`, filled in the tick).
 18. `ui/scenario/rimTraderRows.ts`: `obtainDiplomaticRelation(rimTrader, viewer)` may `add` a NotMet `DiplomaticRelation`.
 19. `main.ts bootGameFromWizard`: `game.playerEmpire.flagShape = …` (before the view starts; move it into the worker's createGame options).
+    **Done (§4.1):** `CreateGameOptions.playerFlagShape`, written at the end of createGame (both modes; replays).
 20. `ui/screens/intelligence.ts` exports `dismissCharacter`, `assignMission` and `cancelMission`, which write `Character.mission`, call `c.kill(galaxy)` and call `cancelIntelligenceMission`. Nothing in src calls them; delete them or route them through commands.
 21. `main.ts`, `ui/autosave.ts`, `ui/screens/saveLoad.ts`: `serializeGame` / `deserializeGameSteps` on the main thread (whole-graph read; the replica lacks the queue, log and ledger tables).
 22. The clock (GalaxyTime `paused`/`speed`), a sim input. Writers:
@@ -363,13 +371,18 @@ becomes side-effect-free.
 | Empire Policy panel's automation combos written into `Empire.control*` in-thread | method_597 (UI writes) | `setEmpireControl` commands in both modes (was worker-only) |
 | `applyStrategicDecisions` (AI advisor, in-thread direct) | none | already journaled ('ai-advisor'); now applied in `withSimWrites` like its replay |
 
-**Still outside the journal (documented, not changed):** the player message pipeline's writes (items 2–4, 6: ticker
-star dates, `messageHistory`, the advisor queue, event messages, the defeat game end — `ui/messagePipeline.ts`, run as
-sim writes in both threads; in worker mode after every tick, in-thread from the 4 Hz timers) and its `uiOp`s (Galactic
-History's trim, the advisor expiry); the chronicle store (item 16; host op in worker mode); the wizard's `flagShape`
-(item 19, before the first frame). None of them feeds the AI or the economy, but a command that names an advisor
-suggestion (`approveSuggestion`) resolves it by its index in the queue the pipeline fills, which a headless replay does
-not fill: making the pipeline sim-side (run at the frame boundary in both modes and in replays) is the follow-up.
+| The player's message pipeline (items 2–3, 6: ticker star dates, `messageHistory`, the advisor queue incl. the BuildOrder advice and the authorization prompts, an event's history message, the defeat game end) | Main.Part9.cs 1572 ReceiveMessageInternal / Main.Part4.cs:487 method_523 / Main.Part9.cs 1053 PromptForAuthorizationInternal, BeginInvoke'd onto the UI thread (1535 / 481 / 1046) | sim code (`sim/playerMessages.ts`): the player's inbox drained in arrival order at the end of every frame, after every command and before a save — every mode and replays (sim-worker.md §4.4) |
+| The advisor queue's age expiry | DiplomaticMessageQueue.cs 864 method_3, in DrawMessages (the UI draw timer) | sim-driven at the end of every frame (the `expireAdvisorSuggestions` command is kept for old logs only) |
+| Galactic History's trim (item 7) | Main.Part4.cs:2986 method_542 → Empire.cs 4708 | journaled `removeOldHistoryMessages` |
+| The advisor cases of a diplomacy exchange's expiry (item 4) | DiplomaticMessageQueue.cs 344 / 357-380 (Main.Part10.cs 4171 …, Main.Part2.cs 1919 …) | journaled `expireAdvisorSuggestionsForEmpire` |
+| The message options (Game Options → Message Settings, Suppress all pop-up screens) | Main.Part6.cs:2406-2489 write `_Game.Display*` (saved with the game; Start.2.cs 2147-2188 copies them at a new game) | game state `Galaxy.messageOptions` (a createGame option at a new game), journaled `setMessageOptions` |
+| `approveSuggestion` / `declineSuggestion` naming a queued suggestion | the C# UI holds the object | a stable id (`EmpireMessage.advisorSuggestionId`, codec `'advid'`; old logs' `'adv'` index still decodes) |
+| The chronicle store (item 16) | none (mod layer) | journaled `storeChronicleYear` (was a host op in worker mode, a direct call in-thread) |
+| The wizard's `flagShape` (item 19) | Start.2.cs 870-875 | `CreateGameOptions.playerFlagShape`, written at the end of createGame |
+
+**Still outside the journal:** the voice job's message upgrade (`hostOps.ts voiceMessage`: rewrites a message's
+text in the worker; a stable message id would let it be a command). The conversation queue and its expiry are UI
+state, as the C# DiplomaticMessageQueue's conversation entries are (never saved).
 
 **Checked and safe (no sim write)**
 - `identifyColonizationTargetsFull` with `filterOutDangerousTargets=false` (it would push `empire.dangerousHabitats` if true).
