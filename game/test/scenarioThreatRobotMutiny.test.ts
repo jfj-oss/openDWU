@@ -21,6 +21,7 @@ import { generateNewTroop } from '../src/sim/builtObjectPlacement';
 import { FleetPosture } from '../src/sim/diplomacyTick';
 import { empireShipGroups } from '../src/sim/fleets/shipGroup';
 import { BuiltObjectRole } from '../src/sim/data/designSpecifications';
+import { taskShipGroups } from '../src/sim/fleets/militaryAI';
 import { makeRobotTroop, factionPopulationSharePct, normalEmpires } from '../src/sim/scenario/threats/framework';
 import {
     ROBOT_MUTINY_CODE_CONTAINED,
@@ -219,6 +220,30 @@ describe('Robot Mutiny: seeding, sleepers, risings, empire, beacon', () => {
         runGameSeconds(game, 30);
         expect(faction.active).toBe(true);
         expect(faction.lastLongTouch).toBeGreaterThan(before);
+    }, 600000);
+
+    it('a faction with fleets but no colony has the transmitter world as its capital (stock TaskShipGroups reads Capital)', () => {
+        // Soak 2026-10-04: before the fix the faction had capital null from the trigger until its first capture, and
+        // Empire.9.cs TaskShipGroups (IdentifyThreatenedSystemsPrioritized(Capital.Xpos, …)) threw on every tick.
+        const { game, g } = rmGame();
+        const st = seeded(g);
+        expect(mutinyTrigger(g, st)).toBe(true);
+        const faction = st.faction!;
+        expect(faction.colonies.length).toBe(0);
+        expect(empireShipGroups(faction).filter((sg) => sg !== null).length).toBeGreaterThan(0);
+        expect(faction.capital).toBe(st.source);
+        expect(() => taskShipGroups(g, faction)).not.toThrow();
+        expect(() => runGameSeconds(game, 60)).not.toThrow();
+        // Lost again (a stock path nulls it): the periodic pass restores the stand-in.
+        faction.capital = null;
+        mutinyPeriodic(g);
+        expect(faction.capital).toBe(st.source);
+        // The first captured colony replaces the stand-in.
+        const [a] = twoColonies(g);
+        takeOwnershipOfColonyFull(g, a.empire!, a, faction, false, false);
+        mutinyPeriodic(g);
+        expect(st.becameEmpire).toBe(true);
+        expect(faction.capital).toBe(a);
     }, 600000);
 
     it('beacon: yearly targets (x scale), replenishment, Attack fleets, tech = best + 1 clamped', () => {

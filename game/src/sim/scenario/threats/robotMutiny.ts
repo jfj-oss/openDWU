@@ -127,6 +127,8 @@ export interface RobotMutinyState {
     beaconDesigns?: Design[];
     /** Total warships the beacon spawned. */
     beaconSpawned?: number;
+    /** True while faction.capital is the transmitter world standing in for a capital it does not own (see provisionCapital). */
+    provisionalCapital?: boolean;
 }
 
 function newState(): RobotMutinyState {
@@ -200,6 +202,23 @@ function ensureFields(st: RobotMutinyState): void {
     st.beaconTech ??= -1;
     st.beaconDesigns ??= [];
     st.beaconSpawned ??= 0;
+    st.provisionalCapital ??= false;
+}
+
+/**
+ * The stock AI reads Empire.Capital without a null check (Empire.9.cs TaskShipGroups → IdentifyThreatenedSystems-
+ * Prioritized(Capital.Xpos, …), ShipGroup SelectFleetBase), and the faction's fleets (flipped ships, beacon warships)
+ * exist before it owns a colony — the soak saw TaskShipGroups throw on every intermediate tick for years. While it has
+ * no capital (before its first colony, or after losing the last one) its capital reference is the transmitter world, as
+ * darkFarms.ts does with the farm colony; mutinyBecomeEmpire replaces it with the first colony taken. No Rnd.
+ */
+function provisionCapital(st: RobotMutinyState): void {
+    const faction = st.faction;
+    if (faction === null || !faction.active || st.source === null) return;
+    if (faction.capital === null) {
+        faction.capital = st.source;
+        st.provisionalCapital = true;
+    }
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -397,6 +416,7 @@ export function mutinyTrigger(galaxy: Galaxy, st: RobotMutinyState): boolean {
     st.faction = faction;
     st.triggered = true;
     st.risingYear = gameYear(galaxyStarDate(galaxy));
+    provisionCapital(st);
     mutinyRisings(galaxy, st); // colonies rise only where their robots win (no faction warship exists yet)
     for (const e of normalEmpires(galaxy, faction)) {
         for (const bo of [...e.builtObjects]) {
@@ -443,7 +463,8 @@ export function mutinyBecomeEmpire(galaxy: Galaxy, st: RobotMutinyState): boolea
         a.locked = false;
         b.locked = false;
     }
-    if (faction.capital === null) faction.capital = first;
+    if (faction.capital === null || st.provisionalCapital === true) faction.capital = first;
+    st.provisionalCapital = false;
     arcNews(galaxy, st.sentStages, { prefix: TAG, stage: 'Empire', args: [first.name, faction.name], subject: first });
     return true;
 }
@@ -717,6 +738,7 @@ export function mutinyPeriodic(galaxy: Galaxy): void {
     aiStopRecruiting(galaxy, st);
     if (st.faction === null) return;
     mutinyBecomeEmpire(galaxy, st);
+    provisionCapital(st);
     if (st.faction.active && factionPopulationSharePct(galaxy, st.faction) >= P.defeatPopulationPct(galaxy)) {
         arcNews(galaxy, st.sentStages, { prefix: TAG, stage: 'Defeat', args: [Math.round(factionPopulationSharePct(galaxy, st.faction))] });
         if (threatsGameEndOn(galaxy)) {
