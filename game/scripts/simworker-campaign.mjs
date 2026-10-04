@@ -978,7 +978,7 @@ async function stepPolicy() {
     const entry = page.locator('.policy-file-entry', { hasText: 'Campaign.txt' }).first();
     check((await entry.count()) > 0, 'policy: the saved file is listed by Load');
     if ((await entry.count()) > 0) {
-        await entry.click();
+        await entry.dblclick();
         await wait(2500);
     }
     // A built-in policy too.
@@ -988,7 +988,7 @@ async function stepPolicy() {
         const inst = page.locator('.policy-file-entry.policy-file-install').first();
         if ((await inst.count()) > 0) {
             note(`policy: loading ${await inst.innerText()}`);
-            await inst.click();
+            await inst.dblclick();
             await wait(2500);
         }
     }

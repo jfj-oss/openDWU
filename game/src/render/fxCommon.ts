@@ -66,6 +66,11 @@ export class FrameSet {
         this.requested = true;
         for (let i = 0; i < this.urls.length; i++) {
             const idx = i;
+            if (this.urls[i] === '') {
+                // An empty slot (a null bitmap of the original's frame array, effectFrames.ts): never drawn.
+                this.textures[idx] = Texture.EMPTY;
+                continue;
+            }
             this.store.loadFirst([this.urls[i]], () => Texture.EMPTY).then(
                 (t) => {
                     this.textures[idx] = t;

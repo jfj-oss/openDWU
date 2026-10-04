@@ -57,6 +57,7 @@ import { NebulaCloudGenerator } from './nebulaClouds';
 import { SystemNebulaLayer, type NebulaSystem } from './systemNebula';
 import { EmpireLayer } from './empireLayer';
 import { OverlayLayer } from './overlayLayer';
+import { LocationMarkerLayer, MAP_LABEL_MIN_SPACING_PX, markerTooltip, type MapMarker } from './locationMarkers'; // [waypoints]
 import { GalaxyMarkerLayer, SYSTEM_RING_MIN_FACTOR, clickSelection, doubleClickFleet } from './galaxyMarkers'; // [galaxymarkers]
 import type { ShipGroup } from '../sim/fleets/shipGroup'; // [galaxymarkers]
 import { ArtBundleLayer } from './artBundleLayer'; // [19r]
@@ -88,6 +89,8 @@ import { BuiltObject } from '../sim/builtObject';
 import type { Creature } from '../sim/creature';
 import { createMapOverlayState, type MapOverlayState } from '../ui/mapOverlays';
 import { getSettings, showRegionLabels, showSystemNames } from '../ui/settings';
+import { VOLCANIC_GLOW_SCALE, VolcanicGlowTextures, volcanicGlowIndex } from './volcanicGlow';
+import { galaxyViewGates } from './cleanGalaxyView';
 import { edgeScrollPixels, nebulaDetailScale, wheelNotches, wheelZoom, wheelZoomAnchor } from './viewInput'; // [gameoptions]
 import { hideMapTooltip, showMapTooltip, tooltipText } from '../ui/mapTooltip';
 import { freightTooltipText } from '../ui/freightText'; // [freightOverlay]
@@ -418,12 +421,25 @@ function starColors(type: HabitatType): { glow: string; core: string } {
     return STAR_COLORS[type] ?? STAR_COLORS[HabitatType.MainSequence];
 }
 
+/** method_50: the glow at its body's place, size / 1.025 of the body's picture, shown with it. */
+function syncVolcanicGlow(body: Sprite, glow: Sprite | null): void {
+    if (glow === null) return;
+    glow.visible = body.visible;
+    if (!glow.visible) return;
+    glow.position.copyFrom(body.position);
+    glow.alpha = body.alpha;
+    const pic = body.texture;
+    glow.scale.set((body.scale.x * pic.width * VOLCANIC_GLOW_SCALE) / glow.texture.width, (body.scale.y * pic.height * VOLCANIC_GLOW_SCALE) / glow.texture.height);
+}
+
 // ---------------------------------------------------------------------------
 
 class PlanetView {
     habitat: Habitat;
     dot: Sprite;
     sprite: Sprite;
+    /** The volcanic glow over `sprite` (MainView.cs method_50, volcanicGlow.ts), once loaded. */
+    glow: Sprite | null = null;
     label: Text;
     moons: MoonView[] = [];
     constructor(private system: SystemView, habitat: Habitat, dotTex: Texture) {
@@ -458,6 +474,8 @@ class PlanetView {
 class MoonView {
     habitat: Habitat;
     dot: Sprite;
+    /** The volcanic glow over `dot` (MainView.cs method_50, volcanicGlow.ts), once loaded. */
+    glow: Sprite | null = null;
     label: Text;
     constructor(private system: SystemView, habitat: Habitat, tex: Texture) {
         this.habitat = habitat;
@@ -819,9 +837,11 @@ class SystemView {
                 planet.sprite.visible = false;
                 planet.label.visible = false;
                 mg.visible = false;
+                syncVolcanicGlow(planet.sprite, planet.glow);
                 for (const moon of planet.moons) {
                     moon.dot.visible = false;
                     moon.label.visible = false;
+                    syncVolcanicGlow(moon.dot, moon.glow);
                 }
                 continue;
             }
@@ -836,6 +856,7 @@ class SystemView {
             planet.sprite.alpha = 1;
             planet.sprite.position.set(px, py);
             planet.sprite.scale.set(sprPx / (planet.sprite.texture.width * z));
+            syncVolcanicGlow(planet.sprite, planet.glow);
             // Label centred on the drawn rect's right edge (method_84),
             // vertically centred on the body.
             const populated = p.owner !== null && p.population.items.length > 0;
@@ -857,6 +878,7 @@ class SystemView {
                 if (!this.moonIsDrawn(pi, mk)) {
                     moon.dot.visible = false;
                     moon.label.visible = false;
+                    syncVolcanicGlow(moon.dot, moon.glow);
                     continue;
                 }
                 const m = moon.habitat;
@@ -868,6 +890,7 @@ class SystemView {
                 moon.dot.alpha = 1;
                 moon.dot.position.set(mx, my);
                 moon.dot.scale.set(mPx / (moon.dot.texture.width * z));
+                syncVolcanicGlow(moon.dot, moon.glow);
                 const mPopulated = m.owner !== null && m.population.items.length > 0;
                 moon.label.visible = labels && habitatLabelVisible(false, mPopulated, f);
                 moon.label.position.set(mx + (mPx / 2) / z, my);
@@ -1062,10 +1085,11 @@ class RegionLabel {
         layer.addChild(this.text);
     }
 
-    /** Update position/font/visibility for the current camera state. */
-    update(cam: Camera, factor: number, maxFactor: number): void {
+    /** Update position/font/visibility for the current camera state. `known`: MainView.2.cs 4680 / 5747
+     *  `GodMode || empire.KnownGalaxyLocations.Contains(galaxyLocation)`. */
+    update(cam: Camera, factor: number, maxFactor: number, known = true): void {
         const font = regionLabelFont(this.location.type, factor, maxFactor);
-        if (font === null || !this.location.showName) {
+        if (font === null || !this.location.showName || !known) {
             this.text.visible = false;
             return;
         }
@@ -1205,6 +1229,12 @@ export class MainView {
     /** Region-name label layer (task 08f1), screen-space. */
     regionLabels = new Container();
     private regionLabelViews: RegionLabel[] = [];
+    /** The player's KnownGalaxyLocations as a set (rebuilt when the list changes), for the region labels. */
+    private knownLocations: Set<GalaxyLocation> | null = null;
+    private knownLocationsOf: readonly GalaxyLocation[] | null = null;
+    private knownLocationsLen = -1;
+    /** [waypoints] The Waypoints & Known Locations overlay and the location-hint pulse (locationMarkers.ts). */
+    private locationMarkers: LocationMarkerLayer | null = null;
     systems: SystemView[] = [];
     /** Every SystemView root, in galaxy order; only the on-screen ones are attached (renderGroups.ts AttachedChildren). */
     readonly systemLayer = new AttachedChildren(new Container());
@@ -1641,6 +1671,8 @@ export class MainView {
         // (assets.ts habitatPictureUrls); stars bitmap_196[MapPictureRef] (a super nova bitmap_206[NovaImageIndexMajor],
         // MainView.2.cs 5429-5438: assets.ts starPictureUrls) and, for a black hole, its system-zoom sprite.
         const lazyLoads: Promise<unknown>[] = [];
+        // bitmap_195, the volcanic glow drawn over a volcanic planet / moon picture (volcanicGlow.ts, method_50).
+        const glows = new VolcanicGlowTextures(store);
         for (const sv of this.systems) {
             const star = sv.system.systemStar;
             lazyLoads.push(
@@ -1664,6 +1696,7 @@ export class MainView {
                         .loadFirst(habitatPictureUrls(planet.habitat), () => makePlanetTexture(PLANET_COLORS[planet.habitat.type] ?? '#888888'))
                         .then((tex) => {
                             planet.sprite.texture = tex;
+                            this.addVolcanicGlow(glows, planet);
                         }),
                 );
                 // Task 12p: moons use per-habitat planet art too.
@@ -1673,6 +1706,7 @@ export class MainView {
                             .loadFirst(habitatPictureUrls(moon.habitat), () => makePlanetTexture(PLANET_COLORS[moon.habitat.type] ?? '#888888'))
                             .then((tex) => {
                                 moon.dot.texture = tex;
+                                this.addVolcanicGlow(glows, moon);
                             }),
                     );
                 }
@@ -1701,8 +1735,8 @@ export class MainView {
         }
         await Promise.all(lazyLoads);
 
-        // Task 08f1: region/nebula location name labels (screen-space layer).
-        // All locations are treated as known to the empire for now.
+        // Task 08f1: region/nebula location name labels (screen-space layer). Each is shown once the player knows the
+        // location (update: MainView.2.cs 4680 KnownGalaxyLocations, or GodMode = fog reveal).
         for (const location of this.galaxy.galaxyLocations) {
             this.regionLabelViews.push(new RegionLabel(location, this.regionLabels));
         }
@@ -1816,6 +1850,10 @@ export class MainView {
             this.markersFrontNext = (kids[kids.indexOf(this.galaxyMarkers.front) + 1] as Container | undefined) ?? null;
         }
         this.world.addChild(this.overlayLayer.postureRoot, this.overlayLayer.root);
+        // [waypoints] above the other overlay marks (the overlay root is the last world child: above the ships).
+        this.locationMarkers = new LocationMarkerLayer(this.galaxy, this.overlays);
+        this.locationMarkers.regionNamed = (l) => this.regionLabels.visible && this.knownLocationSet()?.has(l) !== false && l.showName && regionLabelFont(l.type, 1 / this.camera.zoom, 1 / this.minZoom) !== null;
+        this.overlayLayer.root.addChild(this.locationMarkers.root);
 
         this.attachInput();
     }
@@ -1870,7 +1908,9 @@ export class MainView {
 
         // Faint sector grid: fades in over the galaxy zoom, out at mid zoom
         // (MainView.1.cs FadeSectorBackground).
-        const gridA = fadeIn(z, m * 2, m * 6) * fadeOut(z, 0.004, 0.015);
+        // GameOptions.CleanGalaxyView hides it (method_250 5155: `if (!flag)`, cleanGalaxyView.ts).
+        const clean = galaxyViewGates(getSettings().cleanGalaxyView);
+        const gridA = clean.sectorGrid ? fadeIn(z, m * 2, m * 6) * fadeOut(z, 0.004, 0.015) : 0;
         this.grid.alpha = gridA;
         this.grid.visible = gridA > 0.01;
         if (this.grid.visible && (this.lastGridZoom < 0 || Math.abs(z / this.lastGridZoom - 1) > 0.05)) {
@@ -1890,7 +1930,8 @@ export class MainView {
         // Systems: greedy 80 px label-overlap suppression across systems.
         const labelZoom = m * 4; // system names appear at ~sector zoom
         // Task 10f: the "Show system names" setting disables them entirely.
-        const namesOn = z > labelZoom && showSystemNames();
+        // Clean Galaxy view: no system names (method_250 5584: `flag26 && !flag`; they are drawn only at f > 150).
+        const namesOn = z > labelZoom && showSystemNames() && clean.systemNames;
         // Kept label positions as flat x, y pairs (reused across frames: no per-frame allocation).
         const kept = this.keptLabels;
         kept.length = 0;
@@ -1914,7 +1955,7 @@ export class MainView {
                 for (let i = 0; i < kept.length; i += 2) {
                     const dx = kept[i] - sx;
                     const dy = kept[i + 1] - sy;
-                    if (dx * dx + dy * dy < 80 * 80) {
+                    if (dx * dx + dy * dy < MAP_LABEL_MIN_SPACING_PX * MAP_LABEL_MIN_SPACING_PX) {
                         allow = false;
                         break;
                     }
@@ -1953,6 +1994,11 @@ export class MainView {
         // above).
         this.overlayLayer.update(z, cam);
         this.galaxyMarkers?.update(z, cam, this.systems); // [galaxymarkers]
+        if (this.locationMarkers !== null) {
+            // [waypoints]
+            this.locationMarkers.reveal = fogOf(this.galaxy).reveal;
+            this.locationMarkers.update(z, cam);
+        }
         // [ambientfx] begin
         this.ambientLayer.update(z, cam);
         // [ambientfx] end
@@ -1979,8 +2025,9 @@ export class MainView {
         if (showRegions) {
             const factor = 1 / z;
             const maxFactor = 1 / m;
+            const known = this.knownLocationSet();
             for (const rl of this.regionLabelViews) {
-                rl.update(cam, factor, maxFactor);
+                rl.update(cam, factor, maxFactor, known === null || known.has(rl.location));
             }
         }
 
@@ -2260,6 +2307,25 @@ export class MainView {
         }
     }
 
+    /**
+     * MainView.cs 2515 method_50: a volcanic planet / moon picture gets its bitmap_195 glow, (255, 64, 0) at the
+     * picture's alpha, size / 1.025, centred (a child of the body sprite, so it follows its position and scale).
+     */
+    private addVolcanicGlow(glows: VolcanicGlowTextures, view: PlanetView | MoonView): void {
+        const habitat = view.habitat;
+        if (volcanicGlowIndex(habitat) < 0 || habitatPictureUrls(habitat).length === 0) return;
+        void glows.textureFor(habitat).then((glow) => {
+            const body = view instanceof PlanetView ? view.sprite : view.dot;
+            if (glow === null || body.destroyed || body.parent === null) return;
+            const s = new Sprite(glow);
+            s.anchor.set(0.5);
+            s.visible = false;
+            // Right above its body (a Sprite takes no children in Pixi 8): syncVolcanicGlow follows it every frame.
+            body.parent.addChildAt(s, body.parent.getChildIndex(body) + 1);
+            view.glow = s;
+        });
+    }
+
     private drawGrid(z: number): void {
         const g = this.grid;
         g.clear();
@@ -2444,6 +2510,14 @@ export class MainView {
                     return;
                 }
                 this.onPointerRest?.(x, y, e.clientX, e.clientY); // [ordermenu]
+                // [waypoints] a waypoint / known-location marker (drawn above everything else in the map).
+                {
+                    const mk = this.locationMarkers?.hitTest(x, y) ?? null;
+                    if (mk !== null) {
+                        showMapTooltip(markerTooltip(this.galaxy, this.galaxy.playerEmpire, mk), e.clientX, e.clientY);
+                        return;
+                    }
+                }
                 // HoverPanel.cs 220 method_2: a creature under the cursor shows its name, size, strength and health.
                 const creature = this.pickCreature(x, y);
                 if (creature !== null) {
@@ -2609,8 +2683,41 @@ export class MainView {
         }
         hideMapTooltip();
         this.windowInput.abort();
+        this.locationMarkers?.destroy(); // [waypoints]
+        this.locationMarkers = null;
         this.overlayLayer?.destroy(); // [freightOverlay] stop recording contracts for this galaxy
     }
+
+    // [waypoints] begin
+    /** The Waypoints & Known Locations marker under screen point (sx, sy), or null. */
+    markerAt(sx: number, sy: number): MapMarker | null {
+        return this.locationMarkers?.hitTest(sx, sy) ?? null;
+    }
+
+    /** The mouse position over the map (screen px), or null when the pointer is outside it. */
+    get pointerScreen(): { x: number; y: number } | null {
+        return this.pointerInside ? { x: this.lastPointer.x, y: this.lastPointer.y } : null;
+    }
+
+    /** Rebuild the markers at the next frame (after a waypoint command). */
+    refreshMarkers(): void {
+        this.locationMarkers?.invalidate();
+    }
+
+    /** The player's KnownGalaxyLocations as a set (null = every location counts as known: GodMode, no player). */
+    private knownLocationSet(): Set<GalaxyLocation> | null {
+        const player = this.galaxy.playerEmpire;
+        if (player === null || fogOf(this.galaxy).reveal) return null;
+        const list = player.visibility?.knownGalaxyLocations ?? [];
+        const last = list.length > 0 ? list[list.length - 1] : null;
+        if (this.knownLocations === null || list !== this.knownLocationsOf || list.length !== this.knownLocationsLen || (last !== null && !this.knownLocations.has(last))) {
+            this.knownLocations = new Set(list);
+            this.knownLocationsOf = list;
+            this.knownLocationsLen = list.length;
+        }
+        return this.knownLocations;
+    }
+    // [waypoints] end
 
     // [freightOverlay] begin — task 19e-9: the panel / legend reach the Freight Flows overlay through the view.
     get freightOverlay(): FreightOverlay | null {

@@ -65,6 +65,7 @@ import { createGalaxyScenario } from './scenario/state';
 import { copyMessageOptions, type MessageOptions } from './messageRouting';
 import { ensurePlayerInbox } from './playerMessages';
 import { scenarioAfterGeneration, scenarioFindHomeHabitat, scenarioGameStart, scenarioGenerationSetup, scenarioQuery } from './scenario/hooks';
+import { parseSectorColumn } from './sectorNames';
 import './scenario/packages'; // mod layer: registers the scenario packages' hooks
 
 export type HomeSystem = 'Harsh' | 'Trying' | 'Normal' | 'Agreeable' | 'Excellent';
@@ -101,6 +102,12 @@ export interface CreateGameOptions {
     starCount: number;
     sectorWidth: number;
     sectorHeight: number;
+    /**
+     * Custom galaxy size (not a port; startGameOptions.ts galaxySizeIsCustom): sectorWidth / sectorHeight bypass the C#
+     * Galaxy ctor's 4..15 clamp (Galaxy.setCustomGalaxyDimensions, 1..90 each). Unset / false = the faithful clamp. A
+     * scenario's generation set-up (19h extent) may also turn it on.
+     */
+    customGalaxyDimensions?: boolean;
     systemNames: string[];
     gameData: GameData;
     colonyPrevalence?: number;
@@ -137,6 +144,10 @@ export interface CreateGameOptions {
     aggressionLevel?: number;
     /** EmpireStart.AllowGiantKaltorGeneration → ctor (2143; chkStartNewGameEnableGiantKaltors). Default true. */
     allowGiantKaltorGeneration?: boolean;
+    /** Our addition (not in DW:U): "Scale debris fields with galaxy size" - with the Distant Worlds story, large/small debris fields
+     *  become max(original band, round(stars/200)) / max(original band, round(stars/80)). Default false so createGame (harness/test
+     *  games, repin) is byte-identical to the original; only the new-game wizard's defaults turn it on (startGameOptions.ts). */
+    scaleDebrisFields?: boolean;
     /** bool_5 → _SpawnNewEmpires (2153; chkGalaxyNewEmpiresDuringGame, Habitat.cs 1502). Default true. */
     spawnNewEmpires?: boolean;
     /** EmpireStart.AllowTechTrading → Galaxy.AllowTechTrading (Start.2.cs 499; chkStartNewGameEnableTechTrading). Default true. */
@@ -517,8 +528,9 @@ function proximityDistance(galaxy: Galaxy, s: string): { distance: number; secto
     } else if (s.startsWith('Sector')) {
         const t = s.substring('Sector'.length + 1).trim();
         if (t.length > 1) {
-            const col = t.charCodeAt(0) - 65;
-            const row = parseInt(t.substring(1), 10);
+            // C# t[0] - 65; past column Z (custom sizes) the name has more letters (sectorNames.ts).
+            const { column: col, rest } = parseSectorColumn(t);
+            const row = parseInt(rest, 10);
             if (!Number.isNaN(row)) sector = { x: col, y: row - 1 };
         }
     }
@@ -1003,13 +1015,14 @@ export function* createGameSteps(opts: CreateGameOptions): Generator<GameStartPr
     // Mod layer: galaxy.scenario before generation (its placement rules apply there); null without an overlay. A
     // scenario's generation set-up hook may change the star count / galaxy extent (19h); without one these are opts'.
     const scenario = gd.scenario !== undefined ? createGalaxyScenario(gd.scenario.manifest, { flags: opts.scenarioFlags, params: opts.scenarioParams }, gd.resources) : null;
-    const gen = scenarioGenerationSetup(scenario, gd.resources, { starCount: opts.starCount, sectorWidth: opts.sectorWidth, sectorHeight: opts.sectorHeight });
+    const gen = scenarioGenerationSetup(scenario, gd.resources, { starCount: opts.starCount, sectorWidth: opts.sectorWidth, sectorHeight: opts.sectorHeight, customGalaxyDimensions: opts.customGalaxyDimensions === true });
     const galaxy = generateGalaxy({
         seed: opts.seed,
         shape: opts.shape,
         starCount: gen.starCount,
         sectorWidth: gen.sectorWidth,
         sectorHeight: gen.sectorHeight,
+        customGalaxyDimensions: gen.customGalaxyDimensions,
         systemNames: opts.systemNames,
         colonyPrevalence: opts.colonyPrevalence,
         gameData: gd,
@@ -1505,7 +1518,7 @@ export function* createGameSteps(opts: CreateGameOptions): Generator<GameStartPr
     clearRuinBonusesForAge(galaxy);
     if (stopAt('ruins')) return result();
     yield { step: 'Placing ruins and wonders', fraction: 0.92 };
-    const tailResult = gameStartTail(galaxy, { playerEmpire: empire2, empireList, playerTechLevel: opts.player.techLevel, playerAge: opts.player.age, playAsPirate, raceFamilies: gd.raceFamilies, xpos: viewX, ypos: viewY, enableStoryEventsShadows: galaxy.storyShadowsEnabled, ageOfShadows: opts.ageOfShadows });
+    const tailResult = gameStartTail(galaxy, { playerEmpire: empire2, empireList, playerTechLevel: opts.player.techLevel, playerAge: opts.player.age, playAsPirate, raceFamilies: gd.raceFamilies, xpos: viewX, ypos: viewY, scaleDebrisFields: opts.scaleDebrisFields, enableStoryEventsShadows: galaxy.storyShadowsEnabled, ageOfShadows: opts.ageOfShadows });
     // Start.2.cs 2031-2034 (Shadows story): a non-pirate age-of-shadows player gets its first pirate raid.
     if (tailResult.clearPreWarpSendPirateRaid) empire2.preWarpProgressEventOccurredSendPirateRaid = false;
     // Start.2.cs 2026: galaxy.GlobalVictoryConditions = victoryConditions_0 (2118-2120 also hand them to the Game object;

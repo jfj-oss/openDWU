@@ -31,6 +31,8 @@ import {
 import { issuePlayerCommand } from '../../sim/player/playerCommands';
 import { showToast } from '../toast';
 import { requestSimRefresh } from '../../simworker/refresh';
+import { COLORS, FONT, OwGrid, dropDown, glassButton, messageBox, numericUpDown, openOriginalWindow, place, scrollPanel, setText, text, type OriginalWindow } from '../originalWindow';
+import { labelledTrackBar } from '../originalWindowControls';
 
 // ---------------------------------------------------------------------------------------------------------------
 // Pure models
@@ -184,33 +186,26 @@ interface Panel {
     close: () => void;
 }
 
-function makePanel(title: string, wide: boolean, onClose: () => void): { root: HTMLElement; body: HTMLElement; close: () => void } {
-    const root = el('div', 'charters-wrap');
-    const win = el('div', wide ? 'charters-window charters-window-wide' : 'charters-window');
-    const bar = el('div', 'charters-titlebar');
-    bar.append(el('div', 'charters-heading', title));
-    const x = el('button', 'charters-close', '✕');
-    x.type = 'button';
-    x.title = 'Close';
-    bar.append(x);
-    const body = el('div', 'charters-body');
-    win.append(bar, body);
-    root.append(win);
-    document.body.append(root);
-    const onKey = (e: KeyboardEvent): void => {
-        if (e.key !== 'Escape') return;
-        e.preventDefault();
-        e.stopImmediatePropagation();
-        close();
-    };
+/** An original-style ScreenPanel (ui/originalWindow.ts) of the given size; Escape / the close button run `onClose`. */
+function makePanel(title: string, id: string, width: number, height: number, onClose: () => void): { root: HTMLElement; body: HTMLElement; win: OriginalWindow; close: () => void } {
+    let closed = false;
+    const win = openOriginalWindow({
+        id,
+        title,
+        icon: 'diplomacy.png',
+        width,
+        height,
+        noAutoPause: true,
+        onClose: () => close(),
+    });
+    win.root.classList.add('charters-wrap');
     function close(): void {
-        document.removeEventListener('keydown', onKey);
-        root.remove();
+        if (closed) return;
+        closed = true;
+        if (!win.closed) win.close();
         onClose();
     }
-    document.addEventListener('keydown', onKey);
-    x.addEventListener('click', () => close());
-    return { root, body, close };
+    return { root: win.root, body: win.body, win, close };
 }
 
 let screen: (Panel & { timer: number }) | null = null;
@@ -222,57 +217,66 @@ export function toggleChartersScreen(galaxy: Galaxy, player: Empire): void {
         screen.close();
         return;
     }
-    const p = makePanel('Charters', true, () => {
+    const p = makePanel('Charters', 'charters', 1300, 520, () => {
         if (screen !== null) window.clearInterval(screen.timer);
         screen = null;
     });
-    const table = el('div', 'charters-table');
-    const empty = el('div', 'charters-empty', 'No companies chartered. Select an unowned, explored planet and choose "Charter a company…".');
-    p.body.append(table, empty);
-    const head = ['Company', 'Capital', 'Col.', 'Kind', 'Status', 'Years', 'Tariff', 'This yr', 'Last yr', 'Tribute/yr', 'Strength', ''];
+    const bw = p.win.bodySize.w;
+    const bh = p.win.bodySize.h;
     const confirmAct = (label: string, company: Empire, op: 'charterRenew' | 'charterRelease' | 'charterNationalise'): void => {
-        if (op !== 'charterRenew' && !window.confirm(`${label} the ${company.name}?`)) return;
-        issuePlayerCommand(galaxy, player, op, [company], (ok) => {
-            showToast(ok ? `${label}: ${company.name}` : `${label} failed`);
-            render();
-        });
+        const run = (): void => {
+            issuePlayerCommand(galaxy, player, op, [company], (ok) => {
+                showToast(ok ? `${label}: ${company.name}` : `${label} failed`);
+                render();
+            });
+        };
+        if (op === 'charterRenew') run();
+        else
+            void messageBox({ caption: label, text: `${label} the ${company.name}?`, buttons: ['Yes', 'No'], defaultButton: 'No', icon: 'question' }).then((r) => {
+                if (r === 'Yes') run();
+            });
     };
+    const grid = new OwGrid<CharterRow>({
+        key: (r) => r.charter,
+        rowHeight: 30,
+        fontSize: FONT.normal,
+        empty: 'No companies chartered. Select an unowned, explored planet and choose "Charter a company…".',
+        rowClass: (r) => (r.actionable ? '' : 'charters-inactive'),
+        columns: [
+            { id: 'name', header: 'Company', fill: 1.4, render: (r, c) => (c.textContent = r.name) },
+            { id: 'capital', header: 'Capital', fill: 1, render: (r, c) => (c.textContent = r.capitalName) },
+            { id: 'col', header: 'Col.', width: 50, align: 'right', render: (r, c) => (c.textContent = String(r.colonies)) },
+            { id: 'kind', header: 'Kind', width: 105, render: (r, c) => (c.textContent = r.kindLabel) },
+            { id: 'status', header: 'Status', width: 90, render: (r, c) => (c.textContent = r.status) },
+            { id: 'years', header: 'Years', width: 60, align: 'right', render: (r, c) => (c.textContent = r.actionable ? String(r.yearsLeft) : '–') },
+            { id: 'tariff', header: 'Tariff', width: 60, align: 'right', render: (r, c) => (c.textContent = `${r.tariffPct}%`) },
+            { id: 'this', header: 'This yr', width: 85, align: 'right', render: (r, c) => (c.textContent = fmt(r.tariffThisYear)) },
+            { id: 'last', header: 'Last yr', width: 85, align: 'right', render: (r, c) => (c.textContent = fmt(r.tariffLastYear)) },
+            { id: 'tribute', header: 'Tribute/yr', width: 95, align: 'right', render: (r, c) => (c.textContent = fmt(r.tribute)) },
+            { id: 'strength', header: 'Strength', width: 80, align: 'right', render: (r, c) => (c.textContent = r.actionable ? `${Math.round(r.strengthRatio * 100)}%` : '–') },
+            {
+                id: 'actions',
+                header: '',
+                width: 270,
+                render: (r, cell) => {
+                    if (!r.actionable || r.company === null) return;
+                    const company = r.company;
+                    for (const [label, op] of [
+                        ['Renew', 'charterRenew'],
+                        ['Release', 'charterRelease'],
+                        ['Nationalise', 'charterNationalise'],
+                    ] as const) {
+                        const b = glassButton(label, { size: FONT.tiny, className: 'ow-flow charters-btn', onClick: () => confirmAct(label, company, op) });
+                        b.style.marginRight = '4px';
+                        cell.append(b);
+                    }
+                },
+            },
+        ],
+    });
+    p.body.appendChild(place(grid.el, 8, 8, bw - 16, bh - 16));
     function render(): void {
-        const rows = charterRows(galaxy, player);
-        empty.hidden = rows.length > 0;
-        table.hidden = rows.length === 0;
-        table.replaceChildren(...head.map((h) => el('span', 'charters-th', h)));
-        for (const r of rows) {
-            const cells = [
-                r.name,
-                r.capitalName,
-                String(r.colonies),
-                r.kindLabel,
-                r.status,
-                r.actionable ? String(r.yearsLeft) : '–',
-                `${r.tariffPct}%`,
-                fmt(r.tariffThisYear),
-                fmt(r.tariffLastYear),
-                fmt(r.tribute),
-                r.actionable ? `${Math.round(r.strengthRatio * 100)}%` : '–',
-            ];
-            for (const c of cells) table.append(el('span', r.actionable ? 'charters-td' : 'charters-td charters-inactive', c));
-            const acts = el('span', 'charters-td charters-actions');
-            if (r.actionable && r.company !== null) {
-                const company = r.company;
-                for (const [label, op] of [
-                    ['Renew', 'charterRenew'],
-                    ['Release', 'charterRelease'],
-                    ['Nationalise', 'charterNationalise'],
-                ] as const) {
-                    const b = el('button', 'charters-btn', label);
-                    b.type = 'button';
-                    b.addEventListener('click', () => confirmAct(label, company, op));
-                    acts.append(b);
-                }
-            }
-            table.append(acts);
-        }
+        grid.setRows(charterRows(galaxy, player));
     }
     render();
     // Figures change with the sim; refresh in place every 2 s (buttons are rebuilt only then).
@@ -291,8 +295,15 @@ export function toggleChartersScreen(galaxy: Galaxy, player: Empire): void {
 export function openCharterDialog(galaxy: Galaxy, player: Empire, target: Habitat, resourceName?: (id: number) => string): void {
     dialog?.close();
     const m = charterDialogModel(galaxy, player, target, resourceName);
-    const p = makePanel(`Charter a company — ${m.targetName}`, false, () => (dialog = null));
-    const info = el('div', 'charters-info');
+    const W = 600;
+    const p = makePanel(`Charter a company — ${m.targetName}`, 'charter', W, 600, () => (dialog = null));
+    const bw = p.win.bodySize.w;
+    const bh = p.win.bodySize.h;
+    const body = p.body;
+
+    // Target summary: a scrolling block of key / value lines.
+    const info = scrollPanel('charters-info');
+    place(info, 8, 8, bw - 16, 112);
     const line = (k: string, v: string): void => {
         const row = el('div', 'charters-kv');
         row.append(el('span', 'charters-k', k), el('span', 'charters-v', v));
@@ -301,51 +312,61 @@ export function openCharterDialog(galaxy: Galaxy, player: Empire, target: Habita
     line('World', `${m.typeLabel}, quality ${Math.round(m.quality * 100)}%${m.rim ? ' — rim world' : ''}`);
     line('Resources', m.resources.length > 0 ? m.resources.map((r) => `${r.name} (${abundancePercentText(r.abundance)})`).join(', ') : 'none');
     line('Charter fee', `${fmt(m.fee)} (treasury ${fmt(m.treasury)})`);
-    p.body.append(info);
+    body.appendChild(info);
 
-    const form = el('div', 'charters-form');
-    const kindSel = el('select', 'charters-input');
-    for (const [v, t] of [
-        ['dominion', 'Dominion — tribute + tariff'],
-        ['protectorate', 'Protectorate — tariff only, defence obligation'],
-    ]) {
-        const o = el('option', '', t);
-        o.value = v;
-        kindSel.append(o);
-    }
-    kindSel.value = m.defaults.kind;
-    const tariff = el('input', 'charters-input');
-    tariff.type = 'range';
-    tariff.min = '0';
-    tariff.max = '50';
-    tariff.value = String(m.defaults.tariffPct);
-    const tariffOut = el('span', 'charters-v', `${m.defaults.tariffPct}%`);
-    tariff.addEventListener('input', () => (tariffOut.textContent = `${tariff.value}%`));
-    const dur = el('input', 'charters-input charters-num');
-    dur.type = 'number';
-    dur.min = '1';
-    dur.max = '100';
-    dur.value = String(m.defaults.durationYears);
-    const durQuick = el('span', 'charters-quick');
+    // The terms form (absolute rows, 40 px pitch).
+    const label = (t: string, y: number): void => void body.appendChild(place(text(t, { size: FONT.normal, color: COLORS.label }), 14, y + 4));
+    const kindOptions = [
+        { value: 'dominion', label: 'Dominion — tribute + tariff' },
+        { value: 'protectorate', label: 'Protectorate — tariff only, defence obligation' },
+    ];
+    label('Relation', 132);
+    let kindValue: string = m.defaults.kind;
+    const kindSel = dropDown(kindOptions, kindValue, (v) => (kindValue = v));
+    kindSel.classList.add('charters-input');
+    kindSel.style.fontSize = `${FONT.normal}px`;
+    body.appendChild(place(kindSel, 190, 132, bw - 190 - 12, 28));
+
+    // Tariff on sales: a LabelledTrackBar, 0..50 % in 1 % steps (labelled every 10 %).
+    let tariffValue = Math.max(0, Math.min(50, Math.round(m.defaults.tariffPct)));
+    const tariffLabels = Array.from({ length: 51 }, (_, i) => (i % 10 === 0 ? `${i}%` : ''));
+    const tariffOut = text(`${tariffValue}%`, { size: FONT.normal, bold: true, color: COLORS.link });
+    const tariffBar = labelledTrackBar({
+        width: bw - 16 - 70,
+        height: 52,
+        labelText: 'Tariff on sales',
+        labelWidth: 150,
+        labels: tariffLabels,
+        value: tariffValue,
+        size: FONT.normal,
+        onChange: (v) => {
+            tariffValue = v;
+            setText(tariffOut, `${v}%`);
+        },
+    });
+    body.appendChild(place(tariffBar.el, 8, 172));
+    body.appendChild(place(tariffOut, bw - 8 - 56, 188));
+
+    label('Duration (years)', 240);
+    let durationValue = Math.max(1, Math.min(100, Math.trunc(m.defaults.durationYears) || 1));
+    const dur = numericUpDown({ value: durationValue, min: 1, max: 100, size: FONT.normal, onChange: (v) => (durationValue = v) });
+    body.appendChild(place(dur.el, 190, 240, 90, 28));
+    let bx = 296;
     for (const y of [10, 20, 30]) {
-        const b = el('button', 'charters-btn', `${y}`);
-        b.type = 'button';
-        b.addEventListener('click', () => (dur.value = String(y)));
-        durQuick.append(b);
+        const b = glassButton(`${y}`, {
+            size: FONT.normal,
+            onClick: () => {
+                durationValue = y;
+                dur.setValue(y);
+            },
+        });
+        body.appendChild(place(b, bx, 240, 60, 28));
+        bx += 66;
     }
-    const row = (label: string, ...children: HTMLElement[]): void => {
-        const r = el('div', 'charters-kv');
-        const v = el('span', 'charters-v');
-        v.append(...children);
-        r.append(el('span', 'charters-k', label), v);
-        form.append(r);
-    };
-    row('Relation', kindSel);
-    row('Tariff on sales', tariff, tariffOut);
-    row('Duration (years)', dur, durQuick);
-    p.body.append(form);
 
-    const exp = el('div', 'charters-expedition');
+    // Expedition preview.
+    const exp = scrollPanel('charters-expedition');
+    place(exp, 8, 284, bw - 16, bh - 284 - 58);
     exp.append(el('div', 'charters-k', 'Expedition'));
     const counts = new Map<string, { design: string; n: number }>();
     for (const s of m.expedition) {
@@ -354,36 +375,38 @@ export function openCharterDialog(galaxy: Galaxy, player: Empire, target: Habita
         else counts.set(s.role, { design: s.design, n: 1 });
     }
     for (const [role, c] of counts) exp.append(el('div', 'charters-v', `${c.n} × ${role} (${c.design})`));
-    p.body.append(exp);
+    body.appendChild(exp);
 
-    const footer = el('div', 'charters-footer');
-    const reason = el('span', 'charters-reason', m.eligible ? '' : m.reason);
-    const ok = el('button', 'charters-btn charters-confirm', 'Confirm charter');
-    ok.type = 'button';
-    ok.disabled = !m.eligible;
-    ok.addEventListener('click', () => {
-        const terms = { kind: kindSel.value as CharterKind, tariffPct: Number(tariff.value), durationYears: Math.max(1, Math.min(100, Math.trunc(Number(dur.value) || m.defaults.durationYears))) };
-        issuePlayerCommand(galaxy, player, 'charterCompany', [target, terms], (granted) => {
-            // (A sim-worker order that never reached the game leaves the target eligible: no reason of its own.)
-            const why = charterEligibility(galaxy, player, target).reason || 'the order could not be carried out';
-            showToast(granted ? `Charter granted: the expedition sets out for ${target.name}` : `Charter refused: ${why}`);
-        });
-        p.close();
+    const reason = place(text(m.eligible ? '' : m.reason, { size: FONT.normal, color: 'rgb(255, 130, 100)', wrapWidth: bw - 16 - 200 }), 12, bh - 50);
+    body.appendChild(reason);
+    const ok = glassButton('Confirm charter', {
+        size: FONT.normal,
+        disabled: !m.eligible,
+        onClick: () => {
+            const terms = { kind: kindValue as CharterKind, tariffPct: tariffValue, durationYears: Math.max(1, Math.min(100, Math.trunc(durationValue) || m.defaults.durationYears)) };
+            issuePlayerCommand(galaxy, player, 'charterCompany', [target, terms], (granted) => {
+                // (A sim-worker order that never reached the game leaves the target eligible: no reason of its own.)
+                const why = charterEligibility(galaxy, player, target).reason || 'the order could not be carried out';
+                showToast(granted ? `Charter granted: the expedition sets out for ${target.name}` : `Charter refused: ${why}`);
+            });
+            p.close();
+        },
     });
-    footer.append(reason, ok);
-    p.body.append(footer);
+    body.appendChild(place(ok, bw - 8 - 190, bh - 46, 190, 36));
     dialog = { root: p.root, close: p.close };
 }
 
 /** The selection panel's "Charter a company…" button; `update` shows / enables it for the current selection. */
 export function createCharterButton(get: () => { galaxy: Galaxy | null; player: Empire | null; habitat: Habitat | null }, resourceName?: (id: number) => string): { element: HTMLElement; update: () => void } {
-    const b = el('button', 'charters-btn charters-select-btn', 'Charter a company…');
-    b.type = 'button';
-    b.hidden = true;
-    b.addEventListener('click', () => {
-        const s = get();
-        if (s.galaxy !== null && s.player !== null && s.habitat !== null) openCharterDialog(s.galaxy, s.player, s.habitat, resourceName);
+    const b = glassButton('Charter a company…', {
+        size: FONT.tiny,
+        className: 'ow-flow charters-btn charters-select-btn',
+        onClick: () => {
+            const s = get();
+            if (s.galaxy !== null && s.player !== null && s.habitat !== null) openCharterDialog(s.galaxy, s.player, s.habitat, resourceName);
+        },
     });
+    b.hidden = true;
     return {
         element: b,
         update: () => {

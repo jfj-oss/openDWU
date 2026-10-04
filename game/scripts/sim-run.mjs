@@ -11,7 +11,8 @@
 // --combat: a battle report (tasks/COMBAT-VERIFICATION-2026-09-26.md) — every ship / base destroyed (by empire and sub
 // role) and every closed SpaceBattleStats record (a ship's BattleStats replaced at AssignMission, BuiltObject.2.cs 7643,
 // or nulled at mission completion, 4517-4532) with any weapon activity, plus the records still open at the end.
-// (--sectors defaults to round(sqrt(stars / 4.7)) clamped to 4..15; the New Game wizard default is 700 stars in 8x8)
+// (--sectors defaults to round(sqrt(stars / 4.7)) clamped to 4..15; the New Game wizard default is 700 stars in 8x8;
+// an explicit --sectors outside 4..15, up to 90, is a custom galaxy size)
 //
 // Defaults match test/helpers/tickGame.ts (age 1, tech 0.5, pirates 1) so `--stars 300 --empires 4 --seconds 600`
 // reproduces the tickDeterminism pin. The run is driven in `--chunk`-second runGameSeconds calls (chunking is
@@ -138,6 +139,8 @@ try {
     let t = performance.now();
     const game = createGame({
         seed, shape: GalaxyShape.Spiral, starCount: stars, sectorWidth: sectors, sectorHeight: sectors,
+        // A --sectors outside the C# 4..15 clamp is a custom galaxy size (Galaxy.setCustomGalaxyDimensions, 1..90).
+        ...(sectors < 4 || sectors > 15 ? { customGalaxyDimensions: true } : {}),
         systemNames: Array.from({ length: stars }, (_, i) => `S${i}`), gameData, galaxyAge: age,
         player: s('Human'), aiEmpires: Array.from({ length: Math.max(0, empires - 1) }, () => s('(Random)')),
         piratePrevalence: pirates,

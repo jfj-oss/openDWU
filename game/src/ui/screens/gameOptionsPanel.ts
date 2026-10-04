@@ -234,7 +234,7 @@ const EMPIRE_H = 769 + 25;
 const MESSAGES_W = 735;
 const MESSAGES_H = 502 + 43;
 const ADVANCED_W = 440;
-const ADVANCED_H = 500 + 110;
+const ADVANCED_H = 500 + 110 + 25;
 
 interface OpenState {
     win: OriginalWindow;
@@ -803,8 +803,12 @@ function createAdvancedDisplaySettings(): OriginalWindow {
     body.appendChild(icons);
     for (const [caption, key, x, y] of GALAXY_ICON_BOXES) check(icons, caption, st[key], x, y, (v) => updateSettings({ [key]: v } as Partial<UiSettings>));
 
-    // Ours: the map label / overlay / output toggles (were in the Escape menu's Options panel).
-    const map = place(groupBox('Map Display', 400, 134, F2), 12, 425);
+    // chkGameOptionsGalaxyDisplayCleanGalaxyView (Expanded, Start.1.cs 2935: (12, 425), font_1) → GameOptions.CleanGalaxyView
+    // (3001, on the panel's close).
+    check(body, 'Clean Galaxy view', st.cleanGalaxyView, 12, 425, (v) => updateSettings({ cleanGalaxyView: v }));
+
+    // Ours: the map label / overlay / output toggles (were in the Escape menu's Options panel), below it.
+    const map = place(groupBox('Map Display', 400, 134, F2), 12, 450);
     body.appendChild(map);
     const mapBoxes: [string, MapDisplayKey][] = [
         ['Show system names', 'showSystemNames'],

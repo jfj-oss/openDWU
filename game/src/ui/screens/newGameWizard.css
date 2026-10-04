@@ -157,6 +157,52 @@
     color: #c9d1d9;
 }
 
+/* Custom galaxy size: Star Amount / Physical Size number boxes with their preset lists (makeGalaxySizeControls). */
+.wizard-size-row {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px;
+    font-size: 13px;
+    color: #c9d1d9;
+}
+
+.wizard-size-box {
+    background: rgba(0, 0, 0, 0.4);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 4px;
+    color: #fff;
+    padding: 3px 6px;
+    width: 64px;
+}
+
+.wizard-size-box.wizard-star-count {
+    width: 76px;
+}
+
+.wizard-size-preset {
+    background: rgba(0, 0, 0, 0.4);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 4px;
+    color: #fff;
+    padding: 3px 4px;
+    margin-left: auto;
+}
+
+.wizard-size-preset option {
+    background: #1b2028;
+}
+
+.wizard-density-warning {
+    font-size: 12px;
+    color: #e8a33d;
+    line-height: 1.35;
+}
+
+.wizard-density-warning[hidden] {
+    display: none;
+}
+
 .wizard-seed-row {
     display: flex;
     align-items: center;

@@ -24,8 +24,9 @@
 // (n - 1) * 6 to the end, n = (int)(length / 6) — always drawn solid (origin (0, 0.5)); a line under 6 px draws nothing.
 // The lines are drawn system by system interleaved with the system circles; here they are one layer under the faction
 // rings (galaxyMarkers.ts).
-// TODO(port): GameOptions.CleanGalaxyView (Expanded's "Clean Galaxy view", Start.1.cs 2935 / 3001, default off) is not
-// ported — it hides these lines with the sector grid, the system circles and labels (MainView.2.cs method_250).
+// GameOptions.CleanGalaxyView (Expanded's "Clean Galaxy view", Start.1.cs 2935 / 3001, default off) hides these lines
+// with the sector grid, the system circles and the names (MainView.2.cs method_250 5237 `!flag`): galaxyMarkers.ts
+// passes `on` false then (cleanGalaxyView.ts).
 //
 // Cost: the network is collected (view-independent: source / target systems, colour, reciprocal flag, both gated on the
 // viewer's visibility) once a second while the lines are shown, and kept with a content hash; the dash pieces are

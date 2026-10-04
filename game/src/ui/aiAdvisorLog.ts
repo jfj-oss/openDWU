@@ -1,11 +1,12 @@
 // 18c — the council log: one entry per AI empire decision round of the local model (aiAdvisorDriver.ts), showing the
 // empire, the star date, the model's rationale and what the sim did with each decision (✓ applied, ✗ blocked by a C#
 // gate, ⊘ rejected as not legal). Transparency for the player: an empire's war or treaty offer comes with its reason.
-// No original counterpart; styling follows the 18a advisor panel. Newest first, at most MAX_ENTRIES; the × hides the
+// No original counterpart; styling is the original ScreenPanel (originalWindow.ts). Newest first, at most MAX_ENTRIES; the × hides the
 // panel until the next entry.
 
 import './aiAdvisorLog.css';
 import type { StrategicTurn } from './aiAdvisorDriver';
+import { openOriginalWindow, place, scrollPanel, type OriginalWindow } from './originalWindow';
 
 export const MAX_ENTRIES = 6;
 /** A rejected line (e.g. the long list of legal values) is cut to this many characters. */
@@ -44,35 +45,41 @@ export function councilLogEntry(turn: StrategicTurn): CouncilLogEntry {
 
 let root: HTMLElement | null = null;
 let list: HTMLElement | null = null;
+let win: OriginalWindow | null = null;
 const entries: CouncilLogEntry[] = [];
 
 function ensurePanel(): HTMLElement {
     if (root !== null && list !== null) return list;
-    root = document.createElement('div');
-    root.className = 'council-log';
-    const head = document.createElement('div');
-    head.className = 'council-log-head';
-    const title = document.createElement('span');
-    title.className = 'council-log-title';
-    title.textContent = 'Empire councils (local model)';
-    const close = document.createElement('button');
-    close.className = 'council-log-close';
-    close.textContent = '×';
-    close.title = 'Hide until the next decision';
-    close.addEventListener('click', () => {
-        if (root !== null) root.style.display = 'none';
+    // Original-style ScreenPanel docked left, below the top bar (ui/originalWindow.ts); the close button hides it until
+    // the next decision, the entries are kept. It does not pause the game or react to Escape.
+    const w = openOriginalWindow({
+        id: 'councillog',
+        title: 'Empire councils (local model)',
+        icon: 'diplomacy.png',
+        width: 520,
+        height: 460,
+        noAutoPause: true,
+        escapeCloses: false,
+        anchor: () => ({ left: 44, top: 120 }),
+        onClose: () => {
+            if (win === w) {
+                win = null;
+                root = null;
+                list = null;
+            }
+        },
     });
-    head.append(title, close);
-    list = document.createElement('div');
-    list.className = 'council-log-list';
-    root.append(head, list);
-    document.body.appendChild(root);
+    win = w;
+    root = w.root;
+    root.classList.add('council-log');
+    list = scrollPanel('council-log-list');
+    place(list, 8, 8, w.bodySize.w - 16, w.bodySize.h - 16);
+    w.body.appendChild(list);
     return list;
 }
 
 function render(): void {
     const l = ensurePanel();
-    root!.style.display = '';
     l.replaceChildren();
     for (const e of entries) {
         const item = document.createElement('div');
@@ -115,7 +122,8 @@ export function pushCouncilLog(turn: StrategicTurn): void {
 
 /** Remove the panel and forget the entries (game teardown). */
 export function closeCouncilLog(): void {
-    root?.remove();
+    win?.close();
+    win = null;
     root = null;
     list = null;
     entries.length = 0;

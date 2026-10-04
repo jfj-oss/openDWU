@@ -40,6 +40,9 @@ export interface MapOverlayState {
     /** Improvements (supplyChain): the player's yards stalled for resources and colonies short of luxuries
      *  (render/supplyOverlay.ts; hover tooltip). */
     supplyShortages: boolean;
+    /** Improvements (waypoints): the player's waypoints and the locations the player knows of — location hints, debris
+     *  fields, planet destroyers, ... (render/locationMarkers.ts; the "…" panel picks which, ui/waypoints.ts). */
+    waypoints: boolean;
 }
 
 /** A fresh overlay state. Task M3: `empireTerritory` starts on, matching the
@@ -78,12 +81,14 @@ export function createMapOverlayState(): MapOverlayState {
         fuelRange: false,
         // [dw2overlays] end
         supplyShortages: false,
+        // On: the player's own pins and what the player was told of (nothing to draw until there is some).
+        waypoints: true,
     };
 }
 
 export type OverlayKey = keyof MapOverlayState;
 
-export type OverlayPanel = 'tradeFlows' | 'resources' | 'supplyShortages';
+export type OverlayPanel = 'tradeFlows' | 'resources' | 'supplyShortages' | 'waypoints';
 
 /** One row of the View popup's overlay list. */
 export interface OverlayRow {
@@ -124,7 +129,16 @@ export const OVERLAY_ROWS: OverlayRow[] = [
     { key: 'fuelRange', label: 'Fuel Range', improvement: 'fuelRangeOverlay' },
     // [dw2overlays] end
     { key: 'supplyShortages', label: 'Supply Shortages', improvement: 'supplyChain', panel: 'supplyShortages' },
+    { key: 'waypoints', label: 'Waypoints & Known Locations', improvement: 'waypoints', panel: 'waypoints' },
 ];
+
+// Waypoints (ui/waypoints.ts): named map pins of the player's own, and the locations the player knows of.
+registerImprovement({
+    id: 'waypoints',
+    label: 'Waypoints & known locations',
+    description: 'Name places on the map (right-click empty space, or W at the cursor) and see the locations you were told of or found.',
+    default: true,
+});
 
 // [dw2overlays] begin — the three overlay improvements (on by default; each overlay's own toggle still starts off).
 registerImprovement({
