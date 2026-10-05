@@ -3,6 +3,7 @@
 // sources come best first — the worker's own last state (sent with its fatal error), the replica serialized on the main
 // thread, this game's last autosave — and a source that cannot be had or loaded gives way to the next; the game
 // restarts in a new worker host + replica, paused, and is playable (the clock runs, orders apply and reply).
+import type { SaveText } from '../src/saveData';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 
 vi.mock('../src/ui/toast', () => ({ showToast: vi.fn() }));
@@ -83,8 +84,8 @@ function session(game: Game, paused: boolean): Session {
 }
 
 /** The restart's boot: the save text into a new worker host (bootWorkerGame, as worker.ts) and its replica, paused. */
-async function bootSession(text: string): Promise<Session> {
-    const booted = await bootWorkerGame({ kind: 'load', text }, { baseData: async () => gameData, overlays: async () => new Map() });
+async function bootSession(text: SaveText): Promise<Session> {
+    const booted = await bootWorkerGame(typeof text === 'string' ? { kind: 'load', text } : { kind: 'load', blob: text }, { baseData: async () => gameData, overlays: async () => new Map() });
     return session(booted.game, true);
 }
 

@@ -23,6 +23,8 @@ export type WorkerBoot =
           /** serializeGame text (or `url`: the worker fetches it, so the main thread never holds or parses the text). */
           text?: string;
           url?: string;
+          /** Or the save as a Blob (a save made since saveData.ts, an opened file): read here, never in the page. */
+          blob?: Blob;
           /** Ignored: the worker reads the scenario from the save itself (main.ts no longer parses the save). */
           scenario?: { id: string; include: string[] | null } | null;
       }
@@ -237,7 +239,8 @@ export type FromWorker =
     | ProgressMessage
     | SnapshotMessage
     | StepMessage
-    | { type: 'saved'; id: number; text: string | null; error?: string }
+    /** The save as a Blob of its UTF-8 text (saveData.ts: never one string in either heap; posted by reference). */
+    | { type: 'saved'; id: number; blob: Blob | null; error?: string }
     | { type: 'digest'; id: number; digest: string; nowMs: number; stepSerial: number }
     | DebugReply
     | { type: 'commandLog'; id: number; log: CommandLogEntry[] }
@@ -247,7 +250,7 @@ export type FromWorker =
      * it could still serialize it — the restart's first choice, restart.ts). `id`: the save / digest / debug /
      * commandLog request that failed (its promise rejects). Neither: a message handler failed (logged).
      */
-    | { type: 'error'; message: string; fatal?: boolean; id?: number; rescue?: string | null };
+    | { type: 'error'; message: string; fatal?: boolean; id?: number; rescue?: Blob | string | null };
 
 /** Reply to a DebugRequest: the member's value (or the call's result) and the target's plain fields after the op. */
 export interface DebugReply {

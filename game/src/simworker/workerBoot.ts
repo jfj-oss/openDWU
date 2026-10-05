@@ -95,6 +95,10 @@ export async function bootWorkerGame(boot: WorkerBoot, deps: WorkerBootDeps): Pr
     }
     // Load.
     let text = boot.text;
+    if (text === undefined && boot.blob !== undefined) {
+        text = await boot.blob.text();
+        boot.blob = undefined;
+    }
     if (text === undefined) {
         if (boot.url === undefined) throw new Error('load boot without a save (text or url)');
         if (deps.fetchSave === undefined) throw new Error('load boot by url: no fetch');

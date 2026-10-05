@@ -104,9 +104,9 @@ function fatal(where: string, err: unknown): void {
     timer = null;
     // The sim's own errors are contained by SimHost.tick, so the game is usually intact here (the sync or the host
     // failed): save it for the main thread's restart offer (restart.ts), if it still serializes.
-    let rescue: string | null = null;
+    let rescue: Blob | null = null;
     try {
-        rescue = host !== null ? host.rescueSave() : null;
+        rescue = host !== null ? host.rescueSaveBlob() : null;
     } catch (err) {
         console.error('sim worker: the game could not be saved for a restart', err);
     }
@@ -211,9 +211,9 @@ function dispatch(m: ToWorker): void {
             return;
         case 'save': {
             try {
-                post({ type: 'saved', id: m.id, text: host!.save() });
+                post({ type: 'saved', id: m.id, blob: host!.saveBlob() });
             } catch (err) {
-                post({ type: 'saved', id: m.id, text: null, error: err instanceof Error ? err.message : String(err) });
+                post({ type: 'saved', id: m.id, blob: null, error: err instanceof Error ? err.message : String(err) });
             }
             return;
         }

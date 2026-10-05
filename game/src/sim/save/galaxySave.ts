@@ -20,7 +20,7 @@ import { cloneGalaxyRaces, raceScalarFields } from '../data/races';
 import { buildResourceSystem } from '../resourceSystem';
 import { buildResearchStatic, ResearchSystem } from '../researchSystem';
 import { buildComponentStatic } from '../componentStatic';
-import { GraphDecoder, GraphEncoder, type Encoded, type ExternalRef, type GraphCodecOptions, type ShapeTable } from './graphCodec';
+import { GraphDecoder, GraphEncoder, JsonWriter, type Encoded, type ExternalRef, type GraphCodecOptions, type ShapeTable } from './graphCodec';
 // Model classes (registry below), one import per module, sorted by module path.
 import { BuiltObject, DockingBay } from '../builtObject';
 import { BuiltObjectComponent, BuiltObjectComponentList } from '../builtObjectComponent';
@@ -429,6 +429,39 @@ export function galaxyToJSON(galaxy: Galaxy): GalaxySaveJSON {
     const encoded = encoder.encode(galaxy, 'galaxy');
     const sideTables = encoder.encode(collectSideTables(galaxy, [...encoder.visited()]), 'sideTables');
     return { version: 2, shapes: encoder.shapes, galaxy: encoded, territory: encodeTerritory(territoryGrid(galaxy.empireTerritory)), sideTables, baseTechCost: galaxy.baseTechCost, habitatPictureRefs: 'GalaxyImages', habitatMapPictureRefs: 'MapStarImages' };
+}
+
+/** `"key":value` of a JSON object member, or '' when JSON.stringify leaves the member out (an undefined value). */
+function jsonMember(key: string, value: unknown): string {
+    const v = JSON.stringify(value) as string | undefined;
+    return v === undefined ? '' : `${JSON.stringify(key)}:${v}`;
+}
+
+/**
+ * `JSON.stringify(galaxyToJSON(galaxy))` as a list of text chunks, each passed through `pack` as it is made (the graph
+ * is written straight to text, GraphEncoder.encodeJson, without building the encoded tree): the same text, a fraction
+ * of the peak memory — `pack` can move each chunk out of the JS heap (bytes, a Blob) while the rest is written.
+ */
+export function galaxyToJsonParts<T>(galaxy: Galaxy, pack: (chunk: string) => T, chunkChars?: number): T[] {
+    const encoder = new GraphEncoder(CODEC_OPTIONS, externalsByObject(staticTablesOfGalaxy(galaxy)));
+    const graph: T[] = [];
+    const g = new JsonWriter((c) => graph.push(pack(c)), chunkChars);
+    encoder.encodeJson(galaxy, g, 'galaxy');
+    g.end();
+    const side: T[] = [];
+    const st = new JsonWriter((c) => side.push(pack(c)), chunkChars);
+    encoder.encodeJson(collectSideTables(galaxy, [...encoder.visited()]), st, 'sideTables');
+    st.end();
+    // galaxyToJSON's members, in its order (the shape table is complete only now, but is written first).
+    const territory = jsonMember('territory', encodeTerritory(territoryGrid(galaxy.empireTerritory)));
+    const tail = [jsonMember('baseTechCost', galaxy.baseTechCost), jsonMember('habitatPictureRefs', 'GalaxyImages'), jsonMember('habitatMapPictureRefs', 'MapStarImages')].filter((m) => m !== '');
+    return [
+        pack(`{"version":2,"shapes":${JSON.stringify(encoder.shapes)},"galaxy":`),
+        ...graph,
+        pack(`,${territory === '' ? '' : `${territory},`}"sideTables":`),
+        ...side,
+        pack(`${tail.map((m) => `,${m}`).join('')}}`),
+    ];
 }
 
 /**

@@ -96,7 +96,10 @@ const staged = await page.evaluate(async () => {
 console.log('staged', staged);
 // The mid-fight save for the worker run.
 await page.waitForTimeout(4000);
-const text = await page.evaluate(async () => await window.__dwu.serialize());
+const text = await page.evaluate(async () => {
+    const t = await window.__dwu.serialize();
+    return t == null || typeof t === 'string' ? t : await t.text(); // a Blob (src/saveData.ts)
+});
 writeFileSync('public/dev-saves/battlereports-midfight.dwusave', text ?? '');
 console.log('saved mid-fight game', (text ?? '').length, 'chars');
 if (await waitForReport(page, 'in-thread')) {

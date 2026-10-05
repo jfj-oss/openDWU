@@ -11,6 +11,7 @@
 // .dwusave files are plain-text exports/imports of that same JSON string
 // (Blob download / <input type=file>).
 import './saveLoad.css';
+import type { SaveText } from '../../saveData';
 import { COLORS, FONT, OwGrid, el, glassButton, messageBox, openOriginalWindow, place, tabStrip, text, textBox, type GridColumn, type OriginalWindow } from '../originalWindow';
 
 /** localStorage key prefix for one named save. */
@@ -107,6 +108,13 @@ export function parseSaveFileText<T extends LoadedGame | Promise<LoadedGame>>(te
     return load(text);
 }
 
+/** parseSaveFileText for a picked file, which is handed on as the Blob it is (the worker reads it: the page never holds
+ *  a big save's text). */
+export async function parseSaveFile(file: Blob, load: (text: SaveText) => LoadedGame | Promise<LoadedGame>): Promise<LoadedGame> {
+    if (!/^\s*\{/.test(await file.slice(0, 256).text())) throw new SyntaxError('Not a save file (expected a JSON object).');
+    return await load(file);
+}
+
 // ---------------------------------------------------------------------------
 // Save text stores (task 12e): save texts are too big for localStorage's
 // ~5 MB quota, so they live in IndexedDB; only the small index stays there.
@@ -114,15 +122,16 @@ export function parseSaveFileText<T extends LoadedGame | Promise<LoadedGame>>(te
 
 /** Async key/value store for serialized save texts (key = save name). */
 export interface SaveTextStore {
-    get(name: string): Promise<string | null>;
-    put(name: string, text: string): Promise<void>;
+    /** A string (older saves) or a Blob of the UTF-8 text (saves made since saveData.ts). */
+    get(name: string): Promise<SaveText | null>;
+    put(name: string, text: SaveText): Promise<void>;
     delete(name: string): Promise<void>;
 }
 
 /** Map-backed SaveTextStore, used by tests and as the fallback when
  * IndexedDB is unavailable or fails to open. */
 export function createMemorySaveStore(): SaveTextStore {
-    const map = new Map<string, string>();
+    const map = new Map<string, SaveText>();
     return {
         async get(name) {
             return map.get(name) ?? null;
@@ -186,7 +195,7 @@ export function createIndexedDbSaveStore(dbName = 'dwu-saves'): SaveTextStore {
         async get(name) {
             try {
                 return await withDb('readonly', async (store) => {
-                    const result = await new Promise<string | null>((resolve, reject) => {
+                    const result = await new Promise<SaveText | null>((resolve, reject) => {
                         const req = store.get(name);
                         req.onsuccess = () => resolve(req.result ?? null);
                         req.onerror = () => reject(req.error);
@@ -249,7 +258,7 @@ export function defaultSaveTextStore(): SaveTextStore {
 // [leftovers] end
 
 /** Trigger a browser download of `text` as `<baseName>.dwusave`. */
-export function downloadSaveFile(baseName: string, text: string): void {
+export function downloadSaveFile(baseName: string, text: SaveText): void {
     const blob = new Blob([text], { type: 'application/octet-stream' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -276,12 +285,12 @@ export interface SaveLoadProvider {
     /** Open the panel in the given sub-mode ('save' / 'load'). */
     open(mode: 'save' | 'load', opts?: SaveLoadOpenOptions): void;
     /** Serialize the running game (null when saving is unavailable). */
-    serialize?: () => string | null | Promise<string | null>;
+    serialize?: () => SaveText | null | Promise<SaveText | null>;
     /** Resolve stored save text to a LoadedGame (null when loading is
      * unavailable, e.g. on the main menu without a loaded game data set). */
-    loadSave?: (text: string) => LoadedGame | Promise<LoadedGame>;
+    loadSave?: (text: SaveText) => LoadedGame | Promise<LoadedGame>;
     /** In-memory saves written this session (merged over localStorage). */
-    memorySaves?: Map<string, string>;
+    memorySaves?: Map<string, SaveText>;
 }
 
 let saveLoadProvider: SaveLoadProvider | null = null;
@@ -352,11 +361,12 @@ export interface SavePanelRefs {
 export interface SavePanelWiring {
     callbacks: SavePanelCallbacks;
     /** In-memory saves (this session), merged above the localStorage ones. */
-    memorySaves?: Map<string, string>;
+    memorySaves?: Map<string, SaveText>;
     /** Serialize the running game to its save text (null → saving disabled). */
-    serialize?: () => string | null | Promise<string | null>;
-    /** Resolve a stored save text to a LoadedGame (load button / file open). */
-    loadSave?: (text: string) => LoadedGame | Promise<LoadedGame>;
+    serialize?: () => SaveText | null | Promise<SaveText | null>;
+    /** Resolve a stored save text to a LoadedGame (load button / file open; a Blob: a save made since saveData.ts, or
+     *  the opened file). */
+    loadSave?: (text: SaveText) => LoadedGame | Promise<LoadedGame>;
     /** Date stamp for newly written saves (default: now). */
     now?: () => Date;
     /** Storage backend (default: window.localStorage). */
@@ -496,14 +506,14 @@ export function createSaveLoadPanel(mode: 'save' | 'load', wiring: SavePanelWiri
         for (const [name, saveText] of memorySaves ?? []) {
             if (seen.has(name)) continue;
             seen.add(name);
-            memEntries.push({ name, date: savedDateFromText(saveText) ?? '' });
+            memEntries.push({ name, date: typeof saveText === 'string' ? (savedDateFromText(saveText) ?? '') : '' });
         }
         return [...memEntries, ...local];
     }
 
     /** Look up the save text for `name`: memory first, then the text store,
      * then old localStorage saves (pre-12e). */
-    async function saveTextFor(name: string): Promise<string | null> {
+    async function saveTextFor(name: string): Promise<SaveText | null> {
         const mem = memorySaves?.get(name);
         if (mem !== undefined) return mem;
         const stored = await getTextStore().get(name);
@@ -686,10 +696,9 @@ export function createSaveLoadPanel(mode: 'save' | 'load', wiring: SavePanelWiri
             showToast('Opening files is only available during a game');
             return;
         }
-        const reader = new FileReader();
-        reader.onload = async () => {
+        void (async () => {
             try {
-                const loaded = await parseSaveFileText(String(reader.result), loadSave);
+                const loaded = await parseSaveFile(file, loadSave);
                 hide();
                 currentSaveName = saveNameFromFileName(file.name);
                 callbacks.onLoadedFile?.(loaded);
@@ -697,9 +706,7 @@ export function createSaveLoadPanel(mode: 'save' | 'load', wiring: SavePanelWiri
                 console.error('Failed to read save file', err);
                 showToast('Could not read that save file');
             }
-        };
-        reader.onerror = () => showToast('Could not read that save file');
-        reader.readAsText(file);
+        })();
     }
 
     function show(nextMode?: 'save' | 'load', opts: SaveLoadOpenOptions = {}): void {

@@ -87,7 +87,8 @@ import { openGalactopedia } from './ui/screens/galactopedia';
 import { habitatInfo } from './ui/selectionInfo';
 import { renderInfoModel } from './ui/selectionInfoView';
 import { colonizationRangeFor, defaultStartGameOptions, wizardStartGameOptions, piratesFor, STARTING_TECH_LEVEL, toCreateGameOptions, type StartGameOptions, maximumEmpireAmountFor, starCountFor, defaultScenarioChoice, type StartScenarioChoice } from './sim/startGameOptions';
-import { serializeGame, deserializeGameSteps, savedCustomizationSet, savedScenarioId, savedScenarioInclude, type GameSaveJSON } from './sim/save/gameSave';
+import { serializeGameBlob, saveTextString, saveTextTail, type SaveText } from './saveData';
+import { deserializeGameSteps, savedCustomizationSet, savedScenarioId, savedScenarioInclude, type GameSaveJSON } from './sim/save/gameSave';
 import { loadScenarioIndex, loadScenarioOverlay } from './sim/scenario/fetchScenario';
 import { applyScenarioOverlay, type ScenarioOverlay } from './sim/scenario/overlay';
 import { COMPOSITE_SCENARIO_ID, addonCatalog, compositeScenarioManifest, planAddonStart, resolveAddonSwitches, scenarioOverlayFor } from './sim/scenario/addons';
@@ -308,18 +309,19 @@ function gameDataForSave(save: GameSaveJSON): GameData {
 }
 
 /** Deserialize a save under the loading overlay (the save is parsed once; a late-game save takes seconds). */
-async function loadSaveWithProgress(text: string): Promise<LoadedGame> {
+async function loadSaveWithProgress(text: SaveText): Promise<LoadedGame> {
     // Start.cs 1777 / Main.Part7.cs 3941 LoadFromFile: a save of another theme first switches to it — as the user's
     // choice too (delegate8_0 = method_2(ThemeName, bool_5: true, …)) — then the galaxy loads on that theme's data.
-    const saveTheme = savedCustomizationSet(text);
+    const saveTheme = savedCustomizationSet(await saveTextTail(text, 4096));
     if (saveTheme !== activeCustomizationSetName()) {
         showToast(`Switching to ${saveTheme === '' ? '(Default)' : saveTheme} theme`); // "Switching to THEMENAME theme"
         await switchTheme(saveTheme, true);
         await ensureStaticData();
     }
     if (lastGameData === null) throw new Error('DW:U game data is required to load a save');
-    if (useSimWorker()) return (await loadSaveInWorker({ text })) as unknown as LoadedGame;
-    return (await runStepsWithProgress('Loading game', deserializeGameSteps(text, gameDataForSave))) as unknown as LoadedGame;
+    // (A Blob goes to the worker as it is: the worker reads it, the page never holds the text.)
+    if (useSimWorker()) return (await loadSaveInWorker(typeof text === 'string' ? { text } : { blob: text })) as unknown as LoadedGame;
+    return (await runStepsWithProgress('Loading game', deserializeGameSteps(await saveTextString(text), gameDataForSave))) as unknown as LoadedGame;
 }
 
 /** [improvements] The battle-report observer's kill switch: `?battleReports=0` turns the sim-side recording off. */
@@ -371,7 +373,7 @@ interface WorkerLoadedGame {
  * tab): the worker parses it once, and its snapshot names the scenario (for the replica's static data) and carries the
  * save's start options. `url`: the worker fetches the save itself (`?load=`), so the text never reaches this thread.
  */
-async function loadSaveInWorker(source: { text: string } | { url: string }): Promise<WorkerLoadedGame> {
+async function loadSaveInWorker(source: { text: string } | { url: string } | { blob: Blob }): Promise<WorkerLoadedGame> {
     let startOptions: StartGameOptions | null = null;
     const client = await bootWorker('Loading game', { kind: 'load', ...source }, (snap) => {
         startOptions = snap.startOptions;
@@ -411,7 +413,7 @@ async function offerWorkerRestartOnce(simClient: SimWorkerClient, game: Game, ti
     const sources = restartSources({
         rescue: simClient.rescueSave,
         // Serialized only if chosen (a late game takes seconds), while this view still holds the replica.
-        replica: startOptions !== null ? () => serializeGame(game, time, startOptions) : null,
+        replica: startOptions !== null ? () => serializeGameBlob(game, time, startOptions) : null,
         autosave: auto === null ? null : { ...auto, read: () => readAutosave(auto.name) },
     });
     const RESTART = 'Restart';
@@ -424,7 +426,7 @@ async function offerWorkerRestartOnce(simClient: SimWorkerClient, game: Game, ti
         toMenu();
         return;
     }
-    const r = await restartFromSources(sources, (text) => loadSaveInWorker({ text }));
+    const r = await restartFromSources(sources, (text) => loadSaveInWorker(typeof text === 'string' ? { text } : { blob: text }));
     for (const f of r.failed) console.warn(`sim worker restart: ${f.source.label}: ${f.error}`);
     if (r.result === null) {
         await messageBox({ caption: 'Restart Failed', text: `The game could not be restarted:\n${r.failed.map((f) => `- ${f.source.label}: ${f.error}`).join('\n')}`, icon: 'stop', width: 540 });
@@ -465,7 +467,7 @@ setBaconSettingsCommentsSource(() => (lastPlayedGameData ?? lastGameData)?.bacon
 let activeSavePanel: ReturnType<typeof createSaveLoadPanel> | null = null;
 /** Saves that could not be written to localStorage (quota), kept for this
  * session and shared by every save/load panel (in-game and main menu). */
-const sessionSaves = new Map<string, string>();
+const sessionSaves = new Map<string, SaveText>();
 /** The main menu currently on screen (closed when a save is loaded from it). */
 let activeMainMenu: { destroy: () => void } | null = null;
 
@@ -628,8 +630,9 @@ export async function startGameView(
     // Start.2.cs 60 / Start.cs 2394 method_56: the player race's chrome folder of the theme is searched first.
     setThemeChromeRace(game.playerEmpire?.dominantRace?.name ?? '');
     // [simworker] Save text of the running game: the worker's authoritative game in worker mode (async).
-    const serializeCurrent = (): string | null | Promise<string | null> =>
-        simClient !== undefined ? simClient.save() : lastStartOptions !== null ? serializeGame(game, time, lastStartOptions) : null;
+    // A Blob of the UTF-8 text in both modes (saveData.ts): the text is never one string in a heap.
+    const serializeCurrent = (): SaveText | null | Promise<SaveText | null> =>
+        simClient !== undefined ? simClient.save() : lastStartOptions !== null ? serializeGameBlob(game, time, lastStartOptions) : null;
 
     // Task 10d: first message of the top-middle ticker — the founding line.
     const playerCapital = game.playerEmpire?.capital ?? null;

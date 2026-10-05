@@ -12,6 +12,7 @@ import { writeSaveIndexEntry, defaultSaveTextStore, type SaveStorage, type SaveT
 import { getSettings, type UiSettings } from './settings';
 import { hideToast, showToast } from './toast';
 import { tryGetText } from '../sim/textResolver';
+import { saveTextMB, type SaveText } from '../saveData';
 
 /** int_59 cycles 1..5 (Main.Part12.cs:4038-4041). */
 export const AUTOSAVE_SLOTS = 5;
@@ -40,14 +41,14 @@ export function isAutosaveDue(now: number, last: number, intervalMs: number): bo
 }
 
 /** Write one autosave: the text to the store, then the index entry (as the panel's doSave). */
-export async function writeAutosave(name: string, text: string, storage: SaveStorage, store: SaveTextStore, date: string): Promise<void> {
+export async function writeAutosave(name: string, text: SaveText, storage: SaveStorage, store: SaveTextStore, date: string): Promise<void> {
     await store.put(name, text);
     writeSaveIndexEntry(storage, name, date);
 }
 
 export interface AutosaveOptions {
     /** Serialize the running game (null when saving is unavailable). */
-    serialize: () => string | null | Promise<string | null>;
+    serialize: () => SaveText | null | Promise<SaveText | null>;
     /** True while the save must wait (the Game Options panel is open). */
     isBlocked?: () => boolean;
 }
@@ -93,22 +94,31 @@ export function installAutosave(opts: AutosaveOptions): void {
         showToast('Autosaving…', document.body, 60000);
         await new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
         const t0 = performance.now();
-        let text: string | null = null;
+        let text: SaveText | null = null;
+        let failed = false;
         try {
-            text = await opts.serialize(); // sim worker mode: the worker serializes (main.ts)
+            // Sim worker mode: the worker serializes (main.ts); it answers or is stopped (SimWorkerClient.save's timeout).
+            text = await opts.serialize();
         } catch (err) {
             console.error('Autosave failed', err);
-            showToast('Autosave failed');
+            failed = true;
         }
         const ms = performance.now() - t0;
         // 4116: dateTime_6 = DateTime.Now after the attempt.
         last = Date.now();
-        if (text === null) {
+        if (state.disposed) {
             hideToast();
             return;
         }
+        if (text === null) {
+            // (The worker's save failed or it stopped: the reason is logged there.) Never a silent end — nor the
+            // "Autosaving…" notice left up.
+            if (!failed) console.error('Autosave failed: the game could not be saved');
+            showToast('Autosave failed');
+            return;
+        }
         lastSlot = slot;
-        console.info(`[autosave] ${name}: serialized ${(text.length / 1048576).toFixed(1)} MB in ${ms.toFixed(0)} ms`);
+        console.info(`[autosave] ${name}: serialized ${saveTextMB(text).toFixed(1)} MB in ${ms.toFixed(0)} ms`);
         const savedAt = Date.now();
         void writeAutosave(name, text, window.localStorage as unknown as SaveStorage, defaultSaveTextStore(), new Date(savedAt).toISOString()).then(
             () => {
@@ -151,7 +161,7 @@ export function currentGameAutosave(): { name: string; savedAt: number } | null 
 }
 
 /** An autosave's text from the save store (null when it is gone). */
-export async function readAutosave(name: string, store: SaveTextStore = defaultSaveTextStore()): Promise<string | null> {
+export async function readAutosave(name: string, store: SaveTextStore = defaultSaveTextStore()): Promise<SaveText | null> {
     return (await store.get(name)) ?? null;
 }
 
@@ -168,7 +178,7 @@ export function removeAutosave(): void {
 }
 
 /** Test/debug hook: run the autosave now, ignoring the timer (resolves after the text is stored). */
-export async function autosaveNow(serialize: () => string | null, storage: SaveStorage, store: SaveTextStore, date: string): Promise<string | null> {
+export async function autosaveNow(serialize: () => SaveText | null, storage: SaveStorage, store: SaveTextStore, date: string): Promise<string | null> {
     const text = serialize();
     if (text === null) return null;
     const slot = nextAutosaveSlot(lastSlot);

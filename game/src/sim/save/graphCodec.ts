@@ -102,6 +102,36 @@ const TYPED_ARRAYS: [string, { new (values: ArrayLike<number>): ArrayLike<number
 /** Shape table: shapes[id] = [className, ...fieldNames] (see the file header). */
 export type ShapeTable = string[][];
 
+/**
+ * JSON text in pieces (GraphEncoder.encodeJson): the pieces are joined and handed to `flush` every `chunkChars`
+ * characters (and at `end`), so a caller can move each chunk out of the JS heap (encode it to bytes, a Blob) while the
+ * rest is written.
+ */
+export class JsonWriter {
+    private parts: string[] = [];
+    private chars = 0;
+
+    constructor(
+        private readonly flush: (chunk: string) => void,
+        private readonly chunkChars = 1 << 22,
+    ) {}
+
+    write(s: string): void {
+        this.parts.push(s);
+        this.chars += s.length;
+        if (this.chars >= this.chunkChars) this.end();
+    }
+
+    /** Hand what is buffered to `flush` (nothing when empty). */
+    end(): void {
+        if (this.chars === 0) return;
+        const chunk = this.parts.join('');
+        this.parts = [];
+        this.chars = 0;
+        this.flush(chunk);
+    }
+}
+
 export class GraphEncoder {
     private readonly memo = new Map<object, number>();
     private readonly nameByPrototype = new Map<object, string>();
@@ -188,6 +218,129 @@ export class GraphEncoder {
         const values: Encoded[] = new Array<Encoded>(keys.length);
         for (let i = 0; i < keys.length; i++) values[i] = this.encode((obj as Record<string, unknown>)[keys[i]], `${path}.${keys[i]}`);
         return { $s: id, $v: values };
+    }
+
+    /**
+     * `JSON.stringify(this.encode(value, path))` written straight to `out`, without building the encoded tree: the same
+     * visit order (memo ids, shapes) and exactly the same text. A late-game galaxy's encoded tree was several hundred MB
+     * of short-lived objects on top of the game itself — with the final string, the save's peak memory (a 100k-habitat
+     * autosave pushed the page past V8's heap cage and crashed it).
+     */
+    encodeJson(value: unknown, out: JsonWriter, path = '$'): void {
+        switch (typeof value) {
+            case 'undefined':
+                out.write('{"$u":1}');
+                return;
+            case 'boolean':
+                out.write(value ? 'true' : 'false');
+                return;
+            case 'string':
+                out.write(JSON.stringify(value));
+                return;
+            case 'number':
+                if (Number.isFinite(value)) out.write(String(value));
+                else out.write(Number.isNaN(value) ? '{"$n":"NaN"}' : value > 0 ? '{"$n":"Infinity"}' : '{"$n":"-Infinity"}');
+                return;
+            case 'object':
+                break;
+            default:
+                throw new Error(`Cannot serialize a ${typeof value} at ${path}.`);
+        }
+        if (value === null) {
+            out.write('null');
+            return;
+        }
+        const obj = value as object;
+
+        const external = this.externals.get(obj);
+        if (external !== undefined) {
+            out.write(`{"$x":${JSON.stringify(external.kind)},"k":${JSON.stringify(external.key)}}`);
+            return;
+        }
+        const ref = this.memo.get(obj);
+        if (ref !== undefined) {
+            out.write(`{"$ref":${ref}}`);
+            return;
+        }
+        this.memo.set(obj, this.memo.size);
+
+        if (Array.isArray(obj)) {
+            out.write('[');
+            // (encode's map() skips holes, which JSON.stringify then writes as null.)
+            for (let i = 0; i < obj.length; i++) {
+                if (i > 0) out.write(',');
+                if (i in obj) this.encodeJson(obj[i], out, `${path}[${i}]`);
+                else out.write('null');
+            }
+            out.write(']');
+            return;
+        }
+        if (obj instanceof Map) {
+            out.write('{"$map":[');
+            let i = 0;
+            for (const [k, v] of obj) {
+                out.write(i > 0 ? ',[' : '[');
+                this.encodeJson(k, out, `${path}.<key ${i}>`);
+                out.write(',');
+                this.encodeJson(v, out, `${path}.<value ${i}>`);
+                out.write(']');
+                i++;
+            }
+            out.write(']}');
+            return;
+        }
+        if (obj instanceof Set) {
+            out.write('{"$set":[');
+            let i = 0;
+            for (const v of obj) {
+                if (i > 0) out.write(',');
+                this.encodeJson(v, out, `${path}.<item ${i++}>`);
+            }
+            out.write(']}');
+            return;
+        }
+        for (const [tag, ctor] of TYPED_ARRAYS) {
+            if (obj instanceof ctor) {
+                const a = obj as ArrayLike<number>;
+                out.write(`{"${tag}":[`);
+                // (JSON.stringify writes a non-finite element as null.)
+                for (let i = 0; i < a.length; i++) {
+                    const x = a[i];
+                    out.write(i > 0 ? (Number.isFinite(x) ? `,${x}` : ',null') : Number.isFinite(x) ? String(x) : 'null');
+                }
+                out.write(']}');
+                return;
+            }
+        }
+
+        const proto = Object.getPrototypeOf(obj) as object | null;
+        if (proto === null || proto === Object.prototype) {
+            out.write('{');
+            let first = true;
+            for (const key of Object.keys(obj)) {
+                if (key.startsWith('$')) throw new Error(`Plain-object key ${key} at ${path} must not start with '$'.`);
+                out.write(first ? `${JSON.stringify(key)}:` : `,${JSON.stringify(key)}:`);
+                first = false;
+                this.encodeJson((obj as Record<string, unknown>)[key], out, `${path}.${key}`);
+            }
+            out.write('}');
+            return;
+        }
+        const name = this.nameByPrototype.get(proto);
+        if (name === undefined) {
+            const ctorName = (proto as { constructor?: { name?: string } }).constructor?.name ?? '?';
+            throw new Error(`Cannot serialize an instance of ${ctorName} at ${path}: class not registered with the save codec.`);
+        }
+        const skip = this.skipFields.get(proto);
+        let keys = Object.keys(obj);
+        if (skip !== undefined) keys = keys.filter((key) => !skip.has(key));
+        const id = this.shapeId(proto, name, keys);
+        out.write(`{"$s":${id},"$v":[`);
+        for (let i = 0; i < keys.length; i++) {
+            if (i > 0) out.write(',');
+            this.encodeJson((obj as Record<string, unknown>)[keys[i]], out, `${path}.${keys[i]}`);
+        }
+        out.write(']}');
     }
 
     private shapeId(proto: object, name: string, keys: string[]): number {

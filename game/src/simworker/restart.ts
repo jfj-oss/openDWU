@@ -13,6 +13,8 @@
 // Each source is tried in that order: a source whose text cannot be had, or that the new worker cannot load, gives way
 // to the next. The new game resumes paused. No DOM / Pixi imports (main.ts shows the message box and boots the game).
 
+import type { SaveText } from '../saveData';
+
 export type RestartSourceKind = 'worker' | 'replica' | 'autosave';
 
 export interface RestartSource {
@@ -20,18 +22,23 @@ export interface RestartSource {
     /** For the message box ("the simulation's last state", "the last autosave (autosave-2, 12 minutes ago)"). */
     label: string;
     /** The save text (null / a throw: not available, the next source is tried). */
-    text(): string | null | Promise<string | null>;
+    text(): SaveText | null | Promise<SaveText | null>;
 }
 
 export interface RestartInputs {
     /** The worker's own save of its last state (SimWorkerClient.rescueSave), or null. */
-    rescue: string | null;
+    rescue: SaveText | null;
     /** Serialize the replica game on the main thread, or null when there is none. */
-    replica: (() => string) | null;
+    replica: (() => SaveText) | null;
     /** This game's last autosave, or null. */
-    autosave: { name: string; savedAt: number; read: () => Promise<string | null> } | null;
+    autosave: { name: string; savedAt: number; read: () => Promise<SaveText | null> } | null;
     /** Wall clock (Date.now) for the autosave's age. */
     now?: () => number;
+}
+
+/** A save with no text (an empty string or Blob). */
+function emptySave(t: SaveText): boolean {
+    return typeof t === 'string' ? t === '' : t.size === 0;
 }
 
 /** How long ago `ms` was, in the message box's words. */
@@ -47,7 +54,7 @@ function ago(ms: number): string {
 export function restartSources(input: RestartInputs): RestartSource[] {
     const out: RestartSource[] = [];
     const rescue = input.rescue;
-    if (rescue !== null && rescue !== '') out.push({ kind: 'worker', label: "the simulation's last state", text: () => rescue });
+    if (rescue !== null && !emptySave(rescue)) out.push({ kind: 'worker', label: "the simulation's last state", text: () => rescue });
     const replica = input.replica;
     if (replica !== null) out.push({ kind: 'replica', label: 'the game as last shown', text: () => replica() });
     const auto = input.autosave;
@@ -76,17 +83,17 @@ export interface RestartAttempt {
  * Returns the booted result with its source and the attempts that failed before it, or null (with every failure)
  * when none could be loaded.
  */
-export async function restartFromSources<T>(sources: readonly RestartSource[], boot: (text: string, source: RestartSource) => Promise<T>): Promise<{ result: T; source: RestartSource; failed: RestartAttempt[] } | { result: null; failed: RestartAttempt[] }> {
+export async function restartFromSources<T>(sources: readonly RestartSource[], boot: (text: SaveText, source: RestartSource) => Promise<T>): Promise<{ result: T; source: RestartSource; failed: RestartAttempt[] } | { result: null; failed: RestartAttempt[] }> {
     const failed: RestartAttempt[] = [];
     for (const source of sources) {
-        let text: string | null;
+        let text: SaveText | null;
         try {
             text = await source.text();
         } catch (err) {
             failed.push({ source, error: `its save could not be made (${err instanceof Error ? err.message : String(err)})` });
             continue;
         }
-        if (text === null || text === '') {
+        if (text === null || emptySave(text)) {
             failed.push({ source, error: 'no save text' });
             continue;
         }

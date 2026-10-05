@@ -18,6 +18,7 @@ import { drainCommandBoundary } from '../sim/tick/commandBoundary';
 import { issuePlayerCommand, noteSimSpeed, noteSimView, pendingPlayerCommands } from '../sim/player/playerCommands';
 import type { PlayerOpName } from '../sim/player/playerOps';
 import { serializeGame } from '../sim/save/gameSave';
+import { serializeGameBlob } from '../saveData';
 import { galaxyExternals, saveClassPrototypes } from '../sim/save/galaxySave';
 import { stateDigest } from '../sim/tick/digest';
 import { setGameEndHandler } from '../sim/victory';
@@ -490,10 +491,20 @@ export class SimHost {
 
     /** serializeGame of the authoritative game (between ticks: queued commands apply first, as in-thread). */
     save(): string {
+        return this.saveWith((g, t, o) => serializeGame(g, t, o));
+    }
+
+    /** save() as a Blob of the text's UTF-8 bytes (saveData.ts serializeGameBlob): what the worker sends — the text is
+     *  never one string in the worker's heap, and the Blob reaches the page by reference, not as a copy. */
+    saveBlob(): Blob {
+        return this.saveWith(serializeGameBlob);
+    }
+
+    private saveWith<T>(serialize: (game: Game, time: GalaxyTime, startOptions: StartGameOptions) => T): T {
         // serializeGame applies the queued commands first (a boundary): admit what arrived, as a tick would.
         this.admitCommands();
         try {
-            const text = serializeGame(this.game, this.time, this.startOptions);
+            const text = serialize(this.game, this.time, this.startOptions);
             this.settleCommands();
             return text;
         } catch (err) {
@@ -511,9 +522,18 @@ export class SimHost {
      * made: null (the restart then uses the replica or the autosave).
      */
     rescueSave(): string | null {
+        return this.rescueWith(() => this.save());
+    }
+
+    /** rescueSave as a Blob (what the worker sends with its fatal error: saveBlob). */
+    rescueSaveBlob(): Blob | null {
+        return this.rescueWith(() => this.saveBlob());
+    }
+
+    private rescueWith<T>(save: () => T): T | null {
         this.arrived.length = 0;
         if (pendingPlayerCommands(this.galaxy) > 0) return null;
-        return this.save();
+        return save();
     }
 
     digest(): string {

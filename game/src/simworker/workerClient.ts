@@ -9,6 +9,15 @@ import { SimClientCore, type SyncStats } from './clientCore';
 import type { CommandLogEntry } from '../sim/player/commandLog';
 import type { DebugReply, DebugRequest, FromWorker, InitMessage, SnapshotMessage, ToWorker, WorkerEvent } from './protocol';
 import { installReplicaWriteDetector, writeDetectorMode } from './writeDetector';
+import type { SaveText } from '../saveData';
+
+/**
+ * How long a save may take in the worker before it is given up (real ms). A 100k-habitat galaxy saves in ~5 s; a worker
+ * that has not answered after this runs no frames at all (hung, or gone without a word — killed for its memory): it is
+ * stopped as the reply backstop stops one (clientCore.ts), so the save fails with a message and the restart is offered
+ * instead of the game waiting forever.
+ */
+export const SAVE_TIMEOUT_MS = 180000;
 
 /** What main.ts drives every render frame (the in-thread SimLoop's shape, minus its driver / budget). */
 export interface WorkerSimLoop {
@@ -38,7 +47,7 @@ export class SimWorkerClient {
     private stopped: string | null = null;
     /** The worker's save of its game as it stopped (sent with its fatal error), else null: the restart's first choice
      *  (restart.ts). */
-    rescueSave: string | null = null;
+    rescueSave: SaveText | null = null;
 
     private constructor(
         private readonly worker: Worker,
@@ -178,14 +187,35 @@ export class SimWorkerClient {
         };
     }
 
-    private request<T extends FromWorker>(m: { type: 'save' | 'digest' | 'commandLog' } | Omit<DebugRequest, 'id'>): Promise<T> {
+    /** Post a request and wait for its answer. `timeoutMs`: no answer by then stops the worker (stop: every waiting
+     *  request, this one too, rejects). */
+    private request<T extends FromWorker>(m: { type: 'save' | 'digest' | 'commandLog' } | Omit<DebugRequest, 'id'>, timeoutMs?: number): Promise<T> {
         const id = this.nextRequest++;
         return new Promise<T>((resolve, reject) => {
             if (this.disposed || this.stopped !== null) {
                 reject(new Error(`sim worker: ${this.disposed ? 'disposed' : this.stopped}`));
                 return;
             }
-            this.waiting.set(id, { resolve: (r) => resolve(r as T), reject });
+            let timer: ReturnType<typeof setTimeout> | undefined;
+            const done = (): void => {
+                if (timer !== undefined) clearTimeout(timer);
+            };
+            this.waiting.set(id, {
+                resolve: (r) => {
+                    done();
+                    resolve(r as T);
+                },
+                reject: (e) => {
+                    done();
+                    reject(e);
+                },
+            });
+            if (timeoutMs !== undefined) {
+                timer = setTimeout(() => {
+                    if (!this.waiting.has(id)) return;
+                    this.stop(`no answer to the ${m.type} request after ${Math.round(timeoutMs / 1000)} s: it is not running`);
+                }, timeoutMs);
+            }
             this.worker.postMessage({ ...m, id } as ToWorker);
         });
     }
@@ -271,18 +301,22 @@ export class SimWorkerClient {
         });
     }
 
-    /** serializeGame text of the authoritative game (null when the worker could not save). */
-    async save(): Promise<string | null> {
+    /**
+     * serializeGame text of the authoritative game, as a Blob of its UTF-8 bytes (saveData.ts; null when the worker could
+     * not save). No answer within `timeoutMs` (SAVE_TIMEOUT_MS): the worker is stopped (the restart is offered) and the
+     * save fails — never a wait without end.
+     */
+    async save(timeoutMs = SAVE_TIMEOUT_MS): Promise<Blob | null> {
         let r: Extract<FromWorker, { type: 'saved' }>;
         try {
-            r = await this.request<Extract<FromWorker, { type: 'saved' }>>({ type: 'save' });
+            r = await this.request<Extract<FromWorker, { type: 'saved' }>>({ type: 'save' }, timeoutMs);
         } catch (err) {
             // The worker stopped or the game was closed before it answered: no save (as when its save fails).
             console.error(`sim worker save failed: ${err instanceof Error ? err.message : String(err)}`);
             return null;
         }
         if (r.error !== undefined) console.error(`sim worker save failed: ${r.error}`);
-        return r.text;
+        return r.blob;
     }
 
     /** The authoritative game's state digest (tests / smoke). */
