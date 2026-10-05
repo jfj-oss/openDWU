@@ -22,7 +22,7 @@ import { calculateDefendingStrength } from '../../fleets/militaryAI';
 import { DiplomaticRelationType, obtainDiplomaticRelation } from '../../diplomacy';
 import { PirateRelationType, obtainPirateRelation } from '../../pirateRelations';
 import { registerScenarioEvent, registerScenarioQuery } from '../hooks';
-import { SMARTER_AI_FLAG, isSmarterAIEmpire, smarterAIOn } from './common';
+import { SMARTER_AI_FLAG, isSmarterAIStrategist, smarterAIOn } from './common';
 
 export const SMARTER_AI_DEFENCE_FLAG = 'smarterAIDefence';
 
@@ -99,7 +99,7 @@ export function defenceWarshipFloor(stock: number, colonyCount: number, threat: 
     return Math.max(stock, Math.ceil(colonyCount * rules.warshipsPerColony * threat));
 }
 
-const on = (galaxy: Galaxy, empire: Empire): boolean => smarterAIOn(galaxy, SMARTER_AI_DEFENCE_FLAG) && isSmarterAIEmpire(galaxy, empire);
+const on = (galaxy: Galaxy, empire: Empire): boolean => smarterAIOn(galaxy, SMARTER_AI_DEFENCE_FLAG) && isSmarterAIStrategist(galaxy, empire);
 
 registerScenarioQuery({
     id: 'smarterAI.defenceThreat',

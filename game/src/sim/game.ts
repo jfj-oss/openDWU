@@ -1573,7 +1573,7 @@ export function* createGameSteps(opts: CreateGameOptions): Generator<GameStartPr
     }
     baconInitializeSettings(galaxy, gd.baconSettings);
     // Mod layer: the scenario game-start hook (after every stock start step, before the first frame; no-op without one).
-    if (galaxy.scenario !== null) scenarioGameStart(galaxy, { randomPointInRing, inNebula, startTechLevel: opts.player.techLevel });
+    if (galaxy.scenario !== null) scenarioGameStart(galaxy, { randomPointInRing, inNebula, startTechLevel: opts.player.techLevel, empireTechLevels: new Map(empireList.map((e, i) => [e, listTech[i]] as const)) });
     // Start.2.cs 2147-2190: game2.DisplayMessage* / DisplayPopup* = gameOptions_0's (the Game Options the player saved;
     // unset: method_260's defaults). The player's message pipeline reads them (playerMessages.ts).
     if (opts.messageOptions !== undefined && opts.messageOptions !== null) galaxy.messageOptions = copyMessageOptions(opts.messageOptions);

@@ -19,9 +19,12 @@
     { "name": "smarterAIDesignTune", "label": "Mod-style designs", "description": "AI warship designs follow the Extended AI Improvement Mod: no cloaks, tractor beams, boarding pods or bombard weapons (no ion defence on escorts and frigates), 1.5x engines, 2x fuel, 1.5x shields, at most 2 point defence, and fleet targeting and countermeasures on escorts and frigates. Races that rely on stealth keep their templates.", "default": true },
     { "name": "smarterAIWeaponFocus", "label": "One weapon type", "description": "AI warships carry one main weapon family (beams, missiles and torpedoes, or fighters on cruisers and capital ships): the one the empire's research is furthest ahead in, switched only when another gets more than one tech level ahead.", "default": true },
     { "name": "smarterAIDesignScale", "label": "Bigger warships", "description": "AI destroyers and cruisers also grow towards 60% and 80% of the largest ship the empire can build (as capital ships and carriers already do), but not while the empire is in debt.", "default": true },
-    { "name": "smarterAIDesignTrim", "label": "Keep speed when trimming", "description": "When an AI warship design is too large, armour and then extra weapons are removed before engines.", "default": true }
+    { "name": "smarterAIDesignTrim", "label": "Keep speed when trimming", "description": "When an AI warship design is too large, armour and then extra weapons are removed before engines.", "default": true },
+    { "name": "smarterAIOpening", "label": "Pre-warp opening", "description": "In a pre-warp start, AI empires play a fixed opening until their capital reaches a share of its maximum population: no taxes, one small space port, a construction ship and 2 explorers and nothing else, protection from every known pirate faction (kept even in debt), and no other strategic moves (research, ship automation and the private sector carry on). Then taxes rise to the highest rate that keeps approval at the minimum and the normal AI takes over. Does nothing in other starts.", "default": true }
   ],
   "params": [
-    { "name": "smarterAIGrowthTaxThreshold", "label": "Growth taxes: untaxed below this % of maximum population", "default": 50, "min": 0, "max": 100 }
+    { "name": "smarterAIGrowthTaxThreshold", "label": "Growth taxes: untaxed below this % of maximum population", "default": 50, "min": 0, "max": 100 },
+    { "name": "smarterAIOpeningPopShare", "label": "Pre-warp opening: ends when the capital reaches this % of its maximum population", "default": 90, "min": 1, "max": 100 },
+    { "name": "smarterAIOpeningMinApproval", "label": "Pre-warp opening: taxes at the end keep approval at least this", "default": 15, "min": -100, "max": 100 }
   ]
 }

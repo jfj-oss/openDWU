@@ -54,5 +54,6 @@ import './smarterAI/researchStations'; // Smarter AI research stations (flag sma
 import './smarterAI/wonders'; // Smarter AI wonders (flag smarterAIWonders; after research: prepends to its research order)
 import './smarterAI/espionage'; // Smarter AI espionage (flag smarterAIEspionage)
 import './smarterAI/diplomacy'; // Smarter AI diplomacy (flag smarterAIDiplomacy)
+import './smarterAI/opening'; // Smarter AI pre-warp opening (flag smarterAIOpening; after diplomacy / taxes: its protection and tax handlers run last)
 import './smarterAI/shipDesign'; // Smarter AI ship design (flags smarterAIDesignTune / WeaponFocus / DesignScale / DesignTrim; AI empires only)
 export {};

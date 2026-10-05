@@ -155,6 +155,8 @@ export interface HomePlacementHelpers {
     inNebula: (galaxy: Galaxy, habitat: Habitat) => boolean;
     /** The game's start tech level option (techLevelForSliderIndex: 0 pre-warp, 0.5 normal, 1..7 wizard levels; not saved). */
     startTechLevel?: number;
+    /** Each empire's own start tech level (createGame's EmpireStartOptions.techLevel; not saved). */
+    empireTechLevels?: ReadonlyMap<Empire, number>;
 }
 
 /** Runs once at the end of createGame (after every stock start step, before the first scheduler frame). May draw. */
@@ -301,6 +303,12 @@ export interface ScenarioEvents {
      * assignment): it runs only behind its flag, in place of the stock step. Smarter AI pirate clean-up.
      */
     huntPirates: { empire: Empire; roll: number; handled: boolean };
+    /**
+     * tick/empireTick.ts long block, in place of directConstruction (Empire.1.cs 3698 DirectConstruction) while the
+     * stateAIDormant query holds for the empire: the handler runs its own state build order. May draw galaxy.rnd
+     * (placement / names), as the stock step it replaces does. Smarter AI pre-warp opening.
+     */
+    dormantStateConstruction: { empire: Empire };
 }
 export type ScenarioEventName = keyof ScenarioEvents;
 
@@ -565,6 +573,18 @@ export interface ScenarioQueries {
     counterIntelligenceProportion: { value: number; args: { empire: Empire } };
     /** pirates/pirateAI.ts determineDesirePirateProtection (Empire.2.cs 2754): whether `empire` wants `pirate`'s protection. Smarter AI. No Rnd. */
     pirateProtectionDesired: { value: boolean; args: { empire: Empire; pirate: Empire } };
+    /**
+     * pirates/missionsMarket.ts reviewPirateRelations (Empire.2.cs 2401), right before the cancel: true keeps `empire`'s
+     * protection by `pirate` (the cashflow and desire cancels both skipped). Smarter AI pre-warp opening. No Rnd.
+     */
+    pirateProtectionKept: { value: boolean; args: { empire: Empire; pirate: Empire } };
+    /**
+     * tick/empireTick.ts empireDoTasks (Empire.1.cs 3427), once per call: true = the empire's state AI makes no strategic
+     * moves this call (military, colonisation, espionage, active diplomacy, facility / defensive / station planning;
+     * directConstruction is replaced by the dormantStateConstruction event). Research, taxes, private construction,
+     * ship missions and the passive steps still run. Smarter AI pre-warp opening. Pure, never draws.
+     */
+    stateAIDormant: { value: boolean; args: { empire: Empire } };
     /**
      * designGeneration.ts createNewDesigns (BaconEmpire.CreateNewDesigns), before PlaceComponentsOnDesign: changes to
      * the template, the size-up share and the trim order of `empire`'s new `spec.subRole` design (stock: null = none).

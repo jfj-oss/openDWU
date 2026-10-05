@@ -71,3 +71,45 @@ export function isSmarterAIEmpire(galaxy: Galaxy, empire: Empire | null): empire
         empire.dominantRace !== null
     );
 }
+
+// --- Pre-warp opening (opening.ts) -----------------------------------------------------------------------------------
+
+export const SMARTER_AI_OPENING_FLAG = 'smarterAIOpening';
+export const SMARTER_AI_OPENING_POP_SHARE_PARAM = 'smarterAIOpeningPopShare';
+export const SMARTER_AI_OPENING_POP_SHARE_DEFAULT = 90;
+export const SMARTER_AI_OPENING_MIN_APPROVAL_PARAM = 'smarterAIOpeningMinApproval';
+export const SMARTER_AI_OPENING_MIN_APPROVAL_DEFAULT = 15;
+export const SMARTER_AI_OPENING_STATE_KEY = 'smarterAIOpening';
+
+/** One empire's opening: the build order steps queued so far and whether the opening is over. */
+export interface SmarterOpeningEmpire {
+    /** The build order items queued, in order ('port', 'construction', 'explorer'). */
+    queued: string[];
+    /** The opening ended (for good). */
+    ended: boolean;
+    /** It ended because the capital reached the population share (the hand-over taxes were set). */
+    endedAtShare: boolean;
+}
+
+/** galaxy.scenario.state.smarterAIOpening (plain data, saved with the game). Keys are empire ids; only pre-warp AI empires. */
+export interface SmarterOpeningState {
+    empires: Record<string, SmarterOpeningEmpire>;
+}
+
+/** The opening record of `empire` (undefined: none — not a pre-warp AI start, or the option is off). Never creates state. */
+export function smarterOpeningRecord(galaxy: Galaxy, empire: Empire): SmarterOpeningEmpire | undefined {
+    const st = galaxy.scenario?.state[SMARTER_AI_OPENING_STATE_KEY] as SmarterOpeningState | undefined;
+    return st?.empires[String(empire.empireId)];
+}
+
+/** The pre-warp opening holds `empire` (the option on, its record present and not ended). */
+export function smarterAIOpeningHolds(galaxy: Galaxy, empire: Empire | null): empire is Empire {
+    if (empire === null || !smarterAIOn(galaxy, SMARTER_AI_OPENING_FLAG) || !isSmarterAIEmpire(galaxy, empire)) return false;
+    const r = smarterOpeningRecord(galaxy, empire);
+    return r !== undefined && !r.ended;
+}
+
+/** isSmarterAIEmpire, minus empires held by the pre-warp opening: the packages that make strategic moves use this. */
+export function isSmarterAIStrategist(galaxy: Galaxy, empire: Empire | null): empire is Empire {
+    return isSmarterAIEmpire(galaxy, empire) && !smarterAIOpeningHolds(galaxy, empire);
+}

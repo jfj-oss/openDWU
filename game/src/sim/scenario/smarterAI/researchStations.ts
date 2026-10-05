@@ -25,13 +25,13 @@ import { BuiltObjectSubRole } from '../../builtObjectTypes';
 import { BuiltObjectMissionType, builtObjectMission } from '../../missions/mission';
 import { annualResearchPotential, researchPotential } from '../../researchTick';
 import { registerScenarioQuery } from '../hooks';
-import { SMARTER_AI_FLAG, isSmarterAIEmpire, smarterAIOn } from './common';
+import { SMARTER_AI_FLAG, isSmarterAIStrategist, smarterAIOn } from './common';
 import { SMARTER_AI_RESEARCH_STATIONS_FLAG } from './statecraft';
 
 export const RESEARCH_FIELDS: readonly IndustryType[] = [IndustryType.Weapon, IndustryType.Energy, IndustryType.HighTech];
 
 function on(galaxy: Galaxy, empire: Empire | null): empire is Empire {
-    return smarterAIOn(galaxy, SMARTER_AI_RESEARCH_STATIONS_FLAG) && isSmarterAIEmpire(galaxy, empire);
+    return smarterAIOn(galaxy, SMARTER_AI_RESEARCH_STATIONS_FLAG) && isSmarterAIStrategist(galaxy, empire);
 }
 
 /** A location's research bonus fraction for `industry` (0 when it has none for that field). */

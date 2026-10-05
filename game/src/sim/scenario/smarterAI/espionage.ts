@@ -36,7 +36,7 @@ import { PirateRelationType, galaxyCurrentStarDate, obtainPirateRelation } from 
 import { csInt } from '../../builtObjectComponent';
 import { YEAR_LENGTH } from '../../galaxyTime';
 import { registerScenarioEvent, registerScenarioPeriodic, registerScenarioQuery } from '../hooks';
-import { SMARTER_AI_FLAG, isSmarterAIEmpire, smarterAIOn } from './common';
+import { SMARTER_AI_FLAG, isSmarterAIStrategist, smarterAIOn } from './common';
 import { SMARTER_AI_ESPIONAGE_FLAG, statecraftState } from './statecraft';
 
 const T = IntelligenceMissionType;
@@ -49,7 +49,7 @@ export const COUNTER_INTEL_PER_SIGNAL = 0.15;
 export const COUNTER_INTEL_MAX = 0.75;
 
 function on(galaxy: Galaxy, empire: Empire | null): empire is Empire {
-    return smarterAIOn(galaxy, SMARTER_AI_ESPIONAGE_FLAG) && isSmarterAIEmpire(galaxy, empire);
+    return smarterAIOn(galaxy, SMARTER_AI_ESPIONAGE_FLAG) && isSmarterAIStrategist(galaxy, empire);
 }
 
 /** Hostile spying signals: exposures against the empire in the last year plus empires recently caught spying. */

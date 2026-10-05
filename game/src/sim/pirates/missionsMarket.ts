@@ -1336,6 +1336,7 @@ export function reviewPirateRelations(galaxy: Galaxy, empire: Empire, starDate: 
         } else if (!determineDesirePirateProtection(galaxy, empire, pirateRelation.otherEmpire) && pirateRelation.lastChangeDate < num7) {
             cancel = true;
         }
+        if (cancel && galaxy.scenario !== null && scenarioQuery(galaxy, 'pirateProtectionKept', false, { empire, pirate: pirateRelation.otherEmpire })) cancel = false; // mod layer (Smarter AI opening)
         // Empire.2.cs 2484-2485 / 2495-2496 (fresh refusalCount each).
         if (cancel && checkTaskAuthorized(galaxy, empire, empire.controlDiplomacyTreaties, { value: 0 }, generateAutomationMessageCancelPirateProtection(empire, pirateRelation.otherEmpire, monthlyFee), pirateRelation.otherEmpire, AdvisorMessageType.TreatyOffer, null, new BoxedPirateRelationType(PirateRelationType.None), null)) {
             changePirateRelation(empire, pirateRelation.otherEmpire, PirateRelationType.None, starDate);

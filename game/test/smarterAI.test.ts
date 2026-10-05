@@ -37,7 +37,7 @@ import { protectionWorthIt, sharedThreatPlans } from '../src/sim/scenario/smarte
 import { planetaryFacilityDefinitionsStatic } from '../src/sim/construction/facilities';
 
 const SC = 'smarter-ai';
-const ALL_OFF = { smarterAI: false, smarterAIResearch: false, smarterAIGrowthTax: false, smarterAIBudget: false, smarterAIRetrofit: false, smarterAIDefence: false, smarterAIPirates: false, smarterAIColonies: false, smarterAIIndependents: false, smarterAIResearchStations: false, smarterAIWonders: false, smarterAIEspionage: false, smarterAIDiplomacy: false, smarterAIDesignTune: false, smarterAIWeaponFocus: false, smarterAIDesignScale: false, smarterAIDesignTrim: false };
+const ALL_OFF = { smarterAI: false, smarterAIResearch: false, smarterAIGrowthTax: false, smarterAIBudget: false, smarterAIRetrofit: false, smarterAIDefence: false, smarterAIPirates: false, smarterAIColonies: false, smarterAIIndependents: false, smarterAIResearchStations: false, smarterAIWonders: false, smarterAIEspionage: false, smarterAIDiplomacy: false, smarterAIDesignTune: false, smarterAIWeaponFocus: false, smarterAIDesignScale: false, smarterAIDesignTrim: false, smarterAIOpening: false };
 const STATECRAFT_ON = { smarterAIResearchStations: true, smarterAIWonders: true, smarterAIEspionage: true, smarterAIDiplomacy: true };
 
 let base: GameData;
@@ -62,6 +62,7 @@ describe('flags off = faithful game', () => {
         expect(game.galaxy.rnd.drawCount).toBe(ref.game.galaxy.rnd.drawCount);
         expect('smarterAI' in game.galaxy.scenario!.state).toBe(false);
         expect('smarterAIStatecraft' in game.galaxy.scenario!.state).toBe(false);
+        expect('smarterAIOpening' in game.galaxy.scenario!.state).toBe(false);
     }, 1200000);
 });
 
@@ -192,7 +193,7 @@ describe('save round trip', () => {
         const g2 = deserializeGame(text, a.gameData).game.galaxy;
         expect(g2.scenario!.id).toBe(SC);
         expect(g2.scenario!.flags).toMatchObject({ smarterAI: true, smarterAIResearch: true, smarterAIGrowthTax: false, ...STATECRAFT_ON });
-        expect(g2.scenario!.params).toEqual({ smarterAIGrowthTaxThreshold: 55 });
+        expect(g2.scenario!.params).toEqual({ smarterAIGrowthTaxThreshold: 55, smarterAIOpeningPopShare: 90, smarterAIOpeningMinApproval: 15 });
         expect(peek(g2)!.orders).toEqual(peek(g)!.orders);
         // A save without the orders (an older one) rebuilds them on first use, identically.
         delete peek(g2)!.orders[String(aiEmpires(g2)[0].empireId)];

@@ -32,7 +32,7 @@ import { AdvisorMessageType, FleetPosture, checkTaskAuthorized } from '../../dip
 import { generateAutomationMessageInvadeIndependent } from '../../combat/invasion';
 import type { ColonizationTarget } from '../../civilianAI';
 import { registerScenarioEvent, registerScenarioQuery } from '../hooks';
-import { SMARTER_AI_FLAG, isSmarterAIEmpire, smarterAIOn } from './common';
+import { SMARTER_AI_FLAG, isSmarterAIStrategist, smarterAIOn } from './common';
 
 export const SMARTER_AI_INDEPENDENTS_FLAG = 'smarterAIIndependents';
 
@@ -113,7 +113,7 @@ registerScenarioQuery({
     query: 'colonizationTargetValue',
     flag: SMARTER_AI_FLAG,
     run: (galaxy, value, { empire, habitat, filterOutDangerousTargets }) => {
-        if (!filterOutDangerousTargets || !(value > 0) || !smarterAIOn(galaxy, SMARTER_AI_INDEPENDENTS_FLAG) || !isSmarterAIEmpire(galaxy, empire)) return value;
+        if (!filterOutDangerousTargets || !(value > 0) || !smarterAIOn(galaxy, SMARTER_AI_INDEPENDENTS_FLAG) || !isSmarterAIStrategist(galaxy, empire)) return value;
         const a = independentAction(galaxy, empire, habitat);
         return a === 'annex' ? Math.trunc(value * ANNEX_BONUS) : a === 'invade' ? Math.trunc(value * INVADE_BONUS) : value;
     },
@@ -124,7 +124,7 @@ registerScenarioEvent({
     event: 'colonizationTargetsReviewed',
     flag: SMARTER_AI_FLAG,
     run: (galaxy, { empire }) => {
-        if (!smarterAIOn(galaxy, SMARTER_AI_INDEPENDENTS_FLAG) || !isSmarterAIEmpire(galaxy, empire)) return;
+        if (!smarterAIOn(galaxy, SMARTER_AI_INDEPENDENTS_FLAG) || !isSmarterAIStrategist(galaxy, empire)) return;
         invadeWeakIndependents(galaxy, empire);
     },
 });

@@ -1663,7 +1663,7 @@ function buildOtherEmpiresPage(ctx: WizardCtx): HTMLDivElement {
     // Two groups side by side, the Ship design group under both (two columns of two).
     const SMART_COL_W = 440;
     const SMART_ROW_H = 28;
-    type SmartKey = 'research' | 'growthTaxes' | 'budget' | 'retrofit' | 'researchStations' | 'wonders' | 'espionage' | 'diplomacy' | 'defence' | 'pirates' | 'colonies' | 'independents' | 'designTune' | 'weaponFocus' | 'designScale' | 'designTrim';
+    type SmartKey = 'research' | 'growthTaxes' | 'budget' | 'retrofit' | 'researchStations' | 'wonders' | 'espionage' | 'diplomacy' | 'defence' | 'pirates' | 'colonies' | 'independents' | 'designTune' | 'weaponFocus' | 'designScale' | 'designTrim' | 'opening';
     const SMART_COLUMNS: readonly { heading: string; x: number; y: number; cols: number; items: readonly (readonly [SmartKey, string, string])[] }[] = [
         {
             heading: 'Economy and research',
@@ -1705,6 +1705,13 @@ function buildOtherEmpiresPage(ctx: WizardCtx): HTMLDivElement {
                 ['designTrim', 'Keep speed when trimming', 'wizard-smarter-ai-design-trim'],
             ],
         },
+        {
+            heading: 'Opening',
+            x: 16,
+            y: 10 + 2 * (24 + 6) + 8 * SMART_ROW_H + 6,
+            cols: 1,
+            items: [['opening', 'Pre-warp opening', 'wizard-smarter-ai-opening']],
+        },
     ];
     // The list fits its lowest row (plus a margin) and opens upwards from the panel.
     const SMART_LIST_H = Math.max(...SMART_COLUMNS.map((g) => g.y + 24 + Math.ceil(g.items.length / g.cols) * SMART_ROW_H)) + 4;
@@ -1713,6 +1720,7 @@ function buildOtherEmpiresPage(ctx: WizardCtx): HTMLDivElement {
     const smartIsOn = (key: SmartKey): boolean => smart[key] ?? true;
     const smartChecks: { key: SmartKey; c: ReturnType<typeof check> }[] = [];
     let taxRowY = 0;
+    let openingRowY = 0;
     for (const group of SMART_COLUMNS) {
         const heading = label(smartList, group.heading, group.x, group.y, { size: FONT.normal });
         heading.classList.add('wizard-smarter-ai-heading');
@@ -1721,6 +1729,7 @@ function buildOtherEmpiresPage(ctx: WizardCtx): HTMLDivElement {
             const x = group.x + 8 + Math.floor(i / rows) * SMART_COL_W;
             const y = group.y + 24 + (i % rows) * SMART_ROW_H;
             if (key === 'growthTaxes') taxRowY = y;
+            if (key === 'opening') openingRowY = y;
             const c = check(smartList, text, smartIsOn(key), x, y, (v) => {
                 smart[key] = v;
                 paintSmart();
@@ -1736,6 +1745,13 @@ function buildOtherEmpiresPage(ctx: WizardCtx): HTMLDivElement {
         ctx.refreshScenario();
     });
     const taxUnit = label(smartList, '% of max population', 301, taxRowY + 2, { size: FONT.normal });
+    // The opening's end share sits on the Pre-warp opening row.
+    const openingLabel = label(smartList, 'until the capital reaches', 160, openingRowY + 2, { size: FONT.normal });
+    const openingBox = numberBox(smartList, 'wizard-smarter-ai-opening-share', 330, openingRowY, 46, 1, 100, () => smart.openingPopShare ?? 90, (x) => {
+        smart.openingPopShare = x;
+        ctx.refreshScenario();
+    });
+    const openingUnit = label(smartList, '% of its max population', 381, openingRowY + 2, { size: FONT.normal });
 
     // A click outside the list (or Escape) closes it; the listeners go once the wizard is torn down.
     let smartListOpen = false;
@@ -1775,6 +1791,10 @@ function buildOtherEmpiresPage(ctx: WizardCtx): HTMLDivElement {
         const taxInput = taxBox.querySelector('input');
         if (taxInput !== null) taxInput.disabled = !taxOn;
         for (const e of [taxLabel, taxBox, taxUnit]) e.classList.toggle('is-disabled', !taxOn);
+        const openingOn = smart.enabled && smartIsOn('opening');
+        const openingInput = openingBox.querySelector('input');
+        if (openingInput !== null) openingInput.disabled = !openingOn;
+        for (const e of [openingLabel, openingBox, openingUnit]) e.classList.toggle('is-disabled', !openingOn);
         const on = smartChecks.filter(({ key }) => smartIsOn(key)).length;
         smartCount.textContent = smart.enabled ? `${on} of ${smartChecks.length} options on` : 'Off';
         ctx.refreshScenario();

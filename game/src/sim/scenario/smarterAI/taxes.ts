@@ -9,6 +9,7 @@
 //     covers less than ALLOWABLE_YEARS_MAINTENANCE_FROM_CASH_ON_HAND years of upkeep. Then the growing colonies are
 //     taxed at the stock rate, fullest first, until their revenue covers the shortfall (the cashflow needed to repay the
 //     debt within a year plus a quarter year of upkeep).
+//   - after a pre-warp opening that ended at its population share (opening.ts) the capital is never a growing colony;
 //   - Hysteresis: the debt override ends only when money is back at or above 0 and either the untaxed cashflow is not
 //     negative or the cash covers 1.5 × ALLOWABLE_YEARS of upkeep.
 // The player, pirates and nationalised (special function 1) governments are never touched. No Rnd.
@@ -21,7 +22,7 @@ import { ALLOWABLE_YEARS_MAINTENANCE_FROM_CASH_ON_HAND, annualTroopMaintenance, 
 import { annualStateMaintenanceExcludingUnderConstruction, calculateAnnualCashflow } from '../../treasury';
 import { registerScenarioEvent } from '../hooks';
 import { scenarioParam } from '../state';
-import { SMARTER_AI_FLAG, SMARTER_AI_GROWTH_TAX_FLAG, SMARTER_AI_GROWTH_TAX_THRESHOLD_DEFAULT, SMARTER_AI_GROWTH_TAX_THRESHOLD_PARAM, isSmarterAIEmpire, smarterAIOn, smarterAIState } from './common';
+import { SMARTER_AI_FLAG, SMARTER_AI_GROWTH_TAX_FLAG, SMARTER_AI_GROWTH_TAX_THRESHOLD_DEFAULT, SMARTER_AI_GROWTH_TAX_THRESHOLD_PARAM, isSmarterAIEmpire, smarterAIOn, smarterAIState, smarterOpeningRecord } from './common';
 
 /** The debt-override exit margin, in multiples of the ALLOWABLE_YEARS cash-on-hand rule. */
 export const DEBT_RECOVERED_FACTOR = 1.5;
@@ -79,7 +80,10 @@ export function applyGrowthTaxes(galaxy: Galaxy, empire: Empire): void {
     if (gov !== null && gov.specialFunctionCode === 1) return;
     const threshold = scenarioParam(galaxy, SMARTER_AI_GROWTH_TAX_THRESHOLD_PARAM, SMARTER_AI_GROWTH_TAX_THRESHOLD_DEFAULT) / 100;
     const growing: Habitat[] = [];
-    for (const h of empire.colonies) if (h !== null && h.empire === empire && colonyFullness(h) < threshold) growing.push(h);
+    // After a pre-warp opening that ended at its population share the capital keeps the stock rate (the hand-over set it
+    // to the highest rate keeping approval at the minimum; growth taxes must not push it back to 0%).
+    const keepCapital = smarterOpeningRecord(galaxy, empire)?.endedAtShare === true;
+    for (const h of empire.colonies) if (h !== null && h.empire === empire && colonyFullness(h) < threshold && !(keepCapital && h === empire.capital)) growing.push(h);
     if (growing.length === 0) return;
     // The stock rates and revenues, then every growing colony at 0%.
     const stockRates = growing.map((h) => h.taxRate);

@@ -23,14 +23,14 @@ import { determineEmpiresAtWarWith } from '../../treasury';
 import { calculatePlanetaryFacilityCost, planetaryFacilityDefinitionsStatic } from '../../construction/facilities';
 import { checkWonderBuiltDef } from '../../construction/wonders';
 import { registerScenarioPeriodic, registerScenarioQuery } from '../hooks';
-import { SMARTER_AI_FLAG, isSmarterAIEmpire, smarterAIOn } from './common';
+import { SMARTER_AI_FLAG, isSmarterAIStrategist, smarterAIOn } from './common';
 import { SMARTER_AI_WONDERS_FLAG, statecraftState, type SmarterWonderPlan } from './statecraft';
 
 /** Crash research a wonder path project when it costs at most this share of the treasury. */
 export const WONDER_CRASH_SHARE = 0.25;
 
 function on(galaxy: Galaxy, empire: Empire | null): empire is Empire {
-    return smarterAIOn(galaxy, SMARTER_AI_WONDERS_FLAG) && isSmarterAIEmpire(galaxy, empire);
+    return smarterAIOn(galaxy, SMARTER_AI_WONDERS_FLAG) && isSmarterAIStrategist(galaxy, empire);
 }
 
 /** How well a wonder type fits a peaceful / an aggressive empire (0 = not wanted). RaceAchievement is scored by the caller. */

@@ -27,7 +27,7 @@ import { annualStateMaintenanceExcludingUnderConstruction, determineEmpiresAtWar
 import { empireShipGroups } from '../../fleets/shipGroup';
 import { checkShouldAttemptColonization } from '../../construction/empireConstruction';
 import { registerScenarioQuery } from '../hooks';
-import { SMARTER_AI_FLAG, isSmarterAIEmpire, smarterAIOn } from './common';
+import { SMARTER_AI_FLAG, isSmarterAIStrategist, smarterAIOn } from './common';
 
 export const SMARTER_AI_COLONIES_FLAG = 'smarterAIColonies';
 
@@ -153,7 +153,7 @@ registerScenarioQuery({
     query: 'colonizationTargetValue',
     flag: SMARTER_AI_FLAG,
     run: (galaxy, value, { empire, habitat, filterOutDangerousTargets }) => {
-        if (!filterOutDangerousTargets || !smarterAIOn(galaxy, SMARTER_AI_COLONIES_FLAG) || !isSmarterAIEmpire(galaxy, empire)) return value;
+        if (!filterOutDangerousTargets || !smarterAIOn(galaxy, SMARTER_AI_COLONIES_FLAG) || !isSmarterAIStrategist(galaxy, empire)) return value;
         return smarterColonyValue(galaxy, empire, habitat, value, cachedContext(galaxy, empire));
     },
 });
@@ -163,7 +163,7 @@ registerScenarioQuery({
     query: 'colonyShipBuildCap',
     flag: SMARTER_AI_FLAG,
     run: (galaxy, value, { empire }) => {
-        if (value > 0 || !smarterAIOn(galaxy, SMARTER_AI_COLONIES_FLAG) || !isSmarterAIEmpire(galaxy, empire)) return value;
+        if (value > 0 || !smarterAIOn(galaxy, SMARTER_AI_COLONIES_FLAG) || !isSmarterAIStrategist(galaxy, empire)) return value;
         return extraColonyShipAllowed(galaxy, empire) ? 1 : value;
     },
 });

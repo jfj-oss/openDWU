@@ -23,7 +23,7 @@ import { assignFleetRetrofit, assignRetrofitMission, checkSafeToBuildAtLocation 
 import { planRetrofit } from '../../player/fleetOps';
 import { galaxyStarDate } from '../../tick/simTime';
 import { registerScenarioPeriodic } from '../hooks';
-import { SMARTER_AI_FLAG, isSmarterAIEmpire, smarterAIOn } from './common';
+import { SMARTER_AI_FLAG, isSmarterAIStrategist, smarterAIOn } from './common';
 import { reviewEconomy } from './budget';
 
 export const SMARTER_AI_RETROFIT_FLAG = 'smarterAIRetrofit';
@@ -168,6 +168,6 @@ registerScenarioPeriodic({
     periodDays: REVIEW_DAYS,
     run: (galaxy) => {
         if (!smarterAIOn(galaxy, SMARTER_AI_RETROFIT_FLAG)) return;
-        for (const e of galaxy.empires) if (isSmarterAIEmpire(galaxy, e)) reviewFleetRetrofits(galaxy, e);
+        for (const e of galaxy.empires) if (isSmarterAIStrategist(galaxy, e)) reviewFleetRetrofits(galaxy, e);
     },
 });

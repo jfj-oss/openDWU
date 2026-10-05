@@ -59,7 +59,7 @@ import {
     sortBuiltObjectsByDistance,
 } from '../../fleets/shipGroupTasks';
 import { registerScenarioEvent, registerScenarioPeriodic } from '../hooks';
-import { SMARTER_AI_FLAG, isSmarterAIEmpire, smarterAIOn } from './common';
+import { SMARTER_AI_FLAG, isSmarterAIStrategist, smarterAIOn } from './common';
 
 export const SMARTER_AI_PIRATES_FLAG = 'smarterAIPirates';
 
@@ -233,7 +233,7 @@ registerScenarioEvent({
     event: 'huntPirates',
     flag: SMARTER_AI_FLAG,
     run: (galaxy, p) => {
-        if (p.handled || !smarterAIOn(galaxy, SMARTER_AI_PIRATES_FLAG) || !isSmarterAIEmpire(galaxy, p.empire)) return;
+        if (p.handled || !smarterAIOn(galaxy, SMARTER_AI_PIRATES_FLAG) || !isSmarterAIStrategist(galaxy, p.empire)) return;
         p.handled = true;
         smarterHuntPirates(galaxy, p.empire, p.roll);
     },
@@ -248,6 +248,6 @@ registerScenarioPeriodic({
     periodDays: FACILITY_PERIOD_DAYS,
     run: (galaxy) => {
         if (!smarterAIOn(galaxy, SMARTER_AI_PIRATES_FLAG)) return;
-        for (const e of galaxy.empires) if (isSmarterAIEmpire(galaxy, e) && !e.reclusive) cleanUpPirateFacilities(galaxy, e);
+        for (const e of galaxy.empires) if (isSmarterAIStrategist(galaxy, e) && !e.reclusive) cleanUpPirateFacilities(galaxy, e);
     },
 });

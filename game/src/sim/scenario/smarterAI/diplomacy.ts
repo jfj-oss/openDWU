@@ -21,7 +21,7 @@ import { offerFreeTrade, offerMutualDefense } from '../../diplomacyTick';
 import { habitatAnnualRevenue, totalMobileMilitaryFirepower } from '../../forceStructure';
 import { calculateAttackingFirepowerNearEmpireTargetsList, calculateDistanceToNearestColony, calculatePirateProtectionPricePerMonth } from '../../pirates/pirateRelationsAI';
 import { registerScenarioPeriodic, registerScenarioQuery } from '../hooks';
-import { SMARTER_AI_FLAG, isSmarterAIEmpire, smarterAIOn } from './common';
+import { SMARTER_AI_FLAG, isSmarterAIStrategist, smarterAIOn } from './common';
 import { SMARTER_AI_DIPLOMACY_FLAG } from './statecraft';
 
 /** A runaway empire's score is at least this multiple of ours. */
@@ -34,7 +34,7 @@ export const PIRATE_LOSS_SHARE = 0.3;
 export const MAX_OFFERS = 2;
 
 function on(galaxy: Galaxy, empire: Empire | null): empire is Empire {
-    return smarterAIOn(galaxy, SMARTER_AI_DIPLOMACY_FLAG) && isSmarterAIEmpire(galaxy, empire);
+    return smarterAIOn(galaxy, SMARTER_AI_DIPLOMACY_FLAG) && isSmarterAIStrategist(galaxy, empire);
 }
 
 /** Pirate strength bearing on the empire: its forces attacking near the empire, or its fleet scaled by base proximity. */

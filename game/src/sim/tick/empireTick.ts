@@ -111,7 +111,7 @@ import {
 } from '../events';
 import { AutomationLevel } from '../empire';
 import { scenarioFlag } from '../scenario/state';
-import { scenarioEmit } from '../scenario/hooks';
+import { scenarioEmit, scenarioQuery } from '../scenario/hooks';
 import { rimTraderColonyCapReached } from '../scenario/rimTrade/common';
 
 /** Empire.cs 176-186 _ShortProcessingInterval .. _HugeProcessingInterval (seconds). */
@@ -184,6 +184,8 @@ export function empireDoTasks(galaxy: Galaxy, empire: Empire): void {
     if (empire.dominantRace !== null) {
         flag = empire.dominantRace.expanding;
     }
+    // Mod layer (Smarter AI pre-warp opening): the state AI makes no strategic moves (the `!dormant &&` gates below).
+    const dormant = galaxy.scenario !== null && scenarioQuery(galaxy, 'stateAIDormant', false, { empire });
     // 3505-3514 short block.
     if (num >= SHORT_PROCESSING_INTERVAL) {
         respondToIncomingEnemyFleetsAndPlanetDestroyers(galaxy, empire);
@@ -211,13 +213,13 @@ export function empireDoTasks(galaxy: Galaxy, empire: Empire): void {
         processMessages(galaxy, empire);
         considerTreatyProposals(galaxy, empire);
         evaluateColonyVariables(galaxy, empire, num3);
-        recruitAttackTroops(galaxy, empire);
+        if (!dormant) recruitAttackTroops(galaxy, empire);
         recalculateEmpireCorruption(empire);
         if (empire.controlColonyTaxRates) {
             reviewTaxes(galaxy, empire);
         }
         recalculateColonyTaxRevenues(galaxy, empire);
-        if (empire.controlMilitaryAttacks !== AutomationLevel.Undefined) {
+        if (!dormant && empire.controlMilitaryAttacks !== AutomationLevel.Undefined) {
             identifyMilitaryObjectives(galaxy, empire);
         }
         if (empire.controlMilitaryFleets) {
@@ -230,7 +232,7 @@ export function empireDoTasks(galaxy: Galaxy, empire: Empire): void {
         reviewPirateSmugglingMissions(galaxy, empire, galaxyStarDate(galaxy));
         checkMarketOrders(galaxy, empire);
         assignShipMissions(galaxy, empire);
-        if (empire.controlAgentAssignment !== AutomationLevel.Undefined) {
+        if (!dormant && empire.controlAgentAssignment !== AutomationLevel.Undefined) {
             assignSpecialMissions(galaxy, empire);
         }
         performIntelligenceMissions(galaxy, empire);
@@ -245,7 +247,7 @@ export function empireDoTasks(galaxy: Galaxy, empire: Empire): void {
         reviewFleetAdmiralBonuses(galaxy, empire);
         taskResupplyShips(galaxy, empire);
         reviewResearchStationBonuses(galaxy, empire);
-        if (flag) {
+        if (!dormant && flag) {
             reviewIndependentColonyTargets(galaxy, empire);
         }
         processTradeBonuses(galaxy, empire, num4);
@@ -296,10 +298,10 @@ export function empireDoTasks(galaxy: Galaxy, empire: Empire): void {
         reviewSystemThreats(galaxy, empire);
         // Mod layer 19a: the Concord stops colonizing at its cap (tasks/19a-rim-trader.md R2)
         empire.colonizationTargets = scenarioFlag(galaxy, 'rimTrader') && rimTraderColonyCapReached(galaxy, empire) ? [] : identifyColonizationTargets(galaxy, empire);
-        if (flag) {
+        if (!dormant && flag) {
             invadeUnwillingColonizationTargets(galaxy, empire);
         }
-        if (galaxy.scenario !== null && flag) scenarioEmit(galaxy, 'colonizationTargetsReviewed', { empire }); // mod layer (Smarter AI independents)
+        if (galaxy.scenario !== null && !dormant && flag) scenarioEmit(galaxy, 'colonizationTargetsReviewed', { empire }); // mod layer (Smarter AI independents)
         empire.resourceTargets = identifyResourceCentres(galaxy, empire);
         empire.empireResourceTargets = prioritizeEmpireResourceNeeds(galaxy, empire);
         identifyUnavailableLuxuryResources(galaxy, empire);
@@ -314,13 +316,13 @@ export function empireDoTasks(galaxy: Galaxy, empire: Empire): void {
     if (num5 >= LONG_PROCESSING_INTERVAL) {
         mergeGalaxyMapsForSharedVisibilityEmpires(galaxy, empire);
         mergeKnownPirateBasesForSharedVisibilityEmpires(galaxy, empire);
-        if (flag) {
+        if (!dormant && flag) {
             checkTemptingTargets(galaxy, empire);
         }
-        reviewColonyWonders(galaxy, empire);
-        reviewColonyFacilities(galaxy, empire);
+        if (!dormant) reviewColonyWonders(galaxy, empire);
+        if (!dormant) reviewColonyFacilities(galaxy, empire);
         refreshColonyFacilityInfo(galaxy, empire);
-        if (flag) {
+        if (!dormant && flag) {
             sendAvailableFleetsToGuardStrategicLocations(galaxy, empire);
         }
         reviewEmpireAbilityBonuses(galaxy, empire);
@@ -330,9 +332,9 @@ export function empireDoTasks(galaxy: Galaxy, empire: Empire): void {
         clearInvalidDiplomaticRelations(galaxy, empire);
         evaluatePoliticalSituation(galaxy, empire, timePassedSpanMs);
         reviewDiplomaticStrategies(galaxy, empire);
-        reviewDiplomaticSituations(galaxy, empire);
+        if (!dormant) reviewDiplomaticSituations(galaxy, empire);
         reviewPirateRelations(galaxy, empire, galaxyStarDate(galaxy), num5);
-        if (checkHaveMetPirates(empire)) {
+        if (!dormant && checkHaveMetPirates(empire)) {
             makeAttackOffersToPirates(galaxy, empire, galaxyStarDate(galaxy));
             makeDefendOffersToPirates(galaxy, empire, galaxyStarDate(galaxy));
             makeSmugglingOffersToPirates(galaxy, empire, galaxyStarDate(galaxy));
@@ -341,13 +343,13 @@ export function empireDoTasks(galaxy: Galaxy, empire: Empire): void {
         reviewSpecialBonusesRuinsWonders(galaxy, empire);
         reviewMigrationTourism(galaxy, empire);
         doCrashResearch(galaxy, empire);
-        if (!empire.reclusive) {
+        if (!dormant && !empire.reclusive) {
             tradeItems(galaxy, empire);
         }
         if (empire.controlTroopGeneration) {
             disbandExcessTroops(galaxy, empire);
         }
-        if (empire.controlMilitaryAttacks !== AutomationLevel.Undefined && !empire.reclusive) {
+        if (!dormant && empire.controlMilitaryAttacks !== AutomationLevel.Undefined && !empire.reclusive) {
             determineRandomAttacks(galaxy, empire);
         }
         const forceStructureCtx = { currentStarDate: galaxyStarDate(galaxy), difficultyLevel: galaxy.difficultyLevel };
@@ -359,21 +361,22 @@ export function empireDoTasks(galaxy: Galaxy, empire: Empire): void {
         retireOldBuiltObjects(galaxy, empire);
         if (empire.initiateConstruction) {
             reviewLatestDesigns(galaxy, empire);
-            directConstruction(galaxy, empire);
+            if (dormant) scenarioEmit(galaxy, 'dormantStateConstruction', { empire }); // mod layer (Smarter AI opening build order)
+            else directConstruction(galaxy, empire);
             directPrivateConstruction(galaxy, empire);
         }
         exertCulturalInfluence(galaxy, empire);
         clearOldDistressSignals(galaxy, empire);
         clearExpiredDeclinedTasks(galaxy, empire);
-        determineMonitoringStationLocation(galaxy, empire);
-        determineResearchStationLocation(galaxy, empire, false, true);
+        if (!dormant) determineMonitoringStationLocation(galaxy, empire);
+        if (!dormant) determineResearchStationLocation(galaxy, empire, false, true);
     }
     // 3708-3726 huge block.
     if (num6 >= HUGE_PROCESSING_INTERVAL) {
         cleanupInvalidShips(galaxy, empire);
         reviewEmpireEndsAllWars(galaxy, empire, galaxyStarDate(galaxy));
-        buildDefensiveBases(galaxy, empire);
-        checkColoniesForPirateFacilitiesAndAttack(galaxy, empire);
+        if (!dormant) buildDefensiveBases(galaxy, empire);
+        if (!dormant) checkColoniesForPirateFacilitiesAndAttack(galaxy, empire);
         shakturiSendConvoy(galaxy, empire);
         checkOfferStoryHint(galaxy, empire);
         resetRaceEvents(galaxy, empire);
@@ -381,9 +384,9 @@ export function empireDoTasks(galaxy: Galaxy, empire: Empire): void {
         reviewEmpireEvents(galaxy, empire);
         checkSendShipConvoysViaGateway(galaxy, empire, num6);
         maintainBaseResourceLevels(galaxy, empire);
-        if (!empire.reclusive) {
+        if (!dormant && !empire.reclusive) {
             reviewEnemyHelpEnlistment(galaxy, empire);
         }
-        reviewDisputedTerritory(galaxy, empire);
+        if (!dormant) reviewDisputedTerritory(galaxy, empire);
     }
 }

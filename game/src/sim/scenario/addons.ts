@@ -113,10 +113,13 @@ export interface SmarterAIChoice {
     weaponFocus?: boolean;
     designScale?: boolean;
     designTrim?: boolean;
+    /** Pre-warp opening (smarterAIOpening; absent = on) and the capital population share that ends it (absent = 90). */
+    opening?: boolean;
+    openingPopShare?: number;
 }
 
 export function defaultSmarterAIChoice(): SmarterAIChoice {
-    return { enabled: false, research: true, growthTaxes: true, growthTaxThreshold: 50, budget: true, retrofit: true, colonies: true, independents: true, defence: true, pirates: true, researchStations: true, wonders: true, espionage: true, diplomacy: true, designTune: true, weaponFocus: true, designScale: true, designTrim: true };
+    return { enabled: false, research: true, growthTaxes: true, growthTaxThreshold: 50, budget: true, retrofit: true, colonies: true, independents: true, defence: true, pirates: true, researchStations: true, wonders: true, espionage: true, diplomacy: true, designTune: true, weaponFocus: true, designScale: true, designTrim: true, opening: true, openingPopShare: 90 };
 }
 
 /**
@@ -147,8 +150,9 @@ export function withSmarterAI(picked: readonly string[], overrides: AddonOverrid
                 smarterAIWeaponFocus: smart.weaponFocus ?? true,
                 smarterAIDesignScale: smart.designScale ?? true,
                 smarterAIDesignTrim: smart.designTrim ?? true,
+                smarterAIOpening: smart.opening ?? true,
             },
-            params: { ...overrides.params, smarterAIGrowthTaxThreshold: smart.growthTaxThreshold },
+            params: { ...overrides.params, smarterAIGrowthTaxThreshold: smart.growthTaxThreshold, smarterAIOpeningPopShare: smart.openingPopShare ?? 90 },
         },
     };
 }

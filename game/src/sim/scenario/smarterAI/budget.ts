@@ -31,7 +31,7 @@ import { assignScrapMission, checkSafeToBuildAtLocation } from '../../constructi
 import { calculateAnnualCashflow } from '../../treasury';
 import { registerScenarioPeriodic, registerScenarioQuery } from '../hooks';
 import { scenarioState } from '../state';
-import { SMARTER_AI_FLAG, isSmarterAIEmpire, smarterAIOn } from './common';
+import { SMARTER_AI_FLAG, isSmarterAIStrategist, smarterAIOn } from './common';
 import { DEBT_TARGET_UPKEEP_YEARS, debtWithHysteresis, stateUpkeep } from './taxes';
 
 export const SMARTER_AI_BUDGET_FLAG = 'smarterAIBudget';
@@ -180,7 +180,7 @@ export function reviewBudget(galaxy: Galaxy, empire: Empire): EconomyReview {
     return r;
 }
 
-const budgetOn = (galaxy: Galaxy, empire: Empire): boolean => smarterAIOn(galaxy, SMARTER_AI_BUDGET_FLAG) && isSmarterAIEmpire(galaxy, empire);
+const budgetOn = (galaxy: Galaxy, empire: Empire): boolean => smarterAIOn(galaxy, SMARTER_AI_BUDGET_FLAG) && isSmarterAIStrategist(galaxy, empire);
 
 registerScenarioPeriodic({
     id: 'smarterAI.budget',
@@ -188,7 +188,7 @@ registerScenarioPeriodic({
     periodDays: REVIEW_DAYS,
     run: (galaxy) => {
         if (!smarterAIOn(galaxy, SMARTER_AI_BUDGET_FLAG)) return;
-        for (const e of galaxy.empires) if (isSmarterAIEmpire(galaxy, e)) reviewBudget(galaxy, e);
+        for (const e of galaxy.empires) if (isSmarterAIStrategist(galaxy, e)) reviewBudget(galaxy, e);
     },
 });
 
