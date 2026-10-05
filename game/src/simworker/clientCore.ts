@@ -608,14 +608,34 @@ export class SimClientCore {
         this.inbox.push(m);
     }
 
+    /** Main-thread time of the last render frame (frame() not draining; -Infinity before the first). */
+    private lastRenderFrameAt = -Infinity;
+
+    /**
+     * Whether the render frames have stopped (none for `ms`): a hidden or minimised window runs no requestAnimationFrame,
+     * but the worker keeps stepping (the game runs on unfocused, as the original does) — its messages must then be
+     * applied as they arrive (SimWorkerClient: frame(time, drain)), or they pile up in the inbox, each with its delta,
+     * until the window comes back: an alt-tabbed late game filled the heap and the sim worker died of it.
+     */
+    renderFramesStalled(ms: number): boolean {
+        return this.now() - this.lastRenderFrameAt > ms;
+    }
+
+    /** Step messages received and not applied yet (tests, the smoke). */
+    get inboxLength(): number {
+        return this.inbox.length;
+    }
+
     /**
      * Once per render frame: apply the step messages received since the last frame (hot parts at once), pump the cold
      * queue for its budget (and, under replyBudgetMs, the cold parts the waiting command replies need), answer the
      * replies whose cold parts are all applied, adopt the worker's pause / speed when our last clock change has reached
-     * it, and refresh renderTime. Returns the sim steps that landed.
+     * it, and refresh renderTime. Returns the sim steps that landed. `drain`: not a render frame — the frames have
+     * stopped (a hidden window) and a message arrived: the same, with every cold part pumped (nothing to keep smooth).
      */
-    frame(time: ClockControls): number {
+    frame(time: ClockControls, drain = false): number {
         const t0 = this.now();
+        if (!drain) this.lastRenderFrameAt = t0;
         this.syncClock(time);
         let steps = 0;
         let hotMs = 0;
@@ -684,7 +704,7 @@ export class SimClientCore {
             if (!this.replica.decoder.coldThrough(seq)) break;
             this.settleApplied();
         }
-        coldMs += this.replica.pumpCold(this.coldBudgetMs, this.now, this.settling.length > 0 ? this.settling[0].seq : Infinity).applyMs;
+        coldMs += this.replica.pumpCold(drain ? Infinity : this.coldBudgetMs, this.now, this.settling.length > 0 ? this.settling[0].seq : Infinity).applyMs;
         this.settleApplied();
         if (this.waiting.size > 0) this.checkReplyTimeouts(t0);
         const t2 = this.now();

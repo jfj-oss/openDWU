@@ -598,8 +598,19 @@ function createWindow() {
         const level = event.level ?? (['verbose', 'info', 'warning', 'error'][legacy[0]] || String(legacy[0]));
         const message = event.message ?? legacy[1];
         if (level !== 'warning' && level !== 'error') return;
-        recentConsole.push(`${new Date().toISOString()} [${level}] ${String(message).slice(0, 500)}`);
+        const entry = `${new Date().toISOString()} [${level}] ${String(message).slice(0, 500)}`;
+        recentConsole.push(entry);
         if (recentConsole.length > 40) recentConsole.shift();
+        // The sim worker stopping (it crashed, ran out of memory — V8 kills only its isolate, the page lives on and
+        // reports it after its silence watchdog — or stopped answering) goes to the crash log at once, with the memory:
+        // the page may well die of the same cause minutes later, or the player quits from the restart prompt.
+        if (level === 'error' && /sim worker: STOPPED|Autosave failed/.test(String(message))) {
+            try {
+                fs.appendFileSync(path.join(app.getPath('userData'), 'crash-log.txt'), `${entry} version=${APP_VERSION}\n` + (lastMemory !== '' ? `  last memory sample: ${lastMemory}\n` : ''));
+            } catch {
+                /* best effort */
+            }
+        }
     });
     const memoryTimer = setInterval(() => {
         try {

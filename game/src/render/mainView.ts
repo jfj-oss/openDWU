@@ -534,7 +534,7 @@ export function addRingBelowBodies(root: Container, ring: Container, bodies: Con
     root.addChildAt(ring, root.getChildIndex(bodies));
 }
 
-class SystemView {
+export class SystemView {
     system: SystemInfo;
     root: Container;
     mapIcon: Sprite;
@@ -558,9 +558,20 @@ class SystemView {
      * extras (min sprite sizes, labels) — those are covered by SYSTEM_CULL_PX_MARGIN. */
     drawRadius = 0;
     private rocksShown: boolean | null = null;
+    /** The planets in habitat order with their moons (data only: what the pickers and the fog read). */
+    readonly planetHabitats: { habitat: Habitat; moons: Habitat[] }[] = [];
+    rockHabitats: Habitat[] = [];
+    /**
+     * The bodies' display objects (a sprite, a dot and a name label per planet and moon, a moon ring per planet, a rock
+     * per asteroid) exist only while the system's detail is drawn, and a while after (ensureBodies / releaseBodies;
+     * MainView.releaseIdleBodies): built for every system up front they were ~40% of the page heap of a 100k-habitat
+     * galaxy (one Pixi Container with its transform, bounds and event emitter per sprite / label) — for the few systems
+     * ever on screen at once. Empty while not built.
+     */
     planets: PlanetView[] = [];
     asteroids: Sprite[] = [];
-    rockHabitats: Habitat[] = [];
+    /** performance.now() of the last frame that needed the bodies (-1: not built). */
+    bodiesNeededAt = -1;
     /** One moon-ring Graphics per planet (parallel to `planets`), drawn around (0,0) on zoom change and moved to the
      * planet's drawn position every frame, so the rings follow the orbiting planet instead of staying where it was. */
     moonRings: Graphics[] = [];
@@ -588,7 +599,7 @@ class SystemView {
     private coronaScale = 1.65;
     private discAngle = 0;
 
-    constructor(private view: MainView, system: SystemInfo, textures: MainViewTextures) {
+    constructor(private view: MainView, system: SystemInfo, private readonly textures: MainViewTextures) {
         this.system = system;
         const star = system.systemStar;
         this.root = new Container();
@@ -639,39 +650,25 @@ class SystemView {
         // diameter*z + 2 px), so 1.2 diameters plus the pixel margin.
         let radius = 1.2 * star.diameter;
 
-        // Planets and their moons (orbit positions relative to the star).
+        // Planets and their moons (orbit positions relative to the star): the extents now, the display objects when first
+        // drawn (ensureBodies).
         for (const habitat of system.habitats) {
             if (habitat.category === HabitatCategoryType.Planet) {
-                const planet = new PlanetView(this, habitat, textures.dots.get(habitat.type) ?? textures.dot);
-                this.planets.push(planet);
-                const moonRing = new Graphics();
-                moonRing.visible = false;
-                this.moonRingLayer.addChild(moonRing);
-                this.moonRings.push(moonRing);
+                const moons: Habitat[] = [];
                 for (const moon of system.habitats) {
                     if (moon.category === HabitatCategoryType.Moon && moon.parent === habitat) {
-                        // Task 12p: moons render as planet-textured sprites, not dots.
-                        planet.moons.push(new MoonView(this, moon, makePlanetTexture(PLANET_COLORS[moon.type] ?? '#888888')));
+                        moons.push(moon);
                         this.maxExtent = Math.max(this.maxExtent, habitat.orbitDistance + moon.orbitDistance + 3000);
                         // Moon orbit ring + moon sprite (<= 1.1 x diameter*z px).
                         radius = Math.max(radius, habitat.orbitDistance + moon.orbitDistance + moon.diameter);
                     }
                 }
+                this.planetHabitats.push({ habitat, moons });
                 // Orbit ring + planet sprite (<= 1.25 x diameter*z px, or the 4 px minimum).
                 radius = Math.max(radius, habitat.orbitDistance + habitat.diameter);
                 this.maxExtent = Math.max(this.maxExtent, habitat.orbitDistance + 3000);
             } else if (habitat.category === HabitatCategoryType.Asteroid) {
-                const rock = new Sprite(textures.rock);
-                rock.anchor.set(0.5);
-                rock.x = Math.cos(habitat.orbitAngle) * habitat.orbitDistance;
-                rock.y = Math.sin(habitat.orbitAngle) * habitat.orbitDistance;
-                // Rock pixel size is world-linear (px = diameter*zoom*0.45),
-                // so the counter-scale is zoom-independent.
-                rock.scale.set((habitat.diameter * 0.45) / textures.rock.width);
-                rock.visible = false;
-                this.asteroids.push(rock);
                 this.rockHabitats.push(habitat);
-                this.bodies.addChild(rock);
                 radius = Math.max(radius, habitat.orbitDistance + habitat.diameter);
                 this.maxExtent = Math.max(this.maxExtent, habitat.orbitDistance + 3000);
             }
@@ -688,6 +685,78 @@ class SystemView {
         this.nameLabel.anchor.set(0.5, 0);
         this.nameLabel.visible = false;
         this.root.addChild(this.nameLabel);
+    }
+
+    /** Whether the bodies' display objects exist (ensureBodies). */
+    get bodiesBuilt(): boolean {
+        return this.bodiesNeededAt >= 0;
+    }
+
+    /**
+     * Build the bodies' display objects (see `planets`), in the order and with the textures the constructor used to give
+     * them: per planet its dot, sprite and label, its moon ring and its moons' dots and labels, the rocks in between in
+     * habitat order; each body's picture straight from the asset cache when MainView.init has loaded it (else when it
+     * loads), and the volcanic glow over it.
+     */
+    ensureBodies(now: number): void {
+        const fresh = this.bodiesNeededAt < 0;
+        this.bodiesNeededAt = now;
+        if (!fresh) return;
+        const view = this.view;
+        const textures = this.textures;
+        let pi = 0;
+        let ri = 0;
+        for (const habitat of this.system.habitats) {
+            if (habitat.category === HabitatCategoryType.Planet) {
+                const data = this.planetHabitats[pi++];
+                const planet = new PlanetView(this, habitat, textures.dots.get(habitat.type) ?? textures.dot);
+                this.planets.push(planet);
+                const moonRing = new Graphics();
+                moonRing.visible = false;
+                this.moonRingLayer.addChild(moonRing);
+                this.moonRings.push(moonRing);
+                // Task 12p: moons render as planet-textured sprites, not dots.
+                for (const moon of data.moons) planet.moons.push(new MoonView(this, moon, makePlanetTexture(PLANET_COLORS[moon.type] ?? '#888888')));
+                view.bodyPictures(planet);
+                for (const moon of planet.moons) view.bodyPictures(moon);
+            } else if (habitat.category === HabitatCategoryType.Asteroid) {
+                const h = this.rockHabitats[ri++];
+                const rock = new Sprite(textures.rock);
+                rock.anchor.set(0.5);
+                rock.x = Math.cos(h.orbitAngle) * h.orbitDistance;
+                rock.y = Math.sin(h.orbitAngle) * h.orbitDistance;
+                // Rock pixel size is world-linear (px = diameter*zoom*0.45),
+                // so the counter-scale is zoom-independent.
+                rock.scale.set((h.diameter * 0.45) / textures.rock.width);
+                rock.visible = false;
+                this.asteroids.push(rock);
+                this.bodies.addChild(rock);
+                view.rockPicture(rock, h);
+            }
+        }
+        // Everything is drawn afresh: the fog pass, the rings and the rocks' visibility.
+        this.fogSig = 0;
+        this.planetDrawn.length = 0;
+        this.moonDrawn.length = 0;
+        this.rockDrawn.length = 0;
+        this.lastRingZoom = -1;
+        this.rocksShown = null;
+        view.bodiesBuilt.add(this);
+    }
+
+    /** Destroy the bodies' display objects (not drawn for a while: MainView.releaseIdleBodies); ensureBodies rebuilds
+     *  them. Shared textures (the asset cache's pictures, the generated dots) are kept. */
+    releaseBodies(): void {
+        if (this.bodiesNeededAt < 0) return;
+        this.bodiesNeededAt = -1;
+        for (const c of this.bodies.removeChildren()) c.destroy({ children: true, texture: false, textureSource: false });
+        for (const c of this.moonRingLayer.removeChildren()) c.destroy();
+        this.planets.length = 0;
+        this.asteroids.length = 0;
+        this.moonRings.length = 0;
+        this.ring.clear();
+        this.lastRingZoom = -1;
+        this.view.bodiesBuilt.delete(this);
     }
 
     /** Per-frame level-of-detail update (only for systems near the view). */
@@ -769,7 +838,10 @@ class SystemView {
         const bodiesShown = f < 500;
         // Render: galaxy-zoom perf — the fog pass only decides which rings / bodies are drawn, so skip it while
         // neither is (every visible Unexplored system otherwise scanned all the player's ships per frame).
-        if (bodiesShown || ringA > 0.02) this.updateFog();
+        if (bodiesShown || ringA > 0.02) {
+            this.ensureBodies(performance.now());
+            this.updateFog();
+        }
         this.ring.visible = ringA > 0.02;
         if (this.ring.visible) {
             this.ring.alpha = ringA;
@@ -1093,6 +1165,10 @@ class SystemView {
         this.corona.texture = this.coronaFrames[coronaFrameIndex(nowMs, this.coronaFrames.length, this.coronaFps)];
     }
 }
+
+/** A system's bodies (their sprites and labels) not drawn for this long (real ms) are released (MainView.releaseIdleBodies);
+ *  they are rebuilt the next time the system is drawn close enough. */
+export const BODIES_IDLE_MS = 15000;
 
 /** Star corona (bloom) strength vs the original's alpha 240 (1 = original). */
 export const STAR_BLOOM_SCALE = 0.5;
@@ -1465,10 +1541,10 @@ export class MainView {
             const bodies: Habitat[] = [];
             for (const sv of this.systems) {
                 if (!fog.habitatInfo(sv.system.systemStar)) continue;
-                for (const p of sv.planets) {
+                for (const p of sv.planetHabitats) {
                     bodies.push(p.habitat);
                     for (const moon of p.moons) {
-                        bodies.push(moon.habitat);
+                        bodies.push(moon);
                     }
                 }
             }
@@ -1539,9 +1615,9 @@ export class MainView {
             const star = sv.system.systemStar;
             if (!fog.habitatInfo(star)) continue;
             add(star, 'star');
-            for (const p of sv.planets) {
+            for (const p of sv.planetHabitats) {
                 add(p.habitat, 'planet');
-                for (const moon of p.moons) add(moon.habitat, 'moon');
+                for (const moon of p.moons) add(moon, 'moon');
             }
         }
         const hits = collectHitsUnderPoint(cands, w.x, w.y, z, 6, PICK_MENU_MAX_ROWS * 4);
@@ -1648,6 +1724,7 @@ export class MainView {
             .then(() => {
                 for (const sv of this.systems) {
                     sv.nameLabel.style.fontFamily = MAP_FONT_FAMILY;
+                    // (Bodies built later take the font as they are made.)
                     for (const planet of sv.planets) {
                         planet.label.style.fontFamily = MAP_FONT_FAMILY;
                     }
@@ -1735,7 +1812,7 @@ export class MainView {
         // MainView.2.cs 5429-5438: assets.ts starPictureUrls); a black hole's system-pass art loads on first use (BlackHoleArt).
         const lazyLoads: Promise<unknown>[] = [];
         // bitmap_195, the volcanic glow drawn over a volcanic planet / moon picture (volcanicGlow.ts, method_50).
-        const glows = new VolcanicGlowTextures(store);
+        const glows = this.volcanicGlows = new VolcanicGlowTextures(store);
         for (const sv of this.systems) {
             const star = sv.system.systemStar;
             lazyLoads.push(
@@ -1750,39 +1827,15 @@ export class MainView {
                 const url = starPictureUrls(star)[0];
                 if (url !== undefined) lazyLoads.push(loadStraightAsPremultiplied(themedAssetUrl(url)).then((tex) => (sv.novaAlphaBlend = tex)));
             }
-            for (const planet of sv.planets) {
-                lazyLoads.push(
-                    store
-                        .loadFirst(habitatPictureUrls(planet.habitat), () => makePlanetTexture(PLANET_COLORS[planet.habitat.type] ?? '#888888'))
-                        .then((tex) => {
-                            planet.sprite.texture = tex;
-                            this.addVolcanicGlow(glows, planet);
-                        }),
-                );
-                // Task 12p: moons use per-habitat planet art too.
-                for (const moon of planet.moons) {
-                    lazyLoads.push(
-                        store
-                            .loadFirst(habitatPictureUrls(moon.habitat), () => makePlanetTexture(PLANET_COLORS[moon.habitat.type] ?? '#888888'))
-                            .then((tex) => {
-                                moon.dot.texture = tex;
-                                this.addVolcanicGlow(glows, moon);
-                            }),
-                    );
+            // The bodies' pictures (their sprites are built when the system is first drawn: SystemView.ensureBodies,
+            // which takes them from the cache — bodyPictures / rockPicture).
+            for (const p of sv.planetHabitats) {
+                for (const h of [p.habitat, ...p.moons]) {
+                    lazyLoads.push(store.loadFirst(habitatPictureUrls(h), () => makePlanetTexture(PLANET_COLORS[h.type] ?? '#888888')));
+                    if (volcanicGlowIndex(h) >= 0 && habitatPictureUrls(h).length > 0) void glows.textureFor(h);
                 }
             }
-            for (let i = 0; i < sv.asteroids.length; i++) {
-                const rock = sv.asteroids[i];
-                const h = sv.rockHabitats[i];
-                lazyLoads.push(
-                    store
-                        .loadFirst(habitatPictureUrls(h), () => this.textures.rock)
-                        .then((tex) => {
-                            rock.texture = tex;
-                            rock.scale.set((h.diameter * 0.45) / tex.width);
-                        }),
-                );
-            }
+            for (const h of sv.rockHabitats) lazyLoads.push(store.loadFirst(habitatPictureUrls(h), () => this.textures.rock));
         }
         await Promise.all(lazyLoads);
 
@@ -2031,6 +2084,7 @@ export class MainView {
             }
             sv.update(z, cam, allow, dtSeconds);
         }
+        this.releaseIdleBodies(performance.now());
         this.systemLayer.flush();
         {
             // Gas clouds (system pass, f < 500) and the super-nova location fill (f < 150).
@@ -2399,6 +2453,46 @@ export class MainView {
             this.selectedBuiltObject = null;
             this.onSelectionChange?.(null);
         }
+    }
+
+    /** The SystemViews whose bodies' display objects exist (SystemView.ensureBodies / releaseBodies). */
+    readonly bodiesBuilt = new Set<SystemView>();
+    private volcanicGlows: VolcanicGlowTextures | null = null;
+    private lastBodiesSweep = 0;
+
+    /** A built planet's / moon's picture (habitatPictureUrls: from the cache MainView.init filled, at once when it is
+     *  in) and its volcanic glow. */
+    bodyPictures(view: PlanetView | MoonView): void {
+        const h = view.habitat;
+        const urls = habitatPictureUrls(h);
+        const body = view instanceof PlanetView ? view.sprite : view.dot;
+        const set = (tex: Texture): void => {
+            if (!body.destroyed) body.texture = tex;
+        };
+        const cached = this.store.peek(urls);
+        if (cached !== null) set(cached);
+        else void this.store.loadFirst(urls, () => makePlanetTexture(PLANET_COLORS[h.type] ?? '#888888')).then(set);
+        if (this.volcanicGlows !== null) this.addVolcanicGlow(this.volcanicGlows, view);
+    }
+
+    /** A built asteroid rock's picture (as bodyPictures). */
+    rockPicture(rock: Sprite, h: Habitat): void {
+        const set = (tex: Texture): void => {
+            if (rock.destroyed) return;
+            rock.texture = tex;
+            rock.scale.set((h.diameter * 0.45) / tex.width);
+        };
+        const urls = habitatPictureUrls(h);
+        const cached = this.store.peek(urls);
+        if (cached !== null) set(cached);
+        else void this.store.loadFirst(urls, () => this.textures.rock).then(set);
+    }
+
+    /** Bodies not needed for BODIES_IDLE_MS are released (SystemView.releaseBodies); checked every couple of seconds. */
+    private releaseIdleBodies(now: number): void {
+        if (now - this.lastBodiesSweep < 2000) return;
+        this.lastBodiesSweep = now;
+        for (const sv of [...this.bodiesBuilt]) if (now - sv.bodiesNeededAt > BODIES_IDLE_MS) sv.releaseBodies();
     }
 
     /**

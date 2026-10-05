@@ -235,10 +235,16 @@ export type WorkerEvent =
     /** 19s-2 voice cues the tick left (sim/scenario/llm/voiceCues.ts drainVoiceCues, drained in the worker): VoiceCue[]. */
     | { kind: 'voiceCues'; cues: RemoteArg[] };
 
+/** The worker posts at least this often (real ms): a step message, or `alive` (workerClient.ts WORKER_SILENT_MS). */
+export const ALIVE_INTERVAL_MS = 2000;
+
 export type FromWorker =
     | ProgressMessage
     | SnapshotMessage
     | StepMessage
+    /** Nothing to send (a paused, settled game): the worker says it still runs, every ALIVE_INTERVAL_MS, so the main
+     *  thread can tell a worker that has died (killed for its memory: no error event) from a quiet one. */
+    | { type: 'alive' }
     /** The save as a Blob of its UTF-8 text (saveData.ts: never one string in either heap; posted by reference). */
     | { type: 'saved'; id: number; blob: Blob | null; error?: string }
     | { type: 'digest'; id: number; digest: string; nowMs: number; stepSerial: number }

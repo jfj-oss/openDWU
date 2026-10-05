@@ -19,9 +19,23 @@ const load = opt('load', '');
 const secs = Number(opt('secs', '60'));
 const speed = Number(opt('speed', '4'));
 const snapDir = opt('snapshot', '');
+const SAMPLE = process.argv.includes('--sample');
 const W = Number(opt('w', '1920'));
 const H = Number(opt('h', '1080'));
 
+if (opt('compare', '')) {
+    const [a, b] = opt('compare', '').split(',').map((f) => JSON.parse(readFileSync(f, 'utf8')));
+    for (const z of Object.keys(a)) {
+        const count = (l) => l.reduce((m, k) => m.set(k, (m.get(k) ?? 0) + 1), new Map());
+        const ca = count(a[z].drawn);
+        const cb = count(b[z].drawn);
+        const diff = [];
+        for (const k of new Set([...ca.keys(), ...cb.keys()])) if ((ca.get(k) ?? 0) !== (cb.get(k) ?? 0)) diff.push(`${ca.get(k) ?? 0} -> ${cb.get(k) ?? 0}  ${k}`);
+        console.log(`${z}: ${a[z].objects} -> ${b[z].objects} display objects; drawn ${a[z].drawn.length} -> ${b[z].drawn.length}, ${diff.length} differ`);
+        for (const d of diff.slice(0, 15)) console.log(`   ${d}`);
+    }
+    process.exit(0);
+}
 const profileDir = mkdtempSync(join(tmpdir(), 'dwu-memprobe-'));
 const dbgPort = 9200 + Math.floor(Math.random() * 400);
 const chrome = spawn(process.env.CHROMIUM || '/usr/bin/chromium', [
@@ -67,14 +81,27 @@ listeners.add((m) => {
         const ti = m.params.targetInfo;
         if (process.argv.includes('--verbose')) console.log(`worker target: ${ti.title} ${ti.url}`);
         // The sim worker (workerClient.ts: name 'dwu-sim', src/simworker/worker.ts), not the art loader's.
-        if (/dwu-sim|simworker/.test(`${ti.title} ${ti.url}`)) workerS = m.params.sessionId;
-        void send('Runtime.runIfWaitingForDebugger', {}, m.params.sessionId).catch(() => {});
+        const sim = /dwu-sim|simworker/.test(`${ti.title} ${ti.url}`);
+        if (sim) workerS = m.params.sessionId;
+        const sid = m.params.sessionId;
+        // --sample: the sampling heap profiler from the worker's first allocation (it waits for the debugger until then).
+        void (sim && SAMPLE ? send('HeapProfiler.startSampling', { samplingInterval: 65536 }, sid).catch(() => {}) : Promise.resolve())
+            .then(() => send('Runtime.runIfWaitingForDebugger', {}, sid)).catch(() => {});
     }
     if (m.method === 'Runtime.exceptionThrown' && m.sessionId === pageS) console.log(`[pageerror] ${m.params.exceptionDetails?.exception?.description?.split('\n')[0] ?? m.params.exceptionDetails?.text}`);
 });
 await send('Runtime.enable', {}, pageS);
 await send('Page.enable', {}, pageS);
-await send('Target.setAutoAttach', { autoAttach: true, waitForDebuggerOnStart: false, flatten: true }, pageS);
+await send('Target.setAutoAttach', { autoAttach: true, waitForDebuggerOnStart: SAMPLE, flatten: true }, pageS);
+// --sample: a sampling heap profile (live objects by allocation stack) of the page from its first allocation; written
+// with the snapshots' directory (DIR/page.heapprofile, DIR/worker.heapprofile; scripts/heapprofile-summary.mjs).
+if (SAMPLE) {
+    // (First a page of the same origin, so the game's navigation stays in this renderer and keeps the profiler.)
+    await send('Page.navigate', { url: `${base}/mem-probe-blank` }, pageS);
+    await new Promise((r) => setTimeout(r, 1500));
+    await send('HeapProfiler.enable', {}, pageS);
+    await send('HeapProfiler.startSampling', { samplingInterval: 65536 }, pageS);
+}
 
 const evaluate = async (expression, s = pageS) => {
     const r = await send('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true }, s);
@@ -241,6 +268,43 @@ for (const s of [pageS, workerS]) if (s) await send('HeapProfiler.collectGarbage
 await sleep(1000);
 results.push(await report('after GC'));
 
+// --tour=<file>: paused, the camera at the player's capital at galaxy / sector / system / close / planet zoom: per zoom
+// the drawn display objects (constructor, rounded screen box, alpha, text) — written to <file> as JSON, so two builds can
+// be compared object by object (scripts/mem-probe.mjs --compare=a.json,b.json) — and the scene's size there.
+if (opt('tour', '')) {
+    await evaluate(`(() => { window.__dwu.time.paused = true; })()`);
+    const out = {};
+    for (const zoom of ['galaxy', 'sector', 'system', 'close', 'planet']) {
+        await evaluate(`(() => {
+            const d = window.__dwu; const cam = d.camera; const g = d.game.galaxy; const cap = d.game.playerEmpire?.capital ?? null;
+            const star = cap !== null ? g.systems[cap.systemIndex]?.systemStar ?? cap : null;
+            const z = ${JSON.stringify(zoom)};
+            if (z === 'galaxy') { cam.centerOn(g.sizeX / 2, g.sizeY / 2); cam.zoom = cam.minZoom; }
+            else if (z === 'sector') { cam.centerOn(star.xpos, star.ypos); cam.zoom = cam.clampZoom(1 / 3000); }
+            else if (z === 'system') { cam.centerOn(star.xpos, star.ypos); cam.zoom = cam.clampZoom(1 / 50); }
+            else if (z === 'close') { cam.centerOn(star.xpos, star.ypos); cam.zoom = cam.clampZoom(1 / 8); }
+            else { cam.centerOn(cap.xpos, cap.ypos); cam.zoom = cam.clampZoom(1); }
+        })()`);
+        await sleep(4000);
+        out[zoom] = await evaluate(`(() => {
+            const d = window.__dwu; const list = []; let n = 0;
+            const walk = (o, vis) => {
+                n++;
+                const v = vis && o.visible !== false && o.renderable !== false && o.alpha > 0;
+                if (v && o.children.length === 0 && o.constructor.name !== 'Container') {
+                    const b = o.getBounds();
+                    list.push([o.constructor.name, Math.round(b.x), Math.round(b.y), Math.round(b.width), Math.round(b.height), Math.round(o.alpha * 100), o.text ?? String(o.texture?.source?.label ?? o.texture?.label ?? '').replace(location.origin, '')].join(' '));
+                }
+                for (const c of o.children ?? []) walk(c, v);
+            };
+            walk(d.app.stage, true);
+            return { objects: n, drawn: list.sort() };
+        })()`);
+        console.log(`tour ${zoom}: ${out[zoom].objects} display objects, ${out[zoom].drawn.length} drawn leaves`);
+    }
+    writeFileSync(opt('tour', ''), JSON.stringify(out));
+}
+
 // --save: run the game's save (window.__dwu.serialize: the worker's in worker mode) and sample the heaps and the renderer
 // RSS every 250 ms while it runs (the peak is what kills a big game's autosave).
 if (process.argv.includes('--save')) {
@@ -291,7 +355,49 @@ async function snapshot(s, file) {
     closeSync(fd);
     console.log(`heap snapshot: ${file}`);
 }
-if (snapDir) {
+// ArrayBuffers (their bytes are outside the V8 heap but in the renderer's memory: partition_alloc array_buffer) and the
+// typed-array views on them, by constructor and length, in the page and the worker.
+async function arrayBuffers(s, label) {
+    const fn = `function () {
+        const out = { buffers: 0, bytes: 0, sizes: {}, views: {} };
+        for (const b of this[0]) { out.buffers++; out.bytes += b.byteLength; const k = b.byteLength >= 1048576 ? '>=1MB' : b.byteLength >= 65536 ? '64KB-1MB' : b.byteLength >= 4096 ? '4-64KB' : '<4KB'; const e = (out.sizes[k] ??= [0, 0]); e[0]++; e[1] += b.byteLength; }
+        for (const [name, list] of this[1]) for (const v of list) { const k = name + '[' + v.length + ']'; const e = (out.views[k] ??= [0, 0]); e[0]++; e[1] += v.byteLength; }
+        out.views = Object.entries(out.views).sort((a, b) => b[1][1] - a[1][1]).slice(0, 15);
+        return out;
+    }`;
+    const q = async (ctor) => {
+        const proto = await send('Runtime.evaluate', { expression: `${ctor}.prototype`, objectGroup: 'ab' }, s);
+        return (await send('Runtime.queryObjects', { prototypeObjectId: proto.result.objectId, objectGroup: 'ab' }, s)).objects.objectId;
+    };
+    try {
+        const ab = await q('ArrayBuffer');
+        const names = ['Float64Array', 'Float32Array', 'Int32Array', 'Uint32Array', 'Uint16Array', 'Int16Array', 'Uint8Array', 'Int8Array', 'Uint8ClampedArray'];
+        const lists = [];
+        for (const n of names) lists.push(await q(n));
+        const pack = await send('Runtime.callFunctionOn', { objectId: ab, functionDeclaration: `function (...l) { return [this, l.map((x, i) => [${JSON.stringify(names)}[i], x])]; }`, arguments: lists.map((objectId) => ({ objectId })), objectGroup: 'ab' }, s);
+        const r = await send('Runtime.callFunctionOn', { objectId: pack.result.objectId, functionDeclaration: fn, returnByValue: true, objectGroup: 'ab' }, s);
+        const v = r.result.value;
+        console.log(`  ${label} ArrayBuffers: ${v.buffers}, ${mb(v.bytes)}; by size ${Object.entries(v.sizes).map(([k, e]) => `${k}: ${e[0]} ${mb(e[1])}`).join(', ')}`);
+        for (const [k, e] of v.views) console.log(`    ${k.padEnd(28)} x${e[0]} ${mb(e[1])}`);
+    } catch (e) {
+        console.log(`  ${label} ArrayBuffers: ${e.message}`);
+    }
+    await send('Runtime.releaseObjectGroup', { objectGroup: 'ab' }, s).catch(() => {});
+}
+if (process.argv.includes('--abufs')) {
+    await arrayBuffers(pageS, 'page');
+    if (workerS) await arrayBuffers(workerS, 'worker');
+}
+if (SAMPLE) {
+    mkdirSync(snapDir || '.', { recursive: true });
+    for (const [s, name] of [[pageS, 'page'], [workerS, 'worker']]) {
+        if (!s) continue;
+        const { profile } = await send('HeapProfiler.getSamplingProfile', {}, s);
+        writeFileSync(join(snapDir || '.', `${name}${inThread ? '-inthread' : ''}.heapprofile`), JSON.stringify(profile));
+        console.log(`sampling heap profile: ${join(snapDir || '.', `${name}${inThread ? '-inthread' : ''}.heapprofile`)}`);
+    }
+}
+if (snapDir && process.argv.includes('--heapsnapshot')) {
     mkdirSync(snapDir, { recursive: true });
     await snapshot(pageS, join(snapDir, `page${inThread ? '-inthread' : ''}.heapsnapshot`));
     if (workerS) await snapshot(workerS, join(snapDir, 'worker.heapsnapshot'));

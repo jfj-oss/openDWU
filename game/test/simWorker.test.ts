@@ -168,6 +168,31 @@ describe('sim worker: host + replica vs the in-thread loop', () => {
         w.host.dispose();
     }, 600000);
 
+    it('with no render frames (a hidden window) the step messages are applied as they arrive, not piled up', () => {
+        // SimWorkerClient's glue (workerClient.ts onMessage 'step'): received, then frame(time, true) while the render
+        // frames have stopped. An alt-tabbed late game queued every delta in the inbox until the window came back.
+        const game = cachedTickGame(gameData);
+        const time = new GalaxyTime();
+        time.speed = 4;
+        time.paused = false;
+        const { host, client, time: uiTime } = connect(game, time);
+        expect(client.renderFramesStalled(250)).toBe(true); // (no frame yet)
+        for (let i = 0; i < 120; i++) {
+            client.syncClock(uiTime);
+            const m = host.tick(FRAME_REAL_MS);
+            if (m === null) continue;
+            client.receive(structuredClone(m));
+            if (client.renderFramesStalled(250)) client.frame(uiTime, true);
+            expect(client.inboxLength).toBe(0);
+            expect(client.replica.decoder.coldBacklog).toBe(0);
+        }
+        expect(client.galaxy.nowMs).toBe(game.galaxy.nowMs);
+        expect(client.galaxy.nowMs).toBeGreaterThan(0);
+        // A render frame: no longer stalled.
+        client.frame(uiTime);
+        expect(client.renderFramesStalled(250)).toBe(false);
+    });
+
     it('a save from the host loads into a new host that continues identically', () => {
         const game = cachedTickGame(gameData);
         const time = new GalaxyTime();

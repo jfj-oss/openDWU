@@ -504,6 +504,12 @@ export class AssetStore {
      * is present this returns the fallback immediately without fetching
      * (keeps the console clean and the render instant).
      */
+    /** The texture loadFirst(urls, …) gives, when it is already loaded (else null). */
+    peek(urls: string[]): Texture | null {
+        const hit = this.cache.get(urls.length > 0 ? themedAssetUrl(urls[0]) : urls[0]);
+        return hit instanceof Texture ? hit : null;
+    }
+
     loadFirst(urls: string[], fallback: () => Texture): Promise<Texture> {
         const key = urls.length > 0 ? themedAssetUrl(urls[0]) : urls[0];
         const hit = this.cache.get(key);

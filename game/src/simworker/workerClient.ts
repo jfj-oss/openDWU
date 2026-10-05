@@ -19,6 +19,19 @@ import type { SaveText } from '../saveData';
  */
 export const SAVE_TIMEOUT_MS = 180000;
 
+/** No render frame for this long (real ms): the frames have stopped (hidden window) and step messages are applied as
+ *  they arrive (SimClientCore.renderFramesStalled). */
+export const FRAMES_STALLED_MS = 250;
+
+/**
+ * Silence that means the worker is gone (real ms): it posts at least every ALIVE_INTERVAL_MS (a step, or `alive`) except
+ * inside one long task (a save: seconds). A worker killed for its memory (V8 OOM in its isolate: the page's
+ * pointer-compression cage is shared with it) fires no error event — the game froze without a word. Past this it is
+ * stopped as a crashed one is: every waiting request fails and the restart is offered.
+ */
+export const WORKER_SILENT_MS = 120000;
+const WATCHDOG_PERIOD_MS = 5000;
+
 /** What main.ts drives every render frame (the in-thread SimLoop's shape, minus its driver / budget). */
 export interface WorkerSimLoop {
     stats: SyncStats;
@@ -48,6 +61,12 @@ export class SimWorkerClient {
     /** The worker's save of its game as it stopped (sent with its fatal error), else null: the restart's first choice
      *  (restart.ts). */
     rescueSave: SaveText | null = null;
+    /** The game view's clock once its loop runs (createLoop): step messages are applied on arrival while the render
+     *  frames have stopped. */
+    private loopTime: GalaxyTime | null = null;
+    /** When the worker was last heard from (performance.now), and the silence watchdog (WORKER_SILENT_MS). */
+    private lastHeardAt = performance.now();
+    private watchdog: ReturnType<typeof setInterval> | null = null;
 
     private constructor(
         private readonly worker: Worker,
@@ -98,6 +117,7 @@ export class SimWorkerClient {
                         onUnresponsive: (reason) => c?.stop(reason),
                     });
                     c = new SimWorkerClient(worker, core);
+                    c.startWatchdog();
                     // Dev only: `&detectWrites=1|all` reports main-thread writes to the replica (writeDetector.ts).
                     if (import.meta.env.DEV) {
                         const mode = writeDetectorMode(globalThis.location?.search ?? '');
@@ -139,9 +159,13 @@ export class SimWorkerClient {
 
     private onMessage(m: FromWorker): void {
         if (this.disposed) return;
+        this.lastHeardAt = performance.now();
         switch (m.type) {
             case 'step':
                 this.core.receive(m);
+                // No render frames (a hidden / minimised window: no requestAnimationFrame) while the worker steps on:
+                // apply it now, or the messages pile up until the window is shown again (renderFramesStalled).
+                if (this.loopTime !== null && this.core.renderFramesStalled(FRAMES_STALLED_MS)) this.core.frame(this.loopTime, true);
                 return;
             case 'saved':
             case 'digest':
@@ -169,6 +193,26 @@ export class SimWorkerClient {
         }
     }
 
+    /** Stop the worker when it has been silent for WORKER_SILENT_MS (see there). */
+    private startWatchdog(): void {
+        let lastCheck = performance.now();
+        this.watchdog = setInterval(() => {
+            const now = performance.now();
+            const late = now - lastCheck > 3 * WATCHDOG_PERIOD_MS;
+            lastCheck = now;
+            // A late check (this thread was blocked, or the hidden page's timers throttled): the worker's messages may be
+            // queued behind it — look again next time instead.
+            if (late || this.disposed || this.stopped !== null) return;
+            const silent = now - this.lastHeardAt;
+            if (silent > WORKER_SILENT_MS) this.stop(`no message from the simulation worker for ${Math.round(silent / 1000)} s: it is not running (it may have run out of memory)`);
+        }, WATCHDOG_PERIOD_MS);
+    }
+
+    private stopWatchdog(): void {
+        if (this.watchdog !== null) clearInterval(this.watchdog);
+        this.watchdog = null;
+    }
+
     /** Sim → UI events (game end, location pinged, sim error), with a resolver for their replica objects. */
     onEvent(handler: ((e: WorkerEvent, resolve: (a: unknown) => unknown) => void) | null): void {
         this.eventHandler = handler;
@@ -180,6 +224,7 @@ export class SimWorkerClient {
         const core = this.core;
         time.bindGalaxy(core.galaxy);
         core.bindClock(time);
+        this.loopTime = time;
         return {
             stats: core.stats,
             renderTime: core.renderTime,
@@ -235,6 +280,7 @@ export class SimWorkerClient {
     stop(reason: string): void {
         if (this.disposed || this.stopped !== null) return;
         this.stopped = reason;
+        this.stopWatchdog();
         this.worker.terminate();
         this.core.workerFailed(reason);
         this.rejectWaiting(`the simulation worker stopped (${reason})`);
@@ -328,6 +374,7 @@ export class SimWorkerClient {
     dispose(): void {
         if (this.disposed) return;
         this.disposed = true;
+        this.stopWatchdog();
         this.worker.postMessage({ type: 'dispose' } satisfies ToWorker);
         this.worker.terminate();
         this.core.dispose();

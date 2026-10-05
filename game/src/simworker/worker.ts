@@ -16,7 +16,7 @@ import { FRAME_REAL_MS } from '../sim/tick/scheduler';
 import { installWorkerBootState, SimHost } from './simHost';
 import { bootWorkerGame } from './workerBoot';
 import { deltaTransferables } from './replicaSync';
-import type { FromWorker, InitMessage, ToWorker } from './protocol';
+import { ALIVE_INTERVAL_MS, type FromWorker, type InitMessage, type ToWorker } from './protocol';
 
 interface WorkerScope {
     postMessage(m: unknown, transfer?: Transferable[]): void;
@@ -24,7 +24,11 @@ interface WorkerScope {
 }
 const scope = self as unknown as WorkerScope;
 
+/** When the worker last posted (performance.now; ALIVE_INTERVAL_MS). */
+let lastPostAt = 0;
+
 function post(m: FromWorker): void {
+    lastPostAt = performance.now();
     if (m.type === 'step' || m.type === 'snapshot') scope.postMessage(m, deltaTransferables(m.delta));
     else scope.postMessage(m);
 }
@@ -124,6 +128,7 @@ function loop(): void {
     try {
         msg = h.tick(dt);
         if (msg !== null) post(msg);
+        else if (now - lastPostAt >= ALIVE_INTERVAL_MS) post({ type: 'alive' });
     } catch (err) {
         fatal('step loop', err);
         return;

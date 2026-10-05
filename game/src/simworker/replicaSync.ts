@@ -209,6 +209,14 @@ export function partEmpty(p: ReplicaPart): boolean {
     return p.shells.length === 0 && p.births.length === 0 && p.body.length === 0 && p.drops.length === 0;
 }
 
+/** Stream buffers above this many elements are shrunk when a take used under a quarter of them. */
+const SHRINK_ABOVE = 1 << 16;
+
+/** The least power of two >= n (n >= 1). */
+function ceilPow2(n: number): number {
+    return n <= 1 ? 1 : 2 ** (32 - Math.clz32(n - 1));
+}
+
 /** A growable Float64 stream. */
 class F64Stream {
     buf = new Float64Array(1 << 12);
@@ -224,6 +232,8 @@ class F64Stream {
     }
     take(): Float64Array {
         const out = this.buf.slice(0, this.n);
+        // Shrink a buffer grown far past what deltas now need (U32Stream.take).
+        if (this.buf.length > SHRINK_ABOVE && this.n < this.buf.length >>> 2) this.buf = new Float64Array(Math.max(1 << 12, ceilPow2(this.n)));
         this.n = 0;
         return out;
     }
@@ -255,6 +265,9 @@ class U32Stream {
     }
     take(): Uint32Array {
         const out = this.buf.slice(0, this.n);
+        // A buffer grown far past what deltas now need is shrunk: the snapshot (every object's birth) grew each stream to
+        // hundreds of MB that were kept for the whole game — ~500 MB of the renderer's memory on a 100k-habitat galaxy.
+        if (this.buf.length > SHRINK_ABOVE && this.n < this.buf.length >>> 2) this.buf = new Uint32Array(Math.max(1 << 14, ceilPow2(this.n)));
         this.n = 0;
         return out;
     }
@@ -1188,7 +1201,10 @@ export class ReplicaEncoder {
         const kind = this.kinds[id];
         if (this.regOf[id] !== 0) this.invalidate(id);
         if (kind === Kind.Typed) {
-            this.shadows[id] = Array.from(o as AnyTyped);
+            // A copy of the same kind (compare reads / writes it by index): compact, and its bytes are outside the JS heap —
+            // as Array.from the shadows of a late galaxy's typed arrays were ~100 MB of boxed numbers in the worker's heap
+            // (which shares its pointer-compression cage with the page).
+            this.shadows[id] = (o as AnyTyped).slice() as unknown as unknown[];
             return;
         }
         if (this.curStream === 0) this.noteHotUse(id);
