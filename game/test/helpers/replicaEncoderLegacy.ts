@@ -1,30 +1,9 @@
-// Sim worker: the replica sync codec (docs/sim-worker.md §3).
-//
-// The worker owns the authoritative galaxy object graph. The main thread keeps a read-only REPLICA of it — the same
-// classes (prototypes from the save registry), the same fields, the same object identities over time — so the ~90
-// render / UI files that read live sim objects keep working unchanged. This module keeps the two in sync:
-//
-// - ReplicaEncoder (worker) knows every object of the graph by a sync id, with a SHADOW copy of each object's field
-//   values as last sent (packed per shape: shadowStore.ts). diff() compares objects with their shadows (no write tracking in the sim: the sim code is
-//   untouched and runs at full speed) and writes the differences to a compact binary stream:
-//     * HOT objects (ships, creatures, fighters, shots, habitats, fleets, the Galaxy, empires, and the arrays they own)
-//       are compared after every step, so the main view moves at the step rate;
-//     * everything else (COLD: designs, research trees, cargo, missions, diplomacy, ...) is compared round-robin in
-//       slices, a full cycle every `coldCycleSteps` steps (~0.5 s), so UI screens see data at most one cycle old;
-//     * objects first seen while writing a value (a new ship, a new array) are sent whole, recursively;
-//     * a periodic MARK pass over the shadows drops objects no longer reachable from the roots (both sides forget
-//       them, so neither leaks).
-// - ReplicaDecoder (main) applies the stream to the replica: shells first (so every reference in the message
-//   resolves, cycles included), then contents and field sets. Class instances are built by generated per-shape
-//   constructors (one hidden class per shape, as graphCodec.ts does for loaded saves), and field sets go through
-//   generated per-shape setters, so the replica is as fast to read as a loaded game.
-//
-// Reading is all the encoder does to the sim graph: own enumerable data properties (Object.keys order), array
-// elements, Map / Set iteration, typed-array elements. No getter runs, nothing is written, no RNG is touched — so the
-// sim's determinism (and the golden digests) cannot depend on whether it is synced. No DOM / Pixi imports.
+// TEST ORACLE: the replica sync encoder as it was before the packed shadow store (src/simworker/shadowStore.ts),
+// verbatim from replicaSync.ts at 75f443d (encoder half only): one JS array per synced object, boxed values.
+// test/replicaPackedShadow.test.ts runs it beside the current ReplicaEncoder on the same game and checks that both
+// produce the same deltas, byte for byte. Not used by the game.
+/* eslint-disable */
 
-import type { Encoded } from '../sim/save/graphCodec';
-import { FieldTable, Lane, ListTable, laneOf, type Column } from './shadowStore';
 
 // ---------------------------------------------------------------------------------------------------------------
 // Wire format
@@ -384,23 +363,19 @@ export interface ReplicaEncoderOptions {
     trackClasses?: readonly object[];
 }
 
-/** A generated compare of object `id` (`o`) with its shadow: row `r` of its shape's FieldTable, whose columns are `C`. */
-type DiffFn = (o: Record<string, unknown>, C: Column[], r: number, enc: ReplicaEncoder, id: number) => void;
+type DiffFn = (o: Record<string, unknown>, s: unknown[], enc: ReplicaEncoder, id: number) => void;
 
 interface ShapeInfo {
     id: number;
     proto: object | null;
     keys: string[];
-    /** The shadows of the shape's instances (a row each). */
-    table: FieldTable;
     /** Full compare (cold cycle). */
     diff: DiffFn;
     /** Hot-class shapes: compare of the hot slots only (null: not a hot class). */
     hotDiff: DiffFn | null;
     hotSlots: number[];
     /** Gated shapes: compare of the pinned slots, returning whether the gate slot changed (null: not gated). */
-    gateDiff: ((o: Record<string, unknown>, C: Column[], r: number, enc: ReplicaEncoder, id: number) => boolean) | null;
-    gateSlot: number;
+    gateDiff: ((o: Record<string, unknown>, s: unknown[], enc: ReplicaEncoder, id: number) => boolean) | null;
     /** Gated shapes: slots holding child containers (compared, with their hot-class elements, when the gate moves). */
     childSlots: number[];
     /** Changes per slot (any instance) in the current cold cycle. */
@@ -424,9 +399,6 @@ interface ShapeInfo {
     coldStream: Uint8Array | null;
     /** Compare for touch() / relatedFields (hot slots without the gate, or the hot-stream and mixed slots; null: nothing). */
     touchDiff: DiffFn | null;
-    touchSlots: number[];
-    /** Guarded hot slots (hotFieldGuards) → guard field. */
-    guards: ReadonlyMap<number, string> | undefined;
     /** Slots whose referenced object is touch-compared along with this one (relatedFields). */
     relatedSlots: number[];
     /** Slots compared with their hot-class contents by touch() (touchChildren). */
@@ -446,9 +418,6 @@ const enum MarkPhase {
     Marking = 1,
     Sweeping = 2,
 }
-
-/** The values of an empty shadow. */
-const NO_VALUES: readonly unknown[] = Object.freeze([]);
 
 /** A registry entry's "never compared" marker (ungated values) — differs from every value. */
 const INVALID: unique symbol = Symbol('replica sync: not compared');
@@ -494,20 +463,13 @@ function makeGateRegistry(names: string[]): GateRegistry {
 export class ReplicaEncoder {
     private readonly ids = new Map<object, number>();
     private objs: (object | null)[] = [];
-    private kinds: Uint8Array = new Uint8Array(1 << 16);
-    private shapeOf: Int32Array = new Int32Array(1 << 16);
-    /**
-     * Per id, where its shadow is (-1: none yet — discovered, contents still pending — or dropped): its row in its shape's
-     * FieldTable (class / plain object) or in `lists` (array, Map, Set, typed array). See shadowStore.ts.
-     */
-    private row: Int32Array = new Int32Array(1 << 16).fill(-1);
-    private readonly lists = new ListTable();
+    private kinds: number[] = [];
+    private shapeOf: number[] = [];
+    private shadows: (unknown[] | undefined)[] = [];
     /** 1: a hot-class instance (hot slots every step) or a hot container (whole, every step). */
     private hot: Uint8Array = new Uint8Array(1 << 16);
     /** Discovery label of each object (hotContainers, diagnostics). */
     private labels: string[] = [];
-    /** One string per distinct label (a few hundred): labelOf builds a new one for every container it names. */
-    private readonly labelPool = new Map<string, string>();
     private readonly hotContainers: ReadonlySet<string>;
     /** Labels of gated classes' child containers (`Class.field`): compared through their gate, streamed hot. */
     private readonly childLabels = new Set<string>();
@@ -711,10 +673,11 @@ export class ReplicaEncoder {
         // A class instance that gained (or lost) an own field since it was shaped — a `declare`d field set lazily,
         // e.g. Empire.constructionBoard / fleetDesigns on the first job / template — gets its new shape (the
         // round-robin pass assumes a class keeps its shape; revalidateShapes is the whole-graph version).
-        if (this.kinds[id] === Kind.Class && this.objs[id] !== null && this.row[id] >= 0 && this.shapeChanged(id)) this.reshape(id, this.objs[id]!);
+        if (this.kinds[id] === Kind.Class && this.objs[id] !== null && this.shadows[id] !== undefined && this.shapeChanged(id)) this.reshape(id, this.objs[id]!);
         else this.compare(id);
         if (depth <= 0) return;
-        const sh = this.refValues(id);
+        const sh = this.shadows[id];
+        if (sh === undefined || this.kinds[id] === Kind.Typed) return;
         for (let i = 0; i < sh.length; i++) {
             const v = sh[i];
             if (v !== null && typeof v === 'object') this.compareNow(v as object, depth - 1);
@@ -746,11 +709,12 @@ export class ReplicaEncoder {
                 // A class instance that gained (or lost) an own field since it was shaped — a `declare`d field set
                 // lazily, e.g. Empire.constructionBoard / fleetDesigns on the first job / template — gets its new shape
                 // (the round-robin pass assumes a class keeps its shape; revalidateShapes is the whole-graph version).
-                if (this.kinds[id] === Kind.Class && this.objs[id] !== null && this.row[id] >= 0 && this.shapeChanged(id)) this.reshape(id, this.objs[id]!);
+                if (this.kinds[id] === Kind.Class && this.objs[id] !== null && this.shadows[id] !== undefined && this.shapeChanged(id)) this.reshape(id, this.objs[id]!);
                 else this.compare(id);
                 n++;
-                if (depth >= maxDepth || id <= 1) continue;
-                const sh = this.refValues(id);
+                if (depth >= maxDepth || id <= 1 || this.kinds[id] === Kind.Typed) continue;
+                const sh = this.shadows[id];
+                if (sh === undefined) continue;
                 for (let k = 0; k < sh.length; k++) {
                     const v = sh[k];
                     if (v === null || typeof v !== 'object') continue;
@@ -1006,7 +970,7 @@ export class ReplicaEncoder {
             }
             if (slots.length !== s.hotSlots.length || slots.some((x, i) => x !== s.hotSlots[i])) {
                 s.hotSlots = slots;
-                s.hotDiff = makeDiffFn(s.keys, s.table.lanes, slots);
+                s.hotDiff = makeDiffFn(s.keys, slots);
             }
         }
     }
@@ -1057,7 +1021,8 @@ export class ReplicaEncoder {
             const stack = this.markStack;
             while (stack.length > 0) {
                 const id = stack.pop()!;
-                this.greyShadow(id);
+                const sh = this.shadows[id];
+                if (sh !== undefined && this.kinds[id] !== Kind.Typed) for (let i = 0; i < sh.length; i++) this.greyValue(sh[i]);
                 if ((++k & 127) === 0 && now() - t0 >= budgetMs) return;
             }
             this.markPhase = MarkPhase.Sweeping;
@@ -1074,7 +1039,7 @@ export class ReplicaEncoder {
                 if (this.tracked.size > 0) this.tracked.get(Object.getPrototypeOf(o) as object)?.delete(o);
                 this.unregister(id);
                 this.objs[id] = null;
-                this.releaseShadow(id);
+                this.shadows[id] = undefined;
                 // Ids are never reused: a cold part still queued on the main thread may name this one.
                 this.parts[1].drops.push(id);
                 this.lastDropped++;
@@ -1111,12 +1076,6 @@ export class ReplicaEncoder {
         this.objs[id] = o;
         if (id >= this.hot.length) {
             const n = Math.max(this.hot.length * 2, id + 1);
-            const k = new Uint8Array(n);
-            k.set(this.kinds);
-            this.kinds = k;
-            const sp = new Int32Array(n);
-            sp.set(this.shapeOf);
-            this.shapeOf = sp;
             const h = new Uint8Array(n);
             h.set(this.hot);
             this.hot = h;
@@ -1138,9 +1097,6 @@ export class ReplicaEncoder {
             const ra = new Int32Array(n).fill(-1);
             ra.set(this.regAt);
             this.regAt = ra;
-            const rw = new Int32Array(n).fill(-1);
-            rw.set(this.row);
-            this.row = rw;
         }
         if (this.markPhase !== MarkPhase.Idle) {
             // Created during a mark: live by definition (and what it references is greyed as it is written).
@@ -1184,9 +1140,7 @@ export class ReplicaEncoder {
         this.streamOf[id] = (hot || childHot || childList) && !coldStream ? 0 : 1;
         // Born in the stream of the record that referenced it first (the roots: hot).
         if (this.curStream === 1) this.coldBirth[id] = this.seq;
-        let pooled = this.labelPool.get(label);
-        if (pooled === undefined) this.labelPool.set(label, (pooled = label));
-        this.labels[id] = pooled;
+        this.labels[id] = label;
         if (this.profile !== null) {
             const name = `new ${KIND_NAMES[kind]} ${label}`;
             this.profile[name] = (this.profile[name] ?? 0) + 1;
@@ -1230,30 +1184,18 @@ export class ReplicaEncoder {
             // A copy of the same kind (compare reads / writes it by index): compact, and its bytes are outside the JS heap —
             // as Array.from the shadows of a late galaxy's typed arrays were ~100 MB of boxed numbers in the worker's heap
             // (which shares its pointer-compression cage with the page).
-            this.lists.vals[this.listRow(id)] = (o as AnyTyped).slice() as unknown as unknown[];
+            this.shadows[id] = (o as AnyTyped).slice() as unknown as unknown[];
             return;
         }
         if (this.curStream === 0) this.noteHotUse(id);
-        if (this.row[id] >= 0 && this.markPhase === MarkPhase.Marking) this.greyShadow(id);
-        const b = birth ? this.cur.births : this.cur.body;
-        if (kind === Kind.Class || kind === Kind.Plain) {
-            const info = this.shapes[this.shapeOf[id]];
-            const keys = info.keys;
-            const t = info.table;
-            let r = this.row[id];
-            if (r < 0) this.row[id] = r = t.alloc();
-            b.codes.push2(header(Op.Fill, keys.length), id);
-            let widened = false;
-            for (let i = 0; i < keys.length; i++) {
-                const v = (o as Record<string, unknown>)[keys[i]];
-                if (t.set(r, i, v)) widened = true;
-                this.writeValue(v, id, i, b, 0);
-            }
-            if (widened) this.compileShape(info);
-            return;
-        }
+        const old = this.shadows[id];
+        if (old !== undefined && this.markPhase === MarkPhase.Marking) for (let i = 0; i < old.length; i++) this.greyValue(old[i]);
         let vals: unknown[];
-        if (kind === Kind.Array) {
+        if (kind === Kind.Class || kind === Kind.Plain) {
+            const keys = this.shapes[this.shapeOf[id]].keys;
+            vals = new Array(keys.length);
+            for (let i = 0; i < keys.length; i++) vals[i] = (o as Record<string, unknown>)[keys[i]];
+        } else if (kind === Kind.Array) {
             vals = (o as unknown[]).slice();
         } else if (kind === Kind.Map) {
             vals = [];
@@ -1261,82 +1203,10 @@ export class ReplicaEncoder {
         } else {
             vals = [...(o as Set<unknown>)];
         }
-        // An empty list keeps no array (most of a galaxy's lists are empty).
-        this.lists.vals[this.listRow(id)] = vals.length === 0 ? null : vals;
+        this.shadows[id] = vals;
+        const b = birth ? this.cur.births : this.cur.body;
         b.codes.push2(header(Op.Fill, vals.length), id);
         for (let i = 0; i < vals.length; i++) this.writeValue(vals[i], id, i, b, 0);
-    }
-
-    /** List object `id`'s row in `lists` (allocated on first use). */
-    private listRow(id: number): number {
-        let r = this.row[id];
-        if (r < 0) this.row[id] = r = this.lists.alloc();
-        return r;
-    }
-
-    /**
-     * The values of object `id`'s shadow that can be objects, in slot order: a list's elements (the live shadow), or a
-     * shape's Ref-lane slots (a copy; the typed lanes hold numbers only). Empty for a typed array or an object with no
-     * shadow yet.
-     */
-    private refValues(id: number): readonly unknown[] {
-        const r = this.row[id];
-        if (r < 0) return NO_VALUES;
-        const kind = this.kinds[id];
-        if (kind === Kind.Class || kind === Kind.Plain) {
-            const t = this.shapes[this.shapeOf[id]].table;
-            const out: unknown[] = [];
-            for (const s of t.refSlots) out.push((t.cols[s] as unknown[])[r]);
-            return out;
-        }
-        if (kind === Kind.Typed) return NO_VALUES;
-        return this.lists.vals[r] ?? NO_VALUES;
-    }
-
-    /** Mark barrier for the references in `id`'s shadow (about to be overwritten, or scanned by the mark). */
-    private greyShadow(id: number): void {
-        const vals = this.refValues(id);
-        for (let i = 0; i < vals.length; i++) this.greyValue(vals[i]);
-    }
-
-    /** Free `id`'s shadow (dropped, or reshaped: its row belongs to the old shape), greying it while a mark runs. */
-    private releaseShadow(id: number): void {
-        const r = this.row[id];
-        if (r < 0) return;
-        if (this.markPhase === MarkPhase.Marking) this.greyShadow(id);
-        const kind = this.kinds[id];
-        if (kind === Kind.Class || kind === Kind.Plain) this.shapes[this.shapeOf[id]].table.release(r);
-        else this.lists.release(r);
-        this.row[id] = -1;
-    }
-
-    /** Called by the generated compares when field `slot` of class / plain object `id` got a value its lane does not
-     *  store (an I32 slot a fraction, a number slot an object, …): widen the slot for the whole shape, store `v`, and
-     *  regenerate the shape's compares for the new lanes. */
-    storeWide(id: number, slot: number, v: unknown): void {
-        const info = this.shapes[this.shapeOf[id]];
-        info.table.set(this.row[id], slot, v);
-        this.compileShape(info);
-    }
-
-    /** Store field `slot` of class / plain object `id`'s shadow (the generated compares' fallback). */
-    storeSlot(id: number, slot: number, v: unknown): void {
-        const info = this.shapes[this.shapeOf[id]];
-        if (info.table.set(this.row[id], slot, v)) this.compileShape(info);
-    }
-
-    /** Field `slot` of class / plain object `id`'s shadow (the generated compares' fallback). */
-    shadowValue(id: number, slot: number): unknown {
-        return this.shapes[this.shapeOf[id]].table.get(this.row[id], slot);
-    }
-
-    /** (Re)generate a shape's compare functions for its table's current lanes. */
-    private compileShape(info: ShapeInfo): void {
-        const lanes = info.table.lanes;
-        info.diff = makeDiffFn(info.keys, lanes, null);
-        if (info.hotDiff !== null) info.hotDiff = makeDiffFn(info.keys, lanes, info.hotSlots, info.guards);
-        if (info.gateDiff !== null) info.gateDiff = makeGateFn(info.keys, lanes, info.ungated, info.gateSlot);
-        if (info.touchDiff !== null) info.touchDiff = makeDiffFn(info.keys, lanes, info.touchSlots, info.guards);
     }
 
     /** The discovery label of a container found at `slot` of object `owner` (see hotContainers). */
@@ -1470,22 +1340,16 @@ export class ReplicaEncoder {
                 if (g !== undefined && keys.includes(g)) (guards ??= new Map()).set(i, g);
             }
         }
-        // Each field's shadow lane starts as its value in this first instance needs (shadowStore.ts; it widens later
-        // if another value does not fit).
-        const table = new FieldTable(keys.map((k) => laneOf((o as Record<string, unknown>)[k])));
-        const lanes = table.lanes;
         const info: ShapeInfo = {
             id,
             proto,
             keys,
-            table,
-            diff: makeDiffFn(keys, lanes, null),
+            diff: makeDiffFn(keys, null),
             // Until a cold cycle has seen which fields change, a new (adaptive) hot shape compares everything every step.
-            hotDiff: hotClass ? makeDiffFn(keys, lanes, fixed ? hotSlots : null, guards) : null,
+            hotDiff: hotClass ? makeDiffFn(keys, fixed ? hotSlots : null, guards) : null,
             hotSlots: hotClass && !fixed ? keys.map((_, i) => i) : hotSlots,
             fixed,
-            gateDiff: gateSlot >= 0 ? makeGateFn(keys, lanes, ungated, gateSlot) : null,
-            gateSlot,
+            gateDiff: gateSlot >= 0 ? makeGateFn(keys, ungated, gateSlot) : null,
             childSlots: gateSlot >= 0 ? gate!.children.map((c) => keys.indexOf(c)).filter((i) => i >= 0) : [],
             counts: new Uint32Array(keys.length),
             lastChanged: new Int32Array(keys.length).fill(-1),
@@ -1496,9 +1360,7 @@ export class ReplicaEncoder {
             mixed: maskOf(mixedSlots),
             mixedSlots,
             coldStream: maskOf(coldStreamSlots),
-            touchDiff: touchSlots.length > 0 ? makeDiffFn(keys, lanes, touchSlots, guards) : null,
-            touchSlots,
-            guards,
+            touchDiff: touchSlots.length > 0 ? makeDiffFn(keys, touchSlots, guards) : null,
             relatedSlots: slotsOf(this.opts.relatedFields),
             touchChildSlots: childNames === undefined ? [] : childNames.map((c) => keys.indexOf(c)).filter((i) => i >= 0),
         };
@@ -1562,27 +1424,26 @@ export class ReplicaEncoder {
             return;
         }
         const o = this.objs[id];
-        const r = this.row[id];
-        if (o === null || r < 0) return;
+        const sh = this.shadows[id];
+        if (o === null || sh === undefined) return;
         const info = this.shapes[this.shapeOf[id]];
-        const t = info.table;
         if (info.gateDiff === null) {
-            info.hotDiff!(o as Record<string, unknown>, t.cols, r, this, id);
-            if (info.relatedSlots.length > 0) this.touchRelated(info, r);
+            info.hotDiff!(o as Record<string, unknown>, sh, this, id);
+            if (info.relatedSlots.length > 0) this.touchRelated(info, sh);
             return;
         }
-        if (!info.gateDiff(o as Record<string, unknown>, t.cols, r, this, id)) return;
-        info.hotDiff!(o as Record<string, unknown>, t.cols, r, this, id);
+        if (!info.gateDiff(o as Record<string, unknown>, sh, this, id)) return;
+        info.hotDiff!(o as Record<string, unknown>, sh, this, id);
         this.stats.gated++;
         const ids = this.ids;
-        for (const slot of info.childSlots) this.compareChild(t.get(r, slot));
+        for (const slot of info.childSlots) this.compareChild(sh[slot]);
         for (const slot of info.listSlots) {
-            const c = t.get(r, slot);
+            const c = sh[slot];
             if (c === null || typeof c !== 'object') continue;
             const cid = ids.get(c as object);
             if (cid !== undefined) this.compare(cid);
         }
-        if (info.relatedSlots.length > 0) this.touchRelated(info, r);
+        if (info.relatedSlots.length > 0) this.touchRelated(info, sh);
     }
 
     /** A gated / touched object's child: a container (compared, with the hot-class instances in it) or an instance. */
@@ -1596,7 +1457,8 @@ export class ReplicaEncoder {
             return;
         }
         this.compare(cid);
-        const csh = this.refValues(cid);
+        const csh = this.shadows[cid];
+        if (csh === undefined || this.kinds[cid] === Kind.Typed) return;
         for (let i = 0; i < csh.length; i++) {
             const e = csh[i];
             if (e === null || typeof e !== 'object') continue;
@@ -1606,9 +1468,9 @@ export class ReplicaEncoder {
     }
 
     /** relatedFields: touch-compare the objects a just-compared object refers to (its shadow, now current). */
-    private touchRelated(info: ShapeInfo, r: number): void {
+    private touchRelated(info: ShapeInfo, sh: unknown[]): void {
         for (const slot of info.relatedSlots) {
-            const t = info.table.get(r, slot);
+            const t = sh[slot];
             if (t === null || typeof t !== 'object') continue;
             const tid = this.ids.get(t as object);
             if (tid !== undefined) this.touchCompare(tid, false);
@@ -1619,30 +1481,26 @@ export class ReplicaEncoder {
     private touchCompare(id: number, children: boolean): void {
         if (this.kinds[id] !== Kind.Class || this.touchStamp[id] === this.stamp) return;
         const o = this.objs[id];
-        const r = this.row[id];
-        if (o === null || r < 0) return;
+        const sh = this.shadows[id];
+        if (o === null || sh === undefined) return;
         this.touchStamp[id] = this.stamp;
         const info = this.shapes[this.shapeOf[id]];
-        const t = info.table;
         if (info.touchDiff !== null) {
             this.touching = true;
             try {
-                info.touchDiff(o as Record<string, unknown>, t.cols, r, this, id);
+                info.touchDiff(o as Record<string, unknown>, sh, this, id);
                 if (this.mixedCold[id] === 1) {
                     // A mixed field went cold since the last hot send and may still be queued on the main thread:
                     // send them all hot now (the decoder then drops the older cold sets), so this touch's view of the
                     // object is complete.
                     this.mixedCold[id] = 0;
-                    for (const slot of info.mixedSlots) {
-                        const v = t.get(r, slot);
-                        this.emitSet(id, slot, v, v);
-                    }
+                    for (const slot of info.mixedSlots) this.emitSet(id, slot, sh[slot], sh[slot]);
                 }
             } finally {
                 this.touching = false;
             }
         }
-        if (children) for (const slot of info.touchChildSlots) this.compareChild(t.get(r, slot));
+        if (children) for (const slot of info.touchChildSlots) this.compareChild(sh[slot]);
     }
 
     /**
@@ -1664,13 +1522,12 @@ export class ReplicaEncoder {
     private compare(id: number): void {
         const o = this.objs[id];
         if (o === null) return;
-        const r = this.row[id];
+        const sh = this.shadows[id];
         // Discovered during this pass: its whole contents are still to be written (pending).
-        if (r < 0) return;
+        if (sh === undefined) return;
         switch (this.kinds[id]) {
             case Kind.Class: {
-                const info = this.shapes[this.shapeOf[id]];
-                info.diff(o as Record<string, unknown>, info.table.cols, r, this, id);
+                this.shapes[this.shapeOf[id]].diff(o as Record<string, unknown>, sh, this, id);
                 return;
             }
             case Kind.Plain: {
@@ -1678,28 +1535,21 @@ export class ReplicaEncoder {
                 const keys = Object.keys(o);
                 let same = keys.length === info.keys.length;
                 if (same) for (let i = 0; i < keys.length; i++) if (keys[i] !== info.keys[i]) { same = false; break; }
-                if (same) info.diff(o as Record<string, unknown>, info.table.cols, r, this, id);
+                if (same) info.diff(o as Record<string, unknown>, sh, this, id);
                 else this.reshape(id, o);
                 return;
             }
             case Kind.Array: {
                 const a = o as unknown[];
                 const n = a.length;
-                let sh = this.lists.vals[r];
-                const len = sh === null ? 0 : sh.length;
-                if (n !== len) {
+                if (n !== sh.length) {
                     this.target(id);
                     if (this.curStream === 0) this.noteHotUse(id);
                     this.cur.body.codes.push3(header(Op.Len, 0), id, n);
                     if (this.regOf[id] !== 0) this.invalidate(id);
-                    if (n < len && this.markPhase === MarkPhase.Marking) for (let i = n; i < len; i++) this.greyValue(sh![i]);
+                    if (n < sh.length && this.markPhase === MarkPhase.Marking) for (let i = n; i < sh.length; i++) this.greyValue(sh[i]);
                 }
-                if (n === 0) {
-                    this.lists.vals[r] = null;
-                    return;
-                }
-                if (sh === null) this.lists.vals[r] = sh = [];
-                const m = Math.min(n, len);
+                const m = Math.min(n, sh.length);
                 for (let i = 0; i < m; i++) {
                     const v = a[i];
                     const w = sh[i];
@@ -1717,7 +1567,6 @@ export class ReplicaEncoder {
             }
             case Kind.Map: {
                 const m = o as Map<unknown, unknown>;
-                const sh = this.lists.vals[r] ?? NO_VALUES;
                 let same = m.size * 2 === sh.length;
                 if (same) {
                     let i = 0;
@@ -1734,7 +1583,6 @@ export class ReplicaEncoder {
             }
             case Kind.Set: {
                 const s = o as Set<unknown>;
-                const sh = this.lists.vals[r] ?? NO_VALUES;
                 let same = s.size === sh.length;
                 if (same) {
                     let i = 0;
@@ -1750,7 +1598,6 @@ export class ReplicaEncoder {
             }
             case Kind.Typed: {
                 const t = o as AnyTyped;
-                const sh = this.lists.vals[r] as unknown as AnyTyped;
                 let same = true;
                 for (let i = 0; i < t.length; i++) {
                     if (changed(t[i], sh[i])) {
@@ -1782,8 +1629,6 @@ export class ReplicaEncoder {
     /** An object whose own field list changed: new shape, then all its values. */
     private reshape(id: number, o: object): void {
         const info = this.shapeFor(o, Object.getPrototypeOf(o) as object | null);
-        // Its shadow moves to the new shape's table (writeContents allocates the row there).
-        this.releaseShadow(id);
         this.shapeOf[id] = info.id;
         // A gate registry entry probes by field name; one whose new shape has no gate is compared in full every step.
         if (this.regOf[id] >= 2 && info.gateDiff === null) {
@@ -1833,657 +1678,41 @@ function emptyStats(): DeltaStats {
     return { newObjects: 0, sets: 0, hotCompared: 0, gated: 0, coldCompared: 0, diffMs: 0, hotMs: 0, bytes: 0, hotBytes: 0 };
 }
 
-function access(k: string): string {
-    return /^[A-Za-z_$][\w$]*$/.test(k) ? `.${k}` : `[${JSON.stringify(k)}]`;
-}
-
-/**
- * The generated compare of field `key` (shape slot `i`, in `lane`) with its shadow `C[i][r]`: on a change, store the
- * new value and emitSet. "Changed" is SameValue (`changed`); in the I32 lane the shadow is never NaN or −0, so that
- * is `v !== w` or v is −0; in the Imm lane, a different code. A value its lane does not store goes through
- * enc.storeWide (which widens the lane).
- * `extra` runs on a change, after emitSet.
- */
-function compareLine(key: string, i: number, lane: Lane, extra = ''): string {
-    const read = `v = o${access(key)}; c = C[${i}]; w = c[r];`;
-    const emit = `enc.emitSet(id, ${i}, v, w);${extra}`;
-    switch (lane) {
-        case Lane.Ref:
-            return `${read} if (v !== w ? v === v || w === w : v === 0 && 1 / v !== 1 / w) { c[r] = v; ${emit} }`;
-        case Lane.F64:
-            return `${read} if (v !== w ? v === v || w === w : v === 0 && 1 / v !== 1 / w) { if (typeof v === 'number') c[r] = v; else enc.storeWide(id, ${i}, v); ${emit} }`;
-        case Lane.I32:
-            return `${read} if (v !== w || (v === 0 && 1 / v < 0)) { if (typeof v === 'number' && (v | 0) === v && (v !== 0 || 1 / v > 0)) c[r] = v; else enc.storeWide(id, ${i}, v); ${emit} }`;
-        case Lane.Imm:
-            // The shadow is an ImmCode (shadowStore.ts); the old value, an immediate, needs no mark barrier (null).
-            return `v = o${access(key)}; c = C[${i}]; w = c[r]; x = v === false ? 0 : v === true ? 1 : v === null ? 2 : v === undefined ? 3 : 4; if (x !== w) { if (x !== 4) c[r] = x; else enc.storeWide(id, ${i}, v); enc.emitSet(id, ${i}, v, null);${extra} }`;
-    }
-}
-
 /** A generated compare of a gated shape's ungated slots that returns whether the gate slot changed. */
-function makeGateFn(keys: readonly string[], lanes: Uint8Array, pinned: Uint8Array, gateSlot: number): NonNullable<ShapeInfo['gateDiff']> {
+function makeGateFn(keys: readonly string[], pinned: Uint8Array, gateSlot: number): NonNullable<ShapeInfo['gateDiff']> {
+    const access = (k: string): string => (/^[A-Za-z_$][\w$]*$/.test(k) ? `.${k}` : `[${JSON.stringify(k)}]`);
     const lines: string[] = [];
     for (let i = 0; i < keys.length; i++) {
         if (pinned[i] !== 1) continue;
-        lines.push(compareLine(keys[i], i, lanes[i] as Lane, i === gateSlot ? ' g = true;' : ''));
+        lines.push(`v = o${access(keys[i])}; w = s[${i}]; if (v !== w ? v === v || w === w : v === 0 && 1 / v !== 1 / w) { s[${i}] = v; enc.emitSet(id, ${i}, v, w);${i === gateSlot ? ' g = true;' : ''} }`);
     }
-    return new Function('o', 'C', 'r', 'enc', 'id', `let v, w, c, x, g = false;\n${lines.join('\n')}\nreturn g;`) as NonNullable<ShapeInfo['gateDiff']>;
+    return new Function('o', 's', 'enc', 'id', `let v, w, g = false;\n${lines.join('\n')}\nreturn g;`) as NonNullable<ShapeInfo['gateDiff']>;
 }
 
 /** A generated field-by-field compare for one shape — all of its fields, or only `slots` (monomorphic property loads;
- *  see the file header), each against its lane of the shape's FieldTable; a slot in `guards` is compared only while that
- *  guard field is ≥ 0 (hotFieldGuards). Regenerated when a lane widens (ReplicaEncoder.compileShape). */
-function makeDiffFn(keys: readonly string[], lanes: Uint8Array, slots: readonly number[] | null, guards?: ReadonlyMap<number, string>): DiffFn {
+ *  see the file header); a slot in `guards` is compared only while that guard field is ≥ 0 (hotFieldGuards). */
+function makeDiffFn(keys: readonly string[], slots: readonly number[] | null, guards?: ReadonlyMap<number, string>): DiffFn {
+    const access = (k: string): string => (/^[A-Za-z_$][\w$]*$/.test(k) ? `.${k}` : `[${JSON.stringify(k)}]`);
     const which = slots ?? keys.map((_, i) => i);
     const lines = which.map((i) => {
-        const line = compareLine(keys[i], i, lanes[i] as Lane);
+        const line = `v = o${access(keys[i])}; w = s[${i}]; if (v !== w ? v === v || w === w : v === 0 && 1 / v !== 1 / w) { s[${i}] = v; enc.emitSet(id, ${i}, v, w); }`;
         const g = guards?.get(i);
         return g === undefined ? line : `if (o${access(g)} >= 0) { ${line} }`;
     });
     try {
-        return new Function('o', 'C', 'r', 'enc', 'id', `let v, w, c, x;\n${lines.join('\n')}`) as DiffFn;
+        return new Function('o', 's', 'enc', 'id', `let v, w;\n${lines.join('\n')}`) as DiffFn;
     } catch {
-        return (o, _C, _r, enc, id) => {
+        return (o, s, enc, id) => {
             for (const i of which) {
                 const g = guards?.get(i);
                 if (g !== undefined && !((o[g] as number) >= 0)) continue;
                 const v = o[keys[i]];
-                const w = enc.shadowValue(id, i);
+                const w = s[i];
                 if (changed(v, w)) {
-                    enc.storeSlot(id, i, v);
+                    s[i] = v;
                     enc.emitSet(id, i, v, w);
                 }
             }
         };
     }
 }
-
-// ---------------------------------------------------------------------------------------------------------------
-// Decoder (main thread)
-// ---------------------------------------------------------------------------------------------------------------
-
-export interface ReplicaDecoderOptions {
-    /** Class name → prototype (the save registry). */
-    classes: Record<string, object>;
-    /** Prototype → hook run on each new instance before its fields are filled (the save's revive hooks). */
-    revive?: Map<object, (instance: object) => void>;
-    /** `kind:key` → static object (the replica's own GameData tables). */
-    externals: Map<string, object>;
-    /** The cold pump checks its deadline every this many records / shells (default 64 / 32; tests use 1). */
-    sliceRecords?: number;
-    /** The encoder's mixedStreamFields (`Class.field`): a queued cold set of one of them older than the object's last
-     *  hot set of one of them is dropped. */
-    mixedFields?: ReadonlySet<string>;
-}
-
-interface DecShape {
-    kind: Kind;
-    proto: object | null;
-    keys: string[];
-    /** Slots of mixedFields (null: none). */
-    mixed: Uint8Array | null;
-    ctor: (() => Record<string, unknown>) | null;
-    fill: (o: Record<string, unknown>, v: unknown[]) => void;
-    set: (o: Record<string, unknown>, slot: number, v: unknown) => void;
-}
-
-export interface ApplyStats {
-    /** Wall ms spent applying (this call). */
-    applyMs: number;
-    newObjects: number;
-    sets: number;
-    drops: number;
-    /** Cold parts applied by this call (the per-frame pump, or all of them for a full apply). */
-    coldParts: number;
-    /** Cold parts whose births alone a hot part's dependency applied ahead of the pump. */
-    bornParts: number;
-    /**
-     * apply() with a budget: the delta's hot part is not applied yet — the births of the cold parts it depends on did
-     * not fit (they continue at the next call with the same delta; until then its newborns are unreferenced shells).
-     */
-    pending: boolean;
-}
-
-function emptyApplyStats(): ApplyStats {
-    return { applyMs: 0, newObjects: 0, sets: 0, drops: 0, coldParts: 0, bornParts: 0, pending: false };
-}
-
-/** A cold part queued on the main thread, applied in order, possibly over several frames. */
-interface QueuedPart {
-    seq: number;
-    part: ReplicaPart;
-    /** 0 shells, 1 births, 2 body, 3 drops. */
-    phase: number;
-    /** Index into the phase's code stream, and into its f64 lane. */
-    i: number;
-    j: number;
-}
-
-/** A delta whose hot part waits for the births of the cold parts it depends on (apply with a budget). */
-interface StagedDelta {
-    d: ReplicaDelta;
-    /** Objects created so far (onNewObject runs once the hot part is applied). */
-    fresh: object[];
-    /** Its own cold part is queued already (a dependency on its own births). */
-    ownQueued: boolean;
-}
-
-/** Cold-pump budget multiplier for `queued` parts waiting: ×1 up to 2 parts, +0.5 per part beyond, at most ×8 — the
- *  pump keeps up with what the worker sends with a short queue (a command reply waits for the queue: §3.3). */
-export function coldPumpScale(queued: number): number {
-    return Math.min(8, 1 + Math.max(0, queued - 2) * 0.5);
-}
-
-export class ReplicaDecoder {
-    /** By sync id. Kept dense (filled with null ahead of the ids not born here yet: a cold part's newborns arrive after
-     *  a later hot part's), so the array never turns sparse (a dictionary-mode array made every lookup a hash probe). */
-    private objs: (object | null)[] = [];
-    private kinds: Uint8Array = new Uint8Array(1 << 16);
-    private shapeOf: Int32Array = new Int32Array(1 << 16);
-    private readonly shapes: DecShape[] = [];
-    /** Replica object → sync id. A Map, not a WeakMap: entries are deleted with their drop anyway, and at 2.4 M keys a
-     *  WeakMap insert cost ~5 µs with GC stalls up to a second under churn (a Map: ~0.2 µs; growing it rehashes, ~20 ms
-     *  once per million or so births). */
-    private readonly idByObj = new Map<object, number>();
-    private readonly coldQueue: QueuedPart[] = [];
-    /** Mixed fields: per object, the seq of the last hot part that set one of them. */
-    private readonly mixedHotSeq = new Map<number, number>();
-    /** Seq of the last cold part applied completely. */
-    private coldApplied = -1;
-    /** Seq of the last cold part whose shells and births are applied (≥ coldApplied: a hot part's dependency applies
-     *  only those, see apply). */
-    private coldBorn = -1;
-    /** The delta being applied over several calls (apply with a budget), else null. */
-    private staged: StagedDelta | null = null;
-    private readonly scratch: unknown[] = [];
-    /** Where the last bodyOf stopped in the f64 lane. */
-    private numsAt = 0;
-    /** Called with each new object once it is filled (e.g. to wire a new Empire's visibility hooks). */
-    onNewObject: ((o: object) => void) | null = null;
-    /** Dev-only (writeDetector.ts, docs/sim-worker.md §9 chunk 0): called with an object's id right before each shell /
-     *  record that creates or changes it, so the detector can check it against the values last applied; `slot` is the
-     *  shape slot of a class / plain object's field set (fieldName), -1 for any other record. Null: off. */
-    watch: ((id: number, slot: number) => void) | null = null;
-    private stats: ApplyStats = emptyApplyStats();
-
-    constructor(private readonly opts: ReplicaDecoderOptions) {}
-
-    /** The replica object with sync id `id`. */
-    object(id: number): object | null {
-        return this.objs[id] ?? null;
-    }
-
-    /** The sync id of a replica object (-1 when it is not part of the replica). */
-    idOf(o: object): number {
-        return this.idByObj.get(o) ?? -1;
-    }
-
-    /** The field name of shape slot `slot` of class / plain object `id` (the write detector's per-field check). */
-    fieldName(id: number, slot: number): string | undefined {
-        return this.shapes[this.shapeOf[id]]?.keys[slot];
-    }
-
-    /** One past the highest sync id seen (ids are dense and never reused; dropped ids hold null). */
-    get idLimit(): number {
-        return this.objs.length;
-    }
-
-    get size(): number {
-        let n = 0;
-        for (const o of this.objs) if (o !== null && o !== undefined) n++;
-        return n;
-    }
-
-    /** Cold parts waiting to be applied. */
-    get coldBacklog(): number {
-        return this.coldQueue.length;
-    }
-
-    /** Whether a delta's hot part is waiting for its dependencies' births (apply with a budget returned pending). */
-    get applying(): boolean {
-        return this.staged !== null;
-    }
-
-    /** Whether every cold part up to delta `seq`'s is applied completely (what a command reply needs, §4.3). */
-    coldThrough(seq: number): boolean {
-        return this.coldQueue.length === 0 || this.coldQueue[0].seq > seq;
-    }
-
-    /**
-     * Apply a delta: its shapes, its hot part now (after the births of the cold parts it depends on), and queue its
-     * cold part — or apply everything now with `all` (the snapshot, tests, a save). With a finite `budgetMs`, the births
-     * of the cold parts the hot part depends on are applied for up to that long; when they do not fit, the call returns
-     * with `pending` and the next call with the same delta continues (nothing references the newborns until the hot
-     * body is applied, so readers never see a half-filled object; the pump waits meanwhile). Returns this call's stats.
-     */
-    apply(d: ReplicaDelta, all = false, now: () => number = () => performance.now(), budgetMs = Infinity): ApplyStats {
-        const t0 = now();
-        this.stats = emptyApplyStats();
-        let st = this.staged;
-        if (st !== null && st.d !== d) throw new Error(`replica sync: delta ${d.seq} applied while delta ${st.d.seq} is still being applied`);
-        if (st === null) {
-            for (const [id, shape] of d.shapes) this.addShape(id, shape);
-            st = { d, fresh: [], ownQueued: false };
-            this.shellsOf(d.hot, 0, Infinity, st.fresh, now);
-            // The hot part names objects born in cold parts up to coldDep (possibly this delta's own). Only their births
-            // are needed (shells, then the newborns' first contents): the bodies — sets on objects that already existed —
-            // stay queued for the pump, so a dependency costs the births it needs, not whole parts.
-            if (d.coldDep >= 0 && d.coldDep > this.coldBorn && d.coldDep >= d.seq) {
-                this.coldQueue.push({ seq: d.seq, part: d.cold, phase: 0, i: 0, j: 0 });
-                st.ownQueued = true;
-            }
-            this.staged = st;
-        }
-        if (d.coldDep >= 0 && d.coldDep > this.coldBorn) {
-            const deadline = budgetMs === Infinity || all ? Infinity : t0 + budgetMs;
-            if (!this.bornUntil(d.coldDep, st.fresh, deadline, now)) {
-                this.stats.pending = true;
-                this.stats.applyMs = now() - t0;
-                return this.stats;
-            }
-        }
-        this.staged = null;
-        this.numsAt = 0;
-        this.bodyOf(d.hot, d.hot.births, d.hot.birthNums, 0, Infinity, now, false, d.seq, true);
-        this.numsAt = 0;
-        this.bodyOf(d.hot, d.hot.body, d.hot.bodyNums, 0, Infinity, now, false, d.seq, true);
-        if (!st.ownQueued) {
-            if (!partEmpty(d.cold)) this.coldQueue.push({ seq: d.seq, part: d.cold, phase: 0, i: 0, j: 0 });
-            else if (this.coldQueue.length === 0) this.coldApplied = this.coldBorn = d.seq;
-        }
-        if (all) this.pumpColdUntil(Infinity, st.fresh, now);
-        if (this.onNewObject !== null) for (const o of st.fresh) this.onNewObject(o);
-        this.stats.applyMs = now() - t0;
-        return this.stats;
-    }
-
-    /**
-     * Apply queued cold parts, in order, for up to `budgetMs` (a part may be left half-applied and resumed). The budget
-     * grows with the backlog (coldPumpScale; `scale` false: exactly `budgetMs`), so the replica's cold data never falls
-     * far behind. With `throughSeq`, only the parts up to that delta's (what a command reply waits for). While a delta's
-     * hot part waits for its dependencies' births (apply with a budget), nothing is pumped: those births come first.
-     */
-    pumpCold(budgetMs: number, now: () => number = () => performance.now(), throughSeq = Infinity, scale = true): ApplyStats {
-        const t0 = now();
-        this.stats = emptyApplyStats();
-        if (this.staged !== null) return this.stats;
-        if (scale) budgetMs *= coldPumpScale(this.coldQueue.length);
-        const fresh: object[] = [];
-        const deadline = t0 + budgetMs;
-        while (this.coldQueue.length > 0 && this.coldQueue[0].seq <= throughSeq) {
-            if (!this.advance(this.coldQueue[0], deadline, fresh, now)) break;
-            this.partDone(this.coldQueue.shift()!.seq);
-            this.stats.coldParts++;
-            if (now() >= deadline) break;
-        }
-        if (this.onNewObject !== null) for (const o of fresh) this.onNewObject(o);
-        this.stats.applyMs = now() - t0;
-        return this.stats;
-    }
-
-    private pumpColdUntil(seq: number, fresh: object[], now: () => number): void {
-        while (this.coldQueue.length > 0 && this.coldQueue[0].seq <= seq) {
-            this.advance(this.coldQueue[0], Infinity, fresh, now);
-            this.partDone(this.coldQueue.shift()!.seq);
-            this.stats.coldParts++;
-        }
-    }
-
-    private partDone(seq: number): void {
-        this.coldApplied = seq;
-        if (seq > this.coldBorn) this.coldBorn = seq;
-    }
-
-    /**
-     * Apply the shells and births of the queued cold parts up to `seq`, in order, leaving their bodies and drops to the
-     * pump, until `deadline` (false: not done, continue later). Safe out of order with those bodies: a part's births
-     * only fill objects born in it (with what it and the parts before it know), and a body only sets fields of objects
-     * that existed before its part.
-     */
-    private bornUntil(seq: number, fresh: object[], deadline: number, now: () => number): boolean {
-        for (const q of this.coldQueue) {
-            if (q.seq > seq) break;
-            if (q.phase === 0) {
-                q.i = this.shellsOf(q.part, q.i, deadline, fresh, now);
-                if (q.i < q.part.shells.length) return false;
-                q.phase = 1;
-                q.i = q.j = 0;
-            }
-            if (q.phase === 1) {
-                this.numsAt = q.j;
-                q.i = this.bodyOf(q.part, q.part.births, q.part.birthNums, q.i, deadline, now, true, q.seq, false);
-                q.j = this.numsAt;
-                if (q.i < q.part.births.length) return false;
-                q.phase = 2;
-                q.i = q.j = 0;
-                this.stats.bornParts++;
-            }
-            if (q.seq > this.coldBorn) this.coldBorn = q.seq;
-        }
-        return true;
-    }
-
-    /** Continue a queued part until done (true) or the deadline (false). */
-    private advance(q: QueuedPart, deadline: number, fresh: object[], now: () => number): boolean {
-        if (q.phase === 0) {
-            q.i = this.shellsOf(q.part, q.i, deadline, fresh, now);
-            if (q.i < q.part.shells.length) return false;
-            q.phase = 1;
-            q.i = q.j = 0;
-        }
-        if (q.phase === 1) {
-            this.numsAt = q.j;
-            q.i = this.bodyOf(q.part, q.part.births, q.part.birthNums, q.i, deadline, now, true, q.seq, false);
-            q.j = this.numsAt;
-            if (q.i < q.part.births.length) return false;
-            q.phase = 2;
-            q.i = q.j = 0;
-        }
-        if (q.phase === 2) {
-            this.numsAt = q.j;
-            q.i = this.bodyOf(q.part, q.part.body, q.part.bodyNums, q.i, deadline, now, false, q.seq, false);
-            q.j = this.numsAt;
-            if (q.i < q.part.body.length) return false;
-            q.phase = 3;
-        }
-        for (const id of q.part.drops) {
-            const o = this.objs[id];
-            if (o != null) this.idByObj.delete(o);
-            this.objs[id] = null;
-        }
-        this.stats.drops += q.part.drops.length;
-        return true;
-    }
-
-    /** Room for sync id `id`: `objs` filled densely with null up to it, the per-id typed arrays grown. */
-    private reserve(id: number): void {
-        const objs = this.objs;
-        while (objs.length <= id) objs.push(null);
-        if (id >= this.kinds.length) {
-            const n = Math.max(this.kinds.length * 2, id + 1);
-            const k = new Uint8Array(n);
-            k.set(this.kinds);
-            this.kinds = k;
-            const sh = new Int32Array(n);
-            sh.set(this.shapeOf);
-            this.shapeOf = sh;
-        }
-    }
-
-    /** Create the shells of a part from index `i` (every new object exists before any reference to it resolves). */
-    private shellsOf(p: ReplicaPart, i: number, deadline: number, fresh: object[], now: () => number): number {
-        const sh = p.shells;
-        let k = 0;
-        const every = this.opts.sliceRecords ?? 32;
-        while (i < sh.length) {
-            const kind = sh[i++] as Kind;
-            const id = sh[i++];
-            let o: object;
-            switch (kind) {
-                case Kind.Class:
-                case Kind.Plain: {
-                    const s = sh[i++];
-                    const shape = this.shapes[s];
-                    o = shape.ctor !== null ? shape.ctor() : this.slowShell(shape);
-                    if (id >= this.shapeOf.length) this.reserve(id);
-                    this.shapeOf[id] = s;
-                    break;
-                }
-                case Kind.Array:
-                    o = new Array(sh[i++]);
-                    break;
-                case Kind.Map:
-                    o = new Map();
-                    break;
-                case Kind.Set:
-                    o = new Set();
-                    break;
-                case Kind.Typed:
-                    i++; // ctor index (the payload carries its own type)
-                    o = p.typed[sh[i++]];
-                    break;
-                default:
-                    throw new Error(`replica sync: bad shell kind ${String(kind)}`);
-            }
-            if (id >= this.objs.length) this.reserve(id);
-            this.objs[id] = o;
-            this.kinds[id] = kind;
-            this.idByObj.set(o, id);
-            if (this.watch !== null) this.watch(id, -1);
-            fresh.push(o);
-            this.stats.newObjects++;
-            if (++k % every === 0 && deadline !== Infinity && now() >= deadline) break;
-        }
-        return i;
-    }
-
-    /**
-     * Apply the records of a part's births / body stream (`c`, its f64 lane `nums` from this.numsAt) from code index
-     * `start`; returns where it stopped (the end when done; this.numsAt: the lane's position). `anywhere`: may stop
-     * between any two records (the births stream), else only between objects. `seq` / `hot`: the delta and stream of the
-     * part (mixed fields: a hot set is remembered, an older cold one dropped).
-     */
-    private bodyOf(p: ReplicaPart, c: Uint32Array, nums: Float64Array, start: number, deadline: number, now: () => number, anywhere: boolean, seq: number, hot: boolean): number {
-        const mixedHot = this.mixedHotSeq;
-        const strs = p.strs;
-        const ext = this.opts.externals;
-        const objs = this.objs;
-        const kinds = this.kinds;
-        const shapeOf = this.shapeOf;
-        const shapes = this.shapes;
-        let i = start;
-        let j = this.numsAt;
-        let k = 0;
-        const every = this.opts.sliceRecords ?? 64;
-        let nextCheck = every;
-        // A value's payload, after its tag (wire format: Tag).
-        const payload = (tag: number): unknown => {
-            switch (tag) {
-                case Tag.Num:
-                    return nums[j++];
-                case Tag.Int:
-                    return c[i++];
-                case Tag.F32:
-                    F32_BITS[0] = c[i++];
-                    return F32_BOX[0];
-                case Tag.Ref: {
-                    const id = c[i++];
-                    const o = objs[id];
-                    if (o == null) throw new Error(`replica sync: reference to unknown id ${id}`);
-                    return o;
-                }
-                case Tag.Str:
-                    return strs[c[i++]];
-                case Tag.True:
-                    return true;
-                case Tag.False:
-                    return false;
-                case Tag.Null:
-                    return null;
-                case Tag.Undef:
-                    return undefined;
-                case Tag.Ext: {
-                    const key = strs[c[i++]];
-                    const o = ext.get(key);
-                    if (o === undefined) throw new Error(`replica sync: unknown static ${key}`);
-                    return o;
-                }
-            }
-            throw new Error(`replica sync: bad value tag ${tag}`);
-        };
-        const scratch = this.scratch;
-        const watch = this.watch;
-        while (i < c.length) {
-            const h = c[i];
-            const op = h & ((1 << OP_BITS) - 1);
-            const n = h >>> OP_BITS;
-            const id = c[i + 1];
-            i += 2;
-            const o = objs[id];
-            if (o == null) throw new Error(`replica sync: op ${op} on unknown id ${id}`);
-            switch (op) {
-                case Op.Set: {
-                    const kind = kinds[id];
-                    if (kind === Kind.Array) {
-                        if (watch !== null) watch(id, -1);
-                        const a = o as unknown[];
-                        for (let x = 0; x < n; x++) {
-                            const key = c[i++];
-                            a[key >>> TAG_BITS] = payload(key & ((1 << TAG_BITS) - 1));
-                        }
-                    } else {
-                        const shape = shapes[shapeOf[id]];
-                        const mixed = shape.mixed;
-                        for (let x = 0; x < n; x++) {
-                            const key = c[i++];
-                            const slot = key >>> TAG_BITS;
-                            if (watch !== null) watch(id, slot);
-                            const v = payload(key & ((1 << TAG_BITS) - 1));
-                            if (mixed !== null && mixed[slot] === 1) {
-                                if (hot) mixedHot.set(id, seq);
-                                else {
-                                    // A cold set older than the object's last hot send of its mixed fields: superseded.
-                                    const hs = mixedHot.get(id);
-                                    if (hs !== undefined && hs > seq) continue;
-                                }
-                            }
-                            shape.set(o as Record<string, unknown>, slot, v);
-                        }
-                    }
-                    this.stats.sets += n;
-                    break;
-                }
-                case Op.Fill: {
-                    if (watch !== null) watch(id, -1);
-                    const kind = kinds[id];
-                    if (kind === Kind.Class || kind === Kind.Plain) {
-                        scratch.length = n;
-                        for (let x = 0; x < n; x++) scratch[x] = payload(c[i++]);
-                        shapes[shapeOf[id]].fill(o as Record<string, unknown>, scratch);
-                    } else if (kind === Kind.Array) {
-                        const a = o as unknown[];
-                        a.length = n;
-                        for (let x = 0; x < n; x++) a[x] = payload(c[i++]);
-                    } else if (kind === Kind.Map) {
-                        const m = o as Map<unknown, unknown>;
-                        m.clear();
-                        for (let x = 0; x < n; x += 2) {
-                            const key = payload(c[i++]);
-                            m.set(key, payload(c[i++]));
-                        }
-                    } else if (kind === Kind.Set) {
-                        const st = o as Set<unknown>;
-                        st.clear();
-                        for (let x = 0; x < n; x++) st.add(payload(c[i++]));
-                    }
-                    break;
-                }
-                case Op.Len:
-                    if (watch !== null) watch(id, -1);
-                    (o as unknown[]).length = c[i++];
-                    break;
-                case Op.Typed:
-                    if (watch !== null) watch(id, -1);
-                    (o as AnyTyped).set(p.typed[c[i++]] as never);
-                    this.stats.sets++;
-                    break;
-                case Op.Reshape: {
-                    if (watch !== null) watch(id, -1);
-                    const s = c[i++];
-                    const old = shapes[shapeOf[id]];
-                    // Drop every old field: the Fill that follows re-adds them in the new shape's order (key order is
-                    // state — a plain object's keys are saved in order).
-                    for (const key of old.keys) delete (o as Record<string, unknown>)[key];
-                    shapeOf[id] = s;
-                    break;
-                }
-                default:
-                    throw new Error(`replica sync: bad op ${op}`);
-            }
-            // Stop only between objects (never between an array's new length and its element sets), so a half-applied
-            // cold part never shows a half-updated object.
-            k++;
-            if (deadline !== Infinity && k >= nextCheck && i < c.length && (anywhere || c[i + 1] !== id)) {
-                nextCheck = k + every;
-                if (now() >= deadline) break;
-            }
-        }
-        this.numsAt = j;
-        return i;
-    }
-
-    private addShape(id: number, shape: ReplicaShape): void {
-        const [kind, name, ...keys] = shape;
-        let proto: object | null;
-        if (kind === Kind.Plain) proto = name === '\0' ? null : Object.prototype;
-        else {
-            proto = this.opts.classes[name] ?? null;
-            if (proto === null) throw new Error(`replica sync: unknown class ${name}`);
-        }
-        const dec = makeDecShape(kind, proto, keys, proto === null ? undefined : this.opts.revive?.get(proto));
-        const mixedFields = this.opts.mixedFields;
-        if (mixedFields !== undefined && kind === Kind.Class && keys.some((k) => mixedFields.has(`${name}.${k}`))) {
-            const m = new Uint8Array(keys.length);
-            keys.forEach((k, i) => {
-                if (mixedFields.has(`${name}.${k}`)) m[i] = 1;
-            });
-            dec.mixed = m;
-        }
-        this.shapes[id] = dec;
-    }
-
-    private slowShell(shape: DecShape): Record<string, unknown> {
-        const o = Object.create(shape.proto) as Record<string, unknown>;
-        if (shape.proto !== null) this.opts.revive?.get(shape.proto)?.(o);
-        for (const k of shape.keys) Object.defineProperty(o, k, { value: undefined, writable: true, enumerable: true, configurable: true });
-        return o;
-    }
-}
-
-function makeDecShape(kind: Kind, proto: object | null, keys: string[], revive: ((o: object) => void) | undefined): DecShape {
-    const access = (k: string): string => (/^[A-Za-z_$][\w$]*$/.test(k) ? `.${k}` : `[${JSON.stringify(k)}]`);
-    const usable = new Set(keys).size === keys.length && keys.every((k) => k !== '__proto__' && !assignmentIntercepted(proto, k));
-    let ctor: (() => Record<string, unknown>) | null = null;
-    let fill: DecShape['fill'];
-    let set: DecShape['set'];
-    try {
-        if (usable && revive === undefined) {
-            const S = new Function(`return function Shape() {\n${keys.map((k) => `this${access(k)} = undefined;`).join('\n')}\n};`)() as { new (): Record<string, unknown>; prototype: object | null };
-            S.prototype = proto as object;
-            ctor = proto === null ? null : () => new S();
-        }
-        fill = new Function('o', 'v', keys.map((k, i) => `o${access(k)} = v[${i}];`).join('\n')) as DecShape['fill'];
-        set = new Function('o', 's', 'v', `switch (s) {\n${keys.map((k, i) => `case ${i}: o${access(k)} = v; return;`).join('\n')}\n}`) as DecShape['set'];
-    } catch {
-        ctor = null;
-        fill = (o, v) => {
-            for (let i = 0; i < keys.length; i++) o[keys[i]] = v[i];
-        };
-        set = (o, s, v) => {
-            o[keys[s]] = v;
-        };
-    }
-    void kind;
-    return { kind, proto, keys, mixed: null, ctor, fill, set };
-}
-
-/** Whether assigning `key` on an object with prototype `proto` could hit an accessor / read-only property. */
-function assignmentIntercepted(proto: object | null, key: string): boolean {
-    for (let o = proto; o !== null; o = Object.getPrototypeOf(o) as object | null) {
-        const d = Object.getOwnPropertyDescriptor(o, key);
-        if (d !== undefined) return d.get !== undefined || d.set !== undefined || d.writable === false;
-    }
-    return false;
-}
-
-/** Transferable buffers of a delta (for postMessage's transfer list). */
-export function deltaTransferables(d: ReplicaDelta): ArrayBuffer[] {
-    const out: ArrayBuffer[] = [];
-    for (const p of [d.hot, d.cold]) {
-        out.push(p.shells.buffer as ArrayBuffer, p.births.buffer as ArrayBuffer, p.birthNums.buffer as ArrayBuffer, p.body.buffer as ArrayBuffer, p.bodyNums.buffer as ArrayBuffer);
-        for (const t of p.typed) if (!out.includes(t.buffer as ArrayBuffer)) out.push(t.buffer as ArrayBuffer);
-    }
-    return out;
-}
-
-export type { Encoded };

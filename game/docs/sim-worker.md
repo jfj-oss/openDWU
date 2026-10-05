@@ -426,6 +426,28 @@ and a *side-tables* root that holds the state the TS port keeps outside the grap
 For each object the encoder keeps a shadow: field values in shape order, array elements, Map entries, Set items,
 typed-array contents. The main-thread decoder keeps `id → replica object` and `replica object → id`.
 
+**Packed shadows (`shadowStore.ts`).** The shadows used to be one JS array per object: on test2.dwusave (101k habitats,
+3.0 M synced objects, 1.7 M of them empty arrays) about 340 MB of the worker's heap, mostly boxed doubles and array
+headers, in the pointer cage the worker shares with the page. Now:
+
+- the instances of a shape (class or plain object) share a `FieldTable`: a row per object (rows of dropped or reshaped
+  objects are reused), a column per field. A column is a `Uint8Array` (true / false / null / undefined as codes), an
+  `Int32Array` (int32 numbers, never −0), a `Float64Array` (numbers) or a JS array (anything else; the only lane that
+  can hold an object). A field starts in the lane its first instance's value needs and widens for the whole shape
+  (Imm → Ref, I32 → F64 → Ref) when a value does not fit; the shape's generated compares are then regenerated
+  (`ReplicaEncoder.compileShape`). Columns grow by doubling.
+- arrays, Maps, Sets and typed-array copies have a row in a `ListTable`: a JS array of the values, null while empty.
+- only Ref columns and lists hold references, so the reachability mark and `compareNow` / `compareReach` scan only them.
+- discovery labels are pooled (one string per distinct label; each container used to keep its own concatenation), and
+  the per-id kind / shape tables are typed arrays.
+
+What is sent is unchanged: `test/replicaPackedShadow.test.ts` runs the previous encoder (`test/helpers/replicaEncoderLegacy.ts`)
+beside the current one on the seed-1 harness for 900 steps at 4× (marks every cycle, full compares, births and drops)
+and checks every delta byte for byte. Measured with `scripts/mem-probe.mjs` (test2, worker mode, 60 s at 4×, then a
+save): worker heap after GC 576 → 392 MB, after the 60 s 776 → 412 MB, save peak 1198 → 1034 MB; renderer RSS after GC
+1968 → 1872 MB. The worker diff costs the same or less (`sync-measure.mjs`, 300 steps, two runs each: diff mean 7.0 →
+6.7 ms, hot pass 3.5 → 3.1 ms, a full cold compare 283-498 → 233-245 ms; snapshot encode unchanged, ~2.8 s).
+
 What is synced and what is not:
 
 - **What the save writes is what is synced.** That means the same class registry (`saveClassPrototypes`), the same
@@ -945,6 +967,7 @@ The only behaviour changes in this mode are:
 | File | Role |
 |---|---|
 | `src/simworker/replicaSync.ts` | Generic encoder (shadow diff, hot/cold streams, gates, incremental mark) and decoder (shells, generated constructors and setters, cold pump) |
+| `src/simworker/shadowStore.ts` | The encoder's packed shadows: per-shape field tables (Imm / I32 / F64 / Ref lanes), list table (§3.1) |
 | `src/simworker/replicaGalaxy.ts` | Galaxy binding: roots, side tables, hot classes / containers / fields / gates, replica static wiring |
 | `src/simworker/simHost.ts` | Worker-side host: step loop, commands, clock, events, save, digest (DOM-free; tests drive it) |
 | `src/simworker/clientCore.ts` | Main-side core: replica, command sink, replies, clock hand-off, render time, sync stats (DOM-free) |
@@ -965,6 +988,7 @@ The only behaviour changes in this mode are:
 | `src/simworker/refresh.ts` | Refresh-on-open requests from the screens (`requestSimRefresh`; no-op in-thread) |
 | `src/simFrameBudget.ts` | SimFrameBudget, shared by both modes |
 | `scripts/sync-measure.mjs` | Sync cost on a save (`--compare-options`, `--verify`, `--census`, `--hot-fields`; `--client`: SimHost + SimClientCore end to end, with command replies, §2.6) |
+| `test/replicaPackedShadow.test.ts` | The packed shadows send exactly what the boxed-array encoder sent, delta for delta, byte for byte (seed-1 harness) |
 | `test/replicaSyncChunk9.test.ts` | Chunk 9: the compact wire format's exactness, guarded hot fields, the hot pass registries, budgeted dependency births, replies waiting for their cold parts |
 | `scripts/simworker-smoke.mjs` | Browser smoke: boots with the flag, checks run / speed / pause / move order, screenshots |
 | `test/simWorkerCommandFailures.test.ts` | Failed commands: refusals, throws, unknown ops, dropped / stale arguments, unsendable results, timeout, worker stop, close / reload (§4.4) |

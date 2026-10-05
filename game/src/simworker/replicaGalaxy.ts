@@ -182,12 +182,17 @@ export class GalaxySyncSource {
     readonly encoder: ReplicaEncoder;
     private readonly side: SideRoot;
 
-    constructor(readonly galaxy: Galaxy, opts: Partial<Omit<ReplicaEncoderOptions, 'classes' | 'skipFields' | 'externals' | 'hotClasses'> & { hotClasses?: readonly object[] }> = {}) {
+    /** `makeEncoder`: tests only (test/replicaPackedShadow.test.ts runs the pre-packed-shadow encoder beside this one). */
+    constructor(
+        readonly galaxy: Galaxy,
+        opts: Partial<Omit<ReplicaEncoderOptions, 'classes' | 'skipFields' | 'externals' | 'hotClasses'> & { hotClasses?: readonly object[] }> = {},
+        makeEncoder: (o: ReplicaEncoderOptions, roots: readonly object[]) => ReplicaEncoder = (o, roots) => new ReplicaEncoder(o, roots),
+    ) {
         const codec = replicaCodecOptions();
         // The side tables are collected over the objects the save would visit; at construction nothing is known yet,
         // so the first root is an empty holder filled right after the graph is discovered.
         this.side = {};
-        this.encoder = new ReplicaEncoder(
+        this.encoder = makeEncoder(
             {
                 classes: codec.classes,
                 skipFields: replicaSkipFields(),
