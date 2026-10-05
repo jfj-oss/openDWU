@@ -65,6 +65,14 @@ describe('flags off = faithful game', () => {
     }, 1200000);
 });
 
+describe('galaxy setup is untouched', () => {
+    it('the same seed gives the same starting galaxy with the add-on on or off', () => {
+        const on = createScenarioGame(base, { scenario: SC }).game.galaxy;
+        const off = createScenarioGame(base, { scenario: SC, flags: ALL_OFF }).game.galaxy;
+        expect(stateDigest(on)).toBe(stateDigest(off));
+    }, 600000);
+});
+
 describe('1. optimised research order', () => {
     it('AI empires get the three orders (Efficient HyperDrives 11th in Energy); the player and pirates do not', () => {
         const g = smartGame().game.galaxy;

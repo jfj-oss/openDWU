@@ -6,6 +6,7 @@
 import type { Galaxy } from '../../galaxy';
 import type { Empire } from '../../empire';
 import { scenarioFlag, scenarioState } from '../state';
+import { registerScenarioGameStart } from '../hooks';
 
 export const SMARTER_AI_FLAG = 'smarterAI';
 export const SMARTER_AI_RESEARCH_FLAG = 'smarterAIResearch';
@@ -39,9 +40,29 @@ export function smarterAIOn(galaxy: Galaxy, sub: string): boolean {
 }
 
 /** An empire the add-on drives: an active AI empire with a race, not the player, a pirate faction or the independents. */
+/** Set at the end of createGame: before that (galaxy generation, starting techs) the add-on stays out, so the same
+ *  seed gives the same galaxy with it on or off. */
+export const SMARTER_AI_LIVE_KEY = 'smarterAILive';
+
+registerScenarioGameStart({
+    id: 'smarterAI.live',
+    flag: SMARTER_AI_FLAG,
+    run: (galaxy) => {
+        if (scenarioFlag(galaxy, SMARTER_AI_FLAG)) galaxy.scenario!.state[SMARTER_AI_LIVE_KEY] = true;
+    },
+});
+
+/** The game has started (a save from before the live marker that already has add-on state counts as started). */
+export function smarterAILive(galaxy: Galaxy): boolean {
+    const st = galaxy.scenario?.state;
+    if (st === undefined) return false;
+    return st[SMARTER_AI_LIVE_KEY] === true || (!(SMARTER_AI_LIVE_KEY in st) && SMARTER_AI_STATE_KEY in st);
+}
+
 export function isSmarterAIEmpire(galaxy: Galaxy, empire: Empire | null): empire is Empire {
     return (
         empire !== null &&
+        smarterAILive(galaxy) &&
         empire.active &&
         empire !== galaxy.playerEmpire &&
         !empire.playerEmpire &&

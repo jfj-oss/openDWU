@@ -104,7 +104,8 @@ describe('5. smarter colony picks', () => {
 
 describe('6. absorb independent worlds', () => {
     it('a nearby willing independent becomes an annex target: its colonisation priority rises with the flag', () => {
-        const g = smartGame();
+        // Seed 5: the seed-1 galaxy has no willing independent near an AI empire (the add-on stays out of galaxy setup).
+        const g = createScenarioGame(base, { scenario: SC, options: (o) => ({ ...o, seed: 5 }) }).game.galaxy;
         const s = g.scenario!;
         let checked = 0;
         for (const e of aiEmpires(g)) {
