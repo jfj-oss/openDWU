@@ -14,6 +14,7 @@ import type { Galaxy } from './galaxy';
 import type { Empire } from './empire';
 import { generateSaleableInfoForEmpire } from './pirates/pirateRelationsAI';
 import { netRound } from './taxes';
+import { recordHintSubject, habitatSubject, ruinsSubject, locationSubject } from './player/hintSubjects';
 import { galaxyStarDate, REAL_SECONDS_IN_GALACTIC_YEAR } from './tick/simTime';
 import { pirateEconomyPerformExpense, pirateEconomyPerformIncome } from './pirates/pirateAI';
 import { PirateExpenseType, PirateIncomeType } from './pirates/pirateEconomy';
@@ -1403,7 +1404,8 @@ export function evaluateTradeOffer(galaxy: Galaxy, self: Empire, offeringEmpire:
 // ---------------------------------------------------------------------------------------------------------------
 
 /** Empire.cs 2807 AddLocationHint(location): skipped when an existing hint lies within MaxSolarSystemSize (Rectangle.Contains). */
-export function addLocationHint(self: Empire, location: { x: number; y: number }): void {
+/** `what` / `source`: player-side notes (player/hintSubjects.ts) of what the hint points at and the kind of information it came from. */
+export function addLocationHint(self: Empire, location: { x: number; y: number }, what?: string, source?: string): void {
     const left = location.x - MAX_SOLAR_SYSTEM_SIZE;
     const top = location.y - MAX_SOLAR_SYSTEM_SIZE;
     const size = MAX_SOLAR_SYSTEM_SIZE * 2;
@@ -1411,6 +1413,8 @@ export function addLocationHint(self: Empire, location: { x: number; y: number }
         if (p.x >= left && p.x < left + size && p.y >= top && p.y < top + size) return;
     }
     self.locationHints.push(location);
+    // Player-side subject (player/hintSubjects.ts): what the source message said is at the point. Not hashed, no Rnd.
+    recordHintSubject(self, location, what, source);
 }
 
 
@@ -1481,17 +1485,17 @@ export function giveTradeableItem(galaxy: Galaxy, giver: Empire, receiver: Empir
             if (item.item instanceof HabitatClass) {
                 const systemStar3 = galaxy.determineHabitatSystemStar(item.item);
                 if (receiver.visibility.checkSystemVisibilityStatus(systemStar3.systemIndex) === SystemVisibilityStatus.Unexplored) receiver.visibility.setSystemVisibility(systemStar3, SystemVisibilityStatus.Explored);
-                addLocationHint(receiver, { x: Math.trunc(item.item.xpos), y: Math.trunc(item.item.ypos) });
+                addLocationHint(receiver, { x: Math.trunc(item.item.xpos), y: Math.trunc(item.item.ypos) }, habitatSubject('Independent colony', item.item), `Diplomacy (traded by ${giver.name})`);
             }
             break;
         case TradeableItemType.SecretLocation:
             if (item.item instanceof GalaxyLocation) {
                 if (!receiver.visibility.knownGalaxyLocations.includes(item.item)) receiver.visibility.knownGalaxyLocations.push(item.item);
-                addLocationHint(receiver, { x: Math.trunc(item.item.xpos), y: Math.trunc(item.item.ypos) });
+                addLocationHint(receiver, { x: Math.trunc(item.item.xpos), y: Math.trunc(item.item.ypos) }, locationSubject(item.item), `Diplomacy (traded by ${giver.name})`);
             } else if (item.item instanceof HabitatClass) {
                 const systemStar2 = galaxy.determineHabitatSystemStar(item.item);
                 if (receiver.visibility.checkSystemVisibilityStatus(systemStar2.systemIndex) === SystemVisibilityStatus.Unexplored) receiver.visibility.setSystemVisibility(systemStar2, SystemVisibilityStatus.Explored);
-                addLocationHint(receiver, { x: Math.trunc(item.item.xpos), y: Math.trunc(item.item.ypos) });
+                addLocationHint(receiver, { x: Math.trunc(item.item.xpos), y: Math.trunc(item.item.ypos) }, item.item.ruin !== null ? ruinsSubject(item.item) : habitatSubject('Secret location', item.item), `Diplomacy (traded by ${giver.name})`);
             }
             break;
         case TradeableItemType.ResearchProject: {

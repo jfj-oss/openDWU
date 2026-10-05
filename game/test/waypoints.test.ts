@@ -185,7 +185,7 @@ describe('known locations', () => {
         addLocationHint(p, { x: Math.trunc(far.xpos), y: Math.trunc(far.ypos) });
         let list = knownLocations(g, p);
         expect(list).toHaveLength(1);
-        expect(list[0]).toMatchObject({ kind: 'hint', typeLabel: 'Location hint', name: far.name, location: null });
+        expect(list[0]).toMatchObject({ kind: 'hint', typeLabel: 'Location hint', name: expect.stringMatching(/^Point of interest near /), location: null });
         expect(hintPlaceName(g, far.xpos, far.ypos)).toBe(far.name);
         expect(knownLocationTooltip(g, p, list[0])).toMatch(/Location hint/);
         expect(knownLocationTooltip(g, p, list[0])).toMatch(/From: /);

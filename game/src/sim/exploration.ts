@@ -39,6 +39,7 @@ import { haveRevolution } from './treasury';
 import { generateAbandonedBuiltObject, BuiltObjectEncounterAction } from './gameStartTail';
 import { resolveSectorDescription, raceEventsContainsEventType } from './empireEvents';
 import { addLocationHint } from './tradeItems';
+import { builtObjectSubject, habitatSubject } from './player/hintSubjects';
 import { makeHabitatIntoColonyRuntime } from './missions/cmdTroops';
 import { Population, PopulationList } from './population';
 import { takeOwnershipOfColonyFull } from './combat/ownership';
@@ -1295,7 +1296,7 @@ export function investigateRuins(galaxy: Galaxy, investigatingEmpire: Empire | n
                     empty2 = resolveSectorDescription(galaxy, habitat6.xpos, habitat6.ypos);
                     text += formatGameTextNow('Ruins Lost Ship Location', [ruin.name, builtObject4.name, categoryText(habitat6), habitat6.name, habitat7.name, empty2]);
                     sendEventMessageToEmpire(investigatingEmpire, EventMessageType.LostBuiltObjectCoordinates, empty, text, ruin, ruinsHabitat);
-                    if (investigatingEmpire === galaxy.playerEmpire) addLocationHint(galaxy.playerEmpire, { x: Math.trunc(habitat6.xpos), y: Math.trunc(habitat6.ypos) });
+                    if (investigatingEmpire === galaxy.playerEmpire) addLocationHint(galaxy.playerEmpire, { x: Math.trunc(habitat6.xpos), y: Math.trunc(habitat6.ypos) }, builtObjectSubject(builtObject4, true), 'Exploration (ancient ruins)');
                 }
                 break;
             }
@@ -1313,7 +1314,7 @@ export function investigateRuins(galaxy: Galaxy, investigatingEmpire: Empire | n
                     empty2 = resolveSectorDescription(galaxy, habitat8.xpos, habitat8.ypos);
                     text += formatGameTextNow('Ruins Lost Colony Location Revealed', [ruin.name, categoryText(habitat8), habitat8.name, habitat9.name, empty2]);
                     sendEventMessageToEmpire(investigatingEmpire, EventMessageType.LostColonyCoordinates, empty, text, habitat8, ruinsHabitat);
-                    if (investigatingEmpire === galaxy.playerEmpire) addLocationHint(galaxy.playerEmpire, { x: Math.trunc(habitat8.xpos), y: Math.trunc(habitat8.ypos) });
+                    if (investigatingEmpire === galaxy.playerEmpire) addLocationHint(galaxy.playerEmpire, { x: Math.trunc(habitat8.xpos), y: Math.trunc(habitat8.ypos) }, habitatSubject('Lost colony', habitat8), 'Exploration (ancient ruins)');
                 }
                 break;
             }

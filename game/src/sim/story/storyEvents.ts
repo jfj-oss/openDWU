@@ -85,6 +85,7 @@ import { resolveDescription } from '../messages';
 import { sendEventMessageToEmpire } from '../events';
 import { EventMessageType } from '../eventTypes';
 import { addLocationHint } from '../tradeItems';
+import { builtObjectSubject } from '../player/hintSubjects';
 import { resolveSectorDescription } from '../empireEvents';
 import { GalaxyLocationEffectType, GalaxyLocationType, type GalaxyLocation } from '../galaxyLocation';
 import { formatGameTextNow } from '../textResolver';
@@ -1147,7 +1148,7 @@ export function checkForStoryLocationHint(galaxy: Galaxy): string {
                 // Xpos.ToString("0,K"): scaled by 1000 (the trailing comma), rounded half away from zero, then the literal K.
                 result = formatGameTextNow('coordinates X,Y', [format0K(stellarObject.xpos), format0K(stellarObject.ypos)]);
                 result = result + ', ' + generateLocationDescription(galaxy, stellarObject.xpos, stellarObject.ypos, true);
-                addLocationHint(galaxy.playerEmpire!, { x: Math.trunc(stellarObject.xpos), y: Math.trunc(stellarObject.ypos) });
+                addLocationHint(galaxy.playerEmpire!, { x: Math.trunc(stellarObject.xpos), y: Math.trunc(stellarObject.ypos) }, 'Story clue location', 'Story clue');
             }
         }
     }
@@ -1282,7 +1283,7 @@ export function generateSecondaryStoryClue(galaxy: Galaxy, selectionValue: numbe
             builtObject.encounterExplorationBonus = shortCastLocal(galaxy.rnd.next(minValue, maxValue));
             const firstByAvailability = governmentsGetFirstByAvailability(2);
             if (firstByAvailability !== null) builtObject.encounterGovernmentTypeId = firstByAvailability.governmentId & 0xff;
-            addLocationHint(player, { x: Math.trunc(builtObject.xpos), y: Math.trunc(builtObject.ypos) });
+            addLocationHint(player, { x: Math.trunc(builtObject.xpos), y: Math.trunc(builtObject.ypos) }, builtObjectSubject(builtObject, true), 'Story clue');
             const text10 = generateLocationDescription(galaxy, x, y, true);
             text9 += formatGameTextNow('SecondaryStoryClue9 Location', [builtObject.name, Math.trunc(x / 1000), Math.trunc(y / 1000), text10]);
         }
