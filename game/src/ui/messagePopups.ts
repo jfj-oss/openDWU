@@ -907,6 +907,10 @@ export function installMessagePopups(opts: MessagePopupsOptions): void {
             for (const a of p.actions) {
                 buttons.push(
                     glassButton(a.label, {
+                        // Long choices ("Warn target empire about this secret deal") wrap onto two lines, as the
+                        // original's GlassButton draws its text wrapped in the button rectangle.
+                        className: 'msg-event-action',
+                        title: a.label,
                         onClick: () => {
                             closeEvent();
                             a.onClick();
