@@ -66,7 +66,7 @@ export function installWaypointUi(d: WaypointUiDeps): () => void {
         (window as unknown as { __dwuWaypoints?: unknown }).__dwuWaypoints = {
             add: (x: number, y: number, name: string) => issueAdd(x, y, name),
             list: () => waypoints(d.galaxy, d.empire).map((w) => ({ ...w })),
-            known: () => knownLocations(d.galaxy, d.empire, fogOf(d.galaxy).reveal).map((k) => ({ kind: k.kind, key: k.key, name: k.name, x: k.x, y: k.y })),
+            known: () => knownLocations(d.galaxy, d.empire, fogOf(d.galaxy).reveal).map((k) => ({ kind: k.kind, key: k.key, name: k.name, subject: k.subject, source: k.source, x: k.x, y: k.y })),
             openList: () => openWaypointsList(),
             dismiss: (key: string, v = true) => issuePlayerCommand(d.galaxy, d.empire, 'dismissMarker', [key, v], () => changed()),
         };
@@ -439,7 +439,7 @@ export function openWaypointsList(): void {
     };
     const render = (force = false): void => {
         const rows = waypointListRows(d.galaxy, d.empire, fogOf(d.galaxy).reveal, dbox.checked);
-        const s = rows.waypoints.map((w) => `${w.id}:${w.name}`).join(';') + '|' + rows.known.map((k) => k.key + k.name + (k.dismissed === true ? '!' : '')).join(';');
+        const s = rows.waypoints.map((w) => `${w.id}:${w.name}`).join(';') + '|' + rows.known.map((k) => k.key + k.name + (k.subject ?? '') + (k.source ?? '') + (k.dismissed === true ? '!' : '')).join(';');
         if (!force && s === sig) return;
         sig = s;
         body.replaceChildren();
@@ -487,7 +487,7 @@ export function openWaypointsList(): void {
             name.addEventListener('dblclick', () => goToLocation(k.x, k.y));
             const kind = document.createElement('span');
             kind.className = 'waypoints-kind';
-            kind.textContent = k.typeLabel;
+            kind.textContent = k.kind === 'hint' && k.subject !== undefined ? `${k.typeLabel}: ${k.subject}${k.source !== undefined ? ` \u2014 ${k.source}` : ''}` : k.typeLabel;
             row.append(name, kind, btn('Go to', 'Centre the map on it', () => goToLocation(k.x, k.y)));
             if (k.dismissed === true) row.append(btn('Restore', 'Show its marker on the map again', () => setDismissed(k, false)));
             else row.append(btn('Dismiss', 'Hide its marker from the map', () => setDismissed(k, true)));

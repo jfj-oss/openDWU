@@ -96,6 +96,7 @@ import { findNearestPirateFaction, generatePirateEmpire, selectRandomPiratePlays
 import { raceDesignPictureFamilyIndexPirates } from '../empire';
 import { makeHabitatIntoColonyRuntime } from '../missions/cmdTroops';
 import { addLocationHint } from '../tradeItems';
+import { builtObjectSubject, habitatSubject, locationSubject } from '../player/hintSubjects';
 import { resolveMinorShipImageIndex, resolveNewShipImageIndex } from '../shipImageHelper';
 import { fastFindNearestUnexploredHabitat } from '../civilianAI';
 import { doResearchBreakthrough, reviewDesignsBuiltObjectsImprovedComponents } from '../researchTick';
@@ -710,7 +711,7 @@ export function executeEventAction(galaxy: Galaxy, eventAction: EventAction, tri
             if (isBuiltObject(target)) {
                 builtObject = target;
                 if (triggerEmpire === galaxy.playerEmpire) {
-                    addLocationHint(triggerEmpire, { x: Math.trunc(builtObject.xpos), y: Math.trunc(builtObject.ypos) });
+                    addLocationHint(triggerEmpire, { x: Math.trunc(builtObject.xpos), y: Math.trunc(builtObject.ypos) }, builtObjectSubject(builtObject, false), 'Story event');
                     if (locationPingedHook !== null) locationPingedHook(builtObject);
                 }
                 let text2 = '';
@@ -733,7 +734,7 @@ export function executeEventAction(galaxy: Galaxy, eventAction: EventAction, tri
                     triggerEmpire.visibility.setSystemVisibility(habitat6, SystemVisibilityStatus.Explored);
                 }
                 if (triggerEmpire === galaxy.playerEmpire) {
-                    addLocationHint(triggerEmpire, { x: Math.trunc(habitat.xpos), y: Math.trunc(habitat.ypos) });
+                    addLocationHint(triggerEmpire, { x: Math.trunc(habitat.xpos), y: Math.trunc(habitat.ypos) }, habitatSubject('Revealed location', habitat), 'Story event');
                     if (locationPingedHook !== null) locationPingedHook(habitat);
                 }
                 const cat = resolveDescription(HabitatCategoryType as unknown as Record<number, string>, habitat.category);
@@ -1131,7 +1132,7 @@ export function executeEventAction(galaxy: Galaxy, eventAction: EventAction, tri
                 const arg = resolveSectorDescription(galaxy, loc.xpos, loc.ypos);
                 triggerEmpire.visibility.knownGalaxyLocations.push(loc);
                 if (triggerEmpire === galaxy.playerEmpire) {
-                    addLocationHint(triggerEmpire, { x: Math.trunc(loc.xpos) + Math.trunc(Math.trunc(loc.width) / 2), y: Math.trunc(loc.ypos) + Math.trunc(Math.trunc(loc.height) / 2) });
+                    addLocationHint(triggerEmpire, { x: Math.trunc(loc.xpos) + Math.trunc(Math.trunc(loc.width) / 2), y: Math.trunc(loc.ypos) + Math.trunc(Math.trunc(loc.height) / 2) }, locationSubject(loc), 'Story event');
                 }
                 text = gameText('GameEventAction Description LearnAboutSpecialLocation', loc.name, arg);
                 title = gameText('GameEventAction Title LearnAboutSpecialLocation');

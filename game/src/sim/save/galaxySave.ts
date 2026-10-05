@@ -70,6 +70,7 @@ import { migrateLegacyLandscapePictureRef, migratePreMapPictureRef, migratePrePo
 import { EmpireVisibility, GalaxyResourceMap, SystemVisibility } from '../visibility';
 import { Weapon } from '../weapon';
 import { battleReportState, restoreBattleReportState, type BattleReportState } from '../battleReports/battleReports';
+import { type HintInfo, liveHintSubjects, restoreHintSubjects, savedHintSubjects } from '../player/hintSubjects';
 import { liveWaypointState, restoreWaypointState, savedWaypointState, type WaypointState } from '../player/waypoints';
 
 export interface GalaxySaveJSON {
@@ -546,6 +547,9 @@ interface SideTables {
      *  waypoints saves the same text as before — and in older saves. The replica sync carries the live table, or null
      *  (replicaSideTables), so deleting the last one reaches the replica too. */
     waypoints?: WaypointState | null;
+    /** What each location hint points at (player/hintSubjects.ts; "x,y" -> text): absent while none is recorded and in
+     *  older saves. The replica sync carries the live table or null. */
+    hintSubjects?: Record<string, HintInfo> | null;
 }
 
 function collectSideTables(galaxy: Galaxy, visited: readonly object[]): SideTables {
@@ -581,6 +585,8 @@ function collectSideTables(galaxy: Galaxy, visited: readonly object[]): SideTabl
     if (battles !== undefined) out.battleReports = battles;
     const wps = savedWaypointState(galaxy);
     if (wps !== undefined) out.waypoints = wps;
+    const hs = savedHintSubjects(galaxy);
+    if (hs !== undefined) out.hintSubjects = hs;
     return out;
 }
 
@@ -610,6 +616,7 @@ function restoreSideTables(galaxy: Galaxy, t: SideTables): void {
     });
     if (t.battleReports !== undefined) restoreBattleReportState(galaxy, t.battleReports);
     restoreWaypointState(galaxy, t.waypoints);
+    restoreHintSubjects(galaxy, t.hintSubjects);
 }
 
 type TerritoryGrid = Uint8Array[] | null;
@@ -756,6 +763,7 @@ export function replicaSideTables(galaxy: Galaxy, visited: readonly object[]): o
     // The live waypoint table, also while empty (the save leaves it out then): the root keeps the key, so a delete of
     // the last waypoint reaches the replica.
     t.waypoints = liveWaypointState(galaxy);
+    t.hintSubjects = liveHintSubjects(galaxy);
     return t;
 }
 
