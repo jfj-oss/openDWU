@@ -20,7 +20,7 @@ import type { Character, CaptainBonuses } from '../characters';
 import type { EmpireActivity } from '../pirates/empireActivity';
 import type { Design } from '../design';
 import type { Facility } from '../data/facilities';
-import type { DesignPlacementTweak } from '../designPlacement';
+import type { AIDesignChooser } from '../designPlacement';
 import type { DesignSpecification } from '../data/designSpecifications';
 
 // ---------------------------------------------------------------------------
@@ -600,7 +600,7 @@ export interface ScenarioQueries {
      * the template, the size-up share and the trim order of `empire`'s new `spec.subRole` design (stock: null = none).
      * Handlers must not mutate `spec` (it is the empire's own template). Smarter AI ship design. No Rnd.
      */
-    aiDesignTweak: { value: DesignPlacementTweak | null; args: { empire: Empire; spec: DesignSpecification } };
+    aiDesignTweak: { value: AIDesignChooser | null; args: { empire: Empire; spec: DesignSpecification } };
 }
 export type ScenarioQueryName = keyof ScenarioQueries;
 

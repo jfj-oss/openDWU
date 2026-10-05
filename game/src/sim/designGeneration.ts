@@ -30,7 +30,7 @@ import { ComponentCategoryType, resolveTechFocuses } from './data/policies';
 import { designLineOwnsSubRole } from './player/designLineUpgrade';
 import { Design, BuiltObjectStance, determineHabModulesRequired, determineLifeSupportRequired, findNewest } from './design';
 import { generateDesignName, type PreviousDesignForNaming } from './designNames';
-import { placeComponentsOnDesignSized, placeComponentsOnDesignWithTech, selectPreferredSuperWeapon, type DesignPlacementEmpire } from './designPlacement';
+import { placeComponentsOnDesignSized, placeComponentsOnDesignWithTech, selectPreferredSuperWeapon, type AIDesignChooser, type DesignPlacementEmpire, type DesignPlacer } from './designPlacement';
 import { Empire, raceDesignPictureFamilyIndexPirates } from './empire';
 import type { Galaxy } from './galaxy';
 import { ShipDesignFocus, type ResearchStatic, type ResearchSystem } from './researchSystem';
@@ -101,6 +101,38 @@ function standardPictureRef(family: number, subRole: BuiltObjectSubRole): number
 }
 
 /** The DesignPlacementEmpire view of an Empire (Race fields renamed to the C# names). */
+/**
+ * [scenario] A scenario's design choice (AIDesignChooser): every placement goes on a fresh copy of `template`; the first
+ * one draws Galaxy.Rnd through `view` and records the draws, later ones replay them (so the random sequence is the
+ * stock one). Not in the original.
+ */
+function chooseScenarioDesign(
+    chooser: AIDesignChooser,
+    view: DesignPlacementEmpire,
+    template: Design,
+    torpedoWeapons: ComponentImprovementEntry[],
+    maxShipSize: number,
+    maxBaseSize: number,
+    mostRecentDesign: Design | null,
+): Design | null {
+    const draws: number[] = [];
+    let calls = 0;
+    const place: DesignPlacer = (spec, tweak) => {
+        const first = calls++ === 0;
+        let at = 0;
+        const rnd = first
+            ? { next: (lo: number, hi: number): number => { const v = view.rnd.next(lo, hi); draws.push(v); return v; } }
+            : { next: (lo: number, hi: number): number => Math.max(lo, Math.min(hi - 1, at < draws.length ? draws[at++] : lo)) };
+        const d = new Design(template.name);
+        d.role = template.role;
+        d.subRole = template.subRole;
+        d.imageScalingType = template.imageScalingType;
+        d.imageScalingFactor = template.imageScalingFactor;
+        return placeComponentsOnDesignSized({ ...view, rnd }, d, spec, torpedoWeapons, maxShipSize, maxBaseSize, mostRecentDesign, tweak);
+    };
+    return chooser.choose(place, maxShipSize);
+}
+
 export function placementView(empire: Empire, galaxy: Galaxy): DesignPlacementEmpire {
     const race = empire.dominantRace;
     return {
@@ -669,8 +701,11 @@ export function createNewDesigns(galaxy: Galaxy, empire: Empire, designDate: num
         design4.imageScalingFactor = spec.imageScalingFactor;
         const maxShipSize = empire.maximumConstructionSize(design4.subRole);
         const maxBaseSize = empire.maximumConstructionSizeBase(design4.subRole);
-        const tweak = galaxy.scenario !== null ? scenarioQuery(galaxy, 'aiDesignTweak', null, { empire, spec }) : null; // [scenario] Smarter AI ship design
-        const design5 = placeComponentsOnDesignSized(view, design4, tweak?.spec ?? spec, componentImprovementList, maxShipSize, maxBaseSize, design1, tweak);
+        const chooser = galaxy.scenario !== null ? scenarioQuery(galaxy, 'aiDesignTweak', null, { empire, spec }) : null; // [scenario] Smarter AI ship design
+        const design5 =
+            chooser === null
+                ? placeComponentsOnDesignSized(view, design4, spec, componentImprovementList, maxShipSize, maxBaseSize, design1)
+                : chooseScenarioDesign(chooser, view, design4, componentImprovementList, maxShipSize, maxBaseSize, design1);
         if (design5 === null) continue;
         applySubRoleBehaviour(empire, design5, spec, fleeWhen6, militaryFleeWhen);
         const design6 = design1;

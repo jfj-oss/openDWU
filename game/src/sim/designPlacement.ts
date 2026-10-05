@@ -73,14 +73,27 @@ export type DesignTrimFamily = 'gasExtractor' | 'mineExtractor' | 'luxuryExtract
 export const STOCK_TRIM_ORDER: readonly DesignTrimFamily[] = ['gasExtractor', 'mineExtractor', 'luxuryExtractor', 'troop', 'passenger', 'engine', 'fighterBay', 'beam', 'torpedo', 'armor', 'shields', 'energyCollector'];
 
 /**
- * Not in the original: a scenario's changes to one AI design (scenario query `aiDesignTweak`, Smarter AI). Null = the
- * stock placement. `spec` replaces the template, `scaleShare` (> 0) lets a sub-role the stock size-up pass skips grow
- * towards that share of MaximumConstructionSize, `trimOrder` replaces the trim pass's removal order.
+ * Not in the original: a scenario's changes to one placement of an AI design (Smarter AI). Null = the stock
+ * placement. `spec` replaces the template, `scaleShare` replaces the size-up pass's share of MaximumConstructionSize
+ * (stock: 1 for capital ships and carriers, 0 = no size-up for the rest), `trimOrder` replaces the trim pass's removal
+ * order (null: the stock order; [] = no trimming).
  */
 export interface DesignPlacementTweak {
     spec: DesignSpecification;
     scaleShare: number;
     trimOrder: readonly DesignTrimFamily[] | null;
+}
+
+/** One placement of `spec` (with `tweak`) on a fresh design of the sub-role being reviewed. */
+export type DesignPlacer = (spec: DesignSpecification, tweak: DesignPlacementTweak | null) => Design | null;
+
+/**
+ * Not in the original: a scenario's own choice of an AI design (scenario query `aiDesignTweak`, Smarter AI).
+ * createNewDesigns calls `choose` in place of its one stock placement. `place`'s first call draws Galaxy.Rnd as the stock
+ * placement would; later calls replay those draws, so the random sequence is the stock one whatever `choose` tries.
+ */
+export interface AIDesignChooser {
+    choose(place: DesignPlacer, maxShipSize: number): Design | null;
 }
 
 const MOBILE_SUBROLES = new Set<BuiltObjectSubRole>([
@@ -657,8 +670,8 @@ export function placeComponentsOnDesign(
     // (a fresh call, not the maxShipSize parameter — matches Empire.10.cs 2276 exactly).
     let num23 = 0;
     let num24 = 0;
-    // [scenario] a tweak's scaleShare also sizes up other sub-roles (stock: capital ships and carriers, share 1).
-    const scaleShare = design.subRole === BuiltObjectSubRole.CapitalShip || design.subRole === BuiltObjectSubRole.Carrier ? 1 : (tweak?.scaleShare ?? 0);
+    // [scenario] a tweak's scaleShare replaces the stock share (capital ships and carriers 1, the rest 0).
+    const scaleShare = tweak !== null ? tweak.scaleShare : design.subRole === BuiltObjectSubRole.CapitalShip || design.subRole === BuiltObjectSubRole.Carrier ? 1 : 0;
     if (scaleShare > 0) {
         num23 = modulesRequiredForSize(habModuleCi, sizeUsed);
         num24 = modulesRequiredForSize(lifeSupportCi, sizeUsed);
