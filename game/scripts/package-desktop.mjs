@@ -69,7 +69,7 @@ const sameBytes = (a, b) => fs.statSync(a).size === fs.statSync(b).size && fs.re
 function guardDist(distDir) {
     const problems = [];
     for (const f of walkFiles(distDir)) {
-        if (f.rel === 'index.html') continue;
+        if (f.rel === 'index.html' || f.rel === 'sim.html') continue; // the game; the desktop sim process's page
         if (/^assets\/[^/]+\.(js|css|map|wasm|svg|woff2?)$/i.test(f.rel)) continue;
         if (f.rel === 'assets/scenarios/index.json') continue;
         if (f.rel.startsWith('assets/scenarios/')) {
@@ -85,6 +85,23 @@ function guardDist(distDir) {
     if (problems.length > 0) {
         throw new Error(`dist/ holds files outside the allow-list (install-derived or unexpected; see scripts/package-desktop.mjs guardDist):\n  ${problems.join('\n  ')}`);
     }
+}
+
+/**
+ * Every desktop file the shell loads is staged: each `require('./x.cjs')` and each `path.join(__dirname, 'x')` (the
+ * preloads, setup.html) in a staged .cjs must name a staged file — a new desktop file outside the copied kinds fails
+ * here instead of in the packaged app.
+ */
+function guardStage(stageDesktop) {
+    const missing = [];
+    for (const f of fs.readdirSync(stageDesktop).filter((n) => n.endsWith('.cjs'))) {
+        const src = fs.readFileSync(path.join(stageDesktop, f), 'utf8');
+        for (const m of src.matchAll(/require\('\.\/([^']+)'\)|path\.join\(__dirname, '([^'.][^']*)'\)/g)) {
+            const ref = m[1] ?? m[2];
+            if (!fs.existsSync(path.join(stageDesktop, ref))) missing.push(`${f} -> ${ref}`);
+        }
+    }
+    if (missing.length > 0) throw new Error(`desktop files the shell loads are not staged (scripts/package-desktop.mjs step 3):\n  ${missing.join('\n  ')}`);
 }
 
 /** No install-derived listing may ship under any name; no file may be a symlink pointing outside the app. */
@@ -135,6 +152,10 @@ console.log(`Building game ${version} (npm run build)...`);
 execSync('npm run build', { cwd: root, stdio: 'inherit' });
 const distDir = path.join(root, 'dist');
 guardDist(distDir);
+// The pages the shell loads from dist/: the game, and the sim process's page (desktop/simProcess.cjs).
+for (const page of ['index.html', 'sim.html']) {
+    if (!fs.existsSync(path.join(distDir, page))) throw new Error(`dist/${page} is missing (vite.config.ts build inputs)`);
+}
 
 // 2. Our own icon (scripts/make-icon.mjs): .icns / .ico for the bundle, icon.png as resources/icon.png.
 const icons = makeIcons(path.join(releaseDir, 'icons'));
@@ -146,6 +167,7 @@ fs.mkdirSync(path.join(stageDir, 'desktop'), { recursive: true });
 for (const f of fs.readdirSync(path.join(root, 'desktop'))) {
     if (/\.(cjs|html)$/.test(f)) fs.copyFileSync(path.join(root, 'desktop', f), path.join(stageDir, 'desktop', f));
 }
+guardStage(path.join(stageDir, 'desktop'));
 fs.writeFileSync(
     path.join(stageDir, 'package.json'),
     JSON.stringify(

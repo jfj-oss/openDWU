@@ -1,7 +1,7 @@
 # Sim worker: the simulation on its own thread
 
 Status: **the default (2026-10-03, after the final check in §10).** Every game (new, loaded, tutorial, restarted) runs
-its simulation in a Web Worker, in the browser and in the desktop app. The in-thread mode stays as the fallback (§6):
+its simulation in a Web Worker, in the browser and in the desktop app (there in a process of its own, §4.7). The in-thread mode stays as the fallback (§6):
 `?simWorker=0`, or Options → "Simulation in a worker thread (next game)" unticked (main menu Options or the game menu's
 option list). With it, the game runs exactly as before the worker: one thread, the same code path. `?simWorker=1`
 forces the worker whatever the setting says.
@@ -853,6 +853,44 @@ exact after a full compare; a source that throws or does not load gives way to t
 `scripts/simworker-smoke.mjs` crashes the worker twice (`SimWorkerClient.simulateFatal`: from the worker's save;
 `SimWorkerClient.stop`: from the replica), restarts through the box and recruits in the restarted game.
 
+### 4.7 The desktop app's sim process (`src/simworker/simEndpoint.ts`, `desktop/simProcess.cjs`)
+
+With V8's pointer compression every isolate of a renderer process lives in one ~4 GB cage. In the browser the sim
+worker shares the game page's process, so the page and the worker share that cage; on a 101k-habitat galaxy the
+desktop app died of a V8 OOM with one isolate at only 1.3 GB. In the desktop app the worker therefore runs in a
+**process of its own**:
+
+- **Transport.** `SimWorkerClient` talks to a `SimEndpoint` (`postMessage` / `onmessage` / `onmessageerror` /
+  `onerror` / `onexit` / `terminate`). `WebWorkerEndpoint` wraps the page's own Web Worker (the browser, unchanged);
+  `MessagePortEndpoint` wraps a MessagePort to the desktop sim process. `SimWorkerClient.createEndpoint` picks the sim
+  process when the shell offers `window.dwuDesktop.simProcess` (desktop/gamePreload.cjs), unless `?simProcess=0`.
+  Posts made before the process is connected are queued (with their transfers) and sent in order.
+- **The process.** `desktop/simProcess.cjs` opens a hidden BrowserWindow (`show: false`, sandboxed, context
+  isolation on, `backgroundThrottling: false`) on `dwu://app/sim.html` (a second Vite page,
+  `src/simworker/simProcessPage.ts`). That page starts the same `worker.ts` as a Web Worker and hands it its end of a
+  `MessageChannelMain` (`{ type: 'connectPort' }`); the game page gets the other end (`{ dwuSimPort: id }` window
+  message from its preload). From then on the game page and the worker talk directly over the port: the same
+  messages, ArrayBuffer transfers (copied between processes) and Blobs (saves, the rescue save: the window uses the
+  game page's default session, so the same Blob registry and the same `dwu://` handler for its data and art).
+- **Why a window, not a utilityProcess.** A utility process is a Node environment (no Web Worker, no Blob registry
+  shared with the page, no `dwu://` fetch); the sim would need a Node entry and shims for what `src/` takes from the
+  web platform. The window runs the browser build's worker unchanged.
+- **Failures are a dead worker's.** The sim process ending (killed, crashed, out of memory: `render-process-gone`) or
+  its window closing reaches the game page as `onexit` (`dwu:sim-exit`); an uncaught error in its worker as `onerror`
+  (`dwu:sim-error`). Both `stop` the client: everything waiting fails and the Restart prompt (§4.6) opens. The silence
+  watchdog (`WORKER_SILENT_MS`, the `alive` heartbeat), the save timeout and the hidden-window apply loop are the
+  client's, so they hold for both endpoints. The shell kills a sim when its game page terminates it, navigates
+  (reload, the main menu's reload), crashes or closes; a sim process's own end goes to `crash-log.txt` with its last
+  memory sample and its last warnings / errors, and the game page's memory sample names its sim process too.
+- **Measured** (test2, 101k habitats, Electron 44 on Linux, 4x, 12 minutes with a manual save, an autosave, 60 s
+  minimised, a kill and a restart): the game page's renderer 0.8-1.0 GB working set (JS heap 0.28-0.40 GB; peak
+  2.5 GB while the restart serialized the replica), the sim process 0.9-1.9 GB (worker heap 0.55-1.05 GB; peak 2.5 GB
+  in a save). With `?simProcess=0` the one renderer holds both: 1.9-2.6 GB, both heaps in one cage.
+
+Tests: `test/simWorkerEndpoint.test.ts` (both endpoints; queueing, transfers, exit and error routing by id,
+terminate), `test/desktopShell.test.ts` (simProcess.cjs lifecycle with a fake Electron: the window's settings, the
+port hand-off, kill on terminate / navigation / crash / close, the crash log).
+
 ## 5. Determinism, the command log, saves and replays
 
 - **The step loop is the in-thread one.** The worker's `SimHost.tick` runs the same `SimFrameBudget.run(SimDriver, …)`
@@ -912,6 +950,9 @@ The only behaviour changes in this mode are:
 | `src/simworker/clientCore.ts` | Main-side core: replica, command sink, replies, clock hand-off, render time, sync stats (DOM-free) |
 | `src/simworker/worker.ts` | Worker entry: data loading, create / load, timer loop, message dispatch |
 | `src/simworker/workerClient.ts` | Main-side Worker wrapper, boot with progress, frame loop, async save / digest, the flag |
+| `src/simworker/simEndpoint.ts` | The transport: the page's Web Worker, or the desktop sim process's MessagePort (§4.7) |
+| `src/simworker/simProcessPage.ts`, `sim.html` | The desktop sim process's page: runs worker.ts and hands it the game page's port (§4.7) |
+| `desktop/simProcess.cjs`, `desktop/simPreload.cjs` | The desktop sim process: its hidden window, the channel, its lifecycle and crash log (§4.7) |
 | `src/simworker/remoteArgs.ts` | Command arguments and replies across the boundary (sync ids) |
 | `src/simworker/commandFailure.ts` | Each player op's failure value, for commands the worker could not apply (§4.4 "Failed commands") |
 | `src/simworker/restart.ts` | The restart after the worker stopped: sources, prompt text, fallbacks (§4.6) |

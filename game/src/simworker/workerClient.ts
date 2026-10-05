@@ -10,6 +10,7 @@ import type { CommandLogEntry } from '../sim/player/commandLog';
 import type { DebugReply, DebugRequest, FromWorker, InitMessage, SnapshotMessage, ToWorker, WorkerEvent } from './protocol';
 import { installReplicaWriteDetector, writeDetectorMode } from './writeDetector';
 import type { SaveText } from '../saveData';
+import { desktopSimProcessBridge, openDesktopSimEndpoint, WebWorkerEndpoint, type SimEndpoint } from './simEndpoint';
 
 /**
  * How long a save may take in the worker before it is given up (real ms). A 100k-habitat galaxy saves in ~5 s; a worker
@@ -69,13 +70,23 @@ export class SimWorkerClient {
     private watchdog: ReturnType<typeof setInterval> | null = null;
 
     private constructor(
-        private readonly worker: Worker,
+        private readonly worker: SimEndpoint,
         readonly core: SimClientCore,
     ) {}
 
+    /**
+     * Where the sim runs: the desktop app's own sim process (simEndpoint.ts, desktop/simProcess.cjs) when the shell
+     * offers one, else a Web Worker of this page.
+     */
+    static createEndpoint(): SimEndpoint {
+        const desktop = desktopSimProcessBridge(globalThis.window, globalThis.location?.search ?? '');
+        if (desktop !== null) return openDesktopSimEndpoint(globalThis.window, desktop);
+        return new WebWorkerEndpoint(new Worker(new URL('./worker.ts', import.meta.url), { type: 'module', name: 'dwu-sim' }));
+    }
+
     /** Start the worker, boot its game, and build the replica from its snapshot. */
-    static boot(init: InitMessage, gameData: ReplicaGameData, progress?: BootProgress): Promise<SimWorkerClient> {
-        const worker = new Worker(new URL('./worker.ts', import.meta.url), { type: 'module', name: 'dwu-sim' });
+    static boot(init: InitMessage, gameData: ReplicaGameData, progress?: BootProgress, endpoint: SimEndpoint = SimWorkerClient.createEndpoint()): Promise<SimWorkerClient> {
+        const worker = endpoint;
         return new Promise<SimWorkerClient>((resolve, reject) => {
             let client: SimWorkerClient | null = null;
             /** Messages after the snapshot that arrive while the replica is being built (deltas must apply in order). */
@@ -88,17 +99,23 @@ export class SimWorkerClient {
                 worker.terminate();
                 reject(err instanceof Error ? err : new Error(String(err)));
             };
-            worker.onerror = (e) => {
-                if (client === null) fail(new Error(`sim worker failed to start: ${e.message}`));
+            worker.onerror = (message) => {
+                if (client === null) fail(new Error(`sim worker failed to start: ${message}`));
                 // An exception nothing in the worker caught (worker.ts contains its handlers and its loop, so this is
                 // unexpected): its game can no longer be trusted to answer — stop, so nothing waits on it forever.
-                else client.stop(`uncaught error in the worker: ${e.message}`);
+                else client.stop(`uncaught error in the worker: ${message}`);
             };
             worker.onmessageerror = () => {
                 // A message that could not be deserialized: a step (its delta and replies) is lost, the replica is out
                 // of step with the worker.
                 if (client === null) fail(new Error('sim worker: a message from the worker could not be read'));
                 else client.stop('a message from the worker could not be read');
+            };
+            // The desktop sim process ended (killed, crashed, out of memory: desktop/simProcess.cjs): as a worker that
+            // stopped — everything waiting fails and the restart is offered (restart.ts).
+            worker.onexit = (reason) => {
+                if (client === null) fail(new Error(`sim worker: ${reason}`));
+                else client.stop(reason);
             };
             const build = async (m: SnapshotMessage): Promise<void> => {
                 try {

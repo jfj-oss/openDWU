@@ -13,13 +13,15 @@
 // folder changes (assetManifest.cjs, themeIndex.cjs), and served from memory.
 //
 // Also here: finding the install (installDir.cjs) or asking for it in the
-// setup window (setup.html), the menu (game folder, update check), and the
-// daily update check against GitHub Releases (updateCheck.cjs).
+// setup window (setup.html), the menu (game folder, update check), the
+// daily update check against GitHub Releases (updateCheck.cjs), and the
+// game's sim process: a hidden window running the sim worker in a renderer
+// process of its own (simProcess.cjs, simPreload.cjs, sim.html).
 //
 // The renderer stays platform-neutral: no Node APIs in src/, everything goes
 // through URLs under /assets/dwu/.
 
-const { app, BrowserWindow, Menu, dialog, protocol, net, nativeImage, ipcMain, shell } = require('electron');
+const { app, BrowserWindow, Menu, MessageChannelMain, dialog, protocol, net, nativeImage, ipcMain, shell } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs');
 const os = require('node:os');
@@ -31,6 +33,7 @@ const { buildAssetManifest } = require('./assetManifest.cjs');
 const { createResolver } = require('./resolvePath.cjs');
 const installLib = require('./installDir.cjs');
 const updates = require('./updateCheck.cjs');
+const { createSimProcesses } = require('./simProcess.cjs');
 
 // dist/ lives next to desktop/ in the repo; when packaged it is copied into
 // resources/ by @electron/packager (extraResource in scripts/package-desktop.mjs).
@@ -338,6 +341,32 @@ function setupInfo() {
     };
 }
 
+function appendCrashLog(text) {
+    try {
+        fs.appendFileSync(path.join(app.getPath('userData'), 'crash-log.txt'), text);
+    } catch {
+        /* best effort */
+    }
+}
+
+// The game's simulation in a process of its own (simProcess.cjs): started by the game page (gamePreload.cjs), connected
+// once the sim page listens (simPreload.cjs). Same (default) session as the game page: its dwu:// handler serves the sim
+// page, its worker and the /assets/dwu/ data, and Blobs (saves) cross between the two.
+const simProcesses = createSimProcesses({
+    electron: { BrowserWindow, MessageChannelMain, app },
+    preload: path.join(__dirname, 'simPreload.cjs'),
+    url: 'dwu://app/sim.html',
+    crashLog: appendCrashLog,
+    version: APP_VERSION,
+});
+ipcMain.handle('dwu:sim-start', (event) => {
+    if (mainWin === null || event.sender !== mainWin.webContents) throw new Error('not the game window');
+    return simProcesses.start(event.sender);
+});
+ipcMain.on('dwu:sim-terminate', (event, id) => simProcesses.terminate(event.sender, id));
+ipcMain.on('dwu-sim:ready', (event) => simProcesses.ready(event.sender));
+ipcMain.on('dwu-sim:worker-error', (event, message) => simProcesses.workerError(event.sender, message));
+
 // The main menu's Check for Updates (gamePreload.cjs): the manual check, from the game window only.
 ipcMain.handle('dwu:check-updates', async (event) => {
     if (mainWin === null || event.sender !== mainWin.webContents) return false;
@@ -605,11 +634,7 @@ function createWindow() {
         // reports it after its silence watchdog — or stopped answering) goes to the crash log at once, with the memory:
         // the page may well die of the same cause minutes later, or the player quits from the restart prompt.
         if (level === 'error' && /sim worker: STOPPED|Autosave failed/.test(String(message))) {
-            try {
-                fs.appendFileSync(path.join(app.getPath('userData'), 'crash-log.txt'), `${entry} version=${APP_VERSION}\n` + (lastMemory !== '' ? `  last memory sample: ${lastMemory}\n` : ''));
-            } catch {
-                /* best effort */
-            }
+            appendCrashLog(`${entry} version=${APP_VERSION}\n` + (lastMemory !== '' ? `  last memory sample: ${lastMemory}\n` : ''));
         }
     });
     const memoryTimer = setInterval(() => {
@@ -617,6 +642,10 @@ function createWindow() {
             const pid = win.webContents.getOSProcessId();
             const m = app.getAppMetrics().find((x) => x.pid === pid);
             if (m) lastMemory = `${new Date().toISOString()} page working set ${(m.memory.workingSetSize / 1024 / 1024).toFixed(2)} GB, peak ${(m.memory.peakWorkingSetSize / 1024 / 1024).toFixed(2)} GB`;
+            // The sim process (simProcess.cjs) beside it: the page's crash log names both.
+            for (const sim of simProcesses.list()) {
+                if (sim.owner === win.webContents && sim.memory) lastMemory += `; sim process working set ${sim.memory.workingSetGB.toFixed(2)} GB, peak ${sim.memory.peakGB.toFixed(2)} GB`;
+            }
         } catch {
             /* the page is gone */
         }
@@ -629,11 +658,7 @@ function createWindow() {
             (recentConsole.length > 0 ? `  last page warnings / errors:\n${recentConsole.map((l) => `    ${l}`).join('\n')}\n` : '');
         recentConsole.length = 0;
         console.error(`[crash] ${line.trim()}`);
-        try {
-            fs.appendFileSync(path.join(app.getPath('userData'), 'crash-log.txt'), line);
-        } catch {
-            /* best effort */
-        }
+        appendCrashLog(line);
         if (win.isDestroyed()) return;
         const oom = details.reason === 'oom';
         const { response } = await showMessage({

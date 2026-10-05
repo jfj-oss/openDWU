@@ -367,6 +367,11 @@ export default defineConfig({
         // Do not copy public/ (the assets/dwu symlink is ~4 GB, plus the generated install listings); our own
         // public/art/ is copied by copyOwnArt above.
         copyPublicDir: false,
+        rollupOptions: {
+            // index.html: the game. sim.html: the desktop app's sim process page (a hidden window running the sim
+            // worker in a renderer process of its own: desktop/simProcess.cjs, src/simworker/simProcessPage.ts).
+            input: { main: path.join(here, 'index.html'), sim: path.join(here, 'sim.html') },
+        },
     },
     server: {
         // The DW:U install is symlinked under public/assets/dwu (thousands of files): never watch it.
