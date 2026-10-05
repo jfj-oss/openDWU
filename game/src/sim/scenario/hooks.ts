@@ -270,6 +270,12 @@ export interface ScenarioEvents {
      * the rates (and must recalculate the colony revenue they change). No Rnd in handlers. Smarter AI growth taxes.
      */
     taxesReviewed: { empire: Empire };
+    /**
+     * tick/empireTick.ts, intermediate block (Empire.cs 3626-3630): the empire's colonisation targets were just
+     * re-identified and the stock InvadeUnwillingColonizationTargets ran (expanding races only). Handlers may draw Rnd
+     * (fleet missions). Smarter AI independents.
+     */
+    colonizationTargetsReviewed: { empire: Empire };
     contractInitiated: {
         seller: Empire;
         buyer: Empire;
@@ -513,6 +519,18 @@ export interface ScenarioQueries {
      * ordered project ids the empire tries first (stock: the race's list). `industry` is IndustryType. Smarter AI.
      */
     researchProjectOrder: { value: readonly number[]; args: { empire: Empire; industry: number } };
+    /**
+     * civilianAI.ts identifyColonizationTargetsFull (Empire.4.cs 4662), the DetermineColonizationValue read: a
+     * candidate's value before the threshold / danger tests (stock: unchanged). `filterOutDangerousTargets` is the
+     * caller's flag (true for the colonisation list). Pure, never draws. Smarter AI colonies / independents.
+     */
+    colonizationTargetValue: { value: number; args: { empire: Empire; habitat: Habitat; filterOutDangerousTargets: boolean } };
+    /**
+     * construction/empireConstruction.ts directConstruction (Empire.6.cs 2630 colonisation block): the most new colony
+     * ships this pass may order (stock: Infinity when the freighter / military gate is open, 0 when closed). Pure,
+     * never draws. Smarter AI colonies.
+     */
+    colonyShipBuildCap: { value: number; args: { empire: Empire } };
     /**
      * A numeric AI build target (Smarter AI budget). `kind`: 'defensiveForce' = buildDefensiveBases' firepower required
      * per colony (Empire.10.cs 1211, num2); 'researchStationsPerColony' = checkBuildoutResearchCapacityAtColonies' cap

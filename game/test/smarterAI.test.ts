@@ -37,7 +37,7 @@ import { protectionWorthIt, sharedThreatPlans } from '../src/sim/scenario/smarte
 import { planetaryFacilityDefinitionsStatic } from '../src/sim/construction/facilities';
 
 const SC = 'smarter-ai';
-const ALL_OFF = { smarterAI: false, smarterAIResearch: false, smarterAIGrowthTax: false, smarterAIBudget: false, smarterAIRetrofit: false, smarterAIDefence: false, smarterAIPirates: false, smarterAIResearchStations: false, smarterAIWonders: false, smarterAIEspionage: false, smarterAIDiplomacy: false };
+const ALL_OFF = { smarterAI: false, smarterAIResearch: false, smarterAIGrowthTax: false, smarterAIBudget: false, smarterAIRetrofit: false, smarterAIDefence: false, smarterAIPirates: false, smarterAIColonies: false, smarterAIIndependents: false, smarterAIResearchStations: false, smarterAIWonders: false, smarterAIEspionage: false, smarterAIDiplomacy: false };
 const STATECRAFT_ON = { smarterAIResearchStations: true, smarterAIWonders: true, smarterAIEspionage: true, smarterAIDiplomacy: true };
 
 let base: GameData;

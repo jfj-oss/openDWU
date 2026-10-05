@@ -1704,11 +1704,22 @@ function buildOtherEmpiresPage(ctx: WizardCtx): HTMLDivElement {
         ctx.refreshScenario();
     }, FONT.normal);
     smartPirates.row.classList.add('wizard-smarter-ai-pirates');
+    // Smarter AI colony picks / absorb independents (plain rows; the coordinator folds the sub-options into a list later).
+    const smartColonies = check(smartPanel, 'Smarter colony picks', smart.colonies ?? true, 30, 83, (v) => {
+        smart.colonies = v;
+        ctx.refreshScenario();
+    }, FONT.normal);
+    smartColonies.row.classList.add('wizard-smarter-ai-colonies');
+    const smartIndependents = check(smartPanel, 'Absorb independent worlds', smart.independents ?? true, 290, 83, (v) => {
+        smart.independents = v;
+        ctx.refreshScenario();
+    }, FONT.normal);
+    smartIndependents.row.classList.add('wizard-smarter-ai-independents');
     ctx.helpOn(smartPanel, () => ['Smarter AI', 'AI empires only (never you or pirates): an optimised research order, and no taxes on growing colonies unless the treasury needs them.']);
     function paintSmart(): void {
         smartResearch.input.disabled = !smart.enabled;
         smartTax.input.disabled = !smart.enabled;
-        for (const c of [smartBudget, smartRetrofit, smartDefence, smartPirates, ...statecraftChecks]) {
+        for (const c of [smartBudget, smartRetrofit, smartDefence, smartPirates, smartColonies, smartIndependents, ...statecraftChecks]) {
             c.input.disabled = !smart.enabled;
             c.row.classList.toggle('is-disabled', !smart.enabled);
         }

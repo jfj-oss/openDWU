@@ -1622,6 +1622,9 @@ export function directConstruction(galaxy: Galaxy, empire: Empire): void {
     if (num >= num5 && num2 >= num6) flag = true;
     if (galaxy.scenario !== null) flag = scenarioQuery(galaxy, 'colonizationBuildAllowed', flag, { empire }); // Mod layer (Smarter AI budget)
     if (empire.dominantRace !== null && !empire.dominantRace.expanding) flag = false;
+    // Mod layer (Smarter AI colonies): the most new colony ships this pass may order (stock: unlimited behind the gate).
+    const colonyShipCap = galaxy.scenario !== null ? scenarioQuery(galaxy, 'colonyShipBuildCap', flag ? Infinity : 0, { empire }) : flag ? Infinity : 0;
+    let colonyShipsOrdered = 0;
     // `_ = ThisYearsSpacePortIncome; CalculateAccurateAnnualIncome();` — the result is discarded (no side effects).
     calculateAccurateAnnualIncome(galaxy, empire);
     const current = currentStateForceStructure(empire, currentStarDate);
@@ -1743,7 +1746,7 @@ export function directConstruction(galaxy: Galaxy, empire: Empire): void {
         }
     }
     // 2630-2735: colonization.
-    if (flag && empire.controlColonization !== AutomationLevel.Undefined) {
+    if (colonyShipCap > 0 && empire.controlColonization !== AutomationLevel.Undefined) {
         const habitatList3 = determineHabitatsBeingColonized(empire);
         // _ColonizationTargets.Sort(); Reverse() — in place (HabitatPrioritization.CompareTo: Priority).
         const targets = empire.colonizationTargets as { habitat: Habitat; priority: number; assignedShip?: unknown }[];
@@ -1779,7 +1782,7 @@ export function directConstruction(galaxy: Galaxy, empire: Empire): void {
             const flag3 = empire.canDesignColonizeHabitat(design5, target);
             if ((!flag3 && !list3.includes(target.type)) || habitatPrioritization.priority < HABITAT_COLONIZATION_THRESHHOLD) continue;
             const num22 = design5.calculateCurrentPurchasePrice(galaxy);
-            if (!(num12 + num22 <= empire.stateMoney)) continue;
+            if (!(num12 + num22 <= empire.stateMoney) || colonyShipsOrdered >= colonyShipCap) continue;
             design5.buildCount++;
             const builtObject6 = new BuiltObject(design5, galaxy.generateBuiltObjectName(design5), galaxy);
             builtObject6.purchasePrice = num22;
@@ -1811,6 +1814,7 @@ export function directConstruction(galaxy: Galaxy, empire: Empire): void {
                             habitatPrioritization.assignedShip = builtObject6;
                             empire.addBuiltObjectToGalaxy(builtObject6, habitat, false, true);
                             num12 += num22;
+                            colonyShipsOrdered++;
                             assignMission(galaxy, builtObject6, BuiltObjectMissionType.Colonize, target, null, BuiltObjectMissionPriority.Normal);
                             builtObject6.builtAt = habitat;
                             colonies.cargo.push(procureConstructionComponentsAtColony(galaxy, empire, builtObject6, habitat));

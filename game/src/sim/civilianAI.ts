@@ -2369,6 +2369,7 @@ export function identifyColonizationTargetsFull(galaxy: Galaxy, empire: Empire, 
             }
             const habitat2 = habitat;
             num5 = determineColonizationValue(galaxy, empire, habitat2);
+            if (galaxy.scenario !== null) num5 = scenarioQuery(galaxy, 'colonizationTargetValue', num5, { empire, habitat: habitat2, filterOutDangerousTargets }); // mod layer (Smarter AI colonies / independents)
             if (!(num5 >= thresholdValue)) continue;
             let flag4 = true;
             if (flag2 && filterOutDangerousTargets && num5 < num3) flag4 = false;

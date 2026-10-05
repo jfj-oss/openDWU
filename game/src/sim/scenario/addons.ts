@@ -95,6 +95,10 @@ export interface SmarterAIChoice {
     retrofit?: boolean;
     /** Growth taxes: colonies below this % of their maximum population are untaxed. */
     growthTaxThreshold: number;
+    /** Smarter colony picks (absent = on). */
+    colonies?: boolean;
+    /** Absorb independent worlds (absent = on). */
+    independents?: boolean;
     /** Defence that counts pirates (smarterAIDefence). */
     defence?: boolean;
     /** Pirate clean-up (smarterAIPirates). */
@@ -107,7 +111,7 @@ export interface SmarterAIChoice {
 }
 
 export function defaultSmarterAIChoice(): SmarterAIChoice {
-    return { enabled: false, research: true, growthTaxes: true, growthTaxThreshold: 70, budget: true, retrofit: true, defence: true, pirates: true, researchStations: true, wonders: true, espionage: true, diplomacy: true };
+    return { enabled: false, research: true, growthTaxes: true, growthTaxThreshold: 70, budget: true, retrofit: true, colonies: true, independents: true, defence: true, pirates: true, researchStations: true, wonders: true, espionage: true, diplomacy: true };
 }
 
 /**
@@ -126,6 +130,8 @@ export function withSmarterAI(picked: readonly string[], overrides: AddonOverrid
                 smarterAIGrowthTax: smart.growthTaxes,
                 smarterAIBudget: smart.budget !== false,
                 smarterAIRetrofit: smart.retrofit !== false,
+                smarterAIColonies: smart.colonies !== false,
+                smarterAIIndependents: smart.independents !== false,
                 smarterAIDefence: smart.defence ?? true,
                 smarterAIPirates: smart.pirates ?? true,
                 smarterAIResearchStations: smart.researchStations ?? true,
