@@ -393,18 +393,27 @@ export function renderOrbitAngle(orbitAngle: number, anglePerSecond: number, orb
 }
 
 // Safety bound (sim seconds) on renderOrbitAngle's extrapolation, for a habitat that has gone stale (a long-paused
-// tab). It must stay well above the real gap between touches: the background pass (scheduler.ts backgroundPass
-// "GxHab") touches each habitat once per round-robin cycle of habitatCount / HABITAT_TICK_BATCH_SIZE sim frames, but
-// the batches wrap the habitat list, so a habitat's gap is up to ceil(cycle) + 1 frames, and the drawn instant runs
-// up to one step past the last committed one. A bound of exactly one cycle at 4x (the old value) froze every habitat
-// for a frame or two at the end of each cycle at 4x speed — visible as a fast inner planet stopping and starting.
-// The extrapolation is the exact orbit Move applies at the next touch, so a looser bound costs nothing: twice the
-// worst-case gap at the fastest game speed (4x, the documented top of Galaxy TimeSpeed).
+// tab). It must stay well above the real age of the (orbitAngle, lastTouch) pair the view reads:
+// - the background pass (scheduler.ts backgroundPass "GxHab") touches each habitat once per round-robin cycle of
+//   habitatCount / HABITAT_TICK_BATCH_SIZE sim frames, but the batches wrap the habitat list, so a habitat's gap is up
+//   to ceil(cycle) + 1 frames, and the drawn instant runs up to one step past the last committed one. A bound of
+//   exactly one cycle at 4x froze every habitat for a frame or two at the end of each cycle at 4x speed.
+// - with the sim worker the pair reaches the replica in the cold cycle (simworker/replicaGalaxy.ts
+//   mixedStreamFields: Habitat is a cold class), which adds up to a cold cycle plus the main thread's pump backlog —
+//   seconds of REAL time, unrelated to the habitat count (about 2 s on the 101 652-habitat test3 save, i.e. 8 sim s
+//   at 4x; a cycle is at most replicaSync.ts minColdSlices = 1200 steps, 20 s). Without that allowance the pair aged past twice the round-robin gap (14.7 s > 13.9 s at 4x on test3):
+//   thousands of planets and moons stopped for a few frames once per cold cycle, then jumped to where they belonged
+//   when the pair landed ("Etea, Dobrelleun 2, Draifar jump at a regular interval", 2026-10-04).
+// The extrapolation is the exact orbit Move applies at the next touch (and the replica's pair is always one
+// consistent sim instant), so a looser bound costs nothing but cull slack (habitatDrawnOffsetBound caps each level
+// at the orbit's diameter): twice the worst round-robin gap plus REPLICA_LAG_REAL_SECONDS of real time, both at the
+// fastest game speed (4x, the documented top of Galaxy TimeSpeed).
+const REPLICA_LAG_REAL_SECONDS = 30;
 export function habitatTouchClampSeconds(habitatCount: number): number {
     if (habitatCount <= 0) return 0;
     const MAX_GAME_SPEED = 4;
     const gapFrames = Math.ceil(habitatCount / HABITAT_TICK_BATCH_SIZE) + 2;
-    return ((2 * gapFrames) / FRAMES_PER_SECOND) * MAX_GAME_SPEED;
+    return ((2 * gapFrames) / FRAMES_PER_SECOND + REPLICA_LAG_REAL_SECONDS) * MAX_GAME_SPEED;
 }
 
 /** The orbit fields renderHabitatPos reads (Habitat). */
