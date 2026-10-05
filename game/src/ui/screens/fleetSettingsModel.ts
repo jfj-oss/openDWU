@@ -480,7 +480,7 @@ export function issueFleetOnce(galaxy: Galaxy, empire: Empire, sg: ShipGroup, op
     issuePlayerCommand(galaxy, empire, op, [sg], () => {
         end();
         done?.();
-    });
+    }, end);
     return true;
 }
 
@@ -491,7 +491,7 @@ export function issueCancelBuildOrder(galaxy: Galaxy, empire: Empire, orderId: n
     issuePlayerCommand(galaxy, empire, 'fleetTemplateCancelOrder', [orderId], () => {
         end();
         done?.();
-    });
+    }, end);
     return true;
 }
 

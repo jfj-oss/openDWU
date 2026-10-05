@@ -515,10 +515,12 @@ export async function performAction(action: ShipAction, fromActionMenu: boolean,
     const selected = deps.getSelected();
     playOrderSting(galaxy, empire, selected, action); // [audio] Main.Part7.cs:504 / 515 investigate → discovery.mp3
     // Command log: queued, applied at the next frame boundary (within one frame); the UI follow-up runs then.
-    const r = await new Promise<ShipActionResult>((resolve) => {
-        issuePlayerCommand(galaxy, empire, 'shipAction', [selected, action, fromActionMenu, actionMenuPoint], resolve);
+    // `null`: the executor threw (the game paused with a simulation error); the button is free again all the same.
+    const r = await new Promise<ShipActionResult | null>((resolve) => {
+        issuePlayerCommand(galaxy, empire, 'shipAction', [selected, action, fromActionMenu, actionMenuPoint], resolve, () => resolve(null));
     });
     replied?.();
+    if (r === null) return;
     if (deps === null) return;
     if (r.message !== undefined && r.message !== '') showToast(resolveGameText(r.message));
     if (r.mouseHoverMode !== undefined && selected instanceof ShipGroup) {

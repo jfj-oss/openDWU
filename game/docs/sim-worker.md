@@ -766,13 +766,20 @@ of the commands ahead of it, as one boundary applies them in order).
 | What happened | Callback | Promise (`remoteSimHost(g).command` / `hostOp`) |
 |---|---|---|
 | The executor ran (also a refusal: `false`, `null`, `-1`, `{ ok: false }`) | its result, as in-thread | resolves |
-| The executor threw, or an unknown op | none, as in-thread. The worker pauses with a `simError` (toast) and replies `threw`, so nothing is left waiting; the commands after it apply at the next boundary | rejects |
-| An argument cannot be sent (dropped object, unregistered class) or the worker cannot resolve it (stale sync id, unknown static), or the issuing empire is gone | the op's **failure value** (`COMMAND_FAILURE`: the value its executor returns when it refuses, with the reason as the message where the result has one) | rejects |
+| The executor threw, or an unknown op | none, as in-thread; `onFailed` (below) runs instead. The worker pauses with a `simError` (toast) and replies `threw`, so nothing is left waiting; the commands after it apply at the next boundary | rejects |
+| An argument cannot be sent (dropped object, unregistered class), the message cannot be posted (e.g. a `DataCloneError`), or the worker cannot resolve it (stale sync id, unknown static), or the issuing empire is gone | the op's **failure value** (`COMMAND_FAILURE`: the value its executor returns when it refuses, with the reason as the message where the result has one) | rejects |
 | The result has a part that cannot cross exactly (an unregistered class, a function) | the result with those parts made plain, logged loudly (`console.error`: make the type sendable) | resolves |
 | The command reached a frame boundary after its deadline (`REPLY_TIMEOUT_MS`, 30 s after it was sent: the timeout policy below) | the failure value; the worker did not apply it and says so (`expired`) | rejects |
 | No reply `REPLY_TIMEOUT_MS + REPLY_GRACE_MS` (60 s) after it was sent (the worker runs no frames: hung, or a lost message) | the failure value: the worker is declared unresponsive and stopped (next row) | rejects |
 | The worker stopped (`worker.ts` fatal: its loop or the sync threw; an uncaught error; a message that could not be read; `SimWorkerClient.stop`) | the failure value, at once. Later commands fail in a microtask, and a `workerStopped` event shows a toast and the restart box (§4.6) | rejects |
 | The game is closed, reloaded or a new one started (`SimClientCore.dispose`) | the failure value, in a microtask after the teardown. The command sink stays installed, so a command issued on the closed replica fails the same way | rejects |
+
+**`onFailed`** (`issuePlayerCommand(…, onApplied, onFailed)`, both modes): runs, after the boundary and never inside the
+issue call, when `onApplied` will not: the executor threw (in-thread too), or the remote sink threw. With both given,
+exactly one runs for every command, so a control held busy until its reply (`PendingOnce`: the HUD dispatch slots, the
+selection panel's order buttons, the Expansion Planner orders, the fleet one-shots) is always released. The dispatch
+slots (`hud.ts clickDispatchSlot`) also release on an exception in their own chain and toast every outcome
+(`test/simWorkerDispatch.test.ts`).
 
 **The timeout policy (deterministic: the worker decides).** Every command message carries a `deadline` (epoch ms,
 `performance.timeOrigin + performance.now()`, the same clock in both threads: the send time plus `REPLY_TIMEOUT_MS`).
@@ -812,7 +819,7 @@ The controls (audit of every `issuePlayerCommand` in `src/ui` next to a read of 
 | Diplomacy "trade restricted resources" check box | the 1 s re-render reset it to the replica's value | shows the value last sent |
 | Research tree click (queue / dequeue / crash question) | membership from the replica: a quick second click queued again | the queue with the clicks in flight (a second click on a node just queued asks the crash question, as in-thread) |
 | Selection panel order buttons (`orderMenu.ts`) | a second click repeated the stale button (a toggle's direction, the old page) | ignored until the order's reply (a new selection starts afresh) |
-| HUD dispatch slots | a second click re-resolved before the first order landed | busy per slot until the order's reply |
+| HUD dispatch slots | a second click re-resolved before the first order landed | busy per slot until the order's reply, or its failure (`onFailed`, a post that failed, an exception: a toast each); the build order names the player's own listed design (`hud.ts playerDesignFor`) |
 | Empire Policy automation combos (`empirePolicyModel.ts issuePolicyPanel`) | sent values remembered for as long as the panel was open | until each reply lands; in-thread and worker logs are the same (`setEmpireControl` in both modes) |
 
 Not changed, by design: commands whose arguments are the control's own value (combo boxes, check boxes the user sets,

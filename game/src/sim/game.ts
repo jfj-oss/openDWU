@@ -556,6 +556,20 @@ function inNebula(galaxy: Galaxy, h: Habitat): boolean {
 }
 
 // Port of Start.cs method_51 (AI capital search).
+//
+// `raceAlreadyHasEmpire` (not C#): another empire of this race was already placed. The C# "(Random)" branch below
+// searches only inside the race's region (method_84 + the region-distance check, 0.4 x region width from its centre)
+// while keeping 0.75 * SizeX / (sqrt(empires) - 1) from every colony; the region is 0.85 * SizeX / sqrt(empires) wide
+// (Galaxy.6.cs SetupAlienRacePopulations), so a second empire of the race practically never fits and falls to the
+// fallback (Start.cs 3948-3962), which takes the MainSequence star nearest the region's exact centre — the same star
+// every time — and puts the capital there: every later empire of the race starts in that one system. The original's
+// wizard never auto-generates a duplicate race (Start.2.cs 4200 / Start.1.cs 3980: numAutogenerateEmpiresAmount.Maximum
+// = BaconStart.method_61 - 1 = max(playable races, 20) - 1, and EmpireStartList.SelectRandomUnusedRace hands out
+// unused races first); only its manual list could. Our wizard allows up to OTHER_EMPIRES_COUNT_MAX (Big Galaxies,
+// task 19k-1), past the race count, so duplicates are common there. For such an empire the search treats the race as
+// having no region — the C#'s own `galaxyLocation == null` path (method_84 -> method_93, a random point in the
+// galaxy, and no region-distance check) — so the spacing rule decides as for a region-less race, and the fallback
+// skips stars whose system already holds an empire's colony.
 function findAiCapital(
     galaxy: Galaxy,
     race: Race,
@@ -565,16 +579,19 @@ function findAiCapital(
     playAsPirate: boolean,
     empireCount: number,
     sector: { x: number; y: number } | null,
+    raceAlreadyHasEmpire = false,
 ): Habitat | null {
     let habitat: Habitat | null = null;
     let flag = false;
     const sectorSize = galaxy.sectorSize;
+    // Not C#: see raceAlreadyHasEmpire above (null = the C# path for a race without a region).
+    const regionRace: Race | null = raceAlreadyHasEmpire ? null : race;
     if (proximity === RANDOM) {
         const num = 0.75 * (galaxy.sizeScale / (Math.sqrt(empireCount) - 1.0)); // C# SizeX; sizeScale = SizeX when square
         let num2 = 0;
         while (!flag && num2 < 200) {
             const factor = Math.min(1.0, num2 / 100.0);
-            const p = playAsPirate ? randomPointInRing(galaxy, 0.0, 1.0) : raceRegionPoint(galaxy, race, 0.0, 1.0, num2 !== 0, factor);
+            const p = playAsPirate ? randomPointInRing(galaxy, 0.0, 1.0) : raceRegionPoint(galaxy, regionRace, 0.0, 1.0, num2 !== 0, factor);
             habitat = galaxy.findNearestUncolonizedHabitat(p.x, p.y, habitatType);
             if (habitat !== null) {
                 if (inNebula(galaxy, habitat)) {
@@ -593,7 +610,7 @@ function findAiCapital(
                     if (galaxy.systemPlanetCount(galaxy.systems[star.systemIndex]) >= 4) flag = true;
                 }
                 if (habitat !== null) {
-                    const loc = determineRaceRegion(galaxy, race);
+                    const loc = determineRaceRegion(galaxy, regionRace);
                     if (loc !== null) {
                         const c = loc.resolveLocationCenter();
                         if (galaxy.calculateDistance(c.x, c.y, habitat.xpos, habitat.ypos) > loc.width * 0.4) {
@@ -610,8 +627,14 @@ function findAiCapital(
             num2++;
         }
         if (!flag && habitat === null) {
-            const p = raceRegionPoint(galaxy, race, 0.0, 1.0, false, 0.0);
-            const h3 = galaxy.findNearestHabitatOfType(p.x, p.y, HabitatType.MainSequence)!;
+            let p = raceRegionPoint(galaxy, regionRace, 0.0, 1.0, false, 0.0);
+            let h3 = galaxy.findNearestHabitatOfType(p.x, p.y, HabitatType.MainSequence)!;
+            // Not C#: a further empire of the race does not take a star whose system already holds an empire's colony
+            // (raceAlreadyHasEmpire above; bounded, keeping the last pick if every try lands on one).
+            for (let tries = 0; raceAlreadyHasEmpire && tries < 200 && systemHasEmpireColony(galaxy, h3); tries++) {
+                p = randomPointInRing(galaxy, 0.0, 1.0);
+                h3 = galaxy.findNearestHabitatOfType(p.x, p.y, HabitatType.MainSequence)!;
+            }
             // Start.cs 3952-3955.
             if (galaxy.systemPlanetCount(galaxy.systems[h3.systemIndex]) === 0 && h3.name.length <= 5) {
                 galaxy.assignSystemName(h3, 1);
@@ -1256,7 +1279,9 @@ export function* createGameSteps(opts: CreateGameOptions): Generator<GameStartPr
         const home = Galaxy.resolveHomeSystem(es.opts.homeSystemFavourability);
         // Mod layer: a scenario homePlacement rule for the race picks the capital first (no draws without one).
         const scenarioCap = galaxy.scenario !== null ? scenarioFindHomeHabitat(galaxy, aiRace, aiRace.nativeHabitatType, { randomPointInRing, inNebula }, galaxy.sectorSize * 0.7) : null;
-        const cap = scenarioCap ?? findAiCapital(galaxy, aiRace, prox, habitat, aiRace.nativeHabitatType, playAsPirate, num14 + 1, sector);
+        // Not C#: whether an empire of this race was already placed (findAiCapital raceAlreadyHasEmpire).
+        const raceAlreadyHasEmpire = empireList.some((x) => x.dominantRace === aiRace);
+        const cap = scenarioCap ?? findAiCapital(galaxy, aiRace, prox, habitat, aiRace.nativeHabitatType, playAsPirate, num14 + 1, sector, raceAlreadyHasEmpire);
         if (cap === null) throw new Error('Could not locate capital!');
         let dpfi = es.opts.designPictureFamilyIndex ?? -1;
         if (dpfi < 0) dpfi = aiRace.designsPictureFamilyIndex;

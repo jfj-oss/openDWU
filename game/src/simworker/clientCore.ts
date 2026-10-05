@@ -8,6 +8,7 @@ import type { Galaxy } from '../sim/galaxy';
 import type { GameData } from '../sim/data/gameData';
 import type { Game } from '../sim/game';
 import { setRemoteCommandSink } from '../sim/player/playerCommands';
+import { setRemoteHintSubjects, type HintInfo } from '../sim/player/hintSubjects';
 import { setRemoteWaypoints, type WaypointState } from '../sim/player/waypoints';
 import { FRAME_REAL_MS } from '../sim/tick/scheduler';
 import { createRenderTime, updateRenderTime, type RenderTime } from '../render/renderInterp';
@@ -128,6 +129,11 @@ interface Waiting {
     reply?: (r: unknown) => void;
     /** Promised replies (remoteHost.ts): a failure rejects instead. */
     reject?: (err: Error) => void;
+    /**
+     * A command's `onFailed` (playerCommands.ts issuePlayerCommand): runs when `reply` will not — the executor threw in
+     * the worker — so the issuer can always leave its waiting state.
+     */
+    failed?: (reason: string) => void;
     /** A command's arguments (a few failure values name them: commandFailure.ts). */
     args?: readonly unknown[];
     /**
@@ -282,7 +288,7 @@ export class SimClientCore {
             },
         };
         this.resolving = { object: (id) => this.replica.decoder.object(id), external: (kind, key) => this.replica.staticByRef.get(`${kind}:${key}`) };
-        setRemoteCommandSink(galaxy, (empire, op, args, onApplied) => this.sendCommand(empire, op, args, onApplied));
+        setRemoteCommandSink(galaxy, (empire, op, args, onApplied, onFailed) => this.sendCommand(empire, op, args, onApplied, undefined, onFailed));
         setRemoteRefreshSink(galaxy, (objects, onFresh) => this.requestRefresh(objects, onFresh));
         // The sim's lazy "obtain" lookups never write the replica, whoever queries it (sim/readOnlyQuery.ts).
         markReadOnlyGalaxy(galaxy);
@@ -296,6 +302,7 @@ export class SimClientCore {
         // which the worker freshens with each waypoint command's delta (the replica's own copy lands only with the
         // periodic side-table apply).
         setRemoteWaypoints(galaxy, () => ((this.replica.decoder.object(1) as Record<string, unknown> | null)?.waypoints as WaypointState | null | undefined) ?? null);
+        setRemoteHintSubjects(galaxy, () => ((this.replica.decoder.object(1) as Record<string, unknown> | null)?.hintSubjects as Record<string, HintInfo> | null | undefined) ?? null);
     }
 
     /** The replica's handle for the local-model paths (remoteHost.ts): commands and host ops with promised results. */
@@ -392,7 +399,12 @@ export class SimClientCore {
             w.reject(new Error(`sim worker: ${w.kind} ${w.op}: ${reason}`));
             return;
         }
-        if (w.kind !== 'command' || threw || w.reply === undefined) return;
+        if (w.kind !== 'command') return;
+        if (threw || w.reply === undefined) {
+            // No result to hand onApplied (the executor threw: none, as in-thread); the issuer's onFailed hears of it.
+            w.failed?.(reason);
+            return;
+        }
         this.deliverFailure(w.op, w.args ?? [], reason, w.reply);
     }
 
@@ -505,15 +517,24 @@ export class SimClientCore {
     /**
      * Send a player command (the replica's remote command sink). Never throws and never calls back inside this call
      * (in-thread the callback runs at the next boundary): a command that cannot be sent — an argument the replica no
-     * longer knows, the worker gone — fails in a microtask (see fail). `onFailed`: a promised reply (remoteHost.ts),
-     * which rejects instead.
+     * longer knows, the worker gone, a message that cannot be posted — fails in a microtask (see fail). `onRejected`: a
+     * promised reply (remoteHost.ts), which rejects instead. `onFailed`: issuePlayerCommand's, for when `onApplied`
+     * gets no result (the executor threw).
      */
-    private sendCommand(empire: Empire, op: string, args: unknown[], onApplied?: (r: unknown) => void, onFailed?: (err: Error) => void): void {
+    private sendCommand(
+        empire: Empire,
+        op: string,
+        args: unknown[],
+        onApplied?: (r: unknown) => void,
+        onRejected?: (err: Error) => void,
+        onFailed?: (reason: string) => void,
+    ): void {
+        const answered = onApplied !== undefined || onRejected !== undefined || onFailed !== undefined;
         const failSoon = (reason: string): void => {
             this.warnNotSent(op, reason);
-            if (onApplied === undefined && onFailed === undefined) return;
+            if (!answered) return;
             // Answered in issue order, after the commands still in flight ahead of it, and never inside this call.
-            const id = this.expect({ kind: 'command', op, reply: onApplied, reject: onFailed, args });
+            const id = this.expect({ kind: 'command', op, reply: onApplied, reject: onRejected, failed: onFailed, args });
             this.waiting.get(id)!.outcome = { ok: false, reason, threw: false };
             queueMicrotask(() => this.drainCommands());
         };
@@ -534,10 +555,18 @@ export class SimClientCore {
             return;
         }
         const empireId = this.replica.decoder.idOf(empire);
-        const id = onApplied === undefined && onFailed === undefined ? 0 : this.expect({ kind: 'command', op, reply: onApplied, reject: onFailed, args });
+        const id = answered ? this.expect({ kind: 'command', op, reply: onApplied, reject: onRejected, failed: onFailed, args }) : 0;
         // The deadline (the timeout policy): past it the worker rejects the command instead of applying it.
         const msg: CommandMessage = { type: 'command', id, empire: empireId, op, args: encoded, deadline: this.wallNow() + this.replyTimeoutMs };
-        this.opts.post(msg);
+        try {
+            this.opts.post(msg);
+        } catch (err) {
+            // Not sent (e.g. a DataCloneError): the worker never sees it, so it fails here like an argument that cannot
+            // be named — rather than waiting for a reply until the backstop declares the worker unresponsive.
+            console.error(`sim worker: command ${op}: posting it failed`, err);
+            if (id !== 0) this.waiting.delete(id);
+            failSoon(`it could not be posted to the worker (${err instanceof Error ? err.message : String(err)})`);
+        }
     }
 
     /**

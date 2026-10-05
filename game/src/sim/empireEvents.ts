@@ -51,6 +51,7 @@ import { BuiltObjectRole } from './data/designSpecifications';
 import { generateBuiltObjectFromDesign, doEmpireEncounter } from './exploration';
 import { BuiltObject as BuiltObjectClass, determineBuiltObjectIsState } from './builtObject';
 import { giveTerritoryMap, addLocationHint } from './tradeItems';
+import { locationSubject } from './player/hintSubjects';
 import { habitatGenerateNewTroop, identifyStrongestRaceAttackTroop } from './troops';
 import { TroopType } from './cargo';
 import {
@@ -609,7 +610,7 @@ function randomEventUncoverKnownLocations(galaxy: Galaxy, empire: Empire): void 
                     const nearestStar = relatedBuiltObject.nearestSystemStar!;
                     const message = text + formatGameTextNow('Communications Intercept Planet Destroyer', [nearestStar.name, resolveSectorDescription(galaxy, relatedBuiltObject.xpos, relatedBuiltObject.ypos), empire2.name]);
                     known.push(item);
-                    addLocationHint(empire, { x: Math.trunc(item.xpos) + Math.trunc(item.width) / 2 | 0, y: Math.trunc(item.ypos) + Math.trunc(item.height) / 2 | 0 });
+                    addLocationHint(empire, { x: Math.trunc(item.xpos) + Math.trunc(item.width) / 2 | 0, y: Math.trunc(item.ypos) + Math.trunc(item.height) / 2 | 0 }, locationSubject(item), `Intelligence (intercepted communications of ${empire2.name})`);
                     const additionalData = [empire2, item];
                     sendEventMessageToEmpire(empire, EventMessageType.UncoverPlanetDestroyerConstruction, gameText('Secret Construction Project Revealed'), message, additionalData, relatedBuiltObject);
                     if (empire === galaxy.playerEmpire) return;
@@ -641,7 +642,7 @@ function randomEventUncoverKnownLocations(galaxy: Galaxy, empire: Empire): void 
                     const message2 = text2 + formatGameTextNow('Communications Intercept Debris Field', [empire2.name, habitat.name, resolveSectorDescription(galaxy, item2.xpos, item2.ypos)]);
                     known.push(item2);
                     const point = { x: Math.trunc(item2.xpos) + (Math.trunc(Math.trunc(item2.width) / 2)), y: Math.trunc(item2.ypos) + (Math.trunc(Math.trunc(item2.height) / 2)) };
-                    addLocationHint(empire, point);
+                    addLocationHint(empire, point, locationSubject(item2), `Intelligence (intercepted communications of ${empire2.name})`);
                     sendEventMessageToEmpire(empire, EventMessageType.UncoverKnownLocation, gameText('Debris Field Revealed'), message2, item2, point);
                     return;
                 }
@@ -657,7 +658,7 @@ function randomEventUncoverKnownLocations(galaxy: Galaxy, empire: Empire): void 
                 const message3 = text3 + formatGameTextNow('Communications Intercept Restricted Area', [empire2.name, habitat2.name, resolveSectorDescription(galaxy, item3.xpos, item3.ypos)]);
                 known.push(item3);
                 const point2 = { x: Math.trunc(item3.xpos) + Math.trunc(Math.trunc(item3.width) / 2), y: Math.trunc(item3.ypos) + Math.trunc(Math.trunc(item3.height) / 2) };
-                addLocationHint(empire, point2);
+                addLocationHint(empire, point2, locationSubject(item3), `Intelligence (intercepted communications of ${empire2.name})`);
                 sendEventMessageToEmpire(empire, EventMessageType.UncoverKnownLocation, gameText('Restricted Area Revealed'), message3, item3, point2);
                 return;
             }

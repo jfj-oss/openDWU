@@ -85,6 +85,8 @@ import { confirmAutomationOff } from './orderMenu';
 import { galaxyStarDate } from '../sim/tick/simTime';
 import { createShipAction, ShipActionType } from '../sim/player/shipAction';
 import { issuePlayerCommand } from '../sim/player/playerCommands';
+import type { PlayerOpArgs, PlayerOpName, PlayerOpResult } from '../sim/player/playerOps';
+import type { Design } from '../sim/design';
 import { PendingOnce, PendingValues } from './pendingCommands';
 // [troops] end
 import { moneyPanelIncome, moneyPanelWriteDue } from '../sim/treasury';
@@ -97,7 +99,7 @@ import { toggleEmpirePolicy } from './screens/empirePolicy';
 import { toggleIntelligenceScreen } from './screens/intelligence';
 // [intel] end
 import { createSelectionActionBar, performAction, redrawSelectionActionBar, refreshSelectionActionBar, setSelectionExtraSlots, setSelectionIconResolvers, selectionShipIconUrl, type SelectionExtraSlot } from './orderMenu'; // [ordermenu]
-import { buildInfoModel, type InfoTarget } from './selectionInfo';
+import { buildInfoModel, retrofitProgressPercent, type InfoTarget } from './selectionInfo';
 import { renderInfoModel } from './selectionInfoView';
 import './selectionPanel.css';
 import { builtObjectImageUrl, resolveDrawPictureRef } from '../render/builtObjectLayer';
@@ -2667,7 +2669,8 @@ export function builtObjectStatusRows(bo: BuiltObject, player: Empire | null): {
             if (unbuilt > 0) parts.push(`${unbuilt} unbuilt`);
             components = parts.join(', ');
         } else if (bo.retrofitDesign !== null) {
-            components = `(RETROFITTING to ${bo.retrofitDesign.name})`;
+            const pct = retrofitProgressPercent(bo);
+            components = `(RETROFITTING to ${bo.retrofitDesign.name}${pct === null ? '' : pct < 0 ? ' — waiting for a yard' : `: ${pct}%`})`;
         }
     }
     rows.push({ label: 'Components', value: components });
@@ -3057,31 +3060,95 @@ function dispatchIcon(id: string, design: { pictureRef: number; subRole: number 
 
 /** The dispatch slots for habitat `h`, handed to `done` once the journaled 'habitatDispatch' command applied (it builds
  *  the candidate ships' action menus, which draws galaxy.rnd: playerOps.ts). */
-function habitatDispatchSlots(galaxy: Galaxy, player: Empire, h: Habitat, done: (slots: SelectionExtraSlot[]) => void): void {
+export function habitatDispatchSlots(galaxy: Galaxy, player: Empire, h: Habitat, done: (slots: SelectionExtraSlot[]) => void): void {
     issuePlayerCommand(galaxy, player, 'habitatDispatch', [h], (options) => done(options.map((o) => ({
         label: o.label,
         title: `${o.label}: ${o.hint}`,
         icon: dispatchIcon(o.id, o.action?.design ?? null),
         disabled: o.ship === null,
-        onClick: () => {
-            // One order per slot until its reply lands (pendingCommands.ts): a double click sends one ship, in both
-            // modes (the second click would re-resolve before the first order reached the game).
-            const end = dispatchBusy.start(`${h.habitatIndex}|${o.id}`);
-            if (end === null) return;
-            // Re-resolve at click time: ships' queues and positions have moved since the panel was drawn.
-            issuePlayerCommand(galaxy, player, 'habitatDispatch', [h], (now) => dispatchOrder(galaxy, player, h, o, now.find((x) => x.id === o.id), end));
-        },
+        onClick: () => clickDispatchSlot(galaxy, player, h, o),
     }))));
 }
 
 /** Dispatch slot orders on their way (habitat index | option id). */
 const dispatchBusy = new PendingOnce<string>();
 
-/** Give the dispatch order `o` as re-resolved at click time (`fresh`); `end` once its reply landed. */
-function dispatchOrder(galaxy: Galaxy, player: Empire, h: Habitat, o: DispatchOption, fresh: DispatchOption | undefined, end: () => void = () => {}): void {
-    if (!fresh || fresh.ship === null || fresh.action === null) {
+/** Whether a dispatch slot's order is still on its way (tests). */
+export function dispatchSlotBusy(h: Habitat, optionId: string): boolean {
+    return dispatchBusy.busy(`${h.habitatIndex}|${optionId}`);
+}
+
+/**
+ * A click on dispatch slot `o`. One order per slot until its reply lands (pendingCommands.ts): a double click sends one
+ * ship, in both modes (the second click would re-resolve before the first order reached the game). Every way the chain
+ * can end — the order's reply, a refusal, a command that could not be sent or whose executor threw, an exception here —
+ * releases the slot and says so in a toast, so the button can never stay silently locked.
+ */
+function clickDispatchSlot(galaxy: Galaxy, player: Empire, h: Habitat, o: DispatchOption): void {
+    const end = dispatchBusy.start(`${h.habitatIndex}|${o.id}`);
+    if (end === null) return;
+    let ended = false;
+    const finish = (text: string): void => {
+        if (ended) return;
+        ended = true;
         end();
-        showToast(`No available ${o.role}`);
+        showToast(text);
+    };
+    const failed = (reason: string): void => finish(`${o.label} ${h.name}: ${reason}`);
+    // Re-resolve at click time: ships' queues and positions have moved since the panel was drawn.
+    issueDispatchCommand(galaxy, player, 'habitatDispatch', [h], (now) => dispatchOrder(galaxy, player, h, o, now.find((x) => x.id === o.id), finish, failed), failed);
+}
+
+/** issuePlayerCommand for the dispatch chain: an exception from the issue itself or from `onApplied` goes to `failed`. */
+function issueDispatchCommand<K extends PlayerOpName>(
+    galaxy: Galaxy,
+    player: Empire,
+    op: K,
+    args: PlayerOpArgs<K>,
+    onApplied: (r: PlayerOpResult<K>) => void,
+    failed: (reason: string) => void,
+): void {
+    const guarded = (r: PlayerOpResult<K>): void => {
+        try {
+            onApplied(r);
+        } catch (err) {
+            failed(err instanceof Error ? err.message : String(err));
+            throw err;
+        }
+    };
+    try {
+        issuePlayerCommand(galaxy, player, op, args, guarded, failed);
+    } catch (err) {
+        failed(err instanceof Error ? err.message : String(err));
+        throw err;
+    }
+}
+
+/**
+ * The player's own Design for `design` (a design an order reply named): the same object when it is in the empire's
+ * design list, else the listed design of the same name and sub-role. In sim-worker mode the replica's design is what
+ * the command sends by sync id, so the worker gets the authoritative design (a stray copy would travel by value and
+ * reach the game as a design no empire owns).
+ */
+export function playerDesignFor(player: Empire, design: Design): Design {
+    const designs = player.designs as Design[];
+    if (designs.includes(design)) return design;
+    return designs.find((d) => d.name === design.name && d.subRole === design.subRole) ?? design;
+}
+
+/** Give the dispatch order `o` as re-resolved at click time (`fresh`); `finish` with the outcome's toast once its reply
+ *  landed, `failed` when it could not be given. */
+function dispatchOrder(
+    galaxy: Galaxy,
+    player: Empire,
+    h: Habitat,
+    o: DispatchOption,
+    fresh: DispatchOption | undefined,
+    finish: (text: string) => void,
+    failed: (reason: string) => void,
+): void {
+    if (!fresh || fresh.ship === null || fresh.action === null) {
+        finish(`No available ${o.role}`);
         return;
     }
     const ship = fresh.ship;
@@ -3091,14 +3158,22 @@ function dispatchOrder(galaxy: Galaxy, player: Empire, h: Habitat, o: DispatchOp
         // construction ship that finishes it first takes it, instead of a backlog on one ship.
         const p = fresh.action.position;
         const zero = p.x === 0 && p.y === 0;
-        issuePlayerCommand(galaxy, player, 'constructionJobAdd', [design, h, zero ? COORD_UNSET_DOUBLE : p.x, zero ? COORD_UNSET_DOUBLE : p.y], (id) => {
-            end();
-            showToast(id === 0 ? `${o.label} ${h.name}: not possible` : `Construction job added: ${o.label} at ${h.name}`);
-        });
+        issueDispatchCommand(
+            galaxy,
+            player,
+            'constructionJobAdd',
+            [playerDesignFor(player, design), h, zero ? COORD_UNSET_DOUBLE : p.x, zero ? COORD_UNSET_DOUBLE : p.y],
+            (id) => finish(id === 0 ? `${o.label} ${h.name}: not possible` : `Construction job added: ${o.label} at ${h.name}`),
+            failed,
+        );
         return;
     }
-    issuePlayerCommand(galaxy, player, 'shipAction', [ship, fresh.action, true, { x: h.xpos, y: h.ypos }], (r) => {
-        end();
-        showToast(r.ok === false ? `${ship.name}: ${r.message ?? 'order refused'}` : `${ship.name} sent: ${o.label} ${h.name}`);
-    });
+    issueDispatchCommand(
+        galaxy,
+        player,
+        'shipAction',
+        [ship, fresh.action, true, { x: h.xpos, y: h.ypos }],
+        (r) => finish(r.ok === false ? `${ship.name}: ${r.message ?? 'order refused'}` : `${ship.name} sent: ${o.label} ${h.name}`),
+        failed,
+    );
 }

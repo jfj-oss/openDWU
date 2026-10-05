@@ -76,6 +76,7 @@ import { doResearchBreakthrough, reviewDesignsBuiltObjectsImprovedComponents } f
 import { pirateEconomyPerformIncome } from '../pirates/pirateAI';
 import { PirateIncomeType } from '../pirates/pirateEconomy';
 import { addLocationHint } from '../tradeItems';
+import { builtObjectSubject, habitatSubject, locationSubject, ruinsSubject } from '../player/hintSubjects';
 import { GalaxyLocationType } from '../galaxyLocation';
 import { netSort } from '../netSort';
 import { scenarioEmit } from '../scenario/hooks';
@@ -1173,7 +1174,7 @@ function generateNavigationalBonusMessage(galaxy: Galaxy, x: number, y: number, 
             const habitat = findNearestUnknownRuin(galaxy, x, y, empire);
             if (habitat !== null) {
                 text += generateHabitatLocationDescription(galaxy, habitat);
-                if (empire === galaxy.playerEmpire) addLocationHint(galaxy.playerEmpire, { x: Math.trunc(habitat.xpos), y: Math.trunc(habitat.ypos) });
+                if (empire === galaxy.playerEmpire) addLocationHint(galaxy.playerEmpire, { x: Math.trunc(habitat.xpos), y: Math.trunc(habitat.ypos) }, ruinsSubject(habitat), 'Exploration / navigation data');
             }
             break;
         }
@@ -1182,7 +1183,7 @@ function generateNavigationalBonusMessage(galaxy: Galaxy, x: number, y: number, 
             const builtObject = findNearestUnownedBuiltObject(galaxy, x, y);
             if (builtObject !== null) {
                 text += generateLocationDescription(galaxy, builtObject.xpos, builtObject.ypos);
-                if (empire === galaxy.playerEmpire) addLocationHint(galaxy.playerEmpire, { x: Math.trunc(builtObject.xpos), y: Math.trunc(builtObject.ypos) });
+                if (empire === galaxy.playerEmpire) addLocationHint(galaxy.playerEmpire, { x: Math.trunc(builtObject.xpos), y: Math.trunc(builtObject.ypos) }, builtObjectSubject(builtObject, true), 'Exploration / navigation data');
             }
             break;
         }
@@ -1191,7 +1192,7 @@ function generateNavigationalBonusMessage(galaxy: Galaxy, x: number, y: number, 
             const habitat2 = findNearestUnknownIndependentColony(galaxy, x, y, empire);
             if (habitat2 !== null) {
                 text += generateHabitatLocationDescription(galaxy, habitat2);
-                if (empire === galaxy.playerEmpire) addLocationHint(galaxy.playerEmpire, { x: Math.trunc(habitat2.xpos), y: Math.trunc(habitat2.ypos) });
+                if (empire === galaxy.playerEmpire) addLocationHint(galaxy.playerEmpire, { x: Math.trunc(habitat2.xpos), y: Math.trunc(habitat2.ypos) }, habitatSubject('Independent colony', habitat2), 'Exploration / navigation data');
             }
             break;
         }
@@ -1200,7 +1201,7 @@ function generateNavigationalBonusMessage(galaxy: Galaxy, x: number, y: number, 
             const empire2 = findNearestPirateFactionBaseUnknown(galaxy, empire, x, y, null);
             if (empire2 !== null && empire2.pirateEmpireBaseHabitat !== null) {
                 text += generateHabitatLocationDescription(galaxy, empire2.pirateEmpireBaseHabitat);
-                if (empire === galaxy.playerEmpire) addLocationHint(galaxy.playerEmpire, { x: Math.trunc(empire2.pirateEmpireBaseHabitat.xpos), y: Math.trunc(empire2.pirateEmpireBaseHabitat.ypos) });
+                if (empire === galaxy.playerEmpire) addLocationHint(galaxy.playerEmpire, { x: Math.trunc(empire2.pirateEmpireBaseHabitat.xpos), y: Math.trunc(empire2.pirateEmpireBaseHabitat.ypos) }, habitatSubject('Pirate base', empire2.pirateEmpireBaseHabitat), 'Exploration / navigation data');
             }
             break;
         }
@@ -1222,7 +1223,7 @@ function generateNavigationalBonusMessage(galaxy: Galaxy, x: number, y: number, 
                 if (!empire.visibility.knownGalaxyLocations.includes(item)) {
                     text += generateLocationDescription(galaxy, item.xpos, item.ypos);
                     if (empire === galaxy.playerEmpire) {
-                        addLocationHint(galaxy.playerEmpire, { x: Math.trunc(item.xpos + item.width / 2.0), y: Math.trunc(item.ypos + item.height / 2.0) });
+                        addLocationHint(galaxy.playerEmpire, { x: Math.trunc(item.xpos + item.width / 2.0), y: Math.trunc(item.ypos + item.height / 2.0) }, locationSubject(item), 'Exploration / navigation data');
                     }
                     return text;
                 }

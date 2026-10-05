@@ -30,6 +30,9 @@ import { MAX_SOLAR_SYSTEM_SIZE } from '../visibility';
 import { generateLocationDescription } from '../galaxyReports';
 import { resolveStarDateDescription } from '../galaxyTime';
 import { isMarkerDismissed } from './waypoints';
+import { hintSource, hintSubject, subjectLabel } from './hintSubjects';
+import { BuiltObjectSubRole } from '../builtObjectTypes';
+import { resolveDescription } from '../messages';
 import { EmpireMessageType, type EmpireMessage } from '../messages';
 
 export type KnownLocationKind = 'hint' | 'location';
@@ -47,6 +50,11 @@ export interface KnownLocation {
     name: string;
     /** "Location hint", "Debris Field", ... */
     typeLabel: string;
+    /** kind 'hint': what is at the point ("Abandoned Destroyer: ISV Ranger"; recorded from the source message, else looked
+     *  up; see hintSubjectOf) — the tooltip and the list show it all, the marker only its label (before the colon). */
+    subject?: string;
+    /** kind 'hint': the kind of information source recorded when the hint was added ("Pirates (bought from X)"), if any. */
+    source?: string;
     /** kind 'location': the GalaxyLocation; kind 'hint': the listed known location the hint points at, if any. */
     location: GalaxyLocation | null;
 }
@@ -121,6 +129,36 @@ export function hintPlaceName(galaxy: Galaxy, x: number, y: number): string {
     return `${near.star.name} system`;
 }
 
+/** Distance (galaxy units) within which a derelict / ruin habitat counts as "at" a hint's point by the fallback. */
+export const HINT_FALLBACK_RADIUS = 2;
+
+/**
+ * What is at a hint's point, for the label and the tooltip: the subject recorded when the hint was created (the source
+ * message's own words), else — hints of old saves — a lookup of an object exactly at the point that the player's
+ * message would have named: an abandoned ship / base ("Abandoned <subrole>"), a habitat with ruins ("Ruins on <name>"),
+ * a listed known location (its type), else a generic "Point of interest near <system>". Never states more than that.
+ */
+export function hintSubjectOf(galaxy: Galaxy, x: number, y: number, at: KnownLocation | null = null): string {
+    const rec = hintSubject(galaxy, x, y);
+    if (rec !== undefined && rec !== '') return rec;
+    const r2 = HINT_FALLBACK_RADIUS * HINT_FALLBACK_RADIUS;
+    for (const b of galaxy.abandonedBuiltObjects ?? []) {
+        if (b == null) continue;
+        const dx = b.xpos - x;
+        const dy = b.ypos - y;
+        if (dx * dx + dy * dy <= r2) return `Abandoned ${resolveDescription(BuiltObjectSubRole as unknown as Record<number, string>, b.subRole)}`;
+    }
+    for (const h of galaxy.ruinsHabitats ?? []) {
+        if (h == null || h.ruin === null) continue;
+        const dx = h.xpos - x;
+        const dy = h.ypos - y;
+        if (dx * dx + dy * dy <= r2) return `Ruins on ${h.name}`;
+    }
+    if (at !== null) return at.location !== null ? (at.location.name !== '' ? `${at.typeLabel}: ${at.location.name}` : at.typeLabel) : at.typeLabel;
+    const near = nearestSystemStar(galaxy, x, y);
+    return near === null ? 'Point of interest' : `Point of interest near ${near.star.name}`;
+}
+
 /** Listed known locations of the player, by the GalaxyLocation (reveal = the original's GodMode: every one). */
 function markedLocations(galaxy: Galaxy, empire: Empire, reveal: boolean): GalaxyLocation[] {
     const source = reveal ? galaxy.galaxyLocations : empire.visibility?.knownGalaxyLocations ?? [];
@@ -162,13 +200,16 @@ export function knownLocations(galaxy: Galaxy, empire: Empire | null, reveal = f
         const key = `h:${p.x},${p.y}`;
         const dismissed = isMarkerDismissed(galaxy, key);
         if (dismissed && !includeDismissed) continue;
+        const subject = hintSubjectOf(galaxy, p.x, p.y, at);
         out.push({
             kind: 'hint',
             key,
             dismissed,
             x: p.x,
             y: p.y,
-            name: at !== null ? at.name : hintPlaceName(galaxy, p.x, p.y),
+            subject,
+            source: hintSource(galaxy, p.x, p.y),
+            name: at !== null ? at.name : subjectLabel(subject),
             typeLabel: 'Location hint',
             location: at?.location ?? null,
         });
@@ -243,14 +284,17 @@ export function knownLocationTooltip(galaxy: Galaxy, empire: Empire | null, loc:
         } catch {
             desc = '';
         }
+        if (loc.subject !== undefined && loc.subject !== '') lines.push(loc.source !== undefined ? `${loc.subject} \u2014 from ${loc.source}` : loc.subject);
         lines.push(desc !== '' ? `Location hint: ${desc}` : 'Location hint');
         if (loc.location !== null) lines.push(galaxyLocationTypeLabel(loc.location.type));
     } else {
         lines.push(loc.typeLabel);
     }
     const src = knownLocationSource(galaxy, empire, loc);
-    if (src !== null) lines.push(`From: ${src}`);
-    else if (loc.kind === 'hint') lines.push('From: a location you were told of (a diplomatic exchange, information bought from pirates, a story clue or an investigation)');
+    if (loc.kind === 'hint' && loc.source !== undefined) {
+        if (src !== null) lines.push(`Message: ${src}`);
+    } else if (src !== null) lines.push(`From: ${src}`);
+    else if (loc.kind === 'hint') lines.push('From: Unknown source');
     else lines.push('From: found by your ships, or shared through diplomacy or pirate information');
     if (loc.kind === 'hint') lines.push('Cleared when one of your ships gets there.');
     lines.push('Right-click: dismiss this marker (restore it in the Waypoints list).');

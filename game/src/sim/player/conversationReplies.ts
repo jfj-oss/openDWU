@@ -24,6 +24,7 @@ import {
 } from '../diplomacyTick';
 import { PirateIncomeType } from '../pirates/pirateEconomy';
 import { pirateEconomyPerformIncome } from '../pirates/pirateAI';
+import { ruinsSubject, locationSubject } from './hintSubjects';
 import { TradeableItem, TradeableItemType, addLocationHint, giveTerritoryMap, giveTradeableItem, isTechNode } from '../tradeItems';
 import { mergeGalaxyMap } from '../exploration';
 import { doResearchBreakthrough, reviewDesignsBuiltObjectsImprovedComponents } from '../researchTick';
@@ -134,7 +135,7 @@ function buyInfo(galaxy: Galaxy, player: Empire, pirate: Empire, part: Conversat
             if (!(habitat instanceof Habitat)) return;
             player.systemVisibility[habitat.systemIndex].status = SystemVisibilityStatus.Explored;
             pay();
-            if (part === 'INFO_RUINS') addLocationHint(player, { x: Math.trunc(habitat.xpos), y: Math.trunc(habitat.ypos) });
+            if (part === 'INFO_RUINS') addLocationHint(player, { x: Math.trunc(habitat.xpos), y: Math.trunc(habitat.ypos) }, ruinsSubject(habitat), `Pirates (bought from ${pirate.name})`);
             return;
         }
         case 'INFO_DEBRISFIELD':
@@ -144,7 +145,7 @@ function buyInfo(galaxy: Galaxy, player: Empire, pirate: Empire, part: Conversat
             if (loc === null) return;
             if (!player.visibility.knownGalaxyLocations.includes(loc)) player.visibility.knownGalaxyLocations.push(loc);
             pay();
-            addLocationHint(player, { x: Math.trunc(loc.xpos + loc.width / 2), y: Math.trunc(loc.ypos + loc.height / 2) });
+            addLocationHint(player, { x: Math.trunc(loc.xpos + loc.width / 2), y: Math.trunc(loc.ypos + loc.height / 2) }, locationSubject(loc), `Pirates (bought from ${pirate.name})`);
             return;
         }
         default:

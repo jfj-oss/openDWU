@@ -31,6 +31,7 @@ interface Pending {
     op: PlayerOpName;
     args: unknown[];
     onApplied?: (result: unknown) => void;
+    onFailed?: (reason: string) => void;
 }
 
 interface QueueState {
@@ -48,7 +49,7 @@ const queues = new WeakMap<Galaxy, QueueState>();
  * that runs the authoritative game, instead of queueing them here. The sink gets the command as issued; the worker
  * queues it on the real galaxy (issuePlayerCommand there), so it is applied and journaled exactly as in-thread.
  */
-export type RemoteCommandSink = (empire: Empire, op: PlayerOpName, args: unknown[], onApplied?: (result: unknown) => void) => void;
+export type RemoteCommandSink = (empire: Empire, op: PlayerOpName, args: unknown[], onApplied?: (result: unknown) => void, onFailed?: (reason: string) => void) => void;
 const remoteSinks = new WeakMap<Galaxy, RemoteCommandSink>();
 
 /** Route `galaxy`'s player commands to `sink` (a sim-worker replica), or back to the local queue (null). */
@@ -76,15 +77,36 @@ function queueOf(galaxy: Galaxy): QueueState {
  * Issue a player command: it is applied at the next frame boundary (see the file header) and journaled. `onApplied`
  * gets the executor's result then (synchronously, inside the boundary; it must not change the sim itself — issue
  * another command instead, which applies in the same boundary pass).
+ *
+ * `onFailed` runs instead of `onApplied` when the command produced no result: its executor threw (in-thread the
+ * boundary's exception then stops the frame; in sim-worker mode the worker pauses with a simulation error), or the
+ * remote sink could not take it. With both given, exactly one of them runs for every command, so a UI that holds a
+ * control busy until the reply (ui/pendingCommands.ts) can always release it. A worker-mode command that could not be
+ * sent, expired or met a stopped worker still gets `onApplied` with the op's failure value (simworker/commandFailure.ts).
  */
-export function issuePlayerCommand<K extends PlayerOpName>(galaxy: Galaxy, empire: Empire, op: K, args: PlayerOpArgs<K>, onApplied?: (result: PlayerOpResult<K>) => void): void {
+export function issuePlayerCommand<K extends PlayerOpName>(
+    galaxy: Galaxy,
+    empire: Empire,
+    op: K,
+    args: PlayerOpArgs<K>,
+    onApplied?: (result: PlayerOpResult<K>) => void,
+    onFailed?: (reason: string) => void,
+): void {
     if (inSimFrame()) throw new Error(`player command ${op} issued inside a sim frame (commands apply only at frame boundaries)`);
     const remote = remoteSinks.get(galaxy);
     if (remote !== undefined) {
-        remote(empire, op, args as unknown[], onApplied as ((r: unknown) => void) | undefined);
+        try {
+            remote(empire, op, args as unknown[], onApplied as ((r: unknown) => void) | undefined, onFailed);
+        } catch (err) {
+            // The sink never throws by contract (clientCore.ts sendCommand); if it does, the caller still hears of it,
+            // never inside this call.
+            if (onFailed === undefined) throw err;
+            const reason = err instanceof Error ? err.message : String(err);
+            queueMicrotask(() => onFailed(reason));
+        }
         return;
     }
-    queueOf(galaxy).pending.push({ empire, op, args: args as unknown[], onApplied: onApplied as ((r: unknown) => void) | undefined });
+    queueOf(galaxy).pending.push({ empire, op, args: args as unknown[], onApplied: onApplied as ((r: unknown) => void) | undefined, onFailed });
 }
 
 /** Commands issued and not applied yet. */
@@ -164,17 +186,19 @@ function encodeArgs(galaxy: Galaxy, args: readonly unknown[]): EncodedArg[] {
 }
 
 function applyLive(galaxy: Galaxy, p: Pending): void {
-    const empireIndex = flatEmpireList(galaxy).indexOf(p.empire);
-    const entry: PlayerLogEntry = { starDate: galaxyStarDate(galaxy), nowMs: galaxy.nowMs, source: 'player', empire: empireIndex, op: p.op, args: [] };
+    let result: unknown;
     try {
-        entry.args = encodeArgs(galaxy, p.args);
+        result = applyJournaled(galaxy, p);
     } catch (err) {
-        if (!(err instanceof CommandEncodeError)) throw err;
-        // The order still lands; the log says why a replay cannot reproduce it.
-        entry.error = err.message;
+        // The executor (or the journal) threw: the boundary's exception stops the frame as before; the issuer hears of
+        // it after the boundary (UI code never runs inside it).
+        const onFailed = p.onFailed;
+        if (onFailed !== undefined) {
+            const reason = err instanceof Error ? err.message : String(err);
+            queueMicrotask(() => onFailed(reason));
+        }
+        throw err;
     }
-    appendCommandLog(galaxy, entry);
-    const result = applyOp(galaxy, p.empire, p.op, p.args);
     if (p.onApplied !== undefined) {
         try {
             p.onApplied(result);
@@ -185,6 +209,20 @@ function applyLive(galaxy: Galaxy, p: Pending): void {
             });
         }
     }
+}
+
+function applyJournaled(galaxy: Galaxy, p: Pending): unknown {
+    const empireIndex = flatEmpireList(galaxy).indexOf(p.empire);
+    const entry: PlayerLogEntry = { starDate: galaxyStarDate(galaxy), nowMs: galaxy.nowMs, source: 'player', empire: empireIndex, op: p.op, args: [] };
+    try {
+        entry.args = encodeArgs(galaxy, p.args);
+    } catch (err) {
+        if (!(err instanceof CommandEncodeError)) throw err;
+        // The order still lands; the log says why a replay cannot reproduce it.
+        entry.error = err.message;
+    }
+    appendCommandLog(galaxy, entry);
+    return applyOp(galaxy, p.empire, p.op, p.args);
 }
 
 function replayEntry(galaxy: Galaxy, e: CommandLogEntry): void {
