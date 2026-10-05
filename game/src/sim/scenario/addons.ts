@@ -89,12 +89,16 @@ export interface SmarterAIChoice {
     enabled: boolean;
     research: boolean;
     growthTaxes: boolean;
+    /** Cut costs when broke (smarterAIBudget; absent in older options = on). */
+    budget?: boolean;
+    /** Keep fleets up to date (smarterAIRetrofit; absent in older options = on). */
+    retrofit?: boolean;
     /** Growth taxes: colonies below this % of their maximum population are untaxed. */
     growthTaxThreshold: number;
 }
 
 export function defaultSmarterAIChoice(): SmarterAIChoice {
-    return { enabled: false, research: true, growthTaxes: true, growthTaxThreshold: 70 };
+    return { enabled: false, research: true, growthTaxes: true, growthTaxThreshold: 70, budget: true, retrofit: true };
 }
 
 /**
@@ -107,7 +111,7 @@ export function withSmarterAI(picked: readonly string[], overrides: AddonOverrid
     return {
         picked: [...p, SMARTER_AI_ADDON_ID],
         overrides: {
-            flags: { ...overrides.flags, smarterAIResearch: smart.research, smarterAIGrowthTax: smart.growthTaxes },
+            flags: { ...overrides.flags, smarterAIResearch: smart.research, smarterAIGrowthTax: smart.growthTaxes, smarterAIBudget: smart.budget !== false, smarterAIRetrofit: smart.retrofit !== false },
             params: { ...overrides.params, smarterAIGrowthTaxThreshold: smart.growthTaxThreshold },
         },
     };
