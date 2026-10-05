@@ -46,4 +46,6 @@ import './smarterAI/research'; // Smarter AI optimised research order (flags sma
 import './smarterAI/taxes'; // Smarter AI growth taxes (flags smarterAI + smarterAIGrowthTax; AI empires only)
 import './smarterAI/colonies'; // Smarter AI colony picks (flags smarterAI + smarterAIColonies; AI empires only)
 import './smarterAI/independents'; // Smarter AI absorb independents (flags smarterAI + smarterAIIndependents; AI empires only)
+import './smarterAI/budget'; // Smarter AI cut costs when broke (flags smarterAI + smarterAIBudget; AI empires only)
+import './smarterAI/retrofit'; // Smarter AI keep fleets up to date (flags smarterAI + smarterAIRetrofit; AI empires only)
 export {};

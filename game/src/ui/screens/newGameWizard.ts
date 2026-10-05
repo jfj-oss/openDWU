@@ -1650,6 +1650,16 @@ function buildOtherEmpiresPage(ctx: WizardCtx): HTMLDivElement {
         paintSmart();
     }, FONT.normal);
     smartTax.row.classList.add('wizard-smarter-ai-taxes');
+    const smartBudget = check(smartPanel, 'Cut costs when broke', smart.budget !== false, 300, 6, (v) => {
+        smart.budget = v;
+        ctx.refreshScenario();
+    }, FONT.normal);
+    smartBudget.row.classList.add('wizard-smarter-ai-budget');
+    const smartRetrofit = check(smartPanel, 'Keep fleets up to date', smart.retrofit !== false, 520, 6, (v) => {
+        smart.retrofit = v;
+        ctx.refreshScenario();
+    }, FONT.normal);
+    smartRetrofit.row.classList.add('wizard-smarter-ai-retrofit');
     const taxLabel = label(smartPanel, 'untaxed below', 420, 35, { size: FONT.normal });
     const taxBox = numberBox(smartPanel, 'wizard-smarter-ai-threshold', 515, 33, 46, 0, 100, () => smart.growthTaxThreshold, (x) => {
         smart.growthTaxThreshold = x;
@@ -1674,6 +1684,10 @@ function buildOtherEmpiresPage(ctx: WizardCtx): HTMLDivElement {
         smartColonies.input.disabled = !smart.enabled;
         smartIndependents.input.disabled = !smart.enabled;
         for (const e of [smartColonies.row, smartIndependents.row]) e.classList.toggle('is-disabled', !smart.enabled);
+        for (const c of [smartBudget, smartRetrofit]) {
+            c.input.disabled = !smart.enabled;
+            c.row.classList.toggle('is-disabled', !smart.enabled);
+        }
         const taxOn = smart.enabled && smart.growthTaxes;
         const taxInput = taxBox.querySelector('input');
         if (taxInput !== null) taxInput.disabled = !taxOn;
