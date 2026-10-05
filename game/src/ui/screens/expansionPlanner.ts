@@ -1211,7 +1211,11 @@ function createExpansionPlanner(opts: ExpansionPlannerOptions): OpenState {
 
     function inputsFor(row: ExpansionRow | null): { action: ButtonState; build: ButtonState } {
         const h = row?.habitat ?? null;
-        const assigned = row !== null && row.target.assignedShip !== null;
+        // Live, not only the list's snapshot (identifyColonizationTargetsFull ran when the list was built): a colony ship
+        // bought with "Build and Send" gets its Colonize mission at once, so once one is on its way (or still being
+        // built for it) the button stays off and a second ship can't be sent to the same target.
+        const assigned =
+            row !== null && (row.target.assignedShip !== null || (mode === 'colonies' && h !== null && colonyShipAssignedTo(player, h) !== null));
         const colonyDesign = findNewestCanBuild(player.designs, BuiltObjectSubRole.ColonyShip, player);
         const action = plannerActionState(mode, {
             target: row !== null ? { name: row.habitat.name, assigned } : null,
