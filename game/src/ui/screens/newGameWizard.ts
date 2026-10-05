@@ -1702,7 +1702,7 @@ function buildOtherEmpiresPage(ctx: WizardCtx): HTMLDivElement {
                 ['designTune', 'Mod-style designs', 'wizard-smarter-ai-design-tune'],
                 ['weaponFocus', 'One weapon type', 'wizard-smarter-ai-weapon-focus'],
                 ['designScale', 'Bigger warships', 'wizard-smarter-ai-design-scale'],
-                ['designTrim', 'Keep speed when trimming', 'wizard-smarter-ai-design-trim'],
+                ['designTrim', 'Trim by priority', 'wizard-smarter-ai-design-trim'],
             ],
         },
         {
@@ -1717,7 +1717,9 @@ function buildOtherEmpiresPage(ctx: WizardCtx): HTMLDivElement {
     const SMART_LIST_H = Math.max(...SMART_COLUMNS.map((g) => g.y + 24 + Math.ceil(g.items.length / g.cols) * SMART_ROW_H)) + 4;
     const smartList = panel(wrap, 10, 468 - SMART_LIST_H - 4, 880, SMART_LIST_H, 'wizard-panel-group wizard-smarter-ai wizard-smarter-ai-list');
     smartList.hidden = true;
-    const smartIsOn = (key: SmartKey): boolean => smart[key] ?? true;
+    // The four ship design switches are off when absent (addons.ts withSmarterAI); the rest are on.
+    const SMART_OFF_BY_DEFAULT: ReadonlySet<SmartKey> = new Set(['designTune', 'weaponFocus', 'designScale', 'designTrim']);
+    const smartIsOn = (key: SmartKey): boolean => smart[key] ?? !SMART_OFF_BY_DEFAULT.has(key);
     const smartChecks: { key: SmartKey; c: ReturnType<typeof check> }[] = [];
     let taxRowY = 0;
     let openingRowY = 0;
