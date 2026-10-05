@@ -54,7 +54,7 @@ describe('one weapon type', () => {
 
 describe('safety net', () => {
     it('keeps a changed design only with enough firepower, the stock shields and hyperdrive speed, within the size', () => {
-        const stock = { size: 300, fire: 100, shields: 500, fuel: 200, warp: 18000 };
+        const stock = { size: 300, fire: 100, shields: 500, fuel: 200, warp: 18000, speed: 50 };
         expect(passesSafetyNet({ ...stock, fire: MIN_FIRE_SHARE * 100, shields: 700 }, stock, 400)).toBe(true);
         expect(passesSafetyNet({ ...stock, fire: 70 }, stock, 400)).toBe(false);
         expect(passesSafetyNet({ ...stock, shields: 400 }, stock, 400)).toBe(false);

@@ -18,8 +18,10 @@
 //         focus, e.g. the Ketarov) are left alone.
 //   - smarterAIWeaponFocus "One weapon type": the main weapon slots merge into the best-quality weapon type
 //     (weaponFocus.ts), sized to keep BASE_FIRE_SHARE of the stock design's firepower.
-//   - smarterAIDesignScale "Bigger warships": the design may grow to SCALE_SHARE of the maximum construction size
-//     while the economy carries it (designGrowthAffordable); otherwise it stays within the stock design's size.
+//   - smarterAIDesignScale "Bigger warships": the design may grow to GROWTH_FACTOR × the stock design's size (capped at
+//     the maximum construction size) while the economy carries it (designGrowthAffordable); otherwise it stays within
+//     the stock design's size. A growing design keeps the stock top speed: every fill step that slows it also gets
+//     engines (any hull) until the speed is back, or the step is dropped.
 //   - smarterAIDesignTrim "Trim by priority": a design over its size target loses, in turn, point defence beyond one,
 //     fuel down to stock, the extra engines of escorts and frigates, weapons (not below MIN_FIRE_SHARE), shields
 //     (not below stock); never armour, never engines below stock.
@@ -71,19 +73,19 @@ export const MIN_FIRE_SHARE = 0.75;
 /** Carriers: fighter bays per further fill level (× the template's). */
 export const FIGHTER_BAY_LEVEL_STEP = 0.25;
 export const FILL_LEVELS = 4;
-/** Size targets, as shares of the maximum construction size ("Bigger warships"). */
-export const SCALE_SHARE: Readonly<Partial<Record<BuiltObjectSubRole, number>>> = {
-    [BuiltObjectSubRole.Escort]: 0.3,
-    [BuiltObjectSubRole.Frigate]: 0.4,
-    [BuiltObjectSubRole.Destroyer]: 0.6,
-    [BuiltObjectSubRole.Cruiser]: 0.8,
-    [BuiltObjectSubRole.CapitalShip]: 1,
-    [BuiltObjectSubRole.Carrier]: 1,
+/** Size targets, × the stock design's size, capped at the maximum construction size ("Bigger warships"). */
+export const GROWTH_FACTOR: Readonly<Partial<Record<BuiltObjectSubRole, number>>> = {
+    [BuiltObjectSubRole.Escort]: 1.2,
+    [BuiltObjectSubRole.Frigate]: 1.3,
+    [BuiltObjectSubRole.Destroyer]: 1.4,
+    [BuiltObjectSubRole.Cruiser]: 1.5,
+    [BuiltObjectSubRole.CapitalShip]: 1.5,
+    [BuiltObjectSubRole.Carrier]: 1.5,
 };
 /** Growth needs warship upkeep below this share of annual income ... */
 export const GROWTH_MAX_UPKEEP_SHARE = 0.35;
 /** ... and this many years of state upkeep in cash (and not in debt). */
-export const GROWTH_CASH_YEARS = 1;
+export const GROWTH_CASH_YEARS = 0.5;
 
 export const WARSHIP_SUB_ROLES: ReadonlySet<BuiltObjectSubRole> = new Set([
     BuiltObjectSubRole.Escort,
@@ -189,13 +191,14 @@ export interface DesignStats {
     shields: number;
     fuel: number;
     warp: number;
+    speed: number;
 }
 
 /** The figures the choice weighs, from `d` as `empire` would build it (Design.ReDefine with its research). */
 export function designStats(empire: Empire, d: Design): DesignStats {
     d.empire = empire;
     d.reDefine();
-    return { size: d.quickCalculateSize(), fire: d.firepowerRaw, shields: d.shieldsCapacity, fuel: d.fuelCapacity, warp: d.warpSpeed };
+    return { size: d.quickCalculateSize(), fire: d.firepowerRaw, shields: d.shieldsCapacity, fuel: d.fuelCapacity, warp: d.warpSpeed, speed: d.topSpeed };
 }
 
 /**
@@ -209,8 +212,8 @@ export function passesSafetyNet(d: DesignStats, stock: DesignStats, maxSize: num
 export interface DesignOptions {
     tune: boolean;
     focus: boolean;
-    /** Size target share of the maximum construction size (0: stay within the stock design's size). */
-    share: number;
+    /** Size target, × the stock design's size (0 or 1: stay within the stock design's size). */
+    growth: number;
     trim: boolean;
     /** Tune extras (resolved from research and race). */
     extras: TuneExtras;
@@ -328,7 +331,8 @@ export function chooseDesign(empire: Empire, spec: DesignSpecification, opts: De
     const carrier = spec.subRole === BuiltObjectSubRole.Carrier;
     const counts = stockFamilyCounts(spec, stock, empire.policy?.researchDesignOverallFocus === ShipDesignFocus.SpeedAgility);
     const { rules, handles } = planRules(spec, opts, empire.research, s0, mainFire, counts);
-    const target = Math.min(maxShipSize, Math.max(s0.size, Math.trunc(opts.share * maxShipSize)));
+    const target = Math.min(maxShipSize, Math.max(s0.size, Math.trunc(opts.growth * s0.size)));
+    const growing = target > s0.size;
     const count = (f: Family): number => {
         const h = handles[f]!;
         return h.others + rules[h.index].amount;
@@ -383,6 +387,8 @@ export function chooseDesign(empire: Empire, spec: DesignSpecification, opts: De
         }
     };
     const blocked = new Set<Family>();
+    // A growing design holds the stock top speed (or its starting speed, if that is already lower).
+    const holdSpeed = growing && handles.engines !== undefined ? Math.min(s0.speed, best.s.speed) : 0;
     if (best.s.size <= target) {
         for (let level = 1; level <= FILL_LEVELS; level++) {
             for (const f of FILL_ORDER) {
@@ -390,12 +396,22 @@ export function chooseDesign(empire: Empire, spec: DesignSpecification, opts: De
                     setCount(f, count(f) + 1);
                     const t = tryPlace();
                     // A step must fit and must not slow the hyperdrive (the reactors follow the energy use).
-                    if (t === null || t.s.size > target || t.s.warp < Math.min(s0.warp, best.s.warp)) {
+                    let ok = t !== null && t.s.size <= target && t.s.warp >= Math.min(s0.warp, best.s.warp);
+                    let step = t;
+                    let engines = 0;
+                    while (ok && step !== null && step.s.speed < holdSpeed) {
+                        setCount('engines', count('engines') + 1);
+                        engines++;
+                        step = tryPlace();
+                        ok = step !== null && step.s.size <= target && step.s.warp >= Math.min(s0.warp, best.s.warp);
+                    }
+                    if (!ok || step === null) {
+                        if (engines > 0) setCount('engines', count('engines') - engines);
                         setCount(f, count(f) - 1);
                         blocked.add(f);
                         break;
                     }
-                    best = t;
+                    best = step;
                 }
             }
         }
@@ -411,13 +427,13 @@ export function smarterDesignOptions(galaxy: Galaxy, empire: Empire, subRole: Bu
     const scale = smarterAIOn(galaxy, SMARTER_AI_DESIGN_SCALE_FLAG);
     const trim = smarterAIOn(galaxy, SMARTER_AI_DESIGN_TRIM_FLAG);
     if (!tune && !focus && !scale && !trim) return null;
-    const share = scale && designGrowthAffordable(galaxy, empire) ? (SCALE_SHARE[subRole] ?? 0) : 0;
+    const growth = scale && designGrowthAffordable(galaxy, empire) ? (GROWTH_FACTOR[subRole] ?? 0) : 0;
     const race = empire.dominantRace;
     const designFocus = race !== null && empire.policy !== null ? empire.policy.researchDesignOverallFocus : ShipDesignFocus.Balanced;
     // Empire.10.cs 2946-2977: the stock super-weapon add-on for aggressive, intelligent races.
     const stockSuper = race !== null && raceAggressionLevel(galaxy, race) >= 100 && race.intelligence >= 100;
     const superBeam = !stockSuper && empire.research.evaluateDesiredComponentImprovement(ComponentType.WeaponSuperBeam, ShipDesignFocus.Balanced) !== null;
-    return { tune, focus, share, trim, extras: { hyperDeny: true, superBeam }, focusTypes: resolveTechFocuses(empire.policy).types, designFocus };
+    return { tune, focus, growth, trim, extras: { hyperDeny: true, superBeam }, focusTypes: resolveTechFocuses(empire.policy).types, designFocus };
 }
 
 /** The design chooser for `empire`'s new `spec.subRole` design (null: stock). */
