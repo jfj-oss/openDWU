@@ -3,8 +3,7 @@
 // for every system up front they were ~40% of the page heap of a 100k-habitat galaxy.
 import { describe, expect, it, vi } from 'vitest';
 import { Container, Texture } from 'pixi.js';
-import { HabitatCategoryType, HabitatType, type Habitat } from '../src/sim/types';
-import type { SystemInfo } from '../src/sim/galaxy';
+import { HabitatCategoryType, HabitatType, type Habitat, type SystemInfo } from '../src/sim/types';
 
 vi.mock('../src/render/assets', async (importOriginal) => {
     const real = await importOriginal<typeof import('../src/render/assets')>();
