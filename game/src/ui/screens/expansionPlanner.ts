@@ -761,6 +761,9 @@ export function plannerBuildColonyShip(galaxy: Galaxy, player: Empire, h: Habita
         const ship = r.ok === false ? null : colonyShipAssignedTo(player, h);
         if (ship !== null) done({ ok: true, text: formatNet(T('Send X to colonize Y', 'Send {0} to colonize {1}'), [ship.name, h.name]) });
         else done({ ok: false, text: `${T('Build and Send Colony Ship')}: ${r.ok === false && r.message ? resolveGameText(r.message) : 'not possible'}` });
+    }, (reason) => {
+        end();
+        done({ ok: false, text: `${T('Build and Send Colony Ship')}: ${reason}` });
     });
     return true;
 }
@@ -777,6 +780,9 @@ export function plannerQueueMiningStation(galaxy: Galaxy, player: Empire, h: Hab
     issuePlayerCommand(galaxy, player, 'constructionJobAdd', [design, h, COORD_UNSET_DOUBLE, COORD_UNSET_DOUBLE], (id) => {
         end();
         done(id === 0 ? { ok: false, text: plannerCannotBuildText(galaxy, player, design, h) } : { ok: true, text: `Construction job added: ${design.name} at ${h.name}` });
+    }, (reason) => {
+        end();
+        done({ ok: false, text: `Cannot build here: ${h.name} (${reason})` });
     });
     return true;
 }
