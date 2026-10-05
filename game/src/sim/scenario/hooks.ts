@@ -263,6 +263,11 @@ export interface ScenarioEvents {
     intelMissionExposed: { empire: Empire; blamed: Empire; target: Empire; missionType: number; outcome: number };
     /** 19j: combat/attackAI.ts notifyOfAttackHabitat (Galaxy.7.cs 3058 NotifyOfAttack, top): a colony is under attack. No Rnd in handlers. */
     habitatAttacked: { habitat: Habitat; attacker: unknown; attackingEmpire: Empire | null; bombarded: boolean };
+    /**
+     * taxes.ts reviewTaxes (Empire.10.cs 158 ReviewTaxes), end: every colony's rate was just set. Handlers may change
+     * the rates (and must recalculate the colony revenue they change). No Rnd in handlers. Smarter AI growth taxes.
+     */
+    taxesReviewed: { empire: Empire };
     contractInitiated: {
         seller: Empire;
         buyer: Empire;
@@ -490,6 +495,11 @@ export interface ScenarioQueries {
      * control). Never draws.
      */
     captainBonuses: { value: CaptainBonuses; args: { builtObject: BuiltObject; empire: Empire } };
+    /**
+     * researchTick.ts selectNextResearchProject (Empire.3.cs 1391), the race's <Industry>ResearchProjectOrder read: the
+     * ordered project ids the empire tries first (stock: the race's list). `industry` is IndustryType. Smarter AI.
+     */
+    researchProjectOrder: { value: readonly number[]; args: { empire: Empire; industry: number } };
 }
 export type ScenarioQueryName = keyof ScenarioQueries;
 

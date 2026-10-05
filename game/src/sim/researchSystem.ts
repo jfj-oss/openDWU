@@ -397,6 +397,19 @@ export class ResearchSystem {
         return r;
     }
 
+    /** Mod layer (Smarter AI): the AllowedRaces / DisallowedRaces filter of RefreshLatestNextProjects for `race`. */
+    raceMayResearch(node: TechNode, race: Race): boolean {
+        const a = this.stat?.allowedRaces.get(node.def.projectId);
+        if (a !== undefined && a.size > 0 && !a.has(race.name)) return false;
+        const d = this.stat?.disallowedRaces.get(node.def.projectId);
+        return !(d !== undefined && d.has(race.name));
+    }
+
+    /** Mod layer (Smarter AI): a race-special project (AllowedRaces names `race`). */
+    raceSpecialFor(node: TechNode, race: Race): boolean {
+        return this.stat?.allowedRaces.get(node.def.projectId)?.has(race.name) ?? false;
+    }
+
     private restrictedFor(node: TechNode, race: Race, isPirate: boolean): boolean {
         const a = this.stat?.allowedRaces.get(node.def.projectId);
         return a !== undefined && (isPirate || !a.has(race.name));

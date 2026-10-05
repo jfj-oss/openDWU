@@ -1233,6 +1233,8 @@ export function selectNextResearchProject(galaxy: Galaxy, empire: Empire, indust
             case IndustryType.Energy: list = race.energyResearchProjectOrder; break;
             case IndustryType.HighTech: list = race.highTechResearchProjectOrder; break;
         }
+        // Mod layer (Smarter AI): an AI empire's own optimised order replaces the race's list.
+        if (galaxy.scenario !== null) list = scenarioQuery(galaxy, 'researchProjectOrder', list, { empire, industry }) as number[];
         if (list !== null) {
             for (let i = 0; i < list.length; i++) {
                 const n = findNodeById(tree, list[i]);

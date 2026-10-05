@@ -32,6 +32,7 @@ import { RaceEventType, getPlagueUnhappinessFactorWithPlague } from './eventType
 import { processColonyTroops } from './troops';
 import { CharacterSkillType, colonyCharactersHighestSkillExcludeLeaders, resolveColonyWarWearinessDivisors, resolveEmpireLeaderWarWearinessDivisor, resolveLeaderColonyHappiness } from './characters';
 import type { Galaxy } from './galaxy';
+import { scenarioEmit } from './scenario/hooks';
 import type { Habitat } from './types';
 import { checkColonyRevenueFromPirateControl } from './pirates/pirateColonyControl';
 import type { Race } from './data/races';
@@ -550,6 +551,7 @@ export function reviewTaxes(galaxy: Galaxy, empire: Empire): void {
             }
         }
     }
+    if (galaxy.scenario !== null) scenarioEmit(galaxy, 'taxesReviewed', { empire }); // mod layer (Smarter AI growth taxes)
 }
 
 // Empire.4.cs RecalculateEmpirePopulation (3448).

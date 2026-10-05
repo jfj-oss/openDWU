@@ -76,6 +76,44 @@ const GROUP_OF: Readonly<Record<string, AddonGroup>> = {
 export const HIDDEN_ADDONS: ReadonlySet<string> = new Set(['threat-framework', 'example', 'ai-parity', 'soak-15y']);
 
 /**
+ * Add-ons set on another wizard page (not listed on the Scenario page, but named in the summaries like any other):
+ * Smarter AI lives on the Other Empires page (withSmarterAI below).
+ */
+export const ELSEWHERE_ADDONS: ReadonlySet<string> = new Set(['smarter-ai']);
+
+/** The Smarter AI add-on (scenarios/smarter-ai). */
+export const SMARTER_AI_ADDON_ID = 'smarter-ai';
+
+/** The Other Empires page's Smarter AI choice (StartGameOptions.smarterAI). */
+export interface SmarterAIChoice {
+    enabled: boolean;
+    research: boolean;
+    growthTaxes: boolean;
+    /** Growth taxes: colonies below this % of their maximum population are untaxed. */
+    growthTaxThreshold: number;
+}
+
+export function defaultSmarterAIChoice(): SmarterAIChoice {
+    return { enabled: false, research: true, growthTaxes: true, growthTaxThreshold: 70 };
+}
+
+/**
+ * The Scenario page's picks and overrides with the Smarter AI choice folded in: ticked = the add-on picked and its
+ * sub-switches / threshold as overrides; unticked = the add-on dropped. Pure.
+ */
+export function withSmarterAI(picked: readonly string[], overrides: AddonOverrides, smart: SmarterAIChoice | null | undefined): { picked: string[]; overrides: AddonOverrides } {
+    const p = picked.filter((id) => id !== SMARTER_AI_ADDON_ID);
+    if (smart == null || !smart.enabled) return { picked: p, overrides };
+    return {
+        picked: [...p, SMARTER_AI_ADDON_ID],
+        overrides: {
+            flags: { ...overrides.flags, smarterAIResearch: smart.research, smarterAIGrowthTax: smart.growthTaxes },
+            params: { ...overrides.params, smarterAIGrowthTaxThreshold: smart.growthTaxThreshold },
+        },
+    };
+}
+
+/**
  * `include` entries that are loaded for their data / shared state but are not switched on by the including add-on
  * (their manifests' flags default off there, and the including package works without them running).
  */
@@ -362,7 +400,7 @@ export function addonPickerModel(cat: AddonCatalog, picked: readonly string[]): 
     for (const group of ADDON_GROUPS) {
         const rows: AddonRow[] = [];
         for (const a of cat.list) {
-            if (a.hidden || a.group !== group) continue;
+            if (a.hidden || ELSEWHERE_ADDONS.has(a.id) || a.group !== group) continue;
             const requiredBy = p.filter((x) => x !== a.id && closureOn.get(x)!.has(a.id)).map(name);
             const checked = onSet.has(a.id);
             const loadedFor = checked || !loadedSet.has(a.id) ? [] : p.filter((x) => closureAll.get(x)!.has(a.id)).map(name);
@@ -389,6 +427,7 @@ export function addonPickerModel(cat: AddonCatalog, picked: readonly string[]): 
     }
     const finalNames = cat.list.filter((a) => onSet.has(a.id) && !a.hidden).map((a) => a.name);
     const panels = on.filter((id) => {
+        if (ELSEWHERE_ADDONS.has(id)) return false;
         const m = cat.manifests.get(id)!;
         return m.flags.length > 1 || m.params.length > 0;
     });

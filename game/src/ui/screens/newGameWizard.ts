@@ -92,7 +92,7 @@ import { activeCustomizationSetName } from '../../sim/data/customization';
 import { selectColorFromKey } from '../../sim/empireColors';
 import { loadScenarioIndex } from '../../sim/scenario/fetchScenario';
 import type { ScenarioManifest } from '../../sim/scenario/manifest';
-import { addonCatalog, addonPickerModel, canonicalAddons, planAddonStart, resolveAddonSwitches, toggleAddon, type AddonCatalog, type AddonOverrides, type AddonRow } from '../../sim/scenario/addons';
+import { SMARTER_AI_ADDON_ID, addonCatalog, addonPickerModel, canonicalAddons, defaultSmarterAIChoice, planAddonStart, resolveAddonSwitches, toggleAddon, withSmarterAI, type AddonCatalog, type AddonOverrides, type AddonRow, type SmarterAIChoice } from '../../sim/scenario/addons';
 import {
     COLORS,
     FONT,
@@ -486,6 +486,7 @@ export function createNewGameWizard(callbacks: NewGameWizardCallbacks): NewGameW
             target.addEventListener('pointerdown', show);
         },
         listParent: () => body,
+        refreshScenario: () => {},
     };
 
     // --- Page containers (built once, shown/hidden on navigation), 900 × 660 at (5, 40). ---
@@ -581,6 +582,7 @@ export function createNewGameWizard(callbacks: NewGameWizardCallbacks): NewGameW
         if (page === 'type') return;
         if (page === 'jumpstart') {
             // Start.cs btnJumpStartTheGalaxyNext_Click starts the game from the Jump Start page.
+            ctx.refreshScenario();
             callbacks.onStartGame({ ...options });
             return;
         }
@@ -588,6 +590,7 @@ export function createNewGameWizard(callbacks: NewGameWizardCallbacks): NewGameW
         if (idx < WIZARD_PAGES.length - 1) {
             showPage(WIZARD_PAGES[idx + 1]);
         } else {
+            ctx.refreshScenario();
             callbacks.onStartGame({ ...options });
         }
     }
@@ -634,6 +637,8 @@ interface WizardCtx {
     helpOn: (target: HTMLElement, fn: () => [string, string]) => void;
     /** Where open combo lists go (the window body: the GradientPanels clip their children). */
     listParent: () => HTMLElement;
+    /** Recomputes options.scenario from the Scenario page's picks and options.smarterAI (set by the Scenario page). */
+    refreshScenario: () => void;
 }
 
 /** TextResolver.GetText(tag) when GameText.txt is loaded, else the English text it holds (GameText.txt). */
@@ -1624,8 +1629,48 @@ function buildOtherEmpiresPage(ctx: WizardCtx): HTMLDivElement {
     );
     spawn.row.classList.add('wizard-empires-spawn');
 
-    // picStartNewGameOtherEmpiresImageBottom 880 × 130 at (10, 470), CenterImage.
-    resxPicture(wrap, 'picStartNewGameOtherEmpiresImageBottom.Image', 10, 470, 880, 130, 'center');
+    // Not in the original: the Smarter AI add-on (scenarios/smarter-ai; folded into options.scenario by
+    // addonChoiceFor). A GradientPanel under the spawn checkbox: the main CheckBox, its two sub-CheckBoxes and the
+    // growth-tax threshold box; the sub-controls are disabled while the main one is off.
+    const smart: SmarterAIChoice = options.smarterAI ?? defaultSmarterAIChoice();
+    options.smarterAI = smart;
+    const smartPanel = panel(wrap, 10, 468, 880, 62, 'wizard-panel-group wizard-smarter-ai');
+    const smartMain = check(smartPanel, 'Smarter AI (AI empires only)', smart.enabled, 10, 6, (v) => {
+        smart.enabled = v;
+        paintSmart();
+    });
+    smartMain.row.classList.add('wizard-smarter-ai-main');
+    const smartResearch = check(smartPanel, 'Optimised research order', smart.research, 30, 33, (v) => {
+        smart.research = v;
+        ctx.refreshScenario();
+    }, FONT.normal);
+    smartResearch.row.classList.add('wizard-smarter-ai-research');
+    const smartTax = check(smartPanel, 'Growth taxes', smart.growthTaxes, 290, 33, (v) => {
+        smart.growthTaxes = v;
+        paintSmart();
+    }, FONT.normal);
+    smartTax.row.classList.add('wizard-smarter-ai-taxes');
+    const taxLabel = label(smartPanel, 'untaxed below', 420, 35, { size: FONT.normal });
+    const taxBox = numberBox(smartPanel, 'wizard-smarter-ai-threshold', 515, 33, 46, 0, 100, () => smart.growthTaxThreshold, (x) => {
+        smart.growthTaxThreshold = x;
+        ctx.refreshScenario();
+    });
+    const taxUnit = label(smartPanel, '% of maximum population', 566, 35, { size: FONT.normal });
+    ctx.helpOn(smartPanel, () => ['Smarter AI', 'AI empires only (never you or pirates): an optimised research order, and no taxes on growing colonies unless the treasury needs them.']);
+    function paintSmart(): void {
+        smartResearch.input.disabled = !smart.enabled;
+        smartTax.input.disabled = !smart.enabled;
+        const taxOn = smart.enabled && smart.growthTaxes;
+        const taxInput = taxBox.querySelector('input');
+        if (taxInput !== null) taxInput.disabled = !taxOn;
+        for (const e of [smartResearch.row, smartTax.row]) e.classList.toggle('is-disabled', !smart.enabled);
+        for (const e of [taxLabel, taxBox, taxUnit]) e.classList.toggle('is-disabled', !taxOn);
+        ctx.refreshScenario();
+    }
+    paintSmart();
+
+    // picStartNewGameOtherEmpiresImageBottom 880 × 130 at (10, 470), CenterImage (moved down under the Smarter AI panel).
+    resxPicture(wrap, 'picStartNewGameOtherEmpiresImageBottom.Image', 10, 536, 880, 64, 'center');
 
     let governments: Government[] = [];
     function playableRaces(): Race[] {
@@ -2346,12 +2391,16 @@ function buildVictoryPage(ctx: WizardCtx): HTMLDivElement {
 /** Scenarios listed by the Scenario page (filled when the index loads; read by the Start summary). */
 let wizardScenarios: ScenarioManifest[] = [];
 
-/** The wizard's scenario choice for a set of ticks (null = the original game). */
-export function addonChoiceFor(cat: AddonCatalog, picked: readonly string[], overrides: AddonOverrides): StartGameOptions['scenario'] {
-    const plan = planAddonStart(cat, picked);
+/**
+ * The wizard's scenario choice for a set of ticks (null = the original game), with the Other Empires page's Smarter AI
+ * choice folded in (addons.ts withSmarterAI).
+ */
+export function addonChoiceFor(cat: AddonCatalog, picked: readonly string[], overrides: AddonOverrides, smart: SmarterAIChoice | null = null): StartGameOptions['scenario'] {
+    const w = withSmarterAI(picked, overrides, smart);
+    const plan = planAddonStart(cat, w.picked);
     if (plan === null) return null;
-    const sw = resolveAddonSwitches(cat, picked, overrides);
-    return { id: plan.id, flags: sw.flags, params: sw.params, addons: canonicalAddons(cat, picked) };
+    const sw = resolveAddonSwitches(cat, w.picked, w.overrides);
+    return { id: plan.id, flags: sw.flags, params: sw.params, addons: canonicalAddons(cat, w.picked) };
 }
 
 function buildScenarioPage(ctx: WizardCtx): HTMLDivElement {
@@ -2374,7 +2423,8 @@ function buildScenarioPage(ctx: WizardCtx): HTMLDivElement {
     detailPanel.appendChild(place(detail, 8, 8, 860, 162));
 
     let cat: AddonCatalog = addonCatalog([]);
-    let picked: string[] = options.scenario?.addons ?? (options.scenario ? [options.scenario.id] : []);
+    // The Smarter AI add-on is the Other Empires page's (options.smarterAI), not a tick of this page.
+    let picked: string[] = (options.scenario?.addons ?? (options.scenario ? [options.scenario.id] : [])).filter((id) => id !== SMARTER_AI_ADDON_ID);
     const overrides: AddonOverrides = { flags: {}, params: {} };
     /** Settings panels the player opened (kept open across re-renders). */
     const openPanels = new Set<string>();
@@ -2387,9 +2437,10 @@ function buildScenarioPage(ctx: WizardCtx): HTMLDivElement {
     }
 
     function update(): void {
-        options.scenario = addonChoiceFor(cat, picked, overrides);
+        options.scenario = addonChoiceFor(cat, picked, overrides, options.smarterAI ?? null);
         render();
     }
+    ctx.refreshScenario = update;
 
     function rowEl(r: AddonRow): HTMLElement {
         const row = el('label', 'wizard-addon-row' + (r.locked ? ' is-locked' : '') + (r.disabled && !r.locked ? ' is-disabled' : ''));
@@ -2455,7 +2506,7 @@ function buildScenarioPage(ctx: WizardCtx): HTMLDivElement {
                 if (f.name === a.masterFlag) continue; // the tick is the master switch
                 const c = checkBox(f.label, choice.flags[f.name] ?? f.default, (x) => {
                     overrides.flags[f.name] = x;
-                    options.scenario = addonChoiceFor(cat, picked, overrides);
+                    options.scenario = addonChoiceFor(cat, picked, overrides, options.smarterAI ?? null);
                 }, FONT.normal);
                 c.classList.add('wizard-checkbox', 'wizard-flow');
                 body.appendChild(c);
@@ -2471,7 +2522,7 @@ function buildScenarioPage(ctx: WizardCtx): HTMLDivElement {
                     const v = parseInt(s.input.value, 10);
                     if (!Number.isNaN(v)) {
                         overrides.params[p.name] = Math.min(max, Math.max(min, v));
-                        options.scenario = addonChoiceFor(cat, picked, overrides);
+                        options.scenario = addonChoiceFor(cat, picked, overrides, options.smarterAI ?? null);
                     }
                 });
                 s.el.classList.add('wizard-flow-spin');

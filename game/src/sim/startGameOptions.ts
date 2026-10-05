@@ -9,7 +9,7 @@ import type { GameData } from './data/gameData';
 import type { CreateGameOptions, EmpireStartOptions } from './game';
 import { Random } from './random';
 import type { ScenarioManifest } from './scenario/manifest';
-import { addonCatalog, addonPickerModel } from './scenario/addons';
+import { addonCatalog, addonPickerModel, type SmarterAIChoice } from './scenario/addons';
 import { CUSTOM_MAX_SECTORS, CUSTOM_MIN_SECTORS, clampCustomSectors } from './galaxy';
 
 export interface StartGameOptions {
@@ -129,6 +129,11 @@ export interface StartGameOptions {
      * The caller loads the scenario's overlay into the GameData it passes to toCreateGameOptions.
      */
     scenario?: StartScenarioChoice | null;
+    /**
+     * The Other Empires page's "Smarter AI (AI empires only)" add-on (scenarios/smarter-ai). The wizard folds it into
+     * `scenario` (addons.ts withSmarterAI); absent / disabled = off.
+     */
+    smarterAI?: SmarterAIChoice;
 }
 
 /** The chosen scenario and its flag / param values (manifest defaults when absent). */

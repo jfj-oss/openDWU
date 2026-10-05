@@ -499,3 +499,9 @@
 .wizard-start-summary .ow-grid-row.ow-sel .wizard-start-value {
     color: rgb(255, 255, 0);
 }
+
+/* Other Empires page: the Smarter AI add-on panel (sub-controls dimmed while the main switch is off). */
+.wizard-smarter-ai .is-disabled {
+    opacity: 0.45;
+    pointer-events: none;
+}

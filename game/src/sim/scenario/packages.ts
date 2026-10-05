@@ -42,4 +42,6 @@ import './court/court'; // 19n court & dynasties (flag courtDynasties; after 19m
 import './court/intrigue'; // 19n package 2 court intrigue (flag courtIntrigue; fills the espionage / 19m / proposal slots)
 import './security/security'; // 19m internal security (flag internalSecurity; last: it fills the 19d1 / 19d4 hook slots)
 import './frontier/frontier'; // 19g-5 frontier autonomy (flag frontierAutonomy; after 19n / 19m: ledger terms, leads)
+import './smarterAI/research'; // Smarter AI optimised research order (flags smarterAI + smarterAIResearch; AI empires only)
+import './smarterAI/taxes'; // Smarter AI growth taxes (flags smarterAI + smarterAIGrowthTax; AI empires only)
 export {};
