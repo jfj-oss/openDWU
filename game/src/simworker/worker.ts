@@ -22,7 +22,11 @@ interface WorkerScope {
     postMessage(m: unknown, transfer?: Transferable[]): void;
     onmessage: ((e: MessageEvent) => void) | null;
 }
-const scope = self as unknown as WorkerScope;
+/**
+ * Where messages go: this worker's own scope, or — in the desktop app's sim process (simProcessPage.ts) — the
+ * MessagePort to the game page that the hosting page hands over first (`{ type: 'connectPort' }` with the port).
+ */
+let scope = self as unknown as WorkerScope;
 
 /** When the worker last posted (performance.now; ALIVE_INTERVAL_MS). */
 let lastPostAt = 0;
@@ -244,4 +248,13 @@ function dispatch(m: ToWorker): void {
     }
 }
 
-scope.onmessage = (e: MessageEvent) => handle(e.data as ToWorker);
+scope.onmessage = (e: MessageEvent) => {
+    const port = e.ports?.[0];
+    if ((e.data as { type?: unknown } | null)?.type === 'connectPort' && port !== undefined) {
+        // The desktop sim process: the game page is on the other end of this port; everything goes through it.
+        scope = port as unknown as WorkerScope;
+        scope.onmessage = (pe: MessageEvent) => handle(pe.data as ToWorker);
+        return;
+    }
+    handle(e.data as ToWorker);
+};

@@ -309,3 +309,152 @@ describe('desktop/assetManifest.cjs (built at runtime by the shell)', () => {
         }
     });
 });
+
+describe('desktop/simProcess.cjs (the sim in a process of its own)', () => {
+    const { createSimProcesses } = require('../desktop/simProcess.cjs') as { createSimProcesses(o: unknown): SimProcesses };
+    interface SimProcesses {
+        start(owner: unknown): number;
+        ready(sender: unknown): boolean;
+        terminate(sender: unknown, id: number): void;
+        workerError(sender: unknown, message: string): void;
+        list(): { id: number; memory: { pid: number; workingSetGB: number } | null }[];
+    }
+    type Handler = (...a: unknown[]) => void;
+    class FakeContents {
+        static nextPid = 100;
+        handlers = new Map<string, Handler[]>();
+        sent: { channel: string; payload: unknown; ports?: unknown[] }[] = [];
+        destroyed = false;
+        pid = FakeContents.nextPid++;
+        id = this.pid;
+        on(ev: string, h: Handler): void {
+            this.handlers.set(ev, [...(this.handlers.get(ev) ?? []), h]);
+        }
+        emit(ev: string, ...a: unknown[]): void {
+            for (const h of this.handlers.get(ev) ?? []) h(...a);
+        }
+        isDestroyed(): boolean {
+            return this.destroyed;
+        }
+        send(channel: string, payload: unknown): void {
+            this.sent.push({ channel, payload });
+        }
+        postMessage(channel: string, payload: unknown, ports: unknown[]): void {
+            this.sent.push({ channel, payload, ports });
+        }
+        getOSProcessId(): number {
+            return this.pid;
+        }
+        setWindowOpenHandler(): void {}
+    }
+    class FakeWindow {
+        static all: FakeWindow[] = [];
+        webContents = new FakeContents();
+        handlers = new Map<string, Handler[]>();
+        destroyed = false;
+        url = '';
+        constructor(readonly opts: { show: boolean; webPreferences: Record<string, unknown> }) {
+            FakeWindow.all.push(this);
+        }
+        on(ev: string, h: Handler): void {
+            this.handlers.set(ev, [...(this.handlers.get(ev) ?? []), h]);
+        }
+        loadURL(u: string): void {
+            this.url = u;
+        }
+        isDestroyed(): boolean {
+            return this.destroyed;
+        }
+        destroy(): void {
+            if (this.destroyed) return;
+            this.destroyed = true;
+            this.webContents.destroyed = true;
+            for (const h of this.handlers.get('closed') ?? []) h();
+        }
+    }
+    class FakeChannel {
+        port1 = { name: 'port1' };
+        port2 = { name: 'port2' };
+    }
+    function setup() {
+        FakeWindow.all = [];
+        const crash: string[] = [];
+        const sims = createSimProcesses({
+            electron: {
+                BrowserWindow: FakeWindow,
+                MessageChannelMain: FakeChannel,
+                app: { getAppMetrics: () => FakeWindow.all.map((w) => ({ pid: w.webContents.pid, memory: { workingSetSize: 2 * 1024 * 1024, peakWorkingSetSize: 3 * 1024 * 1024 } })) },
+            },
+            preload: '/x/simPreload.cjs',
+            url: 'dwu://app/sim.html',
+            crashLog: (t: string) => crash.push(t),
+            log: () => undefined,
+            memoryIntervalMs: 60_000,
+            version: '9.9.9',
+        });
+        return { sims, crash, owner: new FakeContents() };
+    }
+
+    it('opens a hidden, sandboxed, unthrottled window on the sim page and connects it to its game page once it listens', () => {
+        const { sims, owner } = setup();
+        const id = sims.start(owner);
+        const win = FakeWindow.all[0];
+        expect(win.opts.show).toBe(false);
+        expect(win.opts.webPreferences).toMatchObject({ contextIsolation: true, nodeIntegration: false, sandbox: true, backgroundThrottling: false, preload: '/x/simPreload.cjs' });
+        expect(win.url).toBe('dwu://app/sim.html');
+        expect(sims.ready(owner)).toBe(false); // only the sim page itself
+        expect(sims.ready(win.webContents)).toBe(true);
+        expect(sims.ready(win.webContents)).toBe(false); // once
+        expect(win.webContents.sent).toEqual([{ channel: 'dwu-sim:port', payload: null, ports: [{ name: 'port1' }] }]);
+        expect(owner.sent).toEqual([{ channel: 'dwu:sim-port', payload: { id }, ports: [{ name: 'port2' }] }]);
+        expect(sims.list().map((s) => s.memory?.workingSetGB)).toEqual([2]);
+    });
+
+    it('terminate (only by its owner) closes the window without an exit notice; a navigation, crash or close of the game page kills its sims', () => {
+        const { sims, owner } = setup();
+        const other = new FakeContents();
+        const a = sims.start(owner);
+        sims.terminate(other, a);
+        expect(FakeWindow.all[0].destroyed).toBe(false);
+        sims.terminate(owner, a);
+        expect(FakeWindow.all[0].destroyed).toBe(true);
+        expect(owner.sent.filter((s) => s.channel === 'dwu:sim-exit')).toEqual([]);
+
+        sims.start(owner);
+        owner.emit('did-start-navigation', { isMainFrame: true, isSameDocument: true });
+        expect(FakeWindow.all[1].destroyed).toBe(false); // same-document (hash) navigation
+        owner.emit('did-start-navigation', { isMainFrame: false, isSameDocument: false });
+        expect(FakeWindow.all[1].destroyed).toBe(false); // a subframe
+        owner.emit('did-start-navigation', { isMainFrame: true, isSameDocument: false });
+        expect(FakeWindow.all[1].destroyed).toBe(true); // reload
+        sims.start(owner);
+        owner.emit('render-process-gone', {}, { reason: 'oom' });
+        expect(FakeWindow.all[2].destroyed).toBe(true);
+        sims.start(owner);
+        owner.emit('destroyed');
+        expect(FakeWindow.all[3].destroyed).toBe(true);
+        expect(sims.list()).toEqual([]);
+    });
+
+    it('a sim process that dies is logged to crash-log.txt with its memory and reported to its game page; worker errors go to the page', () => {
+        const { sims, owner, crash } = setup();
+        const id = sims.start(owner);
+        const win = FakeWindow.all[0];
+        win.webContents.emit('console-message', { level: 'error', message: 'sim worker: STOPPED (step loop)' });
+        sims.workerError(win.webContents, 'TypeError: x is undefined');
+        expect(owner.sent).toContainEqual({ channel: 'dwu:sim-error', payload: { id, message: 'TypeError: x is undefined' } });
+        win.webContents.emit('render-process-gone', {}, { reason: 'oom', exitCode: 133 });
+        expect(owner.sent).toContainEqual({ channel: 'dwu:sim-exit', payload: { id, reason: 'the simulation process ended (oom, exit code 133)' } });
+        expect(owner.sent.filter((s) => s.channel === 'dwu:sim-exit')).toHaveLength(1); // the window's close after it adds nothing
+        expect(win.destroyed).toBe(true);
+        expect(crash).toHaveLength(1);
+        expect(crash[0]).toMatch(/sim process render-process-gone reason=oom exitCode=133 version=9\.9\.9/);
+        expect(crash[0]).toMatch(/last memory sample: .* sim process \d+ working set 2\.00 GB, peak 3\.00 GB/);
+        expect(crash[0]).toMatch(/sim worker: STOPPED/);
+        // A sim window closed from outside: reported, not a crash.
+        const id2 = sims.start(owner);
+        FakeWindow.all[1].destroy();
+        expect(owner.sent).toContainEqual({ channel: 'dwu:sim-exit', payload: { id: id2, reason: 'the simulation window was closed' } });
+        expect(crash).toHaveLength(1);
+    });
+});

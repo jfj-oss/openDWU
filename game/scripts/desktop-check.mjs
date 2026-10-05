@@ -346,9 +346,23 @@ async function runFlow(page, base, tag, results) {
     // Web Worker: ?simWorker=1 runs the sim in a module worker (dist/assets/worker-*.js) loaded over the same scheme.
     try {
         const workerUrls = [];
+        const simPages = [];
         page.on('worker', (w) => workerUrls.push(w.url()));
+        // The desktop app runs the worker in its sim process (desktop/simProcess.cjs): a hidden window on sim.html.
+        const onPage = (p) => {
+            if (!/\/sim\.html/.test(p.url()) && p.url() !== 'about:blank') return;
+            simPages.push(p);
+            p.on('worker', (w) => workerUrls.push(w.url()));
+            for (const w of p.workers()) workerUrls.push(w.url());
+        };
+        for (const c of page.context().browser()?.contexts() ?? [page.context()]) c.on('page', onPage);
         await page.goto(`${base}index.html?autostart=1&simWorker=1`, { waitUntil: 'domcontentloaded' });
         await page.waitForFunction(() => !!window.__dwu?.game?.galaxy && window.__dwu.simWorker != null, null, { timeout: 120000 });
+        if (tag !== 'dev') {
+            const sims = simPages.filter((p) => /\/sim\.html/.test(p.url()));
+            if (sims.length === 0) throw new Error('no sim process window (sim.html) was opened');
+            for (const w of sims.flatMap((p) => p.workers())) if (!workerUrls.includes(w.url())) workerUrls.push(w.url());
+        }
         // Pixi also starts blob: workers (image decoding); the sim worker is the script file from dist/assets/.
         const simUrls = workerUrls.filter((u) => !u.startsWith('blob:'));
         if (simUrls.length === 0) throw new Error(`no sim worker script was loaded (workers: ${workerUrls.slice(0, 3).join(' ')})`);
@@ -368,7 +382,7 @@ async function runFlow(page, base, tag, results) {
         }
         if (t1 - t0 < 1000) throw new Error(`replica galaxy.nowMs did not advance (${t0} -> ${t1})`);
         await shot('worker');
-        ok(`?simWorker=1 sim worker runs (${simUrls[0]}), replica nowMs ${t0} -> ${t1}`);
+        ok(`?simWorker=1 sim worker runs (${simUrls[0]}${tag !== 'dev' ? ', in the sim process window' : ''}), replica nowMs ${t0} -> ${t1}`);
     } catch (err) {
         bad('?simWorker=1 sim worker', err);
         await shot('worker-failed').catch(() => {});
@@ -389,7 +403,8 @@ async function runFlow(page, base, tag, results) {
                 setTimeout(() => res('(no reply)'), 20000);
             });
             const text = await sw.save();
-            return { worker: true, reply, saveKb: text ? Math.round(text.length / 1024) : 0 };
+            // save() gives a Blob of the UTF-8 text (saveData.ts), a string in older builds.
+            return { worker: true, reply, saveKb: text ? Math.round((text.size ?? text.length) / 1024) : 0 };
         });
         if (!w.worker) throw new Error('window.__dwu.simWorker is null: the default boot runs in-thread');
         if (w.reply !== 'Desktop Worker Check') throw new Error(`the command's reply did not reach the replica (${w.reply})`);

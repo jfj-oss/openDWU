@@ -77,7 +77,15 @@ Nothing from the original game ships with the app.
   **Game Folder…** / **Check for Updates…**) on macOS. F11 toggles
   fullscreen. One instance per profile: a second launch focuses the running
   window. Renderer runs sandboxed (`contextIsolation: true`,
-  `nodeIntegration: false`, `sandbox: true`); the game window has no preload.
+  `nodeIntegration: false`, `sandbox: true`); the game window's preload
+  (`gamePreload.cjs`) exposes only the update check and the sim process.
+- Sim process (`desktop/simProcess.cjs`, `simPreload.cjs`, `sim.html`; docs/sim-worker.md §4.7): the game's
+  simulation worker runs in a hidden window of its own, i.e. its own renderer process and its own V8 heap cage
+  (with pointer compression all isolates of one process share ~4 GB). The game page asks for it, the shell opens
+  the window on `dwu://app/sim.html` (same session, so the same `dwu://` handler and Blob registry) and hands a
+  `MessageChannelMain` port to each page. Its end (crash, kill, out of memory) is reported to the game page,
+  which offers its Restart prompt, and logged to `crash-log.txt` with its memory; it is killed when the game page
+  reloads, crashes or closes. `?simProcess=0` runs the worker inside the game page's process instead.
 - Icon: the window/dock icon comes from your DW:U install at runtime
   (`images/ui/chrome/galaxy_Icon.png`, then `DesktopIcon.ico`), else the
   app's own icon. That own icon (a ringed planet, drawn procedurally by
