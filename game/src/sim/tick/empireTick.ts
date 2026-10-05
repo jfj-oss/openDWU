@@ -111,6 +111,7 @@ import {
 } from '../events';
 import { AutomationLevel } from '../empire';
 import { scenarioFlag } from '../scenario/state';
+import { scenarioEmit } from '../scenario/hooks';
 import { rimTraderColonyCapReached } from '../scenario/rimTrade/common';
 
 /** Empire.cs 176-186 _ShortProcessingInterval .. _HugeProcessingInterval (seconds). */
@@ -298,6 +299,7 @@ export function empireDoTasks(galaxy: Galaxy, empire: Empire): void {
         if (flag) {
             invadeUnwillingColonizationTargets(galaxy, empire);
         }
+        if (galaxy.scenario !== null && flag) scenarioEmit(galaxy, 'colonizationTargetsReviewed', { empire }); // mod layer (Smarter AI independents)
         empire.resourceTargets = identifyResourceCentres(galaxy, empire);
         empire.empireResourceTargets = prioritizeEmpireResourceNeeds(galaxy, empire);
         identifyUnavailableLuxuryResources(galaxy, empire);

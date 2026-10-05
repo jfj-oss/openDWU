@@ -91,10 +91,14 @@ export interface SmarterAIChoice {
     growthTaxes: boolean;
     /** Growth taxes: colonies below this % of their maximum population are untaxed. */
     growthTaxThreshold: number;
+    /** Smarter colony picks (absent = on). */
+    colonies?: boolean;
+    /** Absorb independent worlds (absent = on). */
+    independents?: boolean;
 }
 
 export function defaultSmarterAIChoice(): SmarterAIChoice {
-    return { enabled: false, research: true, growthTaxes: true, growthTaxThreshold: 70 };
+    return { enabled: false, research: true, growthTaxes: true, growthTaxThreshold: 70, colonies: true, independents: true };
 }
 
 /**
@@ -107,7 +111,7 @@ export function withSmarterAI(picked: readonly string[], overrides: AddonOverrid
     return {
         picked: [...p, SMARTER_AI_ADDON_ID],
         overrides: {
-            flags: { ...overrides.flags, smarterAIResearch: smart.research, smarterAIGrowthTax: smart.growthTaxes },
+            flags: { ...overrides.flags, smarterAIResearch: smart.research, smarterAIGrowthTax: smart.growthTaxes, smarterAIColonies: smart.colonies ?? true, smarterAIIndependents: smart.independents ?? true },
             params: { ...overrides.params, smarterAIGrowthTaxThreshold: smart.growthTaxThreshold },
         },
     };

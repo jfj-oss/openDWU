@@ -169,7 +169,7 @@ describe('save round trip', () => {
         const text = serializeGame(a.game as never, time, { ...defaultStartGameOptions(), seed: 1, scenario: { id: SC, flags: { ...g.scenario!.flags }, params: { ...g.scenario!.params } } });
         const g2 = deserializeGame(text, a.gameData).game.galaxy;
         expect(g2.scenario!.id).toBe(SC);
-        expect(g2.scenario!.flags).toEqual({ smarterAI: true, smarterAIResearch: true, smarterAIGrowthTax: false });
+        expect(g2.scenario!.flags).toEqual({ smarterAI: true, smarterAIResearch: true, smarterAIGrowthTax: false, smarterAIColonies: true, smarterAIIndependents: true });
         expect(g2.scenario!.params).toEqual({ smarterAIGrowthTaxThreshold: 55 });
         expect(peek(g2)!.orders).toEqual(peek(g)!.orders);
         // A save without the orders (an older one) rebuilds them on first use, identically.
@@ -185,7 +185,7 @@ describe('wizard', () => {
         expect(addonChoiceFor(cat, [], none, defaultSmarterAIChoice())).toBeNull(); // off by default
         const smart = { enabled: true, research: true, growthTaxes: false, growthTaxThreshold: 55 };
         const choice = addonChoiceFor(cat, [], none, smart)!;
-        expect(choice).toEqual({ id: SC, flags: { smarterAI: true, smarterAIResearch: true, smarterAIGrowthTax: false }, params: { smarterAIGrowthTaxThreshold: 55 }, addons: [SC] });
+        expect(choice).toEqual({ id: SC, flags: { smarterAI: true, smarterAIResearch: true, smarterAIGrowthTax: false, smarterAIColonies: true, smarterAIIndependents: true }, params: { smarterAIGrowthTaxThreshold: 55 }, addons: [SC] });
         const opts = toCreateGameOptions({ ...defaultStartGameOptions(), seed: 3, scenario: choice, smarterAI: smart }, base, ['A']);
         expect(opts.scenarioFlags).toEqual(choice.flags);
         expect(opts.scenarioParams).toEqual(choice.params);

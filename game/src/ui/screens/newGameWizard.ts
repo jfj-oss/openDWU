@@ -1656,10 +1656,24 @@ function buildOtherEmpiresPage(ctx: WizardCtx): HTMLDivElement {
         ctx.refreshScenario();
     });
     const taxUnit = label(smartPanel, '% of maximum population', 566, 35, { size: FONT.normal });
+    // Smarter AI colony picks / absorb independents (plain rows; the coordinator folds the sub-options into a list later).
+    const smartColonies = check(smartPanel, 'Smarter colony picks', smart.colonies ?? true, 30, 58, (v) => {
+        smart.colonies = v;
+        ctx.refreshScenario();
+    }, FONT.normal);
+    smartColonies.row.classList.add('wizard-smarter-ai-colonies');
+    const smartIndependents = check(smartPanel, 'Absorb independent worlds', smart.independents ?? true, 290, 58, (v) => {
+        smart.independents = v;
+        ctx.refreshScenario();
+    }, FONT.normal);
+    smartIndependents.row.classList.add('wizard-smarter-ai-independents');
     ctx.helpOn(smartPanel, () => ['Smarter AI', 'AI empires only (never you or pirates): an optimised research order, and no taxes on growing colonies unless the treasury needs them.']);
     function paintSmart(): void {
         smartResearch.input.disabled = !smart.enabled;
         smartTax.input.disabled = !smart.enabled;
+        smartColonies.input.disabled = !smart.enabled;
+        smartIndependents.input.disabled = !smart.enabled;
+        for (const e of [smartColonies.row, smartIndependents.row]) e.classList.toggle('is-disabled', !smart.enabled);
         const taxOn = smart.enabled && smart.growthTaxes;
         const taxInput = taxBox.querySelector('input');
         if (taxInput !== null) taxInput.disabled = !taxOn;
