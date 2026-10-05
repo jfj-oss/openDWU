@@ -5,7 +5,11 @@
   "flags": [
     { "name": "smarterAI", "label": "Smarter AI (AI empires only)", "description": "Master switch.", "default": true },
     { "name": "smarterAIResearch", "label": "Optimised research order", "description": "AI empires research the three trees in an optimised order (shields and damage control earlier under threat, fuel-efficient hyperdrives earlier for spread-out or sparse empires).", "default": true },
-    { "name": "smarterAIGrowthTax", "label": "Growth taxes", "description": "AI colonies below the threshold share of their maximum population pay no tax; in debt the fullest colonies are taxed first until the shortfall is covered.", "default": true }
+    { "name": "smarterAIGrowthTax", "label": "Growth taxes", "description": "AI colonies below the threshold share of their maximum population pay no tax; in debt the fullest colonies are taxed first until the shortfall is covered.", "default": true },
+    { "name": "smarterAIResearchStations", "label": "Smarter research stations", "description": "AI empires build one research station per field at the best bonus location known, move their best scientists there, and build no plain stations at their research cap.", "default": true },
+    { "name": "smarterAIWonders", "label": "Pursue wonders", "description": "AI empires pick a wonder that fits them (research and economy when peaceful, military when aggressive), research towards it and build it when affordable.", "default": true },
+    { "name": "smarterAIEspionage", "label": "Use spies well", "description": "AI agents steal rivals' technology and sabotage pirate bases near their colonies; counter-intelligence rises while hostile agents are active.", "default": true },
+    { "name": "smarterAIDiplomacy", "label": "Diplomacy with purpose", "description": "AI empires seek trade and defence treaties with empires facing the same threat (pirates or a runaway empire) and pay pirate protection when it is cheaper than the expected losses.", "default": true }
   ],
   "params": [
     { "name": "smarterAIGrowthTaxThreshold", "label": "Growth taxes: untaxed below this % of maximum population", "default": 70, "min": 0, "max": 100 }

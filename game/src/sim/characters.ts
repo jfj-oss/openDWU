@@ -7543,6 +7543,7 @@ export function reviewCharacterLocation(galaxy: Galaxy, empire: Empire, characte
                         }
                         break;
                 }
+                if (galaxy.scenario !== null) builtObject7 = scenarioQuery(galaxy, 'scientistStation', builtObject7, { empire, character }); // mod layer (Smarter AI research stations)
                 if (builtObject7 !== null && character.location !== builtObject7) {
                     if (transferToLocation) character.transferToNewLocation(builtObject7, galaxy);
                     return builtObject7;

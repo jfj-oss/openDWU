@@ -43,6 +43,7 @@ import {
     sortedHabitatsDescending,
 } from './facilities';
 import { formatNetGrouped0 } from '../netNumberFormat';
+import { scenarioQuery } from '../scenario/hooks';
 
 // ---------------------------------------------------------------------------------------------------------------
 // Galaxy._WondersBuilt
@@ -331,6 +332,7 @@ export function reviewColonyWonders(galaxy: Galaxy, empire: Empire): void {
         if (policy.prioritizeBuildWonderId >= 0 && planetaryFacilityDefinition.facilityId === policy.prioritizeBuildWonderId) {
             num2 = empire.stateMoney;
         }
+        if (galaxy.scenario !== null) num2 = scenarioQuery(galaxy, 'wonderBudget', num2, { empire, wonder: planetaryFacilityDefinition }); // mod layer (Smarter AI wonders)
         const num3 = calculatePlanetaryFacilityCost(planetaryFacilityDefinition, empire);
         if (num3 < num2 && num > planetaryFacilityDefinition.maintenanceCost) {
             let habitat2: Habitat | null = null;

@@ -91,10 +91,14 @@ export interface SmarterAIChoice {
     growthTaxes: boolean;
     /** Growth taxes: colonies below this % of their maximum population are untaxed. */
     growthTaxThreshold: number;
+    researchStations?: boolean;
+    wonders?: boolean;
+    espionage?: boolean;
+    diplomacy?: boolean;
 }
 
 export function defaultSmarterAIChoice(): SmarterAIChoice {
-    return { enabled: false, research: true, growthTaxes: true, growthTaxThreshold: 70 };
+    return { enabled: false, research: true, growthTaxes: true, growthTaxThreshold: 70, researchStations: true, wonders: true, espionage: true, diplomacy: true };
 }
 
 /**
@@ -107,7 +111,15 @@ export function withSmarterAI(picked: readonly string[], overrides: AddonOverrid
     return {
         picked: [...p, SMARTER_AI_ADDON_ID],
         overrides: {
-            flags: { ...overrides.flags, smarterAIResearch: smart.research, smarterAIGrowthTax: smart.growthTaxes },
+            flags: {
+                ...overrides.flags,
+                smarterAIResearch: smart.research,
+                smarterAIGrowthTax: smart.growthTaxes,
+                smarterAIResearchStations: smart.researchStations ?? true,
+                smarterAIWonders: smart.wonders ?? true,
+                smarterAIEspionage: smart.espionage ?? true,
+                smarterAIDiplomacy: smart.diplomacy ?? true,
+            },
             params: { ...overrides.params, smarterAIGrowthTaxThreshold: smart.growthTaxThreshold },
         },
     };

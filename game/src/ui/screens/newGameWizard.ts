@@ -1650,6 +1650,21 @@ function buildOtherEmpiresPage(ctx: WizardCtx): HTMLDivElement {
         paintSmart();
     }, FONT.normal);
     smartTax.row.classList.add('wizard-smarter-ai-taxes');
+    // Statecraft sub-switches (plain rows; the coordinator folds them into the sub-option list later).
+    const statecraftKeys = [
+        ['researchStations', 'Smarter research stations', 'wizard-smarter-ai-stations'],
+        ['wonders', 'Pursue wonders', 'wizard-smarter-ai-wonders'],
+        ['espionage', 'Use spies well', 'wizard-smarter-ai-espionage'],
+        ['diplomacy', 'Diplomacy with purpose', 'wizard-smarter-ai-diplomacy'],
+    ] as const;
+    const statecraftChecks = statecraftKeys.map(([key, text, cls], i) => {
+        const c = check(smartPanel, text, smart[key] ?? true, 30 + i * 215, 56, (v) => {
+            smart[key] = v;
+            ctx.refreshScenario();
+        }, FONT.normal);
+        c.row.classList.add(cls);
+        return c;
+    });
     const taxLabel = label(smartPanel, 'untaxed below', 420, 35, { size: FONT.normal });
     const taxBox = numberBox(smartPanel, 'wizard-smarter-ai-threshold', 515, 33, 46, 0, 100, () => smart.growthTaxThreshold, (x) => {
         smart.growthTaxThreshold = x;
@@ -1660,6 +1675,10 @@ function buildOtherEmpiresPage(ctx: WizardCtx): HTMLDivElement {
     function paintSmart(): void {
         smartResearch.input.disabled = !smart.enabled;
         smartTax.input.disabled = !smart.enabled;
+        for (const c of statecraftChecks) {
+            c.input.disabled = !smart.enabled;
+            c.row.classList.toggle('is-disabled', !smart.enabled);
+        }
         const taxOn = smart.enabled && smart.growthTaxes;
         const taxInput = taxBox.querySelector('input');
         if (taxInput !== null) taxInput.disabled = !taxOn;

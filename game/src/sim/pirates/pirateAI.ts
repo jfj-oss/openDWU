@@ -315,7 +315,8 @@ export function pirateEconomyPerformExpense(galaxy: Galaxy, empire: Empire, amou
 
 /** Empire.2.cs 2754 DetermineDesirePirateProtection(otherEmpire) (pirateRelationsAI.ts). No Rnd. */
 export function determineDesirePirateProtection(galaxy: Galaxy, empire: Empire, otherEmpire: Empire | null): boolean {
-    return determineDesirePirateProtectionCore(galaxy, empire, otherEmpire);
+    const desire = determineDesirePirateProtectionCore(galaxy, empire, otherEmpire);
+    return galaxy.scenario !== null && otherEmpire !== null ? scenarioQuery(galaxy, 'pirateProtectionDesired', desire, { empire, pirate: otherEmpire }) : desire; // mod layer (Smarter AI diplomacy)
 }
 
 // ---- stubs added by M4i (construction/facilities.ts: ConstructFacilities, PirateReviewColonyFacilities) ----

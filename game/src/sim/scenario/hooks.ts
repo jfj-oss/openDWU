@@ -17,6 +17,8 @@ import { scenarioRuns, type GalaxyScenario } from './state';
 import type { Resource } from '../data/resources';
 import type { Character, CaptainBonuses } from '../characters';
 import type { EmpireActivity } from '../pirates/empireActivity';
+import type { Design } from '../design';
+import type { Facility } from '../data/facilities';
 
 // ---------------------------------------------------------------------------
 // Handler registries (shared gate)
@@ -500,6 +502,18 @@ export interface ScenarioQueries {
      * ordered project ids the empire tries first (stock: the race's list). `industry` is IndustryType. Smarter AI.
      */
     researchProjectOrder: { value: readonly number[]; args: { empire: Empire; industry: number } };
+    /** stationPlacement.ts determineResearchStationLocation (Empire.5.cs 3580), end: the sorted research-bonus build locations. Smarter AI. No Rnd. */
+    researchStationLocations: { value: Habitat[]; args: { empire: Empire } };
+    /** stationPlacement.ts analyzeNewResearchFacilities (Empire.5.cs 3495), end: the research station to build next (null = none). Smarter AI. No Rnd. */
+    researchStationDesign: { value: Design | null; args: { empire: Empire; weapons: Design | null; energy: Design | null; highTech: Design | null } };
+    /** characters.ts reviewCharacterLocation (Empire.7.cs 479), Scientist case: the station the scientist should move to (null = stock fallback). Smarter AI. No Rnd. */
+    scientistStation: { value: BuiltObject | null; args: { empire: Empire; character: Character } };
+    /** construction/wonders.ts reviewColonyWonders (Empire.3.cs 114): the money the empire may spend on `wonder` (stock: money / 1.5). Smarter AI. No Rnd. */
+    wonderBudget: { value: number; args: { empire: Empire; wonder: Facility } };
+    /** espionage.ts assignSpecialMissions (Empire.5.cs 5401): the counter-intelligence share of agents (0-1). Smarter AI. No Rnd. */
+    counterIntelligenceProportion: { value: number; args: { empire: Empire } };
+    /** pirates/pirateAI.ts determineDesirePirateProtection (Empire.2.cs 2754): whether `empire` wants `pirate`'s protection. Smarter AI. No Rnd. */
+    pirateProtectionDesired: { value: boolean; args: { empire: Empire; pirate: Empire } };
 }
 export type ScenarioQueryName = keyof ScenarioQueries;
 

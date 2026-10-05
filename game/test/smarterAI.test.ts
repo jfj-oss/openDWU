@@ -23,9 +23,22 @@ import { isSmarterAIEmpire, smarterAIState, type SmarterAIState } from '../src/s
 import { PULL_PLACES, dynamicOrders, ensureResearchOrders, pullForward, reachSignal } from '../src/sim/scenario/smarterAI/research';
 import { colonyFullness, planGrowthTaxes } from '../src/sim/scenario/smarterAI/taxes';
 import { addonChoiceFor } from '../src/ui/screens/newGameWizard';
+import type { Habitat } from '../src/sim/types';
+import type { Design } from '../src/sim/design';
+import { CharacterRole, generateNewCharacter, getEmpireCharacters } from '../src/sim/characters';
+import { IntelligenceMissionType, characterMission } from '../src/sim/espionage';
+import { DiplomaticRelationType, obtainDiplomaticRelation } from '../src/sim/diplomacy';
+import { WonderType } from '../src/sim/researchSystem';
+import { determineResearchStationLocation } from '../src/sim/stationPlacement';
+import { assignScientists, atResearchCap, bestKnownBonus, improvingLocations, locationBonus } from '../src/sim/scenario/smarterAI/researchStations';
+import { ensureWonderPlan, pickWonder, wonderFit, wonderPath } from '../src/sim/scenario/smarterAI/wonders';
+import { counterIntelShare, steerAgents } from '../src/sim/scenario/smarterAI/espionage';
+import { protectionWorthIt, sharedThreatPlans } from '../src/sim/scenario/smarterAI/diplomacy';
+import { planetaryFacilityDefinitionsStatic } from '../src/sim/construction/facilities';
 
 const SC = 'smarter-ai';
-const ALL_OFF = { smarterAI: false, smarterAIResearch: false, smarterAIGrowthTax: false };
+const ALL_OFF = { smarterAI: false, smarterAIResearch: false, smarterAIGrowthTax: false, smarterAIResearchStations: false, smarterAIWonders: false, smarterAIEspionage: false, smarterAIDiplomacy: false };
+const STATECRAFT_ON = { smarterAIResearchStations: true, smarterAIWonders: true, smarterAIEspionage: true, smarterAIDiplomacy: true };
 
 let base: GameData;
 beforeAll(async () => {
@@ -48,6 +61,7 @@ describe('flags off = faithful game', () => {
         expect(stateDigest(game.galaxy)).toBe(stateDigest(ref.game.galaxy));
         expect(game.galaxy.rnd.drawCount).toBe(ref.game.galaxy.rnd.drawCount);
         expect('smarterAI' in game.galaxy.scenario!.state).toBe(false);
+        expect('smarterAIStatecraft' in game.galaxy.scenario!.state).toBe(false);
     }, 1200000);
 });
 
@@ -169,7 +183,7 @@ describe('save round trip', () => {
         const text = serializeGame(a.game as never, time, { ...defaultStartGameOptions(), seed: 1, scenario: { id: SC, flags: { ...g.scenario!.flags }, params: { ...g.scenario!.params } } });
         const g2 = deserializeGame(text, a.gameData).game.galaxy;
         expect(g2.scenario!.id).toBe(SC);
-        expect(g2.scenario!.flags).toEqual({ smarterAI: true, smarterAIResearch: true, smarterAIGrowthTax: false });
+        expect(g2.scenario!.flags).toEqual({ smarterAI: true, smarterAIResearch: true, smarterAIGrowthTax: false, ...STATECRAFT_ON });
         expect(g2.scenario!.params).toEqual({ smarterAIGrowthTaxThreshold: 55 });
         expect(peek(g2)!.orders).toEqual(peek(g)!.orders);
         // A save without the orders (an older one) rebuilds them on first use, identically.
@@ -185,7 +199,7 @@ describe('wizard', () => {
         expect(addonChoiceFor(cat, [], none, defaultSmarterAIChoice())).toBeNull(); // off by default
         const smart = { enabled: true, research: true, growthTaxes: false, growthTaxThreshold: 55 };
         const choice = addonChoiceFor(cat, [], none, smart)!;
-        expect(choice).toEqual({ id: SC, flags: { smarterAI: true, smarterAIResearch: true, smarterAIGrowthTax: false }, params: { smarterAIGrowthTaxThreshold: 55 }, addons: [SC] });
+        expect(choice).toEqual({ id: SC, flags: { smarterAI: true, smarterAIResearch: true, smarterAIGrowthTax: false, ...STATECRAFT_ON }, params: { smarterAIGrowthTaxThreshold: 55 }, addons: [SC] });
         const opts = toCreateGameOptions({ ...defaultStartGameOptions(), seed: 3, scenario: choice, smarterAI: smart }, base, ['A']);
         expect(opts.scenarioFlags).toEqual(choice.flags);
         expect(opts.scenarioParams).toEqual(choice.params);
@@ -197,5 +211,135 @@ describe('wizard', () => {
         expect(both.flags.reputationLedger).toBe(true);
         // Unticked on the Other Empires page: dropped even if an old choice listed it.
         expect(addonChoiceFor(cat, [SC], none, { ...smart, enabled: false })).toBeNull();
+        // The statecraft sub-switches.
+        expect(addonChoiceFor(cat, [], none, { ...smart, wonders: false, espionage: false })!.flags).toMatchObject({ smarterAIWonders: false, smarterAIEspionage: false, smarterAIResearchStations: true, smarterAIDiplomacy: true });
     });
+});
+
+describe('7. smarter research stations', () => {
+    it('keeps only locations that beat the field best, best first; no plain stations at the cap; best scientists spread by rank', () => {
+        const loc = (bonus: number, industry: IndustryType): Habitat => ({ researchBonus: bonus, researchBonusIndustry: industry }) as unknown as Habitat;
+        const a = loc(10, IndustryType.Energy);
+        const b = loc(30, IndustryType.Energy);
+        const c = loc(20, IndustryType.Weapon);
+        const best = new Map([[IndustryType.Weapon, 0.25], [IndustryType.Energy, 0.15], [IndustryType.HighTech, 0]]);
+        expect(improvingLocations([a, b, c], best)).toEqual([b]);
+        // Two scientists strongest in Energy: the second-best goes to Weapons where 8 / 1 beats 9 / 2.
+        expect([...assignScientists([[0, 10, 0], [8, 9, 0], [0, 0, 5]], [true, true, false]).entries()]).toEqual([[0, 1], [1, 0]]);
+        const g = smartGame().game.galaxy;
+        const s = g.scenario!;
+        const e = aiEmpires(g)[0];
+        const on = determineResearchStationLocation(g, e, false, true, false);
+        const kb = bestKnownBonus(g, e);
+        for (const h of on) expect(locationBonus(h, h.researchBonusIndustry)).toBeGreaterThan(kb.get(h.researchBonusIndustry)!);
+        s.flags.smarterAIResearchStations = false;
+        const off = determineResearchStationLocation(g, e, false, true, false);
+        s.flags.smarterAIResearchStations = true;
+        expect(off.length).toBeGreaterThanOrEqual(on.length);
+        // Plain stations: allowed below the cap, refused at it (no improving location).
+        const design = {} as Design;
+        const habitats = e.researchHabitats;
+        const pop = e.totalPopulation;
+        e.researchHabitats = [];
+        const args = { empire: e, weapons: null, energy: null, highTech: null };
+        expect(atResearchCap(e)).toBe(false);
+        expect(scenarioQuery(g, 'researchStationDesign', design, args)).toBe(design);
+        e.totalPopulation = 1000;
+        expect(atResearchCap(e)).toBe(true);
+        expect(scenarioQuery(g, 'researchStationDesign', design, args)).toBeNull();
+        e.totalPopulation = pop;
+        e.researchHabitats = habitats;
+    }, 600000);
+});
+
+describe('8. pursue wonders', () => {
+    it('peaceful empires pick research / economy wonders, aggressive ones military; the research order leads to it', () => {
+        expect(wonderFit(WonderType.EmpireResearchEnergy, false)).toBeGreaterThan(wonderFit(WonderType.ColonyDefense, false));
+        expect(wonderFit(WonderType.ColonyDefense, true)).toBeGreaterThan(wonderFit(WonderType.EmpireResearchEnergy, true));
+        const g = smartGame().game.galaxy;
+        const e = aiEmpires(g)[0];
+        const typeOf = (id: number): WonderType => planetaryFacilityDefinitionsStatic(g).find((f) => f.facilityId === id)!.wonderType as WonderType;
+        const calm = pickWonder(g, e, false)!;
+        const war = pickWonder(g, e, true)!;
+        expect(calm).not.toBeNull();
+        expect(war).not.toBeNull();
+        if (typeOf(calm.facilityId) !== WonderType.RaceAchievement) expect(wonderFit(typeOf(calm.facilityId), false)).toBe(5);
+        if (typeOf(war.facilityId) !== WonderType.RaceAchievement) expect(wonderFit(typeOf(war.facilityId), true)).toBe(5);
+        const plan = ensureWonderPlan(g, e)!;
+        const node = e.research.techTree.find((n) => n.def.projectId === plan.projectId)!;
+        const path = wonderPath(e, node);
+        expect(path.length).toBeGreaterThan(0);
+        for (const ind of [IndustryType.Weapon, IndustryType.Energy, IndustryType.HighTech]) {
+            const first = path.find((n) => n.def.industry === ind);
+            const order = scenarioQuery(g, 'researchProjectOrder', [], { empire: e, industry: ind });
+            if (first !== undefined) expect(order[0]).toBe(first.def.projectId);
+        }
+        // The wonder gets the whole treasury as its budget.
+        const w = planetaryFacilityDefinitionsStatic(g).find((f) => f.facilityId === plan.facilityId)!;
+        expect(scenarioQuery(g, 'wonderBudget', e.stateMoney / 1.5, { empire: e, wonder: w })).toBe(e.stateMoney);
+        delete (g.scenario!.state.smarterAIStatecraft as { wonders: Record<string, unknown> }).wonders[String(e.empireId)];
+    }, 600000);
+});
+
+describe('9. use spies well', () => {
+    it('raises counter-intelligence under hostile spying and sends free agents to steal from the rival ahead', () => {
+        expect(counterIntelShare(0.3, 0)).toBe(0.3);
+        expect(counterIntelShare(0.3, 1)).toBeGreaterThan(0.3);
+        expect(counterIntelShare(0.3, 99)).toBeLessThanOrEqual(0.75);
+        const g = smartGame().game.galaxy;
+        const [e, r] = aiEmpires(g);
+        const base = scenarioQuery(g, 'counterIntelligenceProportion', 0.3, { empire: e });
+        e.recentSpyingEmpires.push(r);
+        expect(scenarioQuery(g, 'counterIntelligenceProportion', 0.3, { empire: e })).toBeGreaterThan(base);
+        e.recentSpyingEmpires.pop();
+        // A rival met and ahead in research; capable agents with nothing to do.
+        const rel = obtainDiplomaticRelation(e, r);
+        const relType = rel.type;
+        rel.type = DiplomaticRelationType.None;
+        if (e.research.nextProjects === null) e.research.refreshLatestNextProjects(e.dominantRace);
+        const ahead = e.research.nextProjects!.find((n) => e.research.allowedRacesCount(n) <= 0)!;
+        const theirs = r.research.techTree[ahead.def.projectId];
+        const was = theirs.isResearched;
+        theirs.isResearched = true;
+        while (getEmpireCharacters(e).filter((c) => c.role === CharacterRole.IntelligenceAgent).length < 3) generateNewCharacter(g, e, CharacterRole.IntelligenceAgent, e.capital);
+        const agents = getEmpireCharacters(e).filter((c) => c.role === CharacterRole.IntelligenceAgent);
+        const saved = agents.map((c) => ({ c, m: c.mission, skills: Array.from((c as unknown as { skillBase: Int8Array }).skillBase) }));
+        for (const c of agents) {
+            c.mission = null;
+            (c as unknown as { skillBase: Int8Array }).skillBase.fill(100);
+        }
+        expect(steerAgents(g, e)).toBeGreaterThan(0);
+        expect(agents.some((c) => characterMission(c)?.type === IntelligenceMissionType.StealTechData && characterMission(c)!.targetEmpire === r)).toBe(true);
+        for (const { c, m, skills } of saved) {
+            c.mission = m;
+            (c as unknown as { skillBase: Int8Array }).skillBase.set(skills);
+        }
+        theirs.isResearched = was;
+        rel.type = relType;
+    }, 600000);
+});
+
+describe('11. diplomacy with purpose', () => {
+    it('courts empires facing the same runaway (trade, then defence); pays pirates only when cheaper than the losses', () => {
+        expect(protectionWorthIt(100, 2000, 1e6)).toBe(true);
+        expect(protectionWorthIt(100, 1000, 1e6)).toBe(false);
+        expect(protectionWorthIt(100, 2000, 50)).toBe(false);
+        const g = smartGame().game.galaxy;
+        const [e, q, r] = aiEmpires(g);
+        expect(r).toBeDefined();
+        const rels = [obtainDiplomaticRelation(e, q), obtainDiplomaticRelation(e, r)];
+        const saved = { types: rels.map((x) => x.type), scores: [e.score, q.score, r.score] };
+        rels[0].type = DiplomaticRelationType.None;
+        rels[1].type = DiplomaticRelationType.None;
+        e.score = 100;
+        q.score = 100;
+        r.score = 100;
+        r.score = 1000;
+        expect(sharedThreatPlans(g, e).find((p) => p.partner === q)?.offer).toBe(DiplomaticRelationType.FreeTradeAgreement);
+        rels[0].type = DiplomaticRelationType.FreeTradeAgreement;
+        expect(sharedThreatPlans(g, e).find((p) => p.partner === q)?.offer).toBe(DiplomaticRelationType.MutualDefensePact);
+        expect(sharedThreatPlans(g, e).some((p) => p.partner === r)).toBe(false);
+        rels.forEach((x, i) => (x.type = saved.types[i]));
+        [e.score, q.score, r.score] = saved.scores;
+    }, 600000);
 });

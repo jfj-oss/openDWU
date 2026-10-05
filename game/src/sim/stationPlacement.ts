@@ -50,6 +50,7 @@
 //   SetLuxuryResourcesAtColonies, CheckColoniesForBaseFacilities: none.
 // AddBuiltObjectToGalaxy draws nothing here (offsetLocationFromParent: false).
 
+import { scenarioQuery } from './scenario/hooks';
 import { BuiltObject } from './builtObject';
 import { BuiltObjectSubRole } from './builtObjectTypes';
 import { BuiltObjectMissionType, builtObjectMission } from './missions/mission';
@@ -638,7 +639,8 @@ export function determineResearchStationLocation(galaxy: Galaxy, empire: Empire,
     // Array.Sort(keys, items): the keyed introsort moves items with their keys.
     const pairs = habitatList.map((h, n) => ({ key: list[n], item: h }));
     netSort(pairs, (a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
-    const habitatList3 = pairs.map((p) => p.item);
+    let habitatList3 = pairs.map((p) => p.item);
+    if (galaxy.scenario !== null) habitatList3 = scenarioQuery(galaxy, 'researchStationLocations', habitatList3, { empire }); // mod layer (Smarter AI research stations)
     if (assignToResearchHabitats) empire.researchHabitats = habitatList3;
     return habitatList3;
 }
@@ -703,6 +705,7 @@ export function analyzeNewResearchFacilities(empire: Empire): { result: Design |
         }
         result = num <= num3 && num <= num2 ? energyResearchStation : !(num3 <= num) || !(num3 <= num2) ? highTechResearchStation : weaponsResearchStation;
     }
+    if (empire.galaxy != null && empire.galaxy.scenario !== null) result = scenarioQuery(empire.galaxy, 'researchStationDesign', result, { empire, weapons: weaponsResearchStation, energy: energyResearchStation, highTech: highTechResearchStation }); // mod layer (Smarter AI)
     return { result, weaponsResearchStation, energyResearchStation, highTechResearchStation };
 }
 

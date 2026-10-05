@@ -80,7 +80,7 @@ import { REAL_SECONDS_IN_GALACTIC_YEAR, galaxyNow } from './tick/simTime';
 import { characterKillFromPerformIntelligenceMissions } from './espionagePrisoners';
 import type { ConstructionQueue } from './construction/constructionQueue';
 import { formatGameTextNow } from './textResolver';
-import { scenarioEmit } from './scenario/hooks';
+import { scenarioEmit, scenarioQuery } from './scenario/hooks';
 import { scenarioFlag } from './scenario/state';
 import { ESPIONAGE_FLAG, espionageHooks } from './scenario/emergent/espionageHooks';
 import { scenarioText } from './scenario/messages';
@@ -1222,7 +1222,8 @@ export function assignSpecialMissions(galaxy: Galaxy, self: Empire): void {
         const character = chars[i];
         if (character.role === CharacterRole.IntelligenceAgent) characterList.push(character);
     }
-    const num = Math.fround(self.policy!.intelligenceCounterIntelligenceProportion / 100);
+    let num = Math.fround(self.policy!.intelligenceCounterIntelligenceProportion / 100);
+    if (galaxy.scenario !== null) num = scenarioQuery(galaxy, 'counterIntelligenceProportion', num, { empire: self }); // mod layer (Smarter AI espionage)
     const num2 = csInt(Math.max(1.0, characterList.length * num));
     const num3 = characterList.length - num2;
     // aggression / caution / _Galaxy.IntoleranceLevel are passed to AssignSpecialMissionAgainstEmpire, which ignores them.
