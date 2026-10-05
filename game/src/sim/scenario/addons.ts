@@ -108,10 +108,15 @@ export interface SmarterAIChoice {
     wonders?: boolean;
     espionage?: boolean;
     diplomacy?: boolean;
+    /** Ship design (smarterAIDesignTune / WeaponFocus / DesignScale / DesignTrim; absent = on). */
+    designTune?: boolean;
+    weaponFocus?: boolean;
+    designScale?: boolean;
+    designTrim?: boolean;
 }
 
 export function defaultSmarterAIChoice(): SmarterAIChoice {
-    return { enabled: false, research: true, growthTaxes: true, growthTaxThreshold: 70, budget: true, retrofit: true, colonies: true, independents: true, defence: true, pirates: true, researchStations: true, wonders: true, espionage: true, diplomacy: true };
+    return { enabled: false, research: true, growthTaxes: true, growthTaxThreshold: 70, budget: true, retrofit: true, colonies: true, independents: true, defence: true, pirates: true, researchStations: true, wonders: true, espionage: true, diplomacy: true, designTune: true, weaponFocus: true, designScale: true, designTrim: true };
 }
 
 /**
@@ -138,6 +143,10 @@ export function withSmarterAI(picked: readonly string[], overrides: AddonOverrid
                 smarterAIWonders: smart.wonders ?? true,
                 smarterAIEspionage: smart.espionage ?? true,
                 smarterAIDiplomacy: smart.diplomacy ?? true,
+                smarterAIDesignTune: smart.designTune ?? true,
+                smarterAIWeaponFocus: smart.weaponFocus ?? true,
+                smarterAIDesignScale: smart.designScale ?? true,
+                smarterAIDesignTrim: smart.designTrim ?? true,
             },
             params: { ...overrides.params, smarterAIGrowthTaxThreshold: smart.growthTaxThreshold },
         },

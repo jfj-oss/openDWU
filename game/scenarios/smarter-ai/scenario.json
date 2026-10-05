@@ -1,7 +1,7 @@
 {
   "id": "smarter-ai",
   "name": "Smarter AI",
-  "description": "AI empires only (never the player or pirates): an optimised research order for the three research trees, re-weighed yearly for threats and reach, and growth taxes (colonies below a share of their maximum population pay no tax unless the treasury needs them). Set on the new-game wizard's Other Empires page.",
+  "description": "AI empires only (never the player or pirates): an optimised research order for the three research trees, re-weighed yearly for threats and reach, and growth taxes (colonies below a share of their maximum population pay no tax unless the treasury needs them), plus economy, military, statecraft and ship design improvements. Set on the new-game wizard's Other Empires page.",
   "flags": [
     { "name": "smarterAI", "label": "Smarter AI (AI empires only)", "description": "Master switch.", "default": true },
     { "name": "smarterAIResearch", "label": "Optimised research order", "description": "AI empires research the three trees in an optimised order (shields and damage control earlier under threat, fuel-efficient hyperdrives earlier for spread-out or sparse empires).", "default": true },
@@ -15,7 +15,11 @@
     { "name": "smarterAIResearchStations", "label": "Smarter research stations", "description": "AI empires build one research station per field at the best bonus location known, move their best scientists there, and build no plain stations at their research cap.", "default": true },
     { "name": "smarterAIWonders", "label": "Pursue wonders", "description": "AI empires pick a wonder that fits them (research and economy when peaceful, military when aggressive), research towards it and build it when affordable.", "default": true },
     { "name": "smarterAIEspionage", "label": "Use spies well", "description": "AI agents steal rivals' technology and sabotage pirate bases near their colonies; counter-intelligence rises while hostile agents are active.", "default": true },
-    { "name": "smarterAIDiplomacy", "label": "Diplomacy with purpose", "description": "AI empires seek trade and defence treaties with empires facing the same threat (pirates or a runaway empire) and pay pirate protection when it is cheaper than the expected losses.", "default": true }
+    { "name": "smarterAIDiplomacy", "label": "Diplomacy with purpose", "description": "AI empires seek trade and defence treaties with empires facing the same threat (pirates or a runaway empire) and pay pirate protection when it is cheaper than the expected losses.", "default": true },
+    { "name": "smarterAIDesignTune", "label": "Mod-style designs", "description": "AI warship designs follow the Extended AI Improvement Mod: no cloaks, tractor beams, boarding pods or bombard weapons (no ion defence on escorts and frigates), 1.5x engines, 2x fuel, 1.5x shields, at most 2 point defence, and fleet targeting and countermeasures on escorts and frigates. Races that rely on stealth keep their templates.", "default": true },
+    { "name": "smarterAIWeaponFocus", "label": "One weapon type", "description": "AI warships carry one main weapon family (beams, missiles and torpedoes, or fighters on cruisers and capital ships): the one the empire's research is furthest ahead in, switched only when another gets more than one tech level ahead.", "default": true },
+    { "name": "smarterAIDesignScale", "label": "Bigger warships", "description": "AI destroyers and cruisers also grow towards 60% and 80% of the largest ship the empire can build (as capital ships and carriers already do), but not while the empire is in debt.", "default": true },
+    { "name": "smarterAIDesignTrim", "label": "Keep speed when trimming", "description": "When an AI warship design is too large, armour and then extra weapons are removed before engines.", "default": true }
   ],
   "params": [
     { "name": "smarterAIGrowthTaxThreshold", "label": "Growth taxes: untaxed below this % of maximum population", "default": 70, "min": 0, "max": 100 }

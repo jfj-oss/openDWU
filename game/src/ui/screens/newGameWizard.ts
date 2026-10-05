@@ -1658,14 +1658,18 @@ function buildOtherEmpiresPage(ctx: WizardCtx): HTMLDivElement {
     const smartCount = label(smartPanel, '', 425, 9, { size: FONT.normal });
     smartCount.classList.add('wizard-smarter-ai-count');
 
-    // The drop-down list: two columns of sub-options, each under a heading.
-    const SMART_LIST_H = 208;
-    const smartList = panel(wrap, 10, 468 - SMART_LIST_H - 4, 880, SMART_LIST_H, 'wizard-panel-group wizard-smarter-ai wizard-smarter-ai-list');
-    smartList.hidden = true;
-    type SmartKey = 'research' | 'growthTaxes' | 'budget' | 'retrofit' | 'researchStations' | 'wonders' | 'espionage' | 'diplomacy' | 'defence' | 'pirates' | 'colonies' | 'independents';
-    const SMART_COLUMNS: readonly { heading: string; items: readonly (readonly [SmartKey, string, string])[] }[] = [
+    // The drop-down list: groups of sub-options, each under a heading. SMART_COLUMNS holds the layout: a group's
+    // heading sits at (x, y) and its items flow down `cols` columns (SMART_COL_W apart, SMART_ROW_H rows) below it.
+    // Two groups side by side, the Ship design group under both (two columns of two).
+    const SMART_COL_W = 440;
+    const SMART_ROW_H = 28;
+    type SmartKey = 'research' | 'growthTaxes' | 'budget' | 'retrofit' | 'researchStations' | 'wonders' | 'espionage' | 'diplomacy' | 'defence' | 'pirates' | 'colonies' | 'independents' | 'designTune' | 'weaponFocus' | 'designScale' | 'designTrim';
+    const SMART_COLUMNS: readonly { heading: string; x: number; y: number; cols: number; items: readonly (readonly [SmartKey, string, string])[] }[] = [
         {
             heading: 'Economy and research',
+            x: 16,
+            y: 10,
+            cols: 1,
             items: [
                 ['research', 'Optimised research order', 'wizard-smarter-ai-research'],
                 ['researchStations', 'Smarter research stations', 'wizard-smarter-ai-stations'],
@@ -1677,6 +1681,9 @@ function buildOtherEmpiresPage(ctx: WizardCtx): HTMLDivElement {
         },
         {
             heading: 'Military, expansion and statecraft',
+            x: 16 + SMART_COL_W,
+            y: 10,
+            cols: 1,
             items: [
                 ['defence', 'Defence that counts pirates', 'wizard-smarter-ai-defence'],
                 ['pirates', 'Pirate clean-up', 'wizard-smarter-ai-pirates'],
@@ -1686,25 +1693,42 @@ function buildOtherEmpiresPage(ctx: WizardCtx): HTMLDivElement {
                 ['diplomacy', 'Diplomacy with purpose', 'wizard-smarter-ai-diplomacy'],
             ],
         },
+        {
+            heading: 'Ship design',
+            x: 16,
+            y: 10 + 24 + 6 * SMART_ROW_H + 6,
+            cols: 2,
+            items: [
+                ['designTune', 'Mod-style designs', 'wizard-smarter-ai-design-tune'],
+                ['weaponFocus', 'One weapon type', 'wizard-smarter-ai-weapon-focus'],
+                ['designScale', 'Bigger warships', 'wizard-smarter-ai-design-scale'],
+                ['designTrim', 'Keep speed when trimming', 'wizard-smarter-ai-design-trim'],
+            ],
+        },
     ];
+    // The list fits its lowest row (plus a margin) and opens upwards from the panel.
+    const SMART_LIST_H = Math.max(...SMART_COLUMNS.map((g) => g.y + 24 + Math.ceil(g.items.length / g.cols) * SMART_ROW_H)) + 4;
+    const smartList = panel(wrap, 10, 468 - SMART_LIST_H - 4, 880, SMART_LIST_H, 'wizard-panel-group wizard-smarter-ai wizard-smarter-ai-list');
+    smartList.hidden = true;
     const smartIsOn = (key: SmartKey): boolean => smart[key] ?? true;
     const smartChecks: { key: SmartKey; c: ReturnType<typeof check> }[] = [];
     let taxRowY = 0;
-    SMART_COLUMNS.forEach((col, ci) => {
-        const x = 16 + ci * 440;
-        const heading = label(smartList, col.heading, x, 10, { size: FONT.normal });
+    for (const group of SMART_COLUMNS) {
+        const heading = label(smartList, group.heading, group.x, group.y, { size: FONT.normal });
         heading.classList.add('wizard-smarter-ai-heading');
-        col.items.forEach(([key, text, cls], i) => {
-            const y = 34 + i * 28;
+        const rows = Math.ceil(group.items.length / group.cols);
+        group.items.forEach(([key, text, cls], i) => {
+            const x = group.x + 8 + Math.floor(i / rows) * SMART_COL_W;
+            const y = group.y + 24 + (i % rows) * SMART_ROW_H;
             if (key === 'growthTaxes') taxRowY = y;
-            const c = check(smartList, text, smartIsOn(key), x + 8, y, (v) => {
+            const c = check(smartList, text, smartIsOn(key), x, y, (v) => {
                 smart[key] = v;
                 paintSmart();
             }, FONT.normal);
             c.row.classList.add(cls);
             smartChecks.push({ key, c });
         });
-    });
+    }
     // The growth-tax threshold sits on the Growth taxes row.
     const taxLabel = label(smartList, 'untaxed below', 160, taxRowY + 2, { size: FONT.normal });
     const taxBox = numberBox(smartList, 'wizard-smarter-ai-threshold', 250, taxRowY, 46, 0, 100, () => smart.growthTaxThreshold, (x) => {

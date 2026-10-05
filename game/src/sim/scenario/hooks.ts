@@ -19,6 +19,8 @@ import type { Character, CaptainBonuses } from '../characters';
 import type { EmpireActivity } from '../pirates/empireActivity';
 import type { Design } from '../design';
 import type { Facility } from '../data/facilities';
+import type { DesignPlacementTweak } from '../designPlacement';
+import type { DesignSpecification } from '../data/designSpecifications';
 
 // ---------------------------------------------------------------------------
 // Handler registries (shared gate)
@@ -563,6 +565,12 @@ export interface ScenarioQueries {
     counterIntelligenceProportion: { value: number; args: { empire: Empire } };
     /** pirates/pirateAI.ts determineDesirePirateProtection (Empire.2.cs 2754): whether `empire` wants `pirate`'s protection. Smarter AI. No Rnd. */
     pirateProtectionDesired: { value: boolean; args: { empire: Empire; pirate: Empire } };
+    /**
+     * designGeneration.ts createNewDesigns (BaconEmpire.CreateNewDesigns), before PlaceComponentsOnDesign: changes to
+     * the template, the size-up share and the trim order of `empire`'s new `spec.subRole` design (stock: null = none).
+     * Handlers must not mutate `spec` (it is the empire's own template). Smarter AI ship design. No Rnd.
+     */
+    aiDesignTweak: { value: DesignPlacementTweak | null; args: { empire: Empire; spec: DesignSpecification } };
 }
 export type ScenarioQueryName = keyof ScenarioQueries;
 

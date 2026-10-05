@@ -68,6 +68,21 @@ export interface DesignPlacementEmpire {
     rnd: { next(minInclusive: number, maxExclusive: number): number };
 }
 
+/** The trim pass's component families (Empire.10.cs 2388-2412, the twelve ComponentLists), in the stock removal order. */
+export type DesignTrimFamily = 'gasExtractor' | 'mineExtractor' | 'luxuryExtractor' | 'troop' | 'passenger' | 'engine' | 'fighterBay' | 'beam' | 'torpedo' | 'armor' | 'shields' | 'energyCollector';
+export const STOCK_TRIM_ORDER: readonly DesignTrimFamily[] = ['gasExtractor', 'mineExtractor', 'luxuryExtractor', 'troop', 'passenger', 'engine', 'fighterBay', 'beam', 'torpedo', 'armor', 'shields', 'energyCollector'];
+
+/**
+ * Not in the original: a scenario's changes to one AI design (scenario query `aiDesignTweak`, Smarter AI). Null = the
+ * stock placement. `spec` replaces the template, `scaleShare` (> 0) lets a sub-role the stock size-up pass skips grow
+ * towards that share of MaximumConstructionSize, `trimOrder` replaces the trim pass's removal order.
+ */
+export interface DesignPlacementTweak {
+    spec: DesignSpecification;
+    scaleShare: number;
+    trimOrder: readonly DesignTrimFamily[] | null;
+}
+
 const MOBILE_SUBROLES = new Set<BuiltObjectSubRole>([
     BuiltObjectSubRole.Escort,
     BuiltObjectSubRole.Frigate,
@@ -240,8 +255,9 @@ export function placeComponentsOnDesignSized(
     maxShipSize: number,
     maxBaseSize: number,
     mostRecentDesign: Design | null,
+    tweak: DesignPlacementTweak | null = null,
 ): Design | null {
-    return placeComponentsOnDesign(empire, design, designSpec, torpedoWeapons, maxShipSize, maxBaseSize, mostRecentDesign, 0.0);
+    return placeComponentsOnDesign(empire, design, designSpec, torpedoWeapons, maxShipSize, maxBaseSize, mostRecentDesign, 0.0, tweak);
 }
 
 /**
@@ -257,6 +273,7 @@ export function placeComponentsOnDesign(
     maxBaseSize: number,
     mostRecentDesign: Design | null,
     techAdvanceAmount: number,
+    tweak: DesignPlacementTweak | null = null,
 ): Design | null {
     const research = empire.research;
     const { categories: techFocusCategories, types: techFocusTypes } = resolveTechFocuses(empire.policy);
@@ -640,11 +657,13 @@ export function placeComponentsOnDesign(
     // (a fresh call, not the maxShipSize parameter — matches Empire.10.cs 2276 exactly).
     let num23 = 0;
     let num24 = 0;
-    if (design.subRole === BuiltObjectSubRole.CapitalShip || design.subRole === BuiltObjectSubRole.Carrier) {
+    // [scenario] a tweak's scaleShare also sizes up other sub-roles (stock: capital ships and carriers, share 1).
+    const scaleShare = design.subRole === BuiltObjectSubRole.CapitalShip || design.subRole === BuiltObjectSubRole.Carrier ? 1 : (tweak?.scaleShare ?? 0);
+    if (scaleShare > 0) {
         num23 = modulesRequiredForSize(habModuleCi, sizeUsed);
         num24 = modulesRequiredForSize(lifeSupportCi, sizeUsed);
         const num25 = sizeUsed + num23 * (habModuleCi?.improvedComponent.size ?? 0) + num24 * (lifeSupportCi?.improvedComponent.size ?? 0);
-        const num26 = empire.maximumConstructionSize(design.subRole);
+        const num26 = scaleShare === 1 ? empire.maximumConstructionSize(design.subRole) : Math.trunc(empire.maximumConstructionSize(design.subRole) * scaleShare);
         if (num25 < num26) {
             const num27 = num26 / num25;
             if (num27 > 1.05) {
@@ -914,101 +933,36 @@ export function placeComponentsOnDesign(
                     num24 = modulesRequiredForSize(lifeSupportCi, sizeUsed);
                     num39 = sizeUsed + num23 * (habModuleCi?.improvedComponent.size ?? 0) + num24 * (lifeSupportCi?.improvedComponent.size ?? 0);
                 };
-                // Lines 2681-2699: gas extractors.
-                if (num39 > num38 && gasExtractorList.length > 0) {
-                    for (const comp of gasExtractorList) {
-                        removeOne(comp, true);
-                        if (num39 <= num38) break;
-                    }
-                }
-                num39 = sizeUsed + num23 * (habModuleCi?.improvedComponent.size ?? 0) + num24 * (lifeSupportCi?.improvedComponent.size ?? 0);
-                // Lines 2701-2719: mine extractors.
-                if (num39 > num38 && mineExtractorList.length > 0) {
-                    for (const comp of mineExtractorList) {
-                        removeOne(comp, true);
-                        if (num39 <= num38) break;
-                    }
-                }
-                num39 = sizeUsed + num23 * (habModuleCi?.improvedComponent.size ?? 0) + num24 * (lifeSupportCi?.improvedComponent.size ?? 0);
-                // Lines 2721-2739: luxury extractors. NOTE (C# 2721): the gate re-checks
-                // gasExtractorList.length, not luxuryExtractorList.length — a copy-paste quirk in
-                // Empire.10.cs, preserved here verbatim (statement-for-statement port).
-                if (num39 > num38 && gasExtractorList.length > 0) {
-                    for (const comp of luxuryExtractorList) {
-                        removeOne(comp, true);
-                        if (num39 <= num38) break;
-                    }
-                }
-                num39 = sizeUsed + num23 * (habModuleCi?.improvedComponent.size ?? 0) + num24 * (lifeSupportCi?.improvedComponent.size ?? 0);
-                // Lines 2741-2759: troop storage.
-                if (num39 > num38 && troopStorageList.length > 0) {
-                    for (const comp of troopStorageList) {
-                        removeOne(comp, true);
-                        if (num39 <= num38) break;
-                    }
-                }
-                num39 = sizeUsed + num23 * (habModuleCi?.improvedComponent.size ?? 0) + num24 * (lifeSupportCi?.improvedComponent.size ?? 0);
-                // Lines 2761-2779: passenger storage.
-                if (num39 > num38 && passengerList.length > 0) {
-                    for (const comp of passengerList) {
-                        removeOne(comp, true);
-                        if (num39 <= num38) break;
-                    }
-                }
-                num39 = sizeUsed + num23 * (habModuleCi?.improvedComponent.size ?? 0) + num24 * (lifeSupportCi?.improvedComponent.size ?? 0);
-                // Lines 2781-2799: engines.
-                if (num39 > num38 && engineList.length > 0) {
-                    for (const comp of engineList) {
-                        removeOne(comp, true);
-                        if (num39 <= num38) break;
-                    }
-                }
-                num39 = sizeUsed + num23 * (habModuleCi?.improvedComponent.size ?? 0) + num24 * (lifeSupportCi?.improvedComponent.size ?? 0);
-                // Lines 2801-2819: fighter bays.
-                if (num39 > num38 && fighterBayList.length > 0) {
-                    for (const comp of fighterBayList) {
-                        removeOne(comp, true);
-                        if (num39 <= num38) break;
-                    }
-                }
-                num39 = sizeUsed + num23 * (habModuleCi?.improvedComponent.size ?? 0) + num24 * (lifeSupportCi?.improvedComponent.size ?? 0);
-                // Lines 2821-2839: beam/gravity weapons.
-                if (num39 > num38 && beamGravityList.length > 0) {
-                    for (const comp of beamGravityList) {
-                        removeOne(comp, true);
-                        if (num39 <= num38) break;
-                    }
-                }
-                num39 = sizeUsed + num23 * (habModuleCi?.improvedComponent.size ?? 0) + num24 * (lifeSupportCi?.improvedComponent.size ?? 0);
-                // Lines 2841-2859: torpedo weapons.
-                if (num39 > num38 && torpedoList.length > 0) {
-                    for (const comp of torpedoList) {
-                        removeOne(comp, true);
-                        if (num39 <= num38) break;
-                    }
-                }
-                num39 = sizeUsed + num23 * (habModuleCi?.improvedComponent.size ?? 0) + num24 * (lifeSupportCi?.improvedComponent.size ?? 0);
-                // Lines 2861-2875: armor (no CheckDesignReactorCountDecreased call — matches C#).
-                if (num39 > num38 && armorList.length > 0) {
-                    for (const comp of armorList) {
-                        removeOne(comp, false);
-                        if (num39 <= num38) break;
-                    }
-                }
-                num39 = sizeUsed + num23 * (habModuleCi?.improvedComponent.size ?? 0) + num24 * (lifeSupportCi?.improvedComponent.size ?? 0);
-                // Lines 2877-2895: shields.
-                if (num39 > num38 && shieldsList.length > 0) {
-                    for (const comp of shieldsList) {
-                        removeOne(comp, true);
-                        if (num39 <= num38) break;
-                    }
-                }
-                num39 = sizeUsed + num23 * (habModuleCi?.improvedComponent.size ?? 0) + num24 * (lifeSupportCi?.improvedComponent.size ?? 0);
-                // Lines 2897-2911: energy collectors (no CheckDesignReactorCountDecreased call).
-                if (num39 > num38 && energyCollectorList.length > 0) {
-                    for (const comp of energyCollectorList) {
-                        removeOne(comp, false);
-                        if (num39 <= num38) break;
+                // Lines 2681-2911: the removal cascade, one family at a time in the stock order (gas, mine, luxury
+                // extractors, troop and passenger storage, engines, fighter bays, beam/gravity and torpedo weapons,
+                // armor, shields, energy collectors), each until the design fits; num39 recomputed after each family.
+                // Armor (2861) and energy collectors (2897) skip CheckDesignReactorCountDecreased, as in C#. A
+                // scenario tweak may reorder the families.
+                const trimFamilies: Record<DesignTrimFamily, { list: ComponentDefinition[]; checkReactor: boolean; gate: boolean }> = {
+                    gasExtractor: { list: gasExtractorList, checkReactor: true, gate: gasExtractorList.length > 0 },
+                    mineExtractor: { list: mineExtractorList, checkReactor: true, gate: mineExtractorList.length > 0 },
+                    // NOTE (C# 2721): the luxury gate re-checks gasExtractorList.length, not luxuryExtractorList.length —
+                    // a copy-paste quirk in Empire.10.cs, preserved verbatim.
+                    luxuryExtractor: { list: luxuryExtractorList, checkReactor: true, gate: gasExtractorList.length > 0 },
+                    troop: { list: troopStorageList, checkReactor: true, gate: troopStorageList.length > 0 },
+                    passenger: { list: passengerList, checkReactor: true, gate: passengerList.length > 0 },
+                    engine: { list: engineList, checkReactor: true, gate: engineList.length > 0 },
+                    fighterBay: { list: fighterBayList, checkReactor: true, gate: fighterBayList.length > 0 },
+                    beam: { list: beamGravityList, checkReactor: true, gate: beamGravityList.length > 0 },
+                    torpedo: { list: torpedoList, checkReactor: true, gate: torpedoList.length > 0 },
+                    armor: { list: armorList, checkReactor: false, gate: armorList.length > 0 },
+                    shields: { list: shieldsList, checkReactor: true, gate: shieldsList.length > 0 },
+                    energyCollector: { list: energyCollectorList, checkReactor: false, gate: energyCollectorList.length > 0 },
+                };
+                const trimOrder = tweak?.trimOrder ?? STOCK_TRIM_ORDER;
+                for (let f = 0; f < trimOrder.length; f++) {
+                    const fam = trimFamilies[trimOrder[f]];
+                    if (f > 0) num39 = sizeUsed + num23 * (habModuleCi?.improvedComponent.size ?? 0) + num24 * (lifeSupportCi?.improvedComponent.size ?? 0);
+                    if (num39 > num38 && fam.gate) {
+                        for (const comp of fam.list) {
+                            removeOne(comp, fam.checkReactor);
+                            if (num39 <= num38) break;
+                        }
                     }
                 }
                 staticEnergyUsed = energyState.staticEnergyUsed;

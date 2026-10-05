@@ -35,6 +35,7 @@ import { Empire, raceDesignPictureFamilyIndexPirates } from './empire';
 import type { Galaxy } from './galaxy';
 import { ShipDesignFocus, type ResearchStatic, type ResearchSystem } from './researchSystem';
 import type { Habitat } from './types';
+import { scenarioQuery } from './scenario/hooks';
 
 // Galaxy.3.cs 5021 / 5138.
 const MINIMUM_DESIGN_REVIEW_INTERVAL_YEARS = 0.5;
@@ -668,7 +669,8 @@ export function createNewDesigns(galaxy: Galaxy, empire: Empire, designDate: num
         design4.imageScalingFactor = spec.imageScalingFactor;
         const maxShipSize = empire.maximumConstructionSize(design4.subRole);
         const maxBaseSize = empire.maximumConstructionSizeBase(design4.subRole);
-        const design5 = placeComponentsOnDesignSized(view, design4, spec, componentImprovementList, maxShipSize, maxBaseSize, design1);
+        const tweak = galaxy.scenario !== null ? scenarioQuery(galaxy, 'aiDesignTweak', null, { empire, spec }) : null; // [scenario] Smarter AI ship design
+        const design5 = placeComponentsOnDesignSized(view, design4, tweak?.spec ?? spec, componentImprovementList, maxShipSize, maxBaseSize, design1, tweak);
         if (design5 === null) continue;
         applySubRoleBehaviour(empire, design5, spec, fleeWhen6, militaryFleeWhen);
         const design6 = design1;
