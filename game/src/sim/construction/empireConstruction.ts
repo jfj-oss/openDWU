@@ -33,6 +33,7 @@
 //   Retirement / retrofit / scrapping: none directly (CompleteTeardown / InflictDamage are M4o's).
 
 import { isAiControlled } from '../missions/playerOrder';
+import { scenarioQuery } from '../scenario/hooks';
 import { calculateAngleFromCoords, type Galaxy } from '../galaxy';
 import type { Empire } from '../empire';
 import { AutomationLevel, empireGovernmentAttributes } from '../empire';
@@ -109,6 +110,7 @@ import { type ShipGroup, empireShipGroups } from '../fleets/shipGroup';
 import { shipGroupAssignMissionFull, shipGroupQueueMission } from '../fleets/shipGroupTasks';
 import { baconSettings } from '../data/baconSettings';
 import { lineRetrofitDesign, processDesignLineUpgrades } from '../player/designLineUpgrade'; // [improvements]
+import { scenarioEmit } from '../scenario/hooks';
 
 // ---------------------------------------------------------------------------------------------------------------
 // Constants (Galaxy.3.cs 4996-5138 defaults)
@@ -818,7 +820,7 @@ export function checkBuildoutResearchCapacityAtColonies(galaxy: Galaxy, empire: 
                     const habitat2 = empire.colonies[i];
                     if (habitat2 != null && habitat2.basesAtHabitat != null && habitat2.population != null && habitat2.population.totalAmount > 2000000000) {
                         const num3 = countResearchStations(habitat2.basesAtHabitat);
-                        if (num3 < 2 && (habitat === null || habitat2.basesAtHabitat.length < habitat.basesAtHabitat.length)) habitat = habitat2;
+                        if (num3 < (galaxy.scenario !== null ? scenarioQuery(galaxy, 'aiBuildTarget', 2, { empire, kind: 'researchStationsPerColony' }) : 2) && (habitat === null || habitat2.basesAtHabitat.length < habitat.basesAtHabitat.length)) habitat = habitat2;
                     }
                 }
                 if (habitat !== null) return { result: true, researchStationDesignToBuild: design, colonyToBuildAt: habitat };
@@ -1618,6 +1620,7 @@ export function directConstruction(galaxy: Galaxy, empire: Empire): void {
     const num6 = Math.trunc(num4 * 0.25);
     let flag = false;
     if (num >= num5 && num2 >= num6) flag = true;
+    if (galaxy.scenario !== null) flag = scenarioQuery(galaxy, 'colonizationBuildAllowed', flag, { empire }); // Mod layer (Smarter AI budget)
     if (empire.dominantRace !== null && !empire.dominantRace.expanding) flag = false;
     // `_ = ThisYearsSpacePortIncome; CalculateAccurateAnnualIncome();` — the result is discarded (no side effects).
     calculateAccurateAnnualIncome(galaxy, empire);
@@ -1662,6 +1665,7 @@ export function directConstruction(galaxy: Galaxy, empire: Empire): void {
             else if (design3 !== null && total > num16) design = design3;
             else if (design2 !== null && total > num17) design = design2;
             if (design === null) continue;
+            if (galaxy.scenario !== null && scenarioQuery(galaxy, 'stateBuildSkipped', false, { empire, subRole: design.subRole })) continue; // Mod layer (Smarter AI budget)
             let num18 = design.calculateCurrentPurchasePrice(galaxy);
             let num19 = designCalculateMaintenanceCosts(galaxy, design, empire);
             if (num13 + num19 > num7) {
@@ -1706,7 +1710,7 @@ export function directConstruction(galaxy: Galaxy, empire: Empire): void {
     const buildout = checkBuildoutResearchCapacityAtColonies(galaxy, empire);
     const researchStationDesignToBuild = buildout.researchStationDesignToBuild;
     const colonyToBuildAt = buildout.colonyToBuildAt;
-    if (buildout.result && researchStationDesignToBuild !== null && colonyToBuildAt !== null) {
+    if (buildout.result && researchStationDesignToBuild !== null && colonyToBuildAt !== null && !(galaxy.scenario !== null && scenarioQuery(galaxy, 'stateBuildSkipped', false, { empire, subRole: researchStationDesignToBuild.subRole }))) {
         const num20 = researchStationDesignToBuild.calculateCurrentPurchasePrice(galaxy);
         const num21 = designCalculateMaintenanceCosts(galaxy, researchStationDesignToBuild, empire);
         if (num13 + num21 <= num7 && num12 + num20 <= empire.stateMoney && checkSafeToBuildAtLocation(galaxy, empire, colonyToBuildAt)) {
@@ -1848,6 +1852,7 @@ export function directConstruction(galaxy: Galaxy, empire: Empire): void {
                 for (const item3 of forceStructureProjectionList3) {
                     const design7 = findNewestCanBuild(empire.designs, item3.subRole, empire, null, false);
                     if (design7 === null || item3.amount <= 0) continue;
+                    if (galaxy.scenario !== null && scenarioQuery(galaxy, 'stateBuildSkipped', false, { empire, subRole: item3.subRole })) continue; // Mod layer (Smarter AI budget)
                     for (let m = 0; m < item3.amount; m++) {
                         const num27 = design7.calculateCurrentPurchasePrice(galaxy);
                         const num28 = designCalculateMaintenanceCosts(galaxy, design7, empire);
@@ -1926,6 +1931,7 @@ export function buildDefensiveBases(galaxy: Galaxy, empire: Empire): void {
         const sv = strategicValue(habitat);
         if (sv > 250000 && !stellarObjectList.includes(habitat)) stellarObjectList.push(habitat);
     }
+    if (galaxy.scenario !== null) scenarioEmit(galaxy, 'defensiveBaseLocations', { empire, locations: stellarObjectList }); // mod layer (Smarter AI defence)
     for (let l = 0; l < stellarObjectList.length; l++) {
         const o = stellarObjectList[l];
         if (!(o instanceof Habitat)) continue;
@@ -1943,6 +1949,7 @@ export function buildDefensiveBases(galaxy: Galaxy, empire: Empire): void {
             if (empire.colonies.length < 6 || empire.spacePorts.length < 3) num2 = Math.trunc(num2 / 1.7);
             else if (empire.colonies.length < 12 || empire.spacePorts.length < 5) num2 = Math.trunc(num2 / 1.3);
         }
+        if (galaxy.scenario !== null) num2 = scenarioQuery(galaxy, 'aiBuildTarget', num2, { empire, kind: 'defensiveForce' }); // Mod layer (Smarter AI budget)
         let num3 = 1;
         const q = queueOf(habitat2);
         if (q !== null) num3 = q.constructionSpeed;

@@ -43,7 +43,7 @@ import type { FuelTypeRef } from '../movement';
 import type { EmpireEvaluation } from '../diplomacy';
 import type { GalaxyLocation } from '../galaxyLocation';
 import { galaxyStarDate } from '../tick/simTime';
-import { scenarioQuery } from '../scenario/hooks';
+import { scenarioEmit, scenarioQuery } from '../scenario/hooks';
 import {
     BuiltObjectMissionPriority,
     BuiltObjectMissionType,
@@ -174,7 +174,7 @@ const INDEX_SIZE = 400000;
 /** Galaxy.MajorColonyStrategicThreshhold (5035). */
 const MAJOR_COLONY_STRATEGIC_THRESHHOLD = 20000;
 /** Galaxy.AttackOnPiratesRange (5060). */
-const ATTACK_ON_PIRATES_RANGE = 6000000.0;
+export const ATTACK_ON_PIRATES_RANGE = 6000000.0;
 /** Galaxy.DesiredForeignColony{Strategic,Resource}Threshhold (5105-5106). */
 const DESIRED_FOREIGN_COLONY_STRATEGIC_THRESHHOLD = 60;
 const DESIRED_FOREIGN_COLONY_RESOURCE_THRESHHOLD = 40;
@@ -254,7 +254,7 @@ export function checkAtWar(self: Empire): boolean {
 }
 
 /** Empire.9.cs 2908 CheckSystemVisible(Habitat systemStar). */
-function checkSystemVisibleStar(self: Empire, systemStar: Habitat | null): boolean {
+export function checkSystemVisibleStar(self: Empire, systemStar: Habitat | null): boolean {
     return systemStar !== null ? self.visibility.checkSystemVisible(systemStar.systemIndex) : false;
 }
 
@@ -576,7 +576,7 @@ function generateAutomationMessageAttackEnemyFleet(shipGroup: ShipGroup, attackF
 }
 
 /** Empire.10.cs 3886 GenerateAutomationMessageAttackPirateBase(pirateBase, attackFleet). */
-function generateAutomationMessageAttackPirateBase(pirateBase: BuiltObject, attackFleet: ShipGroup): string {
+export function generateAutomationMessageAttackPirateBase(pirateBase: BuiltObject, attackFleet: ShipGroup): string {
     let text = '';
     if (pirateBase.parentHabitat !== null) {
         const habitat = determineHabitatSystemStar(pirateBase.parentHabitat);
@@ -2734,7 +2734,7 @@ function ensureColonyDefendedByFleet(galaxy: Galaxy, self: Empire, colony: Habit
 }
 
 /** HabitatPrioritizationList.cs 14 ResolveSystems. */
-function resolveSystems(list: readonly { habitat: Habitat | null }[]): Habitat[] {
+export function resolveSystems(list: readonly { habitat: Habitat | null }[]): Habitat[] {
     const habitatList: Habitat[] = [];
     for (let index = 0; index < list.length; ++index) {
         const habitatSystemStar = determineHabitatSystemStar(list[index].habitat);
@@ -2745,7 +2745,7 @@ function resolveSystems(list: readonly { habitat: Habitat | null }[]): Habitat[]
 }
 
 /** BuiltObjectList.cs 96 GenerateDistanceOrderedList(x, y, systemPriorities): writes each ship's SortTag, List.Sort by SortTag. */
-function generateDistanceOrderedList(list: readonly BuiltObject[], x: number, y: number, systemPriorities: readonly Habitat[]): BuiltObject[] {
+export function generateDistanceOrderedList(list: readonly BuiltObject[], x: number, y: number, systemPriorities: readonly Habitat[]): BuiltObject[] {
     const builtObjectList = list.slice();
     for (let i = 0; i < builtObjectList.length; i++) {
         const builtObject = builtObjectList[i];
@@ -2757,10 +2757,20 @@ function generateDistanceOrderedList(list: readonly BuiltObject[], x: number, y:
     return builtObjectList;
 }
 
+/** Mod layer (Smarter AI): the huntPirates event; true when a handler replaced the stock hunt. */
+function scenarioHuntPirates(galaxy: Galaxy, empire: Empire, roll: number): boolean {
+    const payload = { empire, roll, handled: false };
+    scenarioEmit(galaxy, 'huntPirates', payload);
+    return payload.handled;
+}
+
 /** Empire.9.cs 1603 HuntPirates. Rnd: Next(0, 3). */
 function huntPirates(galaxy: Galaxy, self: Empire): void {
     const refusalCount: RefCount = { value: 0 };
-    if (self.knownPirateBases.length <= 0 || self.reclusive || galaxy.rnd.next(0, 3) <= 0 || checkAtWar(self)) return;
+    if (self.knownPirateBases.length <= 0 || self.reclusive) return;
+    const roll = galaxy.rnd.next(0, 3);
+    if (galaxy.scenario !== null && scenarioHuntPirates(galaxy, self, roll)) return; // mod layer (Smarter AI pirate clean-up)
+    if (roll <= 0 || checkAtWar(self)) return;
     const shipGroup = findAvailableShipGroup(galaxy, self, BuiltObjectMissionPriority.Low, 0, FleetPosture.Attack);
     if (shipGroup === null) return;
     let systemPriorities: Habitat[] = [];

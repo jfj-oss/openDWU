@@ -7,6 +7,7 @@
 // NextDouble() for the research substitute of a cancelled research-type wonder.
 
 import { isReadOnlyGalaxy } from '../readOnlyQuery';
+import { scenarioQuery } from '../scenario/hooks';
 import type { Galaxy } from '../galaxy';
 import type { Empire } from '../empire';
 import type { Habitat } from '../types';
@@ -43,7 +44,6 @@ import {
     sortedHabitatsDescending,
 } from './facilities';
 import { formatNetGrouped0 } from '../netNumberFormat';
-import { scenarioQuery } from '../scenario/hooks';
 
 // ---------------------------------------------------------------------------------------------------------------
 // Galaxy._WondersBuilt
@@ -328,7 +328,7 @@ export function reviewColonyWonders(galaxy: Galaxy, empire: Empire): void {
     for (let m = 0; m < wonders.length; m++) {
         const planetaryFacilityDefinition = wonders[m];
         if (planetaryFacilityDefinition === null || facilityType(planetaryFacilityDefinition) !== PlanetaryFacilityType.Wonder) continue;
-        let num2 = empire.stateMoney / 1.5;
+        let num2 = empire.stateMoney / (galaxy.scenario !== null ? scenarioQuery(galaxy, 'aiBuildTarget', 1.5, { empire, kind: 'wonderMoneyDivisor' }) : 1.5); // Mod layer (Smarter AI budget)
         if (policy.prioritizeBuildWonderId >= 0 && planetaryFacilityDefinition.facilityId === policy.prioritizeBuildWonderId) {
             num2 = empire.stateMoney;
         }

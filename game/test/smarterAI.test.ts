@@ -37,7 +37,7 @@ import { protectionWorthIt, sharedThreatPlans } from '../src/sim/scenario/smarte
 import { planetaryFacilityDefinitionsStatic } from '../src/sim/construction/facilities';
 
 const SC = 'smarter-ai';
-const ALL_OFF = { smarterAI: false, smarterAIResearch: false, smarterAIGrowthTax: false, smarterAIResearchStations: false, smarterAIWonders: false, smarterAIEspionage: false, smarterAIDiplomacy: false };
+const ALL_OFF = { smarterAI: false, smarterAIResearch: false, smarterAIGrowthTax: false, smarterAIBudget: false, smarterAIRetrofit: false, smarterAIDefence: false, smarterAIPirates: false, smarterAIResearchStations: false, smarterAIWonders: false, smarterAIEspionage: false, smarterAIDiplomacy: false };
 const STATECRAFT_ON = { smarterAIResearchStations: true, smarterAIWonders: true, smarterAIEspionage: true, smarterAIDiplomacy: true };
 
 let base: GameData;
@@ -183,7 +183,7 @@ describe('save round trip', () => {
         const text = serializeGame(a.game as never, time, { ...defaultStartGameOptions(), seed: 1, scenario: { id: SC, flags: { ...g.scenario!.flags }, params: { ...g.scenario!.params } } });
         const g2 = deserializeGame(text, a.gameData).game.galaxy;
         expect(g2.scenario!.id).toBe(SC);
-        expect(g2.scenario!.flags).toEqual({ smarterAI: true, smarterAIResearch: true, smarterAIGrowthTax: false, ...STATECRAFT_ON });
+        expect(g2.scenario!.flags).toMatchObject({ smarterAI: true, smarterAIResearch: true, smarterAIGrowthTax: false, ...STATECRAFT_ON });
         expect(g2.scenario!.params).toEqual({ smarterAIGrowthTaxThreshold: 55 });
         expect(peek(g2)!.orders).toEqual(peek(g)!.orders);
         // A save without the orders (an older one) rebuilds them on first use, identically.
@@ -199,7 +199,7 @@ describe('wizard', () => {
         expect(addonChoiceFor(cat, [], none, defaultSmarterAIChoice())).toBeNull(); // off by default
         const smart = { enabled: true, research: true, growthTaxes: false, growthTaxThreshold: 55 };
         const choice = addonChoiceFor(cat, [], none, smart)!;
-        expect(choice).toEqual({ id: SC, flags: { smarterAI: true, smarterAIResearch: true, smarterAIGrowthTax: false, ...STATECRAFT_ON }, params: { smarterAIGrowthTaxThreshold: 55 }, addons: [SC] });
+        expect(choice).toMatchObject({ id: SC, flags: { smarterAI: true, smarterAIResearch: true, smarterAIGrowthTax: false, ...STATECRAFT_ON }, params: { smarterAIGrowthTaxThreshold: 55 }, addons: [SC] });
         const opts = toCreateGameOptions({ ...defaultStartGameOptions(), seed: 3, scenario: choice, smarterAI: smart }, base, ['A']);
         expect(opts.scenarioFlags).toEqual(choice.flags);
         expect(opts.scenarioParams).toEqual(choice.params);

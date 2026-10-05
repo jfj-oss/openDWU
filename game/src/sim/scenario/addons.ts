@@ -89,8 +89,17 @@ export interface SmarterAIChoice {
     enabled: boolean;
     research: boolean;
     growthTaxes: boolean;
+    /** Cut costs when broke (smarterAIBudget; absent in older options = on). */
+    budget?: boolean;
+    /** Keep fleets up to date (smarterAIRetrofit; absent in older options = on). */
+    retrofit?: boolean;
     /** Growth taxes: colonies below this % of their maximum population are untaxed. */
     growthTaxThreshold: number;
+    /** Defence that counts pirates (smarterAIDefence). */
+    defence?: boolean;
+    /** Pirate clean-up (smarterAIPirates). */
+    pirates?: boolean;
+    /** Statecraft (smarterAIResearchStations / Wonders / Espionage / Diplomacy; absent = on). */
     researchStations?: boolean;
     wonders?: boolean;
     espionage?: boolean;
@@ -98,7 +107,7 @@ export interface SmarterAIChoice {
 }
 
 export function defaultSmarterAIChoice(): SmarterAIChoice {
-    return { enabled: false, research: true, growthTaxes: true, growthTaxThreshold: 70, researchStations: true, wonders: true, espionage: true, diplomacy: true };
+    return { enabled: false, research: true, growthTaxes: true, growthTaxThreshold: 70, budget: true, retrofit: true, defence: true, pirates: true, researchStations: true, wonders: true, espionage: true, diplomacy: true };
 }
 
 /**
@@ -115,6 +124,10 @@ export function withSmarterAI(picked: readonly string[], overrides: AddonOverrid
                 ...overrides.flags,
                 smarterAIResearch: smart.research,
                 smarterAIGrowthTax: smart.growthTaxes,
+                smarterAIBudget: smart.budget !== false,
+                smarterAIRetrofit: smart.retrofit !== false,
+                smarterAIDefence: smart.defence ?? true,
+                smarterAIPirates: smart.pirates ?? true,
                 smarterAIResearchStations: smart.researchStations ?? true,
                 smarterAIWonders: smart.wonders ?? true,
                 smarterAIEspionage: smart.espionage ?? true,
