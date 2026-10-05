@@ -97,7 +97,7 @@ import { toggleEmpirePolicy } from './screens/empirePolicy';
 import { toggleIntelligenceScreen } from './screens/intelligence';
 // [intel] end
 import { createSelectionActionBar, performAction, redrawSelectionActionBar, refreshSelectionActionBar, setSelectionExtraSlots, setSelectionIconResolvers, selectionShipIconUrl, type SelectionExtraSlot } from './orderMenu'; // [ordermenu]
-import { buildInfoModel, type InfoTarget } from './selectionInfo';
+import { buildInfoModel, retrofitProgressPercent, type InfoTarget } from './selectionInfo';
 import { renderInfoModel } from './selectionInfoView';
 import './selectionPanel.css';
 import { builtObjectImageUrl, resolveDrawPictureRef } from '../render/builtObjectLayer';
@@ -2667,7 +2667,8 @@ export function builtObjectStatusRows(bo: BuiltObject, player: Empire | null): {
             if (unbuilt > 0) parts.push(`${unbuilt} unbuilt`);
             components = parts.join(', ');
         } else if (bo.retrofitDesign !== null) {
-            components = `(RETROFITTING to ${bo.retrofitDesign.name})`;
+            const pct = retrofitProgressPercent(bo);
+            components = `(RETROFITTING to ${bo.retrofitDesign.name}${pct === null ? '' : pct < 0 ? ' — waiting for a yard' : `: ${pct}%`})`;
         }
     }
     rows.push({ label: 'Components', value: components });
