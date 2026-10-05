@@ -52,7 +52,7 @@ import { assignMission, clearPreviousMissionRequirements, queueMission } from '.
 import { BuiltObjectRole } from '../data/designSpecifications';
 import { BuiltObjectSubRole } from '../builtObjectTypes';
 import { netSort, netSortLastByKey } from '../netSort';
-import { scenarioQuery } from '../scenario/hooks';
+import { scenarioEmit, scenarioQuery } from '../scenario/hooks';
 import { FleetPosture, aggressionLevel, cautionLevel, compareDouble, formatText } from '../diplomacyTick';
 import { DiplomaticRelationType, DiplomaticStrategy, obtainDiplomaticRelation } from '../diplomacy';
 import { PirateRelationType } from '../pirateRelations';
@@ -3544,6 +3544,7 @@ export function maintainShipGroups(galaxy: Galaxy, empire: Empire): void {
         }
         const nextFleetNumberDescription = getNextFleetNumberDescription(empire);
         shipGroup4.name = formatText('{0} Fleet', nextFleetNumberDescription); // GameText "Nth Fleet"
+        if (galaxy.scenario !== null) scenarioEmit(galaxy, 'fleetFormed', { empire, fleet: shipGroup4, strikeForce: false }); // mod layer: themed names
         shipGroups.push(shipGroup4);
         netSort(shipGroups, compareShipGroups);
         num7 -= shipGroup4.ships.length;
@@ -3568,6 +3569,7 @@ export function maintainShipGroups(galaxy: Galaxy, empire: Empire): void {
         if (shipGroup5.ships.length > 0) {
             const nextFleetNumberDescription2 = getNextFleetNumberDescription(empire);
             shipGroup5.name = formatText('{0} Strike Force', nextFleetNumberDescription2); // GameText "Nth Strike Force"
+            if (galaxy.scenario !== null) scenarioEmit(galaxy, 'fleetFormed', { empire, fleet: shipGroup5, strikeForce: true }); // mod layer: themed names
             shipGroups.push(shipGroup5);
             netSort(shipGroups, compareShipGroups);
             num7 -= shipGroup5.ships.length;

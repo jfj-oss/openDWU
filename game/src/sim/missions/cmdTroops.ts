@@ -184,7 +184,7 @@ export const cmdColonize: CommandHandler = (ctx) => {
                             }
                         }
                         sendMessageToEmpire(empire, empire, EmpireMessageType.NewColony, targetHabitat10, empty2);
-                        if (galaxy.scenario !== null) scenarioEmit(galaxy, 'colonyFounded', { colony: targetHabitat10, empire }); // mod layer
+                        if (galaxy.scenario !== null) scenarioEmit(galaxy, 'colonyFounded', { colony: targetHabitat10, empire, joined: dominantRace !== null }); // mod layer
                         builtObjectCompleteTeardown(galaxy, bo);
                         if (flag33) return result;
                         let race2 = dominantRace;

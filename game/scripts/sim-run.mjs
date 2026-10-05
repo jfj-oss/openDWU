@@ -5,7 +5,7 @@
 //
 //   node --expose-gc scripts/sim-run.mjs --seed 1 --stars 700 --empires 10 --seconds 600
 //        [--age 1] [--tech 0.5] [--pirates 1] [--sectors N] [--chunk 60] [--profile] [--top 15] [--json out.json] [--combat]
-//        [--scenario <id under scenarios/>] [--sparams name=value,...] [--sflags name=0|1,...]
+//        [--scenario <id under scenarios/>] [--sparams name=value,...] [--sflags name=0|1,...] [--names]
 // --scenario: the mod-layer overlay applied to the game data (test/helpers/scenarioGame.ts), with param / flag overrides
 // (e.g. the 19h speed check: --scenario rim-frontier --sparams rimFrontierExtent=1.7,rimFrontierStarCount=2000).
 // --combat: a battle report (tasks/COMBAT-VERIFICATION-2026-09-26.md) — every ship / base destroyed (by empire and sub
@@ -534,6 +534,17 @@ try {
     console.log(`ms/frame wall|cpu: first chunk ${first.msPerFrame.toFixed(3)}|${first.cpuMsPerFrame.toFixed(3)} (to ${first.endS}s), last chunk ${last.msPerFrame.toFixed(3)}|${last.cpuMsPerFrame.toFixed(3)} (to ${last.endS}s); builtObjects ${first.bo} → ${last.bo}`);
     console.log(`heap: start ${mb(heapStart)}, peak sampled ${mb(heap.peak)}, end after gc ${mb(heapEnd)}${globalThis.gc ? '' : ' (run with --expose-gc for gc-settled numbers)'}`);
     console.log(`exceptions: ${out.exceptions.length}`);
+    // --names: every empire's name, race, fleet names and colony names (themed-names add-on check).
+    if (arg('names', false) === true) {
+        for (const e of [...g.empires, ...g.pirateEmpires]) {
+            if (e === null) continue;
+            const fleets = e.shipGroups.filter((f) => f !== null).map((f) => f.name);
+            const colonies = e.colonies.map((c) => c.name);
+            console.log(`names: ${e.name} [${e.dominantRace?.name ?? '-'}, gov ${e.governmentId}${e === g.playerEmpire ? ', player' : ''}${e.pirateEmpireBaseHabitat !== null ? ', pirate' : ''}]`);
+            console.log(`  fleets (${fleets.length}): ${fleets.join(' | ')}`);
+            console.log(`  colonies (${colonies.length}): ${colonies.join(' | ')}`);
+        }
+    }
     // First contact / exploration summary: met = diplomatic relations whose Type != NotMet (0) with a real empire;
     // an explorer (sub role ExplorationShip = 9) is "away" when it is > 23000 (MaxSolarSystemSize) from its capital's star.
     const contact = g.empires.filter((e) => e !== null).map((e) => {

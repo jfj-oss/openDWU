@@ -1,0 +1,243 @@
+'Scenario themed-names: the name lists of the "Themed names for AI empires" add-on (src/sim/scenario/themedNames/).
+'Original content written for this add-on. Every list is "|"-separated. A race without its own line uses the Generic one.
+'
+'Fleets: ThemedNames FleetPattern <Race> combines one piece of each list: {A} = FleetAdj, {N} = FleetNoun, {F} = FleetGroup.
+'Colonies: ThemedNames Colony <Race> entries may use {Home} (the race's home system name), {Star} (the colony's star)
+'          and {Capital} (the empire's capital).
+'Empires: ThemedNames EmpirePart <Race> fills {0} of the government style's templates (ThemedNames EmpireStyle <Style>);
+'         ThemedNames Government <government name> picks the style.
+
+' ---------------------------------------------------------------------------------------------------------------- Generic
+ThemedNames FleetAdj Generic;Steadfast|Distant|Bright|Silent|Iron|Swift|Valiant|Northern|Vigilant|Unbroken
+ThemedNames FleetNoun Generic;Star|Comet|Shield|Lance|Banner|Horizon|Beacon|Anchor
+ThemedNames FleetGroup Generic;Fleet|Squadron|Flotilla|Armada|Vanguard|Watch|Wing
+ThemedNames FleetPattern Generic;{A} {N} {F}|{F} of the {A} {N}|The {A} {F}
+ThemedNames Colony Generic;New {Home}|{Star} Landing|{Capital}'s Reach|First Light|Farhaven|Brightwater|Long Harbour|Stillmeadow|Haven's Edge|Cold Hollow|Waystation|Greenfall|Copper Ridge|Last Anchor|Highmoor|Lantern Point|Saltmarch|Dawnfield|Restwater|Kellan's Hope|Broadvale|Thistledown|Mirror Lake|Outer Reach|Fairwind|Silverbrook|Ember Plain|Northgate|Stonecairn|Glasswater|Promise|Settler's Rest|Quietfold|Driftwood|Hollowell|Starfall|Juniper|Marrowdale|Westering|Keystone
+ThemedNames EmpirePart Generic;Aurel|Vantor|Sevrin|Ophel|Durak|Calyx|Meridian|Tolvar|Ishen|Corvane|Halcyon|Brennic|Thessaly|Varn|Orison
+
+' ---------------------------------------------------------------------------------------------------------------- Government styles
+ThemedNames Government Despotism;Autocracy
+ThemedNames Government Military Dictatorship;Military
+ThemedNames Government Feudalism;Feudal
+ThemedNames Government Monarchy;Royal
+ThemedNames Government Republic;Republic
+ThemedNames Government Democracy;Democracy
+ThemedNames Government Way of the Ancients;Ancient
+ThemedNames Government Way of Darkness;Dark
+ThemedNames Government Technocracy;Technocracy
+ThemedNames Government Mercantile Guild;Mercantile
+ThemedNames Government Corporate Nationalism;Corporate
+ThemedNames Government Utopian Paradise;Utopia
+ThemedNames Government Hive Mind;Hive
+ThemedNames EmpireStyle Autocracy;{0} Hegemony|Iron Throne of {0}|{0} Autarchy|Dominion of {0}|The {0} Mandate|Sovereign {0}
+ThemedNames EmpireStyle Military;{0} War Directorate|{0} Martial Command|Iron Banner of {0}|{0} Junta|High Command of {0}|{0} Garrison State
+ThemedNames EmpireStyle Feudal;{0} Marches|Liege Holds of {0}|{0} Fiefdoms|Banner Lords of {0}|The {0} Oathbound|{0} Vassalage
+ThemedNames EmpireStyle Royal;Kingdom of {0}|{0} Crown|Royal House of {0}|{0} Throne|High Kingdom of {0}|{0} Regency
+ThemedNames EmpireStyle Republic;{0} Republic|Free Republic of {0}|{0} Senate|{0} Commonwealth|Res Publica {0}|{0} Consulate
+ThemedNames EmpireStyle Democracy;{0} Union|United Worlds of {0}|{0} Assembly|{0} Federation|People's Concord of {0}|{0} Accord
+ThemedNames EmpireStyle Ancient;{0} Covenant|Elder Way of {0}|{0} Ascendancy|Keepers of {0}|The {0} Lineage|{0} Eternity
+ThemedNames EmpireStyle Dark;{0} Umbrate|Shadow Court of {0}|{0} Nightfall|The {0} Eclipse|Void Throne of {0}|{0} Dread Ascendancy
+ThemedNames EmpireStyle Technocracy;{0} Directorate|{0} Collegium|Axiom of {0}|{0} Logic State|Ministry of {0}|{0} Grand Synthesis
+ThemedNames EmpireStyle Mercantile;{0} Trade Compact|{0} Consortium|Guilds of {0}|{0} Exchange|{0} Merchant League|Charter of {0}
+ThemedNames EmpireStyle Corporate;{0} Holdings|{0} Incorporated|{0} Combine|{0} Syndicate|Board of {0}|{0} Group
+ThemedNames EmpireStyle Utopia;{0} Harmony|Sanctuary of {0}|{0} Concordance|Gardens of {0}|The {0} Idyll|{0} Serenity
+ThemedNames EmpireStyle Hive;{0} Brood|The {0} Swarm|{0} Collective|One Mind of {0}|{0} Hive|{0} Clutch
+ThemedNames EmpireStyle Generic;{0} Realm|{0} Domain|Worlds of {0}|{0} Sphere|{0} Polity|{0} Reach
+
+' ---------------------------------------------------------------------------------------------------------------- Ketarov
+'Cautious, clever bear-folk of the frozen taiga: patient planners, cold and calculating.
+ThemedNames FleetAdj Ketarov;Frost|Patient|Hoarfrost|Glacial|Winterborn|Cold|Steel|Measured|Silent|Pale
+ThemedNames FleetNoun Ketarov;Bear|Pine|Taiga|Blizzard|Rime|Glacier|Tundra|Ledger
+ThemedNames FleetGroup Ketarov;Guard|Vigil|Watch|Column|Bastion|Phalanx|Host
+ThemedNames FleetPattern Ketarov;{A} {N} {F}|{F} of the {A} {N}|The {A} {F}
+ThemedNames Colony Ketarov;New {Home}|{Star} Winterhold|{Capital}'s Patience|Lesser {Home}|Ketaros Minor|Snowden|Iron Taiga|Frostmere|Pine Hollow|Volsk|Bramsk|Tervarsk|Grey Cache|Kolva Den|Deepwinter|Silent Steppe|Ostrava Ice|Brekhov|Long Night|Kirov Ridge|Hearthstone|Winter Archive|Rimewood|Pale Harbour|Molotov Shelf|Vasskov|Coldspring|Ursa Hollow|Druzhin|Taigan Reach|Lastfrost|Frozen Ledger|Gorsk|Polar Hearth|Yarrowsk|Nevskov|Stillsnow|Borovna|White Den|Kestrel Pass
+ThemedNames EmpirePart Ketarov;Ketaros|Volsk|Taigan|Winterhold|Brekhov|Kolva|Rimeguard|Ostrava|Ursan|Nevskov|Druzhin|Frostmere|Kirsk|Polaris|Borovna
+
+' ---------------------------------------------------------------------------------------------------------------- Atuuk
+'Big, boisterous, reckless hunters: loud clans, bonfires and the thrill of the chase.
+ThemedNames FleetAdj Atuuk;Howling|Roaring|Thundering|Savage|Hungry|Wild|Bloodied|Stomping|Mighty|Grinning
+ThemedNames FleetNoun Atuuk;Hunt|Tusk|Bonfire|Maul|Pelt|Claw|Spear|Feast
+ThemedNames FleetGroup Atuuk;Hunting Party|Pack|Clan|Warband|Stampede|Rabble|Mob
+ThemedNames FleetPattern Atuuk;{A} {N} {F}|{F} of the {A} {N}|The {A} {F}
+ThemedNames Colony Atuuk;New {Home}|Big {Star}|{Capital}'s Feast|Atuuko Again|Bonfire Hill|Tusk Rock|Fat Meadow|Loud Valley|Gruk's Camp|Bellyfull|Roarhollow|Huntground|Big Pelt|Thumpwood|Grubbing Fields|Many Bones|Mudwallow|Snarlpeak|Kettle Camp|Grumm|Boomrock|Long Chase|Hugga's Den|Feasting Plain|Stompridge|Tallgrass|Bonepile|Gnasher Bay|Sunwarm|Hollerpass|Bramble Den|Fireside|Rumble Creek|Tooth Hill|Bigsleep|Clatter Gorge|Wallow Deep|Ogga's Find|Greathunt|Lazy Hollow
+ThemedNames EmpirePart Atuuk;Atuuko|Gruk|Bonfire|Roarhollow|Big Tusk|Hugga|Stompridge|Ogga|Thumpwood|Many Bones|Greathunt|Snarlpeak|Grumm|Feastfire|Bellow
+
+' ---------------------------------------------------------------------------------------------------------------- Gizurean
+'An insect hive of many castes: the swarm thinks as one and every drone serves the queen.
+ThemedNames FleetAdj Gizurean;Chittering|Endless|Amber|Ten-Thousand|Thrumming|Waxen|Hollow|Unfaltering|Gilded|Swarming
+ThemedNames FleetNoun Gizurean;Wing|Comb|Stinger|Carapace|Drone|Queen|Nest|Hum
+ThemedNames FleetGroup Gizurean;Swarm|Brood|Cloud|Hive|Caste|Clutch|Tide
+ThemedNames FleetPattern Gizurean;{A} {N} {F}|{F} of the {A} {N}|The {A} {F}
+ThemedNames Colony Gizurean;New {Home}|{Star} Comb|{Capital} Budding|Second Hive|Gizurea Spawn|Amber Cell|Waxworks|Royal Chamber|Brood Hollow|Hexgate|Thrumhold|Nectar Vault|Drone Field|Chitter Deep|Combrise|Spinner's Mound|Mandibula|Hexafield|Sixfold|Larval Pools|Queen's Gift|Wingdrift|Pollen Sea|Gizzik|Tzirr|Krrikis|Chamber Ninety|Honeyglass|Molt|Gilded Comb|Resin Hold|Swarmhaven|Many-Eyes|Shellfield|Nestrise|Zizzura|Burrowcomb|Dronefall|Thrill|Hive Sixty
+ThemedNames EmpirePart Gizurean;Gizurea|Amber Comb|Tzirr|Hexgate|Krrikis|Zizzura|Gilded Hive|Thrumhold|Mandibula|Waxen Throne|Chitter|Sixfold|Nestrise|Honeyglass|Gizzik
+
+' ---------------------------------------------------------------------------------------------------------------- Dhayut
+'Aggressive insectoid mercenaries: blades for hire, paid in advance, contracts honoured to the letter.
+ThemedNames FleetAdj Dhayut;Hired|Paid|Bladed|Gold-Sworn|Ruthless|Bonded|Mercenary|Contracted|Sharp|Rusted
+ThemedNames FleetNoun Dhayut;Blade|Coin|Contract|Fang|Sickle|Bounty|Pincer|Purse
+ThemedNames FleetGroup Dhayut;Company|Free Company|Band|Cohort|Retinue|Lance|Crew
+ThemedNames FleetPattern Dhayut;{A} {N} {F}|{F} of the {A} {N}|The {A} {F}
+ThemedNames Colony Dhayut;New {Home}|{Star} Outpost|{Capital}'s Bounty|Dhayu Station|Paymaster's Rock|Coin Hollow|Bladefield|Sickle Point|Contract Hold|Debtor's Rest|Kith Barracks|Gilt Mound|Warrant|Retainer|Sellsword Plain|Tithe|Pincer Bay|Sharpening Stone|Dhakka|Yuth|Vhaarit|Bondgate|Purse Hill|Tollmark|Advance|Muster Field|Spoils|Rent Hollow|Paid in Full|Black Ledger|Silverclaw|Hiring Hall|Dhuun|Oath Pit|Plunder Bay|Coinfall|Scrip|Wage|Iron Fee|Kettle Barracks
+ThemedNames EmpirePart Dhayut;Dhayu|Dhakka|Vhaarit|Yuth|Silverclaw|Bladefield|Dhuun|Gilt Mound|Coinfall|Tollmark|Bondgate|Black Ledger|Muster|Sickle|Iron Fee
+
+' ---------------------------------------------------------------------------------------------------------------- Human
+'Balanced, curious, quarrelsome: sea-going traditions carried into space.
+ThemedNames FleetAdj Human;Home|Atlantic|Pacific|Valiant|Resolute|Indomitable|Free|Endeavour|Liberty|Terran
+ThemedNames FleetNoun Human;Star|Eagle|Lion|Trident|Anchor|Compass|Harbour|Sword
+ThemedNames FleetGroup Human;Fleet|Task Force|Squadron|Battle Group|Expeditionary Force|Patrol|Flotilla
+ThemedNames FleetPattern Human;{A} {N} {F}|{F} {N}|The {A} {F}
+ThemedNames Colony Human;New {Home}|New Terra|{Star} Landing|Port {Capital}|New Avalon|Hope's End|Jefferson Plain|New Kyoto|Tranquility|Cape Horizon|Port Meridian|Fort Gagarin|New Lagos|Alder Springs|Providence|Sagan's Rest|Marigold|New Patagonia|Liberty Bay|Ridgeview|Bradbury|Cassini Fields|New Montreal|Hawking Station|Gentle Valley|Sundial|Prosperity|Okoro Landing|Harbourlight|Clarke's Point|New Andes|Riverbend|Fortuna|New Mumbai|Hubble Downs|Elysium|Second Chance|Lindqvist|Pioneer Ridge|Goodwater
+ThemedNames EmpirePart Human;Terra|Sol|Avalon|New Terra|Meridian|Providence|Elysium|Atlas|Liberty|Concordia|Vega|Columbia|Orion|Gaia|Arcadia
+
+' ---------------------------------------------------------------------------------------------------------------- Quameno
+'Brilliant, gentle amphibian technocrats: proofs, machines, careful logic and cool water.
+ThemedNames FleetAdj Quameno;Logical|Elegant|Recursive|Axiomatic|Precise|Theoretical|Calm|Prime|Lucid|Iterative
+ThemedNames FleetNoun Quameno;Theorem|Lemma|Proof|Equation|Engine|Lens|Current|Vector
+ThemedNames FleetGroup Quameno;Array|Instance|Seminar|Faculty|Assembly|Matrix|Thesis
+ThemedNames FleetPattern Quameno;{A} {N} {F}|{F} of the {A} {N}|The {A} {F}
+ThemedNames Colony Quameno;New {Home}|{Star} Laboratory|{Capital} Annex|Quameno Prime|Corollary|Postulate|Theorem Bay|Proof Pool|Sum of Squares|Equilibrium|Lemma Shoals|Vector Deep|Quorum|Infinite Series|First Principle|Constant|Rational Marsh|Calculus Reef|Iteration Seven|Fractal Lagoon|Q-Station|Wavelet|Hypothesis|Lucid Waters|Measure|Variable Bay|Algorithm|Abstract|Tangent Shores|Integral|Paradox Pool|Null Set|Golden Ratio|Fermion|Spiral Delta|Orthogonal|Limit|Sigma Tarn|Precision|Quiet Proof
+ThemedNames EmpirePart Quameno;Quameno|Axiom|Lemma|Corollary|Vectora|Quorum|Sigma|Equilibria|Theoria|Lucida|Fractal|Integral|Prime|Postulate|Calculus
+
+' ---------------------------------------------------------------------------------------------------------------- Mortalen
+'Warlike reptilian conquerors: sun-worship, scale and the glory of the battle line.
+ThemedNames FleetAdj Mortalen;Conquering|Scorching|Burning|Sun-Blessed|Merciless|Triumphant|Crimson|Scaled|Imperial|Relentless
+ThemedNames FleetNoun Mortalen;Sun|Scale|Claw|Spear|Pyre|Throne|Fang|Conquest
+ThemedNames FleetGroup Mortalen;Legion|Horde|Warhost|Host|Armada|Spearhead|Triumph
+ThemedNames FleetPattern Mortalen;{A} {N} {F}|{F} of the {A} {N}|The {A} {F}
+ThemedNames Colony Mortalen;New {Home}|{Star} Conquered|{Capital}'s Prize|Mortalu Rising|Sunspear|Triumph|Ashen Throne|Scalegard|Conqueror's Seat|Vexis|Mor Kathra|Burning Field|Tribute|Warlord's Rest|Red Sands|Sunforge|Kharvos|Spoil of War|Yoke|Dominance|Pyre Hill|Crimson Steppe|Iron Scale|Varrak|Mortathrax|Glory|Sunbreak|Vassal Point|First Blood|Zarrak's Hold|Blazing Dunes|Victory|Subjugation|Throne Rock|Scorchlands|Kesh|Talonreach|Brazier|Mor Varis|Proving Ground
+ThemedNames EmpirePart Mortalen;Mortalu|Kharvos|Varrak|Mortathrax|Sunspear|Vexis|Mor Kathra|Zarrak|Scalegard|Kesh|Brazier|Mor Varis|Talonreach|Sunforge|Crimson Sun
+
+' ---------------------------------------------------------------------------------------------------------------- Ackdarian
+'Friendly, protective amphibians of reef and tide: defenders first, slow to anger.
+ThemedNames FleetAdj Ackdarian;Tidal|Coral|Deep|Patient|Shielding|Gentle|Abyssal|Briny|Rising|Sheltering
+ThemedNames FleetNoun Ackdarian;Reef|Tide|Shell|Current|Lagoon|Pearl|Breaker|Kelp
+ThemedNames FleetGroup Ackdarian;Defenders|Shoal|Guard|Wall|Bulwark|School|Shelter
+ThemedNames FleetPattern Ackdarian;{A} {N} {F}|{F} of the {A} {N}|The {A} {F}
+ThemedNames Colony Ackdarian;New {Home}|{Star} Reef|{Capital} Shallows|Ackdar Deep|Coral Haven|Pearl Lagoon|Kelpwood|Tidewater|Brine Hollow|Saltshallow|Breakwater|Shellbay|Mangrove|Driftreef|Low Tide|High Tide|Calm Waters|Spawning Pools|Bubblemere|Seagrass|Undertow|Riptide Rest|Glimmer Reef|Ackarra|Oolu|Mossbank|Fathom|Shelter Bay|Wavecrest|Tidepool|Estuary|Bluegill|Sunken Garden|Lily Marsh|Seafoam|Gentle Current|Sponge Flats|Anemone|Deepwell|Sandbar
+ThemedNames EmpirePart Ackdarian;Ackdar|Ackarra|Oolu|Coral Reach|Tidewater|Pearl|Breakwater|Fathom|Kelpwood|Glimmer Reef|Wavecrest|Seafoam|Undertow|Lagoon|Deepwell
+
+' ---------------------------------------------------------------------------------------------------------------- Haakonish
+'Reptilian merchant guilds with clockwork battle automatons: ledgers, brass and hard bargains.
+ThemedNames FleetAdj Haakonish;Brass|Gilded|Ledgered|Clockwork|Audited|Chartered|Bartering|Copper|Tariffed|Bonded
+ThemedNames FleetNoun Haakonish;Ledger|Scale|Coin|Gear|Seal|Ingot|Cog|Tally
+ThemedNames FleetGroup Haakonish;Guild|Convoy|Consignment|Syndicate|Escort|Charter|Battlematons
+ThemedNames FleetPattern Haakonish;{A} {N} {F}|{F} of the {A} {N}|The {A} {F}
+ThemedNames Colony Haakonish;New {Home}|{Star} Exchange|{Capital}'s Venture|Haako Market|Brassgate|Ledger Point|Tally Hill|Profit|Coin Basin|Gearwright|Margin|Dividend|Copperstall|Tariff Rock|Haakon's Wager|Guildhall|Bazaar|Warehouse Nine|Vessa's Rest|Scalesworth|Countinghouse|Ingot Flats|Barter Bay|Sealholm|Brokerage|Clockwork Vale|Halvard's Claim|Goldmouth|Assay|Strongbox|Commerce|Freeport|Tradewind|Kaasvik|Merchant's Folly|Audit|Hundredweight|Haggle|Escrow|Balance
+ThemedNames EmpirePart Haakonish;Haako|Brassgate|Kaasvik|Halvard|Sealholm|Goldmouth|Copperstall|Scalesworth|Guildhall|Freeport|Tradewind|Gearwright|Vessa|Strongbox|Haakon
+
+' ---------------------------------------------------------------------------------------------------------------- Naxxilian
+'Aggressive yet careful reptilians: coiled patience, sudden strikes, torpedoes and venom.
+ThemedNames FleetAdj Naxxilian;Coiled|Venomous|Lurking|Hissing|Striking|Patient|Emerald|Hooded|Shedding|Silent
+ThemedNames FleetNoun Naxxilian;Fang|Coil|Venom|Viper|Scale|Strike|Hood|Eye
+ThemedNames FleetGroup Naxxilian;Fighting Squad|Nest|Ambush|Lair|Brood|Strike Group|Den
+ThemedNames FleetPattern Naxxilian;{A} {N} {F}|{F} of the {A} {N}|The {A} {F}
+ThemedNames Colony Naxxilian;New {Home}|{Star} Nest|{Capital}'s Coil|Naxxil Minor|Venomwell|Coilhaven|Emerald Den|Fanghold|Shedskin|Sss'kar|Hisspeak|Basking Rock|Sunstone|Viper Hollow|Nax Vohr|Lurk|Hooded Vale|Slitherdeep|Strike Point|Patience|Green Burrow|Xixxa|Scale Moor|Sidewinder|Eyeslit|Moltgrounds|Warmsand|Ambush Pass|Coldblood|Naxxar|Serpentine|Quickstrike|Venom Sea|Shedding Stone|Sssyl|Dune Coil|Sinuous|Long Wait|Xavh|Jade Fang
+ThemedNames EmpirePart Naxxilian;Naxxil|Naxxar|Xixxa|Nax Vohr|Sss'kar|Sssyl|Xavh|Coilhaven|Emerald Den|Venomwell|Fanghold|Serpentine|Jade Fang|Sidewinder|Hisspeak
+
+' ---------------------------------------------------------------------------------------------------------------- Zenox
+'Rodent technocrats: robot guards, circuits, flawless engineering and meticulous order.
+ThemedNames FleetAdj Zenox;Calibrated|Optimal|Binary|Quantum|Synchronised|Automated|Exact|Polished|Sterling|Recalibrated
+ThemedNames FleetNoun Zenox;Circuit|Processor|Diode|Sensor|Relay|Protocol|Servo|Cipher
+ThemedNames FleetGroup Zenox;Unit|Subroutine|Network|Grid|Battery|Cluster|Module
+ThemedNames FleetPattern Zenox;{A} {N} {F}|{F} {N}|The {A} {F}
+ThemedNames Colony Zenox;New {Home}|{Star} Node|{Capital} Relay|Zenox Secundus|Circuitry|Datavault|Gridline|Servo Hollow|Polished Burrow|Calibration|Kernel|Bitfield|Logic Den|Zen-7|Optimum|Silicon Warren|Relay Point|Diode Deep|Precision Burrow|Clocktower|Flux|Capacitor|Zix Prime|Overclock|Tensor|Firmware|Parity|Checksum|Rodentia Nova|Signal Hill|Debug|Socket|Zenith Grid|Lattice|Quartz Warren|Automata|Uplink|Register|Bandwidth|Sterling Node
+ThemedNames EmpirePart Zenox;Zenox|Zix|Zen Grid|Kernel|Lattice|Tensor|Optimum|Zenith|Quartz|Circuitry|Parity|Flux|Automata|Capacitor|Sterling
+
+' ---------------------------------------------------------------------------------------------------------------- Teekan
+'Small, friendly, loyal rodent traders: caravans, burrows, bargains and trap-lines.
+ThemedNames FleetAdj Teekan;Thrifty|Bustling|Busy|Clever|Bargaining|Cheery|Twitching|Nimble|Haggling|Burrowing
+ThemedNames FleetNoun Teekan;Whisker|Burrow|Caravan|Purse|Trap|Pantry|Acorn|Market
+ThemedNames FleetGroup Teekan;Wagon Train|Trapper Group|Convoy|Company|Cartel|Peddlers|Escort
+ThemedNames FleetPattern Teekan;{A} {N} {F}|{F} of the {A} {N}|The {A} {F}
+ThemedNames Colony Teekan;New {Home}|{Star} Market|{Capital}'s Pantry|Little Teeka|Burrowtown|Whiskerfield|Acorn Cache|Penny Hollow|Snugden|Bargain Hill|Seedstore|Trapline|Twitchwood|Haggle Hollow|Nibble Creek|Cheesestone|Sniffle Gap|Tuckaway|Tiptoe Vale|Cozyhole|Squeakmarket|Coinpurse|Busy Burrow|Barley Den|Pocketful|Pip's Corner|Fairprice|Larder|Halfpenny|Tumbledown|Nutshell|Hazel Warren|Market Square|Bundle|Warmnest|Teeky Bay|Skitter|Thimble|Copper Burrow|Waggle
+ThemedNames EmpirePart Teekan;Teeka|Teeky|Burrowtown|Pip|Whiskerfield|Halfpenny|Hazel Warren|Snugden|Penny|Thimble|Fairprice|Squeak|Larder|Coinpurse|Nutshell
+
+' ---------------------------------------------------------------------------------------------------------------- Wekkarus
+'Steady amphibian guardians of marsh and river: lanterns in the fog, trade along the delta.
+ThemedNames FleetAdj Wekkarus;Misty|Marsh|Glowing|Steady|Murky|Reed|Croaking|Mossy|Riverine|Faithful
+ThemedNames FleetNoun Wekkarus;Lantern|Reed|Delta|Bog|Fog|Lily|River|Heron
+ThemedNames FleetGroup Wekkarus;Guardians|Wardens|Patrol|Watch|Keepers|Barge|Picket
+ThemedNames FleetPattern Wekkarus;{A} {N} {F}|{F} of the {A} {N}|The {A} {F}
+ThemedNames Colony Wekkarus;New {Home}|{Star} Marsh|{Capital} Delta|Wekkaru Fen|Lanternwater|Reedholm|Foggy Bottom|Lilypad|Croak Hollow|Bogwatch|Mudflat|Rushmere|Heronford|Peatland|Willowbank|Slowriver|Misthaven|Lantern Ferry|Wekka Pond|Mossmarsh|Cattail|Deep Fen|Ripplemere|Bulrush|Frogsmouth|Drizzle|Dampwood|Silt Crossing|Low Bog|Greenwater|Eelpool|Sedge|Backwater|Marshlight|Waterlily|Old Ferry|Swamp Lantern|Duckweed|Floodplain|Murmur
+ThemedNames EmpirePart Wekkarus;Wekkaru|Wekka|Reedholm|Lanternwater|Misthaven|Rushmere|Heronford|Marshlight|Willowbank|Ripplemere|Deep Fen|Sedge|Greenwater|Mossmarsh|Bogwatch
+
+' ---------------------------------------------------------------------------------------------------------------- Boskara
+'Bloodthirsty, militarist insect hive: dread, red mandibles and public executions.
+ThemedNames FleetAdj Boskara;Dread|Blood-Red|Executing|Devouring|Grim|Pitiless|Severing|Mandibled|Scarlet|Butchering
+ThemedNames FleetNoun Boskara;Mandible|Headsman|Axe|Talon|Gallows|Thorax|Verdict|Carapace
+ThemedNames FleetGroup Boskara;Executioners|Swarm|Horde|Reckoning|Purge|Reaping|Armada
+ThemedNames FleetPattern Boskara;{A} {N} {F}|{F} of the {A} {N}|The {A} {F}
+ThemedNames Colony Boskara;New {Home}|{Star} Subdued|{Capital}'s Verdict|Boskar Brood|Gallows Hill|Redmandible|Severance|Headsman's Rest|Dreadnest|Kraxis|Bosk Varr|Scarlet Mound|Chopping Block|Purge Field|Husk|Grimhive|Thorax Peak|Skarr|Verdict|Gnash|Bloodcomb|Reaper's Nest|Execution Plain|Krrask|Talon Hive|Severed Ridge|Feeding Ground|Charnel|Kill Chamber|Scythe|Bosk Thar|Penance|Ichor Pools|Crimson Comb|Ruin|Krellik|Splinter|Doom Hive|Gravemound|Last Rites
+ThemedNames EmpirePart Boskara;Boskar|Bosk Varr|Kraxis|Skarr|Krrask|Bosk Thar|Krellik|Redmandible|Dreadnest|Grimhive|Scarlet Mound|Bloodcomb|Gallows|Talon Hive|Doom Hive
+
+' ---------------------------------------------------------------------------------------------------------------- Shandar
+'Serene reptilian idealists: gardens, jade, contemplation, and protection of the peace.
+ThemedNames FleetAdj Shandar;Serene|Jade|Tranquil|Blossoming|Harmonious|Gentle|Golden|Meditative|Sunlit|Peaceful
+ThemedNames FleetNoun Shandar;Lotus|Garden|Bell|Willow|Jade|Pagoda|Petal|Dawn
+ThemedNames FleetGroup Shandar;Protectors|Sanctuary|Circle|Procession|Guard|Garland|Chorus
+ThemedNames FleetPattern Shandar;{A} {N} {F}|{F} of the {A} {N}|The {A} {F}
+ThemedNames Colony Shandar;New {Home}|{Star} Garden|{Capital}'s Repose|Shandar Bloom|Jade Terrace|Lotus Pond|Petalfall|Bellwind|Willowshade|Quiet Court|Sunlit Pavilion|Harmony|Blossom Vale|Tea Garden|Golden Pagoda|Stillwater|Moonbridge|Orchid Steps|Shan Tavi|Dawnrest|Calm Hearth|Silk Meadow|Pebble Path|Incense Hill|Cherry Shore|Reflection|Contentment|Shaal|Serenity|Gentle Rain|Bamboo Glade|Lantern Garden|Mossy Shrine|Koi Pond|Equanimity|Morning Bell|Jasmine|Haven of Leaves|Sunwell|Tranquil Isle
+ThemedNames EmpirePart Shandar;Shandar|Shan Tavi|Shaal|Jade Terrace|Lotus|Bellwind|Willowshade|Golden Pagoda|Moonbridge|Orchid|Dawnrest|Stillwater|Jasmine|Silk Meadow|Sunwell
+
+' ---------------------------------------------------------------------------------------------------------------- Ugnari
+'Rodent artisans and merchants: forges, gears and war-robots built in busy workshops.
+ThemedNames FleetAdj Ugnari;Riveted|Forged|Tinkering|Welded|Hammering|Sooty|Geared|Sturdy|Bolted|Industrious
+ThemedNames FleetNoun Ugnari;Anvil|Gear|Rivet|Spanner|Furnace|Crank|Bolt|Piston
+ThemedNames FleetGroup Ugnari;WarBots|Workshop|Foundry|Assembly|Works|Crew|Battery
+ThemedNames FleetPattern Ugnari;{A} {N} {F}|{F} of the {A} {N}|The {A} {F}
+ThemedNames Colony Ugnari;New {Home}|{Star} Works|{Capital} Foundry|Ugnar Forge|Anvil Hollow|Rivettown|Soot Warren|Gearpit|Spanner Hill|Cogwhistle|Bellows|Furnace Deep|Tinker's Den|Crankshaft|Slag Heap|Smelter's Rest|Boltford|Piston Gulch|Ironwhisker|Workbench|Kiln|Tool Shed|Lathe|Grease Hollow|Ugg's Shop|Copperwire|Flywheel|Steamvent|Ratchet|Smithy|Brazen Burrow|Drillhole|Gnaw Works|Sprocket|Weldspark|Hammerfall|Nutbolt|Clinker|Ugnaria|Bellforge
+ThemedNames EmpirePart Ugnari;Ugnar|Ugnaria|Ugg|Bellforge|Anvil|Rivettown|Gearpit|Cogwhistle|Furnace|Sprocket|Hammerfall|Ironwhisker|Flywheel|Copperwire|Smithy
+
+' ---------------------------------------------------------------------------------------------------------------- Kiadian
+'Highly intelligent, loyal, contemplative humanoids: the mystics of the galaxy, veils and quiet starlight.
+ThemedNames FleetAdj Kiadian;Quiet|Hidden|Dreaming|Luminous|Whispering|Silver|Distant|Veiled|Eternal|Wandering
+ThemedNames FleetNoun Kiadian;Stars|Tides|Moons|Echoes|Lights|Winds|Voices|Mirrors
+ThemedNames FleetGroup Kiadian;Veil|Chorus|Gathering|Song|Circle|Vigil|Mantle
+ThemedNames FleetPattern Kiadian;{F} of {A} {N}|{A} {N} {F}|The {F} of {N}
+ThemedNames Colony Kiadian;New {Home}|{Star} Sanctum|{Capital}'s Dream|Kiadia Reborn|Silent Hearth|Moonwell|Whispering Shore|Veilmere|Starlight Hollow|Echo Vale|Lumen|Dreamfield|Mirror Gate|Quiet Harbour|Silverleaf|Distant Bell|Thousand Lanterns|Aelith|Iridel|Seren Kai|Wandering Rest|Hidden Spring|Twilight Steps|Oracle's Seat|Mistveil|Reverie|Soft Rain|Elarion|Moonpath|Eventide|Glimmer|Sorrowless|Kai Tessa|First Dawn|Lumin Vale|Halo|Meditation|Paleway|Calm Eternal|Starsong
+ThemedNames EmpirePart Kiadian;Kiadia|Aelith|Iridel|Seren Kai|Elarion|Kai Tessa|Veilmere|Moonwell|Lumen|Starsong|Reverie|Eventide|Halo|Mistveil|Lumin
+
+' ---------------------------------------------------------------------------------------------------------------- Sluken
+'Aggressive insectoid hive of devourers: acid, blight and terminators.
+ThemedNames FleetAdj Sluken;Corroding|Ravenous|Acidic|Blighted|Writhing|Oozing|Gnawing|Festering|Molten|Unstoppable
+ThemedNames FleetNoun Sluken;Maw|Acid|Blight|Larva|Spine|Ichor|Jaw|Plague
+ThemedNames FleetGroup Sluken;Terminators|Infestation|Swarm|Brood|Tide|Spawn|Devourers
+ThemedNames FleetPattern Sluken;{A} {N} {F}|{F} of the {A} {N}|The {A} {F}
+ThemedNames Colony Sluken;New {Home}|{Star} Infested|{Capital} Spawn|Slukis Brood|Acid Pools|Blightmound|Maw Deep|Larval Pit|Gnawfield|Ooze Hollow|Spinewood|Ichorhive|Rot Basin|Sluk Varr|Grubmire|Festerfall|Corrosion|Devour|Slime Terrace|Hatchery|Skrell|Xukk|Chitin Waste|Molten Hive|Plaguewell|Writhe|Bile Lake|Feeding Swarm|Husk Field|Sporemound|Gnasher|Crawling Sea|Slukk Nor|Mire Hive|Burrowrot|Clutch Ninety|Seeping|Swarmhold|Termination|Devourer's Rest
+ThemedNames EmpirePart Sluken;Slukis|Sluk Varr|Skrell|Xukk|Slukk Nor|Blightmound|Ichorhive|Molten Hive|Plaguewell|Mire Hive|Grubmire|Swarmhold|Festerfall|Maw|Acid Throne
+
+' ---------------------------------------------------------------------------------------------------------------- Securan
+'Elegant, idealistic humanoids with a hidden edge: silk, whispers and assassins.
+ThemedNames FleetAdj Securan;Silken|Whispering|Shadowed|Elegant|Unseen|Velvet|Poised|Discreet|Graceful|Hushed
+ThemedNames FleetNoun Securan;Dagger|Whisper|Silk|Mask|Shadow|Thread|Needle|Veil
+ThemedNames FleetGroup Securan;Assassins|Cabal|Circle|Shroud|Court|Cadre|Retinue
+ThemedNames FleetPattern Securan;{A} {N} {F}|{F} of the {A} {N}|The {A} {F}
+ThemedNames Colony Securan;New {Home}|{Star} Retreat|{Capital}'s Secret|Secura Vale|Silkhaven|Whisper Court|Velvet Hill|Masquerade|Quiet Dagger|Shadegarden|Hidden Terrace|Moth Lantern|Needlepoint|Gilded Cage|Sable|Elysa|Veloria|Silent Promise|Graceful Ruin|Veilgarden|Discretion|Serra Mont|Nightbloom|Poison Orchid|Mirror Hall|Opal Court|Satin Shore|Hushwater|Ivory Mask|Curtainfall|Palanquin|Cordelle|Lacewing|Fan Dancer|Secret Garden|Soft Step|Delicate Hold|Rosewater|Cipher Hall|Last Whisper
+ThemedNames EmpirePart Securan;Secura|Elysa|Veloria|Serra Mont|Cordelle|Silkhaven|Sable|Opal Court|Nightbloom|Veilgarden|Lacewing|Rosewater|Ivory|Velvet|Satin
+
+' ---------------------------------------------------------------------------------------------------------------- Ikkuro
+'Proud, aggressive mountain bear-folk: honour, war drums and commando raids.
+ThemedNames FleetAdj Ikkuro;Honoured|Thundering|Mountain|Stern|Oathsworn|Fearless|Storm|Ironpaw|Drumming|Ancestral
+ThemedNames FleetNoun Ikkuro;Drum|Peak|Paw|Banner|Avalanche|Oath|Boulder|Ridge
+ThemedNames FleetGroup Ikkuro;Commandos|Raiders|Clan|Warhost|Strike Party|Ridge Guard|Brotherhood
+ThemedNames FleetPattern Ikkuro;{A} {N} {F}|{F} of the {A} {N}|The {A} {F}
+ThemedNames Colony Ikkuro;New {Home}|{Star} Peak|{Capital}'s Honour|Ikkuro Highlands|Drum Hill|Avalanche Pass|Ironpaw Hold|High Crag|Oathstone|Boulderfall|Stormridge|Ancestor's Cave|Granite Den|Ikka Tor|Thunder Vale|Snowcap|Kuro Peak|Pine Fortress|Honour Field|Echo Gorge|Steep|Warden Rock|Old Paw|Highden|Craghold|Banner Rise|Ridgehome|Skarn|Proud Summit|Bearclaw|Rockfast|Talus|Ikkara|Wolfpine|Slatefall|Kiru Hold|Brave Ascent|Cairn|Mountain Drum|Last Ridge
+ThemedNames EmpirePart Ikkuro;Ikkuro|Ikka Tor|Kuro|Ikkara|Kiru|Skarn|Stormridge|Ironpaw|Oathstone|Craghold|Highden|Talus|Rockfast|Cairn|Thunder Vale
+
+' ---------------------------------------------------------------------------------------------------------------- Shakturi
+'Ancient, utterly aggressive insectoids of the Way of Darkness: void, dread and endless night.
+ThemedNames FleetAdj Shakturi;Void|Black|Endless|Dread|Eclipsing|Abyssal|Lightless|Annihilating|Shrouded|Starving
+ThemedNames FleetNoun Shakturi;Night|Void|Eclipse|Shadow|Abyss|Ruin|Doom|Hunger
+ThemedNames FleetGroup Shakturi;Slayers|Darkness|Shroud|Hive|Annihilation|Legion|Unmaking
+ThemedNames FleetPattern Shakturi;{A} {N} {F}|{F} of the {A} {N}|The {A} {F}
+ThemedNames Colony Shakturi;New {Home}|{Star} Darkened|{Capital}'s Shadow|Shaktur Abyss|Voidnest|Nightfall|Black Hive|Eclipse Throne|Lightless Deep|Umbra|Dread Spire|Starless|Hollow Sun|Kzath|Shak Morr|Ashveil|Gloom|Ruinhive|Endless Night|Obsidian Comb|Duskmound|Shadowmaw|Xhar|Abyssal Gate|Void Clutch|Unlight|Blackwing|Silence|Tenebris|Kzarr Thul|Doomspire|Hungering Dark|Shroud|Nihil|Cinder Hive|Grave Star|Nocturne|Eventless|Murk|Shakturath
+ThemedNames EmpirePart Shakturi;Shaktur|Shakturath|Kzath|Shak Morr|Xhar|Kzarr Thul|Tenebris|Nihil|Umbra|Voidnest|Black Hive|Nocturne|Obsidian|Dread Spire|Ashveil
+
+' ---------------------------------------------------------------------------------------------------------------- Mechanoid
+'Ancient, peaceful machine minds: protocols, sentinels and patience measured in millennia.
+ThemedNames FleetAdj Mechanoid;Eternal|Sentinel|Archived|Persistent|Immutable|Silent|Ancient|Synthetic|Perpetual|Prime
+ThemedNames FleetNoun Mechanoid;Protocol|Core|Cycle|Index|Directive|Archive|Monolith|Signal
+ThemedNames FleetGroup Mechanoid;Sentinels|Guardians|Process|Lattice|Conclave|Sequence|Array
+ThemedNames FleetPattern Mechanoid;{A} {N} {F}|{F} {N}|The {A} {F}
+ThemedNames Colony Mechanoid;New {Home}|{Star} Node|{Capital} Mirror|Utopia Two|Archive Prime|Monolith Field|Cycle Zero|Directive|Index Vault|Sentinel Spire|Perpetuum|Core Seven|Silent Foundry|Data Garden|Sequence|Oldmind|Eternity Gate|Constant|Logic Shrine|Recall|Persistence|Unit Haven|Origin|Process Hall|Lattice|Memory|Mainframe|Steady State|Ancient Code|Iteration|Calibrant|Null Field|Machine Dawn|Signal Spire|Root|Kernel Vault|Equilibrium|Reboot|Patience|Long Watch
+ThemedNames EmpirePart Mechanoid;Utopia|Archive Prime|Perpetuum|Monolith|Oldmind|Origin|Lattice|Sentinel|Kernel|Mainframe|Machine Dawn|Steady State|Recall|Iteration|Constant

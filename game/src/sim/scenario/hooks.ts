@@ -9,6 +9,7 @@ import type { Race } from '../data/races';
 import type { Habitat } from '../types';
 import type { Empire } from '../empire';
 import type { BuiltObject } from '../builtObject';
+import type { ShipGroup } from '../fleets/shipGroup';
 import type { Creature } from '../creature';
 import type { GalaxyLocation } from '../galaxyLocation';
 import { YEAR_LENGTH } from '../galaxyTime';
@@ -189,8 +190,17 @@ export function scenarioGameStart(galaxy: Galaxy, ctx: HomePlacementHelpers): vo
 export interface ScenarioEvents {
     /** combat/ownership.ts takeOwnershipOfColonyFull (end; covers conquest, independents absorbed, secession). */
     colonyOwnerChanged: { colony: Habitat; from: Empire | null; to: Empire | null };
-    /** A new colony founded by a colony ship (missions: colonize). */
-    colonyFounded: { colony: Habitat; empire: Empire };
+    /**
+     * A new colony founded by a colony ship (missions: colonize). `joined`: the habitat already had a population that
+     * joined the empire (an independent colony or natives), so it is not a fresh settlement. No Rnd in handlers.
+     */
+    colonyFounded: { colony: Habitat; empire: Empire; joined?: boolean };
+    /**
+     * fleets/shipGroupTasks.ts maintainShipGroups (Empire.8.cs 2673-2729), right after a new automated fleet or strike
+     * force got its stock name ("Nth Fleet" / "Nth Strike Force"), before it joins the sorted fleet list. Handlers may
+     * rename it; no Rnd. Themed names.
+     */
+    fleetFormed: { empire: Empire; fleet: ShipGroup; strikeForce: boolean };
     /** combat/ownership.ts takeOwnershipOfBuiltObject (end). */
     builtObjectOwnerChanged: { builtObject: BuiltObject; from: Empire | null; to: Empire | null };
     /** A ship or base finished construction (construction yard completion). */

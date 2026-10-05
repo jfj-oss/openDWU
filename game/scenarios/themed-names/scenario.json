@@ -1,0 +1,11 @@
+{
+  "id": "themed-names",
+  "name": "Themed names for AI empires",
+  "description": "AI empires (never the player or pirates) take race-flavoured names: the empire itself at game start (by race and government), its new fleets (a warlike race's \"Iron Talon Armada\", a mystic race's \"Veil of Quiet Stars\") instead of \"1st Fleet\", and its newly settled colonies. The names are picked deterministically (no random draws), so the galaxy plays out otherwise the same.",
+  "flags": [
+    { "name": "themedNames", "label": "Themed names for AI empires", "description": "Master switch.", "default": true },
+    { "name": "themedNamesEmpires", "label": "Empire names", "description": "At game start every AI empire is renamed by its race and government (no two empires share a name).", "default": true },
+    { "name": "themedNamesFleets", "label": "Fleet names", "description": "New AI fleets and strike forces get race-themed names instead of \"Nth Fleet\" / \"Nth Strike Force\".", "default": true },
+    { "name": "themedNamesColonies", "label": "Colony names", "description": "When an AI colony ship settles an empty world, the new colony takes a race-themed name (worlds whose population joins keep their names).", "default": true }
+  ]
+}
