@@ -648,7 +648,8 @@ export class BuiltObjectLayer {
             let y = bo.ypos;
             let heading = bo.heading;
             if (motion !== null) {
-                const st = sampleBuiltObject(motion, bo);
+                // Already sampled this frame (the follow camera centres on it first): reuse that sample.
+                const st = motion.drawn(bo) ?? sampleBuiltObject(motion, bo);
                 x = st.x;
                 y = st.y;
                 heading = st.heading;

@@ -1942,6 +1942,20 @@ export class MainView {
         this.lastUpdateMs = nowMs;
         this.elapsedSeconds += dtSeconds;
 
+        // Follow camera: centre on the followed ship's drawn position for THIS frame before the world transform and the
+        // culling read the camera (the per-frame recentre at the end of update ran a frame late, so a fast or warping
+        // ship shook around the centre and was culled in and out of view). drawnBuiltObjectPos samples it into this
+        // frame's motion cache, so every layer draws it at exactly this point.
+        if (isFollowing(this.followState)) {
+            const target = this.followState.target as FollowTarget;
+            if (followTargetAlive(target)) {
+                const ship = (isFleetTarget(target) ? target.leadShip : target) as unknown as Parameters<typeof drawnBuiltObjectPos>[1] | null;
+                if (ship != null) {
+                    const p = drawnBuiltObjectPos(this.motion, ship);
+                    cam.centerOn(p.x, p.y);
+                }
+            }
+        }
         this.world.scale.set(z);
         this.world.x = cam.width / 2 - cam.x * z;
         this.world.y = cam.height / 2 - cam.y * z;
@@ -2832,4 +2846,9 @@ function pickListRank(item: Creature | BuiltObject | Habitat): number {
         return 6;
     }
     return 7;
+}
+
+/** A followed fleet (ShipGroup) rather than a single ship. */
+function isFleetTarget(t: FollowTarget): t is FollowTarget & { leadShip: unknown } {
+    return 'leadShip' in t;
 }
