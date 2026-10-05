@@ -1642,98 +1642,123 @@ function buildOtherEmpiresPage(ctx: WizardCtx): HTMLDivElement {
     spawn.row.classList.add('wizard-empires-spawn');
 
     // Not in the original: the Smarter AI add-on (scenarios/smarter-ai; folded into options.scenario by
-    // addonChoiceFor). A GradientPanel under the spawn checkbox: the main CheckBox, its two sub-CheckBoxes and the
+    // addonChoiceFor). A one-row GradientPanel under the spawn checkbox: the main CheckBox, an "Options" button and a
+    // count of the sub-options on. The button opens a drop-down list (above the panel) of the sub-CheckBoxes and the
     // growth-tax threshold box; the sub-controls are disabled while the main one is off.
     const smart: SmarterAIChoice = options.smarterAI ?? defaultSmarterAIChoice();
     options.smarterAI = smart;
-    const smartPanel = panel(wrap, 10, 468, 880, 62, 'wizard-panel-group wizard-smarter-ai');
+    const smartPanel = panel(wrap, 10, 468, 880, 34, 'wizard-panel-group wizard-smarter-ai');
     const smartMain = check(smartPanel, 'Smarter AI (AI empires only)', smart.enabled, 10, 6, (v) => {
         smart.enabled = v;
         paintSmart();
     });
     smartMain.row.classList.add('wizard-smarter-ai-main');
-    const smartResearch = check(smartPanel, 'Optimised research order', smart.research, 30, 33, (v) => {
-        smart.research = v;
-        ctx.refreshScenario();
-    }, FONT.normal);
-    smartResearch.row.classList.add('wizard-smarter-ai-research');
-    const smartTax = check(smartPanel, 'Growth taxes', smart.growthTaxes, 290, 33, (v) => {
-        smart.growthTaxes = v;
-        paintSmart();
-    }, FONT.normal);
-    smartTax.row.classList.add('wizard-smarter-ai-taxes');
-    const smartBudget = check(smartPanel, 'Cut costs when broke', smart.budget !== false, 300, 6, (v) => {
-        smart.budget = v;
-        ctx.refreshScenario();
-    }, FONT.normal);
-    smartBudget.row.classList.add('wizard-smarter-ai-budget');
-    const smartRetrofit = check(smartPanel, 'Keep fleets up to date', smart.retrofit !== false, 520, 6, (v) => {
-        smart.retrofit = v;
-        ctx.refreshScenario();
-    }, FONT.normal);
-    smartRetrofit.row.classList.add('wizard-smarter-ai-retrofit');
-    // Statecraft sub-switches (plain rows; the coordinator folds them into the sub-option list later).
-    const statecraftKeys = [
-        ['researchStations', 'Smarter research stations', 'wizard-smarter-ai-stations'],
-        ['wonders', 'Pursue wonders', 'wizard-smarter-ai-wonders'],
-        ['espionage', 'Use spies well', 'wizard-smarter-ai-espionage'],
-        ['diplomacy', 'Diplomacy with purpose', 'wizard-smarter-ai-diplomacy'],
-    ] as const;
-    const statecraftChecks = statecraftKeys.map(([key, text, cls], i) => {
-        const c = check(smartPanel, text, smart[key] ?? true, 30 + i * 215, 56, (v) => {
-            smart[key] = v;
-            ctx.refreshScenario();
-        }, FONT.normal);
-        c.row.classList.add(cls);
-        return c;
+    const smartOptionsBtn = glassButton('Options \u25BE', { size: FONT.normal, className: 'wizard-btn wizard-btn-secondary wizard-smarter-ai-options-btn', onClick: () => setSmartListOpen(!smartListOpen) });
+    smartPanel.appendChild(place(smartOptionsBtn, 300, 5, 110, 24));
+    const smartCount = label(smartPanel, '', 425, 9, { size: FONT.normal });
+    smartCount.classList.add('wizard-smarter-ai-count');
+
+    // The drop-down list: two columns of sub-options, each under a heading.
+    const SMART_LIST_H = 208;
+    const smartList = panel(wrap, 10, 468 - SMART_LIST_H - 4, 880, SMART_LIST_H, 'wizard-panel-group wizard-smarter-ai wizard-smarter-ai-list');
+    smartList.hidden = true;
+    type SmartKey = 'research' | 'growthTaxes' | 'budget' | 'retrofit' | 'researchStations' | 'wonders' | 'espionage' | 'diplomacy' | 'defence' | 'pirates' | 'colonies' | 'independents';
+    const SMART_COLUMNS: readonly { heading: string; items: readonly (readonly [SmartKey, string, string])[] }[] = [
+        {
+            heading: 'Economy and research',
+            items: [
+                ['research', 'Optimised research order', 'wizard-smarter-ai-research'],
+                ['researchStations', 'Smarter research stations', 'wizard-smarter-ai-stations'],
+                ['wonders', 'Pursue wonders', 'wizard-smarter-ai-wonders'],
+                ['growthTaxes', 'Growth taxes', 'wizard-smarter-ai-taxes'],
+                ['budget', 'Cut costs when broke', 'wizard-smarter-ai-budget'],
+                ['retrofit', 'Keep fleets up to date', 'wizard-smarter-ai-retrofit'],
+            ],
+        },
+        {
+            heading: 'Military, expansion and statecraft',
+            items: [
+                ['defence', 'Defence that counts pirates', 'wizard-smarter-ai-defence'],
+                ['pirates', 'Pirate clean-up', 'wizard-smarter-ai-pirates'],
+                ['colonies', 'Smarter colony picks', 'wizard-smarter-ai-colonies'],
+                ['independents', 'Absorb independent worlds', 'wizard-smarter-ai-independents'],
+                ['espionage', 'Use spies well', 'wizard-smarter-ai-espionage'],
+                ['diplomacy', 'Diplomacy with purpose', 'wizard-smarter-ai-diplomacy'],
+            ],
+        },
+    ];
+    const smartIsOn = (key: SmartKey): boolean => smart[key] ?? true;
+    const smartChecks: { key: SmartKey; c: ReturnType<typeof check> }[] = [];
+    let taxRowY = 0;
+    SMART_COLUMNS.forEach((col, ci) => {
+        const x = 16 + ci * 440;
+        const heading = label(smartList, col.heading, x, 10, { size: FONT.normal });
+        heading.classList.add('wizard-smarter-ai-heading');
+        col.items.forEach(([key, text, cls], i) => {
+            const y = 34 + i * 28;
+            if (key === 'growthTaxes') taxRowY = y;
+            const c = check(smartList, text, smartIsOn(key), x + 8, y, (v) => {
+                smart[key] = v;
+                paintSmart();
+            }, FONT.normal);
+            c.row.classList.add(cls);
+            smartChecks.push({ key, c });
+        });
     });
-    const taxLabel = label(smartPanel, 'untaxed below', 420, 35, { size: FONT.normal });
-    const taxBox = numberBox(smartPanel, 'wizard-smarter-ai-threshold', 515, 33, 46, 0, 100, () => smart.growthTaxThreshold, (x) => {
+    // The growth-tax threshold sits on the Growth taxes row.
+    const taxLabel = label(smartList, 'untaxed below', 160, taxRowY + 2, { size: FONT.normal });
+    const taxBox = numberBox(smartList, 'wizard-smarter-ai-threshold', 250, taxRowY, 46, 0, 100, () => smart.growthTaxThreshold, (x) => {
         smart.growthTaxThreshold = x;
         ctx.refreshScenario();
     });
-    const taxUnit = label(smartPanel, '% of maximum population', 566, 35, { size: FONT.normal });
-    // Smarter AI military sub-options (the coordinator turns the sub-options into a list later; plain rows for now).
-    const smartDefence = check(smartPanel, 'Defence that counts pirates', smart.defence ?? true, 30, 58, (v) => {
-        smart.defence = v;
-        ctx.refreshScenario();
-    }, FONT.normal);
-    smartDefence.row.classList.add('wizard-smarter-ai-defence');
-    const smartPirates = check(smartPanel, 'Pirate clean-up', smart.pirates ?? true, 290, 58, (v) => {
-        smart.pirates = v;
-        ctx.refreshScenario();
-    }, FONT.normal);
-    smartPirates.row.classList.add('wizard-smarter-ai-pirates');
-    // Smarter AI colony picks / absorb independents (plain rows; the coordinator folds the sub-options into a list later).
-    const smartColonies = check(smartPanel, 'Smarter colony picks', smart.colonies ?? true, 30, 83, (v) => {
-        smart.colonies = v;
-        ctx.refreshScenario();
-    }, FONT.normal);
-    smartColonies.row.classList.add('wizard-smarter-ai-colonies');
-    const smartIndependents = check(smartPanel, 'Absorb independent worlds', smart.independents ?? true, 290, 83, (v) => {
-        smart.independents = v;
-        ctx.refreshScenario();
-    }, FONT.normal);
-    smartIndependents.row.classList.add('wizard-smarter-ai-independents');
-    ctx.helpOn(smartPanel, () => ['Smarter AI', 'AI empires only (never you or pirates): an optimised research order, and no taxes on growing colonies unless the treasury needs them.']);
+    const taxUnit = label(smartList, '% of max population', 301, taxRowY + 2, { size: FONT.normal });
+
+    // A click outside the list (or Escape) closes it; the listeners go once the wizard is torn down.
+    let smartListOpen = false;
+    function setSmartListOpen(open: boolean): void {
+        smartListOpen = open;
+        smartList.hidden = !open;
+        smartOptionsBtn.classList.toggle('ow-glass-on', open);
+    }
+    const closeSmartListOnOutside = (e: PointerEvent): void => {
+        if (!smartList.isConnected) {
+            document.removeEventListener('pointerdown', closeSmartListOnOutside, true);
+            document.removeEventListener('keydown', closeSmartListOnEscape, true);
+            return;
+        }
+        if (!smartListOpen) return;
+        const t = e.target as Node | null;
+        if (t !== null && (smartList.contains(t) || smartPanel.contains(t))) return;
+        setSmartListOpen(false);
+    };
+    const closeSmartListOnEscape = (e: KeyboardEvent): void => {
+        if (e.key === 'Escape' && smartList.isConnected && smartListOpen) {
+            e.stopPropagation();
+            setSmartListOpen(false);
+        }
+    };
+    document.addEventListener('pointerdown', closeSmartListOnOutside, true);
+    document.addEventListener('keydown', closeSmartListOnEscape, true);
+
+    ctx.helpOn(smartPanel, () => ['Smarter AI', 'AI empires only (never you or pirates). Options opens the list of the individual improvements; each can be switched off on its own.']);
     function paintSmart(): void {
-        smartResearch.input.disabled = !smart.enabled;
-        smartTax.input.disabled = !smart.enabled;
-        for (const c of [smartBudget, smartRetrofit, smartDefence, smartPirates, smartColonies, smartIndependents, ...statecraftChecks]) {
+        for (const { key, c } of smartChecks) {
             c.input.disabled = !smart.enabled;
             c.row.classList.toggle('is-disabled', !smart.enabled);
+            c.input.checked = smartIsOn(key);
         }
         const taxOn = smart.enabled && smart.growthTaxes;
         const taxInput = taxBox.querySelector('input');
         if (taxInput !== null) taxInput.disabled = !taxOn;
-        for (const e of [smartResearch.row, smartTax.row]) e.classList.toggle('is-disabled', !smart.enabled);
         for (const e of [taxLabel, taxBox, taxUnit]) e.classList.toggle('is-disabled', !taxOn);
+        const on = smartChecks.filter(({ key }) => smartIsOn(key)).length;
+        smartCount.textContent = smart.enabled ? `${on} of ${smartChecks.length} options on` : 'Off';
         ctx.refreshScenario();
     }
     paintSmart();
 
     // picStartNewGameOtherEmpiresImageBottom 880 × 130 at (10, 470), CenterImage (moved down under the Smarter AI panel).
-    resxPicture(wrap, 'picStartNewGameOtherEmpiresImageBottom.Image', 10, 536, 880, 64, 'center');
+    resxPicture(wrap, 'picStartNewGameOtherEmpiresImageBottom.Image', 10, 508, 880, 92, 'center');
 
     let governments: Government[] = [];
     function playableRaces(): Race[] {
