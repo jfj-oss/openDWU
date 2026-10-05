@@ -112,6 +112,11 @@ export class WebAudioBackend implements AudioBackend {
 
     play(buffer: AudioBuffer, pan: number, gain: number, playbackRate: number): PlayingSound {
         const ctx = this.context();
+        // A non-finite value throws from the AudioParam setter (seen with a 1 px viewport while the window was
+        // minimised: the pan / distance maths divide by the view size). Out-of-range values clamp as the nodes do.
+        if (!Number.isFinite(pan)) pan = 0;
+        if (!Number.isFinite(gain)) gain = 0;
+        if (!(playbackRate > 0) || !Number.isFinite(playbackRate)) playbackRate = 1;
         const src = ctx.createBufferSource();
         src.buffer = buffer;
         src.playbackRate.value = playbackRate;

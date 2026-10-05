@@ -7,7 +7,8 @@ import type { Empire } from '../src/sim/empire';
 import type { Galaxy } from '../src/sim/galaxy';
 import type { Habitat } from '../src/sim/types';
 import { HabitatCategoryType, HabitatType } from '../src/sim/types';
-import { isPotentialColony, isResearchLocation, isScenicLocation, OVERLAY_MARKER_COLOR, OverlayLayer } from '../src/render/overlayLayer';
+import { isPotentialColony, isResearchLocation, isScenicLocation, OVERLAY_MARKER_COLOR, OverlayLayer, setOverlayErrorNotifier } from '../src/render/overlayLayer';
+import { Camera } from '../src/render/camera';
 import { EmpireLayer } from '../src/render/empireLayer';
 import { Container } from 'pixi.js';
 import { createMapOverlayState, onOverlayChange, toggleOverlay } from '../src/ui/mapOverlays';
@@ -139,5 +140,48 @@ describe('OverlayLayer (task M3 integration)', () => {
         expect(notified).toBe(1);
         unsubscribe();
         overlayLayer.destroy();
+    }, 60000);
+
+    it('an Improvements overlay that throws is switched off with a notice; the rest of the update still runs', () => {
+        const galaxy = createGame(autostartOpts()).galaxy;
+        const world = new Container();
+        const empireLayer = new EmpireLayer(galaxy, world);
+        const state = createMapOverlayState();
+        const overlayLayer = new OverlayLayer(galaxy, world, empireLayer, state);
+        const notices: string[] = [];
+        setOverlayErrorNotifier((m) => notices.push(m));
+        let calls = 0;
+        (overlayLayer.colonyScores as unknown as { update: () => void }).update = () => {
+            calls++;
+            if (state.colonyScores) throw new Error('boom');
+        };
+        let supplyRan = 0;
+        const supply = (overlayLayer as unknown as { supply: { update: () => void } }).supply;
+        supply.update = () => void supplyRan++;
+        const cam = new Camera();
+        cam.setGalaxyBounds(galaxy.sizeX, galaxy.sizeY);
+        state.colonyScores = true;
+        const errors: unknown[] = [];
+        const orig = console.error;
+        console.error = (...a: unknown[]) => void errors.push(a);
+        try {
+            overlayLayer.update(cam.zoom, cam);
+            expect(state.colonyScores).toBe(false);
+            expect(notices).toEqual(['Colony Target Scores overlay failed and was turned off — see console']);
+            expect(errors.length).toBe(1);
+            expect(supplyRan).toBe(1);
+            // Off: skipped (it already hid itself once); turned back on: retried.
+            const before = calls;
+            overlayLayer.update(cam.zoom, cam);
+            expect(calls).toBe(before);
+            state.colonyScores = true;
+            overlayLayer.update(cam.zoom, cam);
+            expect(calls).toBe(before + 2);
+            expect(state.colonyScores).toBe(false);
+        } finally {
+            console.error = orig;
+            setOverlayErrorNotifier(null);
+            overlayLayer.destroy();
+        }
     }, 60000);
 });

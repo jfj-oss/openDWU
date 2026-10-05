@@ -137,9 +137,13 @@ export class GpuNebula {
 
     /** Half-float render target when the GPU can render to it (EXT_color_buffer_float), else 8-bit. */
     private readonly format: 'rgba16float' | 'rgba8unorm';
+    /** Largest patch target side (px): MAX_TEXTURE_SIZE, at most 4096. */
+    private readonly maxSize: number;
     constructor(private readonly renderer: Renderer) {
         const gl = (renderer as unknown as { gl?: WebGL2RenderingContext }).gl;
         this.format = gl?.getExtension('EXT_color_buffer_float') ? 'rgba16float' : 'rgba8unorm';
+        const max = gl?.getParameter(gl.MAX_TEXTURE_SIZE) as number | undefined;
+        this.maxSize = typeof max === 'number' && max > 0 ? Math.min(4096, max) : 2048;
         this.program = GlProgram.from({ vertex: VERT, fragment: FRAG, name: 'system-nebula-patch', preferredVertexPrecision: 'highp', preferredFragmentPrecision: 'highp' });
     }
 
@@ -170,6 +174,9 @@ export class GpuNebula {
 
     /** Renders one patch to a premultiplied-alpha RenderTexture (square, `size` px, mipmapped). */
     render(p: GpuPatchInput, size: number): Texture {
+        // A render target must be 1..MAX_TEXTURE_SIZE px a side (else its framebuffer is incomplete); callers ask
+        // for at most 1024, this guards a NaN / 0 from a degenerate patch.
+        size = Number.isFinite(size) ? Math.max(1, Math.min(this.maxSize, Math.round(size))) : 256;
         const bytes = new Uint8Array(64 * 64 * 4);
         for (let i = 0; i < 4096; i++) {
             const v = Math.min(65535, Math.round(p.lattice[i] * 65535));

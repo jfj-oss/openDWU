@@ -31,6 +31,8 @@ import type { RenderTime } from './render/renderInterp';
 import { SECTOR_LEVEL_ZOOM, SYSTEM_LEVEL_ZOOM, historyGoTo, type Selection } from './ui/hud';
 import { setTextIfChanged } from './render/drawCache';
 import { Habitat, HabitatCategoryType } from './sim/types';
+import { setOverlayErrorNotifier } from './render/overlayLayer';
+import { installGpuGuards, type FramebufferWatchdogState, type GuardedApp } from './render/gpuGuards';
 import { createMapOverlayState, overlayOptionsOf, type MapOverlayState, type OverlayKey } from './ui/mapOverlays';
 import { buildDefaultHandlers, createShortcutsOverlay, dispatchKey, setCycleHandler, setGameMenuHandler } from './ui/keyboard';
 import { closeEmpiresList } from './ui/screens/empiresList';
@@ -602,9 +604,22 @@ function createGalaxyMapFor(galaxy: Galaxy, camera: Camera): GalaxyMapScreen {
  * detail down when losses recur. Also drops Pixi's capability-probe context (getTestContext: a second WebGL context
  * kept for the page's lifetime once the renderer has read its limits; Pixi makes a new one if it ever asks again).
  */
-function installGpuRecovery(app: Application, view: MainView): ReturnType<typeof installContextLossRecovery> {
+function installGpuRecovery(app: Application, view: MainView): ReturnType<typeof installContextLossRecovery> & { guards: FramebufferWatchdogState } {
     releasePixiTestContext(app.renderer);
-    return installContextLossRecovery(app.canvas, app.renderer, view, { notify: showToast });
+    const loss = installContextLossRecovery(app.canvas, app.renderer, view, { notify: showToast });
+    // Deferred resizes while hidden / minimised and the incomplete-framebuffer watchdog (render/gpuGuards.ts).
+    setOverlayErrorNotifier(showToast); // a failing Improvements overlay switches itself off (overlayLayer.ts)
+    const guards = installGpuGuards(app as unknown as GuardedApp);
+    app.ticker.add(guards.tick);
+    return {
+        state: loss.state,
+        guards: guards.state,
+        dispose: () => {
+            app.ticker.remove(guards.tick);
+            guards.dispose();
+            loss.dispose();
+        },
+    };
 }
 
 /** Task M2e2: one shared boot used by the wizard Start, `?autostart=1` and
@@ -718,7 +733,7 @@ export async function startGameView(
     // window's "Play This Game" button can unpause it.
     (window as unknown as { __dwu?: unknown }).__dwu = buildDwuDebugObject({ camera, galaxy, view, app, game, time });
     // [simworker] in worker mode `sim` / `simBudget` stand in for the worker's driver / budget (SimWorkerClient.debugObject).
-    Object.assign((window as unknown as { __dwu: Record<string, unknown> }).__dwu, { sim: inThreadLoop?.driver ?? simClient?.debugObject('sim') ?? null, simStats: simLoop.stats, simWorker: simClient ?? null, gpuContext: contextLoss.state });
+    Object.assign((window as unknown as { __dwu: Record<string, unknown> }).__dwu, { sim: inThreadLoop?.driver ?? simClient?.debugObject('sim') ?? null, simStats: simLoop.stats, simWorker: simClient ?? null, gpuContext: contextLoss.state, gpuGuards: contextLoss.guards });
     // The game's message options (Game.DisplayMessage* / DisplayPopup*, saved with it): what the Game Options window
     // shows and edits (ui/messageRouting.ts).
     adoptGameMessageOptions(galaxy);

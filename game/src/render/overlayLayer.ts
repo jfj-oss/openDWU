@@ -76,7 +76,7 @@ import { getSettings } from '../ui/settings';
 import type { Camera } from './camera';
 import type { Galaxy } from '../sim/galaxy';
 import { Habitat, HabitatCategoryType } from '../sim/types';
-import { onOverlayChange, type MapOverlayState } from '../ui/mapOverlays';
+import { onOverlayChange, setOverlay, type MapOverlayState, type OverlayKey } from '../ui/mapOverlays';
 import type { EmpireLayer } from './empireLayer';
 import { moonDotPx, planetSpritePx, starSpritePx } from './mainView';
 import { BuiltObject } from '../sim/builtObject';
@@ -379,6 +379,19 @@ export function weaponCirclesEnabled(): boolean {
     return rangeCirclesParam || getSettings().showWeaponRangeCircles;
 }
 
+/** The toggles of each guarded overlay (OverlayLayer.runOverlay switches them off when the overlay throws). */
+const COLONY_SCORE_KEYS: readonly OverlayKey[] = ['colonyScores'];
+const RESOURCE_KEYS: readonly OverlayKey[] = ['resources'];
+const FUEL_KEYS: readonly OverlayKey[] = ['fuelRange'];
+const FREIGHT_KEYS: readonly OverlayKey[] = ['freightFlows', 'tradeHubs'];
+const SUPPLY_KEYS: readonly OverlayKey[] = ['supplyShortages'];
+
+let overlayErrorNotifier: ((message: string) => void) | null = null;
+/** The one-line notice (the HUD toast) for an overlay that failed and was switched off (main.ts sets it). */
+export function setOverlayErrorNotifier(fn: ((message: string) => void) | null): void {
+    overlayErrorNotifier = fn;
+}
+
 export class OverlayLayer {
     /** World-space layer: marker rings live above everything else. */
     root = new Container();
@@ -643,12 +656,12 @@ export class OverlayLayer {
         // [dw2overlays] begin — the Improvements overlays (the colony scores first: Potential Colonies defers to them).
         this.rebuildMarkersIfChanged();
         this.colonyScores.motion = this.motion;
-        this.colonyScores.update(z, cam);
+        this.runOverlay('Colony Target Scores', COLONY_SCORE_KEYS, () => this.colonyScores.update(z, cam));
         this.resources.motion = this.motion;
-        this.resources.update(z, cam);
+        this.runOverlay('Resources', RESOURCE_KEYS, () => this.resources.update(z, cam));
         this.fuel.motion = this.motion;
         this.fuel.getSelection = this.getSelection;
-        this.fuel.update(z, cam);
+        this.runOverlay('Fuel Range', FUEL_KEYS, () => this.fuel.update(z, cam));
         // [dw2overlays] end
         this.updateGroup(this.potentialColonies, atSystemZoom && this.state.potentialColonies, z, cam, this.colonyScores.active?.byHabitat ?? null);
         this.updateGroup(this.scenicLocations, atSystemZoom && this.state.scenicLocations, z, cam);
@@ -665,12 +678,41 @@ export class OverlayLayer {
         this.updateSelectedVector(z);
         this.updateRangeCircles(z, overlays);
         this.freight.motion = this.motion; // [freightOverlay] leaders follow the drawn freighters
-        this.freight.update(z, cam); // [freightOverlay]
+        this.runOverlay('Trade Flows', FREIGHT_KEYS, () => this.freight.update(z, cam)); // [freightOverlay]
         this.updateThreats(z);
         this.updateScenarioMarkers(z);
         this.updateWrecks(z); // [wreckage]
         this.supply.motion = this.motion; // [improvements] supplyChain
-        this.supply.update(z, cam);
+        this.runOverlay('Supply Shortages', SUPPLY_KEYS, () => this.supply.update(z, cam));
+    }
+
+    /** Overlays that threw and were switched off (runOverlay); retried when the player turns one back on. */
+    private failedOverlays = new Set<string>();
+
+    /**
+     * Run one optional (Improvements) overlay's per-frame update so that a throw cannot take the frame down: the rest of
+     * the Main View update would be skipped every frame (MainView.update runs after it), leaving the map stale or
+     * blank. The overlay is switched off (its toggles cleared, then one more update so it hides what it drew), the
+     * error logged and a toast shown once; turning it back on retries it.
+     */
+    private runOverlay(name: string, keys: readonly OverlayKey[], fn: () => void): void {
+        if (this.failedOverlays.has(name)) {
+            if (!keys.some((k) => this.state[k])) return;
+            this.failedOverlays.delete(name);
+        }
+        try {
+            fn();
+        } catch (err) {
+            this.failedOverlays.add(name);
+            console.error(`${name} overlay failed and was turned off:`, err);
+            for (const k of keys) setOverlay(this.state, k, false);
+            try {
+                fn();
+            } catch {
+                /* it could not even hide itself: it stays skipped until turned back on */
+            }
+            overlayErrorNotifier?.(`${name} overlay failed and was turned off — see console`);
+        }
     }
 
     /** Scenario markers (src/sim/scenario/mapFeatures.ts): a double ring with a pennant, re-queried 4 times a second. */
