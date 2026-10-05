@@ -43,7 +43,7 @@ const chrome = spawn(process.env.CHROMIUM || '/usr/bin/chromium', [
     '--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--enable-precise-memory-info',
     '--no-first-run', '--no-default-browser-check', '--disable-background-timer-throttling', '--disable-renderer-backgrounding',
     'about:blank',
-], { stdio: ['ignore', 'ignore', 'pipe'] });
+], { stdio: ['ignore', 'ignore', 'pipe'], detached: true }); // own process group: stopped whole at the end
 let wsUrl = null;
 await new Promise((res, rej) => {
     chrome.stderr.on('data', (d) => {
@@ -404,7 +404,11 @@ if (snapDir && process.argv.includes('--heapsnapshot')) {
 }
 if (opt('json', '')) writeFileSync(opt('json', ''), JSON.stringify(results, null, 1));
 ws.close();
-chrome.kill('SIGTERM');
+try {
+    process.kill(-chrome.pid, 'SIGTERM'); // every Chromium process (zygotes, GPU, renderers), not just the browser
+} catch {
+    chrome.kill('SIGTERM');
+}
 await sleep(1000);
 rmSync(profileDir, { recursive: true, force: true });
 process.exit(0);
