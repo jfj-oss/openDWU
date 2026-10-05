@@ -99,10 +99,14 @@ export interface SmarterAIChoice {
     colonies?: boolean;
     /** Absorb independent worlds (absent = on). */
     independents?: boolean;
+    /** Defence that counts pirates (smarterAIDefence). */
+    defence?: boolean;
+    /** Pirate clean-up (smarterAIPirates). */
+    pirates?: boolean;
 }
 
 export function defaultSmarterAIChoice(): SmarterAIChoice {
-    return { enabled: false, research: true, growthTaxes: true, growthTaxThreshold: 70, budget: true, retrofit: true, colonies: true, independents: true };
+    return { enabled: false, research: true, growthTaxes: true, growthTaxThreshold: 70, budget: true, retrofit: true, colonies: true, independents: true, defence: true, pirates: true };
 }
 
 /**
@@ -115,7 +119,7 @@ export function withSmarterAI(picked: readonly string[], overrides: AddonOverrid
     return {
         picked: [...p, SMARTER_AI_ADDON_ID],
         overrides: {
-            flags: { ...overrides.flags, smarterAIResearch: smart.research, smarterAIGrowthTax: smart.growthTaxes, smarterAIBudget: smart.budget !== false, smarterAIRetrofit: smart.retrofit !== false, smarterAIColonies: smart.colonies !== false, smarterAIIndependents: smart.independents !== false },
+            flags: { ...overrides.flags, smarterAIResearch: smart.research, smarterAIGrowthTax: smart.growthTaxes, smarterAIBudget: smart.budget !== false, smarterAIRetrofit: smart.retrofit !== false, smarterAIColonies: smart.colonies !== false, smarterAIIndependents: smart.independents !== false, smarterAIDefence: smart.defence ?? true, smarterAIPirates: smart.pirates ?? true },
             params: { ...overrides.params, smarterAIGrowthTaxThreshold: smart.growthTaxThreshold },
         },
     };

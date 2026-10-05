@@ -48,4 +48,6 @@ import './smarterAI/colonies'; // Smarter AI colony picks (flags smarterAI + sma
 import './smarterAI/independents'; // Smarter AI absorb independents (flags smarterAI + smarterAIIndependents; AI empires only)
 import './smarterAI/budget'; // Smarter AI cut costs when broke (flags smarterAI + smarterAIBudget; AI empires only)
 import './smarterAI/retrofit'; // Smarter AI keep fleets up to date (flags smarterAI + smarterAIRetrofit; AI empires only)
+import './smarterAI/defence'; // Smarter AI defence that counts pirates (flags smarterAI + smarterAIDefence; AI empires only)
+import './smarterAI/pirates'; // Smarter AI pirate clean-up (flags smarterAI + smarterAIPirates; AI empires only)
 export {};

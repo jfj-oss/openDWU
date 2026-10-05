@@ -110,6 +110,7 @@ import { type ShipGroup, empireShipGroups } from '../fleets/shipGroup';
 import { shipGroupAssignMissionFull, shipGroupQueueMission } from '../fleets/shipGroupTasks';
 import { baconSettings } from '../data/baconSettings';
 import { lineRetrofitDesign, processDesignLineUpgrades } from '../player/designLineUpgrade'; // [improvements]
+import { scenarioEmit } from '../scenario/hooks';
 
 // ---------------------------------------------------------------------------------------------------------------
 // Constants (Galaxy.3.cs 4996-5138 defaults)
@@ -1934,6 +1935,7 @@ export function buildDefensiveBases(galaxy: Galaxy, empire: Empire): void {
         const sv = strategicValue(habitat);
         if (sv > 250000 && !stellarObjectList.includes(habitat)) stellarObjectList.push(habitat);
     }
+    if (galaxy.scenario !== null) scenarioEmit(galaxy, 'defensiveBaseLocations', { empire, locations: stellarObjectList }); // mod layer (Smarter AI defence)
     for (let l = 0; l < stellarObjectList.length; l++) {
         const o = stellarObjectList[l];
         if (!(o instanceof Habitat)) continue;

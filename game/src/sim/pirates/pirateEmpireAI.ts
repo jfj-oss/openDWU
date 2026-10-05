@@ -417,7 +417,7 @@ export function checkFacilityOwner(galaxy: Galaxy, habitat: Habitat, facility: P
 }
 
 /** Habitat.cs 6561 CheckPirateFacilityToAttack(out pirateFaction). No Rnd. */
-function checkPirateFacilityToAttack(galaxy: Galaxy, habitat: Habitat): { facility: PlanetaryFacility | null; pirateFaction: Empire | null } {
+export function checkPirateFacilityToAttack(galaxy: Galaxy, habitat: Habitat): { facility: PlanetaryFacility | null; pirateFaction: Empire | null } {
     if (habitat.facilities !== null && habitat.empire !== null) {
         const planetaryFacility = facilitiesFindBestPirateFacility(habitat.facilities, true, true);
         if (planetaryFacility !== null) {

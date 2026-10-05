@@ -9,7 +9,9 @@
     { "name": "smarterAIColonies", "label": "Smarter colony picks", "description": "AI empires favour colony targets with resources they are short of, avoid targets near known pirate bases or hostile fleets, and keep one colony ship coming while the treasury holds more than 3 years of upkeep.", "default": true },
     { "name": "smarterAIIndependents", "label": "Absorb independent worlds", "description": "AI empires send colony ships to nearby willing independent colonies first, and (when their policy and attitude allow it) invade nearby weakly garrisoned unwilling ones.", "default": true },
     { "name": "smarterAIBudget", "label": "Cut costs when broke", "description": "In debt, AI empires scrap their oldest obsolete state ships and bases (never a threatened colony's defenders) and skip low-value builds; with a large surplus they build more colony ships, defences and research stations and spend more readily on wonders.", "default": true },
-    { "name": "smarterAIRetrofit", "label": "Keep fleets up to date", "description": "When money allows, AI empires retrofit their obsolete warships away from the front, worst first, a few at a time.", "default": true }
+    { "name": "smarterAIRetrofit", "label": "Keep fleets up to date", "description": "When money allows, AI empires retrofit their obsolete warships away from the front, worst first, a few at a time.", "default": true },
+    { "name": "smarterAIDefence", "label": "Defence that counts pirates", "description": "AI empires weigh the known pirate bases and visible hostile ships near their colonies: more warships per colony under threat, and defensive bases at threatened colonies.", "default": true },
+    { "name": "smarterAIPirates", "label": "Pirate clean-up", "description": "AI empires always hunt pirate bases near their colonies (also at war), attack several at once, form strike fleets from idle warships, and send troops against pirate facilities on their planets.", "default": true }
   ],
   "params": [
     { "name": "smarterAIGrowthTaxThreshold", "label": "Growth taxes: untaxed below this % of maximum population", "default": 70, "min": 0, "max": 100 }
