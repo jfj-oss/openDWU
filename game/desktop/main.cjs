@@ -590,8 +590,33 @@ function createWindow() {
 
     // The game page died (out of memory, a crash, killed): instead of leaving a black window, log why and offer a
     // reload. The last autosave or manual save is where to continue from.
+    // The page's last warnings / errors and its memory, kept for the crash log (a crash leaves no other trace).
+    const recentConsole = [];
+    let lastMemory = '';
+    win.webContents.on('console-message', (event, ...legacy) => {
+        // Electron 44: event.level is 'warning' / 'error' / ...; older: (event, level, message).
+        const level = event.level ?? (['verbose', 'info', 'warning', 'error'][legacy[0]] || String(legacy[0]));
+        const message = event.message ?? legacy[1];
+        if (level !== 'warning' && level !== 'error') return;
+        recentConsole.push(`${new Date().toISOString()} [${level}] ${String(message).slice(0, 500)}`);
+        if (recentConsole.length > 40) recentConsole.shift();
+    });
+    const memoryTimer = setInterval(() => {
+        try {
+            const pid = win.webContents.getOSProcessId();
+            const m = app.getAppMetrics().find((x) => x.pid === pid);
+            if (m) lastMemory = `${new Date().toISOString()} page working set ${(m.memory.workingSetSize / 1024 / 1024).toFixed(2)} GB, peak ${(m.memory.peakWorkingSetSize / 1024 / 1024).toFixed(2)} GB`;
+        } catch {
+            /* the page is gone */
+        }
+    }, 15000);
+    win.on('closed', () => clearInterval(memoryTimer));
     win.webContents.on('render-process-gone', async (_event, details) => {
-        const line = `${new Date().toISOString()} render-process-gone reason=${details.reason} exitCode=${details.exitCode} version=${APP_VERSION}\n`;
+        const line =
+            `${new Date().toISOString()} render-process-gone reason=${details.reason} exitCode=${details.exitCode} version=${APP_VERSION}\n` +
+            (lastMemory !== '' ? `  last memory sample: ${lastMemory}\n` : '') +
+            (recentConsole.length > 0 ? `  last page warnings / errors:\n${recentConsole.map((l) => `    ${l}`).join('\n')}\n` : '');
+        recentConsole.length = 0;
         console.error(`[crash] ${line.trim()}`);
         try {
             fs.appendFileSync(path.join(app.getPath('userData'), 'crash-log.txt'), line);
