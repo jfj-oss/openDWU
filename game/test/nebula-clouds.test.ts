@@ -52,19 +52,20 @@ describe('NebulaCloudGenerator determinism (task 08f2)', () => {
         expect(a.width).toBe(b.width);
         expect(a.height).toBe(b.height);
         expect(Array.from(a.image)).toEqual(Array.from(b.image));
-        // Pinned output shape and sample pixels (seed 7, transparent bg).
-        expect(a.width).toBe(441);
-        expect(a.height).toBe(423);
+        // Pinned output shape and sample pixels (seed 7, transparent bg). Repinned when the blob fade was fixed to reach 0
+        // at the curve and the noise pass stopped lifting the faint rim (soft cloud edges).
+        expect(a.width).toBe(433);
+        expect(a.height).toBe(414);
         const px = (x: number, y: number): [number, number, number, number] => {
             const i = (y * a.width + x) * 4;
             return [a.image[i], a.image[i + 1], a.image[i + 2], a.image[i + 3]];
         };
         expect(px(0, 0)).toEqual([0, 0, 0, 0]);
-        expect(px(144, 144)).toEqual([243, 59, 128, 0]);
+        expect(px(144, 144)).toEqual([246, 69, 128, 0]);
         expect(px(30, 30)).toEqual([0, 0, 0, 0]);
-        expect(px(200, 100)).toEqual([247, 72, 128, 0]);
-        expect(px(250, 250)).toEqual([225, 53, 75, 255]);
-        expect(px(238, 126)).toEqual([244, 63, 128, 22]);
-        expect(px(245, 133)).toEqual([243, 62, 128, 69]);
+        expect(px(200, 100)).toEqual([248, 74, 128, 0]);
+        expect(px(250, 250)).toEqual([224, 44, 74, 33]);
+        expect(px(238, 126)).toEqual([244, 62, 128, 91]);
+        expect(px(245, 133)).toEqual([243, 61, 128, 128]);
     });
 });

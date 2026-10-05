@@ -297,6 +297,9 @@ class ValueNoise {
 
 // ---------------------------------------------------------------------------
 
+/** Alpha below which the transparent noise pass only partly lifts a pixel (a soft cloud edge). */
+const NOISE_EDGE_RAMP_ALPHA = 64;
+
 export class NebulaCloudGenerator {
     private randomSeed: number;
     private colorScheme: number;
@@ -541,9 +544,12 @@ export class NebulaCloudGenerator {
                 const wx = x - Math.trunc(minX);
                 const wy = y - Math.trunc(minY);
                 const d = this.distanceToCurve(wx, wy, path);
-                // Inside the curve d < 0; bell falls off over ~radius.
-                const t = d < 0 ? 1 - Math.abs(d) / radius : 0;
-                const bell = t <= 0 ? 0 : Math.exp(-((t * 2 - 1) * (t * 2 - 1)) / 0.5);
+                // Inside the curve d < 0. PathGradientBrush with SetSigmaBellShape(1, 1): the surround (transparent) at
+                // the curve, blending to the centre colour along a bell-shaped (sigmoid) ramp — 0 AT the boundary.
+                // (This used exp(-(2t-1)²/0.5) with t = 1 at the boundary, which left about 13% alpha right at the
+                // curve and then cut to nothing: every blob had a hard, straight-sided edge.)
+                const u = d < 0 ? Math.min(1, Math.abs(d) / (radius * 0.5)) : 0;
+                const bell = u <= 0 ? 0 : u * u * (3 - 2 * u);
                 const a = Math.trunc(bell * color.a);
                 if (a <= 0) {
                     continue;
@@ -770,8 +776,10 @@ export class NebulaCloudGenerator {
                     continue;
                 }
                 if (strength >= 1) {
-                    // Transparent variant: boost alpha toward the noise level.
-                    const target = Math.trunc(strength * n);
+                    // Transparent variant: boost alpha toward the noise level — scaled by the pixel's own alpha near the
+                    // cloud's edge, so the faint rim stays faint (lifting every pixel with any alpha to the noise level
+                    // drew a hard, straight-sided outline where the blobs end).
+                    const target = Math.trunc(strength * n * Math.min(1, a / NOISE_EDGE_RAMP_ALPHA));
                     img[i + 3] = Math.max(a, target);
                 } else {
                     // Opaque variant: darken/brighten channels by the noise.
