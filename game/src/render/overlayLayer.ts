@@ -188,6 +188,8 @@ class MarkerRing {
 
 // MainView.2.cs method_251: Color.FromArgb(170, 170, 170)
 export const TRAVEL_VECTOR_COLOR = 0xaaaaaa;
+/** Zoom factor (galaxy units per px) below which the Travel Vectors overlay is hidden: the system pass (f < 150). */
+export const TRAVEL_VECTOR_MIN_FACTOR = 150;
 /** XnaDrawingHelper.DrawLine(dashed) (XnaDrawingHelper.cs 572-605): 6 px dashes with 6 px gaps (every other 6 px step). */
 export const TRAVEL_VECTOR_DASH_PX = 6;
 
@@ -868,7 +870,9 @@ export class OverlayLayer {
         let anySel = false;
         const sg2 = this.foreignSelVector;
         if (sg2.visible) sg2.clear();
-        if (overlays && player !== null && (this.state.travelVectorsState || this.state.travelVectorsPrivate)) {
+        // Travel Vectors only from the sector / galaxy zoom out (the original draws them in its galaxy pass); at system
+        // zoom the lines from moving ships to their nearby targets squirm with every course correction.
+        if (overlays && player !== null && f >= TRAVEL_VECTOR_MIN_FACTOR && (this.state.travelVectorsState || this.state.travelVectorsPrivate)) {
             const kinds: TravelVectorKind[] = [];
             if (this.state.travelVectorsState) kinds.push('state');
             if (this.state.travelVectorsPrivate) kinds.push('private');
