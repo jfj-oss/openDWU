@@ -487,6 +487,7 @@ export function createNewGameWizard(callbacks: NewGameWizardCallbacks): NewGameW
         },
         listParent: () => body,
         refreshScenario: () => {},
+        scenarioReady: Promise.resolve(),
     };
 
     // --- Page containers (built once, shown/hidden on navigation), 900 × 660 at (5, 40). ---
@@ -582,17 +583,26 @@ export function createNewGameWizard(callbacks: NewGameWizardCallbacks): NewGameW
         if (page === 'type') return;
         if (page === 'jumpstart') {
             // Start.cs btnJumpStartTheGalaxyNext_Click starts the game from the Jump Start page.
-            ctx.refreshScenario();
-            callbacks.onStartGame({ ...options });
+            startGame();
             return;
         }
         const idx = WIZARD_PAGES.indexOf(page);
         if (idx < WIZARD_PAGES.length - 1) {
             showPage(WIZARD_PAGES[idx + 1]);
         } else {
-            ctx.refreshScenario();
-            callbacks.onStartGame({ ...options });
+            startGame();
         }
+    }
+
+    /** Starts once the Scenario page's add-on list has loaded (else the Smarter AI choice would be dropped). */
+    let startPending = false;
+    function startGame(): void {
+        if (startPending) return;
+        startPending = true;
+        void startWhenAddonsLoaded(ctx.scenarioReady, ctx.refreshScenario, () => {
+            startPending = false;
+            callbacks.onStartGame({ ...options });
+        });
     }
 
     // Keyboard nav: Enter advances (like clicking the forward button); Escape closes the window (the ScreenPanel's
@@ -639,6 +649,8 @@ interface WizardCtx {
     listParent: () => HTMLElement;
     /** Recomputes options.scenario from the Scenario page's picks and options.smarterAI (set by the Scenario page). */
     refreshScenario: () => void;
+    /** Settles when the Scenario page's add-on list has loaded (set by the Scenario page). */
+    scenarioReady: Promise<void>;
 }
 
 /** TextResolver.GetText(tag) when GameText.txt is loaded, else the English text it holds (GameText.txt). */
@@ -1656,10 +1668,24 @@ function buildOtherEmpiresPage(ctx: WizardCtx): HTMLDivElement {
         ctx.refreshScenario();
     });
     const taxUnit = label(smartPanel, '% of maximum population', 566, 35, { size: FONT.normal });
+    // Smarter AI military sub-options (the coordinator turns the sub-options into a list later; plain rows for now).
+    const smartDefence = check(smartPanel, 'Defence that counts pirates', smart.defence ?? true, 30, 58, (v) => {
+        smart.defence = v;
+        ctx.refreshScenario();
+    }, FONT.normal);
+    smartDefence.row.classList.add('wizard-smarter-ai-defence');
+    const smartPirates = check(smartPanel, 'Pirate clean-up', smart.pirates ?? true, 290, 58, (v) => {
+        smart.pirates = v;
+        ctx.refreshScenario();
+    }, FONT.normal);
+    smartPirates.row.classList.add('wizard-smarter-ai-pirates');
     ctx.helpOn(smartPanel, () => ['Smarter AI', 'AI empires only (never you or pirates): an optimised research order, and no taxes on growing colonies unless the treasury needs them.']);
     function paintSmart(): void {
         smartResearch.input.disabled = !smart.enabled;
         smartTax.input.disabled = !smart.enabled;
+        smartDefence.input.disabled = !smart.enabled;
+        smartPirates.input.disabled = !smart.enabled;
+        for (const e of [smartDefence.row, smartPirates.row]) e.classList.toggle('is-disabled', !smart.enabled);
         const taxOn = smart.enabled && smart.growthTaxes;
         const taxInput = taxBox.querySelector('input');
         if (taxInput !== null) taxInput.disabled = !taxOn;
@@ -2403,6 +2429,20 @@ export function addonChoiceFor(cat: AddonCatalog, picked: readonly string[], ove
     return { id: plan.id, flags: sw.flags, params: sw.params, addons: canonicalAddons(cat, w.picked) };
 }
 
+/**
+ * Start: waits for the add-on list (`ready`), then recomputes the scenario choice and starts. Without the wait a Start
+ * pressed before the list loaded resolved the Smarter AI choice against an empty catalog and dropped it.
+ */
+export async function startWhenAddonsLoaded(ready: Promise<unknown>, refresh: () => void, start: () => void): Promise<void> {
+    try {
+        await ready;
+    } catch {
+        // loadScenarioIndex never rejects; start with what there is anyway
+    }
+    refresh();
+    start();
+}
+
 function buildScenarioPage(ctx: WizardCtx): HTMLDivElement {
     const options = ctx.options;
     const wrap = pageDiv('wizard-scenario-page');
@@ -2535,7 +2575,7 @@ function buildScenarioPage(ctx: WizardCtx): HTMLDivElement {
     }
 
     render();
-    void loadScenarioIndex(fetchText).then((list) => {
+    ctx.scenarioReady = loadScenarioIndex(fetchText).then((list) => {
         wizardScenarios = list;
         cat = addonCatalog(list);
         update();

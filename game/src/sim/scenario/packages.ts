@@ -44,4 +44,6 @@ import './security/security'; // 19m internal security (flag internalSecurity; l
 import './frontier/frontier'; // 19g-5 frontier autonomy (flag frontierAutonomy; after 19n / 19m: ledger terms, leads)
 import './smarterAI/research'; // Smarter AI optimised research order (flags smarterAI + smarterAIResearch; AI empires only)
 import './smarterAI/taxes'; // Smarter AI growth taxes (flags smarterAI + smarterAIGrowthTax; AI empires only)
+import './smarterAI/defence'; // Smarter AI defence that counts pirates (flags smarterAI + smarterAIDefence; AI empires only)
+import './smarterAI/pirates'; // Smarter AI pirate clean-up (flags smarterAI + smarterAIPirates; AI empires only)
 export {};

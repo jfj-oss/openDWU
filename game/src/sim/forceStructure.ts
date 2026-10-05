@@ -1014,6 +1014,7 @@ export function projectForceStructure(galaxy: Galaxy, empire: Empire, ctx: Force
     if (num10 < 1.0) num10 = 1.0;
     num10 = Math.max(num10, num6);
     num10 = Math.min(4.0, Math.max(1.0, num10));
+    if (galaxy.scenario !== null) num10 = scenarioQuery(galaxy, 'forceStructureThreat', num10, { empire }); // mod layer (Smarter AI defence)
     const habitatList = determineLargestColonyInEachSystem(galaxy, empire);
     const colonyCount = empire.colonies.length;
     let num11 = 80000.0;
@@ -1054,6 +1055,7 @@ export function projectForceStructure(galaxy: Galaxy, empire: Empire, ctx: Force
     let val = colonyCount * num12 * num10;
     val = Math.max(val, num14 * num3);
     if (empire.dominantRace !== null && empire.dominantRace.expanding) num13 = Math.min(num13, val);
+    if (galaxy.scenario !== null) num13 = scenarioQuery(galaxy, 'forceStructureWarships', num13, { empire, threat: num10 }); // mod layer (Smarter AI defence)
     // float num15 = Escort + Frigate + Destroyer + Cruiser + CapitalShip + TroopTransport (float adds).
     let num15 = f32(policy.constructionMilitaryEscort);
     num15 = f32(num15 + f32(policy.constructionMilitaryFrigate));

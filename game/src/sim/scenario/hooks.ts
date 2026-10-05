@@ -280,6 +280,17 @@ export interface ScenarioEvents {
         isState: boolean;
         freighter: BuiltObject | null;
     };
+    /**
+     * construction/empireConstruction.ts buildDefensiveBases (Empire.10.cs 1211), after the strategic-value > 250000
+     * colonies were added: handlers may push more habitats onto `locations`. No Rnd. Smarter AI defence.
+     */
+    defensiveBaseLocations: { empire: Empire; locations: unknown[] };
+    /**
+     * fleets/militaryAI.ts huntPirates (Empire.9.cs 1603), right after its Next(0, 3) draw (`roll`): a handler that sets
+     * `handled` replaces the stock hunt for this call. Unlike most events the handler MAY draw galaxy.rnd (mission
+     * assignment): it runs only behind its flag, in place of the stock step. Smarter AI pirate clean-up.
+     */
+    huntPirates: { empire: Empire; roll: number; handled: boolean };
 }
 export type ScenarioEventName = keyof ScenarioEvents;
 
@@ -500,6 +511,16 @@ export interface ScenarioQueries {
      * ordered project ids the empire tries first (stock: the race's list). `industry` is IndustryType. Smarter AI.
      */
     researchProjectOrder: { value: readonly number[]; args: { empire: Empire; industry: number } };
+    /**
+     * forceStructure.ts projectForceStructure (Empire.9.cs 4990), after the threat multiplier (num10, 1-4) is clamped:
+     * the multiplier. Smarter AI defence (local pirate / enemy firepower near the colonies). Never draws.
+     */
+    forceStructureThreat: { value: number; args: { empire: Empire } };
+    /**
+     * forceStructure.ts projectForceStructure, the warship total (num13) after the expanding-race cap: the total.
+     * `threat` is the final multiplier. Smarter AI defence (a per-colony floor). Never draws.
+     */
+    forceStructureWarships: { value: number; args: { empire: Empire; threat: number } };
 }
 export type ScenarioQueryName = keyof ScenarioQueries;
 
