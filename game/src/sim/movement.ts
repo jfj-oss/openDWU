@@ -1696,9 +1696,12 @@ export function fastFindNearestRefuellingPoint(
     let num6 = 0;
     let iterationCount = 0;
     const dist = { value: 0 };
+    const systemsGrid = galaxy.systemsIndexGrid;
     const visit = (cx: number, cy: number): void => {
         // C# indexes the jagged arrays directly; -1 rows/cols never occur because both edges always move later.
         if (cx < 0 || cy < 0 || cx >= indexMaxX || cy >= indexMaxY) return;
+        // Perf: a cell without systems finds nothing (distance Number.MAX_VALUE, which never wins) and reads nothing else.
+        if (systemsGrid[cx][cy].length === 0) return;
         const stellarObject2 = fastFindNearestRefuellingPointInIndex(galaxy, ix, iy, cx, cy, dist, fuelTypes, empire, shipToRefuel, empireToExclude, shipsToRefuel, num);
         const distance = dist.value;
         if (!(distance < num)) return;
@@ -1834,10 +1837,13 @@ function fastFindNearestRefuellingPointInIndex(
                 }
             }
         }
-        // Galaxy.6.cs 3375 systemInfo.Habitats: no star (a gas-cloud star's bases are the branch above).
-        const sysHabitats = planetsOf(systemInfo);
+        // Galaxy.6.cs 3375 systemInfo.Habitats: no star (a gas-cloud star's bases are the branch above). Perf: walked in
+        // place, skipping the star, instead of a filtered copy (planetsOf) per system (the loop only reads).
+        const sysHabitats = systemInfo.habitats;
+        const sysStar = systemInfo.systemStar;
         for (let k = 0; k < sysHabitats.length; k++) {
             const habitat = sysHabitats[k];
+            if (habitat === sysStar) continue;
             const num4 = galaxy.calculateDistanceSquared(x, y, habitat.xpos, habitat.ypos);
             if (!(num4 < num)) continue;
             let flag3 = false;

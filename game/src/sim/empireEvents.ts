@@ -235,7 +235,7 @@ export function findNearestBuiltObjectOfEmpire(galaxy: Galaxy, x: number, y: num
         }
         if (builtObject !== null) distance = galaxy.calculateDistance(x, y, builtObject.xpos, builtObject.ypos);
         return { item: builtObject, distance };
-    });
+    }, galaxy.builtObjectIndexGrid);
 }
 
 /** HabitatList.cs 48 GetHabitatsPopulationAnotherRace(race) → 15 GetRandomHabitatPopulationAnotherRace. Rnd: Next(0, n) when non-empty. */

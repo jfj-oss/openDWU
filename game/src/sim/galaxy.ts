@@ -682,7 +682,18 @@ export class Galaxy {
     // Perf (no behaviour change): the bounds, the edge result and the per-ring cell list are plain locals / a scratch
     // array instead of per-iteration objects and a [cx, cy][] list; cells are visited in the same order (row
     // l..r, then column t..b skipping the row), so the per-cell searches, tie-breaks and result are unchanged.
-    ringSearch<T>(x: number, y: number, inIndex: (cx: number, cy: number) => { item: T | null; distance: number }): T | null {
+    //
+    // Perf (no behaviour change): `grid`, when given, is the index grid the per-cell search walks (grid[cx][cy]); a cell
+    // whose list is empty is not handed to `inIndex` at all. Only pass it for a search that, on an empty cell, does
+    // nothing (no Rnd, no writes) and returns distance Number.MAX_VALUE — which never wins (`<`). A search that finds
+    // nothing walks the whole grid (40,000 cells on a 200×200 index, nearly all empty for built objects), so the
+    // per-cell closure call and result object were most of the pirate empires' mission-assignment cost.
+    ringSearch<T>(
+        x: number,
+        y: number,
+        inIndex: (cx: number, cy: number) => { item: T | null; distance: number },
+        grid: readonly (readonly (readonly unknown[])[])[] | null = null,
+    ): T | null {
         const ix = Math.trunc(x);
         const iy = Math.trunc(y);
         const maxX = this.indexMaxX;
@@ -768,6 +779,7 @@ export class Galaxy {
             // later step (out-of-range cells are skipped).
             if (row >= 0 && row < maxY) {
                 for (let cx = l < 0 ? 0 : l; cx <= r && cx < maxX; cx++) {
+                    if (grid !== null && grid[cx][row].length === 0) continue;
                     const res = inIndex(cx, row);
                     if (res.distance < num) {
                         result = res.item;
@@ -776,8 +788,10 @@ export class Galaxy {
                 }
             }
             if (col >= 0 && col < maxX) {
+                const column = grid !== null ? grid[col] : null;
                 for (let cy = t < 0 ? 0 : t; cy <= b && cy < maxY; cy++) {
                     if (cy === row) continue;
+                    if (column !== null && column[cy].length === 0) continue;
                     const res = inIndex(col, cy);
                     if (res.distance < num) {
                         result = res.item;
@@ -1514,7 +1528,7 @@ export class Galaxy {
             }
             if (builtObject !== null) distance = this.calculateDistance(ix, iy, builtObject.xpos, builtObject.ypos);
             return { item: builtObject, distance };
-        });
+        }, this.builtObjectIndexGrid);
     }
 
     // Port of Galaxy.7.cs FindNearestBuiltObject(x, y, empire) (795) + InIndex (838). No Rnd.
@@ -1540,7 +1554,7 @@ export class Galaxy {
             }
             if (builtObject !== null) distance = this.calculateDistance(ix, iy, builtObject.xpos, builtObject.ypos);
             return { item: builtObject, distance };
-        });
+        }, this.builtObjectIndexGrid);
     }
 
     // Port of Galaxy.7.cs FindNearestBuiltObject(x, y, empire, subRole, fullyFunctional) (1319)
@@ -1573,7 +1587,7 @@ export class Galaxy {
             }
             if (builtObject !== null) distance = this.calculateDistance(ix, iy, builtObject.xpos, builtObject.ypos);
             return { item: builtObject, distance };
-        });
+        }, this.builtObjectIndexGrid);
     }
 
     // Port of Galaxy.7.cs FindNearestBuiltObject(x, y, subRole, includeSecondaryEmpires) (1411)
@@ -1603,7 +1617,7 @@ export class Galaxy {
             }
             if (builtObject !== null) distance = this.calculateDistance(ix, iy, builtObject.xpos, builtObject.ypos);
             return { item: builtObject, distance };
-        });
+        }, this.builtObjectIndexGrid);
     }
 
     // Port of Galaxy.cs SelectRandomHeading (line 2795); C# returns float.

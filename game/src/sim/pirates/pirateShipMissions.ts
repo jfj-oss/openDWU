@@ -53,7 +53,7 @@ import {
 import { checkInStorm, checkNearPirateBase, determineMiningStationAtHabitat } from '../resourceTargets';
 import { checkAlreadyHaveMiningStationAtHabitat } from '../missions/cmdConstruction';
 import { identifyDeficientEmpireResources } from '../industry';
-import { MINIMUM_DISTANCE_BETWEEN_BASES, checkSystemOwnership, fastFindNearestSpacePort } from '../stationPlacement';
+import { MINIMUM_DISTANCE_BETWEEN_BASES, checkSystemOwnershipEmpire, fastFindNearestSpacePort } from '../stationPlacement';
 import { SECTOR_SIZE } from '../logistics/orders';
 import { calculateSupportCost, checkEmpireHasHyperDriveTech, totalMobileMilitaryFirepower } from '../forceStructure';
 import { findNewestCanBuild } from '../designGeneration';
@@ -153,7 +153,7 @@ export function findNearestKnownBaseForPirateAttackOwn(galaxy: Galaxy, attacking
         }
         if (builtObject !== null) distance = galaxy.calculateDistance(x, y, builtObject.xpos, builtObject.ypos);
         return { item: builtObject, distance };
-    });
+    }, galaxy.builtObjectIndexGrid);
 }
 
 function empireListContains(list: readonly Empire[], empire: Empire | null): boolean {
@@ -181,7 +181,7 @@ export function findNearestKnownBaseOfEmpireForPirateAttackOwn(galaxy: Galaxy, a
         }
         if (builtObject !== null) distance = galaxy.calculateDistance(x, y, builtObject.xpos, builtObject.ypos);
         return { item: builtObject, distance };
-    });
+    }, galaxy.builtObjectIndexGrid);
 }
 
 /** Galaxy.7.cs 1210 FindNearestBaseForPirateAttack(x, y, empireToExclude) + InIndex 1245. No Rnd. */
@@ -202,7 +202,7 @@ export function findNearestBaseForPirateAttackOwn(galaxy: Galaxy, x: number, y: 
         }
         if (builtObject !== null) distance = galaxy.calculateDistance(x, y, builtObject.xpos, builtObject.ypos);
         return { item: builtObject, distance };
-    });
+    }, galaxy.builtObjectIndexGrid);
 }
 
 /** Galaxy.6.cs 3536 FastFindNearestUncolonizedOwnedSystem(x, y) + FindNearestOwnedUncolonizedSystemInIndex 3571. No Rnd. */
@@ -214,10 +214,12 @@ export function fastFindNearestUncolonizedOwnedSystem(galaxy: Galaxy, x: number,
         const systemInfoList = galaxy.systemsIndexGrid[cx][cy];
         let distance = Number.MAX_VALUE;
         for (let i = 0; i < systemInfoList.length; i++) {
-            const owner = checkSystemOwnership(galaxy, systemInfoList[i].systemStar).empire;
-            if (owner === null) continue;
+            // Perf: the C# tests the owner first, then the dominant empire; both only `continue` and the ownership
+            // check is a pure read, so the cheap dominant-empire test goes first (most systems stop there).
             const systemInfo2 = galaxy.systems[systemInfoList[i].systemStar.systemIndex];
             if (systemInfo2 == null || (systemInfo2.dominantEmpire != null && systemInfo2.dominantEmpire.empire != null)) continue;
+            const owner = checkSystemOwnershipEmpire(galaxy, systemInfoList[i].systemStar);
+            if (owner === null) continue;
             let flag = true;
             // Empires.GetByEmpireId(num): only the normal empires list.
             if (galaxy.empires.includes(owner) && owner.reclusive) flag = false;
@@ -231,7 +233,7 @@ export function fastFindNearestUncolonizedOwnedSystem(galaxy: Galaxy, x: number,
         }
         if (systemStar !== null) distance = galaxy.calculateDistance(ix, iy, systemStar.xpos, systemStar.ypos);
         return { item: systemStar, distance };
-    });
+    }, galaxy.systemsIndexGrid);
 }
 
 /** Galaxy.9.cs 126 IdentifyPirateNewHomeLocation(pirateFaction). Rnd: 2 NextDouble per attempt (≤ 50 attempts). */

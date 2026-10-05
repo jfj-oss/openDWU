@@ -509,6 +509,25 @@ export function findNearestUnexploredHabitat(galaxy: Galaxy, x: number, y: numbe
     return best;
 }
 
+/**
+ * Indices of `habitats` in findNearestUnexploredHabitat's preference order from (ix, iy): squared distance ascending
+ * (computed exactly as there), list order on ties; habitats it could never pick (distance not < Number.MAX_VALUE) left out.
+ */
+function habitatsByDistance(habitats: readonly Habitat[], ix: number, iy: number): Int32Array {
+    const dist = new Float64Array(habitats.length);
+    const idx: number[] = [];
+    for (let i = 0; i < habitats.length; i++) {
+        const dx = ix - habitats[i].xpos;
+        const dy = iy - habitats[i].ypos;
+        const num = dx * dx + dy * dy;
+        dist[i] = num;
+        if (num < Number.MAX_VALUE) idx.push(i);
+    }
+    const order = Int32Array.from(idx);
+    order.sort((a, b) => (dist[a] < dist[b] ? -1 : dist[a] > dist[b] ? 1 : a - b));
+    return order;
+}
+
 // Port of Galaxy.7.cs SetEmpireExplorationAmount(empire, systemAmount)
 // (line 4922): at game start, the empire knows the `systemAmount` systems
 // nearest its capital (GenerateEmpire passes (int)(expansion * 3.5), capped).
@@ -520,8 +539,23 @@ export function setEmpireExplorationAmount(galaxy: Galaxy, empire: EmpireVisibil
         }
     }
     const val = Math.min(systemAmount, galaxy.starCount);
+    // Perf (no behaviour change): findNearestUnexploredHabitat(galaxy, capital.xpos, capital.ypos, empire, true) is a
+    // full scan of the habitats (100,000 in a big galaxy) per pick. Its answer is the unknown habitat with the smallest
+    // squared distance, the earliest in the list on a tie — the first unknown one in (distance, index) order. Within
+    // this loop habitats only ever become known, so a cursor over that order, advanced past known habitats, gives the
+    // same pick every time (and stays on an unknown habitat until it becomes known, as the scan would return it again).
+    // The first few picks scan (sorting 100,000 habitats costs about as much as a dozen scans).
+    let order: Int32Array | null = null;
+    let cursor = 0;
+    let picks = 0;
+    const nearestUnexplored = (): Habitat | null => {
+        if (++picks <= 12) return findNearestUnexploredHabitat(galaxy, capital.xpos, capital.ypos, empire, true);
+        if (order === null) order = habitatsByDistance(habitats, Math.trunc(capital.xpos), Math.trunc(capital.ypos));
+        while (cursor < order.length && empire.resourceMap.checkResourcesKnown(habitats[order[cursor]])) cursor++;
+        return cursor < order.length ? habitats[order[cursor]] : null;
+    };
     for (let j = 0; j < val; j++) {
-        const habitat = findNearestUnexploredHabitat(galaxy, capital.xpos, capital.ypos, empire, true);
+        const habitat = nearestUnexplored();
         if (habitat === null) {
             continue;
         }

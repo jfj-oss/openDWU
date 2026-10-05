@@ -5,7 +5,8 @@
 // the digest after the run must not change).
 //
 //   node [--cpu-prof --cpu-prof-dir=DIR] scripts/profile-save.mjs <save> [--warm 5] [--seconds 30] [--speed 1]
-//        [--passes 25] [--keep-bundle DIR] [--alloc-prof out.heapprofile]
+//        [--passes 25] [--keep-bundle DIR] [--alloc-prof out.heapprofile] [--save-hash]
+// --save-hash: print a sha256 of serializeGame(game) after the run (save-text identity check).
 // --alloc-prof: sampling allocation profile of the measured run, including objects already collected (allocation
 // throughput by site, not just what is still live); summarise with scripts/heapprofile-summary.mjs.
 // Summarise a .cpuprofile with scripts/cpuprofile-summary.mjs <file> --under runGameSeconds.
@@ -30,6 +31,7 @@ const speed = Number(arg('speed', 1));
 const nPasses = Number(arg('passes', 25));
 const keepBundle = arg('keep-bundle', null);
 const allocProf = arg('alloc-prof', null);
+const saveHash = arg('save-hash', false);
 
 const MODULES = { game: '/src/sim/game.ts', load: '/test/helpers/loadGameDataFs.ts', harness: '/src/sim/tick/harness.ts', save: '/src/sim/save/gameSave.ts', digest: '/src/sim/tick/digest.ts' };
 const bundleDir = mkdtempSync(resolve(tmpdir(), 'dwu-profile-sim-'));
@@ -47,7 +49,7 @@ try {
     installGameStatics(gameData);
     registerGameHooks();
     const t0 = performance.now();
-    const { game } = deserializeGame(readFileSync(file, 'utf8'), gameData);
+    const { game, time, startOptions } = deserializeGame(readFileSync(file, 'utf8'), gameData);
     const g = game.galaxy;
     console.log(`loaded ${file} in ${(performance.now() - t0).toFixed(0)} ms: ${g.systems.length} systems, ${g.empires.length} empires, ${g.builtObjects.length} built objects; digest ${stateDigest(g)}`);
     if (warm > 0) runGameSeconds(game, warm, { speed });
@@ -76,6 +78,11 @@ try {
     for (const [k, v] of Object.entries(r.timings).sort((a, b) => b[1] - a[1]).slice(0, nPasses))
         console.log(`  ${v.toFixed(0).padStart(7)} ms ${((100 * v) / wall).toFixed(1).padStart(5)}%  ${(v / r.frames).toFixed(3)} ms/step  ${k}`);
     console.log(`digest ${stateDigest(g)} rnd ${g.rnd.drawCount} counts ${JSON.stringify(stateCounts(g))}`);
+    if (saveHash) {
+        const { serializeGame } = await load('save');
+        const { createHash } = await import('node:crypto');
+        console.log(`save sha256 ${createHash('sha256').update(serializeGame(game, time, startOptions)).digest('hex')}`);
+    }
 } finally {
     if (keepBundle) cpSync(bundleDir, String(keepBundle), { recursive: true });
     rmSync(bundleDir, { recursive: true, force: true });

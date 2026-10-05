@@ -152,6 +152,24 @@ export function checkSystemOwnership(galaxy: Galaxy, systemStar: Habitat | null)
     return { empire: null, disputed };
 }
 
+/** checkSystemOwnership(galaxy, systemStar).empire without the result object (hot per-system searches). */
+export function checkSystemOwnershipEmpire(galaxy: Galaxy, systemStar: Habitat | null): Empire | null {
+    if (systemStar === null) return null;
+    const bySystemIndex = galaxy.systems[systemStar.systemIndex] ?? null;
+    const num =
+        bySystemIndex === null || bySystemIndex.dominantEmpire == null || bySystemIndex.dominantEmpire.empire == null
+            ? galaxy.empireTerritory.checkLocationOwnership(galaxy, systemStar.xpos, systemStar.ypos)
+            : bySystemIndex.dominantEmpire.empire.empireId;
+    if (num >= 0) {
+        // Empires.GetByEmpireId: the first with that id (Array.find).
+        const empires = galaxy.empires;
+        for (let i = 0; i < empires.length; i++) {
+            if (empires[i].empireId === num) return empires[i];
+        }
+    }
+    return null;
+}
+
 // Galaxy.3.cs FastFindNearestSpacePort(x, y, empire) (703).
 export function fastFindNearestSpacePort(galaxy: Galaxy, x: number, y: number, empire: Empire): BuiltObject | null {
     let num = Number.MAX_VALUE;

@@ -156,9 +156,11 @@ export function builtObjectDoTasks(galaxy: Galaxy, builtObject: BuiltObject, tim
         }
     }
     // 3696-3705 ExecuteCommands loop (≤ 50 iterations).
+    // Galaxy.ConditionCheckLimit(num2 > 0, 50, ref iterationCount) with the counter in a local (no per-call object):
+    // at the limit false without counting, else count and return the condition.
     let num2 = num;
-    const iterationCount = { count: 0 };
-    while (conditionCheckLimit(num2 > 0.0, 50, iterationCount)) {
+    let iterationCount = 0;
+    while (iterationCount < 50 && (iterationCount++, num2 > 0.0)) {
         num2 = executeCommands(galaxy, bo, num2, time, starDate);
         if (num2 > num) {
             num2 = 0.0;
