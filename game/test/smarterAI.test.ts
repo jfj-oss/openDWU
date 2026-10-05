@@ -25,7 +25,7 @@ import { colonyFullness, planGrowthTaxes } from '../src/sim/scenario/smarterAI/t
 import { addonChoiceFor } from '../src/ui/screens/newGameWizard';
 
 const SC = 'smarter-ai';
-const ALL_OFF = { smarterAI: false, smarterAIResearch: false, smarterAIGrowthTax: false, smarterAIDefence: false, smarterAIPirates: false };
+const ALL_OFF = { smarterAI: false, smarterAIResearch: false, smarterAIGrowthTax: false, smarterAIBudget: false, smarterAIRetrofit: false, smarterAIDefence: false, smarterAIPirates: false };
 
 let base: GameData;
 beforeAll(async () => {

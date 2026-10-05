@@ -58,6 +58,21 @@ export function colonyFullness(h: Habitat): number {
     return h.maxPopulation > 0 ? pop / h.maxPopulation : 1;
 }
 
+/**
+ * The add-on's "in debt" test (shared with the budget package): money below 0, or a negative cashflow with less than
+ * ALLOWABLE_YEARS of `upkeep` in cash; once in debt, out only when money is at or above 0 and either the cashflow is not
+ * negative or the cash covers DEBT_RECOVERED_FACTOR × ALLOWABLE_YEARS of upkeep. Pure.
+ */
+export function debtWithHysteresis(wasInDebt: boolean, money: number, cashflow: number, upkeep: number): boolean {
+    const margin = ALLOWABLE_YEARS_MAINTENANCE_FROM_CASH_ON_HAND * upkeep;
+    return wasInDebt ? !(money >= 0 && (cashflow >= 0 || money >= DEBT_RECOVERED_FACTOR * margin)) : money < 0 || (cashflow < 0 && money < margin);
+}
+
+/** The state upkeep the debt test weighs (ships and bases not under construction, plus troops). */
+export function stateUpkeep(empire: Empire): number {
+    return Math.max(0, annualStateMaintenanceExcludingUnderConstruction(empire) + annualTroopMaintenance(empire));
+}
+
 /** Applies growth taxes to `empire`'s colonies after the stock review (see the file comment). */
 export function applyGrowthTaxes(galaxy: Galaxy, empire: Empire): void {
     const gov = empireGovernmentAttributes(empire);
@@ -79,12 +94,10 @@ export function applyGrowthTaxes(galaxy: Galaxy, empire: Empire): void {
     // Debt override (with hysteresis).
     const st = smarterAIState(galaxy);
     const key = String(empire.empireId);
-    const upkeep = Math.max(0, annualStateMaintenanceExcludingUnderConstruction(empire) + annualTroopMaintenance(empire));
-    const margin = ALLOWABLE_YEARS_MAINTENANCE_FROM_CASH_ON_HAND * upkeep;
+    const upkeep = stateUpkeep(empire);
     const money = empire.stateMoney;
     const cashflow = calculateAnnualCashflow(galaxy, empire);
-    const wasInDebt = st.debt[key] === true;
-    const inDebt = wasInDebt ? !(money >= 0 && (cashflow >= 0 || money >= DEBT_RECOVERED_FACTOR * margin)) : money < 0 || (cashflow < 0 && money < margin);
+    const inDebt = debtWithHysteresis(st.debt[key] === true, money, cashflow, upkeep);
     if (inDebt) st.debt[key] = true;
     else delete st.debt[key];
     if (!inDebt) return;

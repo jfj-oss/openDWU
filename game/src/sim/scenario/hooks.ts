@@ -512,6 +512,16 @@ export interface ScenarioQueries {
      */
     researchProjectOrder: { value: readonly number[]; args: { empire: Empire; industry: number } };
     /**
+     * A numeric AI build target (Smarter AI budget). `kind`: 'defensiveForce' = buildDefensiveBases' firepower required
+     * per colony (Empire.10.cs 1211, num2); 'researchStationsPerColony' = checkBuildoutResearchCapacityAtColonies' cap
+     * (stock 2); 'wonderMoneyDivisor' = reviewColonyWonders' StateMoney / 1.5 gate (Empire.3.cs 165). Never draws.
+     */
+    aiBuildTarget: { value: number; args: { empire: Empire; kind: 'defensiveForce' | 'researchStationsPerColony' | 'wonderMoneyDivisor' } };
+    /** empireConstruction.ts directConstruction (Empire.6.cs 2630): colony ships may be built this review (stock: the freighter / military ratio check). Never draws. */
+    colonizationBuildAllowed: { value: boolean; args: { empire: Empire } };
+    /** empireConstruction.ts directConstruction: skip queueing a new state build of this sub-role (stock false). Smarter AI budget. Never draws. */
+    stateBuildSkipped: { value: boolean; args: { empire: Empire; subRole: number } };
+    /**
      * forceStructure.ts projectForceStructure (Empire.9.cs 4990), after the threat multiplier (num10, 1-4) is clamped:
      * the multiplier. Smarter AI defence (local pirate / enemy firepower near the colonies). Never draws.
      */
