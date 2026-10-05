@@ -13,6 +13,7 @@ import type { Galaxy } from '../sim/galaxy';
 import type { Empire } from '../sim/empire';
 import type { BuiltObject } from '../sim/builtObject';
 import { BuiltObjectSubRole } from '../sim/builtObjectTypes';
+import { componentListDiff } from '../sim/construction/constructionYard';
 import { BuiltObjectRole } from '../sim/data/designSpecifications';
 import { BuiltObjectMissionType, COORD_UNSET_DOUBLE, builtObjectMission, type BuiltObjectMission } from '../sim/missions/mission';
 import { ShipGroup } from '../sim/fleets/shipGroup';
@@ -620,7 +621,8 @@ export function builtObjectInfo(ctx: InfoContext, bo: BuiltObject, extended = fa
             // Streamlined: the percent built (InfoPanel.cs:1382 OverlayConstructionProgress formula) while unbuilt.
             if (unbuilt > 0 && bo.components.count > 0) text += ` (${Math.round((100 * (bo.components.count - unbuilt)) / bo.components.count)}% built)`;
         } else if (bo.retrofitDesign !== null) {
-            text = `(RETROFITTING to ${bo.retrofitDesign.name})`;
+            const pct = retrofitProgressPercent(bo);
+            text = `(RETROFITTING to ${bo.retrofitDesign.name}${pct === null ? '' : pct < 0 ? ' — waiting for a yard' : `: ${pct}%`})`;
         }
         rows.push(label('', [txt(text)]));
     } else {
@@ -1552,4 +1554,24 @@ export function rowText(row: InfoRow): string {
         default:
             return '';
     }
+}
+
+/**
+ * Not in the original: how far a retrofit has got, in percent, or -1 while the ship waits for a yard (null when it is not
+ * at a yard at all). The yard's retrofit lists (ConstructionQueue.cs DoConstruction 566-617) shrink as components are
+ * built and then scrapped; the totals are the two designs' component differences, so nothing extra is stored.
+ */
+export function retrofitProgressPercent(bo: BuiltObject): number | null {
+    const target = bo.retrofitDesign;
+    const at = bo.builtAt as { constructionQueue?: unknown } | null;
+    if (target === null || at === null || at === undefined) return null;
+    const queue = at.constructionQueue as { constructionYards?: Array<{ shipUnderConstruction: unknown; retrofitComponentsToBeBuilt: unknown[] | null; retrofitComponentsToBeScrapped: unknown[] | null }> | null } | null;
+    const yard = queue?.constructionYards?.find((y) => y != null && y.shipUnderConstruction === bo);
+    if (yard === undefined) return -1;
+    const current = bo.design?.components ?? [];
+    const total = componentListDiff(current, target.components).length + componentListDiff(target.components, current).length;
+    if (total <= 0) return 100;
+    if (yard.retrofitComponentsToBeBuilt === null) return 0;
+    const remaining = yard.retrofitComponentsToBeBuilt.length + (yard.retrofitComponentsToBeScrapped?.length ?? 0);
+    return Math.max(0, Math.min(100, Math.round((100 * (total - remaining)) / total)));
 }
