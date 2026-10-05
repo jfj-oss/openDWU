@@ -750,8 +750,14 @@ export interface SelectionExtraSlot {
     icon?: string;
     active?: boolean;
     disabled?: boolean;
+    /** A small number badge in the corner (the "more" slot's hidden-button count). */
+    count?: number;
     onClick: () => void;
 }
+/** The "more" slot's icon: a double chevron in the strip's light grey (ours; the original strip has no overflow). */
+const MORE_SLOT_ICON =
+    'data:image/svg+xml,' +
+    encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><path d="M9 9 L16 16 L9 23 M17 9 L24 16 L17 23" fill="none" stroke="#d0d0d8" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>');
 let extraSlotProvider: () => SelectionExtraSlot[] = () => [];
 let extraOverflow: (rest: SelectionExtraSlot[], behindMore: boolean) => void = () => {};
 let extraMoreToggle: () => void = () => {};
@@ -922,7 +928,7 @@ export function createSelectionActionBar(): HTMLElement {
             const keep = Math.max(0, empty - 1);
             rest = extras.slice(keep);
             extras = extras.slice(0, keep);
-            if (empty > 0) extras.push({ label: `More… (${rest.length})`, title: rest.map((x) => x.label).join(', '), onClick: () => extraMoreToggle() });
+            if (empty > 0) extras.push({ label: 'More', title: `More: ${rest.map((x) => x.label).join(', ')}`, icon: MORE_SLOT_ICON, count: rest.length, onClick: () => extraMoreToggle() });
         }
         let next = 0;
         for (let i = 0; i < 8; i++) {
@@ -948,6 +954,12 @@ export function createSelectionActionBar(): HTMLElement {
                 cap.className = 'order-action-caption';
                 cap.textContent = x.label;
                 btn.appendChild(cap);
+            }
+            if (x.count !== undefined && x.count > 0) {
+                const c = document.createElement('span');
+                c.className = 'order-action-count';
+                c.textContent = String(x.count);
+                btn.appendChild(c);
             }
             btn.title = x.title;
             btn.disabled = x.disabled === true;

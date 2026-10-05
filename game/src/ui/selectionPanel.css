@@ -589,43 +589,38 @@ span.sel-corner.sel-text {
 .sel-frame .order-actions.sel-actions .order-action-btn.order-action-extra:disabled {
     color: rgb(110, 110, 120);
 }
-/* The "More…" popup over the action strip (the dispatch orders that found no empty slot). */
+/* The "more" popup over the action strip (the extras that found no empty slot): an original-style ToolStrip menu. */
 .sel-more {
     position: absolute;
     left: 60px;
     bottom: 30px;
-    width: 280px;
-    display: flex;
-    flex-wrap: wrap;
-    gap: 2px;
-    padding: 3px;
     pointer-events: auto;
-    background: rgba(10, 10, 24, 0.94);
-    border: 1px solid rgb(67, 67, 77);
-    box-shadow: 0 -2px 6px rgba(0, 0, 0, 0.6);
     z-index: 2;
 }
 .sel-more[hidden] {
     display: none;
 }
-.sel-frame .sel-more button {
-    pointer-events: auto;
-    font-family: inherit;
-    font-size: 8.5px;
-    line-height: 11px;
-    height: 13px;
-    padding: 0 5px;
-    color: rgb(200, 200, 200);
-    background: linear-gradient(to bottom, rgba(112, 112, 176, 0.45), rgba(0, 0, 64, 0.9) 55%);
-    border: 1px solid rgb(0, 0, 64);
-    border-radius: 3px;
+.sel-more .sel-more-menu {
+    position: static;
+    min-width: 200px;
+}
+.sel-more .ow-ts-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    width: 100%;
+    font: inherit;
+    text-align: left;
+    border: 0;
+    background: transparent;
     cursor: pointer;
-    white-space: nowrap;
 }
-.sel-frame .sel-more button:hover:not(:disabled) {
-    color: #fff;
+.sel-more .sel-more-icon {
+    width: 20px;
+    height: 16px;
+    object-fit: contain;
+    flex: none;
 }
-.sel-frame .sel-more button:disabled {
-    color: rgb(110, 110, 120);
-    cursor: default;
+.sel-more .sel-more-on .ow-ts-label {
+    color: #ffd700;
 }

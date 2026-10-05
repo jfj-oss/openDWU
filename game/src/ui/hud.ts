@@ -76,7 +76,7 @@ import { attachBuildQueueLauncher } from './screens/buildQueue'; // [buildQueue]
 import { toggleResearchScreen } from './screens/researchScreen'; // [15b]
 import { toggleEmpireComparison } from './screens/empireComparison';
 import { showToast } from './toast';
-import { toolStripHeading, toolStripItem, toolStripMenu } from './originalWindow'; // [uiwp6]
+import { setToolStripActive, toolStripHeading, toolStripItem, toolStripMenu } from './originalWindow'; // [uiwp6]
 import type { DispatchOption } from '../sim/player/habitatDispatch';
 // [troops] begin
 import { toggleTroopsScreen } from './screens/troops';
@@ -1543,10 +1543,30 @@ function buildSelectionPanel(wiring: HudWiring): HTMLElement {
             const popup = behindMore ? rest : [];
             if (popup.length === 0) moreOpen = false;
             more.hidden = !moreOpen || popup.length === 0;
-            more.replaceChildren(...popup.map((x) => extraButton(x, () => {
-                moreOpen = false;
-                more.hidden = true;
-            })));
+            // The hidden extras as an original-style menu (CustomToolStripRenderer, originalWindow.ts toolStripMenu).
+            const menu = toolStripMenu('sel-more-menu');
+            for (const x of popup) {
+                const row = toolStripItem(x.label, { enabled: x.disabled !== true, title: x.title, tag: 'button' });
+                if (x.icon !== undefined) {
+                    const img = document.createElement('img');
+                    img.className = 'sel-more-icon';
+                    img.src = x.icon;
+                    img.alt = '';
+                    img.draggable = false;
+                    row.prepend(img);
+                }
+                if (x.active) row.classList.add('sel-more-on');
+                row.addEventListener('mouseenter', () => setToolStripActive(menu, row));
+                row.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    if (x.disabled === true) return;
+                    x.onClick();
+                    moreOpen = false;
+                    more.hidden = true;
+                });
+                menu.appendChild(row);
+            }
+            more.replaceChildren(menu);
         },
         () => {
             moreOpen = !moreOpen;
