@@ -74,6 +74,13 @@ export interface StartGameOptions {
     aggressionIndex: number;
     /** Task 06f: index into the difficulty slider (0..4), see difficultyFor. */
     difficultyIndex: number;
+    /**
+     * Custom difficulty (not a port; the wizard's difficulty number box): the Galaxy.DifficultyLevel when it is not one of
+     * the difficultyFor tick values, DIFFICULTY_CUSTOM_MIN..DIFFICULTY_CUSTOM_MAX in DIFFICULTY_CUSTOM_STEP steps. Unset =
+     * difficultyFor(difficultyIndex) — every tick leaves it unset, so a tick game is the original. Read through
+     * difficultyLevelOf; written through setDifficultyLevel (which keeps difficultyIndex at the nearest tick).
+     */
+    customDifficulty?: number;
     /** Task 06f: "Difficulty scales as player nears victory" checkbox
      * (chkStartNewGameTheGalaxyDifficultyScaling). */
     difficultyScaling: boolean;
@@ -803,6 +810,56 @@ export function aggressionFor(index: number): number {
     }
 }
 
+/** Custom difficulty (not a port): the number box's range and step. */
+export const DIFFICULTY_CUSTOM_MIN = 0.5;
+export const DIFFICULTY_CUSTOM_MAX = 3.0;
+export const DIFFICULTY_CUSTOM_STEP = 0.05;
+/** The difficulty slider's tick count (difficultyFor 0..4). */
+export const DIFFICULTY_TICK_COUNT = 5;
+
+/** A difficulty value clamped to DIFFICULTY_CUSTOM_MIN..MAX and rounded to the DIFFICULTY_CUSTOM_STEP grid (2 decimals). */
+export function clampDifficultyLevel(v: number): number {
+    if (!Number.isFinite(v)) return 1.0;
+    const c = Math.max(DIFFICULTY_CUSTOM_MIN, Math.min(DIFFICULTY_CUSTOM_MAX, v));
+    return Number((Math.round(c / DIFFICULTY_CUSTOM_STEP) * DIFFICULTY_CUSTOM_STEP).toFixed(2));
+}
+
+/** The tick (0..4) whose difficultyFor value is `v`, or -1. */
+export function difficultyTickFor(v: number): number {
+    for (let i = 0; i < DIFFICULTY_TICK_COUNT; i++) if (Math.abs(difficultyFor(i) - v) < 1e-9) return i;
+    return -1;
+}
+
+/** The Galaxy.DifficultyLevel the options start: the custom value when set, else difficultyFor(difficultyIndex). */
+export function difficultyLevelOf(o: Pick<StartGameOptions, 'difficultyIndex' | 'customDifficulty'>): number {
+    return o.customDifficulty === undefined ? difficultyFor(o.difficultyIndex) : clampDifficultyLevel(o.customDifficulty);
+}
+
+/** True when the options carry a custom (non-tick) difficulty. */
+export function difficultyIsCustom(o: Pick<StartGameOptions, 'customDifficulty'>): boolean {
+    return o.customDifficulty !== undefined;
+}
+
+/**
+ * Sets the difficulty from the number box: clamped / rounded (clampDifficultyLevel); a tick value snaps back to that
+ * tick (customDifficulty unset — the original game); anything else is custom, with difficultyIndex at the nearest
+ * tick. Returns the stored value.
+ */
+export function setDifficultyLevel(o: StartGameOptions, v: number): number {
+    const c = clampDifficultyLevel(v);
+    const tick = difficultyTickFor(c);
+    if (tick >= 0) {
+        o.difficultyIndex = tick;
+        delete o.customDifficulty;
+        return c;
+    }
+    let best = 0;
+    for (let i = 1; i < DIFFICULTY_TICK_COUNT; i++) if (Math.abs(difficultyFor(i) - c) < Math.abs(difficultyFor(best) - c)) best = i;
+    o.difficultyIndex = best;
+    o.customDifficulty = c;
+    return c;
+}
+
 /**
  * Port of Start.1.cs Start.method_201 (difficulty slider values).
  * Out-of-range defaults to 1.0 (the C# pre-switch default).
@@ -1184,7 +1241,7 @@ export function toCreateGameOptions(
         lifePrevalence: alienLifeFor(o.alienLifeIndex), // num4 = method_67(Alien Life) → _LifePrevalence
         creaturePrevalence: spaceCreaturesFor(o.spaceCreaturesIndex), // num5 = method_62(Space Creatures) → _CreaturePrevalence
         aggressionLevel: aggressionFor(o.aggressionIndex), // num9 = method_71(Aggression) → _AggressionLevel
-        difficultyLevel: difficultyFor(o.difficultyIndex), // EmpireStart.DifficultyLevel = method_201(Difficulty)
+        difficultyLevel: difficultyLevelOf(o), // (or the custom difficulty) EmpireStart.DifficultyLevel = method_201(Difficulty)
         spawnNewEmpires: o.spawnNewEmpires ?? true, // @checked = chkGalaxyNewEmpiresDuringGame
         allowTechTrading: o.allowTechTrading ?? true,
         allowGiantKaltorGeneration: o.allowGiantKaltorGeneration ?? true,
@@ -1375,7 +1432,7 @@ export function toCreateGameOptionsJumpStart(o: StartGameOptions, gameData: Game
         lifePrevalence: num4,
         creaturePrevalence: num5,
         aggressionLevel: num9,
-        difficultyLevel: difficultyFor(o.difficultyIndex), // 5673 method_201(tbarJumpStartTheGalaxyDifficulty)
+        difficultyLevel: difficultyLevelOf(o), // (or the custom difficulty) 5673 method_201(tbarJumpStartTheGalaxyDifficulty)
         spawnNewEmpires: true, // 5623 flag
         allowTechTrading: true, // 5671
         allowGiantKaltorGeneration: true, // 5672

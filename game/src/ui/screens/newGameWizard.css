@@ -517,3 +517,17 @@
 .wizard-smarter-ai-heading {
     color: rgb(255, 255, 0);
 }
+
+/* Difficulty trackbar's custom difficulty box (under the caption) and its "Custom" state. */
+.wizard-difficulty .wizard-difficulty-caption {
+    align-items: flex-start;
+    padding-top: 6px;
+    box-sizing: border-box;
+}
+.wizard-difficulty-custom .wizard-difficulty-caption {
+    color: rgb(255, 255, 0);
+}
+.wizard-difficulty-custom .owc-slider-thumb,
+.wizard-difficulty-custom .owc-slider-elapsed {
+    opacity: 0.4;
+}

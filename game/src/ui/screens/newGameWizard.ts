@@ -52,6 +52,12 @@ import {
     galaxyStarCount,
     setGalaxySectors,
     setGalaxyStarCount,
+    DIFFICULTY_CUSTOM_MAX,
+    DIFFICULTY_CUSTOM_MIN,
+    DIFFICULTY_CUSTOM_STEP,
+    difficultyIsCustom,
+    difficultyLevelOf,
+    setDifficultyLevel,
     VICTORY_PERCENT_MIN,
     VICTORY_TIME_LIMIT_YEARS_MAX,
     VICTORY_TIME_LIMIT_YEARS_MIN,
@@ -768,11 +774,11 @@ function combo(parent: HTMLElement, items: readonly string[], index: number, x: 
 /** A NumericUpDown-looking box ((48, 48, 64) / (170, 170, 170), up / down buttons) that keeps a plain number field's
  *  semantics: the caller reads `input.value` on 'input' / 'change'; the buttons and arrow keys step it by 1 inside
  *  [min, max] and fire both events. */
-function spinBox(className: string, value: number | string, bounds: { min?: number; max?: number } = {}): { el: HTMLDivElement; input: HTMLInputElement } {
+function spinBox(className: string, value: number | string, bounds: { min?: number; max?: number; step?: number; decimals?: number } = {}): { el: HTMLDivElement; input: HTMLInputElement } {
     const wrap = el('div', 'ow-spin wizard-spin');
     const input = el('input', `ow-spin-input ${className}`);
     input.type = 'text';
-    input.inputMode = 'numeric';
+    input.inputMode = bounds.decimals ? 'decimal' : 'numeric';
     input.autocomplete = 'off';
     input.spellcheck = false;
     input.value = String(value);
@@ -783,11 +789,11 @@ function spinBox(className: string, value: number | string, bounds: { min?: numb
     up.tabIndex = down.tabIndex = -1;
     wrap.append(input, up, down);
     const bump = (d: number): void => {
-        const cur = parseInt(input.value, 10);
-        let v = (Number.isNaN(cur) ? 0 : cur) + d;
+        const cur = bounds.decimals ? parseFloat(input.value) : parseInt(input.value, 10);
+        let v = (Number.isNaN(cur) ? 0 : cur) + d * (bounds.step ?? 1);
         if (bounds.min !== undefined) v = Math.max(bounds.min, v);
         if (bounds.max !== undefined) v = Math.min(bounds.max, v);
-        input.value = String(v);
+        input.value = bounds.decimals ? v.toFixed(bounds.decimals) : String(v);
         input.dispatchEvent(new Event('input', { bubbles: true }));
         input.dispatchEvent(new Event('change', { bubbles: true }));
     };
@@ -1156,8 +1162,7 @@ function buildJumpStartPage(ctx: WizardCtx): HTMLDivElement {
     const pirate = buildPiratePlaystyle(ctx, wrap, { label: [500, 298], combo: [730, 295, 160, 21], desc: [500, 331, 220, 205], pic: [730, 331, 160] });
 
     // tbarJumpStartTheGalaxyDifficulty 630 × 55 at (10, 545), LabelWidth 80; chkJumpStartTheGalaxyDifficultyScaling (650, 560).
-    const difficulty = trackBar(wrap, { x: 10, y: 545, w: 630, h: 55, label: wt('Difficulty', 'Difficulty'), labelWidth: 80, labels: DIFFICULTY_TICKS, value: options.difficultyIndex, onChange: (i) => (options.difficultyIndex = i) });
-    ctx.helpOn(difficulty.el, () => [helpTitle2('The Galaxy', 'Difficulty'), wt('Determines difficulty and aggression of gameplay', 'Determines difficulty and aggression of gameplay')]);
+    const difficulty = buildDifficultyControl(ctx, wrap, 10, 545, 630);
     const scaling = check(wrap, wt('Difficulty scales as player nears victory', 'Difficulty scales as player nears victory'), options.difficultyScaling, 650, 560, (v) => (options.difficultyScaling = v), FONT.normal);
     scaling.row.classList.add('wizard-check-wrap');
     scaling.row.style.width = '240px';
@@ -1197,7 +1202,7 @@ function buildJumpStartPage(ctx: WizardCtx): HTMLDivElement {
         pirate.show(isPirate);
         pirate.paint();
         scaling.input.checked = options.difficultyScaling;
-        difficulty.slider.setValue(options.difficultyIndex);
+        difficulty.sync();
     }
     (wrap as unknown as { __onShow?: () => void }).__onShow = () => {
         sync();
@@ -1331,6 +1336,73 @@ function buildGalaxySizeControls(
     return { sync };
 }
 
+/** The wizard's difficulty as text: the tick's name, or "Custom (1.40)" for a custom value. */
+function difficultySummaryText(o: StartGameOptions): string {
+    if (difficultyIsCustom(o)) return `Custom (${difficultyLevelOf(o).toFixed(2)})`;
+    return DIFFICULTY_TICKS[o.difficultyIndex] ?? `index ${o.difficultyIndex}`;
+}
+
+/**
+ * The Difficulty trackbar (tbarStartNewGameTheGalaxyDifficulty / tbarJumpStartTheGalaxyDifficulty: w × 55, LabelWidth
+ * 80, the five method_201 ticks) plus a custom difficulty box (not a port), drawn under the caption: the box shows the
+ * value (2 decimals) the slider picks; a typed value (DIFFICULTY_CUSTOM_MIN..MAX, DIFFICULTY_CUSTOM_STEP steps,
+ * clamped) overrides the slider — the caption reads "Custom" and the thumb dims at the nearest tick — and a typed tick
+ * value snaps back to that tick (startGameOptions.ts setDifficultyLevel). Touching the slider drops the custom value.
+ */
+function buildDifficultyControl(ctx: WizardCtx, parent: HTMLElement, x: number, y: number, w: number): { sync: () => void } {
+    const options = ctx.options;
+    const t = trackBar(parent, {
+        x,
+        y,
+        w,
+        h: 55,
+        label: wt('Difficulty', 'Difficulty'),
+        labelWidth: 80,
+        labels: DIFFICULTY_TICKS,
+        value: options.difficultyIndex,
+        onChange: (i) => {
+            options.difficultyIndex = i;
+            delete options.customDifficulty;
+            sync();
+        },
+        className: 'wizard-difficulty',
+    });
+    const caption = t.el.querySelector<HTMLDivElement>('.owc-trackbar-caption');
+    caption?.classList.add('wizard-difficulty-caption');
+    const box = spinBox('wizard-difficulty-box', difficultyLevelOf(options).toFixed(2), { min: DIFFICULTY_CUSTOM_MIN, max: DIFFICULTY_CUSTOM_MAX, step: DIFFICULTY_CUSTOM_STEP, decimals: 2 });
+    box.input.title = `Difficulty level (${DIFFICULTY_CUSTOM_MIN.toFixed(2)} to ${DIFFICULTY_CUSTOM_MAX.toFixed(2)})`;
+    // Inside the caption column (80 wide), under the caption text; the panel's 1 px border shifts children by -1.
+    t.el.appendChild(place(box.el, 9, 28, 60, 21));
+    ctx.helpOn(t.el, () => [
+        helpTitle2('The Galaxy', 'Difficulty'),
+        `${wt('Determines difficulty and aggression of gameplay', 'Determines difficulty and aggression of gameplay')}. Type a value from ${DIFFICULTY_CUSTOM_MIN.toFixed(2)} to ${DIFFICULTY_CUSTOM_MAX.toFixed(2)} in the box for a custom difficulty (Normal = 1.00).`,
+    ]);
+
+    /** Re-reads the options; `boxes` false leaves the number box as typed (while the user is still typing). */
+    function sync(boxes = true): void {
+        if (boxes) box.input.value = difficultyLevelOf(options).toFixed(2);
+        const custom = difficultyIsCustom(options);
+        t.slider.setValue(options.difficultyIndex);
+        if (caption) caption.textContent = custom ? 'Custom' : wt('Difficulty', 'Difficulty');
+        t.el.classList.toggle('wizard-difficulty-custom', custom);
+    }
+    const apply = (commit: boolean): void => {
+        const v = parseFloat(box.input.value.replace(',', '.'));
+        if (!Number.isNaN(v)) setDifficultyLevel(options, v);
+        sync(commit);
+    };
+    box.input.addEventListener('input', () => apply(false));
+    box.input.addEventListener('change', () => apply(true));
+    // A click on the slider at the custom value's nearest tick does not move it (no onChange): it still picks that tick.
+    t.slider.el.addEventListener('pointerdown', () => {
+        if (!difficultyIsCustom(options)) return;
+        delete options.customDifficulty;
+        sync();
+    });
+    sync();
+    return { sync };
+}
+
 function buildGalaxyPage(ctx: WizardCtx): HTMLDivElement {
     const options = ctx.options;
     const wrap = pageDiv('wizard-galaxy-page');
@@ -1365,8 +1437,7 @@ function buildGalaxyPage(ctx: WizardCtx): HTMLDivElement {
     // Task M4x: Expansion → Galaxy.Age (Setup(2): SliderOffset 2).
     trackBar(wrap, { x: 10, y: 370, w: 380, h: 55, label: wt('Expansion', 'Expansion'), labelWidth: 80, sliderOffset: 2, labels: EXPANSION_TICKS, value: options.galaxyExpansionIndex ?? 1, onChange: (i) => (options.galaxyExpansionIndex = i) });
     trackBar(wrap, { x: 10, y: 430, w: 380, h: 55, label: wt('Aggression', 'Aggression'), labelWidth: 80, labels: AGGRESSION_TICKS, value: options.aggressionIndex, onChange: (i) => (options.aggressionIndex = i) });
-    const difficulty = trackBar(wrap, { x: 10, y: 490, w: 380, h: 55, label: wt('Difficulty', 'Difficulty'), labelWidth: 80, labels: DIFFICULTY_TICKS, value: options.difficultyIndex, onChange: (i) => (options.difficultyIndex = i) });
-    ctx.helpOn(difficulty.el, () => [helpTitle2('The Galaxy', 'Difficulty'), wt('Determines difficulty and aggression of gameplay', 'Determines difficulty and aggression of gameplay')]);
+    const difficulty = buildDifficultyControl(ctx, wrap, 10, 490, 380);
 
     // [todosweep2] begin
     // "Research Costs" (tbarStartNewGameTheGalaxyResearchSpeed 433 × 55 at (400, 370), LabelWidth 70, LinkWidth 65) + the
@@ -1456,6 +1527,7 @@ function buildGalaxyPage(ctx: WizardCtx): HTMLDivElement {
     (wrap as unknown as { __onShow?: () => void }).__onShow = () => {
         shapes.sync();
         sizeControls.sync();
+        difficulty.sync();
         ctx.help(helpTitle2('The Galaxy', 'Shape'), wt('Determines the layout and distribution of stars within the galaxy', 'Determines the layout and distribution of stars within the galaxy'));
     };
 
@@ -2768,7 +2840,7 @@ function buildStartPage(ctx: WizardCtx): HTMLDivElement {
             ['Expansion', EXPANSION_TICKS[options.galaxyExpansionIndex ?? 1] ?? `index ${options.galaxyExpansionIndex}`],
             ['Empire Size', EMPIRE_SIZE_TICKS[options.empireExpansionIndex ?? 1] ?? `index ${options.empireExpansionIndex}`],
             ['Tech Level', TECH_LEVEL_TICKS[options.empireTechLevelIndex ?? 1] ?? `index ${options.empireTechLevelIndex}`],
-            ['Difficulty', DIFFICULTY_TICKS[options.difficultyIndex] ?? `index ${options.difficultyIndex}` + (options.difficultyScaling ? ' (scales near victory)' : '')],
+            ['Difficulty', difficultySummaryText(options) + (options.difficultyScaling ? ' (scales near victory)' : '')],
             ['Your Race', options.raceName || '(not chosen)'],
             ['Home System', `${HOME_SYSTEM_TICKS[options.homeSystemIndex ?? 2]} · ${startLocationsForShape(options.shape)[options.startLocationIndex ?? 0] ?? '(Random)'} · corruption ${CORRUPTION_TICKS[options.empireCorruptionIndex ?? 1]}`],
             ['Story Lines', stories || 'None'],

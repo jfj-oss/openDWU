@@ -36,6 +36,7 @@ import { PirateRelationType } from '../../sim/pirateRelations';
 import { identifyMechanoidEmpire } from '../../sim/fleets/militaryAI';
 import { identifyShakturiEmpire } from '../../sim/diplomacyTick';
 import { formatNet, tryGetText } from '../../sim/textResolver';
+import { difficultyTickFor } from '../../sim/startGameOptions';
 import { applyEmpireEmblem, racePortraitUrl } from '../empireEmblem';
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -283,6 +284,12 @@ export function resolveDifficultyDescription(difficultyLevel: number): string {
     return tx('Extreme', 'Extreme');
 }
 
+/** The difficulty as shown: ResolveDifficultyDescription for a slider tick value; a custom difficulty (the wizard's
+ *  difficulty box, not a port) as "Custom (1.40)". */
+export function difficultyDisplayText(difficultyLevel: number): string {
+    return difficultyTickFor(difficultyLevel) >= 0 ? resolveDifficultyDescription(difficultyLevel) : `Custom (${difficultyLevel.toFixed(2)})`;
+}
+
 /** .NET ToString("###,###,##0"). */
 export function groupedInt(v: number): string {
     const n = Math.round(Number.isFinite(v) ? v : 0);
@@ -497,7 +504,7 @@ export function createGameSummaryPanel(host: HTMLElement, galaxy: Galaxy, w = 86
             else if (sel.pirateEmpireBaseHabitat !== null) col.appendChild(div('gs-normal', tx('Pirate Faction', 'Pirate Faction')));
             // Galaxy.GameSummary (Galaxy.4.cs 2357: DetermineGameSummary at setup): the galaxy's star count and difficulty.
             col.appendChild(div('gs-normal', formatNet(tx('Game Summary Galaxy Size', 'Galaxy Size: {0} stars'), [String(galaxy.starCount)])));
-            col.appendChild(div('gs-normal', formatNet(tx('Game Summary Difficulty', 'Difficulty: {0}'), [resolveDifficultyDescription(galaxy.difficultyLevel)])));
+            col.appendChild(div('gs-normal', formatNet(tx('Game Summary Difficulty', 'Difficulty: {0}'), [difficultyDisplayText(galaxy.difficultyLevel)])));
             col.appendChild(div('gs-normal', formatNet(tx('Game Summary Score', 'Score: {0}'), [groupedInt(sel.score)])));
             d.appendChild(col);
             // DrawTooltips: the score breakdown under the detail area while it is hovered.
@@ -639,7 +646,7 @@ export function createGameSummaryPanel(host: HTMLElement, galaxy: Galaxy, w = 86
             cell(s.playerEmpireName, 180, true);
             cell(s.playerGovernmentName, 100, false);
             cell(formatNet(tx('Game Summary Galaxy Size', 'Galaxy Size: {0} stars'), [String(s.galaxyStarCount)]), 120, false);
-            cell(formatNet(tx('Game Summary Difficulty', 'Difficulty: {0}'), [resolveDifficultyDescription(s.difficultyLevel)]), 100, false);
+            cell(formatNet(tx('Game Summary Difficulty', 'Difficulty: {0}'), [difficultyDisplayText(s.difficultyLevel)]), 100, false);
             cell(formatNet(tx('Game Summary Score', 'Score: {0}'), [String(s.playerScore)]), 80, false);
             cell(s.playerVictory ? tx('Game Summary Victory', 'Victory') : tx('Game Summary Defeat', 'Defeat'), 50, false);
             // Medals from x = 670 of the panel (the C# literal), i.e. 660 in the area.
