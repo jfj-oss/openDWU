@@ -224,6 +224,10 @@ export class MainViewSounds {
     /** BuiltObjectIndex.updates seen at the last collect (an index not updated since is stale: walk the full list). */
     private indexUpdates = -1;
     private nearScratch: BuiltObject[] = [];
+    /** collect() calls so far, and the last call each ship was seen with HyperjumpJustExited set: consecutive calls
+     *  are the same exit (sounded once); a gap means the flag dropped in between, so a new exit. */
+    private collectCount = 0;
+    private exitSeenAt = new WeakMap<BuiltObject, number>();
 
     constructor(
         private player: EffectsPlayer,
@@ -239,6 +243,7 @@ export class MainViewSounds {
      * `now` = Galaxy.CurrentDateTime (game ms), `starDate` = Galaxy.CurrentStarDate.
      */
     collect(galaxy: Galaxy, view: SoundView, viewer: Empire | null, now: number, starDate: number, godMode = false): MainViewSoundResult {
+        this.collectCount++;
         const out: SoundEffectRequest[] = [];
         const f = 1 / view.zoom; // main_0.double_0
         const req = (r: SoundEffectRequest | null): void => {
@@ -441,10 +446,16 @@ export class MainViewSounds {
             req(this.player.resolveHyperjumpEntry(b.balance, b.distance));
             this.marks.markHyperEntry(bo);
         }
-        // No played flag in the C#: requested every frame while HyperjumpJustExited (the sim clears it next tick).
+        // The C# has no played flag: it requests the sound every frame while HyperjumpJustExited, which the sim clears on
+        // its next tick, so it sounds once there. Here several drawn frames can fall between two sim steps (a monitor
+        // above 60 Hz, the sim worker), which stacked the exit sound two or more times over itself. Once per exit.
         if (bo.hyperjumpJustExited) {
-            const b = bd(p);
-            req(this.player.resolveHyperjumpExit(b.balance, b.distance));
+            const last = this.exitSeenAt.get(bo);
+            this.exitSeenAt.set(bo, this.collectCount);
+            if (last === undefined || last < this.collectCount - 1) {
+                const b = bd(p);
+                req(this.player.resolveHyperjumpExit(b.balance, b.distance));
+            }
         }
     }
 
