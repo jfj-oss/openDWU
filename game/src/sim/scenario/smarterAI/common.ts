@@ -12,7 +12,7 @@ export const SMARTER_AI_FLAG = 'smarterAI';
 export const SMARTER_AI_RESEARCH_FLAG = 'smarterAIResearch';
 export const SMARTER_AI_GROWTH_TAX_FLAG = 'smarterAIGrowthTax';
 export const SMARTER_AI_GROWTH_TAX_THRESHOLD_PARAM = 'smarterAIGrowthTaxThreshold';
-export const SMARTER_AI_GROWTH_TAX_THRESHOLD_DEFAULT = 70;
+export const SMARTER_AI_GROWTH_TAX_THRESHOLD_DEFAULT = 50;
 export const SMARTER_AI_STATE_KEY = 'smarterAI';
 
 /** One empire's research orders (project ids). `base` is fixed at the empire's first use; `current` is re-weighed yearly. */

@@ -22,6 +22,6 @@
     { "name": "smarterAIDesignTrim", "label": "Keep speed when trimming", "description": "When an AI warship design is too large, armour and then extra weapons are removed before engines.", "default": true }
   ],
   "params": [
-    { "name": "smarterAIGrowthTaxThreshold", "label": "Growth taxes: untaxed below this % of maximum population", "default": 70, "min": 0, "max": 100 }
+    { "name": "smarterAIGrowthTaxThreshold", "label": "Growth taxes: untaxed below this % of maximum population", "default": 50, "min": 0, "max": 100 }
   ]
 }
