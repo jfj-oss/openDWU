@@ -16,7 +16,7 @@ import type { Empire } from '../empire';
 import { createGame, type CreateGameOptions, type Game } from '../game';
 import { galaxyStarDate } from '../tick/simTime';
 import { inSimFrame, setCommandDrainer } from '../tick/commandBoundary';
-import { nextFrameMs, runSimFrame, schedulerState } from '../tick/scheduler';
+import { nextFrameMs, runSimFrame, schedulerState, type SimView } from '../tick/scheduler';
 import { flatEmpireList } from '../save/galaxySave';
 import { appendCommandLog, commandLog, copyCommandLogEntry, type CommandLogEntry, type PlayerLogEntry } from './commandLog';
 import { CommandEncodeError, decodeCommandArg, encodeCommandArg, type EncodedArg } from './commandCodec';
@@ -292,11 +292,45 @@ export function noteSimView(galaxy: Galaxy, on: boolean): void {
     appendCommandLog(galaxy, { starDate: galaxyStarDate(galaxy), nowMs: galaxy.nowMs, source: 'view', on });
 }
 
-/** Why a replay of `log` cannot be exact (empty when it can): stretches run with the camera LOD pass on. */
+/** The camera the log says the LOD pass runs with now (the last 'view' entry's `view`; null when off, or when it was
+ *  switched on without a journaled camera — a replay runs that stretch without a view). */
+export function loggedSimViewRect(galaxy: Galaxy): SimView | null {
+    const log = commandLog(galaxy);
+    for (let i = log.length - 1; i >= 0; i--) {
+        const e = log[i];
+        if (e.source === 'view') return e.on && e.view !== undefined ? e.view : null;
+    }
+    return null;
+}
+
+function sameSimView(a: SimView, b: SimView): boolean {
+    return a.x === b.x && a.y === b.y && a.viewWidth === b.viewWidth && a.viewHeight === b.viewHeight && a.clientWidth === b.clientWidth && a.zoomFactor === b.zoomFactor;
+}
+
+/**
+ * Journal the camera the LOD pass runs with from this boundary on (null: no pass) when it differs from the logged one,
+ * and return the logged camera — the frames must run with exactly that (the app loop calls this before stepping and
+ * passes the result to the scheduler), so a replay of the log runs the same pass.
+ */
+export function noteSimViewRect(galaxy: Galaxy, view: SimView | null): SimView | null {
+    if (inSimFrame()) throw new Error('noteSimViewRect inside a sim frame');
+    const logged = loggedSimViewRect(galaxy);
+    if (view === null) {
+        if (loggedSimView(galaxy)) appendCommandLog(galaxy, { starDate: galaxyStarDate(galaxy), nowMs: galaxy.nowMs, source: 'view', on: false });
+        return null;
+    }
+    if (logged !== null && sameSimView(logged, view)) return logged;
+    const v = { ...view };
+    appendCommandLog(galaxy, { starDate: galaxyStarDate(galaxy), nowMs: galaxy.nowMs, source: 'view', on: true, view: v });
+    return v;
+}
+
+/** Why a replay of `log` cannot be exact (empty when it can): stretches run with the camera LOD pass on and no journaled
+ *  camera. */
 export function commandLogReplayWarnings(log: readonly CommandLogEntry[]): string[] {
     const out: string[] = [];
     for (const e of log) {
-        if (e.source === 'view' && e.on) out.push(`camera level-of-detail pass (?simView=1) on from ${e.nowMs} ms: the camera is not journaled, the replay runs without it and may differ`);
+        if (e.source === 'view' && e.on && e.view === undefined) out.push(`camera level-of-detail pass (?simView=1) on from ${e.nowMs} ms: the camera is not journaled, the replay runs without it and may differ`);
     }
     return out;
 }
@@ -316,7 +350,8 @@ export function scheduleCommandLog(galaxy: Galaxy, entries: readonly CommandLogE
     }
 }
 
-/** Run `galaxy` headless (no view) until `untilMs`, at the speeds the scheduled 'clock' entries name. */
+/** Run `galaxy` until `untilMs`, at the speeds the scheduled 'clock' entries name and with the cameras the 'view' entries
+ *  journal (headless — no view — where there is none). */
 export function runScheduledUntil(galaxy: Galaxy, untilMs: number): void {
     queueOf(galaxy);
     const state = schedulerState(galaxy);
@@ -325,14 +360,16 @@ export function runScheduledUntil(galaxy: Galaxy, untilMs: number): void {
         // The boundary's entries (incl. a speed change) apply before the frame length is chosen, as in the app loop.
         flushPlayerCommands(galaxy);
         speed = loggedSimSpeed(galaxy);
-        runSimFrame(galaxy, nextFrameMs(state, speed));
+        // The journaled camera (if any) runs the same LOD pass the app ran.
+        const view = loggedSimViewRect(galaxy);
+        runSimFrame(galaxy, nextFrameMs(state, speed), view !== null ? { view } : undefined);
     }
     flushPlayerCommands(galaxy);
 }
 
 /**
  * Seed + command log → the game: createGame({ ...options, seed }) and apply every log entry at its frame boundary,
- * running headless (no camera view) until `untilMs` (default: the last entry's time). The result's own log equals
+ * running until `untilMs` (headless, or with the cameras its 'view' entries journal) (default: the last entry's time). The result's own log equals
  * `log` (each applied entry is journaled again, after checking it resolves to the same objects).
  */
 export function replayCommandLog(

@@ -10,7 +10,8 @@ import type { Game } from '../sim/game';
 import { setRemoteCommandSink } from '../sim/player/playerCommands';
 import { setRemoteHintSubjects, type HintInfo } from '../sim/player/hintSubjects';
 import { setRemoteWaypoints, type WaypointState } from '../sim/player/waypoints';
-import { FRAME_REAL_MS } from '../sim/tick/scheduler';
+import { FRAME_REAL_MS, type SimView } from '../sim/tick/scheduler';
+import { SimViewThrottle } from '../simFrameBudget';
 import { createRenderTime, updateRenderTime, type RenderTime } from '../render/renderInterp';
 import { GalaxyReplica } from './replicaGalaxy';
 import { ReplicaTradeFlows } from './tradeFlowSync';
@@ -21,7 +22,7 @@ import { Fighter } from '../sim/combat/fighters';
 import { ShipGroup } from '../sim/fleets/shipGroup';
 import { Empire as EmpireClass } from '../sim/empire';
 import { Habitat } from '../sim/types';
-import type { ClockMessage, CommandMessage, HostOpMessage, RefreshRequest, SnapshotMessage, StepMessage, ToWorker, WorkerEvent } from './protocol';
+import type { ClockMessage, CommandMessage, ViewMessage, HostOpMessage, RefreshRequest, SnapshotMessage, StepMessage, ToWorker, WorkerEvent } from './protocol';
 import { setRemoteSimHost, type RemoteSimHost } from './remoteHost';
 import { commandFailureMessage, commandFailureValue } from './commandFailure';
 import { setRemoteRefreshSink } from './refresh';
@@ -597,6 +598,16 @@ export class SimClientCore {
             this.holdSince = this.now();
             this.stats.pauseHolds++;
         } else if (!time.paused) this.holdSeq = 0; // resumed before the ack: nothing to hold
+        this.opts.post(m);
+    }
+
+    private readonly viewThrottle = new SimViewThrottle();
+
+    /** Hand the worker the camera for its LOD pass (null: no pass) when it changed, rate-limited (SimViewThrottle). */
+    syncView(view: SimView | null): void {
+        if (this.disposed) return;
+        if (!this.viewThrottle.due(view, this.now())) return;
+        const m: ViewMessage = { type: 'view', view };
         this.opts.post(m);
     }
 

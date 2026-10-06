@@ -4,6 +4,7 @@
 import type { CreateGameOptions } from '../sim/game';
 import type { GenerateGalaxyOptions } from '../sim/galaxy';
 import type { CommandLogEntry } from '../sim/player/commandLog';
+import type { SimView } from '../sim/tick/scheduler';
 import type { StartGameOptions } from '../sim/startGameOptions';
 import type { ReplicaDelta } from './replicaSync';
 import type { RemoteArg } from './remoteArgs';
@@ -59,6 +60,16 @@ export interface ClockMessage {
     seq: number;
     speed: number;
     paused: boolean;
+}
+
+/**
+ * The camera for the sim's level-of-detail pass (scheduler.ts processMain; simLoop.ts header): the worker journals it at
+ * its next frame boundary (a 'view' command-log entry) and runs its frames with it. null: no pass (`?simView=0`). The
+ * main thread sends it on change, at most every SIM_VIEW_MIN_INTERVAL_MS (SimViewThrottle).
+ */
+export interface ViewMessage {
+    type: 'view';
+    view: SimView | null;
 }
 
 export interface CommandMessage {
@@ -143,6 +154,7 @@ export interface HostOpMessage {
 export type ToWorker =
     | InitMessage
     | ClockMessage
+    | ViewMessage
     | CommandMessage
     | HostOpMessage
     | RefreshRequest

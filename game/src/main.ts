@@ -21,7 +21,7 @@ import { GalaxyShape } from './sim/types';
 import { clearHudMessages, createHud, destroyHudListeners, refreshTopLeftControls, topSystemNameText, layoutHud, nearestSystem, pushHudMessage, setSelection as setHudSelection, type HudRefs } from './ui/hud';
 import { GalaxyTime } from './sim/clock';
 import { resolveStarDateDescription } from './sim/galaxyTime';
-import { createSimLoop, simViewEnabledFromUrl } from './simLoop';
+import { createSimLoop, simViewEnabledFromUrl, simViewFromCamera } from './simLoop';
 // [simworker] begin — docs/sim-worker.md: the sim in a Web Worker (the default; ?simWorker=0 or Settings → off selects the in-thread fallback).
 import { SimWorkerClient, simWorkerEnabled, type ReplicaGameData } from './simworker/workerClient';
 import { workerCreateOptions } from './simworker/bootOptions';
@@ -723,7 +723,7 @@ export async function startGameView(
     }
     // [simworker] in worker mode the frame loop applies the worker's deltas to the replica instead of stepping.
     const inThreadLoop = simClient === undefined ? createSimLoop(galaxy, time, camera, simViewEnabledFromUrl(window.location.search)) : null;
-    const simLoop: { stats: object; renderTime: RenderTime; tick(realDtMs: number): number } = inThreadLoop ?? simClient!.createLoop(time);
+    const simLoop: { stats: object; renderTime: RenderTime; tick(realDtMs: number): number } = inThreadLoop ?? simClient!.createLoop(time, simViewEnabledFromUrl(window.location.search) ? () => simViewFromCamera(camera) : null);
     if (savedClock === undefined) {
         // New game: the founding line, dated at the game start.
         pushHudMessage(foundingMessage, resolveStarDateDescription(time.currentStarDate));
@@ -1934,7 +1934,7 @@ async function bootGameWithOptions(opts: BootOptions): Promise<void> {
     const time = new GalaxyTime();
     // [simworker] in worker mode the frame loop applies the worker's deltas to the replica instead of stepping.
     const inThreadLoop = simClient === null ? createSimLoop(galaxy, time, camera, simViewEnabledFromUrl(window.location.search)) : null;
-    const simLoop: { tick(realDtMs: number): number; renderTime: RenderTime } = inThreadLoop ?? simClient!.createLoop(time);
+    const simLoop: { tick(realDtMs: number): number; renderTime: RenderTime } = inThreadLoop ?? simClient!.createLoop(time, simViewEnabledFromUrl(window.location.search) ? () => simViewFromCamera(camera) : null);
     if (inThreadLoop !== null) Object.assign(debugHook, { time, sim: inThreadLoop.driver, simStats: inThreadLoop.stats });
     else {
         const sc = simClient!;
