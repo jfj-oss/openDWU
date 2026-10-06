@@ -15,6 +15,7 @@ import { moonDotPx, planetSpritePx, starSpritePx } from './mainView';
 import { drawThreatMarker, threatMarkerStyle, type ThreatMarkerStyle } from './threatMarkers';
 import { Texture } from 'pixi.js';
 import { SpritePool } from './fxCommon';
+import { circleAtScreenRes } from './screenCircle';
 import { textureFromPixels } from './shipOverlays';
 import { herderCampRgba } from './emblemArt';
 import { BuiltObjectRole } from '../sim/data/designSpecifications';
@@ -287,7 +288,8 @@ export class ArtBundleLayer {
             if (f >= LEAGUE_SECTOR_F) {
                 const pts = leagueMemberPoints(l.members, this.motion);
                 const dots = leagueBoundaryDots(pts, Math.max(LEAGUE_MARGIN, 30 / z), LEAGUE_DOT_PX / z);
-                for (const d of dots) if (onScreen(d.x, d.y, 10 / z)) g.circle(d.x, d.y, 1.8 / z);
+                // At screen resolution: a world-unit circle of 1.8 px is tessellated by its world radius (~1000 vertices at galaxy zoom).
+                for (const d of dots) if (onScreen(d.x, d.y, 10 / z)) circleAtScreenRes(g, d.x, d.y, 1.8 / z, z);
                 g.fill({ color: col, alpha: 0.85 });
                 const seat = l.founder ?? l.members[0] ?? null;
                 const lp = seat !== null ? drawnPositionOf(this.motion, seat, this.posScratch) : null;

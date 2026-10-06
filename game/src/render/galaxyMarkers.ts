@@ -893,6 +893,9 @@ export class GalaxyMarkerLayer {
         this.ox = cam.x;
         this.oy = cam.y;
         this.overlayGroup.position.set(cam.x, cam.y);
+        // overlayG is drawn in screen px (scaled 1/z): Pixi tessellates round joins / caps and circles by their size in
+        // local units, so drawing a few-px marker in world units at galaxy zoom (1 px ~ 60000 units) made ~400k vertices.
+        this.overlayG.scale.set(1 / z);
         this.selGroup.position.set(cam.x, cam.y);
         this.selBoxes.length = 0;
         this.decorateLabels(systems, f, z, factionOn && gates.systemNames);
@@ -1098,15 +1101,16 @@ export class GalaxyMarkerLayer {
             if (sys.hasRuins === true) {
                 const q = f < 4000 ? 3 : 2;
                 // label.width / height are world units (the label is scaled 1/z); num42 = 3 px below the text top.
-                const nx = star.xpos - this.ox + x / z + label.width + 1 / z;
-                const ny = star.ypos - this.oy + 1 / z - label.height + 3 / z;
+                // overlayG is in screen px relative to (ox, oy).
+                const nx = (star.xpos - this.ox) * z + x + label.width * z + 1;
+                const ny = (star.ypos - this.oy) * z + 1 - label.height * z + 3;
                 const g = this.overlayG;
                 for (const [dx, dy] of [
                     [0, 5],
                     [6, 5],
                     [3, 0],
                 ]) {
-                    g.rect(nx + dx / z, ny + dy / z, q / z, q / z).fill({ color: fill });
+                    g.rect(nx + dx, ny + dy, q, q).fill({ color: fill });
                 }
             }
         }
@@ -1120,7 +1124,8 @@ export class GalaxyMarkerLayer {
         const swordPx = f < 4000 ? SWORD_PX_NEAR : SWORD_PX_FAR;
         const pulse = 0.8 + 0.2 * Math.sin(performance.now() / 250);
         const off = (ringPx + swordPx / 2) * Math.SQRT1_2;
-        drawCrossedSwords(this.overlayG, star.xpos - this.ox + off / z, star.ypos - this.oy + off / z, swordPx, z, fire * pulse);
+        // overlayG is in screen px relative to (ox, oy) (update): z = 1 for the swords' px -> local scale.
+        drawCrossedSwords(this.overlayG, (star.xpos - this.ox) * z + off, (star.ypos - this.oy) * z + off, swordPx, 1, fire * pulse);
     }
 
     private iconSprite(i: number): Sprite {
