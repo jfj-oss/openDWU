@@ -9,10 +9,17 @@
 import { parseGameText } from './data/gameText';
 
 let text = new Map<string, string>();
+/**
+ * A GameText.txt file is loaded (loadText). Kept apart from the table's size: a scenario overlay's addText on a table
+ * whose base file never loaded (a failed fetch) must not make the table look loaded — its few add-on tags would then
+ * hide that every base tag is missing, and every deferred message text would show as its raw "tag|arg|…" encoding.
+ */
+let baseLoaded = false;
 
 /** TextResolver.cs Clear. */
 export function clearText(): void {
     text = new Map();
+    baseLoaded = false;
 }
 
 /**
@@ -22,6 +29,23 @@ export function clearText(): void {
 export function loadText(content: string): void {
     clearText();
     text = parseGameText(content).text;
+    baseLoaded = text.size > 0;
+}
+
+/**
+ * Not a port: load a GameText.txt file under a table that has none yet (its first load failed), keeping the tags the
+ * scenario overlays already added on top (addText overrides). A no-op once a GameText.txt file is loaded, and for an
+ * HTML page (a web server's fallback answer for a missing file).
+ */
+export function loadBaseTextUnderAdded(content: string): void {
+    if (baseLoaded || /^\uFEFF?\s*</.test(content)) return;
+    const added = text;
+    loadText(content);
+    if (!baseLoaded) {
+        text = added;
+        return;
+    }
+    for (const [k, v] of added) text.set(k, v);
 }
 
 /**
@@ -32,9 +56,9 @@ export function addText(content: string): void {
     for (const [k, v] of parseGameText(content).text) text.set(k, v);
 }
 
-/** True once a GameText table has been loaded (loadGameData does it). */
+/** True once a GameText.txt file has been loaded (loadGameData does it); add-on tags alone do not count. */
 export function isTextLoaded(): boolean {
-    return text.size > 0;
+    return baseLoaded;
 }
 
 /** TextResolver.cs GetText(tag). */

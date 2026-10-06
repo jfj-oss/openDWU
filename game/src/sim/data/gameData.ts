@@ -318,8 +318,14 @@ export async function loadGameData(
         Promise.all(raceFiles.map((fileName) => fetchText(raceFileUrls(fileName)))),
 
         // Start.cs 885-899: TextResolver.LoadText(GameText.txt), the customization set's copy replacing the
-        // stock one when present (LoadText clears first). Display text only; a missing file leaves tags unresolved.
-        fetchText(resolveDataUrl('GameText.txt', customizationSet)).catch(() => ''),
+        // stock one when present (LoadText clears first). Display text only; a missing file leaves tags unresolved —
+        // every deferred message text (gameText() "tag|arg|…") would then show raw, so a failed fetch is tried again.
+        fetchText(resolveDataUrl('GameText.txt', customizationSet))
+            .catch(() => fetchText(resolveDataUrl('GameText.txt', customizationSet)))
+            .catch((err: unknown) => {
+                console.error('GameText.txt failed to load: message texts will show their raw keys', err);
+                return '';
+            }),
 
         // BaconMain.cs 1107: new StreamReader("BaconSettings.txt") — relative to the working directory (the install
         // root), never a customization set; FileNotFoundException → empty dictionary → every setting at its default.

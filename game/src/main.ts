@@ -93,6 +93,8 @@ import { serializeGameBlob, saveTextString, saveTextTail, type SaveText } from '
 import { deserializeGameSteps, savedCustomizationSet, savedScenarioId, savedScenarioInclude, type GameSaveJSON } from './sim/save/gameSave';
 import { loadScenarioIndex, loadScenarioOverlay } from './sim/scenario/fetchScenario';
 import { applyScenarioOverlay, type ScenarioOverlay } from './sim/scenario/overlay';
+import { isTextLoaded, loadBaseTextUnderAdded } from './sim/textResolver';
+import { resolveThemedDataUrl } from './sim/data/paths';
 import { COMPOSITE_SCENARIO_ID, addonCatalog, compositeScenarioManifest, planAddonStart, resolveAddonSwitches, scenarioOverlayFor } from './sim/scenario/addons';
 // [leftovers] begin
 import { closeGalacticHistory } from './ui/screens/galacticHistory';
@@ -647,6 +649,15 @@ export async function startGameView(
     if (dwuPresent) {
         // Real-art file lists (scripts/gen-asset-manifest.mjs, predev/prebuild).
         await loadManifest();
+        // The ticker, Message History, popups and Messages window resolve the messages' deferred "tag|arg|…" texts
+        // against this page's GameText table: when its load failed (loadGameData), try once more before they read it.
+        if (!isTextLoaded()) {
+            try {
+                loadBaseTextUnderAdded(await fetchTextBrowser(resolveThemedDataUrl('GameText.txt')));
+            } catch (err) {
+                console.error('GameText.txt failed to load: message texts will show their raw keys', err);
+            }
+        }
     }
     const galaxy = game.galaxy;
     // Start.2.cs 60 / Start.cs 2394 method_56: the player race's chrome folder of the theme is searched first.
