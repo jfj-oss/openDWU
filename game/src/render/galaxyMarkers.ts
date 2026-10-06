@@ -71,7 +71,7 @@ import { displayColorForEmpire } from '../sim/empireColors';
 import { useMinifyingFilter } from './assets';
 import { boundsOnScreen } from './drawCache';
 import { showsMapIndicators } from './mainViewDisplay';
-import { drawCrossedSwords, systemsUnderFire } from './battleIcons';
+import { drawCrossedSwords, SWORD_PX_FAR, SWORD_PX_NEAR, systemsUnderFire } from './battleIcons';
 import { builtObjectHiddenFromPick, warEmpires } from './builtObjectLayer';
 import { SystemLinkLayer } from './systemLinks';
 import { galaxyViewGates } from './cleanGalaxyView';
@@ -1052,6 +1052,12 @@ export class GalaxyMarkerLayer {
                     if (label.style.fontSize !== 11) label.style.fontSize = 11;
                     this.decorated.delete(label);
                 }
+                // The fight marker is an alert: it stays when the name label is only crowded out by a neighbour's.
+                if (on && sv.root.visible && f > SYSTEM_RING_MIN_FACTOR && this.underFire.has(sv.system.systemStar.systemIndex)) {
+                    const star = sv.system.systemStar;
+                    const owner = this.owners.get(sv.system) ?? null;
+                    this.drawFireMarker(star, systemRingRadiusPx(f, owner?.tsv ?? 0, star.diameter, this.galaxy.maxSolarSystemSize, star.type === HabitatType.BlackHole), f, z);
+                }
                 continue;
             }
             this.decorated.add(label);
@@ -1087,14 +1093,7 @@ export class GalaxyMarkerLayer {
             if (label.style.fontSize !== size) label.style.fontSize = size;
             label.anchor.set(0, 1);
             label.position.set(x / z, 1 / z); // root sits at the star; baseline just above the centre line
-            // Crossed swords: lower-right corner of the ring while the player is fighting in this system.
-            const fire = this.underFire.get(star.systemIndex);
-            if (fire !== undefined) {
-                const swordPx = f < 4000 ? 18 : 14;
-                const pulse = 0.8 + 0.2 * Math.sin(performance.now() / 250);
-                const off = (ringPx + swordPx / 2) * Math.SQRT1_2;
-                drawCrossedSwords(this.overlayG, star.xpos - this.ox + off / z, star.ypos - this.oy + off / z, swordPx, z, fire * pulse);
-            }
+            this.drawFireMarker(star, ringPx, f, z);
             // Ruins glyph "∴" (5645-5657): three small squares in the name colour right after the name.
             if (sys.hasRuins === true) {
                 const q = f < 4000 ? 3 : 2;
@@ -1112,6 +1111,16 @@ export class GalaxyMarkerLayer {
             }
         }
         for (let i = icons; i < this.iconPool.length; i++) this.iconPool[i].visible = false;
+    }
+
+    /** Crossed swords at the lower-right corner of the ring while the player is fighting in this system. */
+    private drawFireMarker(star: { xpos: number; ypos: number; systemIndex: number }, ringPx: number, f: number, z: number): void {
+        const fire = this.underFire.get(star.systemIndex);
+        if (fire === undefined) return;
+        const swordPx = f < 4000 ? SWORD_PX_NEAR : SWORD_PX_FAR;
+        const pulse = 0.8 + 0.2 * Math.sin(performance.now() / 250);
+        const off = (ringPx + swordPx / 2) * Math.SQRT1_2;
+        drawCrossedSwords(this.overlayG, star.xpos - this.ox + off / z, star.ypos - this.oy + off / z, swordPx, z, fire * pulse);
     }
 
     private iconSprite(i: number): Sprite {
