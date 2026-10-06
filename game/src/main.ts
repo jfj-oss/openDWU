@@ -343,6 +343,13 @@ async function bootWorker(title: string, boot: WorkerBoot, playData: ReplicaGame
     try {
         overlay.update({ step: 'Starting simulation thread', fraction: 0 });
         await nextPaint();
+        // The replica's static tables (GovernmentsStatic, government and race biases): createGame installs them in the
+        // worker only, and the screens on this thread read them (Empire Summary's government list, government names).
+        // A load resolves its data from the snapshot (gameDataForScenario installs them there).
+        if (typeof playData !== 'function') {
+            installGameStatics(playData);
+            registerGameHooks();
+        }
         // The worker loads the same theme's data (Main.Part12.cs CustomizationSetName()).
         return await SimWorkerClient.boot({ type: 'init', boot, startOptions, clock, customizationSet: activeCustomizationSetName(), battleReports: battleReportsObserverOn() }, playData, { update: (p) => overlay.update(p), paint: nextPaint });
     } finally {

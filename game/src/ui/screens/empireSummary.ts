@@ -408,6 +408,7 @@ function createEmpireSummary(src: EmpireSummarySource): OpenState {
     let selectedGovernment = -1;
     const governments = getGovernmentsStatic();
     let revolution: HTMLButtonElement | null = null;
+    let syncGovernmentList: (() => void) | null = null;
     const updateRevolution = (): void => {
         if (revolution === null) return;
         const g = selectedGovernment >= 0 ? governments[selectedGovernment] : null;
@@ -442,18 +443,36 @@ function createEmpireSummary(src: EmpireSummarySource): OpenState {
         }, FONT.normal);
         body.appendChild(place(about, 271, 164));
         // cmbEmpireSummaryChangeGovernmentType (271, 189) 155 × 21: "(Select government...)" + AllowableGovernmentTypes.
-        const options = [{ value: '-1', label: `(${gt('Select government...')})` }];
-        for (const id of empire.allowableGovernmentTypes) {
-            const g = governments[id];
-            if (g) options.push({ value: String(id), label: g.name });
-        }
-        const combo = dropDown(options, '-1', (v) => {
+        // Main.Part9.cs 4242-4252: every allowable type (the current one too), in list order, built when the screen opens.
+        const combo = dropDown([], '-1', (v) => {
             selectedGovernment = Number(v);
             updateRevolution();
             renderColony();
         });
         combo.classList.add('es-gov-combo');
         body.appendChild(place(combo, 271, 189, 155, 21));
+        // Ours also follows a type unlocked while the screen is open (a government ruin): the list is rebuilt when
+        // AllowableGovernmentTypes changes, keeping the pick if it is still listed.
+        let listedGovernments = '';
+        syncGovernmentList = (): void => {
+            const key = empire.allowableGovernmentTypes.join(',');
+            if (key === listedGovernments) return;
+            listedGovernments = key;
+            const options: { value: string; label: string }[] = [{ value: '-1', label: `(${gt('Select government...')})` }];
+            for (const id of empire.allowableGovernmentTypes) {
+                const g = governments[id];
+                if (g) options.push({ value: String(id), label: g.name });
+            }
+            combo.replaceChildren(...options.map((o) => {
+                const opt = document.createElement('option');
+                opt.value = o.value;
+                opt.textContent = o.label;
+                return opt;
+            }));
+            if (!options.some((o) => o.value === String(selectedGovernment))) selectedGovernment = -1;
+            combo.value = String(selectedGovernment);
+        };
+        syncGovernmentList();
         // btnEmpireSummaryChangeGovernment (10, 345) 420 × 50.
         revolution = glassButton('', { onClick: () => void onRevolution() });
         body.appendChild(place(revolution, 10, 345, 420, 50));
@@ -813,6 +832,11 @@ function createEmpireSummary(src: EmpireSummarySource): OpenState {
         if (win.closed) return;
         win.setTitle(`${gt('Empire Summary')}: ${empire.name}`);
         if (document.activeElement !== name && name.value !== empire.name) name.value = empire.name;
+        if (syncGovernmentList !== null) {
+            const before = selectedGovernment;
+            syncGovernmentList();
+            if (selectedGovernment !== before) updateRevolution();
+        }
         renderColony();
         renderEconomy();
         renderBonuses();
