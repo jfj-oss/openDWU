@@ -319,6 +319,17 @@ export interface ScenarioEvents {
      * (placement / names), as the stock step it replaces does. Smarter AI pre-warp opening.
      */
     dormantStateConstruction: { empire: Empire };
+    /**
+     * combat/invasion.ts invasionRepelled / raidInProgress (Habitat.cs 3570-3600 "fended off a raid", 3708-3740 the
+     * raiders' withdrawal): a raid on `habitat` by `invader` was repulsed. No Rnd in handlers. Colony defence.
+     */
+    pirateRaidRepulsed: { habitat: Habitat; invader: Empire };
+    /**
+     * A pirate facility on `habitat` was destroyed (combat/invasion.ts: the owner's Attack succeeding, Habitat.cs 4136, or
+     * a rival raid, 3678; combat/damage.ts bombardment, BuiltObject.2.cs 5895), after the stock control cut. `pirate` =
+     * the faction that held it; `byOwner` = the colony's owner destroyed it (the Attack path). No Rnd in handlers.
+     */
+    pirateFacilityDestroyed: { habitat: Habitat; pirate: Empire; byOwner: boolean };
 }
 export type ScenarioEventName = keyof ScenarioEvents;
 
@@ -601,6 +612,17 @@ export interface ScenarioQueries {
      * Handlers must not mutate `spec` (it is the empire's own template). Smarter AI ship design. No Rnd.
      */
     aiDesignTweak: { value: AIDesignChooser | null; args: { empire: Empire; spec: DesignSpecification } };
+    /**
+     * pirates/pirateAI.ts reviewPirateControl (BaconHabitat.cs 1388) and combat/invasion.ts invasionSucceeded (Habitat.cs
+     * 3818): true stops every pirate faction gaining control of `habitat` (growth, new entries, raid gains). No Rnd.
+     * Colony defence.
+     */
+    pirateControlGainBlocked: { value: boolean; args: { habitat: Habitat } };
+    /**
+     * construction/facilities.ts pirateReviewColonyFacilities (Empire.3.cs 254) and constructFacilities (Habitat.cs
+     * 2039): true stops `pirate` queueing or progressing a pirate facility on `habitat`. No Rnd. Colony defence.
+     */
+    pirateFacilityBlocked: { value: boolean; args: { habitat: Habitat; pirate: Empire | null } };
 }
 export type ScenarioQueryName = keyof ScenarioQueries;
 

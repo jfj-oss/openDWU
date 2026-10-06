@@ -1536,6 +1536,7 @@ export function inflictBombardDamage(galaxy: Galaxy, self: BuiltObject, habitat:
                             if (empireById !== null) {
                                 const description = gameText('Bombardment Destroys Facility Description', planetaryFacility.name, self.name);
                                 sendMessageToEmpire(empireById, empireById, EmpireMessageType.PlanetaryFacilityDestroyed, planetaryFacility, description);
+                                if (galaxy.scenario !== null) scenarioEmit(galaxy, 'pirateFacilityDestroyed', { habitat, pirate: empireById, byOwner: false }); // mod layer (colony defence)
                             }
                         }
                     } else if (habitat.empire !== null) {

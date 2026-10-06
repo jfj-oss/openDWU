@@ -16,6 +16,7 @@
 // PirateColonyControl (Habitat.GetPirateControl) is not modelled yet (M4s2): its lookups are the stubs in
 // pirates/pirateAI.ts, which return null — what the C# sees for a colony with an empty PirateColonyControlList.
 
+import { scenarioQuery } from '../scenario/hooks';
 import { checkTriggerEvent } from '../story/eventActions';
 import { EventTriggerType } from '../story/gameEventModel';
 import type { Galaxy } from '../galaxy';
@@ -404,6 +405,8 @@ export function constructFacilities(galaxy: Galaxy, habitat: Habitat, timePassed
                     const empireById = getEmpireById(galaxy, byFacilityControl.empireId);
                     num5 = f32(calculatePlanetaryFacilityBuildTimeFactor(planetaryFacility, empireById));
                 }
+                // Mod layer (colony defence): no progress on a defended colony / under the rebuild cooldown.
+                if (galaxy.scenario !== null && scenarioQuery(galaxy, 'pirateFacilityBlocked', false, { habitat, pirate: byFacilityControl === null ? null : getEmpireById(galaxy, byFacilityControl.empireId) })) continue;
                 break;
             }
             default:
@@ -681,6 +684,7 @@ export function pirateReviewColonyFacilities(galaxy: Galaxy, empire: Empire): vo
             }
         }
         if (!flag || pirateColonyControl === null) continue;
+        if (galaxy.scenario !== null && scenarioQuery(galaxy, 'pirateFacilityBlocked', false, { habitat, pirate: empire })) continue; // mod layer (colony defence)
         const control = pirateColonyControl;
         if (habitat.facilities === null) habitat.facilities = [];
         const facilities = habitat.facilities;

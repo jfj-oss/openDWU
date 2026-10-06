@@ -23,7 +23,7 @@
 
 import { isAiControlled } from '../missions/playerOrder';
 import { recordRaidLoss } from '../scenario/emergent/crisesCore';
-import { scenarioQuery } from '../scenario/hooks';
+import { scenarioEmit, scenarioQuery } from '../scenario/hooks';
 import { registerTodo, todo } from '../tick/todo';
 import { cancelBlockadeColony } from '../fleets/blockades';
 import { getNearbyBuiltObjects } from '../pirates/pirateAI';
@@ -1434,6 +1434,7 @@ function invasionRepelled(galaxy: Galaxy, self: Habitat, defender: Empire, invad
             self.rebelling = false;
         } else if (flag) {
             sendMessageToEmpire(self.empire, self.empire, EmpireMessageType.ColonyDefended, self, formatText(getText('We have fended off a raid on X'), arg2));
+            if (galaxy.scenario !== null && invader !== null) scenarioEmit(galaxy, 'pirateRaidRepulsed', { habitat: self, invader }); // mod layer (colony defence)
         } else {
             sendMessageToEmpire(self.empire, self.empire, EmpireMessageType.ColonyDefended, self, formatText(getText('We have fended off an invasion on X'), arg2));
         }
@@ -1501,6 +1502,7 @@ function raidInProgress(galaxy: Galaxy, self: Habitat, defender: Empire, invader
                         }
                         const description2 = formatText(getText('Invasion Destroys Facility Description'), planetaryFacility.name, self.name);
                         sendMessageToEmpire(empireById, empireById, EmpireMessageType.PlanetaryFacilityDestroyed, planetaryFacility, description2);
+                        if (galaxy.scenario !== null) scenarioEmit(galaxy, 'pirateFacilityDestroyed', { habitat: self, pirate: empireById, byOwner: false }); // mod layer (colony defence)
                     } else {
                         planetaryFacility.constructionProgress = num25;
                         const description3 = formatText(getText('Invasion Damages Facility Description'), planetaryFacility.name, self.name);
@@ -1552,6 +1554,7 @@ function raidInProgress(galaxy: Galaxy, self: Habitat, defender: Empire, invader
     sendMessageToEmpire(invader, invader, EmpireMessageType.ColonyDefended, self, description4);
     const description5 = formatText(getText('Raid Withdrawal Description Defender'), self.name, invader.name);
     sendMessageToEmpire(defender, defender, EmpireMessageType.ColonyDefended, self, description5);
+    if (galaxy.scenario !== null) scenarioEmit(galaxy, 'pirateRaidRepulsed', { habitat: self, invader }); // mod layer (colony defence)
     removeTroopsByType(invadingTroops, TroopType.PirateRaider, true);
     removeTroopsByType(self.troops!, TroopType.PirateRaider, true);
     if (galaxy.rnd.next(0, 3) > 0) {
@@ -1618,7 +1621,7 @@ function invasionSucceeded(galaxy: Galaxy, self: Habitat, defender: Empire | nul
             if (byFaction !== null) {
                 let num32 = f32(0.07 + galaxy.rnd.nextDouble() * 0.08);
                 num32 = f32(num32 * f32(empireRaidBonusFactor(empire)));
-                byFaction.controlLevel = Math.min(1, f32(byFaction.controlLevel + num32));
+                if (galaxy.scenario === null || !scenarioQuery(galaxy, 'pirateControlGainBlocked', false, { habitat: self })) byFaction.controlLevel = Math.min(1, f32(byFaction.controlLevel + num32)); // mod layer (colony defence)
             }
         }
         self.raidCountdown = 60;
@@ -1800,6 +1803,7 @@ function conquerColony(galaxy: Galaxy, self: Habitat, defender: Empire | null, i
                     const description7 = formatText(getText('Invasion Destroys Facility Description'), planetaryFacility3.name, self.name);
                     sendMessageToEmpire(empireById2, empireById2, EmpireMessageType.PlanetaryFacilityDestroyed, planetaryFacility3, description7);
                 }
+                if (galaxy.scenario !== null && empireById2 !== null) scenarioEmit(galaxy, 'pirateFacilityDestroyed', { habitat: self, pirate: empireById2, byOwner: true }); // mod layer (colony defence)
             }
         }
     }

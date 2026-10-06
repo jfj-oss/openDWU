@@ -236,7 +236,9 @@ export function reviewPirateControl(galaxy: Galaxy, planet: Habitat, timePassed:
         pirateControl.remove(colonyControlList2[index]);
         byEmpireId?.resolveSystemVisibility(planet.xpos, planet.ypos);
     }
-    const num7 = Math.min(3, colonyControlList1.count);
+    // Mod layer (colony defence): a defended colony gains no pirate control.
+    const gainBlocked = galaxy.scenario !== null && scenarioQuery(galaxy, 'pirateControlGainBlocked', false, { habitat: planet });
+    const num7 = gainBlocked ? 0 : Math.min(3, colonyControlList1.count);
     for (let index3 = 0; index3 < num7; ++index3) {
         const pirateColonyControl1 = colonyControlList1.at(index3);
         if (pirateColonyControl1 != null) {

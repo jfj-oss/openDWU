@@ -1,0 +1,8 @@
+{
+  "id": "colony-defence",
+  "name": "Defended colonies resist pirates",
+  "description": "In the original, nothing an owner does in orbit stops a pirate faction's influence: any pirate ship near a colony makes its control grow, a repulsed raid leaves it untouched, and a destroyed base can be re-queued as soon as control is back at 50%. With this add-on, a colony (player or AI) whose owner keeps a space port or defensive base over it, and which has repulsed a raid, destroyed pirate ships in its system or destroyed a pirate facility within the last year, gains no pirate control and no pirate facility can start or progress there. Repulsed raids and destroyed facilities halve the faction's control there (to at most 25% with no facility left), and after an owner destroys a facility the faction cannot start a new one there for 2 years.",
+  "flags": [
+    { "name": "colonyDefence", "label": "Defended colonies resist pirates", "description": "Master switch.", "default": true }
+  ]
+}
