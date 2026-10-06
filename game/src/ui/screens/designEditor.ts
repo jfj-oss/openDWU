@@ -160,7 +160,9 @@ function statRows(parent: HTMLElement, rows: readonly StatRow[], x: number, widt
         const l = text(r.label, { size: FONT.normal, color: GREY });
         l.classList.add('ow-right');
         parent.appendChild(place(l, x + width, y));
-        parent.appendChild(place(text(r.value, { size: FONT.normal, bold: true, color: r.color ?? GREY }), vx, y - valueDy));
+        const v = text(r.value, { size: FONT.normal, bold: true, color: r.color ?? GREY });
+        if (r.title !== undefined) { v.title = r.title; l.title = r.title; }
+        parent.appendChild(place(v, vx, y - valueDy));
         y += rowHeight;
     }
     return y;
@@ -701,9 +703,10 @@ export function openDesignEditor(opts: DesignEditorOptions): DesignEditorHandle 
         // DesignEnergy.DrawEnergyInfo: x 8, label width 142, value x 160, rows 14 from y 30.
         energy.replaceChildren();
         dropText(energy, gt('Energy'), 8, 10, { size: FONT.normal + 2, bold: true, color: GREY });
-        const m = designEnergyPanel(design, resourceName);
+        const m = designEnergyPanel(design, resourceName, calculateTotalWeaponsEnergyUsePerSecond(design, empire.research));
         let y = statRows(energy, m.top, 8, 142, 160, 30, 14);
-        y += 14;
+        // The Combat Energy Use row (ours) takes the blank line above the fuel type, so the panel still fits.
+        if (m.top.length <= 4) y += 14;
         dropText(energy, m.fuelType, 8, y, { color: GREY });
         y = statRows(energy, m.bottom, 8, 142, 160, y + 14, 14);
         dropText(energy, m.fuelPer1000, 8, y, { color: GREY });

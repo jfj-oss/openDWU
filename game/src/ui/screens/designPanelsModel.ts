@@ -72,6 +72,8 @@ export interface StatRow {
     value: string;
     /** Value colour (CSS) when not the panel's default. */
     color?: string;
+    /** Hover text for the row (label and value). */
+    title?: string;
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
@@ -163,8 +165,11 @@ export interface EnergyPanel {
 }
 
 // Port of DesignEnergy.cs DrawEnergyInfo.
-export function designEnergyPanel(design: Design, resourceName: (id: number) => string = (id) => `#${id}`): EnergyPanel {
+export function designEnergyPanel(design: Design, resourceName: (id: number) => string = (id) => `#${id}`, weaponsEnergyPerSecond: number | null = null): EnergyPanel {
     const excess = design.reactorPowerOutput - design.staticEnergyConsumption;
+    // Not in the original: the energy a fight at full speed draws (sprint engines + every weapon firing), and what is
+    // left of the excess output after it (negative = the shortfall comes out of storage).
+    const combat = weaponsEnergyPerSecond === null ? null : design.topSpeedFuelBurn + weaponsEnergyPerSecond;
     // (double)ReactorCycleFuelConsumption / 1000.0 / (double)ReactorStorageCapacity * 1000.0 — NaN / ∞ print as .NET does.
     const num2 = (design.reactorCycleFuelConsumption / 1000.0 / design.reactorStorageCapacity) * 1000.0;
     const per = Number.isFinite(num2) ? fixed(num2, 2) : Number.isNaN(num2) ? 'NaN' : '∞';
@@ -174,6 +179,9 @@ export function designEnergyPanel(design: Design, resourceName: (id: number) => 
             { label: gt('Reactor Power Output'), value: intText(design.reactorPowerOutput) },
             { label: gt('Static Energy Usage'), value: intText(design.staticEnergyConsumption) },
             { label: gt('Excess Energy Output'), value: String(roundAway(excess)), color: goodBadColor(excess) },
+            ...(combat === null || combat <= 0
+                ? []
+                : [{ label: 'Combat Energy Use', value: String(roundAway(combat)), color: combat > excess ? 'rgb(255, 0, 0)' : 'rgb(0, 128, 0)', title: combatTitle(excess, combat, design.reactorStorageCapacity) }]),
         ],
         fuelType: `${gt('Fuel Type')} = ${design.fuelType !== null ? resourceName(design.fuelType.resourceId) : none()}`,
         bottom: [
@@ -182,6 +190,13 @@ export function designEnergyPanel(design: Design, resourceName: (id: number) => 
         ],
         fuelPer1000: gt('X fuel units per 1000 energy units', per),
     };
+}
+
+function combatTitle(excess: number, combat: number, storage: number): string {
+    const base = `Sprint engines plus every weapon firing: ${roundAway(combat)} energy per second, against ${roundAway(excess)} excess output.`;
+    if (combat <= excess) return `${base} The reactors cover it indefinitely.`;
+    const secs = storage / (combat - excess);
+    return `${base} ${roundAway(combat - excess)} per second short: the ${roundAway(storage)} energy storage covers it for about ${Math.round(secs)} seconds, then weapons fire slower.`;
 }
 
 /** Galaxy.MovementImpulseSpeed. */
