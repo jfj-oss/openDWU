@@ -17,7 +17,7 @@
 // so the running sim never sees a half-edited design. The saved end state is the same object the C# ends with
 // (Empire.Designs[num] stays the same Design instance for Edit / View).
 
-import { Design, BuiltObjectStance } from '../design';
+import { Design, BuiltObjectStance, designFighterMix } from '../design';
 import type { Empire } from '../empire';
 import type { Galaxy } from '../galaxy';
 import type { ComponentDefinition } from '../componentStatic';
@@ -1155,6 +1155,9 @@ function writeBack(target: Design, d: Design): void {
     target.imageScalingFactor = d.imageScalingFactor;
     target.allowAutoRetrofit = d.allowAutoRetrofit;
     target.isManuallyCreated = d.isManuallyCreated;
+    // Not in the C#: the player's fighter mix (also from a View-mode save of an in-use design, so the ships of the
+    // design use the new mix at their next bay refill).
+    if (d.fighterMix !== undefined || target.fighterMix !== undefined) target.fighterMix = designFighterMix(d);
 }
 
 /**

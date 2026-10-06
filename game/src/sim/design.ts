@@ -27,6 +27,42 @@ export enum BuiltObjectStance {
     DoNotAttack,
 }
 
+/**
+ * Not in the original: the player's per-design "Fighter mix" (design editor). How a carrier's bay refill
+ * (combat/fighters.ts buildNewFighters) splits the total fighter-bay capacity between interceptors and bombers.
+ * ByBayName (= absent on the design) is the original rule: capacity by bay component name (BaconSettings
+ * fighter / bomber / assault labels). The other values split all fighter-category bay capacity by quarters.
+ */
+export enum FighterMix {
+    ByBayName = 0,
+    AllFighters = 1,
+    Fighters75 = 2,
+    Fighters50 = 3,
+    Fighters25 = 4,
+    AllBombers = 5,
+}
+
+/** Every FighterMix, in the design editor's order. */
+export const FIGHTER_MIX_CHOICES: readonly FighterMix[] = [
+    FighterMix.ByBayName, FighterMix.AllFighters, FighterMix.Fighters75, FighterMix.Fighters50, FighterMix.Fighters25, FighterMix.AllBombers,
+];
+
+/** The design's fighter mix; absent (every AI design, designs made before the setting existed, old saves) = ByBayName. */
+export function designFighterMix(design: Design | null | undefined): FighterMix {
+    const v = design?.fighterMix;
+    return typeof v === 'number' && v >= FighterMix.ByBayName && v <= FighterMix.AllBombers ? v : FighterMix.ByBayName;
+}
+
+/** The bomber share of a non-ByBayName mix in quarters (AllFighters 0 … AllBombers 4). */
+export function fighterMixBomberQuarters(mix: FighterMix): number {
+    return mix === FighterMix.ByBayName ? 0 : mix - FighterMix.AllFighters;
+}
+
+/** Copy the fighter mix (only when set, so designs without one keep no own field and save the same text as before). */
+export function copyDesignFighterMix(target: Design, source: Design): void {
+    if (source.fighterMix !== undefined) target.fighterMix = source.fighterMix;
+}
+
 /** Minimal owner surface Design needs (avoids importing Empire; Empire satisfies it). */
 export interface DesignOwner {
     readonly empireId: number;
@@ -122,6 +158,9 @@ export class Design {
     allowAutoRetrofit = true;
     /** Design.cs 231 RepaitPriorityTemplateName (C# spelling; ExpansionMod repair-priority template, construction/repairPriority.ts). */
     repaitPriorityTemplateName: string | null = null;
+    /** Not in the original: the player's fighter mix (FighterMix). A `declare`d field, so it is no own property until
+     *  set: designs without one encode exactly as before; read through designFighterMix (absent = ByBayName). */
+    declare fighterMix?: FighterMix;
 
     // Derived by ReDefine (Design.cs field order).
     topSpeed = 0;

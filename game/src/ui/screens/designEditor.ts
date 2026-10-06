@@ -22,7 +22,7 @@
 
 import type { Empire } from '../../sim/empire';
 import type { Galaxy } from '../../sim/galaxy';
-import type { Design } from '../../sim/design';
+import { FIGHTER_MIX_CHOICES, FighterMix, designFighterMix, type Design } from '../../sim/design';
 import type { ComponentDefinition } from '../../sim/componentStatic';
 import { BuiltObjectSubRole } from '../../sim/builtObjectTypes';
 import { BuiltObjectRole, DesignImageScalingMode } from '../../sim/data/designSpecifications';
@@ -130,6 +130,18 @@ function enumDropDown<V extends number>(values: readonly V[], label: (v: V) => s
     if (!values.includes(value)) s.selectedIndex = -1;
     s.style.fontSize = `${SMALL}px`;
     return s;
+}
+
+/** The Fighter Mix combo's labels (not in the original). */
+function fighterMixLabel(mix: FighterMix): string {
+    switch (mix) {
+        case FighterMix.AllFighters: return gt('All fighters');
+        case FighterMix.Fighters75: return gt('75% fighters / 25% bombers');
+        case FighterMix.Fighters50: return gt('50% fighters / 50% bombers');
+        case FighterMix.Fighters25: return gt('25% fighters / 75% bombers');
+        case FighterMix.AllBombers: return gt('All bombers');
+        default: return gt('By bay name');
+    }
 }
 
 function setSelect(s: HTMLSelectElement, v: number): void {
@@ -567,7 +579,13 @@ export function openDesignEditor(opts: DesignEditorOptions): DesignEditorHandle 
             },
         ],
     });
-    weapons.appendChild(place(weaponGrid.el, 10, 35, 330, 145));
+    weapons.appendChild(place(weaponGrid.el, 10, 35, 330, 120));
+    // Not in the original: the per-design Fighter Mix (sim/design.ts FighterMix; refill: combat/fighters.ts
+    // buildNewFighters). The weapon list gives up 25 px for it. Enabled in View mode too: a View-mode Save writes it
+    // back (saveDesign → writeBack), so ships already built to the design use the new mix at their next bay refill.
+    dropText(weapons, gt('Fighter Mix'), 10, 163, { size: SMALL, color: GREY });
+    const fighterMix = enumDropDown(FIGHTER_MIX_CHOICES, fighterMixLabel, designFighterMix(design), (v) => { design.fighterMix = v; refresh(); });
+    weapons.appendChild(place(fighterMix, 90, 160, 250, 20));
     const weaponSummary = place(el('div', 'dsgx-weapon-summary'), 340, 0, 210, 190);
     weapons.appendChild(weaponSummary);
 
@@ -790,6 +808,11 @@ export function openDesignEditor(opts: DesignEditorOptions): DesignEditorHandle 
         setSelect(weaker, design.tacticsWeakerShips);
         setSelect(invasion, design.tacticsInvasion);
         setSelect(flee, design.fleeWhen);
+        setSelect(fighterMix, designFighterMix(design));
+        fighterMix.disabled = design.fighterCapacity <= 0;
+        fighterMix.title = design.fighterCapacity <= 0
+            ? gt('This design has no fighter bays')
+            : gt('How the fighter bays are refilled: by bay name (fighter / bomber / assault bays) or a fixed share of fighters and bombers. Ships of this design use it at their next refill once saved.');
         retrofit.value = design.allowAutoRetrofit ? '1' : '0';
         // cmbDesignDetailAutoRetrofit.Enabled = false for the six private sub-roles.
         retrofit.disabled = view || isPrivateDesignSubRole(design.subRole);

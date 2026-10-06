@@ -9,7 +9,7 @@
 //   CalculateTotalWeaponsEnergyUsePerSecond (1061) / CalculateWeaponEnergyUsePerSecond.
 // Pure reads of the sim (no state changes).
 
-import type { Design } from '../../sim/design';
+import { FighterMix, designFighterMix, fighterMixBomberQuarters, type Design } from '../../sim/design';
 import type { Empire } from '../../sim/empire';
 import type { Race } from '../../sim/data/races';
 import type { ComponentDefinition } from '../../sim/componentStatic';
@@ -310,7 +310,14 @@ export function designWeaponSummary(design: Design, player: Empire | null): Stat
         let num5 = 0;
         if (bomber !== null) num5++;
         if (fighter !== null) num5++;
-        if (num5 > 0) {
+        const mix = designFighterMix(design);
+        if (mix !== FighterMix.ByBayName) {
+            // Not in the C#: the design's fighter mix splits the craft (refill: combat/fighters.ts carrierMixCapacity);
+            // a share whose spec the empire lacks stays empty.
+            const bombers = Math.trunc((num * fighterMixBomberQuarters(mix)) / 4);
+            if (bomber !== null) num2 += bomber.weaponDamage * bombers;
+            if (fighter !== null) num2 += fighter.weaponDamage * (num - bombers);
+        } else if (num5 > 0) {
             const num6 = Math.trunc(num / num5);
             if (bomber !== null) num2 += bomber.weaponDamage * num6;
             if (fighter !== null) num2 += fighter.weaponDamage * num6;

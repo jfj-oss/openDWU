@@ -66,7 +66,7 @@ import {
 } from './data/designSpecifications';
 import { ComponentType } from './data/components';
 import { ComponentCategoryType } from './data/policies';
-import { Design, findNewest } from './design';
+import { Design, copyDesignFighterMix, findNewest } from './design';
 import { generateDesignFromSpec } from './designGeneration';
 import { GalaxyLocationType, type GalaxyLocation } from './galaxyLocation';
 import { galaxyCurrentStarDate } from './pirateRelations';
@@ -180,6 +180,7 @@ export function cloneDesign(source: Design): Design {
     design.isManuallyCreated = source.isManuallyCreated;
     design.allowAutoRetrofit = source.allowAutoRetrofit;
     design.repaitPriorityTemplateName = source.repaitPriorityTemplateName;
+    copyDesignFighterMix(design, source); // not in the C# (FighterMix)
     design.reDefine();
     return design;
 }

@@ -46,6 +46,7 @@ import { BuiltObjectRole } from '../data/designSpecifications';
 import { BuiltObjectSubRole } from '../builtObjectTypes';
 import { TurnDirection } from '../builtObject';
 import { resolveComponentCategory, componentImprovementFromComponent } from '../componentStatic';
+import { FighterMix, designFighterMix, fighterMixBomberQuarters } from '../design';
 import { ComponentStatus, csInt, toShort } from '../builtObjectComponent';
 import { Random } from '../random';
 import type { Cargo } from '../cargo';
@@ -2693,6 +2694,25 @@ function carrierBayCapacity(carrier: BuiltObject): { fighter: number; bomber: nu
     return { fighter: num5, bomber: num6 };
 }
 
+/**
+ * Not in the original: the bay capacities by type for a player carrier whose design sets a FighterMix other than
+ * ByBayName (design.ts). All fighter-category bay capacity (whatever the bay is called, resolved as
+ * carrierBayCapacity resolves it) is split by the mix's quarters: bomber = trunc(total × quarters / 4), fighter = the
+ * rest. The bomber share is only filled when the empire has a bomber specification — buildNewFighters builds nothing
+ * for a null spec, exactly as on the by-name path — so without bomber tech a 50/50 carrier carries half its bays.
+ */
+function carrierMixCapacity(carrier: BuiltObject, mix: FighterMix): { fighter: number; bomber: number } {
+    let total = 0;
+    const items = carrier.components.items;
+    for (let index = 0; index < items.length; ++index) {
+        const actualEmpire = carrier.actualEmpire;
+        const componentImprovement = actualEmpire === null || actualEmpire.research === null ? componentImprovementFromComponent(items[index].def) : actualEmpire.research.resolveImprovedComponentValues(items[index].def);
+        if (componentImprovement.improvedComponent.category === ComponentCategoryType.Fighter) total += componentImprovement.value1;
+    }
+    const bomber = Math.trunc((total * fighterMixBomberQuarters(mix)) / 4);
+    return { fighter: total - bomber, bomber };
+}
+
 /** BaconBuiltObject.cs 3319 CheckForCustomGunship(carrier, bomberDesign). */
 function checkForCustomGunship(carrier: BuiltObject, bomberDesign: FighterSpecification | null): FighterSpecification | null {
     if (carrier.baconValues === null || !carrier.baconValues.has('customBomberName')) return bomberDesign;
@@ -2729,7 +2749,9 @@ export function buildNewFighters(galaxy: Galaxy, carrier: BuiltObject): void {
         if (fighters[index].specification.type === FighterType.Bomber) num4 += fighters[index].specification.size;
         else num3 += fighters[index].specification.size;
     }
-    const capacity = carrierBayCapacity(carrier);
+    // Not in the C#: the player's per-design fighter mix (design.ts FighterMix); ByBayName / AI carriers: the original.
+    const mix = carrier.empire === galaxy.playerEmpire ? designFighterMix(carrier.design) : FighterMix.ByBayName;
+    const capacity = mix === FighterMix.ByBayName ? carrierBayCapacity(carrier) : carrierMixCapacity(carrier, mix);
     let num5 = capacity.fighter;
     let num6 = capacity.bomber;
     // 3204: `myMain != null && myMain._Game != null && carrier.Empire != PlayerEmpire` — AI carriers split the fighter bays.

@@ -42,7 +42,7 @@ import { BuiltObjectSubRole } from './builtObjectTypes';
 import { ResourceRef, type CargoList } from './cargo';
 import { BuiltObjectRole, type DesignSpecification } from './data/designSpecifications';
 import type { Race } from './data/races';
-import { BuiltObjectStance, Design, getDesignsBySubRoles } from './design';
+import { BuiltObjectStance, Design, copyDesignFighterMix, getDesignsBySubRoles } from './design';
 import { generateDesignFromSpec, resolveLegacySubRole } from './designGeneration';
 import type { Empire } from './empire';
 import type { Galaxy } from './galaxy';
@@ -102,6 +102,7 @@ export function cloneDesign(source: Design): Design {
     design.isManuallyCreated = source.isManuallyCreated;
     design.allowAutoRetrofit = source.allowAutoRetrofit;
     design.repaitPriorityTemplateName = source.repaitPriorityTemplateName;
+    copyDesignFighterMix(design, source); // not in the C# (FighterMix)
     design.reDefine();
     return design;
 }

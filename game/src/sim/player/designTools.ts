@@ -16,7 +16,7 @@
 // (DESIGN_FILE_FORMAT). TODO(port): reading original BinaryFormatter *.dwd files (Galaxy.4.cs:1087 LoadDesigns'
 // binaryFormatter.Deserialize) — needs an NRBF reader for DesignList / Design / ComponentList.
 
-import { Design } from '../design';
+import { Design, FighterMix, designFighterMix } from '../design';
 import type { Empire } from '../empire';
 import type { Galaxy } from '../galaxy';
 import type { ComponentDefinition, ComponentImprovementEntry } from '../componentStatic';
@@ -293,6 +293,8 @@ export interface DesignFileEntry {
     isManuallyCreated: boolean;
     optimizedDesign: number;
     allowAutoRetrofit: boolean;
+    /** Not in the C#: the FighterMix; written only when set (absent = By bay name). */
+    fighterMix?: number;
 }
 
 export interface DesignFile {
@@ -328,6 +330,7 @@ export function writeDesignFile(designs: readonly Design[]): string {
             isManuallyCreated: d.isManuallyCreated,
             optimizedDesign: d.optimizedDesign,
             allowAutoRetrofit: d.allowAutoRetrofit,
+            ...(d.fighterMix !== undefined ? { fighterMix: designFighterMix(d) } : {}),
         })),
     };
     return JSON.stringify(file, null, 1);
@@ -395,6 +398,7 @@ export function parseDesignFile(galaxy: Galaxy, text: string): ParsedDesignFile 
         d.isManuallyCreated = bool(e.isManuallyCreated);
         d.optimizedDesign = num(e.optimizedDesign);
         d.allowAutoRetrofit = bool(e.allowAutoRetrofit, true);
+        if (typeof e.fighterMix === 'number') d.fighterMix = designFighterMix({ fighterMix: e.fighterMix as FighterMix } as Design);
         designs.push(d);
     }
     return { designs, skipped };
