@@ -10,6 +10,7 @@
 //   - the threat multiplier becomes at least 1 + 0.6 × local / own mobile strength (the stock war weight), capped at 4;
 //   - while anything hostile is near, the warship total is at least WARSHIPS_PER_COLONY × colonies × the multiplier;
 //   - BuildDefensiveBases (Empire.10.cs 1211) also considers the threatened colonies, not only strategic value > 250000.
+// Privateers (the privateers add-on's private warships) are left out of the hostile sum, as the own sum counts state ships only.
 // AI empires only. No Rnd.
 
 import type { Galaxy } from '../../galaxy';
@@ -23,6 +24,7 @@ import { DiplomaticRelationType, obtainDiplomaticRelation } from '../../diplomac
 import { PirateRelationType, obtainPirateRelation } from '../../pirateRelations';
 import { registerScenarioEvent, registerScenarioQuery } from '../hooks';
 import { SMARTER_AI_FLAG, isSmarterAIStrategist, smarterAIOn } from './common';
+import { isPrivateer } from '../privateers/privateers';
 
 export const SMARTER_AI_DEFENCE_FLAG = 'smarterAIDefence';
 
@@ -73,6 +75,7 @@ export function localThreat(galaxy: Galaxy, empire: Empire, rules: DefenceRules 
         if (sv == null || sv.threats === null || sv.threats.length === 0) continue;
         for (const bo of sv.threats) {
             if (bo == null || bo.hasBeenDestroyed || bo.role !== BuiltObjectRole.Military || counted.has(bo) || !isHostileTo(galaxy, empire, bo.actualEmpire)) continue;
+            if (isPrivateer(galaxy, bo)) continue; // privateers add-on: a private sector's ships are not a navy to size against
             const hs = near(bo.xpos, bo.ypos);
             if (hs.length === 0) continue;
             counted.add(bo);

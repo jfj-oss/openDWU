@@ -319,6 +319,12 @@ export interface ScenarioEvents {
      * (placement / names), as the stock step it replaces does. Smarter AI pre-warp opening.
      */
     dormantStateConstruction: { empire: Empire };
+    /**
+     * civilianAI.ts assignMissionToBuiltObject (Empire.5.cs 1460, right before the sub-role switch) for a private ship
+     * (Owner null) with no mission and no fleet: a handler that sets `handled` replaces the stock assignment for this
+     * ship. May draw galaxy.rnd (it runs in place of the stock step). Privateers.
+     */
+    privateShipMission: { empire: Empire; ship: BuiltObject; handled: boolean };
 }
 export type ScenarioEventName = keyof ScenarioEvents;
 

@@ -641,6 +641,12 @@ export function assignMissionToBuiltObject(galaxy: Galaxy, empire: Empire, ship:
     if (shipGroupOf(ship) !== null) {
         return;
     }
+    // mod layer (privateers): a private ship's mission may come from a scenario instead; no-op without a scenario.
+    if (galaxy.scenario !== null && ship.owner === null) {
+        const payload = { empire, ship, handled: false };
+        scenarioEmit(galaxy, 'privateShipMission', payload);
+        if (payload.handled) return;
+    }
     const shipEmpire = ship.empire;
     switch (ship.subRole) {
         case BuiltObjectSubRole.SmallFreighter:

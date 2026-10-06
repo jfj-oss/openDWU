@@ -62,6 +62,7 @@ const GROUP_OF: Readonly<Record<string, AddonGroup>> = {
     'independents-active': 'Economy & factions',
     'wreckage-salvage': 'Economy & factions',
     exchange: 'Economy & factions',
+    privateers: 'Economy & factions',
     'llm-layer': 'LLM layer',
     'event-log': 'LLM layer',
     'art-bundle': 'Visuals',

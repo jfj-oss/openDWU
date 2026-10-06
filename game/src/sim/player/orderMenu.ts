@@ -25,6 +25,7 @@
 
 import { markNewOrders, snapshotOrders } from '../missions/playerOrder';
 import { availableThreatActions } from '../scenario/threats/framework';
+import { isPrivateer } from '../scenario/privateers/privateers';
 import type { Galaxy } from '../galaxy';
 import { galaxyNow, spanSeconds } from '../tick/simTime';
 import type { Empire } from '../empire';
@@ -1842,6 +1843,8 @@ function builtObjectActionMenu(ctx: OrderMenuContext, builtObject6: BuiltObject,
     const player = ctx.empire;
     const now = ctx.galaxy.nowMs;
     void now;
+    // privateers add-on: a private-sector privateer is fully automated — viewable, never commandable (no order items).
+    if (isPrivateer(ctx.galaxy, builtObject6)) return;
     if (builtObject6.owner === player) {
         const empire = builtObject6.empire!;
         if (builtObject6.role === BuiltObjectRole.Base) {
