@@ -2,8 +2,8 @@
 // transport-free — worker.ts feeds it messages and a timer, the tests drive it in-process — so the step loop, the
 // command path and the sync channel are the same code under test and in the browser.
 //
-// The step loop is the in-thread one (simLoop.ts createSimLoop) without the view: per tick, drain the command boundary,
-// journal the speed, then SimFrameBudget.run(SimDriver, realDtMs, speed, paused) — the same fixed steps of
+// The step loop is the in-thread one (simLoop.ts createSimLoop): per tick, drain the command boundary, journal the
+// speed and the camera the main thread last sent (ViewMessage; none: no LOD pass), then SimFrameBudget.run(SimDriver, realDtMs, speed, paused) — the same fixed steps of
 // FRAME_REAL_MS, the same wall-clock budget, the same pause probe and error containment — then one replica diff.
 // So a game run here takes exactly the frames, commands and boundaries it would in-thread, and its state digest is
 // the same (test/simWorker.test.ts).
@@ -13,9 +13,9 @@ import type { Galaxy } from '../sim/galaxy';
 import { Empire as EmpireClass, type Empire } from '../sim/empire';
 import { GalaxyTime } from '../sim/galaxyTime';
 import type { StartGameOptions } from '../sim/startGameOptions';
-import { SimDriver, schedulerState } from '../sim/tick/scheduler';
+import { SimDriver, schedulerState, type SimView } from '../sim/tick/scheduler';
 import { drainCommandBoundary } from '../sim/tick/commandBoundary';
-import { issuePlayerCommand, noteSimSpeed, noteSimView, pendingPlayerCommands } from '../sim/player/playerCommands';
+import { issuePlayerCommand, loggedSimViewRect, noteSimSpeed, noteSimViewRect, pendingPlayerCommands } from '../sim/player/playerCommands';
 import type { PlayerOpName } from '../sim/player/playerOps';
 import { serializeGame } from '../sim/save/gameSave';
 import { serializeGameBlob } from '../saveData';
@@ -34,7 +34,7 @@ import { RemoteValues, decodeRemoteArg, encodeRemoteArg, encodeRemoteResult, typ
 import { runHostOp } from './hostOps';
 import { drainVoiceCues } from '../sim/scenario/llm/voiceCues';
 import { setPlayerMessageListener, type PlayerMessageNote } from '../sim/playerMessages';
-import type { ClockMessage, CommandMessage, DebugReply, DebugRequest, FromWorker, HostOpMessage, RefreshRequest, SnapshotMessage, StepMessage, TradeFlowsMessage, WorkerEvent } from './protocol';
+import type { ClockMessage, CommandMessage, DebugReply, DebugRequest, FromWorker, HostOpMessage, RefreshRequest, SnapshotMessage, StepMessage, TradeFlowsMessage, ViewMessage, WorkerEvent } from './protocol';
 import { commandLog, copyCommandLogEntry, type CommandLogEntry } from '../sim/player/commandLog';
 import type { ReplicaEncoderOptions } from './replicaSync';
 
@@ -168,6 +168,13 @@ export class SimHost {
             stepSerial: this.stepSerial,
             startOptions: this.startOptions,
         };
+    }
+
+    /** The main thread's camera for the LOD pass (journaled at the next boundary that steps; null: no pass). */
+    private wantView: SimView | null = null;
+
+    setView(m: ViewMessage): void {
+        this.wantView = m.view;
     }
 
     clock(m: ClockMessage): void {
@@ -427,9 +434,11 @@ export class SimHost {
             this.commandValues.boundary();
             if (!time.paused) {
                 noteSimSpeed(this.galaxy, time.speed);
-                noteSimView(this.galaxy, false);
+                // The camera is a sim input too: journal it and run with exactly the journaled one (simLoop.ts).
+                noteSimViewRect(this.galaxy, this.wantView);
             }
-            steps = this.budget.run(driver, realDtMs, time.speed, time.paused);
+            const view = loggedSimViewRect(this.galaxy);
+            steps = this.budget.run(driver, realDtMs, time.speed, time.paused, view !== null ? { view } : {});
         } catch (err) {
             failure = err;
             // As in-thread: drop the half-drained tick queue, pause, and tell the player.

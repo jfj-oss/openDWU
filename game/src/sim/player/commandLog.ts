@@ -9,6 +9,7 @@
 // when nothing is logged. Headless: no DOM / Pixi.
 
 import type { Galaxy } from '../galaxy';
+import type { SimView } from '../tick/scheduler';
 
 /** A resolved strategic command, re-applicable without the brief (player/strategicDecisions.ts applyStrategicCommand). */
 export interface StrategicCommand {
@@ -67,13 +68,19 @@ export interface ClockLogEntry {
     speed: number;
 }
 
-/** The camera level-of-detail pass (?simView=1) was switched on / off here: while on, the camera is a sim input the log
- *  does not carry, so a replay of that stretch is not exact (replayCommandLog warns). */
+/**
+ * The camera level-of-detail pass (scheduler.ts processMain, Main.Part11.cs 533 ProcessMain) from this boundary on.
+ * `view` set: the pass runs with exactly this camera until the next 'view' entry (the app journals each camera change it
+ * hands the sim, so a replay runs the same pass). `on` without `view` (logs from before the camera was journaled, or
+ * noteSimView): the pass ran with an unrecorded camera, so a replay of that stretch is not exact (replayCommandLog
+ * warns) and runs it without a view. `on: false`: no pass.
+ */
 export interface ViewLogEntry {
     starDate: number;
     nowMs: number;
     source: 'view';
     on: boolean;
+    view?: SimView;
 }
 
 export type CommandLogEntry = AdvisorLogEntry | PlayerLogEntry | ClockLogEntry | ViewLogEntry;
@@ -88,7 +95,8 @@ export function commandLog(galaxy: Galaxy): readonly CommandLogEntry[] {
 /** A deep copy of one entry (the log is data; saves and loads never share objects with the live log). */
 export function copyCommandLogEntry(e: CommandLogEntry): CommandLogEntry {
     if (e.source === 'player') return JSON.parse(JSON.stringify(e)) as PlayerLogEntry;
-    if (e.source === 'clock' || e.source === 'view') return { ...e };
+    if (e.source === 'clock') return { ...e };
+    if (e.source === 'view') return e.view !== undefined ? { ...e, view: { ...e.view } } : { ...e };
     return { ...e, command: { ...e.command } };
 }
 

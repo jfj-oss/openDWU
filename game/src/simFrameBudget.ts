@@ -1,7 +1,7 @@
 // The sim's wall-clock step budget (SimFrameBudget), shared by the in-thread loop (simLoop.ts) and the sim worker
 // (simworker/simHost.ts). DOM-free (the worker imports it). Moved out of simLoop.ts unchanged.
 
-import { FRAME_REAL_MS, type FrameOptions } from './sim/tick/scheduler';
+import { FRAME_REAL_MS, type FrameOptions, type SimView } from './sim/tick/scheduler';
 
 // [fix6ui] begin — sim/render decoupling (playtest 2026-09-25-b release blocker).
 /** Wall ms of sim work allowed per render frame at 1× (scaled by the game speed above 1×). */
@@ -73,3 +73,37 @@ export class SimFrameBudget {
     }
 }
 // [fix6ui] end
+
+/** Shortest real time between two cameras handed to the sim (each is a command-log 'view' entry). */
+export const SIM_VIEW_MIN_INTERVAL_MS = 250;
+
+/**
+ * Rate-limits the camera handed to the sim's level-of-detail pass (scheduler.ts processMain): a camera that differs from
+ * the last one handed over is due once SIM_VIEW_MIN_INTERVAL_MS has passed since then (switching the pass on / off is
+ * due at once). Called every render frame, so a camera that stops moving inside the interval still lands next time.
+ */
+export class SimViewThrottle {
+    private last: SimView | null | undefined = undefined;
+    private lastAt = -Infinity;
+
+    /** Whether `view` should be handed to the sim now (and, if so, remember it as handed over). */
+    due(view: SimView | null, nowMs: number): boolean {
+        const last = this.last;
+        if (last !== undefined) {
+            if (view === null && last === null) return false;
+            if (view !== null && last !== null) {
+                if (view.x === last.x && view.y === last.y && view.viewWidth === last.viewWidth && view.viewHeight === last.viewHeight && view.clientWidth === last.clientWidth && view.zoomFactor === last.zoomFactor) return false;
+                if (nowMs - this.lastAt < SIM_VIEW_MIN_INTERVAL_MS) return false;
+            }
+        }
+        this.last = view === null ? null : { ...view };
+        this.lastAt = nowMs;
+        return true;
+    }
+
+    /** Forget what was handed over (the next camera is due at once). */
+    reset(): void {
+        this.last = undefined;
+        this.lastAt = -Infinity;
+    }
+}

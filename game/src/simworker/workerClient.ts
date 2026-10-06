@@ -4,6 +4,7 @@
 
 import type { GameData } from '../sim/data/gameData';
 import type { GalaxyTime } from '../sim/galaxyTime';
+import type { SimView } from '../sim/tick/scheduler';
 import type { RenderTime } from '../render/renderInterp';
 import { SimClientCore, type SyncStats } from './clientCore';
 import type { CommandLogEntry } from '../sim/player/commandLog';
@@ -236,8 +237,9 @@ export class SimWorkerClient {
     }
 
     /** The app's per-frame loop over the replica (apply deltas, pump cold parts, render time). The clock posts its
-     *  pause / speed changes to the worker as they are made (SimClientCore.bindClock). */
-    createLoop(time: GalaxyTime): WorkerSimLoop {
+     *  pause / speed changes to the worker as they are made (SimClientCore.bindClock); `view` (null: no LOD pass) is read
+     *  every frame and its camera sent to the worker on change (SimClientCore.syncView). */
+    createLoop(time: GalaxyTime, view: (() => SimView | null) | null = null): WorkerSimLoop {
         const core = this.core;
         time.bindGalaxy(core.galaxy);
         core.bindClock(time);
@@ -245,7 +247,11 @@ export class SimWorkerClient {
         return {
             stats: core.stats,
             renderTime: core.renderTime,
-            tick: () => core.frame(time),
+            tick: () => {
+                // The camera for the worker's LOD pass (simLoop.ts header): sent on change, rate-limited.
+                core.syncView(view !== null ? view() : null);
+                return core.frame(time);
+            },
         };
     }
 
