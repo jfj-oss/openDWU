@@ -547,7 +547,7 @@ export class BuiltObjectLayer {
         this.root.addChild(this.ships);
         this.liveries = new LiveryOverlays(this.root, galaxy);
         this.damage = new DamageOverlays<BuiltObject>(this.root);
-        this.construction = new ConstructionOverlays<BuiltObject>(this.root);
+        this.construction = new ConstructionOverlays<BuiltObject>();
     }
 
     /**
@@ -699,7 +699,6 @@ export class BuiltObjectLayer {
                 this.ships.addChild(sprite);
                 this.sprites.set(bo, sprite);
             }
-            sprite.texture = texture;
             const px = builtObjectSizePx(
                 bo.size,
                 metrics.areaRatio,
@@ -728,8 +727,17 @@ export class BuiltObjectLayer {
                 sprite.visible = false;
                 continue;
             }
+            // A Concord ship (cArt !== null) has no shipArt.ts record of its own — it's drawn by the concordFx pass
+            // below instead, with its own weathered/pristine look (concordArtLook), so 19r's damage/liveries overlays
+            // (keyed off the stock art record) skip it rather than fall over on a shape without `.art`.
+            const shipArtRecord = 'art' in img ? img.art : null;
+            // MainView.cs:3259 method_73 → Main.Part11.cs method_115 while UnbuiltComponentCount > 0: the ship/base
+            // sprite reveals from the left as it's built (a baked texture centred on the crop centre, shipOverlays.ts).
+            const revealTex = shipArtRecord !== null ? this.construction.texture(bo, shipConstructionSubject(bo), shipArtRecord, px) : null;
+            sprite.texture = revealTex ?? texture;
             sprite.position.set(x, y);
-            sprite.anchor.set(metrics.cropCenterX / texture.width, metrics.cropCenterY / texture.height);
+            if (revealTex !== null) sprite.anchor.set(0.5);
+            else sprite.anchor.set(metrics.cropCenterX / texture.width, metrics.cropCenterY / texture.height);
             sprite.rotation = heading + Math.PI / 2;
             sprite.scale.set(px / metrics.cropSide / z);
             sprite.alpha = this.overlays.fadeCivilianShips && bo.owner === null ? 144 / 255 : 1;
@@ -740,20 +748,11 @@ export class BuiltObjectLayer {
                 this.concordFx.draw(cArt, x, y, sprite.rotation, sprite.scale.x, sprite.anchor.x, sprite.anchor.y, bo.builtObjectID, px, nowMs);
             }
             // [concordArt] end
-            // A Concord ship (cArt !== null) has no shipArt.ts record of its own — it's drawn by the concordFx pass
-            // above instead, with its own weathered/pristine look (concordArtLook), so 19r's damage/liveries overlays
-            // (keyed off the stock art record) skip it rather than fall over on a shape without `.art`.
-            const shipArtRecord = 'art' in img ? img.art : null;
             if (liveries && shipArtRecord !== null) this.liveries.draw(bo, shipArtRecord, px, z, sprite.alpha, x, y, heading);
             // 19r: MainView.cs 3253 method_73 → Main.Part12.cs 4988 method_106 while DamagedComponentCount > 0.
             if (bo.damagedComponentCount > 0 && shipArtRecord !== null) {
                 const subject = shipDamageSubject(bo);
                 if (subject !== null) this.damage.draw(bo, subject, shipArtRecord, x, y, heading, px, z, damageFx, sprite.alpha);
-            }
-            // MainView.cs:3259 method_73 → Main.Part11.cs method_115 while UnbuiltComponentCount > 0: the ship/base
-            // sprite reveals from the left as it's built.
-            if (shipArtRecord !== null) {
-                this.construction.apply(bo, shipConstructionSubject(bo), sprite, x, y, sprite.rotation, sprite.scale.x, px);
             }
         }
         this.concordFx.end(); // [concordArt]
