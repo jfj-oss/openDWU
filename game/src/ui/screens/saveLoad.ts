@@ -108,6 +108,13 @@ export function parseSaveFileText<T extends LoadedGame | Promise<LoadedGame>>(te
     return load(text);
 }
 
+/** Why a load failed, for its toast: the error's first line (a worker error carries its stack after it), shortened. */
+export function loadErrorReason(err: unknown): string {
+    const text = (err instanceof Error ? err.message : String(err)).replace(/^sim worker:\s*/, '');
+    const line = text.split('\n')[0].trim() || 'unknown error';
+    return line.length > 200 ? `${line.slice(0, 197)}...` : line;
+}
+
 /** parseSaveFileText for a picked file, which is handed on as the Blob it is (the worker reads it: the page never holds
  *  a big save's text). */
 export async function parseSaveFile(file: Blob, load: (text: SaveText) => LoadedGame | Promise<LoadedGame>): Promise<LoadedGame> {
@@ -464,13 +471,15 @@ export function createSaveLoadPanel(mode: 'save' | 'load', wiring: SavePanelWiri
     loadBody.appendChild(place(loadGrid.el, 10, 28, 584, btnY - 38));
     const loadBtn = glassButton('Load', { size: FONT.header, className: 'save-load-btn', onClick: () => loadSelected() });
     const deleteBtn = glassButton('Delete', { size: FONT.header, className: 'save-load-btn save-row-delete', onClick: () => deleteSelected() });
+    // The selected save as a .dwusave file, straight from the store (its Blob: nothing is loaded or parsed).
+    const exportBtn = glassButton('Export', { size: FONT.header, className: 'save-load-btn save-row-export', onClick: () => void exportSelected() });
     const openFileBtn = glassButton('Open file…', { size: FONT.header, className: 'save-load-btn', onClick: () => fileInput.click() });
     const fileInput = el('input', 'save-load-file-input');
     fileInput.type = 'file';
     fileInput.accept = SAVE_FILE_EXTENSION;
     fileInput.style.display = 'none';
     fileInput.addEventListener('change', handleFilePicked);
-    loadBody.append(place(loadBtn, 10, btnY, 180, 35), place(deleteBtn, 200, btnY, 140, 35), place(openFileBtn, 414, btnY, 180, 35), fileInput);
+    loadBody.append(place(loadBtn, 10, btnY, 130, 35), place(deleteBtn, 150, btnY, 110, 35), place(exportBtn, 270, btnY, 134, 35), place(openFileBtn, 414, btnY, 180, 35), fileInput);
 
     // A status line under the buttons (the old panel's toast).
     const status = place(text('', { size: FONT.normal, color: 'rgb(255, 192, 0)', shadow: true, wrapWidth: 584, className: 'save-load-status' }), 10, SL_H - 63 - 34);
@@ -487,13 +496,13 @@ export function createSaveLoadPanel(mode: 'save' | 'load', wiring: SavePanelWiri
     let win: OriginalWindow | null = null;
     let loadingName: string | null = null;
 
-    function showToast(msg: string): void {
+    function showToast(msg: string, ms = 3000): void {
         status.textContent = msg;
         if (statusTimer !== undefined) clearTimeout(statusTimer);
         statusTimer = window.setTimeout(() => {
             status.textContent = '';
             statusTimer = undefined;
-        }, 3000);
+        }, ms);
     }
 
     /** All known saves: in-memory (this session) merged over localStorage,
@@ -534,6 +543,7 @@ export function createSaveLoadPanel(mode: 'save' | 'load', wiring: SavePanelWiri
         const has = loadGrid.selected !== null;
         loadBtn.disabled = !has;
         deleteBtn.disabled = !has;
+        exportBtn.disabled = !has;
     }
 
     function switchMode(next: 'save' | 'load'): void {
@@ -647,7 +657,7 @@ export function createSaveLoadPanel(mode: 'save' | 'load', wiring: SavePanelWiri
             loaded = await loadSave(saveText);
         } catch (err) {
             console.error('Failed to load save', err);
-            showToast('Could not load that save');
+            showToast(`Could not load that save: ${loadErrorReason(err)}`, 12000);
             return;
         }
         hide();
@@ -659,6 +669,18 @@ export function createSaveLoadPanel(mode: 'save' | 'load', wiring: SavePanelWiri
     function loadSelected(): void {
         const e = loadGrid.selected;
         if (e) void doLoadByName(e.name);
+    }
+
+    async function exportSelected(): Promise<void> {
+        const e = loadGrid.selected;
+        if (!e) return;
+        const saveText = await saveTextFor(e.name);
+        if (saveText === null) {
+            showToast(`Save "${e.name}" not found`);
+            return;
+        }
+        downloadSaveFile(e.name, saveText);
+        showToast(`Exporting ${e.name}${SAVE_FILE_EXTENSION}`);
     }
 
     function deleteSelected(): void {
@@ -704,7 +726,7 @@ export function createSaveLoadPanel(mode: 'save' | 'load', wiring: SavePanelWiri
                 callbacks.onLoadedFile?.(loaded);
             } catch (err) {
                 console.error('Failed to read save file', err);
-                showToast('Could not read that save file');
+                showToast(`Could not read that save file: ${loadErrorReason(err)}`, 12000);
             }
         })();
     }

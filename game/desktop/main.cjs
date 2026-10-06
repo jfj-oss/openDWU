@@ -632,8 +632,9 @@ function createWindow() {
         if (recentConsole.length > 40) recentConsole.shift();
         // The sim worker stopping (it crashed, ran out of memory — V8 kills only its isolate, the page lives on and
         // reports it after its silence watchdog — or stopped answering) goes to the crash log at once, with the memory:
-        // the page may well die of the same cause minutes later, or the player quits from the restart prompt.
-        if (level === 'error' && /sim worker: STOPPED|Autosave failed/.test(String(message))) {
+        // the page may well die of the same cause minutes later, or the player quits from the restart prompt. A save
+        // that does not load goes there too (its reason: the panel shows only the first line).
+        if (level === 'error' && /sim worker: STOPPED|Autosave failed|Failed to load save|Failed to read save file/.test(String(message))) {
             appendCrashLog(`${entry} version=${APP_VERSION}\n` + (lastMemory !== '' ? `  last memory sample: ${lastMemory}\n` : ''));
         }
     });
