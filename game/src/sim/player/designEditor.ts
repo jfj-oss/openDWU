@@ -991,6 +991,9 @@ export function designWarnings(galaxy: Galaxy, empire: Empire, objectDesign: Des
                 for (const item of typesCol) {
                     if (item.length > 0) {
                         const max = research.resolveImprovedComponentValues(item[0]).value2;
+                        // Value2 is the mining limit only in data that defines one (stock 1.9.5 components.txt leaves it
+                        // unused = 0, which would always warn "above mining limit of 0"): no limit, no warning.
+                        if (max <= 0) continue;
                         let currentMiningValue = 0;
                         for (const x of item) currentMiningValue += research.resolveImprovedComponentValues(x).value1;
                         if (currentMiningValue > max) {
