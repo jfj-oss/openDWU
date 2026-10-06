@@ -1,0 +1,13 @@
+{
+  "id": "privateers",
+  "name": "Private-sector privateers",
+  "description": "The private economy of every empire (the player's and the AI's, never pirates or independents) builds and runs its own small armed ships once pirates or raiders have recently attacked its freighters, mining stations or other private ships and bases. Privateers are paid for and kept up from private money only (never the state treasury), are at most 40% of the largest ship the empire can build, carry components one tech tier below the empire's best (engines, hyperdrives and reactors are its best) and are fully automated: they escort private freighters on busy routes, guard threatened mining stations, engage raiders near them and flee from much stronger foes. They are viewable but cannot be ordered, and the state navy's planning does not count them.",
+  "flags": [
+    { "name": "privateers", "label": "Private-sector privateers", "description": "Master switch.", "default": true }
+  ],
+  "params": [
+    { "name": "privateersSizeCap", "label": "Privateer size: at most this % of the empire's largest buildable ship", "default": 40, "min": 10, "max": 100 },
+    { "name": "privateersSpendShare", "label": "Private income spent on privateers per year (build + upkeep), at most %", "default": 18, "min": 1, "max": 50 },
+    { "name": "privateersShipsPer", "label": "One privateer per this many private ships and bases", "default": 8, "min": 2, "max": 100 }
+  ]
+}

@@ -98,6 +98,7 @@ export const COMMAND_FAILURE: FailureTable = {
     setColonyPopulationPolicy: no,
     applyPopulationPolicyToAll: zero,
     scrapColonyFacility: () => 'rejected',
+    editorRemovePirateFacilities: no,
     colonyTransferToTransport: no,
     disbandTroops: () => -1,
     garrisonTroops: zero,

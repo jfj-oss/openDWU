@@ -56,6 +56,7 @@ import './smarterAI/espionage'; // Smarter AI espionage (flag smarterAIEspionage
 import './smarterAI/diplomacy'; // Smarter AI diplomacy (flag smarterAIDiplomacy)
 import './smarterAI/opening'; // Smarter AI pre-warp opening (flag smarterAIOpening; after diplomacy / taxes: its protection and tax handlers run last)
 import './smarterAI/shipDesign'; // Smarter AI ship design (flags smarterAIDesignTune / WeaponFocus / DesignScale / DesignTrim; AI empires only)
+import './privateers/privateers'; // Private-sector privateers (flag privateers; player + AI empires' private sectors; no Rnd)
 import './themedNames/themedNames'; // Themed names for AI empires (flag themedNames; AI empires only; no Rnd)
 import './colonyDefence/colonyDefence'; // Defended colonies resist pirates (flag colonyDefence; every empire's colonies; no Rnd)
 export {};

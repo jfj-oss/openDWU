@@ -1698,6 +1698,17 @@ function createColoniesScreen(opts: ColoniesScreenOptions): OpenState {
             },
         });
         page.appendChild(place(scrapBtn, 460, 84, 190, 25));
+        // openDWU editor (not in the original): clear every pirate base / fortress / criminal network and all pirate
+        // control at this colony.
+        const hasPirate = h.empire === empire && facilities.some((f) => f != null && (f.type === PlanetaryFacilityType.PirateBase || f.type === PlanetaryFacilityType.PirateFortress || f.type === PlanetaryFacilityType.PirateCriminalNetwork));
+        const editorBtn = glassButton('Editor: Remove Pirate Bases', {
+            disabled: !hasPirate,
+            onClick: () => issuePlayerCommand(galaxy, empire, 'editorRemovePirateFacilities', [h], () => {
+                selectedFacility = null;
+                refreshAll();
+            }),
+        });
+        page.appendChild(place(editorBtn, 460, 114, 190, 25));
     }
 
     function refreshAll(): void {

@@ -9,6 +9,8 @@ import type { Galaxy } from '../galaxy';
 import type { Empire } from '../empire';
 import type { BuiltObject } from '../builtObject';
 import type { Habitat } from '../types';
+import { PlanetaryFacilityType } from '../researchSystem';
+import { checkRemoveFacilityTracking, reviewPlanetaryFacilities } from '../construction/facilities';
 import type { Design } from '../design';
 import type { ShipGroup } from '../fleets/shipGroup';
 import type { Character, IntelligenceMission, StellarObject } from '../characters';
@@ -347,6 +349,21 @@ export const PLAYER_OPS = {
     applyPopulationPolicyToAll: (_galaxy: Galaxy, empire: Empire, raceFamily: number, allOthers: number) => applyPopulationPolicyToAllColonies(empire, raceFamily, allOthers),
     /** Main.Part6.cs 3696 btnColonyFacilityScrap_Click (Scrap, or Attack for a pirate faction's facility). */
     scrapColonyFacility: (galaxy: Galaxy, empire: Empire, colony: Habitat, index: number, facilityId: number) => scrapColonyFacility(galaxy, empire, colony, index, facilityId),
+    /** openDWU editor (not in the original): remove every pirate facility (built or under construction) from the
+     *  player's colony and clear all pirate factions' control there. */
+    editorRemovePirateFacilities: (galaxy: Galaxy, empire: Empire, colony: Habitat): boolean => {
+        if (colony.empire !== empire) return false;
+        const pirate = (t: PlanetaryFacilityType): boolean => t === PlanetaryFacilityType.PirateBase || t === PlanetaryFacilityType.PirateFortress || t === PlanetaryFacilityType.PirateCriminalNetwork;
+        const list = colony.facilities ?? [];
+        const doomed = list.filter((f) => f != null && pirate(f.type));
+        for (const f of doomed) {
+            list.splice(list.indexOf(f), 1);
+            checkRemoveFacilityTracking(colony, f);
+        }
+        if (doomed.length > 0) reviewPlanetaryFacilities(galaxy, colony, empire);
+        colony.pirateColonyControl.items.length = 0;
+        return doomed.length > 0;
+    },
     /** Main.Part6.cs 3525 btnColonyTroopTransferTransport_Click. */
     colonyTransferToTransport: (galaxy: Galaxy, empire: Empire, colony: Habitat, item: Troop | Character, transport: BuiltObject) => transferToTransport(galaxy, empire, colony, item, transport),
 

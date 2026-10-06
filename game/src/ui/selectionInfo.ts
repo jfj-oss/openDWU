@@ -57,6 +57,7 @@ import { rimGoodMarker } from './scenario/rimTraderRows'; // [rimTrader]
 import { facilityGalactopediaTopic, facilityPanelHoverText } from './facilityHover';
 import { supplyChainEnabled, supplySnapshot } from './supplyChainCache'; // [improvements] supplyChain
 import { colonyTooltipLines, itemNeedsText, resourceName, siteTooltipLines } from './supplyChainText'; // [improvements] supplyChain
+import { isPrivateer } from '../sim/scenario/privateers/privateers'; // privateers add-on label
 
 // ---------------------------------------------------------------------------------------------------------------
 // Metrics (InfoPanel.cs SetContentSizeNormal 2420-2447) and colours (InfoPanel.cs fields / BaconInfoPanel.cs).
@@ -579,7 +580,7 @@ export function builtObjectInfo(ctx: InfoContext, bo: BuiltObject, extended = fa
     if (bo.pirateEmpireId > 0 && ((bo.empire === galaxy.independentEmpire && actual !== bo.empire) || (bo.role === BuiltObjectRole.Freight && bo.empire !== galaxy.independentEmpire))) {
         typeText = `${subRole} (SMUGGLER)`;
     } else {
-        typeText = `${subRole} (${bo.owner !== null ? 'STATE' : 'PRIVATE'})`;
+        typeText = `${subRole} (${bo.owner !== null ? 'STATE' : isPrivateer(galaxy, bo) ? 'PRIVATEER' : 'PRIVATE'})`; // privateers add-on label
     }
     rows.push(label('Type', [txt(typeText)]));
     // Empire.
