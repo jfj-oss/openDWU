@@ -53,6 +53,16 @@ export interface ScenarioManifest {
     requires?: string[];
     /** Add-on picker: scenario ids that cannot run together with this one (either side may list the other). */
     conflicts?: string[];
+    /**
+     * Load screen (saveLoad.ts "Add add-ons…"): this add-on is safe to switch on in a game already under way — it sets
+     * nothing up at game start or during galaxy generation (its state starts lazily). Only present when true.
+     */
+    addableToSave?: boolean;
+    /**
+     * Flag values an add-on gets when it is added to a running game instead of its defaults (e.g. a sub-switch whose
+     * work is a game-start step that never runs then). Only present when the scenario.json has it.
+     */
+    addedToSaveFlags?: Record<string, boolean>;
 }
 
 /** /assets/scenarios/index.json. */
@@ -143,6 +153,17 @@ export function parseScenarioManifest(input: unknown): ScenarioManifest {
     };
     if (requires !== undefined) manifest.requires = requires;
     if (conflicts !== undefined) manifest.conflicts = conflicts;
+    if (o.addableToSave === true) manifest.addableToSave = true;
+    if (o.addedToSaveFlags !== undefined) {
+        const r = o.addedToSaveFlags;
+        if (r === null || typeof r !== 'object' || Array.isArray(r)) throw new Error('scenario manifest: addedToSaveFlags must be an object');
+        const flagsOut: Record<string, boolean> = {};
+        for (const [k, v] of Object.entries(r as Record<string, unknown>)) {
+            if (typeof v !== 'boolean') throw new Error(`scenario manifest: addedToSaveFlags.${k} must be true or false`);
+            flagsOut[k] = v;
+        }
+        manifest.addedToSaveFlags = flagsOut;
+    }
     return manifest;
 }
 

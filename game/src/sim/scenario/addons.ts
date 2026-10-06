@@ -190,6 +190,8 @@ export interface AddonInfo {
     conflicts: string[];
     /** The master switch: the manifest's first flag (null: no flags, e.g. the threat framework). */
     masterFlag: string | null;
+    /** Can be switched on in a saved game (the Load screen's "Add add-ons…"; manifest addableToSave). */
+    addableToSave: boolean;
 }
 
 export interface AddonCatalog {
@@ -219,6 +221,7 @@ export function addonCatalog(manifests: readonly ScenarioManifest[]): AddonCatal
         deps: addonDependencies(m),
         conflicts: [...(m.conflicts ?? [])],
         masterFlag: m.flags.length > 0 ? m.flags[0].name : null,
+        addableToSave: m.addableToSave === true,
     }));
     return { list, byId: new Map(list.map((a) => [a.id, a])), manifests: new Map(manifests.map((m) => [m.id, m])) };
 }
@@ -499,4 +502,135 @@ export function toggleAddon(cat: AddonCatalog, picked: readonly string[], id: st
     }
     if (p.some((x) => x !== id && addonClosure(cat, [x], 'on').includes(id))) return p;
     return p.filter((x) => x !== id);
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Adding add-ons to a saved game (the Load screen's "Add add-ons…", saveLoad.ts)
+// ---------------------------------------------------------------------------------------------------------------------
+//
+// Only add-ons whose manifest says addableToSave (nothing at galaxy generation or game start; their state starts on
+// first use) can be added, together with what they need switched on, which must be addable too. Removing is not offered.
+// The game then runs the combined set: the save's add-ons plus the new ones as one composite scenario (or a single
+// scenario when one add-on alone covers the set), its galaxy.scenario updated so the next save records the new set
+// and loads normally (sim/scenario/addToSave.ts, applied by deserializeGame's explicit `addAddons` path).
+
+/** A save's scenario as the loader reads it (savedScenarioId / savedScenarioInclude): id null = the original game. */
+export interface SavedScenarioRef {
+    id: string | null;
+    /** The flattened add-on list of a composite ('addons') save; null otherwise. */
+    include: string[] | null;
+}
+
+/** Every package a saved scenario loads (its overlays): a composite's flattened list, a single scenario's include tree. */
+export function savedScenarioPackages(cat: AddonCatalog, saved: SavedScenarioRef): string[] {
+    if (saved.id === null) return [];
+    if (saved.id === COMPOSITE_SCENARIO_ID) return [...(saved.include ?? [])];
+    return addonClosure(cat, [saved.id], 'all');
+}
+
+/** The add-ons the Load screen offers for a save: addable, visible, not loaded by it yet, and needing only addable add-ons. */
+export function addonsAddableToSave(cat: AddonCatalog, saved: SavedScenarioRef): AddonInfo[] {
+    const loaded = new Set(savedScenarioPackages(cat, saved));
+    return cat.list.filter((a) => {
+        if (a.hidden || !a.addableToSave || loaded.has(a.id)) return false;
+        const adding = addonClosure(cat, [a.id], 'all').filter((x) => !loaded.has(x));
+        if (adding.some((x) => !(cat.byId.get(x)?.addableToSave ?? false))) return false;
+        // Not against anything the save runs (its loaded packages; data-only ones too: the overlays would clash).
+        return !adding.some((x) => [...loaded].some((y) => conflictsBetween(cat, x, y)));
+    });
+}
+
+/** What adding add-ons to a save does (the journaled record of it: player/commandLog.ts AddonsLogEntry). Plain data. */
+export interface SaveAddonAddition {
+    /** The save's scenario before (checked against the save). */
+    from: SavedScenarioRef;
+    /** The add-ons the player picked (canonical order). */
+    added: string[];
+    /** The scenario the game runs from now on (the game data must be built for it). */
+    to: { id: string; include: string[] | null };
+    /** The new manifest's name and description (a composite's "Add-ons: …"). */
+    name: string;
+    description: string;
+    /** The new manifest's flattened include list (empty for a single scenario: its own manifest's). */
+    manifestInclude: string[];
+    /** Flag / param definitions the new packages bring (names the save's scenario does not know yet). */
+    newFlags: ScenarioManifest['flags'];
+    newParams: ScenarioManifest['params'];
+    /** The values the new switches start with (and the masters of the picked add-ons, forced on). */
+    flags: Record<string, boolean>;
+    params: Record<string, number>;
+    /** Some new package carries data files (its overlay changes the game data, e.g. Themed Names' GameText.txt). */
+    withData: boolean;
+}
+
+/**
+ * The combined set for a save plus `adding` (throws when one cannot be added). The composite's include is the canonical
+ * closure of the save's packages and the picks (as a new game with that set would record it), unless that would reorder
+ * the save's own packages (their overlays apply in the saved order): then the new packages follow the saved list.
+ */
+export function planSaveAddonAddition(cat: AddonCatalog, saved: SavedScenarioRef, adding: readonly string[], manifestFor?: (id: string) => ScenarioManifest | undefined): SaveAddonAddition {
+    const offered = new Set(addonsAddableToSave(cat, saved).map((a) => a.id));
+    const picked = canonicalAddons(cat, adding);
+    if (picked.length === 0) throw new Error('No add-ons picked');
+    for (const id of adding) if (!offered.has(id)) throw new Error(`Add-on ${cat.byId.get(id)?.name ?? id} cannot be added to this game`);
+    const before = savedScenarioPackages(cat, saved);
+    const beforeSet = new Set(before);
+    let include = addonClosure(cat, canonicalAddons(cat, [...before, ...picked]), 'all');
+    const keptOrder = include.filter((x) => beforeSet.has(x));
+    if (keptOrder.join(',') !== before.join(',')) include = [...before, ...addonClosure(cat, picked, 'all').filter((x) => !beforeSet.has(x))];
+    const newPackages = include.filter((x) => !beforeSet.has(x));
+    // As planAddonStart: one package whose own include tree is exactly the set starts as that scenario.
+    let to: SaveAddonAddition['to'] = { id: COMPOSITE_SCENARIO_ID, include };
+    const want = new Set(include);
+    for (const id of include) {
+        const inc = includeClosure(cat, id);
+        if (inc.size === want.size && [...inc].every((x) => want.has(x))) {
+            to = { id, include: null };
+            break;
+        }
+    }
+    // Switches of the new packages: their defaults (an including package's definition wins, as resolveAddonSwitches),
+    // the masters of what the picks switch on forced on, then the manifests' addedToSaveFlags.
+    const mf = manifestFor ?? ((id: string) => cat.manifests.get(id));
+    const savedNames = new Set<string>();
+    for (const id of before) for (const f of [...(mf(id)?.flags ?? []), ...(mf(id)?.params ?? [])]) savedNames.add(f.name);
+    const newFlags: ScenarioManifest['flags'] = [];
+    const newParams: ScenarioManifest['params'] = [];
+    const flags: Record<string, boolean> = {};
+    const params: Record<string, number> = {};
+    for (const id of [...newPackages].reverse()) {
+        const m = mf(id);
+        if (m === undefined) throw new Error(`add-on ${id} is not available`);
+        for (const f of m.flags) {
+            if (savedNames.has(f.name) || f.name in flags) continue;
+            newFlags.push(JSON.parse(JSON.stringify(f)) as ScenarioManifest['flags'][number]); // plain JSON (no undefined keys): as journaled
+            flags[f.name] = f.default;
+        }
+        for (const p of m.params) {
+            if (savedNames.has(p.name) || p.name in params) continue;
+            newParams.push(JSON.parse(JSON.stringify(p)) as ScenarioManifest['params'][number]);
+            params[p.name] = p.default;
+        }
+    }
+    const on = addonClosure(cat, picked, 'on').filter((x) => !beforeSet.has(x));
+    for (const id of on) {
+        const master = cat.byId.get(id)?.masterFlag ?? null;
+        if (master !== null) flags[master] = true;
+    }
+    for (const id of on) for (const [k, v] of Object.entries(mf(id)?.addedToSaveFlags ?? {})) if (k in flags) flags[k] = v;
+    const composite = compositeScenarioManifest(cat, include.filter((x) => !(cat.byId.get(x)?.hidden ?? false)));
+    const single = to.id !== COMPOSITE_SCENARIO_ID ? mf(to.id) : undefined;
+    return {
+        from: { id: saved.id, include: saved.include === null ? null : [...saved.include] },
+        added: picked,
+        to,
+        name: single?.name ?? composite.name,
+        description: single?.description ?? `Several add-ons together: ${include.join(', ')}.`,
+        manifestInclude: single !== undefined ? [...single.include] : include,
+        newFlags,
+        newParams,
+        flags,
+        params,
+        withData: newPackages.some((id) => (mf(id)?.files.length ?? 0) > 0),
+    };
 }

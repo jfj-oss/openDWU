@@ -89,13 +89,13 @@ import { openGalactopedia } from './ui/screens/galactopedia';
 import { habitatInfo } from './ui/selectionInfo';
 import { renderInfoModel } from './ui/selectionInfoView';
 import { colonizationRangeFor, defaultStartGameOptions, wizardStartGameOptions, piratesFor, STARTING_TECH_LEVEL, toCreateGameOptions, type StartGameOptions, maximumEmpireAmountFor, starCountFor, defaultScenarioChoice, type StartScenarioChoice } from './sim/startGameOptions';
-import { serializeGameBlob, saveTextString, saveTextTail, type SaveText } from './saveData';
+import { readSaveScenarioRef, serializeGameBlob, saveTextString, saveTextTail, type SaveText } from './saveData';
 import { deserializeGameSteps, savedCustomizationSet, savedScenarioId, savedScenarioInclude, type GameSaveJSON } from './sim/save/gameSave';
 import { loadScenarioIndex, loadScenarioOverlay } from './sim/scenario/fetchScenario';
 import { applyScenarioOverlay, type ScenarioOverlay } from './sim/scenario/overlay';
 import { isTextLoaded, loadBaseTextUnderAdded } from './sim/textResolver';
 import { resolveThemedDataUrl } from './sim/data/paths';
-import { COMPOSITE_SCENARIO_ID, addonCatalog, compositeScenarioManifest, planAddonStart, resolveAddonSwitches, scenarioOverlayFor } from './sim/scenario/addons';
+import { COMPOSITE_SCENARIO_ID, addonCatalog, addonsAddableToSave, compositeScenarioManifest, planAddonStart, planSaveAddonAddition, resolveAddonSwitches, savedScenarioPackages, scenarioOverlayFor } from './sim/scenario/addons';
 // [leftovers] begin
 import { closeGalacticHistory } from './ui/screens/galacticHistory';
 import { installEventLogDevHook } from './ui/eventLogDev';
@@ -112,7 +112,7 @@ import { issuePlayerCommand } from './sim/player/playerCommands';
 import { createMissionShipActionAt } from './sim/player/shipAction';
 import { BuiltObjectMissionType } from './sim/missions/mission';
 import { commandLog } from './sim/player/commandLog';
-import { setSaveLoadProvider, createSaveLoadPanel, setCurrentSaveName, type LoadedGame } from './ui/screens/saveLoad';
+import { setSaveLoadProvider, createSaveLoadPanel, setCurrentSaveName, type LoadedGame, type SaveAddonsInfo } from './ui/screens/saveLoad';
 import { type Game } from './sim/game';
 import { registerLocationPingedHook } from './sim/story/eventActions';
 import { createGalaxyMap, type GalaxyMapScreen } from './ui/screens/galaxyMap';
@@ -312,8 +312,35 @@ function gameDataForSave(save: GameSaveJSON): GameData {
     return lastPlayedGameData;
 }
 
-/** Deserialize a save under the loading overlay (the save is parsed once; a late-game save takes seconds). */
-async function loadSaveWithProgress(text: SaveText): Promise<LoadedGame> {
+/**
+ * The Load screen's "Add add-ons…" (saveLoad.ts): the add-ons a save runs and those that can be switched on in it
+ * (addons.ts addonsAddableToSave). The save is not parsed: its scenario is read from its text (readSaveScenarioRef).
+ */
+async function saveAddonChoices(text: SaveText): Promise<SaveAddonsInfo> {
+    await preloadScenarioOverlays();
+    const cat = addonCatalog([...scenarioOverlays.values()].map((o) => o.manifest));
+    const saved = await readSaveScenarioRef(text);
+    const current = savedScenarioPackages(cat, saved)
+        .filter((id) => !(cat.byId.get(id)?.hidden ?? false))
+        .map((id) => cat.byId.get(id)?.name ?? id);
+    return { current, addable: addonsAddableToSave(cat, saved).map((a) => ({ id: a.id, name: a.name, description: a.description })) };
+}
+
+/** gameDataForSave with add-ons added: the combined set's data and deserializeGame's addAddons plan. */
+function gameDataForSaveAddingAddons(save: GameSaveJSON, adding: readonly string[]): { gameData: GameData; opts: { addAddons: ReturnType<typeof planSaveAddonAddition> } } {
+    if (lastGameData === null) throw new Error('DW:U game data is required to load a save');
+    const id = savedScenarioId(save);
+    const cat = addonCatalog([...scenarioOverlays.values()].map((o) => o.manifest));
+    const plan = planSaveAddonAddition(cat, { id, include: id === COMPOSITE_SCENARIO_ID ? savedScenarioInclude(save) : null }, adding);
+    lastPlayedGameData = gameDataWithScenario(lastGameData, plan.to.id, plan.to.include);
+    installGameStatics(lastPlayedGameData);
+    registerGameHooks();
+    return { gameData: lastPlayedGameData, opts: { addAddons: plan } };
+}
+
+/** Deserialize a save under the loading overlay (the save is parsed once; a late-game save takes seconds). `addAddons`:
+ *  switch these add-ons on in it (the Load screen's "Add add-ons…"; deserializeGame's addAddons path). */
+async function loadSaveWithProgress(text: SaveText, addAddons?: readonly string[]): Promise<LoadedGame> {
     // Start.cs 1777 / Main.Part7.cs 3941 LoadFromFile: a save of another theme first switches to it — as the user's
     // choice too (delegate8_0 = method_2(ThemeName, bool_5: true, …)) — then the galaxy loads on that theme's data.
     const saveTheme = savedCustomizationSet(await saveTextTail(text, 4096));
@@ -324,8 +351,11 @@ async function loadSaveWithProgress(text: SaveText): Promise<LoadedGame> {
     }
     if (lastGameData === null) throw new Error('DW:U game data is required to load a save');
     // (A Blob goes to the worker as it is: the worker reads it, the page never holds the text.)
-    if (useSimWorker()) return (await loadSaveInWorker(typeof text === 'string' ? { text } : { blob: text })) as unknown as LoadedGame;
-    return (await runStepsWithProgress('Loading game', deserializeGameSteps(await saveTextString(text), gameDataForSave))) as unknown as LoadedGame;
+    const adding = addAddons !== undefined && addAddons.length > 0 ? [...addAddons] : undefined;
+    if (adding !== undefined) await preloadScenarioOverlays();
+    if (useSimWorker()) return (await loadSaveInWorker(typeof text === 'string' ? { text } : { blob: text }, adding)) as unknown as LoadedGame;
+    if (adding === undefined) return (await runStepsWithProgress('Loading game', deserializeGameSteps(await saveTextString(text), gameDataForSave))) as unknown as LoadedGame;
+    return (await runStepsWithProgress('Loading game', deserializeGameSteps(await saveTextString(text), (save) => gameDataForSaveAddingAddons(save, adding)))) as unknown as LoadedGame;
 }
 
 /** [improvements] The battle-report observer's kill switch: `?battleReports=0` turns the sim-side recording off. */
@@ -384,9 +414,9 @@ interface WorkerLoadedGame {
  * tab): the worker parses it once, and its snapshot names the scenario (for the replica's static data) and carries the
  * save's start options. `url`: the worker fetches the save itself (`?load=`), so the text never reaches this thread.
  */
-async function loadSaveInWorker(source: { text: string } | { url: string } | { blob: Blob }): Promise<WorkerLoadedGame> {
+async function loadSaveInWorker(source: { text: string } | { url: string } | { blob: Blob }, addAddons?: string[]): Promise<WorkerLoadedGame> {
     let startOptions: StartGameOptions | null = null;
-    const client = await bootWorker('Loading game', { kind: 'load', ...source }, (snap) => {
+    const client = await bootWorker('Loading game', { kind: 'load', ...source, ...(addAddons !== undefined ? { addAddons } : {}) }, (snap) => {
         startOptions = snap.startOptions;
         return gameDataForScenario(snap.scenario ?? null);
     }, undefined);
@@ -1135,9 +1165,10 @@ export async function startGameView(
                 },
                 memorySaves,
                 serialize: () => serializeCurrent(),
-                loadSave: (text) => {
-                    return loadSaveWithProgress(text);
+                loadSave: (text, opts) => {
+                    return loadSaveWithProgress(text, opts?.addAddons);
                 },
+                saveAddons: (text) => saveAddonChoices(text),
             });
         }
         activeSavePanel = savePanel;
@@ -1656,9 +1687,10 @@ function getMainMenuSavePanel() {
             serialize: () => null, // saving is only available during a game
             loadOnly: true,
             memorySaves: sessionSaves,
-            loadSave: (text) => {
-                return loadSaveWithProgress(text);
+            loadSave: (text, opts) => {
+                return loadSaveWithProgress(text, opts?.addAddons);
             },
+            saveAddons: (text) => saveAddonChoices(text),
         });
     }
     activeSavePanel = mainMenuSavePanel;

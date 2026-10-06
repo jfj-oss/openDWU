@@ -28,6 +28,12 @@ export type WorkerBoot =
           blob?: Blob;
           /** Ignored: the worker reads the scenario from the save itself (main.ts no longer parses the save). */
           scenario?: { id: string; include: string[] | null } | null;
+          /**
+           * Add-ons to switch on in the loaded game (the Load screen's "Add add-ons…"): the worker plans the combined
+           * set from the save's own scenario (addons.ts planSaveAddonAddition) and loads with that data. Absent / empty:
+           * an ordinary load.
+           */
+          addAddons?: string[];
       }
     | {
           /** [simworker chunk 1] main.ts bootGameWithOptions without ?autostart: a bare generateGalaxy (no empires). */

@@ -10,6 +10,7 @@
 
 import type { Galaxy } from '../galaxy';
 import type { SimView } from '../tick/scheduler';
+import type { ScenarioFlagDef, ScenarioParamDef } from '../scenario/manifest';
 
 /** A resolved strategic command, re-applicable without the brief (player/strategicDecisions.ts applyStrategicCommand). */
 export interface StrategicCommand {
@@ -83,7 +84,33 @@ export interface ViewLogEntry {
     view?: SimView;
 }
 
-export type CommandLogEntry = AdvisorLogEntry | PlayerLogEntry | ClockLogEntry | ViewLogEntry;
+/**
+ * Add-ons switched on in a saved game when it was loaded (the Load screen's "Add add-ons…", scenario/addToSave.ts): from
+ * this boundary on the game runs the combined set. A replay applies the same change here (applyAddonsLogEntry); the
+ * stretch before it is the game as started (the save keeps its start options).
+ */
+export interface AddonsLogEntry {
+    starDate: number;
+    nowMs: number;
+    source: 'addons';
+    /** The add-ons picked (scenario ids). */
+    added: string[];
+    /** The scenario the game runs from here (a composite's flattened add-on list). */
+    scenario: { id: string; include: string[] | null };
+    /** galaxy.scenario.manifest's new name, description and include list, and the flag / param definitions added. */
+    name: string;
+    description: string;
+    manifestInclude: string[];
+    newFlags: ScenarioFlagDef[];
+    newParams: ScenarioParamDef[];
+    /** The new switches' values. */
+    flags: Record<string, boolean>;
+    params: Record<string, number>;
+    /** A new package has data files: a replay needs game data with its overlay too (replayCommandLog warns). */
+    withData?: true;
+}
+
+export type CommandLogEntry = AdvisorLogEntry | PlayerLogEntry | ClockLogEntry | ViewLogEntry | AddonsLogEntry;
 
 const logs = new WeakMap<Galaxy, CommandLogEntry[]>();
 
@@ -95,6 +122,7 @@ export function commandLog(galaxy: Galaxy): readonly CommandLogEntry[] {
 /** A deep copy of one entry (the log is data; saves and loads never share objects with the live log). */
 export function copyCommandLogEntry(e: CommandLogEntry): CommandLogEntry {
     if (e.source === 'player') return JSON.parse(JSON.stringify(e)) as PlayerLogEntry;
+    if (e.source === 'addons') return JSON.parse(JSON.stringify(e)) as AddonsLogEntry;
     if (e.source === 'clock') return { ...e };
     if (e.source === 'view') return e.view !== undefined ? { ...e, view: { ...e.view } } : { ...e };
     return { ...e, command: { ...e.command } };

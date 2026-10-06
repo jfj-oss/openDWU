@@ -34,3 +34,59 @@ export async function saveTextTail(save: SaveText, n: number): Promise<string> {
 export function saveTextMB(save: SaveText): number {
     return (typeof save === 'string' ? save.length : save.size) / 1048576;
 }
+
+/**
+ * The scenario a save was made with, read without parsing the save (the Load screen's "Add add-ons…" lists what the
+ * save does not have yet; a late save is hundreds of MB). galaxy.scenario.manifest is plain JSON in the encoded graph
+ * and the only object with a `resourcePlacement` key (ScenarioManifest's key order: id first): the last such key is
+ * found from the end of the text, chunk by chunk, and its manifest object parsed. The load itself checks the result
+ * again (deserializeGame's addAddons path). id null = no scenario (the original game).
+ */
+export async function readSaveScenarioRef(save: SaveText): Promise<{ id: string | null; include: string[] | null }> {
+    const MARK = '"resourcePlacement":[';
+    const START = '{"id":"';
+    const fromWindow = (w: string): { id: string | null; include: string[] | null } | null => {
+        const m = w.lastIndexOf(MARK);
+        if (m < 0) return null;
+        const start = w.lastIndexOf(START, m);
+        if (start < 0) return null;
+        const end = jsonObjectEnd(w, start);
+        if (end < 0) return null;
+        const manifest = JSON.parse(w.slice(start, end)) as { id?: unknown; include?: unknown };
+        const id = typeof manifest.id === 'string' ? manifest.id : null;
+        const include = Array.isArray(manifest.include) && manifest.include.every((x) => typeof x === 'string') ? (manifest.include as string[]) : null;
+        return { id, include: id === 'addons' ? include : null };
+    };
+    if (typeof save === 'string') return fromWindow(save) ?? { id: null, include: null };
+    const CHUNK = 8 << 20;
+    const PAD = 1 << 20; // the manifest (a few KB to tens of KB) around the key
+    for (let end = save.size; end > 0; end -= CHUNK) {
+        const lo = Math.max(0, end - CHUNK);
+        const chunk = await save.slice(lo, Math.min(save.size, end + MARK.length)).text();
+        if (!chunk.includes(MARK)) continue;
+        const r = fromWindow(await save.slice(Math.max(0, lo - PAD), Math.min(save.size, end + MARK.length + PAD)).text());
+        if (r !== null) return r;
+    }
+    return { id: null, include: null };
+}
+
+/** The index just past the JSON object starting at `start` (strings and escapes skipped), or -1 when it is cut off. */
+function jsonObjectEnd(text: string, start: number): number {
+    let depth = 0;
+    let inString = false;
+    for (let i = start; i < text.length; i++) {
+        const c = text.charCodeAt(i);
+        if (inString) {
+            if (c === 92) i++; // backslash
+            else if (c === 34) inString = false;
+            continue;
+        }
+        if (c === 34) inString = true;
+        else if (c === 123 || c === 91) depth++;
+        else if (c === 125 || c === 93) {
+            depth--;
+            if (depth === 0) return i + 1;
+        }
+    }
+    return -1;
+}

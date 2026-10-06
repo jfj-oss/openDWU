@@ -17,7 +17,8 @@ import { encodedField, flatEmpireList, galaxyFromJSON, galaxyToJsonParts, type G
 import { commandLog, copyCommandLogEntry, restoreCommandLog, type CommandLogEntry } from '../player/commandLog';
 import { flushPlayerCommands } from '../player/playerCommands';
 import { ensurePlayerInbox, processPlayerMessages } from '../playerMessages';
-import { COMPOSITE_SCENARIO_ID } from '../scenario/addons';
+import { COMPOSITE_SCENARIO_ID, type SaveAddonAddition } from '../scenario/addons';
+import { addAddonsToLoadedGalaxy } from '../scenario/addToSave';
 
 /** Bumped to 2 when the galaxy graph (M3 state) replaced the index-based
  *  format; version-1 saves predate ships/bases/characters and are rejected. */
@@ -121,24 +122,51 @@ export function savedScenarioInclude(save: string | GameSaveJSON): string[] | nu
     return Array.isArray(inc) && inc.every((x) => typeof x === 'string') ? (inc as string[]) : null;
 }
 
+export interface DeserializeGameOptions {
+    /**
+     * Load the save with add-ons added (the Load screen's "Add add-ons…"; addons.ts planSaveAddonAddition): the save must
+     * have the scenario `addAddons.from` and gameData the combined one (`addAddons.to`), in place of the usual check that
+     * the save and the data have the same scenario. Absent: an ordinary load, unchanged.
+     */
+    addAddons?: SaveAddonAddition;
+}
+
+/** deserializeGame's check for the adding-add-ons path: the save is the planned one's and the data the combined set's. */
+function checkAddonAddition(obj: GameSaveJSON, gameData: GameData, add: SaveAddonAddition): void {
+    const savedScenario = savedScenarioId(obj);
+    const savedInclude = savedScenario === COMPOSITE_SCENARIO_ID ? (savedScenarioInclude(obj) ?? []) : null;
+    if (savedScenario !== add.from.id || (savedInclude ?? []).join(',') !== (add.from.id === COMPOSITE_SCENARIO_ID ? (add.from.include ?? []) : []).join(',')) {
+        throw new Error(`Adding add-ons: the save has scenario ${savedScenario ?? '(none)'}${savedInclude !== null ? ` (${savedInclude.join(', ')})` : ''}, not the one the add-ons were picked for.`);
+    }
+    const dataScenario = gameData.scenario?.manifest.id ?? null;
+    const dataInclude = gameData.scenario?.manifest.include ?? [];
+    if (dataScenario !== add.to.id || (add.to.include !== null && dataInclude.join(',') !== add.to.include.join(','))) {
+        throw new Error(`Adding add-ons: the game data has ${dataScenario ?? 'no scenario'} (${dataInclude.join(', ')}), not the combined set ${add.to.id}${add.to.include !== null ? ` (${add.to.include.join(', ')})` : ''}.`);
+    }
+}
+
 /** Rebuild a game from a serializeGame string (or that string already JSON.parse'd — a big save is parsed once by a
  *  loader that also reads its scenario id). Static data (races, resources, research, governments) comes from gameData. */
-export function deserializeGame(save: string | GameSaveJSON, gameData: GameData): { game: Game; time: GalaxyTime; startOptions: StartGameOptions } {
+export function deserializeGame(save: string | GameSaveJSON, gameData: GameData, opts: DeserializeGameOptions = {}): { game: Game; time: GalaxyTime; startOptions: StartGameOptions } {
     const obj = typeof save === 'string' ? (JSON.parse(save) as GameSaveJSON) : save;
     if (obj.version !== GAME_SAVE_VERSION) throw new Error(`Unsupported save version ${String(obj.version)} (expected ${GAME_SAVE_VERSION}).`);
+    const add = opts.addAddons;
+    if (add !== undefined) checkAddonAddition(obj, gameData, add);
     // Mod layer: the static tables are rebuilt from gameData, so it must carry the save's scenario overlay (or none).
     const savedScenario = savedScenarioId(obj);
     const dataScenario = gameData.scenario?.manifest.id ?? null;
-    if (savedScenario !== dataScenario) {
+    if (add === undefined && savedScenario !== dataScenario) {
         throw new Error(`Save was made with scenario ${savedScenario ?? '(none)'} but the game data has ${dataScenario ?? 'no scenario'}; load it with that scenario's data.`);
     }
     // A composite (several add-ons) save needs the same add-on set in its data.
-    if (savedScenario === COMPOSITE_SCENARIO_ID && (savedScenarioInclude(obj) ?? []).join(',') !== (gameData.scenario?.manifest.include ?? []).join(',')) {
+    if (add === undefined && savedScenario === COMPOSITE_SCENARIO_ID && (savedScenarioInclude(obj) ?? []).join(',') !== (gameData.scenario?.manifest.include ?? []).join(',')) {
         throw new Error(`Save was made with add-ons ${(savedScenarioInclude(obj) ?? []).join(', ')} but the game data has ${(gameData.scenario?.manifest.include ?? []).join(', ')}.`);
     }
 
     const galaxy: Galaxy = galaxyFromJSON(obj.galaxy, gameData);
     restoreCommandLog(galaxy, obj.commandLog);
+    // Adding add-ons (the explicit path only): galaxy.scenario becomes the combined set, journaled at this boundary.
+    if (add !== undefined) addAddonsToLoadedGalaxy(galaxy, add);
     // BaconStart.LoadGame clears settingsInitialized; BaconMain.BaconInitialize re-reads BaconSettings.txt when the
     // loaded game starts (Main.Part12.cs 3151).
     baconInitializeSettings(galaxy, gameData.baconSettings);
@@ -174,10 +202,11 @@ export function deserializeGame(save: string | GameSaveJSON, gameData: GameData)
  */
 export function* deserializeGameSteps(
     text: string,
-    gameDataFor: (save: GameSaveJSON) => GameData,
+    gameDataFor: (save: GameSaveJSON) => GameData | { gameData: GameData; opts: DeserializeGameOptions },
 ): Generator<{ step: string; fraction: number }, { game: Game; time: GalaxyTime; startOptions: StartGameOptions }, void> {
     yield { step: `Reading save (${Math.max(1, Math.round(text.length / 1048576))} MB)`, fraction: 0 };
     const obj = JSON.parse(text) as GameSaveJSON;
     yield { step: 'Rebuilding galaxy', fraction: 0.35 };
-    return deserializeGame(obj, gameDataFor(obj));
+    const d = gameDataFor(obj);
+    return 'opts' in d ? deserializeGame(obj, d.gameData, d.opts) : deserializeGame(obj, d);
 }

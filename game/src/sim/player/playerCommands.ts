@@ -25,6 +25,7 @@ import { applyStrategicCommand } from './strategicDecisions';
 import { noteConstructionBoardCommand } from './constructionBoard';
 import { setUiRecordSender, withSimWrites } from '../readOnlyQuery';
 import { ensurePlayerInbox, processPlayerMessages } from '../playerMessages';
+import { applyAddonsLogEntry } from '../scenario/addToSave';
 
 interface Pending {
     empire: Empire;
@@ -251,6 +252,11 @@ function replayEntry(galaxy: Galaxy, e: CommandLogEntry): void {
         case 'view':
             appendCommandLog(galaxy, copyCommandLogEntry(e));
             return;
+        case 'addons':
+            // Add-ons switched on at a load (scenario/addToSave.ts): the same switch change at the same boundary.
+            applyAddonsLogEntry(galaxy, e);
+            appendCommandLog(galaxy, copyCommandLogEntry(e));
+            return;
     }
 }
 
@@ -330,6 +336,7 @@ export function noteSimViewRect(galaxy: Galaxy, view: SimView | null): SimView |
 export function commandLogReplayWarnings(log: readonly CommandLogEntry[]): string[] {
     const out: string[] = [];
     for (const e of log) {
+        if (e.source === 'addons' && e.withData === true) out.push(`add-ons ${e.added.join(', ')} switched on at ${e.nowMs} ms carry data files: replay with game data that has their overlays (the switches are applied at that boundary)`);
         if (e.source === 'view' && e.on && e.view === undefined) out.push(`camera level-of-detail pass (?simView=1) on from ${e.nowMs} ms: the camera is not journaled, the replay runs without it and may differ`);
     }
     return out;

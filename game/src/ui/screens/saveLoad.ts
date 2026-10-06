@@ -12,7 +12,7 @@
 // (Blob download / <input type=file>).
 import './saveLoad.css';
 import type { SaveText } from '../../saveData';
-import { COLORS, FONT, OwGrid, el, glassButton, messageBox, openOriginalWindow, place, tabStrip, text, textBox, type GridColumn, type OriginalWindow } from '../originalWindow';
+import { COLORS, FONT, OwGrid, checkBox, el, glassButton, messageBox, openOriginalWindow, place, scrollPanel, tabStrip, text, textBox, type GridColumn, type OriginalWindow } from '../originalWindow';
 
 /** localStorage key prefix for one named save. */
 export const SAVE_KEY_PREFIX = 'dwu.saves.';
@@ -40,6 +40,19 @@ export interface LoadedGame {
     game: unknown;
     time: unknown;
     startOptions: unknown;
+}
+
+/** How a save is loaded: `addAddons` = switch these add-ons on in it (the "Add add-ons…" picker). */
+export interface LoadSaveOptions {
+    addAddons?: string[];
+}
+
+/** The "Add add-ons…" picker's lists for one save (main.ts reads them from the save's scenario without loading it). */
+export interface SaveAddonsInfo {
+    /** Names of the add-ons the save already runs. */
+    current: string[];
+    /** The add-ons that can be switched on in it (addons.ts addonsAddableToSave), with their descriptions. */
+    addable: { id: string; name: string; description: string }[];
 }
 
 // ---------------------------------------------------------------------------
@@ -118,8 +131,13 @@ export function loadErrorReason(err: unknown): string {
 /** parseSaveFileText for a picked file, which is handed on as the Blob it is (the worker reads it: the page never holds
  *  a big save's text). */
 export async function parseSaveFile(file: Blob, load: (text: SaveText) => LoadedGame | Promise<LoadedGame>): Promise<LoadedGame> {
-    if (!/^\s*\{/.test(await file.slice(0, 256).text())) throw new SyntaxError('Not a save file (expected a JSON object).');
+    await checkSaveFile(file);
     return await load(file);
+}
+
+/** parseSaveFile's cheap sanity check (a save is one JSON object). */
+async function checkSaveFile(file: Blob): Promise<void> {
+    if (!/^\s*\{/.test(await file.slice(0, 256).text())) throw new SyntaxError('Not a save file (expected a JSON object).');
 }
 
 // ---------------------------------------------------------------------------
@@ -295,7 +313,7 @@ export interface SaveLoadProvider {
     serialize?: () => SaveText | null | Promise<SaveText | null>;
     /** Resolve stored save text to a LoadedGame (null when loading is
      * unavailable, e.g. on the main menu without a loaded game data set). */
-    loadSave?: (text: SaveText) => LoadedGame | Promise<LoadedGame>;
+    loadSave?: (text: SaveText, opts?: LoadSaveOptions) => LoadedGame | Promise<LoadedGame>;
     /** In-memory saves written this session (merged over localStorage). */
     memorySaves?: Map<string, SaveText>;
 }
@@ -373,7 +391,9 @@ export interface SavePanelWiring {
     serialize?: () => SaveText | null | Promise<SaveText | null>;
     /** Resolve a stored save text to a LoadedGame (load button / file open; a Blob: a save made since saveData.ts, or
      *  the opened file). */
-    loadSave?: (text: SaveText) => LoadedGame | Promise<LoadedGame>;
+    loadSave?: (text: SaveText, opts?: LoadSaveOptions) => LoadedGame | Promise<LoadedGame>;
+    /** The "Add add-ons…" picker's lists for a save (absent: no picker). */
+    saveAddons?: (text: SaveText) => Promise<SaveAddonsInfo>;
     /** Date stamp for newly written saves (default: now). */
     now?: () => Date;
     /** Storage backend (default: window.localStorage). */
@@ -393,7 +413,7 @@ const SL_FONT = FONT.large; // 16.67
 /** Build the Save/Load window. `mode` picks which sub-panel shows first: 'save' (Escape menu Save Game) or 'load'
  * (Escape menu Load Game / main menu Load Game). The window opens on show(). */
 export function createSaveLoadPanel(mode: 'save' | 'load', wiring: SavePanelWiring = { callbacks: {} }): SavePanelRefs {
-    const { callbacks, memorySaves, serialize, loadSave, now, storage, textStore, loadOnly } = wiring;
+    const { callbacks, memorySaves, serialize, loadSave, saveAddons, now, storage, textStore, loadOnly } = wiring;
     const getStorage = (): SaveStorage => storage ?? (window.localStorage as unknown as SaveStorage);
     const getTextStore = (): SaveTextStore => textStore ?? getDefaultTextStore();
     const stamp = (): string => (now ? now() : new Date()).toISOString();
@@ -468,7 +488,9 @@ export function createSaveLoadPanel(mode: 'save' | 'load', wiring: SavePanelWiri
         onDoubleClick: (e) => void doLoadByName(e.name),
     });
     loadGrid.el.classList.add('save-list');
-    loadBody.appendChild(place(loadGrid.el, 10, 28, 584, btnY - 38));
+    // The "Add add-ons…" row sits between the list and the buttons.
+    const addonsRowY = btnY - 41;
+    loadBody.appendChild(place(loadGrid.el, 10, 28, 584, addonsRowY - 36));
     const loadBtn = glassButton('Load', { size: FONT.header, className: 'save-load-btn', onClick: () => loadSelected() });
     const deleteBtn = glassButton('Delete', { size: FONT.header, className: 'save-load-btn save-row-delete', onClick: () => deleteSelected() });
     // The selected save as a .dwusave file, straight from the store (its Blob: nothing is loaded or parsed).
@@ -480,6 +502,19 @@ export function createSaveLoadPanel(mode: 'save' | 'load', wiring: SavePanelWiri
     fileInput.style.display = 'none';
     fileInput.addEventListener('change', handleFilePicked);
     loadBody.append(place(loadBtn, 10, btnY, 130, 35), place(deleteBtn, 150, btnY, 110, 35), place(exportBtn, 270, btnY, 134, 35), place(openFileBtn, 414, btnY, 180, 35), fileInput);
+    // Add add-ons to a save while loading it: the selected save, or (none selected) a .dwusave file picked for it.
+    const addonsBtn = glassButton('Add add-ons…', { size: FONT.header, className: 'save-load-btn save-load-addons', onClick: () => addAddonsClicked() });
+    addonsBtn.title = 'Load the selected save (or, with none selected, a .dwusave file) with extra add-ons switched on';
+    const addonsFileInput = el('input', 'save-load-file-input');
+    addonsFileInput.type = 'file';
+    addonsFileInput.accept = SAVE_FILE_EXTENSION;
+    addonsFileInput.style.display = 'none';
+    addonsFileInput.addEventListener('change', () => {
+        const file = addonsFileInput.files?.[0];
+        addonsFileInput.value = '';
+        if (file) void openAddonPicker({ label: file.name, text: file, saveName: saveNameFromFileName(file.name), isFile: true });
+    });
+    if (saveAddons !== undefined) loadBody.append(place(addonsBtn, 10, addonsRowY, 200, 33), addonsFileInput);
 
     // A status line under the buttons (the old panel's toast).
     const status = place(text('', { size: FONT.normal, color: 'rgb(255, 192, 0)', shadow: true, wrapWidth: 584, className: 'save-load-status' }), 10, SL_H - 63 - 34);
@@ -495,6 +530,7 @@ export function createSaveLoadPanel(mode: 'save' | 'load', wiring: SavePanelWiri
     let statusTimer: number | undefined;
     let win: OriginalWindow | null = null;
     let loadingName: string | null = null;
+    let addonWin: OriginalWindow | null = null;
 
     function showToast(msg: string, ms = 3000): void {
         status.textContent = msg;
@@ -666,6 +702,103 @@ export function createSaveLoadPanel(mode: 'save' | 'load', wiring: SavePanelWiri
         callbacks.onLoadedFile?.(loaded);
     }
 
+    function addAddonsClicked(): void {
+        const e = loadGrid.selected;
+        if (e) {
+            void (async () => {
+                const saveText = await saveTextFor(e.name);
+                if (saveText === null) {
+                    showToast(`Save "${e.name}" not found`);
+                    return;
+                }
+                await openAddonPicker({ label: e.name, text: saveText, saveName: e.name, isFile: false });
+            })();
+        } else addonsFileInput.click();
+    }
+
+    /**
+     * The add-on picker for one save: a tick list of the add-ons it can still get (each with its description) and
+     * "Load with these add-ons". Add-ons cannot be removed again, so the window says so.
+     */
+    async function openAddonPicker(src: { label: string; text: SaveText; saveName: string; isFile: boolean }): Promise<void> {
+        if (saveAddons === undefined || !loadSave) {
+            showToast('Loading is only available during a game');
+            return;
+        }
+        let info: SaveAddonsInfo;
+        try {
+            if (src.isFile && src.text instanceof Blob) await checkSaveFile(src.text);
+            status.textContent = `Reading "${src.label}"…`;
+            info = await saveAddons(src.text);
+            status.textContent = '';
+        } catch (err) {
+            console.error('Failed to read the save for add-ons', err);
+            showToast(`Could not read that save: ${loadErrorReason(err)}`, 12000);
+            return;
+        }
+        addonWin?.close();
+        const W = 600;
+        const H = 520;
+        const win = openOriginalWindow({ id: 'saveload-addons', title: 'Add Add-ons', width: W, height: H, onClose: () => (addonWin = null) });
+        addonWin = win;
+        const body = el('div', 'save-load-addons-content');
+        const bw = win.bodySize.w;
+        const bh = win.bodySize.h;
+        body.appendChild(place(text(`Save: ${src.label}`, { size: SL_FONT, color: COLORS.label, shadow: false, wrapWidth: bw - 20 }), 10, 6));
+        body.appendChild(place(text(`Add-ons in this save: ${info.current.length > 0 ? info.current.join(', ') : 'none (the original game)'}`, { size: FONT.normal, shadow: false, wrapWidth: bw - 20 }), 10, 32));
+        const list = place(scrollPanel('save-load-addons-list'), 10, 76, bw - 20, bh - 76 - 100);
+        const picked = new Set<string>();
+        const loadWith = glassButton('Load with these add-ons', { size: FONT.header, className: 'save-load-btn save-load-addons-load', onClick: () => void go() });
+        const cancel = glassButton('Cancel', { size: FONT.header, className: 'save-load-btn', onClick: () => win.close() });
+        const refresh = (): void => {
+            loadWith.disabled = picked.size === 0;
+        };
+        if (info.addable.length === 0) list.appendChild(text('No more add-ons can be added to this game.', { size: FONT.normal, shadow: false, wrapWidth: bw - 40 }));
+        for (const a of info.addable) {
+            const row = el('div', 'save-load-addon-row');
+            row.dataset.addon = a.id;
+            row.appendChild(
+                checkBox(
+                    a.name,
+                    false,
+                    (v) => {
+                        if (v) picked.add(a.id);
+                        else picked.delete(a.id);
+                        refresh();
+                    },
+                    SL_FONT,
+                ),
+            );
+            row.appendChild(el('div', 'save-load-addon-desc', a.description));
+            list.appendChild(row);
+        }
+        body.appendChild(list);
+        body.appendChild(place(text('Added add-ons run from now on and are saved with the game; they cannot be removed again. Only add-ons that need nothing set up at game start are offered.', { size: FONT.normal, color: COLORS.label, shadow: false, wrapWidth: bw - 20 }), 10, bh - 92));
+        body.append(place(loadWith, 10, bh - 45, 260, 35), place(cancel, bw - 140, bh - 45, 130, 35));
+        refresh();
+        win.body.appendChild(body);
+
+        async function go(): Promise<void> {
+            if (picked.size === 0 || loadWith.disabled || !loadSave) return;
+            const ids = info.addable.filter((a) => picked.has(a.id)).map((a) => a.id);
+            loadWith.disabled = true;
+            let loaded: LoadedGame;
+            try {
+                loaded = await loadSave(src.text, { addAddons: ids });
+            } catch (err) {
+                console.error('Failed to load save with add-ons', err);
+                win.close();
+                showToast(`Could not load that save with the add-ons: ${loadErrorReason(err)}`, 12000);
+                return;
+            }
+            win.close();
+            hide();
+            currentSaveName = src.saveName;
+            if (!src.isFile) callbacks.onLoad?.(src.saveName);
+            callbacks.onLoadedFile?.(loaded);
+        }
+    }
+
     function loadSelected(): void {
         const e = loadGrid.selected;
         if (e) void doLoadByName(e.name);
@@ -765,6 +898,7 @@ export function createSaveLoadPanel(mode: 'save' | 'load', wiring: SavePanelWiri
         hide,
         destroy: () => {
             if (statusTimer !== undefined) clearTimeout(statusTimer);
+            addonWin?.close();
             hide();
             root.remove();
         },

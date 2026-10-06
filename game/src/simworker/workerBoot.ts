@@ -18,7 +18,7 @@ import { GalaxyTime } from '../sim/galaxyTime';
 import { deserializeGame, savedCustomizationSet, savedScenarioId, savedScenarioInclude, type GameSaveJSON } from '../sim/save/gameSave';
 import type { StartGameOptions } from '../sim/startGameOptions';
 import { applyScenarioOverlay, type ScenarioOverlay } from '../sim/scenario/overlay';
-import { COMPOSITE_SCENARIO_ID, scenarioOverlayFor } from '../sim/scenario/addons';
+import { COMPOSITE_SCENARIO_ID, addonCatalog, planSaveAddonAddition, scenarioOverlayFor } from '../sim/scenario/addons';
 import { reviveCreateOptions } from './bootOptions';
 import type { ScenarioRef, WorkerBoot } from './protocol';
 
@@ -115,7 +115,10 @@ export async function bootWorkerGame(boot: WorkerBoot, deps: WorkerBootDeps): Pr
     // The message is consumed: drop both references to the text so it can be collected while the game is rebuilt.
     text = undefined;
     boot.text = undefined;
-    const scenario = saveScenarioRef(save);
+    const savedScenario = saveScenarioRef(save);
+    // Adding add-ons (the Load screen's picker): the combined set, planned from the save's own scenario.
+    const addAddons = boot.addAddons !== undefined && boot.addAddons.length > 0 ? planSaveAddonAddition(addonCatalog([...(await deps.overlays()).values()].map((o) => o.manifest)), { id: savedScenario?.id ?? null, include: savedScenario?.include ?? null }, boot.addAddons) : undefined;
+    const scenario: ScenarioRef = addAddons !== undefined ? { id: addAddons.to.id, include: addAddons.to.include } : savedScenario;
     // The main thread switches to a save's theme before booting the worker on it (main.ts loadSaveWithProgress,
     // Start.cs 1777); a save fetched here by URL can still name another one: its tables would not match this data.
     const saveTheme = savedCustomizationSet(save);
@@ -128,6 +131,6 @@ export async function bootWorkerGame(boot: WorkerBoot, deps: WorkerBootDeps): Pr
     installGameStatics(gameData);
     registerGameHooks();
     progress('Rebuilding galaxy', 0.35);
-    const loaded = deserializeGame(save, gameData);
+    const loaded = addAddons !== undefined ? deserializeGame(save, gameData, { addAddons }) : deserializeGame(save, gameData);
     return { game: loaded.game, time: loaded.time, gameData, scenario, startOptions: loaded.startOptions };
 }
