@@ -85,6 +85,7 @@ import { confirmAutomationOff } from './orderMenu';
 import { galaxyStarDate } from '../sim/tick/simTime';
 import { createShipAction, ShipActionType } from '../sim/player/shipAction';
 import { issuePlayerCommand } from '../sim/player/playerCommands';
+import { toggleGameEditor } from './screens/gameEditor';
 import type { PlayerOpArgs, PlayerOpName, PlayerOpResult } from '../sim/player/playerOps';
 import type { Design } from '../sim/design';
 import { PendingOnce, PendingValues } from './pendingCommands';
@@ -1000,6 +1001,10 @@ function openTopBarScreen(name: string, wiring: HudWiring): void {
         // [leftovers] btnGalacticHistory → Galactic History (Main.Part3.cs:46 btnGalacticHistory_Click).
         case 'btnGalacticHistory':
             if (src) toggleGalacticHistory({ empire: src.empire, mode: 'galactichistory', onGoTo: (x, y) => historyGoTo(wiring.camera, x, y) });
+            return;
+        // btnGameEditor: our barebones Game Editor (screens/gameEditor.ts; not the original's editor).
+        case 'btnGameEditor':
+            if (src) toggleGameEditor(src.empire);
             return;
         // Main.Part9.cs tbtnColonies_Click: toggle the Colonies screen (pnlColonyInfo, Main.Part11.cs method_166).
         case 'tbtnColonies':
