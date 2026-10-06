@@ -15,7 +15,7 @@ import type { Habitat } from './types';
 import type { PlanetaryFacilityBuildDate } from './construction/facilities';
 import type { Race } from './data/races';
 import type { Ruin } from './ruins';
-import type { Government } from './data/governments';
+import { resolveDefaultAllowableGovernmentTypes as resolveDefaultAllowableGovernmentTypesFrom, type Government } from './data/governments';
 import { START_STAR_DATE, startStarDateForAge } from './galaxyTime';
 import type { BuiltObject } from './builtObject';
 import { Cargo, CargoList, ResourceRef, TroopList } from './cargo';
@@ -1125,45 +1125,7 @@ export class Empire {
     // Port of Empire.cs ResolveDefaultAllowableGovernmentTypes(Race, bool).
     static resolveDefaultAllowableGovernmentTypes(dominantRace: Race | null, forceIncludeSpecialTypesIfRaceAllows: boolean): number[];
     static resolveDefaultAllowableGovernmentTypes(dominantRace: Race | null, forceIncludeSpecialTypesIfRaceAllows = false): number[] {
-        const list: number[] = [];
-        for (let i = 0; i < governmentsStatic.length; i++) {
-            const governmentAttributes = governmentsStatic[i];
-            if (governmentAttributes === null) {
-                continue;
-            }
-            let flag = true;
-            if (dominantRace !== null && dominantRace.disallowedGovernments.includes(governmentAttributes.governmentId)) {
-                flag = false;
-            }
-            if (!flag) {
-                continue;
-            }
-            switch (governmentAttributes.availability) {
-                case 0:
-                    list.push(governmentAttributes.governmentId);
-                    break;
-                case 1:
-                    if (dominantRace !== null && dominantRace.specialGovernment === governmentAttributes.governmentId) {
-                        list.push(governmentAttributes.governmentId);
-                    }
-                    break;
-                case 2:
-                    if (dominantRace !== null && (forceIncludeSpecialTypesIfRaceAllows || dominantRace.name === 'Mechanoid') && dominantRace.specialGovernment === governmentAttributes.governmentId) {
-                        list.push(governmentAttributes.governmentId);
-                    } else if (dominantRace !== null && dominantRace.specialGovernment === governmentAttributes.governmentId) {
-                        list.push(governmentAttributes.governmentId);
-                    }
-                    break;
-                case 3:
-                    if (dominantRace !== null && (forceIncludeSpecialTypesIfRaceAllows || dominantRace.name === 'Shakturi') && dominantRace.specialGovernment === governmentAttributes.governmentId) {
-                        list.push(governmentAttributes.governmentId);
-                    } else if (dominantRace !== null && dominantRace.specialGovernment === governmentAttributes.governmentId) {
-                        list.push(governmentAttributes.governmentId);
-                    }
-                    break;
-            }
-        }
-        return list;
+        return resolveDefaultAllowableGovernmentTypesFrom(governmentsStatic, dominantRace, forceIncludeSpecialTypesIfRaceAllows);
     }
 
     // Port of Empire.cs GenerateDesignSpecifications (call list preserved;

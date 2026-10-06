@@ -165,3 +165,57 @@ export function parseGovernmentBiases(text: string): GovernmentBiasRow[] {
     }
     return rows;
 }
+
+/** The race fields Empire.ResolveDefaultAllowableGovernmentTypes reads (Race.SpecialGovernmentId /
+ *  DisallowedGovernmentIds / Name). */
+export interface GovernmentRaceFields {
+    name: string;
+    specialGovernment: number;
+    disallowedGovernments: readonly number[];
+}
+
+// Port of Empire.cs ResolveDefaultAllowableGovernmentTypes(Race, bool) (4053) over a given GovernmentsStatic list:
+// every Availability-0 government plus the race's SpecialGovernmentId (Availability 1 / 2 / 3), less the race's
+// DisallowedGovernmentIds, in GovernmentsStatic order. Empire.resolveDefaultAllowableGovernmentTypes and the new-game
+// wizard's government combos (Start.1.cs 4227 IdyEbrKpy3, StartingEmpiresListView.cs _Grid_CellValueChanged) share it.
+export function resolveDefaultAllowableGovernmentTypes(governments: readonly (Government | null)[], dominantRace: GovernmentRaceFields | null, forceIncludeSpecialTypesIfRaceAllows = false): number[] {
+    const list: number[] = [];
+    for (let i = 0; i < governments.length; i++) {
+        const governmentAttributes = governments[i];
+        if (governmentAttributes == null) {
+            continue;
+        }
+        let flag = true;
+        if (dominantRace !== null && dominantRace.disallowedGovernments.includes(governmentAttributes.governmentId)) {
+            flag = false;
+        }
+        if (!flag) {
+            continue;
+        }
+        switch (governmentAttributes.availability) {
+            case 0:
+                list.push(governmentAttributes.governmentId);
+                break;
+            case 1:
+                if (dominantRace !== null && dominantRace.specialGovernment === governmentAttributes.governmentId) {
+                    list.push(governmentAttributes.governmentId);
+                }
+                break;
+            case 2:
+                if (dominantRace !== null && (forceIncludeSpecialTypesIfRaceAllows || dominantRace.name === 'Mechanoid') && dominantRace.specialGovernment === governmentAttributes.governmentId) {
+                    list.push(governmentAttributes.governmentId);
+                } else if (dominantRace !== null && dominantRace.specialGovernment === governmentAttributes.governmentId) {
+                    list.push(governmentAttributes.governmentId);
+                }
+                break;
+            case 3:
+                if (dominantRace !== null && (forceIncludeSpecialTypesIfRaceAllows || dominantRace.name === 'Shakturi') && dominantRace.specialGovernment === governmentAttributes.governmentId) {
+                    list.push(governmentAttributes.governmentId);
+                } else if (dominantRace !== null && dominantRace.specialGovernment === governmentAttributes.governmentId) {
+                    list.push(governmentAttributes.governmentId);
+                }
+                break;
+        }
+    }
+    return list;
+}

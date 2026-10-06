@@ -85,7 +85,7 @@ import { PIRATE_FLAG_SHAPES, pirateFlagShapeUrl } from '../empireEmblem';
 // [wizardB1] end
 import { parseRace, type Race } from '../../sim/data/races';
 import { parseRaceFamilies, type RaceFamily } from '../../sim/data/raceFamilies';
-import { parseGovernments, type Government } from '../../sim/data/governments';
+import { parseGovernments, resolveDefaultAllowableGovernmentTypes, type Government } from '../../sim/data/governments';
 import { parseResources } from '../../sim/data/resources';
 import { parseComponents } from '../../sim/data/components';
 import { parseFacilities } from '../../sim/data/facilities';
@@ -259,13 +259,21 @@ export const WIZARD_FORWARD_LABELS: Record<WizardPageId, string> = {
     start: 'Start the Game!',
 };
 
-/** Task 06e: governments available to a new player empire at start. The
- * original's Government type carries an availability field (0 = all empires)
- * plus specialFunctionCode — storyline-only governments have a non-zero
- * special function (e.g. 1 = nationalize private sector), so both are
- * excluded here. */
-export function filterStartGovernments(governments: Government[]): Government[] {
-    return governments.filter((g) => g.availability === 0 && g.specialFunctionCode === 0);
+/** The governments a new-game government combo offers for `race` (null = the "(Random)" race): Start.1.cs 4227
+ *  IdyEbrKpy3 / StartingEmpiresListView.cs _Grid_CellValueChanged → Empire.ResolveDefaultAllowableGovernmentTypes(race,
+ *  forceIncludeSpecialTypesIfRaceAllows: true), listed in GovernmentsStatic order (GovernmentAttributesList.GetByIds).
+ *  Every Availability-0 government plus the race's own special one (Hive Mind, Technocracy, Mercantile Guild, ...),
+ *  less its DisallowedGovernments. */
+export function startGovernmentsForRace(governments: readonly Government[], race: Race | null): Government[] {
+    const ids = resolveDefaultAllowableGovernmentTypes(governments, race, true);
+    return governments.filter((g) => ids.includes(g.governmentId));
+}
+
+/** Start.1.cs 4238-4255 IdyEbrKpy3: the selection after the race changes — the race's PreferredStartingGovernment when
+ *  it is in the offered list, else -1 ("(Random)"). */
+export function defaultGovernmentForRace(offered: readonly Government[], race: Race | null): number {
+    if (race === null) return -1;
+    return offered.some((g) => g.governmentId === race.preferredStartingGovernment) ? race.preferredStartingGovernment : -1;
 }
 
 /** .NET `(value).ToString("+#0%;-#0%;<zero>")`: the percentage rounded half away from zero, a sign, or `zero` when it
@@ -1118,7 +1126,10 @@ function buildJumpStartPage(ctx: WizardCtx): HTMLDivElement {
     // 280 × 179 scrolling container at (190, 51).
     const racePanel = panel(wrap, 10, 295, 480, 240, 'wizard-jumpstart-empire');
     let races: Race[] = [];
+    let allGovernments: Government[] = [];
     let governments: Government[] = [];
+    // The race the government list was last built for (undefined = not built yet).
+    let govRace: Race | null | undefined;
     const raceCombo = raceDropDown({
         races: [],
         value: options.raceName,
@@ -1129,6 +1140,9 @@ function buildJumpStartPage(ctx: WizardCtx): HTMLDivElement {
         onChange: (name) => {
             options.raceName = name;
             paintRace();
+            // Start.cs 5136 cmbJumpStartYourEmpireRace_SelectedIndexChanged → IdyEbrKpy3(race, true).
+            refreshGovernments();
+            paintGov();
         },
     });
     raceCombo.el.classList.add('wizard-jumpstart-race-select');
@@ -1175,6 +1189,16 @@ function buildJumpStartPage(ctx: WizardCtx): HTMLDivElement {
         showRaceSummary(raceSummary, race);
         pirate.paint();
     }
+    /** Start.cs 5136 IdyEbrKpy3(race, bool_5: true): cmbJumpStartYourEmpireGovernment offers the race's allowable
+     *  governments; a race change selects its preferred one (or "(Random)"). */
+    function refreshGovernments(): void {
+        const race = races.find((r) => r.name === options.raceName) ?? null;
+        if (allGovernments.length === 0 || race === govRace) return;
+        governments = startGovernmentsForRace(allGovernments, race);
+        if (govRace !== undefined || !governments.some((g) => g.governmentId === options.governmentId)) options.governmentId = defaultGovernmentForRace(governments, race);
+        govRace = race;
+        govSel.setItems([`(${wt('Random', 'Random')})`, ...governments.map((g) => g.name)], governments.findIndex((g) => g.governmentId === options.governmentId) + 1);
+    }
     function paintGov(): void {
         const gov = governments.find((g) => g.governmentId === options.governmentId) ?? null;
         setText(govTitle, `${wt('Your Government', 'Your Government')}: ${gov?.name ?? `(${wt('Random', 'Random')})`}`);
@@ -1182,7 +1206,7 @@ function buildJumpStartPage(ctx: WizardCtx): HTMLDivElement {
     }
     void Promise.all([loadWizardRaceData(), loadWizardGovernments()]).then(([data, govs]) => {
         races = playableRacesSorted(data.races);
-        governments = filterStartGovernments(govs);
+        allGovernments = govs;
         // The same default as the Your Race page (whichever loads first sets it).
         if (options.raceName === '') options.raceName = defaultRaceName(data.races);
         raceCombo.setRaces(races.map((r) => ({ name: r.name, pictureUrl: racePortraitUrls(r.pictureIndex)[0] })));
@@ -1194,6 +1218,7 @@ function buildJumpStartPage(ctx: WizardCtx): HTMLDivElement {
         size.sync();
         raceCombo.setValue(races.some((r) => r.name === options.raceName) ? options.raceName : '');
         paintRace();
+        refreshGovernments();
         govSel.setItems([`(${wt('Random', 'Random')})`, ...governments.map((g) => g.name)], governments.findIndex((g) => g.governmentId === options.governmentId) + 1);
         paintGov();
         // Start.cs 2904 method_35: a pirate start shows the playstyle instead of the government.
@@ -1683,9 +1708,8 @@ function buildOtherEmpiresPage(ctx: WizardCtx): HTMLDivElement {
     const listPanel = panel(wrap, 10, 125, 882, 307, 'wizard-empires-list-panel');
     const addBtn = glass(listPanel, wt('Add New Empire', 'Add New Empire'), 670, 10, 200, 25, () => {
         if (o.manual.length >= OTHER_EMPIRES_COUNT_MAX) return;
-        const races = playableRaces();
-        const race = races[0]?.name ?? '';
-        o.manual.push({ race, governmentId: -1, name: race === '' ? '' : defaultEmpireName(race) });
+        // StartingEmpiresListView.cs 47 _Grid_RowsAdded: a new row's Race and Government cells start at "(Random)".
+        o.manual.push({ race: '', governmentId: -1, name: '' });
         paintList();
     }, { className: 'wizard-btn wizard-btn-secondary wizard-empires-add-btn' });
     const grid = place(el('div', 'ow-grid wizard-empires-grid'), 10, 35, 860, 260);
@@ -1884,6 +1908,10 @@ function buildOtherEmpiresPage(ctx: WizardCtx): HTMLDivElement {
             .filter((r) => r.playable)
             .sort((a, b) => a.name.localeCompare(b.name));
     }
+    /** StartingEmpiresListView.cs 232 DetermineSelectedRace: the row's race, null for "(Random)". */
+    function rowRace(m: ManualEmpireStart): Race | null {
+        return m.race === '' ? null : (loadWizardRacesSync().find((r) => r.name === m.race) ?? null);
+    }
     /** Task 06j: default display name for a manual empire row ("<Race> Empire"). */
     function defaultEmpireName(raceName: string): string {
         return `${raceName} Empire`;
@@ -1919,23 +1947,36 @@ function buildOtherEmpiresPage(ctx: WizardCtx): HTMLDivElement {
 
         const raceCell = el('div', 'ow-grid-cell');
         const raceSelect = el('select', 'ow-input ow-select wizard-empires-race-select');
+        // StartingEmpiresListView.cs 273 SetRaces: "(Random)" heads the Race cell's list.
+        const randomRaceOpt = el('option', '', `(${wt('Random', 'Random')})`);
+        randomRaceOpt.value = '';
+        randomRaceOpt.selected = m.race === '';
+        raceSelect.appendChild(randomRaceOpt);
         for (const r of playableRaces()) {
             const opt = el('option', '', r.name);
             opt.value = r.name;
             opt.selected = r.name === m.race;
             raceSelect.appendChild(opt);
         }
-        if (!playableRaces().some((r) => r.name === m.race)) {
+        if (m.race !== '' && !playableRaces().some((r) => r.name === m.race)) {
             const opt = el('option', '', m.race);
             opt.value = m.race;
             raceSelect.appendChild(opt);
         }
         raceSelect.addEventListener('change', () => {
             m.race = raceSelect.value;
-            if (m.name === '') {
+            if (m.name === '' && m.race !== '') {
                 m.name = defaultEmpireName(m.race);
                 nameInput.value = m.name;
             }
+            // StartingEmpiresListView.cs 188 _Grid_CellValueChanged (Race column): the Government cell's list follows
+            // the race; a government it no longer offers falls back to "(Random)", and a race with a preferred one
+            // selects it.
+            const race = rowRace(m);
+            const offered = startGovernmentsForRace(governments, race);
+            if (!offered.some((g) => g.governmentId === m.governmentId)) m.governmentId = -1;
+            if (race !== null && race.preferredStartingGovernment !== -1 && offered.some((g) => g.governmentId === race.preferredStartingGovernment)) m.governmentId = race.preferredStartingGovernment;
+            fillGovernments();
         });
         raceSelect.addEventListener('keydown', (e) => e.stopPropagation());
         raceCell.appendChild(raceSelect);
@@ -1943,16 +1984,20 @@ function buildOtherEmpiresPage(ctx: WizardCtx): HTMLDivElement {
 
         const govCell = el('div', 'ow-grid-cell');
         const govSelect = el('select', 'ow-input ow-select wizard-empires-gov-select');
-        const noneOpt = el('option', '', `(${wt('Random', 'Random')})`);
-        noneOpt.value = '-1';
-        noneOpt.selected = m.governmentId < 0;
-        govSelect.appendChild(noneOpt);
-        for (const g of governments) {
-            const opt = el('option', '', g.name);
-            opt.value = String(g.governmentId);
-            opt.selected = g.governmentId === m.governmentId;
-            govSelect.appendChild(opt);
+        // The Government cell's DataSource: "(Random)" + Empire.ResolveDefaultAllowableGovernmentTypes(race, true).
+        function fillGovernments(): void {
+            const noneOpt = el('option', '', `(${wt('Random', 'Random')})`);
+            noneOpt.value = '-1';
+            noneOpt.selected = m.governmentId < 0;
+            govSelect.replaceChildren(noneOpt);
+            for (const g of startGovernmentsForRace(governments, rowRace(m))) {
+                const opt = el('option', '', g.name);
+                opt.value = String(g.governmentId);
+                opt.selected = g.governmentId === m.governmentId;
+                govSelect.appendChild(opt);
+            }
         }
+        fillGovernments();
         govSelect.addEventListener('change', () => {
             m.governmentId = parseInt(govSelect.value, 10);
         });
@@ -1996,7 +2041,7 @@ function buildOtherEmpiresPage(ctx: WizardCtx): HTMLDivElement {
     Promise.all([loadWizardRaceData(), loadWizardGovernments()])
         .then(([, allGovs]) => {
             loading.remove();
-            governments = filterStartGovernments(allGovs);
+            governments = allGovs;
             paintList();
         })
         .catch(() => {
@@ -2130,15 +2175,6 @@ function renderRacePage(ctx: WizardCtx, parent: HTMLElement, races: Race[], onRa
 // ---------------------------------------------------------------------------
 // Your Empire page (task 06e; Start.cs 3337 method_40): name, colours, flag, location, trackbars, government.
 // ---------------------------------------------------------------------------
-
-/** Task 06e: the race's preferred starting government id, or -1 if the race
- * is unknown / has no preference. The "Your Empire" page uses this to preselect
- * a sensible default when the user hasn't chosen one yet. */
-export function preferredGovernmentForRace(raceName: string): number {
-    const races = loadWizardRacesSync();
-    const race = races.find((r) => r.name === raceName);
-    return race?.preferredStartingGovernment ?? -1;
-}
 
 /** Synchronous cache of the parsed races, populated by loadWizardRaceData.
  * (The wizard always loads race data before the empire page needs it.) */
@@ -2360,26 +2396,35 @@ function buildEmpirePage(ctx: WizardCtx): HTMLDivElement {
         renderGovModifiers();
     }
 
+    let allGovernments: Government[] = [];
+    // The race the government list was last built for (undefined = not built yet, or the races are still loading).
+    let govRace: Race | null | undefined;
+    /** Start.1.cs 4172 cmbStartNewGameYourEmpireRace_SelectedIndexChanged → IdyEbrKpy3(race, false):
+     *  cmbStartNewGameYourEmpireGovernment.Ignite(Empire.ResolveDefaultAllowableGovernmentTypes(race, true)), then the
+     *  race's preferred government (or "(Random)") is selected. */
+    function refreshGovernments(): void {
+        if (allGovernments.length === 0) return;
+        const racesLoaded = cachedRaces !== null;
+        const race = loadWizardRacesSync().find((r) => r.name === options.raceName) ?? null;
+        if (racesLoaded && race === govRace) return;
+        governments = startGovernmentsForRace(allGovernments, race);
+        // The first build keeps an already-chosen government the race allows; a race change resets it.
+        if (govRace !== undefined || !governments.some((g) => g.governmentId === options.governmentId)) options.governmentId = defaultGovernmentForRace(governments, race);
+        govRace = racesLoaded ? race : undefined;
+        govSel.setItems([`(${wt('Random', 'Random')})`, ...governments.map((g) => g.name)], governments.findIndex((g) => g.governmentId === options.governmentId) + 1);
+        govSel.select.style.display = '';
+        renderGovModifiers();
+    }
+
     void loadWizardGovernments()
         .then((all) => {
             govLoading.remove();
-            governments = filterStartGovernments(all);
-            if (governments.length === 0) {
-                label(govSection, 'No start-available government data found in this install.', 15, 37, { size: FONT.large, className: 'wizard-todo' });
+            if (all.length === 0) {
+                label(govSection, 'No government data found in this install.', 15, 37, { size: FONT.large, className: 'wizard-todo' });
                 return;
             }
-            // Default selection: the race's preferred starting government
-            // when it is in the available list, else the first available one.
-            if (options.governmentId < 0) {
-                const preferred = preferredGovernmentForRace(options.raceName);
-                options.governmentId =
-                    preferred >= 0 && governments.some((g) => g.governmentId === preferred)
-                        ? preferred
-                        : governments[0].governmentId;
-            }
-            govSel.setItems([`(${wt('Random', 'Random')})`, ...governments.map((g) => g.name)], governments.findIndex((g) => g.governmentId === options.governmentId) + 1);
-            govSel.select.style.display = '';
-            renderGovModifiers();
+            allGovernments = all;
+            refreshGovernments();
         })
         .catch((err) => {
             govLoading.remove();
@@ -2431,6 +2476,7 @@ function buildEmpirePage(ctx: WizardCtx): HTMLDivElement {
         updateFlagPreview();
         // Start.1.cs 4176 method_207 → method_101: the pirate playstyle picture shows the selected race.
         pirate.paint();
+        refreshGovernments();
     }
     (wrap as unknown as { __onRaceChanged?: WizardRaceChangedHandler }).__onRaceChanged = onRaceChanged;
 
@@ -2865,7 +2911,7 @@ function buildStartPage(ctx: WizardCtx): HTMLDivElement {
             [
                 'Other Empires',
                 options.otherEmpires.manual.length > 0
-                    ? `${options.otherEmpires.manual.length} manual (${options.otherEmpires.manual.map((m) => m.name || m.race).join(', ')})`
+                    ? `${options.otherEmpires.manual.length} manual (${options.otherEmpires.manual.map((m) => m.name || m.race || `(${wt('Random', 'Random')})`).join(', ')})`
                     : options.otherEmpires.autogenerate
                         ? `${options.otherEmpires.empireCount} auto-generated`
                         : `${options.otherEmpires.empireCount} random`,
