@@ -38,6 +38,7 @@ import { cloneDesign } from '../gameStartTail';
 import { galaxyCurrentStarDate } from '../pirateRelations';
 import { checkDesignSubRoleShouldBeUpgraded, resolveLegacySubRole, resolveSubRoleDescription } from '../designGeneration';
 import { determineResourcesEmpireSupplies } from '../diplomacyTick';
+import { maxResourceExtractionRateForResearch } from '../industry';
 
 const S = BuiltObjectSubRole;
 const T = ComponentType;
@@ -990,10 +991,11 @@ export function designWarnings(galaxy: Galaxy, empire: Empire, objectDesign: Des
                 ];
                 for (const item of typesCol) {
                     if (item.length > 0) {
-                        const max = research.resolveImprovedComponentValues(item[0]).value2;
-                        // Value2 is the mining limit only in data that defines one (stock 1.9.5 components.txt leaves it
-                        // unused = 0, which would always warn "above mining limit of 0"): no limit, no warning.
-                        if (max <= 0) continue;
+                        // Not the Expanded check's own limit (the component's Value2, unused = 0 in stock 1.9.5 data, so
+                        // it always warned "above mining limit of 0"): the per-resource extraction cap the sim really
+                        // applies (industry.ts maxResourceExtractionRate: at least 12, 40 for gas, raised by research).
+                        const t = item[0].type;
+                        const max = maxResourceExtractionRateForResearch(empire, t === T.ExtractorMine ? 0 : t === T.ExtractorLuxury ? 1 : 2);
                         let currentMiningValue = 0;
                         for (const x of item) currentMiningValue += research.resolveImprovedComponentValues(x).value1;
                         if (currentMiningValue > max) {

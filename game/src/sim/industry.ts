@@ -319,10 +319,16 @@ export function prioritizeEmpireResourceNeeds(
  */
 export function maxResourceExtractionRate(ship: BuiltObject, resourceType: number): number {
     if (ship.actualEmpire !== null && ship.actualEmpire.name.includes('Romulan')) return 40000.0;
+    return maxResourceExtractionRateForResearch(ship.empire!, resourceType);
+}
+
+/** The per-resource cap of maxResourceExtractionRate from an empire's research alone (0 = mine, 1 = luxury, 2 = gas);
+ *  the design editor's mining-limit check reads it too. */
+export function maxResourceExtractionRateForResearch(empire: Empire, resourceType: number): number {
     let num = 4.0;
     const firstImprovement = (type: ComponentType): { value2: number } | null => {
         let best: { value2: number; id: number } | null = null;
-        for (const [id, ci] of ship.empire!.research.componentImprovements) {
+        for (const [id, ci] of empire.research.componentImprovements) {
             if (ci != null && ci.improvedComponent != null && ci.improvedComponent.type === type && (best === null || id < best.id)) best = { value2: ci.value2, id };
         }
         return best;
