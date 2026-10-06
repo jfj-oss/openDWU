@@ -27,7 +27,7 @@ import type { Habitat } from '../src/sim/types';
 import type { Design } from '../src/sim/design';
 import { CharacterRole, generateNewCharacter, getEmpireCharacters } from '../src/sim/characters';
 import { IntelligenceMissionType, characterMission } from '../src/sim/espionage';
-import { DiplomaticRelationType, obtainDiplomaticRelation } from '../src/sim/diplomacy';
+import { DiplomaticRelationType, DiplomaticStrategy, obtainDiplomaticRelation } from '../src/sim/diplomacy';
 import { WonderType } from '../src/sim/researchSystem';
 import { determineResearchStationLocation } from '../src/sim/stationPlacement';
 import { assignScientists, atResearchCap, bestKnownBonus, improvingLocations, locationBonus } from '../src/sim/scenario/smarterAI/researchStations';
@@ -337,18 +337,27 @@ describe('11. diplomacy with purpose', () => {
         const [e, q, r] = aiEmpires(g);
         expect(r).toBeDefined();
         const rels = [obtainDiplomaticRelation(e, q), obtainDiplomaticRelation(e, r)];
-        const saved = { types: rels.map((x) => x.type), scores: [e.score, q.score, r.score] };
+        const saved = { types: rels.map((x) => x.type), strategies: rels.map((x) => x.strategy), scores: [e.score, q.score, r.score] };
+        rels[0].strategy = DiplomaticStrategy.Undefined;
         rels[0].type = DiplomaticRelationType.None;
         rels[1].type = DiplomaticRelationType.None;
         e.score = 100;
         q.score = 100;
         r.score = 100;
         r.score = 1000;
+        // Only treaties the empire's own strategy would accept (offerIsGenuine).
+        expect(sharedThreatPlans(g, e).some((p) => p.partner === q)).toBe(false);
+        rels[0].strategy = DiplomaticStrategy.Befriend;
         expect(sharedThreatPlans(g, e).find((p) => p.partner === q)?.offer).toBe(DiplomaticRelationType.FreeTradeAgreement);
         rels[0].type = DiplomaticRelationType.FreeTradeAgreement;
+        expect(sharedThreatPlans(g, e).some((p) => p.partner === q)).toBe(false);
+        rels[0].strategy = DiplomaticStrategy.Ally;
         expect(sharedThreatPlans(g, e).find((p) => p.partner === q)?.offer).toBe(DiplomaticRelationType.MutualDefensePact);
         expect(sharedThreatPlans(g, e).some((p) => p.partner === r)).toBe(false);
-        rels.forEach((x, i) => (x.type = saved.types[i]));
+        rels.forEach((x, i) => {
+            x.type = saved.types[i];
+            x.strategy = saved.strategies[i];
+        });
         [e.score, q.score, r.score] = saved.scores;
     }, 600000);
 });

@@ -7,18 +7,25 @@
 //     or pirate pressure on its colonies — it courts the empires facing the same threat (the runaway's score also
 //     RUNAWAY_FACTOR × theirs, or pressure from the same pirates): a free trade offer where there is no treaty, a mutual
 //     defence offer over free trade; friendliest first, at most MAX_OFFERS a review, never to empires it plans to
-//     conquer, undermine or punish. The stock offers (offerFreeTrade / offerMutualDefense: proposal spacing, automation)
-//     and the receiver's stock evaluation decide the rest;
+//     conquer, undermine or punish. Only offers the empire itself would accept from that partner (offerIsGenuine: the
+//     stock acceptance rule, DetermineDesiredDiplomaticRelationTypical of its strategy towards the partner, Empire.3.cs
+//     ProcessProposals / Main.Part10.cs method_232) — a threat does not make it court an empire its strategy does not
+//     want a treaty with. The stock offers (offerFreeTrade / offerMutualDefense: proposal spacing, automation) and the
+//     receiver's stock evaluation decide the rest;
 //   - wants a pirate faction's protection exactly when a year of it costs less than the losses expected without it:
 //     pressure (pirate strength near its colonies / (that + its own mobile firepower)) × PIRATE_LOSS_SHARE × its
 //     colonies' annual revenue (query pirateProtectionDesired; also drives the stock cancel review).
+// The player can be a partner: the add-on steers AI empires only, and an offer to the player is a stock proposal the
+// player answers. An offer to the player is made only when it is the exact treaty the empire's strategy wants
+// (EmpireDetailView.cs:639-706 flag3, the rule the player's popup and diplomacy screen hold a proposal to), so it shows
+// as an Accept / Decline conversation and the empire grants the same treaty when the player asks for it instead.
 // No Rnd.
 
 import type { Galaxy } from '../../galaxy';
 import type { Empire } from '../../empire';
 import { DiplomaticRelationType, DiplomaticStrategy, obtainDiplomaticRelation, obtainEmpireEvaluation } from '../../diplomacy';
-import { offerFreeTrade, offerMutualDefense } from '../../diplomacyTick';
-import { habitatAnnualRevenue, totalMobileMilitaryFirepower } from '../../forceStructure';
+import { determineDesiredDiplomaticRelationTypical, offerFreeTrade, offerMutualDefense } from '../../diplomacyTick';
+import { habitatAnnualRevenue, totalColonyStrategicValue, totalMobileMilitaryFirepower } from '../../forceStructure';
 import { calculateAttackingFirepowerNearEmpireTargetsList, calculateDistanceToNearestColony, calculatePirateProtectionPricePerMonth } from '../../pirates/pirateRelationsAI';
 import { registerScenarioPeriodic, registerScenarioQuery } from '../hooks';
 import { SMARTER_AI_FLAG, isSmarterAIStrategist, smarterAIOn } from './common';
@@ -88,6 +95,25 @@ export interface TreatyPlan {
 
 const HOSTILE_STRATEGIES: ReadonlySet<DiplomaticStrategy> = new Set([DiplomaticStrategy.Conquer, DiplomaticStrategy.Undermine, DiplomaticStrategy.DefendUndermine, DiplomaticStrategy.Punish]);
 
+/**
+ * Whether `self` would accept `offer` from `partner` by the stock rule, so the offer is one it genuinely wants:
+ * DetermineDesiredDiplomaticRelationTypical(strategy towards the partner) is Free Trade, Mutual Defense or Protectorate
+ * for a free trade agreement, Mutual Defense for a defence pact (Empire.3.cs ProcessProposals; Main.Part10.cs:4149 /
+ * 4201 with method_232). Towards the player the wanted treaty must be exactly the offer (EmpireDetailView.cs flag3,
+ * which drops any other proposal), and a defence offer must not turn into a Protectorate (offerMutualDefense,
+ * Empire.8.cs 1824: strategic value ratio over 4), which that rule would drop too.
+ */
+export function offerIsGenuine(galaxy: Galaxy, self: Empire, partner: Empire, offer: TreatyPlan['offer']): boolean {
+    const r = obtainDiplomaticRelation(self, partner);
+    const wanted = determineDesiredDiplomaticRelationTypical(r.strategy, r.type);
+    if (partner === galaxy.playerEmpire) {
+        if (wanted !== offer) return false;
+        return offer !== DiplomaticRelationType.MutualDefensePact || !(totalColonyStrategicValue(self) / totalColonyStrategicValue(partner) > 4.0);
+    }
+    if (offer === DiplomaticRelationType.MutualDefensePact) return wanted === DiplomaticRelationType.MutualDefensePact;
+    return wanted === DiplomaticRelationType.FreeTradeAgreement || wanted === DiplomaticRelationType.MutualDefensePact || wanted === DiplomaticRelationType.Protectorate;
+}
+
 /** The treaty offers for the empire's shared threats (see the file comment), friendliest partner first. */
 export function sharedThreatPlans(galaxy: Galaxy, self: Empire): TreatyPlan[] {
     const runaway = runawayEmpire(galaxy, self);
@@ -102,6 +128,7 @@ export function sharedThreatPlans(galaxy: Galaxy, self: Empire): TreatyPlan[] {
         const shared = (runaway !== null && runaway.score >= RUNAWAY_FACTOR * Math.max(1, e.score)) || pirates.some((p) => piratePressure(galaxy, e, p) >= PIRATE_THREAT_PRESSURE);
         if (!shared) continue;
         const offer = r.type === DiplomaticRelationType.None ? DiplomaticRelationType.FreeTradeAgreement : DiplomaticRelationType.MutualDefensePact;
+        if (!offerIsGenuine(galaxy, self, e, offer)) continue;
         plans.push({ plan: { partner: e, offer }, attitude: obtainEmpireEvaluation(galaxy, e, self).overallAttitude });
     }
     plans.sort((a, b) => b.attitude - a.attitude);
