@@ -23,6 +23,7 @@
 // designs (Galaxy.SelectRelativePoint) and method_593's build buttons (SelectRelativeHabitatSurfacePoint,
 // SelectRelativeParkingPoint). Only ever called from player input, never on the tick path.
 
+import { ORBITAL_GUARD_REASON, orbitalGuardBase } from '../combat/orbitalGuard';
 import { markNewOrders, snapshotOrders } from '../missions/playerOrder';
 import { availableThreatActions } from '../scenario/threats/framework';
 import type { Galaxy } from '../galaxy';
@@ -479,6 +480,21 @@ function item309(ctx: OrderMenuContext, key: string, fmt: string, object7: unkno
 function item310(ctx: OrderMenuContext, key: string, fmt: string, object7: unknown, bool28: boolean): OrderMenuItem {
     return item311(ctx, key, fmt, '', '', object7, bool28);
 }
+/**
+ * openDWU rule (not in the original): troops cannot land on a colony under its owner's armed space port / defensive
+ * base (combat/orbitalGuard.ts). A raid order on such a colony is shown unavailable with the reason; an attack order
+ * stays available (the ships can fight the base) and carries the reason as its hint.
+ */
+function guardLanding(ctx: OrderMenuContext, item: OrderMenuItem, target: unknown, disable: boolean): OrderMenuItem {
+    if (isHabitat(target) && orbitalGuardBase(target, ctx.empire) !== null) {
+        item.hint = ORBITAL_GUARD_REASON;
+        if (disable) {
+            item.enabled = false;
+            item.label = item.label + ' (' + ORBITAL_GUARD_REASON + ')';
+        }
+    }
+    return item;
+}
 /** Main.Part8.cs 1484 method_312(text): an empty parent item. */
 function item312(key: string, label: string): OrderMenuItem {
     return newItem(key, label, null);
@@ -905,7 +921,7 @@ function bombardMenu(ctx: OrderMenuContext, missionType: BuiltObjectMissionType)
     const key = missionType === BuiltObjectMissionType.Bombard ? 'Bombard' : 'Prepare and Bombard';
     const item = item312(key, T(key));
     for (const h of coloniesNear(ctx, ctx.cursorX, ctx.cursorY, range)) {
-        if (h.empire !== ctx.empire) item.children.push(leaf(h.name, ownedLabel(h.name, h.empire, 'Lost'), missionAction(missionType, h)));
+        if (h.empire !== ctx.empire) item.children.push(guardLanding(ctx, leaf(h.name, ownedLabel(h.name, h.empire, 'Lost'), missionAction(missionType, h)), h, false));
     }
     return item.children.length === 0 ? null : item;
 }
@@ -928,7 +944,7 @@ function raidMenu(ctx: OrderMenuContext): OrderMenuItem | null {
     const item = item312('Raid', T('Raid'));
     if (ctx.empire.pirateEmpireBaseHabitat !== null) {
         for (const h of foreignPopulatedNear(ctx, ctx.cursorX, ctx.cursorY, num, ctx.empire)) {
-            if (h.empire !== ctx.empire) item.children.push(leaf(h.name, ownedLabel(h.name, h.empire, 'Abandoned'), missionAction(BuiltObjectMissionType.Raid, h)));
+            if (h.empire !== ctx.empire) item.children.push(guardLanding(ctx, leaf(h.name, ownedLabel(h.name, h.empire, 'Abandoned'), missionAction(BuiltObjectMissionType.Raid, h)), h, true));
         }
         for (const b of basesNear(ctx, ctx.cursorX, ctx.cursorY, num)) {
             if (b.empire !== ctx.empire && b.empire !== ctx.galaxy.independentEmpire) {
@@ -948,7 +964,7 @@ function attackMenu(ctx: OrderMenuContext, missionType: BuiltObjectMissionType):
     const key = missionType === BuiltObjectMissionType.Attack ? 'Attack' : 'Prepare and Attack';
     const item = item312(key, T(key));
     for (const h of coloniesNear(ctx, ctx.cursorX, ctx.cursorY, num)) {
-        if (h.empire !== ctx.empire) item.children.push(leaf(h.name, ownedLabel(h.name, h.empire, 'Lost'), missionAction(missionType, h)));
+        if (h.empire !== ctx.empire) item.children.push(guardLanding(ctx, leaf(h.name, ownedLabel(h.name, h.empire, 'Lost'), missionAction(missionType, h)), h, false));
     }
     for (const b of basesNear(ctx, ctx.cursorX, ctx.cursorY, num)) {
         if (b.empire !== ctx.empire && b.empire !== ctx.galaxy.independentEmpire) item.children.push(leaf(b.name, ownedLabel(b.name, b.empire, 'Abandoned'), missionAction(missionType, b)));
@@ -1502,7 +1518,7 @@ function fleetActionMenu(ctx: OrderMenuContext, shipGroup: ShipGroup, items: Ord
             empire !== null &&
             empire.pirateEmpireBaseHabitat !== null
         ) {
-            items.push(item310(ctx, 'Raid X', T('Raid X'), m315(ctx, BuiltObjectMissionType.Raid, obj), true));
+            items.push(guardLanding(ctx, item310(ctx, 'Raid X', T('Raid X'), m315(ctx, BuiltObjectMissionType.Raid, obj), true), obj, true));
         }
         if (obj !== null && isPatrolTarget(obj)) items.push(item310(ctx, 'Patrol X', T('Patrol X'), m315(ctx, BuiltObjectMissionType.Patrol, obj), true));
         if (obj !== null && isBlockadeTarget(ctx, obj, empire) && empire !== null) pushIf(items, blockadeItem(ctx, obj, empire));
@@ -1706,7 +1722,7 @@ function shipListActionMenu(ctx: OrderMenuContext, builtObjectList: BuiltObject[
                 ((isBuiltObject(obj2) && obj2.role === BuiltObjectRole.Base && obj2.empire !== empire) || (isHabitat(obj2) && obj2.population !== null && obj2.population.items.length > 0 && obj2.empire !== empire)) &&
                 empire.pirateEmpireBaseHabitat !== null
             ) {
-                items.push(item310(ctx, 'Raid X', T('Raid X'), m315(ctx, BuiltObjectMissionType.Raid, obj2), true));
+                items.push(guardLanding(ctx, item310(ctx, 'Raid X', T('Raid X'), m315(ctx, BuiltObjectMissionType.Raid, obj2), true), obj2, true));
             }
             if (num7 > 0 && isHabitat(obj2) && obj2.empire !== null && obj2.empire !== ctx.galaxy.independentEmpire && obj2.empire !== empire) {
                 items.push(item310(ctx, 'Bombard X', T('Bombard X'), m315(ctx, BuiltObjectMissionType.Bombard, obj2), true));
@@ -1980,7 +1996,7 @@ function shipActionMenu(ctx: OrderMenuContext, builtObject6: BuiltObject, items:
                     builtObject6.empire !== null &&
                     builtObject6.empire.pirateEmpireBaseHabitat !== null
                 ) {
-                    items.push(item310(ctx, 'Raid X', T('Raid X'), m315(ctx, BuiltObjectMissionType.Raid, obj3), true));
+                    items.push(guardLanding(ctx, item310(ctx, 'Raid X', T('Raid X'), m315(ctx, BuiltObjectMissionType.Raid, obj3), true), obj3, true));
                     flag8 = true;
                 }
             }

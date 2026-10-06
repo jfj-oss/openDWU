@@ -9,6 +9,7 @@
 // Time: `time` (= _tempNow) is game ms; Weapon.lastFired is game ms (MIN_TIME = never fired).
 // Clock-seeded `new Random()` (BaconBuiltObject.cs 4089) → galaxy.baconBoardingClockRnd, seeded from the galaxy seed.
 
+import { orbitalGuardBase } from './orbitalGuard';
 import type { Galaxy } from '../galaxy';
 import type { Empire } from '../empire';
 import { AutomationLevel } from '../empire';
@@ -131,6 +132,8 @@ export function checkLaunchAssaultPodsAtTarget(galaxy: Galaxy, builtObject: Buil
         let flag = false;
         if (mission !== null && mission.type === BuiltObjectMissionType.Raid && target.population != null && target.population.items.length > 0 && target.empire !== self.empire) flag = true;
         if (!flag || self.assaultAttackValue > 0 || target === null || target.hasBeenDestroyed || target.empire === self.empire || target.planetaryShieldPresent) return;
+        // openDWU rule (not in the original): no assault pods at a colony under its owner's armed base.
+        if (orbitalGuardBase(target, self.empire) !== null) return;
         const num = galaxy.calculateDistance(self.xpos, self.ypos, target.xpos, target.ypos);
         if (!(num < f32(self.assaultRange)) || self.weapons === null) return;
         for (let i = 0; i < self.weapons.length; i++) {
@@ -235,6 +238,8 @@ export function handleAssaultPodMovement(galaxy: Galaxy, builtObject: BuiltObjec
                 }
                 if (flag2) flag = false;
             }
+            // openDWU rule (not in the original): pods arriving at a colony under its owner's armed base do not land.
+            if (flag && orbitalGuardBase(habitat, self.empire) !== null) flag = false;
             if (flag) {
                 let num7 = 1.0;
                 let num8 = 1.0;

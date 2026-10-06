@@ -518,6 +518,8 @@ export const cmdAttackBombardCaptureRaid: CommandHandler = (ctx) => {
             }
         }
     } else if (command.action !== CommandAction.Bombard && shouldInvadeColony(galaxy, bo)) {
+        // openDWU rule (not in the original): shouldInvadeColony refuses this landing branch while the colony owner's armed
+        // space port / defensive base is in orbit (combat/orbitalGuard.ts), so the troops land only once it is gone.
         const colony = bo.colonyToAttack!;
         targetInvadingShips(galaxy, colony, bo, time);
         doMovement(galaxy, bo, timePassed, colony.xpos, colony.ypos, x, y, 0.0, 0.0, false, true, false);

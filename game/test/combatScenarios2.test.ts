@@ -53,6 +53,7 @@ import {
     weaponFire,
 } from '../src/sim/combat/weapons';
 import { fireAtAssaultPods, handleAssaultPodMovement, performRaidColonyInvasion } from '../src/sim/combat/boarding';
+import { orbitalGuardBase } from '../src/sim/combat/orbitalGuard';
 import { SpaceBattleStats, calculateBuiltObjectLootingValue, empireColonyIncomeFactor, inflictDamage, empireLootingFactor, getArtilleryTroopDefendStrength, inflictBombardDamage } from '../src/sim/combat/damage';
 import { doRaidBonuses, empireRaidBonusFactor, invasionStatsOf } from '../src/sim/combat/invasion';
 import { obtainPirateRelation } from '../src/sim/pirateRelations';
@@ -711,6 +712,17 @@ describe('(4) pirate raids', () => {
         const { g, wf, capital, pe } = stage();
         const pod = wf.weapons.find((w) => w.component.type === ComponentType.AssaultPod)!;
         place(g, wf, capital.xpos + 50, capital.ypos);
+        // openDWU rule (not in the original, combat/orbitalGuard.ts): under the owner's armed space port the pod is spent
+        // without landing; the C# behaviour below is checked with the capital's bases out of orbit.
+        expect(orbitalGuardBase(capital, pe)).not.toBeNull();
+        pod.reset();
+        weaponFire(g, pod, wf, capital, 50, g.nowMs, true, 1.0);
+        pod.x = capital.xpos + 5;
+        pod.y = capital.ypos;
+        handleAssaultPodMovement(g, wf, 0.1);
+        expect(pod.distanceTravelled).toBe(-1);
+        expect((capital.invadingTroops?.items ?? []).filter((t) => t.empire === pe).length).toBe(0);
+        capital.basesAtHabitat.splice(0);
         pod.reset();
         weaponFire(g, pod, wf, capital, 50, g.nowMs, true, 1.0);
         pod.x = capital.xpos + 5; // within 10: lands on the next movement step (2651)

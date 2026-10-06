@@ -19,6 +19,7 @@
 // determineThreatLevelFighter; fighters reach BuiltObject.Attackers, so ShouldFleeFrom can return one (the
 // `stellarObject is Fighter` carrier redirects, escapeTargetForFleeFrom).
 
+import { orbitalGuardBase } from './orbitalGuard';
 import { isAiControlled } from '../missions/playerOrder';
 import type { Galaxy } from '../galaxy';
 import type { BuiltObject } from '../builtObject';
@@ -1703,6 +1704,9 @@ export function shouldInvadeColony(galaxy: Galaxy, bo: BuiltObject, missionType:
                 flag = false;
             }
         }
+        // openDWU rule (not in the original): no raid or invasion landing while the owner's armed space port / defensive
+        // base is in orbit. The ship keeps its colony target and fights the threats there (the base) until it is gone.
+        if (flag && missionType !== BuiltObjectMissionType.Bombard && bo.colonyToAttack !== null && orbitalGuardBase(bo.colonyToAttack, bo.empire) !== null) flag = false;
     }
     return flag;
 }

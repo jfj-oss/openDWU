@@ -7,6 +7,7 @@
 //
 // Free functions, C# `this` first (plan §3.1). Every Galaxy.Rnd draw is on galaxy.rnd in C# order.
 
+import { orbitalGuardBase } from '../combat/orbitalGuard';
 import { isAiControlled } from '../missions/playerOrder';
 import { calculateDefendingStrength, fastFindNearestFuelHabitatAlternate } from '../fleets/militaryAI';
 import type { Galaxy } from '../galaxy';
@@ -552,7 +553,12 @@ function pirateAssignMilitaryShip(galaxy: Galaxy, empire: Empire, ship: BuiltObj
                         const pirateRelation = obtainPirateRelation(empire, habitat3.owner);
                         if (pirateRelation.type === PirateRelationType.Protection) flag8 = false;
                     }
-                    if (flag8) {
+                    // openDWU rule (not in the original): raiders cannot land under the owner's armed space port /
+                    // defensive base (combat/orbitalGuard.ts), so the ship goes for that base first.
+                    const guard = flag8 ? orbitalGuardBase(habitat3, empire) : null;
+                    if (guard !== null) {
+                        assignMission(galaxy, ship, BuiltObjectMissionType.Attack, guard, null, BuiltObjectMissionPriority.Normal, { manuallyAssigned: false });
+                    } else if (flag8) {
                         assignMission(galaxy, ship, BuiltObjectMissionType.Raid, habitat3, null, BuiltObjectMissionPriority.Normal, { manuallyAssigned: false });
                     } else {
                         assignMoveAndWait(galaxy, ship, habitat3, starDate2);
