@@ -20,7 +20,14 @@ import {
     shipDamageBudget,
     type BlotchCluster,
 } from './damageOverlay';
-import { buildConstructionMaskLayer, constructionPercentBuilt, constructionRevealFloor } from './constructionOverlay';
+import {
+    buildConstructionCoverageMask,
+    constructionBuiltWidthPx,
+    constructionNoiseAmplitude,
+    constructionPercentBuilt,
+    constructionRevealFloor,
+    constructionSparkMax,
+} from './constructionOverlay';
 
 /** A texture from straight-alpha RGBA (no canvas, textureCanvas.ts); `nearest` keeps the C#'s hard pixel clusters
  *  crisp when scaled. */
@@ -214,6 +221,9 @@ export function shipConstructionSubject(bo: { unbuiltComponentCount: number; com
     return { percentBuilt: constructionPercentBuilt(bo.unbuiltComponentCount, total), size: bo.size };
 }
 
+/** Cap on the construction-reveal mask side (zoom-1 drawn px; real designs stay far below it). */
+const MAX_CONSTRUCTION_MASK_SIDE = 2048;
+
 interface ConstructionEntry {
     sig: string;
     tex: Texture | null;
@@ -221,18 +231,23 @@ interface ConstructionEntry {
 }
 
 /**
- * The construction reveal of one layer's objects (ships or bases — `Controls/MainView.cs:3259` runs this for any
- * `BuiltObject`, a station a construction ship is building included): the "not yet built" region is genuinely absent
- * rather than painted over, matching the C#'s `MakeTransparent(Color.Black)`. Call begin() each frame, texture() per
- * drawn object (the texture its sprite draws this frame instead of the plain art, or null for the plain art), end()
- * to drop stale textures.
+ * The construction reveal of one layer's objects (ships or bases — `Controls/MainView.cs:3259` method_73 runs
+ * Main.Part11.cs method_115 → method_117 for any `BuiltObject` with UnbuiltComponentCount > 0, a station a construction
+ * ship is building included): the "not yet built" part of the image is genuinely absent rather than painted over,
+ * matching the C#'s `MakeTransparent(Color.Black)`. Call begin() each frame, texture() per drawn object (the texture
+ * its sprite draws this frame instead of the plain art, or null for the plain art), end() to drop stale textures.
  *
- * Render perf: this used to be a Pixi sprite mask (`target.mask`, an AlphaMask) per object, and Pixi draws every
- * sprite-masked object through its own offscreen pass (render target, clear, blit) — ~50 passes a frame at a
- * shipyard with a long build queue (the Ancient Guardians' homeworld). The masked result is baked into one small
- * texture per object instead (rebuilt only when the mask's signature changes), drawn as an ordinary batched sprite.
- * The geometry is the mask's: a side × side square (one mask texel per art texel — the mask sprite copied the ship
- * sprite's scale) centred on the crop centre, the art × the mask's alpha inside it, nothing outside.
+ * Geometry: method_117 erodes the cached image MainView.1.cs 940-952 hands method_73 — PrepareBuiltObjectImageNEW(...,
+ * zoom 1.0): the art's crop square, turned 90° clockwise at load (BuiltObjectImageCache.LoadSingleBuiltObjectImage),
+ * scaled to its zoom-1 drawn size (DetermineBuiltObjectSizeNEW at f = 1) — from its left edge, before the per-heading
+ * rotation; that texture is then scaled to the current zoom. So the erosion mask is built at the zoom-1 size `unitPx`
+ * (independent of the current zoom), in the same load-rotated crop space as the damage overlays' textures, and
+ * covers the whole crop square.
+ *
+ * Render perf: the mask is baked into one texture per object (the art's crop square at the art's own resolution, × the
+ * mask's alpha, sampled nearest from the drawn-size mask, as cropHullMask maps the two spaces), rebuilt only when the
+ * mask's signature changes, and drawn as an ordinary batched sprite with the plain sprite's own transform. (A Pixi
+ * sprite mask per object costs an offscreen pass each — ~50 a frame at a shipyard with a long build queue.)
  */
 export class ConstructionOverlays<K extends object> {
     private entries = new Map<K, ConstructionEntry>();
@@ -247,17 +262,19 @@ export class ConstructionOverlays<K extends object> {
     }
 
     /**
-     * `key`'s construction-reveal texture for this frame (building it when needed), to draw on its sprite with anchor
-     * 0.5 in place of `art.texture` (same position, rotation and scale) — or null when nothing is left to build (draw
-     * the plain art). `px` is the drawn size; `floor` is method_116's reveal floor (0 = the map's method_115; 0.4 on a
-     * build-queue / info-panel thumbnail — not used yet, no thumbnail is Pixi-drawn).
+     * `key`'s construction-reveal texture for this frame (building it when needed): the art's crop square
+     * (metrics.cropSide², raw orientation), to draw on its sprite with anchor 0.5 in place of `art.texture` (same
+     * position, rotation and scale) — or null when nothing is left to build (draw the plain art). `unitPx` is the
+     * drawn size at zoom factor 1 (builtObjectSizePx(..., f = 1), the C#'s bitmap side); `floor` is method_116's reveal floor (0 = the map's method_115; 0.4 on a build-queue / info-panel
+     * thumbnail — not used yet, no thumbnail is Pixi-drawn).
      */
-    texture(key: K, subject: ConstructionSubject | null, art: ShipArt, px: number, floor = 0): Texture | null {
+    texture(key: K, subject: ConstructionSubject | null, art: ShipArt, unitPx: number, floor = 0): Texture | null {
         if (subject === null) return null;
         // Debug / diagnostics: `window.__dwuNoConstructionMask = true` shows the unmasked sprite.
         if ((globalThis as { __dwuNoConstructionMask?: boolean }).__dwuNoConstructionMask === true) return null;
         this.used.add(key);
-        const side = damageOverlaySide(px);
+        // (Galaxy.CreateBitmapSafely's bitmap is at least 1 × 1; capped so a huge design cannot allocate a huge mask.)
+        const side = Math.max(1, Math.min(MAX_CONSTRUCTION_MASK_SIDE, Math.trunc(unitPx)));
         const percent = constructionRevealFloor(subject.percentBuilt, floor);
         let e = this.entries.get(key);
         const sig = `${side}|${percent.toFixed(4)}|${subject.size}|${art.url}`;
@@ -266,8 +283,9 @@ export class ConstructionOverlays<K extends object> {
                 // Over the cap: keep the old texture this frame.
             } else {
                 this.rebuilds++;
-                const mask = buildConstructionMaskLayer(side, side, percent, subject.size);
-                const tex = textureFromPixels(bakeConstructionReveal(art, mask, side), side, side, false);
+                const mask = buildConstructionCoverageMask(side, side, constructionBuiltWidthPx(side, percent), constructionNoiseAmplitude(subject.size), constructionSparkMax(subject.size));
+                const crop = art.metrics.cropSide;
+                const tex = textureFromPixels(bakeConstructionReveal(art, mask, side), crop, crop, false);
                 useMinifyingFilter(tex); // sampled like the art itself (trilinear)
                 if (e?.tex != null) e.tex.destroy(true);
                 e = { sig, tex, seenFrame: this.frame };
@@ -298,63 +316,34 @@ export class ConstructionOverlays<K extends object> {
 }
 
 /**
- * The side × side straight-alpha RGBA of what the sprite mask showed: the art's pixels under the mask square (mask
- * texel (i, j) covers art texels from (cropCenterX - side / 2 + i, cropCenterY - side / 2 + j), sampled bilinearly in
- * premultiplied space when that origin is a half texel off the art grid) times the mask's alpha. Pure.
+ * The art's crop square (cropSide², raw orientation, straight-alpha RGBA) with method_117's erosion applied: raw crop
+ * texel (bx, by) is load-rotated (x', y') = (cropSide − 1 − by, bx) (cropHullMask's mapping, inverted), and keeps its
+ * alpha where the zoom-1 coverage mask (`mask`, side × side, 255 = built) at (x', y') × side / cropSide is set. Pure.
  */
-export function bakeConstructionReveal(art: { rgba: ArrayLike<number>; w: number; h: number; metrics: { cropCenterX: number; cropCenterY: number } }, mask: ArrayLike<number>, side: number): Uint8ClampedArray {
-    const out = new Uint8ClampedArray(side * side * 4);
+export function bakeConstructionReveal(art: { rgba: ArrayLike<number>; w: number; h: number; metrics: { cropSide: number; cropCenterX: number; cropCenterY: number } }, mask: ArrayLike<number>, side: number): Uint8ClampedArray {
     const { rgba, w, h } = art;
-    // Art texel coordinate of mask texel (0, 0)'s centre, minus 0.5: the bilinear sample origin.
-    const ox = art.metrics.cropCenterX - side / 2;
-    const oy = art.metrics.cropCenterY - side / 2;
-    const fx = ox - Math.floor(ox);
-    const fy = oy - Math.floor(oy);
-    const x0 = Math.floor(ox);
-    const y0 = Math.floor(oy);
-    const exact = fx === 0 && fy === 0;
-    for (let j = 0; j < side; j++) {
-        for (let i = 0; i < side; i++) {
-            const o = (j * side + i) * 4;
-            const ma = mask[o + 3];
-            if (ma === 0) continue;
-            const ax = x0 + i;
-            const ay = y0 + j;
-            if (exact) {
-                if (ax < 0 || ay < 0 || ax >= w || ay >= h) continue;
-                const s = (ay * w + ax) * 4;
-                out[o] = rgba[s];
-                out[o + 1] = rgba[s + 1];
-                out[o + 2] = rgba[s + 2];
-                out[o + 3] = (rgba[s + 3] * ma) / 255;
-                continue;
-            }
-            // Bilinear over the (up to) four art texels the mask texel straddles, premultiplied.
-            let r = 0;
-            let g = 0;
-            let b = 0;
-            let a = 0;
-            for (let dy = 0; dy < 2; dy++) {
-                const wy = dy === 0 ? 1 - fy : fy;
-                const yy = ay + dy;
-                if (wy === 0 || yy < 0 || yy >= h) continue;
-                for (let dx = 0; dx < 2; dx++) {
-                    const wx = dx === 0 ? 1 - fx : fx;
-                    const xx = ax + dx;
-                    if (wx === 0 || xx < 0 || xx >= w) continue;
-                    const s = (yy * w + xx) * 4;
-                    const k = wx * wy * rgba[s + 3];
-                    r += rgba[s] * k;
-                    g += rgba[s + 1] * k;
-                    b += rgba[s + 2] * k;
-                    a += k;
-                }
-            }
-            if (a <= 0) continue;
-            out[o] = r / a;
-            out[o + 1] = g / a;
-            out[o + 2] = b / a;
-            out[o + 3] = (a * ma) / 255;
+    const crop = art.metrics.cropSide;
+    const left = Math.round(art.metrics.cropCenterX - crop / 2);
+    const top = Math.round(art.metrics.cropCenterY - crop / 2);
+    const out = new Uint8ClampedArray(crop * crop * 4);
+    const k = side / crop;
+    // Mask column / row per crop coordinate (nearest, texel centres).
+    const idx = new Int32Array(crop);
+    for (let t = 0; t < crop; t++) idx[t] = Math.min(side - 1, Math.floor((t + 0.5) * k));
+    for (let by = 0; by < crop; by++) {
+        const y = top + by;
+        if (y < 0 || y >= h) continue;
+        const mx = idx[crop - 1 - by]; // x' = cropSide − 1 − by
+        for (let bx = 0; bx < crop; bx++) {
+            const x = left + bx;
+            if (x < 0 || x >= w) continue;
+            if (mask[idx[bx] * side + mx] === 0) continue; // y' = bx
+            const s = (y * w + x) * 4;
+            const o = (by * crop + bx) * 4;
+            out[o] = rgba[s];
+            out[o + 1] = rgba[s + 1];
+            out[o + 2] = rgba[s + 2];
+            out[o + 3] = rgba[s + 3];
         }
     }
     return out;

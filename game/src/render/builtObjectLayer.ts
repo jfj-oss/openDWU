@@ -732,8 +732,13 @@ export class BuiltObjectLayer {
             // (keyed off the stock art record) skip it rather than fall over on a shape without `.art`.
             const shipArtRecord = 'art' in img ? img.art : null;
             // MainView.cs:3259 method_73 → Main.Part11.cs method_115 while UnbuiltComponentCount > 0: the ship/base
-            // sprite reveals from the left as it's built (a baked texture centred on the crop centre, shipOverlays.ts).
-            const revealTex = shipArtRecord !== null ? this.construction.texture(bo, shipConstructionSubject(bo), shipArtRecord, px) : null;
+            // sprite reveals from the left as it's built (a baked texture of the crop square, eroded at the zoom-1 size
+            // the C# erodes its cached image at — shipOverlays.ts ConstructionOverlays).
+            const constructionSubject = shipArtRecord !== null ? shipConstructionSubject(bo) : null;
+            const revealTex =
+                constructionSubject !== null && shipArtRecord !== null
+                    ? this.construction.texture(bo, constructionSubject, shipArtRecord, builtObjectSizePx(bo.size, metrics.areaRatio, 1, bo.design?.imageScalingType ?? DesignImageScalingMode.None, bo.design?.imageScalingFactor ?? 1))
+                    : null;
             sprite.texture = revealTex ?? texture;
             sprite.position.set(x, y);
             if (revealTex !== null) sprite.anchor.set(0.5);
