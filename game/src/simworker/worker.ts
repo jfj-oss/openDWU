@@ -218,6 +218,9 @@ function dispatch(m: ToWorker): void {
             host!.setTradeFlowRecording(m);
             kick();
             return;
+        case 'view':
+            host!.setView(m);
+            return;
         case 'save': {
             try {
                 post({ type: 'saved', id: m.id, blob: host!.saveBlob() });

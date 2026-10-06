@@ -924,8 +924,9 @@ port hand-off, kill on terminate / navigation / crash / close, the crash log).
 
 - **The step loop is the in-thread one.** The worker's `SimHost.tick` runs the same `SimFrameBudget.run(SimDriver, …)`
   (moved unchanged to `src/simFrameBudget.ts`): drain the command boundary, journal the speed, the same fixed steps of
-  `FRAME_REAL_MS`, the same pause probe, the same error containment. `?simView=1` (the camera LOD pass) is off in
-  worker mode, because the camera is not in the worker.
+  `FRAME_REAL_MS`, the same pause probe, the same error containment. The camera LOD pass (on by default, `?simView=0`
+  turns it off) runs in the worker too: the main thread sends the camera (`ViewMessage`, on change, at most every
+  `SIM_VIEW_MIN_INTERVAL_MS`), and the worker journals it as a `'view'` command-log entry before stepping with it.
 - **The sync only reads.** It reads own enumerable data properties, array elements, Map / Set iteration and
   typed-array elements. It runs no getter, writes nothing and draws no RNG.
 - **Gate (test).** `test/simWorker.test.ts` runs the scripted player of the command-log tests (`helpers/commandScript.ts`,

@@ -8,9 +8,11 @@
 // game clock, which follows real time × TimeSpeed as the C# stopwatch clock does (Galaxy.cs 1098 CurrentStarDate from
 // _StopWatch, 1102 TimeSpeed; Galaxy.3.cs 5138 RealSecondsInGalacticYear = 600, so 1 game day = 600,000 / 360 ms
 // ≈ 1,667 real ms at 1× — 36 game days per real minute). The camera is the scheduler's optional in-view input (Main.Part11.cs 507 method_123 / 533
-// ProcessMain level-of-detail pass, plan §0 "View LOD"): opt-in with `?simView=1` (off by default: the camera would be
-// an unjournaled sim input and break command-log replay; when on, the log records it — 'view' entries) (tests
-// and the headless harness always run without a view).
+// ProcessMain level-of-detail pass, plan §0 "View LOD"): on by default as in the C# (whose ProgramLoop runs it every
+// frame), `?simView=0` turns it off. The camera is a sim input, so every camera the loop hands the sim is journaled
+// first (a 'view' command-log entry, at most every SIM_VIEW_MIN_INTERVAL_MS of real time: SimViewThrottle) and the
+// frames run with exactly the journaled one — a replay runs the same pass. Tests and the headless harness run without
+// a view.
 //
 // The only clock is `galaxy.nowMs` (advanced by runSimFrame); the HUD's GalaxyTime is bound to it
 // (GalaxyTime.bindGalaxy) and only supplies pause / speed.
@@ -21,7 +23,7 @@ import type { GalaxyTime } from './sim/galaxyTime';
 import { SimDriver, schedulerState, type SimView } from './sim/tick/scheduler';
 import { drainCommandBoundary } from './sim/tick/commandBoundary';
 import { markUiGalaxy } from './sim/readOnlyQuery';
-import { noteSimSpeed, noteSimView } from './sim/player/playerCommands';
+import { loggedSimViewRect, noteSimSpeed, noteSimViewRect } from './sim/player/playerCommands';
 import { showToast } from './ui/toast';
 import { createRenderTime, updateRenderTime, type RenderTime } from './render/renderInterp';
 
@@ -39,8 +41,8 @@ export function simViewFromCamera(camera: Camera): SimView {
 }
 
 // [fix6ui] SimFrameBudget and its constants live in simFrameBudget.ts (DOM-free: the sim worker uses them too).
-import { SimFrameBudget } from './simFrameBudget';
-export { MAX_CATCH_UP_REAL_MS, SIM_BUDGET_MS_AT_1X, SIM_SHARE_OF_FRAME_TIME, SimFrameBudget, type SteppableDriver } from './simFrameBudget';
+import { SimFrameBudget, SimViewThrottle } from './simFrameBudget';
+export { MAX_CATCH_UP_REAL_MS, SIM_BUDGET_MS_AT_1X, SIM_SHARE_OF_FRAME_TIME, SIM_VIEW_MIN_INTERVAL_MS, SimFrameBudget, SimViewThrottle, type SteppableDriver } from './simFrameBudget';
 
 /** Wall-clock stats of the sim work done in render frames (exposed as window.__dwu.simStats). */
 export interface SimLoopStats {
@@ -68,9 +70,9 @@ export interface SimLoop {
     tick(realDtMs: number): number;
 }
 
-/** `?simView=1` enables the in-view LOD pass (default off: see the file header, command log). */
+/** The in-view LOD pass is on unless `?simView=0` (see the file header, command log). */
 export function simViewEnabledFromUrl(search: string): boolean {
-    return new URLSearchParams(search).get('simView') === '1';
+    return new URLSearchParams(search).get('simView') !== '0';
 }
 
 export function createSimLoop(galaxy: Galaxy, time: GalaxyTime, camera: Camera, useView: boolean): SimLoop {
@@ -94,6 +96,7 @@ export function createSimLoop(galaxy: Galaxy, time: GalaxyTime, camera: Camera, 
         },
     };
     const budget = new SimFrameBudget();
+    const viewThrottle = new SimViewThrottle();
     const renderTime = updateRenderTime(createRenderTime(), galaxy.nowMs, 0, time.speed, true, 0);
     return {
         driver,
@@ -112,12 +115,15 @@ export function createSimLoop(galaxy: Galaxy, time: GalaxyTime, camera: Camera, 
                 // (also while paused, and even when the budget runs no step), so they land within one frame.
                 drainCommandBoundary(galaxy);
                 // The frame length is a sim input: journal speed changes at this boundary (replay runs the same frames).
+                // So is the camera of the LOD pass: journal it (rate-limited) and run with exactly the journaled one.
                 if (!time.paused) {
                     noteSimSpeed(galaxy, time.speed);
-                    noteSimView(galaxy, useView);
+                    const want = useView ? simViewFromCamera(camera) : null;
+                    if (viewThrottle.due(want, performance.now())) noteSimViewRect(galaxy, want);
                 }
+                const view = loggedSimViewRect(galaxy);
                 // [fix6ui] steps by real time under a wall-clock budget (was driver.advance, at most 4 per frame).
-                frames = budget.run(driver, realDtMs, time.speed, time.paused, useView ? { view: simViewFromCamera(camera) } : {});
+                frames = budget.run(driver, realDtMs, time.speed, time.paused, view !== null ? { view } : {});
             } catch (err) {
                 // Pixi's Ticker only schedules the next animation frame after update() returns, so an exception here
                 // would freeze the sim, the view and rendering for good. Contain it: drop the half-drained tick queue
