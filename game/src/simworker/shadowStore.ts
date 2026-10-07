@@ -189,3 +189,58 @@ export class ListTable {
         this.free.push(row);
     }
 }
+
+/**
+ * Object → sync id for the encoder and the decoder: a Map that may hold more than one V8 Map can. A JS Map throws
+ * "Map maximum size exceeded" at 2^24 (16.7 M) entries, and the live graph of a late game is already a third of that
+ * (6 M+ objects on a 380 MB save) — so new entries go to the newest shard and a full shard starts another. Lookups try
+ * the shards newest first (one or two on any real game). A shard that empties is removed.
+ */
+export class IdMap {
+    /** Entries per shard (well under 2^24: a Map's backing store doubles as it grows). */
+    static readonly SHARD_MAX = 1 << 23;
+    private shards: Map<object, number>[] = [new Map()];
+    private count = 0;
+
+    get size(): number {
+        return this.count;
+    }
+
+    get(o: object): number | undefined {
+        const s = this.shards;
+        for (let i = s.length - 1; i >= 0; i--) {
+            const v = s[i].get(o);
+            if (v !== undefined) return v;
+        }
+        return undefined;
+    }
+
+    /** Add `o` (callers only set objects not in the map yet: ids are never reassigned). */
+    set(o: object, id: number): void {
+        let last = this.shards[this.shards.length - 1];
+        if (last.size >= IdMap.SHARD_MAX) {
+            // A shard that the drops have half emptied takes the new entries (moved last: tried first), else a new one —
+            // so the shards stay about as many as the live entries need, however many ids were ever issued.
+            const i = this.shards.findIndex((m) => m.size < IdMap.SHARD_MAX >> 1);
+            if (i >= 0) {
+                last = this.shards[i];
+                this.shards.splice(i, 1);
+                this.shards.push(last);
+            } else this.shards.push((last = new Map()));
+        }
+        last.set(o, id);
+        this.count++;
+    }
+
+    delete(o: object): boolean {
+        const s = this.shards;
+        for (let i = s.length - 1; i >= 0; i--) {
+            if (s[i].delete(o)) {
+                this.count--;
+                if (s[i].size === 0 && s.length > 1) s.splice(i, 1);
+                return true;
+            }
+        }
+        return false;
+    }
+}

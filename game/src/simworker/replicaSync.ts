@@ -24,7 +24,7 @@
 // sim's determinism (and the golden digests) cannot depend on whether it is synced. No DOM / Pixi imports.
 
 import type { Encoded } from '../sim/save/graphCodec';
-import { FieldTable, Lane, ListTable, laneOf, type Column } from './shadowStore';
+import { FieldTable, IdMap, Lane, ListTable, laneOf, type Column } from './shadowStore';
 
 // ---------------------------------------------------------------------------------------------------------------
 // Wire format
@@ -316,6 +316,18 @@ export interface ReplicaEncoderOptions {
     /** Start a mark every this many cold cycles (default 8). */
     markEveryCycles?: number;
     /**
+     * A mark finishes within about this many diffs, however long each slice takes (default 600): each diff marks / sweeps
+     * at least 1/markMinSlices of the objects. A late game's step is so slow that the worker diffs only a few times a
+     * second; with the 1 ms budget alone one mark took longer than the sim took to create millions of new objects.
+     */
+    markMinSlices?: number;
+    /** Also start a mark when this many ids were issued since the last one started (default max(1 M, an eighth of the
+     *  live objects)): the garbage of a busy galaxy outran the cycle-based schedule. */
+    markGrowth?: number;
+    /** While a mark runs, each diff's mark budget is at least this share of the real time since the previous diff
+     *  (default 0.03, at most 50 ms): a worker that diffs once a second still finishes a mark in a minute or two. */
+    markShare?: number;
+    /**
      * Gated hot classes: `Class` → { gate, children }. While the gate field (e.g. lastTouch) is unchanged since the
      * last compare, only the always-hot fields are compared each step (the sim did not process the object, so its
      * motion state did not move; anything else changed by others reaches the replica in the cold cycle). When the gate
@@ -447,6 +459,10 @@ const enum MarkPhase {
     Sweeping = 2,
 }
 
+/** Synced objects past which a diff finishes the running mark at once (ReplicaEncoder.diff): 12 M, twice the largest
+ *  late-game graph seen (6.2 M on a 380 MB save). */
+const EMERGENCY_MARK_IDS = 12_000_000;
+
 /** The values of an empty shadow. */
 const NO_VALUES: readonly unknown[] = Object.freeze([]);
 
@@ -492,7 +508,7 @@ function makeGateRegistry(names: string[]): GateRegistry {
 }
 
 export class ReplicaEncoder {
-    private readonly ids = new Map<object, number>();
+    private readonly ids = new IdMap();
     private objs: (object | null)[] = [];
     private kinds: Uint8Array = new Uint8Array(1 << 16);
     private shapeOf: Int32Array = new Int32Array(1 << 16);
@@ -584,6 +600,26 @@ export class ReplicaEncoder {
     private markStack: number[] = [];
     private sweepCursor = 0;
     private markStartedCycle = 0;
+    /** objs.length when the current / last mark started (markGrowth). */
+    private markStartIds = 0;
+    /** The current mark's minimum work per slice (markMinSlices). */
+    private markMinWork = 0;
+    /**
+     * Ids scanned from the FIRST root only (the galaxy) — markSub 1 — before the other roots (the side tables) are
+     * greyed (markSub 2). Greys of a weak-keyed table (setWeakKeyed: the table itself, and what it writes) wait in
+     * markDeferred until then, so the first sub-phase's reach is what the galaxy reaches by itself.
+     */
+    private markSub = 0;
+    private markRoots = 2;
+    private markDeferred: number[] = [];
+    private readonly weakKeyed = new Set<object>();
+    /** Inside the fill of a weak-keyed table (its greys are deferred during markSub 1). */
+    private greyFromWeak = false;
+    /** The last completed mark's first-root reach (1: reached), for ids below galaxyReachLimit; null: no mark yet. */
+    private galaxyReach: Uint8Array | null = null;
+    private galaxyReachLimit = 0;
+    private galaxyReachNext: Uint8Array | null = null;
+    private galaxyReachNextLimit = 0;
     private readonly tracked = new Map<object, Set<object>>();
     /** Objects dropped by the last completed mark. */
     lastDropped = 0;
@@ -594,6 +630,10 @@ export class ReplicaEncoder {
     private readonly coldMaxSets: number;
     private readonly markBudgetMs: number;
     readonly markEveryCycles: number;
+    private readonly markMinSlices: number;
+    private readonly markShare: number;
+    /** When the last diff started (markShare; -1: none yet). */
+    private lastDiffAt = -1;
 
     /** Diagnostics: field sets / new objects per label since the last reset (when not null). */
     profile: Record<string, number> | null = null;
@@ -612,10 +652,13 @@ export class ReplicaEncoder {
         this.coldMaxSets = opts.coldMaxSets ?? 6000;
         this.markBudgetMs = opts.markBudgetMs ?? 1;
         this.markEveryCycles = Math.max(1, opts.markEveryCycles ?? 8);
+        this.markMinSlices = Math.max(1, opts.markMinSlices ?? 600);
+        this.markShare = Math.max(0, opts.markShare ?? 0.03);
         for (const p of opts.trackClasses ?? []) this.tracked.set(p, new Set());
         for (const [name, g] of Object.entries(opts.gates ?? {})) for (const c of g.children) this.childLabels.add(`${name}.${c}`);
         roots.forEach((r, i) => this.idOf(r, `$root${i}`));
         this.flushPending();
+        this.markStartIds = this.objs.length;
     }
 
     /** Every live synced object (id order). */
@@ -802,6 +845,8 @@ export class ReplicaEncoder {
      */
     diff(fullCold = false, now: () => number = () => performance.now()): ReplicaDelta {
         const t0 = now();
+        const sinceLastDiff = this.lastDiffAt < 0 ? 0 : Math.max(0, t0 - this.lastDiffAt);
+        this.lastDiffAt = t0;
         this.cycleStepCount++;
         this.stamp++;
         const hotN = this.hotPass();
@@ -834,7 +879,18 @@ export class ReplicaEncoder {
         }
         this.stats.coldCompared += n;
         this.flushPending();
-        if (this.markPhase !== MarkPhase.Idle) this.markStep(now, fullCold ? Infinity : this.markBudgetMs);
+        // (A full compare — the snapshot — discovers the graph: growth counts from there.)
+        if (fullCold && this.markPhase === MarkPhase.Idle) this.markStartIds = this.objs.length;
+        if (!fullCold && this.markPhase === MarkPhase.Idle && this.objs.length - this.markStartIds >= (this.opts.markGrowth ?? Math.max(1 << 20, this.ids.size >> 3))) this.startMark();
+        if (this.markPhase !== MarkPhase.Idle) this.markStep(now, fullCold ? Infinity : Math.max(this.markBudgetMs, Math.min(50, this.markShare * sinceLastDiff)));
+        if (this.ids.size >= EMERGENCY_MARK_IDS && (this.markPhase !== MarkPhase.Idle || this.objs.length - this.markStartIds >= 1 << 20)) {
+            // Far more objects than any live galaxy keeps: garbage the incremental mark has not kept up with. Finish a
+            // mark now (a hitch of seconds) rather than let the worker's heap run out.
+            const before = this.ids.size;
+            if (this.markPhase === MarkPhase.Idle) this.startMark();
+            this.markStep(now, Infinity);
+            console.warn(`replica sync: ${before} synced objects; a full mark dropped ${this.lastDropped} (${this.ids.size} left)`);
+        }
         const d = this.takeDelta();
         d.stats.diffMs = now() - t0;
         return d;
@@ -1013,17 +1069,49 @@ export class ReplicaEncoder {
 
     // --- incremental mark ----------------------------------------------------------------------------------------
 
-    /** Begin a reachability mark from the roots (ids 0, 1) over the shadows. */
+    /** Begin a reachability mark from the roots (ids 0, 1) over the shadows: the first root, then the others. */
     startMark(rootCount = 2): void {
         this.markSeen = new Uint8Array(this.objs.length + 1024);
         this.markStack = [];
+        this.markDeferred = [];
         this.markPhase = MarkPhase.Marking;
-        for (let r = 0; r < rootCount && r < this.objs.length; r++) if (this.objs[r] !== null) this.markGrey(r);
+        this.markRoots = rootCount;
+        this.markSub = 1;
+        this.markStartIds = this.objs.length;
+        this.markMinWork = Math.ceil(this.ids.size / this.markMinSlices);
+        if (this.objs.length > 0 && this.objs[0] !== null) this.markGrey(0);
         this.markStartedCycle = this.cycles;
+    }
+
+    /**
+     * Tables keyed by synced objects whose keys should not keep them alive by themselves — the side tables' per-object
+     * entries (captain bonuses, habitat characters, Random draw counts), collected over instancesOf: an entry keeps its
+     * key reachable from the side root, so a destroyed ship that had captain bonuses was never dropped, and its whole
+     * subgraph stayed in the encoder for good. The mark records what the first root reaches without them
+     * (reachedFromFirstRoot); the binding leaves the others out of its next collection, and the mark after drops them.
+     */
+    setWeakKeyed(tables: readonly object[]): void {
+        this.weakKeyed.clear();
+        for (const t of tables) this.weakKeyed.add(t);
+    }
+
+    /**
+     * Whether `o` was reachable from the first root (the galaxy) at the last completed mark, not counting the
+     * weak-keyed tables' references (true for anything newer than that mark, or before any).
+     */
+    reachedFromFirstRoot(o: object): boolean {
+        const reach = this.galaxyReach;
+        if (reach === null) return true;
+        const id = this.ids.get(o);
+        return id === undefined || id >= this.galaxyReachLimit || reach[id] === 1;
     }
 
     /** Barrier: `id` is reachable (while marking, pushed for scanning if not seen yet; while sweeping, kept). */
     private markGrey(id: number): void {
+        if (this.markSub === 1 && (this.greyFromWeak || (this.weakKeyed.size > 0 && this.weakKeyed.has(this.objs[id]!)))) {
+            this.markDeferred.push(id);
+            return;
+        }
         if (id >= this.markSeen.length) this.growSeen(id);
         if (this.markSeen[id] === 0) {
             this.markSeen[id] = 1;
@@ -1053,13 +1141,28 @@ export class ReplicaEncoder {
     private markStep(now: () => number, budgetMs: number): void {
         const t0 = now();
         let k = 0;
+        const minWork = this.markMinWork;
         if (this.markPhase === MarkPhase.Marking) {
             const stack = this.markStack;
-            while (stack.length > 0) {
-                const id = stack.pop()!;
-                this.greyShadow(id);
-                if ((++k & 127) === 0 && now() - t0 >= budgetMs) return;
+            for (;;) {
+                while (stack.length > 0) {
+                    const id = stack.pop()!;
+                    this.greyShadow(id);
+                    if ((++k & 127) === 0 && k >= minWork && now() - t0 >= budgetMs) return;
+                }
+                if (this.markSub !== 1) break;
+                // The galaxy's own reach is complete: record it, then grey the other roots and the deferred greys.
+                this.markSub = 2;
+                this.galaxyReachNext = this.markSeen.slice();
+                this.galaxyReachNextLimit = this.objs.length;
+                for (let r = 1; r < this.markRoots && r < this.objs.length; r++) if (this.objs[r] !== null) this.markGrey(r);
+                for (const id of this.markDeferred) if (this.objs[id] !== null) this.markGrey(id);
+                this.markDeferred = [];
             }
+            this.markSub = 0;
+            this.galaxyReach = this.galaxyReachNext;
+            this.galaxyReachLimit = this.galaxyReachNextLimit;
+            this.galaxyReachNext = null;
             this.markPhase = MarkPhase.Sweeping;
             this.sweepCursor = 0;
             this.lastDropped = 0;
@@ -1079,7 +1182,7 @@ export class ReplicaEncoder {
                 this.parts[1].drops.push(id);
                 this.lastDropped++;
             }
-            if ((++k & 1023) === 0 && now() - t0 >= budgetMs) return;
+            if ((++k & 1023) === 0 && k >= minWork && now() - t0 >= budgetMs) return;
         }
         this.markPhase = MarkPhase.Idle;
         if (this.lastDropped > 0) {
@@ -1223,6 +1326,19 @@ export class ReplicaEncoder {
 
     /** Fill record of a new (`birth`: in the part's births stream) or refilled object, and its shadow. */
     private writeContents(id: number, birth = false): void {
+        if (this.markSub === 1 && this.weakKeyed.size > 0 && this.weakKeyed.has(this.objs[id]!)) {
+            this.greyFromWeak = true;
+            try {
+                this.writeContentsOf(id, birth);
+            } finally {
+                this.greyFromWeak = false;
+            }
+            return;
+        }
+        this.writeContentsOf(id, birth);
+    }
+
+    private writeContentsOf(id: number, birth: boolean): void {
         const o = this.objs[id]!;
         const kind = this.kinds[id];
         if (this.regOf[id] !== 0) this.invalidate(id);
@@ -1981,10 +2097,10 @@ export class ReplicaDecoder {
     private kinds: Uint8Array = new Uint8Array(1 << 16);
     private shapeOf: Int32Array = new Int32Array(1 << 16);
     private readonly shapes: DecShape[] = [];
-    /** Replica object → sync id. A Map, not a WeakMap: entries are deleted with their drop anyway, and at 2.4 M keys a
-     *  WeakMap insert cost ~5 µs with GC stalls up to a second under churn (a Map: ~0.2 µs; growing it rehashes, ~20 ms
-     *  once per million or so births). */
-    private readonly idByObj = new Map<object, number>();
+    /** Replica object → sync id (an IdMap: Maps sharded past one Map's 2^24 entries). Maps, not a WeakMap: entries are
+     *  deleted with their drop anyway, and at 2.4 M keys a WeakMap insert cost ~5 µs with GC stalls up to a second under
+     *  churn (a Map: ~0.2 µs; growing it rehashes, ~20 ms once per million or so births). */
+    private readonly idByObj = new IdMap();
     private readonly coldQueue: QueuedPart[] = [];
     /** Mixed fields: per object, the seq of the last hot part that set one of them. */
     private readonly mixedHotSeq = new Map<number, number>();

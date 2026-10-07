@@ -264,9 +264,17 @@ export class GalaxySyncSource {
     /** Recollect the side tables into the persistent root (Maps / arrays refilled in place). */
     refreshSideTables(): void {
         const e = this.encoder;
-        const visited = [...e.instancesOf(Habitat.prototype), ...e.instancesOf(BuiltObject.prototype), ...e.instancesOf(Random.prototype)];
+        // What the save would visit: the encoder's instances, less those only the side tables still reach (a destroyed
+        // ship's captain bonuses kept the ship, and its whole subgraph, in the encoder for good — about 2^24 ids into a
+        // long late game the worker stopped with "Map maximum size exceeded"). A ship not destroyed stays in even if the
+        // last mark missed it (its shadows moving between lists).
+        const keep = (o: object): boolean => e.reachedFromFirstRoot(o) || (o instanceof BuiltObject && !o.hasBeenDestroyed);
+        const visited: object[] = [];
+        for (const p of [Habitat.prototype, BuiltObject.prototype, Random.prototype]) for (const o of e.instancesOf(p)) if (keep(o)) visited.push(o);
         const fresh = replicaSideTables(this.galaxy, visited) as SideRoot;
         assignInPlace(this.side, fresh);
+        const side = this.side as Record<string, unknown>;
+        e.setWeakKeyed(['captainBonuses', 'habitatCharacters', 'habitatInvadingCharacters', 'randomDraws'].map((k) => side[k]).filter((t): t is object => t !== null && typeof t === 'object'));
     }
 
     /**
