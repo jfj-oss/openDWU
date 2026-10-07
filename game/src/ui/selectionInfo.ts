@@ -357,6 +357,29 @@ export function missionDescription(mission: BuiltObjectMission | null, empire: E
     return t !== '' ? `${type} ${t}` : type;
 }
 
+/** Colour of the queued-orders line (a dimmer white than the mission line). */
+const QUEUED_COLOR = 0xb0b8c8;
+/** At most this many queued orders are listed on the selection panel; the rest are counted ("+2 more"). */
+const QUEUED_SHOWN = 4;
+
+/**
+ * Streamlined (not in the original's compact panel, which only says "(n queued)"): the shift-click queue
+ * (BuiltObject / ShipGroup SubsequentMissions) as one compact numbered line, "Then: 1. Move to X  2. Attack Y".
+ * Null when nothing is queued.
+ */
+export function queuedMissionsText(list: readonly (BuiltObjectMission | null)[], empire: Empire | null): string | null {
+    const parts: string[] = [];
+    let n = 0;
+    for (const m of list) {
+        if (m == null) continue;
+        n++;
+        if (n <= QUEUED_SHOWN) parts.push(`${n}. ${missionDescription(m, empire)}`);
+    }
+    if (n === 0) return null;
+    if (n > QUEUED_SHOWN) parts.push(`+${n - QUEUED_SHOWN} more`);
+    return `Then: ${parts.join(' · ')}`;
+}
+
 /** The engagement-range suffix (BaconInfoPanel.cs:334 / 275). */
 export function engageSuffix(attackRangeSquared: number): string {
     if (attackRangeSquared === 0) return ' (Engage when attacked)';
@@ -562,11 +585,14 @@ export function builtObjectInfo(ctx: InfoContext, bo: BuiltObject, extended = fa
         if (actual === player || flag1 || targetsPlayer) {
             let text = missionDescription(m, actual ?? galaxy.independentEmpire);
             if (bo.role === BuiltObjectRole.Military) text += engageSuffix(bo.attackRangeSquared);
-            if (bo.subsequentMissions.length > 0) {
-                if (extended) for (const sm of bo.subsequentMissions) text += `\nNEXT: ${missionDescription(sm as BuiltObjectMission, actual ?? galaxy.independentEmpire)}`; // BaconInfoPanel.cs 336
-                else text += ` (${bo.subsequentMissions.length} queued)`;
+            if (bo.subsequentMissions.length > 0 && extended) {
+                for (const sm of bo.subsequentMissions) text += `\nNEXT: ${missionDescription(sm as BuiltObjectMission, actual ?? galaxy.independentEmpire)}`; // BaconInfoPanel.cs 336
             }
             rows.push({ kind: 'line', segs: [txt(text)], wrap: true });
+            if (!extended) {
+                const queued = queuedMissionsText(bo.subsequentMissions as BuiltObjectMission[], actual ?? galaxy.independentEmpire);
+                if (queued !== null) rows.push({ kind: 'line', segs: [txt(queued, QUEUED_COLOR)], wrap: true });
+            }
         } else {
             rows.push({ kind: 'line', segs: [txt('(Unknown mission)', UNKNOWN_COLOR)] });
         }
@@ -806,7 +832,7 @@ function shipCell(ctx: InfoContext, bo: BuiltObject, detailed: boolean, multi: b
 }
 
 /** `extended`: InfoPanel.ShowExtendedInfo (the Fleets window's pnlDetailInfoShipGroup): the queued missions are listed
- *  one per line ("NEXT: ...") instead of "(n queued)". */
+ *  one per line ("NEXT: ...") instead of the compact "Then: 1. ...  2. ..." line (queuedMissionsText). */
 export function shipGroupInfo(ctx: InfoContext, sg: ShipGroup, extended = false): InfoModel {
     const { galaxy, player } = ctx;
     const empire = sg.empire;
@@ -817,11 +843,14 @@ export function shipGroupInfo(ctx: InfoContext, sg: ShipGroup, extended = false)
     rows.push({ kind: 'gap', h: 2 });
     if (known) {
         let text = missionDescription(sg.mission, empire) + engageSuffix(sg.attackRangeSquared);
-        if (sg.subsequentMissions.length > 0) {
-            if (extended) for (const m of sg.subsequentMissions) text += `\nNEXT: ${missionDescription(m, empire)}`;
-            else text += ` (${sg.subsequentMissions.length} queued)`;
+        if (sg.subsequentMissions.length > 0 && extended) {
+            for (const m of sg.subsequentMissions) text += `\nNEXT: ${missionDescription(m, empire)}`;
         }
         rows.push({ kind: 'line', segs: [txt(text)], wrap: true });
+        if (!extended) {
+            const queued = queuedMissionsText(sg.subsequentMissions, empire);
+            if (queued !== null) rows.push({ kind: 'line', segs: [txt(queued, QUEUED_COLOR)], wrap: true });
+        }
     } else rows.push({ kind: 'line', segs: [txt('(Unknown mission)', UNKNOWN_COLOR)] });
     if (sg.localDefenseTacticsApply) rows.push({ kind: 'line', segs: [txt('Local Defense Tactics: +20% Targeting & Countermeasures', 0x00ff00)] });
     rows.push({ kind: 'gap', h: 4 });

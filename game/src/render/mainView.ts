@@ -83,6 +83,7 @@ import { AmbientLayer } from './ambientLayer';
 // [fightersfx] begin
 import { FighterLayer } from './fighterLayer';
 import { BattleBarLayer } from './combatBars';
+import { SelectionPathLayer } from './selectionPaths';
 import { applySelectionTint, buildSelectionCircles, creatureSelectionBox, habitatSelectionBox, sameBoxes, shipSelectionBox, systemSelectionBox } from './selectionCircle';
 import { ScreenShake } from './screenShake';
 import type { Fighter } from '../sim/combat/fighters';
@@ -1327,6 +1328,14 @@ export class MainView {
     private selectionBox = new Graphics();
     /** Dashed yellow hyperjump range rings (45% / 100% of current fuel) for the selected ship / fleet. */
     private rangeRingsG = new Graphics();
+    /** Queued-orders path and fleet-member highlight of the selection (selectionPaths.ts; screen px). */
+    private readonly selectionPaths = new SelectionPathLayer({
+        getSelection: () => this.getHudSelection(),
+        player: () => this.galaxy.playerEmpire,
+        toScreen: (x, y) => this.camera.worldToScreen(x, y),
+        drawnPos: (bo) => drawnBuiltObjectPos(this.motion, bo),
+        drawnPx: (bo) => this.builtObjectLayer?.drawnSizePx(bo) ?? 0,
+    });
     /** Explosion screen shake (screenShake.ts, Main.method_217 / method_219). */
     readonly shake = new ScreenShake();
     /** Battle bars at zoom factor <= 3 (combatBars.ts, MainView.1.cs 1251-1295). */
@@ -1480,6 +1489,7 @@ export class MainView {
         this.selectionRing.visible = false;
         this.fx.addChild(this.selectionRing);
         this.fx.addChild(this.rangeRingsG);
+        this.fx.addChild(this.selectionPaths.root);
         this.selectionBox.visible = false;
         this.fx.addChild(this.selectionBox);
     }
@@ -2185,6 +2195,7 @@ export class MainView {
         // fighters, habitats) at the drawn (render-interpolated) positions sampled above this frame.
         this.drawSelectionCircles(z, cam);
         this.updateRangeRings(z, cam);
+        this.selectionPaths.update(cam.width, cam.height);
 
         // Screen-edge auto-scroll (original control scheme).
         let edgeDx = 0;
