@@ -23,6 +23,7 @@ import { checkClearDocking, checkMissionStillValid } from '../logistics/docking'
 import { checkSendPreWarpProgressEventMessage } from '../events';
 import { PreWarpProgressEventType } from '../exploration';
 import { scenarioQuery } from '../scenario/hooks';
+import { moveTogetherCruiseSpeed, moveTogetherHold, moveTogetherJumpCountdown, moveTogetherJumpEntered, moveTogetherReleased, moveTogetherWarpSpeed } from '../fleets/moveTogether';
 import {
     MAX_SOLAR_SYSTEM_SIZE,
     MOVEMENT_IMPULSE_SPEED,
@@ -66,6 +67,11 @@ export const cmdMoveTo: CommandHandler = (ctx) => {
             bo.preferredSpeed = f(shipGroupCruiseSpeed(shipGroup));
         } else {
             bo.preferredSpeed = bo.cruiseSpeed;
+        }
+        // openDWU rule (not in the original): a fleet moving together flies at its slowest member's cruise speed.
+        if (shipGroup !== null && shipGroup.together !== undefined) {
+            const together = moveTogetherCruiseSpeed(bo);
+            if (together > 0) bo.preferredSpeed = f(Math.min(bo.cruiseSpeed, together));
         }
         bo.firstExecutionOfCommand = false;
     }
@@ -245,7 +251,10 @@ export const cmdHyperTo: CommandHandler = (ctx) => {
         bo.targetHeading = bo.angle;
         bo.firstExecutionOfCommand = false;
         bo.firstHyperjumpExecution = true;
+        // openDWU rule (not in the original): a fleet moving together joins one shared jump start (fleets/moveTogether.ts).
+        if (shipGroup !== null && shipGroup.together !== undefined) moveTogetherJumpEntered(galaxy, bo, starDate);
     }
+    if ((bo.shipGroup as ShipGroup | null)?.together !== undefined) moveTogetherJumpCountdown(bo, starDate);
     if (bo.warpSpeed <= 0) {
         clearPreviousMissionRequirements(galaxy, bo);
         return result;
@@ -278,6 +287,12 @@ export const cmdHyperTo: CommandHandler = (ctx) => {
                 bo.preferredSpeed = f(Math.min(warpSpeedWithBonuses(bo), shipGroupWarpSpeed(shipGroup)));
             } else {
                 bo.preferredSpeed = f(warpSpeedWithBonuses(bo));
+            }
+            // openDWU rule (not in the original): moving together, the slowest warp speed of the members held
+            // together (a straggler left behind does not slow them down).
+            if (shipGroup.together !== undefined) {
+                const together = moveTogetherWarpSpeed(bo);
+                if (together > 0) bo.preferredSpeed = f(Math.min(warpSpeedWithBonuses(bo), together));
             }
             bo.currentSpeed = bo.preferredSpeed;
         } else if (mission.type === BuiltObjectMissionType.Escort && mission.targetBuiltObject !== null) {
@@ -388,6 +403,8 @@ export const cmdHyperTo: CommandHandler = (ctx) => {
 export const cmdHoldSyncFleet: CommandHandler = (ctx) => {
     const { bo, mission } = ctx;
     const shipGroup = shipGroupOf(bo);
+    // openDWU rule (not in the original): moving together, members still on the way after the wait are left behind.
+    if (shipGroup !== null && shipGroup.together !== undefined) moveTogetherHold(shipGroup, bo, ctx.starDate);
     if (shipGroup !== null && shipGroup.ships !== null) {
         let flag30 = true;
         for (let num99 = 0; num99 < shipGroup.ships.length; num99++) {
@@ -414,6 +431,7 @@ export const cmdHoldSyncFleet: CommandHandler = (ctx) => {
                     }
                 }
             }
+            if (shipGroup.together !== undefined) moveTogetherReleased(shipGroup);
         }
     } else {
         mission.completeCommand();

@@ -15,6 +15,7 @@ import type { FleetPosture } from '../diplomacyTick';
 import type { BuiltObjectMission, BuiltObjectMissionPriority, BuiltObjectMissionType, MissionTarget, StellarObject } from '../missions/mission';
 import { MIN_TIME } from '../tick/simTime';
 import { BuiltObjectRole } from '../data/designSpecifications';
+import type { MoveTogetherState } from './moveTogether';
 
 /** 2.304E+09f (48000²) as the float32 it is. */
 const ATTACK_RANGE_SQUARED_DEFAULT = Math.fround(2.304e9);
@@ -87,6 +88,12 @@ export class ShipGroup {
     battleStats: unknown = null;
     /** ShipGroup.cs 63 SortTag ([NonSerialized] double). */
     sortTag = 0.0;
+    /**
+     * openDWU rule (not in the original): the player's "Move together" toggle and the current order's run
+     * (fleets/moveTogether.ts). `declare`d, so they only exist (and are only saved) once set: absent = off.
+     */
+    declare moveTogether?: boolean;
+    declare together?: MoveTogetherState;
 
     // ShipGroup(Galaxy galaxy) (ShipGroup.cs 89).
     constructor(galaxy: Galaxy) {

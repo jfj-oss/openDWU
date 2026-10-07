@@ -19,6 +19,8 @@
 // buttons, Main.Part3.cs fleetSlots), in the same look: a row of fleet orders under the window's controls (posture,
 // engagement range, attack point, home base, automate, stop, disband), and the "Fleet Designs" tab
 // (fleetDesignsTab.ts: fleet templates, form from existing, build fleet with a sector option and progress).
+// Under the name box, the fleet's "Move together" toggle (fleetMoveTogetherControl.ts; sim/fleets/moveTogether.ts — an
+// openDWU rule, not in the original).
 // Below the orders row, the fleet's template row (fleetRefillControls.ts: fleet design, "Auto-refill from template",
 // the replacements' yard, Replenish and the status line; sim/player/fleetRefill.ts — a gameplay addition).
 // The fleet cycle keys follow Main.Part8.cs:1243 btnCycleShipGroups_Click (fleetCycleList).
@@ -45,6 +47,7 @@ import type { Troop } from '../../sim/cargo';
 import { SystemVisibilityStatus } from '../../sim/visibility';
 import { createFleetDesignsTab } from './fleetDesignsTab';
 import { createFleetRefillControls } from '../fleetRefillControls';
+import { createFleetMoveTogetherControl } from '../fleetMoveTogetherControl';
 import { troopCompositionDescription, troopCountsByType } from './troops';
 import { openGalactopedia } from './galactopedia';
 import { CROSSHAIR_COLOR, GRID_COLOR, drawMapTerritory, galaxyMapScale, sectorColumnLabel, sectorLabelStride, starBrushColor, starDotSizes } from './galaxyMap';
@@ -550,6 +553,10 @@ function createFleetsList(opts: FleetsListOptions): OpenState {
         }
     });
 
+    // "Move together" (fleetMoveTogetherControl.ts; an openDWU rule, not in the original) under the name box.
+    const moveTogether = createFleetMoveTogetherControl(empire, 330, () => refresh(), FONT.large);
+    fleetsPage.appendChild(place(moveTogether.el, 10, 353, 330, 24));
+
     const btnSelect = glassButton('Select Fleet', { onClick: () => withFleet((sg) => (opts.onSelectOnly ?? opts.onSelect)(sg)) });
     fleetsPage.appendChild(place(btnSelect, 350, 320, 140, 42));
     const btnGoto = glassButton('Go to Fleet', {
@@ -792,6 +799,7 @@ function createFleetsList(opts: FleetsListOptions): OpenState {
             for (const s of orderSpecs) minor(s.id, '');
         }
         refillRow.update(sg);
+        moveTogether.update(sg);
         drawMap();
     }
 

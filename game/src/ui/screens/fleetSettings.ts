@@ -47,6 +47,7 @@ import {
 } from '../originalWindow';
 import { groupBox } from '../originalWindowControls';
 import { requestSimRefresh } from '../../simworker/refresh';
+import { createFleetMoveTogetherControl } from '../fleetMoveTogetherControl';
 import {
     DEFAULT_STANCE_ITEMS,
     EXPLAIN,
@@ -94,7 +95,7 @@ export interface FleetSettingsOptions {
 }
 
 /** Window size in the original's pixels (two columns of groups). */
-export const FLEET_SETTINGS_WINDOW = { w: 1000, h: 892 } as const;
+export const FLEET_SETTINGS_WINDOW = { w: 1000, h: 892 + 70 } as const;
 const COL_W = 476;
 const COL_L = 10;
 const COL_R = 498;
@@ -359,6 +360,12 @@ function createFleetSettings(opts: FleetSettingsOptions): OpenState {
     if (opts.onOpenFleetDesigns) gTemplate.appendChild(place(linkLabel('Fleet Designs...', () => opts.onOpenFleetDesigns?.(), FONT.tiny), 380, 27));
     explain(gTemplate, 52, EXPLAIN.template);
 
+    // --- Movement (y 824): "Move together" (an openDWU rule, not in the original; fleetMoveTogetherControl.ts).
+    const gMove = group('Movement', COL_L, 824, 62);
+    const moveTogether = createFleetMoveTogetherControl(empire, COL_W - 20, () => refresh(), F_LABEL);
+    gMove.appendChild(place(moveTogether.el, 10, 20));
+    explain(gMove, 44, { text: 'Gather first, then travel as one at the slowest speed and jump together (openDWU rule).', ref: 'sim/fleets/moveTogether.ts (not in the original: each member flies alone, ShipGroup.cs AssignMissionToShips)' });
+
     // ===============================================================================================================
     // Right column
     // ===============================================================================================================
@@ -476,6 +483,7 @@ function createFleetSettings(opts: FleetSettingsOptions): OpenState {
         fillColonies();
         const sg = fleet();
         for (const c of allControls()) c.disabled = sg === null;
+        moveTogether.update(sg);
         if (sg === null) {
             setText(status, playerFleets(empire).length === 0 ? 'You have no fleets.' : 'No fleet selected.');
             return;

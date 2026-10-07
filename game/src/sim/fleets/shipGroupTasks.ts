@@ -94,6 +94,7 @@ import {
 } from './militaryAI';
 import { findNearestBaseForPirateAttack, findNearestKnownBaseOfEmpireForPirateAttack } from '../pirates/pirateAI';
 import { ShipGroup, empireShipGroups, registerShipGroupTasks, shipGroupWarpSpeed } from './shipGroup';
+import { moveTogetherOnFleetOrder } from './moveTogether';
 export { shipGroupWarpSpeed };
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -1145,6 +1146,8 @@ function assignQueuedMission(galaxy: Galaxy, shipGroup: ShipGroup): boolean {
         }
         // Not in the C#: a queued player order stays a player order once it becomes the fleet mission (playerOrder.ts).
         if (subsequentMission.playerOrdered === true && shipGroup.mission !== missionBefore) markFleetPlayerOrder(shipGroup);
+        // openDWU rule (not in the original): a queued player order moves together too (fleets/moveTogether.ts).
+        if (shipGroup.moveTogether === true && subsequentMission.playerOrdered === true && shipGroup.mission !== missionBefore) moveTogetherOnFleetOrder(galaxy, shipGroup, true);
         const i = shipGroup.subsequentMissions.indexOf(subsequentMission);
         if (i >= 0) shipGroup.subsequentMissions.splice(i, 1);
     }
@@ -1604,6 +1607,8 @@ export function shipGroupAssignMissionFull(
             startNewShipGroupBattleStats(galaxy, shipGroup);
         }
     }
+    // openDWU rule (not in the original): "Move together" — gather first, then travel as one (fleets/moveTogether.ts).
+    if (shipGroup.moveTogether === true) moveTogetherOnFleetOrder(galaxy, shipGroup, manuallyAssigned);
     return true;
 }
 

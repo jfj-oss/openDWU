@@ -69,6 +69,7 @@ export const COMMAND_FAILURE: FailureTable = {
     fleetTemplateAutoRefill: no,
     fleetTemplateRefillYard: no,
     fleetTemplateReplenish: (message) => ({ ok: false, queued: 0, short: 0, message }),
+    fleetMoveTogether: no,
     buildNewShips: (message) => ({ ok: false, message, title: 'Cannot Build Ships', built: [] }),
     moveWaitQueueItem: no,
     yardPurchase: () => null,

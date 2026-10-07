@@ -58,6 +58,7 @@ import {
     type SectorRef,
 } from './fleetTemplates';
 import { assignFleetTemplate, replenishFleet, setFleetAutoRefill, setFleetRefillYard } from './fleetRefill';
+import { setFleetMoveTogether } from '../fleets/moveTogether';
 import { submitProposal } from './diplomacyProposals';
 import { answerConversationReply, type ConversationRelated, type ConversationReplyPart } from './conversationReplies';
 import { submitTradeOffer, type TradeNegotiation } from './tradeNegotiation';
@@ -263,6 +264,8 @@ export const PLAYER_OPS = {
     fleetTemplateRefillYard: (galaxy: Galaxy, empire: Empire, fleet: ShipGroup, yard: BuiltObject | null) => setFleetRefillYard(galaxy, empire, fleet, yard),
     /** "Replenish": queue the fleet's missing ships once, now (Build Order purchase path, all or nothing). */
     fleetTemplateReplenish: (galaxy: Galaxy, empire: Empire, fleet: ShipGroup) => replenishFleet(galaxy, empire, fleet),
+    /** openDWU rule (not in the original): the fleet's "Move together" toggle (fleets/moveTogether.ts; off by default). */
+    fleetMoveTogether: (galaxy: Galaxy, empire: Empire, fleet: ShipGroup, on: boolean) => setFleetMoveTogether(galaxy, empire, fleet, on),
     /** Main.Part2.cs 1135 btnBuildOrderPurchase_Click. */
     buildNewShips: (galaxy: Galaxy, empire: Empire, designs: (Design | null)[], amounts: number[]) => buildNewShips(galaxy, empire, designs, amounts),
     /** Main.Part5.cs 2147-2213: the site's construction wait queue order. */
