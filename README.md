@@ -670,37 +670,6 @@ On Windows PowerShell, run the fast tier as
   storylines, systems and behaviour on top, each behind its own feature
   flags — see [Scenarios and mods](#scenarios-and-mods) below.
 
-### Scenarios and mods
-
-With no scenario selected the game is the unmodified, byte-identical
-faithful port. Scenarios are chosen on the **Scenario** page of the new-game
-wizard (between Victory Conditions and Start): pick "None" for the original
-game, or a scenario from the list to see its description and a checkbox per
-feature flag plus a number box per tunable parameter. Each scenario is a
-data overlay (races/resources/policy/template additions and extra text)
-plus code paths gated behind its flags; turning every flag off reproduces
-the faithful game exactly, so scenario development never risks the base
-port's pins.
-
-Some of the shipped scenarios (see `game/scenarios/*/scenario.json` for the
-full list, flags and parameters):
-
-| Scenario | What it adds |
-|---|---|
-| Rim Frontier | An ion-storm belt, thinning stars, gravity shoals, scarce fuel and sensor fog make the outer rim hard to reach and hold; ordinary empires start inside it. |
-| Rim Fauna | Creature herds roam the outer rim far more densely than the core, grazing gas clouds and mining stations and migrating yearly toward settled space. |
-| Rim Herders | A rim independent people whose herds are docile to them and defend them; their tamed freighters shrug off storms and their ports are the only steady source of herd goods. |
-| The Rim Trade (Concord treasure fleet) | An isolationist rim empire, the Oranthi Concord, holds the galaxy's rarest luxuries and trades them only for rim goods, sailing a visible, raidable treasure fleet on a fixed circuit. |
-| Hidden threats (Dark Farms, Grey Tide, The Cult, The Silence, Doppelgangers, The Hive, Time-Bomb Tech, Ghost Armada, The Exchange, Robot Mutiny, Corporate Coup) | End-game story threats that stay dormant until triggered, each with its own hidden facility/flag, spread rule and reveal. |
-| Internal Security | One stability ledger per colony/empire (approval, tension, shortages, loyalty) feeding the colony-revolt system, plus lead detection and investigation of hidden threats. |
-| Court & Dynasties | Noble houses, a five-seat council, character factions with demands, succession laws and legitimacy. |
-| Reputation & Grievances | Every attitude change any scenario package makes becomes a ledger entry with a cause and a decay, feeding diplomacy, war review and peace pricing. |
-| Event Log | One typed log of everything that happens in the galaxy, feeding Galactic History, the news ticker and the chronicle. |
-| Galactic Council | Once enough empires have met, a yearly vote on sanctions, embargoes and war condemnations; blocs form among the outvoted. |
-| War goals & peace terms | Wars fought for stated goals (cede colonies, reparations, demilitarised zones) with terms priced accordingly (part of Lively Galaxy). |
-| Frontier Autonomy | Distant colonies drift toward local rule under sector governors as travel time, garrison strength and approval dictate. |
-| Big Galaxies | Extended colour palette and UI support for 40–60 empire games on galaxies of up to 4,000 stars. |
-| Local LLM Layer | Foundations for the optional local-model layer: request queue, grounding digests and a yearly in-character chronicle. |
 
 ### Optional: local LLM layer
 
