@@ -27,10 +27,10 @@ mod/scenario layer on top. The code lives under [`game/`](game/).
 
 First off, I'm not an experienced game developer by any stretch of the
 imagination. I'm a university student who's had an immovable love for this game.
-And as the years passed I couldn't help but notice and watch the game slowly lose 
+And, as the years passed I couldn't help but notice and watch the game slowly lose 
 compatibility, every new Windows release and update further marking its gradual crawl 
-to the grave. And as the years passed and the forums were filled up, at an ever
-increasing rate, with posts about the game not launching I was terribly disheartened.
+to the grave. To me watching the forums get filled, at an ever increasing rate, 
+with posts about the game not launching was a terribly disheartening experience.
 
 I worried that eventually it would become hard
 enough to get running that it would fade to obscurity, left to a tiny niche
