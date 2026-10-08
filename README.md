@@ -50,7 +50,7 @@ But of course, the elephant in the room, none of this would have been realistic 
 one student without generative AI. It did most of the heavy lifting on the code, 
 while I acted as its guinea pig steering, testing and playing. I hope you won't write 
 this off as AI slop. I hope you can see the passion behind it, as well as the good
-intentions
+intentions.
 
 ## What's here
 
