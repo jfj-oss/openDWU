@@ -26,28 +26,31 @@ mod/scenario layer on top. The code lives under [`game/`](game/).
 ## Why this exists
 
 First off, I'm not an experienced game developer by any stretch of the
-imagination. I'm a university student who loves this game. Over the years I
-watched it slowly lose compatibility: every new Windows version or update
-seemed to add another problem. I worried that eventually it would become hard
-enough to run that it would fade from people's memory, left to a tiny niche
-willing to jump through hoops just to get it working.
+imagination. I'm a university student who's had an immovable love for this game.
+And as the years passed I couldn't help but notice and watch the game slowly lose 
+compatibility, every new Windows release and update further marking its gradual crawl 
+to the grave. And as the years passed and the forums were filled up, at an ever
+increasing rate, with posts about the game not launching I was terribly disheartened.
 
-While digging through the forums to learn what the community loves, hates and
-still dreams about, I figured that if I was rebuilding it anyway, I might as
-well make it run on Linux and macOS too, and open it up to as many players as
-possible.
+I worried that eventually it would become hard
+enough to get running that it would fade to obscurity, left to a tiny niche
+willing to jump through hoops just to get it working, until even they forgot.
 
-I also couldn't resist adding a few things from my own wishlist: much bigger
-galaxies (up to 90×90 sectors, 8,000 star systems and 100 empires), some new kinds of
-content, and deeper changes to some of the game's systems. Every one of them
-is optional and can be switched off, so you can always play a completely
-authentic game of DW:U.
+In this same vein, in the process of rebuilding the game I thought it good to not only
+have a native app for Windows but for Mac OS (arm) as well as for Linux, in the hope
+of allowing as large of an audience as possible to have access to this gem.
 
-None of this would have been realistic for one student without generative AI.
-It did most of the heavy lifting on the code, while I steered, tested and
-played. I hope you won't write this off as AI slop. I hope you can see the
-passion behind it: a faithful recreation of a game I love, by whatever means
-it took.
+And, while I was tinkering with the game I couldn't resist adding a few things from my 
+own wishlist: much bigger galaxies (up to 90×90 sectors, 8,000 star systems and 100
+empires), some new kinds of content (WORK-IN-PROGRESS), deeper changes to some of the 
+game's systems (WIP) and some AI/UI/QOL improvements. Every one of them is optional and
+can be switched off, so you can always play a completely authentic game of DW:U.
+
+But of course, the elephant in the room, none of this would have been realistic for
+one student without generative AI. It did most of the heavy lifting on the code, 
+while I acted as its guinea pig steering, testing and playing. I hope you won't write 
+this off as AI slop. I hope you can see the passion behind it, as well as the good
+intentions
 
 ## What's here
 
