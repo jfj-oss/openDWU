@@ -27,7 +27,8 @@ import { reviewComponentPrices, reviewResourcePrices } from './market';
 import { selectPopularDesignCandidates } from './independentTraders';
 import { gameStartColonyRecalc, gameStartReviewTaxes } from './taxes';
 import { checkColoniesForBaseFacilities, createMiningStations, createResearchStations, createSpacePorts, determineNewSpacePortLocations, determineResearchStationLocation, setLuxuryResourcesAtColonies } from './stationPlacement';
-import { applyResearchBonusGasGiant, ensureImportantPreWarpResources } from './startHabitats';
+import { applyResearchBonusGasGiant, ensureHomeSystemFuel, ensureImportantPreWarpResources } from './startHabitats';
+import type { ResourceGenerationSettings } from './resourceGeneration';
 import { clearRuinBonusesForAge, placeRuinsUnlockTech, placeStartRuins } from './ruins';
 import { createPrivateShips, createStateShips, fillShipsWithTroops } from './builtObjectPlacement';
 import { assignMissionsToBuiltObjectList } from './civilianAI';
@@ -149,6 +150,9 @@ export interface CreateGameOptions {
      *  become max(original band, round(stars/200)) / max(original band, round(stars/80)). Default false so createGame (harness/test
      *  games, repin) is byte-identical to the original; only the new-game wizard's defaults turn it on (startGameOptions.ts). */
     scaleDebrisFields?: boolean;
+    /** Our addition: the new-game wizard's resource sliders (resourceGeneration.ts; startGameOptions.ts resourceGenerationFor).
+     *  Unset / all Normal = the original generation, byte-identical. */
+    resourceGeneration?: Partial<ResourceGenerationSettings> | null;
     /** bool_5 → _SpawnNewEmpires (2153; chkGalaxyNewEmpiresDuringGame, Habitat.cs 1502). Default true. */
     spawnNewEmpires?: boolean;
     /** EmpireStart.AllowTechTrading → Galaxy.AllowTechTrading (Start.2.cs 499; chkStartNewGameEnableTechTrading). Default true. */
@@ -1068,6 +1072,7 @@ export function* createGameSteps(opts: CreateGameOptions): Generator<GameStartPr
         spawnNewEmpires: opts.spawnNewEmpires,
         difficultyLevel: opts.difficultyLevel,
         allowGiantKaltorGeneration: opts.allowGiantKaltorGeneration,
+        resourceGeneration: opts.resourceGeneration,
     });
     // Mod layer: every habitat's faithful resource selection is done (setupSolarSystem / generateGasCloud, run inside
     // generateGalaxy above); 19h fuel oases adds its guaranteed rim fuel sources here, before anything reads resources.
@@ -1476,6 +1481,8 @@ export function* createGameSteps(opts: CreateGameOptions): Generator<GameStartPr
         applyResearchBonusGasGiant(galaxy, empire3); // 1156-1173
         if (stopAt('empire:gasGiantBonus', empire3)) return result();
         ensureImportantPreWarpResources(galaxy, empire3, tech); // 1174-1273
+        // Resource sliders (our addition): a slider that lowers fuel still leaves fuel in every home system. Normal: no-op.
+        ensureHomeSystemFuel(galaxy, empire3);
         if (stopAt('empire:preWarpResources', empire3)) return result();
         placeRuinsUnlockTech(galaxy, empire3, tech); // 1274-1304
         if (stopAt('empire:unlockTechRuin', empire3)) return result();

@@ -25,6 +25,8 @@ import { ensureHabitatManufacturingQueue } from './manufacturingQueue';
 import { createHabitatDockingBays } from './logistics/dockingBays';
 import { Habitat, HabitatCategoryType, HabitatType, IndustryType } from './types';
 import { HabitatImageCountAsteroidsNormal, HabitatImageOffsetAsteroidsNormal } from './galaxyImages';
+import { HOME_FUEL_MAX_ABUNDANCE, HOME_FUEL_MIN_ABUNDANCE, resourceGenerationReducesFuel } from './resourceGeneration';
+import { Random } from './random';
 
 
 type PlanetSelection = { type: HabitatType; diameter: number; minOrbitDistance: number; maxOrbitDistance: number; pictureRef: number; landscapePictureRef: number };
@@ -309,4 +311,40 @@ export function ensureImportantPreWarpResources(galaxy: Galaxy, empire: Empire, 
             }
         }
     }
+}
+
+/**
+ * Our addition (resource sliders, resourceGeneration.ts): when a slider lowers fuel (density, amount or fuel below
+ * Normal), every empire's home system keeps a fuel deposit of at least HOME_FUEL_MIN_ABUNDANCE. The C# only guarantees
+ * home fuel for a pre-warp start (ensureImportantPreWarpResources above, Start.2.cs 1174-1273, which still runs first and
+ * unchanged); this extends the same rule — fuel on the home system's gas giant, a new gas giant when it has none
+ * (GenerateGasGiantPlanet, as that block does), abundance Next(400, 1000) — to every start. A no-op at Normal.
+ * Rnd: its own stream seeded from the galaxy seed and the empire id (galaxy.rnd only inside GenerateGasGiantPlanet).
+ */
+export function ensureHomeSystemFuel(galaxy: Galaxy, empire: Empire): void {
+    const rg = galaxy.resourceGeneration;
+    if (rg === undefined || !resourceGenerationReducesFuel(rg) || empire.capital === null) return;
+    const fuel = galaxy.resourceSystem.fuelResources;
+    if (fuel.length === 0) return;
+    const star = galaxy.determineHabitatSystemStar(empire.capital);
+    const isFuel = (id: number): boolean => galaxy.resourceSystem.byId.get(id)?.isFuel === true;
+    const habitats = galaxy.systemHabitatsOf(star.systemIndex);
+    if (habitats.some((h) => h.resources.some((r) => isFuel(r.resourceId) && r.abundance >= HOME_FUEL_MIN_ABUNDANCE))) return;
+    const validFuel = (h: Habitat): Resource | null => fuel.find((f) => galaxy.resolveResourceAbundanceRangeForHabitat(h, f.resourceId) !== null) ?? null;
+    // Prefer a habitat that already has a (weak) fuel deposit, then any habitat fuel can occur on with room for it.
+    let target = habitats.find((h) => h.resources.some((r) => isFuel(r.resourceId))) ?? habitats.find((h) => h.resources.length < 5 && validFuel(h) !== null) ?? null;
+    if (target === null) {
+        target = generateGasGiantPlanet(galaxy, star);
+        galaxy.addHabitat(target, star);
+    }
+    const rnd = new Random((galaxy.randomSeed ^ 0x46554c ^ Math.imul(empire.empireId + 1, 0x9e3779b1)) | 0);
+    const abundance = rnd.next(HOME_FUEL_MIN_ABUNDANCE, HOME_FUEL_MAX_ABUNDANCE);
+    const existing = target.resources.find((r) => isFuel(r.resourceId));
+    if (existing !== undefined) {
+        existing.abundance = Math.max(existing.abundance, abundance);
+        return;
+    }
+    const def = validFuel(target) ?? fuel[0];
+    if (target.resources.length >= 5) target.resources.pop();
+    target.resources.push({ resourceId: def.resourceId, abundance });
 }

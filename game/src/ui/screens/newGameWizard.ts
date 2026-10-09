@@ -79,6 +79,14 @@ import {
     type WizardEmpireType,
 } from '../../sim/startGameOptions';
 import { formatNet, isTextLoaded, loadText, tryGetText } from '../../sim/textResolver';
+import {
+    FUEL_RESOURCE_TICKS,
+    LUXURY_RESOURCE_TICKS,
+    RESOURCE_AMOUNT_TICKS,
+    RESOURCE_DENSITY_TICKS,
+    RESOURCE_SLIDER_NORMAL,
+    SUPER_LUXURY_TICKS,
+} from '../../sim/resourceGeneration';
 import { pirateModifierLines } from './empireSummaryModel';
 import { racePictureCanvas, racePicturePlan } from '../raceLandscapePicture';
 import { PIRATE_FLAG_SHAPES, pirateFlagShapeUrl } from '../empireEmblem';
@@ -1121,6 +1129,20 @@ function buildJumpStartPage(ctx: WizardCtx): HTMLDivElement {
     const shapes = buildShapeChooser(ctx, shapePanel, 'wizard-jumpstart-shape', { preview: [125, 10, 120], title: [255, 7], desc: [255, 32, 615, 92] });
     const size = buildGalaxySizeControls(ctx, shapePanel, { x: 10, starY: 145, sizeY: 210, w: 860 });
 
+    // Our addition: the resource sliders (sim/resourceGeneration.ts), in a panel over the race / government panels.
+    const resPanel = panel(wrap, 10, 295, 880, 240, 'wizard-jumpstart-resources');
+    resPanel.style.display = 'none';
+    resPanel.style.zIndex = '2';
+    label(resPanel, wt('Resources', 'Resources'), 10, 8, { size: FONT.header, bold: true });
+    label(resPanel, 'Normal on every slider is the original game.', 120, 12, { size: FONT.tiny });
+    const resources = buildResourceSliders(ctx, resPanel, [[10, 35], [10, 100], [10, 165], [440, 35], [440, 100]], 425);
+    glass(shapePanel, 'Resources...', 750, 7, 120, 27, () => {
+        const open = resPanel.style.display === 'none';
+        resPanel.style.display = open ? '' : 'none';
+        if (open) resources.sync();
+    }, { title: 'Resource density, amount, luxury goods, fuel and super-luxuries', className: 'wizard-jumpstart-resources-button' });
+    glass(resPanel, 'Done', 750, 190, 110, 30, () => (resPanel.style.display = 'none'), { className: 'wizard-jumpstart-resources-done' });
+
     // pnlJumpStartYourEmpireRace 480 × 240 at (10, 295): cmbJumpStartYourEmpireRace 160 × 26 at (15, 15) with "(Random)",
     // picJumpStartYourEmpireRace 160 × 160 at (15, 52), lnkJumpStartYourEmpireRace (15, 218), the race summary in a
     // 280 × 179 scrolling container at (190, 51).
@@ -1560,6 +1582,53 @@ function buildGalaxyPage(ctx: WizardCtx): HTMLDivElement {
 }
 
 // ---------------------------------------------------------------------------
+// Resource sliders (our addition; sim/resourceGeneration.ts). Normal (the middle tick) on every slider = the original game.
+// ---------------------------------------------------------------------------
+
+type ResourceSliderKey = 'resourceDensityIndex' | 'resourceAmountIndex' | 'luxuryResourcesIndex' | 'fuelResourcesIndex' | 'superLuxuryIndex';
+const RESOURCE_SLIDERS: readonly { key: ResourceSliderKey; label: string; ticks: readonly string[]; help: string }[] = [
+    { key: 'resourceDensityIndex', label: 'Resource\nDensity', ticks: RESOURCE_DENSITY_TICKS, help: 'How many planets, moons, asteroids and gas clouds have resources at all.' },
+    { key: 'resourceAmountIndex', label: 'Resource\nAmount', ticks: RESOURCE_AMOUNT_TICKS, help: 'How rich each deposit is (its abundance), which sets how fast it can be mined.' },
+    { key: 'luxuryResourcesIndex', label: 'Luxury\nGoods', ticks: LUXURY_RESOURCE_TICKS, help: 'How common and how rich luxury resources are, on top of the density and amount settings.' },
+    { key: 'fuelResourcesIndex', label: 'Fuel', ticks: FUEL_RESOURCE_TICKS, help: 'How common and how rich the fuel resources (Hydrogen, Caslon) are. Below Normal, every home system still keeps a fuel source.' },
+    { key: 'superLuxuryIndex', label: 'Super-\nLuxuries', ticks: SUPER_LUXURY_TICKS, help: 'How many deposits of Loros Fruit, Korabbian Spice and Zentabia Fluid the galaxy holds.' },
+];
+
+/** The five resource trackbars at `slots` (one [x, y] each, in RESOURCE_SLIDERS order), `w` wide. */
+function buildResourceSliders(ctx: WizardCtx, parent: HTMLElement, slots: readonly (readonly [number, number])[], w: number): { sync: () => void } {
+    const options = ctx.options;
+    const bars = RESOURCE_SLIDERS.map((spec, i) => {
+        const t = trackBar(parent, {
+            x: slots[i][0],
+            y: slots[i][1],
+            w,
+            h: 55,
+            label: spec.label,
+            labelWidth: 80,
+            labels: spec.ticks,
+            value: options[spec.key] ?? RESOURCE_SLIDER_NORMAL,
+            onChange: (v) => (options[spec.key] = v),
+            className: `wizard-resource-${spec.key}`,
+        });
+        ctx.helpOn(t.el, () => [`Resources: ${spec.label.replace(/\n/g, ' ').replace('- ', '-')}`, spec.help]);
+        return { spec, t };
+    });
+    return {
+        sync: () => {
+            for (const b of bars) b.t.slider.setValue(options[b.spec.key] ?? RESOURCE_SLIDER_NORMAL);
+        },
+    };
+}
+
+/** The Start page's summary line for the resource sliders ("Normal" when all are). */
+export function resourceSlidersSummary(o: StartGameOptions): string {
+    const parts = RESOURCE_SLIDERS.filter((spec) => (o[spec.key] ?? RESOURCE_SLIDER_NORMAL) !== RESOURCE_SLIDER_NORMAL).map(
+        (spec) => `${spec.label.replace(/\n/g, ' ').replace('- ', '-')} ${spec.ticks[o[spec.key] ?? RESOURCE_SLIDER_NORMAL] ?? '?'}`,
+    );
+    return parts.length === 0 ? 'Normal' : parts.join(' · ');
+}
+
+// ---------------------------------------------------------------------------
 // Colonization and Territory page (task 06h; Start.cs 2835 method_34).
 // ---------------------------------------------------------------------------
 
@@ -1635,11 +1704,16 @@ function buildColonizationPage(ctx: WizardCtx): HTMLDivElement {
     // chkOptionsAllowSameSystemAsOtherEmpires (the original's Game Options item, kept here as before).
     check(wrap, wt('Allow colonization and mining stations in other empires systems', 'Allow colonization and mining stations in other empires systems'), c.allowSameSystemAsOtherEmpires, 10, 285, (v) => (c.allowSameSystemAsOtherEmpires = v));
 
-    // picStartNewGameColonizationTerritoryImage 880 × 253 at (10, 315).
-    resxPicture(wrap, 'picStartNewGameColonizationTerritoryImage.Image', 10, 315, 880, 253, 'normal');
+    // Our addition: the "Resources" panel (sim/resourceGeneration.ts) where the original has
+    // picStartNewGameColonizationTerritoryImage (880 × 253 at (10, 315)).
+    const resPanel = panel(wrap, 10, 315, 880, 253, 'wizard-resources-panel');
+    label(resPanel, wt('Resources', 'Resources'), 10, 8, { size: FONT.header, bold: true });
+    label(resPanel, 'Normal on every slider is the original game.', 120, 12, { size: FONT.tiny });
+    const resources = buildResourceSliders(ctx, resPanel, [[10, 35], [10, 100], [10, 165], [440, 35], [440, 100]], 425);
 
     // Start.1.cs 3169 method_187 (entering the page): the suggestion for the chosen star count and size.
     (wrap as unknown as { __onShow?: () => void }).__onShow = () => {
+        resources.sync();
         const stars = galaxyStarCount(options);
         const { width, height } = galaxySectorCounts(options);
         const pct = Math.floor(colonyInfluenceRangeSuggestion(stars, width, height) * 100 + 0.5);
@@ -2881,6 +2955,7 @@ function buildStartPage(ctx: WizardCtx): HTMLDivElement {
             ['Colony Prevalence', COLONY_PREVALENCE_TICKS[options.colonyPrevalenceIndex] ?? `index ${options.colonyPrevalenceIndex}`],
             ['Alien Life', ALIEN_LIFE_TICKS[options.alienLifeIndex] ?? `index ${options.alienLifeIndex}`],
             ['Space Creatures', SPACE_CREATURES_TICKS[options.spaceCreaturesIndex] ?? `index ${options.spaceCreaturesIndex}`],
+            ['Resources', resourceSlidersSummary(options)],
             ['Pirates', `${PIRATES_TICKS[options.piratesIndex] ?? `index ${options.piratesIndex}`} · ${PIRATE_STRENGTH_TICKS[options.pirateStrengthIndex ?? 2]} · ${PIRATE_PROXIMITY_NAMES[options.pirateProximityIndex ?? 1]}${options.destroyedPiratesDoNotRespawn === true ? ' · no respawn' : ''}`],
             ['Aggression', AGGRESSION_TICKS[options.aggressionIndex] ?? `index ${options.aggressionIndex}`],
             ['Expansion', EXPANSION_TICKS[options.galaxyExpansionIndex ?? 1] ?? `index ${options.galaxyExpansionIndex}`],
