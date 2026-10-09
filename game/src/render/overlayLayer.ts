@@ -71,7 +71,8 @@ import { ColorMatrixFilter, Container, Graphics, Sprite, Texture } from 'pixi.js
 import { LRS_DISC_URL, LRS_LAYER_ALPHA, POSTURE_ALPHA, POSTURE_LINE_WIDTH_PX, fleetPostureMarks, longRangeScannerDiscs, scannerLayerFade } from './postureOverlay';
 import { WEAPON_CIRCLES_MIN_FACTOR, drawRangeCircle, gravityWellRing, weaponRangeCircles } from './weaponRangeCircles';
 import { isObjectVisibleToThisEmpire } from '../sim/independentTraders';
-import { BuiltObjectMission, BuiltObjectMissionType } from '../sim/missions/mission';
+import { BuiltObjectMission, BuiltObjectMissionType, CommandAction, type Command } from '../sim/missions/mission';
+import { baconMovementSettings, calculateGravityWellSize } from '../sim/movement';
 import { getSettings } from '../ui/settings';
 import type { Camera } from './camera';
 import type { Galaxy } from '../sim/galaxy';
@@ -232,29 +233,140 @@ export interface TravelVector {
     y1: number;
     x2: number;
     y2: number;
+    /**
+     * Streamlined (not in the original): when (x2, y2) is the gravity-well exit point BaconBuiltObject
+     * SendShipTowardsEdgeOfGravityWell queued (useStarGravityWells), the mission's real destination beyond it. The
+     * selected-ship vector draws a second leg to it; the other vectors ignore it.
+     */
+    x3?: number;
+    y3?: number;
+}
+
+/**
+ * Commands that only do bookkeeping and complete at once (no point of their own): ResolveTargetCoordinatesCurrentCommand
+ * is Point.Empty for them, so method_253 draws to the parent — or, with none, to (0, 0), the galaxy's top-left corner.
+ */
+const BOOKKEEPING_COMMANDS: ReadonlySet<CommandAction> = new Set([
+    CommandAction.Undock,
+    CommandAction.RepeatSubsequentCommands,
+    CommandAction.EvaluateThreats,
+    CommandAction.SelectTargetToAttack,
+    CommandAction.ReassignMission,
+    CommandAction.SetParent,
+    CommandAction.ClearParent,
+    CommandAction.ClearAttackers,
+]);
+
+const MOVEMENT_COMMANDS: ReadonlySet<CommandAction> = new Set([
+    CommandAction.ImpulseTo,
+    CommandAction.MoveTo,
+    CommandAction.SprintTo,
+    CommandAction.HyperTo,
+    CommandAction.ConditionalHyperTo,
+]);
+
+/** BuiltObjectMission.cs 913 ResolveTargetCoordinatesCurrentCommand for any queued command; null for Point.Empty. */
+function commandTargetPoint(m: BuiltObjectMission, command: Command): { x: number; y: number } | null {
+    let x = -1.0;
+    let y = -1.0;
+    if (command.targetBuiltObject !== null) {
+        x = command.targetBuiltObject.xpos;
+        y = command.targetBuiltObject.ypos;
+    } else if (command.targetHabitat !== null) {
+        x = command.targetHabitat.xpos;
+        y = command.targetHabitat.ypos;
+    } else if (command.targetCreature !== null) {
+        x = command.targetCreature.xpos;
+        y = command.targetCreature.ypos;
+    } else if (command.targetShipGroup !== null) {
+        if (command.targetShipGroup.leadShip !== null) {
+            x = command.targetShipGroup.leadShip.xpos;
+            y = command.targetShipGroup.leadShip.ypos;
+        }
+    } else if (command.xpos > -2000000001.0 && command.ypos > -2000000001.0) {
+        x = command.xpos;
+        y = command.ypos;
+    }
+    const p = m.ensureCoordsInGalaxy(x, y);
+    const r = { x: Math.trunc(p.x), y: Math.trunc(p.y) };
+    return r.x === 0 && r.y === 0 ? null : r;
+}
+
+/**
+ * Whether `p` (a plain-point MoveTo / HyperTo / ConditionalHyperTo target) is the well exit point
+ * BaconBuiltObject.cs 3746 SendShipTowardsEdgeOfGravityWell queues: on the circle of radius max(1.03 r, r + 1000)
+ * round the ship's nearest star (r = CalculateGravityWellSize). A small tolerance covers the float32 command
+ * coordinates and a well size that changed since the point was queued.
+ */
+function isGravityWellExitPoint(bo: BuiltObject, command: Command, p: { x: number; y: number }): boolean {
+    if (!baconMovementSettings.useStarGravityWells) return false;
+    if (command.action !== CommandAction.MoveTo && command.action !== CommandAction.HyperTo && command.action !== CommandAction.ConditionalHyperTo) return false;
+    if (command.targetBuiltObject !== null || command.targetHabitat !== null || command.targetCreature !== null || command.targetShipGroup !== null) return false;
+    const star = bo.nearestSystemStar;
+    if (star === null || star === undefined) return false;
+    const r = calculateGravityWellSize(bo);
+    if (!(r > 0)) return false;
+    const exitR = Math.max(r * 1.03, r + 1000.0);
+    return Math.abs(Math.hypot(p.x - star.xpos, p.y - star.ypos) - exitR) <= Math.max(50, exitR * 0.02);
 }
 
 // Port of BaconDistantWorlds/BaconMainView.cs method_253 guard + target
-// (without the ShipGroup clause; travelVectorsFor handles fleets).
+// (without the ShipGroup clause; travelVectorsFor handles fleets), with three streamlined fixes for the Bacon gravity
+// wells (useStarGravityWells), where a ship stays HyperjumpPrepare while it flies sublight out of the well (its jump
+// is held back) and keeps it after a trip that ended inside a well:
+// - bookkeeping commands at the top of the queue (ClearParent, Undock, ...) are looked past to the next real one
+//   instead of falling back to the parent / (0, 0) (a line to the galaxy's top-left corner);
+// - below warp speed only a movement command draws (a ship holding / loading with a stale HyperjumpPrepare is not
+//   travelling), and a target that resolves to nothing draws nothing rather than a line to (0, 0);
+// - a gravity-well exit waypoint carries the mission's destination (x3, y3).
 export function travelVectorFor(bo: BuiltObject): TravelVector | null {
     if (bo.hasBeenDestroyed) return null;
     if (bo.role === BuiltObjectRole.Base) return null;
     if (bo.topSpeed <= 0) return null;
     if (bo.warpSpeed <= 0) return null;
-    if (bo.currentSpeed <= bo.topSpeed && !bo.hyperjumpPrepare) return null;
+    const atWarp = bo.currentSpeed > bo.topSpeed;
+    if (!atWarp && !bo.hyperjumpPrepare) return null;
     const m = builtObjectMission(bo.mission);
     if (m === null) return null;
     if (m.type === 0) return null; // BuiltObjectMissionType.Undefined
-    let p = m.resolveTargetCoordinatesCurrentCommand();
-    if (p.x === 0 && p.y === 0) {
+    const current = m.fastPeekCurrentCommand();
+    let command = current;
+    if (command !== null && BOOKKEEPING_COMMANDS.has(command.action)) {
+        command = null;
+        for (const c of m.showAllCommands()) {
+            if (c != null && !BOOKKEEPING_COMMANDS.has(c.action)) {
+                command = c;
+                break;
+            }
+        }
+    }
+    if (!atWarp && (command === null || !MOVEMENT_COMMANDS.has(command.action))) return null;
+    let p: { x: number; y: number } | null;
+    if (command === current) {
+        p = m.resolveTargetCoordinatesCurrentCommand();
+        if (p.x === 0 && p.y === 0) p = null;
+    } else {
+        p = command !== null ? commandTargetPoint(m, command) : null;
+    }
+    if (p === null) {
         // Point.IsEmpty
         if (bo.parentBuiltObject !== null) {
             p = { x: Math.trunc(bo.parentBuiltObject.xpos), y: Math.trunc(bo.parentBuiltObject.ypos) };
         } else if (bo.parentHabitat !== null) {
             p = { x: Math.trunc(bo.parentHabitat.xpos), y: Math.trunc(bo.parentHabitat.ypos) };
+        } else {
+            return null;
         }
     }
-    return { builtObject: bo, x1: bo.xpos, y1: bo.ypos, x2: p.x, y2: p.y };
+    const v: TravelVector = { builtObject: bo, x1: bo.xpos, y1: bo.ypos, x2: p.x, y2: p.y };
+    if (command !== null && isGravityWellExitPoint(bo, command, p)) {
+        const t = m.resolveTargetCoordinates(m);
+        if (!(t.x === 0 && t.y === 0) && Math.abs(t.x - p.x) + Math.abs(t.y - p.y) > 1000) {
+            v.x3 = t.x;
+            v.y3 = t.y;
+        }
+    }
+    return v;
 }
 
 /** MainView.2.cs method_250 6037-6053 (drawn at zoom factor > BaconMain.minZoomLevelForWeaponsCircles = 0.9): the selected
@@ -263,12 +375,17 @@ export function travelVectorFor(bo: BuiltObject): TravelVector | null {
  * vector (BaconMainView.method_253 with bool_13 true, so a fleet member selected alone is not excluded). */
 export const SELECTED_TRAVEL_VECTOR_COLOR = 0xffff00;
 export const SELECTED_TRAVEL_VECTOR_MIN_FACTOR = 0.9;
+/** The onward leg past a gravity-well exit waypoint (TravelVector.x3; ours). */
+export const SELECTED_TRAVEL_VECTOR_ONWARD_ALPHA = 0.55;
 export function selectedTravelVectorFor(sel: SelectedObjectLike, player: Empire | null, f: number): TravelVector | null {
     if (sel === null || player === null || !(f > SELECTED_TRAVEL_VECTOR_MIN_FACTOR)) return null;
     const bo = (sel.shipGroup !== undefined ? sel.shipGroup.leadShip : sel.builtObject) ?? null;
     if (bo === null || bo.actualEmpire !== player) return null;
     const v = travelVectorFor(bo);
-    return v !== null && travelVectorLongEnough(v, f) ? v : null;
+    if (v === null) return null;
+    // With a well-exit leg the destination beyond it counts too (the ship may be next to its exit point).
+    const far = v.x3 !== undefined && v.y3 !== undefined && travelVectorLongEnough({ ...v, x2: v.x3, y2: v.y3 }, f);
+    return far || travelVectorLongEnough(v, f) ? v : null;
 }
 
 // Port of MainView.2.cs method_250's per-ship pass (5925-5956): the viewing empire's ships outside a fleet (a fleet's
@@ -368,6 +485,59 @@ export function dashSegments(
     for (let t = 0; t < len; t += d + g) {
         const e = Math.min(t + d, len);
         out.push([x1 + ux * t, y1 + uy * t, x1 + ux * e, y1 + uy * e]);
+    }
+    return out;
+}
+
+/**
+ * Streamlined (not in the original, whose XnaDrawingHelper.DrawLine dashes from the line start): the dashes of a→b that
+ * fall inside the clip rectangle, counted from b — so with b fixed in the world they stay put while a (a moving ship)
+ * slides along, at the exact dash / gap length however long the line is (no dashSegments maxDashes stretch, which
+ * re-spaces every dash as the length changes). Coordinates are returned relative to (ox, oy).
+ */
+export function anchoredDashSegments(
+    ax: number,
+    ay: number,
+    bx: number,
+    by: number,
+    dash: number,
+    gap: number,
+    clip: { x0: number; y0: number; x1: number; y1: number },
+    ox: number,
+    oy: number,
+): Array<[number, number, number, number]> {
+    const len = Math.hypot(ax - bx, ay - by);
+    const out: Array<[number, number, number, number]> = [];
+    if (!(len > 0) || !(dash > 0)) return out;
+    const ux = (ax - bx) / len;
+    const uy = (ay - by) / len;
+    // Liang-Barsky in length units along b -> a.
+    let t0 = 0;
+    let t1 = len;
+    const dx = ux;
+    const dy = uy;
+    const p = [-dx, dx, -dy, dy];
+    const q = [bx - clip.x0, clip.x1 - bx, by - clip.y0, clip.y1 - by];
+    for (let k = 0; k < 4; k++) {
+        if (p[k] === 0) {
+            if (q[k] < 0) return out;
+        } else {
+            const r = q[k] / p[k];
+            if (p[k] < 0) {
+                if (r > t1) return out;
+                if (r > t0) t0 = r;
+            } else {
+                if (r < t0) return out;
+                if (r < t1) t1 = r;
+            }
+        }
+    }
+    const period = dash + gap;
+    for (let t = Math.floor(t0 / period) * period; t < t1; t += period) {
+        const s0 = Math.max(t, t0);
+        const s1 = Math.min(t + dash, t1);
+        if (s1 <= s0) continue;
+        out.push([bx + ux * s0 - ox, by + uy * s0 - oy, bx + ux * s1 - ox, by + uy * s1 - oy]);
     }
     return out;
 }
@@ -675,7 +845,7 @@ export class OverlayLayer {
         this.refreshSpecialHighlight();
         this.updateEventPings(z, cam, overlays);
         this.updateTravelVectors(z, cam, overlays);
-        this.updateSelectedVector(z);
+        this.updateSelectedVector(z, cam);
         this.updateRangeCircles(z, overlays);
         this.freight.motion = this.motion; // [freightOverlay] leaders follow the drawn freighters
         this.runOverlay('Trade Flows', FREIGHT_KEYS, () => this.freight.update(z, cam)); // [freightOverlay]
@@ -1165,8 +1335,14 @@ export class OverlayLayer {
         }
     }
 
-    /** The selected ship / fleet's yellow travel vector (MainView.2.cs method_250 selected-object block). */
-    private updateSelectedVector(z: number): void {
+    /**
+     * The selected ship / fleet's yellow travel vector (MainView.2.cs method_250 selected-object block). Drawn from the
+     * ship's drawn position, in Graphics coordinates relative to it (galaxy coordinates run to millions: float32
+     * vertices would wobble at close zoom), with the dashes anchored at the far end and clipped to the view. A
+     * gravity-well exit waypoint (TravelVector.x3) gets a second, fainter leg on to the destination, which takes the
+     * arrowhead.
+     */
+    private updateSelectedVector(z: number, cam: Camera): void {
         const g = this.selVector;
         const f = 1 / z;
         const v = selectedTravelVectorFor(this.getSelection(), this.galaxy.playerEmpire, f);
@@ -1182,11 +1358,23 @@ export class OverlayLayer {
         v.x1 = d.x;
         v.y1 = d.y;
         g.clear();
-        for (const [ax, ay, bx, by] of dashSegments(v.x1, v.y1, v.x2, v.y2, TRAVEL_VECTOR_DASH_PX * f, TRAVEL_VECTOR_DASH_PX * f)) {
-            g.moveTo(ax, ay).lineTo(bx, by);
-        }
+        g.position.set(d.x, d.y);
+        const pad = 64 * f;
+        const halfW = cam.width / (2 * z) + pad;
+        const halfH = cam.height / (2 * z) + pad;
+        const clip = { x0: cam.x - halfW, y0: cam.y - halfH, x1: cam.x + halfW, y1: cam.y + halfH };
+        const dash = TRAVEL_VECTOR_DASH_PX * f;
         const dpr = typeof window !== 'undefined' ? window.devicePixelRatio : 1;
-        g.stroke({ width: f * travelVectorWidthPx(dpr), color: SELECTED_TRAVEL_VECTOR_COLOR, alpha: 1 });
+        const width = f * travelVectorWidthPx(dpr);
+        const leg = (ax: number, ay: number, bx: number, by: number, alpha: number): void => {
+            const segs = anchoredDashSegments(ax, ay, bx, by, dash, dash, clip, d.x, d.y);
+            if (segs.length === 0) return;
+            for (const [sx, sy, ex, ey] of segs) g.moveTo(sx, sy).lineTo(ex, ey);
+            g.stroke({ width, color: SELECTED_TRAVEL_VECTOR_COLOR, alpha });
+        };
+        leg(v.x1, v.y1, v.x2, v.y2, 1);
+        const twoLegs = v.x3 !== undefined && v.y3 !== undefined;
+        if (twoLegs) leg(v.x2, v.y2, v.x3!, v.y3!, SELECTED_TRAVEL_VECTOR_ONWARD_ALPHA);
         g.visible = true;
         const tex = this.arrowTex;
         if (tex !== null) {
@@ -1196,8 +1384,9 @@ export class OverlayLayer {
                 this.selArrow.tint = SELECTED_TRAVEL_VECTOR_COLOR;
                 this.root.addChild(this.selArrow);
             }
-            const a = arrowheadPlacement(v.x1, v.y1, v.x2, v.y2, tex.width, tex.height, 1, f);
+            const a = twoLegs ? arrowheadPlacement(v.x2, v.y2, v.x3!, v.y3!, tex.width, tex.height, 1, f) : arrowheadPlacement(v.x1, v.y1, v.x2, v.y2, tex.width, tex.height, 1, f);
             this.selArrow.visible = true;
+            this.selArrow.alpha = twoLegs ? SELECTED_TRAVEL_VECTOR_ONWARD_ALPHA : 1;
             this.selArrow.position.set(a.x, a.y);
             this.selArrow.rotation = a.rotation;
             this.selArrow.scale.set(a.scale * f);

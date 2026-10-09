@@ -32,7 +32,7 @@ function ship(extra: Record<string, unknown> = {}): BuiltObject {
         xpos: 0, ypos: 0, hasBeenDestroyed: false, role: BuiltObjectRole.Military, topSpeed: 20, warpSpeed: 3000,
         currentSpeed: 3000, hyperjumpPrepare: false, owner: player, actualEmpire: player, shipGroup: null,
         parentBuiltObject: null, parentHabitat: null,
-        mission: { type: 1, resolveTargetCoordinatesCurrentCommand: () => ({ x: 50000, y: 0 }) },
+        mission: { type: 1, fastPeekCurrentCommand: () => null, resolveTargetCoordinatesCurrentCommand: () => ({ x: 50000, y: 0 }) },
         ...extra,
     } as unknown as BuiltObject;
 }
@@ -56,6 +56,6 @@ describe('selectedTravelVectorFor (MainView.2.cs method_250 selected block)', ()
     });
     it('only above zoom factor 0.9 and past the length gate', () => {
         expect(selectedTravelVectorFor({ builtObject: ship() }, player, 0.9)).toBeNull();
-        expect(selectedTravelVectorFor({ builtObject: ship({ mission: { type: 1, resolveTargetCoordinatesCurrentCommand: () => ({ x: 5, y: 0 }) } }) }, player, 100)).toBeNull();
+        expect(selectedTravelVectorFor({ builtObject: ship({ mission: { type: 1, fastPeekCurrentCommand: () => null, resolveTargetCoordinatesCurrentCommand: () => ({ x: 5, y: 0 }) } }) }, player, 100)).toBeNull();
     });
 });

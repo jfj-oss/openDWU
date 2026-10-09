@@ -21,7 +21,7 @@ import {
     type TravelVector,
 } from '../src/render/overlayLayer';
 import type { ShipGroup } from '../src/sim/fleets/shipGroup';
-import { BuiltObjectMissionType } from '../src/sim/missions/mission';
+import { BuiltObjectMissionType, CommandAction } from '../src/sim/missions/mission';
 
 const player = {} as unknown as Empire;
 const other = {} as unknown as Empire;
@@ -41,12 +41,12 @@ function ship(extra: Record<string, unknown> = {}): BuiltObject {
         shipGroup: null,
         parentBuiltObject: null,
         parentHabitat: null,
-        mission: { type: 1, resolveTargetCoordinatesCurrentCommand: () => ({ x: 50000, y: 0 }) },
+        mission: { type: 1, fastPeekCurrentCommand: () => null, resolveTargetCoordinatesCurrentCommand: () => ({ x: 50000, y: 0 }) },
         ...extra,
     } as unknown as BuiltObject;
 }
 
-const emptyMission = { type: 1, resolveTargetCoordinatesCurrentCommand: () => ({ x: 0, y: 0 }) };
+const emptyMission = { type: 1, fastPeekCurrentCommand: () => null, resolveTargetCoordinatesCurrentCommand: () => ({ x: 0, y: 0 }) };
 
 function vec(x1: number, y1: number, x2: number, y2: number): TravelVector {
     return { builtObject: ship(), x1, y1, x2, y2 };
@@ -64,19 +64,23 @@ describe('travelVectorFor', () => {
         ['no warp speed', { warpSpeed: 0 }],
         ['not above top speed', { currentSpeed: 20 }],
         ['no mission', { mission: null }],
-        ['undefined mission', { mission: { type: 0, resolveTargetCoordinatesCurrentCommand: () => ({ x: 50000, y: 0 }) } }],
+        ['undefined mission', { mission: { type: 0, fastPeekCurrentCommand: () => null, resolveTargetCoordinatesCurrentCommand: () => ({ x: 50000, y: 0 }) } }],
     ])('returns null when %s', (_name, extra) => {
         expect(travelVectorFor(ship(extra))).toBeNull();
     });
 
     it('draws while preparing a hyperjump', () => {
-        expect(travelVectorFor(ship({ currentSpeed: 10, hyperjumpPrepare: true }))).not.toBeNull();
+        const preparing = { type: 1, fastPeekCurrentCommand: () => ({ action: CommandAction.HyperTo }), resolveTargetCoordinatesCurrentCommand: () => ({ x: 50000, y: 0 }) };
+        expect(travelVectorFor(ship({ currentSpeed: 10, hyperjumpPrepare: true, mission: preparing }))).not.toBeNull();
+        // A HyperjumpPrepare left over (a jump a Bacon gravity well held back) while the ship holds: not travelling.
+        const holding = { ...preparing, fastPeekCurrentCommand: () => ({ action: CommandAction.Hold }) };
+        expect(travelVectorFor(ship({ currentSpeed: 10, hyperjumpPrepare: true, mission: holding }))).toBeNull();
     });
 
-    it('falls back to the parent built object, then parent habitat, then (0, 0)', () => {
+    it('falls back to the parent built object, then parent habitat, else draws nothing (not a line to (0, 0))', () => {
         expect(travelVectorFor(ship({ mission: emptyMission, parentBuiltObject: { xpos: 10.9, ypos: 20.2 } }))).toMatchObject({ x2: 10, y2: 20 });
         expect(travelVectorFor(ship({ mission: emptyMission, parentHabitat: { xpos: 7.5, ypos: 8.5 } }))).toMatchObject({ x2: 7, y2: 8 });
-        expect(travelVectorFor(ship({ mission: emptyMission }))).toMatchObject({ x2: 0, y2: 0 });
+        expect(travelVectorFor(ship({ mission: emptyMission }))).toBeNull();
     });
 });
 
@@ -197,7 +201,7 @@ describe('dashSegments', () => {
 describe('travel vectors within one system (BaconMainView.cs method_253)', () => {
     // A ship warping between two planets of the same system: 60 000 units apart, well inside MaxSolarSystemSize.
     const inSystem = (extra: Record<string, unknown> = {}) =>
-        ship({ xpos: 1_000_000, ypos: 1_000_000, mission: { type: 1, resolveTargetCoordinatesCurrentCommand: () => ({ x: 1_060_000, y: 1_000_000 }) }, ...extra });
+        ship({ xpos: 1_000_000, ypos: 1_000_000, mission: { type: 1, fastPeekCurrentCommand: () => null, resolveTargetCoordinatesCurrentCommand: () => ({ x: 1_060_000, y: 1_000_000 }) }, ...extra });
     it('draws the vector for an in-system move at warp speed, at system and sector zoom', () => {
         const v = travelVectorFor(inSystem());
         expect(v).toMatchObject({ x1: 1_000_000, y1: 1_000_000, x2: 1_060_000, y2: 1_000_000 });
