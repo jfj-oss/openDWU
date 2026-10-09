@@ -40,6 +40,9 @@
 //    across (the 8-argument overload passes systemInfluenceSizeFactor 1.0, line 309), drawn at 0.25 alpha
 //    (method_236(0.25), MainView.2.cs 241 / 365). Here one disc per empire with KNOWN bases or colonies in the
 //    system, its radius growing with sqrt(count) from that size (addition: the original draws one fixed disc).
+//    Additions (user calls) for galaxy-zoom visibility: 1.8x the size at 0.4 alpha, a minimum on-screen radius that
+//    grows from 9 to 13 px (x up to 1.5 by count) as the view widens, and a cross-fade from the soft glow to a vivid
+//    disc (0.55 fill, crisp full-alpha rim in the empire colour) between f = 300 and f = 2500 (presenceGalaxyBlend).
 //
 // 6. System link lines — method_250 5237-5336: the dotted lines in each empire's MainColor between its linked systems
 //    (SystemVisibility.LinkSystemStars), at f > 150 under the rings: systemLinks.ts.
@@ -284,6 +287,28 @@ export function presenceDiscRadius(count: number): number {
 export const PRESENCE_SIZE_SCALE = 1.8;
 /** Minimum on-screen presence disc radius (px), so stations stay visible fully zoomed out (user call). */
 export const PRESENCE_MIN_SCREEN_PX = 9;
+/** The minimum radius (px, for one base / colony) once fully at galaxy zoom (user call: larger at galaxy view). */
+export const PRESENCE_GALAXY_MIN_SCREEN_PX = 13;
+/** Alpha of the vivid galaxy-zoom disc (its texture has a 0.55 fill and a full-alpha rim in the empire colour). */
+export const PRESENCE_GALAXY_ALPHA = 0.8;
+/** Zoom factors over which the discs blend from the soft system-level glow (t = 0) to the vivid galaxy look (t = 1). */
+export const PRESENCE_VIVID_FROM_FACTOR = 300;
+export const PRESENCE_VIVID_FULL_FACTOR = 2500;
+
+/** 0 .. 1 share of the vivid galaxy-zoom look at zoom factor f: smoothstep over log f (user call, not in the original). */
+export function presenceGalaxyBlend(f: number): number {
+    if (f <= PRESENCE_VIVID_FROM_FACTOR) return 0;
+    if (f >= PRESENCE_VIVID_FULL_FACTOR) return 1;
+    const u = Math.log(f / PRESENCE_VIVID_FROM_FACTOR) / Math.log(PRESENCE_VIVID_FULL_FACTOR / PRESENCE_VIVID_FROM_FACTOR);
+    return u * u * (3 - 2 * u);
+}
+
+/** Minimum on-screen disc radius (px) for `count` bases + colonies at galaxy blend t: grows from PRESENCE_MIN_SCREEN_PX
+ * to PRESENCE_GALAXY_MIN_SCREEN_PX and, mildly, with the count (capped at 1.5x) so busier systems stay larger. */
+export function presenceMinScreenPx(count: number, t: number): number {
+    const base = PRESENCE_MIN_SCREEN_PX + (PRESENCE_GALAXY_MIN_SCREEN_PX - PRESENCE_MIN_SCREEN_PX) * t;
+    return base * (1 + (Math.min(1.5, 0.6 + 0.4 * Math.sqrt(Math.max(1, count))) - 1) * t);
+}
 
 /**
  * Port of MainView.2.cs method_250's system circle radius in screen px (5239-5240, 5337-5374): val3 =
@@ -662,7 +687,8 @@ async function buildSymbolAtlas(): Promise<{ frames: Texture[]; aspect: number[]
 }
 
 function buildDiscFallback(): Texture {
-    const c = makeCanvas(DISC_SIZE, DISC_SIZE);
+    // Two frames side by side (one texture source: a ParticleContainer draws from a single source).
+    const c = makeCanvas(2 * DISC_SIZE, DISC_SIZE);
     const ctx = c.getContext('2d')!;
     const h = DISC_SIZE / 2;
     const g = ctx.createRadialGradient(h, h, 0, h, h, h);
@@ -673,6 +699,18 @@ function buildDiscFallback(): Texture {
     }
     ctx.fillStyle = g;
     ctx.fillRect(0, 0, DISC_SIZE, DISC_SIZE);
+    // Frame 1 (x DISC_SIZE..2*DISC_SIZE): the vivid galaxy-zoom disc — a flat 0.55 fill easing to 0.4 towards the
+    // edge, then a crisp full-alpha rim (~7 % of the radius) with an anti-aliased outer edge.
+    const v = ctx.createRadialGradient(DISC_SIZE + h, h, 0, DISC_SIZE + h, h, h);
+    v.addColorStop(0, 'rgba(255,255,255,0.55)');
+    v.addColorStop(0.6, 'rgba(255,255,255,0.5)');
+    v.addColorStop(0.84, 'rgba(255,255,255,0.4)');
+    v.addColorStop(0.86, 'rgba(255,255,255,1)');
+    v.addColorStop(0.93, 'rgba(255,255,255,1)');
+    v.addColorStop(0.97, 'rgba(255,255,255,0)');
+    v.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = v;
+    ctx.fillRect(DISC_SIZE, 0, DISC_SIZE, DISC_SIZE);
     const tex = textureFromCanvas(c);
     useMinifyingFilter(tex);
     return tex;
@@ -743,7 +781,9 @@ export class GalaxyMarkerLayer {
     /** Shield / hull bars, drawn relative to `symbols.position` (see updateSymbols: the same camera-local origin). */
     private readonly iconLayer = new Container();
     private readonly countLayer = new Container();
+    /** The soft system-level glow and the vivid galaxy-zoom disc: two frames of one source (buildDiscFallback). */
     private discTex: Texture;
+    private discVividTex: Texture;
     private frames: Texture[] = [];
     private aspect: number[] = [];
     private icons: { capital: Texture | null; secondary: Texture | null; refuel: Texture | null } = { capital: null, secondary: null, refuel: null };
@@ -780,7 +820,9 @@ export class GalaxyMarkerLayer {
         /** World child to insert `back` beneath (the empire layer root), or null to append. */
         below: Container | null,
     ) {
-        this.discTex = buildDiscFallback();
+        const discSrc = buildDiscFallback().source;
+        this.discTex = new Texture({ source: discSrc, frame: new Rectangle(0, 0, DISC_SIZE, DISC_SIZE) });
+        this.discVividTex = new Texture({ source: discSrc, frame: new Rectangle(DISC_SIZE, 0, DISC_SIZE, DISC_SIZE) });
         const dyn = { position: true, vertex: true, rotation: false, uvs: true, color: true };
         this.discs = new ParticleContainer({ texture: this.discTex, dynamicProperties: dyn });
         this.symbols = new ParticleContainer({ texture: Texture.WHITE, dynamicProperties: dyn });
@@ -801,11 +843,10 @@ export class GalaxyMarkerLayer {
     }
 
     private async loadArt(): Promise<void> {
-        const [atlas, disc, capital, secondary, refuel] = await Promise.all([
+        // systeminfluence.png is a hard-edged 29 px disc (alpha 255 core); the original's bilinear stretch softens it,
+        // so the procedural discs (buildDiscFallback) are used instead of the art.
+        const [atlas, capital, secondary, refuel] = await Promise.all([
             buildSymbolAtlas(),
-            // systeminfluence.png is a hard-edged 29 px disc (alpha 255 core); the original's bilinear stretch softens it,
-            // so the procedural soft falloff (buildDiscFallback) is used instead of the art.
-            Promise.resolve(null as Texture | null),
             loadTexture(`${CHROME_DIR}/capital.png`),
             loadTexture(`${CHROME_DIR}/fleetLeader.png`),
             loadTexture(`${CHROME_DIR}/refuel.png`),
@@ -814,12 +855,6 @@ export class GalaxyMarkerLayer {
         this.frames = atlas.frames;
         this.aspect = atlas.aspect;
         this.symbols.texture = atlas.frames[0];
-        if (disc !== null) {
-            this.discTex = disc;
-            this.discs.texture = disc;
-            for (const p of this.discPool) p.texture = disc;
-            this.discKey.v = -1;
-        }
         this.icons = { capital, secondary, refuel };
     }
 
@@ -932,25 +967,36 @@ export class GalaxyMarkerLayer {
         k.z = z;
         k.x = cam.x;
         k.y = cam.y;
-        const alpha = presenceBandAlpha(f);
+        // Soft glow (the system-level look) cross-fading into the vivid filled disc with a crisp rim in the empire colour
+        // as the view widens to galaxy zoom (presenceGalaxyBlend); both are particles of the one container.
+        const t = presenceGalaxyBlend(f);
+        const softA = presenceBandAlpha(f) * (1 - t);
+        const vividA = PRESENCE_GALAXY_ALPHA * t;
         const out = this.discs.particleChildren;
         const prev = out.length;
         let n = 0;
-        for (const p of this.presence) {
-            const star = this.galaxy.systems[p.systemIndex].systemStar;
-            const r = Math.max(presenceDiscRadius(p.count), PRESENCE_MIN_SCREEN_PX / z);
-            if (!boundsOnScreen(star.xpos, star.ypos, r, 0, cam.x, cam.y, cam.width, cam.height, z)) continue;
+        const put = (x: number, y: number, r: number, tint: number, alpha: number, tex: Texture): void => {
             let part = this.discPool[n];
             if (part === undefined) {
-                part = new Particle({ texture: this.discTex, anchorX: 0.5, anchorY: 0.5 });
+                part = new Particle({ texture: tex, anchorX: 0.5, anchorY: 0.5 });
                 this.discPool.push(part);
             }
-            part.x = star.xpos;
-            part.y = star.ypos;
-            part.scaleX = part.scaleY = (2 * r) / this.discTex.width;
-            part.tint = empireMarkerColor(p.empire);
+            // Pooled particles change frame by texture (same source, so no container rebuild is needed).
+            if (part.texture !== tex) part.texture = tex;
+            part.x = x;
+            part.y = y;
+            part.scaleX = part.scaleY = (2 * r) / DISC_SIZE;
+            part.tint = tint;
             part.alpha = alpha;
             out[n++] = part;
+        };
+        for (const p of this.presence) {
+            const star = this.galaxy.systems[p.systemIndex].systemStar;
+            const r = Math.max(presenceDiscRadius(p.count), presenceMinScreenPx(p.count, t) / z);
+            if (!boundsOnScreen(star.xpos, star.ypos, r, 0, cam.x, cam.y, cam.width, cam.height, z)) continue;
+            const tint = empireMarkerColor(p.empire);
+            if (softA > 0.004) put(star.xpos, star.ypos, r, tint, softA, this.discTex);
+            if (vividA > 0.004) put(star.xpos, star.ypos, r, tint, vividA, this.discVividTex);
         }
         // Pooled particles keep their slot, so the container only needs a structural update when the count changes.
         if (prev !== n) {
