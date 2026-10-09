@@ -32,6 +32,7 @@ import {
 import { cloneGalaxyRaces, type Race } from './data/races';
 import type { Resource } from './data/resources';
 import { buildResourceSystem, type ResourceSystem } from './resourceSystem';
+import { normalizeResourceGeneration, scaledAbundance, scaledPrevalence, type ResourceGenerationSettings } from './resourceGeneration';
 import { netSort } from './netSort';
 import { SystemVisibilityStatus, type GalaxyResourceMap } from './visibility';
 import { EmpireTerritory, strategicValue } from './territory';
@@ -254,6 +255,8 @@ export interface GenerateGalaxyOptions {
     difficultyLevel?: number;
     /** `bool spawnNewEmpires` → _SpawnNewEmpires (2153; chkGalaxyNewEmpiresDuringGame). Default true. */
     spawnNewEmpires?: boolean;
+    /** Our addition: the wizard's resource sliders (resourceGeneration.ts). Omitted / all Normal = the original. */
+    resourceGeneration?: Partial<ResourceGenerationSettings> | null;
 }
 
 /** Scratch for Galaxy.ringSearch: [d, nx, ny] of the last closestIndexEdgesInto, read before any per-cell callback runs
@@ -302,6 +305,13 @@ export class Galaxy {
      * the game has overrides and a game without them saves exactly as before.
      */
     declare baconSettingsOverrides?: BaconSettingsOverrides;
+    /**
+     * Our addition: the new-game wizard's resource sliders (resourceGeneration.ts). `declare`d and set only when a slider is
+     * off Normal, so a Normal game has no such property and saves / generates exactly as the original. Read by
+     * selectResources (density / amount / luxury / fuel), setRestrictedResources (super-luxuries) and
+     * ensureHomeSystemFuel.
+     */
+    declare resourceGeneration?: ResourceGenerationSettings;
     colonyNames: string[] | null = null;
     colonyNameIndex = 0;
     // Task C2a: Galaxy.ResourceSystem (strategic/luxury lists, RelativeImportance).
@@ -3253,7 +3263,10 @@ export class Galaxy {
                 // C#: float num3 = (float)CryptoRnd.NextDouble(); compared
                 // against the float prevalence.
                 const num3 = Math.fround(this.cryptoRnd.nextDouble());
-                if (num3 < Math.fround(dist.prevalence)) {
+                // Resource sliders (resourceGeneration.ts): density / luxury / fuel scale the threshold; Normal = stock.
+                const rg = this.resourceGeneration;
+                const prevalence = rg === undefined ? Math.fround(dist.prevalence) : scaledPrevalence(rg, resourceDefinition, Math.fround(dist.prevalence));
+                if (num3 < prevalence) {
                     let val = Math.trunc(Math.fround(dist.abundanceMin) * 1000);
                     let val2 = Math.trunc(Math.fround(dist.abundanceMax) * 1000);
                     val = Math.max(0, Math.min(1000, val));
@@ -3261,7 +3274,9 @@ export class Galaxy {
                     if (val > val2) {
                         val = val2;
                     }
-                    const abundance = this.cryptoRnd.next(val, val2);
+                    let abundance = this.cryptoRnd.next(val, val2);
+                    // Resource sliders: amount / luxury / fuel scale the rolled abundance (1..1000); Normal = stock.
+                    if (rg !== undefined) abundance = scaledAbundance(rg, resourceDefinition, abundance);
                     if (!habitat.resources.some((r) => r.resourceId === resourceDefinition.resourceId)) {
                         habitat.resources.push({ resourceId: resourceDefinition.resourceId, abundance });
                     }
@@ -5099,6 +5114,9 @@ export function generateGalaxy(options: GenerateGalaxyOptions): Galaxy {
     if (options.creaturePrevalence !== undefined) galaxy.creaturePrevalence = options.creaturePrevalence;
     if (options.allowGiantKaltorGeneration !== undefined) galaxy.allowGiantKaltorGeneration = options.allowGiantKaltorGeneration;
     if (options.spawnNewEmpires !== undefined) galaxy.spawnNewEmpires = options.spawnNewEmpires;
+    // Resource sliders: stored only when off Normal (before any habitat is generated).
+    const resourceGeneration = normalizeResourceGeneration(options.resourceGeneration);
+    if (resourceGeneration !== null) galaxy.resourceGeneration = resourceGeneration;
     // Custom galaxy size (the wizard's sector boxes, a scenario extent): past the constructor's 4..15 clamp.
     if (options.customGalaxyDimensions === true) galaxy.setCustomGalaxyDimensions(sectorWidth, sectorHeight);
     // Galaxy.4.cs 2132 `Races = LoadRaces(...)`: the galaxy's own Race objects (mutated in play, saved with the game).

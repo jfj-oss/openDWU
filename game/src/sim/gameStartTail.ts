@@ -45,6 +45,7 @@
 
 import type { Galaxy } from './galaxy';
 import type { Empire } from './empire';
+import type { Resource } from './data/resources';
 import type { Race } from './data/races';
 import type { RaceFamily } from './data/raceFamilies';
 import type { Government } from './data/governments';
@@ -1029,9 +1030,9 @@ export function setKnownGalacticHistoryLocationsAtStart(galaxy: Galaxy, empireLi
  * Rnd: FindLonelyDeepSpaceLocation; per retry (≤ 100): Next(700,1000) on success, else another
  * FindLonelyDeepSpaceLocation.
  */
-function setSingleRestrictedResource(galaxy: Galaxy, resourceId: number, habitatType: HabitatType, nameIfMoon: string): boolean {
+function setSingleRestrictedResource(galaxy: Galaxy, resourceId: number, habitatType: HabitatType, nameIfMoon: string, location: (galaxy: Galaxy) => { x: number; y: number } = findLonelyDeepSpaceLocation): boolean {
     let nameUsed = false;
-    let p = findLonelyDeepSpaceLocation(galaxy);
+    let p = location(galaxy);
     let habitat = galaxy.findNearestHabitatOfType(p.x, p.y, habitatType);
     let flag = false;
     let num = 0;
@@ -1055,7 +1056,7 @@ function setSingleRestrictedResource(galaxy: Galaxy, resourceId: number, habitat
                     nameUsed = true;
                 }
             } else {
-                p = findLonelyDeepSpaceLocation(galaxy);
+                p = location(galaxy);
                 habitat = galaxy.findNearestHabitatOfType(p.x, p.y, habitatType);
             }
         }
@@ -1076,6 +1077,12 @@ function resolveHabitatTypeByIndexIncludeGasClouds(galaxy: Galaxy, index: number
  * Fluid rename the first moon they land on. Rnd: see setSingleRestrictedResource.
  */
 export function setRestrictedResources(galaxy: Galaxy): void {
+    // Resource sliders (our addition): the Super-luxuries slider off Normal places its own counts; Normal = this port.
+    const superLuxuryLevel = galaxy.resourceGeneration?.superLuxury ?? 2;
+    if (superLuxuryLevel !== 2) {
+        setRestrictedResourcesScaled(galaxy, superLuxuryLevel);
+        return;
+    }
     const list = galaxy.resourceSystem.superLuxuryResources;
     for (let i = 0; i < list.length; i++) {
         const resourceDefinition = list[i];
@@ -1107,6 +1114,91 @@ export function setRestrictedResources(galaxy: Galaxy): void {
             for (let k = 0; k < num; k++) {
                 if (nameUsed) nameIfMoon = '';
                 nameUsed = setSingleRestrictedResource(galaxy, resourceDefinition.resourceId, habitatType, nameIfMoon);
+            }
+        }
+    }
+}
+
+/** setRestrictedResources' per-prevalence values: habitat type and the moon name (Korabbia / Loros / Zentabia). */
+function restrictedPrevalenceInfo(galaxy: Galaxy, resourceDefinition: Resource, dist: Resource['distributions'][number]): { habitatType: HabitatType; nameIfMoon: string; stockCount: number; rawCount: number } {
+    const habitatIsAsteroid = dist.type === 1;
+    const habitatIsGasCloud = dist.type === 2;
+    const habitatType = resolveHabitatTypeByIndexIncludeGasClouds(galaxy, dist.subType);
+    const rawCount = Math.fround(dist.prevalence) * (galaxy.starCount / 700);
+    let nameIfMoon = '';
+    if (!habitatIsAsteroid && !habitatIsGasCloud) {
+        if (resourceDefinition.name === 'Korabbian Spice') nameIfMoon = 'Korabbia';
+        else if (resourceDefinition.name === 'Loros Fruit') nameIfMoon = 'Loros';
+        else if (resourceDefinition.name === 'Zentabia Fluid') nameIfMoon = 'Zentabia';
+    }
+    return { habitatType, nameIfMoon, stockCount: Math.max(1, Math.trunc(rawCount)), rawCount };
+}
+
+/**
+ * Our addition (resource sliders, resourceGeneration.ts SUPER_LUXURY_TICKS): setRestrictedResources off Normal. Each
+ * deposit is still placed by setSingleRestrictedResource (a lonely habitat of the prevalence's type, away from colonies).
+ *   0 Almost none: one deposit in the whole galaxy (a random super-luxury);
+ *   1 Rare: half the original count per prevalence, stochastically rounded (at least one deposit in the galaxy);
+ *   3 Common: three times the original count (at least 3 per prevalence);
+ *   4 Several per region: one of every super-luxury in each region (3 × 3 sectors), placed from a random point inside it.
+ */
+function setRestrictedResourcesScaled(galaxy: Galaxy, level: number): void {
+    const list = galaxy.resourceSystem.superLuxuryResources.filter((r) => r != null && r.distributions != null && r.distributions.length > 0);
+    if (list.length === 0) return;
+    // The moon name (Korabbia / Loros / Zentabia) goes to the first moon only, as in the original.
+    const named = new Set<number>();
+    const place = (def: Resource, dist: Resource['distributions'][number], count: number, location?: (g: Galaxy) => { x: number; y: number }): number => {
+        const info = restrictedPrevalenceInfo(galaxy, def, dist);
+        for (let k = 0; k < count; k++) {
+            const nameIfMoon = named.has(def.resourceId) ? '' : info.nameIfMoon;
+            if (setSingleRestrictedResource(galaxy, def.resourceId, info.habitatType, nameIfMoon, location)) named.add(def.resourceId);
+        }
+        return count;
+    };
+    if (level <= 0) {
+        const def = list[galaxy.rnd.next(0, list.length)];
+        place(def, def.distributions[0], 1);
+        return;
+    }
+    if (level === 1) {
+        let placed = 0;
+        for (const def of list) {
+            for (const dist of def.distributions) {
+                if (dist == null) continue;
+                const half = restrictedPrevalenceInfo(galaxy, def, dist).rawCount * 0.5;
+                const count = Math.trunc(half) + (galaxy.rnd.nextDouble() < half - Math.trunc(half) ? 1 : 0);
+                placed += place(def, dist, count);
+            }
+        }
+        if (placed === 0) {
+            const def = list[galaxy.rnd.next(0, list.length)];
+            place(def, def.distributions[0], 1);
+        }
+        return;
+    }
+    if (level === 3) {
+        for (const def of list) {
+            for (const dist of def.distributions) {
+                if (dist == null) continue;
+                place(def, dist, Math.max(3, Math.round(restrictedPrevalenceInfo(galaxy, def, dist).stockCount * 3)));
+            }
+        }
+        return;
+    }
+    // 4: Several per region — regions of 3 × 3 sectors (the last row / column takes the remainder).
+    const regionSize = galaxy.sectorSize * 3;
+    const regionsX = Math.max(1, Math.ceil(galaxy.sizeX / regionSize));
+    const regionsY = Math.max(1, Math.ceil(galaxy.sizeY / regionSize));
+    for (let ry = 0; ry < regionsY; ry++) {
+        for (let rx = 0; rx < regionsX; rx++) {
+            const x0 = rx * regionSize;
+            const y0 = ry * regionSize;
+            const w = Math.min(regionSize, galaxy.sizeX - x0);
+            const h = Math.min(regionSize, galaxy.sizeY - y0);
+            const inRegion = (g: Galaxy): { x: number; y: number } => ({ x: x0 + g.rnd.nextDouble() * w, y: y0 + g.rnd.nextDouble() * h });
+            for (const def of list) {
+                const dist = def.distributions.find((d) => d != null);
+                if (dist !== undefined) place(def, dist, 1, inRegion);
             }
         }
     }
