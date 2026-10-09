@@ -21,7 +21,7 @@ import { ResourceGroup, resourceGroupOf } from './resourceSystem';
 export const RESOURCE_SLIDER_NORMAL = 2;
 export const RESOURCE_DENSITY_TICKS = ['Very Sparse', 'Sparse', 'Normal', 'Rich', 'Very Rich'] as const;
 export const RESOURCE_AMOUNT_TICKS = ['Very Poor', 'Poor', 'Normal', 'Rich', 'Very Rich'] as const;
-export const LUXURY_RESOURCE_TICKS = ['Very Rare', 'Rare', 'Normal', 'Common', 'Very Common'] as const;
+export const LUXURY_RESOURCE_TICKS = ['Very Rare', 'Rare', 'Normal', 'Common', 'Abundant'] as const;
 export const FUEL_RESOURCE_TICKS = ['Very Scarce', 'Scarce', 'Normal', 'Plentiful', 'Abundant'] as const;
 export const SUPER_LUXURY_TICKS = ['Almost none', 'Rare', 'Normal', 'Common', 'Several per region'] as const;
 
