@@ -156,6 +156,7 @@ import {
     MapStarImageOffsetWhiteDwarf,
     gasCloudMapPictureRef,
 } from './galaxyImages';
+import { detPow } from './detMath';
 
 // Port of Galaxy.cs static fields (Galaxy.3.cs InitializeStatics sets
 // these): SectorSizeX = SectorSizeY = 2_000_000, IndexSize = 400_000.
@@ -3739,7 +3740,7 @@ export class Galaxy {
         // C# multiplies by (long)num — truncate before multiplying.
         num2 = num3 < 0 || num3 > 6 ? this.rnd.next(100000, 300000) * Math.trunc(num) : this.rnd.next(300000, 600000) * Math.trunc(num);
         if (this.age > 0) {
-            num2 = Math.trunc(num2 * Math.pow(1.2, this.age));
+            num2 = Math.trunc(num2 * detPow(1.2, this.age));
         }
         return num2;
     }

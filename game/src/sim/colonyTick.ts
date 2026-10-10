@@ -83,6 +83,7 @@ import { baconSettings } from './data/baconSettings';
 import { formatGameTextNow } from './textResolver';
 import { scenarioQuery } from './scenario/hooks';
 import { isHumanEmpire } from './humanEmpires';
+import { detPow } from './detMath';
 
 const f32 = Math.fround;
 
@@ -302,7 +303,7 @@ export function terraformColony(galaxy: Galaxy, habitat: Habitat, timePassed: nu
     if (num3 > habitat.baseQuality * 100.0 && num2 > 0.0) {
         if (num3 > 100.0) num3 = f32(100);
         const num5 = f32(f32(timePassed) / REAL_SECONDS_IN_GALACTIC_YEAR);
-        const num6 = Math.pow(num3 / (num3 + habitat.baseQuality * 100.0), 4.0);
+        const num6 = detPow(num3 / (num3 + habitat.baseQuality * 100.0), 4.0);
         habitat.baseQuality = f32(habitat.baseQuality + f32(f32(num5 * f32(num6)) * num2));
         if (habitat.baseQuality > num3) habitat.baseQuality = num3;
     }

@@ -28,6 +28,7 @@
 //   BaconValues null.
 // - DiplomaticRelations empty → CheckAtWar false; no pirate colony control.
 
+import { detPow } from './detMath';
 import { RaceEventType, getPlagueUnhappinessFactorWithPlague } from './eventTypes';
 import { processColonyTroops } from './troops';
 import { CharacterSkillType, colonyCharactersHighestSkillExcludeLeaders, resolveColonyWarWearinessDivisors, resolveEmpireLeaderWarWearinessDivisor, resolveLeaderColonyHappiness } from './characters';
@@ -57,7 +58,7 @@ const POLICY_EXTERMINATE = 4;
 // .NET Framework Math.Round(double, int digits): value * 10^digits, Math.Round
 // (MidpointRounding.ToEven), / 10^digits (InternalRound, |value| < 1e16).
 export function netRound(value: number, digits: number): number {
-    const power10 = Math.pow(10, digits);
+    const power10 = detPow(10, digits);
     if (Math.abs(value) < 1e16) {
         const v = value * power10;
         const fl = Math.floor(v);

@@ -22,6 +22,7 @@ import type { ConstructionQueueHandle } from './construction/constructionYard';
 import { habitatDoTasks } from './tick/habitatTick';
 import { growPopulation } from './colonyTick';
 import { galaxyNow } from './tick/simTime';
+import { detPow } from './detMath';
 
 // Port of Galaxy.8.cs MakeHabitatIntoColony(galaxy, habitat, empire, age, race,
 // homeSystemFactor, hasSpacePort).
@@ -55,7 +56,7 @@ export function makeHabitatIntoColony(
     }
     let num2 = Math.trunc(homeSystemFactor * num * 300000000.0 + homeSystemFactor * num * galaxy.rnd.nextDouble() * 400000000.0);
     if (age > 0) {
-        num2 = Math.trunc(num2 * Math.pow(1.7, age));
+        num2 = Math.trunc(num2 * detPow(1.7, age));
     }
     const population = new Population(race, num2, galaxy);
     habitat.population.add(population);

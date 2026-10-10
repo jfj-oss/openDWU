@@ -29,6 +29,7 @@ import { runGameStartEmpireTick } from './tick/gameStart';
 import { habitatDoTasks } from './tick/habitatTick';
 import { growPopulation } from './colonyTick';
 import { galaxyNow } from './tick/simTime';
+import { detPow } from './detMath';
 
 export interface GenerateEmpireResult {
     empire: Empire;
@@ -128,7 +129,7 @@ export function generateEmpire(
     capital.isRefuellingDepot = true;
     let num5 = Math.trunc(homeSystemFactor * 2200000000.0 + homeSystemFactor * rnd.nextDouble() * 500000000.0);
     if (age > 0) {
-        num5 = Math.trunc(num5 * Math.pow(1.7, age));
+        num5 = Math.trunc(num5 * detPow(1.7, age));
     }
     let val = Math.trunc(homeSystemFactor * 10000000000.0 + homeSystemFactor * rnd.nextDouble() * 1000000000.0);
     if (age === 0) {
