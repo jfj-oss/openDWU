@@ -1,13 +1,13 @@
 // WebSocket Link (docs/MULTIPLAYER.md "Lockstep core"): the client side of the lockstep transport, on the standard
 // WebSocket API — the browser's, the Electron renderer's, or Node 22's global WebSocket (the demo script). The host
-// side listens with a Node WebSocket server (scripts/lib/wsServer.mjs, dependency-free) and wraps each accepted
+// side listens with a Node WebSocket server (desktop/wsServer.cjs, dependency-free) and wraps each accepted
 // socket with wrapSocket below, which accepts any object of the same shape.
 //
 // Headless: no DOM / Pixi / Node APIs (only the WebSocket global, when connectWebSocket is called).
 
 import type { Link } from './transport';
 
-/** The part of the WebSocket API a Link needs (browser WebSocket, Node 22 WebSocket, or scripts/lib/wsServer.mjs). */
+/** The part of the WebSocket API a Link needs (browser WebSocket, Node 22 WebSocket, or desktop/wsServer.cjs). */
 export interface SocketLike {
     readonly readyState: number;
     send(data: string): void;
