@@ -25,31 +25,11 @@ mod/scenario layer on top. The code lives under [`game/`](game/).
 
 ## Why this exists
 
-First off, I'm not an experienced game developer by any stretch of the
-imagination. I'm a university student who's had an immovable love for this game.
-And, as the years passed I couldn't help but notice and watch the game slowly lose 
-compatibility, every new Windows release and update further marking its gradual crawl 
-to the grave. To me watching the forums get filled, at an ever increasing rate, 
-with posts about the game not launching was a terribly disheartening experience.
+Beloved game Distant Worlds: Universe ported to all operating systems (Linux/Windows x86 & Mac OS ARM) 
 
-I worried that eventually it would become hard
-enough to get running that it would fade to obscurity, left to a tiny niche
-willing to jump through hoops just to get it working, until even they forgot.
+Made with intention of removing the barrier of entry posed by incompatibility with newer operating systems. This is not using copied code, but code is based on decompiled data for accuracy of gameplay systems.
 
-In this same vein, in the process of rebuilding the game I thought it good to not only
-have a native app for Windows but for Mac OS (arm) as well as for Linux, in the hope
-of allowing as large of an audience as possible to have access to this gem.
-
-And, while I was tinkering with the game I couldn't resist adding a few things from my 
-own wishlist: much bigger galaxies (up to 90×90 sectors, 8,000 star systems and 100
-empires), some new kinds of content (WORK-IN-PROGRESS), deeper changes to some of the 
-game's systems (WIP) and some AI/UI/QOL improvements. Every one of them is optional and
-can be switched off, so you can always play a completely authentic game of DW:U.
-
-But of course, the elephant in the room, none of this would have been realistic for
-one student without generative AI. It did most of the heavy lifting on the code, 
-while I acted as its guinea pig steering, testing and playing. I hope you won't write 
-this off as AI slop. I hope you can see the passion and good intentions behind it.
+Made with generative AI, I mostly acted as guidance; eyes and ears (aka: guinea pig)
 
 ## What's here
 
