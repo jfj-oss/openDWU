@@ -321,13 +321,28 @@ export function syntheticStarLayout(shape: GalaxyShape, seed: number, count = 70
     return { xs, ys };
 }
 
+/** A float as IEEE half-float bits (round to nearest; the values here are 0..1). */
+function toHalf(v: number): number {
+    if (!(v > 0)) return 0;
+    if (v >= 65504) return 0x7bff;
+    let e = Math.floor(Math.log2(v));
+    if (e < -14) return Math.round(v / 2 ** -24);
+    let m = Math.round((v / 2 ** e - 1) * 1024);
+    if (m === 1024) {
+        m = 0;
+        e++;
+    }
+    return ((e + 15) << 10) | m;
+}
+
 /**
- * The shared tileable noise texture (RGBA8, NOISE_SIZE², periodic in both axes): four independent fBm channels of
- * periodic value noise (base period 8 cells, 4 octaves, quintic fade), each stretched to 0..255.
+ * The shared tileable noise texture (RGBA half float, NOISE_SIZE², periodic in both axes): four independent fBm
+ * channels of periodic value noise (base period 8 cells, 4 octaves, quintic fade), each stretched to 0..1. Half float,
+ * not 8-bit: the clouds magnify it several times and stretch its contrast, and 8-bit steps showed as grain.
  */
-export function makeBackdropNoise(seed: number): Uint8Array {
+export function makeBackdropNoise(seed: number): Uint16Array {
     const n = NOISE_SIZE;
-    const out = new Uint8Array(n * n * 4);
+    const out = new Uint16Array(n * n * 4);
     const rnd = mulberry32((seed ^ 0x9e3779b9) >>> 0);
     const field = new Float32Array(n * n);
     for (let ch = 0; ch < 4; ch++) {
@@ -366,7 +381,7 @@ export function makeBackdropNoise(seed: number): Uint8Array {
             hi = Math.max(hi, field[i]);
         }
         const span = Math.max(1e-6, hi - lo);
-        for (let i = 0; i < field.length; i++) out[i * 4 + ch] = Math.round(((field[i] - lo) / span) * 255);
+        for (let i = 0; i < field.length; i++) out[i * 4 + ch] = toHalf((field[i] - lo) / span);
     }
     return out;
 }

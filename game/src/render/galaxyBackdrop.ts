@@ -2,8 +2,9 @@
 // Render-only: reads the galaxy's star positions, shape and seed once, never writes sim state.
 //
 // Built from our own shaders (galaxyBackdropShaders.ts) over the galaxy structure (galaxyBackdropStructure.ts):
-// - the static part is rendered once into a galaxy-space texture sized to the screen (about 1:1 at whole-galaxy zoom,
-//   at most 2048 px), redrawn only when the variant, the screen size class or the GL context changes;
+// - the static part is rendered once into a galaxy-space texture sized to the screen (Galactic Core: at least the
+//   screen's pixels at whole-galaxy zoom, 4096 at 4K, mipmapped; the soft variants about 1:1, at most 2048 px), in
+//   ~1024-row bands one per frame, redrawn only when the variant, the screen size class or the GL context changes;
 // - the animated part is rendered into a smaller galaxy-space texture (the screen's short side / 2–2.5, at most
 //   1024 px: it is all soft gas, fog and glow) at most 15 times a second, and only while the game runs, the
 //   "Animate backdrop" option is on and the backdrop is visible; paused, it holds its last frame;
@@ -88,6 +89,8 @@ export class GalaxyBackdropLayer {
     private lowGpu = 0;
     private failed = false;
     private linkChecked = false;
+    /** The next static band to draw (staticBandCount bands; done when equal). */
+    private staticBand = 0;
     readonly stats: GalaxyBackdropStats = { staticRenders: 0, staticMs: 0, animRenders: 0, animMs: 0, staticSize: 0, animSize: 0 };
 
     constructor(
@@ -136,18 +139,24 @@ export class GalaxyBackdropLayer {
             return;
         }
         const half = this.lowGpu >= 1 ? 2 : 1;
-        // Static: about 1:1 at whole-galaxy zoom (the whole galaxy fits the screen's short side there).
-        const staticSize = Math.min(2048, Math.max(512, pow2AtLeast(Math.min(screenLongPx, screenShortPx) * 0.9))) / half;
+        // Static: at least the screen's device pixels across the galaxy at whole-galaxy zoom (where the whole galaxy
+        // fits the screen's short side) for the Galactic Core's fine detail (4096 at 4K; mipmapped); the soft
+        // variants about 1:1, at most 2048.
+        const short = Math.min(screenLongPx, screenShortPx);
+        const staticSize =
+            this.kind === 'galacticCore'
+                ? Math.min(this.maxTextureSize(), 4096, Math.max(512, pow2AtLeast(short))) / half
+                : Math.min(2048, Math.max(512, pow2AtLeast(short * 0.9))) / half;
         const animSize = Math.round(Math.min(1024, Math.max(256, screenShortPx / (this.kind === 'nebula' ? 2 : 2.5))) / half);
         if (this.staticRT === null || this.stats.staticSize !== staticSize) {
             this.staticRT?.destroy(true);
-            this.staticRT = this.makeTarget(staticSize);
+            this.staticRT = this.makeTarget(staticSize, this.kind === 'galacticCore');
             this.stats.staticSize = staticSize;
             this.staticDirty = true;
         }
         if (this.animRT === null || Math.abs(this.stats.animSize - animSize) > animSize * 0.2) {
             this.animRT?.destroy(true);
-            this.animRT = this.makeTarget(animSize);
+            this.animRT = this.makeTarget(animSize, false);
             this.stats.animSize = animSize;
             this.animDirty = true;
         }
@@ -158,8 +167,14 @@ export class GalaxyBackdropLayer {
         }
         try {
             if (this.staticDirty) {
-                this.renderPass(this.staticRT, 0);
                 this.staticDirty = false;
+                this.staticBand = 0;
+            }
+            // The static texture is drawn one band per frame (a 4096 px pass in one go could stall a weak GPU).
+            const bands = staticBandCount(this.staticRT.width);
+            if (this.staticBand < bands) {
+                this.renderPass(this.staticRT, 0, this.staticBand, bands);
+                this.staticBand++;
                 this.staticSprite.texture = this.staticRT;
             }
             if (this.animDirty || (moving && this.sinceAnim >= 1 / ANIM_HZ - 0.002)) {
@@ -203,12 +218,16 @@ export class GalaxyBackdropLayer {
         // A 1-pixel read waits for the GPU (Chrome's finish() does not).
         const px = new Uint8Array(4);
         const sync = (): void => gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px);
+        const full = (rt: RenderTexture, pass: 0 | 1): void => {
+            const bands = pass === 0 ? staticBandCount(rt.width) : 1;
+            for (let b = 0; b < bands; b++) this.renderPass(rt, pass, b, bands);
+        };
         const time = (rt: RenderTexture, pass: 0 | 1, k: number): number => {
-            this.renderPass(rt, pass);
+            full(rt, pass);
             sync();
             const t0 = performance.now();
             for (let i = 0; i < k; i++) {
-                this.renderPass(rt, pass);
+                full(rt, pass);
                 sync();
             }
             const t1 = performance.now();
@@ -262,8 +281,16 @@ export class GalaxyBackdropLayer {
         this.stats.animSize = 0;
     }
 
-    private makeTarget(size: number): RenderTexture {
-        return RenderTexture.create({ width: size, height: size, resolution: 1, scaleMode: 'linear', format: 'rgba8unorm' });
+    private makeTarget(size: number, mipmaps: boolean): RenderTexture {
+        const rt = RenderTexture.create({ width: size, height: size, resolution: 1, scaleMode: 'linear', format: 'rgba8unorm', autoGenerateMipmaps: mipmaps });
+        if (mipmaps) rt.source.maxAnisotropy = 8;
+        return rt;
+    }
+
+    private maxTextureSize(): number {
+        const gl = (this.renderer as unknown as { gl?: WebGL2RenderingContext }).gl;
+        const max = gl?.getParameter(gl.MAX_TEXTURE_SIZE) as number | undefined;
+        return typeof max === 'number' && max > 0 ? max : 2048;
     }
 
     private ensureResources(): void {
@@ -287,7 +314,7 @@ export class GalaxyBackdropLayer {
                 resource: makeBackdropNoise(this.galaxy.randomSeed),
                 width: NOISE_SIZE,
                 height: NOISE_SIZE,
-                format: 'rgba8unorm',
+                format: 'rgba16float',
                 scaleMode: 'linear',
                 addressMode: 'repeat',
                 alphaMode: 'no-premultiply-alpha',
@@ -300,6 +327,7 @@ export class GalaxyBackdropLayer {
                 uEll: { value: new Float32Array(s.ell), type: 'vec4<f32>' },
                 uMisc: { value: new Float32Array(s.misc), type: 'vec4<f32>' },
                 uParams: { value: new Float32Array([0, 0, 0, s.shape]), type: 'vec4<f32>' },
+                uBand: { value: new Float32Array([0, 0, 1, 1]), type: 'vec4<f32>' },
             });
             this.shader = new Shader({ glProgram: this.program, resources: { uDensity: this.densitySrc, uNoise: this.noiseSrc, uniforms: this.uniforms } });
             const geometry = new Geometry({
@@ -314,16 +342,24 @@ export class GalaxyBackdropLayer {
         }
     }
 
-    private renderPass(target: RenderTexture, pass: 0 | 1): void {
+    /** Draw `pass` into `target`: the whole of it, or horizontal band `band` of `bands`. */
+    private renderPass(target: RenderTexture, pass: 0 | 1, band = 0, bands = 1): void {
         if (this.mesh === null || this.uniforms === null || this.kind === null) return;
         const t0 = performance.now();
         const params = this.uniforms.uniforms.uParams as Float32Array;
         params[0] = BACKDROP_KIND_CODE[this.kind];
         params[1] = pass;
         params[2] = this.animTime;
+        const rect = this.uniforms.uniforms.uBand as Float32Array;
+        rect[0] = 0;
+        rect[1] = band / bands;
+        rect[2] = 1;
+        rect[3] = 1 / bands;
         this.uniforms.update();
-        this.mesh.scale.set(target.width, target.height);
-        this.renderer.render({ container: this.mesh, target, clear: true, clearColor: [0, 0, 0, 0] });
+        const h = target.height / bands;
+        this.mesh.position.set(0, band * h);
+        this.mesh.scale.set(target.width, h);
+        this.renderer.render({ container: this.mesh, target, clear: band === 0, clearColor: [0, 0, 0, 0] });
         const ms = performance.now() - t0;
         if (pass === 0) {
             this.stats.staticRenders++;
@@ -347,6 +383,11 @@ export class GalaxyBackdropLayer {
         if (gl.getProgramParameter(data.program, gl.LINK_STATUS) === true || gl.isContextLost()) return;
         throw new Error(`galaxy-backdrop: link failed: ${gl.getProgramInfoLog(data.program) ?? ''}`);
     }
+}
+
+/** Bands the static texture is drawn in, one per frame: about 1024 rows each. */
+function staticBandCount(size: number): number {
+    return Math.max(1, Math.round(size / 1024));
 }
 
 function pow2AtLeast(v: number): number {

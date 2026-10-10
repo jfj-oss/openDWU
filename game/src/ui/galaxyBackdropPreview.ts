@@ -106,7 +106,7 @@ function renderGenerated(kind: keyof typeof BACKDROP_KIND_CODE, structure: Backd
     gl.activeTexture(gl.TEXTURE1);
     gl.bindTexture(gl.TEXTURE_2D, ctx.noise);
     if (ctx.noiseSeed !== seed) {
-        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, NOISE_SIZE, NOISE_SIZE, 0, gl.RGBA, gl.UNSIGNED_BYTE, makeBackdropNoise(seed));
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA16F, NOISE_SIZE, NOISE_SIZE, 0, gl.RGBA, gl.HALF_FLOAT, makeBackdropNoise(seed));
         ctx.noiseSeed = seed;
     }
     const u = (name: string): WebGLUniformLocation | null => gl.getUniformLocation(program, name);
@@ -118,6 +118,7 @@ function renderGenerated(kind: keyof typeof BACKDROP_KIND_CODE, structure: Backd
     gl.uniform4fv(u('uEll'), structure.ell);
     gl.uniform4fv(u('uMisc'), structure.misc);
     gl.uniform4fv(u('uParams'), [BACKDROP_KIND_CODE[kind], 2, 0, structure.shape]);
+    gl.uniform4fv(u('uBand'), [0, 0, 1, 1]);
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
     const out = document.createElement('canvas');
     out.width = px;
