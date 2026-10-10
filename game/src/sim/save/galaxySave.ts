@@ -72,6 +72,7 @@ import { Weapon } from '../weapon';
 import { battleReportState, restoreBattleReportState, type BattleReportState } from '../battleReports/battleReports';
 import { type HintInfo, liveHintSubjects, restoreHintSubjects, savedHintSubjects } from '../player/hintSubjects';
 import { liveWaypointState, restoreWaypointState, savedWaypointState, type WaypointState } from '../player/waypoints';
+import { liveHumanEmpires, restoreHumanEmpires, savedHumanEmpires } from '../humanEmpires';
 
 export interface GalaxySaveJSON {
     version: 2;
@@ -550,6 +551,10 @@ interface SideTables {
     /** What each location hint points at (player/hintSubjects.ts; "x,y" -> text): absent while none is recorded and in
      *  older saves. The replica sync carries the live table or null. */
     hintSubjects?: Record<string, HintInfo> | null;
+    /** The human-controlled empires when more than the primary human (humanEmpires.ts; multiplayer): absent for a
+     *  one-human game — so it saves the same text as before — and in older saves. The replica sync carries the live
+     *  list or null. */
+    humanEmpires?: Empire[] | null;
 }
 
 function collectSideTables(galaxy: Galaxy, visited: readonly object[]): SideTables {
@@ -587,6 +592,8 @@ function collectSideTables(galaxy: Galaxy, visited: readonly object[]): SideTabl
     if (wps !== undefined) out.waypoints = wps;
     const hs = savedHintSubjects(galaxy);
     if (hs !== undefined) out.hintSubjects = hs;
+    const humans = savedHumanEmpires(galaxy);
+    if (humans !== undefined) out.humanEmpires = humans;
     return out;
 }
 
@@ -617,6 +624,7 @@ function restoreSideTables(galaxy: Galaxy, t: SideTables): void {
     if (t.battleReports !== undefined) restoreBattleReportState(galaxy, t.battleReports);
     restoreWaypointState(galaxy, t.waypoints);
     restoreHintSubjects(galaxy, t.hintSubjects);
+    restoreHumanEmpires(galaxy, t.humanEmpires);
 }
 
 type TerritoryGrid = Uint8Array[] | null;
@@ -764,6 +772,7 @@ export function replicaSideTables(galaxy: Galaxy, visited: readonly object[]): o
     // the last waypoint reaches the replica.
     t.waypoints = liveWaypointState(galaxy);
     t.hintSubjects = liveHintSubjects(galaxy);
+    t.humanEmpires = liveHumanEmpires(galaxy);
     return t;
 }
 

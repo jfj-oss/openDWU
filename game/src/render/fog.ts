@@ -33,6 +33,7 @@ import { isObjectVisibleToThisEmpire } from '../sim/independentTraders';
 import { HabitatCategoryType, type Habitat, type SystemInfo } from '../sim/types';
 import { MAX_SOLAR_SYSTEM_SIZE, SystemVisibilityStatus, THREAT_RANGE } from '../sim/visibility';
 import { creatureVisibleToEmpire } from './creatureLayer';
+import { localViewerEmpire } from '../localViewer';
 
 // ---------------------------------------------------------------------------------------------------------------
 // Pure rules (unit-tested with hand-built state)
@@ -166,7 +167,7 @@ export class FogOfWar {
     }
 
     get player(): Empire | null {
-        return this.reveal ? null : this.galaxy.playerEmpire;
+        return this.reveal ? null : localViewerEmpire(this.galaxy);
     }
 
     private cached(o: object, compute: () => boolean): boolean {

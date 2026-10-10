@@ -49,6 +49,7 @@ function compareGroupNames(a: Habitat[], b: Habitat[]): number {
     return NAME_COLLATOR.compare(a[0].name, b[0].name);
 }
 import type { Empire } from './empire';
+import { humanEmpires } from './humanEmpires';
 import type { GameData } from './data/gameData';
 import type { BaconSettingsOverrides } from './data/baconSettings';
 import type { CharacterFileRow, CharacterNames } from './data/characters';
@@ -289,7 +290,13 @@ export class Galaxy {
     empires: Empire[] = [];
     pirateEmpires: Empire[] = [];
     independentEmpire: Empire | null = null;
+    /** Galaxy.PlayerEmpire: the primary human empire (the single-player alias; the first of humanEmpires). */
     playerEmpire: Empire | null = null;
+    /** The human-controlled empires, primary human first (humanEmpires.ts; multiplayer, docs/MULTIPLAYER.md): [playerEmpire]
+     *  unless a list was set. A getter over a side table, not a saved field (a one-human game saves as before). */
+    get humanEmpires(): readonly Empire[] {
+        return humanEmpires(this);
+    }
     /**
      * Game.cs:71-127 Game.DisplayPopup<Category> / DisplayMessage<Category> / GameOptions.SuppressAllPopups: what the
      * player's message pipeline (playerMessages.ts) stamps and records. Start.2.cs 2147-2188 copy them from the GameOptions
