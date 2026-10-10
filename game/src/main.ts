@@ -89,7 +89,7 @@ import { openGalactopedia } from './ui/screens/galactopedia';
 import { habitatInfo } from './ui/selectionInfo';
 import { renderInfoModel } from './ui/selectionInfoView';
 import { colonizationRangeFor, defaultStartGameOptions, wizardStartGameOptions, piratesFor, STARTING_TECH_LEVEL, toCreateGameOptions, type StartGameOptions, maximumEmpireAmountFor, starCountFor, defaultScenarioChoice, type StartScenarioChoice } from './sim/startGameOptions';
-import { readSaveScenarioRef, serializeGameBlob, saveTextString, saveTextTail, type SaveText } from './saveData';
+import { readSaveScenarioRef, serializeGameSave, saveTextString, saveTextTail, type SaveText } from './saveData';
 import { deserializeGameSteps, savedCustomizationSet, savedScenarioId, savedScenarioInclude, type GameSaveJSON } from './sim/save/gameSave';
 import { loadScenarioIndex, loadScenarioOverlay } from './sim/scenario/fetchScenario';
 import { applyScenarioOverlay, type ScenarioOverlay } from './sim/scenario/overlay';
@@ -457,7 +457,7 @@ async function offerWorkerRestartOnce(simClient: SimWorkerClient, game: Game, ti
     const sources = restartSources({
         rescue: simClient.rescueSave,
         // Serialized only if chosen (a late game takes seconds), while this view still holds the replica.
-        replica: startOptions !== null ? () => serializeGameBlob(game, time, startOptions) : null,
+        replica: startOptions !== null ? () => serializeGameSave(game, time, startOptions) : null,
         autosave: auto === null ? null : { ...auto, read: () => readAutosave(auto.name) },
     });
     const RESTART = 'Restart';
@@ -696,9 +696,9 @@ export async function startGameView(
     // Start.2.cs 60 / Start.cs 2394 method_56: the player race's chrome folder of the theme is searched first.
     setThemeChromeRace(game.playerEmpire?.dominantRace?.name ?? '');
     // [simworker] Save text of the running game: the worker's authoritative game in worker mode (async).
-    // A Blob of the UTF-8 text in both modes (saveData.ts): the text is never one string in a heap.
+    // A gzip Blob of the UTF-8 text in both modes (saveData.ts serializeGameSave): the text is never one string in a heap.
     const serializeCurrent = (): SaveText | null | Promise<SaveText | null> =>
-        simClient !== undefined ? simClient.save(undefined, hotSeatSaveExtras(galaxy)) : lastStartOptions !== null ? serializeGameBlob(game, time, lastStartOptions, hotSeatSaveExtras(galaxy)) : null;
+        simClient !== undefined ? simClient.save(undefined, hotSeatSaveExtras(galaxy)) : lastStartOptions !== null ? serializeGameSave(game, time, lastStartOptions, hotSeatSaveExtras(galaxy)) : null;
 
     // Task 10d: first message of the top-middle ticker — the founding line.
     const playerCapital = game.playerEmpire?.capital ?? null;
@@ -1591,7 +1591,7 @@ async function main(): Promise<void> {
         }
         const res = await fetch(loadUrl);
         if (!res.ok) throw new Error(`?load=${loadUrl}: HTTP ${res.status}`);
-        await bootLoadedGame(await loadSaveWithProgress(await res.text()));
+        await bootLoadedGame(await loadSaveWithProgress(await res.blob())); // (a Blob: gzip or plain, saveData.ts)
         return;
     }
 

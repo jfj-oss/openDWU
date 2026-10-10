@@ -14,13 +14,19 @@
 //   host. On a mismatch the host sends that client a save of its current boundary (serializeGame) plus the inputs it
 //   holds from there on; the client reloads it and continues (rewinding or skipping ahead as needed).
 // - Join: a new client gets the host's current save and input buffer, and sends input from the first frame the host
-//   has not sent yet. Leave: when a client's link drops, the host ends it at the first frame it has no input for and
+//   has not sent yet.
+// - A save on the wire (join, resync) is gzip-compressed (saveCompression.ts) and sent in base64 chunks (SaveChunkMsg)
+//   ahead of the welcome / resync that names it. The host writes the save text at the boundary, synchronously, then
+//   compresses it while it runs on; what it sends that link meanwhile waits behind the save, so the client still gets
+//   everything in order. The client inflates it asynchronously and runs no frame, and handles no other message, until
+//   it is loaded. Leave: when a client's link drops, the host ends it at the first frame it has no input for and
 //   tells the others; the session goes on (onPeerLeft is the hook for Phase 4's AI takeover).
 //
 // The session is transport-agnostic (transport.ts Link) and sim-agnostic (LockstepSim below; lockstepSim.ts adapts
 // a Galaxy). Nothing here touches the sim unless a session exists. Headless: no DOM / Pixi / Node APIs.
 
-import type { ClockState, DigestMsg, FrameInput, LockstepParams, NetCommand, NetMessage, PeerId, PeerInfo, ResyncMsg, WelcomeMsg } from './protocol';
+import { SAVE_CHUNK_BYTES, type ClockState, type DigestMsg, type FrameInput, type LockstepParams, type NetCommand, type NetMessage, type PeerId, type PeerInfo, type ResyncMsg, type WelcomeMsg, type WireSave } from './protocol';
+import { base64ToBytes, bytesToBase64, gunzipText, gzipString } from '../saveCompression';
 import type { Link } from './transport';
 import type { EncodedArg } from '../sim/player/commandCodec';
 
@@ -44,7 +50,7 @@ export interface LockstepHooks {
     onPeerLeft?(peer: PeerInfo, reason: string): void;
     /** A digest comparison (host: for each client; client: never). */
     onDigest?(frame: number, peer: PeerId, ok: boolean, host: string, client: string): void;
-    /** Host: a resync save was sent to `peer`. Client: a resync save was loaded. */
+    /** Host: a resync save was sent to `peer`. Client: a resync save was loaded. `bytes`: its compressed size. */
     onResync?(frame: number, peer: PeerId, bytes: number): void;
     /** An input arrived from another peer (stats; `now` = wall epoch ms). */
     onInput?(input: FrameInput, now: number): void;
@@ -144,6 +150,16 @@ export class LockstepSession {
     private readonly name: string;
     private pingId = 0;
     private readonly pings = new Map<number, (rttMs: number) => void>();
+    /** Host: links whose messages wait behind a save being compressed for them (sendSave). */
+    private readonly held = new Map<Link, { jobs: number; queue: string[]; chain: Promise<void> }>();
+    private nextSaveId = 1;
+    /** Client: the chunks of the saves announced (SaveChunkMsg), by save id. */
+    private readonly saveChunks = new Map<number, string[]>();
+    /** Client: a save is being inflated and loaded; messages wait in `inbox` meanwhile. */
+    private loading = false;
+    private readonly inbox: NetMessage[] = [];
+    /** Client: join()'s promise, until the welcome is applied. */
+    private welcomeWaiter: { resolve: () => void; reject: (err: unknown) => void } | null = null;
 
     private constructor(role: 'host' | 'client', readonly sim: LockstepSim, opts: LockstepOptions) {
         this.role = role;
@@ -180,26 +196,15 @@ export class LockstepSession {
         const s = new LockstepSession('client', sim, opts);
         s.hostLink = link;
         return new Promise((resolve, reject) => {
-            let welcomed = false;
+            s.welcomeWaiter = { resolve: () => resolve(s), reject };
             link.onMessage = (text) => {
                 const m = s.decode(text);
-                if (m === null) return;
-                if (!welcomed) {
-                    if (m.t !== 'welcome') return;
-                    welcomed = true;
-                    try {
-                        s.onWelcome(m);
-                    } catch (err) {
-                        reject(err);
-                        return;
-                    }
-                    resolve(s);
-                    return;
-                }
-                s.onClientMessage(m);
+                if (m !== null) s.clientReceive(m);
             };
             link.onClose = (reason) => {
-                if (!welcomed) reject(new Error(`link closed before welcome: ${reason}`));
+                const w = s.welcomeWaiter;
+                s.welcomeWaiter = null;
+                w?.reject(new Error(`link closed before welcome: ${reason}`));
                 s.hostClosed(reason);
             };
             s.sendTo(link, { t: 'hello', name: s.name, ...(opts.have !== undefined ? { have: opts.have } : {}) });
@@ -314,7 +319,7 @@ export class LockstepSession {
 
     /** Run the next frame if every peer's input for it is known. */
     step(): boolean {
-        if (!this.active || this.localPeer < 0) return false;
+        if (!this.active || this.localPeer < 0 || this.loading) return false;
         this.sendThrough(this.frame + this.params.inputDelay);
         const f = this.frame;
         const order: PeerState[] = [];
@@ -415,13 +420,19 @@ export class LockstepSession {
         const p = this.addPeer(info, link);
         this.broadcast({ t: 'peerJoined', peer: { ...info } }, p);
         const skipSave = have !== undefined && have.frame === this.frame && have.digest === this.sim.digest();
-        const save = skipSave ? null : this.sim.save(this.clock);
         const welcome: WelcomeMsg = {
-            t: 'welcome', peer: id, frame: this.frame, save, clock: { ...this.clock }, inputs: this.inputsFrom(this.frame),
+            t: 'welcome', peer: id, frame: this.frame, save: null, clock: { ...this.clock }, inputs: this.inputsFrom(this.frame),
             peers: this.peerList(), params: { ...this.params },
         };
-        this.sendTo(link, welcome);
-        this.hooks.log?.(`peer ${id} (${name}) joined from frame ${info.fromFrame}${save !== null ? ` with a ${save.length}-byte save` : ' (same state, no save)'}`);
+        if (skipSave) {
+            this.sendTo(link, welcome);
+            this.hooks.log?.(`peer ${id} (${name}) joined from frame ${info.fromFrame} (same state, no save)`);
+        } else {
+            // The save of this boundary, written now; compressed and sent (then the welcome) while the session runs on.
+            const text = this.sim.save(this.clock);
+            const frame = this.frame;
+            this.sendSave(link, text, (save) => ({ ...welcome, save }), (save) => this.hooks.log?.(`peer ${id} (${name}) joined from frame ${info.fromFrame} with the save of frame ${frame} (${text.length} characters, ${save.bytes} bytes compressed)`));
+        }
         this.hooks.onPeerJoined?.({ ...info });
         return p;
     }
@@ -497,11 +508,50 @@ export class LockstepSession {
         if (p.link === null) return;
         p.epoch++;
         p.digests.clear();
-        const save = this.sim.save(this.clock);
-        const msg: ResyncMsg = { t: 'resync', frame: this.frame, save, clock: { ...this.clock }, inputs: this.inputsFrom(this.frame), epoch: p.epoch };
-        this.sendTo(p.link, msg);
+        const text = this.sim.save(this.clock);
+        const frame = this.frame;
+        const msg: Omit<ResyncMsg, 'save'> = { t: 'resync', frame, clock: { ...this.clock }, inputs: this.inputsFrom(frame), epoch: p.epoch };
         this.stats.resyncs++;
-        this.hooks.onResync?.(this.frame, p.info.id, save.length);
+        this.sendSave(p.link, text, (save) => ({ ...msg, save }), (save) => this.hooks.onResync?.(frame, p.info.id, save.bytes));
+    }
+
+    /**
+     * Host: send `text` (a save) to `link` gzip-compressed, as SaveChunkMsg pieces, then `message(save)`, and call
+     * `sent`. The compression is asynchronous: whatever is sent to the link meanwhile is held and follows the save, in
+     * order. A failure closes the link (the client cannot go on without the save).
+     */
+    private sendSave(link: Link, text: string, message: (save: WireSave) => NetMessage, sent?: (save: WireSave) => void): void {
+        let h = this.held.get(link);
+        if (h === undefined) {
+            h = { jobs: 0, queue: [], chain: Promise.resolve() };
+            this.held.set(link, h);
+        }
+        const hold = h;
+        hold.jobs++;
+        const id = this.nextSaveId++;
+        let pending: string | null = text;
+        hold.chain = hold.chain
+            .then(async () => {
+                const gz = new Uint8Array(await (await gzipString(pending!)).arrayBuffer());
+                pending = null;
+                const chunks = Math.max(1, Math.ceil(gz.length / SAVE_CHUNK_BYTES));
+                for (let i = 0; i < chunks; i++) {
+                    this.sendNow(link, JSON.stringify({ t: 'saveChunk', id, index: i, data: bytesToBase64(gz.subarray(i * SAVE_CHUNK_BYTES, (i + 1) * SAVE_CHUNK_BYTES)) } satisfies NetMessage));
+                }
+                const save: WireSave = { id, chunks, bytes: gz.length };
+                this.sendNow(link, JSON.stringify(message(save)));
+                sent?.(save);
+            })
+            .catch((err: unknown) => {
+                pending = null;
+                this.hooks.log?.(`a save could not be sent: ${err instanceof Error ? err.message : String(err)}`);
+                link.close('save failed');
+            })
+            .finally(() => {
+                if (--hold.jobs > 0) return;
+                this.held.delete(link);
+                for (const t of hold.queue) link.send(t);
+            });
     }
 
     private dropPeer(p: PeerState, reason: string): void {
@@ -536,17 +586,87 @@ export class LockstepSession {
     // Client side
     // -----------------------------------------------------------------------------------------------------------
 
-    private onWelcome(m: WelcomeMsg): void {
+    /** Client: every message from the host. A save's chunks are kept; while a save loads, messages wait. */
+    private clientReceive(m: NetMessage): void {
+        if (this.loading) {
+            this.inbox.push(m);
+            return;
+        }
+        if (m.t === 'saveChunk') {
+            let pieces = this.saveChunks.get(m.id);
+            if (pieces === undefined) this.saveChunks.set(m.id, (pieces = []));
+            pieces[m.index] = m.data;
+            return;
+        }
+        if (this.localPeer < 0) {
+            // Before the welcome nothing else concerns this peer.
+            if (m.t !== 'welcome') return;
+            this.withSave(m.save, (text) => this.onWelcome(m, text), (err) => {
+                const w = this.welcomeWaiter;
+                this.welcomeWaiter = null;
+                if (err === undefined) w?.resolve();
+                else w?.reject(err);
+            });
+            return;
+        }
+        if (m.t === 'resync') {
+            this.withSave(m.save, (text) => this.onResync(m, text!), (err) => {
+                if (err === undefined) return;
+                this.hooks.log?.(`resync: the host's save could not be loaded: ${err instanceof Error ? err.message : String(err)}`);
+                this.hostLink?.close('resync save could not be loaded');
+            });
+            return;
+        }
+        this.onClientMessage(m);
+    }
+
+    /**
+     * Client: `apply` the save `wire` names (its text; null: no save) — inflated from its chunks asynchronously, with the
+     * frames and the other messages held until it is applied — then `done` (with the error if it failed).
+     */
+    private withSave(wire: WireSave | null, apply: (text: string | null) => void, done: (err?: unknown) => void): void {
+        if (wire === null) {
+            try {
+                apply(null);
+            } catch (err) {
+                done(err);
+                return;
+            }
+            done();
+            return;
+        }
+        const pieces = this.saveChunks.get(wire.id);
+        this.saveChunks.delete(wire.id);
+        this.loading = true;
+        void (async () => {
+            const got = pieces === undefined ? 0 : pieces.filter((x) => x !== undefined).length;
+            if (pieces === undefined || got !== wire.chunks || pieces.length !== wire.chunks) throw new Error(`save ${wire.id}: ${got} of ${wire.chunks} chunks arrived`);
+            const blob = new Blob(pieces.map((b64) => base64ToBytes(b64)));
+            pieces.length = 0;
+            if (blob.size !== wire.bytes) throw new Error(`save ${wire.id}: ${blob.size} of ${wire.bytes} bytes arrived`);
+            apply(await gunzipText(blob));
+        })()
+            .then(
+                () => done(),
+                (err: unknown) => done(err),
+            )
+            .finally(() => {
+                this.loading = false;
+                while (!this.loading && this.inbox.length > 0) this.clientReceive(this.inbox.shift()!);
+            });
+    }
+
+    private onWelcome(m: WelcomeMsg, save: string | null): void {
         this.localPeer = m.peer;
         this.params = { ...m.params };
         for (const info of m.peers) this.addPeer({ ...info }, null);
-        if (m.save !== null) this.sim.load(m.save);
+        if (save !== null) this.sim.load(save);
         this.frame = m.frame;
         this.clock = { ...m.clock };
         for (const input of m.inputs) this.storeInput(input);
         const me = this.peers.get(m.peer)!;
         this.lastSent = me.info.fromFrame - 1;
-        this.hooks.log?.(`joined as peer ${m.peer} at frame ${m.frame}${m.save !== null ? ` (loaded a ${m.save.length}-byte save)` : ''}, input from frame ${me.info.fromFrame}`);
+        this.hooks.log?.(`joined as peer ${m.peer} at frame ${m.frame}${m.save !== null && save !== null ? ` (loaded a save of ${save.length} characters, ${m.save.bytes} bytes compressed)` : ''}, input from frame ${me.info.fromFrame}`);
     }
 
     private onClientMessage(m: NetMessage): void {
@@ -570,9 +690,6 @@ export class LockstepSession {
                 this.hooks.onPeerLeft?.({ ...p.info }, 'left');
                 return;
             }
-            case 'resync':
-                this.onResync(m);
-                return;
             case 'ping':
                 if (this.hostLink !== null) this.sendTo(this.hostLink, { t: 'pong', id: m.id, at: m.at });
                 return;
@@ -588,8 +705,8 @@ export class LockstepSession {
         }
     }
 
-    private onResync(m: ResyncMsg): void {
-        this.sim.load(m.save);
+    private onResync(m: ResyncMsg, save: string): void {
+        this.sim.load(save);
         const from = this.frame;
         this.frame = m.frame;
         this.clock = { ...m.clock };
@@ -598,7 +715,7 @@ export class LockstepSession {
         for (const input of m.inputs) this.storeInput(input);
         this.stats.resyncs++;
         this.hooks.log?.(`resync: loaded the host's save at frame ${m.frame} (was at ${from})`);
-        this.hooks.onResync?.(m.frame, this.localPeer, m.save.length);
+        this.hooks.onResync?.(m.frame, this.localPeer, m.save.bytes);
     }
 
     private hostClosed(reason: string): void {
@@ -629,6 +746,17 @@ export class LockstepSession {
     }
 
     private sendText(link: Link, text: string): void {
+        const hold = this.held.get(link);
+        if (hold === undefined) this.sendNow(link, text);
+        else {
+            // Behind a save being compressed for this link (sendSave): sent after it.
+            this.stats.messagesSent++;
+            this.stats.bytesSent += text.length;
+            hold.queue.push(text);
+        }
+    }
+
+    private sendNow(link: Link, text: string): void {
         this.stats.messagesSent++;
         this.stats.bytesSent += text.length;
         link.send(text);
