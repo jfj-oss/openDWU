@@ -17,7 +17,7 @@ import { SimDriver, schedulerState, type SimView } from '../sim/tick/scheduler';
 import { drainCommandBoundary } from '../sim/tick/commandBoundary';
 import { issuePlayerCommand, loggedSimViewRect, noteSimSpeed, noteSimViewRect, pendingPlayerCommands } from '../sim/player/playerCommands';
 import type { PlayerOpName } from '../sim/player/playerOps';
-import { serializeGame } from '../sim/save/gameSave';
+import { serializeGame, type GameSaveExtras } from '../sim/save/gameSave';
 import { serializeGameBlob } from '../saveData';
 import { galaxyExternals, saveClassPrototypes } from '../sim/save/galaxySave';
 import { stateDigest } from '../sim/tick/digest';
@@ -511,8 +511,8 @@ export class SimHost {
 
     /** save() as a Blob of the text's UTF-8 bytes (saveData.ts serializeGameBlob): what the worker sends — the text is
      *  never one string in the worker's heap, and the Blob reaches the page by reference, not as a copy. */
-    saveBlob(): Blob {
-        return this.saveWith(serializeGameBlob);
+    saveBlob(extras?: GameSaveExtras): Blob {
+        return this.saveWith((g, t, o) => serializeGameBlob(g, t, o, extras));
     }
 
     private saveWith<T>(serialize: (game: Game, time: GalaxyTime, startOptions: StartGameOptions) => T): T {
