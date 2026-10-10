@@ -918,7 +918,9 @@ the welcome), and they play on; the host's command for the AI-run seat must be r
 must apply on both, control must be back by the rejoined peer's first input frame, and the final digests must match.
 `--worker`: the client (before and after the rejoin) steps through `SimHost.tick` and sends its orders as the main
 thread's `CommandMessage`s (`SimHost.command`); `--latency N` (one-way ms on every link, real-time pacing) and
-`--adaptive`.
+`--adaptive`. `--phase4 --ws` runs the same story across two processes over WebSocket (roles `p4host` / `p4client`, which
+can also be started by hand on two machines: `--role p4host --listen 0.0.0.0 --port N`, `--role p4client --url
+ws://host:N`); both stop at `--end` (default frame 3000) and print their digests.
 
 | Run (seed 1, 150 stars, 4 empires, 4x) | Result |
 |---|---|
@@ -927,17 +929,22 @@ thread's `CommandMessage`s (`SimHost.command`); `--latency N` (one-way ms on eve
 | `--phase4 --worker --idle` | OK: `53a898142690d93f` on both (the idle seat: a different game, as it should be) |
 | `--phase4 --latency 100` (200 ms round trips), fixed delay 4 | OK; the host stalled 928 times (19.0 s) |
 | same with `--adaptive` | OK; delay 4 → 9 frames at frame 16, then steady; 28 stalls (1.0 s, mostly the rejoin's save load) |
+| `--phase4 --ws --worker` (two processes, WebSocket on localhost) | OK: `0f94f0e2daf617c7` at frame 3000 on both; 16 checks, 0 mismatches; the AI ran the seat from frame 398, back at 2404 = the rejoined peer's first input frame |
+| **Linux x64 host ↔ macOS arm64 client over Tailscale** (`p4host` under this PC's Electron 44.4.5 as Node, in-thread; `p4client` under the Mac app's Electron 44.4.5 as Node, worker mode; a temp folder on the Mac, removed after) | OK: **`e3bf9b50290083db` at frame 3000 on both** (Electron's V8, so not Node's digest: §9); 16 checks, 0 mismatches; the drop, the AI takeover, the rejoin with a 0.67 MB save and the return at frame 2404 as above |
 | `scripts/lockstep-demo.mjs` (WebSocket, Phase 3 scenario) | OK: digests match at frame 3780, 73 checks, the injected desync repaired, the joiner 10/10 |
 
 **Two desktop apps on this PC** through the real UI (each on its own virtual Wayland compositor, real GPU through
 ANGLE / Vulkan, profiles via `DWU_USER_DATA_DIR`; menu → Multiplayer → lobby → Start; seed 4242, 120 stars, 2x; orders
 from both sides every 2 s; digests compared while paused at the same game time):
 
-| Scenario | Host worker, client in-thread (rejoins in the worker) | Host in-thread, client worker (rejoins in-thread) |
-|---|---|---|
-| S1 a worker-mode session, 36 s with renames, waypoints and a refused hijack | `b59b344e4c4f3ec9` at 54,016 game ms on both; 37 checks, 0 mismatches | `79dc2ef04097c962` at 71,266 ms; 37 checks, 0 mismatches |
-| S2 the client's app is killed; the host clicks Continue Without Them; 10 s idle; the client restarts and rejoins with Join Game (by token) | `9517d7de8a66483a` at 97,666 ms; 56 checks, 0 mismatches | `c2f64f21a4c377ee` at 125,633 ms; 53 checks, 0 mismatches |
-| S3 the client's network drops; the host clicks AI Takes Over; 25 s of AI; the client clicks Rejoin | `78cb16375975a7cd` at 164,000 ms; 74 checks, 0 mismatches; the AI seat back to the human on both | `48feb26544404ce4` at 170,200 ms; 70 checks, 0 mismatches |
+| Scenario | Host worker, client in-thread (rejoins in the worker) | Host in-thread, client worker (rejoins in-thread) | Both in the worker, adaptive delay on |
+|---|---|---|---|
+| S1 a worker-mode session, 36 s with renames, waypoints and a refused hijack | `b59b344e4c4f3ec9` at 54,016 game ms on both; 37 checks, 0 mismatches | `79dc2ef04097c962` at 71,266 ms; 37 checks, 0 mismatches | `3d376c7adcbb41e0` at 53,566 ms; 37 checks, 0 mismatches; delay 4 → 3 |
+| S2 the client's app is killed; the host clicks Continue Without Them; 10 s idle; the client restarts and rejoins with Join Game (by token) | `9517d7de8a66483a` at 97,666 ms; 56 checks, 0 mismatches | `c2f64f21a4c377ee` at 125,633 ms; 53 checks, 0 mismatches | `fc2c4deadc165c44` at 97,216 ms; 56 checks, 0 mismatches |
+| S3 the client's network drops; the host clicks AI Takes Over; 25 s of AI; the client clicks Rejoin | `78cb16375975a7cd` at 164,000 ms; 74 checks, 0 mismatches; the AI seat back to the human on both | `48feb26544404ce4` at 170,200 ms; 70 checks, 0 mismatches | `1f1d287d206e4262` at 162,966 ms; 74 checks, 0 mismatches |
+
+(An in-thread app needs its window on screen: a hidden or occluded window gets no animation frames, its sim stops,
+and the session waits for it. The worker keeps stepping.)
 
 Also: `npm run repin -- --check --workers 1` = 0; `npm run typecheck`; the sim-worker, replica and desktop-shell vitest
 files (25 files, 172 tests) pass.

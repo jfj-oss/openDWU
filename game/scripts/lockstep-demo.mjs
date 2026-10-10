@@ -94,6 +94,35 @@ if (role === 'parent') {
     });
     console.log(`bundled in ${(performance.now() - t0).toFixed(0)} ms; game: seed ${cfg.seed}, ${cfg.stars} stars, ${cfg.empires} empires; ${cfg.minutes} game minutes at ${cfg.speed}x = ${endFrame} frames; input delay ${cfg.delay}, digest every ${cfg.digest} frames`);
 
+    if (arg('phase4', false) === true && arg('ws', false) === true) {
+        // Phase 4 across two processes over WebSocket (p4host / p4client below).
+        let port = null;
+        const res = {};
+        const runP4 = (who, extra) => new Promise((resolveRun) => {
+            const child = spawn(process.execPath, [self, '--role', who, '--bundle', bundleDir, ...process.argv.slice(2), ...extra], { stdio: ['ignore', 'pipe', 'inherit'] });
+            let buf = '';
+            child.stdout.on('data', (d) => {
+                buf += d;
+                let i;
+                while ((i = buf.indexOf('\n')) >= 0) {
+                    const l = buf.slice(0, i);
+                    buf = buf.slice(i + 1);
+                    if (l.startsWith('PORT ')) port = Number(l.slice(5));
+                    else if (l.startsWith('RESULT ')) res[who] = JSON.parse(l.slice(7));
+                    console.log(`[${who}] ${l}`);
+                }
+            });
+            child.on('exit', resolveRun);
+        });
+        const hostDone = runP4('p4host', []);
+        while (port === null) await sleep(10);
+        await runP4('p4client', ['--port', String(port)]);
+        await hostDone;
+        const h = res.p4host, c = res.p4client;
+        const ok = h !== undefined && c !== undefined && h.digest === c.digest && h.frame === c.frame && h.bad === 0 && !h.seatAi && !c.seatAi && h.shipName === c.shipName && h.shipName.startsWith('rejoined @');
+        console.log(`phase4 over WebSocket: host ${h?.digest} / client ${c?.digest} at frame ${h?.frame} -> ${ok ? 'RESULT: OK' : 'RESULT: FAILED'}`);
+        exit(ok ? 0 : 1);
+    }
     if (arg('phase4', false) === true) {
         // Phase 4 (docs/MULTIPLAYER.md §14): worker mode, a drop, AI takeover or idle, and a rejoin — in one process.
         const code = await new Promise((r) => {
@@ -777,4 +806,151 @@ if (role === 'phase4') {
     out(ok ? 'RESULT: OK' : 'RESULT: FAILED');
     hostMp.close('demo over');
     process.exit(ok ? 0 : 1);
+}
+
+// ---------------------------------------------------------------------------------------------------- p4host / p4client
+// The Phase 4 scenario across processes (or machines) over WebSocket: --phase4 --ws runs both here; by hand:
+//   host:   node lockstep-demo.mjs --role p4host --bundle <dir> [--listen 0.0.0.0] [--port 47620] [--idle]
+//   client: node lockstep-demo.mjs --role p4client --bundle <dir> --url ws://<host>:<port> [--worker]
+// The client plays, drops its link at frame 360, reconnects after --rejoin-after s with no game (the save comes), and
+// both stop at --end; each prints its digest there (RESULT).
+if (role === 'p4host' || role === 'p4client') {
+    const { MultiplayerGame } = await load('multiplayerGame');
+    const { slotHandoff } = await load('lobby');
+    const { SimHost } = await load('simHost');
+    const { setLockstepStepper } = await load('seam');
+    const { humanSeats, isAiSeat } = await load('humans');
+    const FR = 1000 / 60;
+    const END = Number(arg('end', 3000));
+    const HOLD = END - 600;
+    const start = {
+        kind: 'new', startOptions, createExtras: null, scenario: null,
+        players: [{ slot: 0, name: 'Host', humanIndex: 0 }, { slot: 1, name: 'Client', humanIndex: 1 }],
+        params: { inputDelay: cfg.delay, digestInterval: cfg.digest }, clock: { speed: cfg.speed, paused: false },
+    };
+    const opts = (slot, extra = {}) => ({
+        start, slot, name: slot === 0 ? 'Host' : 'Client', gameData, startOptions,
+        onStatus: (st) => out(`status ${st.kind}`), onDropped: (op, reason) => out(`dropped ${op}: ${reason}`), log: (m) => out(m), ...extra,
+    });
+    if (role === 'p4host') {
+        const aiTakeover = arg('idle', false) !== true;
+        const game = buildGame();
+        makeHumans(game.galaxy);
+        // A connection is handed over at once (a link drops what arrives before it has a handler): the first is the
+        // lobby player, a later one a rejoin.
+        let mp = null;
+        let onConn = null;
+        const server = await listenWebSocket({ port: Number(arg('port', 0)), host: String(arg('listen', '127.0.0.1')) }, (socket) => {
+            const link = wrapSocket(socket);
+            if (mp === null) mp = MultiplayerGame.host(game, new GalaxyTime(), new Map([[1, slotHandoff(link, 1, 'Client')]]), opts(0));
+            else onConn(link);
+        });
+        out(`PORT ${server.port}`);
+        while (mp === null) await sleep(5);
+        const s = mp.session;
+        let checks = 0, bad = 0;
+        const orig = s.hooks.onDigest;
+        s.hooks.onDigest = (f, p, ok, a, b) => {
+            checks++;
+            if (!ok) bad++;
+            orig?.(f, p, ok, a, b);
+        };
+        const seat = humanSeats(game.galaxy)[1];
+        let absentAt = -1, decided = false, aiFrom = -1, returnedAt = -1, rejoinFrom = -1, hijack = false;
+        while (s.frame < END) {
+            const f = s.frame;
+            if (absentAt < 0 && mp.currentStatus().kind === 'absent') absentAt = f;
+            if (absentAt >= 0 && !decided && f >= absentAt + 30) {
+                decided = true;
+                mp.decideAbsent(1, aiTakeover);
+                out(`frame ${f}: the host decides: ${aiTakeover ? 'AI takes over' : 'idle'}`);
+            }
+            const ai = isAiSeat(game.galaxy, seat);
+            if (ai && aiFrom < 0) aiFrom = f - 1;
+            if (!ai && aiFrom >= 0 && returnedAt < 0) returnedAt = f - 1;
+            if (ai && !hijack && f > aiFrom + 30) {
+                hijack = true;
+                issuePlayerCommand(game.galaxy, seat, 'renameShip', [someShips(seat, 1)[0], 'host hijack']);
+            }
+            onConn ??= (c) => {
+                const pick = mp.rejoinSlot('Client', undefined, new Map());
+                if ('slot' in pick) {
+                    mp.acceptRejoin(slotHandoff(c, pick.slot, 'Client'), pick.slot);
+                    out(`frame ${s.frame}: a rejoin for slot ${pick.slot}`);
+                } else c.close('refused');
+            };
+            const present = mp.seats().find((x) => x.slot === 1)?.present === true;
+            if (rejoinFrom < 0 && absentAt >= 0 && present) rejoinFrom = s.peerList().find((p) => p.leftFrom === null && p.id !== 0)?.fromFrame ?? -1;
+            // Hold before the last stretch until the player is back (they finish together).
+            if (f >= HOLD && !present) {
+                await sleep(20);
+                continue;
+            }
+            mp.stepper.tick(FR, mp.sim.time);
+            await yieldIo();
+        }
+        await sleep(1500); // the client's digest of frame END
+        const res = { frame: s.frame, digest: mp.sim.digest(), gameMs: game.galaxy.nowMs, checks, bad, aiFrom, returnedAt, rejoinFrom, seatAi: isAiSeat(game.galaxy, seat), shipName: someShips(seat, 1)[0].name, delay: s.params.inputDelay };
+        out(`RESULT ${JSON.stringify(res)}`);
+        mp.close('demo over');
+        server.close();
+        process.exit(0);
+    }
+    // p4client
+    const url = String(arg('url', `ws://127.0.0.1:${arg('port', 0)}`));
+    const workerMode = arg('worker', false) === true;
+    const peerOf = (mp) => {
+        const p = { mp, host: null };
+        p.wire = (g, t) => {
+            if (!workerMode) return;
+            p.host?.dispose();
+            p.host = new SimHost(g, t, mp.sim.currentStartOptions ?? startOptions);
+            setLockstepStepper(g.galaxy, mp.stepper);
+        };
+        return p;
+    };
+    const tick = (p) => (p.host !== null ? p.host.tick(FR) : p.mp.stepper.tick(FR, p.mp.sim.time));
+    const game = buildGame();
+    makeHumans(game.galaxy);
+    let link = await connectWebSocket(url);
+    let peer = null;
+    const mp1 = await MultiplayerGame.join(game, new GalaxyTime(), link, opts(1, { onGameReplaced: (g, t) => peer?.wire(g, t) }));
+    peer = peerOf(mp1);
+    peer.wire(mp1.sim.game, mp1.sim.time);
+    out(`joined (${workerMode ? 'worker mode: SimHost.tick' : 'in-thread'})`);
+    while (peer.mp.session.frame < 360) {
+        const f = peer.mp.session.frame;
+        if ([60, 120, 240].includes(f) && peer.acted !== f) {
+            peer.acted = f;
+            const me = humanSeats(peer.mp.sim.galaxy)[1];
+            issuePlayerCommand(peer.mp.sim.galaxy, me, 'renameShip', [someShips(me, 1)[0], `client @${f}`]);
+        }
+        tick(peer);
+        await yieldIo();
+    }
+    link.close('network drop');
+    out(`frame ${peer.mp.session.frame}: dropped the link; rejoining in ${arg('rejoin-after', 4)} s`);
+    await sleep(Number(arg('rejoin-after', 4)) * 1000);
+    link = await connectWebSocket(url);
+    peer = null;
+    const mp2 = await MultiplayerGame.join(null, null, link, opts(1, { onGameReplaced: (g, t) => peer?.wire(g, t) }));
+    peer = peerOf(mp2);
+    peer.wire(mp2.sim.game, mp2.sim.time);
+    const at = mp2.session.frame;
+    out(`rejoined at frame ${at}`);
+    let renamed = false;
+    while (mp2.session.active && mp2.session.frame < END) {
+        if (!renamed && mp2.session.frame > at + 30) {
+            renamed = true;
+            const me = humanSeats(mp2.sim.galaxy)[1];
+            issuePlayerCommand(mp2.sim.galaxy, me, 'renameShip', [someShips(me, 1)[0], `rejoined @${mp2.session.frame}`]);
+        }
+        tick(peer);
+        await yieldIo();
+    }
+    const seat = humanSeats(mp2.sim.galaxy)[1];
+    out(`RESULT ${JSON.stringify({ frame: mp2.session.frame, digest: mp2.sim.digest(), gameMs: mp2.sim.galaxy.nowMs, seatAi: isAiSeat(mp2.sim.galaxy, seat), shipName: someShips(seat, 1)[0].name, worker: workerMode })}`);
+    await sleep(1000);
+    link.close('done');
+    process.exit(0);
 }
