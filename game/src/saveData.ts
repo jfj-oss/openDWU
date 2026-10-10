@@ -28,9 +28,10 @@ export function serializeGameBlob(game: Game, time: GalaxyTime, startOptions: St
  * The save of a game: serializeGame's text, gzip-compressed (saveCompression.ts). The text is written now, at the call
  * (synchronously: the save is of the game as it is at this boundary, and a throw is the caller's), then compressed
  * asynchronously — the game may run on meanwhile. Each UTF-8 chunk is dropped once the compressor has taken it.
+ * `onProgress`: the fraction of the text compressed so far (gzipParts), for a slow save's progress.
  */
-export function serializeGameSave(game: Game, time: GalaxyTime, startOptions: StartGameOptions, extras?: GameSaveExtras): Promise<Blob> {
-    return gzipParts(serializeGameChunks(game, time, startOptions, undefined, extras));
+export function serializeGameSave(game: Game, time: GalaxyTime, startOptions: StartGameOptions, extras?: GameSaveExtras, onProgress?: (fraction: number) => void): Promise<Blob> {
+    return gzipParts(serializeGameChunks(game, time, startOptions, undefined, extras), onProgress);
 }
 
 /** The save as a gzip Blob (export: a .dwusave file is compressed): a compressed Blob as it is, else compressed now. */

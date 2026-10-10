@@ -16,10 +16,12 @@ import type { GameSaveExtras } from '../sim/save/gameSave';
 import { desktopSimProcessBridge, openDesktopSimEndpoint, WebWorkerEndpoint, type SimEndpoint } from './simEndpoint';
 
 /**
- * How long a save may take in the worker before it is given up (real ms). A 100k-habitat galaxy saves in ~5 s; a worker
- * that has not answered after this runs no frames at all (hung, or gone without a word — killed for its memory): it is
- * stopped as the reply backstop stops one (clientCore.ts), so the save fails with a message and the restart is offered
- * instead of the game waiting forever.
+ * How long a save may go without a sign from the worker before it is given up (real ms): counted from the request, and
+ * again from each saveProgress the worker posts while it compresses (protocol.ts), so a slow save is never cut off
+ * while it is going on. The longest silent part is the text, written synchronously (a 4000-star late game: ~9-13 s
+ * on the dev machine); a worker silent for this long on a save is hung, or gone without a word (killed for its
+ * memory): it is stopped as the reply backstop stops one (clientCore.ts), so the save fails with a message and the
+ * restart is offered instead of the game waiting forever.
  */
 export const SAVE_TIMEOUT_MS = 180000;
 
@@ -70,7 +72,7 @@ function isSideMessage(m: FromWorker): m is MpSideMessage {
 export class SimWorkerClient {
     /** save / digest / debug / commandLog requests waiting for their answer (rejected when the worker stops or the
      *  client is disposed). */
-    private readonly waiting = new Map<number, { resolve: (m: FromWorker) => void; reject: (err: Error) => void }>();
+    private readonly waiting = new Map<number, { resolve: (m: FromWorker) => void; reject: (err: Error) => void; progress?: (fraction: number) => void }>();
     private nextRequest = 1;
     private eventHandler: ((e: WorkerEvent, resolve: (a: unknown) => unknown) => void) | null = null;
     private disposed = false;
@@ -273,6 +275,9 @@ export class SimWorkerClient {
                 // apply it now, or the messages pile up until the window is shown again (renderFramesStalled).
                 if (this.loopTime !== null && this.core.renderFramesStalled(FRAMES_STALLED_MS)) this.core.frame(this.loopTime, true);
                 return;
+            case 'saveProgress':
+                this.waiting.get(m.id)?.progress?.(m.fraction);
+                return;
             case 'saved':
             case 'digest':
             case 'debug':
@@ -344,8 +349,13 @@ export class SimWorkerClient {
     }
 
     /** Post a request and wait for its answer. `timeoutMs`: no answer by then stops the worker (stop: every waiting
-     *  request, this one too, rejects). */
-    private request<T extends FromWorker>(m: { type: 'save' | 'digest' | 'commandLog'; extras?: GameSaveExtras } | Omit<DebugRequest, 'id'>, timeoutMs?: number): Promise<T> {
+     *  request, this one too, rejects); a progress message for the request (saveProgress) starts that time again and
+     *  goes to `onProgress`. */
+    private request<T extends FromWorker>(
+        m: { type: 'save' | 'digest' | 'commandLog'; extras?: GameSaveExtras } | Omit<DebugRequest, 'id'>,
+        timeoutMs?: number,
+        onProgress?: (fraction: number) => void,
+    ): Promise<T> {
         const id = this.nextRequest++;
         return new Promise<T>((resolve, reject) => {
             if (this.disposed || this.stopped !== null) {
@@ -356,7 +366,23 @@ export class SimWorkerClient {
             const done = (): void => {
                 if (timer !== undefined) clearTimeout(timer);
             };
+            const arm = (): void => {
+                if (timeoutMs === undefined) return;
+                done();
+                timer = setTimeout(() => {
+                    if (!this.waiting.has(id)) return;
+                    this.stop(`no answer to the ${m.type} request after ${Math.round(timeoutMs / 1000)} s: it is not running`);
+                }, timeoutMs);
+            };
             this.waiting.set(id, {
+                progress: (fraction) => {
+                    arm();
+                    try {
+                        onProgress?.(fraction);
+                    } catch (err) {
+                        console.warn(err);
+                    }
+                },
                 resolve: (r) => {
                     done();
                     resolve(r as T);
@@ -366,12 +392,7 @@ export class SimWorkerClient {
                     reject(e);
                 },
             });
-            if (timeoutMs !== undefined) {
-                timer = setTimeout(() => {
-                    if (!this.waiting.has(id)) return;
-                    this.stop(`no answer to the ${m.type} request after ${Math.round(timeoutMs / 1000)} s: it is not running`);
-                }, timeoutMs);
-            }
+            arm();
             this.worker.postMessage({ ...m, id } as ToWorker);
         });
     }
@@ -460,13 +481,14 @@ export class SimWorkerClient {
 
     /**
      * serializeGame text of the authoritative game, as a Blob of its UTF-8 bytes (saveData.ts; null when the worker could
-     * not save). No answer within `timeoutMs` (SAVE_TIMEOUT_MS): the worker is stopped (the restart is offered) and the
-     * save fails — never a wait without end.
+     * not save). No answer within `timeoutMs` (SAVE_TIMEOUT_MS) of the request or of its last progress: the worker is
+     * stopped (the restart is offered) and the save fails — never a wait without end. `onProgress`: the fraction of the
+     * save's text compressed so far, as the worker reports it.
      */
-    async save(timeoutMs = SAVE_TIMEOUT_MS, extras?: GameSaveExtras): Promise<Blob | null> {
+    async save(timeoutMs = SAVE_TIMEOUT_MS, extras?: GameSaveExtras, onProgress?: (fraction: number) => void): Promise<Blob | null> {
         let r: Extract<FromWorker, { type: 'saved' }>;
         try {
-            r = await this.request<Extract<FromWorker, { type: 'saved' }>>(extras === undefined ? { type: 'save' } : { type: 'save', extras }, timeoutMs);
+            r = await this.request<Extract<FromWorker, { type: 'saved' }>>(extras === undefined ? { type: 'save' } : { type: 'save', extras }, timeoutMs, onProgress);
         } catch (err) {
             // The worker stopped or the game was closed before it answered: no save (as when its save fails).
             console.error(`sim worker save failed: ${err instanceof Error ? err.message : String(err)}`);

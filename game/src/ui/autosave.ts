@@ -48,8 +48,8 @@ export async function writeAutosave(name: string, text: SaveText, storage: SaveS
 }
 
 export interface AutosaveOptions {
-    /** Serialize the running game (null when saving is unavailable). */
-    serialize: () => SaveText | null | Promise<SaveText | null>;
+    /** Serialize the running game (null when saving is unavailable); `onProgress` is told the fraction done. */
+    serialize: (onProgress?: (fraction: number) => void) => SaveText | null | Promise<SaveText | null>;
     /** True while the save must wait (the Game Options panel is open). */
     isBlocked?: () => boolean;
 }
@@ -57,6 +57,8 @@ export interface AutosaveOptions {
 interface Installed {
     timer: ReturnType<typeof setInterval>;
     idle: number | null;
+    /** An autosave is on its way (from its idle callback until its text is stored or it failed): no other starts. */
+    saving: boolean;
     disposed: boolean;
     /** The last autosave this game view wrote (stored), for the sim-worker restart (simworker/restart.ts). */
     lastWritten: { name: string; savedAt: number } | null;
@@ -83,11 +85,24 @@ export function installAutosave(opts: AutosaveOptions): void {
     removeAutosave();
     // dateTime_6: DateTime.MinValue until the first check with autosave on.
     let last: number | null = null;
-    const state: Installed = { timer: 0 as unknown as ReturnType<typeof setInterval>, idle: null, disposed: false, lastWritten: null };
+    const state: Installed = { timer: 0 as unknown as ReturnType<typeof setInterval>, idle: null, saving: false, disposed: false, lastWritten: null };
 
+    // One autosave at a time: the check runs every 5 s, and a big galaxy's save takes longer than that (a 4000-star
+    // late game: ~10-15 s in the worker). Without this every check while one was on its way started another — a save
+    // request every 5 s, each a full serialize that starved the compression of the ones before, until the worker was
+    // stopped for not answering (and its heap swung by GBs).
     async function save(): Promise<void> {
         state.idle = null;
         if (state.disposed) return;
+        state.saving = true;
+        try {
+            await saveOnce();
+        } finally {
+            state.saving = false;
+        }
+    }
+
+    async function saveOnce(): Promise<void> {
         const slot = nextAutosaveSlot(lastSlot);
         const name = autosaveName(slot);
         // Say it is happening first: in-thread, serializing a big galaxy blocks the page for seconds, so the notice is
@@ -99,7 +114,14 @@ export function installAutosave(opts: AutosaveOptions): void {
         let failed = false;
         try {
             // Sim worker mode: the worker serializes (main.ts); it answers or is stopped (SimWorkerClient.save's timeout).
-            text = await opts.serialize();
+            let shown = -1;
+            text = await opts.serialize((fraction) => {
+                // A slow save shows that it is going on (the worker's compression progress).
+                const pct = Math.floor(Math.max(0, Math.min(1, fraction)) * 100);
+                if (pct === shown || state.disposed) return;
+                shown = pct;
+                showToast(`Autosaving… ${pct}%`, document.body, 60000);
+            });
         } catch (err) {
             console.error('Autosave failed', err);
             failed = true;
@@ -121,7 +143,7 @@ export function installAutosave(opts: AutosaveOptions): void {
         lastSlot = slot;
         console.info(`[autosave] ${name}: saved ${saveTextMB(text).toFixed(1)} MB (gzip) in ${ms.toFixed(0)} ms`);
         const savedAt = Date.now();
-        void writeAutosave(name, text, window.localStorage as unknown as SaveStorage, defaultSaveTextStore(), new Date(savedAt).toISOString()).then(
+        await writeAutosave(name, text, window.localStorage as unknown as SaveStorage, defaultSaveTextStore(), new Date(savedAt).toISOString()).then(
             () => {
                 state.lastWritten = { name, savedAt };
                 showToast(`Autosaved (${name})`);
@@ -135,7 +157,7 @@ export function installAutosave(opts: AutosaveOptions): void {
 
     function check(): void {
         const interval = autosaveIntervalMs(getSettings());
-        if (interval === null || state.idle !== null) return;
+        if (interval === null || state.idle !== null || state.saving) return;
         if (opts.isBlocked?.()) return;
         const now = Date.now();
         if (last === null) last = now;

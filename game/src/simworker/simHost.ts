@@ -595,9 +595,10 @@ export class SimHost {
 
     /** save() as a gzip Blob of the text's UTF-8 bytes (saveData.ts serializeGameSave): what the worker sends — the text
      *  is never one string in the worker's heap, and the Blob reaches the page by reference, not as a copy. The text is
-     *  written synchronously, at this boundary (a throw is thrown here); only the compression is asynchronous. */
-    saveBlob(extras?: GameSaveExtras): Promise<Blob> {
-        return this.saveWith((g, t, o) => serializeGameSave(g, t, o, extras));
+     *  written synchronously, at this boundary (a throw is thrown here); only the compression is asynchronous.
+     *  `onProgress`: the compression's progress (serializeGameSave). */
+    saveBlob(extras?: GameSaveExtras, onProgress?: (fraction: number) => void): Promise<Blob> {
+        return this.saveWith((g, t, o) => serializeGameSave(g, t, o, extras, onProgress));
     }
 
     private saveWith<T>(serialize: (game: Game, time: GalaxyTime, startOptions: StartGameOptions) => T): T {

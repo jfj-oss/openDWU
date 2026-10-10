@@ -28,13 +28,17 @@ export async function isGzipBlob(blob: Blob): Promise<boolean> {
 /**
  * gzip `parts` (the save's text in chunks: UTF-8 bytes, or strings encoded here) into one Blob. The array is consumed:
  * each chunk is dropped from it as it goes into the compressor, which takes the next one only when it has room, so
- * the input is released as the output grows instead of both being held whole.
+ * the input is released as the output grows instead of both being held whole. `onProgress` (optional) is told the
+ * fraction of the input taken so far (by chunk length) after each chunk goes in — a slow save's progress.
  */
-export async function gzipParts(parts: (Uint8Array | string)[]): Promise<Blob> {
+export async function gzipParts(parts: (Uint8Array | string)[], onProgress?: (fraction: number) => void): Promise<Blob> {
     const cs = new CompressionStream('gzip');
     const out = new Response(cs.readable).blob();
     const writer = cs.writable.getWriter();
     const enc = new TextEncoder();
+    let total = 0;
+    if (onProgress !== undefined) for (const p of parts) total += p.length;
+    let taken = 0;
     try {
         for (let i = 0; i < parts.length; i++) {
             const p = parts[i];
@@ -42,6 +46,8 @@ export async function gzipParts(parts: (Uint8Array | string)[]): Promise<Blob> {
             await writer.ready;
             // (A failed write fails close() and the output too: awaited there.)
             writer.write(typeof p === 'string' ? enc.encode(p) : (p as Uint8Array<ArrayBuffer>)).catch(() => undefined);
+            taken += p.length;
+            if (onProgress !== undefined && total > 0) onProgress(taken / total);
         }
         parts.length = 0;
         await writer.close();

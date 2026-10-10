@@ -27,7 +27,7 @@ import { deltaTransferables, type ReplicaDelta } from './replicaSync';
  * galaxy's 7 M objects arrive in ~30 chunks of ~100 ms of main-thread apply each, while the worker writes the next.
  */
 const SNAPSHOT_CHUNK_CODES = 1 << 22;
-import { ALIVE_INTERVAL_MS, type FromWorker, type InitMessage, type ScenarioRef, type ToWorker } from './protocol';
+import { ALIVE_INTERVAL_MS, SAVE_PROGRESS_MS, type FromWorker, type InitMessage, type ScenarioRef, type ToWorker } from './protocol';
 
 interface WorkerScope {
     postMessage(m: unknown, transfer?: Transferable[]): void;
@@ -346,11 +346,20 @@ function dispatch(m: ToWorker): void {
             return;
         case 'save': {
             // The text is written now, between ticks (saveBlob's serialize is synchronous); its gzip is made after,
-            // while the loop runs on, and the reply goes when it is ready.
+            // while the loop runs on, and the reply goes when it is ready. Meanwhile the compression's progress is
+            // posted (saveProgress, at most every SAVE_PROGRESS_MS): the main thread's save timeout counts from the
+            // last sign of progress, so a slow save is shown going on instead of its worker being stopped.
             const id = m.id;
             const fail = (err: unknown): void => post({ type: 'saved', id, blob: null, error: err instanceof Error ? err.message : String(err) });
+            let lastProgress = 0;
+            const progress = (fraction: number): void => {
+                const now = performance.now();
+                if (now - lastProgress < SAVE_PROGRESS_MS && fraction < 1) return;
+                lastProgress = now;
+                post({ type: 'saveProgress', id, fraction });
+            };
             try {
-                host!.saveBlob(m.extras).then((blob) => post({ type: 'saved', id, blob }), fail);
+                host!.saveBlob(m.extras, progress).then((blob) => post({ type: 'saved', id, blob }), fail);
             } catch (err) {
                 fail(err);
             }

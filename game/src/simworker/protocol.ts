@@ -371,6 +371,9 @@ export type WorkerEvent =
 /** The worker posts at least this often (real ms): a step message, or `alive` (workerClient.ts WORKER_SILENT_MS). */
 export const ALIVE_INTERVAL_MS = 2000;
 
+/** A save's progress (saveProgress) is posted at most this often (real ms). */
+export const SAVE_PROGRESS_MS = 500;
+
 export type FromWorker =
     /** A relayed link's traffic, worker → main thread (send on it / close it). */
     | { type: 'netOut'; link: number; text: string }
@@ -391,6 +394,9 @@ export type FromWorker =
     | { type: 'alive' }
     /** The save as a Blob of its UTF-8 text (saveData.ts: never one string in either heap; posted by reference). */
     | { type: 'saved'; id: number; blob: Blob | null; error?: string }
+    /** A save on its way (request `id`): the fraction of its text compressed so far (every SAVE_PROGRESS_MS at most).
+     *  The main thread's save timeout counts from the last of these (workerClient.ts SAVE_TIMEOUT_MS). */
+    | { type: 'saveProgress'; id: number; fraction: number }
     | { type: 'digest'; id: number; digest: string; nowMs: number; stepSerial: number }
     | DebugReply
     | { type: 'commandLog'; id: number; log: CommandLogEntry[] }

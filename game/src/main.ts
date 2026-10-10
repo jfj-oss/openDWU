@@ -725,8 +725,13 @@ export async function startGameView(
         const extras: GameSaveExtras = { ...hotSeatSaveExtras(galaxy), ...multiplayerSaveExtras(galaxy), ...galaxyBackdropSaveExtras() };
         return Object.keys(extras).length > 0 ? extras : undefined;
     };
-    const serializeCurrent = (): SaveText | null | Promise<SaveText | null> =>
-        simClient !== undefined ? simClient.save(undefined, saveExtras()) : lastStartOptions !== null ? serializeGameSave(game, time, lastStartOptions, saveExtras()) : null;
+    // `onProgress`: the fraction of the text compressed so far (the autosave's notice).
+    const serializeCurrent = (onProgress?: (fraction: number) => void): SaveText | null | Promise<SaveText | null> =>
+        simClient !== undefined
+            ? simClient.save(undefined, saveExtras(), onProgress)
+            : lastStartOptions !== null
+              ? serializeGameSave(game, time, lastStartOptions, saveExtras(), onProgress)
+              : null;
 
     // Task 10d: first message of the top-middle ticker — the founding line.
     const playerCapital = viewer.capital ?? null;
@@ -1081,7 +1086,7 @@ export async function startGameView(
     // [leftovers] begin
     // Autosave every GameOptions.AutoSaveInterval minutes (Main.Part12.cs:4013 method_97).
     installAutosave({
-        serialize: () => serializeCurrent(),
+        serialize: (onProgress) => serializeCurrent(onProgress),
         isBlocked: () => isGameOptionsPanelOpen(),
     });
     // [leftovers] end
