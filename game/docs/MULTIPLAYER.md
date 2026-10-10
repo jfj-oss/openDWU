@@ -1,8 +1,10 @@
 # Multiplayer
 
-Status: **Phase 1 of 5 started (2026-10-10).** Milestone 1 is done: the audit below, the core API, and the migration
-of the clear "a human controls this empire" sim rules. Nothing changes for the player: the seed pins
-(`npm run repin -- --check`) are unchanged at every commit, and one-human saves are byte-identical to before.
+Status: **Phase 1 of 5 in progress.** Milestone 1 (the audit, the core API, the clear "a human controls this empire"
+sim rules) and Milestone 2 (the local viewer in the UI, an inbox for every human, the (a) leftovers, the plumbing) are
+done; Milestone 3 (the nine decisions of §4, `createGame` for N humans) is next. Nothing changes for the player: the seed
+pins (`npm run repin -- --check`) are unchanged at every commit, one-human saves are byte-identical to before, and every
+multiplayer-only rule runs only when the game has more than one human (`isMultiHuman`).
 
 ## 1. The plan
 
@@ -352,6 +354,32 @@ small rewrite rather than a one-line swap:
 - `combat/damage.ts` 1814–1823 (`determineScrapDamagedShip`): compares `pirateEmpireId` with the player's id. It should
   check every human.
 - `scenario/smarterAI/common.ts` 68 and `scenario/themedNames/themedNames.ts` 56: the `Empire.playerEmpire` flag (§4.8).
+
+## 5b. Milestone 2: what is done
+
+1. **The local viewer in the UI.** Every main-thread read of `galaxy.playerEmpire` / `game.playerEmpire` (HUD, left
+   sidebar, screens, main view and overlays, markers, audio, `main.ts`) asks `localViewerEmpire`.
+2. **An inbox for every human** (`src/sim/playerMessages.ts`). `ensurePlayerInbox` attaches one to each human empire;
+   the drains handle them in `humanEmpires` order, again until all are empty (with one human: that inbox, drained once,
+   as before); the advisor-queue expiry runs per human. Each handled note names its empire: the in-thread stream
+   (`ui/messagePipeline.ts`) and the worker (`simworker/simHost.ts`) pass on only the local viewer's.
+3. **"Tell the player" reaches every human involved**: location hints, race periodic changes, prisoner escapes and
+   ransoms (Bacon prisoners now follow the spy's owner), stolen-tech warnings, the add-ons' messages and voices.
+4. **The (a) leftovers**: council motions raise a vote for every human member and are tallied once all voted; the
+   Exchange offers intelligence to each human; `findNearestPirateFaction(…, excludeHumans)` skips every human faction;
+   the scrap check covers every human; the `Empire.playerEmpire` flag is no longer read (the field stays, saves carry it).
+5. **Plumbing**: in a multi-human game a command for a non-human empire is rejected before the journal (the LLM layer's
+   `llmStrategic` / `storeChronicleYear` excepted). `npm run check:player-empire` (`scripts/check-player-empire.mjs`)
+   fails when a `src/sim` file gains `playerEmpire` code lines beyond `scripts/player-empire-allowlist.json`; after a
+   migration, `-- --update` shrinks the list.
+
+Left from the Milestone 2 list, on purpose:
+
+- **Battle reports** (`sim/battleReports/battleReports.ts`) watch one player's battles and split the sides into that
+  player's camp and its enemies. Per-human reports need the camps per viewer; this goes with the per-human state of
+  Milestone 3.
+- **The UI-record sender** (`playerCommands.ts`, the lookups' journaled `obtainUiRecords`) still names the primary human:
+  the sim cannot read the local viewer. Phase 3 passes the sending client's human with the command.
 
 ## 6. The rest of Phase 1 (estimate)
 
