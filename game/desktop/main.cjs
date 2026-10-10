@@ -40,6 +40,12 @@ const { createNetHost } = require('./netHost.cjs');
 // run on one PC — a LAN host and a client on 127.0.0.1 (docs/MULTIPLAYER.md §10). Set before anything reads userData.
 if (process.env.DWU_USER_DATA_DIR) app.setPath('userData', path.resolve(process.env.DWU_USER_DATA_DIR));
 
+// Internet multiplayer (WebRTC in the page, docs/MULTIPLAYER.md §15): offer this PC's real LAN addresses as ICE
+// candidates instead of random mDNS names, which only resolve on the same LAN segment (not over a VPN such as
+// Tailscale, nor between two copies on one PC under some setups). The addresses only reach the players a code is
+// given to.
+app.commandLine.appendSwitch('disable-features', 'WebRtcHideLocalIpsWithMdns');
+
 // dist/ lives next to desktop/ in the repo; when packaged it is copied into
 // resources/ by @electron/packager (extraResource in scripts/package-desktop.mjs).
 const DIST_DIR = app.isPackaged ? path.join(process.resourcesPath, 'dwu-dist') : path.join(__dirname, '..', 'dist');
@@ -375,7 +381,18 @@ ipcMain.on('dwu-sim:worker-error', (event, message) => simProcesses.workerError(
 // LAN multiplayer (netHost.cjs, gamePreload.cjs net): host a game / connect to one; each connection reaches the page as
 // a MessagePort.
 const netHost = createNetHost({ MessageChannelMain, ipcMain, isGameWindow: (sender) => mainWin !== null && sender === mainWin.webContents });
-app.on('before-quit', () => netHost.closeAll('the player quit the app'));
+// A router port mapping (Internet hosting, portMapper.cjs) is removed before the app exits (at most 3 s).
+let netClosed = false;
+app.on('before-quit', (event) => {
+    if (netClosed) return;
+    netClosed = true;
+    if (!netHost.mappingActive()) {
+        void netHost.closeAll('the player quit the app');
+        return;
+    }
+    event.preventDefault();
+    Promise.race([netHost.closeAll('the player quit the app'), new Promise((resolve) => setTimeout(resolve, 3000))]).finally(() => app.quit());
+});
 
 // The main menu's Check for Updates (gamePreload.cjs): the manual check, from the game window only.
 ipcMain.handle('dwu:check-updates', async (event) => {

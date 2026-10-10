@@ -7,12 +7,17 @@
 //   'outgoing'). The page could open ws:// itself, but its dwu:// origin is a secure context, and Chromium blocks
 //   ws:// to a LAN address from one (mixed content); the main process has no such rule.
 // - addresses(): this machine's non-internal IPv4 / IPv6 addresses, for the Host screen ("tell the others").
+// - mapPort(): while hosting, ask the router to forward the game port (UPnP IGD or NAT-PMP, portMapper.cjs; the host
+//   screen's "Open the port on my router" box, off by default). The mapping goes when hosting stops.
+//
+// Internet play over WebRTC (src/net/rtcTransport.ts) needs nothing here: the data channels live in the page.
 //
 // On a port, the page and this file exchange { t: 'm', d: <text> } (one message) and { t: 'c', r: <reason> } (closed).
 // The page going away (reload, window closed) closes its port's remote end: the socket is closed then.
 'use strict';
 const os = require('node:os');
 const { listenWebSocket } = require('./wsServer.cjs');
+const { createPortMapper } = require('./portMapper.cjs');
 
 /**
  * @param {{ MessageChannelMain: any, ipcMain: any, isGameWindow: (sender: any) => boolean }} deps
@@ -23,6 +28,7 @@ function createNetHost(deps) {
     let serverOwner = null;
     let nextId = 1;
     const links = new Map(); // id -> { close(reason) }
+    const mapper = createPortMapper((line) => console.log(line));
 
     /** Bridge `socket` (WebSocket-shaped: send, close, addEventListener) to a new port handed to `sender`. */
     function bridge(sender, socket, kind, remote) {
@@ -89,6 +95,7 @@ function createNetHost(deps) {
     }
 
     async function stopHost() {
+        await mapper.unmap();
         if (server === null) return;
         const s = server;
         server = null;
@@ -126,6 +133,12 @@ function createNetHost(deps) {
     ipcMain.handle('dwu:net-stop-host', async (event) => {
         if (!isGameWindow(event.sender)) return;
         await stopHost();
+    });
+
+    ipcMain.handle('dwu:net-map-port', async (event) => {
+        if (!isGameWindow(event.sender)) throw new Error('not the game window');
+        if (server === null) throw new Error('not hosting');
+        return mapper.map(server.port);
     });
 
     ipcMain.handle('dwu:net-connect', (event, url) => {
@@ -172,9 +185,10 @@ function createNetHost(deps) {
     return {
         addresses,
         stopHost,
+        mappingActive: () => mapper.active,
         closeAll(reason = 'app closing') {
             for (const l of [...links.values()]) l.close(reason);
-            void stopHost();
+            return stopHost();
         },
     };
 }
