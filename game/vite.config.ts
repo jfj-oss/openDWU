@@ -18,6 +18,8 @@ import { existsSync, statSync, copyFileSync, cpSync, readdirSync, readFileSync, 
 import { readFile, stat } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import os from 'node:os';
+import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { IncomingMessage, ServerResponse } from 'node:http';
@@ -348,10 +350,27 @@ function testTier(): { include?: string[]; exclude?: string[] } {
 
 const PKG_VERSION = String((JSON.parse(readFileSync(path.join(here, 'package.json'), 'utf8')) as { version?: string }).version ?? '0.0.0');
 
+/**
+ * The build id the multiplayer lobby compares (src/net/fingerprint.ts; two apps must run the same code): $DWU_BUILD,
+ * else the git commit, plus a hash of the uncommitted changes to the game code when the tree is dirty; 'dev' without git.
+ */
+function buildId(): string {
+    if (process.env.DWU_BUILD) return process.env.DWU_BUILD;
+    const git = (args: string[]): string => execFileSync('git', args, { cwd: here, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+    try {
+        const commit = git(['rev-parse', '--short=10', 'HEAD']);
+        const diff = git(['diff', 'HEAD', '--', 'src', 'scenarios', 'index.html', 'sim.html']);
+        return diff === '' ? commit : `${commit}+${createHash('sha1').update(diff).digest('hex').slice(0, 8)}`;
+    } catch {
+        return 'dev';
+    }
+}
+
 export default defineConfig({
     base: './',
     // The app's own version (package.json), shown on the main menu and compared with the latest GitHub release.
-    define: { __DWU_VERSION__: JSON.stringify(PKG_VERSION) },
+    // The build id (buildId) for the multiplayer version check.
+    define: { __DWU_VERSION__: JSON.stringify(PKG_VERSION), __DWU_BUILD__: JSON.stringify(buildId()) },
     // Per-checkout dep-optimizer cache. node_modules is a symlink shared by
     // every git worktree, so the default node_modules/.vite cache was
     // rewritten by other worktrees' dev servers mid-boot (504 Outdated
