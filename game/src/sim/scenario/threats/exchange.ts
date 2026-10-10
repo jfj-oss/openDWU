@@ -123,6 +123,7 @@ import {
     type SentStages,
     type ThreatSite,
 } from './framework';
+import { isHumanEmpire } from '../../humanEmpires';
 
 export const EXCHANGE_KEY = 'exchange';
 export const EXCHANGE_FLAG = 'threatExchange';
@@ -773,7 +774,7 @@ export function aiIntelSales(galaxy: Galaxy, st: ExchangeState): void {
     const f = st.faction;
     if (f === null) return;
     for (const buyer of normalEmpires(galaxy, f)) {
-        if (buyer === galaxy.playerEmpire || !hasMet(buyer, f) || exchangeIsGrudged(galaxy, st, buyer)) continue;
+        if (isHumanEmpire(galaxy, buyer) || !hasMet(buyer, f) || exchangeIsGrudged(galaxy, st, buyer)) continue;
         const rival = warRival(galaxy, f, buyer);
         if (rival === null) continue;
         const price = exchangeIntelPrice(galaxy, rival);

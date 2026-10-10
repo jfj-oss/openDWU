@@ -40,6 +40,7 @@ import {
     shortageTerm,
 } from './crisesCore';
 import { fuelDecisionOptions, resolveFuelDecision } from './crisesActions';
+import { isHumanEmpire } from '../../humanEmpires';
 
 export * from './crisesCore';
 
@@ -443,9 +444,9 @@ export function reviewFuelCrisis(galaxy: Galaxy, e: Empire, year: number): Crisi
             type: EmpireMessageType.GeneralWarning,
             subject,
         });
-        if (e === galaxy.playerEmpire) raiseFuelDecision(galaxy, e, crisis);
+        if (isHumanEmpire(galaxy, e)) raiseFuelDecision(galaxy, e, crisis);
     }
-    if (crisis !== null && e !== galaxy.playerEmpire) placeCrisisFuelOrder(galaxy, e, crisis.resourceId);
+    if (crisis !== null && !isHumanEmpire(galaxy, e)) placeCrisisFuelOrder(galaxy, e, crisis.resourceId);
     return crisis;
 }
 
@@ -528,7 +529,7 @@ function resolveCrises(galaxy: Galaxy, st: CrisesState, year: number): void {
 /** §4 AI rule 2: luxuries lost at ≥ 25 % of an AI empire's colonies this year become its mining priority. */
 function reviewMiningPriority(galaxy: Galaxy, st: CrisesState, lostCounts: Map<Empire, Map<number, number>>): void {
     for (const e of activeEmpires(galaxy)) {
-        if (e === galaxy.playerEmpire) continue;
+        if (isHumanEmpire(galaxy, e)) continue;
         const per = lostCounts.get(e);
         const ids: number[] = [];
         if (per !== undefined && e.colonies.length > 0) {

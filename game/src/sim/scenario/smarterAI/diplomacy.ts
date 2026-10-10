@@ -30,6 +30,7 @@ import { calculateAttackingFirepowerNearEmpireTargetsList, calculateDistanceToNe
 import { registerScenarioPeriodic, registerScenarioQuery } from '../hooks';
 import { SMARTER_AI_FLAG, isSmarterAIStrategist, smarterAIOn } from './common';
 import { SMARTER_AI_DIPLOMACY_FLAG } from './statecraft';
+import { isHumanEmpire } from '../../humanEmpires';
 
 /** A runaway empire's score is at least this multiple of ours. */
 export const RUNAWAY_FACTOR = 2;
@@ -106,7 +107,7 @@ const HOSTILE_STRATEGIES: ReadonlySet<DiplomaticStrategy> = new Set([DiplomaticS
 export function offerIsGenuine(galaxy: Galaxy, self: Empire, partner: Empire, offer: TreatyPlan['offer']): boolean {
     const r = obtainDiplomaticRelation(self, partner);
     const wanted = determineDesiredDiplomaticRelationTypical(r.strategy, r.type);
-    if (partner === galaxy.playerEmpire) {
+    if (isHumanEmpire(galaxy, partner)) {
         if (wanted !== offer) return false;
         return offer !== DiplomaticRelationType.MutualDefensePact || !(totalColonyStrategicValue(self) / totalColonyStrategicValue(partner) > 4.0);
     }

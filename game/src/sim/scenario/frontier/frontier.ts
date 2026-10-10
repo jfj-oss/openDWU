@@ -63,6 +63,7 @@ import { COURT_FLAG, houseOf, rulingHouse } from '../court/court';
 import { registerHiddenThing, retireHiddenTarget, securityOn, setLeadLevel, findHiddenThing, colonyUnderMartialLaw, type Lead } from '../security/registry';
 import { onLeadChanged, runSecurityAction } from '../security/security';
 import { rimFaunaUnrest } from '../rimFauna/common';
+import { isHumanEmpire } from '../../humanEmpires';
 
 export const FRONTIER_FLAG = 'frontierAutonomy';
 const PACKAGE = '19g5.frontier';
@@ -516,7 +517,7 @@ function formSector(galaxy: Galaxy, empire: Empire, sx: number, sy: number, colo
         orders: 0,
         refusals: 0,
     };
-    if (empire !== galaxy.playerEmpire) {
+    if (!isHumanEmpire(galaxy, empire)) {
         const t = aiTemper(empire);
         s.rule = t === 'cautious' ? 'loose' : t === 'aggressive' ? 'tight' : 'normal';
     }
@@ -1021,7 +1022,7 @@ export function reviewBreakaway(galaxy: Galaxy, s: FrontierSector, year: number)
         logEvent(galaxy, s, s.empire, 'warning', text);
         scenarioMessage(galaxy, s.empire, scenarioText('Frontier Warning Title'), text, { type: EmpireMessageType.GeneralWarning, subject: s.seat });
         raiseUnrestLead(galaxy, s, final);
-        if (s.empire !== galaxy.playerEmpire) aiRespond(galaxy, s, final);
+        if (!isHumanEmpire(galaxy, s.empire)) aiRespond(galaxy, s, final);
         return null;
     }
     return breakAway(galaxy, s, year);

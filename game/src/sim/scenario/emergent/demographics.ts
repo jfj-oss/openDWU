@@ -42,6 +42,7 @@ import { scenarioMessage, scenarioNews, scenarioText } from '../messages';
 // Population counts in the texts with thousands groups ("12,000,000", the original's ###,###,##0 money / population style).
 import { formatNetGrouped0 } from '../../netNumberFormat';
 import { createEmpireMidGame } from '../empireMidGame';
+import { isHumanEmpire } from '../../humanEmpires';
 
 // ---------------------------------------------------------------------------------------------------------------
 // State (§3)
@@ -366,7 +367,7 @@ function processAsylumSelection(galaxy: Galaxy, flow: RefugeeFlow): void {
         acceptFlow(galaxy, flow);
         return;
     }
-    if (choice.host === galaxy.playerEmpire) {
+    if (isHumanEmpire(galaxy, choice.host)) {
         flow.stage = 'asking';
         const decision = raiseScenarioDecision(galaxy, choice.host, {
             kind: 'refugees.asylum',
@@ -763,7 +764,7 @@ function reviewHosted(galaxy: Galaxy): void {
 function reviewAiAsylumPolicies(galaxy: Galaxy): void {
     const st = demographicsState(galaxy);
     for (const empire of galaxy.empires) {
-        if (empire === galaxy.playerEmpire) continue;
+        if (isHumanEmpire(galaxy, empire)) continue;
         if (empire.dominantRace === null) continue;
         let warCount = 0;
         for (const other of galaxy.empires) {
@@ -788,7 +789,7 @@ function reviewAiAsylumPolicies(galaxy: Galaxy): void {
 // §4.3 AI empires set the most-disliked minority race to Assimilate at high-tension colonies.
 function reviewAiPopulationPolicy(galaxy: Galaxy): void {
     for (const empire of galaxy.empires) {
-        if (empire === galaxy.playerEmpire) continue;
+        if (isHumanEmpire(galaxy, empire)) continue;
         const dominant = empire.dominantRace;
         if (dominant === null) continue;
         for (const h of empire.colonies) {

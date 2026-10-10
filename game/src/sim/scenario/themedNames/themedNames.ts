@@ -20,6 +20,7 @@ import { tryGetText } from '../../textResolver';
 import { resolveEmpireShipNameStyle, shipRegistryPrefix } from '../../shipNameStyle';
 import { scenarioFlag, scenarioState } from '../state';
 import { registerScenarioEvent, registerScenarioGameStart } from '../hooks';
+import { isHumanEmpire } from '../../humanEmpires';
 
 export const THEMED_NAMES_FLAG = 'themedNames';
 export const THEMED_NAMES_FLEETS_FLAG = 'themedNamesFleets';
@@ -52,7 +53,7 @@ export function isThemedNamesEmpire(galaxy: Galaxy, empire: Empire | null): empi
     return (
         empire !== null &&
         empire.active &&
-        empire !== galaxy.playerEmpire &&
+        !isHumanEmpire(galaxy, empire) &&
         !empire.playerEmpire &&
         empire !== galaxy.independentEmpire &&
         empire.pirateEmpireBaseHabitat === null &&

@@ -11,6 +11,7 @@ import { determineSpacePortAtHabitat } from '../../logistics/colonySupply';
 import { DiplomaticRelationType, obtainDiplomaticRelation } from '../../diplomacy';
 import { EmpireMessageType } from '../../messages';
 import { scenarioMessage, scenarioNews, scenarioText } from '../messages';
+import { isHumanEmpire } from '../../humanEmpires';
 
 export const RIM_RACE = 'Oranthi';
 export const RIM_GOODS = ['Voidstone', 'Rimfrost Lichen', 'Umbral Gas'] as const;
@@ -152,7 +153,7 @@ export function rimTraderEmpire(galaxy: Galaxy): Empire | null {
 
 /** The Concord when the AI runs it (a player who picks the Oranthi plays them normally: rules R1–R7 are AI rules). */
 export function isRimTraderAI(galaxy: Galaxy, e: Empire | null): boolean {
-    return e !== null && e === rimTraderEmpire(galaxy) && e !== galaxy.playerEmpire;
+    return e !== null && e === rimTraderEmpire(galaxy) && !isHumanEmpire(galaxy, e);
 }
 
 /** The Concord's single trading port: the space port at its capital, else the capital habitat (step 5). */

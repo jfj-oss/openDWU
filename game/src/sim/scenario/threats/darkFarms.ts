@@ -72,6 +72,7 @@ import {
     type SentStages,
     type ThreatKnowledge,
 } from './framework';
+import { isHumanEmpire } from '../../humanEmpires';
 
 export const DARK_FARMS_KEY = 'darkFarms';
 export const DARK_FARMS_FLAG = 'darkFarms';
@@ -585,7 +586,7 @@ export function revealFarm(galaxy: Galaxy, st: DarkFarmsState, farm: DarkFarm, e
  */
 function hostReaction(galaxy: Galaxy, st: DarkFarmsState, farm: DarkFarm): void {
     const host = farm.host;
-    if (host === galaxy.playerEmpire || knowledgeLevel(farm, host) < KNOWLEDGE_SUSPECTED) return;
+    if (isHumanEmpire(galaxy, host) || knowledgeLevel(farm, host) < KNOWLEDGE_SUSPECTED) return;
     const h = farm.habitat;
     const hidden = farmHiddenStrength(galaxy, farm);
     const garrison = h.troops?.totalDefendStrength ?? 0;

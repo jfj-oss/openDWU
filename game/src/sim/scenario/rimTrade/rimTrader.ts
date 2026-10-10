@@ -24,6 +24,7 @@ import { recalculateAnnualTaxRevenue } from '../../forceStructure';
 import { applyConcordTech, treasureParam, treasureState } from './treasureFleet';
 import { RIM_MIN_RADIUS, RIM_RACE, rareGoodIds, resourceName, rimGoodIds, rimParam, rimTradeState, rimTraderEmpire, rimTraderPort, isRimGood } from './common';
 import { concordWealthStart } from './wealth';
+import { isHumanEmpire } from '../../humanEmpires';
 
 /** Import order lot size (units). */
 export const IMPORT_LOT = 100;
@@ -183,7 +184,7 @@ export function rimTraderGameStart(galaxy: Galaxy, ctx: HomePlacementHelpers): v
             return;
         }
         applyConcordTech(galaxy, r, false);
-    } else if (r !== galaxy.playerEmpire) {
+    } else if (!isHumanEmpire(galaxy, r)) {
         // An Oranthi AI the wizard already generated (at the game's tech level): lift it to the Concord's.
         applyConcordTech(galaxy, r, true);
         // rimTraderStartColonies: top up the wizard's starting colonies.
@@ -193,7 +194,7 @@ export function rimTraderGameStart(galaxy: Galaxy, ctx: HomePlacementHelpers): v
     st.empireId = r.empireId;
     st.capital = r.capital;
     // The AI Concord carries the scenario's name (a player who picks the Oranthi keeps the name they chose).
-    if (r !== galaxy.playerEmpire) r.name = scenarioText('Scenario RimTrade Empire Name');
+    if (!isHumanEmpire(galaxy, r)) r.name = scenarioText('Scenario RimTrade Empire Name');
     if (r.capital === null) return;
     seedRareGoods(galaxy, r, r.capital);
     seedPortStock(galaxy, r);

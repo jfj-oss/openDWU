@@ -45,6 +45,7 @@ import { raiseScenarioDecision, registerScenarioDecision, type ScenarioDecision 
 import { empireSpyCrises } from './espionage';
 import { peekPoliticsState } from './politics';
 import { allCharters } from '../charteredCompanies/charters';
+import { isHumanEmpire } from '../../humanEmpires';
 
 export const COUNCIL_FLAG = 'galacticCouncil';
 export const COUNCIL_VOTE_DECISION = 'council.vote';
@@ -354,7 +355,7 @@ const COUNCIL_NAMES = ['Galactic Concord', 'Assembly of Stars', 'Council of Worl
 const BLOC_WORDS = ['Entente', 'Compact', 'Accord', 'League', 'Pact', 'Coalition'];
 
 function willingToJoin(galaxy: Galaxy, e: Empire, year: number): boolean {
-    if (e === galaxy.playerEmpire) return true;
+    if (isHumanEmpire(galaxy, e)) return true;
     const left = peekCouncilState(galaxy)?.leftYear[e.empireId];
     if (left !== undefined && year - left < P.rejoinYears(galaxy)) return false;
     return joinScore(e) >= P.joinThreshold(galaxy);
@@ -460,7 +461,7 @@ function reviewMembership(galaxy: Galaxy, st: CouncilState, year: number): void 
                 if (c.chair === m) c.chair = null;
                 continue;
             }
-            if (m === galaxy.playerEmpire || !underCouncilSanction(c, m)) continue;
+            if (isHumanEmpire(galaxy, m) || !underCouncilSanction(c, m)) continue;
             if (leaveScore(c, m) >= P.leaveThreshold(galaxy)) leaveCouncil(galaxy, c, m, year);
         }
         c.blocs = c.blocs.filter((b) => b.members.length >= 2);
@@ -593,7 +594,7 @@ export function scoreToVote(galaxy: Galaxy, score: number): Vote {
 export function castAiVotes(galaxy: Galaxy, c: Council, m: Motion): void {
     m.votes = [];
     for (const e of c.members) {
-        if (e === galaxy.playerEmpire) continue;
+        if (isHumanEmpire(galaxy, e)) continue;
         const score = voteScore(galaxy, c, e, m);
         m.votes.push({ empire: e, vote: scoreToVote(galaxy, score), score, coordinated: false });
     }
@@ -717,14 +718,14 @@ function imposeSanctions(galaxy: Galaxy, m: Empire, t: Empire): void {
     if (m === t || !hasMet(m, t)) return;
     const rt = relType(m, t);
     if (rt === DiplomaticRelationType.TradeSanctions || rt === DiplomaticRelationType.War || rt === DiplomaticRelationType.SubjugatedDominion) return;
-    if (m === galaxy.playerEmpire) changeDiplomaticRelation(galaxy, m, obtainDiplomaticRelation(m, t), DiplomaticRelationType.TradeSanctions); // Main.Part10.cs 4591
+    if (isHumanEmpire(galaxy, m)) changeDiplomaticRelation(galaxy, m, obtainDiplomaticRelation(m, t), DiplomaticRelationType.TradeSanctions); // Main.Part10.cs 4591
     else startTradeSanctions(galaxy, m, t); // Empire.8.cs 1586
 }
 
 function liftSanctions(galaxy: Galaxy, m: Empire, t: Empire): void {
     const r = m.diplomaticRelations.byEmpire(t);
     if (r === null || r.type !== DiplomaticRelationType.TradeSanctions || r.initiator !== m) return;
-    if (m === galaxy.playerEmpire) changeDiplomaticRelation(galaxy, m, r, DiplomaticRelationType.None); // Main.Part10.cs 4609
+    if (isHumanEmpire(galaxy, m)) changeDiplomaticRelation(galaxy, m, r, DiplomaticRelationType.None); // Main.Part10.cs 4609
     else endTradeSanctions(galaxy, m, t); // Empire.8.cs 1623
 }
 
@@ -759,13 +760,13 @@ export function applyMotion(galaxy: Galaxy, c: Council, m: Motion, year: number)
             c.sanctions = c.sanctions.filter((s) => !(s.target === t && s.kind === 'embargo'));
             c.sanctions.push({ target: t, kind: 'sanction', resourceId: -1, year });
             for (const e of c.members) imposeSanctions(galaxy, e, t);
-            if (t === galaxy.playerEmpire && c.members.includes(t)) askPlayerLeave(galaxy, c);
+            if (isHumanEmpire(galaxy, t) && c.members.includes(t)) askPlayerLeave(galaxy, c, t);
             break;
         case 'embargo':
             c.sanctions.push({ target: t, kind: 'embargo', resourceId: m.resourceId, year });
             for (const e of c.members) embargo(galaxy, e, t);
             for (const e of c.members) addIncident(galaxy, t, e, -5);
-            if (t === galaxy.playerEmpire && c.members.includes(t)) askPlayerLeave(galaxy, c);
+            if (isHumanEmpire(galaxy, t) && c.members.includes(t)) askPlayerLeave(galaxy, c, t);
             break;
         case 'condemn': {
             c.condemned[t.empireId] = year;
@@ -799,7 +800,7 @@ function applyThreat(galaxy: Galaxy, c: Council, t: Empire): void {
     const bonus = P.threatBonus(galaxy);
     const fighting = c.members.filter((e) => relType(e, t) === DiplomaticRelationType.War);
     for (const a of c.members) for (const b of fighting) if (a !== b) addIncident(galaxy, a, b, bonus);
-    if (t.pirateEmpireBaseHabitat === null) for (const e of c.members) if (e !== galaxy.playerEmpire) imposeSanctions(galaxy, e, t);
+    if (t.pirateEmpireBaseHabitat === null) for (const e of c.members) if (!isHumanEmpire(galaxy, e)) imposeSanctions(galaxy, e, t);
 }
 
 /** Yearly enforcement: standing sanctions / embargoes re-applied by AI members, threats kept or dropped. */
@@ -807,7 +808,7 @@ function enforce(galaxy: Galaxy, c: Council): void {
     c.sanctions = c.sanctions.filter((s) => s.target.active);
     for (const s of c.sanctions) {
         for (const e of c.members) {
-            if (e === galaxy.playerEmpire || e === s.target) continue;
+            if (isHumanEmpire(galaxy, e) || e === s.target) continue;
             if (s.kind === 'sanction') imposeSanctions(galaxy, e, s.target);
             else embargo(galaxy, e, s.target);
         }
@@ -908,9 +909,7 @@ export function splitCouncil(galaxy: Galaxy, st: CouncilState, c: Council, b: Bl
 // Player decisions
 // ---------------------------------------------------------------------------------------------------------------
 
-function askPlayerLeave(galaxy: Galaxy, c: Council): void {
-    const p = galaxy.playerEmpire;
-    if (p === null) return;
+function askPlayerLeave(galaxy: Galaxy, c: Council, p: Empire): void {
     raiseScenarioDecision(galaxy, p, {
         kind: COUNCIL_LEAVE_DECISION,
         title: `${c.name}: sanctions against us`,
@@ -938,9 +937,8 @@ function resolveVoteDecision(galaxy: Galaxy, d: ScenarioDecision, optionId: stri
 
 function resolveLeaveDecision(galaxy: Galaxy, d: ScenarioDecision, optionId: string): void {
     const c = councilById(galaxy, d.context.councilId);
-    const p = galaxy.playerEmpire;
-    if (c === null || p === null || optionId !== 'leave') return;
-    leaveCouncil(galaxy, c, p, nowYear(galaxy));
+    if (c === null || optionId !== 'leave') return;
+    leaveCouncil(galaxy, c, d.empire, nowYear(galaxy));
 }
 
 // ---------------------------------------------------------------------------------------------------------------

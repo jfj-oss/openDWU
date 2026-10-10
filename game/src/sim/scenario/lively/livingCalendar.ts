@@ -37,6 +37,7 @@ import { gameYear, registerScenarioEvent, registerScenarioQuery, registerScenari
 import { scenarioParam, scenarioState } from '../state';
 import { scenarioMessage, scenarioNews, scenarioText } from '../messages';
 import { LIVELY_GALAXY_ID, majorEmpires } from './livelyGalaxy';
+import { isHumanEmpire } from '../../humanEmpires';
 
 const MONTH_LENGTH = YEAR_LENGTH / 12;
 
@@ -165,7 +166,7 @@ export function livingCalendarYearly(galaxy: Galaxy): void {
         // Festival: any government. A month-long approval bump (empireApprovalRating query above).
         if (galaxy.rnd.nextDouble() < festivalChance) {
             festivalState(galaxy)[String(empire.empireId)] = { until: now + MONTH_LENGTH, bonus: festivalBonus };
-            if (empire !== galaxy.playerEmpire) {
+            if (!isHumanEmpire(galaxy, empire)) {
                 scenarioMessage(galaxy, empire, scenarioText('Lively Festival Title'), scenarioText('Lively Festival Own'), { type: EmpireMessageType.GeneralGoodEvent });
             }
         }

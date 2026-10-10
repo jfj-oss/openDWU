@@ -62,6 +62,7 @@ import { recordReputation } from '../reputation/ledger';
 import { appendEvent, empireActor, eventLogOn } from '../eventLog/log';
 import { YEAR_LENGTH, startStarDateForAge } from '../../galaxyTime';
 import { GameEndOutcome } from '../../victory';
+import { isHumanEmpire } from '../../humanEmpires';
 
 export const TIME_BOMB_KEY = 'timeBomb';
 export const TIME_BOMB_FLAG = 'threatTimeBomb';
@@ -516,7 +517,7 @@ export function abandonTech(galaxy: Galaxy, empire: Empire): boolean {
 /** AI rule (§6): an AI empire at knowledge level 3 that has lost >= 1 colony abandons within one year. */
 function aiAbandon(galaxy: Galaxy, st: TimeBombState): void {
     for (const e of victims(galaxy, peekCultState(galaxy))) {
-        if (e === galaxy.playerEmpire) continue;
+        if (isHumanEmpire(galaxy, e)) continue;
         if ((st.knowledge[e.empireId] ?? 0) < 3) continue;
         if ((st.lossesByEmpire[e.empireId] ?? 0) < 1) continue;
         if (currentlyHeld(e, st).length > 0) abandonTech(galaxy, e);
@@ -540,7 +541,7 @@ function aiCounterIntelligence(galaxy: Galaxy, st: TimeBombState): void {
     const until = st.counterIntelUntil ?? {};
     const now = galaxyStarDate(galaxy);
     for (const e of victims(galaxy, peekCultState(galaxy))) {
-        if (e === galaxy.playerEmpire || (until[e.empireId] ?? -1) < now) continue;
+        if (isHumanEmpire(galaxy, e) || (until[e.empireId] ?? -1) < now) continue;
         const agents = getEmpireCharacters(e).filter((c) => c.active && c.role === CharacterRole.IntelligenceAgent && c.empire === e);
         for (const a of agents) {
             const m = characterMission(a);

@@ -51,6 +51,7 @@ import { POLITICS_FLAG, canPlot, governedColony, isPoliticalEmpire, peekPolitics
 import { grantAutonomy } from '../emergent/politicsActions';
 import { peekSecurityState, securitySlots } from '../security/registry';
 import { DEFAULT_HOUSE_NAMES, HOUSE_NAMES, SUCCESSION_LAWS, successionLawFor, type SuccessionLaw } from './courtData';
+import { isHumanEmpire } from '../../humanEmpires';
 
 export const COURT_FLAG = 'courtDynasties';
 export const FACTION_DECISION = 'court.faction';
@@ -1294,7 +1295,7 @@ export function courtYearly(galaxy: Galaxy, year: number): void {
         }
         const purge = lastPurgeDate(galaxy, empire);
         if (purge !== null) st.purgeSeen.set(empire, Math.max(purge, st.purgeSeen.get(empire) ?? 0));
-        if (empire !== galaxy.playerEmpire) aiAppointCouncil(galaxy, empire);
+        if (!isHumanEmpire(galaxy, empire)) aiAppointCouncil(galaxy, empire);
         applyChancellor(galaxy, empire);
         seatlessAmbition(galaxy, empire);
         designateHeir(galaxy, empire);

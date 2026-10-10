@@ -98,6 +98,7 @@ import {
     type SeatName,
 } from './court';
 import { ABRASIVE_TRAITS, HONEST_TRAITS, OPPOSED_TRAITS, RUTHLESS_TRAITS, SCHEMING_TRAITS, SOCIABLE_TRAITS } from './courtData';
+import { isHumanEmpire } from '../../humanEmpires';
 
 export const INTRIGUE_FLAG = 'courtIntrigue';
 export const TIE_DECISION = 'court.tie';
@@ -1085,7 +1086,7 @@ export function proposeTie(galaxy: Galaxy, from: Empire, to: Empire, kind: TieKi
     if (o === undefined) st.offers.push({ from, to, year: y });
     else o.year = y;
     const c = tieCandidate(galaxy, from, kind)!;
-    if (to === galaxy.playerEmpire) {
+    if (isHumanEmpire(galaxy, to)) {
         raiseScenarioDecision(galaxy, to, {
             kind: TIE_DECISION,
             title: scenarioText('Court Tie Offer Title'),
@@ -1167,7 +1168,7 @@ export function reviewTies(galaxy: Galaxy): void {
             // The defensive-pact lean: an AI side offers the stock mutual defence pact (Empire.8.cs OfferMutualDefense),
             // answered by the stock ConsiderTreatyProposals (Empire.3.cs 3606).
             for (const [a, b] of [[t.from, t.to], [t.to, t.from]] as const) {
-                if (a === galaxy.playerEmpire || !isPoliticalEmpire(galaxy, a) || !isPoliticalEmpire(galaxy, b)) continue;
+                if (isHumanEmpire(galaxy, a) || !isPoliticalEmpire(galaxy, a) || !isPoliticalEmpire(galaxy, b)) continue;
                 const rel = a.diplomaticRelations.byEmpire(b);
                 if (rel !== null && (rel.type === DiplomaticRelationType.None || rel.type === DiplomaticRelationType.FreeTradeAgreement)) offerMutualDefense(galaxy, a, b);
             }
@@ -1508,7 +1509,7 @@ export function intrigueYearly(galaxy: Galaxy, y: number): void {
     reviewOpinions(galaxy);
     reviewClaims(galaxy);
     for (const e of galaxy.empires.filter((x) => isPoliticalEmpire(galaxy, x))) {
-        if (e === galaxy.playerEmpire) continue;
+        if (isHumanEmpire(galaxy, e)) continue;
         aiHooks(galaxy, e);
         aiSchemes(galaxy, e);
         aiTies(galaxy, e);

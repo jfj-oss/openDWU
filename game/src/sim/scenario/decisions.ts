@@ -13,6 +13,7 @@ import { galaxyStarDate } from '../tick/simTime';
 import { GAME_DAY_LENGTH, scenarioGateOpen, type ScenarioHandlerGate } from './hooks';
 import { scenarioMessage } from './messages';
 import { scenarioState } from './state';
+import { isHumanEmpire } from '../humanEmpires';
 
 export interface ScenarioDecisionOption {
     id: string;
@@ -122,7 +123,7 @@ export function raiseScenarioDecision(galaxy: Galaxy, empire: Empire, spec: Rais
         answeredBy: null,
     };
     st.pending.push(d);
-    if (empire === galaxy.playerEmpire) {
+    if (isHumanEmpire(galaxy, empire)) {
         scenarioMessage(galaxy, empire, spec.title, spec.text, { type: EmpireMessageType.GeneralDecision, subject: d });
     } else {
         const h = handlers().find((x) => x.kind === d.kind);

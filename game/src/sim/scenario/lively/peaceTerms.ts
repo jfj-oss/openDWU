@@ -65,6 +65,7 @@ import {
     type WarSide,
 } from './warGoals';
 import { acceptProposal } from '../../player/playerOrders';
+import { isHumanEmpire } from '../../humanEmpires';
 
 // ---------------------------------------------------------------------------------------------------------------
 // Pricing
@@ -397,7 +398,7 @@ registerScenarioEvent({
         if (peekWarLedger(g, p.empire, p.other) === null) return;
         const terms = buildTerms(g, p.empire, p.other);
         warGoalsState(g).offers[pairKey(p.empire, p.other)] = terms;
-        if (p.other === g.playerEmpire) raisePeaceDecision(g, p.other, p.empire, terms);
+        if (isHumanEmpire(g, p.other)) raisePeaceDecision(g, p.other, p.empire, terms);
     },
 });
 
@@ -423,7 +424,7 @@ function onPeaceSigned(galaxy: Galaxy, accepter: Empire, proposer: Empire): void
         [accepter, proposer],
         [proposer, accepter],
     ] as const) {
-        if (player !== galaxy.playerEmpire) continue;
+        if (!isHumanEmpire(galaxy, player)) continue;
         const id = pendingPeaceDecision(galaxy, player, other);
         if (id !== null) answerScenarioDecision(galaxy, id, 'decline', 'expired');
     }
@@ -507,7 +508,7 @@ export function proposePeaceTerms(galaxy: Galaxy, empire: Empire, other: Empire,
     if (empire.proposedDiplomaticRelations.byEmpire(other) === null) {
         empire.proposedDiplomaticRelations.add(new DiplomaticRelation(DiplomaticRelationType.None, other, other, empire, galaxyStarDate(galaxy), rel.supplyRestrictedResources));
     }
-    if (empire === galaxy.playerEmpire) raisePeaceDecision(galaxy, empire, other, counter);
+    if (isHumanEmpire(galaxy, empire)) raisePeaceDecision(galaxy, empire, other, counter);
     return res;
 }
 

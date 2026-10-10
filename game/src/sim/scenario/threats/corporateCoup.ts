@@ -50,6 +50,7 @@ import {
     type SentStages,
     type ThreatKnowledge,
 } from './framework';
+import { isHumanEmpire } from '../../humanEmpires';
 
 export const CORPORATE_COUP_KEY = 'corporateCoup';
 export const CORPORATE_COUP_FLAG = 'threatCorporateCoup';
@@ -210,7 +211,7 @@ function coupDiscovery(galaxy: Galaxy, company: CorporateCoupCompany): void {
 
 /** §10 AI: a holder with >= 2 confirmed bought governors replaces them within one period. */
 function coupAiReplace(galaxy: Galaxy, company: CorporateCoupCompany): void {
-    if (company.holder === galaxy.playerEmpire) return;
+    if (isHumanEmpire(galaxy, company.holder)) return;
     if (knowledgeLevel({ knowledge: company.knowledge }, company.holder) < KNOWLEDGE_CONFIRMED) return;
     if (company.bought.length < 2) return;
     for (const gov of [...company.bought]) {

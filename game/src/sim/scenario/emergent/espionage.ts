@@ -52,6 +52,7 @@ import { scenarioMessage, scenarioNews, scenarioText } from '../messages';
 import { expireScenarioDecisions, raiseScenarioDecision, registerScenarioDecision, type ScenarioDecision } from '../decisions';
 import { ESPIONAGE_FLAG, espionageHooks, type FalseFlagResult } from './espionageHooks';
 import { complyApology, complyRecall, complyReparations, playerDeclareWar, playerImposeSanctions, refuseCrisis, resolveCrisis } from './espionageActions';
+import { isHumanEmpire } from '../../humanEmpires';
 
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -423,7 +424,7 @@ export function frameCandidates(galaxy: Galaxy, self: Empire, target: Empire): E
 
 /** §C10 hook (assignAgentForSabotageMission): the AI may frame the best candidate. Rnd only when one exists. */
 export function maybeFrame(galaxy: Galaxy, self: Empire, target: Empire, mission: IntelligenceMission): void {
-    if (self === galaxy.playerEmpire || !frameable(mission.type) || !isNormalEmpire(galaxy, self) || !isNormalEmpire(galaxy, target)) return;
+    if (isHumanEmpire(galaxy, self) || !frameable(mission.type) || !isNormalEmpire(galaxy, self) || !isNormalEmpire(galaxy, target)) return;
     const candidates = frameCandidates(galaxy, self, target).filter((f) => canFrame(galaxy, mission, f));
     if (candidates.length === 0) return;
     const chance = scenarioParam(galaxy, 'falseFlagAiChance', 0.3);
@@ -502,7 +503,7 @@ function announceDemand(galaxy: Galaxy, c: SpyCrisis): void {
 
 /** The offender's side of a new demand: the player gets a decision, an AI answers by §4.1 at once. */
 function askOffender(galaxy: Galaxy, c: SpyCrisis): void {
-    if (c.offender === galaxy.playerEmpire) {
+    if (isHumanEmpire(galaxy, c.offender)) {
         c.awaiting = 'offender';
         const comply = c.demand === 'recall' ? scenarioText('Emergent Option Recall') : c.demand === 'apology' ? scenarioText('Emergent Option Apologise') : scenarioText('Emergent Option Pay', c.amount.toLocaleString('en-US'));
         const options = [{ id: 'comply', label: comply }, { id: 'refuse', label: scenarioText('Emergent Option Refuse') }];
@@ -595,7 +596,7 @@ function openCrises(galaxy: Galaxy, st: EspionageState, year: number): void {
         if (relationType(p.victim, p.offender) === DiplomaticRelationType.War) continue;
         if (p.severity < threshold) continue;
         const c = newCrisis(galaxy, st, p.offender, p.victim, p.severity, p.top, year);
-        if (c.victim === galaxy.playerEmpire) {
+        if (isHumanEmpire(galaxy, c.victim)) {
             // §5 player as victim: choose the demand (or sanctions now / ignore).
             c.awaiting = 'victim';
             raiseScenarioDecision(galaxy, c.victim, {
@@ -629,7 +630,7 @@ function escalateToSanctions(galaxy: Galaxy, c: SpyCrisis, year: number): void {
     c.quietYears = 0;
     addIncident(galaxy, c.victim, c.offender, -c.severity / 2, 'espionage.sanctions');
     const rt = relationType(c.victim, c.offender);
-    if (c.victim !== galaxy.playerEmpire && rt !== DiplomaticRelationType.TradeSanctions && rt !== DiplomaticRelationType.War) startTradeSanctions(galaxy, c.victim, c.offender);
+    if (!isHumanEmpire(galaxy, c.victim) && rt !== DiplomaticRelationType.TradeSanctions && rt !== DiplomaticRelationType.War) startTradeSanctions(galaxy, c.victim, c.offender);
     const text = scenarioText('Emergent Spy Crisis Sanctions', c.victim.name, c.offender.name);
     scenarioMessage(galaxy, c.offender, scenarioText('Emergent Spy Crisis Title', c.victim.name), text, { type: EmpireMessageType.GeneralBadEvent, subject: c.victim, sender: c.victim });
     scenarioMessage(galaxy, c.victim, scenarioText('Emergent Spy Crisis Title', c.offender.name), text, { type: EmpireMessageType.GeneralBadEvent, subject: c.offender });
@@ -678,16 +679,16 @@ function escalateCrises(galaxy: Galaxy, st: EspionageState, year: number): void 
         }
         if (year < c.deadlineYear) continue;
         if (c.stage === 'demand') {
-            if (c.victim === galaxy.playerEmpire) askVictimEscalation(galaxy, c);
+            if (isHumanEmpire(galaxy, c.victim)) askVictimEscalation(galaxy, c);
             else escalateToSanctions(galaxy, c, year);
             continue;
         }
         // Sanctions: an AI offender may still give in; else the victim's AI weighs war, or the crisis fades.
-        if (c.offender !== galaxy.playerEmpire && aiOffenderComplies(c) && applyCompliance(galaxy, c)) continue;
+        if (!isHumanEmpire(galaxy, c.offender) && aiOffenderComplies(c) && applyCompliance(galaxy, c)) continue;
         c.quietYears = c.lastExposureYear === year ? 0 : c.quietYears + 1;
         c.deadlineYear = year + 1;
         c.deadline = galaxyStarDate(galaxy) + YEAR_LENGTH;
-        if (c.victim !== galaxy.playerEmpire && victimWouldGoToWar(c.victim, c.offender)) {
+        if (!isHumanEmpire(galaxy, c.victim) && victimWouldGoToWar(c.victim, c.offender)) {
             escalateToWar(galaxy, c);
             continue;
         }
@@ -729,7 +730,7 @@ export function leakBuyer(galaxy: Galaxy, s: StolenTech): { buyer: Empire; value
 function blackMarket(galaxy: Galaxy, st: EspionageState, year: number): void {
     const chance = scenarioParam(galaxy, 'techLeakChance', 0.25);
     for (const s of [...st.stolen]) {
-        if (year - s.year >= 10 || s.thief === galaxy.playerEmpire || !s.thief.active) continue;
+        if (year - s.year >= 10 || isHumanEmpire(galaxy, s.thief) || !s.thief.active) continue;
         const thiefNode = s.thief.research.techTree[s.projectId];
         if (thiefNode === undefined || !thiefNode.isResearched) continue;
         if (!(galaxy.rnd.nextDouble() < chance)) continue; // RND(19d3): leak roll

@@ -67,6 +67,7 @@ import {
     peekRimHerdersState,
     rimHerdersState,
 } from './common';
+import { isHumanEmpire } from '../../humanEmpires';
 
 const DECISION_PROTECTORATE = 'rimHerders.protectorate';
 const DECISION_CHARACTERS = 'rimHerders.characters';
@@ -677,7 +678,7 @@ export function rimHerdersAiConquest(galaxy: Galaxy): number {
     for (const hc of st.colonies) {
         if (hc.status !== 'free' || hc.colony.hasBeenDestroyed) continue;
         for (const e of normalEmpires(galaxy)) {
-            if (e === galaxy.playerEmpire || isHerderEmpire(galaxy, e) || hc.neighbourSince[e.empireId] === undefined || empirePrefersProtectorate(galaxy, e)) continue;
+            if (isHumanEmpire(galaxy, e) || isHerderEmpire(galaxy, e) || hc.neighbourSince[e.empireId] === undefined || empirePrefersProtectorate(galaxy, e)) continue;
             if (galaxy.rnd.nextDouble() >= chance) continue;
             if (!orderHerderConquest(galaxy, hc, e)) continue;
             orders++;

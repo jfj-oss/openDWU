@@ -65,6 +65,7 @@ import {
     type Lead,
     type SecurityState,
 } from './registry';
+import { isHumanEmpire } from '../../humanEmpires';
 
 export { SECURITY_FLAG };
 const CULT_FLAG = 'cult';
@@ -834,7 +835,7 @@ export function securityYearly(galaxy: Galaxy, year: number): void {
     cultLoyaltyChain(galaxy);
     detectionRolls(galaxy);
     for (const e of galaxy.empires.filter((x) => isNormal(galaxy, x))) {
-        if (e !== galaxy.playerEmpire) aiSecurity(galaxy, e);
+        if (!isHumanEmpire(galaxy, e)) aiSecurity(galaxy, e);
     }
 }
 

@@ -7,6 +7,7 @@ import type { Galaxy } from '../../galaxy';
 import type { Empire } from '../../empire';
 import { scenarioFlag, scenarioState } from '../state';
 import { registerScenarioGameStart } from '../hooks';
+import { isHumanEmpire } from '../../humanEmpires';
 
 export const SMARTER_AI_FLAG = 'smarterAI';
 export const SMARTER_AI_RESEARCH_FLAG = 'smarterAIResearch';
@@ -64,7 +65,7 @@ export function isSmarterAIEmpire(galaxy: Galaxy, empire: Empire | null): empire
         empire !== null &&
         smarterAILive(galaxy) &&
         empire.active &&
-        empire !== galaxy.playerEmpire &&
+        !isHumanEmpire(galaxy, empire) &&
         !empire.playerEmpire &&
         empire !== galaxy.independentEmpire &&
         empire.pirateEmpireBaseHabitat === null &&

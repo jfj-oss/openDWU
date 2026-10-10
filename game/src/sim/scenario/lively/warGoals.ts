@@ -43,6 +43,7 @@ import { scenarioMessage, scenarioNews, scenarioText } from '../messages';
 import { tryGetText } from '../../textResolver';
 import { messageAbout, noteVoiceCue, seatLabel, seatSpeaker, voicesOn } from '../llm/voiceCues';
 import { LIVELY_GALAXY_ID, OVERLAP_GRID, borderOverlaps, incidentCount } from './livelyGalaxy';
+import { isHumanEmpire } from '../../humanEmpires';
 
 export const WAR_GOALS_FLAG = 'warGoals';
 
@@ -301,7 +302,7 @@ export function startWarLedger(galaxy: Galaxy, attacker: Empire, target: Empire)
         [target, attacker],
     ] as const) {
         const candidates = warGoalCandidates(galaxy, self, enemy, attacker);
-        const isPlayer = self === galaxy.playerEmpire;
+        const isPlayer = isHumanEmpire(galaxy, self);
         const side = newSide(self, candidates[0], isPlayer ? 'pending' : 'ai');
         if (candidates[0].kind === 'casusBelli') {
             side.bonus += scenarioParam(galaxy, 'casusBelliScore', 150);

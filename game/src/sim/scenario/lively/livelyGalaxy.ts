@@ -33,6 +33,7 @@ import { galaxyStarDate } from '../../tick/simTime';
 import { registerScenarioEvent, registerScenarioQuery, registerScenarioYearly } from '../hooks';
 import { scenarioParam, scenarioState } from '../state';
 import { scenarioMessage, scenarioNews, scenarioText } from '../messages';
+import { isHumanEmpire } from '../../humanEmpires';
 
 export const LIVELY_GALAXY_ID = 'lively-galaxy';
 
@@ -119,7 +120,7 @@ export function ambitionYearly(galaxy: Galaxy): void {
         e.ambition = Math.min(max, e.ambition + rise * strength * peace);
         if (!e.restless && e.ambition >= threshold && e.ambition > 0) {
             e.restless = true;
-            if (empire !== galaxy.playerEmpire) {
+            if (!isHumanEmpire(galaxy, empire)) {
                 scenarioMessage(galaxy, empire, scenarioText('Lively Restless Title'), scenarioText('Lively Restless Own'), { type: EmpireMessageType.GeneralWarning, subject: empire });
                 scenarioNews(galaxy, null, scenarioText('Lively Restless News', empire.name), (x) => x !== empire, empire);
             }

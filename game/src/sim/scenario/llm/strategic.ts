@@ -45,6 +45,7 @@ import { ACTORS_FLAG, LEAGUES_FLAG, STANDING_NEIGHBOUR, peekIndependentsState } 
 import { offerToLeague } from '../independents/independents';
 import { RIM_HERDERS_FLAG, herderStanding, isHerderEmpire, peekRimHerdersState, rimHerdersState } from '../rimHerders/common';
 import { formProtectorate, orderHerderConquest } from '../rimHerders/rimHerders';
+import { isHumanEmpire } from '../../humanEmpires';
 
 export const LLM_STRATEGIC_FLAG = 'llmStrategic';
 export const LLM_STRATEGIC_STATE = 'llmStrategic';
@@ -286,7 +287,7 @@ const peace: FamilyDef = {
                 out.push({ id: `peace.accept:${x.empireId}`, family: 'peace', text: `Accept the ${x.name}'s peace offer` });
             }
             // An offer to the player would be answered on the player's behalf (proposePeaceTerms answers at once).
-            if (x === galaxy.playerEmpire) continue;
+            if (isHumanEmpire(galaxy, x)) continue;
             const demand = buildTerms(galaxy, e, x);
             if (!isStatusQuo(demand)) out.push({ id: `peace.offer:${x.empireId}:demand`, family: 'peace', text: `Offer the ${x.name} peace on our terms: ${describeTerms(demand).join('; ')}` });
             out.push({ id: `peace.offer:${x.empireId}:statusQuo`, family: 'peace', text: `Offer the ${x.name} a white peace (status quo)` });

@@ -57,6 +57,7 @@ import { gameYear, radiusFraction, registerScenarioEvent, registerScenarioQuery,
 import { raiseScenarioDecision, registerScenarioDecision, type ScenarioDecision } from '../decisions';
 import { createEmpireMidGame } from '../empireMidGame';
 import { scenarioMessage, scenarioNews, scenarioText } from '../messages';
+import { isHumanEmpire } from '../../humanEmpires';
 
 export const CHARTER_FLAG = 'charteredCompanies';
 export const AI_CHARTER_FLAG = 'aiCharters';
@@ -471,7 +472,7 @@ registerScenarioEvent({
 
 /** True when `self` may not declare war on `target` under the charter rules (AI companies / AI founders only). */
 export function charterWarBlocked(galaxy: Galaxy, self: Empire, target: Empire): boolean {
-    if (self === galaxy.playerEmpire) return false;
+    if (isHumanEmpire(galaxy, self)) return false;
     const own = activeCharterOfCompany(galaxy, self);
     if (own !== null && own.founderId === target.empireId) return true;
     const theirs = activeCharterOfCompany(galaxy, target);
@@ -556,7 +557,7 @@ export function chartersYearly(galaxy: Galaxy, year: number): void {
         }
         const relType = obtainDiplomaticRelation(founder, company).type;
         if (relType !== chartedType(c)) {
-            c.status = relType === DiplomaticRelationType.War && founder === galaxy.playerEmpire ? 'revoked' : 'autonomous';
+            c.status = relType === DiplomaticRelationType.War && isHumanEmpire(galaxy, founder) ? 'revoked' : 'autonomous';
             scenarioNews(galaxy, company, scenarioText('Scenario Charter Autonomy', company.name, founder.name));
             continue;
         }
@@ -589,7 +590,7 @@ export function chartersYearly(galaxy: Galaxy, year: number): void {
     if (!scenarioFlag(galaxy, AI_CHARTER_FLAG)) return;
     const fee = charterFee(galaxy);
     for (const e of [...galaxy.empires]) {
-        if (e === null || e === galaxy.playerEmpire || isFounderCapable(galaxy, e) !== '') continue;
+        if (e === null || isHumanEmpire(galaxy, e) || isFounderCapable(galaxy, e) !== '') continue;
         if (e.stateMoney < 2 * fee || activeCompanyCount(galaxy, e) >= maxCompaniesPerFounder(galaxy)) continue;
         const targets = charterTargets(galaxy, e, 20);
         if (targets.length === 0) continue;
