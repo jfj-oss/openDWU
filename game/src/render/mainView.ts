@@ -25,6 +25,7 @@ import { MAX_SOLAR_SYSTEM_SIZE, SystemVisibilityStatus, determineGalaxyLocations
 import { playGridClick } from '../audio/gameAudio'; // [audio]
 import { Application, Container, Graphics, Sprite, Text, Texture } from 'pixi.js';
 import { Camera } from './camera';
+import { SECTOR_GRID_COLOR, SectorLabelLayer, sectorGridVisible } from './sectorGrid';
 import { themedAssetUrl } from '../themeAssets';
 import {
     AssetStore,
@@ -1349,6 +1350,8 @@ export class MainView {
     galaxyBackdropLayer: GalaxyBackdropLayer | null = null;
     private offGalaxyBackdropChange: (() => void) | null = null;
     private grid = new Graphics();
+    /** The sector grid's A.. / 1.. edge labels (sectorGrid.ts, MainView.2.cs method_250 5183-5212). */
+    private sectorLabels = new SectorLabelLayer(MAP_FONT_FAMILY);
     /** Screen-space deep starfield behind the world (deepStarfield.ts; port of the original's close-zoom stars). */
     private deepStarfield!: DeepStarfield;
     /** Systems for the deep starfield's per-system colour patches (flat, reused every frame). */
@@ -1491,6 +1494,7 @@ export class MainView {
         app.stage.addChild(this.world);
         app.stage.addChild(this.fx);
         this.world.addChild(this.grid);
+        this.world.addChild(this.sectorLabels.root);
         this.backdrop = new Sprite(Texture.EMPTY);
         this.backdropGroup.eventMode = 'none';
         this.backdropGroup.addChild(this.backdrop);
@@ -2055,13 +2059,13 @@ export class MainView {
             this.backdrop.visible = !this.galaxyBackdropLayer.active;
         }
 
-        // Faint sector grid: fades in over the galaxy zoom, out at mid zoom
-        // (MainView.1.cs FadeSectorBackground).
-        // GameOptions.CleanGalaxyView hides it (method_250 5155: `if (!flag)`, cleanGalaxyView.ts).
+        // Sector grid + edge labels (sectorGrid.ts): opaque color_5 lines and color_7 labels at every zoom factor
+        // above 150, none below (MainView.2.cs method_250 5153); GameOptions.CleanGalaxyView hides both (5155:
+        // `if (!flag)`, cleanGalaxyView.ts).
         const clean = galaxyViewGates(getSettings().cleanGalaxyView);
-        const gridA = clean.sectorGrid ? fadeIn(z, m * 2, m * 6) * fadeOut(z, 0.004, 0.015) : 0;
-        this.grid.alpha = gridA;
-        this.grid.visible = gridA > 0.01;
+        const gridOn = sectorGridVisible(1 / z, !clean.sectorGrid);
+        this.grid.visible = gridOn;
+        this.sectorLabels.update(gridOn, cam, this.galaxy.sectorSize, this.galaxy.sectorWidth, this.galaxy.sectorHeight);
         if (this.grid.visible && (this.lastGridZoom < 0 || Math.abs(z / this.lastGridZoom - 1) > 0.05)) {
             this.drawGrid(z);
             this.lastGridZoom = z;
@@ -2555,7 +2559,7 @@ export class MainView {
         const sizeX = this.galaxy.sizeX;
         const sizeY = this.galaxy.sizeY;
         const step = this.galaxy.sectorSize;
-        const line = { width: 1 / z, color: 0x3a4a66, alpha: 0.6 };
+        const line = { width: 1 / z, color: SECTOR_GRID_COLOR, alpha: 1 }; // method_250 5185: color_5, 1 px
         for (let x = 0; x <= sizeX + 1; x += step) {
             g.moveTo(x, 0).lineTo(x, sizeY).stroke(line);
         }
