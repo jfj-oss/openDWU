@@ -25,6 +25,7 @@ import { drainCommandBoundary } from './sim/tick/commandBoundary';
 import { markUiGalaxy } from './sim/readOnlyQuery';
 import { loggedSimViewRect, noteSimSpeed, noteSimViewRect } from './sim/player/playerCommands';
 import { showToast } from './ui/toast';
+import { lockstepStepper } from './net/lockstepSeam';
 import { createRenderTime, updateRenderTime, type RenderTime } from './render/renderInterp';
 
 /** Main.Part11.cs 507 method_123 inputs from the Pixi camera: int_13/int_14 = view centre (galaxy units),
@@ -111,19 +112,26 @@ export function createSimLoop(galaxy: Galaxy, time: GalaxyTime, camera: Camera, 
             const t0 = performance.now();
             let frames = 0;
             try {
-                // Command log: player orders queued since the last render frame apply now, at this frame boundary
-                // (also while paused, and even when the budget runs no step), so they land within one frame.
-                drainCommandBoundary(galaxy);
-                // The frame length is a sim input: journal speed changes at this boundary (replay runs the same frames).
-                // So is the camera of the LOD pass: journal it (rate-limited) and run with exactly the journaled one.
-                if (!time.paused) {
-                    noteSimSpeed(galaxy, time.speed);
-                    const want = useView ? simViewFromCamera(camera) : null;
-                    if (viewThrottle.due(want, performance.now())) noteSimViewRect(galaxy, want);
+                // [lockstep seam] A multiplayer session steps the galaxy instead (src/net/lockstepSeam.ts); none is set
+                // unless a session exists, so single-player runs the branch below unchanged.
+                const lockstep = lockstepStepper(galaxy);
+                if (lockstep !== null) {
+                    frames = lockstep.tick(realDtMs, time);
+                } else {
+                    // Command log: player orders queued since the last render frame apply now, at this frame boundary
+                    // (also while paused, and even when the budget runs no step), so they land within one frame.
+                    drainCommandBoundary(galaxy);
+                    // The frame length is a sim input: journal speed changes at this boundary (replay runs the same frames).
+                    // So is the camera of the LOD pass: journal it (rate-limited) and run with exactly the journaled one.
+                    if (!time.paused) {
+                        noteSimSpeed(galaxy, time.speed);
+                        const want = useView ? simViewFromCamera(camera) : null;
+                        if (viewThrottle.due(want, performance.now())) noteSimViewRect(galaxy, want);
+                    }
+                    const view = loggedSimViewRect(galaxy);
+                    // [fix6ui] steps by real time under a wall-clock budget (was driver.advance, at most 4 per frame).
+                    frames = budget.run(driver, realDtMs, time.speed, time.paused, view !== null ? { view } : {});
                 }
-                const view = loggedSimViewRect(galaxy);
-                // [fix6ui] steps by real time under a wall-clock budget (was driver.advance, at most 4 per frame).
-                frames = budget.run(driver, realDtMs, time.speed, time.paused, view !== null ? { view } : {});
             } catch (err) {
                 // Pixi's Ticker only schedules the next animation frame after update() returns, so an exception here
                 // would freeze the sim, the view and rendering for good. Contain it: drop the half-drained tick queue

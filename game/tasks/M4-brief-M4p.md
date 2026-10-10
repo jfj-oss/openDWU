@@ -27,7 +27,7 @@ You port one M4 work package of a faithful TypeScript port of the C# game Distan
 - Your git worktree: a git worktree of your own (e.g. `../wt/m4<X>`) (the game is in `game/`, node_modules symlinked). Work ONLY there,
   on its local branch `wip/m4<X>`. Commit there as you go. Do NOT push, do NOT touch the main checkout
   or other worktrees. The orchestrator merges your branch.
-- C# sources: the C# reference tree (dwu-assets repo: `Customization/DistantWorldsExpanded-main/DistantWorldsExpanded/`)
+- C# sources: the C# reference tree (DW:U install `$DWU`: `Customization/DistantWorldsExpanded-main/DistantWorldsExpanded/`)
   (`DistantWorlds.Types/` game model, `BaconDistantWorlds/` Bacon mod overrides — Bacon* classes replace or
   extend base methods and are what actually runs, `DistantWorlds/` UI project).
 - The plan: `game/tasks/M4-plan.md` — read §0 (determinism contract), §3.1 (ground rules), §3.2 (file layout),
@@ -89,6 +89,6 @@ out of room, stop at a clean boundary, commit, and list precisely what remains.
 - If several agents share a machine, run the suite as `npx vitest run --testTimeout=300000 --maxWorkers=2`;
   plain `npm test` can hit 5 s timeouts under load (not a real failure). Run single files while iterating.
 - A new worktree needs `game/node_modules` (npm install or symlink) and the gitignored `game/public/assets/dwu`
-  link to the dwu-assets checkout, as in the main checkout.
+  link to the DW:U install folder, as in the main checkout.
 - Before finishing, re-run the full suite once; all must pass.
 

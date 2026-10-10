@@ -434,6 +434,6 @@ namespace DistantWorlds {
 
 **Left undone / assumptions**
 - Display names and descriptions in `TUTORIALS` were inferred from the file names: the task file references "the menu code below" for the original names/order but that excerpt is not present in the pasted sources (it ends mid-`method_455`). The file set and order match the 11 files listed in the task.
-- Tests use inline fixtures rather than fetching the real `/assets/dwu/Tutorial/*.txt` files: the original game files are not accessible in this environment (no Steam install / dwu-assets clone here), so the "all real files parse with > 0 steps" verification could not be run against the actual files.
+- Tests use inline fixtures rather than fetching the real `/assets/dwu/Tutorial/*.txt` files: the original game files are not accessible in this environment (no Steam install here), so the "all real files parse with > 0 steps" verification could not be run against the actual files.
 - Highlight/zoom/open-screen behaviours of individual steps are text-only (`TODO(tutorial)` notes): they require live game objects (ShipGroup/BuiltObject/Habitat/SystemInfo wiring, OpenScreen panels) that are out of scope for this task.
 - `src/main.ts` was touched beyond the strictly named files because the mandatory `?screen=tutorials` screenshot hook and the private `startGameView` boot path live there.

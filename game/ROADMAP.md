@@ -5,7 +5,7 @@ Milestones follow the spec's Part 15 (16.1) in `Distant_Worlds_Universe_Recreati
 ## How the work is organised
 - **Lanes A/B (ninfer, headless Sonnet at low effort):** small tasks with `scope: locked` + `thinking: off` in their spec (`tasks/NN-*.md`), one C# source excerpt pasted in per task so the worker never has to explore the game install. Run via `scripts/run-queue.sh`; `scripts/worker.sh` picks the model, `WORKER=ninfer` uses the local NInfer-4090 box instead of the API.
 - **Lane C (cloud, Opus):** larger, cross-cutting slices that need judgment or the decompiled source directly — M2 empire model, colonies, visibility, orchestration, ship designs. Tracked in `tasks/HANDOFF-cloud*.md`, `tasks/REVIEW-cloud.md`, `tasks/M2-plan.md`.
-- Game art/data/decompiled source live in the private repo **jfj-oss/dwu-assets**, symlinked in as `public/assets/dwu` (`npm run import-assets`); nothing from the original game is committed here.
+- Game art/data/decompiled source come from the user's own DW:U install, symlinked in as `public/assets/dwu` (`npm run import-assets`); nothing from the original game is committed here.
 - Reviews (typecheck + tests + screenshot comparison against real gameplay footage) happen after each worker commit before the next task starts.
 
 ## State on 2026-09-26
