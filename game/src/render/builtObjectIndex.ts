@@ -7,7 +7,8 @@
 //   live      — the non-null, non-destroyed objects in galaxy.builtObjects order (the order every layer draws in);
 //   xs / ys   — their committed positions;
 //   rs        — renderInterp.ts builtObjectDrawnOffsetBound at the fastest game speed (and the presentation clock's
-//               lag at the rebuild): no drawn (interpolated) position is farther than this from the committed one;
+//               lag at the rebuild): no drawn (interpolated) position is farther than this from the committed one
+//               (NaN until first needed: computed by `near` only for objects outside the view on their committed position);
 // and `near` returns, in that same order, every live object that could be on screen — a superset of what each layer's
 // own cull keeps, so a layer that runs its unchanged per-object tests over `near` draws exactly what it drew before.
 // It is refreshed when a step lands (MotionInterpolator.serial), when the array changes (identity / length), and every
@@ -76,12 +77,17 @@ export class BuiltObjectIndex {
             this.ys = new Float64Array(cap);
             this.rs = new Float64Array(cap);
         }
+        // The drawn-offset bounds are computed lazily (in near), only for objects `near` cannot accept on their
+        // committed position alone: at galaxy zoom nearly every object is inside the view, so none is computed.
         const useBound = motion !== null;
+        const xs = this.xs;
+        const ys = this.ys;
+        const rs = this.rs;
         for (let i = 0; i < n; i++) {
             const bo = live[i];
-            this.xs[i] = bo.xpos;
-            this.ys[i] = bo.ypos;
-            this.rs[i] = useBound ? builtObjectDrawnOffsetBound(w, bo) : 0;
+            xs[i] = bo.xpos;
+            ys[i] = bo.ypos;
+            rs[i] = useBound ? Number.NaN : 0;
         }
         return true;
     }
@@ -103,11 +109,19 @@ export class BuiltObjectIndex {
         const xs = this.xs;
         const ys = this.ys;
         const rs = this.rs;
+        const ax = halfW + marginWorld;
+        const ay = halfH + marginWorld;
         for (let i = 0; i < n; i++) {
-            const r = (withBound ? rs[i] : 0) + marginWorld;
             const dx = xs[i] - cx;
             const dy = ys[i] - cy;
-            if (dx >= -halfW - r && dx <= halfW + r && dy >= -halfH - r && dy <= halfH + r) out.push(this.live[i]);
+            if (dx >= -ax && dx <= ax && dy >= -ay && dy <= ay) {
+                out.push(this.live[i]);
+                continue;
+            }
+            if (!withBound) continue;
+            let r = rs[i];
+            if (r !== r) r = rs[i] = builtObjectDrawnOffsetBound(this.worst, this.live[i]);
+            if (r > 0 && dx >= -ax - r && dx <= ax + r && dy >= -ay - r && dy <= ay + r) out.push(this.live[i]);
         }
         return out;
     }

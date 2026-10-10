@@ -56,6 +56,9 @@ import { COLORS, checkBox, dropDown, el, glassButton, messageBox, numericUpDown,
 import { checkBoxRight, colorSlider, groupBox, labelledTrackBar } from '../originalWindowControls';
 import { IMPROVEMENTS_TITLE, buildImprovementsGroup, improvementsGroupHeight } from '../improvements'; // [improvements]
 import { systemMemoryGiB } from '../../systemMemory';
+import { GALAXY_BACKDROP_OPTIONS, getGalaxyBackdrop, setGalaxyBackdrop } from '../../render/galaxyBackdropChoice';
+import { galaxyBackdropStructure } from '../../render/galaxyBackdrop';
+import { createBackdropThumbnail } from '../galaxyBackdropPreview';
 import { buildNewGameAutomationGroup, closeNewGameEmpireSettings } from './newGameDefaultsPanel';
 import { AUTOMATION_MODE_ITEMS, AUTOMATION_PRESETS, currentNewGameOptions, detectAutomationMode, empireAutomationValues, gameOptionsFromEmpire, newGameOptionsToSettings, messageSettingsRows, type PendingEmpireValues } from './gameOptionsModel';
 
@@ -244,7 +247,7 @@ const EMPIRE_H = 769 + 25;
 const MESSAGES_W = 735;
 const MESSAGES_H = 502 + 43;
 const ADVANCED_W = 440;
-const ADVANCED_H = 500 + 110 + 25 + 120 + 22 + 56;
+const ADVANCED_H = 500 + 110 + 25 + 120 + 22 + 56 + 104;
 
 interface OpenState {
     win: OriginalWindow;
@@ -870,5 +873,24 @@ function createAdvancedDisplaySettings(empire: Empire | null): OriginalWindow {
         }, F4 - 4);
         label(perf, 'Ships away from the view: how many update per frame (combat off-screen)', 10, 96, F7 - 2);
     }
+
+    // Ours: the galaxy backdrop of this game (a view setting saved with it; picked in the new-game wizard) and the
+    // "Animate backdrop" option (all games). The thumbnail shows the pick over this galaxy.
+    const bd = place(groupBox('Galaxy Backdrop', 400, 96, F2), 12, 768);
+    body.appendChild(bd);
+    if (empire !== null) {
+        const galaxy = empire.galaxy;
+        const thumb = createBackdropThumbnail(64, 'go-backdrop-thumb');
+        bd.appendChild(place(thumb.el, 326, 22, 64, 64));
+        const paint = (): void => thumb.update({ kind: getGalaxyBackdrop(), structure: galaxyBackdropStructure(galaxy), seed: galaxy.randomSeed, key: `game${galaxy.randomSeed}` });
+        combo(bd, GALAXY_BACKDROP_OPTIONS.map((o) => o.label), Math.max(0, GALAXY_BACKDROP_OPTIONS.findIndex((o) => o.kind === getGalaxyBackdrop())), 10, 22, 200, 24, (i) => {
+            setGalaxyBackdrop(GALAXY_BACKDROP_OPTIONS[i]?.kind ?? 'original');
+            paint();
+        }, F4 - 4);
+        paint();
+    } else {
+        label(bd, 'Picked for each game in the new-game wizard', 10, 26, F7 - 2);
+    }
+    check(bd, 'Animate backdrop', st.animateBackdrop, 10, 56, (v) => updateSettings({ animateBackdrop: v }));
     return win;
 }

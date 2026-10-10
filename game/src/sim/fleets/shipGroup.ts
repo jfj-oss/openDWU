@@ -24,6 +24,8 @@ const FLEET_POSTURE_ATTACK = 0 as FleetPosture;
 
 // ShipGroup.cs 15 (fleet). Free functions take it first (plan §3.1 rule 2).
 export class ShipGroup {
+    /** Not in the C#: the stable id player commands name this object by (entityRefs.ts; unset until the next sweep). */
+    declare refId?: number;
     /** ShipGroup.cs 59 _Galaxy. */
     galaxy: Galaxy;
     /** ShipGroup.cs 20 _Empire (setter side effects: ShipGroup.cs 2740). */

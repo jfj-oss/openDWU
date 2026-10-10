@@ -73,6 +73,7 @@ import type { GalaxyScenario } from './scenario/state';
 import type { MessageOptions } from './messageRouting';
 import { scenarioAcceptStarPosition, scenarioAfterNebulae, scenarioResourceAllowed } from './scenario/hooks';
 import { DiplomaticRelationType, obtainDiplomaticRelation } from './diplomacy';
+import { assignEntityRefId } from './entityRefs';
 import {
     HabitatImageCountAsteroidsCrystal,
     HabitatImageCountAsteroidsGold,
@@ -361,6 +362,8 @@ export class Galaxy {
     currentTimeSeconds = 0;
     // C#: Galaxy._NextCreatureID / SilverMistCreatureCount (Galaxy.cs).
     nextCreatureId = 0;
+    /** Not in the C#: the next stable ref id (entityRefs.ts; fleets, designs, characters, troops, habitats). */
+    nextEntityRefId = 1;
     silverMistCreatureCount = 0;
     // Port of Galaxy.cs Races (RaceList, loaded from GameData in the ctor).
     races: Race[] = [];
@@ -3926,6 +3929,7 @@ export class Galaxy {
         habitat.habitatIndex = num;
         habitat.systemIndex = nearestSystemStar.systemIndex;
         this.habitats.splice(num, 0, habitat);
+        assignEntityRefId(this, habitat); // not in the C#: its stable command ref (entityRefs.ts)
         system.habitats.push(habitat);
         // Galaxy.9.cs 3235: HabitatIndex[galaxyIndex].Add(habitat) (index of the system star).
         if (this.habitatIndexGrid.length > 0) {
@@ -4858,6 +4862,7 @@ export class Galaxy {
                 asteroids[j].systemIndex = nearestSystemStar.systemIndex;
             }
             this.habitats.splice(num, 0, ...asteroids);
+            for (const a of asteroids) assignEntityRefId(this, a); // not in the C#: stable command refs (entityRefs.ts)
             const system = this.systems.find((s) => s.systemStar === nearestSystemStar)!; // Systems[nearestSystemStar]
             system.habitats.push(...asteroids);
             if (this.habitatIndexGrid.length > 0) this.habitatIndexGrid[galaxyIndex.x][galaxyIndex.y].push(...asteroids);

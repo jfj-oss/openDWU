@@ -4,7 +4,7 @@
 // - headless, seed + command log replays the message history and the advisor queue exactly — with messages flowing,
 //   advisor suggestions approved and declined by their stable id, the message options changed, the history trimmed
 //   and the advisor expiry of a diplomacy exchange, all journaled commands;
-// - the stable id of a queued suggestion: encoded as 'advid', found again after the queue changed; the old 'adv'
+// - the stable id of a queued suggestion: encoded as 'advid2' (owner by empireId), found again after the queue changed; the old 'adv'
 //   (queue index) references of earlier logs still decode;
 // - a save made before this change (test/fixtures/before-sim-message-pipeline.dwusave.gz, written by the code of
 //   origin before the change) loads: its queued suggestions get ids, its old log entry decodes, it runs on, and it
@@ -156,7 +156,7 @@ describe('headless: seed + command log replays the history and the advisor queue
         expect(findAdvisorSuggestion(p, approvedId)).toBeNull();
         const log = commandLog(g) as PlayerLogEntry[];
         const approveEntry = log.find((e) => e.source === 'player' && e.op === 'approveSuggestion')!;
-        expect(approveEntry.args).toEqual([{ r: 'advid', k: [flatEmpireList(g).indexOf(p), approvedId] }]);
+        expect(approveEntry.args).toEqual([{ r: 'advid2', k: [p.empireId, approvedId] }]);
         expect(log.filter((e) => e.source === 'player').map((e) => e.op)).toEqual(['approveSuggestion', 'declineSuggestion', 'setMessageOptions', 'removeOldHistoryMessages', 'expireAdvisorSuggestionsForEmpire']);
         expect(log.every((e) => e.source !== 'player' || e.error === undefined)).toBe(true);
 
@@ -194,7 +194,7 @@ describe('approveSuggestion names the suggestion by its stable id', () => {
         processPlayerMessages(g);
         const pi = flatEmpireList(g).indexOf(p);
         const enc = encodeCommandArg(g, b);
-        expect(enc).toEqual({ r: 'advid', k: [pi, b.advisorSuggestionId] });
+        expect(enc).toEqual({ r: 'advid2', k: [p.empireId, b.advisorSuggestionId] });
         // The queue changes ahead of it (the first entry approved): the id still names b, the index would not.
         const qi = advisorSuggestions(p).indexOf(a);
         advisorSuggestions(p).splice(qi, 1);
@@ -229,15 +229,17 @@ describe('a save made before the sim-side pipeline loads', () => {
         expect(p.eventMessageRecipient).toBeNull();
         expect(galaxyMessageOptions(g)).toEqual(defaultMessageOptions());
         expect(empireMessageHistory(p).filter((m) => m.description.startsWith('old history')).length).toBe(3);
-        // The log it carries (a declineSuggestion journaled by queue index) is kept and still decodes.
+        // The log it carries (a declineSuggestion journaled by queue index) is kept and still decodes; the load numbered
+        // the stable command ids (entityRefs.ts) and journaled that ('refids').
         const log = commandLog(g) as PlayerLogEntry[];
-        expect(log.map((e) => e.op)).toEqual(['declineSuggestion']);
+        expect(log.map((e) => e.source)).toEqual(['player', 'refids']);
+        expect(log[0].op).toBe('declineSuggestion');
         expect(log[0].args).toEqual([{ r: 'adv', k: [0, 1] }]);
         expect((decodeCommandArg(g, log[0].args[0] as never) as EmpireMessage).description).toBe('old build order');
         // A loaded suggestion is named by its id.
         issuePlayerCommand(g, p, 'declineSuggestion', [advisorSuggestions(p)[0]]);
         flushPlayerCommands(g);
-        expect((commandLog(g).at(-1) as PlayerLogEntry).args).toEqual([{ r: 'advid', k: [0, 1] }]);
+        expect((commandLog(g).at(-1) as PlayerLogEntry).args).toEqual([{ r: 'advid2', k: [p.empireId, 1] }]);
         expect(advisorSuggestions(p).map((x) => x.advisorSuggestionId)).toEqual([2]);
         // It runs on: the pipeline handles what arrives.
         const h0 = empireMessageHistory(p).length;

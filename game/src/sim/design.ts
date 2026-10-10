@@ -136,6 +136,8 @@ export function galaxyResourceCurrentPrices(galaxy: ComponentPriceGalaxy): numbe
 }
 
 export class Design {
+    /** Not in the C#: the stable id player commands name this object by (entityRefs.ts; unset until the next sweep). */
+    declare refId?: number;
     name: string;
     role: BuiltObjectRole = 0 as BuiltObjectRole;
     subRole: BuiltObjectSubRole = BuiltObjectSubRole.Undefined;

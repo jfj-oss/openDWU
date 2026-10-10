@@ -16,14 +16,16 @@ export interface ClockState {
 }
 
 /**
- * One journaled player command on the wire: the PlayerLogEntry fields that a peer needs to re-issue it
- * (sim/player/commandLog.ts): the empire as an index into flatEmpireList, the PLAYER_OPS key, and the arguments in the
- * command-log codec encoding (sim/player/commandCodec.ts).
+ * One journaled player command on the wire: what a peer needs to re-issue it (sim/player/commandLog.ts PlayerLogEntry):
+ * the issuing empire by its stable Empire.empireId (not its flatEmpireList index, which can move before the command's
+ * frame), the PLAYER_OPS key, and the arguments in the current command-log codec encoding (sim/player/commandCodec.ts
+ * COMMAND_CODEC_VERSION: stable ids, never list positions).
  */
 export interface NetCommand {
     /** The issuing peer and its per-peer sequence number (unique per peer, increasing). */
     peer: PeerId;
     seq: number;
+    /** Empire.empireId of the issuing empire (a LockstepSim may use any stable empire key; GalaxyLockstepSim this). */
     empire: number;
     op: string;
     args: EncodedArg[];
