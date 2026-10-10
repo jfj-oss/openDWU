@@ -72,6 +72,7 @@ const MODULES = {
     game: '/src/sim/game.ts',
     load: '/test/helpers/loadGameDataFs.ts',
     save: '/src/sim/save/gameSave.ts',
+    galaxySave: '/src/sim/save/galaxySave.ts',
     commands: '/src/sim/player/playerCommands.ts',
     boot: '/src/simworker/bootOptions.ts',
     digest: '/src/sim/tick/digest.ts',
@@ -90,6 +91,7 @@ try {
     const load = (key) => import(resolve(bundleDir, key + '.js'));
     const { loadGameDataFs } = await load('load');
     const { serializeGame, deserializeGame } = await load('save');
+    const { galaxyToJSON } = await load('galaxySave');
     const { replayCommandLog } = await load('commands');
     const { reviveCreateOptions } = await load('boot');
     const { stateDigest } = await load('digest');
@@ -126,7 +128,10 @@ try {
     check(same, `replay save text = session save text (${(text.length / 1024).toFixed(0)} KB)`);
     if (!same) {
         const r = JSON.parse(replayText);
-        for (const d of firstDiffs(save.galaxy, r.galaxy, save.galaxy.shapes, r.galaxy.shapes, 'galaxy')) console.log(`     ${d.length > 400 ? `…${d.slice(-400)}` : d}`);
+        // The graphs compared as format-2 trees (galaxyToJSON: {$s, $v} instances named by shape; the save text is format 3).
+        const a = galaxyToJSON(loaded.galaxy), b = galaxyToJSON(game.galaxy);
+        for (const d of firstDiffs(a.galaxy, b.galaxy, a.shapes, b.shapes, 'galaxy')) console.log(`     ${d.length > 400 ? `…${d.slice(-400)}` : d}`);
+        for (const d of firstDiffs(a.sideTables, b.sideTables, a.shapes, b.shapes, 'sideTables')) console.log(`     ${d.length > 400 ? `…${d.slice(-400)}` : d}`);
         for (const d of firstDiffs({ ...save, galaxy: null }, { ...r, galaxy: null }, null, null)) console.log(`     ${d.length > 400 ? `…${d.slice(-400)}` : d}`);
         writeFileSync(`${saveFile}.replay`, replayText);
         console.log(`     replay save written to ${saveFile}.replay`);

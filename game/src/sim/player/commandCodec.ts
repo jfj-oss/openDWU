@@ -7,7 +7,8 @@
 //   → its stable ref id (entityRefs.ts; 'sgid' / 'did' / 'chid' / 'trid' / 'hid'), Creature → creatureId ('crid'),
 //   SystemInfo → systemIndex ('sys'; the systems list never changes), TechNode → owner empire + index in its research
 //   tree ('tn'; the tree is fixed per empire), a queued advisor suggestion → owner empire + its stable id ('advid'),
-//   Fighter → its carrier's builtObjectID + its fighterID ('fi'). Every key is resolved back when it is written and must
+//   Fighter → its carrier's builtObjectID + its fighterID ('fi'), a Galaxy.GalaxyLocations entry with a related ship (a
+//   planet destroyer project) → that ship's builtObjectID ('glbo'; other locations go by value). Every key is resolved back when it is written and must
 //   give the same object, else the command is not replayable (throws). Such a key still names an object only while it
 //   is in its list (a design in an empire's designs, a troop in an empire's troops, …), as before.
 // - Version 1 (log entries without `codec`, from before the stable ids) named Empire by its index in the flat empire
@@ -34,6 +35,7 @@ import { TradeableItem } from '../tradeItems';
 import { EmpireMessage } from '../messages';
 import { findAdvisorSuggestion } from '../advisorQueue';
 import { ShipAction } from './shipAction';
+import { GalaxyLocation } from '../galaxyLocation';
 import { flatEmpireList, galaxyExternals, saveClassPrototypes } from '../save/galaxySave';
 import type { TechNode } from '../researchSystem';
 import { entityRefId } from '../entityRefs';
@@ -131,6 +133,7 @@ function entityKey(galaxy: Galaxy, v: object, version: number): [string, number 
         throw new CommandEncodeError('command argument: a Troop in no empire list');
     }
     if (v instanceof Creature) return ['crid', galaxy.creatures.includes(v) ? v.creatureId : -1];
+    if (v instanceof GalaxyLocation && v.relatedBuiltObject != null && galaxy.galaxyLocations.includes(v)) return ['glbo', v.relatedBuiltObject.builtObjectID];
     return entityKeyShared(galaxy, v, empires, 2);
 }
 
@@ -262,6 +265,8 @@ function resolveEntity(galaxy: Galaxy, kind: string, key: number | number[]): un
             return findByRefId(empires.map((e) => e.troops.items), key as number);
         case 'crid':
             return galaxy.creatures.find((c) => c.creatureId === key) ?? null;
+        case 'glbo':
+            return galaxy.galaxyLocations.find((l) => l.relatedBuiltObject != null && l.relatedBuiltObject.builtObjectID === key) ?? null;
         case 'fi': {
             const [carrierId, fighterId] = key as number[];
             const carrier = findBuiltObject(galaxy, carrierId);

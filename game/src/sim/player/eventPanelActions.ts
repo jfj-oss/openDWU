@@ -12,6 +12,7 @@ import { investigateAbandonedBuiltObject } from '../combat/ownership';
 import { BuiltObjectEncounterAction } from '../gameStartTail';
 import { exposePlanetDestroyerConstruction } from '../empireEvents';
 import { setEncounterActionFor } from '../perHumanState';
+import type { GalaxyLocation } from '../galaxyLocation';
 
 /**
  * Main.Part4.cs:1836-1841 (EncounterBuiltObject, method_511 "Investigate Ship / Base"):
@@ -49,11 +50,12 @@ export function warnTargetOfPirateAttackFunding(galaxy: Galaxy, empire: Empire, 
 /**
  * Main.Part4.cs:1813-1821 (UncoverPlanetDestroyerConstruction, "Expose this secret project to all empires"):
  * `PlayerEmpire.ExposePlanetDestroyerConstruction(builder, location, PlayerEmpire)` (additionalData = [builder, location]).
- * The location travels as its index in Galaxy.GalaxyLocations (the command log keeps sim objects by a stable key; a
- * GalaxyLocation would be copied by value and no longer match the empires' known-location lists). No Rnd.
+ * The location is the Galaxy.GalaxyLocations entry itself, which the command codec names by its project ship's
+ * builtObjectID ('glbo', commandCodec.ts; a by-value copy would no longer match the empires' known-location lists).
+ * A number is a log entry from before that: the location's index in Galaxy.GalaxyLocations. No Rnd.
  */
-export function exposeUncoveredPlanetDestroyer(galaxy: Galaxy, empire: Empire, builder: Empire, locationIndex: number): void {
-    const location = galaxy.galaxyLocations[locationIndex];
-    if (location === undefined) return;
-    exposePlanetDestroyerConstruction(galaxy, builder, location, empire);
+export function exposeUncoveredPlanetDestroyer(galaxy: Galaxy, empire: Empire, builder: Empire, location: GalaxyLocation | number): void {
+    const l = typeof location === 'number' ? galaxy.galaxyLocations[location] : location;
+    if (l == null || !galaxy.galaxyLocations.includes(l)) return;
+    exposePlanetDestroyerConstruction(galaxy, builder, l, empire);
 }

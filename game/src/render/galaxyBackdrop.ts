@@ -23,7 +23,7 @@ import { BACKDROP_FRAG, BACKDROP_KIND_CODE, BACKDROP_VERT_PIXI, PARTICLE_FRAG, P
 import { buildGalaxyParticles, fitArmPhase, particleWind, type GalaxyParticles, type ParticleStyle } from './galaxyParticles';
 import type { TextureSource } from 'pixi.js';
 import { analyzeGalaxyStructure, DENSITY_SIZE, makeBackdropNoise, NOISE_SIZE, type BackdropStructure } from './galaxyBackdropStructure';
-import type { GalaxyBackdropKind } from './galaxyBackdropChoice';
+import { notifyGalaxyBackdropPictureReady, setGalaxyBackdropPictureSource, type BackdropPicture, type BackdropPictureGalaxy, type GalaxyBackdropKind } from './galaxyBackdropChoice';
 import { GalaxyShape, HabitatCategoryType } from '../sim/types';
 import { computeStormFlashes, MAX_FLASHES } from './galaxyBackdropFlashes';
 
@@ -40,6 +40,8 @@ export interface BackdropGalaxy {
 const ANIM_HZ = 15;
 /** While a storm flash is lit: fast enough for its 0.1 s rise and flickers. */
 const FLASH_HZ = 30;
+/** Long side of the still picture the 2D galaxy maps get (galaxyBackdropChoice.ts galaxyBackdropPicture). */
+const MAP_PICTURE_PX = 1024;
 
 function isGenerated(kind: GalaxyBackdropKind): kind is GeneratedBackdropKind {
     return kind in BACKDROP_KIND_CODE;
@@ -145,6 +147,9 @@ export class GalaxyBackdropLayer {
     private artSrc: TextureSource | null = null;
     private artMix = 0;
     readonly stats: GalaxyBackdropStats = { staticRenders: 0, staticMs: 0, animRenders: 0, animMs: 0, staticSize: 0, animSize: 0 };
+    /** The finished static texture copied to a 2D canvas for the galaxy maps (made on first request), or null. */
+    private mapPicture: HTMLCanvasElement | null = null;
+    private readonly offPictureSource: () => void;
 
     constructor(
         private readonly renderer: Renderer,
@@ -153,6 +158,31 @@ export class GalaxyBackdropLayer {
         this.root.eventMode = 'none';
         this.root.addChild(this.staticSprite, this.animSprite);
         this.root.visible = false;
+        this.offPictureSource = setGalaxyBackdropPictureSource((kind, g) => this.mapPictureOf(kind, g));
+    }
+
+    /**
+     * The finished static picture of `kind` as a 2D canvas (MAP_PICTURE_PX square, stretched over the galaxy like the
+     * static sprite), for the 2D galaxy maps; 'pending' while it is being drawn; null for another kind or galaxy, or
+     * when the generated backdrop is off (no GL, a shader failure).
+     */
+    private mapPictureOf(kind: GalaxyBackdropKind, g: BackdropPictureGalaxy): BackdropPicture {
+        if (kind !== this.kind || !this.active || typeof document === 'undefined') return null;
+        if (g.randomSeed !== this.galaxy.randomSeed || g.sizeX !== this.galaxy.sizeX || g.sizeY !== this.galaxy.sizeY) return null;
+        if (this.staticRT === null || this.staticDirty || this.staticBand < staticBandCount(this.staticRT.width) || this.contextLost()) return 'pending';
+        if (this.mapPicture !== null) return this.mapPicture;
+        const px = Math.min(MAP_PICTURE_PX, this.staticRT.width);
+        const sprite = new Sprite(this.staticRT);
+        sprite.width = px;
+        sprite.height = px;
+        const wrap = new Container();
+        wrap.addChild(sprite);
+        try {
+            this.mapPicture = this.renderer.extract.canvas({ target: wrap, resolution: 1 }) as HTMLCanvasElement;
+        } finally {
+            wrap.destroy({ children: true });
+        }
+        return this.mapPicture;
     }
 
     /** Whether the generated backdrop is drawing (else the caller shows the Original image). */
@@ -224,6 +254,7 @@ export class GalaxyBackdropLayer {
             if (this.staticDirty) {
                 this.staticDirty = false;
                 this.staticBand = 0;
+                this.mapPicture = null;
             }
             // The static texture is drawn one band per frame (a 4096 px pass in one go could stall a weak GPU).
             const bands = staticBandCount(this.staticRT.width);
@@ -240,6 +271,9 @@ export class GalaxyBackdropLayer {
                     this.unbindLight('part');
                     this.bandRT?.destroy(true);
                     this.bandRT = null;
+                    // The galaxy maps redraw with the new picture (copied when they ask, outside this frame).
+                    this.mapPicture = null;
+                    setTimeout(notifyGalaxyBackdropPictureReady, 0);
                 }
             }
             const hz = this.flashCount > 0 ? FLASH_HZ : ANIM_HZ;
@@ -335,6 +369,8 @@ export class GalaxyBackdropLayer {
     }
 
     destroy(): void {
+        this.offPictureSource();
+        this.mapPicture = null;
         try {
             this.releaseTargets();
         } catch {
@@ -395,6 +431,7 @@ export class GalaxyBackdropLayer {
         this.animRT?.destroy(true);
         this.staticRT = null;
         this.animRT = null;
+        this.mapPicture = null;
         this.stats.staticSize = 0;
         this.stats.animSize = 0;
     }

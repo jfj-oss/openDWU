@@ -360,6 +360,10 @@ export function buildHudSystemMap(opts: HudSystemMapOptions): HTMLElement {
     let lastSelectionCheck = -Infinity;
     let wasConnected = false;
     let raf = 0;
+    // One callback for every draw (the layers keep it until their next change; a fresh one per draw would pile up).
+    const forceRedraw = (): void => {
+        forced = true;
+    };
     const draw = (): void => {
         const rect = canvas.getBoundingClientRect();
         const dpr = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1;
@@ -375,9 +379,7 @@ export function buildHudSystemMap(opts: HudSystemMapOptions): HTMLElement {
         const k = px / SYSTEM_MAP_PIC.size;
         ctx.setTransform(k, 0, 0, k, 0, 0);
         try {
-            drawHudSystemMap(ctx, galaxy, camera, SYSTEM_MAP_PIC.size, territory, () => {
-                forced = true;
-            });
+            drawHudSystemMap(ctx, galaxy, camera, SYSTEM_MAP_PIC.size, territory, forceRedraw);
         } catch (e) {
             console.warn('[hudSystemMap]', e);
         }

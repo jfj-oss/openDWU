@@ -22,7 +22,7 @@
 import { beforeAll, describe, expect, it, vi } from 'vitest';
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdtempSync, readFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { gunzipSync } from 'node:zlib';
@@ -81,9 +81,14 @@ beforeAll(async () => {
     };
     traceGalaxy = generateGalaxy({ seed: 3, shape: GalaxyShape.Spiral, starCount: 20, sectorWidth: 2, sectorHeight: 2, systemNames: Array.from({ length: 20 }, (_, i) => `T${i}`), gameData });
     // A private manifest (other tests regenerate public/asset-manifest.json concurrently).
-    const out = join(mkdtempSync(join(tmpdir(), 'dwu-manifest-')), 'asset-manifest.json');
-    execFileSync('node', ['scripts/gen-asset-manifest.mjs'], { cwd: gameRoot, env: { ...process.env, ASSET_MANIFEST_OUT: out } });
-    manifest = JSON.parse(readFileSync(out, 'utf-8')) as Record<string, string[]>;
+    const outDir = mkdtempSync(join(tmpdir(), 'dwu-manifest-'));
+    try {
+        const out = join(outDir, 'asset-manifest.json');
+        execFileSync('node', ['scripts/gen-asset-manifest.mjs'], { cwd: gameRoot, env: { ...process.env, ASSET_MANIFEST_OUT: out } });
+        manifest = JSON.parse(readFileSync(out, 'utf-8')) as Record<string, string[]>;
+    } finally {
+        rmSync(outDir, { recursive: true, force: true });
+    }
 }, 300000);
 
 /** GalaxyImages.cs 11-58, written out: [first, last] picture index the C# can give each category / type. */
@@ -348,7 +353,8 @@ describe('draw order (Galaxy.6.cs SelectXxxPlanet / SelectHabitatPictures)', () 
         // Moved #91c58990ed → #ff3777c6bb: SetupSun SelectHabitatPictures (Galaxy.5.cs 1323): star PictureRef/MapPictureRef draws (2026-10-04)
         // Moved #ff3777c6bb → #99a907b837: galaxy long block clears the independent empire's never-processed message inbox (leak fix; only Empire.messages.length in the digest and the saved list change, RNG draws unchanged) (2026-10-10)
         // Moved #99a907b837 → #a16c2f865d: saves carry the stable command ref ids (entityRefs.ts refId / Galaxy.nextEntityRefId); sim state and digests unchanged (2026-10-10)
-        expect(sha(JSON.stringify(obj))).toMatchPin('pictureRefs.seed1SaveWithoutPictures', "1c422be60f277c8cc281abebeb87e517cce811a7");
+        // Moved #a16c2f865d → #47124baf44: save format 3 (compactCodec.ts): the save text is spelled compactly; same graph — the format-2 tree of the same game still hashes to the old pin — and sim state / digests unchanged (2026-10-10)
+        expect(sha(JSON.stringify(obj))).toMatchPin('pictureRefs.seed1SaveWithoutPictures', "c61dc66304652879b4b3b09b85e90c99c2694eff");
     }, 300000);
 });
 

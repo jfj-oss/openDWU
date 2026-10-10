@@ -5,7 +5,7 @@
 
 import { beforeAll, describe, expect, it } from 'vitest';
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdtempSync, readFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
@@ -57,9 +57,14 @@ describe('loadGameData request list', () => {
     let manifestText = '';
     beforeAll(() => {
         // A private manifest (the other manifest tests regenerate public/asset-manifest.json concurrently).
-        const out = join(mkdtempSync(join(tmpdir(), 'dwu-manifest-')), 'asset-manifest.json');
-        execFileSync('node', ['scripts/gen-asset-manifest.mjs'], { cwd: gameRoot, env: { ...process.env, ASSET_MANIFEST_OUT: out } });
-        manifestText = readFileSync(out, 'utf-8');
+        const outDir = mkdtempSync(join(tmpdir(), 'dwu-manifest-'));
+        try {
+            const out = join(outDir, 'asset-manifest.json');
+            execFileSync('node', ['scripts/gen-asset-manifest.mjs'], { cwd: gameRoot, env: { ...process.env, ASSET_MANIFEST_OUT: out } });
+            manifestText = readFileSync(out, 'utf-8');
+        } finally {
+            rmSync(outDir, { recursive: true, force: true });
+        }
     });
 
     (installLinked ? it : it.skip)('requests no missing file and no file twice', async () => {

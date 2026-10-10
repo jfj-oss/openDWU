@@ -31,6 +31,30 @@ Made with intention of removing the barrier of entry posed by incompatibility wi
 
 Made with generative AI, I mostly acted as guidance; eyes and ears (aka: guinea pig)
 
+## Distant Worlds: Universe won't start or keeps crashing?
+
+The original game is a 2014 Windows program built on Microsoft's .NET
+Framework and the XNA Framework 4.0 (a DirectX 9 game library that is no
+longer maintained). On current systems players commonly run into:
+
+- the game not launching, or closing straight away on Windows 10 / 11;
+- errors about a missing or broken **XNA Framework** or **.NET Framework**;
+- a black screen or graphics errors on start-up;
+- "out of memory" crashes in big galaxies or late games;
+- no way to play it on a **Mac** (Steam says it is incompatible and won't
+  download it) or natively on **Linux**.
+
+openDWU doesn't fix the original program; it replaces it. It is a new
+engine, ported from the original's rules, that plays the same game using
+the data files from your own install. It needs no XNA, .NET Framework or
+DirectX 9, and runs as a native 64-bit app on **Windows, macOS (Apple
+silicon) and Linux**. It finds your Steam install by itself, plays
+Universe 1.9.5 (which includes all the earlier expansions), works with
+modded themes, and is free and open source.
+
+**[Download the latest release](https://github.com/jfj-oss/openDWU/releases/latest)**, then follow
+[Install](#install) for your system.
+
 ## What's here
 
 - **A faithful port of DW:U 1.9.5**: the original engine's formulas,

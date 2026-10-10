@@ -6,6 +6,7 @@
 // it through issuePlayerCommand. Headless: no DOM / Pixi.
 
 import type { Galaxy } from '../galaxy';
+import type { GalaxyLocation } from '../galaxyLocation';
 import type { Empire } from '../empire';
 import type { BuiltObject } from '../builtObject';
 import type { Habitat } from '../types';
@@ -520,7 +521,8 @@ export const PLAYER_OPS = {
     warnTargetOfPirateAttackFunding: (galaxy: Galaxy, empire: Empire, requestingEmpire: Empire, targetEmpire: Empire) =>
         warnTargetOfPirateAttackFunding(galaxy, empire, requestingEmpire, targetEmpire),
     /** Main.Part4.cs:1813-1821 btnEventMessageInvestigate (UncoverPlanetDestroyerConstruction pop-up): expose the project. */
-    exposeUncoveredPlanetDestroyer: (galaxy: Galaxy, empire: Empire, builder: Empire, locationIndex: number) => exposeUncoveredPlanetDestroyer(galaxy, empire, builder, locationIndex),
+    exposeUncoveredPlanetDestroyer: (galaxy: Galaxy, empire: Empire, builder: Empire, location: GalaxyLocation | number) =>
+        exposeUncoveredPlanetDestroyer(galaxy, empire, builder, location),
     salvageWreckField: (galaxy: Galaxy, empire: Empire, ship: BuiltObject, fieldId: number) => orderSalvage(galaxy, empire, ship, fieldId, true),
     // --- Pirate missions (the left sidebar's Pirate Missions panel, the smuggling resource picker) ---
     /** Main.Part12.cs 2591-2678 method_78: a Pirate Missions row's button (Bid / Accept Smuggling Mission / Cancel); the

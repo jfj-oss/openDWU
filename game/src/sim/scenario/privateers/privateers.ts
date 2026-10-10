@@ -479,9 +479,12 @@ function choosePrivateerOrder(galaxy: Galaxy, empire: Empire, ship: BuiltObject,
     }
     if (best !== null) return { type: BuiltObjectMissionType.Attack, target: best, priority: BuiltObjectMissionPriority.Normal };
     // 2. Guard: private mining stations with a recent incident near them or a known pirate base nearby.
+    // Perf: the recent-incident list is built once per call (st.incidents and the date do not change while choosing).
+    let threatIncidents: PrivateerIncident[] | null = null;
     const threatAt = (x: number, y: number): number => {
         let n = 0;
-        for (const inc of recentIncidents(galaxy, st, PRIVATEER_RULES.recentDays)) if (dist2(x, y, inc.x, inc.y) <= near) n++;
+        if (threatIncidents === null) threatIncidents = recentIncidents(galaxy, st, PRIVATEER_RULES.recentDays);
+        for (const inc of threatIncidents) if (dist2(x, y, inc.x, inc.y) <= near) n++;
         for (const pb of empire.knownPirateBases) if (pb != null && !pb.hasBeenDestroyed && dist2(x, y, pb.xpos, pb.ypos) <= near * 4) n++;
         return n;
     };

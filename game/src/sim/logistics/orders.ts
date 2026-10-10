@@ -245,6 +245,40 @@ export class OrderList {
         const i = this.items.indexOf(order);
         if (i >= 0) this.items.splice(i, 1);
         if (!this._isIndexed) return;
+        this.removeFromIndexes(order);
+    }
+
+    /**
+     * Perf: `for (const o of orders) this.remove(o)` with the item removals done in one pass. Each remove() takes out
+     * the first occurrence of its order, so the sequence takes out, per order, its first k occurrences (k = how often
+     * it is listed): a count per order and one compaction leave the same items in the same order. The index updates
+     * (separate lists) run per order in the same sequence as before.
+     */
+    removeAll(orders: readonly Order[]): void {
+        if (orders.length <= 1) {
+            for (const o of orders) this.remove(o);
+            return;
+        }
+        const counts = new Map<Order, number>();
+        for (const o of orders) counts.set(o, (counts.get(o) ?? 0) + 1);
+        let kept = 0;
+        const items = this.items;
+        for (let i = 0; i < items.length; i++) {
+            const item = items[i];
+            const c = counts.get(item);
+            if (c !== undefined && c > 0) {
+                counts.set(item, c - 1);
+                continue;
+            }
+            items[kept++] = item;
+        }
+        items.length = kept;
+        if (!this._isIndexed) return;
+        for (const order of orders) this.removeFromIndexes(order);
+    }
+
+    /** remove()'s index part (OrderList.cs Remove: the BuiltObject / Habitat / Empire index lists). */
+    private removeFromIndexes(order: Order): void {
         let empire: Empire | null = null;
         if (order.requestingBuiltObject !== null) {
             empire = order.requestingBuiltObject.actualEmpire;
@@ -599,7 +633,7 @@ export function removeCompletedOrders(orders: OrderList): void {
         const num = order.amountRequested - order.amountDelivered;
         if (num <= 0) orderList.push(order);
     }
-    for (const item of orderList) orders.remove(item);
+    orders.removeAll(orderList); // = remove() of each in turn
 }
 
 /** Galaxy.1.cs 1126 CancelExpiredOrders. No Rnd. */
@@ -616,7 +650,7 @@ export function cancelExpiredOrders(galaxy: Galaxy, orders: OrderList): void {
             if (contract !== null) cancelContract(galaxy, contract);
         }
     }
-    for (const item of orderList) orders.remove(item);
+    orders.removeAll(orderList); // = remove() of each in turn
 }
 
 /** Galaxy.1.cs 1062-1084 CalculateOrderPlacementDate(order, out timeSinceOrderPlacement). */

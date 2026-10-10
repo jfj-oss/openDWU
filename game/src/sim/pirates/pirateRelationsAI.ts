@@ -431,8 +431,34 @@ export interface SaleableInfo {
     restrictedAreaLocations: GalaxyLocation[];
 }
 
-/** Empire.5.cs 1163 GenerateSaleableInfoForEmpire(pirateFaction, buyingEmpire, out ...). No Rnd. */
-export function generateSaleableInfoForEmpire(galaxy: Galaxy, pirateFaction: Empire | null, buyingEmpire: Empire | null): SaleableInfo {
+/**
+ * Perf (not in the C#): the buyer-independent part of generateSaleableInfoForEmpire's habitat pass — the habitats, in
+ * order, that pass every test but the buyer's `!CheckSystemExplored`. PirateGenerateSellInfoOffers asks for one buyer
+ * after another; nothing it does in between changes a habitat's owner or ruin, the faction's explored systems or its
+ * base's position (it only sends messages and reads), so one list serves them all, filtered per buyer.
+ */
+export interface SaleableHabitatCandidates {
+    independentColonies: Habitat[];
+    ruinHabitats: Habitat[];
+}
+function saleableHabitatCandidates(galaxy: Galaxy, pirateFaction: Empire, base: Habitat): SaleableHabitatCandidates {
+    const out: SaleableHabitatCandidates = { independentColonies: [], ruinHabitats: [] };
+    for (let j = 0; j < galaxy.habitats.length; j++) {
+        const habitat3 = galaxy.habitats[j];
+        if (habitat3.empire === galaxy.independentEmpire && pirateFaction.visibility.checkSystemExplored(habitat3.systemIndex)) out.independentColonies.push(habitat3);
+        if (habitat3.ruin != null && (habitat3.empire === null || habitat3.empire === galaxy.independentEmpire) && pirateFaction.visibility.checkSystemExplored(habitat3.systemIndex)) {
+            const num = galaxy.calculateDistance(habitat3.xpos, habitat3.ypos, base.xpos, base.ypos);
+            if (num < SECTOR_SIZE * 2.0) out.ruinHabitats.push(habitat3);
+        }
+    }
+    return out;
+}
+
+/**
+ * Empire.5.cs 1163 GenerateSaleableInfoForEmpire(pirateFaction, buyingEmpire, out ...). No Rnd.
+ * `candidates` (perf): a holder for the SaleableHabitatCandidates shared by consecutive calls for the same faction.
+ */
+export function generateSaleableInfoForEmpire(galaxy: Galaxy, pirateFaction: Empire | null, buyingEmpire: Empire | null, candidates: { value: SaleableHabitatCandidates | null } | null = null): SaleableInfo {
     const info: SaleableInfo = { unmetEmpires: [], unexploredSystems: [], independentColonies: [], ruinHabitats: [], debrisFieldLocations: [], planetDestroyerLocations: [], restrictedAreaLocations: [] };
     if (buyingEmpire === null || pirateFaction === null || pirateFaction.pirateEmpireBaseHabitat === null) return info;
     const base = pirateFaction.pirateEmpireBaseHabitat;
@@ -463,9 +489,20 @@ export function generateSaleableInfoForEmpire(galaxy: Galaxy, pirateFaction: Emp
         const habitat2 = findNearestUnexploredSystem(galaxy, buyingEmpire.pirateEmpireBaseHabitat.xpos, buyingEmpire.pirateEmpireBaseHabitat.ypos, buyingEmpire);
         if (habitat2 !== null && pirateFaction.visibility.checkSystemExplored(habitat2.systemIndex)) info.unexploredSystems.push(habitat2);
     }
+    if (candidates !== null) {
+        // Perf: the shared buyer-independent pass (SaleableHabitatCandidates), then the buyer's test, in the same order.
+        if (candidates.value === null) candidates.value = saleableHabitatCandidates(galaxy, pirateFaction, base);
+        const c = candidates.value;
+        for (let j = 0; j < c.independentColonies.length; j++) {
+            if (!buyingEmpire.visibility.checkSystemExplored(c.independentColonies[j].systemIndex)) info.independentColonies.push(c.independentColonies[j]);
+        }
+        for (let j = 0; j < c.ruinHabitats.length; j++) {
+            if (!buyingEmpire.visibility.checkSystemExplored(c.ruinHabitats[j].systemIndex)) info.ruinHabitats.push(c.ruinHabitats[j]);
+        }
+    }
     // Perf: the C#'s two passes over Habitats (independent colonies, then ruins) fused into one — both only read and
     // each appends to its own list, so both lists get the same habitats in the same order.
-    for (let j = 0; j < galaxy.habitats.length; j++) {
+    for (let j = 0; candidates === null && j < galaxy.habitats.length; j++) {
         const habitat3 = galaxy.habitats[j];
         if (habitat3.empire === galaxy.independentEmpire && pirateFaction.visibility.checkSystemExplored(habitat3.systemIndex) && !buyingEmpire.visibility.checkSystemExplored(habitat3.systemIndex)) info.independentColonies.push(habitat3);
         const habitat4 = habitat3;
@@ -513,7 +550,7 @@ function sendSellInfo(pirateFaction: Empire, empire: Empire, type: EmpireMessage
  * Galaxy.cs 2818 GeneratePirateOffersForSingleEmpire(pirateFaction, empire).
  * Rnd: NextDouble, Next(0, 3); then per attempt (≤ 10) Next(0, 4) and Next(0, list) for a non-empty list.
  */
-export function generatePirateOffersForSingleEmpire(galaxy: Galaxy, pirateFaction: Empire, empire: Empire | null): boolean {
+export function generatePirateOffersForSingleEmpire(galaxy: Galaxy, pirateFaction: Empire, empire: Empire | null, candidates: { value: SaleableHabitatCandidates | null } | null = null): boolean {
     let flag = false;
     if (empire !== null && !isHumanEmpire(galaxy, pirateFaction)) {
         const pirateRelation = obtainPirateRelation(pirateFaction, empire);
@@ -544,7 +581,7 @@ export function generatePirateOffersForSingleEmpire(galaxy: Galaxy, pirateFactio
                 case 1:
                 case 2: {
                     if (pirateRelation.lastInfoDate >= num6) break;
-                    const info = generateSaleableInfoForEmpire(galaxy, pirateFaction, empire);
+                    const info = generateSaleableInfoForEmpire(galaxy, pirateFaction, empire, candidates);
                     if (!checkEmpireHasHyperDriveTech(empire)) {
                         info.unmetEmpires.length = 0;
                         info.unexploredSystems.length = 0;
@@ -652,13 +689,14 @@ export function pirateGenerateSellInfoOffersCore(galaxy: Galaxy, empire: Empire)
     if (isHumanEmpire(galaxy, empire)) return;
     // `_ = _Galaxy.ColonyFillFactor;` — no effect.
     const num = galaxy.rnd.next(0, empire.pirateRelations.count);
+    const candidates: { value: SaleableHabitatCandidates | null } = { value: null }; // Perf: SaleableHabitatCandidates
     for (let i = num; i < empire.pirateRelations.count; i++) {
         const pirateRelation = empire.pirateRelations.get(i);
-        if (pirateRelation != null && pirateRelation.type !== PirateRelationType.NotMet && pirateRelation.evaluation > f(-10) && generatePirateOffersForSingleEmpire(galaxy, empire, pirateRelation.otherEmpire)) return;
+        if (pirateRelation != null && pirateRelation.type !== PirateRelationType.NotMet && pirateRelation.evaluation > f(-10) && generatePirateOffersForSingleEmpire(galaxy, empire, pirateRelation.otherEmpire, candidates)) return;
     }
     for (let j = 0; j < Math.min(num, empire.pirateRelations.count); j++) {
         const pirateRelation2 = empire.pirateRelations.get(j);
-        if (pirateRelation2 != null && pirateRelation2.type !== PirateRelationType.NotMet && pirateRelation2.evaluation > f(-10) && generatePirateOffersForSingleEmpire(galaxy, empire, pirateRelation2.otherEmpire)) break;
+        if (pirateRelation2 != null && pirateRelation2.type !== PirateRelationType.NotMet && pirateRelation2.evaluation > f(-10) && generatePirateOffersForSingleEmpire(galaxy, empire, pirateRelation2.otherEmpire, candidates)) break;
     }
 }
 

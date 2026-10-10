@@ -645,13 +645,15 @@ Results on 2026-10-10 (seed 1, 300 stars, 4 empires, 4x, input delay 4, CPU core
   `PlayerLogEntry.codec`) names an empire by `empireId`; fleets, designs, characters, troops and habitats by a stable
   `refId` (`src/sim/entityRefs.ts`: one galaxy counter, assigned by a deterministic sweep at the end of each frame,
   after each applied command, at the end of `createGame` and in AddHabitat / AddAsteroidField); a creature by
-  `creatureId`; a tech node and an advisor suggestion by owner `empireId`. `NetCommand.empire` is the `empireId` too
+  `creatureId`; a tech node and an advisor suggestion by owner `empireId`; a planet destroyer project location by its
+  ship's `builtObjectID` (`'glbo'`). `NetCommand.empire` is the `empireId` too
   (`authorize` still gets the flat index, taken at the command's frame). Log entries without `codec` (version 1) still
   decode and replay with the old index keys. A save from before the ids gets them at load in sweep order, plus a
   `'refids'` log entry so a replay from the seed renumbers at the same boundary. The ids are saved and reach the
   worker replica as ordinary fields; they are not in `stateDigest`. Still positional, by op signature (not the codec):
-  `scrapColonyFacility`'s facility index (checked against the facility type), `exposeUncoveredPlanetDestroyer`'s
-  `galaxyLocations` index, `moveResearch`'s target slot and `setControlGroup`'s slot (positions by meaning).
+  `scrapColonyFacility`'s facility index (checked against the facility type), `moveResearch`'s target slot and
+  `setControlGroup`'s slot (positions by meaning). `exposeUncoveredPlanetDestroyer` now passes the location itself
+  (`'glbo'` above); its older log entries carry a `galaxyLocations` index, which still decodes and applies.
 - **Smaller saves.** A 300-star save is 16.5 MB of JSON. Compress it (`CompressionStream`) and chunk it for joins and
   resyncs.
 - **A finer desync check.** `stateDigest` hashes key fields only. Add a deeper periodic hash, and log the first

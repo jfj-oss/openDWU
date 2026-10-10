@@ -24,10 +24,10 @@ import { HabitatCategoryType, type Habitat } from './types';
 import type { Empire } from './empire';
 import { BuiltObjectSubRole } from './builtObjectTypes';
 import { ComponentCategoryType } from './data/policies';
-import { findNewest } from './design';
+import { findNewest, galaxyResourceCurrentPrices } from './design';
 import { GalaxyLocationEffectType, GalaxyLocationType } from './galaxyLocation';
 import { netSort } from './netSort';
-import { csToInt32, resourceCurrentPrice, type BuiltObjectView } from './forceStructure';
+import { csToInt32, type BuiltObjectView } from './forceStructure';
 import { findNearestPirateFaction } from './pirates';
 import { obtainDiplomaticRelation } from './diplomacy';
 import { determineDefendingFirepower } from './pirates/pirateEmpireAI';
@@ -63,6 +63,20 @@ export function habitatPrioritizationIndexOf(list: HabitatPrioritization[], habi
         if (list[index].habitat === habitat) return index;
     }
     return -1;
+}
+
+/**
+ * Perf: habitatPrioritizationIndexOf(list, habitat) for a list that does not change while it is asked, as a map from
+ * habitat to its first index (null for a short list, where the scan is as cheap: ask habitatPrioritizationIndexOf).
+ */
+export function habitatPrioritizationFirstIndexes(list: HabitatPrioritization[]): Map<Habitat, number> | null {
+    if (list.length <= 8) return null;
+    const map = new Map<Habitat, number>();
+    for (let index = 0; index < list.length; ++index) {
+        const habitat = list[index].habitat;
+        if (habitat !== null && !map.has(habitat)) map.set(habitat, index);
+    }
+    return map;
 }
 
 interface Positioned {
@@ -210,8 +224,13 @@ export function checkEmpireTerritoryCanBuildAtHabitat(galaxy: Galaxy, empire: Em
 // Habitat.cs CalculateCurrentCompleteResourceValue (5529).
 export function calculateCurrentCompleteResourceValue(galaxy: Galaxy, habitat: Habitat): number {
     let num = 0.0;
-    for (const r of habitat.resources.slice()) {
-        let val = resourceCurrentPrice(galaxy, r.resourceId);
+    // Perf: walked in place (the C# copies the list; nothing in the loop changes it — resourceCurrentPrice only reads),
+    // with the price table looked up once (resourceCurrentPrice's array; fetched only when there is a resource, as before).
+    const resources = habitat.resources;
+    const prices = resources.length > 0 ? galaxyResourceCurrentPrices(galaxy) : null;
+    for (let i = 0; i < resources.length; i++) {
+        const r = resources[i];
+        let val = prices![r.resourceId];
         val = Math.max(1.0, val);
         const num3 = val * val;
         let d = r.abundance;
@@ -225,10 +244,16 @@ export function calculateCurrentCompleteResourceValue(galaxy: Galaxy, habitat: H
 // Habitat.cs CalculateCurrentStrategicResourceValue (5551).
 export function calculateCurrentStrategicResourceValue(galaxy: Galaxy, habitat: Habitat): number {
     let num = 0.0;
-    for (const r of habitat.resources.slice()) {
+    // Perf: walked in place (the C# copies the list; nothing in the loop changes it), with the price table looked up
+    // once (resourceCurrentPrice's array; fetched on the first non-luxury resource, as before).
+    const resources = habitat.resources;
+    let prices: number[] | null = null;
+    for (let i = 0; i < resources.length; i++) {
+        const r = resources[i];
         // Resource.IsLuxuryResource: Resources[ResourceID].Group == Luxury (resources.txt type 2).
         if (galaxy.resourceSystem.resources[r.resourceId].type !== 2) {
-            let val = resourceCurrentPrice(galaxy, r.resourceId);
+            if (prices === null) prices = galaxyResourceCurrentPrices(galaxy);
+            let val = prices[r.resourceId];
             val = Math.max(1.0, val);
             const num3 = val * val * val;
             const num4 = r.abundance * 100.0;
@@ -359,6 +384,7 @@ export function identifyResourceCentres(galaxy: Galaxy, empire: Empire, filterOu
     }
     const num4 = csToInt32(1000.0 / ((num2 * num2 * num2) / (num3 * num3 * num3)));
     const habitatPrioritizationList2 = determineHabitatsBuildingMiningStations(empire);
+    const firstIndexes2 = habitatPrioritizationFirstIndexes(habitatPrioritizationList2); // Perf: not changed below
     for (let k = 0; k < empire.systemVisibility.length; k++) {
         if (!empire.visibility.checkSystemExplored(k)) continue;
         const systemInfo = galaxy.systems.length > k ? galaxy.systems[k] : null;
@@ -374,7 +400,10 @@ export function identifyResourceCentres(galaxy: Galaxy, empire: Empire, filterOu
             flag5 = checkNearPirateBase(galaxy, empire, star, csToInt32(MAX_SOLAR_SYSTEM_SIZE * 2.1), star.xpos, star.ypos, empire);
         }
         if (flag4 || flag5) continue;
-        let habitatList = galaxy.systemHabitatsOf(k);
+        // Systems[k].Habitats (no star). Perf: walked in place, skipping the star (systemHabitatsOf's filtered copy:
+        // same habitats, same order; the loop only reads). systemInfo is galaxy.systems[k], as systemHabitatsOf reads.
+        let habitatList: readonly Habitat[] = systemInfo.habitats;
+        let skipHabitat: Habitat | null = star;
         // Perf: FindNearest over the empire's ports / large colonies (O(colonies)) is only needed for a habitat that
         // passes every filter below, so it is computed on first use. It reads only stellarObjectList (local, not changed
         // after it is built) and positions, which nothing in this loop moves — same value as computing it here.
@@ -383,9 +412,11 @@ export function identifyResourceCentres(galaxy: Galaxy, empire: Empire, filterOu
         let flag6 = false;
         if (star.category === HabitatCategoryType.GasCloud) {
             habitatList = [star];
+            skipHabitat = null;
             flag6 = true;
         }
         for (const habitat2 of habitatList) {
+            if (habitat2 === skipHabitat) continue;
             let num5 = 0.0;
             if (
                 habitat2 == null ||
@@ -406,7 +437,7 @@ export function identifyResourceCentres(galaxy: Galaxy, empire: Empire, filterOu
             if (flag7) continue;
             let flag8 = true;
             let assignedShip: unknown = null;
-            const num6 = habitatPrioritizationIndexOf(habitatPrioritizationList2, habitat2);
+            const num6 = firstIndexes2 !== null ? (firstIndexes2.get(habitat2) ?? -1) : habitatPrioritizationIndexOf(habitatPrioritizationList2, habitat2);
             if (num6 >= 0) {
                 if (filterOutAssignedHabitats) flag8 = false;
                 else assignedShip = habitatPrioritizationList2[num6].assignedShip;

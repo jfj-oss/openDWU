@@ -1654,23 +1654,36 @@ async function digestsMatch(when) {
     if (check(dg.replica === dg.worker, `replica digest = worker digest (${when}; ${dg.replica.slice(0, 12)} / ${dg.worker.slice(0, 12)})`)) return;
     // Where they differ: the replica's encoded graph against the worker's save, by Class.field.
     const diffs = await ev(async () => {
-        const { galaxyToJSON } = await import('/src/sim/save/galaxySave.ts');
-        const rep = JSON.parse(JSON.stringify(galaxyToJSON(window.__dwu.galaxy)));
+        // Both as save text (format 3, compactCodec.ts): instances are [64 + 2 * shape, ...] rows (a sparse row,
+        // 65 + 2 * shape, leaves the fields equal to the previous instance's out), named here by Class.field.
+        const { galaxyToSaveChunks } = await import('/src/sim/save/galaxySave.ts');
+        const chunks = galaxyToSaveChunks(window.__dwu.galaxy);
+        const all = new Uint8Array(chunks.reduce((n, c) => n + c.length, 0));
+        chunks.reduce((at, c) => (all.set(c, at), at + c.length), 0);
+        const rep = JSON.parse(new TextDecoder().decode(all));
         const wk = JSON.parse(await window.__dwu.simWorker.save()).galaxy;
         const out = [];
+        const B64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
+        const rowFields = (row, shape) => {
+            if ((row[0] & 1) === 0) return row.slice(1);
+            const mask = row[1];
+            let p = 2;
+            return shape.slice(1).map((_, j) => ((((j / 6) | 0) < mask.length ? B64.indexOf(mask[(j / 6) | 0]) : 0) >> (j % 6)) & 1 ? row[p++] : '(as the previous instance)');
+        };
         const diff = (a, b, sa, sb, path) => {
             if (out.length >= 25 || Object.is(a, b)) return;
             if (typeof a !== typeof b || a === null || b === null || typeof a !== 'object') return void out.push(`${path}: replica ${JSON.stringify(a)?.slice(0, 80)} / worker ${JSON.stringify(b)?.slice(0, 80)}`);
             if (Array.isArray(a)) {
                 if (!Array.isArray(b)) return void out.push(`${path}: array / object`);
+                if (typeof a[0] === 'number' && a[0] >= 64 && typeof b[0] === 'number' && b[0] >= 64) {
+                    const xa = sa[(a[0] - 64) >> 1], xb = sb[(b[0] - 64) >> 1];
+                    if (JSON.stringify(xa) !== JSON.stringify(xb)) return void out.push(`${path}: shape ${JSON.stringify(xa).slice(0, 160)} / ${JSON.stringify(xb).slice(0, 160)}`);
+                    const fa = rowFields(a, xa), fb = rowFields(b, xb);
+                    for (let i = 0; i < fa.length; i++) diff(fa[i], fb[i], sa, sb, `${path}/${xa[0]}.${xa[i + 1]}`);
+                    return;
+                }
                 if (a.length !== b.length) out.push(`${path}: length ${a.length} / ${b.length}`);
                 for (let i = 0; i < Math.min(a.length, b.length); i++) diff(a[i], b[i], sa, sb, `${path}[${i}]`);
-                return;
-            }
-            if ('$s' in a && '$s' in b && Array.isArray(a.$v)) {
-                const xa = sa[a.$s], xb = sb[b.$s];
-                if (JSON.stringify(xa) !== JSON.stringify(xb)) return void out.push(`${path}: shape ${JSON.stringify(xa).slice(0, 160)} / ${JSON.stringify(xb).slice(0, 160)}`);
-                for (let i = 0; i < a.$v.length; i++) diff(a.$v[i], b.$v[i], sa, sb, `${path}/${xa[0]}.${xa[i + 1]}`);
                 return;
             }
             for (const k of new Set([...Object.keys(a), ...Object.keys(b)])) {

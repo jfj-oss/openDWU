@@ -68,9 +68,8 @@ function issueChoice(galaxy: Galaxy, player: Empire, choice: EventChoice): void 
         case 'exposePlanetDestroyer': {
             // The same object in-thread / on a synced replica; a by-value copy matches its galaxy entry by name, type and project.
             const l = choice.location;
-            let index = galaxy.galaxyLocations.indexOf(l);
-            if (index < 0) index = galaxy.galaxyLocations.findIndex((g) => g.type === l.type && g.name === l.name && g.relatedBuiltObject === l.relatedBuiltObject);
-            if (index >= 0) issuePlayerCommand(galaxy, player, 'exposeUncoveredPlanetDestroyer', [choice.builder, index]);
+            const entry = galaxy.galaxyLocations.includes(l) ? l : galaxy.galaxyLocations.find((g) => g.type === l.type && g.name === l.name && g.relatedBuiltObject === l.relatedBuiltObject);
+            if (entry !== undefined) issuePlayerCommand(galaxy, player, 'exposeUncoveredPlanetDestroyer', [choice.builder, entry]);
             break;
         }
         case 'none':

@@ -19,6 +19,7 @@ import { decodeCommandArg, encodeCommandArg } from '../src/sim/player/commandCod
 import { commandLogReplayWarnings, flushPlayerCommands, issuePlayerCommand, noteSimView, pendingPlayerCommands, replayCommandLog, runPlayerCommand } from '../src/sim/player/playerCommands';
 import { ShipAction, ShipActionType, createMissionShipActionAt, createShipAction } from '../src/sim/player/shipAction';
 import { BuiltObjectMissionType } from '../src/sim/missions/mission';
+import { GalaxyLocation, GalaxyLocationType } from '../src/sim/galaxyLocation';
 import type { StartGameOptions } from '../src/sim/startGameOptions';
 import { createScenarioGame } from './helpers/scenarioGame';
 import { pendingScenarioDecisions, raiseScenarioDecision, registerScenarioDecision } from '../src/sim/scenario/decisions';
@@ -143,6 +144,22 @@ describe('command codec', () => {
         expect(back.isSubsequentAction).toBe(true);
         // Static data (a race) is an external of the save.
         expect(decodeCommandArg(g, encodeCommandArg(g, p.dominantRace))).toBe(p.dominantRace);
+    }, 300000);
+
+    it('a planet destroyer project location is named by its ship, not its galaxyLocations index', () => {
+        const game = cachedTickGame(gameData);
+        const g = game.galaxy;
+        const ship = game.playerEmpire.builtObjects.find((b) => b !== null)!;
+        const project = new GalaxyLocation(`${ship.name} Project`, GalaxyLocationType.PlanetDestroyer, ship.xpos - 600, ship.ypos - 600, 1200, 1200, -1);
+        project.relatedBuiltObject = ship;
+        g.galaxyLocations.push(project);
+        const enc = encodeCommandArg(g, project);
+        expect(enc).toEqual({ r: 'glbo', k: ship.builtObjectID });
+        // An entry ahead of it leaving the list does not change what the key names.
+        g.galaxyLocations.splice(0, 1);
+        expect(decodeCommandArg(g, enc)).toBe(project);
+        // Older log entries passed the index as a plain number, which still decodes as one.
+        expect(decodeCommandArg(g, encodeCommandArg(g, 4))).toBe(4);
     }, 300000);
 
     it('an argument the log cannot write is still applied, and the entry says why it cannot be replayed', () => {

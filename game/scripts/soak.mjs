@@ -155,7 +155,7 @@ if (arg('list', false) === true) {
 }
 
 const MODULES = { game: '/src/sim/game.ts', sgo: '/src/sim/startGameOptions.ts', load: '/test/helpers/loadGameDataFs.ts',
-    harness: '/src/sim/tick/harness.ts', save: '/src/sim/save/gameSave.ts', digest: '/src/sim/tick/digest.ts',
+    harness: '/src/sim/tick/harness.ts', save: '/src/sim/save/gameSave.ts', galaxySave: '/src/sim/save/galaxySave.ts', digest: '/src/sim/tick/digest.ts',
     scenario: '/test/helpers/scenarioGame.ts', time: '/src/sim/galaxyTime.ts' };
 
 async function bundle() {
@@ -260,6 +260,7 @@ async function runOne(name) {
         const { loadGameDataFs } = await load('load');
         const { runGameSeconds } = await load('harness');
         const { serializeGame, deserializeGame } = await load('save');
+        const { galaxyToJSON } = await load('galaxySave');
         const { stateDigest, stateCounts } = await load('digest');
         const { scenarioGameData } = await load('scenario');
         const { GalaxyTime } = await load('time');
@@ -394,7 +395,7 @@ async function runOne(name) {
             if (day() - lastScanDay >= scanDays) { lastScanDay = day(); await overhead(() => doScan('periodic')); }
             if (saveAtS.has(s + chunk)) await overhead(() => {
                 try {
-                    report.saveCheck = saveCheck(game, so, gameData, saveRun, { serializeGame, deserializeGame, stateDigest, runGameSeconds, GalaxyTime });
+                    report.saveCheck = saveCheck(game, so, gameData, saveRun, { serializeGame, deserializeGame, galaxyToJSON, stateDigest, runGameSeconds, GalaxyTime });
                     const sc = report.saveCheck;
                     (report.saveChecks ??= []).push(sc);
                     console.log(`${sc.digestEqual && sc.textEqual && sc.roundTripEqual ? '=' : '!'} save check d${sc.day}: ${sc.saveMB.toFixed(1)}MB, roundTrip ${sc.roundTripEqual}, digest ${sc.digestEqual} text ${sc.textEqual}${sc.firstDiff ? ' first diff ' + sc.firstDiff : ''}${sc.error ? ' ERROR ' + sc.error.split('\n')[0] : ''}`);
@@ -442,7 +443,8 @@ function saveCheck(game, so, gameData, seconds, m) {
     }
     const text2 = m.serializeGame(loaded.game, time, so);
     r.roundTripEqual = text2 === text;
-    if (!r.roundTripEqual) r.roundTripDiff = firstJsonDiff(text, text2);
+    // (Differences named through the format-2 tree, galaxyToJSON: the save text is format 3.)
+    if (!r.roundTripEqual) r.roundTripDiff = firstJsonDiff(treeText(m, game), treeText(m, loaded.game));
     const dA0 = m.stateDigest(g), dB0 = m.stateDigest(loaded.game.galaxy);
     r.digestEqualAtLoad = dA0 === dB0;
     let excA = null, excB = null;
@@ -454,8 +456,13 @@ function saveCheck(game, so, gameData, seconds, m) {
     r.digestEqual = r.digestA === r.digestB;
     const tA = m.serializeGame(game, time, so), tB = m.serializeGame(loaded.game, time, so);
     r.textEqual = tA === tB;
-    if (!r.textEqual) { const d = firstJsonDiff(tA, tB); r.firstDiff = d.path; r.diffs = d.all; }
+    if (!r.textEqual) { const d = firstJsonDiff(treeText(m, game), treeText(m, loaded.game)); r.firstDiff = d.path; r.diffs = d.all; }
     return r;
+}
+
+/** A game's galaxy as format-2 tree text ({galaxy: galaxyToJSON}: {$s, $v} instances, which firstJsonDiff names by shape). */
+function treeText(m, game) {
+    return JSON.stringify({ galaxy: m.galaxyToJSON(game.galaxy) });
 }
 
 /** The first differing paths of two encoded saves (decoded shape names: `Class.field`). */

@@ -2349,9 +2349,14 @@ export function identifyColonizationTargetsFull(galaxy: Galaxy, empire: Empire, 
             if (flag3 && flag) flag3 = false;
         }
         if (flag3) continue;
-        const habitats = planetsOf(galaxy.systems[systemVisibility[i].systemStar.systemIndex]); // Empire.4.cs 4713 Systems[].Habitats: no star
+        // Empire.4.cs 4713 Systems[].Habitats: no star. Perf: walked in place, skipping the star (planetsOf's filtered
+        // copy: same habitats, same order; the loop only reads).
+        const colonySystem = galaxy.systems[systemVisibility[i].systemStar.systemIndex];
+        const colonySystemStar = colonySystem.systemStar;
+        const habitats = colonySystem.habitats;
         for (let j = 0; j < habitats.length; j++) {
             const habitat = habitats[j];
+            if (habitat === colonySystemStar) continue;
             if (
                 (habitat.category !== HabitatCategoryType.Planet && habitat.category !== HabitatCategoryType.Moon) ||
                 habitat.type === HabitatType.BarrenRock ||

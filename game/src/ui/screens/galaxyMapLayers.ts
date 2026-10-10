@@ -12,12 +12,17 @@
 // galaxy in small batches off the click path (4 clouds per macrotask) and drawn with a single drawImage per map, so a
 // late 2500-star galaxy costs the same per draw as a small one.
 //
+// The backdrop follows the Galaxy Backdrop choice (render/galaxyBackdropChoice.ts): a generated one is drawn as the
+// Main View's finished static picture (galaxyBackdropPicture; a map drawn while it is pending redraws once it is
+// ready); Original, or while that picture is not drawn yet (or without WebGL), galaxy_backdrop.jpg as before.
+//
 // Render/UI only: reads galaxy.galaxyLocations and sizes; never writes the sim (works on the sim-worker replica).
 
 import type { Galaxy } from '../../sim/galaxy';
 import { GalaxyLocationType } from '../../sim/galaxyLocation';
 import { NebulaCloudGenerator } from '../../render/nebulaClouds';
 import { BACKDROP_URLS } from '../../render/assets';
+import { galaxyBackdropPicture, getGalaxyBackdrop, onGalaxyBackdropChange, onGalaxyBackdropPictureReady } from '../../render/galaxyBackdropChoice';
 
 /** Long side of the nebula composite, in pixels (GalaxyMap.cs method_1 builds max(500, width); the Galaxy Map window
  * is up to ~1000 px). */
@@ -43,6 +48,8 @@ interface LayerState extends GalaxyMapLayers {
     nebulaDone: number;
     nebulaTotal: number;
     listeners: Set<() => void>;
+    /** Unsubscribes the one-shot wait for the chosen backdrop's picture, while one is set. */
+    offPictureWait: (() => void) | null;
 }
 
 const states = new WeakMap<Galaxy, LayerState>();
@@ -117,6 +124,21 @@ function start(galaxy: Galaxy, st: LayerState): void {
     setTimeout(step, 0);
 }
 
+/** Notify `st`'s maps once when the chosen backdrop's picture is ready or the choice changes (one-shot: no lasting
+ *  subscription keeps the layers of an old galaxy alive). */
+function waitForPicture(st: LayerState): void {
+    const offs = [onGalaxyBackdropPictureReady(() => fire()), onGalaxyBackdropChange(() => fire())];
+    const off = (): void => {
+        for (const o of offs) o();
+        st.offPictureWait = null;
+    };
+    const fire = (): void => {
+        off();
+        notify(st);
+    };
+    st.offPictureWait = off;
+}
+
 /**
  * The shared layers of `galaxy` (started on first use). `onChange`, when given, is called once the next time a layer
  * changes (the backdrop loaded, another batch of clouds drawn): a map passes its redraw on every draw, so it keeps
@@ -125,12 +147,14 @@ function start(galaxy: Galaxy, st: LayerState): void {
 export function galaxyMapLayers(galaxy: Galaxy, onChange?: () => void): GalaxyMapLayers {
     let st = states.get(galaxy);
     if (st === undefined) {
-        st = { backdrop: null, nebula: null, nebulaDone: 0, nebulaTotal: 0, listeners: new Set() };
+        st = { backdrop: null, nebula: null, nebulaDone: 0, nebulaTotal: 0, listeners: new Set(), offPictureWait: null };
         states.set(galaxy, st);
         start(galaxy, st);
     }
-    const complete = st.backdrop !== null && (st.nebula === null || st.nebulaDone >= st.nebulaTotal);
+    const pictureWaiting = getGalaxyBackdrop() !== 'original' && galaxyBackdropPicture(galaxy) === 'pending';
+    const complete = st.backdrop !== null && !pictureWaiting && (st.nebula === null || st.nebulaDone >= st.nebulaTotal);
     if (onChange !== undefined && !complete) st.listeners.add(onChange);
+    if (pictureWaiting && st.offPictureWait === null) waitForPicture(st);
     return st;
 }
 
@@ -152,7 +176,9 @@ export function drawGalaxyMapLayers(
     const y = -oy / s;
     const w = galaxy.sizeX / s;
     const h = galaxy.sizeY / s;
-    if (opts.backdrop !== false && layers.backdrop !== null && layers.backdrop.complete && layers.backdrop.naturalWidth > 0) {
+    const picture = opts.backdrop !== false ? galaxyBackdropPicture(galaxy) : null;
+    if (picture !== null && picture !== 'pending') ctx.drawImage(picture, x, y, w, h);
+    else if (opts.backdrop !== false && layers.backdrop !== null && layers.backdrop.complete && layers.backdrop.naturalWidth > 0) {
         ctx.drawImage(layers.backdrop, x, y, w, h);
     }
     if (opts.nebulae !== false && layers.nebula !== null && layers.nebulaDone > 0) {

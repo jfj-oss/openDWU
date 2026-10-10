@@ -1,7 +1,8 @@
 // Save/load part 2 (task 11a2, format 2 with the M3 game-start state):
 // serialize a whole game — the galaxy graph (empires, ships, bases, designs,
 // characters, pirates; see galaxySave.ts), the GalaxyTime clock and the
-// new-game StartGameOptions — into one JSON string, and rebuild it. The C#
+// new-game StartGameOptions — into one JSON string (UTF-8 chunks: serializeGameChunks; the galaxy graph in save format
+// 3, compactCodec.ts), and rebuild it (format 3 or the older format 2). The C#
 // Game ISerializable members are not ported; this is our own save format for
 // the headless sim. Key order is fixed so round-tripped strings compare
 // byte-for-byte equal.
@@ -13,7 +14,7 @@ import type { Empire } from '../empire';
 import type { GameData } from '../data/gameData';
 import type { StartGameOptions } from '../startGameOptions';
 import { GalaxyTime } from '../galaxyTime';
-import { encodedField, flatEmpireList, galaxyFromJSON, galaxyToJsonParts, type GalaxySaveJSON } from './galaxySave';
+import { encodedField, flatEmpireList, galaxyFromJSON, galaxyToSaveChunks, type GalaxySaveJSON } from './galaxySave';
 import { appendCommandLog, commandLog, copyCommandLogEntry, restoreCommandLog, type CommandLogEntry } from '../player/commandLog';
 import { lacksEntityRefIds, resetEntityRefIds } from '../entityRefs';
 import { galaxyStarDate } from '../tick/simTime';
@@ -71,13 +72,29 @@ export function serializeGame(game: Game, time: GalaxyTime, startOptions: StartG
 }
 
 /**
- * serializeGame's text as a list of chunks, each passed through `pack` as soon as it is written (`chunkChars` each,
- * about): `serializeGameParts(…, (c) => c).join('')` is serializeGame's text. The galaxy graph is written straight to
- * text (GraphEncoder.encodeJson) instead of as an encoded object tree that JSON.stringify then copies, so the peak is
- * the game plus one chunk — `pack` can move each chunk out of the JS heap (a 100k-habitat save is ~140M characters:
- * as one string beside the encoded tree it pushed a big game past V8's heap limit).
+ * serializeGame's text as a list of string chunks (about `chunkChars` each), each passed through `pack` as it is
+ * decoded: `serializeGameParts(…, (c) => c).join('')` is serializeGame's text. See serializeGameChunks (the bytes).
  */
 export function serializeGameParts<T>(game: Game, time: GalaxyTime, startOptions: StartGameOptions, pack: (chunk: string) => T, chunkChars?: number, extras?: GameSaveExtras): T[] {
+    const chunks = serializeGameChunks(game, time, startOptions, chunkChars, extras);
+    const dec = new TextDecoder();
+    const out: T[] = [];
+    for (let i = 0; i < chunks.length; i++) {
+        const text = dec.decode(chunks[i], { stream: i < chunks.length - 1 });
+        chunks[i] = EMPTY;
+        if (text !== '') out.push(pack(text));
+    }
+    return out;
+}
+
+const EMPTY = new Uint8Array(0);
+
+/**
+ * serializeGame's text as UTF-8 chunks (about `chunkBytes` each; their concatenation decodes to the text). The galaxy
+ * graph is written straight to bytes (galaxyToSaveChunks, compactCodec.ts), so the peak is the game plus the save's
+ * bytes — never a text string or an encoded tree beside it.
+ */
+export function serializeGameChunks(game: Game, time: GalaxyTime, startOptions: StartGameOptions, chunkBytes?: number, extras?: GameSaveExtras): Uint8Array<ArrayBuffer>[] {
     // Player commands still queued apply now: saving happens between frames, at the same boundary (galaxy.nowMs) the
     // next frame would apply them at, so the saved game and its log match the game that keeps running.
     flushPlayerCommands(game.galaxy);
@@ -85,7 +102,7 @@ export function serializeGameParts<T>(game: Game, time: GalaxyTime, startOptions
     // run, not saved) is empty and the loaded game goes on as this one does. Nothing to do unless something was sent
     // outside the sim's frames and commands.
     processPlayerMessages(game.galaxy);
-    const galaxy = galaxyToJsonParts(game.galaxy, pack, chunkChars);
+    const galaxy = galaxyToSaveChunks(game.galaxy, chunkBytes);
     // GameSaveJSON's other members, in its key order (after version and galaxy).
     const rest: Omit<GameSaveJSON, 'version' | 'galaxy'> = {
         time: {
@@ -109,7 +126,8 @@ export function serializeGameParts<T>(game: Game, time: GalaxyTime, startOptions
     const theme = activeCustomizationSetName();
     if (theme !== '') rest.customizationSet = theme;
     const restText = JSON.stringify(rest);
-    return [pack(`{"version":${JSON.stringify(GAME_SAVE_VERSION)},"galaxy":`), ...galaxy, pack(restText === '{}' ? '}' : `,${restText.slice(1)}`)];
+    const enc = new TextEncoder();
+    return [enc.encode(`{"version":${JSON.stringify(GAME_SAVE_VERSION)},"galaxy":`), ...galaxy, enc.encode(restText === '{}' ? '}' : `,${restText.slice(1)}`)];
 }
 
 /**
@@ -178,6 +196,9 @@ export interface DeserializeGameOptions {
      * the save and the data have the same scenario. Absent: an ordinary load, unchanged.
      */
     addAddons?: SaveAddonAddition;
+    /** The parsed save is the caller's to give up (a loader that parsed the text itself): its galaxy graph is emptied as it
+     *  is decoded (galaxyFromJSON's codec.consume), lowering the load's peak. A save passed as text always is. */
+    consume?: boolean;
 }
 
 /** deserializeGame's check for the adding-add-ons path: the save is the planned one's and the data the combined set's. */
@@ -212,7 +233,7 @@ export function deserializeGame(save: string | GameSaveJSON, gameData: GameData,
         throw new Error(`Save was made with add-ons ${(savedScenarioInclude(obj) ?? []).join(', ')} but the game data has ${(gameData.scenario?.manifest.include ?? []).join(', ')}.`);
     }
 
-    const galaxy: Galaxy = galaxyFromJSON(obj.galaxy, gameData);
+    const galaxy: Galaxy = galaxyFromJSON(obj.galaxy, gameData, { consume: typeof save === 'string' || opts.consume === true });
     restoreCommandLog(galaxy, obj.commandLog);
     // A save from before the stable command ids (entityRefs.ts): number them now, in sweep order, and journal it so a
     // replay from the seed renumbers at this boundary too (player/playerCommands.ts 'refids').
@@ -264,5 +285,5 @@ export function* deserializeGameSteps(
     const obj = JSON.parse(text) as GameSaveJSON;
     yield { step: 'Rebuilding galaxy', fraction: 0.35 };
     const d = gameDataFor(obj);
-    return 'opts' in d ? deserializeGame(obj, d.gameData, d.opts) : deserializeGame(obj, d);
+    return 'opts' in d ? deserializeGame(obj, d.gameData, { ...d.opts, consume: true }) : deserializeGame(obj, d, { consume: true });
 }

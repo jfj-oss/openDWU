@@ -61,3 +61,53 @@ export function urlGalaxyBackdropTime(): number | null {
     const v = Number(new URLSearchParams(search).get('backdropTime'));
     return Number.isFinite(v) && v > 0 ? v : null;
 }
+
+// The 2D galaxy maps (ui/screens/galaxyMapLayers.ts: the Galaxy Map screen, the mini maps) draw the chosen generated
+// backdrop as a still picture: a copy of the Main View's finished static texture (galaxyBackdrop.ts), which registers
+// itself here. No picture (Original, not drawn yet, no WebGL, a shader failure) = the maps draw the Original image.
+
+/** The galaxy facts a picture is matched on. */
+export interface BackdropPictureGalaxy {
+    randomSeed: number;
+    sizeX: number;
+    sizeY: number;
+}
+
+/** The picture, 'pending' while it is being drawn, or null when there will be none. */
+export type BackdropPicture = CanvasImageSource | 'pending' | null;
+
+type BackdropPictureSource = (kind: GalaxyBackdropKind, galaxy: BackdropPictureGalaxy) => BackdropPicture;
+
+let pictureSource: BackdropPictureSource | null = null;
+const pictureListeners = new Set<() => void>();
+
+/** Register the Main View's picture source. Returns the unregister function. */
+export function setGalaxyBackdropPictureSource(src: BackdropPictureSource): () => void {
+    pictureSource = src;
+    return () => {
+        if (pictureSource === src) pictureSource = null;
+    };
+}
+
+/** The current generated backdrop as a still picture of `galaxy` (stretched over 0..sizeX × 0..sizeY), 'pending'
+ *  while the Main View is still drawing it, or null (Original, no generated backdrop for this galaxy). */
+export function galaxyBackdropPicture(galaxy: BackdropPictureGalaxy): BackdropPicture {
+    if (current === 'original' || pictureSource === null) return null;
+    try {
+        return pictureSource(current, galaxy);
+    } catch (err) {
+        console.warn('galaxy backdrop: no picture for the maps', err);
+        return null;
+    }
+}
+
+/** Called after a new picture becomes available (the static texture finished); returns the unsubscribe function. */
+export function onGalaxyBackdropPictureReady(cb: () => void): () => void {
+    pictureListeners.add(cb);
+    return () => pictureListeners.delete(cb);
+}
+
+/** The picture source has a new picture (galaxyBackdrop.ts). */
+export function notifyGalaxyBackdropPictureReady(): void {
+    for (const cb of [...pictureListeners]) cb();
+}

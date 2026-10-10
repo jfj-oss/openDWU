@@ -133,6 +133,7 @@ export async function bootWorkerGame(boot: WorkerBoot, deps: WorkerBootDeps): Pr
     installGameStatics(gameData);
     registerGameHooks();
     progress('Rebuilding galaxy', 0.35);
-    const loaded = addAddons !== undefined ? deserializeGame(save, gameData, { addAddons }) : deserializeGame(save, gameData);
+    // (The parsed save is this loader's own: its graph is emptied as it is decoded.)
+    const loaded = addAddons !== undefined ? deserializeGame(save, gameData, { addAddons, consume: true }) : deserializeGame(save, gameData, { consume: true });
     return { game: loaded.game, time: loaded.time, gameData, scenario, startOptions: loaded.startOptions };
 }
