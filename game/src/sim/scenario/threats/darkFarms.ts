@@ -30,6 +30,7 @@ import { habitatGenerateNewTroop } from '../../troops';
 import { assignMission } from '../../missions/assign';
 import { BuiltObjectMissionPriority, BuiltObjectMissionType, builtObjectMission } from '../../missions/mission';
 import { assignLoadTroopsMission } from '../../combat/troopsRuntime';
+import { withinFuelRangeAndRefuel } from '../../movement';
 import { CharacterRole, generateNewCharacter, getEmpireCharacters, type Character, type IntelligenceMission } from '../../characters';
 import { infectWithPlague } from '../../events';
 import { galaxyPlagues } from '../../eventTypes';
@@ -91,6 +92,10 @@ const TRACE_SEARCH_RANGE = 2000;
 const LANDING_RANGE = 3000;
 /** A transport this close to the farm colony takes the farm's surplus troops directly. */
 const FARM_DOCK_RANGE = 3000;
+/** A stranded transport this close to a farm colony hands its robots back to the farm's pickup pool. */
+const FARM_STRANDED_RANGE = 10000;
+/** Extra fuel portion kept in hand on a strike: none, as the stock AI's own target checks (assign.ts ~545). */
+const STRIKE_FUEL_MARGIN = 0.0;
 /** Agents roll once per this many periods (≈ yearly). */
 const AGENT_PERIODS = 12;
 /** IntelligenceMissionType.CounterIntelligence (espionage.ts). */
@@ -764,10 +769,36 @@ function garrisonDefend(h: Habitat): number {
     return h.troops?.totalDefendStrength ?? 0;
 }
 
+/** Undocked and unable to move (reactor / engines knocked out, e.g. by the fighting at the turn): no strike can use it. */
+function isStranded(bo: BuiltObject): boolean {
+    return bo.warpSpeed <= 0 && bo.cruiseSpeed <= 0 && bo.dockedAt === null && bo.builtAt === null;
+}
+
+/** A stranded transport at a farm puts its robots back into the farm colony (ungarrisoned: the pickup pool). */
+function strandedUnload(galaxy: Galaxy, faction: Empire, farms: DarkFarm[], bo: BuiltObject): void {
+    if (bo.troops === null || bo.troops.count === 0) return;
+    const farm = farms.find((f) => galaxy.calculateDistance(bo.xpos, bo.ypos, f.habitat.xpos, f.habitat.ypos) <= FARM_STRANDED_RANGE);
+    if (farm === undefined) return;
+    const h = farm.habitat;
+    if (h.troops === null) h.troops = new TroopList();
+    const troops = [...bo.troops.items];
+    bo.troops.clear();
+    for (const t of troops) {
+        t.builtObject = null;
+        t.colony = h;
+        t.garrisoned = false;
+        t.empire = faction;
+        h.troops.add(t);
+        if (!faction.troops.contains(t)) faction.troops.add(t);
+    }
+}
+
 /**
  * The thin layer over the faction's stock war AI (§5.E step 22): idle loaded transports go for the enemy colony that
- * minimises (garrison + 1) × distance within reach and that the carried attack overwhelms (policy invasion overkill);
- * empty ones return to a farm for pickup; with dirty methods the gunships bombard a target too strong to take.
+ * minimises (garrison + 1) × distance within reach and that the carried attack overwhelms (policy invasion overkill),
+ * counting only the transports with the fuel to get there and back to a refuelling point (else the best such colony
+ * beyond reach); empty ones return to a farm for pickup, stranded ones at a farm put their robots back into its
+ * pickup pool; with dirty methods the gunships bombard a target too strong to take.
  * Per-ship orders as AssignFleetUnloadTroops does them (invasion.ts 863; Empire.9.cs 525).
  */
 export function directFaction(galaxy: Galaxy, st: DarkFarmsState): void {
@@ -791,6 +822,9 @@ export function directFaction(galaxy: Galaxy, st: DarkFarmsState): void {
             continue;
         }
         const m = builtObjectMission(bo.mission);
+        // Gone to refuel (the stock AutoRefuelRepairShip, or handed back low on fuel): the strike is off; once
+        // refuelled the ship rejoins the pool below and is sent at a target within its fuel range.
+        if (bo.isAutoControlled || (m !== null && m.type === BuiltObjectMissionType.Refuel)) continue;
         if (m === null || m.type !== BuiltObjectMissionType.Attack || m.targetHabitat !== k.target) {
             assignMission(galaxy, bo, BuiltObjectMissionType.Attack, k.target, null, BuiltObjectMissionPriority.High, { manuallyAssigned: true });
         }
@@ -808,6 +842,10 @@ export function directFaction(galaxy: Galaxy, st: DarkFarmsState): void {
         // warships every few seconds); a transport low on fuel is handed back to the stock AI to refuel.
         bo.isAutoControlled = bo.currentFuel < 0.3 * bo.fuelCapacity;
         if (bo.isAutoControlled || striking.has(bo)) continue;
+        if (isStranded(bo)) {
+            strandedUnload(galaxy, faction, farms, bo);
+            continue;
+        }
         const loading = isLoading(bo);
         if (!loading && !isIdle(bo) && !isRedirectable(bo)) continue;
         const carried = bo.troops?.totalSize ?? 0;
@@ -816,41 +854,58 @@ export function directFaction(galaxy: Galaxy, st: DarkFarmsState): void {
     }
     if (loaded.length === 0) return;
     const attack = loaded.reduce((a, b) => a + (b.troops?.totalAttackStrength ?? 0), 0);
-    const lead = loaded[0];
     const enemies = normalEmpires(galaxy, faction).filter((e) => atWar(faction, e));
     // Reach: 3 × the distance from the farm to the nearest enemy colony.
     let nearest = Number.MAX_VALUE;
     for (const e of enemies) for (const c of e.colonies) nearest = Math.min(nearest, galaxy.calculateDistance(home.xpos, home.ypos, c.xpos, c.ypos));
     const reach = 3 * nearest;
     const overkill = faction.policy?.invasionOverkillFactor ?? 1.3;
-    let best: Habitat | null = null;
+    // Fuel: only the loaded transports that can get there and still reach a refuelling point afterwards (the stock
+    // AI's target test, BuiltObject.1.cs WithinFuelRangeAndRefuel) go, and only their robots count; a target out of
+    // their range would see them turn back to refuel half-way (AutoRefuelRepairShip) and never land.
+    let best: { target: Habitat; ships: BuiltObject[] } | null = null;
     let bestScore = Number.MAX_VALUE;
+    // Fallback when nothing within reach can be taken: the best such target anywhere in fuel range.
+    let fallback: { target: Habitat; ships: BuiltObject[] } | null = null;
+    let fallbackScore = Number.MAX_VALUE;
     let strongest: Habitat | null = null;
     let strongestScore = Number.MAX_VALUE;
     for (const e of enemies) {
         for (const c of e.colonies) {
             if (c.hasBeenDestroyed) continue;
             const dHome = galaxy.calculateDistance(home.xpos, home.ypos, c.xpos, c.ypos);
-            if (dHome > reach) continue;
+            const inReach = dHome <= reach;
             const g = garrisonDefend(c);
-            const score = (g + 1) * galaxy.calculateDistance(lead.xpos, lead.ypos, c.xpos, c.ypos);
-            if (score < strongestScore) {
-                strongestScore = score;
-                strongest = c;
+            if (inReach) {
+                const score = (g + 1) * galaxy.calculateDistance(loaded[0].xpos, loaded[0].ypos, c.xpos, c.ypos);
+                if (score < strongestScore) {
+                    strongestScore = score;
+                    strongest = c;
+                }
             }
             if (attack < overkill * g) continue;
-            if (score < bestScore) {
+            const ships = loaded.filter((bo) => withinFuelRangeAndRefuel(galaxy, bo, c.xpos, c.ypos, STRIKE_FUEL_MARGIN));
+            if (ships.length === 0) continue;
+            const carried = ships.reduce((a, b) => a + (b.troops?.totalAttackStrength ?? 0), 0);
+            if (carried < overkill * g) continue;
+            const score = (g + 1) * galaxy.calculateDistance(ships[0].xpos, ships[0].ypos, c.xpos, c.ypos);
+            if (inReach && score < bestScore) {
                 bestScore = score;
-                best = c;
+                best = { target: c, ships };
+            }
+            if (score < fallbackScore) {
+                fallbackScore = score;
+                fallback = { target: c, ships };
             }
         }
     }
-    if (best !== null) {
+    const pick = best ?? fallback;
+    if (pick !== null) {
         // An Attack order on the colony (an UnloadTroops at a hostile colony would add the robots to its garrison);
         // the strike lands them on arrival (above).
-        for (const bo of loaded) {
-            assignMission(galaxy, bo, BuiltObjectMissionType.Attack, best, null, BuiltObjectMissionPriority.High, { manuallyAssigned: true });
-            st.strikes.push({ bo, target: best });
+        for (const bo of pick.ships) {
+            assignMission(galaxy, bo, BuiltObjectMissionType.Attack, pick.target, null, BuiltObjectMissionPriority.High, { manuallyAssigned: true });
+            st.strikes.push({ bo, target: pick.target });
         }
         return;
     }
