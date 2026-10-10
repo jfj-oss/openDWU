@@ -30,7 +30,7 @@ latest release once a day and offer the new download.
 2. **Create the release on GitHub:** Releases → **Draft a new release** →
    **Choose a tag** → type `v0.2.0` (exactly `v` + the version) → **Create
    new tag: v0.2.0 on publish**, with the branch that has the bump commit as
-   target → add a title and notes → **Publish release**. Or from a terminal:
+   target → add a title and notes (from `game/docs/release-notes.md`) → **Publish release**. Or from a terminal:
 
    ```sh
    gh release create v0.2.0 --target main --title "openDWU 0.2.0" --notes "What changed…"

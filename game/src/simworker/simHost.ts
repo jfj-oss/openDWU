@@ -18,7 +18,7 @@ import { drainCommandBoundary } from '../sim/tick/commandBoundary';
 import { issuePlayerCommand, loggedSimViewRect, noteSimSpeed, noteSimViewRect, pendingPlayerCommands } from '../sim/player/playerCommands';
 import type { PlayerOpName } from '../sim/player/playerOps';
 import { serializeGame, type GameSaveExtras } from '../sim/save/gameSave';
-import { serializeGameBlob } from '../saveData';
+import { serializeGameSave } from '../saveData';
 import { galaxyExternals, saveClassPrototypes } from '../sim/save/galaxySave';
 import { stateDigest } from '../sim/tick/digest';
 import { setGameEndHandler } from '../sim/victory';
@@ -509,10 +509,11 @@ export class SimHost {
         return this.saveWith((g, t, o) => serializeGame(g, t, o));
     }
 
-    /** save() as a Blob of the text's UTF-8 bytes (saveData.ts serializeGameBlob): what the worker sends — the text is
-     *  never one string in the worker's heap, and the Blob reaches the page by reference, not as a copy. */
-    saveBlob(extras?: GameSaveExtras): Blob {
-        return this.saveWith((g, t, o) => serializeGameBlob(g, t, o, extras));
+    /** save() as a gzip Blob of the text's UTF-8 bytes (saveData.ts serializeGameSave): what the worker sends — the text
+     *  is never one string in the worker's heap, and the Blob reaches the page by reference, not as a copy. The text is
+     *  written synchronously, at this boundary (a throw is thrown here); only the compression is asynchronous. */
+    saveBlob(extras?: GameSaveExtras): Promise<Blob> {
+        return this.saveWith((g, t, o) => serializeGameSave(g, t, o, extras));
     }
 
     private saveWith<T>(serialize: (game: Game, time: GalaxyTime, startOptions: StartGameOptions) => T): T {
@@ -540,8 +541,8 @@ export class SimHost {
         return this.rescueWith(() => this.save());
     }
 
-    /** rescueSave as a Blob (what the worker sends with its fatal error: saveBlob). */
-    rescueSaveBlob(): Blob | null {
+    /** rescueSave as a gzip Blob (what the worker sends with its fatal error: saveBlob). */
+    rescueSaveBlob(): Promise<Blob> | null {
         return this.rescueWith(() => this.saveBlob());
     }
 
