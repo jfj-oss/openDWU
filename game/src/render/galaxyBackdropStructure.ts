@@ -322,7 +322,7 @@ export function syntheticStarLayout(shape: GalaxyShape, seed: number, count = 70
 }
 
 /** A float as IEEE half-float bits (round to nearest; the values here are 0..1). */
-function toHalf(v: number): number {
+export function toHalf(v: number): number {
     if (!(v > 0)) return 0;
     if (v >= 65504) return 0x7bff;
     let e = Math.floor(Math.log2(v));
