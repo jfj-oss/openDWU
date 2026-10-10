@@ -15,9 +15,9 @@
 > [!IMPORTANT]
 > **You need your own copy of the original game's data files.** This
 > repository ships no original art, sounds, data or decompiled source; the
-> game reads them at runtime from a Distant Worlds: Universe install folder,
-> either your Steam install or a clone of the private `jfj-oss/dwu-assets`
-> repo (only if you have been given access).
+> game reads them at runtime from your own Distant Worlds: Universe install
+> folder (your Steam install, or on a Mac a copy of the game folder from a PC
+> where you own and installed the game).
 
 openDWU is ported directly from the game's decompiled engine source
 (formulas, constants, generation order and RNG sequence), with an opt-in
@@ -123,10 +123,8 @@ If it finds none, a setup window asks for the folder: click
 files** opens it). Picking the Steam library or `steamapps` folder above it
 also works. The choice is remembered.
 
-No Steam install, but access to the private assets repo? Clone it in
-PowerShell with `git clone https://github.com/jfj-oss/dwu-assets.git
-$HOME\dwu-assets`, then pick that `dwu-assets` folder in the setup window.
-You don't need Node.js or npm for the app.
+Installed the game somewhere other than Steam? Pick that install folder in
+the setup window. You don't need Node.js or npm for the app.
 
 To use another folder later, press **Ctrl+Shift+O** in the game and choose
 **Game Folder…** (the same menu has **Check for Updates…**).
@@ -180,14 +178,8 @@ New-Item -ItemType Junction -Path public\assets\dwu -Target $DwuDir
 ```
 
 The folder must contain an `images` subfolder. Nothing is copied; the
-junction just points at your install. If you use the private assets repo
-instead of Steam, clone it and point the junction at the clone:
-
-```powershell
-git clone https://github.com/jfj-oss/dwu-assets.git $HOME\dwu-assets
-New-Item -ItemType Directory -Force public\assets | Out-Null
-New-Item -ItemType Junction -Path public\assets\dwu -Target $HOME\dwu-assets
-```
+junction just points at your install. If the game is installed somewhere
+else, set `$DwuDir` to that folder instead.
 
 **4. Run the game**
 
@@ -217,8 +209,7 @@ npm ci
 npm run dev
 ```
 
-The junction from step 3 is kept across updates. If you use the assets
-repo, also run `git -C $HOME\dwu-assets pull`.
+The junction from step 3 is kept across updates.
 
 </details>
 
@@ -255,14 +246,13 @@ first launch a setup window asks for the folder and explains the options:
   [CrossOver](https://www.codeweavers.com/crossover):** install DW:U there;
   openDWU finds it inside the bottle automatically
   (`…/drive_c/Program Files (x86)/Steam/steamapps/common/Distant Worlds Universe`).
-- **A copy from a Windows PC:** copy the whole `Distant Worlds Universe`
-  folder (Steam → right-click the game → Manage → Browse local files) to
-  `~/Games/Distant Worlds Universe`, which is also found automatically, or
-  anywhere else and pick it with **Choose Folder…**.
-- **The private assets repo** (if you have access): clone it in Terminal
-  with `git clone https://github.com/jfj-oss/dwu-assets.git ~/dwu-assets`,
-  then pick the `dwu-assets` folder in your home folder. You don't need
-  Node.js or npm for the app.
+- **A copy from a Windows PC:** on a PC where you own and installed the
+  game, copy the whole `Distant Worlds Universe` folder (Steam → right-click
+  the game → Manage → Browse local files) to the Mac, e.g. over USB or the
+  network, to `~/Games/Distant Worlds Universe`, which is also found
+  automatically, or anywhere else and pick it with **Choose Folder…**.
+
+You don't need Node.js or npm for the app.
 
 To use another folder later: **Distant Worlds Universe** menu → **Game
 Folder…** (next to **Check for Updates…**).
@@ -302,18 +292,11 @@ node -v    # must print v22.12 or newer
 
 **2. Get the game data**
 
-There is no native macOS version of Distant Worlds: Universe, so use one of:
-
-- **The private assets repo** (if you have access; git asks for your GitHub
-  credentials):
-
-  ```sh
-  git clone https://github.com/jfj-oss/dwu-assets.git ~/dwu-assets
-  ```
-
-- **A copy of a Windows or Linux install:** copy the whole
-  `Distant Worlds Universe` folder (the one containing `images/`) to
-  `~/Games/Distant Worlds Universe`.
+There is no native macOS version of Distant Worlds: Universe. On a PC where
+you own and installed the game, copy the whole `Distant Worlds Universe`
+folder (the one containing `images/`) to the Mac, e.g. over USB or the
+network, to `~/Games/Distant Worlds Universe` (or anywhere else; then use
+that path below).
 
 **3. Clone openDWU, install dependencies and link the data**
 
@@ -324,12 +307,8 @@ cd openDWU/game
 npm ci
 ```
 
-`import-assets` has no macOS default path, so always pass `DWU_DIR`.
-Use the line that matches step 2:
-
-```sh
-DWU_DIR="$HOME/dwu-assets" npm run import-assets
-```
+`import-assets` has no macOS default path, so always pass `DWU_DIR`
+(the folder from step 2):
 
 ```sh
 DWU_DIR="$HOME/Games/Distant Worlds Universe" npm run import-assets
@@ -365,8 +344,6 @@ git pull
 npm ci
 npm run dev
 ```
-
-If you use the assets repo, also run `git -C ~/dwu-assets pull`.
 
 </details>
 
@@ -405,10 +382,8 @@ the folder: click **Choose Folder…** and pick the folder containing
 `images` and `races.txt` (in Steam: right-click the game → Manage → Browse
 local files), or paste its path. The choice is remembered.
 
-No Steam install, but access to the private assets repo? Clone it with
-`git clone https://github.com/jfj-oss/dwu-assets.git ~/dwu-assets`, then pick
-`~/dwu-assets` in the setup window. You don't need Node.js or npm for the
-app.
+Installed the game somewhere other than Steam? Pick that install folder in
+the setup window. You don't need Node.js or npm for the app.
 
 To use another folder later, press **Ctrl+Shift+O** in the game and choose
 **Game Folder…** (the same menu has **Check for Updates…**).
@@ -456,12 +431,8 @@ If DW:U is installed through Steam at the default location,
 `~/.local/share/Steam/steamapps/common/Distant Worlds Universe`, there is
 nothing to do here. Otherwise note where your copy is (another Steam
 library, Flatpak Steam at
-`~/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common/Distant Worlds Universe`),
-or clone the private assets repo if you have access:
-
-```bash
-git clone https://github.com/jfj-oss/dwu-assets.git ~/dwu-assets
-```
+`~/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common/Distant Worlds Universe`,
+or a non-Steam install).
 
 **3. Clone openDWU, install dependencies and link the data**
 
@@ -478,10 +449,10 @@ Default Steam location:
 npm run import-assets
 ```
 
-Anywhere else (e.g. the assets repo):
+Anywhere else:
 
 ```bash
-DWU_DIR="$HOME/dwu-assets" npm run import-assets
+DWU_DIR="<path to your DW:U folder>" npm run import-assets
 ```
 
 It prints `linked ... -> public/assets/dwu` (a symlink; nothing is copied).
@@ -515,8 +486,6 @@ git pull
 npm ci
 npm run dev
 ```
-
-If you use the assets repo, also run `git -C ~/dwu-assets pull`.
 
 </details>
 
