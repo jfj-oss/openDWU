@@ -2523,7 +2523,7 @@ function fighterProvideBonusFromPirateBase(galaxy: Galaxy, fighter: Fighter, des
                 const builtObject = generateAbandonedBuiltObject(galaxy, habitat3, design);
                 // BuiltObject.2.cs 5022-5029 / Fighter.cs 979-986.
                 ({ message: empty2, title: empty } = pirateBaseBonusAbandonedShipText(galaxy, pirateBase, builtObject, habitat4));
-                if (destroyingEmpire === galaxy.playerEmpire) addLocationHint(galaxy.playerEmpire, { x: Math.trunc(builtObject.xpos), y: Math.trunc(builtObject.ypos) }, builtObjectSubject(builtObject, true), 'Exploration / navigation data (destroyed pirate base)');
+                if (isHumanEmpire(galaxy, destroyingEmpire)) addLocationHint(destroyingEmpire!, { x: Math.trunc(builtObject.xpos), y: Math.trunc(builtObject.ypos) }, builtObjectSubject(builtObject, true), 'Exploration / navigation data (destroyed pirate base)');
                 sendEventMessageToEmpire(destroyingEmpire, EventMessageType.LostBuiltObjectCoordinates, empty, empty2, pirateBase, pirateBase.empire.pirateEmpireBaseHabitat);
             }
             break;
@@ -2571,7 +2571,7 @@ function fighterProvideBonusFromPirateBase(galaxy: Galaxy, fighter: Fighter, des
             if (habitat!.population !== null && habitat!.population.items.length > 0 && habitat!.population.dominantRace !== null) race = habitat!.population.dominantRace;
             if (race !== null) {
                 ({ message: empty2, title: empty } = pirateBaseBonusExplorationText(galaxy, pirateBase, habitat!, race));
-                if (destroyingEmpire === galaxy.playerEmpire) addLocationHint(galaxy.playerEmpire, { x: Math.trunc(habitat!.xpos), y: Math.trunc(habitat!.ypos) }, habitatSubject('Independent colony', habitat!), 'Exploration / navigation data (destroyed pirate base)');
+                if (isHumanEmpire(galaxy, destroyingEmpire)) addLocationHint(destroyingEmpire!, { x: Math.trunc(habitat!.xpos), y: Math.trunc(habitat!.ypos) }, habitatSubject('Independent colony', habitat!), 'Exploration / navigation data (destroyed pirate base)');
                 sendEventMessageToEmpire(destroyingEmpire, EventMessageType.IndependentPopulation, empty, empty2, race, pirateBase.empire.pirateEmpireBaseHabitat);
             }
             break;

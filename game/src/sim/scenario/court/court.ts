@@ -247,7 +247,7 @@ function logCourt(galaxy: Galaxy, empire: Empire, kind: CourtEventKind, text: st
 }
 
 function tellPlayer(galaxy: Galaxy, empire: Empire, tag: string, args: unknown[], type: EmpireMessageType, subject: unknown = null): void {
-    if (empire !== galaxy.playerEmpire) return;
+    if (!isHumanEmpire(galaxy, empire)) return;
     scenarioMessage(galaxy, empire, scenarioText(`${tag} Title`), scenarioText(tag, ...args), { type, subject: (subject ?? empire.capital) as never });
 }
 

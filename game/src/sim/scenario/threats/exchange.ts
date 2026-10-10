@@ -123,7 +123,7 @@ import {
     type SentStages,
     type ThreatSite,
 } from './framework';
-import { isHumanEmpire } from '../../humanEmpires';
+import { humanEmpires, isHumanEmpire } from '../../humanEmpires';
 
 export const EXCHANGE_KEY = 'exchange';
 export const EXCHANGE_FLAG = 'threatExchange';
@@ -679,7 +679,7 @@ export function exchangeYearly(galaxy: Galaxy, year: number): void {
     fundUnderdogs(galaxy, st);
     giftMaps(galaxy, st, year);
     aiIntelSales(galaxy, st);
-    offerPlayerIntel(galaxy, st);
+    for (const player of humanEmpires(galaxy)) offerPlayerIntel(galaxy, st, player); // every human (humanEmpires.ts)
     // Agents grow by one a year while the income allows (the hire is paid from money above the reserve).
     if (year > st.appearedYear && st.agentTarget < P.agentsMax(galaxy) && exchangeSpendable(st) >= P.missionCost(galaxy) * AGENT_HIRE_MISSIONS) st.agentTarget++;
 }
@@ -786,10 +786,9 @@ export function aiIntelSales(galaxy: Galaxy, st: ExchangeState): void {
     }
 }
 
-/** The player's yearly offer: "Buy intelligence on <rival> for N credits" (scenario decision; one pending at a time). */
-export function offerPlayerIntel(galaxy: Galaxy, st: ExchangeState): ScenarioDecision | null {
+/** A human's yearly offer: "Buy intelligence on <rival> for N credits" (scenario decision; one pending at a time). */
+export function offerPlayerIntel(galaxy: Galaxy, st: ExchangeState, player: Empire | null = galaxy.playerEmpire): ScenarioDecision | null {
     const f = st.faction;
-    const player = galaxy.playerEmpire;
     if (f === null || player === null || !player.active || player === f || !hasMet(player, f) || exchangeIsGrudged(galaxy, st, player)) return null;
     if (pendingScenarioDecisions(galaxy, player).some((d) => d.kind === EXCHANGE_BUY_INTEL_DECISION)) return null;
     const rival = warRival(galaxy, f, player);

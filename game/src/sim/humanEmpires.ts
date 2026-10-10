@@ -43,6 +43,12 @@ export function isHumanEmpire(galaxy: Galaxy, empire: Empire | null | undefined)
     return list.includes(empire);
 }
 
+/** True when more than one human plays (a multiplayer game). Every multiplayer-only rule asks this, so a one-human game
+ *  runs exactly as before. */
+export function isMultiHuman(galaxy: Galaxy): boolean {
+    return humanEmpires(galaxy).length > 1;
+}
+
 /**
  * Set the human empires (multiplayer setup / a loaded multi-human save). galaxy.playerEmpire stays the primary human:
  * it is moved to the front, or added when missing. A list of just the primary human (or nothing, without a player)

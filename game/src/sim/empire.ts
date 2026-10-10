@@ -592,6 +592,8 @@ export class Empire {
     preWarpProgressEventsOccurred = false;
     initiateConstruction = true;
     expansion = 0;
+    /** Set by GenerateEmpire for the wizard's player (not a C# field). Kept only because saves carry it: nothing reads it;
+     *  whether a human controls an empire is isHumanEmpire (humanEmpires.ts). */
     playerEmpire = false;
     privateMoney = 0.0;
     research = new ResearchSystem(null);

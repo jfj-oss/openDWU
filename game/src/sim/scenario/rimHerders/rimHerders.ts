@@ -590,7 +590,7 @@ export function rimHerdersWarn(galaxy: Galaxy, year: number): number {
             const herder = herderOwner(hc);
             const m = scenarioMessage(galaxy, e, title(), scenarioText('Scenario RimHerders Migration Warning', hc.colony.name, where), { type: EmpireMessageType.RemoveForcesFromSystem, subject: hc.colony, sender: herder });
             // 19s-2 voices (flag llmVoices; inert otherwise, no state): the elders tell the migration's lore.
-            if (e === galaxy.playerEmpire && herder !== null && voicesOn(galaxy)) {
+            if (isHumanEmpire(galaxy, e) && herder !== null && voicesOn(galaxy)) {
                 const herds = herderColonyHerds(galaxy, hc);
                 noteVoiceCue(galaxy, {
                     kind: 'herders',

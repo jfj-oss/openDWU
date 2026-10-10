@@ -711,7 +711,7 @@ export function executeEventAction(galaxy: Galaxy, eventAction: EventAction, tri
             if (target === null || triggerEmpire === null) break;
             if (isBuiltObject(target)) {
                 builtObject = target;
-                if (triggerEmpire === galaxy.playerEmpire) {
+                if (isHumanEmpire(galaxy, triggerEmpire)) {
                     addLocationHint(triggerEmpire, { x: Math.trunc(builtObject.xpos), y: Math.trunc(builtObject.ypos) }, builtObjectSubject(builtObject, false), 'Story event');
                     if (locationPingedHook !== null) locationPingedHook(builtObject);
                 }
@@ -734,7 +734,7 @@ export function executeEventAction(galaxy: Galaxy, eventAction: EventAction, tri
                 if (systemVisibilityStatus === SystemVisibilityStatus.Unexplored || systemVisibilityStatus === SystemVisibilityStatus.Undefined) {
                     triggerEmpire.visibility.setSystemVisibility(habitat6, SystemVisibilityStatus.Explored);
                 }
-                if (triggerEmpire === galaxy.playerEmpire) {
+                if (isHumanEmpire(galaxy, triggerEmpire)) {
                     addLocationHint(triggerEmpire, { x: Math.trunc(habitat.xpos), y: Math.trunc(habitat.ypos) }, habitatSubject('Revealed location', habitat), 'Story event');
                     if (locationPingedHook !== null) locationPingedHook(habitat);
                 }
@@ -1132,7 +1132,7 @@ export function executeEventAction(galaxy: Galaxy, eventAction: EventAction, tri
                 const loc = eventAction.location;
                 const arg = resolveSectorDescription(galaxy, loc.xpos, loc.ypos);
                 triggerEmpire.visibility.knownGalaxyLocations.push(loc);
-                if (triggerEmpire === galaxy.playerEmpire) {
+                if (isHumanEmpire(galaxy, triggerEmpire)) {
                     addLocationHint(triggerEmpire, { x: Math.trunc(loc.xpos) + Math.trunc(Math.trunc(loc.width) / 2), y: Math.trunc(loc.ypos) + Math.trunc(Math.trunc(loc.height) / 2) }, locationSubject(loc), 'Story event');
                 }
                 text = gameText('GameEventAction Description LearnAboutSpecialLocation', loc.name, arg);

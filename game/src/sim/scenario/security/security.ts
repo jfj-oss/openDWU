@@ -377,7 +377,7 @@ export function onLeadChanged(galaxy: Galaxy, lead: Lead, thing: HiddenThing): v
         if (thing.kind === 'plot' && thing.target instanceof Character && scenarioFlag(galaxy, POLITICS_FLAG)) politicsState(galaxy).exposed.add(thing.target);
     }
     if (isCourtThing(thing) && securitySlots.courtLeadChanged !== null) securitySlots.courtLeadChanged(galaxy, lead, thing);
-    if (lead.empire !== galaxy.playerEmpire) return;
+    if (!isHumanEmpire(galaxy, lead.empire)) return;
     const tag = lead.level === 'confirmed' ? 'Security Lead Confirmed' : lead.level === 'suspected' ? 'Security Lead Suspected' : 'Security Lead Cleared';
     const m = scenarioMessage(galaxy, lead.empire, scenarioText(`${tag} Title`), scenarioText(tag, kindText(lead.kind), leadTargetName(lead)), {
         type: lead.level === 'cleared' ? EmpireMessageType.GeneralNeutralEvent : EmpireMessageType.GeneralWarning,

@@ -45,7 +45,7 @@ import { raiseScenarioDecision, registerScenarioDecision, type ScenarioDecision 
 import { empireSpyCrises } from './espionage';
 import { peekPoliticsState } from './politics';
 import { allCharters } from '../charteredCompanies/charters';
-import { isHumanEmpire } from '../../humanEmpires';
+import { humanEmpires, isHumanEmpire } from '../../humanEmpires';
 
 export const COUNCIL_FLAG = 'galacticCouncil';
 export const COUNCIL_VOTE_DECISION = 'council.vote';
@@ -636,36 +636,40 @@ export function proposeMotion(galaxy: Galaxy, c: Council, cand: Omit<MotionCandi
     };
     c.motion = m;
     castAiVotes(galaxy, c, m);
-    const player = galaxy.playerEmpire;
-    if (player !== null && c.members.includes(player)) {
-        const d = raiseScenarioDecision(galaxy, player, {
-            kind: COUNCIL_VOTE_DECISION,
-            title: `${c.name}: vote`,
-            text: `The ${m.proposer.name} move: ${m.text}. How do we vote?${m.target === player ? ' (The motion targets us.)' : ''}`,
-            options: [
-                { id: 'yes', label: 'Vote yes' },
-                { id: 'no', label: 'Vote no' },
-                { id: 'abstain', label: 'Abstain' },
-            ],
-            defaultOption: 'abstain',
-            expiresDays: P.voteDays(galaxy),
-            context: { councilId: c.id, motionId: m.id },
-        });
-        m.decisionId = d.id;
-        // 19s-2 voices (flag llmVoices; inert otherwise, no state): two members speak for / against in the council screen.
-        if (voicesOn(galaxy)) {
-            noteVoiceCue(galaxy, {
-                kind: 'speech',
-                empire: player,
-                message: null,
-                voice: m.proposer,
-                other: m.target,
-                speaker: null,
-                role: c.name,
-                facts: { council: c.name, motion: m.text, kind: m.kind, proposer: m.proposer.name, target: m.target.name },
-                ref: { council: c, motion: m },
-                scripted: '',
+    // Every human member votes (humanEmpires.ts): one decision each; the motion is tallied once all of them voted
+    // (recordPlayerVote). m.decisionId names the first one.
+    const voters = humanEmpires(galaxy).filter((h) => c.members.includes(h));
+    if (voters.length > 0) {
+        for (const player of voters) {
+            const d = raiseScenarioDecision(galaxy, player, {
+                kind: COUNCIL_VOTE_DECISION,
+                title: `${c.name}: vote`,
+                text: `The ${m.proposer.name} move: ${m.text}. How do we vote?${m.target === player ? ' (The motion targets us.)' : ''}`,
+                options: [
+                    { id: 'yes', label: 'Vote yes' },
+                    { id: 'no', label: 'Vote no' },
+                    { id: 'abstain', label: 'Abstain' },
+                ],
+                defaultOption: 'abstain',
+                expiresDays: P.voteDays(galaxy),
+                context: { councilId: c.id, motionId: m.id },
             });
+            if (player === voters[0]) m.decisionId = d.id;
+            // 19s-2 voices (flag llmVoices; inert otherwise, no state): two members speak for / against in the council screen.
+            if (voicesOn(galaxy)) {
+                noteVoiceCue(galaxy, {
+                    kind: 'speech',
+                    empire: player,
+                    message: null,
+                    voice: m.proposer,
+                    other: m.target,
+                    speaker: null,
+                    role: c.name,
+                    facts: { council: c.name, motion: m.text, kind: m.kind, proposer: m.proposer.name, target: m.target.name },
+                    ref: { council: c, motion: m },
+                    scripted: '',
+                });
+            }
         }
     } else {
         tallyMotion(galaxy, c, m);
@@ -674,12 +678,13 @@ export function proposeMotion(galaxy: Galaxy, c: Council, cand: Omit<MotionCandi
 }
 
 /** Records the player's vote (then tallies). False when the motion is not voting. */
-export function recordPlayerVote(galaxy: Galaxy, c: Council, m: Motion, vote: Vote): boolean {
-    const player = galaxy.playerEmpire;
+export function recordPlayerVote(galaxy: Galaxy, c: Council, m: Motion, vote: Vote, player: Empire | null = galaxy.playerEmpire): boolean {
     if (m.status !== 'voting' || player === null) return false;
     m.votes = m.votes.filter((v) => v.empire !== player);
     if (c.members.includes(player)) m.votes.push({ empire: player, vote, score: 0, coordinated: false });
-    tallyMotion(galaxy, c, m);
+    // Multiplayer: tallied once every human member has voted (with one human: at once).
+    const waiting = humanEmpires(galaxy).some((h) => h !== player && c.members.includes(h) && !m.votes.some((v) => v.empire === h));
+    if (!waiting) tallyMotion(galaxy, c, m);
     return true;
 }
 
@@ -932,7 +937,7 @@ function resolveVoteDecision(galaxy: Galaxy, d: ScenarioDecision, optionId: stri
     const c = councilById(galaxy, d.context.councilId);
     const m = c?.motion ?? null;
     if (c === null || m === null || m.id !== d.context.motionId) return;
-    recordPlayerVote(galaxy, c, m, optionId === 'yes' ? 'yes' : optionId === 'no' ? 'no' : 'abstain');
+    recordPlayerVote(galaxy, c, m, optionId === 'yes' ? 'yes' : optionId === 'no' ? 'no' : 'abstain', d.empire);
 }
 
 function resolveLeaveDecision(galaxy: Galaxy, d: ScenarioDecision, optionId: string): void {

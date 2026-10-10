@@ -175,8 +175,9 @@ export function characterKillFromPerformIntelligenceMissions(galaxy: Galaxy, cha
             let flag3 = false;
             let flag4 = false;
             const spyTargetEmpire = getSpyTargetEmpire(character);
-            if (character.empire === galaxy.playerEmpire) flag3 = true;
-            if (galaxy.playerEmpire === spyTargetEmpire) flag4 = true;
+            // `== PlayerEmpire`: a human empire (humanEmpires.ts).
+            if (isHumanEmpire(galaxy, character.empire)) flag3 = true;
+            if (isHumanEmpire(galaxy, spyTargetEmpire)) flag4 = true;
             if (flag2) {
                 if (!flag3 && !flag4) {
                     const characterValue = getCharacterValue(character);
@@ -237,10 +238,15 @@ export function spyEscaped(galaxy: Galaxy, prison: Prison, spy: Character): bool
         }
         spy.mission = newCounterIntelligenceMission(galaxy, spy.empire, spy);
         listRemove(ownPrisonList(prison), spy);
-        if (prison instanceof HabitatClass && (spy.empire === galaxy.playerEmpire || prison.empire === galaxy.playerEmpire)) {
-            // BaconHabitat.cs 690-694 only.
+        if (prison instanceof HabitatClass && (isHumanEmpire(galaxy, spy.empire) || isHumanEmpire(galaxy, prison.empire))) {
+            // BaconHabitat.cs 690-694 only. The C# tells the PlayerEmpire: every human involved (the spy's, the jailer).
             const description = spy.name + ' has escaped from ' + prison.name;
-            sendMessageToEmpire(galaxy.playerEmpire, galaxy.playerEmpire, EmpireMessageType.Undefined, null, description, { x: 0, y: 0 }, 'prisonbreak');
+            const told: Empire[] = [];
+            for (const human of [spy.empire, prison.empire]) {
+                if (human === null || told.includes(human) || !isHumanEmpire(galaxy, human)) continue;
+                told.push(human);
+                sendMessageToEmpire(human, human, EmpireMessageType.Undefined, null, description, { x: 0, y: 0 }, 'prisonbreak');
+            }
         }
     } catch (e) {
         if (!(e instanceof CsException)) throw e;
@@ -278,18 +284,28 @@ export function spyDefected(galaxy: Galaxy, prison: Prison, spy: Character): boo
     }
 }
 
-/** BaconHabitat.cs 654 / BaconBuiltObject.cs 4190 ShouldRansomSpy(prison, spy): not at war with the player. */
-function shouldRansomSpy(galaxy: Galaxy, prison: Prison, spy: Character): boolean {
+/** BaconHabitat.cs 654 / BaconBuiltObject.cs 4190 ShouldRansomSpy(prison, spy): not at war with the player (`player`:
+ *  the human the spy reports to, prisonerRecipient). */
+function shouldRansomSpy(galaxy: Galaxy, prison: Prison, spy: Character, player: Empire | null): boolean {
+    void galaxy;
     void spy;
     let flag = false;
     const e = prison.empire ?? nre();
-    if (obtainDiplomaticRelation(e, galaxy.playerEmpire).type !== DiplomaticRelationType.War) flag = true;
+    if (obtainDiplomaticRelation(e, player).type !== DiplomaticRelationType.War) flag = true;
     return flag;
 }
 
-function playerMessage(galaxy: Galaxy, description: string, hint = ''): void {
-    const player = galaxy.playerEmpire ?? nre();
+function playerMessage(player: Empire | null, description: string, hint = ''): void {
+    if (player === null) nre();
     sendMessageToEmpire(player, player, EmpireMessageType.Undefined, null, description, { x: 0, y: 0 }, hint);
+}
+
+/**
+ * Who hears about a spy in an AI prison: the C# tells the PlayerEmpire about every spy there. Multiplayer: the spy's own
+ * empire when a human controls it, else the primary human (galaxy.playerEmpire), as the C#.
+ */
+function prisonerRecipient(galaxy: Galaxy, spy: Character): Empire | null {
+    return isHumanEmpire(galaxy, spy.empire) ? spy.empire : (galaxy.playerEmpire ?? null);
 }
 
 /**
@@ -302,14 +318,16 @@ export function handlePlayerPrisoners(galaxy: Galaxy, prison: Prison): void {
         const spiesInPrison = getSpiesInPrison(prison);
         if (spiesInPrison === null) return;
         if (!(prison instanceof HabitatClass) && spiesInPrison.length === 0) return;
+        // The C#'s PlayerEmpire: the human whose prison this is.
+        const jailer = (prison instanceof HabitatClass ? prison.empire : (prison as BuiltObject).actualEmpire) ?? galaxy.playerEmpire ?? null;
         csForEach(spiesInPrison, (character1) => {
             if (!isHumanEmpire(galaxy, character1.empire)) {
                 if (spyEscaped(galaxy, prison, character1)) {
-                    playerMessage(galaxy, character1.name + ' has escaped from ' + prison.name, 'prisonbreak');
+                    playerMessage(jailer, character1.name + ' has escaped from ' + prison.name, 'prisonbreak');
                     const character2 = addEventToCharacter(galaxy, 'Escaped', character1.name + ' escaped from ' + prison.name, character1);
                     character1.eventHistory.push(character2);
                 } else if (spyDefected(galaxy, prison, character1)) {
-                    playerMessage(galaxy, character1.name + ' has agreed to join our empire.', 'defect');
+                    playerMessage(jailer, character1.name + ' has agreed to join our empire.', 'defect');
                     const character3 = addEventToCharacter(galaxy, 'Defected', character1.name + ' defected to ' + prison.name, character1);
                     character1.eventHistory.push(character3);
                 }
@@ -330,32 +348,45 @@ export function handleAIPrisoners(galaxy: Galaxy, prison: Prison): void {
         if (isHumanEmpire(galaxy, prisonEmpire) || prison.baconValues === null) return;
         const spiesInPrison = getSpiesInPrison(prison);
         if (spiesInPrison === null || spiesInPrison.length === 0) return;
-        const player = galaxy.playerEmpire ?? nre();
-        const playerPrison: Prison = prison instanceof HabitatClass ? (player.capital ?? nre()) : firstBuiltObject(player);
-        if (playerPrison.baconValues === null) playerPrison.baconValues = new Map<string, unknown>();
-        let characterList1: Character[] = [];
-        if (playerPrison.baconValues.has('capturedSpies')) characterList1 = playerPrison.baconValues.get('capturedSpies') as Character[];
+        // The ransom list lives in the player's prison (capital / first ship): one per human recipient, the primary
+        // human's set up first as the C# does (prisonerRecipient).
+        const boxes = new Map<Empire, { prison: Prison; list: Character[] }>();
+        const ransomBox = (player: Empire | null): { prison: Prison; list: Character[] } => {
+            if (player === null) nre();
+            let box = boxes.get(player);
+            if (box === undefined) {
+                const playerPrison: Prison = prison instanceof HabitatClass ? (player.capital ?? nre()) : firstBuiltObject(player);
+                if (playerPrison.baconValues === null) playerPrison.baconValues = new Map<string, unknown>();
+                let characterList1: Character[] = [];
+                if (playerPrison.baconValues.has('capturedSpies')) characterList1 = playerPrison.baconValues.get('capturedSpies') as Character[];
+                box = { prison: playerPrison, list: characterList1 };
+                boxes.set(player, box);
+            }
+            return box;
+        };
+        ransomBox(galaxy.playerEmpire ?? null);
         const characterList2: Character[] = [];
         const prisonEmpireName = (): string => (prison.empire ?? nre()).name;
         csForEach(spiesInPrison, (character1) => {
+            const player = prisonerRecipient(galaxy, character1);
             if (spyEscaped(galaxy, prison, character1)) {
                 characterList2.push(character1);
-                playerMessage(galaxy, character1.name + ' has escaped from ' + prison.name, 'prisonbreak');
+                playerMessage(player, character1.name + ' has escaped from ' + prison.name, 'prisonbreak');
                 const character2 = addEventToCharacter(galaxy, 'Escaped', character1.name + ' escaped from ' + prison.name, character1);
                 character1.eventHistory.push(character2);
             } else if (spyDefected(galaxy, prison, character1)) {
                 characterList2.push(character1);
-                playerMessage(galaxy, character1.name + ' has joined ' + prisonEmpireName(), 'defect');
+                playerMessage(player, character1.name + ' has joined ' + prisonEmpireName(), 'defect');
                 const character3 = addEventToCharacter(galaxy, 'Escaped', character1.name + ' defected to ' + prison.name, character1);
                 character1.eventHistory.push(character3);
-            } else if (shouldRansomSpy(galaxy, prison, character1)) {
-                listAdd(characterList1, character1);
-                playerMessage(galaxy, prisonEmpireName() + ' is willing to ransom our agent ' + character1.name);
+            } else if (shouldRansomSpy(galaxy, prison, character1, player)) {
+                listAdd(ransomBox(player).list, character1);
+                playerMessage(player, prisonEmpireName() + ' is willing to ransom our agent ' + character1.name);
                 characterList2.push(character1);
             }
         });
         for (const character of characterList2) listRemove(spiesInPrison, character);
-        playerPrison.baconValues.set('capturedSpies', characterList1);
+        for (const box of boxes.values()) box.prison.baconValues!.set('capturedSpies', box.list);
     } catch (e) {
         if (!(e instanceof CsException)) throw e;
     }

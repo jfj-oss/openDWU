@@ -38,6 +38,7 @@ import { registerScenarioDecision, raiseScenarioDecision, type ScenarioDecision 
 import { scenarioFlag, scenarioParam, scenarioState } from '../state';
 import { scenarioMessage, scenarioNews, scenarioText } from '../messages';
 import { noteVoiceCue, voicesOn } from '../llm/voiceCues';
+import { isHumanEmpire } from '../../humanEmpires';
 
 export const POLITICS_FLAG = 'internalPolitics';
 export const PLOT_DECISION = 'politics.plot';
@@ -757,7 +758,7 @@ export function sendLoyaltyWarnings(galaxy: Galaxy, empire: Empire, year: number
         });
         // 19s-2 voices (flag llmVoices; inert otherwise, no state): the restless character's ultimatum, in their voice,
         // for the discontented behind them (the 19n court factions use voiceFactionUltimatum once merged).
-        if (empire === galaxy.playerEmpire && voicesOn(galaxy)) {
+        if (isHumanEmpire(galaxy, empire) && voicesOn(galaxy)) {
             const causes = [...new Set(e.grievances.slice().sort((a, b) => a.amount - b.amount).map((g) => g.cause))].slice(0, 3);
             noteVoiceCue(galaxy, {
                 kind: 'ultimatum',
@@ -837,7 +838,7 @@ export function reviewPolitics(galaxy: Galaxy, year: number): void {
     for (const empire of empires) {
         if (!isPoliticalEmpire(galaxy, empire)) continue;
         updateLoyalties(galaxy, empire, year);
-        if (empire === galaxy.playerEmpire) sendLoyaltyWarnings(galaxy, empire, year);
+        if (isHumanEmpire(galaxy, empire)) sendLoyaltyWarnings(galaxy, empire, year);
         else {
             aiHonour(galaxy, empire, year);
             aiGuardCapital(galaxy, empire);

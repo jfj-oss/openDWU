@@ -52,7 +52,7 @@ import { scenarioMessage, scenarioNews, scenarioText } from '../messages';
 import { expireScenarioDecisions, raiseScenarioDecision, registerScenarioDecision, type ScenarioDecision } from '../decisions';
 import { ESPIONAGE_FLAG, espionageHooks, type FalseFlagResult } from './espionageHooks';
 import { complyApology, complyRecall, complyReparations, playerDeclareWar, playerImposeSanctions, refuseCrisis, resolveCrisis } from './espionageActions';
-import { isHumanEmpire } from '../../humanEmpires';
+import { humanEmpires, isHumanEmpire } from '../../humanEmpires';
 
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -761,8 +761,10 @@ function discoverLeaks(galaxy: Galaxy, st: EspionageState): void {
         const text = scenarioText('Emergent Stolen Tech Spread', techName, thief.name, l.holder.name);
         const title = scenarioText('Emergent Stolen Tech Spread Title');
         scenarioMessage(galaxy, victim, title, text, { type: EmpireMessageType.GeneralBadEvent, subject: thief });
-        const player = galaxy.playerEmpire;
-        if (player !== null && player !== victim && (player === thief || player === l.holder)) scenarioMessage(galaxy, player, title, text, { type: EmpireMessageType.GeneralWarning, subject: victim });
+        // The player (every human, humanEmpires.ts) hears of it when it is the thief or the holder.
+        for (const player of humanEmpires(galaxy)) {
+            if (player !== victim && (player === thief || player === l.holder)) scenarioMessage(galaxy, player, title, text, { type: EmpireMessageType.GeneralWarning, subject: victim });
+        }
         if (isNormalEmpire(galaxy, thief) && thief !== victim) recordSyntheticExposure(galaxy, thief, victim, 10, text);
     }
 }

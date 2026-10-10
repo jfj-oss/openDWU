@@ -19,6 +19,7 @@
     "test:slow": "DWU_TEST_TIER=slow vitest run",
     "smoke": "node scripts/smoke.mjs",
     "repin": "node scripts/repin.mjs",
+    "check:player-empire": "node scripts/check-player-empire.mjs",
     "import-assets": "bash scripts/import-assets.sh",
     "desktop:dev": "npm run build && electron desktop/main.cjs",
     "package:linux": "node scripts/package-desktop.mjs --platform=linux --arch=x64",

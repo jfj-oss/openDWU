@@ -82,7 +82,7 @@ import { facilitiesFindBestPirateFacility } from './construction/facilities';
 import { baconSettings } from './data/baconSettings';
 import { formatGameTextNow } from './textResolver';
 import { scenarioQuery } from './scenario/hooks';
-import { isHumanEmpire } from './humanEmpires';
+import { humanEmpires, isHumanEmpire } from './humanEmpires';
 
 const f32 = Math.fround;
 
@@ -1187,7 +1187,8 @@ export function reviewRacePeriodicChanges(galaxy: Galaxy): void {
     const currentStarDate = galaxyStarDate(galaxy);
     // Galaxy.cs 1094 ActualStartDate => _StartStarDate.
     const actualStartDate = currentStarDate - galaxy.nowMs;
-    const playerEmpire = galaxy.playerEmpire;
+    // The C#'s PlayerEmpire: every human empire (humanEmpires.ts), each told in humanEmpires order.
+    const humans = humanEmpires(galaxy);
     for (let i = 0; i < galaxy.races.length; i++) {
         const race = galaxyRace(galaxy, galaxy.races[i]);
         const interval = raceChangePeriodYearsInterval(race);
@@ -1201,7 +1202,7 @@ export function reviewRacePeriodicChanges(galaxy: Galaxy): void {
             if (raceChangePeriodActive(galaxy, race)) {
                 continue;
             }
-            if (playerEmpire !== null) {
+            for (const playerEmpire of humans) {
                 if (playerEmpire.dominantRace === race) {
                     const description = gameText('Race Periodic Change Begin', race.name, interval.toString(), length.toString(), resolveRaceChangeQualitiesDescription(race));
                     sendMessageToEmpireWithTitle(playerEmpire, playerEmpire, EmpireMessageType.GeneralNeutralEvent, race, description, gameText('Race Periodic Change Begin Title', race.name));
@@ -1222,20 +1223,19 @@ export function reviewRacePeriodicChanges(galaxy: Galaxy): void {
                 continue;
             }
             galaxy.raceChangePeriodActive.delete(race);
-            if (playerEmpire === null) {
-                continue;
-            }
-            if (playerEmpire.dominantRace === race) {
-                const description3 = gameText('Race Periodic Change End', race.name, interval.toString());
-                sendMessageToEmpireWithTitle(playerEmpire, playerEmpire, EmpireMessageType.GeneralNeutralEvent, race, description3, gameText('Race Periodic Change End Title', race.name));
-                continue;
-            }
-            for (let k = 0; k < playerEmpire.diplomaticRelations.count; k++) {
-                const diplomaticRelation2 = playerEmpire.diplomaticRelations.at(k);
-                if (diplomaticRelation2.type !== DiplomaticRelationType.NotMet && diplomaticRelation2.otherEmpire != null && diplomaticRelation2.otherEmpire.dominantRace === race) {
-                    const description4 = gameText('Race Periodic Change End Other', race.name, interval.toString());
-                    sendMessageToEmpireWithTitle(playerEmpire, playerEmpire, EmpireMessageType.GeneralNeutralEvent, race, description4, gameText('Race Periodic Change End Title', race.name));
-                    break;
+            for (const playerEmpire of humans) {
+                if (playerEmpire.dominantRace === race) {
+                    const description3 = gameText('Race Periodic Change End', race.name, interval.toString());
+                    sendMessageToEmpireWithTitle(playerEmpire, playerEmpire, EmpireMessageType.GeneralNeutralEvent, race, description3, gameText('Race Periodic Change End Title', race.name));
+                    continue;
+                }
+                for (let k = 0; k < playerEmpire.diplomaticRelations.count; k++) {
+                    const diplomaticRelation2 = playerEmpire.diplomaticRelations.at(k);
+                    if (diplomaticRelation2.type !== DiplomaticRelationType.NotMet && diplomaticRelation2.otherEmpire != null && diplomaticRelation2.otherEmpire.dominantRace === race) {
+                        const description4 = gameText('Race Periodic Change End Other', race.name, interval.toString());
+                        sendMessageToEmpireWithTitle(playerEmpire, playerEmpire, EmpireMessageType.GeneralNeutralEvent, race, description4, gameText('Race Periodic Change End Title', race.name));
+                        break;
+                    }
                 }
             }
         }

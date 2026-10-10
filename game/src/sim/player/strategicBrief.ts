@@ -62,6 +62,7 @@ import { resolveGameText } from '../textResolver';
 import { listProposals } from './diplomacyProposals';
 import { RACE_FAMILY_NAMES, governmentName, personaLines, raceBonuses, raceTraits, type BriefTrait } from './diplomatBrief';
 import { feelingDescription } from './relationFactors';
+import { isHumanEmpire } from '../humanEmpires';
 
 const REL = DiplomaticRelationType;
 const STRAT = DiplomaticStrategy;
@@ -508,7 +509,7 @@ export function buildStrategicBrief(galaxy: Galaxy, ai: Empire): StrategicBrief 
             },
             colonies: other.colonies.length,
         };
-        if (other === galaxy.playerEmpire) v.isPlayer = true;
+        if (isHumanEmpire(galaxy, other)) v.isPlayer = true;
         if (rel.startDateOfLastChange > 0 && now >= rel.startDateOfLastChange) v.years = Math.round(((now - rel.startDateOfLastChange) / YEAR_MS) * 10) / 10;
         if ((rel.type === REL.War || rel.strategy === STRAT.Conquer) && rel.warObjective !== WarObjective.Undefined) v.warObjective = WarObjective[rel.warObjective];
         if (other.proposedDiplomaticRelations.byEmpire(ai) !== null) v.offerPending = true;

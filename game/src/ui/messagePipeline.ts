@@ -168,7 +168,8 @@ export function installLocalMessageStream(galaxy: Galaxy, player: Empire, now?: 
     const stream = new PlayerMessageStream(now);
     setPlayerMessageStream(player, stream);
     setPlayerMessageListener(galaxy, (note) => {
-        if (note.receipt !== undefined) stream.push(note.receipt);
+        // Multiplayer: every human has an inbox; this stream is `player`'s (the local viewer's).
+        if (note.receipt !== undefined && note.empire === player) stream.push(note.receipt);
     });
     return {
         stream,

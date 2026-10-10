@@ -18,6 +18,7 @@ import { raceAggressionLevel, raceCautionLevel, raceFriendlinessLevel } from './
 import { checkColonizationLikeliness } from './tradeItems';
 import { generateIndependentColonyStoryClue } from './story/storyEvents';
 import { MAX_SOLAR_SYSTEM_SIZE } from './visibility';
+import { isHumanEmpire } from './humanEmpires';
 
 /** Galaxy.2.cs 2074 ResolveRaceFamilyDescription(raceFamilyId): RaceFamiliesStatic[id].Name, '' out of range. */
 export function resolveRaceFamilyDescription(galaxy: Galaxy, raceFamilyId: number): string {
@@ -174,7 +175,7 @@ export function generateIndependentColonyReport(galaxy: Galaxy, potentialColoniz
         text += generateRaceReport(galaxy, race);
         text += '\n\n';
     }
-    if (potentialColonizer === galaxy.playerEmpire) {
+    if (isHumanEmpire(galaxy, potentialColonizer)) {
         const text2 = generateIndependentColonyStoryClue(galaxy, colony);
         if (text2 !== '') {
             text += '*** ';

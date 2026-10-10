@@ -49,6 +49,7 @@ import { cargoGetCargo, cargoRemove } from '../../logistics/orders';
 import { contractListenersActive, emitContractInitiated } from '../../logistics/contractEvents';
 import { doEmpireEncounter } from '../../exploration';
 import { concordNavyActive, isRimTraderAI, rareGoodIds, rimAngerState, rimParam, rimGoodIds, rimTradeState, rimTraderAllowsRestrictedTrade, rimTraderEmpire, rimTraderPort, rimTraderStanding } from './common';
+import { isHumanEmpire } from '../../humanEmpires';
 
 /** Manifest defaults (scenario.json) of the addendum's params. */
 export const TREASURE_PARAM_DEFAULTS = {
@@ -480,7 +481,7 @@ function arrive(galaxy: Galaxy, r: Empire, st: TreasureFleetState, port: BuiltOb
     if (host !== null) {
         const m = scenarioMessage(galaxy, host, scenarioText('Scenario RimTrade Treasure Title'), scenarioText('Scenario RimTrade Treasure Docks Host', r.name, portLabel(galaxy, port)), { type: EmpireMessageType.GeneralGoodEvent, sender: r, subject: lead(st) });
         // 19s-2 voices (flag llmVoices; inert otherwise, no state): the mask-ritual greeting as the treasure fleet docks.
-        if (host === galaxy.playerEmpire && voicesOn(galaxy)) {
+        if (isHumanEmpire(galaxy, host) && voicesOn(galaxy)) {
             noteVoiceCue(galaxy, {
                 kind: 'concord',
                 empire: host,

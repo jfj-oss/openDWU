@@ -66,7 +66,6 @@ export function isSmarterAIEmpire(galaxy: Galaxy, empire: Empire | null): empire
         smarterAILive(galaxy) &&
         empire.active &&
         !isHumanEmpire(galaxy, empire) &&
-        !empire.playerEmpire &&
         empire !== galaxy.independentEmpire &&
         empire.pirateEmpireBaseHabitat === null &&
         empire.dominantRace !== null

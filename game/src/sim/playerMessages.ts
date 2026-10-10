@@ -41,6 +41,7 @@ import { onGameEnd } from './victory';
 import { addAdvisorSuggestion, expireOldAdvisorSuggestions, receiveAdvisorSuggestionMessage } from './advisorQueue';
 import { MessageCategory, galaxyMessageOptions, playerDefeatGameEnd, routeEmpireMessage, shouldQueueConversation, tickerShown, type MessageOptions, type MessageRoute } from './messageRouting';
 import { withSimWrites } from './readOnlyQuery';
+import { humanEmpires } from './humanEmpires';
 
 export type { QueuedEvent } from './messages';
 
@@ -182,11 +183,15 @@ export function receivePlayerMessage(galaxy: Galaxy, player: Empire, m: EmpireMe
 // ---------------------------------------------------------------------------------------------------------------
 
 /** What the UI hears about: a handled message (its receipt) or an event (for the event panel, which draws it). */
-export type PlayerMessageNote = { receipt: PlayerMessageReceipt; event?: undefined } | { receipt?: undefined; event: QueuedEvent };
+export type PlayerMessageNote = ({ receipt: PlayerMessageReceipt; event?: undefined } | { receipt?: undefined; event: QueuedEvent }) & {
+    /** The human empire whose inbox handled it (multiplayer: each human has one; the UI shows its local viewer's). */
+    empire: Empire;
+};
 export type PlayerMessageListener = (note: PlayerMessageNote) => void;
 
 const listeners = new WeakMap<Galaxy, PlayerMessageListener>();
-const attached = new WeakMap<Galaxy, Empire>();
+/** The empires whose inbox is attached: humanEmpires(galaxy) as of the last ensurePlayerInbox. */
+const attached = new WeakMap<Galaxy, readonly Empire[]>();
 
 /**
  * Hear about every message and event the pipeline handles on `galaxy` (null: stop). The UI's hook (ui/messageStreams.ts
@@ -198,33 +203,26 @@ export function setPlayerMessageListener(galaxy: Galaxy, listener: PlayerMessage
 }
 
 /**
- * Attach the inbox to galaxy.playerEmpire (Main.Part12.cs:2881: Main becomes the player's recipient when the game view
- * starts — at the end of a new game's creation and on load; messages sent before are never received, they stay in
- * Empire.Messages for ProcessMessages). Idempotent; follows a change of player. Returns the player, or null.
+ * Attach an inbox to every human empire (humanEmpires.ts; Main.Part12.cs:2881: Main becomes the player's recipient when
+ * the game view starts — at the end of a new game's creation and on load; messages sent before are never received, they
+ * stay in Empire.Messages for ProcessMessages). Idempotent; follows a change of the human set (an empire that is no
+ * longer human loses its inbox). Returns the primary human (galaxy.playerEmpire), or null.
  */
 export function ensurePlayerInbox(galaxy: Galaxy): Empire | null {
-    const player = galaxy.playerEmpire;
+    const humans = humanEmpires(galaxy);
     const prev = attached.get(galaxy);
-    if (prev === player && (player === null || player === undefined || playerInbox(player) !== undefined)) return player ?? null;
-    if (prev !== undefined && prev !== player) attachPlayerInbox(prev, false);
-    if (player === null || player === undefined) {
-        attached.delete(galaxy);
-        return null;
-    }
-    attachPlayerInbox(player);
-    attached.set(galaxy, player);
-    return player;
+    if (prev === humans && humans.every((h) => playerInbox(h) !== undefined)) return galaxy.playerEmpire ?? null;
+    if (prev !== undefined) for (const e of prev) if (!humans.includes(e)) attachPlayerInbox(e, false);
+    for (const h of humans) attachPlayerInbox(h);
+    if (humans.length === 0) attached.delete(galaxy);
+    else attached.set(galaxy, humans);
+    return galaxy.playerEmpire ?? null;
 }
 
-/**
- * Handle everything in the player's inbox, in arrival order, as the C# UI thread works through its BeginInvoke queue
- * (see the file header for where this runs). Returns how many items were handled.
- */
-export function processPlayerMessages(galaxy: Galaxy): number {
-    const player = ensurePlayerInbox(galaxy);
-    if (player === null) return 0;
-    const inbox = playerInbox(player)!;
-    if (inbox.length === 0) return 0;
+/** Handle everything in one human's inbox, in arrival order (see processPlayerMessages). */
+function drainInbox(galaxy: Galaxy, player: Empire): number {
+    const inbox = playerInbox(player);
+    if (inbox === undefined || inbox.length === 0) return 0;
     const listener = listeners.get(galaxy);
     let i = 0;
     withSimWrites(() => {
@@ -236,10 +234,10 @@ export function processPlayerMessages(galaxy: Galaxy): number {
                 if (item.message !== undefined) {
                     if (item.message == null) continue;
                     const receipt = receivePlayerMessage(galaxy, player, item.message, options);
-                    listener?.({ receipt });
+                    listener?.({ receipt, empire: player });
                 } else if (item.event !== undefined) {
                     recordEventMessage(player, item.event, options);
-                    listener?.({ event: item.event });
+                    listener?.({ event: item.event, empire: player });
                 } else if (item.prompt !== undefined) {
                     // Main.Part9.cs 1053 PromptForAuthorizationInternal: DiplomaticMessageQueue.AddMessage + ExpireInvalidMessages.
                     addAdvisorSuggestion(player, item.prompt);
@@ -253,15 +251,36 @@ export function processPlayerMessages(galaxy: Galaxy): number {
 }
 
 /**
- * The end of a sim frame: the inbox (processPlayerMessages), then DiplomaticMessageQueue.cs 864 method_3, the age expiry
- * of the advisor queue, which the C# runs on every DrawMessages of the queue (the UI's draw timer, between the sim's
- * frames): suggestions older than 250 × RealSecondsInGalacticYear leave the queue. Sim-driven here, at the frame's end.
+ * Handle everything in the human empires' inboxes, each in arrival order, as the C# UI thread works through its
+ * BeginInvoke queue (see the file header for where this runs). The humans are drained in humanEmpires order, again
+ * until every inbox is empty (a handler may send to another human). With one human: that inbox, drained once.
+ * Returns how many items were handled.
+ */
+export function processPlayerMessages(galaxy: Galaxy): number {
+    ensurePlayerInbox(galaxy);
+    const humans = humanEmpires(galaxy);
+    if (humans.length === 0) return 0;
+    let total = 0;
+    for (;;) {
+        let n = 0;
+        for (const h of humans) n += drainInbox(galaxy, h);
+        total += n;
+        if (n === 0 || humans.length === 1) return total;
+    }
+}
+
+/**
+ * The end of a sim frame: the inboxes (processPlayerMessages), then DiplomaticMessageQueue.cs 864 method_3, the age
+ * expiry of each human's advisor queue, which the C# runs on every DrawMessages of the queue (the UI's draw timer,
+ * between the sim's frames): suggestions older than 250 × RealSecondsInGalacticYear leave the queue. Sim-driven here, at
+ * the frame's end.
  */
 export function playerMessagesFrameEnd(galaxy: Galaxy): void {
     processPlayerMessages(galaxy);
-    const player = galaxy.playerEmpire;
-    if (player == null || !Array.isArray(player.advisorSuggestions) || player.advisorSuggestions.length === 0) return;
-    withSimWrites(() => expireOldAdvisorSuggestions(player, galaxyStarDate(galaxy)));
+    for (const player of humanEmpires(galaxy)) {
+        if (player == null || !Array.isArray(player.advisorSuggestions) || player.advisorSuggestions.length === 0) continue;
+        withSimWrites(() => expireOldAdvisorSuggestions(player, galaxyStarDate(galaxy)));
+    }
 }
 
 /** Empire.7.cs 3836 PromptPlayerForAuthorization → Main.PromptForAuthorization (BeginInvoke): queue the suggestion. */

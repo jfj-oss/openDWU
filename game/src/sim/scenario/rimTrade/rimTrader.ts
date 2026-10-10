@@ -306,7 +306,7 @@ export function rimTraderYear(galaxy: Galaxy): void {
         st.informed.push(e.empireId);
         const m = scenarioMessage(galaxy, e, scenarioText('Scenario RimTrade Terms Title'), scenarioText('Scenario RimTrade Terms', r.name, rare, rim), { type: EmpireMessageType.GeneralNeutralEvent, sender: r, subject: r.capital });
         // 19s-2 voices (flag llmVoices; inert otherwise, no state): the Concord's mask-ritual greeting at first contact.
-        if (e === galaxy.playerEmpire && voicesOn(galaxy)) {
+        if (isHumanEmpire(galaxy, e) && voicesOn(galaxy)) {
             noteVoiceCue(galaxy, {
                 kind: 'concord',
                 empire: e,

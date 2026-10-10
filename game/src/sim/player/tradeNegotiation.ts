@@ -421,7 +421,7 @@ export function tradeTreeRows(galaxy: Galaxy, tree: TradeTree): TradeTreeGroup[]
     group('Locations of Independent Colonies', TradeableItemType.IndependentColonyLocation, (t) => valued((t.item as Habitat).name, t));
     group('Secret Locations', TradeableItemType.SecretLocation, (t) => {
         let text3 = t.item instanceof GalaxyLocation || t.item instanceof Habitat ? t.item.name : '';
-        if (tree.otherEmpire === galaxy.playerEmpire) text3 = 'Secret Location';
+        if (isHumanEmpire(galaxy, tree.otherEmpire)) text3 = 'Secret Location';
         return valued(text3, t);
     });
     group('Research', TradeableItemType.ResearchProject, (t) => valued(isTechNode(t.item) ? t.item.def.name : '', t));

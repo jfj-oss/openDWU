@@ -19,6 +19,7 @@ import {
     politicsYear,
     setPoliticsActions,
 } from './politics';
+import { isHumanEmpire } from '../../humanEmpires';
 
 export interface PoliticsActionResult {
     ok: boolean;
@@ -61,7 +62,7 @@ export function honorCharacter(galaxy: Galaxy, empire: Empire, c: Character): Po
     const e = politicsEntry(galaxy, c);
     e.loyalty = Math.min(100, e.loyalty + 15);
     e.honoredYear = politicsYear(galaxy);
-    if (empire === galaxy.playerEmpire) {
+    if (isHumanEmpire(galaxy, empire)) {
         scenarioMessage(galaxy, empire, scenarioText('Emergent Honour Title'), scenarioText('Emergent Honour', roleName(c), c.name, cost), { type: EmpireMessageType.GeneralGoodEvent, subject: c });
     }
     return { ok: true };
@@ -74,7 +75,7 @@ export function arrestCharacter(galaxy: Galaxy, empire: Empire, c: Character): P
     if (!politicsState(galaxy).exposed.has(c)) return { ok: false, reason: 'No evidence against them' };
     const text = scenarioText('Emergent Arrest', roleName(c), c.name);
     dismissCharacter(galaxy, c);
-    if (empire === galaxy.playerEmpire) scenarioMessage(galaxy, empire, scenarioText('Emergent Arrest Title'), text, { type: EmpireMessageType.GeneralNeutralEvent, subject: empire.capital });
+    if (isHumanEmpire(galaxy, empire)) scenarioMessage(galaxy, empire, scenarioText('Emergent Arrest Title'), text, { type: EmpireMessageType.GeneralNeutralEvent, subject: empire.capital });
     return { ok: true };
 }
 
@@ -86,7 +87,7 @@ export function purgeCharacter(galaxy: Galaxy, empire: Empire, c: Character): Po
     dismissCharacter(galaxy, c);
     politicsState(galaxy).purgeYear.set(empire, politicsYear(galaxy));
     empire.leaderChangeInfluence = Math.min(empire.leaderChangeInfluence, -0.15);
-    if (empire === galaxy.playerEmpire) scenarioMessage(galaxy, empire, scenarioText('Emergent Purge Title'), text, { type: EmpireMessageType.GeneralWarning, subject: empire.capital });
+    if (isHumanEmpire(galaxy, empire)) scenarioMessage(galaxy, empire, scenarioText('Emergent Purge Title'), text, { type: EmpireMessageType.GeneralWarning, subject: empire.capital });
     return { ok: true };
 }
 
@@ -114,7 +115,7 @@ export function grantAutonomy(galaxy: Galaxy, empire: Empire, colony: Habitat): 
     st.autonomy.set(colony, politicsYear(galaxy) + AUTONOMY_YEARS);
     colony.taxRate = AUTONOMY_TAX;
     for (const [ch, e] of st.chars) if (governedColony(ch) === colony) e.loyalty = Math.min(100, e.loyalty + 10);
-    if (empire === galaxy.playerEmpire) scenarioMessage(galaxy, empire, scenarioText('Emergent Autonomy Title'), scenarioText('Emergent Autonomy', colony.name), { type: EmpireMessageType.GeneralNeutralEvent, subject: colony });
+    if (isHumanEmpire(galaxy, empire)) scenarioMessage(galaxy, empire, scenarioText('Emergent Autonomy Title'), scenarioText('Emergent Autonomy', colony.name), { type: EmpireMessageType.GeneralNeutralEvent, subject: colony });
     return { ok: true };
 }
 

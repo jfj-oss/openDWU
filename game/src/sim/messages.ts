@@ -220,7 +220,7 @@ export type PlayerInboxItem =
  * the sim: SendMessageToEmpire / SendEventMessageToEmpire / PromptPlayerForAuthorization append to the player's inbox, and the sim drains it at fixed
  * points (playerMessages.ts processPlayerMessages: the end of every frame, after every applied command), so the
  * handling is part of the deterministic, replayable game. Per game run state, never saved: it is empty whenever a game
- * is saved (serializeGame drains it first). Attached for galaxy.playerEmpire (playerMessages.ts ensurePlayerInbox).
+ * is saved (serializeGame drains it first). Attached for every human empire (playerMessages.ts ensurePlayerInbox).
  */
 const playerInboxes = new WeakMap<Empire, PlayerInboxItem[]>();
 

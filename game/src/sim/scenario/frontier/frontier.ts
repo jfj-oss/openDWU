@@ -229,7 +229,7 @@ function logEvent(galaxy: Galaxy, s: FrontierSector | null, empire: Empire, kind
 }
 
 function tell(galaxy: Galaxy, empire: Empire, titleTag: string, text: string, type: EmpireMessageType, subject: unknown): void {
-    if (empire !== galaxy.playerEmpire) return;
+    if (!isHumanEmpire(galaxy, empire)) return;
     scenarioMessage(galaxy, empire, scenarioText(titleTag), text, { type, subject });
 }
 

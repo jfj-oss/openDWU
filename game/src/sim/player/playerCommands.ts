@@ -26,6 +26,7 @@ import { noteConstructionBoardCommand } from './constructionBoard';
 import { setUiRecordSender, withSimWrites } from '../readOnlyQuery';
 import { ensurePlayerInbox, processPlayerMessages } from '../playerMessages';
 import { applyAddonsLogEntry } from '../scenario/addToSave';
+import { isHumanEmpire, isMultiHuman } from '../humanEmpires';
 
 interface Pending {
     empire: Empire;
@@ -186,7 +187,18 @@ function encodeArgs(galaxy: Galaxy, args: readonly unknown[]): EncodedArg[] {
     return args.map((a) => encodeCommandArg(galaxy, a));
 }
 
+/** The ops issued for AI empires: the LLM layer's strategic orders and chronicle (src/llm). */
+const AI_EMPIRE_OPS: ReadonlySet<PlayerOpName> = new Set<PlayerOpName>(['llmStrategic', 'storeChronicleYear']);
+
 function applyLive(galaxy: Galaxy, p: Pending): void {
+    // Multiplayer: a command acts for a human empire only (an AI empire's orders are the AI's). Rejected before the
+    // journal, so the log holds only applied commands; one-human games accept every command, as before.
+    if (isMultiHuman(galaxy) && !isHumanEmpire(galaxy, p.empire) && !AI_EMPIRE_OPS.has(p.op)) {
+        const onFailed = p.onFailed;
+        const reason = `player command ${p.op} rejected: ${p.empire?.name ?? 'no empire'} is not a human empire`;
+        if (onFailed !== undefined) queueMicrotask(() => onFailed(reason));
+        return;
+    }
     let result: unknown;
     try {
         result = applyJournaled(galaxy, p);

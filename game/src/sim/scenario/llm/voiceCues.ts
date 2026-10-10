@@ -19,6 +19,7 @@ import { Character, CharacterRole, getEmpireCharacters } from '../../characters'
 import { galaxyStarDate } from '../../tick/simTime';
 import { tryGetText } from '../../textResolver';
 import { scenarioFlag } from '../state';
+import { isHumanEmpire } from '../../humanEmpires';
 
 export const VOICES_FLAG = 'llmVoices';
 
@@ -172,8 +173,9 @@ export function voiceGrievanceAdded(
     ev: { holder: Empire; against: Empire; cause: string; value: number; message: EmpireMessage | null },
 ): VoiceCue | null {
     if (!voicesOn(galaxy) || !scenarioFlag(galaxy, 'reputationLedger')) return null;
-    const player = galaxy.playerEmpire;
-    if (player === null || (ev.holder !== player && ev.against !== player)) return null;
+    // The human side of the grievance (humanEmpires.ts; the holder first when both are human).
+    const player = isHumanEmpire(galaxy, ev.holder) ? ev.holder : isHumanEmpire(galaxy, ev.against) ? ev.against : null;
+    if (player === null) return null;
     const other = ev.holder === player ? ev.against : ev.holder;
     const speaker = seatSpeaker(galaxy, player, 'chancellor');
     return noteVoiceCue(galaxy, {
@@ -193,7 +195,7 @@ export function voiceFactionUltimatum(
     galaxy: Galaxy,
     ev: { empire: Empire; leader: Character; faction: string; demand: string; threat: string; message: EmpireMessage | null },
 ): VoiceCue | null {
-    if (!voicesOn(galaxy) || !scenarioFlag(galaxy, 'courtDynasties') || ev.empire !== galaxy.playerEmpire) return null;
+    if (!voicesOn(galaxy) || !scenarioFlag(galaxy, 'courtDynasties') || !isHumanEmpire(galaxy, ev.empire)) return null;
     return noteVoiceCue(galaxy, {
         kind: 'ultimatum',
         empire: ev.empire,
@@ -211,7 +213,7 @@ export function voiceSchemeLetter(
     galaxy: Galaxy,
     ev: { empire: Empire; from: Empire; agent: Character | null; scheme: 'blackmail' | 'exposure'; victim: string; secret: string; demand: string; message: EmpireMessage | null },
 ): VoiceCue | null {
-    if (!voicesOn(galaxy) || !scenarioFlag(galaxy, 'courtIntrigue') || ev.empire !== galaxy.playerEmpire) return null;
+    if (!voicesOn(galaxy) || !scenarioFlag(galaxy, 'courtIntrigue') || !isHumanEmpire(galaxy, ev.empire)) return null;
     return noteVoiceCue(galaxy, {
         kind: 'letter',
         empire: ev.empire,
@@ -251,15 +253,14 @@ export interface SpeechSide {
  * Deterministic (ties: vote order). A side is null when nobody fits.
  */
 export function councilSpeakers(galaxy: Galaxy, members: readonly Empire[], m: SpeechMotion): { for: SpeechSide | null; against: SpeechSide | null } {
-    const player = galaxy.playerEmpire;
-    const ai = m.votes.filter((v) => v.empire !== player && members.includes(v.empire));
-    let pro: Empire | null = m.proposer !== player && members.includes(m.proposer) ? m.proposer : null;
+    const ai = m.votes.filter((v) => !isHumanEmpire(galaxy, v.empire) && members.includes(v.empire));
+    let pro: Empire | null = !isHumanEmpire(galaxy, m.proposer) && members.includes(m.proposer) ? m.proposer : null;
     if (pro === null) {
         let best: { empire: Empire; score: number } | null = null;
         for (const v of ai) if (v.vote === 'yes' && (best === null || v.score > best.score)) best = v;
         pro = best?.empire ?? null;
     }
-    let con: Empire | null = m.target !== player && members.includes(m.target) && m.target !== pro ? m.target : null;
+    let con: Empire | null = !isHumanEmpire(galaxy, m.target) && members.includes(m.target) && m.target !== pro ? m.target : null;
     if (con === null) {
         let worst: { empire: Empire; score: number } | null = null;
         for (const v of ai) if (v.vote !== 'yes' && v.empire !== pro && (worst === null || v.score < worst.score)) worst = v;

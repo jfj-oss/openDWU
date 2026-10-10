@@ -67,7 +67,7 @@ export function designsFindNewestCanBuild(designs: Design[], subRole: BuiltObjec
 export function checkSendPirateRaidCore(galaxy: Galaxy, empire: Empire): void {
     if (empire.preWarpProgressEventsOccurred || empire.preWarpProgressEventOccurredSendPirateRaid || empire.capital === null) return;
     const capital = empire.capital;
-    const empire2 = findNearestPirateFaction(galaxy, capital.xpos, capital.ypos, galaxy.playerEmpire, false);
+    const empire2 = findNearestPirateFaction(galaxy, capital.xpos, capital.ypos, galaxy.playerEmpire, false, true);
     if (empire2 === null) return;
     const shipGroups = empireShipGroups(empire2);
     if (shipGroups != null && shipGroups.length > 0) {

@@ -1175,7 +1175,7 @@ export function investigateRuins(galaxy: Galaxy, investigatingEmpire: Empire | n
             }
             case RuinType.PirateAmbush: {
                 empty = formatGameTextNow('Pirate Ambush') + '!';
-                const empire2 = findNearestPirateFaction(galaxy, ruinsHabitat.xpos, ruinsHabitat.ypos, galaxy.playerEmpire, false);
+                const empire2 = findNearestPirateFaction(galaxy, ruinsHabitat.xpos, ruinsHabitat.ypos, galaxy.playerEmpire, false, true);
                 if (empire2 !== null) {
                     text = formatGameTextNow('Ruins Pirate Ambush', [ruin.name, empire2.name]);
                     const num5 = galaxy.rnd.next(3, 5);
@@ -1297,7 +1297,7 @@ export function investigateRuins(galaxy: Galaxy, investigatingEmpire: Empire | n
                     empty2 = resolveSectorDescription(galaxy, habitat6.xpos, habitat6.ypos);
                     text += formatGameTextNow('Ruins Lost Ship Location', [ruin.name, builtObject4.name, categoryText(habitat6), habitat6.name, habitat7.name, empty2]);
                     sendEventMessageToEmpire(investigatingEmpire, EventMessageType.LostBuiltObjectCoordinates, empty, text, ruin, ruinsHabitat);
-                    if (investigatingEmpire === galaxy.playerEmpire) addLocationHint(galaxy.playerEmpire, { x: Math.trunc(habitat6.xpos), y: Math.trunc(habitat6.ypos) }, builtObjectSubject(builtObject4, true), 'Exploration (ancient ruins)');
+                    if (isHumanEmpire(galaxy, investigatingEmpire)) addLocationHint(investigatingEmpire!, { x: Math.trunc(habitat6.xpos), y: Math.trunc(habitat6.ypos) }, builtObjectSubject(builtObject4, true), 'Exploration (ancient ruins)');
                 }
                 break;
             }
@@ -1315,7 +1315,7 @@ export function investigateRuins(galaxy: Galaxy, investigatingEmpire: Empire | n
                     empty2 = resolveSectorDescription(galaxy, habitat8.xpos, habitat8.ypos);
                     text += formatGameTextNow('Ruins Lost Colony Location Revealed', [ruin.name, categoryText(habitat8), habitat8.name, habitat9.name, empty2]);
                     sendEventMessageToEmpire(investigatingEmpire, EventMessageType.LostColonyCoordinates, empty, text, habitat8, ruinsHabitat);
-                    if (investigatingEmpire === galaxy.playerEmpire) addLocationHint(galaxy.playerEmpire, { x: Math.trunc(habitat8.xpos), y: Math.trunc(habitat8.ypos) }, habitatSubject('Lost colony', habitat8), 'Exploration (ancient ruins)');
+                    if (isHumanEmpire(galaxy, investigatingEmpire)) addLocationHint(investigatingEmpire!, { x: Math.trunc(habitat8.xpos), y: Math.trunc(habitat8.ypos) }, habitatSubject('Lost colony', habitat8), 'Exploration (ancient ruins)');
                 }
                 break;
             }

@@ -54,7 +54,6 @@ export function isThemedNamesEmpire(galaxy: Galaxy, empire: Empire | null): empi
         empire !== null &&
         empire.active &&
         !isHumanEmpire(galaxy, empire) &&
-        !empire.playerEmpire &&
         empire !== galaxy.independentEmpire &&
         empire.pirateEmpireBaseHabitat === null &&
         empire.dominantRace !== null

@@ -48,6 +48,7 @@ import {
     type WreckField,
     type WreckRecord,
 } from './common';
+import { isHumanEmpire } from '../../humanEmpires';
 
 wreckageHooks.removeLocation = (galaxy: Galaxy, location: GalaxyLocation) => removeGalaxyLocation(galaxy, location);
 
@@ -247,7 +248,7 @@ export function completeSalvage(galaxy: Galaxy, job: SalvageJob, field: WreckFie
     takeWrecks(galaxy, picked);
     st.stats.salvageTrips++;
     for (const c of cargo) st.stats.resourcesRecovered += c.amount;
-    if (empire === galaxy.playerEmpire) {
+    if (isHumanEmpire(galaxy, empire)) {
         const names = cargo.map((c) => `${c.amount} ${galaxy.resourceSystem.byId.get(c.resourceId)?.name ?? c.resourceId}`).join(', ');
         const title = scenarioText('Scenario Wreckage Salvaged Title');
         scenarioMessage(galaxy, empire, title, scenarioText('Scenario Wreckage Salvaged', ship.name, picked.length, field.name, names === '' ? scenarioText('Scenario Wreckage Nothing') : names), { subject: ship });

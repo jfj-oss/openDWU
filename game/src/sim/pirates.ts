@@ -66,6 +66,7 @@ import { BuiltObjectSubRole } from './builtObjectTypes';
 import { BattleTactics, BuiltObjectFleeWhen, BuiltObjectRole, InvasionTactics, buildDefaultDesignSpecifications, getDefaultDesignSpecificationBySubRole } from './data/designSpecifications';
 import { countResourceSourcesForEmpire } from './stationPlacement';
 import { scenarioQuery } from './scenario/hooks';
+import { isHumanEmpire } from './humanEmpires';
 
 // Port of PiratePlayStyle.cs (member order exact).
 export enum PiratePlayStyle {
@@ -226,12 +227,14 @@ export function fastFindNearestIndependentHabitat(galaxy: Galaxy, independentCol
 // (GenericBase or Small/Medium/LargeSpacePort). No Rnd.
 // generatePirateEmpire now builds the SmallSpacePort base, so factions qualify (spacing rule
 // of GenerateNewPirateEmpires applies).
-export function findNearestPirateFaction(galaxy: Galaxy, x: number, y: number, pirateFactionToExclude: Empire | null, includeSuperPirates: boolean): Empire | null {
+// excludeHumans (not in the C#): also skip every human empire (humanEmpires.ts) — the call sites that pass the C#'s
+// PlayerEmpire as the faction to exclude.
+export function findNearestPirateFaction(galaxy: Galaxy, x: number, y: number, pirateFactionToExclude: Empire | null, includeSuperPirates: boolean, excludeHumans = false): Empire | null {
     let num = Number.MAX_VALUE;
     let result: Empire | null = null;
     for (let i = 0; i < galaxy.pirateEmpires.length; i++) {
         const empire = galaxy.pirateEmpires[i];
-        if (empire == null || empire.pirateEmpireBaseHabitat === null || empire.builtObjects == null || !empire.active || (pirateFactionToExclude !== null && empire === pirateFactionToExclude) || (!includeSuperPirates && empire.pirateEmpireSuperPirates)) {
+        if (empire == null || empire.pirateEmpireBaseHabitat === null || empire.builtObjects == null || !empire.active || (pirateFactionToExclude !== null && empire === pirateFactionToExclude) || (excludeHumans && isHumanEmpire(galaxy, empire)) || (!includeSuperPirates && empire.pirateEmpireSuperPirates)) {
             continue;
         }
         const num2 = galaxy.calculateDistanceSquared(x, y, empire.pirateEmpireBaseHabitat.xpos, empire.pirateEmpireBaseHabitat.ypos);

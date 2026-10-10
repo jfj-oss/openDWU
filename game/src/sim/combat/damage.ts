@@ -78,7 +78,7 @@ import { MAX_SOLAR_SYSTEM_SIZE, checkWithinDistancePotential } from '../movement
 import { builtObjectCompleteTeardown } from './teardown';
 import { baconSettings } from '../data/baconSettings';
 import { scenarioEmit } from '../scenario/hooks';
-import { isHumanEmpire } from '../humanEmpires';
+import { humanEmpires, isHumanEmpire } from '../humanEmpires';
 
 // ---------------------------------------------------------------------------------------------------------------
 // Constants (Galaxy.3.cs SetDefaults)
@@ -721,7 +721,7 @@ export function provideBonusFromPirateBase(galaxy: Galaxy, self: BuiltObject, de
                         const builtObject = generateAbandonedBuiltObject(galaxy, habitat3, design);
                         // BuiltObject.2.cs 5022-5029 / Fighter.cs 979-986.
                         ({ message: empty2, title: empty } = pirateBaseBonusAbandonedShipText(galaxy, pirateBase, builtObject, habitat4));
-                        if (destroyingEmpire === galaxy.playerEmpire) addLocationHint(galaxy.playerEmpire, { x: Math.trunc(builtObject.xpos), y: Math.trunc(builtObject.ypos) }, builtObjectSubject(builtObject, true), 'Exploration / navigation data (destroyed pirate base)');
+                        if (isHumanEmpire(galaxy, destroyingEmpire)) addLocationHint(destroyingEmpire!, { x: Math.trunc(builtObject.xpos), y: Math.trunc(builtObject.ypos) }, builtObjectSubject(builtObject, true), 'Exploration / navigation data (destroyed pirate base)');
                         sendEventMessageToEmpire(destroyingEmpire, EventMessageType.LostBuiltObjectCoordinates, empty, empty2, pirateBase, pirateBase.empire.pirateEmpireBaseHabitat);
                     }
                     break;
@@ -769,7 +769,7 @@ export function provideBonusFromPirateBase(galaxy: Galaxy, self: BuiltObject, de
                     if (habitat!.population !== null && habitat!.population.items.length > 0 && habitat!.population.dominantRace !== null) race = habitat!.population.dominantRace;
                     if (race !== null) {
                         ({ message: empty2, title: empty } = pirateBaseBonusExplorationText(galaxy, pirateBase, habitat!, race));
-                        if (destroyingEmpire === galaxy.playerEmpire) addLocationHint(galaxy.playerEmpire, { x: Math.trunc(habitat!.xpos), y: Math.trunc(habitat!.ypos) }, habitatSubject('Independent colony', habitat!), 'Exploration / navigation data (destroyed pirate base)');
+                        if (isHumanEmpire(galaxy, destroyingEmpire)) addLocationHint(destroyingEmpire!, { x: Math.trunc(habitat!.xpos), y: Math.trunc(habitat!.ypos) }, habitatSubject('Independent colony', habitat!), 'Exploration / navigation data (destroyed pirate base)');
                         sendEventMessageToEmpire(destroyingEmpire, EventMessageType.IndependentPopulation, empty, empty2, race, pirateBase.empire.pirateEmpireBaseHabitat);
                     }
                     break;
@@ -1812,7 +1812,9 @@ export function reviewDisabledComponents(galaxy: Galaxy, builtObject: BuiltObjec
 
 /** Galaxy.7.cs 2835 DetermineScrapDamagedShip(builtObject). No Rnd (FindNearestShipYard / FindNearestAvailableConstructionShip: construction/empireConstruction.ts). */
 export function determineScrapDamagedShip(galaxy: Galaxy, builtObject: BuiltObject): boolean {
-    const playerEmpire = galaxy.playerEmpire;
+    // `Empire != PlayerEmpire && PirateEmpireId != PlayerEmpire.EmpireId`: no human empire's (humanEmpires.ts). Without a
+    // player the C# test is `Empire != null`.
+    const humans = humanEmpires(galaxy);
     if (
         builtObject.role !== BuiltObjectRole.Base &&
         isAiControlled(builtObject) &&
@@ -1820,8 +1822,8 @@ export function determineScrapDamagedShip(galaxy: Galaxy, builtObject: BuiltObje
         builtObject.warpSpeed <= 0 &&
         (builtObject.characters === null || builtObject.characters.length <= 0) &&
         (builtObject.troops === null || builtObject.troops.count <= 0) &&
-        builtObject.empire !== playerEmpire &&
-        (playerEmpire === null || builtObject.pirateEmpireId !== playerEmpire.empireId)
+        (humans.length > 0 || builtObject.empire !== null) &&
+        humans.every((h) => builtObject.empire !== h && builtObject.pirateEmpireId !== h.empireId)
     ) {
         const num = resolveTechBonusFactor(builtObject.empire, galaxy, builtObject);
         if (num <= 1.0) {

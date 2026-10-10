@@ -49,6 +49,7 @@ import {
 } from '../combat/attackAI';
 import { BuiltObjectMissionType, Command, CommandAction, builtObjectMission, isBuiltObject, isCreature, type StellarObject } from './mission';
 import type { CommandHandler } from './executeCommands';
+import { isHumanEmpire } from '../humanEmpires';
 
 /** The threat-slot rejection test repeated at 1743 / 1774 / 1860 / 2004 / 2094 / 2270. */
 function threatRejected(bo: BuiltObject, t: Threat | null): boolean {
@@ -249,7 +250,7 @@ export const cmdAttackBombardCaptureRaid: CommandHandler = (ctx) => {
             setOptimalAttackRanges(galaxy, bo, bo.currentTarget as StellarObject, command.action);
         }
         if (empire !== null && !empire.pirateExtortionOfferMade && bo.empire !== null && bo.empire.pirateEmpireBaseHabitat !== null) {
-            if (empire === galaxy.playerEmpire && empire.pirateEmpireBaseHabitat === null) {
+            if (isHumanEmpire(galaxy, empire) && empire.pirateEmpireBaseHabitat === null) {
                 // TextResolver "Pirate Protection Extortion" (GameText.txt 5186). Its {0} is the monthly fee: the C# passes the
                 // unformatted text, so fill it with the protection price the pirates would ask (the offer path's figure).
                 const text = gameText('Pirate Protection Extortion', Math.trunc(calculatePirateProtectionPricePerMonth(galaxy, bo.empire, empire).price));
