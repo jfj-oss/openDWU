@@ -46,6 +46,7 @@ import { purchaseNewBuiltObject } from '../construction/empireConstruction';
 import { determineBuiltObjectIsState } from '../builtObject';
 import { scenarioEmit } from '../scenario/hooks';
 import { rimTraderColonyCapBlocks } from '../scenario/rimTrade/common';
+import { takeHumanColonyName } from '../perHumanState';
 
 
 /** Empire.3.cs 3557 CheckPirateEmpireHasCriminalNetwork(empire). No Rnd. */
@@ -78,6 +79,10 @@ export function makeHabitatIntoColonyRuntime(galaxy: Galaxy, self: Empire, habit
             const name = galaxy.colonyNames[galaxy.colonyNameIndex];
             galaxy.colonyNameIndex++;
             habitat.name = name;
+        } else {
+            // Multiplayer: another human's own list (perHumanState.ts; decision §4.8).
+            const own = takeHumanColonyName(galaxy, empire);
+            if (own !== null) habitat.name = own;
         }
         setColonyTaxRate(galaxy, empire, habitat, false);
         if (habitat.cargo === null) habitat.cargo = new CargoList();

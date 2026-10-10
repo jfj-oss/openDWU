@@ -2683,7 +2683,8 @@ function buildVictoryPage(ctx: WizardCtx): HTMLDivElement {
     const events = place(el('div', 'wizard-victory-section wizard-victory-events'), 0, 0, 900, 660);
     wrap.appendChild(events);
     const storyHelp = (): [string, string] => [helpTitle2('Victory', 'Story Events'), wt('Enables story events in the game', 'Enables story events in the game')];
-    ctx.helpOn(check(events, wt('Enable original Distant Worlds story events', 'Enable original Distant Worlds story events'), v.enableStoryDistantWorlds === true, 20, 245, (x) => (v.enableStoryDistantWorlds = x)).row, storyHelp);
+    const distantWorlds = check(events, wt('Enable original Distant Worlds story events', 'Enable original Distant Worlds story events'), v.enableStoryDistantWorlds === true, 20, 245, (x) => (v.enableStoryDistantWorlds = x));
+    ctx.helpOn(distantWorlds.row, storyHelp);
     const shakturi = check(events, wt('Enable Return Of The Shakturi story events and victory conditions', 'Enable Return Of The Shakturi story events and victory conditions'), v.enableStoryEvents === true, 20, 270, (x) => (v.enableStoryEvents = x));
     ctx.helpOn(shakturi.row, storyHelp);
     ctx.helpOn(check(events, wt('Enable Disasters and other events', 'Enable Disasters and other events'), v.enableDisasterEvents, 20, 295, (x) => (v.enableDisasterEvents = x)).row, () => [helpTitle2('Victory', 'Disaster Events'), wt('Enables various random game events, such as disasters at colonies', 'Enables various random game events, such as disasters at colonies')]);
@@ -2708,13 +2709,18 @@ function buildVictoryPage(ctx: WizardCtx): HTMLDivElement {
     // Start.cs 3771 method_45 (pirate start: Return of the Shakturi unchecked and disabled, pirate-specific conditions,
     // the pirate explanation) and Start.1.cs 3098 btnStartNewGameOtherEmpiresNext_Click (Shadows only in a PreWarp galaxy).
     // The displayed state follows; the stored choice is kept and toCreateGameOptions applies the same rule.
+    // Multiplayer (docs/MULTIPLAYER.md decision §4.4): with more than one human the storylines are off — greyed out here;
+    // createGame turns them off (the stored choice is kept for a later one-human start).
     (wrap as unknown as { __onShow?: () => void }).__onShow = () => {
         const isPirate = empireTypeIsPirate(options.empireType);
-        shakturi.input.disabled = isPirate;
-        shakturi.input.checked = !isPirate && v.enableStoryEvents === true;
+        const multiHuman = (options.humanPlayers?.length ?? 0) > 0;
+        distantWorlds.input.disabled = multiHuman;
+        distantWorlds.input.checked = !multiHuman && v.enableStoryDistantWorlds === true;
+        shakturi.input.disabled = isPirate || multiHuman;
+        shakturi.input.checked = !isPirate && !multiHuman && v.enableStoryEvents === true;
         const prewarp = (options.galaxyExpansionIndex ?? 1) === 0;
-        shadows.input.disabled = !prewarp;
-        shadows.input.checked = prewarp && v.enableStoryEventsShadows === true;
+        shadows.input.disabled = !prewarp || multiHuman;
+        shadows.input.checked = prewarp && !multiHuman && v.enableStoryEventsShadows === true;
         setText(raceConditions.label, isPirate ? wt('Enable Pirate-specific Victory Conditions', 'Enable Pirate-specific Victory Conditions') : wt('Enable Race-specific Victory Conditions', 'Enable Race-specific Victory Conditions'));
         setText(
             sandboxNote,
@@ -2962,7 +2968,8 @@ function buildStartPage(ctx: WizardCtx): HTMLDivElement {
         // [wizardB1] the playstyle and the options added with it.
         const typeSpec = [...PLAYSTYLE_CUSTOM, ...PLAYSTYLE_ERAS].find((p) => p.type === (options.empireType ?? 'CustomStandard'));
         const isPirate = empireTypeIsPirate(options.empireType);
-        const stories = [
+        const multiHuman = (options.humanPlayers?.length ?? 0) > 0; // decision §4.4: no storylines with more than one human
+        const stories = multiHuman ? '' : [
             options.victory.enableStoryDistantWorlds === true && 'Distant Worlds',
             !isPirate && options.victory.enableStoryEvents === true && 'Return of the Shakturi',
             (options.galaxyExpansionIndex ?? 1) === 0 && options.victory.enableStoryEventsShadows === true && 'Shadows',

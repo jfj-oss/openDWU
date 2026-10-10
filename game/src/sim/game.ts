@@ -70,6 +70,7 @@ import { ensurePlayerInbox } from './playerMessages';
 import { scenarioAfterGeneration, scenarioFindHomeHabitat, scenarioGameStart, scenarioGenerationSetup, scenarioQuery } from './scenario/hooks';
 import { parseSectorColumn } from './sectorNames';
 import './scenario/packages'; // mod layer: registers the scenario packages' hooks
+import { setHumanColonyNames } from './perHumanState';
 
 export type HomeSystem = 'Harsh' | 'Trying' | 'Normal' | 'Agreeable' | 'Excellent';
 
@@ -97,6 +98,9 @@ export interface EmpireStartOptions {
     primaryColor?: number;
     secondaryColor?: number;
     flagShape?: number;
+    /** Multiplayer, an extra human only (CreateGameOptions.humanPlayers): its own colony-name list (decision §4.8; the
+     *  player's is CreateGameOptions.colonyNames). */
+    colonyNames?: string[];
 }
 
 export interface CreateGameOptions {
@@ -1336,6 +1340,7 @@ export function* createGameSteps(opts: CreateGameOptions): Generator<GameStartPr
             if (o.primaryColor !== undefined) e.mainColor = o.primaryColor;
             if (o.secondaryColor !== undefined) e.secondaryColor = o.secondaryColor;
             if (o.flagShape !== undefined && o.flagShape >= 0) e.flagShape = o.flagShape;
+            if (o.colonyNames !== undefined) setHumanColonyNames(galaxy, e, o.colonyNames);
         });
     }
 

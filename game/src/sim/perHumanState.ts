@@ -39,6 +39,8 @@ export interface PerHumanState {
     /** Multiplayer game end (victory.ts, decision §4.1): each human's outcome once decided (GameEndOutcome), the
      *  primary's included. Absent: still playing. */
     outcomes?: Map<Empire, number>;
+    /** Each non-primary human's own colony-name list (the primary's: Galaxy.colonyNames / colonyNameIndex). */
+    colonyNames?: Map<Empire, { names: string[]; index: number }>;
 }
 
 const states = new WeakMap<Galaxy, PerHumanState>();
@@ -182,6 +184,22 @@ export function perHumanHintSubjects(galaxy: Galaxy): Map<Empire, Record<string,
     return stateOf(galaxy).hintSubjects;
 }
 
+// ---- the colony-name lists (decision §4.8) ----
+
+/** Give a non-primary human its own colony-name list (createGame, from its start options). */
+export function setHumanColonyNames(galaxy: Galaxy, empire: Empire, names: readonly string[]): void {
+    if (names.length === 0) return;
+    (stateOf(galaxy).colonyNames ??= new Map()).set(empire, { names: [...names], index: 0 });
+}
+
+/** The next name of a non-primary human's colony-name list (null: none left / no list / not such a human). */
+export function takeHumanColonyName(galaxy: Galaxy, empire: Empire | null | undefined): string | null {
+    if (!isOtherHuman(galaxy, empire)) return null;
+    const l = states.get(galaxy)?.colonyNames?.get(empire);
+    if (l === undefined || l.index >= l.names.length) return null;
+    return l.names[l.index++];
+}
+
 // ---- the multiplayer game end (victory.ts) ----
 
 /** `empire`'s decided outcome (a GameEndOutcome), or undefined while it plays on (and always in a one-human game). */
@@ -198,7 +216,7 @@ export function setHumanOutcome(galaxy: Galaxy, empire: Empire, outcome: number)
 // ---- save / sync ----
 
 function isEmpty(s: PerHumanState): boolean {
-    return (s.outcomes?.size ?? 0) === 0 && s.ruins.size === 0 && s.actions.size === 0 && s.initialActions.size === 0 && s.messageOptions.size === 0 && s.achievements.size === 0 && s.smuggling.size === 0 && s.hintSubjects.size === 0;
+    return (s.outcomes?.size ?? 0) === 0 && (s.colonyNames?.size ?? 0) === 0 && s.ruins.size === 0 && s.actions.size === 0 && s.initialActions.size === 0 && s.messageOptions.size === 0 && s.achievements.size === 0 && s.smuggling.size === 0 && s.hintSubjects.size === 0;
 }
 
 /** What the save writes: the state, or undefined (no key) while nothing is in it — every one-human game. */

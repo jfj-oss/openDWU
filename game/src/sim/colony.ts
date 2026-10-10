@@ -22,6 +22,7 @@ import type { ConstructionQueueHandle } from './construction/constructionYard';
 import { habitatDoTasks } from './tick/habitatTick';
 import { growPopulation } from './colonyTick';
 import { galaxyNow } from './tick/simTime';
+import { takeHumanColonyName } from './perHumanState';
 
 // Port of Galaxy.8.cs MakeHabitatIntoColony(galaxy, habitat, empire, age, race,
 // homeSystemFactor, hasSpacePort).
@@ -48,6 +49,10 @@ export function makeHabitatIntoColony(
     if (galaxy.colonyNames !== null && empire !== galaxy.independentEmpire && empire === galaxy.playerEmpire && galaxy.colonyNames.length > galaxy.colonyNameIndex) {
         habitat.name = galaxy.colonyNames[galaxy.colonyNameIndex];
         galaxy.colonyNameIndex++;
+    } else {
+        // Multiplayer: another human's own list (perHumanState.ts; decision §4.8).
+        const own = takeHumanColonyName(galaxy, empire);
+        if (own !== null) habitat.name = own;
     }
     let num = habitat.quality;
     if (habitat.type === race.nativeHabitatType) {
