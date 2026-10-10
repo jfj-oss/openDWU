@@ -237,3 +237,12 @@
 .mp-chip:empty {
     display: none;
 }
+
+/* Phase 4: the host lobby's adaptive input delay switch. */
+.mp-check {
+    gap: 8px;
+    cursor: pointer;
+}
+.mp-check input {
+    margin: 0;
+}

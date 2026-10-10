@@ -53,6 +53,20 @@ export interface BootProgress {
 /** The replica's static data: given up front, or chosen once the snapshot names the game's scenario (a load). */
 export type ReplicaGameData = GameData | ((snapshot: SnapshotHeader) => GameData);
 
+/** Multiplayer (docs/MULTIPLAYER.md §11): the worker's messages for the session's main-thread side (relayed links, state). */
+export type MpSideMessage = Extract<FromWorker, { type: 'netOut' | 'netCloseOut' | 'mpState' | 'mpReply' }>;
+
+/** Where the multiplayer side messages go (shared by the clients of one endpoint: a replaced game keeps it). */
+export interface MpSideChannel {
+    handler: ((m: MpSideMessage) => void) | null;
+    /** The session replaced the game: the next client (its replica built from the new snapshot) is on its way. */
+    onReplaced: ((next: Promise<SimWorkerClient>) => void) | null;
+}
+
+function isSideMessage(m: FromWorker): m is MpSideMessage {
+    return m.type === 'netOut' || m.type === 'netCloseOut' || m.type === 'mpState' || m.type === 'mpReply';
+}
+
 export class SimWorkerClient {
     /** save / digest / debug / commandLog requests waiting for their answer (rejected when the worker stops or the
      *  client is disposed). */
@@ -72,10 +86,22 @@ export class SimWorkerClient {
     private lastHeardAt = performance.now();
     private watchdog: ReturnType<typeof setInterval> | null = null;
 
+    /** The session replaced this client's game (gameReplaced): it takes no more messages and never ends the worker. */
+    private detached = false;
+
     private constructor(
         private readonly worker: SimEndpoint,
         readonly core: SimClientCore,
+        /** The replica's static data (a replaced game's replica is built over the same). */
+        readonly gameData: GameData,
+        /** Multiplayer side messages (null: none). */
+        readonly side: MpSideChannel | null,
     ) {}
+
+    /** The endpoint (multiplayer: the session's messages go to the worker over it). */
+    get endpoint(): SimEndpoint {
+        return this.worker;
+    }
 
     /**
      * Where the sim runs: the desktop app's own sim process (simEndpoint.ts, desktop/simProcess.cjs) when the shell
@@ -87,8 +113,26 @@ export class SimWorkerClient {
         return new WebWorkerEndpoint(new Worker(new URL('./worker.ts', import.meta.url), { type: 'module', name: 'dwu-sim' }));
     }
 
-    /** Start the worker, boot its game, and build the replica from its snapshot. */
-    static boot(init: InitMessage, gameData: ReplicaGameData, progress?: BootProgress, endpoint: SimEndpoint = SimWorkerClient.createEndpoint()): Promise<SimWorkerClient> {
+    /** Start the worker, boot its game, and build the replica from its snapshot. `side`: multiplayer messages. */
+    static boot(init: InitMessage, gameData: ReplicaGameData, progress?: BootProgress, endpoint: SimEndpoint = SimWorkerClient.createEndpoint(), side: MpSideChannel | null = null): Promise<SimWorkerClient> {
+        return SimWorkerClient.listen(endpoint, gameData, progress, side, init);
+    }
+
+    /**
+     * Multiplayer: the worker's session replaced its game (gameReplaced): a new client over the same endpoint, its
+     * replica built from the snapshot that follows. This client is detached: it takes no more messages, and disposing
+     * it leaves the worker running.
+     */
+    private replaced(): void {
+        this.detached = true;
+        this.stopWatchdog();
+        const next = SimWorkerClient.listen(this.worker, this.gameData, undefined, this.side, null);
+        if (this.side?.onReplaced != null) this.side.onReplaced(next);
+        else next.catch((err: unknown) => console.error('sim worker: the replaced game could not be shown', err));
+    }
+
+    /** Wait for the snapshot on `endpoint` (posting `init` first, unless null) and build the client from it. */
+    private static listen(endpoint: SimEndpoint, gameData: ReplicaGameData, progress: BootProgress | undefined, side: MpSideChannel | null, init: InitMessage | null): Promise<SimWorkerClient> {
         const worker = endpoint;
         return new Promise<SimWorkerClient>((resolve, reject) => {
             let client: SimWorkerClient | null = null;
@@ -151,7 +195,7 @@ export class SimWorkerClient {
                         // a command later (docs/sim-worker.md §4.4, the timeout policy).
                         onUnresponsive: (reason) => c?.stop(reason),
                     });
-                    c = new SimWorkerClient(worker, core);
+                    c = new SimWorkerClient(worker, core, data, side);
                     c.startWatchdog();
                     // Dev only: `&detectWrites=1|all` reports main-thread writes to the replica (writeDetector.ts).
                     if (import.meta.env.DEV) {
@@ -179,6 +223,11 @@ export class SimWorkerClient {
             };
             worker.onmessage = (e: MessageEvent) => {
                 const m = e.data as FromWorker;
+                // Multiplayer: the session's messages, whatever this client's state (a joiner's flow before its game).
+                if (isSideMessage(m)) {
+                    side?.handler?.(m);
+                    return;
+                }
                 if (client !== null) {
                     client.onMessage(m);
                     return;
@@ -207,14 +256,17 @@ export class SimWorkerClient {
                     void build(m as SnapshotMessage);
                 }
             };
-            worker.postMessage(init);
+            if (init !== null) worker.postMessage(init);
         });
     }
 
     private onMessage(m: FromWorker): void {
-        if (this.disposed) return;
+        if (this.disposed || this.detached) return;
         this.lastHeardAt = performance.now();
         switch (m.type) {
+            case 'gameReplaced':
+                this.replaced();
+                return;
             case 'step':
                 this.core.receive(m);
                 // No render frames (a hidden / minimised window: no requestAnimationFrame) while the worker steps on:
@@ -337,7 +389,7 @@ export class SimWorkerClient {
      * get their failure value, promises reject; the save / digest requests reject), loudly.
      */
     stop(reason: string): void {
-        if (this.disposed || this.stopped !== null) return;
+        if (this.disposed || this.detached || this.stopped !== null) return;
         this.stopped = reason;
         this.stopWatchdog();
         this.worker.terminate();
@@ -434,8 +486,11 @@ export class SimWorkerClient {
         if (this.disposed) return;
         this.disposed = true;
         this.stopWatchdog();
-        this.worker.postMessage({ type: 'dispose' } satisfies ToWorker);
-        this.worker.terminate();
+        // A replaced game's client (multiplayer): the worker runs on for its successor.
+        if (!this.detached) {
+            this.worker.postMessage({ type: 'dispose' } satisfies ToWorker);
+            this.worker.terminate();
+        }
         this.core.dispose();
         this.rejectWaiting('the game was closed');
         // The game view's event handler (its closure holds the view and the game): a closed client delivers nothing.

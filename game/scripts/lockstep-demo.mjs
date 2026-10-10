@@ -78,6 +78,8 @@ if (role === 'parent') {
         game: '/src/sim/game.ts', types: '/src/sim/types.ts', load: '/test/helpers/loadGameDataFs.ts', digest: '/src/sim/tick/digest.ts',
         galaxyTime: '/src/sim/galaxyTime.ts', startOptions: '/src/sim/startGameOptions.ts', humans: '/src/sim/humanEmpires.ts',
         galaxySave: '/src/sim/save/galaxySave.ts', scheduler: '/src/sim/tick/scheduler.ts', commands: '/src/sim/player/playerCommands.ts', commandLog: '/src/sim/player/commandLog.ts',
+        // Phase 4 (--phase4): the LAN game's session, the lobby's slot handoff, the sim worker's host, the seam.
+        multiplayerGame: '/src/net/multiplayerGame.ts', lobby: '/src/net/lobby.ts', simHost: '/src/simworker/simHost.ts', remoteArgs: '/src/simworker/remoteArgs.ts', seam: '/src/net/lockstepSeam.ts',
     };
     const bundleDir = mkdtempSync(resolve(tmpdir(), 'dwu-lockstep-demo-'));
     const exit = (code) => {
@@ -92,6 +94,14 @@ if (role === 'parent') {
     });
     console.log(`bundled in ${(performance.now() - t0).toFixed(0)} ms; game: seed ${cfg.seed}, ${cfg.stars} stars, ${cfg.empires} empires; ${cfg.minutes} game minutes at ${cfg.speed}x = ${endFrame} frames; input delay ${cfg.delay}, digest every ${cfg.digest} frames`);
 
+    if (arg('phase4', false) === true) {
+        // Phase 4 (docs/MULTIPLAYER.md §14): worker mode, a drop, AI takeover or idle, and a rejoin — in one process.
+        const code = await new Promise((r) => {
+            const child = spawn(process.execPath, [self, '--role', 'phase4', '--bundle', bundleDir, ...process.argv.slice(2)], { stdio: 'inherit' });
+            child.on('exit', r);
+        });
+        exit(code ?? 1);
+    }
     if (arg('memory', false) === true) {
         // In-memory transport: host and client sessions in this one process (two games), no sockets.
         const code = await new Promise((r) => {
@@ -550,4 +560,221 @@ if (role === 'memory') {
     out(`in-memory transport: ${frames} frames in ${sec.toFixed(1)} s (${(frames / sec).toFixed(0)} frames/s, both sims in one process); host ${dh}, client ${dc} -> ${dh === dc ? 'MATCH' : 'MISMATCH'}; digest checks ${checks}, mismatches ${bad}; commands applied ${host.stats.commandsApplied}`);
     host.close();
     process.exit(dh === dc && bad === 0 && checks > 0 ? 0 : 1);
+}
+
+// ---------------------------------------------------------------------------------------------------- phase4
+if (role === 'phase4') {
+    // Multiplayer Phase 4 in one process over the in-memory transport, through the app's own session layer
+    // (net/multiplayerGame.ts): host + client; the client drops; the host lets the AI run its empire (--idle: it stands
+    // idle); the client rejoins by name and gets the current save; control returns to it at the frame its input starts.
+    // --worker: the client steps through the sim worker's host (simworker/simHost.ts tick, the lockstep seam) — so an
+    // in-thread peer (the host) and a worker peer share a session — before and after the rejoin.
+    const { MultiplayerGame } = await load('multiplayerGame');
+    const { slotHandoff } = await load('lobby');
+    const { SimHost } = await load('simHost');
+    const { encodeRemoteArg } = await load('remoteArgs');
+    const { setLockstepStepper } = await load('seam');
+    const { humanSeats, isAiSeat } = await load('humans');
+    const { memoryLinkPair } = await load('transport');
+    const workerMode = arg('worker', false) === true;
+    const aiTakeover = arg('idle', false) !== true;
+    // --latency N: N ms one way on every link (the in-memory transport's delay); --adaptive: the host's adaptive delay.
+    const latencyMs = Number(arg('latency', 0));
+    const adaptive = arg('adaptive', false) === true;
+    const FR = 1000 / 60;
+    const T4 = { cmds: [60, 120, 240], drop: 360, decideAfter: 30, away: Number(arg('away', 1200)), after: 600 };
+    const start = {
+        kind: 'new', startOptions, createExtras: null, scenario: null,
+        players: [{ slot: 0, name: 'Host', humanIndex: 0 }, { slot: 1, name: 'Client', humanIndex: 1 }],
+        params: { inputDelay: cfg.delay, digestInterval: cfg.digest }, clock: { speed: cfg.speed, paused: false },
+    };
+    const log = [];
+    const note = (who, m) => {
+        log.push(`[${who}] ${m}`);
+        if (!/joined from frame|asks to/.test(m)) out(`[${who}] ${m}`);
+    };
+    let checks = 0, bad = 0, checksAfterRejoin = 0, badAfterRejoin = 0, rejoinedAt = -1;
+    const mkOpts = (slot, name, extra = {}) => ({
+        start, slot, name, gameData, startOptions,
+        onStatus: (st) => note(slot === 0 ? 'host' : 'client', `status ${st.kind}${st.kind === 'absent' ? ` (${st.players.map((p) => `${p.name}: ${p.ai ? 'AI' : p.decided ? 'idle' : 'undecided'}`).join(', ')}${st.paused ? ', paused' : ''})` : ''}`),
+        onDropped: (op, reason) => note(slot === 0 ? 'host' : 'client', `dropped ${op}: ${reason}`),
+        log: (m) => note(slot === 0 ? 'host' : 'client', m),
+        ...extra,
+    });
+
+    // ---- the host (in-thread stepping)
+    const hostGame = buildGame();
+    makeHumans(hostGame.galaxy);
+    const hostTime = new GalaxyTime();
+    const [c1, h1] = memoryLinkPair({ latencyMs });
+    const hostMp = MultiplayerGame.host(hostGame, hostTime, new Map([[1, slotHandoff(h1, 1, 'Client')]]), mkOpts(0, 'Host', adaptive ? { adaptiveDelay: { intervalMs: 250 } } : {}));
+    const hs = hostMp.session;
+    // Digest checks: count those after the rejoin separately (the rejoined peer must match from its first one).
+    const realOnDigest = hs.hooks.onDigest;
+    hs.hooks.onDigest = (frame, peer, ok, a, b) => {
+        checks++;
+        if (!ok) bad++;
+        if (rejoinedAt >= 0 && frame > rejoinedAt) {
+            checksAfterRejoin++;
+            if (!ok) badAfterRejoin++;
+        }
+        realOnDigest?.(frame, peer, ok, a, b);
+    };
+
+    // ---- a client: in-thread (the stepper) or worker mode (a SimHost over its game, ticking through the seam)
+    const peerOf = (mp) => {
+        const p = { mp, simHost: null };
+        const wire = (game, time) => {
+            if (!workerMode) return;
+            p.simHost?.dispose();
+            p.simHost = new SimHost(game, time, mp.sim.currentStartOptions ?? startOptions);
+            setLockstepStepper(game.galaxy, mp.stepper);
+        };
+        p.wire = wire;
+        return p;
+    };
+    // With --latency the peers run in real time (60 frames per real second, as in the app), else as fast as they can.
+    let lastTick = performance.now();
+    let dtNow = FR;
+    const tick = (p) => {
+        if (p === null || p.mp.session === null || !p.mp.session.active) return;
+        if (p.simHost !== null) p.simHost.tick(dtNow);
+        else p.mp.stepper.tick(dtNow, p.mp.sim.time);
+    };
+    const pace = async () => {
+        if (latencyMs <= 0) return yieldIo();
+        await sleep(4);
+        const now = performance.now();
+        dtNow = now - lastTick;
+        lastTick = now;
+    };
+    /** Worker mode: issue through SimHost.command (the main thread's CommandMessage: sync ids), else issuePlayerCommand. */
+    const issueAs = (p, empire, op, args) => {
+        if (p.simHost === null) return issuePlayerCommand(p.mp.sim.galaxy, empire, op, args);
+        const enc = p.simHost.sync.encoder;
+        const naming = { syncId: (o) => enc.ensureId(o), external: () => undefined };
+        p.simHost.command({ type: 'command', id: 0, empire: enc.ensureId(empire), op, args: args.map((a) => encodeRemoteArg(a, naming)), deadline: wallNow() + 30000 });
+    };
+
+    const clientGame = buildGame();
+    makeHumans(clientGame.galaxy);
+    const clientTime = new GalaxyTime();
+    let client = null;
+    const joinP = MultiplayerGame.join(clientGame, clientTime, c1, mkOpts(1, 'Client', { onGameReplaced: (g, t) => client?.wire(g, t) }));
+    const hostPeer = { mp: hostMp, simHost: null };
+    while (client === null) {
+        tick(hostPeer);
+        await yieldIo();
+        const mp = await Promise.race([joinP, Promise.resolve(null)]);
+        if (mp !== null) {
+            client = peerOf(mp);
+            client.wire(mp.sim.game, mp.sim.time);
+        }
+    }
+    out(`phase4: host in-thread, client ${workerMode ? 'in WORKER mode (SimHost.tick through the lockstep seam)' : 'in-thread'}; ${aiTakeover ? 'AI takeover' : 'idle'} while away`);
+
+    const seatOf = (galaxy) => humanSeats(galaxy)[1];
+    const run = async (until, each = () => {}) => {
+        let guard = 0;
+        while (hs.frame < until) {
+            const f = hs.frame;
+            each(f);
+            tick(hostPeer);
+            tick(client);
+            await pace();
+            if (++guard > until * 200) throw new Error(`stuck at host frame ${hs.frame}`);
+        }
+    };
+    let acted = -1;
+    // 1. play together
+    await run(T4.drop, (f) => {
+        if (acted >= f) return;
+        acted = f;
+        if (T4.cmds.includes(f)) {
+            const me = humanSeats(hostMp.sim.galaxy)[0];
+            issuePlayerCommand(hostMp.sim.galaxy, me, 'renameShip', [someShips(me, 1)[0], `host @${f}`]);
+            const cm = seatOf(client.mp.sim.galaxy);
+            issueAs(client, cm, 'renameShip', [someShips(cm, 1)[0], `client @${f}`]);
+        }
+    });
+    const d0h = hostMp.sim.digest(), d0c = client.mp.sim.digest();
+    out(`frame ${hs.frame}: before the drop host ${d0h}, client ${client.mp.sim.digest() === d0c ? d0c : '?'} -> ${d0h === d0c ? 'MATCH' : 'differs (frames apart)'}`);
+    // 2. the client drops
+    c1.close('network drop');
+    client = null;
+    const seat = seatOf(hostMp.sim.galaxy);
+    const before = { ships: seat.builtObjects.filter((b) => b != null).length, money: Math.round(seat.stateMoney), colonies: seat.colonies?.length ?? 0 };
+    const dropFrame = hs.frame;
+    await run(dropFrame + T4.decideAfter);
+    out(`host: status ${hostMp.currentStatus().kind}, paused ${hs.clock.paused}; decides: ${aiTakeover ? 'the AI takes over' : 'continue without them'}`);
+    hostMp.decideAbsent(1, aiTakeover);
+    let aiFrom = -1, aiUntil = -1;
+    let triedHijack = false;
+    await run(hs.frame + T4.away, (f) => {
+        const ai = isAiSeat(hostMp.sim.galaxy, seat);
+        if (ai && aiFrom < 0) aiFrom = f - 1;
+        // While the AI runs the seat, the host may not command it (authorize: only its own empire, and setSeatAi).
+        if (ai && !triedHijack && f > aiFrom + 30) {
+            triedHijack = true;
+            issuePlayerCommand(hostMp.sim.galaxy, seat, 'renameShip', [someShips(seat, 1)[0], 'host hijack']);
+        }
+    });
+    const away = { ships: seat.builtObjects.filter((b) => b != null).length, money: Math.round(seat.stateMoney), colonies: seat.colonies?.length ?? 0 };
+    out(`while away (${T4.away} frames, ${aiTakeover ? 'AI' : 'idle'}): seat ships ${before.ships} -> ${away.ships}, money ${before.money} -> ${away.money}, colonies ${before.colonies} -> ${away.colonies}; AI seat from frame ${aiFrom}; host paused ${hs.clock.paused}`);
+    // 3. the client rejoins by name (a new session on a new link; no game of its own: the welcome brings the save)
+    const pick = hostMp.rejoinSlot('client', undefined, new Map());
+    if (!('slot' in pick)) throw new Error(`rejoin refused: ${pick.refused}`);
+    const [c2, h2] = memoryLinkPair({ latencyMs });
+    hostMp.acceptRejoin(slotHandoff(h2, pick.slot, 'Client'), pick.slot);
+    let rejoiner = null;
+    const rejoinP = MultiplayerGame.join(null, null, c2, mkOpts(1, 'Client', { onGameReplaced: (g, t) => rejoiner?.wire(g, t) }));
+    // The welcome's save is loaded inside join: wire the worker host to it once join resolves.
+    while (rejoiner === null) {
+        tick(hostPeer);
+        await yieldIo();
+        const mp = await Promise.race([rejoinP, Promise.resolve(null)]);
+        if (mp !== null) {
+            rejoiner = peerOf(mp);
+            rejoiner.wire(mp.sim.game, mp.sim.time);
+        }
+    }
+    client = rejoiner;
+    const peerInfo = hs.peerList().find((p) => p.leftFrom === null && p.id !== 0);
+    rejoinedAt = client.mp.session.frame;
+    out(`rejoined as peer ${peerInfo.id} from frame ${peerInfo.fromFrame} (welcome at frame ${rejoinedAt}); host status ${hostMp.currentStatus().kind}`);
+    let returnedAt = -1;
+    acted = -1;
+    let clientCmd = -1;
+    await run(hs.frame + T4.after, (f) => {
+        if (returnedAt < 0 && aiFrom >= 0 && !isAiSeat(hostMp.sim.galaxy, seat)) returnedAt = f - 1;
+        if (acted >= f) return;
+        acted = f;
+        if (clientCmd < 0 && client.mp.session.frame > rejoinedAt + 30) {
+            clientCmd = client.mp.session.frame;
+            const cm = seatOf(client.mp.sim.galaxy);
+            issueAs(client, cm, 'renameShip', [someShips(cm, 1)[0], `rejoined @${clientCmd}`]);
+        }
+    });
+    // Let the client reach the host's frame.
+    const endAt = hs.frame;
+    while (client.mp.session.frame < endAt) {
+        tick(client);
+        await yieldIo();
+    }
+    const dh = hostMp.sim.digest();
+    const dc = client.mp.sim.digest();
+    const shipName = someShips(seatOf(hostMp.sim.galaxy), 1)[0].name;
+    const shipNameC = someShips(seatOf(client.mp.sim.galaxy), 1)[0].name;
+    const hijackRefused = log.some((l) => l.includes('dropped renameShip') && l.startsWith('[host]'));
+    out(`final frame ${endAt}: host ${dh}, client ${dc} -> ${dh === dc ? 'MATCH' : 'MISMATCH'}`);
+    out(`digest checks ${checks} (${bad} mismatches); after the rejoin ${checksAfterRejoin} (${badAfterRejoin} mismatches); host paused at the end: ${hs.clock.paused}`);
+    out(`input delay: ${hs.params.inputDelay} frames at the end (host), ${client.mp.session.params.inputDelay} (client); ${hs.stats.delayChanges} changes on the host; one-way latency ${latencyMs} ms${adaptive ? ', adaptive' : ''}; stalls host ${hs.stats.stalls} (${hs.stats.stallMs.toFixed(0)} ms)`);
+    out(`seat back to the human at frame ${returnedAt} (rejoined peer's input from frame ${peerInfo.fromFrame}); seat AI now: host ${isAiSeat(hostMp.sim.galaxy, seat)}, client ${isAiSeat(client.mp.sim.galaxy, seatOf(client.mp.sim.galaxy))}`);
+    out(`the host's command for the away seat refused: ${triedHijack ? hijackRefused : 'not tried (idle)'}; the rejoined client's rename applied: host "${shipName}", client "${shipNameC}"`);
+    const ok = dh === dc && bad === 0 && checksAfterRejoin > 0 && !hs.clock.paused && !isAiSeat(hostMp.sim.galaxy, seat)
+        && shipName.startsWith('rejoined @') && shipName === shipNameC
+        && (!aiTakeover || (aiFrom >= 0 && returnedAt >= 0 && returnedAt <= peerInfo.fromFrame && hijackRefused));
+    out(ok ? 'RESULT: OK' : 'RESULT: FAILED');
+    hostMp.close('demo over');
+    process.exit(ok ? 0 : 1);
 }

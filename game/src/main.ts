@@ -23,7 +23,8 @@ import { GalaxyTime } from './sim/clock';
 import { resolveStarDateDescription } from './sim/galaxyTime';
 import { createSimLoop, simViewEnabledFromUrl, simViewFromCamera } from './simLoop';
 // [simworker] begin — docs/sim-worker.md: the sim in a Web Worker (the default; ?simWorker=0 or Settings → off selects the in-thread fallback).
-import { SimWorkerClient, simWorkerEnabled, type ReplicaGameData } from './simworker/workerClient';
+import { SimWorkerClient, simWorkerEnabled, type MpSideChannel, type ReplicaGameData } from './simworker/workerClient';
+import type { SimEndpoint } from './simworker/simEndpoint';
 import { workerCreateOptions } from './simworker/bootOptions';
 import type { ScenarioRef, WorkerBoot } from './simworker/protocol';
 import type { RenderTime } from './render/renderInterp';
@@ -388,7 +389,7 @@ function useSimWorker(): boolean {
 }
 
 /** Boot the worker's game under the loading overlay and build the replica from its snapshot. */
-async function bootWorker(title: string, boot: WorkerBoot, playData: ReplicaGameData, startOptions: StartGameOptions | undefined, clock?: { speed: number; paused: boolean }): Promise<SimWorkerClient> {
+async function bootWorker(title: string, boot: WorkerBoot, playData: ReplicaGameData, startOptions: StartGameOptions | undefined, clock?: { speed: number; paused: boolean }, side: MpSideChannel | null = null, endpoint?: SimEndpoint): Promise<SimWorkerClient> {
     const overlay = showLoadingOverlay(title);
     try {
         overlay.update({ step: 'Starting simulation thread', fraction: 0 });
@@ -401,7 +402,7 @@ async function bootWorker(title: string, boot: WorkerBoot, playData: ReplicaGame
             registerGameHooks();
         }
         // The worker loads the same theme's data (Main.Part12.cs CustomizationSetName()).
-        return await SimWorkerClient.boot({ type: 'init', boot, startOptions, clock, customizationSet: activeCustomizationSetName(), battleReports: battleReportsObserverOn() }, playData, { update: (p) => overlay.update(p), paint: nextPaint });
+        return await SimWorkerClient.boot({ type: 'init', boot, startOptions, clock, customizationSet: activeCustomizationSetName(), battleReports: battleReportsObserverOn() }, playData, { update: (p) => overlay.update(p), paint: nextPaint }, endpoint, side);
     } finally {
         overlay.close();
     }
@@ -1756,9 +1757,41 @@ const multiplayerDeps: MultiplayerAppDeps = {
         const game = await runStepsWithProgress('Creating galaxy', createGameSteps(createOpts));
         return { game, playData };
     },
+    // Multiplayer in worker mode (docs/MULTIPLAYER.md §11): the same game, built in the sim worker (paused).
+    useWorker: () => useSimWorker(),
+    async buildGameInWorker(so, extras, side) {
+        await ensureStaticData();
+        const systemNames = await loadSystemNames(await detectDwuPresent());
+        if (lastGameData === null) throw new Error('DW:U game data is required to start a game');
+        let playData: GameData = lastGameData;
+        if (so.scenario != null) {
+            await preloadScenarioOverlays();
+            playData = gameDataWithScenario(lastGameData, so.scenario.id, choiceInclude(so.scenario));
+        }
+        lastPlayedGameData = playData;
+        lastStartOptions = so;
+        setCurrentSaveName(null);
+        const createOpts = { ...toCreateGameOptions(so, playData, systemNames), ...(extras ?? {}) } as CreateGameOptions;
+        const sc = so.scenario;
+        const scenario = sc == null ? null : { id: sc.id, include: choiceInclude(sc) };
+        const client = await bootWorker('Creating galaxy', { kind: 'create', options: workerCreateOptions(createOpts), scenario }, playData, so, { speed: 1, paused: true }, side);
+        return { client, playData };
+    },
+    bootWorker: (title, boot, playData, startOptions, clock, side, endpoint) => bootWorker(title, boot, playData, startOptions, clock, side, endpoint),
+    gameDataForStart(start) {
+        if (start.kind === 'load') return multiplayerDeps.gameDataFor(start.scenario);
+        const sc = start.startOptions.scenario;
+        return multiplayerDeps.gameDataFor(sc == null ? null : { id: sc.id, include: choiceInclude(sc) });
+    },
+    scenarioOfStart(start) {
+        if (start.kind === 'load') return start.scenario;
+        const sc = start.startOptions.scenario;
+        return sc == null ? null : { id: sc.id, include: choiceInclude(sc) };
+    },
     pickSave: () =>
         new Promise<LoadedMultiplayerSave | null>((resolve) => {
             let picked: LoadedMultiplayerSave | null = null;
+            let sourceText = '';
             let done = false;
             const finish = (v: LoadedMultiplayerSave | null): void => {
                 if (done) return;
@@ -1775,6 +1808,7 @@ const multiplayerDeps: MultiplayerAppDeps = {
                 loadSave: async (text) => {
                     await ensureStaticData();
                     const str = await saveTextString(text);
+                    sourceText = str;
                     const ref = await readSaveScenarioRef(str);
                     const loaded = (await runStepsWithProgress('Loading game', deserializeGameSteps(str, gameDataForSave))) as unknown as { game: Game; time: GalaxyTime; startOptions: StartGameOptions };
                     picked = {
@@ -1783,6 +1817,8 @@ const multiplayerDeps: MultiplayerAppDeps = {
                         scenario: ref.id === null ? null : { id: ref.id, include: ref.include },
                         players: savedMultiplayerPlayers(str.slice(-65536)),
                         name: loaded.game.galaxy.playerEmpire?.name ?? 'saved game',
+                        // Worker mode: the worker loads the save from its text (the in-thread copy lists the humans).
+                        text: sourceText,
                     };
                     return loaded as unknown as LoadedGame;
                 },
@@ -1801,12 +1837,12 @@ const multiplayerDeps: MultiplayerAppDeps = {
         registerGameHooks();
         return pd;
     },
-    async showGame(game, so, clock, newGame) {
+    async showGame(game, so, clock, newGame, simClient) {
         activeMainMenu?.destroy();
         activeMainMenu = null;
         teardownActiveGameView();
         lastStartOptions = so;
-        await startGameViewWithOverlay(game, undefined, undefined, newGame ? undefined : clock);
+        await startGameViewWithOverlay(game, undefined, undefined, newGame ? undefined : clock, simClient);
     },
     toMenu: () => void leaveGameToMenu(),
 };

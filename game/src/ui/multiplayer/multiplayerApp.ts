@@ -7,8 +7,10 @@
 // - Join: by IP:port. The lobby hello carries this app's fingerprint (net/fingerprint.ts); a mismatch is refused with
 //   the reason. Each player picks an empire (the hot-seat row: name, race, government, flag colours) and says ready.
 // - Start: every peer builds the same game from the host's MultiplayerStart (a new game) or gets the host's save over
-//   the session (a loaded one), then runs it in lockstep (net/multiplayerGame.ts). The in-thread sim only: the lockstep
-//   seam is in src/simLoop.ts (the sim worker has none yet).
+//   the session (a loaded one), then runs it in lockstep (net/multiplayerGame.ts). In-thread (the lockstep seam in
+//   src/simLoop.ts) or, when this app runs its sim in the worker, in the sim worker (§11: mpHandle.ts WorkerMp).
+// - Phase 4 (§12): a player who drops can reconnect by name or token (the host's rejoin gate gives the slot back; the
+//   session's welcome brings the current save); meanwhile the host chooses whether the AI runs their empire.
 //
 // Main thread / DOM. main.ts supplies the game building and the view (MultiplayerAppDeps).
 
@@ -21,16 +23,20 @@ import { GalaxyTime } from '../../sim/galaxyTime';
 import type { StartGameOptions } from '../../sim/startGameOptions';
 import { difficultyLevelOf, galaxyStarCount, wizardStartGameOptions } from '../../sim/startGameOptions';
 import type { HumanPlayerStart } from '../../sim/humanPlayerStarts';
-import { humanEmpires } from '../../sim/humanEmpires';
+import { humanSeats } from '../../sim/humanEmpires';
 import type { GameSaveExtras } from '../../sim/save/gameSave';
 import { issuePlayerCommand } from '../../sim/player/playerCommands';
 import type { PlayerOpName } from '../../sim/player/playerOps';
 import { GalaxyShape } from '../../sim/types';
-import { appFingerprint, fingerprintFiles, type AppFingerprint } from '../../net/fingerprint';
-import { LobbyClient, LobbyHost, type HandoffLink, type LobbyPlayer, type LobbyState, type MultiplayerStart } from '../../net/lobby';
+import { appFingerprint, fingerprintFiles, fingerprintMismatch, type AppFingerprint } from '../../net/fingerprint';
+import { decodeLobbyMessage, LobbyClient, LobbyHost, rejoinToken, sendLobbyMessage, slotHandoff, type HandoffLink, type LobbyPlayer, type LobbyState, type MultiplayerStart } from '../../net/lobby';
 import { MultiplayerGame, type MultiplayerStatus } from '../../net/multiplayerGame';
 import { setLockstepStepper } from '../../net/lockstepSeam';
 import type { Link } from '../../net/transport';
+import { SimWorkerClient, type MpSideChannel, type ReplicaGameData } from '../../simworker/workerClient';
+import type { SimEndpoint } from '../../simworker/simEndpoint';
+import type { WorkerBoot } from '../../simworker/protocol';
+import { InThreadMp, WorkerMp, type MpHandle } from './mpHandle';
 import { setLocalViewerEmpire } from '../../localViewer';
 import { DEFAULT_MULTIPLAYER_PORT, netEndpoint, type NetAddress } from './netBridge';
 import { playableRacesSorted, startGovernmentsForRace } from '../screens/newGameWizard';
@@ -45,6 +51,8 @@ export interface LoadedMultiplayerSave {
     /** The save's LAN players by human index (savedMultiplayerPlayers), if it is a LAN save. */
     players: string[] | undefined;
     name: string;
+    /** The save's text (worker mode: the worker loads the game from it). */
+    text?: string;
 }
 
 export interface MultiplayerAppDeps {
@@ -62,8 +70,19 @@ export interface MultiplayerAppDeps {
     pickSave(): Promise<LoadedMultiplayerSave | null>;
     /** The GameData of a loaded game's add-ons (a client: the welcome's save loads over it). */
     gameDataFor(scenario: { id: string; include: string[] | null } | null): GameData;
-    /** Show `game` in the main view (tears down the one up, if any). `newGame`: a fresh start (the founding line). */
-    showGame(game: Game, startOptions: StartGameOptions, clock: { speed: number; paused: boolean }, newGame: boolean): Promise<void>;
+    /** Show `game` in the main view (tears down the one up, if any). `newGame`: a fresh start (the founding line).
+     *  `simClient`: worker mode (`game` is its replica). */
+    showGame(game: Game, startOptions: StartGameOptions, clock: { speed: number; paused: boolean }, newGame: boolean, simClient?: SimWorkerClient): Promise<void>;
+    /** Whether this app runs its game's sim in the sim worker (Settings; `?simWorker=`): a LAN game does too (§11). */
+    useWorker(): boolean;
+    /** Worker mode: build the new game from the start in the sim worker (paused), with the session's side channel. */
+    buildGameInWorker(startOptions: StartGameOptions, createExtras: Record<string, unknown> | null, side: MpSideChannel): Promise<{ client: SimWorkerClient; playData: GameData }>;
+    /** Worker mode: boot the sim worker (a load, or `lockstep`: the host's save comes over the session). */
+    bootWorker(title: string, boot: WorkerBoot, playData: ReplicaGameData, startOptions: StartGameOptions | undefined, clock: { speed: number; paused: boolean } | undefined, side: MpSideChannel, endpoint?: SimEndpoint): Promise<SimWorkerClient>;
+    /** The GameData of a start's game (its add-ons: a new game's from its start options, a load's from the save). */
+    gameDataForStart(start: MultiplayerStart): GameData;
+    /** The add-on choice of a start's game (as the worker loads its data). */
+    scenarioOfStart(start: MultiplayerStart): { id: string; include: string[] | null } | null;
     /** Back to the main menu (tears down the view). */
     toMenu(): void;
 }
@@ -73,13 +92,17 @@ export interface MultiplayerAppDeps {
 // ---------------------------------------------------------------------------------------------------------------------
 
 interface Running {
-    mp: MultiplayerGame;
+    mp: MpHandle;
     start: MultiplayerStart;
     slot: number;
     name: string;
     banner: StatusBanner;
     chipTimer: ReturnType<typeof setInterval>;
     hosting: boolean;
+    /** Host: the rejoin tokens handed out at start, by slot (lobby.ts LobbyHost.tokens). */
+    tokens: ReadonlyMap<number, string>;
+    /** Client: how to reconnect after a drop (the host's address, this player's token). */
+    rejoin: { address: string; token: string | null } | null;
 }
 
 let running: Running | null = null;
@@ -92,7 +115,8 @@ export function multiplayerActive(): boolean {
 /** What a save of the running LAN game carries: its players by human index (loading it as host reopens the lobby). */
 export function multiplayerSaveExtras(galaxy: Galaxy): GameSaveExtras | undefined {
     if (running === null) return undefined;
-    const n = humanEmpires(galaxy).length;
+    // By seat: a seat the AI runs while its player is away keeps its index (humanEmpires.ts humanSeats).
+    const n = humanSeats(galaxy).length;
     const names: string[] = Array.from({ length: n }, () => '');
     for (const p of running.start.players) if (p.humanIndex >= 0 && p.humanIndex < n) names[p.humanIndex] = p.name;
     return n > 0 ? { multiplayerPlayers: names } : undefined;
@@ -110,7 +134,6 @@ export function endMultiplayerSession(reason = 'left the game'): void {
     } catch (err) {
         console.warn('multiplayer: closing the session failed', err);
     }
-    if (r.mp.sim.game !== null) setLockstepStepper(r.mp.sim.galaxy, null);
     if (r.hosting) {
         const ep = netEndpoint();
         ep.onIncoming = null;
@@ -119,7 +142,16 @@ export function endMultiplayerSession(reason = 'left the game'): void {
     delete (window as unknown as { __dwuMp?: unknown }).__dwuMp;
 }
 
-function statusText(s: MultiplayerStatus, role: 'host' | 'client'): { text: string; menu: boolean } | null {
+interface BannerView {
+    text: string;
+    menu: boolean;
+    /** Host, an absent player not decided yet: the two choices for their empire. */
+    decide?: { slot: number; name: string };
+    /** Client, the host link lost: try to reconnect to the same slot. */
+    rejoin?: boolean;
+}
+
+function statusText(s: MultiplayerStatus, role: 'host' | 'client', canRejoin: boolean): BannerView | null {
     switch (s.kind) {
         case 'running':
             return null;
@@ -127,13 +159,22 @@ function statusText(s: MultiplayerStatus, role: 'host' | 'client'): { text: stri
             return { text: `Waiting for ${s.missing.join(', ')} to join the game…`, menu: false };
         case 'resyncing':
             return { text: role === 'client' ? 'Resyncing with the host…' : `Resyncing ${s.who}…`, menu: false };
-        case 'peerLeft':
-            return {
-                text: `${s.name} disconnected (${s.reason}). The game is paused.${role === 'host' ? ' Resume to play on without them; their empire stands idle.' : ''} (Rejoining and AI takeover come in a later version.)`,
-                menu: true,
-            };
+        case 'absent': {
+            const undecided = s.players.find((p) => !p.decided);
+            const line = (p: (typeof s.players)[number]): string =>
+                `${p.name} ${p.reason === 'did not join' ? 'did not join' : 'disconnected'}${p.ai ? ' — the AI plays their empire until they return' : p.decided ? ' — their empire stands idle' : ''}.`;
+            if (role === 'host' && undecided !== undefined) {
+                return {
+                    text: `${undecided.name} disconnected (${undecided.reason}).${s.paused ? ' The game is paused.' : ' Their empire stands idle for now.'} They can rejoin with their name; meanwhile, the AI can run their empire, or it stands idle.`,
+                    menu: true,
+                    decide: { slot: undecided.slot, name: undecided.name },
+                };
+            }
+            const others = s.players.map(line).join(' ');
+            return { text: `${others}${s.paused && s.players.some((p) => !p.decided) ? ' The game is paused; the host decides.' : ''}${role === 'host' ? ' They can rejoin with their name.' : ''}`, menu: role === 'client' ? false : false };
+        }
         case 'hostLost':
-            return { text: `Lost the connection to the host (${s.reason}). The game has stopped.`, menu: true };
+            return { text: `Lost the connection to the host (${s.reason}). The game has stopped.${canRejoin ? ' Rejoin to reconnect to your empire.' : ''}`, menu: true, rejoin: canRejoin };
     }
 }
 
@@ -143,31 +184,43 @@ interface StatusBanner {
     destroy(): void;
 }
 
-function createStatusBanner(role: 'host' | 'client', onMenu: () => void): StatusBanner {
+function createStatusBanner(role: 'host' | 'client', actions: { onMenu: () => void; onDecide: (slot: number, ai: boolean) => void; onRejoin: (() => void) | null }): StatusBanner {
     const banner = document.createElement('div');
     banner.className = 'mp-banner';
     banner.dataset.mp = 'banner';
     banner.hidden = true;
     const text = document.createElement('span');
     text.className = 'mp-banner-text';
-    const menu = document.createElement('button');
-    menu.type = 'button';
-    menu.className = 'mp-btn mp-banner-menu';
-    menu.textContent = 'Main Menu';
-    menu.addEventListener('click', onMenu);
-    banner.append(text, menu);
+    let decideSlot = -1;
+    const mk = (label: string, mp: string, onClick: () => void): HTMLButtonElement => {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'mp-btn mp-banner-menu';
+        b.dataset.mp = mp;
+        b.textContent = label;
+        b.addEventListener('click', onClick);
+        return b;
+    };
+    const ai = mk('AI Takes Over', 'take-over', () => decideSlot >= 0 && actions.onDecide(decideSlot, true));
+    const idle = mk('Continue Without Them', 'continue', () => decideSlot >= 0 && actions.onDecide(decideSlot, false));
+    const rejoin = mk('Rejoin', 'rejoin', () => actions.onRejoin?.());
+    const menu = mk('Main Menu', 'menu', actions.onMenu);
+    banner.append(text, ai, idle, rejoin, menu);
     const chip = document.createElement('div');
     chip.className = 'mp-chip';
     chip.dataset.mp = 'chip';
     document.body.append(banner, chip);
     return {
         show(s) {
-            const t = statusText(s, role);
+            const t = statusText(s, role, actions.onRejoin !== null);
             banner.hidden = t === null;
             banner.dataset.status = s.kind;
             if (t === null) return;
             text.textContent = t.text;
             menu.hidden = !t.menu;
+            decideSlot = t.decide?.slot ?? -1;
+            ai.hidden = idle.hidden = t.decide === undefined;
+            rejoin.hidden = t.rejoin !== true;
         },
         chip(t) {
             if (chip.textContent !== t) chip.textContent = t;
@@ -179,85 +232,187 @@ function createStatusBanner(role: 'host' | 'client', onMenu: () => void): Status
     };
 }
 
-/** Wire a started MultiplayerGame into the app: stepper, viewer, view, banner, debug hook. */
-async function runGame(deps: MultiplayerAppDeps, mp: MultiplayerGame, start: MultiplayerStart, slot: number, name: string, startOptions: StartGameOptions, hosting: boolean, newGame: boolean): Promise<void> {
-    const banner = createStatusBanner(mp.role, () => {
-        endMultiplayerSession('left the game');
-        deps.toMenu();
+/** Wire a started session into the app: viewer, view, banner, chip, debug hook, and the host's rejoin gate. */
+async function runGame(deps: MultiplayerAppDeps, mp: MpHandle, name: string, startOptions: StartGameOptions, hosting: boolean, newGame: boolean, extra: { tokens?: ReadonlyMap<number, string>; rejoin?: { address: string; token: string | null } }): Promise<void> {
+    const banner = createStatusBanner(mp.role, {
+        onMenu: () => {
+            endMultiplayerSession('left the game');
+            deps.toMenu();
+        },
+        onDecide: (slot, ai) => mp.decideAbsent(slot, ai),
+        onRejoin: extra.rejoin !== undefined ? () => void rejoinGame(deps, name, extra.rejoin!.address, extra.rejoin!.token) : null,
     });
-    const r: Running = { mp, start, slot, name, banner, chipTimer: setInterval(() => paintChip(), 1000), hosting };
+    const r: Running = { mp, start: mp.start, slot: mp.slot, name, banner, chipTimer: setInterval(() => paintChip(), 1000), hosting, tokens: extra.tokens ?? new Map(), rejoin: extra.rejoin ?? null };
     running = r;
     let ping = -1;
     const paintChip = (): void => {
-        const s = mp.session;
-        if (s === null) return;
-        const peers = s.peerList().filter((p) => p.leftFrom === null).length;
+        const peers = mp.peers().filter((p) => p.leftFrom === null).length;
+        if (peers === 0) return;
         const me = mp.myEmpire();
-        banner.chip(`LAN ${mp.role === 'host' ? 'host' : 'client'} · ${peers} player${peers === 1 ? '' : 's'}${me !== null ? ` · ${me.name}` : ''}${ping >= 0 ? ` · ping ${ping.toFixed(0)} ms` : ''}${s.stats.resyncs > 0 ? ` · ${s.stats.resyncs} resync${s.stats.resyncs === 1 ? '' : 's'}` : ''}`);
-        if (mp.role === 'client' && s.active) void s.ping().then((ms) => (ping = ms), () => undefined);
+        const st = mp.stats();
+        const ai = mp.seats().filter((s) => s.ai).length;
+        banner.chip(`LAN ${mp.role === 'host' ? 'host' : 'client'}${mp.worker ? ' (worker)' : ''} · ${peers} player${peers === 1 ? '' : 's'}${me !== null ? ` · ${me.name}` : ''}${ping >= 0 ? ` · ping ${ping.toFixed(0)} ms` : ''} · delay ${mp.inputDelay()}${ai > 0 ? ` · AI plays ${ai}` : ''}${st !== null && st.resyncs > 0 ? ` · ${st.resyncs} resync${st.resyncs === 1 ? '' : 's'}` : ''}`);
+        if (mp.role === 'client' && mp.currentStatus().kind !== 'hostLost') void mp.ping().then((ms) => (ping = ms), () => undefined);
+    };
+    mp.onStatus = (s) => running === r && banner.show(s);
+    mp.onGameReplaced = (g, client) => {
+        // A resync / join save replaced the game: point the viewer at the new galaxy and rebuild the view.
+        if (running !== r) return;
+        setLocalViewerEmpire(g.galaxy, mp.myEmpire());
+        void deps.showGame(g, startOptions, { ...(mp.clock() ?? { speed: 1, paused: true }) }, false, client);
     };
     banner.show(mp.currentStatus());
     installDebugHook(mp);
-    const galaxy = mp.sim.galaxy;
-    setLockstepStepper(galaxy, mp.stepper);
-    setLocalViewerEmpire(galaxy, mp.myEmpire());
-    await deps.showGame(mp.sim.game, startOptions, { ...mp.session!.clock }, newGame);
+    if (hosting) installRejoinGate(r);
+    const game = mp.game();
+    setLocalViewerEmpire(game.galaxy, mp.myEmpire());
+    await deps.showGame(game, startOptions, { ...(mp.clock() ?? { speed: 1, paused: true }) }, newGame, mp.simClient());
     paintChip();
 }
 
+/**
+ * Host: a connection while the game runs. A player who dropped may reconnect to their slot (Phase 4): their lobby
+ * hello names them (or carries the token of their start); the fingerprint must still match. The link is then the
+ * session's: the player joins with the current save. Anyone else is refused.
+ */
+function installRejoinGate(r: Running): void {
+    const ep = netEndpoint();
+    ep.onIncoming = (link) => {
+        let answered = false;
+        link.onMessage = (text) => {
+            if (answered) return;
+            const m = decodeLobbyMessage(text);
+            if (m === null || m.t !== 'lobbyHello') return;
+            answered = true;
+            const refuse = (reason: string): void => {
+                console.info(`[lockstep] refused a connection: ${reason}`);
+                sendLobbyMessage(link, { t: 'lobbyRefused', reason });
+                link.close('refused');
+            };
+            if (running !== r) return refuse('The game is over.');
+            const fp = m.fp as AppFingerprint | undefined;
+            const why = fp === undefined || typeof fp !== 'object' ? 'Your app sent no version information.' : fingerprintMismatch(lastFingerprint!, fp);
+            if (why !== null) return refuse(why);
+            const pick = r.mp.rejoinSlot(String(m.name ?? ''), typeof m.rejoin === 'string' ? m.rejoin : undefined, r.tokens);
+            if ('refused' in pick) return refuse(pick.refused);
+            const player = r.start.players.find((p) => p.slot === pick.slot)!;
+            const token = r.tokens.get(pick.slot) ?? rejoinToken();
+            // The link becomes the session's (its lockstep hello gets the slot's name), then the player is told.
+            const handoff = slotHandoff(link, pick.slot, player.name);
+            r.mp.acceptRejoin(handoff, pick.slot);
+            sendLobbyMessage(link, { t: 'lobbyRejoin', slot: pick.slot, start: r.start, token });
+        };
+    };
+}
+
+/** The fingerprint this app sent / checks with (set when the Multiplayer screen computed it). */
+let lastFingerprint: AppFingerprint | null = null;
+
 /** `window.__dwuMp`: the session for scripts and debugging (scripts drive a LAN game through it). */
-function installDebugHook(mp: MultiplayerGame): void {
+function installDebugHook(mp: MpHandle): void {
+    const inThread = mp instanceof InThreadMp ? mp : null;
     const hook = {
         get role() {
             return mp.role;
+        },
+        get worker() {
+            return mp.worker;
         },
         get status() {
             return mp.currentStatus();
         },
         get frame() {
-            return mp.session?.frame ?? -1;
+            return mp.frame();
         },
         get clock() {
-            return mp.session?.clock ?? null;
+            return mp.clock();
         },
         get stats() {
-            return mp.session === null ? null : { ...mp.session.stats };
+            return mp.stats();
         },
         get gameMs() {
-            return mp.sim.game === null ? -1 : mp.sim.galaxy.nowMs;
+            return mp.gameMs();
         },
-        peers: () => mp.session?.peerList() ?? [],
-        digest: () => mp.sim.digest(),
+        get inputDelay() {
+            return mp.inputDelay();
+        },
+        peers: () => mp.peers(),
+        seats: () => mp.seats(),
+        digest: () => mp.digest(),
         myEmpire: () => mp.myEmpire()?.name ?? null,
         /** Issue a player command for this player's empire (goes through the session, like the UI's orders). */
         issue: (op: string, args: unknown[]) => {
+            if (inThread === null) return mp.call('issue', [op, args]);
             const me = mp.myEmpire();
             if (me === null) throw new Error('no empire');
-            issuePlayerCommand(mp.sim.galaxy, me, op as PlayerOpName, args as never);
+            issuePlayerCommand(mp.game().galaxy, me, op as PlayerOpName, args as never);
+            return true;
         },
         /** Try to rename another human's first ship (the authorize check refuses it on every peer). */
         renameOther: (humanIndex: number, label: string) => {
-            const e = humanEmpires(mp.sim.galaxy)[humanIndex];
+            if (inThread === null) return mp.call('renameOther', [humanIndex, label]);
+            const e = humanSeats(mp.game().galaxy)[humanIndex];
             const ship = e?.builtObjects.find((b) => b != null);
             if (e === undefined || ship === undefined) throw new Error(`no human ${humanIndex} with a ship`);
-            issuePlayerCommand(mp.sim.galaxy, e, 'renameShip', [ship, label]);
+            issuePlayerCommand(mp.game().galaxy, e, 'renameShip', [ship, label]);
+            return true;
         },
         /** A scripted step: rename this player's first ship and drop a waypoint at it. Returns the ship name. */
         scriptStep: (tag: string) => {
+            if (inThread === null) return mp.call('scriptStep', [tag]);
             const me = mp.myEmpire();
             if (me === null) return null;
             const ship = me.builtObjects.find((b) => b != null);
             if (ship === undefined) return null;
             const label = `${tag}`;
-            issuePlayerCommand(mp.sim.galaxy, me, 'renameShip', [ship, label]);
-            issuePlayerCommand(mp.sim.galaxy, me, 'addWaypoint', [Math.round(ship.xpos ?? 0), Math.round(ship.ypos ?? 0), `wp ${label}`]);
+            issuePlayerCommand(mp.game().galaxy, me, 'renameShip', [ship, label]);
+            issuePlayerCommand(mp.game().galaxy, me, 'addWaypoint', [Math.round(ship.xpos ?? 0), Math.round(ship.ypos ?? 0), `wp ${label}`]);
             return label;
         },
-        shipNames: () => (mp.myEmpire()?.builtObjects ?? []).filter((b) => b != null).slice(0, 3).map((b) => b.name),
-        pause: (paused: boolean) => mp.session?.requestPause(paused),
-        setSpeed: (speed: number) => mp.session?.setSpeed(speed),
+        shipNames: () => (inThread === null ? mp.call('shipNames', []) : (mp.myEmpire()?.builtObjects ?? []).filter((b) => b != null).slice(0, 3).map((b) => b.name)),
+        pause: (paused: boolean) => mp.requestPause(paused),
+        setSpeed: (speed: number) => mp.setSpeed(speed),
+        setInputDelay: (frames: number) => mp.setInputDelay(frames),
+        /** Host: decide an absent player's empire (the banner's buttons). */
+        decideAbsent: (slot: number, ai: boolean) => mp.decideAbsent(slot, ai),
+        /** Tests: drop this peer's network links (as a failing network would). */
+        dropLinks: (reason = 'network drop (test)') => mp.dropLinks(reason),
     };
     (window as unknown as { __dwuMp?: unknown }).__dwuMp = hook;
+}
+
+/**
+ * Client: reconnect to a running game after a drop (the banner's Rejoin, or Join Game while the host waits for us): the
+ * lobby hello with our name and token; the host gives our slot back and the session's welcome brings the current save.
+ */
+async function rejoinGame(deps: MultiplayerAppDeps, name: string, address: string, token: string | null): Promise<void> {
+    endMultiplayerSession('rejoining');
+    const ep = netEndpoint();
+    try {
+        const { fp } = await (async () => ({ gameData: await deps.prepare(), fp: await appFingerprint(deps.fingerprintBase()) }))();
+        lastFingerprint = fp;
+        const link = await ep.connect(address);
+        await new Promise<void>((resolve, reject) => {
+            LobbyClient.join(link, {
+                name,
+                fingerprint: fp,
+                ...(token !== null ? { rejoin: token } : {}),
+                onRejoin: (start, slot, handoff, tok) => {
+                    storage('dwu.mp.rejoin', JSON.stringify({ address, name, token: tok }));
+                    void startAsClient(deps, start, handoff, slot, name, () => undefined, { address, token: tok }, true).then(resolve, reject);
+                },
+            }).then((c) => {
+                if (!c.rejoined) {
+                    link.close('not a rejoin');
+                    reject(new Error('The host has no running game to rejoin.'));
+                }
+            }, reject);
+        });
+    } catch (err) {
+        deps.toMenu();
+        openMultiplayerScreen(deps, () => undefined);
+        showMenuError(`Could not rejoin: ${err instanceof Error ? err.message : String(err)}`);
+    }
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
@@ -376,7 +531,9 @@ export function openMultiplayerScreen(deps: MultiplayerAppDeps, onBack: () => vo
 
     async function fingerprint(): Promise<{ gameData: GameData; fp: AppFingerprint }> {
         const gameData = await deps.prepare();
-        return { gameData, fp: await appFingerprint(deps.fingerprintBase()) };
+        const fp = await appFingerprint(deps.fingerprintBase());
+        lastFingerprint = fp;
+        return { gameData, fp };
     }
 
     async function doHost(): Promise<void> {
@@ -415,14 +572,24 @@ export function openMultiplayerScreen(deps: MultiplayerAppDeps, onBack: () => vo
             const link = await ep.connect(address);
             setStatus('Checking versions…');
             let lobby: ClientLobbyScreen | null = null;
+            // A token from an earlier start with this host (a rejoin after a drop: the host gives the slot back).
+            const saved = savedRejoin();
+            const token = saved !== null && saved.address === address ? saved.token : undefined;
             const client = await LobbyClient.join(link, {
                 name,
                 fingerprint: fp,
+                ...(token !== undefined ? { rejoin: token } : {}),
                 onChange: (state) => lobby?.render(state),
                 onStart: (start, handoff) => {
                     lobby?.destroy();
                     lobby = null;
-                    void startAsClient(deps, start, handoff, client.slot, name, onBack);
+                    if (client.token !== null) storage('dwu.mp.rejoin', JSON.stringify({ address, name, token: client.token }));
+                    void startAsClient(deps, start, handoff, client.slot, name, onBack, { address, token: client.token });
+                },
+                onRejoin: (start, slot, handoff, tok) => {
+                    root.remove();
+                    storage('dwu.mp.rejoin', JSON.stringify({ address, name, token: tok }));
+                    void startAsClient(deps, start, handoff, slot, name, onBack, { address, token: tok }, true);
                 },
                 onClosed: (reason) => {
                     lobby?.destroy();
@@ -431,6 +598,7 @@ export function openMultiplayerScreen(deps: MultiplayerAppDeps, onBack: () => vo
                     showMenuError(reason);
                 },
             });
+            if (client.rejoined) return; // onRejoin took over
             root.remove();
             lobby = openClientLobby(client, gameData, address, () => {
                 client.leave();
@@ -444,6 +612,17 @@ export function openMultiplayerScreen(deps: MultiplayerAppDeps, onBack: () => vo
         } finally {
             busy = false;
         }
+    }
+}
+
+/** The rejoin token of the last game this app joined ({ address, name, token }), or null. */
+function savedRejoin(): { address: string; name: string; token: string } | null {
+    try {
+        const v = JSON.parse(storage('dwu.mp.rejoin') || 'null') as { address?: unknown; name?: unknown; token?: unknown } | null;
+        if (v === null || typeof v.address !== 'string' || typeof v.token !== 'string') return null;
+        return { address: v.address, name: typeof v.name === 'string' ? v.name : '', token: v.token };
+    } catch {
+        return null;
     }
 }
 
@@ -683,7 +862,19 @@ function openHostLobby(deps: MultiplayerAppDeps, gameData: GameData, fp: AppFing
         openMultiplayerScreen(deps, onBack);
     }, 'mp-btn mp-btn-secondary');
     bar.append(settingsBtn, loadBtn, newBtn, startBtn, leaveBtn);
-    win.append(status, bar);
+    // Phase 4 (§13): the input delay follows the measured round trips (for slower networks than a LAN).
+    let adaptiveDelay = storage('dwu.mp.adaptiveDelay') === '1';
+    const adaptiveRow = h('label', 'mp-row mp-check');
+    const adaptiveIn = h('input');
+    adaptiveIn.type = 'checkbox';
+    adaptiveIn.dataset.mp = 'adaptive-delay';
+    adaptiveIn.checked = adaptiveDelay;
+    adaptiveIn.addEventListener('change', () => {
+        adaptiveDelay = adaptiveIn.checked;
+        storage('dwu.mp.adaptiveDelay', adaptiveDelay ? '1' : '0');
+    });
+    adaptiveRow.append(adaptiveIn, h('span', '', 'Adaptive input delay (follows the measured ping; for slower networks)'));
+    win.append(adaptiveRow, status, bar);
     document.body.appendChild(root);
 
     const own = ownRowEditor(gameData, true, (pick) => lobby.setHostPick(pick));
@@ -706,6 +897,10 @@ function openHostLobby(deps: MultiplayerAppDeps, gameData: GameData, fp: AppFing
             lobby.setSettings(settingsSummary(options));
         },
         state: () => lobby.state(),
+        setAdaptiveDelay: (on: boolean) => {
+            adaptiveDelay = on;
+            adaptiveIn.checked = on;
+        },
         fingerprint: () => ({ ...lobby.fingerprint }),
         files: () => fingerprintFiles(),
     };
@@ -734,7 +929,7 @@ function openHostLobby(deps: MultiplayerAppDeps, gameData: GameData, fp: AppFing
             const save = await deps.pickSave();
             if (save === null) return;
             loaded = save;
-            const humans = humanEmpires(save.game.galaxy);
+            const humans = humanSeats(save.game.galaxy);
             lobby.setLoaded({ name: save.name, humans: humans.map((e, i) => ({ humanIndex: i, empireName: e.name, playerName: save.players?.[i] ?? '' })) });
             const extra = humans.length < 2 ? ['This save has one human empire: the other players need a LAN save (or start a new game).'] : [];
             lobby.setSettings([`${humans.length} human empire${humans.length === 1 ? '' : 's'}: ${humans.map((e) => e.name).join(', ')}`, ...settingsSummary(save.startOptions).slice(0, 1), ...extra]);
@@ -778,32 +973,52 @@ function openHostLobby(deps: MultiplayerAppDeps, gameData: GameData, fp: AppFing
         // Every peer builds from the same JSON (a value that does not survive JSON would differ on the clients).
         start = JSON.parse(JSON.stringify(start)) as MultiplayerStart;
         const links = lobby.start(start);
+        const tokens = new Map(lobby.tokens);
         delete (window as unknown as { __dwuMpLobby?: unknown }).__dwuMpLobby;
         ep.onIncoming = refuseLate;
         root.remove();
         try {
-            let game: Game;
-            let time: GalaxyTime;
-            let playData: GameData;
-            if (start.kind === 'new') {
-                ({ game, playData } = await deps.buildGame(start.startOptions, start.createExtras));
-                time = new GalaxyTime();
+            let handle: MpHandle;
+            if (deps.useWorker()) {
+                // Worker mode (§11): the game and the session in the sim worker; the links stay here, relayed.
+                const wm = new WorkerMp('host', start, 0, host.name);
+                if (start.kind === 'new') wm.attach((await deps.buildGameInWorker(start.startOptions, start.createExtras, wm.side)).client);
+                else {
+                    if (loaded!.text === undefined) throw new Error('the save text is not available for the simulation worker');
+                    wm.attach(await deps.bootWorker('Loading game', { kind: 'load', text: loaded!.text }, loaded!.playData, undefined, { ...start.clock }, wm.side));
+                    loaded = null;
+                }
+                await wm.begin(links as Map<number, Link>, false, adaptiveDelay);
+                handle = wm;
             } else {
-                ({ game, time, playData } = loaded!);
+                let game: Game;
+                let time: GalaxyTime;
+                let playData: GameData;
+                if (start.kind === 'new') {
+                    ({ game, playData } = await deps.buildGame(start.startOptions, start.createExtras));
+                    time = new GalaxyTime();
+                } else {
+                    ({ game, time, playData } = loaded!);
+                }
+                time.speed = start.clock.speed;
+                time.paused = start.clock.paused;
+                const it = new InThreadMp(start, 0);
+                it.links.push(...links.values());
+                it.mp = MultiplayerGame.host(game, time, links as Map<number, Link>, {
+                    start,
+                    slot: 0,
+                    name: host.name,
+                    gameData: playData,
+                    startOptions: start.startOptions,
+                    ...it.hooks(),
+                    onDropped: (op, reason) => console.warn(`[lockstep] dropped ${op}: ${reason}`),
+                    log: (m) => console.info(`[lockstep] ${m}`),
+                    ...(adaptiveDelay ? { adaptiveDelay: {} } : {}),
+                });
+                setLockstepStepper(game.galaxy, it.mp.stepper);
+                handle = it;
             }
-            time.speed = start.clock.speed;
-            time.paused = start.clock.paused;
-            const mp = MultiplayerGame.host(game, time, links as Map<number, Link>, {
-                start,
-                slot: 0,
-                name: host.name,
-                gameData: playData,
-                startOptions: start.startOptions,
-                onStatus: (s) => running?.banner.show(s),
-                onDropped: (op, reason) => console.warn(`[lockstep] dropped ${op}: ${reason}`),
-                log: (m) => console.info(`[lockstep] ${m}`),
-            });
-            await runGame(deps, mp, start, 0, host.name, start.startOptions, true, start.kind === 'new');
+            await runGame(deps, handle, host.name, start.startOptions, true, start.kind === 'new', { tokens });
         } catch (err) {
             console.error('multiplayer: the game could not start', err);
             for (const l of links.values()) l.close('the host could not start the game');
@@ -860,46 +1075,63 @@ function openClientLobby(client: LobbyClient, gameData: GameData, address: strin
     };
 }
 
-async function startAsClient(deps: MultiplayerAppDeps, start: MultiplayerStart, link: HandoffLink, slot: number, name: string, onBack: () => void): Promise<void> {
+async function startAsClient(deps: MultiplayerAppDeps, start: MultiplayerStart, link: HandoffLink, slot: number, name: string, onBack: () => void, rejoin: { address: string; token: string | null }, isRejoin = false): Promise<void> {
     const wait = h('div', 'mp-screen');
     wait.dataset.mp = 'starting';
-    wait.appendChild(h('div', 'mp-window', start.kind === 'new' ? 'The host started the game. Building the galaxy…' : 'The host started the game. Receiving the saved game…'));
+    wait.appendChild(h('div', 'mp-window', isRejoin ? 'Rejoining the game. Receiving the current game from the host…' : start.kind === 'new' ? 'The host started the game. Building the galaxy…' : 'The host started the game. Receiving the saved game…'));
     document.body.appendChild(wait);
-    let mp: MultiplayerGame | null = null;
+    // A rejoin, or a loaded game: the welcome's save brings the game. A new game: built here from the same start.
+    const buildHere = start.kind === 'new' && !isRejoin;
     try {
-        let game: Game | null = null;
-        let time: GalaxyTime | null = null;
-        let gameData: GameData;
-        if (start.kind === 'new') {
-            const built = await deps.buildGame(start.startOptions, start.createExtras);
-            game = built.game;
-            gameData = built.playData;
-            time = new GalaxyTime();
-            time.speed = start.clock.speed;
-            time.paused = start.clock.paused;
+        let handle: MpHandle;
+        if (deps.useWorker()) {
+            // Worker mode (§11): the session runs in the sim worker; the link to the host stays here, relayed.
+            const wm = new WorkerMp('client', start, slot, name);
+            const links = new Map<number, Link>([[0, link]]);
+            if (buildHere) {
+                wm.attach((await deps.buildGameInWorker(start.startOptions, start.createExtras, wm.side)).client);
+                await wm.begin(links, true, false);
+            } else {
+                const endpoint = SimWorkerClient.createEndpoint();
+                wm.useEndpoint(endpoint);
+                const boot = deps.bootWorker(isRejoin ? 'Rejoining the game' : 'Receiving the saved game', { kind: 'lockstep', scenario: deps.scenarioOfStart(start) }, deps.gameDataForStart(start), start.startOptions, { ...start.clock }, wm.side, endpoint);
+                const began = wm.begin(links, false, false);
+                began.catch(() => undefined);
+                await wm.firstClient(boot);
+                await began;
+            }
+            handle = wm;
         } else {
-            gameData = deps.gameDataFor(start.scenario);
+            let game: Game | null = null;
+            let time: GalaxyTime | null = null;
+            let gameData: GameData;
+            if (buildHere) {
+                const built = await deps.buildGame(start.startOptions, start.createExtras);
+                game = built.game;
+                gameData = built.playData;
+                time = new GalaxyTime();
+                time.speed = start.clock.speed;
+                time.paused = start.clock.paused;
+            } else {
+                gameData = deps.gameDataForStart(start);
+            }
+            const it = new InThreadMp(start, slot);
+            it.links.push(link);
+            it.mp = await MultiplayerGame.join(game, time, link, {
+                start,
+                slot,
+                name,
+                gameData,
+                startOptions: start.startOptions,
+                ...it.hooks(),
+                onDropped: (op, reason) => console.warn(`[lockstep] dropped ${op}: ${reason}`),
+                log: (m) => console.info(`[lockstep] ${m}`),
+            });
+            setLockstepStepper(it.mp.sim.galaxy, it.mp.stepper);
+            handle = it;
         }
-        const replaced = (g: Game): void => {
-            // A resync replaced the game: point the loop and the viewer at the new galaxy and rebuild the view.
-            if (mp === null || running === null) return;
-            setLockstepStepper(g.galaxy, mp.stepper);
-            setLocalViewerEmpire(g.galaxy, mp.myEmpire());
-            void deps.showGame(g, start.startOptions, { ...mp.session!.clock }, false);
-        };
-        mp = await MultiplayerGame.join(game, time, link, {
-            start,
-            slot,
-            name,
-            gameData,
-            startOptions: start.startOptions,
-            onStatus: (s) => running?.banner.show(s),
-            onGameReplaced: (g) => replaced(g),
-            onDropped: (op, reason) => console.warn(`[lockstep] dropped ${op}: ${reason}`),
-            log: (m) => console.info(`[lockstep] ${m}`),
-        });
         wait.remove();
-        await runGame(deps, mp, start, slot, name, start.startOptions, false, start.kind === 'new');
+        await runGame(deps, handle, name, start.startOptions, false, buildHere, { rejoin });
     } catch (err) {
         wait.remove();
         console.error('multiplayer: could not join the game', err);

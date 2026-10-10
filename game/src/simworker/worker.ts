@@ -14,7 +14,11 @@ import { loadScenarioIndex, loadScenarioOverlay } from '../sim/scenario/fetchSce
 import type { ScenarioOverlay } from '../sim/scenario/overlay';
 import { FRAME_REAL_MS } from '../sim/tick/scheduler';
 import { installWorkerBootState, SimHost } from './simHost';
-import { bootWorkerGame } from './workerBoot';
+import { bootWorkerGame, scenarioGameData } from './workerBoot';
+import { installGameStatics, registerGameHooks, type Game } from '../sim/game';
+import type { GalaxyTime } from '../sim/galaxyTime';
+import type { StartGameOptions } from '../sim/startGameOptions';
+import { WorkerLockstep } from './workerLockstep';
 import { saveTextString } from '../saveData';
 import { deltaTransferables, type ReplicaDelta } from './replicaSync';
 
@@ -23,7 +27,7 @@ import { deltaTransferables, type ReplicaDelta } from './replicaSync';
  * galaxy's 7 M objects arrive in ~30 chunks of ~100 ms of main-thread apply each, while the worker writes the next.
  */
 const SNAPSHOT_CHUNK_CODES = 1 << 22;
-import { ALIVE_INTERVAL_MS, type FromWorker, type InitMessage, type ToWorker } from './protocol';
+import { ALIVE_INTERVAL_MS, type FromWorker, type InitMessage, type ScenarioRef, type ToWorker } from './protocol';
 
 interface WorkerScope {
     postMessage(m: unknown, transfer?: Transferable[]): void;
@@ -77,6 +81,12 @@ const bootDeps = {
 };
 
 let host: SimHost | null = null;
+/** The game's data, scenario and start options (multiplayer: a resync / join save loads over the same data). */
+let gameData: GameData | null = null;
+let scenario: ScenarioRef = null;
+let syncOpts: InitMessage['sync'];
+/** Multiplayer (workerLockstep.ts): the lockstep session over this worker's game, once mpStart arrived. */
+let lockstep: WorkerLockstep | null = null;
 let timer: ReturnType<typeof setTimeout> | null = null;
 /** Set once the game stopped for good (fatal): the step loop and the sync threw, nothing is answered any more. */
 let dead: string | null = null;
@@ -87,10 +97,24 @@ const early: ToWorker[] = [];
 async function init(m: InitMessage): Promise<void> {
     setBattleReportsEnabled(m.battleReports !== false);
     if (m.customizationSet !== undefined && m.customizationSet !== '') await activateTheme(m.customizationSet);
+    syncOpts = m.sync;
+    if (m.boot.kind === 'lockstep') {
+        // Multiplayer: a client whose game comes from the host (the welcome's save, after mpStart): only the data now.
+        post({ type: 'progress', step: 'Loading game data', fraction: 0.1 });
+        gameData = await scenarioGameData(bootDeps, m.boot.scenario);
+        scenario = m.boot.scenario;
+        installGameStatics(gameData);
+        registerGameHooks();
+        post({ type: 'progress', step: 'Waiting for the host\'s game', fraction: 0.5 });
+        for (const e of early.splice(0)) handle(e);
+        return;
+    }
     // A load's save text is dropped once parsed (bootWorkerGame): the worker keeps only the game (a late save is 100+ MB).
     const tBoot = performance.now();
     const booted = await bootWorkerGame(m.boot, bootDeps);
     const bootMs = performance.now() - tBoot;
+    gameData = booted.gameData;
+    scenario = booted.scenario;
     const time = booted.time;
     if (m.clock !== undefined) {
         time.speed = m.clock.speed;
@@ -98,24 +122,64 @@ async function init(m: InitMessage): Promise<void> {
     }
     const startOptions = booted.startOptions ?? m.startOptions;
     if (startOptions === undefined) throw new Error('sim worker init: no start options');
+    startHost(booted.game, time, startOptions, bootMs);
+}
+
+/**
+ * The SimHost over `game` and its snapshot: streamed in chunks while the host is built (the replica builds as they
+ * arrive); the last one is the snapshot message. Then the step loop (re)starts. At boot, and when a multiplayer session
+ * replaced the game (replaceGame).
+ */
+function startHost(game: Game, time: GalaxyTime, startOptions: StartGameOptions, bootMs: number): void {
     post({ type: 'progress', step: 'Preparing map', fraction: 0.9 });
-    installWorkerBootState(booted.game.galaxy);
+    installWorkerBootState(game.galaxy);
     // The browser game always has the message UI: the worker is the player's message recipient (docs §9 chunk 4).
-    // The snapshot streams in chunks while the host is built (the replica builds as they arrive); the last one is the
-    // snapshot message.
-    const header = { baseTechCost: booted.game.galaxy.baseTechCost, startOptions, scenario: booted.scenario };
+    const header = { baseTechCost: game.galaxy.baseTechCost, startOptions, scenario };
     let chunks = 0;
     const emit = (delta: ReplicaDelta): void => {
         chunks++;
         post({ type: 'snapshotChunk', delta, ...header });
     };
     const tEncode = performance.now();
-    host = new SimHost(booted.game, time, startOptions, { sync: m.sync, playerMessages: true, snapshotChunks: { codes: SNAPSHOT_CHUNK_CODES, emit } });
+    host = new SimHost(game, time, startOptions, { sync: syncOpts, playerMessages: true, snapshotChunks: { codes: SNAPSHOT_CHUNK_CODES, emit } });
     const snapshot = host.snapshot();
-    post({ ...snapshot, scenario: booted.scenario, timing: { bootMs, encodeMs: performance.now() - tEncode, chunks } });
+    post({ ...snapshot, scenario, timing: { bootMs, encodeMs: performance.now() - tEncode, chunks } });
     for (const e of early.splice(0)) handle(e);
     last = performance.now();
-    loop();
+    if (timer !== null) clearTimeout(timer);
+    // At boot the loop starts now; a replaced game's starts in a task of its own (replaceGame runs inside the session's
+    // handling of the save).
+    if (bootMs > 0) loop();
+    else timer = setTimeout(loop, 0);
+}
+
+/**
+ * Multiplayer: the session replaced the game (a client's resync, or the save of its join): the old host goes, a new one
+ * is built over the new game, and the main thread rebuilds its replica from the new snapshot (gameReplaced first).
+ */
+function replaceGame(game: Game, time: GalaxyTime, startOptions: StartGameOptions): void {
+    if (timer !== null) clearTimeout(timer);
+    timer = null;
+    if (host !== null) {
+        host.dispose();
+        host = null;
+        post({ type: 'gameReplaced' });
+    }
+    startHost(game, time, startOptions, 0);
+}
+
+function ensureLockstep(): WorkerLockstep {
+    lockstep ??= new WorkerLockstep({
+        post,
+        current: () => (host === null ? null : { game: host.game, time: host.time, startOptions: host.startOptionsOfGame }),
+        gameData: () => {
+            if (gameData === null) throw new Error('sim worker: no game data yet');
+            return gameData;
+        },
+        replaceGame,
+        kick,
+    });
+    return lockstep;
 }
 
 /**
@@ -179,7 +243,8 @@ function loop(): void {
  * it) arrive as consecutive messages and reach the same boundary, as in-thread (remoteArgs.ts RemoteValues).
  */
 function kick(): void {
-    if (timer !== null && host !== null && host.time.paused) {
+    // (A lockstep session waits for inputs while running too: a frame may be runnable as soon as one arrives.)
+    if (timer !== null && host !== null && (host.time.paused || lockstep !== null)) {
         clearTimeout(timer);
         timer = setTimeout(loop, 0);
     }
@@ -219,6 +284,33 @@ function handle(m: ToWorker): void {
 }
 
 function dispatch(m: ToWorker): void {
+    // Multiplayer messages work before the game exists (a client waiting for the welcome's save).
+    switch (m.type) {
+        case 'mpStart':
+            if (gameData === null) {
+                early.push(m);
+                return;
+            }
+            ensureLockstep().start(m);
+            kick();
+            return;
+        case 'netIn':
+        case 'netClose':
+            if (lockstep === null) {
+                early.push(m);
+                return;
+            }
+            lockstep.net(m);
+            return;
+        case 'netLink':
+            ensureLockstep().rejoinLink(m);
+            return;
+        case 'mpCall':
+            ensureLockstep().call(m);
+            return;
+        default:
+            break;
+    }
     if (host === null) {
         if (m.type !== 'init') {
             early.push(m);
@@ -280,6 +372,8 @@ function dispatch(m: ToWorker): void {
         case 'dispose':
             if (timer !== null) clearTimeout(timer);
             timer = null;
+            lockstep?.close('the game was closed');
+            lockstep = null;
             host?.dispose();
             host = null;
             return;

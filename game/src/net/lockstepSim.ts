@@ -75,6 +75,11 @@ export class GalaxyLockstepSim implements LockstepSim {
         this.sink = (empire, op, args, onApplied, onFailed) => this.issueLocal(empire, op, args, onApplied, onFailed);
     }
 
+    /** The start options a save of the current game writes (a loaded save's own, after a resync / join). */
+    get currentStartOptions(): StartGameOptions {
+        return this.startOptions;
+    }
+
     get galaxy(): Galaxy {
         if (this.game === null) throw new Error('lockstep: no game yet (a joiner gets it with the welcome)');
         return this.game.galaxy;

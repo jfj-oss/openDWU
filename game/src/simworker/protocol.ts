@@ -10,6 +10,9 @@ import type { GameSaveExtras } from '../sim/save/gameSave';
 import type { ReplicaDelta } from './replicaSync';
 import type { RemoteArg } from './remoteArgs';
 import type { MessageRoute } from '../sim/messageRouting';
+import type { MultiplayerStart } from '../net/lobby';
+import type { MultiplayerStatus } from '../net/multiplayerGame';
+import type { ClockState, LockstepStats, PeerInfo } from '../net/lockstep';
 
 /** How the worker gets its game. */
 export type WorkerBoot =
@@ -35,6 +38,15 @@ export type WorkerBoot =
            * an ordinary load.
            */
           addAddons?: string[];
+      }
+    | {
+          /**
+           * Multiplayer (docs/MULTIPLAYER.md §11): a client that gets its game from the host (a loaded LAN game, a
+           * rejoin): the worker loads the data for `scenario` and waits; the lockstep welcome's save brings the game
+           * (MpStartMessage, then the snapshot as for any game).
+           */
+          kind: 'lockstep';
+          scenario: { id: string; include: string[] | null } | null;
       }
     | {
           /** [simworker chunk 1] main.ts bootGameWithOptions without ?autostart: a bare generateGalaxy (no empires). */
@@ -160,7 +172,79 @@ export interface HostOpMessage {
     args: RemoteArg[];
 }
 
+// ---------------------------------------------------------------------------------------------------------------------
+// Multiplayer in worker mode (docs/MULTIPLAYER.md §11): the lockstep session runs in the worker, next to the sim it
+// steps (simworker/workerLockstep.ts). The network links stay on the main thread (the desktop shell hands the page a
+// MessagePort per connection; a browser page holds its WebSocket); their traffic is relayed as netIn / netOut.
+// ---------------------------------------------------------------------------------------------------------------------
+
+/** Start the lockstep session over the worker's game (or, a client without one, the welcome's save). */
+export interface MpStartMessage {
+    type: 'mpStart';
+    /** Reply id (an mpReply when the session runs: the host at once, a client once welcomed). */
+    id: number;
+    start: MultiplayerStart;
+    /** This peer's lobby slot (0 = host). */
+    slot: number;
+    name: string;
+    /** Host: the clients' links by slot; client: the one link to the host (slot 0). Ids name relayed links. */
+    links: { slot: number; link: number }[];
+    /** Client: the worker's game was built from the same start (the hello carries its frame-0 digest: no save). */
+    have: boolean;
+    /** Lockstep parameters this peer runs (the host's MultiplayerStart.params unless overridden: adaptive delay). */
+    adaptiveDelay?: boolean;
+}
+
+/** A relayed link's traffic, main thread → worker. */
+export type NetInMessage = { type: 'netIn'; link: number; text: string } | { type: 'netClose'; link: number; reason: string };
+
+/** Host: a rejoining player's link (slot), handed to the session (multiplayerGame.ts acceptRejoin). */
+export interface NetLinkMessage {
+    type: 'netLink';
+    link: number;
+    slot: number;
+}
+
+/** A call on the worker's session (pause, speed, AI takeover, the debug hook); answered by mpReply under `id`. */
+export interface MpCallMessage {
+    type: 'mpCall';
+    id: number;
+    fn: string;
+    args: unknown[];
+}
+
+/** The worker session's state for the main thread (posted on change and every MP_STATE_INTERVAL_MS). */
+export interface MpWireState {
+    role: 'host' | 'client';
+    status: MultiplayerStatus;
+    frame: number;
+    clock: ClockState;
+    stats: LockstepStats;
+    peers: PeerInfo[];
+    /** Whether every expected player joined (host) / the welcome arrived (client). */
+    joined: boolean;
+    inputDelay: number;
+    gameMs: number;
+    /** Per lobby slot: who plays it, whether a peer for it is in the session, whether the AI runs its empire. */
+    seats: MpSeat[];
+}
+
+export interface MpSeat {
+    slot: number;
+    name: string;
+    humanIndex: number;
+    present: boolean;
+    ai: boolean;
+    empire: string;
+}
+
+export const MP_STATE_INTERVAL_MS = 250;
+
 export type ToWorker =
+    | MpStartMessage
+    | NetInMessage
+    | NetLinkMessage
+    | MpCallMessage
     | InitMessage
     | ClockMessage
     | ViewMessage
@@ -288,6 +372,16 @@ export type WorkerEvent =
 export const ALIVE_INTERVAL_MS = 2000;
 
 export type FromWorker =
+    /** A relayed link's traffic, worker → main thread (send on it / close it). */
+    | { type: 'netOut'; link: number; text: string }
+    | { type: 'netCloseOut'; link: number; reason: string }
+    | { type: 'mpState'; state: MpWireState }
+    | { type: 'mpReply'; id: number; value?: unknown; error?: string }
+    /**
+     * The lockstep session replaced the game (a client's resync or join save): the replica is rebuilt from the
+     * snapshot that follows (its chunks, then the snapshot message), as at boot; the old replica takes no more messages.
+     */
+    | { type: 'gameReplaced' }
     | ProgressMessage
     | SnapshotChunkMessage
     | SnapshotMessage

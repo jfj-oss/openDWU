@@ -202,7 +202,9 @@ export class SimClientCore {
     private stopped: string | null = null;
     private warnedUnavailable = false;
     private readonly replyTimeoutMs: number;
-    private readonly replyGraceMs: number;
+    private replyGraceMs: number;
+    /** Multiplayer: the worker's game runs in a lockstep session (setLockstep). */
+    private lockstep = false;
     private readonly wallNow: () => number;
     /** Commands the worker rejected for their deadline (tests, the smoke). */
     expiredCommands = 0;
@@ -773,7 +775,8 @@ export class SimClientCore {
         const backlog = pausedNow ? 0 : Math.min(FRAME_REAL_MS, this.lastBacklogMs + (t0 - this.lastStepAt));
         updateRenderTime(this.renderTime, this.galaxy.nowMs, backlog, this.speed, pausedNow, steps);
         // Ours: Game Options → Off-screen update rate → Adaptive, from the worker's own step wall time (idle otherwise).
-        if (steps > 0) this.offscreenAdaptive.observe(this.galaxy, steps, workerStepWallMs, this.lastBacklogMs, t2);
+        // (Not in a lockstep session: each peer would pick its own batch — offscreenAdaptive.ts.)
+        if (steps > 0 && !this.lockstep) this.offscreenAdaptive.observe(this.galaxy, steps, workerStepWallMs, this.lastBacklogMs, t2);
         const s = this.stats;
         s.renderFrames++;
         s.simFrames += steps;
@@ -893,6 +896,17 @@ export class SimClientCore {
         console.error(`sim worker: ${reason} — stopping it (a hung worker or a lost message is a bug: please report it)`);
         if (this.opts.onUnresponsive !== undefined) this.opts.onUnresponsive(reason);
         else this.workerFailed(reason);
+    }
+
+    /**
+     * Multiplayer (docs/MULTIPLAYER.md §11): the worker's game runs in a lockstep session. A command is applied on every
+     * peer at its frame, which a slow or loading peer can hold up for a long time — the worker still answers every
+     * command (applied, refused or dropped) and says it is alive, so the reply backstop is off; and the Adaptive
+     * off-screen rate picks nothing (each peer would pick its own batch).
+     */
+    setLockstep(on: boolean): void {
+        this.lockstep = on;
+        this.replyGraceMs = on ? Infinity : (this.opts.replyGraceMs ?? REPLY_GRACE_MS);
     }
 
     dispose(): void {

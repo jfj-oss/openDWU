@@ -39,6 +39,7 @@ import { setPlayerMessageListener, type PlayerMessageNote } from '../sim/playerM
 import type { ClockMessage, CommandMessage, DebugReply, DebugRequest, FromWorker, HostOpMessage, RefreshRequest, SnapshotMessage, StepMessage, TradeFlowsMessage, ViewMessage, WorkerEvent } from './protocol';
 import { commandLog, copyCommandLogEntry, type CommandLogEntry } from '../sim/player/commandLog';
 import type { ReplicaEncoderOptions } from './replicaSync';
+import { lockstepStepper } from '../net/lockstepSeam';
 
 export interface SimHostOptions {
     /** Wall clock (performance.now in the worker; a fake one in tests). */
@@ -166,6 +167,11 @@ export class SimHost {
         });
     }
 
+    /** The start options a save of this game writes. */
+    get startOptionsOfGame(): StartGameOptions {
+        return this.startOptions;
+    }
+
     /** Nothing has run on the game since the sync source was built (the snapshot may skip its full compare). */
     private untouched = true;
 
@@ -253,6 +259,11 @@ export class SimHost {
     private admitCommands(): void {
         if (this.arrived.length === 0) return;
         const wall = this.wallNow();
+        // [lockstep seam] A multiplayer session drives this galaxy (worker/workerLockstep.ts): the commands go to the
+        // session (the galaxy's remote command sink, net/lockstepSim.ts) and are applied on every peer at frame +
+        // inputDelay — so each is answered by its own callbacks when it applies (or is refused / dropped), not settled
+        // against this galaxy's queue at the next boundary (settleCommands).
+        const lockstep = lockstepStepper(this.galaxy) !== null;
         for (const { m, empire, args } of this.arrived.splice(0)) {
             if (m.deadline !== undefined && wall > m.deadline) {
                 this.expiredCommands++;
@@ -264,7 +275,7 @@ export class SimHost {
             const entry = { id: m.id, op: m.op, done: false };
             // A callback even without a reply id: settleCommands tells an applied command from one whose executor threw.
             // (It changes nothing in the sim: applyLive calls it after the executor, as it calls the in-thread UI's.)
-            issuePlayerCommand(this.galaxy, empire, m.op as PlayerOpName, args as never, (result: unknown) => {
+            const onApplied = (result: unknown): void => {
                 entry.done = true;
                 // What the op changed past its arguments' reach (an id into a book: commandReach.ts), read now that
                 // the executor ran, for this tick's delta.
@@ -272,7 +283,18 @@ export class SimHost {
                 // The waypoints live in a side table (outside the graph): freshened before this tick's delta.
                 if (WAYPOINT_OPS.has(m.op)) this.waypointsFresh = true;
                 if (m.id !== 0) this.results.push(this.commandReply(m.id, m.op, result));
-            });
+                this.dirty = true;
+            };
+            if (lockstep) {
+                // Refused by the session (another player's empire, not encodable) or dropped at its frame (an argument
+                // gone): an error reply, as for a command that could not be queued.
+                issuePlayerCommand(this.galaxy, empire, m.op as PlayerOpName, args as never, onApplied, (reason) => {
+                    if (m.id !== 0) this.results.push({ id: m.id, result: null, error: reason });
+                    this.dirty = true;
+                });
+                continue;
+            }
+            issuePlayerCommand(this.galaxy, empire, m.op as PlayerOpName, args as never, onApplied);
             this.queued.push(entry);
         }
         this.dirty = true;
@@ -456,16 +478,27 @@ export class SimHost {
         let failure: unknown;
         try {
             this.admitCommands();
-            drainCommandBoundary(this.galaxy);
-            // The queued commands have been applied with their by-value arguments.
-            this.commandValues.boundary();
-            if (!time.paused) {
-                noteSimSpeed(this.galaxy, time.speed);
-                // The camera is a sim input too: journal it and run with exactly the journaled one (simLoop.ts).
-                noteSimViewRect(this.galaxy, this.wantView);
+            const lockstep = lockstepStepper(this.galaxy);
+            if (lockstep !== null) {
+                // [lockstep seam] A multiplayer session steps the galaxy instead, exactly as the in-thread loop does
+                // (simLoop.ts): its frames apply every peer's commands at their frame and run one runSimFrame each, with
+                // no camera pass (each screen's camera differs). The HUD's pause / speed (clock messages) become session
+                // requests in the stepper; the clock it leaves in `time` is the session's.
+                this.commandValues.boundary();
+                steps = lockstep.tick(realDtMs, time);
+                this.budget.backlogMs = 0;
+            } else {
+                drainCommandBoundary(this.galaxy);
+                // The queued commands have been applied with their by-value arguments.
+                this.commandValues.boundary();
+                if (!time.paused) {
+                    noteSimSpeed(this.galaxy, time.speed);
+                    // The camera is a sim input too: journal it and run with exactly the journaled one (simLoop.ts).
+                    noteSimViewRect(this.galaxy, this.wantView);
+                }
+                const view = loggedSimViewRect(this.galaxy);
+                steps = this.budget.run(driver, realDtMs, time.speed, time.paused, view !== null ? { view } : {});
             }
-            const view = loggedSimViewRect(this.galaxy);
-            steps = this.budget.run(driver, realDtMs, time.speed, time.paused, view !== null ? { view } : {});
         } catch (err) {
             failure = err;
             // As in-thread: drop the half-drained tick queue, pause, and tell the player.

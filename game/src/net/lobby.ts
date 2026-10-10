@@ -70,13 +70,20 @@ export interface MultiplayerStart {
 }
 
 export type LobbyMessage =
-    | { t: 'lobbyHello'; name: string; fp: AppFingerprint }
+    /** `rejoin`: the token of an earlier lobbyStart (reconnecting to a running game). */
+    | { t: 'lobbyHello'; name: string; fp: AppFingerprint; rejoin?: string }
     | { t: 'lobbyRefused'; reason: string }
     | { t: 'lobbyWelcome'; slot: number; state: LobbyState; host: AppFingerprint }
     | { t: 'lobbyState'; state: LobbyState }
     | { t: 'lobbyPick'; pick: HumanPlayerStart; claim: number; ready: boolean }
-    | { t: 'lobbyStart'; start: MultiplayerStart }
-    | { t: 'lobbyBye'; reason: string };
+    /** `token`: this player's rejoin token (multiplayer Phase 4: a dropped player reconnects with it). */
+    | { t: 'lobbyStart'; start: MultiplayerStart; token?: string }
+    | { t: 'lobbyBye'; reason: string }
+    /**
+     * Host → a player reconnecting to a running game (Phase 4, docs/MULTIPLAYER.md §12): their slot is free again (by
+     * `rejoin` token or by name); join the lockstep session over this link, which brings the current save.
+     */
+    | { t: 'lobbyRejoin'; slot: number; start: MultiplayerStart; token: string };
 
 /** The lockstep peer name of a lobby slot: "<slot>|<display name>" (the host writes it: HandoffLink). */
 export function peerName(slot: number, name: string): string {
@@ -87,6 +94,40 @@ export function peerName(slot: number, name: string): string {
 export function slotOfPeerName(name: string): number {
     const m = /^(\d+)\|/.exec(name);
     return m === null ? -1 : Number(m[1]);
+}
+
+/** A fresh rejoin token (random hex). */
+export function rejoinToken(): string {
+    const b = new Uint8Array(12);
+    crypto.getRandomValues(b);
+    return [...b].map((x) => x.toString(16).padStart(2, '0')).join('');
+}
+
+/**
+ * Host: the link of lobby `slot` handed to the lockstep session: a HandoffLink whose first message — the joiner's
+ * lockstep hello — gets the slot's peerName, whatever the client wrote (authorize() reads the slot from it).
+ */
+export function slotHandoff(link: Link, slot: number, name: string): HandoffLink {
+    const pn = peerName(slot, name);
+    return new HandoffLink(link, (text) => {
+        try {
+            const m = JSON.parse(text) as { t?: string; name?: string };
+            if (m.t === 'hello') return JSON.stringify({ ...m, name: pn });
+        } catch {
+            // not JSON: the session drops it
+        }
+        return text;
+    });
+}
+
+/** Parse a lobby message (null: not one). */
+export function decodeLobbyMessage(text: string): LobbyMessage | null {
+    return decode(text);
+}
+
+/** Send a lobby message. */
+export function sendLobbyMessage(link: Link, m: LobbyMessage): void {
+    send(link, m);
 }
 
 function decode(text: string): LobbyMessage | null {
@@ -374,24 +415,17 @@ export class LobbyHost {
         this.started = true;
         const out = new Map<number, HandoffLink>();
         for (const c of this.clients.values()) {
-            send(c.link, { t: 'lobbyStart', start });
-            const name = peerName(c.player.slot, c.player.name);
-            out.set(
-                c.player.slot,
-                new HandoffLink(c.link, (text) => {
-                    // The lockstep hello (lockstep.ts HelloMsg): its name is the slot's, whatever the client wrote.
-                    try {
-                        const m = JSON.parse(text) as { t?: string; name?: string };
-                        if (m.t === 'hello') return JSON.stringify({ ...m, name });
-                    } catch {
-                        // not JSON: the session drops it
-                    }
-                    return text;
-                }),
-            );
+            // Each player's own rejoin token (Phase 4): reconnecting with it gets the same slot back.
+            const token = rejoinToken();
+            this.tokens.set(c.player.slot, token);
+            send(c.link, { t: 'lobbyStart', start, token });
+            out.set(c.player.slot, slotHandoff(c.link, c.player.slot, c.player.name));
         }
         return out;
     }
+
+    /** The rejoin tokens handed out at start, by slot. */
+    readonly tokens = new Map<number, string>();
 
     /** Close the lobby (the host left): tell everyone and drop their links. */
     close(reason = 'The host closed the lobby.'): void {
@@ -424,12 +458,20 @@ export interface LobbyClientOptions {
     onStart?: (start: MultiplayerStart, link: HandoffLink) => void;
     /** The lobby link closed (the host left, kicked, or the network dropped) before the start. */
     onClosed?: (reason: string) => void;
+    /** Reconnecting to a running game: the token of the earlier start (Phase 4). */
+    rejoin?: string;
+    /** The host gave this player its slot of a running game back: join the session over `link` (the save comes). */
+    onRejoin?: (start: MultiplayerStart, slot: number, link: HandoffLink, token: string) => void;
 }
 
 export class LobbyClient {
     slot = -1;
     state: LobbyState = { players: [], settings: [], loaded: null };
     hostFingerprint: AppFingerprint | null = null;
+    /** The rejoin token the host sent with the start (Phase 4). */
+    token: string | null = null;
+    /** Welcomed back into a running game (lobbyRejoin) rather than into the lobby. */
+    rejoined = false;
     private started = false;
     private byeReason: string | null = null;
 
@@ -466,8 +508,21 @@ export class LobbyClient {
                     case 'lobbyStart': {
                         if (c.started) return;
                         c.started = true;
+                        c.token = typeof m.token === 'string' ? m.token : null;
                         const handoff = new HandoffLink(link);
                         c.opts.onStart?.(m.start, handoff);
+                        return;
+                    }
+                    case 'lobbyRejoin': {
+                        if (c.started) return;
+                        c.started = true;
+                        c.rejoined = true;
+                        welcomed = true;
+                        c.slot = m.slot;
+                        c.token = m.token;
+                        const handoff = new HandoffLink(link);
+                        resolve(c);
+                        c.opts.onRejoin?.(m.start, m.slot, handoff, m.token);
                         return;
                     }
                     default:
@@ -480,7 +535,7 @@ export class LobbyClient {
                 if (!welcomed) reject(new Error(why));
                 else c.opts.onClosed?.(why);
             };
-            send(link, { t: 'lobbyHello', name: opts.name, fp: opts.fingerprint });
+            send(link, { t: 'lobbyHello', name: opts.name, fp: opts.fingerprint, ...(opts.rejoin !== undefined ? { rejoin: opts.rejoin } : {}) });
         });
     }
 

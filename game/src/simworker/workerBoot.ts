@@ -94,6 +94,7 @@ export async function bootWorkerGame(boot: WorkerBoot, deps: WorkerBootDeps): Pr
         const game: Game = { galaxy, playerEmpire: galaxy.playerEmpire as Empire, viewX: boot.viewX, viewY: boot.viewY };
         return { game, time: new GalaxyTime(), gameData, scenario: null, startOptions: null };
     }
+    if (boot.kind === 'lockstep') throw new Error('a lockstep boot has no game of its own (worker.ts init waits for the host\'s)');
     // Load.
     let text = boot.text;
     if (text === undefined && boot.blob !== undefined) {
