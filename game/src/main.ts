@@ -90,7 +90,7 @@ import { habitatInfo } from './ui/selectionInfo';
 import { renderInfoModel } from './ui/selectionInfoView';
 import { colonizationRangeFor, defaultStartGameOptions, wizardStartGameOptions, piratesFor, STARTING_TECH_LEVEL, toCreateGameOptions, type StartGameOptions, maximumEmpireAmountFor, starCountFor, defaultScenarioChoice, type StartScenarioChoice } from './sim/startGameOptions';
 import { readSaveScenarioRef, serializeGameSave, saveTextString, saveTextTail, type SaveText } from './saveData';
-import { deserializeGameSteps, savedCustomizationSet, savedScenarioId, savedScenarioInclude, type GameSaveJSON } from './sim/save/gameSave';
+import { deserializeGameSteps, savedCustomizationSet, savedGalaxyBackdrop, savedScenarioId, savedScenarioInclude, type GameSaveExtras, type GameSaveJSON } from './sim/save/gameSave';
 import { loadScenarioIndex, loadScenarioOverlay } from './sim/scenario/fetchScenario';
 import { applyScenarioOverlay, type ScenarioOverlay } from './sim/scenario/overlay';
 import { isTextLoaded, loadBaseTextUnderAdded } from './sim/textResolver';
@@ -146,6 +146,7 @@ import { setShipCommandHandler, setViewLockedQuery } from './ui/keyboard';
 import { refreshSelectionActionBar } from './ui/orderMenu';
 import { selectCreature, selectFighter, selectHabitat } from './ui/hud';
 import { applyHotSeatDevHumans, hotSeatSaveExtras, installHotSeat, rememberSavedLocalViewer } from './ui/hotSeat';
+import { galaxyBackdropSaveExtras, parseGalaxyBackdrop, setGalaxyBackdrop } from './render/galaxyBackdropChoice';
 import { createShipCommandKeys, type ShipCommandKeys } from './ui/shipCommandKeys';
 import { installWaypointUi } from './ui/waypoints'; // [waypoints]
 import { createControlGroupKeys } from './ui/controlGroups'; import { setControlGroupHandler } from './ui/keyboard'; import { resetPanelVisibility } from './ui/panelVisibility'; import { setMainViewDisplayType } from './render/mainViewDisplay'; import { closeGroundReport } from './ui/screens/groundReport'; import { playGridClick } from './audio/gameAudio'; // [parC1]
@@ -347,6 +348,7 @@ async function loadSaveWithProgress(text: SaveText, addAddons?: readonly string[
     const saveTail = await saveTextTail(text, 4096);
     const saveTheme = savedCustomizationSet(saveTail);
     rememberSavedLocalViewer(saveTail); // hot seat: whose turn it was (applied by installHotSeat)
+    setGalaxyBackdrop(parseGalaxyBackdrop(savedGalaxyBackdrop(saveTail))); // the view's backdrop (older saves: Original)
     if (saveTheme !== activeCustomizationSetName()) {
         showToast(`Switching to ${saveTheme === '' ? '(Default)' : saveTheme} theme`); // "Switching to THEMENAME theme"
         await switchTheme(saveTheme, true);
@@ -697,8 +699,13 @@ export async function startGameView(
     setThemeChromeRace(game.playerEmpire?.dominantRace?.name ?? '');
     // [simworker] Save text of the running game: the worker's authoritative game in worker mode (async).
     // A gzip Blob of the UTF-8 text in both modes (saveData.ts serializeGameSave): the text is never one string in a heap.
+    // What a save carries beside the game (never sim state): the hot seat's viewer, the galaxy backdrop.
+    const saveExtras = (): GameSaveExtras | undefined => {
+        const extras: GameSaveExtras = { ...hotSeatSaveExtras(galaxy), ...galaxyBackdropSaveExtras() };
+        return Object.keys(extras).length > 0 ? extras : undefined;
+    };
     const serializeCurrent = (): SaveText | null | Promise<SaveText | null> =>
-        simClient !== undefined ? simClient.save(undefined, hotSeatSaveExtras(galaxy)) : lastStartOptions !== null ? serializeGameSave(game, time, lastStartOptions, hotSeatSaveExtras(galaxy)) : null;
+        simClient !== undefined ? simClient.save(undefined, saveExtras()) : lastStartOptions !== null ? serializeGameSave(game, time, lastStartOptions, saveExtras()) : null;
 
     // Task 10d: first message of the top-middle ticker — the founding line.
     const playerCapital = game.playerEmpire?.capital ?? null;
@@ -1456,6 +1463,7 @@ async function startTutorialGame(file: string): Promise<void> {
         return;
     }
     const opts = defaultDevGameOptions(1, GalaxyShape.Spiral, 700, 4, 4, systemNames, gameData);
+    setGalaxyBackdrop('original');
     let game: Game | null = null;
     // [simworker] the tutorial game is created in the worker too (the same options; createGame there).
     const inWorker = useSimWorker();
@@ -1886,6 +1894,7 @@ async function buildAutostartGame(
 
 async function bootGameWithOptions(opts: BootOptions): Promise<void> {
     const { seed, shape, starCount, sectorWidth, sectorHeight, zoom: zoomParam, cx, cy, select } = opts;
+    setGalaxyBackdrop('original'); // (the Main View applies a ?backdrop= override)
 
     const dwuPresent = await detectDwuPresent();
     const systemNames = await loadSystemNames(dwuPresent);
