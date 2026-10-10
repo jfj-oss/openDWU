@@ -132,6 +132,7 @@ import {
 import { checkBoxRight, colorDropDown, colorSlider, groupBox, labelledTrackBar, radioButton, raceDropDown, roundRectanglePanel } from '../originalWindowControls';
 import { startResxImageUrl } from '../resxImage';
 import { generateRaceSummary, openGalactopedia, type RaceSummaryData, type RaceSummarySection } from './galactopedia';
+import { buildHotSeatPlayersPanel, hotSeatSummaryText } from './hotSeatPlayersPanel'; // multiplayer Phase 2
 
 const CHROME = '/assets/dwu/images/ui/chrome/';
 const RACES_DIR = '/assets/dwu/images/units/races/';
@@ -1786,6 +1787,14 @@ function buildOtherEmpiresPage(ctx: WizardCtx): HTMLDivElement {
         o.manual.push({ race: '', governmentId: -1, name: '' });
         paintList();
     }, { className: 'wizard-btn wizard-btn-secondary wizard-empires-add-btn' });
+    // Multiplayer Phase 2 (not in the original): "Human Players..." opens the hot-seat list over this panel
+    // (hotSeatPlayersPanel.ts; StartGameOptions.humanPlayers), and the line left of it says how many humans play.
+    const hotSeatLine = label(listPanel, '', 15, 14, { size: FONT.normal, className: 'wizard-hotseat-summary' });
+    const hotSeatBtn = glass(listPanel, 'Human Players...', 460, 10, 200, 25, () => {
+        if (hotSeat.isOpen()) hotSeat.close();
+        else hotSeat.open();
+    }, { className: 'wizard-btn wizard-btn-secondary wizard-hotseat-open-btn' });
+    ctx.helpOn(hotSeatBtn, () => ['Human Players', 'Hot seat: add more human players who share this PC. Each one picks an empire name, race, government and colours.']);
     const grid = place(el('div', 'ow-grid wizard-empires-grid'), 10, 35, 860, 260);
     grid.style.fontSize = `${FONT.normal}px`;
     const COLS = [300, 240, 276, 30];
@@ -1796,6 +1805,16 @@ function buildOtherEmpiresPage(ctx: WizardCtx): HTMLDivElement {
     const listWrap = el('div', 'ow-grid-body ow-scroll wizard-empires-manual-wrap');
     grid.appendChild(listWrap);
     listPanel.appendChild(grid);
+    const hotSeat = buildHotSeatPlayersPanel({
+        options,
+        races: () => playableRaces(),
+        governments: () => governments,
+        governmentsForRace: startGovernmentsForRace,
+        palette: wizardColorPalette(),
+        listParent: ctx.listParent,
+        onChange: () => paintPreview(),
+    });
+    wrap.appendChild(place(hotSeat.el, 10, 125, 882, 307));
 
     // chkGalaxyNewEmpiresDuringGame (10, 440) font_3 ([wizardB1] Start.cs 3655; Start.1.cs 3689 → Galaxy.SpawnNewEmpires,
     // Habitat.cs 1502).
@@ -2001,7 +2020,8 @@ function buildOtherEmpiresPage(ctx: WizardCtx): HTMLDivElement {
         // Task 19k-1a: the effective other-empires count is the manual list when non-empty, else empireCount
         // (matches the preview text above); +1 for the player.
         const otherEmpiresCount = o.manual.length > 0 ? o.manual.length : o.empireCount;
-        const note = empireCountPerformanceNote(otherEmpiresCount + 1);
+        const note = empireCountPerformanceNote(otherEmpiresCount + 1 + (options.humanPlayers?.length ?? 0));
+        hotSeatLine.textContent = hotSeatSummaryText(options);
         perfNote.textContent = note ?? '';
         perfNote.style.display = note === null ? 'none' : '';
     }
@@ -2117,6 +2137,7 @@ function buildOtherEmpiresPage(ctx: WizardCtx): HTMLDivElement {
             loading.remove();
             governments = allGovs;
             paintList();
+            hotSeat.repaint();
         })
         .catch(() => {
             loading.remove();
@@ -2991,6 +3012,10 @@ function buildStartPage(ctx: WizardCtx): HTMLDivElement {
                         ? `${options.otherEmpires.empireCount} auto-generated`
                         : `${options.otherEmpires.empireCount} random`,
             ],
+            // Multiplayer Phase 2: the hot-seat humans (only when there are extra ones).
+            ...((options.humanPlayers?.length ?? 0) > 0
+                ? [['Human Players', `${hotSeatSummaryText(options)}: ${(options.humanPlayers ?? []).map((h, i) => h.name || (h.race !== '' ? `${h.race} Empire` : `Player ${i + 2}`)).join(', ')}`] as [string, string]]
+                : []),
             // Task 06g: victory conditions summary (sandbox when none checked).
             [
                 'Victory Conditions',

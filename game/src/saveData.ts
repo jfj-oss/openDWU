@@ -8,15 +8,15 @@
 import type { Game } from './sim/game';
 import type { GalaxyTime } from './sim/galaxyTime';
 import type { StartGameOptions } from './sim/startGameOptions';
-import { serializeGameParts } from './sim/save/gameSave';
+import { serializeGameParts, type GameSaveExtras } from './sim/save/gameSave';
 
 /** A save's text: a string, or a Blob of its UTF-8 bytes. */
 export type SaveText = string | Blob;
 
 /** serializeGame's text as a Blob (UTF-8), made chunk by chunk: the JS heap only ever holds one chunk of it. */
-export function serializeGameBlob(game: Game, time: GalaxyTime, startOptions: StartGameOptions): Blob {
+export function serializeGameBlob(game: Game, time: GalaxyTime, startOptions: StartGameOptions, extras?: GameSaveExtras): Blob {
     const enc = new TextEncoder();
-    const parts = serializeGameParts(game, time, startOptions, (chunk) => enc.encode(chunk));
+    const parts = serializeGameParts(game, time, startOptions, (chunk) => enc.encode(chunk), undefined, extras);
     return new Blob(parts as BlobPart[], { type: 'application/json' });
 }
 

@@ -11,6 +11,7 @@ import type { CommandLogEntry } from '../sim/player/commandLog';
 import type { DebugReply, DebugRequest, FromWorker, InitMessage, SnapshotMessage, ToWorker, WorkerEvent } from './protocol';
 import { installReplicaWriteDetector, writeDetectorMode } from './writeDetector';
 import type { SaveText } from '../saveData';
+import type { GameSaveExtras } from '../sim/save/gameSave';
 import { desktopSimProcessBridge, openDesktopSimEndpoint, WebWorkerEndpoint, type SimEndpoint } from './simEndpoint';
 
 /**
@@ -257,7 +258,7 @@ export class SimWorkerClient {
 
     /** Post a request and wait for its answer. `timeoutMs`: no answer by then stops the worker (stop: every waiting
      *  request, this one too, rejects). */
-    private request<T extends FromWorker>(m: { type: 'save' | 'digest' | 'commandLog' } | Omit<DebugRequest, 'id'>, timeoutMs?: number): Promise<T> {
+    private request<T extends FromWorker>(m: { type: 'save' | 'digest' | 'commandLog'; extras?: GameSaveExtras } | Omit<DebugRequest, 'id'>, timeoutMs?: number): Promise<T> {
         const id = this.nextRequest++;
         return new Promise<T>((resolve, reject) => {
             if (this.disposed || this.stopped !== null) {
@@ -375,10 +376,10 @@ export class SimWorkerClient {
      * not save). No answer within `timeoutMs` (SAVE_TIMEOUT_MS): the worker is stopped (the restart is offered) and the
      * save fails — never a wait without end.
      */
-    async save(timeoutMs = SAVE_TIMEOUT_MS): Promise<Blob | null> {
+    async save(timeoutMs = SAVE_TIMEOUT_MS, extras?: GameSaveExtras): Promise<Blob | null> {
         let r: Extract<FromWorker, { type: 'saved' }>;
         try {
-            r = await this.request<Extract<FromWorker, { type: 'saved' }>>({ type: 'save' }, timeoutMs);
+            r = await this.request<Extract<FromWorker, { type: 'saved' }>>(extras === undefined ? { type: 'save' } : { type: 'save', extras }, timeoutMs);
         } catch (err) {
             // The worker stopped or the game was closed before it answered: no save (as when its save fails).
             console.error(`sim worker save failed: ${err instanceof Error ? err.message : String(err)}`);

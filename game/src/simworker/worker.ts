@@ -223,7 +223,7 @@ function dispatch(m: ToWorker): void {
             return;
         case 'save': {
             try {
-                post({ type: 'saved', id: m.id, blob: host!.saveBlob() });
+                post({ type: 'saved', id: m.id, blob: host!.saveBlob(m.extras) });
             } catch (err) {
                 post({ type: 'saved', id: m.id, blob: null, error: err instanceof Error ? err.message : String(err) });
             }

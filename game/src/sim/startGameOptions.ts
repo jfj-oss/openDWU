@@ -12,6 +12,7 @@ import { normalizeResourceGeneration, type ResourceGenerationSettings } from './
 import type { ScenarioManifest } from './scenario/manifest';
 import { addonCatalog, addonPickerModel, type SmarterAIChoice } from './scenario/addons';
 import { CUSTOM_MAX_SECTORS, CUSTOM_MIN_SECTORS, clampCustomSectors } from './galaxy';
+import type { HumanPlayerStart } from './humanPlayerStarts';
 
 export interface StartGameOptions {
     shape: GalaxyShape;
@@ -156,6 +157,14 @@ export interface StartGameOptions {
      * `scenario` (addons.ts withSmarterAI); absent / disabled = off.
      */
     smarterAI?: SmarterAIChoice;
+    /**
+     * Multiplayer Phase 2 (hot seat, docs/MULTIPLAYER.md §7): the EXTRA human players (players 2..N) from the Other
+     * Empires page's "Human players (hot seat)" list; player 1 is this start's own race / empire. Absent = one human
+     * (today's game; the wizard deletes the key when the list empties, so a single-player start saves the same text).
+     * Not read by toCreateGameOptions yet: the Phase 1 "createGame taking N humans" work consumes it
+     * (humanPlayerEmpireStarts).
+     */
+    humanPlayers?: HumanPlayerStart[];
 }
 
 /** The chosen scenario and its flag / param values (manifest defaults when absent). */

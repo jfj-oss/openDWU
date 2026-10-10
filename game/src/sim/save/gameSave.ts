@@ -19,6 +19,7 @@ import { flushPlayerCommands } from '../player/playerCommands';
 import { ensurePlayerInbox, processPlayerMessages } from '../playerMessages';
 import { COMPOSITE_SCENARIO_ID, type SaveAddonAddition } from '../scenario/addons';
 import { addAddonsToLoadedGalaxy } from '../scenario/addToSave';
+import { humanEmpires } from '../humanEmpires';
 
 /** Bumped to 2 when the galaxy graph (M3 state) replaced the index-based
  *  format; version-1 saves predate ships/bases/characters and are rejected. */
@@ -35,6 +36,12 @@ export interface GameSaveJSON {
     /** External commands applied at frame boundaries (player/commandLog.ts); present only when non-empty. */
     commandLog?: CommandLogEntry[];
     /**
+     * Hot seat (multiplayer Phase 2, docs/MULTIPLAYER.md §7): whose turn it is, an index into galaxy.humanEmpires (the
+     * screen's local viewer when saved). Written only when the game has more than one human, so a single-player save is
+     * byte-identical; read from the tail (savedLocalViewer), so it stays just before customizationSet.
+     */
+    localViewer?: number;
+    /**
      * Game.CustomizationSetName (Game.cs 129) — the theme the game was made with, written into the save header
      * (GalaxySummary.WriteGalaxySummary's ThemeName, Main.Part7.cs 3721); present only for a theme, always the last key
      * (savedCustomizationSet reads it without parsing the save).
@@ -42,9 +49,15 @@ export interface GameSaveJSON {
     customizationSet?: string;
 }
 
+/** Main-thread state a save carries beside the game (the sim never reads it): see GameSaveJSON.localViewer. */
+export interface GameSaveExtras {
+    /** The local viewer's index in galaxy.humanEmpires (hot seat); written only with more than one human. */
+    localViewer?: number;
+}
+
 /** Serialize a whole game to a JSON string (see GameSaveJSON). */
-export function serializeGame(game: Game, time: GalaxyTime, startOptions: StartGameOptions): string {
-    return serializeGameParts(game, time, startOptions, (chunk) => chunk).join('');
+export function serializeGame(game: Game, time: GalaxyTime, startOptions: StartGameOptions, extras?: GameSaveExtras): string {
+    return serializeGameParts(game, time, startOptions, (chunk) => chunk, undefined, extras).join('');
 }
 
 /**
@@ -54,7 +67,7 @@ export function serializeGame(game: Game, time: GalaxyTime, startOptions: StartG
  * the game plus one chunk — `pack` can move each chunk out of the JS heap (a 100k-habitat save is ~140M characters:
  * as one string beside the encoded tree it pushed a big game past V8's heap limit).
  */
-export function serializeGameParts<T>(game: Game, time: GalaxyTime, startOptions: StartGameOptions, pack: (chunk: string) => T, chunkChars?: number): T[] {
+export function serializeGameParts<T>(game: Game, time: GalaxyTime, startOptions: StartGameOptions, pack: (chunk: string) => T, chunkChars?: number, extras?: GameSaveExtras): T[] {
     // Player commands still queued apply now: saving happens between frames, at the same boundary (galaxy.nowMs) the
     // next frame would apply them at, so the saved game and its log match the game that keeps running.
     flushPlayerCommands(game.galaxy);
@@ -76,6 +89,9 @@ export function serializeGameParts<T>(game: Game, time: GalaxyTime, startOptions
     };
     const log = commandLog(game.galaxy);
     if (log.length > 0) rest.commandLog = log.map(copyCommandLogEntry);
+    // Hot seat: whose turn it is, only in a game with more than one human (a single-player save is unchanged).
+    const viewer = extras?.localViewer;
+    if (viewer !== undefined && Number.isInteger(viewer) && viewer >= 0 && humanEmpires(game.galaxy).length > 1) rest.localViewer = viewer;
     // The game's theme is the one loaded while it runs (a load switches to the save's set first, Start.cs 1777).
     const theme = activeCustomizationSetName();
     if (theme !== '') rest.customizationSet = theme;
@@ -98,6 +114,16 @@ export function savedCustomizationSet(save: string | GameSaveJSON): string {
     } catch {
         return '';
     }
+}
+
+/**
+ * Hot seat: the saved local viewer (GameSaveJSON.localViewer, an index into galaxy.humanEmpires), or undefined for a
+ * save without one (every single-player save). Like savedCustomizationSet, a save text is read from its tail only.
+ */
+export function savedLocalViewer(save: string | GameSaveJSON): number | undefined {
+    if (typeof save !== 'string') return typeof save.localViewer === 'number' ? save.localViewer : undefined;
+    const m = /"localViewer":(\d+)(?:,"customizationSet":"(?:[^"\\]|\\.)*")?\}\s*$/.exec(save.slice(-4096));
+    return m === null ? undefined : parseInt(m[1], 10);
 }
 
 /**

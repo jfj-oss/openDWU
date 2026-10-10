@@ -1,0 +1,21 @@
+/* The wizard's "Human players (hot seat)" panel (hotSeatPlayersPanel.ts): over the Other Empires page's manual list. */
+.wizard-hotseat-panel {
+    z-index: 15;
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.6);
+}
+.wizard-hotseat-panel[hidden] {
+    display: none;
+}
+.wizard-hotseat-grid .ow-grid-cell {
+    overflow: visible;
+}
+.wizard-hotseat-name-input,
+.wizard-hotseat-race-select,
+.wizard-hotseat-gov-select {
+    width: 100%;
+    box-sizing: border-box;
+}
+.wizard-hotseat-empty {
+    padding: 8px;
+    color: rgb(170, 170, 170);
+}

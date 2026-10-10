@@ -6,6 +6,7 @@ import type { GenerateGalaxyOptions } from '../sim/galaxy';
 import type { CommandLogEntry } from '../sim/player/commandLog';
 import type { SimView } from '../sim/tick/scheduler';
 import type { StartGameOptions } from '../sim/startGameOptions';
+import type { GameSaveExtras } from '../sim/save/gameSave';
 import type { ReplicaDelta } from './replicaSync';
 import type { RemoteArg } from './remoteArgs';
 import type { MessageRoute } from '../sim/messageRouting';
@@ -98,6 +99,8 @@ export interface CommandMessage {
 export interface SaveRequest {
     type: 'save';
     id: number;
+    /** Main-thread state the save carries (hot seat: the local viewer; gameSave.ts GameSaveExtras). Absent: none. */
+    extras?: GameSaveExtras;
 }
 
 /**
