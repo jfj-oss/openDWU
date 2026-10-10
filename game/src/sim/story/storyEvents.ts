@@ -89,6 +89,7 @@ import { builtObjectSubject } from '../player/hintSubjects';
 import { resolveSectorDescription } from '../empireEvents';
 import { GalaxyLocationEffectType, GalaxyLocationType, type GalaxyLocation } from '../galaxyLocation';
 import { formatGameTextNow } from '../textResolver';
+import { isHumanEmpire } from '../humanEmpires';
 
 // ---------------------------------------------------------------------------
 // Galaxy helpers the story needs (Galaxy.5.cs / Galaxy.7.cs / Galaxy.cs)
@@ -1516,7 +1517,7 @@ export function shadowsBuildFirstMilitaryShip(galaxy: Galaxy, self: Empire): voi
         if (habitat7 != null && !habitat7.hasBeenDestroyed && relationsByType2.count > 0) {
             for (let k = 0; k < relationsByType2.count; k++) {
                 const r = relationsByType2.get(k);
-                if (r != null && r.otherEmpire !== null && r.otherEmpire !== galaxy.playerEmpire && r.otherEmpire.active) {
+                if (r != null && r.otherEmpire !== null && !isHumanEmpire(galaxy, r.otherEmpire) && r.otherEmpire.active) {
                     const shipGroup = identifyNearestAvailableFleet(galaxy, r.otherEmpire, habitat7.xpos, habitat7.ypos, true, true, 0.1);
                     if (shipGroup !== null) {
                         shipGroupAssignMission(galaxy, shipGroup, BuiltObjectMissionType.Raid, habitat7, null, BuiltObjectMissionPriority.High, false);
@@ -1533,7 +1534,7 @@ export function shadowsBuildFirstMilitaryShip(galaxy: Galaxy, self: Empire): voi
         if (!builtObject2.hasBeenDestroyed) {
             for (let l = 0; l < relationsByType2.count; l++) {
                 const r = relationsByType2.get(l);
-                if (r == null || r.otherEmpire === null || r.otherEmpire === galaxy.playerEmpire || !r.otherEmpire.active) continue;
+                if (r == null || r.otherEmpire === null || isHumanEmpire(galaxy, r.otherEmpire) || !r.otherEmpire.active) continue;
                 const firstAvailableWithinRange = getFirstAvailableWithinRange(galaxy, r.otherEmpire.builtObjects, BuiltObjectRole.Military, builtObject2.xpos, builtObject2.ypos, 0.1, true);
                 if (firstAvailableWithinRange !== null) {
                     clearPreviousMissionRequirements(galaxy, firstAvailableWithinRange);
@@ -1559,7 +1560,7 @@ export function shadowsFirstContactNormalEmpire(galaxy: Galaxy, self: Empire, em
     let flag = false;
     if (galaxy.storyShadowsEnabled && empire.pirateEmpireBaseHabitat === null) {
         const diplomaticRelation = obtainDiplomaticRelation(self, empire);
-        if (diplomaticRelation.type !== DiplomaticRelationType.War && empire !== galaxy.playerEmpire && resolveStandardRaceBias(empire.dominantRace, self.dominantRace) < 0.0) {
+        if (diplomaticRelation.type !== DiplomaticRelationType.War && !isHumanEmpire(galaxy, empire) && resolveStandardRaceBias(empire.dominantRace, self.dominantRace) < 0.0) {
             const num4 = totalMobileMilitaryFirepower(empire.builtObjects);
             const num5 = totalMobileMilitaryFirepower(self.builtObjects);
             const num6 = num5 / num4;
@@ -1598,7 +1599,7 @@ export function shadowsFirstHyperjump(galaxy: Galaxy, self: Empire, builtObject:
             if (relationsByType.count > 0) {
                 for (let i = 0; i < relationsByType.count; i++) {
                     const r = relationsByType.get(i);
-                    if (r != null && r.otherEmpire !== null && r.otherEmpire !== galaxy.playerEmpire && r.otherEmpire.active) {
+                    if (r != null && r.otherEmpire !== null && !isHumanEmpire(galaxy, r.otherEmpire) && r.otherEmpire.active) {
                         const fleet = identifyNearestAvailableFleet(galaxy, r.otherEmpire, habitat4.xpos, habitat4.ypos, true, true, 0.1);
                         if (fleet !== null) shipGroupAssignMission(galaxy, fleet, BuiltObjectMissionType.Raid, habitat4, null, BuiltObjectMissionPriority.High, false);
                     }

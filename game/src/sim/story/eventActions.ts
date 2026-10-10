@@ -108,6 +108,7 @@ import { generateCivilianConvoy, generateMilitaryConvoy } from './storyEvents';
 import type { Design } from '../design';
 import { formatGameTextNow } from '../textResolver';
 import { formatNetGrouped0 } from '../netNumberFormat';
+import { isHumanEmpire } from '../humanEmpires';
 
 registerStellarObjectKinds({ isHabitat, isBuiltObject, isCreature });
 
@@ -323,7 +324,7 @@ export function doGameEventById(galaxy: Galaxy, gameEventId: number, triggerEmpi
  * one random action (Rnd.Next(0, count)) for ExecuteSingleRandomAction with several actions, else all in order.
  */
 export function doGameEvent(galaxy: Galaxy, gameEvent: GameEvent | null, triggerEmpire: Empire | null): void {
-    if (gameEvent === null || gameEvent.hasBeenTriggered || (gameEvent.canOnlyBeTriggeredByPlayer && triggerEmpire !== galaxy.playerEmpire)) return;
+    if (gameEvent === null || gameEvent.hasBeenTriggered || (gameEvent.canOnlyBeTriggeredByPlayer && !isHumanEmpire(galaxy, triggerEmpire))) return;
     gameEvent.hasBeenTriggered = true;
     if (gameEvent.actions === null || gameEvent.actions.count <= 0) return;
     const currentStarDate = galaxyStarDate(galaxy);
@@ -1190,7 +1191,7 @@ export function executeEventAction(galaxy: Galaxy, eventAction: EventAction, tri
             if (!triggerEmpire.allowableGovernmentTypes.includes(governmentAttributes.governmentId)) {
                 triggerEmpire.allowableGovernmentTypes.push(governmentAttributes.governmentId);
             }
-            if (triggerEmpire !== galaxy.playerEmpire) {
+            if (!isHumanEmpire(galaxy, triggerEmpire)) {
                 const governmentAttributesList = determineMostSuitableGovernmentTypes(galaxy, triggerEmpire.dominantRace!, triggerEmpire.allowableGovernmentTypes);
                 const governmentId = governmentAttributesList[0].governmentId;
                 if (governmentId === governmentAttributes.governmentId) {
