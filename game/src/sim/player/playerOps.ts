@@ -82,6 +82,7 @@ import { copyMessageOptions, type MessageOptions } from '../messageRouting';
 import { storeChronicleYear, type ChronicleYear } from '../scenario/llm/chronicle';
 import { galaxyStarDate } from '../tick/simTime';
 import { applyBaconSettingsCommand } from '../baconSettings';
+import { applyOffscreenUpdateCommand, type OffscreenUpdateMode } from '../tick/offscreenUpdate';
 import type { BaconSettingsOverrides } from '../data/baconSettings';
 import { enemyTargetAttack, enemyTargetCancel, enemyTargetObjects } from './enemyTargets';
 import type { PrioritizedTargetObject } from '../civilianAI';
@@ -477,6 +478,9 @@ export const PLAYER_OPS = {
     /** Ours: Game Options → Bacon Mod Settings. This game's BaconSettings.txt values (the whole override set; keys left
      *  out take the install file's value), then BaconInitialize again at this frame boundary (sim/baconSettings.ts). */
     setBaconSettings: (galaxy: Galaxy, _empire: Empire, overrides: BaconSettingsOverrides) => applyBaconSettingsCommand(galaxy, overrides),
+    /** Ours: Game Options → Off-screen update rate (tick/offscreenUpdate.ts): Original / Higher / Adaptive, and Adaptive's
+     *  batch size (offscreenAdaptive.ts journals each one it picks). Returns the batch now in effect. */
+    setOffscreenUpdateRate: (galaxy: Galaxy, _empire: Empire, mode: OffscreenUpdateMode, batch?: number) => applyOffscreenUpdateCommand(galaxy, mode, batch),
     setMessageOptions: (galaxy: Galaxy, _empire: Empire, options: MessageOptions) => {
         galaxy.messageOptions = copyMessageOptions(options);
         return true;

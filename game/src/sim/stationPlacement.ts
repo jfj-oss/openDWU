@@ -244,6 +244,28 @@ export function getBuiltObjectsAtLocation(galaxy: Galaxy, x: number, y: number, 
     return builtObjectList;
 }
 
+/**
+ * Perf: the index cells GetBuiltObjectsAtLocation(x, y, range) concatenates, in the same order, without copying their
+ * contents (a crowded cell holds hundreds of objects). Walking them cell by cell visits exactly the objects, in exactly
+ * the order, of the copied list — for read-only callers only: the cells are the live index, so a caller must not move,
+ * add or remove built objects while it walks them.
+ */
+export function builtObjectCellsAtLocation(galaxy: Galaxy, x: number, y: number, range: number): BuiltObject[][] {
+    const x2 = galaxy.resolveIndexX(x);
+    const y2 = galaxy.resolveIndexY(y);
+    const grid = galaxy.builtObjectIndexGrid;
+    const cells: BuiltObject[][] = [grid[x2][y2]];
+    const e = determineClosestIndexEdgesCustom(galaxy, Math.trunc(x), Math.trunc(y), x2, x2, y2, y2);
+    if (e.d < range) {
+        const num2 = x2 + e.nearestX;
+        const num3 = y2 + e.nearestY;
+        if (num3 < galaxy.indexMaxY && num3 >= 0) cells.push(grid[x2][num3]);
+        if (num2 < galaxy.indexMaxX && num2 >= 0) cells.push(grid[num2][y2]);
+        if (num2 < galaxy.indexMaxX && num2 >= 0 && num3 < galaxy.indexMaxY && num3 >= 0) cells.push(grid[num2][num3]);
+    }
+    return cells;
+}
+
 // Galaxy.7.cs DetermineNonMiningBaseAtHabitat (327).
 export function determineNonMiningBaseAtHabitat(habitat: Habitat): BuiltObject | null {
     for (let i = 0; i < habitat.basesAtHabitat.length; i++) {

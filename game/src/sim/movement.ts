@@ -49,7 +49,7 @@ import { DiplomaticRelationType, obtainDiplomaticRelation } from './diplomacy';
 import { PirateRelationType, obtainPirateRelation } from './pirateRelations';
 import { isObjectVisibleToThisEmpire, isStellarObjectDockable } from './independentTraders';
 import { determineEmpireSystems } from './forceStructure';
-import { fastFindNearestSpacePort, getBuiltObjectsAtLocation } from './stationPlacement';
+import { fastFindNearestSpacePort, builtObjectCellsAtLocation } from './stationPlacement';
 import { findNewestCanBuild, resolveSubRoleDescription } from './designGeneration';
 import { gameText } from './colonyTick';
 import { checkRuinsHaveBenefit } from './exploration';
@@ -748,14 +748,18 @@ export function detectHyperDeny(galaxy: Galaxy, builtObject: BuiltObject): boole
     bo.hyperjumpDisabledLocation = false;
     let num = 1200;
     num += MAX_SOLAR_SYSTEM_SIZE * 2;
-    // GetBuiltObjectsAtLocationByArrays: the same cells in the same order as GetBuiltObjectsAtLocation.
-    const list = getBuiltObjectsAtLocation(galaxy, bo.xpos, bo.ypos, num);
-    for (let k = 0; k < list.length; k++) {
-        const builtObject2 = list[k];
-        if (builtObject2 != null && builtObject2.hyperDenyActive && checkWithinDistancePotential(builtObject2.weaponHyperDenyRange, bo.xpos, bo.ypos, builtObject2.xpos, builtObject2.ypos)) {
-            const num3 = galaxy.calculateDistance(bo.xpos, bo.ypos, builtObject2.xpos, builtObject2.ypos);
-            if (builtObject2.weaponHyperDenyRange >= num3) {
-                return true;
+    // GetBuiltObjectsAtLocationByArrays: the same cells in the same order as GetBuiltObjectsAtLocation (perf: walked in
+    // place, builtObjectCellsAtLocation — the loop only reads).
+    const cells = builtObjectCellsAtLocation(galaxy, bo.xpos, bo.ypos, num);
+    for (let c = 0; c < cells.length; c++) {
+        const list = cells[c];
+        for (let k = 0; k < list.length; k++) {
+            const builtObject2 = list[k];
+            if (builtObject2 != null && builtObject2.hyperDenyActive && checkWithinDistancePotential(builtObject2.weaponHyperDenyRange, bo.xpos, bo.ypos, builtObject2.xpos, builtObject2.ypos)) {
+                const num3 = galaxy.calculateDistance(bo.xpos, bo.ypos, builtObject2.xpos, builtObject2.ypos);
+                if (builtObject2.weaponHyperDenyRange >= num3) {
+                    return true;
+                }
             }
         }
     }
@@ -773,28 +777,32 @@ export function checkWithinDistancePotential(distance: number, x1: number, y1: n
 
 /** BuiltObject.1.cs 1772 CheckForHyperExitGravityWell(x, y). */
 export function checkForHyperExitGravityWell(galaxy: Galaxy, bo: BuiltObject, x: number, y: number): BuiltObject | null {
-    const list = getBuiltObjectsAtLocation(galaxy, x, y, 4000);
-    for (let j = 0; j < list.length; j++) {
-        const builtObject = list[j];
-        if (builtObject == null || builtObject.hyperStopRange <= 0 || builtObject.empire === null || builtObject.empire === bo.empire) {
-            continue;
-        }
-        let flag = false;
-        if (builtObject.empire.pirateEmpireBaseHabitat !== null) {
-            const pirateRelation = obtainPirateRelation(bo.empire!, builtObject.empire);
-            if (pirateRelation.type === PirateRelationType.None) {
-                flag = true;
+    // Perf: the cells walked in place (builtObjectCellsAtLocation; same objects, same order — the loop only reads).
+    const cells = builtObjectCellsAtLocation(galaxy, x, y, 4000);
+    for (let c = 0; c < cells.length; c++) {
+        const list = cells[c];
+        for (let j = 0; j < list.length; j++) {
+            const builtObject = list[j];
+            if (builtObject == null || builtObject.hyperStopRange <= 0 || builtObject.empire === null || builtObject.empire === bo.empire) {
+                continue;
             }
-        } else {
-            const diplomaticRelation = obtainDiplomaticRelation(bo.empire!, builtObject.empire);
-            if (diplomaticRelation.type === DiplomaticRelationType.War) {
-                flag = true;
+            let flag = false;
+            if (builtObject.empire.pirateEmpireBaseHabitat !== null) {
+                const pirateRelation = obtainPirateRelation(bo.empire!, builtObject.empire);
+                if (pirateRelation.type === PirateRelationType.None) {
+                    flag = true;
+                }
+            } else {
+                const diplomaticRelation = obtainDiplomaticRelation(bo.empire!, builtObject.empire);
+                if (diplomaticRelation.type === DiplomaticRelationType.War) {
+                    flag = true;
+                }
             }
-        }
-        if (flag || (bo.empire !== null && bo.empire.pirateEmpireBaseHabitat !== null)) {
-            const num2 = galaxy.calculateDistance(builtObject.xpos, builtObject.ypos, x, y);
-            if (num2 < builtObject.hyperStopRange) {
-                return builtObject;
+            if (flag || (bo.empire !== null && bo.empire.pirateEmpireBaseHabitat !== null)) {
+                const num2 = galaxy.calculateDistance(builtObject.xpos, builtObject.ypos, x, y);
+                if (num2 < builtObject.hyperStopRange) {
+                    return builtObject;
+                }
             }
         }
     }
