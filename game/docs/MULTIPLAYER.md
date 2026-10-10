@@ -4,9 +4,11 @@ Status: **Phase 1 of 5 done (2026-10-10)**, a few small leftovers in §6. Milest
 clear "a human controls this empire" sim rules), Milestone 2 (the local viewer in the UI, an inbox for every human, the
 (a) leftovers, the plumbing) and Milestone 3 (the nine decisions of §4, `createGame` for N humans). **Phase 3 (LAN play,
 §10) is built** on top of the lockstep core (§8): host / join by IP in the desktop app, the lobby, the version and data
-check, and the session flow. Nothing changes for the player: the seed pins (`npm run repin -- --check`) are unchanged at
-every commit, one-human saves are byte-identical to before, and every multiplayer-only rule runs only when the game has
-more than one human (`isMultiHuman`).
+check, and the session flow. **Phase 4's LAN half is built (§11–§14):** lockstep with the sim in the worker, rejoining
+a dropped player, AI takeover of an absent player's empire, and an adaptive input delay; the Internet transport (relay /
+WebRTC, invite codes) is planned in §15. Nothing changes for the player: the seed pins (`npm run repin -- --check`) are
+unchanged at every commit, one-human saves are byte-identical to before, and every multiplayer-only rule runs only when
+the game has more than one human (`isMultiHuman`).
 
 ## 1. The plan
 
@@ -25,7 +27,7 @@ The command log already names the empire of each command (`PlayerLogEntry.empire
 | **1** | Refactor "the player" into a *set of human empires* plus *the local viewer*, still with one human. Nothing changes for the player; repin stays at 0. | 1–2 weeks (the biggest) |
 | 2 | Hot-seat: two players on one PC (switch the local viewer between turns or with pause). | |
 | 3 | LAN lockstep: host/join by IP, a shared clock and pause, desync checks. | |
-| 4 | Internet: relay/WebRTC, a lobby and invite codes, reconnects, AI takeover on disconnect. | |
+| 4 | Internet: relay/WebRTC, a lobby and invite codes, reconnects, AI takeover on disconnect. | LAN half done (§11–§14): worker mode, rejoin, AI takeover, adaptive delay. Next: the transport (§15). |
 | 5 | Polish: chat, human-to-human diplomacy, multiplayer saves, version/add-on/data checks, joining mid-game. | |
 
 Risks: cross-platform determinism (checked, see §9: it holds once Math.pow is replaced), hidden single-player
@@ -593,7 +595,7 @@ loop asks `lockstepStepper(galaxy)`, which is null unless a session is attached.
   inflates it asynchronously and holds its frames and other messages until it is loaded. A 17 MB save travels as
   ~1.5 MB.
 - **Leave.** When a client's link drops, the host ends it at the first frame it has no input for, and tells the
-  others. The session goes on. `hooks.onPeerLeft` is where Phase 4 hands the empire to the AI. If the host's link
+  others. The session goes on. `hooks.onPeerLeft` is where the host decides about the empire (§12). If the host's link
   drops, a client's session ends (`onHostLost`).
 
 **The demo** (`scripts/lockstep-demo.mjs`, not a test):
@@ -636,8 +638,8 @@ Results on 2026-10-10 (seed 1, 300 stars, 4 empires, 4x, input delay 4, CPU core
 
 - ~~**App wiring.**~~ Done (§10): the Multiplayer screen and lobby; `MultiplayerGame` sets the stepper, and a resync or
   join that replaces the game rebuilds the view as loading a save does.
-- **Worker mode.** `SimHost.tick` needs the same seam. Its command replies (`settleCommands`) expect commands to be
-  applied at the next boundary, not D frames later. Its `stepSerial` must count the lockstep frames.
+- ~~**Worker mode.**~~ Done (§11): `SimHost.tick` asks the same seam; lockstep commands are answered by their own
+  callbacks when they apply, not by `settleCommands`.
 - **No camera LOD pass in multiplayer.** Each screen's camera differs, so the camera cannot be a shared input. The
   adapter runs without a view, as the headless harness does.
 - ~~**Humans per peer at the lobby.**~~ Done (§10): the lobby rows become `StartGameOptions.humanPlayers`, the peer →
@@ -730,7 +732,7 @@ is started, `npm run repin -- --check --workers 1` = 0, and the lockstep demo st
 | `src/net/multiplayerGame.ts` | `MultiplayerGame`: the lockstep session over the real game. `authorize`: a peer may only command its slot's human empire (`humanEmpires[humanIndex]` at the command's frame). The host holds at frame 0 until every lobby player joined (a client that built the game itself joins with its frame-0 digest: no save travels). Status for the screen: waiting, resyncing, a player left (the host pauses), the host is gone. The humans are createGame's own (`StartGameOptions.humanPlayers` = the clients' lobby rows in slot order), so human index = player order. |
 | `src/net/lockstep.ts` | One new hook, `onResyncStart` (client: a resync arrived, its save is loading). |
 | `src/ui/multiplayer/multiplayerApp.ts` (+ `.css`) | The Multiplayer screen, the lobby, the in-game banner and status chip, the LAN save extras, and `window.__dwuMp` (scripts). |
-| `src/main.ts` | `multiplayerDeps`: build the game in-thread from the start (`toCreateGameOptions` + the host's `createExtras`), load a save for the host, show a game (tearing down the one up), the wizard and the save picker. A LAN game always runs the in-thread sim (the sim worker has no lockstep seam yet). |
+| `src/main.ts` | `multiplayerDeps`: build the game from the start (`toCreateGameOptions` + the host's `createExtras`; in-thread or, §11, in the sim worker), load a save for the host, show a game (tearing down the one up), the wizard and the save picker. |
 | `src/ui/screens/mainMenu.ts` | A "Multiplayer" item after Load Game (text: there is no original art for it). |
 | `src/ui/screens/newGameWizard.ts` | `initialOptions` (open on the lobby's settings) and `multiplayer` (no hot-seat list: the humans are the lobby's players). |
 | `src/ui/hotSeat.ts` | `networked`: no Switch Player button, hotkey or curtain in a LAN game. |
@@ -781,10 +783,9 @@ uses are part of the host's start options; the hash makes sure everyone has the 
 - **Desync.** Every 60 frames the clients send their digest; on a mismatch the host sends that client a save. The client
   shows "Resyncing with the host…", reloads, and its view is rebuilt on the new galaxy; the host shows "Resyncing
   <player>…" until that player's next digest matches.
-- **Disconnect.** A client leaving pauses the game on the host with "<player> disconnected … The game is paused" (the
-  host may resume; the empire stands idle). The host leaving ends the game on the clients ("Lost the connection to the
-  host"). Both banners offer Main Menu. A connection that arrives after the start is refused ("joining a running game
-  comes in a later version").
+- **Disconnect.** A client leaving pauses the game on the host; the host chooses AI takeover or idle, and the player can
+  rejoin (§12). The host leaving ends the game on the clients ("Lost the connection to the host"; Rejoin / Main Menu).
+  A connection after the start that is not a dropped player coming back is refused.
 - **Saving.** Any player can save (each has the whole game); the host's save is the one to keep. A LAN save carries the
   players by human index (`multiplayer` key). Loading it as host: Multiplayer → Host Game → Load Saved Game…; the same
   players get their empires back by name.
@@ -793,8 +794,12 @@ uses are part of the host's start options; the hash makes sure everyone has the 
 
 `__dwuMp` (while a LAN game runs): `role`, `status`, `frame`, `clock`, `stats`, `gameMs`, `peers()`, `digest()`,
 `myEmpire()`, `issue(op, args)` (for this player's empire), `renameOther(humanIndex, label)` (a refused command),
-`scriptStep(tag)` (rename the first ship and drop a waypoint), `shipNames()`, `pause(bool)`, `setSpeed(n)`.
-`__dwuMpLobby` (host lobby): `patchSettings(partial)` (as the wizard would), `state()`, `fingerprint()`, `files()`.
+`scriptStep(tag)` (rename the first ship and drop a waypoint), `shipNames()`, `pause(bool)`, `setSpeed(n)`. Phase 4:
+`worker`, `inputDelay`, `seats()` (each lobby slot: present, AI-run, empire), `decideAbsent(slot, ai)` (the host's
+banner buttons), `setInputDelay(n)` (host), `dropLinks(reason)` (close this peer's links as a failing network would). In
+worker mode `digest()`, `issue`, `renameOther`, `scriptStep`, `shipNames` return promises (await them in either mode).
+`__dwuMpLobby` (host lobby): `patchSettings(partial)` (as the wizard would), `state()`, `setAdaptiveDelay(bool)`,
+`fingerprint()`, `files()`.
 
 ### 10.6 Test results (2026-10-10)
 
@@ -824,11 +829,145 @@ Done with Phase 1 on main (2026-10-10):
 
 Phase 4:
 
-- **Rejoin** for the same player after a disconnect, and **AI takeover** of a left player's empire
-  (`hooks.onPeerLeft`; TODO(mp-phase4) in `multiplayerGame.ts`). Today the empire stands idle.
+- ~~**Rejoin** and **AI takeover**~~: done (§12).
+- ~~**The sim worker**~~: done (§11).
+- ~~**An adaptive input delay**~~: done (§13).
 - **Host migration** (the host leaving ends the game).
-- **Internet play**: a relay or WebRTC, invite codes, an adaptive input delay (the fixed 4 frames suit a LAN).
-- **The sim worker**: a lockstep seam in `SimHost.tick` (§8), so a LAN game can run its sim off the main thread.
+- **Internet play**: a relay or WebRTC and invite codes (§15).
 
 Phase 5: chat, human-to-human diplomacy, joining a running game (refused today), a per-human handicap, a Windows peer
 in the cross-machine check, and a deeper desync hash with the first divergent frame logged.
+
+## 11. Phase 4: lockstep with the sim in the worker
+
+Built on branch `wip/mp-phase4`. A LAN game now runs where the app runs its sim: in the sim worker (the desktop app's
+sim process, docs/sim-worker.md §4.7) when Settings → "simulation in a worker thread" is on (the default on machines
+with enough memory; `?simWorker=1|0` overrides), else in-thread as in Phase 3. Big galaxies need the worker. Peers of
+both kinds can share one session: the frames are the same code.
+
+**Where the session runs.** `LockstepSim.applyFrame` / `digest` / `save` / `load` are synchronous calls on the game, so
+the session lives next to it, in the worker (`src/simworker/workerLockstep.ts`). The network links stay on the main
+thread (the desktop shell hands the page a MessagePort per connection, `desktop/netHost.cjs`; a browser page holds its
+WebSocket) and their traffic is relayed: `netIn` / `netClose` to the worker, `netOut` / `netCloseOut` back
+(`src/ui/multiplayer/mpHandle.ts` `WorkerMp`, the worker's `RelayLink`). The main thread sees the session through
+`mpState` (on change and every 250 ms: status, frame, clock, stats, peers, seats, input delay) and calls into it with
+`mpCall` / `mpReply` (pause, speed, the host's decisions, the debug hook).
+
+| File | What |
+|---|---|
+| `src/simworker/simHost.ts` | `tick`: when `lockstepStepper(galaxy)` is set (the seam of §8), the session steps the galaxy exactly as the in-thread loop does — no command drain of its own, no camera pass, the HUD's pause / speed become session requests in the stepper. `admitCommands`: with the session's command sink on the galaxy a command goes to the session and is answered by its own callbacks when it applies on every peer (or an error reply when it is refused or dropped), not settled against the local queue at the next boundary (`settleCommands`). `stepSerial` counts the frames the stepper ran unpaused. |
+| `src/simworker/workerLockstep.ts` | `WorkerLockstep`: `MultiplayerGame.host` / `join` over the worker's game with relayed links; the stepper set on the galaxy; `mpState`; `mpCall` (pause, speed, ping, digest, decideAbsent, inputDelay, the script calls). |
+| `src/simworker/worker.ts` | The multiplayer messages work before the game exists; a `lockstep` boot (a client of a loaded game or a rejoin) loads only the data and waits for the welcome's save; `replaceGame`: a resync or join save replaced the game → a new `SimHost` over it, `gameReplaced`, then the new snapshot (streamed as at boot). |
+| `src/simworker/workerClient.ts` | `MpSideChannel` (the session's messages, at any time, also before the first snapshot); on `gameReplaced` the client detaches (it takes no more messages and disposing it leaves the worker running) and the next client is built from the snapshot that follows (`onReplaced`). |
+| `src/simworker/clientCore.ts` | `setLockstep(true)`: the reply backstop is off (a command waits for its frame, which a loading peer can hold up; the worker still answers every command and says it is alive), and the Adaptive off-screen rate picks nothing (each peer would pick its own). |
+| `src/ui/multiplayer/mpHandle.ts` | `MpHandle`, one shape for the screen: `InThreadMp` (the Phase 3 path) and `WorkerMp`. |
+| `src/ui/multiplayer/multiplayerApp.ts`, `src/main.ts` | Host / client start in either mode (`deps.useWorker`, `buildGameInWorker`, `bootWorker`); a replaced game is shown as a loaded one is. |
+
+Nothing changes in single-player: without a session no stepper is set, `SimHost.tick` and `admitCommands` take their old
+branch, and no multiplayer message is sent.
+
+## 12. Phase 4: rejoin and AI takeover
+
+**The sim: AI-run seats** (`src/sim/humanEmpires.ts`). A human seat whose player left can be handed to the AI until they
+return: `setAiSeat(galaxy, empire, ai)`, only through the journaled command `setSeatAi` (so every peer changes it at the
+same frame, and a replay from the command log does too). While a seat is AI-run, `isHumanEmpire` is false and
+`humanEmpires` leaves it out, so every AI branch of Milestones 1–3 decides for it and a player command for it is
+rejected (`applyLive`); `humanSeats` keeps the stable list the session maps players to, and `isMultiHuman` counts seats,
+so the game stays a multiplayer one. The primary human (the host) is never an AI seat. The set is the save side table
+`aiSeats` and reaches the replica; it is written only while non-empty, so every other game saves the same text (repin 0).
+
+**The session** (`src/net/multiplayerGame.ts`):
+
+- **A drop.** The host pauses (`absent` status) and decides: **AI Takes Over** (`decideAbsent(slot, true)`: the host
+  issues `setSeatAi` for that seat — the only command a peer may issue for another empire, and only the host:
+  `slotAuthorizer`) or **Continue Without Them** (the empire stands idle). Either resumes the game if the drop paused it.
+  The host may also resume by hand; the banner keeps offering the choice.
+- **Rejoin.** The host's app answers a connection to the running game (`installRejoinGate`): the lobby hello's
+  fingerprint must still match, and the player gets their slot back by their **rejoin token** (each player's own,
+  sent with `lobbyStart` and kept in `localStorage` `dwu.mp.rejoin`) or by their **lobby name** among the absent players.
+  The host answers `lobbyRejoin { slot, start, token }` and hands the link to the session (`lobby.ts` `slotHandoff`:
+  the lockstep hello gets the slot's peer name), which admits it as a new peer with the current save, as any mid-game
+  join (§8). If the AI ran the seat, the host's `setSeatAi(false)` rides on its next input — the frame the rejoined
+  peer's input starts from — so **the AI never runs a frame of a seat whose player is in the session**. The drop's
+  pause lifts once no absent player is undecided.
+- **The client.** After a drop its banner says "Lost the connection to the host" with **Rejoin** (same address, its
+  token). After a restart of the app, Multiplayer → Join Game with the same address does the same (the address and token
+  are remembered). The welcome's save brings the game (in-thread: `MultiplayerGame.join(null, …)`; worker: the
+  `lockstep` boot of §11).
+
+`LobbyHello.rejoin`, `LobbyStart.token` and `lobbyRejoin` are new lobby messages; a Phase 3 client ignores the token.
+
+## 13. Phase 4: an adaptive input delay
+
+`LockstepOptions.adaptiveDelay` (host; the lobby's "Adaptive input delay" box, `__dwuMpLobby.setAdaptiveDelay`): the host
+pings every client each second, keeps the worst of its last 5 round trips, and wants the delay to cover the slowest
+path a command takes — a client's input to the host and on to the slowest other client, half of each round trip — plus
+2 frames, between 3 and 30 frames. A raise goes out at once; a cut after the lower value was wanted 5 times in a row. A
+peer still loading its welcome save is not measured (it answers late). The new delay rides on the host's input of a
+frame (`FrameInput.delay`) and every peer switches at that frame; `resync` carries the parameters. A change can never
+apply a command twice or skip one: each frame keeps the one input a peer sent for it (a raise sends empty acks for the
+gap, a cut waits until the frame catches up). The delay is not sim state: the digests do not depend on it.
+`setInputDelay(frames)` sets it by hand (host).
+
+## 14. Phase 4: tests (2026-10-10)
+
+`scripts/lockstep-demo.mjs --phase4` (scratch flags, not a test): host + client in one process over the in-memory
+transport, through `MultiplayerGame` itself. They play 360 frames, the client's link drops, the host decides (AI, or
+`--idle`), the AI runs the seat (`--away` frames), the client rejoins by name with no game of its own (the save comes in
+the welcome), and they play on; the host's command for the AI-run seat must be refused, the rejoined client's rename
+must apply on both, control must be back by the rejoined peer's first input frame, and the final digests must match.
+`--worker`: the client (before and after the rejoin) steps through `SimHost.tick` and sends its orders as the main
+thread's `CommandMessage`s (`SimHost.command`); `--latency N` (one-way ms on every link, real-time pacing) and
+`--adaptive`.
+
+| Run (seed 1, 150 stars, 4 empires, 4x) | Result |
+|---|---|
+| `--phase4` (in-thread client, AI takeover) | OK: final digests `789d7c93f5c02e46` at frame 2195 on both; 16 checks, 0 mismatches (10 after the rejoin); the AI ran the seat from frame 394 (ships 21 → 23, money 35,867 → 27,427); control back at frame 1595 = the rejoined peer's first input frame; the host's hijack refused |
+| `--phase4 --worker` | OK: the same final digest `789d7c93f5c02e46` (the worker peer runs the frames the in-thread one does) |
+| `--phase4 --worker --idle` | OK: `53a898142690d93f` on both (the idle seat: a different game, as it should be) |
+| `--phase4 --latency 100` (200 ms round trips), fixed delay 4 | OK; the host stalled 928 times (19.0 s) |
+| same with `--adaptive` | OK; delay 4 → 9 frames at frame 16, then steady; 28 stalls (1.0 s, mostly the rejoin's save load) |
+| `scripts/lockstep-demo.mjs` (WebSocket, Phase 3 scenario) | OK: digests match at frame 3780, 73 checks, the injected desync repaired, the joiner 10/10 |
+
+**Two desktop apps on this PC** through the real UI (each on its own virtual Wayland compositor, real GPU through
+ANGLE / Vulkan, profiles via `DWU_USER_DATA_DIR`; menu → Multiplayer → lobby → Start; seed 4242, 120 stars, 2x; orders
+from both sides every 2 s; digests compared while paused at the same game time):
+
+| Scenario | Host worker, client in-thread (rejoins in the worker) | Host in-thread, client worker (rejoins in-thread) |
+|---|---|---|
+| S1 a worker-mode session, 36 s with renames, waypoints and a refused hijack | `b59b344e4c4f3ec9` at 54,016 game ms on both; 37 checks, 0 mismatches | `79dc2ef04097c962` at 71,266 ms; 37 checks, 0 mismatches |
+| S2 the client's app is killed; the host clicks Continue Without Them; 10 s idle; the client restarts and rejoins with Join Game (by token) | `9517d7de8a66483a` at 97,666 ms; 56 checks, 0 mismatches | `c2f64f21a4c377ee` at 125,633 ms; 53 checks, 0 mismatches |
+| S3 the client's network drops; the host clicks AI Takes Over; 25 s of AI; the client clicks Rejoin | `78cb16375975a7cd` at 164,000 ms; 74 checks, 0 mismatches; the AI seat back to the human on both | `48feb26544404ce4` at 170,200 ms; 70 checks, 0 mismatches |
+
+Also: `npm run repin -- --check --workers 1` = 0; `npm run typecheck`; the sim-worker, replica and desktop-shell vitest
+files (25 files, 172 tests) pass.
+
+## 15. The Internet plan (next step)
+
+Everything above the transport is ready for the Internet: the session only needs an ordered, reliable text `Link`
+(§8), the adaptive delay covers the latency, rejoin covers dropped connections, and the fingerprint check runs in the
+lobby whatever carries it. What is missing is a way to reach a host behind a home router.
+
+1. **A relay first** (works through any NAT, no port forwarding). A small Node service built on `desktop/wsServer.cjs`:
+   the host connects out over `wss://` and registers a room; the relay answers an **invite code** (6–8 characters from
+   an unambiguous alphabet, random, expiring with the room). A client connects out with the code; the relay pairs it
+   with the host and forwards text frames both ways. The star topology maps 1:1: each client is one `Link` on the host
+   — one relay WebSocket per client (simplest), or one host socket multiplexed by a client id.
+   - Desktop: `netHost.cjs` gets `relayHost(url)` → `{ code }` with each paired client bridged to a MessagePort exactly
+     as an accepted LAN socket is (`dwu:net-link`), and `relayJoin(url, code)` like `connect`. The page code
+     (`netBridge.ts`, the lobby, the session) does not change. A browser page can join through the relay too (a
+     page can open `wss://`), and could even host through it.
+   - UI: the Multiplayer screen gets "Host on the Internet" (shows the code to share) and "Join by code" next to the
+     LAN boxes; the rejoin token then names the room and slot.
+   - Limits: the relay forwards at most a few MB/s per room and enforces the 64 MB message cap; the saves of a join or
+     resync are already gzip + 1 MB chunks (§8). Keepalive pings through the relay keep idle NAT mappings open.
+   - Security: TLS only; rooms are invisible without the code; the relay never parses game traffic (the host still
+     checks fingerprints and authorizes every command); rate limits per IP; codes are single-room and short-lived.
+   - Hosting: one small VM or a serverless WebSocket service; the URL is a setting with a default.
+2. **WebRTC later** (peer-to-peer, lower latency and no relay bandwidth). The relay doubles as the signalling server
+   (offer / answer / ICE candidates over its socket); a reliable, ordered `RTCDataChannel` is a `Link`. STUN for most
+   NATs, the relay itself (or TURN) as the fallback. Electron's renderer has WebRTC, so this lives in the page; the
+   desktop main process is not needed.
+3. **Around it:** host migration (today the host leaving ends the game: a client with the newest state could take
+   over the star), Windows in the cross-machine determinism check (§9), the version / add-on check already in the lobby,
+   a deeper desync hash with the first divergent frame logged, and chat (Phase 5).
