@@ -92,6 +92,7 @@ import { issuePlayerCommand } from '../../sim/player/playerCommands';
 import { CHARACTER_ROLE, CHARACTER_SKILL, CHARACTER_TRAIT, INTELLIGENCE_MISSION, resolveEnumTextDescription } from '../../sim/enumText';
 import { formatNet, getText, isTextLoaded, resolveGameText } from '../../sim/textResolver';
 import { politicsDetail, politicsRowCells, politicsVisible } from '../emergentPolitics'; // [emergent]
+import { cvCharacterDetail, cvTaskText } from '../scenario/charactersVictoryUi'; // [charactersVictory]
 import { courtDetail } from '../courtView'; // [court]
 import type { SeatName } from '../../sim/scenario/court/court'; // [court]
 import { investigatorOptions, leadRows, securityVisible } from '../internalSecurityView'; // [security]
@@ -186,6 +187,9 @@ function transferText(c: Character, galaxy: Galaxy): string {
 /** Galaxy.2.cs:5240 ResolveDescriptionCharacterTask(character, galaxy) — the list's Mission column. */
 export function resolveDescriptionCharacterTask(c: Character | null, galaxy: Galaxy): string {
     if (c === null) return '';
+    // [charactersVictory] a VIP shuttle trip (the stock timer is held while aboard): destination, shuttle, ETA, escorts.
+    const vip = galaxy.scenario !== null ? cvTaskText(galaxy, c) : null;
+    if (vip !== null) return vip;
     let result = '';
     const loc = c.location;
     const waiting = (): string => T('Waiting at X', locationName(c));
@@ -1087,7 +1091,8 @@ function createIntelligenceScreen(opts: IntelligenceScreenOptions): OpenState {
     skills.appendChild(skillsInner);
     const dPolitics = el('div', 'ch-extra'); // [emergent] 19d1 politics block
     const dCourt = el('div', 'ch-extra'); // [court] 19n house / seat / appoint
-    skills.append(dPolitics, dCourt);
+    const dCv = el('div', 'ch-extra'); // [charactersVictory] travel / post / fit / suggestion / automation
+    skills.append(dCv, dPolitics, dCourt);
     // cmb* (85, 565) 230 × 22 and btnTransfer (85, 595) 230 × 25.
     const transferSel = dropDown([], '', () => {});
     transferSel.style.fontSize = `${FONT.large}px`;
@@ -1239,10 +1244,51 @@ function createIntelligenceScreen(opts: IntelligenceScreenOptions): OpenState {
         const task = resolveDescriptionCharacterTask(c, galaxy);
         setText(sTask, task !== '' ? task : resolveCharacterLocationDescription(c));
         renderSkills(c);
+        renderCv(c); // [charactersVictory]
         renderPolitics(c); // [emergent]
         renderCourt(c); // [court]
         renderTransfer(c);
     }
+
+    // [charactersVictory] begin — travel by VIP shuttle, the governor's post and fit, suggestions and the automation
+    // switches (player commands cvAcceptSuggestion / cvSetAutomation)
+    function renderCv(c: Character): void {
+        const p = cvCharacterDetail(galaxy, player, c);
+        const key = p === null ? '' : JSON.stringify(p);
+        if (dCv.dataset.key === key) return;
+        dCv.dataset.key = key;
+        dCv.replaceChildren();
+        if (p === null) return;
+        const again = (): void => {
+            dCv.dataset.key = '';
+            render();
+        };
+        dCv.appendChild(text(`POST — ${p.status}`, { size: FONT.large, bold: true, color: COLORS.label }));
+        for (const l of p.lines) dCv.appendChild(text(l, { size: FONT.normal, color: COLORS.text, wrapWidth: 357 }));
+        const buttons = el('div', 'ch-extra-buttons');
+        if (p.suggestion !== null) {
+            const s = p.suggestion;
+            dCv.appendChild(text(s.label, { size: FONT.small, color: 'rgb(255, 210, 74)', wrapWidth: 357 }));
+            buttons.appendChild(glassButton('Accept', { size: FONT.small, onClick: () => issuePlayerCommand(galaxy, player, 'cvAcceptSuggestion', [c, s.colony], again) }));
+        }
+        if (p.automateGovernors !== null) {
+            const on = p.automateGovernors;
+            buttons.appendChild(glassButton(on ? 'Automate governors: on' : 'Automate governors: off', { size: FONT.small, onClick: () => issuePlayerCommand(galaxy, player, 'cvSetAutomation', [{ governors: !on }], again) }));
+        }
+        if (p.automateEscorts !== null) {
+            const on = p.automateEscorts;
+            buttons.appendChild(glassButton(on ? 'Automate VIP escorts: on' : 'Automate VIP escorts: off', { size: FONT.small, onClick: () => issuePlayerCommand(galaxy, player, 'cvSetAutomation', [{ escorts: !on }], again) }));
+            if (on) {
+                const levels = [0, 0.5, 1, 2];
+                const names = ['None', 'Light', 'Normal', 'Heavy'];
+                const i = Math.max(0, levels.indexOf(p.escortLevel));
+                const next = levels[(i + 1) % levels.length];
+                buttons.appendChild(glassButton(`Escorts: ${names[i]}`, { size: FONT.small, title: 'VIP escort strength (click to change)', onClick: () => issuePlayerCommand(galaxy, player, 'cvSetAutomation', [{ escortLevel: next }], again) }));
+            }
+        }
+        dCv.appendChild(buttons);
+    }
+    // [charactersVictory] end
 
     // [emergent] begin — 19d1 internal politics: loyalty, trend, causes, Honour / Arrest / Purge (command queue)
     function renderPolitics(c: Character): void {

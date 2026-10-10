@@ -107,6 +107,7 @@ import { warEmpires } from './builtObjectLayer';
 import { FreightOverlay } from './freightOverlay'; // [freightOverlay]
 import { threatKnownSites, type KnownThreatSite } from '../sim/scenario/threats/framework';
 import { scenarioMapFeatures, type ScenarioMapMarker } from '../sim/scenario/mapFeatures';
+import { VipMarkerLayer } from './vipMarkers'; // [charactersVictory]
 import { WRECK_MARKER_COLOR, visibleWreckFields, wreckFieldHit, wreckMarker } from '../ui/scenario/wreckageUi'; // [wreckage]
 import type { WreckField } from '../sim/scenario/wreckage/common'; // [wreckage]
 // [dw2overlays] begin
@@ -589,6 +590,8 @@ export class OverlayLayer {
      * ship. Null: its sim position. */
     motion: MotionInterpolator | null = null;
     private threatFrame = 0;
+    /** Characters & Victory: gold rings on visible VIP shuttles, routes with the VIP traffic overlay. */
+    readonly vip: VipMarkerLayer;
     /** Scenario map markers (mod layer, e.g. the 19a treasure fleet beacon): drawn at every zoom. */
     private scenarioMarkers = new Graphics();
     private scenarioMarkerList: ScenarioMapMarker[] = [];
@@ -688,6 +691,7 @@ export class OverlayLayer {
         this.root.addChild(this.threats);
         this.root.addChild(this.scenarioMarkers);
         this.root.addChild(this.wrecks); // [wreckage]
+        this.vip = new VipMarkerLayer(galaxy, this.root, state); // [charactersVictory]
         // [dw2overlays] begin
         this.colonyScores = new ColonyScoreOverlay(galaxy, this.root, state);
         this.resources = new ResourceOverlay(galaxy, this.root, state);
@@ -856,6 +860,8 @@ export class OverlayLayer {
         this.updateThreats(z);
         this.updateScenarioMarkers(z);
         this.updateWrecks(z); // [wreckage]
+        this.vip.motion = this.motion; // [charactersVictory] rings follow the drawn shuttles
+        this.vip.update(z);
         this.supply.motion = this.motion; // [improvements] supplyChain
         this.runOverlay('Supply Shortages', SUPPLY_KEYS, () => this.supply.update(z, cam));
     }

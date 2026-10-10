@@ -26,6 +26,8 @@ export interface MapOverlayState {
     threats: boolean;
     /** Scenario 19e-7: debris fields of battle wreckage the player knows (wreck markers + hover tooltip). */
     wrecks: boolean;
+    /** Characters & Victory: the routes of the player's VIP shuttles (the gold rings are always drawn). */
+    vipTraffic: boolean;
     // [dw2overlays] begin — Improvements (ui/improvements.ts; DW2-inspired, not in the original): UI-only reads of what
     // the player knows.
     /** Colony Target Scores: the Expansion Planner's colonization targets as rings coloured by their score, around the
@@ -75,6 +77,8 @@ export function createMapOverlayState(): MapOverlayState {
         threats: true,
         // On, like Threats: only draws in a wreckage-scenario game.
         wrecks: true,
+        // Off: only routes; the rings show regardless (Characters & Victory games only).
+        vipTraffic: false,
         // [dw2overlays] begin — off, like every addition.
         colonyScores: false,
         resources: false,
@@ -122,6 +126,7 @@ export const OVERLAY_ROWS: OverlayRow[] = [
     // [freightOverlay] end
     { key: 'threats', label: 'Threats' },
     { key: 'wrecks', label: 'Wreck Fields', mod: true },
+    { key: 'vipTraffic', label: 'VIP traffic', mod: true },
     // Improvements section (ui/improvements.ts): rows with `improvement: '<id>'` go here.
     // [dw2overlays] begin
     { key: 'colonyScores', label: 'Colony Target Scores', improvement: 'colonyTargetScores' },

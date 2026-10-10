@@ -2829,6 +2829,12 @@ export class MainView {
                         return;
                     }
                     // [freightOverlay] end
+                    // [charactersVictory] hover a VIP shuttle's gold ring: its name and passenger (own) / "VIP shuttle".
+                    const vh = this.overlayLayer?.vip.hitTest(w.x, w.y, this.camera.zoom) ?? null;
+                    if (vh !== null) {
+                        showMapTooltip(vh, e.clientX, e.clientY);
+                        return;
+                    }
                     // [wreckage] begin — hover a known debris field (scenario 19e-7).
                     const wf = this.overlayLayer?.wreckHitTest(w.x, w.y, this.camera.zoom) ?? null;
                     if (wf !== null) {

@@ -594,6 +594,8 @@ const OVERLAY_PARAM_ALIASES: Record<string, OverlayKey> = {
     supply: 'supplyShortages', // [improvements] supplyChain
     supplyShortages: 'supplyShortages',
     waypoints: 'waypoints', // [improvements] waypoints
+    vip: 'vipTraffic', // [charactersVictory]
+    vipTraffic: 'vipTraffic',
 };
 
 /** Screenshot / dev hook: `?overlays=potentialColonies,scenic,research`

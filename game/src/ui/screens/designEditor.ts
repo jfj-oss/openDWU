@@ -20,6 +20,7 @@
 //   the ship picture (PrepareBuiltObjectImage); the Component Guide's "Learn about X..." Galactopedia link
 //   (Main.Part4.cs:3357 lnkComponentGuideType_LinkClicked, :3117 method_546).
 
+import { vipComponentAllowed } from '../../sim/scenario/charactersVictory/shuttleDesign'; // [charactersVictory]
 import type { Empire } from '../../sim/empire';
 import type { Galaxy } from '../../sim/galaxy';
 import { FIGHTER_MIX_CHOICES, FighterMix, designFighterMix, type Design } from '../../sim/design';
@@ -650,7 +651,8 @@ export function openDesignEditor(opts: DesignEditorOptions): DesignEditorHandle 
 
     // ---- Binding ---------------------------------------------------------------------------------------------------
     function bindToolbox(): void {
-        const all = showLatest ? latestToolboxComponents(galaxy, empire) : designToolboxComponents(empire);
+        let all = showLatest ? latestToolboxComponents(galaxy, empire) : designToolboxComponents(empire);
+        if (draft.vip === true) all = all.filter((c) => vipComponentAllowed(c.type)); // [charactersVictory] VIP Shuttle families
         toolbox.setRows(categoryFilter < 0 ? all : all.filter((c) => c.category === categoryFilter));
     }
 
@@ -845,6 +847,19 @@ export function openDesignEditor(opts: DesignEditorOptions): DesignEditorHandle 
         if (saving) return;
         design.name = name.value;
         saving = true;
+        if (draft.vip === true) {
+            // [charactersVictory] the VIP Shuttle: its own command (never into Empire.Designs).
+            issuePlayerCommand(galaxy, empire, 'cvSaveVipDesign', [name.value, design.components.map((c) => c.componentId)], (ok) => {
+                saving = false;
+                if (win.closed) return;
+                if (!ok) {
+                    void messageBox({ caption: 'VIP Shuttle', text: 'A VIP Shuttle needs at least an engine and a hyperdrive.', icon: 'warning' });
+                    return;
+                }
+                win.close();
+            });
+            return;
+        }
         issuePlayerCommand(galaxy, empire, 'saveDesign', [draft], (r) => {
             saving = false;
             if (win.closed) return;
@@ -859,6 +874,7 @@ export function openDesignEditor(opts: DesignEditorOptions): DesignEditorHandle 
     }
 
     for (const s of [subRole, stronger, weaker, invasion, flee, scaling]) s.disabled = view;
+    if (draft.vip === true) subRole.disabled = true; // [charactersVictory] the VIP Shuttle role is fixed
     setScalingMode(design.imageScalingType, true);
     bindToolbox();
     refresh();

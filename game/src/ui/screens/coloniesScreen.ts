@@ -23,6 +23,7 @@
 // TODO(port): character portraits in the Troops & Characters tab (CharacterImageCache) — CharacterTroopListIconView.cs
 // TODO(port): racial / wonder / resource bonus lines of the attitude summary — HabitatAttitudeSummary.cs DetermineHabitat*Bonuses
 
+import { cvColonySlot } from '../scenario/charactersVictoryUi'; // [charactersVictory]
 import './coloniesScreen.css';
 import type { Empire } from '../../sim/empire';
 import type { Galaxy } from '../../sim/galaxy';
@@ -1213,7 +1214,20 @@ function createColoniesScreen(opts: ColoniesScreenOptions): OpenState {
         const bg = gradientPanel({ corners: { tl: true, br: true } });
         page.appendChild(place(bg, 274, 5, 385, 240));
         const sc = scrollPanel('col-attitude');
-        bg.appendChild(place(sc, 8, 8, 370, 220));
+        // [charactersVictory] the governor slot under the attitude summary: name or vacancy countdown, Request governor.
+        const slot = galaxy.scenario !== null ? cvColonySlot(galaxy, empire, h) : null;
+        bg.appendChild(place(sc, 8, 8, 370, slot === null ? 220 : 190));
+        if (slot !== null) {
+            const label = slot.governor !== null ? `Governor: ${slot.governor.name}${slot.status !== '' ? ` — ${slot.status}` : ''}` : slot.status !== '' ? slot.status : 'No governor';
+            const t = text(label, { size: FONT.small, color: slot.governor === null && slot.neglectPct > 0 ? COLORS.red : COLORS.gridText });
+            t.title = 'Every colony needs a governor (Characters & Victory): six months after one leaves, the colony starts to decline.';
+            bg.appendChild(place(t, 8, 204, 240, 18));
+            const req = glassButton(slot.requested ? 'Requested' : 'Request governor', {
+                disabled: !slot.canRequest,
+                onClick: () => issuePlayerCommand(galaxy, empire, 'cvRequestGovernor', [h], () => renderPage(true)),
+            });
+            bg.appendChild(place(req, 252, 200, 125, 24));
+        }
         const sum = colonyAttitudeSummary(galaxy, h);
         const line = (s: string, cls: string, color?: string): void => {
             const d = el('div', `col-att-line ${cls}`, s);

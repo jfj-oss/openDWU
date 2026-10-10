@@ -20,6 +20,7 @@
 //   format; loading is the loadDesignFile command).
 // TODO(port): the empire-colour tint of the list's ship pictures (DesignListView.PrepareBuiltObjectImage).
 
+import { CV_VIP_FLAG, cvOn, peekCvState } from '../../sim/scenario/charactersVictory/common'; // [charactersVictory]
 import './designsScreen.css';
 import type { Empire } from '../../sim/empire';
 import type { Galaxy } from '../../sim/galaxy';
@@ -43,6 +44,7 @@ import {
     designAutomationPromptApplies,
     isDesignInUse,
     newDesignDraft,
+    newVipDesignDraft,
     type DesignDraftSource,
 } from '../../sim/player/designEditor';
 import { openDesignEditor, type DesignEditorHandle } from './designEditor';
@@ -446,7 +448,24 @@ function createShipDesigns(opts: ShipDesignsOptions): OpenState {
     explanation.appendChild(text(gt('Designs Upgrade Roles Explanation'), { size: FONT.normal, wrapWidth: 615, color: COLORS.text }));
     body.appendChild(place(explanation, 10, 60, 615, 45));
     // btnDesignsShowEmpirePolicy → method_595.
-    body.appendChild(place(glassButton(gt('Show Empire Policy'), { onClick: () => toggleEmpirePolicy({ empire: player }) }), 635, 62, 320, 40));
+    // [charactersVictory] the VIP Shuttle role's design (kept outside the list: never built, only spawned per trip).
+    const vipOn = galaxy.scenario !== null && cvOn(galaxy, CV_VIP_FLAG);
+    body.appendChild(place(glassButton(gt('Show Empire Policy'), { onClick: () => toggleEmpirePolicy({ empire: player }) }), 635, 62, vipOn ? 155 : 320, 40));
+    if (vipOn) {
+        const vipBtn = glassButton('VIP Shuttle...', {
+            title: 'Edit the VIP Shuttle design (shields, armour, engines, hyperdrive, reactor, fuel, quarters only).',
+            onClick: () => {
+                if (editor !== null || busy) return;
+                const draft = newVipDesignDraft(galaxy, player, peekCvState(galaxy)?.empires[player.empireId]?.design ?? null);
+                if (draft === null) {
+                    void messageBox({ caption: 'VIP Shuttle', text: 'Your empire has no VIP Shuttle design yet: one is made with the first character trip.', icon: 'information' });
+                    return;
+                }
+                editor = openDesignEditor({ galaxy, empire: player, draft, sourceKind: 'edit', sourceDesign: null, onClose: () => { editor = null; } });
+            },
+        });
+        body.appendChild(place(vipBtn, 800, 62, 155, 40));
+    }
 
     // ctlDesignsList (10, 122) 945 × 450 with method_307's column widths (Name takes what the scrollbar leaves).
     // The Upgrade toggle per sub-role as last sent, until its reply lands (pendingCommands.ts).
