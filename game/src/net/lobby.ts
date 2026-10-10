@@ -125,6 +125,22 @@ export function decodeLobbyMessage(text: string): LobbyMessage | null {
     return decode(text);
 }
 
+/** The most a first message (the lobby hello, with the fingerprint) may hold. */
+export const LOBBY_HELLO_MAX_CHARS = 64 * 1024;
+
+/**
+ * The first message on a new link, if it is a lobby hello of sane size and shape; null otherwise (the host then
+ * refuses the link before reading anything else: nothing but a hello reaches the version check).
+ */
+export function decodeHello(text: string): Extract<LobbyMessage, { t: 'lobbyHello' }> | null {
+    if (text.length > LOBBY_HELLO_MAX_CHARS) return null;
+    const m = decode(text);
+    if (m === null || m.t !== 'lobbyHello') return null;
+    if (m.fp !== undefined && (m.fp === null || typeof m.fp !== 'object')) return null;
+    if (m.rejoin !== undefined && (typeof m.rejoin !== 'string' || m.rejoin.length > 64)) return null;
+    return m;
+}
+
 /** Send a lobby message. */
 export function sendLobbyMessage(link: Link, m: LobbyMessage): void {
     send(link, m);
@@ -286,14 +302,25 @@ export class LobbyHost {
             return;
         }
         let entry: ClientEntry | null = null;
+        let refused = false;
         link.onMessage = (text) => {
-            const m = decode(text);
-            if (m === null) return;
+            if (refused) return;
             if (entry === null) {
-                if (m.t !== 'lobbyHello') return;
-                entry = this.admit(link, m, remote);
+                // Before the version check only a hello is accepted: anything else closes the link.
+                const hello = decodeHello(text);
+                if (hello === null) {
+                    refused = true;
+                    this.opts.log?.(`refused ${remote || 'a connection'}: it did not start with a lobby hello`);
+                    send(link, { t: 'lobbyRefused', reason: 'Not an openDWU lobby hello.' });
+                    link.close('refused');
+                    return;
+                }
+                entry = this.admit(link, hello, remote);
+                if (entry === null) refused = true;
                 return;
             }
+            const m = decode(text);
+            if (m === null) return;
             if (m.t === 'lobbyPick') {
                 const p = entry.player;
                 p.pick = cleanPick(m.pick);
