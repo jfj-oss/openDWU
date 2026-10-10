@@ -38,9 +38,14 @@ describe('19a Concord — flag off is byte-identical', () => {
     // Repinned again at 990fb8c: f2aa5bc (orbit spacing so bodies never overlap, a requested deviation) changes generation,
     // and later deliberate generation changes (0198eda SelectHabitatPictures and others, each repinned in the golden pins)
     // shift the Rnd stream; the c5cff32 values were 2477059f19d2da47/fe7c3e8fd4b91dbb and 4a9c0d151a4302cf/9029719465f2dcd0.
+    // Repinned at 1615137a (the galaxy long block clears the independent empire's never-processed inbox, a documented
+    // leak fix, test/pins/HISTORY.md 2026-10-10; it runs at game start too, so the start digest moves): stateDigest
+    // hashes Empire.messages.length, RNG draws unchanged. With only that line reverted the 990fb8c values still
+    // match on a26a7455, so the flag-off path is still identical to the feature-free game. The 990fb8c values were
+    // aae3cd943610cba5/7ebf83ea39581249 and af20ac37e16a82a1/9494f88633de1e94.
     const PINS: [boolean, string, string][] = [
-        [true, 'aae3cd943610cba5', '7ebf83ea39581249'],
-        [false, 'af20ac37e16a82a1', '9494f88633de1e94'],
+        [true, '27f56466e7db0995', '975f2f55b5990a4c'],
+        [false, '1b1366f7b0c5b9e5', '198f40389d329b22'],
     ];
     for (const [forced, d0, d1] of PINS) {
         it(`passive off, 1 starting colony, cap 4 (${forced ? 'wizard Oranthi' : 'Concord created at start'}): 1 year matches the pre-feature digests`, () => {
