@@ -22,3 +22,19 @@ export function setLocalViewerEmpire(galaxy: Galaxy, empire: Empire | null | und
     if (empire === undefined) viewers.delete(galaxy);
     else viewers.set(galaxy, empire);
 }
+
+// Multiplayer Phase 2 (hot seat): screens that cache what they show for the viewer re-render when it changes.
+const viewerListeners = new Set<(galaxy: Galaxy, empire: Empire | null) => void>();
+
+/** Call `fn` after every setLocalViewerEmpire (any galaxy). Returns the unsubscribe. */
+export function onLocalViewerChange(fn: (galaxy: Galaxy, empire: Empire | null) => void): () => void {
+    viewerListeners.add(fn);
+    return () => viewerListeners.delete(fn);
+}
+
+/** setLocalViewerEmpire, then tell the onLocalViewerChange listeners (the hot-seat switch uses this). */
+export function switchLocalViewerEmpire(galaxy: Galaxy, empire: Empire | null | undefined): void {
+    setLocalViewerEmpire(galaxy, empire);
+    const now = localViewerEmpire(galaxy);
+    for (const fn of [...viewerListeners]) fn(galaxy, now);
+}

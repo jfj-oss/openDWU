@@ -24,7 +24,7 @@ The command log already names the empire of each command (`PlayerLogEntry.empire
 | 4 | Internet: relay/WebRTC, a lobby and invite codes, reconnects, AI takeover on disconnect. | |
 | 5 | Polish: chat, human-to-human diplomacy, multiplayer saves, version/add-on/data checks, joining mid-game. | |
 
-Risks: cross-platform determinism (checked, see §7: it holds once Math.pow is replaced), hidden single-player
+Risks: cross-platform determinism (checked, see §9: it holds once Math.pow is replaced), hidden single-player
 assumptions, and the slowest PC sets the game speed.
 
 ## 2. The API (Phase 1)
@@ -366,7 +366,212 @@ small rewrite rather than a one-line swap:
 **Total: about 8–10 working days** after Milestone 1 (which took about 1 day). This matches the plan's 1–2 weeks for
 Phase 1. Items 1–3 and 5 do not depend on the §4 answers and can start now; item 4 waits for them.
 
-## 7. Cross-platform determinism check
+## 7. Phase 2 (hot seat): the UI-side pieces
+
+Built on branch `wip/mp-hotseat`, alongside the rest of Phase 1. Single-player is unchanged: no key is written
+for one human, and `npm run repin -- --check` = 0.
+
+### 7.1 What is built
+
+- **The wizard.** The Other Empires page has a "Human Players..." button. It opens a panel over the manual empire
+  list (`src/ui/screens/hotSeatPlayersPanel.ts`) with one row per *extra* human. Each row has an empire name, the race
+  and government combos of the manual AI rows (the government list follows the race the same way:
+  `startGovernmentsForRace`), and the main and secondary flag colours. A line on the page and a Start-page summary row
+  show the count. The rows are stored as `StartGameOptions.humanPlayers`. The key is deleted when the last row is
+  removed, so a single-player start saves exactly the same text as before.
+- **The switch** (`src/ui/hotSeat.ts`, installed in `main.ts` `startGameView`):
+  - a "Switch Player" button in the top-left strip, right of Play/Pause. It shows only while
+    `humanEmpires(galaxy).length > 1`;
+  - the hotkey **Ctrl+Shift+H**. It is a capture-phase listener, not a row in the key-binding table;
+  - a full-screen curtain, "Player N — click to continue", with the empire name and colour. The curtain goes up
+    before the viewer changes. The game is paused while it is up, and goes back to its own pause state when the curtain
+    is clicked (or Enter/Space). Every key is swallowed while the curtain is up.
+  - The viewer moves with the new `switchLocalViewerEmpire(galaxy, empire)` (`src/localViewer.ts`), which calls
+    `setLocalViewerEmpire` and then the new `onLocalViewerChange` listeners. A screen that caches anything for the
+    viewer should subscribe to those listeners. `main.ts` clears the selection and centres the camera on the new
+    viewer's capital.
+  - A new hot-seat game opens on player 1's curtain.
+  - The dev hook `?hotSeatDev=1` (in-thread sim only) makes the first AI empire a second human, for trying the switch
+    before createGame takes N humans.
+- **Saves.** `GameSaveJSON.localViewer` is whose turn it is: an index into `galaxy.humanEmpires`. It is written only
+  when the game has more than one human. It sits just before `customizationSet`, so `savedLocalViewer(tail)` reads it
+  from the save's tail.
+  - The value is main-thread state. It travels as `GameSaveExtras` through `serializeGame` / `serializeGameParts` /
+    `serializeGameBlob`, and in worker mode through `SimWorkerClient.save(timeout, extras)` → `SaveRequest.extras` →
+    `SimHost.saveBlob(extras)`.
+  - On load, `loadSaveWithProgress` hands the tail to `rememberSavedLocalViewer`. `installHotSeat` then switches to that
+    human and shows their curtain.
+  - The fatal-error rescue save (`rescueSaveBlob`) and the replica fallback save carry no viewer. They load on player 1.
+
+### 7.2 Hand-off to Phase 1: `createGame` with N humans
+
+Not wired: `toCreateGameOptions` does not read `humanPlayers` yet. The field shape it should consume
+(`src/sim/humanPlayerStarts.ts`):
+
+```ts
+// StartGameOptions.humanPlayers?: HumanPlayerStart[]  — the EXTRA humans (players 2..N), in player order.
+// Player 1 is the start's own race / empire (raceName, empireName, governmentId, colours), as today.
+// Absent (never []) = one human.
+interface HumanPlayerStart {
+    name: string;          // empire name; '' = the "<Race> Empire" default (as ManualEmpireStart.name)
+    race: string;          // race name; '' = (Random)
+    governmentId: number;  // governments.txt id; -1 = (Random)
+    primaryColor: string;  // '#rrggbb'
+    secondaryColor: string;
+}
+// At most HOT_SEAT_EXTRA_HUMANS_MAX (7) rows.
+```
+
+`humanPlayerEmpireStarts(humans, gameData, player)` already turns the rows into `EmpireStartOptions[]`. Each extra
+human starts like player 1: the same age, tech level, home-system quality, corruption and flag shape, a `(Random)`
+start location, and its own race, government, name and colours. So in `toCreateGameOptions` (custom path; the Jump
+Start / Introductory paths have no rows):
+
+```ts
+const humans = humanPlayerEmpireStarts(o.humanPlayers ?? [], gameData, player);
+// → CreateGameOptions (e.g. `humanPlayers: humans`). createGame places them like the player, then
+//   setHumanEmpires(galaxy, [playerEmpire, ...their empires]) in the same order (the hot-seat index is into that list).
+```
+
+The wizard does not grey out the storylines for more than one human yet (decision §4.4). Do that together with the
+createGame change, so the rule lives in one place.
+
+### 7.3 Screens that still read `playerEmpire` (do not follow the switch yet)
+
+Phase 1 item 1 (§6) migrates these. Today the switch changes the fog (`render/fog.ts`, the only `localViewerEmpire`
+reader), the camera and the selection. Everything below still shows player 1:
+
+- **`main.ts`: values captured once at boot from `game.playerEmpire`.** These need a viewer accessor or a re-install on
+  `onLocalViewerChange`:
+  - the message stream (`installLocalMessageStream`, `installWorkerMessageUi`), `installMessagePopups`,
+    `installMessageStubList`, `installAdvisorSuggestions` (+ its build-order opener), the ticker poll
+    (`messageFeed.pollMessages(game.playerEmpire)`) and `savedHistoryLines`;
+  - `tradeFlowsOpts.playerEmpire`, the supply snapshot (`galaxy.playerEmpire`), `startAiAdvisorDriver` /
+    `startLlmLayer` (`player:`), and `setThemeChromeRace` (the chrome race);
+  - the founding message and the camera start.
+- **HUD:** `ui/hud.ts` (27 lines: money panel, top-bar buttons, selection panel, sources via `game.playerEmpire`),
+  `ui/leftSidebarView.ts`, `ui/systemView.ts`, `ui/supplyChainCache.ts`, `ui/overlayOptionPanels.ts`,
+  `ui/waypoints.ts`.
+- **Screens:** `ui/screens/empiresList.ts`, `tradeFlows.ts`, `resourceSupply.ts`, `galaxyMap.ts`,
+  `empireComparison.ts`, `gameSummary.ts`, `empirePolicy.ts`, `constructionYards.ts`, `tradePanel.ts`,
+  `ruinDetail.ts`, `groundReport.ts`, `gameEndPanel.ts`.
+- **Render:** `render/overlayLayer.ts` (14), `render/mainView.ts` (11), `locationMarkers.ts`, `galaxyMarkers.ts`,
+  `systemLinks.ts`, `supplyOverlay.ts`, `resourceOverlay.ts`, `fuelOverlay.ts`, `freightOverlay.ts`,
+  `colonyScoreOverlay.ts`, `creatureLayer.ts`, `faunaGallery.ts`, `whalePilotLayer.ts`, `rimAtmosphereLayer.ts`,
+  `artBundleLayer.ts`.
+- **Audio:** `audio/gameAudio.ts`, `mainViewSounds.ts`, `rimCreatureAudio.ts`.
+- **Commands:** the UI-record sender (`setUiRecordSender`) still issues every order as `galaxy.playerEmpire` (§6
+  item 5). Until it reads the local viewer, player 2's orders act on player 1's empire.
+
+## 8. Lockstep core (built ahead for Phase 3)
+
+A standalone networking core in `src/net/`. Nothing in the game uses it yet. Single-player only changes in one place: the sim
+loop asks `lockstepStepper(galaxy)`, which is null unless a session is attached. The seed pins are unchanged.
+
+**Files**
+
+| File | What |
+|---|---|
+| `src/net/protocol.ts` | The wire messages (JSON). A command on the wire is a `NetCommand`: the command-log fields (`empire` index into `flatEmpireList`, `op`, args in the command-log codec), plus the peer id and a sequence number. |
+| `src/net/transport.ts` | The `Link` interface (an ordered, reliable text channel) and the in-memory transport (`memoryLinkPair`, `MemoryListener`). |
+| `src/net/wsTransport.ts` | The WebSocket `Link` on the standard WebSocket API (browser, Electron renderer, Node 22's global). `connectWebSocket(url)` is for clients; `wrapSocket(socket)` wraps an accepted server socket. |
+| `scripts/lib/wsServer.mjs` | A small WebSocket server with no dependencies (`node:http` upgrade, RFC 6455), for the host. The desktop main process can reuse it. |
+| `src/net/lockstep.ts` | `LockstepSession`, which works with any transport and any sim (see below). |
+| `src/net/lockstepSim.ts` | The integration seam. `GalaxyLockstepSim` steps to frame F with these commands on a real game. `SessionStepper` lets the in-thread sim loop be driven by a session. |
+| `src/net/lockstepSeam.ts` | The registry `src/simLoop.ts` reads (`setLockstepStepper` / `lockstepStepper`). When a stepper is set, the loop calls it instead of its own frame budget. |
+
+**How it works**
+
+- **Frames.** A lockstep frame is one sim frame: 1/60 s of real time, and `nextFrameMs(speed)` game ms. A command issued
+  at frame F is applied at frame F + `inputDelay` (default 4, about 67 ms). Frame F runs on a peer only when that peer
+  has every in-session peer's input for F. An input is either commands or an empty "no input" ack. Each peer acks
+  through F + delay before it runs F. Within a frame, commands apply in peer-id order, then in issue order.
+- **Topology.** A star. Clients send to the host, and the host relays to the others. So the host always knows every
+  input first, and its join and leave decisions are consistent for everyone.
+- **Local commands.** While a session is attached, `issuePlayerCommand` on that galaxy goes to the session through the
+  existing `setRemoteCommandSink` hook (the one the sim worker's replica uses). The command is encoded at issue time
+  with the command-log codec. At its frame, the adapter re-issues it on the real queue and drains it, so it is applied
+  and journaled exactly as in single-player. It then runs one `runSimFrame`, or none while paused. A command that an
+  `onApplied` callback issues goes back through the session. Commands with arguments that cannot be encoded are
+  refused locally, not sent. The optional `authorize(peer, empire, op)` check runs on every peer on the same data, so
+  a refused command is dropped everywhere.
+- **Clock.** The host's inputs carry speed and pause changes, and these apply at their frame like commands. A client
+  calls `requestPause`, and the host decides (`allowPauseRequest`). A paused frame still runs: it applies commands but
+  adds no game time. No peer can run past what the slowest peer has acked, so the game runs at the slowest peer's
+  pace. In the app, `SessionStepper` turns the HUD's speed and pause buttons into host clock changes, or into pause
+  requests on a client.
+- **Desync.** Every `digestInterval` frames (default 60), each peer takes `stateDigest` at that boundary. Clients send
+  theirs to the host. On a mismatch, the host sends that client `serializeGame` of its current boundary, plus every
+  input it holds from there on. The client reloads and continues; it may rewind a few frames or jump ahead. Each digest
+  carries a resync count, so digests computed before the reload are ignored.
+- **Join.** A client says `hello`. If it built the same game itself, the hello carries its frame and digest, and the
+  host skips the save when they still match. Otherwise it gets the host's save at the current boundary, plus the input
+  buffer. It sends input from the first frame the host has not sent yet. Every other peer hears of the join before
+  that frame's host input, so nobody runs that frame without the newcomer.
+- **Leave.** When a client's link drops, the host ends it at the first frame it has no input for, and tells the
+  others. The session goes on. `hooks.onPeerLeft` is where Phase 4 hands the empire to the AI. If the host's link
+  drops, a client's session ends (`onHostLost`).
+
+**The demo** (`scripts/lockstep-demo.mjs`, not a test):
+
+```bash
+nice -n 19 taskset -c 4-7 node scripts/lockstep-demo.mjs            # host + client processes over WebSocket on localhost
+nice -n 19 taskset -c 4-7 node scripts/lockstep-demo.mjs --memory   # the in-memory transport, two sessions in one process
+#   options: --seed 1 --stars 300 --empires 4 --minutes 4 --speed 4 --delay 4 --digest 60 --burst 1000 --no-join --keep
+```
+
+Both processes build the game from the same seed and make two empires human (`setHumanEmpires`). Peer 0 commands the
+primary human and peer 1 the second; a command for anyone else's empire is refused. The demo then:
+
+1. runs 300 frames in real time, with renames, waypoints and retirements from each side;
+2. runs the rest as fast as the inputs allow, with a burst of 1000 commands per side, then 20 commands per frame per
+   side;
+3. has the client corrupt its own state (it adds money to an empire outside the sim), which is detected and repaired;
+4. has the client ask for a pause, which the host grants and then lifts;
+5. has a third process join mid-game (it gets the save), try a command for the host's empire (refused on every peer)
+   and then drop;
+6. checks that the final digests match.
+
+Results on 2026-10-10 (seed 1, 300 stars, 4 empires, 4x, input delay 4, CPU cores 4–7):
+
+| | |
+|---|---|
+| Final digests, host and client (frame 3780, 4.06 game minutes) | match; 14,010 player commands journaled on each side |
+| Digest checks | 73: the 1 mismatch (the injected one) was found at the next check (frame 960), with a 16.5 MB save. The client reloaded in 0.24 s, and every check after that matched. |
+| Joiner | welcomed at frame 1717 with a 16.7 MB save (loaded in 0.28 s); 10/10 digest checks matched; left at frame 2317; the session went on |
+| Pause | requested by the client at frame 1110; 125 paused frames on both peers |
+| Command latency, real-time (60 fps) | about 64–65 ms median, own or the other peer's; the 4-frame input delay is 67 ms |
+| Command latency, unthrottled | median 2–4 ms, p95 under 20 ms |
+| WebSocket ping (localhost) | 0.1 ms; issue to arrival at the host: median 1.0 ms |
+| Frame rate, unthrottled | idle lockstep 731 frames/s (the same sim alone: about 2,000 frames/s, so round trips dominate); with 20 commands per frame per side, 807 frames/s and 31,900 commands/s applied |
+| Burst | 2,000 commands applied on both peers within 20–24 ms |
+| Traffic (host) | sent 5,615 messages / 37.6 MB (mostly the two saves), received 4,475 / 1.1 MB |
+| In-memory transport | 600 frames, two sims in one process: the digests match |
+
+**What Phase 3 still needs**
+
+- **App wiring.** A host/join screen. Create the session, then call `setLockstepStepper(galaxy, new SessionStepper(…))`.
+  When a resync or join replaces the game (`onGameReplaced`), switch the views over, as loading a save does.
+- **Worker mode.** `SimHost.tick` needs the same seam. Its command replies (`settleCommands`) expect commands to be
+  applied at the next boundary, not D frames later. Its `stepSerial` must count the lockstep frames.
+- **No camera LOD pass in multiplayer.** Each screen's camera differs, so the camera cannot be a shared input. The
+  adapter runs without a view, as the headless harness does.
+- **Humans per peer at the lobby.** `setHumanEmpires` must run as a deterministic start step, plus a peer → empire map for
+  `authorize`. The UI-record sender (`obtainUiRecords`) must use the local viewer's empire (Phase 1, §6 item 5).
+- **Stable references.** Commands are encoded when issued and resolved D frames later. Codec keys that are list
+  indices (a fleet, a design, a character: "owner + index") can point at a different object by then. This is
+  deterministic, so there is no desync, but it may hit the wrong target. Those kinds need stable ids.
+- **Smaller saves.** A 300-star save is 16.5 MB of JSON. Compress it (`CompressionStream`) and chunk it for joins and
+  resyncs.
+- **A finer desync check.** `stateDigest` hashes key fields only. Add a deeper periodic hash, and log the first
+  divergent frame to help debugging.
+- **Messages per human** (Phase 1, §6 item 2), before two people can really play.
+- **Cross-machine determinism.** Both demo processes run on one machine; test Linux/macOS/Windows peers early.
+- **Electron host.** Run `wsServer.mjs` in the main process and bridge it to the renderer or worker over IPC.
+- **Later (Phase 4).** Adaptive input delay for the Internet, a relay or WebRTC, reconnects, host migration, AI
+  takeover in `onPeerLeft`.
+
+## 9. Cross-platform determinism check
 
 `scripts/determinism-check.mjs` bundles `scripts/determinism-check/runner.ts` (rolldown, one self-contained ESM file,
 the `scenarios/` overlays inlined) and runs it under the repo's Electron (`ELECTRON_RUN_AS_NODE=1`, the release app's
@@ -407,4 +612,3 @@ Findings:
   on Linux (the same file content). Harmless; the runner's data fingerprint lower-cases paths.
 - Not a sim problem: `defaultRaceName` (`startGameOptions.ts`, the wizard default) sorts with the OS locale, and the
   sim's other collators and `toLocaleString` calls name `'en-US'`.
-
