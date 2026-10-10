@@ -53,6 +53,16 @@ uniform vec4 uParams;
 uniform vec4 uBand;
 // Storm flashes active now (galaxyBackdropFlashes.ts): centre (p units), radius, intensity (0 = none).
 uniform vec4 uFlash[12];
+// Particle-built galaxies (galaxyParticles.ts): this band's particle light, the two haze layers (the same particles,
+// soft and low-resolution), and an optional colour / dust art texture (rgb colour, a dust; mixed in by uPartInfo2.x).
+uniform sampler2D uPart;
+uniform sampler2D uHaze1;
+uniform sampler2D uHaze2;
+uniform sampler2D uArt;
+// x: particle light decode scale, y: style (0 infrared Galactic Core, 1 Golden Spiral), z: arm winding, w: arm phase.
+uniform vec4 uPartInfo;
+// x: art texture mix (0 = none).
+uniform vec4 uPartInfo2;
 
 const float TAU = 6.28318530718;
 
@@ -141,130 +151,91 @@ float streak(vec2 p, float r, float a, vec2 off, int ch) {
     return mix(smooth_, ch == 0 ? fA(c) : fB(c), k);
 }
 
-// ---------------------------------------------------------------------------------------------------------- Galactic Core
-// Styled after a false-colour infrared picture of a large spiral: tightly wound, nearly concentric ring bands; glowing red
-// dust filaments tracing each ring; cyan / ice-white granular young-star clumps on and just outside them (most in the
-// bright, ragged outer ring); a soft green haze filling the disk between the rings; a compact white core with a
-// white-yellow halo and a faint inner red ring; black outside with scattered point stars. Face-on, and every part is
-// weighted by the real star density so it sits where the stars are.
+// ------------------------------------------------------------------------------- Particle galaxies (Galactic Core, Golden Spiral)
+// The light comes from particles anchored to the star systems (galaxyParticles.ts); this pass adds the unresolved
+// haze, the dust, the point stars and the tone curve. Galactic Core: infrared-style palette (cyan young stars, green
+// haze, red dust glow, white core). Golden Spiral: golden-amber light, brown dust that dims and reddens it.
 const vec3 GC_RED = vec3(0.95, 0.13, 0.10);
 const vec3 GC_CYAN = vec3(0.42, 0.86, 1.0);
 const vec3 GC_ICE = vec3(0.80, 0.94, 1.0);
-const vec3 GC_GREEN = vec3(0.10, 0.44, 0.17);
-const vec3 GC_WHITE = vec3(1.0, 0.98, 0.94);
+const vec3 GC_GREEN = vec3(0.12, 0.5, 0.2);
 const vec3 GC_HALO = vec3(1.0, 0.86, 0.58);
-// Kept for the sheen's colour ramp.
-const vec3 GC_WARM = vec3(1.0, 0.83, 0.58);
-const vec3 GC_COOL = vec3(0.48, 0.58, 0.92);
+const vec3 GS_GOLD = vec3(1.0, 0.78, 0.45);
+const vec3 GS_BLUE = vec3(0.72, 0.85, 1.0);
 
-// Ring winding: 1 / tan(pitch) for a 4–6 degree pitch (nearly concentric), seeded.
-float gcWind() { return 9.5 + 4.5 * fract(uMisc.w * 3.7); }
-// Ring phase: a low-pitch spiral for a spiral; concentric about the galaxy's ellipse for elliptical / ring; density
-// contours for irregular and cluster galaxies (the bands follow their own shape).
-float gcPsi(vec2 p, float r, float a, vec3 d) {
-    if (uParams.w < 0.5) return uArm.x * (uArm.w * a - log(max(r, 0.003)) * gcWind()) + uArm.z;
-    if (uParams.w < 2.5) return -log(max(ellR(p), 0.003)) * gcWind() * 2.0 + uArm.z;
-    return d.g * 26.0 + d.b * 9.0;
+float lum3(vec3 c) { return dot(c, vec3(0.2126, 0.7152, 0.0722)); }
+
+// Ragged dust: ridged multi-octave noise, filaments at several scales with patchy opacity.
+float dustFilaments(vec2 p) {
+    vec2 w = p + (vec2(fA(p * 1.3 + 4.1), fB(p * 1.3 + 2.7)) - 0.5) * 0.25;
+    float r1 = pow(ridge(fC(w * 2.3)), 4.0);
+    float r2 = pow(ridge(fD(w * 5.9 + 1.3)), 6.0);
+    float r3 = pow(ridge(fA(w * 13.0 + 7.9)), 8.0);
+    float opacity = smoothstep(0.3, 0.75, fB(w * 1.7 + 9.1));
+    return clamp((r1 * 0.55 + r2 * 0.45 + r3 * 0.35) * opacity, 0.0, 1.0);
 }
-// Disk extent (ragged edge) and the inner cut-off around the core.
-float gcDisk(vec2 p, float rn) { return 1.0 - smoothstep(0.8, 1.2, rn + 0.24 * (fA(p * 3.0 + 2.2) - 0.5)); }
 
-// Young-star clumps: one candidate per cell, kept with probability ~ the cyan field at the cell (ring + just outside).
-float gcCyanField(vec2 p, vec3 d) {
+// The arm / ring phase of the particle galaxy at p (winding uPartInfo.z, phase uPartInfo.w).
+float partPsi(vec2 p) {
     float r = max(length(p), 0.003);
-    float rn = r / uMisc.y;
-    float psi = gcPsi(p, r, atan(p.y, p.x), d);
-    float outside = pow(0.5 + 0.5 * cos(psi - 0.9), 3.0);
-    return outside * gcDisk(p, rn) * smoothstep(0.08, 0.3, rn) * mix(0.35, 1.3, smoothstep(0.3, 0.88, rn));
-}
-vec3 knots(vec2 p, float scale, float prob, float seed) {
-    vec2 g = p * scale;
-    vec2 i = floor(g);
-    vec2 f = g - i;
-    vec3 acc = vec3(0.0);
-    for (int y = -1; y <= 1; y++) {
-        for (int x = -1; x <= 1; x++) {
-            vec2 c = i + vec2(float(x), float(y));
-            vec2 h = hash22(c + seed);
-            float keep = hash12(c * 1.71 + seed + 3.1);
-            vec2 cp = (c + 0.5) / scale;
-            if (keep > prob * gcCyanField(cp, texture(uDensity, uCentre + cp / (2.0 * uAspect)).rgb)) continue;
-            vec2 o = vec2(float(x), float(y)) + h - f;
-            float rad = 0.1 + 0.25 * hash12(c + seed + 7.7);
-            float k = exp(-dot(o, o) / (rad * rad));
-            acc += mix(GC_CYAN, GC_ICE, h.x) * k * (0.3 + 0.7 * h.y * h.y);
-        }
-    }
-    return acc;
+    if (uParams.w < 0.5) return uArm.x * (uArm.w * atan(p.y, p.x) - log(r) * uPartInfo.z) + uPartInfo.w;
+    if (uParams.w < 2.5 && uPartInfo.y < 0.5) return -log(r) * uPartInfo.z * 2.0 + uPartInfo.w;
+    return 0.0;
 }
 
-vec3 coreStatic(vec2 p, vec3 d) {
+vec3 partStatic(vec2 uv, vec2 p, vec3 d) {
+    float golden = uPartInfo.y;
     float r = max(length(p), 0.0015);
-    float rc = uEll.w;
     float rn = r / uMisc.y;
-    // Ragged rings: the coordinates are warped at two scales before the ring phase.
-    vec2 pw = p + (vec2(fA(p * 2.2 + 1.3), fB(p * 2.2 + 4.1)) - 0.5) * 0.05 + (vec2(fC(p * 7.0), fD(p * 7.0)) - 0.5) * 0.012;
-    float rw = max(length(pw), 0.003);
-    float aw = atan(pw.y, pw.x);
-    float psi = gcPsi(pw, rw, aw, d);
-    float ring = 0.5 + 0.5 * cos(psi);
-    float disk = gcDisk(p, rn);
-    float inner = smoothstep(0.05, 0.18, rn);
-    float outerW = mix(0.45, 1.35, smoothstep(0.25, 0.85, rn));
-    float starEnv = 0.4 + 0.6 * smoothstep(0.02, 0.6, d.g);
-    // Ring segments: the bands break up.
-    float seg = smoothstep(0.22, 0.68, fB(p * 2.6 + 7.1)) * (0.6 + 0.4 * sA(p * 1.2));
-
-    // Streaks along the ring direction: noise in (along, across-ring) coordinates (integer repeats: no seam),
-    // band-limited near the centre where the polar coordinates squeeze (smooth plain noise there).
-    float px = length(fwidth(p));
-    float along = aw / TAU * 20.0;
-    float across = psi / TAU * 3.0;
-    float fw = px / r * (20.0 / TAU + 3.0 * uArm.x * gcWind() / TAU);
-    float k = 1.0 - smoothstep(0.08, 0.3, fw);
-    float streakN = mix(sA(p * 6.0), fA(vec2(along, across)), k);
-    float fil = mix(0.4, pow(ridge(fC(vec2(along * 1.7 + 0.3, across * 1.7))), 3.0), k);
-
-    // Red dust / gas filaments on every ring crest, clumpy and streaky, strongest outside.
-    float crest = pow(ring, mix(3.0, 9.0, sC(p * 2.0 + 5.5)));
-    float red = (crest * (0.3 + 1.3 * streakN * streakN) + fil * ring * 0.35) * seg * outerW * disk * inner * starEnv;
-    // A faint inner red ring close to the core.
-    red += exp(-pow((r - rc * 1.8) / (rc * 0.5), 2.0)) * 0.45 * (0.4 + 0.9 * fA(p * 9.0)) * uMisc.x;
-
-    // Cyan young stars: field + clumps + granular speckle, mostly on / just outside the rings and in the outer ring.
-    float cy = gcCyanField(pw, d) * (0.45 + 0.9 * fD(p * 3.1 + 2.4)) * starEnv;
-    vec3 kn = knots(p, 70.0, 0.55, 11.0) * 0.8 + knots(p, 170.0, 0.5, 29.0) * 0.6;
-    float h1 = hash12(floor(gl_FragCoord.xy) + 17.0);
-    float h2 = hash12(floor(gl_FragCoord.xy) * 1.37 + 3.0);
+    vec3 part = texture(uPart, vUv).rgb * uPartInfo.x;
+    vec3 h1 = texture(uHaze1, uv).rgb * uPartInfo.x;
+    vec3 h2 = texture(uHaze2, uv).rgb * uPartInfo.x;
+    float hl = lum3(h1) + 0.7 * lum3(h2);
+    // Dust: filaments everywhere there is light, darker along the arms' inner edges, patches across the core.
+    float lane = 0.0;
+    if (uParams.w < 0.5 || (uParams.w < 2.5 && golden < 0.5)) {
+        float psi = partPsi(p + (vec2(fA(p * 2.2 + 1.3), fB(p * 2.2 + 4.1)) - 0.5) * 0.04);
+        lane = pow(0.5 + 0.5 * cos(psi + 0.95), 5.0) * smoothstep(0.06, 0.25, rn);
+    }
+    float fil = dustFilaments(p);
+    float dust = lane * (0.35 + 0.65 * fil) + fil * 0.55;
+    dust += exp(-(r * r) / (uEll.w * uEll.w * 5.0)) * smoothstep(0.3, 0.75, pow(ridge(fD(p * 6.5 + 4.4)), 2.0)) * 0.5;
+    dust = clamp(dust * (0.55 + 0.7 * sD(p * 2.2 + 0.3)), 0.0, 1.0) * smoothstep(0.002, 0.05, hl);
+    vec3 artC = texture(uArt, uv).rgb;
+    float artD = texture(uArt, uv).a;
+    dust = mix(dust, artD, uPartInfo2.x);
+    vec3 c;
+    if (golden > 0.5) {
+        // Golden: particle light + its own glowing haze; brown dust absorbs (blue most), so it dims and reddens.
+        c = part + h1 * 0.9 + h2 * 0.55;
+        c = mix(c, c * artC * 2.0, uPartInfo2.x);
+        c *= exp(-dust * 1.6 * vec3(0.5, 0.78, 1.0));
+        c += vec3(0.002, 0.003, 0.012);
+    } else {
+        // Infrared: particle light (cyan / white), green haze from the unresolved light, red dust glow where dust
+        // meets light; the dust absorbs the blue-green of the stars a little.
+        vec3 haze = GC_GREEN * (lum3(h1) * 0.85 + lum3(h2) * 0.6);
+        c = part * exp(-dust * 0.7 * vec3(0.3, 0.9, 1.0)) + haze * (1.0 - 0.5 * dust);
+        c += GC_RED * dust * (lum3(h1) * 1.8 + lum3(h2) * 1.1);
+        c = mix(c, c * artC * 2.0, uPartInfo2.x);
+    }
+    // Point stars in the field, a few green, most white.
     float h3 = hash12(floor(gl_FragCoord.xy) * 0.73 + 41.0);
-    float speck = pow(h1, 12.0) * cy * 2.2;
-
-    // Green haze filling the disk, dimmer in the gaps between the rings, never empty.
-    float haze = disk * (0.5 * pow(d.b, 0.9) + 0.3 * d.g + 0.3 * exp(-(rn * rn) / 0.3)) * (0.6 + 0.8 * sC(p * 2.5 + 1.0));
-    haze *= mix(0.5, 1.0, smoothstep(0.0, 0.6, ring)) * (1.0 - 0.7 * crest);
-
-    // Core: a compact, intensely bright white point and a soft white-yellow halo, slightly lopsided.
-    vec2 pc = p + (vec2(sA(p * 3.0 + 1.1), sB(p * 3.0 + 5.3)) - 0.5) * rc * 0.25;
-    float qe = length(pc);
-    float point = exp(-pow(qe / (rc * 0.16), 2.0)) * 3.0;
-    float halo = exp(-pow(qe / (rc * 0.6), 2.0)) * 0.8 + exp(-qe / (rc * 1.3)) * 0.22;
-
-    vec3 c = GC_RED * red * 0.8 + (GC_CYAN * cy * 0.55 + kn * 1.2 + GC_ICE * speck * 0.9) * disk + GC_GREEN * haze * 0.6;
-    c += uMisc.x * (GC_WHITE * point + GC_HALO * halo * (0.85 + 0.3 * fC(p * 11.0)));
-    c *= 0.82 + 0.36 * h2;
-    // Scattered point stars everywhere, some green, some white.
-    c += mix(vec3(0.85, 0.92, 1.0), vec3(0.35, 1.0, 0.45), step(0.6, h1)) * pow(h3, 300.0) * 0.6;
-    c = vec3(1.0) - exp(-c * 1.25);
-    return vec3(0.002, 0.003, 0.004) + c;
+    float h1n = hash12(floor(gl_FragCoord.xy) + 17.0);
+    c += mix(vec3(0.85, 0.92, 1.0), vec3(0.35, 1.0, 0.45), step(0.65, h1n) * (1.0 - golden)) * pow(h3, 300.0) * 0.5;
+    c = vec3(1.0) - exp(-c * 1.2);
+    return c;
 }
 
-vec4 coreAnim(vec2 p, vec3 d, float t) {
+vec4 partAnim(vec2 uv, vec2 p, vec3 d, float t) {
+    float golden = uPartInfo.y;
     float r = max(length(p), 0.015);
     float th = atan(p.y, p.x);
     float rn = r / uMisc.y;
-    // A soft sheen of light flowing along the (fixed, star-aligned) rings of the static picture: smooth noise turned
-    // slowly (~48 min a turn) and differentially (faster inside), in two phases cross-faded every 90 s so the winding
-    // never builds up. All detail is in the static texture.
+    vec3 h1 = texture(uHaze1, uv).rgb * uPartInfo.x;
+    vec3 h2 = texture(uHaze2, uv).rgb * uPartInfo.x;
+    // A slow light flow through the haze (the stars stay put): smooth noise turned slowly (~48 min a turn) and
+    // differentially (faster inside), in two phases cross-faded every 90 s so the winding never builds up.
     float rot = 0.0022 * t;
     float T = 90.0;
     float ph0 = fract(t / T);
@@ -274,18 +245,14 @@ vec4 coreAnim(vec2 p, vec3 d, float t) {
     float a0 = th + uArm.w * (rot + om * ph0 * T);
     float a1 = th + uArm.w * (rot + om * ph1 * T);
     float s = mix(sA(vec2(cos(a1), sin(a1)) * r * 4.0 + vec2(0.6, 0.1)), sA(vec2(cos(a0), sin(a0)) * r * 4.0 + vec2(0.3, 0.8)), w0);
-    float ring = 0.5 + 0.5 * cos(gcPsi(p, r, th, d));
-    float disk = gcDisk(p, rn) * smoothstep(0.03, 0.15, rn);
-    float env = 0.35 + 0.65 * smoothstep(0.02, 0.6, d.g);
-    float g = (pow(ring, 2.0) * 0.7 + 0.15) * s * s * disk * env;
-    float coreSwirl = exp(-(rn * rn) / 0.03) * uMisc.x * (s - 0.35) * 0.4;
-    vec3 col = mix(GC_CYAN, GC_RED, pow(ring, 4.0)) * max(0.0, g * 0.16) + GC_HALO * max(0.0, coreSwirl * 0.2);
-    // Storm flashes: white-cyan light in the rings' stars, red glow in their dust, brighter where there is material.
+    vec3 hazeCol = golden > 0.5 ? h1 + h2 * 0.6 : GC_GREEN * (lum3(h1) + lum3(h2) * 0.7) * 1.3 + h1 * 0.4;
+    vec3 col = hazeCol * s * s * 0.32;
+    // Storm flashes light the haze: golden-white / blue-white, or white-cyan in the rings and red in the dust.
     float L = flashLight(p);
     if (L > 0.0) {
-        float crest = pow(ring, 5.0);
-        float medium = (0.2 + 0.8 * ring) * disk * env * (0.5 + 0.9 * sA(p * 7.0 + 3.3));
-        col += mix(GC_ICE * 0.85, GC_RED * 1.1, crest) * L * medium * 0.3;
+        float hl = lum3(h1) + 0.6 * lum3(h2);
+        vec3 tint = golden > 0.5 ? mix(vec3(1.0, 0.9, 0.7), GS_BLUE, sA(p * 5.0 + 1.7)) : mix(GC_ICE, GC_RED, smoothstep(0.45, 0.8, dustFilaments(p)));
+        col += tint * L * min(1.0, hl * 2.5 + 0.02) * 0.45;
     }
     return vec4(col, 0.0);
 }
@@ -414,8 +381,9 @@ void main() {
     float t = uParams.z;
     vec3 st = vec3(0.0);
     vec4 an = vec4(0.0);
-    if (pass != 1.0) st = kind < 0.5 ? coreStatic(p, d) : kind < 1.5 ? eerieStatic(uv, p, d) : nebulaStatic(p, d);
-    if (pass != 0.0) an = kind < 0.5 ? coreAnim(p, d, t) : kind < 1.5 ? eerieAnim(uv, p, d, t) : nebulaAnim(p, d, t);
+    bool particles = kind < 0.5 || kind > 2.5;
+    if (pass != 1.0) st = particles ? partStatic(uv, p, d) : kind < 1.5 ? eerieStatic(uv, p, d) : nebulaStatic(p, d);
+    if (pass != 0.0) an = particles ? partAnim(uv, p, d, t) : kind < 1.5 ? eerieAnim(uv, p, d, t) : nebulaAnim(p, d, t);
     // Half an 8-bit step of noise against banding (an 8-bit target; the screen output dither does the rest).
     float n = (hash12(floor(gl_FragCoord.xy)) - 0.5) / 255.0;
     if (pass == 0.0) outColor = vec4(st + n, 1.0);
@@ -424,5 +392,53 @@ void main() {
 }`;
 
 /** uParams.x per kind. */
-export const BACKDROP_KIND_CODE = { galacticCore: 0, eerie: 1, nebula: 2 } as const;
+export const BACKDROP_KIND_CODE = { galacticCore: 0, eerie: 1, nebula: 2, goldenSpiral: 3 } as const;
 export type GeneratedBackdropKind = keyof typeof BACKDROP_KIND_CODE;
+
+/** Instanced particle quads (galaxyParticles.ts) into a band of a render texture (pixel space of the band). */
+export const PARTICLE_VERT = `#version 300 es
+precision highp float;
+in vec2 aPosition;
+in vec2 aCenter;
+in float aSize;
+in vec3 aColor;
+in float aPhase;
+uniform mat3 uProjectionMatrix;
+uniform mat3 uWorldTransformMatrix;
+uniform mat3 uTransformMatrix;
+// x, y: band uv offset; z, w: band uv size.
+uniform vec4 uPBand;
+// x, y: band target size (px); z: size scale (target px per 2048-texture px, x haze factor); w: min radius (px).
+uniform vec4 uPTarget;
+// x: time (s), y: 1 = twinkle (only the varying part of each particle is drawn).
+uniform vec4 uPTime;
+out vec2 vQ;
+out vec3 vCol;
+void main() {
+    float want = aSize * uPTarget.z;
+    float rad = max(want, uPTarget.w);
+    float energy = (want * want) / (rad * rad);
+    vec3 col = aColor * energy;
+    if (uPTime.y > 0.5) {
+        float tw = pow(max(0.0, sin(uPTime.x * (0.6 + 1.8 * aPhase) + aPhase * 40.0)), 6.0);
+        col *= tw * 0.8;
+    }
+    vec2 c = (aCenter - uPBand.xy) / uPBand.zw * uPTarget.xy;
+    vec2 pos = c + aPosition * rad * 2.4;
+    mat3 mvp = uProjectionMatrix * uWorldTransformMatrix * uTransformMatrix;
+    gl_Position = vec4((mvp * vec3(pos, 1.0)).xy, 0.0, 1.0);
+    vQ = aPosition * 2.4;
+    vCol = col;
+}`;
+
+export const PARTICLE_FRAG = `#version 300 es
+precision highp float;
+in vec2 vQ;
+in vec3 vCol;
+out vec4 outColor;
+// Light decode scale (the target may be 8-bit: values are stored scaled down).
+uniform vec4 uPOut;
+void main() {
+    float g = exp(-dot(vQ, vQ));
+    outColor = vec4(vCol * g * uPOut.x, 0.0);
+}`;

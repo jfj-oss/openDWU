@@ -11,6 +11,9 @@ import { BACKDROP_FRAG, BACKDROP_KIND_CODE, BACKDROP_VERT_RAW } from '../render/
 import { analyzeGalaxyStructure, DENSITY_SIZE, makeBackdropNoise, NOISE_SIZE, syntheticStarLayout, type BackdropStructure } from '../render/galaxyBackdropStructure';
 import type { GalaxyBackdropKind } from '../render/galaxyBackdropChoice';
 import type { GalaxyShape } from '../sim/types';
+import { toHalf } from '../render/galaxyBackdropStructure';
+import { makeParticleGalaxy, particleStyleOf } from '../render/galaxyBackdrop';
+import { splatParticles } from '../render/galaxyParticles';
 
 interface PreviewGl {
     canvas: HTMLCanvasElement;
@@ -18,6 +21,8 @@ interface PreviewGl {
     program: WebGLProgram;
     density: WebGLTexture;
     noise: WebGLTexture;
+    /** Particle light, two haze layers, and a 1 px white stand-in (art / unused inputs). */
+    light: [WebGLTexture, WebGLTexture, WebGLTexture, WebGLTexture];
     noiseSeed: number | null;
 }
 
@@ -72,7 +77,17 @@ function context(): PreviewGl | null {
         gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
         gl.enableVertexAttribArray(0);
         gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
-        shared = { canvas, gl, program, density: texture(gl, gl.CLAMP_TO_EDGE), noise: texture(gl, gl.REPEAT), noiseSeed: null };
+        const white = texture(gl, gl.CLAMP_TO_EDGE);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array([255, 255, 255, 255]));
+        shared = {
+            canvas,
+            gl,
+            program,
+            density: texture(gl, gl.CLAMP_TO_EDGE),
+            noise: texture(gl, gl.REPEAT),
+            noiseSeed: null,
+            light: [texture(gl, gl.CLAMP_TO_EDGE), texture(gl, gl.CLAMP_TO_EDGE), texture(gl, gl.CLAMP_TO_EDGE), white],
+        };
         return shared;
     } catch (err) {
         console.warn('galaxy backdrop thumbnails unavailable', err);
@@ -90,8 +105,22 @@ function scheduleRelease(): void {
     }, 4000);
 }
 
-/** The thumbnail of a generated variant over `structure` (seeded by `seed`), `px` square, or null without WebGL2. */
-function renderGenerated(kind: keyof typeof BACKDROP_KIND_CODE, structure: BackdropStructure, seed: number, px: number): HTMLCanvasElement | null {
+/** A float RGB image as RGBA half floats. */
+function halfRgba(img: Float32Array): Uint16Array {
+    const n = img.length / 3;
+    const out = new Uint16Array(n * 4);
+    for (let i = 0; i < n; i++) {
+        out[i * 4] = toHalf(Math.min(60000, img[i * 3]));
+        out[i * 4 + 1] = toHalf(Math.min(60000, img[i * 3 + 1]));
+        out[i * 4 + 2] = toHalf(Math.min(60000, img[i * 3 + 2]));
+        out[i * 4 + 3] = 0x3c00;
+    }
+    return out;
+}
+
+/** The thumbnail of a generated variant over `structure` (seeded by `seed`), `px` square, or null without WebGL2.
+ *  `systems`: the star positions in uv, for the particle-built variants. */
+function renderGenerated(kind: keyof typeof BACKDROP_KIND_CODE, structure: BackdropStructure, seed: number, px: number, systems: { us: ArrayLike<number>; vs: ArrayLike<number> }): HTMLCanvasElement | null {
     const ctx = context();
     if (ctx === null) return null;
     const { gl, program, canvas } = ctx;
@@ -119,6 +148,33 @@ function renderGenerated(kind: keyof typeof BACKDROP_KIND_CODE, structure: Backd
     gl.uniform4fv(u('uMisc'), structure.misc);
     gl.uniform4fv(u('uParams'), [BACKDROP_KIND_CODE[kind], 2, 0, structure.shape]);
     gl.uniform4fv(u('uBand'), [0, 0, 1, 1]);
+    // Particle galaxies: the particles splatted on the CPU (light, and the two haze layers).
+    const style = particleStyleOf(kind);
+    let info = [1, 0, 4, 0];
+    if (style !== null) {
+        const pg = makeParticleGalaxy(systems.us, systems.vs, structure, style, seed);
+        const layers: [number, number][] = [[px, 0.7], [Math.max(8, Math.round(px / 4)), 3.5], [Math.max(4, Math.round(px / 16)), 2.5]];
+        layers.forEach(([size, minR], i) => {
+            const img = splatParticles(pg.particles, size, 1, minR);
+            gl.activeTexture(gl.TEXTURE2 + i);
+            gl.bindTexture(gl.TEXTURE_2D, ctx.light[i]);
+            gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA16F, size, size, 0, gl.RGBA, gl.HALF_FLOAT, halfRgba(img));
+        });
+        info = [1, style === 'goldenSpiral' ? 1 : 0, pg.wind, pg.phase];
+    } else {
+        for (let i = 0; i < 3; i++) {
+            gl.activeTexture(gl.TEXTURE2 + i);
+            gl.bindTexture(gl.TEXTURE_2D, ctx.light[3]);
+        }
+    }
+    gl.activeTexture(gl.TEXTURE5);
+    gl.bindTexture(gl.TEXTURE_2D, ctx.light[3]);
+    gl.uniform1i(u('uPart'), 2);
+    gl.uniform1i(u('uHaze1'), 3);
+    gl.uniform1i(u('uHaze2'), 4);
+    gl.uniform1i(u('uArt'), 5);
+    gl.uniform4fv(u('uPartInfo'), info);
+    gl.uniform4fv(u('uPartInfo2'), [0, 0, 0, 0]);
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
     const out = document.createElement('canvas');
     out.width = px;
@@ -131,7 +187,7 @@ function renderGenerated(kind: keyof typeof BACKDROP_KIND_CODE, structure: Backd
 /** What a thumbnail draws: the kind, and the galaxy (a running game's) or the shape + seed (the wizard's). */
 export type BackdropPreviewSource =
     | { kind: GalaxyBackdropKind; shape: GalaxyShape; seed: number }
-    | { kind: GalaxyBackdropKind; structure: BackdropStructure; seed: number; key: string };
+    | { kind: GalaxyBackdropKind; structure: BackdropStructure; systems: { us: ArrayLike<number>; vs: ArrayLike<number> }; seed: number; key: string };
 
 /** A picker thumbnail (`size` css px square): call update() with the current choice. */
 export function createBackdropThumbnail(size: number, className = ''): { el: HTMLDivElement; update: (src: BackdropPreviewSource) => void } {
@@ -163,11 +219,17 @@ export function createBackdropThumbnail(size: number, className = ''): { el: HTM
         lastKey = key;
         let pic = cache.get(key) ?? null;
         if (pic === null) {
-            const structure = 'structure' in src ? src.structure : (() => {
+            let structure: BackdropStructure;
+            let systems: { us: ArrayLike<number>; vs: ArrayLike<number> };
+            if ('structure' in src) {
+                structure = src.structure;
+                systems = src.systems;
+            } else {
                 const pts = syntheticStarLayout(src.shape, src.seed);
-                return analyzeGalaxyStructure(pts.xs, pts.ys, 1, 1, src.shape, src.seed);
-            })();
-            pic = renderGenerated(kind, structure, src.seed, px);
+                structure = analyzeGalaxyStructure(pts.xs, pts.ys, 1, 1, src.shape, src.seed);
+                systems = { us: pts.xs, vs: pts.ys };
+            }
+            pic = renderGenerated(kind, structure, src.seed, px, systems);
             if (pic !== null) {
                 if (cache.size > 24) cache.delete(cache.keys().next().value as string);
                 cache.set(key, pic);

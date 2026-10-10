@@ -57,7 +57,7 @@ import { checkBoxRight, colorSlider, groupBox, labelledTrackBar } from '../origi
 import { IMPROVEMENTS_TITLE, buildImprovementsGroup, improvementsGroupHeight } from '../improvements'; // [improvements]
 import { systemMemoryGiB } from '../../systemMemory';
 import { GALAXY_BACKDROP_OPTIONS, getGalaxyBackdrop, setGalaxyBackdrop } from '../../render/galaxyBackdropChoice';
-import { galaxyBackdropStructure } from '../../render/galaxyBackdrop';
+import { galaxyBackdropStructure, systemUvs } from '../../render/galaxyBackdrop';
 import { createBackdropThumbnail } from '../galaxyBackdropPreview';
 import { buildNewGameAutomationGroup, closeNewGameEmpireSettings } from './newGameDefaultsPanel';
 import { AUTOMATION_MODE_ITEMS, AUTOMATION_PRESETS, currentNewGameOptions, detectAutomationMode, empireAutomationValues, gameOptionsFromEmpire, newGameOptionsToSettings, messageSettingsRows, type PendingEmpireValues } from './gameOptionsModel';
@@ -882,7 +882,7 @@ function createAdvancedDisplaySettings(empire: Empire | null): OriginalWindow {
         const galaxy = empire.galaxy;
         const thumb = createBackdropThumbnail(64, 'go-backdrop-thumb');
         bd.appendChild(place(thumb.el, 326, 22, 64, 64));
-        const paint = (): void => thumb.update({ kind: getGalaxyBackdrop(), structure: galaxyBackdropStructure(galaxy), seed: galaxy.randomSeed, key: `game${galaxy.randomSeed}` });
+        const paint = (): void => thumb.update({ kind: getGalaxyBackdrop(), structure: galaxyBackdropStructure(galaxy), systems: systemUvs(galaxy), seed: galaxy.randomSeed, key: `game${galaxy.randomSeed}` });
         combo(bd, GALAXY_BACKDROP_OPTIONS.map((o) => o.label), Math.max(0, GALAXY_BACKDROP_OPTIONS.findIndex((o) => o.kind === getGalaxyBackdrop())), 10, 22, 200, 24, (i) => {
             setGalaxyBackdrop(GALAXY_BACKDROP_OPTIONS[i]?.kind ?? 'original');
             paint();
