@@ -58,6 +58,7 @@ import { empiresSharedVisibility } from './exploration';
 import { obtainPirateRelation, PirateRelationType } from './pirateRelations';
 import { Habitat, HabitatCategoryType } from './types';
 import { SystemVisibilityStatus, THREAT_RANGE, registerShipOutsideSystemScan } from './visibility';
+import { humanEmpires } from './humanEmpires';
 
 // ShipImageHelper.cs 43 / 25.
 const STANDARD_SHIP_IMAGE_START_INDEX = 72;
@@ -257,6 +258,12 @@ function isBuiltObjectVisibleToThisEmpire(galaxy: Galaxy, empire: Empire, builtO
     return builtObjectVisibility(galaxy, empire, builtObject) !== BuiltObjectVisibility.None;
 }
 
+/** IsObjectVisibleToThisEmpire(PlayerEmpire, …) for every human (decision §4.6): true when any human empire sees it. */
+export function isObjectVisibleToAnyHuman(galaxy: Galaxy, objectToTest: Habitat | BuiltObject): boolean {
+    for (const h of humanEmpires(galaxy)) if (isObjectVisibleToThisEmpire(galaxy, h, objectToTest)) return true;
+    return false;
+}
+
 /** Empire.9.cs IsBuiltObjectVisibleToThisEmpire's result plus its `out bool visibleKnownPirateBase`. */
 export enum BuiltObjectVisibility {
     None = 0,
@@ -434,7 +441,7 @@ export function generateIndependentTraders(galaxy: Galaxy): BuiltObject[] {
     if (designList2.length <= 0) {
         fillFallbackFreighterDesigns(galaxy, independentEmpire, BuiltObjectSubRole.MediumFreighter, designList2);
     }
-    const playerEmpire = galaxy.playerEmpire!;
+    // `!IsObjectVisibleToThisEmpire(PlayerEmpire, …)`: seen by no human (decision §4.6).
     for (let m = 0; m < num2; m++) {
         let design4: Design | null = null;
         if (galaxy.rnd.next(0, 3) === 1) {
@@ -452,7 +459,7 @@ export function generateIndependentTraders(galaxy: Galaxy): BuiltObject[] {
         let flag = false;
         const num5 = galaxy.rnd.next(0, independentColonies.length);
         for (let n = num5; n < independentColonies.length; n++) {
-            if (!isObjectVisibleToThisEmpire(galaxy, playerEmpire, independentColonies[n])) {
+            if (!isObjectVisibleToAnyHuman(galaxy, independentColonies[n])) {
                 created.push(createIndependentTrader(galaxy, independentEmpire, design4, independentColonies[n]));
                 flag = true;
                 break;
@@ -462,7 +469,7 @@ export function generateIndependentTraders(galaxy: Galaxy): BuiltObject[] {
             continue;
         }
         for (let num6 = 0; num6 < num5; num6++) {
-            if (!isObjectVisibleToThisEmpire(galaxy, playerEmpire, independentColonies[num6])) {
+            if (!isObjectVisibleToAnyHuman(galaxy, independentColonies[num6])) {
                 created.push(createIndependentTrader(galaxy, independentEmpire, design4, independentColonies[num6]));
                 flag = true;
                 break;
@@ -544,7 +551,7 @@ export function assignIndependentTraderMissions(galaxy: Galaxy): void {
             continue;
         }
         if (builtObject.retireForNextMission || builtObject.dateBuilt <= num) {
-            if (!isObjectVisibleToThisEmpire(galaxy, galaxy.playerEmpire!, builtObject)) {
+            if (!isObjectVisibleToAnyHuman(galaxy, builtObject)) { // seen by no human (decision §4.6)
                 builtObjectList.push(builtObject);
             }
         } else {

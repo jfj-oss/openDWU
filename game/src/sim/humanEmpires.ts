@@ -50,6 +50,22 @@ export function isMultiHuman(galaxy: Galaxy): boolean {
 }
 
 /**
+ * The human a galaxy event aimed at "the player" targets (decision §4.5): the primary human; with more than one human,
+ * one of them picked with galaxy.rnd (the same on every client). A one-human game draws nothing, as before.
+ */
+export function targetHuman(galaxy: Galaxy): Empire | null {
+    const humans = humanEmpires(galaxy);
+    if (humans.length <= 1) return galaxy.playerEmpire ?? null;
+    return humans[galaxy.rnd.next(0, humans.length)];
+}
+
+/** True when any human empire sees system `systemIndex` (decision §4.6: "not visible to the player" is to no human). */
+export function systemVisibleToAnyHuman(galaxy: Galaxy, systemIndex: number): boolean {
+    for (const h of humanEmpires(galaxy)) if (h.visibility.checkSystemVisible(systemIndex)) return true;
+    return false;
+}
+
+/**
  * Set the human empires (multiplayer setup / a loaded multi-human save). galaxy.playerEmpire stays the primary human:
  * it is moved to the front, or added when missing. A list of just the primary human (or nothing, without a player)
  * clears the setting, so the game saves exactly as a single-player game.

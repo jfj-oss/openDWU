@@ -66,7 +66,7 @@ import { BuiltObjectSubRole } from './builtObjectTypes';
 import { BattleTactics, BuiltObjectFleeWhen, BuiltObjectRole, InvasionTactics, buildDefaultDesignSpecifications, getDefaultDesignSpecificationBySubRole } from './data/designSpecifications';
 import { countResourceSourcesForEmpire } from './stationPlacement';
 import { scenarioQuery } from './scenario/hooks';
-import { isHumanEmpire } from './humanEmpires';
+import { isHumanEmpire, systemVisibleToAnyHuman, targetHuman } from './humanEmpires';
 
 // Port of PiratePlayStyle.cs (member order exact).
 export enum PiratePlayStyle {
@@ -1033,8 +1033,8 @@ export function findNearestHabitatUnoccupiedSystemWithResourceNotVisibleToPlayer
             continue;
         }
         const empire = checkSystemOwnership(galaxy, sys.systemStar).empire;
-        // C# derefs PlayerEmpire (non-null: the caller already required it).
-        if (empire !== null || galaxy.playerEmpire!.visibility.checkSystemVisible(sys.systemStar.systemIndex)) {
+        // `PlayerEmpire` sees it: any human (decision §4.6).
+        if (empire !== null || systemVisibleToAnyHuman(galaxy, sys.systemStar.systemIndex)) {
             continue;
         }
         const habitats = galaxy.systemHabitatsOf(sys.systemStar.systemIndex);
@@ -1066,7 +1066,8 @@ export function galaxyEventSuperPirates(galaxy: Galaxy, ctx: PirateGenerationCon
     }
     let habitat: Habitat | null = null;
     let num = 0.0;
-    const player = galaxy.playerEmpire;
+    // The C#'s PlayerEmpire: the human the event targets (humanEmpires.ts targetHuman; decision §4.5).
+    const player = targetHuman(galaxy);
     if (player !== null && player.colonies != null && player.capital !== null) {
         for (let j = 0; j < player.colonies.length; j++) {
             const habitat2 = player.colonies[j];

@@ -19,6 +19,7 @@ import { radiusFraction, registerScenarioPeriodic } from './hooks';
 import { scenarioMessage, scenarioText } from './messages';
 import { RIM_FLAG_NAME } from './rimShared';
 import { scenarioParam } from './state';
+import { targetHuman } from '../humanEmpires';
 
 /** scenarios/rim-atmosphere/GameText.txt keys (garbled, half-heard flavour lines; {0} = the outpost's name). */
 export const RIM_DISTRESS_CALL_KEYS: readonly string[] = ['Rim Distress Call 1', 'Rim Distress Call 2', 'Rim Distress Call 3', 'Rim Distress Call 4'];
@@ -51,7 +52,8 @@ registerScenarioPeriodic({
     flag: RIM_FLAG_NAME,
     periodDays: RIM_DISTRESS_PERIOD_DAYS,
     run(galaxy: Galaxy): void {
-        const player = galaxy.playerEmpire;
+        // The human the call reaches (decision §4.5: one of them, picked with galaxy.rnd, when more than one plays).
+        const player = targetHuman(galaxy);
         if (player === null || !player.active) return;
         const rimInner = scenarioParam(galaxy, 'rimInner', 0.72);
         const rate = scenarioParam(galaxy, 'distressCallRate', 0.05);
