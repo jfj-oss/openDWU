@@ -38,7 +38,7 @@ import { checkEmpireHasHyperDriveTech } from './forceStructure';
 import { cargoAvailable, cargoGetCargo, cargoGetExists, cargoIndexOf, cargoIndexOfById, cargoRemove } from './logistics/orders';
 import { BuiltObjectMissionType, builtObjectMission } from './missions/mission';
 import { ResourceGroup, resourceGroupOf } from './resourceSystem';
-import { HabitatPrioritization, checkEmpireTerritoryCanBuildAtHabitat, determineHabitatsBuildingMiningStations, habitatPrioritizationIndexOf } from './resourceTargets';
+import { HabitatPrioritization, checkEmpireTerritoryCanBuildAtHabitat, determineHabitatsBuildingMiningStations, habitatPrioritizationFirstIndexes, habitatPrioritizationIndexOf } from './resourceTargets';
 import { checkResourceSupplyMeetsExpectedBool, fastFindNearestSpacePort } from './stationPlacement';
 import { netSort } from './netSort';
 import { builtObjectManufacturingQueue, habitatManufacturingQueue, listAddComponentToManufacture, type ManufacturedComponent, type Manufacturer, type ManufacturingQueue } from './manufacturingQueue';
@@ -84,7 +84,14 @@ function cloneHabitatResources(list: readonly HabitatResource[]): HabitatResourc
 
 /** HabitatResourceList.IndexOf(resourceId, startIndex) (125). */
 function habitatResourceIndexOf(list: readonly HabitatResource[], resourceId: number, startIndex: number): number {
-    const num = list.findIndex((r) => r.resourceId === resourceId);
+    // First match (as findIndex; a plain loop: no closure per call — this runs per habitat × deficient resource).
+    let num = -1;
+    for (let i = 0; i < list.length; i++) {
+        if (list[i].resourceId === resourceId) {
+            num = i;
+            break;
+        }
+    }
     return num >= startIndex ? num : -1;
 }
 
@@ -224,6 +231,7 @@ export function prioritizeEmpireResourceNeeds(
     if (includeLuxuryResources) {
         habitatPrioritizationList2 = determineHabitatsBuildingMiningStations(empire);
     }
+    const firstIndexes2 = habitatPrioritizationFirstIndexes(habitatPrioritizationList2); // Perf: not changed below
     for (let i = 0; i < empire.systemVisibility.length; i++) {
         if (!empire.visibility.checkSystemExplored(i)) continue;
         // SystemVisibility[i].SystemStar; _Galaxy.FastFindNearestSpacePort(star.Xpos, star.Ypos, this).
@@ -232,9 +240,14 @@ export function prioritizeEmpireResourceNeeds(
         // below, so it is found on first use. Nothing in this loop changes spacePorts or positions: same result.
         let builtObject: BuiltObject | null = null;
         let builtObjectDone = false;
-        const habitats = galaxy.systemHabitatsOf(systemStar.systemIndex);
+        // Perf: systemHabitatsOf walked in place, skipping the star (its filtered copy: same habitats, same order; the
+        // loop only reads).
+        const habitatSystem = galaxy.systems[systemStar.systemIndex];
+        const habitats: readonly Habitat[] = habitatSystem === undefined ? [] : habitatSystem.habitats;
+        const habitatSystemStar = habitatSystem === undefined ? null : habitatSystem.systemStar;
         for (let j = 0; j < habitats.length; j++) {
             const habitat = habitats[j];
+            if (habitat === habitatSystemStar) continue;
             if (habitat.resources.length <= 0) continue;
             let num = 0.0;
             if (!empire.resourceMap.checkResourcesKnown(habitat) || (!includeAsteroids && habitat.category === HabitatCategoryType.Asteroid) || (habitat.owner !== null && habitat.owner !== galaxy.independentEmpire)) {
@@ -242,7 +255,7 @@ export function prioritizeEmpireResourceNeeds(
             }
             let flag3 = true;
             let assignedShip: unknown = null;
-            const num2 = habitatPrioritizationIndexOf(habitatPrioritizationList2, habitat);
+            const num2 = firstIndexes2 !== null ? (firstIndexes2.get(habitat) ?? -1) : habitatPrioritizationIndexOf(habitatPrioritizationList2, habitat);
             if (num2 >= 0) {
                 if (filterOutHabitatsWithMiningStationsUnderConstruction) {
                     flag3 = false;
@@ -295,14 +308,17 @@ export function prioritizeEmpireResourceNeeds(
             }
         }
     }
-    const habitatPrioritizationList3: HabitatPrioritization[] = [];
-    for (const item of habitatPrioritizationList) {
-        if (item.habitat !== null && minedHabitats.includes(item.habitat)) habitatPrioritizationList3.push(item);
+    // C#: collect the entries whose habitat is being mined, then Remove each (first occurrence; every entry is a distinct
+    // object, so that is the entry itself). Perf: the same removals as one in-place pass with a Set for Contains —
+    // the kept entries stay in their order.
+    const mined = new Set<Habitat>(minedHabitats);
+    let kept = 0;
+    for (let i = 0; i < habitatPrioritizationList.length; i++) {
+        const item = habitatPrioritizationList[i];
+        if (item.habitat !== null && mined.has(item.habitat)) continue;
+        habitatPrioritizationList[kept++] = item;
     }
-    for (const item2 of habitatPrioritizationList3) {
-        const index = habitatPrioritizationList.indexOf(item2);
-        if (index >= 0) habitatPrioritizationList.splice(index, 1);
-    }
+    habitatPrioritizationList.length = kept;
     netSort(habitatPrioritizationList, (a, b) => a.compareTo(b));
     habitatPrioritizationList.reverse();
     return habitatPrioritizationList;

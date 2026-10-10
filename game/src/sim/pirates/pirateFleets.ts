@@ -86,10 +86,18 @@ export function identifyDesiredEnemyMiningStations(galaxy: Galaxy, empire: Empir
     const svs = empire.visibility.systemVisibility;
     for (let i = 0; i < svs.length; i++) {
         if (!empire.visibility.checkSystemExplored(i)) continue;
-        const builtObject = fastFindNearestSpacePort(galaxy, svs[i].systemStar.xpos, svs[i].systemStar.ypos, empire);
-        const habitats = planetsOf(galaxy.systems[svs[i].systemStar.systemIndex]); // Empire.2.cs 4186 Systems[].Habitats: no star
+        // Perf: the nearest space port (a scan of empire.spacePorts; it only reads) is found on first use — only a habitat
+        // that passes every filter below reads it, and nothing in this loop changes spacePorts or positions.
+        let builtObject: BuiltObject | null = null;
+        let builtObjectDone = false;
+        // Empire.2.cs 4186 Systems[].Habitats: no star. Perf: walked in place, skipping the star (planetsOf's filtered
+        // copy: same habitats, same order).
+        const system = galaxy.systems[svs[i].systemStar.systemIndex];
+        const systemStar = system.systemStar;
+        const habitats = system.habitats;
         for (let j = 0; j < habitats.length; j++) {
             const habitat = habitats[j];
+            if (habitat === systemStar) continue;
             if (habitat.resources.length <= 0 || !empire.resourceMap.checkResourcesKnown(habitat)) continue;
             const builtObject2 = determineMiningStationAtHabitat(habitat) as BuiltObject | null;
             if (builtObject2 == null) continue;
@@ -106,6 +114,10 @@ export function identifyDesiredEnemyMiningStations(galaxy: Galaxy, empire: Empir
                 if (resourceList[k].sortTag > 0.1 && habitat.resources.some((r) => r.resourceId === resourceList[k].resourceId)) num += 1000.0;
             }
             if (num > 0.0) {
+                if (!builtObjectDone) {
+                    builtObject = fastFindNearestSpacePort(galaxy, svs[i].systemStar.xpos, svs[i].systemStar.ypos, empire);
+                    builtObjectDone = true;
+                }
                 if (builtObject !== null) num /= Math.sqrt(Math.sqrt(galaxy.calculateDistance(builtObject.xpos, builtObject.ypos, habitat.xpos, habitat.ypos)));
                 else if (empire.capital !== null) num /= Math.sqrt(Math.sqrt(galaxy.calculateDistance(empire.capital.xpos, empire.capital.ypos, habitat.xpos, habitat.ypos)));
                 if (num >= valueThreshold) {

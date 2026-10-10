@@ -1473,6 +1473,92 @@ export function sortStellarObjectsByDistance<T extends { xpos: number; ypos: num
     return items;
 }
 
+/**
+ * Perf: sortStellarObjectsByDistance's order, produced lazily for a caller that usually stops after the first few
+ * entries (ultraFastFindNearestRefuellingLocation). Same keys (computed up front, from the same copied list); the entries
+ * come off a binary min-heap of indices. While every entry served so far has a key strictly below every entry not yet
+ * served, the served prefix is the one and only sorted prefix, so it equals the introsort's. The moment the next entry
+ * would tie with one still in the heap (or a key is NaN, which the comparison sort does not order), the whole list is
+ * sorted exactly as sortStellarObjectsByDistance does (arraySortKeysItems on the untouched copies) and served from there.
+ */
+export class LazyDistanceOrder<T extends { xpos: number; ypos: number }> {
+    readonly length: number;
+    private readonly keys: number[];
+    private readonly items: T[];
+    private readonly heap: Int32Array;
+    private heapSize: number;
+    private served = 0;
+    private sorted: T[] | null = null;
+
+    constructor(galaxy: Galaxy, x: number, y: number, stellarObjects: readonly T[]) {
+        const n = stellarObjects.length;
+        this.length = n;
+        const keys = new Array<number>(n);
+        const items = stellarObjects.slice();
+        let nan = false;
+        for (let i = 0; i < n; i++) {
+            const k = galaxy.calculateDistanceSquared(x, y, items[i].xpos, items[i].ypos);
+            keys[i] = k;
+            if (k !== k) nan = true;
+        }
+        this.keys = keys;
+        this.items = items;
+        this.heap = new Int32Array(nan ? 0 : n);
+        this.heapSize = nan ? 0 : n;
+        if (nan) {
+            this.sortAll();
+        } else {
+            for (let i = 0; i < n; i++) this.heap[i] = i;
+            for (let i = (n >> 1) - 1; i >= 0; i--) this.siftDown(i);
+        }
+    }
+
+    /** Entry i of the distance order; read in order (i = 0, 1, 2, …), as the callers do. */
+    get(i: number): T {
+        if (this.sorted !== null) return this.sorted[i];
+        if (i !== this.served) throw new Error('LazyDistanceOrder: entries must be read in order');
+        const heap = this.heap;
+        const top = heap[0];
+        const key = this.keys[top];
+        this.heapSize--;
+        if (this.heapSize > 0) {
+            heap[0] = heap[this.heapSize];
+            this.siftDown(0);
+            if (this.keys[heap[0]] === key) {
+                // A tie at the boundary: the introsort's choice between them is not knowable here — sort for real.
+                this.sortAll();
+                return this.sorted![i];
+            }
+        }
+        this.served++;
+        return this.items[top];
+    }
+
+    private sortAll(): void {
+        const keys = this.keys.slice();
+        const items = this.items.slice();
+        arraySortKeysItems(keys, items);
+        this.sorted = items;
+    }
+
+    private siftDown(i: number): void {
+        const heap = this.heap;
+        const keys = this.keys;
+        const size = this.heapSize;
+        const v = heap[i];
+        const kv = keys[v];
+        for (;;) {
+            let c = 2 * i + 1;
+            if (c >= size) break;
+            if (c + 1 < size && keys[heap[c + 1]] < keys[heap[c]]) c++;
+            if (!(keys[heap[c]] < kv)) break;
+            heap[i] = heap[c];
+            i = c;
+        }
+        heap[i] = v;
+    }
+}
+
 // .NET ArraySortHelper<TKey, TValue>.IntrospectiveSort over parallel keys/items (Array.Sort(keys, items)) — the
 // key/value twin of netSort.ts. Keys are finite doubles (Comparer<double>.Default ordering).
 export function arraySortKeysItems<T>(keys: number[], items: T[]): void {
@@ -1591,9 +1677,10 @@ export function ultraFastFindNearestRefuellingLocation(
     const num2 = 50;
     let stellarObject: StellarObject | null = null;
     if (includeResupplyShips) {
-        const array = sortStellarObjectsByDistance(galaxy, x, y, empire.refuellingLocationsMilitaryOnly);
+        // Perf: SortStellarObjectsByDistance's order, lazily (LazyDistanceOrder: the same entries in the same order).
+        const array = new LazyDistanceOrder(galaxy, x, y, empire.refuellingLocationsMilitaryOnly);
         for (let i = 0; i < array.length; i++) {
-            const stellarObject2 = array[i];
+            const stellarObject2 = array.get(i);
             if (stellarObject2 == null || !isBuiltObjectLocation(stellarObject2)) continue;
             const builtObject = stellarObject2;
             if (checkFuelSuppliedAtLocation(galaxy, fuelTypes, builtObject, empire, mustHaveActualSupply)) {
@@ -1606,9 +1693,9 @@ export function ultraFastFindNearestRefuellingLocation(
             }
         }
     }
-    const array2 = sortStellarObjectsByDistance(galaxy, x, y, empire.refuellingLocations);
+    const array2 = new LazyDistanceOrder(galaxy, x, y, empire.refuellingLocations);
     for (let j = 0; j < array2.length; j++) {
-        const stellarObject3 = array2[j];
+        const stellarObject3 = array2.get(j);
         if (stellarObject3 == null || !checkEmpireCanRefuelAtEmpire(galaxy, shipToRefuel, empire, stellarObject3.empire as Empire | null)) continue;
         if (isBuiltObjectLocation(stellarObject3)) {
             const builtObject2 = stellarObject3;

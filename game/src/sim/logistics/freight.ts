@@ -107,6 +107,8 @@ function checkPirateRelationOk(builtObject: BuiltObject, pirateEmpire: Empire): 
 interface SortableStellarObject {
     stellarObject: StellarObject;
     sortTag: number;
+    /** Perf: this entry's row in FulfillContext's post cargo memo (-1 = none yet). */
+    memoSlot: number;
 }
 
 class SortableStellarObjectList {
@@ -122,7 +124,7 @@ class SortableStellarObjectList {
         return this.members.has(o);
     }
     add(o: StellarObject): void {
-        this.items.push({ stellarObject: o, sortTag: 0.0 });
+        this.items.push({ stellarObject: o, sortTag: 0.0, memoSlot: -1 });
         this.members.add(o);
     }
 }
@@ -217,7 +219,8 @@ export function generateValidTradingPosts(galaxy: Galaxy, self: Empire, empire: 
             for (let num8 = 0; num8 < sysHabitats.length; num8++) {
                 const habitat3 = sysHabitats[num8];
                 if (habitat3 === star) continue;
-                if (habitat3 == null || habitat3.population.items.length <= 0 || habitat3.empire !== independent) continue;
+                // Perf: the owner test first (pure field reads; most habitats have no owner, so this skips the population deref).
+                if (habitat3 == null || habitat3.empire !== independent || habitat3.population.items.length <= 0) continue;
                 const q = habitatDockingBayWaitQueueCount(habitat3);
                 if (q !== null && q < num && !list.contains(habitat3)) list.add(habitat3);
             }
@@ -453,11 +456,14 @@ export function checkMarketOrders(galaxy: Galaxy, empire: Empire): void {
         allowableRangeSquared *= allowableRangeSquared;
     }
     const split = orderList.splitOrdersByType();
-    const ctx: FulfillContext = { galaxy, self: empire, availableFreighters: ships, allowableRangeSquared, empireTotalFreighterCount: array, empireAvailableFreighterCount, availableIndependentFreighters, useOptimizedSorting };
+    const ctx: FulfillContext = { galaxy, self: empire, availableFreighters: ships, allowableRangeSquared, empireTotalFreighterCount: array, empireAvailableFreighterCount, availableIndependentFreighters, useOptimizedSorting, memo: postCargoMemo.inUse ? new PostCargoMemo() : postCargoMemo, contractsMade: 0 };
+    ctx.memo.reset();
+    ctx.memo.inUse = true;
     fulfillOrdersAtTradingPosts(ctx, split.constructionShortageMobileOrders, tradingPosts, sortedTradingPosts);
     fulfillOrdersAtTradingPosts(ctx, split.constructionShortageOrders, tradingPosts, sortedTradingPosts);
     fulfillOrdersAtTradingPosts(ctx, split.retrofitResourcesForBaseOrders, tradingPosts2, sortedTradingPosts2);
     fulfillOrdersAtTradingPosts(ctx, split.standardOrders, tradingPosts, sortedTradingPosts);
+    ctx.memo.inUse = false;
 }
 
 /** The arguments FulfillOrdersAtTradingPosts threads through to FindFreighterForContract. */
@@ -471,7 +477,55 @@ interface FulfillContext {
     empireAvailableFreighterCount: number[];
     availableIndependentFreighters: BuiltObject[];
     useOptimizedSorting: boolean;
+    memo: PostCargoMemo;
+    /** Perf: contracts made so far in this CheckMarketOrders (FindFreighterToFulfillOrder's success branch). */
+    contractsMade: number;
 }
+
+/**
+ * Perf (not in the C#): per trading-post entry and resource id, the lookups AttemptToFulfillOrderAtTradingPost repeats
+ * for every order — the post's Cargo for the resource (GetExists + GetCargo(resource, post.Empire), or null) and its
+ * resource level (CalculateResourceLevel(cargo, post)). Both only read the post, and nothing in one CheckMarketOrders
+ * changes a post's cargo list or the level's inputs except a contract being made (FindFreighterToFulfillOrder's
+ * success branch), which clears the memo first. The Cargo's amounts (Available) are still read live.
+ */
+class PostCargoMemo {
+    static readonly RESOURCES = 256; // resource ids are C# bytes
+    /** Per slot × resource: bit 1 = cargo looked up, bit 2 = level computed. */
+    state = new Uint8Array(0);
+    cargo: (Cargo | null)[] = [];
+    level = new Float64Array(0);
+    slots = 0;
+    /** Set while a CheckMarketOrders uses it (a nested call, should one ever happen, gets its own). */
+    inUse = false;
+    /** A row for a new trading-post entry. */
+    newSlot(): number {
+        const slot = this.slots++;
+        const need = this.slots * PostCargoMemo.RESOURCES;
+        if (need > this.state.length) {
+            const cap = Math.max(need, this.state.length * 2, 32 * PostCargoMemo.RESOURCES);
+            const state = new Uint8Array(cap);
+            state.set(this.state);
+            this.state = state;
+            const level = new Float64Array(cap);
+            level.set(this.level);
+            this.level = level;
+            for (let i = this.cargo.length; i < cap; i++) this.cargo.push(null);
+        }
+        return slot;
+    }
+    clear(): void {
+        this.state.fill(0, 0, this.slots * PostCargoMemo.RESOURCES);
+    }
+    /** Empty, for a new CheckMarketOrders (the buffers are kept; the slots are handed out again). */
+    reset(): void {
+        this.clear();
+        this.cargo.fill(null, 0, this.slots * PostCargoMemo.RESOURCES);
+        this.slots = 0;
+    }
+}
+/** The shared memo, reset by each CheckMarketOrders (a cache only — never read across calls). */
+const postCargoMemo = new PostCargoMemo();
 
 /** Empire.4.cs 826 CheckOrderIsAffordable(order). */
 function checkOrderIsAffordable(galaxy: Galaxy, self: Empire, order: Order): boolean {
@@ -558,18 +612,28 @@ function fulfillOrdersAtTradingPosts(ctx: FulfillContext, orders: OrderList, tra
                 if (cut < Infinity) cutoffSquared = (cut * (1 + 1e-9) + 1) * (cut * (1 + 1e-9) + 1);
             }
         }
+        // Perf: the order's AmountOutstandingToContract (a sum over its contracts) changes only when a contract is made
+        // (FulfillContext.contractsMade), so it is re-read only then; the loop tests the same value as the C#.
+        let outstanding = order.amountOutstandingToContract;
+        let contractsMade = ctx.contractsMade;
         for (let j = 0; j < value.items.length; j++) {
-            if (value.items[j].sortTag > cutoffSquared) break;
-            if (value.items[j].stellarObject !== stellarObject) {
-                attemptToFulfillOrderAtTradingPost(ctx, value.items[j].stellarObject, order, commodityResource, resourceIsRestricted, resourceIsLuxury, requesterIsConstructionShip);
-                if (order.amountOutstandingToContract <= 0) break;
+            const item = value.items[j];
+            if (item.sortTag > cutoffSquared) break;
+            if (item.stellarObject !== stellarObject) {
+                if (item.memoSlot < 0) item.memoSlot = ctx.memo.newSlot();
+                attemptToFulfillOrderAtTradingPost(ctx, item.stellarObject, order, commodityResource, resourceIsRestricted, resourceIsLuxury, requesterIsConstructionShip, item.memoSlot, outstanding);
+                if (ctx.contractsMade !== contractsMade) {
+                    contractsMade = ctx.contractsMade;
+                    outstanding = order.amountOutstandingToContract;
+                }
+                if (outstanding <= 0) break;
             }
         }
     }
 }
 
 /** Empire.4.cs 923 AttemptToFulfillOrderAtTradingPost(StellarObject tradingPost, order, orderResource, …). */
-function attemptToFulfillOrderAtTradingPost(ctx: FulfillContext, tradingPost: StellarObject | null, order: Order | null, orderResource: ResourceRef | null, resourceIsRestricted: boolean, resourceIsLuxury: boolean, requesterIsConstructionShip: boolean): number {
+function attemptToFulfillOrderAtTradingPost(ctx: FulfillContext, tradingPost: StellarObject | null, order: Order | null, orderResource: ResourceRef | null, resourceIsRestricted: boolean, resourceIsLuxury: boolean, requesterIsConstructionShip: boolean, memoSlot: number, outstanding: number): number {
     const { galaxy } = ctx;
     let allowableRangeSquared = ctx.allowableRangeSquared;
     if (tradingPost === null || order === null) return 0;
@@ -614,14 +678,25 @@ function attemptToFulfillOrderAtTradingPost(ctx: FulfillContext, tradingPost: St
     let cargo: Cargo | null = null;
     let num2 = 0;
     const cargo2 = tradingPost.cargo;
+    const memo = ctx.memo;
+    let m = -1; // memo cell (slot × resource), -1 = not memoised
     if (cargo2 !== null) {
-        if (orderResource !== null && cargoGetExists(cargo2, orderResource.resourceId)) {
-            const empire2 = tradingPostEmpire;
-            if (empire2 !== null) {
-                cargo = cargoGetCargoById(cargo2, orderResource.resourceId, empire2.empireId);
-                if (resourceIsLuxury && !isBuiltObject(tradingPost)) {
-                    num2 = !resourceIsRestricted ? calculateMinimumLuxuryResourceLevel(tradingPost) : calculateMinimumLuxuryResourceLevelRestricted(tradingPost);
+        if (orderResource !== null) {
+            // Perf: GetExists + GetCargo through the per-call memo (PostCargoMemo); the luxury minimum (pure, used
+            // only with a cargo) is computed as before when there is one.
+            const resourceId = orderResource.resourceId;
+            if (resourceId >= 0 && resourceId < PostCargoMemo.RESOURCES) m = memoSlot * PostCargoMemo.RESOURCES + resourceId;
+            if (m >= 0 && (memo.state[m] & 1) !== 0) {
+                cargo = memo.cargo[m];
+            } else {
+                cargo = tradingPostEmpire !== null && cargoGetExists(cargo2, resourceId) ? cargoGetCargoById(cargo2, resourceId, tradingPostEmpire.empireId) : null;
+                if (m >= 0) {
+                    memo.cargo[m] = cargo;
+                    memo.state[m] |= 1;
                 }
+            }
+            if (cargo !== null && resourceIsLuxury && !isBuiltObject(tradingPost)) {
+                num2 = !resourceIsRestricted ? calculateMinimumLuxuryResourceLevel(tradingPost) : calculateMinimumLuxuryResourceLevelRestricted(tradingPost);
             }
         } else if (order.commodityComponent !== null) {
             // TODO(port): component cargo — `cargo2.GetExists(component)` / GetCargo(component, tradingPost.Empire);
@@ -634,13 +709,24 @@ function attemptToFulfillOrderAtTradingPost(ctx: FulfillContext, tradingPost: St
             let num3 = 0;
             if ((requesterIsConstructionShip || order.type === OrderType.ConstructionShortage || order.type === OrderType.ConstructionShortageMobile || order.type === OrderType.RetrofitResourcesForBase) && tradingPostEmpire === empire) {
                 num3 = 0;
-            } else if (isBuiltObject(tradingPost)) {
-                num3 = calculateResourceLevelCargoBuiltObject(galaxy, cargo, tradingPost);
+            } else if (num2 > 0) {
+                num3 = num2;
             } else {
-                num3 = num2 <= 0 ? calculateResourceLevelCargoHabitat(galaxy, cargo, tradingPost) : num2;
+                // Perf: the post's resource level through the per-call memo (PostCargoMemo; cell m is this cargo's
+                // resource, as GetCargo matched it).
+                if (m >= 0 && (memo.state[m] & 2) !== 0) {
+                    num3 = memo.level[m];
+                } else {
+                    num3 = isBuiltObject(tradingPost) ? calculateResourceLevelCargoBuiltObject(galaxy, cargo, tradingPost) : calculateResourceLevelCargoHabitat(galaxy, cargo, tradingPost);
+                    if (m >= 0) {
+                        memo.level[m] = num3;
+                        memo.state[m] |= 2;
+                    }
+                }
             }
             available -= num3;
-            if (available > 0 && available > Math.min(order.amountOutstandingToContract, MINIMUM_CONTRACT_SIZE)) {
+            // `outstanding`: order.AmountOutstandingToContract, as the caller last read it (unchanged since: no contract made).
+            if (available > 0 && available > Math.min(outstanding, MINIMUM_CONTRACT_SIZE)) {
                 return findFreighterToFulfillOrder(ctx, order, available, tradingPost, empire);
             }
         }
@@ -667,6 +753,8 @@ function findFreighterToFulfillOrder(ctx: FulfillContext, order: Order, availabl
     const builtObject = found.freighter;
     const freighterTypeIndex = found.freighterTypeIndex;
     if (num > 0 && builtObject !== null) {
+        ctx.memo.clear(); // a contract changes cargo (PostCargoMemo)
+        ctx.contractsMade++;
         const contracts: Contract[] = [];
         const num2 = Math.min(num, builtObject.cargoSpace);
         let contract: Contract | null = null;
