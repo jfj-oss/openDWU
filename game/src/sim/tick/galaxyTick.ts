@@ -201,6 +201,11 @@ export function galaxyDoTasks(
             if (galaxy.pirateEmpires[i].pirateEmpireBaseHabitat !== null) pruneUnreadDistressSignals(galaxy, galaxy.pirateEmpires[i]);
         }
         if (galaxy.independentEmpire !== null) pruneUnreadDistressSignals(galaxy, galaxy.independentEmpire);
+        // Leak fix (not in the C#): the independent empire's messages (sendEmpireMessage still queues them, e.g. every
+        // attack on an independent ship) are never processed — ProcessMessages clears an empire's list (Empire.3.cs 4847)
+        // but only runs from DoTasks, which the independent empire never gets (Main.Part12.cs 3717 / 3736) — and nothing
+        // in the sim reads them, so the list (and the ships it names) only grew. Dropped here as ProcessMessages would.
+        if (galaxy.independentEmpire !== null && galaxy.independentEmpire.messages !== null) galaxy.independentEmpire.messages.length = 0;
         if (!gameFinished) {
             checkVictoryConditions(galaxy, playerEmpire, victoryArgs);
         }

@@ -328,7 +328,8 @@ describe('draw order (Galaxy.6.cs SelectXxxPlanet / SelectHabitatPictures)', () 
         // Moved {"rnd":288729,"crypto":587179} → {"rnd":262043,"crypto":528421}: SetupSun SelectHabitatPictures (Galaxy.5.cs 1323): star PictureRef/MapPictureRef draws (2026-10-04)
         expect(measured.seed1Draws).toMatchPin('pictureRefs.seed1Draws', {"rnd": 262043, "crypto": 528421});
         // Moved "0cecc3d70b1487e6" → "4948f3713d8cdf2d": SetupSun SelectHabitatPictures (Galaxy.5.cs 1323): star PictureRef/MapPictureRef draws (2026-10-04)
-        expect(measured.seed1Digest).toMatchPin('pictureRefs.seed1Digest', "4948f3713d8cdf2d");
+        // Moved "4948f3713d8cdf2d" → "906ac92570a441cc": galaxy long block clears the independent empire's never-processed message inbox (leak fix; only Empire.messages.length in the digest and the saved list change, RNG draws unchanged) (2026-10-10)
+        expect(measured.seed1Digest).toMatchPin('pictureRefs.seed1Digest', "906ac92570a441cc");
         // The whole saved game with every picture ref blanked and the save markers removed (on a loaded copy).
         const time = new GalaxyTime();
         time.togglePause();
@@ -345,7 +346,8 @@ describe('draw order (Galaxy.6.cs SelectXxxPlanet / SelectHabitatPictures)', () 
         delete obj.galaxy.habitatPictureRefs;
         delete obj.galaxy.habitatMapPictureRefs;
         // Moved #91c58990ed → #ff3777c6bb: SetupSun SelectHabitatPictures (Galaxy.5.cs 1323): star PictureRef/MapPictureRef draws (2026-10-04)
-        expect(sha(JSON.stringify(obj))).toMatchPin('pictureRefs.seed1SaveWithoutPictures', "4139f9fa81a480bf7f5e3e80849933529785fdb5");
+        // Moved #ff3777c6bb → #99a907b837: galaxy long block clears the independent empire's never-processed message inbox (leak fix; only Empire.messages.length in the digest and the saved list change, RNG draws unchanged) (2026-10-10)
+        expect(sha(JSON.stringify(obj))).toMatchPin('pictureRefs.seed1SaveWithoutPictures', "c6d0a4a849df330c7c0d62ad1759378843983121");
     }, 300000);
 });
 
