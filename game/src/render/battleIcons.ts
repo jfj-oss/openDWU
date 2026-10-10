@@ -90,19 +90,27 @@ export function systemsUnderFire(
 ): Map<number, number> {
     const out = new Map<number, number>();
     if (player === null) return out;
-    const put = (i: number, a: number): void => {
-        if (a > (out.get(i) ?? 0)) out.set(i, a);
-    };
-    for (const bo of ships) {
-        if (bo === null || bo.hasBeenDestroyed || bo.empire !== player || bo.nearestSystemStar === null) continue;
-        const a = combatActivityAlpha(bo, nowMs);
-        if (a > 0) put(bo.nearestSystemStar.systemIndex, a);
-    }
-    for (const h of habitats) {
-        if (h.owner !== player || h.attackers === null) continue;
-        if (h.attackers.some((x) => liveAttacker(x, player, h.xpos, h.ypos, 0))) put(h.systemIndex, 1);
-    }
+    for (const bo of ships) shipUnderFire(out, player, bo, nowMs);
+    for (const h of habitats) habitatUnderFire(out, player, h);
     return out;
+}
+
+/** systemsUnderFire's ship term, for one ship (galaxyMarkers.ts spreads the scan over frames; the result does not
+ *  depend on the order of the calls). */
+export function shipUnderFire(out: Map<number, number>, player: Empire, bo: FightShip | null, nowMs: number): void {
+    if (bo === null || bo.hasBeenDestroyed || bo.empire !== player || bo.nearestSystemStar === null) return;
+    const a = combatActivityAlpha(bo, nowMs);
+    if (a > 0) putUnderFire(out, bo.nearestSystemStar.systemIndex, a);
+}
+
+/** systemsUnderFire's colony term, for one habitat. */
+export function habitatUnderFire(out: Map<number, number>, player: Empire, h: FightHabitat): void {
+    if (h.owner !== player || h.attackers === null) return;
+    if (h.attackers.some((x) => liveAttacker(x, player, h.xpos, h.ypos, 0))) putUnderFire(out, h.systemIndex, 1);
+}
+
+function putUnderFire(out: Map<number, number>, i: number, a: number): void {
+    if (a > (out.get(i) ?? 0)) out.set(i, a);
 }
 
 /** Marker size in screen pixels: zoomed in (galaxy factor below 4000) and zoomed out. */

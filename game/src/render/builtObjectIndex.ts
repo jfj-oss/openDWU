@@ -8,9 +8,11 @@
 //   xs / ys   — their committed positions;
 //   rs        — renderInterp.ts builtObjectDrawnOffsetBound at the fastest game speed (and the presentation clock's
 //               lag at the rebuild): no drawn (interpolated) position is farther than this from the committed one
-//               (NaN until first needed: computed by `near` only for objects outside the view on their committed position);
+//               (NaN until first needed: computed by `near` / `nearAt` only for objects outside the view on their committed
+//               position);
 // and `near` returns, in that same order, every live object that could be on screen — a superset of what each layer's
-// own cull keeps, so a layer that runs its unchanged per-object tests over `near` draws exactly what it drew before.
+// own cull keeps, so a layer that runs its unchanged per-object tests over `near` draws exactly what it drew before
+// (`nearAt`: the same over a subset of the live objects, e.g. galaxyMarkers.ts's visible ones).
 // It is refreshed when a step lands (MotionInterpolator.serial), when the array changes (identity / length), and every
 // REFRESH_FRAMES frames regardless (edits made outside a step, e.g. while paused, show within a few frames).
 
@@ -29,6 +31,9 @@ export class BuiltObjectIndex {
     rs = new Float64Array(0);
     /** Times the index was rebuilt (tests / perf counters). */
     rebuilds = 0;
+    /** Bumped by a rebuild that changed `live` (an object added, removed or reordered): positions in `live` stay
+     *  valid while it is unchanged. */
+    liveVersion = 0;
     /** update() calls so far: a reader outside the Main View (audio) uses the index only in a frame it was updated. */
     updates = 0;
     /** Whether the latest update() rebuilt the index (liveness / positions may have changed this frame). */
@@ -70,14 +75,21 @@ export class BuiltObjectIndex {
         // How far the presented instant trails the committed step (PresentationClock): it only shrinks until the next
         // step lands, which rebuilds the index, so this frame's lag bounds every frame until then.
         w.lagSteps = motion?.lagSteps ?? 0;
+        // (Rewritten in place, noting whether the sequence changed: liveVersion.)
         const live = this.live;
-        live.length = 0;
+        let n = 0;
+        let same = true;
         for (let i = 0; i < arr.length; i++) {
             const bo = arr[i];
             if (bo === null || bo === undefined || bo.hasBeenDestroyed) continue;
-            live.push(bo);
+            if (same && live[n] !== bo) same = false;
+            live[n++] = bo;
         }
-        const n = live.length;
+        if (live.length !== n) {
+            same = false;
+            live.length = n;
+        }
+        if (!same) this.liveVersion++;
         if (this.xs.length < n) {
             const cap = Math.max(n, Math.ceil(this.xs.length * 1.5), 256);
             this.xs = new Float64Array(cap);
@@ -116,6 +128,35 @@ export class BuiltObjectIndex {
         }
         this.cap = builtObjectDrawnOffsetCap(this.worst, v);
         this.capValid = true;
+    }
+
+    /**
+     * `near` over a subset of the live objects: the positions (indices into `live`, ascending: galaxy.builtObjects
+     * order) `at[0 .. count)` of this rebuild. Each object passes exactly as it does in `near` (the same committed-
+     * rectangle and drawn-offset-bound tests; the cap there only skips bounds that would reject anyway, so it is not
+     * needed here and the objects outside the subset are never visited).
+     */
+    nearAt(at: Int32Array, count: number, cx: number, cy: number, halfW: number, halfH: number, marginWorld: number, withBound: boolean, out: BuiltObject[]): BuiltObject[] {
+        out.length = 0;
+        const xs = this.xs;
+        const ys = this.ys;
+        const rs = this.rs;
+        const ax = halfW + marginWorld;
+        const ay = halfH + marginWorld;
+        for (let k = 0; k < count; k++) {
+            const i = at[k];
+            const dx = xs[i] - cx;
+            const dy = ys[i] - cy;
+            if (dx >= -ax && dx <= ax && dy >= -ay && dy <= ay) {
+                out.push(this.live[i]);
+                continue;
+            }
+            if (!withBound) continue;
+            let r = rs[i];
+            if (r !== r) r = rs[i] = builtObjectDrawnOffsetBound(this.worst, this.live[i]);
+            if (r > 0 && dx >= -ax - r && dx <= ax + r && dy >= -ay - r && dy <= ay + r) out.push(this.live[i]);
+        }
+        return out;
     }
 
     /** `live` as a set (built at most once per rebuild, on first use). */

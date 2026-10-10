@@ -74,7 +74,7 @@ import { displayColorForEmpire } from '../sim/empireColors';
 import { useMinifyingFilter } from './assets';
 import { DrawSig, boundsOnScreen } from './drawCache';
 import { showsMapIndicators } from './mainViewDisplay';
-import { drawCrossedSwords, SWORD_PX_FAR, SWORD_PX_NEAR, systemsUnderFire } from './battleIcons';
+import { drawCrossedSwords, habitatUnderFire, shipUnderFire, SWORD_PX_FAR, SWORD_PX_NEAR } from './battleIcons';
 import { builtObjectHiddenFromPick, warEmpires } from './builtObjectLayer';
 import { SystemLinkLayer } from './systemLinks';
 import { galaxyViewGates } from './cleanGalaxyView';
@@ -525,21 +525,38 @@ export function collectStationPresence(
     explored: (systemIndex: number) => boolean = () => true,
     knownBase: (bo: BuiltObject) => boolean = () => true,
 ): StationPresence[] {
-    const counts = new Map<number, Map<Empire, number>>();
-    const add = (sys: number, e: Empire): void => {
-        if (!explored(sys)) return;
-        let m = counts.get(sys);
+    const tally = new StationPresenceTally(galaxy, explored);
+    for (const bo of galaxy.builtObjects) tally.addBase(bo, knownBase);
+    for (const h of galaxy.habitats) tally.addHabitat(h);
+    return tally.result();
+}
+
+/** collectStationPresence's counts, fed one object at a time (refresh spreads the scan over frames). The result is
+ *  sorted on (system, count, empire id), so it does not depend on the order objects were added in. */
+export class StationPresenceTally {
+    private readonly counts = new Map<number, Map<Empire, number>>();
+
+    constructor(
+        private readonly galaxy: Pick<Galaxy, 'systems' | 'independentEmpire' | 'maxSolarSystemSize'>,
+        private readonly explored: (systemIndex: number) => boolean,
+    ) {}
+
+    private add(sys: number, e: Empire): void {
+        if (!this.explored(sys)) return;
+        let m = this.counts.get(sys);
         if (m === undefined) {
             m = new Map();
-            counts.set(sys, m);
+            this.counts.set(sys, m);
         }
         m.set(e, (m.get(e) ?? 0) + 1);
-    };
-    const indep = galaxy.independentEmpire;
-    for (const bo of galaxy.builtObjects) {
-        if (bo === null || bo.hasBeenDestroyed || bo.role !== BuiltObjectRole.Base) continue;
+    }
+
+    /** A live base of a non-independent empire the viewer knows, at a habitat of a system or near its star. */
+    addBase(bo: BuiltObject | null, knownBase: (bo: BuiltObject) => boolean): void {
+        if (bo === null || bo.hasBeenDestroyed || bo.role !== BuiltObjectRole.Base) return;
+        const galaxy = this.galaxy;
         const e = bo.empire;
-        if (e === null || e === indep) continue;
+        if (e === null || e === galaxy.independentEmpire) return;
         let sys = -1;
         if (bo.parentHabitat !== null) {
             sys = bo.parentHabitat.systemIndex;
@@ -549,21 +566,26 @@ export function collectStationPresence(
             const dy = bo.ypos - s.ypos;
             if (dx * dx + dy * dy <= galaxy.maxSolarSystemSize * galaxy.maxSolarSystemSize) sys = s.systemIndex;
         }
-        if (sys >= 0 && sys < galaxy.systems.length && knownBase(bo)) add(sys, e);
+        if (sys >= 0 && sys < galaxy.systems.length && knownBase(bo)) this.add(sys, e);
     }
-    for (const h of galaxy.habitats) {
-        if (h.category !== HabitatCategoryType.Planet && h.category !== HabitatCategoryType.Moon) continue;
+
+    /** An owned planet / moon (owner, else empire; not independent). */
+    addHabitat(h: Galaxy['habitats'][number]): void {
+        if (h.category !== HabitatCategoryType.Planet && h.category !== HabitatCategoryType.Moon) return;
         const e = h.owner ?? h.empire;
-        if (e === null || e === undefined || e === indep) continue;
-        add(h.systemIndex, e);
+        if (e === null || e === undefined || e === this.galaxy.independentEmpire) return;
+        this.add(h.systemIndex, e);
     }
-    const out: StationPresence[] = [];
-    for (const [systemIndex, m] of [...counts].sort((a, b) => a[0] - b[0])) {
-        const list = [...m].map(([empire, count]) => ({ systemIndex, empire, count }));
-        list.sort((a, b) => b.count - a.count || a.empire.empireId - b.empire.empireId);
-        out.push(...list);
+
+    result(): StationPresence[] {
+        const out: StationPresence[] = [];
+        for (const [systemIndex, m] of [...this.counts].sort((a, b) => a[0] - b[0])) {
+            const list = [...m].map(([empire, count]) => ({ systemIndex, empire, count }));
+            list.sort((a, b) => b.count - a.count || a.empire.empireId - b.empire.empireId);
+            out.push(...list);
+        }
+        return out;
     }
-    return out;
 }
 
 /** The empire drawn as a system's owner: SystemInfo.DominantEmpire, else (before updateSystemInfo has run) the
@@ -736,6 +758,31 @@ export interface SystemLabelView {
 
 /** How often the per-system data (owners, presence, visibility, war list) is recollected. */
 const REFRESH_MS = 1000;
+/** A refresh pass (refresh / stepRefresh) is spread over frames, REFRESH_UNITS_PER_FRAME units of work a frame: a built
+ *  object costs REFRESH_UNITS_OBJECT (its visibility test), a system REFRESH_UNITS_SYSTEM, a habitat 1. A late game
+ *  (~23k objects, ~104k habitats, ~4k systems) takes ~12 frames of ~1 ms instead of one 8-14 ms frame a second. */
+const REFRESH_UNITS_PER_FRAME = 24000;
+const REFRESH_UNITS_OBJECT = 6;
+const REFRESH_UNITS_SYSTEM = 8;
+
+interface RefreshPass {
+    startedAt: number;
+    stage: number;
+    cursor: number;
+    player: Empire | null;
+    explored: (systemIndex: number) => boolean;
+    nowMs: number;
+    builtObjects: readonly (BuiltObject | null)[];
+    habitats: Galaxy['habitats'];
+    habitatCount: number;
+    visible: Set<BuiltObject>;
+    presence: StationPresenceTally;
+    underFire: Map<number, number>;
+    owners: Map<SystemInfo, { empire: Empire; tsv: number; color: number }>;
+    ringList: Array<{ sys: SystemInfo; tsv: number; cross: boolean; pen: { color: number; widthPx: number; dashed: boolean } }>;
+    ringsGated: boolean;
+    visibleFleets: ShipGroup[];
+}
 
 type SelectionLike = { builtObject?: BuiltObject; shipGroup?: ShipGroup; builtObjects?: BuiltObject[] } | null;
 
@@ -827,6 +874,8 @@ export class GalaxyMarkerLayer {
     /** systemIndex -> opacity of the crossed-swords marker (battleIcons.ts), refreshed with the rest. */
     private underFire = new Map<number, number>();
     private lastRefresh = -Infinity;
+    /** The refresh pass in progress (spread over frames), if any. */
+    private pass: RefreshPass | null = null;
     private dataVersion = 0;
     private ringKey = { z: NaN, v: -1, a: NaN, x0: 0, y0: 0, x1: 0, y1: 0, sig: '' };
     /** Whether the owned / independent system rings are listed (method_250 5395: !CleanGalaxyView). */
@@ -878,47 +927,125 @@ export class GalaxyMarkerLayer {
         this.icons = { capital, secondary, refuel };
     }
 
+    /**
+     * Recollect the per-system / visibility data at once (the first refresh, or after an option change or a long gap):
+     * the same pass refreshes otherwise spread over frames (stepRefresh), run to the end.
+     */
     private refresh(): void {
+        const p = this.startRefresh(performance.now());
+        while (!this.stepRefresh(p, Infinity));
+        this.publishRefresh(p);
+    }
+
+    private startRefresh(now: number): RefreshPass {
         const g = this.galaxy;
-        const indep = g.independentEmpire;
         const player = localViewerEmpire(g);
         const vis = player?.visibility ?? null;
         const explored = (i: number): boolean => vis === null || vis.checkSystemVisibilityStatus(i) >= SystemVisibilityStatus.Explored;
-        // Visible objects (galaxy symbol pass, MainView.2.cs 5915-5930) and bases the player has ever seen.
-        this.visibleObjects.clear();
-        for (const bo of g.builtObjects) {
-            if (bo === null || bo.hasBeenDestroyed) continue;
-            if (player === null || bo.empire === player || isObjectVisibleToThisEmpireImprecise(g, player, bo)) {
-                this.visibleObjects.add(bo);
-                if (bo.role === BuiltObjectRole.Base) this.knownBases.add(bo);
+        return {
+            startedAt: now,
+            stage: 0,
+            cursor: 0,
+            player,
+            explored,
+            nowMs: g.nowMs,
+            // The built objects as they stand now: a later splice does not shift the scan (its chunks are frames apart).
+            builtObjects: (g.builtObjects as readonly (BuiltObject | null)[]).slice(),
+            habitats: g.habitats,
+            habitatCount: g.habitats.length,
+            visible: new Set<BuiltObject>(),
+            presence: new StationPresenceTally(g, explored),
+            underFire: new Map<number, number>(),
+            owners: new Map(),
+            ringList: [],
+            ringsGated: this.ringsGated,
+            visibleFleets: [],
+        };
+    }
+
+    /**
+     * Advance a refresh pass by up to `budget` units of work (REFRESH_UNITS_PER_FRAME per frame; Infinity: to the end).
+     * Returns whether it is done. Same tests, same results as one synchronous scan of the state the pass visits: the
+     * visible set, known bases, presence tally and fire map do not depend on visiting order.
+     */
+    private stepRefresh(p: RefreshPass, budget: number): boolean {
+        const g = this.galaxy;
+        const player = p.player;
+        let units = 0;
+        // Stage 0: built objects (MainView.2.cs 5915-5930 visibility, bases the player has seen, presence bases, own
+        // ships in combat). An object costs REFRESH_UNITS_OBJECT.
+        if (p.stage === 0) {
+            const bos = p.builtObjects;
+            const known = this.knownBases;
+            const knownBase = (bo: BuiltObject): boolean => known.has(bo);
+            let i = p.cursor;
+            for (; i < bos.length && units < budget; i++, units += REFRESH_UNITS_OBJECT) {
+                const bo = bos[i];
+                if (bo === null || bo === undefined || bo.hasBeenDestroyed) continue;
+                if (player === null || bo.empire === player || isObjectVisibleToThisEmpireImprecise(g, player, bo)) {
+                    p.visible.add(bo);
+                    if (bo.role === BuiltObjectRole.Base) known.add(bo);
+                }
+                // (known: final for a live base once its own visibility is in; the cleanup below drops destroyed ones.)
+                p.presence.addBase(bo, knownBase);
+                if (player !== null) shipUnderFire(p.underFire, player, bo, p.nowMs);
             }
+            p.cursor = i;
+            if (i < bos.length) return false;
+            for (const bo of known) if (bo.hasBeenDestroyed) known.delete(bo);
+            p.stage = 1;
+            p.cursor = 0;
         }
-        for (const bo of this.knownBases) if (bo.hasBeenDestroyed) this.knownBases.delete(bo);
-        this.presence = collectStationPresence(g, explored, (bo) => this.knownBases.has(bo));
-        // Owned systems the player has explored / sees (method_268's gate).
-        this.owners.clear();
-        this.ringList = [];
-        for (const sys of g.systems) {
-            const idx = sys.systemStar.systemIndex;
-            const status = vis !== null ? vis.checkSystemVisibilityStatus(idx) : SystemVisibilityStatus.Visible;
-            const o = explored(idx) ? systemOwner(sys, indep) : null;
-            const color = o !== null ? empireMarkerColor(o.empire) : null;
-            const pen = systemRingPen(status, color, sys.isDisputed === true);
-            if (sys.systemStar.category === HabitatCategoryType.GasCloud) {
-                // 5390-5394: every gas cloud gets the cross, in method_268's pen.
-                this.ringList.push({ sys, tsv: o?.tsv ?? 0, cross: true, pen });
-                continue;
+        // Stage 1: habitats (owned planets / moons for the presence discs, the player's colonies under attack).
+        if (p.stage === 1) {
+            if (p.habitats !== g.habitats || p.habitats.length !== p.habitatCount) {
+                // The habitat list changed mid-pass (rare): start the pass over.
+                Object.assign(p, this.startRefresh(p.startedAt));
+                return false;
             }
-            if (o !== null) {
-                this.owners.set(sys, { empire: o.empire, tsv: o.tsv, color: color! });
-                if (this.ringsGated) this.ringList.push({ sys, tsv: o.tsv, cross: false, pen });
-            } else if (this.ringsGated && explored(idx) && (sys.independentColonyCount ?? 0) > 0) {
-                // 5395-5398: known independent colonies get the grey ring.
-                this.ringList.push({ sys, tsv: 0, cross: false, pen });
+            let i = p.cursor;
+            const list = p.habitats;
+            for (; i < list.length && units < budget; i++, units++) {
+                const h = list[i];
+                p.presence.addHabitat(h);
+                if (player !== null) habitatUnderFire(p.underFire, player, h);
             }
+            p.cursor = i;
+            if (i < list.length) return false;
+            p.stage = 2;
+            p.cursor = 0;
         }
-        // Fleets the player can see (method_258 6340: IsObjectVisibleToThisEmpire(lead, true, false)).
-        this.visibleFleets = [];
+        // Stage 2: systems — owners and the rings / gas-cloud crosses (method_250 5378-5400, method_268's gate).
+        if (p.stage === 2) {
+            const vis = player?.visibility ?? null;
+            const indep = g.independentEmpire;
+            const systems = g.systems;
+            let i = p.cursor;
+            for (; i < systems.length && units < budget; i++, units += REFRESH_UNITS_SYSTEM) {
+                const sys = systems[i];
+                const idx = sys.systemStar.systemIndex;
+                const status = vis !== null ? vis.checkSystemVisibilityStatus(idx) : SystemVisibilityStatus.Visible;
+                const o = p.explored(idx) ? systemOwner(sys, indep) : null;
+                const color = o !== null ? empireMarkerColor(o.empire) : null;
+                const pen = systemRingPen(status, color, sys.isDisputed === true);
+                if (sys.systemStar.category === HabitatCategoryType.GasCloud) {
+                    // 5390-5394: every gas cloud gets the cross, in method_268's pen.
+                    p.ringList.push({ sys, tsv: o?.tsv ?? 0, cross: true, pen });
+                    continue;
+                }
+                if (o !== null) {
+                    p.owners.set(sys, { empire: o.empire, tsv: o.tsv, color: color! });
+                    if (p.ringsGated) p.ringList.push({ sys, tsv: o.tsv, cross: false, pen });
+                } else if (p.ringsGated && p.explored(idx) && (sys.independentColonyCount ?? 0) > 0) {
+                    // 5395-5398: known independent colonies get the grey ring.
+                    p.ringList.push({ sys, tsv: 0, cross: false, pen });
+                }
+            }
+            p.cursor = i;
+            if (i < systems.length) return false;
+            p.stage = 3;
+        }
+        // Stage 3: fleets the player can see (method_258 6340: IsObjectVisibleToThisEmpire(lead, true, false)).
         for (const e of g.empires) {
             if (e === null) continue;
             for (const sgU of e.shipGroups) {
@@ -926,10 +1053,21 @@ export class GalaxyMarkerLayer {
                 const lead = sg.leadShip;
                 if (lead === null || lead.hasBeenDestroyed || sg.ships.length === 0) continue;
                 if (player !== null && sg.empire !== player && !isObjectVisibleToThisEmpire(g, player, lead, true, false)) continue;
-                this.visibleFleets.push(sg);
+                p.visibleFleets.push(sg);
             }
         }
-        this.underFire = systemsUnderFire(player, g.builtObjects, g.habitats, g.nowMs);
+        return true;
+    }
+
+    /** Make a finished pass's data the drawn data. */
+    private publishRefresh(p: RefreshPass): void {
+        this.visibleObjects = p.visible;
+        this.presence = p.presence.result();
+        this.owners = p.owners;
+        this.ringList = p.ringList;
+        this.visibleFleets = p.visibleFleets;
+        this.underFire = p.underFire;
+        const player = p.player;
         this.war = player !== null ? warEmpires(player.diplomaticRelations) : [];
         this.dataVersion++;
     }
@@ -962,10 +1100,20 @@ export class GalaxyMarkerLayer {
             // The ring list is rebuilt by refresh(): toggling the option takes effect at once.
             this.ringsGated = gates.systemRings;
             this.lastRefresh = -Infinity;
+            this.pass = null;
         }
-        if (now - this.lastRefresh >= REFRESH_MS) {
+        // Once a second, spread over the next frames (stepRefresh); at once when the data is older than two periods
+        // (the first frame, an option change, the layer shown again after a while).
+        if (this.pass !== null && now - this.pass.startedAt >= 2 * REFRESH_MS) this.pass = null;
+        if (this.pass === null && now - this.lastRefresh >= REFRESH_MS) {
+            const stale = now - this.lastRefresh >= 2 * REFRESH_MS;
             this.lastRefresh = now;
-            this.refresh();
+            if (stale) this.refresh();
+            else this.pass = this.startRefresh(now);
+        }
+        if (this.pass !== null && this.stepRefresh(this.pass, REFRESH_UNITS_PER_FRAME)) {
+            this.publishRefresh(this.pass);
+            this.pass = null;
         }
 
         this.discs.visible = presenceOn && presenceBandAlpha(f) > 0;
@@ -1250,6 +1398,28 @@ export class GalaxyMarkerLayer {
         return part;
     }
 
+    /** Positions (in index.live) of the live objects in visibleObjects, in index order: the galaxy pass's candidates.
+     *  Recomputed when the live list changes (index.liveVersion) or a refresh replaces the visible set. */
+    private candAt = new Int32Array(0);
+    private candCount = 0;
+    private candLive = -1;
+    private candVersion = -1;
+    private candIndex: BuiltObjectIndex | null = null;
+
+    private updateGalaxyCandidates(idx: BuiltObjectIndex): void {
+        if (this.candIndex === idx && this.candLive === idx.liveVersion && this.candVersion === this.dataVersion) return;
+        this.candIndex = idx;
+        this.candLive = idx.liveVersion;
+        this.candVersion = this.dataVersion;
+        const live = idx.live;
+        const vis = this.visibleObjects;
+        if (this.candAt.length < live.length) this.candAt = new Int32Array(Math.max(live.length, Math.ceil(this.candAt.length * 1.5), 256));
+        const at = this.candAt;
+        let c = 0;
+        if (vis.size > 0) for (let i = 0; i < live.length; i++) if (vis.has(live[i])) at[c++] = i;
+        this.candCount = c;
+    }
+
     private updateSymbols(f: number, z: number, cam: Camera): void {
         const g = this.galaxy;
         const player = localViewerEmpire(g);
@@ -1285,8 +1455,15 @@ export class GalaxyMarkerLayer {
         // first, and objects whose committed position is off screen by more than their drawn-position bound are
         // dropped before the (costly) render-interpolated sample. Same symbols, in the same order.
         const pad = 40;
-        const list: readonly (BuiltObject | null)[] =
-            this.index !== null ? this.index.near(cam.x, cam.y, cam.width / (2 * z), cam.height / (2 * z), (pad + 1) / z, true, this.nearScratch) : g.builtObjects;
+        // The galaxy pass draws only objects in visibleObjects: it visits just those (updateGalaxyCandidates), in the same
+        // order and with the same near tests, instead of every live object (~1k of ~17k in a late game).
+        const idx = this.index;
+        let list: readonly (BuiltObject | null)[];
+        if (idx === null) list = g.builtObjects;
+        else if (galaxyPass) {
+            this.updateGalaxyCandidates(idx);
+            list = idx.nearAt(this.candAt, this.candCount, cam.x, cam.y, cam.width / (2 * z), cam.height / (2 * z), (pad + 1) / z, true, this.nearScratch);
+        } else list = idx.near(cam.x, cam.y, cam.width / (2 * z), cam.height / (2 * z), (pad + 1) / z, true, this.nearScratch);
         for (const bo of list) {
             if (bo === null || bo.hasBeenDestroyed) continue;
             const art = symbolArtFor(bo.role, bo.subRole);
