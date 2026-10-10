@@ -246,3 +246,63 @@
 .mp-check input {
     margin: 0;
 }
+
+/* Internet play by invite codes (internetUi.ts). */
+.mp-screen-top {
+    z-index: 2100;
+}
+.mp-invite {
+    border-top: 1px solid #2c3646;
+    padding: 8px 0 4px;
+}
+.mp-invite-title {
+    color: #c8d4e8;
+    font-weight: bold;
+}
+.mp-code-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 5px 0;
+}
+.mp-code-row[hidden] {
+    display: none;
+}
+.mp-code-label {
+    flex: 0 0 110px;
+    color: #b8c0d0;
+}
+.mp-code {
+    font-family: Consolas, 'DejaVu Sans Mono', monospace;
+    font-size: 12px;
+    word-break: break-all;
+    resize: none;
+    user-select: text;
+}
+.mp-code-row .mp-btn {
+    margin: 0;
+}
+.mp-invite-state {
+    color: #c0d8a0;
+    margin: 3px 0;
+}
+.mp-invite-state.mp-error {
+    color: #ff7060;
+}
+.mp-invite[data-state='connected'] .mp-invite-state {
+    color: #80e080;
+}
+.mp-invite-help[hidden],
+.mp-invite .mp-btn[hidden] {
+    display: none;
+}
+.mp-banner-invites:empty {
+    display: none;
+}
+.mp-banner-invites {
+    margin-top: 8px;
+    color: #d8d8d8;
+}
+.mp-invite-compact .mp-code-label {
+    flex-basis: 80px;
+}

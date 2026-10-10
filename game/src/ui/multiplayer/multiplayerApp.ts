@@ -11,6 +11,8 @@
 //   src/simLoop.ts) or, when this app runs its sim in the worker, in the sim worker (§11: mpHandle.ts WorkerMp).
 // - Phase 4 (§12): a player who drops can reconnect by name or token (the host's rejoin gate gives the slot back; the
 //   session's welcome brings the current save); meanwhile the host chooses whether the AI runs their empire.
+// - Internet (§15): Host on the Internet / Join by code: WebRTC data channels set up with copy-paste codes
+//   (internetUi.ts, net/rtcTransport.ts), no server. The links reach the lobby and the rejoin gate as LAN ones do.
 //
 // Main thread / DOM. main.ts supplies the game building and the view (MultiplayerAppDeps).
 
@@ -29,7 +31,7 @@ import { issuePlayerCommand } from '../../sim/player/playerCommands';
 import type { PlayerOpName } from '../../sim/player/playerOps';
 import { GalaxyShape } from '../../sim/types';
 import { appFingerprint, fingerprintFiles, fingerprintMismatch, type AppFingerprint } from '../../net/fingerprint';
-import { decodeLobbyMessage, LobbyClient, LobbyHost, rejoinToken, sendLobbyMessage, slotHandoff, type HandoffLink, type LobbyPlayer, type LobbyState, type MultiplayerStart } from '../../net/lobby';
+import { decodeHello, LOBBY_MAX_PLAYERS, LobbyClient, LobbyHost, rejoinToken, sendLobbyMessage, slotHandoff, type HandoffLink, type LobbyPlayer, type LobbyState, type MultiplayerStart } from '../../net/lobby';
 import { MultiplayerGame, type MultiplayerStatus } from '../../net/multiplayerGame';
 import { setLockstepStepper } from '../../net/lockstepSeam';
 import type { Link } from '../../net/transport';
@@ -38,7 +40,8 @@ import type { SimEndpoint } from '../../simworker/simEndpoint';
 import type { WorkerBoot } from '../../simworker/protocol';
 import { InThreadMp, WorkerMp, type MpHandle } from './mpHandle';
 import { setLocalViewerEmpire } from '../../localViewer';
-import { DEFAULT_MULTIPLAYER_PORT, netEndpoint, type NetAddress } from './netBridge';
+import { DEFAULT_MULTIPLAYER_PORT, netEndpoint, type NetAddress, type PortMapping } from './netBridge';
+import { InternetHost, openCodeJoin } from './internetUi';
 import { playableRacesSorted, startGovernmentsForRace } from '../screens/newGameWizard';
 import './multiplayer.css';
 
@@ -101,9 +104,14 @@ interface Running {
     hosting: boolean;
     /** Host: the rejoin tokens handed out at start, by slot (lobby.ts LobbyHost.tokens). */
     tokens: ReadonlyMap<number, string>;
-    /** Client: how to reconnect after a drop (the host's address, this player's token). */
+    /** Client: how to reconnect after a drop (the host's address — INTERNET_ADDRESS for a code join —, this player's token). */
     rejoin: { address: string; token: string | null } | null;
+    /** Host on the Internet: the invites (the banner's rejoin codes). */
+    internet: InternetHost | null;
 }
+
+/** The "address" of a game joined by code (the rejoin memory; reconnecting takes a fresh code exchange). */
+const INTERNET_ADDRESS = 'internet';
 
 let running: Running | null = null;
 
@@ -134,6 +142,7 @@ export function endMultiplayerSession(reason = 'left the game'): void {
     } catch (err) {
         console.warn('multiplayer: closing the session failed', err);
     }
+    r.internet?.close();
     if (r.hosting) {
         const ep = netEndpoint();
         ep.onIncoming = null;
@@ -184,7 +193,7 @@ interface StatusBanner {
     destroy(): void;
 }
 
-function createStatusBanner(role: 'host' | 'client', actions: { onMenu: () => void; onDecide: (slot: number, ai: boolean) => void; onRejoin: (() => void) | null }): StatusBanner {
+function createStatusBanner(role: 'host' | 'client', actions: { onMenu: () => void; onDecide: (slot: number, ai: boolean) => void; onRejoin: (() => void) | null }, internet: InternetHost | null): StatusBanner {
     const banner = document.createElement('div');
     banner.className = 'mp-banner';
     banner.dataset.mp = 'banner';
@@ -205,7 +214,16 @@ function createStatusBanner(role: 'host' | 'client', actions: { onMenu: () => vo
     const idle = mk('Continue Without Them', 'continue', () => decideSlot >= 0 && actions.onDecide(decideSlot, false));
     const rejoin = mk('Rejoin', 'rejoin', () => actions.onRejoin?.());
     const menu = mk('Main Menu', 'menu', actions.onMenu);
-    banner.append(text, ai, idle, rejoin, menu);
+    // Hosting on the Internet: a fresh invite code for each absent player (rejoining takes a new code exchange).
+    const invites = h('div', 'mp-banner-invites');
+    invites.dataset.mp = 'rejoin-invites';
+    const syncInvites = (s: MultiplayerStatus): void => {
+        if (internet === null) return;
+        const away = s.kind === 'absent' ? s.players : [];
+        for (const slot of internet.rejoinSlots()) if (!away.some((p) => p.slot === slot)) internet.endRejoin(slot);
+        invites.replaceChildren(...away.map((p) => internet.rejoinWidget(p.slot, p.name)));
+    };
+    banner.append(text, ai, idle, rejoin, menu, invites);
     const chip = document.createElement('div');
     chip.className = 'mp-chip';
     chip.dataset.mp = 'chip';
@@ -215,6 +233,7 @@ function createStatusBanner(role: 'host' | 'client', actions: { onMenu: () => vo
             const t = statusText(s, role, actions.onRejoin !== null);
             banner.hidden = t === null;
             banner.dataset.status = s.kind;
+            syncInvites(s);
             if (t === null) return;
             text.textContent = t.text;
             menu.hidden = !t.menu;
@@ -233,7 +252,8 @@ function createStatusBanner(role: 'host' | 'client', actions: { onMenu: () => vo
 }
 
 /** Wire a started session into the app: viewer, view, banner, chip, debug hook, and the host's rejoin gate. */
-async function runGame(deps: MultiplayerAppDeps, mp: MpHandle, name: string, startOptions: StartGameOptions, hosting: boolean, newGame: boolean, extra: { tokens?: ReadonlyMap<number, string>; rejoin?: { address: string; token: string | null } }): Promise<void> {
+async function runGame(deps: MultiplayerAppDeps, mp: MpHandle, name: string, startOptions: StartGameOptions, hosting: boolean, newGame: boolean, extra: { tokens?: ReadonlyMap<number, string>; rejoin?: { address: string; token: string | null }; internet?: InternetHost | null }): Promise<void> {
+    const internet = extra.internet ?? null;
     const banner = createStatusBanner(mp.role, {
         onMenu: () => {
             endMultiplayerSession('left the game');
@@ -241,8 +261,9 @@ async function runGame(deps: MultiplayerAppDeps, mp: MpHandle, name: string, sta
         },
         onDecide: (slot, ai) => mp.decideAbsent(slot, ai),
         onRejoin: extra.rejoin !== undefined ? () => void rejoinGame(deps, name, extra.rejoin!.address, extra.rejoin!.token) : null,
-    });
-    const r: Running = { mp, start: mp.start, slot: mp.slot, name, banner, chipTimer: setInterval(() => paintChip(), 1000), hosting, tokens: extra.tokens ?? new Map(), rejoin: extra.rejoin ?? null };
+    }, internet);
+    const r: Running = { mp, start: mp.start, slot: mp.slot, name, banner, chipTimer: setInterval(() => paintChip(), 1000), hosting, tokens: extra.tokens ?? new Map(), rejoin: extra.rejoin ?? null, internet };
+    const net = internet !== null || extra.rejoin?.address === INTERNET_ADDRESS ? 'Internet' : 'LAN';
     running = r;
     let ping = -1;
     const paintChip = (): void => {
@@ -251,7 +272,7 @@ async function runGame(deps: MultiplayerAppDeps, mp: MpHandle, name: string, sta
         const me = mp.myEmpire();
         const st = mp.stats();
         const ai = mp.seats().filter((s) => s.ai).length;
-        banner.chip(`LAN ${mp.role === 'host' ? 'host' : 'client'}${mp.worker ? ' (worker)' : ''} · ${peers} player${peers === 1 ? '' : 's'}${me !== null ? ` · ${me.name}` : ''}${ping >= 0 ? ` · ping ${ping.toFixed(0)} ms` : ''} · delay ${mp.inputDelay()}${ai > 0 ? ` · AI plays ${ai}` : ''}${st !== null && st.resyncs > 0 ? ` · ${st.resyncs} resync${st.resyncs === 1 ? '' : 's'}` : ''}`);
+        banner.chip(`${net} ${mp.role === 'host' ? 'host' : 'client'}${mp.worker ? ' (worker)' : ''} · ${peers} player${peers === 1 ? '' : 's'}${me !== null ? ` · ${me.name}` : ''}${ping >= 0 ? ` · ping ${ping.toFixed(0)} ms` : ''} · delay ${mp.inputDelay()}${ai > 0 ? ` · AI plays ${ai}` : ''}${st !== null && st.resyncs > 0 ? ` · ${st.resyncs} resync${st.resyncs === 1 ? '' : 's'}` : ''}`);
         if (mp.role === 'client' && mp.currentStatus().kind !== 'hostLost') void mp.ping().then((ms) => (ping = ms), () => undefined);
     };
     mp.onStatus = (s) => running === r && banner.show(s);
@@ -281,14 +302,15 @@ function installRejoinGate(r: Running): void {
         let answered = false;
         link.onMessage = (text) => {
             if (answered) return;
-            const m = decodeLobbyMessage(text);
-            if (m === null || m.t !== 'lobbyHello') return;
             answered = true;
+            // Only a lobby hello is read before the version check; anything else closes the link.
+            const m = decodeHello(text);
             const refuse = (reason: string): void => {
                 console.info(`[lockstep] refused a connection: ${reason}`);
                 sendLobbyMessage(link, { t: 'lobbyRefused', reason });
                 link.close('refused');
             };
+            if (m === null) return refuse('Not an openDWU lobby hello.');
             if (running !== r) return refuse('The game is over.');
             const fp = m.fp as AppFingerprint | undefined;
             const why = fp === undefined || typeof fp !== 'object' ? 'Your app sent no version information.' : fingerprintMismatch(lastFingerprint!, fp);
@@ -391,7 +413,9 @@ async function rejoinGame(deps: MultiplayerAppDeps, name: string, address: strin
     try {
         const { fp } = await (async () => ({ gameData: await deps.prepare(), fp: await appFingerprint(deps.fingerprintBase()) }))();
         lastFingerprint = fp;
-        const link = await ep.connect(address);
+        const link = address === INTERNET_ADDRESS
+            ? await openCodeJoin({ title: 'Rejoin by code', note: 'Ask the host for a new invite code (their screen shows one for you while you are away) and paste it here. Send the reply code back; the game reconnects you to your empire.' })
+            : await ep.connect(address);
         await new Promise<void>((resolve, reject) => {
             LobbyClient.join(link, {
                 name,
@@ -468,8 +492,8 @@ export function openMultiplayerScreen(deps: MultiplayerAppDeps, onBack: () => vo
     root.dataset.mp = 'menu';
     const win = h('div', 'mp-window');
     root.appendChild(win);
-    win.appendChild(h('div', 'mp-title', 'Multiplayer (LAN)'));
-    win.appendChild(h('div', 'mp-note', 'Play one game with other players on your local network. Every player needs the same version of openDWU and the same Distant Worlds: Universe files.'));
+    win.appendChild(h('div', 'mp-title', 'Multiplayer'));
+    win.appendChild(h('div', 'mp-note', 'Play one game with other players on your local network, or over the Internet with invite codes (your PCs connect directly; no server is involved). Every player needs the same version of openDWU and the same Distant Worlds: Universe files.'));
 
     const nameRow = h('label', 'mp-row');
     nameRow.appendChild(h('span', 'mp-label', 'Your name'));
@@ -491,11 +515,22 @@ export function openMultiplayerScreen(deps: MultiplayerAppDeps, onBack: () => vo
     stopKeys(portInput);
     portRow.appendChild(portInput);
     hostBox.appendChild(portRow);
-    const hostBtn = button('Host Game', 'host', () => void doHost());
-    hostBox.appendChild(hostBtn);
+    // Fallback (b) of Internet play (§15): the router forwards the port, so players can join by the public address.
+    const mapRow = h('label', 'mp-row mp-check');
+    const mapIn = h('input');
+    mapIn.type = 'checkbox';
+    mapIn.dataset.mp = 'map-port';
+    mapIn.checked = storage('dwu.mp.mapPort') === '1';
+    mapIn.addEventListener('change', () => storage('dwu.mp.mapPort', mapIn.checked ? '1' : '0'));
+    mapRow.append(mapIn, h('span', '', 'Open the port on my router automatically (UPnP / NAT-PMP), so players can also join by my public address'));
+    hostBox.appendChild(mapRow);
+    const hostBtn = button('Host Game (LAN)', 'host', () => void doHost(false));
+    const hostNetBtn = button('Host on the Internet', 'host-internet', () => void doHost(true), 'mp-btn mp-btn-primary');
+    hostBox.append(hostBtn, hostNetBtn);
     if (!ep.canHost) {
         hostBtn.disabled = true;
-        hostBox.appendChild(h('div', 'mp-note', 'Hosting needs the desktop app. In the browser you can join a game.'));
+        mapRow.hidden = true;
+        hostBox.appendChild(h('div', 'mp-note', 'Hosting a LAN game needs the desktop app. In the browser you can join a game, or host on the Internet by invite codes (desktop players run a different engine, so they cannot join a browser host).'));
     }
     win.appendChild(hostBox);
 
@@ -511,6 +546,8 @@ export function openMultiplayerScreen(deps: MultiplayerAppDeps, onBack: () => vo
     addrRow.appendChild(addrInput);
     joinBox.appendChild(addrRow);
     joinBox.appendChild(button('Join Game', 'join', () => void doJoin()));
+    joinBox.appendChild(button('Join by code…', 'join-code', () => void doJoinByCode(), 'mp-btn mp-btn-primary'));
+    joinBox.appendChild(h('div', 'mp-note', 'Join Game: by the host\'s IP address (LAN, Tailscale, or a forwarded port). Join by code: paste the invite code a host sent you over the Internet.'));
     win.appendChild(joinBox);
 
     const status = h('div', 'mp-status');
@@ -536,7 +573,7 @@ export function openMultiplayerScreen(deps: MultiplayerAppDeps, onBack: () => vo
         return { gameData, fp };
     }
 
-    async function doHost(): Promise<void> {
+    async function doHost(internetPlay: boolean): Promise<void> {
         if (busy) return;
         busy = true;
         try {
@@ -548,9 +585,23 @@ export function openMultiplayerScreen(deps: MultiplayerAppDeps, onBack: () => vo
             setStatus('Loading the game data…');
             const { gameData, fp } = await fingerprint();
             setStatus('Opening the port…');
-            const listening = await ep.host(port);
+            let listening: { port: number; addresses: NetAddress[] } | null = null;
+            try {
+                listening = await ep.host(port);
+            } catch (err) {
+                // On the Internet the WebSocket port is only the direct-IP fallback: host by codes without it.
+                if (!internetPlay) throw err;
+                console.warn('multiplayer: no LAN port for the direct-IP fallback', err);
+            }
+            const mapping = listening !== null && mapIn.checked && ep.canHost ? ep.mapPort() : null;
+            let internet: InternetHost | null = null;
+            if (internetPlay) {
+                // An opened data channel goes where a LAN connection would: the lobby, later the rejoin gate.
+                internet = new InternetHost((link) => (ep.onIncoming !== null ? ep.onIncoming(link, 'Internet') : link.close('not hosting')));
+                internet.port = listening?.port ?? null;
+            }
             root.remove();
-            openHostLobby(deps, gameData, fp, name, listening.port, listening.addresses, onBack);
+            openHostLobby(deps, gameData, fp, name, listening?.port ?? null, listening?.addresses ?? [], onBack, internet, mapping);
         } catch (err) {
             setStatus(`Cannot host: ${err instanceof Error ? err.message : String(err)}`, true);
         } finally {
@@ -570,6 +621,41 @@ export function openMultiplayerScreen(deps: MultiplayerAppDeps, onBack: () => vo
             const { gameData, fp } = await fingerprint();
             setStatus(`Connecting to ${address}…`);
             const link = await ep.connect(address);
+            await joinOver(link, address, name, gameData, fp, address);
+        } catch (err) {
+            setStatus(`Cannot join: ${err instanceof Error ? err.message : String(err)}`, true);
+        } finally {
+            busy = false;
+        }
+    }
+
+    async function doJoinByCode(): Promise<void> {
+        if (busy) return;
+        busy = true;
+        try {
+            const name = nameInput.value.trim() || 'Player';
+            storage('dwu.mp.name', name);
+            setStatus('Loading the game data…');
+            const { gameData, fp } = await fingerprint();
+            setStatus('Waiting for the code exchange…');
+            let link: Link;
+            try {
+                link = await openCodeJoin({ title: 'Join by code' });
+            } catch (err) {
+                setStatus(err instanceof Error && err.message === 'cancelled' ? '' : `Cannot join: ${err instanceof Error ? err.message : String(err)}`, !(err instanceof Error && err.message === 'cancelled'));
+                return;
+            }
+            await joinOver(link, INTERNET_ADDRESS, name, gameData, fp, 'the host (over the Internet)');
+        } catch (err) {
+            setStatus(`Cannot join: ${err instanceof Error ? err.message : String(err)}`, true);
+        } finally {
+            busy = false;
+        }
+    }
+
+    /** The lobby over an open link to the host (`address`: its LAN address, or INTERNET_ADDRESS). */
+    async function joinOver(link: Link, address: string, name: string, gameData: GameData, fp: AppFingerprint, label: string): Promise<void> {
+        {
             setStatus('Checking versions…');
             let lobby: ClientLobbyScreen | null = null;
             // A token from an earlier start with this host (a rejoin after a drop: the host gives the slot back).
@@ -600,17 +686,13 @@ export function openMultiplayerScreen(deps: MultiplayerAppDeps, onBack: () => vo
             });
             if (client.rejoined) return; // onRejoin took over
             root.remove();
-            lobby = openClientLobby(client, gameData, address, () => {
+            lobby = openClientLobby(client, gameData, label, () => {
                 client.leave();
                 lobby?.destroy();
                 lobby = null;
                 openMultiplayerScreen(deps, onBack);
             });
             lobby.render(client.state);
-        } catch (err) {
-            setStatus(`Cannot join: ${err instanceof Error ? err.message : String(err)}`, true);
-        } finally {
-            busy = false;
         }
     }
 }
@@ -821,7 +903,7 @@ function refuseLate(link: Link): void {
     link.close('refused');
 }
 
-function openHostLobby(deps: MultiplayerAppDeps, gameData: GameData, fp: AppFingerprint, name: string, port: number, addresses: NetAddress[], onBack: () => void): void {
+function openHostLobby(deps: MultiplayerAppDeps, gameData: GameData, fp: AppFingerprint, name: string, port: number | null, addresses: NetAddress[], onBack: () => void, internet: InternetHost | null, mapping: Promise<PortMapping> | null): void {
     const ep = netEndpoint();
     let options: StartGameOptions = wizardStartGameOptions();
     let loaded: LoadedMultiplayerSave | null = null;
@@ -832,12 +914,33 @@ function openHostLobby(deps: MultiplayerAppDeps, gameData: GameData, fp: AppFing
     root.dataset.mp = 'lobby';
     const win = h('div', 'mp-window mp-window-wide');
     root.appendChild(win);
-    win.appendChild(h('div', 'mp-title', 'Multiplayer Lobby — hosting'));
+    win.appendChild(h('div', 'mp-title', internet !== null ? 'Multiplayer Lobby — hosting on the Internet' : 'Multiplayer Lobby — hosting'));
+    if (internet !== null) win.appendChild(internet.board(() => LOBBY_MAX_PLAYERS - 1));
     const share = h('div', 'mp-share');
     share.dataset.mp = 'addresses';
     const list = addresses.filter((a) => a.family === 'IPv4').map((a) => `${a.address}:${port}`);
-    share.textContent = list.length > 0 ? `Players join with: ${list.join('   ')}   (port ${port}; on this PC: 127.0.0.1:${port})` : `Listening on port ${port}. No network address found; on this PC join with 127.0.0.1:${port}.`;
+    share.textContent =
+        port === null
+            ? 'No LAN port is open (players join by invite code only).'
+            : `${internet !== null ? 'Also by IP (LAN, Tailscale): ' : 'Players join with: '}${list.length > 0 ? `${list.join('   ')}   (port ${port}; on this PC: 127.0.0.1:${port})` : `port ${port}; on this PC 127.0.0.1:${port}`}`;
     win.appendChild(share);
+    if (mapping !== null) {
+        const mapLine = h('div', 'mp-share');
+        mapLine.dataset.mp = 'port-mapping';
+        mapLine.textContent = 'Opening the port on your router (UPnP / NAT-PMP)…';
+        win.appendChild(mapLine);
+        void mapping.then(
+            (m) => {
+                if (m.ok) {
+                    const addr = m.externalIp !== '' ? `${m.externalIp}:${m.externalPort}` : `<your public IP>:${m.externalPort}`;
+                    if (internet !== null && m.publicAddress) internet.publicAddress = addr;
+                    mapLine.textContent = `Router port opened (${m.method}): players anywhere can join by IP with ${addr}.${m.note !== '' ? ` ${m.note}` : ''} This PC's firewall must also let the port in (macOS asks; on Linux / Windows allow it for the app). The mapping is removed when you stop hosting.`;
+                } else mapLine.textContent = `The router did not open the port: ${m.error}. Forward TCP port ${port} by hand in the router's settings, or use invite codes.`;
+                mapLine.classList.toggle('mp-error', !m.ok || !m.publicAddress);
+            },
+            (err: unknown) => (mapLine.textContent = `Port mapping failed: ${err instanceof Error ? err.message : String(err)}`),
+        );
+    }
     const table = h('div', 'mp-players');
     win.appendChild(table);
     const settingsBox = h('div', 'mp-settings');
@@ -856,6 +959,7 @@ function openHostLobby(deps: MultiplayerAppDeps, gameData: GameData, fp: AppFing
     const startBtn = button('Start Game', 'start', () => void start(), 'mp-btn mp-btn-primary');
     const leaveBtn = button('Close Lobby', 'leave', () => {
         lobby.close();
+        internet?.close();
         ep.onIncoming = null;
         void ep.stopHost();
         root.remove();
@@ -863,7 +967,9 @@ function openHostLobby(deps: MultiplayerAppDeps, gameData: GameData, fp: AppFing
     }, 'mp-btn mp-btn-secondary');
     bar.append(settingsBtn, loadBtn, newBtn, startBtn, leaveBtn);
     // Phase 4 (§13): the input delay follows the measured round trips (for slower networks than a LAN).
-    let adaptiveDelay = storage('dwu.mp.adaptiveDelay') === '1';
+    // On by default on the Internet (round trips of 50–200 ms; a fixed 4-frame delay stalls), off on a LAN.
+    const adaptiveKey = internet !== null ? 'dwu.mp.adaptiveDelayInternet' : 'dwu.mp.adaptiveDelay';
+    let adaptiveDelay = internet !== null ? storage(adaptiveKey) !== '0' : storage(adaptiveKey) === '1';
     const adaptiveRow = h('label', 'mp-row mp-check');
     const adaptiveIn = h('input');
     adaptiveIn.type = 'checkbox';
@@ -871,7 +977,7 @@ function openHostLobby(deps: MultiplayerAppDeps, gameData: GameData, fp: AppFing
     adaptiveIn.checked = adaptiveDelay;
     adaptiveIn.addEventListener('change', () => {
         adaptiveDelay = adaptiveIn.checked;
-        storage('dwu.mp.adaptiveDelay', adaptiveDelay ? '1' : '0');
+        storage(adaptiveKey, adaptiveDelay ? '1' : '0');
     });
     adaptiveRow.append(adaptiveIn, h('span', '', 'Adaptive input delay (follows the measured ping; for slower networks)'));
     win.append(adaptiveRow, status, bar);
@@ -976,6 +1082,7 @@ function openHostLobby(deps: MultiplayerAppDeps, gameData: GameData, fp: AppFing
         const tokens = new Map(lobby.tokens);
         delete (window as unknown as { __dwuMpLobby?: unknown }).__dwuMpLobby;
         ep.onIncoming = refuseLate;
+        internet?.withdrawAll();
         root.remove();
         try {
             let handle: MpHandle;
@@ -1018,11 +1125,12 @@ function openHostLobby(deps: MultiplayerAppDeps, gameData: GameData, fp: AppFing
                 setLockstepStepper(game.galaxy, it.mp.stepper);
                 handle = it;
             }
-            await runGame(deps, handle, host.name, start.startOptions, true, start.kind === 'new', { tokens });
+            await runGame(deps, handle, host.name, start.startOptions, true, start.kind === 'new', { tokens, internet });
         } catch (err) {
             console.error('multiplayer: the game could not start', err);
             for (const l of links.values()) l.close('the host could not start the game');
             endMultiplayerSession('start failed');
+            internet?.close();
             ep.onIncoming = null;
             void ep.stopHost();
             deps.toMenu();

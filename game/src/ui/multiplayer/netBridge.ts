@@ -5,6 +5,8 @@
 //   (net/portTransport.ts).
 // - Browser / dev build: no server can listen in a page, so hosting is unavailable; joining opens a WebSocket here
 //   (net/wsTransport.ts).
+// - Internet play (WebRTC, net/rtcTransport.ts, internetUi.ts) needs neither: its links are made in this page and
+//   handed to `onIncoming` like an accepted LAN connection.
 
 import type { Link } from '../../net/transport';
 import { wrapPort, type PortLike } from '../../net/portTransport';
@@ -29,13 +31,21 @@ export interface NetEndpoint {
     onIncoming: ((link: Link, remote: string) => void) | null;
     /** Connect to a host (`address`: "ip", "ip:port", "[v6]:port"). */
     connect(address: string): Promise<Link>;
+    /** While hosting: ask the router to forward the port (UPnP / NAT-PMP; desktop only). Removed by stopHost. */
+    mapPort(): Promise<PortMapping>;
 }
+
+/** desktop/portMapper.cjs map(): the router forwards the host's port (or why not). */
+export type PortMapping =
+    | { ok: true; method: string; externalIp: string; externalPort: number; publicAddress: boolean; note: string }
+    | { ok: false; error: string };
 
 interface DesktopNet {
     host(port: number): Promise<{ port: number; addresses: NetAddress[] }>;
     stopHost(): Promise<void>;
     connect(url: string): Promise<number>;
     addresses(): Promise<NetAddress[]>;
+    mapPort?(): Promise<PortMapping>;
 }
 
 /** "192.168.1.5:47610" / "192.168.1.5" / "[fe80::1]:5000" / "ws://x:1" -> ws:// URL. Throws on nonsense. */
@@ -84,6 +94,7 @@ function createDesktopEndpoint(net: DesktopNet): NetEndpoint {
         canHost: true,
         host: (port) => net.host(port),
         stopHost: () => net.stopHost(),
+        mapPort: () => (net.mapPort !== undefined ? net.mapPort() : Promise.resolve({ ok: false as const, error: 'this app version cannot map ports' })),
         onIncoming: null,
         async connect(address) {
             const id = await net.connect(hostAddressToUrl(address));
@@ -121,6 +132,7 @@ function createBrowserEndpoint(): NetEndpoint {
         canHost: false,
         host: () => Promise.reject(new Error('Hosting needs the desktop app (a browser page cannot accept connections). Join a host instead.')),
         stopHost: () => Promise.resolve(),
+        mapPort: () => Promise.resolve({ ok: false as const, error: 'port mapping needs the desktop app' }),
         onIncoming: null,
         connect: (address) => connectWebSocket(hostAddressToUrl(address)),
     };
