@@ -176,6 +176,9 @@ export class GalaxyBackdropLayer {
                 this.renderPass(this.staticRT, 0, this.staticBand, bands);
                 this.staticBand++;
                 this.staticSprite.texture = this.staticRT;
+                // Pixi builds a render texture's mips only when it is allocated (empty) and never after a render to
+                // it: rebuild them now that the picture is complete, or the minified galaxy view samples black mips.
+                if (this.staticBand === bands && this.staticRT.source.autoGenerateMipmaps) this.staticRT.source.updateMipmaps();
             }
             if (this.animDirty || (moving && this.sinceAnim >= 1 / ANIM_HZ - 0.002)) {
                 this.renderPass(this.animRT, 1);
