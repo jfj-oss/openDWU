@@ -25,6 +25,7 @@ import { MAX_SOLAR_SYSTEM_SIZE, SystemVisibilityStatus, determineGalaxyLocations
 import { playGridClick } from '../audio/gameAudio'; // [audio]
 import { Application, Container, Graphics, Sprite, Text, Texture } from 'pixi.js';
 import { Camera } from './camera';
+import { SECTOR_GRID_COLOR, SectorLabelLayer, sectorGridVisible } from './sectorGrid';
 import { themedAssetUrl } from '../themeAssets';
 import {
     AssetStore,
@@ -120,6 +121,8 @@ import { isDrag, objectsInBox, resolveBoxSelection, screenBox, shiftClickSelecti
 import { isObjectVisibleToThisEmpire } from '../sim/independentTraders';
 import { showsMapIndicators } from './mainViewDisplay';
 import { createFollowState, followTargetAlive, followTargetPosition, isFollowing, stopFollow, type FollowState, type FollowTarget } from './followCamera';
+import { GalaxyBackdropLayer } from './galaxyBackdrop';
+import { getGalaxyBackdrop, onGalaxyBackdropChange, setGalaxyBackdrop, urlGalaxyBackdrop, type GalaxyBackdropKind } from './galaxyBackdropChoice';
 
 export function fadeIn(v: number, a: number, b: number): number {
     if (v <= a) {
@@ -1341,7 +1344,14 @@ export class MainView {
     /** Battle bars at zoom factor <= 3 (combatBars.ts, MainView.1.cs 1251-1295). */
     private battleBars!: BattleBarLayer;
     private backdrop: Sprite;
+    /** The galaxy backdrop (the original image, or a generated variant: galaxyBackdrop.ts); its alpha is backdropAlpha. */
+    private readonly backdropGroup = new Container();
+    /** The generated galaxy backdrops (Galactic Core / Eerie / Nebula); null until init. */
+    galaxyBackdropLayer: GalaxyBackdropLayer | null = null;
+    private offGalaxyBackdropChange: (() => void) | null = null;
     private grid = new Graphics();
+    /** The sector grid's A.. / 1.. edge labels (sectorGrid.ts, MainView.2.cs method_250 5183-5212). */
+    private sectorLabels = new SectorLabelLayer(MAP_FONT_FAMILY);
     /** Screen-space deep starfield behind the world (deepStarfield.ts; port of the original's close-zoom stars). */
     private deepStarfield!: DeepStarfield;
     /** Systems for the deep starfield's per-system colour patches (flat, reused every frame). */
@@ -1484,8 +1494,11 @@ export class MainView {
         app.stage.addChild(this.world);
         app.stage.addChild(this.fx);
         this.world.addChild(this.grid);
+        this.world.addChild(this.sectorLabels.root);
         this.backdrop = new Sprite(Texture.EMPTY);
-        this.world.addChildAt(this.backdrop, 0);
+        this.backdropGroup.eventMode = 'none';
+        this.backdropGroup.addChild(this.backdrop);
+        this.world.addChildAt(this.backdropGroup, 0);
         this.selectionRing.visible = false;
         this.fx.addChild(this.selectionRing);
         this.fx.addChild(this.rangeRingsG);
@@ -1764,6 +1777,13 @@ export class MainView {
         // Backdrop: stretched over the galaxy bounds, world-space.
         this.backdrop.texture = textures.backdrop;
         this.backdrop.scale.set(this.galaxy.sizeX / textures.backdrop.width, this.galaxy.sizeY / textures.backdrop.height);
+        // The generated backdrops (picked in the wizard / Game Options; a view setting saved with the game), over it.
+        this.galaxyBackdropLayer = new GalaxyBackdropLayer(this.app.renderer, this.galaxy);
+        this.backdropGroup.addChild(this.galaxyBackdropLayer.root);
+        const urlBackdrop = urlGalaxyBackdrop(); // dev / screenshot hook ?backdrop=<kind>
+        if (urlBackdrop !== null) setGalaxyBackdrop(urlBackdrop);
+        this.applyGalaxyBackdrop(getGalaxyBackdrop());
+        this.offGalaxyBackdropChange = onGalaxyBackdropChange((k) => this.applyGalaxyBackdrop(k));
         this.minZoom = this.camera.minZoom;
 
         // Sector grid (world-space lines every sectorSize units).
@@ -2031,16 +2051,21 @@ export class MainView {
         // Galaxy backdrop: bright at full-galaxy zoom, fading out as the
         // sector view takes over (MainView.1.cs FadeGalaxyBackground).
         const bdA = backdropAlpha(z, m);
-        this.backdrop.alpha = bdA;
-        this.backdrop.visible = bdA > 0.01;
+        this.backdropGroup.alpha = bdA;
+        this.backdropGroup.visible = bdA > 0.01;
+        if (this.galaxyBackdropLayer !== null) {
+            const res = this.app.renderer.resolution;
+            this.galaxyBackdropLayer.update(this.backdropGroup.visible, dtSeconds, !rt.paused, getSettings().animateBackdrop, Math.min(cam.width, cam.height) * res, Math.max(cam.width, cam.height) * res);
+            this.backdrop.visible = !this.galaxyBackdropLayer.active;
+        }
 
-        // Faint sector grid: fades in over the galaxy zoom, out at mid zoom
-        // (MainView.1.cs FadeSectorBackground).
-        // GameOptions.CleanGalaxyView hides it (method_250 5155: `if (!flag)`, cleanGalaxyView.ts).
+        // Sector grid + edge labels (sectorGrid.ts): opaque color_5 lines and color_7 labels at every zoom factor
+        // above 150, none below (MainView.2.cs method_250 5153); GameOptions.CleanGalaxyView hides both (5155:
+        // `if (!flag)`, cleanGalaxyView.ts).
         const clean = galaxyViewGates(getSettings().cleanGalaxyView);
-        const gridA = clean.sectorGrid ? fadeIn(z, m * 2, m * 6) * fadeOut(z, 0.004, 0.015) : 0;
-        this.grid.alpha = gridA;
-        this.grid.visible = gridA > 0.01;
+        const gridOn = sectorGridVisible(1 / z, !clean.sectorGrid);
+        this.grid.visible = gridOn;
+        this.sectorLabels.update(gridOn, cam, this.galaxy.sectorSize, this.galaxy.sectorWidth, this.galaxy.sectorHeight);
         if (this.grid.visible && (this.lastGridZoom < 0 || Math.abs(z / this.lastGridZoom - 1) > 0.05)) {
             this.drawGrid(z);
             this.lastGridZoom = z;
@@ -2534,7 +2559,7 @@ export class MainView {
         const sizeX = this.galaxy.sizeX;
         const sizeY = this.galaxy.sizeY;
         const step = this.galaxy.sectorSize;
-        const line = { width: 1 / z, color: 0x3a4a66, alpha: 0.6 };
+        const line = { width: 1 / z, color: SECTOR_GRID_COLOR, alpha: 1 }; // method_250 5185: color_5, 1 px
         for (let x = 0; x <= sizeX + 1; x += step) {
             g.moveTo(x, 0).lineTo(x, sizeY).stroke(line);
         }
@@ -2874,12 +2899,20 @@ export class MainView {
     /** The WebGL context was restored (contextLoss.ts): rebuild what lived only on the GPU. */
     onGpuContextRestored(): void {
         this.systemNebulae?.onContextRestored();
+        this.galaxyBackdropLayer?.onContextRestored();
+    }
+
+    /** Show the chosen galaxy backdrop: a generated variant, or the original image (also when a variant cannot run). */
+    private applyGalaxyBackdrop(kind: GalaxyBackdropKind): void {
+        const generated = this.galaxyBackdropLayer?.setKind(kind) ?? false;
+        this.backdrop.visible = !generated;
     }
 
     /** Repeated context losses (contextLoss.ts): level 1 = CPU nebula path, level 2 = no system nebulae. */
     useLowGpuMode(level: number): void {
         if (level >= 1) this.systemNebulae?.useLowGpuMode();
         if (level >= 2) this.systemNebulae?.disable();
+        this.galaxyBackdropLayer?.useLowGpuMode(level);
     }
 
     /** method_135: bitmap_2 of a gas cloud — nebulaCloudGenerator_1.GenerateNebulaBackdrop(HabitatIndex, 255,
@@ -2903,6 +2936,10 @@ export class MainView {
         this.locationMarkers?.destroy(); // [waypoints]
         this.locationMarkers = null;
         this.overlayLayer?.destroy(); // [freightOverlay] stop recording contracts for this galaxy
+        this.offGalaxyBackdropChange?.();
+        this.offGalaxyBackdropChange = null;
+        this.galaxyBackdropLayer?.destroy();
+        this.galaxyBackdropLayer = null;
     }
 
     // [waypoints] begin

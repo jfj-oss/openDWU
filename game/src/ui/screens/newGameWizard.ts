@@ -133,6 +133,9 @@ import { checkBoxRight, colorDropDown, colorSlider, groupBox, labelledTrackBar, 
 import { startResxImageUrl } from '../resxImage';
 import { generateRaceSummary, openGalactopedia, type RaceSummaryData, type RaceSummarySection } from './galactopedia';
 import { buildHotSeatPlayersPanel, hotSeatSummaryText } from './hotSeatPlayersPanel'; // multiplayer Phase 2
+import { GALAXY_BACKDROP_OPTIONS, parseGalaxyBackdrop, setGalaxyBackdrop } from '../../render/galaxyBackdropChoice';
+import { createBackdropThumbnail } from '../galaxyBackdropPreview';
+import { getSettings, updateSettings } from '../settings';
 
 const CHROME = '/assets/dwu/images/ui/chrome/';
 const RACES_DIR = '/assets/dwu/images/units/races/';
@@ -624,6 +627,8 @@ export function createNewGameWizard(callbacks: NewGameWizardCallbacks): NewGameW
         startPending = true;
         void startWhenAddonsLoaded(ctx.scenarioReady, ctx.refreshScenario, () => {
             startPending = false;
+            // The Galaxy Backdrop row: a view setting of the new game (saved with it, never in its sim options).
+            setGalaxyBackdrop(parseGalaxyBackdrop(getSettings().newGameBackdrop));
             callbacks.onStartGame({ ...options });
         });
     }
@@ -1479,6 +1484,43 @@ function buildGalaxyPage(ctx: WizardCtx): HTMLDivElement {
         seed.input.value = String(options.seed);
     }, { title: 'Re-roll seed', className: 'wizard-seed-reroll' });
 
+    // Ours: the Galaxy Backdrop row (a view setting, not a galaxy option; Game Options can change it later), with a
+    // thumbnail of the pick for the chosen shape and seed.
+    label(seedPanel, 'Galaxy Backdrop', 10, 258, { size: FONT.header, bold: true });
+    const thumb = createBackdropThumbnail(76, 'wizard-backdrop-thumb');
+    seedPanel.appendChild(place(thumb.el, 136, 262, 76, 76));
+    let backdropKind = parseGalaxyBackdrop(getSettings().newGameBackdrop);
+    const paintThumb = (): void => thumb.update({ kind: backdropKind, shape: options.shape, seed: options.seed });
+    const backdropCombo = combo(
+        seedPanel,
+        GALAXY_BACKDROP_OPTIONS.map((o) => o.label),
+        Math.max(0, GALAXY_BACKDROP_OPTIONS.findIndex((o) => o.kind === backdropKind)),
+        10,
+        290,
+        118,
+        23,
+        (i) => {
+            backdropKind = GALAXY_BACKDROP_OPTIONS[i]?.kind ?? 'original';
+            updateSettings({ newGameBackdrop: backdropKind });
+            paintThumb();
+        },
+        'wizard-backdrop-combo',
+    );
+    backdropCombo.select.title = 'The picture behind the galaxy map. Can be changed during the game (Game Options).';
+    ctx.helpOn(backdropCombo.select, () => ['Galaxy Backdrop', GALAXY_BACKDROP_OPTIONS.find((o) => o.kind === backdropKind)?.description ?? '']);
+    // The thumbnail follows the shape radios and the seed (both on this page).
+    let thumbFrame = 0;
+    const repaintSoon = (): void => {
+        if (thumbFrame !== 0) return;
+        thumbFrame = requestAnimationFrame(() => {
+            thumbFrame = 0;
+            paintThumb();
+        });
+    };
+    wrap.addEventListener('change', repaintSoon);
+    wrap.addEventListener('click', repaintSoon);
+    seed.input.addEventListener('input', repaintSoon);
+
     const sizeControls = buildGalaxySizeControls(ctx, shapePanel, { x: 10, starY: 215, sizeY: 280, w: 630, warning: { parent: seedPanel, x: 10, y: 118, w: 196 } });
 
     // tbarStartNewGameTheGalaxyExpansion / Aggression / Difficulty: 380 × 55 at (10, 370 / 430 / 490), LabelWidth 80.
@@ -1576,6 +1618,7 @@ function buildGalaxyPage(ctx: WizardCtx): HTMLDivElement {
         shapes.sync();
         sizeControls.sync();
         difficulty.sync();
+        paintThumb();
         ctx.help(helpTitle2('The Galaxy', 'Shape'), wt('Determines the layout and distribution of stars within the galaxy', 'Determines the layout and distribution of stars within the galaxy'));
     };
 

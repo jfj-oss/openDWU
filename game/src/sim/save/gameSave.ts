@@ -38,6 +38,12 @@ export interface GameSaveJSON {
     /** External commands applied at frame boundaries (player/commandLog.ts); present only when non-empty. */
     commandLog?: CommandLogEntry[];
     /**
+     * The Main View's galaxy backdrop (render/galaxyBackdropChoice.ts kind): a view setting the sim never reads. Written
+     * only when it is not Original (so a default save is byte-identical; an older save loads as Original), just before
+     * localViewer / customizationSet, and read from the tail (savedGalaxyBackdrop).
+     */
+    galaxyBackdrop?: string;
+    /**
      * Hot seat (multiplayer Phase 2, docs/MULTIPLAYER.md §7): whose turn it is, an index into galaxy.humanEmpires (the
      * screen's local viewer when saved). Written only when the game has more than one human, so a single-player save is
      * byte-identical; read from the tail (savedLocalViewer), so it stays just before customizationSet.
@@ -55,6 +61,8 @@ export interface GameSaveJSON {
 export interface GameSaveExtras {
     /** The local viewer's index in galaxy.humanEmpires (hot seat); written only with more than one human. */
     localViewer?: number;
+    /** The Main View's galaxy backdrop kind (GameSaveJSON.galaxyBackdrop); absent / 'original' = not written. */
+    galaxyBackdrop?: string;
 }
 
 /** Serialize a whole game to a JSON string (see GameSaveJSON). */
@@ -91,6 +99,9 @@ export function serializeGameParts<T>(game: Game, time: GalaxyTime, startOptions
     };
     const log = commandLog(game.galaxy);
     if (log.length > 0) rest.commandLog = log.map(copyCommandLogEntry);
+    // The view's galaxy backdrop (not sim state), only when it is not the original image.
+    const backdrop = extras?.galaxyBackdrop;
+    if (typeof backdrop === 'string' && /^[A-Za-z]+$/.test(backdrop) && backdrop !== 'original') rest.galaxyBackdrop = backdrop;
     // Hot seat: whose turn it is, only in a game with more than one human (a single-player save is unchanged).
     const viewer = extras?.localViewer;
     if (viewer !== undefined && Number.isInteger(viewer) && viewer >= 0 && humanEmpires(game.galaxy).length > 1) rest.localViewer = viewer;
@@ -126,6 +137,16 @@ export function savedLocalViewer(save: string | GameSaveJSON): number | undefine
     if (typeof save !== 'string') return typeof save.localViewer === 'number' ? save.localViewer : undefined;
     const m = /"localViewer":(\d+)(?:,"customizationSet":"(?:[^"\\]|\\.)*")?\}\s*$/.exec(save.slice(-4096));
     return m === null ? undefined : parseInt(m[1], 10);
+}
+
+/**
+ * The saved galaxy backdrop kind (GameSaveJSON.galaxyBackdrop), or '' for a save without one (Original). Like
+ * savedLocalViewer, a save text is read from its tail only.
+ */
+export function savedGalaxyBackdrop(save: string | GameSaveJSON): string {
+    if (typeof save !== 'string') return typeof save.galaxyBackdrop === 'string' ? save.galaxyBackdrop : '';
+    const m = /"galaxyBackdrop":"([A-Za-z]+)"(?:,"localViewer":\d+)?(?:,"customizationSet":"(?:[^"\\]|\\.)*")?\}\s*$/.exec(save.slice(-4096));
+    return m === null ? '' : m[1];
 }
 
 /**
