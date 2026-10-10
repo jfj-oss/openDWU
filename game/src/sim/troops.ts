@@ -61,6 +61,7 @@ import { strategicValue } from './territory';
 import type { Habitat } from './types';
 import { doCharacterEventRuntime } from './events';
 import type { BuiltObject } from './builtObject';
+import { isHumanEmpire } from './humanEmpires';
 import {
     CharacterEventType,
     CharacterRole,
@@ -166,7 +167,7 @@ export function estimatedDefensiveForceRequired(galaxy: Galaxy, habitat: Habitat
         num = Math.pow(raceCautionLevel(galaxy, habitat.population.dominantRace) / 100.0, 2.0);
     }
     let num2 = 750.0;
-    if (owner !== galaxy.playerEmpire && difficultyLevel > 1.0) {
+    if (!isHumanEmpire(galaxy, owner) && difficultyLevel > 1.0) {
         num2 /= Math.sqrt(difficultyLevel);
     }
     let result = csDoubleToInt((sv / num2) * num);
@@ -199,10 +200,10 @@ export function troopLevelRequired(galaxy: Galaxy, habitat: Habitat, difficultyL
         let num3 = 1.0;
         if (owner.capital === habitat || (owner.capitals != null && owner.capitals.includes(habitat))) {
             num3 = 1.5;
-            if (owner !== galaxy.playerEmpire) num3 *= Math.sqrt(difficultyLevel);
+            if (!isHumanEmpire(galaxy, owner)) num3 *= Math.sqrt(difficultyLevel);
         } else if (owner.homeWorld === habitat) {
             num3 = 1.5;
-            if (owner !== galaxy.playerEmpire) num3 *= Math.sqrt(difficultyLevel);
+            if (!isHumanEmpire(galaxy, owner)) num3 *= Math.sqrt(difficultyLevel);
         }
         num = csDoubleToInt(num * num3);
     }

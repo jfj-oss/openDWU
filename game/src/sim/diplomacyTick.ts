@@ -325,9 +325,9 @@ export function determineRelativeStrength(galaxy: Galaxy, ourStrength: number, o
     let result = 0;
     let num = 1.5;
     let num2 = 0.65;
-    if (otherEmpire === galaxy.playerEmpire) {
-        num /= galaxy.playerEmpire.difficultyLevel;
-        num2 /= galaxy.playerEmpire.difficultyLevel;
+    if (isHumanEmpire(galaxy, otherEmpire)) {
+        num /= otherEmpire.difficultyLevel;
+        num2 /= otherEmpire.difficultyLevel;
     }
     const num3 = ourStrength / militaryPotency(otherEmpire);
     if (num3 < num2) result = -1;
@@ -339,9 +339,9 @@ export function determineRelativeStrength(galaxy: Galaxy, ourStrength: number, o
 export function evaluateMilitaryPotency(galaxy: Galaxy, ourWeightedMilitaryPotency: number, theirWeightedMilitaryPotency: number, otherEmpire: Empire): number {
     let num2 = ourWeightedMilitaryPotency * 2.0;
     let num3 = ourWeightedMilitaryPotency * 0.5;
-    if (otherEmpire === galaxy.playerEmpire) {
-        num2 *= galaxy.playerEmpire.difficultyLevel;
-        num3 *= galaxy.playerEmpire.difficultyLevel;
+    if (isHumanEmpire(galaxy, otherEmpire)) {
+        num2 *= otherEmpire.difficultyLevel;
+        num3 *= otherEmpire.difficultyLevel;
     }
     if (theirWeightedMilitaryPotency > num2) return -1;
     if (theirWeightedMilitaryPotency > num3 && theirWeightedMilitaryPotency < num2) return 0;

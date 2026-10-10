@@ -51,6 +51,7 @@ import { warpSpeedWithBonuses, withinFuelRange, withinFuelRangeAndRefuel } from 
 import { checkColonyShipMissionCancelled, determineDestroyOrCaptureTarget, shouldAttack } from './attackAI';
 import { determineThreatLevelFighter, isFighter, type Fighter } from './fighters';
 import { formatGameTextNow } from '../textResolver';
+import { isHumanEmpire } from '../humanEmpires';
 
 // ---------------------------------------------------------------------------------------------------------------
 // Galaxy constants (Galaxy.3.cs static ctor 4971-5055)
@@ -1086,8 +1087,8 @@ export function identifySystemThreatsToUs(galaxy: Galaxy, ship: BuiltObject, sys
                 stellarObjectList.push(threat);
                 let d1 = num6 * systemVisibility.threatLevels[index];
                 if (Number.isNaN(d1)) d1 = 1.0;
-                // 4900: a DefensiveBase weighs the player's troop-carrying ships ×100 (BaconBuiltObject.myMain._Game.PlayerEmpire).
-                if (ship.subRole === BuiltObjectSubRole.DefensiveBase && galaxy.playerEmpire !== null && threat.empire === galaxy.playerEmpire && threat.troops !== null && threat.troops.count > 0) {
+                // 4900: a DefensiveBase weighs the player's troop-carrying ships ×100 (BaconBuiltObject.myMain._Game.PlayerEmpire; every human, §4.3).
+                if (ship.subRole === BuiltObjectSubRole.DefensiveBase && isHumanEmpire(galaxy, threat.empire) && threat.troops !== null && threat.troops.count > 0) {
                     d1 *= 100.0;
                 }
                 threat.sortTag = d1;

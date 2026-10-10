@@ -422,7 +422,8 @@ export function sortEmpiresByMilitaryPriority(galaxy: Galaxy, empire: Empire, ta
             let num = Math.trunc(totalColonyStrategicValue(empire2) / 1000);
             const empireEvaluation = obtainEmpireEvaluation(galaxy, empire, empire2);
             num *= empireEvaluation.overallAttitude * -1;
-            if (empire2 === galaxy.playerEmpire && empire !== galaxy.playerEmpire) num *= 2.0;
+            // The player's empire ×2 (decision §4.3: every human empire, for an AI attacker).
+            if (isHumanEmpire(galaxy, empire2) && !isHumanEmpire(galaxy, empire)) num *= 2.0;
             array[i] = num;
             array2[i] = targetEmpires[i];
         }

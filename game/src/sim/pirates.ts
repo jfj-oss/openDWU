@@ -151,7 +151,7 @@ export function pirateFactionModifiers(style: PiratePlayStyle): PirateFactionMod
 // Galaxy.cs 1417 SetEmpireDifficultyFactors(empire, conditionProgresses) (victory scaling: victory.ts) + BaconGalaxy.SetEmpireDifficultyFactors. All *Default constants are 1.0
 // (Galaxy.3.cs 5129-5137).
 export function setEmpireDifficultyFactors(galaxy: Galaxy, empire: Empire, galaxyDifficultyLevel: number, conditionProgresses: VictoryConditionProgress[] | null = null): void {
-    if (empire === galaxy.playerEmpire) {
+    if (isHumanEmpire(galaxy, empire)) {
         empire.difficultyLevel = galaxyDifficultyLevel + empire.difficultyLevelModifier;
         // Galaxy.cs 1423-1442 DifficultyLevelScalesAsPlayerApproachesVictory (victory.ts, M4z4).
         difficultyScalingForPlayer(galaxy, empire, galaxyDifficultyLevel, conditionProgresses);

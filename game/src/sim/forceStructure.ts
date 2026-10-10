@@ -46,6 +46,7 @@ import { ColonyResourceEffect, habitatDevelopmentLevel, resourceBonusTotalByEffe
 import { DiplomaticRelationType, DiplomaticStrategy, type DiplomaticRelation } from './diplomacy';
 import { resolveCharacterColonyCorruptionBonus, resolveCharacterColonyIncomeBonus } from './characters';
 import { PirateRelationType, obtainPirateRelation, type PirateRelation } from './pirateRelations';
+import { isHumanEmpire } from './humanEmpires';
 
 export { ForceStructureProjection, ForceStructureProjectionList } from './forceStructureProjection';
 
@@ -1141,7 +1142,7 @@ export function projectForceStructure(galaxy: Galaxy, empire: Empire, ctx: Force
     if (num28 < 1) num28 = 1;
     if (num28 > 12) num28 = 12;
     num28 = csToInt32(num28 * policy.explorationPriority);
-    if (annualStateMaintenanceValue < num2 * 0.95 && empire !== galaxy.playerEmpire && ctx.difficultyLevel > 1.0 && checkEmpireHasHyperDriveTech(empire)) {
+    if (annualStateMaintenanceValue < num2 * 0.95 && !isHumanEmpire(galaxy, empire) && ctx.difficultyLevel > 1.0 && checkEmpireHasHyperDriveTech(empire)) {
         num28 = csToInt32(num28 * ctx.difficultyLevel);
     }
     projections.add(new ForceStructureProjection(BuiltObjectSubRole.ExplorationShip, num28, currentStarDate));
@@ -1151,7 +1152,7 @@ export function projectForceStructure(galaxy: Galaxy, empire: Empire, ctx: Force
     if (num28 < 3) num28 = 3;
     if (colonyCount < 2 && !checkEmpireHasHyperDriveTech(empire)) num28 = 2;
     num28 = Math.min(num28, 12);
-    if (annualStateMaintenanceValue < num2 * 0.95 && empire !== galaxy.playerEmpire && ctx.difficultyLevel > 1.0 && checkEmpireHasHyperDriveTech(empire)) {
+    if (annualStateMaintenanceValue < num2 * 0.95 && !isHumanEmpire(galaxy, empire) && ctx.difficultyLevel > 1.0 && checkEmpireHasHyperDriveTech(empire)) {
         num28 = csToInt32(num28 * ctx.difficultyLevel);
     }
     projections.add(new ForceStructureProjection(BuiltObjectSubRole.ConstructionShip, num28, currentStarDate));

@@ -689,11 +689,11 @@ export function pirateTradeItemsCore(galaxy: Galaxy, empire: Empire): void {
         // Galaxy.cs 686 AllowTechTrading: the wizard's "Enable tech trading" option (Start.2.cs 499).
         if (galaxy.allowTechTrading) {
             let num8 = 0;
-            if (otherEmpire === galaxy.playerEmpire && galaxy.difficultyLevel > 1.0) num8 = Math.trunc(20.0 * (galaxy.difficultyLevel - 1.0));
+            if (isHumanEmpire(galaxy, otherEmpire) && galaxy.difficultyLevel > 1.0) num8 = Math.trunc(20.0 * (galaxy.difficultyLevel - 1.0));
             if (num7 >= num8) {
                 let includeSpecialTech = false;
                 let num9 = 30;
-                if (otherEmpire === galaxy.playerEmpire) num9 = Math.trunc(30.0 * galaxy.difficultyLevel);
+                if (isHumanEmpire(galaxy, otherEmpire)) num9 = Math.trunc(30.0 * galaxy.difficultyLevel);
                 if (num7 >= num9) includeSpecialTech = true;
                 // includeWarpColonizationWeapons: false.
                 tradeableItemList.push(...resolveTradeableItemsResearchProjects(galaxy, empire, otherEmpire, true, includeSpecialTech));

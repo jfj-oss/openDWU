@@ -276,7 +276,7 @@ export function getRefactorForEmpire(galaxy: Galaxy, requestingEmpire: Empire, o
     }
     num = num2 > 0 ? Math.min(1.0, 10.0 / Math.min(50, num2)) : num2 !== 0 ? Math.max(1.0, Math.abs(Math.max(-50, num2)) / 10.0) : 1.0;
     const num3 = 0.7 * ((5.0 + (5.0 - galaxy.difficultyLevel)) / 10.0);
-    if (requestingEmpire === galaxy.playerEmpire) num /= num3;
+    if (isHumanEmpire(galaxy, requestingEmpire)) num /= num3;
     return num;
 }
 
@@ -299,7 +299,7 @@ export function valueTerritoryMapForEmpire(galaxy: Galaxy, mapEmpire: Empire, re
         }
     }
     let num = num2 * 100;
-    if (requestingEmpire === galaxy.playerEmpire) num = Math.trunc(num * (galaxy.playerEmpire.difficultyLevel * galaxy.playerEmpire.difficultyLevel));
+    if (isHumanEmpire(galaxy, requestingEmpire)) num = Math.trunc(num * (requestingEmpire.difficultyLevel * requestingEmpire.difficultyLevel));
     return num;
 }
 
@@ -320,7 +320,7 @@ export function valueGalaxyMapForEmpire(galaxy: Galaxy, mapEmpire: Empire, reque
         }
     }
     let num = num2 * 200;
-    if (requestingEmpire === galaxy.playerEmpire) num = Math.trunc(num * (galaxy.playerEmpire.difficultyLevel * galaxy.playerEmpire.difficultyLevel));
+    if (isHumanEmpire(galaxy, requestingEmpire)) num = Math.trunc(num * (requestingEmpire.difficultyLevel * requestingEmpire.difficultyLevel));
     return num;
 }
 
@@ -436,7 +436,7 @@ export function valueResearchProjectForEmpire(galaxy: Galaxy, project: TechNode 
             }
         }
         if (!isHumanEmpire(galaxy, requestingEmpire) && !flag) num = 0;
-        if (requestingEmpire === galaxy.playerEmpire) num = Math.trunc(num * (galaxy.playerEmpire.difficultyLevel * galaxy.playerEmpire.difficultyLevel));
+        if (isHumanEmpire(galaxy, requestingEmpire)) num = Math.trunc(num * (requestingEmpire.difficultyLevel * requestingEmpire.difficultyLevel));
         if (num > 1073741823) num = 1073741823;
     }
     return num | 0;
@@ -473,8 +473,8 @@ export function resolveTradeableItemsResearchProjects(galaxy: Galaxy, giver: Emp
         if (flag) {
             let num = valueResearchProjectForEmpire(galaxy, researchNode, receiver);
             const num2 = 0.67 / galaxy.difficultyLevel;
-            if (giver === galaxy.playerEmpire) num = Math.trunc(num * num2);
-            else if (receiver === galaxy.playerEmpire) num = Math.trunc(num / num2);
+            if (isHumanEmpire(galaxy, giver)) num = Math.trunc(num * num2);
+            else if (isHumanEmpire(galaxy, receiver)) num = Math.trunc(num / num2);
             if (num >= 0 && refactorValuesForEmpire) num = refactorValueForEmpire(galaxy, num, receiver, giver);
             if (num > 0) tradeableItemList.push(new TradeableItem(TradeableItemType.ResearchProject, researchNode, num));
         }
@@ -583,11 +583,11 @@ export function tradeItems(galaxy: Galaxy, empire: Empire): void {
         const overallAttitude = obtainEmpireEvaluation(galaxy, self, other).overallAttitude;
         const tradeableItemList: TradeableItem[] = [];
         let num2 = TRADE_RESEARCH_THRESHHOLD;
-        if (other === galaxy.playerEmpire) num2 = Math.trunc(TRADE_RESEARCH_THRESHHOLD * galaxy.difficultyLevel);
+        if (isHumanEmpire(galaxy, other)) num2 = Math.trunc(TRADE_RESEARCH_THRESHHOLD * galaxy.difficultyLevel);
         // Galaxy.cs 686 AllowTechTrading: the wizard's "Enable tech trading" option (Start.2.cs 499).
         if (diplomaticRelation.strategy === DiplomaticStrategy.Ally && overallAttitude >= num2 && galaxy.allowTechTrading) {
             let num3 = TRADE_RESEARCH_SPECIAL_THRESHHOLD;
-            if (other === galaxy.playerEmpire) num3 = Math.trunc(TRADE_RESEARCH_SPECIAL_THRESHHOLD * galaxy.difficultyLevel);
+            if (isHumanEmpire(galaxy, other)) num3 = Math.trunc(TRADE_RESEARCH_SPECIAL_THRESHHOLD * galaxy.difficultyLevel);
             const includeSpecialTech = overallAttitude >= num3;
             // RND: with research items stubbed (M4k) the Next(0, Count) below draws over maps only.
             tradeableItemList.push(...resolveTradeableItemsResearchProjects(galaxy, self, other, true, includeSpecialTech));
@@ -799,7 +799,7 @@ export function valueColonyForEmpire(galaxy: Galaxy, colony: Habitat, empire: Em
     const num2 = determineColonizationValue(galaxy, empire, colony);
     const num3 = Math.trunc(strategicValue(colony) * 1.5);
     let num = num3 + num2 * 100;
-    if (empire === galaxy.playerEmpire) num = Math.trunc(num * (galaxy.playerEmpire.difficultyLevel * galaxy.playerEmpire.difficultyLevel));
+    if (isHumanEmpire(galaxy, empire)) num = Math.trunc(num * (empire.difficultyLevel * empire.difficultyLevel));
     num = Math.trunc(num * getMoneyRate(galaxy));
     return clampValue(num);
 }
@@ -859,7 +859,7 @@ export function valueBaseForEmpire(galaxy: Galaxy, station: BuiltObject, empire:
         const num4 = determineProximityFromCapitalBuiltObject(galaxy, empire, station);
         result = Math.trunc(num * num4) | 0;
         const val = Math.trunc(1000000.0 * (station.annualSupportCost / totalMoneyInGalaxy(galaxy))) | 0;
-        if (empire === galaxy.playerEmpire) result = Math.trunc(result * (galaxy.playerEmpire.difficultyLevel * galaxy.playerEmpire.difficultyLevel)) | 0;
+        if (isHumanEmpire(galaxy, empire)) result = Math.trunc(result * (empire.difficultyLevel * empire.difficultyLevel)) | 0;
         result = Math.max(result, val);
         result = Math.trunc(result * getMoneyRate(galaxy)) | 0;
     }
@@ -900,7 +900,7 @@ function valueActionAgainstEmpire(galaxy: Galaxy, empire: Empire, targetEmpire: 
         }
         num2 = Math.pow(num2, 0.75);
         let num5 = weightedMilitaryPotency(targetEmpire) / weightedMilitaryPotency(empire);
-        if (targetEmpire === galaxy.playerEmpire) num5 /= galaxy.playerEmpire.difficultyLevel * galaxy.playerEmpire.difficultyLevel;
+        if (isHumanEmpire(galaxy, targetEmpire)) num5 /= targetEmpire.difficultyLevel * targetEmpire.difficultyLevel;
         num5 = Math.min(Math.max(num5, 0.5), 10.0);
         num = Math.trunc(num2 * num5 * (war ? 10000.0 : 4000.0));
     }
@@ -932,7 +932,7 @@ export function valueEndWarAgainstUs(galaxy: Galaxy, attackingEmpire: Empire, ta
             const v = determineVictorInWar(diplomaticRelation);
             if (v.victor === attackingEmpire) {
                 let num2 = weightedMilitaryPotency(v.victor) / weightedMilitaryPotency(v.loser);
-                if (v.loser === galaxy.playerEmpire) num2 *= galaxy.playerEmpire.difficultyLevel * galaxy.playerEmpire.difficultyLevel;
+                if (isHumanEmpire(galaxy, v.loser)) num2 *= v.loser.difficultyLevel * v.loser.difficultyLevel;
                 num2 = Math.min(Math.max(num2, 0.5), 5.0);
                 num = Math.trunc(num2 * 80000.0 * v.winningRatio);
             } else {
@@ -953,7 +953,7 @@ export function valueLiftTradeSanctionsAgainstUs(galaxy: Galaxy, attackingEmpire
         if (diplomaticRelation.type === DiplomaticRelationType.TradeSanctions) {
             num = 5000;
             let num2 = weightedMilitaryPotency(attackingEmpire) / weightedMilitaryPotency(targetEmpire);
-            if (targetEmpire === galaxy.playerEmpire) num2 *= galaxy.playerEmpire.difficultyLevel * galaxy.playerEmpire.difficultyLevel;
+            if (isHumanEmpire(galaxy, targetEmpire)) num2 *= targetEmpire.difficultyLevel * targetEmpire.difficultyLevel;
             num2 = Math.min(Math.max(num2, 0.5), 5.0);
             num = Math.trunc(num2 * 15000.0);
         }
@@ -1154,10 +1154,10 @@ export function resolveTradeableItems(galaxy: Galaxy, giver: Empire, receiver: E
     // Galaxy.cs 686 AllowTechTrading: the wizard's "Enable tech trading" option (Start.2.cs 499).
     if (galaxy.allowTechTrading) {
         let num2 = TRADE_RESEARCH_THRESHHOLD;
-        if (receiver === galaxy.playerEmpire) num2 = Math.trunc(TRADE_RESEARCH_THRESHHOLD * galaxy.difficultyLevel);
+        if (isHumanEmpire(galaxy, receiver)) num2 = Math.trunc(TRADE_RESEARCH_THRESHHOLD * galaxy.difficultyLevel);
         if (includeAllItems || num >= num2) {
             let num3 = TRADE_RESEARCH_SPECIAL_THRESHHOLD;
-            if (receiver === galaxy.playerEmpire) num3 = Math.trunc(TRADE_RESEARCH_SPECIAL_THRESHHOLD * galaxy.difficultyLevel);
+            if (isHumanEmpire(galaxy, receiver)) num3 = Math.trunc(TRADE_RESEARCH_SPECIAL_THRESHHOLD * galaxy.difficultyLevel);
             const includeSpecialTech = includeAllItems || num >= num3;
             list.push(...resolveTradeableItemsResearchProjects(galaxy, giver, receiver, refactorValuesForEmpire, includeSpecialTech));
         }
@@ -1647,7 +1647,7 @@ export function reviewEnemyHelpEnlistment(galaxy: Galaxy, empire: Empire): void 
         const war = diplomaticRelation.type === DiplomaticRelationType.War;
         if (!war && diplomaticRelation.type !== DiplomaticRelationType.TradeSanctions) continue;
         let num = weightedMilitaryPotency(self) / weightedMilitaryPotency(other);
-        if (other === galaxy.playerEmpire) num /= galaxy.playerEmpire.difficultyLevel;
+        if (isHumanEmpire(galaxy, other)) num /= other.difficultyLevel;
         if (!(num < (war ? 0.9 : 0.6))) continue;
         const empire2 = identifyBestEmpireToAttackEnemy(galaxy, self, other, war ? DiplomaticRelationType.War : DiplomaticRelationType.TradeSanctions, currentStarDate);
         if (empire2 === null) continue;
