@@ -362,6 +362,9 @@ export interface DrawnSymbol {
 /**
  * The drawn symbol under world point (wx, wy) at zoom z (px per world unit): fleet icons first (they draw on top,
  * method_258 after the symbol pass), then the nearest symbol whose box (half size + 2 px slop) holds the point.
+ * Among fleet icons the topmost (last drawn) whose box holds the point wins: fleets docked together (e.g. at the
+ * capital) draw their icons over one another, and the click goes to the one seen on top. (method_145 takes the
+ * nearest lead ship, Main.Part11.cs 1378-1395; with coincident icons that is whichever comes first, not the visible one.)
  */
 export function pickDrawnSymbol(drawn: readonly DrawnSymbol[], wx: number, wy: number, z: number): DrawnSymbol | null {
     let best: DrawnSymbol | null = null;
@@ -374,13 +377,35 @@ export function pickDrawnSymbol(drawn: readonly DrawnSymbol[], wx: number, wy: n
         if (dx > r || dy > r) continue;
         const isFleet = d.group !== null;
         const dist = dx * dx + dy * dy;
-        if ((isFleet && !bestFleet) || (isFleet === bestFleet && dist < bestD)) {
+        if (isFleet || (!bestFleet && dist < bestD)) {
             best = d;
             bestD = dist;
             bestFleet = isFleet;
         }
     }
     return best;
+}
+
+/**
+ * A left click on stacked fleet icons (ours: the original has no way to reach a covered fleet): the topmost icon under
+ * the point, or, when the selected fleet is one of the icons there, the next one down (wrapping), so repeated clicks
+ * on the same spot cycle through the stack. Anything else: pickDrawnSymbol.
+ */
+export function pickDrawnSymbolCycling(drawn: readonly DrawnSymbol[], wx: number, wy: number, z: number, selected: ShipGroup | null): DrawnSymbol | null {
+    const top = pickDrawnSymbol(drawn, wx, wy, z);
+    if (top === null || top.group === null || selected === null) return top;
+    // The fleet icons under the point, topmost first.
+    let selAt = -1;
+    const stack: DrawnSymbol[] = [];
+    for (let i = drawn.length - 1; i >= 0; i--) {
+        const d = drawn[i];
+        if (d.group === null) continue;
+        const r = (d.halfPx + 2) / z;
+        if (Math.abs(d.x - wx) > r || Math.abs(d.y - wy) > r) continue;
+        if (d.group === selected) selAt = stack.length;
+        stack.push(d);
+    }
+    return selAt < 0 ? top : stack[(selAt + 1) % stack.length];
 }
 
 /** What a single left click on a pick selects: the fleet for a fleet icon, else the ship/base. */
@@ -1606,6 +1631,13 @@ export class GalaxyMarkerLayer {
     pickAt(wx: number, wy: number, z: number): DrawnSymbol | null {
         if (!this.front.visible) return null;
         return pickDrawnSymbol(this.drawn, wx, wy, z);
+    }
+
+    /** A left click at world point (wx, wy): as pickAt, but repeated clicks on stacked fleet icons cycle through them
+     *  (pickDrawnSymbolCycling, from the selected fleet). */
+    pickClickAt(wx: number, wy: number, z: number): DrawnSymbol | null {
+        if (!this.front.visible) return null;
+        return pickDrawnSymbolCycling(this.drawn, wx, wy, z, this.getSelection()?.shipGroup ?? null);
     }
 
     destroy(): void {

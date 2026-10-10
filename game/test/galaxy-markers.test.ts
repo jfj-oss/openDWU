@@ -14,6 +14,7 @@ import {
     markerShapeForSubRole,
     perShipSymbolPx,
     pickDrawnSymbol,
+    pickDrawnSymbolCycling,
     presenceBandAlpha,
     presenceDiscRadius,
     shipSymbolPx,
@@ -246,6 +247,25 @@ describe('picking and selection', () => {
     it('prefers a fleet icon over ship symbols under the same point', () => {
         const hit = pickDrawnSymbol(drawn, 31000, 0, z);
         expect(hit?.group).toBe(fleet);
+    });
+    it('stacked fleet icons: the topmost (last drawn) is picked; repeated clicks cycle from the selected fleet', () => {
+        const l1 = bo(11);
+        const l2 = bo(12);
+        const l3 = bo(13);
+        const f1 = { leadShip: l1, ships: [l1] } as unknown as ShipGroup;
+        const f2 = { leadShip: l2, ships: [l2] } as unknown as ShipGroup;
+        const f3 = { leadShip: l3, ships: [l3] } as unknown as ShipGroup;
+        const stack: DrawnSymbol[] = [
+            { bo: l1, group: f1, x: 100000, y: 0, halfPx: 11 },
+            { bo: l2, group: f2, x: 100300, y: 0, halfPx: 11 }, // nearer the click than f3, but drawn under it
+            { bo: l3, group: f3, x: 99000, y: 0, halfPx: 11 },
+        ];
+        expect(pickDrawnSymbol(stack, 100200, 0, z)?.group).toBe(f3);
+        expect(pickDrawnSymbolCycling(stack, 100200, 0, z, null)?.group).toBe(f3);
+        expect(pickDrawnSymbolCycling(stack, 100200, 0, z, f3)?.group).toBe(f2);
+        expect(pickDrawnSymbolCycling(stack, 100200, 0, z, f2)?.group).toBe(f1);
+        expect(pickDrawnSymbolCycling(stack, 100200, 0, z, f1)?.group).toBe(f3);
+        expect(pickDrawnSymbolCycling(stack, 100200, 0, z, fleet)?.group).toBe(f3); // a fleet elsewhere: the top
     });
     it('a click on a fleet icon selects the fleet, on a symbol the ship', () => {
         expect(clickSelection({ bo: lead, group: fleet })).toBe(fleet);

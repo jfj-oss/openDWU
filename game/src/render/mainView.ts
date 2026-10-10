@@ -2653,7 +2653,7 @@ export class MainView {
         }
         // [galaxymarkers] begin — a fleet icon (galaxy/sector zoom) selects its fleet (method_258 / 145).
         const wp = this.camera.screenToWorld(x, y);
-        const sym = this.galaxyMarkers?.pickAt(wp.x, wp.y, this.camera.zoom) ?? null;
+        const sym = this.galaxyMarkers?.pickClickAt(wp.x, wp.y, this.camera.zoom) ?? null; // stacked icons cycle
         const symSel = sym !== null ? clickSelection(sym) : null;
         if (symSel !== null && symSel !== sym?.bo && this.onShipGroupSelect !== undefined) {
             playGridClick(); // [audio]
