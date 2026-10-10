@@ -257,16 +257,17 @@ Every code line here is (b), the local viewer (the (n) lines are comments): `mai
 `main.ts` also wires the player's message streams, pop-ups, event messages and battle-report notifier to
 `game.playerEmpire`; these become the local viewer's, fed by that human's inbox (§6, item 2).
 
-## 4. Decisions needed
+## 4. Decisions
 
-Each item: what the code does today, the options, and the recommendation. The code for these items is **not**
-migrated yet; it waits for the answers.
+**Decided 2026-10-10:** the user accepted all nine recommendations as written ("your decisions, continue"). Each item
+gives what the code does today and the decision. Every multiplayer rule below runs only when the game has more than one
+human, so a one-human game stays exactly as it is.
 
 1. **Victory and the end of the game** (39 lines: `src/sim/victory.ts`, the `playerEmpire` argument of
    `galaxyDoTasks` in `tick/galaxyTick.ts` / `tick/scheduler.ts`, and the threat add-ons' "contained" victories in
    `scenario/threats/*`). Today the victory conditions are checked for one player, and `onGameEnd` ends the game with
    that player's Victory or Defeat.
-   **Recommended:** check each human's victory conditions. The first human to meet them wins, and the game ends for
+   **Decided:** check each human's victory conditions. The first human to meet them wins, and the game ends for
    everyone (Victory for the winner, Defeat for the other humans). A human whose empire is destroyed is defeated and
    watches as a spectator while the others play on. A global threat that is contained (Hive, Grey Tide, Cult,
    Doppelgangers, Time Bomb, Robot Mutiny, Dark Farms) is a shared Victory for every surviving human. The Silence keeps
@@ -276,47 +277,47 @@ migrated yet; it waits for the answers.
    one wizard setting. The player's own `empire.difficultyLevel` (galaxy level + modifier, raised as the player nears
    victory) scales trade, diplomacy and research values in the AI's dealings with the player. AI empires get troop and
    force bonuses when the level is above 1.
-   **Recommended:** one shared difficulty per game (a lobby setting). Apply the player rules to every human through
+   **Decided:** one shared difficulty per game (a lobby setting). Apply the player rules to every human through
    that human's own `empire.difficultyLevel`. The code then reads naturally: `if (isHumanEmpire(galaxy, x)) value *=
    x.difficultyLevel ** 2`. The "scales as the player approaches victory" rule runs per human. A per-human handicap can
    come later (Phase 5).
 3. **AI bias against the player** (2 lines: `fleets/militaryAI.ts` 424 doubles the attack priority of the player's empire;
    `combat/threats.ts` 1090 makes a defensive base weigh the player's troop ships ×100).
-   **Recommended:** apply both to every human. The AI treats all humans as "the player".
+   **Decided:** apply both to every human. The AI treats all humans as "the player".
 4. **The story** (33 lines: `story/storyEvents.ts`, `story/freedomAlliance.ts`, `empireAbsorb.ts` (Guardians depart),
    `combat/damage.ts` (fearful pirate faction joins the player), the story clues in `exploration.ts`, `civilianAI.ts`,
    `movement.ts` and `combat/ownership.ts`). The Distant Worlds, Return of the Shakturi and Shadows storylines are
    written for exactly one protagonist: clues, rewards, the Freedom Alliance and the Mechanoid absorption all go to "the
    player".
-   **Recommended:** turn the storylines off in multiplayer (the wizard greys them out when there is more than one
+   **Decided:** turn the storylines off in multiplayer (the wizard greys them out when there is more than one
    human) and revisit in Phase 5. The alternatives are the primary human as the only protagonist, which is unfair to the
    others, or a clue track per human, which is a large redesign.
 5. **Galaxy events that target "the player"** (8 lines): super pirates appear near the player's colonies (`pirates.ts`
    1066), rim distress calls (`scenario/rimDistressCalls.ts`), and the Bacon scheduled events (stats saving, science
    ships) that use the player as their trigger empire (`baconSettings.ts`, `baconScienceShips.ts`, `story/eventActions.ts`).
-   **Recommended:** a targeted event picks one human with `galaxy.rnd` (deterministic, so the same on every client). In
+   **Decided:** a targeted event picks one human with `galaxy.rnd` (deterministic, so the same on every client). In
    a one-human game there is no draw, so the random sequence does not change. The Bacon scheduled events keep the
    primary human as their trigger.
 6. **"Not visible to the player"** (5 lines: `pirates.ts` 1034 spawns out of the player's sight;
    `independentTraders.ts` retires and spawns traders the player cannot see).
-   **Recommended:** "not visible to any human".
+   **Decided:** "not visible to any human".
 7. **Per-player state that is stored once** (17 lines): `Ruin.playerEmpireEncountered`,
    `BuiltObject.playerEmpireEncounterAction` (the abandoned-ship prompt), `SystemInfo.playerPotentialColonies`
    (`Galaxy.updateSystemInfo(playerEmpire)`, written every galaxy tick and never read), the smuggling report counters
    `EmpireActivity.playerAmountDelivered` / `playerIncomeEarned`, and `galaxy.messageOptions`.
-   **Recommended:** keep a per-human copy of each, for example a map keyed by empire id, written only when there is more
+   **Decided:** keep a per-human copy of each, for example a map keyed by empire id, written only when there is more
    than one human, so one-human saves stay byte-identical. Drop `playerPotentialColonies`, or compute it for the local
    viewer on the main thread.
 8. **Naming and cosmetics** (8 lines, plus the `Empire.playerEmpire` flag). The wizard's colony-name list
    (`galaxy.colonyNames`, used by `colony.ts` and `missions/cmdTroops.ts`) and design-name set (`galaxy.ts` 1321) apply to
    the player only. AI designs and independent freighters avoid the player's race pictures (`designGeneration.ts`,
    `independentTraders.ts`). A destroyed ship's saved cargo is owned by the player (a C# quirk in `combat/damage.ts` 820).
-   **Recommended:** each human gets their own name lists from the lobby; until then only the primary human uses them.
+   **Decided:** each human gets their own name lists from the lobby; until then only the primary human uses them.
    "Avoid the player's race" stays with the primary human, which keeps the C# random sequence. Leave the cargo quirk as
    ported. Replace the `Empire.playerEmpire` flag with `isHumanEmpire`.
 9. **Human-to-human diplomacy** (not a line count; it follows from the (a) migration). The AI never answers for a human
    now, so a proposal from one human to another waits in the recipient's inbox.
-   **Recommended:** Phase 1 only guarantees that the AI never decides for a human. The human-to-human treaty and trade
+   **Decided:** Phase 1 only guarantees that the AI never decides for a human. The human-to-human treaty and trade
    screens come in Phase 5, as planned.
 
 ## 5. Milestone 1: what is done
