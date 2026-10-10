@@ -695,7 +695,10 @@ not to the local queue.
   order, `constructionJob*` the construction board and its jobs. A template's rows are past the reach of the ids and
   the empire (on a real empire the 3000 objects go to the empire's own lists first), so before §10 the Fleet Designs
   tab re-rendered in Add Design's reply on the old rows and the new row did not show (`test/simWorkerScreens.test.ts`
-  "by id").
+  "by id"). These book roots get a `compareReach` of their own, before the general one (`SimHost.bookRoots`): in one
+  reach with the empire, a late empire's lists still used up the budget at each level before a template's entries
+  (depth 2), so a row's new count reached the replica only a cold cycle later and quick "+" clicks on a late game lost
+  steps once the first reply had landed (the stepper read the old count again).
 - **Refresh on open** (`simworker/refresh.ts requestSimRefresh`, message `refresh`): when a screen opens, it asks the
   worker to `compareReach` the objects it shows. It re-renders once they have arrived: the reply waits for the cold
   parts through its delta, as a command reply does (§4.3 "Freshness of `onApplied`"). In-thread this is a no-op.

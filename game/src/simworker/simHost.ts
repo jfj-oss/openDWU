@@ -110,6 +110,14 @@ export class SimHost {
      * replica with the command's reply instead of a cold cycle later.
      */
     private freshRoots: object[] = [];
+    /**
+     * The books an applied command's numeric ids point into (commandReach.ts commandFreshRoots: a fleet template's
+     * rows, a construction job), compared before freshRoots and with their own budget: in one breadth-first reach with
+     * the issuing empire, a big empire's own lists used up the 3000 objects at each level before a template's entries
+     * were reached, so a + on a Fleet Designs row reached the replica only a cold cycle later and quick repeats lost
+     * steps (the stepper computed from the old count once the first reply had landed).
+     */
+    private bookRoots: object[] = [];
     /** A waypoint op was applied since the last delta (player/waypoints.ts: a side table, freshened before the next one). */
     private waypointsFresh = false;
     private hintSubjectsSeen = 0;
@@ -279,7 +287,7 @@ export class SimHost {
                 entry.done = true;
                 // What the op changed past its arguments' reach (an id into a book: commandReach.ts), read now that
                 // the executor ran, for this tick's delta.
-                for (const o of commandFreshRoots(m.op, empire)) this.noteFresh(o);
+                for (const o of commandFreshRoots(m.op, empire)) if (this.sync.encoder.knownId(o) >= 0) this.bookRoots.push(o);
                 // The waypoints live in a side table (outside the graph): freshened before this tick's delta.
                 if (WAYPOINT_OPS.has(m.op)) this.waypointsFresh = true;
                 if (m.id !== 0) this.results.push(this.commandReply(m.id, m.op, result));
@@ -522,6 +530,10 @@ export class SimHost {
         if (changed) this.settleUntilCycle = this.sync.encoder.cycleCount + 2;
         if (!changed && !forceDelta && this.sync.encoder.cycleCount >= this.settleUntilCycle) return null;
         this.dirty = false;
+        if (this.bookRoots.length > 0) {
+            this.sync.encoder.compareReach(this.bookRoots);
+            this.bookRoots = [];
+        }
         if (this.freshRoots.length > 0) {
             this.sync.encoder.compareReach(this.freshRoots);
             this.freshRoots = [];
