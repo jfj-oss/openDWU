@@ -145,6 +145,7 @@ import { installMessageStubList, removeMessageStubList } from './ui/messageStubL
 import { setShipCommandHandler, setViewLockedQuery } from './ui/keyboard';
 import { refreshSelectionActionBar } from './ui/orderMenu';
 import { selectCreature, selectFighter, selectHabitat } from './ui/hud';
+import { applyHotSeatDevHumans, hotSeatSaveExtras, installHotSeat, rememberSavedLocalViewer } from './ui/hotSeat';
 import { createShipCommandKeys, type ShipCommandKeys } from './ui/shipCommandKeys';
 import { installWaypointUi } from './ui/waypoints'; // [waypoints]
 import { createControlGroupKeys } from './ui/controlGroups'; import { setControlGroupHandler } from './ui/keyboard'; import { resetPanelVisibility } from './ui/panelVisibility'; import { setMainViewDisplayType } from './render/mainViewDisplay'; import { closeGroundReport } from './ui/screens/groundReport'; import { playGridClick } from './audio/gameAudio'; // [parC1]
@@ -343,7 +344,9 @@ function gameDataForSaveAddingAddons(save: GameSaveJSON, adding: readonly string
 async function loadSaveWithProgress(text: SaveText, addAddons?: readonly string[]): Promise<LoadedGame> {
     // Start.cs 1777 / Main.Part7.cs 3941 LoadFromFile: a save of another theme first switches to it — as the user's
     // choice too (delegate8_0 = method_2(ThemeName, bool_5: true, …)) — then the galaxy loads on that theme's data.
-    const saveTheme = savedCustomizationSet(await saveTextTail(text, 4096));
+    const saveTail = await saveTextTail(text, 4096);
+    const saveTheme = savedCustomizationSet(saveTail);
+    rememberSavedLocalViewer(saveTail); // hot seat: whose turn it was (applied by installHotSeat)
     if (saveTheme !== activeCustomizationSetName()) {
         showToast(`Switching to ${saveTheme === '' ? '(Default)' : saveTheme} theme`); // "Switching to THEMENAME theme"
         await switchTheme(saveTheme, true);
@@ -695,7 +698,7 @@ export async function startGameView(
     // [simworker] Save text of the running game: the worker's authoritative game in worker mode (async).
     // A Blob of the UTF-8 text in both modes (saveData.ts): the text is never one string in a heap.
     const serializeCurrent = (): SaveText | null | Promise<SaveText | null> =>
-        simClient !== undefined ? simClient.save() : lastStartOptions !== null ? serializeGameBlob(game, time, lastStartOptions) : null;
+        simClient !== undefined ? simClient.save(undefined, hotSeatSaveExtras(galaxy)) : lastStartOptions !== null ? serializeGameBlob(game, time, lastStartOptions, hotSeatSaveExtras(galaxy)) : null;
 
     // Task 10d: first message of the top-middle ticker — the founding line.
     const playerCapital = game.playerEmpire?.capital ?? null;
@@ -946,6 +949,20 @@ export async function startGameView(
         refreshTopLeftControls(topLeftEl, time);
     };
     const refreshClockTimer = setInterval(refreshClockLabel, 250);
+    // Multiplayer Phase 2 (ui/hotSeat.ts): the Switch Player button / hotkey and the curtain between humans. Hidden in a
+    // single-player game. `?hotSeatDev=1` (dev, in-thread sim only) makes the first AI empire a second human, until
+    // createGame takes N humans.
+    if (simClient === undefined && new URLSearchParams(window.location.search).get('hotSeatDev') === '1') applyHotSeatDevHumans(galaxy);
+    const hotSeat = installHotSeat({
+        galaxy,
+        clock: time,
+        topBar: topLeftEl,
+        onSwitched: (viewer) => {
+            hud.onSelectionChange?.(null);
+            const c = viewer.capital;
+            if (c !== null) camera.centerOn(c.xpos, c.ypos);
+        },
+    });
     // [15d] Galaxy.GameEnd → Main.Part12.cs Galaxy_GameEnd / DoGameEnd (pause, IsFinished/Victor, banner).
     // [simworker] worker mode: the worker's handler ends the game; its gameEnd event shows the banner (workerMessages.ts).
     if (simClient === undefined) installGameEndHandler(galaxy, time);
@@ -1193,6 +1210,7 @@ export async function startGameView(
         window.removeEventListener('resize', resizeHandler);
         clearInterval(refreshHudTimer);
         clearInterval(refreshClockTimer);
+        hotSeat.destroy();
         view.dispose(); // Task 12k: remove the hover tooltip div.
         contextLoss.dispose();
         galaxyMap.destroy();

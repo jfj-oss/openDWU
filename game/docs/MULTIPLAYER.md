@@ -365,3 +365,100 @@ small rewrite rather than a one-line swap:
 
 **Total: about 8–10 working days** after Milestone 1 (which took about 1 day). This matches the plan's 1–2 weeks for
 Phase 1. Items 1–3 and 5 do not depend on the §4 answers and can start now; item 4 waits for them.
+
+## 7. Phase 2 (hot seat): the UI-side pieces
+
+Built on branch `wip/mp-hotseat`, alongside the rest of Phase 1. Single-player is unchanged: no key is written
+for one human, and `npm run repin -- --check` = 0.
+
+### 7.1 What is built
+
+- **The wizard.** The Other Empires page has a "Human Players..." button. It opens a panel over the manual empire
+  list (`src/ui/screens/hotSeatPlayersPanel.ts`) with one row per *extra* human. Each row has an empire name, the race
+  and government combos of the manual AI rows (the government list follows the race the same way:
+  `startGovernmentsForRace`), and the main and secondary flag colours. A line on the page and a Start-page summary row
+  show the count. The rows are stored as `StartGameOptions.humanPlayers`. The key is deleted when the last row is
+  removed, so a single-player start saves exactly the same text as before.
+- **The switch** (`src/ui/hotSeat.ts`, installed in `main.ts` `startGameView`):
+  - a "Switch Player" button in the top-left strip, right of Play/Pause. It shows only while
+    `humanEmpires(galaxy).length > 1`;
+  - the hotkey **Ctrl+Shift+H**. It is a capture-phase listener, not a row in the key-binding table;
+  - a full-screen curtain, "Player N — click to continue", with the empire name and colour. The curtain goes up
+    before the viewer changes. The game is paused while it is up, and goes back to its own pause state when the curtain
+    is clicked (or Enter/Space). Every key is swallowed while the curtain is up.
+  - The viewer moves with the new `switchLocalViewerEmpire(galaxy, empire)` (`src/localViewer.ts`), which calls
+    `setLocalViewerEmpire` and then the new `onLocalViewerChange` listeners. A screen that caches anything for the
+    viewer should subscribe to those listeners. `main.ts` clears the selection and centres the camera on the new
+    viewer's capital.
+  - A new hot-seat game opens on player 1's curtain.
+  - The dev hook `?hotSeatDev=1` (in-thread sim only) makes the first AI empire a second human, for trying the switch
+    before createGame takes N humans.
+- **Saves.** `GameSaveJSON.localViewer` is whose turn it is: an index into `galaxy.humanEmpires`. It is written only
+  when the game has more than one human. It sits just before `customizationSet`, so `savedLocalViewer(tail)` reads it
+  from the save's tail.
+  - The value is main-thread state. It travels as `GameSaveExtras` through `serializeGame` / `serializeGameParts` /
+    `serializeGameBlob`, and in worker mode through `SimWorkerClient.save(timeout, extras)` → `SaveRequest.extras` →
+    `SimHost.saveBlob(extras)`.
+  - On load, `loadSaveWithProgress` hands the tail to `rememberSavedLocalViewer`. `installHotSeat` then switches to that
+    human and shows their curtain.
+  - The fatal-error rescue save (`rescueSaveBlob`) and the replica fallback save carry no viewer. They load on player 1.
+
+### 7.2 Hand-off to Phase 1: `createGame` with N humans
+
+Not wired: `toCreateGameOptions` does not read `humanPlayers` yet. The field shape it should consume
+(`src/sim/humanPlayerStarts.ts`):
+
+```ts
+// StartGameOptions.humanPlayers?: HumanPlayerStart[]  — the EXTRA humans (players 2..N), in player order.
+// Player 1 is the start's own race / empire (raceName, empireName, governmentId, colours), as today.
+// Absent (never []) = one human.
+interface HumanPlayerStart {
+    name: string;          // empire name; '' = the "<Race> Empire" default (as ManualEmpireStart.name)
+    race: string;          // race name; '' = (Random)
+    governmentId: number;  // governments.txt id; -1 = (Random)
+    primaryColor: string;  // '#rrggbb'
+    secondaryColor: string;
+}
+// At most HOT_SEAT_EXTRA_HUMANS_MAX (7) rows.
+```
+
+`humanPlayerEmpireStarts(humans, gameData, player)` already turns the rows into `EmpireStartOptions[]`. Each extra
+human starts like player 1: the same age, tech level, home-system quality, corruption and flag shape, a `(Random)`
+start location, and its own race, government, name and colours. So in `toCreateGameOptions` (custom path; the Jump
+Start / Introductory paths have no rows):
+
+```ts
+const humans = humanPlayerEmpireStarts(o.humanPlayers ?? [], gameData, player);
+// → CreateGameOptions (e.g. `humanPlayers: humans`). createGame places them like the player, then
+//   setHumanEmpires(galaxy, [playerEmpire, ...their empires]) in the same order (the hot-seat index is into that list).
+```
+
+The wizard does not grey out the storylines for more than one human yet (decision §4.4). Do that together with the
+createGame change, so the rule lives in one place.
+
+### 7.3 Screens that still read `playerEmpire` (do not follow the switch yet)
+
+Phase 1 item 1 (§6) migrates these. Today the switch changes the fog (`render/fog.ts`, the only `localViewerEmpire`
+reader), the camera and the selection. Everything below still shows player 1:
+
+- **`main.ts`: values captured once at boot from `game.playerEmpire`.** These need a viewer accessor or a re-install on
+  `onLocalViewerChange`:
+  - the message stream (`installLocalMessageStream`, `installWorkerMessageUi`), `installMessagePopups`,
+    `installMessageStubList`, `installAdvisorSuggestions` (+ its build-order opener), the ticker poll
+    (`messageFeed.pollMessages(game.playerEmpire)`) and `savedHistoryLines`;
+  - `tradeFlowsOpts.playerEmpire`, the supply snapshot (`galaxy.playerEmpire`), `startAiAdvisorDriver` /
+    `startLlmLayer` (`player:`), and `setThemeChromeRace` (the chrome race);
+  - the founding message and the camera start.
+- **HUD:** `ui/hud.ts` (27 lines: money panel, top-bar buttons, selection panel, sources via `game.playerEmpire`),
+  `ui/leftSidebarView.ts`, `ui/systemView.ts`, `ui/supplyChainCache.ts`, `ui/overlayOptionPanels.ts`,
+  `ui/waypoints.ts`.
+- **Screens:** `ui/screens/empiresList.ts`, `tradeFlows.ts`, `resourceSupply.ts`, `galaxyMap.ts`,
+  `empireComparison.ts`, `gameSummary.ts`, `empirePolicy.ts`, `constructionYards.ts`, `tradePanel.ts`,
+  `ruinDetail.ts`, `groundReport.ts`, `gameEndPanel.ts`.
+- **Render:** `render/overlayLayer.ts` (14), `render/mainView.ts` (11), `locationMarkers.ts`, `galaxyMarkers.ts`,
+  `systemLinks.ts`, `supplyOverlay.ts`, `resourceOverlay.ts`, `fuelOverlay.ts`, `freightOverlay.ts`,
+  `colonyScoreOverlay.ts`, `creatureLayer.ts`, `faunaGallery.ts`, `whalePilotLayer.ts`, `rimAtmosphereLayer.ts`,
+  `artBundleLayer.ts`.
+- **Audio:** `audio/gameAudio.ts`, `mainViewSounds.ts`, `rimCreatureAudio.ts`.
+- **Commands:** the UI-record sender (`setUiRecordSender`) still issues every order as `galaxy.playerEmpire` (§6
+  item 5). Until it reads the local viewer, player 2's orders act on player 1's empire.

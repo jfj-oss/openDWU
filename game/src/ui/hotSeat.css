@@ -1,0 +1,58 @@
+/* Hot seat (hotSeat.ts): the top-bar Switch Player button and the full-screen curtain between players. */
+.hotseat-switch-btn {
+    position: absolute;
+    font-size: 13px;
+    color: rgb(220, 220, 220);
+    white-space: nowrap;
+}
+.hotseat-switch-btn[hidden] {
+    display: none;
+}
+.hotseat-curtain {
+    position: fixed;
+    inset: 0;
+    z-index: 2147483000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: radial-gradient(ellipse at center, rgb(22, 24, 34) 0%, rgb(0, 0, 0) 75%);
+    cursor: pointer;
+    outline: none;
+}
+.hotseat-curtain-card {
+    padding: 32px 56px;
+    border: 2px solid rgb(120, 120, 140);
+    border-radius: 20px;
+    background: linear-gradient(to bottom, rgb(39, 40, 44) 0%, rgb(22, 21, 26) 50%, rgb(51, 54, 61) 100%);
+    text-align: center;
+    color: rgb(220, 220, 220);
+    font-family: Verdana, Tahoma, sans-serif;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.8);
+    max-width: calc(100vw - 32px);
+    box-sizing: border-box;
+}
+.hotseat-curtain-title {
+    font-size: 30px;
+    font-weight: bold;
+    color: rgb(255, 255, 0);
+}
+.hotseat-curtain-empire {
+    margin-top: 14px;
+    font-size: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+}
+.hotseat-curtain-swatch {
+    display: inline-block;
+    width: 18px;
+    height: 18px;
+    border: 1px solid rgb(170, 170, 170);
+    border-radius: 3px;
+}
+.hotseat-curtain-hint {
+    margin-top: 18px;
+    font-size: 13px;
+    color: rgb(170, 170, 170);
+}
