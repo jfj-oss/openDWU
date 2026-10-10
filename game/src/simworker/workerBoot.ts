@@ -20,6 +20,7 @@ import type { StartGameOptions } from '../sim/startGameOptions';
 import { applyScenarioOverlay, type ScenarioOverlay } from '../sim/scenario/overlay';
 import { COMPOSITE_SCENARIO_ID, addonCatalog, planSaveAddonAddition, scenarioOverlayFor } from '../sim/scenario/addons';
 import { reviveCreateOptions } from './bootOptions';
+import { saveTextString } from '../saveData';
 import type { ScenarioRef, WorkerBoot } from './protocol';
 
 export interface WorkerBootDeps {
@@ -96,7 +97,8 @@ export async function bootWorkerGame(boot: WorkerBoot, deps: WorkerBootDeps): Pr
     // Load.
     let text = boot.text;
     if (text === undefined && boot.blob !== undefined) {
-        text = await boot.blob.text();
+        // A gzip save is inflated here, in the worker, as a stream (saveData.ts); an older plain one is read as before.
+        text = await saveTextString(boot.blob);
         boot.blob = undefined;
     }
     if (text === undefined) {

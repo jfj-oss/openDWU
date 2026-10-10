@@ -397,7 +397,7 @@ for one human, and `npm run repin -- --check` = 0.
   when the game has more than one human. It sits just before `customizationSet`, so `savedLocalViewer(tail)` reads it
   from the save's tail.
   - The value is main-thread state. It travels as `GameSaveExtras` through `serializeGame` / `serializeGameParts` /
-    `serializeGameBlob`, and in worker mode through `SimWorkerClient.save(timeout, extras)` → `SaveRequest.extras` →
+    `serializeGameSave`, and in worker mode through `SimWorkerClient.save(timeout, extras)` → `SaveRequest.extras` →
     `SimHost.saveBlob(extras)`.
   - On load, `loadSaveWithProgress` hands the tail to `rememberSavedLocalViewer`. `installHotSeat` then switches to that
     human and shows their curtain.
@@ -508,6 +508,11 @@ loop asks `lockstepStepper(galaxy)`, which is null unless a session is attached.
   host skips the save when they still match. Otherwise it gets the host's save at the current boundary, plus the input
   buffer. It sends input from the first frame the host has not sent yet. Every other peer hears of the join before
   that frame's host input, so nobody runs that frame without the newcomer.
+- **Save transfer.** A join or resync save is gzip-compressed (`saveCompression.ts`) and sent as base64 `saveChunk`
+  messages (1 MB of gzip each) just before the `welcome` / `resync` that names it (`WireSave`). The host writes the
+  text at the boundary, then compresses it while it runs on; messages to that link wait behind the save. The client
+  inflates it asynchronously and holds its frames and other messages until it is loaded. A 17 MB save travels as
+  ~1.5 MB.
 - **Leave.** When a client's link drops, the host ends it at the first frame it has no input for, and tells the
   others. The session goes on. `hooks.onPeerLeft` is where Phase 4 hands the empire to the AI. If the host's link
   drops, a client's session ends (`onHostLost`).

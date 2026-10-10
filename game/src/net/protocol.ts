@@ -65,14 +65,37 @@ export interface HelloMsg {
     have?: { frame: number; digest: string };
 }
 
+/**
+ * A save on the wire (join / resync): serializeGame's text, gzip-compressed (saveCompression.ts), sent ahead of the
+ * message that names it as `chunks` SaveChunkMsg pieces with this `id` (each at most SAVE_CHUNK_BYTES of the gzip,
+ * base64: the link carries text). A 450 MB save is ~45 MB of gzip, ~60 MB on the wire.
+ */
+export interface WireSave {
+    id: number;
+    chunks: number;
+    /** Bytes of the gzip. */
+    bytes: number;
+}
+
+/** Bytes of gzip per SaveChunkMsg (1.4 MB of base64). */
+export const SAVE_CHUNK_BYTES = 1 << 20;
+
+/** Host → client: one piece of a compressed save (WireSave), base64. Sent just before the welcome / resync. */
+export interface SaveChunkMsg {
+    t: 'saveChunk';
+    id: number;
+    index: number;
+    data: string;
+}
+
 /** Host → client: the answer to hello. */
 export interface WelcomeMsg {
     t: 'welcome';
     peer: PeerId;
     /** The boundary the client starts at (the next frame to run). */
     frame: number;
-    /** serializeGame at that boundary, or null when the client's own game already equals it. */
-    save: string | null;
+    /** serializeGame at that boundary (its chunks came first), or null when the client's own game already equals it. */
+    save: WireSave | null;
     clock: ClockState;
     /** Every input the host knows for frames >= `frame`. */
     inputs: FrameInput[];
@@ -97,7 +120,8 @@ export interface DigestMsg {
 export interface ResyncMsg {
     t: 'resync';
     frame: number;
-    save: string;
+    /** The save of that boundary (its chunks came first). */
+    save: WireSave;
     clock: ClockState;
     inputs: FrameInput[];
     epoch: number;
@@ -139,4 +163,4 @@ export interface ByeMsg {
     reason: string;
 }
 
-export type NetMessage = HelloMsg | WelcomeMsg | InputsMsg | DigestMsg | ResyncMsg | PeerJoinedMsg | PeerLeftMsg | PauseRequestMsg | PingMsg | PongMsg | ByeMsg;
+export type NetMessage = HelloMsg | WelcomeMsg | SaveChunkMsg | InputsMsg | DigestMsg | ResyncMsg | PeerJoinedMsg | PeerLeftMsg | PauseRequestMsg | PingMsg | PongMsg | ByeMsg;

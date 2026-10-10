@@ -15,6 +15,7 @@ import type { ScenarioOverlay } from '../sim/scenario/overlay';
 import { FRAME_REAL_MS } from '../sim/tick/scheduler';
 import { installWorkerBootState, SimHost } from './simHost';
 import { bootWorkerGame } from './workerBoot';
+import { saveTextString } from '../saveData';
 import { deltaTransferables } from './replicaSync';
 import { ALIVE_INTERVAL_MS, type FromWorker, type InitMessage, type ToWorker } from './protocol';
 
@@ -64,7 +65,7 @@ const bootDeps = {
     fetchSave: async (url: string): Promise<string> => {
         const r = await fetch(url);
         if (!r.ok) throw new Error(`save ${url}: HTTP ${r.status}`);
-        return await r.text();
+        return await saveTextString(await r.blob()); // gzip or plain (saveData.ts)
     },
     progress: (step: string, fraction: number): void => post({ type: 'progress', step, fraction }),
 };
@@ -112,13 +113,25 @@ function fatal(where: string, err: unknown): void {
     timer = null;
     // The sim's own errors are contained by SimHost.tick, so the game is usually intact here (the sync or the host
     // failed): save it for the main thread's restart offer (restart.ts), if it still serializes.
-    let rescue: Blob | null = null;
+    let rescue: Promise<Blob> | null = null;
     try {
         rescue = host !== null ? host.rescueSaveBlob() : null;
     } catch (err) {
         console.error('sim worker: the game could not be saved for a restart', err);
     }
-    post({ type: 'error', message: dead, fatal: true, rescue });
+    const message = dead;
+    if (rescue === null) {
+        post({ type: 'error', message, fatal: true, rescue: null });
+        return;
+    }
+    // (Its gzip is made asynchronously; the text was written above, as the game stood.)
+    rescue.then(
+        (blob) => post({ type: 'error', message, fatal: true, rescue: blob }),
+        (err: unknown) => {
+            console.error('sim worker: the game could not be saved for a restart', err);
+            post({ type: 'error', message, fatal: true, rescue: null });
+        },
+    );
 }
 
 function loop(): void {
@@ -222,10 +235,14 @@ function dispatch(m: ToWorker): void {
             host!.setView(m);
             return;
         case 'save': {
+            // The text is written now, between ticks (saveBlob's serialize is synchronous); its gzip is made after,
+            // while the loop runs on, and the reply goes when it is ready.
+            const id = m.id;
+            const fail = (err: unknown): void => post({ type: 'saved', id, blob: null, error: err instanceof Error ? err.message : String(err) });
             try {
-                post({ type: 'saved', id: m.id, blob: host!.saveBlob(m.extras) });
+                host!.saveBlob(m.extras).then((blob) => post({ type: 'saved', id, blob }), fail);
             } catch (err) {
-                post({ type: 'saved', id: m.id, blob: null, error: err instanceof Error ? err.message : String(err) });
+                fail(err);
             }
             return;
         }
