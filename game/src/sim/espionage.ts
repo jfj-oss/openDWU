@@ -1416,7 +1416,9 @@ export function performIntelligenceMissions(galaxy: Galaxy, self: Empire): void 
                     const index = galaxy.rnd.next(0, characterList.length);
                     const character4 = characterList[index];
                     const c4Mission = characterMission(character4);
-                    if (c4Mission !== null) {
+                    // Crash guard (not in the C#, where the Empire dereference below throws): the list is taken once per pass,
+                    // and an earlier counter-intelligence catch in the same pass may already have killed this agent.
+                    if (c4Mission !== null && character4.empire !== null) {
                         const num11 = calculateIntelligenceMissionSuccessChance(self, c4Mission, character4);
                         let num12 = 0.85;
                         if (self.raceEventType === RaceEventType.PredictiveHistory) num12 = 1.15;

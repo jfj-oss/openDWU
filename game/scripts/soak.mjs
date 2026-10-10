@@ -7,7 +7,7 @@
 //   nice -n 15 node scripts/soak.mjs --only std-s1,rim-herders --jobs 2 [--years N] [--out DIR]
 //   nice -n 15 node scripts/soak.mjs --set long             # the many-decade runs
 //   node scripts/soak.mjs --list                             # the config names
-//   nice -n 15 node --expose-gc scripts/soak.mjs --run NAME [--years N] [--out DIR] [--hook dbg.mjs]   # one config, in process
+//   nice -n 15 node --expose-gc scripts/soak.mjs --run NAME [--years N] [--seed N] [--out DIR] [--hook dbg.mjs]   # one config, in process
 //
 // Per config (a child process per config in the default driver mode):
 // - the game is built the way the app builds it (StartGameOptions → toCreateGameOptions → createGame, the scenario
@@ -238,8 +238,10 @@ function oneLine(r) {
 // One config in this process.
 // ---------------------------------------------------------------------------------------------------------------
 async function runOne(name) {
-    const cfg = CONFIGS.find((c) => c.name === name);
-    if (!cfg) throw new Error(`no config ${name}`);
+    const cfg0 = CONFIGS.find((c) => c.name === name);
+    if (!cfg0) throw new Error(`no config ${name}`);
+    // --seed N: the same config on another seed (A/B measurement pairs).
+    const cfg = arg('seed', null) === null ? cfg0 : { ...cfg0, seed: Number(arg('seed')) };
     const ownBundle = arg('bundle', null) === null;
     const bundleDir = ownBundle ? await bundle() : String(arg('bundle'));
     const load = (key) => import(resolve(bundleDir, key + '.js'));

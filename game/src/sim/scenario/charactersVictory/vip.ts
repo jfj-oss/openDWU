@@ -267,18 +267,19 @@ function spawnDecoys(galaxy: Galaxy, t: VipTrip, from: { xpos: number; ypos: num
     const n = Math.trunc(cvParam(galaxy, 'cvRulerDecoyCount'));
     if (n <= 0) return;
     const st = cvState(galaxy);
-    // The real shuttle took the next id; give the decoys ids around it so the order says nothing (a drawn slot).
+    // The real shuttle and its decoys take consecutive ids; which one is real is drawn, so the names say nothing.
     const slot = galaxy.rnd.next(0, n + 1);
     const ids: number[] = [];
     for (let i = 0; i < n + 1; i++) ids.push(t.id + i);
     const realId = ids[slot];
     const decoyIds = ids.filter((x) => x !== realId);
     st.nextTripId = t.id + n + 1;
+    t.id = realId;
     t.shuttle.name = scenarioText('CV Shuttle Name', realId);
     for (const did of decoyIds) {
         const bo = spawnShuttle(galaxy, t.empire, from.xpos, from.ypos, did);
         if (bo === null) continue;
-        const d: VipTrip = { ...t, id: did, character: null, shuttle: bo, escorts: [], escortFleets: [], escortWanted: 0, decoyOf: t.id, revealedTo: [] };
+        const d: VipTrip = { ...t, id: did, character: null, shuttle: bo, escorts: [], escortFleets: [], escortWanted: 0, decoyOf: realId, revealedTo: [] };
         st.trips.push(d);
         if (d.waitUntil === 0) vipAssign(galaxy, bo, BuiltObjectMissionType.Move, t.destination);
     }

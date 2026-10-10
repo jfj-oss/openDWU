@@ -14,7 +14,7 @@ import { stateDigest } from '../src/sim/tick/digest';
 import { GalaxyTime, YEAR_LENGTH } from '../src/sim/galaxyTime';
 import { defaultStartGameOptions } from '../src/sim/startGameOptions';
 import { deserializeGame, serializeGame } from '../src/sim/save/gameSave';
-import { registerScenarioEvent, scenarioQuery } from '../src/sim/scenario/hooks';
+import { registerScenarioEvent, scenarioEmit, scenarioQuery } from '../src/sim/scenario/hooks';
 import { stabilityTermValues } from '../src/sim/scenario/stability';
 import { BuiltObjectSubRole } from '../src/sim/builtObjectTypes';
 import { ComponentType } from '../src/sim/data/components';
@@ -23,7 +23,8 @@ import { BuiltObjectMissionPriority, BuiltObjectMissionType, builtObjectMission 
 import { builtObjectCompleteTeardown } from '../src/sim/combat/teardown';
 import { charactersCanGenerateAmountNonIntelligenceAgent } from '../src/sim/troops';
 import { CV_LIVE_KEY, CV_STATE_KEY, peekCvState } from '../src/sim/scenario/charactersVictory/common';
-import { assignEscorts, isVipShuttle, tripOfCharacter } from '../src/sim/scenario/charactersVictory/vip';
+import { assignEscorts, isVipShuttle, tripOfCharacter, vipMarkers } from '../src/sim/scenario/charactersVictory/vip';
+import { IntelligenceMissionOutcome, IntelligenceMissionType } from '../src/sim/espionage';
 import { BuiltObjectRole } from '../src/sim/data/designSpecifications';
 import { leaveShipGroup } from '../src/sim/fleets/shipGroup';
 import { generateVipShuttleDesign, vipComponentAllowed } from '../src/sim/scenario/charactersVictory/shuttleDesign';
@@ -494,6 +495,34 @@ describe('Characters & Victory add-on', () => {
             const m = builtObjectMission(b.mission);
             expect(m === null || m.type !== BuiltObjectMissionType.Escort || m.targetBuiltObject !== t.shuttle).toBe(true);
         }
+    }, 600000);
+
+    it('a ruler travels with identical decoys; a successful Steal Operations Map reveals the real shuttle', () => {
+        const game = cvGame();
+        const g = game.galaxy;
+        const e = g.empires.find((x) => x !== g.playerEmpire && x.leader !== null && x.capital !== null)!;
+        const spy = g.empires.find((x) => x !== e && x.dominantRace !== null)!;
+        const ruler = e.leader!;
+        const cap0 = e.capital!;
+        const dest = g.habitats.find((h) => h.empire === null && h.category === HabitatCategoryType.Planet && Math.hypot(h.xpos - cap0.xpos, h.ypos - cap0.ypos) > 500000)!;
+        ruler.transferToNewLocation(dest, g);
+        const t = tripOfCharacter(g, ruler)!;
+        const st = peekCvState(g)!;
+        const decoys = st.trips.filter((x) => x.decoyOf === t.id);
+        expect(decoys.length).toBe(2);
+        for (const d of decoys) {
+            expect(d.character).toBeNull();
+            expect(d.shuttle.design).toBe(t.shuttle.design);
+            expect(d.destination).toBe(dest);
+        }
+        const ids = [t, ...decoys].map((x) => x.id).sort((a, b) => a - b);
+        expect(ids[2] - ids[0]).toBe(2); // consecutive ids: the real one's place is drawn, not first
+        // Every shuttle shows the same foreign label until the spy reveals the real one.
+        const labels = () => vipMarkers(g, spy, () => true).filter((m) => m.shuttle.empire === e).map((m) => m.label);
+        expect(new Set(labels()).size).toBe(1);
+        scenarioEmit(g, 'intelMissionCompleted', { empire: spy, mission: { type: IntelligenceMissionType.StealOperationsMap, targetEmpire: e }, outcome: IntelligenceMissionOutcome.SucceedNotDetect });
+        expect(t.revealedTo).toContain(spy.empireId);
+        expect(new Set(labels()).size).toBe(2);
     }, 600000);
 
     it('a CV game with trips in flight saves and reloads identically', () => {

@@ -97,7 +97,7 @@ ledger entry or emit an event they already read.
 - **new.** One design per empire with the VIP Shuttle role, held in the add-on's state, **not** in `empire.designs`, so no stock build, retrofit or force-structure path ever sees it. A new BuiltObjectSubRole value would shift every `Enum.GetValues(BuiltObjectSubRole)` loop (`latestDesigns`, force-structure projection, the subrole names), which would break flag-off byte identity. The hull subRole is therefore **PassengerShip** (real), and VIP-ness is the add-on's design id plus a ship registry.
 - **new.** Allowed component families: shields, armour, engines, hyperdrive, reactor, fuel, life support and quarters (habitation, life support, crew; the command centre and bridge needed for a valid design). Not allowed: weapons, cargo, troop compartments, construction yards, fighter bays, and also sensors (scanners, long-range scanners), colony modules, passenger compartments for migrants, extractors and labs.
 - **new.** Fixed hull size: `cvShuttleSize` (default 180, within PassengerShip limits).
-- **new (built on real code).** The auto-design is the PassengerShip design template run through the real Empire.GenerateDesignFromSpec (`designGeneration.ts`), stripped to the allowed families, then padded with shields, armour and engines to the fixed size. It regenerates when research improves any allowed component (on `researchCompleted`), unless the player's own edited design is locked.
+- **new (built on real code).** The auto-design is the PassengerShip design template run through the real Empire.GenerateDesignFromSpec (`designGeneration.ts`), stripped to the allowed families, then padded with shields, armour and engines to the fixed size. It is regenerated once a game year and replaced when its components changed (research improved one), unless the player's own edited design is locked (as built: a yearly check instead of one per research breakthrough, to keep the design generator off the hot path).
 - **new.** Free: the spawn costs nothing, upkeep is zero (`supportCostFactor` 0) and fuel never runs out (the `builtObjectSelfFuelling` query).
 - **new.** Minimal sensors and no exploration credit: the design has no sensor components, and a shuttle never marks systems explored or visible for its empire.
 - **new.** It cannot be ordered, kept, scrapped or used to block. `assignMissionAllowed` refuses every mission except the add-on's own Move/Hold. The player's ship UI shows no orders for it (selection shows "VIP shuttle — en route to X"). It never joins fleets, is never auto-controlled, never retires and is never counted as military (no blockade, no hyperdeny, no territory claim).
@@ -107,7 +107,7 @@ ledger entry or emit an event they already read.
 
 - **new.** Any ship carrying a VIP (a shuttle or a decoy) draws a **gold ring** for the viewing empire when it is inside that empire's sensor range and not fogged. "In range" is the real IsObjectVisibleToThisEmpire (Empire.9.cs:3198), the same test that decides whether the ship is drawn at all. Hovering shows the shuttle's name and, for one's own shuttles, the passenger's name and role. Foreign shuttles show "VIP shuttle" only.
 - **new.** A "VIP traffic" map-overlay toggle draws each visible VIP shuttle's route line to its destination (own shuttles; foreign ones only while visible). The gold rings are always drawn.
-- **new.** Decoys are for the **ruler only** (CharacterRole.Leader). A ruler's trip spawns `cvRulerDecoys` (2) identical shuttles (same design, same marker, same kind of name) on the same destination, with staggered departure points within the origin system. The real one is chosen deterministically (`galaxy.rnd` under the flag).
+- **new.** Decoys are for the **ruler only** (CharacterRole.Leader). A ruler's trip spawns `cvRulerDecoyCount` (2) identical shuttles (same design, same marker, same kind of name) on the same destination, with staggered departure points within the origin system. The real one is chosen deterministically (`galaxy.rnd` under the flag).
 - **new (built on real code).** A completed **StealOperationsMap** intelligence mission (real, IntelligenceMissionType) against an empire whose ruler is in transit reveals the real shuttle to the spying empire. Its marker then shows "Ruler aboard" for that empire.
 
 ### 4.4 Escorts
@@ -116,11 +116,16 @@ ledger entry or emit an event they already read.
 - **new.** The required escort firepower is `importance × routeDanger × cvEscortFirepowerPerPoint`.
   - **Importance** (0–10): Leader 10; Governor 2 + 6 × (colony value / the empire's top colony value); Admiral 3 + skills/40; Scientist 2 + skills/40; General 2 + skills/40; Ambassador 2; Captain 1; Agent 1.
   - **Route danger** (0–3): sample points along the straight route every half sector. Each sample adds the known enemy military firepower nearby (empires at war, plus known pirate bases and their ships), normalised by the shuttle's own defence. It gets +0.5 outside one's own territory.
-- **new.** Escorts are idle military ships (no mission, or Undefined/Patrol at the origin; not in a fleet with orders; not TroopTransport or ResupplyShip), nearest first, taken until the firepower is met. They are released on arrival (their mission is cleared, and the stock AI re-tasks them).
-- **new.** Defence floor: escorting never takes the last `max(1, 10%)` of the empire's idle military ships, and never takes a colony's guard while that colony is threatened.
+- **new.** Escorts are idle military ships, automated, armed and with a hyperdrive (never TroopTransport or ResupplyShip), nearest first, taken until the firepower is met:
+  - loose ships with no mission, or on the stock Patrol of a place that is not threatened (route danger < 0.5 there);
+  - then members of a fleet with no mission (never its lead ship), which leave the fleet and rejoin it on release. (As built: the stock AI keeps almost no ship without a mission, since idle ships go on Patrol at once, so taking only mission-less ships found no escort in 46 dangerous trips of the war soak.)
+
+  They are released on arrival: the Escort mission is cleared, the ship rejoins its fleet, and the stock AI re-tasks it.
+- **new.** Defence floor: escorting never takes the last `max(1, 10%)` of the empire's idle military ships, and never takes the patrol of a threatened place.
+- **new.** Route danger also counts +0.25 for any part of the straight route outside the empire's own territory.
 - **new.** Cap: all escorts together are at most `cvEscortCapPct` (20%) of the empire's idle military ships.
 - **new.** A trip of importance ≥ 6 with danger > 0 whose escort is short **waits** at the origin, for up to `cvEscortWaitDays` (60), for escorts to join. Then it departs with what it has. Rerouting is not in Part 1 (see the TODO in the code).
-- **new.** Settings: "Automate VIP escorts" (per empire; default on; the AI always on), and an escort level of None / Light (×0.5) / Normal (×1) / Heavy (×2) on the empire's policy panel. With automation off the player escorts by hand: the Escort order on a shuttle is the one order a shuttle accepts as a target.
+- **new.** Settings: "Automate VIP escorts" (per empire; default on; the AI always on), and an escort level of None / Light (×0.5) / Normal (×1) / Heavy (×2) in the Characters screen's post block (as built: next to the travellers they concern, instead of the policy screen). With automation off the player escorts by hand: the Escort order on a shuttle is the one order a shuttle accepts as a target.
 
 ### 4.5 Death, capture and attacks
 
@@ -171,6 +176,7 @@ duty (Part 2) does not count.
   | Unrest, rebellion, breakaway | Nothing extra: the falling approval drives the **stock** revolt (Habitat.cs:5992 CheckSatisfaction → LeaveEmpire) or internal-security's ledger revolt | emergent, after years |
 
 - **new.** Recovery: once a governor is in post, `N` falls by 1/`cvRecoveryYears` (5) per year. A colony at full neglect therefore takes 5 years to recover, and a partly neglected one proportionally less.
+- **new.** When the add-on starts in a running game (added to a save), the posts vacant at its first review are filled by local rises within the grace (60–180 days), not after 1–3 years. Otherwise every colony of a mid-game empire would decline at once.
 - **new.** Colonies of fewer than `cvMinPopulation` (50M) are exempt from the decline. They are still counted vacant (and still get a governor when one is free). Outposts are not run by governors.
 
 ### 5.4 Replacement paths
@@ -317,5 +323,39 @@ Exported from `src/sim/scenario/charactersVictory/index.ts`:
 
 ## 12. Measurements and tuning
 
-Filled in after the headless runs (governor moves per year, the share of colonies vacant and for how long, VIP trips
-and escort sizes, AI economy on vs off, sim step time on vs off on the big save).
+The headless runs use the existing soak harness: `scripts/soak.mjs` configs `cv-on-s1` and `cv-off-s1` (the same setup with the master switch off, i.e. the faithful game), `--seed 2` for a second pair, and `cv-war-s17` (aggressive AIs, many pirates). The metrics come from a scratch hook. "Galaxy-wide" means every normal empire, the unattended human seat included.
+
+| | seed 1, 10 y, on | seed 1, 10 y, off | seed 2, 8 y, on | seed 2, 8 y, off | war, seed 17, 4 y, on |
+|---|---|---|---|---|---|
+| Governor moves (total) | 32 (≈3 a year galaxy-wide, ≈0.3 per empire a year) | – | 18 | – | 14 |
+| VIP trips / lost | 100 / 2 | – | 57 / 4 | – | 50 / 3 |
+| Trips on a dangerous route / escorted / escort ships | 88 / 45 / 63 (1.4 a trip) | – | 52 / 12 / 15 | – | 46 / 18 / 19 |
+| Colonies without a governor (yearly snapshots) | 9–15 % | 73 % (stock: no penalty) | 7 % (AI 3.7 %) | 75 % | 4–17 % |
+| Mean vacancy length | 159 days (below the 180-day grace) | – | 163 days | – | 140 days |
+| Colonies in decline at a time | 2–4 | – | 1 | – | 0–1 |
+| AI state money at the end | 4.24 M | 3.82 M | 3.20 M | 2.11 M | – |
+| AI colonies | 36 | 44 | 27 | 30 | – |
+| AI population | 149.0 bn | 153.0 bn | 140.3 bn | 144.6 bn | – |
+| AI annual tax revenue | 2.97 M | 2.89 M | 2.52 M | 2.20 M | – |
+| AI ships and bases | 792 | 751 | 599 | 557 | – |
+
+**Step time on the big save.** `~/wt/eng-perf/scratch/late.save` (27 empires, 47.7 k built objects, 235 colonies), with the add-on added to the save, 30 s warm-up, then 120 game seconds (7200 steps), two runs each:
+
+| | wall ms / step | CPU ms / step |
+|---|---|---|
+| Off | 6.61, 6.08 | 8.73, 8.25 |
+| On | 6.57, 6.09 | 8.56, 8.07 |
+
+A CPU profile of an "on" run puts every function of the add-on together at under 0.3 % of the sim's time (the whole scenario hook machinery, every add-on, at 0.6 %). The whole-soak wall times differ more (seed 1: 338 s on vs 366 s off; seed 2: 470 s vs 304 s), but those runs follow different game histories on a shared machine.
+
+**Tuning applied.**
+- Escorts first drew only ships with no mission. The stock AI puts idle ships on Patrol at once, so none were found (0 of 34 dangerous trips escorted). Escorts now also come from unthreatened patrols and idle fleets (§4.4).
+- Zero-distance governor "moves" (an extra already at the colony) are skipped.
+- A game the add-on is added to fills its vacant posts within the grace (§5.3).
+- No stampede: a war declaration re-ranks needs, but moves stay within the per-review limit (2) and the transit cap (1 per 15 colonies). The war run's 14 moves in 4 years show no burst.
+- No thrashing: every optimising move needs 2 years of tenure and a 25 % gain.
+
+**Open points (reported, not tuned away).**
+- **Fewer AI colonies.** With the add-on on, the AI had 10–18 % fewer colonies in both seed pairs, while its money, tax and fleet were higher. The cause is not established. Candidates: rnd divergence, or the stock AI counting the short-lived shuttles among its state ships.
+- **The unattended human seat.** It never accepts suggestions, so its colonies are the ones that stay vacant into full neglect. Local rises are capped by the governor cap, which the idle reserves fill.
+- **Crash guard.** In the original, PerformIntelligenceMissions' counter-intelligence pass dereferences a foreign agent's empire. An earlier catch in the same pass may already have killed that agent, so the dereference throws. The add-on's different Rnd stream hit this on the big save, so the port now guards it (espionage.ts; no effect on any run that did not crash).
