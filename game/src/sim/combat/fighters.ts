@@ -106,6 +106,7 @@ import {
     weaponIsAvailable,
 } from './weapons';
 import { baconSettings } from '../data/baconSettings';
+import { isHumanEmpire } from '../humanEmpires';
 
 // ---------------------------------------------------------------------------------------------------------------
 // Constants (BaconFighter.cs 18-26, BaconBuiltObject.cs 71-79)
@@ -1818,7 +1819,7 @@ function checkOutOfAmmo(galaxy: Galaxy, fighter: Fighter, i: number): void {
     let num1 = Math.fround(1);
     const empire = fighter.empire;
     // 193: `empire == myMain._Game.PlayerEmpire` — custom bomber designs are a player-only feature.
-    if (empire !== null && empire === galaxy.playerEmpire) {
+    if (empire !== null && isHumanEmpire(galaxy, empire)) {
         const customFighterDesigns = getCustomFighterDesigns(empire);
         const tuple = customFighterDesigns.find((x) => x.item1.name === fighter.name) ?? null;
         if (tuple !== null) num1 = tuple.item3;
@@ -2430,11 +2431,11 @@ function gainFighterLevel(galaxy: Galaxy, fighter: Fighter): void {
 function payWhenFighterIsBuilt(galaxy: Galaxy, fighter: Fighter): void {
     const parent = fighter.parentBuiltObject;
     if (parent === null || fighter.empire === null) return;
-    if (!fightersOf(parent)!.some((x) => x.underConstruction) && fighter.empire === galaxy.playerEmpire) {
+    if (!fightersOf(parent)!.some((x) => x.underConstruction) && isHumanEmpire(galaxy, fighter.empire)) {
         sendMessageToEmpire(fighter.empire, fighter.empire, EmpireMessageType.Undefined, null, 'All Fighters and bombers on ' + parent.name + ' have been repaired.', { x: 0, y: 0 }, 'fighterRepaired');
     }
     let num = Math.fround(1);
-    if (baconSettings.fighterBuildCost !== 0 && fighter.empire === galaxy.playerEmpire) num = getCustomBomberPriceMultiplier(fighter);
+    if (baconSettings.fighterBuildCost !== 0 && isHumanEmpire(galaxy, fighter.empire)) num = getCustomBomberPriceMultiplier(fighter);
     fighter.empire.stateMoney -= baconSettings.fighterBuildCost * fighter.size * num;
 }
 
@@ -2553,7 +2554,7 @@ function fighterProvideBonusFromPirateBase(galaxy: Galaxy, fighter: Fighter, des
                 const num2 = Math.max(1, totalMobileMilitaryFirepower(empire.builtObjects));
                 const num3 = Math.max(1, totalMobileMilitaryFirepower(empire2.builtObjects));
                 const num4 = num2 / num3;
-                if (num4 > 2.0 && num3 < 400 && empire2.spacePorts.length <= 1 && empire2 !== null && !empire2.pirateEmpireSuperPirates && empire2 !== galaxy.playerEmpire) {
+                if (num4 > 2.0 && num3 < 400 && empire2.spacePorts.length <= 1 && empire2 !== null && !empire2.pirateEmpireSuperPirates && !isHumanEmpire(galaxy, empire2)) {
                     pirateFactionJoinsEmpire(galaxy, destroyingEmpire, empire2);
                     ({ message: empty2, title: empty } = pirateBaseBonusFactionJoinsText(pirateBase, empire2));
                     sendEventMessageToEmpire(destroyingEmpire, EventMessageType.PirateFactionJoinsYou, empty, empty2, pirateBase, pirateBase.empire.pirateEmpireBaseHabitat);
@@ -2750,12 +2751,12 @@ export function buildNewFighters(galaxy: Galaxy, carrier: BuiltObject): void {
         else num3 += fighters[index].specification.size;
     }
     // Not in the C#: the player's per-design fighter mix (design.ts FighterMix); ByBayName / AI carriers: the original.
-    const mix = carrier.empire === galaxy.playerEmpire ? designFighterMix(carrier.design) : FighterMix.ByBayName;
+    const mix = isHumanEmpire(galaxy, carrier.empire) ? designFighterMix(carrier.design) : FighterMix.ByBayName;
     const capacity = mix === FighterMix.ByBayName ? carrierBayCapacity(carrier) : carrierMixCapacity(carrier, mix);
     let num5 = capacity.fighter;
     let num6 = capacity.bomber;
     // 3204: `myMain != null && myMain._Game != null && carrier.Empire != PlayerEmpire` — AI carriers split the fighter bays.
-    if (carrier.empire !== galaxy.playerEmpire) {
+    if (!isHumanEmpire(galaxy, carrier.empire)) {
         num5 = Math.trunc(num5 / 2);
         num6 = num5;
     }
@@ -2814,7 +2815,7 @@ export function manufactureRepairFighters(galaxy: Galaxy, carrier: BuiltObject, 
     if (baconIsMyShip(carrier)) num1 = Math.fround(num1 * 2);
     if (carrier.role === BuiltObjectRole.Base && baconSettings.limitNewFighterBuildToColonies) num1 = Math.fround(num1 * 2);
     let flag = true;
-    if (baconSettings.limitNewFighterBuildToColonies && carrier.role !== BuiltObjectRole.Base && carrier.actualEmpire === galaxy.playerEmpire) flag = isShipInSystemWithFriendlyColony(carrier);
+    if (baconSettings.limitNewFighterBuildToColonies && carrier.role !== BuiltObjectRole.Base && isHumanEmpire(galaxy, carrier.actualEmpire)) flag = isShipInSystemWithFriendlyColony(carrier);
     for (let index = 0; index < fighters.length; ++index) {
         const fighter = fighters[index];
         if (fighter.onboardCarrier) {

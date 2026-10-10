@@ -23,7 +23,7 @@
 // (its lead ship's mission target, or the fleet's gather point), as Empire.9.cs 2810 AddShipsToShipGroup does.
 // A fleet destroyed in battle (every ship it had at the last check destroyed or lost) keeps its link while auto-refill
 // is on: the replacements re-form it under its name and home base. A fleet the player disbanded drops its link.
-// Only the player empire (galaxy.playerEmpire); AI empires never get a link, so nothing here runs for them. With no
+// Only the human empires (humanEmpires.ts); AI empires never get a link, so nothing here runs for them. With no
 // link that has auto-refill on, processFleetRefill returns at once and nothing changes (no Rnd, no writes).
 // Headless: no DOM / Pixi. Rnd: only the draws of buildNewShips (ship names), when ships are queued.
 
@@ -46,6 +46,7 @@ import {
     type FleetTemplate,
     type FleetTemplateLink,
 } from './fleetTemplates';
+import { humanEmpires, isHumanEmpire } from '../humanEmpires';
 
 /** Game ms between two auto-refill checks of a fleet. */
 export const REFILL_CHECK_MS = 10_000;
@@ -53,7 +54,7 @@ export const REFILL_CHECK_MS = 10_000;
 export const REFILL_RETRY_MS = 30_000;
 
 function isPlayer(galaxy: Galaxy, empire: Empire): boolean {
-    return galaxy.playerEmpire === empire;
+    return isHumanEmpire(galaxy, empire);
 }
 
 function stillBuilding(empire: Empire, b: BuiltObject): boolean {
@@ -408,22 +409,22 @@ function checkLink(galaxy: Galaxy, empire: Empire, b: FleetDesignBook, link: Fle
     return true;
 }
 
-/** Not in the C#: the player's fleets with auto-refill on. O(1) unless one has it on. */
+/** Not in the C#: the human empires' fleets with auto-refill on. O(1) per human unless one has it on. */
 export function processFleetRefill(galaxy: Galaxy): void {
-    const empire = galaxy.playerEmpire;
-    if (empire === null) return;
-    const b = empire.fleetDesigns;
-    const links = b?.links;
-    if (b === undefined || links === undefined || links.length === 0) return;
-    let i = 0;
-    while (i < links.length) {
-        const link = links[i];
-        if (!link.autoRefill || galaxy.nowMs < link.nextCheckMs) {
-            i++;
-            continue;
+    for (const empire of humanEmpires(galaxy)) {
+        const b = empire.fleetDesigns;
+        const links = b?.links;
+        if (b === undefined || links === undefined || links.length === 0) continue;
+        let i = 0;
+        while (i < links.length) {
+            const link = links[i];
+            if (!link.autoRefill || galaxy.nowMs < link.nextCheckMs) {
+                i++;
+                continue;
+            }
+            if (checkLink(galaxy, empire, b, link)) i++;
+            else links.splice(i, 1);
         }
-        if (checkLink(galaxy, empire, b, link)) i++;
-        else links.splice(i, 1);
     }
 }
 

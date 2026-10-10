@@ -148,6 +148,7 @@ import {
 } from '../combat/fighters';
 import { ShipAction, ShipActionType, isSystemInfo } from './shipAction';
 import { addConstructionJob, isBoardBuildDesign, queueBuildOrderOnBoard, routesToBoard } from './constructionBoard';
+import { isHumanEmpire } from '../humanEmpires';
 
 /** What _Game.SelectedObject can be when an order is given (method_347 handles these five kinds). */
 export type ShipActionSelection = BuiltObject | Habitat | ShipGroup | Fighter | BuiltObject[] | null;
@@ -1094,7 +1095,7 @@ function executeForHabitat(ctx: Ctx, habitat4: Habitat, action: ShipAction, from
                     num13 = p.y;
                 }
                 // Not in the C#: the player's order goes to the construction job board (player/constructionBoard.ts).
-                if (empire === galaxy.playerEmpire && isBoardBuildDesign(action.design)) {
+                if (isHumanEmpire(galaxy, empire) && isBoardBuildDesign(action.design)) {
                     if (addConstructionJob(galaxy, empire, action.design, habitat4, num12, num13) === 0) return ctx.fail('the construction job is not valid');
                     return ctx.result;
                 }
@@ -1888,7 +1889,7 @@ function buildMiningStationAt(ctx: Ctx, builtObject8: BuiltObject | null, habita
     const num2 = p.y;
     if (builtObject8 === null) {
         // Not in the C#: the player's order goes to the construction job board (player/constructionBoard.ts).
-        if (empire === galaxy.playerEmpire) {
+        if (isHumanEmpire(galaxy, empire)) {
             addConstructionJob(galaxy, empire, design, habitat9, num, num2);
             return;
         }

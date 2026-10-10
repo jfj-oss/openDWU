@@ -55,6 +55,7 @@ import { cloneDesign } from '../gameStartTail';
 import { galaxyCurrentStarDate } from '../pirateRelations';
 import { designWarnings, nextMarkName } from './designEditor';
 import { addRequiredHabitation } from './designTools';
+import { isHumanEmpire } from '../humanEmpires';
 
 declare module '../empire' {
     interface Empire {
@@ -81,12 +82,12 @@ export const DESIGN_LINE_UPGRADE_IMPROVEMENT = 'designLineUpgrade';
 
 /** Whether the Improvement acts for `empire`: the player empire with the flag set by the UI. */
 export function designLineUpgradeActive(galaxy: Galaxy, empire: Empire): boolean {
-    return empire.designLineUpgrade === true && empire === galaxy.playerEmpire;
+    return empire.designLineUpgrade === true && isHumanEmpire(galaxy, empire);
 }
 
 /** The `setDesignLineUpgrade` player op: on sets the flag; off removes it (state identical to never set). */
 export function setDesignLineUpgrade(galaxy: Galaxy, empire: Empire, on: boolean): boolean {
-    if (empire !== galaxy.playerEmpire) return false;
+    if (!isHumanEmpire(galaxy, empire)) return false;
     if (on) empire.designLineUpgrade = true;
     else delete empire.designLineUpgrade;
     return true;
@@ -99,7 +100,7 @@ export function playerOwnsDesignSubRole(empire: Empire, subRole: BuiltObjectSubR
 
 /** Record a sub-role as the player's (player empire only; Undefined ignored). */
 export function markPlayerDesignSubRole(galaxy: Galaxy, empire: Empire, subRole: BuiltObjectSubRole): void {
-    if (empire !== galaxy.playerEmpire || subRole === BuiltObjectSubRole.Undefined) return;
+    if (!isHumanEmpire(galaxy, empire) || subRole === BuiltObjectSubRole.Undefined) return;
     const list = empire.playerDesignSubRoles ?? [];
     if (list.includes(subRole)) return;
     list.push(subRole);

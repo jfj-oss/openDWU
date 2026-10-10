@@ -41,6 +41,7 @@ import { EmpireActivityType } from './empireActivity';
 import { clearOutlawsFromEmpire } from '../diplomacyTick';
 import { cancelAttackMissionsAgainstEmpire } from '../fleets/militaryAI';
 import { formatGameTextNow } from '../textResolver';
+import { isHumanEmpire } from '../humanEmpires';
 
 const f = Math.fround;
 
@@ -514,7 +515,7 @@ function sendSellInfo(pirateFaction: Empire, empire: Empire, type: EmpireMessage
  */
 export function generatePirateOffersForSingleEmpire(galaxy: Galaxy, pirateFaction: Empire, empire: Empire | null): boolean {
     let flag = false;
-    if (empire !== null && pirateFaction !== galaxy.playerEmpire) {
+    if (empire !== null && !isHumanEmpire(galaxy, pirateFaction)) {
         const pirateRelation = obtainPirateRelation(pirateFaction, empire);
         if (pirateRelation != null) {
             let num = Math.trunc(REAL_SECONDS_IN_GALACTIC_YEAR * 3.0 * 1000.0);
@@ -648,7 +649,7 @@ export function generatePirateOffersForSingleEmpire(galaxy: Galaxy, pirateFactio
 
 /** Empire.1.cs 4359 PirateGenerateSellInfoOffers. Rnd: Next(0, relations) + GeneratePirateOffersForSingleEmpire's per relation tried. */
 export function pirateGenerateSellInfoOffersCore(galaxy: Galaxy, empire: Empire): void {
-    if (empire === galaxy.playerEmpire) return;
+    if (isHumanEmpire(galaxy, empire)) return;
     // `_ = _Galaxy.ColonyFillFactor;` — no effect.
     const num = galaxy.rnd.next(0, empire.pirateRelations.count);
     for (let i = num; i < empire.pirateRelations.count; i++) {
@@ -669,7 +670,7 @@ export function pirateGenerateSellInfoOffersCore(galaxy: Galaxy, empire: Empire)
 /** Empire.7.cs 2666 PirateTradeItems. Rnd per met relation: NextDouble; Next(0, items) when tech is offered. */
 export function pirateTradeItemsCore(galaxy: Galaxy, empire: Empire): void {
     const currentStarDate = galaxyStarDate(galaxy);
-    if (empire === galaxy.playerEmpire) return;
+    if (isHumanEmpire(galaxy, empire)) return;
     for (let i = 0; i < empire.pirateRelations.count; i++) {
         const pirateRelation = empire.pirateRelations.get(i);
         if (pirateRelation.type === PirateRelationType.NotMet || pirateRelation.otherEmpire === null) continue;

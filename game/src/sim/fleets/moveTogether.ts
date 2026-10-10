@@ -32,6 +32,7 @@ import type { ShipGroup } from './shipGroup';
 import { BuiltObjectMissionType, Command, CommandAction, builtObjectMission, isBuiltObject, isCreature, isHabitat, isShipGroup, type BuiltObjectMission } from '../missions/mission';
 import { warpSpeedWithBonuses } from '../movement';
 import { galaxyStarDate } from '../tick/simTime';
+import { isHumanEmpire } from '../humanEmpires';
 
 /** The rule's constants (game ms / world units / portions). */
 export const MOVE_TOGETHER = {
@@ -433,7 +434,7 @@ export function moveTogetherJumpCountdown(bo: BuiltObject, starDate: number): vo
 
 /** The player's "Move together" toggle (journaled op fleetMoveTogether). Off ends a gather in progress. */
 export function setFleetMoveTogether(galaxy: Galaxy, empire: Empire, fleet: ShipGroup | null, on: boolean): boolean {
-    if (fleet === null || galaxy.playerEmpire !== empire || fleet.empire !== empire || !(empire.shipGroups as unknown[]).includes(fleet)) return false;
+    if (fleet === null || !isHumanEmpire(galaxy, empire) || fleet.empire !== empire || !(empire.shipGroups as unknown[]).includes(fleet)) return false;
     if (on) {
         fleet.moveTogether = true;
         return true;

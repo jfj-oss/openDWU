@@ -41,6 +41,7 @@ import { BuiltObjectMissionPriority, BuiltObjectMissionType } from '../missions/
 import { netSort } from '../netSort';
 import { findNearestBaseForPirateAttack } from './pirateAI';
 import { formatGameTextNow } from '../textResolver';
+import { isHumanEmpire } from '../humanEmpires';
 
 const f = Math.fround;
 const BYTE_MAX = 255;
@@ -278,7 +279,7 @@ export function checkMergePirateFactions(galaxy: Galaxy): void {
     if (empireList.length <= 0 || empireList2.length <= 0) return;
     for (let j = 0; j < empireList.length; j++) {
         const empire2 = empireList[j];
-        if (empire2 != null && empire2 !== galaxy.playerEmpire && empire2.pirateEmpireBaseHabitat !== null) {
+        if (empire2 != null && !isHumanEmpire(galaxy, empire2) && empire2.pirateEmpireBaseHabitat !== null) {
             const r = findNearestPirateFactionKnownToFaction(galaxy, empire2.pirateEmpireBaseHabitat.xpos, empire2.pirateEmpireBaseHabitat.ypos, empire2, empireList2);
             const empire3 = r.empire;
             if (empire3 !== null && r.nearestDistanceSquared < 64000000000000.0) {

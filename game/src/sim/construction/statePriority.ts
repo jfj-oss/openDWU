@@ -30,6 +30,7 @@ import type { BuiltObject } from '../builtObject';
 import type { ConstructionYard } from './constructionYard';
 import { ComponentStatus } from '../builtObjectComponent';
 import { YEAR_LENGTH } from '../galaxyTime';
+import { isHumanEmpire } from '../humanEmpires';
 
 declare module '../empire' {
     interface Empire {
@@ -57,12 +58,12 @@ export const STATE_PRIORITY_MAX_PAUSE_MS = YEAR_LENGTH / 2;
 
 /** Whether the rule applies to a queue of `empire`: the player empire with the flag set by the UI. */
 export function statePriorityActive(galaxy: Galaxy, empire: Empire | null): boolean {
-    return empire !== null && empire.statePriorityShipyards === true && empire === galaxy.playerEmpire;
+    return empire !== null && empire.statePriorityShipyards === true && isHumanEmpire(galaxy, empire);
 }
 
 /** The `setStatePriorityShipyards` player op: on sets the flag; off removes it (state identical to never set). */
 export function setStatePriorityShipyards(galaxy: Galaxy, empire: Empire, on: boolean): boolean {
-    if (empire !== galaxy.playerEmpire) return false;
+    if (!isHumanEmpire(galaxy, empire)) return false;
     if (on) empire.statePriorityShipyards = true;
     else delete empire.statePriorityShipyards;
     return true;

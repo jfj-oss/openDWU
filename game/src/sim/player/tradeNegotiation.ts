@@ -63,6 +63,7 @@ import {
     valueMoney,
     valueTerritoryMapForEmpire,
 } from '../tradeItems';
+import { isHumanEmpire } from '../humanEmpires';
 
 export { TradeableItem, TradeableItemType, TradeOfferResponse, evaluateTradeOffer };
 
@@ -262,7 +263,7 @@ export interface TradeNegotiation {
 /** DiplomacyTradeTree.cs:220 Reset: the tree's tradeable items (Galaxy.4.cs:4406 ResolveTradeableItems; includeAllItems
  *  for the player's own tree). */
 function resolveTreeItems(galaxy: Galaxy, empire: Empire, otherEmpire: Empire, refactorValuesForEmpire: boolean): TradeableItem[] {
-    return resolveTradeableItems(galaxy, empire, otherEmpire, false, refactorValuesForEmpire, empire === galaxy.playerEmpire);
+    return resolveTradeableItems(galaxy, empire, otherEmpire, false, refactorValuesForEmpire, isHumanEmpire(galaxy, empire));
 }
 
 /**
@@ -385,7 +386,7 @@ export function tradeTreeRows(galaxy: Galaxy, tree: TradeTree): TradeTreeGroup[]
     }
     const groups: TradeTreeGroup[] = [];
     const empire = tree.empire;
-    const isPlayer = empire === galaxy.playerEmpire;
+    const isPlayer = isHumanEmpire(galaxy, empire);
     // :311 Money (always shown).
     const num6 = isPlayer ? 0.0 : Math.max(10000.0, empire.stateMoney * 0.1);
     const money: TradeTreeRow[] = [];
@@ -453,7 +454,7 @@ export function addTradeItem(galaxy: Galaxy, tree: TradeTree, item: TradeableIte
     let num = tradeableItemIndexOf(tree.selected, item);
     if (item.type === TradeableItemType.AdoptGovernmentStyle) num = findAnyGovernmentStyle(tree.selected);
     let num2 = Math.max(20000.0, empire.stateMoney * 0.3);
-    if (empire === galaxy.playerEmpire) num2 = 0.0;
+    if (isHumanEmpire(galaxy, empire)) num2 = 0.0;
     if (num < 0) {
         if (item.type === TradeableItemType.Money && typeof item.item === 'number') {
             if (empire.stateMoney - num2 >= item.item) {
@@ -569,7 +570,7 @@ export function submitTradeOffer(galaxy: Galaxy, negotiation: TradeNegotiation):
     switch (tradeOfferResponse) {
         case TradeOfferResponse.RefuseUnfair:
         case TradeOfferResponse.Refuse:
-            if (empire !== galaxy.playerEmpire) {
+            if (!isHumanEmpire(galaxy, empire)) {
                 for (const item of tradeableItemList) {
                     if (item.type === TradeableItemType.ThreatenWar) {
                         if (initiator.pirateEmpireBaseHabitat === null && empire.pirateEmpireBaseHabitat === null) {

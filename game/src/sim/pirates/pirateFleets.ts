@@ -41,6 +41,7 @@ import { netSort } from '../netSort';
 import { EmpireActivityType, type EmpireActivity } from './empireActivity';
 import { calculateOverallStrengthFactor } from './missionsMarket';
 import { findNearestKnownBaseForPirateAttackOwn } from './pirateShipMissions';
+import { isHumanEmpire } from '../humanEmpires';
 
 const f = Math.fround;
 
@@ -95,7 +96,7 @@ export function identifyDesiredEnemyMiningStations(galaxy: Galaxy, empire: Empir
             const actualEmpire = builtObject2.actualEmpire;
             if (actualEmpire === empire) continue;
             let flag = true;
-            if (empire === galaxy.playerEmpire) flag = isObjectVisibleToThisEmpire(galaxy, empire, builtObject2, true, false);
+            if (isHumanEmpire(galaxy, empire)) flag = isObjectVisibleToThisEmpire(galaxy, empire, builtObject2, true, false);
             if (!flag) continue;
             const flag2 = isRaidAllowedAgainst(empire, actualEmpire);
             if (!flag2 || (excludeRecentRaids && builtObject2.raidCountdown > 0)) continue;

@@ -128,6 +128,7 @@ import type { EmpireActivityType } from '../pirates/empireActivity';
 import { storyEventAction, storyEventClose } from '../story/freedomAlliance';
 import { applyLlmStrategicCommand, type LlmStrategicCommand } from '../scenario/llm/strategic';
 import { applyPopulationPolicyToAllColonies, renameColony, scrapColonyFacility, setColonyAsCapital, setColonyPopulationPolicy, transferToTransport } from './colonyOrders';
+import { isHumanEmpire } from '../humanEmpires';
 
 /** Automation / control fields of Empire the UI sets directly (Game Options panel and the automation prompts). */
 function isEmpireControlField(empire: Empire, field: string): boolean {
@@ -305,7 +306,7 @@ export const PLAYER_OPS = {
         const result = saveDesign(galaxy, empire, draft);
         if (result.ok && result.design !== null) {
             markPlayerDesignSubRole(galaxy, empire, result.design.subRole);
-            if (replaces !== null && replaces !== result.design && empire === galaxy.playerEmpire) result.design.upgradedFrom = replaces;
+            if (replaces !== null && replaces !== result.design && isHumanEmpire(galaxy, empire)) result.design.upgradedFrom = replaces;
         }
         return result;
     },

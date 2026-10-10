@@ -33,6 +33,7 @@ import { checkEmpireTerritoryCanBuildAtHabitat } from '../resourceTargets';
 import { checkResearchStationAtLocation } from '../stationPlacement';
 import { baconMovementSettings } from '../movement';
 import { EmpireMessageType, sendMessageToEmpire } from '../messages';
+import { humanEmpires, isHumanEmpire } from '../humanEmpires';
 
 /** One construction order on the board. Plain data (saved with the empire through the generic graph codec). */
 export interface ConstructionJob {
@@ -83,9 +84,9 @@ export function constructionBoardOf(empire: Empire): ConstructionBoard {
     return b;
 }
 
-/** True when `empire` is the galaxy's player empire (the only empire the board serves). */
+/** True when a human controls `empire` (the board serves only human empires; humanEmpires.ts). */
 function isPlayer(galaxy: Galaxy, empire: Empire | null): empire is Empire {
-    return empire !== null && empire === galaxy.playerEmpire;
+    return empire !== null && isHumanEmpire(galaxy, empire);
 }
 
 /** Board-routed builds: bases built by a construction ship (stations, space ports, defensive / generic bases). */
@@ -446,13 +447,13 @@ export function evaluateConstructionBoard(galaxy: Galaxy, empire: Empire): void 
     board.dirty = false;
 }
 
-/** Per frame (tick/scheduler.ts): O(1) unless the player's board is dirty or the construction ship count changed. */
+/** Per frame (tick/scheduler.ts): O(1) per human empire unless its board is dirty or its construction ship count changed. */
 export function processConstructionBoard(galaxy: Galaxy): void {
-    const empire = galaxy.playerEmpire;
-    if (empire === null) return;
-    const board = empire.constructionBoard;
-    if (board === undefined || board === null || board.jobs.length === 0) return;
-    if (board.dirty || board.shipCount !== empire.constructionShips.length) evaluateConstructionBoard(galaxy, empire);
+    for (const empire of humanEmpires(galaxy)) {
+        const board = empire.constructionBoard;
+        if (board === undefined || board === null || board.jobs.length === 0) continue;
+        if (board.dirty || board.shipCount !== empire.constructionShips.length) evaluateConstructionBoard(galaxy, empire);
+    }
 }
 
 /** A player command ran: re-check the board at the next frame (an order may have replaced a board job). */

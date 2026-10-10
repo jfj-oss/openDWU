@@ -78,6 +78,7 @@ import { MAX_SOLAR_SYSTEM_SIZE, checkWithinDistancePotential } from '../movement
 import { builtObjectCompleteTeardown } from './teardown';
 import { baconSettings } from '../data/baconSettings';
 import { scenarioEmit } from '../scenario/hooks';
+import { isHumanEmpire } from '../humanEmpires';
 
 // ---------------------------------------------------------------------------------------------------------------
 // Constants (Galaxy.3.cs SetDefaults)
@@ -607,7 +608,7 @@ export function chanceAttackedPirateFactionJoinsPhantomPirates(galaxy: Galaxy, a
         attackedPirateBase === null ||
         attackedPirateBase.role !== BuiltObjectRole.Base ||
         attackedPirateBase.empire === null ||
-        attackedPirateBase.empire === galaxy.playerEmpire ||
+        isHumanEmpire(galaxy, attackedPirateBase.empire) ||
         attackedPirateBase.empire.pirateEmpireBaseHabitat === null ||
         attackedPirateBase.empire.pirateEmpireSuperPirates ||
         !(attackedPirateBase.currentShields < attackedPirateBase.shieldsCapacity * 0.5) ||
@@ -751,7 +752,7 @@ export function provideBonusFromPirateBase(galaxy: Galaxy, self: BuiltObject, de
                         const num2 = Math.max(1, totalMobileMilitaryFirepower(empire.builtObjects));
                         const num3 = Math.max(1, totalMobileMilitaryFirepower(empire2.builtObjects));
                         const num4 = num2 / num3;
-                        if (num4 > 2.0 && num3 < 400 && empire2.spacePorts.length <= 1 && empire2 !== null && !empire2.pirateEmpireSuperPirates && empire2 !== galaxy.playerEmpire) {
+                        if (num4 > 2.0 && num3 < 400 && empire2.spacePorts.length <= 1 && empire2 !== null && !empire2.pirateEmpireSuperPirates && !isHumanEmpire(galaxy, empire2)) {
                             pirateFactionJoinsEmpire(galaxy, destroyingEmpire, empire2);
                             ({ message: empty2, title: empty } = pirateBaseBonusFactionJoinsText(pirateBase, empire2));
                             sendEventMessageToEmpire(destroyingEmpire, EventMessageType.PirateFactionJoinsYou, empty, empty2, pirateBase, pirateBase.empire.pirateEmpireBaseHabitat);
@@ -788,7 +789,7 @@ export function provideBonusFromPirateBase(galaxy: Galaxy, self: BuiltObject, de
                     if (builtObject2 !== null && builtObject2 !== pirateBase) flag2 = false;
                 }
             }
-            if (flag2 && num8 > 2.0 && num7 < 200 && !empire2.pirateEmpireSuperPirates && empire2 !== destroyingEmpire && empire2 !== galaxy.playerEmpire) {
+            if (flag2 && num8 > 2.0 && num7 < 200 && !empire2.pirateEmpireSuperPirates && empire2 !== destroyingEmpire && !isHumanEmpire(galaxy, empire2)) {
                 const message = `${pirateBase.name} destroyed: the ${empire2.name} join your empire`;
                 eliminatePirateFaction(galaxy, empire2, destroyingEmpire);
                 const text2 = 'Pirate Faction Joins Your Empire';

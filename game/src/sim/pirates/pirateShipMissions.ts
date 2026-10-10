@@ -72,6 +72,7 @@ import { calculatePlanetaryFacilityCost, countPirateCriminalNetworks, definition
 import { EmpireActivityType } from './empireActivity';
 import { calculateOverallStrengthFactor } from './missionsMarket';
 import { pirateControlCheckEmpireHasRelationTypeWithAny } from './pirateAI';
+import { isHumanEmpire } from '../humanEmpires';
 
 const f = Math.fround;
 
@@ -643,7 +644,7 @@ function pirateAssignMilitaryShip(galaxy: Galaxy, empire: Empire, ship: BuiltObj
     const builtObject2 = identifyPirateBase(empire);
     let habitat7: Habitat | null = null;
     let builtObject3: BuiltObject | null = null;
-    if (empire !== galaxy.playerEmpire && builtObject2 !== null) {
+    if (!isHumanEmpire(galaxy, empire) && builtObject2 !== null) {
         const bx = Math.trunc(builtObject2.xpos);
         const by = Math.trunc(builtObject2.ypos);
         switch (galaxy.rnd.next(0, 3)) {

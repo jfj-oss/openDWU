@@ -44,6 +44,7 @@ import { getEmpireById } from '../logistics/contracts';
 import { InvasionStats, generateDefensivePirateRaiders } from '../combat/invasion';
 import { PirateIncomeType } from './pirateEconomy';
 import { baconSettings } from '../data/baconSettings';
+import { isHumanEmpire } from '../humanEmpires';
 
 const f = Math.fround;
 
@@ -259,7 +260,7 @@ export function buildShipForPirate(galaxy: Galaxy, planet: Habitat, pirateEmpire
     builtObject.targetHeading = builtObject.heading;
     builtObject.nearestSystemStar = galaxy.determineHabitatSystemStar(planet);
     // Components.ForEach(Status = Damaged | Normal): the player's pirate ships arrive damaged.
-    const status = pirateEmpire === galaxy.playerEmpire ? ComponentStatus.Damaged : ComponentStatus.Normal;
+    const status = isHumanEmpire(galaxy, pirateEmpire) ? ComponentStatus.Damaged : ComponentStatus.Normal;
     for (const c of builtObject.components.items) c.status = status;
     const queue = planet.constructionQueue as { addBuiltObjectToRepair(bo: BuiltObject): boolean } | null;
     // planet.ConstructionQueue.AddBuiltObjectToRepair(builtObject) (the C# dereferences the queue unconditionally).
@@ -300,7 +301,7 @@ function checkPiratesBuildConstructionShipsAtIndependentPlanet(galaxy: Galaxy, e
 
 /** BaconEmpire.cs 1143 CheckPirateReinforcePirateBases(main, pirateEmpire). Clock Rnd: Next(0, candidates), NextDouble. */
 function checkPirateReinforcePirateBases(galaxy: Galaxy, pirateEmpire: Empire): void {
-    if (pirateEmpire === galaxy.playerEmpire) return;
+    if (isHumanEmpire(galaxy, pirateEmpire)) return;
     const habitatList: Habitat[] = [];
     for (const colony of pirateEmpire.colonies) {
         if (colony.owner !== pirateEmpire && colony.facilities !== null && facilitiesFindBestPirateFacility(colony.facilities, true) !== null && colony.pirateColonyControl.items.some((x) => x.empireId === pirateEmpire.empireId)) habitatList.push(colony);
@@ -323,7 +324,7 @@ function checkPirateReinforcePirateBases(galaxy: Galaxy, pirateEmpire: Empire): 
 
 /** BaconEmpire.cs 1099 DoTaskPiratesLongInterval(empire). Clock Rnd only (galaxy.baconPirateClockRnd). */
 export function doTaskPiratesLongIntervalCore(galaxy: Galaxy, empire: Empire): void {
-    if (empire === galaxy.playerEmpire) return;
+    if (isHumanEmpire(galaxy, empire)) return;
     checkPiratesBuildConstructionShipsAtIndependentPlanet(galaxy, empire);
     checkPirateReinforcePirateBases(galaxy, empire);
 }
