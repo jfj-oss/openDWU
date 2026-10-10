@@ -4,6 +4,11 @@ Notes for the next release, to copy into the GitHub release (RELEASING.md step 2
 
 ## Unreleased
 
+- **Leaner, faster saves.** Saves use a new compact format (save format 3): the same late-game galaxy is about a third
+  of the text (449 MB → 152 MB; 42 MB → 34 MB compressed), saves about twice as fast and loads with about half the
+  memory. Every older save and `.dwusave` file still loads exactly as before; saves made with this version cannot be
+  opened by older versions (0.1.15 and earlier).
+
 ## 0.1.15
 
 - **Galaxy Backdrop picker.** New-game wizard (galaxy page) and Game Options → Advanced Display Settings. Choose

@@ -2,7 +2,8 @@
 // state). The whole galaxy object graph — habitats, systems, creatures,
 // empires with their built objects / designs / characters / research /
 // visibility / diplomacy, galaxy.builtObjects, pirate factions — is written
-// through the generic reference-tracking codec in graphCodec.ts, so object
+// through the generic reference-tracking codec (compactCodec.ts, save format 3;
+// graphCodec.ts reads format 2 and makes galaxyToJSON's tree), so object
 // identity survives the round trip (an object in galaxy.builtObjects and in
 // empire.spacePorts is one instance after load, like the C# graph).
 //
@@ -20,7 +21,8 @@ import { cloneGalaxyRaces, raceScalarFields } from '../data/races';
 import { buildResourceSystem } from '../resourceSystem';
 import { buildResearchStatic, ResearchSystem } from '../researchSystem';
 import { buildComponentStatic } from '../componentStatic';
-import { GraphDecoder, GraphEncoder, JsonWriter, type Encoded, type ExternalRef, type GraphCodecOptions, type ShapeTable } from './graphCodec';
+import { GraphDecoder, GraphEncoder, type Encoded, type ExternalRef, type GraphCodecOptions, type ShapeTable } from './graphCodec';
+import { ByteWriter, CompactDecoder, CompactEncoder, compactField } from './compactCodec';
 // Model classes (registry below), one import per module, sorted by module path.
 import { BuiltObject, DockingBay } from '../builtObject';
 import { BuiltObjectComponent, BuiltObjectComponentList } from '../builtObjectComponent';
@@ -75,11 +77,15 @@ import { liveWaypointState, restoreWaypointState, savedWaypointState, type Waypo
 import { liveHumanEmpires, restoreHumanEmpires, savedHumanEmpires } from '../humanEmpires';
 
 export interface GalaxySaveJSON {
-    version: 2;
-    /** The codec's shape table (graphCodec.ts: class instances are {$s, $v} against it). Absent in older saves, whose
-     *  instances are {$t, $f}. */
+    /** 3: the save file's graph encoding, compactCodec.ts (written by galaxyToSaveChunks). 2: graphCodec.ts — older save
+     *  files, and galaxyToJSON's encoded tree (state comparisons, diagnostics). Both are read. */
+    version: 2 | 3;
+    /** The codec's shape table (class instances are {$s, $v} against it in version 2, [64 + 2 * shape, ...] in version 3).
+     *  Absent in older version-2 saves, whose instances are {$t, $f}. */
     shapes?: ShapeTable;
-    /** The Galaxy instance encoded by GraphEncoder (reference id 0). */
+    /** Version 3: the external kinds ([17, kind, key] names kinds[kind]). */
+    kinds?: string[];
+    /** The Galaxy instance encoded by GraphEncoder / CompactEncoder (reference id 0). */
     galaxy: Encoded;
     /** EmpireTerritory's 2000x2000 ownership grid, run-length encoded per row ([value, count, value, count, ...]);
      *  null when the grid was never built. Absent in older saves (then recomputed on load). */
@@ -425,7 +431,9 @@ export function flatEmpireList(galaxy: Galaxy): Empire[] {
     return list;
 }
 
-/** Convert a Galaxy into a plain JSON-safe object (see GalaxySaveJSON). */
+/** The galaxy as a format-2 encoded tree (graphCodec.ts; see GalaxySaveJSON): a plain JSON-safe object, which
+ *  galaxyFromJSON reads back. The save file is written by galaxyToSaveChunks (format 3); this tree is what state
+ *  comparisons and diagnostics walk ({$s, $v} instances by Class.field). */
 export function galaxyToJSON(galaxy: Galaxy): GalaxySaveJSON {
     const encoder = new GraphEncoder(CODEC_OPTIONS, externalsByObject(staticTablesOfGalaxy(galaxy)));
     const encoded = encoder.encode(galaxy, 'galaxy');
@@ -440,37 +448,38 @@ function jsonMember(key: string, value: unknown): string {
 }
 
 /**
- * `JSON.stringify(galaxyToJSON(galaxy))` as a list of text chunks, each passed through `pack` as it is made (the graph
- * is written straight to text, GraphEncoder.encodeJson, without building the encoded tree): the same text, a fraction
- * of the peak memory — `pack` can move each chunk out of the JS heap (bytes, a Blob) while the rest is written.
+ * The galaxy's save text (GalaxySaveJSON, version 3: compactCodec.ts) as UTF-8 chunks of about `chunkBytes`: the graph
+ * is written straight to bytes (no encoded tree, no text string), so the peak is the game plus the save's bytes.
  */
-export function galaxyToJsonParts<T>(galaxy: Galaxy, pack: (chunk: string) => T, chunkChars?: number): T[] {
-    const encoder = new GraphEncoder(CODEC_OPTIONS, externalsByObject(staticTablesOfGalaxy(galaxy)));
-    const graph: T[] = [];
-    const g = new JsonWriter((c) => graph.push(pack(c)), chunkChars);
+export function galaxyToSaveChunks(galaxy: Galaxy, chunkBytes?: number): Uint8Array<ArrayBuffer>[] {
+    const encoder = new CompactEncoder(CODEC_OPTIONS, externalsByObject(staticTablesOfGalaxy(galaxy)));
+    const graph: Uint8Array<ArrayBuffer>[] = [];
+    const g = new ByteWriter((c) => graph.push(c), chunkBytes);
     encoder.encodeJson(galaxy, g, 'galaxy');
     g.end();
-    const side: T[] = [];
-    const st = new JsonWriter((c) => side.push(pack(c)), chunkChars);
+    const side: Uint8Array<ArrayBuffer>[] = [];
+    const st = new ByteWriter((c) => side.push(c), chunkBytes);
     encoder.encodeJson(collectSideTables(galaxy, [...encoder.visited()]), st, 'sideTables');
     st.end();
-    // galaxyToJSON's members, in its order (the shape table is complete only now, but is written first).
+    // The members in GalaxySaveJSON's order (the shape and kind tables are complete only now, but are written first).
+    const enc = new TextEncoder();
     const territory = jsonMember('territory', encodeTerritory(territoryGrid(galaxy.empireTerritory)));
     const tail = [jsonMember('baseTechCost', galaxy.baseTechCost), jsonMember('habitatPictureRefs', 'GalaxyImages'), jsonMember('habitatMapPictureRefs', 'MapStarImages')].filter((m) => m !== '');
     return [
-        pack(`{"version":2,"shapes":${JSON.stringify(encoder.shapes)},"galaxy":`),
+        enc.encode(`{"version":3,"shapes":${JSON.stringify(encoder.shapes)},"kinds":${JSON.stringify(encoder.kinds)},"galaxy":`),
         ...graph,
-        pack(`,${territory === '' ? '' : `${territory},`}"sideTables":`),
+        enc.encode(`,${territory === '' ? '' : `${territory},`}"sideTables":`),
         ...side,
-        pack(`${tail.map((m) => `,${m}`).join('')}}`),
+        enc.encode(`${tail.map((m) => `,${m}`).join('')}}`),
     ];
 }
 
 /**
- * One field of an encoded class instance in a save, without decoding the graph: `{$s, $v}` (looked up in the save's
- * shape table) or the older `{$t, $f}`. Undefined when `encoded` is not an instance or has no such field.
+ * One field of an encoded class instance in a save, without decoding the graph: version 3's [64 + 2 * shape, ...]
+ * (compactField), `{$s, $v}` (looked up in the save's shape table) or the older `{$t, $f}`. Undefined when `encoded` is not an instance or has no such field.
  */
 export function encodedField(save: GalaxySaveJSON, encoded: Encoded | undefined, field: string): Encoded | undefined {
+    if (save.version === 3) return compactField(save.shapes ?? [], encoded, field);
     if (encoded === null || typeof encoded !== 'object' || Array.isArray(encoded)) return undefined;
     if (typeof encoded.$s === 'number') {
         const shape = save.shapes?.[encoded.$s];
@@ -785,16 +794,22 @@ export function applyReplicaSideTables(galaxy: Galaxy, tables: object): void {
 // Deserialize
 // ---------------------------------------------------------------------------
 
-/** Rebuild a Galaxy from a galaxyToJSON object. Static data comes from
- *  gameData, mirroring generateGalaxy's wiring. */
-export function galaxyFromJSON(obj: GalaxySaveJSON, gameData: GameData, codec: { shapeConstructors?: boolean } = {}): Galaxy {
-    if (obj.version !== 2) throw new Error(`Unsupported galaxy save version ${String((obj as { version: unknown }).version)}.`);
+/** Rebuild a Galaxy from a GalaxySaveJSON (a parsed save's galaxy, version 3 or 2, or a galaxyToJSON tree). Static
+ *  data comes from gameData, mirroring generateGalaxy's wiring. `codec.consume` (version 3): the encoded graph is the
+ *  caller's to give up — it is emptied as it is decoded, so its decoded part can be collected meanwhile. */
+export function galaxyFromJSON(obj: GalaxySaveJSON, gameData: GameData, codec: { shapeConstructors?: boolean; consume?: boolean } = {}): Galaxy {
+    if (obj.version !== 2 && obj.version !== 3) throw new Error(`Unsupported galaxy save version ${String((obj as { version: unknown }).version)}.`);
     const tables = staticTablesOfGameData(gameData, obj.baseTechCost ?? 120000);
     const externals = externalsByRef(tables);
     const options = codec.shapeConstructors === undefined ? CODEC_OPTIONS : { ...CODEC_OPTIONS, shapeConstructors: codec.shapeConstructors };
-    const decoder = new GraphDecoder(options, (ref) => externals.get(`${ref.kind}:${ref.key}`), obj.shapes);
+    const resolve = (ref: ExternalRef): unknown => externals.get(`${ref.kind}:${ref.key}`);
+    // Version 3 (compactCodec.ts) is the save file's; version 2 (graphCodec.ts) older files and galaxyToJSON's tree.
+    const decoder = obj.version === 3 ? new CompactDecoder(options, resolve, obj.shapes ?? [], obj.kinds ?? [], codec.consume === true) : new GraphDecoder(options, resolve, obj.shapes);
     const galaxy = decoder.decode(obj.galaxy, 'galaxy') as Galaxy;
     if (!(galaxy instanceof Galaxy)) throw new Error('Save root is not a Galaxy.');
+    // The side tables right after the graph (same decoder: shared reference ids and, in version 3, the previous
+    // instance of each shape a sparse row is read against — so before anything is assigned on the graph).
+    const sideTables = obj.sideTables === undefined ? undefined : (decoder.decode(obj.sideTables, 'sideTables') as SideTables);
 
     // --- Static tables (generateGalaxy / createGame wiring).
     const g = galaxy as unknown as Record<string, unknown>;
@@ -805,7 +820,7 @@ export function galaxyFromJSON(obj: GalaxySaveJSON, gameData: GameData, codec: {
     }
 
     // --- State kept outside the graph (after the static tables: the price getters read them).
-    if (obj.sideTables !== undefined) restoreSideTables(galaxy, decoder.decode(obj.sideTables, 'sideTables') as SideTables);
+    if (sideTables !== undefined) restoreSideTables(galaxy, sideTables);
 
     // --- Derived step order (lazy: step() rebuilds before first use).
     g.stepOrder = [];

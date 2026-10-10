@@ -1,4 +1,6 @@
-// Generic object-graph codec for the save format (task: M3 save/load).
+// Generic object-graph codec, save format 2 (task: M3 save/load). Save files are written in format 3 since
+// compactCodec.ts (the same walk, a compact spelling); this codec still reads every format-2 save, and its encoded tree
+// (galaxySave.ts galaxyToJSON) is what state comparisons and diagnostics walk.
 //
 // The sim model is a cyclic graph of class instances (Galaxy → Empire →
 // BuiltObject → Design → Empire ...) that C# serializes with reference
@@ -102,36 +104,6 @@ const TYPED_ARRAYS: [string, { new (values: ArrayLike<number>): ArrayLike<number
 /** Shape table: shapes[id] = [className, ...fieldNames] (see the file header). */
 export type ShapeTable = string[][];
 
-/**
- * JSON text in pieces (GraphEncoder.encodeJson): the pieces are joined and handed to `flush` every `chunkChars`
- * characters (and at `end`), so a caller can move each chunk out of the JS heap (encode it to bytes, a Blob) while the
- * rest is written.
- */
-export class JsonWriter {
-    private parts: string[] = [];
-    private chars = 0;
-
-    constructor(
-        private readonly flush: (chunk: string) => void,
-        private readonly chunkChars = 1 << 22,
-    ) {}
-
-    write(s: string): void {
-        this.parts.push(s);
-        this.chars += s.length;
-        if (this.chars >= this.chunkChars) this.end();
-    }
-
-    /** Hand what is buffered to `flush` (nothing when empty). */
-    end(): void {
-        if (this.chars === 0) return;
-        const chunk = this.parts.join('');
-        this.parts = [];
-        this.chars = 0;
-        this.flush(chunk);
-    }
-}
-
 /** The tag of a typed array ($i8 …), else null. */
 function typedArrayTag(obj: object): string | null {
     if (!ArrayBuffer.isView(obj)) return null;
@@ -142,7 +114,7 @@ function typedArrayTag(obj: object): string | null {
 /** A child not encoded / decoded yet: its frame is on the stack. */
 const PENDING: unique symbol = Symbol('pending');
 
-// Frame kinds of the iterative walks (GraphEncoder.encode / encodeJson, GraphDecoder.decode).
+// Frame kinds of the iterative walks (GraphEncoder.encode, GraphDecoder.decode).
 const F_ARRAY = 0;
 const F_MAP = 1;
 const F_SET = 2;
@@ -323,127 +295,6 @@ export class GraphEncoder {
         return new EncodeFrame(F_INSTANCE, obj, keys.length, keys, id, (j) => (obj as Record<string, unknown>)[keys[j]]);
     }
 
-    /**
-     * `JSON.stringify(this.encode(value, path))` written straight to `out`, without building the encoded tree: the same
-     * visit order (memo ids, shapes) and exactly the same text. A late-game galaxy's encoded tree was several hundred MB
-     * of short-lived objects on top of the game itself — with the final string, the save's peak memory (a 100k-habitat
-     * autosave pushed the page past V8's heap cage and crashed it). Iterative, as encode.
-     */
-    encodeJson(value: unknown, out: JsonWriter, path = '$'): void {
-        const stack: EncodeFrame[] = [];
-        if (!this.openJson(value, out, stack, path)) return;
-        for (;;) {
-            const f = stack[stack.length - 1];
-            if (f.i < f.n) {
-                const j = f.i++;
-                switch (f.kind) {
-                    case F_ARRAY:
-                        if (j > 0) out.write(',');
-                        // (encode keeps holes, which JSON.stringify then writes as null.)
-                        if (!(j in (f.obj as unknown[]))) {
-                            out.write('null');
-                            continue;
-                        }
-                        break;
-                    case F_MAP:
-                        out.write(j === 0 ? '[' : (j & 1) === 0 ? '],[' : ',');
-                        break;
-                    case F_PLAIN:
-                        out.write(j === 0 ? `${JSON.stringify(f.keys![j])}:` : `,${JSON.stringify(f.keys![j])}:`);
-                        break;
-                    default:
-                        if (j > 0) out.write(',');
-                }
-                this.openJson(f.child(j), out, stack, path);
-                continue;
-            }
-            stack.pop();
-            switch (f.kind) {
-                case F_ARRAY:
-                    out.write(']');
-                    break;
-                case F_MAP:
-                    out.write(f.n > 0 ? ']]}' : ']}');
-                    break;
-                case F_PLAIN:
-                    out.write('}');
-                    break;
-                default:
-                    out.write(']}');
-            }
-            if (stack.length === 0) return;
-        }
-    }
-
-    /** Write a leaf value (false), or an object's opening and push its frame (true). */
-    private openJson(value: unknown, out: JsonWriter, stack: EncodeFrame[], basePath: string): boolean {
-        switch (typeof value) {
-            case 'undefined':
-                out.write('{"$u":1}');
-                return false;
-            case 'boolean':
-                out.write(value ? 'true' : 'false');
-                return false;
-            case 'string':
-                out.write(JSON.stringify(value));
-                return false;
-            case 'number':
-                if (Number.isFinite(value)) out.write(String(value));
-                else out.write(Number.isNaN(value) ? '{"$n":"NaN"}' : value > 0 ? '{"$n":"Infinity"}' : '{"$n":"-Infinity"}');
-                return false;
-            case 'object':
-                break;
-            default:
-                throw new Error(`Cannot serialize a ${typeof value} at ${encodePath(basePath, stack)}.`);
-        }
-        if (value === null) {
-            out.write('null');
-            return false;
-        }
-        const obj = value as object;
-        const external = this.externals.get(obj);
-        if (external !== undefined) {
-            out.write(`{"$x":${JSON.stringify(external.kind)},"k":${JSON.stringify(external.key)}}`);
-            return false;
-        }
-        const ref = this.memo.get(obj);
-        if (ref !== undefined) {
-            out.write(`{"$ref":${ref}}`);
-            return false;
-        }
-        this.memo.set(obj, this.memo.size);
-        const typed = typedArrayTag(obj);
-        if (typed !== null) {
-            const a = obj as ArrayLike<number>;
-            out.write(`{"${typed}":[`);
-            // (JSON.stringify writes a non-finite element as null.)
-            for (let i = 0; i < a.length; i++) {
-                const x = a[i];
-                out.write(i > 0 ? (Number.isFinite(x) ? `,${x}` : ',null') : Number.isFinite(x) ? String(x) : 'null');
-            }
-            out.write(']}');
-            return false;
-        }
-        const f = this.frameFor(obj, stack, basePath);
-        switch (f.kind) {
-            case F_ARRAY:
-                out.write('[');
-                break;
-            case F_MAP:
-                out.write('{"$map":[');
-                break;
-            case F_SET:
-                out.write('{"$set":[');
-                break;
-            case F_PLAIN:
-                out.write('{');
-                break;
-            default:
-                out.write(`{"$s":${f.shape},"$v":[`);
-        }
-        stack.push(f);
-        return true;
-    }
     private shapeId(proto: object, name: string, keys: string[]): number {
         let known = this.shapesByPrototype.get(proto);
         if (known === undefined) {

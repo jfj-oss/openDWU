@@ -294,3 +294,8 @@ Appended by `npm run repin -- --reason "<why>"` (scripts/repin.mjs).
 
 - `pictureRefs.seed1SaveWithoutPictures` (test/habitatPictureRefs.test.ts): Moved #99a907b837 → #a16c2f865d: saves carry the stable command ref ids (entityRefs.ts refId / Galaxy.nextEntityRefId); sim state and digests unchanged
 - `landscapeRefs.seed1SaveWithoutLandscapes` (test/landscapePictureRefs.test.ts): Moved #2f99c2bee0 → #ae75f0c349: saves carry the stable command ref ids (entityRefs.ts refId / Galaxy.nextEntityRefId); sim state and digests unchanged
+
+## 2026-10-10 — save format 3 (compactCodec.ts): the save text is spelled compactly; same graph — the format-2 tree of the same game still hashes to the old pin — and sim state / digests unchanged
+
+- `pictureRefs.seed1SaveWithoutPictures` (test/habitatPictureRefs.test.ts): Moved #a16c2f865d → #47124baf44: save format 3 (compactCodec.ts): the save text is spelled compactly; same graph — the format-2 tree of the same game still hashes to the old pin — and sim state / digests unchanged
+- `landscapeRefs.seed1SaveWithoutLandscapes` (test/landscapePictureRefs.test.ts): Moved #ae75f0c349 → #1cfe93f829: save format 3 (compactCodec.ts): the save text is spelled compactly; same graph — the format-2 tree of the same game still hashes to the old pin — and sim state / digests unchanged

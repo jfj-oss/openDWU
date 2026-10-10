@@ -101,14 +101,30 @@ try {
     if (!process.env.KEEP) rmSync(bundleDir, { recursive: true, force: true });
 }
 
-/** Save size by owning class field: every byte of the JSON text is charged to the nearest enclosing {$t, $f} instance's
- *  field ({$s, $v} against the shape table, or the older {$t, $f}) (`Class.field`), or the top-level key outside the galaxy graph. Prints the largest. */
+/** Save size by owning class field: every byte of the JSON text is charged (about) to the nearest enclosing instance's
+ *  field (`Class.field`; format 3: [64 + 2 * shape, ...] rows and tag-18 tables, compactCodec.ts; format 2: {$s, $v}
+ *  against the shape table, or the older {$t, $f}), or the top-level key outside the galaxy graph. Prints the largest. */
 function breakdown(obj) {
     const by = new Map();
     const shapes = obj.galaxy.shapes ?? [];
+    const B64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
     const add = (k, n) => by.set(k, (by.get(k) ?? 0) + n);
     const walk = (v, key) => {
         if (v === null || typeof v !== 'object') { const n = JSON.stringify(v)?.length ?? 4; add(key, n); return; }
+        if (Array.isArray(v) && obj.galaxy.version === 3 && typeof v[0] === 'number' && (v[0] >= 64 || v[0] === 18)) {
+            const shape = shapes[v[0] === 18 ? v[1] : (v[0] - 64) >> 1];
+            if (v[0] === 18) { add(key, 8); for (let j = 3; j < v.length; j++) add(`${shape[0]}.${shape[j - 2]} (table)`, JSON.stringify(v[j]).length + 1); return; }
+            const mask = v[0] & 1 ? v[1] : null;
+            add(key, 4 + (mask === null ? 0 : mask.length + 3));
+            let p = mask === null ? 1 : 2;
+            for (let j = 0; j + 1 < shape.length; j++) {
+                if (mask !== null && !(((((j / 6) | 0) < mask.length ? B64.indexOf(mask[(j / 6) | 0]) : 0) >> (j % 6)) & 1)) continue;
+                const f = `${shape[0]}.${shape[j + 1]}`;
+                add(f, 1);
+                walk(v[p++], f);
+            }
+            return;
+        }
         if (Array.isArray(v)) { add(key, 1 + v.length); for (const e of v) walk(e, key); return; }
         if (typeof v.$s === 'number' && Array.isArray(v.$v)) {
             const shape = shapes[v.$s];

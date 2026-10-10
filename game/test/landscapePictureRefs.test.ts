@@ -236,7 +236,8 @@ describe('draw order (Galaxy.6.cs SelectXxxPlanet / SelectHabitatPictures)', () 
         // Moved #869ba44598 → #47ed84cdb0: SetupSun SelectHabitatPictures (Galaxy.5.cs 1323): star PictureRef/MapPictureRef draws (2026-10-04)
         // Moved #47ed84cdb0 → #2f99c2bee0: galaxy long block clears the independent empire's never-processed message inbox (leak fix; only Empire.messages.length in the digest and the saved list change, RNG draws unchanged) (2026-10-10)
         // Moved #2f99c2bee0 → #ae75f0c349: saves carry the stable command ref ids (entityRefs.ts refId / Galaxy.nextEntityRefId); sim state and digests unchanged (2026-10-10)
-        expect(sha(serializeGame(copy.game, copy.time, start))).toMatchPin('landscapeRefs.seed1SaveWithoutLandscapes', "8453b168a5f777b4f3784311b21946ce1e8f11ed");
+        // Moved #ae75f0c349 → #1cfe93f829: save format 3 (compactCodec.ts): the save text is spelled compactly; same graph — the format-2 tree of the same game still hashes to the old pin — and sim state / digests unchanged (2026-10-10)
+        expect(sha(serializeGame(copy.game, copy.time, start))).toMatchPin('landscapeRefs.seed1SaveWithoutLandscapes', "ccc08877d9d97a3def4a808675a21fc266528d3a");
     });
 });
 

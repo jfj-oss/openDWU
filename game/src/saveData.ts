@@ -1,18 +1,19 @@
 // A save's text, kept out of the JS heap where it can be. serializeGame's text of a 100k-habitat galaxy is ~140M
 // characters; as one string (two-byte as soon as one non-Latin-1 character is in it) beside the game it pushed the page
 // past V8's heap cage — and in worker mode the string was copied again into the page by postMessage. So a save is made
-// as a Blob: the text is written in chunks (serializeGameParts), each chunk encoded to UTF-8 bytes as soon as it is
-// written, and the Blob of those bytes is what moves (worker → page: by reference) and what IndexedDB stores (the bytes
-// go to the browser's blob storage). Old saves in the store, files and the dev `?load=` are still plain strings.
+// as a Blob: the text is written straight to UTF-8 byte chunks (serializeGameChunks; save format 3, compactCodec.ts:
+// about a third of format 2's text), and the Blob of those bytes is what moves (worker → page: by reference) and what
+// IndexedDB stores (the bytes go to the browser's blob storage). Old saves in the store, files and the dev `?load=` are
+// still plain strings.
 //
-// Since saveCompression.ts the Blob is gzip (a 450 MB save is ~45 MB): serializeGameSave compresses the chunks, and
-// every reader here inflates a gzip Blob (told apart by its first bytes, isGzipBlob) and reads an uncompressed one —
-// old saves — as before. The text inside is unchanged.
+// Since saveCompression.ts the Blob is gzip (a 450 MB format-2 save was ~42 MB; the same game in format 3 is 152 MB,
+// 34 MB gzip): serializeGameSave compresses the chunks, and every reader here inflates a gzip Blob (told apart by its
+// first bytes, isGzipBlob) and reads an uncompressed one — old saves — as before.
 
 import type { Game } from './sim/game';
 import type { GalaxyTime } from './sim/galaxyTime';
 import type { StartGameOptions } from './sim/startGameOptions';
-import { serializeGameParts, type GameSaveExtras } from './sim/save/gameSave';
+import { serializeGameChunks, type GameSaveExtras } from './sim/save/gameSave';
 import { gunzipStream, gunzipText, gzipBlob, gzipParts, gzipString, isGzipBlob } from './saveCompression';
 
 /** A save's text: a string, or a Blob of its UTF-8 bytes (gzip-compressed, or plain in older saves). */
@@ -20,7 +21,7 @@ export type SaveText = string | Blob;
 
 /** serializeGame's text as an uncompressed Blob (UTF-8), made chunk by chunk: the JS heap only ever holds one chunk. */
 export function serializeGameBlob(game: Game, time: GalaxyTime, startOptions: StartGameOptions, extras?: GameSaveExtras): Blob {
-    return new Blob(serializeGamePartsBytes(game, time, startOptions, extras), { type: 'application/json' });
+    return new Blob(serializeGameChunks(game, time, startOptions, undefined, extras), { type: 'application/json' });
 }
 
 /**
@@ -29,12 +30,7 @@ export function serializeGameBlob(game: Game, time: GalaxyTime, startOptions: St
  * asynchronously — the game may run on meanwhile. Each UTF-8 chunk is dropped once the compressor has taken it.
  */
 export function serializeGameSave(game: Game, time: GalaxyTime, startOptions: StartGameOptions, extras?: GameSaveExtras): Promise<Blob> {
-    return gzipParts(serializeGamePartsBytes(game, time, startOptions, extras));
-}
-
-function serializeGamePartsBytes(game: Game, time: GalaxyTime, startOptions: StartGameOptions, extras?: GameSaveExtras): Uint8Array<ArrayBuffer>[] {
-    const enc = new TextEncoder();
-    return serializeGameParts(game, time, startOptions, (chunk) => enc.encode(chunk), undefined, extras);
+    return gzipParts(serializeGameChunks(game, time, startOptions, undefined, extras));
 }
 
 /** The save as a gzip Blob (export: a .dwusave file is compressed): a compressed Blob as it is, else compressed now. */
