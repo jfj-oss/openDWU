@@ -12,6 +12,7 @@
 // Rnd: none in these bodies (the refuelling-point searches and AssignMission draw inside their owners).
 
 import { isAiControlled } from '../missions/playerOrder';
+import { findGalaxyBuiltObjectById } from '../builtObjectById';
 import type { Fighter } from '../combat/fighters';
 import type { Galaxy } from '../galaxy';
 import type { BuiltObject } from '../builtObject';
@@ -72,14 +73,8 @@ export function checkCancelRefuelData(galaxy: Galaxy, builtObject: BuiltObject):
     if ((refuelAmount > 0 || refuelLocationId >= 0) && refuelResourceId >= 0 && refuelResourceId < 255 && refuelResourceId < galaxy.resourceSystem.resources.length) {
         if (refuelLocationIsBuiltObject) {
             // 7043 _Galaxy.BuiltObjects.FindBuiltObjectById(refuelLocationId) (BuiltObjectList.cs 276: first match).
-            let builtObject2: BuiltObject | null = null;
-            for (let i = 0; i < galaxy.builtObjects.length; i++) {
-                const b = galaxy.builtObjects[i];
-                if (b != null && b.builtObjectID === refuelLocationId) {
-                    builtObject2 = b;
-                    break;
-                }
-            }
+            // Perf: findGalaxyBuiltObjectById (the same first match, without the full scan when the slot is known).
+            const builtObject2: BuiltObject | null = findGalaxyBuiltObjectById(galaxy, refuelLocationId);
             if (builtObject2 !== null && !builtObject2.hasBeenDestroyed && builtObject2.cargo !== null && builtObject2.empire !== null) {
                 const num = cargoIndexOfById(builtObject2.cargo, refuelResourceId, builtObject2.empire.empireId);
                 if (num >= 0) {

@@ -46,6 +46,7 @@ import { checkVictoryConditionsHumans } from '../victory';
 import { scenarioPeriodicTick, scenarioYearlyTick } from '../scenario/hooks';
 import { expireScenarioDecisions } from '../scenario/decisions';
 import { isMultiHuman } from '../humanEmpires';
+import { pruneUnreadDistressSignals } from '../missions/distress';
 
 /** Galaxy.cs 3039 DoTasksTimeSensitive() → 3046 DoTasksTimeSensitive(starDate, time). */
 export function galaxyDoTasksTimeSensitive(galaxy: Galaxy, starDate: number = galaxyStarDate(galaxy), time: number = galaxyNow(galaxy)): void {
@@ -196,6 +197,17 @@ export function galaxyDoTasks(
         reviewWondersBuilt(galaxy);
         reviewEmpireDifficultyFactors(galaxy);
         reviewAchievements(galaxy);
+        // Leak fix (not in the C#): the pirate factions' and the independent empire's distress signals, which nothing
+        // clears and nothing reads once past DistressSignalDateRange (distress.ts pruneUnreadDistressSignals). No Rnd.
+        for (let i = 0; i < galaxy.pirateEmpires.length; i++) {
+            if (galaxy.pirateEmpires[i].pirateEmpireBaseHabitat !== null) pruneUnreadDistressSignals(galaxy, galaxy.pirateEmpires[i]);
+        }
+        if (galaxy.independentEmpire !== null) pruneUnreadDistressSignals(galaxy, galaxy.independentEmpire);
+        // Leak fix (not in the C#): the independent empire's messages (sendEmpireMessage still queues them, e.g. every
+        // attack on an independent ship) are never processed — ProcessMessages clears an empire's list (Empire.3.cs 4847)
+        // but only runs from DoTasks, which the independent empire never gets (Main.Part12.cs 3717 / 3736) — and nothing
+        // in the sim reads them, so the list (and the ships it names) only grew. Dropped here as ProcessMessages would.
+        if (galaxy.independentEmpire !== null && galaxy.independentEmpire.messages !== null) galaxy.independentEmpire.messages.length = 0;
         if (!gameFinished) {
             // Multiplayer: every human's conditions (victory.ts checkVictoryConditionsHumans; decision §4.1).
             if (isMultiHuman(galaxy)) checkVictoryConditionsHumans(galaxy, victoryArgs);

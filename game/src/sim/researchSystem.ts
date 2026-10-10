@@ -30,6 +30,7 @@ import {
     type ComponentImprovementEntry,
     type ComponentStatic,
 } from './componentStatic';
+import { detPow } from './detMath';
 
 // Port of ShipDesignFocus.cs (enum member order exact).
 export enum ShipDesignFocus {
@@ -1104,7 +1105,7 @@ export class ResearchSystem {
         visit((n) => n.def.components.includes(component.componentId));
         visit((n) => n.def.componentImprovements.some((ci) => ci.componentId === component.componentId));
         let currentTechPoints = 1.0;
-        for (let index = num1; index > -1; --index) currentTechPoints += Math.pow(2.0, index - 1) * baseTechCost;
+        for (let index = num1; index > -1; --index) currentTechPoints += detPow(2.0, index - 1) * baseTechCost;
         if (flag) ++currentTechPoints;
         return Math.trunc(currentTechPoints);
     }

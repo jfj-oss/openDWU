@@ -224,7 +224,8 @@ describe('draw order (Galaxy.6.cs SelectXxxPlanet / SelectHabitatPictures)', () 
         // Moved {"rnd":288729,"crypto":587179} → {"rnd":262043,"crypto":528421}: SetupSun SelectHabitatPictures (Galaxy.5.cs 1323): star PictureRef/MapPictureRef draws (2026-10-04)
         expect(measured.seed1Draws).toMatchPin('landscapeRefs.seed1Draws', {"rnd": 262043, "crypto": 528421});
         // Moved "0cecc3d70b1487e6" → "4948f3713d8cdf2d": SetupSun SelectHabitatPictures (Galaxy.5.cs 1323): star PictureRef/MapPictureRef draws (2026-10-04)
-        expect(measured.seed1Digest).toMatchPin('landscapeRefs.seed1Digest', "4948f3713d8cdf2d");
+        // Moved "4948f3713d8cdf2d" → "906ac92570a441cc": galaxy long block clears the independent empire's never-processed message inbox (leak fix; only Empire.messages.length in the digest and the saved list change, RNG draws unchanged) (2026-10-10)
+        expect(measured.seed1Digest).toMatchPin('landscapeRefs.seed1Digest', "906ac92570a441cc");
         // The whole saved game, landscape refs blanked (on a loaded copy, so `game` keeps its refs).
         const time = new GalaxyTime();
         time.togglePause();
@@ -233,7 +234,8 @@ describe('draw order (Galaxy.6.cs SelectXxxPlanet / SelectHabitatPictures)', () 
         for (const h of copy.game.galaxy.habitats) h.landscapePictureRef = -2;
         // Moved #f49403b7b3 → #869ba44598: faithful habitat pictureRef (Galaxy.6.cs) (2026-10-04)
         // Moved #869ba44598 → #47ed84cdb0: SetupSun SelectHabitatPictures (Galaxy.5.cs 1323): star PictureRef/MapPictureRef draws (2026-10-04)
-        expect(sha(serializeGame(copy.game, copy.time, start))).toMatchPin('landscapeRefs.seed1SaveWithoutLandscapes', "5e15481bfe1ff7abd0e06011cd0c0560b23933aa");
+        // Moved #47ed84cdb0 → #2f99c2bee0: galaxy long block clears the independent empire's never-processed message inbox (leak fix; only Empire.messages.length in the digest and the saved list change, RNG draws unchanged) (2026-10-10)
+        expect(sha(serializeGame(copy.game, copy.time, start))).toMatchPin('landscapeRefs.seed1SaveWithoutLandscapes', "ab7dde4eefdf4a51db84f65f539c35679328e90e");
     });
 });
 

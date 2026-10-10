@@ -111,6 +111,12 @@ interface SortableStellarObject {
 
 class SortableStellarObjectList {
     items: SortableStellarObject[] = [];
+    /** Perf (fulfillOrdersAtTradingPosts' range cut-off): the point of the latest sortTradingPostsByDistance — every
+     *  item's sortTag is then its squared distance from (sortX, sortY), ascending — or sorted = false (never sorted,
+     *  or a NaN distance, which the comparator cannot order). */
+    sorted = false;
+    sortX = 0;
+    sortY = 0;
     private readonly members = new Set<StellarObject>();
     contains(o: StellarObject): boolean {
         return this.members.has(o);
@@ -255,12 +261,17 @@ function addForeignTradingPosts(galaxy: Galaxy, empire: Empire, other: Empire, l
 
 /** Empire.4.cs 648 SortTradingPostsByDistance(tradingPosts, x, y): sorts the list in place and returns it. */
 function sortTradingPostsByDistance(galaxy: Galaxy, tradingPosts: SortableStellarObjectList, x: number, y: number): SortableStellarObjectList {
+    let finite = true;
     for (let i = 0; i < tradingPosts.items.length; i++) {
         const t = tradingPosts.items[i];
         t.sortTag = galaxy.calculateDistanceSquared(x, y, t.stellarObject.xpos, t.stellarObject.ypos);
+        if (!(t.sortTag < Infinity)) finite = false;
     }
     // SortableStellarObject.CompareTo: SortTag.CompareTo(other.SortTag) (double; no NaN here).
     netSort(tradingPosts.items, (a, b) => (a.sortTag < b.sortTag ? -1 : a.sortTag > b.sortTag ? 1 : 0));
+    tradingPosts.sorted = finite;
+    tradingPosts.sortX = x;
+    tradingPosts.sortY = y;
     return tradingPosts;
 }
 
@@ -534,7 +545,21 @@ function fulfillOrdersAtTradingPosts(ctx: FulfillContext, orders: OrderList, tra
             resourceIsRestricted = isRestrictedResource(galaxy, commodityResource.resourceId);
             resourceIsLuxury = isLuxuryResource(galaxy, commodityResource.resourceId);
         }
+        // Perf: the range cut-off. AttemptToFulfillOrderAtTradingPost returns 0 with no side effect for a post farther
+        // than the allowed range from the requester (the checks before its range test only read; a restricted resource
+        // widens the range to the galaxy diagonal, so no cut-off then). The list is sorted by distance from
+        // (sortX, sortY), so once a post's distance from there exceeds range + the requester's distance from there, it
+        // and every post after it are out of range (triangle inequality; with a margin for rounding): stop.
+        let cutoffSquared = Infinity;
+        if (value.sorted && !(commodityResource !== null && resourceIsRestricted)) {
+            const requester = order.requestingColony !== null ? order.requestingColony : order.requestingBuiltObject;
+            if (requester !== null) {
+                const cut = Math.sqrt(ctx.allowableRangeSquared) + galaxy.calculateDistance(value.sortX, value.sortY, requester.xpos, requester.ypos);
+                if (cut < Infinity) cutoffSquared = (cut * (1 + 1e-9) + 1) * (cut * (1 + 1e-9) + 1);
+            }
+        }
         for (let j = 0; j < value.items.length; j++) {
+            if (value.items[j].sortTag > cutoffSquared) break;
             if (value.items[j].stellarObject !== stellarObject) {
                 attemptToFulfillOrderAtTradingPost(ctx, value.items[j].stellarObject, order, commodityResource, resourceIsRestricted, resourceIsLuxury, requesterIsConstructionShip);
                 if (order.amountOutstandingToContract <= 0) break;

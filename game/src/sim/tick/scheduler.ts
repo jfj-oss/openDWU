@@ -34,6 +34,7 @@ import { empireShipGroups } from '../fleets/shipGroup';
 import { identifyMechanoidEmpire, warnOfIncomingEnemyFleetsAndPlanetDestroyers } from '../fleets/militaryAI';
 import { getBuiltObjectsAtLocation } from '../stationPlacement';
 import { drainCommandBoundary, enterSimFrame, leaveSimFrame } from './commandBoundary';
+import { offscreenUpdateBatch } from './offscreenUpdate';
 import { ensurePlayerInbox, playerMessagesFrameEnd } from '../playerMessages';
 import { humanEmpires } from '../humanEmpires';
 
@@ -264,7 +265,8 @@ function backgroundPass(galaxy: Galaxy, state: SchedulerState, time: number, sta
     if (multiCore) {
         int41 = HABITAT_TICK_BATCH_SIZE;
         int42 = 150;
-        int43 = 1000;
+        // Ours: the off-screen update rate (offscreenUpdate.ts; 1000 = the original unless the game set Higher / Adaptive).
+        int43 = offscreenUpdateBatch(galaxy);
         int44 = 50;
         int45 = 1;
         int46 = 1;

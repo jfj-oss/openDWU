@@ -6,7 +6,8 @@
 // Timing: serializeGame is synchronous and slow on big galaxies (~4.3-5.3 s and ~139 MB of text for a 1400-star
 // autostart game on the dev machine), so it cannot be spread over frames. It is started from requestIdleCallback
 // (between frames, never inside a sim tick) after a "Saving the Galaxy..." toast has painted — the C# also stops the
-// game with that message while it saves — and the text is then written to IndexedDB asynchronously.
+// game with that message while it saves — and the text is then written to IndexedDB asynchronously. The save is gzip
+// (saveData.ts serializeGameSave): compressed after the text is written, asynchronously, in the worker in worker mode.
 
 import { writeSaveIndexEntry, defaultSaveTextStore, type SaveStorage, type SaveTextStore } from './screens/saveLoad';
 import { getSettings, type UiSettings } from './settings';
@@ -118,7 +119,7 @@ export function installAutosave(opts: AutosaveOptions): void {
             return;
         }
         lastSlot = slot;
-        console.info(`[autosave] ${name}: serialized ${saveTextMB(text).toFixed(1)} MB in ${ms.toFixed(0)} ms`);
+        console.info(`[autosave] ${name}: saved ${saveTextMB(text).toFixed(1)} MB (gzip) in ${ms.toFixed(0)} ms`);
         const savedAt = Date.now();
         void writeAutosave(name, text, window.localStorage as unknown as SaveStorage, defaultSaveTextStore(), new Date(savedAt).toISOString()).then(
             () => {

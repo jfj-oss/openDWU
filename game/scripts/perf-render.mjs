@@ -334,6 +334,8 @@ async function main() {
                 };
             });
             if (MOTION) m.motion = await page.evaluate(() => window.__motionProbe.summary());
+            // --report: per zoom too (state an --eval probe gathered over this zoom's measurement).
+            if (args.report) console.log(`\n[${zoom}] report: ${await page.evaluate((e) => JSON.stringify((0, eval)(e), null, 1), args.report)}`);
             rows.push({ zoom, ...m });
             if (profile && args['save-profile']) {
                 mkdirSync(args['save-profile'], { recursive: true });

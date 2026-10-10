@@ -31,6 +31,7 @@ import { IndustryType } from './types';
 import type { GameData } from './data/gameData';
 import type { ResearchNode, ComponentImprovement as ResearchComponentImprovement } from './data/research';
 import { netSort } from './netSort';
+import { detPow } from './detMath';
 
 export const DEFAULT_BASE_TECH_COST = 120000;
 export const DEFAULT_HYPERDRIVE_SPEED_MULTIPLIER = 1.0;
@@ -260,7 +261,7 @@ function buildComponentDefinitions(components: Component[]): ComponentDefinition
 // ---------------------------------------------------------------------------
 
 function computeResearchCost(node: ResearchNode, baseTechCost: number): number {
-    let multiplier = node.techLevel >= 100 ? 256.0 : Math.pow(2.0, node.techLevel - 1.0);
+    let multiplier = node.techLevel >= 100 ? 256.0 : detPow(2.0, node.techLevel - 1.0);
     if (node.baseCostMultiplierOverride > 0.0) {
         multiplier = node.baseCostMultiplierOverride;
     }

@@ -101,6 +101,7 @@ import { scenarioFlag } from './scenario/state';
 import { isRimTraderAI, rimTraderRefusesProposal, scenarioWarBlocked } from './scenario/rimTrade/common';
 import { formatNet, tryGetText } from './textResolver';
 import { isHumanEmpire } from './humanEmpires';
+import { detPow } from './detMath';
 
 // ---------------------------------------------------------------------------------------------------------------
 // Constants (Galaxy.3.cs 4990-5140 InitializeStatics; BaconEmpire.cs statics with their default settings).
@@ -2182,7 +2183,7 @@ export function calculateEmpireWarValue(galaxy: Galaxy, empire: Empire): { built
 function checkWhetherWarDamageExceedsLimit(galaxy: Galaxy, empire: Empire, damageBuiltObject: number, damageColony: number): boolean {
     let result = false;
     const wv = calculateEmpireWarValue(galaxy, empire);
-    const num = Math.pow(1.0 + (aggressionLevel(empire) - cautionLevel(empire)) / 100.0, 2.0);
+    const num = detPow(1.0 + (aggressionLevel(empire) - cautionLevel(empire)) / 100.0, 2.0);
     const num2 = Math.trunc((wv.builtObject + damageBuiltObject) * ACCEPTABLE_WAR_VALUE_LOSSES_BUILT_OBJECT * num);
     const num3 = Math.trunc((wv.colony + damageColony) * ACCEPTABLE_WAR_VALUE_LOSSES_COLONY * num);
     if (damageBuiltObject > num2 || damageColony > num3) result = true;
@@ -2201,8 +2202,8 @@ export function determineVictorInWar(diplomaticRelation: DiplomaticRelation): { 
 /** Empire.8.cs 2857 DetermineSubjugationOfLoserInWar. */
 export function determineSubjugationOfLoserInWar(winnerEmpire: Empire, loserEmpire: Empire, winningRatio: number, winnerStrength: number, loserStrength: number): boolean {
     if (winningRatio > 3.0) {
-        const num = Math.pow(aggressionLevel(winnerEmpire) / 100.0, 2.0);
-        const num2 = Math.pow(aggressionLevel(loserEmpire) / 100.0, 2.0);
+        const num = detPow(aggressionLevel(winnerEmpire) / 100.0, 2.0);
+        const num2 = detPow(aggressionLevel(loserEmpire) / 100.0, 2.0);
         const num3 = winnerStrength * num;
         const num4 = loserStrength * num2 * 3.0;
         if (num3 > num4) return true;
@@ -3203,7 +3204,7 @@ export function processMessages(galaxy: Galaxy, empire: Empire): void {
                     }
                 }
                 if (flag) {
-                    const num8 = 50.0 * ((galaxy.rnd.nextDouble() * 40.0 + 80.0) * Math.pow(1.0 / num, 2.0));
+                    const num8 = 50.0 * ((galaxy.rnd.nextDouble() * 40.0 + 80.0) * detPow(1.0 / num, 2.0));
                     if (num8 > Math.trunc(num6 / 1000000)) {
                         for (const item9 of habitatList) {
                             relinquishColonyOrders(galaxy, self, item9); // Empire.3.cs 4587-4630

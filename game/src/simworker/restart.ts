@@ -29,7 +29,7 @@ export interface RestartInputs {
     /** The worker's own save of its last state (SimWorkerClient.rescueSave), or null. */
     rescue: SaveText | null;
     /** Serialize the replica game on the main thread, or null when there is none. */
-    replica: (() => SaveText) | null;
+    replica: (() => SaveText | Promise<SaveText>) | null;
     /** This game's last autosave, or null. */
     autosave: { name: string; savedAt: number; read: () => Promise<SaveText | null> } | null;
     /** Wall clock (Date.now) for the autosave's age. */

@@ -154,14 +154,14 @@
       "kind": "inline",
       "file": "test/habitatPictureRefs.test.ts",
       "test": "generation draws as the C# (counts and state pinned; the PictureRef port itself changed no draw)",
-      "anchor": "expect(measured.seed1Digest).toMatchPin('pictureRefs.seed1Digest', \"4948f3713d8cdf2d\");"
+      "anchor": "expect(measured.seed1Digest).toMatchPin('pictureRefs.seed1Digest', \"906ac92570a441cc\");"
     },
     {
       "key": "pictureRefs.seed1SaveWithoutPictures",
       "kind": "inline",
       "file": "test/habitatPictureRefs.test.ts",
       "test": "generation draws as the C# (counts and state pinned; the PictureRef port itself changed no draw)",
-      "anchor": "expect(sha(JSON.stringify(obj))).toMatchPin('pictureRefs.seed1SaveWithoutPictures', \"4139f9fa81a480bf7f5e3e80849933529785fdb5\");"
+      "anchor": "expect(sha(JSON.stringify(obj))).toMatchPin('pictureRefs.seed1SaveWithoutPictures', \"c6d0a4a849df330c7c0d62ad1759378843983121\");"
     },
     {
       "key": "independentTraders.popularSmallFreighters",
@@ -280,14 +280,14 @@
       "kind": "inline",
       "file": "test/landscapePictureRefs.test.ts",
       "test": "generation draws as the C# (counts and state pinned; the landscape port itself changed no draw)",
-      "anchor": "expect(measured.seed1Digest).toMatchPin('landscapeRefs.seed1Digest', \"4948f3713d8cdf2d\");"
+      "anchor": "expect(measured.seed1Digest).toMatchPin('landscapeRefs.seed1Digest', \"906ac92570a441cc\");"
     },
     {
       "key": "landscapeRefs.seed1SaveWithoutLandscapes",
       "kind": "inline",
       "file": "test/landscapePictureRefs.test.ts",
       "test": "generation draws as the C# (counts and state pinned; the landscape port itself changed no draw)",
-      "anchor": "expect(sha(serializeGame(copy.game, copy.time, start))).toMatchPin('landscapeRefs.seed1SaveWithoutLandscapes', \"5e15481bfe1ff7abd0e06011cd0c0560b23933aa\");"
+      "anchor": "expect(sha(serializeGame(copy.game, copy.time, start))).toMatchPin('landscapeRefs.seed1SaveWithoutLandscapes', \"ab7dde4eefdf4a51db84f65f539c35679328e90e\");"
     },
     {
       "key": "pirateBases.fleets",

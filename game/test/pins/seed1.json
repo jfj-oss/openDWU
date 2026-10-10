@@ -269,7 +269,7 @@
             "ruins": 25
         }
     },
-    "empireLifecycle": {"aiSplitDigest": "1bde03cd0ed7b23e:262117"},
+    "empireLifecycle": {"aiSplitDigest": "ccfc6a59fe73c584:262117"},
     "forceStructure": {
         "playerPrivate": [["SmallFreighter", 3], ["MediumFreighter", 1], ["GasMiningShip", 2], ["MiningShip", 2]],
         "age0Private": [[], [], [], []]
@@ -746,10 +746,10 @@
     },
     "taxes": {"taxRates": [0.2199999988079071, 0.2800000011920929, 0.23999999463558197, 0.3100000023841858]},
     "tickDeterminism": {
-        "digest600": "941f2dd4ba1f5a6b",
+        "digest600": "761ec1d601c110d5",
         "counts600": {"empires": 4, "pirateEmpires": 8, "habitats": 12060, "builtObjects": 617, "creatures": 237, "colonies": 4},
         "rndDraws600": 611011,
-        "digest120": "8dd9c58d04b0fb29",
+        "digest120": "22a49ab2e7653a71",
         "rndDraws120": 33302
     },
     "troops": {

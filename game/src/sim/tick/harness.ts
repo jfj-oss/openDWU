@@ -19,6 +19,8 @@ export interface RunGameSecondsOptions {
     stopOnTodo?: boolean;
     /** Wall clock for per-pass timings (e.g. `performance.now`); omitted ⇒ no timings. */
     profileClock?: () => number;
+    /** With `profileClock`: the accumulator the per-pass timings are added to (default a fresh one), e.g. to read them per frame from `onFrame`. */
+    timings?: TickProfile;
 }
 
 export interface RunGameSecondsResult {
@@ -44,7 +46,7 @@ export function runGameSeconds(target: Galaxy | { galaxy: Galaxy }, seconds: num
     const state = schedulerState(galaxy);
     const endMs = galaxy.nowMs + Math.round(seconds * 1000);
     const drawsBefore = galaxy.rnd.drawCount;
-    const timings: TickProfile = {};
+    const timings: TickProfile = opts.timings ?? {};
     resetTodoCounts();
     setStopOnTodo(opts.stopOnTodo ?? false);
     if (opts.profileClock !== undefined) setTickProfile(timings, opts.profileClock);

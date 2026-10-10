@@ -128,6 +128,7 @@ export const COMMAND_FAILURE: FailureTable = {
     removeOldHistoryMessages: () => -1,
     setMessageOptions: no,
     setBaconSettings: () => ({}),
+    setOffscreenUpdateRate: () => 1000,
     storeChronicleYear: no,
     advisorCommands: (message, [, commands]) =>
         commands.map((c) => {

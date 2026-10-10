@@ -53,6 +53,7 @@ describe('initiateEmpireSplitAt (Empire.1.cs 1102 / 2883, split for targeted sec
         // Moved "df5e591362688597:288980" → "4985362bf65f2a5a:288778": orbits spaced so planets/moons never overlap (user deviation) (2026-10-03)
         // Moved "4985362bf65f2a5a:288778" → "4a8493f807d8696f:288778": parity A2: spaceport threat check, race periodic traits, wonders scenic, race wonders, garrisons, maintenance, retrofit design (2026-10-03)
         // Moved "4a8493f807d8696f:288778" → "1bde03cd0ed7b23e:262117": SetupSun SelectHabitatPictures (Galaxy.5.cs 1323): star PictureRef/MapPictureRef draws (2026-10-04)
+        // Moved "1bde03cd0ed7b23e:262117" → "ccfc6a59fe73c584:262117": galaxy long block clears the independent empire's never-processed message inbox (leak fix; only Empire.messages.length in the digest and the saved list change, RNG draws unchanged) (2026-10-10)
         expect(`${stateDigest(galaxy)}:${galaxy.rnd.drawCount}`).toMatchPin('empireLifecycle.aiSplitDigest');
     }, 300000);
 

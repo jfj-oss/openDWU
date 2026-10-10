@@ -128,6 +128,27 @@ export function clearOldDistressSignals(galaxy: Galaxy, empire: Empire): void {
     }
 }
 
+/**
+ * Leak fix (not in the C#): drop the distress signals of an empire whose DoTasks never clears them — a pirate faction
+ * (DoTasksPirates, Empire.1.cs 4095, has no ClearOldDistressSignals / ClearOutOldDistressSignals) and the independent
+ * empire (no DoTasks at all). Their lists are only read by CheckForMatchingSignal / CheckForMatchingSignalSameTargetType
+ * (Galaxy.7.cs 2907 / 2942), which skip every signal with Date <= CurrentStarDate - DistressSignalDateRange; a skipped
+ * signal stays skipped (the date never changes, time only grows), so removing exactly those changes nothing — but in the
+ * original they and their source ships (often long destroyed) pile up all game. ProcessDistressSignals never runs for
+ * them (pirates stay pirates, Empire.1.cs 4965 only moves the base; the independent empire is never queued, Main.Part12.cs
+ * 3717 / 3736). Called from the galaxy long block (galaxyTick.ts). No Rnd.
+ */
+export function pruneUnreadDistressSignals(galaxy: Galaxy, empire: Empire): void {
+    const distressSignals = empireDistressSignals(empire);
+    const num = galaxyStarDate(galaxy) - DISTRESS_SIGNAL_DATE_RANGE;
+    let j = 0;
+    for (let i = 0; i < distressSignals.length; i++) {
+        const distressSignal = distressSignals[i];
+        if (distressSignal == null || distressSignal.date > num) distressSignals[j++] = distressSignal;
+    }
+    distressSignals.length = j;
+}
+
 /** Empire.8.cs 4357 ClearExpiredDeclinedTasks. */
 export function clearExpiredDeclinedTasks(galaxy: Galaxy, empire: Empire): void {
     const declinedTasks = empire.declinedTasks;

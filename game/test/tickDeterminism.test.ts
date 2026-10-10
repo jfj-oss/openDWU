@@ -64,6 +64,7 @@ describe('determinism (single seeded galaxy.rnd, fixed-order scheduler)', () => 
         // Moved "4fb8e86d41e4c0d9" → "dc89b652838d37f4": orbits spaced so planets/moons never overlap (user deviation) (2026-10-03)
         // Moved "dc89b652838d37f4" → "492736eb90d9ba45": parity A2: spaceport threat check, race periodic traits, wonders scenic, race wonders, garrisons, maintenance, retrofit design (2026-10-03)
         // Moved "492736eb90d9ba45" → "8dd9c58d04b0fb29": SetupSun SelectHabitatPictures (Galaxy.5.cs 1323): star PictureRef/MapPictureRef draws (2026-10-04)
+        // Moved "8dd9c58d04b0fb29" → "22a49ab2e7653a71": galaxy long block clears the independent empire's never-processed message inbox (leak fix; only Empire.messages.length in the digest and the saved list change, RNG draws unchanged) (2026-10-10)
         expect(digest120).toMatchPin('tickDeterminism.digest120');
         // Moved 5019 → 4959: 17d: human player starts with C# automation defaults (Start.2.cs:2122) (2026-09-25)
         // Moved 4959 → 6067: fix4sim: BaconMain.cs 605-640/859-874 BaconInitialize applies the stock BaconSettings.txt (useStarGravityWells=false, HyperJumpThreshhold=4000, BaseHyperJumpAccuracy=666, sublightFuelBurnDivisor=20, noFuel* 0.9/0.9/0.5) after createGame; Galaxy.5.cs 1609-1616/1747-1752 populated planets/moons get Cargo/Troop lists (2026-09-25)
@@ -253,6 +254,7 @@ describe('determinism (single seeded galaxy.rnd, fixed-order scheduler)', () => 
         // Moved "89d3bfddd78f6edc" → "3a9cc8b9c4f924da": parity A1: creature combat, threat warp bonus, captain range, design torpedo order, keep in-use designs (2026-10-03)
         // Moved "3a9cc8b9c4f924da" → "e3f6e6fa3f5b926b": message pipeline runs inside the sim tick (determinism; worker parity) (2026-10-04)
         // Moved "e3f6e6fa3f5b926b" → "941f2dd4ba1f5a6b": SetupSun SelectHabitatPictures (Galaxy.5.cs 1323): star PictureRef/MapPictureRef draws (2026-10-04)
+        // Moved "941f2dd4ba1f5a6b" → "761ec1d601c110d5": galaxy long block clears the independent empire's never-processed message inbox (leak fix; only Empire.messages.length in the digest and the saved list change, RNG draws unchanged) (2026-10-10)
         expect(summary.digest).toMatchPin('tickDeterminism.digest600');
         // (counts and Galaxy.Rnd draws pinned with the digest, tasks/M4-plan.md §5.3.4.)
         // Moved #f1aebd5dcd → #d21f9fe281: 17d: human player starts with C# automation defaults (Start.2.cs:2122) (2026-09-25)

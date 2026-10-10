@@ -27,6 +27,7 @@ import { loggedSimViewRect, noteSimSpeed, noteSimViewRect } from './sim/player/p
 import { showToast } from './ui/toast';
 import { lockstepStepper } from './net/lockstepSeam';
 import { createRenderTime, updateRenderTime, type RenderTime } from './render/renderInterp';
+import { ADAPTIVE_SHARE_IN_THREAD, OffscreenAdaptiveController } from './offscreenAdaptive';
 
 /** Main.Part11.cs 507 method_123 inputs from the Pixi camera: int_13/int_14 = view centre (galaxy units),
  * mainView.Width/Height = base.ClientRectangle size (px, Main.Part12.cs 1712), double_0 = galaxy units per px. */
@@ -99,6 +100,8 @@ export function createSimLoop(galaxy: Galaxy, time: GalaxyTime, camera: Camera, 
     const budget = new SimFrameBudget();
     const viewThrottle = new SimViewThrottle();
     const renderTime = updateRenderTime(createRenderTime(), galaxy.nowMs, 0, time.speed, true, 0);
+    // Ours: Game Options → Off-screen update rate → Adaptive (journals the batch sizes it picks; idle in other modes).
+    const offscreenAdaptive = new OffscreenAdaptiveController(ADAPTIVE_SHARE_IN_THREAD);
     return {
         driver,
         stats,
@@ -144,6 +147,7 @@ export function createSimLoop(galaxy: Galaxy, time: GalaxyTime, camera: Camera, 
             }
             updateRenderTime(renderTime, galaxy.nowMs, budget.backlogMs, time.speed, time.paused, frames);
             const dt = performance.now() - t0;
+            if (frames > 0) offscreenAdaptive.observe(galaxy, frames, dt, budget.backlogMs, t0 + dt);
             stats.renderFrames++;
             stats.simFrames += frames;
             stats.simWallMs += dt;

@@ -52,6 +52,7 @@ import type { Empire } from './empire';
 import { humanEmpires } from './humanEmpires';
 import type { GameData } from './data/gameData';
 import type { BaconSettingsOverrides } from './data/baconSettings';
+import type { OffscreenUpdateSetting } from './tick/offscreenUpdate';
 import type { CharacterFileRow, CharacterNames } from './data/characters';
 import type { Design } from './design';
 import { findNewestCanBuild, resolveSubRoleDescription } from './designGeneration';
@@ -155,6 +156,7 @@ import {
     MapStarImageOffsetWhiteDwarf,
     gasCloudMapPictureRef,
 } from './galaxyImages';
+import { detPow } from './detMath';
 
 // Port of Galaxy.cs static fields (Galaxy.3.cs InitializeStatics sets
 // these): SectorSizeX = SectorSizeY = 2_000_000, IndexSize = 400_000.
@@ -312,6 +314,12 @@ export class Galaxy {
      * the game has overrides and a game without them saves exactly as before.
      */
     declare baconSettingsOverrides?: BaconSettingsOverrides;
+    /**
+     * Ours: the off-screen update rate (tick/offscreenUpdate.ts) — Higher / Adaptive, set by the journaled
+     * setOffscreenUpdateRate command. `declare`d: absent for Original (the default), so such a game runs and saves exactly
+     * as before.
+     */
+    declare offscreenUpdate?: OffscreenUpdateSetting;
     /**
      * Our addition: the new-game wizard's resource sliders (resourceGeneration.ts). `declare`d and set only when a slider is
      * off Normal, so a Normal game has no such property and saves / generates exactly as the original. Read by
@@ -1615,22 +1623,18 @@ export class Galaxy {
         return this.ringSearch(ix, iy, (cx, cy) => {
             let builtObject: BuiltObject | null = null;
             let distance = Number.MAX_VALUE;
-            for (const builtObject2 of this.builtObjectIndexGrid[cx][cy].slice()) {
+            // Perf: the cell walked in place (the body only reads), and the sub-role test first — an object of another
+            // sub role never becomes the candidate, so testing it before the distance changes nothing.
+            const cell = this.builtObjectIndexGrid[cx][cy];
+            for (let i = 0; i < cell.length; i++) {
+                const builtObject2 = cell[i];
                 if (builtObject2 === null) continue;
+                if (subRole !== BuiltObjectSubRole.Undefined && builtObject2.subRole !== subRole) continue;
                 const num = this.calculateDistanceSquared(ix, iy, builtObject2.xpos, builtObject2.ypos);
                 if (!(num < distance)) continue;
-                let flag = true;
-                if (!includeSecondaryEmpires && (builtObject2.empire === null || builtObject2.empire === this.independentEmpire || builtObject2.empire.pirateEmpireBaseHabitat !== null)) flag = false;
-                if (!flag) continue;
-                if (subRole !== BuiltObjectSubRole.Undefined) {
-                    if (builtObject2.subRole === subRole) {
-                        builtObject = builtObject2;
-                        distance = num;
-                    }
-                } else {
-                    builtObject = builtObject2;
-                    distance = num;
-                }
+                if (!includeSecondaryEmpires && (builtObject2.empire === null || builtObject2.empire === this.independentEmpire || builtObject2.empire.pirateEmpireBaseHabitat !== null)) continue;
+                builtObject = builtObject2;
+                distance = num;
             }
             if (builtObject !== null) distance = this.calculateDistance(ix, iy, builtObject.xpos, builtObject.ypos);
             return { item: builtObject, distance };
@@ -3736,7 +3740,7 @@ export class Galaxy {
         // C# multiplies by (long)num — truncate before multiplying.
         num2 = num3 < 0 || num3 > 6 ? this.rnd.next(100000, 300000) * Math.trunc(num) : this.rnd.next(300000, 600000) * Math.trunc(num);
         if (this.age > 0) {
-            num2 = Math.trunc(num2 * Math.pow(1.2, this.age));
+            num2 = Math.trunc(num2 * detPow(1.2, this.age));
         }
         return num2;
     }

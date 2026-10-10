@@ -11,7 +11,8 @@
 // .dwusave files are plain-text exports/imports of that same JSON string
 // (Blob download / <input type=file>).
 import './saveLoad.css';
-import type { SaveText } from '../../saveData';
+import { compressedSave, type SaveText } from '../../saveData';
+import { isGzipBlob } from '../../saveCompression';
 import { COLORS, FONT, OwGrid, checkBox, el, glassButton, messageBox, openOriginalWindow, place, scrollPanel, tabStrip, text, textBox, type GridColumn, type OriginalWindow } from '../originalWindow';
 
 /** localStorage key prefix for one named save. */
@@ -135,8 +136,10 @@ export async function parseSaveFile(file: Blob, load: (text: SaveText) => Loaded
     return await load(file);
 }
 
-/** parseSaveFile's cheap sanity check (a save is one JSON object). */
+/** parseSaveFile's cheap sanity check: a save is one JSON object, gzip-compressed (saves since saveCompression.ts,
+ *  told by the gzip magic bytes) or plain (older saves). */
 async function checkSaveFile(file: Blob): Promise<void> {
+    if (await isGzipBlob(file)) return;
     if (!/^\s*\{/.test(await file.slice(0, 256).text())) throw new SyntaxError('Not a save file (expected a JSON object).');
 }
 
@@ -282,9 +285,10 @@ export function defaultSaveTextStore(): SaveTextStore {
 }
 // [leftovers] end
 
-/** Trigger a browser download of `text` as `<baseName>.dwusave`. */
-export function downloadSaveFile(baseName: string, text: SaveText): void {
-    const blob = new Blob([text], { type: 'application/octet-stream' });
+/** Trigger a browser download of `text` as `<baseName>.dwusave`, gzip-compressed (an uncompressed save — older ones in
+ *  the store — is compressed first; saveData.ts compressedSave). */
+export async function downloadSaveFile(baseName: string, text: SaveText): Promise<void> {
+    const blob = new Blob([await compressedSave(text)], { type: 'application/octet-stream' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
@@ -662,7 +666,7 @@ export function createSaveLoadPanel(mode: 'save' | 'load', wiring: SavePanelWiri
             showToast('Nothing to download yet');
             return;
         }
-        downloadSaveFile(name, saveText);
+        await downloadSaveFile(name, saveText);
         showToast(`Downloading ${name}${SAVE_FILE_EXTENSION}`);
     }
 
@@ -812,8 +816,8 @@ export function createSaveLoadPanel(mode: 'save' | 'load', wiring: SavePanelWiri
             showToast(`Save "${e.name}" not found`);
             return;
         }
-        downloadSaveFile(e.name, saveText);
         showToast(`Exporting ${e.name}${SAVE_FILE_EXTENSION}`);
+        await downloadSaveFile(e.name, saveText); // (an older, uncompressed save is compressed first)
     }
 
     function deleteSelected(): void {

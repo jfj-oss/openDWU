@@ -34,6 +34,7 @@ import { openHotkeysScreen } from './hotkeysScreen';
 import { openBaconSettingsWindow } from './baconSettingsWindow';
 import { AutomationLevel, type Empire } from '../../sim/empire';
 import { issuePlayerCommand } from '../../sim/player/playerCommands';
+import { HIGHER_OFFSCREEN_BATCH, ORIGINAL_OFFSCREEN_BATCH, offscreenUpdateMode, type OffscreenUpdateMode } from '../../sim/tick/offscreenUpdate';
 import {
     ATTACK_OVERMATCH_LABELS,
     DISCOVERY_ABANDONED_ITEMS,
@@ -243,7 +244,7 @@ const EMPIRE_H = 769 + 25;
 const MESSAGES_W = 735;
 const MESSAGES_H = 502 + 43;
 const ADVANCED_W = 440;
-const ADVANCED_H = 500 + 110 + 25 + 120 + 22;
+const ADVANCED_H = 500 + 110 + 25 + 120 + 22 + 56;
 
 interface OpenState {
     win: OriginalWindow;
@@ -468,7 +469,7 @@ function createGameOptionsPanel(opts: GameOptionsPanelOptions): OpenState {
     }
 
     function openAdvancedDisplaySettings(): void {
-        openSubWindow('advanced', () => createAdvancedDisplaySettings());
+        openSubWindow('advanced', () => createAdvancedDisplaySettings(empire));
     }
     function openMessageSettings(): void {
         openSubWindow('messages', () => createMessageSettings(empire));
@@ -749,6 +750,13 @@ const GALAXY_ICON_BOXES: [string, GalaxyViewDisplayKey, number, number][] = [
     ['Always show Pirates', 'galaxyViewDisplayAlwaysPirates', 10, 198],
 ];
 
+/** Game Options → Performance → Off-screen update rate (ours; sim/tick/offscreenUpdate.ts). */
+const OFFSCREEN_RATE_ITEMS: readonly { mode: OffscreenUpdateMode; label: string }[] = [
+    { mode: 'original', label: `Original (${ORIGINAL_OFFSCREEN_BATCH}/frame)` },
+    { mode: 'higher', label: `Higher (${HIGHER_OFFSCREEN_BATCH}/frame)` },
+    { mode: 'adaptive', label: 'Adaptive (spare time)' },
+];
+
 type MapDisplayKey = 'showSystemNames' | 'showRegionLabels' | 'freightFlowsDefault' | 'ditherGradients' | 'pullStationsToCentre' | 'showWeaponRangeCircles' | 'edgeScroll';
 
 // [improvements] begin
@@ -772,7 +780,7 @@ function createImprovementsWindow(): OriginalWindow {
 }
 // [improvements] end
 
-function createAdvancedDisplaySettings(): OriginalWindow {
+function createAdvancedDisplaySettings(empire: Empire | null): OriginalWindow {
     const win = openOriginalWindow({
         id: 'gameoptions-advanced',
         title: 'Advanced Display Settings',
@@ -845,10 +853,22 @@ function createAdvancedDisplaySettings(): OriginalWindow {
 
     // Ours: the sim worker (docs/sim-worker.md), read by main.ts when the next game starts or loads; on by default only
     // with 16 GB+ of RAM (src/systemMemory.ts). Was in the old Escape menu's Options panel.
-    const perf = place(groupBox('Performance', 400, 66, F2), 12, 638);
+    const perf = place(groupBox('Performance', 400, 122, F2), 12, 638);
     body.appendChild(perf);
     check(perf, 'Multithreading (next game)', st.simWorker, 10, 22, (v) => updateSettings({ simWorker: v }));
     const mem = systemMemoryGiB();
     label(perf, `Only turn on with 16 GB+ RAM${mem !== null ? ` (this computer: ${Math.round(mem)} GB)` : ''}`, 30, 44, F7 - 2);
+    // Ours: the off-screen update rate (sim/tick/offscreenUpdate.ts) — this game's, through the journaled
+    // setOffscreenUpdateRate command (a sim input); not shown from the main menu (it is not a new-game default).
+    if (empire !== null) {
+        const emp = empire;
+        label(perf, 'Off-screen update rate', 10, 70, F4 - 2);
+        const current = OFFSCREEN_RATE_ITEMS.findIndex((it) => it.mode === offscreenUpdateMode(emp.galaxy));
+        combo(perf, OFFSCREEN_RATE_ITEMS.map((it) => it.label), Math.max(0, current), 190, 66, 200, 24, (i) => {
+            const mode = OFFSCREEN_RATE_ITEMS[i]?.mode ?? 'original';
+            issuePlayerCommand(emp.galaxy, emp, 'setOffscreenUpdateRate', [mode]);
+        }, F4 - 4);
+        label(perf, 'Ships away from the view: how many update per frame (combat off-screen)', 10, 96, F7 - 2);
+    }
     return win;
 }

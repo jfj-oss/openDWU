@@ -28,6 +28,7 @@ import { commandFailureMessage, commandFailureValue } from './commandFailure';
 import { setRemoteRefreshSink } from './refresh';
 import { markReadOnlyGalaxy } from '../sim/readOnlyQuery';
 import type { ApplyStats } from './replicaSync';
+import { ADAPTIVE_SHARE_WORKER, OffscreenAdaptiveController } from '../offscreenAdaptive';
 
 /** Main-thread sync cost readout (window.__dwu.simStats in worker mode). */
 export interface SyncStats {
@@ -185,6 +186,8 @@ export class SimClientCore {
     readonly stats = createSyncStats();
     readonly renderTime: RenderTime = createRenderTime();
     readonly game: Game;
+    /** Ours: the Adaptive off-screen update rate's controller (offscreenAdaptive.ts). */
+    private readonly offscreenAdaptive = new OffscreenAdaptiveController(ADAPTIVE_SHARE_WORKER);
     /** Requests waiting for their reply, by id (commands with a callback, queries, refreshes, host ops). */
     private readonly waiting = new Map<number, Waiting>();
     /** Why the worker is gone (workerFailed), else null: requests fail at once. */
@@ -698,6 +701,7 @@ export class SimClientCore {
         // message (with those after it) waits for the next frame meanwhile.
         const take = holding ? 0 : this.inbox.length;
         let applied = 0;
+        let workerStepWallMs = 0;
         for (let k = 0; k < take; k++) {
             const m = this.inbox[k];
             const st: ApplyStats = this.replica.apply(m.delta, false, this.depBudgetMs, this.now);
@@ -707,6 +711,7 @@ export class SimClientCore {
             steps += m.steps;
             this.stats.deltas++;
             this.stats.workerStepMs = m.stepMs;
+            workerStepWallMs += m.stepMs;
             this.stats.workerDiffMs = m.diffMs;
             this.stats.deltaBytes = m.delta.stats.bytes;
             this.stats.hotBytes = m.delta.stats.hotBytes;
@@ -757,6 +762,8 @@ export class SimClientCore {
         // presentation clock evens it out).
         const backlog = pausedNow ? 0 : Math.min(FRAME_REAL_MS, this.lastBacklogMs + (t0 - this.lastStepAt));
         updateRenderTime(this.renderTime, this.galaxy.nowMs, backlog, this.speed, pausedNow, steps);
+        // Ours: Game Options → Off-screen update rate → Adaptive, from the worker's own step wall time (idle otherwise).
+        if (steps > 0) this.offscreenAdaptive.observe(this.galaxy, steps, workerStepWallMs, this.lastBacklogMs, t2);
         const s = this.stats;
         s.renderFrames++;
         s.simFrames += steps;

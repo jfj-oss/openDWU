@@ -9,6 +9,7 @@
 // and the point the sim itself would send it to (Empire.6.cs UltraFastFindNearestRefuellingLocation, as
 // BuiltObject.1.cs CalculateRefuellingPortion calls it). All read inside withPureSimReads (UI-only, no lazy writes).
 import { Graphics } from 'pixi.js';
+import type { DrawSig } from './drawCache';
 import type { BuiltObject } from '../sim/builtObject';
 import type { Empire } from '../sim/empire';
 import type { Galaxy } from '../sim/galaxy';
@@ -62,37 +63,58 @@ export function fleetRangeRadii(ships: readonly BuiltObject[]): RangeRadii | nul
     return out;
 }
 
-function dashedCircle(g: Graphics, cx: number, cy: number, r: number, w: number, h: number): void {
-    const dash = 9;
-    const gap = 7;
-    const step = (dash + gap) / r;
+const DASH_PX = 9;
+const GAP_PX = 7;
+/** Beyond this many dashes a ring is drawn only on the arc facing the viewport centre (it is huge on screen). */
+const MAX_FULL_DASHES = 1500;
+
+function ringIsPartial(r: number): boolean {
+    return (Math.PI * 2) / ((DASH_PX + GAP_PX) / r) > MAX_FULL_DASHES;
+}
+
+/** A dashed ring of radius r around (0, 0); (dx, dy) is the viewport centre relative to the ring's centre and diag the
+ * viewport diagonal (only used by a partial ring). */
+function dashedCircle(g: Graphics, r: number, dx: number, dy: number, diag: number): void {
+    const step = (DASH_PX + GAP_PX) / r;
     let a0 = 0;
     let span = Math.PI * 2;
-    if (span / step > 1500) {
+    if (ringIsPartial(r)) {
         // Huge on screen: only the part facing the viewport centre can be visible.
-        const diag = Math.hypot(w, h);
         span = Math.min(Math.PI * 2, (diag / r) * 1.5 + 0.02);
-        a0 = Math.atan2(h / 2 - cy, w / 2 - cx) - span / 2;
+        a0 = Math.atan2(dy, dx) - span / 2;
     }
     const n = Math.ceil(span / step);
     for (let i = 0; i < n; i++) {
         const a = a0 + i * step;
-        g.moveTo(cx + Math.cos(a) * r, cy + Math.sin(a) * r);
-        g.arc(cx, cy, r, a, a + (dash / r));
+        g.moveTo(Math.cos(a) * r, Math.sin(a) * r);
+        g.arc(0, 0, r, a, a + DASH_PX / r);
     }
 }
 
-/** Draws both rings (screen space, constant line width) centred on (sx, sy); radii in screen px. */
-export function drawRangeRings(g: Graphics, sx: number, sy: number, rPx: RangeRadii, w: number, h: number): void {
-    g.clear();
-    const dist = Math.hypot(Math.max(0, sx, w - sx) , Math.max(0, sy, h - sy));
+/** Draws both rings (screen space, constant line width) centred on (sx, sy); radii in screen px. The geometry is built
+ * around (0, 0) and `g` moved to (sx, sy), so with `key` (the layer's own DrawSig) a ring that only follows its moving
+ * ship or the camera is not rebuilt: only a radius change does (or, for a ring so big only its arc facing the view is
+ * drawn, any move). */
+export function drawRangeRings(g: Graphics, sx: number, sy: number, rPx: RangeRadii, w: number, h: number, key?: DrawSig): void {
+    const dist = Math.hypot(Math.max(0, sx, w - sx), Math.max(0, sy, h - sy));
     const ok = (r: number) => r >= 2 && r < dist * 4 + 1e6;
-    if (ok(rPx.range100)) {
-        dashedCircle(g, sx, sy, rPx.range100, w, h);
+    const ok100 = ok(rPx.range100);
+    const ok45 = ok(rPx.range45);
+    g.position.set(sx, sy);
+    if (key !== undefined) {
+        key.begin();
+        key.push4(ok100 ? rPx.range100 : -1, ok45 ? rPx.range45 : -1, w, h);
+        if ((ok100 && ringIsPartial(rPx.range100)) || (ok45 && ringIsPartial(rPx.range45))) key.push2(sx, sy);
+        if (!key.changed()) return;
+    }
+    g.clear();
+    const diag = Math.hypot(w, h);
+    if (ok100) {
+        dashedCircle(g, rPx.range100, w / 2 - sx, h / 2 - sy, diag);
         g.stroke({ width: 1, color: COLOR, alpha: 0.35 });
     }
-    if (ok(rPx.range45)) {
-        dashedCircle(g, sx, sy, rPx.range45, w, h);
+    if (ok45) {
+        dashedCircle(g, rPx.range45, w / 2 - sx, h / 2 - sy, diag);
         g.stroke({ width: 2.5, color: COLOR, alpha: 0.8 });
     }
 }

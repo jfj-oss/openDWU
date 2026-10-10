@@ -29,6 +29,7 @@
 
 import { Container, Graphics, Sprite, Texture } from 'pixi.js';
 import type { Camera } from './camera';
+import { DrawSig } from './drawCache';
 import type { AssetStore } from './assets';
 import type { BuiltObject } from '../sim/builtObject';
 import type { Fighter } from '../sim/combat/fighters';
@@ -226,6 +227,7 @@ export class BattleBarLayer {
         if (!(f <= BATTLE_BARS_MAX_FACTOR)) {
             if (this.drawnLast) {
                 this.lines.clear();
+                this.sig.reset();
                 for (const s of this.pool) s.visible = false;
                 this.drawnLast = false;
             }
@@ -239,7 +241,9 @@ export class BattleBarLayer {
         const oy = cam.y;
         this.root.position.set(ox, oy);
         const g = this.lines;
-        g.clear();
+        // The bars' rects are collected (addLine) and the Graphics rebuilt only when they changed: a paused game or a
+        // fight at rest under a still camera draws the same bars again.
+        this.ops.length = 0;
         this.used = 0;
         const k = 1 / z; // world units per screen px
         const tint = assaultIconTint(nowMs);
@@ -283,15 +287,26 @@ export class BattleBarLayer {
             for (const l of lines) any = this.addLine(g, left, top, l, k) || any;
         }
         for (let i = this.used; i < this.pool.length; i++) this.pool[i].visible = false;
+        const ops = this.ops;
+        const sig = this.sig;
+        sig.begin();
+        for (let i = 0; i < ops.length; i++) sig.push(ops[i]);
+        if (sig.changed()) {
+            g.clear();
+            for (let i = 0; i < ops.length; i += 5) g.rect(ops[i], ops[i + 1], ops[i + 2], ops[i + 3]).fill({ color: ops[i + 4], alpha: 1 });
+        }
         this.lines.visible = any;
     }
 
     /** One 2 px segment (XnaDrawingHelper.DrawLine: a quad of the thickness centred on the line). */
-    private addLine(g: Graphics, left: number, top: number, l: BarLine, k: number): boolean {
+    private addLine(_g: Graphics, left: number, top: number, l: BarLine, k: number): boolean {
         if (l.x1 === l.x2) return false;
         const x1 = Math.min(l.x1, l.x2);
         const w = Math.abs(l.x2 - l.x1);
-        g.rect(left + x1 * k, top + (l.y - BAR_THICKNESS_PX / 2) * k, w * k, BAR_THICKNESS_PX * k).fill({ color: l.color, alpha: 1 });
+        this.ops.push(left + x1 * k, top + (l.y - BAR_THICKNESS_PX / 2) * k, w * k, BAR_THICKNESS_PX * k, l.color);
         return true;
     }
+    /** This frame's bar rects (x, y, w, h, colour), drawn by update when they differ from the last drawn ones. */
+    private readonly ops: number[] = [];
+    private readonly sig = new DrawSig();
 }
