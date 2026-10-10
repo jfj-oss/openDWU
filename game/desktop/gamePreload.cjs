@@ -4,6 +4,8 @@
 // - simProcess: the game's simulation in a process of its own (desktop/simProcess.cjs, src/simworker/simEndpoint.ts).
 //   `start()` resolves the sim's id; its MessagePort then arrives as a window message `{ dwuSimPort: id }` (a port
 //   cannot cross the context bridge; window.postMessage is Electron's documented way to hand one to the page).
+// - net: LAN multiplayer (desktop/netHost.cjs, src/net/netBridge.ts). host / connect resolve; each connection's
+//   MessagePort then arrives as a window message `{ dwuNetLink: id, kind, remote }`.
 'use strict';
 const { contextBridge, ipcRenderer } = require('electron');
 
@@ -19,7 +21,17 @@ ipcRenderer.on('dwu:sim-error', (_event, msg) => {
     for (const cb of errorListeners) cb(msg.id, String(msg.message));
 });
 
+ipcRenderer.on('dwu:net-link', (event, msg) => {
+    if (msg && typeof msg.id === 'number' && event.ports.length === 1) window.postMessage({ dwuNetLink: msg.id, kind: String(msg.kind), remote: String(msg.remote) }, '*', event.ports);
+});
+
 contextBridge.exposeInMainWorld('dwuDesktop', {
+    net: {
+        host: (port) => ipcRenderer.invoke('dwu:net-host', { port: Number(port) }),
+        stopHost: () => ipcRenderer.invoke('dwu:net-stop-host'),
+        connect: (url) => ipcRenderer.invoke('dwu:net-connect', String(url)),
+        addresses: () => ipcRenderer.invoke('dwu:net-addresses'),
+    },
     checkForUpdates: () => ipcRenderer.invoke('dwu:check-updates'),
     simProcess: {
         start: () => ipcRenderer.invoke('dwu:sim-start'),

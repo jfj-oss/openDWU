@@ -2,9 +2,11 @@
 
 Status: **Phase 1 of 5 done (2026-10-10)**, a few small leftovers in §6. Milestone 1 (the audit, the core API, the
 clear "a human controls this empire" sim rules), Milestone 2 (the local viewer in the UI, an inbox for every human, the
-(a) leftovers, the plumbing) and Milestone 3 (the nine decisions of §4, `createGame` for N humans). Nothing changes for the player: the seed
-pins (`npm run repin -- --check`) are unchanged at every commit, one-human saves are byte-identical to before, and every
-multiplayer-only rule runs only when the game has more than one human (`isMultiHuman`).
+(a) leftovers, the plumbing) and Milestone 3 (the nine decisions of §4, `createGame` for N humans). **Phase 3 (LAN play,
+§10) is built** on top of the lockstep core (§8): host / join by IP in the desktop app, the lobby, the version and data
+check, and the session flow. Nothing changes for the player: the seed pins (`npm run repin -- --check`) are unchanged at
+every commit, one-human saves are byte-identical to before, and every multiplayer-only rule runs only when the game has
+more than one human (`isMultiHuman`).
 
 ## 1. The plan
 
@@ -552,7 +554,7 @@ loop asks `lockstepStepper(galaxy)`, which is null unless a session is attached.
 | `src/net/protocol.ts` | The wire messages (JSON). A command on the wire is a `NetCommand`: the command-log fields (`empire` as its stable `empireId`, `op`, args in the command-log codec), plus the peer id and a sequence number. |
 | `src/net/transport.ts` | The `Link` interface (an ordered, reliable text channel) and the in-memory transport (`memoryLinkPair`, `MemoryListener`). |
 | `src/net/wsTransport.ts` | The WebSocket `Link` on the standard WebSocket API (browser, Electron renderer, Node 22's global). `connectWebSocket(url)` is for clients; `wrapSocket(socket)` wraps an accepted server socket. |
-| `scripts/lib/wsServer.mjs` | A small WebSocket server with no dependencies (`node:http` upgrade, RFC 6455), for the host. The desktop main process can reuse it. |
+| `desktop/wsServer.cjs` | A small WebSocket server with no dependencies (`node:http` upgrade, RFC 6455), for the host: the desktop main process runs it (§10); `scripts/lib/wsServer.mjs` re-exports it for the scripts. |
 | `src/net/lockstep.ts` | `LockstepSession`, which works with any transport and any sim (see below). |
 | `src/net/lockstepSim.ts` | The integration seam. `GalaxyLockstepSim` steps to frame F with these commands on a real game. `SessionStepper` lets the in-thread sim loop be driven by a session. |
 | `src/net/lockstepSeam.ts` | The registry `src/simLoop.ts` reads (`setLockstepStepper` / `lockstepStepper`). When a stepper is set, the loop calls it instead of its own frame budget. |
@@ -630,16 +632,17 @@ Results on 2026-10-10 (seed 1, 300 stars, 4 empires, 4x, input delay 4, CPU core
 | Traffic (host) | sent 5,615 messages / 37.6 MB (mostly the two saves), received 4,475 / 1.1 MB |
 | In-memory transport | 600 frames, two sims in one process: the digests match |
 
-**What Phase 3 still needs**
+**What Phase 3 still needs** (most of it is done now: §10)
 
-- **App wiring.** A host/join screen. Create the session, then call `setLockstepStepper(galaxy, new SessionStepper(…))`.
-  When a resync or join replaces the game (`onGameReplaced`), switch the views over, as loading a save does.
+- ~~**App wiring.**~~ Done (§10): the Multiplayer screen and lobby; `MultiplayerGame` sets the stepper, and a resync or
+  join that replaces the game rebuilds the view as loading a save does.
 - **Worker mode.** `SimHost.tick` needs the same seam. Its command replies (`settleCommands`) expect commands to be
   applied at the next boundary, not D frames later. Its `stepSerial` must count the lockstep frames.
 - **No camera LOD pass in multiplayer.** Each screen's camera differs, so the camera cannot be a shared input. The
   adapter runs without a view, as the headless harness does.
-- **Humans per peer at the lobby.** `setHumanEmpires` must run as a deterministic start step, plus a peer → empire map for
-  `authorize`. The UI-record sender (`obtainUiRecords`) must use the local viewer's empire (Phase 1, §6 item 5).
+- ~~**Humans per peer at the lobby.**~~ Done (§10): the lobby rows become `StartGameOptions.humanPlayers`, the peer →
+  slot → human map is the `authorize` check. Still open: the UI-record sender (`obtainUiRecords`) must use the local
+  viewer's empire (Phase 1, §6 item 5).
 - ~~**Stable references.**~~ Done (2026-10-10). Commands are encoded when issued and resolved D frames later, so the
   codec no longer names anything by a list position. Codec version 2 (`COMMAND_CODEC_VERSION`, journaled as
   `PlayerLogEntry.codec`) names an empire by `empireId`; fleets, designs, characters, troops and habitats by a stable
@@ -654,13 +657,13 @@ Results on 2026-10-10 (seed 1, 300 stars, 4 empires, 4x, input delay 4, CPU core
   `scrapColonyFacility`'s facility index (checked against the facility type), `moveResearch`'s target slot and
   `setControlGroup`'s slot (positions by meaning). `exposeUncoveredPlanetDestroyer` now passes the location itself
   (`'glbo'` above); its older log entries carry a `galaxyLocations` index, which still decodes and applies.
-- **Smaller saves.** A 300-star save is 16.5 MB of JSON. Compress it (`CompressionStream`) and chunk it for joins and
-  resyncs.
+- ~~**Smaller saves.**~~ Done: gzip + chunks (`saveChunk`); a 100-star save travels as 0.76 MB.
 - **A finer desync check.** `stateDigest` hashes key fields only. Add a deeper periodic hash, and log the first
   divergent frame to help debugging.
 - **Messages per human** (Phase 1, §6 item 2), before two people can really play.
-- **Cross-machine determinism.** Both demo processes run on one machine; test Linux/macOS/Windows peers early.
-- **Electron host.** Run `wsServer.mjs` in the main process and bridge it to the renderer or worker over IPC.
+- **Cross-machine determinism.** Linux ↔ macOS is checked (§9, and a LAN session in §10.6); Windows is not yet.
+- ~~**Electron host.**~~ Done (§10): `desktop/netHost.cjs` runs `desktop/wsServer.cjs` (moved from
+  `scripts/lib/wsServer.mjs`, which now re-exports it) and bridges each connection to the page as a MessagePort.
 - **Later (Phase 4).** Adaptive input delay for the Internet, a relay or WebRTC, reconnects, host migration, AI
   takeover in `onPeerLeft`.
 
@@ -705,3 +708,126 @@ Findings:
   on Linux (the same file content). Harmless; the runner's data fingerprint lower-cases paths.
 - Not a sim problem: `defaultRaceName` (`startGameOptions.ts`, the wizard default) sorts with the OS locale, and the
   sim's other collators and `toLocaleString` calls name `'en-US'`.
+
+## 10. Phase 3: LAN play
+
+Built on branch `wip/mp-lan`, on top of the lockstep core (§8). Single-player is unchanged: nothing runs unless a LAN game
+is started, `npm run repin -- --check --workers 1` = 0, and the lockstep demo still passes. The per-human screens
+(each player's own HUD, messages and orders) come with the rest of Phase 1; see §10.7.
+
+### 10.1 What is built
+
+| File | What |
+|---|---|
+| `desktop/netHost.cjs` | Main process. `host(port)`: a WebSocket server on every interface (`wsServer.cjs`); each accepted connection is bridged to a `MessageChannelMain`, one end sent to the page (`dwu:net-link`). `connect(url)`: a client WebSocket (Node's global one) bridged the same way. `addresses()`: this machine's LAN addresses. The page cannot open `ws://` to a LAN address itself: its `dwu://` origin is a secure context, and Chromium blocks that as mixed content. |
+| `desktop/wsServer.cjs` | The dependency-free WebSocket server (moved from `scripts/lib/wsServer.mjs`, which re-exports it for the demo). New: an incoming message over 64 MB closes the connection. |
+| `desktop/gamePreload.cjs`, `desktop/main.cjs` | `dwuDesktop.net` (host / stopHost / connect / addresses); `DWU_USER_DATA_DIR` gives a second copy its own profile and single-instance lock (two copies on one PC). |
+| `src/net/portTransport.ts` | A lockstep `Link` over a MessagePort. |
+| `src/ui/multiplayer/netBridge.ts` | The page's endpoint: the desktop bridge, or in a browser a plain WebSocket (join only: a page cannot listen). Address parsing (`ip`, `ip:port`, `[v6]:port`; default port 47610). |
+| `src/net/fingerprint.ts` | `AppFingerprint` (version, build, JS engine, protocol, theme, add-on hash, data hash) and `fingerprintMismatch`, which words the refusal for the joiner. The app records every data / theme / add-on file it fetches (`noteDataRead` in `main.ts` fetchTextBrowser and loadSystemNames): the data hash is sha-256 over `path\0text\0`, paths lower-cased, a UTF-8 BOM dropped, the install listings (asset manifest) left out. `fingerprintFiles()` lists each file's hash, to find the file behind a mismatch. |
+| `src/appVersion.ts`, `vite.config.ts` | `APP_BUILD` (`__DWU_BUILD__`): `$DWU_BUILD`, else the git commit, plus a hash of the uncommitted changes to `src/`, `scenarios/` and the pages when the tree is dirty. |
+| `src/net/lobby.ts` | The lobby protocol (`lobbyHello` with the fingerprint, `lobbyRefused`, `lobbyWelcome`, `lobbyState`, `lobbyPick`, `lobbyStart`, `lobbyBye`), `LobbyHost` / `LobbyClient`, and `HandoffLink`: after Start the link belongs to the lockstep session, and what arrives before the session listens is held. The host's handoff rewrites the joiner's lockstep hello name to its slot (`peerName` = `"<slot>\|<name>"`), so a client cannot pose as another slot. |
+| `src/net/multiplayerGame.ts` | `MultiplayerGame`: the lockstep session over the real game. `authorize`: a peer may only command its slot's human empire (`humanEmpires[humanIndex]` at the command's frame). The host holds at frame 0 until every lobby player joined (a client that built the game itself joins with its frame-0 digest: no save travels). Status for the screen: waiting, resyncing, a player left (the host pauses), the host is gone. `ensureMultiplayerHumans`: until createGame founds N humans (Phase 1), the first AI empires become the missing humans, the same on every peer. |
+| `src/net/lockstep.ts` | One new hook, `onResyncStart` (client: a resync arrived, its save is loading). |
+| `src/ui/multiplayer/multiplayerApp.ts` (+ `.css`) | The Multiplayer screen, the lobby, the in-game banner and status chip, the LAN save extras, and `window.__dwuMp` (scripts). |
+| `src/main.ts` | `multiplayerDeps`: build the game in-thread from the start (`toCreateGameOptions` + the host's `createExtras`), load a save for the host, show a game (tearing down the one up), the wizard and the save picker. A LAN game always runs the in-thread sim (the sim worker has no lockstep seam yet). |
+| `src/ui/screens/mainMenu.ts` | A "Multiplayer" item after Load Game (text: there is no original art for it). |
+| `src/ui/screens/newGameWizard.ts` | `initialOptions` (open on the lobby's settings) and `multiplayer` (no hot-seat list: the humans are the lobby's players). |
+| `src/ui/hotSeat.ts` | `networked`: no Switch Player button, hotkey or curtain in a LAN game. |
+| `src/sim/save/gameSave.ts` | `GameSaveJSON.multiplayer = { players }` (the lobby name of each human, by human index), written only for a LAN game, just before `galaxyBackdrop`; `savedMultiplayerPlayers` reads it from the tail. |
+
+### 10.2 How to host and join
+
+1. **Host** (desktop app): main menu → **Multiplayer** → your name, a port (default 47610) → **Host Game**. The lobby
+   lists this machine's addresses ("Players join with: 192.168.1.8:47610 …"); tell the others one of them. The port must
+   be open in the host's firewall (macOS asks the first time; on Linux / Windows allow it for the app).
+2. **Join** (desktop app): Multiplayer → your name, the host's `IP:port` → **Join Game**. The browser / dev build can
+   join too (it opens the WebSocket itself), but it runs a different JS engine than the desktop app, so the version
+   check refuses it against a desktop host; it cannot host.
+3. **Lobby.** Each player sets their own row: empire name, race, government (the list follows the race, as in the
+   hot-seat rows), the two flag colours, and **Ready**. The host's row is player 1 of the wizard.
+   - **Game Settings…** (host) opens the new-game wizard on the lobby's settings; its Start returns to the lobby.
+   - **Load Saved Game…** (host) picks a save. The lobby then lists the save's human empires; each player picks one (a
+     player whose lobby name played it before gets it automatically). **New Game Instead** goes back.
+   - **Start Game** (host) is enabled once every player is ready (and, for a save, has picked an empire).
+4. **The game** starts paused. Any player can pause or resume (the HUD's pause button or keys); only the host sets the
+   speed; the game runs at the pace of the slowest machine. The chip at the lower left shows the role, the players,
+   your empire, the ping to the host and the resyncs.
+
+Two copies on one PC (testing): start the second with its own profile, e.g.
+`DWU_USER_DATA_DIR=/tmp/p2 electron desktop/main.cjs`, and join `127.0.0.1:<port>`.
+
+### 10.3 The version and data check
+
+The joiner's hello carries its `AppFingerprint`; the host compares it with its own and refuses the first difference, in
+this order, with a message for the joiner: the protocol, the version ("The host runs openDWU 0.1.16, you run 0.1.15"),
+the build, the JS engine (Node, Chrome and Electron compute the game differently, §9), the theme, the add-ons (every
+file under `assets/scenarios/` the app loaded), and the game data (every data / theme file read). The add-ons a game
+uses are part of the host's start options; the hash makes sure everyone has the same definitions.
+
+### 10.4 The session
+
+- **Start.** A new game: the host sends `MultiplayerStart` — the start options (the clients' rows as `humanPlayers`, in
+  slot order), the `createExtras` from the host's settings that `createGame` takes beside them (game options, message
+  options, flag shape), the players (slot → human index), the lockstep parameters and the clock — all through one JSON
+  round trip on the host too. Every peer builds the galaxy itself, then joins the session with its frame-0 digest; the
+  host checks it and sends no save when it matches. A loaded game: the clients get the host's save in the session's
+  welcome (gzip, chunked: §8).
+- **Commands.** Each screen's local viewer is its player's empire (`setLocalViewerEmpire`). Commands go through the
+  journaled path (`issuePlayerCommand` → the session → applied at frame + 4 on every peer). A command for another
+  empire is refused on every peer (`authorize`).
+- **Clock.** The host's inputs carry the speed and pause; a client's pause button asks the host. Auto-pauses on a client
+  (an event pop-up, Game Options) also pause everyone.
+- **Desync.** Every 60 frames the clients send their digest; on a mismatch the host sends that client a save. The client
+  shows "Resyncing with the host…", reloads, and its view is rebuilt on the new galaxy; the host shows "Resyncing
+  <player>…" until that player's next digest matches.
+- **Disconnect.** A client leaving pauses the game on the host with "<player> disconnected … The game is paused" (the
+  host may resume; the empire stands idle). The host leaving ends the game on the clients ("Lost the connection to the
+  host"). Both banners offer Main Menu. A connection that arrives after the start is refused ("joining a running game
+  comes in a later version").
+- **Saving.** Any player can save (each has the whole game); the host's save is the one to keep. A LAN save carries the
+  players by human index (`multiplayer` key). Loading it as host: Multiplayer → Host Game → Load Saved Game…; the same
+  players get their empires back by name.
+
+### 10.5 Scripting (`window.__dwuMp`, `window.__dwuMpLobby`)
+
+`__dwuMp` (while a LAN game runs): `role`, `status`, `frame`, `clock`, `stats`, `gameMs`, `peers()`, `digest()`,
+`myEmpire()`, `issue(op, args)` (for this player's empire), `renameOther(humanIndex, label)` (a refused command),
+`scriptStep(tag)` (rename the first ship and drop a waypoint), `shipNames()`, `pause(bool)`, `setSpeed(n)`.
+`__dwuMpLobby` (host lobby): `patchSettings(partial)` (as the wizard would), `state()`, `fingerprint()`, `files()`.
+
+### 10.6 Test results (2026-10-10)
+
+| Test | Result |
+|---|---|
+| Headless (lobby → start → two `MultiplayerGame`s over the in-memory transport, seed 7) | the 0.1.14 joiner refused with "The host runs openDWU 0.1.15, you run 0.1.14…"; the host held at frame 0; the client joined without a save (263 bytes); 15 digest checks, digests equal at frame 900; a command for the host's empire refused on both; the client's drop paused the host |
+| **Two desktop apps on one PC** (host + client on 127.0.0.1, through the real UI: menu → Multiplayer → lobby → wizard round trip → Start), seed 4242, 100 stars, a scripted minute at 2× | **final digests match: `f48d9d71cae4edb0` at game ms 72,266 on both**; 64 digest checks; the one mismatch was the injected one (the client's money changed outside the sim), resynced in under a second, view rebuilt; the client's pause paused both; the client's command for the host's empire refused on both; each side saw the other's renames; the host's save carries `{"players":["Hosty","Clienty"]}`; the client quitting paused the host with the banner |
+| **Load as host** (that save, a new host and client app) | the client got its old empire back by name ("Maru Pasdo Nation (was Clienty)"), received the save (0.76 MB compressed, 4.2 M characters), digests equal at load (`1b8d313e032f6352`) and after 16 s more play (`8740b0e8eec22feb`, game ms 72,166), 19 checks, 0 mismatches |
+| **Linux desktop host ↔ Mac client over Tailscale** (the client: the same code bundled and run under the Mac app's Electron 44.4.5 as Node, `ELECTRON_RUN_AS_NODE`; it builds the game from the host's start with the desktop shell's asset manifest), a minute at 2× with commands from both | the data fingerprints are equal across the machines (`caff21a1a0bc`, 1,338 files; macOS opens other spellings of some files, the lower-cased keys agree); **62 digest checks, 0 mismatches, final digest `1cd5229dd39191a0` at game ms 117,066 on both**; 4 stalls (66 ms) on the host |
+| Same, client under this PC's Electron as Node | 32 checks, 0 mismatches (the Electron renderer and Electron-as-Node run the same game) |
+| `npm run repin -- --check --workers 1` | 0 pins would change |
+| `scripts/lockstep-demo.mjs` (WebSocket) | OK: digests match at frame 3780 |
+| vitest: the sim-worker, save, save panel, main menu and wizard tests (26 files) | 182 passed |
+
+### 10.7 What is left
+
+Waiting for the rest of Phase 1 (on its branch, not on main yet):
+
+- **createGame with N humans.** Until `toCreateGameOptions` reads `humanPlayers`, `ensureMultiplayerHumans` makes the
+  first AI empires the clients' humans, so their lobby picks (race, name, colours) are not applied yet.
+  TODO(mp-phase1) in `multiplayerGame.ts`.
+- **The per-human UI.** On a client the HUD, messages and screens still show the primary human (the host's empire), and
+  orders from the HUD go out as `galaxy.playerEmpire` (the UI-record sender), so the session refuses them; scripted
+  commands (`__dwuMp.issue`) for the client's empire work. Phase 1 §6 items 1, 2 and 5 fix this: each screen then shows
+  and commands its own `localViewerEmpire`.
+
+Phase 4:
+
+- **Rejoin** for the same player after a disconnect, and **AI takeover** of a left player's empire
+  (`hooks.onPeerLeft`; TODO(mp-phase4) in `multiplayerGame.ts`). Today the empire stands idle.
+- **Host migration** (the host leaving ends the game).
+- **Internet play**: a relay or WebRTC, invite codes, an adaptive input delay (the fixed 4 frames suit a LAN).
+- **The sim worker**: a lockstep seam in `SimHost.tick` (§8), so a LAN game can run its sim off the main thread.
+
+Phase 5: chat, human-to-human diplomacy, joining a running game (refused today), a per-human handicap, a Windows peer
+in the cross-machine check, and a deeper desync hash with the first divergent frame logged.

@@ -204,6 +204,33 @@ describe('FogOfWar per-frame cache', () => {
     });
 });
 
+describe('FogOfWar answers as IsObjectVisibleToThisEmpire (Empire.9.cs 3198)', () => {
+    it('ships outside systems: the same answer for every point, with and without candidate ships in the cell', () => {
+        const player = makeEmpire();
+        const other = makeEmpire();
+        const targets: BuiltObject[] = [];
+        for (let x = -40000; x <= 40000; x += 2500) {
+            for (const stealth of [1, 0.5]) targets.push(ship({ empire: other, xpos: x, ypos: x / 3, stealth, nearestSystemStar: star(S_UNSEEN) }));
+        }
+        const cases: BuiltObject[][] = [
+            // A scanning ship of the player outside any system (passes FindShipOutsideSystemWithScanRange's filter).
+            [ship({ empire: player, xpos: 0, ypos: 0, sensorProximityArrayRange: 15000 })],
+            // None that passes it: in a system, in hyperspace, another empire's.
+            [
+                ship({ empire: player, xpos: 0, ypos: 0, sensorLongRange: 30000, nearestSystemStar: star(S_UNSEEN) }),
+                ship({ empire: player, xpos: 100, ypos: 0, sensorLongRange: 30000, warpSpeed: 100, topSpeed: 10, currentSpeed: 200 }),
+                ship({ empire: other, xpos: 0, ypos: 0, sensorLongRange: 30000 }),
+            ],
+        ];
+        for (const ships of cases) {
+            const galaxy = makeGalaxy(player, ships);
+            const fog = new FogOfWar(galaxy);
+            for (const t of targets) expect(fog.builtObject(t)).toBe(builtObjectVisibleToPlayer(galaxy, player, t));
+            expect(targets.some((t) => fog.builtObject(t))).toBe(ships.length === 1);
+        }
+    });
+});
+
 describe('picking and the selection panel', () => {
     const player = makeEmpire({ status: { [S_KNOWN]: SystemVisibilityStatus.Visible } });
     const other = makeEmpire();

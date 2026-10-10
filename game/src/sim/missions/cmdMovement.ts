@@ -24,6 +24,7 @@ import { checkSendPreWarpProgressEventMessage } from '../events';
 import { PreWarpProgressEventType } from '../exploration';
 import { scenarioQuery } from '../scenario/hooks';
 import { moveTogetherCruiseSpeed, moveTogetherHold, moveTogetherJumpCountdown, moveTogetherJumpEntered, moveTogetherReleased, moveTogetherWarpSpeed } from '../fleets/moveTogether';
+import { noteBuiltObjectEffect } from '../combat/effectWatch';
 import {
     MAX_SOLAR_SYSTEM_SIZE,
     MOVEMENT_IMPULSE_SPEED,
@@ -226,6 +227,7 @@ export const cmdHyperTo: CommandHandler = (ctx) => {
         // long num7 = Math.Max(0L, HyperjumpInitiate * 1000 + (Galaxy.Rnd.Next(0, 2000) - 1000));
         const num7 = Math.max(0, bo.hyperjumpInitiate * 1000 + (galaxy.rnd.next(0, 2000) - 1000));
         bo.hyperjumpCountdown = galaxyStarDate(galaxy) + num7;
+        noteBuiltObjectEffect(galaxy, bo); // observation only (render/effectsLayer.ts)
         const baseHyperJumpAccuracy = baconMovementSettings.baseHyperJumpAccuracy;
         const exitPoint = galaxy.selectHyperJumpExitPoint(baseHyperJumpAccuracy);
         bo.hyperjumpX = exitPoint.x;
@@ -254,7 +256,10 @@ export const cmdHyperTo: CommandHandler = (ctx) => {
         // openDWU rule (not in the original): a fleet moving together joins one shared jump start (fleets/moveTogether.ts).
         if (shipGroup !== null && shipGroup.together !== undefined) moveTogetherJumpEntered(galaxy, bo, starDate);
     }
-    if ((bo.shipGroup as ShipGroup | null)?.together !== undefined) moveTogetherJumpCountdown(bo, starDate);
+    if ((bo.shipGroup as ShipGroup | null)?.together !== undefined) {
+        moveTogetherJumpCountdown(bo, starDate);
+        noteBuiltObjectEffect(galaxy, bo); // observation only (render/effectsLayer.ts): the countdown may have moved
+    }
     if (bo.warpSpeed <= 0) {
         clearPreviousMissionRequirements(galaxy, bo);
         return result;
@@ -337,6 +342,7 @@ export const cmdHyperTo: CommandHandler = (ctx) => {
         if (scenarioStop || checkWhetherArrived(galaxy, bo, bo.xpos, bo.ypos, hyperExit.x, hyperExit.y, 0.0)) {
             bo.hyperjumpJustExited = true;
             bo.hyperExitStartAnimation = true;
+            noteBuiltObjectEffect(galaxy, bo); // observation only (render/effectsLayer.ts)
             bo.hyperjumpPrepare = false;
             bo.hyperEnterStartAnimation = false;
             checkForHyperExitGravityWells(galaxy, bo, hyperExit);

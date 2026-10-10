@@ -107,6 +107,7 @@ import {
 } from './weapons';
 import { baconSettings } from '../data/baconSettings';
 import { isHumanEmpire } from '../humanEmpires';
+import { noteBuiltObjectEffect } from './effectWatch';
 
 // ---------------------------------------------------------------------------------------------------------------
 // Constants (BaconFighter.cs 18-26, BaconBuiltObject.cs 71-79)
@@ -2146,6 +2147,7 @@ export function fighterInflictDamageFull(
         if (builtObject.currentShields >= hitPower) {
             builtObject.currentShields = Math.fround(builtObject.currentShields - Math.fround(hitPower));
             builtObject.lastShieldStrike = time;
+            noteBuiltObjectEffect(galaxy, builtObject); // observation only (render/effectsLayer.ts)
             builtObject.lastShieldStrikeDirection = Math.fround(strikeAngle);
             if (targetStats !== null) targetStats.shieldsStruckUs(hitPower);
             if (targetGroupStats !== null) targetGroupStats.shieldsStruckUs(hitPower);
@@ -2228,6 +2230,7 @@ export function fighterInflictDamageFull(
                 explosion3.explosionImageIndex = toShort(galaxy.rnd.next(10, 20));
                 explosion3.explosionWillDestroy = true;
                 builtObject.explosions.push(explosion3);
+                noteBuiltObjectEffect(galaxy, builtObject); // observation only (render/effectsLayer.ts)
                 builtObject.hasBeenDestroyed = true;
                 inflictWarDamageBuiltObject(galaxy, self.empire, builtObject);
                 if (allowRecursion) {
@@ -2329,6 +2332,7 @@ export function fighterInflictDamageFull(
             explosion4.explosionOffsetY = toShort(num23);
             explosion4.explosionWillDestroy = false;
             builtObject.explosions.push(explosion4);
+            noteBuiltObjectEffect(galaxy, builtObject); // observation only (render/effectsLayer.ts)
         }
     }
     return false;
@@ -2619,6 +2623,7 @@ export function launchFighter(galaxy: Galaxy, builtObject: BuiltObject, fighter:
         fighter.xpos = builtObject.xpos;
         fighter.ypos = builtObject.ypos;
         fighter.onboardCarrier = false;
+        noteBuiltObjectEffect(galaxy, builtObject); // observation only (render/effectsLayer.ts)
         fighter.missionType = FighterMissionType.Patrol;
         const heading = builtObject.heading;
         const halfPi = Math.fround(F_PI / 2);

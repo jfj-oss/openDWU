@@ -764,8 +764,43 @@ export class SystemView {
         this.view.bodiesBuilt.delete(this);
     }
 
+    /**
+     * Inputs of the last update when everything it drew depended on them alone (`staticAt` true): the camera and the map
+     * icon's texture, at a zoom with no animated or fog-dependent part (no star discs, black hole / super nova, orbit
+     * rings or bodies: galaxy / sector zoom). An update with the same inputs would set the same values, so it is skipped
+     * (render: galaxy-zoom perf, 4000 systems a frame); only the name label is placed, as galaxyMarkers.ts decorateLabels
+     * may have moved it.
+     */
+    private staticAt = false;
+    private staticZoom = Number.NaN;
+    private staticCamX = Number.NaN;
+    private staticCamY = Number.NaN;
+    private staticCamW = Number.NaN;
+    private staticCamH = Number.NaN;
+    private staticIcon: Texture | null = null;
+    private staticIconW = Number.NaN;
+
+    /** The system was culled without an update (MainView.update's pre-cull): its next update runs in full. */
+    markCulled(): void {
+        this.staticAt = false;
+    }
+
     /** Per-frame level-of-detail update (only for systems near the view). */
     update(zoom: number, cam: Camera, labelAllowed: boolean, dtSeconds: number): void {
+        if (
+            this.staticAt &&
+            zoom === this.staticZoom &&
+            cam.x === this.staticCamX &&
+            cam.y === this.staticCamY &&
+            cam.width === this.staticCamW &&
+            cam.height === this.staticCamH &&
+            this.mapIcon.texture === this.staticIcon &&
+            this.mapIcon.texture.width === this.staticIconW
+        ) {
+            if (this.root.visible) this.updateNameLabel(zoom, labelAllowed);
+            return;
+        }
+        this.staticAt = false;
         const star = this.system.systemStar;
         // Culling (render: perf pass): skip the system only when everything it can draw — star, orbit rings,
         // planets, moons, rocks (drawRadius, world units) plus labels and minimum sprite sizes (px margin) — is off
@@ -776,6 +811,7 @@ export class SystemView {
         this.root.visible = visible;
         this.view.systemLayer.set(this.root, visible);
         if (!visible) {
+            this.noteStatic(zoom, cam, true);
             return;
         }
 
@@ -866,12 +902,31 @@ export class SystemView {
         }
         this.setDetailAttached(bodiesShown || this.ring.visible || (this.starDiscs?.visible ?? false));
 
-        // System name label under the star (small white text). Task 12p: only
-        // drawn above f = 150 (MainView.2.cs:5153/5627-5630) — nothing names
-        // stars at system zoom; offset uses the larger of the map icon and
-        // the drawn star size.
+        this.updateNameLabel(z, labelAllowed);
+        // Nothing animated or fog-dependent drawn at this zoom: the next update with the same inputs can be skipped.
+        this.noteStatic(zoom, cam, !isBHOrSN && !(f < starDiscMaxFactor(star.type)) && !bodiesShown && !this.ring.visible);
+    }
+
+    private noteStatic(zoom: number, cam: Camera, isStatic: boolean): void {
+        this.staticAt = isStatic;
+        this.staticZoom = zoom;
+        this.staticCamX = cam.x;
+        this.staticCamY = cam.y;
+        this.staticCamW = cam.width;
+        this.staticCamH = cam.height;
+        this.staticIcon = this.mapIcon.texture;
+        this.staticIconW = this.mapIcon.texture.width;
+    }
+
+    /**
+     * System name label under the star (small white text). Task 12p: only drawn above f = 150 (MainView.2.cs:5153/
+     * 5627-5630) — nothing names stars at system zoom; offset uses the larger of the map icon and the drawn star size.
+     */
+    private updateNameLabel(z: number, labelAllowed: boolean): void {
+        const f = 1 / z;
         this.nameLabel.visible = labelAllowed && f > 150;
         if (this.nameLabel.visible) {
+            const star = this.system.systemStar;
             const gpx = starGalaxySpritePx(star.diameter, z);
             const iconPx = clamp(star.diameter * z * 30, 2.5, 26);
             this.nameLabel.position.set(0, (Math.max(iconPx, gpx) * 0.5 + 10) / z);
@@ -2100,6 +2155,7 @@ export class MainView {
             if (!systemInView(star.xpos, star.ypos, sv.maxExtent, cam.x, cam.y, cam.width, cam.height, z, 400)) {
                 sv.root.visible = false;
                 this.systemLayer.set(sv.root, false);
+                sv.markCulled();
                 continue;
             }
             // Decide label visibility greedily (min 80 px between labels).

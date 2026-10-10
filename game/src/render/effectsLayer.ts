@@ -55,6 +55,7 @@ import { ComponentType } from '../sim/data/components';
 import { EXPLOSION_IMAGE_COUNT, type Explosion } from '../sim/combat/damage';
 import { MIN_TIME, galaxyStarDate } from '../sim/tick/simTime';
 import { fightersOf, type Fighter } from '../sim/combat/fighters';
+import { TrackedBuiltObjects, hasLaunchedFighter } from './effectTracking';
 import { ComponentCategoryType } from '../sim/data/policies';
 import { fighterDrawnSizePx } from './fighterLayer';
 import { fogOf } from './fog';
@@ -809,6 +810,9 @@ export class EffectsLayer {
     private candSource: readonly unknown[] | null = null;
     private candLength = -1;
     private candFrames = 0;
+    /** The objects that may be candidates (effectTracking.ts: noted by the sim, or still with something to draw), so a
+     *  refresh visits a few hundred objects instead of every object and all its weapons. */
+    private readonly tracker: TrackedBuiltObjects;
 
     /** Ion-strike bolts (lightning.ts), cached per (seed, size). */
     private lightning = new LightningTextures();
@@ -831,6 +835,7 @@ export class EffectsLayer {
         /** Drawn size in px of a ship at the last builtObjectLayer update (0 = not drawn). */
         private shipSizePx: (bo: BuiltObject) => number,
     ) {
+        this.tracker = new TrackedBuiltObjects(galaxy);
         world.addChild(this.root);
         this.root.addChild(this.lines);
         const spriteRoot = new Container();
@@ -884,6 +889,7 @@ export class EffectsLayer {
         }
         if (!this.root.visible) {
             this.sprites.end();
+            this.tracker.trim(); // not refreshed at this zoom: keep the unread notes bounded
             return;
         }
         const nowMs = this.galaxy.nowMs;
@@ -1014,6 +1020,27 @@ export class EffectsLayer {
         return this.hyperDirty.has(bo);
     }
 
+    /** Whether `bo` has effects work this step (an explosion, a visible shield / ion strike, a hyperjump animation to
+     *  start or reset, a renderer-side strike, a shot in flight): the candidate test. */
+    private needsEffects(bo: BuiltObject, nowMs: number, starDate: number): boolean {
+        if ((bo.explosions as Explosion[]).length > 0) return true;
+        if (bo.hasBeenDestroyed) return false;
+        if (shieldStrikeVisible(bo.lastShieldStrike, nowMs) || ionStrikeVisible(bo.lastIonStrike, nowMs) || this.hyperPending(bo, starDate) || this.strikeBos.has(bo)) return true;
+        const weapons = bo.weapons;
+        if (weapons !== null) {
+            for (let i = 0; i < weapons.length; i++) {
+                const w = weapons[i];
+                if (w != null && w.distanceTravelled >= 0) return true;
+            }
+        }
+        return false;
+    }
+
+    /** A hyper-enter flash that may come due as the star date advances (hyperEnterDue: 0 < countdown - date < 800). */
+    private static hyperEnterAhead(bo: BuiltObject, starDate: number): boolean {
+        return !bo.hasBeenDestroyed && bo.hyperEnterStartAnimation && bo.hyperjumpCountdown - starDate > 0;
+    }
+
     /** Re-collect the per-step candidate lists when a sim step landed, the arrays changed, or every 8 frames. */
     private refreshCandidates(nowMs: number, starDate: number): void {
         const g = this.galaxy;
@@ -1044,37 +1071,19 @@ export class EffectsLayer {
         bos.length = 0;
         set.clear();
         carriers.length = 0;
-        for (const bo of g.builtObjects) {
-            if (bo === null) continue;
-            let need = (bo.explosions as Explosion[]).length > 0;
-            if (!need && !bo.hasBeenDestroyed) {
-                need = shieldStrikeVisible(bo.lastShieldStrike, nowMs) || ionStrikeVisible(bo.lastIonStrike, nowMs) || this.hyperPending(bo, starDate) || this.strikeBos.has(bo);
-                const weapons = bo.weapons;
-                if (!need && weapons !== null) {
-                    for (let i = 0; i < weapons.length; i++) {
-                        const w = weapons[i];
-                        if (w != null && w.distanceTravelled >= 0) {
-                            need = true;
-                            break;
-                        }
-                    }
-                }
-            }
+        // Every candidate / carrier in galaxy order, as a scan of galaxy.builtObjects would list them. The renderer's
+        // strike records make candidates too (strikeBos); its hyper records need no such pass: a recorded exit flag
+        // matters again only when the sim sets or clears the ship's hyper flags, which it notes.
+        this.tracker.refresh(nowMs, this.strikeBos, (bo) => {
+            const need = this.needsEffects(bo, nowMs, starDate);
+            const carrier = hasLaunchedFighter(bo);
             if (need) {
                 bos.push(bo);
                 set.add(bo);
             }
-            const fighters = fightersOf(bo);
-            if (fighters !== null) {
-                for (let i = 0; i < fighters.length; i++) {
-                    const fighter = fighters[i];
-                    if (fighter != null && !fighter.onboardCarrier) {
-                        carriers.push(bo);
-                        break;
-                    }
-                }
-            }
-        }
+            if (carrier) carriers.push(bo);
+            return need || carrier || EffectsLayer.hyperEnterAhead(bo, starDate);
+        });
     }
 
     /** Where `o` is drawn this frame (MotionInterpolator.positionOf: its sample, a habitat's interpolated orbit, else

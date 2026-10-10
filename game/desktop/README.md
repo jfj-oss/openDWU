@@ -113,6 +113,12 @@ npm run desktop:dev   # builds dist/, then launches electron desktop/main.cjs
 (Plain `npm run dev` still works in the browser: Vite serves the
 `public/assets/dwu` symlink created by `npm run import-assets`.)
 
+LAN multiplayer (`desktop/netHost.cjs`, `desktop/wsServer.cjs`;
+`docs/MULTIPLAYER.md` §10): the main process hosts the WebSocket server and
+dials hosts, and hands the page one MessagePort per connection. To run a host
+and a client on one PC, give the second copy its own profile (saves, settings,
+single-instance lock): `DWU_USER_DATA_DIR=/some/dir electron desktop/main.cjs`.
+
 ## Package
 
 ```sh

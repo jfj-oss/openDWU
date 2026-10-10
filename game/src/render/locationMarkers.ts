@@ -30,6 +30,7 @@ import { overlayActive, type MapOverlayState } from '../ui/mapOverlays';
 import { getSettings } from '../ui/settings';
 import { WEAPON_CIRCLES_MIN_FACTOR } from './weaponRangeCircles';
 import { localViewerEmpire } from '../localViewer';
+import { inOwnRenderGroup } from './renderGroups';
 
 /** MainView.cs 1469 color_17 = Color.FromArgb(96, 64, 255). */
 export const HINT_PULSE_COLOR = 0x6040ff;
@@ -200,6 +201,11 @@ export class LocationMarkerLayer {
     /** World-space; MainView puts it in the overlay root. */
     readonly root = new Container();
     private readonly pulses = new Graphics();
+    /** `pulses` in its own render group (renderGroups.ts): it is cleared and redrawn every frame while a hint shows, which
+     *  otherwise rebuilt the whole scene's instruction list each frame. Its vertices are group-local float32 and the
+     *  group matrix goes to the GPU in float32, so the circles are drawn relative to the camera centre, where the group
+     *  sits (as galaxyMarkers.ts overlayGroup). */
+    private readonly pulsesGroup = inOwnRenderGroup(this.pulses);
     private readonly markersRoot = new Container();
     private readonly pulseClock = new HintPulseClock();
     private views = new Map<string, MarkerView>();
@@ -218,7 +224,7 @@ export class LocationMarkerLayer {
         private readonly galaxy: Galaxy,
         private readonly overlays: MapOverlayState,
     ) {
-        this.root.addChild(this.pulses, this.markersRoot);
+        this.root.addChild(this.pulsesGroup, this.markersRoot);
     }
 
     /** The overlay row is on (and the improvement enabled) — what the markers need besides their sub-toggle. */
@@ -298,6 +304,9 @@ export class LocationMarkerLayer {
         const { radius, alpha } = this.pulseClock.circle();
         const left = cam.x - cam.width / (2 * z);
         const top = cam.y - cam.height / (2 * z);
+        const ox = cam.x;
+        const oy = cam.y;
+        this.pulsesGroup.position.set(ox, oy);
         const r = Math.abs(radius) / z;
         const step = (Math.PI * 2) / HINT_PULSE_SIDES;
         let any = false;
@@ -307,8 +316,8 @@ export class LocationMarkerLayer {
             const sx = Math.trunc((p.x - left) * z);
             const sy = Math.trunc((p.y - top) * z);
             if (sx < -HINT_PULSE_MARGIN_PX || sx > cam.width + HINT_PULSE_MARGIN_PX || sy < -HINT_PULSE_MARGIN_PX || sy > cam.height + HINT_PULSE_MARGIN_PX) continue;
-            const cx = left + sx / z;
-            const cy = top + sy / z;
+            const cx = left + sx / z - ox;
+            const cy = top + sy / z - oy;
             // Dashed: segments 0, 2, 4, ... of 30.
             for (let i = 0; i < HINT_PULSE_SIDES; i += 2) {
                 g.moveTo(cx + r * Math.cos(i * step), cy + r * Math.sin(i * step));

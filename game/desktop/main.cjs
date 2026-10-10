@@ -34,6 +34,11 @@ const { createResolver } = require('./resolvePath.cjs');
 const installLib = require('./installDir.cjs');
 const updates = require('./updateCheck.cjs');
 const { createSimProcesses } = require('./simProcess.cjs');
+const { createNetHost } = require('./netHost.cjs');
+
+// A second profile (DWU_USER_DATA_DIR): its own saves, settings and single-instance lock, so two copies of the app can
+// run on one PC — a LAN host and a client on 127.0.0.1 (docs/MULTIPLAYER.md §10). Set before anything reads userData.
+if (process.env.DWU_USER_DATA_DIR) app.setPath('userData', path.resolve(process.env.DWU_USER_DATA_DIR));
 
 // dist/ lives next to desktop/ in the repo; when packaged it is copied into
 // resources/ by @electron/packager (extraResource in scripts/package-desktop.mjs).
@@ -366,6 +371,11 @@ ipcMain.handle('dwu:sim-start', (event) => {
 ipcMain.on('dwu:sim-terminate', (event, id) => simProcesses.terminate(event.sender, id));
 ipcMain.on('dwu-sim:ready', (event) => simProcesses.ready(event.sender));
 ipcMain.on('dwu-sim:worker-error', (event, message) => simProcesses.workerError(event.sender, message));
+
+// LAN multiplayer (netHost.cjs, gamePreload.cjs net): host a game / connect to one; each connection reaches the page as
+// a MessagePort.
+const netHost = createNetHost({ MessageChannelMain, ipcMain, isGameWindow: (sender) => mainWin !== null && sender === mainWin.webContents });
+app.on('before-quit', () => netHost.closeAll('the player quit the app'));
 
 // The main menu's Check for Updates (gamePreload.cjs): the manual check, from the game window only.
 ipcMain.handle('dwu:check-updates', async (event) => {

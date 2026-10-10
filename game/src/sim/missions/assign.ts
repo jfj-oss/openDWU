@@ -40,6 +40,7 @@ import {
 } from './mission';
 import { scenarioQuery } from '../scenario/hooks';
 import { constructionBoardShipFree } from '../player/constructionBoard';
+import { noteBuiltObjectEffect } from '../combat/effectWatch';
 
 /** Optional arguments of the 13-argument AssignMission (BuiltObject.2.cs 7620); every overload is a subset. */
 export interface AssignMissionArgs {
@@ -116,6 +117,7 @@ export function assignMission(galaxy: Galaxy, bo: BuiltObject, missionType: Buil
         bo.revertMission = null;
     }
     bo.missionCompleteMessageSent = false;
+    if (bo.hyperExitStartAnimation) noteBuiltObjectEffect(galaxy, bo); // observation only (render/effectsLayer.ts)
     bo.hyperEnterStartAnimation = false;
     bo.hyperExitStartAnimation = false;
     bo.hyperjumpAboutToEnter = false;

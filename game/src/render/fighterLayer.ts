@@ -38,6 +38,8 @@ import { fogOf } from './fog';
 import type { Galaxy } from '../sim/galaxy';
 import { fightersOf, type Fighter } from '../sim/combat/fighters';
 import { sampleFighter, type MotionInterpolator } from './renderInterp';
+import { TrackedBuiltObjects, hasLaunchedFighter } from './effectTracking';
+import type { BuiltObject } from '../sim/builtObject';
 
 const IMG = '/assets/dwu/images';
 /** LoadFighters loads a fighter and a bomber per family folder (ShipImageHelper.ShipSetFighterImageCount = 2). */
@@ -190,12 +192,22 @@ export class FighterLayer {
     /** The fighters drawn this frame, in draw order (pooled records; battle bars, picking, the selection circle). */
     readonly drawnFighters: DrawnFighter[] = [];
     private drawnPool: DrawnFighter[] = [];
+    /** Perf (late games: ~20k built objects, a few dozen carriers with fighters out): the built objects with a launched
+     *  fighter, in galaxy order (effectTracking.ts: the sim notes each launch), refreshed when a step lands, a launch is
+     *  noted (a command between steps) or the array changes — the only objects the per-frame pass below draws for. */
+    private readonly carrierTracker: TrackedBuiltObjects;
+    private readonly carriers: BuiltObject[] = [];
+    private carrierSerial = Number.NaN;
+    private carrierSource: readonly unknown[] | null = null;
+    private carrierLength = -1;
+    private carrierFrames = 0;
 
     constructor(
         private galaxy: Galaxy,
         world: Container,
         private store: AssetStore,
     ) {
+        this.carrierTracker = new TrackedBuiltObjects(galaxy);
         world.addChild(this.root);
         const under = new Container();
         const over = new Container();
@@ -228,12 +240,13 @@ export class FighterLayer {
         const now = this.drawnNow;
         now.clear();
         this.drawnFighters.length = 0;
+        if (!visible) this.carrierTracker.trim();
         if (visible) {
             const halfW = cam.width / 2;
             const halfH = cam.height / 2;
             const fog = fogOf(this.galaxy);
-            for (const bo of this.galaxy.builtObjects) {
-                if (bo === null) continue;
+            this.refreshCarriers();
+            for (const bo of this.carriers) {
                 const fighters = fightersOf(bo);
                 if (fighters === null || fighters.length === 0) continue;
                 for (let i = 0; i < fighters.length; i++) {
@@ -266,6 +279,34 @@ export class FighterLayer {
         this.exhaust.end();
         this.bodies.end();
         this.damage.end();
+    }
+
+    /** The carriers list (see `carriers`): rebuilt from the tracked objects when anything may have changed it. */
+    private refreshCarriers(): void {
+        const g = this.galaxy;
+        const serial = this.motion?.serial ?? Number.NaN;
+        this.carrierFrames++;
+        if (
+            this.motion !== null &&
+            serial === this.carrierSerial &&
+            g.builtObjects === this.carrierSource &&
+            g.builtObjects.length === this.carrierLength &&
+            this.carrierTracker.pending === 0 &&
+            this.carrierFrames < 8
+        ) {
+            return;
+        }
+        this.carrierSerial = serial;
+        this.carrierSource = g.builtObjects;
+        this.carrierLength = g.builtObjects.length;
+        this.carrierFrames = 0;
+        const carriers = this.carriers;
+        carriers.length = 0;
+        this.carrierTracker.refresh(g.nowMs, null, (bo) => {
+            if (!hasLaunchedFighter(bo)) return false;
+            carriers.push(bo);
+            return true;
+        });
     }
 
     /** Main.Part11.cs 1579-1600: the fighter drawn under world point (wx, wy) at zoom factor f, or null. */

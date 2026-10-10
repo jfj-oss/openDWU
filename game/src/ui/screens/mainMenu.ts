@@ -52,6 +52,8 @@ export interface MainMenuCallbacks {
     onLoadGame?: () => void;
     /** Change Theme → Switch Theme (Start.1.cs btnThemeSwitch_Click → method_2): load and remember theme `name`. */
     onSwitchTheme?: (name: string) => void | Promise<void>;
+    /** Multiplayer (not in the original; docs/MULTIPLAYER.md §10): the LAN Host / Join screen. No item without it. */
+    onMultiplayer?: () => void;
 }
 
 export interface MainMenuRefs {
@@ -223,6 +225,19 @@ export function createMainMenu(callbacks: MainMenuCallbacks): MainMenuRefs {
             }
         });
         panel.appendChild(btn);
+        // Multiplayer (ours, no original art): a text item in the menu's colours, after Load Game.
+        if (item.id === 'loadGame' && callbacks.onMultiplayer !== undefined) {
+            const mp = document.createElement('button');
+            mp.className = 'main-menu-item main-menu-item-text';
+            mp.type = 'button';
+            mp.setAttribute('data-id', 'multiplayer');
+            mp.textContent = 'Multiplayer';
+            mp.style.width = `${280 * s}px`;
+            mp.style.fontSize = `${22 * s}px`;
+            const onMp = callbacks.onMultiplayer;
+            mp.addEventListener('click', () => onMp());
+            panel.appendChild(mp);
+        }
     }
     root.appendChild(panel);
 

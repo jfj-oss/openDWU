@@ -51,6 +51,19 @@
     display: block;
 }
 
+/* Multiplayer (ours, no original art): text in the menu art's grey, gold on hover. */
+.main-menu-item-text {
+    padding: 6px 0;
+    font-family: Verdana, Arial, sans-serif;
+    font-weight: bold;
+    letter-spacing: 0.04em;
+    color: #b4bcc8;
+    text-shadow: 0 0 6px #000;
+}
+.main-menu-item-text:hover {
+    color: #ffc040;
+}
+
 /* Menu_* art renders at natural size × s (set inline in mainMenu.ts); no
    forced width/height so every item keeps its own aspect and height. */
 .main-menu-item img {

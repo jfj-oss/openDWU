@@ -52,6 +52,8 @@ export interface LockstepHooks {
     onDigest?(frame: number, peer: PeerId, ok: boolean, host: string, client: string): void;
     /** Host: a resync save was sent to `peer`. Client: a resync save was loaded. `bytes`: its compressed size. */
     onResync?(frame: number, peer: PeerId, bytes: number): void;
+    /** Client: the host's resync arrived; its save is being inflated and loaded (onResync follows, or the link closes). */
+    onResyncStart?(frame: number): void;
     /** An input arrived from another peer (stats; `now` = wall epoch ms). */
     onInput?(input: FrameInput, now: number): void;
     /** Client: the host link closed; the session is over. */
@@ -610,6 +612,7 @@ export class LockstepSession {
             return;
         }
         if (m.t === 'resync') {
+            this.hooks.onResyncStart?.(m.frame);
             this.withSave(m.save, (text) => this.onResync(m, text!), (err) => {
                 if (err === undefined) return;
                 this.hooks.log?.(`resync: the host's save could not be loaded: ${err instanceof Error ? err.message : String(err)}`);

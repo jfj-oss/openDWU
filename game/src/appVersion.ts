@@ -6,6 +6,11 @@ declare const __DWU_VERSION__: string | undefined;
 
 export const APP_VERSION: string = typeof __DWU_VERSION__ === 'string' ? __DWU_VERSION__ : '0.0.0';
 
+declare const __DWU_BUILD__: string | undefined;
+
+/** The build (the git commit the app was built from; vite.config.ts buildId): the multiplayer lobby compares it. */
+export const APP_BUILD: string = typeof __DWU_BUILD__ === 'string' ? __DWU_BUILD__ : 'dev';
+
 export const RELEASES_URL = 'https://github.com/jfj-oss/openDWU/releases';
 const LATEST_RELEASE_API = 'https://api.github.com/repos/jfj-oss/openDWU/releases/latest';
 

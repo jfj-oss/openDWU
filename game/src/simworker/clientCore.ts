@@ -27,6 +27,7 @@ import { setRemoteSimHost, type RemoteSimHost } from './remoteHost';
 import { commandFailureMessage, commandFailureValue } from './commandFailure';
 import { setRemoteRefreshSink } from './refresh';
 import { markReadOnlyGalaxy } from '../sim/readOnlyQuery';
+import { noteBuiltObjectEffect } from '../sim/combat/effectWatch';
 import type { ApplyStats } from './replicaSync';
 import { ADAPTIVE_SHARE_WORKER, OffscreenAdaptiveController } from '../offscreenAdaptive';
 
@@ -181,8 +182,13 @@ export interface ClientCoreOptions {
     pauseHoldMaxMs?: number;
 }
 
+/** Frames an effect note waits for its object to be born on the replica (SimClientCore.noteEffects). */
+const EFFECT_RETRY_FRAMES = 120;
+
 export class SimClientCore {
     readonly replica: GalaxyReplica;
+    /** Effect notes whose object is not on the replica yet: [sync id, frames left] pairs (noteEffects). */
+    private readonly effectsUnborn: number[] = [];
     readonly stats = createSyncStats();
     readonly renderTime: RenderTime = createRenderTime();
     readonly game: Game;
@@ -709,6 +715,7 @@ export class SimClientCore {
             if (st.pending) break;
             applied++;
             steps += m.steps;
+            if (m.effects !== undefined) this.noteEffects(m.effects);
             this.stats.deltas++;
             this.stats.workerStepMs = m.stepMs;
             workerStepWallMs += m.stepMs;
@@ -751,6 +758,7 @@ export class SimClientCore {
         }
         coldMs += this.replica.pumpCold(drain ? Infinity : this.coldBudgetMs, this.now, this.settling.length > 0 ? this.settling[0].seq : Infinity).applyMs;
         this.settleApplied();
+        if (this.effectsUnborn.length > 0) this.noteEffects([]);
         if (this.waiting.size > 0) this.checkReplyTimeouts(t0);
         const t2 = this.now();
         // A held pause is drawn as paused from the frame it was pressed, as the in-thread loop does (the presentation
@@ -781,6 +789,37 @@ export class SimClientCore {
     }
 
     /** Deliver the replies and events of the applied messages whose cold parts are all applied (in order). */
+    /**
+     * The worker's effect notes of an applied step (StepMessage.effects) on the replica, for the effects layer's watch
+     * (sim/combat/effectWatch.ts). An object the replica does not have yet (born in a cold part still queued) is
+     * retried on later frames, for up to EFFECT_RETRY_FRAMES.
+     */
+    private noteEffects(ids: readonly number[]): void {
+        const g = this.replica.galaxy;
+        if (g === null) return;
+        const dec = this.replica.decoder;
+        const unborn = this.effectsUnborn;
+        let w = 0;
+        for (let i = 0; i < unborn.length; i += 2) {
+            const o = dec.object(unborn[i]);
+            if (o !== null) {
+                if (o instanceof BuiltObject) noteBuiltObjectEffect(g, o);
+            }
+            else if (--unborn[i + 1] > 0) {
+                unborn[w++] = unborn[i];
+                unborn[w++] = unborn[i + 1];
+            }
+        }
+        unborn.length = w;
+        for (const id of ids) {
+            const o = dec.object(id);
+            if (o !== null) {
+                if (o instanceof BuiltObject) noteBuiltObjectEffect(g, o);
+            }
+            else unborn.push(id, EFFECT_RETRY_FRAMES);
+        }
+    }
+
     private settleApplied(): void {
         while (this.settling.length > 0) {
             const e = this.settling[0];

@@ -39,6 +39,13 @@ export interface GameSaveJSON {
     /** External commands applied at frame boundaries (player/commandLog.ts); present only when non-empty. */
     commandLog?: CommandLogEntry[];
     /**
+     * A LAN game (multiplayer Phase 3, docs/MULTIPLAYER.md §10): who played each human (`players[i]` = the lobby name of
+     * galaxy.humanEmpires[i]), so loading it as host reopens the lobby for the same players. Main-thread state, never read
+     * by the sim; written only for a LAN game, just before galaxyBackdrop, and read from the tail
+     * (savedMultiplayerPlayers).
+     */
+    multiplayer?: { players: string[] };
+    /**
      * The Main View's galaxy backdrop (render/galaxyBackdropChoice.ts kind): a view setting the sim never reads. Written
      * only when it is not Original (so a default save is byte-identical; an older save loads as Original), just before
      * localViewer / customizationSet, and read from the tail (savedGalaxyBackdrop).
@@ -64,6 +71,8 @@ export interface GameSaveExtras {
     localViewer?: number;
     /** The Main View's galaxy backdrop kind (GameSaveJSON.galaxyBackdrop); absent / 'original' = not written. */
     galaxyBackdrop?: string;
+    /** A LAN game's players by human index (GameSaveJSON.multiplayer); absent = not a LAN game. */
+    multiplayerPlayers?: string[];
 }
 
 /** Serialize a whole game to a JSON string (see GameSaveJSON). */
@@ -116,6 +125,9 @@ export function serializeGameChunks(game: Game, time: GalaxyTime, startOptions: 
     };
     const log = commandLog(game.galaxy);
     if (log.length > 0) rest.commandLog = log.map(copyCommandLogEntry);
+    // A LAN game: its players by human index (not sim state).
+    const mpPlayers = extras?.multiplayerPlayers;
+    if (Array.isArray(mpPlayers) && mpPlayers.length > 0) rest.multiplayer = { players: mpPlayers.map((n) => String(n).slice(0, 64)) };
     // The view's galaxy backdrop (not sim state), only when it is not the original image.
     const backdrop = extras?.galaxyBackdrop;
     if (typeof backdrop === 'string' && /^[A-Za-z]+$/.test(backdrop) && backdrop !== 'original') rest.galaxyBackdrop = backdrop;
@@ -165,6 +177,22 @@ export function savedGalaxyBackdrop(save: string | GameSaveJSON): string {
     if (typeof save !== 'string') return typeof save.galaxyBackdrop === 'string' ? save.galaxyBackdrop : '';
     const m = /"galaxyBackdrop":"([A-Za-z]+)"(?:,"localViewer":\d+)?(?:,"customizationSet":"(?:[^"\\]|\\.)*")?\}\s*$/.exec(save.slice(-4096));
     return m === null ? '' : m[1];
+}
+
+/**
+ * A LAN game's players by human index (GameSaveJSON.multiplayer), or undefined for any other save. A save text is read
+ * from its last 64 kB only (the key sits after the command log, before the short view keys).
+ */
+export function savedMultiplayerPlayers(save: string | GameSaveJSON): string[] | undefined {
+    if (typeof save !== 'string') return save.multiplayer?.players;
+    const m = /"multiplayer":(\{"players":\[(?:"(?:[^"\\]|\\.)*",?)*\]\})(?:,"galaxyBackdrop":"[A-Za-z]+")?(?:,"localViewer":\d+)?(?:,"customizationSet":"(?:[^"\\]|\\.)*")?\}\s*$/.exec(save.slice(-65536));
+    if (m === null) return undefined;
+    try {
+        const players = (JSON.parse(m[1]) as { players?: unknown }).players;
+        return Array.isArray(players) ? players.map((p) => String(p)) : undefined;
+    } catch {
+        return undefined;
+    }
 }
 
 /**

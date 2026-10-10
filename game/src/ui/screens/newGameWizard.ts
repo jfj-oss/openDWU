@@ -203,6 +203,10 @@ export const VICTORY_THRESHOLD_VALUES = [0.75, 0.8, 0.85, 0.9, 0.95, 1.0];
 export interface NewGameWizardCallbacks {
     onBackToMenu: () => void;
     onStartGame: (options: StartGameOptions) => void;
+    /** Open on these options instead of the defaults (the LAN lobby's Game Settings, docs/MULTIPLAYER.md §10). */
+    initialOptions?: StartGameOptions;
+    /** The LAN lobby's settings: the humans come from the lobby, so the hot-seat list is hidden. */
+    multiplayer?: boolean;
 }
 
 /** Task 06e: called when the user picks a different race on the "Your Race"
@@ -443,7 +447,7 @@ export function createNewGameWizard(callbacks: NewGameWizardCallbacks): NewGameW
     raceDataPromise = null;
     summaryDataPromise = null;
     governmentsPromise = null;
-    const options: StartGameOptions = wizardStartGameOptions();
+    const options: StartGameOptions = callbacks.initialOptions !== undefined ? structuredClone(callbacks.initialOptions) : wizardStartGameOptions();
     let page: WizardPageId = 'type';
     try {
         const params = new URLSearchParams(window.location.search);
@@ -514,6 +518,7 @@ export function createNewGameWizard(callbacks: NewGameWizardCallbacks): NewGameW
         listParent: () => body,
         refreshScenario: () => {},
         scenarioReady: Promise.resolve(),
+        multiplayer: callbacks.multiplayer === true,
     };
 
     // --- Page containers (built once, shown/hidden on navigation), 900 × 660 at (5, 40). ---
@@ -679,6 +684,8 @@ interface WizardCtx {
     refreshScenario: () => void;
     /** Settles when the Scenario page's add-on list has loaded (set by the Scenario page). */
     scenarioReady: Promise<void>;
+    /** The LAN lobby's settings (NewGameWizardCallbacks.multiplayer): no hot-seat list. */
+    multiplayer?: boolean;
 }
 
 /** TextResolver.GetText(tag) when GameText.txt is loaded, else the English text it holds (GameText.txt). */
@@ -1838,6 +1845,11 @@ function buildOtherEmpiresPage(ctx: WizardCtx): HTMLDivElement {
         else hotSeat.open();
     }, { className: 'wizard-btn wizard-btn-secondary wizard-hotseat-open-btn' });
     ctx.helpOn(hotSeatBtn, () => ['Human Players', 'Hot seat: add more human players who share this PC. Each one picks an empire name, race, government and colours.']);
+    // A LAN game's humans are the lobby's players.
+    if (ctx.multiplayer === true) {
+        hotSeatBtn.style.display = 'none';
+        hotSeatLine.style.display = 'none';
+    }
     const grid = place(el('div', 'ow-grid wizard-empires-grid'), 10, 35, 860, 260);
     grid.style.fontSize = `${FONT.normal}px`;
     const COLS = [300, 240, 276, 30];
