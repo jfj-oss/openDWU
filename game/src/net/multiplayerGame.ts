@@ -4,7 +4,8 @@
 //   peerName: the host wrote it), the slot's human index is in MultiplayerStart.players, and the empire is
 //   galaxy.humanEmpires[humanIndex] at the command's frame. Every peer runs the same check on the same data.
 // - the host waits at frame 0 until every lobby player has joined the session (or dropped): a client that built the
-//   game itself joins with its frame-0 digest and gets no save (lockstep.ts hello `have`);
+//   game itself joins with its frame-0 digest and gets no save (lockstep.ts hello `have`). The humans are createGame's
+//   own (StartGameOptions.humanPlayers: the clients' lobby rows, in slot order), so human index = player order;
 // - status for the screen: waiting for players, resyncing, a player left (the host pauses), the host is gone.
 //
 // Headless: no DOM / Pixi / Node APIs.
@@ -15,7 +16,7 @@ import type { Empire } from '../sim/empire';
 import type { GameData } from '../sim/data/gameData';
 import type { GalaxyTime } from '../sim/galaxyTime';
 import type { StartGameOptions } from '../sim/startGameOptions';
-import { humanEmpires, setHumanEmpires } from '../sim/humanEmpires';
+import { humanEmpires } from '../sim/humanEmpires';
 import { flatEmpireList } from '../sim/save/galaxySave';
 import { LockstepSession, type LockstepHooks } from './lockstep';
 import { GalaxyLockstepSim, SessionStepper } from './lockstepSim';
@@ -44,23 +45,6 @@ export interface MultiplayerGameOptions {
     /** A command was refused or no longer resolves. */
     onDropped?: (op: string, reason: string) => void;
     log?: (message: string) => void;
-}
-
-/**
- * Until createGame founds the lobby's humans itself (multiplayer Phase 1, `StartGameOptions.humanPlayers` →
- * CreateGameOptions.humanPlayers), make the first AI empires (galaxy.empires order, no pirates) the missing humans, as
- * the lockstep demo does. Deterministic: every peer runs it on the same fresh game. No-op once createGame did it.
- * TODO(mp-phase1): drop this fallback once origin/main's createGame takes N humans (it then never triggers).
- */
-export function ensureMultiplayerHumans(galaxy: Galaxy, count: number): void {
-    const humans = [...humanEmpires(galaxy)];
-    if (humans.length >= count || galaxy.playerEmpire === null) return;
-    for (const e of galaxy.empires) {
-        if (humans.length >= count) break;
-        if (humans.includes(e) || e.pirateEmpireBaseHabitat !== null) continue;
-        humans.push(e);
-    }
-    setHumanEmpires(galaxy, humans);
 }
 
 /** The human empire `slot` plays in `start` (null: a spectator / unknown slot / not in the game any more). */

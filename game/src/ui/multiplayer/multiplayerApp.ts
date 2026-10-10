@@ -28,7 +28,7 @@ import type { PlayerOpName } from '../../sim/player/playerOps';
 import { GalaxyShape } from '../../sim/types';
 import { appFingerprint, fingerprintFiles, type AppFingerprint } from '../../net/fingerprint';
 import { LobbyClient, LobbyHost, type HandoffLink, type LobbyPlayer, type LobbyState, type MultiplayerStart } from '../../net/lobby';
-import { MultiplayerGame, ensureMultiplayerHumans, type MultiplayerStatus } from '../../net/multiplayerGame';
+import { MultiplayerGame, type MultiplayerStatus } from '../../net/multiplayerGame';
 import { setLockstepStepper } from '../../net/lockstepSeam';
 import type { Link } from '../../net/transport';
 import { setLocalViewerEmpire } from '../../localViewer';
@@ -787,7 +787,6 @@ function openHostLobby(deps: MultiplayerAppDeps, gameData: GameData, fp: AppFing
             let playData: GameData;
             if (start.kind === 'new') {
                 ({ game, playData } = await deps.buildGame(start.startOptions, start.createExtras));
-                ensureMultiplayerHumans(game.galaxy, start.players.length);
                 time = new GalaxyTime();
             } else {
                 ({ game, time, playData } = loaded!);
@@ -875,7 +874,6 @@ async function startAsClient(deps: MultiplayerAppDeps, start: MultiplayerStart, 
             const built = await deps.buildGame(start.startOptions, start.createExtras);
             game = built.game;
             gameData = built.playData;
-            ensureMultiplayerHumans(game.galaxy, start.players.length);
             time = new GalaxyTime();
             time.speed = start.clock.speed;
             time.paused = start.clock.paused;

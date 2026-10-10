@@ -1068,7 +1068,9 @@ export async function startGameView(
     });
     // [improvements] designLineUpgrade / statePriorityShipyards: the switch → the sim (journaled), for every human (the
     // improvement switches are this PC's).
-    for (const human of humanEmpires(galaxy)) {
+    // A LAN game: this screen's player only (each peer sends its own; a command for another empire is refused).
+    const switchHumans = multiplayerActive() ? [localViewerEmpire(galaxy)].filter((e): e is Empire => e !== null) : humanEmpires(galaxy);
+    for (const human of switchHumans) {
         installDesignLineUpgradeSync(galaxy, human);
         installStatePrioritySync(galaxy, human);
     }

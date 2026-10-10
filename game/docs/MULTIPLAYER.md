@@ -727,7 +727,7 @@ is started, `npm run repin -- --check --workers 1` = 0, and the lockstep demo st
 | `src/net/fingerprint.ts` | `AppFingerprint` (version, build, JS engine, protocol, theme, add-on hash, data hash) and `fingerprintMismatch`, which words the refusal for the joiner. The app records every data / theme / add-on file it fetches (`noteDataRead` in `main.ts` fetchTextBrowser and loadSystemNames): the data hash is sha-256 over `path\0text\0`, paths lower-cased, a UTF-8 BOM dropped, the install listings (asset manifest) left out. `fingerprintFiles()` lists each file's hash, to find the file behind a mismatch. |
 | `src/appVersion.ts`, `vite.config.ts` | `APP_BUILD` (`__DWU_BUILD__`): `$DWU_BUILD`, else the git commit, plus a hash of the uncommitted changes to `src/`, `scenarios/` and the pages when the tree is dirty. |
 | `src/net/lobby.ts` | The lobby protocol (`lobbyHello` with the fingerprint, `lobbyRefused`, `lobbyWelcome`, `lobbyState`, `lobbyPick`, `lobbyStart`, `lobbyBye`), `LobbyHost` / `LobbyClient`, and `HandoffLink`: after Start the link belongs to the lockstep session, and what arrives before the session listens is held. The host's handoff rewrites the joiner's lockstep hello name to its slot (`peerName` = `"<slot>\|<name>"`), so a client cannot pose as another slot. |
-| `src/net/multiplayerGame.ts` | `MultiplayerGame`: the lockstep session over the real game. `authorize`: a peer may only command its slot's human empire (`humanEmpires[humanIndex]` at the command's frame). The host holds at frame 0 until every lobby player joined (a client that built the game itself joins with its frame-0 digest: no save travels). Status for the screen: waiting, resyncing, a player left (the host pauses), the host is gone. `ensureMultiplayerHumans`: until createGame founds N humans (Phase 1), the first AI empires become the missing humans, the same on every peer. |
+| `src/net/multiplayerGame.ts` | `MultiplayerGame`: the lockstep session over the real game. `authorize`: a peer may only command its slot's human empire (`humanEmpires[humanIndex]` at the command's frame). The host holds at frame 0 until every lobby player joined (a client that built the game itself joins with its frame-0 digest: no save travels). Status for the screen: waiting, resyncing, a player left (the host pauses), the host is gone. The humans are createGame's own (`StartGameOptions.humanPlayers` = the clients' lobby rows in slot order), so human index = player order. |
 | `src/net/lockstep.ts` | One new hook, `onResyncStart` (client: a resync arrived, its save is loading). |
 | `src/ui/multiplayer/multiplayerApp.ts` (+ `.css`) | The Multiplayer screen, the lobby, the in-game banner and status chip, the LAN save extras, and `window.__dwuMp` (scripts). |
 | `src/main.ts` | `multiplayerDeps`: build the game in-thread from the start (`toCreateGameOptions` + the host's `createExtras`), load a save for the host, show a game (tearing down the one up), the wizard and the save picker. A LAN game always runs the in-thread sim (the sim worker has no lockstep seam yet). |
@@ -805,21 +805,22 @@ uses are part of the host's start options; the hash makes sure everyone has the 
 | **Load as host** (that save, a new host and client app) | the client got its old empire back by name ("Maru Pasdo Nation (was Clienty)"), received the save (0.76 MB compressed, 4.2 M characters), digests equal at load (`1b8d313e032f6352`) and after 16 s more play (`8740b0e8eec22feb`, game ms 72,166), 19 checks, 0 mismatches |
 | **Linux desktop host ↔ Mac client over Tailscale** (the client: the same code bundled and run under the Mac app's Electron 44.4.5 as Node, `ELECTRON_RUN_AS_NODE`; it builds the game from the host's start with the desktop shell's asset manifest), a minute at 2× with commands from both | the data fingerprints are equal across the machines (`caff21a1a0bc`, 1,338 files; macOS opens other spellings of some files, the lower-cased keys agree); **62 digest checks, 0 mismatches, final digest `1cd5229dd39191a0` at game ms 117,066 on both**; 4 stalls (66 ms) on the host |
 | Same, client under this PC's Electron as Node | 32 checks, 0 mismatches (the Electron renderer and Electron-as-Node run the same game) |
-| `npm run repin -- --check --workers 1` | 0 pins would change |
+| **After Phase 1 landed** (main 1a9c919a + the fixes above): two desktop apps, a scripted minute at 2× | the client plays its lobby pick "Clienty Dominion"; **final digests match: `783e49c8e9e3dd12` at game ms 81,300**; 64 checks, the one injected mismatch resynced; only the deliberate hijack refused (no more HUD orders for the wrong empire); load as host: the client got "Clienty Dominion" back by name, digests `9589510b27976f39` at game ms 112,933 on both, 18 checks, 0 mismatches |
+| `npm run repin -- --check --workers 1` | 0 pins would change (before and after the Phase 1 integration) |
 | `scripts/lockstep-demo.mjs` (WebSocket) | OK: digests match at frame 3780 |
 | vitest: the sim-worker, save, save panel, main menu and wizard tests (26 files) | 182 passed |
 
 ### 10.7 What is left
 
-Waiting for the rest of Phase 1 (on its branch, not on main yet):
+Done with Phase 1 on main (2026-10-10):
 
-- **createGame with N humans.** Until `toCreateGameOptions` reads `humanPlayers`, `ensureMultiplayerHumans` makes the
-  first AI empires the clients' humans, so their lobby picks (race, name, colours) are not applied yet.
-  TODO(mp-phase1) in `multiplayerGame.ts`.
-- **The per-human UI.** On a client the HUD, messages and screens still show the primary human (the host's empire), and
-  orders from the HUD go out as `galaxy.playerEmpire` (the UI-record sender), so the session refuses them; scripted
-  commands (`__dwuMp.issue`) for the client's empire work. Phase 1 §6 items 1, 2 and 5 fix this: each screen then shows
-  and commands its own `localViewerEmpire`.
+- The humans come from createGame (`humanPlayers`), so each client plays the empire it picked in the lobby; the
+  "make AI empires human" stand-in is gone. **Fix in `createGameSteps`:** the extra human starts were found by position
+  (`num15 >= aiCount`), but `updateEmpireStarts` sorts the start list by projected colony amount, so other empires were
+  made human (hot seat too). They are now found by their start object and kept in player order. One-human starts never
+  reach that code (pins unchanged).
+- Each screen shows and commands its own `localViewerEmpire`; the improvement switches (`setDesignLineUpgrade`,
+  `setStatePriorityShipyards`) go out only for the local player in a LAN game, not for every human.
 
 Phase 4:
 
