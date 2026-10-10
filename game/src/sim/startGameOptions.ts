@@ -12,7 +12,7 @@ import { normalizeResourceGeneration, type ResourceGenerationSettings } from './
 import type { ScenarioManifest } from './scenario/manifest';
 import { addonCatalog, addonPickerModel, type SmarterAIChoice } from './scenario/addons';
 import { CUSTOM_MAX_SECTORS, CUSTOM_MIN_SECTORS, clampCustomSectors } from './galaxy';
-import type { HumanPlayerStart } from './humanPlayerStarts';
+import { extraHumanPlayers, humanPlayerEmpireStarts, type HumanPlayerStart } from './humanPlayerStarts';
 
 export interface StartGameOptions {
     shape: GalaxyShape;
@@ -1270,6 +1270,9 @@ export function toCreateGameOptions(
         maximumEmpireAmount: maximumEmpireAmountFor(effectiveStarCountIndex(o), gameData.races.filter((r) => r.playable).length),
         player,
         aiEmpires,
+        // Multiplayer (hot seat, docs/MULTIPLAYER.md §7.2): the extra humans; the key only with any, so a one-human start
+        // is unchanged.
+        ...(extraHumanPlayers(o).length > 0 ? { humanPlayers: humanPlayerEmpireStarts(extraHumanPlayers(o), gameData, player) } : {}),
         allowEmpiresInSameSystem: o.colonization.allowSameSystemAsOtherEmpires,
         // M4z4: Start.1.cs 3772-3805 VictoryConditions from the victory page (Galaxy.GlobalVictoryConditions,
         // Start.2.cs 501-506 / 2026) and Start.2.cs 496 difficulty scaling.
