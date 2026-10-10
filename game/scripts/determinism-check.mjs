@@ -60,7 +60,8 @@ const data = resolve(String(arg('data', resolve(root, 'public/assets/dwu'))));
 const runtime = String(arg('runtime', 'both'));
 const remote = arg('remote', null);
 const keep = arg('keep', false) === true;
-const out = resolve(String(arg('out', mkdtempSync(resolve(tmpdir(), 'dwu-detcheck-')))));
+const outArg = arg('out', null);
+const out = outArg !== null ? resolve(String(outArg)) : mkdtempSync(resolve(tmpdir(), 'dwu-detcheck-'));
 mkdirSync(out, { recursive: true });
 
 // --- Bundle. The scenario overlays (scenarios/<id>/: manifest + files) are inlined: the runner needs no repo checkout.
