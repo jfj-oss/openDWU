@@ -44,6 +44,7 @@ import type { GalaxyVictoryArgs } from '../victory';
 import { checkVictoryConditions, clearCompletedPlanetDestroyerProjects, clearEmptyDebrisFields, processDelayedEventActions, reviewAchievements } from '../events';
 import { scenarioPeriodicTick, scenarioYearlyTick } from '../scenario/hooks';
 import { expireScenarioDecisions } from '../scenario/decisions';
+import { pruneUnreadDistressSignals } from '../missions/distress';
 
 /** Galaxy.cs 3039 DoTasksTimeSensitive() → 3046 DoTasksTimeSensitive(starDate, time). */
 export function galaxyDoTasksTimeSensitive(galaxy: Galaxy, starDate: number = galaxyStarDate(galaxy), time: number = galaxyNow(galaxy)): void {
@@ -194,6 +195,12 @@ export function galaxyDoTasks(
         reviewWondersBuilt(galaxy);
         reviewEmpireDifficultyFactors(galaxy);
         reviewAchievements(galaxy);
+        // Leak fix (not in the C#): the pirate factions' and the independent empire's distress signals, which nothing
+        // clears and nothing reads once past DistressSignalDateRange (distress.ts pruneUnreadDistressSignals). No Rnd.
+        for (let i = 0; i < galaxy.pirateEmpires.length; i++) {
+            if (galaxy.pirateEmpires[i].pirateEmpireBaseHabitat !== null) pruneUnreadDistressSignals(galaxy, galaxy.pirateEmpires[i]);
+        }
+        if (galaxy.independentEmpire !== null) pruneUnreadDistressSignals(galaxy, galaxy.independentEmpire);
         if (!gameFinished) {
             checkVictoryConditions(galaxy, playerEmpire, victoryArgs);
         }
