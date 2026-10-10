@@ -9,6 +9,7 @@ import { Container, Sprite, Texture } from 'pixi.js';
 import type { Habitat } from '../sim/types';
 import { HabitatCategoryType } from '../sim/types';
 import { moonDotPx, planetSpritePx, starSpritePx } from './mainView';
+import { useMinifyingFilter } from './assets';
 
 /** ui/hud.ts resourceIconUrl (not imported: hud.ts pulls the whole HUD). */
 export function resourceIconUrl(pictureRef: number): string {
@@ -64,7 +65,9 @@ export function resourceIconTexture(pictureRef: number, onReady?: () => void): T
             const px = data.data;
             for (let i = 0; i < px.length; i += 4) px[i + 3] = keyedAlpha(px[i], px[i + 1], px[i + 2]);
             ctx.putImageData(data, 0, 0);
-            done(Texture.from(c));
+            const tex = Texture.from(c);
+            useMinifyingFilter(tex); // ~32 px icons drawn at 10-15 px
+            done(tex);
         } catch {
             done(null);
         }
@@ -89,6 +92,7 @@ export function ringTexture(): Texture | null {
     ctx.arc(32, 32, 28, 0, Math.PI * 2);
     ctx.stroke();
     ringTex = Texture.from(c);
+    useMinifyingFilter(ringTex); // the thin ring is drawn ~20 px wide: mips keep it from breaking up
     return ringTex;
 }
 

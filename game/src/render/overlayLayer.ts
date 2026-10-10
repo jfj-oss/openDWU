@@ -66,6 +66,7 @@
 // Resources (resourceOverlay.ts) and Fuel Range (fuelOverlay.ts).
 
 import { circleAtScreenRes, segmentCircle } from './screenCircle';
+import { useMinifyingFilter } from './assets';
 import { drawnBuiltObjectPos, type MotionInterpolator } from './renderInterp';
 import { ColorMatrixFilter, Container, Graphics, Sprite, Texture } from 'pixi.js';
 import { LRS_DISC_URL, LRS_LAYER_ALPHA, POSTURE_ALPHA, POSTURE_LINE_WIDTH_PX, fleetPostureMarks, longRangeScannerDiscs, scannerLayerFade } from './postureOverlay';
@@ -669,12 +670,14 @@ export class OverlayLayer {
             img.onload = () => {
                 img.onload = null;
                 this.arrowTex = Texture.from(img);
+                useMinifyingFilter(this.arrowTex); // 101x115 art drawn 9-18 px wide
             };
             img.src = ARROWHEAD_URL;
             const disc = new Image();
             disc.onload = () => {
                 disc.onload = null;
                 this.lrsTex = Texture.from(disc);
+                useMinifyingFilter(this.lrsTex); // scaled to the scanner radius: a few px at galaxy zoom
             };
             disc.src = LRS_DISC_URL;
         }
