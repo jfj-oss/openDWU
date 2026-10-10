@@ -110,6 +110,7 @@ export { BuiltObjectSubRole } from './builtObjectTypes';
 import { BuiltObjectSubRole } from './builtObjectTypes';
 import { PirateEconomy } from './pirates/pirateEconomy';
 import { EmpireActivityList } from './pirates/empireActivity';
+import { scenarioQuery } from './scenario/hooks';
 
 
 
@@ -1025,7 +1026,8 @@ export class Empire {
             // Empire.9.cs 4744-4759 CheckSystemVisible (task M4t): BuiltObjects then PrivateBuiltObjects.
             hasUnitInSystem: (star: Habitat, exclude: VisibilityUnit | null) => {
                 for (const b of this.builtObjects) {
-                    if (b != null && b.nearestSystemStar === star && b !== exclude) return true;
+                    // mod layer (Characters & Victory: a VIP shuttle gives no exploration credit); no scenario = no call.
+                    if (b != null && b.nearestSystemStar === star && b !== exclude && (this.galaxy.scenario === null || scenarioQuery(this.galaxy, 'unitGrantsSystemVisibility', true, { builtObject: b }))) return true;
                 }
                 for (const b of this.privateBuiltObjects) {
                     if (b != null && b.nearestSystemStar === star && b !== exclude) return true;

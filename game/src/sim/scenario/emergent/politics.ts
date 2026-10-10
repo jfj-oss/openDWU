@@ -198,13 +198,9 @@ export function empireApprovalAverage(galaxy: Galaxy, empire: Empire): number {
 }
 
 /** The colony a governor governs (their location, a colony of their empire), else null. */
-export function governedColony(c: Character): Habitat | null {
-    if (c.role !== CharacterRole.ColonyGovernor) return null;
-    const loc = c.location;
-    if (loc === null || isBuiltObjectLocation(loc)) return null;
-    const h = loc as Habitat;
-    return h.empire !== null && h.empire === c.empire ? h : null;
-}
+// The shared helper (scenario/governors.ts; same semantics), re-exported for this package's callers.
+import { governedColony } from '../governors';
+export { governedColony };
 
 /** Events of `type` in the last game year. */
 function recentEvents(galaxy: Galaxy, c: Character, type: CharacterEventType): number {

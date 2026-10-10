@@ -411,6 +411,8 @@ export function constructFacilities(galaxy: Galaxy, habitat: Habitat, timePassed
             }
             default:
                 if (habitat.empire !== null) num5 = f32(calculatePlanetaryFacilityBuildTimeFactor(planetaryFacility, habitat.empire));
+                // Mod layer (Characters & Victory: no construction at a neglected colony without a governor).
+                if (galaxy.scenario !== null && scenarioQuery(galaxy, 'colonyFacilityConstructionPaused', false, { habitat })) continue;
                 break;
         }
         switch (planetaryFacility.type) {

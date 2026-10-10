@@ -11,6 +11,7 @@
 //
 // Headless: no DOM / Pixi. Not reachable from the tick path (the scheduler only calls the boundary hook).
 
+import { scenarioQuery } from '../scenario/hooks';
 import type { Galaxy } from '../galaxy';
 import type { Empire } from '../empire';
 import { createGame, type CreateGameOptions, type Game } from '../game';
@@ -169,6 +170,8 @@ function applyOp(galaxy: Galaxy, empire: Empire, op: PlayerOpName, args: unknown
     if (fn === undefined) throw new Error(`command log: unknown player op ${String(op)}`);
     // The executor is sim code: the lazy lookups write (readOnlyQuery.ts); the onApplied callbacks are UI code and
     // run outside it.
+    // Mod layer (Characters & Victory: VIP shuttles take no orders, so they leave any ship list); no scenario = no call.
+    if (galaxy.scenario !== null) args = scenarioQuery(galaxy, 'playerCommandArgs', args, { empire, op });
     const result = withSimWrites(() => fn(galaxy, empire, ...args));
     // What the order created gets its stable id before the next command names it (entityRefs.ts).
     assignEntityRefIds(galaxy);

@@ -23,7 +23,8 @@
 import type { Galaxy } from '../../galaxy';
 import type { Empire } from '../../empire';
 import type { Habitat } from '../../types';
-import { Character, CharacterRole, CharacterTraitType, generateNewCharacter, getEmpireCharacters, stellarObjectCharacters } from '../../characters';
+import { Character, CharacterRole, CharacterTraitType, generateNewCharacter, getEmpireCharacters, isBuiltObjectLocation, stellarObjectCharacters } from '../../characters';
+import { spawnGovernorFor } from '../governors';
 import { IntelligenceMissionType, completeIntelligenceMission, newIntelligenceMissionAgainstHabitat } from '../../espionage';
 import { YEAR_LENGTH } from '../../galaxyTime';
 import { galaxyStarDate } from '../../tick/simTime';
@@ -217,7 +218,7 @@ function coupAiReplace(galaxy: Galaxy, company: CorporateCoupCompany): void {
     for (const gov of [...company.bought]) {
         const colony = gov.location as Habitat | null;
         gov.active = false;
-        if (colony !== null) generateNewCharacter(galaxy, company.holder, CharacterRole.ColonyGovernor, colony);
+        if (colony !== null && !isBuiltObjectLocation(colony)) spawnGovernorFor(galaxy, company.holder, colony); // scenario/governors.ts (Characters & Victory routes it)
         company.bought.splice(company.bought.indexOf(gov), 1);
         retireHiddenTarget(galaxy, 'boughtGovernor', gov, 'replaced'); // 19m (flag-gated)
     }

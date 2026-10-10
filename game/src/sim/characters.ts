@@ -4769,6 +4769,7 @@ export class Character {
         void num5;
         this._transferDestination = destination;
         if ((this.role !== CharacterRole.FleetAdmiral && this.role !== CharacterRole.TroopGeneral && this.role !== CharacterRole.ShipCaptain && this.role !== CharacterRole.PirateLeader) || this._location === null || !isBuiltObjectLocation(this._location)) {
+            if (galaxy.scenario !== null) scenarioEmit(galaxy, 'characterTransferStarted', { character: this, destination }); // mod layer (Characters & Victory)
             return;
         }
         const builtObject = this._location;
@@ -4780,6 +4781,31 @@ export class Character {
                 this._transferTimeRemaining = 0;
             }
         }
+        if (galaxy.scenario !== null && this._transferDestination !== null) scenarioEmit(galaxy, 'characterTransferStarted', { character: this, destination }); // mod layer
+    }
+
+    /**
+     * Not a port (mod layer, Characters & Victory VIP shuttles): moves the character into `vessel`'s character list
+     * without the CharacterTransferLocation event and without touching the pending transfer, and holds the stock
+     * transfer timer (it never runs out while aboard). The real arrival is a later completeLocationTransfer.
+     */
+    boardVessel(vessel: StellarObject): void {
+        if (this._location !== null) {
+            const list = stellarObjectCharacters(this._location);
+            if (list !== null) removeFirst(list, this);
+            if (isBuiltObjectLocation(this._location)) reviewCaptainBonuses(this._location);
+        }
+        let dest = stellarObjectCharacters(vessel);
+        if (dest === null) setStellarObjectCharacters(vessel, (dest = []));
+        if (!dest.includes(this)) dest.push(this);
+        this._location = vessel;
+        this._transferTimeRemaining = Math.fround(1e30);
+    }
+
+    /** Not a port (mod layer): re-targets a held transfer (the character stays aboard). */
+    retargetTransfer(destination: StellarObject): void {
+        this._transferDestination = destination;
+        this._transferTimeRemaining = Math.fround(1e30);
     }
 
     // Character.cs DefectToEmpire (4451).
@@ -7202,6 +7228,8 @@ export function resolveLocationsToDefend(galaxy: Galaxy, empire: Empire, include
  * TODO(port) (throw when reached with non-empty inputs): DiplomaticRelation-driven parts of ResolveLocationsToDefend.
  */
 export function reviewCharacterLocation(galaxy: Galaxy, empire: Empire, character: Character | null, transferToLocation: boolean): StellarObject | null {
+    // mod layer (Characters & Victory: its own governor placement); no scenario = no call.
+    if (character !== null && galaxy.scenario !== null && scenarioQuery(galaxy, 'characterLocationReviewSkip', false, { empire, character })) return null;
     if (character !== null && character.transferDestination === null && character.transferTimeRemaining <= 0) {
         void character.location;
         const locationEmpire = character.determineLocationEmpire();

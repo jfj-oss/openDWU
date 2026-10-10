@@ -196,6 +196,7 @@ export function empireDoTasks(galaxy: Galaxy, empire: Empire): void {
             shipGroupDoTasks(galaxy, shipGroup!, currentDateTime);
         }
         processCharacters(galaxy, empire, num);
+        if (galaxy.scenario !== null) scenarioEmit(galaxy, 'charactersProcessed', { empire }); // mod layer (Characters & Victory VIP trips)
     }
     // 3515-3522 regular block.
     if (num2 >= REGULAR_PROCESSING_INTERVAL) {

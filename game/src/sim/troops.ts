@@ -62,6 +62,7 @@ import type { Habitat } from './types';
 import { doCharacterEventRuntime } from './events';
 import type { BuiltObject } from './builtObject';
 import { isHumanEmpire } from './humanEmpires';
+import { scenarioQuery } from './scenario/hooks';
 import {
     CharacterEventType,
     CharacterRole,
@@ -515,7 +516,9 @@ function maximumCharactersAllowedNonIntelligenceAgent(empire: Empire): number {
 export function charactersCanGenerateAmountNonIntelligenceAgent(empire: Empire): number {
     const characters = getEmpireCharacters(empire);
     const num = countCharactersByRole(characters, CharacterRole.IntelligenceAgent);
-    const otherCharacterCount = characters.length - num;
+    let otherCharacterCount = characters.length - num;
+    // mod layer (Characters & Victory: governors are outside the cap); no scenario = no call.
+    if (empire.galaxy.scenario !== null) otherCharacterCount -= scenarioQuery(empire.galaxy, 'characterCapExempt', 0, { empire });
     const num2 = maximumCharactersAllowedNonIntelligenceAgent(empire);
     return num2 - otherCharacterCount;
 }

@@ -336,6 +336,26 @@ export interface ScenarioEvents {
      * ship. May draw galaxy.rnd (it runs in place of the stock step). Privateers.
      */
     privateShipMission: { empire: Empire; ship: BuiltObject; handled: boolean };
+    /**
+     * characters.ts Character.transferToNewLocation (Character.cs 4418), end: the transfer left a destination set (not
+     * the same-fleet instant move). No Rnd in handlers... except the Characters & Victory VIP shuttle (flag-gated: the
+     * spawn's parking point / name, as GenerateNewBuiltObject draws).
+     */
+    characterTransferStarted: { character: Character; destination: BuiltObject | Habitat };
+    /**
+     * characterRuntime.ts checkForCharacterAppearance (Empire.6.cs 3990) and missions/cmdTroops.ts chanceNewColonyGovernor
+     * (Galaxy.2.cs 4798), right after the new character activated at `birthplace` (the characterBirthplace query's
+     * answer); `intended` is where the stock code placed it. May draw (Characters & Victory sends it on a VIP trip).
+     */
+    characterAppeared: { character: Character; empire: Empire; birthplace: BuiltObject | Habitat; intended: BuiltObject | Habitat | null };
+    /** tick/empireTick.ts short block, right after ProcessCharacters (Empire.1.cs DoTasks short block). May draw (flag-gated handlers). */
+    charactersProcessed: { empire: Empire };
+    /** tick/empireTick.ts intermediate block, right after ReviewCharacterLocations (Empire.1.cs DoTasks intermediate block). May draw. */
+    charactersReviewed: { empire: Empire };
+    /** Characters & Victory: a VIP trip ended at its destination (`reason` = the sender's tag). No Rnd in handlers. */
+    vipTripArrived: { character: Character; destination: BuiltObject | Habitat; reason: string };
+    /** Characters & Victory: a VIP trip ended without arriving (`cause`: 'destroyed' | 'captured' | 'removed'). No Rnd. */
+    vipTripFailed: { character: Character; destination: BuiltObject | Habitat | null; reason: string; cause: string };
 }
 export type ScenarioEventName = keyof ScenarioEvents;
 
@@ -629,6 +649,37 @@ export interface ScenarioQueries {
      * 2039): true stops `pirate` queueing or progressing a pirate facility on `habitat`. No Rnd. Colony defence.
      */
     pirateFacilityBlocked: { value: boolean; args: { habitat: Habitat; pirate: Empire | null } };
+    /**
+     * troops.ts charactersCanGenerateAmountNonIntelligenceAgent (Empire.6.cs 3984): characters left out of the
+     * non-agent count the cap is checked against (stock 0). Characters & Victory: the governors. No Rnd.
+     */
+    characterCapExempt: { value: number; args: { empire: Empire } };
+    /**
+     * characterRuntime.ts checkForCharacterAppearance (Empire.6.cs 4118-4176, the role pick): the picked role's count limit (`limit`,
+     * stock num37) and whether the 40% share rule applies (`shareCheck`, stock true). No Rnd.
+     */
+    characterRoleLimit: { value: { limit: number; shareCheck: boolean }; args: { empire: Empire; role: number } };
+    /** missions/cmdTroops.ts chanceNewColonyGovernor (Galaxy.2.cs 4808): the cap test after the roll (stock: room under the non-agent cap). No Rnd. */
+    colonyGovernorSpawnAllowed: { value: boolean; args: { empire: Empire } };
+    /**
+     * checkForCharacterAppearance / chanceNewColonyGovernor: where the new character activates (stock: `intended`).
+     * No Rnd. Characters & Victory: the capital or the matching academy.
+     */
+    characterBirthplace: { value: BuiltObject | Habitat; args: { empire: Empire; character: Character | null; role: number; intended: BuiltObject | Habitat } };
+    /**
+     * characters.ts reviewCharacterLocation (Empire.7.cs ReviewCharacterLocation): true skips the stock placement
+     * of `character` (returns null, moves nothing). No Rnd. Characters & Victory: governors.
+     */
+    characterLocationReviewSkip: { value: boolean; args: { empire: Empire; character: Character } };
+    /** empire.ts hasUnitInSystem (Empire.9.cs 4744 CheckSystemVisible): false = this ship does not make its system visible. No Rnd. */
+    unitGrantsSystemVisibility: { value: boolean; args: { builtObject: BuiltObject } };
+    /** construction/facilities.ts constructFacilities (Habitat.cs 2039): true pauses an empire facility's progress at `habitat`. No Rnd. */
+    colonyFacilityConstructionPaused: { value: boolean; args: { habitat: Habitat } };
+    /**
+     * player/playerCommands.ts applyOp, before the op runs (live and replayed alike): the op's arguments, which a handler
+     * may return changed (a new array; never in place). No Rnd. Characters & Victory: VIP shuttles leave ship lists.
+     */
+    playerCommandArgs: { value: unknown[]; args: { empire: Empire; op: string } };
 }
 export type ScenarioQueryName = keyof ScenarioQueries;
 

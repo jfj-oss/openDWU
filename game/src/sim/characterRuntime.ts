@@ -18,7 +18,7 @@
 //   Character.cs 4472 SendDeathMessage; CharacterEventList.cs 63 CountEventsByType, 75 GetDateOfMostRecentEventByType
 //   Habitat.cs 1194 StartRebelling
 
-import { scenarioLeaderSuccession } from './scenario/hooks';
+import { scenarioEmit, scenarioLeaderSuccession, scenarioQuery } from './scenario/hooks';
 import type { Galaxy } from './galaxy';
 import type { Empire } from './empire';
 import { Habitat as HabitatClass, type Habitat } from './types';
@@ -710,6 +710,7 @@ export function reviewCharacterLocations(galaxy: Galaxy, empire: Empire): void {
         if (empire.controlCharacterLocations) reviewCharacterLocation(galaxy, empire, character, true);
         applyCharacterLocationBonusToOtherCharacters(galaxy, character);
     }
+    if (galaxy.scenario !== null) scenarioEmit(galaxy, 'charactersReviewed', { empire }); // mod layer (Characters & Victory governors)
 }
 
 /** Empire.7.cs 363 ApplyCharacterLocationBonusToOtherCharacters(character). Rnd: Next(0, skills) per other character. */
@@ -896,10 +897,17 @@ export function checkForCharacterAppearance(galaxy: Galaxy, empire: Empire): voi
             characterRole = CharacterRole.ShipCaptain;
             num37 = Math.max(1, Math.trunc(Math.sqrt(empire.builtObjects.length) + 1.0));
         }
+        let shareCheck = true;
+        if (galaxy.scenario !== null && characterRole !== CharacterRole.Undefined) {
+            // mod layer (Characters & Victory: the governor role limit); no scenario = no call.
+            const lim = scenarioQuery(galaxy, 'characterRoleLimit', { limit: num37, shareCheck: true }, { empire, role: characterRole });
+            num37 = lim.limit;
+            shareCheck = lim.shareCheck;
+        }
         const num38 = countCharactersByRole(characters, characterRole);
         if (num38 >= num37) {
             characterRole = CharacterRole.Undefined;
-        } else {
+        } else if (shareCheck) {
             const num39 = num38 / otherCharacterCount;
             if (num39 > 0.4) characterRole = CharacterRole.Undefined;
         }
@@ -964,7 +972,11 @@ export function checkForCharacterAppearance(galaxy: Galaxy, empire: Empire): voi
         }
     }
     if (stellarObject !== null) {
+        // mod layer (Characters & Victory): the character activates at its birthplace and travels to `intended`.
+        const intended = stellarObject;
+        if (galaxy.scenario !== null) stellarObject = scenarioQuery(galaxy, 'characterBirthplace', stellarObject, { empire, character, role: character.role, intended });
         character.activate(galaxy, empire, stellarObject);
+        if (galaxy.scenario !== null) scenarioEmit(galaxy, 'characterAppeared', { character, empire, birthplace: stellarObject, intended });
         doCharacterEvent(galaxy, CharacterEventType.CharacterStart, character, character);
         if (character.role === CharacterRole.IntelligenceAgent) {
             doCharacterEventLeader(galaxy, CharacterEventType.IntelligenceAgentRecruited, character, empire);

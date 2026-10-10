@@ -57,6 +57,7 @@ import { radiusFraction, registerScenarioPeriodic, registerScenarioQuery, regist
 import { scenarioFlag, scenarioParam, scenarioState } from '../state';
 import { scenarioMessage, scenarioNews, scenarioText } from '../messages';
 import { registerStabilityTerm } from '../stability';
+import { colonyGovernor, spawnGovernorFor } from '../governors';
 import { POLITICS_FLAG, governedColony, initialLoyalty, isPoliticalEmpire, peekPoliticsState, politicsEntry } from '../emergent/politics';
 import { grantAutonomy, runPoliticsAction } from '../emergent/politicsActions';
 import { COURT_FLAG, houseOf, rulingHouse } from '../court/court';
@@ -297,12 +298,7 @@ export function nearbyFleet(galaxy: Galaxy, empire: Empire, h: Habitat): BuiltOb
 }
 
 /** The ColonyGovernor at `h` (its own empire's), or null. */
-export function colonyGovernorOf(h: Habitat): Character | null {
-    const chars = stellarObjectCharacters(h);
-    if (chars === null) return null;
-    for (const c of chars) if (c.active && c.role === CharacterRole.ColonyGovernor && c.empire === h.empire) return c;
-    return null;
-}
+export const colonyGovernorOf: (h: Habitat) => Character | null = colonyGovernor; // the shared helper (scenario/governors.ts)
 
 /** The frontier sector `h` belongs to (null: none). Pure. */
 export function sectorOfColony(galaxy: Galaxy, h: Habitat): FrontierSector | null {
@@ -600,7 +596,8 @@ export function reviewGovernor(galaxy: Galaxy, s: FrontierSector, year: number):
     }
     if (gov === null && byAutonomy.length > 0) {
         // RND(19g5): the stock character generator (a new ColonyGovernor at the most autonomous colony).
-        gov = generateNewCharacter(galaxy, empire, CharacterRole.ColonyGovernor, byAutonomy[0]).character;
+        // Characters & Victory (when on): the governor appears at the capital and travels (scenario/governors.ts).
+        gov = spawnGovernorFor(galaxy, empire, byAutonomy[0]);
     }
     const wasFormed = s.governor === null && s.formed === year;
     s.governor = gov;

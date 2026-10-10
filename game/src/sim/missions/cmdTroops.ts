@@ -44,7 +44,7 @@ import { pirateColonyControl } from '../combat/invasion';
 import { takeOwnershipOfColonyFull } from '../combat/ownership';
 import { purchaseNewBuiltObject } from '../construction/empireConstruction';
 import { determineBuiltObjectIsState } from '../builtObject';
-import { scenarioEmit } from '../scenario/hooks';
+import { scenarioEmit, scenarioQuery } from '../scenario/hooks';
 import { rimTraderColonyCapBlocks } from '../scenario/rimTrade/common';
 import { takeHumanColonyName } from '../perHumanState';
 
@@ -105,8 +105,11 @@ export function chanceNewColonyGovernor(galaxy: Galaxy, empire: Empire | null, c
     if (empire !== null && colony !== null && empire.colonies != null && empire.colonies.length > 1) {
         let num = 15;
         if (empire.dominantRace !== null) num = Math.max(2, Math.trunc(num / raceCharacterRandomAppearanceChanceGovernor(empire.dominantRace)));
-        if (galaxy.rnd.next(0, num) === 1 && charactersCanGenerateAmountNonIntelligenceAgent(empire) > 0) {
-            const character = generateNewCharacter(galaxy, empire, CharacterRole.ColonyGovernor, colony).character;
+        if (galaxy.rnd.next(0, num) === 1 && (galaxy.scenario !== null ? scenarioQuery(galaxy, 'colonyGovernorSpawnAllowed', charactersCanGenerateAmountNonIntelligenceAgent(empire) > 0, { empire }) : charactersCanGenerateAmountNonIntelligenceAgent(empire) > 0)) {
+            // mod layer (Characters & Victory): the governor activates at its birthplace, then travels to the colony.
+            const birthplace = galaxy.scenario !== null ? scenarioQuery(galaxy, 'characterBirthplace', colony, { empire, character: null, role: CharacterRole.ColonyGovernor, intended: colony }) : colony;
+            const character = generateNewCharacter(galaxy, empire, CharacterRole.ColonyGovernor, birthplace).character;
+            if (galaxy.scenario !== null) scenarioEmit(galaxy, 'characterAppeared', { character, empire, birthplace, intended: colony });
             const title = formatGameTextNow('New Character Event Title', [resolveDescription(CharacterRole, character.role)]);
             const description = formatGameTextNow('New Character Event Colony Governor', [colony.name, character.name]);
             sendMessageToEmpireWithTitle(empire, empire, EmpireMessageType.CharacterAppearance, character, description, title);

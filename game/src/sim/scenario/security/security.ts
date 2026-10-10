@@ -44,6 +44,7 @@ import { noteVoiceCue, seatLabel, seatSpeaker, voicesOn } from '../llm/voiceCues
 import { registerStabilityTerm, stabilityTermValues } from '../stability';
 import { KNOWLEDGE_CONFIRMED, revealTo, type ThreatSite } from '../threats/framework';
 import { convert, cultHeldColonies, cultTrigger, peekCultState } from '../threats/cult';
+import { colonyGovernor } from '../governors';
 import { POLITICS_FLAG, defectionTarget, governedColony, isPoliticalEmpire, peekPoliticsState, politicsEntry, politicsHooks, politicsState } from '../emergent/politics';
 import { runPoliticsAction } from '../emergent/politicsActions';
 import {
@@ -96,12 +97,7 @@ function isNormal(galaxy: Galaxy, e: Empire | null): e is Empire {
     return isPoliticalEmpire(galaxy, e);
 }
 
-function colonyGovernor(h: Habitat): Character | null {
-    const chars = stellarObjectCharacters(h);
-    if (chars === null) return null;
-    for (const c of chars) if (c.active && c.role === CharacterRole.ColonyGovernor && c.empire === h.empire) return c;
-    return null;
-}
+// colonyGovernor: the shared helper (scenario/governors.ts; same semantics as the former local one).
 
 function isConvert(galaxy: Galaxy, c: Character): boolean {
     if (!scenarioFlag(galaxy, CULT_FLAG)) return false;
