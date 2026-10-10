@@ -162,6 +162,10 @@ export const COMMAND_FAILURE: FailureTable = {
     courtProposeTie: (reason) => ({ ok: false, accepted: false, reason }),
     frontierOrder: refused,
     frontierConcede: refused,
+    cvAcceptSuggestion: no,
+    cvRequestGovernor: no,
+    cvSetAutomation: no,
+    cvSaveVipDesign: no,
     llmStrategic: () => null,
 };
 

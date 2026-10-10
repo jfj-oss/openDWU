@@ -101,6 +101,11 @@ const CONFIGS = [
     SCN('resource-crises', { years: 5 }),
     SCN('espionage-consequences', { years: 5 }),
     SCN('event-log', { years: 4 }),
+    SCN('characters-victory', { years: 6 }),
+    // Characters & Victory measurement pair (docs/CHARACTERS_AND_VICTORY.md §12): the same seed and setup with the add-on
+    // on and with its master switch off (the faithful game), for the AI-economy and step-time comparison.
+    SCN('characters-victory', { name: 'cv-on-s1', seed: 1, years: 10, wizard: { starCountIndex: 3, dimensionIndex: 3, otherEmpires: { empireCount: 9 } } }),
+    SCN('characters-victory', { name: 'cv-off-s1', seed: 1, years: 10, wizard: { starCountIndex: 3, dimensionIndex: 3, otherEmpires: { empireCount: 9 } }, flags: { charactersVictory: false } }),
     SCN('ai-parity', { name: 'ai-parity-all', seed: 61, years: 6, wizard: { starCountIndex: 3, dimensionIndex: 3, otherEmpires: { empireCount: 9 } }, flagsOff: ['darkFarmsGameEnd'] }),
     // A scenario at the large end, and a scenario under a pirate player.
     SCN('rim-herders', { name: 'rim-herders-pirate', seed: 71, years: 5, wizard: { empireType: 'CustomPirate', starCountIndex: 3, dimensionIndex: 3 } }),

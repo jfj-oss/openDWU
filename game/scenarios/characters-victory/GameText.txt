@@ -1,0 +1,27 @@
+'Characters & Victory: message texts (scenarioText tags). {n} items are filled by the scenario code.
+CV Shuttle Design;VIP Shuttle
+CV Shuttle Name;VIP Shuttle {0}
+CV VIP Shuttle;VIP shuttle
+CV Decoy;Decoy shuttle
+CV Ruler Aboard;Ruler aboard: {0}
+CV Role Leader;Ruler
+CV Role Ambassador;Ambassador
+CV Role ColonyGovernor;Governor
+CV Role FleetAdmiral;Admiral
+CV Role TroopGeneral;General
+CV Role IntelligenceAgent;Agent
+CV Role Scientist;Scientist
+CV Role ShipCaptain;Captain
+CV Role PirateLeader;Pirate leader
+CV Ruler Trip Title;Ruler travelling
+CV Ruler Trip;{0} has left by VIP shuttle for {1}.
+CV Ruler Revealed Title;Ruler's shuttle identified
+CV Ruler Revealed;Our agents have identified the shuttle carrying {0} of the {1}: {2}.
+CV Reputation VIP Attacked;Attacked our VIP shuttle
+CV Colony Decline Title;Colony without a governor
+CV Colony Decline;{0} has been without a governor for six months and is starting to decline.
+CV Local Governor Title;Local governor
+CV Local Governor;{0} has risen to govern {1}.
+CV Suggestion Title;Governor suggestion
+CV Suggestion Reserve;Suggested: send {0} to govern {1}.
+CV Suggestion Move;Suggested: move {0} from {2} to {1} (+{3}% fit).

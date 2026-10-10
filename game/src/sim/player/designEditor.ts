@@ -35,6 +35,7 @@ import { splitString } from '../data/gameText';
 import { getText } from '../textResolver';
 import { gameText } from '../colonyTick';
 import { cloneDesign } from '../gameStartTail';
+import { vipComponentAllowed } from '../scenario/charactersVictory/shuttleDesign';
 import { galaxyCurrentStarDate } from '../pirateRelations';
 import { checkDesignSubRoleShouldBeUpgraded, resolveLegacySubRole, resolveSubRoleDescription } from '../designGeneration';
 import { determineResourcesEmpireSupplies } from '../diplomacyTick';
@@ -56,6 +57,9 @@ export interface DesignDraft {
     target: Design | null;
     /** design_2: set by btnDesignsUpgradeManual_Click; marked obsolete when the new design is saved. */
     replaces: Design | null;
+    /** Not in the original (Characters & Victory): the empire's VIP Shuttle — its own component families, locked role,
+     *  saved through cvSaveVipDesign (never into Empire.Designs). */
+    vip?: boolean;
 }
 
 /** Where a new editor session starts from (the Designs panel buttons). */
@@ -435,6 +439,15 @@ function netIntTryParse(s: string): number {
  * btnDesignsCopyAsNew_Click (:1060), btnDesignsUpgradeManual_Click (Main.Part8.cs:926) and btnDesignsEdit_Click
  * (Main.Part7.cs:4839). The ControlDesigns prompt is the caller's (designAutomationPromptApplies).
  */
+/** Characters & Victory: an editor session on a copy of the empire's VIP Shuttle design (null: none yet). */
+export function newVipDesignDraft(galaxy: Galaxy, empire: Empire, vipDesign: Design | null): DesignDraft | null {
+    if (vipDesign === null) return null;
+    const design = cloneDesign(vipDesign);
+    design.size = vipDesign.size;
+    design.dateCreated = galaxyCurrentStarDate(galaxy);
+    return { design, mode: 'edit', target: null, replaces: null, vip: true };
+}
+
 export function newDesignDraft(galaxy: Galaxy, empire: Empire, source: DesignDraftSource): DesignDraft {
     switch (source.kind) {
         case 'blank': {
@@ -716,6 +729,7 @@ function lastIndexById(components: ComponentDefinition[], component: ComponentDe
  * design warning (designWarnings).
  */
 export function addComponent(empire: Empire, draft: DesignDraft, component: ComponentDefinition, count: 1 | 5 = 1): EditorResult {
+    if (draft.vip === true && !vipComponentAllowed(component.type)) return { ok: false };
     if (draft.mode === 'view') return { ok: false }; // btnAddComponentToDesign.Enabled = false (Main.Part8.cs:339)
     if (!empire.research.researchedComponents.some((c) => c.componentId === component.componentId)) return { ok: false };
     const design = draft.design;

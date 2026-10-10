@@ -1,0 +1,32 @@
+{
+  "id": "characters-victory",
+  "name": "Characters & Victory",
+  "description": "Characters travel in person: every relocation is a free, marked VIP shuttle that can be escorted, intercepted and destroyed (its passenger dies with it; the ruler travels with decoys). Every colony needs a governor: new characters appear at the capital or the matching academy and travel to their post, the capital trains reserve governors, and a colony left without one declines after six months (no construction, falling output and approval, disrepair, emigration) and needs years to recover. Governors are moved by their skills and the colonies' needs, with suggestions for the player or full automation. The AI uses all of it. (A Galactic Council follows in a later package.)",
+  "flags": [
+    { "name": "charactersVictory", "label": "Characters & Victory", "description": "Master switch.", "default": true },
+    { "name": "cvVipShuttles", "label": "VIP shuttles", "description": "Every character trip is a free VIP shuttle (gold ring on the map, despawns on arrival); the passenger dies if it is destroyed or captured.", "default": true },
+    { "name": "cvEscorts", "label": "VIP escorts", "description": "Idle warships escort important travellers on dangerous routes (automatic for the AI; 'Automate VIP escorts' for the player).", "default": true },
+    { "name": "cvRulerDecoys", "label": "Ruler decoys", "description": "A travelling ruler is joined by identical decoy shuttles; a Steal Operations Map mission reveals the real one.", "default": true },
+    { "name": "cvGovernors", "label": "Governors on every colony", "description": "Each colony needs a governor; vacant colonies decline after six months; reserves are trained at the capital; governors move to where their skills matter.", "default": true }
+  ],
+  "params": [
+    { "name": "cvShuttleSize", "label": "VIP shuttle hull size", "default": 180, "min": 60, "max": 1000 },
+    { "name": "cvTripTimeoutFactor", "label": "A trip completes at once after this many times the stock transfer time", "default": 3, "min": 1, "max": 20 },
+    { "name": "cvRulerDecoyCount", "label": "Decoy shuttles with a travelling ruler", "default": 2, "min": 0, "max": 6 },
+    { "name": "cvEscortFirepowerPerPoint", "label": "Escort firepower per importance x danger point", "default": 60, "min": 0, "max": 2000 },
+    { "name": "cvEscortCapPct", "label": "Escorts at most this % of idle warships", "default": 20, "min": 0, "max": 100 },
+    { "name": "cvEscortWaitDays", "label": "An important trip waits up to this many days for its escort", "default": 60, "min": 0, "max": 360 },
+    { "name": "cvGraceDays", "label": "Days a colony may be vacant before it declines", "default": 180, "min": 0, "max": 1800 },
+    { "name": "cvDeclineYears", "label": "Years of vacancy (after the grace) to full neglect", "default": 4, "min": 1, "max": 30 },
+    { "name": "cvRecoveryYears", "label": "Years for a governor to recover a fully neglected colony", "default": 5, "min": 1, "max": 30 },
+    { "name": "cvDisrepairPerYear", "label": "Development levels a neglected colony loses per year", "default": 2, "min": 0, "max": 50 },
+    { "name": "cvMinPopulation", "label": "Colonies below this population (millions) do not decline", "default": 50, "min": 0, "max": 100000 },
+    { "name": "cvReservePct", "label": "Reserve governors as % of colonies", "default": 10, "min": 0, "max": 100 },
+    { "name": "cvTrainDays", "label": "Days to train a governor at a training site", "default": 180, "min": 10, "max": 3600 },
+    { "name": "cvTrainCost", "label": "Cost of training a governor", "default": 2000, "min": 0, "max": 1000000 },
+    { "name": "cvTenureYears", "label": "Minimum years in post before an optimising move", "default": 2, "min": 0, "max": 20 },
+    { "name": "cvGainPct", "label": "Fit gain (%) a move needs after costs", "default": 25, "min": 0, "max": 1000 },
+    { "name": "cvTransitPerColonies", "label": "One governor in transit per this many colonies", "default": 15, "min": 1, "max": 1000 },
+    { "name": "cvMovesPerReview", "label": "Governor moves per empire per review", "default": 2, "min": 0, "max": 50 }
+  ]
+}

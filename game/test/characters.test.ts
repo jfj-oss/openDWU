@@ -6,6 +6,27 @@ import type { Empire } from '../src/sim/empire';
 import { loadGameDataFs } from './helpers/loadGameDataFs';
 import type { GameData } from '../src/sim/data/gameData';
 import { parseCharacterFile, parseCharacterNames } from '../src/sim/data/characters';
+import { cachedTickGameRun } from './helpers/gameCache';
+import { createScenarioGame, scenarioGameData } from './helpers/scenarioGame';
+import type { Game } from '../src/sim/game';
+import { runGameSeconds } from '../src/sim/tick/harness';
+import { stateDigest } from '../src/sim/tick/digest';
+import { GalaxyTime, YEAR_LENGTH } from '../src/sim/galaxyTime';
+import { defaultStartGameOptions } from '../src/sim/startGameOptions';
+import { deserializeGame, serializeGame } from '../src/sim/save/gameSave';
+import { registerScenarioEvent, scenarioQuery } from '../src/sim/scenario/hooks';
+import { stabilityTermValues } from '../src/sim/scenario/stability';
+import { BuiltObjectSubRole } from '../src/sim/builtObjectTypes';
+import { ComponentType } from '../src/sim/data/components';
+import { assignMission } from '../src/sim/missions/assign';
+import { BuiltObjectMissionPriority, BuiltObjectMissionType, builtObjectMission } from '../src/sim/missions/mission';
+import { builtObjectCompleteTeardown } from '../src/sim/combat/teardown';
+import { charactersCanGenerateAmountNonIntelligenceAgent } from '../src/sim/troops';
+import { CV_LIVE_KEY, CV_STATE_KEY, peekCvState } from '../src/sim/scenario/charactersVictory/common';
+import { isVipShuttle, tripOfCharacter } from '../src/sim/scenario/charactersVictory/vip';
+import { generateVipShuttleDesign, vipComponentAllowed } from '../src/sim/scenario/charactersVictory/shuttleDesign';
+import { colonyVacancy, reviewGovernors } from '../src/sim/scenario/charactersVictory/governorsCv';
+
 import {
     CharacterEventType,
     CharacterRole,
@@ -14,6 +35,7 @@ import {
     captainBonuses,
     determineValidTraitsForRole,
     empireCharactersHaveTrait,
+    generateNewCharacter,
     generateStartingCharacters,
     getCharacterMaintenanceBonuses,
     getEmpireCharacters,
@@ -298,4 +320,157 @@ describe('GenerateStartingCharacters(pirate base) (Galaxy.8.cs 4822)', () => {
         // No race (AvailableCharacters) characters: every character was generated.
         expect(chars.every((c) => c.appearanceOrder !== 0 || c.race === null || !raceAvailableCharacters(g, c.race)!.includes(c))).toBe(true);
     }, 120000);
+});
+
+// ---------------------------------------------------------------------------------------------------------------
+// Characters & Victory add-on (scenarios/characters-victory; docs/CHARACTERS_AND_VICTORY.md): flag-off identity, VIP
+// shuttle trips (spawn, arrival, death aboard), the shuttle design's restrictions, the governor cap and vacancy decline.
+// ---------------------------------------------------------------------------------------------------------------
+describe('Characters & Victory add-on', () => {
+    const SC = 'characters-victory';
+    const ALL_OFF = { charactersVictory: false, cvVipShuttles: false, cvEscorts: false, cvRulerDecoys: false, cvGovernors: false };
+    const ON = { charactersVictory: true, cvVipShuttles: true, cvEscorts: true, cvRulerDecoys: true, cvGovernors: true };
+
+    it('flags off: byte-identical to the plain seed-1 game (digest, Rnd stream, no state)', () => {
+        const ref = cachedTickGameRun(gameData, { seconds: 900 });
+        const { game } = createScenarioGame(gameData, { scenario: SC, flags: ALL_OFF });
+        expect(Object.keys(game.galaxy.scenario!.flags).sort()).toEqual(Object.keys(ALL_OFF).sort());
+        runGameSeconds(game, 900);
+        expect(stateDigest(game.galaxy)).toBe(stateDigest(ref.game.galaxy));
+        expect(game.galaxy.rnd.drawCount).toBe(ref.game.galaxy.rnd.drawCount);
+        expect(CV_STATE_KEY in game.galaxy.scenario!.state).toBe(false);
+        expect(CV_LIVE_KEY in game.galaxy.scenario!.state).toBe(false);
+    }, 1200000);
+
+    function cvGame(): Game {
+        return createScenarioGame(gameData, { scenario: SC, flags: ON }).game;
+    }
+
+    it('a transfer is a VIP shuttle trip: the character boards, the colony loses it at once, it arrives and the shuttle despawns', () => {
+        const game = cvGame();
+        const g = game.galaxy;
+        const e = g.playerEmpire!;
+        const c = getEmpireCharacters(e).find((x) => x.active && x.location === e.capital && x.role !== CharacterRole.Leader)!;
+        expect(c).toBeDefined();
+        // A far destination: the empire's capital is the only colony at the start, so send the character to a far AI capital
+        // as if it were an ambassador trip target — any habitat works as a destination (we only check the mechanics).
+        const dest = g.empires.filter((x) => x !== e && x.capital !== null).sort((a, b) => b.empireId - a.empireId)[0].capital!;
+        const arrived: string[] = [];
+        const off = registerScenarioEvent({ id: 'test.cvArrive', flag: 'charactersVictory', event: 'vipTripArrived', run: (_g, ev) => arrived.push(ev.character.name) });
+        try {
+            c.transferToNewLocation(dest, g);
+            const t = tripOfCharacter(g, c)!;
+            expect(t).not.toBeNull();
+            expect(c.location).toBe(t.shuttle);
+            expect(stellarObjectCharacters(e.capital!)!.includes(c)).toBe(false);
+            expect(stellarObjectCharacters(t.shuttle)!).toContain(c);
+            expect(t.shuttle.subRole).toBe(BuiltObjectSubRole.PassengerShip);
+            expect(isVipShuttle(g, t.shuttle)).toBe(true);
+            // The shuttle refuses outside orders.
+            assignMission(g, t.shuttle, BuiltObjectMissionType.Patrol, e.capital, null, BuiltObjectMissionPriority.Normal);
+            expect(builtObjectMission(t.shuttle.mission)!.type).toBe(BuiltObjectMissionType.Move);
+            // Fly until it arrives (or the stuck-trip deadline completes it).
+            for (let i = 0; i < 400 && tripOfCharacter(g, c) !== null; i++) runGameSeconds(game, 3);
+            expect(tripOfCharacter(g, c)).toBeNull();
+            if (c.active) {
+                expect(c.location).toBe(dest);
+                expect(c.transferDestination).toBeNull();
+                expect(arrived).toContain(c.name);
+            }
+            expect(t.shuttle.hasBeenDestroyed).toBe(true); // despawned
+            expect(e.builtObjects.includes(t.shuttle)).toBe(false);
+        } finally {
+            off();
+        }
+    }, 600000);
+
+    it('a passenger dies with a destroyed shuttle (the stock ShipDestroyed path)', () => {
+        const game = cvGame();
+        const g = game.galaxy;
+        const e = g.playerEmpire!;
+        const c = getEmpireCharacters(e).find((x) => x.active && x.location === e.capital && x.role !== CharacterRole.Leader)!;
+        const dest = g.empires.find((x) => x !== e && x.capital !== null)!.capital!;
+        c.transferToNewLocation(dest, g);
+        const t = tripOfCharacter(g, c)!;
+        t.shuttle.hasBeenDestroyed = true; // as the combat destroy branch sets it before the teardown
+        builtObjectCompleteTeardown(g, t.shuttle);
+        expect(c.active).toBe(false);
+        runGameSeconds(game, 6);
+        expect(peekCvState(g)!.trips.some((x) => x.character === c)).toBe(false);
+        expect(peekCvState(g)!.counters.tripsLost).toBeGreaterThanOrEqual(1);
+    }, 600000);
+
+    it('the VIP Shuttle design carries only the allowed components (no weapons, cargo, troops, sensors) at the fixed size', () => {
+        const g = cvGame().galaxy;
+        for (const e of g.empires.filter((x) => x.dominantRace !== null).slice(0, 3)) {
+            const d = generateVipShuttleDesign(g, e)!;
+            expect(d).not.toBeNull();
+            for (const comp of d.components) expect(vipComponentAllowed(comp.type)).toBe(true);
+            expect(d.components.some((x) => x.type === ComponentType.HyperDrive)).toBe(true);
+            expect(d.firepowerRaw).toBe(0);
+            expect(d.size).toBeLessThanOrEqual(180);
+            expect(e.designs.includes(d)).toBe(false);
+        }
+    }, 600000);
+
+    it('governors: outside the non-agent cap, a vacancy declines after the grace (approval term, taxes, no construction) and recovers', () => {
+        const game = cvGame();
+        const g = game.galaxy;
+        const e = g.playerEmpire!;
+        const h = e.capital!;
+        const govs = getEmpireCharacters(e).filter((x) => x.active && x.role === CharacterRole.ColonyGovernor);
+        const before = charactersCanGenerateAmountNonIntelligenceAgent(e);
+        // Governors do not count toward the stock cap.
+        expect(scenarioQuery(g, 'characterCapExempt', 0, { empire: e })).toBe(govs.length);
+        generateNewCharacter(g, e, CharacterRole.ColonyGovernor, h);
+        expect(charactersCanGenerateAmountNonIntelligenceAgent(e)).toBe(before); // a new governor takes no room
+        govs.push(getEmpireCharacters(e).filter((x) => x.active && x.role === CharacterRole.ColonyGovernor).pop()!);
+        // Remove every governor at the capital: vacant.
+        for (const c of govs) c.kill(g);
+        expect(colonyVacancy(g, h).vacant).toBe(true);
+        reviewGovernors(g, e);
+        const r0 = peekCvState(g)!.colonies.find((x) => x.colony === h)!;
+        expect(r0.vacantSince).toBeGreaterThanOrEqual(0);
+        // Back-date the vacancy past the grace plus two years: neglect, a negative 'vacancy' term, lower taxes, paused facilities.
+        r0.vacantSince -= (180 + 720) * (YEAR_LENGTH / 360);
+        r0.updated -= 720 * (YEAR_LENGTH / 360);
+        r0.riseAt = -1;
+        reviewGovernors(g, e);
+        expect(r0.neglect).toBeGreaterThan(0.4);
+        const term = stabilityTermValues(g, h).find((x) => x.cause === 'vacancy')!;
+        expect(term.value).toBeCloseTo(-20 * r0.neglect, 6);
+        expect(scenarioQuery(g, 'colonyTaxRevenue', 1000, { habitat: h, empire: e })).toBeCloseTo(1000 * (1 - 0.5 * r0.neglect), 6);
+        expect(scenarioQuery(g, 'colonyFacilityConstructionPaused', false, { habitat: h })).toBe(true);
+        // A governor arrives: recovery at 1/5 per year.
+        const n0 = r0.neglect;
+        generateNewCharacter(g, e, CharacterRole.ColonyGovernor, h);
+        r0.updated -= 360 * (YEAR_LENGTH / 360);
+        reviewGovernors(g, e);
+        expect(r0.vacantSince).toBe(-1);
+        expect(r0.neglect).toBeCloseTo(Math.max(0, n0 - 0.2), 3);
+    }, 600000);
+
+    it('a CV game with trips in flight saves and reloads identically', () => {
+        const game = cvGame();
+        const g = game.galaxy;
+        const e = g.playerEmpire!;
+        const c = getEmpireCharacters(e).find((x) => x.active && x.location === e.capital && x.role !== CharacterRole.Leader)!;
+        c.transferToNewLocation(g.empires.find((x) => x !== e && x.capital !== null)!.capital!, g);
+        runGameSeconds(game, 30);
+        expect(peekCvState(g)!.trips.length).toBeGreaterThan(0);
+        const saveText = (gm: Game): string => {
+            const time = new GalaxyTime();
+            time.togglePause();
+            time.advance(gm.galaxy.nowMs);
+            return serializeGame(gm as never, time, { ...defaultStartGameOptions(), seed: 1, scenario: { id: SC, flags: ON, params: {} } });
+        };
+        const gd = scenarioGameData(gameData, SC);
+        const text = saveText(game);
+        const back = deserializeGame(text, gd).game;
+        expect(peekCvState(back.galaxy)!.trips.length).toBe(peekCvState(g)!.trips.length);
+        runGameSeconds(game, 120);
+        runGameSeconds(back, 120);
+        expect(stateDigest(back.galaxy)).toBe(stateDigest(game.galaxy));
+        expect(saveText(back)).toBe(saveText(game));
+    }, 600000);
 });

@@ -132,6 +132,8 @@ import { applyLlmStrategicCommand, type LlmStrategicCommand } from '../scenario/
 import { applyPopulationPolicyToAllColonies, renameColony, scrapColonyFacility, setColonyAsCapital, setColonyPopulationPolicy, transferToTransport } from './colonyOrders';
 import { isHumanEmpire, setAiSeat } from '../humanEmpires';
 import { setHumanMessageOptions } from '../perHumanState';
+import { acceptGovernorSuggestion, requestGovernor, setCvAutomation } from '../scenario/charactersVictory/governorsCv';
+import { savePlayerVipDesign } from '../scenario/charactersVictory/shuttleDesign';
 
 /** Automation / control fields of Empire the UI sets directly (Game Options panel and the automation prompts). */
 function isEmpireControlField(empire: Empire, field: string): boolean {
@@ -569,6 +571,16 @@ export const PLAYER_OPS = {
     /** A concession to a restless sector (loose rule, local tax, autonomy grant, governor loyalty). */
     frontierConcede: (galaxy: Galaxy, empire: Empire, sectorId: number) => concedeSector(galaxy, empire, sectorId),
     // [frontier] end
+    // [charactersVictory] begin — Characters & Victory (scenario/charactersVictory; flag-gated inside)
+    /** Accept a governor suggestion: the governor travels to the colony (a VIP trip). */
+    cvAcceptSuggestion: (galaxy: Galaxy, empire: Empire, character: Character, colony: Habitat) => acceptGovernorSuggestion(galaxy, empire, character, colony),
+    /** Request a governor for a colony (the best reserve, else one trained at the capital). */
+    cvRequestGovernor: (galaxy: Galaxy, empire: Empire, colony: Habitat) => requestGovernor(galaxy, empire, colony),
+    /** "Automate governors" / "Automate VIP escorts" / the escort level (0, 0.5, 1, 2). */
+    cvSetAutomation: (galaxy: Galaxy, empire: Empire, opts: { governors?: boolean; escorts?: boolean; escortLevel?: number }) => setCvAutomation(galaxy, empire, opts),
+    /** Save the edited VIP Shuttle design (its name and component ids; only the allowed families are kept). */
+    cvSaveVipDesign: (galaxy: Galaxy, empire: Empire, name: string, componentIds: number[]) => savePlayerVipDesign(galaxy, empire, name, componentIds),
+    // [charactersVictory] end
     // [llm] begin — 19s-3 strategic upgrade (scenario/llm/strategic.ts; flag llmStrategic, no-op when off): the local
     // model's validated choice for an AI empire (`empire` = that AI), or its refusal; the only way a model choice
     // reaches the sim, so seed + command log replays it without the model.

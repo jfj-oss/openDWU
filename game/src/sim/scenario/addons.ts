@@ -55,6 +55,7 @@ const GROUP_OF: Readonly<Record<string, AddonGroup>> = {
     'court-dynasties': 'Politics & court',
     'frontier-autonomy': 'Politics & court',
     'galactic-council': 'Politics & court',
+    'characters-victory': 'Politics & court',
     reputation: 'Politics & court',
     'lively-galaxy': 'Politics & court',
     'chartered-companies': 'Economy & factions',
