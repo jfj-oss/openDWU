@@ -40,6 +40,11 @@ export interface FrameInput {
     cmds: NetCommand[];
     /** Host only: the clock from this frame on (absent: unchanged). */
     clock?: ClockState;
+    /**
+     * Host only: the input delay from this frame on (absent: unchanged). The adaptive delay (lockstep.ts
+     * AdaptiveDelayOptions): the host picks it from the measured round trips and every peer switches at this frame.
+     */
+    delay?: number;
 }
 
 export interface PeerInfo {
@@ -127,6 +132,8 @@ export interface ResyncMsg {
     clock: ClockState;
     inputs: FrameInput[];
     epoch: number;
+    /** The parameters at that boundary (the input delay may have changed since the client's own state). */
+    params?: LockstepParams;
 }
 
 export interface PeerJoinedMsg {

@@ -63,6 +63,24 @@ export interface LockstepHooks {
     log?(message: string): void;
 }
 
+/**
+ * Host: raise or lower the input delay from the measured round trips (docs/MULTIPLAYER.md §13). The host pings every
+ * client each `intervalMs`, keeps the worst of the last `window` round trips per client, and wants the delay to cover
+ * the slowest path a command takes — client → host → another client, half of each round trip — plus `marginFrames`.
+ * A raise is sent at once; a cut only after the lower value has been wanted `lowerAfter` times in a row. The change rides
+ * on the host's input of a frame (FrameInput.delay), so every peer switches at that frame. Each frame keeps the one input
+ * a peer sent for it, so a change can never apply a command twice or skip one: a raise sends empty acks for the gap, a
+ * cut waits until the frame catches up with what was already sent.
+ */
+export interface AdaptiveDelayOptions {
+    min?: number;
+    max?: number;
+    intervalMs?: number;
+    window?: number;
+    marginFrames?: number;
+    lowerAfter?: number;
+}
+
 export interface LockstepOptions extends Partial<LockstepParams> {
     name?: string;
     hooks?: LockstepHooks;
@@ -79,6 +97,8 @@ export interface LockstepOptions extends Partial<LockstepParams> {
     allowPauseRequest?: (peer: PeerId, paused: boolean) => boolean;
     /** Start clock (host; clients take the host's). Default 1x, running. */
     clock?: ClockState;
+    /** Host: the adaptive input delay (absent: the fixed `inputDelay`). */
+    adaptiveDelay?: AdaptiveDelayOptions;
 }
 
 export interface LockstepStats {
@@ -95,6 +115,8 @@ export interface LockstepStats {
     digestChecks: number;
     digestMismatches: number;
     resyncs: number;
+    /** Input-delay changes applied (the adaptive delay). */
+    delayChanges: number;
 }
 
 interface PeerState {
@@ -122,7 +144,7 @@ export class LockstepSession {
     params: LockstepParams;
     readonly stats: LockstepStats = {
         framesRun: 0, stalls: 0, stallMs: 0, messagesSent: 0, messagesReceived: 0, bytesSent: 0, bytesReceived: 0,
-        commandsSent: 0, commandsApplied: 0, digestChecks: 0, digestMismatches: 0, resyncs: 0,
+        commandsSent: 0, commandsApplied: 0, digestChecks: 0, digestMismatches: 0, resyncs: 0, delayChanges: 0,
     };
     /** False once the session ended (client: the host link closed; host: close()). */
     active = true;
@@ -141,6 +163,13 @@ export class LockstepSession {
     private pendingCmds: NetCommand[] = [];
     /** Host: a clock change for the next input it sends. */
     private pendingClock: ClockState | null = null;
+    /** Host: an input-delay change for the next input it sends (the adaptive delay). */
+    private pendingDelay: number | null = null;
+    private readonly adaptive: Required<AdaptiveDelayOptions> | null;
+    /** Host, adaptive delay: the last round trips per client (ms), when the last probe went, cuts wanted in a row. */
+    private readonly rtts = new Map<PeerId, number[]>();
+    private lastProbeAt = -Infinity;
+    private lowerWanted = 0;
     /** Host: own digests by frame. */
     private readonly ownDigests = new Map<number, string>();
     /** Client: resyncs applied. */
@@ -176,6 +205,11 @@ export class LockstepSession {
         this.wallNow = opts.wallNow ?? (() => performance.timeOrigin + performance.now());
         this.allowPause = opts.allowPauseRequest ?? (() => true);
         this.name = opts.name ?? (role === 'host' ? 'host' : 'client');
+        const a = opts.adaptiveDelay;
+        this.adaptive =
+            role === 'host' && a !== undefined
+                ? { min: a.min ?? 3, max: a.max ?? 30, intervalMs: a.intervalMs ?? 1000, window: a.window ?? 5, marginFrames: a.marginFrames ?? 2, lowerAfter: a.lowerAfter ?? 5 }
+                : null;
     }
 
     // -----------------------------------------------------------------------------------------------------------
@@ -231,6 +265,11 @@ export class LockstepSession {
         };
     }
 
+    /** The last frame due could not run yet (an input is missing): an arriving input may make it runnable. */
+    get stalled(): boolean {
+        return this.stalledSince !== null;
+    }
+
     /** The peers in the session (including left ones). */
     peerList(): PeerInfo[] {
         return [...this.peers.values()].map((p) => ({ ...p.info }));
@@ -283,6 +322,11 @@ export class LockstepSession {
         });
     }
 
+    /** Host: the clock as last requested (a change not sent or not applied yet included). */
+    requestedClock(): ClockState {
+        return { ...(this.pendingClock ?? this.latestClock()) };
+    }
+
     /** The clock the host's last sent input set (or the running one). */
     private latestClock(): ClockState {
         const host = this.peers.get(0);
@@ -302,6 +346,7 @@ export class LockstepSession {
     /** Real-time drive: owe `realDtMs` more to the sim and run the frames that are due and runnable. Returns frames run. */
     update(realDtMs: number): number {
         if (!this.active) return 0;
+        this.probeRoundTrips();
         this.accumulator = Math.min(this.accumulator + Math.max(0, realDtMs), this.frameRealMs * this.maxCatchUp);
         let ran = 0;
         while (this.accumulator >= this.frameRealMs) {
@@ -310,6 +355,80 @@ export class LockstepSession {
             ran++;
         }
         return ran;
+    }
+
+    /** Host, adaptive delay: ping every client each intervalMs; each answer may move the delay (adaptDelay). */
+    private probeRoundTrips(): void {
+        const a = this.adaptive;
+        if (a === null) return;
+        const now = this.now();
+        if (now - this.lastProbeAt < a.intervalMs) return;
+        this.lastProbeAt = now;
+        for (const p of this.peers.values()) {
+            if (p.info.id === 0 || p.link === null || p.info.leftFrom !== null) continue;
+            // A peer still loading its welcome save answers late: not a round trip of the network.
+            if (p.knownThrough < p.info.fromFrame + this.params.inputDelay) continue;
+            const id = p.info.id;
+            this.ping(id).then(
+                (ms) => {
+                    const list = this.rtts.get(id) ?? [];
+                    list.push(ms);
+                    if (list.length > a.window) list.shift();
+                    this.rtts.set(id, list);
+                    this.adaptDelay();
+                },
+                () => undefined,
+            );
+        }
+    }
+
+    /** The input delay the measured round trips want (adaptive delay; see AdaptiveDelayOptions). */
+    wantedDelay(): number | null {
+        const a = this.adaptive;
+        if (a === null) return null;
+        const worst: number[] = [];
+        for (const [id, list] of this.rtts) {
+            const p = this.peers.get(id);
+            if (p === undefined || p.info.leftFrom !== null || list.length === 0) continue;
+            worst.push(Math.max(...list));
+        }
+        worst.sort((x, y) => y - x);
+        // The slowest path: a client's input to the host and on to the slowest other client (one way: half a round trip).
+        const pathMs = ((worst[0] ?? 0) + (worst[1] ?? 0)) / 2;
+        return Math.min(a.max, Math.max(a.min, Math.ceil(pathMs / this.frameRealMs) + a.marginFrames));
+    }
+
+    private adaptDelay(): void {
+        const want = this.wantedDelay();
+        if (want === null || !this.active) return;
+        const cur = this.pendingDelay ?? this.latestDelay();
+        if (want > cur) {
+            this.lowerWanted = 0;
+            this.pendingDelay = want;
+        } else if (want < cur) {
+            if (++this.lowerWanted >= this.adaptive!.lowerAfter) {
+                this.lowerWanted = 0;
+                this.pendingDelay = want;
+            }
+        } else this.lowerWanted = 0;
+    }
+
+    /** The delay the host's last sent input set (or the running one). */
+    private latestDelay(): number {
+        const host = this.peers.get(0);
+        if (host !== undefined) {
+            for (let f = host.knownThrough; f >= this.frame; f--) {
+                const d = host.inputs.get(f)?.delay;
+                if (d !== undefined) return d;
+            }
+        }
+        return this.params.inputDelay;
+    }
+
+    /** Host: set the input delay from the next frame the host sends input for (every peer switches at that frame). */
+    setInputDelay(frames: number): void {
+        if (this.role !== 'host') return;
+        this.pendingDelay = Math.max(1, Math.round(frames));
     }
 
     /** Run frames as fast as the inputs allow (up to `max`); returns frames run. Headless / benchmark drive. */
@@ -345,6 +464,11 @@ export class LockstepSession {
         for (const p of order) {
             const input = p.inputs.get(f)!;
             if (p.info.id === 0 && input.clock !== undefined) this.clock = { ...input.clock };
+            if (p.info.id === 0 && input.delay !== undefined && input.delay !== this.params.inputDelay) {
+                this.params = { ...this.params, inputDelay: input.delay };
+                this.stats.delayChanges++;
+                this.hooks.log?.(`input delay ${input.delay} frames from frame ${f}`);
+            }
             for (const c of input.cmds) cmds.push(c);
         }
         this.sim.applyFrame(f, cmds, this.clock);
@@ -368,6 +492,10 @@ export class LockstepSession {
                 if (this.role === 'host' && this.pendingClock !== null) {
                     input.clock = this.pendingClock;
                     this.pendingClock = null;
+                }
+                if (this.role === 'host' && this.pendingDelay !== null) {
+                    if (this.pendingDelay !== this.latestDelay()) input.delay = this.pendingDelay;
+                    this.pendingDelay = null;
                 }
             }
             list.push(input);
@@ -512,7 +640,7 @@ export class LockstepSession {
         p.digests.clear();
         const text = this.sim.save(this.clock);
         const frame = this.frame;
-        const msg: Omit<ResyncMsg, 'save'> = { t: 'resync', frame, clock: { ...this.clock }, inputs: this.inputsFrom(frame), epoch: p.epoch };
+        const msg: Omit<ResyncMsg, 'save'> = { t: 'resync', frame, clock: { ...this.clock }, inputs: this.inputsFrom(frame), epoch: p.epoch, params: { ...this.params } };
         this.stats.resyncs++;
         this.sendSave(p.link, text, (save) => ({ ...msg, save }), (save) => this.hooks.onResync?.(frame, p.info.id, save.bytes));
     }
@@ -714,6 +842,7 @@ export class LockstepSession {
         this.frame = m.frame;
         this.clock = { ...m.clock };
         this.epoch = m.epoch;
+        if (m.params !== undefined) this.params = { ...m.params };
         // The inputs from m.frame on are immutable: keep what we have (our own sent ones included) and add the host's.
         for (const input of m.inputs) this.storeInput(input);
         this.stats.resyncs++;
