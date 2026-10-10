@@ -239,18 +239,35 @@ verify…"). Open it once like this:
 After that it opens normally (also after updates installed the same way).
 
 **3. Game files.** Distant Worlds: Universe is a Windows game, so a Mac has no
-native install; openDWU only needs its files, not a working Windows game. On
+native install; Steam for Mac won't download it at all (it shows the game as
+incompatible). openDWU only needs its files, not a working Windows game. On
 first launch a setup window asks for the folder and explains the options:
 
 - **Steam for Windows inside [Whisky](https://getwhisky.app/) or
   [CrossOver](https://www.codeweavers.com/crossover):** install DW:U there;
   openDWU finds it inside the bottle automatically
   (`…/drive_c/Program Files (x86)/Steam/steamapps/common/Distant Worlds Universe`).
-- **A copy from a Windows PC:** on a PC where you own and installed the
+- **A copy from a Windows or Linux PC** (simplest): on a PC where you own and installed the
   game, copy the whole `Distant Worlds Universe` folder (Steam → right-click
   the game → Manage → Browse local files) to the Mac, e.g. over USB or the
   network, to `~/Games/Distant Worlds Universe`, which is also found
   automatically, or anywhere else and pick it with **Choose Folder…**.
+- **Download the Windows version with SteamCMD:** Valve's command-line
+  Steam client can download the Windows files directly on the Mac, for
+  your own Steam account and your own copy of the game. Install it from
+  Valve's developer site or with `brew install --cask steamcmd`, then run
+  (261470 is DW:U's Steam app id):
+
+  ```sh
+  steamcmd +@sSteamCmdForcePlatformType windows \
+    +force_install_dir ~/Games/Distant\ Worlds\ Universe \
+    +login <your Steam username> +app_update 261470 validate +quit
+  ```
+
+  Replace `<your Steam username>` with your own. SteamCMD asks for your
+  password and Steam Guard code, and the download
+  only works if your account owns the game. The files land in
+  `~/Games/Distant Worlds Universe`, which is found automatically.
 
 You don't need Node.js or npm for the app.
 
@@ -292,11 +309,28 @@ node -v    # must print v22.12 or newer
 
 **2. Get the game data**
 
-There is no native macOS version of Distant Worlds: Universe. On a PC where
-you own and installed the game, copy the whole `Distant Worlds Universe`
-folder (the one containing `images/`) to the Mac, e.g. over USB or the
-network, to `~/Games/Distant Worlds Universe` (or anywhere else; then use
-that path below).
+There is no native macOS version of Distant Worlds: Universe, and Steam for
+Mac won't download it (it shows the game as incompatible). Use one of:
+
+- **A copy from a Windows or Linux PC** (simplest): on a PC where you own
+  and installed the game, copy the whole `Distant Worlds Universe` folder
+  (the one containing `images/`) to the Mac, e.g. over USB or the network,
+  to `~/Games/Distant Worlds Universe` (or anywhere else; then use that
+  path below).
+- **SteamCMD:** download the Windows version directly on the Mac with
+  Valve's command-line Steam client, for your own Steam account and your
+  own copy of the game (261470 is DW:U's Steam app id):
+
+  ```sh
+  brew install --cask steamcmd
+  steamcmd +@sSteamCmdForcePlatformType windows \
+    +force_install_dir ~/Games/Distant\ Worlds\ Universe \
+    +login <your Steam username> +app_update 261470 validate +quit
+  ```
+
+  Replace `<your Steam username>` with your own. It asks for your password
+  and Steam Guard code; the download only works if your account owns the
+  game.
 
 **3. Clone openDWU, install dependencies and link the data**
 
