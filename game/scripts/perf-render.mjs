@@ -12,6 +12,9 @@
 // same for the render clock (renderNowMs) and the render delay behind the committed sim time. Headings too: each drawn
 // ship's per-frame heading change against the sim's own turn (its committed heading at each LastTouch, lerped between
 // touches at the drawn instant), on ships turning steadily (installMotionProbe: heading stats).
+// --zooms also takes f<N> (the original's zoom factor N, centred on the capital's star) and f<N>d (factor N, centred on
+// the view-sized cell holding the most live built objects); --layers without --sweep prints each zoom's mean ms per
+// frame of every wrapped layer method (installLayerTimers).
 // --save-profile: also write each zoom's CPU profile to DIR/<zoom>.cpuprofile (scripts/cpuprofile-summary.mjs).
 // --sweep: instead of the fixed zoom levels, a scripted wheel-zoom sweep: continuous wheel events on the canvas (at the
 // player's capital) zoom from the whole galaxy down to 100% and back out over --sweep-secs, repeated --sweeps times
@@ -268,6 +271,7 @@ async function main() {
         }
         const zooms = ZOOMS;
         const rows = [];
+        if (LAYERS) await installLayerTimers(page);
         for (const zoom of zooms) {
             await page.evaluate((zoom) => {
                 const d = window.__dwu;
@@ -284,6 +288,25 @@ async function main() {
                 } else if (zoom === 'system') {
                     cam.centerOn(star.xpos, star.ypos);
                     cam.zoom = cam.clampZoom(1 / 50);
+                } else if (/^f\d+(\.\d+)?d?$/.test(zoom)) {
+                    // f<N>: the original's zoom factor N (world units per CSS px), centred on the capital's star;
+                    // f<N>d: centred on the view-sized cell holding the most live built objects instead.
+                    cam.zoom = cam.clampZoom(1 / parseFloat(zoom.slice(1)));
+                    if (zoom.endsWith('d')) {
+                        const cw = cam.width / cam.zoom;
+                        const ch = cam.height / cam.zoom;
+                        const cells = new Map();
+                        let best = null;
+                        for (const bo of g.builtObjects) {
+                            if (bo === null || bo.hasBeenDestroyed) continue;
+                            const k = `${Math.floor(bo.xpos / cw)},${Math.floor(bo.ypos / ch)}`;
+                            const n = (cells.get(k) ?? 0) + 1;
+                            cells.set(k, n);
+                            if (best === null || n > best[1]) best = [k, n];
+                        }
+                        const [cx, cy] = best[0].split(',').map(Number);
+                        cam.centerOn((cx + 0.5) * cw, (cy + 0.5) * ch);
+                    } else cam.centerOn(star.xpos, star.ypos);
                 } else {
                     cam.centerOn(cap.xpos, cap.ypos);
                     cam.zoom = cam.clampZoom(1);
@@ -298,6 +321,7 @@ async function main() {
                 p.deltas.length = 0;
                 window.__dwu.simStats.reset();
                 window.__motionProbe?.reset();
+                if (window.__layerTimes) window.__layerTimes.frames.length = 0;
             });
             if (cdp) await cdp.send('Profiler.start');
             await page.waitForTimeout(SECS * 1000);
@@ -334,6 +358,17 @@ async function main() {
                 };
             });
             if (MOTION) m.motion = await page.evaluate(() => window.__motionProbe.summary());
+            // --layers: mean ms per rendered frame of each wrapped layer method (nested calls count in both).
+            if (LAYERS) {
+                const lt = await page.evaluate(() => {
+                    const fr = window.__layerTimes.frames;
+                    const sum = new Map();
+                    for (const f of fr) for (const [k, v] of Object.entries(f)) sum.set(k, (sum.get(k) ?? 0) + v);
+                    return [...sum.entries()].map(([k, v]) => [k, v / Math.max(1, fr.length)]).sort((a, b) => b[1] - a[1]).slice(0, 15);
+                });
+                console.log(`\n[${zoom}] layer ms / frame:`);
+                for (const [k, v] of lt) console.log(`  ${v.toFixed(3).padStart(8)}  ${k}`);
+            }
             // --report: per zoom too (state an --eval probe gathered over this zoom's measurement).
             if (args.report) console.log(`\n[${zoom}] report: ${await page.evaluate((e) => JSON.stringify((0, eval)(e), null, 1), args.report)}`);
             rows.push({ zoom, ...m });
