@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>openDWU – play Distant Worlds: Universe on Windows 11, macOS and Linux</title>
+<meta name="description" content="Distant Worlds: Universe won't start, crashes, or needs XNA? openDWU is a free, open-source recreation of DW:U 1.9.5 with native apps for Windows, macOS (Apple silicon) and Linux. Uses your own game files.">
+<link rel="canonical" href="https://jfj-oss.github.io/openDWU/">
+<meta property="og:title" content="openDWU – Distant Worlds: Universe on modern systems">
+<meta property="og:description" content="A free, open-source recreation of Distant Worlds: Universe 1.9.5 for Windows, macOS and Linux. Bring your own copy of the game.">
+<meta property="og:image" content="https://jfj-oss.github.io/openDWU/screenshots/system-view.webp">
+<meta property="og:type" content="website">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"SoftwareApplication","name":"openDWU","applicationCategory":"GameApplication","operatingSystem":"Windows, macOS, Linux","description":"A free, open-source recreation of Distant Worlds: Universe 1.9.5 with native desktop apps. Requires your own copy of the original game's files.","offers":{"@type":"Offer","price":"0","priceCurrency":"USD"},"license":"https://opensource.org/licenses/MIT","url":"https://github.com/jfj-oss/openDWU"}
+</script>
+<style>
+  :root { --bg:#07080d; --panel:#11131c; --text:#dfe3ee; --muted:#9aa2b8; --accent:#6ea8ff; --line:#232838; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font:16px/1.6 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width:880px; margin:0 auto; padding:40px 16px 64px; }
+  h1 { font-size:2rem; line-height:1.2; margin:0 0 12px; }
+  h2 { font-size:1.3rem; margin:40px 0 12px; border-bottom:1px solid var(--line); padding-bottom:6px; }
+  p, li { color:var(--text); }
+  .lead { color:var(--muted); font-size:1.1rem; }
+  a { color:var(--accent); }
+  .btn { display:inline-block; background:var(--accent); color:#06101f; font-weight:600; padding:12px 20px; border-radius:6px; text-decoration:none; margin:8px 12px 8px 0; }
+  .btn.secondary { background:transparent; color:var(--accent); border:1px solid var(--accent); }
+  img { width:100%; height:auto; border:1px solid var(--line); border-radius:6px; margin:16px 0; }
+  .note { background:var(--panel); border-left:3px solid var(--accent); padding:12px 16px; border-radius:4px; }
+  ul { padding-left:22px; }
+  footer { color:var(--muted); font-size:.9rem; margin-top:48px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Distant Worlds: Universe won't start? Play it with openDWU.</h1>
+  <p class="lead">openDWU is a free, open-source recreation of <em>Distant Worlds: Universe</em> 1.9.5, with native apps for
+    Windows 10/11, macOS (Apple silicon) and Linux. It plays the same game, using the data files from your own copy.</p>
+  <p>
+    <a class="btn" href="https://github.com/jfj-oss/openDWU/releases/latest">Download the latest release</a>
+    <a class="btn secondary" href="https://github.com/jfj-oss/openDWU#install">Install guide</a>
+  </p>
+  <img src="screenshots/system-view.webp" alt="openDWU: a capital planet ringed by its starbase, freighters and warships">
+
+  <h2>Common problems with the original game</h2>
+  <p>The original is a 2014 Windows program built on the .NET Framework and Microsoft's XNA Framework 4.0, a DirectX 9
+    game library that is no longer maintained. Players often report:</p>
+  <ul>
+    <li>Distant Worlds: Universe not launching, or closing straight away, on Windows 10 or Windows 11;</li>
+    <li>errors about a missing or broken XNA Framework or .NET Framework;</li>
+    <li>a black screen or graphics errors on start-up;</li>
+    <li>"out of memory" crashes in big galaxies or late games;</li>
+    <li>no Mac version (Steam on macOS says it is incompatible and won't download it), and no native Linux version.</li>
+  </ul>
+
+  <h2>How openDWU helps</h2>
+  <ul>
+    <li><strong>No XNA, .NET Framework or DirectX 9 needed.</strong> It is a new engine, not a patch for the old program.</li>
+    <li><strong>Native 64-bit apps</strong> for Windows, macOS (Apple silicon) and Linux.</li>
+    <li><strong>The same game.</strong> Ported from the original's rules, formulas and generation order, so games play like
+      Universe 1.9.5 (which includes the earlier expansions).</li>
+    <li><strong>Uses your own install.</strong> It finds your Steam folder by itself. On a Mac, copy the game folder from a
+      PC where you own it.</li>
+    <li><strong>Modded themes work.</strong> Themes in your install's <code>Customization</code> folder can be switched on
+      from the main menu.</li>
+    <li><strong>Free and open source</strong> (MIT licence).</li>
+  </ul>
+
+  <div class="note">You need your own copy of <em>Distant Worlds: Universe</em>. openDWU ships none of the original game's
+    art, sounds or data; it reads them from your install at runtime.</div>
+
+  <img src="screenshots/galaxy-territories.webp" alt="openDWU: the galaxy map with empire territories">
+
+  <h2>Get started</h2>
+  <ol>
+    <li><a href="https://github.com/jfj-oss/openDWU/releases/latest">Download</a> the file for your system.</li>
+    <li>Follow the <a href="https://github.com/jfj-oss/openDWU#install">install steps</a> (the apps are unsigned, so there
+      is a one-time "open anyway" step).</li>
+    <li>Point it at your Distant Worlds: Universe folder if it doesn't find it by itself.</li>
+  </ol>
+  <p>Problems? See <a href="https://github.com/jfj-oss/openDWU#troubleshooting">Troubleshooting</a> or ask in
+    <a href="https://github.com/jfj-oss/openDWU/discussions">Discussions</a>.</p>
+
+  <footer>openDWU is a fan project and is not affiliated with or endorsed by the makers or publishers of Distant Worlds:
+    Universe.</footer>
+</main>
+</body>
+</html>
