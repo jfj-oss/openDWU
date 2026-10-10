@@ -8,6 +8,7 @@ import type { Habitat } from '../../types';
 import type { BuiltObject } from '../../builtObject';
 import type { Design } from '../../design';
 import type { Character } from '../../characters';
+import type { ShipGroup } from '../../fleets/shipGroup';
 import { scenarioFlag, scenarioParam, scenarioState } from '../state';
 import { registerScenarioGameStart } from '../hooks';
 import { YEAR_LENGTH } from '../../galaxyTime';
@@ -54,7 +55,8 @@ export const DAY = YEAR_LENGTH / 360;
 /** The master switch and `sub` are on, and the game has started. */
 export function cvOn(galaxy: Galaxy, sub: string): boolean {
     if (galaxy.scenario === null) return false;
-    return scenarioFlag(galaxy, CV_FLAG) && scenarioFlag(galaxy, sub) && galaxy.scenario.state[CV_LIVE_KEY] === true;
+    // Live: past createGame (the marker), or a running game the add-on was added to (Load screen's "Add add-ons").
+    return scenarioFlag(galaxy, CV_FLAG) && scenarioFlag(galaxy, sub) && (galaxy.scenario.state[CV_LIVE_KEY] === true || !galaxy.deferEventsForGameStart);
 }
 
 registerScenarioGameStart({
@@ -88,6 +90,8 @@ export interface VipTrip {
     deadline: number;
     /** Escorts assigned (released on arrival). */
     escorts: BuiltObject[];
+    /** The fleet each escort was taken from (null: a loose ship), rejoined on release. Same order as `escorts`. */
+    escortFleets?: (ShipGroup | null)[];
     /** The escort firepower the trip asked for. */
     escortWanted: number;
     /** Star date until which an important trip waits at the origin for its escort (0: departed). */
@@ -120,6 +124,8 @@ export interface CvEmpire {
     /** Colonies the player asked a governor for (served first). */
     requests: Habitat[];
     stats: { trips: number; arrived: number; lost: number; escorts: number; escortShips: number; moves: number; trained: number; risen: number };
+    /** The first review ran (the posts vacant then — a game the add-on was added to — fill by local rises within the grace). */
+    seeded?: boolean;
 }
 
 export interface GovernorSuggestion {
@@ -167,7 +173,7 @@ export interface CvState {
     colonies: CvColony[];
     governors: CvGovernor[];
     /** Measurement counters (tuning). */
-    counters: { tripsStarted: number; tripsArrived: number; tripsLost: number; escortedTrips: number; escortShips: number; governorMoves: number; localRises: number; trained: number; vacancyDaysTotal: number; vacanciesEnded: number };
+    counters: { tripsStarted: number; tripsArrived: number; tripsLost: number; escortedTrips: number; escortShips: number; dangerousTrips?: number; escortUnfilled?: number; governorMoves: number; localRises: number; trained: number; vacancyDaysTotal: number; vacanciesEnded: number };
 }
 
 export function cvState(galaxy: Galaxy): CvState {

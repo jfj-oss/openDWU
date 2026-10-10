@@ -1,6 +1,6 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import { createGame, type CreateGameOptions } from '../src/sim/game';
-import { GalaxyShape } from '../src/sim/types';
+import { GalaxyShape, HabitatCategoryType } from '../src/sim/types';
 import type { Galaxy } from '../src/sim/galaxy';
 import type { Empire } from '../src/sim/empire';
 import { loadGameDataFs } from './helpers/loadGameDataFs';
@@ -23,7 +23,9 @@ import { BuiltObjectMissionPriority, BuiltObjectMissionType, builtObjectMission 
 import { builtObjectCompleteTeardown } from '../src/sim/combat/teardown';
 import { charactersCanGenerateAmountNonIntelligenceAgent } from '../src/sim/troops';
 import { CV_LIVE_KEY, CV_STATE_KEY, peekCvState } from '../src/sim/scenario/charactersVictory/common';
-import { isVipShuttle, tripOfCharacter } from '../src/sim/scenario/charactersVictory/vip';
+import { assignEscorts, isVipShuttle, tripOfCharacter } from '../src/sim/scenario/charactersVictory/vip';
+import { BuiltObjectRole } from '../src/sim/data/designSpecifications';
+import { leaveShipGroup } from '../src/sim/fleets/shipGroup';
 import { generateVipShuttleDesign, vipComponentAllowed } from '../src/sim/scenario/charactersVictory/shuttleDesign';
 import { colonyVacancy, reviewGovernors } from '../src/sim/scenario/charactersVictory/governorsCv';
 
@@ -448,6 +450,50 @@ describe('Characters & Victory add-on', () => {
         reviewGovernors(g, e);
         expect(r0.vacantSince).toBe(-1);
         expect(r0.neglect).toBeCloseTo(Math.max(0, n0 - 0.2), 3);
+    }, 600000);
+
+    it('escorts: an important trip on a dangerous route takes idle warships (cap, floor), which are released on arrival', () => {
+        const game = cvGame();
+        const g = game.galaxy;
+        const e = g.empires.find((x) => x !== g.playerEmpire && x.dominantRace !== null && x.capital !== null)!;
+        // Ten idle, armed warships at the capital (out of their fleets, no mission).
+        const war = e.builtObjects.filter((b) => b.role === BuiltObjectRole.Military && b.firepowerRaw > 0 && b.warpSpeed > 0 && b.subRole !== BuiltObjectSubRole.TroopTransport && b.subRole !== BuiltObjectSubRole.ResupplyShip);
+        for (const b of war) {
+            if (b.shipGroup !== null) leaveShipGroup(g, b);
+            const m = builtObjectMission(b.mission);
+            if (m !== null) m.clear();
+            b.isAutoControlled = true;
+            b.xpos = e.capital!.xpos + 500;
+            b.ypos = e.capital!.ypos + 500;
+        }
+        expect(war.length).toBeGreaterThanOrEqual(5);
+        const c = getEmpireCharacters(e).find((x) => x.active && x.location === e.capital && x.role !== CharacterRole.Leader)!;
+        // An unclaimed planet a few systems away (military ships are welcome there).
+        const cap0 = e.capital!;
+        const dest = g.habitats
+            .filter((h) => h.empire === null && h.category === HabitatCategoryType.Planet && Math.hypot(h.xpos - cap0.xpos, h.ypos - cap0.ypos) > 500000)
+            .sort((a, b) => Math.hypot(a.xpos - cap0.xpos, a.ypos - cap0.ypos) - Math.hypot(b.xpos - cap0.xpos, b.ypos - cap0.ypos))[0];
+        c.transferToNewLocation(dest, g);
+        const t = tripOfCharacter(g, c)!;
+        t.importance = 10;
+        t.danger = 1;
+        if (t.escorts.length === 0) assignEscorts(g, t);
+        const cap = Math.floor((war.length * 20) / 100);
+        expect(t.escorts.length).toBeGreaterThan(0);
+        expect(t.escorts.length).toBeLessThanOrEqual(Math.max(0, cap));
+        for (const b of t.escorts) {
+            const m = builtObjectMission(b.mission)!;
+            expect(m.type).toBe(BuiltObjectMissionType.Escort);
+            expect(m.targetBuiltObject).toBe(t.shuttle);
+        }
+        expect(t.waitUntil).toBeGreaterThan(0); // important and dangerous: waits for its escort to join
+        const escorts = [...t.escorts];
+        for (let i = 0; i < 600 && tripOfCharacter(g, c) !== null; i++) runGameSeconds(game, 3);
+        expect(tripOfCharacter(g, c)).toBeNull();
+        for (const b of escorts) {
+            const m = builtObjectMission(b.mission);
+            expect(m === null || m.type !== BuiltObjectMissionType.Escort || m.targetBuiltObject !== t.shuttle).toBe(true);
+        }
     }, 600000);
 
     it('a CV game with trips in flight saves and reloads identically', () => {

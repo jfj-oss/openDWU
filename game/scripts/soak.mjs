@@ -106,6 +106,8 @@ const CONFIGS = [
     // on and with its master switch off (the faithful game), for the AI-economy and step-time comparison.
     SCN('characters-victory', { name: 'cv-on-s1', seed: 1, years: 10, wizard: { starCountIndex: 3, dimensionIndex: 3, otherEmpires: { empireCount: 9 } } }),
     SCN('characters-victory', { name: 'cv-off-s1', seed: 1, years: 10, wizard: { starCountIndex: 3, dimensionIndex: 3, otherEmpires: { empireCount: 9 } }, flags: { charactersVictory: false } }),
+    // Wars and pirates (escorts, losses, stampede on war declarations).
+    SCN('characters-victory', { name: 'cv-war-s17', seed: 17, years: 8, wizard: { starCountIndex: 3, dimensionIndex: 3, otherEmpires: { empireCount: 9 }, difficultyIndex: 4, aggressionIndex: 4, piratesIndex: 5, pirateProximityIndex: 2, pirateStrengthIndex: 3 } }),
     SCN('ai-parity', { name: 'ai-parity-all', seed: 61, years: 6, wizard: { starCountIndex: 3, dimensionIndex: 3, otherEmpires: { empireCount: 9 } }, flagsOff: ['darkFarmsGameEnd'] }),
     // A scenario at the large end, and a scenario under a pirate player.
     SCN('rim-herders', { name: 'rim-herders-pirate', seed: 71, years: 5, wizard: { empireType: 'CustomPirate', starCountIndex: 3, dimensionIndex: 3 } }),

@@ -432,6 +432,7 @@ function travelYears(galaxy: Galaxy, c: Character, h: Habitat): number {
 
 /** One move: the stock transfer (a VIP trip), or a suggestion for a human without automation. */
 function move(galaxy: Galaxy, e: Empire, c: Character, to: Habitat, from: Habitat | null, gainPct: number, priority: number): boolean {
+    if (c.location === to) return false;
     const ce = cvEmpire(galaxy, e);
     const human = isHumanEmpire(galaxy, e);
     const served = ce.requests.indexOf(to);
@@ -458,11 +459,16 @@ export function reviewGovernors(galaxy: Galaxy, e: Empire): void {
     const st = cvState(galaxy);
     const ce = cvEmpire(galaxy, e);
     const enemies = enemiesAtWar(galaxy, e);
+    const first = ce.seeded !== true;
+    ce.seeded = true;
     // Vacancies and their effects; holdings (the best-fit governor at each colony).
     const holdings = new Map<Habitat, Holding>();
     const colonies = [...e.colonies].sort((a, b) => a.habitatIndex - b.habitatIndex);
     for (const h of colonies) {
         const r = updateColony(galaxy, e, h, now);
+        // The posts already vacant at the add-on's first review (a running game it was added to) fill from the local
+        // administration within the grace: 60-180 days. RND(cv).
+        if (first && r.vacantSince === now && r.riseAt >= 0) r.riseAt = now + (60 + galaxy.rnd.next(0, 121)) * DAY;
         const needs = colonyNeeds(galaxy, e, h, enemies);
         let holder: Character | null = null;
         let holderFit = 0;
@@ -553,6 +559,7 @@ export function reviewGovernors(galaxy: Galaxy, e: Empire): void {
         let best: Character | null = null;
         let bestGain = 0;
         for (const c of pool) {
+            if (c.location === h) continue; // an extra already here: no trip to make
             const f = governorFit(c, hold.needs) * (1 - Math.min(0.5, travelYears(galaxy, c, h)));
             const gain = (f - hold.holderFit) / Math.max(1e-9, hold.holderFit);
             if (gain >= gainNeed && gain > bestGain) {

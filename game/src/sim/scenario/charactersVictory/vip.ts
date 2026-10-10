@@ -20,6 +20,8 @@ import { generateNewBuiltObject } from '../../empireEvents';
 import { assignMission, clearPreviousMissionRequirements } from '../../missions/assign';
 import { BuiltObjectMissionPriority, BuiltObjectMissionType, builtObjectMission } from '../../missions/mission';
 import { builtObjectCompleteTeardown } from '../../combat/teardown';
+import { leaveShipGroup, type ShipGroup } from '../../fleets/shipGroup';
+import { shipGroupAddShipToFleet } from '../../fleets/shipGroupTasks';
 import { checkMilitaryShipWelcomeAtTerritoryLocation } from '../../civilianAI';
 import { withinFuelRangeAndRefuel } from '../../movement';
 import { DiplomaticRelationType, obtainDiplomaticRelation } from '../../diplomacy';
@@ -176,14 +178,19 @@ function despawn(galaxy: Galaxy, bo: BuiltObject): void {
 }
 
 function releaseEscorts(galaxy: Galaxy, t: VipTrip): void {
-    for (const e of t.escorts) {
+    for (let i = 0; i < t.escorts.length; i++) {
+        const e = t.escorts[i];
         if (e.hasBeenDestroyed) continue;
         const m = builtObjectMission(e.mission);
         if (m === null || m.type !== BuiltObjectMissionType.Escort || m.targetBuiltObject !== t.shuttle) continue;
         clearPreviousMissionRequirements(galaxy, e);
         m.clear();
+        // Back to the fleet it came from, if that still exists.
+        const fleet = t.escortFleets?.[i] ?? null;
+        if (fleet !== null && e.shipGroup === null && e.actualEmpire === t.empire && (t.empire.shipGroups as (ShipGroup | null)[]).includes(fleet)) shipGroupAddShipToFleet(galaxy, fleet, e);
     }
     t.escorts = [];
+    t.escortFleets = [];
 }
 
 function removeTrip(st: CvState, t: VipTrip): void {
@@ -271,7 +278,7 @@ function spawnDecoys(galaxy: Galaxy, t: VipTrip, from: { xpos: number; ypos: num
     for (const did of decoyIds) {
         const bo = spawnShuttle(galaxy, t.empire, from.xpos, from.ypos, did);
         if (bo === null) continue;
-        const d: VipTrip = { ...t, id: did, character: null, shuttle: bo, escorts: [], escortWanted: 0, decoyOf: t.id, revealedTo: [] };
+        const d: VipTrip = { ...t, id: did, character: null, shuttle: bo, escorts: [], escortFleets: [], escortWanted: 0, decoyOf: t.id, revealedTo: [] };
         st.trips.push(d);
         if (d.waitUntil === 0) vipAssign(galaxy, bo, BuiltObjectMissionType.Move, t.destination);
     }
@@ -282,18 +289,42 @@ function spawnDecoys(galaxy: Galaxy, t: VipTrip, from: { xpos: number; ypos: num
 // Escorts
 // ---------------------------------------------------------------------------------------------------------------
 
-/** Idle state warships that may escort (automated, no mission, not in a fleet, armed, with a hyperdrive). */
-function idleWarships(empire: Empire): BuiltObject[] {
-    const out: BuiltObject[] = [];
+/** A fleet with no mission (waiting at its base): idle. */
+function fleetIdle(g: ShipGroup): boolean {
+    const m = builtObjectMission(g.mission);
+    return m === null || m.type === BuiltObjectMissionType.Undefined;
+}
+
+/**
+ * Idle state warships that may escort: automated, armed, with a hyperdrive; loose ones with no mission or on the
+ * stock patrol of a place that is not threatened (the defence floor: a threatened colony keeps its guard), then
+ * members (never the lead ship) of a fleet with no mission. Loose ships first.
+ */
+function idleWarships(galaxy: Galaxy, empire: Empire): BuiltObject[] {
+    const loose: BuiltObject[] = [];
+    const fleeted: BuiltObject[] = [];
+    const threatened = new Map<unknown, boolean>();
     for (const b of empire.builtObjects) {
-        if (b === null || b.hasBeenDestroyed || b.role !== BuiltObjectRole.Military || !b.isAutoControlled || b.shipGroup !== null) continue;
+        if (b === null || b.hasBeenDestroyed || b.role !== BuiltObjectRole.Military || !b.isAutoControlled) continue;
         if (b.subRole === BuiltObjectSubRole.TroopTransport || b.subRole === BuiltObjectSubRole.ResupplyShip) continue;
         if (b.firepowerRaw <= 0 || b.warpSpeed <= 0 || b.builtAt !== null) continue;
+        const sg = b.shipGroup as ShipGroup | null;
+        if (sg !== null) {
+            if (sg.leadShip === b || !fleetIdle(sg) || sg.ships.length < 2) continue;
+            fleeted.push(b);
+            continue;
+        }
         const m = builtObjectMission(b.mission);
-        if (m !== null && m.type !== BuiltObjectMissionType.Undefined) continue;
-        out.push(b);
+        if (m !== null && m.type === BuiltObjectMissionType.Patrol) {
+            const at = m.target as { xpos: number; ypos: number } | null;
+            if (at === null) continue;
+            let th = threatened.get(at);
+            if (th === undefined) threatened.set(at, (th = routeDanger(galaxy, empire, at.xpos, at.ypos, at.xpos, at.ypos) >= 0.5));
+            if (th) continue;
+        } else if (m !== null && m.type !== BuiltObjectMissionType.Undefined) continue;
+        loose.push(b);
     }
-    return out;
+    return [...loose, ...fleeted];
 }
 
 /** Ships of `empire` escorting VIP trips now. */
@@ -314,13 +345,15 @@ export function escortWanted(galaxy: Galaxy, t: VipTrip): number {
 export function assignEscorts(galaxy: Galaxy, t: VipTrip): void {
     const want = escortWanted(galaxy, t);
     t.escortWanted = want;
-    if (want <= 0) return;
     const st = cvState(galaxy);
-    const idle = idleWarships(t.empire);
+    if (t.danger > 0) st.counters.dangerousTrips = (st.counters.dangerousTrips ?? 0) + 1;
+    if (want <= 0) return;
+    const idle = idleWarships(galaxy, t.empire);
     const cap = Math.floor((idle.length + escortsInUse(st, t.empire)) * cvParam(galaxy, 'cvEscortCapPct') / 100) - escortsInUse(st, t.empire);
     const floor = Math.max(1, Math.ceil(idle.length * 0.1));
     let room = Math.min(cap, idle.length - floor);
     if (room <= 0) {
+        st.counters.escortUnfilled = (st.counters.escortUnfilled ?? 0) + 1;
         if (t.importance >= 6 && t.danger > 0) t.waitUntil = galaxyStarDate(galaxy) + cvParam(galaxy, 'cvEscortWaitDays') * DAY;
         return;
     }
@@ -332,11 +365,15 @@ export function assignEscorts(galaxy: Galaxy, t: VipTrip): void {
         if (got >= want || room <= 0) break;
         if (!withinFuelRangeAndRefuel(galaxy, b, sx, sy, 0.1)) continue;
         if (!checkMilitaryShipWelcomeAtTerritoryLocation(galaxy, t.destination.xpos, t.destination.ypos, t.empire)) break;
+        const fleet = b.shipGroup as ShipGroup | null;
+        if (fleet !== null) leaveShipGroup(galaxy, b);
         assignMission(galaxy, b, BuiltObjectMissionType.Escort, t.shuttle, null, BuiltObjectMissionPriority.High);
         t.escorts.push(b);
+        (t.escortFleets ??= []).push(fleet);
         got += b.firepowerRaw;
         room--;
     }
+    if (t.escorts.length === 0) st.counters.escortUnfilled = (st.counters.escortUnfilled ?? 0) + 1;
     if (t.escorts.length > 0) {
         st.counters.escortedTrips++;
         st.counters.escortShips += t.escorts.length;

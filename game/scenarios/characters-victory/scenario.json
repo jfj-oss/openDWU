@@ -1,6 +1,7 @@
 {
   "id": "characters-victory",
   "name": "Characters & Victory",
+  "addableToSave": true,
   "description": "Characters travel in person: every relocation is a free, marked VIP shuttle that can be escorted, intercepted and destroyed (its passenger dies with it; the ruler travels with decoys). Every colony needs a governor: new characters appear at the capital or the matching academy and travel to their post, the capital trains reserve governors, and a colony left without one declines after six months (no construction, falling output and approval, disrepair, emigration) and needs years to recover. Governors are moved by their skills and the colonies' needs, with suggestions for the player or full automation. The AI uses all of it. (A Galactic Council follows in a later package.)",
   "flags": [
     { "name": "charactersVictory", "label": "Characters & Victory", "description": "Master switch.", "default": true },

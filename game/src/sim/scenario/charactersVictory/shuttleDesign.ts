@@ -86,7 +86,9 @@ export function vipTechSignature(galaxy: Galaxy, empire: Empire, d: Design | nul
  * Rnd (design naming). Null when the empire cannot design one.
  */
 export function generateVipShuttleDesign(galaxy: Galaxy, empire: Empire): Design | null {
-    const base = loadDesignSpecification(galaxy.designSpecificationTexts, 'PassengerShip', BuiltObjectSubRole.PassengerShip, true, empire.dominantRace?.name ?? null, false, false);
+    const base =
+        loadDesignSpecification(galaxy.designSpecificationTexts, 'PassengerShip', BuiltObjectSubRole.PassengerShip, true, empire.dominantRace?.name ?? null, false, false) ??
+        loadDesignSpecification(galaxy.designSpecificationTexts, 'PassengerShip', BuiltObjectSubRole.PassengerShip, true, null, false, false);
     if (base === null) return null;
     const spec: DesignSpecification = { ...base, componentRules: base.componentRules.map((c) => ({ ...c })) };
     for (const r of spec.componentRules) {
