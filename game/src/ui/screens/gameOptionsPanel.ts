@@ -892,5 +892,6 @@ function createAdvancedDisplaySettings(empire: Empire | null): OriginalWindow {
         label(bd, 'Picked for each game in the new-game wizard', 10, 26, F7 - 2);
     }
     check(bd, 'Animate backdrop', st.animateBackdrop, 10, 56, (v) => updateSettings({ animateBackdrop: v }));
+    check(bd, 'Storm flashes', st.stormFlashes, 170, 56, (v) => updateSettings({ stormFlashes: v }));
     return win;
 }

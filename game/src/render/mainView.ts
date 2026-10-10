@@ -122,7 +122,7 @@ import { isObjectVisibleToThisEmpire } from '../sim/independentTraders';
 import { showsMapIndicators } from './mainViewDisplay';
 import { createFollowState, followTargetAlive, followTargetPosition, isFollowing, stopFollow, type FollowState, type FollowTarget } from './followCamera';
 import { GalaxyBackdropLayer } from './galaxyBackdrop';
-import { getGalaxyBackdrop, onGalaxyBackdropChange, setGalaxyBackdrop, urlGalaxyBackdrop, type GalaxyBackdropKind } from './galaxyBackdropChoice';
+import { getGalaxyBackdrop, onGalaxyBackdropChange, setGalaxyBackdrop, urlGalaxyBackdrop, urlGalaxyBackdropTime, type GalaxyBackdropKind } from './galaxyBackdropChoice';
 
 export function fadeIn(v: number, a: number, b: number): number {
     if (v <= a) {
@@ -1782,6 +1782,8 @@ export class MainView {
         this.backdropGroup.addChild(this.galaxyBackdropLayer.root);
         const urlBackdrop = urlGalaxyBackdrop(); // dev / screenshot hook ?backdrop=<kind>
         if (urlBackdrop !== null) setGalaxyBackdrop(urlBackdrop);
+        const urlTime = urlGalaxyBackdropTime();
+        if (urlTime !== null) this.galaxyBackdropLayer.setAnimTime(urlTime);
         this.applyGalaxyBackdrop(getGalaxyBackdrop());
         this.offGalaxyBackdropChange = onGalaxyBackdropChange((k) => this.applyGalaxyBackdrop(k));
         this.minZoom = this.camera.minZoom;
@@ -2055,7 +2057,7 @@ export class MainView {
         this.backdropGroup.visible = bdA > 0.01;
         if (this.galaxyBackdropLayer !== null) {
             const res = this.app.renderer.resolution;
-            this.galaxyBackdropLayer.update(this.backdropGroup.visible, dtSeconds, !rt.paused, getSettings().animateBackdrop, Math.min(cam.width, cam.height) * res, Math.max(cam.width, cam.height) * res);
+            this.galaxyBackdropLayer.update(this.backdropGroup.visible, dtSeconds, !rt.paused, getSettings().animateBackdrop, Math.min(cam.width, cam.height) * res, Math.max(cam.width, cam.height) * res, getSettings().stormFlashes);
             this.backdrop.visible = !this.galaxyBackdropLayer.active;
         }
 

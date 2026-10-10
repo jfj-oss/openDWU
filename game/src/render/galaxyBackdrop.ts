@@ -7,7 +7,8 @@
 //   ~1024-row bands one per frame, redrawn only when the variant, the screen size class or the GL context changes;
 // - the animated part is rendered into a smaller galaxy-space texture (the screen's short side / 2–2.5, at most
 //   1024 px: it is all soft gas, fog and glow) at most 15 times a second, and only while the game runs, the
-//   "Animate backdrop" option is on and the backdrop is visible; paused, it holds its last frame;
+//   "Animate backdrop" option is on and the backdrop is visible (30 times a second while a storm flash is lit,
+//   galaxyBackdropFlashes.ts; "Storm flashes" option); paused, it holds its last frame;
 // - both are sprites stretched over the galaxy rectangle in world space, inside the Main View's backdrop group, so
 //   they cross-fade with zoom exactly as the original image does (mainView.ts backdropAlpha on the group).
 // The animation clock runs on real time while the game is unpaused, from 0 at the view's start, so a given galaxy
@@ -19,6 +20,7 @@ import { BACKDROP_FRAG, BACKDROP_KIND_CODE, BACKDROP_VERT_PIXI, type GeneratedBa
 import { analyzeGalaxyStructure, DENSITY_SIZE, makeBackdropNoise, NOISE_SIZE, type BackdropStructure } from './galaxyBackdropStructure';
 import type { GalaxyBackdropKind } from './galaxyBackdropChoice';
 import { GalaxyShape, HabitatCategoryType } from '../sim/types';
+import { computeStormFlashes, MAX_FLASHES } from './galaxyBackdropFlashes';
 
 /** The galaxy facts the backdrop needs (a Galaxy satisfies it). */
 export interface BackdropGalaxy {
@@ -31,6 +33,8 @@ export interface BackdropGalaxy {
 
 /** The most animated-texture redraws per second (the motion is slow: well under a texel per redraw at 15 Hz). */
 const ANIM_HZ = 15;
+/** While a storm flash is lit: fast enough for its 0.1 s rise and flickers. */
+const FLASH_HZ = 30;
 
 function isGenerated(kind: GalaxyBackdropKind): kind is GeneratedBackdropKind {
     return kind in BACKDROP_KIND_CODE;
@@ -91,6 +95,8 @@ export class GalaxyBackdropLayer {
     private linkChecked = false;
     /** The next static band to draw (staticBandCount bands; done when equal). */
     private staticBand = 0;
+    /** Storm flashes lit in the last animated frame. */
+    private flashCount = 0;
     readonly stats: GalaxyBackdropStats = { staticRenders: 0, staticMs: 0, animRenders: 0, animMs: 0, staticSize: 0, animSize: 0 };
 
     constructor(
@@ -126,7 +132,7 @@ export class GalaxyBackdropLayer {
      * seconds since the last frame; `running`: the game clock is not paused; `animate`: the "Animate backdrop"
      * option; `screenPx`: the canvas's short and long sides in device px.
      */
-    update(visible: boolean, dt: number, running: boolean, animate: boolean, screenShortPx: number, screenLongPx: number): void {
+    update(visible: boolean, dt: number, running: boolean, animate: boolean, screenShortPx: number, screenLongPx: number, flashes = true): void {
         if (!this.active || this.kind === null) {
             this.root.visible = false;
             return;
@@ -180,7 +186,17 @@ export class GalaxyBackdropLayer {
                 // it: rebuild them now that the picture is complete, or the minified galaxy view samples black mips.
                 if (this.staticBand === bands && this.staticRT.source.autoGenerateMipmaps) this.staticRT.source.updateMipmaps();
             }
-            if (this.animDirty || (moving && this.sinceAnim >= 1 / ANIM_HZ - 0.002)) {
+            const hz = this.flashCount > 0 ? FLASH_HZ : ANIM_HZ;
+            if (this.animDirty || (moving && this.sinceAnim >= 1 / hz - 0.002)) {
+                const fl = this.uniforms?.uniforms.uFlash as Float32Array | undefined;
+                if (fl !== undefined) {
+                    // (Paused, the frame holds whatever was lit at the frozen clock.)
+                    if (animate && flashes && this.lowGpu === 0) this.flashCount = computeStormFlashes(this.galaxy.randomSeed, this.animTime, fl);
+                    else if (this.flashCount > 0 || !flashes) {
+                        fl.fill(0);
+                        this.flashCount = 0;
+                    }
+                }
                 this.renderPass(this.animRT, 1);
                 this.animDirty = false;
                 this.sinceAnim = 0;
@@ -193,6 +209,12 @@ export class GalaxyBackdropLayer {
         }
         this.staticSprite.scale.set(this.galaxy.sizeX / this.staticRT.width, this.galaxy.sizeY / this.staticRT.height);
         this.animSprite.scale.set(this.galaxy.sizeX / this.animRT.width, this.galaxy.sizeY / this.animRT.height);
+    }
+
+    /** Set the animation clock (s): the dev hook ?backdropTime=. */
+    setAnimTime(t: number): void {
+        this.animTime = t;
+        this.animDirty = true;
     }
 
     /** The GL context came back: render-texture content is gone, so redraw both. */
@@ -331,6 +353,7 @@ export class GalaxyBackdropLayer {
                 uMisc: { value: new Float32Array(s.misc), type: 'vec4<f32>' },
                 uParams: { value: new Float32Array([0, 0, 0, s.shape]), type: 'vec4<f32>' },
                 uBand: { value: new Float32Array([0, 0, 1, 1]), type: 'vec4<f32>' },
+                uFlash: { value: new Float32Array(MAX_FLASHES * 4), type: 'vec4<f32>', size: MAX_FLASHES },
             });
             this.shader = new Shader({ glProgram: this.program, resources: { uDensity: this.densitySrc, uNoise: this.noiseSrc, uniforms: this.uniforms } });
             const geometry = new Geometry({

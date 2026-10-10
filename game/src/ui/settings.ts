@@ -116,6 +116,8 @@ export interface UiSettings {
     cleanGalaxyView: boolean;
     /** Ours: animate the generated galaxy backdrops (render/galaxyBackdrop.ts; Game Options → Advanced Display). */
     animateBackdrop: boolean;
+    /** Ours: storm flashes in the animated galaxy backdrops (render/galaxyBackdropFlashes.ts). */
+    stormFlashes: boolean;
     /** Ours: the new-game wizard's last Galaxy Backdrop pick (render/galaxyBackdropChoice.ts kinds). */
     newGameBackdrop: string;
 
@@ -246,6 +248,7 @@ export const DEFAULT_SETTINGS: UiSettings = {
     // [galaxymarkers] end
     cleanGalaxyView: false,
     animateBackdrop: true,
+    stormFlashes: true,
     newGameBackdrop: 'original',
 
     // [gameoptions] begin — Main.Part9.cs:2774-2807 method_260; GameOptions.cs _MaximumFramerate = -1, _SystemNebulaeDetail = 0.
@@ -341,6 +344,7 @@ export function loadSettings(): UiSettings {
         if (typeof parsed.pullStationsToCentre === 'boolean') out.pullStationsToCentre = parsed.pullStationsToCentre;
         if (typeof parsed.cleanGalaxyView === 'boolean') out.cleanGalaxyView = parsed.cleanGalaxyView;
         if (typeof parsed.animateBackdrop === 'boolean') out.animateBackdrop = parsed.animateBackdrop;
+        if (typeof parsed.stormFlashes === 'boolean') out.stormFlashes = parsed.stormFlashes;
         if (typeof parsed.newGameBackdrop === 'string') out.newGameBackdrop = parsed.newGameBackdrop;
         if (typeof parsed.showWeaponRangeCircles === 'boolean') out.showWeaponRangeCircles = parsed.showWeaponRangeCircles;
         if (typeof parsed.edgeScroll === 'boolean') out.edgeScroll = parsed.edgeScroll;

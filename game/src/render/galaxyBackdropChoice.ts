@@ -52,3 +52,11 @@ export function urlGalaxyBackdrop(): GalaxyBackdropKind | null {
     const v = new URLSearchParams(search).get('backdrop');
     return v === null ? null : parseGalaxyBackdrop(v);
 }
+
+/** Dev / screenshot hook: `?backdropTime=<s>` starts the backdrop animation clock there (e.g. at a storm flash). */
+export function urlGalaxyBackdropTime(): number | null {
+    const search = (globalThis as { location?: { search?: string } }).location?.search;
+    if (typeof search !== 'string') return null;
+    const v = Number(new URLSearchParams(search).get('backdropTime'));
+    return Number.isFinite(v) && v > 0 ? v : null;
+}
