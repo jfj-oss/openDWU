@@ -732,13 +732,19 @@ try {
         await page.evaluate(() => { window.__dwu.time.paused = true; });
         await page.waitForTimeout(500);
         const saved = await page.evaluate(async () => {
-            const text = await window.__dwu.simWorker.save();
+            // save() gives a gzip Blob (saveData.ts: a .dwusave is compressed), a string in older builds: its bytes as
+            // base64 (page.evaluate returns JSON).
+            const save = await window.__dwu.simWorker.save();
+            const bytes = typeof save === 'string' ? new TextEncoder().encode(save) : new Uint8Array(await save.arrayBuffer());
+            let bin = '';
+            for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
             const dg = await window.__dwu.simWorker.digest();
-            return { text, nowMs: dg.nowMs, digest: dg.digest };
+            return { b64: btoa(bin), nowMs: dg.nowMs, digest: dg.digest };
         });
         const file = resolve(out, 'menuload.dwusave');
-        writeFileSync(file, saved.text);
-        console.log(`     saved ${Math.round(saved.text.length / 1024)} KB at nowMs ${saved.nowMs} to ${file}`);
+        const bytes = Buffer.from(saved.b64, 'base64');
+        writeFileSync(file, bytes);
+        console.log(`     saved ${Math.round(bytes.length / 1024)} KB at nowMs ${saved.nowMs} to ${file}`);
         await page.goto(`${base}?${sw}`);
         await page.click('.main-menu-item[data-id="loadGame"]');
         await page.waitForSelector('.save-load-file-input', { state: 'attached', timeout: 60000 });

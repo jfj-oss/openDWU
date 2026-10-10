@@ -72,23 +72,46 @@ function ringIsPartial(r: number): boolean {
     return (Math.PI * 2) / ((DASH_PX + GAP_PX) / r) > MAX_FULL_DASHES;
 }
 
-/** A dashed ring of radius r around (0, 0); (dx, dy) is the viewport centre relative to the ring's centre and diag the
- * viewport diagonal (only used by a partial ring). */
-function dashedCircle(g: Graphics, r: number, dx: number, dy: number, diag: number): void {
+/** A dashed ring of radius r around (0, 0); (dx, dy) is the viewport centre relative to the ring's centre and (w, h)
+ * the viewport size (only used by a partial ring). */
+function dashedCircle(g: Graphics, r: number, dx: number, dy: number, w: number, h: number): void {
     const step = (DASH_PX + GAP_PX) / r;
-    let a0 = 0;
-    let span = Math.PI * 2;
-    if (ringIsPartial(r)) {
-        // Huge on screen: only the part facing the viewport centre can be visible.
-        span = Math.min(Math.PI * 2, (diag / r) * 1.5 + 0.02);
-        a0 = Math.atan2(dy, dx) - span / 2;
+    if (!ringIsPartial(r)) {
+        const n = Math.ceil((Math.PI * 2) / step);
+        for (let i = 0; i < n; i++) dash(g, r, i * step);
+        return;
     }
-    const n = Math.ceil(span / step);
-    for (let i = 0; i < n; i++) {
+    // Huge on screen: only the part facing the viewport centre can be visible.
+    const centre = Math.atan2(dy, dx);
+    const span = Math.min(Math.PI * 2, (Math.hypot(w, h) / r) * 1.5 + 0.02);
+    const a0 = centre - span / 2;
+    // A partial ring is rebuilt every frame its ship or the camera moves, and its arc can hold tens of thousands of
+    // dashes (the 0.02 rad margin alone is 0.02 r px long; r reaches millions of px for a selected long-range ship far
+    // off screen at planet zoom), nearly all off screen: building them all allocated gigabytes a second and the page
+    // ran out of memory. So only the dashes that can be on screen are drawn (the same dashes at the same angles): none
+    // when the ring misses the viewport, else those within the angle the viewport subtends from the ring's centre and
+    // inside the viewport.
+    const d = Math.hypot(dx, dy);
+    const half = Math.hypot(w, h) / 2 + DASH_PX;
+    if (r < d - half || r > d + half) return;
+    const reach = d > half ? Math.asin(half / d) : Math.PI;
+    const first = Math.max(0, Math.floor((span / 2 - reach) / step));
+    const last = Math.min(Math.ceil(span / step), Math.ceil((span / 2 + reach) / step) + 1);
+    const x0 = dx - w / 2 - DASH_PX;
+    const x1 = dx + w / 2 + DASH_PX;
+    const y0 = dy - h / 2 - DASH_PX;
+    const y1 = dy + h / 2 + DASH_PX;
+    for (let i = first; i < last; i++) {
         const a = a0 + i * step;
-        g.moveTo(Math.cos(a) * r, Math.sin(a) * r);
-        g.arc(0, 0, r, a, a + DASH_PX / r);
+        const x = Math.cos(a) * r;
+        const y = Math.sin(a) * r;
+        if (x >= x0 && x <= x1 && y >= y0 && y <= y1) dash(g, r, a);
     }
+}
+
+function dash(g: Graphics, r: number, a: number): void {
+    g.moveTo(Math.cos(a) * r, Math.sin(a) * r);
+    g.arc(0, 0, r, a, a + DASH_PX / r);
 }
 
 /** Draws both rings (screen space, constant line width) centred on (sx, sy); radii in screen px. The geometry is built
@@ -108,13 +131,12 @@ export function drawRangeRings(g: Graphics, sx: number, sy: number, rPx: RangeRa
         if (!key.changed()) return;
     }
     g.clear();
-    const diag = Math.hypot(w, h);
     if (ok100) {
-        dashedCircle(g, rPx.range100, w / 2 - sx, h / 2 - sy, diag);
+        dashedCircle(g, rPx.range100, w / 2 - sx, h / 2 - sy, w, h);
         g.stroke({ width: 1, color: COLOR, alpha: 0.35 });
     }
     if (ok45) {
-        dashedCircle(g, rPx.range45, w / 2 - sx, h / 2 - sy, diag);
+        dashedCircle(g, rPx.range45, w / 2 - sx, h / 2 - sy, w, h);
         g.stroke({ width: 2.5, color: COLOR, alpha: 0.8 });
     }
 }

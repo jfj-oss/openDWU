@@ -452,19 +452,22 @@ async function boot() {
             await page.click('.wizard-type-btn[data-type="Introductory"]');
         } else {
             await page.click('.wizard-type-btn[data-type="CustomStandard"]');
+            // The wizard's Next / Start button (the hot-seat players panel's hidden Done button is a .wizard-btn-primary too,
+            // and comes first).
+            const NEXT = '.wizard-btn-primary:not(.wizard-hotseat-done-btn)';
             for (let i = 0; i < 14; i++) {
                 await page.waitForFunction(() => !document.querySelector('.wizard-race-loading'), null, { timeout: 30000 }).catch(() => {});
                 // A fixed seed (the Galaxy page's box), so the worker and in-thread runs play the same galaxy.
                 const seedBox = page.locator('.wizard-seed-input');
                 if ((await seedBox.count()) > 0 && (await seedBox.isVisible())) await seedBox.fill(opt('seed', '4242'));
-                const label = (await page.textContent('.wizard-btn-primary'))?.trim();
+                const label = (await page.textContent(NEXT))?.trim();
                 if (label === 'Start the Game!') break;
-                await page.click('.wizard-btn-primary');
+                await page.click(NEXT);
                 await wait(200);
             }
             await shot('wizard-start-page');
-            check((await page.textContent('.wizard-btn-primary'))?.trim() === 'Start the Game!', 'the wizard reaches Start the Game!');
-            await page.click('.wizard-btn-primary');
+            check((await page.textContent(NEXT))?.trim() === 'Start the Game!', 'the wizard reaches Start the Game!');
+            await page.click(NEXT);
         }
     } else if (kind === 'late2500') {
         await page.goto(`${base}?load=${encodeURIComponent('/dev-saves/late2500.dwusave')}&${sw}`);
@@ -1715,6 +1718,8 @@ try {
     step = 'boot';
     const info = await act('boot', boot, { timeoutMs: 900000, settleReplies: false });
     void info;
+    // No game, no session (every play step would throw and the loop would never end).
+    if (steps.at(-1)?.error) throw new Error(`the game did not boot: ${steps.at(-1).error.split('\n')[0]}`);
     // --warm=<game s>: play that long at 4× before the session (a later game for --only probes).
     if (Number(opt('warm', '0')) > 0) await act('warm up 4x', () => play(Number(opt('warm', '0')) * 1000, 4), { timeoutMs: 3600000 });
     const totalMs = years * GAME_YEAR_MS;
