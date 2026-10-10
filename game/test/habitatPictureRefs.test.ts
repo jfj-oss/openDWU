@@ -22,7 +22,7 @@
 import { beforeAll, describe, expect, it, vi } from 'vitest';
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdtempSync, readFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { gunzipSync } from 'node:zlib';
@@ -81,9 +81,14 @@ beforeAll(async () => {
     };
     traceGalaxy = generateGalaxy({ seed: 3, shape: GalaxyShape.Spiral, starCount: 20, sectorWidth: 2, sectorHeight: 2, systemNames: Array.from({ length: 20 }, (_, i) => `T${i}`), gameData });
     // A private manifest (other tests regenerate public/asset-manifest.json concurrently).
-    const out = join(mkdtempSync(join(tmpdir(), 'dwu-manifest-')), 'asset-manifest.json');
-    execFileSync('node', ['scripts/gen-asset-manifest.mjs'], { cwd: gameRoot, env: { ...process.env, ASSET_MANIFEST_OUT: out } });
-    manifest = JSON.parse(readFileSync(out, 'utf-8')) as Record<string, string[]>;
+    const outDir = mkdtempSync(join(tmpdir(), 'dwu-manifest-'));
+    try {
+        const out = join(outDir, 'asset-manifest.json');
+        execFileSync('node', ['scripts/gen-asset-manifest.mjs'], { cwd: gameRoot, env: { ...process.env, ASSET_MANIFEST_OUT: out } });
+        manifest = JSON.parse(readFileSync(out, 'utf-8')) as Record<string, string[]>;
+    } finally {
+        rmSync(outDir, { recursive: true, force: true });
+    }
 }, 300000);
 
 /** GalaxyImages.cs 11-58, written out: [first, last] picture index the C# can give each category / type. */
