@@ -23,8 +23,38 @@ const explicit = new WeakMap<Galaxy, readonly Empire[]>();
 const defaults = new WeakMap<Galaxy, { player: Empire | null; list: readonly Empire[] }>();
 const EMPTY: readonly Empire[] = Object.freeze([]);
 
+/**
+ * Multiplayer Phase 4 (docs/MULTIPLAYER.md §12): human seats whose player left and whose empire the AI runs until they
+ * return (the `setSeatAi` command, journaled; host only). Such an empire is not a human empire — isHumanEmpire is false
+ * and humanEmpires leaves it out, so every AI branch decides for it — but it keeps its seat (humanSeats, the stable list
+ * the session maps players to), and the game stays a multiplayer one (isMultiHuman counts seats). Absent: none (every
+ * game that never had a player leave), so nothing changes for any other game.
+ */
+const aiSeats = new WeakMap<Galaxy, ReadonlySet<Empire>>();
+/** humanEmpires' list while some seats are AI-run (the explicit list without them), rebuilt on change. */
+const withoutAi = new WeakMap<Galaxy, { seats: readonly Empire[]; ai: ReadonlySet<Empire>; list: readonly Empire[] }>();
+
 /** Galaxy.humanEmpires: the human-controlled empires, primary human (galaxy.playerEmpire) first. */
 export function humanEmpires(galaxy: Galaxy): readonly Empire[] {
+    const list = explicit.get(galaxy);
+    if (list !== undefined) {
+        const ai = aiSeats.get(galaxy);
+        if (ai === undefined) return list;
+        const c = withoutAi.get(galaxy);
+        if (c !== undefined && c.seats === list && c.ai === ai) return c.list;
+        const fresh = Object.freeze(list.filter((e) => !ai.has(e)));
+        withoutAi.set(galaxy, { seats: list, ai, list: fresh });
+        return fresh;
+    }
+    return humanSeats(galaxy);
+}
+
+/**
+ * The human seats: every empire a human player plays in this game, primary first, including those the AI runs while
+ * their player is away (isAiSeat). Without AI seats it is humanEmpires. The multiplayer session maps its players to
+ * these by index.
+ */
+export function humanSeats(galaxy: Galaxy): readonly Empire[] {
     const list = explicit.get(galaxy);
     if (list !== undefined) return list;
     const player = galaxy.playerEmpire ?? null;
@@ -40,13 +70,49 @@ export function isHumanEmpire(galaxy: Galaxy, empire: Empire | null | undefined)
     if (empire == null) return false;
     const list = explicit.get(galaxy);
     if (list === undefined) return empire === galaxy.playerEmpire;
-    return list.includes(empire);
+    return list.includes(empire) && aiSeats.get(galaxy)?.has(empire) !== true;
 }
 
 /** True when more than one human plays (a multiplayer game). Every multiplayer-only rule asks this, so a one-human game
- *  runs exactly as before. */
+ *  runs exactly as before. Seats the AI runs for a while count: the game stays a multiplayer one. */
 export function isMultiHuman(galaxy: Galaxy): boolean {
-    return humanEmpires(galaxy).length > 1;
+    return humanSeats(galaxy).length > 1;
+}
+
+/** True when `empire` is a human seat the AI runs while its player is away (setAiSeat). */
+export function isAiSeat(galaxy: Galaxy, empire: Empire | null | undefined): boolean {
+    return empire != null && aiSeats.get(galaxy)?.has(empire) === true;
+}
+
+/**
+ * Hand a human seat to the AI (`ai`) or back to its player. Only a seat of the explicit list other than the primary
+ * human (the host never leaves a running game). Returns whether anything changed. Sim state: only through the journaled
+ * `setSeatAi` command, at a frame boundary, so every peer changes it at the same frame.
+ */
+export function setAiSeat(galaxy: Galaxy, empire: Empire, ai: boolean): boolean {
+    const list = explicit.get(galaxy);
+    if (list === undefined || !list.includes(empire) || empire === list[0]) return false;
+    const cur = aiSeats.get(galaxy);
+    if ((cur?.has(empire) === true) === ai) return false;
+    const next = new Set(cur ?? []);
+    if (ai) next.add(empire);
+    else next.delete(empire);
+    if (next.size === 0) aiSeats.delete(galaxy);
+    else aiSeats.set(galaxy, next);
+    return true;
+}
+
+/** What the save writes (galaxySave.ts side table `aiSeats`): the AI-run seats in seat order, or undefined (no key). */
+export function savedAiSeats(galaxy: Galaxy): Empire[] | undefined {
+    const ai = aiSeats.get(galaxy);
+    if (ai === undefined) return undefined;
+    return humanSeats(galaxy).filter((e) => ai.has(e));
+}
+
+/** A loaded save's / synced side table (undefined or null: none). After restoreHumanEmpires. */
+export function restoreAiSeats(galaxy: Galaxy, list: readonly Empire[] | null | undefined): void {
+    aiSeats.delete(galaxy);
+    for (const e of list ?? []) if (e != null) setAiSeat(galaxy, e, true);
 }
 
 /**

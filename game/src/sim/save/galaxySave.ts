@@ -74,7 +74,7 @@ import { Weapon } from '../weapon';
 import { battleReportState, restoreBattleReportState, type BattleReportState } from '../battleReports/battleReports';
 import { type HintInfo, hintSubjectTable, liveHintSubjects, restoreHintSubjects, savedHintSubjects, setHintSubjectTable } from '../player/hintSubjects';
 import { liveWaypointState, restoreWaypointState, savedWaypointState, type WaypointState } from '../player/waypoints';
-import { liveHumanEmpires, restoreHumanEmpires, savedHumanEmpires } from '../humanEmpires';
+import { liveHumanEmpires, restoreAiSeats, restoreHumanEmpires, savedAiSeats, savedHumanEmpires } from '../humanEmpires';
 import { perHumanHintSubjects, restorePerHumanState, savedPerHumanState, type PerHumanState } from '../perHumanState';
 
 export interface GalaxySaveJSON {
@@ -565,6 +565,9 @@ interface SideTables {
      *  one-human game — so it saves the same text as before — and in older saves. The replica sync carries the live
      *  list or null. */
     humanEmpires?: Empire[] | null;
+    /** Multiplayer: the human seats the AI runs while their player is away (humanEmpires.ts setAiSeat): absent unless
+     *  some are — every other game saves the same text as before. The replica sync carries the list or null. */
+    aiSeats?: Empire[] | null;
     /** The non-primary humans' copies of the per-player state (sim/perHumanState.ts): absent while empty — every
      *  one-human game — and in older saves. The replica sync carries the live state or null. */
     perHuman?: PerHumanState | null;
@@ -607,6 +610,8 @@ function collectSideTables(galaxy: Galaxy, visited: readonly object[]): SideTabl
     if (hs !== undefined) out.hintSubjects = hs;
     const humans = savedHumanEmpires(galaxy);
     if (humans !== undefined) out.humanEmpires = humans;
+    const aiSeats = savedAiSeats(galaxy);
+    if (aiSeats !== undefined) out.aiSeats = aiSeats;
     // The non-primary humans' location-hint subjects join their per-human state (only with more than one human).
     for (const h of humans ?? []) {
         const t = h !== galaxy.playerEmpire ? hintSubjectTable(h) : undefined;
@@ -645,6 +650,7 @@ function restoreSideTables(galaxy: Galaxy, t: SideTables): void {
     restoreWaypointState(galaxy, t.waypoints);
     restoreHintSubjects(galaxy, t.hintSubjects);
     restoreHumanEmpires(galaxy, t.humanEmpires);
+    restoreAiSeats(galaxy, t.aiSeats);
     restorePerHumanState(galaxy, t.perHuman);
     for (const [h, table] of t.perHuman?.hintSubjects ?? []) setHintSubjectTable(h, table as Record<string, HintInfo>);
 }
@@ -795,6 +801,7 @@ export function replicaSideTables(galaxy: Galaxy, visited: readonly object[]): o
     t.waypoints = liveWaypointState(galaxy);
     t.hintSubjects = liveHintSubjects(galaxy);
     t.humanEmpires = liveHumanEmpires(galaxy);
+    t.aiSeats = savedAiSeats(galaxy) ?? null;
     t.perHuman = savedPerHumanState(galaxy) ?? null;
     return t;
 }

@@ -130,6 +130,7 @@ export const COMMAND_FAILURE: FailureTable = {
     setBaconSettings: () => ({}),
     setOffscreenUpdateRate: () => 1000,
     storeChronicleYear: no,
+    setSeatAi: no,
     advisorCommands: (message, [, commands]) =>
         commands.map((c) => {
             const id = 'command' in c ? c.command.id : c.id;

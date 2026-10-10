@@ -130,7 +130,7 @@ import type { EmpireActivityType } from '../pirates/empireActivity';
 import { storyEventAction, storyEventClose } from '../story/freedomAlliance';
 import { applyLlmStrategicCommand, type LlmStrategicCommand } from '../scenario/llm/strategic';
 import { applyPopulationPolicyToAllColonies, renameColony, scrapColonyFacility, setColonyAsCapital, setColonyPopulationPolicy, transferToTransport } from './colonyOrders';
-import { isHumanEmpire } from '../humanEmpires';
+import { isHumanEmpire, setAiSeat } from '../humanEmpires';
 import { setHumanMessageOptions } from '../perHumanState';
 
 /** Automation / control fields of Empire the UI sets directly (Game Options panel and the automation prompts). */
@@ -488,6 +488,10 @@ export const PLAYER_OPS = {
         if (!setHumanMessageOptions(galaxy, empire, copyMessageOptions(options))) galaxy.messageOptions = copyMessageOptions(options);
         return true;
     },
+
+    /** Multiplayer Phase 4 (net/multiplayerGame.ts, docs/MULTIPLAYER.md §12): the host hands a human seat whose player
+     *  left to the AI (`ai`), or back when they return. The session lets only the host issue it. */
+    setSeatAi: (galaxy: Galaxy, empire: Empire, ai: boolean) => setAiSeat(galaxy, empire, ai === true),
 
     // --- Mod layer: the local model's chronicle (19s-1) ---
     /** llm/chronicleJob.ts: store one year of the chronicle in the event-log state (the model's text arrives by value). */
