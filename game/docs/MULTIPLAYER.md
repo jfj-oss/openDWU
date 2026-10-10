@@ -5,8 +5,9 @@ clear "a human controls this empire" sim rules), Milestone 2 (the local viewer i
 (a) leftovers, the plumbing) and Milestone 3 (the nine decisions of §4, `createGame` for N humans). **Phase 3 (LAN play,
 §10) is built** on top of the lockstep core (§8): host / join by IP in the desktop app, the lobby, the version and data
 check, and the session flow. **Phase 4's LAN half is built (§11–§14):** lockstep with the sim in the worker, rejoining
-a dropped player, AI takeover of an absent player's empire, and an adaptive input delay; the Internet transport (relay /
-WebRTC, invite codes) is planned in §15. Nothing changes for the player: the seed pins (`npm run repin -- --check`) are
+a dropped player, AI takeover of an absent player's empire, and an adaptive input delay. **Internet play is built
+(§15):** WebRTC data channels set up with copy-paste invite / reply codes, peer-to-peer, with no server of ours in
+between. Nothing changes for the player: the seed pins (`npm run repin -- --check`) are
 unchanged at every commit, one-human saves are byte-identical to before, and every multiplayer-only rule runs only when
 the game has more than one human (`isMultiHuman`).
 
@@ -27,7 +28,7 @@ The command log already names the empire of each command (`PlayerLogEntry.empire
 | **1** | Refactor "the player" into a *set of human empires* plus *the local viewer*, still with one human. Nothing changes for the player; repin stays at 0. | 1–2 weeks (the biggest) |
 | 2 | Hot-seat: two players on one PC (switch the local viewer between turns or with pause). | |
 | 3 | LAN lockstep: host/join by IP, a shared clock and pause, desync checks. | |
-| 4 | Internet: relay/WebRTC, a lobby and invite codes, reconnects, AI takeover on disconnect. | LAN half done (§11–§14): worker mode, rejoin, AI takeover, adaptive delay. Next: the transport (§15). |
+| 4 | Internet: WebRTC, a lobby and invite codes, reconnects, AI takeover on disconnect. | Done: worker mode, rejoin, AI takeover, adaptive delay (§11–§14); Internet play by codes, no server (§15). Left: host migration. |
 | 5 | Polish: chat, human-to-human diplomacy, multiplayer saves, version/add-on/data checks, joining mid-game. | |
 
 Risks: cross-platform determinism (checked, see §9: it holds once Math.pow is replaced), hidden single-player
@@ -833,7 +834,7 @@ Phase 4:
 - ~~**The sim worker**~~: done (§11).
 - ~~**An adaptive input delay**~~: done (§13).
 - **Host migration** (the host leaving ends the game).
-- **Internet play**: a relay or WebRTC and invite codes (§15).
+- ~~**Internet play**~~: done (§15): WebRTC with copy-paste codes, no server.
 
 Phase 5: chat, human-to-human diplomacy, joining a running game (refused today), a per-human handicap, a Windows peer
 in the cross-machine check, and a deeper desync hash with the first divergent frame logged.
@@ -949,32 +950,115 @@ and the session waits for it. The worker keeps stepping.)
 Also: `npm run repin -- --check --workers 1` = 0; `npm run typecheck`; the sim-worker, replica and desktop-shell vitest
 files (25 files, 172 tests) pass.
 
-## 15. The Internet plan (next step)
+## 15. Internet play without a server
 
-Everything above the transport is ready for the Internet: the session only needs an ordered, reliable text `Link`
-(§8), the adaptive delay covers the latency, rejoin covers dropped connections, and the fingerprint check runs in the
-lobby whatever carries it. What is missing is a way to reach a host behind a home router.
+**Decision (2026-10-10, the user):** no central relay or server of ours. Each game's traffic flows only between that
+game's own players: the earlier "relay first" plan is dropped. The host's PC stays the hub of the star (§8), as on a
+LAN. Each client has one WebRTC data channel to the host; the channel carries the same text messages as the WebSocket
+link, so the lobby, the version check and the lockstep session do not change.
 
-1. **A relay first** (works through any NAT, no port forwarding). A small Node service built on `desktop/wsServer.cjs`:
-   the host connects out over `wss://` and registers a room; the relay answers an **invite code** (6–8 characters from
-   an unambiguous alphabet, random, expiring with the room). A client connects out with the code; the relay pairs it
-   with the host and forwards text frames both ways. The star topology maps 1:1: each client is one `Link` on the host
-   — one relay WebSocket per client (simplest), or one host socket multiplexed by a client id.
-   - Desktop: `netHost.cjs` gets `relayHost(url)` → `{ code }` with each paired client bridged to a MessagePort exactly
-     as an accepted LAN socket is (`dwu:net-link`), and `relayJoin(url, code)` like `connect`. The page code
-     (`netBridge.ts`, the lobby, the session) does not change. A browser page can join through the relay too (a
-     page can open `wss://`), and could even host through it.
-   - UI: the Multiplayer screen gets "Host on the Internet" (shows the code to share) and "Join by code" next to the
-     LAN boxes; the rejoin token then names the room and slot.
-   - Limits: the relay forwards at most a few MB/s per room and enforces the 64 MB message cap; the saves of a join or
-     resync are already gzip + 1 MB chunks (§8). Keepalive pings through the relay keep idle NAT mappings open.
-   - Security: TLS only; rooms are invisible without the code; the relay never parses game traffic (the host still
-     checks fingerprints and authorizes every command); rate limits per IP; codes are single-room and short-lived.
-   - Hosting: one small VM or a serverless WebSocket service; the URL is a setting with a default.
-2. **WebRTC later** (peer-to-peer, lower latency and no relay bandwidth). The relay doubles as the signalling server
-   (offer / answer / ICE candidates over its socket); a reliable, ordered `RTCDataChannel` is a `Link`. STUN for most
-   NATs, the relay itself (or TURN) as the fallback. Electron's renderer has WebRTC, so this lives in the page; the
-   desktop main process is not needed.
-3. **Around it:** host migration (today the host leaving ends the game: a client with the newest state could take
-   over the star), Windows in the cross-machine determinism check (§9), the version / add-on check already in the lobby,
-   a deeper desync hash with the first divergent frame logged, and chat (Phase 5).
+### 15.1 What is built
+
+| File | What |
+|---|---|
+| `src/net/rtcTransport.ts` | **The WebRTC `Link`**: one reliable, ordered, pre-negotiated `RTCDataChannel` (id 0; a channel the other side opens in-band is closed at once). Messages are cut into frames of at most 16 K characters, because Chromium limits a data channel message to 256 KB. The first character of a frame says whether more frames follow. Sending waits on `bufferedAmount` (4 MB high, 512 KB low mark), so a save cannot overflow Chromium's 16 MB send buffer. A message over 64 MB, a bad frame or binary data closes the link with a reason, which the other side receives too. A connection that stays "disconnected" for 15 s, or "failed", closes the link, and rejoin (§12) takes over. **The codes**: `compactSdp` / `expandSdp` keep only what the other side needs (ICE ufrag and pwd, the sha-256 DTLS fingerprint, the DTLS role, the UDP candidates) and rebuild a full SDP from it. `encodeCode` packs these into binary (the ufrag / pwd base64-decoded, IPv4 in 4 bytes), deflates them when that is shorter, and writes base64url after a prefix: `DWI` = invite, `DWR` = reply, then `1` = raw or `Z` = deflated. **`RtcInvite`** (host): one peer connection per invite, with a random 32-bit tag that the reply must carry. An invite accepts one reply only. `close()` makes the code worthless. **`answerInvite`** (joiner). `rtcLinkPath(link)`: the selected ICE pair. |
+| `src/ui/multiplayer/internetUi.ts` | `InternetHost`: the invites from the lobby into the game. The lobby's **invite board** has one row per invite: the code with **Copy**, a box for the reply code with **Connect**, and the state. A new row opens when one connects. A link that opens goes to whatever answers the host's connections at that moment (`netEndpoint().onIncoming`): the lobby, and in the game the rejoin gate. **Rejoin widgets** in the host's banner: a fresh invite for each absent player. `openCodeJoin`: the joiner's dialog. `fallbackHelp`: the text shown on failure. `window.__dwuRtc` (scripts): `paths()` gives the ICE path of each open link. |
+| `src/ui/multiplayer/multiplayerApp.ts` | The Multiplayer screen: **Host on the Internet**, **Join by code…**, and the box "Open the port on my router automatically (UPnP / NAT-PMP)" (off by default). The lobby shows the board, the direct-IP addresses and the port-mapping result. The rejoin gate and the client's Rejoin also work by code (`INTERNET_ADDRESS`). The chip says "Internet host / client". **Adaptive input delay** (§13) is on by default when hosting on the Internet (its own setting, `dwu.mp.adaptiveDelayInternet`). |
+| `src/net/lobby.ts` | `decodeHello`: before the version check, the first message must be a `lobbyHello` of at most 64 KB with a sane shape. Anything else is refused and the link is closed. The running game's rejoin gate uses the same check. |
+| `desktop/portMapper.cjs`, `desktop/netHost.cjs`, `gamePreload.cjs` | Fallback (b): `dwuDesktop.net.mapPort()` asks the router to forward the host's TCP port to this PC. It is a minimal implementation with no dependency: UPnP IGD (SSDP M-SEARCH, then SOAP `AddPortMapping` / `GetExternalIPAddress` / `DeletePortMapping` on the WANIPConnection / WANPPPConnection service) and NAT-PMP (RFC 6886, UDP 5351 on the default gateway). It asks for a 1-hour lease, renewed every 20 min, so a router drops the mapping by itself if the app dies. The mapping is removed in `stopHost`, when the page goes away, and before the app quits (`before-quit` waits up to 3 s). A carrier-grade-NAT or private router address is reported as such. |
+| `desktop/main.cjs` | `--disable-features=WebRtcHideLocalIpsWithMdns`: ICE uses this PC's real LAN / VPN addresses instead of random mDNS names, which resolve only on one LAN segment and not over Tailscale. The addresses reach only the players a code is given to. |
+
+**Signalling is the players themselves.** The host's invite code is its SDP offer, with ICE candidates gathered in
+advance (no trickle). The joiner pastes it and gets a reply code (its answer), which goes back the same way, e.g.
+over Discord. The joiner adds the host's candidates only after its own gathering finished: Chromium stops gathering
+early, before the STUN answer, once a candidate pair to the remote works (on a LAN at once), and the reply would then
+lack the public address. Gathering ends when it is complete, or 0.6 s after a public (srflx) candidate arrived with
+nothing new since, or after 5 s. A code carries at most 2 public addresses (one per IP) and 4 LAN / VPN addresses:
+home LAN ranges first, then CGNAT / Tailscale (100.64/10), then IPv6. The 172.16/12 addresses (Docker / VM bridges)
+are left out when the PC also has a 192.168 or 10.x address.
+
+**NAT traversal.** Public STUN servers (`stun.l.google.com:19302`, `stun.cloudflare.com:3478`, `stun1.l.google.com:19302`)
+tell each side its public address. They see no game traffic. **No TURN**: TURN would relay the game.
+
+**Code lengths** (measured): **95–114 characters** for a typical home PC (one public address, a LAN address, a
+Tailscale address), 148 with an IPv6 address, 86 with no public address. Deflate does not help such short random data,
+so these codes are raw.
+
+### 15.2 How to play
+
+1. **Host:** Multiplayer → your name → **Host on the Internet**. The lobby shows "Invite 1" with a code
+   (`DWI1…`). Click **Copy** and send it to one player.
+2. **Joiner:** Multiplayer → **Join by code…** → paste the invite → **Create Reply Code** → **Copy**, and send the reply
+   (`DWR1…`) back. The dialog says "Waiting for the host to enter it…".
+3. **Host:** paste the reply in the invite's row → **Connect**. The row goes "Connecting…" → "Connected", the player
+   is in the lobby, and the next invite row opens. Each further player gets their own invite.
+4. From here on it is the LAN game of §10: the version / data check, the lobby, Game Settings / Load Saved Game, Start,
+   pause, speed, the adaptive delay, saves, desync resync, AI takeover.
+5. **A drop:** the host's banner offers AI Takes Over / Continue Without Them, as on a LAN, and shows **a new invite
+   code for each absent player**. The player clicks **Rejoin** (or, after restarting the app, Multiplayer → Join by
+   code), pastes that code and sends back the reply. The host pastes it in the banner, and the player gets their slot
+   back (by token or name), with the current save.
+
+The states the screens show: host row "Preparing the code…" → "Waiting for the reply code" → "Connecting…" →
+"Connected", or "Failed: …" with the fallbacks and a **New Invite Code** button. Joiner: "Send this reply code to the
+host. Waiting for the host to enter it…" → "Connected". After 45 s without a connection, the joiner sees what to do if
+the host has already entered the code; the joiner gives up after 5 minutes.
+
+### 15.3 When no direct connection is possible
+
+Without a relay, some pairs of networks cannot connect: both routers do symmetric NAT, some carrier-grade NAT, or a
+firewall drops UDP. This is the TURN trade-off: TURN would connect these pairs, but it would route the game through a
+server, which this design does not use. The host sees "Failed: no direct connection within 30 seconds…" (or at once,
+when ICE reports failure), and both screens list the fallbacks:
+
+- **(a) Direct IP:** the host forwards TCP port 47610 (or the port they set) on their router, and the player uses
+  "Join a game" with the host's public address. "Host on the Internet" also opens the LAN WebSocket port for this.
+- **(b) Automatic port mapping:** the host ticks "Open the port on my router automatically" before hosting. The lobby
+  then shows "Router port opened (NAT-PMP): players anywhere can join by IP with 173.178.142.9:47611", or why not. The
+  PC's own firewall must also let the port in.
+- **(c) Tailscale** (or another VPN): LAN play with the host's Tailscale address. The invite codes also carry the
+  Tailscale address, so a code join between two Tailscale PCs connects over it.
+
+### 15.4 Security
+
+- Message sizes are bounded: frames of at most 16 K characters, messages of at most 64 MB (as on the WebSocket server),
+  and a first message (the lobby hello) of at most 64 KB.
+- Before the version check, only a well-formed `lobbyHello` is read. Any other first message is refused and the link is
+  closed, in the lobby and in the running game's rejoin gate.
+- Codes are single-use: each invite has its own peer connection and tag. A second reply, or a reply for another or an
+  older invite, is refused. When hosting stops, every open invite is closed, and its code no longer connects. At Start,
+  the lobby's unused invites are withdrawn.
+- Nothing but the game protocol: one data channel, no in-band channels (closed at once), no media. The page only
+  makes outgoing STUN requests. DTLS encrypts the channel, and the fingerprints in the codes authenticate both ends.
+  The host still checks fingerprints and authorizes every command (§10).
+
+### 15.5 Tests (2026-10-10)
+
+Two Electron apps (`DWU_USER_DATA_DIR` profiles, each on its own `kwin_wayland --virtual`, real GPU through ANGLE /
+Vulkan, nice 19), driven over CDP through the real UI. The host clicks Host on the Internet, the joiner clicks Join by
+code; the invite and the reply are copied from one UI's text field into the other. Seed 4242, 120 stars, 2×, renames
+and waypoints from both sides every 2 s, and one refused hijack. The digests are compared while paused at the same
+game time.
+
+| Run | Result |
+|---|---|
+| This PC ↔ this PC, a minute (adaptive delay on) | connected 258 ms after the reply was entered (ICE path host ↔ host 192.168.1.8). **`f9026e2ea2c1469b` on both**, 65 checks, 0 mismatches, 124 commands applied on each |
+| Same, the host enters the reply only 75 s after it was made | connected 11 ms after it was entered (the joiner's early ICE checks do not spoil the connection) |
+| Rejoin by code: the client's links drop, the host clicks AI Takes Over, then the client clicks Rejoin and the codes are exchanged through the host's banner | back 2.2 s after the reply (1.1 MB save over the channel); the seat goes back to the human; **`cada3a7bd01f9cfd` on both**, 45 checks, 0 mismatches |
+| **Linux host ↔ Mac client** (the Mac: a copy of its dwu.app with this build, Electron 44.4.5, in-thread sim), with the Tailscale address in the codes | ICE chose host 100.106.232.94 ↔ host 100.114.187.94 (Tailscale). **`c89ed31b7f9cfdef` on both**, 62 checks, 0 mismatches |
+| **Linux ↔ Mac across the Internet** (the codes carry only the public STUN addresses: test hook `dwu.mp.publicOnly`), fixed delay 4 | ICE: srflx 173.178.142.9 ↔ srflx 146.70.168.83 (two different networks). **`6808f0035809b71b` on both**, 59 checks, 0 mismatches; ping 124–175 ms, so delay 4 stalled a lot (27 s of 60) |
+| Same with the adaptive delay | **`523b03728f58ce4d` on both**, 63 checks, 0 mismatches; the delay moved between 4 and 7; 4.8 s of stalls |
+| The link alone (two connections in one page) | round trip 0.10 ms median; a 5.2 M-character message with emoji and accented characters at frame edges arrives intact, in order, in 247 ms; a 65 MB message closes both ends with "a message over 64 MB"; a second reply to a used invite is refused |
+| Failure path (the joiner gathers no candidates: test hook `dwu.mp.blockIce`) | the host's row: "Failed: no direct connection within 30 seconds…", the three fallbacks and New Invite Code; the joiner shows the fallbacks after 45 s |
+| Port mapping (this PC's router) | UPnP: no SSDP answer (most likely this PC's firewall, ufw, drops the replies). **NAT-PMP: mapped TCP 47611 → 192.168.1.8:47611**, public 173.178.142.9, and **removed when the lobby closed** (router result 0). From the Mac's network the port did not answer: this PC's firewall (ufw) does not let it in |
+| `npm run repin -- --check --workers 1` | 0 pins would change |
+| `scripts/lockstep-demo.mjs` (WebSocket) and `--phase4` | OK, both |
+| vitest: the sim-worker and desktop-shell files (19 files) | 126 passed |
+
+There is no WebRTC in Node, so the lockstep demo does not test this transport; WebRTC is tested in Electron only.
+
+### 15.6 Around it (next)
+
+Host migration (today the host leaving ends the game: a client with the newest state could take over the star),
+Windows in the cross-machine determinism check (§9), a deeper desync hash with the first divergent frame logged, and
+chat (Phase 5).
