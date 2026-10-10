@@ -73,6 +73,7 @@ import {
     type ThreatKnowledge,
 } from './framework';
 import { isHumanEmpire } from '../../humanEmpires';
+import { detPow } from '../../detMath';
 
 export const DARK_FARMS_KEY = 'darkFarms';
 export const DARK_FARMS_FLAG = 'darkFarms';
@@ -236,7 +237,7 @@ function systemName(galaxy: Galaxy, h: Habitat): string {
 export function farmTroopStrength(galaxy: Galaxy, farm: DarkFarm): number {
     const dev = habitatDevelopmentLevel(farm.habitat);
     const steps = Math.max(0, (dev - P.minDevelopment(galaxy)) / 10);
-    return Math.trunc(P.troopStrength(galaxy) * Math.pow(1.25, steps));
+    return Math.trunc(P.troopStrength(galaxy) * detPow(1.25, steps));
 }
 
 /** Attack strength of a farm's hidden robots at full readiness, in TroopList.TotalDefendStrength units (strength × readiness 100). */

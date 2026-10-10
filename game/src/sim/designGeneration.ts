@@ -36,6 +36,7 @@ import type { Galaxy } from './galaxy';
 import { ShipDesignFocus, type ResearchStatic, type ResearchSystem } from './researchSystem';
 import type { Habitat } from './types';
 import { scenarioQuery } from './scenario/hooks';
+import { detPow } from './detMath';
 
 // Galaxy.3.cs 5021 / 5138.
 const MINIMUM_DESIGN_REVIEW_INTERVAL_YEARS = 0.5;
@@ -385,7 +386,7 @@ export function calculateMaxTechPoints(componentId: number, baseTechCost: number
     if (num1 >= 100) num1 = val1 + 1;
     let maxTechPoints = 0.0;
     for (let index = num1; index > 0; --index) {
-        const num2 = Math.pow(2.0, index - 1);
+        const num2 = detPow(2.0, index - 1);
         maxTechPoints += num2 * baseTechCost;
     }
     if (flag) ++maxTechPoints;
@@ -421,7 +422,7 @@ export function calculateMinTechPoints(componentId: number, baseTechCost: number
     if (num1 >= 100) num1 = val1 + 1;
     let minTechPoints = 0.0;
     for (let index = num1; index > 0; --index) {
-        const num2 = Math.pow(2.0, index - 1);
+        const num2 = detPow(2.0, index - 1);
         minTechPoints += num2 * baseTechCost;
     }
     if (flag) ++minTechPoints;

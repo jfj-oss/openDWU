@@ -161,6 +161,7 @@ import {
     implementBlockadeColony,
 } from './blockades';
 import { isHumanEmpire } from '../humanEmpires';
+import { detPow } from '../detMath';
 
 // ---------------------------------------------------------------------------------------------------------------
 // Constants (Galaxy.3.cs 4972-5120 static values)
@@ -227,7 +228,7 @@ export function galaxyIntoleranceLevel(galaxy: Galaxy): number {
 
 /** Galaxy.4.cs 3545 CalculateDistanceFactor(distance). */
 export function calculateDistanceFactor(distance: number): number {
-    return Math.max(1000000000.0, Math.pow(distance, 1.8)) / 1000000000.0;
+    return Math.max(1000000000.0, detPow(distance, 1.8)) / 1000000000.0;
 }
 
 /** Galaxy.CalculateDistanceStatic. */

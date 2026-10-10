@@ -85,6 +85,7 @@ import { formatNetGrouped0 } from './netNumberFormat';
 import { resolveSectorDescription } from './empireEvents';
 import { Empire as EmpireClass } from './empire';
 import { isHumanEmpire } from './humanEmpires';
+import { detPow } from './detMath';
 
 // TradeableItemType.cs (member order exact).
 export enum TradeableItemType {
@@ -689,7 +690,7 @@ export function valueMoney(moneyAmount: number): number {
 
 /** Galaxy.4.cs 3545 CalculateDistanceFactor(distance). */
 function calculateDistanceFactor(distance: number): number {
-    return Math.max(1000000000.0, Math.pow(distance, 1.8)) / 1000000000.0;
+    return Math.max(1000000000.0, detPow(distance, 1.8)) / 1000000000.0;
 }
 
 /** C# (long) clamp to 2^30−1 then (int). */
@@ -898,7 +899,7 @@ function valueActionAgainstEmpire(galaxy: Galaxy, empire: Empire, targetEmpire: 
             const num4 = Math.max(1.0, loyaltyLevel(empire) / 100.0);
             num2 = num2 * 3.5 * (num4 * num4 * num4);
         }
-        num2 = Math.pow(num2, 0.75);
+        num2 = detPow(num2, 0.75);
         let num5 = weightedMilitaryPotency(targetEmpire) / weightedMilitaryPotency(empire);
         if (targetEmpire === galaxy.playerEmpire) num5 /= galaxy.playerEmpire.difficultyLevel * galaxy.playerEmpire.difficultyLevel;
         num5 = Math.min(Math.max(num5, 0.5), 10.0);

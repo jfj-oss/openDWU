@@ -78,6 +78,7 @@ import { formatGameTextNow, formatNet, tryGetText } from './textResolver';
 import { generateIndependentColonyReport, generateRaceReport } from './galaxyReports';
 import { resolveTechBonusFactor } from './combat/attackAI';
 import { isHumanEmpire } from './humanEmpires';
+import { detPow } from './detMath';
 
 // ---------------------------------------------------------------------------------------------------------------
 // Constants
@@ -537,7 +538,7 @@ export function exertCulturalInfluence(galaxy: Galaxy, empire: Empire): void {
             let num6 = 1.0;
             const otherRace = empireList[num5].dominantRace;
             if (otherRace !== null) {
-                num6 = Math.pow(otherRace.loyalty / 100.0, 2.0);
+                num6 = detPow(otherRace.loyalty / 100.0, 2.0);
                 num6 += empireApprovalRating(galaxy, habitat4) / 100.0;
             }
             // Empire.cs 4826: 1.0 − CivilityRating / 100.0 (this empire's reputation, Empire.cs 1430).

@@ -24,8 +24,8 @@ The command log already names the empire of each command (`PlayerLogEntry.empire
 | 4 | Internet: relay/WebRTC, a lobby and invite codes, reconnects, AI takeover on disconnect. | |
 | 5 | Polish: chat, human-to-human diplomacy, multiplayer saves, version/add-on/data checks, joining mid-game. | |
 
-Risks: cross-platform determinism (the same Electron/V8 should hold; test early), hidden single-player assumptions,
-and the slowest PC sets the game speed.
+Risks: cross-platform determinism (checked, see §7: it holds once Math.pow is replaced), hidden single-player
+assumptions, and the slowest PC sets the game speed.
 
 ## 2. The API (Phase 1)
 
@@ -365,3 +365,46 @@ small rewrite rather than a one-line swap:
 
 **Total: about 8–10 working days** after Milestone 1 (which took about 1 day). This matches the plan's 1–2 weeks for
 Phase 1. Items 1–3 and 5 do not depend on the §4 answers and can start now; item 4 waits for them.
+
+## 7. Cross-platform determinism check
+
+`scripts/determinism-check.mjs` bundles `scripts/determinism-check/runner.ts` (rolldown, one self-contained ESM file,
+the `scenarios/` overlays inlined) and runs it under the repo's Electron (`ELECTRON_RUN_AS_NODE=1`, the release app's
+V8) and/or plain Node on this machine, and with `--remote` on another machine over ssh, using that machine's
+installed app binary as Node. Each run prints `case gameMs stateDigest rndDraws` every `--every` game seconds and a
+sha1 of the whole save text every `--save-every` checkpoints; the streams are compared line by line.
+
+```bash
+node scripts/determinism-check.mjs --years 5 --remote user@mac --ssh-key ~/.ssh/key \
+    --remote-data '~/dwu-assets' --remote-runtime /Applications/dwu.app/Contents/MacOS/dwu
+```
+
+Cases: `s1` (seed 1, 300 stars, 4 empires), `s7` (seed 7, 700 stars, 10 empires), `smart` (seed 3, Smarter AI as a
+composite add-on with every sub-switch on), `script` (seed 1 with the scripted player orders of
+`test/helpers/commandScript.ts`, recording the command log) and `replay` (seed 1 replaying that log; it must also
+equal `script`). The remote folder is deleted afterwards.
+
+**Result (2026-10-10, Linux x64 vs macOS arm64, both Electron 44.4.5 / V8 15.2):** **they match.** All five cases ran 5 game years each,
+compared every 10 game seconds (5 × 301 checkpoints: state digest and Rnd draw count; plus a whole-save hash every
+60 s): every checkpoint is identical, both before and after the `detPow` fix below, and the command-log replay equals
+the live scripted run. Seed 7 (700 stars, 10 empires) ends with 2,601 built objects and 3.9M Rnd draws.
+
+Findings:
+
+- **Math.pow is not portable.** V8 15 takes `pow` from LLVM libc, and its results are 1 ulp apart between x64 and
+  arm64 for about 0.1–3% of ordinary inputs (`pow(d, 1.8)`, `pow(x, 0.75)`, `pow(x, 4)`, `pow(1.25, k)`). Fix:
+  `src/sim/detMath.ts` `detPow`, a plain-JS port of V8 12's fdlibm pow, which every `Math.pow` in `src/sim` now
+  calls. It equals Node 22's `Math.pow` bit for bit (checked on 7.5M inputs), so the pins do not move. Keep
+  `Math.pow` out of `src/sim`; `x ** 2` is exact and fine.
+- `Math.tanh` and `Math.atan` also differ between x64 and arm64; the sim uses neither. `sin`, `cos`, `tan`, `asin`,
+  `acos`, `atan2`, `log`, `log10`, `exp`, `hypot`, `sqrt` matched on 4M inputs each.
+- **Node 22 and Electron 44 run different games from the same seed.** Their `sin` / `cos` / `atan2` / `log` / `pow`
+  differ in the last bit (V8 12 fdlibm vs V8 15 LLVM libc), so the start digest already differs (seed 1: Node
+  `4948f3713d8cdf2d`, Electron `b2cb4fe491ec07fb`). The pins and tests are Node 22 values. For multiplayer this only
+  means that all players must run the same app build (planned anyway: Phase 5 version check); a mixed Electron
+  upgrade would desync.
+- macOS is case-insensitive: the data loader opens `characters/Ackdarian.txt` there and `characters/ackdarian.txt`
+  on Linux (the same file content). Harmless; the runner's data fingerprint lower-cases paths.
+- Not a sim problem: `defaultRaceName` (`startGameOptions.ts`, the wizard default) sorts with the OS locale, and the
+  sim's other collators and `toLocaleString` calls name `'en-US'`.
+

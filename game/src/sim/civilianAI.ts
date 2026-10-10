@@ -124,6 +124,7 @@ import type { ManufacturingQueue } from './manufacturingQueue';
 import { determineColonizationValue } from './tradeItems';
 import { baconSettings } from './data/baconSettings';
 import { scenarioEmit, scenarioQuery } from './scenario/hooks';
+import { detPow } from './detMath';
 
 // ---------------------------------------------------------------------------------------------------------------
 // Galaxy statics (Galaxy.3.cs 4996-5033) and Bacon settings used here.
@@ -206,7 +207,7 @@ export class PrioritizedTarget {
 
     /** Galaxy.4.cs 3545 CalculateDistanceFactor(distance) = Max(1e9, distance^1.8) / 1e9. */
     private calculateWeightedPriority(): void {
-        const distanceFactor = Math.max(1000000000.0, Math.pow(this._distanceFromAttackingEmpire, 1.8)) / 1000000000.0;
+        const distanceFactor = Math.max(1000000000.0, detPow(this._distanceFromAttackingEmpire, 1.8)) / 1000000000.0;
         this._weightedPriority = Math.max(1, Math.trunc(this._priority / distanceFactor));
     }
 
