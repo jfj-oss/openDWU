@@ -307,8 +307,7 @@ describe('sim worker: 18c AI advisor (applyStrategicDecisions → host op)', () 
     const CFG = { endpoint: 'http://fake', model: 'm', api: 'ollama' as const };
 
     function world(): Game {
-        const game = cachedTickGame(base);
-        runGameSeconds(game.galaxy, 60);
+        const game = cachedTickGame(base, { seconds: 60 }); // createTickGame + runGameSeconds(g, 60), cached
         const g = game.galaxy;
         const player = g.playerEmpire!;
         const ais = g.empires.filter((e) => e !== player && e.pirateEmpireBaseHabitat === null && e !== g.independentEmpire && e.active);

@@ -328,23 +328,29 @@ function scenarioAssets(): Plugin {
 }
 
 /**
- * Test tiers. A test file with a `// @slow` line in its header (first 15 lines) is a soak: `npm run test:fast`
- * (DWU_TEST_TIER=fast) runs every other file, `npm run test:slow` (DWU_TEST_TIER=slow) only those; `npm test` (tier
- * unset) runs all. Explicit file filters on the command line still apply within the tier.
+ * Test tiers. A test file with a `// @slow` line in its header (first 15 lines) is a soak file; a single soak-length
+ * test in a file of fast tests carries the `slow` tag instead (`it('...', { tags: ['slow'] }, () => ...)`).
+ * `npm run test:fast` (DWU_TEST_TIER=fast) runs every other file and skips the slow-tagged tests; `npm run test:slow`
+ * (DWU_TEST_TIER=slow) runs the soak files and the files with a slow-tagged test (their other tests too: a tier
+ * filter cannot keep a whole `// @slow` file and only the tagged tests of another); `npm test` (tier unset) runs all.
+ * Explicit file filters on the command line still apply within the tier.
  */
-function slowTestFiles(): string[] {
+function testFiles(): { file: string; text: string }[] {
     const dir = path.join(here, 'test');
     return readdirSync(dir)
         .filter((f) => f.endsWith('.test.ts'))
-        .filter((f) => readFileSync(path.join(dir, f), 'utf8').split('\n', 15).some((l) => /^\s*\/\/\s*@slow\b/.test(l)))
-        .map((f) => `test/${f}`);
+        .map((f) => ({ file: `test/${f}`, text: readFileSync(path.join(dir, f), 'utf8') }));
 }
 
-function testTier(): { include?: string[]; exclude?: string[] } {
+const isSlowFile = (text: string): boolean => text.split('\n', 15).some((l) => /^\s*\/\/\s*@slow\b/.test(l));
+const hasSlowTest = (text: string): boolean => /\btags:\s*\[\s*'slow'\s*\]/.test(text);
+
+function testTier(): { include?: string[]; exclude?: string[]; tagsFilter?: string[] } {
     const tier = process.env.DWU_TEST_TIER;
     if (tier === undefined || tier === '' || tier === 'all') return {};
-    if (tier === 'fast') return { exclude: ['**/node_modules/**', '**/.git/**', ...slowTestFiles()] };
-    if (tier === 'slow') return { include: slowTestFiles() };
+    const files = testFiles();
+    if (tier === 'fast') return { exclude: ['**/node_modules/**', '**/.git/**', ...files.filter((f) => isSlowFile(f.text)).map((f) => f.file)], tagsFilter: ['!slow'] };
+    if (tier === 'slow') return { include: files.filter((f) => isSlowFile(f.text) || hasSlowTest(f.text)).map((f) => f.file) };
     throw new Error(`DWU_TEST_TIER must be fast, slow or all (got ${tier})`);
 }
 
@@ -379,6 +385,11 @@ export default defineConfig({
     test: {
         // Registers expect(...).toMatchPin(key) for the seed pins (test/pins/pin.ts, scripts/repin.mjs).
         setupFiles: ['test/pins/pin.ts'],
+        // `slow`: a soak-length test in a file of fast tests (testTier above).
+        tags: [{ name: 'slow', description: 'soak-length test: runs in test:slow and the full suite, skipped by test:fast' }],
+        // Transformed modules persist across runs (per checkout: node_modules is shared by the worktrees).
+        fsModuleCache: true,
+        fsModuleCachePath: path.join(here, '.vite', 'vitest-modules'),
         ...testTier(),
     },
     plugins: [dwuProbe(), dwuAssets(), copyOwnArt(), scenarioAssets(), themeManifest(), systemMemoryMeta()],

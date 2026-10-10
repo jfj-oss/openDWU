@@ -324,7 +324,7 @@ describe('19a rim trader — AI colony cap', () => {
 });
 
 describe('19a rim trader — determinism, save, faithful path', () => {
-    it('two fresh games agree after a year; a save at 6 months resumes identically', () => {
+    it('two fresh games agree after a year; a save at 6 months resumes identically', { tags: ['slow'], timeout: 1200000 }, () => {
         const a = rimGame();
         const b = rimGame();
         runGameSeconds(a.galaxy, YEAR_LENGTH / 2000);
@@ -337,7 +337,7 @@ describe('19a rim trader — determinism, save, faithful path', () => {
         runGameSeconds(loaded.game.galaxy, YEAR_LENGTH / 2000);
         expect(stateDigest(loaded.game.galaxy)).toBe(stateDigest(a.galaxy));
         expect(JSON.stringify(rimTradeState(loaded.game.galaxy).ledger)).toBe(JSON.stringify(rimTradeState(a.galaxy).ledger));
-    }, 1200000);
+    });
 
     it('with rimTrader off, no package code runs (the Oranthi are an ordinary AI)', () => {
         const game = rimGame({ rimTrader: false });

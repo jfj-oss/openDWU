@@ -8,6 +8,10 @@
 // contents (loadGameDataFs' fingerprint) and the key, so any sim change rebuilds it. Files are written atomically
 // (tmp + rename); parallel workers that miss at the same time both build the same bytes. Set DWU_TEST_CACHE=off to
 // build every game directly (createGame + runGameSeconds in the calling test), e.g. to verify the cache.
+//
+// The run keys of one age are prefixes of one run (runGameSeconds(g, a) then (g, b) is runGameSeconds(g, a + b) on whole
+// seconds: harness.ts), so a build continues from the longest shorter key already saved and saves the CHECKPOINTS it
+// passes on the way: a cold cache runs each age's game once to its longest key instead of once per key.
 import { createHash } from 'node:crypto';
 import { mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
@@ -18,6 +22,7 @@ import { GalaxyTime } from '../../src/sim/galaxyTime';
 import { defaultStartGameOptions } from '../../src/sim/startGameOptions';
 import { deserializeGame, serializeGame } from '../../src/sim/save/gameSave';
 import { runGameSeconds, type RunGameSecondsResult } from '../../src/sim/tick/harness';
+import { registeredTodos } from '../../src/sim/tick/todo';
 import { gameDataFingerprint } from './loadGameDataFs';
 import { createTickGame, createTickGameAtAge } from './tickGame';
 
@@ -68,6 +73,12 @@ function codeHash(): string {
     return sourceHash;
 }
 
+/**
+ * The `seconds` of the run keys the suite uses: a longer build of the same age saves each one it passes. Any key works;
+ * these only decide where a build stops to save (and so which shorter runs a later build can continue from).
+ */
+const CHECKPOINTS = [30, 60, 120, 300, 480, 600, 900, 1200];
+
 function keyName(key: TickGameKey): string {
     return `tick-age${key.age ?? 'std'}-${key.seconds ?? 0}s`;
 }
@@ -80,6 +91,47 @@ function build(gameData: GameData, key: TickGameKey): CachedTickGameRun {
     return { game, run };
 }
 
+/** The result of runGameSeconds(g, a + b) from those of (g, a) then (g, b) (default options: no timings). */
+function joinRuns(a: RunGameSecondsResult, b: RunGameSecondsResult): RunGameSecondsResult {
+    const todoHits: Record<string, number> = {};
+    for (const name of registeredTodos()) {
+        const n = (a.todoHits[name] ?? 0) + (b.todoHits[name] ?? 0);
+        if (n > 0) todoHits[name] = n;
+    }
+    return { frames: a.frames + b.frames, rndDraws: a.rndDraws + b.rndDraws, nowMs: b.nowMs, timings: {}, todoHits };
+}
+
+/**
+ * build(gameData, key) for the cache: from the longest shorter run of the same age already saved (a fresh copy of it),
+ * else from createGame, saving each checkpoint run it passes. Same state and run result as build (whole-second runs
+ * add up; tickDeterminism.test.ts checks the 600 s game against one runGameSeconds(600) call).
+ */
+function buildChained(gameData: GameData, key: TickGameKey, fingerprint: string, lock: string): CachedTickGameRun {
+    const target = key.seconds ?? 0;
+    const shorter = CHECKPOINTS.filter((s) => s < target);
+    let at = 0;
+    let start: CachedTickGameRun | null = null;
+    for (let i = shorter.length - 1; i >= 0 && start === null; i--) {
+        const entry = load(gameData, { ...key, seconds: shorter[i] }, fingerprint, false);
+        if (entry !== null) {
+            start = restore(gameData, entry);
+            at = shorter[i];
+        }
+    }
+    // Tell the checkpoints' waiters where this build starts (longerBuildPassing).
+    writeFileSync(lock, `${process.pid}:${threadId}\n${at}`);
+    let { game, run } = start ?? build(gameData, { ...key, seconds: 0 });
+    for (const s of shorter) {
+        if (s <= at) continue;
+        run = joinRuns(run, runGameSeconds(game, s - at));
+        at = s;
+        const cp = cacheFile({ ...key, seconds: s }, fingerprint);
+        if (!memo.has(cp.memoKey) && readEntry(cp.file) === null) memo.set(cp.memoKey, writeEntry(game, run, cp.name, cp.memoKey, cp.file));
+    }
+    if (target > at) run = joinRuns(run, runGameSeconds(game, target - at));
+    return { game, run };
+}
+
 function serialize(game: Game): string {
     const time = new GalaxyTime();
     time.togglePause();
@@ -88,7 +140,9 @@ function serialize(game: Game): string {
 }
 
 function cacheFile(key: TickGameKey, fingerprint: string): { name: string; memoKey: string; file: string } {
-    const hash = createHash('sha1').update(`${codeHash()}\0${fingerprint}\0${JSON.stringify(key)}`).digest('hex').slice(0, 16);
+    // The key normalized ({} = { seconds: 0 }, field order), so one game has one file.
+    const norm = JSON.stringify({ age: key.age ?? null, seconds: key.seconds ?? 0 });
+    const hash = createHash('sha1').update(`${codeHash()}\0${fingerprint}\0${norm}`).digest('hex').slice(0, 16);
     const name = keyName(key);
     const memoKey = `${name}-${hash}`;
     return { name, memoKey, file: join(CACHE_DIR, `${memoKey}.json`) };
@@ -102,15 +156,16 @@ function load(gameData: GameData, key: TickGameKey, fingerprint: string, build =
     let entry = readEntry(file);
     if (entry === null && !build) return null;
     if (entry === null) {
-        // One builder per key: the others wait for its file instead of repeating a minutes-long build.
+        // One builder per key: the others wait for its file instead of repeating a minutes-long build. A checkpoint key
+        // also waits while a live build of a longer run of its age is on its way past it (it saves it there).
         const lock = `${file}.lock`;
-        while (entry === null && !tryLock(lock)) {
+        while (entry === null && (longerBuildPassing(key, fingerprint) || !tryLock(lock))) {
             sleepMs(500);
             entry = readEntry(file);
         }
         if (entry === null) {
             try {
-                entry = readEntry(file) ?? buildEntry(gameData, key, name, memoKey, file); // (built just before we locked?)
+                entry = readEntry(file) ?? buildEntry(gameData, key, fingerprint, name, memoKey, file, lock); // (built just before we locked?)
             } finally {
                 rmSync(lock, { force: true });
             }
@@ -118,6 +173,51 @@ function load(gameData: GameData, key: TickGameKey, fingerprint: string, build =
     }
     memo.set(memoKey, entry);
     return entry;
+}
+
+/** The lock owner's process and worker thread (the lock file's first line). */
+function lockOwner(lock: string): string | null {
+    try {
+        return readFileSync(lock, 'utf8').split('\n')[0];
+    } catch {
+        return null;
+    }
+}
+
+function processAlive(owner: string): boolean {
+    const pid = Number(owner.split(':')[0]);
+    if (!Number.isInteger(pid) || pid <= 0) return false;
+    try {
+        process.kill(pid, 0);
+        return true;
+    } catch {
+        return false;
+    }
+}
+
+/**
+ * Whether another process or thread is building a longer run of `key`'s age (this source and data) from a start before
+ * `key.seconds`, which saves `key` as a checkpoint on its way (buildChained writes its start as the lock's second line).
+ */
+function longerBuildPassing(key: TickGameKey, fingerprint: string): boolean {
+    const seconds = key.seconds ?? 0;
+    if (!CHECKPOINTS.includes(seconds)) return false;
+    const prefix = `tick-age${key.age ?? 'std'}-`;
+    const me = `${process.pid}:${threadId}`;
+    for (const f of readdirSync(CACHE_DIR)) {
+        const m = /^tick-age[^-]+-(\d+)s-[0-9a-f]+\.json\.lock$/.exec(f);
+        if (m === null || !f.startsWith(prefix) || Number(m[1]) <= seconds) continue;
+        if (`${f.slice(0, -'.lock'.length)}` !== cacheFile({ age: key.age, seconds: Number(m[1]) }, fingerprint).memoKey + '.json') continue;
+        let text: string;
+        try {
+            text = readFileSync(join(CACHE_DIR, f), 'utf8');
+        } catch {
+            continue;
+        }
+        const [owner, from] = text.split('\n');
+        if (owner !== me && from !== undefined && Number(from) < seconds && processAlive(owner)) return true;
+    }
+    return false;
 }
 
 /** File layout: one JSON line { viewX, viewY, run }, then the serializeGame text (not re-escaped as a JSON string). */
@@ -138,21 +238,10 @@ function tryLock(lock: string): boolean {
         writeFileSync(lock, me, { flag: 'wx' });
         return true;
     } catch {
-        let owner: string;
-        try {
-            owner = readFileSync(lock, 'utf8');
-        } catch {
-            return false; // released meanwhile: retry
-        }
-        const pid = Number(owner.split(':')[0]);
-        if (owner !== me && Number.isInteger(pid) && pid > 0) {
-            try {
-                process.kill(pid, 0);
-                return false; // the builder is alive
-            } catch {
-                // dead builder (worker killed by a timeout): break its lock
-            }
-        }
+        const owner = lockOwner(lock);
+        if (owner === null) return false; // released meanwhile: retry
+        if (owner !== me && processAlive(owner)) return false; // the builder is alive
+        // dead builder (worker killed by a timeout): break its lock
         rmSync(lock, { force: true });
         return false;
     }
@@ -163,9 +252,13 @@ function sleepMs(ms: number): void {
     Atomics.wait(sleeper, 0, 0, ms);
 }
 
-function buildEntry(gameData: GameData, key: TickGameKey, name: string, memoKey: string, file: string): CacheEntry {
-    const { game, run } = build(gameData, key);
-    const entry: CacheEntry = { text: serialize(game), viewX: game.viewX, viewY: game.viewY, run };
+function buildEntry(gameData: GameData, key: TickGameKey, fingerprint: string, name: string, memoKey: string, file: string, lock: string): CacheEntry {
+    const { game, run } = buildChained(gameData, key, fingerprint, lock);
+    return writeEntry(game, run, name, memoKey, file);
+}
+
+function writeEntry(game: Game, run: RunGameSecondsResult, name: string, memoKey: string, file: string): CacheEntry {
+    const entry: CacheEntry = { text: serialize(game), viewX: game.viewX, viewY: game.viewY, run: structuredClone(run) };
     // Stale entries of the same key (older sim source) are dropped.
     for (const old of readdirSync(CACHE_DIR)) {
         if (old.startsWith(`${name}-`) && old.endsWith('.json') && old !== `${memoKey}.json`) {

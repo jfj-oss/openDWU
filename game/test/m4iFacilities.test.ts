@@ -4,7 +4,6 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import { loadGameDataFs } from './helpers/loadGameDataFs';
 import { cachedTickGame, cachedTickGameRun } from './helpers/gameCache';
-import { runGameSeconds } from '../src/sim/tick/harness';
 import type { GameData } from '../src/sim/data/gameData';
 import type { Galaxy } from '../src/sim/galaxy';
 import type { Empire } from '../src/sim/empire';
@@ -130,11 +129,9 @@ describe('M4i unit: facilities', () => {
 
 describe('M4i harness: facility AI', () => {
     it('1200 game-seconds: facilities queued by the AI progress and never exceed 1', () => {
-        // 1200 s = the cached 600 s game (test/helpers/gameCache.ts) + 600 s; the stub hits of both halves.
-        const { game, run: r0 } = cachedTickGameRun(gameData, { seconds: 600 });
+        // The cached 1200 s game (test/helpers/gameCache.ts) and its stub hits.
+        const { game, run: r } = cachedTickGameRun(gameData, { seconds: 1200 });
         const g = game.galaxy;
-        const r1 = runGameSeconds(g, 600);
-        const r = { todoHits: { ...r0.todoHits, ...r1.todoHits } };
         for (const e of g.empires) {
             for (const c of e.colonies) {
                 for (const f of c.facilities ?? []) {

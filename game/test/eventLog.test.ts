@@ -62,7 +62,7 @@ function last(g: Galaxy): EventLogEntry {
 }
 
 describe('flags off = faithful game; the log on never changes the sim', () => {
-    it('event-log with every flag off runs byte-identical and writes no state; with eventLog on the sim is unchanged', () => {
+    it('event-log with every flag off runs byte-identical and writes no state; with eventLog on the sim is unchanged', { tags: ['slow'], timeout: 1200000 }, () => {
         expect(ALL_OFF).toHaveProperty('eventLog', false);
         const ref = cachedTickGameRun(base, { seconds: 900 });
         const off = createScenarioGame(base, { scenario: SC, flags: ALL_OFF }).game;
@@ -80,7 +80,7 @@ describe('flags off = faithful game; the log on never changes the sim', () => {
         expect(entries.length).toBeGreaterThan(0);
         expect(entries.every((e) => e.source === 'game' && e.textFormat === 'game')).toBe(true);
         expect(entries.every((e) => e.data !== null && EMPIRE_MESSAGE_EVENT[e.data.msg as keyof typeof EMPIRE_MESSAGE_EVENT] != null)).toBe(true);
-    }, 1200000);
+    });
 });
 
 describe('entries, mapping, retention, queries, digest, history rows', () => {

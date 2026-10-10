@@ -25,7 +25,6 @@ import { generateGalaxy } from '../src/sim/galaxy';
 import type { GameData } from '../src/sim/data/gameData';
 import { loadGameDataFs } from './helpers/loadGameDataFs';
 import { cachedTickGame } from './helpers/gameCache';
-import { runGameSeconds } from '../src/sim/tick/harness';
 import { renderOrbitAngle, habitatTouchClampSeconds } from '../src/render/mainView';
 import { HABITAT_TICK_BATCH_SIZE, FRAMES_PER_SECOND } from '../src/sim/tick/scheduler';
 
@@ -77,8 +76,9 @@ describe('planet/moon orbitAngle advances over sim time (habitatTick.ts advanceO
         expect(planet).toBeDefined();
         const angle0 = planet.orbitAngle;
         const perSecond = planet.anglePerSecond;
-        runGameSeconds(galaxy, 600);
-        const angle600 = planet.orbitAngle;
+        // The same planet after runGameSeconds(galaxy, 600): the cached 600 s game (test/helpers/gameCache.ts).
+        const after = cachedTickGame(gameData, { seconds: 600 }).galaxy;
+        const angle600 = after.habitats[galaxy.habitats.indexOf(planet)].orbitAngle;
         expect(angle600).not.toBe(angle0);
         // Orbit period is typically years of game time (orbitSpeed 2-5 at thousands of distance units), so 600 s
         // moves it only a small fraction of a radian — bounded by anglePerSecond * 600, never more (advanceOrbit

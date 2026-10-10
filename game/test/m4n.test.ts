@@ -3,14 +3,13 @@
 // IdentifySystemThreatsToUs) on a createGame galaxy (seed 1), plus a harness smoke run.
 import { beforeAll, describe, expect, it } from 'vitest';
 import { loadGameDataFs } from './helpers/loadGameDataFs';
-import { cachedTickGame } from './helpers/gameCache';
+import { cachedTickGame, cachedTickGameRun } from './helpers/gameCache';
 import type { Galaxy } from '../src/sim/galaxy';
 import type { BuiltObject } from '../src/sim/builtObject';
 import type { GameData } from '../src/sim/data/gameData';
 import { BattleTactics, BuiltObjectRole } from '../src/sim/data/designSpecifications';
 import { BuiltObjectStance } from '../src/sim/design';
 import { PirateRelationType, obtainPirateRelation } from '../src/sim/pirateRelations';
-import { runGameSeconds } from '../src/sim/tick/harness';
 import { MIN_TIME } from '../src/sim/tick/simTime';
 import { BuiltObjectMission, BuiltObjectMissionPriority, BuiltObjectMissionType, Command, CommandAction } from '../src/sim/missions/mission';
 import type { CommandContext } from '../src/sim/missions/executeCommands';
@@ -291,8 +290,8 @@ describe('BuiltObject.2.cs 1698 case Attack (missions/cmdAttack.ts)', () => {
 
 describe('harness', () => {
     it('60 game-s on a fresh createGame galaxy runs the M4n entry points with no M4n stub left', () => {
-        const g = cachedTickGame(gameData).galaxy;
-        const r = runGameSeconds(g, 60);
+        const { game, run: r } = cachedTickGameRun(gameData, { seconds: 60 }); // createTickGame + runGameSeconds(g, 60), cached
+        const g = game.galaxy;
         expect(Object.keys(r.todoHits).filter((k) => k.startsWith('M4n '))).toEqual([]);
         for (const b of g.builtObjects as BuiltObject[]) {
             expect(Number.isFinite(b.optimalMaximumAttackRange) && Number.isFinite(b.optimalMinimumAttackRange)).toBe(true);

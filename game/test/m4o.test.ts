@@ -5,7 +5,7 @@
 // galaxy (seed 1), plus a harness smoke run.
 import { beforeAll, describe, expect, it } from 'vitest';
 import { loadGameDataFs } from './helpers/loadGameDataFs';
-import { cachedTickGame } from './helpers/gameCache';
+import { cachedTickGame, cachedTickGameRun } from './helpers/gameCache';
 import type { Galaxy } from '../src/sim/galaxy';
 import type { BuiltObject } from '../src/sim/builtObject';
 import type { GameData } from '../src/sim/data/gameData';
@@ -14,7 +14,6 @@ import { BuiltObjectSubRole } from '../src/sim/builtObjectTypes';
 import { ComponentStatus } from '../src/sim/builtObjectComponent';
 import { ComponentType } from '../src/sim/data/components';
 import { PirateRelationType, obtainPirateRelation } from '../src/sim/pirateRelations';
-import { runGameSeconds } from '../src/sim/tick/harness';
 import { galaxyNow } from '../src/sim/tick/simTime';
 import {
     Explosion,
@@ -254,8 +253,8 @@ describe('BuiltObject.2.cs 5171 CompleteTeardown / Empire.8.cs 2896 CleanupInval
 
 describe('harness', () => {
     it('60 game-s on a fresh createGame galaxy runs the M4o entry points with no M4o stub left', () => {
-        const g = cachedTickGame(gameData).galaxy;
-        const r = runGameSeconds(g, 60);
+        const { game, run: r } = cachedTickGameRun(gameData, { seconds: 60 }); // createTickGame + runGameSeconds(g, 60), cached
+        const g = game.galaxy;
         expect(Object.keys(r.todoHits).filter((k) => k.startsWith('M4o '))).toEqual([]);
         for (const b of g.builtObjects) {
             if (b == null) continue;

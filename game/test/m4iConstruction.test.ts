@@ -193,9 +193,8 @@ describe('M4i unit: construction helpers', () => {
 });
 
 describe('M4i harness: empire construction entry points', () => {
-    it('DirectConstruction with ample funds queues state ships at the space port, pays for them, and they get built', () => {
-        const g = cachedTickGame(gameData).galaxy;
-        runGameSeconds(g, 60);
+    it('DirectConstruction with ample funds queues state ships at the space port, pays for them, and they get built', { tags: ['slow'], timeout: 1800000 }, () => {
+        const g = cachedTickGame(gameData, { seconds: 60 }).galaxy; // createTickGame + runGameSeconds(g, 60), cached
         // Pick an empire whose long Empire.DoTasks block (ProjectForceStructure) has already re-run: the game-start
         // CreateStateShips (Galaxy.8.cs 955) clears StateForceStructureProjections, and the per-empire timers are staggered,
         // so which empires have re-projected by t=60 depends on the galaxy (after M4u it is no longer empires[0]).
@@ -227,11 +226,10 @@ describe('M4i harness: empire construction entry points', () => {
             expect(b.builtAt, b.name).toBeNull();
             expect(b.unbuiltComponentCount).toBe(0);
         }
-    }, 1800000);
+    });
 
     it('BuildDefensiveBases / RetireOldBuiltObjects / DetermineMonitoringStationLocation run on a live galaxy', () => {
-        const g = cachedTickGame(gameData).galaxy;
-        runGameSeconds(g, 60);
+        const g = cachedTickGame(gameData, { seconds: 60 }).galaxy; // createTickGame + runGameSeconds(g, 60), cached
         for (const e of g.empires) {
             buildDefensiveBases(g, e);
             retireOldBuiltObjects(g, e);

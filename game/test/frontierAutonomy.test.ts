@@ -457,7 +457,7 @@ describe('yearly handler and save round trip', () => {
         return serializeGame(game as never, time, { ...defaultStartGameOptions(), seed: 1, scenario: { id: SC, flags: ON, params: TEST_PARAMS } });
     }
 
-    it('autonomy, sectors, militia and deals survive save / load and the runs match', () => {
+    it('autonomy, sectors, militia and deals survive save / load and the runs match', { tags: ['slow'], timeout: 1200000 }, () => {
         const a = frontierGame();
         const g = a.game.galaxy;
         runGameSeconds(a.game, REAL_SECONDS_IN_GALACTIC_YEAR + 60); // a yearly tick with the handler
@@ -479,5 +479,5 @@ describe('yearly handler and save round trip', () => {
         runGameSeconds(loaded.game, 700);
         expect(stateDigest(loaded.game.galaxy)).toBe(stateDigest(a.game.galaxy));
         expect(saveText(loaded.game)).toBe(saveText(a.game));
-    }, 1200000);
+    });
 });

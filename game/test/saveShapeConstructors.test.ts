@@ -68,21 +68,28 @@ describe('save decoder shape constructors', () => {
     }, 1_800_000);
 });
 
-/** The two walks are the same graph: per object the prototype and the own property names, order and attributes. */
+/**
+ * The two walks are the same graph: per object the prototype and the own property names, order and attributes. Each
+ * check is a plain comparison first and an expect only on a difference (the same assertion, but not millions of
+ * expect calls on a 100 000-object graph).
+ */
 function sameGraph(wa: object[], wb: object[]): void {
     expect(wa.length).toBe(wb.length);
     for (let i = 0; i < wa.length; i++) {
         const x = wa[i];
         const y = wb[i];
-        expect(Object.getPrototypeOf(x)).toBe(Object.getPrototypeOf(y));
+        if (Object.getPrototypeOf(x) !== Object.getPrototypeOf(y)) expect(Object.getPrototypeOf(x)).toBe(Object.getPrototypeOf(y));
         const dx = Object.getOwnPropertyDescriptors(x);
         const dy = Object.getOwnPropertyDescriptors(y);
         const kx = Reflect.ownKeys(dx);
-        expect(kx).toEqual(Reflect.ownKeys(dy));
+        const ky = Reflect.ownKeys(dy);
+        if (kx.length !== ky.length || kx.some((k, j) => k !== ky[j])) expect(kx).toEqual(ky);
         for (const k of kx) {
             const p = (dx as Record<string | symbol, PropertyDescriptor>)[k];
             const q = (dy as Record<string | symbol, PropertyDescriptor>)[k];
-            expect([p.writable, p.enumerable, p.configurable, 'get' in p]).toEqual([q.writable, q.enumerable, q.configurable, 'get' in q]);
+            const ap = [p.writable, p.enumerable, p.configurable, 'get' in p];
+            const aq = [q.writable, q.enumerable, q.configurable, 'get' in q];
+            if (ap.some((v, j) => v !== aq[j])) expect(ap).toEqual(aq);
         }
     }
 }

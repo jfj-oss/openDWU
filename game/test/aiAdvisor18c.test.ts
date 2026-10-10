@@ -92,8 +92,7 @@ interface World {
 }
 
 function world(): World {
-    const galaxy = cachedTickGame(gameData).galaxy;
-    runGameSeconds(galaxy, 60);
+    const galaxy = cachedTickGame(gameData, { seconds: 60 }).galaxy; // createTickGame + runGameSeconds(g, 60), cached
     const player = galaxy.playerEmpire!;
     const ais = galaxy.empires.filter((e) => e !== player && e.pirateEmpireBaseHabitat === null && e !== galaxy.independentEmpire && e.active);
     // The AI with an attack fleet (CheckReadyForWar needs one).

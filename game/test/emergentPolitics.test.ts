@@ -334,19 +334,19 @@ describe('player decision and actions', () => {
 });
 
 describe('flags off = faithful game (§S6.1)', () => {
-    it('the emergent scenario with every flag off runs 2 years with the plain seed-1 digest', () => {
+    it('the emergent scenario with every flag off runs 2 years with the plain seed-1 digest', { tags: ['slow'], timeout: 1200000 }, () => {
         const ref = cachedTickGameRun(base, { seconds: 1200 });
         const { game } = createScenarioGame(base, { scenario: 'emergent', flags: { internalPolitics: false, livingCharacters: false } });
         runGameSeconds(game, 1200);
         expect(stateDigest(game.galaxy)).toBe(stateDigest(ref.game.galaxy));
         expect(game.galaxy.rnd.drawCount).toBe(ref.game.galaxy.rnd.drawCount);
         expect('politics' in game.galaxy.scenario!.state).toBe(false);
-    }, 1200000);
+    });
 });
 
 describe('3-year seed-1 run with the flag on', () => {
     // 3 years (1800 s): since the orbit-spacing deviation the seed-1 empires stay stable through year 2.
-    it('produces political events and a different stream from the faithful game', () => {
+    it('produces political events and a different stream from the faithful game', { tags: ['slow'], timeout: 1200000 }, () => {
         const ref = cachedTickGameRun(base, { seconds: 1800 });
         const game = politicsGame(1, { politicsIntensity: 3, coupApprovalThreshold: 50 });
         runGameSeconds(game, 1800);
@@ -355,7 +355,7 @@ describe('3-year seed-1 run with the flag on', () => {
         console.log('19d1 3-year run events:\n' + summary.join('\n'));
         expect(st.events.length).toBeGreaterThanOrEqual(1);
         expect(game.galaxy.rnd.drawCount).not.toBe(ref.game.galaxy.rnd.drawCount);
-    }, 1200000);
+    });
 });
 
 describe('UI view model (pure)', () => {

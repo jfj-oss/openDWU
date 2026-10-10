@@ -411,7 +411,7 @@ describe('save round trip', () => {
         return serializeGame(game as never, time, { ...defaultStartGameOptions(), seed: 1, scenario: { id: SC, flags: ON, params: {} } });
     }
 
-    it('schemes (with their missions), hooks, ties and claims survive save / load and the runs match', () => {
+    it('schemes (with their missions), hooks, ties and claims survive save / load and the runs match', { tags: ['slow'], timeout: 1200000 }, () => {
         const a = intrigueGame({ courtTieEnvoyAccept: -1000 });
         const g = a.game.galaxy;
         const e = g.playerEmpire!;
@@ -437,5 +437,5 @@ describe('save round trip', () => {
         runGameSeconds(loaded.game, 700);
         expect(stateDigest(loaded.game.galaxy)).toBe(stateDigest(a.game.galaxy));
         expect(saveText(loaded.game)).toBe(saveText(a.game));
-    }, 1200000);
+    });
 });
