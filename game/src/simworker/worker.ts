@@ -16,7 +16,13 @@ import { FRAME_REAL_MS } from '../sim/tick/scheduler';
 import { installWorkerBootState, SimHost } from './simHost';
 import { bootWorkerGame } from './workerBoot';
 import { saveTextString } from '../saveData';
-import { deltaTransferables } from './replicaSync';
+import { deltaTransferables, type ReplicaDelta } from './replicaSync';
+
+/**
+ * Codes per snapshot chunk (ReplicaEncoderOptions.snapshotChunks): ~16 MB of streams, about 250 k objects — a late
+ * galaxy's 7 M objects arrive in ~30 chunks of ~100 ms of main-thread apply each, while the worker writes the next.
+ */
+const SNAPSHOT_CHUNK_CODES = 1 << 22;
 import { ALIVE_INTERVAL_MS, type FromWorker, type InitMessage, type ToWorker } from './protocol';
 
 interface WorkerScope {
@@ -34,7 +40,7 @@ let lastPostAt = 0;
 
 function post(m: FromWorker): void {
     lastPostAt = performance.now();
-    if (m.type === 'step' || m.type === 'snapshot') scope.postMessage(m, deltaTransferables(m.delta));
+    if (m.type === 'step' || m.type === 'snapshot' || m.type === 'snapshotChunk') scope.postMessage(m, deltaTransferables(m.delta));
     else scope.postMessage(m);
 }
 
@@ -82,7 +88,9 @@ async function init(m: InitMessage): Promise<void> {
     setBattleReportsEnabled(m.battleReports !== false);
     if (m.customizationSet !== undefined && m.customizationSet !== '') await activateTheme(m.customizationSet);
     // A load's save text is dropped once parsed (bootWorkerGame): the worker keeps only the game (a late save is 100+ MB).
+    const tBoot = performance.now();
     const booted = await bootWorkerGame(m.boot, bootDeps);
+    const bootMs = performance.now() - tBoot;
     const time = booted.time;
     if (m.clock !== undefined) {
         time.speed = m.clock.speed;
@@ -93,8 +101,18 @@ async function init(m: InitMessage): Promise<void> {
     post({ type: 'progress', step: 'Preparing map', fraction: 0.9 });
     installWorkerBootState(booted.game.galaxy);
     // The browser game always has the message UI: the worker is the player's message recipient (docs §9 chunk 4).
-    host = new SimHost(booted.game, time, startOptions, { sync: m.sync, playerMessages: true });
-    post({ ...host.snapshot(), scenario: booted.scenario });
+    // The snapshot streams in chunks while the host is built (the replica builds as they arrive); the last one is the
+    // snapshot message.
+    const header = { baseTechCost: booted.game.galaxy.baseTechCost, startOptions, scenario: booted.scenario };
+    let chunks = 0;
+    const emit = (delta: ReplicaDelta): void => {
+        chunks++;
+        post({ type: 'snapshotChunk', delta, ...header });
+    };
+    const tEncode = performance.now();
+    host = new SimHost(booted.game, time, startOptions, { sync: m.sync, playerMessages: true, snapshotChunks: { codes: SNAPSHOT_CHUNK_CODES, emit } });
+    const snapshot = host.snapshot();
+    post({ ...snapshot, scenario: booted.scenario, timing: { bootMs, encodeMs: performance.now() - tEncode, chunks } });
     for (const e of early.splice(0)) handle(e);
     last = performance.now();
     loop();

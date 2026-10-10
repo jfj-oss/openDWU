@@ -3,17 +3,24 @@
 // main-side replica in this process, then run --steps sim steps and after each one diff + apply the delta. Prints the
 // snapshot size / cost, then per step: worker diff ms, delta bytes, main-thread apply ms (mean / p95 / max), hot and
 // cold object counts, and the most-changed fields. --verify serializes the replica and the authoritative galaxy after
-// a full cold compare and checks that the two save texts are identical.
+// a full cold compare and checks that the two galaxies' save bytes (format 3) and state digests are identical. The
+// snapshot is taken as the worker takes it (streamed in chunks, each cloned with its transfers; --whole: one delta),
+// with its encode / apply time, GC, and the heap of each side (run node with --expose-gc for exact heap figures).
 //
-//   node scripts/sync-measure.mjs <save> [--steps 300] [--speed 1] [--warm 60] [--cold-ms 3] [--pump-ms 0.5] [--hot-fields] [--compare-options] [--verify] [--census]
+//   node scripts/sync-measure.mjs <save> --resave <out>   (write the loaded game in the current save format and exit)
+//   node --expose-gc scripts/sync-measure.mjs <save> [--steps 300] [--speed 1] [--warm 60] [--cold-ms 3] [--pump-ms 0.5] [--hot-fields] [--compare-options] [--verify] [--census]
+//        [--whole] [--chunk-codes N] [--strstats]
 //   node scripts/sync-measure.mjs <save> --client [--steps 300] [--replies 30] [--steps-per-msg 1] [--frames 1] [--verify]   (host + client end to end)
 import { build } from 'rolldown';
 import { tmpdir } from 'node:os';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { gunzipSync } from 'node:zlib';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+/** Compare a replica galaxy with the authoritative one (set once the modules are loaded). */
+let verifyReplica = null;
 function arg(name, fallback) {
     const i = process.argv.indexOf(`--${name}`);
     if (i < 0) return fallback;
@@ -32,6 +39,10 @@ const census = arg('census', false) === true;
 
 const MODULES = {
     game: '/src/sim/game.ts',
+    scen: '/test/helpers/scenarioGame.ts',
+    addons: '/src/sim/scenario/addons.ts',
+    overlay: '/src/sim/scenario/overlay.ts',
+    sync: '/src/simworker/replicaSync.ts',
     load: '/test/helpers/loadGameDataFs.ts',
     save: '/src/sim/save/gameSave.ts',
     galaxySave: '/src/sim/save/galaxySave.ts',
@@ -55,18 +66,50 @@ try {
         transform: { define: { __dirname: JSON.stringify(resolve(root, 'test/helpers')) } },
         output: { dir: bundleDir, format: 'esm', preserveModules: true, preserveModulesRoot: root }, write: true, logLevel: 'warn' });
     const load = (key) => import(resolve(bundleDir, key + '.js'));
+    const { installGameStatics, registerGameHooks } = await load('game'); // first: module-cycle entry as in the app
     const { loadGameDataFs } = await load('load');
     const { deserializeGame } = await load('save');
-    const { galaxyToJSON } = await load('galaxySave');
+    const { galaxyToJSON, galaxyToSaveChunks } = await load('galaxySave');
+    verifyReplica = (auth, rep) => {
+        // The galaxies' save bytes (format 3) — identical when the replica is exact — and their state digests.
+        const bytes = (gx) => Buffer.concat(galaxyToSaveChunks(gx));
+        const a = bytes(auth);
+        const b = bytes(rep);
+        let at = -1;
+        const n = Math.min(a.length, b.length);
+        for (let i = 0; i < n; i++) if (a[i] !== b[i]) { at = i; break; }
+        if (at < 0 && a.length !== b.length) at = n;
+        const da = stateDigest(auth);
+        const db = stateDigest(rep);
+        console.log(at < 0 && da === db ? `verify: replica save bytes identical (${(a.length / 1048576).toFixed(0)} MB); digest ${da} / replica ${db}` : `verify: MISMATCH at byte ${at} (digest ${da} / replica ${db}): auth …${a.subarray(Math.max(0, at - 200), at + 100).toString()}…\n replica …${b.subarray(Math.max(0, at - 200), at + 100).toString()}…`);
+        if (at >= 0 || da !== db) process.exitCode = 1;
+    };
     const { runSimFrame, nextFrameMs, schedulerState } = await load('scheduler');
     const { stateDigest } = await load('digest');
     const { GalaxySyncSource, GalaxyReplica } = await load('replica');
-    const { installGameStatics, registerGameHooks } = await load('game');
-    const gameData = await loadGameDataFs();
+    const { savedScenarioId, savedScenarioInclude } = await load('save');
+    const { scenarioOverlaysFs } = await load('scen');
+    const { scenarioOverlayFor, COMPOSITE_SCENARIO_ID } = await load('addons');
+    const { applyScenarioOverlay } = await load('overlay');
+    const { deltaTransferables } = await load('sync');
+    let t0 = performance.now();
+    // A .dwusave / in-game save is gzip since saveCompression.ts (magic bytes 1f 8b); older ones are plain JSON.
+    const raw = readFileSync(file);
+    let saveObj = JSON.parse((raw.length >= 2 && raw[0] === 0x1f && raw[1] === 0x8b ? gunzipSync(raw) : raw).toString('utf8'));
+    let gameData = await loadGameDataFs();
+    const scenId = savedScenarioId(saveObj);
+    if (scenId !== null) gameData = applyScenarioOverlay(gameData, scenarioOverlayFor(scenId, scenId === COMPOSITE_SCENARIO_ID ? savedScenarioInclude(saveObj) : null, scenarioOverlaysFs()));
     installGameStatics(gameData);
     registerGameHooks();
-    let t0 = performance.now();
-    const { game } = deserializeGame(readFileSync(file, 'utf8'), gameData);
+    const { game, time: savedTime, startOptions: savedStart } = deserializeGame(saveObj, gameData);
+    saveObj = null;
+    if (typeof arg('resave', false) === 'string') {
+        // --resave <file>: write the loaded game in the current save format (format 3), plain text.
+        const { serializeGameChunks } = await load('save');
+        writeFileSync(arg('resave'), Buffer.concat(serializeGameChunks(game, savedTime, savedStart)));
+        console.log(`resaved to ${arg('resave')}`);
+        process.exit(0);
+    }
     const g = game.galaxy;
     console.log(`loaded ${file} in ${(performance.now() - t0).toFixed(0)} ms: ${g.systems.length} systems, ${g.builtObjects.length} built objects, ${g.creatures.length} creatures`);
     const step = () => runSimFrame(g, nextFrameMs(schedulerState(g), speed));
@@ -76,9 +119,42 @@ try {
         process.exit(process.exitCode ?? 0);
     }
 
+    const { PerformanceObserver } = await import('node:perf_hooks');
+    let gcMs = 0;
+    new PerformanceObserver((list) => { for (const e of list.getEntries()) gcMs += e.duration; }).observe({ entryTypes: ['gc'] });
+    const gcNow = async () => { await new Promise((r) => setTimeout(r, 0)); const x = gcMs; gcMs = 0; return x; };
+    await gcNow();
+    const cpu = () => { const u = process.cpuUsage(); return (u.user + u.system) / 1000; };
+    let c0 = cpu();
+    const cpuSince = () => { const c = cpu(); const d = c - c0; c0 = c; return d.toFixed(0); };
+    const mem = () => { globalThis.gc?.(); const m = process.memoryUsage(); return { heap: m.heapUsed / 1048576, ext: (m.external + m.arrayBuffers) / 1048576 }; };
+    const fmtMem = (m) => `heap ${m.heap.toFixed(0)} MB, external+buffers ${m.ext.toFixed(0)} MB`;
+    const memBefore = mem();
+    // The snapshot as the worker posts it: in chunks (--whole: one delta), each structured-cloned with its transfers.
+    const chunked = arg('whole', false) !== true;
+    const chunks = [];
+    let chunkMs = 0;
+    let snapBytes = 0;
+    let snapShapes = 0;
+    const emit = (d) => {
+        const a = performance.now();
+        snapBytes += d.stats.bytes;
+        snapShapes += d.shapes.length;
+        chunks.push(structuredClone(d, { transfer: deltaTransferables(d) }));
+        chunkMs += performance.now() - a;
+    };
+    await gcNow();
+    cpuSince();
     t0 = performance.now();
-    const source = new GalaxySyncSource(g, { coldBudgetMs });
-    const snap = source.snapshot();
+    const source = new GalaxySyncSource(g, { coldBudgetMs, ...(chunked ? { snapshotChunks: { codes: Number(arg('chunk-codes', 1 << 22)), emit } } : {}) });
+    const tCtor = performance.now() - t0 - chunkMs;
+    const snap = source.snapshot(true);
+    const tEnc = performance.now() - t0 - chunkMs;
+    snapBytes += snap.stats.bytes;
+    snapShapes += snap.shapes.length;
+    console.log(`snapshot encode: ${tEnc.toFixed(0)} ms (discovery walk ${tCtor.toFixed(0)} ms, snapshot() ${(tEnc - tCtor).toFixed(0)} ms), GC ${(await gcNow()).toFixed(0)} ms, process CPU ${cpuSince()} ms; ${chunks.length + 1} part(s), ${(snapBytes / 1048576).toFixed(0)} MB, ${snapShapes} shapes; clone of the chunks ${chunkMs.toFixed(0)} ms`);
+    const memEnc = mem();
+    console.log(`  worker side after the encode (game + encoder${chunked ? ' + the chunks in flight' : ''}): ${fmtMem(memEnc)} (encoder +${(memEnc.heap - memBefore.heap).toFixed(0)} MB heap)`);
     if (arg('markdbg', false) === true) {
         console.log(`markdbg: mark right after snapshot dropped ${source.encoder.mark()}`);
         for (let i = 0; i < 50; i++) { step(); source.delta(); }
@@ -87,20 +163,44 @@ try {
         console.log(`markdbg: after full: dropped ${source.encoder.mark()} (live ${source.encoder.size})`);
         process.exit(0);
     }
-    const tSnap = performance.now() - t0;
-    console.log(`snapshot: ${source.encoder.size} objects (${source.encoder.hotCount} hot), ${(snap.stats.bytes / 1048576).toFixed(1)} MB, ${tSnap.toFixed(0)} ms to encode`);
+    const tSnap = tEnc;
+    console.log(`snapshot: ${source.encoder.size} objects (${source.encoder.hotCount} hot), ${(snapBytes / 1048576).toFixed(1)} MB, ${tSnap.toFixed(0)} ms to encode`);
+    if (arg('strstats', false) === true) {
+        const all = [...snap.hot.strs, ...snap.cold.strs];
+        const freq = new Map();
+        let chars = 0;
+        for (const x of all) { chars += x.length; freq.set(x, (freq.get(x) ?? 0) + 1); }
+        console.log(`strings: ${all.length}, unique ${freq.size}, chars ${chars}; top: ${[...freq].sort((a, b) => b[1] - a[1]).slice(0, 15).map(([k, v]) => `${JSON.stringify(k.slice(0, 30))} ${v}`).join(', ')}`);
+        const kinds = [0, 0, 0, 0, 0, 0];
+        for (const sh of [snap.hot.shells, snap.cold.shells]) for (let i = 0; i < sh.length; ) { const k = sh[i]; kinds[k]++; i += k === 5 ? 4 : k === 3 || k === 4 ? 2 : 3; }
+        console.log(`shells by kind (class plain array map set typed): ${kinds.join(' ')}`);
+        const tl = [...snap.hot.typed, ...snap.cold.typed];
+        console.log(`typed: ${tl.length}, bytes ${tl.reduce((a, t) => a + t.byteLength, 0)}; shells ${snap.hot.shells.length + snap.cold.shells.length}, births ${snap.hot.births.length + snap.cold.births.length} codes, birthNums ${snap.hot.birthNums.length + snap.cold.birthNums.length}, body ${snap.hot.body.length + snap.cold.body.length}, bodyNums ${snap.hot.bodyNums.length + snap.cold.bodyNums.length}`);
+    }
     if (census) {
         const c = source.encoder.census();
         for (const [k, v] of Object.entries(c).sort((a, b) => b[1].hot - a[1].hot || b[1].count - a[1].count).slice(0, 50)) console.log(`  ${String(v.count).padStart(9)} (${String(v.hot).padStart(8)} hot) ${k}`);
     }
     // Structured clone, as postMessage does (minus the transfer of the Float64 streams).
     t0 = performance.now();
-    const cloned = structuredClone(snap);
-    console.log(`snapshot structuredClone: ${(performance.now() - t0).toFixed(0)} ms`);
+    cpuSince();
+    const cloned = structuredClone(snap, { transfer: deltaTransferables(snap) });
+    console.log(`snapshot structuredClone (with transfers, as postMessage): ${(performance.now() - t0).toFixed(0)} ms`);
     const replica = new GalaxyReplica(gameData, g.baseTechCost);
+    await gcNow();
+    cpuSince();
     t0 = performance.now();
+    let chunkApplyMs = 0;
+    while (chunks.length > 0) {
+        const a = performance.now();
+        replica.applyChunk(chunks.shift());
+        chunkApplyMs = Math.max(chunkApplyMs, performance.now() - a);
+    }
     replica.apply(cloned, true);
-    console.log(`snapshot apply (main): ${(performance.now() - t0).toFixed(0)} ms, replica ${replica.decoder.size} objects`);
+    const tApply = performance.now() - t0;
+    console.log(`snapshot apply (main): ${tApply.toFixed(0)} ms (GC ${(await gcNow()).toFixed(0)} ms; process CPU ${cpuSince()} ms; longest chunk ${chunkApplyMs.toFixed(0)} ms), replica ${replica.decoder.size} objects`);
+    const memApp = mem();
+    console.log(`  main side: replica +${(memApp.heap - memEnc.heap).toFixed(0)} MB heap; both sides now ${fmtMem(memApp)}, max RSS ${(process.resourceUsage().maxRSS / 1024).toFixed(0)} MB`);
 
     if (arg('compare-options', false) === true) {
         // Option A (naive): compare the WHOLE graph after every step.
@@ -217,16 +317,10 @@ try {
     const full = source.delta(true);
     console.log(`full cold compare: ${(performance.now() - t0).toFixed(0)} ms, ${(full.stats.bytes / 1024).toFixed(0)} KB`);
     replica.apply(structuredClone(full), true);
-    if (verify) {
-        const a = JSON.stringify(galaxyToJSON(g));
-        const b = JSON.stringify(galaxyToJSON(replica.galaxy));
-        let at = -1;
-        for (let i = 0; i < Math.max(a.length, b.length); i++) if (a[i] !== b[i]) { at = i; break; }
-        console.log(at < 0 ? `verify: replica save text identical (${(a.length / 1048576).toFixed(0)} MB); digest ${stateDigest(g)} / replica ${stateDigest(replica.galaxy)}` : `verify: MISMATCH at ${at}: auth …${a.slice(Math.max(0, at - 200), at + 100)}…\n replica …${b.slice(Math.max(0, at - 200), at + 100)}…`);
-        if (at >= 0) process.exitCode = 1;
-    }
+    if (verify) verifyReplica(g, replica.galaxy);
 } finally {
-    rmSync(bundleDir, { recursive: true, force: true });
+    if (process.env.SYNC_MEASURE_KEEP_BUNDLE) console.log(`bundle kept: ${bundleDir}`);
+    else rmSync(bundleDir, { recursive: true, force: true });
 }
 
 /**
@@ -328,12 +422,7 @@ async function clientMode(game, gameData, { load, stat, fmt, galaxyToJSON, state
     if (verify) {
         const full = host.sync.delta(true);
         client.replica.apply(structuredClone(full), true);
-        const a = JSON.stringify(galaxyToJSON(game.galaxy));
-        const b = JSON.stringify(galaxyToJSON(client.galaxy));
-        let at = -1;
-        for (let i = 0; i < Math.max(a.length, b.length); i++) if (a[i] !== b[i]) { at = i; break; }
-        console.log(at < 0 ? `verify: replica save text identical (${(a.length / 1048576).toFixed(0)} MB); digest ${stateDigest(game.galaxy)} / replica ${stateDigest(client.galaxy)}` : `verify: MISMATCH at ${at}: auth …${a.slice(Math.max(0, at - 200), at + 100)}…\n replica …${b.slice(Math.max(0, at - 200), at + 100)}…`);
-        if (at >= 0 || stateDigest(game.galaxy) !== stateDigest(client.galaxy)) process.exitCode = 1;
+        verifyReplica(game.galaxy, client.galaxy);
     }
     client.dispose();
     host.dispose();

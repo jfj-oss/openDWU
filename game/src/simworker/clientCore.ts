@@ -180,6 +180,8 @@ export interface ClientCoreOptions {
     onEvent?: (e: WorkerEvent, resolve: (a: unknown) => unknown) => void;
     /** Longest the optimistic pause holds the replica without the worker's ack (default 500 ms; then deltas apply). */
     pauseHoldMaxMs?: number;
+    /** The replica the snapshot's chunks were applied to so far (SnapshotChunkMessage); absent: a new one. */
+    replica?: GalaxyReplica;
 }
 
 /** Frames an effect note waits for its object to be born on the replica (SimClientCore.noteEffects). */
@@ -252,7 +254,7 @@ export class SimClientCore {
         this.replyTimeoutMs = opts.replyTimeoutMs ?? REPLY_TIMEOUT_MS;
         this.replyGraceMs = opts.replyGraceMs ?? REPLY_GRACE_MS;
         this.wallNow = opts.wallNow ?? (() => performance.timeOrigin + performance.now());
-        this.replica = new GalaxyReplica(gameData, snapshot.baseTechCost);
+        this.replica = opts.replica ?? new GalaxyReplica(gameData, snapshot.baseTechCost);
         this.replica.apply(snapshot.delta, true);
         const galaxy = this.replica.galaxy;
         if (galaxy === null) throw new Error('sim worker: the snapshot has no galaxy');

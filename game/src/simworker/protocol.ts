@@ -182,7 +182,26 @@ export interface ProgressMessage {
     fraction: number;
 }
 
-/** The first replica sync (everything) once the game exists. */
+/** What the main thread needs of a game before its replica is built (the snapshot's own fields, known up front). */
+export interface SnapshotHeader {
+    baseTechCost: number;
+    startOptions: StartGameOptions;
+    /** The scenario the worker's game data carries (a loaded save's, read by the worker): the replica's static data
+     *  needs the same overlay. Absent: none. */
+    scenario?: ScenarioRef;
+}
+
+/**
+ * A piece of the first replica sync, ahead of the SnapshotMessage (ReplicaEncoderOptions.snapshotChunks): an ordinary
+ * delta, applied whole (in order) as it arrives, while the worker writes the next — so the replica builds while the
+ * graph is still being encoded, and neither thread ever holds the whole snapshot. The SnapshotMessage carries the last.
+ */
+export interface SnapshotChunkMessage extends SnapshotHeader {
+    type: 'snapshotChunk';
+    delta: ReplicaDelta;
+}
+
+/** The first replica sync (everything, or its last chunk) once the game exists. */
 export interface SnapshotMessage {
     type: 'snapshot';
     delta: ReplicaDelta;
@@ -195,6 +214,8 @@ export interface SnapshotMessage {
     /** The scenario the worker's game data carries (a loaded save's, read by the worker): the replica's static data
      *  needs the same overlay. Absent: none. */
     scenario?: ScenarioRef;
+    /** Worker wall ms: creating / loading the game, and building the host with its snapshot (all chunks). */
+    timing?: { bootMs: number; encodeMs: number; chunks: number };
 }
 
 /** Sent after every worker tick that ran steps or changed state (commands, clock), and periodically while paused. */
@@ -268,6 +289,7 @@ export const ALIVE_INTERVAL_MS = 2000;
 
 export type FromWorker =
     | ProgressMessage
+    | SnapshotChunkMessage
     | SnapshotMessage
     | StepMessage
     /** Nothing to send (a paused, settled game): the worker says it still runs, every ALIVE_INTERVAL_MS, so the main

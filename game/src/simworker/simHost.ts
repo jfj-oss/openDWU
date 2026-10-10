@@ -49,6 +49,9 @@ export interface SimHostOptions {
      */
     wallNow?: () => number;
     sync?: Partial<Pick<ReplicaEncoderOptions, 'coldBudgetMs' | 'coldMaxSets' | 'markBudgetMs'>>;
+    /** Stream the snapshot (ReplicaEncoderOptions.snapshotChunks): its chunks go to `emit` while the host is built and
+     *  snapshot() is taken; snapshot() then returns the last. */
+    snapshotChunks?: ReplicaEncoderOptions['snapshotChunks'];
     /**
      * Send the main thread what the player's message pipeline handled ('playerMessages' events: each message's receipt
      * and each event, for the ticker, popups, stubs and the event panel; docs/sim-worker.md §4.5). The pipeline itself
@@ -136,7 +139,7 @@ export class SimHost {
         // The player's message pipeline runs in the sim (sim/playerMessages.ts); its receipts go to the main thread.
         this.sendPlayerMessages = opts.playerMessages === true;
         if (this.sendPlayerMessages) setPlayerMessageListener(this.galaxy, (note) => void this.playerNotes.push(note));
-        this.sync = new GalaxySyncSource(this.galaxy, opts.sync ?? {});
+        this.sync = new GalaxySyncSource(this.galaxy, { ...opts.sync, ...(opts.snapshotChunks !== undefined ? { snapshotChunks: opts.snapshotChunks } : {}) });
         this.effectNotes = watchBuiltObjectEffects(this.galaxy, Infinity); // drained every step message
         this.tradeFlows = new TradeFlowSyncSource(this.galaxy, (view) => this.sync.setSideTable(TRADE_FLOWS_SIDE_KEY, view));
         // Replies and events name graph objects by sync id (a new one is born in the delta that carries the reply);
@@ -163,11 +166,16 @@ export class SimHost {
         });
     }
 
+    /** Nothing has run on the game since the sync source was built (the snapshot may skip its full compare). */
+    private untouched = true;
+
     /** The first sync message: the whole replica. */
     snapshot(): SnapshotMessage {
+        const unchanged = this.untouched;
+        this.untouched = false;
         return {
             type: 'snapshot',
-            delta: this.sync.snapshot(),
+            delta: this.sync.snapshot(unchanged),
             baseTechCost: this.galaxy.baseTechCost,
             viewX: this.game.viewX,
             viewY: this.game.viewY,
@@ -181,10 +189,12 @@ export class SimHost {
     private wantView: SimView | null = null;
 
     setView(m: ViewMessage): void {
+        this.untouched = false;
         this.wantView = m.view;
     }
 
     clock(m: ClockMessage): void {
+        this.untouched = false;
         this.time.speed = m.speed;
         this.time.paused = m.paused;
         this.clockSeq = m.seq;
@@ -193,6 +203,7 @@ export class SimHost {
 
     /** The main thread switched trade-flow recording (the freight overlay / Trade Flows panel). */
     setTradeFlowRecording(m: TradeFlowsMessage): void {
+        this.untouched = false;
         this.tradeFlows.setRecording(m.record);
         this.dirty = true;
     }
@@ -206,6 +217,7 @@ export class SimHost {
      * the callback, and so does the main thread.
      */
     command(m: CommandMessage): void {
+        this.untouched = false;
         const resolving = {
             object: (id: number) => this.sync.encoder.objectOf(id),
             external: (kind: string, key: string | number) => this.externalsByRef.get(`${kind}:${key}`),
@@ -306,6 +318,7 @@ export class SimHost {
 
     /** Compare these replica objects (sync ids) and what they reach before the next delta; reply to `m.id` with it. */
     refresh(m: RefreshRequest): void {
+        this.untouched = false;
         for (const id of m.objects) {
             const o = this.sync.encoder.objectOf(id);
             if (o !== null) this.freshRoots.push(o);
@@ -369,6 +382,7 @@ export class SimHost {
      * arguments and result name is compared in that delta, as for a command.
      */
     hostOp(m: HostOpMessage): void {
+        this.untouched = false;
         const resolving = {
             object: (id: number) => this.sync.encoder.objectOf(id),
             external: (kind: string, key: string | number) => this.externalsByRef.get(`${kind}:${key}`),
@@ -431,6 +445,7 @@ export class SimHost {
      * the view, then the replica diff. Returns the step message, or null when nothing changed (paused, idle).
      */
     tick(realDtMs: number, forceDelta = false): StepMessage | null {
+        this.untouched = false;
         const t0 = this.now();
         let steps = 0;
         const driver = this.driver;
@@ -603,6 +618,7 @@ export class SimHost {
      * next step message, so the replica's render serial follows. The reply carries the target's plain fields.
      */
     debug(m: DebugRequest): DebugReply {
+        this.untouched = false;
         const target = (m.target === 'sim' ? this.driver : this.budget) as unknown as Record<string, unknown>;
         let value: unknown;
         let error: string | undefined;

@@ -299,10 +299,14 @@ export class GalaxySyncSource {
         if (value !== null) this.encoder.compareNow(value, depth);
     }
 
-    /** The initial snapshot (everything discovered so far, incl. the side tables). */
-    snapshot(): ReplicaDelta {
-        // The side root was filled after the encoder discovered it empty: a full compare sends its contents.
-        return this.encoder.diff(true);
+    /**
+     * The initial snapshot (everything discovered so far, incl. the side tables). `unchanged`: the caller guarantees the
+     * galaxy is as it was when this source was built (no step, no command since: SimHost) — then only the side root,
+     * filled after the encoder discovered it empty, is compared (ReplicaEncoder.snapshotDelta), else everything is.
+     */
+    snapshot(unchanged = false): ReplicaDelta {
+        // The side root was filled after the encoder discovered it empty: its compare sends its contents.
+        return unchanged ? this.encoder.snapshotDelta([1]) : this.encoder.diff(true);
     }
 
     /** The delta after a step; the side tables are recollected as each cold cycle starts (encoder.onCycleStart) and
@@ -375,6 +379,14 @@ export class GalaxyReplica {
      * `budgetMs`, a hot part that depends on cold births not applied yet may return `pending` (ReplicaDecoder.apply):
      * call again with the same delta (next frame) to continue.
      */
+    /**
+     * Apply a chunk of the snapshot (SnapshotChunkMessage): everything, now, without the replica's wiring — the galaxy is
+     * not whole until the snapshot's last delta, which goes through apply(d, true).
+     */
+    applyChunk(d: ReplicaDelta): ApplyStats {
+        return this.decoder.apply(d, true);
+    }
+
     apply(d: ReplicaDelta, all = false, budgetMs = Infinity, now: () => number = () => performance.now()): ApplyStats {
         const st = this.decoder.apply(d, all, now, budgetMs);
         if (!st.pending) this.afterApply(all);

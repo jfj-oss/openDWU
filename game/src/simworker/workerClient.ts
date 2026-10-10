@@ -8,7 +8,8 @@ import type { SimView } from '../sim/tick/scheduler';
 import type { RenderTime } from '../render/renderInterp';
 import { SimClientCore, type SyncStats } from './clientCore';
 import type { CommandLogEntry } from '../sim/player/commandLog';
-import type { DebugReply, DebugRequest, FromWorker, InitMessage, SnapshotMessage, ToWorker, WorkerEvent } from './protocol';
+import type { DebugReply, DebugRequest, FromWorker, InitMessage, SnapshotHeader, SnapshotMessage, ToWorker, WorkerEvent } from './protocol';
+import { GalaxyReplica } from './replicaGalaxy';
 import { installReplicaWriteDetector, writeDetectorMode } from './writeDetector';
 import type { SaveText } from '../saveData';
 import type { GameSaveExtras } from '../sim/save/gameSave';
@@ -50,7 +51,7 @@ export interface BootProgress {
 }
 
 /** The replica's static data: given up front, or chosen once the snapshot names the game's scenario (a load). */
-export type ReplicaGameData = GameData | ((snapshot: SnapshotMessage) => GameData);
+export type ReplicaGameData = GameData | ((snapshot: SnapshotHeader) => GameData);
 
 export class SimWorkerClient {
     /** save / digest / debug / commandLog requests waiting for their answer (rejected when the worker stops or the
@@ -94,6 +95,19 @@ export class SimWorkerClient {
             /** Messages after the snapshot that arrive while the replica is being built (deltas must apply in order). */
             let backlog: FromWorker[] | null = null;
             let failed = false;
+            /** The replica the snapshot's chunks build as they arrive (SnapshotChunkMessage), with its static data. */
+            let early: { data: GameData; replica: GalaxyReplica } | null = null;
+            const replicaFor = (h: SnapshotHeader): { data: GameData; replica: GalaxyReplica } => {
+                if (early === null) {
+                    const data = typeof gameData === 'function' ? gameData(h) : gameData;
+                    early = { data, replica: new GalaxyReplica(data, h.baseTechCost) };
+                }
+                return early;
+            };
+            // Load timing (the console line once the replica is built).
+            const tStart = performance.now();
+            let chunkApplyMs = 0;
+            let chunkObjects = 0;
             const post = (m: ToWorker): void => worker.postMessage(m);
             const fail = (err: unknown): void => {
                 if (failed) return;
@@ -126,9 +140,11 @@ export class SimWorkerClient {
                         await progress.paint?.();
                     }
                     if (failed) return;
-                    const data = typeof gameData === 'function' ? gameData(m) : gameData;
+                    const tSnapshot = performance.now();
+                    const data = early?.data ?? (typeof gameData === 'function' ? gameData(m) : gameData);
                     let c: SimWorkerClient | null = null;
                     const core = new SimClientCore(data, m, {
+                        ...(early !== null ? { replica: early.replica } : {}),
                         post,
                         onEvent: (ev, res) => c?.eventHandler?.(ev, res),
                         // The reply backstop: a worker that runs no frames is stopped (terminated) — it can never apply
@@ -147,6 +163,13 @@ export class SimWorkerClient {
                         }
                     }
                     client = c;
+                    const t = m.timing;
+                    const s = (ms: number): string => `${(ms / 1000).toFixed(1)} s`;
+                    console.info(
+                        `sim worker: game ready in ${s(performance.now() - tStart)} (` +
+                            (t !== undefined ? `worker: game ${s(t.bootMs)}, snapshot ${s(t.encodeMs)} in ${t.chunks + 1} parts; ` : '') +
+                            `main: ${chunkObjects} objects applied in ${s(chunkApplyMs)} while it streamed, the last part in ${s(performance.now() - tSnapshot)})`,
+                    );
                     for (const b of backlog ?? []) c.onMessage(b);
                     backlog = null;
                     resolve(c);
@@ -166,6 +189,18 @@ export class SimWorkerClient {
                     return;
                 }
                 if (m.type === 'progress') progress?.update(m);
+                else if (m.type === 'snapshotChunk') {
+                    // A piece of the snapshot: applied now (the next is being encoded meanwhile).
+                    try {
+                        const a = performance.now();
+                        const st = replicaFor(m).replica.applyChunk(m.delta);
+                        chunkApplyMs += performance.now() - a;
+                        chunkObjects += st.newObjects;
+                        progress?.update({ step: 'Receiving game state', fraction: 0.9 + 0.09 * (1 - Math.exp(-chunkObjects / 2e6)) });
+                    } catch (err) {
+                        fail(err);
+                    }
+                }
                 else if (m.type === 'error') fail(new Error(`sim worker: ${m.message}`));
                 else if (m.type === 'snapshot') {
                     backlog = [];

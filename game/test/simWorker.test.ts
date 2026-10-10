@@ -24,6 +24,8 @@ import type { StartGameOptions } from '../src/sim/startGameOptions';
 import { SimHost } from '../src/simworker/simHost';
 import { SimClientCore } from '../src/simworker/clientCore';
 import type { ToWorker } from '../src/simworker/protocol';
+import { GalaxyReplica } from '../src/simworker/replicaGalaxy';
+import type { ReplicaDelta } from '../src/simworker/replicaSync';
 import { reviveCreateOptions, workerCreateOptions } from '../src/simworker/bootOptions';
 import { tickGameOptions } from './helpers/tickGame';
 import { createGame } from '../src/sim/game';
@@ -45,16 +47,23 @@ function fakeClock(): () => number {
     return () => (t += 0.001);
 }
 
-/** Host + client wired in-process (messages passed directly; deltas structured-cloned as postMessage would). */
+/**
+ * Host + client wired in-process (messages passed directly; deltas structured-cloned as postMessage would). The
+ * snapshot streams in small chunks applied as they come, as the browser's (worker.ts SNAPSHOT_CHUNK_CODES).
+ */
 function connect(game: Game, time: GalaxyTime): { host: SimHost; client: SimClientCore; tick: () => void; time: GalaxyTime } {
-    const host = new SimHost(game, time, START_OPTIONS, { now: fakeClock() });
+    const chunks: ReplicaDelta[] = [];
+    const host = new SimHost(game, time, START_OPTIONS, { now: fakeClock(), snapshotChunks: { codes: 1 << 15, emit: (d) => chunks.push(structuredClone(d)) } });
     const snap = structuredClone(host.snapshot());
+    expect(chunks.length).toBeGreaterThan(3);
+    const replica = new GalaxyReplica(gameData, snap.baseTechCost);
+    for (const c of chunks) replica.applyChunk(c);
     const toHost = (m: ToWorker): void => {
         const c = structuredClone(m);
         if (c.type === 'command') host.command(c);
         else if (c.type === 'clock') host.clock(c);
     };
-    const client = new SimClientCore(gameData, snap, { post: toHost, now: fakeClock() });
+    const client = new SimClientCore(gameData, snap, { post: toHost, now: fakeClock(), replica });
     const uiTime = new GalaxyTime();
     uiTime.bindGalaxy(client.galaxy);
     uiTime.speed = time.speed;

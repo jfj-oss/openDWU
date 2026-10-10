@@ -564,11 +564,62 @@ Each delta has a `hot` part and a `cold` part, and each part has shells (new obj
 
 - Class instances are built by generated per-shape constructors (one hidden class per shape, as save loading does),
   so the replica is as fast to read as a loaded game.
-- The id tables are dense (`objs` is filled with null ahead of ids not born here yet, kinds / shapes are typed arrays)
-  and the reverse map (replica object → sync id) is a Map: at 2.4 M keys a WeakMap insert cost about 5 µs, with GC
-  stalls of up to a second under churn — it was 80 % of the cold pump and most of the snapshot apply.
+- The id tables are dense (`objs` is filled with null ahead of ids not born here yet, kinds / shapes are typed arrays).
+  The reverse map (replica object → sync id, only read to name command arguments): a class instance or plain object
+  carries its id in a private field (`SyncIdStamp`, set right after its shell is built: invisible to Object.keys, JSON,
+  structured clone, spread and deep-equality checks, never copied); arrays, Maps, Sets and typed arrays are in an
+  `IdMap` (an extra property would give them other hidden classes than the view's own arrays). The stamp replaced 4.9 M
+  of a late galaxy's 7.2 M Map inserts, about a third of the snapshot apply. (A WeakMap insert cost about 5 µs at 2.4 M
+  keys, with GC stalls of up to a second under churn — it was 80 % of the cold pump and most of the snapshot apply.)
 - Field sets go through generated per-shape setters.
 - Save revive hooks (Cargo, Random) are honoured.
+
+### 3.5 The initial handoff (the snapshot)
+
+On a load (or a new game) the worker builds the `SimHost`, whose `GalaxySyncSource` walks the whole graph once
+(`ReplicaEncoder` constructor: discovery, shells and first contents of every object), and posts the snapshot; the main
+thread builds its replica from it. On the user's late save (4046 systems, 7.25 M synced objects; headless Chromium
+on the GPU, Load Game → Open file → playable) that handoff took longer than loading the save itself: 7.4–7.8 s of encode
+in the worker, 0.3 s in transit and 2.4–2.6 s of replica build on the main thread (a frozen tab), 19.1 s to playable
+from a format-2 save (16.3 s from format 3). Now the worker's encode is 4.7–5.0 s with the replica built alongside, the
+main thread never stalls for more than 0.5 s, and the game is playable after 13.0 s (11.6 s from format 3). Node
+(`sync-measure.mjs`, same save): encode 8.7 → 6.1 s, clone 0.94 → 0.09 s, apply 3.4 → 2.2 s; the encoder's heap
++926 → +708 MB, the replica's +1081 → +870 MB, the snapshot's 644 MB of buffers in flight → 16 MB chunks. How:
+
+- **Streamed** (`ReplicaEncoderOptions.snapshotChunks`, `SnapshotChunkMessage`): every ~4 M codes (16 MB of streams,
+  ~250 k objects) the walk hands what it wrote so far to the worker's post as an ordinary delta, and goes on. The main
+  thread applies each chunk as it arrives (`GalaxyReplica.applyChunk`: the decoder's whole apply, without the replica's
+  wiring), so the replica is built while the worker is still encoding, and neither side ever holds the whole snapshot's
+  buffers (525 MB) at once. The chunks are ordinary deltas because a shell always travels in or before the chunk of the
+  first record that names it, and births reference only objects born before or with them. The `snapshot` message
+  carries the last chunk (the side tables) and the clock / view / step serial; the first chunk's header (base tech
+  cost, start options, scenario) is what the main thread needs to make the replica's static data before that.
+  `workerClient.ts` logs the phases on the console (`sim worker: game ready in …`).
+- **No second pass.** The snapshot used to be the walk plus a full compare (`diff(true)`: every object compared again
+  with the shadow it was just given — 1.7 s on that save) to send the side tables. `SimHost` knows nothing ran on the
+  game since it built the sync source, so `ReplicaEncoder.snapshotDelta` compares only the side root (the same delta,
+  ids and cycle boundary as `diff(true)` there).
+- **Strings once per part** (`PartWriter.str`): the snapshot named 3.5 M strings (mostly static references like
+  `componentDef:38`, each a new string), 135 k of them distinct; structured-cloning them was most of the clone, and the
+  main thread hashed each one again. Each `kind:key` reference string is now built once per static object.
+- **A cheaper walk:** a generated fill per shape (`makeFillFn`: each field into its lane's column with a monomorphic
+  store, and its codes, exactly what `FieldTable.set` + `writeValue` did); one IdMap lookup per new object instead of
+  two; cached container labels and per-prototype flags (a fresh label string, hashed by four Set / Map lookups, for
+  every container); a for-in check against the prototype's last shape instead of an `Object.keys` copy per object; the
+  shapes' compares generated once at the end of the walk instead of at every lane widening.
+- **Decoder:** the private-field id stamp (§3.4).
+
+`scripts/sync-measure.mjs` measures it the way the worker does it (chunks cloned with their transfers; `--whole`: one
+delta) and `--verify` compares both galaxies' format-3 save bytes and digests (`galaxyToJSON` overflows the stack on a
+save this size). The wire format of the steady-state deltas is unchanged (already uint32 / f64 streams, transferred).
+
+The steady-state hot pass found the gated objects' child lists (`weapons`, `fighters`, `attackers`,
+`locationEffects`), their elements and the related objects (a shot's target) again in the 7 M-entry IdMap every tick:
+a third of the hot pass. They are now found through id hints (`ReplicaEncoder.hintedId`: the id found there last time,
+checked by identity, so a stale hint can never give a wrong id), per shape slot and row and per list row. In the
+browser on that save the worker's diff per step message went 34–35 → 19–21 ms at 1× and 131–239 → 43–48 ms at 4×
+(about the same bytes per render frame, in more, smaller messages); in node, where the Map is cheaper, the hot pass
+went 9.7 → 8.6 ms a step (20.5 → 16.6 ms for four steps a message).
 
 ## 4. Protocol, ownership and commands (src/simworker/protocol.ts, simHost.ts, clientCore.ts, worker.ts)
 
@@ -587,7 +638,8 @@ Main → worker:
 Worker → main:
 
 - `progress {step, fraction}`
-- `snapshot {delta, baseTechCost, viewX, viewY, clock, stepSerial, startOptions}`
+- `snapshotChunk {delta, baseTechCost, startOptions, scenario}` (zero or more, applied as they arrive; §3.5)
+- `snapshot {delta, baseTechCost, viewX, viewY, clock, stepSerial, startOptions, scenario, timing}`
 - `step {delta, stepSerial, steps, nowMs, backlogMs, speed, paused, clockSeq, stepMs, diffMs, results[], events[]}`
 - `saved {id, text}`
 - `digest {id, digest, nowMs, stepSerial}`
@@ -1022,9 +1074,10 @@ The only behaviour changes in this mode are:
   across engines needs sim-owned deterministic transcendental functions (a JS port of fdlibm for the ~190 call sites,
   a sim change that moves every pin, with a cost in the late-game step) — left as a decision for the project.
 
-- **Boot cost.** A late save's snapshot is about 3–4 s to encode on top of the worker's own load (201 MB since chunk
-  9, 425 MB before), and the main thread is busy for about 1–1.7 s applying it (2–7 s before). A streamed or
-  incremental snapshot would fix the rest.
+- **Boot cost.** The snapshot is streamed (§3.5): on the user's 7.25 M-object late save about 5 s of encode in the
+  worker on top of its own load, with the main thread applying the chunks meanwhile (about 1.6–1.9 s in all, at most
+  a few hundred ms at a time) — the last chunk lands within 0.1 s of the encode's end. The walk's remaining cost is
+  mostly reading every field of every object and the encoder's object → id Map (7 M inserts).
 - **Occasional hot-apply spikes (3–14 ms)** — addressed in chunk 2: the birth bursts (missions with their commands,
   research-improved weapon stats) now travel cold, the usual dependencies (new designs and fleets, fighter launches,
   refits) are gone, and a remaining dependency applies only births (§3.3). What is left is the hot part's own volume
@@ -1369,7 +1422,7 @@ Original brief:
   - Write detector (smoke `--detect-writes`, late save, UI tour): 0 unexpected keys, digests equal.
   - `repin --check`: 0.
 - **Still open.**
-  - A streamed snapshot (boot is still 3–4 s of encode and 1–1.7 s of main-thread apply).
+  - ~~A streamed snapshot~~ (done: §3.5).
   - The worker's hot pass: the touched ships' own compares (§8 "Worker headroom"). A typed per-shape shadow for the
     hot numeric slots would cut its memory traffic.
   - Worker GC: the shadows roughly double the worker heap.

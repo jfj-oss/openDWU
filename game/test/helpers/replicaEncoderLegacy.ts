@@ -2,6 +2,7 @@
 // verbatim from replicaSync.ts at 75f443d (encoder half only): one JS array per synced object, boxed values.
 // test/replicaPackedShadow.test.ts runs it beside the current ReplicaEncoder on the same game and checks that both
 // produce the same deltas, byte for byte. Not used by the game.
+// Since then (wire format, applied to both): each part names each distinct string once (PartWriter.str).
 /* eslint-disable */
 
 
@@ -155,8 +156,18 @@ class PartWriter {
     births = new RecordWriter();
     body = new RecordWriter();
     strs: string[] = [];
+    private strAt = new Map<string, number>();
     typed: AnyTyped[] = [];
     drops: number[] = [];
+    str(s: string): number {
+        let i = this.strAt.get(s);
+        if (i === undefined) {
+            i = this.strs.length;
+            this.strs.push(s);
+            this.strAt.set(s, i);
+        }
+        return i;
+    }
     take(): ReplicaPart {
         const out: ReplicaPart = {
             shells: this.shells.take(),
@@ -171,6 +182,7 @@ class PartWriter {
         this.births.reset();
         this.body.reset();
         this.strs = [];
+        this.strAt = new Map();
         this.typed = [];
         this.drops = [];
         return out;
@@ -1338,8 +1350,7 @@ export class ReplicaEncoder {
                 }
                 return;
             case 'string':
-                c.push2(key + Tag.Str, w.strs.length);
-                w.strs.push(v);
+                c.push2(key + Tag.Str, w.str(v));
                 return;
             case 'boolean':
                 c.push(key + (v ? Tag.True : Tag.False));
@@ -1361,8 +1372,7 @@ export class ReplicaEncoder {
                 }
                 const ext = this.opts.externals.get(v);
                 if (ext !== undefined) {
-                    c.push2(key + Tag.Ext, w.strs.length);
-                    w.strs.push(`${ext.kind}:${ext.key}`);
+                    c.push2(key + Tag.Ext, w.str(`${ext.kind}:${ext.key}`));
                     return;
                 }
                 // A new object: its shell goes to this part's shells now, its contents to its births (flushPending).
