@@ -24,6 +24,7 @@ import { characterMission, intelligenceMissionTarget, newCounterIntelligenceMiss
 import { BuiltObject as BuiltObjectClass } from './builtObject';
 import { Habitat as HabitatClass } from './types';
 import { baconSettings } from './data/baconSettings';
+import { isHumanEmpire } from './humanEmpires';
 
 // BaconCharacter.cs 18-21 spyCaptureChance / spyBaseValue / spyBaseEscapeChance / spyBaseDefectChance: BaconSettings.txt
 // statics (BaconMain.cs 794-806), read from `baconSettings`.
@@ -302,7 +303,7 @@ export function handlePlayerPrisoners(galaxy: Galaxy, prison: Prison): void {
         if (spiesInPrison === null) return;
         if (!(prison instanceof HabitatClass) && spiesInPrison.length === 0) return;
         csForEach(spiesInPrison, (character1) => {
-            if (character1.empire !== galaxy.playerEmpire) {
+            if (!isHumanEmpire(galaxy, character1.empire)) {
                 if (spyEscaped(galaxy, prison, character1)) {
                     playerMessage(galaxy, character1.name + ' has escaped from ' + prison.name, 'prisonbreak');
                     const character2 = addEventToCharacter(galaxy, 'Escaped', character1.name + ' escaped from ' + prison.name, character1);
@@ -326,7 +327,7 @@ export function handlePlayerPrisoners(galaxy: Galaxy, prison: Prison): void {
 export function handleAIPrisoners(galaxy: Galaxy, prison: Prison): void {
     try {
         const prisonEmpire = prison instanceof HabitatClass ? prison.empire : (prison as BuiltObject).actualEmpire;
-        if (prisonEmpire === galaxy.playerEmpire || prison.baconValues === null) return;
+        if (isHumanEmpire(galaxy, prisonEmpire) || prison.baconValues === null) return;
         const spiesInPrison = getSpiesInPrison(prison);
         if (spiesInPrison === null || spiesInPrison.length === 0) return;
         const player = galaxy.playerEmpire ?? nre();

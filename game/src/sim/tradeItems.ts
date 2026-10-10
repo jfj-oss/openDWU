@@ -84,6 +84,7 @@ import { baconSettings } from './data/baconSettings';
 import { formatNetGrouped0 } from './netNumberFormat';
 import { resolveSectorDescription } from './empireEvents';
 import { Empire as EmpireClass } from './empire';
+import { isHumanEmpire } from './humanEmpires';
 
 // TradeableItemType.cs (member order exact).
 export enum TradeableItemType {
@@ -434,7 +435,7 @@ export function valueResearchProjectForEmpire(galaxy: Galaxy, project: TechNode 
                 }
             }
         }
-        if (requestingEmpire !== galaxy.playerEmpire && !flag) num = 0;
+        if (!isHumanEmpire(galaxy, requestingEmpire) && !flag) num = 0;
         if (requestingEmpire === galaxy.playerEmpire) num = Math.trunc(num * (galaxy.playerEmpire.difficultyLevel * galaxy.playerEmpire.difficultyLevel));
         if (num > 1073741823) num = 1073741823;
     }
@@ -566,7 +567,7 @@ export function tradeItems(galaxy: Galaxy, empire: Empire): void {
     const self = empire;
     const currentStarDate = galaxyStarDate(galaxy);
     const num = currentStarDate - Math.trunc(MINIMUM_DIPLOMACY_TRADE_PROPOSAL_INTERVAL_YEARS * galaxyColonyFillFactor(galaxy) * REAL_SECONDS_IN_GALACTIC_YEAR * 1000.0);
-    if (self === galaxy.playerEmpire) return;
+    if (isHumanEmpire(galaxy, self)) return;
     for (let i = 0; i < self.diplomaticRelations.count; i++) {
         const diplomaticRelation = self.diplomaticRelations.at(i);
         if (
@@ -1638,7 +1639,7 @@ function identifyBestEmpireToAttackEnemy(galaxy: Galaxy, self: Empire, enemyEmpi
 export function reviewEnemyHelpEnlistment(galaxy: Galaxy, empire: Empire): void {
     const self = empire;
     const currentStarDate = galaxyStarDate(galaxy);
-    if (self === galaxy.playerEmpire) return;
+    if (isHumanEmpire(galaxy, self)) return;
     for (let i = 0; i < galaxy.empires.length; i++) {
         const other = galaxy.empires[i];
         if (other === self) continue;
@@ -1685,7 +1686,7 @@ function calculateNextAllowableTradeProposalDate(galaxy: Galaxy, relation: Diplo
  */
 export function reviewDisputedTerritory(galaxy: Galaxy, empire: Empire): void {
     const self = empire;
-    if (self === galaxy.playerEmpire || self.dominantRace === null) return;
+    if (isHumanEmpire(galaxy, self) || self.dominantRace === null) return;
     const currentStarDate = galaxyStarDate(galaxy);
     const habitatList = determineEmpireDominatedSystems(galaxy, self, true);
     for (let i = 0; i < galaxy.empires.length; i++) {
@@ -1800,7 +1801,7 @@ export function processTradeDealMessage(galaxy: Galaxy, self: Empire, sender: Em
         for (const item2 of offered) giveTradeableItem(galaxy, sender, self, item2, requested);
         for (const item3 of requested) giveTradeableItem(galaxy, self, sender, item3, offered);
     } else {
-        if (sender === galaxy.playerEmpire || sender.pirateEmpireBaseHabitat !== null || self.pirateEmpireBaseHabitat !== null) return;
+        if (isHumanEmpire(galaxy, sender) || sender.pirateEmpireBaseHabitat !== null || self.pirateEmpireBaseHabitat !== null) return;
         for (const item4 of offered) {
             if (item4.type === TradeableItemType.ThreatenWar) {
                 declareWar(galaxy, sender, self);

@@ -50,6 +50,7 @@ import { PlanetaryFacilityType, WonderType } from './researchSystem';
 import { baconSettings } from './data/baconSettings';
 import { formatGameTextNow } from './textResolver';
 import { formatNetPercent0 } from './netNumberFormat';
+import { isHumanEmpire } from './humanEmpires';
 
 // ---------------------------------------------------------------------------
 // Money (Empire intermediate / long blocks)
@@ -421,7 +422,7 @@ export function determineEmpiresAtWarWith(galaxy: Galaxy, empire: Empire): { emp
 
 /** Empire.10.cs 86 CheckChangeGovernment. */
 export function checkChangeGovernment(galaxy: Galaxy, empire: Empire): void {
-    if (empire === galaxy.playerEmpire) {
+    if (isHumanEmpire(galaxy, empire)) {
         return;
     }
     const bySpecialFunctionCode = governmentsBySpecialFunctionCode(1);

@@ -113,6 +113,7 @@ import { AutomationLevel } from '../empire';
 import { scenarioFlag } from '../scenario/state';
 import { scenarioEmit, scenarioQuery } from '../scenario/hooks';
 import { rimTraderColonyCapReached } from '../scenario/rimTrade/common';
+import { isHumanEmpire } from '../humanEmpires';
 
 /** Empire.cs 176-186 _ShortProcessingInterval .. _HugeProcessingInterval (seconds). */
 export const SHORT_PROCESSING_INTERVAL = 3.0;
@@ -305,7 +306,7 @@ export function empireDoTasks(galaxy: Galaxy, empire: Empire): void {
         empire.resourceTargets = identifyResourceCentres(galaxy, empire);
         empire.empireResourceTargets = prioritizeEmpireResourceNeeds(galaxy, empire);
         identifyUnavailableLuxuryResources(galaxy, empire);
-        if (empire === galaxy.playerEmpire) {
+        if (isHumanEmpire(galaxy, empire)) {
             updateSystemRefuellingStatus(galaxy, empire);
             checkForStrandedShips(galaxy, empire);
         }

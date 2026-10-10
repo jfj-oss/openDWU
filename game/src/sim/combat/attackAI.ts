@@ -46,6 +46,7 @@ import { baconMovementSettings, withinFuelRangeAndRefuel } from '../movement';
 import { isFighter } from './fighters';
 import { captainBonuses } from '../characters';
 import { shipGroupOf, stellarAttackers, stellarCurrentSpeed, stellarCurrentTarget, stellarFirepowerRaw, stellarTopSpeed, builtObjectThreats, calculateOverallStrengthFactor, escapeTargetForFleeFrom, evaluateThreats, getBuiltObjectsAtLocationByArrays, shouldFleeFrom, type Threat } from './threats';
+import { isHumanEmpire } from '../humanEmpires';
 
 // ---------------------------------------------------------------------------------------------------------------
 // Galaxy constants (Galaxy.3.cs static ctor)
@@ -303,7 +304,7 @@ export function determineDestroyOrCaptureTargetCore(galaxy: Galaxy, empire: Empi
                 if (checkOurEmpireBoarding(empire, target, builtObjectToExclude)) {
                     return BuiltObjectMissionType.Capture;
                 }
-                if (empire !== galaxy.playerEmpire && target.unbuiltComponentCount > 0) {
+                if (!isHumanEmpire(galaxy, empire) && target.unbuiltComponentCount > 0) {
                     const num3 = target.unbuiltComponentCount / target.components.count;
                     if (num3 > 0.25) {
                         return BuiltObjectMissionType.Attack;

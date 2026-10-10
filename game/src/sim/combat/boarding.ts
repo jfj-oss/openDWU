@@ -65,6 +65,7 @@ import { baconIsMyShip, calculateBuiltObjectLootingValue, empireColonyIncomeFact
 import { colonyInvasionUi, doRaidBonuses, empireRaidBonusFactor, failPirateDefendMission, generateDefensivePirateRaiders, getNearestBuiltObject, InvasionStats, invasionStatsOf, pirateColonyControl, takeOwnershipOfBuiltObject } from './invasion';
 import { handleAIPrisoners, handlePlayerPrisoners } from '../espionagePrisoners';
 import { formatNetGrouped0 } from '../netNumberFormat';
+import { isHumanEmpire } from '../humanEmpires';
 
 const f32 = Math.fround;
 
@@ -471,7 +472,7 @@ export function baconBuiltObjectHugeProcessingSpanActions(galaxy: Galaxy, builtO
     const ship = builtObject;
     if (ship.nearestSystemStar === null) assignNearestSystemStarIfNull(galaxy, ship);
     if (baconBoardingClockRnd(galaxy).nextDouble() > 0.25) return;
-    if (ship.actualEmpire !== null && ship.actualEmpire === galaxy.playerEmpire) {
+    if (ship.actualEmpire !== null && isHumanEmpire(galaxy, ship.actualEmpire)) {
         // 4105 HandlePlayerPrisoners (the C# try/catch swallows everything).
         handlePlayerPrisoners(galaxy, ship);
     } else {

@@ -160,6 +160,7 @@ import {
     implementBlockadeBuiltObject,
     implementBlockadeColony,
 } from './blockades';
+import { isHumanEmpire } from '../humanEmpires';
 
 // ---------------------------------------------------------------------------------------------------------------
 // Constants (Galaxy.3.cs 4972-5120 static values)
@@ -3265,7 +3266,7 @@ function checkTemptingTargetsInEmpire(galaxy: Galaxy, self: Empire, empire: Empi
 
 /** Empire.10.cs 913 CheckTemptingTargets. Rnd: Next(0, Empires.Count). */
 export function checkTemptingTargets(galaxy: Galaxy, empire: Empire): void {
-    if (empire !== galaxy.playerEmpire && empire.controlMilitaryAttacks === AutomationLevel.FullyAutomated) {
+    if (!isHumanEmpire(galaxy, empire) && empire.controlMilitaryAttacks === AutomationLevel.FullyAutomated) {
         const num = galaxy.rnd.next(0, galaxy.empires.length);
         for (let i = num; i < galaxy.empires.length; i++) checkTemptingTargetsInEmpire(galaxy, empire, galaxy.empires[i]);
         for (let j = 0; j < num; j++) checkTemptingTargetsInEmpire(galaxy, empire, galaxy.empires[j]);
@@ -4070,7 +4071,7 @@ export function sendScoutsToSingleEnemyEmpire(galaxy: Galaxy, empire: Empire, en
 
 /** Empire.1.cs 3730 CoordinateFleetAttacksWithAllies(fleet). */
 export function coordinateFleetAttacksWithAllies(galaxy: Galaxy, empire: Empire, fleet: ShipGroup): boolean {
-    if (empire !== galaxy.playerEmpire && empire.controlMilitaryAttacks === AutomationLevel.FullyAutomated && fleet !== null && fleet.ships !== null && fleet.ships.length >= 10 && fleet.posture === FleetPosture.Attack && fleet.leadShip !== null && isAiControlled(fleet.leadShip)) {
+    if (!isHumanEmpire(galaxy, empire) && empire.controlMilitaryAttacks === AutomationLevel.FullyAutomated && fleet !== null && fleet.ships !== null && fleet.ships.length >= 10 && fleet.posture === FleetPosture.Attack && fleet.leadShip !== null && isAiControlled(fleet.leadShip)) {
         const fe = determineFriendsAndEnemies(empire);
         const closeFriends = fe.closeFriends;
         const severeEnemies = fe.severeEnemies;
@@ -4240,7 +4241,7 @@ export function checkReadyForWarCaptureObjectives(galaxy: Galaxy, self: Empire):
             const point = shipGroup2.mission.resolveTargetCoordinates(shipGroup2.mission);
             const num5 = galaxy.calculateDistance(shipGroup2.leadShip.xpos, shipGroup2.leadShip.ypos, point.x, point.y);
             if (num5 > 48000.0) result = false;
-        } else if (shipGroup2.gatherPoint !== null && self !== galaxy.playerEmpire) {
+        } else if (shipGroup2.gatherPoint !== null && !isHumanEmpire(galaxy, self)) {
             result = false;
         }
     }

@@ -72,6 +72,7 @@ import {
     reviewDemoralizingCharacters,
     updateAchievements,
 } from '../events';
+import { isHumanEmpire } from '../humanEmpires';
 
 /** Empire.1.cs 4095 DoTasksPirates(). */
 export function empirePirateDoTasks(galaxy: Galaxy, empire: Empire): void {
@@ -166,13 +167,13 @@ export function empirePirateDoTasks(galaxy: Galaxy, empire: Empire): void {
         empire.resourceTargets = identifyResourceCentres(galaxy, empire);
         identifyUnavailableLuxuryResources(galaxy, empire);
         pirateGenerateSellInfoOffers(galaxy, empire);
-        if (empire === galaxy.playerEmpire) {
+        if (isHumanEmpire(galaxy, empire)) {
             updateSystemRefuellingStatus(galaxy, empire);
             checkForStrandedShips(galaxy, empire);
         }
         updateSystemFuelSourceStatus(galaxy, empire);
         reviewPirateSystemInfluence(galaxy, empire);
-        if (empire === galaxy.playerEmpire) {
+        if (isHumanEmpire(galaxy, empire)) {
             updateAchievements(galaxy, empire);
         }
     }

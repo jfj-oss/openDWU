@@ -23,6 +23,7 @@ import { baconSettings } from '../data/baconSettings';
 import { ResourceGroup, resourceGroupOf } from '../resourceSystem';
 import { builtObjectMission, type BuiltObjectMission } from './mission';
 import type { CommandHandler } from './executeCommands';
+import { humanEmpires, isHumanEmpire } from '../humanEmpires';
 
 /** BaconHabitat.cs 378 CheckIfShouldBuildAsteroidColony(bom). BaconBuiltObject.myMain is set in any running game. */
 function checkIfShouldBuildAsteroidColony(galaxy: Galaxy, bom: BuiltObjectMission | null): void {
@@ -32,7 +33,7 @@ function checkIfShouldBuildAsteroidColony(galaxy: Galaxy, bom: BuiltObjectMissio
     if (builtObject === null || targetHabitat === null || targetHabitat.category !== HabitatCategoryType.Asteroid) return;
     const actualEmpire = builtObject.actualEmpire;
     // 386-388
-    if (actualEmpire === null || actualEmpire === galaxy.independentEmpire || actualEmpire.pirateEmpireBaseHabitat !== null || actualEmpire === galaxy.playerEmpire || !preWarpProgressEventOccurred(actualEmpire, PreWarpProgressEventType.FirstHyperjump)) return;
+    if (actualEmpire === null || actualEmpire === galaxy.independentEmpire || actualEmpire.pirateEmpireBaseHabitat !== null || isHumanEmpire(galaxy, actualEmpire) || !preWarpProgressEventOccurred(actualEmpire, PreWarpProgressEventType.FirstHyperjump)) return;
     // 389-392: non-asteroid / asteroid colony counts.
     let num1 = 0;
     let num2 = 0;
@@ -56,9 +57,9 @@ function deployAsteroidColony(galaxy: Galaxy, ship: BuiltObject, asteroid: Habit
         empire.takeOwnershipOfColony(asteroid, empire);
         // PopulationList.Add does not update TotalAmount (see population.ts).
         asteroid.population.add(new Population(ship.nativeRace !== null ? ship.nativeRace : ship.actualEmpire!.dominantRace!, 30000, galaxy));
-        const playerEmpire = galaxy.playerEmpire;
-        if (playerEmpire !== null && ship.empire !== playerEmpire && playerEmpire.resourceMap.checkResourcesKnown(asteroid)) {
-            playerEmpire.resourceMap.setResourcesKnown(asteroid, false);
+        // The C#'s PlayerEmpire: every human empire (humanEmpires.ts).
+        for (const human of humanEmpires(galaxy)) {
+            if (ship.empire !== human && human.resourceMap.checkResourcesKnown(asteroid)) human.resourceMap.setResourcesKnown(asteroid, false);
         }
         if (asteroid.troops === null) asteroid.troops = new TroopList();
         const owner = asteroid.empire!;

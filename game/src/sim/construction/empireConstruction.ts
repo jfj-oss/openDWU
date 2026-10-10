@@ -111,6 +111,7 @@ import { shipGroupAssignMissionFull, shipGroupQueueMission } from '../fleets/shi
 import { baconSettings } from '../data/baconSettings';
 import { lineRetrofitDesign, processDesignLineUpgrades } from '../player/designLineUpgrade'; // [improvements]
 import { scenarioEmit } from '../scenario/hooks';
+import { isHumanEmpire } from '../humanEmpires';
 
 // ---------------------------------------------------------------------------------------------------------------
 // Constants (Galaxy.3.cs 4996-5138 defaults)
@@ -1331,7 +1332,7 @@ export function retrofitBuiltObjects(galaxy: Galaxy, empire: Empire, stateRetrof
     builtObjectList.push(...(empire.privateBuiltObjects as BuiltObject[]));
     const builtObjectList2: BuiltObject[] = [];
     let flag = true;
-    if (empire === galaxy.playerEmpire) flag = false;
+    if (isHumanEmpire(galaxy, empire)) flag = false;
     const policy = empire.policy!;
     if (breakthroughInitiated && policy.researchDesignAutoRetrofit) {
         flag = false;
@@ -1371,7 +1372,7 @@ export function retrofitBuiltObjects(galaxy: Galaxy, empire: Empire, stateRetrof
         } else {
             builtObjectList2.push(...builtObjectList3);
         }
-        if (empire === galaxy.playerEmpire) {
+        if (isHumanEmpire(galaxy, empire)) {
             if (empire.stateMoney >= num2) {
                 // Empire.6.cs 3418-3448: the advisor text lists the components RecentProjects unlocked, then the cost
                 // (num8.ToString("###,###,###,##0")).

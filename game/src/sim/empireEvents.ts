@@ -90,6 +90,7 @@ import { removeNonRaceSpecificProjectTypes, resolveRaceSpecificComponents } from
 import { IndustryType } from './types';
 import { ColonyPopulationPolicy, ComponentCategoryType } from './data/policies';
 import { formatGameTextNow } from './textResolver';
+import { isHumanEmpire } from './humanEmpires';
 
 // ---------------------------------------------------------------------------
 // Race / list / galaxy helpers
@@ -613,7 +614,7 @@ function randomEventUncoverKnownLocations(galaxy: Galaxy, empire: Empire): void 
                     addLocationHint(empire, { x: Math.trunc(item.xpos) + Math.trunc(item.width) / 2 | 0, y: Math.trunc(item.ypos) + Math.trunc(item.height) / 2 | 0 }, locationSubject(item), `Intelligence (intercepted communications of ${empire2.name})`);
                     const additionalData = [empire2, item];
                     sendEventMessageToEmpire(empire, EventMessageType.UncoverPlanetDestroyerConstruction, gameText('Secret Construction Project Revealed'), message, additionalData, relatedBuiltObject);
-                    if (empire === galaxy.playerEmpire) return;
+                    if (isHumanEmpire(galaxy, empire)) return;
                     let flag2 = false;
                     if (empire.pirateEmpireBaseHabitat === null && empire2.pirateEmpireBaseHabitat === null) {
                         const diplomaticRelation2 = obtainDiplomaticRelation(empire, empire2);
@@ -719,7 +720,7 @@ function randomEventUncoverPirateAttackFunding(galaxy: Galaxy, empire: Empire): 
                 const empireEvaluation = obtainEmpireEvaluation(galaxy, empire, empireActivity.requestingEmpire);
                 empireEvaluation.incidentEvaluation = empireEvaluation.incidentEvaluationRaw - 15.0;
                 empireActivity.requestingEmpire!.civilityRating -= 3.0;
-                if (empire !== galaxy.playerEmpire) {
+                if (!isHumanEmpire(galaxy, empire)) {
                     const description = gameText('Uncover Pirate Attack Funding Against Us Threaten', empire2.name);
                     sendMessageToEmpire(empire, empireActivity.requestingEmpire, EmpireMessageType.GeneralWarning, null, description);
                 }
@@ -816,7 +817,7 @@ export function defectFleet(galaxy: Galaxy, empire: Empire, fleet: ShipGroup, ne
     const message = gameText('Rogue Fleet Defects Detail', fleet.name, newEmpire.name);
     const text = gameText('Rogue Fleet Defects!');
     sendEventMessageToEmpire(fleetEmpire, EventMessageType.RogueFleetDefectsFromUs, text, message, newEmpire, fleet.leadShip);
-    if (fleetEmpire !== galaxy.playerEmpire) {
+    if (!isHumanEmpire(galaxy, fleetEmpire)) {
         const description = gameText('Rogue Fleet Defects Warning', fleet.name);
         sendMessageToEmpire(fleetEmpire, newEmpire, EmpireMessageType.GeneralWarning, fleet, description);
     }

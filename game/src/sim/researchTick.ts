@@ -133,6 +133,7 @@ import { registerTodo, todo } from './tick/todo';
 import { galaxyStarDate } from './tick/simTime';
 import { PirateExpenseType } from './pirates/pirateEconomy';
 import { scenarioEmit, scenarioQuery } from './scenario/hooks';
+import { isHumanEmpire } from './humanEmpires';
 
 // ---------------------------------------------------------------------------
 // Small C# semantics helpers
@@ -1603,7 +1604,7 @@ export function initiateCrashResearchProgram(galaxy: Galaxy, empire: Empire, pro
 
 /** Empire.3.cs 3093 DoCrashResearch. */
 export function doCrashResearch(galaxy: Galaxy, empire: Empire): void {
-    if (empire === galaxy.playerEmpire) return;
+    if (isHumanEmpire(galaxy, empire)) return;
     const rs = empire.research;
     let researchNode: TechNode | null = null;
     const researchNodeList: TechNode[] = [];
@@ -1649,6 +1650,6 @@ export function doCrashResearch(galaxy: Galaxy, empire: Empire): void {
         let num3 = empire.stateMoney * 0.7;
         if (empire.difficultyLevel < 1.0) num3 /= empire.difficultyLevel;
         num3 = Math.min(num3, empire.stateMoney);
-        if (num2 <= num3 && empire !== galaxy.playerEmpire && empire.initiateConstruction) initiateCrashResearchProgram(galaxy, empire, researchNode, num2);
+        if (num2 <= num3 && !isHumanEmpire(galaxy, empire) && empire.initiateConstruction) initiateCrashResearchProgram(galaxy, empire, researchNode, num2);
     }
 }

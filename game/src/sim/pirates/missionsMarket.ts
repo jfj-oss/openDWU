@@ -70,6 +70,7 @@ import { PirateIncomeType } from './pirateEconomy';
 import { EmpireActivity, EmpireActivityList, EmpireActivityType, type ActivityTarget } from './empireActivity';
 import { scenarioQuery } from '../scenario/hooks';
 import { crisesBlocksSmuggleOffer, crisesOn, crisisSmuggleCap, empireHasColonyCrisis } from '../scenario/emergent/crisesCore';
+import { isHumanEmpire } from '../humanEmpires';
 
 export { EmpireActivity, EmpireActivityList, EmpireActivityType };
 
@@ -942,7 +943,7 @@ export function makeSmugglingOffersToPirates(galaxy: Galaxy, empire: Empire, sta
     const { deficientColony, deficientResourceId, deficientResourceCount } = identifyResourceDeficientColony(galaxy, empire);
     if (deficientColony === null) return;
     // 19d2 AI rule 3 (scenario flag): no smuggling offer for a resource the empire exports to a partner in crisis.
-    if (galaxy.scenario !== null && deficientResourceCount === 1 && empire !== galaxy.playerEmpire && crisesBlocksSmuggleOffer(galaxy, empire, deficientResourceId)) return;
+    if (galaxy.scenario !== null && deficientResourceCount === 1 && !isHumanEmpire(galaxy, empire) && crisesBlocksSmuggleOffer(galaxy, empire, deficientResourceId)) return;
     let num2 = 1.0;
     if (deficientResourceCount === 1) num2 = calculatePirateSmugglePricePerUnit(galaxy, empire, deficientColony, deficientResourceId);
     const num3 = num2 * 500.0;

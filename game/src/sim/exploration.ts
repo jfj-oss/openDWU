@@ -77,6 +77,7 @@ import { baconSettings } from './data/baconSettings';
 import { formatGameTextNow, formatNet, tryGetText } from './textResolver';
 import { generateIndependentColonyReport, generateRaceReport } from './galaxyReports';
 import { resolveTechBonusFactor } from './combat/attackAI';
+import { isHumanEmpire } from './humanEmpires';
 
 // ---------------------------------------------------------------------------------------------------------------
 // Constants
@@ -453,7 +454,7 @@ export function mergeGalaxyMap(galaxy: Galaxy, giver: Empire | null, receiver: E
             if (builtObject != null && !builtObject.hasBeenDestroyed && !receiver.knownPirateBases.includes(builtObject)) receiver.knownPirateBases.push(builtObject);
         }
     }
-    if (receiver === galaxy.playerEmpire) {
+    if (isHumanEmpire(galaxy, receiver)) {
         reviewEmpireTerritory(galaxy, true);
     }
 }
@@ -1260,7 +1261,7 @@ export function investigateRuins(galaxy: Galaxy, investigatingEmpire: Empire | n
                 text += text6;
                 text += formatGameTextNow('Ruins Secret Form of Government Revealed Adoption');
                 sendEventMessageToEmpire(investigatingEmpire, EventMessageType.SpecialGovernmentType, empty, text, ruin, ruinsHabitat);
-                if (investigatingEmpire === galaxy.playerEmpire) break;
+                if (isHumanEmpire(galaxy, investigatingEmpire)) break;
                 const governmentAttributesList = determineMostSuitableGovernmentTypes(galaxy, investigatingEmpire.dominantRace!, investigatingEmpire.allowableGovernmentTypes);
                 if (governmentAttributesList != null && governmentAttributesList.length > 0) {
                     const governmentId = governmentAttributesList[0].governmentId;

@@ -82,6 +82,7 @@ import { facilitiesFindBestPirateFacility } from './construction/facilities';
 import { baconSettings } from './data/baconSettings';
 import { formatGameTextNow } from './textResolver';
 import { scenarioQuery } from './scenario/hooks';
+import { isHumanEmpire } from './humanEmpires';
 
 const f32 = Math.fround;
 
@@ -440,7 +441,7 @@ export function baconClockRnd(galaxy: Galaxy): Random {
  * game, so its null early-outs are taken as not null.
  */
 export function baconHabitatHugeProcessingSpanActions(galaxy: Galaxy, planet: Habitat): void {
-    if (planet.empire !== null && planet.empire === galaxy.playerEmpire) {
+    if (planet.empire !== null && isHumanEmpire(galaxy, planet.empire)) {
         // BaconHabitat.HandlePlayerPrisoners (575) — M4q.
         baconHabitatHandlePrisoners(galaxy, planet, true);
     } else if (planet.empire !== null && planet.empire !== galaxy.independentEmpire) {

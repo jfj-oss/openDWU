@@ -35,6 +35,7 @@ import { identifyMechanoidEmpire, warnOfIncomingEnemyFleetsAndPlanetDestroyers }
 import { getBuiltObjectsAtLocation } from '../stationPlacement';
 import { drainCommandBoundary, enterSimFrame, leaveSimFrame } from './commandBoundary';
 import { ensurePlayerInbox, playerMessagesFrameEnd } from '../playerMessages';
+import { humanEmpires } from '../humanEmpires';
 
 /**
  * Optional per-pass timer (harness `profile`): accumulated wall ms per frame-driver pass. The wall clock is injected
@@ -294,8 +295,9 @@ function backgroundPass(galaxy: Galaxy, state: SchedulerState, time: number, sta
     for (let i = 0; i < galaxy.empires.length; i++) {
         const empire2 = galaxy.empires[i];
         if (empire2 != null) {
-            if (empire2 !== galaxy.playerEmpire) {
-                warnOfIncomingEnemyFleetsAndPlanetDestroyers(galaxy, empire2, galaxy.playerEmpire);
+            // `empire2 != PlayerEmpire` → warn the player: every human empire (humanEmpires.ts).
+            for (const human of humanEmpires(galaxy)) {
+                if (empire2 !== human) warnOfIncomingEnemyFleetsAndPlanetDestroyers(galaxy, empire2, human);
             }
             if (empire !== null && empire2 !== empire) {
                 warnOfIncomingEnemyFleetsAndPlanetDestroyers(galaxy, empire2, empire);

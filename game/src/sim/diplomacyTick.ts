@@ -100,6 +100,7 @@ import { scenarioEmit, scenarioQuery } from './scenario/hooks';
 import { scenarioFlag } from './scenario/state';
 import { isRimTraderAI, rimTraderRefusesProposal, scenarioWarBlocked } from './scenario/rimTrade/common';
 import { formatNet, tryGetText } from './textResolver';
+import { isHumanEmpire } from './humanEmpires';
 
 // ---------------------------------------------------------------------------------------------------------------
 // Constants (Galaxy.3.cs 4990-5140 InitializeStatics; BaconEmpire.cs statics with their default settings).
@@ -409,7 +410,7 @@ export function checkTaskAuthorized(
                 break;
             }
             // 4408: _AutomationResponse = Undefined (UI handshake field; not modelled).
-            if (self === galaxy.playerEmpire) {
+            if (isHumanEmpire(galaxy, self)) {
                 // 4411-4450
                 refusalCount.value++;
                 const empireMessage = new EmpireMessage(self, EmpireMessageType.AdvisorSuggestion, taskTarget);
@@ -2694,7 +2695,7 @@ export function changeDiplomaticRelation(
                 if (r7 != null && r7.type === DiplomaticRelationType.War) continue;
             }
             const ally = r6.otherEmpire!;
-            if (ally === galaxy.playerEmpire) {
+            if (isHumanEmpire(galaxy, ally)) {
                 sendMessageToEmpire(other2, ally, EmpireMessageType.RequestHonorMutualDefense, self, formatText(getText('We are under attack from the EMPIRE'), self.name));
                 continue;
             }
@@ -2776,8 +2777,8 @@ export function declareWar(galaxy: Galaxy, self: Empire, target: Empire | null, 
         sendAttackFleets(galaxy, target, self);
         if (diplomaticRelation2.warObjective === WarObjective.CaptureObjectives) setDefendFleets(galaxy, target, false, true);
         else setDefendFleets(galaxy, target, true, true);
-        if ((self !== galaxy.playerEmpire || self.controlMilitaryAttacks === FULLY_AUTOMATED) && diplomaticRelation.warObjective !== WarObjective.CaptureObjectives) identifyMilitaryObjectives(galaxy, self);
-        if (target !== galaxy.playerEmpire && diplomaticRelation2.warObjective !== WarObjective.CaptureObjectives) identifyMilitaryObjectives(galaxy, target);
+        if ((!isHumanEmpire(galaxy, self) || self.controlMilitaryAttacks === FULLY_AUTOMATED) && diplomaticRelation.warObjective !== WarObjective.CaptureObjectives) identifyMilitaryObjectives(galaxy, self);
+        if (!isHumanEmpire(galaxy, target) && diplomaticRelation2.warObjective !== WarObjective.CaptureObjectives) identifyMilitaryObjectives(galaxy, target);
         reviewDefensiveFleetLocations(galaxy, self);
         if (galaxy.scenario !== null) scenarioEmit(galaxy, 'warDeclared', { empire: self, target }); // mod layer
     } else if (lockedWar) {
@@ -3002,7 +3003,7 @@ export function processMessages(galaxy: Galaxy, empire: Empire): void {
         const subject = empireMessage.subject;
         switch (empireMessage.messageType) {
             case EmpireMessageType.RemoveForcesFromSystem:
-                if (self !== galaxy.playerEmpire) removeMilitaryForcesFromSystem(galaxy, self, subject as Habitat, sender!);
+                if (!isHumanEmpire(galaxy, self)) removeMilitaryForcesFromSystem(galaxy, self, subject as Habitat, sender!);
                 break;
             case EmpireMessageType.CancelPirateProtection:
                 if (self.pirateEmpireBaseHabitat !== null && sender !== null) {
@@ -3020,7 +3021,7 @@ export function processMessages(galaxy: Galaxy, empire: Empire): void {
                 }
                 break;
             case EmpireMessageType.SellInfoUnmetEmpire: {
-                if (self === galaxy.playerEmpire || self.pirateEmpireBaseHabitat !== null || galaxy.rnd.next(0, 2) !== 1 || !checkSufficientFunds(self, empireMessage.money, 0.2) || !(isEmpire(subject))) break;
+                if (isHumanEmpire(galaxy, self) || self.pirateEmpireBaseHabitat !== null || galaxy.rnd.next(0, 2) !== 1 || !checkSufficientFunds(self, empireMessage.money, 0.2) || !(isEmpire(subject))) break;
                 empire1 = subject as Empire;
                 let num3 = 0;
                 for (let j = 0; j < self.diplomaticRelations.count; j++) {
@@ -3042,7 +3043,7 @@ export function processMessages(galaxy: Galaxy, empire: Empire): void {
                 break;
             }
             case EmpireMessageType.SellInfoSystemMap: {
-                if (self === galaxy.playerEmpire || self.pirateEmpireBaseHabitat !== null || galaxy.rnd.next(0, 2) !== 1 || !checkSufficientFunds(self, empireMessage.money, 0.1) || !(subject instanceof Habitat)) break;
+                if (isHumanEmpire(galaxy, self) || self.pirateEmpireBaseHabitat !== null || galaxy.rnd.next(0, 2) !== 1 || !checkSufficientFunds(self, empireMessage.money, 0.1) || !(subject instanceof Habitat)) break;
                 const habitat4 = subject;
                 let num11 = 0;
                 for (let k = 0; k < self.diplomaticRelations.count; k++) {
@@ -3058,7 +3059,7 @@ export function processMessages(galaxy: Galaxy, empire: Empire): void {
                 break;
             }
             case EmpireMessageType.SellInfoIndependentColony:
-                if (self !== galaxy.playerEmpire && galaxy.rnd.next(0, 2) === 1 && checkSufficientFunds(self, empireMessage.money, 0.2) && subject instanceof Habitat) {
+                if (!isHumanEmpire(galaxy, self) && galaxy.rnd.next(0, 2) === 1 && checkSufficientFunds(self, empireMessage.money, 0.2) && subject instanceof Habitat) {
                     if (self.colonies.length < 8) {
                         self.systemVisibility[subject.systemIndex].status = SystemVisibilityStatus.Explored;
                         self.stateMoney -= empireMessage.money;
@@ -3068,7 +3069,7 @@ export function processMessages(galaxy: Galaxy, empire: Empire): void {
                 }
                 break;
             case EmpireMessageType.SellInfoRuins:
-                if (self !== galaxy.playerEmpire && galaxy.rnd.next(0, 2) === 1 && checkSufficientFunds(self, empireMessage.money, 0.2) && subject instanceof Habitat) {
+                if (!isHumanEmpire(galaxy, self) && galaxy.rnd.next(0, 2) === 1 && checkSufficientFunds(self, empireMessage.money, 0.2) && subject instanceof Habitat) {
                     self.systemVisibility[subject.systemIndex].status = SystemVisibilityStatus.Explored;
                     self.stateMoney -= empireMessage.money;
                     sender!.stateMoney += empireMessage.money;
@@ -3078,7 +3079,7 @@ export function processMessages(galaxy: Galaxy, empire: Empire): void {
             case EmpireMessageType.SellInfoDebrisField:
             case EmpireMessageType.SellInfoRestrictedArea:
             case EmpireMessageType.SellInfoPlanetDestroyer:
-                if (self !== galaxy.playerEmpire && galaxy.rnd.next(0, 2) === 1 && checkSufficientFunds(self, empireMessage.money, 0.2) && subject instanceof GalaxyLocation) {
+                if (!isHumanEmpire(galaxy, self) && galaxy.rnd.next(0, 2) === 1 && checkSufficientFunds(self, empireMessage.money, 0.2) && subject instanceof GalaxyLocation) {
                     if (!self.visibility.knownGalaxyLocations.includes(subject)) self.visibility.knownGalaxyLocations.push(subject);
                     self.stateMoney -= empireMessage.money;
                     sender!.stateMoney += empireMessage.money;
@@ -3086,7 +3087,7 @@ export function processMessages(galaxy: Galaxy, empire: Empire): void {
                 }
                 break;
             case EmpireMessageType.OfferTrade: {
-                if (self === galaxy.playerEmpire) break;
+                if (isHumanEmpire(galaxy, self)) break;
                 if (Array.isArray(subject)) {
                     // Empire.3.cs 4384-4418: object[] { offered TradeableItemList, requested TradeableItemList }.
                     processTradeDealMessage(galaxy, self, sender!, subject[0] as TradeableItem[], subject[1] as TradeableItem[]);

@@ -25,6 +25,7 @@ import { checkForPlanetDestroyerWeaponFiringDelayOnHyperExit } from './weapons';
 import { updatePosition } from '../movement';
 import { scenarioEmit } from '../scenario/hooks';
 import { battleReportHooks } from '../battleReports/hooks';
+import { isHumanEmpire } from '../humanEmpires';
 
 /** Galaxy.3.cs 4959 IndexSize (galaxy.ts / movement.ts keep private copies). */
 const INDEX_SIZE = 400_000;
@@ -422,7 +423,7 @@ export function cleanupInvalidShips(galaxy: Galaxy, empire: Empire): void {
         const builtObject = builtObjectList2[i];
         if (builtObject == null || builtObject.inView || !builtObject.isAutoControlled) continue;
         if (builtObject.hasBeenDestroyed) builtObjectList.push(builtObject);
-        if (builtObject.owner !== null && builtObject.owner === galaxy.playerEmpire && !builtObject.hasBeenDestroyed) continue;
+        if (builtObject.owner !== null && isHumanEmpire(galaxy, builtObject.owner) && !builtObject.hasBeenDestroyed) continue;
         if (!builtObject.isFunctional && builtObject.builtAt === null && builtObject.role !== BuiltObjectRole.Base) builtObjectList.push(builtObject);
         if (builtObject.role !== BuiltObjectRole.Base && builtObject.builtAt === null && builtObject.topSpeed <= 0) builtObjectList.push(builtObject);
         if (builtObject.dockingBays !== null && builtObject.dockingBays.length > 0) {

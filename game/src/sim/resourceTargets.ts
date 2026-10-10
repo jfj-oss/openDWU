@@ -34,6 +34,7 @@ import { determineDefendingFirepower } from './pirates/pirateEmpireAI';
 import { obtainPirateRelation, PirateRelationType } from './pirateRelations';
 import { BuiltObjectRole } from './data/designSpecifications';
 import type { BuiltObject } from './builtObject';
+import { isHumanEmpire } from './humanEmpires';
 
 // Galaxy.MaxSolarSystemSize (Galaxy.3.cs InitializeStatics).
 const MAX_SOLAR_SYSTEM_SIZE = 23000;
@@ -201,7 +202,7 @@ export function checkEmpireTerritoryCanBuildAtHabitat(galaxy: Galaxy, empire: Em
         // Galaxy.cs 3665 → BaconGalaxy.cs 157 CheckEmpireTerritoryCanBuildAtHabitat: buildAnywhere (false) ||
         // (empire == PlayerEmpire && DetermineDefendingFirepower(habitat, empire) > 300) (Galaxy.6.cs 4696).
         const buildAnywhere = false;
-        return buildAnywhere || (empire === galaxy.playerEmpire && determineDefendingFirepower(galaxy, habitat, empire) > 300);
+        return buildAnywhere || (isHumanEmpire(galaxy, empire) && determineDefendingFirepower(galaxy, habitat, empire) > 300);
     }
     return true;
 }
