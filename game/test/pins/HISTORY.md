@@ -289,3 +289,8 @@ Appended by `npm run repin -- --reason "<why>"` (scripts/repin.mjs).
 - `landscapeRefs.seed1SaveWithoutLandscapes` (test/landscapePictureRefs.test.ts): Moved #47ed84cdb0 → #2f99c2bee0: galaxy long block clears the independent empire's never-processed message inbox (leak fix; only Empire.messages.length in the digest and the saved list change, RNG draws unchanged)
 - `tickDeterminism.digest120` (test/tickDeterminism.test.ts): Moved "8dd9c58d04b0fb29" → "22a49ab2e7653a71": galaxy long block clears the independent empire's never-processed message inbox (leak fix; only Empire.messages.length in the digest and the saved list change, RNG draws unchanged)
 - `tickDeterminism.digest600` (test/tickDeterminism.test.ts): Moved "941f2dd4ba1f5a6b" → "761ec1d601c110d5": galaxy long block clears the independent empire's never-processed message inbox (leak fix; only Empire.messages.length in the digest and the saved list change, RNG draws unchanged)
+
+## 2026-10-10 — saves carry the stable command ref ids (entityRefs.ts refId / Galaxy.nextEntityRefId); sim state and digests unchanged
+
+- `pictureRefs.seed1SaveWithoutPictures` (test/habitatPictureRefs.test.ts): Moved #99a907b837 → #a16c2f865d: saves carry the stable command ref ids (entityRefs.ts refId / Galaxy.nextEntityRefId); sim state and digests unchanged
+- `landscapeRefs.seed1SaveWithoutLandscapes` (test/landscapePictureRefs.test.ts): Moved #2f99c2bee0 → #ae75f0c349: saves carry the stable command ref ids (entityRefs.ts refId / Galaxy.nextEntityRefId); sim state and digests unchanged
