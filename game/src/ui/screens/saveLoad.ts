@@ -661,13 +661,18 @@ export function createSaveLoadPanel(mode: 'save' | 'load', wiring: SavePanelWiri
     }
 
     async function doDownloadNow(name: string): Promise<void> {
-        const saveText = (await serialize?.()) ?? null;
-        if (saveText === null) {
-            showToast('Nothing to download yet');
-            return;
+        try {
+            const saveText = (await serialize?.()) ?? null;
+            if (saveText === null) {
+                showToast('Nothing to download yet');
+                return;
+            }
+            await downloadSaveFile(name, saveText);
+            showToast(`Downloading ${name}${SAVE_FILE_EXTENSION}`);
+        } catch (err) {
+            console.error('Failed to download save', err);
+            showToast(`Could not download that save: ${loadErrorReason(err)}`, 12000);
         }
-        await downloadSaveFile(name, saveText);
-        showToast(`Downloading ${name}${SAVE_FILE_EXTENSION}`);
     }
 
     async function doLoadByName(name: string): Promise<void> {
@@ -811,13 +816,18 @@ export function createSaveLoadPanel(mode: 'save' | 'load', wiring: SavePanelWiri
     async function exportSelected(): Promise<void> {
         const e = loadGrid.selected;
         if (!e) return;
-        const saveText = await saveTextFor(e.name);
-        if (saveText === null) {
-            showToast(`Save "${e.name}" not found`);
-            return;
+        try {
+            const saveText = await saveTextFor(e.name);
+            if (saveText === null) {
+                showToast(`Save "${e.name}" not found`);
+                return;
+            }
+            showToast(`Exporting ${e.name}${SAVE_FILE_EXTENSION}`);
+            await downloadSaveFile(e.name, saveText); // (an older, uncompressed save is compressed first)
+        } catch (err) {
+            console.error('Failed to export save', err);
+            showToast(`Could not export that save: ${loadErrorReason(err)}`, 12000);
         }
-        showToast(`Exporting ${e.name}${SAVE_FILE_EXTENSION}`);
-        await downloadSaveFile(e.name, saveText); // (an older, uncompressed save is compressed first)
     }
 
     function deleteSelected(): void {
