@@ -275,7 +275,7 @@ export function doppelgangersEndCheck(galaxy: Galaxy, st: DoppelgangersState): v
     arcNews(galaxy, st.sentStages, { prefix: TAG, stage: 'Contained' });
     st.ended = true;
     const player = galaxy.playerEmpire;
-    if (player !== null) threatGameEnd(galaxy, player, GameEndOutcome.Victory, scenarioText(`${TAG} Victory Title`), DOPPELGANGERS_CODE_CONTAINED);
+    if (player !== null) threatGameEnd(galaxy, player, GameEndOutcome.Victory, scenarioText(`${TAG} Victory Title`), DOPPELGANGERS_CODE_CONTAINED, true);
 }
 
 // ---------------------------------------------------------------------------------------------------------------

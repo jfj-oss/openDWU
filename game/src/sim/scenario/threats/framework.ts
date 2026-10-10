@@ -24,7 +24,7 @@ import { declareWar } from '../../diplomacyTick';
 import { DiplomaticRelationType, obtainDiplomaticRelation } from '../../diplomacy';
 import { empireCompleteTeardown } from '../../events';
 import { EmpireMessageType } from '../../messages';
-import { GameEndEventArgs, GameEndOutcome, onGameEnd } from '../../victory';
+import { GameEndEventArgs, GameEndOutcome, humansGameEnd, onGameEnd, threatsContainedGameEnd } from '../../victory';
 import { BuiltObjectRole } from '../../data/designSpecifications';
 import { Random } from '../../random';
 import { startStarDateForAge } from '../../galaxyTime';
@@ -37,6 +37,7 @@ import type { Character, StellarObject } from '../../characters';
 import { getEmpireCharacters } from '../../characters';
 import { GalaxyLocation } from '../../galaxyLocation';
 import { mirrorPackageDiscovery } from '../security/registry';
+import { isHumanEmpire, isMultiHuman } from '../../humanEmpires';
 
 // ---------------------------------------------------------------------------------------------------------------
 // Hidden state
@@ -522,7 +523,15 @@ export function arcNews(galaxy: Galaxy, sent: SentStages, spec: ArcMessageSpec):
  * Ends the game (Galaxy.cs 1274 OnGameEnd; victory.ts onGameEnd) with a threat's code (19b: 1901 containment, 1902
  * defeat; 19f: 1911… defeat, +100 victory). `outcome` is the player's.
  */
-export function threatGameEnd(galaxy: Galaxy, victor: Empire | null, outcome: GameEndOutcome, description: string, code: number): void {
+// Multiplayer (decision §4.1): a threat's Defeat defeats every human; its Victory goes to `victor` when a human (none:
+// Defeat for all) — or, with `shared` (a threat contained, the sites that pass "the player"), to every human still
+// playing. With one human: OnGameEnd, as before.
+export function threatGameEnd(galaxy: Galaxy, victor: Empire | null, outcome: GameEndOutcome, description: string, code: number, shared = false): void {
+    if (isMultiHuman(galaxy)) {
+        if (outcome === GameEndOutcome.Victory && shared) threatsContainedGameEnd(galaxy, description, code);
+        else humansGameEnd(galaxy, victor, outcome === GameEndOutcome.Victory && isHumanEmpire(galaxy, victor) ? [victor!] : [], description, code);
+        return;
+    }
     onGameEnd(galaxy, new GameEndEventArgs(victor, outcome, description, code));
 }
 

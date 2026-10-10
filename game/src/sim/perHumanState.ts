@@ -36,6 +36,9 @@ export interface PerHumanState {
     smuggling: Map<Empire, Map<EmpireActivity, [number, number]>>;
     /** Each non-primary human's location-hint subjects (player/hintSubjects.ts' table). */
     hintSubjects: Map<Empire, Record<string, unknown>>;
+    /** Multiplayer game end (victory.ts, decision §4.1): each human's outcome once decided (GameEndOutcome), the
+     *  primary's included. Absent: still playing. */
+    outcomes?: Map<Empire, number>;
 }
 
 const states = new WeakMap<Galaxy, PerHumanState>();
@@ -179,10 +182,23 @@ export function perHumanHintSubjects(galaxy: Galaxy): Map<Empire, Record<string,
     return stateOf(galaxy).hintSubjects;
 }
 
+// ---- the multiplayer game end (victory.ts) ----
+
+/** `empire`'s decided outcome (a GameEndOutcome), or undefined while it plays on (and always in a one-human game). */
+export function humanOutcome(galaxy: Galaxy, empire: Empire | null | undefined): number | undefined {
+    return empire == null ? undefined : states.get(galaxy)?.outcomes?.get(empire);
+}
+
+/** Record `empire`'s outcome (multiplayer only; victory.ts). */
+export function setHumanOutcome(galaxy: Galaxy, empire: Empire, outcome: number): void {
+    const s = stateOf(galaxy);
+    (s.outcomes ??= new Map()).set(empire, outcome);
+}
+
 // ---- save / sync ----
 
 function isEmpty(s: PerHumanState): boolean {
-    return s.ruins.size === 0 && s.actions.size === 0 && s.initialActions.size === 0 && s.messageOptions.size === 0 && s.achievements.size === 0 && s.smuggling.size === 0 && s.hintSubjects.size === 0;
+    return (s.outcomes?.size ?? 0) === 0 && s.ruins.size === 0 && s.actions.size === 0 && s.initialActions.size === 0 && s.messageOptions.size === 0 && s.achievements.size === 0 && s.smuggling.size === 0 && s.hintSubjects.size === 0;
 }
 
 /** What the save writes: the state, or undefined (no key) while nothing is in it — every one-human game. */

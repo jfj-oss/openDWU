@@ -49,6 +49,8 @@ import { habitatCompareTo } from './stationPlacement';
 import { LONG_MAX_VALUE, type DiplomacyCounters } from './diplomacy';
 import type { VictoryConditions as WizardVictoryConditions } from './startGameOptions';
 import type { TechNode } from './researchSystem';
+import { humanEmpires } from './humanEmpires';
+import { humanOutcome, setHumanOutcome } from './perHumanState';
 import { reviewAchievements } from './achievements';
 import type { Troop } from './cargo';
 import { decimateEmpire } from './story/freedomAlliance';
@@ -854,6 +856,94 @@ export function checkVictoryConditions(galaxy: Galaxy, playerEmpire: Empire | nu
     }
     if (checkEmpireVictoryConditionsToPrevent(galaxy, playerConditionsToPrevent, playerEmpire)) {
         onGameEnd(galaxy, new GameEndEventArgs(null, GameEndOutcome.Defeat, description, 0));
+    }
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// Multiplayer (docs/MULTIPLAYER.md decision §4.1): the game end with more than one human. Not in the C#.
+// - Each human's victory conditions are checked; the first human to meet them wins and the game ends for everyone
+//   (Victory for the winner, Defeat for the other humans).
+// - A human whose empire is wiped out is defeated and watches as a spectator; the game ends when no human is left.
+// - A contained global threat is a shared Victory for every human still playing (threatsContainedGameEnd).
+// Each human's outcome is kept in perHumanState.ts (humanOutcome); GameEndEventArgs.outcomeForPlayer is the primary
+// human's, and the UI shows its local viewer's. Only ever runs with more than one human (isMultiHuman).
+// ---------------------------------------------------------------------------------------------------------------
+
+/** The humans still playing (not defeated). */
+export function humansStillPlaying(galaxy: Galaxy): Empire[] {
+    return humanEmpires(galaxy).filter((h) => humanOutcome(galaxy, h) === undefined);
+}
+
+/** End the game for every human: Victory for `winners`, Defeat for the other humans still playing. */
+export function humansGameEnd(galaxy: Galaxy, victor: Empire | null, winners: readonly Empire[], description: string, code: number): void {
+    for (const h of humanEmpires(galaxy)) {
+        if (winners.includes(h)) setHumanOutcome(galaxy, h, GameEndOutcome.Victory);
+        else if (humanOutcome(galaxy, h) === undefined) setHumanOutcome(galaxy, h, GameEndOutcome.Defeat);
+    }
+    const primary = galaxy.playerEmpire;
+    const forPrimary = primary !== null && humanOutcome(galaxy, primary) === GameEndOutcome.Victory ? GameEndOutcome.Victory : GameEndOutcome.Defeat;
+    onGameEnd(galaxy, new GameEndEventArgs(victor, forPrimary, description, code));
+}
+
+/** A human's empire was wiped out: that human is defeated (a spectator from now on); the game ends when none is left. */
+export function humanDefeated(galaxy: Galaxy, e: GameEndEventArgs, human: Empire): void {
+    if (humanOutcome(galaxy, human) !== undefined) return;
+    setHumanOutcome(galaxy, human, GameEndOutcome.Defeat);
+    if (humansStillPlaying(galaxy).length === 0) humansGameEnd(galaxy, e.victorEmpire, [], e.description, e.code);
+}
+
+/** A contained global threat (the threat add-ons' Victory, decision §4.1): a shared Victory for every human still playing. */
+export function threatsContainedGameEnd(galaxy: Galaxy, description: string, code: number): void {
+    const winners = humansStillPlaying(galaxy);
+    humansGameEnd(galaxy, winners[0] ?? null, winners, description, code);
+}
+
+/** checkVictoryConditions for more than one human (see the block comment). */
+export function checkVictoryConditionsHumans(galaxy: Galaxy, args: GalaxyVictoryArgs | null = null): void {
+    const globalVictoryConditions = args?.globalVictoryConditions ?? null;
+    const currentStarDate = galaxyStarDate(galaxy);
+    let num = currentStarDate;
+    if (globalVictoryConditions !== null && globalVictoryConditions.startDate > 0) num = globalVictoryConditions.startDate;
+    if (currentStarDate < num) return;
+    const playing = humansStillPlaying(galaxy);
+    if (globalVictoryConditions !== null) {
+        // Time limit: the playable empire with the highest TotalColonyStrategicValue wins.
+        if (globalVictoryConditions.timeLimit && currentStarDate >= globalVictoryConditions.timeLimitDate) {
+            let empire: Empire | null = null;
+            let num2 = 0;
+            for (const e of galaxy.empires) {
+                if (totalColonyStrategicValue(e) > num2 && e.dominantRace !== null && e.dominantRace.playable) {
+                    empire = e;
+                    num2 = totalColonyStrategicValue(e);
+                }
+            }
+            if (empire !== null) {
+                const won = playing.includes(empire);
+                const description = won
+                    ? formatText(getText('Victory Conditions Time Limit Win'), resolveStarDateDescription(globalVictoryConditions.timeLimitDate))
+                    : formatText(getText('Victory Conditions Time Limit Lose'), resolveStarDateDescription(globalVictoryConditions.timeLimitDate), empire.name);
+                humansGameEnd(galaxy, empire, won ? [empire] : [], description, 0);
+                return;
+            }
+        }
+        // The global conditions name one winner (no "You": the texts are read by every human).
+        const r = checkGlobalVictoryConditions(galaxy, null, globalVictoryConditions);
+        if (r.empire !== null) {
+            humansGameEnd(galaxy, r.empire, playing.includes(r.empire) ? [r.empire] : [], r.description, r.code);
+            return;
+        }
+    }
+    // Each human's own conditions (scenario-only, as the C#'s player conditions): the first to meet them wins; one that
+    // has to prevent its conditions and fails is defeated.
+    for (const h of playing) {
+        if (checkEmpireVictoryConditionsToAchieve(galaxy, args?.playerConditionsToAchieve ?? null, h)) {
+            humansGameEnd(galaxy, h, [h], '', 0);
+            return;
+        }
+        if (checkEmpireVictoryConditionsToPrevent(galaxy, args?.playerConditionsToPrevent ?? null, h)) {
+            humanDefeated(galaxy, new GameEndEventArgs(null, GameEndOutcome.Defeat, '', 0), h);
+            if (galaxy.gameIsFinished) return;
+        }
     }
 }
 

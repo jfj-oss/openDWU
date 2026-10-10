@@ -279,7 +279,7 @@ export function greyTideEndCheck(galaxy: Galaxy, st: GreyTideState): void {
     arcNews(galaxy, st.sentStages, { prefix: TAG, stage: 'Contained' });
     st.ended = true;
     const player = galaxy.playerEmpire;
-    if (player !== null) threatGameEnd(galaxy, player, GameEndOutcome.Victory, scenarioText(`${TAG} Victory Title`), GREY_TIDE_CODE_CONTAINED);
+    if (player !== null) threatGameEnd(galaxy, player, GameEndOutcome.Victory, scenarioText(`${TAG} Victory Title`), GREY_TIDE_CODE_CONTAINED, true);
 }
 
 // ---------------------------------------------------------------------------------------------------------------

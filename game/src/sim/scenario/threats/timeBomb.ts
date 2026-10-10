@@ -576,7 +576,7 @@ function contain(galaxy: Galaxy, st: TimeBombState, stage: string, fireGameEnd: 
     if (fireGameEnd && !threatsGameEndOn(galaxy)) return;
     st.ended = true;
     st.outcome = 'contained';
-    if (fireGameEnd) threatGameEnd(galaxy, galaxy.playerEmpire, GameEndOutcome.Victory, scenarioText(`${TAG} Victory Title`), TIME_BOMB_CODE_CONTAINED);
+    if (fireGameEnd) threatGameEnd(galaxy, galaxy.playerEmpire, GameEndOutcome.Victory, scenarioText(`${TAG} Victory Title`), TIME_BOMB_CODE_CONTAINED, true);
 }
 
 function endCheck(galaxy: Galaxy, st: TimeBombState): void {

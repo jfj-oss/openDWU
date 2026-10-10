@@ -699,7 +699,7 @@ function checkDefused(galaxy: Galaxy, st: RobotMutinyState): void {
     arcNews(galaxy, st.sentStages, { prefix: TAG, stage: 'Defused', args: [st.source.name] });
     if (threatsGameEndOn(galaxy)) {
         st.ended = true;
-        threatGameEnd(galaxy, galaxy.playerEmpire, GameEndOutcome.Victory, scenarioText(`${TAG} Victory Title`), ROBOT_MUTINY_CODE_CONTAINED);
+        threatGameEnd(galaxy, galaxy.playerEmpire, GameEndOutcome.Victory, scenarioText(`${TAG} Victory Title`), ROBOT_MUTINY_CODE_CONTAINED, true);
     }
 }
 
@@ -752,7 +752,7 @@ export function mutinyPeriodic(galaxy: Galaxy): void {
         arcNews(galaxy, st.sentStages, { prefix: TAG, stage: 'Contained' });
         if (threatsGameEndOn(galaxy)) {
             st.ended = true;
-            threatGameEnd(galaxy, galaxy.playerEmpire, GameEndOutcome.Victory, scenarioText(`${TAG} Victory Title`), ROBOT_MUTINY_CODE_CONTAINED);
+            threatGameEnd(galaxy, galaxy.playerEmpire, GameEndOutcome.Victory, scenarioText(`${TAG} Victory Title`), ROBOT_MUTINY_CODE_CONTAINED, true);
         }
     }
 }

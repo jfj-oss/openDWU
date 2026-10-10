@@ -37,11 +37,11 @@ import { BuiltObject } from './builtObject';
 import { Habitat } from './types';
 import { EventMessageType } from './eventTypes';
 import { galaxyStarDate } from './tick/simTime';
-import { onGameEnd } from './victory';
+import { humanDefeated, onGameEnd } from './victory';
 import { addAdvisorSuggestion, expireOldAdvisorSuggestions, receiveAdvisorSuggestionMessage } from './advisorQueue';
 import { MessageCategory, galaxyMessageOptions, playerDefeatGameEnd, routeEmpireMessage, shouldQueueConversation, tickerShown, type MessageOptions, type MessageRoute } from './messageRouting';
 import { withSimWrites } from './readOnlyQuery';
-import { humanEmpires } from './humanEmpires';
+import { humanEmpires, isMultiHuman } from './humanEmpires';
 import { humanMessageOptions } from './perHumanState';
 
 export type { QueuedEvent } from './messages';
@@ -165,7 +165,11 @@ export function receivePlayerMessage(galaxy: Galaxy, player: Empire, m: EmpireMe
     if (receiveAdvisorSuggestionMessage(player, m)) return { message: m, advisor: true, route: null, action: 'none', ticker: false };
     const route = routeEmpireMessage(m, player, options);
     const defeat = playerDefeatGameEnd(m, player, galaxy.empires);
-    if (defeat !== null) onGameEnd(galaxy, defeat);
+    // Multiplayer: a wiped-out human is defeated and watches; the game ends when no human is left (decision §4.1).
+    if (defeat !== null) {
+        if (isMultiHuman(galaxy)) humanDefeated(galaxy, defeat, player);
+        else onGameEnd(galaxy, defeat);
+    }
     const starDate = galaxyStarDate(galaxy);
     // Port-only: a popup message keeps the date it arrived for its stub (messageStubList.ts), when it has none.
     if (route.popup && m.starDate <= 0) m.starDate = starDate;

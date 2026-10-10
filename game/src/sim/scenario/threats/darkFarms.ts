@@ -72,7 +72,7 @@ import {
     type SentStages,
     type ThreatKnowledge,
 } from './framework';
-import { isHumanEmpire } from '../../humanEmpires';
+import { humanEmpires, isHumanEmpire, isMultiHuman } from '../../humanEmpires';
 
 export const DARK_FARMS_KEY = 'darkFarms';
 export const DARK_FARMS_FLAG = 'darkFarms';
@@ -905,8 +905,9 @@ export function darkFarmsEndCheck(galaxy: Galaxy, st: DarkFarmsState): void {
     const player = galaxy.playerEmpire;
     if (gameEndOn(galaxy) && player !== null) {
         const total = Object.values(st.killsByEmpire).reduce((a, b) => a + b, 0);
-        const byPlayer = st.killsByEmpire[player.empireId] ?? 0;
-        if (total > 0 && byPlayer * 2 >= total) threatGameEnd(galaxy, player, GameEndOutcome.Victory, scenarioText(`${TAG} Victory Title`), DARK_FARMS_CODE_CONTAINED);
+        // Multiplayer: the humans' kills together (a shared victory, decision §4.1).
+        const byPlayer = isMultiHuman(galaxy) ? humanEmpires(galaxy).reduce((a, h) => a + (st.killsByEmpire[h.empireId] ?? 0), 0) : (st.killsByEmpire[player.empireId] ?? 0);
+        if (total > 0 && byPlayer * 2 >= total) threatGameEnd(galaxy, player, GameEndOutcome.Victory, scenarioText(`${TAG} Victory Title`), DARK_FARMS_CODE_CONTAINED, true);
     }
 }
 

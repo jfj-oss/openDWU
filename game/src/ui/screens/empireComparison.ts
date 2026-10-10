@@ -34,7 +34,7 @@ import {
     generateVictoryConditionProgresses,
     setGameEndHandler,
 } from '../../sim/victory';
-import type { GameEndEventArgs, VictoryConditionProgress, VictoryConditions } from '../../sim/victory';
+import { GameEndEventArgs, type VictoryConditionProgress, type VictoryConditions } from '../../sim/victory';
 import { generateMajorStoryVictoryMessage } from '../../sim/story/storyEvents';
 import { showStoryEventPopup } from '../messagePopups';
 import {
@@ -74,6 +74,7 @@ import { victoryConditionDescription } from './galactopedia';
 import { clearGameSummaryOverlay, createGameSummaryPanel, recordGameEndSummary, type GameSummaryView } from './gameSummary';
 import { closeGameEndPanel, openGameEndPanel } from './gameEndPanel';
 import { localViewerEmpire } from '../../localViewer';
+import { humanOutcome } from '../../sim/perHumanState';
 
 // ---------------------------------------------------------------------------
 // Formatting helpers (pure)
@@ -378,6 +379,9 @@ export function installGameEndHandler(galaxy: Galaxy, time: { paused: boolean })
  * authoritative game, and its gameEnd event brings the args here (resolved to replica objects).
  */
 export function presentGameEnd(galaxy: Galaxy, time: { paused: boolean }, e: GameEndEventArgs): void {
+    // Multiplayer: the outcome is the local viewer's (sim/perHumanState.ts humanOutcome, decision §4.1).
+    const viewerOutcome = humanOutcome(galaxy, localViewerEmpire(galaxy));
+    if (viewerOutcome !== undefined) e = new GameEndEventArgs(e.victorEmpire, viewerOutcome as GameEndOutcome, e.description, e.code);
     // [audio] begin — Main.Part12.cs:3428 DoGameEnd → musicPlayer_0.StartTheme().
     if (typeof document !== 'undefined') musicGameEnded();
     // [audio] end
