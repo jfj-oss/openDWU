@@ -45,6 +45,8 @@ import { checkCancelContracts, clearPreviousMissionRequirements, assignMission }
 import { BuiltObjectMissionPriority, BuiltObjectMissionType, CommandAction, isBuiltObject, isHabitat } from './mission';
 import type { CommandHandler } from './executeCommands';
 import { refugeeConvoySkipLoad, settleRefugeeConvoyArrival } from '../scenario/emergent/demographics';
+import { addHumanSmuggling } from '../perHumanState';
+import { humanEmpires } from '../humanEmpires';
 
 const f = Math.fround;
 
@@ -702,6 +704,10 @@ export const cmdUnload: CommandHandler = (ctx) => {
                         if (soEmpire === galaxy.playerEmpire || dockedAt.empire === galaxy.playerEmpire || bo.actualEmpire === galaxy.playerEmpire) {
                             firstByTargetAndType.playerAmountDelivered += num13;
                             firstByTargetAndType.playerIncomeEarned += num14;
+                        }
+                        // Multiplayer: the other humans involved count it in their own report (perHumanState.ts; §4.7).
+                        for (const human of humanEmpires(galaxy)) {
+                            if (human !== galaxy.playerEmpire && (soEmpire === human || dockedAt.empire === human || bo.actualEmpire === human)) addHumanSmuggling(galaxy, human, firstByTargetAndType, num13, num14);
                         }
                         performPrivateTransaction(soEmpire, 0.0 - num14);
                         if (galaxy.scenario !== null) recordSmuggleDelivery(galaxy, stellarObject, num13); // 19d2 black-market line (no Rnd)

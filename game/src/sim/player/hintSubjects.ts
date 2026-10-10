@@ -71,24 +71,38 @@ export function recordHintSubject(empire: Empire, point: { x: number; y: number 
     hintSubjectsRevision++;
 }
 
-function hintInfo(galaxy: Galaxy | null | undefined, x: number, y: number): HintInfo | undefined {
+function hintInfo(galaxy: Galaxy | null | undefined, x: number, y: number, empire?: Empire | null): HintInfo | undefined {
     if (galaxy == null) return undefined;
+    // `empire`: whose hints (multiplayer: the local viewer's; unset = the primary human). A replica knows the primary's.
+    const primary = empire === undefined || empire === galaxy.playerEmpire;
     const r = remote.get(galaxy);
-    const t = r !== undefined ? r() : galaxy.playerEmpire != null ? subjects.get(galaxy.playerEmpire) : undefined;
+    const p = empire === undefined ? galaxy.playerEmpire : empire;
+    const t = r !== undefined ? (primary ? r() : undefined) : p != null ? subjects.get(p) : undefined;
     const v = t?.[hintSubjectKey(x, y)];
     return v !== null && typeof v === 'object' ? v : undefined;
 }
 
 /** The recorded subject of the hint at (x, y), or undefined. Works on the replica. */
-export function hintSubject(galaxy: Galaxy | null | undefined, x: number, y: number): string | undefined {
-    const w = hintInfo(galaxy, x, y)?.w;
+export function hintSubject(galaxy: Galaxy | null | undefined, x: number, y: number, empire?: Empire | null): string | undefined {
+    const w = hintInfo(galaxy, x, y, empire)?.w;
     return typeof w === 'string' ? w : undefined;
 }
 
 /** The recorded kind of information source ("Diplomacy (traded by X)", "Story clue"), or undefined. */
-export function hintSource(galaxy: Galaxy | null | undefined, x: number, y: number): string | undefined {
-    const s = hintInfo(galaxy, x, y)?.s;
+export function hintSource(galaxy: Galaxy | null | undefined, x: number, y: number, empire?: Empire | null): string | undefined {
+    const s = hintInfo(galaxy, x, y, empire)?.s;
     return typeof s === 'string' ? s : undefined;
+}
+
+/** `empire`'s live subject table (multiplayer: saved for a non-primary human through sim/perHumanState.ts). */
+export function hintSubjectTable(empire: Empire): Record<string, HintInfo> | undefined {
+    return subjects.get(empire);
+}
+
+/** Restore `empire`'s subject table (a loaded multi-human save). */
+export function setHintSubjectTable(empire: Empire, t: Record<string, HintInfo>): void {
+    subjects.set(empire, JSON.parse(JSON.stringify(t)) as Record<string, HintInfo>);
+    hintSubjectsRevision++;
 }
 
 /** What the save writes: the player's subjects while there are any, else undefined (no key). */

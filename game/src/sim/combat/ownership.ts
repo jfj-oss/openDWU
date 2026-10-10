@@ -82,6 +82,7 @@ import { netSort } from '../netSort';
 import { scenarioEmit } from '../scenario/hooks';
 import { formatNetGrouped0 } from '../netNumberFormat';
 import { isHumanEmpire } from '../humanEmpires';
+import { encounterActionFor, resetEncounterActions, setEncounterActionFor } from '../perHumanState';
 
 // ---------------------------------------------------------------------------------------------------------------
 // Small helpers
@@ -768,6 +769,7 @@ export function takeOwnershipOfBuiltObject(galaxy: Galaxy, self: Empire, builtOb
         }
     } else {
         builtObject.playerEmpireEncounterAction = BuiltObjectEncounterAction.Prompt;
+        resetEncounterActions(galaxy, builtObject); // abandoned again: a fresh encounter for every human (perHumanState.ts)
         clearPreviousMissionRequirements(galaxy, builtObject);
         builtObject.owner = null;
         builtObject.empire = null;
@@ -1040,13 +1042,15 @@ export function scanForNewOwnerBuiltObject(galaxy: Galaxy, builtObject: BuiltObj
         if (self.empire !== null) break;
         const builtObject3 = builtObjectList[k];
         let builtObjectEncounterAction = BuiltObjectEncounterAction.Notify;
-        if (builtObject3.empire === galaxy.playerEmpire) {
-            builtObjectEncounterAction = self.playerEmpireEncounterAction ?? BuiltObjectEncounterAction.Prompt;
-            if (builtObjectEncounterAction !== BuiltObjectEncounterAction.Notify) self.playerEmpireEncounterAction = BuiltObjectEncounterAction.None;
+        // `== PlayerEmpire`: a human, with its own encounter action (perHumanState.ts; decision §4.7).
+        const discoverer = builtObject3.empire as Empire | null;
+        if (isHumanEmpire(galaxy, discoverer)) {
+            builtObjectEncounterAction = encounterActionFor(galaxy, self, discoverer) ?? BuiltObjectEncounterAction.Prompt;
+            if (builtObjectEncounterAction !== BuiltObjectEncounterAction.Notify) setEncounterActionFor(galaxy, self, discoverer, BuiltObjectEncounterAction.None);
         }
         switch (builtObjectEncounterAction) {
             case BuiltObjectEncounterAction.Prompt: {
-                if (builtObject3.empire === galaxy.playerEmpire && galaxy.playerEmpire!.discoveryActionAbandonedShipBase > 0) {
+                if (isHumanEmpire(galaxy, discoverer) && discoverer!.discoveryActionAbandonedShipBase > 0) {
                     investigateAbandonedBuiltObject(galaxy, builtObject3.empire, self);
                     break;
                 }
@@ -1295,7 +1299,7 @@ export function investigateAbandonedBuiltObject(galaxy: Galaxy, investigatingEmp
     abandonedBuiltObject.isAutoControlled = true;
     // 5313-5322: GameEventId >= 0 && CheckTriggerEvent(Investigate) (story/eventActions.ts, M4z3) — a triggered event replaces the message.
     if (abandonedBuiltObject.gameEventId >= 0 && checkTriggerEvent(galaxy, abandonedBuiltObject.gameEventId, investigatingEmpire, EventTriggerType.Investigate, null)) {
-        abandonedBuiltObject.playerEmpireEncounterAction = BuiltObjectEncounterAction.None;
+        setEncounterActionFor(galaxy, abandonedBuiltObject, investigatingEmpire, BuiltObjectEncounterAction.None);
         return;
     }
     const text3 = generateLocationDescription(galaxy, abandonedBuiltObject.xpos, abandonedBuiltObject.ypos);
@@ -1409,7 +1413,7 @@ export function investigateAbandonedBuiltObject(galaxy: Galaxy, investigatingEmp
     }
     let text7 = getText('Abandoned Ship Acquired');
     if (abandonedBuiltObject.role === BuiltObjectRole.Base) text7 = getText('Abandoned Base Acquired');
-    if ((abandonedBuiltObject.playerEmpireEncounterAction ?? BuiltObjectEncounterAction.Prompt) === BuiltObjectEncounterAction.Notify) {
+    if ((encounterActionFor(galaxy, abandonedBuiltObject, investigatingEmpire) ?? BuiltObjectEncounterAction.Prompt) === BuiltObjectEncounterAction.Notify) {
         sendMessageToEmpire(investigatingEmpire, investigatingEmpire, EmpireMessageType.ExplorationBuiltObject, abandonedBuiltObject, empty);
     } else {
         let eventMessageType = EventMessageType.FreeSuperShip;
@@ -1420,7 +1424,7 @@ export function investigateAbandonedBuiltObject(galaxy: Galaxy, investigatingEmp
         }
         sendEventMessageToEmpire(investigatingEmpire, eventMessageType, text7, empty, abandonedBuiltObject, abandonedBuiltObject);
     }
-    abandonedBuiltObject.playerEmpireEncounterAction = BuiltObjectEncounterAction.None;
+    setEncounterActionFor(galaxy, abandonedBuiltObject, investigatingEmpire, BuiltObjectEncounterAction.None);
     if (galaxy.scenario !== null) scenarioEmit(galaxy, 'abandonedShipClaimed', { builtObject: abandonedBuiltObject, empire: investigatingEmpire }); // mod layer
 }
 

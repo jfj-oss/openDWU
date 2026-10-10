@@ -42,6 +42,7 @@ import { addAdvisorSuggestion, expireOldAdvisorSuggestions, receiveAdvisorSugges
 import { MessageCategory, galaxyMessageOptions, playerDefeatGameEnd, routeEmpireMessage, shouldQueueConversation, tickerShown, type MessageOptions, type MessageRoute } from './messageRouting';
 import { withSimWrites } from './readOnlyQuery';
 import { humanEmpires } from './humanEmpires';
+import { humanMessageOptions } from './perHumanState';
 
 export type { QueuedEvent } from './messages';
 
@@ -230,7 +231,8 @@ function drainInbox(galaxy: Galaxy, player: Empire): number {
             for (; i < inbox.length; i++) {
                 const item = inbox[i];
                 // The options are read per item: a handler may change nothing of them, but a drain is short anyway.
-                const options = galaxyMessageOptions(galaxy);
+                // Multiplayer: a non-primary human's own settings (perHumanState.ts; decision §4.7).
+                const options = humanMessageOptions(galaxy, player) ?? galaxyMessageOptions(galaxy);
                 if (item.message !== undefined) {
                     if (item.message == null) continue;
                     const receipt = receivePlayerMessage(galaxy, player, item.message, options);

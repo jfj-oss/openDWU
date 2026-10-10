@@ -70,9 +70,10 @@ import { migrateLegacyLandscapePictureRef, migratePreMapPictureRef, migratePrePo
 import { EmpireVisibility, GalaxyResourceMap, SystemVisibility } from '../visibility';
 import { Weapon } from '../weapon';
 import { battleReportState, restoreBattleReportState, type BattleReportState } from '../battleReports/battleReports';
-import { type HintInfo, liveHintSubjects, restoreHintSubjects, savedHintSubjects } from '../player/hintSubjects';
+import { type HintInfo, hintSubjectTable, liveHintSubjects, restoreHintSubjects, savedHintSubjects, setHintSubjectTable } from '../player/hintSubjects';
 import { liveWaypointState, restoreWaypointState, savedWaypointState, type WaypointState } from '../player/waypoints';
 import { liveHumanEmpires, restoreHumanEmpires, savedHumanEmpires } from '../humanEmpires';
+import { perHumanHintSubjects, restorePerHumanState, savedPerHumanState, type PerHumanState } from '../perHumanState';
 
 export interface GalaxySaveJSON {
     version: 2;
@@ -555,6 +556,9 @@ interface SideTables {
      *  one-human game — so it saves the same text as before — and in older saves. The replica sync carries the live
      *  list or null. */
     humanEmpires?: Empire[] | null;
+    /** The non-primary humans' copies of the per-player state (sim/perHumanState.ts): absent while empty — every
+     *  one-human game — and in older saves. The replica sync carries the live state or null. */
+    perHuman?: PerHumanState | null;
 }
 
 function collectSideTables(galaxy: Galaxy, visited: readonly object[]): SideTables {
@@ -594,6 +598,13 @@ function collectSideTables(galaxy: Galaxy, visited: readonly object[]): SideTabl
     if (hs !== undefined) out.hintSubjects = hs;
     const humans = savedHumanEmpires(galaxy);
     if (humans !== undefined) out.humanEmpires = humans;
+    // The non-primary humans' location-hint subjects join their per-human state (only with more than one human).
+    for (const h of humans ?? []) {
+        const t = h !== galaxy.playerEmpire ? hintSubjectTable(h) : undefined;
+        if (t !== undefined) perHumanHintSubjects(galaxy).set(h, t);
+    }
+    const perHuman = savedPerHumanState(galaxy);
+    if (perHuman !== undefined) out.perHuman = perHuman;
     return out;
 }
 
@@ -625,6 +636,8 @@ function restoreSideTables(galaxy: Galaxy, t: SideTables): void {
     restoreWaypointState(galaxy, t.waypoints);
     restoreHintSubjects(galaxy, t.hintSubjects);
     restoreHumanEmpires(galaxy, t.humanEmpires);
+    restorePerHumanState(galaxy, t.perHuman);
+    for (const [h, table] of t.perHuman?.hintSubjects ?? []) setHintSubjectTable(h, table as Record<string, HintInfo>);
 }
 
 type TerritoryGrid = Uint8Array[] | null;
@@ -773,6 +786,7 @@ export function replicaSideTables(galaxy: Galaxy, visited: readonly object[]): o
     t.waypoints = liveWaypointState(galaxy);
     t.hintSubjects = liveHintSubjects(galaxy);
     t.humanEmpires = liveHumanEmpires(galaxy);
+    t.perHuman = savedPerHumanState(galaxy) ?? null;
     return t;
 }
 

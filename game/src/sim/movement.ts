@@ -63,6 +63,8 @@ import { BuiltObjectMissionType, Command, CommandAction, builtObjectMission } fr
 import type { ShipGroup } from './fleets/shipGroup';
 import { shipGroupObtainCharacters } from './fleets/shipGroupTasks';
 import { fighterReturnToCarrier } from './combat/fighters';
+import { ruinEncounteredBy } from './perHumanState';
+import { isHumanEmpire } from './humanEmpires';
 
 // ---------------------------------------------------------------------------------------------------------------
 // Constants and settings
@@ -2242,7 +2244,7 @@ export function reviewWhetherRefuellingDepot(galaxy: Galaxy, habitat: Habitat): 
 
 /** Galaxy.5.cs 2923 CheckShouldExplore(empire, habitat). */
 export function checkShouldExplore(galaxy: Galaxy, empire: Empire, habitat: Habitat): boolean {
-    if (habitat.ruin !== null && (checkRuinsHaveBenefit(galaxy, habitat.ruin, empire) || (empire === galaxy.playerEmpire && (habitat.ruin.storyClueLevel >= 0 || !habitat.ruin.playerEmpireEncountered)))) {
+    if (habitat.ruin !== null && (checkRuinsHaveBenefit(galaxy, habitat.ruin, empire) || (isHumanEmpire(galaxy, empire) && (habitat.ruin.storyClueLevel >= 0 || !ruinEncounteredBy(galaxy, habitat.ruin, empire))))) {
         return true;
     }
     if (empire.resourceMap != null && empire.resourceMap.checkResourcesKnown(habitat)) {

@@ -82,6 +82,7 @@ import { openResourceLink } from './resourceComponents';
 import { CROSSHAIR_COLOR, GRID_COLOR, drawMapTerritory, galaxyMapScale, sectorColumnLabel, sectorLabelStride, starBrushColor } from './galaxyMap';
 import { drawGalaxyMapLayers } from './galaxyMapLayers';
 import { requestSimRefresh } from '../../simworker/refresh';
+import { ruinEncounteredBy } from '../../sim/perHumanState';
 
 /** Main.Part4.cs:2721 method_538: cmbExpansionPlannerMode index → mode key. */
 export type ExpansionMode = 'colonies' | 'resourcesyou' | 'resourcesgalaxy' | 'resourcessupply';
@@ -175,8 +176,9 @@ export function qualityPercent(q: number): string {
 
 // HabitatPrioritizationListView.cs:457-560: the "special ruins" test (ruin
 // encountered by the player and with at least one of the seven bonuses).
-export function ruinHasSpecialBonus(ruin: Ruin | null): boolean {
-    if (!ruin || !ruin.playerEmpireEncountered) return false;
+export function ruinHasSpecialBonus(ruin: Ruin | null, galaxy?: Galaxy, player?: Empire | null): boolean {
+    // Multiplayer: encountered by `player` (sim/perHumanState.ts); without a galaxy, the ruin's own flag.
+    if (!ruin || !(galaxy === undefined ? ruin.playerEmpireEncountered : ruinEncounteredBy(galaxy, ruin, player))) return false;
     return (
         ruin.bonusDefensive > 0.0 ||
         ruin.bonusDiplomacy > 0.0 ||
@@ -252,7 +254,7 @@ export function plannerStatusInput(galaxy: Galaxy, player: Empire, habitat: Habi
     return {
         forColonization,
         inRange: forColonization ? canEmpireColonizeHabitatRange(galaxy, player, habitat) : true,
-        specialRuins: ruinHasSpecialBonus(habitat.ruin),
+        specialRuins: ruinHasSpecialBonus(habitat.ruin, galaxy, player),
         superLuxuryKnown: habitatResourcesHaveSuperLuxury(galaxy, habitat) && player.resourceMap.checkResourcesKnown(habitat),
         inOurSystem: galaxy.systems[habitat.systemIndex]?.dominantEmpire?.empire === player,
         quality: habitat.quality,

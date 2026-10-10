@@ -129,6 +129,7 @@ import { storyEventAction, storyEventClose } from '../story/freedomAlliance';
 import { applyLlmStrategicCommand, type LlmStrategicCommand } from '../scenario/llm/strategic';
 import { applyPopulationPolicyToAllColonies, renameColony, scrapColonyFacility, setColonyAsCapital, setColonyPopulationPolicy, transferToTransport } from './colonyOrders';
 import { isHumanEmpire } from '../humanEmpires';
+import { setHumanMessageOptions } from '../perHumanState';
 
 /** Automation / control fields of Empire the UI sets directly (Game Options panel and the automation prompts). */
 function isEmpireControlField(empire: Empire, field: string): boolean {
@@ -477,8 +478,9 @@ export const PLAYER_OPS = {
     /** Ours: Game Options → Bacon Mod Settings. This game's BaconSettings.txt values (the whole override set; keys left
      *  out take the install file's value), then BaconInitialize again at this frame boundary (sim/baconSettings.ts). */
     setBaconSettings: (galaxy: Galaxy, _empire: Empire, overrides: BaconSettingsOverrides) => applyBaconSettingsCommand(galaxy, overrides),
-    setMessageOptions: (galaxy: Galaxy, _empire: Empire, options: MessageOptions) => {
-        galaxy.messageOptions = copyMessageOptions(options);
+    setMessageOptions: (galaxy: Galaxy, empire: Empire, options: MessageOptions) => {
+        // Multiplayer: a non-primary human's settings are its own (perHumanState.ts; decision §4.7).
+        if (!setHumanMessageOptions(galaxy, empire, copyMessageOptions(options))) galaxy.messageOptions = copyMessageOptions(options);
         return true;
     },
 

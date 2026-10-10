@@ -138,8 +138,8 @@ export const HINT_FALLBACK_RADIUS = 2;
  * message would have named: an abandoned ship / base ("Abandoned <subrole>"), a habitat with ruins ("Ruins on <name>"),
  * a listed known location (its type), else a generic "Point of interest near <system>". Never states more than that.
  */
-export function hintSubjectOf(galaxy: Galaxy, x: number, y: number, at: KnownLocation | null = null): string {
-    const rec = hintSubject(galaxy, x, y);
+export function hintSubjectOf(galaxy: Galaxy, x: number, y: number, at: KnownLocation | null = null, empire?: Empire | null): string {
+    const rec = hintSubject(galaxy, x, y, empire);
     if (rec !== undefined && rec !== '') return rec;
     const r2 = HINT_FALLBACK_RADIUS * HINT_FALLBACK_RADIUS;
     for (const b of galaxy.abandonedBuiltObjects ?? []) {
@@ -200,7 +200,7 @@ export function knownLocations(galaxy: Galaxy, empire: Empire | null, reveal = f
         const key = `h:${p.x},${p.y}`;
         const dismissed = isMarkerDismissed(galaxy, key);
         if (dismissed && !includeDismissed) continue;
-        const subject = hintSubjectOf(galaxy, p.x, p.y, at);
+        const subject = hintSubjectOf(galaxy, p.x, p.y, at, empire);
         out.push({
             kind: 'hint',
             key,
@@ -208,7 +208,7 @@ export function knownLocations(galaxy: Galaxy, empire: Empire | null, reveal = f
             x: p.x,
             y: p.y,
             subject,
-            source: hintSource(galaxy, p.x, p.y),
+            source: hintSource(galaxy, p.x, p.y, empire),
             name: at !== null ? at.name : subjectLabel(subject),
             typeLabel: 'Location hint',
             location: at?.location ?? null,

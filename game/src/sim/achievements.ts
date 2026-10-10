@@ -35,6 +35,8 @@ import { startStarDateForAge } from './galaxyTime';
 import { empireGovernmentAttributes, getGovernmentsStatic } from './empire';
 import { calculateRaceVictoryConditionsProgress, calculatePirateControlPopulationValue, calculateTotalCostResearchedProjects, timeSpentAtWar, intelligenceCounter } from './victory';
 import { addLatestCombatStats, SpaceBattleStats } from './combat/damage';
+import { addHumanAchievement } from './perHumanState';
+import { isHumanEmpire } from './humanEmpires';
 
 // ---------------------------------------------------------------------------------------------------------------
 // Model
@@ -360,6 +362,11 @@ export function updateAchievements(galaxy: Galaxy, empire: Empire): void {
             empire.achievements.push(achievement);
         }
         if (empire === galaxy.playerEmpire) setAchievementIfNecessary(galaxy, achievement);
+        else if (isHumanEmpire(galaxy, empire) && achievement !== null) {
+            // Multiplayer: another human's unlocks are its own (perHumanState.ts; decision §4.7).
+            const name = resolveAchievementName(achievement);
+            if (name !== '') addHumanAchievement(galaxy, empire, name);
+        }
     }
 }
 

@@ -101,6 +101,7 @@ import { assignLoadTroopsMission } from '../combat/troopsRuntime';
 import { assignFleetUnloadTroops } from '../combat/invasion';
 import { Fighter, FighterType, fightersOf, checkFightersAvailableForLaunch, identifyLatestBomberSpecification, identifyLatestFighterSpecification } from '../combat/fighters';
 import { ShipAction, ShipActionType, createMissionShipAction, createShipAction, isSystemInfo, type Point } from './shipAction';
+import { ruinEncounteredBy } from '../perHumanState';
 import {
     assignFleetLoadTroops,
     assignFleetSystemPatrol,
@@ -2073,7 +2074,7 @@ function shipActionMenu(ctx: OrderMenuContext, builtObject6: BuiltObject, items:
         }
         if (isHabitat(obj3)) {
             const ruin = obj3.ruin;
-            if (ruin !== null && ruin.playerEmpireEncountered && checkRuinsHaveBenefit(ctx.galaxy, ruin, player)) {
+            if (ruin !== null && ruinEncounteredBy(ctx.galaxy, ruin, player) && checkRuinsHaveBenefit(ctx.galaxy, ruin, player)) {
                 const num18 = ctx.galaxy.calculateDistance(builtObject6.xpos, builtObject6.ypos, obj3.xpos, obj3.ypos);
                 if (num18 <= 500.0) items.push(item310(ctx, 'Investigate Ruins', T('Investigate Ruins'), createShipAction(ShipActionType.InvestigateRuins, obj3), true));
             }
@@ -3954,7 +3955,7 @@ export function resolveHoverOrder(input: HoverInput): HoverOrder {
         const habitat1 = obj;
         if (player.visibility.checkSystemExplored(habitat1.systemIndex)) {
             if ((habitat1.category === HabitatCategoryType.GasCloud || habitat1.type === HabitatType.BlackHole) && !flag6 && !flag8) result = moveHere(int_, int_2);
-            if (habitat1.ruin !== null && habitat1.ruin.playerEmpireEncountered && checkRuinsHaveBenefit(galaxy, habitat1.ruin, player)) return none; // shipAction_0 = null
+            if (habitat1.ruin !== null && ruinEncounteredBy(galaxy, habitat1.ruin, player) && checkRuinsHaveBenefit(galaxy, habitat1.ruin, player)) return none; // shipAction_0 = null
             let flag11 = false;
             if ((num > 0 || num5 > 0 || num2 > 0) && habitat1.empire !== null && habitat1.empire !== empire && habitat1.population !== null && habitat1.population.totalAmount > 0) {
                 flag11 = true;

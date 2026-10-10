@@ -78,6 +78,7 @@ import { formatGameTextNow, formatNet, tryGetText } from './textResolver';
 import { generateIndependentColonyReport, generateRaceReport } from './galaxyReports';
 import { resolveTechBonusFactor } from './combat/attackAI';
 import { isHumanEmpire } from './humanEmpires';
+import { ruinEncounteredBy, ruinEncounteredByAllHumans, setRuinEncounteredBy } from './perHumanState';
 
 // ---------------------------------------------------------------------------------------------------------------
 // Constants
@@ -928,10 +929,12 @@ function ruinText(tag: string, english: string): string {
  * bonus and each empire-wide bonus, formatted and concatenated exactly as the source does (the defensive text loses
  * its last two characters, the others follow one another without a separator). No Rnd.
  */
-export function generateRuinAbilitiesSummary(galaxy: Galaxy, ruin: Ruin): string {
+export function generateRuinAbilitiesSummary(galaxy: Galaxy, ruin: Ruin, player: Empire | null = galaxy.playerEmpire): string {
+    // `player`: whose view (the UI passes its local viewer; multiplayer).
     let empty = '';
-    const flag = checkRuinsHaveBenefit(galaxy, ruin, galaxy.playerEmpire);
-    if ((!ruin.playerEmpireEncountered || ruin.type !== RuinType.UnlockResearchProject) && (!ruin.playerEmpireEncountered || flag)) {
+    const flag = checkRuinsHaveBenefit(galaxy, ruin, player);
+    const encountered = ruinEncounteredBy(galaxy, ruin, player);
+    if ((!encountered || ruin.type !== RuinType.UnlockResearchProject) && (!encountered || flag)) {
         empty += `(${ruinText('Not Investigated - Details Unknown', 'Not Investigated - Details Unknown')})`;
     } else {
         empty += `${formatNet(ruinText('X Development bonus for colony', '{0} Development bonus for colony'), [formatNetPercentHash(ruin.developmentBonus, true)])}\n\n`;
@@ -1015,7 +1018,7 @@ export function checkRuinsHaveBenefit(galaxy: Galaxy, ruin: Ruin | null, empire:
  * EncounterRuins message or a ship's Investigate Ruins order (executeShipAction.ts), and AI empires are unaffected.
  */
 export function ruinAwaitsPlayerDecision(galaxy: Galaxy, ruin: Ruin, empire: Empire | null): boolean {
-    return empire !== null && empire === galaxy.playerEmpire && ruin.playerEmpireEncountered;
+    return isHumanEmpire(galaxy, empire) && ruinEncounteredBy(galaxy, ruin, empire); // a human's own encounter (§4.7)
 }
 
 /** Research.TechTree[researchProjectId].IsEnabled (ResearchNodeList = SyncList: the list indexer, by position). */
@@ -1462,7 +1465,7 @@ export function investigateRuins(galaxy: Galaxy, investigatingEmpire: Empire | n
  */
 export function checkForShipsDiscoveringRuins(galaxy: Galaxy, habitat: Habitat): void {
     const ruin = habitat.ruin;
-    if (ruin === null || (!checkRuinsHaveBenefit(galaxy, ruin, null) && ruin.storyClueLevel < 0 && ruin.playerEmpireEncountered)) return;
+    if (ruin === null || (!checkRuinsHaveBenefit(galaxy, ruin, null) && ruin.storyClueLevel < 0 && ruinEncounteredByAllHumans(galaxy, ruin))) return;
     const builtObjectsAtLocation = getBuiltObjectsAtLocation(galaxy, habitat.xpos, habitat.ypos, 500);
     for (let i = 0; i < builtObjectsAtLocation.length; i++) {
         const builtObject = builtObjectsAtLocation[i];
@@ -1474,16 +1477,17 @@ export function checkForShipsDiscoveringRuins(galaxy: Galaxy, habitat: Habitat):
         let flag = false;
         let flag2 = false;
         addScientificData(builtObject, habitat, 'scientificData');
-        if (boEmpire === galaxy.playerEmpire) {
+        // `== PlayerEmpire`: a human, with its own encounter flag (perHumanState.ts; decision §4.7).
+        if (isHumanEmpire(galaxy, boEmpire)) {
             flag2 = true;
-            if (ruin.playerEmpireEncountered) flag = true;
-            else ruin.playerEmpireEncountered = true;
+            if (ruinEncounteredBy(galaxy, ruin, boEmpire)) flag = true;
+            else setRuinEncounteredBy(galaxy, ruin, boEmpire);
         }
         if (flag) continue;
         const flag3 = checkRuinsHaveBenefit(galaxy, ruin, boEmpire);
         if (flag2) {
             // Habitat.cs 2545: _Galaxy.PlayerEmpire.DiscoveryActionRuin (GameOptions; > 0 investigates without asking).
-            if (galaxy.playerEmpire!.discoveryActionRuin > 0) {
+            if (boEmpire.discoveryActionRuin > 0) {
                 if (flag3) investigateRuins(galaxy, boEmpire, habitat);
                 continue;
             }

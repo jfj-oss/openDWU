@@ -8,6 +8,8 @@
 
 import { copyMessageOptions, defaultMessageOptions, galaxyMessageOptions, type MessageCategory, type MessageOptions } from '../sim/messageRouting';
 import type { Galaxy } from '../sim/galaxy';
+import { humanMessageOptions } from '../sim/perHumanState';
+import { localViewerEmpire } from '../localViewer';
 
 export * from '../sim/messageRouting';
 
@@ -37,5 +39,6 @@ export function replaceMessageOptions(o: MessageOptions): void {
 
 /** A game view starts: the UI shows and edits that game's options (C#: the Game object's Display* fields). */
 export function adoptGameMessageOptions(galaxy: Galaxy): void {
-    replaceMessageOptions(galaxyMessageOptions(galaxy));
+    // Multiplayer: the local viewer's own settings (sim/perHumanState.ts), else the game's.
+    replaceMessageOptions(humanMessageOptions(galaxy, localViewerEmpire(galaxy)) ?? galaxyMessageOptions(galaxy));
 }

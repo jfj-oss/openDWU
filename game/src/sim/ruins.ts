@@ -19,6 +19,8 @@ import type { Race } from './data/races';
 import { CreatureType } from './creature';
 import { Habitat, HabitatCategoryType, HabitatType } from './types';
 import { generateBarrenRockPlanet } from './startHabitats';
+import { setRuinEncounteredBy } from './perHumanState';
+import { isHumanEmpire } from './humanEmpires';
 
 // Port of RuinType.cs.
 export enum RuinType {
@@ -586,9 +588,8 @@ export function clearRuinBonusesForAge(galaxy: Galaxy): void {
         for (const habitat23 of galaxy.habitats) {
             if (habitat23.ruin !== null && habitat23.ruin.type !== RuinType.UnlockResearchProject && systemHasDominantEmpire(galaxy, habitat23.systemIndex)) {
                 habitat23.ruin.clearBonuses();
-                if (galaxy.systems[habitat23.systemIndex].dominantEmpire!.empire === galaxy.playerEmpire) {
-                    habitat23.ruin.playerEmpireEncountered = true;
-                }
+                const dominant = galaxy.systems[habitat23.systemIndex].dominantEmpire!.empire;
+                if (isHumanEmpire(galaxy, dominant)) setRuinEncounteredBy(galaxy, habitat23.ruin, dominant); // every human (§4.7)
             }
         }
     }

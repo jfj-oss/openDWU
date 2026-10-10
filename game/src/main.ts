@@ -1045,6 +1045,7 @@ export async function startGameView(
         removeBattleReportNotifier();
         removeEventMessages();
         installViewerMessageUi(now);
+        adoptGameMessageOptions(galaxy); // the new viewer's Game Options message settings
         setThemeChromeRace(now.dominantRace?.name ?? '');
     });
     // [improvements] designLineUpgrade / statePriorityShipyards: the switch → the sim (journaled), for every human (the

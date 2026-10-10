@@ -18,14 +18,17 @@ import { COLORS, FONT, el, openOriginalWindow, place, type OriginalWindow } from
 import { ruinImageUrl } from '../eventMessagePresentation';
 import { gt } from './researchBenefits';
 import { localViewerEmpire } from '../../localViewer';
+import { ruinEncounteredBy } from '../../sim/perHumanState';
 
 export const RUIN_DETAIL_SIZE = { w: 360, h: 500 } as const;
 
 /** method_550's description text: the description, only once encountered and when it is a research-unlock ruin or has
  *  no benefit left for the player; empty otherwise. */
 export function ruinDetailDescription(galaxy: Galaxy, ruin: Ruin): string {
-    if (ruin.playerEmpireEncountered && ruin.type === RuinType.UnlockResearchProject) return ruin.description ?? '';
-    if (ruin.playerEmpireEncountered && !checkRuinsHaveBenefit(galaxy, ruin, localViewerEmpire(galaxy))) return ruin.description ?? '';
+    const viewer = localViewerEmpire(galaxy);
+    const encountered = ruinEncounteredBy(galaxy, ruin, viewer);
+    if (encountered && ruin.type === RuinType.UnlockResearchProject) return ruin.description ?? '';
+    if (encountered && !checkRuinsHaveBenefit(galaxy, ruin, viewer)) return ruin.description ?? '';
     return '';
 }
 
@@ -62,7 +65,7 @@ export function openRuinDetail(galaxy: Galaxy, ruin: Ruin | null): void {
     // lblRuinDetailAbilities (font_6, MaximumSize 320 × 200) centred at y 225; the description 15 px below it at x 10.
     const column = el('div', 'rd-column');
     body.appendChild(place(column, 0, 225, W, RUIN_DETAIL_SIZE.h - 225 - 80));
-    const abilities = el('div', 'rd-abilities', generateRuinAbilitiesSummary(galaxy, ruin));
+    const abilities = el('div', 'rd-abilities', generateRuinAbilitiesSummary(galaxy, ruin, localViewerEmpire(galaxy)));
     abilities.style.fontSize = `${FONT.large}px`;
     abilities.style.color = COLORS.label;
     column.appendChild(abilities);

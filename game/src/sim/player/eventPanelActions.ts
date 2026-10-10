@@ -11,13 +11,14 @@ import { changePirateEvaluation, PirateRelationEvaluationType } from '../pirateR
 import { investigateAbandonedBuiltObject } from '../combat/ownership';
 import { BuiltObjectEncounterAction } from '../gameStartTail';
 import { exposePlanetDestroyerConstruction } from '../empireEvents';
+import { setEncounterActionFor } from '../perHumanState';
 
 /**
  * Main.Part4.cs:1836-1841 (EncounterBuiltObject, method_511 "Investigate Ship / Base"):
  * `PlayerEmpireEncounterAction = Prompt; Galaxy.InvestigateAbandonedBuiltObject(PlayerEmpire, builtObject)`.
  */
 export function investigateEncounteredBuiltObject(galaxy: Galaxy, empire: Empire, builtObject: BuiltObject): void {
-    builtObject.playerEmpireEncounterAction = BuiltObjectEncounterAction.Prompt;
+    setEncounterActionFor(galaxy, builtObject, empire, BuiltObjectEncounterAction.Prompt); // the investigating human's own (§4.7)
     investigateAbandonedBuiltObject(galaxy, empire, builtObject);
 }
 

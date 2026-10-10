@@ -149,6 +149,7 @@ import {
 import { ShipAction, ShipActionType, isSystemInfo } from './shipAction';
 import { addConstructionJob, isBoardBuildDesign, queueBuildOrderOnBoard, routesToBoard } from './constructionBoard';
 import { isHumanEmpire } from '../humanEmpires';
+import { setEncounterActionFor } from '../perHumanState';
 
 /** What _Game.SelectedObject can be when an order is given (method_347 handles these five kinds). */
 export type ShipActionSelection = BuiltObject | Habitat | ShipGroup | Fighter | BuiltObject[] | null;
@@ -706,7 +707,7 @@ function executeForShip(ctx: Ctx, builtObject: BuiltObject, action: ShipAction):
                     const builtObject4 = action.target;
                     if (builtObject4.empire === null) {
                         // musicPlayer fade / discovery.mp3
-                        builtObject4.playerEmpireEncounterAction = BuiltObjectEncounterAction.Prompt;
+                        setEncounterActionFor(galaxy, builtObject4, empire, BuiltObjectEncounterAction.Prompt); // this human's own (§4.7)
                         investigateAbandonedBuiltObject(galaxy, empire, builtObject4);
                     }
                 }
