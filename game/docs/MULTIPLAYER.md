@@ -1,8 +1,8 @@
 # Multiplayer
 
-Status: **Phase 1 of 5 in progress.** Milestone 1 (the audit, the core API, the clear "a human controls this empire"
-sim rules) and Milestone 2 (the local viewer in the UI, an inbox for every human, the (a) leftovers, the plumbing) are
-done; Milestone 3 (the nine decisions of §4, `createGame` for N humans) is next. Nothing changes for the player: the seed
+Status: **Phase 1 of 5 done (2026-10-10)**, a few small leftovers in §6. Milestone 1 (the audit, the core API, the
+clear "a human controls this empire" sim rules), Milestone 2 (the local viewer in the UI, an inbox for every human, the
+(a) leftovers, the plumbing) and Milestone 3 (the nine decisions of §4, `createGame` for N humans). Nothing changes for the player: the seed
 pins (`npm run repin -- --check`) are unchanged at every commit, one-human saves are byte-identical to before, and every
 multiplayer-only rule runs only when the game has more than one human (`isMultiHuman`).
 
@@ -381,19 +381,58 @@ Left from the Milestone 2 list, on purpose:
 - **The UI-record sender** (`playerCommands.ts`, the lookups' journaled `obtainUiRecords`) still names the primary human:
   the sim cannot read the local viewer. Phase 3 passes the sending client's human with the command.
 
-## 6. The rest of Phase 1 (estimate)
+## 5c. Milestone 3: what is done
 
-| # | Work | Estimate |
-|---|---|---|
-| 1 | **(b) UI, render, audio** (~150 lines in ~60 files): `localViewerEmpire(galaxy)`, or a viewer passed down, in place of `galaxy.playerEmpire` / `game.playerEmpire`. Includes the HUD sources and `Game.playerEmpire` in `main.ts`. Mechanical. | 1.5 days |
-| 2 | **(c) Messages per human** (65 lines): an inbox on every human (`ensurePlayerInbox` / `processPlayerMessages` over `humanEmpires`, in a fixed order); `galaxy.messageOptions` per human; the "tell the player" sends, location hints and hint subjects, voices and battle reports to every human; the UI streams filtered by the local viewer, in-thread and in the worker. | 2 days |
-| 3 | **The 13 (a) leftovers** (§5). | 0.5–1 day |
-| 4 | **The (f) items, once decided** (142 lines): victory per human (the largest), difficulty, story off in multiplayer, targeted events and "visible to any human", per-human state, names. | 3–4 days |
-| 5 | **Plumbing**: the UI-record sender on the local viewer; reject commands for an empire that is not human; drop the `Empire.playerEmpire` flag; a check script that fails on a new `galaxy.playerEmpire` in `src/sim` outside an allow-list. | 0.5 day |
-| 6 | **(d) setup for N humans** (`createGame` taking a list of human starts; the wizard UI itself is Phase 2). | 0.5–1 day |
+The nine decisions of §4 and `createGame` for N humans. Every rule here runs only with more than one human
+(`isMultiHuman`) or is the one-human rule written for every human (identical with one): repin stays at 0.
 
-**Total: about 8–10 working days** after Milestone 1 (which took about 1 day). This matches the plan's 1–2 weeks for
-Phase 1. Items 1–3 and 5 do not depend on the §4 answers and can start now; item 4 waits for them.
+1. **`createGame` takes N humans.** `CreateGameOptions.humanPlayers` (from `StartGameOptions.humanPlayers` through
+   `humanPlayerEmpireStarts`, in `toCreateGameOptions`): the extra humans are founded after the AI empires, then
+   `setHumanEmpires(galaxy, [player, ...them])`, with the player's difficulty factors, the wizard row's flag colours, and
+   the Game Options automation and design-upgrade start settings.
+2. **Victory per human** (`victory.ts` `checkVictoryConditionsHumans`, `humansGameEnd`, `humanDefeated`,
+   `threatsContainedGameEnd`): the time limit, the global conditions and each human's own conditions — the first human
+   to win ends the game for everyone; a wiped-out human is defeated and watches, and the game ends when no human is
+   left; a contained global threat (`threatGameEnd(…, shared)`) is a shared Victory for the humans still playing; the
+   Silence goes to the empire that shut it down. Each human's outcome is per-human state; the game-end panel shows the
+   local viewer's (`presentGameEnd`).
+3. **One difficulty for every human**: `setEmpireDifficultyFactors` and every "the player" difficulty scaling (trade,
+   diplomacy, troops, force structure, pirate relations) apply to each human through its own `difficultyLevel`.
+4. **AI bias for every human**: the ×2 attack priority and the defensive bases' troop-ship weight.
+5. **Storylines off**: `createGame` turns the three storylines (and the victory conditions' story flags) off with extra
+   humans; the wizard greys the boxes out and lists none in the summary. The story code keeps reading the primary human.
+6. **Targeted events** (`targetHuman`): the super-pirate event and the rim distress calls pick a human with
+   `galaxy.rnd` — only with more than one human, so a one-human game draws nothing new.
+7. **"Not visible to any human"** (`systemVisibleToAnyHuman`, `isObjectVisibleToAnyHuman`): the pirate spawn search and
+   the independent traders' spawn / retire checks.
+8. **Per-human state** (`src/sim/perHumanState.ts`): ruin encounters, the abandoned-ship encounter actions, the Game
+   Options message settings (`setMessageOptions` stores the issuing human's), unlocked achievements, the smuggling-report
+   counters, the location-hint subjects, the colony-name lists and the game outcomes. The primary keeps the C# fields;
+   the other humans' copies are the save side table `perHuman`, written only when something is in it.
+9. **Name lists**: an extra human's start options may carry its own colony-name list (the wizard has no field for it
+   yet: Phase 2's hot-seat rows).
+10. **The AI never decides for a human**: the (a) migration of Milestones 1 and 2 (every AI-only branch asks
+    `isHumanEmpire`), and the command check of §5b.
+
+A scratch two-human run (not committed: the user does not want tests written) built the same game twice with
+`humanPlayers`, ran 200 game seconds on each with equal `stateDigest`s, had the AI empire's command rejected and the
+second human's applied, saved (with the `humanEmpires` and `perHuman` side tables), loaded twice and ran on with equal
+digests; a one-human save carried neither key.
+
+## 6. The rest of Phase 1
+
+Phase 1 is functionally done. Left, small:
+
+- **Battle reports** watch one player's battles (the camps are that player's); per-human camps for the other humans.
+- **Hint subjects in worker mode**: the replica gets the primary human's live table only; a non-primary viewer sees no
+  subject text for its hints until the worker sends every human's.
+- **Main-thread odds and ends on the first human**: the AI advisor driver, the LLM layer, the founding line and the
+  starting camera; an event pop-up for a human whose turn it is not is not shown (it is still in that human's history);
+  the SystemInfo "potential colonies" flag (written for the primary, never read).
+- **`scripts/player-empire-allowlist.json`** holds the remaining sim `playerEmpire` reads (176 lines in 49 files): the
+  story (single-protagonist by decision), the C# start code, the save, and the primary-human aliases above.
+
+Phases 2–5 as planned (§1); the hot-seat UI of Phase 2 is §7.
 
 ## 7. Phase 2 (hot seat): the UI-side pieces
 

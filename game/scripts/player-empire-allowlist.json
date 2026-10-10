@@ -49,6 +49,6 @@
     "src/sim/story/storyStart.ts": 5,
     "src/sim/tick/galaxyTick.ts": 5,
     "src/sim/tick/scheduler.ts": 1,
-    "src/sim/victory.ts": 25
+    "src/sim/victory.ts": 26
   }
 }
