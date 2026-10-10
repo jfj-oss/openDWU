@@ -467,6 +467,15 @@ createGame change, so the rule lives in one place.
 
 ### 7.3 Screens that still read `playerEmpire` (do not follow the switch yet)
 
+**Status (Phase 1 Milestone 2, §5b): done.** Every screen, layer and sound below reads `localViewerEmpire` when it
+draws. In `main.ts`, the order UI, the ship and control-group keys, the waypoints, Trade Flows, the ticker and the UI
+lookups' records (`setUiRecordEmpire`) read the viewer at call time; the per-viewer message UI (popups, advisor
+suggestions, stubs, battle-report notices, the event recipient) is installed again for the new viewer on
+`onLocalViewerChange`; every human has a message stream (in-thread and worker); the design-line / state-priority
+switches apply to every human. Still on player 1: the AI advisor driver and the LLM layer (`startAiAdvisorDriver` /
+`startLlmLayer`), the founding line and the starting camera; an event pop-up for a human whose turn it is not is not
+shown (the sim still records it in that human's history). The list below is the state before that work.
+
 Phase 1 item 1 (§6) migrates these. Today the switch changes the fog (`render/fog.ts`, the only `localViewerEmpire`
 reader), the camera and the selection. Everything below still shows player 1:
 
