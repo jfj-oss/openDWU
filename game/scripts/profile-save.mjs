@@ -14,6 +14,7 @@
 import { build } from 'rolldown';
 import { tmpdir } from 'node:os';
 import { cpSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { gunzipSync } from 'node:zlib';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 
@@ -59,7 +60,9 @@ try {
     const { scenarioOverlayFor, COMPOSITE_SCENARIO_ID } = await load('addons');
     const { applyScenarioOverlay } = await load('overlay');
     const t0 = performance.now();
-    const obj = JSON.parse(readFileSync(file, 'utf8'));
+    // A .dwusave / in-game save is gzip since saveCompression.ts (magic bytes 1f 8b); older ones are plain JSON.
+    const raw = readFileSync(file);
+    const obj = JSON.parse((raw.length >= 2 && raw[0] === 0x1f && raw[1] === 0x8b ? gunzipSync(raw) : raw).toString('utf8'));
     // Mod layer: the save's scenario overlay (a composite add-on save is rebuilt from its include list), as main.ts gameDataForSave.
     let gameData = await loadGameDataFs();
     const scenId = savedScenarioId(obj);

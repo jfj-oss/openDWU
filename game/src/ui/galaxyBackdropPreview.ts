@@ -25,6 +25,15 @@ let shared: PreviewGl | null = null;
 let failed = false;
 let releaseTimer: ReturnType<typeof setTimeout> | undefined;
 const cache = new Map<string, HTMLCanvasElement>();
+/** A running game's structure (one per galaxy: galaxyBackdrop.ts galaxyBackdropStructure) in the cache key, so another
+ *  game with the same seed (and so the same caller key) does not get this galaxy's cached thumbnail. */
+const structureIds = new WeakMap<BackdropStructure, number>();
+let nextStructureId = 1;
+function structureId(s: BackdropStructure): number {
+    let id = structureIds.get(s);
+    if (id === undefined) structureIds.set(s, (id = nextStructureId++));
+    return id;
+}
 
 function compile(gl: WebGL2RenderingContext, type: number, src: string): WebGLShader {
     const sh = gl.createShader(type)!;
@@ -148,7 +157,7 @@ export function createBackdropThumbnail(size: number, className = ''): { el: HTM
         }
         img.style.display = 'none';
         canvas.style.display = 'block';
-        const key = 'structure' in src ? `${kind}|${src.key}|${px}` : `${kind}|${src.shape}|${src.seed}|${px}`;
+        const key = 'structure' in src ? `${kind}|${src.key}#${structureId(src.structure)}|${px}` : `${kind}|${src.shape}|${src.seed}|${px}`;
         if (key === lastKey) return;
         lastKey = key;
         let pic = cache.get(key) ?? null;
