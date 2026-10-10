@@ -23,6 +23,7 @@ import { HabitatCategoryType, HabitatType, type Habitat, type SystemInfo } from 
 import { SystemVisibilityStatus } from '../sim/visibility';
 import { displayColorForEmpire } from '../sim/empireColors';
 import { fogOf } from '../render/fog';
+import { localViewerEmpire } from '../localViewer';
 
 // ---------------------------------------------------------------------------------------------------------------
 // Constants (Main.Part13.cs 197-256, Main.Part12.cs 2294-2296, SystemView.cs ctor)
@@ -367,7 +368,7 @@ function drawSystemViewCreatures(ctx: CanvasRenderingContext2D, galaxy: Galaxy, 
 /** MainView.2.cs 2159 ResolveShipSymbolColor at the control's scale (`zoomFactor` = the C#'s main_0.double_0, the
  * Main View zoom; the controls pass their own scale, as the alpha only saturates at 1 above factor 3). */
 export function resolveShipSymbolColor(galaxy: Galaxy, bo: BuiltObject, zoomFactor: number): { r: number; g: number; b: number; a: number } {
-    const player = galaxy.playerEmpire;
+    const player = localViewerEmpire(galaxy);
     let flag = true;
     if (bo.empire === null || (bo.empire === galaxy.independentEmpire && (bo.pirateEmpireId <= 0 || player === null || bo.pirateEmpireId !== player.empireId))) flag = false;
     if (!flag || bo.empire === null) return { r: 128, g: 128, b: 128, a: 255 }; // Color.Gray
@@ -627,7 +628,7 @@ export function drawRegionView(ctx: CanvasRenderingContext2D, p: RegionViewParam
     ctx.fillRect(rx, ry, vw, vh);
     ctx.strokeStyle = SV_PEN_2;
     ctx.strokeRect(rx + 0.5, ry + 0.5, vw, vh);
-    const playerEmpire = galaxy.playerEmpire;
+    const playerEmpire = localViewerEmpire(galaxy);
     if (playerEmpire === null) return;
     if (p.fleetPostures) drawFleetPostures(ctx, playerEmpire, num, W, H, i7, i9);
     const seen = (idx: number): boolean => {

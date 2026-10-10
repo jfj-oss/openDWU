@@ -46,6 +46,7 @@ import {
 } from '../originalWindow';
 import { countLabel } from '../plural';
 import { sectorColumnName } from '../../sim/sectorNames';
+import { localViewerEmpire } from '../../localViewer';
 
 // ---------------------------------------------------------------------------
 // Pure helpers (tested)
@@ -542,7 +543,8 @@ export function createGalaxyMap(opts: GalaxyMapOptions): GalaxyMapScreen {
     const { galaxy } = opts;
     // Task 13e: the real player empire when there is one; god mode only on the
     // generateGalaxy-only boot (no empires).
-    const player = opts.player ?? (galaxy.playerEmpire !== null ? empireGalaxyMapPlayer(galaxy.playerEmpire) : GOD_MODE_PLAYER);
+    const viewer = localViewerEmpire(galaxy);
+    const player = opts.player ?? (viewer !== null ? empireGalaxyMapPlayer(viewer) : GOD_MODE_PLAYER);
     let isOpen = false;
     let mode = GalaxyMapViewMode.Default;
     let colonyType = HabitatType.Undefined;
@@ -910,7 +912,7 @@ export function createGalaxyMap(opts: GalaxyMapOptions): GalaxyMapScreen {
         }
         drawSystemView(ctx, {
             galaxy,
-            player: player === GOD_MODE_PLAYER ? null : galaxy.playerEmpire,
+            player: player === GOD_MODE_PLAYER ? null : localViewerEmpire(galaxy),
             width: SYSTEM_MAP_PX,
             height: SYSTEM_MAP_PX,
             star: sys,
@@ -980,7 +982,8 @@ export function createGalaxyMap(opts: GalaxyMapOptions): GalaxyMapScreen {
         const p = systemViewWorldAt(sys, SYSTEM_MAP_PX, SYSTEM_MAP_PX, galaxyMapSystemScale(galaxy), (e.clientX - r.left) * k, (e.clientY - r.top) * k);
         const h = findNearestHabitatNear(galaxy, p.x, p.y);
         if (h === null) return null;
-        if (player !== GOD_MODE_PLAYER && galaxy.playerEmpire !== null && galaxy.playerEmpire.visibility.checkSystemVisibilityStatus(h.systemIndex) === SystemVisibilityStatus.Unexplored) return null;
+        const viewerNow = localViewerEmpire(galaxy);
+        if (player !== GOD_MODE_PLAYER && viewerNow !== null && viewerNow.visibility.checkSystemVisibilityStatus(h.systemIndex) === SystemVisibilityStatus.Unexplored) return null;
         return h;
     };
     sysCanvas.addEventListener('mouseup', (e) => {

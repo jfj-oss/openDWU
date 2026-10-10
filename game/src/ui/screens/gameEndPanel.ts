@@ -19,6 +19,7 @@ import type { GameEndEventArgs } from '../../sim/victory';
 import { el, glassButton, hudScale, place, text } from '../originalWindow';
 import { onSettingsChange, uiScaleFactor } from '../settings';
 import { canContinueAfterGameEnd, gameEndBannerLines } from './empireComparison';
+import { localViewerEmpire } from '../../localViewer';
 
 /** Our size for pnlGameEnd (original pixels; see the header). */
 const PANEL_W = 380;
@@ -79,7 +80,7 @@ export function openGameEndPanel(galaxy: Galaxy, time: { paused: boolean }, e: G
         size: F_BUTTON,
         className: 'game-end-continue',
         // method_436: disabled after a defeat with no colonies left or an inactive player empire.
-        disabled: !canContinueAfterGameEnd(e, galaxy.playerEmpire),
+        disabled: !canContinueAfterGameEnd(e, localViewerEmpire(galaxy)),
         onClick: () => {
             closeGameEndPanel(); // method_437
             time.paused = false; // method_155

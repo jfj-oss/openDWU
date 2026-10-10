@@ -38,6 +38,7 @@ import { identifyShakturiEmpire } from '../../sim/diplomacyTick';
 import { formatNet, tryGetText } from '../../sim/textResolver';
 import { difficultyTickFor } from '../../sim/startGameOptions';
 import { applyEmpireEmblem, racePortraitUrl } from '../empireEmblem';
+import { localViewerEmpire } from '../../localViewer';
 
 // ---------------------------------------------------------------------------------------------------------------
 // Pure helpers (tested)
@@ -262,7 +263,7 @@ export function empiresWeHaveMetOfMatchingType(self: Empire): Empire[] {
 /** GameSummaryPanel.ResolveValidEmpires: every empire (a pirate player: every pirate faction) once the game is
  *  finished, else the met empires of the player's kind; never the Mechanoids or the Shakturi. */
 export function resolveValidEmpires(galaxy: Galaxy): Empire[] {
-    const player = galaxy.playerEmpire;
+    const player = localViewerEmpire(galaxy);
     if (player === null) return [];
     const mech = identifyMechanoidEmpire(galaxy);
     const shak = identifyShakturiEmpire(galaxy);
@@ -454,7 +455,7 @@ export interface GameSummaryView {
 /** GameSummaryPanel.DrawPanel into `host` (860 × 660). */
 export function createGameSummaryPanel(host: HTMLElement, galaxy: Galaxy, w = 860, h = 660): GameSummaryView {
     const st = stateOf(galaxy);
-    if (st.selected === null) st.selected = galaxy.playerEmpire;
+    if (st.selected === null) st.selected = localViewerEmpire(galaxy);
     const A = gameSummaryAreas(w, h);
     const scroll = { medals: 0, factions: 0, collection: 0, games: 0 };
     const root = at(div('gs-panel'), 0, 0, w, h);

@@ -78,6 +78,7 @@ import { drawCrossedSwords, SWORD_PX_FAR, SWORD_PX_NEAR, systemsUnderFire } from
 import { builtObjectHiddenFromPick, warEmpires } from './builtObjectLayer';
 import { SystemLinkLayer } from './systemLinks';
 import { galaxyViewGates } from './cleanGalaxyView';
+import { localViewerEmpire } from '../localViewer';
 
 // --- constants ----------------------------------------------------------------------------------------------------
 
@@ -861,7 +862,7 @@ export class GalaxyMarkerLayer {
     private refresh(): void {
         const g = this.galaxy;
         const indep = g.independentEmpire;
-        const player = g.playerEmpire;
+        const player = localViewerEmpire(g);
         const vis = player?.visibility ?? null;
         const explored = (i: number): boolean => vis === null || vis.checkSystemVisibilityStatus(i) >= SystemVisibilityStatus.Explored;
         // Visible objects (galaxy symbol pass, MainView.2.cs 5915-5930) and bases the player has ever seen.
@@ -1088,7 +1089,7 @@ export class GalaxyMarkerLayer {
 
     private decorateLabels(systems: readonly SystemLabelView[], f: number, z: number, on: boolean): void {
         let icons = 0;
-        const player = this.galaxy.playerEmpire;
+        const player = localViewerEmpire(this.galaxy);
         for (const sv of systems) {
             const label = sv.nameLabel;
             const shown = on && sv.root.visible && label.visible && f > SYSTEM_RING_MIN_FACTOR;
@@ -1209,7 +1210,7 @@ export class GalaxyMarkerLayer {
 
     private updateSymbols(f: number, z: number, cam: Camera): void {
         const g = this.galaxy;
-        const player = g.playerEmpire;
+        const player = localViewerEmpire(g);
         const indep = g.independentEmpire;
         const band = symbolBand(f);
         const out = this.symbols.particleChildren;

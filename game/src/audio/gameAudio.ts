@@ -30,6 +30,7 @@ import { RIM_MOOD_TRACKS, RimAmbientBed, playRimVoiceStaticBurst, rimMoodProbabi
 // [rimatmo-wiring] end
 import type { BuiltObject } from '../sim/builtObject';
 import { RimCreatureAudio } from './rimCreatureAudio'; // [rimatmo-audio] 19i audio addendum
+import { localViewerEmpire } from '../localViewer';
 
 // ---------------------------------------------------------------------------
 // Pure trigger mapping
@@ -297,7 +298,7 @@ export function installGameAudio(deps: GameAudioDeps): GameAudio {
         // no audio
     }
     // Empire.EventMessageRecipient (Main implements IEventMessageRecipient, Main.Part4.cs:481).
-    const player = galaxy.playerEmpire;
+    const player = localViewerEmpire(galaxy);
     const previousRecipient = player?.eventMessageRecipient ?? null;
     // Non-enumerable while installed: a UI callback, not game state (serializeGame walks the empire's own keys).
     const setRecipient = (value: Empire['eventMessageRecipient'], enumerable: boolean): void => {

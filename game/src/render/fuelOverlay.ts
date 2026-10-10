@@ -21,6 +21,7 @@ import type { SelectedObjectLike } from './mapHighlights';
 import { dashSegments } from './overlayLayer';
 import { circleAtScreenRes } from './screenCircle';
 import { RefuelReach, fuelOverlayData, playerShipsOfSelection, type FuelOverlayData, type RefuelPoint } from './rangeRings';
+import { localViewerEmpire } from '../localViewer';
 
 export const FUEL_COLORS = {
     roundTrip: 0x4fe07a,
@@ -109,7 +110,7 @@ export class FuelOverlay {
     }
 
     update(z: number, cam: Camera): void {
-        const player = this.galaxy.playerEmpire;
+        const player = localViewerEmpire(this.galaxy);
         if (!overlayActive(this.state, 'fuelRange') || player === null) {
             if (this.root.visible) {
                 this.root.visible = false;

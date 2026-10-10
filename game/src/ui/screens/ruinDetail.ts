@@ -17,6 +17,7 @@ import { checkRuinsHaveBenefit, generateRuinAbilitiesSummary } from '../../sim/e
 import { COLORS, FONT, el, openOriginalWindow, place, type OriginalWindow } from '../originalWindow';
 import { ruinImageUrl } from '../eventMessagePresentation';
 import { gt } from './researchBenefits';
+import { localViewerEmpire } from '../../localViewer';
 
 export const RUIN_DETAIL_SIZE = { w: 360, h: 500 } as const;
 
@@ -24,7 +25,7 @@ export const RUIN_DETAIL_SIZE = { w: 360, h: 500 } as const;
  *  no benefit left for the player; empty otherwise. */
 export function ruinDetailDescription(galaxy: Galaxy, ruin: Ruin): string {
     if (ruin.playerEmpireEncountered && ruin.type === RuinType.UnlockResearchProject) return ruin.description ?? '';
-    if (ruin.playerEmpireEncountered && !checkRuinsHaveBenefit(galaxy, ruin, galaxy.playerEmpire)) return ruin.description ?? '';
+    if (ruin.playerEmpireEncountered && !checkRuinsHaveBenefit(galaxy, ruin, localViewerEmpire(galaxy))) return ruin.description ?? '';
     return '';
 }
 

@@ -74,6 +74,7 @@ import {
     type RowContext,
     type RowSeg,
 } from './leftSidebar';
+import { localViewerEmpire } from '../localViewer';
 
 export interface LeftSidebarWiring {
     galaxy?: Galaxy;
@@ -198,7 +199,8 @@ export function createLeftSidebar(wiring: LeftSidebarWiring): HTMLElement {
     let missions: PirateMissionsPanelData | null = null;
     const missionsData = (galaxy: Galaxy, p: Empire, t: readonly number[]): PirateMissionsPanelData | null => pirateMissionsPanelData(galaxy, p, t[0] ?? 0, t[1] ?? 0);
 
-    const player = (): Empire | null => (wiring.game?.playerEmpire as Empire | undefined) ?? null;
+    // The local viewer (src/localViewer.ts), else the wired game's player.
+    const player = (): Empire | null => (wiring.galaxy !== undefined ? localViewerEmpire(wiring.galaxy) : null) ?? (wiring.game?.playerEmpire as Empire | undefined) ?? null;
     const rowCtx = (): RowContext | null => {
         const galaxy = wiring.galaxy;
         const p = player();

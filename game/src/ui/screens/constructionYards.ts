@@ -79,6 +79,7 @@ import { supplyChainEnabled, supplySnapshot } from '../supplyChainCache';
 import { deliveryText, formatEtaDays, formatUnits, itemNeedsText, itemStateText, needStatus, needStatusText, placeText, resourceName, siteHeadline, siteResourceText, type NeedStatus } from '../supplyChainText';
 import { openResourceSupply, resourceSupplyAvailable } from './resourceSupply';
 import { onImprovementsChange } from '../improvements';
+import { localViewerEmpire } from '../../localViewer';
 /** The Construction Yards ship orders (the Ships and Bases buttons on the selected yard ship). */
 export type YardShipOrder = 'refuelShips' | 'repairShips' | 'retireShips';
 
@@ -308,7 +309,7 @@ export interface WaitingRow {
 export function waitingRows(galaxy: Galaxy, site: SiteSupply | null): WaitingRow[] {
     const rows: WaitingRow[] = [];
     if (site === null) return rows;
-    const viewer = galaxy.playerEmpire;
+    const viewer = localViewerEmpire(galaxy);
     site.items.forEach((item, i) => {
         const shipText = `${item.yard !== null ? '' : 'Queued: '}${item.ship.name}`;
         const state = itemStateText(item);
@@ -1166,7 +1167,7 @@ function createConstructionYards(opts: ConstructionYardsOptions): OpenState {
         else {
             const none = s0.resources.filter((r) => r.uncovered > 0);
             note = `${siteHeadline(s0)}. `;
-            if (none.length > 0) note += `Nothing coming: ${none.slice(0, 3).map((r) => siteResourceText(galaxy, r, galaxy.playerEmpire).replace(/^[^:]*: /, `${resourceName(galaxy, r.resourceId)}: `)).join('; ')}${none.length > 3 ? ` (+${none.length - 3})` : ''}. `;
+            if (none.length > 0) note += `Nothing coming: ${none.slice(0, 3).map((r) => siteResourceText(galaxy, r, localViewerEmpire(galaxy)).replace(/^[^:]*: /, `${resourceName(galaxy, r.resourceId)}: `)).join('; ')}${none.length > 3 ? ` (+${none.length - 3})` : ''}. `;
             note += 'Double-click a row to select the freighter bringing it; click a resource to see its supply.';
         }
         setText(supplyNote, note);

@@ -118,6 +118,7 @@ import { resourceTooltipText, knownResourceIndexFor } from './resourceOverlayDat
 import type { HabitatType } from '../sim/types';
 // [dw2overlays] end
 import { SupplyOverlay } from './supplyOverlay'; // [improvements] supplyChain
+import { localViewerEmpire } from '../localViewer';
 
 /** Scenario threat markers (19b "Threats" overlay): suspected = amber, confirmed = red. */
 export const THREAT_SUSPECTED_COLOR = 0xffa020;
@@ -154,7 +155,7 @@ function drawnPx(h: Habitat, z: number): number {
  * comment above: unowned (or independent-owned) + system explored + a
  * colonizable habitat type for the player race + quality >= 0.5. */
 export function isPotentialColony(h: Habitat, galaxy: Galaxy, colonizable?: readonly HabitatType[]): boolean {
-    const empire = galaxy.playerEmpire;
+    const empire = localViewerEmpire(galaxy);
     if (empire === null) return false;
     if (h.category !== HabitatCategoryType.Planet && h.category !== HabitatCategoryType.Moon) return false;
     const owner = h.owner ?? h.empire;
@@ -707,7 +708,7 @@ export class OverlayLayer {
     /** Recompute the Potential Colonies / Scenic / Research marker sets (rings kept for habitats that stay). */
     private rebuildMarkers(): void {
         const galaxy = this.galaxy;
-        const player = galaxy.playerEmpire;
+        const player = localViewerEmpire(galaxy);
         this.markersSig = player !== null ? colonyTargetSignature(galaxy, player) : null;
         const reveal = fogOf(galaxy).reveal;
         const explored = (h: Habitat): boolean => player === null || reveal || player.visibility.checkSystemExplored(h.systemIndex);
@@ -746,7 +747,7 @@ export class OverlayLayer {
         const st = this.state;
         if (!st.potentialColonies && !st.scenicLocations && !st.researchLocations) return;
         if (this.markersFrame++ % 30 !== 0) return;
-        const player = this.galaxy.playerEmpire;
+        const player = localViewerEmpire(this.galaxy);
         if (player === null) return;
         if (colonyTargetSignature(this.galaxy, player) !== this.markersSig) this.rebuildMarkers();
     }
@@ -761,7 +762,7 @@ export class OverlayLayer {
         const lines: string[] = [];
         const c = this.colonyScores.habitatTooltipExtra(h);
         if (c !== null) lines.push(c);
-        const player = this.galaxy.playerEmpire;
+        const player = localViewerEmpire(this.galaxy);
         if (this.resources.root.visible && player !== null) {
             const index = knownResourceIndexFor(this.galaxy, player, fogOf(this.galaxy).reveal);
             const sys = index.bySystem.get(h.systemIndex);
@@ -895,7 +896,7 @@ export class OverlayLayer {
             }
             return;
         }
-        if (this.scenarioFrame++ % 15 === 0) this.scenarioMarkerList = scenarioMapFeatures(this.galaxy, this.galaxy.playerEmpire).markers;
+        if (this.scenarioFrame++ % 15 === 0) this.scenarioMarkerList = scenarioMapFeatures(this.galaxy, localViewerEmpire(this.galaxy)).markers;
         g.clear();
         if (this.scenarioMarkerList.length === 0) {
             g.visible = false;
@@ -915,7 +916,7 @@ export class OverlayLayer {
      * list is re-read twice a second. */
     private updateWrecks(z: number): void {
         const g = this.wrecks;
-        const player = this.galaxy.playerEmpire;
+        const player = localViewerEmpire(this.galaxy);
         if (!this.state.wrecks || player === null || this.galaxy.scenario === null) {
             if (g.visible) {
                 g.clear();
@@ -941,7 +942,7 @@ export class OverlayLayer {
     /** The known wreck field under a world point (hover tooltip), or null. */
     wreckHitTest(x: number, y: number, z: number): WreckField | null {
         if (!this.state.wrecks) return null;
-        return wreckFieldHit(this.galaxy, this.galaxy.playerEmpire, x, y, z);
+        return wreckFieldHit(this.galaxy, localViewerEmpire(this.galaxy), x, y, z);
     }
     // [wreckage] end
 
@@ -949,7 +950,7 @@ export class OverlayLayer {
      * is re-read twice a second; the markers follow moving ships every frame. */
     private updateThreats(z: number): void {
         const g = this.threats;
-        const player = this.galaxy.playerEmpire;
+        const player = localViewerEmpire(this.galaxy);
         if (!this.state.threats || player === null || this.galaxy.scenario === null) {
             if (g.visible) {
                 g.clear();
@@ -1009,7 +1010,7 @@ export class OverlayLayer {
         const target = selectedStellarObject(this.getSelection());
         if (target === this.highlightFor) return;
         this.highlightFor = target;
-        const player = this.galaxy.playerEmpire;
+        const player = localViewerEmpire(this.galaxy);
         this.highlights.setSpecialHighlight(player !== null && target !== null ? shipsMovingToDestination(player, target) : null);
     }
 
@@ -1071,7 +1072,7 @@ export class OverlayLayer {
         if (g.visible) g.clear();
         if (hg.visible) hg.clear();
         if (ig.visible) ig.clear();
-        const player = this.galaxy.playerEmpire;
+        const player = localViewerEmpire(this.galaxy);
         const f = 1 / z;
         const halfW = cam.width / (2 * z);
         const halfH = cam.height / (2 * z);
@@ -1189,7 +1190,7 @@ export class OverlayLayer {
      * the backdrop's fade, at f > 70.
      */
     private updateScanners(z: number, cam: Camera): void {
-        const player = this.galaxy.playerEmpire;
+        const player = localViewerEmpire(this.galaxy);
         const fade = scannerLayerFade(1 / z);
         const tex = this.lrsTex;
         if (!this.state.longRangeScanners || player === null || fade <= 0 || tex === null) {
@@ -1228,7 +1229,7 @@ export class OverlayLayer {
     /** Fleet Postures (MainView.2.cs 3921 method_247): the player's fleets' attack / defend discs and gather lines. */
     private updatePostures(z: number, cam: Camera, overlays: boolean): void {
         const g = this.postureLines;
-        const player = this.galaxy.playerEmpire;
+        const player = localViewerEmpire(this.galaxy);
         const tex = this.lrsTex;
         if (g.visible) g.clear();
         if (!overlays || !this.state.fleetPostures || player === null) {
@@ -1326,7 +1327,7 @@ export class OverlayLayer {
                 }
             }
         }
-        const ring = gravityWellRing(sel, this.galaxy.playerEmpire);
+        const ring = gravityWellRing(sel, localViewerEmpire(this.galaxy));
         if (ring !== null) {
             gg.position.set(ring.star.xpos, ring.star.ypos);
             drawRangeCircle(gg, 0, 0, { radius: ring.radius, color: 0x0000ff, dashed: true }, z);
@@ -1345,7 +1346,7 @@ export class OverlayLayer {
     private updateSelectedVector(z: number, cam: Camera): void {
         const g = this.selVector;
         const f = 1 / z;
-        const v = selectedTravelVectorFor(this.getSelection(), this.galaxy.playerEmpire, f);
+        const v = selectedTravelVectorFor(this.getSelection(), localViewerEmpire(this.galaxy), f);
         if (v === null) {
             if (g.visible) {
                 g.clear();

@@ -21,6 +21,7 @@ import { resourceSupply, supplyChainEnabled } from '../supplyChainCache';
 import { formatUnits, placeText, resourceName, systemNameOf } from '../supplyChainText';
 import { onImprovementsChange } from '../improvements';
 import { requestSimRefresh } from '../../simworker/refresh';
+import { localViewerEmpire } from '../../localViewer';
 
 /** What the panel needs from the game view (main.ts sets it per view; null when none is up). */
 export interface ResourceSupplyHost {
@@ -90,7 +91,7 @@ const REASON: Record<ResourceConsumer['reasons'][number], string> = {
 
 /** Rows and texts of one view (pure; tested). */
 export function resourceSupplyRows(galaxy: Galaxy, v: ResourceSupplyView) {
-    const viewer = galaxy.playerEmpire;
+    const viewer = localViewerEmpire(galaxy);
     return {
         producers: v.producers.map((p) => ({
             key: p.obj,
@@ -325,7 +326,7 @@ function createResourceSupply(h: ResourceSupplyHost, firstResource: number): Ope
 
     function refresh(force = false): void {
         if (win.closed) return;
-        const v = resourceSupply(galaxy, resourceId, galaxy.playerEmpire, force);
+        const v = resourceSupply(galaxy, resourceId, localViewerEmpire(galaxy), force);
         if (v === null) {
             win.close();
             return;
@@ -373,7 +374,7 @@ function createResourceSupply(h: ResourceSupplyHost, firstResource: number): Ope
     });
     refresh();
     // Worker mode: bring the empire's cargo / orders up to date now (no-op in-thread).
-    const emp = galaxy.playerEmpire;
+    const emp = localViewerEmpire(galaxy);
     if (emp !== null) requestSimRefresh(galaxy, [emp, emp.colonies, emp.privateBuiltObjects], () => refresh(true));
     timer = window.setInterval(() => refresh(), 1000);
     return {

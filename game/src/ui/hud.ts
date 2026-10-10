@@ -109,6 +109,7 @@ import { setTextIfChanged } from '../render/drawCache';
 import { CREATURE_FRAME_SETS, creatureFrameSetIndexes, creatureFrameUrls } from '../render/creatureLayer';
 import type { Creature } from '../sim/creature';
 import { Fighter } from '../sim/combat/fighters';
+import { localViewerEmpire } from '../localViewer';
 
 // Port of Main.Part12.cs LoadUiChromeButtons (381–520): the control → chrome
 // button image mapping. The original loads each control's image from
@@ -607,6 +608,12 @@ export function historyGoTo(cam: Camera | undefined, x: number, y: number): void
     cam.zoomAt(PLANET_LEVEL_ZOOM, cam.width / 2, cam.height / 2);
 }
 
+/** The empire this HUD shows (src/localViewer.ts): the wired galaxy's local viewer, else the wired game's player. */
+function hudViewer(wiring: HudWiring): Empire | undefined {
+    const v = wiring.galaxy !== undefined ? localViewerEmpire(wiring.galaxy) : null;
+    return v ?? (wiring.game?.playerEmpire as Empire | undefined);
+}
+
 export function createHud(wiring: HudWiring = {}): HudRefs {
     destroyHudListeners(); // a HUD still running from a view that was not torn down (hudLifetime.ts)
     galaxyMapAt = wiring.openGalaxyMapAt ?? null;
@@ -736,9 +743,9 @@ export function createHud(wiring: HudWiring = {}): HudRefs {
     // player's empire plus its government's name from the parsed game data.
     if (wiring.game) {
         setEmpireSummarySource(() => ({
-            empire: wiring.game!.playerEmpire as Empire,
+            empire: hudViewer(wiring)!,
             governmentName:
-                wiring.gameData?.governments[(wiring.game!.playerEmpire as Empire).governmentId]?.name ?? null,
+                wiring.gameData?.governments[(hudViewer(wiring)!).governmentId]?.name ?? null,
         }));
     }
 
@@ -1076,7 +1083,7 @@ function openDiplomacy(wiring: HudWiring): void {
     const galaxy = wiring.galaxy;
     const game = wiring.game;
     if (!galaxy || !game) return;
-    const playerEmpire = game.playerEmpire as Empire;
+    const playerEmpire = hudViewer(wiring)!;
     const openList = (): void => toggleEmpiresList({
         empires: galaxy.empires,
         playerEmpire,
@@ -1105,7 +1112,7 @@ function openDiplomacy(wiring: HudWiring): void {
 function buildEmpireSummaryButton(wiring: HudWiring): HTMLElement {
     const btn = buildTopBarButton('btnEmpireSummary', wiring);
     const galaxy = wiring.galaxy;
-    const empire = wiring.game?.playerEmpire as Empire | undefined;
+    const empire = hudViewer(wiring);
     if (galaxy && empire) {
         const flag = document.createElement('img');
         flag.className = 'top-flag';
@@ -1136,7 +1143,7 @@ function buildResearchButton(wiring: HudWiring): HTMLElement {
         return el;
     });
     const refresh = (): void => {
-        const empire = wiring.game?.playerEmpire as Empire | undefined;
+        const empire = hudViewer(wiring);
         researchReadout(empire?.research ?? null).forEach((r, i) => {
             setTextIfChanged(rows[i], r.text);
             rows[i].classList.toggle('top-research-idle', r.node === null);
@@ -1292,13 +1299,13 @@ function buildMoneyPanel(game?: { playerEmpire: { name: string; mainColor: numbe
         let moneyCommandAt: number | null = null;
         const refreshMoney = (): void => {
             // 4 Hz; written only on change (render: perf pass).
-            const m = game.playerEmpire.stateMoney;
+            const m = (galaxy !== undefined ? localViewerEmpire(galaxy) : null)?.stateMoney ?? game.playerEmpire.stateMoney;
             setTextIfChanged(money, formatMoney(Math.round(m)));
             money.classList.toggle('top-negative', m < 0);
             // Main.Part11.cs 838-857: Cashflow / Bonus Income, `+##,###,##0;-##,###,##0` (the C# keeps the previous
             // strings when there is nothing to show).
-            if (galaxy === undefined || galaxy.playerEmpire === null) return;
-            const player = galaxy.playerEmpire;
+            const player = galaxy === undefined ? null : localViewerEmpire(galaxy);
+            if (galaxy === undefined || player === null) return;
             if (moneyPanelWriteDue(galaxy, player)) {
                 // method_126 also ages the player's variable income (841 CheckAgeVariableIncome): a sim write, so the
                 // journaled 'moneyPanel' command does it in the game at the next frame boundary (in-thread or in the
@@ -1325,7 +1332,7 @@ function buildMoneyPanel(game?: { playerEmpire: { name: string; mainColor: numbe
  * (topBar.ts viewSystemName, with the scenario's rim name for the system) while zoomed in below factor 100, else ''. */
 export function topSystemNameText(galaxy: Galaxy, x: number, y: number, zoom: number): string {
     if (!showViewSystemName(zoom)) return '';
-    return viewSystemName(galaxy, galaxy.playerEmpire, x, y, (h) => rimSystemDisplayName({ scenario: galaxy.scenario ?? null }, h.systemIndex, h.name));
+    return viewSystemName(galaxy, localViewerEmpire(galaxy), x, y, (h) => rimSystemDisplayName({ scenario: galaxy.scenario ?? null }, h.systemIndex, h.name));
 }
 
 /** Bottom-left streamlined selection panel. */
@@ -1497,7 +1504,7 @@ function buildSelectionPanel(wiring: HudWiring): HTMLElement {
     const charterButton = createCharterButton(
         () => ({
             galaxy: wiring.galaxy ?? null,
-            player: wiring.galaxy?.playerEmpire ?? null,
+            player: localViewerEmpire(wiring.galaxy) ?? null,
             habitat: currentSelection !== null && currentSelection.builtObject === undefined && currentSelection.shipGroup === undefined && currentSelection.builtObjects === undefined && currentSelection.creature === undefined && currentSelection.fighter === undefined ? currentSelection.habitat : null,
         }),
         (id) => wiring.gameData?.resources.find((d) => d.resourceId === id)?.name ?? `#${id}`,
@@ -1510,7 +1517,7 @@ function buildSelectionPanel(wiring: HudWiring): HTMLElement {
         const out: SelectionExtraSlot[] = [...dispatchSlots];
         // The Fleet Settings panel for a selected player fleet (an Improvement, ui/improvements.ts).
         const settingsFleet = currentSelection?.shipGroup ?? null;
-        if (settingsFleet !== null && isImprovementEnabled('fleetSettings') && settingsFleet.empire === (wiring.galaxy?.playerEmpire ?? null)) {
+        if (settingsFleet !== null && isImprovementEnabled('fleetSettings') && settingsFleet.empire === (localViewerEmpire(wiring.galaxy) ?? null)) {
             out.push({ label: 'Settings', title: 'Fleet Settings: posture, engagement, retreat, fuel, troops and resupply (Q)', onClick: () => openFleetSettingsFor(settingsFleet) });
         }
         if (!charterButton.element.hidden) {
@@ -1612,7 +1619,7 @@ function buildSelectionPanel(wiring: HudWiring): HTMLElement {
             if (kind === 'fleets') {
                 const game = wiring.game;
                 if (!game) return;
-                const list = fleetCycleList(game.playerEmpire as Empire);
+                const list = fleetCycleList(hudViewer(wiring)!);
                 if (list.length === 0) {
                     showToast(cycleEmptyText('fleets'));
                     return;
@@ -1628,7 +1635,7 @@ function buildSelectionPanel(wiring: HudWiring): HTMLElement {
                 // view, centre on (method_157) the next idle ship or fleet.
                 const game = wiring.game;
                 if (!game) return;
-                idleCycle = cycleIdleShips(game.playerEmpire as unknown as IdleCycleEmpire, idleCycle, dir);
+                idleCycle = cycleIdleShips(hudViewer(wiring) as unknown as IdleCycleEmpire, idleCycle, dir);
                 if (idleCycle.shipGroup) {
                     shipGroupSelectHandler?.(idleCycle.shipGroup, moveView);
                 } else if (idleCycle.builtObject) {
@@ -1646,7 +1653,7 @@ function buildSelectionPanel(wiring: HudWiring): HTMLElement {
             const cam = wiring.camera;
             const galaxy = wiring.galaxy;
             if (!game || !cam || !galaxy) return;
-            const list = builtObjectCycleList(game.playerEmpire as Empire, kind);
+            const list = builtObjectCycleList(hudViewer(wiring)!, kind);
             if (list.length === 0) {
                 showToast(cycleEmptyText(kind));
                 return;
@@ -1667,7 +1674,7 @@ function buildSelectionPanel(wiring: HudWiring): HTMLElement {
         const cam = wiring.camera;
         const galaxy = wiring.galaxy;
         if (!game || !cam || !galaxy) return;
-        const colonies = playerColonyList(galaxy, game.playerEmpire as Empire);
+        const colonies = playerColonyList(galaxy, hudViewer(wiring)!);
         if (colonies.length === 0) {
             showToast(cycleEmptyText('colonies'));
             return;
@@ -1826,7 +1833,7 @@ function buildSelectionPanel(wiring: HudWiring): HTMLElement {
     // A hotspot click (InfoPanel.AddHotspot objects): select the object (method_208), or open the empire.
     const onTarget = (t: InfoTarget): void => {
         if (t.kind === 'empire') {
-            const player = wiring.galaxy?.playerEmpire ?? null;
+            const player = localViewerEmpire(wiring.galaxy) ?? null;
             if (player === null) return;
             if (t.empire === player) toggleEmpireSummary();
             else toggleDiplomacyScreen({ player, selectedEmpire: t.empire });
@@ -1872,7 +1879,7 @@ function buildSelectionPanel(wiring: HudWiring): HTMLElement {
     const pendingAutomated = new PendingValues<BuiltObject | ShipGroup, boolean>();
     const toggleAutomation = (): void => {
         const target = automationTarget();
-        const player = wiring.galaxy?.playerEmpire;
+        const player = localViewerEmpire(wiring.galaxy);
         if (!target || !player) return;
         const automated = pendingAutomated.value(target, automationToggleLabel(target).automated);
         const settle = pendingAutomated.send(target, !automated);
@@ -1890,7 +1897,7 @@ function buildSelectionPanel(wiring: HudWiring): HTMLElement {
     const refresh = (): void => {
         const sel = currentSelection;
         const galaxy = wiring.galaxy;
-        const player = galaxy?.playerEmpire ?? null;
+        const player = localViewerEmpire(galaxy) ?? null;
         const scroll = content.querySelector('.sel-scroll');
         if (scroll !== null) lastScroll = scroll.scrollTop;
         if (!sel || !galaxy || player === null) {
@@ -1913,7 +1920,7 @@ function buildSelectionPanel(wiring: HudWiring): HTMLElement {
     const rebuildExtras = (): void => {
         const sel = currentSelection;
         const galaxy = wiring.galaxy;
-        const player = galaxy?.playerEmpire ?? null;
+        const player = localViewerEmpire(galaxy) ?? null;
         if (sel && galaxy && player !== null && !sel.creature && !sel.fighter && !sel.shipGroup && !sel.builtObject && !sel.builtObjects) {
             // The options come from a command (at the next frame boundary; in worker mode from the authoritative game
             // one round trip later), then the strip is redrawn — a reply for a selection already left is dropped.

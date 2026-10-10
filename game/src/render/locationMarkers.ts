@@ -29,6 +29,7 @@ import { resolveStarDateDescription } from '../sim/galaxyTime';
 import { overlayActive, type MapOverlayState } from '../ui/mapOverlays';
 import { getSettings } from '../ui/settings';
 import { WEAPON_CIRCLES_MIN_FACTOR } from './weaponRangeCircles';
+import { localViewerEmpire } from '../localViewer';
 
 /** MainView.cs 1469 color_17 = Color.FromArgb(96, 64, 255). */
 export const HINT_PULSE_COLOR = 0x6040ff;
@@ -245,10 +246,10 @@ export class LocationMarkerLayer {
         }
         this.markersRoot.visible = true;
         if (this.frame++ % 15 === 0) {
-            const sig = markerSignature(this.galaxy, this.galaxy.playerEmpire, showW, showK, this.reveal);
+            const sig = markerSignature(this.galaxy, localViewerEmpire(this.galaxy), showW, showK, this.reveal);
             if (sig !== this.sig) {
                 this.sig = sig;
-                this.rebuild(mapMarkers(this.galaxy, this.galaxy.playerEmpire, showW, showK, this.reveal));
+                this.rebuild(mapMarkers(this.galaxy, localViewerEmpire(this.galaxy), showW, showK, this.reveal));
             }
         }
         const inv = 1 / z;
@@ -281,7 +282,7 @@ export class LocationMarkerLayer {
         const g = this.pulses;
         if (g.visible) g.clear();
         const f = 1 / z;
-        const player = this.galaxy.playerEmpire;
+        const player = localViewerEmpire(this.galaxy);
         // method_250 (MainView.cs 1538) did not run: dateTime_4 keeps its time.
         if (f <= WEAPON_CIRCLES_MIN_FACTOR || player === null) {
             g.visible = false;

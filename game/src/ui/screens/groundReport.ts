@@ -48,6 +48,7 @@ import {
     type GroundReportModel,
     type GrRect,
 } from './groundReportModel';
+import { localViewerEmpire } from '../../localViewer';
 
 const CHROME = '/assets/dwu/images/ui/chrome';
 const PLANET_MAPS = '/assets/dwu/images/environment/planetmaps';
@@ -128,7 +129,7 @@ export function openGroundReport(colony: Habitat): void {
         open.close();
     }
     const galaxy = (getEmpireSummarySource()?.empire.galaxy ?? null) as Galaxy | null;
-    const player = galaxy?.playerEmpire ?? null;
+    const player = localViewerEmpire(galaxy) ?? null;
     if (galaxy === null) return;
     open = createGroundReport(galaxy, player, colony);
 }

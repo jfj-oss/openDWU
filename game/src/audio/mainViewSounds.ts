@@ -37,6 +37,7 @@ import { isObjectVisibleToThisEmpire } from '../sim/independentTraders';
 import { Random } from '../sim/random';
 import { MIN_TIME } from '../sim/tick/simTime';
 import { resolveBalanceAndDistance, type EffectsPlayer, type SoundEffectRequest } from './effectsPlayer';
+import { localViewerEmpire } from '../localViewer';
 
 /** A weapon in flight as the sound marks see it (Weapon or FighterWeapon). */
 export interface SoundShot {
@@ -393,7 +394,7 @@ export class MainViewSounds {
         const yards = queue?.constructionYards ?? null;
         // ConstructionYardList.CountUnderConstruction: yards with a ship on the slip.
         if (yards === null || !yards.some((y) => y.shipUnderConstruction != null)) return;
-        const player = galaxy.playerEmpire;
+        const player = localViewerEmpire(galaxy);
         if (player === null || !isObjectVisibleToThisEmpire(galaxy, viewer ?? player, h)) return;
         const b = bd(p);
         req(this.player.resolveConstruction(b.balance, b.distance));

@@ -29,6 +29,7 @@ import { showToast } from './toast';
 import { setWaypointKeyHandler } from './keyboard';
 import { SECTOR_LEVEL_ZOOM } from './hud';
 import type { OverlayOptionPanel } from './overlayOptionPanels';
+import { localViewerEmpire } from '../localViewer';
 
 export const WAYPOINTS_IMPROVEMENT = 'waypoints';
 
@@ -514,7 +515,7 @@ export function drawGalaxyMapMarkers(ctx: CanvasRenderingContext2D, galaxy: Gala
     const d = deps;
     if (d === null || d.galaxy !== galaxy || !overlayActive(d.overlays, 'waypoints')) return;
     const st = getSettings();
-    const player = galaxy.playerEmpire;
+    const player = localViewerEmpire(galaxy);
     if (player === null) return;
     const kept: number[] = [];
     ctx.save();

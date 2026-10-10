@@ -38,6 +38,7 @@ import {
     creatureZoomFactor,
 } from './creatureLayer';
 import { artStats, fbm, makeValueNoise, roundStats, smoothstep, type ArtStats } from './creatureRig';
+import { localViewerEmpire } from '../localViewer';
 
 // The shared creature rules live in creatureLayer.ts, the statistics / noise in creatureRig.ts; re-exported for the
 // pilot's tests / capture script.
@@ -775,7 +776,7 @@ export class WhalePilotLayer {
         (window as unknown as { __whalePilot?: unknown }).__whalePilot = { stats: table, layer: this };
 
         // Place them in the player's home system, just off the capital.
-        const home = this.galaxy.playerEmpire?.capital ?? null;
+        const home = localViewerEmpire(this.galaxy)?.capital ?? null;
         if (home === null) {
             console.warn('[whalePilot] no player capital — start a game (?autostart=1)');
             return;

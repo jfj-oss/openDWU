@@ -35,6 +35,7 @@ import type { MapOverlayState } from '../ui/mapOverlays';
 import { scenarioMapFeatures } from '../sim/scenario/mapFeatures';
 import { INDEPENDENT_RING_COLOR, toPixiColor } from './empireLayer';
 import { dashSegments, TRAVEL_VECTOR_COLOR } from './overlayLayer';
+import { localViewerEmpire } from '../localViewer';
 
 /** Default category colours (task 19e-9 §8.2). Scenario categories carry their own. */
 export const FLOW_COLORS: Readonly<Record<string, number>> = {
@@ -418,7 +419,7 @@ export class FreightOverlay {
         if (g.visible && t - this.routesAt < 250) return;
         this.routesAt = t;
         g.clear();
-        const routes = scenarioMapFeatures(this.galaxy, this.galaxy.playerEmpire).routes;
+        const routes = scenarioMapFeatures(this.galaxy, localViewerEmpire(this.galaxy)).routes;
         const f = 1 / z;
         for (const r of routes) {
             for (let i = 0; i + 1 < r.points.length; i++) {

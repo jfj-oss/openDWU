@@ -11,6 +11,7 @@ import { galaxyStarDate } from '../sim/tick/simTime';
 import { calculateStrategicResourceSupplyGrowthFactor } from '../sim/taxes';
 import { empireSupplySnapshot, resourceSupplyView, type EmpireSupplySnapshot, type ResourceSupplyView } from '../sim/logistics/supplyChain';
 import { isImprovementEnabled } from './improvements';
+import { localViewerEmpire } from '../localViewer';
 
 /** The improvement id (ui/improvements.ts). */
 export const SUPPLY_IMPROVEMENT = 'supplyChain';
@@ -40,7 +41,7 @@ export function supplyChainEnabled(): boolean {
 }
 
 /** The player's (or `empire`'s) supply snapshot, at most SUPPLY_REFRESH_MS old; null when the improvement is off. */
-export function supplySnapshot(galaxy: Galaxy, empire: Empire | null = galaxy.playerEmpire, force = false): EmpireSupplySnapshot | null {
+export function supplySnapshot(galaxy: Galaxy, empire: Empire | null = localViewerEmpire(galaxy), force = false): EmpireSupplySnapshot | null {
     if (empire === null || !supplyChainEnabled()) return null;
     const t = now();
     const e = snaps.get(galaxy);
@@ -55,7 +56,7 @@ export function supplySnapshot(galaxy: Galaxy, empire: Empire | null = galaxy.pl
 }
 
 /** Where `resourceId` is produced / held / needed in the player's empire, at most SUPPLY_REFRESH_MS old. */
-export function resourceSupply(galaxy: Galaxy, resourceId: number, empire: Empire | null = galaxy.playerEmpire, force = false): ResourceSupplyView | null {
+export function resourceSupply(galaxy: Galaxy, resourceId: number, empire: Empire | null = localViewerEmpire(galaxy), force = false): ResourceSupplyView | null {
     if (empire === null || !supplyChainEnabled()) return null;
     let m = views.get(galaxy);
     if (m === undefined) {

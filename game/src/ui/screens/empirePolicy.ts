@@ -62,9 +62,10 @@ import {
     type PolicyRow,
     type PolicySection,
 } from './empirePolicyModel';
+import { localViewerEmpire } from '../../localViewer';
 
 export interface EmpirePolicyOptions {
-    /** galaxy.playerEmpire (method_595 edits _Game.PlayerEmpire). */
+    /** localViewerEmpire(galaxy) (method_595 edits _Game.PlayerEmpire). */
     empire: Empire;
 }
 
@@ -121,7 +122,7 @@ function createEmpirePolicy(opts: EmpirePolicyOptions): OpenState {
     const ctx: PolicyPanelContext = { facilities: planetaryFacilityDefinitionsStatic(galaxy) };
     const sections: PolicySection[] = buildPolicyPanel(empire, empire.policy ?? defaultEmpirePolicy(), ctx);
     const controls = panelControls(sections);
-    const playerIsPirate = (galaxy.playerEmpire ?? empire).pirateEmpireBaseHabitat !== null;
+    const playerIsPirate = (localViewerEmpire(galaxy) ?? empire).pirateEmpireBaseHabitat !== null;
 
     // The automation values this panel sent, until their replies land (pendingCommands.ts): a change X → Y → X within
     // one reply still sends the X (in sim-worker mode the replica shows a change a round trip later).

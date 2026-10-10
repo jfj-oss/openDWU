@@ -16,6 +16,7 @@ import type { MotionInterpolator } from './renderInterp';
 import { overlayActive, type MapOverlayState } from '../ui/mapOverlays';
 import { SpritePool, drawnHabitatPx, ringTexture, sizeSprite } from './dw2OverlayArt';
 import { colonyTargetScoresFor, colonyTargetTooltip, heatColor, type ColonyTargetScore, type ColonyTargetScores } from './colonyTargets';
+import { localViewerEmpire } from '../localViewer';
 
 interface DrawnRing {
     x: number;
@@ -49,7 +50,7 @@ export class ColonyScoreOverlay {
     }
 
     update(z: number, cam: Camera): void {
-        const player = this.galaxy.playerEmpire;
+        const player = localViewerEmpire(this.galaxy);
         if (!overlayActive(this.state, 'colonyScores') || player === null) {
             if (this.root.visible) {
                 this.root.visible = false;

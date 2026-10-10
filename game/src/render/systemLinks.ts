@@ -43,6 +43,7 @@ import { SystemVisibilityStatus } from '../sim/visibility';
 import { displayColorForEmpire } from '../sim/empireColors';
 import { resolveSectorClamped } from '../ui/systemView';
 import { fogOf } from './fog';
+import { localViewerEmpire } from '../localViewer';
 
 /** XnaDrawingHelper.cs 584: float x2 = 6f — the dash / gap length in screen px. */
 export const SYSTEM_LINK_DASH_PX = 6;
@@ -267,7 +268,7 @@ export class SystemLinkLayer {
         const t0 = performance.now();
         const g = this.galaxy;
         const fog = fogOf(g);
-        const player = g.playerEmpire;
+        const player = localViewerEmpire(g);
         const vis = fog.reveal || player === null ? null : player.visibility;
         const seen = vis === null ? () => true : (i: number) => {
             const st = vis.checkSystemVisibilityStatus(i);

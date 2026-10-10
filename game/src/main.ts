@@ -157,6 +157,8 @@ import { activeCustomizationSet, activeCustomizationSetName, normalizeCustomizat
 import { setThemeChromeRace } from './themeAssets';
 import { resetMusicForTheme } from './audio/musicPlayer';
 import { updateSettings } from './ui/settings';
+import { localViewerEmpire } from './localViewer';
+import type { Empire } from './sim/empire';
 
 // ?shape= names accepted by the boot URL.
 const SHAPE_BY_NAME: Record<string, GalaxyShape> = {
@@ -618,7 +620,7 @@ function createGalaxyMapFor(galaxy: Galaxy, camera: Camera): GalaxyMapScreen {
         // here its hotspots keep their messages as tool tips, and the Galactopedia ones (resources, races, facilities —
         // Main.Part4.cs 3586-3607) open their topic.
         renderHabitatInfo: (box, h) => {
-            const player = galaxy.playerEmpire;
+            const player = localViewerEmpire(galaxy);
             if (player === null) return;
             const resource = (id: number): { name: string; pictureRef: number } | null => galaxy.resources.find((r) => r.resourceId === id) ?? null;
             const model = habitatInfo({ galaxy, player, resource }, h);
@@ -690,17 +692,19 @@ export async function startGameView(
         }
     }
     const galaxy = game.galaxy;
+    // The empire this screen plays (src/localViewer.ts; multiplayer): galaxy.playerEmpire unless a viewer is set.
+    const viewer: Empire = localViewerEmpire(galaxy) ?? game.playerEmpire;
     // Start.2.cs 60 / Start.cs 2394 method_56: the player race's chrome folder of the theme is searched first.
-    setThemeChromeRace(game.playerEmpire?.dominantRace?.name ?? '');
+    setThemeChromeRace(viewer.dominantRace?.name ?? '');
     // [simworker] Save text of the running game: the worker's authoritative game in worker mode (async).
     // A Blob of the UTF-8 text in both modes (saveData.ts): the text is never one string in a heap.
     const serializeCurrent = (): SaveText | null | Promise<SaveText | null> =>
         simClient !== undefined ? simClient.save() : lastStartOptions !== null ? serializeGameBlob(game, time, lastStartOptions) : null;
 
     // Task 10d: first message of the top-middle ticker — the founding line.
-    const playerCapital = game.playerEmpire?.capital ?? null;
+    const playerCapital = viewer.capital ?? null;
     const systemName = playerCapital !== null ? galaxy.systems[playerCapital.systemIndex].systemStar.name : '';
-    const foundingMessage = `${game.playerEmpire.name} founded at ${playerCapital?.name ?? ''} (${systemName} system)`;
+    const foundingMessage = `${viewer.name} founded at ${playerCapital?.name ?? ''} (${systemName} system)`;
 
     const app = new Application();
     await app.init({
@@ -724,7 +728,7 @@ export async function startGameView(
     // resets the camera to the whole-galaxy view (the order bug left the view
     // at minZoom). Centre on the player's capital (createGame returns
     // viewX/viewY as fallback when it is null).
-    const capital = game.playerEmpire?.capital ?? null;
+    const capital = viewer.capital ?? null;
     camera.centerOn(capital !== null ? capital.xpos : game.viewX, capital !== null ? capital.ypos : game.viewY);
     camera.zoom = camera.minZoom;
     if (zoomOverride !== undefined) {
@@ -772,7 +776,7 @@ export async function startGameView(
         // Loaded game: rebuild the ticker/history from the saved message
         // history (Empire.MessageHistory) instead of re-emitting the founding
         // line at the load date.
-        for (const line of savedHistoryLines(game.playerEmpire)) {
+        for (const line of savedHistoryLines(viewer)) {
             pushHudMessage(line.text, line.starDate > 0 ? resolveStarDateDescription(line.starDate) : '');
         }
     }
@@ -789,9 +793,9 @@ export async function startGameView(
     // it handled from a PlayerMessageStream. In-thread the game's pipeline feeds it; in worker mode the worker's
     // 'playerMessages' events do (ui/workerMessages.ts, with the events and the game end). Installed before the
     // consumers first read it.
-    const localMessages = simClient === undefined ? installLocalMessageStream(galaxy, game.playerEmpire) : null;
+    const localMessages = simClient === undefined ? installLocalMessageStream(galaxy, viewer) : null;
     // [simworker] Sim → UI events from the worker (the sim-side handling already ran there).
-    const workerMessageUi = simClient !== undefined ? installWorkerMessageUi({ player: game.playerEmpire, galaxy, time }) : null;
+    const workerMessageUi = simClient !== undefined ? installWorkerMessageUi({ player: viewer, galaxy, time }) : null;
     simClient?.onEvent((e, resolve) => {
         if (workerMessageUi?.onEvent(e, resolve) === true) return;
         if (e.kind === 'locationPinged') {
@@ -812,14 +816,14 @@ export async function startGameView(
     const aiAdvisorParams = new URLSearchParams(window.location.search);
     const aiAdvisor = startAiAdvisorDriver({
         galaxy,
-        player: game.playerEmpire,
+        player: viewer,
         settings: () => aiAdvisorSettingsWithUrl(getSettings(), aiAdvisorParams),
         onTurn: pushCouncilLog,
     });
     (window as unknown as { __dwu: Record<string, unknown> }).__dwu.aiAdvisor = aiAdvisor.driver;
     // [aiadvisor] end
     // [llm] begin — 19s-1: the local-model layer (queue + yearly chronicle); nothing is created with llmFoundations off.
-    const llmLayer = startLlmLayer({ galaxy, player: game.playerEmpire, settings: () => {
+    const llmLayer = startLlmLayer({ galaxy, player: viewer, settings: () => {
             const st = getSettings();
             return { endpoint: st.advisorEndpoint, model: st.advisorModel, api: st.advisorApi, think: st.advisorThink };
         }, search: window.location.search });
@@ -839,7 +843,7 @@ export async function startGameView(
     // [freightOverlay] begin — task 19e-9: Trade Flows panel (overlay row "…", legend button) + map legend.
     const tradeFlowsOpts = {
         galaxy,
-        playerEmpire: game.playerEmpire,
+        playerEmpire: viewer,
         overlay: () => view.freightOverlay,
         jumpTo: (x: number, y: number) => camera.centerOn(x, y),
     };
@@ -856,7 +860,7 @@ export async function startGameView(
         openTradeFlows: () => openTradeFlows(tradeFlowsOpts),
     });
     Object.assign((window as unknown as { __dwu: Record<string, unknown> }).__dwu, {
-        supply: { stats: supplyStats, snapshot: (force = false) => supplySnapshot(galaxy, galaxy.playerEmpire, force), invalidate: () => invalidateSupply(galaxy), openResource: openResourceSupply },
+        supply: { stats: supplyStats, snapshot: (force = false) => supplySnapshot(galaxy, localViewerEmpire(galaxy), force), invalidate: () => invalidateSupply(galaxy), openResource: openResourceSupply },
     });
     const hud: HudRefs = createHud({
         clock: time,
@@ -930,7 +934,7 @@ export async function startGameView(
         if (systemNameEl) {
             setTextIfChanged(systemNameEl, topSystemNameText(galaxy, camera.x, camera.y, camera.zoom));
         }
-        for (const { message, text } of messageFeed.pollMessages(game.playerEmpire)) {
+        for (const { message, text } of messageFeed.pollMessages(viewer)) {
             const goTo = messageGoToTarget(message) !== null ? (): boolean => goToMessage(message, galaxy) : null;
             pushHudMessage(text, resolveStarDateDescription(message.starDate > 0 ? message.starDate : time.currentStarDate), goTo);
         }
@@ -957,7 +961,7 @@ export async function startGameView(
     // [16d] Player messages → popups + the diplomatic conversation queue (Main.Part9.cs ReceiveMessageInternal).
     // [popupstubs] begin
     // The clock lets an immediate conversation pause the game (Main.Part9.cs 1544 method_253).
-    installMessagePopups({ player: game.playerEmpire, galaxy, clock: time });
+    installMessagePopups({ player: viewer, galaxy, clock: time });
     // [popupstubs] end
     // [/16d]
 
@@ -966,10 +970,10 @@ export async function startGameView(
     // selects the subject (method_646 / 647; method_645 → the empire's capital here) and Approve / Decline restore the
     // view (method_644).
     installAdvisorSuggestions({
-        player: game.playerEmpire,
+        player: viewer,
         galaxy,
         clock: time,
-        openBuildOrder: () => toggleBuildOrder({ empire: game.playerEmpire }),
+        openBuildOrder: () => toggleBuildOrder({ empire: viewer }),
         expireConversations: (e) => expireConversationsForEmpire(e),
         show: (target) => {
             const before = { x: camera.x, y: camera.y, zoom: camera.zoom, sel: getHudSelection() };
@@ -996,19 +1000,19 @@ export async function startGameView(
 
     // [popupstubs] begin
     // Messages, conversations and advisor suggestions first appear as one-line stubs under the top-right panel.
-    installMessageStubList({ player: game.playerEmpire, galaxy, clock: time });
+    installMessageStubList({ player: viewer, galaxy, clock: time });
     // [popupstubs] end
     // [improvements] Battle reports (DW2-inspired): the sim records them; this announces new ones and opens the window.
     setBattleReportsEnabled(battleReportsObserverOn());
-    installBattleReportNotifier({ galaxy, player: game.playerEmpire, goTo: (x, y) => historyGoTo(camera, x, y) });
-    installDesignLineUpgradeSync(galaxy, game.playerEmpire); // [improvements] designLineUpgrade: the switch → the sim (journaled)
-    installStatePrioritySync(galaxy, game.playerEmpire); // [improvements] statePriorityShipyards: the switch → the sim (journaled)
+    installBattleReportNotifier({ galaxy, player: viewer, goTo: (x, y) => historyGoTo(camera, x, y) });
+    installDesignLineUpgradeSync(galaxy, viewer); // [improvements] designLineUpgrade: the switch → the sim (journaled)
+    installStatePrioritySync(galaxy, viewer); // [improvements] statePriorityShipyards: the switch → the sim (journaled)
     // Dev / screenshot hook (scripts/battlereports-shots.mjs): the current game's save text (both modes).
     Object.assign((window as unknown as { __dwu: Record<string, unknown> }).__dwu, { serialize: serializeCurrent });
 
     // [leftovers] begin
     // The player's EventMessageRecipient (Main.Part12.cs:2881) → history messages + the wonder-built popup.
-    installEventMessages({ player: game.playerEmpire, galaxy, onGoTo: (t) => selectStellarObject(t, true), onGoToCreature: (c) => selectCreature(c, true) });
+    installEventMessages({ player: viewer, galaxy, onGoTo: (t) => selectStellarObject(t, true), onGoToCreature: (c) => selectCreature(c, true) });
     // Autosave every GameOptions.AutoSaveInterval minutes (Main.Part12.cs:4013 method_97).
     installAutosave({
         serialize: () => serializeCurrent(),
@@ -1021,7 +1025,7 @@ export async function startGameView(
     const orderUiCleanup = installOrderUi(
         {
             galaxy,
-            empire: game.playerEmpire,
+            empire: viewer,
             clock: time,
             getSelected: () => selectionTarget(getHudSelection()),
             select: (t) => {
@@ -1039,12 +1043,12 @@ export async function startGameView(
 
     // [waypoints] Waypoints & Known Locations (an Improvement, ui/waypoints.ts): the W / Shift+W keys, the name dialog,
     // the right-click entries (ui/orderMenu.ts) and the Waypoints list.
-    const waypointUiCleanup = installWaypointUi({ galaxy, empire: game.playerEmpire, camera, view, overlays, redrawGalaxyMap: () => galaxyMap.isOpen && galaxyMap.redraw() });
+    const waypointUiCleanup = installWaypointUi({ galaxy, empire: viewer, camera, view, overlays, redrawGalaxyMap: () => galaxyMap.isOpen && galaxyMap.redraw() });
 
     // [fix6ui] begin — N2: E/R/A/S/, orders and Z/N/B/L selection keys (Main.Part7.cs Main_KeyUp).
     shipKeys = createShipCommandKeys({
         galaxy,
-        player: game.playerEmpire,
+        player: viewer,
         camera,
         getSelection: getHudSelection,
         getSelected: () => selectionTarget(getHudSelection()),
@@ -1067,7 +1071,7 @@ export async function startGameView(
     // [parC1] begin — control groups (Main.Part7.cs Main_KeyUp Set / SelectControlGroupN[WithFocus], ui/controlGroups.ts).
     const controlGroupKeys = createControlGroupKeys({
         galaxy,
-        player: game.playerEmpire,
+        player: viewer,
         camera,
         getSelection: getHudSelection,
         godMode: () => fogOf(galaxy).reveal,
@@ -1415,7 +1419,7 @@ async function bootGameFromWizard(startOptions: StartGameOptions): Promise<void>
 /** [intro] Open the game-start Introduction panel (ui/screens/introductionPanel.ts) over the main view. */
 function showIntroduction(game: Game, time: GalaxyTime, kind: { playAsAPirate: boolean; ageOfShadows: boolean }): void {
     try {
-        openIntroductionPanel({ galaxy: game.galaxy, player: game.playerEmpire, clock: time, ...kind });
+        openIntroductionPanel({ galaxy: game.galaxy, player: localViewerEmpire(game.galaxy) ?? game.playerEmpire, clock: time, ...kind });
     } catch (err) {
         console.warn('Introduction panel failed', err);
     }
@@ -1893,7 +1897,7 @@ async function bootGameWithOptions(opts: BootOptions): Promise<void> {
             autostartSimClient = null;
             const time = await startGameView(started, zoomParam ?? undefined, undefined, undefined, simClient);
             // [intro] ?intro=1: the dev autostart shows the Introduction panel too (wizard games always do).
-            if (new URLSearchParams(window.location.search).get('intro') === '1') showIntroduction(started, time, { playAsAPirate: started.playerEmpire.pirateEmpireBaseHabitat !== null, ageOfShadows: false });
+            if (new URLSearchParams(window.location.search).get('intro') === '1') showIntroduction(started, time, { playAsAPirate: (localViewerEmpire(started.galaxy) ?? started.playerEmpire).pirateEmpireBaseHabitat !== null, ageOfShadows: false });
             return;
         }
     }

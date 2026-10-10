@@ -44,6 +44,7 @@ import {
 import { activeLeaguesOf, leagueBoundaryDots, leagueFlag, pennantFromFlag, type LeagueShape } from './leagueArt';
 import { flagShapeUrl } from '../sim/startGameOptions';
 import { loadRgba } from '../ui/empireEmblem';
+import { localViewerEmpire } from '../localViewer';
 
 // ---------------------------------------------------------------------------------------------------------------
 // Threat sites (19f framework.ts threatKnownSites / KnownThreatSite)
@@ -449,7 +450,7 @@ export class ArtBundleLayer {
     private updateThreats(z: number, cam: Camera): void {
         const g = this.threats;
         if (this.frame % 30 === 1) {
-            const player = this.galaxy.playerEmpire;
+            const player = localViewerEmpire(this.galaxy);
             const list = threatSitesSource === null ? [] : threatSitesSource(this.galaxy, player);
             this.sites = [];
             let k = 0;

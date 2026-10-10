@@ -14,7 +14,8 @@ const viewers = new WeakMap<Galaxy, Empire | null>();
 export function localViewerEmpire(galaxy: Galaxy | null | undefined): Empire | null {
     if (galaxy == null) return null;
     const v = viewers.get(galaxy);
-    return v !== undefined ? v : (galaxy.playerEmpire ?? null);
+    // As read (a hand-built galaxy may leave playerEmpire undefined; callers compare it as they did the field).
+    return v !== undefined ? v : galaxy.playerEmpire;
 }
 
 /** Show `galaxy` for `empire` (hot-seat / multiplayer); undefined goes back to the default (galaxy.playerEmpire). */

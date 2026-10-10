@@ -15,6 +15,7 @@ import { shortageMarkers, type ShortageMarker } from '../sim/logistics/supplyCha
 import { overlayActive, type MapOverlayState } from '../ui/mapOverlays';
 import { SUPPLY_REFRESH_MS, supplySnapshot } from '../ui/supplyChainCache';
 import { getSettings, onSettingsChange } from '../ui/settings';
+import { localViewerEmpire } from '../localViewer';
 
 export const SHORTAGE_STALLED_COLOR = 0xff4a3a;
 export const SHORTAGE_SHORT_COLOR = 0xffb428;
@@ -78,7 +79,7 @@ export class SupplyOverlay {
     }
 
     update(z: number, cam: Camera): void {
-        if (!overlayActive(this.state, 'supplyShortages') || this.galaxy.playerEmpire === null) {
+        if (!overlayActive(this.state, 'supplyShortages') || localViewerEmpire(this.galaxy) === null) {
             if (this.g.visible) {
                 this.g.clear();
                 this.g.visible = false;

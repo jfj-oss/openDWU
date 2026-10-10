@@ -28,6 +28,7 @@ import {
     type KnownSystemResources,
 } from './resourceOverlayData';
 import { MAX_SOLAR_SYSTEM_SIZE } from '../sim/movement';
+import { localViewerEmpire } from '../localViewer';
 
 /** Icon width in screen px at zoom factor f. */
 export function resourceIconPx(f: number): number {
@@ -84,7 +85,7 @@ export class ResourceOverlay {
     }
 
     update(z: number, cam: Camera): void {
-        const player = this.galaxy.playerEmpire;
+        const player = localViewerEmpire(this.galaxy);
         if (!overlayActive(this.state, 'resources') || player === null) {
             this.hide();
             return;

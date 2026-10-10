@@ -62,6 +62,7 @@ import { HabitatCategoryType, type SystemInfo } from '../sim/types';
 
 export { RIM_FLAG, RIM_DEFAULTS, RIM_RADIUS_QUANTILE, rimParams, rimGeometry, rimFraction, rimBand, rimWeight, type RimParams, type RimGeometry } from './rimCurve';
 import { RIM_DEFAULTS, rimBand, rimFraction, rimGeometry, rimParams, rimWeight, type RimGeometry, type RimParams } from './rimCurve';
+import { localViewerEmpire } from '../localViewer';
 
 function clamp01(v: number): number {
     return v < 0 ? 0 : v > 1 ? 1 : v;
@@ -932,7 +933,7 @@ export class RimAtmosphereLayer {
     }
 
     private refreshMurk(p: RimParams, geo: RimGeometry): void {
-        const vis = this.galaxy.playerEmpire?.visibility ?? null;
+        const vis = localViewerEmpire(this.galaxy)?.visibility ?? null;
         const prevLen = this.murk.length;
         const prevX = prevLen > 0 ? this.murk[prevLen - 1].x : NaN;
         murkPatches(this.galaxy.systems, geo, p.rimInner, vis === null ? null : (i) => vis.checkSystemExplored(i), this.murk);

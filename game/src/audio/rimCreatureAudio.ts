@@ -20,6 +20,7 @@ import {
     type RimSoundParams,
 } from './rimCreatureCalls';
 import { createRimSynthBus, playCreak, playCreatureCall, type RimSynthBus } from './rimCreatureSynth';
+import { localViewerEmpire } from '../localViewer';
 
 /** The camera as this module needs it (same shape as mainViewSounds.ts SoundView). */
 export interface RimSoundView {
@@ -66,7 +67,7 @@ export function creakCandidate(galaxy: Galaxy, view: RimSoundView, selected: Bui
     const d2 = (bo: BuiltObject): number => (bo.xpos - view.x) ** 2 + (bo.ypos - view.y) ** 2;
     let ship: BuiltObject | null = null;
     if (selected !== null && !selected.hasBeenDestroyed && d2(selected) <= near2) ship = selected;
-    const player = galaxy.playerEmpire;
+    const player = localViewerEmpire(galaxy);
     if (ship === null && player !== null) {
         let best = near2;
         for (const bo of galaxy.builtObjects) {

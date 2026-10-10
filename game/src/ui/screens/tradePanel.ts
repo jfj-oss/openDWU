@@ -27,6 +27,7 @@ import type { TradeableItem } from '../../sim/tradeItems';
 // [diplovoice] begin
 import { FONT, glassButton, openOriginalWindow, place } from '../originalWindow';
 import { counterNote, voicedLineToggle, voicingIndicator, type VoicedReply } from '../diplomatVoice';
+import { localViewerEmpire } from '../../localViewer';
 // [diplovoice] end
 
 export interface TradePanelOptions {
@@ -195,7 +196,7 @@ function createTradePanel(opts: TradePanelOptions): OpenPanel {
         col.appendChild(offeredHead);
         const offered = el('div', 'trade-offered');
         if (tree.selected.length === 0) offered.appendChild(el('div', 'trade-muted', '(nothing)'));
-        const showNames = tree.empire === galaxy.playerEmpire; // DiplomacyTradeTree.cs:179
+        const showNames = tree.empire === localViewerEmpire(galaxy); // DiplomacyTradeTree.cs:179
         tree.selected.forEach((t, i) => {
             const required = tree.required.includes(t);
             const line = el('div', required || done ? 'trade-offered-item trade-required' : 'trade-offered-item', tradeLabelText(tradeItemLabel(galaxy, t, true, showNames)));

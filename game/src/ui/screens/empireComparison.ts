@@ -73,6 +73,7 @@ import { openOriginalWindow, place, tabStrip } from '../originalWindow';
 import { victoryConditionDescription } from './galactopedia';
 import { clearGameSummaryOverlay, createGameSummaryPanel, recordGameEndSummary, type GameSummaryView } from './gameSummary';
 import { closeGameEndPanel, openGameEndPanel } from './gameEndPanel';
+import { localViewerEmpire } from '../../localViewer';
 
 // ---------------------------------------------------------------------------
 // Formatting helpers (pure)
@@ -391,7 +392,7 @@ export function presentGameEnd(galaxy: Galaxy, time: { paused: boolean }, e: Gam
     );
     // Main.Part6.cs:4013-4026 method_436: method_400 (open the Empire Comparison window), tabEmpireComparisonGraphs
     // .SelectedIndex = 1 (Achievements, the Game Summary) with the outcome overlay (gameSummary.ts).
-    const player = galaxy.playerEmpire;
+    const player = localViewerEmpire(galaxy);
     if (player) {
         if (open) open.close();
         selectedTab = 'achievements';
@@ -868,7 +869,7 @@ function victoryDetailContext(galaxy: Galaxy, player: Empire, p: VictoryConditio
     }
     const facilities = planetaryFacilityDefinitionsStatic(galaxy);
     return {
-        isPlayer: e === galaxy.playerEmpire,
+        isPlayer: e === localViewerEmpire(galaxy),
         isPirate,
         economyValue: safe(() => (isPirate ? calculateAccurateAnnualIncome(galaxy, e) : privateAnnualRevenue(galaxy, e))),
         populationValue,
@@ -1147,7 +1148,7 @@ function renderVictoryTab(panel: HTMLElement, player: Empire, state: { hovered: 
             // The name is centred on (0, width2): the C# centres it over the bar's width from the panel's left edge.
             const label = placeAt(el('div', 'ec-text ec-bold ec-vlabel', `${index + 1}. ${p.empire.name}`), 0, 0, geo.barW, VICTORY_ROW_HEIGHT);
             row.appendChild(label);
-            if (p.empire === galaxy.playerEmpire) {
+            if (p.empire === localViewerEmpire(galaxy)) {
                 // Yellow 2 px rectangle (0, y - 2, Width, 26).
                 row.appendChild(placeAt(el('div', 'ec-vplayer'), 0, -2, W, VICTORY_ROW_HEIGHT + 4));
             }

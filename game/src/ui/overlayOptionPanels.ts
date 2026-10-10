@@ -8,6 +8,7 @@ import { fogOf } from '../render/fog';
 import { RARITY_LABELS, knownResourceIndexFor, resourcePickerOptions } from '../render/resourceOverlayData';
 import { getSettings, updateSettings } from './settings';
 import { overlayOptionsOf, setOverlay, setOverlayResourceFilter, type MapOverlayState } from './mapOverlays';
+import { localViewerEmpire } from '../localViewer';
 
 /** [improvements] supplyChain: the Supply Shortages row's options — "Show colony luxury shortages" (UI setting
  *  supplyShowColonyShortages, default on). Yards short of resources are always marked. */
@@ -64,7 +65,7 @@ export function resourcePickerPanel(overlays: MapOverlayState, galaxy: Galaxy): 
         setOverlay(overlays, 'resources', true);
     });
     const refresh = (): void => {
-        const player = galaxy.playerEmpire;
+        const player = localViewerEmpire(galaxy);
         const index = knownResourceIndexFor(galaxy, player, fogOf(galaxy).reveal);
         const opts = resourcePickerOptions(galaxy.resourceSystem.resources, index);
         const current = overlayOptionsOf(overlays).resourceFilter;

@@ -10,6 +10,7 @@ import type { Creature } from '../sim/creature';
 import { CreatureType } from '../sim/creature';
 import { FaunaVariant, faunaVariantDef } from '../sim/scenario/newFauna/common';
 import type { CreatureGallerySource, FaunaLook } from './creatureLayer';
+import { localViewerEmpire } from '../localViewer';
 
 export type FaunaGalleryView = 'gallery' | 'tamed' | 'tamedMid' | 'shoal';
 
@@ -73,7 +74,7 @@ export class FaunaGallery implements CreatureGallerySource {
     }
 
     private build(): boolean {
-        const home = this.galaxy.playerEmpire?.capital ?? null;
+        const home = localViewerEmpire(this.galaxy)?.capital ?? null;
         if (home === null) return false;
         const ox = home.xpos + home.diameter / 2 + 1200;
         const oy = home.ypos;

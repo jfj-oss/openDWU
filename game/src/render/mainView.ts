@@ -120,6 +120,7 @@ import { isDrag, objectsInBox, resolveBoxSelection, screenBox, shiftClickSelecti
 import { isObjectVisibleToThisEmpire } from '../sim/independentTraders';
 import { showsMapIndicators } from './mainViewDisplay';
 import { createFollowState, followTargetAlive, followTargetPosition, isFollowing, stopFollow, type FollowState, type FollowTarget } from './followCamera';
+import { localViewerEmpire } from '../localViewer';
 
 export function fadeIn(v: number, a: number, b: number): number {
     if (v <= a) {
@@ -885,7 +886,7 @@ export class SystemView {
         const dom = this.system.dominantEmpire;
         let tsv = 0;
         if (dom != null && dom.empire != null && !getSettings().cleanGalaxyView) {
-            const vis = g.playerEmpire?.visibility ?? null;
+            const vis = localViewerEmpire(g)?.visibility ?? null;
             const status = vis !== null ? vis.checkSystemVisibilityStatus(this.system.systemStar.systemIndex) : SystemVisibilityStatus.Visible;
             if (status === SystemVisibilityStatus.Explored || status === SystemVisibilityStatus.Visible) tsv = dom.totalStrategicValue;
         }
@@ -1331,7 +1332,7 @@ export class MainView {
     /** Queued-orders path and fleet-member highlight of the selection (selectionPaths.ts; screen px). */
     private readonly selectionPaths = new SelectionPathLayer({
         getSelection: () => this.getHudSelection(),
-        player: () => this.galaxy.playerEmpire,
+        player: () => localViewerEmpire(this.galaxy),
         toScreen: (x, y) => this.camera.worldToScreen(x, y),
         drawnPos: (bo) => drawnBuiltObjectPos(this.motion, bo),
         drawnPx: (bo) => this.builtObjectLayer?.drawnSizePx(bo) ?? 0,
@@ -1582,7 +1583,7 @@ export class MainView {
     /** Task 13d (Main.Part11.cs method_145): the ship/base under the screen point. Ships win over habitats. */
     pickBuiltObject(screenX: number, screenY: number): BuiltObject | null {
         const w = this.camera.screenToWorld(screenX, screenY);
-        const bo = this.builtObjectLayer.pick(w.x, w.y, 1 / this.camera.zoom, this.galaxy.playerEmpire);
+        const bo = this.builtObjectLayer.pick(w.x, w.y, 1 / this.camera.zoom, localViewerEmpire(this.galaxy));
         // [galaxymarkers] beyond the ship art (galaxy/sector zoom) the drawn symbols / fleet icons are the pick targets.
         return bo ?? this.galaxyMarkers?.pickAt(w.x, w.y, this.camera.zoom)?.bo ?? null;
     }
@@ -2438,7 +2439,7 @@ export class MainView {
     /** Main.Part10.cs 2989 mainView_MouseUp / method_141: the visible built objects drawn inside a screen box. */
     builtObjectsInScreenBox(box: ScreenBox): BuiltObject[] {
         const cam = this.camera;
-        const player = this.galaxy.playerEmpire;
+        const player = localViewerEmpire(this.galaxy);
         return objectsInBox(
             this.galaxy.builtObjects,
             box,
@@ -2597,7 +2598,7 @@ export class MainView {
         const inBox = this.builtObjectsInScreenBox(box);
         const cur = this.getSelectedShips?.() ?? null;
         const current = cur === null ? [] : Array.isArray(cur) ? cur : [cur];
-        const r = resolveBoxSelection(inBox, this.galaxy.playerEmpire, additive, current);
+        const r = resolveBoxSelection(inBox, localViewerEmpire(this.galaxy), additive, current);
         switch (r.kind) {
             case 'list':
                 playGridClick(); // [audio]
@@ -2713,7 +2714,7 @@ export class MainView {
                 {
                     const mk = this.locationMarkers?.hitTest(x, y) ?? null;
                     if (mk !== null) {
-                        showMapTooltip(markerTooltip(this.galaxy, this.galaxy.playerEmpire, mk), e.clientX, e.clientY);
+                        showMapTooltip(markerTooltip(this.galaxy, localViewerEmpire(this.galaxy), mk), e.clientX, e.clientY);
                         return;
                     }
                 }
@@ -2728,7 +2729,7 @@ export class MainView {
                     const w = this.camera.screenToWorld(x, y);
                     const sh = this.overlayLayer?.supply.hitTest(w.x, w.y, this.camera.zoom) ?? null;
                     if (sh !== null) {
-                        showMapTooltip(shortageTooltip(this.galaxy, sh, this.galaxy.playerEmpire), e.clientX, e.clientY, true);
+                        showMapTooltip(shortageTooltip(this.galaxy, sh, localViewerEmpire(this.galaxy)), e.clientX, e.clientY, true);
                         return;
                     }
                 }
@@ -2768,7 +2769,7 @@ export class MainView {
                 }
                 // [dw2overlays] the Improvements overlays' lines for the hovered habitat (colony target, known resources).
                 const extra = this.overlayLayer?.habitatTooltipExtra(hit) ?? null;
-                const vis = this.galaxy.playerEmpire?.visibility ?? null;
+                const vis = localViewerEmpire(this.galaxy)?.visibility ?? null;
                 const status = vis !== null && hit.systemIndex >= 0 ? vis.checkSystemVisibilityStatus(hit.systemIndex) : SystemVisibilityStatus.Visible;
                 const known = status === SystemVisibilityStatus.Explored || status === SystemVisibilityStatus.Visible;
                 const text = tooltipText(hit, systemName, known);
@@ -2832,7 +2833,7 @@ export class MainView {
                 // Main.Part10.cs 3158-3248: Shift + left click toggles the clicked ship in the multi-selection.
                 if (e.shiftKey && this.onBuiltObjectListSelect !== undefined) {
                     const bo = this.pickBuiltObject(x, y);
-                    const next = shiftClickSelection(this.getSelectedShips?.() ?? null, bo !== null ? [bo] : [], this.galaxy.playerEmpire);
+                    const next = shiftClickSelection(this.getSelectedShips?.() ?? null, bo !== null ? [bo] : [], localViewerEmpire(this.galaxy));
                     if (next !== undefined) {
                         playGridClick(); // [audio]
                         this.selectShips(next);
@@ -2851,7 +2852,7 @@ export class MainView {
             const y = e.clientY - rect.top;
             // [galaxymarkers] Main.Part7.cs 3494-3502: double-clicking one of the player's fleet ships selects its fleet.
             const dbo = this.pickBuiltObject(x, y);
-            const fleet = dbo !== null ? doubleClickFleet(dbo, this.galaxy.playerEmpire) : null;
+            const fleet = dbo !== null ? doubleClickFleet(dbo, localViewerEmpire(this.galaxy)) : null;
             if (fleet !== null && this.onShipGroupSelect !== undefined) {
                 this.selectedBuiltObject = null;
                 this.onShipGroupSelect(fleet);
@@ -2920,7 +2921,7 @@ export class MainView {
 
     /** The player's KnownGalaxyLocations as a set (null = every location counts as known: GodMode, no player). */
     private knownLocationSet(): Set<GalaxyLocation> | null {
-        const player = this.galaxy.playerEmpire;
+        const player = localViewerEmpire(this.galaxy);
         if (player === null || fogOf(this.galaxy).reveal) return null;
         const list = player.visibility?.knownGalaxyLocations ?? [];
         const last = list.length > 0 ? list[list.length - 1] : null;

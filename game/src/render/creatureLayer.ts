@@ -65,6 +65,7 @@ import {
     lookCapMul,
     type HarnessState,
 } from './creatureRig';
+import { localViewerEmpire } from '../localViewer';
 
 export const CREATURE_DIR = '/assets/dwu/images/units/creatures';
 /** Raw creature frame side (every creature PNG in the install is 360 × 360). */
@@ -646,7 +647,7 @@ export class CreatureLayer {
     }
 
     private visibleToPlayer(c: Creature): boolean {
-        const player = this.galaxy.playerEmpire;
+        const player = localViewerEmpire(this.galaxy);
         return this.godMode || player === null || creatureVisibleToEmpire(this.galaxy, player, c);
     }
 
