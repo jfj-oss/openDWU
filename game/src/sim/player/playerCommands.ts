@@ -177,9 +177,19 @@ function applyOp(galaxy: Galaxy, empire: Empire, op: PlayerOpName, args: unknown
     return result;
 }
 
+/** Who issues the UI lookups' records (setUiRecordEmpire); unset: galaxy.playerEmpire. */
+const uiRecordEmpires = new WeakMap<Galaxy, () => Empire | null>();
+
+/** The main thread names the empire its UI lookups issue for (the local viewer, src/localViewer.ts; the sim cannot read
+ *  it). null: back to galaxy.playerEmpire. */
+export function setUiRecordEmpire(galaxy: Galaxy, empire: (() => Empire | null) | null): void {
+    if (empire === null) uiRecordEmpires.delete(galaxy);
+    else uiRecordEmpires.set(galaxy, empire);
+}
+
 // The records the C# UI's lookups add (readOnlyQuery.ts requestUiRecord) arrive as one journaled command per UI task.
 setUiRecordSender((galaxy, requests) => {
-    const player = galaxy.playerEmpire;
+    const player = uiRecordEmpires.get(galaxy)?.() ?? galaxy.playerEmpire;
     if (player !== null) issuePlayerCommand(galaxy, player, 'obtainUiRecords', [requests]);
 });
 

@@ -20,6 +20,7 @@ import { GameEndEventArgs, type GameEndOutcome } from '../sim/victory';
 import { PlayerMessageStream, setPlayerMessageStream } from './messagePipeline';
 import { presentGameEnd } from './screens/empireComparison';
 import type { WorkerEvent } from '../simworker/protocol';
+import { flatEmpireList } from '../sim/save/galaxySave';
 
 export interface WorkerMessageUi {
     readonly stream: PlayerMessageStream;
@@ -41,6 +42,18 @@ export function installWorkerMessageUi(opts: WorkerMessageUiOptions): WorkerMess
     const { player, galaxy, time } = opts;
     const stream = new PlayerMessageStream(opts.now);
     setPlayerMessageStream(player, stream);
+    // Multiplayer: a note of another human names its empireId (simHost.ts); each human gets a stream of its own.
+    const streams = new Map<Empire, PlayerMessageStream>([[player, stream]]);
+    const empireOf = (id: number | undefined): Empire | null => (id === undefined ? player : (flatEmpireList(galaxy).find((x) => x.empireId === id) ?? null));
+    const streamOf = (who: Empire): PlayerMessageStream => {
+        let s = streams.get(who);
+        if (s === undefined) {
+            s = new PlayerMessageStream(opts.now);
+            streams.set(who, s);
+            setPlayerMessageStream(who, s);
+        }
+        return s;
+    };
     const tryResolve = (resolve: (a: unknown) => unknown, a: unknown): unknown => {
         try {
             return resolve(a);
@@ -56,13 +69,14 @@ export function installWorkerMessageUi(opts: WorkerMessageUiOptions): WorkerMess
             if (e.kind === 'playerMessages') {
                 for (const r of e.receipts) {
                     const message = tryResolve(resolve, r.m) as EmpireMessage | null;
-                    if (message === null || message === undefined) continue;
-                    stream.push({ message, ticker: r.ticker, advisor: r.advisor, route: r.route, action: r.action });
+                    const who = empireOf(r.e);
+                    if (message === null || message === undefined || who === null) continue;
+                    streamOf(who).push({ message, ticker: r.ticker, advisor: r.advisor, route: r.route, action: r.action });
                 }
                 for (const ev of e.events) {
                     // Main.Part4.cs:481 ReceiveEventMessage: the UI's recipient (eventMessages.ts → the event panel; the
                     // audio stings chain on it) gets the call the sim made in the worker.
-                    const recipient = player.eventMessageRecipient;
+                    const recipient = empireOf(ev.e)?.eventMessageRecipient;
                     if (recipient == null) continue;
                     recipient.receiveEventMessage(ev.type, ev.title, ev.message, tryResolve(resolve, ev.data), tryResolve(resolve, ev.location));
                 }
@@ -81,7 +95,7 @@ export function installWorkerMessageUi(opts: WorkerMessageUiOptions): WorkerMess
         dispose() {
             if (disposed) return;
             disposed = true;
-            setPlayerMessageStream(player, null);
+            for (const who of streams.keys()) setPlayerMessageStream(who, null);
         },
     };
 }

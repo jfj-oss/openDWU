@@ -37,7 +37,6 @@ import { setPlayerMessageListener, type PlayerMessageNote } from '../sim/playerM
 import type { ClockMessage, CommandMessage, DebugReply, DebugRequest, FromWorker, HostOpMessage, RefreshRequest, SnapshotMessage, StepMessage, TradeFlowsMessage, ViewMessage, WorkerEvent } from './protocol';
 import { commandLog, copyCommandLogEntry, type CommandLogEntry } from '../sim/player/commandLog';
 import type { ReplicaEncoderOptions } from './replicaSync';
-import { localViewerEmpire } from '../localViewer';
 
 export interface SimHostOptions {
     /** Wall clock (performance.now in the worker; a fake one in tests). */
@@ -340,17 +339,17 @@ export class SimHost {
         this.playerNotes = [];
         const receipts: Extract<WorkerEvent, { kind: 'playerMessages' }>['receipts'] = [];
         const events: Extract<WorkerEvent, { kind: 'playerMessages' }>['events'] = [];
-        // Multiplayer: every human has an inbox; the main thread shows its local viewer's (src/localViewer.ts; in the
-        // worker that is the primary human until the main thread names another).
-        const viewer = localViewerEmpire(this.galaxy);
+        // Multiplayer: every human has an inbox; a note of a human other than the primary carries its empireId, and the
+        // main thread routes it to that human's stream (ui/workerMessages.ts).
+        const primary = this.galaxy.playerEmpire;
         for (const n of notes) {
-            if (n.empire !== viewer) continue;
+            const who = n.empire === primary ? {} : { e: n.empire.empireId };
             if (n.receipt !== undefined) {
                 const r = n.receipt;
-                receipts.push({ m: this.encodeOrNull(r.message), ticker: r.ticker, advisor: r.advisor, route: r.route === null ? null : { ...r.route }, action: r.action });
+                receipts.push({ m: this.encodeOrNull(r.message), ticker: r.ticker, advisor: r.advisor, route: r.route === null ? null : { ...r.route }, action: r.action, ...who });
             } else {
                 const e = n.event;
-                events.push({ type: e.type, title: String(e.title ?? ''), message: String(e.message ?? ''), data: this.encodeOrNull(e.additionalData), location: this.encodeOrNull(e.location) });
+                events.push({ type: e.type, title: String(e.title ?? ''), message: String(e.message ?? ''), data: this.encodeOrNull(e.additionalData), location: this.encodeOrNull(e.location), ...who });
             }
         }
         if (receipts.length === 0 && events.length === 0) return;

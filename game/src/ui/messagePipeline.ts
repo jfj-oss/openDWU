@@ -162,20 +162,28 @@ export function playerMessageStream(player: Empire | null): PlayerMessageStream 
 
 /**
  * In-thread: the game's pipeline feeds a stream for its player (the receipts; the events reach the UI's recipient
- * from the sim). Returns the stream and the teardown.
+ * from the sim). Multiplayer: every human has an inbox, so every human gets a stream (made when its first receipt
+ * arrives); the screens read the local viewer's (playerMessageStream). Returns `player`'s stream and the teardown.
  */
 export function installLocalMessageStream(galaxy: Galaxy, player: Empire, now?: () => number): { stream: PlayerMessageStream; dispose: () => void } {
     const stream = new PlayerMessageStream(now);
+    const owned = new Map<Empire, PlayerMessageStream>([[player, stream]]);
     setPlayerMessageStream(player, stream);
     setPlayerMessageListener(galaxy, (note) => {
-        // Multiplayer: every human has an inbox; this stream is `player`'s (the local viewer's).
-        if (note.receipt !== undefined && note.empire === player) stream.push(note.receipt);
+        if (note.receipt === undefined) return;
+        let s = owned.get(note.empire);
+        if (s === undefined) {
+            s = new PlayerMessageStream(now);
+            owned.set(note.empire, s);
+            setPlayerMessageStream(note.empire, s);
+        }
+        s.push(note.receipt);
     });
     return {
         stream,
         dispose: () => {
             setPlayerMessageListener(galaxy, null);
-            setPlayerMessageStream(player, null);
+            for (const e of owned.keys()) setPlayerMessageStream(e, null);
         },
     };
 }

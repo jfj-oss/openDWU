@@ -232,6 +232,8 @@ export interface PlayerMessageWire {
     advisor: boolean;
     route: MessageRoute | null;
     action: 'queue' | 'open' | 'none';
+    /** Multiplayer: the empireId of the human whose inbox handled it; absent for the primary human (galaxy.playerEmpire). */
+    e?: number;
 }
 
 /** One Empire.SendEventMessageToEmpire the player received. */
@@ -241,6 +243,8 @@ export interface PlayerEventWire {
     message: string;
     data: RemoteArg;
     location: RemoteArg;
+    /** As PlayerMessageWire.e. */
+    e?: number;
 }
 
 export type WorkerEvent =

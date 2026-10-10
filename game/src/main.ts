@@ -108,7 +108,7 @@ import { restartFromSources, restartPromptText, restartSources } from './simwork
 import { isGameOptionsPanelOpen } from './ui/screens/gameOptionsPanel';
 import { newGameOptionsFromSettings } from './ui/screens/gameOptionsModel'; // [gameoptions]
 // [leftovers] end
-import { issuePlayerCommand } from './sim/player/playerCommands';
+import { issuePlayerCommand, setUiRecordEmpire } from './sim/player/playerCommands';
 import { createMissionShipActionAt } from './sim/player/shipAction';
 import { BuiltObjectMissionType } from './sim/missions/mission';
 import { commandLog } from './sim/player/commandLog';
@@ -158,7 +158,8 @@ import { activeCustomizationSet, activeCustomizationSetName, normalizeCustomizat
 import { setThemeChromeRace } from './themeAssets';
 import { resetMusicForTheme } from './audio/musicPlayer';
 import { updateSettings } from './ui/settings';
-import { localViewerEmpire } from './localViewer';
+import { localViewerEmpire, onLocalViewerChange } from './localViewer';
+import { humanEmpires } from './sim/humanEmpires';
 import type { Empire } from './sim/empire';
 
 // ?shape= names accepted by the boot URL.
@@ -697,6 +698,11 @@ export async function startGameView(
     const galaxy = game.galaxy;
     // The empire this screen plays (src/localViewer.ts; multiplayer): galaxy.playerEmpire unless a viewer is set.
     const viewer: Empire = localViewerEmpire(galaxy) ?? game.playerEmpire;
+    // The viewer now (the hot-seat switch moves it, src/localViewer.ts switchLocalViewerEmpire): what the order UI, the
+    // keys and the ticker read at call time.
+    const currentViewer = (): Empire => localViewerEmpire(galaxy) ?? game.playerEmpire;
+    // The UI lookups' journaled records (playerCommands.ts obtainUiRecords) are the viewer's orders.
+    setUiRecordEmpire(galaxy, currentViewer);
     // Start.2.cs 60 / Start.cs 2394 method_56: the player race's chrome folder of the theme is searched first.
     setThemeChromeRace(viewer.dominantRace?.name ?? '');
     // [simworker] Save text of the running game: the worker's authoritative game in worker mode (async).
@@ -846,7 +852,9 @@ export async function startGameView(
     // [freightOverlay] begin — task 19e-9: Trade Flows panel (overlay row "…", legend button) + map legend.
     const tradeFlowsOpts = {
         galaxy,
-        playerEmpire: viewer,
+        get playerEmpire(): Empire {
+            return currentViewer();
+        },
         overlay: () => view.freightOverlay,
         jumpTo: (x: number, y: number) => camera.centerOn(x, y),
     };
@@ -937,7 +945,7 @@ export async function startGameView(
         if (systemNameEl) {
             setTextIfChanged(systemNameEl, topSystemNameText(galaxy, camera.x, camera.y, camera.zoom));
         }
-        for (const { message, text } of messageFeed.pollMessages(viewer)) {
+        for (const { message, text } of messageFeed.pollMessages(currentViewer())) {
             const goTo = messageGoToTarget(message) !== null ? (): boolean => goToMessage(message, galaxy) : null;
             pushHudMessage(text, resolveStarDateDescription(message.starDate > 0 ? message.starDate : time.currentStarDate), goTo);
         }
@@ -978,58 +986,77 @@ export async function startGameView(
     // [16d] Player messages → popups + the diplomatic conversation queue (Main.Part9.cs ReceiveMessageInternal).
     // [popupstubs] begin
     // The clock lets an immediate conversation pause the game (Main.Part9.cs 1544 method_253).
-    installMessagePopups({ player: viewer, galaxy, clock: time });
-    // [popupstubs] end
-    // [/16d]
+    // Multiplayer: the per-viewer message UI (popups, advisor suggestions, stubs, battle-report notices, the event
+    // recipient) is installed for the local viewer, and installed again for the new one at a hot-seat switch.
+    const installViewerMessageUi = (viewer: Empire): void => {
+        installMessagePopups({ player: viewer, galaxy, clock: time });
+        // [popupstubs] end
+        // [/16d]
 
-    // [suggest] begin
-    // Advisor suggestions (SemiAutomated tasks): Main.Part2.cs 2781 pnlAdvisorSuggestion. "Show me first" centres and
-    // selects the subject (method_646 / 647; method_645 → the empire's capital here) and Approve / Decline restore the
-    // view (method_644).
-    installAdvisorSuggestions({
-        player: viewer,
-        galaxy,
-        clock: time,
-        openBuildOrder: () => toggleBuildOrder({ empire: viewer }),
-        expireConversations: (e) => expireConversationsForEmpire(e),
-        show: (target) => {
-            const before = { x: camera.x, y: camera.y, zoom: camera.zoom, sel: getHudSelection() };
-            let o: unknown = null;
-            if (target.kind === 'empire') o = target.empire?.capital ?? null;
-            else o = target.object;
-            if (o === null) return;
-            const pos = o instanceof ShipGroup ? o.leadShip : (o as { xpos: number; ypos: number });
-            if (pos == null) return;
-            camera.centerOn(pos.xpos, pos.ypos);
-            camera.zoomAt(SYSTEM_LEVEL_ZOOM, camera.width / 2, camera.height / 2);
-            if (o instanceof ShipGroup) selectShipGroup(o, false);
-            else if (o instanceof Habitat) selectHabitat(o, false);
-            else if (o instanceof Creature) selectCreature(o, false);
-            else selectStellarObject(o as Parameters<typeof selectStellarObject>[0], false);
-            return () => {
-                camera.zoom = before.zoom;
-                camera.centerOn(before.x, before.y);
-                hud.onSelectionChange?.(before.sel);
-            };
-        },
+        // [suggest] begin
+        // Advisor suggestions (SemiAutomated tasks): Main.Part2.cs 2781 pnlAdvisorSuggestion. "Show me first" centres and
+        // selects the subject (method_646 / 647; method_645 → the empire's capital here) and Approve / Decline restore the
+        // view (method_644).
+        installAdvisorSuggestions({
+            player: viewer,
+            galaxy,
+            clock: time,
+            openBuildOrder: () => toggleBuildOrder({ empire: currentViewer() }),
+            expireConversations: (e) => expireConversationsForEmpire(e),
+            show: (target) => {
+                const before = { x: camera.x, y: camera.y, zoom: camera.zoom, sel: getHudSelection() };
+                let o: unknown = null;
+                if (target.kind === 'empire') o = target.empire?.capital ?? null;
+                else o = target.object;
+                if (o === null) return;
+                const pos = o instanceof ShipGroup ? o.leadShip : (o as { xpos: number; ypos: number });
+                if (pos == null) return;
+                camera.centerOn(pos.xpos, pos.ypos);
+                camera.zoomAt(SYSTEM_LEVEL_ZOOM, camera.width / 2, camera.height / 2);
+                if (o instanceof ShipGroup) selectShipGroup(o, false);
+                else if (o instanceof Habitat) selectHabitat(o, false);
+                else if (o instanceof Creature) selectCreature(o, false);
+                else selectStellarObject(o as Parameters<typeof selectStellarObject>[0], false);
+                return () => {
+                    camera.zoom = before.zoom;
+                    camera.centerOn(before.x, before.y);
+                    hud.onSelectionChange?.(before.sel);
+                };
+            },
+        });
+        // [suggest] end
+
+        // [popupstubs] begin
+        // Messages, conversations and advisor suggestions first appear as one-line stubs under the top-right panel.
+        installMessageStubList({ player: viewer, galaxy, clock: time });
+        // [popupstubs] end
+        // [improvements] Battle reports (DW2-inspired): the sim records them; this announces new ones and opens the window.
+        setBattleReportsEnabled(battleReportsObserverOn());
+        installBattleReportNotifier({ galaxy, player: viewer, goTo: (x, y) => historyGoTo(camera, x, y) });
+        // The player's EventMessageRecipient (Main.Part12.cs:2881) → history messages + the wonder-built popup.
+        installEventMessages({ player: viewer, galaxy, onGoTo: (t) => selectStellarObject(t, true), onGoToCreature: (c) => selectCreature(c, true) });
+    };
+    installViewerMessageUi(viewer);
+    const removeViewerSwitchListener = onLocalViewerChange((g, now) => {
+        if (g !== galaxy || now === null) return;
+        removeMessagePopups();
+        removeAdvisorSuggestions();
+        removeMessageStubList();
+        removeBattleReportNotifier();
+        removeEventMessages();
+        installViewerMessageUi(now);
+        setThemeChromeRace(now.dominantRace?.name ?? '');
     });
-    // [suggest] end
-
-    // [popupstubs] begin
-    // Messages, conversations and advisor suggestions first appear as one-line stubs under the top-right panel.
-    installMessageStubList({ player: viewer, galaxy, clock: time });
-    // [popupstubs] end
-    // [improvements] Battle reports (DW2-inspired): the sim records them; this announces new ones and opens the window.
-    setBattleReportsEnabled(battleReportsObserverOn());
-    installBattleReportNotifier({ galaxy, player: viewer, goTo: (x, y) => historyGoTo(camera, x, y) });
-    installDesignLineUpgradeSync(galaxy, viewer); // [improvements] designLineUpgrade: the switch → the sim (journaled)
-    installStatePrioritySync(galaxy, viewer); // [improvements] statePriorityShipyards: the switch → the sim (journaled)
+    // [improvements] designLineUpgrade / statePriorityShipyards: the switch → the sim (journaled), for every human (the
+    // improvement switches are this PC's).
+    for (const human of humanEmpires(galaxy)) {
+        installDesignLineUpgradeSync(galaxy, human);
+        installStatePrioritySync(galaxy, human);
+    }
     // Dev / screenshot hook (scripts/battlereports-shots.mjs): the current game's save text (both modes).
     Object.assign((window as unknown as { __dwu: Record<string, unknown> }).__dwu, { serialize: serializeCurrent });
 
     // [leftovers] begin
-    // The player's EventMessageRecipient (Main.Part12.cs:2881) → history messages + the wonder-built popup.
-    installEventMessages({ player: viewer, galaxy, onGoTo: (t) => selectStellarObject(t, true), onGoToCreature: (c) => selectCreature(c, true) });
     // Autosave every GameOptions.AutoSaveInterval minutes (Main.Part12.cs:4013 method_97).
     installAutosave({
         serialize: () => serializeCurrent(),
@@ -1042,7 +1069,9 @@ export async function startGameView(
     const orderUiCleanup = installOrderUi(
         {
             galaxy,
-            empire: viewer,
+            get empire(): Empire {
+                return currentViewer();
+            },
             clock: time,
             getSelected: () => selectionTarget(getHudSelection()),
             select: (t) => {
@@ -1060,12 +1089,16 @@ export async function startGameView(
 
     // [waypoints] Waypoints & Known Locations (an Improvement, ui/waypoints.ts): the W / Shift+W keys, the name dialog,
     // the right-click entries (ui/orderMenu.ts) and the Waypoints list.
-    const waypointUiCleanup = installWaypointUi({ galaxy, empire: viewer, camera, view, overlays, redrawGalaxyMap: () => galaxyMap.isOpen && galaxyMap.redraw() });
+    const waypointUiCleanup = installWaypointUi({ galaxy, get empire(): Empire {
+        return currentViewer();
+    }, camera, view, overlays, redrawGalaxyMap: () => galaxyMap.isOpen && galaxyMap.redraw() });
 
     // [fix6ui] begin — N2: E/R/A/S/, orders and Z/N/B/L selection keys (Main.Part7.cs Main_KeyUp).
     shipKeys = createShipCommandKeys({
         galaxy,
-        player: viewer,
+        get player(): Empire {
+            return currentViewer();
+        },
         camera,
         getSelection: getHudSelection,
         getSelected: () => selectionTarget(getHudSelection()),
@@ -1088,7 +1121,9 @@ export async function startGameView(
     // [parC1] begin — control groups (Main.Part7.cs Main_KeyUp Set / SelectControlGroupN[WithFocus], ui/controlGroups.ts).
     const controlGroupKeys = createControlGroupKeys({
         galaxy,
-        player: viewer,
+        get player(): Empire {
+            return currentViewer();
+        },
         camera,
         getSelection: getHudSelection,
         godMode: () => fogOf(galaxy).reveal,
@@ -1215,6 +1250,8 @@ export async function startGameView(
         clearInterval(refreshHudTimer);
         clearInterval(refreshClockTimer);
         hotSeat.destroy();
+        removeViewerSwitchListener();
+        setUiRecordEmpire(galaxy, null);
         view.dispose(); // Task 12k: remove the hover tooltip div.
         contextLoss.dispose();
         galaxyMap.destroy();
