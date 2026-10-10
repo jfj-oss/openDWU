@@ -14,7 +14,9 @@ import type { GameData } from '../data/gameData';
 import type { StartGameOptions } from '../startGameOptions';
 import { GalaxyTime } from '../galaxyTime';
 import { encodedField, flatEmpireList, galaxyFromJSON, galaxyToJsonParts, type GalaxySaveJSON } from './galaxySave';
-import { commandLog, copyCommandLogEntry, restoreCommandLog, type CommandLogEntry } from '../player/commandLog';
+import { appendCommandLog, commandLog, copyCommandLogEntry, restoreCommandLog, type CommandLogEntry } from '../player/commandLog';
+import { lacksEntityRefIds, resetEntityRefIds } from '../entityRefs';
+import { galaxyStarDate } from '../tick/simTime';
 import { flushPlayerCommands } from '../player/playerCommands';
 import { ensurePlayerInbox, processPlayerMessages } from '../playerMessages';
 import { COMPOSITE_SCENARIO_ID, type SaveAddonAddition } from '../scenario/addons';
@@ -191,6 +193,13 @@ export function deserializeGame(save: string | GameSaveJSON, gameData: GameData,
 
     const galaxy: Galaxy = galaxyFromJSON(obj.galaxy, gameData);
     restoreCommandLog(galaxy, obj.commandLog);
+    // A save from before the stable command ids (entityRefs.ts): number them now, in sweep order, and journal it so a
+    // replay from the seed renumbers at this boundary too (player/playerCommands.ts 'refids').
+    if (lacksEntityRefIds(galaxy)) {
+        if (!Object.prototype.hasOwnProperty.call(galaxy, 'nextEntityRefId')) Object.defineProperty(galaxy, 'nextEntityRefId', { value: 1, writable: true, enumerable: true, configurable: true });
+        resetEntityRefIds(galaxy);
+        appendCommandLog(galaxy, { starDate: galaxyStarDate(galaxy), nowMs: galaxy.nowMs, source: 'refids' });
+    }
     // Adding add-ons (the explicit path only): galaxy.scenario becomes the combined set, journaled at this boundary.
     if (add !== undefined) addAddonsToLoadedGalaxy(galaxy, add);
     // BaconStart.LoadGame clears settingsInitialized; BaconMain.BaconInitialize re-reads BaconSettings.txt when the

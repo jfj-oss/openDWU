@@ -57,6 +57,12 @@ export interface PlayerLogEntry {
     op: string;
     /** The op's arguments after (galaxy, empire), player/commandCodec.ts encoding. */
     args: unknown[];
+    /**
+     * The codec version the arguments were written in (player/commandCodec.ts COMMAND_CODEC_VERSION). Absent: 1, logs
+     * from before the stable ids, which name fleets, designs, characters, troops, habitats, creatures and empires by list
+     * position (decoded as before; a replay checks them in that encoding).
+     */
+    codec?: number;
     /** Set when an argument could not be encoded (the order was applied; a replay stops here). */
     error?: string;
 }
@@ -110,7 +116,18 @@ export interface AddonsLogEntry {
     withData?: true;
 }
 
-export type CommandLogEntry = AdvisorLogEntry | PlayerLogEntry | ClockLogEntry | ViewLogEntry | AddonsLogEntry;
+/**
+ * A save from before the stable command ids (entityRefs.ts) was loaded here: its fleets, designs, characters, troops and
+ * habitats got ids then, in sweep order. A replay renumbers the same way at this boundary (resetEntityRefIds), so the
+ * commands journaled after the load resolve to the same objects.
+ */
+export interface RefIdsLogEntry {
+    starDate: number;
+    nowMs: number;
+    source: 'refids';
+}
+
+export type CommandLogEntry = AdvisorLogEntry | PlayerLogEntry | ClockLogEntry | ViewLogEntry | AddonsLogEntry | RefIdsLogEntry;
 
 const logs = new WeakMap<Galaxy, CommandLogEntry[]>();
 
@@ -123,7 +140,7 @@ export function commandLog(galaxy: Galaxy): readonly CommandLogEntry[] {
 export function copyCommandLogEntry(e: CommandLogEntry): CommandLogEntry {
     if (e.source === 'player') return JSON.parse(JSON.stringify(e)) as PlayerLogEntry;
     if (e.source === 'addons') return JSON.parse(JSON.stringify(e)) as AddonsLogEntry;
-    if (e.source === 'clock') return { ...e };
+    if (e.source === 'clock' || e.source === 'refids') return { ...e };
     if (e.source === 'view') return e.view !== undefined ? { ...e, view: { ...e.view } } : { ...e };
     return { ...e, command: { ...e.command } };
 }

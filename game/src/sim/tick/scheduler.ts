@@ -17,6 +17,7 @@
 //   cursors would move).
 
 import { battleReportsFrameEnd } from '../battleReports/battleReports';
+import { assignEntityRefIds } from '../entityRefs';
 import { processConstructionBoard } from '../player/constructionBoard';
 import { processFleetRefill } from '../player/fleetRefill';
 import { gameVictoryArgs } from '../victory';
@@ -483,6 +484,9 @@ function runSimFrameBody(galaxy: Galaxy, frameMs: number, opts: FrameOptions): v
     // Mod layer (an Improvement, not in the C#): the battle-report observer — reads only, no Rnd, outside the digest;
     // one comparison per frame, a scan once per game second (battleReports/battleReports.ts).
     battleReportsFrameEnd(galaxy, frameMs);
+    // Not in the C#: stable ids for what the frame created, so a command issued before the next frame names it
+    // (entityRefs.ts; no Rnd, not in the digest).
+    assignEntityRefIds(galaxy);
     state.frames++;
 }
 

@@ -37,8 +37,9 @@ export interface GalaxyLockstepOptions {
     /** What serializeGame writes as the start options (a loaded save brings its own). */
     startOptions: StartGameOptions;
     /**
-     * Whether `peer` may issue `op` for the empire at `empireIndex` (flatEmpireList). Every peer runs the same check on
-     * the same data, so a refused command is dropped everywhere. Default: allow all.
+     * Whether `peer` may issue `op` for the empire at `empireIndex` (flatEmpireList, at the frame the command applies;
+     * the command names it by empireId). Every peer runs the same check on the same data, so a refused command is
+     * dropped everywhere. Default: allow all.
      */
     authorize?: (peer: PeerId, empireIndex: number, op: string) => boolean;
     /** A resync / join replaced the game (the app must switch its views to the new galaxy). */
@@ -92,8 +93,7 @@ export class GalaxyLockstepSim implements LockstepSim {
             else console.warn(`lockstep: command ${op} not sent: ${reason}`);
         };
         if (session === null || !session.active) return fail('no lockstep session');
-        const empireIndex = flatEmpireList(this.galaxy).indexOf(empire);
-        if (empireIndex < 0) return fail('the issuing empire is not in the game');
+        if (!flatEmpireList(this.galaxy).includes(empire)) return fail('the issuing empire is not in the game');
         let encoded: EncodedArg[];
         try {
             encoded = args.map((a) => encodeCommandArg(this.galaxy, a));
@@ -101,7 +101,8 @@ export class GalaxyLockstepSim implements LockstepSim {
             // Not encodable = not replayable on the other peers: refuse it rather than desync.
             return fail(err instanceof Error ? err.message : String(err));
         }
-        const { seq } = session.submit(empireIndex, op, encoded);
+        // By its stable empireId: the flat-list index can move before the command's frame (an empire eliminated or added).
+        const { seq } = session.submit(empire.empireId, op, encoded);
         if (onApplied !== undefined || onFailed !== undefined) this.callbacks.set(seq, { onApplied, onFailed });
     }
 
@@ -118,11 +119,12 @@ export class GalaxyLockstepSim implements LockstepSim {
                     const local = cmd.peer === localPeer;
                     const cb = local ? this.callbacks.get(cmd.seq) : undefined;
                     if (local) this.callbacks.delete(cmd.seq);
-                    const empire = empires[cmd.empire];
+                    const empireIndex = empires.findIndex((e) => e.empireId === cmd.empire);
+                    const empire = empireIndex < 0 ? undefined : empires[empireIndex];
                     let reason: string | null = null;
                     let args: unknown[] = [];
-                    if (empire === undefined) reason = `no empire ${cmd.empire}`;
-                    else if (this.opts.authorize !== undefined && !this.opts.authorize(cmd.peer, cmd.empire, cmd.op)) reason = `peer ${cmd.peer} may not issue ${cmd.op} for empire ${cmd.empire}`;
+                    if (empire === undefined) reason = `no empire with id ${cmd.empire}`;
+                    else if (this.opts.authorize !== undefined && !this.opts.authorize(cmd.peer, empireIndex, cmd.op)) reason = `peer ${cmd.peer} may not issue ${cmd.op} for empire ${empireIndex}`;
                     else {
                         try {
                             args = cmd.args.map((a) => decodeCommandArg(galaxy, a));

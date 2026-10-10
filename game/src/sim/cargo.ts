@@ -150,6 +150,8 @@ export enum TroopType {
 // import cycles.
 // TODO(port): CompareTo, Garrisoned/Readiness logic, OverallStrength etc.
 export class Troop {
+    /** Not in the C#: the stable id player commands name this object by (entityRefs.ts; unset until the next sweep). */
+    declare refId?: number;
     name: string;
     private _type: TroopType;
     private _attackStrength: number; // short

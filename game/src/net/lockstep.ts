@@ -238,7 +238,7 @@ export class LockstepSession {
     // Local input and the clock
     // -----------------------------------------------------------------------------------------------------------
 
-    /** Submit a local command (empire index, op, encoded args); it is applied at frame + inputDelay. Returns its seq. */
+    /** Submit a local command (the issuing empire's stable key — GalaxyLockstepSim: empireId —, op, encoded args); it is applied at frame + inputDelay. Returns its seq. */
     submit(empire: number, op: string, args: EncodedArg[]): { peer: PeerId; seq: number } {
         const cmd: NetCommand = { peer: this.localPeer, seq: ++this.seq, empire, op, args, sentAt: this.wallNow() };
         this.pendingCmds.push(cmd);

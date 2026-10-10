@@ -19,7 +19,8 @@ import { inSimFrame, setCommandDrainer } from '../tick/commandBoundary';
 import { nextFrameMs, runSimFrame, schedulerState, type SimView } from '../tick/scheduler';
 import { flatEmpireList } from '../save/galaxySave';
 import { appendCommandLog, commandLog, copyCommandLogEntry, type CommandLogEntry, type PlayerLogEntry } from './commandLog';
-import { CommandEncodeError, decodeCommandArg, encodeCommandArg, type EncodedArg } from './commandCodec';
+import { COMMAND_CODEC_VERSION, CommandEncodeError, decodeCommandArg, encodeCommandArg, type EncodedArg } from './commandCodec';
+import { assignEntityRefIds, resetEntityRefIds } from '../entityRefs';
 import { PLAYER_OPS, type PlayerOpArgs, type PlayerOpName, type PlayerOpResult } from './playerOps';
 import { applyStrategicCommand } from './strategicDecisions';
 import { noteConstructionBoardCommand } from './constructionBoard';
@@ -168,6 +169,8 @@ function applyOp(galaxy: Galaxy, empire: Empire, op: PlayerOpName, args: unknown
     // The executor is sim code: the lazy lookups write (readOnlyQuery.ts); the onApplied callbacks are UI code and
     // run outside it.
     const result = withSimWrites(() => fn(galaxy, empire, ...args));
+    // What the order created gets its stable id before the next command names it (entityRefs.ts).
+    assignEntityRefIds(galaxy);
     // Any order may have replaced a construction-board job: re-check the board at the next frame (no-op without jobs).
     noteConstructionBoardCommand(galaxy, empire);
     // What the order sent the player is handled before the next command, as the C# UI thread handles its BeginInvoke
@@ -182,8 +185,8 @@ setUiRecordSender((galaxy, requests) => {
     if (player !== null) issuePlayerCommand(galaxy, player, 'obtainUiRecords', [requests]);
 });
 
-function encodeArgs(galaxy: Galaxy, args: readonly unknown[]): EncodedArg[] {
-    return args.map((a) => encodeCommandArg(galaxy, a));
+function encodeArgs(galaxy: Galaxy, args: readonly unknown[], version: number = COMMAND_CODEC_VERSION): EncodedArg[] {
+    return args.map((a) => encodeCommandArg(galaxy, a, version));
 }
 
 function applyLive(galaxy: Galaxy, p: Pending): void {
@@ -213,8 +216,9 @@ function applyLive(galaxy: Galaxy, p: Pending): void {
 }
 
 function applyJournaled(galaxy: Galaxy, p: Pending): unknown {
+    assignEntityRefIds(galaxy); // (as replayEntry does before decoding)
     const empireIndex = flatEmpireList(galaxy).indexOf(p.empire);
-    const entry: PlayerLogEntry = { starDate: galaxyStarDate(galaxy), nowMs: galaxy.nowMs, source: 'player', empire: empireIndex, op: p.op, args: [] };
+    const entry: PlayerLogEntry = { starDate: galaxyStarDate(galaxy), nowMs: galaxy.nowMs, source: 'player', empire: empireIndex, op: p.op, args: [], codec: COMMAND_CODEC_VERSION };
     try {
         entry.args = encodeArgs(galaxy, p.args);
     } catch (err) {
@@ -232,9 +236,10 @@ function replayEntry(galaxy: Galaxy, e: CommandLogEntry): void {
             if (e.error !== undefined) throw new Error(`command log replay: ${e.op} at ${e.nowMs} ms was not journaled replayably (${e.error})`);
             const empire = flatEmpireList(galaxy)[e.empire];
             if (empire === undefined) throw new Error(`command log replay: no empire ${e.empire}`);
+            assignEntityRefIds(galaxy); // (as applyJournaled does before encoding)
             const args = e.args.map((a) => decodeCommandArg(galaxy, a as EncodedArg));
-            // Determinism check: the decoded arguments must encode back to the journaled ones.
-            const again = JSON.stringify(encodeArgs(galaxy, args));
+            // Determinism check: the decoded arguments must encode back to the journaled ones, in the entry's codec version.
+            const again = JSON.stringify(encodeArgs(galaxy, args, e.codec ?? 1));
             if (again !== JSON.stringify(e.args)) throw new Error(`command log replay: ${e.op} at ${e.nowMs} ms resolves to different objects`);
             appendCommandLog(galaxy, copyCommandLogEntry(e));
             applyOp(galaxy, empire, e.op as PlayerOpName, args);
@@ -250,6 +255,11 @@ function replayEntry(galaxy: Galaxy, e: CommandLogEntry): void {
         }
         case 'clock':
         case 'view':
+            appendCommandLog(galaxy, copyCommandLogEntry(e));
+            return;
+        case 'refids':
+            // A save from before the stable ids was loaded here (save/gameSave.ts): number them as that load did.
+            resetEntityRefIds(galaxy);
             appendCommandLog(galaxy, copyCommandLogEntry(e));
             return;
         case 'addons':

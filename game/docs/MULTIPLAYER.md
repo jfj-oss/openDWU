@@ -472,7 +472,7 @@ loop asks `lockstepStepper(galaxy)`, which is null unless a session is attached.
 
 | File | What |
 |---|---|
-| `src/net/protocol.ts` | The wire messages (JSON). A command on the wire is a `NetCommand`: the command-log fields (`empire` index into `flatEmpireList`, `op`, args in the command-log codec), plus the peer id and a sequence number. |
+| `src/net/protocol.ts` | The wire messages (JSON). A command on the wire is a `NetCommand`: the command-log fields (`empire` as its stable `empireId`, `op`, args in the command-log codec), plus the peer id and a sequence number. |
 | `src/net/transport.ts` | The `Link` interface (an ordered, reliable text channel) and the in-memory transport (`memoryLinkPair`, `MemoryListener`). |
 | `src/net/wsTransport.ts` | The WebSocket `Link` on the standard WebSocket API (browser, Electron renderer, Node 22's global). `connectWebSocket(url)` is for clients; `wrapSocket(socket)` wraps an accepted server socket. |
 | `scripts/lib/wsServer.mjs` | A small WebSocket server with no dependencies (`node:http` upgrade, RFC 6455), for the host. The desktop main process can reuse it. |
@@ -563,9 +563,18 @@ Results on 2026-10-10 (seed 1, 300 stars, 4 empires, 4x, input delay 4, CPU core
   adapter runs without a view, as the headless harness does.
 - **Humans per peer at the lobby.** `setHumanEmpires` must run as a deterministic start step, plus a peer → empire map for
   `authorize`. The UI-record sender (`obtainUiRecords`) must use the local viewer's empire (Phase 1, §6 item 5).
-- **Stable references.** Commands are encoded when issued and resolved D frames later. Codec keys that are list
-  indices (a fleet, a design, a character: "owner + index") can point at a different object by then. This is
-  deterministic, so there is no desync, but it may hit the wrong target. Those kinds need stable ids.
+- ~~**Stable references.**~~ Done (2026-10-10). Commands are encoded when issued and resolved D frames later, so the
+  codec no longer names anything by a list position. Codec version 2 (`COMMAND_CODEC_VERSION`, journaled as
+  `PlayerLogEntry.codec`) names an empire by `empireId`; fleets, designs, characters, troops and habitats by a stable
+  `refId` (`src/sim/entityRefs.ts`: one galaxy counter, assigned by a deterministic sweep at the end of each frame,
+  after each applied command, at the end of `createGame` and in AddHabitat / AddAsteroidField); a creature by
+  `creatureId`; a tech node and an advisor suggestion by owner `empireId`. `NetCommand.empire` is the `empireId` too
+  (`authorize` still gets the flat index, taken at the command's frame). Log entries without `codec` (version 1) still
+  decode and replay with the old index keys. A save from before the ids gets them at load in sweep order, plus a
+  `'refids'` log entry so a replay from the seed renumbers at the same boundary. The ids are saved and reach the
+  worker replica as ordinary fields; they are not in `stateDigest`. Still positional, by op signature (not the codec):
+  `scrapColonyFacility`'s facility index (checked against the facility type), `exposeUncoveredPlanetDestroyer`'s
+  `galaxyLocations` index, `moveResearch`'s target slot and `setControlGroup`'s slot (positions by meaning).
 - **Smaller saves.** A 300-star save is 16.5 MB of JSON. Compress it (`CompressionStream`) and chunk it for joins and
   resyncs.
 - **A finer desync check.** `stateDigest` hashes key fields only. Add a deeper periodic hash, and log the first

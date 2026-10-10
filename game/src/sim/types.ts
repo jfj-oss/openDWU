@@ -147,6 +147,8 @@ export function increaseAngle(currentAngle: number): number {
 // The C# Galaxy parameter is omitted (headless sim): the galaxy-time parts
 // of the constructor and Move are noted as TODO(port) below.
 export class Habitat {
+    /** Not in the C#: the stable id player commands name this object by (entityRefs.ts; unset until the next sweep). */
+    declare refId?: number;
     name: string;
     category: HabitatCategoryType;
     type: HabitatType;

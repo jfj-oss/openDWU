@@ -66,6 +66,7 @@ import { Cargo, CargoList, ResourceRef } from './cargo';
 import { createGalaxyScenario } from './scenario/state';
 import { copyMessageOptions, type MessageOptions } from './messageRouting';
 import { ensurePlayerInbox } from './playerMessages';
+import { assignAllEntityRefIds } from './entityRefs';
 import { scenarioAfterGeneration, scenarioFindHomeHabitat, scenarioGameStart, scenarioGenerationSetup, scenarioQuery } from './scenario/hooks';
 import { parseSectorColumn } from './sectorNames';
 import './scenario/packages'; // mod layer: registers the scenario packages' hooks
@@ -1589,6 +1590,8 @@ export function* createGameSteps(opts: CreateGameOptions): Generator<GameStartPr
     if (opts.playerFlagShape !== undefined && opts.playerFlagShape >= 0) empire2.flagShape = opts.playerFlagShape;
     // Main.Part12.cs:2881 (the game view starts): the player's message / event recipient from here on.
     ensurePlayerInbox(galaxy);
+    // Not in the C#: the stable ids player commands name objects by (entityRefs.ts).
+    assignAllEntityRefIds(galaxy);
     stopAt('tail');
     return result();
 }
