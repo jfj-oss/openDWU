@@ -112,7 +112,7 @@ import { freightTooltipText } from '../ui/freightText'; // [freightOverlay]
 import { shortageTooltip } from '../ui/supplyChainText'; // [improvements] supplyChain
 import { wreckTooltipText } from '../ui/scenario/wreckageUi'; // [wreckage]
 import type { FreightOverlay } from './freightOverlay'; // [freightOverlay]
-import { boundsOnScreen } from './drawCache';
+import { DrawSig, boundsOnScreen } from './drawCache';
 import { drawRangeRings, fleetRangeRadii } from './rangeRings';
 import { BuiltObjectIndex, registerBuiltObjectIndex } from './builtObjectIndex';
 import { MotionInterpolator, PresentationClock, copyRenderTime, createRenderTime, builtObjectDrawnOffsetBound, drawnBuiltObjectPos, habitatTouchClampSeconds, renderOrbitAngle, setStationPull, type RenderTime } from './renderInterp';
@@ -2398,6 +2398,7 @@ export class MainView {
 
     /** Range rings for the selected ship / fleet / multi-selection (the minimum over its ships), centred on the
      * lead's drawn position; hidden for bases / ships without a hyperdrive. */
+    private readonly rangeRingsKey = new DrawSig();
     private updateRangeRings(z: number, cam: Camera): void {
         const g = this.rangeRingsG;
         const hud = this.getHudSelection();
@@ -2417,12 +2418,14 @@ export class MainView {
         const radii = ships !== null ? fleetRangeRadii(ships) : null;
         if (radii === null || lead === null || lead.hasBeenDestroyed) {
             if (g.visible) g.clear();
+            this.rangeRingsKey.reset();
             g.visible = false;
             return;
         }
         const d = drawnBuiltObjectPos(this.motion, lead);
         const s = cam.worldToScreen(d.x, d.y);
-        drawRangeRings(g, s.x, s.y, { range45: radii.range45 * z, range100: radii.range100 * z }, cam.width, cam.height);
+        // Rebuilt only on a radius change (rangeRings.ts drawRangeRings): following the ship / camera just moves it.
+        drawRangeRings(g, s.x, s.y, { range45: radii.range45 * z, range100: radii.range100 * z }, cam.width, cam.height, this.rangeRingsKey);
         g.visible = true;
     }
 

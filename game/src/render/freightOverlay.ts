@@ -35,6 +35,7 @@ import type { MapOverlayState } from '../ui/mapOverlays';
 import { scenarioMapFeatures } from '../sim/scenario/mapFeatures';
 import { INDEPENDENT_RING_COLOR, toPixiColor } from './empireLayer';
 import { dashSegments, TRAVEL_VECTOR_COLOR } from './overlayLayer';
+import { DrawSig } from './drawCache';
 
 /** Default category colours (task 19e-9 §8.2). Scenario categories carry their own. */
 export const FLOW_COLORS: Readonly<Record<string, number>> = {
@@ -316,6 +317,7 @@ export class FreightOverlay {
                 this.flows.clear();
                 this.hubs.clear();
                 this.leaders.clear();
+                this.leaderSig.reset();
                 this.routes.clear();
                 this.highlightG.clear();
                 this.flows.visible = this.hubs.visible = this.leaders.visible = this.routes.visible = this.highlightG.visible = false;
@@ -360,6 +362,7 @@ export class FreightOverlay {
             this.leaders.visible = true;
         } else if (this.leaders.visible) {
             this.leaders.clear();
+            this.leaderSig.reset();
             this.leaders.visible = false;
         }
     }
@@ -435,10 +438,16 @@ export class FreightOverlay {
         g.visible = routes.length > 0;
     }
 
+    private readonly leaderSig = new DrawSig();
     private buildLeaders(z: number, cam: Camera, dest: WeakMap<BuiltObject, unknown>): void {
         const g = this.leaders;
-        g.clear();
         const f = 1 / z;
+        // The leaders are listed first and the Graphics rebuilt only when one moved (or the zoom changed): freighters
+        // at rest or a paused game redraw nothing four times a second.
+        const sig = this.leaderSig;
+        sig.begin();
+        sig.push(f);
+        const ends: { x1: number; y1: number; x2: number; y2: number }[] = [];
         const halfW = cam.width / (2 * z);
         const halfH = cam.height / (2 * z);
         let any = false;
@@ -456,10 +465,16 @@ export class FreightOverlay {
             // A short leader: at most 300 px towards the contract destination.
             const leader = freightLeader(s.x, s.y, t.x, t.y, z);
             if (leader === null) continue;
+            ends.push(leader);
+            sig.push4(leader.x1, leader.y1, leader.x2, leader.y2);
+            any = true;
+        }
+        if (!sig.changed()) return;
+        g.clear();
+        for (const leader of ends) {
             for (const [ax, ay, bx, by] of dashSegments(leader.x1, leader.y1, leader.x2, leader.y2, 6 * f, 4 * f, 60)) {
                 g.moveTo(ax, ay).lineTo(bx, by);
             }
-            any = true;
         }
         if (any) g.stroke({ width: f, color: TRAVEL_VECTOR_COLOR, alpha: 0.9 });
     }

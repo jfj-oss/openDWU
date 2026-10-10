@@ -15,6 +15,9 @@ import { shortageMarkers, type ShortageMarker } from '../sim/logistics/supplyCha
 import { overlayActive, type MapOverlayState } from '../ui/mapOverlays';
 import { SUPPLY_REFRESH_MS, supplySnapshot } from '../ui/supplyChainCache';
 import { getSettings, onSettingsChange } from '../ui/settings';
+import { DrawSig } from './drawCache';
+
+const SEVERITY_PASSES = ['short', 'stalled'] as const;
 
 export const SHORTAGE_STALLED_COLOR = 0xff4a3a;
 export const SHORTAGE_SHORT_COLOR = 0xffb428;
@@ -48,6 +51,7 @@ export class SupplyOverlay {
     private drawn: { m: ShortageMarker; x: number; y: number }[] = [];
     private queriedAt = -Infinity;
     private scratch: Point = { x: 0, y: 0 };
+    private readonly sig = new DrawSig();
     /** Render interpolation (overlayLayer.ts passes its own). */
     motion: MotionInterpolator | null = null;
     /** Markers drawn in the last frame (perf / screenshot checks). */
@@ -81,6 +85,7 @@ export class SupplyOverlay {
         if (!overlayActive(this.state, 'supplyShortages') || this.galaxy.playerEmpire === null) {
             if (this.g.visible) {
                 this.g.clear();
+                this.sig.reset();
                 this.g.visible = false;
                 this.drawn = [];
                 this.markers = [];
@@ -95,23 +100,33 @@ export class SupplyOverlay {
             this.markers = snap !== null ? shortageMarkers(snap, getSettings().supplyShowColonyShortages) : [];
         }
         const g = this.g;
-        g.clear();
-        this.drawn = [];
+        const drawn: { m: ShortageMarker; x: number; y: number }[] = [];
         const halfW = cam.width / (2 * z) + 40 / z;
         const halfH = cam.height / (2 * z) + 40 / z;
         const f = 1 / z;
         const r = SHORTAGE_MARKER_PX * f;
-        // Amber first, red on top.
-        for (const pass of ['short', 'stalled'] as const) {
+        // The drawn markers first (amber first, red on top); the Graphics is rebuilt only when they, their looks or the
+        // zoom changed — not every frame for a paused game or yards at rest.
+        const sig = this.sig;
+        sig.begin();
+        sig.push(z);
+        for (const pass of SEVERITY_PASSES) {
             for (const m of this.markers) {
                 if (m.severity !== pass) continue;
                 const o = m.target;
                 if ((o as { hasBeenDestroyed?: boolean }).hasBeenDestroyed) continue;
                 const p = drawnPositionOf(this.motion, o, this.scratch);
                 if (p.x < cam.x - halfW || p.x > cam.x + halfW || p.y < cam.y - halfH || p.y > cam.y + halfH) continue;
-                const x = p.x;
-                const y = p.y;
-                this.drawn.push({ m, x, y });
+                drawn.push({ m, x: p.x, y: p.y });
+                sig.push4(p.x, p.y, o, m.severity);
+                sig.push(m.site === null);
+            }
+        }
+        this.drawn = drawn;
+        if (sig.changed()) {
+            g.clear();
+            for (const { m, x, y } of drawn) {
+                const o = m.target;
                 const color = shortageColor(m);
                 if (m.site === null) {
                     // A colony short of luxuries only: a small amber ring, no "!" (subordinate to the yards).

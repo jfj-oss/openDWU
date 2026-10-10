@@ -20,6 +20,7 @@ import { overlayActive, type MapOverlayState } from '../ui/mapOverlays';
 import type { SelectedObjectLike } from './mapHighlights';
 import { dashSegments } from './overlayLayer';
 import { circleAtScreenRes } from './screenCircle';
+import { DrawSig } from './drawCache';
 import { RefuelReach, fuelOverlayData, playerShipsOfSelection, type FuelOverlayData, type RefuelPoint } from './rangeRings';
 
 export const FUEL_COLORS = {
@@ -90,6 +91,10 @@ export class FuelOverlay {
     private frame = 0;
     private built = { valid: false, z: 0, x: 0, y: 0, w: 0, h: 0, data: null as FuelOverlayData | null };
     private drawnPoints: { x: number; y: number; p: RefuelPoint }[] = [];
+    private order: RefuelPoint[] = [];
+    private orderFor: FuelOverlayData | null = null;
+    private readonly markerSig = new DrawSig();
+    private readonly lineSig = new DrawSig();
     motion: MotionInterpolator | null = null;
     getSelection: () => SelectedObjectLike = () => null;
 
@@ -115,7 +120,11 @@ export class FuelOverlay {
                 this.root.visible = false;
                 this.markers.clear();
                 this.line.clear();
+                this.markerSig.reset();
+                this.lineSig.reset();
                 this.drawnPoints = [];
+                this.order = [];
+                this.orderFor = null;
                 this.built.valid = false;
                 this.data = null;
             }
@@ -151,46 +160,75 @@ export class FuelOverlay {
 
     private drawMarkers(z: number, cam: Camera, data: FuelOverlayData): void {
         const g = this.markers;
-        g.clear();
-        this.drawnPoints = [];
         const halfW = cam.width / (2 * z) + 20 / z;
         const halfH = cam.height / (2 * z) + 20 / z;
         const r = 5 / z;
-        // Draw the beyond / blocked ones first, the usable ones on top.
-        const order = data.points.slice().sort((a, b) => Number(a.usable) - Number(b.usable) || (b.reach ?? 0) - (a.reach ?? 0));
-        for (const p of order) {
+        // Draw the beyond / blocked ones first, the usable ones on top (sorted once per data refresh).
+        if (this.orderFor !== data) {
+            this.orderFor = data;
+            this.order = data.points.slice().sort((a, b) => Number(a.usable) - Number(b.usable) || (b.reach ?? 0) - (a.reach ?? 0));
+        }
+        // The drawn markers and their looks first; the Graphics is rebuilt only when they changed (at system zoom this
+        // runs every frame, and a paused game or resting bodies draw the same markers again).
+        const drawn: { x: number; y: number; p: RefuelPoint }[] = [];
+        const sig = this.markerSig;
+        sig.begin();
+        sig.push(z);
+        for (const p of this.order) {
             const o = p.target;
             if (o.xpos < cam.x - halfW || o.xpos > cam.x + halfW || o.ypos < cam.y - halfH || o.ypos > cam.y + halfH) continue;
             const at = this.pos(o);
             const st = refuelPointStyle(p);
-            if (p.militaryOnly) g.rect(at.x - r * 0.8, at.y - r * 0.8, r * 1.6, r * 1.6);
-            else g.poly([at.x, at.y - r, at.x + r, at.y, at.x, at.y + r, at.x - r, at.y]);
+            sig.push4(at.x, at.y, st.color, st.alpha);
+            sig.push2(st.hollow, p.militaryOnly);
+            drawn.push({ x: at.x, y: at.y, p });
+        }
+        this.drawnPoints = drawn;
+        if (!sig.changed()) return;
+        g.clear();
+        for (const { x, y, p } of drawn) {
+            const st = refuelPointStyle(p);
+            if (p.militaryOnly) g.rect(x - r * 0.8, y - r * 0.8, r * 1.6, r * 1.6);
+            else g.poly([x, y - r, x + r, y, x, y + r, x - r, y]);
             if (st.hollow) {
                 g.stroke({ width: 1.5 / z, color: st.color, alpha: st.alpha });
-                g.moveTo(at.x - r * 0.7, at.y - r * 0.7).lineTo(at.x + r * 0.7, at.y + r * 0.7).stroke({ width: 1.5 / z, color: st.color, alpha: st.alpha });
+                g.moveTo(x - r * 0.7, y - r * 0.7).lineTo(x + r * 0.7, y + r * 0.7).stroke({ width: 1.5 / z, color: st.color, alpha: st.alpha });
             } else {
                 g.fill({ color: st.color, alpha: st.alpha * 0.85 }).stroke({ width: 1 / z, color: 0x000000, alpha: 0.6 });
             }
-            this.drawnPoints.push({ x: at.x, y: at.y, p });
         }
     }
 
     private drawLine(z: number, data: FuelOverlayData, lead: BuiltObject | null): void {
         const g = this.line;
-        g.clear();
         if (data.ship === null || lead === null) {
+            // Nothing to draw: cleared once (an empty list), not every frame.
+            this.lineSig.begin();
+            if (this.lineSig.changed()) g.clear();
             if (this.label !== null) this.label.visible = false;
             return;
         }
         const f = 1 / z;
         const a = this.pos(lead);
+        const sig = this.lineSig;
+        sig.begin();
+        let b: { x: number; y: number } | null = null;
+        let color = 0;
         if (data.nearest !== null) {
-            const b = this.pos(data.nearest);
+            b = this.pos(data.nearest);
             const pt = data.points.find((p) => p.target === data.nearest);
-            const color = pt === undefined || pt.reach === RefuelReach.Beyond ? FUEL_COLORS.blocked : pt.reach === RefuelReach.RoundTrip ? FUEL_COLORS.roundTrip : FUEL_COLORS.oneWay;
-            for (const [x1, y1, x2, y2] of dashSegments(a.x, a.y, b.x, b.y, 8 * f, 5 * f, 300)) g.moveTo(x1, y1).lineTo(x2, y2);
-            g.stroke({ width: 1.5 * f, color, alpha: 0.9 });
-            circleAtScreenRes(g, b.x, b.y, 10 * f, z).stroke({ width: 2 * f, color: FUEL_COLORS.nearest, alpha: 0.9 });
+            color = pt === undefined || pt.reach === RefuelReach.Beyond ? FUEL_COLORS.blocked : pt.reach === RefuelReach.RoundTrip ? FUEL_COLORS.roundTrip : FUEL_COLORS.oneWay;
+            sig.push4(z, a.x, a.y, color);
+            sig.push2(b.x, b.y);
+        }
+        // Redrawn only when an endpoint, the colour or the zoom changed.
+        if (sig.changed()) {
+            g.clear();
+            if (b !== null) {
+                for (const [x1, y1, x2, y2] of dashSegments(a.x, a.y, b.x, b.y, 8 * f, 5 * f, 300)) g.moveTo(x1, y1).lineTo(x2, y2);
+                g.stroke({ width: 1.5 * f, color, alpha: 0.9 });
+                circleAtScreenRes(g, b.x, b.y, 10 * f, z).stroke({ width: 2 * f, color: FUEL_COLORS.nearest, alpha: 0.9 });
+            }
         }
         const text = this.labelText;
         if (this.label === null) {

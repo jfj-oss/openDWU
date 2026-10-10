@@ -101,7 +101,7 @@ import type { Empire } from '../sim/empire';
 import type { ShipGroup } from '../sim/fleets/shipGroup';
 import { builtObjectMission } from '../sim/missions/mission';
 import { BuiltObjectRole } from '../sim/data/designSpecifications';
-import { DrawKey } from './drawCache';
+import { DrawKey, DrawSig } from './drawCache';
 import { warEmpires } from './builtObjectLayer';
 import { FreightOverlay } from './freightOverlay'; // [freightOverlay]
 import { threatKnownSites, type KnownThreatSite } from '../sim/scenario/threats/framework';
@@ -886,6 +886,9 @@ export class OverlayLayer {
     }
 
     /** Scenario markers (src/sim/scenario/mapFeatures.ts): a double ring with a pennant, re-queried 4 times a second. */
+    private readonly scenarioSig = new DrawSig();
+    private readonly wreckSig = new DrawSig();
+    private readonly threatSig = new DrawSig();
     private updateScenarioMarkers(z: number): void {
         const g = this.scenarioMarkers;
         if (this.galaxy.scenario === null) {
@@ -893,14 +896,26 @@ export class OverlayLayer {
                 g.clear();
                 g.visible = false;
             }
+            this.scenarioSig.reset();
             return;
         }
         if (this.scenarioFrame++ % 15 === 0) this.scenarioMarkerList = scenarioMapFeatures(this.galaxy, this.galaxy.playerEmpire).markers;
-        g.clear();
         if (this.scenarioMarkerList.length === 0) {
+            if (g.visible) g.clear();
+            this.scenarioSig.reset();
             g.visible = false;
             return;
         }
+        // Rebuilt only when a marker or the zoom changed (the list is re-queried 4 times a second).
+        const k = this.scenarioSig;
+        k.begin();
+        k.push(z);
+        for (const m of this.scenarioMarkerList) k.push4(m.x, m.y, m.color, 0);
+        if (!k.changed()) {
+            g.visible = true;
+            return;
+        }
+        g.clear();
         for (const m of this.scenarioMarkerList) {
             const r = 12 / z;
             circleAtScreenRes(g, m.x, m.y, r, z).stroke({ width: 2 / z, color: m.color, alpha: 1 });
@@ -921,16 +936,28 @@ export class OverlayLayer {
                 g.clear();
                 g.visible = false;
             }
+            this.wreckSig.reset();
             return;
         }
         if (this.wreckFrame++ % 30 === 0) this.wreckList = visibleWreckFields(this.galaxy, player);
-        g.clear();
         if (this.wreckList.length === 0) {
+            if (g.visible) g.clear();
+            this.wreckSig.reset();
             g.visible = false;
             return;
         }
-        for (const f of this.wreckList) {
-            const m = wreckMarker(f, z);
+        // Rebuilt only when a ring or the zoom changed (the list is re-read twice a second).
+        const marks = this.wreckList.map((f) => wreckMarker(f, z));
+        const k = this.wreckSig;
+        k.begin();
+        k.push(z);
+        for (const m of marks) k.push4(m.x, m.y, m.r, 0);
+        if (!k.changed()) {
+            g.visible = true;
+            return;
+        }
+        g.clear();
+        for (const m of marks) {
             circleAtScreenRes(g, m.x, m.y, m.r, z).stroke({ width: 2 / z, color: WRECK_MARKER_COLOR, alpha: 0.9 });
             const c = 5 / z;
             g.moveTo(m.x - c, m.y - c).lineTo(m.x + c, m.y + c).moveTo(m.x + c, m.y - c).lineTo(m.x - c, m.y + c).stroke({ width: 2 / z, color: WRECK_MARKER_COLOR, alpha: 0.9 });
@@ -955,16 +982,28 @@ export class OverlayLayer {
                 g.clear();
                 g.visible = false;
             }
+            this.threatSig.reset();
             return;
         }
         if (this.threatFrame++ % 30 === 0) this.threatSites = threatKnownSites(this.galaxy, player);
-        g.clear();
         if (this.threatSites.length === 0) {
+            if (g.visible) g.clear();
+            this.threatSig.reset();
             g.visible = false;
             return;
         }
-        for (const site of this.threatSites) {
-            const m = threatMarker(site, z);
+        // The markers follow moving carriers: rebuilt only when one moved (or the zoom / list changed).
+        const marks = this.threatSites.map((site) => threatMarker(site, z));
+        const k = this.threatSig;
+        k.begin();
+        k.push(z);
+        for (const m of marks) k.push4(m.kind, m.x, m.y, m.r), k.push(m.color);
+        if (!k.changed()) {
+            g.visible = true;
+            return;
+        }
+        g.clear();
+        for (const m of marks) {
             if (m.kind === 'ring') {
                 circleAtScreenRes(g, m.x, m.y, m.r, z).stroke({ width: 3 / z, color: m.color, alpha: 1 });
                 circleAtScreenRes(g, m.x, m.y, m.r + 5 / z, z).stroke({ width: 1 / z, color: m.color, alpha: 0.6 });
@@ -998,6 +1037,15 @@ export class OverlayLayer {
 
     /** XnaDrawingHelper.DrawLine(dashed: true): 6 px dashes and gaps. Returns false when shorter than one step (no
      * arrowhead then: the C# loop does not run). */
+    /** updateTravelVectors' lines: target 0 = travelVectors, 1 = highlightVectors, 2 = incomingLines, 3 =
+     * foreignSelVector. Recorded for the redraw; returns dashed()'s arrowhead test. */
+    private readonly tvOps: number[] = [];
+    private readonly tvSig = new DrawSig();
+    private tvLine(target: number, x1: number, y1: number, x2: number, y2: number, f: number): boolean {
+        this.tvOps.push(target, x1, y1, x2, y2);
+        return Math.hypot(x2 - x1, y2 - y1) >= TRAVEL_VECTOR_DASH_PX * f;
+    }
+
     private dashed(g: Graphics, x1: number, y1: number, x2: number, y2: number, f: number): boolean {
         const segs = dashSegments(x1, y1, x2, y2, TRAVEL_VECTOR_DASH_PX * f, TRAVEL_VECTOR_DASH_PX * f);
         for (const [ax, ay, bx, by] of segs) g.moveTo(ax, ay).lineTo(bx, by);
@@ -1067,10 +1115,10 @@ export class OverlayLayer {
         const g = this.travelVectors;
         const hg = this.highlightVectors;
         const ig = this.incomingLines;
-        // Clearing marks a Graphics for re-tessellation: only those drawn last frame.
-        if (g.visible) g.clear();
-        if (hg.visible) hg.clear();
-        if (ig.visible) ig.clear();
+        // The dashed lines are collected first (tvLine) and the four Graphics rebuilt only when that list changed:
+        // clearing marks a Graphics for re-tessellation, and a paused game or fleets at rest draw the same lines again.
+        const ops = this.tvOps;
+        ops.length = 0;
         const player = this.galaxy.playerEmpire;
         const f = 1 / z;
         const halfW = cam.width / (2 * z);
@@ -1081,7 +1129,6 @@ export class OverlayLayer {
         let anyIn = false;
         let anySel = false;
         const sg2 = this.foreignSelVector;
-        if (sg2.visible) sg2.clear();
         // Travel Vectors only from the sector / galaxy zoom out (the original draws them in its galaxy pass); at system
         // zoom the lines from moving ships to their nearby targets squirm with every course correction.
         if (overlays && player !== null && f >= TRAVEL_VECTOR_MIN_FACTOR && (this.state.travelVectorsState || this.state.travelVectorsPrivate)) {
@@ -1098,10 +1145,10 @@ export class OverlayLayer {
                     if (!inView(v.x1, v.y1) || !travelVectorLongEnough(v, f)) continue;
                     const hi = this.highlights.specialHighlight;
                     if (hi.size > 0 && hi.has(v.builtObject)) {
-                        if (this.dashed(hg, v.x1, v.y1, v.x2, v.y2, f)) this.placeArrow(v.x1, v.y1, v.x2, v.y2, SPECIAL_HIGHLIGHT_VECTOR_COLOR, 1, SPECIAL_HIGHLIGHT_VECTOR_WIDTH, f);
+                        if (this.tvLine(1, v.x1, v.y1, v.x2, v.y2, f)) this.placeArrow(v.x1, v.y1, v.x2, v.y2, SPECIAL_HIGHLIGHT_VECTOR_COLOR, 1, SPECIAL_HIGHLIGHT_VECTOR_WIDTH, f);
                         anyHi = true;
                     } else {
-                        if (this.dashed(g, v.x1, v.y1, v.x2, v.y2, f)) this.placeArrow(v.x1, v.y1, v.x2, v.y2, TRAVEL_VECTOR_COLOR, 1, 1, f);
+                        if (this.tvLine(0, v.x1, v.y1, v.x2, v.y2, f)) this.placeArrow(v.x1, v.y1, v.x2, v.y2, TRAVEL_VECTOR_COLOR, 1, 1, f);
                         any = true;
                     }
                 }
@@ -1137,10 +1184,10 @@ export class OverlayLayer {
                                 // same yellow line (the C# draws both); one suffices.
                             } else if (fv.color === SELECTED_TRAVEL_VECTOR_COLOR) {
                                 // Another empire's selected fleet: yellow, here only.
-                                if (this.dashed(sg2, lx, ly, fv.v.x2, fv.v.y2, f)) this.placeArrow(lx, ly, fv.v.x2, fv.v.y2, fv.color, 1, 1, f);
+                                if (this.tvLine(3, lx, ly, fv.v.x2, fv.v.y2, f)) this.placeArrow(lx, ly, fv.v.x2, fv.v.y2, fv.color, 1, 1, f);
                                 anySel = true;
                             } else {
-                                if (this.dashed(g, lx, ly, fv.v.x2, fv.v.y2, f)) this.placeArrow(lx, ly, fv.v.x2, fv.v.y2, fv.color, 1, 1, f);
+                                if (this.tvLine(0, lx, ly, fv.v.x2, fv.v.y2, f)) this.placeArrow(lx, ly, fv.v.x2, fv.v.y2, fv.color, 1, 1, f);
                                 any = true;
                             }
                         }
@@ -1148,7 +1195,7 @@ export class OverlayLayer {
                 }
                 const t = incomingAttackLine(sg, player);
                 if (t !== null) {
-                    this.dashed(ig, lx, ly, t.x, t.y, f);
+                    this.tvLine(2, lx, ly, t.x, t.y, f);
                     anyIn = true;
                 }
             }
@@ -1156,11 +1203,20 @@ export class OverlayLayer {
         for (let i = this.arrowCount; i < this.arrowheads.children.length; i++) this.arrowheads.children[i].visible = false;
         this.arrowheads.visible = this.arrowCount > 0;
         const dpr = typeof window !== 'undefined' ? window.devicePixelRatio : 1;
-        if (any) g.stroke({ width: f * travelVectorWidthPx(dpr), color: TRAVEL_VECTOR_COLOR, alpha: 1 });
-        if (anyHi) hg.stroke({ width: f * SPECIAL_HIGHLIGHT_VECTOR_WIDTH, color: SPECIAL_HIGHLIGHT_VECTOR_COLOR, alpha: 1 });
-        if (anySel) sg2.stroke({ width: f * travelVectorWidthPx(dpr), color: SELECTED_TRAVEL_VECTOR_COLOR, alpha: 1 });
+        const sig = this.tvSig;
+        sig.begin();
+        sig.push2(f, dpr);
+        for (let i = 0; i < ops.length; i++) sig.push(ops[i]);
+        if (sig.changed()) {
+            const targets = [g, hg, ig, sg2];
+            for (const t of targets) t.clear();
+            for (let i = 0; i < ops.length; i += 5) this.dashed(targets[ops[i]], ops[i + 1], ops[i + 2], ops[i + 3], ops[i + 4], f);
+            if (any) g.stroke({ width: f * travelVectorWidthPx(dpr), color: TRAVEL_VECTOR_COLOR, alpha: 1 });
+            if (anyHi) hg.stroke({ width: f * SPECIAL_HIGHLIGHT_VECTOR_WIDTH, color: SPECIAL_HIGHLIGHT_VECTOR_COLOR, alpha: 1 });
+            if (anySel) sg2.stroke({ width: f * travelVectorWidthPx(dpr), color: SELECTED_TRAVEL_VECTOR_COLOR, alpha: 1 });
+            if (anyIn) ig.stroke({ width: f * INCOMING_ATTACK_WIDTH, color: INCOMING_ATTACK_COLOR, alpha: INCOMING_ATTACK_ALPHA });
+        }
         sg2.visible = anySel;
-        if (anyIn) ig.stroke({ width: f * INCOMING_ATTACK_WIDTH, color: INCOMING_ATTACK_COLOR, alpha: INCOMING_ATTACK_ALPHA });
         g.visible = any;
         hg.visible = anyHi;
         ig.visible = anyIn;
@@ -1230,8 +1286,9 @@ export class OverlayLayer {
         const g = this.postureLines;
         const player = this.galaxy.playerEmpire;
         const tex = this.lrsTex;
-        if (g.visible) g.clear();
         if (!overlays || !this.state.fleetPostures || player === null) {
+            if (g.visible) g.clear();
+            this.postureSig.reset();
             this.postureDiscs.visible = false;
             this.postureArrows.visible = false;
             g.visible = false;
@@ -1243,7 +1300,13 @@ export class OverlayLayer {
         let n = 0;
         let arrows = 0;
         let any = false;
-        for (const m of fleetPostureMarks(player)) {
+        // The lines' Graphics is rebuilt only when what it draws (the zoom, each drawn disc's rim and gather line)
+        // changed: the marks sit at fixed points, so most frames redraw nothing. Sprites are placed every frame.
+        const sig = this.postureSig;
+        sig.begin();
+        sig.push(f);
+        const marks = fleetPostureMarks(player);
+        for (const m of marks) {
             const r = m.radius;
             if (r > 0 && m.x + r > cam.x - halfW && m.x - r < cam.x + halfW && m.y + r > cam.y - halfH && m.y - r < cam.y + halfH) {
                 if (tex !== null) {
@@ -1262,13 +1325,13 @@ export class OverlayLayer {
                     sp.alpha = POSTURE_ALPHA;
                     n++;
                 }
-                // XnaDrawingHelper.DrawCircle(rect, 100 segments, color, 1).
-                segmentCircle(g, m.x, m.y, r, 100).stroke({ width: f, color: m.color, alpha: POSTURE_ALPHA });
+                sig.push4(0, m.x, m.y, r);
+                sig.push(m.color);
                 any = true;
             }
             if (m.from !== null) {
-                // DrawLine(gather → attack, color, 3, dashed, texture2D_35).
-                if (this.dashed(g, m.from.x, m.from.y, m.x, m.y, f) && this.arrowTex !== null) {
+                // DrawLine(gather → attack, color, 3, dashed, texture2D_35): the arrowhead when at least one dash step long.
+                if (Math.hypot(m.x - m.from.x, m.y - m.from.y) >= TRAVEL_VECTOR_DASH_PX * f && this.arrowTex !== null) {
                     const at = this.arrowTex;
                     const a = arrowheadPlacement(m.from.x, m.from.y, m.x, m.y, at.width, at.height, POSTURE_LINE_WIDTH_PX, f);
                     let sp = this.postureArrows.children[arrows] as Sprite | undefined;
@@ -1285,8 +1348,23 @@ export class OverlayLayer {
                     sp.scale.set(a.scale * f);
                     arrows++;
                 }
-                g.stroke({ width: POSTURE_LINE_WIDTH_PX * f, color: m.color, alpha: POSTURE_ALPHA });
+                sig.push4(1, m.from.x, m.from.y, m.x);
+                sig.push2(m.y, m.color);
                 any = true;
+            }
+        }
+        if (sig.changed()) {
+            g.clear();
+            for (const m of marks) {
+                const r = m.radius;
+                if (r > 0 && m.x + r > cam.x - halfW && m.x - r < cam.x + halfW && m.y + r > cam.y - halfH && m.y - r < cam.y + halfH) {
+                    // XnaDrawingHelper.DrawCircle(rect, 100 segments, color, 1).
+                    segmentCircle(g, m.x, m.y, r, 100).stroke({ width: f, color: m.color, alpha: POSTURE_ALPHA });
+                }
+                if (m.from !== null) {
+                    this.dashed(g, m.from.x, m.from.y, m.x, m.y, f);
+                    g.stroke({ width: POSTURE_LINE_WIDTH_PX * f, color: m.color, alpha: POSTURE_ALPHA });
+                }
             }
         }
         for (let i = n; i < this.postureSprites.length; i++) this.postureSprites[i].visible = false;
@@ -1295,6 +1373,7 @@ export class OverlayLayer {
         this.postureArrows.visible = arrows > 0;
         g.visible = any;
     }
+    private readonly postureSig = new DrawSig();
 
     /**
      * BaconMain.cs 442 DrawWeaponRanges (opt-in: the showWeaponRangeCircles setting, or `?rangeCircles=1`) around the
@@ -1303,37 +1382,58 @@ export class OverlayLayer {
     private updateRangeCircles(z: number, overlays: boolean): void {
         const wg = this.weaponCircles;
         const gg = this.gravityRing;
-        if (wg.visible) wg.clear();
-        if (gg.visible) gg.clear();
-        wg.visible = false;
-        gg.visible = false;
-        if (!overlays) return;
-        const sel = this.getSelection();
+        let weaponsShown = false;
+        let ringShown = false;
+        const sel = overlays ? this.getSelection() : null;
         const f = 1 / z;
-        if (weaponCirclesEnabled() && sel !== null && sel.builtObject !== undefined && sel.shipGroup === undefined && sel.builtObjects === undefined) {
+        if (overlays && weaponCirclesEnabled() && sel !== null && sel.builtObject !== undefined && sel.shipGroup === undefined && sel.builtObjects === undefined) {
             const bo = sel.builtObject;
             if (!bo.hasBeenDestroyed) {
                 const circles = weaponRangeCircles(bo as unknown as Parameters<typeof weaponRangeCircles>[0], f);
                 if (circles.length > 0) {
                     const p = this.drawnPos(bo);
-                    // Drawn around (0, 0) and moved there: galaxy coordinates run to millions (float32 vertices).
+                    // Drawn around (0, 0) and moved there: galaxy coordinates run to millions (float32 vertices). So
+                    // the geometry is rebuilt only when the circles or the zoom change, not as the ship moves.
                     wg.position.set(p.x, p.y);
-                    for (const c of circles) {
-                        drawRangeCircle(wg, 0, 0, c, z);
-                        wg.stroke({ width: f, color: c.color, alpha: 1 });
+                    const k = this.weaponCirclesSig;
+                    k.begin();
+                    k.push(z);
+                    for (const c of circles) k.push4(c.radius, c.color, c.dashed, 0);
+                    if (k.changed()) {
+                        wg.clear();
+                        for (const c of circles) {
+                            drawRangeCircle(wg, 0, 0, c, z);
+                            wg.stroke({ width: f, color: c.color, alpha: 1 });
+                        }
                     }
-                    wg.visible = true;
+                    weaponsShown = true;
                 }
             }
         }
-        const ring = gravityWellRing(sel, this.galaxy.playerEmpire);
+        const ring = overlays ? gravityWellRing(sel, this.galaxy.playerEmpire) : null;
         if (ring !== null) {
             gg.position.set(ring.star.xpos, ring.star.ypos);
-            drawRangeCircle(gg, 0, 0, { radius: ring.radius, color: 0x0000ff, dashed: true }, z);
-            gg.stroke({ width: f, color: 0x0000ff, alpha: 1 });
-            gg.visible = true;
+            if (this.gravityRingKey.changed(ring.radius, z)) {
+                gg.clear();
+                drawRangeCircle(gg, 0, 0, { radius: ring.radius, color: 0x0000ff, dashed: true }, z);
+                gg.stroke({ width: f, color: 0x0000ff, alpha: 1 });
+            }
+            ringShown = true;
         }
+        // Hidden ones are cleared once (and their keys forgotten), not every frame.
+        if (!weaponsShown && wg.visible) {
+            wg.clear();
+            this.weaponCirclesSig.reset();
+        }
+        if (!ringShown && gg.visible) {
+            gg.clear();
+            this.gravityRingKey.reset();
+        }
+        wg.visible = weaponsShown;
+        gg.visible = ringShown;
     }
+    private readonly weaponCirclesSig = new DrawSig();
+    private readonly gravityRingKey = new DrawKey();
 
     /**
      * The selected ship / fleet's yellow travel vector (MainView.2.cs method_250 selected-object block). Drawn from the
@@ -1342,6 +1442,7 @@ export class OverlayLayer {
      * gravity-well exit waypoint (TravelVector.x3) gets a second, fainter leg on to the destination, which takes the
      * arrowhead.
      */
+    private readonly selVectorSig = new DrawSig();
     private updateSelectedVector(z: number, cam: Camera): void {
         const g = this.selVector;
         const f = 1 / z;
@@ -1351,30 +1452,41 @@ export class OverlayLayer {
                 g.clear();
                 g.visible = false;
             }
+            this.selVectorSig.reset();
             if (this.selArrow !== null) this.selArrow.visible = false;
             return;
         }
         const d = this.drawnPos(v.builtObject);
         v.x1 = d.x;
         v.y1 = d.y;
-        g.clear();
         g.position.set(d.x, d.y);
         const pad = 64 * f;
         const halfW = cam.width / (2 * z) + pad;
         const halfH = cam.height / (2 * z) + pad;
-        const clip = { x0: cam.x - halfW, y0: cam.y - halfH, x1: cam.x + halfW, y1: cam.y + halfH };
-        const dash = TRAVEL_VECTOR_DASH_PX * f;
         const dpr = typeof window !== 'undefined' ? window.devicePixelRatio : 1;
-        const width = f * travelVectorWidthPx(dpr);
-        const leg = (ax: number, ay: number, bx: number, by: number, alpha: number): void => {
-            const segs = anchoredDashSegments(ax, ay, bx, by, dash, dash, clip, d.x, d.y);
-            if (segs.length === 0) return;
-            for (const [sx, sy, ex, ey] of segs) g.moveTo(sx, sy).lineTo(ex, ey);
-            g.stroke({ width, color: SELECTED_TRAVEL_VECTOR_COLOR, alpha });
-        };
-        leg(v.x1, v.y1, v.x2, v.y2, 1);
         const twoLegs = v.x3 !== undefined && v.y3 !== undefined;
-        if (twoLegs) leg(v.x2, v.y2, v.x3!, v.y3!, SELECTED_TRAVEL_VECTOR_ONWARD_ALPHA);
+        // Rebuilt only when an end, the view's clip rectangle or the zoom changed (a ship at rest under a still camera,
+        // or a paused game, draws the same dashes).
+        const k = this.selVectorSig;
+        k.begin();
+        k.push4(d.x, d.y, v.x2, v.y2);
+        k.push4(twoLegs ? v.x3 : 0, twoLegs ? v.y3 : 0, f, dpr);
+        k.push4(cam.x, cam.y, halfW, halfH);
+        k.push(twoLegs);
+        if (k.changed()) {
+            g.clear();
+            const clip = { x0: cam.x - halfW, y0: cam.y - halfH, x1: cam.x + halfW, y1: cam.y + halfH };
+            const dash = TRAVEL_VECTOR_DASH_PX * f;
+            const width = f * travelVectorWidthPx(dpr);
+            const leg = (ax: number, ay: number, bx: number, by: number, alpha: number): void => {
+                const segs = anchoredDashSegments(ax, ay, bx, by, dash, dash, clip, d.x, d.y);
+                if (segs.length === 0) return;
+                for (const [sx, sy, ex, ey] of segs) g.moveTo(sx, sy).lineTo(ex, ey);
+                g.stroke({ width, color: SELECTED_TRAVEL_VECTOR_COLOR, alpha });
+            };
+            leg(v.x1, v.y1, v.x2, v.y2, 1);
+            if (twoLegs) leg(v.x2, v.y2, v.x3!, v.y3!, SELECTED_TRAVEL_VECTOR_ONWARD_ALPHA);
+        }
         g.visible = true;
         const tex = this.arrowTex;
         if (tex !== null) {

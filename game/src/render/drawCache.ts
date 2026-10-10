@@ -32,6 +32,69 @@ export class DrawKey {
 }
 
 /**
+ * A variable-length DrawKey: the values (numbers or object identities) a Graphics was last drawn from. A layer whose
+ * geometry follows a list (one entry per marker / line) pushes each drawn entry's inputs between begin() and
+ * changed(), and only clears and redraws when that list differs from the previous frame's: unchanged inputs (a
+ * paused game, a still camera, ships at rest) then cost no re-tessellation. The two backing arrays are reused, so a
+ * frame allocates nothing once they have grown.
+ */
+export class DrawSig {
+    private prev: unknown[] = [];
+    private cur: unknown[] = [];
+    private n = 0;
+    private valid = false;
+
+    /** Start collecting this frame's values. */
+    begin(): void {
+        this.n = 0;
+    }
+
+    push(v: unknown): void {
+        this.cur[this.n++] = v;
+    }
+
+    push2(a: unknown, b: unknown): void {
+        this.cur[this.n++] = a;
+        this.cur[this.n++] = b;
+    }
+
+    push4(a: unknown, b: unknown, c: unknown, d: unknown): void {
+        this.cur[this.n++] = a;
+        this.cur[this.n++] = b;
+        this.cur[this.n++] = c;
+        this.cur[this.n++] = d;
+    }
+
+    /** True when the values pushed since begin() differ from the last remembered list (or on the first call / after
+     * reset), which then becomes the remembered one. NaN never compares equal, so it always redraws. */
+    changed(): boolean {
+        const p = this.prev;
+        const c = this.cur;
+        const n = this.n;
+        if (this.valid && p.length === n) {
+            let same = true;
+            for (let i = 0; i < n; i++) {
+                if (p[i] !== c[i]) {
+                    same = false;
+                    break;
+                }
+            }
+            if (same) return false;
+        }
+        c.length = n;
+        this.prev = c;
+        this.cur = p;
+        this.valid = true;
+        return true;
+    }
+
+    /** Forget the remembered list: the next changed() returns true. */
+    reset(): void {
+        this.valid = false;
+    }
+}
+
+/**
  * Conservative on-screen test for an object centred at world (x, y) that draws within `worldRadius` world units plus
  * `pxMargin` screen pixels of its centre, for a camera centred at (camX, camY) showing viewW × viewH pixels at `zoom`
  * px per world unit. False only when every drawn pixel is off screen.

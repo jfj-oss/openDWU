@@ -72,7 +72,7 @@ import type { MapOverlayState } from '../ui/mapOverlays';
 import { getSettings, type UiSettings } from '../ui/settings';
 import { displayColorForEmpire } from '../sim/empireColors';
 import { useMinifyingFilter } from './assets';
-import { boundsOnScreen } from './drawCache';
+import { DrawSig, boundsOnScreen } from './drawCache';
 import { showsMapIndicators } from './mainViewDisplay';
 import { drawCrossedSwords, SWORD_PX_FAR, SWORD_PX_NEAR, systemsUnderFire } from './battleIcons';
 import { builtObjectHiddenFromPick, warEmpires } from './builtObjectLayer';
@@ -794,6 +794,25 @@ export class GalaxyMarkerLayer {
     private readonly decorated = new Set<Text>();
     /** Symbols and fleet icons drawn this frame (pick candidates). */
     private drawn: DrawnSymbol[] = [];
+    /** Reused DrawnSymbol records (pushDrawn): updateSymbols lists up to thousands a frame. pickAt's result is read at
+     *  once by its callers, so a record being refilled the next frame is fine. */
+    private readonly drawnPool: DrawnSymbol[] = [];
+
+    private pushDrawn(bo: BuiltObject, group: ShipGroup | null, x: number, y: number, halfPx: number): void {
+        const i = this.drawn.length;
+        let d = this.drawnPool[i];
+        if (d === undefined) {
+            d = { bo, group, x, y, halfPx };
+            this.drawnPool.push(d);
+        } else {
+            d.bo = bo;
+            d.group = group;
+            d.x = x;
+            d.y = y;
+            d.halfPx = halfPx;
+        }
+        this.drawn.push(d);
+    }
 
     private presence: StationPresence[] = [];
     private owners = new Map<SystemInfo, { empire: Empire; tsv: number; color: number }>();
@@ -828,8 +847,8 @@ export class GalaxyMarkerLayer {
         this.symbols = new ParticleContainer({ texture: Texture.WHITE, dynamicProperties: dyn });
         this.links = new SystemLinkLayer(galaxy);
         this.back.addChild(this.discs, this.links.root, this.rings);
-        // overlayG is cleared and redrawn every frame: in its own render group (renderGroups.ts). (The battle bars over the
-        // ships are combatBars.ts BattleBarLayer, MainView.1.cs 1251-1295.)
+        // overlayG (redrawn when its ops change: flushOverlay) is in its own render group (renderGroups.ts). (The battle
+        // bars over the ships are combatBars.ts BattleBarLayer, MainView.1.cs 1251-1295.)
         this.overlayGroup = inOwnRenderGroup(this.overlayG);
         this.selGroup = inOwnRenderGroup(this.selG);
         this.front.addChild(this.symbols, this.countLayer, this.overlayGroup, this.iconLayer, this.selGroup);
@@ -923,8 +942,8 @@ export class GalaxyMarkerLayer {
         const gates = galaxyViewGates(getSettings().cleanGalaxyView);
         this.back.visible = f > GALAXY_OVERLAY_MIN_FACTOR && (factionOn || presenceOn);
         this.front.visible = factionOn;
-        this.drawn = [];
-        this.overlayG.clear();
+        this.drawn.length = 0;
+        this.overlayOps.length = 0;
         this.ox = cam.x;
         this.oy = cam.y;
         this.overlayGroup.position.set(cam.x, cam.y);
@@ -934,6 +953,7 @@ export class GalaxyMarkerLayer {
         this.selGroup.position.set(cam.x, cam.y);
         this.selBoxes.length = 0;
         this.decorateLabels(systems, f, z, factionOn && gates.systemNames);
+        this.flushOverlay();
         if (!this.back.visible && !this.front.visible) return;
 
         const now = performance.now();
@@ -1125,7 +1145,8 @@ export class GalaxyMarkerLayer {
             const refuel = player !== null && (player.visibility.systemVisibility[star.systemIndex]?.isRefuellingPoint ?? false) ? this.icons.refuel : null;
             // Past the ring's outer edge (the 3 px pen is centred on the radius) plus 1 px, then icons, then the name.
             let x = ringPx + FACTION_RING_WIDTH_PX / 2 + 2;
-            for (const tex of [capTex, refuel]) {
+            for (let t = 0; t < 2; t++) {
+                const tex = t === 0 ? capTex : refuel;
                 if (tex === null) continue;
                 const s = this.iconSprite(icons++);
                 s.texture = tex;
@@ -1150,14 +1171,7 @@ export class GalaxyMarkerLayer {
                 // overlayG is in screen px relative to (ox, oy).
                 const nx = (star.xpos - this.ox) * z + x + label.width * z + 1;
                 const ny = (star.ypos - this.oy) * z + 1 - label.height * z + 3;
-                const g = this.overlayG;
-                for (const [dx, dy] of [
-                    [0, 5],
-                    [6, 5],
-                    [3, 0],
-                ]) {
-                    g.rect(nx + dx, ny + dy, q, q).fill({ color: fill });
-                }
+                this.overlayOps.push(0, nx, ny, q, fill);
             }
         }
         for (let i = icons; i < this.iconPool.length; i++) this.iconPool[i].visible = false;
@@ -1171,7 +1185,35 @@ export class GalaxyMarkerLayer {
         const pulse = 0.8 + 0.2 * Math.sin(performance.now() / 250);
         const off = (ringPx + swordPx / 2) * Math.SQRT1_2;
         // overlayG is in screen px relative to (ox, oy) (update): z = 1 for the swords' px -> local scale.
-        drawCrossedSwords(this.overlayG, (star.xpos - this.ox) * z + off, (star.ypos - this.oy) * z + off, swordPx, 1, fire * pulse);
+        this.overlayOps.push(1, (star.xpos - this.ox) * z + off, (star.ypos - this.oy) * z + off, swordPx, fire * pulse);
+    }
+
+    /** overlayG's ops this frame (decorateLabels: [0, x, y, size, colour] a ruins glyph, [1, x, y, px, alpha] crossed
+     * swords), replayed only when they differ from last frame's: overlayG used to be cleared and rebuilt every frame,
+     * even with nothing in it. (Pulsing swords still redraw each frame: their alpha changes.) */
+    private readonly overlayOps: number[] = [];
+    private readonly overlaySig = new DrawSig();
+    private flushOverlay(): void {
+        const ops = this.overlayOps;
+        const sig = this.overlaySig;
+        sig.begin();
+        for (let i = 0; i < ops.length; i++) sig.push(ops[i]);
+        if (!sig.changed()) return;
+        const g = this.overlayG;
+        g.clear();
+        for (let i = 0; i < ops.length; i += 5) {
+            const x = ops[i + 1];
+            const y = ops[i + 2];
+            const q = ops[i + 3];
+            if (ops[i] === 0) {
+                // Ruins glyph "∴": three small squares.
+                g.rect(x, y + 5, q, q).fill({ color: ops[i + 4] });
+                g.rect(x + 6, y + 5, q, q).fill({ color: ops[i + 4] });
+                g.rect(x + 3, y, q, q).fill({ color: ops[i + 4] });
+            } else {
+                drawCrossedSwords(g, x, y, q, 1, ops[i + 4]);
+            }
+        }
     }
 
     private iconSprite(i: number): Sprite {
@@ -1282,7 +1324,7 @@ export class GalaxyMarkerLayer {
                 this.pushSymbol(n++, artIdx, pos.x - ox, pos.y - oy, heightPx, z, tint, alpha);
             }
             if (galaxyPass) {
-                this.drawn.push({ bo, group: null, x: pos.x, y: pos.y, halfPx: heightPx / 2 });
+                this.pushDrawn(bo, null, pos.x, pos.y, heightPx / 2);
                 // 5984-5996 / 6004-6016: method_212 around the selected ship's symbol, or one of the selected BuiltObjectList.
                 if (bo === selBo || (selSet !== null && selSet.has(bo))) this.selBoxes.push(pos.x - this.ox, pos.y - this.oy, symbolSelectionBox(heightPx));
             }
@@ -1304,7 +1346,7 @@ export class GalaxyMarkerLayer {
                 let color = e !== null ? displayColorForEmpire(e) & 0xffffff : UNOWNED_SYMBOL_COLOR;
                 if (color === 0x010101) color = 0x080808;
                 this.pushSymbol(n++, cell, pos.x - ox, pos.y - oy, iconH, z, color, 1);
-                this.drawn.push({ bo: lead, group: sg, x: pos.x, y: pos.y, halfPx: iconH / 2 });
+                this.pushDrawn(lead, sg, pos.x, pos.y, iconH / 2);
                 if (sg === selGroup) this.selBoxes.push(pos.x - this.ox, pos.y - this.oy, iconH); // 6395-6398 method_212 over the icon box
                 if (f < 6000) {
                     const t = this.countText(counts++);
