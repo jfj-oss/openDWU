@@ -155,7 +155,7 @@ async function main() {
             await page.click('.wizard-type-btn[data-type="CustomStandard"]');
             await shot(page, 'wizard opened (The Galaxy)');
 
-            const nextSel = '.wizard-btn-primary';
+            const nextSel = '[data-wizard="next"]'; // (not .wizard-btn-primary: the hidden hot-seat Done is one too)
             for (let i = 0; i < 10; i++) {
                 // Race/government data loads async as soon as the wizard opens
                 // (all pages are built upfront); wait for it so the option

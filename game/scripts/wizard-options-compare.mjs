@@ -75,7 +75,9 @@ async function run(base, flow) {
         if (await page.evaluate(() => window.__opts !== undefined)) break;
         await page.waitForFunction(() => !document.querySelector('.wizard-race-loading'), null, { timeout: 30000 }).catch(() => {});
         await page.waitForTimeout(400);
-        await page.click('.wizard-btn-primary');
+        // The Next button: [data-wizard="next"], or in an older build the .wizard-btn-primary that is not the hidden
+        // hot-seat Done button (a bare .wizard-btn-primary matches that one first).
+        await page.click('[data-wizard="next"], .wizard-btn-primary:not(.wizard-hotseat-done-btn)');
         await page.waitForTimeout(300);
     }
     const opts = await page.evaluate(() => window.__opts ?? null);

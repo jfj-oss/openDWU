@@ -236,7 +236,7 @@ async function runUiTour() {
             }
             await page.keyboard.press('Escape');
             await page.waitForTimeout(500);
-            if ((await page.locator('[data-ow]').count()) > 0) await btn.click().catch(() => {});
+            if ((await page.locator('[data-ow]:visible').count()) > 0) await btn.click().catch(() => {});
             await page.waitForTimeout(500);
             while ((await page.locator('[data-ow] .ow-close').count()) > 0) {
                 await page.locator('[data-ow] .ow-close').first().click().catch(() => {});

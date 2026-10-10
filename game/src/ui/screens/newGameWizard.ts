@@ -574,6 +574,10 @@ export function createNewGameWizard(callbacks: NewGameWizardCallbacks): NewGameW
     // --- The page's "<< Previous" / "Next >>" GlassButtons (300 × 40, font_7, at (10, 610) / (590, 610)). ---
     const backBtn = glassButton('', { size: FONT.header, className: 'wizard-btn wizard-btn-secondary', onClick: () => goBack() });
     const nextBtn = glassButton('', { size: FONT.header, className: 'wizard-btn wizard-btn-primary', onClick: () => goForward() });
+    // A stable hook for scripts and tests ([data-wizard="next"]): `.wizard-btn-primary` also matches other panels'
+    // buttons (the hot-seat players panel's Done).
+    backBtn.dataset.wizard = 'back';
+    nextBtn.dataset.wizard = 'next';
     body.append(backBtn, nextBtn);
 
     function showPage(id: WizardPageId): void {

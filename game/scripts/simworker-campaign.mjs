@@ -452,9 +452,9 @@ async function boot() {
             await page.click('.wizard-type-btn[data-type="Introductory"]');
         } else {
             await page.click('.wizard-type-btn[data-type="CustomStandard"]');
-            // The wizard's Next / Start button (the hot-seat players panel's hidden Done button is a .wizard-btn-primary too,
-            // and comes first).
-            const NEXT = '.wizard-btn-primary:not(.wizard-hotseat-done-btn)';
+            // The wizard's Next / Start button (not `.wizard-btn-primary`: the hot-seat players panel's hidden Done button is
+            // one too, and comes first).
+            const NEXT = '[data-wizard="next"]';
             for (let i = 0; i < 14; i++) {
                 await page.waitForFunction(() => !document.querySelector('.wizard-race-loading'), null, { timeout: 30000 }).catch(() => {});
                 // A fixed seed (the Galaxy page's box), so the worker and in-thread runs play the same galaxy.
@@ -1075,7 +1075,9 @@ async function stepDiplomacy() {
 }
 
 async function stepOtherScreens() {
-    for (const [id, sel] of [['tbtnIntelligenceAgents', '[data-ow="characters"]'], ['btnEmpireGraphs', '[data-ow]'], ['btnGalacticHistory', '.galactic-history-window, [data-ow]'], ['btnHistoryMessages', '.galactic-history-window, .message-history-wrap, [data-ow]']]) {
+    // Each screen's own window: a bare `[data-ow]` also matches the game menu's hidden window once the menu has been
+    // opened (Save / Load earlier in the session), and waitForSelector waits on the first match.
+    for (const [id, sel] of [['tbtnIntelligenceAgents', '[data-ow="characters"]'], ['btnEmpireGraphs', '[data-ow="empireComparison"]'], ['btnGalacticHistory', '[data-ow="galacticHistory"]'], ['btnHistoryMessages', '[data-ow="galacticHistory"]']]) {
         const btn = page.locator(`[data-hud="${id}"]`).first();
         if ((await btn.count()) === 0) {
             note(`no ${id} button`);
@@ -1094,7 +1096,7 @@ async function stepOtherScreens() {
     if ((await ed.count()) > 0) {
         await ed.click().catch(() => {});
         await wait(1200);
-        note(`btnGameEditor: ${(await page.locator('[data-ow]').count()) > 0 ? 'opened a window' : 'nothing opened'}`);
+        note(`btnGameEditor: ${(await page.locator('[data-ow="gameEditor"]:visible').count()) > 0 ? 'opened a window' : 'nothing opened'}`);
         await closeAll();
     }
     // The top strip's overflow menu: Empires list, Galaxy Map, Game Options, the admiral (K), the shortcuts (?).
