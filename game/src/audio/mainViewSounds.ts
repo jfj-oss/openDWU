@@ -33,6 +33,7 @@ import type { Explosion } from '../sim/combat/damage';
 import { GalaxyLocationEffectType, GalaxyLocationType } from '../sim/galaxyLocation';
 import { determineGalaxyLocationsInRangeAtPoint } from '../sim/visibility';
 import { builtObjectIndexOf } from '../render/builtObjectIndex';
+import { fogOf } from '../render/fog';
 import { isObjectVisibleToThisEmpire } from '../sim/independentTraders';
 import { Random } from '../sim/random';
 import { MIN_TIME } from '../sim/tick/simTime';
@@ -196,6 +197,26 @@ function onScreen(view: SoundView, p: ScreenPoint, margin: number): boolean {
     return p.x >= -margin && p.x <= view.width + margin && p.y >= -margin && p.y <= view.height + margin;
 }
 
+/**
+ * Whether the built-object block of MainViewSounds.collect could request, mark or record anything for `bo` this frame:
+ * an ion strike within its 1400 ms, a hyperjump entry / exit flag, construction / mining / gas mining, an explosion, a
+ * shot in flight or fighters (each sub-pass below does nothing without its condition).
+ */
+function mayMakeSound(bo: BuiltObject, now: number): boolean {
+    if (bo.lastIonStrike > MIN_TIME && now - bo.lastIonStrike < 1400.0) return true;
+    if (bo.hyperjumpAboutToEnter || bo.hyperjumpJustExited) return true;
+    if (bo.doingConstruction || bo.doingMining || bo.doingGasMining) return true;
+    if ((bo.explosions as Explosion[]).length > 0) return true;
+    if (bo.fighters !== null && (bo.fighters as Fighter[]).length > 0) return true;
+    const weapons = bo.weapons as (Weapon | null)[] | null;
+    if (weapons === null) return true;
+    for (let i = 0; i < weapons.length; i++) {
+        const w = weapons[i];
+        if (w == null || w.distanceTravelled >= 0) return true;
+    }
+    return false;
+}
+
 export interface MainViewSoundResult {
     /** Requests made this frame, in draw order. */
     requests: SoundEffectRequest[];
@@ -228,6 +249,8 @@ export class MainViewSounds {
      *  are the same exit (sounded once); a gap means the flag dropped in between, so a new exit. */
     private collectCount = 0;
     private exitSeenAt = new WeakMap<BuiltObject, number>();
+    /** FogOfWar.begins seen at the last collect (a fog not begun since is last frame's: ask the sim directly). */
+    private fogBegins = -1;
 
     constructor(
         private player: EffectsPlayer,
@@ -296,11 +319,23 @@ export class MainViewSounds {
                 this.indexUpdates = index.updates;
                 list = index.near(view.x, view.y, view.width / 2 / view.zoom, view.height / 2 / view.zoom, 102 / view.zoom, false, this.nearScratch);
             }
+            // Perf: the visibility test (the costly part) only for objects that have a sound to make — for any other the
+            // block below requests, marks and records nothing — and from the Main View's per-frame fog memo (fog.ts,
+            // the same IsObjectVisibleToThisEmpire answer) when it was begun this frame for this viewer.
+            const fog = fogOf(galaxy);
+            const fogFresh = fog.begins !== this.fogBegins && viewer !== null && fog.player === viewer;
+            this.fogBegins = fog.begins;
+            const halfW = Math.trunc(view.width / 2);
+            const halfH = Math.trunc(view.height / 2);
             for (const bo of list) {
                 if (bo === null || bo === undefined || bo.hasBeenDestroyed) continue;
-                const p = toScreen(view, bo.xpos, bo.ypos);
-                if (!onScreen(view, p, 100)) continue;
-                if (!godMode && viewer !== null && !isObjectVisibleToThisEmpire(galaxy, viewer, bo)) continue;
+                // toScreen / onScreen(view, p, 100), inlined (no allocation for the many objects that stay silent).
+                const sx = Math.trunc((bo.xpos - view.x) * view.zoom) + halfW;
+                const sy = Math.trunc((bo.ypos - view.y) * view.zoom) + halfH;
+                if (!(sx >= -100 && sx <= view.width + 100 && sy >= -100 && sy <= view.height + 100)) continue;
+                if (!mayMakeSound(bo, now)) continue;
+                if (!godMode && viewer !== null && !(fogFresh ? fog.builtObject(bo) : isObjectVisibleToThisEmpire(galaxy, viewer, bo))) continue;
+                const p: ScreenPoint = { x: sx, y: sy };
                 // MainView.1.cs:1161-1176: ion strike (within 1400 ms of the hit).
                 if (bo.lastIonStrike > MIN_TIME && now - bo.lastIonStrike < 1400.0 && !this.marks.ionStrikePlayed(bo)) {
                     this.marks.markIonStrike(bo);

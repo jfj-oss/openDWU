@@ -63,6 +63,7 @@ import { BuiltObjectMissionType, Command, CommandAction, builtObjectMission } fr
 import type { ShipGroup } from './fleets/shipGroup';
 import { shipGroupObtainCharacters } from './fleets/shipGroupTasks';
 import { fighterReturnToCarrier } from './combat/fighters';
+import { noteBuiltObjectEffect } from './combat/effectWatch';
 
 // ---------------------------------------------------------------------------------------------------------------
 // Constants and settings
@@ -836,6 +837,7 @@ export function exitHyperjump(galaxy: Galaxy, ship: BuiltObject): void {
     if (ship.warpSpeed <= 0 || ship.currentSpeed <= Math.trunc(ship.warpSpeed / 3)) return;
     ship.hyperjumpJustExited = true;
     ship.hyperExitStartAnimation = true;
+    noteBuiltObjectEffect(galaxy, ship); // observation only (render/effectsLayer.ts)
     ship.hyperjumpPrepare = false;
     ship.hyperEnterStartAnimation = false;
     const exit = { x: ship.xpos, y: ship.ypos };

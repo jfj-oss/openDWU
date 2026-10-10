@@ -79,6 +79,7 @@ import { builtObjectCompleteTeardown } from './teardown';
 import { baconSettings } from '../data/baconSettings';
 import { scenarioEmit } from '../scenario/hooks';
 import { isHumanEmpire } from '../humanEmpires';
+import { noteBuiltObjectEffect } from './effectWatch';
 
 // ---------------------------------------------------------------------------------------------------------------
 // Constants (Galaxy.3.cs SetDefaults)
@@ -1084,6 +1085,7 @@ export function inflictDamageFull(
         if (builtObject.currentShields >= hitPower && !flag && !flag3) {
             builtObject.currentShields = Math.fround(builtObject.currentShields - Math.fround(hitPower));
             if (!flag2) builtObject.lastShieldStrike = time;
+            noteBuiltObjectEffect(galaxy, builtObject); // observation only (render/effectsLayer.ts)
             builtObject.lastShieldStrikeDirection = Math.fround(strikeAngle);
             if (targetStats !== null) targetStats.shieldsStruckUs(hitPower);
             if (targetGroupStats !== null) targetGroupStats.shieldsStruckUs(hitPower);
@@ -1099,6 +1101,7 @@ export function inflictDamageFull(
                 if (num8 > 0.0) {
                     builtObject.currentShields = Math.fround(builtObject.currentShields - Math.fround(num8));
                     if (!flag2) builtObject.lastShieldStrike = time;
+                    noteBuiltObjectEffect(galaxy, builtObject); // observation only (render/effectsLayer.ts)
                     builtObject.lastShieldStrikeDirection = Math.fround(strikeAngle);
                     if (targetStats !== null) targetStats.shieldsStruckUs(num8);
                     if (targetGroupStats !== null) targetGroupStats.shieldsStruckUs(num8);
@@ -1202,6 +1205,7 @@ export function inflictDamageFull(
                 explosion3.explosionImageIndex = toShort(galaxy.rnd.next(10, 20));
                 explosion3.explosionWillDestroy = true;
                 builtObject.explosions.push(explosion3);
+                noteBuiltObjectEffect(galaxy, builtObject); // observation only (render/effectsLayer.ts)
                 collectScrapFromDestroyedBuiltObjects(galaxy, self, builtObject);
                 builtObject.hasBeenDestroyed = true;
                 inflictWarDamageBuiltObject(galaxy, self.empire, builtObject);
@@ -1312,6 +1316,7 @@ export function inflictDamageFull(
             explosion4.explosionOffsetY = toShort(num24);
             explosion4.explosionWillDestroy = false;
             builtObject.explosions.push(explosion4);
+            noteBuiltObjectEffect(galaxy, builtObject); // observation only (render/effectsLayer.ts)
         }
     }
     return false;
@@ -1379,6 +1384,7 @@ export function inflictIonDamage(galaxy: Galaxy, self: BuiltObject, target: Stel
                             builtObject.disabledComponentDurations.push(toShort(galaxy.rnd.next(15000, 25000)));
                             builtObject.reDefine();
                             builtObject.lastIonStrike = time;
+                            noteBuiltObjectEffect(galaxy, builtObject); // observation only (render/effectsLayer.ts)
                             hitPower -= 10.0;
                         }
                     }
@@ -1392,6 +1398,7 @@ export function inflictIonDamage(galaxy: Galaxy, self: BuiltObject, target: Stel
                         builtObject.disabledComponentDurations.push(toShort(galaxy.rnd.next(15000, 25000)));
                         builtObject.reDefine();
                         builtObject.lastIonStrike = time;
+                        noteBuiltObjectEffect(galaxy, builtObject); // observation only (render/effectsLayer.ts)
                         hitPower -= 10.0;
                     }
                 }
@@ -1430,6 +1437,7 @@ export function habitatInflictIonDamage(galaxy: Galaxy, self: Habitat, target: S
                         builtObject.disabledComponentDurations.push(toShort(galaxy.rnd.next(20000, 30000)));
                         builtObject.reDefine();
                         builtObject.lastIonStrike = time;
+                        noteBuiltObjectEffect(galaxy, builtObject); // observation only (render/effectsLayer.ts)
                         hitPower -= 10.0;
                     }
                 }
@@ -1979,6 +1987,7 @@ export function creatureDamageTarget(galaxy: Galaxy, creature: Creature, abstrac
             explosion.explosionImageIndex = toShort(galaxy.rnd.next(0, 10));
             explosion.explosionWillDestroy = true;
             excludeBuiltObject.explosions.push(explosion);
+            noteBuiltObjectEffect(galaxy, excludeBuiltObject); // observation only (render/effectsLayer.ts)
             excludeBuiltObject.hasBeenDestroyed = true;
             if (excludeBuiltObject.empire !== null) excludeBuiltObject.empire.visibility.resolveSystemVisibilityAt(excludeBuiltObject.xpos, excludeBuiltObject.ypos, excludeBuiltObject, null);
             const constructionQueue = excludeBuiltObject.constructionQueue as { constructionYards: { shipUnderConstruction: BuiltObject | null }[] | null } | null;

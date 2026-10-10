@@ -1544,6 +1544,28 @@ export function habitatDrawnOffsetBound(h: OrbitingBody, clampSeconds: number): 
     return b;
 }
 
+/** The speed builtObjectDrawnOffsetCap must cover for `bo`: its topSpeed, warpSpeed, |currentSpeed| and, preparing a
+ *  hyperjump, TargetSpeed (the speeds builtObjectDrawnOffsetBound reads). */
+export function builtObjectBoundSpeed(bo: MovingBuiltObject): number {
+    const v = Math.max(bo.topSpeed, bo.warpSpeed, Math.abs(bo.currentSpeed));
+    return bo.hyperjumpPrepare === true ? Math.max(v, bo.targetSpeed ?? 0) : v;
+}
+
+/** Whether `bo` is drawn in a parent's frame (a parent offset set): its bound adds the parent's (see below). */
+export function builtObjectHasParentFrame(bo: MovingBuiltObject): boolean {
+    return bo.parentOffsetX > PARENT_OFFSET_UNSET && bo.parentOffsetY > PARENT_OFFSET_UNSET;
+}
+
+/**
+ * At least builtObjectDrawnOffsetBound(m, bo) for every object without a parent frame whose builtObjectBoundSpeed is
+ * at most `maxSpeed` — the same terms with the largest speed (every operation is monotone, so it holds in floating
+ * point too). Lets a cull reject far objects without computing each one's bound.
+ */
+export function builtObjectDrawnOffsetCap(m: MotionInterpolator, maxSpeed: number): number {
+    const v = Math.max(maxSpeed, SNAP_MIN_SPEED);
+    return 2 * (SNAP_SPEED_FACTOR * v * Math.max(MAX_STEP_SECONDS, m.stepSeconds) * Math.max(1, m.lagSteps) + (maxSpeed * m.untouchedMaxMs) / 1000);
+}
+
 /**
  * Upper bound (world units) on the distance between a built object's drawn position this frame (sampleBuiltObject /
  * drawnBuiltObjectPos) and its committed xpos / ypos, so callers can cull on the committed position before paying for

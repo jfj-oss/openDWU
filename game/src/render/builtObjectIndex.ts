@@ -17,7 +17,7 @@
 import type { BuiltObject } from '../sim/builtObject';
 import type { Galaxy } from '../sim/galaxy';
 import { FRAMES_PER_SECOND } from '../sim/tick/scheduler';
-import { builtObjectDrawnOffsetBound, builtObjectTouchGapMs, MotionInterpolator } from './renderInterp';
+import { builtObjectBoundSpeed, builtObjectDrawnOffsetBound, builtObjectDrawnOffsetCap, builtObjectHasParentFrame, builtObjectTouchGapMs, MotionInterpolator } from './renderInterp';
 
 /** Most render frames between refreshes when no sim step lands (paused, or edits outside a step). */
 export const REFRESH_FRAMES = 8;
@@ -34,6 +34,12 @@ export class BuiltObjectIndex {
     /** Whether the latest update() rebuilt the index (liveness / positions may have changed this frame). */
     changed = true;
     private liveSetCache: Set<BuiltObject> | null = null;
+    /** Since the last rebuild: whether `cap` / `parented` are computed (on the first near with bounds). `cap` bounds the
+     *  drawn offset of every object without a parent frame (builtObjectDrawnOffsetCap of the largest speed); objects
+     *  outside the view by more than it are rejected without their own bound. */
+    private capValid = false;
+    private cap = 0;
+    private parented = new Uint8Array(0);
     private serial = -1;
     private source: readonly (BuiltObject | null)[] | null = null;
     private sourceLength = -1;
@@ -56,6 +62,7 @@ export class BuiltObjectIndex {
         this.framesSince = 0;
         this.rebuilds++;
         this.liveSetCache = null;
+        this.capValid = false;
         const w = this.worst;
         w.stepSeconds = 4 / FRAMES_PER_SECOND;
         w.untouchedMaxMs = builtObjectTouchGapMs(arr.length, 4000 / FRAMES_PER_SECOND);
@@ -92,6 +99,25 @@ export class BuiltObjectIndex {
         return true;
     }
 
+    private computeCap(): void {
+        const n = this.live.length;
+        if (this.parented.length < n) this.parented = new Uint8Array(Math.max(n, Math.ceil(this.parented.length * 1.5), 256));
+        let v = 0;
+        for (let i = 0; i < n; i++) {
+            const bo = this.live[i];
+            if (builtObjectHasParentFrame(bo)) {
+                this.parented[i] = 1;
+                continue;
+            }
+            this.parented[i] = 0;
+            const s = builtObjectBoundSpeed(bo);
+            // (A NaN speed makes the cap NaN: then nothing is rejected by it.)
+            v = s > v || s !== s ? s : v;
+        }
+        this.cap = builtObjectDrawnOffsetCap(this.worst, v);
+        this.capValid = true;
+    }
+
     /** `live` as a set (built at most once per rebuild, on first use). */
     liveSet(): ReadonlySet<BuiltObject> {
         if (this.liveSetCache === null) this.liveSetCache = new Set(this.live);
@@ -111,6 +137,9 @@ export class BuiltObjectIndex {
         const rs = this.rs;
         const ax = halfW + marginWorld;
         const ay = halfH + marginWorld;
+        // (cap / parented are computed at the first object outside the rectangle without a bound yet: at galaxy zoom none is.)
+        let cap = this.cap;
+        let parented = this.parented;
         for (let i = 0; i < n; i++) {
             const dx = xs[i] - cx;
             const dy = ys[i] - cy;
@@ -120,6 +149,13 @@ export class BuiltObjectIndex {
             }
             if (!withBound) continue;
             let r = rs[i];
+            // Farther out than any unparented object's bound: rejected as its own bound would (cap >= that bound).
+            if (r !== r && !this.capValid) {
+                this.computeCap();
+                cap = this.cap;
+                parented = this.parented;
+            }
+            if (r !== r && parented[i] === 0 && cap === cap && !(dx >= -ax - cap && dx <= ax + cap && dy >= -ay - cap && dy <= ay + cap)) continue;
             if (r !== r) r = rs[i] = builtObjectDrawnOffsetBound(this.worst, this.live[i]);
             if (r > 0 && dx >= -ax - r && dx <= ax + r && dy >= -ay - r && dy <= ay + r) out.push(this.live[i]);
         }

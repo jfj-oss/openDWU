@@ -1113,7 +1113,7 @@ export class GalaxyMarkerLayer {
             const label = sv.nameLabel;
             const shown = on && sv.root.visible && label.visible && f > SYSTEM_RING_MIN_FACTOR;
             if (!shown) {
-                if (this.decorated.has(label)) {
+                if (this.decorated.size > 0 && this.decorated.has(label)) {
                     // Restore the Main View's own look (white, centred under the star; it re-positions every frame).
                     label.anchor.set(0.5, 0);
                     if (label.style.fill !== 0xffffff) label.style.fill = 0xffffff;
@@ -1122,7 +1122,7 @@ export class GalaxyMarkerLayer {
                     this.decorated.delete(label);
                 }
                 // The fight marker is an alert: it stays when the name label is only crowded out by a neighbour's.
-                if (on && sv.root.visible && f > SYSTEM_RING_MIN_FACTOR && this.underFire.has(sv.system.systemStar.systemIndex)) {
+                if (on && this.underFire.size > 0 && sv.root.visible && f > SYSTEM_RING_MIN_FACTOR && this.underFire.has(sv.system.systemStar.systemIndex)) {
                     const star = sv.system.systemStar;
                     const owner = this.owners.get(sv.system) ?? null;
                     this.drawFireMarker(star, systemRingRadiusPx(f, owner?.tsv ?? 0, star.diameter, this.galaxy.maxSolarSystemSize, star.type === HabitatType.BlackHole), f, z);
@@ -1303,7 +1303,8 @@ export class GalaxyMarkerLayer {
                 // MainView.1.cs 1083-1088: beyond f = 20 the player's own private ships get no symbol.
                 if (f > 20 && !isBase && bo.owner === null && player !== null && bo.empire === player) continue;
             }
-            if (!boundsOnScreen(bo.xpos, bo.ypos, this.drawnOffsetBound(bo), pad, cam.x, cam.y, cam.width, cam.height, z)) continue;
+            // (The bound only widens the test: computed only for an object whose committed position is off screen.)
+            if (!boundsOnScreen(bo.xpos, bo.ypos, 0, pad, cam.x, cam.y, cam.width, cam.height, z) && !boundsOnScreen(bo.xpos, bo.ypos, this.drawnOffsetBound(bo), pad, cam.x, cam.y, cam.width, cam.height, z)) continue;
             // The marker belongs to the ship's draw block: an unseen ship (fog.ts, MainView.1.cs:884) gets none.
             if (!galaxyPass && !fog.builtObject(bo)) continue;
             const pos = this.positionOf(bo);

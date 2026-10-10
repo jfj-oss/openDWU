@@ -63,6 +63,7 @@ import {
     type FighterLike,
 } from './damage';
 import { baconSettings } from '../data/baconSettings';
+import { noteBuiltObjectEffect } from './effectWatch';
 
 // ---------------------------------------------------------------------------------------------------------------
 // Constants
@@ -245,6 +246,7 @@ export function weaponFire(galaxy: Galaxy, weapon: Weapon, firer: BuiltObject | 
     weapon.distanceFromTarget = Math.fround(distanceToTarget);
     weapon.target = target;
     weapon.willHitTarget = willHit;
+    if (isBuiltObject(firer)) noteBuiltObjectEffect(galaxy, firer); // observation only (render/effectsLayer.ts)
     weaponFireInternal(galaxy, weapon, firer, target.xpos, target.ypos, target, willHit, hitRangeChance);
 }
 
@@ -270,6 +272,7 @@ export function weaponFireAtWeapon(galaxy: Galaxy, weapon: Weapon, firer: BuiltO
     weapon.distanceFromTarget = Math.fround(distanceToTarget);
     weapon.targetWeapon = targetWeaponBlast;
     weapon.willHitTarget = willHit;
+    if (isBuiltObject(firer)) noteBuiltObjectEffect(galaxy, firer); // observation only (render/effectsLayer.ts)
     weaponFireInternal(galaxy, weapon, firer, targetWeaponBlast.x, targetWeaponBlast.y, targetWeaponBlast, willHit, hitRangeChance);
 }
 
@@ -594,6 +597,7 @@ export function firePlanetDestroyerAtHabitat(galaxy: Galaxy, builtObject: BuiltO
             w.x = self.xpos;
             w.y = self.ypos;
             w.distanceTravelled = 1;
+            noteBuiltObjectEffect(galaxy, self); // observation only (render/effectsLayer.ts)
             w.distanceFromTarget = Math.fround(distanceToTarget);
             w.target = target;
             let num2 = w.energyRequired;
@@ -632,6 +636,7 @@ export function bombardTarget(galaxy: Galaxy, builtObject: BuiltObject, distance
             w.x = self.xpos;
             w.y = self.ypos;
             w.distanceTravelled = 1;
+            noteBuiltObjectEffect(galaxy, self); // observation only (render/effectsLayer.ts)
             w.distanceFromTarget = Math.fround(distanceToTarget);
             w.target = habitat;
             let num4 = w.energyRequired;

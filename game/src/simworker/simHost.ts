@@ -28,6 +28,8 @@ import { commandFreshRoots } from './commandReach';
 import { hintSubjectsRevision, liveHintSubjects } from '../sim/player/hintSubjects';
 import { WAYPOINT_OPS, liveWaypointState } from '../sim/player/waypoints';
 import { GalaxySyncSource } from './replicaGalaxy';
+import { unwatchBuiltObjectEffects, watchBuiltObjectEffects } from '../sim/combat/effectWatch';
+import type { BuiltObject } from '../sim/builtObject';
 import { TRADE_FLOWS_SIDE_KEY, TradeFlowSyncSource } from './tradeFlowSync';
 import { installRimAtmosphereData } from '../render/rimAtmosphereWiring';
 import { RemoteValues, decodeRemoteArg, encodeRemoteArg, encodeRemoteResult, type RemoteArg, type RemoteNaming } from './remoteArgs';
@@ -115,6 +117,10 @@ export class SimHost {
     /** What the player's message pipeline handled since the last step message (opts.playerMessages), in order. */
     private playerNotes: PlayerMessageNote[] = [];
     private readonly sendPlayerMessages: boolean;
+    /** The built objects the sim noted for the main thread's effects layer since the last step message
+     *  (sim/combat/effectWatch.ts; observation only), and those not synced yet when the last one went (sent next time). */
+    private readonly effectNotes: Set<BuiltObject>;
+    private effectCarried = new Set<BuiltObject>();
 
     constructor(readonly game: Game, time: GalaxyTime, private readonly startOptions: StartGameOptions, opts: SimHostOptions = {}) {
         this.galaxy = game.galaxy;
@@ -131,6 +137,7 @@ export class SimHost {
         this.sendPlayerMessages = opts.playerMessages === true;
         if (this.sendPlayerMessages) setPlayerMessageListener(this.galaxy, (note) => void this.playerNotes.push(note));
         this.sync = new GalaxySyncSource(this.galaxy, opts.sync ?? {});
+        this.effectNotes = watchBuiltObjectEffects(this.galaxy, Infinity); // drained every step message
         this.tradeFlows = new TradeFlowSyncSource(this.galaxy, (view) => this.sync.setSideTable(TRADE_FLOWS_SIDE_KEY, view));
         // Replies and events name graph objects by sync id (a new one is born in the delta that carries the reply);
         // anything else (a ShipActionResult, menu items, a ShipAction) travels by value, as command arguments do.
@@ -484,6 +491,7 @@ export class SimHost {
 
     private message(steps: number, stepMs: number): StepMessage {
         const delta = this.sync.delta();
+        const effects = this.effectIds();
         const msg: StepMessage = {
             type: 'step',
             delta,
@@ -499,9 +507,32 @@ export class SimHost {
             results: this.results,
             events: this.events,
         };
+        if (effects.length > 0) msg.effects = effects;
         this.results = [];
         this.events = [];
         return msg;
+    }
+
+    /** The noted built objects' sync ids (after the delta: an object born this tick has one by then). One not synced
+     *  yet is kept for the next message, once. */
+    private effectIds(): number[] {
+        const notes = this.effectNotes;
+        const out: number[] = [];
+        if (notes.size === 0 && this.effectCarried.size === 0) return out;
+        const enc = this.sync.encoder;
+        const carry = new Set<BuiltObject>();
+        for (const bo of this.effectCarried) {
+            const id = enc.knownId(bo);
+            if (id >= 0) out.push(id);
+        }
+        for (const bo of notes) {
+            const id = enc.knownId(bo);
+            if (id >= 0) out.push(id);
+            else if (!this.effectCarried.has(bo)) carry.add(bo);
+        }
+        notes.clear();
+        this.effectCarried = carry;
+        return out;
     }
 
     /** serializeGame of the authoritative game (between ticks: queued commands apply first, as in-thread). */
@@ -603,6 +634,7 @@ export class SimHost {
 
     dispose(): void {
         if (this.sendPlayerMessages) setPlayerMessageListener(this.galaxy, null);
+        unwatchBuiltObjectEffects(this.galaxy, this.effectNotes);
         this.tradeFlows.dispose();
         setGameEndHandler(this.galaxy, null);
         registerLocationPingedHook(null);

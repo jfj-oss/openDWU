@@ -29,7 +29,9 @@ import type { Creature } from '../sim/creature';
 import type { Empire } from '../sim/empire';
 import type { Galaxy } from '../sim/galaxy';
 import type { Fighter } from '../sim/combat/fighters';
-import { isObjectVisibleToThisEmpire } from '../sim/independentTraders';
+import { findShipOutsideSystemWithScanRange, isObjectVisibleToThisEmpire, isObjectVisibleToThisEmpireImprecise } from '../sim/independentTraders';
+import { empiresSharedVisibility } from '../sim/exploration';
+import { scenarioQuery } from '../sim/scenario/hooks';
 import { HabitatCategoryType, type Habitat, type SystemInfo } from '../sim/types';
 import { MAX_SOLAR_SYSTEM_SIZE, SystemVisibilityStatus, THREAT_RANGE } from '../sim/visibility';
 import { creatureVisibleToEmpire } from './creatureLayer';
@@ -148,22 +150,87 @@ export function selectionUnseen(galaxy: Galaxy, player: Empire | null, sel: FogS
 // Per-frame cache
 // ---------------------------------------------------------------------------------------------------------------
 
+/**
+ * Whether any of `empire`'s ships in galaxy index cell `cell` passes findShipOutsideSystemWithScanRange's ship filter
+ * (outside a system, not hyper-jumping, its own) — the test before its distance check. Without one, that loop finds no
+ * ship for any point of the cell.
+ */
+function cellHasScanShip(cell: readonly (BuiltObject | null)[], empire: Empire): boolean {
+    for (let i = 0; i < cell.length; i++) {
+        const b = cell[i];
+        if (
+            b == null ||
+            b.nearestSystemStar !== null ||
+            ((b.warpSpeed <= 0 || !(b.currentSpeed < b.warpSpeed)) && !(b.currentSpeed <= b.topSpeed)) ||
+            b.empire !== empire
+        ) {
+            continue;
+        }
+        return true;
+    }
+    return false;
+}
+
 export class FogOfWar {
     /** Dev toggle (`?reveal=1` / `?godMode=1`): everything is seen, like the original's GodMode. */
     reveal = false;
     private memo = new Map<object, boolean>();
     private sensors = new Map<SystemInfo | Habitat, boolean>();
+    /** Per empire, per galaxy index cell (cx * 65536 + cy): cellHasScanShip this frame. */
+    private scanCells = new Map<Empire, Map<number, boolean>>();
     /** The player's sensor sources this frame (playerSensors), built on first use. */
     private sensorSources: number[] = [];
     private sensorSourcesValid = false;
+    /** begin() calls so far: a reader outside the Main View (audio) uses the memo only in a frame it was begun. */
+    begins = 0;
 
     constructor(private galaxy: Galaxy) {}
 
     /** Start of a frame: forget last frame's answers. */
     begin(): void {
+        this.begins++;
         this.memo.clear();
         this.sensors.clear();
+        for (const m of this.scanCells.values()) m.clear();
         this.sensorSourcesValid = false;
+    }
+
+    /**
+     * isObjectVisibleToThisEmpire(galaxy, player, o) for a ship / base or a fighter, the same steps in the same order
+     * (independentTraders.ts), except that findShipOutsideSystemWithScanRange's ship loop is skipped for a grid cell
+     * that holds no ship of that empire passing its filter (scanCells) — the loop could find none there. Perf: most of
+     * the objects the view tests are unseen, and the loop sliced and walked their (dense) cell once per object, for the
+     * player and again for each empire sharing its visibility. The scenario queries it skips with the loop are pure.
+     */
+    private visibleToPlayer(player: Empire, o: BuiltObject | Fighter, stealth: number): boolean {
+        const g = this.galaxy;
+        if (g.scenario !== null && scenarioQuery(g, 'objectVisibleToAll', false, { empire: player, object: o as BuiltObject })) return true;
+        if (isObjectVisibleToThisEmpireImprecise(g, player, o)) return true;
+        const x = Math.trunc(o.xpos);
+        const y = Math.trunc(o.ypos);
+        if (this.scanShipSees(player, x, y, stealth)) return true;
+        const shared = empiresSharedVisibility(g, player);
+        for (let i = 0; i < shared.length; i++) if (this.scanShipSees(shared[i], x, y, stealth)) return true;
+        return false;
+    }
+
+    /** findShipOutsideSystemWithScanRange(galaxy, empire, x, y, stealth) !== null: its scanner part, then its ship part
+     *  only where the cell has a candidate ship. */
+    private scanShipSees(empire: Empire, x: number, y: number, stealth: number): boolean {
+        const g = this.galaxy;
+        if (findShipOutsideSystemWithScanRange(g, empire, x, y, stealth, true, false) !== null) return true;
+        const cell = g.resolveIndex(x, y);
+        const cx = cell.x;
+        const cy = cell.y;
+        let cells = this.scanCells.get(empire);
+        if (cells === undefined) this.scanCells.set(empire, (cells = new Map()));
+        const key = cx * 65536 + cy;
+        let any = cells.get(key);
+        if (any === undefined) {
+            any = cellHasScanShip(g.builtObjectIndexGrid[cx][cy], empire);
+            cells.set(key, any);
+        }
+        return any && findShipOutsideSystemWithScanRange(g, empire, x, y, stealth, false, true) !== null;
     }
 
     get player(): Empire | null {
@@ -182,13 +249,14 @@ export class FogOfWar {
         const p = this.player;
         if (p === null) return true;
         if (bo.empire === p) return true;
-        return this.cached(bo, () => builtObjectVisibleToPlayer(this.galaxy, p, bo));
+        return this.cached(bo, () => this.visibleToPlayer(p, bo, bo.stealth));
     }
 
     fighter(f: Fighter): boolean {
         const p = this.player;
         if (p === null) return true;
-        return this.cached(f, () => fighterVisibleToPlayer(this.galaxy, p, f));
+        // (isObjectVisibleToThisEmpire's stealth is the StellarObject default 1 for anything but a BuiltObject.)
+        return this.cached(f, () => this.visibleToPlayer(p, f, 1));
     }
 
     creature(c: Creature): boolean {

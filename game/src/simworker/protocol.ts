@@ -223,6 +223,9 @@ export interface StepMessage {
     results: { id: number; result: RemoteArg; error?: string; threw?: boolean; expired?: boolean }[];
     /** Sim → UI events raised during the tick (resolved after `delta`). */
     events: WorkerEvent[];
+    /** Sync ids of the built objects the sim noted this tick for the effects layer (sim/combat/effectWatch.ts:
+     *  a shot, explosion, shield / ion strike, hyperjump flag or fighter launch), resolved after `delta`. */
+    effects?: number[];
 }
 
 /** One message the player's pipeline handled, with what it decided (sim/playerMessages.ts PlayerMessageReceipt). */
