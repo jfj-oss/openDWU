@@ -76,6 +76,8 @@ export interface HotSeatHost {
     topBar: HTMLElement | null | undefined;
     /** After the viewer changed (behind the curtain): drop the selection, centre the camera, ... */
     onSwitched?: (viewer: Empire) => void;
+    /** A LAN game (docs/MULTIPLAYER.md §10): each screen plays one human, so there is no switch and no curtain. */
+    networked?: boolean;
 }
 
 export interface HotSeatRefs {
@@ -88,6 +90,10 @@ export interface HotSeatRefs {
 
 /** Wire the hot seat into a running game view. Harmless in a single-player game (the button stays hidden). */
 export function installHotSeat(host: HotSeatHost): HotSeatRefs {
+    if (host.networked === true) {
+        pendingSavedViewer = undefined;
+        return { switchToNext: () => {}, showCurtain: () => {}, destroy: () => {} };
+    }
     const { galaxy, clock } = host;
     let curtain: HTMLDivElement | null = null;
     let pausedBefore = false;

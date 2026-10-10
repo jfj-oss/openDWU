@@ -90,7 +90,7 @@ import { habitatInfo } from './ui/selectionInfo';
 import { renderInfoModel } from './ui/selectionInfoView';
 import { colonizationRangeFor, defaultStartGameOptions, wizardStartGameOptions, piratesFor, STARTING_TECH_LEVEL, toCreateGameOptions, type StartGameOptions, maximumEmpireAmountFor, starCountFor, defaultScenarioChoice, type StartScenarioChoice } from './sim/startGameOptions';
 import { readSaveScenarioRef, serializeGameSave, saveTextString, saveTextTail, type SaveText } from './saveData';
-import { deserializeGameSteps, savedCustomizationSet, savedGalaxyBackdrop, savedScenarioId, savedScenarioInclude, type GameSaveExtras, type GameSaveJSON } from './sim/save/gameSave';
+import { deserializeGameSteps, savedCustomizationSet, savedGalaxyBackdrop, savedMultiplayerPlayers, savedScenarioId, savedScenarioInclude, type GameSaveExtras, type GameSaveJSON } from './sim/save/gameSave';
 import { loadScenarioIndex, loadScenarioOverlay } from './sim/scenario/fetchScenario';
 import { applyScenarioOverlay, type ScenarioOverlay } from './sim/scenario/overlay';
 import { isTextLoaded, loadBaseTextUnderAdded } from './sim/textResolver';
@@ -159,6 +159,10 @@ import { activeCustomizationSet, activeCustomizationSetName, normalizeCustomizat
 import { setThemeChromeRace } from './themeAssets';
 import { resetMusicForTheme } from './audio/musicPlayer';
 import { updateSettings } from './ui/settings';
+// LAN multiplayer (docs/MULTIPLAYER.md §10).
+import { endMultiplayerSession, multiplayerActive, multiplayerSaveExtras, openMultiplayerScreen, type LoadedMultiplayerSave, type MultiplayerAppDeps } from './ui/multiplayer/multiplayerApp';
+import { engineName, noteDataRead, resetDataReads } from './net/fingerprint';
+import { APP_BUILD, APP_VERSION } from './appVersion';
 
 // ?shape= names accepted by the boot URL.
 const SHAPE_BY_NAME: Record<string, GalaxyShape> = {
@@ -213,7 +217,9 @@ async function loadSystemNames(dwuPresent: boolean): Promise<string[]> {
     if (dwuPresent) {
         try {
             // Galaxy.4.cs 3437 LoadSystemNames: Customization\<set>\systemNames.txt when it exists, else the stock file.
-            const text = await (await fetch(activeCustomizationSet()?.fileUrl('systemNames.txt') ?? '/assets/dwu/systemNames.txt')).text();
+            const url = activeCustomizationSet()?.fileUrl('systemNames.txt') ?? '/assets/dwu/systemNames.txt';
+            const text = await (await fetch(url)).text();
+            noteDataRead(url, text); // the multiplayer data fingerprint (net/fingerprint.ts)
             const names = parseSystemNames(text);
             if (names.length > 0) {
                 return names;
@@ -235,7 +241,9 @@ const fetchTextBrowser: FetchText = async (candidates: string[]): Promise<string
         try {
             const r = await fetch(url);
             if (r.ok) {
-                return await r.text();
+                const text = await r.text();
+                noteDataRead(url, text); // the multiplayer data fingerprint (net/fingerprint.ts)
+                return text;
             }
         } catch {
             // try the next candidate
@@ -248,6 +256,8 @@ const fetchTextBrowser: FetchText = async (candidates: string[]): Promise<string
  * reachable; null otherwise so generation falls back to no resources. */
 async function loadGameDataOrNone(dwuPresent: boolean): Promise<GameData | null> {
     if (!dwuPresent) return null;
+    // The multiplayer data fingerprint covers this load's files (the system names are read separately).
+    resetDataReads((key) => key.endsWith('systemnames.txt'));
     try {
         // The active theme's files where the original reads Customization\<set>\ (data/gameData.ts).
         return await loadGameData(fetchTextBrowser, activeCustomizationSet() ?? undefined);
@@ -701,7 +711,7 @@ export async function startGameView(
     // A gzip Blob of the UTF-8 text in both modes (saveData.ts serializeGameSave): the text is never one string in a heap.
     // What a save carries beside the game (never sim state): the hot seat's viewer, the galaxy backdrop.
     const saveExtras = (): GameSaveExtras | undefined => {
-        const extras: GameSaveExtras = { ...hotSeatSaveExtras(galaxy), ...galaxyBackdropSaveExtras() };
+        const extras: GameSaveExtras = { ...hotSeatSaveExtras(galaxy), ...multiplayerSaveExtras(galaxy), ...galaxyBackdropSaveExtras() };
         return Object.keys(extras).length > 0 ? extras : undefined;
     };
     const serializeCurrent = (): SaveText | null | Promise<SaveText | null> =>
@@ -964,6 +974,7 @@ export async function startGameView(
         galaxy,
         clock: time,
         topBar: topLeftEl,
+        networked: multiplayerActive(), // a LAN game: one human per screen
         onSwitched: (viewer) => {
             hud.onSelectionChange?.(null);
             const c = viewer.capital;
@@ -1373,6 +1384,7 @@ function openWizard(onBackToMenu: () => void): void {
  * boot (task M2e2). The URL-param boot path (bootGameWithOptions) still uses
  * generateGalaxy only. */
 async function bootGameFromWizard(startOptions: StartGameOptions): Promise<void> {
+    endMultiplayerSession('started another game');
     setCurrentSaveName(null); // a new game has no save file yet (Main.string_2)
     const dwuPresent = await detectDwuPresent();
     const systemNames = await loadSystemNames(dwuPresent);
@@ -1527,6 +1539,7 @@ async function bootLoadedGame(loaded: LoadedGame): Promise<void> {
     lastStartOptions = startOptions;
     activeMainMenu?.destroy();
     activeMainMenu = null;
+    endMultiplayerSession('loaded another game');
     await ensureStaticData();
     teardownActiveGameView();
     // The sim time itself is galaxy.nowMs (saved with the galaxy); the save's clock only restores pause/speed.
@@ -1556,6 +1569,7 @@ async function switchTheme(name: string, persist: boolean): Promise<void> {
  * another one (a ?theme= game; themeLoader.ts themeToRestoreOnLeave), not persisting it.
  */
 async function leaveGameToMenu(): Promise<void> {
+    endMultiplayerSession('left the game');
     teardownActiveGameView();
     const restore = themeToRestoreOnLeave(activeCustomizationSetName(), getSettings().customizationSet, await fetchThemeList());
     if (restore !== null) await switchTheme(restore, false);
@@ -1655,6 +1669,104 @@ async function main(): Promise<void> {
     await bootGame(params);
 }
 
+/** LAN multiplayer (ui/multiplayer/multiplayerApp.ts): building and showing the game, the wizard, the save picker. */
+const multiplayerDeps: MultiplayerAppDeps = {
+    async prepare() {
+        await ensureStaticData();
+        await preloadScenarioOverlays();
+        await loadSystemNames(await detectDwuPresent());
+        if (lastGameData === null) throw new Error('the Distant Worlds: Universe game files did not load (multiplayer needs them)');
+        return lastGameData;
+    },
+    fingerprintBase: () => ({ version: APP_VERSION, build: APP_BUILD, engine: engineName(navigator.userAgent), theme: activeCustomizationSetName() }),
+    openWizard: (initial) =>
+        new Promise((resolve) => {
+            const wizard = createNewGameWizard({
+                initialOptions: initial,
+                multiplayer: true,
+                onBackToMenu: () => {
+                    wizard.destroy();
+                    resolve(null);
+                },
+                onStartGame: (options) => {
+                    wizard.destroy();
+                    resolve(options);
+                },
+            });
+        }),
+    // What bootGameFromWizard takes from this app's settings beside the start options; the host's go to everyone.
+    createExtras: (so) => JSON.parse(JSON.stringify({ gameOptions: newGameOptionsFromSettings(getSettings().newGameOptions), messageOptions: copyMessageOptions(getMessageOptions()), playerFlagShape: so.flagShapeIndex })) as Record<string, unknown>,
+    async buildGame(so, extras) {
+        await ensureStaticData();
+        const systemNames = await loadSystemNames(await detectDwuPresent());
+        if (lastGameData === null) throw new Error('DW:U game data is required to start a game');
+        let playData: GameData = lastGameData;
+        if (so.scenario != null) {
+            await preloadScenarioOverlays();
+            playData = gameDataWithScenario(lastGameData, so.scenario.id, choiceInclude(so.scenario));
+        }
+        lastPlayedGameData = playData;
+        lastStartOptions = so;
+        setCurrentSaveName(null);
+        const createOpts = { ...toCreateGameOptions(so, playData, systemNames), ...(extras ?? {}) } as CreateGameOptions;
+        const game = await runStepsWithProgress('Creating galaxy', createGameSteps(createOpts));
+        return { game, playData };
+    },
+    pickSave: () =>
+        new Promise<LoadedMultiplayerSave | null>((resolve) => {
+            let picked: LoadedMultiplayerSave | null = null;
+            let done = false;
+            const finish = (v: LoadedMultiplayerSave | null): void => {
+                if (done) return;
+                done = true;
+                clearInterval(poll);
+                panel.destroy();
+                resolve(v);
+            };
+            const panel = createSaveLoadPanel('load', {
+                callbacks: { onLoadedFile: () => finish(picked) },
+                serialize: () => null,
+                loadOnly: true,
+                memorySaves: sessionSaves,
+                loadSave: async (text) => {
+                    await ensureStaticData();
+                    const str = await saveTextString(text);
+                    const ref = await readSaveScenarioRef(str);
+                    const loaded = (await runStepsWithProgress('Loading game', deserializeGameSteps(str, gameDataForSave))) as unknown as { game: Game; time: GalaxyTime; startOptions: StartGameOptions };
+                    picked = {
+                        ...loaded,
+                        playData: lastPlayedGameData ?? lastGameData!,
+                        scenario: ref.id === null ? null : { id: ref.id, include: ref.include },
+                        players: savedMultiplayerPlayers(str.slice(-65536)),
+                        name: loaded.game.galaxy.playerEmpire?.name ?? 'saved game',
+                    };
+                    return loaded as unknown as LoadedGame;
+                },
+            });
+            panel.show('load');
+            // The window closed without a pick (its close button / Escape): no save.
+            const poll = setInterval(() => {
+                if (!panel.root.isConnected && picked === null) finish(null);
+            }, 500);
+        }),
+    gameDataFor(scenario) {
+        if (lastGameData === null) throw new Error('DW:U game data is required to load a game');
+        const pd = scenario === null ? lastGameData : gameDataWithScenario(lastGameData, scenario.id, scenario.include);
+        lastPlayedGameData = pd;
+        installGameStatics(pd);
+        registerGameHooks();
+        return pd;
+    },
+    async showGame(game, so, clock, newGame) {
+        activeMainMenu?.destroy();
+        activeMainMenu = null;
+        teardownActiveGameView();
+        lastStartOptions = so;
+        await startGameViewWithOverlay(game, undefined, undefined, newGame ? undefined : clock);
+    },
+    toMenu: () => void leaveGameToMenu(),
+};
+
 /** Show the main menu; Start New Game opens the wizard, whose back button
  * returns here. Task 11a3: Load Game opens the shared save/load panel in
  * load mode (localStorage saves + .dwusave files); a pick reboots through
@@ -1672,6 +1784,7 @@ function showMainMenu(): void {
             menu.destroy();
             openWizard(showMainMenu);
         },
+        onMultiplayer: () => openMultiplayerScreen(multiplayerDeps, () => undefined),
         onTutorials: () => {
             // Task 06l: the Tutorials list screen; Start boots a default
             // game and opens that tutorial's window in it.

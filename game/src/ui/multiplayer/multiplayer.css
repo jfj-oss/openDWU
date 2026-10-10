@@ -1,0 +1,239 @@
+/* LAN multiplayer screens (src/ui/multiplayer/multiplayerApp.ts): the Multiplayer screen, the lobby, the in-game
+   banner and chip. Not in the original; styled after its dark glass windows. */
+.mp-screen {
+    position: fixed;
+    inset: 0;
+    z-index: 2000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 0, 0, 0.55);
+    font-family: Verdana, Arial, sans-serif;
+    font-size: 13px;
+    color: #d8d8d8;
+}
+.mp-window {
+    width: min(560px, calc(100vw - 32px));
+    max-height: calc(100vh - 32px);
+    overflow: auto;
+    box-sizing: border-box;
+    padding: 18px 22px;
+    border: 2px solid #4a5a70;
+    border-radius: 16px;
+    background: linear-gradient(#1a2230, #0b0f16);
+    box-shadow: 0 0 24px rgba(0, 0, 0, 0.8);
+}
+.mp-window-wide {
+    width: min(980px, calc(100vw - 32px));
+}
+.mp-title {
+    font-size: 18px;
+    font-weight: bold;
+    color: #ffa000;
+    margin-bottom: 8px;
+}
+.mp-subtitle {
+    font-weight: bold;
+    color: #ffc040;
+    margin-bottom: 6px;
+}
+.mp-note {
+    color: #a0a8b8;
+    font-size: 12px;
+    margin: 4px 0 10px;
+}
+.mp-box {
+    border: 1px solid #3a4658;
+    border-radius: 10px;
+    padding: 10px 12px;
+    margin: 10px 0;
+    background: rgba(255, 255, 255, 0.03);
+}
+.mp-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 6px 0;
+}
+.mp-label {
+    width: 110px;
+    color: #b8c0d0;
+}
+.mp-input {
+    flex: 1;
+    min-width: 0;
+    background: #0a0e14;
+    color: #e8e8e8;
+    border: 1px solid #50607a;
+    border-radius: 4px;
+    padding: 4px 6px;
+    font: inherit;
+}
+.mp-input-short {
+    flex: 0 0 90px;
+}
+.mp-btn {
+    margin: 6px 8px 0 0;
+    padding: 6px 14px;
+    border: 1px solid #6a7a96;
+    border-radius: 7px;
+    background: linear-gradient(#3a4a64, #1c2434);
+    color: #f0f0f0;
+    font: inherit;
+    cursor: pointer;
+}
+.mp-btn:hover:not(:disabled) {
+    border-color: #ffa000;
+}
+.mp-btn:disabled {
+    opacity: 0.45;
+    cursor: default;
+}
+.mp-btn-primary {
+    background: linear-gradient(#6a5020, #3a2a0c);
+    border-color: #c08020;
+}
+.mp-btn-secondary {
+    background: linear-gradient(#2a3040, #151a24);
+}
+.mp-status {
+    min-height: 18px;
+    margin: 10px 0 4px;
+    color: #c0d8a0;
+}
+.mp-status.mp-error {
+    color: #ff7060;
+}
+.mp-share {
+    color: #c8d4e8;
+    margin-bottom: 10px;
+    user-select: text;
+}
+.mp-players {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin: 8px 0;
+}
+.mp-player {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 6px 8px;
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.04);
+}
+.mp-player-name {
+    width: 170px;
+    font-weight: bold;
+    color: #e0e8f8;
+}
+.mp-player-pick {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+.mp-player-ready {
+    width: 80px;
+    color: #a08070;
+}
+.mp-player-ready.mp-on {
+    color: #80e080;
+}
+.mp-pick {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+.mp-pick .mp-input {
+    flex: 0 1 auto;
+}
+.mp-cell-name {
+    width: 170px;
+}
+.mp-cell-race,
+.mp-cell-gov {
+    width: 150px;
+}
+.mp-cell-claim {
+    width: 280px;
+}
+.mp-color {
+    width: 34px;
+    height: 24px;
+    padding: 0;
+    border: 1px solid #50607a;
+    background: none;
+}
+.mp-swatch {
+    display: inline-block;
+    width: 14px;
+    height: 14px;
+    border: 1px solid #000;
+}
+.mp-ready {
+    color: #e0e0e0;
+    cursor: pointer;
+}
+.mp-settings {
+    border: 1px solid #3a4658;
+    border-radius: 10px;
+    padding: 8px 12px;
+    margin-top: 8px;
+}
+.mp-setting {
+    color: #b8c4d8;
+    font-size: 12px;
+}
+.mp-bar {
+    display: flex;
+    flex-wrap: wrap;
+}
+[hidden].mp-btn,
+.mp-pick [hidden] {
+    display: none;
+}
+.mp-banner {
+    position: fixed;
+    top: 120px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 1900;
+    max-width: min(760px, calc(100vw - 32px));
+    padding: 10px 16px;
+    border: 2px solid #c08020;
+    border-radius: 10px;
+    background: rgba(20, 16, 8, 0.92);
+    color: #ffd890;
+    font-family: Verdana, Arial, sans-serif;
+    font-size: 13px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+.mp-banner[hidden] {
+    display: none;
+}
+.mp-banner .mp-btn {
+    margin: 0;
+}
+.mp-chip {
+    position: fixed;
+    left: 8px;
+    bottom: 140px;
+    z-index: 1800;
+    padding: 3px 8px;
+    border-radius: 6px;
+    background: rgba(0, 0, 0, 0.6);
+    color: #a8c0e0;
+    font-family: Verdana, Arial, sans-serif;
+    font-size: 11px;
+    pointer-events: none;
+}
+.mp-chip:empty {
+    display: none;
+}
