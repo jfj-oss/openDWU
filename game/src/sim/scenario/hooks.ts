@@ -462,6 +462,12 @@ export interface ScenarioQueries {
     /** events.ts creatureScanForTarget (Creature.cs 1245): true = the creature leaves this target alone. */
     creatureIgnoresTarget: { value: boolean; args: { creature: Creature; target: unknown } };
     /**
+     * combat/attackAI.ts shouldAttack (BuiltObject.1.cs 956 ShouldAttack), first line of the creature branch: true = this
+     * ship / base does not engage the creature (19j: a herder colony's herd and an empire that leaves it alone).
+     * Stock false. Pure, never draws.
+     */
+    builtObjectSparesCreature: { value: boolean; args: { builtObject: BuiltObject; creature: Creature } };
+    /**
      * movement.ts detectHyperDeny's RestrictedArea/HyperjumpDisabled location loop (BuiltObject.1.cs 1737): true when
      * `builtObject` should ignore `location`'s hyperjump-disable effect (19f: the Silence — pirate ships are immune
      * inside its zone). Default false (not exempt); never draws.

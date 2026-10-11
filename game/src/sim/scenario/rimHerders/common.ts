@@ -15,6 +15,7 @@ import type { Race } from '../../data/races';
 import type { Habitat } from '../../types';
 import type { Character } from '../../characters';
 import { CreatureType } from '../../creature';
+import { DiplomaticRelationType } from '../../diplomacy';
 import { BuiltObjectSubRole } from '../../builtObjectTypes';
 import { scenarioFlag, scenarioParam, scenarioState } from '../state';
 import { peekRimFaunaState, type RimHerd } from '../rimFauna/common';
@@ -55,7 +56,13 @@ export const RIM_HERDERS_PARAM_DEFAULTS = {
     rimHerdersHarvestPerMember: 4,
     rimHerdersStockCap: 1500,
     rimHerdersKillDrop: 10,
-    rimHerdersContactRange: 600000,
+    /**
+     * 5 000 000 (2.5 sectors). The first value, 600 000 (0.3 sector, about one star spacing), was never reached in real
+     * games: rim herder colonies sit 3-6 million from the nearest empire colony even after 20 years (headless soaks,
+     * 2026-10-10), so no empire ever became a neighbour — no standing, warnings, drovers, protectorate offers or
+     * conquest orders.
+     */
+    rimHerdersContactRange: 5000000,
     rimHerdersStandingGain: 10,
     rimHerdersStandingKill: 8,
     rimHerdersCharacterStanding: 20,
@@ -278,6 +285,31 @@ export function herdHostileEmpireIds(galaxy: Galaxy, hc: HerderColony, now: numb
     if (hc.status === 'conquered' && hc.feralUntil > now && hc.conquerorId >= 0) out.push(hc.conquerorId);
     for (const h of hc.hostile) if (h.until > now && !out.includes(h.empireId)) out.push(h.empireId);
     return out;
+}
+
+/**
+ * Item 1, "leave them alone": the empires a free / protectorate herder colony's herds treat as enemies right now —
+ * herdHostileEmpireIds (ignored warnings), the colony's attacker while its herds defend it, and (a protectorate) empires at
+ * war with the herder empire. Pure (reads the relation list; never creates a relation).
+ */
+export function herderHerdsHostileTo(galaxy: Galaxy, hc: HerderColony, empire: Empire, now: number): boolean {
+    if (herdHostileEmpireIds(galaxy, hc, now).includes(empire.empireId)) return true;
+    if (hc.defendUntil > now && hc.lastAttacker !== null && hc.lastAttacker.empire === empire) return true;
+    const owner = hc.colony.empire;
+    if (owner === null || owner === empire || owner === galaxy.independentEmpire) return false;
+    return owner.diplomaticRelations?.byEmpire(empire)?.type === DiplomaticRelationType.War;
+}
+
+/**
+ * Item 1: a free / protectorate herder colony's herd and `empire` leave each other alone — the herd ignores its ships
+ * crossing the range and its ships do not hunt the herd — unless the herds are hostile to it (herderHerdsHostileTo).
+ * Wild herds and the herds of a conquered / lost colony: false (stock creature rules). Pure.
+ */
+export function herderHerdAtPeaceWith(galaxy: Galaxy, herd: RimHerd, empire: Empire | null, now: number): boolean {
+    if (empire === null) return false;
+    const hc = herderColonyOfHerd(galaxy, herd);
+    if (hc === null || (hc.status !== 'free' && hc.status !== 'protectorate') || hc.colony.hasBeenDestroyed) return false;
+    return !herderHerdsHostileTo(galaxy, hc, empire, now);
 }
 
 /** A drover rides with this ship (on it, or on a ship of its fleet). */

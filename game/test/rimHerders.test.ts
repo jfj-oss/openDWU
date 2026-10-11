@@ -99,19 +99,26 @@ describe('19j rim herders — (1) herder colonies and their herds', () => {
             expect(herds.length).toBeGreaterThanOrEqual(1);
             for (const h of herds) expect(h.docileEmpireIds).toContain(g.independentEmpire!.empireId);
         }
-        // Docile: a herd creature ignores an independent ship; not an empire ship.
+        // Docile: a herd creature ignores an independent ship.
         const herd = herderColonyHerds(g, st.colonies[0])[0];
         const indShip = g.independentEmpire!.privateBuiltObjects[0];
         expect(scenarioQuery(g, 'creatureIgnoresTarget', false, { creature: herd.leader!, target: indShip })).toBe(true);
+        // Leave them alone: the herd ignores an empire's ships and they spare it, while the empire leaves the colony alone.
         const e = aiEmpires(g)[0];
         const ship = militaryShip(e) ?? e.builtObjects[0];
-        expect(scenarioQuery(g, 'creatureIgnoresTarget', false, { creature: herd.leader!, target: ship })).toBe(false);
-        // Defence: an attack on the colony turns its herd on the attacker.
+        expect(scenarioQuery(g, 'creatureIgnoresTarget', false, { creature: herd.leader!, target: ship })).toBe(true);
+        expect(scenarioQuery(g, 'builtObjectSparesCreature', false, { builtObject: ship, creature: herd.leader! })).toBe(true);
+        // A wild herd is no one's livestock.
+        const wild = rimFaunaState(g).herds.find((h) => h.leader !== null && h.docileEmpireIds.length === 0)!;
+        expect(scenarioQuery(g, 'builtObjectSparesCreature', false, { builtObject: ship, creature: wild.leader! })).toBe(false);
+        // Defence: an attack on the colony turns its herd on the attacker, and the attacker's ships may fight it.
         const before = herderStanding(g, e.empireId);
         scenarioEmit(g, 'habitatAttacked', { habitat: st.colonies[0].colony, attacker: ship, attackingEmpire: e, bombarded: false });
         for (const c of herdMembers(herd)) expect(c.currentTarget).toBe(ship);
         expect(herderStanding(g, e.empireId)).toBeLessThan(before);
         expect(st.stats.defences).toBe(1);
+        expect(scenarioQuery(g, 'creatureIgnoresTarget', false, { creature: herd.leader!, target: ship })).toBe(false);
+        expect(scenarioQuery(g, 'builtObjectSparesCreature', false, { builtObject: ship, creature: herd.leader! })).toBe(false);
     });
 
     it('rimHerdersCount picks exactly N herder colonies (Fisher-Yates shuffle of the rim independents, galaxy.rnd)', () => {

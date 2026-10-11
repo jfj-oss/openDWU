@@ -786,6 +786,8 @@ export function shouldAttack(galaxy: Galaxy, bo: BuiltObject, potentialTarget: S
     if (flag) {
         if (isCreature(potentialTarget)) {
             const creature = potentialTarget;
+            // mod layer (19j herders' herds); no-op without a scenario.
+            if (galaxy.scenario !== null && scenarioQuery(galaxy, 'builtObjectSparesCreature', false, { builtObject: bo, creature })) return false;
             if (creature.isVisible) {
                 if ((bo.firepowerRaw > 0 || bo.fighterCapacity > 0) && bo.isFunctional) {
                     let flag2 = false;

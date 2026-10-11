@@ -27,7 +27,7 @@ import { raceAggressionLevel, raceCautionLevel } from '../../colonyTick';
 import { findNearestAvailableFleet } from '../../fleets/militaryAI';
 import { shipGroupAssignMission, type ShipGroup } from '../../fleets/shipGroup';
 import { BuiltObjectMissionPriority, BuiltObjectMissionType, isBuiltObject } from '../../missions/mission';
-import { stellarPursuers } from '../../combat/threats';
+import { stellarAttackers, stellarPursuers } from '../../combat/threats';
 import { IntelligenceMissionType } from '../../espionage';
 import { galaxyRaceByName } from '../../story/storyEvents';
 import {
@@ -61,6 +61,7 @@ import {
     herderColonyHerds,
     herderColonyOf,
     herderColonyOfHerd,
+    herderHerdAtPeaceWith,
     herderParam,
     isHerderEmpire,
     isTamedCreatureShip,
@@ -621,7 +622,10 @@ export function rimHerdersSeasonCheck(galaxy: Galaxy, year: number): number {
         const pts = corridorPoints(galaxy, hc);
         for (const id of hc.warned) {
             const e = empireById(galaxy, id);
-            if (e === null) continue;
+            // The protector's warships guard the range (item 5): it is told of the season, never punished for being
+            // there. Before, the yearly penalty turned a protectorate's herds on their own protector, whose bases then
+            // killed them (seed 3, 1000 stars: the only protectorate lost its herd in year 7).
+            if (e === null || id === hc.protectorId) continue;
             const inCorridor = e.builtObjects.some((b) => b != null && !b.hasBeenDestroyed && b.role === BuiltObjectRole.Military && pts.some((p) => galaxy.calculateDistanceSquared(b.xpos, b.ypos, p.x, p.y) <= r2));
             if (!inCorridor) continue;
             ignored++;
@@ -892,6 +896,24 @@ export function rimHerdersTick(galaxy: Galaxy): void {
     }
 }
 
+/**
+ * builtObjectSparesCreature (item 1, "leave them alone"): a ship or base does not engage a herd member of a free /
+ * protectorate herder colony unless the herds are hostile to its empire (herderHerdsHostileTo), the creature is attacking
+ * it, or a human player ordered the attack on that creature. Before this, every armed ship (stance AttackEnemies /
+ * AttackUnallied, BuiltObject.1.cs ShouldAttack) treated a docile herd as a wild one. Pure, no Rnd.
+ */
+export function herderHerdSpared(galaxy: Galaxy, bo: BuiltObject, creature: Creature): boolean {
+    const herd = rimHerdOfCreature(galaxy, creature);
+    if (herd === null || !herderHerdAtPeaceWith(galaxy, herd, bo.empire, galaxyStarDate(galaxy))) return false;
+    if (creature.currentTarget === bo || stellarAttackers(bo).includes(creature)) return false;
+    if (isHumanEmpire(galaxy, bo.empire)) {
+        const m = bo.mission as { targetCreature?: Creature | null } | null;
+        const gm = (bo.shipGroup as { mission?: { targetCreature?: Creature | null } | null } | null)?.mission ?? null;
+        if (m?.targetCreature === creature || gm?.targetCreature === creature) return false;
+    }
+    return true;
+}
+
 // ---------------------------------------------------------------------------------------------------------------
 // Decisions
 // ---------------------------------------------------------------------------------------------------------------
@@ -936,9 +958,20 @@ registerScenarioQuery({
         // Hostility (feral after a conquest, an ignored warning) overrides docility and drovers.
         if (hc !== null && empire !== null && herdHostileEmpireIds(g, hc, galaxyStarDate(g)).includes(empire.empireId)) return false;
         if (v) return true;
+        // Item 1: a herder colony's herds ignore the ships of empires that leave them alone.
+        if (herderHerdAtPeaceWith(g, herd, empire, galaxyStarDate(g))) return true;
         return isBuiltObject(target) && droverWithShip(g, target);
     },
 });
+// Item 5 / 7: a free herder colony joins an empire only as a protectorate (or falls to a conquest order); it is no stock
+// colonisation target, so a colony ship never "absorbs" it — which the colonyOwnerChanged rule above counted as a conquest.
+registerScenarioQuery({
+    id: 'rimHerders.noAbsorb',
+    flag: RIM_HERDERS_FLAG,
+    query: 'colonizationTargetValue',
+    run: (g, v, a) => (a.habitat.empire === g.independentEmpire && herderColonyOf(g, a.habitat)?.status === 'free' ? Math.min(v, -1) : v),
+});
+registerScenarioQuery({ id: 'rimHerders.spare', flag: RIM_HERDERS_FLAG, query: 'builtObjectSparesCreature', run: (g, v, a) => v || herderHerdSpared(g, a.builtObject, a.creature) });
 registerScenarioDecision({ id: DECISION_PROTECTORATE, kind: DECISION_PROTECTORATE, flag: RIM_HERDERS_FLAG, resolve: resolveProtectorate, aiChoose: (g, d) => (empirePrefersProtectorate(g, d.empire) ? 'accept' : 'decline') });
 registerScenarioDecision({ id: DECISION_CHARACTERS, kind: DECISION_CHARACTERS, flag: RIM_HERDERS_FLAG, resolve: resolveCharacters, aiChoose: () => 'accept' });
 

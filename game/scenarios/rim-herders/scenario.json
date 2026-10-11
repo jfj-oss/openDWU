@@ -14,7 +14,7 @@
     { "name": "rimHerdersHarvestPerMember", "label": "Herd goods per herd member per harvest", "default": 4, "min": 0, "max": 100 },
     { "name": "rimHerdersStockCap", "label": "Herd goods stock cap per colony", "default": 1500, "min": 0, "max": 100000 },
     { "name": "rimHerdersKillDrop", "label": "Herd goods dropped per creature killed", "default": 10, "min": 0, "max": 500 },
-    { "name": "rimHerdersContactRange", "label": "Neighbour range of a herder colony", "default": 600000, "min": 0, "max": 5000000 },
+    { "name": "rimHerdersContactRange", "label": "Neighbour range of a herder colony", "default": 5000000, "min": 0, "max": 20000000 },
     { "name": "rimHerdersStandingGain", "label": "Yearly standing gain of a peaceful neighbour", "default": 10, "min": 0, "max": 100 },
     { "name": "rimHerdersStandingKill", "label": "Standing lost per herd creature killed", "default": 8, "min": 0, "max": 100 },
     { "name": "rimHerdersCharacterStanding", "label": "Standing at which herders offer a drover and a guide", "default": 20, "min": 0, "max": 200 },
