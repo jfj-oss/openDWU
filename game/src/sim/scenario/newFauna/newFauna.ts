@@ -46,7 +46,7 @@ import { notifyOfAttackBuiltObject } from '../../combat/attackAI';
 import { stellarAttackers, stellarPursuers } from '../../combat/threats';
 import { isBuiltObject } from '../../missions/mission';
 import { galaxyStarDate } from '../../tick/simTime';
-import { GAME_DAY_LENGTH, radiusFraction, registerScenarioEvent, registerScenarioGameStart, registerScenarioPeriodic, registerScenarioQuery } from '../hooks';
+import { GAME_DAY_LENGTH, radiusFraction, registerScenarioEvent, registerScenarioGameStart, registerScenarioPeriodic, registerScenarioQuery, registerScenarioYearly } from '../hooks';
 import { scenarioFlag } from '../state';
 import { scenarioMessage, scenarioNews, scenarioText } from '../messages';
 import { EmpireMessageType } from '../../messages';
@@ -294,6 +294,7 @@ export function newFaunaGameStart(galaxy: Galaxy): void {
         st.wrecks.push({ x: c.x, y: c.y, salvage: [{ resourceId: steel, amount: DEBRIS_FIELD_SALVAGE }], date: now(galaxy) });
     }
     herderStartTames(galaxy);
+    st.startGroups = variantGroupCounts(galaxy);
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -1086,6 +1087,119 @@ export function newFaunaOnBuiltObjectRemoved(galaxy: Galaxy, ev: { builtObject: 
 }
 
 // ---------------------------------------------------------------------------------------------------------------
+// Population recovery (user change 2026-10-11): each species breeds its own young, full groups split, the rim refills
+// ---------------------------------------------------------------------------------------------------------------
+
+/** Yearly chance a group below its groupMax gains one young of its own species (0: the variant breeds otherwise). */
+function breedRate(galaxy: Galaxy, v: FaunaVariant): number {
+    switch (v) {
+        case FaunaVariant.VoidWhale:
+            return newFaunaParam(galaxy, 'newFaunaBreedWhale');
+        case FaunaVariant.HunterPack:
+            return newFaunaParam(galaxy, 'newFaunaBreedHunter');
+        case FaunaVariant.Scavenger:
+            return newFaunaParam(galaxy, 'newFaunaBreedScavenger');
+        case FaunaVariant.StormDrifter:
+        case FaunaVariant.LanternShoal:
+            return newFaunaParam(galaxy, 'newFaunaBreedRare');
+        default:
+            // Hull grazers multiply through grazerSpread; nest mothers and brood carriers keep their young and packs.
+            return 0;
+    }
+}
+
+/** Wild groups per variant (index = FaunaVariant; tamed groups not counted). Pure. */
+export function variantGroupCounts(galaxy: Galaxy): number[] {
+    const out = [0, 0, 0, 0, 0, 0, 0, 0, 0];
+    const st = peekNewFaunaState(galaxy);
+    const fs = peekRimFaunaState(galaxy);
+    if (st === null || fs === null) return out;
+    for (const herd of fs.herds) {
+        const info = st.herds[herd.id];
+        if (info !== undefined && herd.leader !== null && info.tamedBy < 0) out[info.variant]++;
+    }
+    return out;
+}
+
+/** A system without empire colonies (where wild groups may appear or split to). Pure. */
+function freeSystem(galaxy: Galaxy, i: number): boolean {
+    return !galaxy.systemHabitatsOf(i).some((h) => h.empire !== null && h.empire !== galaxy.independentEmpire);
+}
+
+/**
+ * The yearly pass (`newFauna.year`): (1) each group below its groupMax rolls its species' breed rate and gains one young
+ * (the variant's base type through the ported GenerateCreaturesAtLocation, adopted at sizeMin); (2) a wild whale or
+ * hunter group at groupMax rolls newFaunaSplitChance and half of it starts a new group of its own species in a free
+ * system 300 000 - 2 000 000 away; (3) while a variant has fewer wild groups than at game start, it rolls
+ * newFaunaRepopChance and one group appears — void whales in any free system (their galaxy-wide placement), the others
+ * in a free system at radius fraction ≥ max(their minRadius, 0.75). Draws galaxy.rnd.
+ */
+export function newFaunaYear(galaxy: Galaxy): void {
+    const st = newFaunaState(galaxy);
+    const fs = peekRimFaunaState(galaxy);
+    if (fs === null) return;
+    for (const herd of [...fs.herds]) {
+        const info = st.herds[herd.id];
+        const leader = herd.leader;
+        if (info === undefined || leader === null || herd.migration !== null || info.destSystem >= 0) continue;
+        const def = faunaVariantDef(info.variant);
+        const n = herdMembers(herd).length;
+        const rate = breedRate(galaxy, info.variant);
+        if (rate > 0 && n < def.groupMax && galaxy.rnd.nextDouble() < rate) {
+            const young = generateCreaturesAtLocation(galaxy, def.baseType, 1, leader.xpos, leader.ypos, HERD_COHESION, 400);
+            for (const c of young) {
+                adoptMember(galaxy, info, c, def, false, leader.name.replace(/ \(young\)$/, ''));
+                c.size = def.sizeMin;
+                c.attackStrength = def.attackDiv > 0 ? Math.trunc(c.size / def.attackDiv) : 0;
+                c.damageKillThreshold = Math.trunc(c.size * def.killMul);
+                c.hyperSpeed = leader.hyperSpeed;
+                herd.followers.push(c);
+                st.stats.bred = (st.stats.bred ?? 0) + 1;
+            }
+            fs.rev++;
+            st.rev++;
+        } else if (
+            info.tamedBy < 0 &&
+            (info.variant === FaunaVariant.VoidWhale || info.variant === FaunaVariant.HunterPack) &&
+            n >= def.groupMax &&
+            herd.followers.length >= 2 &&
+            galaxy.rnd.nextDouble() < newFaunaParam(galaxy, 'newFaunaSplitChance')
+        ) {
+            const cand: number[] = [];
+            for (let i = 0; i < galaxy.systems.length; i++) {
+                const star = galaxy.systems[i].systemStar;
+                const d = dist(galaxy, herd.homeX, herd.homeY, star.xpos, star.ypos);
+                if (d >= 300000 && d <= 2000000 && freeSystem(galaxy, i) && radiusFraction(galaxy, star.xpos, star.ypos) >= def.minRadius) cand.push(i);
+            }
+            if (cand.length > 0) {
+                const k = Math.floor(herd.followers.length / 2);
+                const child = spawnVariantHerd(galaxy, info.variant, cand[galaxy.rnd.next(0, cand.length)], k);
+                if (child !== null) {
+                    for (const c of herd.followers.splice(herd.followers.length - k, k)) c.completeTeardown();
+                    fs.rev++;
+                    st.stats.splits = (st.stats.splits ?? 0) + 1;
+                }
+            }
+        }
+    }
+    // Repopulation.
+    const start = (st.startGroups ??= variantGroupCounts(galaxy));
+    const now2 = variantGroupCounts(galaxy);
+    for (const def of faunaVariantTable()) {
+        const v = def.variant;
+        if (now2[v] >= (start[v] ?? 0) || galaxy.rnd.nextDouble() >= newFaunaParam(galaxy, 'newFaunaRepopChance')) continue;
+        const fMin = v === FaunaVariant.VoidWhale ? 0 : Math.max(def.minRadius, 0.75);
+        const cand: number[] = [];
+        for (let i = 0; i < galaxy.systems.length; i++) {
+            const star = galaxy.systems[i].systemStar;
+            if (radiusFraction(galaxy, star.xpos, star.ypos) >= fMin && freeSystem(galaxy, i)) cand.push(i);
+        }
+        if (cand.length === 0) continue;
+        if (spawnVariantHerd(galaxy, v, cand[galaxy.rnd.next(0, cand.length)]) !== null) st.stats.repopulated = (st.stats.repopulated ?? 0) + 1;
+    }
+}
+
+// ---------------------------------------------------------------------------------------------------------------
 // Registrations
 // ---------------------------------------------------------------------------------------------------------------
 
@@ -1101,9 +1215,12 @@ registerRimHerdDriver({
     },
     // Void whales run their own galaxy-wide migration season (voidWhaleSeason), not the rim fauna's inward one.
     staysHome: (g, herd) => peekNewFaunaState(g)?.herds[herd.id]?.variant === FaunaVariant.VoidWhale,
+    // Every variant breeds, splits and repopulates as its own species (newFaunaYear), never as a Kaltor calf.
+    ownsHerd: (g, herd) => peekNewFaunaState(g)?.herds[herd.id] !== undefined,
 });
 
 registerScenarioGameStart({ id: 'newFauna.spawn', order: 10, flag: NEW_FAUNA_FLAG, run: (g) => newFaunaGameStart(g) });
+registerScenarioYearly({ id: 'newFauna.year', flag: NEW_FAUNA_FLAG, run: (g) => newFaunaYear(g) });
 registerScenarioPeriodic({ id: 'newFauna.tick', order: 1, flag: NEW_FAUNA_FLAG, periodDays: 1, run: (g) => newFaunaTick(g) });
 registerScenarioEvent({ id: 'newFauna.kill', flag: NEW_FAUNA_FLAG, event: 'creatureKilled', run: newFaunaOnCreatureKilled });
 registerScenarioEvent({ id: 'newFauna.wreck', flag: NEW_FAUNA_FLAG, event: 'builtObjectRemoved', run: newFaunaOnBuiltObjectRemoved });

@@ -34,6 +34,14 @@ export const RIM_FAUNA_PARAM_DEFAULTS = {
     rimFaunaHerdSizeMax: 7,
     /** Yearly chance that a herd below its max size gains one follower. */
     rimFaunaBreedChance: 0.5,
+    /** Yearly chance a wild herd at full size splits; the new herd's pasture lies this far from the old one. */
+    rimFaunaSplitChance: 0.15,
+    rimFaunaSplitMinDistance: 300000,
+    rimFaunaSplitRange: 2000000,
+    /** Yearly chance a new wild herd appears in a wild outer system while the wild herds are below their start count. */
+    rimFaunaRepopChance: 0.3,
+    /** A system is wild when no empire colony is in it and no empire station within this range of its star. */
+    rimFaunaWildClearance: 300000,
     /** Fraction of every available resource stock in a mining station's hold eaten per feeding tick. */
     rimFaunaFeedRate: 0.1,
     /** Damage (component-size units, Creature.cs DamageTarget scale) dealt to a grazed station per feeding tick. */
@@ -125,6 +133,9 @@ export interface RimFaunaStats {
     stockEaten: number;
     herdsKilled: number;
     births: number;
+    /** Population recovery (absent in older saves). */
+    splits?: number;
+    repopulated?: number;
 }
 
 /** Saved state (`scenarioState(galaxy, 'rimFauna')`): plain data and graph references only. */
@@ -140,6 +151,8 @@ export interface RimFaunaState {
     /** Bumped whenever herd membership changes (lookup cache key). */
     rev: number;
     stats: RimFaunaStats;
+    /** Wild herds at game start (the repopulation target; set on the first yearly pass in older saves). */
+    startHerds?: number;
 }
 
 export function rimFaunaState(galaxy: Galaxy): RimFaunaState {

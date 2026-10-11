@@ -103,6 +103,12 @@ export const NEW_FAUNA_PARAM_DEFAULTS = {
      *  variants keep their counts. */
     newFaunaDensity: 0.49,
     newFaunaWhaleDensity: 0.012,
+    newFaunaBreedWhale: 0.15,
+    newFaunaBreedHunter: 0.5,
+    newFaunaBreedScavenger: 0.3,
+    newFaunaBreedRare: 0.05,
+    newFaunaSplitChance: 0.1,
+    newFaunaRepopChance: 0.3,
     newFaunaWhaleMaxGroups: 20,
     newFaunaWhaleMigrationChance: 0.5,
     newFaunaWhaleMigrationRange: 4000000,
@@ -223,6 +229,9 @@ export interface NewFaunaStats {
     fuelSiphoned?: number;
     whaleMigrations?: number;
     nestEscapes?: number;
+    bred?: number;
+    splits?: number;
+    repopulated?: number;
 }
 
 /** Saved state (`scenarioState(galaxy, 'newFauna')`): plain data and graph references. */
@@ -235,6 +244,8 @@ export interface NewFaunaState {
     stats: NewFaunaStats;
     /** Void whales: the rim-fauna season year their own migrations last ran (absent in older saves). */
     whaleSeasonYear?: number;
+    /** Wild groups per variant at game start (the repopulation target; set on the first yearly pass in older saves). */
+    startGroups?: number[];
 }
 
 export function newFaunaState(galaxy: Galaxy): NewFaunaState {

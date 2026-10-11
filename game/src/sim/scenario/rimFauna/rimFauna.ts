@@ -67,6 +67,11 @@ export interface RimHerdDriver {
     sparesStations: (galaxy: Galaxy, herd: RimHerd) => boolean;
     /** Optional (19j): the herd never joins a migration season (a herder colony's herd stays on its range). */
     staysHome?: (galaxy: Galaxy, herd: RimHerd) => boolean;
+    /**
+     * Optional (19g-7b): the package breeds, splits and repopulates this herd itself (its own species); the yearly
+     * Kaltor calf, split and repopulation of rimFaunaYear leave it alone.
+     */
+    ownsHerd?: (galaxy: Galaxy, herd: RimHerd) => boolean;
 }
 const herdDrivers: RimHerdDriver[] = [];
 
@@ -76,6 +81,11 @@ export function registerRimHerdDriver(driver: RimHerdDriver): void {
 
 function herdDrivenElsewhere(galaxy: Galaxy, herd: RimHerd): boolean {
     for (const d of herdDrivers) if (d.drives(galaxy, herd)) return true;
+    return false;
+}
+
+function herdOwnedElsewhere(galaxy: Galaxy, herd: RimHerd): boolean {
+    for (const d of herdDrivers) if (d.ownsHerd !== undefined && d.ownsHerd(galaxy, herd)) return true;
     return false;
 }
 
@@ -215,6 +225,7 @@ export function rimFaunaGameStart(galaxy: Galaxy): void {
         if (galaxy.rnd.nextDouble() < d - n) n++;
         for (let k = 0; k < n && st.herds.length < cap; k++) spawnRimHerd(galaxy, i, galaxy.rnd.next(sizeMin, sizeMax + 1));
     }
+    st.startHerds = st.herds.length;
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -510,7 +521,7 @@ export function rimFaunaYear(galaxy: Galaxy): void {
     const chance = faunaParam(galaxy, 'rimFaunaBreedChance');
     for (const herd of st.herds) {
         const leader = herd.leader;
-        if (leader === null || herd.migration !== null || !creatureAlive(galaxy, leader) || herdDrivenElsewhere(galaxy, herd)) continue;
+        if (leader === null || herd.migration !== null || !creatureAlive(galaxy, leader) || herdDrivenElsewhere(galaxy, herd) || herdOwnedElsewhere(galaxy, herd)) continue;
         if (herdMembers(herd).length >= sizeMax || galaxy.rnd.nextDouble() >= chance) continue;
         const calf = generateCreaturesAtLocation(galaxy, CreatureType.Kaltor, 1, leader.xpos, leader.ypos, HERD_COHESION, 400);
         for (const c of calf) {
@@ -520,11 +531,113 @@ export function rimFaunaYear(galaxy: Galaxy): void {
         }
         st.rev++;
     }
-    // TODO(19g-7): herds at max size could split into a new herd (population recovery); for now killing a herd is final.
+    // Population recovery (user change 2026-10-11): full herds split, the rim repopulates.
+    rimFaunaSplits(galaxy);
+    rimFaunaRepopulate(galaxy);
     for (const u of st.unrest) u.losses *= 0.5;
     st.unrest = st.unrest.filter((u) => u.losses >= 0.25 && u.colony.empire !== null);
     const now = galaxyStarDate(galaxy);
     st.pressured = st.pressured.filter((p) => !p.station.hasBeenDestroyed && now - p.lastLoss <= YEAR_LENGTH);
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// Population recovery: splits and repopulation (wild Kaltor herds; 19g-7b species recover in their own package)
+// ---------------------------------------------------------------------------------------------------------------
+
+/** A wild system: no empire colony and no empire station within rimFaunaWildClearance of its star. Pure. */
+function wildSystem(galaxy: Galaxy, systemIndex: number): boolean {
+    if (galaxy.systemHabitatsOf(systemIndex).some((h) => h.empire !== null && h.empire !== galaxy.independentEmpire)) return false;
+    const star = galaxy.systems[systemIndex].systemStar;
+    const r2 = faunaParam(galaxy, 'rimFaunaWildClearance') ** 2;
+    for (const e of activeEmpires(galaxy)) for (const b of e.miningStations) if (b != null && !b.hasBeenDestroyed && galaxy.calculateDistanceSquared(b.xpos, b.ypos, star.xpos, star.ypos) <= r2) return false;
+    return true;
+}
+
+/** Wild herds of the rim fauna (no herder / tamer, no package owner). */
+function wildHerd(galaxy: Galaxy, herd: RimHerd): boolean {
+    return herd.leader !== null && herd.docileEmpireIds.length === 0 && !herdDrivenElsewhere(galaxy, herd) && !herdOwnedElsewhere(galaxy, herd) && !herdStaysHome(galaxy, herd);
+}
+
+/**
+ * Splits: a wild herd at rimFaunaHerdSizeMax that is not migrating rolls rimFaunaSplitChance a year; half its
+ * followers (the first of them the new leader) leave for a wild system between rimFaunaSplitMinDistance and
+ * rimFaunaSplitRange from home (one galaxy.rnd pick) and graze there. Draws galaxy.rnd.
+ */
+export function rimFaunaSplits(galaxy: Galaxy): number {
+    const st = rimFaunaState(galaxy);
+    const sizeMax = Math.trunc(faunaParam(galaxy, 'rimFaunaHerdSizeMax'));
+    const chance = faunaParam(galaxy, 'rimFaunaSplitChance');
+    const minD = faunaParam(galaxy, 'rimFaunaSplitMinDistance');
+    const maxD = faunaParam(galaxy, 'rimFaunaSplitRange');
+    let n = 0;
+    for (const herd of [...st.herds]) {
+        if (!wildHerd(galaxy, herd) || herd.migration !== null || herdMembers(herd).length < sizeMax || herd.followers.length < 2) continue;
+        if (galaxy.rnd.nextDouble() >= chance) continue;
+        const cand: number[] = [];
+        for (let i = 0; i < galaxy.systems.length; i++) {
+            const star = galaxy.systems[i].systemStar;
+            const d = dist(galaxy, herd.homeX, herd.homeY, star.xpos, star.ypos);
+            if (d < minD || d > maxD || !wildSystem(galaxy, i)) continue;
+            cand.push(i);
+        }
+        if (cand.length === 0) continue;
+        const to = cand[galaxy.rnd.next(0, cand.length)];
+        const k = Math.floor(herd.followers.length / 2);
+        const leaving = herd.followers.splice(herd.followers.length - k, k);
+        const sys = galaxy.systems[herd.homeSystemIndex];
+        const name = herdName(galaxy, to);
+        leaving.forEach((c, i) => configureMember(galaxy, c, i === 0, name));
+        const child: RimHerd = {
+            id: st.nextHerdId++,
+            type: herd.type,
+            leader: leaving[0],
+            followers: leaving.slice(1),
+            homeSystemIndex: herd.homeSystemIndex,
+            homeX: sys.systemStar.xpos,
+            homeY: sys.systemStar.ypos,
+            homeRange: herd.homeRange,
+            birthSystemIndex: to,
+            birthX: galaxy.systems[to].systemStar.xpos,
+            birthY: galaxy.systems[to].systemStar.ypos,
+            feedSite: null,
+            feedTicks: 0,
+            feedingStation: null,
+            migration: null,
+            docileEmpireIds: [],
+            victimEmpireIds: [],
+        };
+        st.herds.push(child);
+        st.rev++;
+        startRimHerdMigration(galaxy, child, to, false);
+        st.stats.splits = (st.stats.splits ?? 0) + 1;
+        n++;
+    }
+    return n;
+}
+
+/**
+ * Repopulation from the rim: while the wild herds number fewer than at game start (st.startHerds), a new herd
+ * (rimFaunaHerdSizeMin) appears in a wild outer system (radius fraction ≥ rimFaunaDensityInner + half the way to the
+ * rim, wildSystem) at rimFaunaRepopChance a year — one a year at most. Draws galaxy.rnd.
+ */
+export function rimFaunaRepopulate(galaxy: Galaxy): boolean {
+    const st = rimFaunaState(galaxy);
+    const wild = st.herds.filter((h) => wildHerd(galaxy, h)).length;
+    st.startHerds ??= wild;
+    if (wild >= st.startHerds || galaxy.rnd.nextDouble() >= faunaParam(galaxy, 'rimFaunaRepopChance')) return false;
+    const inner = faunaParam(galaxy, 'rimFaunaDensityInner');
+    const fMin = inner + (1 - inner) * 0.5;
+    const cand: number[] = [];
+    for (let i = 0; i < galaxy.systems.length; i++) {
+        const star = galaxy.systems[i].systemStar;
+        if (radiusFraction(galaxy, star.xpos, star.ypos) < fMin || !wildSystem(galaxy, i)) continue;
+        cand.push(i);
+    }
+    if (cand.length === 0) return false;
+    const herd = spawnRimHerd(galaxy, cand[galaxy.rnd.next(0, cand.length)], Math.max(1, Math.trunc(faunaParam(galaxy, 'rimFaunaHerdSizeMin'))));
+    if (herd === null) return false;
+    st.stats.repopulated = (st.stats.repopulated ?? 0) + 1;
+    return true;
 }
 
 // ---------------------------------------------------------------------------------------------------------------

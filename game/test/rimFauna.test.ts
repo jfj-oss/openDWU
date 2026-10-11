@@ -21,7 +21,7 @@ import { empireApprovalRating } from '../src/sim/taxes';
 import { resolvePrioritizedPatrolMiningStations } from '../src/sim/civilianAI';
 import { empireMessages } from '../src/sim/messages';
 import { HERD_COHESION, herdDensityAt, herdMembers, rimFaunaState, rimFaunaStationUnderPressure, rimFaunaUnrest, rimHerdOfCreature, setRimHerdDocile } from '../src/sim/scenario/rimFauna/common';
-import { rimFaunaHerdTick, rimFaunaMigrationSeason, spawnRimHerd, startRimHerdMigration } from '../src/sim/scenario/rimFauna/rimFauna';
+import { rimFaunaHerdTick, rimFaunaMigrationSeason, addRimHerdCalf, rimFaunaRepopulate, rimFaunaSplits, spawnRimHerd, startRimHerdMigration } from '../src/sim/scenario/rimFauna/rimFauna';
 import { galaxyStarDate } from '../src/sim/tick/simTime';
 
 let base: GameData;
@@ -241,5 +241,36 @@ describe('19g-7 rim fauna — faithful path, save', () => {
         const summary = (g: Galaxy): string => JSON.stringify(rimFaunaState(g).herds.map((h) => [h.id, h.homeSystemIndex, h.migration, h.feedTicks, herdMembers(h).map((c) => c.creatureId)]));
         expect(summary(loaded.galaxy)).toBe(summary(a.galaxy));
         expect(herd.homeSystemIndex).toBe(far);
+    }, 600000);
+});
+
+describe('19g-7 rim fauna — population recovery', () => {
+    it('a full wild herd splits into a new herd heading for a wild system; the rim repopulates below the start count', () => {
+        const game = createScenarioGame(base, { scenario: 'rim-fauna', params: { rimFaunaSplitChance: 1, rimFaunaRepopChance: 1 } }).game;
+        const g = game.galaxy;
+        const st = rimFaunaState(g);
+        expect(st.startHerds).toBe(st.herds.length);
+        const herd = st.herds.find((h) => h.leader !== null && h.migration === null)!;
+        // Fill it to full size (calves of the stock breeding path).
+        while (herdMembers(herd).length < 7) addRimHerdCalf(g, herd);
+        const before = st.herds.length;
+        const n = rimFaunaSplits(g);
+        expect(n).toBeGreaterThanOrEqual(1);
+        expect(st.stats.splits).toBe(n);
+        const child = st.herds[st.herds.length - 1];
+        expect(st.herds.length).toBe(before + n);
+        expect(child.migration).not.toBeNull();
+        expect(child.docileEmpireIds).toEqual([]);
+        const target = g.systems[child.migration!.toSystemIndex].systemStar;
+        expect(g.calculateDistance(target.xpos, target.ypos, child.homeX, child.homeY)).toBeGreaterThanOrEqual(300000);
+        // Repopulation: below the start count a new herd appears on the rim (one a year).
+        for (const h of st.herds.slice(0, st.herds.length - st.startHerds! + 3)) for (const c of herdMembers(h)) c.completeTeardown();
+        rimFaunaHerdTick(g);
+        const wild = st.herds.length;
+        expect(rimFaunaRepopulate(g)).toBe(true);
+        expect(st.herds.length).toBe(wild + 1);
+        const fresh = st.herds[st.herds.length - 1];
+        expect(radiusFraction(g, fresh.homeX, fresh.homeY)).toBeGreaterThanOrEqual(0.7);
+        expect(st.stats.repopulated).toBe(1);
     }, 600000);
 });

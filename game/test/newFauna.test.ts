@@ -22,7 +22,7 @@ import { GalaxyTime } from '../src/sim/galaxyTime';
 import { deserializeGame, serializeGame } from '../src/sim/save/gameSave';
 import { defaultStartGameOptions } from '../src/sim/startGameOptions';
 import { herdMembers, rimFaunaState, type RimHerd } from '../src/sim/scenario/rimFauna/common';
-import { rimFaunaHerdTick } from '../src/sim/scenario/rimFauna/rimFauna';
+import { rimFaunaHerdTick, rimFaunaYear } from '../src/sim/scenario/rimFauna/rimFauna';
 import { herderColonies, rimHerdersState } from '../src/sim/scenario/rimHerders/common';
 import {
     FaunaVariant,
@@ -44,6 +44,7 @@ import {
     nestMotherTick,
     newFaunaOnBuiltObjectRemoved,
     newFaunaTick,
+    newFaunaYear,
     scavengerTick,
     spawnVariantHerd,
     stormDrifterTick,
@@ -435,6 +436,40 @@ describe('19g-7b new fauna — travellers: void whale seasons, nest mother escap
         expect(inf.destSystem).toBe(-1);
         expect(herd.homeSystemIndex).toBe(to);
         expect(mother.hyperSpeed).toBe(0);
+    });
+});
+
+describe('19g-7b new fauna — population recovery', () => {
+    it('each species breeds its own young (never a Kaltor calf); a variant below its start count repopulates', () => {
+        const g = shared.galaxy;
+        const st = newFaunaState(g);
+        expect(st.startGroups).toBeDefined();
+        g.scenario!.params.newFaunaBreedHunter = 1;
+        g.scenario!.params.newFaunaBreedWhale = 1;
+        g.scenario!.params.newFaunaRepopChance = 1;
+        const packs = variantHerds(g, FaunaVariant.HunterPack).filter((h) => h.leader !== null && h.migration === null && herdMembers(h).length < faunaVariantDef(FaunaVariant.HunterPack).groupMax);
+        expect(packs.length).toBeGreaterThan(0);
+        const pack = packs[0];
+        const n = herdMembers(pack).length;
+        // The rim-fauna year leaves variant herds alone (ownsHerd): no Kaltor calf.
+        rimFaunaYear(g);
+        expect(herdMembers(pack).length).toBe(n);
+        newFaunaYear(g);
+        expect(herdMembers(pack).length).toBe(n + 1);
+        const pup = pack.followers[pack.followers.length - 1];
+        const def = faunaVariantDef(FaunaVariant.HunterPack);
+        expect(pup.type).toBe(def.baseType);
+        expect(pup.size).toBe(def.sizeMin);
+        expect(info(g, pack).members).toContain(pup.creatureId);
+        expect(pup.movementSpeed).toBe(def.followerSpeed);
+        // Repopulation: wipe every wild lantern shoal; the next year brings one back.
+        for (const h of variantHerds(g, FaunaVariant.LanternShoal)) if (info(g, h).tamedBy < 0) for (const c of herdMembers(h)) c.completeTeardown();
+        rimFaunaHerdTick(g);
+        newFaunaTick(g);
+        const before = variantHerds(g, FaunaVariant.LanternShoal).filter((h) => h.leader !== null).length;
+        newFaunaYear(g);
+        expect(variantHerds(g, FaunaVariant.LanternShoal).filter((h) => h.leader !== null).length).toBe(before + 1);
+        for (const k of ['newFaunaBreedHunter', 'newFaunaBreedWhale', 'newFaunaRepopChance']) delete g.scenario!.params[k];
     });
 });
 

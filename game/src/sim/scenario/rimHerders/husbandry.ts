@@ -148,7 +148,7 @@ export function rimHerdersHusbandryYear(galaxy: Galaxy): void {
         hc.herdlessSince = undefined;
         const safe = hc.defendUntil <= now - YEAR_LENGTH + 30 * GAME_DAY_LENGTH;
         for (const herd of herds) {
-            if (fast && safe && herd.migration === null && herdMembers(herd).length < sizeMax && galaxy.rnd.nextDouble() < chance) {
+            if (fast && safe && herd.migration === null && faunaHerdInfo(galaxy, herd) === null && herdMembers(herd).length < sizeMax && galaxy.rnd.nextDouble() < chance) {
                 if (addRimHerdCalf(galaxy, herd) !== null) st.stats.calves = (st.stats.calves ?? 0) + 1;
             }
             matureHerd(galaxy, herd, fast);

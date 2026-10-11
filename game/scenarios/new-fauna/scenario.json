@@ -9,6 +9,12 @@
   "params": [
     { "name": "newFaunaDensity", "label": "Variant groups per system (× the rim-fauna herd density; void whales excepted)", "default": 0.49, "min": 0, "max": 5 },
     { "name": "newFaunaWhaleDensity", "label": "Void whale groups per system, the same everywhere in the galaxy", "default": 0.012, "min": 0, "max": 1 },
+    { "name": "newFaunaBreedWhale", "label": "Void whales: yearly chance a group gains a young", "default": 0.15, "min": 0, "max": 1 },
+    { "name": "newFaunaBreedHunter", "label": "Hunter packs: yearly chance a pack gains a young", "default": 0.5, "min": 0, "max": 1 },
+    { "name": "newFaunaBreedScavenger", "label": "Scavengers: yearly chance a group gains a young", "default": 0.3, "min": 0, "max": 1 },
+    { "name": "newFaunaBreedRare", "label": "Storm drifters and lantern shoals: yearly chance of a young", "default": 0.05, "min": 0, "max": 1 },
+    { "name": "newFaunaSplitChance", "label": "Yearly chance a full wild whale group / hunter pack splits", "default": 0.1, "min": 0, "max": 1 },
+    { "name": "newFaunaRepopChance", "label": "Yearly chance a variant below its start count gets a new wild group", "default": 0.3, "min": 0, "max": 1 },
     { "name": "newFaunaWhaleMaxGroups", "label": "Void whale group cap at game start (apart from the variant cap)", "default": 20, "min": 0, "max": 400 },
     { "name": "newFaunaWhaleMigrationChance", "label": "Void whales: chance per migration season that a wild group migrates", "default": 0.5, "min": 0, "max": 1 },
     { "name": "newFaunaWhaleMigrationRange", "label": "Void whale migration range (any direction, galaxy-wide)", "default": 4000000, "min": 100000, "max": 50000000 },
