@@ -10,7 +10,7 @@ import { type Character, CharacterRole, isBuiltObjectLocation } from '../../sim/
 import { resolveStarDateDescription } from '../../sim/galaxyTime';
 import { CV_ESCORT_FLAG, CV_GOV_FLAG, CV_VIP_FLAG, cvOn, peekCvState } from '../../sim/scenario/charactersVictory/common';
 import { tripOfCharacter, vipTripView } from '../../sim/scenario/charactersVictory/vip';
-import { colonyVacancy, fitAt } from '../../sim/scenario/charactersVictory/governorsCv';
+import { colonyVacancy, fitAt, governorLockedUntil } from '../../sim/scenario/charactersVictory/governorsCv';
 import { colonyGovernor } from '../../sim/scenario/governors';
 
 /** The add-on runs in this game (any of its parts). */
@@ -103,10 +103,14 @@ export function cvColonySlot(galaxy: Galaxy, player: Empire, h: Habitat): CvColo
     const requested = peekCvState(galaxy)?.empires[player.empireId]?.requests.includes(h) ?? false;
     let status = '';
     const neglectPct = Math.round(v.neglect * 100);
-    if (v.vacant) {
+    const locked = governorLockedUntil(galaxy, h);
+    if (v.vacant && locked >= 0) {
+        // [charactersVictory part 2] its governor died as a Diet delegate.
+        status = `No governor can be appointed until ${resolveStarDateDescription(locked)}${v.graceLeftDays > 0 ? '' : ` — neglect ${neglectPct}%`}`;
+    } else if (v.vacant) {
         if (v.enRoute !== null) status = `Governor en route: ${v.enRoute.name}`;
         else if (v.graceLeftDays > 0) status = `Vacant — decline in ${Math.max(1, Math.round(v.graceLeftDays / 30))} months`;
         else status = `Vacant — neglect ${neglectPct}%`;
     } else if (v.neglect > 0) status = `Recovering — neglect ${neglectPct}%`;
-    return { governor: gov, status, neglectPct, canRequest: v.vacant && v.enRoute === null && !requested, requested };
+    return { governor: gov, status, neglectPct, canRequest: v.vacant && v.enRoute === null && !requested && locked < 0, requested };
 }

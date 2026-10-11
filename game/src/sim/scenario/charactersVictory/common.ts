@@ -30,7 +30,7 @@ export const CV_PARAMS = {
     cvEscortFirepowerPerPoint: 60,
     cvEscortCapPct: 20,
     cvEscortWaitDays: 60,
-    cvGraceDays: 180,
+    cvGraceDays: 360,
     cvDeclineYears: 4,
     cvRecoveryYears: 5,
     cvDisrepairPerYear: 2,
@@ -153,6 +153,11 @@ export interface CvColony {
     emigrationCarry: number;
     /** A "colony in decline" message was sent this vacancy. */
     warned: boolean;
+    /**
+     * Star date until which no governor can be appointed here (Part 2: its governor died as a Diet delegate;
+     * absent / -1: none). No reserve is posted and no local governor rises before it; the vacancy rules run as usual.
+     */
+    lockedUntil?: number;
 }
 
 /** A governor's post and tenure. */

@@ -218,12 +218,29 @@ export interface VacancyView {
 export function colonyVacancy(galaxy: Galaxy, h: Habitat): VacancyView {
     const r = peekColonyRec(galaxy, h);
     const now = galaxyStarDate(galaxy);
-    const vacant = !colonyGoverned(h);
+    const vacant = !colonyGoverned(h) || (r !== null && (r.lockedUntil ?? -1) > now);
     const since = vacant && r !== null && r.vacantSince >= 0 ? r.vacantSince : vacant ? now : -1;
     const grace = cvParam(galaxy, 'cvGraceDays') * DAY;
     let enRoute: Character | null = null;
     if (vacant && h.empire !== null) for (const c of empireGovernors(h.empire)) if (tripTarget(galaxy, c) === h) enRoute = c;
     return { vacant, since, neglect: r?.neglect ?? 0, graceLeftDays: vacant ? Math.max(0, (since + grace - now) / DAY) : 0, enRoute };
+}
+
+/** Star date until which no governor can be appointed at `h` (-1: none). Pure. */
+export function governorLockedUntil(galaxy: Galaxy, h: Habitat): number {
+    const r = peekColonyRec(galaxy, h);
+    const u = r?.lockedUntil ?? -1;
+    return u > galaxyStarDate(galaxy) ? u : -1;
+}
+
+/**
+ * Part 2: no governor can be appointed at `h` until `until` (its governor died as a Diet delegate). The local rise is
+ * cancelled; the colony's vacancy runs on as usual (grace, then decline).
+ */
+export function lockGovernorPost(galaxy: Galaxy, h: Habitat, until: number): void {
+    const r = colonyRec(galaxy, h, galaxyStarDate(galaxy));
+    r.lockedUntil = Math.max(r.lockedUntil ?? -1, until);
+    r.riseAt = -1;
 }
 
 /** The neglect of `h` (0 without a record). Pure. */
@@ -238,7 +255,8 @@ function updateColony(galaxy: Galaxy, e: Empire, h: Habitat, now: number): CvCol
     const r = colonyRec(galaxy, h, now);
     const dt = Math.max(0, now - r.updated);
     r.updated = now;
-    const governed = colonyGoverned(h);
+    // A dead delegate's post (Part 2) counts as vacant until the lockout ends, whoever sits there.
+    const governed = colonyGoverned(h) && !((r.lockedUntil ?? -1) > now);
     const away = duties(st).some((d) => d.post === h && d.character.active);
     if (governed) {
         if (r.vacantSince >= 0) {
@@ -349,7 +367,8 @@ function spawnFor(galaxy: Galaxy, e: Empire, colony: Habitat): Character | null 
     if (!govOn(galaxy, e) || !cvOn(galaxy, CV_VIP_FLAG)) return null;
     const at = birthplaceFor(galaxy, e, CharacterRole.ColonyGovernor, colony);
     const c = generateNewCharacter(galaxy, e, CharacterRole.ColonyGovernor, at).character;
-    if (at !== colony) c.transferToNewLocation(colony, galaxy);
+    // A dead delegate's post (Part 2) takes no governor: the new one stays a reserve at its birthplace.
+    if (at !== colony && governorLockedUntil(galaxy, colony) < 0) c.transferToNewLocation(colony, galaxy);
     return c;
 }
 registerGovernorSpawner(spawnFor);
@@ -382,6 +401,14 @@ function reviewTraining(galaxy: Galaxy, e: Empire, now: number): void {
 }
 
 function localRise(galaxy: Galaxy, e: Empire, h: Habitat, r: CvColony, now: number): void {
+    // A dead delegate's post (Part 2): no local governor rises before the lockout ends; then the rise is drawn anew.
+    if ((r.lockedUntil ?? -1) > now) return;
+    if (r.lockedUntil !== undefined && r.lockedUntil >= 0) {
+        r.lockedUntil = -1;
+        // RND(cv): the local rise delay after the lockout, 1-3 years as for any vacancy (§5.4).
+        if (!colonyGoverned(h)) r.riseAt = now + (360 + galaxy.rnd.next(0, 721)) * DAY;
+        return;
+    }
     if (r.riseAt < 0 || now < r.riseAt) return;
     if (empireGovernors(e).length >= governorCap(galaxy, e)) return;
     r.riseAt = -1;
@@ -486,6 +513,28 @@ export function reviewGovernors(galaxy: Galaxy, e: Empire): void {
             }
         }
         const priority = (holder === null ? 4 : 0) + (needs.crisis ? 2 : 0) + (needs.war ? 1 : 0);
+        // A dead delegate's post (Part 2): a governor who reached it anyway (a transfer ordered before, the player's own
+        // order) is turned back to the capital; the post stays empty until the lockout ends.
+        if (holder !== null && (r.lockedUntil ?? -1) > now) {
+            // To the capital, or (a locked capital) the nearest other colony of the empire.
+            let to: Habitat | null = e.capital !== h ? e.capital : null;
+            if (to === null) {
+                let bd = Infinity;
+                for (const o of colonies) {
+                    if (o === h || governorLockedUntil(galaxy, o) >= 0) continue;
+                    const d = galaxy.calculateDistance(o.xpos, o.ypos, h.xpos, h.ypos);
+                    if (d < bd) {
+                        bd = d;
+                        to = o;
+                    }
+                }
+            }
+            if (to !== null) {
+                for (const c of [...(stellarObjectCharacters(h) ?? [])]) if (c.active && c.role === CharacterRole.ColonyGovernor && c.empire === e && tripOfCharacter(galaxy, c) === null) c.transferToNewLocation(to, galaxy);
+                holder = null;
+                holderFit = 0;
+            }
+        }
         holdings.set(h, { colony: h, holder, holderFit, needs, priority });
         if (holder === null) localRise(galaxy, e, h, r, now);
     }
@@ -514,6 +563,7 @@ export function reviewGovernors(galaxy: Galaxy, e: Empire): void {
         if (!sendable()) break;
         const h = hold.colony;
         if (targeted.has(h)) continue;
+        if (governorLockedUntil(galaxy, h) >= 0) continue; // a dead delegate's post: no appointment (Part 2)
         if (hold.holder === null) {
             // 1. A reserve (best fit, then nearest).
             let best: Character | null = null;
@@ -588,7 +638,7 @@ export function reviewGovernors(galaxy: Galaxy, e: Empire): void {
 
 /** Player: accept a suggestion (the move happens through the stock transfer, a VIP trip). */
 export function acceptGovernorSuggestion(galaxy: Galaxy, e: Empire, character: Character, to: Habitat): boolean {
-    if (!govOn(galaxy, e) || character.empire !== e || to.empire !== e || !character.active) return false;
+    if (!govOn(galaxy, e) || character.empire !== e || to.empire !== e || !character.active || governorLockedUntil(galaxy, to) >= 0) return false;
     const ce = cvEmpire(galaxy, e);
     ce.suggestions = ce.suggestions.filter((s) => s.character !== character && s.to !== to);
     character.transferToNewLocation(to, galaxy);
@@ -599,7 +649,7 @@ export function acceptGovernorSuggestion(galaxy: Galaxy, e: Empire, character: C
 
 /** Player: request a governor for a vacant colony (served by the next review even without automation; trains if none). */
 export function requestGovernor(galaxy: Galaxy, e: Empire, colony: Habitat): boolean {
-    if (!govOn(galaxy, e) || colony.empire !== e) return false;
+    if (!govOn(galaxy, e) || colony.empire !== e || governorLockedUntil(galaxy, colony) >= 0) return false;
     const ce = cvEmpire(galaxy, e);
     if (!ce.requests.includes(colony)) ce.requests.push(colony);
     reviewGovernors(galaxy, e);
@@ -693,7 +743,7 @@ registerScenarioEvent({
         const c = ev.character;
         // Agents never travel (their missions are abstract); a governor waits as a reserve for the placement review.
         if (c.role === CharacterRole.IntelligenceAgent || ev.intended === null || ev.intended === ev.birthplace) return;
-        if (c.role === CharacterRole.ColonyGovernor && govOn(g, ev.empire) && !isBuiltObjectLocation(ev.intended) && colonyGoverned(ev.intended as Habitat) === false && ev.intended !== ev.empire.capital) {
+        if (c.role === CharacterRole.ColonyGovernor && govOn(g, ev.empire) && !isBuiltObjectLocation(ev.intended) && colonyGoverned(ev.intended as Habitat) === false && ev.intended !== ev.empire.capital && governorLockedUntil(g, ev.intended as Habitat) < 0) {
             c.transferToNewLocation(ev.intended, g);
             return;
         }

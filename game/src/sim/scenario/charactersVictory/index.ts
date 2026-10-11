@@ -8,7 +8,7 @@ import type { Character } from '../../characters';
 import { startVipTrip } from './vip';
 
 export { characterImportance, routeDanger, isVipShuttle, vipMarkers, vipTripView, tripOfCharacter, tripOfShuttle } from './vip';
-export { mostImportantGovernor, setGovernorDuty, endGovernorDuty, colonyVacancy, fitAt, governorCap, empireGovernors } from './governorsCv';
+export { mostImportantGovernor, setGovernorDuty, endGovernorDuty, colonyVacancy, fitAt, governorCap, empireGovernors, governorLockedUntil, lockGovernorPost } from './governorsCv';
 export { colonyGovernor as governorOf } from '../governors';
 export { CV_FLAG, CV_VIP_FLAG, CV_GOV_FLAG, CV_ESCORT_FLAG, CV_DECOY_FLAG, cvOn, peekCvState } from './common';
 
