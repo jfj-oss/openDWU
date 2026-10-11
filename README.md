@@ -83,9 +83,18 @@ modded themes, and is free and open source.
 - **Desktop apps for macOS, Linux and Windows.** They find your Steam
   install, remember your game folder and offer new releases. You can also
   run the game from source in the browser.
-- **Opt-in scenarios and mods.** With no scenario selected the game is the
-  byte-identical port. Scenarios add factions, storylines and threats, each
-  behind its own flags ([details](#scenarios-and-mods)).
+- **Five opt-in expansions and mods.** With every expansion off the game is
+  the stock port. Each expansion is one switch on the new-game wizard's
+  Scenario page: **The Rim** (rim trade, frontier, creatures and herders),
+  **Politics & Characters** (governors, VIP shuttles, the Galactic Council,
+  the Interstellar Diet), **Economy** (the Colony Economy, exchange, chartered
+  companies, privateers), **Galactic Threats** (hidden end-game threats such
+  as the Cult, the Hive and Dark Farms) and **Living Galaxy** (livelier AI,
+  active independents, colony defence). Each one's members can also be
+  switched off alone ([details](game/docs/EXPANSIONS.md)).
+- **Multiplayer over a LAN or the Internet.** Players join by code or invite
+  (no server to run), a game can be resumed from a multiplayer save, and if
+  the host leaves the successor takes over ([how](game/docs/MULTIPLAYER.md)).
 - **Improvements inspired by Distant Worlds 2**: battle reports, supply-chain
   visibility, waypoints, a Fleet Settings panel, and resource, fuel-range and
   colony-score overlays. You can switch each one off in Game Options →
@@ -756,7 +765,7 @@ On Windows PowerShell, run the fast tier as
 - **Opt-in mod/scenario layer.** With every scenario off, the game is the
   byte-identical faithful port. A scenario/data overlay adds new factions,
   storylines, systems and behaviour on top, each behind its own feature
-  flags — see [Scenarios and mods](#scenarios-and-mods) below.
+  flags — see [Expansions](game/docs/EXPANSIONS.md).
 
 
 ### Optional: local LLM layer

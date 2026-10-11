@@ -64,7 +64,8 @@ what still needs work before v0.1.
   deterministic and every pin holds with no model installed.
 
 **Platforms**
-- Linux x86_64 packaging done and verified. macOS arm64 build exists (untested/unsigned — see Known open items).
+- Linux x86_64 packaging done and verified. macOS arm64 app builds and runs; Linux and Mac lockstep games match
+  (0.1.15, `1f9d5fcf`). Still unsigned (see Known open items).
 
 ## Known open items
 
@@ -103,28 +104,36 @@ what still needs work before v0.1.
   Expansion Planner's galaxy mini-map + deficient-resources grid (both noted `TODO(port)` in their task files).
 
 **Platform**
-- macOS arm64: builds, but untested on real hardware, unsigned/unnotarized, no `.icns` icon, no CrossOver/Whisky/Flatpak
-  install detection.
-- Save size/time: a 1,400-star save is ~139 MB of text and takes 2.3–5.4 s synchronously (the C# also blocks with
-  "Saving the Galaxy…", but a compact/binary codec or off-main-thread streaming would cut both) — packaged for after
-  the core is complete.
+- macOS arm64: runs on real hardware (Linux↔Mac lockstep tested, `1f9d5fcf`); still unsigned/unnotarized and no `.icns`
+  icon. Whisky / CrossOver bottle detection is built (`game/desktop/installDir.cjs`).
+- ✅ Save size/time: save format 3 (`ad608cf9`) is about a third of the text, saves about 2x faster and loads with about
+  half the peak memory; saves are gzip-compressed since 0.1.15.
 
 **Deferred design work**
-- Mod layer + scenarios (`tasks/19-mod-layer-scenarios.md`): 19a larger maps / rim-trader isolationist empire
-  (~map 1 day, data+hooks ~2 days, behavioural variant ~1 week); 19b "Dark Farms" hidden sleeper-faction storyline
-  (~1 week); 19c chartered companies / VOC-style sub-empires (~1 week on top of 19a). All designed, none started.
+- ✅ Mod layer + scenarios (`tasks/19-mod-layer-scenarios.md`): built. The rim trader (`rimTrade`, `3ffc16d0`), Dark Farms
+  (`darkfarms`, `29c342ba`) and chartered companies (`chartered-companies`) are scenarios under `game/scenarios/`,
+  grouped into the five expansions in `game/docs/EXPANSIONS.md`. The 19d and 19f scenarios are built too.
 - A full game/scenario editor is not planned.
 
 ## Next milestones
 
 1. **v0.1 first playable** — close out "Known open items" above: resolve the war/expansion-pace correctness
    questions, land the todosweep package-later ports, finish the rendering gaps (fighters, marker pixels,
-   tractor/ion effects, screen mini-maps), and get a real macOS arm64 test + signing pass plus a save-size/time fix.
+   tractor/ion effects, screen mini-maps), and finish the macOS arm64 signing pass (the save-size/time fix is done).
 2. **Polish** — the cosmetic/ordering findings from `tasks/REVIEW-player-layer-2026-09-25.md` (duplicate helper
    cleanup, automation-prompt ordering, minor UI hints), remaining stale-TODO cleanup, and a general pass on anything
    found during v0.1 playtesting.
-3. **Mod layer** — 19a mod/scenario data layer + rim-trader empire, 19b Dark Farms storyline, 19c chartered
-   companies (`tasks/19-mod-layer-scenarios.md`). No game editor planned.
+3. ✅ **Mod layer** — 19a rim trader, 19b Dark Farms and 19c chartered companies are built (see Deferred design work).
+   No game editor planned.
+
+## Since 2026-09-26 (evidence: commits on `origin/main`)
+- ✅ Multiplayer: LAN and Internet play (WebRTC codes, no server), lockstep in worker mode, rejoin, AI takeover, host
+  migration, join a running game, multiplayer saves and Resume, chat and human-to-human offers (`7f761330`, `144e20ca`,
+  `135f72e1`, `1752102e`). Design and status: `game/docs/MULTIPLAYER.md`.
+- ✅ Expansions: five switches (The Rim, Politics & Characters, Economy, Galactic Threats, Living Galaxy) in
+  `game/src/sim/scenario/addons.ts`; see `game/docs/EXPANSIONS.md`.
+- ✅ Colony Economy phases 1–4 (`cb6c8fb1`, `d6dcc9ea`, `b65c2edd`, `3e73944c`); design in `game/docs/ECONOMY.md`.
+- ✅ Characters & Victory with the Interstellar Diet (`ed2e9e77`, `530b93f3`); design in `game/docs/CHARACTERS_AND_VICTORY.md`.
 
 ## M1 — Map & rendering core
 | Task | Scope | Status |
