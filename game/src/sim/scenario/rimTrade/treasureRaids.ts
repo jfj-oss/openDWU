@@ -25,7 +25,7 @@
 import type { Galaxy } from '../../galaxy';
 import type { Empire } from '../../empire';
 import type { Habitat } from '../../types';
-import { BuiltObject } from '../../builtObject';
+import type { BuiltObject } from '../../builtObject';
 import { BuiltObjectRole } from '../../data/designSpecifications';
 import { Cargo, ResourceRef } from '../../cargo';
 import type { ShipGroup } from '../../fleets/shipGroup';
@@ -415,7 +415,6 @@ export function treasureShipCaptured(galaxy: Galaxy, ev: { builtObject: BuiltObj
     logLoss(galaxy, st, b, ev.to, loot, true);
 }
 
-void BuiltObject;
 
 registerScenarioPeriodic({ id: 'rimTrade.treasure.straggle', flag: 'rimTrader', periodDays: 2, run: (g) => treasureStraggleTick(g) });
 registerScenarioPeriodic({ id: 'rimTrade.treasure.raids', flag: 'rimTrader', periodDays: 5, run: (g) => treasureRaidReview(g) });
