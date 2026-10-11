@@ -24,6 +24,7 @@ import { deserializeGame, serializeGame } from '../../src/sim/save/gameSave';
 import { runGameSeconds, type RunGameSecondsResult } from '../../src/sim/tick/harness';
 import { registeredTodos } from '../../src/sim/tick/todo';
 import { gameDataFingerprint } from './loadGameDataFs';
+import { createScenarioGame, scenarioGameData, SCENARIOS_ROOT } from './scenarioGame';
 import { createTickGame, createTickGameAtAge } from './tickGame';
 
 /** Which harness game (test/helpers/tickGame.ts). */
@@ -67,7 +68,7 @@ function walkTs(dir: string, out: string[]): string[] {
 function codeHash(): string {
     if (sourceHash !== null) return sourceHash;
     const hash = createHash('sha1');
-    const files = [...walkTs(join(root, 'src', 'sim'), []), join(__dirname, 'tickGame.ts'), join(__dirname, 'gameCache.ts')];
+    const files = [...walkTs(join(root, 'src', 'sim'), []), join(__dirname, 'tickGame.ts'), join(__dirname, 'scenarioGame.ts'), join(__dirname, 'gameCache.ts')];
     for (const f of files) hash.update(`${f.slice(root.length)}\0${readFileSync(f, 'utf8')}\0`);
     sourceHash = hash.digest('hex');
     return sourceHash;
@@ -308,3 +309,98 @@ function restore(gameData: GameData, entry: CacheEntry): CachedTickGameRun {
 export function cachedTickGame(gameData: GameData, key: TickGameKey = {}): Game {
     return cachedTickGameRun(gameData, key).game;
 }
+
+// ---------------------------------------------------------------- scenario / add-on games
+
+/** A scenario / add-on game: createScenarioGame (test/helpers/scenarioGame.ts) on the standard seed-1 tick game. */
+export interface ScenarioGameKey {
+    /** A scenarios/<id>/ folder (its includes resolved, as createScenarioGame loads it). */
+    scenario: string;
+    flags?: Record<string, boolean>;
+    params?: Record<string, number>;
+    /** The galaxy and every empire at `age` (as createTickGameAtAge). Omitted: the standard start. */
+    age?: number;
+    /** Game seconds run on it with runGameSeconds(game, seconds) (default options). Omitted / 0: straight from createGame. */
+    seconds?: number;
+}
+
+export interface CachedScenarioGameRun extends CachedTickGameRun {
+    /** The scenario's GameData (scenarioGameData(base, key.scenario)), as createScenarioGame returns it. */
+    gameData: GameData;
+}
+
+let scenariosHash: string | null = null;
+
+/** Hash of every file under scenarios/ (overlays and their includes). */
+function scenarioFilesHash(): string {
+    if (scenariosHash !== null) return scenariosHash;
+    const hash = createHash('sha1');
+    const walk = (dir: string): void => {
+        for (const name of readdirSync(dir).sort()) {
+            const p = join(dir, name);
+            if (statSync(p).isDirectory()) walk(p);
+            else hash.update(`${p.slice(SCENARIOS_ROOT.length)}\0${readFileSync(p, 'utf8')}\0`);
+        }
+    };
+    walk(SCENARIOS_ROOT);
+    scenariosHash = hash.digest('hex');
+    return scenariosHash;
+}
+
+function buildScenario(base: GameData, key: ScenarioGameKey): CachedScenarioGameRun {
+    const age = key.age;
+    const { game, gameData } = createScenarioGame(base, {
+        scenario: key.scenario,
+        flags: key.flags,
+        params: key.params,
+        options: age === undefined ? undefined : (o) => ({ ...o, galaxyAge: age, player: { ...o.player, age }, aiEmpires: o.aiEmpires.map((e) => ({ ...e, age })) }),
+    });
+    const run: RunGameSecondsResult = (key.seconds ?? 0) > 0
+        ? runGameSeconds(game, key.seconds!)
+        : { frames: 0, rndDraws: 0, nowMs: game.galaxy.nowMs, timings: {}, todoHits: {} };
+    return { game, gameData, run };
+}
+
+const sortedObject = <T>(o: Record<string, T> | undefined): Record<string, T> => Object.fromEntries(Object.entries(o ?? {}).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)));
+
+/**
+ * The scenario game for `key` with its build run, cached like cachedTickGameRun (built once per key, saved under
+ * test/.cache/, a fresh deserialized copy per call): state-identical to createScenarioGame(base, { scenario, flags,
+ * params }) + runGameSeconds(game, seconds) in the calling test. Keyed by the scenario files, flags, params, seed, age
+ * and seconds besides the sim source and data hash. DWU_TEST_CACHE=off builds it in place.
+ */
+export function cachedScenarioGameRun(base: GameData, key: ScenarioGameKey): CachedScenarioGameRun {
+    const fingerprint = gameDataFingerprint(base);
+    if (disabled || fingerprint === null) return buildScenario(base, key);
+    const norm = JSON.stringify({ scenario: key.scenario, flags: sortedObject(key.flags), params: sortedObject(key.params), seed: 1, age: key.age ?? null, seconds: key.seconds ?? 0 });
+    const keyHash = createHash('sha1').update(norm).digest('hex').slice(0, 10);
+    const name = `scen-${key.scenario.replace(/[^A-Za-z0-9_-]/g, '_')}-${keyHash}`;
+    const hash = createHash('sha1').update(`${codeHash()}\0${fingerprint}\0${scenarioFilesHash()}\0${norm}`).digest('hex').slice(0, 16);
+    const memoKey = `${name}-${hash}`;
+    const file = join(CACHE_DIR, `${memoKey}.json`);
+    let entry = memo.get(memoKey) ?? null;
+    if (entry === null) {
+        mkdirSync(CACHE_DIR, { recursive: true });
+        entry = readEntry(file);
+        const lock = `${file}.lock`;
+        while (entry === null && !tryLock(lock)) {
+            sleepMs(500);
+            entry = readEntry(file);
+        }
+        if (entry === null) {
+            try {
+                entry = readEntry(file);
+                if (entry === null) {
+                    const { game, run } = buildScenario(base, key);
+                    entry = writeEntry(game, run, name, memoKey, file);
+                }
+            } finally {
+                rmSync(lock, { force: true });
+            }
+        }
+        memo.set(memoKey, entry);
+    }
+    const gameData = scenarioGameData(base, key.scenario);
+    return { ...restore(gameData, entry), gameData };
+}
+

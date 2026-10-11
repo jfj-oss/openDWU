@@ -2,7 +2,7 @@
 // Initialize*, Galaxy.4.cs LoadRaces / LoadColonyNames, DesignSpecification.cs LoadFromFile), art and sounds
 // (Main.Part12/13.cs Load*), the theme list (Start.cs method_28) and the save header (GalaxySummary ThemeName).
 import { afterEach, describe, expect, it } from 'vitest';
-import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createRequire } from 'node:module';
@@ -31,6 +31,17 @@ const themeIndexLib = createRequire(import.meta.url)('../desktop/themeIndex.cjs'
 afterEach(() => {
     setActiveCustomizationSet(null);
     setThemeChromeRace('');
+});
+
+/** A fresh dwu-themes-* folder under the temp dir, removed after the test. */
+const tempRoots: string[] = [];
+function tempRoot(): string {
+    const root = mkdtempSync(join(tmpdir(), 'dwu-themes-'));
+    tempRoots.push(root);
+    return root;
+}
+afterEach(() => {
+    for (const root of tempRoots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 
 const theme = (files: string[], dirs: string[] = []) => new CustomizationSet({ set: 'My Theme, 2', files, dirs });
@@ -223,7 +234,7 @@ describe('ships and fighters (BuiltObjectImageCache.cs 1115-1157, AddMoreImages)
 
 describe('theme list (Start.cs method_28)', () => {
     it('every Customization subfolder, sorted, after "(Default)"; Switch disabled for the current theme', () => {
-        const root = mkdtempSync(join(tmpdir(), 'dwu-themes-'));
+        const root = tempRoot();
         for (const d of ['Zeta', 'DW Universe-STPE Ver 2', 'DW Universe-ST Picard Era', 'alpha', 'DistantWorldsExpanded-main', 'Distant Worlds Original']) mkdirSync(join(root, 'Customization', d), { recursive: true });
         writeFileSync(join(root, 'Customization', 'stray.txt'), 'x');
         const list = themeIndexLib.listThemes(root);
@@ -234,7 +245,7 @@ describe('theme list (Start.cs method_28)', () => {
         expect(themeSwitchEnabled('Zeta', 'Zeta')).toBe(false);
     });
     it('a theme index covers top-level files and the engine folders only, with their casing', () => {
-        const root = mkdtempSync(join(tmpdir(), 'dwu-themes-'));
+        const root = tempRoot();
         const t = join(root, 'Customization', 'T');
         mkdirSync(join(t, 'Policy', 'pirate'), { recursive: true });
         mkdirSync(join(t, 'x64'), { recursive: true });

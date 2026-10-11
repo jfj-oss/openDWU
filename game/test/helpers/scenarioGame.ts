@@ -1,6 +1,7 @@
 // Scenario test harness (tasks/MODLAYER-DESIGN.md §5): load a scenario overlay from the repo's scenarios/ folder (or
 // build one inline), apply it over the fs-loaded base GameData, and create the standard seed-1 tick game with it.
-// Scenario games are not taken from the test game cache (gameCache.ts keys on the base data only).
+// Scenario games built here are not cached; cachedScenarioGameRun (gameCache.ts) is the cached form of
+// createScenarioGame + runGameSeconds for a scenario folder id, flags, params and age.
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import type { GameData } from '../../src/sim/data/gameData';

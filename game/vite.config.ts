@@ -385,6 +385,8 @@ export default defineConfig({
     test: {
         // Registers expect(...).toMatchPin(key) for the seed pins (test/pins/pin.ts, scripts/repin.mjs).
         setupFiles: ['test/pins/pin.ts'],
+        // Removes Vitest's own leftover module-copy folder from the temp dir after the run (test/helpers/globalSetup.ts).
+        globalSetup: ['test/helpers/globalSetup.ts'],
         // `slow`: a soak-length test in a file of fast tests (testTier above).
         tags: [{ name: 'slow', description: 'soak-length test: runs in test:slow and the full suite, skipped by test:fast' }],
         // Transformed modules persist across runs (per checkout: node_modules is shared by the worktrees).

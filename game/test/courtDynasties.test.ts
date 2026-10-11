@@ -3,7 +3,7 @@
 // successions, legitimacy scaling the 19d1 plot chance, flags-off byte identity and a save round trip.
 import { beforeAll, describe, expect, it } from 'vitest';
 import { loadGameDataFs } from './helpers/loadGameDataFs';
-import { cachedTickGameRun } from './helpers/gameCache';
+import { cachedScenarioGameRun, cachedTickGameRun } from './helpers/gameCache';
 import { createScenarioGame } from './helpers/scenarioGame';
 import type { GameData } from '../src/sim/data/gameData';
 import type { Game } from '../src/sim/game';
@@ -100,9 +100,10 @@ function politicalEmpires(g: Galaxy): Empire[] {
 describe('flags off = faithful game', () => {
     it('the scenario with every flag off runs byte-identical to the plain seed-1 game', () => {
         const ref = cachedTickGameRun(base, { seconds: 900 });
-        const { game } = createScenarioGame(base, { scenario: SC, flags: ALL_OFF });
+        // createScenarioGame + runGameSeconds(game, 900), built once and cached (test/helpers/gameCache.ts; courtDynasties
+        // and courtIntrigue run the same game).
+        const { game } = cachedScenarioGameRun(base, { scenario: SC, flags: ALL_OFF, seconds: 900 });
         expect(Object.keys(game.galaxy.scenario!.flags).sort()).toEqual(Object.keys(ALL_OFF).sort());
-        runGameSeconds(game, 900);
         expect(stateDigest(game.galaxy)).toBe(stateDigest(ref.game.galaxy));
         expect(game.galaxy.rnd.drawCount).toBe(ref.game.galaxy.rnd.drawCount);
         expect('court' in game.galaxy.scenario!.state).toBe(false);

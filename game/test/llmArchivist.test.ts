@@ -6,7 +6,7 @@
 // Flags off (and llmArchivist on, which is UI-only) → byte-identical game.
 import { beforeAll, describe, expect, it } from 'vitest';
 import { loadGameDataFs } from './helpers/loadGameDataFs';
-import { cachedTickGameRun } from './helpers/gameCache';
+import { cachedScenarioGameRun, cachedTickGameRun } from './helpers/gameCache';
 import { createScenarioGame, scenarioGameData } from './helpers/scenarioGame';
 import type { GameData } from '../src/sim/data/gameData';
 import type { Galaxy } from '../src/sim/galaxy';
@@ -67,8 +67,9 @@ describe('flags off = faithful game', () => {
     it('llm-layer with every flag off, and with llmFoundations + llmArchivist on, runs byte-identical and writes no state', () => {
         const ref = cachedTickGameRun(base, { seconds: 600 });
         for (const flags of [ALL_OFF, { ...ALL_OFF, llmFoundations: true, llmArchivist: true }]) {
-            const g = createScenarioGame(base, { scenario: SC, flags }).game;
-            runGameSeconds(g, 600);
+            // createScenarioGame + runGameSeconds(g, 600), built once and cached (test/helpers/gameCache.ts; llmDigest and
+            // llmArchivist run the same all-off game).
+            const g = cachedScenarioGameRun(base, { scenario: SC, flags, seconds: 600 }).game;
             expect(stateDigest(g.galaxy)).toBe(stateDigest(ref.game.galaxy));
             expect(g.galaxy.rnd.drawCount).toBe(ref.game.galaxy.rnd.drawCount);
             expect(Object.keys(g.galaxy.scenario!.state)).toEqual([]);
