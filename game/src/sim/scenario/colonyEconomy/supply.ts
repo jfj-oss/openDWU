@@ -21,7 +21,7 @@ import { EmpireMessageType } from '../../messages';
 import { registerScenarioPeriodic, registerScenarioQuery } from '../hooks';
 import { scenarioMessage } from '../messages';
 import { Designation, DESIGNATION_NAMES, ECON_DESIG_FLAG, ECON_FLAG, activeFacilities, colonyRecord, econOn, empireRecord, facilityDef, hasPrivateSector, isEconEmpire, peekColony, peekEmpire, type FacilityId } from './common';
-import { GOODS, G_PRECISION, designNeed, goodIds, heldAt, refinementActive } from './refinement';
+import { GOODS, G_EXOTICS, G_PRECISION, designNeed, goodIds, heldAt, refinementActive, tradingPostOf } from './refinement';
 import { commissionStateShare, facilityPrice, facilityRefusal, startCommission } from './facilities';
 import { AI_MIN_POPULATION, designationScores, designationCooldownDays, homeColony, setDesignation, SECTOR } from './designations';
 
@@ -30,19 +30,38 @@ export const SUPPLY_RULES = {
     /** A design counts as suppliable from stock when the empire's yards hold this many builds' worth of a good. */
     stockBuilds: 2,
     /** The AI commissions a refinery while its treasury holds this many times the state's share. */
-    commissionMoneyFactor: 1.5,
-    /** Once a good is needed: one more refinery of it per this many shipyards, at most maxPerGood. */
+    commissionMoneyFactor: 1.2,
+    /** At most this many commissions a review (the hard-tier goods first). */
+    commissionsPerReview: 2,
+    /** Once a good is needed at a soft tier (3-4): one more refinery of it per this many shipyards, at most maxPerGood. */
     yardsPerRefinery: 4,
     maxPerGood: 3,
+    /** Once a good is needed (or about to be) at a hard tier (5+): one more per this many shipyards, at most maxPerGoodHard. */
+    yardsPerRefineryHard: 2,
+    maxPerGoodHard: 6,
+    /** Exotics and Precision Components (small needs): one more per this many shipyards, at most maxPerGoodTop. */
+    yardsPerRefineryTop: 5,
+    maxPerGoodTop: 3,
+    /** An empire whose researched components reach this tier plans its Exotics Lab and Precision Works (tech 7 is next). */
+    planAheadTier: 5,
     /** Research this close to a good's need triggers the commission / the alert: the next projects reach the tier. */
     patrolRange: 2 * SECTOR,
     patrolFactor: 1.5,
 };
 
-/** Working refineries of `e` by GOODS index. Pure. */
-export function refineryCounts(galaxy: Galaxy, e: Empire): number[] {
+/** Working refineries of `e` by GOODS index; with `planned`, also those building or requested. Pure. */
+export function refineryCounts(galaxy: Galaxy, e: Empire, planned = false): number[] {
     const n = GOODS.map(() => 0);
     for (const h of e.colonies) {
+        if (planned) {
+            const c = peekColony(galaxy, h);
+            if (c === null) continue;
+            for (const id of [...c.facilities.map((f) => f.id), ...c.requests]) {
+                const gi = GOODS.findIndex((g) => g.facility === id);
+                if (gi >= 0) n[gi]++;
+            }
+            continue;
+        }
         for (const f of activeFacilities(galaxy, h)) {
             const gi = GOODS.findIndex((g) => g.facility === f.id);
             if (gi >= 0) n[gi]++;
@@ -51,8 +70,8 @@ export function refineryCounts(galaxy: Galaxy, e: Empire): number[] {
     return n;
 }
 
-/** Refined goods `e`'s yards hold, by GOODS index. Pure. */
-export function yardStock(galaxy: Galaxy, e: Empire): number[] {
+/** Refined goods `e`'s yards hold, by GOODS index; with `posts`, also its colonies' trading posts (refinery output). Pure. */
+export function yardStock(galaxy: Galaxy, e: Empire, posts = false): number[] {
     const ids = goodIds(galaxy);
     const s = GOODS.map(() => 0);
     if (ids === null) return s;
@@ -60,10 +79,20 @@ export function yardStock(galaxy: Galaxy, e: Empire): number[] {
         if (y === null || y.hasBeenDestroyed || !y.isShipYard) continue;
         for (let gi = 0; gi < GOODS.length; gi++) s[gi] += heldAt(y, ids[gi], e);
     }
+    if (posts) {
+        for (const h of e.colonies) {
+            const p = tradingPostOf(h);
+            if (p !== h && (p as BuiltObject).isShipYard) continue; // counted above
+            for (let gi = 0; gi < GOODS.length; gi++) s[gi] += heldAt(p, ids[gi], e);
+        }
+    }
     return s;
 }
 
-/** `e` can supply `design`'s hard goods: a working refinery of each, or enough in stock. Pure. */
+/**
+ * `e` can supply `design`'s hard goods: a refinery of each (the AI's check counts one building or requested: the supply
+ * is coming), or enough in stock. Pure.
+ */
 export function canSupply(galaxy: Galaxy, e: Empire, design: Design, refs?: number[], stock?: number[]): boolean {
     const n = designNeed(design);
     if (!n.anyHard) return true;
@@ -80,8 +109,10 @@ export function canSupply(galaxy: Galaxy, e: Empire, design: Design, refs?: numb
 /** The AI's design for a build: `design`, or the newest older one of its sub-role it can supply (one tier lower). Pure. */
 export function suppliableDesign(galaxy: Galaxy, e: Empire, design: Design): Design {
     if (!designNeed(design).anyHard) return design;
-    const refs = refineryCounts(galaxy, e);
-    const stock = yardStock(galaxy, e);
+    // Only when supply is impossible: no refinery of a needed good built, building or requested, and too little of it
+    // anywhere in the empire (its yards and its refineries' trading posts).
+    const refs = refineryCounts(galaxy, e, true);
+    const stock = yardStock(galaxy, e, true);
     if (canSupply(galaxy, e, design, refs, stock)) return design;
     let best: Design | null = null;
     for (const d of e.designs as Design[]) {
@@ -118,11 +149,26 @@ export function goodsWanted(galaxy: Galaxy, e: Empire): number[] {
     if (r === null || r.goodsNext === undefined) return [];
     let yards = 0;
     for (const y of e.spacePorts as BuiltObject[]) if (y !== null && !y.hasBeenDestroyed && y.isShipYard) yards++;
+    const R = SUPPLY_RULES;
+    const era = Math.max(0, ...(r.goodsNow ?? []));
     const out: number[] = [];
+    const urgent: number[] = [];
     for (let gi = 0; gi < GOODS.length; gi++) {
-        const now = (r.goodsNow?.[gi] ?? 0) >= needTier(gi);
-        const soon = (r.goodsNext[gi] ?? 0) >= needTier(gi);
-        const target = now ? Math.min(SUPPLY_RULES.maxPerGood, 1 + Math.floor(yards / SUPPLY_RULES.yardsPerRefinery)) : soon ? 1 : 0;
+        const tNow = r.goodsNow?.[gi] ?? 0;
+        const tNext = r.goodsNext[gi] ?? 0;
+        const now = tNow >= needTier(gi);
+        const soon = tNext >= needTier(gi);
+        const top = gi === G_EXOTICS || gi === G_PRECISION;
+        // Throughput for the shipyards: the hard tiers (5+) need two to four units a component, so more refineries a yard.
+        const hard = Math.max(tNow, tNext) >= 5;
+        let target = 0;
+        if (top && (now || soon)) target = Math.min(R.maxPerGoodTop, 1 + Math.floor(yards / R.yardsPerRefineryTop));
+        else if (hard) target = Math.min(R.maxPerGoodHard, 1 + Math.floor(yards / R.yardsPerRefineryHard));
+        else if (now) target = Math.min(R.maxPerGood, 1 + Math.floor(yards / R.yardsPerRefinery));
+        else if (soon) target = 1;
+        // Ahead of tech 7: an empire in the tech-5 era plans its Exotics Lab and Precision Works (the Works needs both
+        // refined inputs, so it takes the longest to come into supply).
+        if (top && era >= R.planAheadTier) target = Math.max(target, 1);
         if (target === 0) continue;
         const fid = GOODS[gi].facility;
         let have = 0;
@@ -131,9 +177,10 @@ export function goodsWanted(galaxy: Galaxy, e: Empire): number[] {
             if (c === null) continue;
             have += c.facilities.filter((f) => f.id === fid).length + c.requests.filter((x) => x === fid).length;
         }
-        if (have < target) out.push(gi);
+        if (have < target) (have === 0 && (hard || top) ? urgent : out).push(gi);
     }
-    return out;
+    // The goods with no refinery at all at a hard tier first (one review commissions at most two).
+    return [...urgent, ...out];
 }
 
 /** The colony where `e` would place refinery `fid` (its designation, a free slot; most populous first). Pure. */
@@ -162,6 +209,7 @@ function designateSite(galaxy: Galaxy, e: Empire, d: Designation): Habitat | nul
 }
 
 function aiCommission(galaxy: Galaxy, e: Empire): void {
+    let started = 0;
     for (const gi of goodsWanted(galaxy, e)) {
         const fid = GOODS[gi].facility;
         const def = facilityDef(fid);
@@ -172,7 +220,7 @@ function aiCommission(galaxy: Galaxy, e: Empire): void {
         }
         if (h === null) continue;
         if (e.stateMoney < commissionStateShare(galaxy, e, def, h) * SUPPLY_RULES.commissionMoneyFactor) continue;
-        if (startCommission(galaxy, e, h, colonyRecord(galaxy, h), def, false)) return; // one a review
+        if (startCommission(galaxy, e, h, colonyRecord(galaxy, h), def, false) && ++started >= SUPPLY_RULES.commissionsPerReview) return;
     }
 }
 

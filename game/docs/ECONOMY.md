@@ -406,9 +406,10 @@ The user chose Option A over B. Code: `colonyEconomy/refinement.ts`; switch `eco
 
 **Production** (every 30 days). A working refinery uses the colony's trading post: its space port, else the colony
 (real: freight.ts generateValidTradingPosts, the sources orders are filled from).
-- It takes up to 60 units of each raw input held there by the owner and makes half as many units of its good, into
-  the same cargo.
-- Short of an input, it orders 200 units of it (real: Empire.4.cs CreateOrder, `empireCreateOrder`). The stock
+- It takes up to 100 units (60 before 2026-10-11) of each raw input held there by the owner and makes half as many
+  units of its good, into the same cargo.
+- Short of inputs, it orders 200 units of each one not already on order (before 2026-10-11: only the scarcest, which
+  starved the refineries) (real: Empire.4.cs CreateOrder, `empireCreateOrder`). The stock
   freight path then brings the input and pays the seller's private sector (real: Empire.4.cs 1135 InitiateContract).
 
 **The bottleneck (phase 4, the user's decision A; all new rules on the real channels).**
@@ -455,16 +456,22 @@ refineries' trading posts; private freighters carry the goods and show on the Fr
   Components 7) and the empire has no refinery of it (built, building or requested), the AI commissions one at the
   most populous colony of the refinery's designation with a free slot. Once a researched component needs the good, it
   wants one more per 4 shipyards (at most 3). It designates an undesignated colony first when it has none (never the
-  home world, never one below 40 M people). One a review, while the treasury holds 1.5 times its share.
+  home world, never one below 40 M people).
+  **Supply planning (2026-10-11).** Once a good is needed, or about to be, at a hard tier (5+), the AI wants one
+  refinery of it per 2 shipyards (at most 6): the hard tiers need two to four units a component. Exotics and
+  Precision Components want one per 5 yards (at most 3), and an empire whose researched components reach tech 5 plans
+  one Exotic Materials Lab and one Precision Works ahead of tech 7 (the Works needs both refined inputs, so it takes
+  longest to come into supply). Goods with no refinery at all at a hard tier go first; at most two commissions a
+  review, while the treasury holds 1.2 times the state's share.
 - **Supply alerts:** the player gets one warning per good when research is about to need a good no refinery of theirs
   makes. The treasury window (Empire Summary → "Bonds & private sector") lists every good's status and, per
   shipyard, the goods its queued builds lack and the builds waiting.
 - **AI safeguards:**
   - `aiBuildDesign` (empireConstruction.ts directConstruction: the warship / auxiliary loop and the space ports): an AI
-    that cannot supply a design's hard goods (no working refinery of the good and less than two builds' worth at its
-    yards) queues the newest older design of the sub-role it can supply, one tier lower. With none, it keeps the
+    that cannot supply a design's hard goods (no refinery of the good built, building or requested, and less than two
+    builds' worth at its yards and its colonies' trading posts — only when supply is impossible) queues the newest older design of the sub-role it can supply, one tier lower. With none, it keeps the
     design (it waits).
-  - **No deadlock:** an AI build that has waited 180 days for hard goods goes on at ×0.5 with what the yard holds
+  - **No deadlock:** an AI build that has waited 120 days (180 before 2026-10-11) for hard goods goes on at ×0.5 with what the yard holds
     (`reliefBuilds`). The player's builds keep waiting (the treasury window shows them). Found in the first phase 4
     soak: the Ancient Guardians start at tech 7, have no Precision Works, and built a fifth of their tech-5+ warships.
   - The AI's mining stations within 2 sectors of a working refinery want 50 % more escort (the

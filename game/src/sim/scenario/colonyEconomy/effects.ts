@@ -755,7 +755,9 @@ export function facilityValue(galaxy: Galaxy, e: Empire, h: Habitat, id: Facilit
         case 'surveyOutpost': v = 1.1; break;
         case 'colonistOffice': v = countOwn('colonistOffice') < 2 ? 1.5 : 0.3; break;
         case 'roboticsPlant': v = (s?.robotics ?? 0) < 3 ? 1.6 : 0.3; break;
-        case 'fleetDepot': v = port ? 1.7 : 0.8; break;
+        // The first depot is wanted at a port (2026-10-11: at 1.7 it lost every Industrial slot to the Private Shipyard and
+        // Component Works, and no soak ever built one).
+        case 'fleetDepot': v = countOwn('fleetDepot') < 1 ? (port ? 3.2 : 1.4) : port ? 1.7 : 0.8; break;
         case 'salvageYard': v = wreckageActive(galaxy) ? (wrecksAt(galaxy, h.xpos, h.ypos, X.salvageRange).length > 0 ? 2.2 : 0.8) : 0.9; break;
         case 'commoditiesMarket': v = 1.5; break;
         case 'merchantGuild': v = (s?.guilds ?? 0) < 3 ? 1.6 : 0.2; break;

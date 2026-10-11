@@ -83,7 +83,7 @@ registerScenarioGoods(GOOD_NAMES);
 export const REFINE_RULES = {
     periodDays: 30,
     /** Units of each input a refinery takes a period at most (×strength × governor skill). */
-    refineInput: 60,
+    refineInput: 100,
     /** An input-short refinery orders this much of an input. */
     inputOrder: 200,
     yardTarget: 60,
@@ -99,7 +99,7 @@ export const REFINE_RULES = {
     /** A yard holding at least this share of the common goods counts as supplied (the early price bonus). */
     earlySuppliedShare: 0.25,
     /** AI safeguard: an AI build waiting this long for hard goods goes on at aiReliefFactor (no deadlock). */
-    aiReliefDays: 180,
+    aiReliefDays: 120,
     aiReliefFactor: 0.5,
 };
 const R = REFINE_RULES;
@@ -220,14 +220,9 @@ function produce(galaxy: Galaxy, e: Empire, ids: readonly number[]): void {
             const post = tradingPostOf(h);
             const per = R.refineInput;
             let taken = 0;
-            let short = -1;
-            let shortHeld = Infinity;
+            const short: number[] = [];
             for (const id of inputIds(galaxy, g)) {
-                const have = heldAt(post, id, e);
-                if (have < shortHeld) {
-                    shortHeld = have;
-                    short = id;
-                }
+                if (heldAt(post, id, e) < per) short.push(id);
                 taken += take(post, id, e, per);
             }
             const out = Math.floor(taken / 2);
@@ -235,10 +230,9 @@ function produce(galaxy: Galaxy, e: Empire, ids: readonly number[]): void {
                 add(post, ids[gi], e, out);
                 made[g.key] = (made[g.key] ?? 0) + out;
             }
-            // Short of an input: order it (the stock freight path brings it).
-            if (short >= 0 && shortHeld < per && pendingOrder(galaxy, e, post, short) <= 0) {
-                empireCreateOrder(galaxy, e, post, new ResourceRef(short), R.inputOrder, false, OrderType.Standard);
-            }
+            // Short of inputs: order each one not already on order (the stock freight path brings them). Before
+            // 2026-10-11 only the scarcest input was ordered a period, which starved the refineries.
+            for (const id of short) if (pendingOrder(galaxy, e, post, id) <= 0) empireCreateOrder(galaxy, e, post, new ResourceRef(id), R.inputOrder, false, OrderType.Standard);
         }
     }
 }
