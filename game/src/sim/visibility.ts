@@ -449,7 +449,10 @@ export function determineGalaxyLocationsInRangeAtPoint(galaxy: Galaxy, x: number
     const result: GalaxyLocation[] = [];
     if (g.galaxyLocationIndex.length === 0) return result;
     const point = g.resolveGalaxyLocationIndexes(x, y);
-    for (const location of g.galaxyLocationIndex[point.x][point.y]) {
+    // A non-finite point (the renderer's camera centre, e.g.) has no cell; the C# would throw.
+    const cells = g.galaxyLocationIndex[point.x]?.[point.y];
+    if (cells === undefined) return result;
+    for (const location of cells) {
         const num = location.width / 2.0;
         const num2 = (num + range) * (num + range);
         if (type === GalaxyLocationType.Undefined || location.type === type) {

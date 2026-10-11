@@ -12,6 +12,23 @@ function makeCamera(width = 1600, height = 900): Camera {
 }
 
 describe('Camera', () => {
+    it('never takes a non-finite centre or a zero zoom (a zero-size viewport, a NaN target): the per-frame NaN render error', () => {
+        const c = makeCamera();
+        c.centerOn(1000, 2000);
+        c.centerOn(Number.NaN, Number.NaN);
+        expect([c.x, c.y]).toEqual([1000, 2000]);
+        // A zero-size viewport (not laid out yet) must not drop minZoom to 0, so zoomAt / pans never divide by 0.
+        const z = new Camera();
+        z.setViewport(0, 0);
+        z.setGalaxyBounds(8_000_000, 8_000_000);
+        expect(z.minZoom).toBeGreaterThan(0);
+        z.zoom = z.clampZoom(0);
+        expect(z.zoom).toBeGreaterThan(0);
+        z.zoomAt(z.clampZoom(Number.NaN), 10, 10);
+        z.panByScreen(5, 5);
+        expect(Number.isFinite(z.x) && Number.isFinite(z.y) && Number.isFinite(z.zoom)).toBe(true);
+    });
+
     it('screenToWorld/worldToScreen round-trip', () => {
         const c = makeCamera();
         const world = { x: 3_999_000, y: 4_001_000 };

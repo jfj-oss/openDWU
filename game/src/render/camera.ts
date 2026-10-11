@@ -19,6 +19,11 @@ export class Camera {
     /** Galaxy extent (world units, origin 0,0); the screen centre is kept inside it. Infinity = unbounded. */
     boundsW = Infinity;
     boundsH = Infinity;
+    /** The last finite centre: a non-finite centre (NaN from an empty viewport's zero zoom, or a NaN target) falls
+     *  back to it, so one bad input cannot leave the camera at NaN for every later frame. */
+    private goodX = 0;
+    private goodY = 0;
+    private warned = false;
 
     setViewport(width: number, height: number): void {
         this.width = width;
@@ -30,7 +35,8 @@ export class Camera {
     // sizes the backdrop to Galaxy.sizeX/sizeY).
     setGalaxyBounds(galaxyWidth: number, galaxyHeight: number): void {
         const fit = Math.min(this.width / galaxyWidth, this.height / galaxyHeight);
-        this.minZoom = fit * 0.9; // small margin of black around the galaxy
+        // A zero-size (not yet laid out / hidden) viewport gives fit 0: keep a positive floor so zoom never reaches 0.
+        if (Number.isFinite(fit) && fit > 0) this.minZoom = fit * 0.9; // small margin of black around the galaxy
         this.boundsW = galaxyWidth;
         this.boundsH = galaxyHeight;
         this.clampCenter();
@@ -38,11 +44,23 @@ export class Camera {
 
     /** Keep the point at the screen centre inside the galaxy (pan, edge scroll, zoom-at-cursor, centre-on). */
     clampCenter(): void {
+        if (!Number.isFinite(this.x) || !Number.isFinite(this.y)) {
+            if (!this.warned) {
+                this.warned = true;
+                console.warn('Camera: non-finite centre ignored', this.x, this.y, new Error().stack);
+            }
+            if (!Number.isFinite(this.x)) this.x = this.goodX;
+            if (!Number.isFinite(this.y)) this.y = this.goodY;
+        }
         if (Number.isFinite(this.boundsW)) this.x = Math.max(0, Math.min(this.boundsW, this.x));
         if (Number.isFinite(this.boundsH)) this.y = Math.max(0, Math.min(this.boundsH, this.y));
+        this.goodX = this.x;
+        this.goodY = this.y;
     }
 
     clampZoom(zoom: number): number {
+        // A non-finite zoom keeps the current one (screenToWorld divides by it); minZoom stays > 0 (setGalaxyBounds).
+        if (!Number.isFinite(zoom)) return Number.isFinite(this.zoom) && this.zoom > 0 ? this.zoom : this.minZoom;
         return Math.max(this.minZoom, Math.min(this.maxZoom, zoom));
     }
 
