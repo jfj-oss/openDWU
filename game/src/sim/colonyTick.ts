@@ -223,7 +223,9 @@ export function growPopulation(galaxy: Galaxy, habitat: Habitat, timePassedSecon
     for (let i = 0; i < items.length; i++) {
         num += items[i].amount;
     }
-    if (num < habitat.maxPopulation) {
+    // [colonyEconomy] Core World / Arcology: the cap growth runs against (stock MaximumPopulation without a handler).
+    const maxPopulation = galaxy.scenario !== null ? scenarioQuery(galaxy, 'colonyMaxPopulation', habitat.maxPopulation, { habitat }) : habitat.maxPopulation;
+    if (num < maxPopulation) {
         for (let j = 0; j < items.length; j++) {
             const population2 = items[j];
             if (habitat.empire === galaxy.independentEmpire && population2.race != null) {
@@ -250,8 +252,8 @@ export function growPopulation(galaxy: Galaxy, habitat: Habitat, timePassedSecon
         }
         habitat.population.recalculateTotalAmount();
     }
-    if (num > habitat.maxPopulation) {
-        const num4 = habitat.maxPopulation / num;
+    if (num > maxPopulation) {
+        const num4 = maxPopulation / num;
         for (let k = 0; k < items.length; k++) {
             const population3 = items[k];
             population3.amount = Math.trunc(population3.amount * num4);

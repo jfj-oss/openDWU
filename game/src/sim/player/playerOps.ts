@@ -138,6 +138,7 @@ import { acceptGovernorSuggestion, requestGovernor, setCvAutomation } from '../s
 import { dietPlayerDeclareEmperor, dietPlayerEmergency, dietPlayerVeto, dietPlayerVote, dietPropose, dietSetDelegate } from '../scenario/charactersVictory/diet/diet';
 import type { DietMotionKind } from '../scenario/charactersVictory/diet/dietState';
 import { savePlayerVipDesign } from '../scenario/charactersVictory/shuttleDesign';
+import { Designation, cancelFacilityRequest, isFacilityId, issueBond, repayBond, requestFacility, setAutoBonds, setAutoFacilities, setDesignation } from '../scenario/colonyEconomy/index'; // [colonyEconomy]
 
 /** Automation / control fields of Empire the UI sets directly (Game Options panel and the automation prompts). */
 function isEmpireControlField(empire: Empire, field: string): boolean {
@@ -595,6 +596,22 @@ export const PLAYER_OPS = {
     /** A concession to a restless sector (loose rule, local tax, autonomy grant, governor loyalty). */
     frontierConcede: (galaxy: Galaxy, empire: Empire, sectorId: number) => concedeSector(galaxy, empire, sectorId),
     // [frontier] end
+    // [colonyEconomy] begin — Colony Economy (scenario/colonyEconomy; docs/ECONOMY.md; flag-gated inside)
+    /** Designate a colony (0 None, 1 Industrial, 2 Trade Hub, 3 Resort World, 4 Mining Hub, 5 Core World, 6 Frontier); a cooldown follows. */
+    econSetDesignation: (galaxy: Galaxy, empire: Empire, colony: Habitat, designation: number) => setDesignation(galaxy, empire, colony, designation as Designation),
+    /** Ask the private sector for a facility at a colony (built when it can afford it). */
+    econRequestFacility: (galaxy: Galaxy, empire: Empire, colony: Habitat, facility: string) => isFacilityId(facility) && requestFacility(galaxy, empire, colony, facility),
+    /** Withdraw a waiting facility request. */
+    econCancelRequest: (galaxy: Galaxy, empire: Empire, colony: Habitat, facility: string) => isFacilityId(facility) && cancelFacilityRequest(galaxy, empire, colony, facility),
+    /** The private sector picks facilities by itself too (default on). */
+    econSetAutoFacilities: (galaxy: Galaxy, empire: Empire, on: boolean) => setAutoFacilities(galaxy, empire, on),
+    /** Sell a bond of (at most) this amount to the private sector. */
+    econIssueBond: (galaxy: Galaxy, empire: Empire, amount: number) => issueBond(galaxy, empire, amount) !== null,
+    /** Repay a bond early in full. */
+    econRepayBond: (galaxy: Galaxy, empire: Empire, bondId: number) => repayBond(galaxy, empire, bondId),
+    /** The state sells bonds by itself when the treasury runs low. */
+    econSetAutoBonds: (galaxy: Galaxy, empire: Empire, on: boolean) => setAutoBonds(galaxy, empire, on),
+    // [colonyEconomy] end
     // [charactersVictory] begin — Characters & Victory (scenario/charactersVictory; flag-gated inside)
     /** Accept a governor suggestion: the governor travels to the colony (a VIP trip). */
     cvAcceptSuggestion: (galaxy: Galaxy, empire: Empire, character: Character, colony: Habitat) => acceptGovernorSuggestion(galaxy, empire, character, colony),

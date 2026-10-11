@@ -747,6 +747,26 @@ export interface ScenarioQueries {
      * docking at the target (the blockade record still stands). Characters & Victory's Diet enforcers (return fire only). Pure.
      */
     blockadeEngagesDocking: { value: boolean; args: { builtObject: BuiltObject } };
+    // [colonyEconomy] begin — Colony Economy (docs/ECONOMY.md): multiplicative factors (stock 1), each applied only when
+    // a handler changes it, so with no handler the stock arithmetic is untouched. Pure, no Rnd.
+    /**
+     * A factor on the construction speed at `habitat`: kind 'yard' = the yards of a base orbiting it (ships;
+     * constructionQueue.ts baconReviewConstructionSpeed, BaconConstructionQueue.cs 45), 'colony' = the colony's own
+     * construction queue (the bases it builds; same function), 'facility' = its owner's planetary facilities and wonders
+     * (construction/facilities.ts constructFacilities, Habitat.cs 2039).
+     */
+    colonyConstructionFactor: { value: number; args: { habitat: Habitat; kind: 'yard' | 'colony' | 'facility' } };
+    /** industry.ts industrialProcessing (BuiltObject.2.cs ~7930): a factor on the extraction rate (before the stock cap). */
+    extractionRateFactor: { value: number; args: { builtObject: BuiltObject } };
+    /** colonyTick.ts growPopulation (Habitat.cs 5172): the population cap growth runs against (stock MaximumPopulation). */
+    colonyMaxPopulation: { value: number; args: { habitat: Habitat } };
+    /** pirates/pirateAI.ts reviewPirateControl (BaconHabitat.cs 1388): a factor on a faction's control growth step. */
+    pirateControlGrowthFactor: { value: number; args: { habitat: Habitat } };
+    /** construction/repair.ts doRepairs (BaconBuiltObject.cs 4763): a factor on the self-repair speed (the interval is divided by it). */
+    repairRateFactor: { value: number; args: { builtObject: BuiltObject } };
+    /** design.ts calculateCurrentPurchasePrice (Design.cs 1143): a factor on the purchase price of `empire`'s design. */
+    designPriceFactor: { value: number; args: { empire: Empire } };
+    // [colonyEconomy] end
 }
 export type ScenarioQueryName = keyof ScenarioQueries;
 

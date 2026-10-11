@@ -1288,6 +1288,11 @@ export function baconReviewConstructionSpeed(conQueue: ConstructionQueue): void 
             }
             // [scenario] a virtual ColonyConstructionSpeed wonder (Characters & Victory's Diet host world).
             if (pbo._galaxy.scenario !== null) val1 = Math.max(val1, 1.0 + scenarioQuery(pbo._galaxy, 'colonyWonderBonus', 0, { habitat: ph, wonderType: WonderType.ColonyConstructionSpeed }) / 100.0);
+            // [colonyEconomy] Industrial / Private Shipyard / Resort: a factor on the yards' speed; no-op without a handler.
+            if (pbo._galaxy.scenario !== null) {
+                const k = scenarioQuery(pbo._galaxy, 'colonyConstructionFactor', 1, { habitat: ph, kind: 'yard' });
+                if (k !== 1) val1 *= k;
+            }
             // ParentHabitat.ResourceBonuses (never null on a TS habitat).
             const totalByEffectType = resourceBonusTotalByEffectType(ph, ColonyResourceEffect.ConstructionSpeed);
             if (totalByEffectType > 0.0) num1 = 1.0 + Math.max(0.0, Math.min(100.0, totalByEffectType)) / 100.0;
@@ -1326,6 +1331,9 @@ export function baconReviewConstructionSpeed(conQueue: ConstructionQueue): void 
     if (galaxyQ.scenario !== null) {
         const v = scenarioQuery(galaxyQ, 'colonyWonderBonus', 0, { habitat: ph, wonderType: WonderType.ColonyConstructionSpeed });
         if (v > 0) num4 = csInt(num4 * (1.0 + v / 100.0));
+        // [colonyEconomy] Industrial / Heavy Foundry / Militia Yard / Resort: a factor on the colony's own queue.
+        const k = scenarioQuery(galaxyQ, 'colonyConstructionFactor', 1, { habitat: ph, kind: 'colony' });
+        if (k !== 1) num4 = csInt(num4 * k);
     }
     const totalByEffectType = resourceBonusTotalByEffectType(ph, ColonyResourceEffect.ConstructionSpeed);
     if (totalByEffectType > 0.0) {

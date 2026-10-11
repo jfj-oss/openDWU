@@ -17,6 +17,9 @@ import { BattleTactics, BuiltObjectFleeWhen, BuiltObjectRole, DesignImageScaling
 import type { Resource } from './data/resources';
 import { Weapon } from './weapon';
 import { baconSettings } from './data/baconSettings';
+import { scenarioQuery } from './scenario/hooks';
+import type { Galaxy } from './galaxy';
+import type { Empire } from './empire';
 
 // Port of BuiltObjectStance.cs (member order exact).
 export enum BuiltObjectStance {
@@ -286,7 +289,14 @@ export class Design {
         let num = 0.0;
         for (let i = 0; i < this.components.length; i++) num += prices[this.components[i].componentId];
         if (this.empire !== null && this.empire.pirateEmpireBaseHabitat != null) return num * baconSettings.shipMarkupFactorPirates;
-        return num * baconSettings.shipMarkupFactor;
+        const price = num * baconSettings.shipMarkupFactor;
+        // [colonyEconomy] Component Works: cheaper ships and bases for the empire; no-op without a scenario / handler.
+        const g = galaxy as ComponentPriceGalaxy & { scenario?: Galaxy['scenario'] };
+        if (this.empire !== null && g.scenario != null) {
+            const k = scenarioQuery(g as unknown as Galaxy, 'designPriceFactor', 1, { empire: this.empire as unknown as Empire });
+            if (k !== 1) return price * k;
+        }
+        return price;
     }
 
     // Design.cs FuelUnitPerEnergyUnit (1164).

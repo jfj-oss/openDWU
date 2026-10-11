@@ -411,6 +411,11 @@ export function constructFacilities(galaxy: Galaxy, habitat: Habitat, timePassed
             }
             default:
                 if (habitat.empire !== null) num5 = f32(calculatePlanetaryFacilityBuildTimeFactor(planetaryFacility, habitat.empire));
+                // [colonyEconomy] Industrial / Heavy Foundry / Resort: a factor on the owner's facility and wonder builds.
+                if (galaxy.scenario !== null) {
+                    const k = scenarioQuery(galaxy, 'colonyConstructionFactor', 1, { habitat, kind: 'facility' });
+                    if (k !== 1) num5 = f32(num5 * k);
+                }
                 // Mod layer (Characters & Victory: no construction at a neglected colony without a governor).
                 if (galaxy.scenario !== null && scenarioQuery(galaxy, 'colonyFacilityConstructionPaused', false, { habitat })) continue;
                 break;

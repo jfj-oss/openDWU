@@ -65,4 +65,5 @@ import './colonyDefence/colonyDefence'; // Defended colonies resist pirates (fla
 import './charactersVictory/vip'; // Characters & Victory VIP shuttles, escorts, decoys (flag charactersVictory + cvVipShuttles / cvEscorts / cvRulerDecoys)
 import './charactersVictory/governorsCv'; // Characters & Victory governors on every colony (flag charactersVictory + cvGovernors; vacancy term in the stability ledger)
 import './charactersVictory/diet/diet'; // Characters & Victory part 2: the Interstellar Diet (flag charactersVictory + cvCouncil; extends emergent/council through registerCouncilExtension)
+import './colonyEconomy/index'; // Colony Economy: designations, private facilities, bonds (flag colonyEconomy; docs/ECONOMY.md)
 export {};

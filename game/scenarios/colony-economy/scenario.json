@@ -1,0 +1,27 @@
+{
+  "id": "colony-economy",
+  "name": "Colony Economy",
+  "addableToSave": true,
+  "description": "Colonies get a designation (Industrial, Trade Hub, Resort World, Mining Hub, Core World or Frontier/Garrison) with bonuses and drawbacks through the game's own mechanics: construction speed, income, tourism, mining rates, growth, troops, approval. The private sector spends its idle money on private facilities that fit the designation (four per designation, one to three slots by colony size, some mutually exclusive), and the player can request one. When the treasury runs low the state borrows from its own private sector with bonds, repaid with interest from taxes; an Investment Bank lowers the rate. AI empires designate, build and borrow too. Map icons show the designations (overlay toggle).",
+  "flags": [
+    { "name": "colonyEconomy", "label": "Colony Economy", "description": "Master switch.", "default": true },
+    { "name": "econDesignations", "label": "Colony designations", "description": "Colonies can be designated Industrial, Trade Hub, Resort World, Mining Hub, Core World or Frontier/Garrison, each with bonuses and drawbacks.", "default": true },
+    { "name": "econFacilities", "label": "Private facilities", "description": "The private sector builds facilities that fit a colony's designation from its surplus money; the player can request one.", "default": true },
+    { "name": "econBonds", "label": "Bonds", "description": "The state borrows from its own private sector when the treasury is low and repays with interest from taxes.", "default": true }
+  ],
+  "params": [
+    { "name": "econCooldownYears", "label": "Years before a colony's designation can change again", "default": 3, "min": 0, "max": 30 },
+    { "name": "econStrengthPct", "label": "Designation bonus and drawback strength (%)", "default": 100, "min": 0, "max": 300 },
+    { "name": "econFacilityStrengthPct", "label": "Facility effect strength (%)", "default": 100, "min": 0, "max": 300 },
+    { "name": "econFacilityCostPct", "label": "Facility cost (%)", "default": 100, "min": 10, "max": 1000 },
+    { "name": "econFacilityBuildPct", "label": "Facility build time (%)", "default": 100, "min": 10, "max": 1000 },
+    { "name": "econReserveK", "label": "Private reserve kept before buying facilities (thousands)", "default": 30, "min": 0, "max": 10000 },
+    { "name": "econSpendSharePct", "label": "Share of the private surplus one review may spend (%)", "default": 80, "min": 1, "max": 100 },
+    { "name": "econMediumPopM", "label": "Population (millions) of a medium colony (2 slots)", "default": 800, "min": 1, "max": 100000 },
+    { "name": "econLargePopM", "label": "Population (millions) of a large colony (3 slots)", "default": 3000, "min": 1, "max": 100000 },
+    { "name": "econBondRatePct", "label": "Base bond interest rate (% a year)", "default": 8, "min": 0, "max": 50 },
+    { "name": "econBondTermYears", "label": "Bond term (years)", "default": 5, "min": 1, "max": 30 },
+    { "name": "econBondCapPct", "label": "Outstanding debt at most (% of annual tax revenue)", "default": 100, "min": 0, "max": 1000 },
+    { "name": "econBondPrivateSharePct", "label": "A bond borrows at most this % of the private surplus", "default": 50, "min": 1, "max": 100 }
+  ]
+}

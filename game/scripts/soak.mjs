@@ -116,6 +116,11 @@ const CONFIGS = [
     { name: 'cv-coup-off', seed: 1, years: 8, wizard: { starCountIndex: 3, dimensionIndex: 3, otherEmpires: { empireCount: 9 } }, scenario: ['threat-framework', 'corporatecoup', 'characters-victory'], flags: 'all', flagsOff: ['charactersVictory'], params: { ...early('corporateCoup'), coupMinYears: 1000, coupGovernors: 1000, coupBribePct: 200 } },
     // Wars and pirates (escorts, losses, stampede on war declarations).
     SCN('characters-victory', { name: 'cv-war-s17', seed: 17, years: 8, wizard: { starCountIndex: 3, dimensionIndex: 3, otherEmpires: { empireCount: 9 }, difficultyIndex: 4, aggressionIndex: 4, piratesIndex: 5, pirateProximityIndex: 2, pirateStrengthIndex: 3 } }),
+    // Colony Economy measurement pair (docs/ECONOMY.md §9): the same seed and setup with the add-on on and with its master
+    // switch off (the faithful game) — private money, facilities, bonds, AI economy and step time.
+    SCN('colony-economy', { years: 6 }),
+    SCN('colony-economy', { name: 'econ-on-s1', seed: 1, years: 10, wizard: { starCountIndex: 3, dimensionIndex: 3, otherEmpires: { empireCount: 9 } } }),
+    SCN('colony-economy', { name: 'econ-off-s1', seed: 1, years: 10, wizard: { starCountIndex: 3, dimensionIndex: 3, otherEmpires: { empireCount: 9 } }, flags: { colonyEconomy: false } }),
     SCN('ai-parity', { name: 'ai-parity-all', seed: 61, years: 6, wizard: { starCountIndex: 3, dimensionIndex: 3, otherEmpires: { empireCount: 9 } }, flagsOff: ['darkFarmsGameEnd'] }),
     // A scenario at the large end, and a scenario under a pirate player.
     SCN('rim-herders', { name: 'rim-herders-pirate', seed: 71, years: 5, wizard: { empireType: 'CustomPirate', starCountIndex: 3, dimensionIndex: 3 } }),

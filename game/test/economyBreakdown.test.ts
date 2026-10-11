@@ -35,3 +35,125 @@ describe('economy breakdown', async () => {
         expect(snap()).toBe(before);
     });
 });
+
+// ---------------------------------------------------------------------------------------------------------------
+// Colony Economy add-on (scenarios/colony-economy; docs/ECONOMY.md): flag-off identity, designations, facilities,
+// bonds and the effect channels.
+// ---------------------------------------------------------------------------------------------------------------
+describe('Colony Economy add-on', async () => {
+    const { createScenarioGame } = await import('./helpers/scenarioGame');
+    const { cachedTickGameRun } = await import('./helpers/gameCache');
+    const { runGameSeconds } = await import('../src/sim/tick/harness');
+    const { stateDigest } = await import('../src/sim/tick/digest');
+    const E = await import('../src/sim/scenario/colonyEconomy/index');
+    const { BOND_RULES, bondQuote, outstanding } = await import('../src/sim/scenario/colonyEconomy/bonds');
+    const { constructionFactor, colonyBonuses, extractionFactor } = await import('../src/sim/scenario/colonyEconomy/effects');
+    const { scenarioQuery } = await import('../src/sim/scenario/hooks');
+    const { ColonyResourceEffect } = await import('../src/sim/developmentLevel');
+    const gameData = await loadGameDataFs();
+    const SC = 'colony-economy';
+    const ALL_OFF = { colonyEconomy: false, econDesignations: false, econFacilities: false, econBonds: false };
+    const ON = { colonyEconomy: true, econDesignations: true, econFacilities: true, econBonds: true };
+
+    it('flags off: byte-identical to the plain seed-1 game (digest, Rnd stream, no state)', () => {
+        const ref = cachedTickGameRun(gameData, { seconds: 900 });
+        const { game } = createScenarioGame(gameData, { scenario: SC, flags: ALL_OFF });
+        expect(Object.keys(game.galaxy.scenario!.flags).sort()).toEqual(Object.keys(ALL_OFF).sort());
+        runGameSeconds(game, 900);
+        expect(stateDigest(game.galaxy)).toBe(stateDigest(ref.game.galaxy));
+        expect(game.galaxy.rnd.drawCount).toBe(ref.game.galaxy.rnd.drawCount);
+        expect(E.ECON_STATE_KEY in game.galaxy.scenario!.state).toBe(false);
+        expect(Object.keys(game.galaxy.scenario!.periodicLast)).toEqual([]);
+    }, 1200000);
+
+    function econGame() {
+        return createScenarioGame(gameData, { scenario: SC, flags: ON }).game;
+    }
+
+    it('designations: cooldown, refusal, effects through the stock channels', () => {
+        const g = econGame().galaxy;
+        const e = g.playerEmpire!;
+        const h = e.capital!;
+        expect(E.suggestDesignation(g, h).designation).toBe(E.Designation.CoreWorld);
+        expect(constructionFactor(g, h, 'yard')).toBe(1);
+        expect(E.setDesignation(g, e, h, E.Designation.Industrial)).toBe(true);
+        expect(E.designationOf(g, h)).toBe(E.Designation.Industrial);
+        expect(constructionFactor(g, h, 'yard')).toBeCloseTo(1.25, 5);
+        expect(scenarioQuery(g, 'colonyConstructionFactor', 1, { habitat: h, kind: 'colony' })).toBeCloseTo(1.25, 5);
+        // Locked for the cooldown.
+        expect(E.designationCooldownDays(g, h)).toBeGreaterThan(1000);
+        expect(E.setDesignation(g, e, h, E.Designation.TradeHub)).toBe(false);
+        // A foreign colony is refused.
+        const other = g.empires.find((x) => x !== e && x.capital !== null && x.pirateEmpireBaseHabitat === null)!;
+        expect(E.designationRefusal(g, e, other.capital!, E.Designation.Resort)).not.toBeNull();
+        // Trade Hub income goes through the IncomeBoost resource bonus.
+        E.colonyRecord(g, h).changedAt = -1;
+        expect(E.setDesignation(g, e, h, E.Designation.TradeHub)).toBe(true);
+        const b = colonyBonuses(g, h);
+        expect(b.some((x) => x.effect === ColonyResourceEffect.IncomeBoost && x.value > 0)).toBe(true);
+        // Mining Hub: own stations nearby mine faster.
+        E.colonyRecord(g, h).changedAt = -1;
+        E.setDesignation(g, e, h, E.Designation.MiningHub);
+        E.bumpEcon(g);
+        const st = e.miningStations.find((m) => m !== null && Math.hypot(m.xpos - h.xpos, m.ypos - h.ypos) < 2_000_000);
+        if (st !== undefined) expect(extractionFactor(g, st)).toBeGreaterThan(1);
+    });
+
+    it('facilities: designation only, slots, exclusive pairs, requests built from the private surplus', () => {
+        const game = econGame();
+        const g = game.galaxy;
+        const e = g.playerEmpire!;
+        const h = e.capital!;
+        // No designation → nothing can be requested.
+        expect(E.requestFacility(g, e, h, 'tradeExchange')).toBe(false);
+        E.setDesignation(g, e, h, E.Designation.TradeHub);
+        // Off-designation is impossible.
+        expect(E.requestFacility(g, e, h, 'university')).toBe(false);
+        expect(E.requestFacility(g, e, h, 'freePort')).toBe(true);
+        // Free Port XOR Customs Bureau.
+        expect(E.requestFacility(g, e, h, 'customsBureau')).toBe(false);
+        const slots = E.colonySlots(g, h);
+        expect(slots).toBeGreaterThanOrEqual(1);
+        e.privateMoney = 2_000_000;
+        runGameSeconds(game, 120);
+        const rec = E.colonyRecord(g, h);
+        expect(rec.facilities.map((f) => f.id)).toContain('freePort');
+        expect(rec.requests).not.toContain('freePort');
+        expect(rec.facilities.length).toBeLessThanOrEqual(slots);
+        expect(rec.facilities.every((f) => E.facilityDef(f.id).designation === E.Designation.TradeHub)).toBe(true);
+        // A change closes the facilities of the old designation.
+        rec.changedAt = -1;
+        expect(E.facilitiesLostByChange(g, h, E.Designation.Resort).length).toBe(rec.facilities.length);
+        E.setDesignation(g, e, h, E.Designation.Resort);
+        expect(E.colonyRecord(g, h).facilities.length).toBe(0);
+    }, 300000);
+
+    it('bonds: limits, money moves between the private sector and the treasury, repayment', () => {
+        const g = econGame().galaxy;
+        const e = g.playerEmpire!;
+        e.privateMoney = 5_000_000;
+        const q = bondQuote(g, e);
+        expect(q.refusal).toBeNull();
+        expect(q.max).toBeGreaterThanOrEqual(BOND_RULES.MIN_BOND);
+        const s0 = e.stateMoney;
+        const p0 = e.privateMoney;
+        const b = E.issueBond(g, e, 10_000_000)!;
+        expect(b).not.toBeNull();
+        expect(b.principal).toBeLessThanOrEqual(q.max);
+        expect(e.stateMoney - s0).toBeCloseTo(b.principal, 3);
+        expect(p0 - e.privateMoney).toBeCloseTo(b.principal, 3);
+        // One issue per gap.
+        expect(E.issueBond(g, e, 10_000)).toBeNull();
+        expect(outstanding(E.peekEmpire(g, e))).toBeCloseTo(b.principal, 3);
+        expect(E.repayBond(g, e, b.id)).toBe(true);
+        expect(outstanding(E.peekEmpire(g, e))).toBe(0);
+    });
+});
+
+describe('Colony Economy skill table', async () => {
+    const { SKILL } = await import('../src/sim/scenario/colonyEconomy/common');
+    const { CharacterSkillType } = await import('../src/sim/characters');
+    it('matches CharacterSkillType', () => {
+        for (const [k, v] of Object.entries(SKILL)) expect(CharacterSkillType[k as keyof typeof CharacterSkillType], k).toBe(v);
+    });
+});

@@ -485,6 +485,11 @@ export function industrialProcessing(galaxy: Galaxy, builtObject: BuiltObject, t
                         const highestSkillLevel = getHighestSkillLevel(characters, CharacterSkillType.MiningRate);
                         num17 *= 1.0 + highestSkillLevel / 100.0;
                     }
+                    // [colonyEconomy] Mining Hub / Mining Consortium HQ: a factor on the rate (the stock cap still applies).
+                    if (galaxy.scenario !== null) {
+                        const k = scenarioQuery(galaxy, 'extractionRateFactor', 1, { builtObject: bo });
+                        if (k !== 1) num17 *= k;
+                    }
                     let flag2 = false;
                     const num18 = 1.0;
                     const prices = galaxyResourceCurrentPrices(galaxy);

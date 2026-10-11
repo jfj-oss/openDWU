@@ -1,6 +1,7 @@
 // M4h — repairs: BaconBuiltObject.cs 4763 DoRepairs (BuiltObject.cs 3498), BaconBuiltObject.cs 2166 CalculateCrewLevel,
 // BuiltObject.1.cs 4474 CheckRepairMissionStillValid, BuiltObject.cs 4077 CheckForRepairs.
 
+import { scenarioQuery } from '../scenario/hooks';
 import { isAiControlled } from '../missions/playerOrder';
 import type { Galaxy } from '../galaxy';
 import type { BuiltObject } from '../builtObject';
@@ -83,7 +84,12 @@ export function doRepairs(galaxy: Galaxy, builtObject: BuiltObject, timePassed: 
         // BuiltObject.CaptainRepairBonus => _CaptainRepairBonus / 100.0 (byte, 100 until ReviewCaptainBonuses runs).
         const cb = captainBonuses(ship);
         const captainRepairBonus = (cb !== null ? cb.repair : 100) / 100.0;
-        const num4 = num3 / captainRepairBonus;
+        let num4 = num3 / captainRepairBonus;
+        // [colonyEconomy] Orbital Drydock: faster self-repair (a factor > 1 shortens the interval); no-op without a handler.
+        if (galaxy.scenario !== null) {
+            const k = scenarioQuery(galaxy, 'repairRateFactor', 1, { builtObject: ship });
+            if (k !== 1 && k > 0) num4 /= k;
+        }
         let num5 = csInt(timePassed / num4);
         if (num5 === 0) {
             const num6 = timePassed / num4;

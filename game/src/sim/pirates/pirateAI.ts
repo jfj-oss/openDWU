@@ -247,7 +247,12 @@ export function reviewPirateControl(galaxy: Galaxy, planet: Habitat, timePassed:
                 const pirateColonyControl2 = pirateControl.at(index4);
                 if (pirateColonyControl2 != null && pirateColonyControl2.controlLevel < val1_1) {
                     const val1_3 = facilityControlFloor(planet, pirateColonyControl2);
-                    const num11 = f(Math.max(f(0.5), Math.min(f(3), f(pirateColonyControl1.controlLevel / f(20)))) * f(0.5 * (timePassed / REAL_SECONDS_IN_GALACTIC_YEAR)));
+                    let num11 = f(Math.max(f(0.5), Math.min(f(3), f(pirateColonyControl1.controlLevel / f(20)))) * f(0.5 * (timePassed / REAL_SECONDS_IN_GALACTIC_YEAR)));
+                    // [colonyEconomy] Frontier / Private Security Firm: slower control growth; no-op without a handler.
+                    if (galaxy.scenario !== null) {
+                        const k = scenarioQuery(galaxy, 'pirateControlGrowthFactor', 1, { habitat: planet });
+                        if (k !== 1) num11 = f(num11 * k);
+                    }
                     const num12 = Math.max(val1_3, Math.min(val1_1, f(pirateControl.at(index4).controlLevel + num11)));
                     pirateControl.at(index4).controlLevel = num12;
                 }
