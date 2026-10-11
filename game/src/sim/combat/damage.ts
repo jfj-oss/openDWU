@@ -77,7 +77,7 @@ import { findNearestAvailableConstructionShip } from '../construction/empireCons
 import { MAX_SOLAR_SYSTEM_SIZE, checkWithinDistancePotential } from '../movement';
 import { builtObjectCompleteTeardown } from './teardown';
 import { baconSettings } from '../data/baconSettings';
-import { scenarioEmit } from '../scenario/hooks';
+import { scenarioEmit, scenarioQuery } from '../scenario/hooks';
 import { humanEmpires, isHumanEmpire } from '../humanEmpires';
 import { noteBuiltObjectEffect } from './effectWatch';
 
@@ -2002,6 +2002,15 @@ export function creatureDamageTarget(galaxy: Galaxy, creature: Creature, abstrac
             excludeBuiltObject.reDefine();
             return true;
         }
+        // mod layer (19j bred horns): a share of the hit skips the armour pass; no-op without a scenario.
+        let pierced = 0;
+        if (galaxy.scenario !== null) {
+            const share = scenarioQuery(galaxy, 'creatureArmorPierce', 0, { creature, target: excludeBuiltObject });
+            if (share > 0) {
+                pierced = csInt(damage * Math.min(1, share));
+                damage -= pierced;
+            }
+        }
         let component = firstComponentByCategoryAndStatus(components, ComponentCategoryType.Armor, ComponentStatus.Normal);
         const iterationCount1 = { count: 0 };
         while (conditionCheckLimit(component !== null && damage > 0, 200, iterationCount1)) {
@@ -2012,6 +2021,7 @@ export function creatureDamageTarget(galaxy: Galaxy, creature: Creature, abstrac
                 component = firstComponentByCategoryAndStatus(components, ComponentCategoryType.Armor, ComponentStatus.Normal);
             }
         }
+        if (pierced > 0) damage = Math.max(0, damage) + pierced;
         let damageReduction = excludeBuiltObject.damageReduction;
         const shipGroup = shipGroupOf(excludeBuiltObject);
         if (shipGroup !== null) damageReduction *= shipGroup.damageControlBonus;

@@ -468,6 +468,18 @@ export interface ScenarioQueries {
      */
     builtObjectSparesCreature: { value: boolean; args: { builtObject: BuiltObject; creature: Creature } };
     /**
+     * combat/damage.ts creatureDamageTarget (Creature.cs 1347 DamageTarget), built-object branch: the share (0-1) of the
+     * hit that skips the armour pass (the armour reactive-rating test and armour absorption) and goes straight to the
+     * components. Stock 0 (19j: mature herder herds' bred horns). Pure, never draws.
+     */
+    creatureArmorPierce: { value: number; args: { creature: Creature; target: BuiltObject } };
+    /**
+     * logistics/colonySupply.ts orderColonyLuxuryResources (Empire.4.cs 4086-4110), after the stock cheapest-first luxury
+     * loop: extra luxury resource ids this colony orders on their own slots, the stock way (CheckResourceMeetsMinimumLevel
+     * + CreateOrder, affordability against private funds). Stock: none (19j herd goods). Pure, never draws.
+     */
+    extraLuxuryOrders: { value: readonly number[]; args: { empire: Empire; habitat: Habitat } };
+    /**
      * movement.ts detectHyperDeny's RestrictedArea/HyperjumpDisabled location loop (BuiltObject.1.cs 1737): true when
      * `builtObject` should ignore `location`'s hyperjump-disable effect (19f: the Silence — pirate ships are immune
      * inside its zone). Default false (not exempt); never draws.

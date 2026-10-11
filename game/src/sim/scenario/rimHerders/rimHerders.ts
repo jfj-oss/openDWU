@@ -45,7 +45,7 @@ import { scenarioMessage, scenarioNews, scenarioText } from '../messages';
 import { noteVoiceCue, voicesOn } from '../llm/voiceCues';
 import { createEmpireMidGame } from '../empireMidGame';
 import { HERD_ATTACK_RANGE, type RimHerd, faunaParam, herdMembers, peekRimFaunaState, rimHerdOfCreature, setRimHerdDocile } from '../rimFauna/common';
-import { spawnRimHerd, startRimHerdMigration } from '../rimFauna/rimFauna';
+import { registerRimHerdDriver, spawnRimHerd, startRimHerdMigration } from '../rimFauna/rimFauna';
 import { registerExtraRimGoods } from '../rimTrade/common';
 import {
     DEFEND_DAYS,
@@ -69,6 +69,8 @@ import {
     rimHerdersState,
 } from './common';
 import { isHumanEmpire } from '../../humanEmpires';
+import { scenarioFlag } from '../state';
+import { herdGoodLuxuryOrders, herderArmorPierce, rimHerdersHusbandryYear, rimHerdersStampedeTick, startStampede } from './husbandry';
 
 const DECISION_PROTECTORATE = 'rimHerders.protectorate';
 const DECISION_CHARACTERS = 'rimHerders.characters';
@@ -312,22 +314,53 @@ function defendColony(galaxy: Galaxy, hc: HerderColony): void {
 /** habitatAttacked: an attack on a herder colony by a ship its herds are not docile to. No Rnd. */
 export function rimHerdersOnHabitatAttacked(galaxy: Galaxy, ev: { habitat: Habitat; attacker: unknown; attackingEmpire: Empire | null }): void {
     const hc = herderColonyOf(galaxy, ev.habitat);
-    if (hc === null) return;
+    if (hc === null || !isBuiltObject(ev.attacker)) return;
+    herderColonyAttacked(galaxy, hc, ev.attacker);
+}
+
+/**
+ * An attack on a free / protectorate herder colony or on one of its herds (rimHerdersTick reads the herd members'
+ * attackers): the herds turn on the attacker (unless docile to it), and wild herds nearby may stampede to the colony
+ * (husbandry.ts startStampede: cooldown, never against the protector or a friendly empire). No Rnd.
+ */
+export function herderColonyAttacked(galaxy: Galaxy, hc: HerderColony, attacker: BuiltObject): void {
     const owner = herderOwner(hc);
-    const attacker = ev.attacker;
-    if (owner === null || !isBuiltObject(attacker) || attacker.empire === null || attacker.empire === owner) return;
+    const e = attacker.empire;
+    if (owner === null || e === null || e === owner || attacker.hasBeenDestroyed) return;
     const herds = herderColonyHerds(galaxy, hc);
-    if (herds.length === 0 || herds.every((h) => h.docileEmpireIds.includes(attacker.empire!.empireId))) return;
-    const st = rimHerdersState(galaxy);
-    const now = galaxyStarDate(galaxy);
-    if (hc.defendUntil <= now) {
-        st.stats.defences++;
-        addStanding(galaxy, attacker.empire.empireId, -STANDING_ATTACK);
-        scenarioMessage(galaxy, attacker.empire, title(), scenarioText('Scenario RimHerders Defend', hc.colony.name), { type: EmpireMessageType.GeneralBadEvent, subject: hc.colony });
+    const docile = herds.length > 0 && herds.every((h) => h.docileEmpireIds.includes(e.empireId));
+    if (docile || e.empireId === hc.protectorId) return;
+    if (herds.length > 0) {
+        const st = rimHerdersState(galaxy);
+        const now = galaxyStarDate(galaxy);
+        if (hc.defendUntil <= now) {
+            st.stats.defences++;
+            addStanding(galaxy, e.empireId, -STANDING_ATTACK);
+            scenarioMessage(galaxy, e, title(), scenarioText('Scenario RimHerders Defend', hc.colony.name), { type: EmpireMessageType.GeneralBadEvent, subject: hc.colony });
+        }
+        hc.lastAttacker = attacker;
+        hc.defendUntil = now + DEFEND_DAYS * GAME_DAY_LENGTH;
+        defendColony(galaxy, hc);
     }
-    hc.lastAttacker = attacker;
-    hc.defendUntil = now + DEFEND_DAYS * GAME_DAY_LENGTH;
-    defendColony(galaxy, hc);
+    const friendly = friendlyEmpires(galaxy, hc);
+    const protector = empireById(galaxy, hc.protectorId);
+    if (protector !== null) friendly.push(protector);
+    startStampede(galaxy, hc, e, friendly);
+}
+
+/** Herd members under attack (their stock Attackers lists): the attack counts as one on the colony. No Rnd. */
+function checkHerdsAttacked(galaxy: Galaxy, hc: HerderColony): void {
+    const owner = herderOwner(hc);
+    if (owner === null) return;
+    for (const herd of herderColonyHerds(galaxy, hc)) {
+        for (const c of herdMembers(herd)) {
+            for (const a of c.attackers) {
+                if (!isBuiltObject(a) || a.hasBeenDestroyed || a.empire === null || a.empire === owner || a.empire.empireId === hc.protectorId) continue;
+                herderColonyAttacked(galaxy, hc, a);
+                return;
+            }
+        }
+    }
 }
 
 /** Feral / hostile herds hunt the ships of the empires they are aggressive toward (raised attack range). */
@@ -843,6 +876,7 @@ export function rimHerdersYear(galaxy: Galaxy, year: number): void {
     rimHerdersTribute(galaxy);
     rimHerdersDomesticate(galaxy, year);
     rimHerdersAiConquest(galaxy);
+    rimHerdersHusbandryYear(galaxy);
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -891,9 +925,11 @@ export function rimHerdersTick(galaxy: Galaxy): void {
         }
     }
     for (const hc of st.colonies) {
+        checkHerdsAttacked(galaxy, hc);
         if (hc.defendUntil > now && herderOwner(hc) !== null) defendColony(galaxy, hc);
         huntHostiles(galaxy, hc, now);
     }
+    rimHerdersStampedeTick(galaxy, setCreatureTarget);
 }
 
 /**
@@ -936,6 +972,16 @@ function resolveCharacters(galaxy: Galaxy, d: ScenarioDecision, option: string):
 // ---------------------------------------------------------------------------------------------------------------
 
 registerExtraRimGoods(herdRimGoods);
+// Herder herds stay bound to their colony: no migration season while it is free or a protectorate (a conquered / lost
+// colony's herds are wild again; feral herds migrate toward the conqueror through migrateTowardConqueror).
+registerRimHerdDriver({
+    drives: () => false,
+    sparesStations: () => false,
+    staysHome: (g, herd) => {
+        const hc = herderColonyOfHerd(g, herd);
+        return hc !== null && (hc.status === 'free' || hc.status === 'protectorate') && scenarioFlag(g, RIM_HERDERS_FLAG);
+    },
+});
 registerScenarioGameStart({ id: 'rimHerders.start', flag: RIM_HERDERS_FLAG, run: (g) => rimHerdersGameStart(g) });
 registerScenarioPeriodic({ id: 'rimHerders.tick', flag: RIM_HERDERS_FLAG, periodDays: 1, run: (g) => rimHerdersTick(g) });
 registerScenarioYearly({ id: 'rimHerders.year', flag: RIM_HERDERS_FLAG, run: (g, y) => rimHerdersYear(g, y) });
@@ -970,6 +1016,16 @@ registerScenarioQuery({
     flag: RIM_HERDERS_FLAG,
     query: 'colonizationTargetValue',
     run: (g, v, a) => (a.habitat.empire === g.independentEmpire && herderColonyOf(g, a.habitat)?.status === 'free' ? Math.min(v, -1) : v),
+});
+registerScenarioQuery({ id: 'rimHerders.pierce', flag: RIM_HERDERS_FLAG, query: 'creatureArmorPierce', run: (g, v, a) => Math.max(v, herderArmorPierce(g, a.creature)) });
+registerScenarioQuery({
+    id: 'rimHerders.herdGoods',
+    flag: RIM_HERDERS_FLAG,
+    query: 'extraLuxuryOrders',
+    run: (g, v, a) => {
+        const ids = herdGoodLuxuryOrders(g, a.empire);
+        return ids.length === 0 ? v : v.length === 0 ? ids : [...v, ...ids.filter((id) => !v.includes(id))];
+    },
 });
 registerScenarioQuery({ id: 'rimHerders.spare', flag: RIM_HERDERS_FLAG, query: 'builtObjectSparesCreature', run: (g, v, a) => v || herderHerdSpared(g, a.builtObject, a.creature) });
 registerScenarioDecision({ id: DECISION_PROTECTORATE, kind: DECISION_PROTECTORATE, flag: RIM_HERDERS_FLAG, resolve: resolveProtectorate, aiChoose: (g, d) => (empirePrefersProtectorate(g, d.empire) ? 'accept' : 'decline') });

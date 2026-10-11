@@ -65,6 +65,8 @@ import {
 export interface RimHerdDriver {
     drives: (galaxy: Galaxy, herd: RimHerd) => boolean;
     sparesStations: (galaxy: Galaxy, herd: RimHerd) => boolean;
+    /** Optional (19j): the herd never joins a migration season (a herder colony's herd stays on its range). */
+    staysHome?: (galaxy: Galaxy, herd: RimHerd) => boolean;
 }
 const herdDrivers: RimHerdDriver[] = [];
 
@@ -74,6 +76,11 @@ export function registerRimHerdDriver(driver: RimHerdDriver): void {
 
 function herdDrivenElsewhere(galaxy: Galaxy, herd: RimHerd): boolean {
     for (const d of herdDrivers) if (d.drives(galaxy, herd)) return true;
+    return false;
+}
+
+function herdStaysHome(galaxy: Galaxy, herd: RimHerd): boolean {
+    for (const d of herdDrivers) if (d.staysHome !== undefined && d.staysHome(galaxy, herd)) return true;
     return false;
 }
 
@@ -169,6 +176,24 @@ export function spawnRimHerd(galaxy: Galaxy, systemIndex: number, size: number, 
     st.rev++;
     st.stats.herdsSpawned++;
     return herd;
+}
+
+/**
+ * 19j husbandry: one calf joins the herd next to its leader (the yearly breeding of rimFaunaYear: the ported
+ * GenerateCreaturesAtLocation, a Kaltor configured as a follower). Draws galaxy.rnd. Null without a live leader.
+ */
+export function addRimHerdCalf(galaxy: Galaxy, herd: RimHerd): Creature | null {
+    const leader = herd.leader;
+    if (leader === null || !creatureAlive(galaxy, leader)) return null;
+    const calf = generateCreaturesAtLocation(galaxy, CreatureType.Kaltor, 1, leader.xpos, leader.ypos, HERD_COHESION, 400);
+    const st = rimFaunaState(galaxy);
+    for (const c of calf) {
+        configureMember(galaxy, c, false, leader.name);
+        herd.followers.push(c);
+        st.stats.births++;
+    }
+    st.rev++;
+    return calf[0] ?? null;
 }
 
 /**
@@ -422,7 +447,7 @@ export function rimFaunaMigrationSeason(galaxy: Galaxy): number {
     const chance = faunaParam(galaxy, 'rimFaunaMigrationChance');
     const started: RimHerd[] = [];
     for (const herd of st.herds) {
-        if (herd.leader === null || herd.migration !== null || herdDrivenElsewhere(galaxy, herd)) continue;
+        if (herd.leader === null || herd.migration !== null || herdDrivenElsewhere(galaxy, herd) || herdStaysHome(galaxy, herd)) continue;
         if (galaxy.rnd.nextDouble() >= chance) continue;
         if (herd.homeSystemIndex !== herd.birthSystemIndex) {
             startRimHerdMigration(galaxy, herd, herd.birthSystemIndex, true);

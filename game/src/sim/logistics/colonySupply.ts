@@ -574,6 +574,8 @@ function resourceListAt(list: SortedResource[], index: number): SortedResource {
     return list[index];
 }
 
+const NO_EXTRA_LUXURIES: readonly number[] = [];
+
 /**
  * Empire.4.cs 3186-3301 (2817-2932 pirate): OrderList orders = Galaxy.Orders.GetOrders(habitat) (+ the space port's),
  * CheckResourcesMeetingMinimumLevel(Luxury, num6), and when _ControlColonyDevelopment the luxury / restricted CreateOrder
@@ -615,6 +617,16 @@ export function orderColonyLuxuryResources(galaxy: Galaxy, empire: Empire, habit
         if (num25 < getPrivateFunds(empire)) {
             if (builtObject !== null && builtObject.isSpacePort) empireCreateOrder(galaxy, empire, builtObject, resource, amountToOrder, false, OrderType.Standard, true);
             else empireCreateOrder(galaxy, empire, habitat, resource, amountToOrder, false, OrderType.Standard, true);
+        }
+    }
+    // Mod layer (19j herd goods): extra luxuries on their own slots, ordered the stock way; no-op without a scenario.
+    if (galaxy.scenario !== null) {
+        for (const id of scenarioQuery(galaxy, 'extraLuxuryOrders', NO_EXTRA_LUXURIES, { empire, habitat })) {
+            const extra = new ResourceRef(id);
+            const amountToOrder = checkResourceMeetsMinimumLevelHabitat(galaxy, extra, num6, csInt(num6 * 1.5), habitat, orders).amountToOrder;
+            if (amountToOrder <= 0 || !(amountToOrder * prices[id] < getPrivateFunds(empire))) continue;
+            if (builtObject !== null && builtObject.isSpacePort) empireCreateOrder(galaxy, empire, builtObject, extra, amountToOrder, false, OrderType.Standard, true);
+            else empireCreateOrder(galaxy, empire, habitat, extra, amountToOrder, false, OrderType.Standard, true);
         }
     }
     if (resourceList2.length > 0 && habitatDevelopmentLevel(habitat) >= 80) {

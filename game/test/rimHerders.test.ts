@@ -57,7 +57,9 @@ import {
     rimHerdersTribute,
     rimHerdersWarn,
     tagTamedShips,
+    herderColonyAttacked,
 } from '../src/sim/scenario/rimHerders/rimHerders';
+import { HEAL_RATE, HERD_YOUNG_SIZE, herderArmorPierce, matureHerd, rimHerdersHusbandryYear } from '../src/sim/scenario/rimHerders/husbandry';
 
 import { processMessages } from '../src/sim/diplomacyTick';
 
@@ -400,5 +402,84 @@ describe('19j rim herders — faithful path, save', () => {
         const summary = (g: Galaxy): string =>
             JSON.stringify([rimHerdersState(g).stats, rimHerdersState(g).standing, rimHerdersState(g).colonies.map((c) => [c.status, c.herdIds, c.colony.cargo?.items.map((x) => [x.commodity.resourceId, x.amount])])]);
         expect(summary(loaded.galaxy)).toBe(summary(a.galaxy));
+    }, 600000);
+});
+
+describe('19j rim herders — husbandry: regrowth, maturity, bred traits, stampede, herd-good demand', () => {
+    it('a herdless colony regrows a young herd; herds mature yearly; bred traits unlock with maturity', () => {
+        const game = createScenarioGame(base, { scenario: 'rim-herders', params: PARAMS }).game;
+        const g = game.galaxy;
+        const st = rimHerdersState(g);
+        const hc = freeColonies(g)[0];
+        // Wipe the colony's herds: the next yearly pass marks it herdless, rimHerdersRegrowYears later it regrows.
+        for (const h of herderColonyHerds(g, hc)) for (const c of herdMembers(h)) c.completeTeardown();
+        hc.herdIds = [];
+        rimHerdersHusbandryYear(g);
+        expect(hc.herdlessSince).toBeDefined();
+        hc.herdlessSince = galaxyStarDate(g) - herderParam(g, 'rimHerdersRegrowYears') * YEAR_LENGTH;
+        rimHerdersHusbandryYear(g);
+        const herds = herderColonyHerds(g, hc);
+        expect(herds.length).toBe(1);
+        expect(st.stats.regrown).toBe(1);
+        const herd = herds[0];
+        expect(herd.docileEmpireIds).toContain(hc.colony.empire!.empireId);
+        for (const c of herdMembers(herd)) expect(c.size).toBe(HERD_YOUNG_SIZE);
+        // Maturity: Size grows, AttackStrength = Size / 20 and DamageKillThreshhold = Size × 1.4 follow.
+        const leader = herd.leader!;
+        matureHerd(g, herd, false);
+        expect(leader.size).toBeGreaterThan(HERD_YOUNG_SIZE);
+        expect(leader.attackStrength).toBe(Math.trunc(leader.size / 20));
+        expect(leader.damageKillThreshold).toBe(Math.trunc(leader.size * 1.4));
+        expect(herderArmorPierce(g, leader)).toBe(0);
+        for (let i = 0; i < 40; i++) matureHerd(g, herd, false);
+        expect(leader.size).toBe(600);
+        expect(leader.attackStrength).toBe(30);
+        expect(leader.damageKillThreshold).toBe(840);
+        expect(leader.healRate).toBeCloseTo(HEAL_RATE, 5);
+        expect(herderArmorPierce(g, leader)).toBe(herderParam(g, 'rimHerdersPierceShare'));
+        // The armour-pierce hook: a mature herd member's hit partly skips the armour pass.
+        const e = aiEmpires(g)[0];
+        const ship = militaryShip(e) ?? e.builtObjects[0];
+        expect(scenarioQuery(g, 'creatureArmorPierce', 0, { creature: leader, target: ship })).toBe(herderParam(g, 'rimHerdersPierceShare'));
+        // Conquered herds do not mature.
+        hc.status = 'conquered';
+        const before = herdMembers(herd).map((c) => c.size);
+        rimHerdersHusbandryYear(g);
+        expect(herdMembers(herd).map((c) => c.size)).toEqual(before);
+        expect(herderArmorPierce(g, leader)).toBe(0);
+    }, 600000);
+
+    it('an attack on a herder colony rallies wild herds nearby (cooldown; never the protector); herd goods get their own luxury slot', () => {
+        const game = createScenarioGame(base, { scenario: 'rim-herders', params: { ...PARAMS, rimHerdersStampedeRange: 1e9 } }).game;
+        const g = game.galaxy;
+        const st = rimHerdersState(g);
+        const hc = freeColonies(g)[0];
+        const e = aiEmpires(g).find((x) => militaryShip(x) !== null)!;
+        const ship = militaryShip(e)!;
+        herderColonyAttacked(g, hc, ship);
+        expect(st.stats.stampedes).toBe(1);
+        const rallied = (st as { rallies?: { herdId: number; attackerId: number }[] }).rallies ?? [];
+        expect(rallied.length).toBeGreaterThan(0);
+        expect(rallied.every((r) => r.attackerId === e.empireId)).toBe(true);
+        for (const r of rallied) expect(rimHerdersState(g).colonies.some((c) => c.herdIds.includes(r.herdId))).toBe(false);
+        // Cooldown: a second attack right away rallies no one new.
+        herderColonyAttacked(g, hc, ship);
+        expect(st.stats.stampedes).toBe(1);
+        // Never against a friendly empire.
+        const hc2 = freeColonies(g)[1] ?? hc;
+        hc2.stampedeReadyAt = 0;
+        st.standing[e.empireId] = 30;
+        hc2.neighbourSince[e.empireId] = galaxyStarDate(g);
+        const n = st.stats.stampedes;
+        herderColonyAttacked(g, hc2, ship);
+        expect(st.stats.stampedes).toBe(n);
+        // The rally steers the wild herds toward the colony (hyper travel on while far).
+        runGameSeconds(g, 30);
+        // Herd goods: ordered on their own slot by colonies of empires that explored a herder colony.
+        const ids = harvestResourceIds(g);
+        const knows = aiEmpires(g).find((x) => st.colonies.some((c) => x.visibility.checkSystemExplored(c.colony.systemIndex)));
+        if (knows !== undefined) expect(scenarioQuery(g, 'extraLuxuryOrders', [], { empire: knows, habitat: knows.capital! })).toEqual(ids);
+        st.standing[e.empireId] = -1;
+        expect(scenarioQuery(g, 'extraLuxuryOrders', [], { empire: e, habitat: e.capital! })).toEqual([]);
     }, 600000);
 });

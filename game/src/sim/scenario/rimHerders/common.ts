@@ -76,6 +76,13 @@ export const RIM_HERDERS_PARAM_DEFAULTS = {
     rimHerdersCorridor: 60000,
     rimHerdersWarnPenalty: 15,
     rimHerdersConquestChance: 0.35,
+    rimHerdersMatureYears: 25,
+    rimHerdersRegrowYears: 4,
+    rimHerdersPierceShare: 0.8,
+    rimHerdersStampedeRange: 4000000,
+    rimHerdersStampedeHerds: 3,
+    rimHerdersStampedeDays: 60,
+    rimHerdersStampedeCooldown: 360,
 } as const;
 
 export type RimHerdersParam = keyof typeof RIM_HERDERS_PARAM_DEFAULTS;
@@ -116,6 +123,9 @@ export interface HerderColony {
     warned: number[];
     /** Empires the herds are aggressive toward (ignored warnings), until a star date. */
     hostile: { empireId: number; until: number }[];
+    /** Husbandry (husbandry.ts): star date the colony lost its last herd, and the next date a stampede may start. */
+    herdlessSince?: number;
+    stampedeReadyAt?: number;
 }
 
 export interface HerderCharacter {
@@ -141,6 +151,11 @@ export interface RimHerdersStats {
     herdingStolen: number;
     domesticated: number;
     conquestOrders: number;
+    /** Husbandry (husbandry.ts; absent in older saves): young herds regrown, extra calves, stampedes and herds rallied. */
+    regrown?: number;
+    calves?: number;
+    stampedes?: number;
+    stampedeHerds?: number;
 }
 
 /** Saved state (`scenarioState(galaxy, 'rimHerders')`). */

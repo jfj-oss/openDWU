@@ -27,6 +27,13 @@
     { "name": "rimHerdersWarnDays", "label": "Days before the migration season that herders warn", "default": 30, "min": 1, "max": 180 },
     { "name": "rimHerdersCorridor", "label": "Migration corridor radius around herd ranges", "default": 60000, "min": 0, "max": 1000000 },
     { "name": "rimHerdersWarnPenalty", "label": "Standing lost for ignoring a migration warning", "default": 15, "min": 0, "max": 200 },
-    { "name": "rimHerdersConquestChance", "label": "Yearly chance an aggressive AI neighbour moves to conquer", "default": 0.35, "min": 0, "max": 1 }
+    { "name": "rimHerdersConquestChance", "label": "Yearly chance an aggressive AI neighbour moves to conquer", "default": 0.35, "min": 0, "max": 1 },
+    { "name": "rimHerdersMatureYears", "label": "Years a herd takes to grow from young to full size (two thirds under a protectorate)", "default": 25, "min": 1, "max": 200 },
+    { "name": "rimHerdersRegrowYears", "label": "Years before a herdless herder colony raises a new young herd (half under a protectorate)", "default": 4, "min": 1, "max": 50 },
+    { "name": "rimHerdersPierceShare", "label": "Share of a mature herd's hit that pierces armour", "default": 0.8, "min": 0, "max": 1 },
+    { "name": "rimHerdersStampedeRange", "label": "Range wild herds rally from to defend an attacked herder colony", "default": 4000000, "min": 0, "max": 20000000 },
+    { "name": "rimHerdersStampedeHerds", "label": "Wild herds that rally to one stampede", "default": 3, "min": 0, "max": 10 },
+    { "name": "rimHerdersStampedeDays", "label": "Days a stampede lasts", "default": 60, "min": 1, "max": 360 },
+    { "name": "rimHerdersStampedeCooldown", "label": "Days between stampedes at one colony", "default": 360, "min": 1, "max": 3600 }
   ]
 }
