@@ -166,6 +166,12 @@ export const COMMAND_FAILURE: FailureTable = {
     cvRequestGovernor: no,
     cvSetAutomation: no,
     cvSaveVipDesign: no,
+    dietVote: no,
+    dietVeto: no,
+    dietSetDelegate: no,
+    dietPropose: no,
+    dietEmergency: no,
+    dietDeclareEmperor: no,
     llmStrategic: () => null,
 };
 

@@ -25,3 +25,77 @@ CV Local Governor;{0} has risen to govern {1}.
 CV Suggestion Title;Governor suggestion
 CV Suggestion Reserve;Suggested: send {0} to govern {1}.
 CV Suggestion Move;Suggested: move {0} from {2} to {1} (+{3}% fit).
+'Characters & Victory part 2: the Interstellar Diet.
+Diet Founded;The {0} have founded the Interstellar Diet. It meets every two or three years at a host world, the strongest member's colony nearest the galaxy centre; each member sends its most important governor as delegate, and only delegates present vote.
+Diet Session Title;Interstellar Diet: session called
+Diet Emergency Title;Interstellar Diet: emergency session
+Diet Results Title;Interstellar Diet: results
+Diet Session Called News;The Interstellar Diet convenes at {0} (host: the {1}). On the agenda: {2}.
+Diet Emergency Called News;An emergency session of the Interstellar Diet is called at {0} (host: the {1}). On the agenda: {2}.
+Diet Session Called You;The Interstellar Diet convenes at {0}. Our delegate: {1}. On the agenda: {2}. Open the Interstellar Diet (top bar) to vote or change our delegate.
+Diet No Delegate;none (no governor to send: we will have no vote)
+Diet No Motions;nothing
+Diet Floor Open;The floor of the Interstellar Diet at {0} is open: delegates present may now vote.
+Diet Result Line;{0}: {1} ({2} for, {3} against).
+Diet Result passed;passed
+Diet Result failed;failed
+Diet Result vetoed;vetoed by the Regent
+Diet Session Closed News;The Interstellar Diet at {0} has voted. {1}
+Diet Seat Moved News;The seat of the Interstellar Diet moves to {0}, world of the {1}.
+Diet Veto News;The Regent, the {0}, vetoes "{1}".
+Diet Regent Title;Interstellar Diet: a Regent
+Diet Regent News;The Interstellar Diet elects the {0} as its Regent.
+Diet Regent;The {0} hold the Regency of the Interstellar Diet: one veto per session, an emergency session every few years.
+Diet Expelled Title;Interstellar Diet: expulsion
+Diet Expelled News;The Interstellar Diet expels the {0}.
+Diet Expelled You;We have been expelled from the Interstellar Diet.
+Diet Automatic Sanctions News;The {0} {1}: the Interstellar Diet imposes sanctions at once.
+Diet Automatic Sanctions You;We {0}: the Interstellar Diet has imposed sanctions on us and sent its enforcers.
+Diet Truce Broken;broke the Diet's truce with the {0}
+Diet Crime Title;Crime against the Interstellar Diet
+Diet Crime News;The {0} have committed a crime against the Interstellar Diet: {1}.
+Diet Crime;The {0} have committed a crime against the Interstellar Diet: {1}.
+Diet Crime Delegate;an attack on the delegate of the {0}
+Diet Crime Host;an attack on the Diet's host world {0} in session
+Diet Defiance News;The {0} defy the Interstellar Diet: they have attacked its enforcers.
+Diet Violation Title;Interstellar Diet: a measure broken
+Diet Violation;The {0} have broken the Diet's measure: {1}.
+Diet Law Lapsed Title;Interstellar Diet: a measure lapses
+Diet Law Lapsed;The Diet's measure "{0}" has lapsed.
+Diet Delegate Title;Interstellar Diet: our delegate
+Diet Delegate Arrived;{0} has arrived at {1} for the Interstellar Diet.
+Diet Delegate Lost;Our delegate {0} has been lost on the way: we will have no vote at this session.
+Diet Dues Title;Interstellar Diet dues
+Diet Dues;We have paid {0} credits in dues to the Interstellar Diet.
+Diet Bounty Title;Interstellar Diet bounty
+Diet Bounty;The Interstellar Diet pays us a bounty of {0} credits for a warship of the outlawed {1}.
+Diet Enforcers Name;Diet Enforcers
+Diet Enforcer Prefix;Enforcer
+Diet Enforcer Fleet;Enforcer Fleet
+Diet Enforcers Title;Interstellar Diet enforcers
+Diet Enforcers Sent News;The Interstellar Diet sends {0} enforcer ships from {2} to blockade the {1}.
+Diet Enforcers Sent You;The Interstellar Diet has sent {0} enforcer ships from {1} to blockade us. They only return fire; attacking them is open defiance of every member.
+Diet Enforcers Destroyed News;The Interstellar Diet's enforcers blockading the {0} have been destroyed.
+Diet Emperor Title;Interstellar Diet: an Emperor
+Diet Emperor News;The Regent, the {0}, declare themselves Emperor! If they hold {1} and their capital {2} for {3} years, the galaxy is theirs. Every empire may go to war with them.
+Diet Emperor You;We have declared ourselves Emperor. Hold {0} and our capital {1} until the countdown ends.
+Diet Emperor Other;The {0} have declared themselves Emperor. If they hold {1} and {2} until the countdown ends, they win the galaxy.
+Diet Emperor Won News;The {0} hold out: they rule the galaxy as Emperor.
+Diet Emperor Won Text;The {0} have held their capital and the Diet's world through the countdown and rule the galaxy as Emperor.
+Diet Emperor Failed News;The Emperor's bid of the {0} has failed.
+Diet Emperor Failed;The {0} could not hold on: their bid to become Emperor has failed.
+Diet Reputation Crime;Crime against the Interstellar Diet
+Diet Reputation Defiance;Defied the Diet's enforcers
+Diet Reputation Violation;Broke a measure of the Interstellar Diet
+Diet Reputation Usurper;Failed bid for Emperor
+Diet Motion Truce;Enforce a truce between the {0} and the {1}
+Diet Motion FreeTrade;Galactic free trade among all members
+Diet Motion BanPlanetDestroyers;Ban the use of planet destroyers
+Diet Motion BanBombard;Ban the bombardment of colonies
+Diet Motion Outlaw;Outlaw the {0}: members' warships welcome in each other's territory, bounties on their ships
+Diet Motion Protect;Protect the independent worlds: no member may invade them
+Diet Motion Open;Open the independent worlds to members
+Diet Motion Claim;Recognise the claim of the {0} to {1} (held by the {2})
+Diet Motion Expel;Expel the {0} from the Diet
+Diet Motion Regent;Elect the {0} as Regent of the Diet
+Diet Motion Repeal;Repeal: {0}

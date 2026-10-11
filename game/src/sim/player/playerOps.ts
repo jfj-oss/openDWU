@@ -133,6 +133,8 @@ import { applyPopulationPolicyToAllColonies, renameColony, scrapColonyFacility, 
 import { isHumanEmpire, setAiSeat } from '../humanEmpires';
 import { setHumanMessageOptions } from '../perHumanState';
 import { acceptGovernorSuggestion, requestGovernor, setCvAutomation } from '../scenario/charactersVictory/governorsCv';
+import { dietPlayerDeclareEmperor, dietPlayerEmergency, dietPlayerVeto, dietPlayerVote, dietPropose, dietSetDelegate } from '../scenario/charactersVictory/diet/diet';
+import type { DietMotionKind } from '../scenario/charactersVictory/diet/dietState';
 import { savePlayerVipDesign } from '../scenario/charactersVictory/shuttleDesign';
 
 /** Automation / control fields of Empire the UI sets directly (Game Options panel and the automation prompts). */
@@ -580,6 +582,19 @@ export const PLAYER_OPS = {
     cvSetAutomation: (galaxy: Galaxy, empire: Empire, opts: { governors?: boolean; escorts?: boolean; escortLevel?: number }) => setCvAutomation(galaxy, empire, opts),
     /** Save the edited VIP Shuttle design (its name and component ids; only the allowed families are kept). */
     cvSaveVipDesign: (galaxy: Galaxy, empire: Empire, name: string, componentIds: number[]) => savePlayerVipDesign(galaxy, empire, name, componentIds),
+    /** The Interstellar Diet: our vote on a motion of the session ('yes' / 'no' / 'abstain'; counts only if our delegate is present). */
+    dietVote: (galaxy: Galaxy, empire: Empire, motionId: number, vote: string) => dietPlayerVote(galaxy, empire, motionId, vote),
+    /** The Regent's veto of a motion of this session (again to withdraw it; one per session). */
+    dietVeto: (galaxy: Galaxy, empire: Empire, motionId: number) => dietPlayerVeto(galaxy, empire, motionId),
+    /** Our delegate (a governor; null = the most important governor); sent at once while delegates gather. */
+    dietSetDelegate: (galaxy: Galaxy, empire: Empire, character: Character | null) => dietSetDelegate(galaxy, empire, character),
+    /** Move a motion (for the next session, or this one while delegates gather). */
+    dietPropose: (galaxy: Galaxy, empire: Empire, kind: string, target: Empire | null, other: Empire | null, colony: Habitat | null, resourceId: number) =>
+        dietPropose(galaxy, empire, { kind: kind as DietMotionKind, target, other, colony, resourceId }),
+    /** The Regent calls an emergency session (with our proposal, if any). */
+    dietEmergency: (galaxy: Galaxy, empire: Empire) => dietPlayerEmergency(galaxy, empire),
+    /** The Regent declares themselves Emperor (the countdown victory). */
+    dietDeclareEmperor: (galaxy: Galaxy, empire: Empire) => dietPlayerDeclareEmperor(galaxy, empire),
     // [charactersVictory] end
     // [llm] begin — 19s-3 strategic upgrade (scenario/llm/strategic.ts; flag llmStrategic, no-op when off): the local
     // model's validated choice for an AI empire (`empire` = that AI), or its refusal; the only way a model choice

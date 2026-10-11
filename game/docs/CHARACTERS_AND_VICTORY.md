@@ -12,8 +12,8 @@ Every rule is labelled:
 - **to verify**: not yet checked against the C#.
 
 Build phases: **Part 1** (this branch): VIP transport + governors on every colony + their UI and AI.
-**Part 2** (a later agent): the Galactic Council, built on Part 1's hooks (§10) and on the existing `galactic-council`
-add-on (§3). **Later**: other victory ideas (§8).
+**Part 2** (built): the Interstellar Diet, the galactic council extended on Part 1's hooks (§10) and the existing
+`galactic-council` add-on (§3, §7). **Later**: other victory ideas (§8).
 
 ---
 
@@ -33,7 +33,7 @@ add-on (§3). **Later**: other victory ideas (§8).
 | Skills (CharacterSkillType) | CharacterSkillType.cs has ColonyIncome, TradeIncome, TourismIncome, ColonyCorruption, ColonyHappiness, PopulationGrowth, MiningRate, TroopRecruitment, Military/Civilian/ColonyShipConstructionSpeed and FacilityConstructionSpeed. | Confirmed. |
 | Academies and RegionalCapital "are real PlanetaryFacilityTypes" | PlanetaryFacilityType.cs has RegionalCapital, MilitaryAcademy, SpyAcademy, NavalAcademy and ScienceAcademy. In CheckForCharacterAppearance they only scale the appearance chance (×(1 + value/100), at most ×2). They never set where a character appears. | Spawning at the academy is a **new** rule (§5.2). |
 | Relations and missions (TradeSanctions, Truce, FreeTradeAgreement; Escort, Blockade, Bombard) | DiplomaticRelationType.cs and BuiltObjectMissionType.cs have them all (plus WaitAndBombard). | Confirmed. |
-| "Recognising a claim: TO VERIFY how the original penalises conquest" | **Resolved.** The original has no claims and does not penalise taking a colony in a war. The penalties are: **(a)** declaring war: −1 reputation (`CivilityRating -= Galaxy.DeclareWarReputationImpact` = 1.0, Empire.8.cs:2712 ChangeDiplomaticRelation) and −40 IncidentEvaluation with the target (`IncidentImpactWhenDeclareWar` = 40, 2704). **(b)** Invading an **independent** colony: −4 reputation per attack notification unless it is a bombardment (`IndependentColonyInvadeReputationImpact` = 4.0, Galaxy.7.cs:3171 NotifyOfAttack). The owner of the territory it lies in also loses 50 IncidentEvaluation towards the attacker (3174-3180). **(c)** Killing population by bombardment: reputation scaled by the attacker's civility (BuiltObject.2.cs:5982). Exterminate or enslave policies: Empire.2.cs:3357. **(d)** The victim's war-damage ledger (Galaxy.3.cs:529/541 InflictWarDamage), which drives war weariness and peace. | Part 2's "recognise a claim" waives (a) and (b) for the claimant against the named colony, and drops the condemnation motion against it (§7.4). |
+| "Recognising a claim: TO VERIFY how the original penalises conquest" | **Resolved.** The original has no claims and does not penalise taking a colony in a war. The penalties are: **(a)** declaring war: −1 reputation (`CivilityRating -= Galaxy.DeclareWarReputationImpact` = 1.0, Empire.8.cs:2712 ChangeDiplomaticRelation) and −40 IncidentEvaluation with the target (`IncidentImpactWhenDeclareWar` = 40, 2704). **(b)** Invading an **independent** colony: −4 reputation per attack notification unless it is a bombardment (`IndependentColonyInvadeReputationImpact` = 4.0, Galaxy.7.cs:3171 NotifyOfAttack). The owner of the territory it lies in also loses 50 IncidentEvaluation towards the attacker (3174-3180). **(c)** Killing population by bombardment: reputation scaled by the attacker's civility (BuiltObject.2.cs:5982). Exterminate or enslave policies: Empire.2.cs:3357. **(d)** The victim's war-damage ledger (Galaxy.3.cs:529/541 InflictWarDamage), which drives war weariness and peace. | Part 2's "recognise a claim" waives (a) for the claimant against the named colony's owner and drops the condemnation motion against it (§7.4). **(b) is not ported** (attackAI.ts notifyOfAttackHabitat ports only the non-independent branch), so there is nothing to waive yet. |
 
 ---
 
@@ -71,7 +71,7 @@ it. We only keep its tests and its flag-off check green.
 - **Instant moves that stay instant (new; documented exemptions).** `Character.DefectToEmpire` (Character.cs:4451) is a change of allegiance, not a trip. It stays instant for every caller: Empire events (empireEvents.ts:1835), internal politics' defections and secessions (politics.ts:485/518), internal security's exile (security.ts:633/783) and frontier breakaways (frontier.ts:923, where the governor becomes the new state's Leader). The same goes for Activate at game start, the stock CompleteLocationTransfer calls on invasion (InvadingCharacters) and Kill. Every **TransferToNewLocation** is a trip, including internal security's arrests (security.ts:641, a move to the capital).
 - **Council extension point.** Part 2 extends galactic-council through its `registerCouncilExtension` (council.ts:206-228: extra motion candidates, exclusions, vote bias), as the Exchange does (exchange.ts:1549). What it lacks (host world, delegates, enforcers, Regent, victory) is new state kept beside the Council record. **Name clash (reported):** `COUNCIL_NAMES` includes "Galactic Concord" (council.ts:354), which collides with rimTrade's Oranthi "Concord". Part 2 should rename it or skip it when rimTrade runs.
 - **Attitude writes** use `applyReputation` (reputation/ledger.ts:225). With the ledger off it writes the stock IncidentEvaluation as before; with it on it records a caused entry.
-- **Blockade target sampling** (Part 2 enforcers): reuse the sampling in lively-galaxy warGoals and rimTrade passive.
+- **Blockade target sampling** (Part 2 enforcers): as built, neither lively-galaxy warGoals nor rimTrade passive assigns a Blockade or samples targets (warGoals only reads blockades), so the enforcers draw their own weighted station (§7.4) and use the stock ImplementBlockade.
 - **Hook order:** packages.ts imports `security/security` twice (40 and 43; the second import is a no-op in ES modules). This add-on is imported after frontier, and its stability term has its own `order`, so the existing terms keep their fold order.
 
 **Rule (new):** this add-on never re-implements another add-on's mechanism. Where one exists we register a term, record a
@@ -230,53 +230,169 @@ short candidate list: vacant colonies, plus the 8 worst-fit governed colonies.
 
 ---
 
-## 7. Galactic Council (Part 2; extends `galactic-council`)
+## 7. The Interstellar Diet (Part 2; extends `galactic-council`)
 
-Not built in Part 1. The rules are recorded here for the Part 2 agent. Conflicts C1–C3 (§3) are open.
+As built. Code: `src/sim/scenario/charactersVictory/diet/` (`dietState.ts` state and params, `diet.ts` sessions,
+effects, crimes, the Regent and the Emperor, `dietAi.ts` weights / votes / proposals, `dietEnforcers.ts` the
+blockades, `dietView.ts` the window model and map marks); flag `cvCouncil` (plus `cvDietVictory`), under the master
+switch. `scenarios/characters-victory` now **includes** `galactic-council` (so the council runs with the add-on), and
+the galactic-council manifest is marked `addableToSave` (its state starts lazily), so the add-on can still be added to
+a save.
+
+**Decisions on C1–C3 (the user's: "use OUR plan, extend the existing council").** The Diet is the existing council
+record (founding, membership, chair, blocs, standing sanctions, `c.results`), extended through
+`registerCouncilExtension` with three small new extension fields (`councilName`, `foundingText`, `ownsSessions`):
+with the Diet on, the council's yearly review keeps everything except the yearly motion, and the Diet holds the
+sessions. The existing founding rule stays (3 met empires, AI join threshold): in the soaks every normal empire but
+one had joined within 5–6 years, so it was not changed. With the add-on off nothing registers a value: the galactic
+council is byte-identical (its tests and pins unchanged).
+
+**Name (reported).** With the Diet on the council is founded as "Interstellar Diet" (texts read "the Interstellar
+Diet"; the window is "The Interstellar Diet"). "Galactic Concord" is **not** removed from `COUNCIL_NAMES`: removing it
+shifts the name every council-only game draws (`seed % length`), i.e. changes the galactic-council add-on with
+Characters & Victory off. So the new name applies only when the add-on is on, as the user allowed. In a CV game
+the clash with rimTrade's Concord cannot happen (the council is always the Diet).
 
 ### 7.1 Host and seat
 
-- **new (real inputs).** The host is the strongest member by the real Galaxy.1.cs:2863 CalculateEmpireScore.
-- **new.** The council world is the host's colony closest to the galaxy centre. The seat moves when the strongest changes, at the next session.
-- **new.** The host colony gets bonuses of the real Wonder types (WonderType.cs: ColonyIncome, ColonyHappiness, ColonyPopulationGrowth, ColonyConstructionSpeed), applied through the same ported wonder paths, plus visitor trade and tourism (the real ScenicFactor tourism path).
+- **new (real inputs).** At every session call the host is the member with the highest Galaxy.1.cs:2863
+  CalculateEmpireScore (`achievements.ts calculateEmpireScore`); the Diet's world is that empire's populated colony
+  nearest the galaxy centre (`sizeX / 2, sizeY / 2`). When the strongest member changed, the seat moves then (a news
+  line).
+- **new (real paths).** The host world gets a **virtual wonder** of the real WonderType kinds, merged into the stock
+  wonder paths through one new query, `colonyWonderBonus` (guarded lines at taxes.ts
+  recalculateCriticalResourceSupplyFactors = Habitat.cs 5124 for ColonyIncome / ColonyPopulationGrowth, the two
+  ColonyHappiness reads = Habitat.cs 638 / 5822, and constructionQueue.ts baconReviewConstructionSpeed =
+  BaconConstructionQueue.cs 45 for ColonyConstructionSpeed): +15 % income, +15 % happiness, +15 % growth, +25 %
+  construction (params `dietHost*`). Tourism: a scenic factor of at least 1.5 (`colonyScenicFactor` at
+  civilianAI.ts calculateScenicFactorIncludingRuinsWonders, Habitat.cs 1116 — the real tourism and resort paths
+  read it). Visitor trade: during a session the host world's tax revenue (`colonyTaxRevenue`) grows 3 % per visiting
+  delegate present.
+- **new.** Visiting delegates are characters at the host world, so the stock colony-skill rule (Habitat.Characters,
+  highest skill) applies to them too: during a session the best visitor's skills count at the host world. Stock
+  behaviour, kept.
 
 ### 7.2 Delegates
 
-- **new.** Each member's delegate is its **most important governor** (Part 1's `mostImportantGovernor`: the highest-value colony by strategic value, else the highest skills), who must travel to the council world by VIP shuttle (Part 1's `sendVip`).
-- **new.** Their colony has no governor while they are away. The 6-month grace applies, and they return after the session (Part 1's duty posts, §10).
-- **new.** The player may send a lesser governor, at a vote-weight penalty.
-- **new.** Attacking a delegate, or the host during a session, is a major crime: reputation-ledger entries with every member.
+- **new.** At the call, each member's delegate is the player's choice (a governor of theirs) or Part 1's
+  `mostImportantGovernor`. `setGovernorDuty` keeps the post (the colony is vacant: the 6-month grace, then decline);
+  `sendVip(…, 'diet')` flies them to the host world (Part 1's `destinationValid` accepts a foreign host world for a
+  `'diet'` trip — a one-line change in vip.ts). A delegate trip counts as importance ≥ 5 for the escort rules.
+- **new.** The floor opens when the farthest delegate's shuttle can be there (ETA + 15 days, at least
+  `dietGatherDays` 150, at most 330 days); the vote stays open `dietVoteDays` (60). Only a delegate **at the host
+  world** at the close votes. After the tally `endGovernorDuty` sends every delegate home.
+- **new.** A lesser delegate (not the most important governor) votes at `dietLesserDelegatePct` (50 %) weight. No
+  governor, no delegate, no vote.
+- **new.** Attacking a delegate's shuttle (`builtObjectAttacked` / `builtObjectKilledBy` on a `'diet'` trip) or the
+  host world during a session (`habitatAttacked`) is a **crime**: −30 attitude from every member through
+  `applyReputation` (cause `dietCrime`), −3 reputation (CivilityRating), and a grievance that makes a sanction (and,
+  above 80, an expulsion) the members' first motion.
 
 ### 7.3 Sessions
 
-- **new.** A session every 2–3 years, with 1–3 motions proposed by members. The AI proposes from self-interest.
-- **new (real inputs).** Weights come from size and strength, relations, gifts (EmpirePolicy.DiplomacySendGiftsUpToAmount) and spies (the real intelligence missions).
+- **new.** Regular sessions every 2–3 years (`galaxy.rnd` draws the interval; the first one 120 days after the
+  founding). The agenda: every human member's motion (one each), then the heaviest AI candidates — 1 to
+  `dietMaxMotions` (3), as many as carry weight ≥ 30; one motion per kind (sanctions / embargoes / condemnations /
+  expulsions: one per target), one per AI proposer.
+- **new (real inputs).** Vote weight = 10 × √(CalculateEmpireScore / the members' mean) × (1 + standing + gifts +
+  spies) × the lesser-delegate factor. Standing: the other members' mean attitude to it / 200 (±25 %). Gifts: the share
+  of members it gave a gift to in the last two years (the real `DiplomaticRelation.lastGiftDate`, set by the GiveGift
+  message path) × 25 %. Spies: its successful intelligence missions against members (the real
+  `intelMissionCompleted`, decaying by half a year) × 5 %, at most 25 %. A motion passes when the weighted yes
+  exceeds the weighted no.
 
 ### 7.4 Motions
 
-- **Sanctions:** the real TradeSanctions for all members (already in galactic-council), **plus an enforcer blockade** (new):
-  - A neutral "Council Enforcers" faction, modelled on the independent empire, spawns one fleet at the council world for each sanctioned empire.
-  - The base fleet is 6 cruisers, 2 carriers, 2 CapitalShip and 2 ResupplyShip, built from members' real current designs and scaled 1×–3× by the target's military strength (real CalculateRelativeEmpireMilitaryStrength).
-  - It flies to a weighted-random top-value colony or space port of the target and blockades it (the real Blockade mission). It only returns fire.
-  - Attacking it is open defiance, with penalties with all members.
-  - Members' dues fund it. It ends with the sanction or when it is destroyed.
-- **Enforced truce:** the real Truce relation; breaking it means automatic sanctions.
-- **Galactic free trade:** the real FreeTradeAgreement.
-- **Weapon bans:** planet destroyers (real), or colony bombardment (the real Bombard/WaitAndBombard missions refused through `assignMissionAllowed`).
-- **Outlawing a pirate faction:** military ships become welcome in members' territory (the CheckMilitaryShipWelcomeAtTerritoryLocation hook). Bounties are new.
-- **Protecting or opening independents:** the real independent empire. Protect forbids invading them, a query at the invasion target choice. Open waives (b) of §1.
-- **Recognising a claim:** waives the real conquest penalties for the named colony, (a) and (b) of §1, and blocks `condemn` motions about it. This is distinct from the existing `recognise` motion, which recognises a new state.
-- **Expulsion (new)** and **electing the Regent (new):** the Regent has one veto per session and can call an emergency session once every `regentEmergencyYears`. The Regent may declare themselves **Emperor**, which starts a countdown victory during which everyone may go to war with them (a `declareWarBlocked` override and an AI bias).
+| Motion | Effect (as built) | Real code |
+|---|---|---|
+| Sanctions | The council's sanction (every member) **plus an enforcer fleet** (below) | council.ts applyMotion → StartTradeSanctions (Empire.8.cs 1586) |
+| Embargo / condemn / lift / recognise / threat | The council's own effects; lifting also recalls the enforcers | council.ts applyMotion |
+| Enforced truce (two warring empires) | ChangeDiplomaticRelation → Truce for `dietTruceYears` (3); a war declaration between them (`warDeclared`) brings **automatic sanctions** with enforcers; an AI party keeps it unless its race aggression − caution ≥ 30 (`declareWarBlocked`) | Empire.8.cs 2550 |
+| Galactic free trade | FreeTradeAgreement between every pair of met members whose relation is plain None, re-applied yearly | Empire.8.cs 2550 |
+| Ban planet destroyers | AI members' planet destroyers may not take an Attack mission on a colony (`assignMissionAllowed`); a member's planet destroyer attacking a colony is a violation | BuiltObject.2.cs 7620 |
+| Ban bombardment | AI members may not take Bombard / WaitAndBombard; a member's bombardment (`habitatBombarded`) is a violation | BuiltObject.2.cs 7620 |
+| Outlaw a pirate faction | Members' warships are welcome in each other's territory (new `militaryShipWelcome` query at Galaxy.cs 3699 CheckMilitaryShipWelcomeAtTerritoryLocation); **new:** a bounty (`dietBountyPerShip`, 1 500) from the Diet fund per outlawed warship a member destroys | Galaxy.cs 3699 |
+| Protect the independents | AI members may not send an Attack mission at an independent colony; a member taking one (`colonyOwnerChanged`) is a violation | — |
+| Open the independents | Ends the protection | — |
+| Recognise a claim (claimant, colony) | The claimant's war declaration on the colony's owner costs neither DeclareWarReputationImpact nor IncidentImpactWhenDeclareWar (new `declareWarPenaltyWaived` query at diplomacyTick.ts changeDiplomaticRelation = Empire.8.cs 2704/2712), and condemnations of that war are not moved. The claim ends when the claimant holds the colony, or after 10 years | Empire.8.cs 2704/2712 |
+| Expulsion | Out of the council and its blocs; no rejoining for `dietExpelYears` (10) | — |
+| Regent | `dietRegentYears` (6); one veto per session; an emergency session every `dietEmergencyYears` (4); may declare themselves Emperor | — |
+| Repeal | Ends a measure in force | — |
 
-### 7.5 AI votes (real inputs, new rule)
+- **Resolved to-verify (§1).** The original's independent-colony branch of NotifyOfAttack (Galaxy.7.cs 3138-3195:
+  −4 reputation per attack, the −50 incident with the territory owner) is **not ported** (attackAI.ts
+  notifyOfAttackHabitat ports only the other branch). So there is nothing to waive for (b) today; the claim waives
+  (a), which is ported. Reported, not ported here (a faithful-game change).
+- **Enforcers (new, on real code).** A neutral "Diet Enforcers" faction (createThreatFaction with no enemies and
+  relation bias 0; the Exchange's switched-off stock AI; `stateAIDormant`; hidden from the diplomacy list; excluded
+  from the council; nobody may declare war on it except open defiance) spawns one fleet per sanctioned empire at the
+  host world: the base unit 6 Cruiser + 2 Carrier + 2 CapitalShip + 2 ResupplyShip × 1–3 by the target's real
+  CalculateRelativeEmpireMilitaryStrength (Empire.7.cs 4120), each ship a copy of a member's current design
+  (`findNewestCanBuild`, strongest members first; a missing sub-role falls back to Cruiser / Destroyer / Frigate) with
+  stance AttackIfAttacked. Its station is a weighted-random (`galaxy.rnd`, weight = strategic value) pick among the
+  target's five most valuable colonies and their space ports that **every ship can reach on its fuel**
+  (WithinFuelRangeAndRefuel, margin 0.1; none reachable: it waits at the host world, refuelled, and retries — the
+  Dark Farms bug). It flies there with the real Blockade mission (ImplementBlockade, Empire.8.cs 3748); the blockade
+  record has every stock effect (no trade, docking or construction there), but the new `blockadeEngagesDocking` query
+  stops it attacking docking ships: it only returns fire. Members pay for it (`dietEnforcerCostPct` 50 % of the ships'
+  price, then `dietEnforcerUpkeepPct` 10 % a year) in shares of their score, into the Diet fund. It goes home
+  (despawns) when the sanction is lifted, or ends when destroyed. Attacking it is **open defiance** (−25 attitude
+  from every member, a grievance); a sanctioned AI defies (declares war on the enforcers) when its aggression −
+  caution ≥ 0.25 and its firepower is at least twice the fleet's.
 
-- **new.** A vote = the motion's effect on the voter's empire + its personality. Personality comes from:
-  - race AggressionLevel, CautionLevel, FriendlinessLevel, LoyaltyLevel, IntelligenceLevel, TradeBonus, FreeTradeIncomeFactor, TourismIncomeFactor, MigrationFactor, WarWearinessAttenuation;
-  - government WarWeariness, ConcernForOwnReputation, ImportanceOfOthersReputations, Stability, Corruption;
-  - policy DiplomacySendGiftsUpToAmount and IntelligenceAllowMission*;
-  - the leader's traits Pacifist, PeaceThroughStrength, Expansionist, Isolationist, Diplomat, FreeTrader, Protectionist, Xenophobic, Tolerant, Paranoid, Trusting;
-  - relations.
-- **new.** It extends the existing council's attitude score (conflict C3).
+### 7.5 AI
+
+- **Votes (real inputs, new rule).** The stock kinds start from the council's own `voteScore` (attitude to proposer
+  and target, trade volume, borders, war, blocs, extension biases) plus personality: (aggression − friendliness),
+  ImportanceOfOthersReputations, Paranoid / Diplomat / Trusting, and for sanctions Protectionist / FreeTrader / race
+  TradeBonus, plus the Diet's grievance record. The new kinds score the motion's effect on the voter: truce by its
+  war odds (militaryPotency), WarWeariness, WarWearinessAttenuation, aggression, Pacifist / PeaceThroughStrength;
+  free trade by FreeTradeIncomeFactor, TradeBonus, FreeTrader / Protectionist / Isolationist / Xenophobic / Tolerant;
+  bans by caution, aggression, its own planet destroyers / bombardment policy, ImportanceOfOthersReputations;
+  outlawing by the pirates' raids on it and a protection deal; independents by aggression, friendliness, its
+  independent colonisation targets, Expansionist / Tolerant; claims and expulsions by attitudes and blocs; the Regent
+  by attitude, trade and fear of a strong one (caution, Paranoid / Trusting). Race levels are (level − 100) / 50;
+  government factors − 1; the gift budget (DiplomacySendGiftsUpToAmount) and IntelligenceAllowMission* feed the
+  personality record.
+- **Proposals.** Every AI member moves its strongest case: the council's grievance candidates (spy crises, wars,
+  attitude), crimes and defiance (sanctions / expulsion), truces when losing, measures it likes (score ≥ 25), outlaws
+  after 3+ raids, a claim on a disliked or warring neighbour's colony inside its territory, itself as Regent (the two
+  strongest), repeals of what hurts it.
+- **Regent.** Vetoes its worst passing motion when its score is ≤ −40; calls an emergency session for a case of
+  weight ≥ 60 (a crime, a spy crisis, a war on it) when the next session is more than 300 days away; bids for
+  Emperor when it holds the host world and its capital, has ≥ 35 % of the members' score and 1.5× the next member's
+  military, and is not a pacifist.
+- **Delegates.** Defended by the escort rules (importance ≥ 5). Attacked by an AI member at war with the delegate's
+  empire when its aggression − caution > 0.15 and its ConcernForOwnReputation is low: its nearest loose warship in fuel
+  range takes an Attack mission on the shuttle (once per session).
+- **The Emperor.** The countdown is `dietEmperorYears` (5). Everyone may declare war on the Emperor (the Diet's
+  `declareWarBlocked` handler runs last and unblocks it); AI empires that dislike them or are aggressive and not
+  hopelessly outmatched (≥ 0.25 of their military) do. The bid fails when the Emperor loses its capital, or the host
+  world after holding it; at the end it wins if it holds both. A win ends the game through victory.ts: single
+  player `onGameEnd` (Victory for the player as Emperor, Defeat otherwise; codes 2101 / 2102); multiplayer
+  `humansGameEnd` with the Emperor as the only winner when human (the first human to win ends the game), Defeat for
+  every human when an AI wins. Flag `cvDietVictory` off: no game end.
+
+### 7.6 UI and commands
+
+- **One window, "The Interstellar Diet"** (`src/ui/screens/dietScreen.ts`), from a new top-bar button under the
+  overflow button (`btnTopDiet`, our own domed-hall glyph; shown only while the Diet runs). Tabs: **Session** (seat
+  and bonuses, Regent, our delegate picker with the lesser-delegate warning and presence, every motion with its
+  effect, our advisers' reading, the projected weighted result, Yes / No / Abstain, Veto for the Regent, "Move a
+  motion", and for the Regent "Emergency session" / "Declare ourselves Emperor"), **In force** (measures, sanctions,
+  enforcer fleets and the fund, past votes) and **Members** (weight with its breakdown on hover, delegate, presence,
+  host / Regent / bloc / sanctioned notes).
+- With the Diet on, the diplomacy screen's council block is a two-line summary with an "Open the Interstellar Diet"
+  button (the old block unchanged otherwise).
+- **Map:** the seat icon above the host world (a domed hall in a violet ring that pulses while in session) and a
+  gold-rimmed shield emblem beside each visible enforcer fleet, both our own procedural art (`src/render/dietArt.ts`,
+  `dietMarkers.ts`), with hover labels.
+- **Messages:** popups only for the big moments (a session called, the results, a Regent, an Emperor, a crime, an
+  expulsion, enforcers sent against us, a lost delegate); the rest are ticker lines (`scenarioMessage` gained a
+  `popup: false` option = EmpireMessage.SupressPopup), all of them in the stock message categories, so the existing
+  message settings filter them. Human members get their own message instead of the NewsNet line.
+- **Commands (journaled, multiplayer-safe):** `dietVote`, `dietVeto`, `dietSetDelegate`, `dietPropose`,
+  `dietEmergency`, `dietDeclareEmperor` (player/playerOps.ts).
 
 ---
 

@@ -2,13 +2,16 @@
   "id": "characters-victory",
   "name": "Characters & Victory",
   "addableToSave": true,
-  "description": "Characters travel in person: every relocation is a free, marked VIP shuttle that can be escorted, intercepted and destroyed (its passenger dies with it; the ruler travels with decoys). Every colony needs a governor: new characters appear at the capital or the matching academy and travel to their post, the capital trains reserve governors, and a colony left without one declines after six months (no construction, falling output and approval, disrepair, emigration) and needs years to recover. Governors are moved by their skills and the colonies' needs, with suggestions for the player or full automation. The AI uses all of it. (A Galactic Council follows in a later package.)",
+  "include": ["galactic-council"],
+  "description": "Characters travel in person: every relocation is a free, marked VIP shuttle that can be escorted, intercepted and destroyed (its passenger dies with it; the ruler travels with decoys). Every colony needs a governor: new characters appear at the capital or the matching academy and travel to their post, the capital trains reserve governors, and a colony left without one declines after six months (no construction, falling output and approval, disrepair, emigration) and needs years to recover. Governors are moved by their skills and the colonies' needs, with suggestions for the player or full automation. The AI uses all of it. The galactic council becomes the Interstellar Diet: sessions every 2-3 years at a host world (the strongest member's colony nearest the galaxy centre, with wonder-type bonuses), 1-3 motions moved by the members, weighted votes cast only by delegates who travel there in person, enforcer fleets that blockade sanctioned empires, truces, free trade, weapon bans, outlawed pirates, protected or open independents, recognised claims, expulsions, and a Regent with a veto and emergency sessions who may declare themselves Emperor and try to hold on to win.",
   "flags": [
     { "name": "charactersVictory", "label": "Characters & Victory", "description": "Master switch.", "default": true },
     { "name": "cvVipShuttles", "label": "VIP shuttles", "description": "Every character trip is a free VIP shuttle (gold ring on the map, despawns on arrival); the passenger dies if it is destroyed or captured.", "default": true },
     { "name": "cvEscorts", "label": "VIP escorts", "description": "Idle warships escort important travellers on dangerous routes (automatic for the AI; 'Automate VIP escorts' for the player).", "default": true },
     { "name": "cvRulerDecoys", "label": "Ruler decoys", "description": "A travelling ruler is joined by identical decoy shuttles; a Steal Operations Map mission reveals the real one.", "default": true },
-    { "name": "cvGovernors", "label": "Governors on every colony", "description": "Each colony needs a governor; vacant colonies decline after six months; reserves are trained at the capital; governors move to where their skills matter.", "default": true }
+    { "name": "cvGovernors", "label": "Governors on every colony", "description": "Each colony needs a governor; vacant colonies decline after six months; reserves are trained at the capital; governors move to where their skills matter.", "default": true },
+    { "name": "cvCouncil", "label": "The Interstellar Diet", "description": "The galactic council meets every 2-3 years at a host world; delegates travel there by VIP shuttle; enforcer fleets blockade sanctioned empires; a Regent with a veto may bid to become Emperor.", "default": true },
+    { "name": "cvDietVictory", "label": "Emperor's victory ends the game", "description": "An Emperor who holds their capital and the host world through the countdown wins the game.", "default": true }
   ],
   "params": [
     { "name": "cvShuttleSize", "label": "VIP shuttle hull size", "default": 180, "min": 60, "max": 1000 },
@@ -28,6 +31,32 @@
     { "name": "cvTenureYears", "label": "Minimum years in post before an optimising move", "default": 2, "min": 0, "max": 20 },
     { "name": "cvGainPct", "label": "Fit gain (%) a move needs after costs", "default": 25, "min": 0, "max": 1000 },
     { "name": "cvTransitPerColonies", "label": "One governor in transit per this many colonies", "default": 15, "min": 1, "max": 1000 },
-    { "name": "cvMovesPerReview", "label": "Governor moves per empire per review", "default": 2, "min": 0, "max": 50 }
+    { "name": "cvMovesPerReview", "label": "Governor moves per empire per review", "default": 2, "min": 0, "max": 50 },
+    { "name": "dietSessionMinYears", "label": "Years between Diet sessions (at least)", "default": 2, "min": 1, "max": 20 },
+    { "name": "dietSessionMaxYears", "label": "Years between Diet sessions (at most)", "default": 3, "min": 1, "max": 20 },
+    { "name": "dietGatherDays", "label": "Days delegates have to reach the host world", "default": 150, "min": 30, "max": 720 },
+    { "name": "dietVoteDays", "label": "Days the vote stays open", "default": 60, "min": 10, "max": 360 },
+    { "name": "dietMaxMotions", "label": "Motions per session (at most)", "default": 3, "min": 1, "max": 6 },
+    { "name": "dietLesserDelegatePct", "label": "Vote weight (%) of a lesser delegate", "default": 50, "min": 0, "max": 100 },
+    { "name": "dietCrimePenalty", "label": "Attitude cost (each member) of attacking delegates or the host world", "default": 30, "min": 0, "max": 200 },
+    { "name": "dietDefiancePenalty", "label": "Attitude cost (each member) of attacking the enforcers", "default": 25, "min": 0, "max": 200 },
+    { "name": "dietEnforcerScaleMax", "label": "Enforcer fleet size at most (× the base unit)", "default": 3, "min": 1, "max": 10 },
+    { "name": "dietEnforcerCostPct", "label": "Enforcer fleet cost (% of the ships' price) paid by the members", "default": 50, "min": 0, "max": 200 },
+    { "name": "dietEnforcerUpkeepPct", "label": "Enforcer yearly upkeep (% of its cost)", "default": 10, "min": 0, "max": 100 },
+    { "name": "dietDuesMaxPct", "label": "Dues per payment at most (% of a member's treasury x4)", "default": 5, "min": 0, "max": 100 },
+    { "name": "dietHostIncomePct", "label": "Host world income bonus (%)", "default": 15, "min": 0, "max": 200 },
+    { "name": "dietHostHappinessPct", "label": "Host world happiness bonus (%)", "default": 15, "min": 0, "max": 200 },
+    { "name": "dietHostGrowthPct", "label": "Host world population growth bonus (%)", "default": 15, "min": 0, "max": 200 },
+    { "name": "dietHostConstructionPct", "label": "Host world construction speed bonus (%)", "default": 25, "min": 0, "max": 300 },
+    { "name": "dietHostScenic", "label": "Host world scenic factor (tourism) at least", "default": 1.5, "min": 0, "max": 10 },
+    { "name": "dietVisitorTradePct", "label": "Host world tax revenue per visiting delegate during a session (%)", "default": 3, "min": 0, "max": 50 },
+    { "name": "dietBountyPerShip", "label": "Bounty per outlawed pirate warship destroyed", "default": 1500, "min": 0, "max": 100000 },
+    { "name": "dietTruceYears", "label": "Years an enforced truce lasts", "default": 3, "min": 1, "max": 30 },
+    { "name": "dietRegentYears", "label": "Years a Regent serves", "default": 6, "min": 1, "max": 50 },
+    { "name": "dietEmergencyYears", "label": "Years between a Regent's emergency sessions", "default": 4, "min": 1, "max": 50 },
+    { "name": "dietEmergencyGatherDays", "label": "Days delegates have to reach an emergency session", "default": 90, "min": 30, "max": 360 },
+    { "name": "dietEmperorYears", "label": "Years an Emperor must hold the capital and the host world", "default": 5, "min": 1, "max": 50 },
+    { "name": "dietEmperorMinSharePct", "label": "An AI Regent bids for Emperor with this share (%) of the members' score", "default": 35, "min": 0, "max": 100 },
+    { "name": "dietExpelYears", "label": "Years an expelled member may not rejoin", "default": 10, "min": 0, "max": 100 }
   ]
 }

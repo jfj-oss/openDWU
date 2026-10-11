@@ -29,6 +29,13 @@ import { BuiltObjectRole } from '../src/sim/data/designSpecifications';
 import { leaveShipGroup } from '../src/sim/fleets/shipGroup';
 import { generateVipShuttleDesign, vipComponentAllowed } from '../src/sim/scenario/charactersVictory/shuttleDesign';
 import { colonyVacancy, reviewGovernors } from '../src/sim/scenario/charactersVictory/governorsCv';
+import { DIET_STATE_KEY, dietState, type DietMotion } from '../src/sim/scenario/charactersVictory/diet/dietState';
+import { closeSession, dietTick, hostWorldOf, strongestMember } from '../src/sim/scenario/charactersVictory/diet/diet';
+import { memberScores, voteWeight } from '../src/sim/scenario/charactersVictory/diet/dietAi';
+import { spawnEnforcers } from '../src/sim/scenario/charactersVictory/diet/dietEnforcers';
+import { councilState, type Council } from '../src/sim/scenario/emergent/council';
+import { blockadeFor } from '../src/sim/fleets/blockades';
+import { BuiltObjectStance } from '../src/sim/design';
 
 import {
     CharacterEventType,
@@ -331,8 +338,9 @@ describe('GenerateStartingCharacters(pirate base) (Galaxy.8.cs 4822)', () => {
 // ---------------------------------------------------------------------------------------------------------------
 describe('Characters & Victory add-on', () => {
     const SC = 'characters-victory';
-    const ALL_OFF = { charactersVictory: false, cvVipShuttles: false, cvEscorts: false, cvRulerDecoys: false, cvGovernors: false };
-    const ON = { charactersVictory: true, cvVipShuttles: true, cvEscorts: true, cvRulerDecoys: true, cvGovernors: true };
+    // Part 2 (the Interstellar Diet) adds cvCouncil / cvDietVictory and includes the galactic-council package (galacticCouncil).
+    const ALL_OFF = { charactersVictory: false, cvVipShuttles: false, cvEscorts: false, cvRulerDecoys: false, cvGovernors: false, cvCouncil: false, cvDietVictory: false, galacticCouncil: false };
+    const ON = { charactersVictory: true, cvVipShuttles: true, cvEscorts: true, cvRulerDecoys: true, cvGovernors: true, cvCouncil: true, cvDietVictory: true, galacticCouncil: true };
 
     it('flags off: byte-identical to the plain seed-1 game (digest, Rnd stream, no state)', () => {
         const ref = cachedTickGameRun(gameData, { seconds: 900 });
@@ -343,6 +351,9 @@ describe('Characters & Victory add-on', () => {
         expect(game.galaxy.rnd.drawCount).toBe(ref.game.galaxy.rnd.drawCount);
         expect(CV_STATE_KEY in game.galaxy.scenario!.state).toBe(false);
         expect(CV_LIVE_KEY in game.galaxy.scenario!.state).toBe(false);
+        expect(DIET_STATE_KEY in game.galaxy.scenario!.state).toBe(false);
+        expect('council' in game.galaxy.scenario!.state).toBe(false);
+        expect(Object.keys(game.galaxy.scenario!.periodicLast)).toEqual([]);
     }, 1200000);
 
     function cvGame(): Game {
@@ -548,4 +559,144 @@ describe('Characters & Victory add-on', () => {
         expect(stateDigest(back.galaxy)).toBe(stateDigest(game.galaxy));
         expect(saveText(back)).toBe(saveText(game));
     }, 600000);
+});
+
+// Characters & Victory part 2 (docs/CHARACTERS_AND_VICTORY.md §7): the Interstellar Diet on the galactic council.
+describe('Characters & Victory: the Interstellar Diet', () => {
+    const SC = 'characters-victory';
+    const ON = { charactersVictory: true, cvVipShuttles: true, cvEscorts: true, cvRulerDecoys: true, cvGovernors: true, cvCouncil: true, cvDietVictory: true, galacticCouncil: true };
+
+    /** A CV game whose normal empires all sit on one council (the founding needs met empires; the test seats them), each with a governor at its capital. */
+    function dietGame(): { game: Game; g: Galaxy; c: Council; members: Empire[] } {
+        const game = createScenarioGame(gameData, { scenario: SC, flags: ON }).game;
+        const g = game.galaxy;
+        runGameSeconds(game, 30);
+        const members = g.empires.filter((e) => e.active && e.pirateEmpireBaseHabitat === null && e !== g.independentEmpire && e.dominantRace !== null);
+        for (const e of members) if (!getEmpireCharacters(e).some((x) => x.active && x.role === CharacterRole.ColonyGovernor && x.location === e.capital)) generateNewCharacter(g, e, CharacterRole.ColonyGovernor, e.capital);
+        const cs = councilState(g);
+        const c: Council = { id: cs.nextId++, name: 'Interstellar Diet', foundedYear: 0, members: [...members], chair: null, motion: null, results: [], blocs: [], coLosses: {}, losses: {}, sanctions: [], threats: [], recognised: [], condemned: {}, splitFrom: 0 };
+        cs.councils.push(c);
+        return { game, g, c, members };
+    }
+
+    it("a session sits at the strongest member's world nearest the centre; delegates travel there by VIP shuttle, keep their posts on duty and go home after the vote", () => {
+        const { game, g, members } = dietGame();
+        const st = dietState(g);
+        st.nextSessionAt = 0;
+        dietTick(g);
+        const s = st.session!;
+        expect(s).not.toBeNull();
+        expect(s.host).toBe(strongestMember(g, members));
+        expect(s.world).toBe(hostWorldOf(g, s.host));
+        expect(s.motions.length).toBeGreaterThanOrEqual(1);
+        expect(s.motions.length).toBeLessThanOrEqual(3);
+        const sent = s.delegates.filter((d) => d.sent);
+        expect(sent.length).toBeGreaterThan(0);
+        for (const d of sent) {
+            const t = tripOfCharacter(g, d.character!);
+            expect(t?.reason).toBe('diet');
+            expect(t?.destination).toBe(s.world);
+            // The post is kept, the colony vacant meanwhile (Part 1 duty: the 6-month grace applies).
+            expect(colonyVacancy(g, d.empire.capital!).vacant).toBe(true);
+        }
+        expect(s.opens).toBeGreaterThan(s.called);
+        for (let i = 0; i < 400 && st.session !== null; i++) runGameSeconds(game, 6);
+        expect(st.session).toBeNull();
+        expect(st.history.filter((h) => h.sessionId === s.id).length).toBe(s.motions.length);
+        expect(st.counters.sessions).toBe(1);
+        expect(st.nextSessionAt).toBeGreaterThan(s.closes);
+        // Delegates who made it are on their way home (or home already).
+        for (const d of sent) if (d.character!.active) expect(d.character!.location === s.world && tripOfCharacter(g, d.character!) === null).toBe(false);
+    }, 900000);
+
+    it("the tally counts only delegates present, weighted (a lesser delegate counts less), and the Regent's veto stops one motion", () => {
+        const { g, c, members } = dietGame();
+        const st = dietState(g);
+        st.nextSessionAt = 0;
+        dietTick(g);
+        const s = st.session!;
+        const [a, b, absent] = members.filter((e) => e !== s.host).concat(s.host).slice(0, 3);
+        // Seat the delegates by hand: a and b present (b a lesser delegate), the third away.
+        for (const d of s.delegates) {
+            if (d.character === null) continue;
+            if (d.empire === a || d.empire === b) d.character.completeLocationTransfer(s.world, g);
+        }
+        const db = s.delegates.find((d) => d.empire === b)!;
+        db.lesser = true;
+        const mk = (id: number, kind: DietMotion['kind']): DietMotion => ({ id, kind, proposer: a, target: null, other: null, colony: null, resourceId: -1, text: kind, votes: [], status: 'voting', yes: 0, no: 0 });
+        const m1 = mk(9001, 'banBombard');
+        const m2 = mk(9002, 'protectIndependents');
+        for (const m of [m1, m2]) {
+            // Every other member abstains (an AI delegate present without a vote would vote by its own score).
+            m.votes = members.map((e) => ({ empire: e, vote: e === a ? ('yes' as const) : e === b ? ('no' as const) : e === absent ? ('yes' as const) : ('abstain' as const), weight: 0, score: 0 }));
+        }
+        s.motions = [m1, m2];
+        s.stage = 'voting';
+        // The player is Regent and vetoes m2 (applied at the tally).
+        const human = g.playerEmpire!;
+        const hd = s.delegates.find((d) => d.empire === human)!;
+        if (hd.character !== null) hd.character.completeLocationTransfer(s.world, g);
+        st.regent = human;
+        st.regentUntil = s.closes + 1e9;
+        st.vetoMotionId = m2.id;
+        const ms = c.members.filter((e) => e.active);
+        const scores = memberScores(g, ms);
+        const wa = voteWeight(g, st, ms, scores, a, false).weight;
+        const wb = voteWeight(g, st, ms, scores, b, true).weight;
+        expect(wb).toBeLessThan(voteWeight(g, st, ms, scores, b, false).weight);
+        closeSession(g, st, c, s);
+        expect(m1.yes).toBeCloseTo(wa, 5);
+        expect(m1.no).toBeCloseTo(wb, 5);
+        expect(m1.status).toBe(wa > wb ? 'passed' : 'failed');
+        expect(m2.status).toBe(hd.character !== null ? 'vetoed' : m2.yes > m2.no ? 'passed' : 'failed');
+        if (m1.status === 'passed') expect(st.laws.some((l) => l.kind === 'banBombard')).toBe(true);
+    }, 600000);
+
+    it("a sanction's enforcers: the members' current designs, return fire only, a blockade of a fuel-reachable target world", () => {
+        const { game, g, c, members } = dietGame();
+        const st = dietState(g);
+        st.nextSessionAt = 1e15;
+        dietTick(g);
+        const target = members.find((e) => e !== st.host)!;
+        c.sanctions.push({ target, kind: 'sanction', resourceId: -1, year: 0 });
+        const f = spawnEnforcers(g, st, c, target)!;
+        expect(f).not.toBeNull();
+        expect(f.ships.length).toBeGreaterThanOrEqual(10);
+        for (const b of f.ships) {
+            expect(b.actualEmpire).toBe(st.faction);
+            expect(b.design!.stance).toBe(BuiltObjectStance.AttackIfAttacked);
+            expect(members.some((m) => m !== target && m.designs.some((d) => b.design!.name.endsWith(d.name)))).toBe(true);
+        }
+        expect(f.station).not.toBeNull();
+        for (let i = 0; i < 120 && f.stage !== 'blockading'; i++) {
+            runGameSeconds(game, 6);
+            dietTick(g);
+        }
+        expect(f.stage).toBe('blockading');
+        expect(blockadeFor(g, f.station!)?.initiator).toBe(st.faction);
+        // Lifting the sanction sends them home (despawned).
+        c.sanctions = [];
+        dietTick(g);
+        expect(st.enforcers.length).toBe(0);
+        expect(f.ships.every((b) => b.hasBeenDestroyed)).toBe(true);
+    }, 900000);
+
+    it('a game with a Diet session sitting saves and reloads identically', () => {
+        const { game, g } = dietGame();
+        const st = dietState(g);
+        st.nextSessionAt = 0;
+        dietTick(g);
+        runGameSeconds(game, 30);
+        const saveText = (gm: Game): string => {
+            const time = new GalaxyTime();
+            time.togglePause();
+            time.advance(gm.galaxy.nowMs);
+            return serializeGame(gm as never, time, { ...defaultStartGameOptions(), seed: 1, scenario: { id: SC, flags: ON, params: {} } });
+        };
+        const back = deserializeGame(saveText(game), scenarioGameData(gameData, SC)).game;
+        runGameSeconds(game, 120);
+        runGameSeconds(back, 120);
+        expect(stateDigest(back.galaxy)).toBe(stateDigest(game.galaxy));
+        expect(saveText(back)).toBe(saveText(game));
+    }, 900000);
 });

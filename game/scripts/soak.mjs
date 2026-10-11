@@ -105,7 +105,11 @@ const CONFIGS = [
     // Characters & Victory measurement pair (docs/CHARACTERS_AND_VICTORY.md §12): the same seed and setup with the add-on
     // on and with its master switch off (the faithful game), for the AI-economy and step-time comparison.
     SCN('characters-victory', { name: 'cv-on-s1', seed: 1, years: 10, wizard: { starCountIndex: 3, dimensionIndex: 3, otherEmpires: { empireCount: 9 } } }),
-    SCN('characters-victory', { name: 'cv-off-s1', seed: 1, years: 10, wizard: { starCountIndex: 3, dimensionIndex: 3, otherEmpires: { empireCount: 9 } }, flags: { charactersVictory: false } }),
+    SCN('characters-victory', { name: 'cv-off-s1', seed: 1, years: 10, wizard: { starCountIndex: 3, dimensionIndex: 3, otherEmpires: { empireCount: 9 } }, flags: { charactersVictory: false, galacticCouncil: false } }),
+    // Characters & Victory part 2, the Interstellar Diet (docs/CHARACTERS_AND_VICTORY.md §12): cv-on-s1 runs it; the same
+    // setup with only the Diet off (the galactic council's stock yearly rhythm), and a longer run for Regents / Emperors.
+    SCN('characters-victory', { name: 'cv-nodiet-s1', seed: 1, years: 10, wizard: { starCountIndex: 3, dimensionIndex: 3, otherEmpires: { empireCount: 9 } }, flags: { cvCouncil: false } }),
+    SCN('characters-victory', { name: 'diet-long-s3', seed: 3, years: 16, wizard: { starCountIndex: 3, dimensionIndex: 3, otherEmpires: { empireCount: 9 } } }),
     // Wars and pirates (escorts, losses, stampede on war declarations).
     SCN('characters-victory', { name: 'cv-war-s17', seed: 17, years: 8, wizard: { starCountIndex: 3, dimensionIndex: 3, otherEmpires: { empireCount: 9 }, difficultyIndex: 4, aggressionIndex: 4, piratesIndex: 5, pirateProximityIndex: 2, pirateStrengthIndex: 3 } }),
     SCN('ai-parity', { name: 'ai-parity-all', seed: 61, years: 6, wizard: { starCountIndex: 3, dimensionIndex: 3, otherEmpires: { empireCount: 9 } }, flagsOff: ['darkFarmsGameEnd'] }),

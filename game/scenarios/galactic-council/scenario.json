@@ -1,6 +1,7 @@
 {
   "id": "galactic-council",
   "name": "Galactic Council",
+  "addableToSave": true,
   "description": "Once enough empires have met, they found a galactic council: a yearly motion (sanctions, resource embargoes, war condemnations, lifting sanctions, recognising new states, declaring threats) is put to the vote; outvoted members drift into blocs that can split the council in two. Package 19d8 of the Emergent Galaxy set; everything else is the faithful game.",
   "flags": [
     { "name": "galacticCouncil", "label": "Galactic council", "description": "A council of empires votes sanctions and embargoes each year; blocs form among the outvoted.", "default": true }
