@@ -25,7 +25,7 @@ import { setGameEndHandler } from '../sim/victory';
 import { registerLocationPingedHook } from '../sim/story/eventActions';
 import { SimFrameBudget } from '../simFrameBudget';
 import { commandFreshRoots } from './commandReach';
-import { hintSubjectsRevision, liveHintSubjects } from '../sim/player/hintSubjects';
+import { hintSubjectsRevision, liveHintSubjects, liveOtherHintSubjects } from '../sim/player/hintSubjects';
 import { WAYPOINT_OPS, liveWaypointState } from '../sim/player/waypoints';
 import { GalaxySyncSource } from './replicaGalaxy';
 import { unwatchBuiltObjectEffects, watchBuiltObjectEffects } from '../sim/combat/effectWatch';
@@ -571,6 +571,8 @@ export class SimHost {
         if (hintSubjectsRevision !== this.hintSubjectsSeen) {
             this.hintSubjectsSeen = hintSubjectsRevision;
             this.sync.freshenSideTable('hintSubjects', liveHintSubjects(this.galaxy), 1);
+            const others = liveOtherHintSubjects(this.galaxy);
+            if (others !== null) this.sync.freshenSideTable('hintSubjectsOthers', others, 2);
         }
         if (this.waypointsFresh) {
             this.waypointsFresh = false;

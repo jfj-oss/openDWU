@@ -10,7 +10,8 @@
 
 import type { Galaxy } from '../sim/galaxy';
 import type { Empire } from '../sim/empire';
-import { battleReportState, type BattleReport } from '../sim/battleReports/battleReports';
+import { battleReportForViewer, battleReportState, type BattleReport } from '../sim/battleReports/battleReports';
+import { isMultiHuman } from '../sim/humanEmpires';
 import { resolveStarDateDescription } from '../sim/galaxyTime';
 import { isImprovementEnabled, registerImprovement } from './improvements';
 import { pushHudMessage, rgbCss } from './hud';
@@ -31,11 +32,14 @@ export function battleReportsOn(): boolean {
     return isImprovementEnabled(BATTLE_REPORTS_IMPROVEMENT);
 }
 
-/** The reports a notifier has not announced yet (non-skirmish, id above `seenId`), oldest first. */
-export function unseenReports(galaxy: Galaxy, seenId: number): BattleReport[] {
+/** The reports a notifier has not announced yet (non-skirmish, id above `seenId`), oldest first. With a `viewer` in a
+ *  multiplayer game: only that human's battles, as it saw them. */
+export function unseenReports(galaxy: Galaxy, seenId: number, viewer?: Empire | null): BattleReport[] {
     const st = battleReportState(galaxy);
     if (st === undefined) return [];
-    return st.reports.filter((r) => r.id > seenId).sort((a, b) => a.id - b.id);
+    let list = st.reports.filter((r) => r.id > seenId);
+    if (viewer != null && isMultiHuman(galaxy)) list = list.map((r) => battleReportForViewer(r, viewer)).filter((r): r is BattleReport => r !== null);
+    return list.sort((a, b) => a.id - b.id);
 }
 
 /** The highest report id so far (skirmishes included: their ids are never announced). */
@@ -79,7 +83,7 @@ export function installBattleReportNotifier(opts: BattleReportNotifierOptions): 
         const st = battleReportState(opts.galaxy);
         if (st === undefined || st.serial === serial) return;
         serial = st.serial;
-        const fresh = unseenReports(opts.galaxy, seen);
+        const fresh = unseenReports(opts.galaxy, seen, opts.player);
         seen = Math.max(seen, latestReportId(opts.galaxy));
         if (!battleReportsOn()) return;
         for (const r of fresh) announceBattleReport(opts.galaxy, r);

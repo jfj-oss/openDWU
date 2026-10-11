@@ -1,6 +1,6 @@
 # Multiplayer
 
-Status: **Phase 1 of 5 done (2026-10-10)**, a few small leftovers in §6. Milestone 1 (the audit, the core API, the
+Status: **Phase 1 of 5 done (2026-10-10)**; its last leftovers are done too (§6, 2026-10-11). Milestone 1 (the audit, the core API, the
 clear "a human controls this empire" sim rules), Milestone 2 (the local viewer in the UI, an inbox for every human, the
 (a) leftovers, the plumbing) and Milestone 3 (the nine decisions of §4, `createGame` for N humans). **Phase 3 (LAN play,
 §10) is built** on top of the lockstep core (§8): host / join by IP in the desktop app, the lobby, the version and data
@@ -428,16 +428,27 @@ digests; a one-human save carried neither key.
 
 ## 6. The rest of Phase 1
 
-Phase 1 is functionally done. Left, small:
+Phase 1 is done. The last leftovers (2026-10-11):
 
-- **Battle reports** watch one player's battles (the camps are that player's); per-human camps for the other humans.
-- **Hint subjects in worker mode**: the replica gets the primary human's live table only; a non-primary viewer sees no
-  subject text for its hints until the worker sends every human's.
-- **Main-thread odds and ends on the first human**: the AI advisor driver, the LLM layer, the founding line and the
-  starting camera; an event pop-up for a human whose turn it is not is not shown (it is still in that human's history);
-  the SystemInfo "potential colonies" flag (written for the primary, never read).
-- **`scripts/player-empire-allowlist.json`** holds the remaining sim `playerEmpire` reads (176 lines in 49 files): the
-  story (single-protagonist by decision), the C# start code, the save, and the primary-human aliases above.
+- ~~**Battle reports**~~: the observer watches every human seat's battles (AI-run seats too, so a returning player finds
+  the fights in between). The report's own `camp` / `result` stay the primary human's; every other human seat with a
+  side in the battle gets its own camps and result in `BattleReport.views` (keyed by empireId, written only in a
+  multiplayer game, so a one-human save is unchanged). `battleReportForViewer` turns a report into the viewer's (its
+  side is "Your forces", its camps, its result), and the Battle Reports list, the notices and the window show each
+  human only its own battles (`battleReports(galaxy, skirmishes, viewer)`).
+- ~~**Hint subjects in worker mode**~~: the worker sends every other human's live table too (side root
+  `hintSubjectsOthers`, by empireId; replica only, never saved), and the replica reads the viewer's.
+- ~~**Main-thread odds and ends**~~: the AI advisor driver and the LLM layer (the chronicle, the strategic job) read the
+  local viewer at each use (a getter in `main.ts`); neither ever advises a human's empire (`selectAdvisedEmpires` and
+  `nearestAiEmpires` skip every human). The founding line and the starting camera were already the viewer's (a LAN
+  game sets the viewer before the view boots); in hot seat a switch now rebuilds the ticker for the new viewer (its
+  founding line in a new game, then its own message history), and the camera centres on its capital.
+- ~~**Hot-seat event pop-ups**~~: an event pop-up for a human whose turn it is not is held (`installEventMessages`
+  `holdFor`: a holding recipient on each other human) and shown when their turn comes, after their curtain lifts
+  (`held`: nothing shows behind the curtain). The sim still records it in that human's history.
+- The SystemInfo "potential colonies" flag (written for the primary, never read) is left as it is.
+- **`scripts/player-empire-allowlist.json`** holds the remaining sim `playerEmpire` reads (174 lines in 49 files): the
+  story (single-protagonist by decision), the C# start code, the save, and the primary-human aliases.
 
 Phases 2–5 as planned (§1); the hot-seat UI of Phase 2 is §7.
 

@@ -125,7 +125,7 @@ export function markerTooltip(galaxy: Galaxy, player: Empire | null, m: MapMarke
 function markerSignature(galaxy: Galaxy, player: Empire | null, showWaypoints: boolean, showKnown: boolean, reveal: boolean): string {
     let s = `${showWaypoints ? 1 : 0}${showKnown ? 1 : 0}|`;
     if (showWaypoints) for (const w of waypointState(galaxy)?.list ?? []) s += `${w.id}:${w.x},${w.y}:${w.empireId}:${w.name};`;
-    if (showKnown && player !== null && (player.locationHints?.length ?? 0) <= 64) for (const h of player.locationHints ?? []) s += `${hintSubject(galaxy, h.x, h.y, player) ?? ''}${hintSource(galaxy, h.x, h.y) ?? ''}\u0001`;
+    if (showKnown && player !== null && (player.locationHints?.length ?? 0) <= 64) for (const h of player.locationHints ?? []) s += `${hintSubject(galaxy, h.x, h.y, player) ?? ''}${hintSource(galaxy, h.x, h.y, player) ?? ''}\u0001`;
     if (showKnown) s += `|${knownLocationsSignature(player, reveal)}|${waypointState(galaxy)?.dismissed?.join(',') ?? ''}`;
     return s;
 }

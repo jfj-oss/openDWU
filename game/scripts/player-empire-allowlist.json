@@ -4,7 +4,7 @@
     "src/sim/achievements.ts": 10,
     "src/sim/baconScienceShips.ts": 2,
     "src/sim/baconSettings.ts": 2,
-    "src/sim/battleReports/battleReports.ts": 5,
+    "src/sim/battleReports/battleReports.ts": 3,
     "src/sim/civilianAI.ts": 2,
     "src/sim/colony.ts": 1,
     "src/sim/colonyTick.ts": 12,

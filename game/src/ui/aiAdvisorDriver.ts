@@ -15,6 +15,7 @@
 import type { Galaxy } from '../sim/galaxy';
 import type { Empire } from '../sim/empire';
 import { DiplomaticRelationType } from '../sim/diplomacy';
+import { isHumanEmpire } from '../sim/humanEmpires';
 import { galaxyStarDate } from '../sim/tick/simTime';
 import { resolveStarDateDescription } from '../sim/galaxyTime';
 import { buildStrategicBrief, strategicPersonaLines, type StrategicBrief } from '../sim/player/strategicBrief';
@@ -157,7 +158,8 @@ export function selectAdvisedEmpires(galaxy: Galaxy, player: Empire | null, mode
     const out: Empire[] = [];
     for (const e of galaxy.empires) {
         if (out.length >= max) break;
-        if (e === player || !e.active || e === galaxy.independentEmpire || e.pirateEmpireBaseHabitat !== null) continue;
+        // Never a human's empire (multiplayer: every human; docs/MULTIPLAYER.md §6).
+        if (e === player || isHumanEmpire(galaxy, e) || !e.active || e === galaxy.independentEmpire || e.pirateEmpireBaseHabitat !== null) continue;
         if (mode === 'met') {
             if (player === null) continue;
             const rel = player.diplomaticRelations.byEmpire(e);
@@ -172,6 +174,7 @@ export type AiAdvisorSettings = Pick<UiSettings, 'aiAdvisor' | 'aiAdvisorInterva
 
 export interface AiAdvisorDriverOptions {
     galaxy: Galaxy;
+    /** The empire whose contacts pick the advised empires: read at each round (a getter follows the local viewer). */
     player: Empire | null;
     settings?: () => AiAdvisorSettings;
     fetchImpl?: FetchLike;
@@ -186,7 +189,7 @@ const PROBE_RETRY_MS = 60000;
 
 export class AiAdvisorDriver {
     readonly galaxy: Galaxy;
-    readonly player: Empire | null;
+    private readonly opts: AiAdvisorDriverOptions;
     readonly turns: StrategicTurn[] = [];
     private readonly settings: () => AiAdvisorSettings;
     private readonly fetchImpl: FetchLike | undefined;
@@ -203,11 +206,16 @@ export class AiAdvisorDriver {
 
     constructor(opts: AiAdvisorDriverOptions) {
         this.galaxy = opts.galaxy;
-        this.player = opts.player;
+        this.opts = opts;
         this.settings = opts.settings ?? getSettings;
         this.fetchImpl = opts.fetchImpl;
         this.now = opts.now ?? (() => Date.now());
         this.onTurn = opts.onTurn;
+    }
+
+    /** The viewer the advised empires are picked for (the options' value now). */
+    get player(): Empire | null {
+        return this.opts.player;
     }
 
     /** A round is in flight. */

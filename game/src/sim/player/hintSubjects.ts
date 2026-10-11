@@ -22,6 +22,7 @@ import type { Habitat } from '../types';
 import { GalaxyLocationType, type GalaxyLocation } from '../galaxyLocation';
 import { BuiltObjectSubRole } from '../builtObjectTypes';
 import { resolveDescription } from '../messages';
+import { humanSeats, isMultiHuman } from '../humanEmpires';
 
 export const HINT_SUBJECT_MAX = 120;
 
@@ -32,7 +33,9 @@ export interface HintInfo {
 }
 
 const subjects = new WeakMap<Empire, Record<string, HintInfo>>();
-const remote = new WeakMap<Galaxy, () => Record<string, HintInfo> | null>();
+/** Worker mode: the replica's reader of `empire`'s synced table (the primary's `hintSubjects`, the other humans'
+ *  `hintSubjectsOthers`). */
+const remote = new WeakMap<Galaxy, (empire: Empire) => Record<string, HintInfo> | null | undefined>();
 /** Bumped on every change (simHost compares it to freshen the replica's side table). */
 export let hintSubjectsRevision = 0;
 
@@ -40,8 +43,8 @@ export function hintSubjectKey(x: number, y: number): string {
     return `${x},${y}`;
 }
 
-/** Worker mode: read the replica's subjects from `read`; null unregisters. */
-export function setRemoteHintSubjects(galaxy: Galaxy, read: (() => Record<string, HintInfo> | null) | null): void {
+/** Worker mode: read the replica's subjects of an empire from `read`; null unregisters. */
+export function setRemoteHintSubjects(galaxy: Galaxy, read: ((empire: Empire) => Record<string, HintInfo> | null | undefined) | null): void {
     if (read === null) remote.delete(galaxy);
     else remote.set(galaxy, read);
 }
@@ -73,11 +76,11 @@ export function recordHintSubject(empire: Empire, point: { x: number; y: number 
 
 function hintInfo(galaxy: Galaxy | null | undefined, x: number, y: number, empire?: Empire | null): HintInfo | undefined {
     if (galaxy == null) return undefined;
-    // `empire`: whose hints (multiplayer: the local viewer's; unset = the primary human). A replica knows the primary's.
-    const primary = empire === undefined || empire === galaxy.playerEmpire;
+    // `empire`: whose hints (multiplayer: the local viewer's; unset = the primary human). A replica reads the synced
+    // tables (the primary's and, in a multiplayer game, every other human's).
     const r = remote.get(galaxy);
     const p = empire === undefined ? galaxy.playerEmpire : empire;
-    const t = r !== undefined ? (primary ? r() : undefined) : p != null ? subjects.get(p) : undefined;
+    const t = p == null ? undefined : r !== undefined ? (r(p) ?? undefined) : subjects.get(p);
     const v = t?.[hintSubjectKey(x, y)];
     return v !== null && typeof v === 'object' ? v : undefined;
 }
@@ -125,6 +128,24 @@ export function savedHintSubjects(galaxy: Galaxy): Record<string, HintInfo> | un
 export function liveHintSubjects(galaxy: Galaxy): Record<string, HintInfo> | null {
     const p = galaxy.playerEmpire;
     return (p != null ? subjects.get(p) : undefined) ?? null;
+}
+
+const othersCache = new WeakMap<Galaxy, { rev: number; value: Record<string, Record<string, HintInfo>> | null }>();
+
+/** What the replica sync carries for the OTHER humans (multiplayer, worker mode: docs/MULTIPLAYER.md §6): each
+ *  non-primary human seat's live table by empireId; null in a one-human game. The same object until a subject changes. */
+export function liveOtherHintSubjects(galaxy: Galaxy): Record<string, Record<string, HintInfo>> | null {
+    if (!isMultiHuman(galaxy)) return null;
+    const c = othersCache.get(galaxy);
+    if (c !== undefined && c.rev === hintSubjectsRevision) return c.value;
+    const out: Record<string, Record<string, HintInfo>> = {};
+    for (const e of humanSeats(galaxy)) {
+        if (e === galaxy.playerEmpire) continue;
+        const t = subjects.get(e);
+        if (t !== undefined) out[String(e.empireId)] = t;
+    }
+    othersCache.set(galaxy, { rev: hintSubjectsRevision, value: out });
+    return out;
 }
 
 /** Save load: undefined / null = none. */

@@ -738,10 +738,15 @@ export async function startGameView(
               ? serializeGameSave(game, time, lastStartOptions, saveExtras(), onProgress)
               : null;
 
-    // Task 10d: first message of the top-middle ticker — the founding line.
-    const playerCapital = viewer.capital ?? null;
-    const systemName = playerCapital !== null ? galaxy.systems[playerCapital.systemIndex].systemStar.name : '';
-    const foundingMessage = `${viewer.name} founded at ${playerCapital?.name ?? ''} (${systemName} system)`;
+    // Task 10d: first message of the top-middle ticker — the founding line (the viewer's: each hot-seat human gets its own).
+    const foundingLineOf = (e: Empire): string => {
+        const cap = e.capital ?? null;
+        const systemName = cap !== null ? galaxy.systems[cap.systemIndex].systemStar.name : '';
+        return `${e.name} founded at ${cap?.name ?? ''} (${systemName} system)`;
+    };
+    const foundingMessage = foundingLineOf(viewer);
+    /** A new game's start date (the founding lines' date); null for a loaded game. */
+    let foundingStarDate: number | null = null;
 
     const app = new Application();
     await app.init({
@@ -808,7 +813,8 @@ export async function startGameView(
     const simLoop: { stats: object; renderTime: RenderTime; tick(realDtMs: number): number } = inThreadLoop ?? simClient!.createLoop(time, simViewEnabledFromUrl(window.location.search) ? () => simViewFromCamera(camera) : null);
     if (savedClock === undefined) {
         // New game: the founding line, dated at the game start.
-        pushHudMessage(foundingMessage, resolveStarDateDescription(time.currentStarDate));
+        foundingStarDate = time.currentStarDate;
+        pushHudMessage(foundingMessage, resolveStarDateDescription(foundingStarDate));
     } else {
         // Loaded game: rebuild the ticker/history from the saved message
         // history (Empire.MessageHistory) instead of re-emitting the founding
@@ -853,14 +859,19 @@ export async function startGameView(
     const aiAdvisorParams = new URLSearchParams(window.location.search);
     const aiAdvisor = startAiAdvisorDriver({
         galaxy,
-        player: viewer,
+        // The local viewer at each round (the hot seat moves it; multiplayer: this screen's player).
+        get player() {
+            return currentViewer();
+        },
         settings: () => aiAdvisorSettingsWithUrl(getSettings(), aiAdvisorParams),
         onTurn: pushCouncilLog,
     });
     (window as unknown as { __dwu: Record<string, unknown> }).__dwu.aiAdvisor = aiAdvisor.driver;
     // [aiadvisor] end
     // [llm] begin — 19s-1: the local-model layer (queue + yearly chronicle); nothing is created with llmFoundations off.
-    const llmLayer = startLlmLayer({ galaxy, player: viewer, settings: () => {
+    const llmLayer = startLlmLayer({ galaxy, get player() {
+            return currentViewer();
+        }, settings: () => {
             const st = getSettings();
             return { endpoint: st.advisorEndpoint, model: st.advisorModel, api: st.advisorApi, think: st.advisorThink };
         }, search: window.location.search });
@@ -1070,7 +1081,9 @@ export async function startGameView(
         setBattleReportsEnabled(battleReportsObserverOn());
         installBattleReportNotifier({ galaxy, player: viewer, goTo: (x, y) => historyGoTo(camera, x, y) });
         // The player's EventMessageRecipient (Main.Part12.cs:2881) → history messages + the wonder-built popup.
-        installEventMessages({ player: viewer, galaxy, onGoTo: (t) => selectStellarObject(t, true), onGoToCreature: (c) => selectCreature(c, true) });
+        // Hot seat: the other humans' pop-ups wait for their turn (docs/MULTIPLAYER.md §6); nothing shows behind the curtain.
+        const holdFor = multiplayerActive() ? undefined : humanEmpires(galaxy);
+        installEventMessages({ player: viewer, galaxy, onGoTo: (t) => selectStellarObject(t, true), onGoToCreature: (c) => selectCreature(c, true), holdFor, held: () => hotSeat.curtainUp() });
     };
     installViewerMessageUi(viewer);
     const removeViewerSwitchListener = onLocalViewerChange((g, now) => {
@@ -1082,6 +1095,14 @@ export async function startGameView(
         removeEventMessages();
         installViewerMessageUi(now);
         adoptGameMessageOptions(galaxy); // the new viewer's Game Options message settings
+        // Hot seat: the ticker is the new viewer's — its founding line (a new game) and its own message history; what
+        // its stream holds is in that history already.
+        if (!multiplayerActive()) {
+            clearHudMessages();
+            if (foundingStarDate !== null) pushHudMessage(foundingLineOf(now), resolveStarDateDescription(foundingStarDate));
+            for (const line of savedHistoryLines(now)) pushHudMessage(line.text, line.starDate > 0 ? resolveStarDateDescription(line.starDate) : '');
+            messageFeed.pollMessages(now);
+        }
         setThemeChromeRace(now.dominantRace?.name ?? '');
     });
     // [improvements] designLineUpgrade / statePriorityShipyards: the switch → the sim (journaled), for every human (the

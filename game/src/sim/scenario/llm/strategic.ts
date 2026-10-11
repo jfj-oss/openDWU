@@ -161,7 +161,7 @@ export function nearestAiEmpires(galaxy: Galaxy, player: Empire | null, n: numbe
     if (player === null || cap === null || n <= 0) return [];
     const out: { e: Empire; d: number }[] = [];
     for (const e of galaxy.empires) {
-        if (!isMajor(galaxy, e) || e === player || e.capital === null || isHerderEmpire(galaxy, e)) continue;
+        if (!isMajor(galaxy, e) || e === player || isHumanEmpire(galaxy, e) || e.capital === null || isHerderEmpire(galaxy, e)) continue;
         out.push({ e, d: (e.capital.xpos - cap.xpos) ** 2 + (e.capital.ypos - cap.ypos) ** 2 });
     }
     out.sort((a, b) => a.d - b.d || a.e.empireId - b.e.empireId);

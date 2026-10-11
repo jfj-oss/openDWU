@@ -85,6 +85,8 @@ export interface HotSeatRefs {
     switchToNext: () => void;
     /** Show the curtain for the current viewer (a new or loaded hot-seat game). */
     showCurtain: () => void;
+    /** The curtain is up (nothing of the game may show: event pop-ups wait). */
+    curtainUp: () => boolean;
     destroy: () => void;
 }
 
@@ -92,7 +94,7 @@ export interface HotSeatRefs {
 export function installHotSeat(host: HotSeatHost): HotSeatRefs {
     if (host.networked === true) {
         pendingSavedViewer = undefined;
-        return { switchToNext: () => {}, showCurtain: () => {}, destroy: () => {} };
+        return { switchToNext: () => {}, showCurtain: () => {}, curtainUp: () => false, destroy: () => {} };
     }
     const { galaxy, clock } = host;
     let curtain: HTMLDivElement | null = null;
@@ -215,6 +217,7 @@ export function installHotSeat(host: HotSeatHost): HotSeatRefs {
     return {
         switchToNext,
         showCurtain,
+        curtainUp: () => curtain !== null,
         destroy: () => {
             clearInterval(paintTimer);
             window.removeEventListener('keydown', onKey, true);

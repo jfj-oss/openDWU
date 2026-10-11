@@ -316,7 +316,12 @@ export class SimClientCore {
         // which the worker freshens with each waypoint command's delta (the replica's own copy lands only with the
         // periodic side-table apply).
         setRemoteWaypoints(galaxy, () => ((this.replica.decoder.object(1) as Record<string, unknown> | null)?.waypoints as WaypointState | null | undefined) ?? null);
-        setRemoteHintSubjects(galaxy, () => ((this.replica.decoder.object(1) as Record<string, unknown> | null)?.hintSubjects as Record<string, HintInfo> | null | undefined) ?? null);
+        setRemoteHintSubjects(galaxy, (empire) => {
+            const side = this.replica.decoder.object(1) as Record<string, unknown> | null;
+            if (empire === galaxy.playerEmpire) return (side?.hintSubjects as Record<string, HintInfo> | null | undefined) ?? null;
+            // Multiplayer: the other humans' tables (docs/MULTIPLAYER.md §6).
+            return (side?.hintSubjectsOthers as Record<string, Record<string, HintInfo>> | null | undefined)?.[String(empire.empireId)] ?? null;
+        });
     }
 
     /** The replica's handle for the local-model paths (remoteHost.ts): commands and host ops with promised results. */

@@ -72,7 +72,7 @@ import { migrateLegacyLandscapePictureRef, migratePreMapPictureRef, migratePrePo
 import { EmpireVisibility, GalaxyResourceMap, SystemVisibility } from '../visibility';
 import { Weapon } from '../weapon';
 import { battleReportState, restoreBattleReportState, type BattleReportState } from '../battleReports/battleReports';
-import { type HintInfo, hintSubjectTable, liveHintSubjects, restoreHintSubjects, savedHintSubjects, setHintSubjectTable } from '../player/hintSubjects';
+import { type HintInfo, hintSubjectTable, liveHintSubjects, liveOtherHintSubjects, restoreHintSubjects, savedHintSubjects, setHintSubjectTable } from '../player/hintSubjects';
 import { liveWaypointState, restoreWaypointState, savedWaypointState, type WaypointState } from '../player/waypoints';
 import { liveHumanEmpires, restoreAiSeats, restoreHumanEmpires, savedAiSeats, savedHumanEmpires } from '../humanEmpires';
 import { perHumanHintSubjects, restorePerHumanState, savedPerHumanState, type PerHumanState } from '../perHumanState';
@@ -562,6 +562,8 @@ interface SideTables {
     /** What each location hint points at (player/hintSubjects.ts; "x,y" -> text): absent while none is recorded and in
      *  older saves. The replica sync carries the live table or null. */
     hintSubjects?: Record<string, HintInfo> | null;
+    /** Replica sync only (never saved): the other humans' live hint subjects (hintSubjects.ts liveOtherHintSubjects). */
+    hintSubjectsOthers?: Record<string, Record<string, HintInfo>> | null;
     /** The human-controlled empires when more than the primary human (humanEmpires.ts; multiplayer): absent for a
      *  one-human game — so it saves the same text as before — and in older saves. The replica sync carries the live
      *  list or null. */
@@ -807,6 +809,8 @@ export function replicaSideTables(galaxy: Galaxy, visited: readonly object[]): o
     // the last waypoint reaches the replica.
     t.waypoints = liveWaypointState(galaxy);
     t.hintSubjects = liveHintSubjects(galaxy);
+    const others = liveOtherHintSubjects(galaxy);
+    if (others !== null) t.hintSubjectsOthers = others;
     t.humanEmpires = liveHumanEmpires(galaxy);
     t.aiSeats = savedAiSeats(galaxy) ?? null;
     t.perHuman = savedPerHumanState(galaxy) ?? null;

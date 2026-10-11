@@ -44,14 +44,34 @@ export interface EventMessagesOptions {
     onGoToCreature?: (creature: Creature) => void;
     /** btnEventMessageGoto for a point location (method_156(x, y)); default: the nearest system. */
     onGoToPoint?: (x: number, y: number) => void;
+    /** Hot seat (docs/MULTIPLAYER.md §6): the other humans on this screen. Their event pop-ups are held (they are in
+     *  their history already) and shown when the screen is theirs (the next installEventMessages for them). */
+    holdFor?: readonly Empire[];
+    /** True while nothing may show (the hot seat's curtain is up): queued pop-ups wait. */
+    held?: () => boolean;
 }
 
 interface Installed {
     player: Empire;
     timer: ReturnType<typeof setInterval>;
+    holding: Empire[];
+    /** Not shown yet: kept for this human's next turn (hot seat) when the screen moves on. */
+    queue: QueuedEvent[];
+    hotSeat: boolean;
 }
 
 let installed: Installed | null = null;
+/** Hot seat: the event pop-ups each other human got while it was not their turn, oldest first. */
+const heldEvents = new WeakMap<Empire, QueuedEvent[]>();
+
+/** The pop-ups held for `empire` (hot seat), for scripts / tests. */
+export function heldEventCount(empire: Empire): number {
+    return heldEvents.get(empire)?.length ?? 0;
+}
+
+function setRecipient(empire: Empire, recipient: Empire['eventMessageRecipient']): void {
+    Object.defineProperty(empire, 'eventMessageRecipient', { value: recipient, enumerable: recipient === null, writable: true, configurable: true });
+}
 
 /** The Investigate button's player command (btnEventMessageInvestigate_Click, Main.Part4.cs:1777-1842). */
 function issueChoice(galaxy: Galaxy, player: Empire, choice: EventChoice): void {
@@ -164,13 +184,27 @@ function goTo(target: EventGoToTarget, opts: EventMessagesOptions): void {
 export function installEventMessages(opts: EventMessagesOptions): void {
     removeEventMessages();
     const { player } = opts;
-    const queue: QueuedEvent[] = [];
+    // Hot seat: what this human got while another one had the screen comes first.
+    const queue: QueuedEvent[] = heldEvents.get(player) ?? [];
+    heldEvents.delete(player);
     const recipient = {
         receiveEventMessage(type: number, title: string, message: string, additionalData: unknown, location: unknown): void {
             queue.push({ type, title, message, additionalData, location });
         },
     };
-    Object.defineProperty(player, 'eventMessageRecipient', { value: recipient, enumerable: false, writable: true, configurable: true });
+    setRecipient(player, recipient);
+    const holding: Empire[] = [];
+    for (const other of opts.holdFor ?? []) {
+        if (other === player) continue;
+        holding.push(other);
+        setRecipient(other, {
+            receiveEventMessage(type: number, title: string, message: string, additionalData: unknown, location: unknown): void {
+                let list = heldEvents.get(other);
+                if (list === undefined) heldEvents.set(other, (list = []));
+                list.push({ type, title, message, additionalData, location });
+            },
+        });
+    }
 
     // Port of Main.Part4.cs:487 method_523, the showing half (the sim recorded it: playerMessages.ts).
     function handle(e: QueuedEvent): void {
@@ -178,15 +212,18 @@ export function installEventMessages(opts: EventMessagesOptions): void {
     }
 
     const timer = setInterval(() => {
+        if (opts.held?.() === true) return;
         while (queue.length > 0) handle(queue.shift()!);
     }, 250);
-    installed = { player, timer };
+    installed = { player, timer, holding, queue, hotSeat: (opts.holdFor?.length ?? 0) > 1 };
 }
 
 /** Unregister the recipient (Main.Part12.cs:3195 `EventMessageRecipient = null`). No-op when not installed. */
 export function removeEventMessages(): void {
     if (installed === null) return;
     clearInterval(installed.timer);
-    Object.defineProperty(installed.player, 'eventMessageRecipient', { value: null, enumerable: true, writable: true, configurable: true });
+    if (installed.hotSeat && installed.queue.length > 0) heldEvents.set(installed.player, installed.queue);
+    setRecipient(installed.player, null);
+    for (const other of installed.holding) setRecipient(other, null);
     installed = null;
 }

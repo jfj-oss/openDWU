@@ -34,6 +34,7 @@ import { BuiltObjectRole } from '../data/designSpecifications';
 import { galaxyStarDate, MIN_TIME } from '../tick/simTime';
 import { MAX_SOLAR_SYSTEM_SIZE } from '../visibility';
 import { battleReportHooks, battleReportsEnabled } from './hooks';
+import { humanSeats, isMultiHuman } from '../humanEmpires';
 
 export { battleReportsEnabled, setBattleReportsEnabled } from './hooks';
 
@@ -157,6 +158,16 @@ export interface BattleReport {
     result: BattleResult;
     sides: BattleSide[];
     units: BattleUnit[];
+    /** Multiplayer only (docs/MULTIPLAYER.md §6): the battle as each OTHER human seat with a side in it saw it, keyed
+     *  by empireId — the camp of each side (in `sides` order) and the result. The base fields are the primary human's.
+     *  Absent in a one-human game (the save text is unchanged). */
+    views?: Record<string, BattleView>;
+}
+
+/** One human's camps and result for a battle (BattleReport.views). */
+export interface BattleView {
+    camps: BattleCamp[];
+    result: BattleResult;
 }
 
 /** A unit while its battle is open: the report record plus the live object (graph reference, saved with the game). */
@@ -228,11 +239,13 @@ function ensureState(galaxy: Galaxy): BattleReportState {
     return st;
 }
 
-/** The finished reports, newest first (skirmishes too when `withSkirmishes`). */
-export function battleReports(galaxy: Galaxy | null | undefined, withSkirmishes = false): BattleReport[] {
+/** The finished reports, newest first (skirmishes too when `withSkirmishes`). With a `viewer` in a multiplayer
+ *  game: only that human's battles, each as it saw them (battleReportForViewer). */
+export function battleReports(galaxy: Galaxy | null | undefined, withSkirmishes = false, viewer?: Empire | null): BattleReport[] {
     const st = battleReportState(galaxy);
     if (st === undefined) return [];
-    const list = withSkirmishes ? [...st.reports, ...st.skirmishes] : [...st.reports];
+    let list = withSkirmishes ? [...st.reports, ...st.skirmishes] : [...st.reports];
+    if (viewer != null && galaxy != null && isMultiHuman(galaxy)) list = list.map((r) => battleReportForViewer(r, viewer)).filter((r): r is BattleReport => r !== null);
     list.sort((a, b) => b.endMs - a.endMs || b.id - a.id);
     return list;
 }
@@ -658,8 +671,10 @@ export function battleReportsFrameEnd(galaxy: Galaxy, frameMs: number): void {
 
 /** One scan: update the open battles, open new ones from the player's fighting objects, close the quiet ones. */
 export function scanBattles(galaxy: Galaxy, now: number): void {
-    const player = galaxy.playerEmpire;
-    if (player === null) return;
+    // Every human seat's battles (one human: exactly the player's; AI-run seats too, so a player coming back finds
+    // the reports of the fights in between).
+    const seats = humanSeats(galaxy);
+    if (seats.length === 0) return;
     let st = states.get(galaxy);
     const tracked = buildTracked(st);
     // 1. Open battles: activity of their units, new combatants.
@@ -679,18 +694,20 @@ export function scanBattles(galaxy: Galaxy, now: number): void {
             if (active.length > 0) expand(galaxy, b, active, now, tracked);
         }
     }
-    // 2. The player's objects fighting outside any battle.
-    for (const list of [player.builtObjects, player.privateBuiltObjects]) {
-        for (const bo of list) {
-            if (bo == null || tracked.has(bo)) continue;
-            const t = builtObjectActivity(bo, now);
-            if (t < now - ACTIVE_WINDOW_MS) continue;
-            joinOrOpen(galaxy, bo, now, t, tracked);
+    // 2. The humans' objects fighting outside any battle.
+    for (const player of seats) {
+        for (const list of [player.builtObjects, player.privateBuiltObjects]) {
+            for (const bo of list) {
+                if (bo == null || tracked.has(bo)) continue;
+                const t = builtObjectActivity(bo, now);
+                if (t < now - ACTIVE_WINDOW_MS) continue;
+                joinOrOpen(galaxy, bo, now, t, tracked);
+            }
         }
-    }
-    for (const h of player.colonies) {
-        if (h == null || tracked.has(h) || !colonyActive(h)) continue;
-        joinOrOpen(galaxy, h, now, now, tracked);
+        for (const h of player.colonies) {
+            if (h == null || tracked.has(h) || !colonyActive(h)) continue;
+            joinOrOpen(galaxy, h, now, now, tracked);
+        }
     }
     // 3. Quiet battles end.
     st = states.get(galaxy);
@@ -708,12 +725,12 @@ export function scanBattles(galaxy: Galaxy, now: number): void {
 // Teardown hooks (hooks.ts): kills between two scans, and the fate of tracked units that are removed
 // ---------------------------------------------------------------------------------------------------------------
 
-function attackedByPlayer(galaxy: Galaxy, attackers: readonly unknown[] | null): boolean {
-    const player = galaxy.playerEmpire;
-    if (attackers === null || player === null) return false;
+function attackedByPlayer(seats: readonly Empire[], attackers: readonly unknown[] | null): boolean {
+    if (attackers === null || seats.length === 0) return false;
     for (const a of attackers) {
         if (a == null) continue;
-        if (isFighterLike(a) ? a.empire === player : isBuiltObject(a) && a.empire === player) return true;
+        const e = isFighterLike(a) ? a.empire : isBuiltObject(a) ? a.empire : null;
+        if (e !== null && seats.includes(e)) return true;
     }
     return false;
 }
@@ -734,9 +751,9 @@ function onRemoved(galaxy: Galaxy, o: BuiltObject | Creature, destroyed: boolean
         }
     }
     if (!destroyed) return;
-    const player = galaxy.playerEmpire;
-    if (player === null) return;
-    const involved = (isBuiltObject(o) && o.empire === player) || attackedByPlayer(galaxy, o.attackers);
+    const seats = humanSeats(galaxy);
+    if (seats.length === 0) return;
+    const involved = (isBuiltObject(o) && o.empire !== null && seats.includes(o.empire)) || attackedByPlayer(seats, o.attackers);
     const key = sideKeyOf(galaxy, o);
     let battle: OpenBattle | null = null;
     if (st !== undefined) for (const b of st.open) if (inArea(galaxy, b, o) && (involved || (key !== null && sideOf(b, key) !== null))) battle = battle ?? b;
@@ -845,18 +862,58 @@ function withdrewFrom(b: OpenBattle, u: OpenUnit): boolean {
 
 const lost = (u: BattleUnit): boolean => u.fate === 'destroyed' || u.fate === 'captured';
 
-/** The camps (BattleSide.camp) from the side pairs seen fighting. */
-function assignCamps(b: OpenBattle, playerKey: string | null): void {
+/** The camp of each side (in `b.sides` order) as the side `playerKey` sees it, from the side pairs seen fighting. */
+function campsFor(b: OpenBattle, playerKey: string): BattleCamp[] {
     const hostile = (a: string, c: string): boolean => b.hostile.includes(a < c ? `${a}|${c}` : `${c}|${a}`);
-    if (playerKey === null) return;
     const enemies = new Set<string>();
     for (const s of b.sides) if (s.key !== playerKey && hostile(playerKey, s.key)) enemies.add(s.key);
-    for (const s of b.sides) {
-        if (s.key === playerKey) s.camp = 'player';
-        else if (enemies.has(s.key)) s.camp = 'enemy';
-        else if ([...enemies].some((e) => hostile(e, s.key))) s.camp = 'player';
-        else s.camp = 'other';
+    return b.sides.map((s): BattleCamp => {
+        if (s.key === playerKey) return 'player';
+        if (enemies.has(s.key)) return 'enemy';
+        if ([...enemies].some((e) => hostile(e, s.key))) return 'player';
+        return 'other';
+    });
+}
+
+/** The camps (BattleSide.camp) from the side pairs seen fighting. */
+function assignCamps(b: OpenBattle, playerKey: string | null): void {
+    if (playerKey === null) return;
+    const camps = campsFor(b, playerKey);
+    b.sides.forEach((s, i) => (s.camp = camps[i]));
+}
+
+/** Multiplayer: every other human seat's view of the battle (BattleReport.views); undefined for one human or none. */
+function otherHumanViews(galaxy: Galaxy, b: OpenBattle, units: readonly BattleUnit[]): Record<string, BattleView> | undefined {
+    if (!isMultiHuman(galaxy)) return undefined;
+    let views: Record<string, BattleView> | undefined;
+    for (const e of humanSeats(galaxy)) {
+        if (e === galaxy.playerEmpire) continue;
+        const key = `e${e.empireId}`;
+        if (sideOf(b, key) === null) continue;
+        const camps = campsFor(b, key);
+        const result = battleResult(b.sides.map((s, i) => ({ ...s, camp: camps[i] })), units);
+        (views ??= {})[String(e.empireId)] = { camps, result };
     }
+    return views;
+}
+
+/**
+ * A report as `viewer` saw it (docs/MULTIPLAYER.md §6): its own side is "Your forces", the camps and result are its
+ * own. Null when the viewer had no side in the battle (another human's fight). The report itself for the primary
+ * human, for no viewer, and in a one-human game.
+ */
+export function battleReportForViewer(r: BattleReport, viewer: Empire | null | undefined): BattleReport | null {
+    if (viewer == null) return r;
+    const primary = r.sides.find((s) => s.kind === 'player');
+    if (primary !== undefined && primary.empireId === viewer.empireId) return r;
+    const v = r.views?.[String(viewer.empireId)];
+    if (v === undefined) return null;
+    const sides = r.sides.map((s, i): BattleSide => ({
+        ...s,
+        kind: s.empireId === viewer.empireId && s.key !== 'creatures' ? 'player' : s.kind === 'player' ? 'empire' : s.kind,
+        camp: v.camps[i] ?? 'other',
+    }));
+    return { ...r, sides, result: v.result };
 }
 
 /** A unit's weight in the loss comparison: its start strength (at least 10); a colony 200. */
@@ -943,6 +1000,8 @@ function finalizeBattle(galaxy: Galaxy, st: BattleReportState, b: OpenBattle, no
         sides: b.sides,
         units,
     };
+    const views = otherHumanViews(galaxy, b, units);
+    if (views !== undefined) report.views = views;
     if (report.minor) {
         st.skirmishes.push(report);
         while (st.skirmishes.length > MAX_SKIRMISHES) st.skirmishes.shift();

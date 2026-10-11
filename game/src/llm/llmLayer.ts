@@ -20,6 +20,7 @@ import { voicesOn } from '../sim/scenario/llm/voiceCues';
 
 export interface LlmLayerOptions {
     galaxy: Galaxy;
+    /** The viewer (read at each use: a getter follows the local viewer). */
     player: Empire | null;
     settings: () => EndpointSettings;
     /** window.location.search (dev switches). */
@@ -54,8 +55,25 @@ export function startLlmLayer(opts: LlmLayerOptions): LlmLayer {
     if (!llmOn(opts.galaxy)) return { on: false, queue: null, chronicle: null, strategic: null, voices: null, dispose: () => {} };
     const transport = opts.transport ?? advisorTransport(opts.settings);
     const queue = new LlmQueue({ transport, clock: galaxyLlmClock(opts.galaxy), policy: () => llmPolicyFromGalaxy(opts.galaxy) });
-    const chronicle = new ChronicleJob({ galaxy: opts.galaxy, empire: opts.player, queue, model: () => transport.model(), onStored: opts.onChronicle });
-    const strategic = strategicOn(opts.galaxy) ? new StrategicJob({ galaxy: opts.galaxy, player: opts.player, queue }) : null;
+    // `opts.player` is read at each use (main.ts passes a getter: the local viewer, which the hot seat moves).
+    const chronicle = new ChronicleJob({
+        galaxy: opts.galaxy,
+        get empire() {
+            return opts.player;
+        },
+        queue,
+        model: () => transport.model(),
+        onStored: opts.onChronicle,
+    });
+    const strategic = strategicOn(opts.galaxy)
+        ? new StrategicJob({
+              galaxy: opts.galaxy,
+              get player() {
+                  return opts.player;
+              },
+              queue,
+          })
+        : null;
     const voices = voicesOn(opts.galaxy) ? new VoiceJob({ galaxy: opts.galaxy, player: opts.player, queue, onVoiced: opts.onVoiced }) : null;
     if (voices !== null) setActiveVoiceJob(voices);
     const timer = setInterval(() => {

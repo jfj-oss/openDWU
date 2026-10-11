@@ -33,6 +33,7 @@ import { confirmOrder, interpretOrder } from '../../llm/orders';
 import { currentLlmLayer } from '../../llm/llmLayer';
 import { advisorSelectionFromHud } from '../advisorPanel';
 import { battleReportsOn } from '../battleReports';
+import { localViewerEmpire } from '../../localViewer';
 import { battleReports as listBattleReports, type BattleReport } from '../../sim/battleReports/battleReports';
 import { battleListTitle, battleReportSummary, RESULT_COLORS, RESULT_LABELS } from './battleReportModel';
 import { openBattleReport } from './battleReport';
@@ -61,7 +62,7 @@ import { empireFlagUrl } from '../selectionInfoView';
 
 /** [improvements] The Battle Reports tab's rows, newest first (skirmishes when asked). */
 export function battleReportRows(galaxy: Galaxy, withSkirmishes: boolean): { report: BattleReport; title: string; date: string; color: string }[] {
-    return listBattleReports(galaxy, withSkirmishes).map((r) => ({ report: r, title: battleListTitle(r), date: resolveStarDateDescription(r.endStarDate), color: RESULT_COLORS[r.result] }));
+    return listBattleReports(galaxy, withSkirmishes, localViewerEmpire(galaxy)).map((r) => ({ report: r, title: battleListTitle(r), date: resolveStarDateDescription(r.endStarDate), color: RESULT_COLORS[r.result] }));
 }
 
 // ---------------------------------------------------------------------------
@@ -1185,14 +1186,14 @@ function createGalacticHistory(opts: GalacticHistoryOptions): OpenState {
     const batOpen = glassButton('Open Report', {
         className: 'galactic-history-goto',
         onClick: () => {
-            const cur = listBattleReports(galaxy, true).find((r) => r.id === batSelected);
+            const cur = listBattleReports(galaxy, true, localViewerEmpire(galaxy)).find((r) => r.id === batSelected);
             if (cur !== undefined) openBattleReport(cur);
         },
     });
     const batGoto = glassButton(text('Go to Location'), {
         className: 'galactic-history-goto',
         onClick: () => {
-            const cur = listBattleReports(galaxy, true).find((r) => r.id === batSelected);
+            const cur = listBattleReports(galaxy, true, localViewerEmpire(galaxy)).find((r) => r.id === batSelected);
             if (cur === undefined) return;
             onGoTo(cur.x, cur.y);
             close();
@@ -1208,10 +1209,10 @@ function createGalacticHistory(opts: GalacticHistoryOptions): OpenState {
         if (!closed && tab === 'battles') drawHistoryMap(batCanvas, galaxy, win.scale, batPoint, () => closed);
     }
     function battlesKey(): string {
-        return listBattleReports(galaxy, true).map((r) => r.id).join(',') + `|${batWithSkirmishes ? 'all' : 'battles'}`;
+        return listBattleReports(galaxy, true, localViewerEmpire(galaxy)).map((r) => r.id).join(',') + `|${batWithSkirmishes ? 'all' : 'battles'}`;
     }
     function showBattle(): void {
-        const cur = listBattleReports(galaxy, true).find((r) => r.id === batSelected) ?? null;
+        const cur = listBattleReports(galaxy, true, localViewerEmpire(galaxy)).find((r) => r.id === batSelected) ?? null;
         setText(batHeading, cur !== null ? battleListTitle(cur) : '');
         setText(batText, cur !== null ? battleReportSummary(cur) : '');
         batOpen.disabled = cur === null;
