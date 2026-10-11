@@ -25,6 +25,9 @@ decompiled original was used only as a reference for gameplay accuracy, so
 that formulas, constants, generation order and the random-number sequence
 play out the same way. The code lives under [`game/`](game/). It is a free,
 non-commercial fan project: nothing is sold and no donations are taken.
+It is unofficial and not affiliated with or endorsed by Slitherine, Matrix
+Games or Code Force. Don't have the game?
+[Buy *Distant Worlds: Universe* on Steam](https://store.steampowered.com/app/261470/).
 
 ## Why this exists
 
@@ -782,6 +785,30 @@ code and our own generated sprites), not from the original game.
 
 openDWU is non-commercial and will stay that way: it is free, it is not sold,
 and it takes no donations, payments or in-app purchases.
+
+**Not affiliated.** openDWU is an unofficial fan project. It is not
+affiliated with, endorsed by or supported by Slitherine, Matrix Games or Code
+Force. *Distant Worlds* and *Distant Worlds: Universe* are their trademarks
+and are used here only to say which game this recreates. You need to own the
+original to play: [*Distant Worlds: Universe* on
+Steam](https://store.steampowered.com/app/261470/).
+
+**Rights holders.** If you represent the rights holders and have a concern
+about this project, please
+[open an issue](https://github.com/jfj-oss/openDWU/issues) and I will respond
+promptly.
+
+**Privacy.** openDWU has no telemetry, analytics or accounts and sends no
+data about you or your games anywhere. The only network use is:
+
+- the desktop app's update check, which asks GitHub for the latest release
+  at most once a day;
+- multiplayer, which connects players directly to each other (so players see
+  each other's IP address). To find each other through home routers, it asks
+  a public STUN server (Google's or Cloudflare's) for your public address;
+  no game data passes through any server;
+- the optional language-model layer, which only talks to a model server on
+  your own computer (`127.0.0.1`), and is off unless you run one.
 
 ---
 
