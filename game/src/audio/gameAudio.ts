@@ -26,6 +26,7 @@ import { diplomacyMoodSoundFile } from '../themeAssets';
 // [rimatmo-wiring] begin — 19i items 8/9/10 (data/wiring; render half in src/render/rimAtmosphereLayer.ts, not edited here)
 import { scenarioParam } from '../sim/scenario/state';
 import { rimWeightAt, rimWeightAtCapital } from './rimAtmosphereGeometry';
+import { rimAtmoZoomFade, rimGalaxyViewZoom } from '../render/rimCurve';
 import { RIM_MOOD_TRACKS, RimAmbientBed, playRimVoiceStaticBurst, rimMoodProbability, rimVoiceStaticGain } from './rimAtmosphereMix';
 // [rimatmo-wiring] end
 import type { BuiltObject } from '../sim/builtObject';
@@ -346,7 +347,10 @@ export function installGameAudio(deps: GameAudioDeps): GameAudio {
             try {
                 const weightAtCamera = rimWeightAt(galaxy, camera.x, camera.y);
                 musicPlayer().setRimMood(RIM_MOOD_TRACKS, rimMoodProbability(weightAtCamera, scenarioParam(galaxy, 'musicMoodWeight', 0.8)));
-                rimAmbient.update(weightAtCamera, scenarioParam(galaxy, 'ambientGain', 0.35));
+                // The bed follows the visual atmosphere's zoom gate: silent at the galaxy view, fading in from halfway to
+                // the system view (the bed's own 0.5 s gain glide smooths any zoom jump).
+                const zoomFade = weightAtCamera > 0 ? rimAtmoZoomFade(camera.zoom, rimGalaxyViewZoom(galaxy.sizeX, galaxy.sizeY, camera.width, camera.height)) : 0;
+                rimAmbient.update(weightAtCamera, scenarioParam(galaxy, 'ambientGain', 0.35) * zoomFade);
                 rimCreatures.step(performance.now() / 1000, weightAtCamera); // [rimatmo-audio] calls + creaks
             } catch {
                 // no audio

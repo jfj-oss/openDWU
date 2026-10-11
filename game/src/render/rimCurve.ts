@@ -31,6 +31,10 @@ export interface RimParams {
     vignetteStrength: number;
     /** Film grain strength deep in the rim, 0..1 (0 = off). */
     grainStrength: number;
+    /** Wind motes in rim systems at system zoom, 0..1 (0 = off). */
+    windStrength: number;
+    /** Galaxy-map rim look option (RIM_MAP_LOOKS index; see rimMapLook.ts). */
+    rimMapLook: number;
 }
 
 export const RIM_DEFAULTS: RimParams = {
@@ -44,6 +48,8 @@ export const RIM_DEFAULTS: RimParams = {
     dustDetail: 1,
     vignetteStrength: 0.25,
     grainStrength: 0.3,
+    windStrength: 1,
+    rimMapLook: 1,
 };
 
 function clamp01(v: number): number {
@@ -64,6 +70,8 @@ export function rimParams(galaxy: Galaxy): RimParams | null {
         dustDetail: clamp01(scenarioParam(galaxy, 'dustDetail', RIM_DEFAULTS.dustDetail)),
         vignetteStrength: clamp01(scenarioParam(galaxy, 'vignetteStrength', RIM_DEFAULTS.vignetteStrength)),
         grainStrength: clamp01(scenarioParam(galaxy, 'grainStrength', RIM_DEFAULTS.grainStrength)),
+        windStrength: clamp01(scenarioParam(galaxy, 'windStrength', RIM_DEFAULTS.windStrength)),
+        rimMapLook: Math.round(Math.min(3, Math.max(0, scenarioParam(galaxy, 'rimMapLook', RIM_DEFAULTS.rimMapLook)))),
     };
 }
 
@@ -113,5 +121,34 @@ export function rimWeight(fraction: number, rimInner: number): number {
     if (fraction <= a) return 0;
     if (fraction >= b) return 1;
     const t = (fraction - a) / (b - a);
+    return t * t * (3 - 2 * t);
+}
+
+// --- zoom gate for the screen-space atmosphere (vignette, grain, camera tint, wind, ambient bed) ----------------
+
+/** "System view" zoom factor (1 / zoom): the system-zoom threshold the overlays use (overlayLayer `1 / z < 70`). The
+ *  screen-space atmosphere reaches full strength here. */
+export const RIM_SYSTEM_VIEW_FACTOR = 70;
+
+/** The whole-galaxy zoom for a viewport (Camera.setGalaxyBounds' minZoom: the fit with a 0.9 margin). */
+export function rimGalaxyViewZoom(sizeX: number, sizeY: number, width: number, height: number): number {
+    const fit = Math.min(width / sizeX, height / sizeY);
+    return Number.isFinite(fit) && fit > 0 ? fit * 0.9 : 1e-6;
+}
+
+/**
+ * 0..1 zoom gate for the screen-space atmosphere: 0 from the galaxy view (`galaxyZoom`) until the camera is halfway to
+ * the system view (the geometric mean of the two zooms, i.e. halfway in log zoom = halfway in mouse-wheel steps), then
+ * a smoothstep in log zoom to 1 at the system view (1 / RIM_SYSTEM_VIEW_FACTOR) and beyond. Continuous: no pop.
+ */
+export function rimAtmoZoomFade(z: number, galaxyZoom: number): number {
+    const zs = 1 / RIM_SYSTEM_VIEW_FACTOR;
+    if (!(z > 0)) return 0;
+    if (z >= zs) return 1;
+    const zg = galaxyZoom > 0 ? galaxyZoom : 1e-6;
+    if (zg >= zs) return 0;
+    const lo = Math.sqrt(zg * zs);
+    if (z <= lo) return 0;
+    const t = Math.log(z / lo) / Math.log(zs / lo);
     return t * t * (3 - 2 * t);
 }

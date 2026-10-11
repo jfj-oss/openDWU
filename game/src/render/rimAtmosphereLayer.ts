@@ -56,12 +56,14 @@ import {
     type DustSprite,
 } from './rimDust';
 import { SpritePool } from './fxCommon';
+import { RimWind } from './rimWind';
+import { buildMapLook, MAP_LOOK_LANE_SCALE, mapLookOf, updateMapLook, type RimMapLook } from './rimMapLook';
 import { BUILT_OBJECT_MAX_FACTOR } from './builtObjectLayer';
 import type { Galaxy } from '../sim/galaxy';
 import { HabitatCategoryType, type SystemInfo } from '../sim/types';
 
 export { RIM_FLAG, RIM_DEFAULTS, RIM_RADIUS_QUANTILE, rimParams, rimGeometry, rimFraction, rimBand, rimWeight, type RimParams, type RimGeometry } from './rimCurve';
-import { RIM_DEFAULTS, rimBand, rimFraction, rimGeometry, rimParams, rimWeight, type RimGeometry, type RimParams } from './rimCurve';
+import { RIM_DEFAULTS, rimAtmoZoomFade, rimBand, rimFraction, rimGeometry, rimParams, rimWeight, type RimGeometry, type RimParams } from './rimCurve';
 import { localViewerEmpire } from '../localViewer';
 
 function clamp01(v: number): number {
@@ -472,8 +474,8 @@ export function vignetteDepth(camW: number): number {
 }
 
 /** Vignette and grain alpha at a camera rim weight (0 = hidden). */
-export function vignetteGrainAlpha(camW: number, p: Pick<RimParams, 'vignetteStrength' | 'grainStrength'>): { vignette: number; grain: number } {
-    const d = vignetteDepth(camW);
+export function vignetteGrainAlpha(camW: number, p: Pick<RimParams, 'vignetteStrength' | 'grainStrength'>, zoomFade = 1): { vignette: number; grain: number } {
+    const d = vignetteDepth(camW) * zoomFade;
     return { vignette: d * clamp01(p.vignetteStrength), grain: d * clamp01(p.grainStrength) * GRAIN_ALPHA };
 }
 
@@ -644,6 +646,11 @@ export class RimAtmosphereLayer {
     private derelictPool = new SpritePool(this.derelictRoot);
     private eyePool = new SpritePool(this.eyeRoot);
     private vignette: Sprite | null = null;
+    private wind: RimWind | null = null;
+    private mapLook: RimMapLook = 'wash';
+    private mapLookSprites: Sprite[] = [];
+    /** Backdrop alpha of the last update (the map look's lane scale at galaxy zoom). */
+    private galaxyA = 1;
     private grain: TilingSprite | null = null;
     private starfieldFar: Container | null = null;
     private starfieldNear: Container | null = null;
@@ -690,6 +697,7 @@ export class RimAtmosphereLayer {
         private store: AssetStore,
     ) {
         this.params = rimParams(galaxy);
+        if (this.params !== null) this.mapLook = mapLookOf(this.params);
         if (this.params === null) {
             this.geo = null;
             return;
@@ -768,6 +776,11 @@ export class RimAtmosphereLayer {
         this.grain.visible = false;
         t.fx.addChildAt(this.grain, fxIdx);
         t.fx.addChildAt(this.vignette, fxIdx);
+        // Wind motes (system zoom, rim systems): below the vignette and grain.
+        if (p.windStrength > 0) {
+            this.wind = new RimWind(this.galaxy, this.seed, (x, y) => this.weightAt(x, y), p.windStrength);
+            t.fx.addChildAt(this.wind.root, fxIdx);
+        }
 
         // (3) dust lanes / wisps (placement needs no texture) and the dust + murk textures (workers).
         this.murkSize = geo.radius * 0.11;
@@ -877,7 +890,12 @@ export class RimAtmosphereLayer {
         }
         // (1) wash over backdrop + nebulae, graded by the dust (item 4).
         const tw = performance.now();
-        if (p.tintStrength > 0) {
+        if (p.tintStrength > 0 && this.mapLook !== 'wash') {
+            // Galaxy-map rim look option (rimMapLook.ts) in place of the flat wash.
+            const half = Math.max(this.galaxy.sizeX, this.galaxy.sizeY) / 2;
+            this.mapLookSprites = buildMapLook(this.mapLook, geo, p, half, this.seed);
+            for (const s of this.mapLookSprites) this.washRoot.addChild(s);
+        } else if (p.tintStrength > 0) {
             const half = Math.max(this.galaxy.sizeX, this.galaxy.sizeY) / 2;
             const cov = this.lanes.length > 0 ? (x: number, y: number) => this.dustAt(x, y) : null;
             this.wash = new Sprite(makeWashTexture(geo, p, half, cov));
@@ -997,6 +1015,7 @@ export class RimAtmosphereLayer {
     /** Lanes, their rim light and the detail cells for the current camera (only when the camera moved). */
     private drawDust(p: RimParams, z: number, cam: Camera, camX: number, camY: number): void {
         const k = p.dustStrength;
+        const laneK = k * (1 - (1 - MAP_LOOK_LANE_SCALE[this.mapLook]) * this.galaxyA);
         for (let i = 0; i < this.laneSprites.length; i++) {
             const s = this.lanes[i];
             const spr = this.laneSprites[i];
@@ -1007,8 +1026,8 @@ export class RimAtmosphereLayer {
             if (rim !== null && rim.visible !== on) rim.visible = on;
             if (!on) continue;
             const lod = laneLod((s.length / DUST_TEX_SIZE) * z);
-            spr.alpha = k * DUST_LANE_ALPHA * s.alpha * lod;
-            if (rim !== null) rim.alpha = k * DUST_RIM_ALPHA * s.alpha * lod * p.tintStrength;
+            spr.alpha = laneK * DUST_LANE_ALPHA * s.alpha * lod;
+            if (rim !== null) rim.alpha = laneK * DUST_RIM_ALPHA * s.alpha * lod * p.tintStrength;
         }
         // Detail cells: the visible cell ranges (with a margin covering every sprite's extent) decide everything —
         // alphas depend on the zoom only — so a pan that stays inside the same ranges touches nothing.
@@ -1120,11 +1139,16 @@ export class RimAtmosphereLayer {
         this.frame++;
         const tSec = Date.now() / 1000;
         const camW = this.weightAt(cam.x, cam.y);
+        // Screen-space atmosphere zoom gate (vignette, grain, camera tint, wind): 0 at the galaxy view until halfway to
+        // the system view, then a smooth log-zoom ramp to full at the system view (rimCurve.rimAtmoZoomFade).
+        const zf = rimAtmoZoomFade(z, cam.minZoom);
 
         if (this.wash !== null) {
             this.wash.alpha = galaxyA;
             this.wash.visible = galaxyA > 0.01;
         }
+        this.galaxyA = galaxyA;
+        if (this.mapLookSprites.length > 0) updateMapLook(this.mapLook, this.mapLookSprites, galaxyA, tSec);
 
         // Dust space: pans at DUST_PARALLAX of the camera (about the galaxy centre). The deep field container undoes
         // the world transform so the starfield keeps its screen-space parallax.
@@ -1153,7 +1177,7 @@ export class RimAtmosphereLayer {
         }
 
         // (1) + (4) starfield tint / thinning by camera position (the dust under the camera adds to both).
-        const atmo = clamp01(camW + 0.35 * this.camCov * p.dustStrength);
+        const atmo = clamp01(camW + 0.35 * this.camCov * p.dustStrength) * zf;
         if (this.starfieldFar !== null && this.starfieldNear !== null && atmo > 0) {
             // With dust on, the uniform thinning eases off: the lanes do the thinning where they lie (item 4), and
             // they need a deep field to occlude.
@@ -1169,7 +1193,7 @@ export class RimAtmosphereLayer {
 
         // (13) vignette + grain.
         if (this.vignette !== null && this.grain !== null) {
-            const a = vignetteGrainAlpha(camW, p);
+            const a = vignetteGrainAlpha(camW, p, zf);
             this.vignette.visible = a.vignette > 0.005;
             this.grain.visible = a.grain > 0.002;
             if (this.screenKey.changed(cam.width, cam.height)) {
@@ -1188,6 +1212,8 @@ export class RimAtmosphereLayer {
                 if (this.frame % GRAIN_FRAMES_PER_STEP === 0) this.grain.tilePosition.set(Math.floor(Math.random() * 256), Math.floor(Math.random() * 256));
             }
         }
+
+        this.wind?.update(performance.now(), cam, z);
 
         // (5) derelicts: drawn once they are >= 2 px on screen.
         this.derelictPool.begin();
