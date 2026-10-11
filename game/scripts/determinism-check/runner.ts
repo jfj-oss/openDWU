@@ -11,10 +11,11 @@
 // test/helpers/commandScript.ts issued live; --record writes the resulting command log), replay (seed 1 + a recorded
 // command log from --log, applied at its frame boundaries).
 import { createHash } from 'node:crypto';
-import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
-import { loadGameData, type FetchText, type GameData } from '../../src/sim/data/gameData';
+import type { GameData } from '../../src/sim/data/gameData';
+import { loadData } from './dataFs';
 import { createGame, type CreateGameOptions, type Game } from '../../src/sim/game';
 import { GalaxyShape } from '../../src/sim/types';
 import { runGameSeconds } from '../../src/sim/tick/harness';
@@ -46,38 +47,6 @@ const logPath = arg('log', '');
 const recordPath = arg('record', '');
 // --files: print each data file's hash (to find the file behind a data fingerprint mismatch).
 const listFiles = process.argv.includes('--files');
-
-// --- Game data from a folder (test/helpers/loadGameDataFs.ts, with the folder as an argument). Every file read is
-// fingerprinted (path + content) so a data mismatch between the machines is told apart from a sim divergence.
-async function loadData(root: string): Promise<{ data: GameData; fingerprint: string; files: number }> {
-    const reads = new Map<string, string>();
-    const fetchText: FetchText = async (candidates: string[]) => {
-        for (const c of candidates) {
-            const rel = decodeURIComponent(c.replace(/^\/assets\/dwu\/?/, ''));
-            const p = resolve(root, rel);
-            if (!existsSync(p)) continue;
-            const text = readFileSync(p, 'utf-8');
-            reads.set(rel, text);
-            return text;
-        }
-        throw new Error(`Could not load any of: ${candidates.join(', ')}`);
-    };
-    const txt = (dir: string) => (existsSync(dir) ? readdirSync(dir).filter((f) => f.endsWith('.txt')).sort() : []);
-    const races = txt(resolve(root, 'races'));
-    const templates = txt(resolve(root, 'designTemplates', 'DEFAULT')).map((f) => f.replace(/\.txt$/, ''));
-    const policyDir = resolve(root, 'Policy');
-    const policies = existsSync(policyDir) ? readdirSync(policyDir, { withFileTypes: true }).filter((e) => e.isFile() && e.name.endsWith('.txt')).map((e) => e.name).sort() : [];
-    policies.push(...txt(resolve(policyDir, 'pirate')).map((f) => `pirate/${f}`));
-    const data = await loadGameData(fetchText, undefined, races, templates, policies);
-    const h = createHash('sha1');
-    // Paths lower-cased: a case-insensitive file system (macOS) opens the first candidate spelling, Linux a later one.
-    const keys = [...reads.keys()].sort((a, b) => (a.toLowerCase() < b.toLowerCase() ? -1 : a.toLowerCase() > b.toLowerCase() ? 1 : 0));
-    for (const k of keys) {
-        h.update(`${k.toLowerCase()}\0${reads.get(k)!}\0`);
-        if (listFiles) console.log(`# file ${createHash('sha1').update(reads.get(k)!).digest('hex').slice(0, 12)} ${k}`);
-    }
-    return { data, fingerprint: h.digest('hex'), files: reads.size };
-}
 
 function options(data: GameData, seed: number, stars: number, empires: number, sectors: number): CreateGameOptions {
     const s = (race: string) => ({ race, homeSystemFavourability: 'Normal' as const, proximityDistance: 'Random', startLocation: '(Random)', age: 1, techLevel: 0.5 });
@@ -118,7 +87,7 @@ function powHash(pow: (x: number, y: number) => number): string {
     return h.digest('hex').slice(0, 12);
 }
 
-const { data, fingerprint, files } = await loadData(dataDir);
+const { data, fingerprint, files } = await loadData(dataDir, listFiles);
 console.log(`# ${caseName} data ${fingerprint} (${files} files) ${process.platform}-${process.arch} v8 ${process.versions.v8}${process.versions.electron ? ` electron ${process.versions.electron}` : ''}`);
 console.log(`# pow: detPow ${powHash(detPow)}, native Math.pow ${powHash(Math.pow)}`);
 

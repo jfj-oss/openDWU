@@ -7,9 +7,11 @@
 //   node scripts/determinism-check.mjs [--cases s1,s7,smart,script,replay] [--years 3] [--every 10] [--save-every 6]
 //        [--data <DW:U folder>] [--runtime electron|node|both]
 //        [--remote user@host --ssh-key ~/.ssh/key --remote-data '~/dwu-assets'
-//         --remote-runtime /Applications/dwu.app/Contents/MacOS/dwu --remote-dir '~/opendwu-detcheck']
+//         --remote-runtime /Applications/dwu.app/Contents/MacOS/dwu --remote-dir '~/opendwu-detcheck'
+//         [--remote-shell cmd] [--remote-jobs N]]
 //        [--keep] [--out <dir>]
 //   node scripts/determinism-check.mjs --compare a.txt b.txt
+//   node scripts/determinism-check.mjs --bundle-peer <dir>      (the lockstep peer, scripts/determinism-check/lockstepPeer.ts)
 //
 // --runtime electron = the repo's electron devDependency with ELECTRON_RUN_AS_NODE=1 (the release app's V8); the
 // remote runtime is used the same way (an installed app's binary works). 'replay' replays the command log the
@@ -50,6 +52,15 @@ if (arg('compare', null) !== null) {
     const r = compare(readFileSync(fa, 'utf8'), readFileSync(fb, 'utf8'), fa, fb);
     console.log(r.ok ? `match: ${r.checked} checkpoints` : `DIVERGED after ${r.checked} matching checkpoints:\n${r.first}`);
     process.exit(r.ok ? 0 : 1);
+}
+
+// --bundle-peer <dir>: only bundle scripts/determinism-check/lockstepPeer.ts (a cross-machine lockstep session, see its
+// header) to <dir>/peer.mjs and exit.
+if (arg('bundle-peer', null) !== null) {
+    const file = resolve(String(arg('bundle-peer', '.')), 'peer.mjs');
+    await build({ cwd: root, input: resolve(root, 'scripts/determinism-check/lockstepPeer.ts'), platform: 'node', logLevel: 'warn', output: { file, format: 'esm', codeSplitting: false }, write: true });
+    console.log(`bundle ${file}`);
+    process.exit(0);
 }
 
 const cases = String(arg('cases', 's1,s7,smart,script,replay')).split(',');
@@ -109,20 +120,28 @@ if (remote !== null) {
     const rdir = String(arg('remote-dir', '~/opendwu-detcheck'));
     const rdata = String(arg('remote-data', '~/dwu-assets'));
     const rrt = String(arg('remote-runtime', '/Applications/dwu.app/Contents/MacOS/dwu'));
+    // --remote-shell cmd: a Windows host (Windows OpenSSH runs cmd.exe); give --remote-dir / --remote-data /
+    // --remote-runtime as Windows paths (C:\\...).
+    const win = String(arg('remote-shell', 'posix')) === 'cmd';
+    const jobs = Number(arg('remote-jobs', 0)) || ordered.length;
     const ssh = (cmd) => execFileSync('ssh', [...sshArgs, String(remote), cmd], { encoding: 'utf8', maxBuffer: 1 << 28 });
-    ssh(`mkdir -p ${rdir}`);
-    execFileSync('scp', [...sshArgs, bundle, ...(existsSync(resolve(out, 'command-log.json')) ? [resolve(out, 'command-log.json')] : []), `${remote}:${rdir}/`]);
+    ssh(win ? `if not exist "${rdir}" mkdir "${rdir}"` : `mkdir -p ${rdir}`);
+    execFileSync('scp', [...sshArgs, bundle, ...(existsSync(resolve(out, 'command-log.json')) ? [resolve(out, 'command-log.json')] : []), `${remote}:${win ? rdir.replace(/\\/g, '/') : rdir}/`]);
     try {
-        const remoteRuns = ordered.map((c) => new Promise((done, fail) => {
-            const cmd = `cd ${rdir} && ELECTRON_RUN_AS_NODE=1 ${rrt} --max-old-space-size=8192 runner.mjs --data ${rdata} ${caseArgs(c, 'command-log.json').map((a) => (a.startsWith('/') ? a.split('/').pop() : a)).join(' ')}`;
+        const runOne = (c) => new Promise((done, fail) => {
+            const rest = `--max-old-space-size=8192 runner.mjs --data ${win ? `"${rdata}"` : rdata} ${caseArgs(c, 'command-log.json').map((a) => (a.startsWith('/') ? a.split('/').pop() : a)).join(' ')}`;
+            const cmd = win ? `cd /d "${rdir}" && set ELECTRON_RUN_AS_NODE=1&& "${rrt}" ${rest}` : `cd ${rdir} && ELECTRON_RUN_AS_NODE=1 ${rrt} ${rest}`;
             const p = spawn('ssh', [...sshArgs, String(remote), cmd], { stdio: ['ignore', 'pipe', 'inherit'] });
             let text = '';
             p.stdout.on('data', (d) => { text += d; });
-            p.on('exit', (code) => { const f = resolve(out, `${c}.remote.txt`); writeFileSync(f, text); code === 0 ? done([c, f]) : fail(new Error(`remote ${c} exited ${code}`)); });
-        }));
-        for (const [c, f] of await Promise.all(remoteRuns)) results.set(`${c}.remote`, f);
+            p.on('exit', (code) => { const f = resolve(out, `${c}.remote.txt`); writeFileSync(f, text.replace(/\r\n/g, '\n')); code === 0 ? done([c, f]) : fail(new Error(`remote ${c} exited ${code}`)); });
+        });
+        // At most --remote-jobs cases at once (default: all).
+        const queue = [...ordered];
+        const worker = async () => { for (let c; (c = queue.shift()) !== undefined;) { const [k, f] = await runOne(c); results.set(`${k}.remote`, f); console.log(`ran ${k} on the remote`); } };
+        await Promise.all(Array.from({ length: Math.min(jobs, ordered.length) }, worker));
     } finally {
-        if (!keep) ssh(`rm -rf ${rdir}`);
+        if (!keep) ssh(win ? `rmdir /s /q "${rdir}"` : `rm -rf ${rdir}`);
     }
 }
 

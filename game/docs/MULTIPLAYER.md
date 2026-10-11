@@ -686,12 +686,34 @@ node scripts/determinism-check.mjs --years 5 --remote user@mac --ssh-key ~/.ssh/
 Cases: `s1` (seed 1, 300 stars, 4 empires), `s7` (seed 7, 700 stars, 10 empires), `smart` (seed 3, Smarter AI as a
 composite add-on with every sub-switch on), `script` (seed 1 with the scripted player orders of
 `test/helpers/commandScript.ts`, recording the command log) and `replay` (seed 1 replaying that log; it must also
-equal `script`). The remote folder is deleted afterwards.
+equal `script`). The remote folder is deleted afterwards. A Windows host (Windows OpenSSH runs `cmd.exe`) takes
+`--remote-shell cmd` with Windows paths, e.g. `--remote-dir C:\\...\\run --remote-data C:\\...\\data
+--remote-runtime C:\\...\\dwu.exe`; `--remote-jobs N` runs at most N cases at once there. Without the game, the
+runtime is the release zip's `dwu.exe` (+ its dlls, `.dat`, `.bin` and `.pak` files, no art) and the data is only the
+1,337 files the runner reads (`--files` lists them; plus every `.txt` of `races/`, `designTemplates/DEFAULT/`,
+`Policy/` and `Policy/pirate/`, which the loader lists): about 260 KB.
+
+**Lockstep across machines:** `node scripts/determinism-check.mjs --bundle-peer <dir>` bundles
+`scripts/determinism-check/lockstepPeer.ts` (one file, like the runner). One machine runs `--role host --peers N`,
+the others `--role client --peers N --url ws://<host>:47811`, each under its app binary with
+`ELECTRON_RUN_AS_NODE=1`. Every peer builds seed 1 itself, commands its own human empire (renames, waypoints,
+retirements and move orders) and runs at up to 60 fps; the host compares every client's digest every 60 frames.
 
 **Result (2026-10-10, Linux x64 vs macOS arm64, both Electron 44.4.5 / V8 15.2):** **they match.** All five cases ran 5 game years each,
 compared every 10 game seconds (5 × 301 checkpoints: state digest and Rnd draw count; plus a whole-save hash every
 60 s): every checkpoint is identical, both before and after the `detPow` fix below, and the command-log replay equals
 the live scripted run. Seed 7 (700 stars, 10 empires) ends with 2,601 built objects and 3.9M Rnd draws.
+
+**Windows (2026-10-10, Windows 11 x64, i7-10510U, the v0.1.15 release `dwu.exe` = Electron 44.4.5 / V8 15.2, at
+`d11580a7`):** **it matches too.** The same five 5-year cases, 5 × 301 checkpoints, are identical to Linux, and a
+fresh Mac run at the same commit is identical to both: all three platforms give the same streams. Windows' native
+`Math.pow` differs from both Linux's and the Mac's (a third set of results), and `detPow` is identical everywhere,
+so the `detPow` fix was needed for Windows as well. The laptop ran about 6× slower than this PC (3 cases at once),
+which still allowed the full 5-year runs.
+
+**3-peer lockstep (Linux host + macOS + Windows, over Tailscale, WebSocket):** 14,400 frames (4.4 minutes of real
+time, 951 game seconds at 4×), 794 player commands from the three peers, a pause asked by a client and resumed by
+the host. All 480 digest checks (240 per client) matched, with no resyncs, and all three end on the same digest.
 
 Findings:
 
