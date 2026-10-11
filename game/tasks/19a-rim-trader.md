@@ -463,3 +463,34 @@ All behind flag `rimTrader` (add-on off: byte-identical; the base sim gains thre
 - **Hazards**: no treasure stop within two systems of the Ancient Guardians (the Mechanoid empire) or a hostile space
   creature (`treasurePortHazard`). Hyperjump paths are direct (no waypoints): only the stops are screened.
 
+
+### 14.2 Measurement (scripts/rimtrade-measure-hook.mjs, `soak.mjs --set rim-measure`; scratch tables in ~/data/agent-tmp/rim-measure)
+
+Before = the §14 code (837c95c3 + the main-body defence fix); after = §14.1. 700 stars / 12 empires unless noted;
+the late starts are old galaxies with mature tech-6 empires.
+
+| run | Concord placed | empires sold rim / bought rare | rim units | rare units (via fleet) | worst end standing | foreign colonies holding rare (avg) | empires with rare in their 3 slots (avg) | treasure voyages / stops | raids main / straggler (successes) | Concord warships / firepower | top normal empire fp | Concord kills |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| s1 15y before | yes | 11 / 7 | 80k | 4.3k (25%) | −124k | 2.3 | 3.0 | 4 / 20 | 0 / 2 (0) | 98 / 58k | 13k | 66 |
+| s1 after | yes | 11 / 8 | 72k | 0.9k (92%) | +8 | 3.3 | 4.9 | 4 / 19 | 0 / 1 (0) | 91 / 57k | 6k | 63 (55 pirates) |
+| s2 before | yes | 9 / 10 | 78k | 13.3k (5%) | −1.1M | 4.1 | 2.5 | 4 / 16 | 0 / 0 | 47 / 27k | 7k | 177 |
+| s2 after | yes | 13 / 10 | 84k | 1.2k (87%) | −20k | 4.9 | 4.9 | 5 / 20 | 0 / 0 | 14 / 10k (war with the Guardians) | 10k | 97 |
+| s3 before | yes | 8 / 8 | 81k | 6.1k (17%) | −37k | 2.9 | 1.9 | 3 / 18 | 0 / 2 (0) | 91 / 52k | 16k | 116 |
+| s3 after | yes | 8 / 7 | 71k | 1.0k (73%) | +1 | 3.0 | 4.5 | 3 / 18 | 0 / 2 (0) | 92 / 51k | 5k | 69 |
+| late s6 before | yes | 17 / 17 | 101k | 15.9k (5%) | −70k | 4.7 | 0.9 | 5 / 24 | 0 / 0 | 309 / 139k | 59k | 732 |
+| late s6 after | yes | 11 / 8 | 65k | 0.6k (37%) | +1 | 0.7 | 2.8 | 5 / 15 | 0 / 0 | 210 / 93k | 58k | 12 |
+| late s7 before / after | **no** / yes | – / 10, 9 | – / 44k | – / 0.6k | – / +1 | – / 0.4 | – / 0.3 | – / 5, 16 | – / 0 / 1 | – / 116, 52k | 29k | – / 4 |
+| late s8 before / after | **no** / yes | – / 11, 8 | – / 62k | – / 0.4k | – / +4 | – / 0.8 | – / 1.5 | – / 5, 19 | – / 0 / 0 | – / 190, 79k | 50k | – / 31 |
+| big s4 10y (1400 stars, before) | yes | 6 / 7 | 34k | 3.0k | −385k | 2.3 | 0.7 | 2 / 8 | 0 / 0 | 92 / 57k | 4k | 3 |
+| big s5 10y (before) | yes | 8 / 6 | 45k | 2.3k | −91k | 2.8 | 1.9 | 2 / 9 | 0 / 0 | 95 / 52k | 3k | 27 |
+| long s1 50y (before) | yes | 14 / 15 | 273k | 64k (3%) | −355k | 8.2 | 1.8 | 11 / 56 | 27 / 5 (0) | 456 / 331k | 411k (Guardians) | 639 |
+| long s3 50y (before) | yes | 13 / 11 | 263k | 33k (6%) | −78k | 5.6 | 1.8 | 12 / 53 | 0 / 4 (0) | 136 / 88k (lost 3 colonies) | 347k | 1,172 |
+
+Findings: with the standing cap the rare-goods trade shrinks to what the rim goods pay for (one rare unit ≈ 100 rim
+units at the default exchange rate 1.0, price factor 2, decay 0.5 a year), so the 3 slots fill more often but fewer
+colonies hold the goods; the main limiter of reach is supply, not crowding-out (stock super-luxuries are held by 2–3
+foreign colonies in normal games, 18–19 in the late starts). The treasure fleet is never raided successfully in 15
+years; in 50 years main-body raids appear (years 17–43 in s1) but fail; the losses come from the stock Ancient
+Guardians at stops in their space (now screened). The navy cap and the price cap cut the late-start Concord from 309
+warships / 732 kills to 210 / 12. Adding the Rim Trade to a save is not supported: it needs galaxy-generation steps (the
+rim-goods placement, the Concord's home) and the game-start handler.
