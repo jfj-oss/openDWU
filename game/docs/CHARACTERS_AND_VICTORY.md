@@ -54,10 +54,10 @@ it. We only keep its tests and its flag-off check green.
 
 | Existing add-on | What already exists | What this add-on extends / how it integrates | Conflicts (reported, not silently resolved) | Genuinely new here |
 |---|---|---|---|---|
-| **galactic-council** (`src/sim/scenario/emergent/council.ts`, flag `galacticCouncil`) | A council founded once 3+ empires have met. One yearly motion (sanction, embargo, condemn, lift, recognise a new state, declare a threat), deterministic AI votes from attitude, blocs, council splits, a player vote decision, and sanctions through the real StartTradeSanctions. | **Part 2 extends it rather than writing a second council** (§7): host world, physically attending delegates (Part 1's travel hook), sessions every 2–3 years with 1–3 motions, the enforcer blockade on sanctions, truce/free-trade/weapon-ban/pirate/independents/claim/expulsion/Regent motions, and personality-based votes. Its existing motion kinds stay as they are. | **C1.** The plan's sessions run every 2–3 years with 1–3 motions; the existing council votes one motion **every year**. **C2.** The plan's founding is implicit (all members, with the strongest as host); the existing founding needs 3 met empires and an AI join threshold (friendliness + caution − aggression). **C3.** The plan's vote weights come from size, strength, relations, gifts and spies; the existing ones are attitude-based, with bloc coordination. Part 2 should make the plan's rules an **option of the existing council** (a "Characters & Victory sessions" flag) rather than replacing the defaults. The user should choose. | Host colony and its Wonder-type bonuses, delegates, enforcers, Regent, Emperor countdown. |
+| **galactic-council** (`src/sim/scenario/emergent/council.ts`, flag `galacticCouncil`) | A council founded once 3+ empires have met. One yearly motion (sanction, embargo, condemn, lift, recognise a new state, declare a threat), deterministic AI votes from attitude, blocs, council splits, a player vote decision, and sanctions through the real StartTradeSanctions. | **Part 2 extends it rather than writing a second council** (§7): host world, physically attending delegates (Part 1's travel hook), sessions every 2–3 years with 1–3 motions, the enforcer blockade on sanctions, truce/free-trade/weapon-ban/pirate/independents/claim/expulsion/Regent motions, and personality-based votes. Its existing motion kinds stay as they are. | **C1.** The plan's sessions run every 2–3 years with 1–3 motions; the existing council votes one motion **every year**. **C2.** The plan's founding is implicit (all members, with the strongest as host); the existing founding needs 3 met empires and an AI join threshold (friendliness + caution − aggression). **C3.** The plan's vote weights come from size, strength, relations, gifts and spies; the existing ones are attitude-based, with bloc coordination. **Decided (user, 2026-10-10): the plan's rules (§7).** That is Part 2's work, built on the hooks in §10. | Host colony and its Wonder-type bonuses, delegates, enforcers, Regent, Emperor countdown. |
 | **internal-security** (`security/security.ts`, flag `internalSecurity`) | A per-colony stability ledger. It is the fold of `registerStabilityTerm` terms (`scenario/stability.ts`), which the revolt reads through `colonyRevoltApproval`, with governor loyalty, purges and martial law. Leads come from one counter-intelligence roll. | **The vacancy decline is a stability term** (`cause: 'vacancy'`) registered through `registerStabilityTerm`. It shows in internal-security's ledger, colony tooltip and Empire Summary, and the stock (or ledger) revolt reads it. There is no parallel unrest system. Its loyalty term already reads "the governor at the colony". During a trip that is nobody, so a disloyal governor in transit costs nothing. That is consistent. | None found. Note: `security.ts:641` moves a character with `transferToNewLocation`, so under this add-on that becomes a shuttle trip (intended). | — |
-| **corporatecoup** (`threats/corporateCoup.ts`, flag `threatCorporateCoup`) | A subject company bribes the holder's ColonyGovernors (a per-mille yearly chance per governor) and breaks away once it has bought `coupGovernors` (3). The AI replaces confirmed bought governors with `generateNewCharacter` at the colony. | Compatible: our governors are ordinary ColonyGovernor characters. Under this add-on the coup's AI replacement goes through `spawnGovernorFor` (§3.1): it appears at the capital and travels. A bought governor that the automation moves stays bought (the coup's list holds the character). | **C4.** With a governor on every colony the coup has far more bribe targets: the yearly per-governor roll over 3–10× as many governors reaches 3 bought governors much sooner. Options: scale `coupBribePct` down when this add-on is on, or count only governors in the company's reach. Reported; not changed. | — |
-| **frontier-autonomy** (`frontier/frontier.ts`, flag `frontierAutonomy`) | Autonomy drift (travel time to the capital, no warships, a foreign race, low approval; lower with a ruling-house governor), frontier sectors under a sector governor (the ColonyGovernor of the most autonomous colony; generated there if none), and breakaways. | Compatible. Its `colonyGovernorOf` reads characters located at the colony, so a sector governor away on a trip is "not governing", and its yearly review picks another sector colony's governor. That is the plan's absence rule. Its spawn of a sector governor goes through `spawnGovernorFor` under this add-on (§3.1). | **C5.** The plan's "vacancy → breakaway after years" and frontier-autonomy's breakaway are two separate routes to secession. They don't double-count approval (ours is one stability term; frontier adds its own 'frontier' term), but a vacant frontier colony gets both. Possibly intended. Reported. | — |
+| **corporatecoup** (`threats/corporateCoup.ts`, flag `threatCorporateCoup`) | A subject company bribes the holder's ColonyGovernors (a per-mille yearly chance per governor) and breaks away once it has bought `coupGovernors` (3). The AI replaces confirmed bought governors with `generateNewCharacter` at the colony. | Compatible: our governors are ordinary ColonyGovernor characters. Under this add-on the coup's AI replacement goes through `spawnGovernorFor` (§3.1): it appears at the capital and travels. A bought governor that the automation moves stays bought (the coup's list holds the character). | **C4.** With a governor on every colony the coup has far more bribe targets: the yearly per-governor roll over 3–10× as many governors reaches 3 bought governors much sooner. **Decided and built:** with this add-on on, the per-governor chance is multiplied by `min(1, stockCount / governorsAtColonies)`, where stockCount = 0.27 × colonies is the governor coverage measured in the faithful game (73–75 % of colonies without one in the cv-off soaks) (scenario/governors.ts `governorBribeScale`, registered by this add-on). The expected bribes per year therefore stay those of the stock governor count; off, the factor is 1. Measured in §12. | — |
+| **frontier-autonomy** (`frontier/frontier.ts`, flag `frontierAutonomy`) | Autonomy drift (travel time to the capital, no warships, a foreign race, low approval; lower with a ruling-house governor), frontier sectors under a sector governor (the ColonyGovernor of the most autonomous colony; generated there if none), and breakaways. | Compatible. Its `colonyGovernorOf` reads characters located at the colony, so a sector governor away on a trip is "not governing", and its yearly review picks another sector colony's governor. That is the plan's absence rule. Its spawn of a sector governor goes through `spawnGovernorFor` under this add-on (§3.1). | **C5.** The plan's "vacancy → breakaway after years" and frontier-autonomy's breakaway are two separate routes to secession. They don't double-count approval (ours is one stability term; frontier adds its own 'frontier' term), but a vacant frontier colony gets both. **Decided and built: one feeds the other.** A colony's neglect is frontier-autonomy's drift cause "No governor" (`frontierNoGovernorDrift` × neglect, default 4 a year at full neglect; scenario/governors.ts `colonyNeglectOf`). While frontier-autonomy runs, this add-on's own vacancy approval term is off, so the unrest and the breakaway go only through frontier's autonomy → 'frontier' term → warnings → breakaway path. Without frontier-autonomy, the decline effects stay and the vacancy term lowers approval, which the stock revolt (or internal-security's ledger revolt) reads; this add-on has no breakaway of its own. | — |
 | **espionage-consequences** (`emergent/espionage.ts`) | Exposed agents open crises; tech leaks; false flags. | Part 2's decoy reveal (§4.3) uses the real StealOperationsMap intelligence mission. An exposure there still opens this add-on's crisis as for any mission. Its existing hooks are enough. | None. | The decoy reveal. |
 | **reputation** (`reputation/ledger.ts`, flag `reputationLedger`) | Scenario attitude changes become ledger entries with causes and fades. | **Every attitude change this add-on makes goes through `recordReputation`** when the ledger is on: in Part 1, attacking a VIP shuttle (a "VIP attacked" cause, §4.5); in Part 2, attacking delegates or enforcers, and Council penalties. When the ledger is off they write IncidentEvaluation the way the existing packages do. | None. | — |
 
@@ -156,7 +156,7 @@ ledger entry or emit an event they already read.
   - IntelligenceAgent: a **SpyAcademy**. Agents never travel in the original (missions are abstract), so an agent simply starts there.
 - **new.** With several academies of the kind, the one nearest the destination is used. With none, the capital.
 - **new.** frontier-autonomy's and corporatecoup's governor spawns follow the same rule through `spawnGovernorFor` (§3.1). This add-on's own local rise (§5.4) is the one exception: a local governor rises at the colony itself.
-- **new.** Governor **training**: each training site (the capital, plus every colony with a completed RegionalCapital) trains one governor per `cvTrainDays` (180) while governors + in training < the governor cap. Each costs `cvTrainCost` (2000) state credits, paid at the start. If the empire can't pay, training waits. A trained governor appears at its site through the stock generator (GenerateNewCharacter, Empire.6.cs:4413), with stock random skills. It becomes a **reserve** until it is assigned.
+- **new.** Governor **training**: each training site (the capital, plus every colony with a completed RegionalCapital) trains one governor per `cvTrainDays` (180) while governors + in training < the governor cap. Each costs `cvTrainCost` (2000) state credits, paid at the start, and training starts only while the treasury holds at least ten times that. (As built: without the buffer, early training drained the young treasuries just when the colony ships were being bought. See §12.) A trained governor appears at its site through the stock generator (GenerateNewCharacter, Empire.6.cs:4413), with stock random skills. It becomes a **reserve** until it is assigned.
 
 ### 5.3 Vacancy (the user's rule)
 
@@ -170,10 +170,10 @@ duty (Part 2) does not count.
   |---|---|---|
   | No construction | Facility construction at the colony pauses (the `facilityConstructionPaused` query at the stock facility-progress step) | while `N > 0` |
   | Falling output | Colony tax revenue (the `colonyTaxRevenue` query) | × (1 − 0.5·N) |
-  | Falling happiness | A stability term (`cause: 'vacancy'`) | −20·N approval |
+  | Falling happiness | A stability term (`cause: 'vacancy'`); with frontier-autonomy on, its "No governor" drift instead (§3, C5) | −20·N approval / +4·N autonomy a year |
   | Disrepair | The colony's development level loses `cvDisrepairPerYear` per year | while `N ≥ 0.25` |
   | Emigration | Population loss per year | `N ≥ 0.5`: 1.5%·N |
-  | Unrest, rebellion, breakaway | Nothing extra: the falling approval drives the **stock** revolt (Habitat.cs:5992 CheckSatisfaction → LeaveEmpire) or internal-security's ledger revolt | emergent, after years |
+  | Unrest, rebellion, breakaway | Nothing of this add-on's own: the falling approval drives the **stock** revolt (Habitat.cs:5992 CheckSatisfaction → LeaveEmpire) or internal-security's ledger revolt; with frontier-autonomy on, only its breakaway path | emergent, after years |
 
 - **new.** Recovery: once a governor is in post, `N` falls by 1/`cvRecoveryYears` (5) per year. A colony at full neglect therefore takes 5 years to recover, and a partly neglected one proportionally less.
 - **new.** When the add-on starts in a running game (added to a save), the posts vacant at its first review are filled by local rises within the grace (60–180 days), not after 1–3 years. Otherwise every colony of a mid-game empire would decline at once.
@@ -422,13 +422,43 @@ the clash with rimTrade's Concord cannot happen (the council is always the Diet)
 
 ## 10. Hooks for Part 2 (the Council agent)
 
-Exported from `src/sim/scenario/charactersVictory/index.ts`:
+The council (C1–C3) follows this plan (§7). Part 2 builds on these hooks and never re-implements travel or governors.
 
-- `sendVip(galaxy, character, destination, reason, opts?)`: starts a VIP trip for any reason (`reason` is a string tag such as `'council'`). Arrival emits the scenario event `vipTripArrived { character, destination, reason }`. A death or capture on the way emits `vipTripFailed { character, reason, cause }`. Event handlers registered with `registerScenarioEvent` are save-safe (no closures in state).
-- `mostImportantGovernor(galaxy, empire)`: the governor of the highest strategic-value colony, ties by skills then id. `null` if there is none.
-- `setGovernorDuty(galaxy, character, reason)` / `endGovernorDuty(galaxy, character)`: marks a governor away on duty. Their post is kept and the colony is vacant (grace and decline apply as usual); `endGovernorDuty` sends them home by VIP trip.
-- `colonyVacancy(galaxy, colony)` → `{ vacant, since, neglect, graceLeftDays }`, and `governorOf(galaxy, colony)`.
-- `characterImportance(galaxy, character)` and `routeDanger(galaxy, empire, from, to)`, for delegate escorts.
+**From `src/sim/scenario/charactersVictory/index.ts`:**
+
+- **`sendVip(galaxy, character, destination: BuiltObject | Habitat, reason: string): boolean`.** Sends a character in person, whatever the reason (`reason` is a tag such as `'council'`).
+  - It calls the stock `transferToNewLocation`, so the trip is an ordinary transfer in every stock view, and tags the trip with `reason`.
+  - It returns false when the VIP shuttles are off: the stock timer then runs and no event fires.
+  - A trip with a reason other than `'transfer'` may go to any habitat, a foreign one included (the council world is the host's colony). Ordinary transfers to another empire's habitat reroute home, except an ambassador's to a foreign capital.
+- **Events** (scenario/hooks.ts `ScenarioEvents`; subscribe with `registerScenarioEvent`; no closures in state, so they are save-safe):
+  - `vipTripArrived { character, destination, reason }`: emitted after the stock `CompleteLocationTransfer`, so the character is already there.
+  - `vipTripFailed { character, destination, reason, cause }`, where `cause` is `'destroyed'`, `'captured'` or `'removed'`. The stock death message has already gone out.
+- **`mostImportantGovernor(galaxy, empire)`.** The governor at the highest strategic-value colony; ties go to the higher skill total, then the name. Null when no colony has a governor.
+- **`setGovernorDuty(galaxy, governor, reason)` / `endGovernorDuty(galaxy, governor)`.**
+  - `setGovernorDuty` marks the governor as away while the post is kept: the colony counts as vacant (the grace applies, then the decline), no local governor rises there, and the placement automation never fills it.
+  - `endGovernorDuty` sends the governor home by VIP trip.
+  - Call `setGovernorDuty` before `sendVip`.
+- **Read-only queries:**
+  - `colonyVacancy(galaxy, colony)` → `{ vacant, since, neglect, graceLeftDays, enRoute }`
+  - `governorOf(colony)`, the shared helper, = `colonyGovernor`
+  - `empireGovernors(empire)`
+  - `governorCap(galaxy, empire)`
+  - `fitAt(galaxy, governor, colony)`
+- **Escorts and trip state, for delegates:**
+  - `characterImportance(galaxy, character)` and `routeDanger(galaxy, empire, fromX, fromY, toX, toY)`
+  - `tripOfCharacter` / `tripOfShuttle` / `isVipShuttle` (the trip record: shuttle, escorts, ETA through `vipTripView`)
+- **Switches:** `cvOn(galaxy, CV_VIP_FLAG | CV_GOV_FLAG | …)` and `peekCvState`.
+
+**From `src/sim/scenario/governors.ts`** (shared by every package; inert without the add-on):
+
+- `colonyGovernor(h)` / `governedColony(c)`
+- `spawnGovernorFor(galaxy, empire, colony)`: under the add-on, the governor appears at the capital and travels.
+- `colonyNeglectOf(galaxy, colony)`: 0..1, the add-on's neglect.
+- `governorBribeScale(galaxy, empire, n)`
+
+**Council-specific rules the hooks already support:**
+- A delegate's colony loses the governor's bonuses for the whole trip (the governor is aboard the shuttle).
+- Attacking a delegate's shuttle already costs attitude (`vipAttacked`, through `applyReputation`). Part 2 adds the "major crime" with every member.
 
 ---
 
@@ -471,7 +501,16 @@ A CPU profile of an "on" run puts every function of the add-on together at under
 - No stampede: a war declaration re-ranks needs, but moves stay within the per-review limit (2) and the transit cap (1 per 15 colonies). The war run's 14 moves in 4 years show no burst.
 - No thrashing: every optimising move needs 2 years of tenure and a 25 % gain.
 
+**C4, coup bribes.**
+- Setup: soak configs `cv-coup-on` / `cv-coup-off` (threat-framework + corporatecoup + this add-on; a hook registers a subject company for each AI holder, since 19c is a stub), seed 1, 6 years. `coupBribePct` was raised to 200 per mille so that the counts are measurable.
+- Result: the governors bought were 3 with the add-on on (scaled) and 3 off, i.e. 0.5 a year either way, with 20–29 vs 2–8 AI governors at colonies.
+- Before the scaling (the first version used the stock role limit, at least 1 per holder), the add-on-on run bought 5. Unscaled, about 25 governors × 0.2 ≈ 5 a year would be expected.
+
 **Open points (reported, not tuned away).**
-- **Fewer AI colonies.** With the add-on on, the AI had 10–18 % fewer colonies in both seed pairs, while its money, tax and fleet were higher. The cause is not established. Candidates: rnd divergence, or the stock AI counting the short-lived shuttles among its state ships.
+- **Fewer AI colonies: found and fixed.**
+  - Five-year pairs on seeds 1, 3 and 5 gave 24 / 24 / 25 AI colonies off against 19 / 20 / 24 on. No colonies were lost in any run, but fewer colony ships were built (24 / 24 / 22 off, 16 / 21 / 24 on).
+  - In the first two years the AI treasuries were 10–20 % lower with the add-on on. Reserve-governor training (2000 each, two or three per young empire, at once) was eating the money the stock DirectConstruction checks before it buys a colony ship (`stateMoney`).
+  - Ablating the shuttles, escorts or governors one at a time each moved the count only within seed noise.
+  - The fix: training waits for a treasury of ten times its cost. Afterwards, seed 3 matched the faithful game exactly (24 colony ships, 24 colonies) and seed 1 came within 2 colonies (21 vs 23, 18 vs 24 ships), inside the seed-to-seed spread.
 - **The unattended human seat.** It never accepts suggestions, so its colonies are the ones that stay vacant into full neglect. Local rises are capped by the governor cap, which the idle reserves fill.
 - **Crash guard.** In the original, PerformIntelligenceMissions' counter-intelligence pass dereferences a foreign agent's empire. An earlier catch in the same pass may already have killed that agent, so the dereference throws. The add-on's different Rnd stream hit this on the big save, so the port now guards it (espionage.ts; no effect on any run that did not crash).
