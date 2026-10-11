@@ -98,6 +98,13 @@ Each effect goes through the game's own formula. The table shows the channel and
 | Raids | the raid countdown recovery (BuiltObject.1.cs 2894, Habitat.cs 1608) | pirateAI.ts 288/298 | `raidCountdownRate` (existing) |
 | Repairs | BaconBuiltObject.cs 4763 DoRepairs: the interval is divided by fleet and captain bonuses | repair.ts 85 | **new** query `repairRateFactor` |
 | Ship and base prices | Design.cs 1143 CalculateCurrentPurchasePrice: `Σ component prices × 5` | design.ts 284 | **new** query `designPriceFactor` |
+| Troop upkeep | Empire.cs 2025 AnnualTroopMaintenance | troops.ts 320 | **new** query `troopMaintenanceFactor` (phase 2) |
+| Ship and base upkeep | BuiltObject.cs 782 AnnualSupportCost | builtObject.ts 400 | **new** query `shipMaintenanceFactor` (phase 2) |
+| Private freighter targets | Empire.9.cs 4767 ProjectPrivateForceStructure | forceStructure.ts 846 | **new** query `privateFreighterFactor` (phase 2) |
+| Corruption | Habitat.cs 763 Corruption | forceStructure.ts 355 | **new** query `colonyCorruptionFactor` (phase 2) |
+| Ground defence | Habitat.cs 7216 ReviewPlanetaryFacilities: DefensiveFortressBonus | construction/facilities.ts 362 | **new** query `colonyFortressBonus` (phase 2) |
+| Diet vote weight | (add-on) dietAi.ts voteWeight | | **new** query `dietVoteWeightFactor` (phase 2) |
+| Frontier drift | (add-on) frontier.ts autonomyDrift | | **new** query `frontierDriftTerms` (phase 2) |
 | Visibility | Empire.9.cs 3198 IsObjectVisibleToThisEmpire | independentTraders.ts 361 | `objectVisibleToAll` (existing) |
 | Attitude | EmpireEvaluation bias | reputation/ledger.ts applyReputation | the reputation ledger when on, else the stock bias field |
 | Deposits | HabitatResource.cs 24 Extract: `max(1, v × Abundance / 1000)` | habitat resources | Deep Survey Office raises an abundance |
@@ -130,8 +137,8 @@ The add-on's resource bonuses carry resource id −1. The colony's bonus list (H
 
   The colony screen shows the best one and its reasons.
 - **AI** (new): every 180 days, each AI empire (not the human seats) does the following.
-  - It designates colonies of at least 40 M population (and the capital) whose best score is 30 or more, at most 3
-    a review.
+  - It designates colonies of at least 40 M population whose best score is 30 or more, at most 3 a review. The
+    capital is always designated with its best fit, so a one-world empire still spends its private money.
   - A fair-share crowding penalty spreads the designations: past a sixth of the colonies, −15 for each further
     colony of the same kind.
   - It re-designates only for a fit 1.6× better, or 2.4× better when facilities stand.
@@ -167,8 +174,9 @@ Phase 2, still to do:
   - one year of its facilities' upkeep.
 
   A facility starts only while its upkeep fits in the private cashflow (real: Empire.6.cs 556
-  GetPrivateAnnualCashflow, the gate the stock DirectPrivateConstruction uses) plus a tenth of the surplus (the idle
-  money may carry ten years of upkeep), minus the upkeep already owed. Each 30-day review starts a waiting
+  GetPrivateAnnualCashflow, the gate the stock DirectPrivateConstruction uses; counted as 0 when negative, since the
+  formula leaves out contract sales to other empires) plus a tenth of the surplus (the idle money may carry ten years
+  of upkeep), minus the upkeep already owed. Each 30-day review starts a waiting
   request, or up to 3 of the private sector's own picks, within `econSpendSharePct` (80 %) of the surplus.
 - **Cost, build time and upkeep:** the price is paid at the start. It is 30–60 k × a size factor of
   1 + population / 4 bn (at most ×4), so a facility on a big, rich world costs what its private sector can raise and
@@ -209,7 +217,7 @@ Phase 2, still to do:
 - **Storage:** the facilities live in the add-on's saved state, not in `Habitat.Facilities`. The stock facility code
   never sees them: no stock maintenance, scrapping or AI path.
 
-**The 42 facilities.** Phase 1 builds the first 4 of each designation (★). Numbers are at 100 % strength.
+**The 42 facilities.** Phase 1 built the first 4 of each designation (★), phase 2 the other 3 (◆). Numbers are at 100 % strength.
 
 | Designation | Facility | Effect (channel) | Skill |
 |---|---|---|---|
@@ -217,44 +225,44 @@ Phase 2, still to do:
 | | ★ Heavy Foundry | +30 % construction of facilities, wonders and colony-built bases here; −3 approval | FacilityConstructionSpeed |
 | | ★ Component Works | ships and bases cost 2 % less empire-wide per works, at most 8 % (`designPriceFactor`) | MilitaryShipConstructionSpeed |
 | | ★ Orbital Drydock | own ships self-repair 50 % faster in this system | RepairBonus |
-| | Robotic Plant (phase 2) | cheaper robotic troops (troops.ts maintenance 0.25) | |
-| | Fleet Depot (phase 2) | resupply and fuel in range, cheaper maintenance | |
-| | Salvage Yard (phase 2) | resources from wrecks (Wreckage add-on) | |
+| | ◆ Robotics Plant | troop upkeep −4 % empire-wide per plant, at most −12 % (**new** query `troopMaintenanceFactor`, Empire.cs 2025 AnnualTroopMaintenance); +10 % recruited troop strength here | TroopRecruitment |
+| | ◆ Fleet Depot | own state ships and bases within 2 sectors: −15 % upkeep (**new** query `shipMaintenanceFactor`, BuiltObject.cs 782 AnnualSupportCost). Resupply / fuel: phase 4 (to verify: Habitat.IsRefuellingDepot) | MilitaryShipConstructionSpeed |
+| | ◆ Salvage Yard | yearly: up to 4 wrecks within 2 sectors (Wreckage add-on `wrecksAt` / `takeWrecks`): 25 % of their resources into the colony cargo, 10 % of their value to private money; without Wreckage: +4 % colony income | RepairBonus |
 | Trade Hub | ★ Trade Exchange | +8 % colony income; ×1.25 with an Industrial colony within 3 sectors | TradeIncome |
 | | ★ Investment Bank | bond interest −1.5 points per bank (at most −4); +3 % colony income | ColonyIncome |
 | | ★ Free Port | +12 % colony income; raids recover 30 % faster nearby | TradeIncome |
 | | ★ Customs Bureau | +10 % tax revenue here; −3 % colony income | ColonyCorruption |
-| | Commodities Market (phase 2) | price stability, fewer shortage spikes (market.ts) | |
-| | Merchant Guild Hall (phase 2) | more private freighters (ProjectPrivateForceStructure targets) | |
-| | Black Market (phase 2) | smuggling income, more pirates; XOR Customs | |
+| | ◆ Commodities Market | +5 % colony income; own colonies within 2 sectors lose 30 % less approval to shortages (market price smoothing: to verify, market.ts ReviewResourcePrices) | TradeIncome |
+| | ◆ Merchant Guild Hall | the private freighter targets and caps +10 % per hall, at most +30 % (**new** query `privateFreighterFactor`, Empire.9.cs 4767 ProjectPrivateForceStructure): more private ships bought from private money | TradeIncome |
+| | ◆ Black Market | +15 % colony income (smuggling); raids recover 40 % faster nearby; pirate control grows 30 % faster here; XOR Customs Bureau | ColonyIncome |
 | Resort World | ★ Resort Complex | +1.0 scenic factor (more tourist traffic); ×1.25 with a Trade Hub within 3 sectors | TourismIncome |
 | | ★ Media Network | +2 approval at own colonies within 2 sectors, +4 here | ColonyHappiness |
 | | ★ Pleasure Gardens | +8 approval and +10 % growth here | ColonyHappiness |
 | | ★ Diplomatic Retreat | each met, non-hostile empire's attitude to the owner +1 a year, at most +10 per empire (bias term) | Diplomacy |
-| | Spaceport Casino (phase 2) | income, more corruption; XOR Preserve | |
-| | Nature Preserve (phase 2) | keeps quality and scenic factor | |
-| | Pilgrimage Shrine (phase 2) | approval among a chosen race | |
+| | ◆ Spaceport Casino | +15 % colony income; ×1.2 corruption here (**new** query `colonyCorruptionFactor`, Habitat.cs 763); XOR Nature Preserve | TourismIncome |
+| | ◆ Nature Preserve | +3 approval, +0.3 scenic factor; planet damage heals 0.03 a year faster (Habitat.Damage, the real quality factor) | ColonyHappiness |
+| | ◆ Pilgrimage Shrine | +3 approval at every own colony whose dominant race is the shrine world's (one shrine per race counts) | ColonyHappiness |
 | Mining Hub | ★ Mining Consortium HQ | +15 % mining rate at own stations within 2 sectors | MiningRate |
 | | ★ Orbital Warehouse | +3 development; own colonies in the system lose 30 % less approval to resource shortages (the stock −15 × (1 − supply) term, Habitat.cs 534) | |
 | | ★ Deep Survey Office | every 2 years the richest deposit in the system below 1000 abundance gains +60 | MiningRate |
 | | ★ Ore Refinery | +5 % colony income, +5 % mining in the system; its refined output comes in phase 3 | MiningRate |
-| | Gas Refinery (phase 2) | gas yield, fuel | |
-| | Automated Extractors (phase 2) | fewer freighters, lower upkeep at nearby stations | |
-| | Strip-Mine Charter (phase 2) | fast mining, lowers quality; XOR Survey | |
+| | ◆ Gas Refinery | +20 % gas mining at own gas stations and gas mining ships within 2 sectors; +3 % colony income | MiningRate |
+| | ◆ Automated Extractors | own mining stations within 2 sectors: −30 % upkeep (`shipMaintenanceFactor`) | MiningRate |
+| | ◆ Strip-Mine Charter | +30 % mining in the system; the planet takes 0.02 damage a year (quality falls, and with it the population cap); XOR Deep Survey Office | MiningRate |
 | Core World | ★ Medical Complex | +15 % growth, +1 approval (fewer plagues: phase 2, to verify against Habitat.cs 1838 InfectWithPlague) | PopulationGrowth |
 | | ★ University | +3 % research in each field (empire-wide sum, real cap 100 %) (better characters: phase 2) | ResearchHighTech |
 | | ★ Arcology | +15 % population cap here; 8 % upkeep | PopulationGrowth |
 | | ★ Cultural Center | +1 approval at every own colony per center, at most +3 | ColonyHappiness |
-| | Administrative Center (phase 2) | less corruption in range; longer governor tenure (Characters & Victory) | |
-| | Genetics Institute (phase 2) | growth, habitability for new colonies | |
-| | Senate Hall (phase 2) | Diet vote weight; upkeep | |
+| | ◆ Administrative Center | corruption ×0.5 here and ×0.7 at own colonies within 2 sectors (`colonyCorruptionFactor`). Longer governor tenure (Characters & Victory cvTenureYears): phase 4 | ColonyCorruption |
+| | ◆ Genetics Institute | +10 % growth here; new own colonies within 3 sectors grow 25 % faster for 5 years | PopulationGrowth |
+| | ◆ Senate Hall | +1 approval at every own colony (at most +2); Interstellar Diet vote weight +20 % per hall, at most +40 % (**new** query `dietVoteWeightFactor` in dietAi.ts voteWeight); 15 % upkeep | Diplomacy |
 | Frontier / Garrison | ★ Private Security Firm | +25 % recruited troop strength; pirate control grows 40 % slower here | TroopRecruitment |
 | | ★ Militia Yard | +40 % construction of facilities and colony-built bases here (which bases the colony queue builds: to verify); raids recover 30 % slower nearby. Militia ships: phase 2 | MilitaryShipConstructionSpeed |
 | | ★ Survey Outpost | every ship and base within 1 sector of the colony is visible to its owner (`objectVisibleToAll`) | |
 | | ★ Colonist Office | new own colonies within 2 sectors grow 40 % faster for their first 5 years (cheaper colony ships: phase 2) | ColonyShipConstructionSpeed |
-| | Fortress Bunker (phase 2) | big ground defence (DefensiveFortressBonus, Habitat.cs 7216) | |
-| | Bounty Office (phase 2) | see below | BountyHunter trait |
-| | Frontier Charter (phase 2) | less breakaway pressure (Frontier Autonomy), costs taxes | |
+| | ◆ Fortress Bunker | +30 DefensiveFortressBonus here (**new** query `colonyFortressBonus`, Habitat.cs 7216 ReviewPlanetaryFacilities: the stock wonder × bunker bonus) | TroopRecruitment |
+| | ◆ Bounty Office | bounty hunters, below | BountyHunter trait (+1 hunter) |
+| | ◆ Frontier Charter | +4 approval here; −1.5 autonomy drift a year with Frontier Autonomy on (**new** query `frontierDriftTerms` in frontier.ts autonomyDrift); −10 % tax revenue here | ColonyHappiness |
 
 **Synergies.** Phase 1 has these, all new:
 - supply chain: Industrial + a Mining Hub within 2 sectors, Industrial construction bonus ×1.2;
@@ -264,15 +272,25 @@ Phase 2, still to do:
 
 Phase 2: Media Network × Cultural Center, Fleet Depot × Orbital Drydock, and Free Port × Merchant Guild Hall.
 
-**Bounty Office** (phase 2, the user's approved design). The private sector keeps its own small armed bounty-hunter
-ships:
-- built from the current escort / frigate designs, through the privateers' build path, privateers.ts
-  generatePrivateerDesign;
-- 3 to 6 of them, capped by private wealth;
-- they patrol a few sectors against pirates.
+**Bounty Office** (phase 2, built; the user's approved design; `colonyEconomy/bounty.ts`). The private sector keeps
+its own small armed bounty-hunter ships:
+- **Build:** private money only, through the stock private build steps (real: Empire.6.cs 741
+  DirectPrivateConstruction: the shortest private yard queue, a private object, the yard's income record, component
+  orders, PerformPrivateTransaction). Upkeep is private maintenance like any freighter's.
+- **Design:** the Privateers add-on's (privateers.ts `generatePrivateerDesign`: the empire's escort / frigate /
+  destroyer template, one tech tier down, at most 40 % of its largest ship), renamed "Bounty Hunter".
+- **Count:** 3 + one per 500 k of private money, at most 6. A character with the BountyHunter trait (real:
+  CharacterTraitType) adds one, still at most 6.
+- **Missions:** every 30 days, and whenever the stock assignment asks (the `privateShipMission` event):
+  - attack the nearest pirate ship within 2 sectors of an office;
+  - else patrol the office's colony.
+- **Bounty:** each pirate ship the empire destroys pays its private sector 25 % of the ship's price
+  (`builtObjectKilledBy`).
+- **With Privateers on:** each office adds 2 to the privateer count cap (`privateerHooks.extraCap`). A faster rebuild:
+  to verify.
+- **Retirement:** extras retire (a scrap mission) when the office closes or private money goes negative.
 
-With the Privateers add-on on, it also boosts privateers: more of them based there, a faster rebuild and a bounty
-bonus. The BountyHunter character trait boosts it. Militia Yard ships use the same path.
+Militia Yard ships (the same path) wait for phase 4.
 
 ---
 
@@ -467,3 +485,42 @@ ran on a shared machine.
 - **AI treasuries −25 %.** The causes are the debt service and the lower tax. The AI has fewer state ships (−9 %) but
   more population (+8 %).
 
+### Phase 2 (2026-10-11)
+
+These runs use the same setup as phase 1 (seed 1, 1000 stars, 10 empires, 10 years), with all 42 facilities available.
+
+**The hoard is the Ancient Guardians'.** The Ancient Guardians are the story empire of one world. Their private
+sector holds most of the galaxy's private money (6.5 M of 9.5 M at year 10 with the add-on off). Their world had no
+capital set, so the "capital is always designated" rule missed it. They are reported apart below, and the fix
+(designate the most populous colony when there is no capital) is in the phase 3 commit.
+
+| | off | on |
+|---|---|---|
+| Private money, galaxy-wide | 9.48 M | 7.27 M (−23 %) |
+| **Private money, AI empires without the Ancient Guardians** | **2.24 M** | **1.34 M (−40 %)** |
+| Ancient Guardians' private money | 6.51 M | 5.40 M |
+| Player seat (unattended) | 0.73 M | 0.53 M |
+| Spent on facilities (purchase / upkeep) | – | 2.39 M / 0.85 M |
+| Facilities built (+ building) | – | 24 (+4): Mining Consortium 6, Medical Complex 4, Cultural Center 4, Automated Extractors 3, Orbital Warehouse 3, Private Security, Orbital Drydock, Strip-Mine Charter, University |
+| Facilities by designation | – | Mining Hub 13, Core World 9, Industrial 1, Frontier 1 |
+| Designations (of 47 colonies) | – | Mining Hub 20, Core World 10, Industrial 2, Trade Hub 1, Frontier 1, none 13 |
+| Bonds outstanding / borrowed / repaid / interest | – | 17 / 0.57 M / 0.43 M / 0.10 M, no defaults |
+| AI state money | 3.83 M | 3.04 M |
+| Colonies / population | 48 / 172.9 bn | 47 / 185.2 bn |
+| Annual tax revenue | 3.16 M | 3.19 M |
+| Mean development / approval | 20.8 / 14.0 | 21.2 / 13.8 |
+| State ships and bases | 768 | 739 |
+| Bounty hunters | – | 0 (no Bounty Office was built) |
+| Save round trip and continuation | identical | identical |
+
+**Reading the numbers.**
+- Most of the AI empires' private surplus is now spent: their surplus is 0–250 k at year 10, against 0–350 k off.
+- Phase 2 facilities are still rare. The AI's values favour the phase 1 ones where both fit, and the slots fill
+  early.
+- No Bounty Office was built in this seed: Frontier designations are rare (1). The AI's Frontier score needs distant
+  colonies.
+- Tax revenue and approval are now back at the off run's level: the Mining Hub crowding fix of phase 1 holds.
+
+**Wall time.** The whole-soak wall times (on runs 1.5–2× the off ones in years 6–10) were measured on cores shared
+with three other agents' soaks: four or more node processes per core set at nice 19. The step time on the big save
+(phase 1 table; phase 3 below for the full add-on) is the controlled measurement.
