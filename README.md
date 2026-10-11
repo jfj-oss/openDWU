@@ -31,6 +31,17 @@ Made with intention of removing the barrier of entry posed by incompatibility wi
 
 Made with generative AI, I mostly acted as guidance; eyes and ears (aka: guinea pig)
 
+<div align="center">
+
+| [**▶ How to play**](#install) | [**Windows**](#windows) | [**macOS**](#macos) | [**Linux**](#linux) |
+|:---:|:---:|:---:|:---:|
+| start here | install on Windows 10/11 | install on Apple silicon | install on Linux |
+
+| [Won't start?](#distant-worlds-universe-wont-start-or-keeps-crashing) | [What's here](#whats-here) | [Screenshots](#screenshots) | [Themes & mods](#themes-modded-content) | [Troubleshooting](#troubleshooting) |
+|:---:|:---:|:---:|:---:|:---:|
+
+</div>
+
 ## Distant Worlds: Universe won't start or keeps crashing?
 
 The original game is a 2014 Windows program built on Microsoft's .NET
