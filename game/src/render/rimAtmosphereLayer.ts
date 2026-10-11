@@ -424,33 +424,57 @@ function makeEyeTexture(): Texture {
     });
 }
 
-/** Screen vignette: clear centre, black corners. */
+/** Screen vignette: a wide clear centre and a soft, low falloff toward the corners (its peak is scaled down further
+ *  by vignetteStrength, so even at 1 the corners only dim, never go black). Eased stops: no visible ring. */
 function makeVignetteTexture(): Texture {
     return canvasTexture(256, (ctx, s) => {
         const c = s / 2;
-        const g = ctx.createRadialGradient(c, c, c * 0.35, c, c, c * 1.42);
-        g.addColorStop(0, 'rgba(0,0,0,0)');
-        g.addColorStop(0.55, 'rgba(4,4,12,0.35)');
-        g.addColorStop(1, 'rgba(0,0,6,0.95)');
+        const g = ctx.createRadialGradient(c, c, c * 0.5, c, c, c * 1.55);
+        for (let i = 0; i <= 8; i++) {
+            const t = i / 8;
+            const e = t * t * (3 - 2 * t);
+            g.addColorStop(t, `rgba(2,3,10,${(0.8 * e).toFixed(3)})`);
+        }
         ctx.fillStyle = g;
         ctx.fillRect(0, 0, s, s);
     });
 }
 
-/** Film grain tile: random grey specks. */
+/** Film grain tile: sparse, faint grey specks (drawn one texel per device pixel, see GRAIN_TILE_SCALE). */
 function makeGrainTexture(): Texture {
     return canvasTexture(256, (ctx, s) => {
         const img = ctx.createImageData(s, s);
         const rnd = rimRandom(0x6a09e667);
         for (let i = 0; i < s * s; i++) {
-            const v = Math.floor(rnd() * 255);
+            // Specks near mid-grey (no bright/black extremes), on ~35% of the texels, low alpha.
+            const v = 96 + Math.floor(rnd() * 64);
             img.data[i * 4] = v;
             img.data[i * 4 + 1] = v;
             img.data[i * 4 + 2] = v;
-            img.data[i * 4 + 3] = rnd() < 0.5 ? Math.floor(rnd() * 120) : 0;
+            img.data[i * 4 + 3] = rnd() < 0.35 ? Math.floor(rnd() * 80) : 0;
         }
         ctx.putImageData(img, 0, 0);
     });
+}
+
+/** (13) vignette + grain only start this deep in the rim (camera rim weight), easing in to full at weight 1. */
+export const VIGNETTE_DEPTH_START = 0.45;
+/** Grain alpha at grainStrength 1 and full depth. */
+export const GRAIN_ALPHA = 0.07;
+/** The grain re-rolls its tile offset every this many frames (slow shimmer, not a flicker). */
+export const GRAIN_FRAMES_PER_STEP = 5;
+
+/** 0..1: how much of the vignette / grain shows at this camera rim weight (0 until VIGNETTE_DEPTH_START, then a
+ *  smoothstep to 1 at weight 1). */
+export function vignetteDepth(camW: number): number {
+    const t = clamp01((camW - VIGNETTE_DEPTH_START) / (1 - VIGNETTE_DEPTH_START));
+    return t * t * (3 - 2 * t);
+}
+
+/** Vignette and grain alpha at a camera rim weight (0 = hidden). */
+export function vignetteGrainAlpha(camW: number, p: Pick<RimParams, 'vignetteStrength' | 'grainStrength'>): { vignette: number; grain: number } {
+    const d = vignetteDepth(camW);
+    return { vignette: d * clamp01(p.vignetteStrength), grain: d * clamp01(p.grainStrength) * GRAIN_ALPHA };
 }
 
 // --- dust + murk tuning (item 3 art pass) ---------------------------------------------------------------------
@@ -1145,21 +1169,23 @@ export class RimAtmosphereLayer {
 
         // (13) vignette + grain.
         if (this.vignette !== null && this.grain !== null) {
-            const vA = camW * p.tintStrength;
-            const gA = camW * p.murkStrength * 0.08;
-            this.vignette.visible = vA > 0.01;
-            this.grain.visible = gA > 0.004;
+            const a = vignetteGrainAlpha(camW, p);
+            this.vignette.visible = a.vignette > 0.005;
+            this.grain.visible = a.grain > 0.002;
             if (this.screenKey.changed(cam.width, cam.height)) {
                 this.vignette.width = cam.width;
                 this.vignette.height = cam.height;
                 this.grain.width = cam.width;
                 this.grain.height = cam.height;
+                // One grain texel per device pixel (finer than one per CSS pixel on a HiDPI screen).
+                const dpr = Math.max(1, globalThis.devicePixelRatio || 1);
+                this.grain.tileScale.set(1 / dpr);
             }
-            this.vignette.alpha = Math.min(1, vA * 1.2);
+            this.vignette.alpha = a.vignette;
             if (this.grain.visible) {
-                this.grain.alpha = gA;
-                // Grain flicker: jump the tile offset every other frame.
-                if ((this.frame & 1) === 0) this.grain.tilePosition.set(Math.floor(Math.random() * 256), Math.floor(Math.random() * 256));
+                this.grain.alpha = a.grain;
+                // Slow grain shimmer: jump the tile offset every few frames.
+                if (this.frame % GRAIN_FRAMES_PER_STEP === 0) this.grain.tilePosition.set(Math.floor(Math.random() * 256), Math.floor(Math.random() * 256));
             }
         }
 

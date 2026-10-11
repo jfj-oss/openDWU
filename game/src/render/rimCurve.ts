@@ -12,9 +12,9 @@ export const RIM_FLAG = 'rimAtmosphere';
 export interface RimParams {
     /** Radius fraction where the rim band starts (0..1 of the rim radius). */
     rimInner: number;
-    /** Colour grading strength 0..1: wash, cold tint, dust lanes, deep-field thinning, vignette. */
+    /** Colour grading strength 0..1: wash, cold tint, dust lanes, deep-field thinning. */
     tintStrength: number;
-    /** Unexplored-rim murk strength 0..1 (and the film grain). */
+    /** Unexplored-rim murk strength 0..1. */
     murkStrength: number;
     /** Eyes in the dark: multiplier on the base pair count (3–8 per rim system, scaled by rim weight; 0 = none). */
     eyeDensity: number;
@@ -26,6 +26,11 @@ export interface RimParams {
     dustStrength: number;
     /** Close-up dust detail (the finer cell levels at sector / system zoom) 0..1. */
     dustDetail: number;
+    /** Screen vignette strength deep in the rim, 0..1 (0 = off). Kept subtle: it fades in only past
+     *  VIGNETTE_DEPTH_START of the rim weight. */
+    vignetteStrength: number;
+    /** Film grain strength deep in the rim, 0..1 (0 = off). */
+    grainStrength: number;
 }
 
 export const RIM_DEFAULTS: RimParams = {
@@ -37,6 +42,8 @@ export const RIM_DEFAULTS: RimParams = {
     lightDimming: 0.6,
     dustStrength: 0.75,
     dustDetail: 1,
+    vignetteStrength: 0.25,
+    grainStrength: 0.3,
 };
 
 function clamp01(v: number): number {
@@ -55,6 +62,8 @@ export function rimParams(galaxy: Galaxy): RimParams | null {
         lightDimming: clamp01(scenarioParam(galaxy, 'lightDimming', RIM_DEFAULTS.lightDimming)),
         dustStrength: clamp01(scenarioParam(galaxy, 'dustStrength', RIM_DEFAULTS.dustStrength)),
         dustDetail: clamp01(scenarioParam(galaxy, 'dustDetail', RIM_DEFAULTS.dustDetail)),
+        vignetteStrength: clamp01(scenarioParam(galaxy, 'vignetteStrength', RIM_DEFAULTS.vignetteStrength)),
+        grainStrength: clamp01(scenarioParam(galaxy, 'grainStrength', RIM_DEFAULTS.grainStrength)),
     };
 }
 

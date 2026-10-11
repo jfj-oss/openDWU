@@ -18,6 +18,8 @@ import {
     pickRimWeightedTrack,
     RIM_MOOD_TRACKS,
     rimAmbientBedGain,
+    RIM_AMBIENT_MAX_GAIN,
+    RIM_STATIC_MAX_GAIN,
     rimMoodProbability,
     rimVoiceStaticGain,
 } from '../src/audio/rimAtmosphereMix';
@@ -202,13 +204,18 @@ describe('items 8/9/10: mood weighting, ambient/static gain, minimap dimming', (
         expect(pickRimWeightedTrack([], RIM_MOOD_TRACKS, null, Math.random, 1)).toBeNull();
     });
 
-    it('rimAmbientBedGain and rimVoiceStaticGain clamp to [0, 1] and scale linearly', () => {
-        expect(rimAmbientBedGain(0, 0.35)).toBe(0);
-        expect(rimAmbientBedGain(1, 0.35)).toBeCloseTo(0.35);
-        expect(rimAmbientBedGain(1, 5)).toBe(1);
-        expect(rimVoiceStaticGain(0, 0, 0.25)).toBe(0);
-        expect(rimVoiceStaticGain(0.2, 0.8, 0.25)).toBeCloseTo(0.2); // the greater of the two weights wins
-        expect(rimVoiceStaticGain(1, 1, 5)).toBe(1);
+    it('rimAmbientBedGain and rimVoiceStaticGain: capped well under full scale, gentle ramp with rim depth', () => {
+        expect(rimAmbientBedGain(0, 0.4)).toBe(0);
+        expect(rimAmbientBedGain(1, 0.4)).toBeCloseTo(0.4 * RIM_AMBIENT_MAX_GAIN);
+        expect(rimAmbientBedGain(1, 5)).toBeCloseTo(RIM_AMBIENT_MAX_GAIN); // the param clamps to 1: the cap
+        expect(RIM_AMBIENT_MAX_GAIN).toBeLessThanOrEqual(0.3);
+        // Gentle curve: half-way into the band is well under half the full-depth level.
+        expect(rimAmbientBedGain(0.5, 1)).toBeLessThan(0.4 * rimAmbientBedGain(1, 1));
+        expect(rimAmbientBedGain(0.5, 1)).toBeGreaterThan(0);
+        expect(rimVoiceStaticGain(0, 0, 0.5)).toBe(0);
+        // The greater of the two weights wins (squared).
+        expect(rimVoiceStaticGain(0.2, 0.8, 0.5)).toBeCloseTo(RIM_STATIC_MAX_GAIN * 0.5 * 0.64);
+        expect(rimVoiceStaticGain(1, 1, 5)).toBeCloseTo(RIM_STATIC_MAX_GAIN);
     });
 
     it('minimapRimDimAlpha: 1 (undimmed) at weight 0, dims toward (1 - dimStrength) at weight 1', () => {

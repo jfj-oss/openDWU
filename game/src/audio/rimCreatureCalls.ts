@@ -235,10 +235,97 @@ export const CREAK_VOICE: CreakVoice = {
     ringQ: 60,
     ringDecayS: [0.25, 0.6],
     ringLevel: 0.22,
-    lowpassHz: 1500,
+    // Muffled (metal under pressure, heard through the hull) and a little more distant than the first pass.
+    lowpassHz: 1000,
     attackS: 0.03,
-    level: 0.28,
-    reverbSend: 0.14,
+    level: 0.24,
+    reverbSend: 0.3,
+};
+
+// ---------------------------------------------------------------------------
+// Ambient bed voice tables (sparse wind + underwater / submarine; synth: rimCreatureSynth.ts playAmbientEvent,
+// scheduler: rimAtmosphereMix.ts). Levels are relative to the bed's master gain (rimAmbientBedGain).
+// ---------------------------------------------------------------------------
+
+/** The continuous deep-water rumble: brown noise under two lowpasses, its level breathing on a slow LFO. */
+export const RUMBLE_VOICE = { lowpassHz: 105, level: 0.15, lfoHz: [0.03, 0.07] as Range, lfoDepth: 0.45 };
+
+/** A slow distant wind gust: band-passed noise swelling over `durationS`, its centre rising toward highHz. */
+export const GUST_VOICE = { durationS: [7, 14] as Range, lowHz: 220, highHz: 620, q: 1.1, lowpassHz: 1100, panDrift: 0.35, level: 0.8, reverbSend: 0.35 };
+
+/** A distant sonar-like ping: a sine burst into a long reverb, sometimes with a fainter return echo. */
+export const PING_VOICE = {
+    hz: [880, 1240] as Range,
+    attackS: 0.006,
+    decayS: [0.5, 0.9] as Range,
+    driftRatio: 0.985,
+    partialLevel: 0.08,
+    lowpassHz: 2200,
+    echoChance: 0.6,
+    echoDelayS: [1.4, 2.6] as Range,
+    echoLevel: 0.3,
+    level: 0.26,
+    reverbSend: 1.4,
+};
+
+/** Deep hull groan: a slow, low, long creak (the hull-creak voice pitched down, its ring a big dull plate). */
+export const DEEP_GROAN_VOICE: CreakVoice = {
+    durationS: [1.8, 3.8],
+    bodyStartHz: [70, 115],
+    dropRatio: [0.62, 0.8],
+    bodyQ: 11,
+    bodyOvertone: 2.41,
+    grainHz: [7, 15],
+    grainDepth: 0.65,
+    ringBaseHz: [130, 210],
+    ringRatios: [1, 2.756, 5.404],
+    ringQ: 45,
+    ringDecayS: [0.9, 1.8],
+    ringLevel: 0.12,
+    lowpassHz: 650,
+    attackS: 0.25,
+    level: 0.42,
+    reverbSend: 0.45,
+};
+
+/** Faint bubbling: a burst of small rising sine blips that thins out. */
+export const BUBBLE_VOICE = { durationS: [1.2, 3.5] as Range, count: [6, 18] as Range, hz: [380, 1100] as Range, lengthS: [0.02, 0.07] as Range, riseRatio: [1.4, 2.2] as Range, lowpassHz: 2400, level: 0.24, reverbSend: 0.35 };
+
+/** ...or (this share of the "bubbles" events) a slow pressure hiss. */
+export const HISS_VOICE = { chance: 0.35, durationS: [3, 6] as Range, hz: [1400, 2600] as Range, q: 0.7, level: 0.14, reverbSend: 0.25 };
+
+/** Very rare distant whale-like calls: the Ardilus keen pitched down into a slow moan, and the Kaltor bellow lower. */
+export const WHALE_MOAN: KeenVoice = {
+    kind: 'keen',
+    durationS: [4, 7],
+    startHz: [85, 130],
+    peakRatio: [1.8, 2.5],
+    peakAt: 0.45,
+    endRatio: [0.8, 1.1],
+    tremoloHz: [2.5, 4],
+    tremoloDepth: 0.2,
+    vibratoHz: 1.6,
+    vibratoDepth: 0.012,
+    overtoneLevel: 0.12,
+    highpassHz: 50,
+    attackS: 1.4,
+    releaseS: 2.2,
+    level: 0.32,
+    reverbSend: 0.9,
+};
+export const WHALE_BELLOW: BellowVoice = {
+    ...KALTOR,
+    durationS: [4, 6.5],
+    baseHz: [26, 36],
+    formantsStartHz: [160, 380, 720],
+    formantsPeakHz: [240, 520, 900],
+    riseRatio: 1.25,
+    fallRatio: 0.7,
+    vibratoHz: [1.2, 2],
+    attackS: 1.2,
+    releaseS: 2,
+    level: 0.14,
+    reverbSend: 0.9,
 };
 
 // ---------------------------------------------------------------------------
@@ -253,7 +340,8 @@ export interface RimSoundParams {
     creakGain: number;
 }
 
-export const RIM_SOUND_DEFAULTS: RimSoundParams = { creatureCallRate: 0.3, creakRate: 0.4, creatureCallGain: 0.5, creakGain: 0.4 };
+/** Quieter and sparser than the first pass, to sit inside the near-silent ambient bed. */
+export const RIM_SOUND_DEFAULTS: RimSoundParams = { creatureCallRate: 0.2, creakRate: 0.3, creatureCallGain: 0.3, creakGain: 0.25 };
 
 /** At creatureCallRate 1 and full rim weight, one call attempt per this many seconds on average. */
 export const CALL_BASE_PERIOD_S = 12;

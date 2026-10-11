@@ -236,9 +236,9 @@ describe('19i audio: trigger rates and cooldowns', () => {
                 expect(ev[1].gain).toBeLessThan(ev[0].gain);
             } else singles++;
         }
-        // 0.4 / 6 s → ~240/hour in a storm (minus the min gap); ~30 % doubles.
-        expect(singles + doubles).toBeGreaterThan(160);
-        expect(singles + doubles).toBeLessThan(260);
+        // 0.3 / 6 s → ~180/hour in a storm (minus the min gap); ~30 % doubles.
+        expect(singles + doubles).toBeGreaterThan(115);
+        expect(singles + doubles).toBeLessThan(200);
         expect(doubles / (singles + doubles)).toBeGreaterThan(0.18);
         expect(doubles / (singles + doubles)).toBeLessThan(0.42);
     });
@@ -300,10 +300,10 @@ describe('19i audio: flags-off no-op through the game glue', () => {
         expect(rimSoundParams(galaxy)).toEqual(RIM_SOUND_DEFAULTS);
         const m = parseScenarioManifest(JSON.parse(readFileSync('scenarios/rim-atmosphere/scenario.json', 'utf8')));
         const byName = new Map(m.params.map((p) => [p.name, p.default]));
-        expect(byName.get('creatureCallRate')).toBe(0.3);
-        expect(byName.get('creakRate')).toBe(0.4);
-        expect(byName.get('creatureCallGain')).toBe(0.5);
-        expect(byName.get('creakGain')).toBe(0.4);
+        expect(byName.get('creatureCallRate')).toBe(RIM_SOUND_DEFAULTS.creatureCallRate);
+        expect(byName.get('creakRate')).toBe(RIM_SOUND_DEFAULTS.creakRate);
+        expect(byName.get('creatureCallGain')).toBe(RIM_SOUND_DEFAULTS.creatureCallGain);
+        expect(byName.get('creakGain')).toBe(RIM_SOUND_DEFAULTS.creakGain);
     });
 });
 

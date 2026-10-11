@@ -4,7 +4,19 @@
 // and offline (OfflineAudioContext, scripts/rim-voices-render.mjs). Parameters come from the pure tables in
 // rimCreatureCalls.ts; `rand` is injected so offline renders are reproducible.
 
-import { CREAK_VOICE, creatureVoice, inRange, type BellowVoice, type ClickChirpVoice, type CreakVoice, type CreatureVoice, type KeenVoice, type ShimmerVoice } from './rimCreatureCalls';
+import {
+    BUBBLE_VOICE,
+    CREAK_VOICE,
+    DEEP_GROAN_VOICE,
+    GUST_VOICE,
+    HISS_VOICE,
+    PING_VOICE,
+    RUMBLE_VOICE,
+    WHALE_BELLOW,
+    WHALE_MOAN,
+    creatureVoice,
+    inRange,
+    type BellowVoice, type ClickChirpVoice, type CreakVoice, type CreatureVoice, type KeenVoice, type ShimmerVoice } from './rimCreatureCalls';
 import type { CreatureType } from '../sim/creature';
 
 // ---------------------------------------------------------------------------
@@ -55,13 +67,22 @@ export function spaceImpulse(ctx: BaseAudioContext, rand: () => number, seconds 
     return buf;
 }
 
-export function createRimSynthBus(ctx: BaseAudioContext, destination: AudioNode, rand: () => number = Math.random): RimSynthBus {
+/** Bus options: the reverb impulse (length / decay) and an optional master lowpass (the ambient bed's muffled,
+ *  underwater colour). Defaults are the creature-call bus. */
+export interface RimSynthBusOptions {
+    impulseS?: number;
+    decayS?: number;
+    reverbLevel?: number;
+    lowpassHz?: number;
+}
+
+export function createRimSynthBus(ctx: BaseAudioContext, destination: AudioNode, rand: () => number = Math.random, opts: RimSynthBusOptions = {}): RimSynthBus {
     const input = ctx.createGain();
     const reverbIn = ctx.createGain();
     const convolver = ctx.createConvolver();
-    convolver.buffer = spaceImpulse(ctx, rand);
+    convolver.buffer = spaceImpulse(ctx, rand, opts.impulseS, opts.decayS);
     const reverbOut = ctx.createGain();
-    reverbOut.gain.value = 0.8;
+    reverbOut.gain.value = opts.reverbLevel ?? 0.8;
     const comp = ctx.createDynamicsCompressor();
     comp.threshold.value = -20;
     comp.knee.value = 12;
@@ -72,14 +93,25 @@ export function createRimSynthBus(ctx: BaseAudioContext, destination: AudioNode,
     master.gain.value = 1;
     input.connect(comp);
     reverbIn.connect(convolver).connect(reverbOut).connect(comp);
-    comp.connect(master).connect(destination);
+    const nodes: AudioNode[] = [input, reverbIn, convolver, reverbOut, comp, master];
+    if (opts.lowpassHz !== undefined) {
+        const lp = ctx.createBiquadFilter();
+        lp.type = 'lowpass';
+        lp.frequency.value = opts.lowpassHz;
+        lp.Q.value = 0.5;
+        comp.connect(lp).connect(master);
+        nodes.push(lp);
+    } else {
+        comp.connect(master);
+    }
+    master.connect(destination);
     return {
         ctx,
         input,
         reverbIn,
         master,
         dispose(): void {
-            for (const n of [input, reverbIn, convolver, reverbOut, comp, master]) n.disconnect();
+            for (const n of nodes) n.disconnect();
         },
     };
 }
@@ -489,4 +521,262 @@ export function playCreatureVoice(bus: RimSynthBus, voice: CreatureVoice, t0: nu
 export function playCreatureCall(bus: RimSynthBus, type: CreatureType, t0: number, pan: number, gain: number, rand: () => number): number | null {
     const voice = creatureVoice(type);
     return voice === null ? null : playCreatureVoice(bus, voice, t0, pan, gain, rand);
+}
+
+// ---------------------------------------------------------------------------
+// Ambient bed voices (rimAtmosphereMix.ts RimAmbientBed): sparse wind + underwater / submarine. All procedural.
+// ---------------------------------------------------------------------------
+
+/** The kinds of sparse ambient event (rimAtmosphereMix.ts AMBIENT_EVENTS schedules them). */
+export type AmbientEventKind = 'gust' | 'ping' | 'groan' | 'bubbles' | 'whale';
+
+const brownCache = new WeakMap<BaseAudioContext, AudioBuffer>();
+
+/** An 8 s looping brown(ish) noise buffer per context: leaky-integrated white noise, normalised to ~±1. */
+function brownNoiseBuffer(ctx: BaseAudioContext, rand: () => number): AudioBuffer {
+    let b = brownCache.get(ctx);
+    if (b === undefined) {
+        const n = Math.round(ctx.sampleRate * 8);
+        b = ctx.createBuffer(1, n, ctx.sampleRate);
+        const d = b.getChannelData(0);
+        let y = 0;
+        let peak = 1e-9;
+        for (let i = 0; i < n; i++) {
+            y = 0.996 * y + (rand() * 2 - 1) * 0.06;
+            d[i] = y;
+            peak = Math.max(peak, Math.abs(y));
+        }
+        // Crossfade the loop seam over 0.25 s so the loop does not tick.
+        const fade = Math.round(ctx.sampleRate * 0.25);
+        for (let i = 0; i < fade; i++) {
+            const k = i / fade;
+            d[i] = d[i] * k + d[n - fade + i] * (1 - k);
+        }
+        for (let i = 0; i < n; i++) d[i] /= peak;
+        brownCache.set(ctx, b);
+    }
+    return b;
+}
+
+export interface AmbientRumble {
+    /** Stops the rumble (and its LFO) and disconnects it. */
+    stop(): void;
+}
+
+/** The continuous, very quiet deep-water rumble: brown noise → two lowpasses, its level breathing on a slow LFO.
+ *  Starts at `t0` and runs until stop() (live) or the end of the render (offline). */
+export function startAmbientRumble(bus: RimSynthBus, t0: number, rand: () => number): AmbientRumble {
+    const ctx = bus.ctx;
+    const p = RUMBLE_VOICE;
+    const src = ctx.createBufferSource();
+    src.buffer = brownNoiseBuffer(ctx, rand);
+    src.loop = true;
+    const lp1 = ctx.createBiquadFilter();
+    lp1.type = 'lowpass';
+    lp1.frequency.value = p.lowpassHz;
+    lp1.Q.value = 0.9;
+    const lp2 = ctx.createBiquadFilter();
+    lp2.type = 'lowpass';
+    lp2.frequency.value = p.lowpassHz * 1.6;
+    lp2.Q.value = 0.5;
+    const amp = ctx.createGain();
+    amp.gain.setValueAtTime(0, t0);
+    amp.gain.linearRampToValueAtTime(p.level, t0 + 4);
+    // Slow swell: level × (1 ± lfoDepth) at lfoHz.
+    const lfo = ctx.createOscillator();
+    lfo.frequency.value = inRange(p.lfoHz, rand);
+    const lfoG = ctx.createGain();
+    lfoG.gain.value = p.level * p.lfoDepth;
+    lfo.connect(lfoG).connect(amp.gain);
+    const panner = ctx.createStereoPanner();
+    panner.pan.value = 0;
+    src.connect(lp1).connect(lp2).connect(amp).connect(panner).connect(bus.input);
+    src.start(t0, rand() * 6);
+    lfo.start(t0);
+    let stopped = false;
+    return {
+        stop(): void {
+            if (stopped) return;
+            stopped = true;
+            try {
+                src.stop();
+                lfo.stop();
+            } catch {
+                // already stopped
+            }
+            for (const n of [src, lp1, lp2, amp, lfo, lfoG, panner]) n.disconnect();
+        },
+    };
+}
+
+/** A slow, distant wind gust: band-passed noise whose centre and level swell and sag on a few random breakpoints,
+ *  drifting across the stereo field. */
+function gust(bus: RimSynthBus, t0: number, pan: number, gain: number, rand: () => number): number {
+    const ctx = bus.ctx;
+    const p = GUST_VOICE;
+    const v = voiceOut(bus, 0, gain * p.level, p.reverbSend);
+    const dur = inRange(p.durationS, rand);
+    const tEnd = t0 + dur;
+    const nz = noiseSource(ctx, v, rand);
+    const bp = filter(ctx, v, 'bandpass', p.lowHz, p.q);
+    const bp2 = filter(ctx, v, 'bandpass', p.lowHz * 1.9, p.q * 1.4);
+    const lp = filter(ctx, v, 'lowpass', p.lowpassHz, 0.6);
+    const amp = gainNode(ctx, v, 0);
+    const steps = 3 + Math.floor(rand() * 3);
+    amp.gain.setValueAtTime(0, t0);
+    bp.frequency.setValueAtTime(p.lowHz, t0);
+    bp2.frequency.setValueAtTime(p.lowHz * 1.9, t0);
+    for (let k = 1; k < steps; k++) {
+        const t = t0 + (dur * k) / steps;
+        // A swell envelope (sin over the gust) times a random sub-swell.
+        const shape = Math.sin((Math.PI * k) / steps);
+        const r = 0.45 + 0.55 * rand();
+        amp.gain.linearRampToValueAtTime(shape * r, t);
+        const f = p.lowHz + (p.highHz - p.lowHz) * shape * r;
+        bp.frequency.linearRampToValueAtTime(f, t);
+        bp2.frequency.linearRampToValueAtTime(f * 1.9, t);
+    }
+    amp.gain.linearRampToValueAtTime(0, tEnd);
+    const pn = track(v, ctx.createStereoPanner());
+    const drift = (rand() < 0.5 ? -1 : 1) * p.panDrift;
+    pn.pan.setValueAtTime(Math.max(-1, Math.min(1, pan - drift)), t0);
+    pn.pan.linearRampToValueAtTime(Math.max(-1, Math.min(1, pan + drift)), tEnd);
+    const g1 = gainNode(ctx, v, 1);
+    const g2 = gainNode(ctx, v, 0.35);
+    nz.connect(bp).connect(g1).connect(lp);
+    nz.connect(bp2).connect(g2).connect(lp);
+    lp.connect(amp).connect(pn).connect(v.sum);
+    nz.start(t0, rand() * 1.5);
+    nz.stop(tEnd + 0.05);
+    return finish(v, tEnd);
+}
+
+/** A distant sonar-like ping: a short sine burst with a slight downward drift, sent mostly into the long reverb,
+ *  sometimes answered by a fainter, duller return echo. */
+function ping(bus: RimSynthBus, t0: number, pan: number, gain: number, rand: () => number): number {
+    const ctx = bus.ctx;
+    const p = PING_VOICE;
+    const v = voiceOut(bus, pan, gain * p.level, p.reverbSend);
+    const f0 = inRange(p.hz, rand);
+    const lp = filter(ctx, v, 'lowpass', p.lowpassHz, 0.7);
+    lp.connect(v.sum);
+    let end = t0;
+    const hits: { t: number; level: number; hz: number }[] = [{ t: t0, level: 1, hz: f0 }];
+    if (rand() < p.echoChance) hits.push({ t: t0 + inRange(p.echoDelayS, rand), level: p.echoLevel, hz: f0 * 0.997 });
+    for (const h of hits) {
+        const decay = inRange(p.decayS, rand);
+        const o = osc(ctx, v, 'sine', h.hz);
+        o.frequency.setValueAtTime(h.hz, h.t);
+        o.frequency.exponentialRampToValueAtTime(h.hz * p.driftRatio, h.t + decay);
+        // A faint inharmonic partial for a metallic edge.
+        const o2 = osc(ctx, v, 'sine', h.hz * 2.71);
+        const g2 = gainNode(ctx, v, p.partialLevel);
+        const amp = gainNode(ctx, v, 0);
+        amp.gain.setValueAtTime(0, h.t);
+        amp.gain.linearRampToValueAtTime(h.level, h.t + p.attackS);
+        amp.gain.exponentialRampToValueAtTime(0.0005, h.t + decay);
+        o.connect(amp);
+        o2.connect(g2).connect(amp);
+        amp.connect(lp);
+        for (const s of [o, o2]) {
+            s.start(h.t);
+            s.stop(h.t + decay + 0.05);
+        }
+        end = Math.max(end, h.t + decay);
+    }
+    return finish(v, end);
+}
+
+/** Deep hull groans: metal under pressure — one or two slow, low creaks (playCreak with DEEP_GROAN_VOICE) over a
+ *  short low sine "strain" swell. */
+function groan(bus: RimSynthBus, t0: number, pan: number, gain: number, rand: () => number): number {
+    const ctx = bus.ctx;
+    let end = playCreak(bus, t0, pan, gain, rand, DEEP_GROAN_VOICE);
+    if (rand() < 0.45) end = Math.max(end, playCreak(bus, end + 0.3 + rand() * 1.5, pan * 0.7, gain * 0.6, rand, DEEP_GROAN_VOICE));
+    const v = voiceOut(bus, pan, gain * DEEP_GROAN_VOICE.level * 0.5, 0.3);
+    const f = 38 + rand() * 14;
+    const o = osc(ctx, v, 'sine', f);
+    o.frequency.setValueAtTime(f, t0);
+    o.frequency.linearRampToValueAtTime(f * 0.85, end);
+    const amp = gainNode(ctx, v, 0);
+    amp.gain.setValueAtTime(0, t0);
+    amp.gain.linearRampToValueAtTime(1, t0 + (end - t0) * 0.4);
+    amp.gain.linearRampToValueAtTime(0, end);
+    o.connect(amp).connect(v.sum);
+    o.start(t0);
+    o.stop(end + 0.05);
+    finish(v, end);
+    return end;
+}
+
+/** Faint bubbling (a cluster of small rising sine blips, Minnaert-style) or a slow pressure hiss. */
+function bubbles(bus: RimSynthBus, t0: number, pan: number, gain: number, rand: () => number): number {
+    const ctx = bus.ctx;
+    if (rand() < HISS_VOICE.chance) {
+        const p = HISS_VOICE;
+        const v = voiceOut(bus, pan, gain * p.level, p.reverbSend);
+        const dur = inRange(p.durationS, rand);
+        const nz = noiseSource(ctx, v, rand);
+        const bp = filter(ctx, v, 'bandpass', inRange(p.hz, rand), p.q);
+        const amp = gainNode(ctx, v, 0);
+        amp.gain.setValueAtTime(0, t0);
+        amp.gain.linearRampToValueAtTime(1, t0 + dur * 0.45);
+        amp.gain.linearRampToValueAtTime(0.6, t0 + dur * 0.7);
+        amp.gain.linearRampToValueAtTime(0, t0 + dur);
+        nz.connect(bp).connect(amp).connect(v.sum);
+        nz.start(t0, rand() * 1.5);
+        nz.stop(t0 + dur + 0.05);
+        return finish(v, t0 + dur);
+    }
+    const p = BUBBLE_VOICE;
+    const v = voiceOut(bus, pan, gain * p.level, p.reverbSend);
+    const dur = inRange(p.durationS, rand);
+    const count = Math.round(inRange(p.count, rand));
+    const lp = filter(ctx, v, 'lowpass', p.lowpassHz, 0.7);
+    lp.connect(v.sum);
+    let end = t0;
+    for (let i = 0; i < count; i++) {
+        // Bunched toward the start (a burst that thins out).
+        const t = t0 + dur * rand() * rand();
+        const f = inRange(p.hz, rand);
+        const len = inRange(p.lengthS, rand);
+        const o = osc(ctx, v, 'sine', f);
+        o.frequency.setValueAtTime(f, t);
+        o.frequency.exponentialRampToValueAtTime(f * inRange(p.riseRatio, rand), t + len);
+        const g = gainNode(ctx, v, 0);
+        const lvl = 0.3 + 0.7 * rand();
+        g.gain.setValueAtTime(0, t);
+        g.gain.linearRampToValueAtTime(lvl, t + 0.004);
+        g.gain.exponentialRampToValueAtTime(0.001, t + len);
+        const pn = track(v, ctx.createStereoPanner());
+        pn.pan.value = (rand() * 2 - 1) * 0.3;
+        o.connect(g).connect(pn).connect(lp);
+        o.start(t);
+        o.stop(t + len + 0.02);
+        end = Math.max(end, t + len + 0.02);
+    }
+    return finish(v, end);
+}
+
+/** A very rare, very distant whale-like low call: the creature synth's keen (a slow sine moan) or bellow voice,
+ *  pitched far down, mostly reverb. */
+function whale(bus: RimSynthBus, t0: number, pan: number, gain: number, rand: () => number): number {
+    const voice: CreatureVoice = rand() < 0.65 ? WHALE_MOAN : WHALE_BELLOW;
+    return playCreatureVoice(bus, voice, t0, pan, gain, rand);
+}
+
+/** Play one ambient event at `t0` (context time); returns its end time. */
+export function playAmbientEvent(bus: RimSynthBus, kind: AmbientEventKind, t0: number, pan: number, gain: number, rand: () => number): number {
+    switch (kind) {
+        case 'gust':
+            return gust(bus, t0, pan, gain, rand);
+        case 'ping':
+            return ping(bus, t0, pan, gain, rand);
+        case 'groan':
+            return groan(bus, t0, pan, gain, rand);
+        case 'bubbles':
+            return bubbles(bus, t0, pan, gain, rand);
+        case 'whale':
+            return whale(bus, t0, pan, gain, rand);
+    }
 }
