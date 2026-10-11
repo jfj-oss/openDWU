@@ -44,6 +44,8 @@ import { econGalactopediaItems, econGalactopediaPage } from '../scenario/colonyE
 import { FONT, el, glassButton, gradientPanel, linkLabel, openOriginalWindow, place, textBox } from '../originalWindow';
 import { EXPANSIONS } from '../../sim/scenario/addons';
 import { EXPANSION_INFO, difficultyLabel, meterBar } from '../../sim/scenario/expansionInfo';
+import { ARTICLE_IMAGES, EXPANSION_ARTICLES, articleTitle, type ArticleImage, type ExpansionArticle } from '../../sim/scenario/expansionArticles';
+import { FAUNA_BODIES, LANTERN_SWARM, PALETTE_FRAMES, dotRgba, fallbackPaletteSource, paletteSourceFromRgba, rasterBody, restPose, type PaletteSource, type RgbaImage } from '../../render/creatureRig';
 import { loadScenarioIndex } from '../../sim/scenario/fetchScenario';
 import { fileNameOf, findMhtPart, parseMht, type MhtDocument } from './mht';
 
@@ -225,6 +227,7 @@ async function loadGalactopediaData(): Promise<GalactopediaData> {
     const expRoot: EncyclopediaItem = { id: 'expansions', title: 'Expansions', filename: 'expansion:', category: EncyclopediaCategory.Expansions, isCategoryRoot: true, relatedItems: [] };
     const expItems = EXPANSIONS.map((e): EncyclopediaItem => ({ id: e.id, title: e.name, filename: `expansion:${e.id}`, category: EncyclopediaCategory.Expansions, isCategoryRoot: false, relatedItems: [] }));
     items.push(expRoot, ...expItems);
+    items.push(...expansionArticleItems(expItems));
     return {
         text,
         items,
@@ -1116,6 +1119,170 @@ export class TopicHistory<T> {
     }
 }
 
+/** Field guide categories, one per expansion (a root each, so the tree stays short). */
+const FIELD_GUIDE: Readonly<Record<string, EncyclopediaCategory>> = {
+    'the-rim': EncyclopediaCategory.FieldGuideRim,
+    'politics-characters': EncyclopediaCategory.FieldGuidePolitics,
+    economy: EncyclopediaCategory.FieldGuideEconomy,
+    'galactic-threats': EncyclopediaCategory.FieldGuideThreats,
+    'living-galaxy': EncyclopediaCategory.FieldGuideLiving,
+};
+const ART_PREFIX = 'article:';
+const articleItemId = (a: ExpansionArticle): string => `${a.exp}-${a.id}`;
+
+/** The field-guide items: a root per expansion, then one item per article (each related to its expansion's article). */
+function expansionArticleItems(expItems: EncyclopediaItem[]): EncyclopediaItem[] {
+    const out: EncyclopediaItem[] = [];
+    for (const e of EXPANSIONS) {
+        const category = FIELD_GUIDE[e.id];
+        const expItem = expItems.find((i) => i.id === e.id);
+        if (category === undefined || expItem === undefined) continue;
+        out.push({ id: `fieldguide-${e.id}`, title: `${e.name}: field guide`, filename: `${ART_PREFIX}root:${e.id}`, category, isCategoryRoot: true, relatedItems: [expItem] });
+        for (const a of EXPANSION_ARTICLES.filter((x) => x.exp === e.id)) {
+            out.push({ id: articleItemId(a), title: articleTitle(a), filename: `${ART_PREFIX}${articleItemId(a)}`, category, isCategoryRoot: false, relatedItems: [expItem] });
+        }
+    }
+    return out;
+}
+
+function partOfLine(label: string, name: string, targetId: string): HTMLElement {
+    const p = el('p', 'gp-partof');
+    p.appendChild(document.createTextNode(`${label} `));
+    const a = el('a', 'gp-link', name) as HTMLAnchorElement;
+    a.href = '#';
+    a.dataset.helpFile = targetId;
+    p.appendChild(a);
+    return p;
+}
+
+/** A field-guide article (or a guide's root page: the list of its articles). */
+function renderFieldGuideArticle(key: string): HTMLElement {
+    const wrap = el('div', 'gp-page gp-expansion');
+    if (key.startsWith('root:')) {
+        const e = EXPANSIONS.find((x) => x.id === key.slice(5));
+        if (e === undefined) return wrap;
+        wrap.appendChild(partOfLine('Part of:', e.name, e.id));
+        wrap.appendChild(el('p', '', `What the ${e.name} expansion adds that you meet in play: creatures, factions, goods, ships and mechanics. Pick a topic in the tree or below.`));
+        wrap.appendChild(fieldGuideList(e.id));
+        return wrap;
+    }
+    const a = EXPANSION_ARTICLES.find((x) => articleItemId(x) === key);
+    const e = a === undefined ? undefined : EXPANSIONS.find((x) => x.id === a.exp);
+    if (a === undefined || e === undefined) return wrap;
+    wrap.appendChild(partOfLine('Part of:', e.name, e.id));
+    wrap.appendChild(el('p', 'gp-partof', `Add-on: ${a.addon}.`));
+    const img = ARTICLE_IMAGES[a.id];
+    if (img !== undefined) wrap.appendChild(articleFigure(img));
+    for (const t of a.text) wrap.appendChild(el('p', '', t));
+    return wrap;
+}
+
+/** An article's picture. Our art is an <img>; the original's art is only ever read from the player's install at
+ *  runtime (stock sprites as <img>, New Fauna bodies rasterised into a canvas from the install's creature palettes). */
+function articleFigure(img: ArticleImage): HTMLElement {
+    if (img.kind === 'own' || img.kind === 'stock') {
+        const e = document.createElement('img');
+        e.className = img.width >= 400 ? 'gp-figure gp-figure-wide' : 'gp-figure';
+        e.src = img.src;
+        e.alt = '';
+        e.width = img.width;
+        e.loading = 'lazy';
+        e.onerror = () => e.remove(); // no install: no picture
+        return e;
+    }
+    const c = document.createElement('canvas');
+    c.className = 'gp-figure';
+    if (img.kind === 'lantern') {
+        paintRgba(c, lanternRgba());
+        c.style.width = '200px';
+        return c;
+    }
+    const def = FAUNA_BODIES[img.body];
+    if (def === undefined) return c;
+    c.style.width = '240px';
+    void creaturePalette(def.palette.frame).then((src) => paintRgba(c, restPose(rasterBody(def, src))));
+    return c;
+}
+
+const paletteCache = new Map<string, Promise<PaletteSource>>();
+/** A creature frame of the install as a palette source (render/faunaArt.ts does the same for the map). */
+function creaturePalette(frame: keyof typeof PALETTE_FRAMES): Promise<PaletteSource> {
+    let p = paletteCache.get(frame);
+    if (p === undefined) {
+        p = new Promise<PaletteSource>((resolve) => {
+            const im = new Image();
+            im.onload = () => {
+                const c = document.createElement('canvas');
+                c.width = im.naturalWidth;
+                c.height = im.naturalHeight;
+                const ctx = c.getContext('2d', { willReadFrequently: true });
+                if (ctx === null) return resolve(fallbackPaletteSource());
+                ctx.drawImage(im, 0, 0);
+                resolve(paletteSourceFromRgba(ctx.getImageData(0, 0, c.width, c.height).data, c.width, c.height));
+            };
+            im.onerror = () => resolve(fallbackPaletteSource());
+            im.src = `${DWU}images/units/creatures/${PALETTE_FRAMES[frame]}`;
+        });
+        paletteCache.set(frame, p);
+    }
+    return p;
+}
+
+function paintRgba(c: HTMLCanvasElement, img: RgbaImage): void {
+    c.width = img.w;
+    c.height = img.h;
+    const ctx = c.getContext('2d');
+    if (ctx === null) return;
+    const id = ctx.createImageData(img.w, img.h);
+    id.data.set(img.data);
+    ctx.putImageData(id, 0, 0);
+}
+
+/** The lantern shoal's motes (render/creatureRig.ts LANTERN_SWARM colours), scattered additively on a fixed pattern. */
+function lanternRgba(): RgbaImage {
+    const w = 240, h = 150;
+    const out: RgbaImage = { w, h, data: new Uint8ClampedArray(w * h * 4) };
+    const motes = LANTERN_SWARM.colors.map((c) => {
+        const rgb: [number, number, number] = [(c >> 16) & 255, (c >> 8) & 255, c & 255];
+        return dotRgba(24, [255, 255, 240], rgb);
+    });
+    for (let i = 0; i < LANTERN_SWARM.particles; i++) {
+        const a = i * 2.39996, r = Math.sqrt((i + 0.5) / LANTERN_SWARM.particles);
+        const m = motes[i % motes.length];
+        const x0 = Math.round(w / 2 + Math.cos(a) * r * (w / 2 - 14) - m.w / 2);
+        const y0 = Math.round(h / 2 + Math.sin(a) * r * (h / 2 - 14) - m.h / 2);
+        for (let y = 0; y < m.h; y++) for (let x = 0; x < m.w; x++) {
+            const X = x0 + x, Y = y0 + y;
+            if (X < 0 || Y < 0 || X >= w || Y >= h) continue;
+            const s = (y * m.w + x) * 4, d = (Y * w + X) * 4;
+            for (let k = 0; k < 4; k++) out.data[d + k] = Math.min(255, out.data[d + k] + m.data[s + k]);
+        }
+    }
+    return out;
+}
+
+/** The expansion's field-guide articles as links, grouped by kind. */
+function fieldGuideList(expId: string): HTMLElement {
+    const box = el('div');
+    const KINDS: [ExpansionArticle['kind'], string][] = [['creature', 'Creatures'], ['faction', 'Factions'], ['ship', 'Ships'], ['good', 'Goods'], ['mechanic', 'Mechanics']];
+    for (const [kind, heading] of KINDS) {
+        const list = EXPANSION_ARTICLES.filter((x) => x.exp === expId && x.kind === kind);
+        if (list.length === 0) continue;
+        box.appendChild(el('h3', '', heading));
+        const ul = el('ul');
+        for (const x of list) {
+            const li = el('li');
+            const link = el('a', 'gp-link', x.title) as HTMLAnchorElement;
+            link.href = '#';
+            link.dataset.helpFile = articleItemId(x);
+            li.appendChild(link);
+            ul.appendChild(li);
+        }
+        box.appendChild(ul);
+    }
+    return box;
+}
+
 /** The Galactopedia article of an expansion (id '' = the Expansions overview): about, meters, features, then each
  *  member add-on with its description and options (read from the scenario index). */
 const fetchFirstText_ = (c: string[]): Promise<string> => fetchFirstText(c);
@@ -1137,6 +1304,10 @@ async function renderExpansionArticle(id: string): Promise<HTMLElement> {
     for (const f of info.features) {
         wrap.appendChild(el('h3', '', f.heading));
         wrap.appendChild(el('p', '', f.text));
+    }
+    if (EXPANSION_ARTICLES.some((x) => x.exp === id)) {
+        wrap.appendChild(el('h3', '', 'Field guide'));
+        wrap.appendChild(fieldGuideList(id));
     }
     wrap.appendChild(el('h3', '', 'Member add-ons'));
     wrap.appendChild(el('p', '', 'Switch the expansion on and every member runs; under Advanced in the picker each can be switched off alone. Each also works without the expansion.'));
@@ -1327,11 +1498,24 @@ function createGalactopedia(opts: GalactopediaOptions): OpenState {
         if (econPage !== null) {
             content.textContent = '';
             content.appendChild(el('h1', 'gp-page-title', topicTitle));
+            const econ = EXPANSIONS.find((x) => x.id === 'economy');
+            if (econ !== undefined) {
+                econPage.prepend(el('p', 'gp-partof', 'Add-on: Colony Economy.'));
+                econPage.prepend(partOfLine('Part of:', econ.name, econ.id));
+            }
             content.appendChild(econPage);
             content.scrollTop = 0;
             return;
         }
         content.classList.add('gp-loading');
+        if (filename.startsWith(ART_PREFIX)) {
+            content.classList.remove('gp-loading');
+            content.textContent = '';
+            content.appendChild(el('h1', 'gp-page-title', topicTitle));
+            content.appendChild(renderFieldGuideArticle(filename.slice(ART_PREFIX.length)));
+            content.scrollTop = 0;
+            return;
+        }
         if (filename.startsWith('expansion:')) {
             const art = await renderExpansionArticle(filename.slice('expansion:'.length));
             if (token !== renderToken) return;

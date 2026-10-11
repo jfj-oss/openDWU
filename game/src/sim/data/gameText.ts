@@ -31,6 +31,12 @@ export enum EncyclopediaCategory {
     AddOns,
     /** Ours: the add-on expansions' articles (galactopedia.ts). */
     Expansions,
+    /** Ours: the field guides of each expansion (creatures, factions, goods, ships, mechanics; galactopedia.ts), one root each. */
+    FieldGuideRim,
+    FieldGuidePolitics,
+    FieldGuideEconomy,
+    FieldGuideThreats,
+    FieldGuideLiving,
 }
 
 /** Port of EncyclopediaItem.cs. `relatedItems` keeps insertion order (the
