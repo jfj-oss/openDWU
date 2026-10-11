@@ -360,6 +360,7 @@ export function diplomacyRows(player: Empire, starDate: number, playerGovernment
         if (other === null || !other.active) continue;
         if (other === player.galaxy.independentEmpire) continue;
         if (other.pirateEmpireBaseHabitat !== null) continue;
+        if (isEnforcerFaction(peekDietState(player.galaxy), other)) continue; // [charactersVictory] the Diet's enforcers are not a power
         rels.push({ other, rel, pirateType: PirateRelationType.NotMet });
         seen.add(other);
     }
@@ -530,6 +531,10 @@ export function playerGovernmentName(player: Empire): string {
 // Moved to ../conversationActions.ts (shared with the message dialog's greeting menu).
 export { proposalGroups, type ProposalGroup } from '../conversationActions';
 import { proposalGroups } from '../conversationActions';
+import { dietView } from '../../sim/scenario/charactersVictory/diet/dietView'; // [charactersVictory]
+import { peekDietState } from '../../sim/scenario/charactersVictory/diet/dietState'; // [charactersVictory]
+import { isEnforcerFaction } from '../../sim/scenario/charactersVictory/diet/dietEnforcers'; // [charactersVictory]
+import { toggleDietScreen } from './dietScreen'; // [charactersVictory]
 
 /** Main.Part10.cs:3590 method_230: the reply line, string.Format(dialogSet.ResolveDialog(type, race), args); a refused
  *  submit shows its hint; null set = dialog files not loaded yet. */
@@ -1416,8 +1421,21 @@ function createDiplomacyScreen(opts: DiplomacyScreenOptions): OpenState {
                 box.appendChild(line);
             }
         }
+        // [charactersVictory] With the Interstellar Diet running, the council block is a short summary and the Diet's own window.
+        const diet = dietView(player.galaxy, player);
+        if (diet !== null) {
+            heading(diet.member ? diet.title : `${diet.title} (not a member)`);
+            box.appendChild(el('div', 'diplomacy-line', `Seat: ${diet.worldName} (the ${diet.host}) — Regent: ${diet.regent}`));
+            box.appendChild(el('div', 'diplomacy-factor', diet.session !== null ? `In session: ${diet.session.motions.length} motion(s); the vote closes ${diet.session.closes}` : `Next session: ${diet.nextSession}`));
+            const b = el('button', 'diplomacy-button', 'Open the Interstellar Diet');
+            b.type = 'button';
+            b.addEventListener('click', () => toggleDietScreen(player.galaxy, player));
+            const row = el('div', 'diplomacy-buttons');
+            row.appendChild(b);
+            box.appendChild(row);
+        }
         // 19d8 (scenario `galacticCouncil`): the council block — members, chair, motion on the floor, last 5 results, our bloc.
-        const council = councilView(player.galaxy, player);
+        const council = diet !== null ? null : councilView(player.galaxy, player);
         if (council !== null) {
             heading(council.observer ? `Council: ${council.name} (not a member)` : `Council: ${council.name}`);
             box.appendChild(el('div', 'diplomacy-line', `Chair: ${council.chair || '(none)'} — founded ${council.founded}`));

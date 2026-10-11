@@ -110,6 +110,9 @@ import { CREATURE_FRAME_SETS, creatureFrameSetIndexes, creatureFrameUrls } from 
 import type { Creature } from '../sim/creature';
 import { Fighter } from '../sim/combat/fighters';
 import { localViewerEmpire } from '../localViewer';
+import { toggleDietScreen } from './screens/dietScreen'; // [charactersVictory]
+import { dietOn } from '../sim/scenario/charactersVictory/diet/dietState'; // [charactersVictory]
+import { DIET_GLYPH_SVG } from '../render/dietArt'; // [charactersVictory]
 
 // Port of Main.Part12.cs LoadUiChromeButtons (381–520): the control → chrome
 // button image mapping. The original loads each control's image from
@@ -664,6 +667,9 @@ export function createHud(wiring: HudWiring = {}): HudRefs {
             case 'btnTopMore':
                 el = buildTopMoreButton(wiring);
                 break;
+            case 'btnTopDiet':
+                el = buildTopDietButton(wiring); // [charactersVictory]
+                break;
             case 'tbtnResearch':
                 el = buildResearchButton(wiring);
                 break;
@@ -1206,6 +1212,29 @@ function runTopMoreItem(key: string, wiring: HudWiring): void {
             window.dispatchEvent(new KeyboardEvent('keydown', { key: '?' }));
             return;
     }
+}
+
+/** [charactersVictory] The Interstellar Diet button: our own glyph (a domed hall), visible only while the Diet runs. */
+function buildTopDietButton(wiring: HudWiring): HTMLElement {
+    const wrap = document.createElement('div');
+    wrap.className = 'top-more top-diet';
+    const btn = topGlass('top-btn top-more-btn top-diet-btn', [false, false, true, true], 'The Interstellar Diet');
+    btn.innerHTML = DIET_GLYPH_SVG;
+    btn.style.width = '100%';
+    btn.style.height = '100%';
+    btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const src = getEmpireSummarySource();
+        const galaxy = wiring.galaxy;
+        if (galaxy && src) toggleDietScreen(galaxy, src.empire);
+    });
+    wrap.appendChild(btn);
+    const sync = (): void => {
+        wrap.style.display = dietOn(wiring.galaxy ?? null) ? '' : 'none';
+    };
+    sync();
+    whileInDocument(wrap, sync, 2000);
+    return wrap;
 }
 
 function buildTopMoreButton(wiring: HudWiring): HTMLElement {
