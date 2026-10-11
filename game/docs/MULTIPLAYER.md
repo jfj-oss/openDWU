@@ -1262,6 +1262,8 @@ OK; `npm run typecheck`; vitest: the sim-worker, diplomacy, trade, save-runtime 
 ## 21. What is left
 
 - The new host does not take over the old host's adaptive input delay (§13): the delay stays where it was.
+- Hot seat offers (the popup for the local viewer only, shown after the curtain) were not driven in the real UI in these
+  runs: the `?hotSeatDev=1&newgame=…` dev path did not come up under the test driver.
 - The Mac and the Windows laptop were not part of these runs (the cross-machine checks of §9 / §15 stand for the
   transport and the determinism; a cross-machine host migration is still to do).
 - A peer that cannot reach the successor at all gets no backup link: it rejoins by address or code (the fallback).
