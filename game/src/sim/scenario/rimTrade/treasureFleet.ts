@@ -51,6 +51,7 @@ import { contractListenersActive, emitContractInitiated } from '../../logistics/
 import { doEmpireEncounter } from '../../exploration';
 import { concordNavyActive, isRimTraderAI, rareGoodIds, rimAngerState, rimParam, rimGoodIds, rimTradeState, rimTraderAllowsRestrictedTrade, rimTraderEmpire, rimTraderPort, rimTraderStanding } from './common';
 import { isHumanEmpire } from '../../humanEmpires';
+import { identifyMechanoidEmpire } from '../../fleets/militaryAI';
 import { convoyRecovering, straggleHeld, treasureStraggleAtDeparture } from './treasureRaids';
 
 /** Manifest defaults (scenario.json) of the addendum's params. */
@@ -124,6 +125,10 @@ export interface TreasureStraggler {
     until: number;
     /** The escorts turned back for it. */
     recovering: boolean;
+    /** 'engine': the star date the fault strikes (it sails with the convoy until then, then stops dead until `until`). */
+    faultAt?: number;
+    /** The hold (a Hold mission until `until`) has been given. */
+    stopped?: boolean;
     /** Star date it was first more than STRAGGLER_EXPOSED_RANGE from every escort (-1: not exposed yet). */
     exposedSince: number;
 }
@@ -320,6 +325,27 @@ export function portRimUnits(galaxy: Galaxy, port: BuiltObject, owner: Empire): 
     return n;
 }
 
+/** Hazards this close to a port (world units: two systems' reach) keep the treasure fleet away from it. */
+export const TREASURE_HAZARD_RANGE_SYSTEMS = 2;
+
+/**
+ * A port the treasure fleet avoids: the stock Ancient Guardians (the Mechanoid empire, militaryAI.ts
+ * identifyMechanoidEmpire) hold a colony or base within TREASURE_HAZARD_RANGE_SYSTEMS systems of it, or a hostile space
+ * creature (not benign, with an attack) is that close. Pure.
+ */
+export function treasurePortHazard(galaxy: Galaxy, port: BuiltObject): boolean {
+    const range = galaxy.maxSolarSystemSize * TREASURE_HAZARD_RANGE_SYSTEMS;
+    const near = (x: number, y: number): boolean => galaxy.calculateDistance(x, y, port.xpos, port.ypos) <= range;
+    const g = identifyMechanoidEmpire(galaxy);
+    if (g !== null && g.active) {
+        if (port.actualEmpire === g) return true;
+        for (const c of g.colonies) if (c !== null && !c.hasBeenDestroyed && near(c.xpos, c.ypos)) return true;
+        for (const b of g.builtObjects) if (b !== null && !b.hasBeenDestroyed && b.topSpeed <= 0 && near(b.xpos, b.ypos)) return true;
+    }
+    for (const c of galaxy.creatures) if (c !== null && !c.hasBeenDestroyed && !c.isBenign && c.attackStrength > 0 && near(c.xpos, c.ypos)) return true;
+    return false;
+}
+
 /** One empire's stop request: its port, the rim goods there, the request's weight and whether the player made it. */
 export interface TreasureStopRequest {
     empire: Empire;
@@ -332,7 +358,8 @@ export interface TreasureStopRequest {
 /**
  * The stop requests for the next voyage, one per met, non-hostile normal empire (War / TradeSanctions / NotMet left
  * out): an AI empire requests its space port holding the most rim goods (ties: nearest the Concord port, then id); a
- * human empire only the port it asked for (journaled command requestTreasureStop). Weight = (rim goods + 1) × the
+ * human empire only the port it asked for (journaled command requestTreasureStop). Ports near the Ancient Guardians or
+ * hostile space creatures are left out (treasurePortHazard). Weight = (rim goods + 1) × the
  * standing factor max(0.25, 1 + standing / rimTraderGrantThreshold). Pure.
  */
 export function treasureStopRequests(galaxy: Galaxy, r: Empire, from: { xpos: number; ypos: number }): TreasureStopRequest[] {
@@ -349,12 +376,12 @@ export function treasureStopRequests(galaxy: Galaxy, r: Empire, from: { xpos: nu
         const human = isHumanEmpire(galaxy, e);
         if (human) {
             const req = (st.requests ?? []).find((q) => q.empireId === e.empireId);
-            if (req === undefined || req.port.hasBeenDestroyed || req.port.actualEmpire !== e || !req.port.isSpacePort) continue;
+            if (req === undefined || req.port.hasBeenDestroyed || req.port.actualEmpire !== e || !req.port.isSpacePort || treasurePortHazard(galaxy, req.port)) continue;
             port = req.port;
             units = portRimUnits(galaxy, port, e);
         } else {
             for (const p of e.spacePorts) {
-                if (p.hasBeenDestroyed || !p.isSpacePort) continue;
+                if (p.hasBeenDestroyed || !p.isSpacePort || treasurePortHazard(galaxy, p)) continue;
                 const u = portRimUnits(galaxy, p, e);
                 if (port === null || u > units || (u === units && (d(p) < d(port) || (d(p) === d(port) && p.builtObjectID < port.builtObjectID)))) {
                     port = p;

@@ -475,7 +475,17 @@ export function rimDamageTaken(galaxy: Galaxy, offender: Empire | null, value: n
     if (r === null || offender === null || offender === r || !offender.active || !isNormalEmpire(galaxy, offender) || !(value > 0)) return;
     const l = ledgerOf(galaxy, offender);
     l.taken += value;
-    if (l.inflicted < rimParam(galaxy, 'rimTraderRetaliationRatio') * l.taken) l.open = true;
+    if (l.inflicted < rimPrice(galaxy, l.taken)) l.open = true;
+}
+
+/**
+ * The price the Concord exacts for `taken` war value: rimTraderRetaliationRatio × it, at most
+ * rimTraderRetaliationMaxPrice (0 = no cap) — proportionate, never a campaign. Pure.
+ */
+export function rimPrice(galaxy: Galaxy, taken: number): number {
+    const price = rimParam(galaxy, 'rimTraderRetaliationRatio') * taken;
+    const cap = rimParam(galaxy, 'rimTraderRetaliationMaxPrice');
+    return cap > 0 ? Math.min(price, cap) : price;
 }
 
 /** warDamageInflicted by the Concord on `victim`: counts toward the price; at the price the ledger closes. No Rnd. */
@@ -484,7 +494,7 @@ export function rimDamageInflicted(galaxy: Galaxy, victim: Empire | null, value:
     if (r === null || victim === null || !rimLedgerOpen(galaxy, victim) || !(value > 0)) return;
     const l = ledgerOf(galaxy, victim);
     l.inflicted += value;
-    if (l.inflicted >= rimParam(galaxy, 'rimTraderRetaliationRatio') * l.taken) closeLedger(galaxy, r, victim);
+    if (l.inflicted >= rimPrice(galaxy, l.taken)) closeLedger(galaxy, r, victim);
 }
 
 /** The price is exacted: the ledger closes (reset), the strike fleets against `offender` go home, messages. */
@@ -685,7 +695,10 @@ export function rimStrikeReview(galaxy: Galaxy): number {
             const warships = r.builtObjects.filter((b) => b !== null && !b.hasBeenDestroyed && b.role === BuiltObjectRole.Military && !isTreasureShip(galaxy, b));
             const atSea = strikes(galaxy).reduce((n, f) => n + f.ships.length, 0);
             const spare = Math.floor((warships.length * (100 - guardPct)) / 100) - atSea;
-            const size = Math.min(spare, Math.max(1, Math.floor(Math.floor((warships.length * (100 - guardPct)) / 100) / Math.max(1, maxFleets))));
+            // At most rimTraderStrikeFleetMaxShips ships a fleet (0 = no cap): enough to exact the price, not a war fleet.
+            const shipCap = Math.trunc(rimParam(galaxy, 'rimTraderStrikeFleetMaxShips'));
+            const share = Math.max(1, Math.floor(Math.floor((warships.length * (100 - guardPct)) / 100) / Math.max(1, maxFleets)));
+            const size = Math.min(spare, shipCap > 0 ? Math.min(share, shipCap) : share);
             if (size <= 0) break;
             const home = r.capital;
             const pool = warships.filter((b) => strikeCapable(galaxy, b));

@@ -40,7 +40,9 @@ import {
 } from '../src/sim/scenario/rimTrade/common';
 import { rimTraderPortStock, rimTraderYear } from '../src/sim/scenario/rimTrade/rimTrader';
 import { rimTraderTermsRows } from '../src/ui/scenario/rimTraderRows';
-import { porcelainApproval, rareGoodEffects, rareGoodEffectText, rareGoodResourceBonuses, rareGoodsFirst, rareOrderCandidates } from '../src/sim/scenario/rimTrade/rareGoods';
+import { porcelainApproval, rareContractAvailable, rareGoodEffects, rareGoodEffectText, rareGoodResourceBonuses, rareGoodsFirst, rareOrderCandidates, rareOrderMinDevelopment } from '../src/sim/scenario/rimTrade/rareGoods';
+import { concordFallbackHome } from '../src/sim/scenario/rimTrade/rimTrader';
+import { galaxyResourceCurrentPrices } from '../src/sim/design';
 import { requestTreasureStop, treasureStopRequests } from '../src/sim/scenario/rimTrade/treasureFleet';
 import { ColonyResourceEffect } from '../src/sim/developmentLevel';
 
@@ -140,7 +142,7 @@ describe('19a rim trader — game start', () => {
         expect(count).toBeGreaterThan(10);
     });
 
-    it('creates the Concord when the random AI races did not pick it; inert when no ring home exists', () => {
+    it('creates the Concord when the random AI races did not pick it; with no ring home, at the outermost free world', () => {
         const { game: g1 } = createScenarioGame(base, { scenario: 'rimTrade' });
         const r = rimTraderEmpire(g1.galaxy)!;
         expect(r).not.toBeNull();
@@ -148,10 +150,12 @@ describe('19a rim trader — game start', () => {
         expect(rimTradeState(g1.galaxy).empireId).toBe(r.empireId);
         const ov = loadScenarioOverlayFs('rimTrade');
         const noRing = { ...ov, manifest: { ...ov.manifest, homePlacement: [{ race: 'Oranthi', minRadius: 5, maxRadius: 6 }] } };
+        // 2026-10-11 placement fallback (concordFallbackHome): no world in the ring → the outermost free one; the add-on runs.
         const { game: g2 } = createScenarioGame(base, { scenario: noRing });
-        expect(rimTradeState(g2.galaxy).empireId).toBe(-1);
-        expect(rimTraderEmpire(g2.galaxy)).toBeNull();
-        expect(g2.galaxy.empires.some((e) => e?.dominantRace?.name === 'Oranthi')).toBe(false);
+        const r2 = rimTraderEmpire(g2.galaxy)!;
+        expect(r2).not.toBeNull();
+        expect(rimTradeState(g2.galaxy).empireId).toBe(r2.empireId);
+        expect(radiusFraction(g2.galaxy, r2.capital!.xpos, r2.capital!.ypos)).toBeGreaterThan(0.5);
     }, 600000);
 });
 
@@ -354,6 +358,29 @@ describe('19a rim trader — rare-good effects, ordering priority, treasure stop
         expect(rareOrderCandidates(g, stock, { available: [rare[0], stock[0], stock[1]], amountToOrder: () => 100 })).toEqual([rare[0]]);
         expect(rareOrderCandidates(g, stock, { available: [rare[0], stock[0], stock[1]], amountToOrder: () => 0 })).toEqual(stock.slice(0, 2));
         obtainDiplomaticRelation(r, human).supplyRestrictedResources = false;
+    });
+
+    it('reach and standing (2026-10-11): rare goods ordered from development 60; contracts capped by the buyer\'s standing', () => {
+        const rare = rareGoodIds(g);
+        expect(rareOrderMinDevelopment(g, 80, [rare[0]])).toBe(60);
+        const stock = g.resourceSystem.superLuxuryResources.map((x) => x.resourceId).filter((id) => !rare.includes(id));
+        expect(rareOrderMinDevelopment(g, 80, stock)).toBe(80);
+        const price = galaxyResourceCurrentPrices(g)[rare[0]] * 2; // rimTraderRarePriceMult 2
+        rimTradeState(g).ledger[human.empireId] = { credit: price * 10.5, debit: 0 };
+        expect(rareContractAvailable(g, 500, { seller: r, buyer: human, resourceId: rare[0] })).toBe(10);
+        rimTradeState(g).ledger[human.empireId] = { credit: 0, debit: 100 };
+        expect(rareContractAvailable(g, 500, { seller: r, buyer: human, resourceId: rare[0] })).toBe(0);
+        expect(rareContractAvailable(g, 500, { seller: r, buyer: r, resourceId: rare[0] })).toBe(500); // its own colonies
+        expect(rareContractAvailable(g, 500, { seller: human, buyer: r, resourceId: rare[0] })).toBe(500);
+        rimTradeState(g).ledger[human.empireId] = { credit: 0, debit: 0 };
+    });
+
+    it('placement fallback: the outermost free native-type world when the ring has none', () => {
+        const helpers = { randomPointInRing: () => ({ x: 0, y: 0 }), inNebula: () => false };
+        const h = concordFallbackHome(g, r.dominantRace!.nativeHabitatType, helpers)!;
+        expect(h).not.toBeNull();
+        expect(h.empire).toBeNull();
+        expect(h.type).toBe(r.dominantRace!.nativeHabitatType);
     });
 
     it('requestTreasureStop: only the empire\'s own space port; the player\'s stop is in the next circuit only on request', () => {

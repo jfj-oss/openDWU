@@ -157,13 +157,42 @@ export function foundConcordStartColonies(galaxy: Galaxy, r: Empire, equip: bool
     return picks;
 }
 
+/**
+ * The Concord's home when the manifest's ring (radius 0.8-1.0) holds no free world (scenarioFindHomeHabitat failed: 2 of
+ * 3 old-galaxy, mature-empire starts in the 2026-10-10 measurement). A deterministic scan, no Rnd: uncolonized,
+ * unpopulated planets of `habitatType` outside nebulae in systems no empire holds, outermost first (radiusFraction),
+ * preferring those at least 0.35 sectors from the nearest colony, then any of them (ties: habitat order). Null: none
+ * free anywhere (scenario inert). Exported for tests.
+ */
+export function concordFallbackHome(galaxy: Galaxy, habitatType: Habitat['type'], ctx: HomePlacementHelpers): Habitat | null {
+    const out: { h: Habitat; f: number; spaced: boolean; i: number }[] = [];
+    const held = new Map<number, boolean>();
+    for (let i = 0; i < galaxy.habitats.length; i++) {
+        const h = galaxy.habitats[i];
+        if (h.category !== HabitatCategoryType.Planet || h.type !== habitatType || h.hasBeenDestroyed || h.empire !== null || h.owner !== null || h.population.totalAmount > 0) continue;
+        let taken = held.get(h.systemIndex);
+        if (taken === undefined) {
+            taken = galaxy.systemHabitatsOf(h.systemIndex).some((x) => x.empire !== null && x.empire !== galaxy.independentEmpire);
+            held.set(h.systemIndex, taken);
+        }
+        if (taken || ctx.inNebula(galaxy, h)) continue;
+        const near = galaxy.findNearestColony(h.xpos, h.ypos, null, false);
+        const spaced = near === null || galaxy.calculateDistance(h.xpos, h.ypos, near.xpos, near.ypos) >= galaxy.sectorSize * 0.35;
+        out.push({ h, f: radiusFraction(galaxy, h.xpos, h.ypos), spaced, i });
+    }
+    out.sort((a, b) => Number(b.spaced) - Number(a.spaced) || b.f - a.f || a.i - b.i);
+    return out.length > 0 ? out[0].h : null;
+}
+
 /** The game-start handler `rimTrade.start` (flag rimTrader). Exported for tests. */
 export function rimTraderGameStart(galaxy: Galaxy, ctx: HomePlacementHelpers): void {
     const st = rimTradeState(galaxy);
     let r = galaxy.empires.find((e) => e !== null && e.active && e.dominantRace?.name === RIM_RACE && e.pirateEmpireBaseHabitat === null) ?? null;
     if (r === null) {
         const race = galaxyRaceByName(galaxy, RIM_RACE);
-        const home = race !== null ? scenarioFindHomeHabitat(galaxy, race, race.nativeHabitatType, ctx, galaxy.sectorSize * 0.7) : null;
+        let home = race !== null ? scenarioFindHomeHabitat(galaxy, race, race.nativeHabitatType, ctx, galaxy.sectorSize * 0.7) : null;
+        // No free home in the outer ring (an old, crowded galaxy): the outermost free system anywhere (concordFallbackHome).
+        if (home === null && race !== null) home = concordFallbackHome(galaxy, race.nativeHabitatType, ctx);
         if (home === null) {
             st.empireId = -1;
             return;

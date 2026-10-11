@@ -705,6 +705,8 @@ function attemptToFulfillOrderAtTradingPost(ctx: FulfillContext, tradingPost: St
     }
     if (cargo !== null) {
         let available = cargoAvailable(cargo);
+        // Mod layer 19a: the Concord's rare goods only as far as the buyer's standing covers.
+        if (galaxy.scenario !== null && available > 0 && orderResource !== null) available = scenarioQuery(galaxy, 'contractAvailable', available, { seller: tradingPostEmpire, buyer: empire, resourceId: orderResource.resourceId });
         if (available > 0) {
             let num3 = 0;
             if ((requesterIsConstructionShip || order.type === OrderType.ConstructionShortage || order.type === OrderType.ConstructionShortageMobile || order.type === OrderType.RetrofitResourcesForBase) && tradingPostEmpire === empire) {
@@ -824,6 +826,8 @@ function freighterFulfillOrdersForDestination(galaxy: Galaxy, self: Empire, dest
         if (!isBuiltObject(supplier)) num3 = calculateResourceLevelCargoHabitat(galaxy, supplier.cargo.items[num], supplier);
         else num3 = calculateResourceLevelCargoBuiltObject(galaxy, supplier.cargo.items[num], supplier);
         available = Math.max(0, available - num3);
+        // Mod layer 19a: the Concord's rare goods only as far as the buyer's standing covers.
+        if (galaxy.scenario !== null && available > 0 && order.commodityResource !== null) available = scenarioQuery(galaxy, 'contractAvailable', available, { seller: supplierEmpire, buyer: destinationEmpire, resourceId: order.commodityResource.resourceId });
         let val = Math.min(order.amountOutstandingToContract, available);
         val = Math.min(val, num2);
         if (val > 0) {

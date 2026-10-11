@@ -26,6 +26,10 @@
 //     most-lacking rare good while any still needs ordering, else the stock super-luxuries in the slots left (query
 //     restrictedOrderCandidates at Empire.4.cs 3271; the stock picks the self-supplied list over the available one,
 //     which kept any empire with its own Loros Fruit from ever ordering a rare good).
+//   Reach: a colony orders the rare goods from development rimRareOrderDevelopment (60; stock 80 for every restricted
+//     resource, query restrictedOrderMinDevelopment) — the stock super-luxuries still from 80.
+//   Standing: the Concord contracts its rare goods only as far as the buyer's standing covers (query contractAvailable
+//     at the stock trading-post fulfilment), so a big order no longer drives a buyer hundreds of thousands below zero.
 // No Rnd. Pure reads except the returned lists.
 
 import type { Galaxy } from '../../galaxy';
@@ -37,7 +41,9 @@ import { registerScenarioQuery } from '../hooks';
 import { registerStabilityTerm } from '../stability';
 import { scenarioParam } from '../state';
 import { cargoGetCargo } from '../../logistics/orders';
-import { rareGoodIds, resourceName, rimTraderEmpire, rimTraderPort } from './common';
+import { rareGoodIds, resourceName, rimParam, rimTraderEmpire, rimTraderPort, rimTraderStanding } from './common';
+import { habitatDevelopmentLevel } from '../../developmentLevel';
+import { galaxyResourceCurrentPrices } from '../../design';
 
 /** Habitat.cs 447: the stock development bonus of a restricted resource (_RestrictedResourcesPresent). */
 export const STOCK_RESTRICTED_DEVELOPMENT = 30;
@@ -46,7 +52,11 @@ export const RARE_EFFECT_DEFAULTS = {
     rimRarePorcelainApproval: 8,
     rimRareMoonsilkIncomePct: 15,
     rimRareTeaGrowthPct: 25,
+    rimRareOrderDevelopment: 60,
 } as const;
+
+/** Empire.4.cs 3271: the stock development level from which a colony orders restricted resources. */
+export const STOCK_RESTRICTED_ORDER_DEVELOPMENT = 80;
 
 export function rareEffectParam(galaxy: Galaxy, name: keyof typeof RARE_EFFECT_DEFAULTS): number {
     return scenarioParam(galaxy, name, RARE_EFFECT_DEFAULTS[name]);
@@ -165,18 +175,43 @@ export function rareGoodsFirst(galaxy: Galaxy, value: number[], empire: Empire):
 
 /**
  * restrictedOrderCandidates query: the available rare goods that still need ordering, else the stock candidates in the
- * slots the rare goods leave (3 − available rare goods).
+ * slots the rare goods leave (3 − available rare goods) — those only at the stock development level (a colony below it
+ * orders here only because of the rare goods' lower one, restrictedOrderMinDevelopment).
  */
-export function rareOrderCandidates(galaxy: Galaxy, value: number[], args: { available: number[]; amountToOrder: (id: number) => number }): number[] {
+export function rareOrderCandidates(galaxy: Galaxy, value: number[], args: { available: number[]; amountToOrder: (id: number) => number; habitat?: Habitat }): number[] {
     const all = rareGoodIds(galaxy);
     const rare = args.available.filter((id) => all.includes(id));
     if (rare.length === 0) return value;
     const needing = rare.filter((id) => args.amountToOrder(id) > 0);
     if (needing.length > 0) return needing;
+    if (args.habitat !== undefined && habitatDevelopmentLevel(args.habitat) < STOCK_RESTRICTED_ORDER_DEVELOPMENT) return [];
     return value.filter((id) => !all.includes(id)).slice(0, Math.max(0, 3 - rare.length));
+}
+
+/** restrictedOrderMinDevelopment query: rimRareOrderDevelopment (60) while a rare good is among the empire's slots. Pure. */
+export function rareOrderMinDevelopment(galaxy: Galaxy, value: number, available: number[]): number {
+    const all = rareGoodIds(galaxy);
+    if (!available.some((id) => all.includes(id))) return value;
+    return Math.min(value, rareEffectParam(galaxy, 'rimRareOrderDevelopment'));
+}
+
+/**
+ * contractAvailable query: the units of a rare good the Concord contracts to `buyer` — at most what its standing covers
+ * (standing ÷ the price it pays, rimTraderRarePriceMult × the galaxy price), so a big buyer no longer runs its standing
+ * hundreds of thousands below zero (and shut out, angered) in one order. The Concord's own colonies are not limited. Pure.
+ */
+export function rareContractAvailable(galaxy: Galaxy, value: number, args: { seller: Empire | null; buyer: Empire | null; resourceId: number }): number {
+    const r = rimTraderEmpire(galaxy);
+    if (r === null || args.seller !== r || args.buyer === null || args.buyer === r || !rareGoodIds(galaxy).includes(args.resourceId)) return value;
+    const price = (galaxyResourceCurrentPrices(galaxy)[args.resourceId] ?? 0) * rimParam(galaxy, 'rimTraderRarePriceMult');
+    if (!(price > 0)) return value;
+    const standing = rimTraderStanding(galaxy, args.buyer.empireId);
+    return Math.max(0, Math.min(value, Math.floor(Math.max(0, standing) / price)));
 }
 
 registerScenarioQuery({ id: 'rimTrade.rare.bonuses', flag: 'rimTrader', query: 'colonyResourceBonuses', run: (g, v, a) => rareGoodResourceBonuses(g, v, a.habitat) });
 registerScenarioQuery({ id: 'rimTrade.rare.first', flag: 'rimTrader', query: 'availableRestrictedResources', run: (g, v, a) => rareGoodsFirst(g, v, a.empire) });
 registerScenarioQuery({ id: 'rimTrade.rare.order', flag: 'rimTrader', query: 'restrictedOrderCandidates', run: (g, v, a) => rareOrderCandidates(g, v, a) });
+registerScenarioQuery({ id: 'rimTrade.rare.orderDevelopment', flag: 'rimTrader', query: 'restrictedOrderMinDevelopment', run: (g, v, a) => rareOrderMinDevelopment(g, v, a.available) });
+registerScenarioQuery({ id: 'rimTrade.rare.standingCap', flag: 'rimTrader', query: 'contractAvailable', run: (g, v, a) => rareContractAvailable(g, v, a) });
 registerStabilityTerm({ id: 'rimTrade.porcelain', flag: 'rimTrader', cause: 'oranthiPorcelain', label: 'Oranthi Porcelain', run: (g, h, empire) => (empire === null ? null : porcelainApproval(g, h)) });

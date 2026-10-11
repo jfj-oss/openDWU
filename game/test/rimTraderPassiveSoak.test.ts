@@ -50,9 +50,12 @@ describe('19a Concord — flag off is byte-identical', () => {
     // stragglers). None of these has a neutral value among this test's params, so the 'pre-feature' identity now reads:
     // the passive / wealth / navy params at neutral reproduce the game of the rest of the add-on. The 1615137a values were
     // 27f56466e7db0995/975f2f55b5990a4c and 1b1366f7b0c5b9e5/198f40389d329b22.
+    // Repinned 2026-10-11 (rim-fix, rimTrade-ON): the Concord-created 1-year digest moves with the reach / standing-cap /
+    // navy-cap / proportionate-retaliation / hazard changes (rareGoods.ts, wealth.ts, passive.ts, treasureFleet.ts); was
+    // 13cf4e837a88adbf. The wizard-Oranthi values do not move.
     const PINS: [boolean, string, string][] = [
         [true, 'b219685db2d2d5db', '94796ded96a0ba95'],
-        [false, '6fb9b2295df9e9c3', '13cf4e837a88adbf'],
+        [false, '6fb9b2295df9e9c3', '7803a217d920cb27'],
     ];
     for (const [forced, d0, d1] of PINS) {
         it(`passive off, 1 starting colony, cap 4 (${forced ? 'wizard Oranthi' : 'Concord created at start'}): 1 year matches the pre-feature digests`, () => {

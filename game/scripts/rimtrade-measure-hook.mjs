@@ -75,7 +75,13 @@ export async function start(ctx) {
         const rr = common.rimTraderEmpire(gg);
         if (rr === null) return;
         if (ev.builtObject.actualEmpire === rr || ev.builtObject.empire === rr) m.cur.combat.concordLost++;
-        if (ev.destroyer === rr) m.cur.combat.concordKills++;
+        if (ev.destroyer === rr) {
+            m.cur.combat.concordKills++;
+            const v = ev.builtObject.actualEmpire ?? ev.builtObject.empire ?? null;
+            const kind = v === null ? 'none' : v.pirateEmpireBaseHabitat !== null ? 'pirate' : v === gg.independentEmpire ? 'independent' : mods.diplo.obtainDiplomaticRelation(rr, v).type === mods.diplo.DiplomaticRelationType.War ? 'atWar' : 'noWar';
+            m.cur.combat.killsBy ??= {};
+            m.cur.combat.killsBy[kind] = (m.cur.combat.killsBy[kind] ?? 0) + 1;
+        }
         if (treasureShips(gg).includes(ev.builtObject)) m.cur.combat.treasureLost++;
     } }));
 }

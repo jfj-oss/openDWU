@@ -629,7 +629,9 @@ export function orderColonyLuxuryResources(galaxy: Galaxy, empire: Empire, habit
             else empireCreateOrder(galaxy, empire, habitat, extra, amountToOrder, false, OrderType.Standard, true);
         }
     }
-    if (resourceList2.length > 0 && habitatDevelopmentLevel(habitat) >= 80) {
+    // Mod layer (19a rim trade): the development level from which the colony orders restricted goods (stock 80).
+    const minRestrictedDevelopment = galaxy.scenario !== null && resourceList2.length > 0 ? scenarioQuery(galaxy, 'restrictedOrderMinDevelopment', 80, { empire, habitat, available: resourceList2 }) : 80;
+    if (resourceList2.length > 0 && habitatDevelopmentLevel(habitat) >= minRestrictedDevelopment) {
         let num26 = 0;
         const maximumResourceLevel2 = num7 * 2;
         let resource2: ResourceRef | null = null;

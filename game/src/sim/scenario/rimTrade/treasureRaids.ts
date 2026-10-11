@@ -16,7 +16,9 @@
 //     straggler: the Concord ships within DEFENCE_RANGE, itself included; the main body: its whole escort, or what is
 //     near if more). The raid is an Attack mission on the target (ShipGroup
 //     AssignMission / AssignMission; combat/attackAI.ts lets a ship attack its own mission target without a war).
-//     A main-body raid therefore needs a fleet stronger than the fixed escort: in practice the late game only.
+//     For the main body the raider may combine up to RAID_MAX_COMBINED_FLEETS of its fleets: it needs that much more
+//     than the fixed escort, in practice the late game only. An engine fault stops a straggler dead (a Hold) for a few
+//     days some days out of port: then it can be caught.
 //   Loot: a treasure ship destroyed (builtObjectKilledBy) or captured (builtObjectOwnerChanged) gives its whole cargo
 //     — rare goods and any rim goods aboard — to the attacker: on a kill it goes into the attacker's space port nearest
 //     the wreck (else its capital, a pirate's base), on a capture it stays in the hold, now the captor's. The standing
@@ -68,6 +70,8 @@ export interface TreasureRaid {
     kind: RaidKind;
     target: BuiltObject;
     fleet: ShipGroup | null;
+    /** A combined main-body raid: every fleet of it (absent: `fleet` alone). */
+    fleets?: ShipGroup[];
     ships: BuiltObject[];
     start: number;
     year: number;
@@ -115,8 +119,12 @@ function mix32(x: number): number {
     return (h ^ (h >>> 16)) >>> 0;
 }
 
+/** An engine fault strikes this many days (2..6, hashed) after the convoy leaves, and stops the ship 5..20 days. */
+export const ENGINE_FAULT_AFTER_DAYS = [2, 6] as const;
+export const ENGINE_FAULT_DAYS = [5, 20] as const;
+
 /** The deterministic straggle roll of `ship` on (voyage, leg): null = keeps formation. Pure. */
-export function straggleRoll(galaxy: Galaxy, voyage: number, leg: number, ship: BuiltObject): { cause: TreasureStraggler['cause']; days: number } | null {
+export function straggleRoll(galaxy: Galaxy, voyage: number, leg: number, ship: BuiltObject): { cause: TreasureStraggler['cause']; days: number; after: number } | null {
     const pct = treasureParam(galaxy, 'treasureStragglePct');
     if (!(pct > 0)) return null;
     const h = mix32(mix32(voyage * 7919 + leg) ^ (ship.builtObjectID * 104729));
@@ -125,7 +133,12 @@ export function straggleRoll(galaxy: Galaxy, voyage: number, leg: number, ship: 
     const hi = Math.max(lo, treasureParam(galaxy, 'treasureStraggleMaxDays'));
     const h2 = mix32(h);
     const cause = (['loading', 'engine', 'refuel'] as const)[h2 % 3];
-    return { cause, days: lo + ((h2 >>> 8) % (Math.trunc(hi - lo) + 1)) };
+    if (cause === 'engine') {
+        const h3 = mix32(h2);
+        const after = ENGINE_FAULT_AFTER_DAYS[0] + (h3 % (ENGINE_FAULT_AFTER_DAYS[1] - ENGINE_FAULT_AFTER_DAYS[0] + 1));
+        return { cause, days: ENGINE_FAULT_DAYS[0] + ((h3 >>> 8) % (ENGINE_FAULT_DAYS[1] - ENGINE_FAULT_DAYS[0] + 1)), after };
+    }
+    return { cause, days: lo + ((h2 >>> 8) % (Math.trunc(hi - lo) + 1)), after: 0 };
 }
 
 function escortsOf(st: TreasureFleetState): BuiltObject[] {
@@ -147,20 +160,31 @@ export function treasureStraggleAtDeparture(galaxy: Galaxy, r: Empire, st: Treas
         if (b.hasBeenDestroyed || b === lead || list.some((x) => x.ship === b)) continue;
         const roll = straggleRoll(galaxy, st.stats.voyages, st.leg, b);
         if (roll === null) continue;
-        list.push({ ship: b, cause: roll.cause, since: now, until: now + roll.days * GAME_DAY_LENGTH, recovering: false, exposedSince: -1 });
+        const faultAt = roll.cause === 'engine' ? now + roll.after * GAME_DAY_LENGTH : undefined;
+        const until = (faultAt ?? now) + roll.days * GAME_DAY_LENGTH;
+        list.push({ ship: b, cause: roll.cause, since: now, until, recovering: false, exposedSince: -1, ...(faultAt !== undefined ? { faultAt } : {}) });
         treasureStats2(st).straggles++;
-        // 'loading' / 'engine': held where it is (the convoy's next Move skips it, straggleHeld); 'refuel': a detour.
+        // 'loading': it stays at the port (a Hold until `until`); 'engine': it sails with the convoy until the fault
+        // (straggleHeld is false until then), then stops dead (treasureStraggleTick); 'refuel': a detour.
         if (roll.cause === 'refuel' && b.fuelType !== null) {
             const s = ultraFastFindNearestRefuellingLocation(galaxy, r, b.xpos, b.ypos, [{ resourceId: b.fuelType.resourceId, sortTag: b.fuelCapacity - b.currentFuel }], b, false, true);
             if (s !== null) assignMission(galaxy, b, BuiltObjectMissionType.Refuel, s as BuiltObject | Habitat, null, BuiltObjectMissionPriority.High);
+        } else if (roll.cause === 'loading') {
+            holdShip(galaxy, b, until);
+            list[list.length - 1].stopped = true;
         }
     }
 }
 
-/** A straggler still holding (its convoy's sailTo leaves it alone). Pure. */
+/** A ship stops where it is until `until` (BuiltObject.2.cs 7620 AssignMission Hold: the Hold command runs to its star date). */
+function holdShip(galaxy: Galaxy, b: BuiltObject, until: number): void {
+    assignMission(galaxy, b, BuiltObjectMissionType.Hold, null, null, BuiltObjectMissionPriority.High, { starDate: until });
+}
+
+/** A straggler still holding (its convoy's sailTo leaves it alone); an engine fault holds only once it struck. Pure. */
 export function straggleHeld(galaxy: Galaxy, st: TreasureFleetState, b: BuiltObject): boolean {
     const now = galaxyStarDate(galaxy);
-    return (st.stragglers ?? []).some((x) => x.ship === b && now < x.until);
+    return (st.stragglers ?? []).some((x) => x.ship === b && now < x.until && (x.faultAt === undefined || now >= x.faultAt));
 }
 
 /** The convoy holds while its escorts recover a straggler. Pure. */
@@ -184,6 +208,15 @@ export function treasureStraggleTick(galaxy: Galaxy): void {
         if (b.hasBeenDestroyed || b.actualEmpire !== r || !st.sailing) {
             s2.straggleDays += (now - x.since) / GAME_DAY_LENGTH;
             if (x.exposedSince >= 0) s2.exposedDays += (now - x.exposedSince) / GAME_DAY_LENGTH;
+            continue;
+        }
+        // The engine fault strikes: the ship drops out of formation and stops dead until the fault is fixed.
+        if (x.faultAt !== undefined && !x.stopped && now >= x.faultAt) {
+            holdShip(galaxy, b, x.until);
+            x.stopped = true;
+        }
+        if (x.faultAt !== undefined && now < x.faultAt) {
+            keep.push(x); // still in formation, the fault to come
             continue;
         }
         const d = nearestEscortDistance(galaxy, st, b);
@@ -245,15 +278,23 @@ function busy(b: BuiltObject): boolean {
 
 interface RaidForce {
     fleet: ShipGroup | null;
+    fleets?: ShipGroup[];
     ships: BuiltObject[];
     fp: number;
     d: number;
 }
 
-/** The raider's strongest force that can reach `target` (fleets; a pirate's free warships near it as one force). Pure. */
-function raidForce(galaxy: Galaxy, e: Empire, target: BuiltObject, pirate: boolean): RaidForce | null {
+/** A main-body raid may combine up to this many of the raider's fleets (each able to reach the convoy). */
+export const RAID_MAX_COMBINED_FLEETS = 4;
+
+/**
+ * The raider's strongest force that can reach `target`: its strongest fleet (a pirate's free warships near it as one
+ * force), or for the main body (`combine`) up to RAID_MAX_COMBINED_FLEETS of its fleets together. Pure.
+ */
+function raidForce(galaxy: Galaxy, e: Empire, target: BuiltObject, pirate: boolean, combine = false): RaidForce | null {
     const reach = RAID_REACH_SECTORS * galaxy.sectorSize;
     let best: RaidForce | null = null;
+    const all: RaidForce[] = [];
     const better = (f: RaidForce): boolean => best === null || f.fp > best.fp || (f.fp === best.fp && f.d < best.d);
     for (const sg of (e.shipGroups ?? []) as ShipGroup[]) {
         if (sg === null || sg.ships.length === 0) continue;
@@ -263,7 +304,14 @@ function raidForce(galaxy: Galaxy, e: Empire, target: BuiltObject, pirate: boole
         if (d > reach || !withinFuelRangeAndRefuel(galaxy, lead, target.xpos, target.ypos, 0)) continue;
         const ships = sg.ships.filter((b) => !b.hasBeenDestroyed);
         const f = { fleet: sg, ships, fp: ships.reduce((n, b) => n + b.firepowerRaw, 0), d };
+        all.push(f);
         if (better(f)) best = f;
+    }
+    if (combine && all.length > 1) {
+        all.sort((a, b) => b.fp - a.fp || a.d - b.d);
+        const parts = all.slice(0, RAID_MAX_COMBINED_FLEETS);
+        const c: RaidForce = { fleet: parts[0].fleet, fleets: parts.map((x) => x.fleet!), ships: parts.flatMap((x) => x.ships), fp: parts.reduce((n, x) => n + x.fp, 0), d: Math.max(...parts.map((x) => x.d)) };
+        if (better(c)) best = c;
     }
     if (pirate) {
         const free = e.builtObjects
@@ -294,8 +342,9 @@ function endRaid(galaxy: Galaxy, rs: RimRaidState, raid: TreasureRaid, outcome: 
     if (rs.log.length < 2000) rs.log.push({ year: raid.year, kind: raid.kind, raider: e?.name ?? String(raid.raiderId), pirate: e?.pirateEmpireBaseHabitat != null, outcome, loot: Math.round(raid.loot), force: Math.round(raid.force), defence: Math.round(raid.defence) });
     if (outcome === 'success') return;
     // Called off: the force goes back (its fleet to its gather point; a pirate's free ships to their base).
-    if (raid.fleet !== null && raid.fleet.gatherPoint !== null) {
-        shipGroupAssignMission(galaxy, raid.fleet, BuiltObjectMissionType.Move, raid.fleet.gatherPoint as BuiltObject | Habitat, null, BuiltObjectMissionPriority.Normal, false);
+    const fleets = raid.fleets ?? (raid.fleet !== null ? [raid.fleet] : []);
+    if (fleets.length > 0) {
+        for (const sg of fleets) if (sg.gatherPoint !== null && sg.ships.length > 0) shipGroupAssignMission(galaxy, sg, BuiltObjectMissionType.Move, sg.gatherPoint as BuiltObject | Habitat, null, BuiltObjectMissionPriority.Normal, false);
     } else if (raid.fleet === null && e !== null) {
         const home = e.pirateEmpireBaseHabitat ?? e.capital;
         if (home !== null) for (const b of raid.ships) if (!b.hasBeenDestroyed && b.actualEmpire === e) assignMission(galaxy, b, BuiltObjectMissionType.Move, home, null, BuiltObjectMissionPriority.Normal);
@@ -339,14 +388,15 @@ export function treasureRaidReview(galaxy: Galaxy): void {
             const pirate = e.pirateEmpireBaseHabitat !== null;
             const open = !pirate && obtainDiplomaticRelation(r, e).supplyRestrictedResources;
             if (!(t.loot > penalty * (open ? 2 : 1))) continue;
-            const f = raidForce(galaxy, e, t.target, pirate);
+            const f = raidForce(galaxy, e, t.target, pirate, t.kind === 'main');
             if (f === null || f.fp < RAID_ADVANTAGE * Math.max(1, defence)) continue;
             if (pick === null || f.fp > pick.f.fp || (f.fp === pick.f.fp && e.empireId < pick.e.empireId)) pick = { e, f };
         }
         if (pick === null) continue;
-        const raid: TreasureRaid = { raiderId: pick.e.empireId, kind: t.kind, target: t.target, fleet: pick.f.fleet, ships: pick.f.ships, start: now, year: treasureYear(st, now), loot: t.loot, force: pick.f.fp, defence };
+        const raid: TreasureRaid = { raiderId: pick.e.empireId, kind: t.kind, target: t.target, fleet: pick.f.fleet, ...(pick.f.fleets !== undefined ? { fleets: pick.f.fleets } : {}), ships: pick.f.ships, start: now, year: treasureYear(st, now), loot: t.loot, force: pick.f.fp, defence };
         raidState(galaxy).active.push(raid);
-        if (pick.f.fleet !== null) shipGroupAssignMission(galaxy, pick.f.fleet, BuiltObjectMissionType.Attack, t.target, null, BuiltObjectMissionPriority.High, true);
+        if (pick.f.fleets !== undefined) for (const sg of pick.f.fleets) shipGroupAssignMission(galaxy, sg, BuiltObjectMissionType.Attack, t.target, null, BuiltObjectMissionPriority.High, true);
+        else if (pick.f.fleet !== null) shipGroupAssignMission(galaxy, pick.f.fleet, BuiltObjectMissionType.Attack, t.target, null, BuiltObjectMissionPriority.High, true);
         else for (const b of pick.f.ships) assignMission(galaxy, b, BuiltObjectMissionType.Attack, t.target, null, BuiltObjectMissionPriority.High);
     }
 }

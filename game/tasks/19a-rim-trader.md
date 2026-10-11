@@ -445,3 +445,21 @@ All behind flag `rimTrader` (add-on off: byte-identical; the base sim gains thre
   back after 20); AI raids on exposed stragglers or, with 1.5 × the defending firepower, the main body (pirates and
   races of aggression ≥ 110, when the loot beats the 3000 standing penalty); a sunk or captured treasure ship's whole
   cargo goes to the attacker. Adding the Rim Trade to a save is not supported (see the report).
+
+### 14.1 2026-10-11 — after the first measurement
+
+- **Placement fallback** (`rimTrader.ts concordFallbackHome`): no free world in the 0.8–1.0 ring (2 of 3 old-galaxy,
+  mature-empire starts) → the outermost free native-type world anywhere (systems no empire holds, outside nebulae,
+  ≥ 0.35 sectors from a colony preferred). Deterministic scan, no Rnd; games that placed it before are unchanged.
+- **Standing cap** (query `contractAvailable`): market contracts for the rare goods only as far as the buyer's standing
+  covers (standing ÷ (galaxy price × rimTraderRarePriceMult)).
+- **Reach** (query `restrictedOrderMinDevelopment`): colonies order the rare goods from development
+  `rimRareOrderDevelopment` (60); the stock super-luxuries keep 80.
+- **Catchable fleet**: an engine fault (2–6 days out of port) stops a treasure ship dead (Hold mission) for 5–20 days;
+  loading delays hold it at the port; main-body raids may combine up to 4 of the raider's fleets.
+- **Toned down**: once at its navy target the Concord's stock construction queues no more warships while its military
+  firepower is ≥ `rimTraderNavyCapFactor` (2) × the strongest normal empire's (query `stateBuildSkipped`); one grievance
+  costs at most `rimTraderRetaliationMaxPrice` (2000 war value), strike fleets at most `rimTraderStrikeFleetMaxShips` (8).
+- **Hazards**: no treasure stop within two systems of the Ancient Guardians (the Mechanoid empire) or a hostile space
+  creature (`treasurePortHazard`). Hyperjump paths are direct (no waypoints): only the stops are screened.
+

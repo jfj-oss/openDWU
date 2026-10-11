@@ -32,7 +32,8 @@ import { compareShipGroups, getNextFleetNumberDescription, shipGroupAddShipToFle
 import { netSort } from '../../netSort';
 import { FleetPosture } from '../../diplomacyTick';
 import { EmpireMessageType } from '../../messages';
-import { registerScenarioYearly } from '../hooks';
+import { registerScenarioQuery, registerScenarioYearly } from '../hooks';
+import { identifyMechanoidEmpire } from '../../fleets/militaryAI';
 import { scenarioState } from '../state';
 import { scenarioMessage, scenarioText } from '../messages';
 import { isRimTraderAI, rimParam, rimTraderEmpire } from './common';
@@ -182,6 +183,42 @@ export function concordTradeHouseYear(galaxy: Galaxy): number {
  * spread's most-lacking group at the shipyards in turn (PurchaseNewBuiltObject queues it; a full yard refuses).
  * Returns the ships ordered. Exported for tests.
  */
+/** Military firepower of `e` (warships, troop ships, carriers: role Military, live). Pure. */
+export function militaryFirepower(e: Empire): number {
+    let fp = 0;
+    for (const b of e.builtObjects) if (b !== null && !b.hasBeenDestroyed && b.role === BuiltObjectRole.Military) fp += b.firepowerRaw;
+    return fp;
+}
+
+/** The strongest normal empire's military firepower (not the Concord, independents, pirates or the Ancient Guardians). Pure. */
+export function strongestNormalFirepower(galaxy: Galaxy, r: Empire): number {
+    const g = identifyMechanoidEmpire(galaxy);
+    let best = 0;
+    for (const e of galaxy.empires) {
+        if (e === null || e === r || e === g || !e.active || e === galaxy.independentEmpire || e.pirateEmpireBaseHabitat !== null) continue;
+        best = Math.max(best, militaryFirepower(e));
+    }
+    return best;
+}
+
+/**
+ * The navy cap (rimTraderNavyCapFactor, default 2; 0 = none): once the Concord holds its navy target in warships, it adds
+ * more only while its military firepower is under factor × the strongest normal empire's — the stock construction AI of
+ * a rich empire otherwise builds hundreds (309 warships, 139k firepower in a late-start soak). Pure.
+ */
+export function concordNavyCapped(galaxy: Galaxy, r: Empire): boolean {
+    const factor = rimParam(galaxy, 'rimTraderNavyCapFactor');
+    if (!(factor > 0)) return false;
+    if (concordWarships(r).length < Math.trunc(rimParam(galaxy, 'rimTraderNavyTarget'))) return false;
+    return militaryFirepower(r) >= factor * strongestNormalFirepower(galaxy, r);
+}
+
+/** stateBuildSkipped query: the Concord AI's stock state construction queues no more warships over the navy cap. Pure. */
+export function concordWarshipBuildSkipped(galaxy: Galaxy, value: boolean, args: { empire: Empire; subRole: number }): boolean {
+    if (value || !isRimTraderAI(galaxy, args.empire) || navyGroupOf(args.subRole as BuiltObjectSubRole) < 0 && args.subRole !== BuiltObjectSubRole.Carrier) return value;
+    return concordNavyCapped(galaxy, args.empire);
+}
+
 export function concordNavyYear(galaxy: Galaxy): number {
     const r = rimTraderEmpire(galaxy);
     const target = Math.trunc(rimParam(galaxy, 'rimTraderNavyTarget'));
@@ -223,6 +260,8 @@ export function concordNavyYear(galaxy: Galaxy): number {
     }
     return ordered;
 }
+
+registerScenarioQuery({ id: 'rimTrade.navyCap', flag: 'rimTrader', query: 'stateBuildSkipped', run: concordWarshipBuildSkipped });
 
 registerScenarioYearly({
     id: 'rimTrade.wealth.year',

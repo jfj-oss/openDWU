@@ -602,6 +602,18 @@ export interface ScenarioQueries {
      */
     restrictedOrderCandidates: { value: number[]; args: { empire: Empire; habitat: Habitat; available: number[]; amountToOrder: (resourceId: number) => number } };
     /**
+     * logistics/colonySupply.ts orderColonyLuxuryResources (Empire.4.cs 3271): the development level from which a colony
+     * orders restricted resources (stock 80). 19a rim trade: lower for the Concord's rare goods. Pure, never draws.
+     */
+    restrictedOrderMinDevelopment: { value: number; args: { empire: Empire; habitat: Habitat; available: number[] } };
+    /**
+     * logistics/freight.ts attemptToFulfillOrderAtTradingPost / freighterFulfillOrdersForDestination (Empire.4.cs 923 /
+     * 1225): the units of `resourceId` a trading post of `seller` may contract to `buyer` (stock: its available stock
+     * above the reserve). 19a rim trade: the Concord sells its rare goods only as far as the buyer's standing covers.
+     * Pure, never draws.
+     */
+    contractAvailable: { value: number; args: { seller: Empire | null; buyer: Empire | null; resourceId: number } };
+    /**
      * forceStructure.ts recalculateAnnualTaxRevenue (Habitat.cs 6083 RecalculateAnnualTaxRevenue): the tax rate the
      * revenue product uses (stock: the colony's TaxRate). 19g-5 frontier sectors: the sector governor's local rate
      * override and the sector rule's collection factor. Never draws.
