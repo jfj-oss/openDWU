@@ -16,7 +16,7 @@ import { colonyGovernor } from '../../governors';
 import { empireGovernors, mostImportantGovernor } from '../governorsCv';
 import { tripOfCharacter } from '../vip';
 import { type DietMotion, type DietMotionKind, type DietState, DIET_NAME, byId, dietOn, dietParam, peekDietState } from './dietState';
-import { dietVoteScore, memberScores, voteWeight } from './dietAi';
+import { dietMembership, dietVoteScore, memberScores, voteWeight } from './dietAi';
 import { dietCouncil } from './diet';
 
 export interface DietMotionRow {
@@ -176,7 +176,7 @@ export function dietView(galaxy: Galaxy, player: Empire): DietViewModel | null {
     const st = peekDietState(galaxy);
     if (c === null || st === null) return null;
     const now = galaxyStarDate(galaxy);
-    const ms = c.members.filter((m) => m.active && st.expelled[m.empireId] === undefined).sort(byId);
+    const ms = dietMembership(galaxy, c).filter((m) => m.active && st.expelled[m.empireId] === undefined).sort(byId);
     const member = ms.includes(player);
     const scores = memberScores(galaxy, ms);
     const s = st.session;

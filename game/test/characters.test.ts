@@ -33,7 +33,7 @@ import { cvColonySlot } from '../src/ui/scenario/charactersVictoryUi';
 import { galaxyStarDate } from '../src/sim/tick/simTime';
 import { DIET_STATE_KEY, dietState, type DietMotion } from '../src/sim/scenario/charactersVictory/diet/dietState';
 import { closeSession, declareEmperor, dietTick, hostWorldOf, strongestMember } from '../src/sim/scenario/charactersVictory/diet/diet';
-import { memberScores, voteWeight } from '../src/sim/scenario/charactersVictory/diet/dietAi';
+import { dietMembership, inDiet, memberScores, voteWeight } from '../src/sim/scenario/charactersVictory/diet/dietAi';
 import { spawnEnforcers } from '../src/sim/scenario/charactersVictory/diet/dietEnforcers';
 import { councilState, type Council } from '../src/sim/scenario/emergent/council';
 import { blockadeFor } from '../src/sim/fleets/blockades';
@@ -646,6 +646,32 @@ describe('Characters & Victory: the Interstellar Diet', () => {
         expect(st.nextSessionAt).toBeGreaterThan(s.closes);
         // Delegates who made it are on their way home (or home already).
         for (const d of sent) if (d.character!.active) expect(d.character!.location === s.world && tripOfCharacter(g, d.character!) === null).toBe(false);
+    });
+
+    it('the Ancient Guardians are not Diet members: no seat, delegate, vote or dues', () => {
+        const { g, c, members } = dietGame();
+        const guardians = members.find((e) => e !== g.playerEmpire)!;
+        const mech = gameData.races.find((r) => r.name.toLowerCase() === 'mechanoid')!;
+        const race = guardians.dominantRace;
+        guardians.dominantRace = mech as never;
+        try {
+            expect(c.members.includes(guardians)).toBe(true); // still on the stock council
+            expect(dietMembership(g, c).includes(guardians)).toBe(false);
+            expect(inDiet(g, c, guardians)).toBe(false);
+            expect(strongestMember(g, dietMembership(g, c))).not.toBe(guardians);
+            const st = dietState(g);
+            st.nextSessionAt = 0;
+            const money = guardians.stateMoney;
+            dietTick(g);
+            const s = st.session!;
+            expect(s).not.toBeNull();
+            expect(s.host).not.toBe(guardians);
+            expect(s.delegates.some((d) => d.empire === guardians)).toBe(false);
+            for (const m of s.motions) expect(m.votes.some((v) => v.empire === guardians)).toBe(false);
+            expect(guardians.stateMoney).toBe(money);
+        } finally {
+            guardians.dominantRace = race;
+        }
     });
 
     it("the tally counts only delegates present, weighted (a lesser delegate counts less), and the Regent's veto stops one motion", () => {

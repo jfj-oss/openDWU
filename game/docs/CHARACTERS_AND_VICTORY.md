@@ -257,8 +257,9 @@ the clash with rimTrade's Concord cannot happen (the council is always the Diet)
 ### 7.1 Host and seat
 
 - **new (real inputs).** At every session call the host is the member with the highest Galaxy.1.cs:2863
-  CalculateEmpireScore — except the Ancient Guardians (the story's Mechanoid empire, IdentifyMechanoidEmpire), who sit
-  and vote but never host and never stand for the Regency (in the soaks they out-scored everyone and held both for
+  CalculateEmpireScore. The Ancient Guardians (the story's Mechanoid empire, IdentifyMechanoidEmpire) are not Diet
+  members at all — no seat, delegate, vote or dues (`dietAi.ts dietMembership / inDiet`, 2026-10-11) — so they never
+  host and never stand for the Regency (in the soaks they out-scored everyone and held both for
   the whole game, so no other Regent could ever bid for Emperor; reported as a decision) (`achievements.ts calculateEmpireScore`); the Diet's world is that empire's populated colony
   nearest the galaxy centre (`sizeX / 2, sizeY / 2`). When the strongest member changed, the seat moves then (a news
   line).
@@ -624,5 +625,6 @@ years). s3 stopped at year 17 on a stock exception repeated from day 6090 (invas
 `defender!.pirateEmpireBaseHabitat` with no defender, a C#-unguarded dereference; not investigated here).
 
 **Decision (reported).** The Ancient Guardians (the story's Mechanoids) out-scored every member and held the seat and
-the Regency for whole games, so no other Regent could ever bid; they now sit and vote but never host or stand for the
-Regency, and do not count as rivals in the Emperor's reckoning.
+the Regency for whole games, so no other Regent could ever bid; they were first barred from hosting and the Regency, and
+since 2026-10-11 they are not Diet members at all (no seat, delegate, vote or dues; the Members tab omits them), and do
+not count as rivals in the Emperor's reckoning.

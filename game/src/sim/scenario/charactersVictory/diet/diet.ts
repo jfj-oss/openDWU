@@ -79,7 +79,7 @@ import {
     lawInForce,
     peekDietState,
 } from './dietState';
-import { asCouncilMotion, atWar, attacksDelegates, dietCandidates, dietVoteScore, emergencyCase, emperorBidBlock, joinsWarOnEmperor, memberScores, voteWeight } from './dietAi';
+import { asCouncilMotion, atWar, dietMembership, inDiet, attacksDelegates, dietCandidates, dietVoteScore, emergencyCase, emperorBidBlock, joinsWarOnEmperor, memberScores, voteWeight } from './dietAi';
 import { militaryPotency } from '../../../diplomacyTick';
 import { aiDefiance, collectDues, enforcerFleetOf, enforcerUpkeep, ensureFaction, isEnforcerFaction, recallEnforcers, reviewEnforcers, spawnEnforcers } from './dietEnforcers';
 import type { DietCandidate as Cand, DietCandidate } from './dietAi';
@@ -100,12 +100,12 @@ export function dietCouncil(galaxy: Galaxy): Council | null {
     return cs.councils.find((c) => c.id === id) ?? cs.councils[0];
 }
 
-function members(c: Council, st: DietState): Empire[] {
-    return c.members.filter((m) => m.active && st.expelled[m.empireId] === undefined).sort(byId);
+function members(galaxy: Galaxy, c: Council, st: DietState): Empire[] {
+    return dietMembership(galaxy, c).filter((m) => m.active && st.expelled[m.empireId] === undefined).sort(byId);
 }
 
 function humanMembers(galaxy: Galaxy, c: Council, st: DietState): Empire[] {
-    return members(c, st).filter((m) => isHumanEmpire(galaxy, m));
+    return members(galaxy, c, st).filter((m) => isHumanEmpire(galaxy, m));
 }
 
 function tell(galaxy: Galaxy, to: readonly Empire[], titleTag: string, text: string, opts: { bad?: boolean; good?: boolean; popup?: boolean; subject?: unknown } = {}): void {
@@ -119,7 +119,7 @@ function tell(galaxy: Galaxy, to: readonly Empire[], titleTag: string, text: str
 /** A NewsNet line for everyone but the Diet's human members (they get their own message). */
 function news(galaxy: Galaxy, source: Empire | null, text: string, subject: unknown): void {
     const c = dietCouncil(galaxy);
-    scenarioNews(galaxy, source, text, (e) => !(isHumanEmpire(galaxy, e) && c !== null && c.members.includes(e)), subject, { category: 'council' });
+    scenarioNews(galaxy, source, text, (e) => !(isHumanEmpire(galaxy, e) && c !== null && inDiet(galaxy, c, e)), subject, { category: 'council' });
 }
 
 function nameOf(e: Empire | null): string {
@@ -167,7 +167,7 @@ export function dietMotionText(galaxy: Galaxy, st: DietState, kind: DietMotionKi
 export function strongestMember(galaxy: Galaxy, ms: readonly Empire[]): Empire | null {
     let best: Empire | null = null;
     let bv = -Infinity;
-    // The Ancient Guardians (the story's Mechanoids, Galaxy IdentifyMechanoidEmpire) sit and vote but never host.
+    // The Ancient Guardians (the story's Mechanoids, Galaxy IdentifyMechanoidEmpire) are not Diet members and never host.
     const guardians = identifyMechanoidEmpire(galaxy);
     for (const e of ms) {
         if (e === guardians && ms.length > 1) continue;
@@ -199,7 +199,7 @@ export function hostWorldOf(galaxy: Galaxy, host: Empire): Habitat | null {
 
 /** Re-seats the Diet at a session call: the seat moves when the strongest member changed. */
 function updateSeat(galaxy: Galaxy, st: DietState, c: Council): void {
-    const ms = members(c, st);
+    const ms = members(galaxy, c, st);
     const host = strongestMember(galaxy, ms);
     if (host === null) return;
     const world = hostWorldOf(galaxy, host);
@@ -338,7 +338,7 @@ export function callSession(galaxy: Galaxy, st: DietState, c: Council, emergency
     st.session = s;
     st.vetoMotionId = 0;
     s.motions = agenda(galaxy, st, c, gameYear(now), first);
-    for (const e of members(c, st)) {
+    for (const e of members(galaxy, c, st)) {
         const pick = chooseDelegate(galaxy, st, e);
         const d: DietDelegate = { empire: e, character: pick.character, lesser: pick.lesser, sent: false, lost: false };
         s.delegates.push(d);
@@ -394,7 +394,7 @@ function castAi(galaxy: Galaxy, st: DietState, c: Council, m: DietMotion, e: Emp
 
 /** The tally: present delegates' weighted votes; the Regent's veto; effects; delegates go home; next session. */
 export function closeSession(galaxy: Galaxy, st: DietState, c: Council, s: DietSession): void {
-    const ms = members(c, st);
+    const ms = members(galaxy, c, st);
     const scores = memberScores(galaxy, ms);
     const now = galaxyStarDate(galaxy);
     const year = gameYear(now);
@@ -500,7 +500,7 @@ function removeLaw(st: DietState, law: DietLaw): void {
 
 /** Free trade between every pair of met members whose relation is plain None (ChangeDiplomaticRelation → FreeTradeAgreement). */
 function applyFreeTrade(galaxy: Galaxy, c: Council, st: DietState): void {
-    const ms = members(c, st);
+    const ms = members(galaxy, c, st);
     for (let i = 0; i < ms.length; i++) {
         for (let j = i + 1; j < ms.length; j++) {
             const a = ms[i];
@@ -557,7 +557,7 @@ function applyDietMotion(galaxy: Galaxy, st: DietState, c: Council, m: DietMotio
                 st.regentUntil = now + dietParam(galaxy, 'dietRegentYears') * YEAR_LENGTH;
                 st.counters.regents++;
                 news(galaxy, m.target, scenarioText('Diet Regent News', m.target.name), null);
-                tell(galaxy, members(c, st), 'Diet Regent Title', scenarioText('Diet Regent', m.target.name), { popup: true, good: isHumanEmpire(galaxy, m.target) });
+                tell(galaxy, members(galaxy, c, st), 'Diet Regent Title', scenarioText('Diet Regent', m.target.name), { popup: true, good: isHumanEmpire(galaxy, m.target) });
             }
             break;
         case 'repeal': {
@@ -606,37 +606,37 @@ function automaticSanctions(galaxy: Galaxy, st: DietState, c: Council, offender:
 function crime(galaxy: Galaxy, st: DietState, c: Council, offender: Empire, what: string): void {
     st.counters.crimes++;
     const pen = dietParam(galaxy, 'dietCrimePenalty');
-    for (const m of members(c, st)) {
+    for (const m of members(galaxy, c, st)) {
         if (m === offender) continue;
         applyReputation(galaxy, m, offender, -pen, { cause: 'dietCrime', labelKey: 'Diet Reputation Crime', source: 'interstellarDiet' });
     }
     if (offender.pirateEmpireBaseHabitat === null) setCivilityRating(offender, offender.civilityRating - 3);
     st.grievances[offender.empireId] = (st.grievances[offender.empireId] ?? 0) + 60;
     news(galaxy, null, scenarioText('Diet Crime News', offender.name, what), null);
-    tell(galaxy, members(c, st).filter((m) => m !== offender), 'Diet Crime Title', scenarioText('Diet Crime', offender.name, what), { popup: true, bad: true });
+    tell(galaxy, members(galaxy, c, st).filter((m) => m !== offender), 'Diet Crime Title', scenarioText('Diet Crime', offender.name, what), { popup: true, bad: true });
 }
 
 function defiance(galaxy: Galaxy, st: DietState, c: Council, offender: Empire): void {
     st.counters.defiance++;
     const pen = dietParam(galaxy, 'dietDefiancePenalty');
-    for (const m of members(c, st)) {
+    for (const m of members(galaxy, c, st)) {
         if (m === offender) continue;
         applyReputation(galaxy, m, offender, -pen, { cause: 'dietDefiance', labelKey: 'Diet Reputation Defiance', source: 'interstellarDiet' });
     }
     st.grievances[offender.empireId] = (st.grievances[offender.empireId] ?? 0) + 40;
     news(galaxy, offender, scenarioText('Diet Defiance News', offender.name), null);
     // Open defiance: an emergency case (expulsion of a member, else a declared threat).
-    st.pendingEmergency = { kind: c.members.includes(offender) ? 'expel' : 'threat', target: offender, other: null, at: galaxyStarDate(galaxy), why: 'defiance' };
+    st.pendingEmergency = { kind: inDiet(galaxy, c, offender) ? 'expel' : 'threat', target: offender, other: null, at: galaxyStarDate(galaxy), why: 'defiance' };
 }
 
 function violation(galaxy: Galaxy, st: DietState, c: Council, offender: Empire, law: DietLaw): void {
     st.counters.banViolations++;
-    for (const m of members(c, st)) {
+    for (const m of members(galaxy, c, st)) {
         if (m === offender) continue;
         applyReputation(galaxy, m, offender, -15, { cause: 'dietViolation', labelKey: 'Diet Reputation Violation', source: 'interstellarDiet' });
     }
     st.grievances[offender.empireId] = (st.grievances[offender.empireId] ?? 0) + 40;
-    tell(galaxy, members(c, st), 'Diet Violation Title', scenarioText('Diet Violation', offender.name, law.text), { bad: true });
+    tell(galaxy, members(galaxy, c, st), 'Diet Violation Title', scenarioText('Diet Violation', offender.name, law.text), { bad: true });
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -645,7 +645,7 @@ function violation(galaxy: Galaxy, st: DietState, c: Council, offender: Empire, 
 
 function activeRegent(galaxy: Galaxy, st: DietState, c: Council): Empire | null {
     const r = st.regent;
-    if (r === null || !r.active || !c.members.includes(r) || galaxyStarDate(galaxy) >= st.regentUntil) return null;
+    if (r === null || !r.active || !inDiet(galaxy, c, r) || galaxyStarDate(galaxy) >= st.regentUntil) return null;
     return r;
 }
 
@@ -702,7 +702,7 @@ function emperorEnds(galaxy: Galaxy, st: DietState, c: Council | null, won: bool
     st.counters.emperorFails++;
     (st.emperorFailedAt ??= {})[e.empireId] = galaxyStarDate(galaxy);
     if (st.regent === e) st.regent = null;
-    if (c !== null) for (const m of members(c, st)) if (m !== e) applyReputation(galaxy, m, e, -20, { cause: 'dietUsurper', labelKey: 'Diet Reputation Usurper', source: 'interstellarDiet' });
+    if (c !== null) for (const m of members(galaxy, c, st)) if (m !== e) applyReputation(galaxy, m, e, -20, { cause: 'dietUsurper', labelKey: 'Diet Reputation Usurper', source: 'interstellarDiet' });
     news(galaxy, e, scenarioText('Diet Emperor Failed News', e.name), null);
     for (const h of humanEmpires(galaxy)) scenarioMessage(galaxy, h, scenarioText('Diet Emperor Title'), scenarioText('Diet Emperor Failed', e.name), { type: h === e ? EmpireMessageType.GeneralBadEvent : EmpireMessageType.GeneralGoodEvent, log: { category: 'council' } });
 }
@@ -772,7 +772,7 @@ export function dietTick(galaxy: Galaxy): void {
     for (const l of [...st.laws]) {
         if (l.until >= 0 && now >= l.until) {
             st.laws.splice(st.laws.indexOf(l), 1);
-            tell(galaxy, members(c, st), 'Diet Law Lapsed Title', scenarioText('Diet Law Lapsed', l.text));
+            tell(galaxy, members(galaxy, c, st), 'Diet Law Lapsed Title', scenarioText('Diet Law Lapsed', l.text));
         } else if (l.kind === 'claim' && (l.colony === null || l.colony.empire === l.empire || l.empire === null || !l.empire.active)) st.laws.splice(st.laws.indexOf(l), 1);
         else if ((l.kind === 'outlawPirates' || l.kind === 'truce') && l.empire !== null && !l.empire.active) st.laws.splice(st.laws.indexOf(l), 1);
     }
@@ -934,7 +934,7 @@ export function dietYearly(galaxy: Galaxy): void {
     // Bounties on outlawed pirates: the members keep ten bounties in the fund.
     if (st.laws.some((l) => l.kind === 'outlawPirates')) {
         const want = 10 * dietParam(galaxy, 'dietBountyPerShip');
-        if (st.fund < want) collectDues(galaxy, st, c.members, null, want - st.fund);
+        if (st.fund < want) collectDues(galaxy, st, dietMembership(galaxy, c), null, want - st.fund);
     }
     if (lawInForce(st, 'freeTrade') !== null) applyFreeTrade(galaxy, c, st);
     // Grievances, spies, raids and bombardments fade.
@@ -960,7 +960,7 @@ function dietFor(galaxy: Galaxy, e: Empire): { st: DietState; c: Council } | nul
     if (!dietOn(galaxy)) return null;
     const c = dietCouncil(galaxy);
     const st = peekDietState(galaxy);
-    if (c === null || st === null || !members(c, st).includes(e)) return null;
+    if (c === null || st === null || !members(galaxy, c, st).includes(e)) return null;
     return { st, c };
 }
 
@@ -1104,7 +1104,7 @@ function onBuiltObjectAttacked(galaxy: Galaxy, ev: { builtObject: BuiltObject; a
         f.defied = true;
         defiance(galaxy, x.st, x.c, a);
     }
-    if (a !== null && a.pirateEmpireBaseHabitat !== null && bo.actualEmpire !== null && x.c.members.includes(bo.actualEmpire)) {
+    if (a !== null && a.pirateEmpireBaseHabitat !== null && bo.actualEmpire !== null && inDiet(galaxy, x.c, bo.actualEmpire)) {
         const raids = (x.st.raids ??= {});
         const k = `${a.empireId}:${bo.actualEmpire.empireId}`;
         raids[k] = Math.min(50, (raids[k] ?? 0) + 1);
@@ -1118,7 +1118,7 @@ function onKilledBy(galaxy: Galaxy, ev: { builtObject: BuiltObject; destroyer: E
     const killer = ev.destroyer;
     const owner = ev.builtObject.actualEmpire;
     // Bounties on an outlawed pirate faction's ships, from the Diet fund.
-    if (killer !== null && owner !== null && x.c.members.includes(killer) && lawInForce(x.st, 'outlawPirates', owner) !== null && ev.builtObject.role === BuiltObjectRole.Military) {
+    if (killer !== null && owner !== null && inDiet(galaxy, x.c, killer) && lawInForce(x.st, 'outlawPirates', owner) !== null && ev.builtObject.role === BuiltObjectRole.Military) {
         const pay = Math.min(x.st.fund, dietParam(galaxy, 'dietBountyPerShip'));
         if (pay > 0) {
             x.st.fund -= pay;
@@ -1142,14 +1142,14 @@ function onHabitatAttacked(galaxy: Galaxy, ev: { habitat: Habitat; attacker: unk
             crime(galaxy, x.st, x.c, a, scenarioText('Diet Crime Host', s.world.name));
         }
     }
-    if (a.pirateEmpireBaseHabitat !== null && ev.habitat.empire !== null && x.c.members.includes(ev.habitat.empire)) {
+    if (a.pirateEmpireBaseHabitat !== null && ev.habitat.empire !== null && inDiet(galaxy, x.c, ev.habitat.empire)) {
         const raids = (x.st.raids ??= {});
         const k = `${a.empireId}:${ev.habitat.empire.empireId}`;
         raids[k] = Math.min(50, (raids[k] ?? 0) + 2);
     }
     const ship = ev.attacker instanceof BuiltObject ? ev.attacker : null;
     const ban = lawInForce(x.st, 'banPlanetDestroyers');
-    if (ban !== null && ship !== null && ship.isPlanetDestroyer && x.c.members.includes(a)) {
+    if (ban !== null && ship !== null && ship.isPlanetDestroyer && inDiet(galaxy, x.c, a)) {
         const seen = ((ban as { offenders?: number[] }).offenders ??= []);
         if (!seen.includes(a.empireId)) {
             seen.push(a.empireId);
@@ -1163,12 +1163,12 @@ function onBombarded(galaxy: Galaxy, ev: { builtObject: BuiltObject; habitat: Ha
     if (x === null) return;
     const a = ev.builtObject.actualEmpire;
     const victim = ev.habitat.empire;
-    if (victim !== null && x.c.members.includes(victim)) {
+    if (victim !== null && inDiet(galaxy, x.c, victim)) {
         const b = (x.st.bombarded ??= {});
         b[victim.empireId] = Math.min(20, (b[victim.empireId] ?? 0) + 1);
     }
     const ban = lawInForce(x.st, 'banBombard');
-    if (ban !== null && a !== null && x.c.members.includes(a)) {
+    if (ban !== null && a !== null && inDiet(galaxy, x.c, a)) {
         const yearKey = `${a.empireId}:${gameYear(galaxyStarDate(galaxy))}`;
         const seen = ((ban as { offenders?: string[] }).offenders ??= []);
         if (!seen.includes(yearKey)) {
@@ -1182,8 +1182,8 @@ function onWarDeclared(galaxy: Galaxy, ev: { empire: Empire; target: Empire }): 
     const x = sessionMember(galaxy);
     if (x === null) return;
     // A war started on a Diet member (not on the Emperor, not by the enforcers): an emergency case for the Regent.
-    if (members(x.c, x.st).includes(ev.target) && ev.empire !== x.st.faction && ev.target !== x.st.emperor?.empire && ev.empire.pirateEmpireBaseHabitat === null && ev.empire !== galaxy.independentEmpire) {
-        const kind: DietMotionKind = x.c.members.includes(ev.empire) ? 'condemn' : 'sanction';
+    if (members(galaxy, x.c, x.st).includes(ev.target) && ev.empire !== x.st.faction && ev.target !== x.st.emperor?.empire && ev.empire.pirateEmpireBaseHabitat === null && ev.empire !== galaxy.independentEmpire) {
+        const kind: DietMotionKind = inDiet(galaxy, x.c, ev.empire) ? 'condemn' : 'sanction';
         x.st.pendingEmergency ??= { kind, target: ev.empire, other: ev.target, at: galaxyStarDate(galaxy), why: 'war' };
     }
     for (const l of [...x.st.laws]) {
@@ -1201,7 +1201,7 @@ function onIntel(galaxy: Galaxy, ev: { empire: Empire; mission: unknown; outcome
     if (x === null) return;
     const m = ev.mission as { targetEmpire: Empire | null } | null;
     const t = m?.targetEmpire ?? null;
-    if (t === null || !x.c.members.includes(t) || !x.c.members.includes(ev.empire)) return;
+    if (t === null || !inDiet(galaxy, x.c, t) || !inDiet(galaxy, x.c, ev.empire)) return;
     if (ev.outcome !== 1 && ev.outcome !== 2) return; // IntelligenceMissionOutcome.SucceedNotDetect / SucceedDetect
     const k = `${ev.empire.empireId}:${t.empireId}`;
     x.st.spies[k] = Math.min(10, (x.st.spies[k] ?? 0) + 1);
@@ -1211,7 +1211,7 @@ function onColonyOwnerChanged(galaxy: Galaxy, ev: { colony: Habitat; from: Empir
     const x = sessionMember(galaxy);
     if (x === null || ev.to === null || ev.from !== galaxy.independentEmpire) return;
     const law = lawInForce(x.st, 'protectIndependents');
-    if (law !== null && x.c.members.includes(ev.to)) violation(galaxy, x.st, x.c, ev.to, law);
+    if (law !== null && inDiet(galaxy, x.c, ev.to)) violation(galaxy, x.st, x.c, ev.to, law);
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -1257,7 +1257,7 @@ function missionAllowed(galaxy: Galaxy, v: boolean, a: { builtObject: BuiltObjec
     const e = a.builtObject.actualEmpire;
     if (e === null || isHumanEmpire(galaxy, e)) return v;
     const c = dietCouncil(galaxy);
-    if (c === null || !c.members.includes(e)) return v;
+    if (c === null || !inDiet(galaxy, c, e)) return v;
     const t = a.missionType;
     if ((t === BuiltObjectMissionType.Bombard || t === BuiltObjectMissionType.WaitAndBombard) && lawInForce(st, 'banBombard') !== null) return false;
     const target = a.target as { empire?: Empire | null } | null;
@@ -1329,7 +1329,7 @@ registerScenarioQuery({
         const st = peekDietState(g);
         if (st === null || !st.laws.some((l) => l.kind === 'outlawPirates')) return v;
         const c = dietCouncil(g);
-        return c !== null && c.members.includes(a.owner) && c.members.includes(a.empire);
+        return c !== null && inDiet(g, c, a.owner) && inDiet(g, c, a.empire);
     },
 });
 registerScenarioQuery({

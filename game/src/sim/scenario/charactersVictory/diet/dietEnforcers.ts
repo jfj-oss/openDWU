@@ -42,7 +42,7 @@ import { createThreatFaction } from '../../threats/framework';
 import { scenarioMessage, scenarioNews, scenarioText } from '../../messages';
 import type { Council } from '../../emergent/council';
 import { type DietEnforcerFleet, type DietState, byId, dietParam } from './dietState';
-import { personality } from './dietAi';
+import { dietMembership, personality } from './dietAi';
 
 /** The base blockade unit (the user's composition): 6 cruisers, 2 carriers, 2 battleships, 2 resupply ships. */
 export const ENFORCER_UNIT: readonly [BuiltObjectSubRole, number][] = [
@@ -204,8 +204,8 @@ export function spawnEnforcers(galaxy: Galaxy, st: DietState, c: Council, target
     const plan: Design[] = [];
     for (const [role, n] of ENFORCER_UNIT) {
         const count = Math.max(1, Math.round(n * scale));
-        let designs = memberDesigns(galaxy, c.members, target, role);
-        for (const alt of FALLBACK[role] ?? []) if (designs.length === 0) designs = memberDesigns(galaxy, c.members, target, alt);
+        let designs = memberDesigns(galaxy, dietMembership(galaxy, c), target, role);
+        for (const alt of FALLBACK[role] ?? []) if (designs.length === 0) designs = memberDesigns(galaxy, dietMembership(galaxy, c), target, alt);
         if (designs.length === 0) continue;
         for (let i = 0; i < count; i++) plan.push(designs[i % designs.length]);
     }
@@ -216,7 +216,7 @@ export function spawnEnforcers(galaxy: Galaxy, st: DietState, c: Council, target
     let cost = 0;
     for (const d of plan) cost += d.calculateCurrentPurchasePrice(galaxy);
     cost *= dietParam(galaxy, 'dietEnforcerCostPct') / 100;
-    if (st.fund < cost) collectDues(galaxy, st, c.members, target, cost - st.fund);
+    if (st.fund < cost) collectDues(galaxy, st, dietMembership(galaxy, c), target, cost - st.fund);
     st.fund = Math.max(0, st.fund - cost);
     const ships = plan.map((d) => placeShip(galaxy, faction, enforcerDesign(galaxy, faction, d, cache), st.world!));
     const sg = new ShipGroup(galaxy);
@@ -382,7 +382,7 @@ export function enforcerUpkeep(galaxy: Galaxy, st: DietState, c: Council): void 
     let need = 0;
     for (const f of st.enforcers) need += (f.cost * dietParam(galaxy, 'dietEnforcerUpkeepPct')) / 100;
     if (need <= 0) return;
-    if (st.fund < need) collectDues(galaxy, st, c.members, null, need - st.fund);
+    if (st.fund < need) collectDues(galaxy, st, dietMembership(galaxy, c), null, need - st.fund);
     st.fund = Math.max(0, st.fund - need);
 }
 

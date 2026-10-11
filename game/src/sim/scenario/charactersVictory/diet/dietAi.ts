@@ -66,6 +66,20 @@ export interface Personality {
 
 const lvl = (v: number): number => (v - 100) / 50;
 
+/**
+ * The Diet's members: the council's members but the Ancient Guardians (the story's Mechanoids, Galaxy
+ * IdentifyMechanoidEmpire), who stay out of the Diet altogether — no seat, delegate, vote or dues.
+ */
+export function dietMembership(galaxy: Galaxy, c: Council): Empire[] {
+    const guardians = identifyMechanoidEmpire(galaxy);
+    return guardians === null ? c.members : c.members.filter((m) => m !== guardians);
+}
+
+/** `e` is a member of the Diet (dietMembership). */
+export function inDiet(galaxy: Galaxy, c: Council, e: Empire | null): boolean {
+    return e !== null && c.members.includes(e) && e !== identifyMechanoidEmpire(galaxy);
+}
+
 export function personality(e: Empire): Personality {
     const r = e.dominantRace!;
     const gov = empireGovernmentAttributes(e);
@@ -245,9 +259,9 @@ export function dietVoteScore(galaxy: Galaxy, c: Council, st: DietState, voter: 
             return 10 + 15 * p.friendliness - 15 * p.aggression + 10 * has(p, CharacterTraitType.Pacifist) + 0.2 * (Math.max(attitudeOf(voter, a), attitudeOf(voter, b))) - (atWar(voter, a) || atWar(voter, b) ? 20 : 0);
         }
         case 'freeTrade':
-            return 14 + 40 * p.freeTrade + 15 * p.trade + 25 * has(p, CharacterTraitType.FreeTrader) - 25 * has(p, CharacterTraitType.Protectionist) - 15 * has(p, CharacterTraitType.Isolationist) - 10 * has(p, CharacterTraitType.Xenophobic) + 5 * has(p, CharacterTraitType.Tolerant) - 5 * c.members.filter((x) => x !== voter && atWar(voter, x)).length;
+            return 14 + 40 * p.freeTrade + 15 * p.trade + 25 * has(p, CharacterTraitType.FreeTrader) - 25 * has(p, CharacterTraitType.Protectionist) - 15 * has(p, CharacterTraitType.Isolationist) - 10 * has(p, CharacterTraitType.Xenophobic) + 5 * has(p, CharacterTraitType.Tolerant) - 5 * dietMembership(galaxy, c).filter((x) => x !== voter && atWar(voter, x)).length;
         case 'banPlanetDestroyers':
-            return 10 + 15 * p.caution - 15 * p.aggression + 15 * has(p, CharacterTraitType.Pacifist) + 10 * p.othersReputation - (hasPlanetDestroyers(voter) ? 45 : 0) + (c.members.some((x) => x !== voter && hasPlanetDestroyers(x)) ? 15 : 0);
+            return 10 + 15 * p.caution - 15 * p.aggression + 15 * has(p, CharacterTraitType.Pacifist) + 10 * p.othersReputation - (hasPlanetDestroyers(voter) ? 45 : 0) + (dietMembership(galaxy, c).some((x) => x !== voter && hasPlanetDestroyers(x)) ? 15 : 0);
         case 'banBombard':
             return 5 + 10 * p.friendliness - 15 * p.aggression + 10 * p.othersReputation + ((voter.policy?.warAttacksAllowColonyBombardment ?? 0) >= 2 ? -20 : 8) + 10 * has(p, CharacterTraitType.Pacifist);
         case 'outlawPirates': {
@@ -276,7 +290,7 @@ export function dietVoteScore(galaxy: Galaxy, c: Council, st: DietState, voter: 
         }
         case 'regent': {
             if (voter === t) return 100;
-            const scores = memberScores(galaxy, c.members);
+            const scores = memberScores(galaxy, dietMembership(galaxy, c));
             let total = 0;
             for (const v of scores.values()) total += v;
             const share = (scores.get(t!) ?? 0) / Math.max(1, total);
@@ -324,7 +338,7 @@ export function memberCandidates(galaxy: Galaxy, c: Council, st: DietState, a: E
         out.push({ kind: s.kind, proposer: a, target: s.target, other: s.other, colony: null, resourceId: s.resourceId, weight: s.weight });
     }
     const p = personality(a);
-    const members = c.members;
+    const members = dietMembership(galaxy, c);
     // Crimes, defiance and violations: an automatic sanction case against the offender.
     for (const e of members) {
         if (e === a) continue;
@@ -417,7 +431,7 @@ export function memberCandidates(galaxy: Galaxy, c: Council, st: DietState, a: E
 export function dietCandidates(galaxy: Galaxy, c: Council, st: DietState, year: number): DietCandidate[] {
     const stock = motionCandidates(galaxy, c, year);
     const out: DietCandidate[] = [];
-    for (const a of [...c.members].sort(byId)) {
+    for (const a of [...dietMembership(galaxy, c)].sort(byId)) {
         if (isHumanEmpire(galaxy, a) || st.expelled[a.empireId] !== undefined) continue;
         out.push(...memberCandidates(galaxy, c, st, a, stock));
     }
@@ -456,7 +470,7 @@ export function emperorBidBlock(galaxy: Galaxy, c: Council, st: DietState, regen
     if (failed !== undefined && galaxyStarDate(galaxy) - failed < 8 * YEAR_LENGTH) return 'failedRecently';
     // The rivals: the other members (the aloof Ancient Guardians do not contend for the galaxy).
     const guardians = identifyMechanoidEmpire(galaxy);
-    const rivals = c.members.filter((m) => m !== guardians);
+    const rivals = dietMembership(galaxy, c).filter((m) => m !== guardians);
     const scores = memberScores(galaxy, rivals);
     let total = 0;
     for (const v of scores.values()) total += v;
