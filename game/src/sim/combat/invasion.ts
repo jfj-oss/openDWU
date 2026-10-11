@@ -1272,6 +1272,8 @@ export function resolveInvasionBattles(galaxy: Galaxy, habitat: Habitat, timeSpa
     const invader = resolved.invader;
     let defender = resolved.defender;
     if (defender === null) defender = self.empire;
+    // guard (new; the C# leaves this unguarded): no defender at all (unowned habitat) -> the C# NREs at defender.pirateEmpireBaseHabitat; here the battle step is skipped.
+    if (defender === null) return;
     if (self.invasionStats === null) self.invasionStats = new InvasionStats(self, invader, self.empire);
     const invadingTroops = self.invadingTroops!;
     let flag = false;

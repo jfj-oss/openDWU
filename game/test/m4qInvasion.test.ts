@@ -158,6 +158,21 @@ describe('Habitat.cs 3365 ResolveInvasionBattles', () => {
         const h = independentColony();
         expect(countDraws(() => resolveInvasionBattles(galaxy, h, 10))).toBe(0);
     });
+
+    it('guard (new; the C# NREs): an invasion with no defender at all is skipped, not thrown', () => {
+        const h = independentColony();
+        const invader = galaxy.empires[0];
+        const a = troop(invader, TroopType.Infantry, 1, 1, 1);
+        a.colony = h;
+        h.invadingTroops!.add(a);
+        const owner = h.empire;
+        h.empire = null as never;
+        try {
+            expect(() => resolveInvasionBattles(galaxy, h, 10)).not.toThrow();
+        } finally {
+            h.empire = owner;
+        }
+    });
 });
 
 describe('Habitat.cs 2914 IndependentColoniesRecruitAndTrainTroops', () => {

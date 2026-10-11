@@ -62,6 +62,11 @@ import {
 import { HEAL_RATE, HERD_YOUNG_SIZE, herderArmorPierce, matureHerd, rimHerdersHusbandryYear } from '../src/sim/scenario/rimHerders/husbandry';
 
 import { processMessages } from '../src/sim/diplomacyTick';
+import { Troop, TroopList, TroopType } from '../src/sim/cargo';
+import { setShipsFleet } from '../src/sim/player/fleetOps';
+import { shipGroupTotalTroopAttackStrength } from '../src/sim/fleets/shipGroupTasks';
+import { BuiltObjectMissionType, builtObjectMission } from '../src/sim/missions/mission';
+import { rimHerdersStagingTick, rimHerdersYear } from '../src/sim/scenario/rimHerders/rimHerders';
 
 let base: GameData;
 /** Shared flag-on game: every rim independent is a herder, migration season on the last day (tests drive it). */
@@ -360,6 +365,134 @@ describe('19j rim herders — (6) migration-season warnings', () => {
         expect(herdMembers(herd).some((c) => c.currentTarget === ship)).toBe(true);
         // The AI answers the warning in its message pass (this crashed with a null sender).
         expect(() => processMessages(g, e)).not.toThrow();
+    }, 600000);
+});
+
+describe('19j rim herders — standing cap / decay, home exemption, staging conquest', () => {
+    it('standing is capped at rimHerdersStandingCap and decays rimHerdersStandingDecay a year toward 0', () => {
+        const g = createScenarioGame(base, { scenario: 'rim-herders', params: { ...PARAMS, rimHerdersContactRange: 1e9 } }).game.galaxy;
+        const st = rimHerdersState(g);
+        const [a] = aiEmpires(g);
+        const year = gameYear(galaxyStarDate(g));
+        // Default cap 100, decay 5%: 98 -> 93.1, + goodwill 10 (a is a neighbour) -> 103.1 -> capped at 100. An empire outside the
+        // neighbours (id 9999) only decays: 80 -> 76, -80 -> -76.
+        st.standing[a.empireId] = 98;
+        st.standing[9999] = 80;
+        st.standing[9998] = -80;
+        rimHerdersYear(g, year);
+        expect(st.standing[a.empireId]).toBe(100);
+        expect(st.standing[9999]).toBeCloseTo(76, 9);
+        expect(st.standing[9998]).toBeCloseTo(-76, 9);
+        // Both params: cap 50, decay 50%: 95 -> 47.5 + 10 -> capped 50; 80 -> 40.
+        g.scenario!.params.rimHerdersStandingCap = 50;
+        g.scenario!.params.rimHerdersStandingDecay = 0.5;
+        st.standing[a.empireId] = 95;
+        st.standing[9999] = 80;
+        rimHerdersYear(g, year);
+        expect(st.standing[a.empireId]).toBe(50);
+        expect(st.standing[9999]).toBeCloseTo(40, 9);
+    }, 600000);
+
+    it('a warned empire\'s warships within rimHerdersHomeRange of its own colony or base are exempt from the corridor penalty', () => {
+        const g = createScenarioGame(base, { scenario: 'rim-herders', params: PARAMS }).game.galaxy;
+        const hc = freeColonies(g)[0];
+        const e = aiEmpires(g).find((x) => militaryShip(x) !== null && x.colonies.length > 0)!;
+        const ships = e.builtObjects.filter((b) => b != null && !b.hasBeenDestroyed && b.role === BuiltObjectRole.Military) as BuiltObject[];
+        const home = e.colonies[0];
+        const year = gameYear(galaxyStarDate(g));
+        const place = (dx: number): void => {
+            for (const b of ships) {
+                b.xpos = home.xpos + dx;
+                b.ypos = home.ypos;
+            }
+            // The corridor is wherever the ships are.
+            for (const herd of herderColonyHerds(g, hc)) {
+                herd.homeX = home.xpos + dx;
+                herd.homeY = home.ypos;
+                herd.migration = null;
+            }
+        };
+        hc.warnYear = year;
+        hc.warned = [e.empireId];
+        place(1500); // inside 2000: home
+        expect(rimHerdersSeasonCheck(g, year)).toBe(0);
+        expect(herderStanding(g, e.empireId)).toBe(0);
+        place(5000); // outside 2000 of its colony: in the herds' way
+        expect(rimHerdersSeasonCheck(g, year)).toBe(1);
+        expect(herderStanding(g, e.empireId)).toBe(-15);
+    }, 600000);
+
+    it('staging: the fleet loads troops to max(40000, 1.5x colony defence), then attacks; gives up after rimHerdersStagingYears', () => {
+        const g = createScenarioGame(base, { scenario: 'rim-herders', params: PARAMS }).game.galaxy;
+        const st = rimHerdersState(g);
+        const hc = freeColonies(g)[0];
+        const e = aiEmpires(g).find((x) => militaryShip(x) !== null)!;
+        const fleet = setShipsFleet(g, e, [militaryShip(e)!], 'new')!;
+        const lead = fleet.leadShip!;
+        const base0 = e.colonies[0];
+        lead.xpos = base0.xpos;
+        lead.ypos = base0.ypos;
+        // A troop whose AttackStrength*Readiness is `target` (measured, not assumed).
+        const load = (target: number): void => {
+            const probe = new Troop('t', TroopType.Infantry, 1, 1, 100, 100, e, e.dominantRace);
+            const per = new TroopList();
+            per.add(probe);
+            const unit = per.totalAttackStrength;
+            const list = new TroopList();
+            list.add(new Troop('t', TroopType.Infantry, target / unit, 1, 100, 100, e, e.dominantRace));
+            lead.troops = list;
+        };
+        const arm = (): void => {
+            fleet.mission = null;
+            lead.mission = null as never;
+            hc.staging = { empireId: e.empireId, fleet, base: base0, since: galaxyStarDate(g) };
+        };
+        const missionType = (): BuiltObjectMissionType => builtObjectMission(fleet.mission)?.type ?? BuiltObjectMissionType.Undefined;
+        hc.colony.troops = new TroopList();
+
+        // Below 40000: still loading, no attack.
+        load(30000);
+        arm();
+        rimHerdersStagingTick(g);
+        expect(hc.staging).not.toBeNull();
+        expect(missionType()).not.toBe(BuiltObjectMissionType.Attack);
+
+        // 1.5x the colony defence beats 40000: 50000 aboard is not enough against 40000 defence (needs 60000).
+        const def = new Troop('d', TroopType.Infantry, 1, 1, 100, 100, hc.colony.empire, null);
+        const dl = new TroopList();
+        dl.add(def);
+        const unitDef = dl.totalDefendStrength;
+        hc.colony.troops = new TroopList();
+        hc.colony.troops.add(new Troop('d', TroopType.Infantry, 1, 40000 / unitDef, 100, 100, hc.colony.empire, null));
+        load(50000);
+        arm();
+        rimHerdersStagingTick(g);
+        expect(hc.staging).not.toBeNull();
+
+        // Enough for 1.5x defence: attack launched, staging done.
+        load(65000);
+        arm();
+        expect(shipGroupTotalTroopAttackStrength(fleet)).toBeGreaterThanOrEqual(60000);
+        rimHerdersStagingTick(g);
+        expect(hc.staging).toBeNull();
+        expect(missionType()).toBe(BuiltObjectMissionType.Attack);
+        expect(st.stats.stagedLaunches).toBe(1);
+
+        // No defence: 40000 is the floor.
+        hc.colony.troops = new TroopList();
+        load(41000);
+        arm();
+        rimHerdersStagingTick(g);
+        expect(hc.staging).toBeNull();
+        expect(st.stats.stagedLaunches).toBe(2);
+
+        // Gives up after rimHerdersStagingYears (2).
+        load(1);
+        arm();
+        hc.staging!.since = galaxyStarDate(g) - 2.1 * YEAR_LENGTH;
+        rimHerdersStagingTick(g);
+        expect(hc.staging).toBeNull();
+        expect(st.stats.stagedLaunches).toBe(2);
     }, 600000);
 });
 

@@ -224,7 +224,7 @@ export function growPopulation(galaxy: Galaxy, habitat: Habitat, timePassedSecon
         num += items[i].amount;
     }
     // [colonyEconomy] Core World / Arcology: the cap growth runs against (stock MaximumPopulation without a handler).
-    const maxPopulation = galaxy.scenario !== null ? scenarioQuery(galaxy, 'colonyMaxPopulation', habitat.maxPopulation, { habitat }) : habitat.maxPopulation;
+    const maxPopulation = galaxy.scenario != null ? scenarioQuery(galaxy, 'colonyMaxPopulation', habitat.maxPopulation, { habitat }) : habitat.maxPopulation;
     if (num < maxPopulation) {
         for (let j = 0; j < items.length; j++) {
             const population2 = items[j];
