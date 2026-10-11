@@ -1001,7 +1001,7 @@ export class ConstructionQueue {
         if (actualEmpire !== null && actualEmpire.builtObjects !== null && actualEmpire.builtObjects.includes(ship)) {
             sendMessageToEmpire(actualEmpire, actualEmpire, EmpireMessageType.ShipBaseCompleted, ship, empty2);
         }
-        if (galaxy.scenario !== null) scenarioEmit(galaxy, 'builtObjectBuilt', { builtObject: ship, empire: actualEmpire }); // mod layer
+        if (galaxy.scenario !== null) scenarioEmit(galaxy, 'builtObjectBuilt', { builtObject: ship, empire: actualEmpire, yard: this._parentBuiltObject }); // mod layer
         this.processWaitQueue();
         void num14;
     }
@@ -1290,7 +1290,7 @@ export function baconReviewConstructionSpeed(conQueue: ConstructionQueue): void 
             if (pbo._galaxy.scenario !== null) val1 = Math.max(val1, 1.0 + scenarioQuery(pbo._galaxy, 'colonyWonderBonus', 0, { habitat: ph, wonderType: WonderType.ColonyConstructionSpeed }) / 100.0);
             // [colonyEconomy] Industrial / Private Shipyard / Resort: a factor on the yards' speed; no-op without a handler.
             if (pbo._galaxy.scenario !== null) {
-                const k = scenarioQuery(pbo._galaxy, 'colonyConstructionFactor', 1, { habitat: ph, kind: 'yard' });
+                const k = scenarioQuery(pbo._galaxy, 'colonyConstructionFactor', 1, { habitat: ph, kind: 'yard', yard: pbo });
                 if (k !== 1) val1 *= k;
             }
             // ParentHabitat.ResourceBonuses (never null on a TS habitat).

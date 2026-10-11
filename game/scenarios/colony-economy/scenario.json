@@ -2,12 +2,13 @@
   "id": "colony-economy",
   "name": "Colony Economy",
   "addableToSave": true,
-  "description": "Colonies get a designation (Industrial, Trade Hub, Resort World, Mining Hub, Core World or Frontier/Garrison) with bonuses and drawbacks through the game's own mechanics: construction speed, income, tourism, mining rates, growth, troops, approval. The private sector spends its idle money on private facilities that fit the designation (four per designation, one to three slots by colony size, some mutually exclusive), and the player can request one. When the treasury runs low the state borrows from its own private sector with bonds, repaid with interest from taxes; an Investment Bank lowers the rate. AI empires designate, build and borrow too. Map icons show the designations (overlay toggle).",
+  "description": "Colonies get a designation (Industrial, Trade Hub, Resort World, Mining Hub, Core World or Frontier/Garrison) with bonuses and drawbacks through the game's own mechanics: construction speed, income, tourism, mining rates, growth, troops, approval. Refineries make five refined goods that freighters haul to the shipyards (faster builds with them, slower without). The private sector spends its idle money on private facilities that fit the designation (four per designation, one to three slots by colony size, some mutually exclusive), and the player can request one. When the treasury runs low the state borrows from its own private sector with bonds, repaid with interest from taxes; an Investment Bank lowers the rate. AI empires designate, build and borrow too. Map icons show the designations (overlay toggle).",
   "flags": [
     { "name": "colonyEconomy", "label": "Colony Economy", "description": "Master switch.", "default": true },
     { "name": "econDesignations", "label": "Colony designations", "description": "Colonies can be designated Industrial, Trade Hub, Resort World, Mining Hub, Core World or Frontier/Garrison, each with bonuses and drawbacks.", "default": true },
     { "name": "econFacilities", "label": "Private facilities", "description": "The private sector builds facilities that fit a colony's designation from its surplus money; the player can request one.", "default": true },
-    { "name": "econBonds", "label": "Bonds", "description": "The state borrows from its own private sector when the treasury is low and repays with interest from taxes.", "default": true }
+    { "name": "econBonds", "label": "Bonds", "description": "The state borrows from its own private sector when the treasury is low and repays with interest from taxes.", "default": true },
+    { "name": "econRefinement", "label": "Refinement chain", "description": "New games only: refineries turn raw resources into Alloys, Electronics, Polymer Composites, Reactor Fuel Cells and Exotics; freighters haul them to the shipyards, which build faster with them and slower without (never blocked).", "default": true }
   ],
   "params": [
     { "name": "econCooldownYears", "label": "Years before a colony's designation can change again", "default": 3, "min": 0, "max": 30 },

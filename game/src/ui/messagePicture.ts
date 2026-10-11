@@ -19,6 +19,7 @@ import { Empire } from '../sim/empire';
 import { PlanetaryFacility } from '../sim/construction/facilities';
 import { ResearchAbilityType, abilityTypeFromFile, type TechNode } from '../sim/researchSystem';
 import { HabitatImageOffsetContinental, HabitatImageOffsetDesert, HabitatImageOffsetIce, HabitatImageOffsetMarshySwamp, HabitatImageOffsetOcean, HabitatImageOffsetVolcanic, habitatImageFile } from '../sim/galaxyImages';
+import { resourceIconPath } from './resourceIcons';
 
 const MSG = '/assets/dwu/images/ui/messages/';
 
@@ -52,7 +53,7 @@ const facilityUrl = (pictureRef: number): string => `/assets/dwu/images/environm
 const componentUrl = (pictureRef: number): string => `/assets/dwu/images/ui/components/Component_${pictureRef}.bmp`;
 const ruinUrl = (pictureRef: number): string => `/assets/dwu/images/environment/ruins/ruin_${pictureRef}.png`;
 const raceUrl = (pictureIndex: number): string => `/assets/dwu/images/units/races/race_${pictureIndex}.png`;
-const resourceUrl = (pictureRef: number): string => `/assets/dwu/images/ui/resources/Resource_${pictureRef}.bmp`;
+const resourceUrl = (pictureRef: number): string => resourceIconPath(pictureRef);
 
 /** What the card draws as its _MainImage (null: no picture, the text alone). */
 export type MessagePicture =

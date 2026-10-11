@@ -29,6 +29,7 @@ import { humanEmpires } from '../humanEmpires';
 export const GAME_SAVE_VERSION = 2;
 
 import { activeCustomizationSetName } from '../data/customization';
+import { resolvedScenarioFlags, scenarioExtendGameData } from '../scenario/hooks';
 
 export interface GameSaveJSON {
     version: typeof GAME_SAVE_VERSION;
@@ -314,6 +315,8 @@ export function deserializeGame(save: string | GameSaveJSON, gameData: GameData,
         throw new Error(`Save was made with add-ons ${(savedScenarioInclude(obj) ?? []).join(', ')} but the game data has ${(gameData.scenario?.manifest.include ?? []).join(', ')}.`);
     }
 
+    // Mod layer: the data additions of the save's flags (scenario/hooks.ts scenarioExtendGameData), as createGame applied them.
+    if (gameData.scenario !== undefined) gameData = scenarioExtendGameData(gameData, resolvedScenarioFlags(gameData, obj.startOptions?.scenario?.flags));
     const galaxy: Galaxy = galaxyFromJSON(obj.galaxy, gameData, { consume: typeof save === 'string' || opts.consume === true });
     restoreCommandLog(galaxy, obj.commandLog);
     // A save from before the stable command ids (entityRefs.ts): number them now, in sweep order, and journal it so a

@@ -17,6 +17,7 @@ export const ECON_FLAG = 'colonyEconomy';
 export const ECON_DESIG_FLAG = 'econDesignations';
 export const ECON_FAC_FLAG = 'econFacilities';
 export const ECON_BOND_FLAG = 'econBonds';
+export const ECON_REFINE_FLAG = 'econRefinement';
 export const ECON_STATE_KEY = 'colonyEconomy';
 export const ECON_SCENARIO_ID = 'colony-economy';
 
@@ -120,7 +121,9 @@ export type FacilityId =
     | 'spaceportCasino' | 'naturePreserve' | 'pilgrimageShrine'
     | 'gasRefinery' | 'automatedExtractors' | 'stripMine'
     | 'adminCenter' | 'geneticsInstitute' | 'senateHall'
-    | 'fortressBunker' | 'bountyOffice' | 'frontierCharter';
+    | 'fortressBunker' | 'bountyOffice' | 'frontierCharter'
+    // Phase 3: the refineries (refinement.ts).
+    | 'smelter' | 'electronicsFab' | 'chemicalPlant' | 'fuelRefinery' | 'exoticsLab';
 
 export interface EconFacilityDef {
     id: FacilityId;
@@ -201,6 +204,12 @@ export const FACILITY_DEFS: readonly EconFacilityDef[] = [
     F('fortressBunker', 'Fortress Bunker', D.Frontier, 40000, 300, 0.1, '+30 defensive fortress bonus here (ground defence).', S.TroopRecruitment),
     F('bountyOffice', 'Bounty Office', D.Frontier, 50000, 360, 0.1, 'The private sector keeps 3-6 bounty-hunter ships that hunt pirates within 2 sectors and earns a bounty per pirate ship destroyed; with Privateers on, 2 more privateers.', S.MilitaryShipConstructionSpeed),
     F('frontierCharter', 'Frontier Charter', D.Frontier, 30000, 240, 0.08, '+4 approval here and less drift toward autonomy (Frontier Autonomy); -10% tax revenue here.', S.ColonyHappiness),
+    // --- Phase 3: the refineries (refinement.ts; only in a game started with the refinement chain on) ---
+    F('smelter', 'Smelter', D.MiningHub, 45000, 300, 0.1, 'Refines Steel, Iridium, Lead and Carbon Fibre into Alloys (armour, engines, construction).', S.FacilityConstructionSpeed),
+    F('electronicsFab', 'Electronics Fab', D.CoreWorld, 50000, 360, 0.1, 'Refines Silicon, Chromium, Aculon and Gold into Electronics (weapons, shields, sensors, computers).', S.ResearchHighTech),
+    F('chemicalPlant', 'Chemical Plant', D.MiningHub, 40000, 300, 0.1, 'Refines Polymer, Helium, Argon and Krypton into Polymer Composites (habitation, storage, fighters).', S.FacilityConstructionSpeed),
+    F('fuelRefinery', 'Fuel Refinery', D.MiningHub, 40000, 300, 0.1, 'Refines Caslon, Hydrogen and Tyderios into Reactor Fuel Cells (reactors, hyperdrives).', S.MiningRate),
+    F('exoticsLab', 'Exotic Materials Lab', D.CoreWorld, 60000, 420, 0.12, 'Refines Emeros Crystal, Nekros Stone, Osalia and Dilithium Crystal into Exotics (super weapons; any Exotics at a yard speeds it).', S.ResearchWeapons),
 ];
 
 /** Facilities that never stand at the same colony (the user's pairs). */
@@ -311,7 +320,15 @@ export interface EconEmpire {
     huntersBuilt?: number;
     bountiesPaid?: number;
     bountyKills?: number;
+    /** Refinement (refinement.ts): goods made / used by key, completed builds and those short of goods. */
+    goodsMade?: Record<string, number>;
+    goodsUsed?: Record<string, number>;
+    buildsTotal?: number;
+    buildsShort?: number;
 }
+
+/** The phase-3 refineries (built only in a game with the refined goods). */
+export const REFINERY_FACILITIES: ReadonlySet<FacilityId> = new Set<FacilityId>(['smelter', 'electronicsFab', 'chemicalPlant', 'fuelRefinery', 'exoticsLab']);
 
 export interface EconState {
     colonies: Record<string, EconColony>;

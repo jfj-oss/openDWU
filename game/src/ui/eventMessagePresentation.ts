@@ -21,6 +21,7 @@ import { findAbandonedShipsInDebrisField } from '../sim/events';
 import type { Galaxy } from '../sim/galaxy';
 import type { TechNode } from '../sim/researchSystem';
 import { HabitatImageOffsetContinental, HabitatImageOffsetOcean, LandscapeImageOffsetOcean } from '../sim/galaxyImages';
+import { resourceIconPath } from './resourceIcons';
 
 const CHROME = '/assets/dwu/images/ui/chrome/';
 const MESSAGES = '/assets/dwu/images/ui/messages/';
@@ -41,7 +42,7 @@ const DISASTER_FILES = ['earthquake.png', 'sinkhole.png', 'tsunami.png', 'sandst
 export const ruinImageUrl = (pictureRef: number): string => `/assets/dwu/images/environment/ruins/ruin_${pictureRef}.png`;
 export const componentImageUrl = (pictureRef: number): string => `/assets/dwu/images/ui/components/Component_${pictureRef}.bmp`;
 export const facilityImageUrl = (pictureRef: number): string => `/assets/dwu/images/environment/planetaryfacilities/facility_${pictureRef}.png`;
-export const resourceImageUrl = (pictureRef: number): string => `/assets/dwu/images/ui/resources/Resource_${pictureRef}.bmp`;
+export const resourceImageUrl = (pictureRef: number): string => resourceIconPath(pictureRef);
 export const raceImageUrl = (pictureIndex: number): string => `/assets/dwu/images/units/races/race_${pictureIndex}.png`;
 /** bitmap_28[i] (BaconMain.cs 2165 LoadUiMessages; 0 underAttack, 22 restrictedArea, 25 galacticHistory). */
 const messageImage = (file: string): string => MESSAGES + file;

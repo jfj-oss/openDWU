@@ -68,7 +68,7 @@ import { createGalaxyScenario } from './scenario/state';
 import { copyMessageOptions, type MessageOptions } from './messageRouting';
 import { ensurePlayerInbox } from './playerMessages';
 import { assignAllEntityRefIds } from './entityRefs';
-import { scenarioAfterGeneration, scenarioFindHomeHabitat, scenarioGameStart, scenarioGenerationSetup, scenarioQuery } from './scenario/hooks';
+import { scenarioAfterGeneration, scenarioFindHomeHabitat, scenarioGameStart, scenarioGenerationSetup, scenarioQuery, scenarioExtendGameData, resolvedScenarioFlags } from './scenario/hooks';
 import { parseSectorColumn } from './sectorNames';
 import './scenario/packages'; // mod layer: registers the scenario packages' hooks
 import { setHumanColonyNames } from './perHumanState';
@@ -1059,6 +1059,11 @@ export function* createGameSteps(opts: CreateGameOptions): Generator<GameStartPr
     const extraHumanStarts = opts.humanPlayers ?? [];
     if (extraHumanStarts.length > 0) opts = storylinesOff(opts);
     yield { step: 'Generating galaxy', fraction: 0 };
+    // Mod layer: a package's data additions for the chosen flags (scenario/hooks.ts scenarioExtendGameData; none = the same data).
+    if (opts.gameData.scenario !== undefined) {
+        const ext = scenarioExtendGameData(opts.gameData, resolvedScenarioFlags(opts.gameData, opts.scenarioFlags));
+        if (ext !== opts.gameData) opts = { ...opts, gameData: ext };
+    }
     const gd = opts.gameData;
     // BaconInitialize has not run while a fresh launch generates its galaxy: the Bacon statics are the C# defaults.
     resetBaconSettings();

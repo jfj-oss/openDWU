@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
+<!-- openDWU Colony Economy refined good: fuelCells (our own art) -->
+<defs><linearGradient id="b" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2b333d"/><stop offset="1" stop-color="#11161c"/></linearGradient></defs>
+<rect x="0.5" y="0.5" width="23" height="23" rx="3" fill="url(#b)" stroke="#56b8ff" stroke-width="1"/>
+<rect x="8" y="5" width="8" height="14" rx="2" fill="#163248" stroke="#56b8ff" stroke-width="1.2"/><rect x="10" y="3.5" width="4" height="2" fill="#56b8ff"/><path d="M12.8 7.5 L10 12.5 H12.2 L11.2 16.5 L14.2 11 H12 Z" fill="#bfe4ff"/>
+</svg>

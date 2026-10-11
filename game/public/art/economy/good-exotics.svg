@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
+<!-- openDWU Colony Economy refined good: exotics (our own art) -->
+<defs><linearGradient id="b" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2b333d"/><stop offset="1" stop-color="#11161c"/></linearGradient></defs>
+<rect x="0.5" y="0.5" width="23" height="23" rx="3" fill="url(#b)" stroke="#c77dff" stroke-width="1"/>
+<path d="M12 4 L17 10 L12 20 L7 10 Z" fill="#3a1f52" stroke="#c77dff" stroke-width="1.2"/><path d="M7 10 H17 M12 4 L10 10 L12 20 L14 10 Z" stroke="#e6c4ff" stroke-width="0.8" fill="none"/>
+</svg>

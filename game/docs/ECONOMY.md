@@ -15,9 +15,9 @@ Colonies also have no identity: there is nothing that makes one world industrial
 
 **Phases**
 1. Designations, bonds, and the first 4 facilities of each designation (24 facilities). **Built.**
-2. The 3 extra facilities of each designation (18), the Bounty Office's hunter ships, Militia Yard ships, and the
-   larger synergies.
-3. The refinement chain (Option A).
+2. The 3 extra facilities of each designation (18) and the Bounty Office's hunter ships. **Built.**
+   Still to do: Militia Yard ships and the larger synergies (with phase 4).
+3. The refinement chain (Option A). **Built.**
 4. Balancing and AI refinement (Smarter AI).
 
 ---
@@ -332,31 +332,78 @@ New, except where noted.
 
 ---
 
-## 5. Refinement chain (Option A, phase 3)
+## 5. Refinement chain (Option A, phase 3: built)
 
-The user chose Option A over B. Not built in phase 1.
+The user chose Option A over B. Code: `colonyEconomy/refinement.ts`; switch `econRefinement` (new games only).
 
-**Refineries:** raw resources are refined at colony facilities into new intermediate goods:
-- the Smelter: Steel, Iridium, Lead, Carbon Fibre… → **Alloys** (armour, hulls, engines);
-- the Electronics Fab: Silicon, Chromium, Aculon… → **Electronics** (sensors, computers, shields, weapons);
-- the Chemical Plant: gases and organics → **Polymers** (habitation, cargo, life support);
-- the Fuel Refinery: Caslon, Hydrogen → **Reactor Fuel Cells** (reactors, hyperdrives);
-- the Exotic Materials Lab: rare and luxury resources → **Exotics** (top-tier weapons, shields, super-weapons).
+**The goods.** There are five new resource types, all new:
 
-The Ore Refinery (phase 1) is the chain's first step. In phase 1 it gives only its value effect.
+| Good | Refinery (designation) | Raw inputs (real resources.txt names) | Used by component categories (real: ComponentCategoryType) |
+|---|---|---|---|
+| Alloys | Smelter (Mining Hub) | Steel, Iridium, Lead, Carbon Fibre | Armor, Engine, Construction, AssaultPod, Extractor, Manufacturer |
+| Electronics | Electronics Fab (Core World) | Silicon, Chromium, Aculon, Gold | the weapons, Shields, ShieldRecharge, Sensor, Computer, Labs, HyperDisrupt |
+| Polymer Composites | Chemical Plant (Mining Hub) | Polymer, Helium, Argon, Krypton | Habitation, Storage, Fighter |
+| Reactor Fuel Cells | Fuel Refinery (Mining Hub) | Caslon, Hydrogen, Tyderios | Reactor, HyperDrive, EnergyCollector |
+| Exotics | Exotic Materials Lab (Core World) | Emeros Crystal, Nekros Stone, Osalia, Dilithium Crystal | WeaponSuperBeam / Area / Torpedo |
 
-**Moving the goods:** freighters haul the new goods like resources, through the real contract and freight path
-(Empire.4.cs 1135 InitiateContract), so the private sector earns from them. The goods need new resource ids, with our
-own icons.
+- **Naming:** "Polymers" is called **Polymer Composites**, because the game already has a raw resource "Polymer"
+  (id 16).
+- **Icons:** our own SVG art (`public/art/economy/good-*.svg`, picture refs 9000–9004; `ui/resourceIcons.ts`). No
+  original image is used.
 
-**Risks:**
-- A broken chain must slow builds or lower their tier, not block them.
-- The AI must run the chains (Smarter AI).
-- It needs heavy balancing.
+**How the goods exist only when the flag is on.** This is new, a mod-layer hook (`registerScenarioDataExtension`).
+- **Why not an overlay file:** a `resources.txt` overlay, like Rim Trade's, would put the goods in the data of every
+  game that loads the add-on, flags off included. That breaks the flag-off identity: tested, the start draws 262 795
+  instead of 262 043, because galaxy generation and the stock AI iterate the whole resource list.
+- **What is done instead:** the game data gets the goods only for a game whose resolved flags include
+  `econRefinement`. This happens in:
+  - createGame (the chosen flags);
+  - deserializeGame (the save's start options);
+  - the sim-worker replica (the snapshot's start options).
+- **Generation:** the goods have no distributions, so they are never placed. They also stay out of generation's
+  resource shuffle (galaxy.ts generateRandomOrderedResources; `scenario/scenarioGoods.ts`).
+- **Limitation:** a save the add-on is *added* to has no goods. Refinement then stays inactive and the refineries
+  cannot be requested.
+- **Type:** the goods are Mineral, i.e. strategic. The stock start-up stockpiles at space ports therefore include
+  some of them (seen: 375 Electronics and 375 Reactor Fuel Cells at a capital), a head start.
 
-**Fallback:** Option B, "production capability", stays the lighter alternative.
+**Production** (every 30 days). A working refinery uses the colony's trading post: its space port, else the colony
+(real: freight.ts generateValidTradingPosts, the sources orders are filled from).
+- It takes up to 60 units of each raw input held there by the owner and makes half as many units of its good, into
+  the same cargo.
+- Short of an input, it orders 200 units of it (real: Empire.4.cs CreateOrder, `empireCreateOrder`). The stock
+  freight path then brings the input and pays the seller's private sector (real: Empire.4.cs 1135 InitiateContract).
 
----
+**Hauling.** Every 30 days each own shipyard with work queued orders the goods it is short of:
+- up to 60 units of each common good, and 10 Exotics;
+- an order is placed only when at least half the target is missing;
+- these are state orders: the state pays for what its yards use, and the refinery's private sector earns.
+
+The stock freight path fills these orders from the refineries' trading posts. Private freighters carry the goods,
+the private sectors are paid, and the supply chains show on the Freight Flows overlay.
+
+**Use.**
+- **On completion:** a ship or base completed at a yard (the `builtObjectBuilt` event, now carrying the yard)
+  consumes one unit of a good per component of the good's categories, from the yard's cargo, as far as it holds them.
+- **Build speed:** the yard's speed (`colonyConstructionFactor` kind 'yard', with the yard) is
+  `0.95 + 0.25 × (the share of the four common goods it holds at the target)`, plus 0.05 with any Exotics. That is
+  ×0.95 with nothing and ×1.25 fully supplied.
+- **Never blocked:** missing goods mean slower builds, not a block. The "lower-tier builds" alternative is not used.
+
+**AI.**
+- Refineries are worth 3 to an empire's private sector while it has yards and no refinery of that good, 1.2 for a
+  second one, 0.3 after that.
+- The refineries sit at the common designations: Smelter, Chemical Plant and Fuel Refinery at Mining Hubs, and the
+  Electronics Fab and Exotic Materials Lab at Core Worlds (the capital). The first soak put three of them at Industrial
+  colonies, which the AI seldom makes, and only Fuel Cells were refined (§9).
+
+**Risks, and what was done.**
+- **A broken chain:** it only slows building, to −5 %.
+- **The AI must run the chains:** see the AI rules above.
+- **New resource ids:** they exist only with the flag on (above).
+- **Balancing:** see §9.
+
+**Fallback:** Option B, "production capability", stays the lighter alternative. It was not needed.
 
 ## 6. UI
 
@@ -425,6 +472,9 @@ Every action is a journaled player command (multiplayer-safe). Commands and thei
   and stock "facility" counts (achievements, AI facility reviews) ignore them. Recommendation: keep them separate.
   Using stock facility slots would change the faithful AI's own facility logic.
 
+- **C7. Refined goods and saves.** The goods exist only in games started with the refinement chain on (§5). Adding
+  the add-on to a save leaves the chain inactive. Porting the chain to added saves would need the save loader to
+  extend the data at the journalled add-on boundary.
 ---
 
 ## 9. Measurements and tuning

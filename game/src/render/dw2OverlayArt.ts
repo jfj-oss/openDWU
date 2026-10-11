@@ -10,10 +10,11 @@ import type { Habitat } from '../sim/types';
 import { HabitatCategoryType } from '../sim/types';
 import { moonDotPx, planetSpritePx, starSpritePx } from './mainView';
 import { useMinifyingFilter } from './assets';
+import { resourceIconPath } from '../ui/resourceIcons';
 
 /** ui/hud.ts resourceIconUrl (not imported: hud.ts pulls the whole HUD). */
 export function resourceIconUrl(pictureRef: number): string {
-    return `/assets/dwu/images/ui/resources/Resource_${pictureRef}.bmp`;
+    return resourceIconPath(pictureRef);
 }
 
 /** The icons' flat background (the BMPs' corner colour). */

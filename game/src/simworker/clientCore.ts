@@ -13,7 +13,7 @@ import { setRemoteWaypoints, type WaypointState } from '../sim/player/waypoints'
 import { FRAME_REAL_MS, type SimView } from '../sim/tick/scheduler';
 import { SimViewThrottle } from '../simFrameBudget';
 import { createRenderTime, updateRenderTime, type RenderTime } from '../render/renderInterp';
-import { GalaxyReplica } from './replicaGalaxy';
+import { replicaGameData, GalaxyReplica } from './replicaGalaxy';
 import { ReplicaTradeFlows } from './tradeFlowSync';
 import { RemoteArgError, decodeRemoteArg, encodeRemoteArg, type RemoteArg, type RemoteNaming, type RemoteResolving } from './remoteArgs';
 import { BuiltObject } from '../sim/builtObject';
@@ -256,7 +256,7 @@ export class SimClientCore {
         this.replyTimeoutMs = opts.replyTimeoutMs ?? REPLY_TIMEOUT_MS;
         this.replyGraceMs = opts.replyGraceMs ?? REPLY_GRACE_MS;
         this.wallNow = opts.wallNow ?? (() => performance.timeOrigin + performance.now());
-        this.replica = opts.replica ?? new GalaxyReplica(gameData, snapshot.baseTechCost);
+        this.replica = opts.replica ?? new GalaxyReplica(replicaGameData(gameData, snapshot.startOptions), snapshot.baseTechCost);
         this.replica.apply(snapshot.delta, true);
         const galaxy = this.replica.galaxy;
         if (galaxy === null) throw new Error('sim worker: the snapshot has no galaxy');

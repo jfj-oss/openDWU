@@ -209,9 +209,17 @@ export const AI_MIN_POPULATION = 40_000_000;
 export const AI_MIN_SCORE = 30;
 export const AI_REDESIGNATE_RATIO = 1.6;
 
+/** The empire's capital, or its most populous colony when it has none (some story empires). */
+export function homeColony(e: Empire): Habitat | null {
+    if (e.capital !== null) return e.capital;
+    let best: Habitat | null = null;
+    for (const h of e.colonies) if (best === null || (h.population?.totalAmount ?? 0) > (best.population?.totalAmount ?? 0)) best = h;
+    return best;
+}
+
 /** The AI's pick for `h` (null: keep what it has). Same-designation crowding lowers a score a little. Pure. */
 export function aiDesignationChoice(galaxy: Galaxy, e: Empire, h: Habitat, counts: ReadonlyMap<Designation, number>): Designation | null {
-    if ((h.population?.totalAmount ?? 0) < AI_MIN_POPULATION && e.capital !== h) return null;
+    if ((h.population?.totalAmount ?? 0) < AI_MIN_POPULATION && homeColony(e) !== h) return null;
     const cur = peekColony(galaxy, h);
     const current = cur?.designation ?? Designation.None;
     if (current !== Designation.None && designationCooldownDays(galaxy, h) > 0) return null;
@@ -225,7 +233,7 @@ export function aiDesignationChoice(galaxy: Galaxy, e: Empire, h: Habitat, count
     scores.sort((a, b) => b.score - a.score || a.designation - b.designation);
     const best = scores[0];
     // The capital is always designated (its best fit), so an empire of one world still spends its private money.
-    if (best.score < AI_MIN_SCORE && !(e.capital === h && current === Designation.None)) return null;
+    if (best.score < AI_MIN_SCORE && !(homeColony(e) === h && current === Designation.None)) return null;
     if (current === Designation.None) return best.designation;
     if (best.designation === current) return null;
     const curScore = scores.find((s) => s.designation === current)?.score ?? 0;

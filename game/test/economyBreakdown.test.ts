@@ -52,8 +52,8 @@ describe('Colony Economy add-on', async () => {
     const { ColonyResourceEffect } = await import('../src/sim/developmentLevel');
     const gameData = await loadGameDataFs();
     const SC = 'colony-economy';
-    const ALL_OFF = { colonyEconomy: false, econDesignations: false, econFacilities: false, econBonds: false };
-    const ON = { colonyEconomy: true, econDesignations: true, econFacilities: true, econBonds: true };
+    const ALL_OFF = { colonyEconomy: false, econDesignations: false, econFacilities: false, econBonds: false, econRefinement: false };
+    const ON = { colonyEconomy: true, econDesignations: true, econFacilities: true, econBonds: true, econRefinement: true };
 
     it('flags off: byte-identical to the plain seed-1 game (digest, Rnd stream, no state)', () => {
         const ref = cachedTickGameRun(gameData, { seconds: 900 });
@@ -154,6 +154,36 @@ describe('Colony Economy add-on', async () => {
         rec.facilities.push({ id: 'frontierCharter', progress: 1, started: 1, finished: 1, cost: 1, requested: false, unpaidSince: 0 });
         E.bumpEcon(g);
         expect(scenarioQuery(g, 'colonyTaxRevenue', 1000, { habitat: h, empire: e })).toBeLessThan(1000);
+    });
+
+    it('refinement: the goods exist only with the flag on; a smelter refines; yards build slower without goods, faster with', async () => {
+        const R = await import('../src/sim/scenario/colonyEconomy/refinement');
+        const off = createScenarioGame(gameData, { scenario: SC, flags: { ...ON, econRefinement: false } }).game.galaxy;
+        expect(R.goodIds(off)).toBeNull();
+        expect(off.resources.length).toBe(gameData.resources.length);
+        const g = econGame().galaxy;
+        const ids = R.goodIds(g)!;
+        expect(ids).toHaveLength(5);
+        expect(g.resources.length).toBe(gameData.resources.length + 5);
+        const e = g.playerEmpire!;
+        const h = e.capital!;
+        E.setDesignation(g, e, h, E.Designation.MiningHub);
+        E.colonyRecord(g, h).facilities.push({ id: 'smelter', progress: 1, started: 1, finished: 1, cost: 1, requested: false, unpaidSince: 0 });
+        E.bumpEcon(g);
+        const post = R.tradingPostOf(h);
+        const steel = g.resources.find((r) => r.name === 'Steel')!.resourceId;
+        const { Cargo, ResourceRef } = await import('../src/sim/cargo');
+        post.cargo!.add(new Cargo(new ResourceRef(steel), 100, e));
+        const before = R.heldAt(post, ids[0], e);
+        R.refinementTick(g);
+        expect(R.heldAt(post, ids[0], e)).toBeGreaterThan(before);
+        const yard = e.spacePorts.find((b) => b !== null && b.isShipYard)!;
+        const held = ids.map((id) => R.heldAt(yard, id, e));
+        // The yard's own goods (the smelter may sit at this very port): empty it for the baseline.
+        yard.cargo!.items = yard.cargo!.items.filter((c) => !ids.includes(c.commodity.resourceId));
+        expect(R.yardGoodsFactor(g, yard), JSON.stringify(held)).toBeCloseTo(0.95, 5);
+        for (let i = 0; i < 4; i++) yard.cargo!.add(new Cargo(new ResourceRef(ids[i]), 60, e));
+        expect(R.yardGoodsFactor(g, yard)).toBeCloseTo(1.2, 5);
     });
 
     it('bonds: limits, money moves between the private sector and the treasury, repayment', () => {

@@ -22,6 +22,7 @@ import type { Design } from '../design';
 import type { Facility } from '../data/facilities';
 import type { AIDesignChooser } from '../designPlacement';
 import type { DesignSpecification } from '../data/designSpecifications';
+import type { GameData } from '../data/gameData';
 
 // ---------------------------------------------------------------------------
 // Handler registries (shared gate)
@@ -204,7 +205,7 @@ export interface ScenarioEvents {
     /** combat/ownership.ts takeOwnershipOfBuiltObject (end). */
     builtObjectOwnerChanged: { builtObject: BuiltObject; from: Empire | null; to: Empire | null };
     /** A ship or base finished construction (construction yard completion). */
-    builtObjectBuilt: { builtObject: BuiltObject; empire: Empire | null };
+    builtObjectBuilt: { builtObject: BuiltObject; empire: Empire | null; /** The yard base it was built at (null: a colony's own queue). */ yard?: BuiltObject | null };
     /** combat/teardown.ts builtObjectCompleteTeardown (top). */
     builtObjectRemoved: { builtObject: BuiltObject };
     /**
@@ -767,7 +768,7 @@ export interface ScenarioQueries {
      * construction queue (the bases it builds; same function), 'facility' = its owner's planetary facilities and wonders
      * (construction/facilities.ts constructFacilities, Habitat.cs 2039).
      */
-    colonyConstructionFactor: { value: number; args: { habitat: Habitat; kind: 'yard' | 'colony' | 'facility' } };
+    colonyConstructionFactor: { value: number; args: { habitat: Habitat; kind: 'yard' | 'colony' | 'facility'; /** kind 'yard': the base whose yards these are. */ yard?: BuiltObject } };
     /** industry.ts industrialProcessing (BuiltObject.2.cs ~7930): a factor on the extraction rate (before the stock cap). */
     extractionRateFactor: { value: number; args: { builtObject: BuiltObject } };
     /** colonyTick.ts growPopulation (Habitat.cs 5172): the population cap growth runs against (stock MaximumPopulation). */
@@ -855,6 +856,64 @@ export function scenarioLeaderSuccession(galaxy: Galaxy, empire: Empire, pool: C
         if (r !== null) return r;
     }
     return null;
+}
+
+// ---------------------------------------------------------------------------
+// Game data extensions (resources a package adds only while its flag is on)
+// ---------------------------------------------------------------------------
+
+/**
+ * A package's additions to the game data while its flags are on (Colony Economy's refined goods). Unlike a scenario
+ * data overlay (applied whatever the flags), this runs only for a game whose resolved flags open the gate, so a game
+ * with the flags off keeps the stock tables and stays byte-identical. Applied by createGame (the chosen flags),
+ * deserializeGame (the save's start options) and the sim-worker replica (the snapshot's start options). Must be
+ * deterministic and idempotent (the same additions in the same order); never draws.
+ */
+export interface ScenarioDataExtension {
+    id: string;
+    /** The flags that must all be on. */
+    flags: readonly string[];
+    extend: (gameData: GameData) => GameData;
+}
+
+const dataExtensions: ScenarioDataExtension[] = [];
+
+export function registerScenarioDataExtension(ext: ScenarioDataExtension): () => void {
+    const i = dataExtensions.findIndex((x) => x.id === ext.id);
+    if (i >= 0) dataExtensions.splice(i, 1);
+    dataExtensions.push(ext);
+    dataExtensions.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+    return () => {
+        const j = dataExtensions.indexOf(ext);
+        if (j >= 0) dataExtensions.splice(j, 1);
+    };
+}
+
+const extendedCache = new WeakMap<GameData, Map<string, GameData>>();
+
+/** `gameData` with every extension whose flags are all on in `flags` (the same object when none applies; memoised). */
+export function scenarioExtendGameData(gameData: GameData, flags: Readonly<Record<string, boolean>>): GameData {
+    const open = dataExtensions.filter((x) => x.flags.every((f) => flags[f] === true));
+    if (open.length === 0) return gameData;
+    const key = open.map((x) => x.id).join(',');
+    let m = extendedCache.get(gameData);
+    if (m === undefined) {
+        m = new Map();
+        extendedCache.set(gameData, m);
+    }
+    const hit = m.get(key);
+    if (hit !== undefined) return hit;
+    let out = gameData;
+    for (const x of open) out = x.extend(out);
+    m.set(key, out);
+    return out;
+}
+
+/** The resolved scenario flags of a game started with `chosen` over `gameData`'s scenario manifest (defaults first). */
+export function resolvedScenarioFlags(gameData: GameData, chosen: Readonly<Record<string, boolean>> | undefined): Record<string, boolean> {
+    const out: Record<string, boolean> = {};
+    for (const f of gameData.scenario?.manifest.flags ?? []) out[f.name] = chosen?.[f.name] ?? f.default;
+    return out;
 }
 
 // ---------------------------------------------------------------------------

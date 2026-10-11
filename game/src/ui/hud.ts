@@ -151,6 +151,7 @@ export const CHROME_BUTTONS: Record<string, string | null> = {
     btnZoomIn: 'zoomin.png',
     btnZoomOut: 'zoomout.png',
 };
+import { resourceIconPath } from './resourceIcons';
 
 /** Control name → chrome png file name (or null if none applies). */
 export function chromeButtonFile(name: string): string | null {
@@ -2985,7 +2986,7 @@ export function habitatTypeLabel(type: HabitatType, category?: HabitatCategoryTy
 
 /** URL of a resource's small UI icon (browsers display BMP directly). */
 export function resourceIconUrl(pictureRef: number): string {
-    return `/assets/dwu/images/ui/resources/Resource_${pictureRef}.bmp`;
+    return resourceIconPath(pictureRef);
 }
 
 

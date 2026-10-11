@@ -33,6 +33,7 @@ import {
     econParam,
     empireRecord,
     exclusiveConflict,
+    REFINERY_FACILITIES,
     facilityDef,
     hasPrivateSector,
     peekColony,
@@ -44,6 +45,7 @@ import {
     type FacilityId,
 } from './common';
 import { facilityValue } from './effects';
+import { refinementActive } from './refinement';
 
 /** Review period of the private build loop (game days). */
 export const FACILITY_REVIEW_DAYS = 30;
@@ -110,6 +112,7 @@ export function facilityRefusal(galaxy: Galaxy, e: Empire, h: Habitat, id: Facil
     if (!econOn(galaxy, ECON_FAC_FLAG)) return 'Private facilities are off';
     if (h.empire !== e || !hasPrivateSector(galaxy, e)) return h.empire !== e ? 'Not your colony' : 'This government has no private sector';
     const def = facilityDef(id);
+    if (REFINERY_FACILITIES.has(id) && !refinementActive(galaxy)) return 'Needs a game started with the refinement chain on';
     const c = peekColony(galaxy, h);
     const d = c?.designation ?? Designation.None;
     if (d === Designation.None) return 'Designate the colony first';

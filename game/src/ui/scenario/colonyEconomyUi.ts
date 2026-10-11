@@ -23,6 +23,7 @@ import {
     bondView,
 } from '../../sim/scenario/colonyEconomy/index';
 import { approvalLines, colonyBonuses } from '../../sim/scenario/colonyEconomy/effects';
+import { colonyGoodsView } from '../../sim/scenario/colonyEconomy/refinement';
 import { ColonyResourceEffect } from '../../sim/developmentLevel';
 import { issuePlayerCommand } from '../../sim/player/playerCommands';
 import { resolveStarDateDescription } from '../../sim/galaxyTime';
@@ -59,6 +60,9 @@ export function econEffectLines(galaxy: Galaxy, h: Habitat): string[] {
         out.push(`${b.label}: ${signed(b.value, 0)}${pct} ${n}`);
     }
     for (const l of approvalLines(galaxy, h)) out.push(`${l.label}: ${signed(l.value, 1)} approval`);
+    // Refinement chain: the refined goods this colony's port and yards hold.
+    const goods = colonyGoodsView(galaxy, h);
+    if (goods !== null) out.push(`Refined goods here: ${goods.map((g) => `${g.name} ${Math.round(g.held)}`).join(', ')}`);
     return out;
 }
 
@@ -121,7 +125,7 @@ export function renderEconomyTab(page: HTMLElement, galaxy: Galaxy, empire: Empi
     if (lines.length === 0) fx.appendChild(el('div', 'col-att-line col-att-note', 'No add-on effects at this colony.'));
     for (const l of lines) {
         const d = el('div', 'col-att-line col-att-factor', l);
-        d.style.color = l.includes(': -') ? COLORS.red : COLORS.green;
+        d.style.color = l.startsWith('Refined goods') ? COLORS.gridText : l.includes(': -') ? COLORS.red : COLORS.green;
         fx.appendChild(d);
     }
     // --- Facilities (right) -----------------------------------------------------------------------------------------

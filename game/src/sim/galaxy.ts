@@ -7,6 +7,7 @@
 // population and creatures are ported (01f2: SelectPopulation, 01f3:
 // SelectCreatures); empires are placed by game.ts / empireGeneration.ts.
 
+import { isScenarioGood, scenarioGoodCount } from './scenario/scenarioGoods';
 import { CargoList, TroopList } from './cargo';
 import { ensureHabitatInvadingCharacters, ensureStellarObjectCharacters } from './characters';
 import type { VictoryConditions, EmpireVictoryConditions } from './victory';
@@ -3157,7 +3158,9 @@ export class Galaxy {
     // Port of ResourceSystem.cs GenerateRandomOrderedResources (line 225):
     // Fisher-Yates-style partial shuffle using the (substituted) CryptoRnd.
     private generateRandomOrderedResources(): Resource[] {
-        const list = this.resources.slice();
+        // Mod layer: goods a scenario adds for its own use (never placed; scenario/scenarioGoods.ts) stay out of the
+        // shuffle, so generation draws exactly as without them. No scenario: the stock list.
+        const list = this.scenario !== null && scenarioGoodCount() > 0 ? this.resources.filter((r) => !isScenarioGood(r.name)) : this.resources.slice();
         const ordered: Resource[] = [];
         while (list.length > 0) {
             const index = this.cryptoRnd.next(0, list.length);

@@ -14,6 +14,7 @@ import { installReplicaWriteDetector, writeDetectorMode } from './writeDetector'
 import type { SaveText } from '../saveData';
 import type { GameSaveExtras } from '../sim/save/gameSave';
 import { desktopSimProcessBridge, openDesktopSimEndpoint, WebWorkerEndpoint, type SimEndpoint } from './simEndpoint';
+import { replicaGameData } from './replicaGalaxy';
 
 /**
  * How long a save may go without a sign from the worker before it is given up (real ms): counted from the request, and
@@ -145,7 +146,8 @@ export class SimWorkerClient {
             let early: { data: GameData; replica: GalaxyReplica } | null = null;
             const replicaFor = (h: SnapshotHeader): { data: GameData; replica: GalaxyReplica } => {
                 if (early === null) {
-                    const data = typeof gameData === 'function' ? gameData(h) : gameData;
+                    // Mod layer: the data additions of the game's flags, as the worker's createGame / deserializeGame made them.
+                    const data = replicaGameData(typeof gameData === 'function' ? gameData(h) : gameData, h.startOptions);
                     early = { data, replica: new GalaxyReplica(data, h.baseTechCost) };
                 }
                 return early;

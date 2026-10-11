@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
+<!-- openDWU Colony Economy refined good: alloys (our own art) -->
+<defs><linearGradient id="b" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2b333d"/><stop offset="1" stop-color="#11161c"/></linearGradient></defs>
+<rect x="0.5" y="0.5" width="23" height="23" rx="3" fill="url(#b)" stroke="#9aa7b4" stroke-width="1"/>
+<path d="M5 15 L12 11 L19 15 L12 19 Z" fill="#c9d3dc" stroke="#5d6a76" stroke-width="0.8"/><path d="M5 11 L12 7 L19 11 L12 15 Z" fill="#e3e9ee" stroke="#5d6a76" stroke-width="0.8"/>
+</svg>

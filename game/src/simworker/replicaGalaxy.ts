@@ -20,6 +20,8 @@ import { Explosion } from '../sim/combat/damage';
 import { Habitat } from '../sim/types';
 import { Random } from '../sim/random';
 import { ReplicaDecoder, ReplicaEncoder, type ApplyStats, type ReplicaDelta, type ReplicaEncoderOptions } from './replicaSync';
+import { resolvedScenarioFlags, scenarioExtendGameData } from '../sim/scenario/hooks';
+import type { StartGameOptions } from '../sim/startGameOptions';
 
 /**
  * Classes compared after every step: what the main view draws and interpolates every frame (positions, headings,
@@ -343,6 +345,12 @@ function assignInPlace(dst: Record<string, unknown>, src: Record<string, unknown
 /** The main-thread replica: a decoder plus the replica Galaxy's static wiring. */
 /** Idle cold pumps (render frames with nothing to apply) after which side tables still pending go onto the replica. */
 const SIDE_IDLE_PUMPS = 30;
+
+/** The replica's game data: with the data additions of the game's scenario flags (scenario/hooks.ts scenarioExtendGameData), as the worker's createGame / deserializeGame applied them. */
+export function replicaGameData(gameData: GameData, startOptions: StartGameOptions | undefined): GameData {
+    if (gameData.scenario === undefined) return gameData;
+    return scenarioExtendGameData(gameData, resolvedScenarioFlags(gameData, startOptions?.scenario?.flags));
+}
 
 export class GalaxyReplica {
     readonly decoder: ReplicaDecoder;

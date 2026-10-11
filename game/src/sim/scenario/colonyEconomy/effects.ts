@@ -30,6 +30,7 @@ import { galaxyStarDate } from '../../tick/simTime';
 import { registerScenarioPeriodic, registerScenarioQuery, registerScenarioYearly } from '../hooks';
 import { registerStabilityTerm } from '../stability';
 import { applyReputation } from '../reputation/ledger';
+import { GOODS, refinementActive, yardGoodsFactor } from './refinement';
 import { wreckFields, wrecksAt, takeWrecks } from '../wreckage/common';
 import { BuiltObjectSubRole } from '../../builtObjectTypes';
 import { Cargo, ResourceRef } from '../../cargo';
@@ -760,6 +761,18 @@ export function facilityValue(galaxy: Galaxy, e: Empire, h: Habitat, id: Facilit
         case 'fortressBunker': v = 1.2 + (h.pirateColonyControl.count > 0 ? 0.8 : 0); break;
         case 'bountyOffice': v = countOwn('bountyOffice') < 1 ? 2.2 : 0.2; break;
         case 'frontierCharter': v = 1.1; break;
+        case 'smelter':
+        case 'electronicsFab':
+        case 'chemicalPlant':
+        case 'fuelRefinery':
+        case 'exoticsLab': {
+            if (!refinementActive(galaxy)) return 0;
+            const yards = e.spacePorts.some((b) => b !== null && !b.hasBeenDestroyed && b.isShipYard);
+            const have = countOwn(id);
+            v = yards ? (have === 0 ? 3 : have < 2 ? 1.2 : 0.3) : 0.4;
+            void GOODS;
+            break;
+        }
     }
     return v * revenueWeight;
 }
@@ -861,7 +874,17 @@ function salvage(galaxy: Galaxy, e: Empire, h: Habitat): void {
 
 const on = (g: Galaxy) => econOn(g, ECON_DESIG_FLAG) || econOn(g, ECON_FAC_FLAG);
 
-registerScenarioQuery({ id: 'colonyEconomy.construction', flag: ECON_FLAG, query: 'colonyConstructionFactor', run: (g, v, a) => (on(g) ? v * constructionFactor(g, a.habitat, a.kind) : v) });
+registerScenarioQuery({
+    id: 'colonyEconomy.construction',
+    flag: ECON_FLAG,
+    query: 'colonyConstructionFactor',
+    run: (g, v, a) => {
+        let f = on(g) ? v * constructionFactor(g, a.habitat, a.kind) : v;
+        // Refinement: a yard short of refined goods builds slower, one well supplied faster (refinement.ts).
+        if (a.kind === 'yard' && a.yard !== undefined) f *= yardGoodsFactor(g, a.yard);
+        return f;
+    },
+});
 registerScenarioQuery({
     id: 'colonyEconomy.bonuses',
     flag: ECON_FLAG,

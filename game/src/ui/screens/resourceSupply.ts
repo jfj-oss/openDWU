@@ -22,6 +22,7 @@ import { formatUnits, placeText, resourceName, systemNameOf } from '../supplyCha
 import { onImprovementsChange } from '../improvements';
 import { requestSimRefresh } from '../../simworker/refresh';
 import { localViewerEmpire } from '../../localViewer';
+import { resourceIconPath } from '../resourceIcons';
 
 /** What the panel needs from the game view (main.ts sets it per view; null when none is up). */
 export interface ResourceSupplyHost {
@@ -161,7 +162,7 @@ function createResourceSupply(h: ResourceSupplyHost, firstResource: number): Ope
     const H = 690;
     const iconOf = (id: number): string | undefined => {
         const d = galaxy.resourceSystem.byId.get(id);
-        return d !== undefined ? `/assets/dwu/images/ui/resources/Resource_${d.pictureRef}.bmp` : undefined;
+        return d !== undefined ? resourceIconPath(d.pictureRef) : undefined;
     };
     const win = openOriginalWindow({
         id: 'resourcesupply',
