@@ -56,6 +56,7 @@ import { wreckSalvageRows } from './scenario/wreckageUi'; // [wreckage]
 import { rimGoodMarker } from './scenario/rimTraderRows'; // [rimTrader]
 import { rareGoodEffectText } from '../sim/scenario/rimTrade/rareGoods'; // [rimTrader]
 import { facilityGalactopediaTopic, facilityPanelHoverText } from './facilityHover';
+import { econColonyInfo } from './scenario/colonyEconomyInfo';
 import { supplyChainEnabled, supplySnapshot } from './supplyChainCache'; // [improvements] supplyChain
 import { colonyTooltipLines, itemNeedsText, resourceName, siteTooltipLines } from './supplyChainText'; // [improvements] supplyChain
 import { isPrivateer } from '../sim/scenario/privateers/privateers'; // privateers add-on label
@@ -1289,7 +1290,15 @@ export function habitatInfo(ctx: InfoContext, h: Habitat): InfoModel {
                 rows.push({ kind: 'gap', h: 4 });
             }
             // Facilities.
-            rows.push(label('Facilities', facilitySegs(galaxy, h), { strip: true }));
+            // [colonyEconomy] own colonies: the private facilities' icons after the stock ones, and the designation row.
+            const econ = owner === player ? econColonyInfo(galaxy, h) : null;
+            if (econ !== null && econ.designation !== null) rows.push(label('Designation', [{ img: econ.designation.img, w: 16, h: 16, title: econ.designation.title, target: { kind: 'galactopedia', topic: econ.designation.topic } }, { ...txt(econ.designation.name, color), gap: 4, title: econ.designation.title, target: { kind: 'galactopedia', topic: econ.designation.topic } }]));
+            const facSegs = facilitySegs(galaxy, h);
+            if (econ !== null && econ.facilities.length > 0) {
+                const stock = (h.facilities ?? []).some((f) => f != null);
+                const own: InfoSeg[] = econ.facilities.map((f, i) => ({ img: f.img, faded: f.faded, gap: i === 0 && stock ? 6 : i > 0 ? 2 : 0, title: f.title, target: { kind: 'galactopedia', topic: f.topic } }));
+                rows.push(label('Facilities', stock ? [...facSegs, ...own] : own, { strip: true }));
+            } else rows.push(label('Facilities', facSegs, { strip: true }));
             // Troops (InfoPanel.cs 4404-4500).
             const troops = troopItems(h.troops);
             const recruit = troopItems(h.troopsToRecruit);

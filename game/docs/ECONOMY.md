@@ -16,9 +16,11 @@ Colonies also have no identity: there is nothing that makes one world industrial
 **Phases**
 1. Designations, bonds, and the first 4 facilities of each designation (24 facilities). **Built.**
 2. The 3 extra facilities of each designation (18) and the Bounty Office's hunter ships. **Built.**
-   Still to do: Militia Yard ships and the larger synergies (with phase 4).
+   Militia Yard ships came with phase 4; the larger synergies are still to do.
 3. The refinement chain (Option A). **Built.**
-4. Balancing and AI refinement (Smarter AI).
+4. Refined goods as a real bottleneck by component tech level, refinery access (the extra slot, commissions, supply
+   alerts, AI safeguards), designation balance, the facility tax, the Bounty Office AI, Militia Yard ships, Fleet
+   Depot refuelling, and the UI (selection panel, Galactopedia, Colonies list). **Built** (2026-10-11; §5, §9).
 
 ---
 
@@ -159,6 +161,17 @@ The add-on's resource bonuses carry resource id −1. The colony's bonus list (H
 
 All of these are new rules on the real channels of §1.
 
+**Phase 4 balance (all new; the user's decision C).** The phase 3 soaks made too many Mining Hubs.
+- Each further Mining Hub of the empire scores 25 % less (×0.75 per other hub, at most 8). A colony that already is a
+  hub keeps its full score, so it is not re-designated because of hubs made after it.
+- The AI adds 40 to the crowding penalty of a Mining Hub that would take the empire past 30 % hubs (one is always
+  allowed).
+- Fit boosts: Core World +15 near the capital (within 3 sectors, scaled by population up to 1 bn) and +12 with ruins
+  in the system (research); Resort +12 on a scenic (≥1) and high-quality (≥0.6) world; Frontier +8 per neighbouring
+  empire within 3 sectors (at most 2, a border) and +20 when pirates raided the colony in the last 5 years or control
+  it (the Bounty Office, §3). There is no "Research" designation; ruins favour Core World, which holds the University.
+  Anomalies are not counted (to verify: the TS has no anomaly list on habitats).
+
 Phase 2, still to do:
 - Trade Hubs as freighter destinations (to verify: the freight path picks the nearest port);
 - Trade Hub smuggling (to verify: Empire.2.cs 1380 smuggling missions).
@@ -192,6 +205,20 @@ Phase 2, still to do:
   The thresholds come from the real maximum population, `Diameter² × 250 000 × quality²`: a D200/q0.4 world holds
   1.6 bn, D250/q0.6 holds 5.6 bn, D320/q0.9 holds 21 bn, and capitals reach 10–25 bn. Outside the capitals the
   average colony holds about 1 bn in the soaks (§9). A colony that shrinks keeps what stands, but builds nothing new.
+- **Refinery slot (phase 4, new):** every Mining Hub and Core World has one extra slot that only a refinery may use, so
+  a refinery never competes with the other facilities for it (`slotsUsed`). Further refineries use normal slots.
+- **Commissions (phase 4, new):** the state can commission a refinery. The player uses the **Fund** button beside
+  Request (the journaled `econRequestFacility` with `fund = true`); the AI does it by itself (§7). The private sector
+  pays what its surplus allows, up to half the price; the treasury pays the rest (all of it when the private surplus
+  is empty). The refinery is private-owned: its upkeep is private, and its sales go to the private sector. It is a
+  subsidy, not a state facility.
+- **Infrastructure (phase 4, decision H):** like a private ship's price (real: BaconBuiltObject.cs 5106
+  PrivateSectorBuildOrRefitInvestInInfrastructure, `1 − privateBuildCostToStateMoney` = 70 % of it), 70 % of a
+  facility's price goes into the Bacon infrastructure of the facility's own colony (the stock picks a random space-port
+  colony; here no Rnd). Without it the facilities took the private money that Bacon's own infrastructure investment
+  (BaconHabitat.cs 887, which scales with the hoard) would have turned into development (§9).
+- **Facility tax (phase 4, new):** every working facility pays 4 % of its price a year from private money to the state
+  (monthly, never driving private money below 0). It keeps the AI treasuries level with the add-on on (§9).
 - **Off-designation building is impossible.** Only facilities of the colony's own designation can be requested or
   built.
 - **Exclusive pairs** never stand together, and a request for one blocks the other. Phase 1: Free Port XOR Customs
@@ -226,7 +253,7 @@ Phase 2, still to do:
 | | ★ Component Works | ships and bases cost 2 % less empire-wide per works, at most 8 % (`designPriceFactor`) | MilitaryShipConstructionSpeed |
 | | ★ Orbital Drydock | own ships self-repair 50 % faster in this system | RepairBonus |
 | | ◆ Robotics Plant | troop upkeep −4 % empire-wide per plant, at most −12 % (**new** query `troopMaintenanceFactor`, Empire.cs 2025 AnnualTroopMaintenance); +10 % recruited troop strength here | TroopRecruitment |
-| | ◆ Fleet Depot | own state ships and bases within 2 sectors: −15 % upkeep (**new** query `shipMaintenanceFactor`, BuiltObject.cs 782 AnnualSupportCost). Resupply / fuel: phase 4 (to verify: Habitat.IsRefuellingDepot) | MilitaryShipConstructionSpeed |
+| | ◆ Fleet Depot | own state ships and bases within 2 sectors: −15 % upkeep (**new** query `shipMaintenanceFactor`, BuiltObject.cs 782 AnnualSupportCost). Phase 4 refuelling (new): every 30 days own state ships within 2 sectors are topped up with their fuel, the state paying the depot's private sector the fuel's base price (`depotRefuel`; the stock refuelling depots, Habitat.IsRefuellingDepot, are untouched) | MilitaryShipConstructionSpeed |
 | | ◆ Salvage Yard | yearly: up to 4 wrecks within 2 sectors (Wreckage add-on `wrecksAt` / `takeWrecks`): 25 % of their resources into the colony cargo, 10 % of their value to private money; without Wreckage: +4 % colony income | RepairBonus |
 | Trade Hub | ★ Trade Exchange | +8 % colony income; ×1.25 with an Industrial colony within 3 sectors | TradeIncome |
 | | ★ Investment Bank | bond interest −1.5 points per bank (at most −4); +3 % colony income | ColonyIncome |
@@ -257,7 +284,7 @@ Phase 2, still to do:
 | | ◆ Genetics Institute | +10 % growth here; new own colonies within 3 sectors grow 25 % faster for 5 years | PopulationGrowth |
 | | ◆ Senate Hall | +1 approval at every own colony (at most +2); Interstellar Diet vote weight +20 % per hall, at most +40 % (**new** query `dietVoteWeightFactor` in dietAi.ts voteWeight); 15 % upkeep | Diplomacy |
 | Frontier / Garrison | ★ Private Security Firm | +25 % recruited troop strength; pirate control grows 40 % slower here | TroopRecruitment |
-| | ★ Militia Yard | +40 % construction of facilities and colony-built bases here (which bases the colony queue builds: to verify); raids recover 30 % slower nearby. Militia ships: phase 2 | MilitaryShipConstructionSpeed |
+| | ★ Militia Yard | +40 % construction of facilities and colony-built bases here (which bases the colony queue builds: to verify); raids recover 30 % slower nearby. Phase 4 (new): 2 militia ships per yard (at most 6 an empire), below | MilitaryShipConstructionSpeed |
 | | ★ Survey Outpost | every ship and base within 1 sector of the colony is visible to its owner (`objectVisibleToAll`) | |
 | | ★ Colonist Office | new own colonies within 2 sectors grow 40 % faster for their first 5 years (cheaper colony ships: phase 2) | ColonyShipConstructionSpeed |
 | | ◆ Fortress Bunker | +30 DefensiveFortressBonus here (**new** query `colonyFortressBonus`, Habitat.cs 7216 ReviewPlanetaryFacilities: the stock wonder × bunker bonus) | TroopRecruitment |
@@ -290,7 +317,16 @@ its own small armed bounty-hunter ships:
   to verify.
 - **Retirement:** extras retire (a scrap mission) when the office closes or private money goes negative.
 
-Militia Yard ships (the same path) wait for phase 4.
+**Bounty Office AI (phase 4, new; decision E).** The facility review remembers when pirates raided a colony
+(`Habitat.raidCountdown` > 0) or controlled it (`pirateColonyControl`), as `raidedAt`. Such a colony scores +20 for
+Frontier (§2), and a Bounty Office there is worth 4 to the AI (the most of any Frontier facility), even beside another
+office.
+
+**Militia Yard ships (phase 4, new; decision F).** Each working Militia Yard has the private sector keep 2 local
+defence ships, at most 6 an empire, on the same build path and design as the bounty hunters (named "Militia"; private
+money pays the price and the upkeep). They attack pirate ships within 1 sector of a Militia Yard colony and otherwise
+patrol the nearest one. They retire when the yard closes or private money goes below 0. Not done (the user's decision):
+the Administrative Center's tenure, the Medical Complex's plague effect and lower-tier builds.
 
 ---
 
@@ -332,11 +368,11 @@ New, except where noted.
 
 ---
 
-## 5. Refinement chain (Option A, phase 3: built)
+## 5. Refinement chain (Option A, phase 3; the bottleneck, phase 4: built)
 
 The user chose Option A over B. Code: `colonyEconomy/refinement.ts`; switch `econRefinement` (new games only).
 
-**The goods.** There are five new resource types, all new:
+**The goods.** There are six new resource types, all new:
 
 | Good | Refinery (designation) | Raw inputs (real resources.txt names) | Used by component categories (real: ComponentCategoryType) |
 |---|---|---|---|
@@ -344,12 +380,13 @@ The user chose Option A over B. Code: `colonyEconomy/refinement.ts`; switch `eco
 | Electronics | Electronics Fab (Core World) | Silicon, Chromium, Aculon, Gold | the weapons, Shields, ShieldRecharge, Sensor, Computer, Labs, HyperDisrupt |
 | Polymer Composites | Chemical Plant (Mining Hub) | Polymer, Helium, Argon, Krypton | Habitation, Storage, Fighter |
 | Reactor Fuel Cells | Fuel Refinery (Mining Hub) | Caslon, Hydrogen, Tyderios | Reactor, HyperDrive, EnergyCollector |
-| Exotics | Exotic Materials Lab (Core World) | Emeros Crystal, Nekros Stone, Osalia, Dilithium Crystal | WeaponSuperBeam / Area / Torpedo |
+| Exotics | Exotic Materials Lab (Core World) | Emeros Crystal, Nekros Stone, Osalia, Dilithium Crystal | WeaponSuperBeam / Area / Torpedo; also tech-7+ reactors, hyperdrives and weapons (below) |
+| Precision Components (phase 4) | Precision Works (Core World) | Electronics, Exotics (refined goods: the third step) | every tech-7+ component (below) |
 
 - **Naming:** "Polymers" is called **Polymer Composites**, because the game already has a raw resource "Polymer"
   (id 16).
-- **Icons:** our own SVG art (`public/art/economy/good-*.svg`, picture refs 9000–9004; `ui/resourceIcons.ts`). No
-  original image is used.
+- **Icons:** our own SVG art (`public/art/economy/good-*.svg`, picture refs 9000–9005; `ui/resourceIcons.ts`). No
+  original image is used. A game started with the phase-3 five goods gets Precision Components appended (ids kept).
 
 **How the goods exist only when the flag is on.** This is new, a mod-layer hook (`registerScenarioDataExtension`).
 - **Why not an overlay file:** a `resources.txt` overlay, like Rim Trade's, would put the goods in the data of every
@@ -374,34 +411,67 @@ The user chose Option A over B. Code: `colonyEconomy/refinement.ts`; switch `eco
 - Short of an input, it orders 200 units of it (real: Empire.4.cs CreateOrder, `empireCreateOrder`). The stock
   freight path then brings the input and pays the seller's private sector (real: Empire.4.cs 1135 InitiateContract).
 
-**Hauling.** Every 30 days each own shipyard with work queued orders the goods it is short of:
-- up to 60 units of each common good, and 10 Exotics;
-- an order is placed only when at least half the target is missing;
-- these are state orders: the state pays for what its yards use, and the refinery's private sector earns.
+**The bottleneck (phase 4, the user's decision A; all new rules on the real channels).**
+- **A component's tech level** is the techLevel of the research project that unlocks it (real: Galaxy.3.cs
+  SetResearchCosts sets `Component.TechLevel` from the node; `ComponentDefinition.techLevel`). The super weapons'
+  100+ count as 7. The level of the improvement in use (ComponentImprovement.techLevel) is **not** used: an improvement
+  would raise the need of every old design too, and the AI's one-tier-lower fallback could never escape it.
+- **Need per component**, of the good of its category (the table above); a design needs the sum over its components,
+  and bases (role Base) need half, rounded up:
 
-The stock freight path fills these orders from the refineries' trading posts. Private freighters carry the goods,
-the private sectors are paid, and the supply chains show on the Freight Flows overlay.
+  | Tech level | Units | Missing goods |
+  |---|---|---|
+  | 0–2 | none | – |
+  | 3 | 1 | soft: the build runs at ×0.7 |
+  | 4 | 1 | soft: ×0.6 |
+  | 5–6 | 2, and weapons / shields / sensors +1 Electronics | **hard**: the build waits at the yard |
+  | 7+ | 3 (4 for reactors, hyperdrives and weapons, which also need 1 Exotics), and 1 Precision Components | **hard** |
 
-**Use.**
-- **On completion:** a ship or base completed at a yard (the `builtObjectBuilt` event, now carrying the yard)
-  consumes one unit of a good per component of the good's categories, from the yard's cargo, as far as it holds them.
-- **Build speed:** the yard's speed (`colonyConstructionFactor` kind 'yard', with the yard) is
-  `0.95 + 0.25 × (the share of the four common goods it holds at the target)`, plus 0.05 with any Exotics. That is
-  ×0.95 with nothing and ×1.25 fully supplied.
-- **Never blocked:** missing goods mean slower builds, not a block. The "lower-tier builds" alternative is not used.
+- **Partial supply:** a soft shortfall costs in proportion: the factor is `1 − Σ(unit penalty × missing share of its
+  good) / soft units`, with the goods held at the yard after the hard needs are set aside.
+- **Where:** the factor is a new per-build query `buildGoodsFactor` in constructionQueue.ts
+  processSingleConstructionYard (ConstructionQueue.cs 286), on the progress of each build at a shipyard base or a
+  colony's own queue. Constructor ships, retrofits and scrapping are exempt. So are pirates and independents
+  (`isEconEmpire`). A waiting build keeps its yard slot, as the stock game does while components are missing.
+- **Use:** a completed build consumes its need from the yard's (or colony's) cargo (the `builtObjectBuilt` event, now
+  carrying the yard and the colony).
+- **Early bonus:** while none of an empire's researched components needs a good (tech < 3), a yard holding the four
+  common goods builds up to +15 % faster (in proportion to its stock at 60 each), and the empire's ships and bases cost
+  5 % less while one of its yards holds a quarter of that stock (designPriceFactor; empire-wide, since the price is
+  set before a yard is chosen). Nothing is consumed in that era, so the stock carries over. A refinery whose good
+  nothing the empire has researched needs yet earns +5 % colony income (IncomeBoost; "sells ahead").
+- **The era** (`goodsNow` / `goodsNext`, saved, every 30 days): per good, the highest tech level of the researched
+  components that need it, and of the components the next research projects unlock.
 
-**AI.**
-- Refineries are worth 3 to an empire's private sector while it has yards and no refinery of that good, 1.2 for a
-  second one, 0.3 after that.
-- The refineries sit at the common designations: Smelter, Chemical Plant and Fuel Refinery at Mining Hubs, and the
-  Electronics Fab and Exotic Materials Lab at Core Worlds (the capital). The first soak put three of them at Industrial
-  colonies, which the AI seldom makes, and only Fuel Cells were refined (§9).
+**Hauling.** Every 30 days each own shipyard with work queued orders the goods it is short of: the needs of its queued
+builds (at most 400 of a good), and at least 60 of each common good and 10 Exotics once the empire's era is past
+tech 2 or while the early bonus lasts. Colony queues order their builds' needs. These are state orders: the state pays
+for what its yards use, and the refinery's private sector earns. The stock freight path fills them from the
+refineries' trading posts; private freighters carry the goods and show on the Freight Flows overlay.
 
-**Risks, and what was done.**
-- **A broken chain:** it only slows building, to −5 %.
-- **The AI must run the chains:** see the AI rules above.
-- **New resource ids:** they exist only with the flag on (above).
-- **Balancing:** see §9.
+**Refinery access (phase 4, decision B; all new).**
+- The extra refinery slot at Mining Hubs and Core Worlds, and commissions from the treasury (§3).
+- **AI commissions** (`supply.ts`, every 30 days): when the next research reaches a good's tier (3; Precision
+  Components 7) and the empire has no refinery of it (built, building or requested), the AI commissions one at the
+  most populous colony of the refinery's designation with a free slot. Once a researched component needs the good, it
+  wants one more per 4 shipyards (at most 3). It designates an undesignated colony first when it has none (never the
+  home world, never one below 40 M people). One a review, while the treasury holds 1.5 times its share.
+- **Supply alerts:** the player gets one warning per good when research is about to need a good no refinery of theirs
+  makes. The treasury window (Empire Summary → "Bonds & private sector") lists every good's status and, per
+  shipyard, the goods its queued builds lack and the builds waiting.
+- **AI safeguards:**
+  - `aiBuildDesign` (empireConstruction.ts directConstruction: the warship / auxiliary loop and the space ports): an AI
+    that cannot supply a design's hard goods (no working refinery of the good and less than two builds' worth at its
+    yards) queues the newest older design of the sub-role it can supply, one tier lower. With none, it keeps the
+    design (it waits).
+  - **No deadlock:** an AI build that has waited 180 days for hard goods goes on at ×0.5 with what the yard holds
+    (`reliefBuilds`). The player's builds keep waiting (the treasury window shows them). Found in the first phase 4
+    soak: the Ancient Guardians start at tech 7, have no Precision Works, and built a fifth of their tech-5+ warships.
+  - The AI's mining stations within 2 sectors of a working refinery want 50 % more escort (the
+    `miningStationPatrolPriority` query, Empire.5.cs 1331): the refinery's input lanes. The refinery colonies themselves
+    get no extra defence (to verify: a per-colony defence query does not exist yet).
+- **AI private picks:** refineries are worth 4 while research needs or is about to need the good and the empire has
+  none, 2.5 otherwise; Precision Works only once tech 6 is near.
 
 **Fallback:** Option B, "production capability", stays the lighter alternative. It was not needed.
 
@@ -420,6 +490,19 @@ Every action is a journaled player command (multiplayer-safe). Commands and thei
   The colony's bonus list shows the add-on's bonuses as "Colony Economy".
 - **Empire Summary:** a "Bonds & private sector →" link opens the treasury view (§4), with Sell bond, Repay and
   automatic bonds.
+- **Colony selection panel (phase 4):** for the player's own colonies, a "Designation" row (the badge and the name)
+  and the private facilities' icons after the stock facility icons on the Facilities strip (faded while building or
+  not working; the hover names the facility and its effect; a click opens its Galactopedia entry).
+  `ui/scenario/colonyEconomyInfo.ts`.
+- **Galactopedia (phase 4):** an "Add-ons: Colony Economy" topic with an entry for every designation, private facility
+  and refined good, and one on the tech-level rules (generated pages, `ui/scenario/colonyEconomyPedia.ts`).
+- **Colonies list (phase 4):** a sortable Designation column (badge + name) and a designation filter above the grid.
+- **Economy tab (phase 4):** the refinery slot row at Mining Hubs and Core Worlds, and a **Fund** button beside
+  Request on each refinery (the treasury commissions it; its tooltip gives the state's share).
+- **Treasury window (phase 4):** the refined goods' status (needed now / soon / not yet, working refineries) and, per
+  shipyard, the goods its queued builds lack and the builds waiting for goods.
+- **Icons:** our own SVGs, generated by `scripts/gen-econ-icons.mjs` (`public/art/economy/fac-<id>.svg`,
+  `desig-<n>.svg`, `good-precision.svg`): the goods' dark tile with a ring in the designation's colour and a glyph.
 - **Map:** the "Colony Designations" overlay toggle (View popup, a mod row; on by default). It draws a small badge
   for each of the viewer's own colonies that has a designation (foreign designations stay hidden: phase 2 could show
   them through intelligence). Hovering a badge names the designation and the facilities. Our own procedural art: a
@@ -434,6 +517,8 @@ Every action is a journaled player command (multiplayer-safe). Commands and thei
   off.
 - **Bonds:** §4, borrowing when below 3 months of expenses. Repayment is automatic. The stock AI does not plan around
   the debt service, which is why the service cap (30 % of tax revenue) exists.
+- **Refined goods (phase 4):** commissions ahead of research, the one-tier-lower design fallback, and escorts for the
+  refineries' input stations (§5).
 - **Smarter AI (later):** designation weights per race and strategy, wartime Frontier / Industrial shifts, and bond
   avoidance when cashflow is negative.
 
@@ -468,8 +553,8 @@ Every action is a journaled player command (multiplayer-safe). Commands and thei
   100 % empire-wide by the real code. No conflict, but stacking needs balancing.
 - **C5. Reputation ledger:** the Diplomatic Retreat writes through `applyReputation` (bias term, no decay), so it
   shows in the ledger when that add-on is on and uses the stock bias field when it is off.
-- **C6. Facilities are not stock PlanetaryFacilities.** They do not show in the stock Facilities tab or the Galactopedia,
-  and stock "facility" counts (achievements, AI facility reviews) ignore them. Recommendation: keep them separate.
+- **C6. Facilities are not stock PlanetaryFacilities.** They do not show in the stock Facilities tab (phase 4: they do
+  show on the selection panel's Facilities strip and have their own Galactopedia entries), and stock "facility" counts (achievements, AI facility reviews) ignore them. Recommendation: keep them separate.
   Using stock facility slots would change the faithful AI's own facility logic.
 
 - **C7. Refined goods and saves.** The goods exist only in games started with the refinement chain on (§5). Adding
@@ -626,3 +711,56 @@ That is about +6 % CPU. A CPU profile of an on run puts the add-on's own functio
 and the whole scenario hook machinery (every add-on) at about 1.2 %. The rest of the difference is the game itself
 playing out differently with the add-on: more facilities, freighters and orders. The fast exits added for the hot
 queries (per-ship upkeep, ship prices, visibility) did not move it.
+
+### Phase 4 (2026-10-11): the bottleneck, refinery access, balance
+
+Seeds 3 and 4, 700 stars (`starCountIndex` 3), 11 empires, 10 years, add-on off vs on, run one at a time with the
+scratch hook `~/data/agent-tmp/econ-p4/econhook4.mjs`. "AG" is the Ancient Guardians (the one empire at tech 7 from
+the start); "AI" is the other AI empires. Year 10:
+
+| | seed 3 off | seed 3 on | seed 4 off | seed 4 on |
+|---|---|---|---|---|
+| **AI private money** | **9.83 M** | **6.14 M (−37 %)** | **9.75 M** | **5.51 M (−43 %)** |
+| **AI state money** | **3.55 M** | **4.42 M (+24 %)** | **4.54 M** | **5.41 M (+19 %)** |
+| Facility tax paid (total) | – | 0.31 M | – | 0.33 M |
+| Annual tax revenue | 2.78 M | 2.93 M | 3.07 M | 2.92 M |
+| Warships, AI (ex. AG) | 389 | 370 (−5 %) | 298 | 269 (−10 %) |
+| Warships, AG | 159 | 141 | 176 | 99 |
+| Ships and bases, all | 784 | 756 | 696 | 603 |
+| Colonies | 44 | 56 | 37 | 46 |
+| Mining Hubs | – | 14 (25 %) | – | 11 (24 %) |
+| Facilities built / refineries / commissions | – | 28 / 10 / 7 | – | 28 / 13 / 10 |
+| Builds completed / short of a soft good / waited for a hard good | – | 2190 / 230 / 95 (4.3 %) | – | 1977 / 378 / 99 (5.0 %) |
+| AI builds on the 180-day relief | – | 90 | – | 100 |
+| Bounty Offices / militia ships | – | 2 / 4 | – | 1 / 0 |
+| Highest AI tech level (ex. AG) | 3 | 4 | 3 | 3 |
+| Mean development, all colonies | 22.0 | 16.8 | 24.2 | 17.8 |
+| … the 11 colonies of year 0 | 50.0 | 50.0 | 50.0 | 45.9 |
+| … founded in years 1-3 | 19.1 (11) | 14.4 (12) | 14.7 (7) | 14.2 (11) |
+| … founded in years 4-6 | 11.5 (13) | 10.2 (16) | 13.8 (9) | 8.5 (12) |
+| … founded in years 7-10 | 6.3 (9) | 2.7 (16) | 11.9 (10) | 4.8 (12) |
+
+**Reading the numbers.**
+- **The hoard:** the AI private sectors keep 57–63 % of the off run's money (phase 3: 51–56 %).
+- **The state:** with the facility tax the AI treasuries end 19–24 % above the off run's (phase 3: −5 % / +10 %).
+- **Warships:** the other AI empires end with 5–10 % fewer warships (phase 3: 9–12 % fewer ships). They never pass
+  tech 4 in 10 years, so only the soft tiers touch them: 10–19 % of their builds finish short of a good, at ×0.6–0.7.
+  The AI design fallback never triggered (no AI below tech 5 needs a hard good).
+- **Past tech 5:** only the Ancient Guardians, who start at tech 7 with no Precision Works. They keep building
+  (tech-5+ warships rise every year: 0 → 60 and 0 → 41) but slower: in the first phase 4 soak, before the 180-day
+  relief, they made a fifth of the off run's. With it they reach 89 % and 56 %. The 4–5 % of builds that waited for a
+  hard good are almost all theirs.
+- **Mining Hubs:** 24–25 % of the colonies (phase 3: up to half; the target was ≤ 30 %).
+- **Development (decision H):** the on runs found 9–12 more colonies, so the mean falls partly by dilution: more,
+  younger and smaller colonies. Colony by colony:
+  - the 11 colonies of year 0 end level on seed 3 (50.0 / 50.0) and 8 % lower on seed 4;
+  - colonies founded later are lower in each cohort, most for the youngest (each on cohort also holds more colonies).
+
+  Part of it was real, and is fixed: the facilities spent private money that Bacon's infrastructure investment
+  (BaconHabitat.cs 887, which scales with the hoard) would have turned into development. With 70 % of each facility's
+  price routed into its colony's infrastructure (§3), seed 3's mean rose from 13.5 to 16.8 and the year-0 colonies
+  from 47.9 to 50.0. The rest of the young colonies' gap is still open (to verify: their approval under the Mining Hub /
+  Industrial drawbacks, and the Bacon investment's 30 000 tax-revenue gate).
+- **Not seen in the soaks:** no AI built a Fleet Depot (Industrial colonies are rare), so refuelling ran only in the
+  tests.
+- **Save round trip:** every run's save check passed.

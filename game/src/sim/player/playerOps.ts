@@ -609,8 +609,8 @@ export const PLAYER_OPS = {
     // [colonyEconomy] begin — Colony Economy (scenario/colonyEconomy; docs/ECONOMY.md; flag-gated inside)
     /** Designate a colony (0 None, 1 Industrial, 2 Trade Hub, 3 Resort World, 4 Mining Hub, 5 Core World, 6 Frontier); a cooldown follows. */
     econSetDesignation: (galaxy: Galaxy, empire: Empire, colony: Habitat, designation: number) => setDesignation(galaxy, empire, colony, designation as Designation),
-    /** Ask the private sector for a facility at a colony (built when it can afford it). */
-    econRequestFacility: (galaxy: Galaxy, empire: Empire, colony: Habitat, facility: string) => isFacilityId(facility) && requestFacility(galaxy, empire, colony, facility),
+    /** Ask the private sector for a facility at a colony (built when it can afford it); `fund`: the treasury commissions a refinery. */
+    econRequestFacility: (galaxy: Galaxy, empire: Empire, colony: Habitat, facility: string, fund?: boolean) => isFacilityId(facility) && requestFacility(galaxy, empire, colony, facility, fund === true),
     /** Withdraw a waiting facility request. */
     econCancelRequest: (galaxy: Galaxy, empire: Empire, colony: Habitat, facility: string) => isFacilityId(facility) && cancelFacilityRequest(galaxy, empire, colony, facility),
     /** The private sector picks facilities by itself too (default on). */

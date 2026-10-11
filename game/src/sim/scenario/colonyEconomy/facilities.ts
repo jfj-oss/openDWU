@@ -17,6 +17,7 @@ import type { Empire } from '../../empire';
 import type { Habitat } from '../../types';
 import { galaxyStarDate } from '../../tick/simTime';
 import { annualPrivateMaintenance } from '../../forceStructure';
+import { baconSettings } from '../../data/baconSettings';
 import { getPrivateAnnualCashflow } from '../../civilianAI';
 import { registerScenarioPeriodic } from '../hooks';
 import { isHumanEmpire } from '../../humanEmpires';
@@ -35,6 +36,8 @@ import {
     exclusiveConflict,
     REFINERY_FACILITIES,
     facilityDef,
+    refinerySlotDesignation,
+    slotsUsed,
     hasPrivateSector,
     peekColony,
     peekEconState,
@@ -47,10 +50,20 @@ import {
 import { facilityValue } from './effects';
 import { refinementActive } from './refinement';
 
+/** Adds `amount` to the colony's "infrastructure" BaconValue (as retrofit.ts privateSectorBuildOrRefitInvestInInfrastructure). */
+function investInInfrastructure(h: Habitat, amount: number): void {
+    if (amount <= 0) return;
+    if (h.baconValues === null) h.baconValues = new Map<string, unknown>();
+    const had = h.baconValues.has('infrastructure') ? (h.baconValues.get('infrastructure') as number) : 0;
+    h.baconValues.set('infrastructure', had + Math.trunc(amount));
+}
+
 /** Review period of the private build loop (game days). */
 export const FACILITY_REVIEW_DAYS = 30;
 /** A facility unpaid this long closes (days). */
 export const UNPAID_CLOSE_DAYS = 360;
+/** Phase 4: the facility tax, a share of each working facility's price a year paid from private money to the state. */
+export const FACILITY_TAX_SHARE = 0.04;
 /** The private sector's own picks per review at most. */
 export const MAX_STARTS_PER_REVIEW = 3;
 
@@ -60,6 +73,14 @@ export function colonySlots(galaxy: Galaxy, h: Habitat): number {
     if (pop >= econParam(galaxy, 'econLargePopM') * 1e6) return 3;
     if (pop >= econParam(galaxy, 'econMediumPopM') * 1e6) return 2;
     return 1;
+}
+
+/**
+ * Room for `id` beside `ids` (built + requested) at `h`: the size slots, plus at a Mining Hub or Core World one extra
+ * slot only a refinery may use (phase 4). Pure.
+ */
+export function slotFree(galaxy: Galaxy, h: Habitat, d: Designation, ids: readonly FacilityId[], id: FacilityId): boolean {
+    return slotsUsed(d, [...ids, id]).normal <= colonySlots(galaxy, h);
 }
 
 export function colonySizeName(slots: number): string {
@@ -121,20 +142,52 @@ export function facilityRefusal(galaxy: Galaxy, e: Empire, h: Habitat, id: Facil
     if (facs.some((f) => f.id === id)) return 'Already built or under construction';
     const ex = exclusiveConflict(id, facs.map((f) => f.id));
     if (ex !== null) return `Cannot stand beside the ${facilityDef(ex).name}`;
-    if (facs.length >= colonySlots(galaxy, h)) return `No free slot (a ${colonySizeName(colonySlots(galaxy, h))} colony has ${colonySlots(galaxy, h)})`;
+    if (!slotFree(galaxy, h, d, facs.map((f) => f.id), id)) return `No free slot (a ${colonySizeName(colonySlots(galaxy, h))} colony has ${colonySlots(galaxy, h)})`;
     return null;
 }
 
-/** Player command: queue a facility request at `h`. */
-export function requestFacility(galaxy: Galaxy, e: Empire, h: Habitat, id: FacilityId): boolean {
+/**
+ * Player command: queue a facility request at `h`. `fund` (refineries only, phase 4): the treasury commissions it —
+ * it pays what the private surplus cannot (all of it at most); the refinery stays private-owned and earns private money.
+ */
+export function requestFacility(galaxy: Galaxy, e: Empire, h: Habitat, id: FacilityId, fund = false): boolean {
     if (facilityRefusal(galaxy, e, h, id) !== null) return false;
+    if (fund && !REFINERY_FACILITIES.has(id)) return false;
     const c = colonyRecord(galaxy, h);
     if (c.requests.includes(id)) return false;
     // Requests count against the slots and the exclusive pairs too.
     const def = facilityDef(id);
-    if (c.facilities.length + c.requests.length >= colonySlots(galaxy, h)) return false;
+    if (!slotFree(galaxy, h, c.designation, [...c.facilities.map((f) => f.id), ...c.requests], id)) return false;
     if (exclusiveConflict(def.id, c.requests) !== null) return false;
     c.requests.push(id);
+    if (fund) (c.commissioned ??= []).push(id);
+    return true;
+}
+
+/** Share of a commission's price the private sector pays from its surplus (the treasury pays the rest). */
+export const COMMISSION_PRIVATE_SHARE = 0.5;
+
+/** What the treasury pays to commission `def` at `h` now (the private sector pays up to half from its surplus). Pure. */
+export function commissionStateShare(galaxy: Galaxy, e: Empire, def: EconFacilityDef, h: Habitat): number {
+    const price = facilityPrice(galaxy, def, h);
+    const priv = Math.min(price * COMMISSION_PRIVATE_SHARE, (privateSurplus(galaxy, e) * econParam(galaxy, 'econSpendSharePct')) / 100);
+    return Math.max(0, price - Math.max(0, priv));
+}
+
+/** Starts a commissioned refinery: the treasury pays its share, the private sector the rest; it is private-owned. */
+export function startCommission(galaxy: Galaxy, e: Empire, h: Habitat, c: EconColony, def: EconFacilityDef, requested: boolean): boolean {
+    const state = commissionStateShare(galaxy, e, def, h);
+    if (e.stateMoney < state) return false;
+    const price = facilityPrice(galaxy, def, h);
+    e.stateMoney -= state;
+    startFacility(galaxy, e, h, c, def, requested);
+    e.privateMoney += state; // startFacility charged the whole price to private money
+    const r = empireRecord(galaxy, e);
+    r.facilitySpend -= state;
+    r.commissionSpend = (r.commissionSpend ?? 0) + state;
+    r.commissions = (r.commissions ?? 0) + 1;
+    c.commissioned = (c.commissioned ?? []).filter((x) => x !== def.id);
+    void price;
     return true;
 }
 
@@ -144,6 +197,7 @@ export function cancelFacilityRequest(galaxy: Galaxy, e: Empire, h: Habitat, id:
     const c = peekColony(galaxy, h);
     if (c === null || !c.requests.includes(id)) return false;
     c.requests = c.requests.filter((x) => x !== id);
+    if (c.commissioned !== undefined) c.commissioned = c.commissioned.filter((x) => x !== id);
     return true;
 }
 
@@ -154,12 +208,17 @@ export function setAutoFacilities(galaxy: Galaxy, e: Empire, on: boolean): boole
     return true;
 }
 
-function startFacility(galaxy: Galaxy, e: Empire, h: Habitat, c: EconColony, def: EconFacilityDef, requested: boolean): void {
+export function startFacility(galaxy: Galaxy, e: Empire, h: Habitat, c: EconColony, def: EconFacilityDef, requested: boolean): void {
     const price = facilityPrice(galaxy, def, h);
     e.privateMoney -= price;
     const r = empireRecord(galaxy, e);
     r.facilitySpend += price;
     c.facilities.push({ id: def.id, progress: 0, started: galaxyStarDate(galaxy), finished: 0, cost: price, requested, unpaidSince: 0 });
+    // Phase 4 (decision H): like a private ship's price (real: BaconBuiltObject.cs 5106
+    // PrivateSectorBuildOrRefitInvestInInfrastructure, 1 − privateBuildCostToStateMoney of it), 70 % of the price goes
+    // into the colony's Bacon infrastructure — here the facility's own colony (no Rnd). Without it, the private money the
+    // facilities spend no longer reaches development (BaconHabitat.cs 887 invests only from a large hoard; §9).
+    investInInfrastructure(h, (1 - baconSettings.privateBuildCostToStateMoney) * price);
     c.requests = c.requests.filter((x) => x !== def.id);
     bumpEcon(galaxy);
 }
@@ -183,6 +242,7 @@ function reviewEmpire(galaxy: Galaxy, e: Empire): void {
     // 1. Progress and upkeep.
     if (st !== null) {
         let upkeep = 0;
+        let taxBase = 0;
         for (const h of e.colonies) {
             const c = st.colonies[h.habitatIndex];
             if (c === undefined || c.facilities.length === 0) continue;
@@ -193,8 +253,19 @@ function reviewEmpire(galaxy: Galaxy, e: Empire): void {
                         f.finished = now;
                         empireRecord(galaxy, e).facilitiesBuilt++;
                     }
-                } else upkeep += (f.cost * facilityDef(f.id).upkeepShare * FACILITY_REVIEW_DAYS) / 360;
+                } else {
+                    upkeep += (f.cost * facilityDef(f.id).upkeepShare * FACILITY_REVIEW_DAYS) / 360;
+                    if (f.unpaidSince === 0) taxBase += (f.cost * FACILITY_REVIEW_DAYS) / 360;
+                }
             }
+        }
+        // Phase 4: the facility tax (a share of the facilities' price a year, to the state) keeps the AI treasuries level.
+        const tax = Math.min(Math.max(0, e.privateMoney - upkeep), taxBase * FACILITY_TAX_SHARE);
+        if (tax > 0) {
+            e.privateMoney -= tax;
+            e.stateMoney += tax;
+            const rr = empireRecord(galaxy, e);
+            rr.facilityTax = (rr.facilityTax ?? 0) + tax;
         }
         if (upkeep > 0) {
             e.privateMoney -= upkeep;
@@ -213,6 +284,25 @@ function reviewEmpire(galaxy: Galaxy, e: Empire): void {
         }
     }
     bumpEcon(galaxy);
+    // Phase 4: remember pirate raids and control (the Bounty Office AI), and start commissioned refineries (the
+    // treasury pays; one a review).
+    if (st !== null) {
+        for (const h of e.colonies) {
+            if (h.raidCountdown > 0 || h.pirateColonyControl.count > 0) colonyRecord(galaxy, h).raidedAt = now;
+        }
+        commission: for (const h of e.colonies) {
+            const c = st.colonies[h.habitatIndex];
+            if (c === undefined || (c.commissioned ?? []).length === 0) continue;
+            for (const id of c.commissioned!) {
+                const def = facilityDef(id);
+                if (!c.requests.includes(id) || facilityRefusalIgnoringRequests(galaxy, e, h, c, def) !== null) {
+                    c.commissioned = c.commissioned!.filter((x) => x !== id);
+                    break commission;
+                }
+                if (startCommission(galaxy, e, h, c, def, true)) break commission;
+            }
+        }
+    }
     // 2. A new start, from the surplus only.
     const surplus = privateSurplus(galaxy, e);
     const budget = (surplus * econParam(galaxy, 'econSpendSharePct')) / 100;
@@ -226,6 +316,7 @@ function reviewEmpire(galaxy: Galaxy, e: Empire): void {
             if (c === undefined || c.requests.length === 0) continue;
             for (const id of c.requests) {
                 const def = facilityDef(id);
+                if ((c.commissioned ?? []).includes(id)) continue; // the treasury's (above)
                 if (facilityRefusalIgnoringRequests(galaxy, e, h, c, def) !== null) continue;
                 if (!affordable(def, h)) return; // wait for the money: requests keep their turn
                 startFacility(galaxy, e, h, c, def, true);
@@ -243,9 +334,11 @@ function reviewEmpire(galaxy: Galaxy, e: Empire): void {
         for (const h of e.colonies) {
             const c = peekColony(galaxy, h);
             if (c === null || c.designation === Designation.None) continue;
-            if (c.facilities.length + c.requests.length >= colonySlots(galaxy, h)) continue;
+            const taken = [...c.facilities.map((f) => f.id), ...c.requests];
+            if (taken.length >= colonySlots(galaxy, h) + (refinerySlotDesignation(c.designation) ? 1 : 0)) continue;
             for (const def of FACILITY_DEFS) {
                 if (def.designation !== c.designation) continue;
+                if (!slotFree(galaxy, h, c.designation, taken, def.id)) continue;
                 const price = facilityPrice(galaxy, def, h);
                 if (price > left || def.upkeepShare * price >= room2) continue;
                 if (facilityRefusalIgnoringRequests(galaxy, e, h, c, def) !== null) continue;
@@ -268,7 +361,7 @@ function facilityRefusalIgnoringRequests(galaxy: Galaxy, e: Empire, h: Habitat, 
     if (def.designation !== c.designation) return 'designation';
     if (c.facilities.some((f) => f.id === def.id)) return 'built';
     if (exclusiveConflict(def.id, c.facilities.map((f) => f.id)) !== null) return 'exclusive';
-    if (c.facilities.length >= colonySlots(galaxy, h)) return 'slots';
+    if (!slotFree(galaxy, h, c.designation, c.facilities.map((f) => f.id), def.id)) return 'slots';
     return null;
 }
 
@@ -292,11 +385,13 @@ registerScenarioPeriodic({ id: 'colonyEconomy.facilities', flag: ECON_FLAG, peri
 /** The colony screen's facility slots (UI). Pure. */
 export interface FacilitySlotView {
     slots: number;
+    /** Phase 4: a Mining Hub / Core World's extra refinery-only slot. */
+    refinerySlot: boolean;
     size: string;
     built: { id: FacilityId; name: string; effect: string; progress: number; working: boolean; requested: boolean; unpaid: boolean }[];
-    requests: { id: FacilityId; name: string }[];
-    /** Facilities of the designation, with why each cannot be requested (null: it can). */
-    options: { id: FacilityId; name: string; effect: string; price: number; buildDays: number; upkeep: number; refusal: string | null }[];
+    requests: { id: FacilityId; name: string; commissioned: boolean }[];
+    /** Facilities of the designation, with why each cannot be requested (null: it can); refineries can be commissioned. */
+    options: { id: FacilityId; name: string; effect: string; price: number; buildDays: number; upkeep: number; refusal: string | null; refinery: boolean; stateShare: number }[];
     surplus: number;
     autoFacilities: boolean;
 }
@@ -320,13 +415,23 @@ export function facilitySlotView(galaxy: Galaxy, e: Empire, h: Habitat): Facilit
         let refusal = facilityRefusal(galaxy, e, h, def.id);
         if (refusal === null && c !== null) {
             if (c.requests.includes(def.id)) refusal = 'Requested';
-            else if (c.facilities.length + c.requests.length >= slots) refusal = 'No free slot (requests waiting)';
+            else if (!slotFree(galaxy, h, d, [...c.facilities.map((f) => f.id), ...c.requests], def.id)) refusal = 'No free slot (requests waiting)';
             else if (exclusiveConflict(def.id, c.requests) !== null) refusal = `Cannot stand beside the ${facilityDef(exclusiveConflict(def.id, c.requests)!).name}`;
         }
         const price = facilityPrice(galaxy, def, h);
-        return { id: def.id, name: def.name, effect: def.effect, price, buildDays: facilityBuildDays(galaxy, def), upkeep: Math.round(price * def.upkeepShare), refusal };
+        const refinery = REFINERY_FACILITIES.has(def.id);
+        return { id: def.id, name: def.name, effect: def.effect, price, buildDays: facilityBuildDays(galaxy, def), upkeep: Math.round(price * def.upkeepShare), refusal, refinery, stateShare: refinery ? Math.round(commissionStateShare(galaxy, e, def, h)) : 0 };
     });
-    return { slots, size: colonySizeName(slots), built, requests, options, surplus: privateSurplus(galaxy, e), autoFacilities: peekEmpire(galaxy, e)?.autoFacilities ?? true };
+    return {
+        slots,
+        refinerySlot: refinerySlotDesignation(d),
+        size: colonySizeName(slots),
+        built,
+        requests: requests.map((x) => ({ ...x, commissioned: (c?.commissioned ?? []).includes(x.id) })),
+        options,
+        surplus: privateSurplus(galaxy, e),
+        autoFacilities: peekEmpire(galaxy, e)?.autoFacilities ?? true,
+    };
 }
 
 export type { EconFacility };

@@ -205,7 +205,7 @@ export interface ScenarioEvents {
     /** combat/ownership.ts takeOwnershipOfBuiltObject (end). */
     builtObjectOwnerChanged: { builtObject: BuiltObject; from: Empire | null; to: Empire | null };
     /** A ship or base finished construction (construction yard completion). */
-    builtObjectBuilt: { builtObject: BuiltObject; empire: Empire | null; /** The yard base it was built at (null: a colony's own queue). */ yard?: BuiltObject | null };
+    builtObjectBuilt: { builtObject: BuiltObject; empire: Empire | null; /** The yard base it was built at (null: a colony's own queue). */ yard?: BuiltObject | null; /** The colony whose own queue built it. */ habitat?: Habitat | null };
     /** combat/teardown.ts builtObjectCompleteTeardown (top). */
     builtObjectRemoved: { builtObject: BuiltObject };
     /**
@@ -784,6 +784,13 @@ export interface ScenarioQueries {
     pirateControlGrowthFactor: { value: number; args: { habitat: Habitat } };
     /** construction/repair.ts doRepairs (BaconBuiltObject.cs 4763): a factor on the self-repair speed (the interval is divided by it). */
     repairRateFactor: { value: number; args: { builtObject: BuiltObject } };
+    /**
+     * constructionQueue.ts processSingleConstructionYard (ConstructionQueue.cs 286): a factor on one build's progress
+     * this step (0 = it waits). `yard` / `habitat`: the queue's parent. Colony Economy refined goods. Never draws.
+     */
+    buildGoodsFactor: { value: number; args: { ship: BuiltObject; yard: BuiltObject | null; habitat: Habitat | null } };
+    /** empireConstruction.ts directConstruction (Empire.6.cs 2630): the design the AI queues for this build (stock: the newest it can build). Never draws. */
+    aiBuildDesign: { value: Design; args: { empire: Empire } };
     /** design.ts calculateCurrentPurchasePrice (Design.cs 1143): a factor on the purchase price of `empire`'s design. */
     designPriceFactor: { value: number; args: { empire: Empire } };
     /** troops.ts annualTroopMaintenanceSum (Empire.cs 2025 AnnualTroopMaintenance): a factor on the empire's troop upkeep. */

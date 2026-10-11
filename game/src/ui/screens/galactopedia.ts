@@ -40,6 +40,7 @@ import { CreatureType } from '../../sim/creature';
 import { HabitatCategoryType, HabitatType, IndustryType } from '../../sim/types';
 import { manifestFiles } from '../../render/assets';
 import { activeCustomizationSet, activeCustomizationSetName } from '../../sim/data/customization';
+import { econGalactopediaItems, econGalactopediaPage } from '../scenario/colonyEconomyPedia';
 import { FONT, el, glassButton, gradientPanel, linkLabel, openOriginalWindow, place, textBox } from '../originalWindow';
 import { fileNameOf, findMhtPart, parseMht, type MhtDocument } from './mht';
 
@@ -216,6 +217,7 @@ async function loadGalactopediaData(): Promise<GalactopediaData> {
         helpFileExists: (f) => existing.has(f.toLowerCase()),
         helpListing,
     });
+    items.push(...econGalactopediaItems()); // [colonyEconomy] the add-on's facilities, goods and designations
     return {
         text,
         items,
@@ -1273,6 +1275,15 @@ function createGalactopedia(opts: GalactopediaOptions): OpenState {
         const filename = item ? item.filename : 'default.mht';
         const topicTitle = item ? item.title : data ? getText(data.text, 'Introduction') : 'Introduction';
         titleEl.textContent = topicTitle;
+        // [colonyEconomy] the add-on's own entries are generated (no help file).
+        const econPage = econGalactopediaPage(filename);
+        if (econPage !== null) {
+            content.textContent = '';
+            content.appendChild(el('h1', 'gp-page-title', topicTitle));
+            content.appendChild(econPage);
+            content.scrollTop = 0;
+            return;
+        }
         content.classList.add('gp-loading');
         const page = await loadPage(filename);
         if (token !== renderToken) return;

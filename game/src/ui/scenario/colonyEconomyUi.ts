@@ -18,12 +18,13 @@ import {
     designationRefusal,
     designationScores,
     econOn,
+    REFINERY_FACILITIES,
     facilitiesLostByChange,
     facilitySlotView,
     bondView,
 } from '../../sim/scenario/colonyEconomy/index';
 import { approvalLines, colonyBonuses } from '../../sim/scenario/colonyEconomy/effects';
-import { colonyGoodsView } from '../../sim/scenario/colonyEconomy/refinement';
+import { colonyGoodsView, empireGoodsStatus, refinementActive, yardSupplyView } from '../../sim/scenario/colonyEconomy/refinement';
 import { ColonyResourceEffect } from '../../sim/developmentLevel';
 import { issuePlayerCommand } from '../../sim/player/playerCommands';
 import { resolveStarDateDescription } from '../../sim/galaxyTime';
@@ -149,20 +150,30 @@ export function renderEconomyTab(page: HTMLElement, galaxy: Galaxy, empire: Empi
         if (btn !== null) r.appendChild(place(btn, 262, 1, 72, 21));
         list.appendChild(r);
     };
-    for (let i = 0; i < v.slots; i++) {
-        const b = v.built[i];
-        const rq = b === undefined ? v.requests[i - v.built.length] : undefined;
-        if (b !== undefined) {
+    // Phase 4: at a Mining Hub / Core World the first refinery sits in the extra refinery-only slot.
+    type Entry = { kind: 'built'; b: (typeof v.built)[number] } | { kind: 'req'; r: (typeof v.requests)[number] };
+    const entries: Entry[] = [...v.built.map((b) => ({ kind: 'built' as const, b })), ...v.requests.map((r) => ({ kind: 'req' as const, r }))];
+    const isRef = (x: Entry): boolean => REFINERY_FACILITIES.has(x.kind === 'built' ? x.b.id : x.r.id);
+    const refEntry = v.refinerySlot ? (entries.find(isRef) ?? null) : null;
+    const normal = entries.filter((x) => x !== refEntry);
+    const showEntry = (label: string, x: Entry | null | undefined): void => {
+        if (x === undefined || x === null) {
+            row(`${label}: empty`, '', COLORS.gridText, '', null);
+        } else if (x.kind === 'built') {
+            const b = x.b;
             const status = b.progress < 1 ? `Building ${Math.round(b.progress * 100)}%` : b.unpaid ? 'Unpaid' : b.working ? 'Working' : 'Idle';
-            row(`Slot ${i + 1}: ${b.name}`, status, b.progress < 1 ? COLORS.gridText : b.working ? COLORS.green : COLORS.red, b.effect, null);
-        } else if (rq !== undefined) {
+            row(`${label}: ${b.name}`, status, b.progress < 1 ? COLORS.gridText : b.working ? COLORS.green : COLORS.red, b.effect, null);
+        } else {
+            const rq = x.r;
             const cancel = glassButton('Cancel', { disabled: !owned, onClick: () => issuePlayerCommand(galaxy, empire, 'econCancelRequest', [h, rq.id], () => rerender()) });
-            row(`Slot ${i + 1}: ${rq.name}`, 'Requested', COLORS.gridText, 'Waiting for the private sector to afford it', cancel);
-        } else row(`Slot ${i + 1}: empty`, '', COLORS.gridText, '', null);
-    }
-    for (let i = v.slots; i < v.built.length; i++) {
-        const b = v.built[i];
-        row(`${b.name} (over the slot count)`, b.working ? 'Working' : 'Idle', COLORS.gridText, b.effect, null);
+            row(`${label}: ${rq.name}`, rq.commissioned ? 'Commissioned' : 'Requested', COLORS.gridText, rq.commissioned ? 'Waiting for the treasury to afford its share' : 'Waiting for the private sector to afford it', cancel);
+        }
+    };
+    for (let i = 0; i < v.slots; i++) showEntry(`Slot ${i + 1}`, normal[i]);
+    if (v.refinerySlot) showEntry('Refinery slot', refEntry);
+    for (let i = v.slots; i < normal.length; i++) {
+        const x = normal[i];
+        if (x.kind === 'built') row(`${x.b.name} (over the slot count)`, x.b.working ? 'Working' : 'Idle', COLORS.gridText, x.b.effect, null);
     }
     if (cur === Designation.None) list.appendChild(place(text('Designate the colony to build private facilities.', { size: FONT.small, color: COLORS.gridText }), 2, 4 + 24 * v.slots + 6));
     else {
@@ -174,7 +185,22 @@ export function renderEconomyTab(page: HTMLElement, galaxy: Galaxy, empire: Empi
                 disabled: !owned || o.refusal !== null,
                 onClick: () => issuePlayerCommand(galaxy, empire, 'econRequestFacility', [h, o.id], () => rerender()),
             });
-            row(o.name, formatThousandsK(o.price), COLORS.gridText, `${o.effect}\nPrice ${formatThousandsK(o.price)}, ${o.buildDays} days, upkeep ${formatThousandsK(o.upkeep)} a year${o.refusal !== null ? `\n${o.refusal}` : ''}`, req);
+            const tip = `${o.effect}\nPrice ${formatThousandsK(o.price)}, ${o.buildDays} days, upkeep ${formatThousandsK(o.upkeep)} a year${o.refusal !== null ? `\n${o.refusal}` : ''}`;
+            row(o.name, formatThousandsK(o.price), COLORS.gridText, tip, req);
+            if (o.refinery) {
+                // Phase 4: "Fund from treasury" — the state commissions the refinery (journaled; it stays private-owned).
+                const fund = glassButton('Fund', {
+                    disabled: !owned || o.refusal !== null,
+                    onClick: () => issuePlayerCommand(galaxy, empire, 'econRequestFacility', [h, o.id, true], () => rerender()),
+                });
+                fund.title = `Fund from treasury: the state pays ${formatThousandsK(o.stateShare)} now (the private sector the rest); the refinery stays private-owned and earns private money.`;
+                const last = list.lastElementChild as HTMLElement | null;
+                if (last !== null) {
+                    const btn = last.querySelector('button');
+                    if (btn !== null) place(btn as HTMLButtonElement, 196, 1, 62, 21);
+                    last.appendChild(place(fund, 262, 1, 72, 21));
+                }
+            }
         }
     }
     right.appendChild(place(text(`Private surplus: ${formatThousandsK(v.surplus)}`, { size: FONT.small }), 8, 234));
@@ -197,9 +223,9 @@ export function openTreasuryWindow(galaxy: Galaxy, empire: Empire): void {
     let timer = 0;
     const win = openOriginalWindow({
         id: 'econTreasury',
-        title: `Treasury: Bonds & Private Sector — ${empire.name}`,
+        title: `Treasury: Bonds, Private Sector & Supply — ${empire.name}`,
         width: 640,
-        height: 430,
+        height: refinementActive(galaxy) ? 640 : 430,
         onClose: () => {
             window.clearInterval(timer);
             treasury = null;
@@ -264,6 +290,28 @@ export function openTreasuryWindow(galaxy: Galaxy, empire: Empire): void {
         const auto = checkBox('Sell bonds automatically when the treasury runs low', v.autoBonds, (on) => issuePlayerCommand(galaxy, empire, 'econSetAutoBonds', [on], () => render()), FONT.small);
         body.appendChild(place(auto, 300, 354));
         body.appendChild(place(text('The state borrows from its own private sector; instalments (principal + interest) are paid monthly from the treasury back to private money. Investment Banks lower the rate.', { size: FONT.small, color: COLORS.gridText, wrapWidth: 620 }), 10, 384));
+        // Phase 4: refined goods — each good's status, and which goods each shipyard's queued builds lack.
+        if (refinementActive(galaxy)) {
+            const sp = scrollPanel('econ-supply');
+            body.appendChild(place(sp, 10, 420, 620, 180));
+            sp.appendChild(el('div', 'col-att-line col-att-header', 'Refined goods (needed from tech level; your refineries)'));
+            for (const g of empireGoodsStatus(galaxy, empire)) {
+                const tier = g.key === 'precision' ? 7 : 3;
+                const needed = g.now >= tier ? 'needed now' : g.next >= tier ? 'needed soon' : 'not needed yet';
+                const d = el('div', 'col-att-line', `${g.name}: ${needed}; ${g.refineries} working refiner${g.refineries === 1 ? 'y' : 'ies'}`);
+                d.style.color = g.now >= tier && g.refineries === 0 ? COLORS.red : g.next >= tier && g.refineries === 0 ? '#e8c040' : COLORS.gridText;
+                sp.appendChild(d);
+            }
+            sp.appendChild(el('div', 'col-att-line col-att-header', 'Shipyards: goods their queued builds lack'));
+            const yards = yardSupplyView(galaxy, empire);
+            if (yards.length === 0) sp.appendChild(el('div', 'col-att-line col-att-note', 'No shipyards.'));
+            for (const y of yards) {
+                const lack = y.lacking.length === 0 ? 'supplied' : y.lacking.map((l) => `${l.name} ${l.held}/${l.need}`).join(', ');
+                const d = el('div', 'col-att-line', `${y.yard}${y.colony !== '' && y.colony !== y.yard ? ` (${y.colony})` : ''}: ${y.builds} build${y.builds === 1 ? '' : 's'}${y.waiting > 0 ? `, ${y.waiting} waiting for goods` : ''} — ${lack}`);
+                d.style.color = y.waiting > 0 ? COLORS.red : y.lacking.length > 0 ? '#e8c040' : COLORS.green;
+                sp.appendChild(d);
+            }
+        }
     };
     render();
     timer = window.setInterval(render, 2000);

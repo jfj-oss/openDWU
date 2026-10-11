@@ -13,6 +13,7 @@
 // No Rnd.
 
 import type { Galaxy } from '../../galaxy';
+import { detPow } from '../../detMath';
 import type { Empire } from '../../empire';
 import type { Habitat } from '../../types';
 import { galaxyStarDate } from '../../tick/simTime';
@@ -81,7 +82,7 @@ export function instalment(b: Bond): number {
     const n = Math.max(1, Math.round((b.maturity - b.issued) / (BOND_RULES.PERIOD_DAYS * DAY)));
     const i = (b.rate * BOND_RULES.PERIOD_DAYS) / 360;
     if (i <= 0) return b.principal / n;
-    return (b.principal * i) / (1 - Math.pow(1 + i, -n));
+    return (b.principal * i) / (1 - detPow(1 + i, -n));
 }
 
 /** Yearly debt service of every bond. */
@@ -130,7 +131,7 @@ export function bondQuote(galaxy: Galaxy, e: Empire): BondQuote {
 function annuityPerYear(rate: number, years: number): number {
     const n = Math.max(1, Math.round((years * 360) / BOND_RULES.PERIOD_DAYS));
     const i = (rate * BOND_RULES.PERIOD_DAYS) / 360;
-    const per = i <= 0 ? 1 / n : i / (1 - Math.pow(1 + i, -n));
+    const per = i <= 0 ? 1 / n : i / (1 - detPow(1 + i, -n));
     return per * (360 / BOND_RULES.PERIOD_DAYS);
 }
 

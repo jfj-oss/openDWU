@@ -25,6 +25,14 @@
 
 import { cvColonySlot } from '../scenario/charactersVictoryUi'; // [charactersVictory]
 import { econVisible, renderEconomyTab } from '../scenario/colonyEconomyUi'; // [colonyEconomy]
+import { econDesignationIconUrl } from '../scenario/colonyEconomyInfo'; // [colonyEconomy]
+import { DESIGNATIONS, DESIGNATION_NAMES, Designation, designationOf } from '../../sim/scenario/colonyEconomy/common'; // [colonyEconomy]
+
+/** [colonyEconomy] Designation column sort key: designated colonies by name, the undesignated last. */
+function econDesignationSortKey(galaxy: Galaxy, h: Habitat): string {
+    const d = designationOf(galaxy, h);
+    return d === Designation.None ? '~' : DESIGNATION_NAMES[d];
+}
 import './coloniesScreen.css';
 import type { Empire } from '../../sim/empire';
 import type { Galaxy } from '../../sim/galaxy';
@@ -881,6 +889,29 @@ function createColoniesScreen(opts: ColoniesScreenOptions): OpenState {
                 c.title = governor !== null ? `${r.name}\nGovernor ${governor}` : r.name;
             },
         },
+        // [colonyEconomy] the designation (badge + name), sortable; filtered by the drop-down above the grid.
+        ...(econVisible(galaxy)
+            ? [
+                  {
+                      id: 'designation',
+                      header: 'Designation',
+                      fill: 70,
+                      sort: (r: ColonyGridRow) => econDesignationSortKey(galaxy, r.habitat),
+                      render: (r: ColonyGridRow, c: HTMLDivElement) => {
+                          const d = designationOf(galaxy, r.habitat);
+                          if (d !== Designation.None) {
+                              const b = img(econDesignationIconUrl(d), 'col-facility', DESIGNATION_NAMES[d]);
+                              b.style.width = '14px';
+                              b.style.height = '14px';
+                              b.style.marginRight = '3px';
+                              c.appendChild(b);
+                          }
+                          c.append(el('span', 'col-ellipsis', d === Designation.None ? '' : DESIGNATION_NAMES[d]));
+                          c.title = d === Designation.None ? 'No designation' : DESIGNATION_NAMES[d];
+                      },
+                  } satisfies GridColumn<ColonyGridRow>,
+              ]
+            : []),
         { id: 'type', header: T('Type', 'Type'), fill: 109, sort: (r) => r.type, render: (r, c) => cellText(c, r.type) },
         { id: 'system', header: T('System', 'System'), fill: 80, sort: (r) => r.system, render: (r, c) => cellText(c, r.system) },
         {
@@ -923,6 +954,16 @@ function createColoniesScreen(opts: ColoniesScreenOptions): OpenState {
     });
     grid.el.classList.add('col-grid');
     body.appendChild(place(grid.el, L.grid.x, L.grid.y, L.grid.w, L.grid.h));
+
+    // [colonyEconomy] the Designation filter (top row).
+    let desigFilter = 'all';
+    if (econVisible(galaxy)) {
+        const dd = dropDown([{ value: 'all', label: 'All designations' }, ...[Designation.None, ...DESIGNATIONS].map((d) => ({ value: String(d), label: d === Designation.None ? 'No designation' : DESIGNATION_NAMES[d] }))], 'all', (v) => {
+            desigFilter = v;
+            refreshGrid();
+        });
+        body.appendChild(place(dd, 250, 6, 170, 21));
+    }
 
     // --- Galaxy map (gmapColony) --------------------------------------------------------------------------------------
     dropText(body, T('Location of selected Colony in Galaxy', 'Location of selected Colony in Galaxy'), L.mapTitle.x, L.mapTitle.y, { color: COLORS.gridText });
@@ -1076,7 +1117,7 @@ function createColoniesScreen(opts: ColoniesScreenOptions): OpenState {
 
     // --- Refresh ------------------------------------------------------------------------------------------------------
     function refreshGrid(): void {
-        const rows = empire.colonies.map((h) => colonyGridRow(galaxy, h));
+        const rows = empire.colonies.filter((h) => desigFilter === 'all' || String(designationOf(galaxy, h)) === desigFilter).map((h) => colonyGridRow(galaxy, h));
         grid.setRows(rows);
         if (selected !== null && !empire.colonies.includes(selected)) selected = empire.colonies[0] ?? null;
         if (selected !== null) grid.select(selected, false);

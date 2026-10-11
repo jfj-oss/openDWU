@@ -13,6 +13,10 @@
 //     (builtObjectKilledBy).
 //   - With the Privateers add-on on, each office adds 2 to the privateer count cap (privateers.ts privateerHooks).
 //   - Extras retire (scrap mission) when the office closes or private money runs short.
+// Phase 4: Militia Yard ships (new). Each working Militia Yard has the private sector keep 2 local defence ships (at
+// most 6 an empire) of the same design, built and kept up the same way, paid from private money. They attack pirate
+// ships within 1 sector of a Militia Yard colony and otherwise patrol it; they retire when the yard closes or private
+// money runs out.
 // No Rnd: picks by distance with id tie-breaks; names are counters.
 
 import type { Galaxy } from '../../galaxy';
@@ -44,7 +48,38 @@ export const BOUNTY_RULES = {
     reviewDays: 30,
     designReviewDays: 360,
     privateerBoost: 2,
+    militiaPerYard: 2,
+    militiaMax: 6,
+    militiaRange: 2_000_000,
 };
+
+type Squad = 'hunter' | 'militia';
+
+/** Working Militia Yards of `e`. Pure. */
+export function militiaYards(galaxy: Galaxy, e: Empire): Habitat[] {
+    const out: Habitat[] = [];
+    for (const h of e.colonies) for (const f of activeFacilities(galaxy, h)) if (f.id === 'militiaYard') out.push(h);
+    return out;
+}
+
+/** The militia ship count the private sector keeps (0 without a yard or with private money below 0). Pure. */
+export function militiaCap(galaxy: Galaxy, e: Empire): number {
+    if (e.privateMoney < 0) return 0;
+    return Math.min(BOUNTY_RULES.militiaMax, BOUNTY_RULES.militiaPerYard * militiaYards(galaxy, e).length);
+}
+
+/** The empire's live militia ships (built or building). */
+export function empireMilitia(galaxy: Galaxy, e: Empire): BuiltObject[] {
+    const r = peekEmpire(galaxy, e);
+    if (r === null || (r.militia ?? []).length === 0) return [];
+    return r.militia!.filter((b) => !b.hasBeenDestroyed && b.empire === e);
+}
+
+export function isMilitia(galaxy: Galaxy, bo: BuiltObject): boolean {
+    if (bo.empire === null || bo.owner !== null) return false;
+    const r = peekEmpire(galaxy, bo.empire);
+    return r !== null && (r.militia ?? []).includes(bo);
+}
 
 /** Working Bounty Offices of `e`. Pure. */
 export function bountyOffices(galaxy: Galaxy, e: Empire): Habitat[] {
@@ -87,19 +122,20 @@ function hunterDesign(galaxy: Galaxy, e: Empire): Design | null {
     return r.hunterDesign ?? null;
 }
 
-function buildHunter(galaxy: Galaxy, e: Empire, design: Design): boolean {
+function buildHunter(galaxy: Galaxy, e: Empire, design: Design, kind: Squad = 'hunter'): boolean {
     const r = empireRecord(galaxy, e);
     const price = design.calculateCurrentPurchasePrice(galaxy);
     if (price > e.privateMoney * 0.5) return false;
-    const serial = (r.hunterSerial ?? 0) + 1;
-    const bo = new BuiltObject(design, `${design.name} ${serial}`, galaxy);
+    const serial = (kind === 'hunter' ? (r.hunterSerial ?? 0) : (r.militiaSerial ?? 0)) + 1;
+    const bo = new BuiltObject(design, kind === 'hunter' ? `${design.name} ${serial}` : `${design.name.replace(/^Bounty Hunter/, 'Militia')} ${serial}`, galaxy);
     bo.purchasePrice = price;
     const found = findShortestConstructionWaitQueue(galaxy, e.spacePorts, bo);
     const yard = found.yard;
     if (yard === null || found.shortestWaitQueueTime / REAL_SECONDS_IN_GALACTIC_YEAR >= MAXIMUM_CONSTRUCTION_QUEUE_WAIT_TIME_YEARS) return false;
     const queue = yard.constructionQueue as ConstructionQueue | null;
     if (queue === null || !queue.addBuiltObjectToConstruct(bo)) return false;
-    r.hunterSerial = serial;
+    if (kind === 'hunter') r.hunterSerial = serial;
+    else r.militiaSerial = serial;
     design.buildCount++;
     bo.suppressAutoRetrofit = true;
     e.addBuiltObjectToGalaxy(bo, yard, false, false);
@@ -108,8 +144,13 @@ function buildHunter(galaxy: Galaxy, e: Empire, design: Design): boolean {
     const cargo = procureConstructionComponentsAtBuiltObject(galaxy, e, bo, yard, true);
     for (const item of cargo.items) empireCreateOrder(galaxy, e, yard, item.commodity, item.amount, false, OrderType.ConstructionShortage);
     performPrivateTransaction(e, -price);
-    (r.hunters ??= []).push(bo);
-    r.huntersBuilt = (r.huntersBuilt ?? 0) + 1;
+    if (kind === 'hunter') {
+        (r.hunters ??= []).push(bo);
+        r.huntersBuilt = (r.huntersBuilt ?? 0) + 1;
+    } else {
+        (r.militia ??= []).push(bo);
+        r.militiaBuilt = (r.militiaBuilt ?? 0) + 1;
+    }
     r.facilitySpend += price;
     return true;
 }
@@ -123,11 +164,11 @@ function isPirateShip(galaxy: Galaxy, bo: BuiltObject): boolean {
 }
 
 /** The hunter's task now: the nearest pirate ship within range of an office, else patrol the nearest office. */
-function chooseOrder(galaxy: Galaxy, e: Empire, ship: BuiltObject, offices: readonly Habitat[]): { type: BuiltObjectMissionType; target: BuiltObject | Habitat } | null {
+function chooseOrder(galaxy: Galaxy, e: Empire, ship: BuiltObject, offices: readonly Habitat[], range = BOUNTY_RULES.range): { type: BuiltObjectMissionType; target: BuiltObject | Habitat } | null {
     if (offices.length === 0) return null;
     let best: BuiltObject | null = null;
     let bd = Infinity;
-    const r2 = BOUNTY_RULES.range * BOUNTY_RULES.range;
+    const r2 = range * range;
     for (const p of galaxy.pirateEmpires) {
         if (p === null || !p.active) continue;
         for (const bo of p.builtObjects as BuiltObject[]) {
@@ -188,12 +229,38 @@ function reviewEmpire(galaxy: Galaxy, e: Empire): void {
     }
 }
 
+/** Phase 4: one empire's militia review (as the hunters'; home = the Militia Yard colonies, 1 sector). */
+function reviewMilitia(galaxy: Galaxy, e: Empire): void {
+    const r = peekEmpire(galaxy, e);
+    const ships = empireMilitia(galaxy, e);
+    if (r !== null && r.militia !== undefined) r.militia = ships;
+    const yards = militiaYards(galaxy, e);
+    const cap = militiaCap(galaxy, e);
+    const active = ships.filter((b) => !b.retireForNextMission);
+    if (active.length > cap) {
+        const o = active[active.length - 1];
+        o.retireForNextMission = true;
+        if (o.builtAt === null && assignScrapMission(galaxy, e, o)) o.retireForNextMission = false;
+        return;
+    }
+    if (active.length < cap) {
+        const d = hunterDesign(galaxy, e);
+        if (d !== null) buildHunter(galaxy, e, d, 'militia');
+    }
+    for (const ship of active) {
+        if (ship.builtAt !== null || ship.topSpeed <= 0) continue;
+        const m = builtObjectMission(ship.mission);
+        if (m !== null && m.priority > BuiltObjectMissionPriority.Normal && m.type === BuiltObjectMissionType.Attack && m.target instanceof BuiltObject && !m.target.hasBeenDestroyed) continue;
+        applyOrder(galaxy, ship, chooseOrder(galaxy, e, ship, yards, BOUNTY_RULES.militiaRange));
+    }
+}
+
 function review(galaxy: Galaxy): void {
     for (const e of galaxy.empires) {
         if (!hasPrivateSector(galaxy, e)) continue;
         const r = peekEmpire(galaxy, e);
-        if (bountyOffices(galaxy, e).length === 0 && (r?.hunters ?? []).length === 0) continue;
-        reviewEmpire(galaxy, e);
+        if (bountyOffices(galaxy, e).length > 0 || (r?.hunters ?? []).length > 0) reviewEmpire(galaxy, e);
+        if (militiaYards(galaxy, e).length > 0 || (r?.militia ?? []).length > 0) reviewMilitia(galaxy, e);
     }
 }
 
@@ -204,9 +271,14 @@ registerScenarioEvent({
     flag: ECON_FLAG,
     event: 'privateShipMission',
     run: (galaxy, p) => {
-        if (!econOn(galaxy, ECON_FAC_FLAG) || !isHunter(galaxy, p.ship)) return;
-        p.handled = true;
-        applyOrder(galaxy, p.ship, chooseOrder(galaxy, p.empire, p.ship, bountyOffices(galaxy, p.empire)));
+        if (!econOn(galaxy, ECON_FAC_FLAG)) return;
+        if (isHunter(galaxy, p.ship)) {
+            p.handled = true;
+            applyOrder(galaxy, p.ship, chooseOrder(galaxy, p.empire, p.ship, bountyOffices(galaxy, p.empire)));
+        } else if (isMilitia(galaxy, p.ship)) {
+            p.handled = true;
+            applyOrder(galaxy, p.ship, chooseOrder(galaxy, p.empire, p.ship, militiaYards(galaxy, p.empire), BOUNTY_RULES.militiaRange));
+        }
     },
 });
 

@@ -401,6 +401,11 @@ export class ConstructionQueue {
                     break;
             }
         }
+        // [scenario] Colony Economy refined goods: a factor on this build's progress (0 = it waits for its goods); no-op without a handler.
+        if (galaxy.scenario !== null && !shipUnderConstruction.scrap && shipUnderConstruction.retrofitDesign === null) {
+            const k = scenarioQuery(galaxy, 'buildGoodsFactor', 1, { ship: shipUnderConstruction, yard: this._parentBuiltObject, habitat: this._parentHabitat });
+            if (k !== 1) num *= k;
+        }
         // 365-381: build-speed research bonus (a yard building an unowned object with unresearched tech).
         if (constructionYard.buildSpeedModifier > 1.0 && constructionYard.shipUnderConstruction !== null && !constructionYard.shipUnderConstruction.scrap && this.empire !== null && this.empire.research != null) {
             const researchNode = selectRandomNextResearchProjectExcludeSuperWeapons(galaxy, this.empire);
@@ -1001,7 +1006,7 @@ export class ConstructionQueue {
         if (actualEmpire !== null && actualEmpire.builtObjects !== null && actualEmpire.builtObjects.includes(ship)) {
             sendMessageToEmpire(actualEmpire, actualEmpire, EmpireMessageType.ShipBaseCompleted, ship, empty2);
         }
-        if (galaxy.scenario !== null) scenarioEmit(galaxy, 'builtObjectBuilt', { builtObject: ship, empire: actualEmpire, yard: this._parentBuiltObject }); // mod layer
+        if (galaxy.scenario !== null) scenarioEmit(galaxy, 'builtObjectBuilt', { builtObject: ship, empire: actualEmpire, yard: this._parentBuiltObject, habitat: this._parentHabitat }); // mod layer
         this.processWaitQueue();
         void num14;
     }

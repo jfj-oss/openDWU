@@ -30,7 +30,7 @@ import { galaxyStarDate } from '../../tick/simTime';
 import { registerScenarioPeriodic, registerScenarioQuery, registerScenarioYearly } from '../hooks';
 import { registerStabilityTerm } from '../stability';
 import { applyReputation } from '../reputation/ledger';
-import { GOODS, refinementActive, yardGoodsFactor } from './refinement';
+import { GOODS, earlyPriceFactor, goodNotYetNeeded, refinementActive } from './refinement';
 import { wreckFields, wrecksAt, takeWrecks } from '../wreckage/common';
 import { BuiltObjectSubRole } from '../../builtObjectTypes';
 import { Cargo, ResourceRef } from '../../cargo';
@@ -55,6 +55,7 @@ import {
     facilityDef,
     isEconEmpire,
     peekEconState,
+    peekEmpire,
     type EconFacility,
     type FacilityId,
 } from './common';
@@ -118,6 +119,8 @@ export const ECON_EFFECTS = {
     surveyAbundance: 60,
     surveyYears: 2,
     refineryIncomePct: 5,
+    /** Phase 4: a refinery whose good nothing needs yet sells ahead (+5 % income). */
+    earlyRefineryIncomePct: 5,
     refineryMiningPct: 5,
     medicalGrowthPct: 15,
     medicalApproval: 1,
@@ -128,6 +131,8 @@ export const ECON_EFFECTS = {
     securityTroopPct: 25,
     securityPirateFactor: 0.6,
     militiaConstructionPct: 40,
+    /** Phase 4: a raid within this many years makes a Bounty Office wanted. */
+    bountyRaidYears: 5,
     militiaRaidRate: 0.7,
     militiaRaidRange: 1.5 * SECTOR,
     outpostRange: SECTOR,
@@ -426,6 +431,11 @@ export function colonyBonuses(galaxy: Galaxy, h: Habitat): EconBonus[] {
             case 'spaceportCasino': add(ColonyResourceEffect.IncomeBoost, X.casinoIncomePct * k, label); break;
             case 'gasRefinery': add(ColonyResourceEffect.IncomeBoost, X.gasRefineryIncomePct * k, label); break;
             case 'geneticsInstitute': add(ColonyResourceEffect.PopulationGrowthRate, X.geneticsGrowthPct * k, label); break;
+            default: {
+                // Phase 4: a refinery earns +5 % colony income while nothing the empire builds needs its good yet.
+                const gi = GOODS.findIndex((g) => g.facility === f.id);
+                if (gi >= 0 && refinementActive(galaxy) && goodNotYetNeeded(galaxy, e, gi)) add(ColonyResourceEffect.IncomeBoost, X.earlyRefineryIncomePct * k, `${label} (sells ahead)`);
+            }
         }
     }
     // A Colonist Office nearby: new colonies grow faster for their first years.
@@ -769,18 +779,28 @@ export function facilityValue(galaxy: Galaxy, e: Empire, h: Habitat, id: Facilit
         case 'geneticsInstitute': v = 1.4; break;
         case 'senateHall': v = (s?.senates ?? 0) < 2 ? 1.5 : 0.2; break;
         case 'fortressBunker': v = 1.2 + (h.pirateColonyControl.count > 0 ? 0.8 : 0); break;
-        case 'bountyOffice': v = countOwn('bountyOffice') < 1 ? 2.2 : 0.2; break;
+        case 'bountyOffice': {
+            // Phase 4: wanted where pirates have raided or control the system (common.ts raidedAt, kept by facilities.ts).
+            const raided = (peekEconState(galaxy)?.colonies[h.habitatIndex]?.raidedAt ?? -1) >= 0 && galaxyStarDate(galaxy) - (peekEconState(galaxy)?.colonies[h.habitatIndex]?.raidedAt ?? 0) < X.bountyRaidYears * YEAR;
+            v = raided || h.pirateColonyControl.count > 0 ? 4 : countOwn('bountyOffice') < 1 ? 2.2 : 0.2;
+            break;
+        }
         case 'frontierCharter': v = 1.1; break;
         case 'smelter':
         case 'electronicsFab':
         case 'chemicalPlant':
         case 'fuelRefinery':
-        case 'exoticsLab': {
+        case 'exoticsLab':
+        case 'precisionWorks': {
             if (!refinementActive(galaxy)) return 0;
             const yards = e.spacePorts.some((b) => b !== null && !b.hasBeenDestroyed && b.isShipYard);
             const have = countOwn(id);
-            v = yards ? (have === 0 ? 3 : have < 2 ? 1.2 : 0.3) : 0.4;
-            void GOODS;
+            // Phase 4: worth most while the empire's research needs (or is about to need) the good.
+            const gi = GOODS.findIndex((g) => g.facility === id);
+            const r = peekEmpire(galaxy, e);
+            const soon = gi >= 0 && (r?.goodsNext?.[gi] ?? 0) >= (gi === 5 ? 6 : 3);
+            v = yards ? (have === 0 ? (soon ? 4 : 2.5) : have < 2 ? (soon ? 2 : 1.2) : 0.3) : 0.4;
+            if (id === 'precisionWorks' && !soon) v = 0.2;
             break;
         }
     }
@@ -889,10 +909,8 @@ registerScenarioQuery({
     flag: ECON_FLAG,
     query: 'colonyConstructionFactor',
     run: (g, v, a) => {
-        let f = on(g) ? v * constructionFactor(g, a.habitat, a.kind) : v;
-        // Refinement: a yard short of refined goods builds slower, one well supplied faster (refinement.ts).
-        if (a.kind === 'yard' && a.yard !== undefined) f *= yardGoodsFactor(g, a.yard);
-        return f;
+        // Refinement acts per build (refinement.ts buildGoodsFactor), not on the yard's speed.
+        return on(g) ? v * constructionFactor(g, a.habitat, a.kind) : v;
     },
 });
 registerScenarioQuery({
@@ -913,7 +931,7 @@ registerScenarioQuery({ id: 'colonyEconomy.maxPop', flag: ECON_FLAG, query: 'col
 registerScenarioQuery({ id: 'colonyEconomy.pirates', flag: ECON_FLAG, query: 'pirateControlGrowthFactor', run: (g, v, a) => (on(g) ? v * pirateGrowthFactor(g, a.habitat) : v) });
 registerScenarioQuery({ id: 'colonyEconomy.raids', flag: ECON_FLAG, query: 'raidCountdownRate', run: (g, v, a) => (on(g) ? v * raidFactor(g, a.x, a.y) : v) });
 registerScenarioQuery({ id: 'colonyEconomy.repair', flag: ECON_FLAG, query: 'repairRateFactor', run: (g, v, a) => (econOn(g, ECON_FAC_FLAG) ? v * repairFactor(g, a.builtObject) : v) });
-registerScenarioQuery({ id: 'colonyEconomy.price', flag: ECON_FLAG, query: 'designPriceFactor', run: (g, v, a) => (econOn(g, ECON_FAC_FLAG) ? v * priceFactor(g, a.empire) : v) });
+registerScenarioQuery({ id: 'colonyEconomy.price', flag: ECON_FLAG, query: 'designPriceFactor', run: (g, v, a) => (econOn(g, ECON_FAC_FLAG) ? v * priceFactor(g, a.empire) * earlyPriceFactor(g, a.empire) : v) });
 registerScenarioQuery({ id: 'colonyEconomy.outpost', flag: ECON_FLAG, query: 'objectVisibleToAll', run: (g, v, a) => v || (econOn(g, ECON_FAC_FLAG) && outpostSees(g, a.empire, a.object)) });
 registerStabilityTerm({
     id: 'colonyEconomy.approval',
@@ -939,6 +957,37 @@ registerScenarioQuery({ id: 'colonyEconomy.dietVote', flag: ECON_FLAG, query: 'd
 registerScenarioQuery({ id: 'colonyEconomy.drift', flag: ECON_FLAG, query: 'frontierDriftTerms', run: (g, v, a) => (econOn(g, ECON_FAC_FLAG) ? [...v, ...driftTerms(g, a.habitat)] : v) });
 registerScenarioYearly({ id: 'colonyEconomy.planets', flag: ECON_FLAG, run: (g) => econOn(g, ECON_FAC_FLAG) && planetYear(g) });
 registerScenarioPeriodic({ id: 'colonyEconomy.survey', flag: ECON_FLAG, periodDays: 90, run: (g) => econOn(g, ECON_FAC_FLAG) && surveyTick(g) });
+
+/**
+ * Phase 4: Fleet Depot refuelling (new). Every 30 days, own state ships within a depot's range (2 sectors) are topped up
+ * with their fuel; the state pays the depot's private sector the fuel at its base price.
+ */
+function depotRefuel(galaxy: Galaxy): void {
+    if (!sources(galaxy).anyMaint) return;
+    for (const e of galaxy.empires) {
+        if (!isEconEmpire(galaxy, e)) continue;
+        const s = empireSources(galaxy, e);
+        if (s === null || s.depots.length === 0) continue;
+        let paid = 0;
+        for (const bo of e.builtObjects as BuiltObject[]) {
+            if (bo === null || bo.hasBeenDestroyed || bo.owner === null || bo.builtAt !== null || bo.fuelType === null || bo.fuelCapacity <= 0) continue;
+            const room = Math.trunc(bo.fuelCapacity - bo.currentFuel);
+            if (room <= 0) continue;
+            let inRange = false;
+            for (const d of s.depots) if (d.h.empire === e && near(d.h, bo, d.range)) inRange = true;
+            if (!inRange) continue;
+            bo.currentFuel += room;
+            paid += room * (galaxy.resources[bo.fuelType.resourceId]?.basePrice ?? 0);
+        }
+        if (paid > 0) {
+            e.stateMoney -= paid;
+            performPrivateTransaction(e, paid);
+            const r = empireRecord(galaxy, e);
+            r.depotFuel = (r.depotFuel ?? 0) + paid;
+        }
+    }
+}
+registerScenarioPeriodic({ id: 'colonyEconomy.depotFuel', flag: ECON_FLAG, periodDays: 30, run: (g) => econOn(g, ECON_FAC_FLAG) && depotRefuel(g) });
 
 export type { EconFacility };
 export { DAY };

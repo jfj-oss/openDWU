@@ -1669,6 +1669,7 @@ export function directConstruction(galaxy: Galaxy, empire: Empire): void {
             else if (design3 !== null && total > num16) design = design3;
             else if (design2 !== null && total > num17) design = design2;
             if (design === null) continue;
+            if (galaxy.scenario !== null) design = scenarioQuery(galaxy, 'aiBuildDesign', design, { empire }); // Mod layer (Colony Economy goods)
             if (galaxy.scenario !== null && scenarioQuery(galaxy, 'stateBuildSkipped', false, { empire, subRole: design.subRole })) continue; // Mod layer (Smarter AI budget)
             let num18 = design.calculateCurrentPurchasePrice(galaxy);
             let num19 = designCalculateMaintenanceCosts(galaxy, design, empire);
@@ -1855,7 +1856,8 @@ export function directConstruction(galaxy: Galaxy, empire: Empire): void {
                 sendEmpireMessage(empireMessage, empire);
             } else if (empire.controlStateConstruction === AutomationLevel.FullyAutomated) {
                 for (const item3 of forceStructureProjectionList3) {
-                    const design7 = findNewestCanBuild(empire.designs, item3.subRole, empire, null, false);
+                    let design7 = findNewestCanBuild(empire.designs, item3.subRole, empire, null, false);
+                    if (design7 !== null && galaxy.scenario !== null) design7 = scenarioQuery(galaxy, 'aiBuildDesign', design7, { empire }); // Mod layer (Colony Economy goods)
                     if (design7 === null || item3.amount <= 0) continue;
                     if (galaxy.scenario !== null && scenarioQuery(galaxy, 'stateBuildSkipped', false, { empire, subRole: item3.subRole })) continue; // Mod layer (Smarter AI budget)
                     for (let m = 0; m < item3.amount; m++) {

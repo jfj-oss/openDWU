@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
+<!-- openDWU Colony Economy: facility privateShipyard (our own art; scripts/gen-econ-icons.mjs) -->
+<defs><linearGradient id="b" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2b333d"/><stop offset="1" stop-color="#11161c"/></linearGradient></defs>
+<rect x="0.5" y="0.5" width="23" height="23" rx="3" fill="url(#b)" stroke="#e0892c" stroke-width="1"/>
+<path d="M5 14 L9 10 L17 10 L19 13 L17 16 L9 16 Z" fill="#e8edf2" stroke="#e0892c" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/><path d="M9 10 L11 7 L14 7 L15 10" fill="none" stroke="#e0892c" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

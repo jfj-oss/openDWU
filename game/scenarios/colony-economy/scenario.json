@@ -8,7 +8,7 @@
     { "name": "econDesignations", "label": "Colony designations", "description": "Colonies can be designated Industrial, Trade Hub, Resort World, Mining Hub, Core World or Frontier/Garrison, each with bonuses and drawbacks.", "default": true },
     { "name": "econFacilities", "label": "Private facilities", "description": "The private sector builds facilities that fit a colony's designation from its surplus money; the player can request one.", "default": true },
     { "name": "econBonds", "label": "Bonds", "description": "The state borrows from its own private sector when the treasury is low and repays with interest from taxes.", "default": true },
-    { "name": "econRefinement", "label": "Refinement chain", "description": "New games only: refineries turn raw resources into Alloys, Electronics, Polymer Composites, Reactor Fuel Cells and Exotics; freighters haul them to the shipyards, which build faster with them and slower without (never blocked).", "default": true }
+    { "name": "econRefinement", "label": "Refinement chain", "description": "New games only: refineries turn raw resources into Alloys, Electronics, Polymer Composites, Reactor Fuel Cells, Exotics and Precision Components; freighters haul them to the shipyards. Components of tech 3-4 build slower without their goods; from tech 5 a build waits at the yard until its goods arrive.", "default": true }
   ],
   "params": [
     { "name": "econCooldownYears", "label": "Years before a colony's designation can change again", "default": 3, "min": 0, "max": 30 },

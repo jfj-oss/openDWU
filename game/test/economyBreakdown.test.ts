@@ -163,8 +163,8 @@ describe('Colony Economy add-on', async () => {
         expect(off.resources.length).toBe(gameData.resources.length);
         const g = econGame().galaxy;
         const ids = R.goodIds(g)!;
-        expect(ids).toHaveLength(5);
-        expect(g.resources.length).toBe(gameData.resources.length + 5);
+        expect(ids).toHaveLength(6);
+        expect(g.resources.length).toBe(gameData.resources.length + 6);
         const e = g.playerEmpire!;
         const h = e.capital!;
         E.setDesignation(g, e, h, E.Designation.MiningHub);
@@ -178,13 +178,87 @@ describe('Colony Economy add-on', async () => {
         R.refinementTick(g);
         expect(R.heldAt(post, ids[0], e)).toBeGreaterThan(before);
         const yard = e.spacePorts.find((b) => b !== null && b.isShipYard)!;
-        const held = ids.map((id) => R.heldAt(yard, id, e));
         // The yard's own goods (the smelter may sit at this very port): empty it for the baseline.
         yard.cargo!.items = yard.cargo!.items.filter((c) => !ids.includes(c.commodity.resourceId));
-        expect(R.yardGoodsFactor(g, yard), JSON.stringify(held)).toBeCloseTo(0.95, 5);
+        // Phase 4: need by component tech level (0-2 none; 3-4 soft; 5-6 hard ×2 (+1 Electronics for weapons); 7+ hard).
+        const { ComponentCategoryType: CC } = await import('../src/sim/data/policies');
+        const fake = (comps: { techLevel: number; category: number }[], role = 0) => ({ components: comps, role }) as unknown as import('../src/sim/design').Design;
+        expect(R.designNeed(fake([{ techLevel: 2, category: CC.Armor }])).any).toBe(false);
+        const soft = fake([{ techLevel: 3, category: CC.Armor }, { techLevel: 4, category: CC.Armor }]);
+        expect(R.designNeed(soft).soft[0]).toBe(2);
+        expect(R.buildGoodsFactor(g, e, yard, soft)).toBeCloseTo(0.65, 5); // nothing held: (0.3 + 0.4) / 2
+        yard.cargo!.add(new Cargo(new ResourceRef(ids[0]), 1, e));
+        expect(R.buildGoodsFactor(g, e, yard, soft)).toBeCloseTo(0.825, 5); // half supplied: the penalty halves
+        const hard = fake([{ techLevel: 5, category: CC.WeaponBeam }]);
+        expect(R.designNeed(hard).hard[1]).toBe(3); // 2 + 1 Electronics
+        expect(R.buildGoodsFactor(g, e, yard, hard)).toBe(0); // waits
+        yard.cargo!.add(new Cargo(new ResourceRef(ids[1]), 3, e));
+        expect(R.buildGoodsFactor(g, e, yard, hard)).toBe(1);
+        const top = R.designNeed(fake([{ techLevel: 7, category: CC.Reactor }]));
+        expect([top.hard[3], top.hard[4], top.hard[5]]).toEqual([4, 1, 1]);
+        // Bases need half.
+        expect(R.designNeed(fake([{ techLevel: 5, category: CC.Armor }, { techLevel: 5, category: CC.Armor }], 8)).hard[0]).toBe(2);
+        // Early bonus: a design needing nothing builds up to 15 % faster with the common goods in stock.
+        E.empireRecord(g, e).early = true;
         for (let i = 0; i < 4; i++) yard.cargo!.add(new Cargo(new ResourceRef(ids[i]), 60, e));
-        expect(R.yardGoodsFactor(g, yard)).toBeCloseTo(1.2, 5);
+        expect(R.buildGoodsFactor(g, e, yard, fake([]))).toBeCloseTo(1.15, 5);
+        // Refinery slot: a Mining Hub's extra slot takes a refinery beside full normal slots.
+        const rec = E.colonyRecord(g, h);
+        const slots = E.colonySlots(g, h);
+        rec.facilities = [{ id: 'smelter', progress: 1, started: 1, finished: 1, cost: 1, requested: false, unpaidSince: 0 }];
+        for (const id of ['miningConsortium', 'orbitalWarehouse', 'gasRefinery'].slice(0, slots)) rec.facilities.push({ id: id as 'miningConsortium', progress: 1, started: 1, finished: 1, cost: 1, requested: false, unpaidSince: 0 });
+        expect(E.slotsUsed(E.Designation.MiningHub, rec.facilities.map((f) => f.id)).normal).toBe(slots);
+        // Commission: the treasury funds a refinery request.
+        rec.facilities = [];
+        e.stateMoney = 10_000_000;
+        expect(E.requestFacility(g, e, h, 'fuelRefinery', true)).toBe(true);
+        expect(rec.commissioned).toContain('fuelRefinery');
     });
+
+    it('phase 4: the AI falls back to a design it can supply; militia; Mining Hubs diminish; facility tax', async () => {
+        const S = await import('../src/sim/scenario/colonyEconomy/supply');
+        const B = await import('../src/sim/scenario/colonyEconomy/bounty');
+        const { ComponentCategoryType: CC } = await import('../src/sim/data/policies');
+        const game = econGame();
+        const g = game.galaxy;
+        const { canBuildDesign } = await import('../src/sim/designGeneration');
+        const RR = await import('../src/sim/scenario/colonyEconomy/refinement');
+        const e = g.playerEmpire!;
+        const real = e.designs.find((d) => d.role === 1 && !RR.designNeed(d).anyHard && canBuildDesign(e, d, true, null))!;
+        expect(real).toBeDefined();
+        // A newer design of the same sub-role needing hard goods nobody makes: the AI queues the older one instead.
+        const hard = { components: [{ techLevel: 5, category: CC.WeaponBeam, componentId: -1 }], role: 1, subRole: real.subRole, dateCreated: 1e15, isPlanetDestroyer: false } as unknown as import('../src/sim/design').Design;
+        const ids = RR.goodIds(g)!;
+        for (const y of e.spacePorts) if (y !== null && y.cargo !== null) y.cargo.items = y.cargo.items.filter((c) => !ids.includes(c.commodity.resourceId)); // the start-up stockpiles
+        expect(S.canSupply(g, e, hard)).toBe(false);
+        const pick = S.suppliableDesign(g, e, hard);
+        expect(pick).not.toBe(hard);
+        expect(pick.subRole).toBe(real.subRole);
+        expect(S.suppliableDesign(g, e, real)).toBe(real);
+        // Militia Yard: 2 ships per working yard.
+        const h = e.colonies.find((c) => c !== e.capital) ?? e.capital!;
+        E.colonyRecord(g, h).designation = E.Designation.Frontier;
+        E.colonyRecord(g, h).facilities.push({ id: 'militiaYard', progress: 1, started: 1, finished: 1, cost: 1, requested: false, unpaidSince: 0 });
+        e.privateMoney = 1_000_000;
+        expect(B.militiaCap(g, e)).toBe(2);
+        // Each further Mining Hub of the empire scores less for a colony not yet a hub.
+        const p = g.playerEmpire!;
+        const cap = p.capital!;
+        const mh0 = E.designationScores(g, cap).find((x) => x.designation === E.Designation.MiningHub)!.score;
+        const others = p.colonies.filter((c) => c !== cap);
+        if (others.length > 0 && mh0 > 4) {
+            for (const c of others) E.colonyRecord(g, c).designation = E.Designation.MiningHub;
+            expect(E.designationScores(g, cap).find((x) => x.designation === E.Designation.MiningHub)!.score).toBeLessThan(mh0);
+        }
+        // Facility tax: a working facility moves a share of its price a year from private money to the state.
+        const rec = E.colonyRecord(g, cap);
+        rec.designation = E.Designation.CoreWorld;
+        rec.facilities = [{ id: 'university', progress: 1, started: 1, finished: 1, cost: 900_000, requested: false, unpaidSince: 0 }];
+        p.privateMoney = 5_000_000;
+        E.empireRecord(g, p).autoFacilities = false;
+        runGameSeconds(game, 120);
+        expect(E.peekEmpire(g, p)!.facilityTax ?? 0).toBeGreaterThan(0);
+    }, 300000);
 
     it('bonds: limits, money moves between the private sector and the treasury, repayment', () => {
         const g = econGame().galaxy;

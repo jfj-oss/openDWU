@@ -123,7 +123,9 @@ export type FacilityId =
     | 'adminCenter' | 'geneticsInstitute' | 'senateHall'
     | 'fortressBunker' | 'bountyOffice' | 'frontierCharter'
     // Phase 3: the refineries (refinement.ts).
-    | 'smelter' | 'electronicsFab' | 'chemicalPlant' | 'fuelRefinery' | 'exoticsLab';
+    | 'smelter' | 'electronicsFab' | 'chemicalPlant' | 'fuelRefinery' | 'exoticsLab'
+    // Phase 4: the third-step good (refinement.ts).
+    | 'precisionWorks';
 
 export interface EconFacilityDef {
     id: FacilityId;
@@ -182,12 +184,12 @@ export const FACILITY_DEFS: readonly EconFacilityDef[] = [
     F('culturalCenter', 'Cultural Center', D.CoreWorld, 45000, 360, 0.1, '+1 approval at every own colony per center (at most +3).', S.ColonyHappiness),
     // Frontier / Garrison
     F('privateSecurity', 'Private Security Firm', D.Frontier, 35000, 240, 0.1, '+25% recruited troop strength; pirate control grows 40% slower here.', S.TroopRecruitment),
-    F('militiaYard', 'Militia Yard', D.Frontier, 30000, 240, 0.1, '+40% construction speed of facilities and colony-built bases here; pirate raids come 30% slower nearby.', S.MilitaryShipConstructionSpeed),
+    F('militiaYard', 'Militia Yard', D.Frontier, 30000, 240, 0.1, '+40% construction speed of facilities and colony-built bases here; pirate raids come 30% slower nearby; the private sector keeps 2 militia ships here (at most 6 an empire) that fight pirates within 1 sector.', S.MilitaryShipConstructionSpeed),
     F('surveyOutpost', 'Survey Outpost', D.Frontier, 30000, 240, 0.08, 'Every ship and base within 1 sector of the colony is visible to its owner (early warning).'),
     F('colonistOffice', 'Colonist Office', D.Frontier, 35000, 300, 0.1, 'New own colonies within 2 sectors grow 40% faster for their first 5 years.', S.ColonyShipConstructionSpeed),
     // --- Phase 2 ---
     F('roboticsPlant', 'Robotics Plant', D.Industrial, 45000, 300, 0.1, 'Troop upkeep 4% lower empire-wide per plant (at most 12%); +10% recruited troop strength here.', S.TroopRecruitment),
-    F('fleetDepot', 'Fleet Depot', D.Industrial, 45000, 300, 0.1, 'Own state ships and bases within 2 sectors cost 15% less upkeep.', S.MilitaryShipConstructionSpeed),
+    F('fleetDepot', 'Fleet Depot', D.Industrial, 45000, 300, 0.1, 'Own state ships and bases within 2 sectors cost 15% less upkeep; ships within 2 sectors are refuelled every month (the state pays the fuel at its base price).', S.MilitaryShipConstructionSpeed),
     F('salvageYard', 'Salvage Yard', D.Industrial, 35000, 240, 0.1, 'Each year salvages up to 4 wrecks within 2 sectors (Wreckage add-on): a quarter of their resources to the colony, a tenth of their value to the private sector; +4% colony income otherwise.', S.RepairBonus),
     F('commoditiesMarket', 'Commodities Market', D.TradeHub, 40000, 300, 0.1, '+5% colony income; own colonies within 2 sectors lose 30% less approval to resource shortages.', S.TradeIncome),
     F('merchantGuild', 'Merchant Guild Hall', D.TradeHub, 45000, 360, 0.1, 'The private sector wants 10% more freighters per hall (at most 30%).', S.TradeIncome),
@@ -209,7 +211,9 @@ export const FACILITY_DEFS: readonly EconFacilityDef[] = [
     F('electronicsFab', 'Electronics Fab', D.CoreWorld, 50000, 360, 0.1, 'Refines Silicon, Chromium, Aculon and Gold into Electronics (weapons, shields, sensors, computers).', S.ResearchHighTech),
     F('chemicalPlant', 'Chemical Plant', D.MiningHub, 40000, 300, 0.1, 'Refines Polymer, Helium, Argon and Krypton into Polymer Composites (habitation, storage, fighters).', S.FacilityConstructionSpeed),
     F('fuelRefinery', 'Fuel Refinery', D.MiningHub, 40000, 300, 0.1, 'Refines Caslon, Hydrogen and Tyderios into Reactor Fuel Cells (reactors, hyperdrives).', S.MiningRate),
-    F('exoticsLab', 'Exotic Materials Lab', D.CoreWorld, 60000, 420, 0.12, 'Refines Emeros Crystal, Nekros Stone, Osalia and Dilithium Crystal into Exotics (super weapons; any Exotics at a yard speeds it).', S.ResearchWeapons),
+    F('exoticsLab', 'Exotic Materials Lab', D.CoreWorld, 60000, 420, 0.12, 'Refines Emeros Crystal, Nekros Stone, Osalia and Dilithium Crystal into Exotics (super weapons; top tech-7 reactors, hyperdrives and weapons).', S.ResearchWeapons),
+    // --- Phase 4: the third step ---
+    F('precisionWorks', 'Precision Works', D.CoreWorld, 70000, 420, 0.12, 'Makes Precision Components from Electronics and Exotics (every tech-7+ component needs them).', S.ResearchHighTech),
 ];
 
 /** Facilities that never stand at the same colony (the user's pairs). */
@@ -273,6 +277,10 @@ export interface EconColony {
     requests: FacilityId[];
     /** Star date the colony was founded by its current owner (Colonist Office's new-colony window), -1 unknown. */
     foundedAt: number;
+    /** Phase 4: requests the treasury funds (commissioned refineries; a subset of `requests`). */
+    commissioned?: FacilityId[];
+    /** Phase 4: star date pirates last raided or controlled the colony (Bounty Office AI). */
+    raidedAt?: number;
 }
 
 export interface Bond {
@@ -325,10 +333,50 @@ export interface EconEmpire {
     goodsUsed?: Record<string, number>;
     buildsTotal?: number;
     buildsShort?: number;
+    /** Phase 4 (refinement.ts, every 30 days): per good (GOODS order), the highest tech level of the empire's researched
+     *  components that need it (goodsNow) and of those its next research projects unlock (goodsNext). */
+    goodsNow?: number[];
+    goodsNext?: number[];
+    /** Phase 4: no researched component needs any good yet (the early bonus), and a yard holds refined goods. */
+    early?: boolean;
+    earlySupplied?: boolean;
+    /** Phase 4: builds waiting at a yard for goods (builtObjectID → star date the wait began), completed builds that
+     *  waited, and the AI builds going on at the relief speed (refinement.ts). */
+    waitStart?: Record<number, number>;
+    buildsWaited?: number;
+    reliefIds?: number[];
+    reliefBuilds?: number;
+    /** Phase 4: designs the AI swapped for a suppliable older one. */
+    designFallbacks?: number;
+    /** Phase 4: the facility tax paid to the state; the treasury's share of commissioned refineries. */
+    facilityTax?: number;
+    commissionSpend?: number;
+    commissions?: number;
+    /** Phase 4: goods the player was warned about (keys). */
+    alerted?: string[];
+    /** Phase 4: Militia Yard ships (bounty.ts), and Fleet Depot refuelling (effects.ts). */
+    militia?: BuiltObject[];
+    militiaSerial?: number;
+    militiaBuilt?: number;
+    depotFuel?: number;
 }
 
 /** The phase-3 refineries (built only in a game with the refined goods). */
-export const REFINERY_FACILITIES: ReadonlySet<FacilityId> = new Set<FacilityId>(['smelter', 'electronicsFab', 'chemicalPlant', 'fuelRefinery', 'exoticsLab']);
+export const REFINERY_FACILITIES: ReadonlySet<FacilityId> = new Set<FacilityId>(['smelter', 'electronicsFab', 'chemicalPlant', 'fuelRefinery', 'exoticsLab', 'precisionWorks']);
+
+/**
+ * Phase 4: a Mining Hub or Core World has one extra slot only a refinery may use. The slots the other facilities use:
+ * every facility, less one refinery at such a colony. Pure.
+ */
+export function refinerySlotDesignation(d: Designation): boolean {
+    return d === Designation.MiningHub || d === Designation.CoreWorld;
+}
+export function slotsUsed(d: Designation, ids: readonly FacilityId[]): { normal: number; refineries: number } {
+    let ref = 0;
+    for (const id of ids) if (REFINERY_FACILITIES.has(id)) ref++;
+    const extra = refinerySlotDesignation(d) && ref > 0 ? 1 : 0;
+    return { normal: ids.length - extra, refineries: ref };
+}
 
 export interface EconState {
     colonies: Record<string, EconColony>;

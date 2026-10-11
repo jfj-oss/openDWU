@@ -7,6 +7,7 @@ import type { Empire } from '../../empire';
 import type { Habitat } from '../../types';
 import { resourceGroupOf, ResourceGroup } from '../../resourceSystem';
 import { galaxyStarDate } from '../../tick/simTime';
+import { detPow } from '../../detMath';
 import {
     DAY,
     DESIGNATIONS,
@@ -88,6 +89,20 @@ export function designationScores(galaxy: Galaxy, h: Habitat): DesignationScore[
             }
         }
     }
+    // Phase 4 balance inputs: the empire's other Mining Hubs, foreign colonies within 3 sectors (a border), pirate
+    // raids, and ruins in the system.
+    let otherHubs = 0;
+    let border = 0;
+    if (e !== null) {
+        for (const c of e.colonies) if (c !== h && peekColony(galaxy, c)?.designation === Designation.MiningHub) otherHubs++;
+        for (const o of galaxy.empires) {
+            if (o === e || !o.active || o.colonies.length === 0 || o === galaxy.independentEmpire) continue;
+            if (o.colonies.some((c) => dist(c, h) < 3 * SECTOR)) border++;
+        }
+    }
+    const rec = peekColony(galaxy, h);
+    const raided = h.pirateColonyControl.count > 0 || (rec?.raidedAt !== undefined && galaxyStarDate(galaxy) - rec.raidedAt < 5 * YEAR);
+    const ruins = galaxy.systemHabitatsOf(h.systemIndex).some((o) => o.ruin !== null);
     const isCapital = e !== null && e.capital === h;
     const dCap = e !== null && e.capital !== null && !isCapital ? dist(e.capital, h) : 0;
     const width = Math.max(1, galaxy.sizeX);
@@ -120,22 +135,30 @@ export function designationScores(galaxy: Galaxy, h: Habitat): DesignationScore[
         [50 * cl(scenic / 1.5), 'scenic'],
         [20 * cl(quality), 'high quality'],
         [12 * cl(luxuries / 2), 'luxury resources'],
+        [scenic >= 1 && quality >= 0.6 ? 12 : 0, 'a scenic, high-quality world'],
     ]);
     // The bonus works on mining stations: without any nearby, rich deposits count for half.
+    // Each further Mining Hub of the empire scores 25 % less (phase 4: the soaks had too many); a colony already a hub
+    // keeps its full score, so the hubs that stand are not talked out of it by the ones designated after them.
+    const hubFactor = rec?.designation === Designation.MiningHub ? 1 : detPow(0.75, Math.min(8, otherHubs));
     add(Designation.MiningHub, [
-        [35 * cl(stationsNear / 4), 'mining stations nearby'],
-        [(stationsNear > 0 ? 25 : 12) * cl(systemDeposits / 10000), 'rich deposits in the system'],
-        [10 * cl(minerals / 1500), 'minerals on the planet'],
+        [35 * cl(stationsNear / 4) * hubFactor, 'mining stations nearby'],
+        [(stationsNear > 0 ? 25 : 12) * cl(systemDeposits / 10000) * hubFactor, 'rich deposits in the system'],
+        [10 * cl(minerals / 1500) * hubFactor, 'minerals on the planet'],
         [-10 * cl(quality), ''],
     ]);
     add(Designation.CoreWorld, [
         [isCapital ? 60 : 0, 'the capital'],
         [30 * cl(pop / 5e9), 'large population'],
         [20 * cl(quality), 'high quality'],
+        [!isCapital && e !== null && e.capital !== null ? 15 * cl(1 - dCap / (3 * SECTOR)) * cl(pop / 1e9) : 0, 'near the capital'],
+        [ruins ? 12 : 0, 'ruins in the system (research)'],
     ]);
     add(Designation.Frontier, [
         [40 * cl(dCap / (0.35 * width)), 'far from the capital'],
         [15 * Math.min(2, foreignNear), 'foreign or pirate colonies nearby'],
+        [8 * Math.min(2, border), 'a border system'],
+        [raided ? 20 : 0, 'raided by pirates'],
         [-20 * cl(quality), ''],
         [isCapital ? -50 : 0, ''],
     ]);
@@ -227,7 +250,9 @@ export function aiDesignationChoice(galaxy: Galaxy, e: Empire, h: Habitat, count
     const scores = designationScores(galaxy, h).map((s) => {
         const same = counts.get(s.designation) ?? 0;
         // Spread: past a fair share of the empire's colonies, each further one of a kind scores lower.
-        const crowd = Math.max(0, same - Math.ceil(n / 6)) * 15;
+        let crowd = Math.max(0, same - Math.ceil(n / 6)) * 15;
+        // Phase 4: Mining Hubs past 30 % of the colonies score far lower (the user's target).
+        if (s.designation === Designation.MiningHub && same >= 1 && same + 1 > 0.3 * n) crowd += 40;
         return { ...s, score: s.designation === current ? s.score : s.score - crowd };
     });
     scores.sort((a, b) => b.score - a.score || a.designation - b.designation);
