@@ -41,7 +41,7 @@
     { "name": "treasureFleetSize", "label": "Treasure fleet size (ships; 0 = no fleet)", "default": 6, "min": 0, "max": 20 },
     { "name": "treasureFleetPerColony", "label": "Treasure fleet ships per extra Concord colony", "default": 1, "min": 0, "max": 5 },
     { "name": "treasureCircuitInterval", "label": "Days between treasure voyages", "default": 360, "min": 30, "max": 3600 },
-    { "name": "treasureCircuitPorts", "label": "Foreign ports per voyage (one per empire)", "default": 6, "min": 1, "max": 12 },
+    { "name": "treasureCircuitPorts", "label": "Most foreign ports per voyage (one per empire; the fleet calls until its holds are empty)", "default": 14, "min": 1, "max": 30 },
     { "name": "treasureShipSize", "label": "Treasure ship size", "default": 1500, "min": 300, "max": 1500 },
     { "name": "treasureFleetTreasureShips", "label": "Treasure fleet: treasure ships (0 = the scaled fleet above)", "default": 8, "min": 0, "max": 20 },
     { "name": "treasureFleetCapitalShips", "label": "Treasure fleet: capital-ship escorts", "default": 3, "min": 0, "max": 20 },

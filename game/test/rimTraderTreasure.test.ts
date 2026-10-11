@@ -26,6 +26,7 @@ import {
     generateTreasureShipDesign,
     highestResearchedLevel,
     isConstructionSizeNode,
+    nextTreasureStop,
     treasureFleetTick,
     treasureState,
 } from '../src/sim/scenario/rimTrade/treasureFleet';
@@ -159,6 +160,11 @@ describe('19a addendum — treasure fleet', () => {
         treasureFleetTick(g);
         expect(st.stats.stops).toBe(1);
         expect(st.leg).toBe(1);
+        // 2026-10-11: no fixed circuit — after a stop the next is the heaviest request of an empire not yet visited
+        // (or home when the holds are empty or none is left); one stop per empire.
+        expect(new Set(st.visited).size).toBe(st.visited!.length);
+        expect(st.circuit.length === 2 || st.homeward === true).toBe(true);
+        expect(nextTreasureStop(g, r, st, port, rimTraderPort(g)!) === null || !st.visited!.includes(nextTreasureStop(g, r, st, port, rimTraderPort(g)!)!.actualEmpire!.empireId)).toBe(true);
         expect(st.stats.rimUnits).toBeGreaterThan(0);
         expect(host.stateMoney).toBeGreaterThan(hostMoney);
         expect(rimTradeState(g).ledger[host.empireId].credit).toBeGreaterThan(0);

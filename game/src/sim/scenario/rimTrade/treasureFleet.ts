@@ -63,7 +63,7 @@ export const TREASURE_PARAM_DEFAULTS = {
     treasureFleetSize: 6,
     treasureFleetPerColony: 1,
     treasureCircuitInterval: 360,
-    treasureCircuitPorts: 6,
+    treasureCircuitPorts: 14,
     treasureShipSize: 1500,
     treasureFleetTreasureShips: 8,
     treasureFleetCapitalShips: 3,
@@ -97,8 +97,12 @@ export interface TreasureFleetState {
     treasure: BuiltObject[];
     /** This voyage's ports, in order; the fleet then returns to the Concord port. */
     circuit: BuiltObject[];
-    /** Index into circuit of the port sailed to; circuit.length = homeward. */
+    /** Index into circuit of the port sailed to; circuit.length = homeward (or the next stop is being chosen). */
     leg: number;
+    /** The voyage is over: the fleet sails home (holds empty, no eligible port left, or the stop cap). */
+    homeward?: boolean;
+    /** Empires called at this voyage (one stop per empire). */
+    visited?: number[];
     sailing: boolean;
     /** Star date of the last departure (-1: never sailed). */
     lastDeparture: number;
@@ -147,6 +151,9 @@ export interface TreasureStats2 {
     exposedDays: number;
     lootValue: number;
     lootEvents: number;
+    /** Per voyage: rare units loaded at departure and left in the holds on the return home (absent in older saves). */
+    rareLoaded?: number[];
+    rareLeft?: number[];
 }
 
 export function treasureStats2(st: TreasureFleetState): TreasureStats2 {
@@ -398,23 +405,47 @@ export function treasureStopRequests(galaxy: Galaxy, r: Empire, from: { xpos: nu
 }
 
 /**
- * The circuit: the `treasureCircuitPorts` (default 6) heaviest stop requests (treasureStopRequests: one port per empire,
- * so never two ports of the same empire), nearest-neighbour ordered from home. Pure.
+ * The voyage's next stop (2026-10-11: the fleet adds stops until its holds are empty): the heaviest remaining stop
+ * request (treasureStopRequests from `from`: one port per empire, hazard-screened, (rim goods + 1) × standing factor)
+ * of an empire not yet called at this voyage, whose port the treasure ships can reach from `from` and get home from on
+ * one tank (designFuelRange; they refuel at every stop). Null: none left. Pure.
  */
-export function treasureCircuit(galaxy: Galaxy, r: Empire, from: { xpos: number; ypos: number }): BuiltObject[] {
-    const n = Math.trunc(treasureParam(galaxy, 'treasureCircuitPorts'));
-    const chosen = treasureStopRequests(galaxy, r, from).slice(0, Math.max(0, n)).map((q) => q.port);
+export function nextTreasureStop(galaxy: Galaxy, r: Empire, st: TreasureFleetState, from: { xpos: number; ypos: number }, home: { xpos: number; ypos: number }): BuiltObject | null {
+    const visited = st.visited ?? [];
+    const range = st.design !== null ? designFuelRange(st.design) : Infinity;
+    const r2 = range * range;
     const d = (a: { xpos: number; ypos: number }, b: { xpos: number; ypos: number }): number => (a.xpos - b.xpos) ** 2 + (a.ypos - b.ypos) ** 2;
-    // Nearest-neighbour tour from home.
-    const out: BuiltObject[] = [];
-    let at = from;
-    while (chosen.length > 0) {
-        let best = 0;
-        for (let i = 1; i < chosen.length; i++) if (d(chosen[i], at) < d(chosen[best], at)) best = i;
-        at = chosen[best];
-        out.push(chosen.splice(best, 1)[0]);
+    for (const q of treasureStopRequests(galaxy, r, from)) {
+        if (visited.includes(q.empire.empireId)) continue;
+        if (d(q.port, from) > r2 || d(q.port, home) > r2) continue;
+        return q.port;
     }
-    return out;
+    return null;
+}
+
+/** Adds `port` to the voyage (visited; a player's request is served). */
+function addStop(st: TreasureFleetState, port: BuiltObject): void {
+    st.circuit.push(port);
+    if (port.actualEmpire !== null) (st.visited ??= []).push(port.actualEmpire.empireId);
+    if ((st.requests ?? []).some((q) => q.port === port)) {
+        (st.requestedPorts ??= []).push(port);
+        st.requests = st.requests!.filter((q) => q.port !== port);
+    }
+}
+
+/** The fleet is at `from` with no stop ahead: the next stop, or home (holds empty, none eligible, or the stop cap). */
+function extendOrHome(galaxy: Galaxy, r: Empire, st: TreasureFleetState, from: { xpos: number; ypos: number }, home: { xpos: number; ypos: number }): void {
+    if (st.homeward === true || st.leg < st.circuit.length) return;
+    if (!treasureHoldsRare(galaxy, r, st)) {
+        if (st.circuit.length > 0) treasureStats2(st).returnedEmpty++;
+    } else if (st.circuit.length < Math.max(1, Math.trunc(treasureParam(galaxy, 'treasureCircuitPorts')))) {
+        const next = nextTreasureStop(galaxy, r, st, from, home);
+        if (next !== null) {
+            addStop(st, next);
+            return;
+        }
+    }
+    st.homeward = true;
 }
 
 /**
@@ -669,6 +700,14 @@ function lead(st: TreasureFleetState): BuiltObject | null {
     return st.treasure.find((b) => !strag.some((x) => x.ship === b)) ?? st.treasure[0] ?? st.ships[0] ?? null;
 }
 
+/** Rare units in the treasure ships' holds. Pure. */
+export function treasureRareUnits(galaxy: Galaxy, r: Empire, st: TreasureFleetState): number {
+    const ids = rareGoodIds(galaxy);
+    let n = 0;
+    for (const b of st.treasure) if (!b.hasBeenDestroyed && b.cargo !== null) for (const id of ids) n += cargoGetCargo(b.cargo, id, r)?.amount ?? 0;
+    return n;
+}
+
 /** Any treasure ship (in formation) still holds rare goods. Pure. */
 export function treasureHoldsRare(galaxy: Galaxy, r: Empire, st: TreasureFleetState): boolean {
     const ids = rareGoodIds(galaxy);
@@ -681,24 +720,26 @@ function portLabel(galaxy: Galaxy, p: BuiltObject | Habitat): string {
 }
 
 function depart(galaxy: Galaxy, r: Empire, st: TreasureFleetState, home: BuiltObject | Habitat, now: number): void {
-    const circuit = treasureCircuit(galaxy, r, home);
-    if (circuit.length === 0) return;
+    st.visited = [];
+    const first = nextTreasureStop(galaxy, r, st, home, home);
+    if (first === null) return;
     musterFleet(galaxy, r, home, st);
     if (st.treasure.length === 0) return;
     loadRareGoods(galaxy, r, st, home);
+    (treasureStats2(st).rareLoaded ??= []).push(treasureRareUnits(galaxy, r, st));
     refuel(st);
-    st.circuit = circuit;
+    st.circuit = [];
+    st.requestedPorts = [];
+    addStop(st, first);
     st.leg = 0;
+    st.homeward = false;
     st.sailing = true;
     st.lastDeparture = now;
     st.stats.voyages++;
-    // The player's requests in this circuit are served; the rest wait for a later voyage.
-    st.requestedPorts = circuit.filter((p) => (st.requests ?? []).some((q) => q.port === p));
-    if (st.requests !== undefined) st.requests = st.requests.filter((q) => !circuit.includes(q.port));
     treasureStats2(st).stopsPerVoyage.push(0);
     treasureStraggleAtDeparture(galaxy, r, st);
-    sailTo(galaxy, st, circuit[0]);
-    const route = circuit.map((p) => portLabel(galaxy, p)).join(', ');
+    sailTo(galaxy, st, first);
+    const route = portLabel(galaxy, first);
     scenarioNews(galaxy, r, scenarioText('Scenario RimTrade Treasure Departs', r.name, portLabel(galaxy, home), route), undefined, lead(st));
 }
 
@@ -770,38 +811,47 @@ export function treasureFleetTick(galaxy: Galaxy): void {
     }
     // The escorts are turning back for a straggler (treasureRaids.ts): the convoy holds.
     if (convoyRecovering(st)) return;
-    // Skip ports that are gone or turned hostile.
-    while (st.leg < st.circuit.length) {
-        const p = st.circuit[st.leg];
-        const host = p.actualEmpire;
-        const bad = p.hasBeenDestroyed || host === null || host === r || obtainDiplomaticRelation(r, host).type === DiplomaticRelationType.War;
-        if (!bad) break;
-        st.leg++;
+    // Skip ports that are gone or turned hostile (then choose the next stop, or home).
+    for (;;) {
+        while (st.homeward !== true && st.leg < st.circuit.length) {
+            const p = st.circuit[st.leg];
+            const host = p.actualEmpire;
+            const bad = p.hasBeenDestroyed || host === null || host === r || obtainDiplomaticRelation(r, host).type === DiplomaticRelationType.War;
+            if (!bad) break;
+            st.leg++;
+        }
+        if (st.homeward === true || st.leg < st.circuit.length) break;
+        extendOrHome(galaxy, r, st, l, home);
     }
-    const target: BuiltObject | Habitat = st.leg < st.circuit.length ? st.circuit[st.leg] : home;
+    const target: BuiltObject | Habitat = st.homeward !== true && st.leg < st.circuit.length ? st.circuit[st.leg] : home;
     const dist = galaxy.calculateDistance(l.xpos, l.ypos, target.xpos, target.ypos);
     if (dist > TREASURE_DOCK_RANGE) {
         sailTo(galaxy, st, target);
         return;
     }
-    if (st.leg < st.circuit.length) {
+    if (target !== home) {
         arrive(galaxy, r, st, target as BuiltObject);
         st.leg++;
-        // Out of rare goods: home (no more stops).
+        // Out of rare goods: home (no more stops); else the next stop (older saves: the rest of a fixed circuit first).
         if (st.leg < st.circuit.length && !treasureHoldsRare(galaxy, r, st)) {
             st.leg = st.circuit.length;
+            st.homeward = true;
             treasureStats2(st).returnedEmpty++;
         }
+        extendOrHome(galaxy, r, st, target, home);
         treasureStraggleAtDeparture(galaxy, r, st);
-        sailTo(galaxy, st, st.leg < st.circuit.length ? st.circuit[st.leg] : home);
+        sailTo(galaxy, st, st.homeward !== true && st.leg < st.circuit.length ? st.circuit[st.leg] : home);
         return;
     }
     // Home.
+    (treasureStats2(st).rareLeft ??= []).push(treasureRareUnits(galaxy, r, st));
     unload(r, st, home);
     refuel(st);
     st.sailing = false;
     st.circuit = [];
     st.leg = 0;
+    st.homeward = false;
+    st.visited = [];
     scenarioNews(galaxy, r, scenarioText('Scenario RimTrade Treasure Returns', r.name, portLabel(galaxy, home)), undefined, l);
 }
 
@@ -861,7 +911,7 @@ export function treasureSelectionFeature(galaxy: Galaxy, sel: ScenarioSelectionL
     if (lead === null) return null;
     const stops: { x: number; y: number }[] = [];
     if (st.sailing) {
-        for (let i = Math.max(0, st.leg); i < st.circuit.length; i++) stops.push({ x: st.circuit[i].xpos, y: st.circuit[i].ypos });
+        if (st.homeward !== true) for (let i = Math.max(0, st.leg); i < st.circuit.length; i++) stops.push({ x: st.circuit[i].xpos, y: st.circuit[i].ypos });
         const home = rimTraderPort(galaxy);
         if (home !== null) stops.push({ x: home.xpos, y: home.ypos });
     }

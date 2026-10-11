@@ -439,7 +439,7 @@ All behind flag `rimTrader` (add-on off: byte-identical; the base sim gains thre
   bases come before ships (fleets chasing explorers never caught them).
 - **Treasure fleet** (`treasureFleet.ts`, `treasureRaids.ts`): fixed composition 8 treasure ships + 3 capital ships
   (battleships) + 5 cruisers + 1 carrier (2026-10-11; was 6 + 10 + 2) (navy ships of each sub-role the home guard can spare, then dedicated ships bought);
-  6 stops per voyage, one per empire, from stop requests (AI: its port holding the most rim goods; the player: journaled
+  stops added one at a time until the rare-goods holds are empty (2026-10-11; was a fixed 6): the next stop is the heaviest remaining stop request of an empire not yet called at, within one tank of the fleet and of home, at most `treasureCircuitPorts` (14) stops, home when the holds are empty or no eligible port is left; one per empire, from stop requests (AI: its port holding the most rim goods; the player: journaled
   command `requestTreasureStop`, a button in the Concord's diplomacy terms block) weighted by (rim goods + 1) × max(0.25,
   1 + standing / threshold); home early when out of rare goods; stragglers (4 % per ship per leg, 10–40 days, escorts turn
   back after 20); AI raids on exposed stragglers or, with 1.5 × the defending firepower, the main body (pirates and
@@ -499,3 +499,14 @@ rim-goods placement, the Concord's home) and the game-start handler.
 2.0 → 1.5, so one rare unit costs about 100 × (1.5 / 2) / 2.5 ≈ 30 rim units instead of ≈ 100. The treasure fleet's
 escort shrinks to 3 battleships (CapitalShip), 5 cruisers and 1 carrier (17 ships with the 8 treasure ships). With the
 fleet selected, the map draws its remaining stops and a line from the fleet to each of its ships (stragglers).
+
+**Stops until the holds are empty (user, 2026-10-11).** Measured first (`rimtrade-m-s1` / `-s2`, 8 years, the fixed
+6-stop rule): the fleet never came near emptying its holds — it sold 1 164 / 1 211 rare units in all, and came home with
+11 424 of 12 176 loaded (94 %) and 6 638 of 6 638 and 19 471 of 20 288 (96–100 %); stops per voyage 6, 5 / 1, 6, 3. The
+limit is what the hosts may buy (restricted-trade access and standing, half their treasury), not the number of stops.
+Now (`nextTreasureStop`): after each stop the next one is the heaviest remaining request of an empire not yet called
+at, within one tank of the fleet and of home; home when the holds are empty, no eligible port is left, or after
+`treasureCircuitPorts` (14) stops. Same soaks: 8 stops on the first full voyage of each seed (still under way at year 8,
+the fleet zig-zags between the heaviest requests), one 1-stop voyage while s2 knew one empire; rare units sold
+1 061 / 1 122 (about the same: fewer, longer voyages), the holds still far from empty. Stats: `stats2.rareLoaded` /
+`rareLeft` per voyage.
