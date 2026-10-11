@@ -514,3 +514,59 @@ A CPU profile of an "on" run puts every function of the add-on together at under
   - The fix: training waits for a treasury of ten times its cost. Afterwards, seed 3 matched the faithful game exactly (24 colony ships, 24 colonies) and seed 1 came within 2 colonies (21 vs 23, 18 vs 24 ships), inside the seed-to-seed spread.
 - **The unattended human seat.** It never accepts suggestions, so its colonies are the ones that stay vacant into full neglect. Local rises are capped by the governor cap, which the idle reserves fill.
 - **Crash guard.** In the original, PerformIntelligenceMissions' counter-intelligence pass dereferences a foreign agent's empire. An earlier catch in the same pass may already have killed that agent, so the dereference throws. The add-on's different Rnd stream hit this on the big save, so the port now guards it (espionage.ts; no effect on any run that did not crash).
+
+### 12.1 Part 2: the Interstellar Diet
+
+Same harness, scratch hook `~/data/agent-tmp/council/diethook.mjs` (yearly snapshot of the Diet state and its
+counters). `cv-on-s1` now runs the Diet; `cv-nodiet-s1` is the same game with only `cvCouncil` off (the council's
+stock yearly rhythm); `cv-off-s1` is the faithful game (`charactersVictory` and `galacticCouncil` off: the add-on now
+includes the council); `diet-long-s3` is 16 years. Every run: no exceptions, no invariant failures, save round trip ok.
+
+| | seed 1, 10 y | seed 3, 16 y | war, seed 17, 8 y |
+|---|---|---|---|
+| Members at the end (of 10–11 normal empires) | 8 | 9 | 10 |
+| Sessions (emergency) | 4 (0) | 6 (0) | 3 (0) |
+| Motions proposed → passed | sanction 3→3, embargo 2→1, outlaw pirates 3→2, free trade 1→1, Regent 1→1, lift 1→0 | sanction 8→4, outlaw 6→5, Regent 2→2, repeal 1→0 | sanction 4→1, outlaw 3→2, Regent 1→1 |
+| Delegates sent / arrived / absent at the vote / lost | 25 / 15 / 5 / 0 | 42 / 29 / 10 / 0 | 21 / 16 / 2 / 0 |
+| Mean gathering (farthest delegate's ETA) | 520 days | 532 days | 423 days |
+| Enforcer fleets (ships) → outcome | 3 (36) → 2 blockading, 1 waiting for a reachable station at the end | 4 (66) → 2 destroyed by defiant targets, 1 blockading, 1 waiting | 1 (12) → destroyed (defiance) |
+| Open defiance / crimes / delegate strikes | 1 / 0 / 0 | 2 / 0 / 0 | 1 / 0 / 0 |
+| Regents / vetoes / Emperor bids | 1 / 0 / 0 | 2 / 0 / 0 | 1 (the host) / 0 / 0 |
+| Dues paid / bounties | 515 k / 5 | 580 k / 22 | 147 k / 11 |
+
+AI economy (seed 1, year 10; AI empires only, the enforcer faction excluded):
+
+| | Diet on | Diet off (CV on) | faithful game |
+|---|---|---|---|
+| State money | 2.75 M | 4.35 M | 3.82 M |
+| Colonies | 37 | 38 | 44 |
+| Population | 156.2 bn | 151.5 bn | 153.0 bn |
+| Ships and bases | 852 | 736 | 751 |
+
+Money is a single snapshot and swings with each history (the first Diet run of the same seed ended at 5.60 M); the
+dues (≈ 50 k a year) are its only direct drain. Colonies match the Diet-off run (the colony gap is Part 1's open
+point, §12).
+
+**Step time on the big save** (`~/wt/eng-perf/scratch/late.save`, referenced, not copied; add-on added to the save,
+30 s warm-up, 120 game s = 7200 steps): off 6.30 / 6.43 wall ms (8.70 / 8.82 CPU ms) per step, on 6.84 / 6.73
+(8.91 / 8.81). With a 700 s warm-up (the council founded as the Diet with 15 members, a session called, 14 delegates
+in flight): 7.13 wall / 7.58 CPU ms per step — a later, different window of the same game, so not a like-for-like
+pair; no Diet cost shows above the run-to-run noise.
+
+**Tuning applied.**
+- The floor first opened after a fixed 150 days: on these maps early hyperdrives need 9–17 months, so 17 of 20
+  delegates missed their votes. It now opens at the farthest delegate's ETA + 15 days (150–540 days): absences fell
+  to 2–10 of 21–42.
+- Sessions were scheduled from the close, which stretched the rhythm to ~4 years; now 2–3 years call to call.
+- Few measures were moved (free trade needs a FreeTradeIncomeFactor most races lack): the AI's thresholds for free
+  trade, bombardment bans and the independents were lowered.
+- Bounties found an empty fund: the members now keep ten bounties in it.
+- A fleet with no reachable station waited forever: it stands down after a year.
+
+**Open points (reported).**
+- The Regent's veto, emergency sessions, crimes, delegate strikes and the Emperor's bid are rare in these runs (none
+  seen): the veto needs a passing motion the Regent hates (≤ −40), the bid a Regent who also hosts with 30 % of the
+  score and 1.3× the next military (the war run's host-Regent missed the share or the margin). They are exercised by
+  the tests and by the player's buttons; tune further only if the user wants them more often.
+- Sanctions pass often enough to send fleets, but a target strong enough to defy (aggression − caution ≥ 0.25,
+  twice the fleet's firepower) destroys them: 1×–3× scaling keeps the fleet "balanced" rather than decisive.

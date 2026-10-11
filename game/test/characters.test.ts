@@ -30,12 +30,13 @@ import { leaveShipGroup } from '../src/sim/fleets/shipGroup';
 import { generateVipShuttleDesign, vipComponentAllowed } from '../src/sim/scenario/charactersVictory/shuttleDesign';
 import { colonyVacancy, reviewGovernors } from '../src/sim/scenario/charactersVictory/governorsCv';
 import { DIET_STATE_KEY, dietState, type DietMotion } from '../src/sim/scenario/charactersVictory/diet/dietState';
-import { closeSession, dietTick, hostWorldOf, strongestMember } from '../src/sim/scenario/charactersVictory/diet/diet';
+import { closeSession, declareEmperor, dietTick, hostWorldOf, strongestMember } from '../src/sim/scenario/charactersVictory/diet/diet';
 import { memberScores, voteWeight } from '../src/sim/scenario/charactersVictory/diet/dietAi';
 import { spawnEnforcers } from '../src/sim/scenario/charactersVictory/diet/dietEnforcers';
 import { councilState, type Council } from '../src/sim/scenario/emergent/council';
 import { blockadeFor } from '../src/sim/fleets/blockades';
 import { BuiltObjectStance } from '../src/sim/design';
+import { obtainEmpireEvaluation } from '../src/sim/diplomacy';
 import { colonyNeglectOf, governorBribeScale } from '../src/sim/scenario/governors';
 import { autonomyDrift } from '../src/sim/scenario/frontier/frontier';
 
@@ -716,6 +717,45 @@ describe('Characters & Victory: the Interstellar Diet', () => {
         expect(st.enforcers.length).toBe(0);
         expect(f.ships.every((b) => b.hasBeenDestroyed)).toBe(true);
     });
+
+    it('attacking a delegate on the way is a crime: every member resents it and a sanction case opens', () => {
+        const { g, members } = dietGame();
+        const st = dietState(g);
+        st.nextSessionAt = 0;
+        dietTick(g);
+        const d = st.session!.delegates.find((x) => x.sent && x.character !== null && tripOfCharacter(g, x.character) !== null)!;
+        expect(d).toBeDefined();
+        const shuttle = tripOfCharacter(g, d.character!)!.shuttle;
+        const attacker = members.find((e) => e !== d.empire)!;
+        const witness = members.find((e) => e !== d.empire && e !== attacker)!;
+        const before = obtainEmpireEvaluation(g, witness, attacker).incidentEvaluation;
+        scenarioEmit(g, 'builtObjectAttacked', { builtObject: shuttle, attacker: null, attackingEmpire: attacker });
+        scenarioEmit(g, 'builtObjectAttacked', { builtObject: shuttle, attacker: null, attackingEmpire: attacker }); // once per shuttle
+        expect(st.counters.crimes).toBe(1);
+        expect(st.grievances[attacker.empireId]).toBeGreaterThanOrEqual(60);
+        expect(obtainEmpireEvaluation(g, witness, attacker).incidentEvaluation).toBeLessThan(before);
+    }, 600000);
+
+    it('the Regent may declare themselves Emperor: war on them is never blocked, and holding the capital and the host world through the countdown ends the game', () => {
+        const { g, c, members } = dietGame();
+        const st = dietState(g);
+        st.nextSessionAt = 1e15;
+        dietTick(g);
+        const em = st.host!;
+        st.regent = em;
+        st.regentUntil = 1e15;
+        expect(c.members.includes(em)).toBe(true);
+        expect(declareEmperor(g, em)).toBe(true);
+        expect(declareEmperor(g, em)).toBe(false);
+        const other = members.find((e) => e !== em)!;
+        expect(scenarioQuery(g, 'declareWarBlocked', true, { empire: other, target: em })).toBe(false);
+        st.emperor!.until = 0;
+        dietTick(g);
+        expect(st.emperor).toBeNull();
+        expect(st.counters.emperorWins).toBe(1);
+        expect(g.gameIsFinished).toBe(true);
+        expect(g.gameVictor).toBe(em);
+    }, 600000);
 
     it('a game with a Diet session sitting saves and reloads identically', () => {
         const { game, g } = dietGame();
