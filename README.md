@@ -23,7 +23,8 @@ openDWU is new code written in TypeScript, with an opt-in mod/scenario layer
 on top. **No code from the original game is copied into this project.** The
 decompiled original was used only as a reference for gameplay accuracy, so
 that formulas, constants, generation order and the random-number sequence
-play out the same way. The code lives under [`game/`](game/).
+play out the same way. The code lives under [`game/`](game/). It is a free,
+non-commercial fan project: nothing is sold and no donations are taken.
 
 ## Why this exists
 
@@ -778,6 +779,9 @@ The decompiled original was used only as a reference for gameplay accuracy. The 
 reads those files live from your own install folder at runtime. Art under
 `game/public/art/` is original artwork created for this project (procedural
 code and our own generated sprites), not from the original game.
+
+openDWU is non-commercial and will stay that way: it is free, it is not sold,
+and it takes no donations, payments or in-app purchases.
 
 ---
 
