@@ -128,6 +128,34 @@ describe('Colony Economy add-on', async () => {
         expect(E.colonyRecord(g, h).facilities.length).toBe(0);
     }, 300000);
 
+    it('phase 2: the new exclusive pairs, and working facilities act through the stock channels', () => {
+        const g = econGame().galaxy;
+        const e = g.playerEmpire!;
+        const h = e.capital!;
+        E.setDesignation(g, e, h, E.Designation.TradeHub);
+        expect(E.requestFacility(g, e, h, 'blackMarket')).toBe(true);
+        expect(E.requestFacility(g, e, h, 'customsBureau')).toBe(false);
+        const rec = E.colonyRecord(g, h);
+        rec.requests = [];
+        rec.changedAt = -1;
+        E.setDesignation(g, e, h, E.Designation.Resort);
+        rec.facilities.push({ id: 'spaceportCasino', progress: 1, started: 1, finished: 1, cost: 1, requested: false, unpaidSince: 0 });
+        expect(E.requestFacility(g, e, h, 'naturePreserve')).toBe(false);
+        // A working casino raises corruption (Habitat.cs 763 through colonyCorruptionFactor).
+        E.bumpEcon(g);
+        expect(scenarioQuery(g, 'colonyCorruptionFactor', 1, { habitat: h })).toBeGreaterThan(1);
+        rec.facilities = [];
+        rec.changedAt = -1;
+        E.setDesignation(g, e, h, E.Designation.Frontier);
+        rec.facilities.push({ id: 'fortressBunker', progress: 1, started: 1, finished: 1, cost: 1, requested: false, unpaidSince: 0 });
+        E.bumpEcon(g);
+        expect(scenarioQuery(g, 'colonyFortressBonus', 0, { habitat: h })).toBeGreaterThan(0);
+        expect(scenarioQuery(g, 'colonyTaxRevenue', 1000, { habitat: h, empire: e })).toBe(1000);
+        rec.facilities.push({ id: 'frontierCharter', progress: 1, started: 1, finished: 1, cost: 1, requested: false, unpaidSince: 0 });
+        E.bumpEcon(g);
+        expect(scenarioQuery(g, 'colonyTaxRevenue', 1000, { habitat: h, empire: e })).toBeLessThan(1000);
+    });
+
     it('bonds: limits, money moves between the private sector and the treasury, repayment', () => {
         const g = econGame().galaxy;
         const e = g.playerEmpire!;

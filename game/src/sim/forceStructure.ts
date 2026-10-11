@@ -389,6 +389,11 @@ export function habitatCorruption(galaxy: Galaxy, h: Habitat): number {
         const num5 = 1.0 - num4 / 100.0;
         val *= num5;
         val *= empire.corruptionMultiplier;
+        // [colonyEconomy] Administrative Center / Spaceport Casino; no-op without a scenario / handler.
+        if (galaxy.scenario !== null) {
+            const k = scenarioQuery(galaxy, 'colonyCorruptionFactor', 1, { habitat: h });
+            if (k !== 1) val *= k;
+        }
         val = Math.min(0.8, val);
     }
     return Math.min(1.0, Math.max(0.0, val));
@@ -867,6 +872,18 @@ export function projectPrivateForceStructure(galaxy: Galaxy, empire: Empire, ctx
         num5 = csToInt32(num4 * 14.0);
         num6 = csToInt32(num4 * 11.0);
         num7 = csToInt32(num4 * 7.0);
+    }
+    // [colonyEconomy] Merchant Guild Hall: the private sector wants more freighters; no-op without a handler.
+    if (galaxy.scenario !== null) {
+        const k = scenarioQuery(galaxy, 'privateFreighterFactor', 1, { empire });
+        if (k !== 1) {
+            num = csToInt32(num * k);
+            num2 = csToInt32(num2 * k);
+            num3 = csToInt32(num3 * k);
+            num5 = csToInt32(num5 * k);
+            num6 = csToInt32(num6 * k);
+            num7 = csToInt32(num7 * k);
+        }
     }
     let num8 = 0;
     // (MiningStations is never null.)

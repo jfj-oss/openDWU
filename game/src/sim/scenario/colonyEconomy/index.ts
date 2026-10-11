@@ -3,6 +3,7 @@ import './designations';
 import './facilities';
 import './effects';
 import './bonds';
+import './bounty';
 export * from './common';
 export { designationScores, suggestDesignation, setDesignation, designationRefusal, designationCooldownDays, facilitiesLostByChange, reviewAiDesignations } from './designations';
 export { requestFacility, cancelFacilityRequest, setAutoFacilities, facilitySlotView, colonySlots, privateSurplus } from './facilities';

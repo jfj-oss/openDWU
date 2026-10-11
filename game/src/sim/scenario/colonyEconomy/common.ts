@@ -6,6 +6,8 @@ import type { Galaxy } from '../../galaxy';
 import type { Empire } from '../../empire';
 import { empireGovernmentAttributes } from '../../empire';
 import type { Habitat } from '../../types';
+import type { BuiltObject } from '../../builtObject';
+import type { Design } from '../../design';
 import type { CharacterSkillType } from '../../characters';
 import { scenarioFlag, scenarioParam, scenarioState } from '../state';
 import { YEAR_LENGTH } from '../../galaxyTime';
@@ -111,7 +113,14 @@ export type FacilityId =
     | 'resortComplex' | 'mediaNetwork' | 'pleasureGardens' | 'diplomaticRetreat'
     | 'miningConsortium' | 'orbitalWarehouse' | 'deepSurveyOffice' | 'oreRefinery'
     | 'medicalComplex' | 'university' | 'arcology' | 'culturalCenter'
-    | 'privateSecurity' | 'militiaYard' | 'surveyOutpost' | 'colonistOffice';
+    | 'privateSecurity' | 'militiaYard' | 'surveyOutpost' | 'colonistOffice'
+    // Phase 2: the three extras of each designation.
+    | 'roboticsPlant' | 'fleetDepot' | 'salvageYard'
+    | 'commoditiesMarket' | 'merchantGuild' | 'blackMarket'
+    | 'spaceportCasino' | 'naturePreserve' | 'pilgrimageShrine'
+    | 'gasRefinery' | 'automatedExtractors' | 'stripMine'
+    | 'adminCenter' | 'geneticsInstitute' | 'senateHall'
+    | 'fortressBunker' | 'bountyOffice' | 'frontierCharter';
 
 export interface EconFacilityDef {
     id: FacilityId;
@@ -123,16 +132,14 @@ export interface EconFacilityDef {
     buildDays: number;
     /** Private upkeep a year (share of the cost). */
     upkeepShare: number;
-    /** Cannot stand at the same colony as this one. */
-    exclusiveWith?: FacilityId;
     /** A colony governor with this skill makes the facility stronger (×(1 + skill/50), at most ×2). */
     skill?: number;
     /** One line: what it does (numbers at 100 % strength). */
     effect: string;
 }
 
-const F = (id: FacilityId, name: string, designation: Designation, cost: number, buildDays: number, upkeepShare: number, effect: string, skill?: CharacterSkillType, exclusiveWith?: FacilityId): EconFacilityDef => ({
-    id, name, designation, cost, buildDays, upkeepShare, effect, ...(skill !== undefined ? { skill } : {}), ...(exclusiveWith !== undefined ? { exclusiveWith } : {}),
+const F = (id: FacilityId, name: string, designation: Designation, cost: number, buildDays: number, upkeepShare: number, effect: string, skill?: number, _exclusive?: FacilityId): EconFacilityDef => ({
+    id, name, designation, cost, buildDays, upkeepShare, effect, ...(skill !== undefined ? { skill } : {}),
 });
 // CharacterSkillType values (characters.ts; CharacterSkillType.cs member order). Literal here: this table is built at
 // module load, inside the scenario packages' import cycle through characters.ts. test/economyBreakdown.test.ts checks them.
@@ -153,8 +160,8 @@ export const FACILITY_DEFS: readonly EconFacilityDef[] = [
     // Trade Hub
     F('tradeExchange', 'Trade Exchange', D.TradeHub, 40000, 300, 0.1, '+8% colony income.', S.TradeIncome),
     F('investmentBank', 'Investment Bank', D.TradeHub, 45000, 360, 0.08, 'Bond interest -1.5 points per bank (at most -4); +3% colony income.', S.ColonyIncome),
-    F('freePort', 'Free Port', D.TradeHub, 30000, 240, 0.1, '+12% colony income; pirate raids come 30% faster nearby.', S.TradeIncome, 'customsBureau'),
-    F('customsBureau', 'Customs Bureau', D.TradeHub, 30000, 240, 0.1, '+10% tax revenue here; -3% colony income.', S.ColonyCorruption, 'freePort'),
+    F('freePort', 'Free Port', D.TradeHub, 30000, 240, 0.1, '+12% colony income; pirate raids come 30% faster nearby.', S.TradeIncome),
+    F('customsBureau', 'Customs Bureau', D.TradeHub, 30000, 240, 0.1, '+10% tax revenue here; -3% colony income.', S.ColonyCorruption),
     // Resort World
     F('resortComplex', 'Resort Complex', D.Resort, 40000, 300, 0.1, '+1.0 scenic factor (tourism income from passenger ships).', S.TourismIncome),
     F('mediaNetwork', 'Media Network', D.Resort, 35000, 300, 0.1, '+2 approval at own colonies within 2 sectors (+4 here).', S.ColonyHappiness),
@@ -175,7 +182,44 @@ export const FACILITY_DEFS: readonly EconFacilityDef[] = [
     F('militiaYard', 'Militia Yard', D.Frontier, 30000, 240, 0.1, '+40% construction speed of facilities and colony-built bases here; pirate raids come 30% slower nearby.', S.MilitaryShipConstructionSpeed),
     F('surveyOutpost', 'Survey Outpost', D.Frontier, 30000, 240, 0.08, 'Every ship and base within 1 sector of the colony is visible to its owner (early warning).'),
     F('colonistOffice', 'Colonist Office', D.Frontier, 35000, 300, 0.1, 'New own colonies within 2 sectors grow 40% faster for their first 5 years.', S.ColonyShipConstructionSpeed),
+    // --- Phase 2 ---
+    F('roboticsPlant', 'Robotics Plant', D.Industrial, 45000, 300, 0.1, 'Troop upkeep 4% lower empire-wide per plant (at most 12%); +10% recruited troop strength here.', S.TroopRecruitment),
+    F('fleetDepot', 'Fleet Depot', D.Industrial, 45000, 300, 0.1, 'Own state ships and bases within 2 sectors cost 15% less upkeep.', S.MilitaryShipConstructionSpeed),
+    F('salvageYard', 'Salvage Yard', D.Industrial, 35000, 240, 0.1, 'Each year salvages up to 4 wrecks within 2 sectors (Wreckage add-on): a quarter of their resources to the colony, a tenth of their value to the private sector; +4% colony income otherwise.', S.RepairBonus),
+    F('commoditiesMarket', 'Commodities Market', D.TradeHub, 40000, 300, 0.1, '+5% colony income; own colonies within 2 sectors lose 30% less approval to resource shortages.', S.TradeIncome),
+    F('merchantGuild', 'Merchant Guild Hall', D.TradeHub, 45000, 360, 0.1, 'The private sector wants 10% more freighters per hall (at most 30%).', S.TradeIncome),
+    F('blackMarket', 'Black Market', D.TradeHub, 30000, 240, 0.1, '+15% colony income (smuggling); pirate raids come 40% faster nearby, pirate control grows 30% faster here.', S.ColonyIncome),
+    F('spaceportCasino', 'Spaceport Casino', D.Resort, 40000, 300, 0.1, '+15% colony income; +20% corruption here.', S.TourismIncome),
+    F('naturePreserve', 'Nature Preserve', D.Resort, 35000, 300, 0.08, '+3 approval and +0.3 scenic factor here; planet damage heals 0.03 a year faster.', S.ColonyHappiness),
+    F('pilgrimageShrine', 'Pilgrimage Shrine', D.Resort, 40000, 300, 0.1, '+3 approval at every own colony of the shrine world\'s race (one shrine per race counts).', S.ColonyHappiness),
+    F('gasRefinery', 'Gas Refinery', D.MiningHub, 40000, 300, 0.1, '+20% gas mining at own gas stations within 2 sectors; +3% colony income.', S.MiningRate),
+    F('automatedExtractors', 'Automated Extractors', D.MiningHub, 40000, 300, 0.08, 'Own mining stations within 2 sectors cost 30% less upkeep.', S.MiningRate),
+    F('stripMine', 'Strip-Mine Charter', D.MiningHub, 30000, 240, 0.08, '+30% mining rate in the system; the planet loses 0.02 quality a year.', S.MiningRate),
+    F('adminCenter', 'Administrative Center', D.CoreWorld, 50000, 360, 0.1, 'Corruption 50% lower here and 30% lower at own colonies within 2 sectors.', S.ColonyCorruption),
+    F('geneticsInstitute', 'Genetics Institute', D.CoreWorld, 50000, 360, 0.1, '+10% growth here; new own colonies within 3 sectors grow 25% faster for 5 years.', S.PopulationGrowth),
+    F('senateHall', 'Senate Hall', D.CoreWorld, 55000, 360, 0.15, '+1 approval at every own colony (at most +2); Interstellar Diet vote weight +20% per hall (at most +40%).', S.Diplomacy),
+    F('fortressBunker', 'Fortress Bunker', D.Frontier, 40000, 300, 0.1, '+30 defensive fortress bonus here (ground defence).', S.TroopRecruitment),
+    F('bountyOffice', 'Bounty Office', D.Frontier, 50000, 360, 0.1, 'The private sector keeps 3-6 bounty-hunter ships that hunt pirates within 2 sectors and earns a bounty per pirate ship destroyed; with Privateers on, 2 more privateers.', S.MilitaryShipConstructionSpeed),
+    F('frontierCharter', 'Frontier Charter', D.Frontier, 30000, 240, 0.08, '+4 approval here and less drift toward autonomy (Frontier Autonomy); -10% tax revenue here.', S.ColonyHappiness),
 ];
+
+/** Facilities that never stand at the same colony (the user's pairs). */
+export const EXCLUSIVE_PAIRS: readonly (readonly [FacilityId, FacilityId])[] = [
+    ['freePort', 'customsBureau'],
+    ['blackMarket', 'customsBureau'],
+    ['spaceportCasino', 'naturePreserve'],
+    ['stripMine', 'deepSurveyOffice'],
+];
+/** The first of `ids` that may not stand beside `id` (null: none). */
+export function exclusiveConflict(id: FacilityId, ids: readonly FacilityId[]): FacilityId | null {
+    for (const [a, b] of EXCLUSIVE_PAIRS) {
+        if (a === id && ids.includes(b)) return b;
+        if (b === id && ids.includes(a)) return a;
+    }
+    return null;
+}
+/** Phase 1 facilities (the first four of each designation). */
+export const PHASE1_FACILITIES: ReadonlySet<FacilityId> = new Set<FacilityId>(['privateShipyard', 'heavyFoundry', 'componentWorks', 'orbitalDrydock', 'tradeExchange', 'investmentBank', 'freePort', 'customsBureau', 'resortComplex', 'mediaNetwork', 'pleasureGardens', 'diplomaticRetreat', 'miningConsortium', 'orbitalWarehouse', 'deepSurveyOffice', 'oreRefinery', 'medicalComplex', 'university', 'arcology', 'culturalCenter', 'privateSecurity', 'militiaYard', 'surveyOutpost', 'colonistOffice']);
 
 const DEF_BY_ID = new Map(FACILITY_DEFS.map((d) => [d.id, d]));
 export function facilityDef(id: FacilityId): EconFacilityDef {
@@ -259,6 +303,14 @@ export interface EconEmpire {
     facilitiesBuilt: number;
     /** Diplomatic Retreat: attitude already given to each other empire (by empire id; capped). */
     retreatGiven?: Record<string, number>;
+    /** Bounty Office (bounty.ts): the private sector's bounty hunters, their design and counters. */
+    hunters?: BuiltObject[];
+    hunterDesign?: Design | null;
+    hunterDesignDate?: number;
+    hunterSerial?: number;
+    huntersBuilt?: number;
+    bountiesPaid?: number;
+    bountyKills?: number;
 }
 
 export interface EconState {

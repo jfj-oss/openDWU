@@ -224,7 +224,8 @@ export function aiDesignationChoice(galaxy: Galaxy, e: Empire, h: Habitat, count
     });
     scores.sort((a, b) => b.score - a.score || a.designation - b.designation);
     const best = scores[0];
-    if (best.score < AI_MIN_SCORE) return null;
+    // The capital is always designated (its best fit), so an empire of one world still spends its private money.
+    if (best.score < AI_MIN_SCORE && !(e.capital === h && current === Designation.None)) return null;
     if (current === Designation.None) return best.designation;
     if (best.designation === current) return null;
     const curScore = scores.find((s) => s.designation === current)?.score ?? 0;

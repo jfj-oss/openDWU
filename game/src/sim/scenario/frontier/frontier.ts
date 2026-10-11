@@ -53,7 +53,7 @@ import { EmpireMessageType } from '../../messages';
 import { REAL_SECONDS_IN_GALACTIC_YEAR, YEAR_LENGTH } from '../../galaxyTime';
 import { galaxyStarDate } from '../../tick/simTime';
 import { Random } from '../../random';
-import { radiusFraction, registerScenarioPeriodic, registerScenarioQuery, registerScenarioYearly } from '../hooks';
+import { radiusFraction, registerScenarioPeriodic, registerScenarioQuery, registerScenarioYearly, scenarioQuery } from '../hooks';
 import { scenarioFlag, scenarioParam, scenarioState } from '../state';
 import { scenarioMessage, scenarioNews, scenarioText } from '../messages';
 import { registerStabilityTerm } from '../stability';
@@ -342,6 +342,8 @@ export function autonomyDrift(galaxy: Galaxy, h: Habitat, entry: FrontierColony 
         else if (sector.rule === 'tight') add('Tight rule', P.tightDrift(galaxy));
         if (frontierYear(galaxy) - sector.lastDealYear <= 1) add('Trade compacts', P.dealDrift(galaxy));
     }
+    // [colonyEconomy] Frontier Charter and other add-on terms.
+    for (const t of scenarioQuery(galaxy, 'frontierDriftTerms', [], { habitat: h })) add(t.cause, t.amount);
     add('Decay', -((entry?.autonomy ?? 0) * P.decayPct(galaxy)) / 100);
     let delta = 0;
     for (const c of causes) delta += c.amount;

@@ -32,6 +32,7 @@ import {
     econOn,
     econParam,
     empireRecord,
+    exclusiveConflict,
     facilityDef,
     hasPrivateSector,
     peekColony,
@@ -115,7 +116,8 @@ export function facilityRefusal(galaxy: Galaxy, e: Empire, h: Habitat, id: Facil
     if (def.designation !== d) return 'Only facilities of this colony\'s designation can be built here';
     const facs = c?.facilities ?? [];
     if (facs.some((f) => f.id === id)) return 'Already built or under construction';
-    if (def.exclusiveWith !== undefined && facs.some((f) => f.id === def.exclusiveWith)) return `Cannot stand beside the ${facilityDef(def.exclusiveWith).name}`;
+    const ex = exclusiveConflict(id, facs.map((f) => f.id));
+    if (ex !== null) return `Cannot stand beside the ${facilityDef(ex).name}`;
     if (facs.length >= colonySlots(galaxy, h)) return `No free slot (a ${colonySizeName(colonySlots(galaxy, h))} colony has ${colonySlots(galaxy, h)})`;
     return null;
 }
@@ -128,7 +130,7 @@ export function requestFacility(galaxy: Galaxy, e: Empire, h: Habitat, id: Facil
     // Requests count against the slots and the exclusive pairs too.
     const def = facilityDef(id);
     if (c.facilities.length + c.requests.length >= colonySlots(galaxy, h)) return false;
-    if (def.exclusiveWith !== undefined && c.requests.includes(def.exclusiveWith)) return false;
+    if (exclusiveConflict(def.id, c.requests) !== null) return false;
     c.requests.push(id);
     return true;
 }
@@ -164,7 +166,8 @@ function startFacility(galaxy: Galaxy, e: Empire, h: Habitat, c: EconColony, def
  * years of upkeep), minus the upkeep already owed.
  */
 function upkeepRoom(galaxy: Galaxy, e: Empire): number {
-    return getPrivateAnnualCashflow(galaxy, e) + privateSurplus(galaxy, e) / UPKEEP_SURPLUS_YEARS - annualFacilityUpkeep(galaxy, e);
+    // The formula cashflow can be negative while the money still grows (contract sales to other empires are not in it).
+    return Math.max(0, getPrivateAnnualCashflow(galaxy, e)) + privateSurplus(galaxy, e) / UPKEEP_SURPLUS_YEARS - annualFacilityUpkeep(galaxy, e);
 }
 /** The surplus may carry this many years of facility upkeep. */
 export const UPKEEP_SURPLUS_YEARS = 10;
@@ -243,7 +246,7 @@ function reviewEmpire(galaxy: Galaxy, e: Empire): void {
                 const price = facilityPrice(galaxy, def, h);
                 if (price > left || def.upkeepShare * price >= room2) continue;
                 if (facilityRefusalIgnoringRequests(galaxy, e, h, c, def) !== null) continue;
-                if (def.exclusiveWith !== undefined && c.requests.includes(def.exclusiveWith)) continue;
+                if (exclusiveConflict(def.id, c.requests) !== null) continue;
                 const v = facilityValue(galaxy, e, h, def.id);
                 if (v <= 0) continue;
                 if (best === null || v > best.v + 1e-9) best = { h, c, def, v };
@@ -261,7 +264,7 @@ function facilityRefusalIgnoringRequests(galaxy: Galaxy, e: Empire, h: Habitat, 
     void e;
     if (def.designation !== c.designation) return 'designation';
     if (c.facilities.some((f) => f.id === def.id)) return 'built';
-    if (def.exclusiveWith !== undefined && c.facilities.some((f) => f.id === def.exclusiveWith)) return 'exclusive';
+    if (exclusiveConflict(def.id, c.facilities.map((f) => f.id)) !== null) return 'exclusive';
     if (c.facilities.length >= colonySlots(galaxy, h)) return 'slots';
     return null;
 }
@@ -315,7 +318,7 @@ export function facilitySlotView(galaxy: Galaxy, e: Empire, h: Habitat): Facilit
         if (refusal === null && c !== null) {
             if (c.requests.includes(def.id)) refusal = 'Requested';
             else if (c.facilities.length + c.requests.length >= slots) refusal = 'No free slot (requests waiting)';
-            else if (def.exclusiveWith !== undefined && c.requests.includes(def.exclusiveWith)) refusal = `Cannot stand beside the ${facilityDef(def.exclusiveWith).name}`;
+            else if (exclusiveConflict(def.id, c.requests) !== null) refusal = `Cannot stand beside the ${facilityDef(exclusiveConflict(def.id, c.requests)!).name}`;
         }
         const price = facilityPrice(galaxy, def, h);
         return { id: def.id, name: def.name, effect: def.effect, price, buildDays: facilityBuildDays(galaxy, def), upkeep: Math.round(price * def.upkeepShare), refusal };

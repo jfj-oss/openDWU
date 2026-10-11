@@ -58,6 +58,9 @@ import { scenarioFlag, scenarioParam, scenarioState } from '../state';
 export const PRIVATEERS_FLAG = 'privateers';
 export const PRIVATEERS_STATE_KEY = 'privateers';
 
+/** Other add-ons' adjustments (Colony Economy's Bounty Office: more privateers). Null: none. */
+export const privateerHooks: { extraCap: ((galaxy: Galaxy, empire: Empire) => number) | null } = { extraCap: null };
+
 /** Every tuning constant of the add-on (the three caps can be overridden by the scenario params). */
 export const PRIVATEER_RULES = {
     /** Largest privateer: this share of Empire.MaximumConstructionSize (military). Param privateersSizeCap (%). */
@@ -399,7 +402,7 @@ function reviewEmpire(galaxy: Galaxy, empire: Empire): void {
     const budget = r.spendShare * income;
     const upkeep = annualUpkeep(active);
     const spent = st.builds.reduce((a, b) => a + b.cost, 0);
-    const countCap = Math.floor(privateAssetCount(galaxy, empire) / r.shipsPerPrivateer);
+    const countCap = Math.floor(privateAssetCount(galaxy, empire) / r.shipsPerPrivateer) + (privateerHooks.extraCap?.(galaxy, empire) ?? 0);
     const recent = recentIncidents(galaxy, st, PRIVATEER_RULES.recentDays);
     const quiet = st.lastIncident < 0 || now - st.lastIncident > days(PRIVATEER_RULES.quietDays);
     // Retire: money short (private funds negative, or upkeep well over the yearly budget) or a long quiet (down to the keep share).

@@ -32,6 +32,7 @@ import {
     type MotionKind,
 } from '../../emergent/council';
 import { type DietLaw, type DietMotion, type DietMotionKind, type DietState, STOCK_KINDS, byId, dietParam, lawInForce } from './dietState';
+import { scenarioQuery } from '../../hooks';
 
 // ---------------------------------------------------------------------------------------------------------------
 // Personality (real stats, normalised around 0)
@@ -161,7 +162,9 @@ export function voteWeight(galaxy: Galaxy, st: DietState, members: readonly Empi
     const g = others.length > 0 ? (0.25 * gifts) / others.length : 0;
     const s = Math.min(0.25, spies * 0.05);
     const lesserF = lesser ? dietParam(galaxy, 'dietLesserDelegatePct') / 100 : 1;
-    const weight = Math.round(base * (1 + standing + g + s) * lesserF * 10) / 10;
+    // [colonyEconomy] Senate Hall: a factor on the weight (1 without the add-on).
+    const econ = scenarioQuery(galaxy, 'dietVoteWeightFactor', 1, { empire: e });
+    const weight = Math.round(base * (1 + standing + g + s) * lesserF * econ * 10) / 10;
     return { base, standing, gifts: g, spies: s, lesser: lesserF, weight: Math.max(0.1, weight) };
 }
 

@@ -359,7 +359,9 @@ export function reviewPlanetaryFacilities(galaxy: Galaxy, habitat: Habitat, empi
             }
         }
     }
-    const val = 10.0 * ((1.0 + b2 / 10.0) * (1.0 + b / 10.0)) - 10.0;
+    let val = 10.0 * ((1.0 + b2 / 10.0) * (1.0 + b / 10.0)) - 10.0;
+    // [colonyEconomy] Fortress Bunker; no-op without a scenario / handler.
+    if (galaxy.scenario !== null) val = scenarioQuery(galaxy, 'colonyFortressBonus', val, { habitat });
     // (byte)Math.Min(255.0, val): val >= 0 here.
     const defensiveFortressBonus = Math.trunc(Math.min(255.0, val)) & 0xff;
     habitat.planetaryShieldPresent = planetaryShieldPresent;

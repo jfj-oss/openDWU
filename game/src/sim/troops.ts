@@ -338,6 +338,12 @@ function annualTroopMaintenanceSum(empire: Empire, includeRecruiting: boolean): 
         if (divisor !== null) num3 /= divisor;
         num += num3;
     }
+    // [colonyEconomy] Robotics Plant: cheaper troops; no-op without a scenario / handler.
+    const g = empire.galaxy as Galaxy | undefined;
+    if (g !== undefined && g.scenario !== null) {
+        const k = scenarioQuery(g, 'troopMaintenanceFactor', 1, { empire });
+        if (k !== 1) num *= k;
+    }
     return num;
 }
 export const annualTroopMaintenance = (empire: Empire): number => annualTroopMaintenanceSum(empire, false);

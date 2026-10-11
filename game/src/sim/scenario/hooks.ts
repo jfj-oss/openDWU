@@ -766,6 +766,20 @@ export interface ScenarioQueries {
     repairRateFactor: { value: number; args: { builtObject: BuiltObject } };
     /** design.ts calculateCurrentPurchasePrice (Design.cs 1143): a factor on the purchase price of `empire`'s design. */
     designPriceFactor: { value: number; args: { empire: Empire } };
+    /** troops.ts annualTroopMaintenanceSum (Empire.cs 2025 AnnualTroopMaintenance): a factor on the empire's troop upkeep. */
+    troopMaintenanceFactor: { value: number; args: { empire: Empire } };
+    /** builtObject.ts annualSupportCost (BuiltObject.cs 782): a factor on the ship's / base's upkeep. */
+    shipMaintenanceFactor: { value: number; args: { builtObject: BuiltObject } };
+    /** forceStructure.ts projectPrivateForceStructure (Empire.9.cs 4767): a factor on the freighter targets and caps. */
+    privateFreighterFactor: { value: number; args: { empire: Empire } };
+    /** forceStructure.ts habitatCorruption (Habitat.cs 763), before the 0.8 cap: a factor on the colony's corruption. */
+    colonyCorruptionFactor: { value: number; args: { habitat: Habitat } };
+    /** construction/facilities.ts reviewPlanetaryFacilities (Habitat.cs 7216): added to DefensiveFortressBonus (before the byte cap). */
+    colonyFortressBonus: { value: number; args: { habitat: Habitat } };
+    /** Characters & Victory's Diet (dietAi.ts voteWeight): a factor on the empire's vote weight. */
+    dietVoteWeightFactor: { value: number; args: { empire: Empire } };
+    /** frontier/frontier.ts autonomyDrift: extra signed drift terms at the colony (cause, amount). */
+    frontierDriftTerms: { value: { cause: string; amount: number }[]; args: { habitat: Habitat } };
     // [colonyEconomy] end
 }
 export type ScenarioQueryName = keyof ScenarioQueries;

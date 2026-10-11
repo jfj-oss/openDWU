@@ -40,6 +40,7 @@ import { clearPreviousMissionRequirements } from './missions/assign';
 import { baconSettings } from './data/baconSettings';
 import { raceChangePeriodActive, racePeriodicRaceEvent } from './colonyTick';
 import { RaceEventType } from './eventTypes';
+import { scenarioQuery } from './scenario/hooks';
 
 // Port of EngineType.cs (byte enum, member order exact).
 export enum EngineType {
@@ -440,6 +441,11 @@ export class BuiltObject {
         }
         let num9 = (num2 - num7) * num8;
         num9 *= this._supportCostFactor;
+        // [colonyEconomy] Fleet Depot / Automated Extractors: cheaper upkeep nearby; no-op without a scenario / handler.
+        if (this._galaxy.scenario !== null) {
+            const k = scenarioQuery(this._galaxy, 'shipMaintenanceFactor', 1, { builtObject: this });
+            if (k !== 1) num9 *= k;
+        }
         return csInt(num9);
     }
     set annualSupportCost(value: number) { this._annualSupportCost = value; }

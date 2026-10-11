@@ -30,6 +30,11 @@ import { galaxyStarDate } from '../../tick/simTime';
 import { registerScenarioPeriodic, registerScenarioQuery, registerScenarioYearly } from '../hooks';
 import { registerStabilityTerm } from '../stability';
 import { applyReputation } from '../reputation/ledger';
+import { wreckFields, wrecksAt, takeWrecks } from '../wreckage/common';
+import { BuiltObjectSubRole } from '../../builtObjectTypes';
+import { Cargo, ResourceRef } from '../../cargo';
+import { recalculateMaximumPopulation } from '../../types';
+import { performPrivateTransaction } from '../../treasury';
 import {
     DAY,
     YEAR,
@@ -128,6 +133,52 @@ export const ECON_EFFECTS = {
     colonistGrowthPct: 40,
     colonistRange: 2 * SECTOR,
     colonistYears: 5,
+    // Phase 2
+    roboticsTroopMaintPct: 4,
+    roboticsTroopMaintMaxPct: 12,
+    roboticsTroopPct: 10,
+    depotMaintPct: 15,
+    depotRange: 2 * SECTOR,
+    salvageRange: 2 * SECTOR,
+    salvageWrecks: 4,
+    salvageResourceShare: 0.25,
+    salvageValueShare: 0.1,
+    salvageFallbackIncomePct: 4,
+    marketIncomePct: 5,
+    marketShortageRange: 2 * SECTOR,
+    guildFreighterPct: 10,
+    guildFreighterMaxPct: 30,
+    blackMarketIncomePct: 15,
+    blackMarketRaidRate: 1.4,
+    blackMarketRaidRange: 1.5 * SECTOR,
+    blackMarketPirateFactor: 1.3,
+    casinoIncomePct: 15,
+    casinoCorruptionFactor: 1.2,
+    preserveApproval: 3,
+    preserveScenic: 0.3,
+    preserveHealPerYear: 0.03,
+    shrineApproval: 3,
+    gasRefineryPct: 20,
+    gasRefineryRange: 2 * SECTOR,
+    gasRefineryIncomePct: 3,
+    extractorsMaintPct: 30,
+    extractorsRange: 2 * SECTOR,
+    stripMinePct: 30,
+    stripMineDamagePerYear: 0.02,
+    adminCorruptionHere: 0.5,
+    adminCorruptionNear: 0.7,
+    adminRange: 2 * SECTOR,
+    geneticsGrowthPct: 10,
+    geneticsNewColonyPct: 25,
+    geneticsRange: 3 * SECTOR,
+    senateApproval: 1,
+    senateApprovalMax: 2,
+    senateVotePct: 20,
+    senateVoteMaxPct: 40,
+    fortressBonus: 30,
+    charterApproval: 4,
+    charterTaxFactor: 0.9,
+    charterDrift: -1.5,
     // Synergies
     supplyChainFactor: 1.2,
     supplyChainRange: 2 * SECTOR,
@@ -190,6 +241,18 @@ interface EmpireSources {
     warehouses: Map<number, Habitat>;
     componentWorks: number;
     culturalCenters: number;
+    // Phase 2
+    depots: Src[];
+    extractors: Src[];
+    gas: Src[];
+    strip: Src[];
+    admin: Src[];
+    genetics: Src[];
+    markets: Src[];
+    shrines: Map<string, Habitat>;
+    robotics: number;
+    guilds: number;
+    senates: number;
 }
 
 interface Cache {
@@ -209,7 +272,7 @@ function sources(galaxy: Galaxy): Cache {
     if (st !== null) {
         for (const e of galaxy.empires) {
             if (!isEconEmpire(galaxy, e)) continue;
-            const s: EmpireSources = { mining: [], media: [], resort: [], colonist: [], outposts: [], drydockSystems: new Set(), warehouses: new Map(), componentWorks: 0, culturalCenters: 0 };
+            const s: EmpireSources = { mining: [], media: [], resort: [], colonist: [], outposts: [], drydockSystems: new Set(), warehouses: new Map(), componentWorks: 0, culturalCenters: 0, depots: [], extractors: [], gas: [], strip: [], admin: [], genetics: [], markets: [], shrines: new Map(), robotics: 0, guilds: 0, senates: 0 };
             for (const h of e.colonies) {
                 const rec = st.colonies[h.habitatIndex];
                 if (rec === undefined) continue;
@@ -230,6 +293,22 @@ function sources(galaxy: Galaxy): Cache {
                         case 'culturalCenter': s.culturalCenters++; break;
                         case 'freePort': out.raid.push({ h, pct: X.freePortRaidRate, range: X.freePortRaidRange, id: f.id }); break;
                         case 'militiaYard': out.raid.push({ h, pct: X.militiaRaidRate, range: X.militiaRaidRange, id: f.id }); break;
+                        case 'blackMarket': out.raid.push({ h, pct: X.blackMarketRaidRate, range: X.blackMarketRaidRange, id: f.id }); break;
+                        case 'fleetDepot': s.depots.push({ h, pct: X.depotMaintPct, range: X.depotRange, id: f.id }); break;
+                        case 'automatedExtractors': s.extractors.push({ h, pct: X.extractorsMaintPct, range: X.extractorsRange, id: f.id }); break;
+                        case 'gasRefinery': s.gas.push({ h, pct: X.gasRefineryPct, range: X.gasRefineryRange, id: f.id }); break;
+                        case 'stripMine': s.strip.push({ h, pct: X.stripMinePct, range: -1, id: f.id }); break;
+                        case 'adminCenter': s.admin.push({ h, pct: 1, range: X.adminRange, id: f.id }); break;
+                        case 'geneticsInstitute': s.genetics.push({ h, pct: X.geneticsNewColonyPct, range: X.geneticsRange, id: f.id }); break;
+                        case 'commoditiesMarket': s.markets.push({ h, pct: 1, range: X.marketShortageRange, id: f.id }); break;
+                        case 'pilgrimageShrine': {
+                            const race = h.population?.dominantRace?.name ?? null;
+                            if (race !== null && !s.shrines.has(race)) s.shrines.set(race, h);
+                            break;
+                        }
+                        case 'roboticsPlant': s.robotics++; break;
+                        case 'merchantGuild': s.guilds++; break;
+                        case 'senateHall': s.senates++; break;
                     }
                 }
             }
@@ -332,6 +411,13 @@ export function colonyBonuses(galaxy: Galaxy, h: Habitat): EconBonus[] {
                 add(ColonyResourceEffect.ResearchHighTech, X.universityResearchPct * k, label);
                 break;
             case 'privateSecurity': add(ColonyResourceEffect.RecruitedTroopStrength, X.securityTroopPct * k * troops, label); break;
+            case 'roboticsPlant': add(ColonyResourceEffect.RecruitedTroopStrength, X.roboticsTroopPct * k * troops, label); break;
+            case 'salvageYard': if (!wreckageActive(galaxy)) add(ColonyResourceEffect.IncomeBoost, X.salvageFallbackIncomePct * k, label); break;
+            case 'commoditiesMarket': add(ColonyResourceEffect.IncomeBoost, X.marketIncomePct * k, label); break;
+            case 'blackMarket': add(ColonyResourceEffect.IncomeBoost, X.blackMarketIncomePct * k, label); break;
+            case 'spaceportCasino': add(ColonyResourceEffect.IncomeBoost, X.casinoIncomePct * k, label); break;
+            case 'gasRefinery': add(ColonyResourceEffect.IncomeBoost, X.gasRefineryIncomePct * k, label); break;
+            case 'geneticsInstitute': add(ColonyResourceEffect.PopulationGrowthRate, X.geneticsGrowthPct * k, label); break;
         }
     }
     // A Colonist Office nearby: new colonies grow faster for their first years.
@@ -345,6 +431,16 @@ export function colonyBonuses(galaxy: Galaxy, h: Habitat): EconBonus[] {
             add(ColonyResourceEffect.PopulationGrowthRate, best, 'Colonist Office');
         }
     }
+    // A Genetics Institute nearby: the same for new colonies, 3 sectors.
+    if (s !== null && s.genetics.length > 0) {
+        const rec = peekEconState(galaxy)?.colonies[h.habitatIndex];
+        const founded = rec?.foundedAt ?? -1;
+        if (founded >= 0 && galaxyStarDate(galaxy) - founded < X.colonistYears * YEAR) {
+            let best = 0;
+            for (const c of s.genetics) if (c.h !== h && c.h.empire === e && near(c.h, h, c.range)) best = Math.max(best, srcPct(galaxy, c));
+            add(ColonyResourceEffect.PopulationGrowthRate, best, 'Genetics Institute');
+        }
+    }
     return out;
 }
 
@@ -354,6 +450,7 @@ export function taxFactor(galaxy: Galaxy, h: Habitat): number {
     if (designationOf(galaxy, h) === Designation.MiningHub) f *= 1 - (1 - X.miningTaxFactor) * desigStrength(galaxy);
     const k = fac(galaxy, h, 'customsBureau');
     if (k > 0) f *= 1 + (X.customsTaxFactor - 1) * k;
+    if (fac(galaxy, h, 'frontierCharter') > 0) f *= 1 - (1 - X.charterTaxFactor) * facStrength(galaxy);
     return f;
 }
 
@@ -364,6 +461,7 @@ export function scenicBonus(galaxy: Galaxy, h: Habitat): number {
     let r = X.resortComplexScenic * fac(galaxy, h, 'resortComplex');
     if (r > 0 && h.empire !== null && hasDesignationNear(galaxy, h.empire, h, Designation.TradeHub, X.touristTradeRange)) r *= X.touristTradeFactor;
     v += r;
+    v += X.preserveScenic * fac(galaxy, h, 'naturePreserve');
     return v;
 }
 
@@ -388,6 +486,8 @@ export function approvalLines(galaxy: Galaxy, h: Habitat): ApprovalLine[] {
             case 'pleasureGardens': out.push({ label: 'Pleasure Gardens', value: X.gardensApproval * k }); break;
             case 'mediaNetwork': out.push({ label: 'Media Network', value: (X.mediaApprovalHere - X.mediaApprovalNear) * k }); break;
             case 'medicalComplex': out.push({ label: 'Medical Complex', value: X.medicalApproval * k }); break;
+            case 'naturePreserve': out.push({ label: 'Nature Preserve', value: X.preserveApproval * k }); break;
+            case 'frontierCharter': out.push({ label: 'Frontier Charter', value: X.charterApproval * k }); break;
         }
     }
     const s = empireSources(galaxy, e);
@@ -399,6 +499,17 @@ export function approvalLines(galaxy: Galaxy, h: Habitat): ApprovalLine[] {
         for (const r of s.resort) if (r.h !== h && r.h.empire === e && near(r.h, h, r.range)) resort = Math.max(resort, r.pct);
         if (resort > 0) out.push({ label: 'Resort World nearby', value: resort });
         if (s.culturalCenters > 0) out.push({ label: 'Cultural Centers', value: Math.min(X.culturalMax, X.culturalApproval * s.culturalCenters) * facStrength(galaxy) });
+        if (s.senates > 0) out.push({ label: 'Senate Halls', value: Math.min(X.senateApprovalMax, X.senateApproval * s.senates) * facStrength(galaxy) });
+        const race = h.population?.dominantRace?.name ?? null;
+        const shrine = race !== null ? s.shrines.get(race) : undefined;
+        if (shrine !== undefined && shrine.empire === e) out.push({ label: 'Pilgrimage Shrine', value: X.shrineApproval * fac(galaxy, shrine, 'pilgrimageShrine') });
+        // Commodities Market within range: shortages hurt less (as the warehouse, by range).
+        let mk = 0;
+        for (const m of s.markets) if (m.h.empire === e && near(m.h, h, m.range)) mk = Math.max(mk, fac(galaxy, m.h, 'commoditiesMarket'));
+        if (mk > 0) {
+            const short = 15 * (1 - calculateStrategicResourceSupplyGrowthFactor(galaxy, h));
+            if (short > 0) out.push({ label: 'Commodities Market', value: short * X.warehouseShortageRelief * mk });
+        }
         // Orbital Warehouse in the system: shortages hurt less (part of the stock -15 × (1 - supply) term back).
         const wh = s.warehouses.get(h.systemIndex);
         if (wh !== undefined && wh.empire === e) {
@@ -413,7 +524,7 @@ export function approvalLines(galaxy: Galaxy, h: Habitat): ApprovalLine[] {
 /** Mining rate factor for a mining station / ship of `bo`'s empire. */
 export function extractionFactor(galaxy: Galaxy, bo: BuiltObject): number {
     const s = empireSources(galaxy, bo.empire);
-    if (s === null || s.mining.length === 0) return 1;
+    if (s === null || (s.mining.length === 0 && s.gas.length === 0 && s.strip.length === 0)) return 1;
     let desig = 0;
     let consortium = 0;
     let refinery = 0;
@@ -425,7 +536,13 @@ export function extractionFactor(galaxy: Galaxy, bo: BuiltObject): number {
             if (near(m.h, bo, m.range)) consortium = Math.max(consortium, srcPct(galaxy, m));
         } else if (bo.parentHabitat !== null && bo.parentHabitat.systemIndex === m.h.systemIndex) refinery = Math.max(refinery, srcPct(galaxy, m));
     }
-    return 1 + (desig + consortium + refinery) / 100;
+    let gas = 0;
+    const isGas = bo.subRole === BuiltObjectSubRole.GasMiningStation || bo.subRole === BuiltObjectSubRole.GasMiningShip;
+    if (isGas) for (const m of s.gas) if (m.h.empire === bo.empire && near(m.h, bo, m.range)) gas = Math.max(gas, srcPct(galaxy, m));
+    let strip = 0;
+    const sys = bo.parentHabitat?.systemIndex ?? -1;
+    for (const m of s.strip) if (m.h.empire === bo.empire && m.h.systemIndex === sys) strip = Math.max(strip, srcPct(galaxy, m));
+    return 1 + (desig + consortium + refinery + gas + strip) / 100;
 }
 
 /** Population cap factor at `h`. */
@@ -442,6 +559,7 @@ export function pirateGrowthFactor(galaxy: Galaxy, h: Habitat): number {
     if (designationOf(galaxy, h) === Designation.Frontier) f *= 1 - (1 - X.frontierPirateFactor) * desigStrength(galaxy);
     const k = fac(galaxy, h, 'privateSecurity');
     if (k > 0) f *= Math.max(0.1, 1 - (1 - X.securityPirateFactor) * k);
+    if (fac(galaxy, h, 'blackMarket') > 0) f *= X.blackMarketPirateFactor;
     return f;
 }
 
@@ -454,6 +572,7 @@ export function raidFactor(galaxy: Galaxy, x: number, y: number): number {
     let trade = false;
     let port = false;
     let militia = false;
+    let black = false;
     for (const s of list) {
         if (s.h.empire === null || !near(s.h, p, s.range)) continue;
         if (s.id === null && !trade) {
@@ -464,6 +583,9 @@ export function raidFactor(galaxy: Galaxy, x: number, y: number): number {
             f *= s.pct;
         } else if (s.id === 'militiaYard' && !militia) {
             militia = true;
+            f *= s.pct;
+        } else if (s.id === 'blackMarket' && !black) {
+            black = true;
             f *= s.pct;
         }
     }
@@ -494,6 +616,71 @@ export function outpostSees(galaxy: Galaxy, empire: Empire, object: BuiltObject 
     return false;
 }
 
+/** Troop upkeep factor of `e` (Robotics Plants). */
+export function troopMaintFactor(galaxy: Galaxy, e: Empire): number {
+    const s = empireSources(galaxy, e);
+    if (s === null || s.robotics === 0) return 1;
+    return 1 - Math.min(X.roboticsTroopMaintMaxPct, X.roboticsTroopMaintPct * s.robotics * facStrength(galaxy)) / 100;
+}
+
+/** Upkeep factor of `bo` (Fleet Depot for state ships / bases, Automated Extractors for mining stations). */
+export function shipMaintFactor(galaxy: Galaxy, bo: BuiltObject): number {
+    const s = empireSources(galaxy, bo.empire);
+    if (s === null || (s.depots.length === 0 && s.extractors.length === 0)) return 1;
+    let pct = 0;
+    const station = bo.subRole === BuiltObjectSubRole.MiningStation || bo.subRole === BuiltObjectSubRole.GasMiningStation;
+    if (station) for (const m of s.extractors) if (m.h.empire === bo.empire && near(m.h, bo, m.range)) pct = Math.max(pct, srcPct(galaxy, m));
+    if (bo.owner !== null) for (const m of s.depots) if (m.h.empire === bo.empire && near(m.h, bo, m.range)) pct = Math.max(pct, srcPct(galaxy, m));
+    return 1 - Math.min(90, pct) / 100;
+}
+
+/** Freighter target factor of `e` (Merchant Guild Halls). */
+export function freighterFactor(galaxy: Galaxy, e: Empire): number {
+    const s = empireSources(galaxy, e);
+    if (s === null || s.guilds === 0) return 1;
+    return 1 + Math.min(X.guildFreighterMaxPct, X.guildFreighterPct * s.guilds * facStrength(galaxy)) / 100;
+}
+
+/** Corruption factor at `h` (Administrative Center here / nearby, Spaceport Casino here). */
+export function corruptionFactor(galaxy: Galaxy, h: Habitat): number {
+    const e = h.empire;
+    const s = empireSources(galaxy, e);
+    let f = 1;
+    if (fac(galaxy, h, 'spaceportCasino') > 0) f *= X.casinoCorruptionFactor;
+    if (s !== null && s.admin.length > 0) {
+        let best = 1;
+        for (const a of s.admin) {
+            if (a.h.empire !== e) continue;
+            if (a.h === h) best = Math.min(best, 1 - (1 - X.adminCorruptionHere) * Math.min(1.5, srcPct(galaxy, a)));
+            else if (near(a.h, h, a.range)) best = Math.min(best, 1 - (1 - X.adminCorruptionNear) * Math.min(1.5, srcPct(galaxy, a)));
+        }
+        f *= Math.max(0.1, best);
+    }
+    return f;
+}
+
+/** Fortress bonus added at `h` (Fortress Bunker). */
+export function fortressBonus(galaxy: Galaxy, h: Habitat): number {
+    return X.fortressBonus * fac(galaxy, h, 'fortressBunker');
+}
+
+/** Diet vote weight factor of `e` (Senate Halls). */
+export function voteFactor(galaxy: Galaxy, e: Empire): number {
+    const s = empireSources(galaxy, e);
+    if (s === null || s.senates === 0) return 1;
+    return 1 + Math.min(X.senateVoteMaxPct, X.senateVotePct * s.senates * facStrength(galaxy)) / 100;
+}
+
+/** Frontier Autonomy drift terms at `h` (Frontier Charter). */
+export function driftTerms(galaxy: Galaxy, h: Habitat): { cause: string; amount: number }[] {
+    const k = fac(galaxy, h, 'frontierCharter');
+    return k > 0 ? [{ cause: 'Frontier Charter', amount: X.charterDrift * k }] : [];
+}
+
+function wreckageActive(galaxy: Galaxy): boolean {
+    return wreckFields(galaxy).length > 0 || (galaxy.scenario?.flags['wreckage'] ?? false);
+}
+
 // ---------------------------------------------------------------------------------------------------------------
 // AI facility values (facilities.ts picks the best affordable one)
 // ---------------------------------------------------------------------------------------------------------------
@@ -510,7 +697,7 @@ export function facilityValue(galaxy: Galaxy, e: Empire, h: Habitat, id: Facilit
         return n;
     };
     const revenueWeight = 1 + Math.min(2, Math.max(0, h.annualTaxRevenue) / 50000);
-    let v: number;
+    let v = 1;
     switch (id) {
         case 'privateShipyard': v = yard ? 3 : 0.4; break;
         case 'heavyFoundry': v = 1.2; break;
@@ -546,6 +733,33 @@ export function facilityValue(galaxy: Galaxy, e: Empire, h: Habitat, id: Facilit
         case 'militiaYard': v = 1.3; break;
         case 'surveyOutpost': v = 1.1; break;
         case 'colonistOffice': v = countOwn('colonistOffice') < 2 ? 1.5 : 0.3; break;
+        case 'roboticsPlant': v = (s?.robotics ?? 0) < 3 ? 1.6 : 0.3; break;
+        case 'fleetDepot': v = port ? 1.7 : 0.8; break;
+        case 'salvageYard': v = wreckageActive(galaxy) ? (wrecksAt(galaxy, h.xpos, h.ypos, X.salvageRange).length > 0 ? 2.2 : 0.8) : 0.9; break;
+        case 'commoditiesMarket': v = 1.5; break;
+        case 'merchantGuild': v = (s?.guilds ?? 0) < 3 ? 1.6 : 0.2; break;
+        case 'blackMarket': v = 1.2; break;
+        case 'spaceportCasino': v = 1.8; break;
+        case 'naturePreserve': v = 1 + Math.min(1, h.damage * 10) + h.scenicFactor / 2; break;
+        case 'pilgrimageShrine': {
+            const race = h.population?.dominantRace?.name ?? null;
+            v = race !== null && !(s?.shrines.has(race) ?? false) ? 1.6 : 0.1;
+            break;
+        }
+        case 'gasRefinery': v = 1.3; break;
+        case 'automatedExtractors': {
+            let n = 0;
+            for (const m of e.miningStations) if (m !== null && !m.hasBeenDestroyed && near(h, m, X.extractorsRange)) n++;
+            v = 0.4 + Math.min(2.5, n / 2);
+            break;
+        }
+        case 'stripMine': v = 0.9; break;
+        case 'adminCenter': v = (s?.admin.length ?? 0) < 3 ? 2 : 0.4; break;
+        case 'geneticsInstitute': v = 1.4; break;
+        case 'senateHall': v = (s?.senates ?? 0) < 2 ? 1.5 : 0.2; break;
+        case 'fortressBunker': v = 1.2 + (h.pirateColonyControl.count > 0 ? 0.8 : 0); break;
+        case 'bountyOffice': v = countOwn('bountyOffice') < 1 ? 2.2 : 0.2; break;
+        case 'frontierCharter': v = 1.1; break;
     }
     return v * revenueWeight;
 }
@@ -602,6 +816,45 @@ function surveyTick(galaxy: Galaxy): void {
     }
 }
 
+/** Nature Preserve heals the planet, a Strip-Mine Charter damages it; Salvage Yards salvage nearby wrecks. Yearly. */
+function planetYear(galaxy: Galaxy): void {
+    for (const e of galaxy.empires) {
+        if (!isEconEmpire(galaxy, e)) continue;
+        for (const h of e.colonies) {
+            const facs = activeFacilities(galaxy, h);
+            if (facs.length === 0) continue;
+            let dmg = 0;
+            for (const f of facs) {
+                if (f.id === 'naturePreserve') dmg -= X.preserveHealPerYear * fac(galaxy, h, 'naturePreserve');
+                else if (f.id === 'stripMine') dmg += X.stripMineDamagePerYear;
+                else if (f.id === 'salvageYard') salvage(galaxy, e, h);
+            }
+            if (dmg !== 0) {
+                const before = h.damage;
+                h.damage = Math.fround(Math.max(0, Math.min(0.9, h.damage + dmg)));
+                if (h.damage !== before) recalculateMaximumPopulation(h);
+            }
+        }
+    }
+}
+
+function salvage(galaxy: Galaxy, e: Empire, h: Habitat): void {
+    const hits = wrecksAt(galaxy, h.xpos, h.ypos, X.salvageRange).slice(0, X.salvageWrecks);
+    if (hits.length === 0) return;
+    const taken = takeWrecks(galaxy, hits.map((x) => x.wreck));
+    const k = fac(galaxy, h, 'salvageYard');
+    if (h.cargo === null) return;
+    let value = 0;
+    for (const w of taken) {
+        value += w.value;
+        for (const r of w.resources) {
+            const amount = Math.floor(r.amount * X.salvageResourceShare * k);
+            if (amount > 0) h.cargo.add(new Cargo(new ResourceRef(r.resourceId), amount, e));
+        }
+    }
+    if (value > 0) performPrivateTransaction(e, value * X.salvageValueShare * k);
+}
+
 // ---------------------------------------------------------------------------------------------------------------
 // Registrations
 // ---------------------------------------------------------------------------------------------------------------
@@ -644,6 +897,14 @@ registerStabilityTerm({
     },
 });
 registerScenarioYearly({ id: 'colonyEconomy.retreat', flag: ECON_FLAG, run: (g) => econOn(g, ECON_FAC_FLAG) && retreatYear(g) });
+registerScenarioQuery({ id: 'colonyEconomy.troopMaint', flag: ECON_FLAG, query: 'troopMaintenanceFactor', run: (g, v, a) => (econOn(g, ECON_FAC_FLAG) ? v * troopMaintFactor(g, a.empire) : v) });
+registerScenarioQuery({ id: 'colonyEconomy.shipMaint', flag: ECON_FLAG, query: 'shipMaintenanceFactor', run: (g, v, a) => (econOn(g, ECON_FAC_FLAG) ? v * shipMaintFactor(g, a.builtObject) : v) });
+registerScenarioQuery({ id: 'colonyEconomy.freighters', flag: ECON_FLAG, query: 'privateFreighterFactor', run: (g, v, a) => (econOn(g, ECON_FAC_FLAG) ? v * freighterFactor(g, a.empire) : v) });
+registerScenarioQuery({ id: 'colonyEconomy.corruption', flag: ECON_FLAG, query: 'colonyCorruptionFactor', run: (g, v, a) => (econOn(g, ECON_FAC_FLAG) ? v * corruptionFactor(g, a.habitat) : v) });
+registerScenarioQuery({ id: 'colonyEconomy.fortress', flag: ECON_FLAG, query: 'colonyFortressBonus', run: (g, v, a) => (econOn(g, ECON_FAC_FLAG) ? v + fortressBonus(g, a.habitat) : v) });
+registerScenarioQuery({ id: 'colonyEconomy.dietVote', flag: ECON_FLAG, query: 'dietVoteWeightFactor', run: (g, v, a) => (econOn(g, ECON_FAC_FLAG) ? v * voteFactor(g, a.empire) : v) });
+registerScenarioQuery({ id: 'colonyEconomy.drift', flag: ECON_FLAG, query: 'frontierDriftTerms', run: (g, v, a) => (econOn(g, ECON_FAC_FLAG) ? [...v, ...driftTerms(g, a.habitat)] : v) });
+registerScenarioYearly({ id: 'colonyEconomy.planets', flag: ECON_FLAG, run: (g) => econOn(g, ECON_FAC_FLAG) && planetYear(g) });
 registerScenarioPeriodic({ id: 'colonyEconomy.survey', flag: ECON_FLAG, periodDays: 90, run: (g) => econOn(g, ECON_FAC_FLAG) && surveyTick(g) });
 
 export type { EconFacility };
