@@ -25,7 +25,7 @@
 // The session is transport-agnostic (transport.ts Link) and sim-agnostic (LockstepSim below; lockstepSim.ts adapts
 // a Galaxy). Nothing here touches the sim unless a session exists. Headless: no DOM / Pixi / Node APIs.
 
-import { SAVE_CHUNK_BYTES, type ClockState, type DigestMsg, type FrameInput, type LockstepParams, type NetCommand, type NetMessage, type PeerId, type PeerInfo, type ResyncMsg, type WelcomeMsg, type WireSave } from './protocol';
+import { SAVE_CHUNK_BYTES, type ClockState, type DigestMsg, type FrameInput, type LockstepParams, type MigrateMsg, type MigratedMsg, type NetCommand, type NetMessage, type PeerId, type PeerInfo, type ResyncMsg, type WelcomeMsg, type WireSave } from './protocol';
 import { base64ToBytes, bytesToBase64, gunzipText, gzipString } from '../saveCompression';
 import type { Link } from './transport';
 import type { EncodedArg } from '../sim/player/commandCodec';
@@ -56,8 +56,10 @@ export interface LockstepHooks {
     onResyncStart?(frame: number): void;
     /** An input arrived from another peer (stats; `now` = wall epoch ms). */
     onInput?(input: FrameInput, now: number): void;
-    /** Client: the host link closed; the session is over. */
+    /** Client: the host link closed; the session is over (or, with `migratable`, waits for a new host: §16). */
     onHostLost?(reason: string): void;
+    /** Host migration (§16): this peer now plays on with `host` as the hub (the new host: once every survivor reported). */
+    onMigrated?(host: PeerId): void;
     /** A frame ran (after applyFrame). */
     onFrame?(frame: number, clock: ClockState): void;
     log?(message: string): void;
@@ -99,7 +101,15 @@ export interface LockstepOptions extends Partial<LockstepParams> {
     clock?: ClockState;
     /** Host: the adaptive input delay (absent: the fixed `inputDelay`). */
     adaptiveDelay?: AdaptiveDelayOptions;
+    /**
+     * Client: when the host link closes the session does not end: it waits (no frames run past what it holds) for a
+     * new host — promoteToHost here, or migrateTo the new host's link (host migration, docs/MULTIPLAYER.md §16).
+     */
+    migratable?: boolean;
 }
+
+/** Frames of inputs a survivor reports behind its own frame (MigrateMsg): more than any two peers can be apart. */
+const MIGRATE_BACK_FRAMES = 240;
 
 export interface LockstepStats {
     framesRun: number;
@@ -135,7 +145,8 @@ interface PeerState {
 const DEFAULT_PARAMS: LockstepParams = { inputDelay: 4, digestInterval: 60 };
 
 export class LockstepSession {
-    readonly role: 'host' | 'client';
+    /** 'client' until promoteToHost (host migration). */
+    role: 'host' | 'client';
     /** This peer's id (0 for the host; a client learns it from welcome). */
     localPeer: PeerId;
     /** The next frame to run (= frames run so far, counted from the session's frame 0). */
@@ -150,6 +161,17 @@ export class LockstepSession {
     active = true;
 
     private readonly peers = new Map<PeerId, PeerState>();
+    /**
+     * Who was the hub from which frame (host migration, §16): the clock and input-delay changes of frame F are read
+     * from the input of hostPeerAt(F) only. Peer 0 from frame 0 until a migration appends the new host.
+     */
+    private readonly hosts: Array<{ peer: PeerId; from: number }> = [{ peer: 0, from: 0 }];
+    /** Client, migratable: the host link closed and no new host yet. */
+    orphaned = false;
+    /** New host, while the survivors report (promoteToHost → finishMigration). */
+    private migration: { oldHost: PeerId; from: number; expect: Set<PeerId>; reported: Map<PeerId, { link: Link; frame: number }>; timer: ReturnType<typeof setTimeout> | null } | null = null;
+    /** Survivor: reported to the new host, waiting for its `migrated` (nothing is sent meanwhile); own inputs after `through` follow it. */
+    private awaitingMigrated: { link: Link; through: number } | null = null;
     private readonly hooks: LockstepHooks;
     private readonly frameRealMs: number;
     private readonly maxCatchUp: number;
@@ -157,6 +179,7 @@ export class LockstepSession {
     private readonly now: () => number;
     private readonly wallNow: () => number;
     private readonly allowPause: (peer: PeerId, paused: boolean) => boolean;
+    private readonly migratable: boolean;
     /** Highest frame this peer has sent input for. */
     private lastSent = -1;
     private seq = 0;
@@ -204,6 +227,7 @@ export class LockstepSession {
         this.now = opts.now ?? (() => performance.now());
         this.wallNow = opts.wallNow ?? (() => performance.timeOrigin + performance.now());
         this.allowPause = opts.allowPauseRequest ?? (() => true);
+        this.migratable = opts.migratable === true;
         this.name = opts.name ?? (role === 'host' ? 'host' : 'client');
         const a = opts.adaptiveDelay;
         this.adaptive =
@@ -294,6 +318,7 @@ export class LockstepSession {
             return;
         }
         this.pendingClock = { speed, paused: (this.pendingClock ?? this.latestClock()).paused };
+        this.hooks.log?.(`speed ${speed} requested at frame ${this.frame}`);
     }
 
     /** Host: pause / resume. A client asks the host instead (requestPause). */
@@ -303,6 +328,7 @@ export class LockstepSession {
             return;
         }
         this.pendingClock = { speed: (this.pendingClock ?? this.latestClock()).speed, paused };
+        this.hooks.log?.(`${paused ? 'pause' : 'resume'} requested at frame ${this.frame} (speed ${this.pendingClock.speed})`);
     }
 
     /** Ask the host to pause / resume (any peer). */
@@ -329,14 +355,33 @@ export class LockstepSession {
 
     /** The clock the host's last sent input set (or the running one). */
     private latestClock(): ClockState {
-        const host = this.peers.get(0);
-        if (host !== undefined) {
-            for (let f = host.knownThrough; f >= this.frame; f--) {
-                const c = host.inputs.get(f)?.clock;
-                if (c !== undefined) return c;
-            }
+        for (let f = this.hostKnownThrough(); f >= this.frame; f--) {
+            const c = this.hostInput(f)?.clock;
+            if (c !== undefined) return c;
         }
         return this.clock;
+    }
+
+    /** The hub of frame `frame` (host migration: the new host from its first frame as host on). */
+    hostPeerAt(frame: number): PeerId {
+        let peer = this.hosts[0].peer;
+        for (const h of this.hosts) if (frame >= h.from) peer = h.peer;
+        return peer;
+    }
+
+    /** The current hub. */
+    get hostPeer(): PeerId {
+        return this.hosts[this.hosts.length - 1].peer;
+    }
+
+    /** The hub's input of `frame` (its clock / delay changes count). */
+    private hostInput(frame: number): FrameInput | undefined {
+        return this.peers.get(this.hostPeerAt(frame))?.inputs.get(frame);
+    }
+
+    /** The highest frame with an input from the current hub. */
+    private hostKnownThrough(): number {
+        return this.peers.get(this.hostPeer)?.knownThrough ?? this.frame - 1;
     }
 
     // -----------------------------------------------------------------------------------------------------------
@@ -365,7 +410,7 @@ export class LockstepSession {
         if (now - this.lastProbeAt < a.intervalMs) return;
         this.lastProbeAt = now;
         for (const p of this.peers.values()) {
-            if (p.info.id === 0 || p.link === null || p.info.leftFrom !== null) continue;
+            if (p.info.id === this.localPeer || p.link === null || p.info.leftFrom !== null) continue;
             // A peer still loading its welcome save answers late: not a round trip of the network.
             if (p.knownThrough < p.info.fromFrame + this.params.inputDelay) continue;
             const id = p.info.id;
@@ -415,12 +460,9 @@ export class LockstepSession {
 
     /** The delay the host's last sent input set (or the running one). */
     private latestDelay(): number {
-        const host = this.peers.get(0);
-        if (host !== undefined) {
-            for (let f = host.knownThrough; f >= this.frame; f--) {
-                const d = host.inputs.get(f)?.delay;
-                if (d !== undefined) return d;
-            }
+        for (let f = this.hostKnownThrough(); f >= this.frame; f--) {
+            const d = this.hostInput(f)?.delay;
+            if (d !== undefined) return d;
         }
         return this.params.inputDelay;
     }
@@ -461,10 +503,11 @@ export class LockstepSession {
         }
         order.sort((a, b) => a.info.id - b.info.id);
         const cmds: NetCommand[] = [];
+        const hub = this.hostPeerAt(f);
         for (const p of order) {
             const input = p.inputs.get(f)!;
-            if (p.info.id === 0 && input.clock !== undefined) this.clock = { ...input.clock };
-            if (p.info.id === 0 && input.delay !== undefined && input.delay !== this.params.inputDelay) {
+            if (p.info.id === hub && input.clock !== undefined) this.clock = { ...input.clock };
+            if (p.info.id === hub && input.delay !== undefined && input.delay !== this.params.inputDelay) {
                 this.params = { ...this.params, inputDelay: input.delay };
                 this.stats.delayChanges++;
                 this.hooks.log?.(`input delay ${input.delay} frames from frame ${f}`);
@@ -503,7 +546,7 @@ export class LockstepSession {
         }
         this.lastSent = through;
         if (this.role === 'host') this.broadcast({ t: 'inputs', list }, null);
-        else if (this.hostLink !== null) this.sendTo(this.hostLink, { t: 'inputs', list });
+        else if (this.hostLink !== null && this.awaitingMigrated === null) this.sendTo(this.hostLink, { t: 'inputs', list });
     }
 
     private storeInput(input: FrameInput): boolean {
@@ -521,7 +564,7 @@ export class LockstepSession {
         if (this.role === 'host') {
             this.ownDigests.set(frame, d);
             for (const p of this.peers.values()) this.compareDigests(p);
-        } else if (this.hostLink !== null) {
+        } else if (this.hostLink !== null && this.awaitingMigrated === null) {
             this.sendTo(this.hostLink, { t: 'digest', frame, digest: d, epoch: this.epoch });
         }
     }
@@ -553,6 +596,7 @@ export class LockstepSession {
         const welcome: WelcomeMsg = {
             t: 'welcome', peer: id, frame: this.frame, save: null, clock: { ...this.clock }, inputs: this.inputsFrom(this.frame),
             peers: this.peerList(), params: { ...this.params },
+            ...(this.hosts.length > 1 ? { hosts: this.hosts.map((x) => ({ ...x })) } : {}),
         };
         if (skipSave) {
             this.sendTo(link, welcome);
@@ -579,8 +623,10 @@ export class LockstepSession {
             case 'inputs': {
                 const now = this.wallNow();
                 const fresh: FrameInput[] = [];
-                for (const input of m.list) {
-                    if (input.peer !== p.info.id) continue; // a client speaks only for itself
+                for (const raw of m.list) {
+                    if (raw.peer !== p.info.id) continue; // a client speaks only for itself
+                    // Only the hub changes the clock and the delay.
+                    const input: FrameInput = raw.clock !== undefined || raw.delay !== undefined ? { frame: raw.frame, peer: raw.peer, cmds: raw.cmds } : raw;
                     if (this.storeInput(input)) {
                         fresh.push(input);
                         this.hooks.onInput?.(input, now);
@@ -704,6 +750,184 @@ export class LockstepSession {
         link.close(reason);
     }
 
+    // -----------------------------------------------------------------------------------------------------------
+    // Host migration (docs/MULTIPLAYER.md §16)
+    // -----------------------------------------------------------------------------------------------------------
+
+    /**
+     * Client whose host is gone (or going): become the hub. `expect`: the survivors that will report over their backup
+     * links (acceptMigrant); the old host and every in-session peer that has not reported when all of `expect` did (or
+     * after `timeoutMs`) leave at the first frame nobody holds an input of theirs for, the same cut for everyone. This
+     * peer's own inputs go on from the first frame it has not sent: its clock and delay changes count from there.
+     */
+    promoteToHost(expect: readonly PeerId[], timeoutMs = 10_000): void {
+        if (this.role !== 'client' || this.localPeer < 0 || !this.active) throw new Error('promoteToHost: not a client in a session');
+        const oldHost = this.hostPeer;
+        this.hostLink?.close('the host changed');
+        this.hostLink = null;
+        this.orphaned = false;
+        this.awaitingMigrated = null;
+        this.role = 'host';
+        const from = this.lastSent + 1;
+        this.hosts.push({ peer: this.localPeer, from });
+        this.nextPeerId = Math.max(...this.peers.keys()) + 1;
+        this.ownDigests.clear();
+        for (const p of this.peers.values()) {
+            p.digests.clear();
+            p.link = null;
+        }
+        const wanted = new Set(expect.filter((id) => id !== this.localPeer && id !== oldHost && this.peers.get(id)?.info.leftFrom === null));
+        this.migration = { oldHost, from, expect: wanted, reported: new Map(), timer: null };
+        this.hooks.log?.(`host migration: this peer (${this.localPeer}) is the hub from frame ${from}; waiting for ${wanted.size} survivor(s)`);
+        if (wanted.size === 0) this.finishMigration();
+        else this.migration.timer = setTimeout(() => this.finishMigration(), timeoutMs);
+    }
+
+    /** New host: a survivor's backup link (its first message is its MigrateMsg); after the migration, its session link. */
+    acceptMigrant(link: Link): void {
+        if (this.role !== 'host') throw new Error('acceptMigrant: not the host');
+        let peer: PeerState | null = null;
+        let reported = false;
+        link.onMessage = (text) => {
+            const m = this.decode(text);
+            if (m === null) return;
+            if (peer !== null) {
+                this.onHostMessage(peer, m);
+                return;
+            }
+            if (reported) return; // waits for finishMigration (it sends nothing meanwhile)
+            if (m.t !== 'migrate') return;
+            reported = true;
+            this.onMigrateReport(link, m, (p) => (peer = p));
+        };
+        link.onClose = (reason) => {
+            if (peer !== null) {
+                this.dropPeer(peer, reason);
+                return;
+            }
+            const mig = this.migration;
+            if (mig === null) return;
+            for (const [id, r] of mig.reported) if (r.link === link) mig.reported.delete(id);
+        };
+    }
+
+    private onMigrateReport(link: Link, m: MigrateMsg, attached: (p: PeerState) => void): void {
+        const mig = this.migration;
+        const p = this.peers.get(m.peer);
+        const refuse = (why: string): void => {
+            this.hooks.log?.(`host migration: refused a report from peer ${m.peer}: ${why}`);
+            this.sendNow(link, JSON.stringify({ t: 'bye', reason: why } satisfies NetMessage));
+            link.close(why);
+        };
+        if (mig === null) return refuse('the migration is over: rejoin the game');
+        if (p === undefined || p.info.leftFrom !== null || m.peer === this.localPeer || m.peer === mig.oldHost || mig.reported.has(m.peer)) return refuse('not a survivor of this session');
+        // Inputs are immutable: what a survivor holds is what everyone got (storeInput keeps the first copy).
+        for (const input of Array.isArray(m.inputs) ? m.inputs : []) {
+            if (input !== null && typeof input === 'object' && Number.isInteger(input.frame) && this.peers.has(input.peer) && Array.isArray(input.cmds)) this.storeInput(input);
+        }
+        p.epoch = Number.isInteger(m.epoch) ? m.epoch : 0;
+        mig.reported.set(m.peer, { link, frame: Number.isInteger(m.frame) ? m.frame : this.frame });
+        mig.expect.delete(m.peer);
+        this.pendingAttach.set(m.peer, attached);
+        this.hooks.log?.(`host migration: peer ${m.peer} reported at frame ${m.frame} (${m.inputs.length} inputs)`);
+        if (mig.expect.size === 0) this.finishMigration();
+    }
+
+    private readonly pendingAttach = new Map<PeerId, (p: PeerState) => void>();
+
+    /** New host: every expected survivor reported (or the time is up): cut the streams of those who did not, go on. */
+    private finishMigration(): void {
+        const mig = this.migration;
+        if (mig === null) return;
+        this.migration = null;
+        if (mig.timer !== null) clearTimeout(mig.timer);
+        const leavers: PeerState[] = [];
+        for (const p of this.peers.values()) {
+            if (p.info.leftFrom !== null || p.info.id === this.localPeer || mig.reported.has(p.info.id)) continue;
+            // Nobody holds an input of theirs past knownThrough (everyone's inputs reached the others through the old
+            // host, and every survivor's are merged here), and no survivor can have run a frame without one.
+            p.link = null;
+            p.info.leftFrom = p.knownThrough + 1;
+            for (const f of p.inputs.keys()) if (f >= p.info.leftFrom) p.inputs.delete(f);
+            leavers.push(p);
+        }
+        let floor = this.frame;
+        for (const r of mig.reported.values()) floor = Math.min(floor, r.frame);
+        const inputs = this.inputsFrom(floor);
+        const peers = this.peerList();
+        for (const [id, r] of mig.reported) {
+            const p = this.peers.get(id)!;
+            p.link = r.link;
+            this.sendNow(r.link, JSON.stringify({ t: 'migrated', host: this.localPeer, hostFrom: mig.from, peers, inputs, epoch: p.epoch } satisfies MigratedMsg));
+            this.pendingAttach.get(id)?.(p);
+        }
+        this.pendingAttach.clear();
+        this.hooks.log?.(`host migration done: hub ${this.localPeer} from frame ${mig.from}; ${mig.reported.size} survivor(s); left: ${leavers.map((p) => `${p.info.id} from ${p.info.leftFrom}`).join(', ') || 'none'}`);
+        for (const p of leavers) {
+            this.broadcast({ t: 'peerLeft', peer: p.info.id, fromFrame: p.info.leftFrom! }, null);
+            this.hooks.onPeerLeft?.({ ...p.info }, p.info.id === mig.oldHost ? 'the host left' : 'did not reconnect after the host left');
+        }
+        this.hooks.onMigrated?.(this.localPeer);
+    }
+
+    /** Survivor: report to the new host over `link` (its backup link) and play on with it as the hub once it answers. */
+    migrateTo(link: Link): void {
+        if (this.role !== 'client' || this.localPeer < 0 || !this.active) throw new Error('migrateTo: not a client in a session');
+        if (this.hostLink !== null && this.hostLink !== link) this.hostLink.close('the host changed');
+        this.hostLink = link;
+        this.orphaned = false;
+        this.awaitingMigrated = { link, through: this.lastSent };
+        link.onMessage = (text) => {
+            const m = this.decode(text);
+            if (m === null) return;
+            if (this.awaitingMigrated !== null && this.awaitingMigrated.link === link) {
+                if (m.t === 'migrated') this.onMigrated(m);
+                else if (m.t === 'bye') link.close(m.reason);
+                return;
+            }
+            this.clientReceive(m);
+        };
+        link.onClose = (reason) => {
+            if (this.hostLink === link) this.hostClosed(reason);
+        };
+        const floor = this.frame - MIGRATE_BACK_FRAMES;
+        const inputs: FrameInput[] = [];
+        for (const p of this.peers.values()) for (const [f, input] of p.inputs) if (f >= floor) inputs.push(input);
+        inputs.sort((a, b) => a.frame - b.frame || a.peer - b.peer);
+        this.sendTo(link, { t: 'migrate', peer: this.localPeer, epoch: this.epoch, frame: this.frame, inputs });
+        this.hooks.log?.(`host migration: reported to the new host at frame ${this.frame} (${inputs.length} inputs)`);
+    }
+
+    private onMigrated(m: MigratedMsg): void {
+        const wait = this.awaitingMigrated!;
+        this.awaitingMigrated = null;
+        if (m.hostFrom > (this.hosts[this.hosts.length - 1]?.from ?? 0)) this.hosts.push({ peer: m.host, from: m.hostFrom });
+        for (const info of m.peers) {
+            const p = this.peers.get(info.id);
+            if (p === undefined) {
+                this.addPeer({ ...info }, null);
+                continue;
+            }
+            if (info.leftFrom !== null && p.info.leftFrom === null) {
+                p.info.leftFrom = info.leftFrom;
+                for (const f of p.inputs.keys()) if (f >= info.leftFrom) p.inputs.delete(f);
+                this.hooks.onPeerLeft?.({ ...p.info }, info.id === this.hostPeerAt(m.hostFrom - 1) ? 'the host left' : 'left');
+            }
+        }
+        for (const input of m.inputs) this.storeInput(input);
+        this.epoch = m.epoch;
+        // What this peer stored after its report goes to the new hub now.
+        const mine = this.peers.get(this.localPeer)!;
+        const list: FrameInput[] = [];
+        for (let f = wait.through + 1; f <= this.lastSent; f++) {
+            const i = mine.inputs.get(f);
+            if (i !== undefined) list.push(i);
+        }
+        if (list.length > 0) this.sendTo(wait.link, { t: 'inputs', list });
+        this.hooks.log?.(`host migration: peer ${m.host} is the hub from frame ${m.hostFrom}`);
+        this.hooks.onMigrated?.(m.host);
+    }
+
     private broadcast(m: NetMessage, except: PeerState | null): void {
         const text = JSON.stringify(m);
         for (const p of this.peers.values()) {
@@ -790,6 +1014,7 @@ export class LockstepSession {
     private onWelcome(m: WelcomeMsg, save: string | null): void {
         this.localPeer = m.peer;
         this.params = { ...m.params };
+        if (Array.isArray(m.hosts) && m.hosts.length > 0) this.hosts.splice(0, Infinity, ...m.hosts.map((x) => ({ peer: x.peer, from: x.from })));
         for (const info of m.peers) this.addPeer({ ...info }, null);
         if (save !== null) this.sim.load(save);
         this.frame = m.frame;
@@ -852,8 +1077,16 @@ export class LockstepSession {
 
     private hostClosed(reason: string): void {
         if (!this.active) return;
-        this.active = false;
         this.hostLink = null;
+        this.awaitingMigrated = null;
+        if (this.migratable && this.localPeer >= 0) {
+            // Host migration (§16): keep everything; a new host takes over (promoteToHost / migrateTo).
+            this.orphaned = true;
+            this.hooks.log?.(`host link closed: ${reason} (waiting for a new host)`);
+            this.hooks.onHostLost?.(reason);
+            return;
+        }
+        this.active = false;
         this.hooks.log?.(`host link closed: ${reason}`);
         this.hooks.onHostLost?.(reason);
     }
@@ -901,6 +1134,12 @@ export class LockstepSession {
         if (this.role === 'host') {
             this.broadcast({ t: 'bye', reason }, null);
             for (const p of this.peers.values()) p.link?.close(reason);
+            const mig = this.migration;
+            this.migration = null;
+            if (mig !== null) {
+                if (mig.timer !== null) clearTimeout(mig.timer);
+                for (const r of mig.reported.values()) r.link.close(reason);
+            }
         } else {
             this.hostLink?.close(reason);
         }

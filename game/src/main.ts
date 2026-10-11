@@ -162,6 +162,8 @@ import { setThemeChromeRace } from './themeAssets';
 import { resetMusicForTheme } from './audio/musicPlayer';
 import { updateSettings } from './ui/settings';
 import { localViewerEmpire, onLocalViewerChange } from './localViewer';
+import { installHumanOffers } from './ui/screens/humanOffers';
+import { toggleDiplomacyScreen } from './ui/screens/diplomacyScreen';
 import { humanEmpires } from './sim/humanEmpires';
 import type { Empire } from './sim/empire';
 // LAN multiplayer (docs/MULTIPLAYER.md §10).
@@ -1002,6 +1004,13 @@ export async function startGameView(
             if (c !== null) camera.centerOn(c.xpos, c.ypos);
         },
     });
+    // Multiplayer Phase 5 (ui/screens/humanOffers.ts): offers between human players — the receiver's popup (accept /
+    // reject / counter), the sender's notice of the answer. Nothing shows in a one-human game.
+    const removeHumanOffers = installHumanOffers({
+        galaxy: () => galaxy,
+        viewer: () => localViewerEmpire(galaxy) ?? null,
+        openDiplomacy: (empire) => toggleDiplomacyScreen({ player: currentViewer(), selectedEmpire: empire }),
+    });
     // [15d] Galaxy.GameEnd → Main.Part12.cs Galaxy_GameEnd / DoGameEnd (pause, IsFinished/Victor, banner).
     // [simworker] worker mode: the worker's handler ends the game; its gameEnd event shows the banner (workerMessages.ts).
     if (simClient === undefined) installGameEndHandler(galaxy, time);
@@ -1280,6 +1289,7 @@ export async function startGameView(
         clearInterval(refreshHudTimer);
         clearInterval(refreshClockTimer);
         hotSeat.destroy();
+        removeHumanOffers();
         removeViewerSwitchListener();
         setUiRecordEmpire(galaxy, null);
         view.dispose(); // Task 12k: remove the hover tooltip div.
@@ -1854,6 +1864,35 @@ const multiplayerDeps: MultiplayerAppDeps = {
         await startGameViewWithOverlay(game, undefined, undefined, newGame ? undefined : clock, simClient);
     },
     toMenu: () => void leaveGameToMenu(),
+    // Phase 5 (docs/MULTIPLAYER.md §17): the lobby's settings matching.
+    async matchTheme(theme) {
+        const list = await fetchThemeList();
+        const want = theme === '' ? '' : list.find((t) => t.toLowerCase() === theme.toLowerCase());
+        if (want === undefined) return `You do not have the host's theme "${theme}": it is a folder in Customization\\ of the Distant Worlds: Universe install. Copy it from the host (the same version), or ask the host to play another theme.`;
+        // For this session only (GameOptions.CustomizationSetName stays the player's own choice).
+        await switchTheme(want, false);
+        return null;
+    },
+    async restoreTheme() {
+        const restore = themeToRestoreOnLeave(activeCustomizationSetName(), getSettings().customizationSet, await fetchThemeList());
+        if (restore !== null) await switchTheme(restore, false);
+    },
+    addonSet(o) {
+        const sc = o.scenario;
+        if (sc == null) return null;
+        const packages = choiceInclude(sc) ?? [sc.id];
+        return { id: sc.id, packages, names: packages.map((id) => scenarioOverlays.get(id)?.manifest.name ?? id), flags: { ...sc.flags }, params: { ...sc.params } };
+    },
+    missingAddons(ids) {
+        // Test hook (like dwu.mp.blockIce): 'dwu.mp.hideAddon' = an add-on id this app pretends not to have.
+        let hide = '';
+        try {
+            hide = localStorage.getItem('dwu.mp.hideAddon') ?? '';
+        } catch {
+            // no storage
+        }
+        return ids.filter((id) => !scenarioOverlays.has(id) || id === hide);
+    },
 };
 
 /** Show the main menu; Start New Game opens the wizard, whose back button

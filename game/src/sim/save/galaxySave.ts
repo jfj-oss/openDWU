@@ -76,6 +76,7 @@ import { type HintInfo, hintSubjectTable, liveHintSubjects, restoreHintSubjects,
 import { liveWaypointState, restoreWaypointState, savedWaypointState, type WaypointState } from '../player/waypoints';
 import { liveHumanEmpires, restoreAiSeats, restoreHumanEmpires, savedAiSeats, savedHumanEmpires } from '../humanEmpires';
 import { perHumanHintSubjects, restorePerHumanState, savedPerHumanState, type PerHumanState } from '../perHumanState';
+import { liveHumanOffers, restoreHumanOffers, savedHumanOffers, type SavedHumanOffers } from '../player/humanOfferTable';
 
 export interface GalaxySaveJSON {
     /** 3: the save file's graph encoding, compactCodec.ts (written by galaxyToSaveChunks). 2: graphCodec.ts — older save
@@ -571,6 +572,9 @@ interface SideTables {
     /** The non-primary humans' copies of the per-player state (sim/perHumanState.ts): absent while empty — every
      *  one-human game — and in older saves. The replica sync carries the live state or null. */
     perHuman?: PerHumanState | null;
+    /** Multiplayer (player/humanDiplomacy.ts): the diplomacy offers between human players, once one was made — absent in
+     *  every other game (so it saves the same text as before) and in older saves. The replica sync carries it or null. */
+    humanOffers?: SavedHumanOffers | null;
 }
 
 function collectSideTables(galaxy: Galaxy, visited: readonly object[]): SideTables {
@@ -619,6 +623,8 @@ function collectSideTables(galaxy: Galaxy, visited: readonly object[]): SideTabl
     }
     const perHuman = savedPerHumanState(galaxy);
     if (perHuman !== undefined) out.perHuman = perHuman;
+    const offers = savedHumanOffers(galaxy);
+    if (offers !== undefined) out.humanOffers = offers;
     return out;
 }
 
@@ -653,6 +659,7 @@ function restoreSideTables(galaxy: Galaxy, t: SideTables): void {
     restoreAiSeats(galaxy, t.aiSeats);
     restorePerHumanState(galaxy, t.perHuman);
     for (const [h, table] of t.perHuman?.hintSubjects ?? []) setHintSubjectTable(h, table as Record<string, HintInfo>);
+    restoreHumanOffers(galaxy, t.humanOffers);
 }
 
 type TerritoryGrid = Uint8Array[] | null;
@@ -803,6 +810,7 @@ export function replicaSideTables(galaxy: Galaxy, visited: readonly object[]): o
     t.humanEmpires = liveHumanEmpires(galaxy);
     t.aiSeats = savedAiSeats(galaxy) ?? null;
     t.perHuman = savedPerHumanState(galaxy) ?? null;
+    t.humanOffers = liveHumanOffers(galaxy);
     return t;
 }
 

@@ -195,11 +195,19 @@ export class GalaxyLockstepSim implements LockstepSim {
  */
 export class SessionStepper implements LockstepStepper {
     private seen: ClockState | null = null;
+    private role: 'host' | 'client';
 
-    constructor(readonly session: LockstepSession, readonly sim: GalaxyLockstepSim) {}
+    constructor(readonly session: LockstepSession, readonly sim: GalaxyLockstepSim) {
+        this.role = session.role;
+    }
 
     tick(realDtMs: number, time: GalaxyTime): number {
         const s = this.session;
+        // A host migration made this peer the hub: what its HUD showed as a client is not a request.
+        if (s.role !== this.role) {
+            this.role = s.role;
+            this.seen = null;
+        }
         // A HUD change since the last tick (the frames reset time.* to the shared clock): ask for it.
         if (this.seen !== null) {
             if (time.paused !== this.seen.paused) s.requestPause(time.paused);

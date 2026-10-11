@@ -184,8 +184,10 @@ export interface MpStartMessage {
     /** Reply id (an mpReply when the session runs: the host at once, a client once welcomed). */
     id: number;
     start: MultiplayerStart;
-    /** This peer's lobby slot (0 = host). */
+    /** This peer's lobby slot (0 = the lobby's host). */
     slot: number;
+    /** The session role (absent: by slot, 0 = host). After a host migration the lobby's host rejoins as a client. */
+    role?: 'host' | 'client';
     name: string;
     /** Host: the clients' links by slot; client: the one link to the host (slot 0). Ids name relayed links. */
     links: { slot: number; link: number }[];
@@ -198,11 +200,16 @@ export interface MpStartMessage {
 /** A relayed link's traffic, main thread → worker. */
 export type NetInMessage = { type: 'netIn'; link: number; text: string } | { type: 'netClose'; link: number; reason: string };
 
-/** Host: a rejoining player's link (slot), handed to the session (multiplayerGame.ts acceptRejoin). */
+/**
+ * A link handed to the session: host, a rejoining player's (multiplayerGame.ts acceptRejoin); host migration (§16):
+ * `migrant` on the new host (a survivor's backup link, acceptMigrant), `newHost` on a survivor (its backup link to the
+ * new hub at `slot`, migrateTo).
+ */
 export interface NetLinkMessage {
     type: 'netLink';
     link: number;
     slot: number;
+    mode?: 'rejoin' | 'migrant' | 'newHost';
 }
 
 /** A call on the worker's session (pause, speed, AI takeover, the debug hook); answered by mpReply under `id`. */
@@ -227,6 +234,8 @@ export interface MpWireState {
     gameMs: number;
     /** Per lobby slot: who plays it, whether a peer for it is in the session, whether the AI runs its empire. */
     seats: MpSeat[];
+    /** The lobby slot of the hub (0 until a host migration, §16). */
+    hostSlot?: number;
 }
 
 export interface MpSeat {

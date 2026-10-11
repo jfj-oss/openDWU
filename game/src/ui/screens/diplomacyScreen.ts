@@ -540,6 +540,8 @@ import { toggleDietScreen } from './dietScreen'; // [charactersVictory]
  *  submit shows its hint; null set = dialog files not loaded yet. */
 export function proposalReplyText(set: DialogSet | null, result: ProposalResult, raceName: string): string {
     if (!result.ok) return result.message;
+    // Multiplayer: a proposal to another human player went as an offer (humanDiplomacy.ts): "Offer sent — awaiting …".
+    if (result.offer !== undefined) return result.message;
     if (result.reply === null) return '';
     if (set === null) return '…';
     return formatNet(set.resolveDialog(result.reply, raceName), result.replyArgs);
@@ -1783,7 +1785,7 @@ function createDiplomacyScreen(opts: DiplomacyScreenOptions): OpenState {
             talkMenu = null;
             if (res.expireMessagesFor !== null) expireDiplomacyMessages?.(res.expireMessagesFor);
             // [diplovoice] begin
-            startVoice(other, res, resolveGameText(o.label), o.id);
+            if (res.offer === undefined) startVoice(other, res, resolveGameText(o.label), o.id); // a human answers for themselves
             // [diplovoice] end
             // [tradenego] begin
             // DEAL_BEGIN (Main.Part10.cs:4324 method_302): the trade trees open beside the conversation — not when the

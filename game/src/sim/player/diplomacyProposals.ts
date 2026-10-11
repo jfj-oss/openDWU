@@ -90,6 +90,8 @@ import { scenarioText } from '../scenario/messages';
 import { isRimTraderAI } from '../scenario/rimTrade/common';
 import { scenarioEmit, scenarioQuery } from '../scenario/hooks';
 import { scenarioProposalSlots } from '../scenario/proposalSlots';
+import { isHumanEmpire, isMultiHuman } from '../humanEmpires';
+import { addProposalOffer } from './humanDiplomacy';
 
 /** The greeting-menu entry (Main.Part9.cs:208-249) an option sits under. FOLLOW_UP: a reply's own options. GREETING: a
  *  greeting-menu entry that acts itself (the pirate player's protection entries, Main.Part9.cs:175-189). */
@@ -140,6 +142,8 @@ export interface ProposalResult {
     automationPrompt: boolean;
     /** DEAL_BEGIN: the trade negotiation to show (Main.Part10.cs:4324 method_302); null otherwise. */
     trade: TradeNegotiation | null;
+    /** Multiplayer (humanDiplomacy.ts): the proposal went to a human player as this offer (it waits for their answer). */
+    offer?: number;
 }
 
 const MENU_LABEL: Record<Exclude<ProposalMenu, 'FOLLOW_UP' | 'GREETING'>, string> = {
@@ -306,6 +310,50 @@ const PIRATE_REPLY_IDS: ReadonlySet<string> = new Set(['PIRATE_PROTECTIONACCEPTR
  * faction spoken to by a non-pirate player — TODO(port) above).
  */
 export function listProposals(galaxy: Galaxy, player: Empire, other: Empire): ProposalOption[] {
+    const list = listProposalsAi(galaxy, player, other);
+    if (!toHuman(galaxy, other)) return list;
+    // Multiplayer (humanDiplomacy.ts): with another human only what that player can answer (or what needs no answer).
+    return list.map((o) => (HUMAN_UNAVAILABLE(o) ? { ...o, enabled: false, hint: 'Not between human players: use "Negotiate a trade proposal…"' } : o));
+}
+
+/** Multiplayer: `other` is another human player's empire (diplomacy with it goes as offers: humanDiplomacy.ts). */
+export function toHuman(galaxy: Galaxy, other: Empire): boolean {
+    return isMultiHuman(galaxy) && isHumanEmpire(galaxy, other);
+}
+
+/** The options a human cannot answer as an offer: the AI's quick swaps, the add-ons' kinds, pirate deals. */
+function HUMAN_UNAVAILABLE(o: ProposalOption): boolean {
+    return o.menu === 'OFFER_DEAL' || o.id.startsWith('SCENARIO_') || o.id.startsWith('PIRATE_') || o.id === 'CANCELPIRATEPROTECTION' || PIRATE_INFO_IDS.has(o.id);
+}
+
+/**
+ * Multiplayer: the parts that need the other human's consent (they become offers); the rest act at once (declare war,
+ * cancel a treaty, sanctions, release a dominion, rights). The warnings are demands: the answer is a reply only.
+ */
+const HUMAN_OFFER_PARTS: ReadonlySet<DialogPartType> = new Set<DialogPartType>([
+    'OFFER_FREETRADE', 'OFFER_PROTECTORATE', 'OFFER_MUTUALDEFENSE', 'WAR_END', 'WAR_END_SUBJUGATIONDEMAND', 'WAR_END_SUBJUGATIONOFFER',
+    'SUBJUGATION_REQUESTRELEASE', 'GIFT_GIVE', 'WARNING_INTELLIGENCEMISSIONS', 'WARNING_ATTACKS', 'WARNING_REMOVEFORCESSYSTEM',
+]);
+
+/** Whether option `part` to a human becomes an offer. */
+export function needsHumanAnswer(part: DialogPartType): boolean {
+    return HUMAN_OFFER_PARTS.has(part);
+}
+
+/**
+ * The receiver accepted offer `o` (humanDiplomacy.ts answerOffer): apply the proposal as the AI's acceptance would —
+ * re-resolved against the state now (a treaty no longer possible fails), a gift at the amount offered.
+ */
+export function applyAcceptedProposal(galaxy: Galaxy, from: Empire, to: Empire, optionId: string, cost: number): { ok: boolean; message: string } {
+    const chosen = listProposalsAi(galaxy, from, to).find((x) => x.id === optionId);
+    if (chosen === undefined || !chosen.enabled) return { ok: false, message: chosen?.hint || 'It is no longer possible.' };
+    const o = chosen.part === 'GIFT_GIVE' ? { ...chosen, cost } : chosen;
+    if (o.part === 'GIFT_GIVE' && from.stateMoney < cost) return { ok: false, message: 'They no longer have the money.' };
+    const r = evaluateProposal(galaxy, from, to, o, {}, true);
+    return { ok: r.ok && r.accepted, message: r.ok ? (r.accepted ? 'Accepted.' : 'It could not be carried out.') : r.message };
+}
+
+function listProposalsAi(galaxy: Galaxy, player: Empire, other: Empire): ProposalOption[] {
     const list: ProposalOption[] = [];
     if (!canSpeak(galaxy, player, other)) return list;
     if (player.pirateEmpireBaseHabitat !== null) return piratePlayerOptions(galaxy, player, other);
@@ -589,6 +637,11 @@ export function submitProposal(
     }
     if (chosen === undefined) return refused('No longer on offer');
     if (!chosen.enabled) return refused(chosen.hint);
+    // Multiplayer (humanDiplomacy.ts, decision §4.9): another human answers for themselves — an offer that waits.
+    if (toHuman(galaxy, other) && needsHumanAnswer(chosen.part)) {
+        const offer = addProposalOffer(galaxy, player, other, chosen);
+        return { ok: true, accepted: false, message: 'Offer sent — awaiting their reply.', reply: null, replyArgs: [], followUps: [], expireMessagesFor: null, automationPrompt: false, trade: null, offer: offer.id };
+    }
     // Mod layer: a scenario proposal kind is answered by its package (the other empire accepts or refuses at once).
     if (id.startsWith('SCENARIO_') && scenarioProposalSlots.submit !== null) {
         const r = scenarioProposalSlots.submit(galaxy, player, other, id);
@@ -604,11 +657,15 @@ const RIM_TRADER_REFUSED_PARTS: ReadonlyMap<DialogPartType, DialogPartType> = ne
     ['WAR_END_SUBJUGATIONDEMAND', 'SUBJUGATIONDEMAND_REJECT'],
 ]);
 
-/** Main.Part10.cs:3957 method_237, the cases for the options listProposals offers. */
-function evaluateProposal(galaxy: Galaxy, initiator: Empire, empire: Empire, option0: ProposalOption, opts: SubmitProposalOptions): ProposalResult {
+/**
+ * Main.Part10.cs:3957 method_237, the cases for the options listProposals offers. `humanAccepted` (multiplayer,
+ * humanDiplomacy.ts): `empire` is a human who accepted the offer — every acceptance test of the AI (and its random
+ * draws) is skipped, and the acceptance branch runs; a warning is only a reply (a human moves their own ships).
+ */
+function evaluateProposal(galaxy: Galaxy, initiator: Empire, empire: Empire, option0: ProposalOption, opts: SubmitProposalOptions, humanAccepted = false): ProposalResult {
     const result: ProposalResult = { ok: true, accepted: false, message: '', reply: null, replyArgs: [], followUps: [], expireMessagesFor: null, automationPrompt: false, trade: null };
     // Mod layer 19a: the Concord refuses defence treaties and subjugation (tasks/19a-rim-trader.md R7); before any stock draw.
-    if (scenarioFlag(galaxy, 'rimTrader') && isRimTraderAI(galaxy, empire)) {
+    if (!humanAccepted && scenarioFlag(galaxy, 'rimTrader') && isRimTraderAI(galaxy, empire)) {
         const refusal = RIM_TRADER_REFUSED_PARTS.get(option0.part);
         if (refusal !== undefined) {
             result.reply = refusal;
@@ -631,11 +688,11 @@ function evaluateProposal(galaxy: Galaxy, initiator: Empire, empire: Empire, opt
     }
     switch (option0.part) {
         case 'OFFER_FREETRADE': // Main.Part10.cs:4149
-            if (empire.reclusive) {
+            if (empire.reclusive && !humanAccepted) {
                 reply('FREETRADE_REJECT');
                 break;
             }
-            switch (desiredRelationType(empire, initiator)) {
+            switch (humanAccepted ? DiplomaticRelationType.FreeTradeAgreement : desiredRelationType(empire, initiator)) {
                 case DiplomaticRelationType.FreeTradeAgreement:
                 case DiplomaticRelationType.MutualDefensePact:
                 case DiplomaticRelationType.Protectorate:
@@ -652,11 +709,11 @@ function evaluateProposal(galaxy: Galaxy, initiator: Empire, empire: Empire, opt
             }
             break;
         case 'OFFER_PROTECTORATE': // Main.Part10.cs:4175
-            if (empire.reclusive) {
+            if (empire.reclusive && !humanAccepted) {
                 reply('PROTECTORATE_REJECT');
                 break;
             }
-            if (desiredRelationType(empire, initiator) === DiplomaticRelationType.Protectorate) {
+            if (humanAccepted || desiredRelationType(empire, initiator) === DiplomaticRelationType.Protectorate) {
                 reply('PROTECTORATE_ACCEPT');
                 result.accepted = true;
                 changeDiplomaticRelation(galaxy, initiator, obtainDiplomaticRelation(initiator, empire), DiplomaticRelationType.Protectorate);
@@ -668,11 +725,11 @@ function evaluateProposal(galaxy: Galaxy, initiator: Empire, empire: Empire, opt
             }
             break;
         case 'OFFER_MUTUALDEFENSE': // Main.Part10.cs:4201
-            if (empire.reclusive) {
+            if (empire.reclusive && !humanAccepted) {
                 reply('MUTUALDEFENSE_REJECT');
                 break;
             }
-            if (desiredRelationType(empire, initiator) === DiplomaticRelationType.MutualDefensePact) {
+            if (humanAccepted || desiredRelationType(empire, initiator) === DiplomaticRelationType.MutualDefensePact) {
                 reply('MUTUALDEFENSE_ACCEPT');
                 result.accepted = true;
                 changeDiplomaticRelation(galaxy, initiator, obtainDiplomaticRelation(initiator, empire), DiplomaticRelationType.MutualDefensePact);
@@ -718,13 +775,14 @@ function evaluateProposal(galaxy: Galaxy, initiator: Empire, empire: Empire, opt
             expire(empire);
             break;
         case 'WAR_END': { // Main.Part10.cs:4679
-            const c = considerEndWar(galaxy, empire, initiator, false);
-            if (galaxy.scenario !== null) c.end = scenarioQuery(galaxy, 'endWarAcceptance', c.end, { empire, other: initiator }); // mod layer
+            const c = humanAccepted ? { end: true } : considerEndWar(galaxy, empire, initiator, false);
+            if (!humanAccepted && galaxy.scenario !== null) c.end = scenarioQuery(galaxy, 'endWarAcceptance', c.end, { empire, other: initiator }); // mod layer
             if (c.end) {
                 const diplomaticRelation3 = obtainDiplomaticRelation(empire, initiator);
                 const v = determineVictorInWar(diplomaticRelation3);
                 // `&&` short-circuits as in the C#: DetermineWhetherWantToOfferSubjugation (2 NextDouble) only when they win.
                 if (
+                    !humanAccepted &&
                     v.victor === empire &&
                     determineWhetherWantToOfferSubjugation(galaxy, empire, empire) &&
                     determineSubjugationOfLoserInWar(v.victor, v.loser, v.winningRatio, militaryPotency(v.victor), militaryPotency(v.loser))
@@ -755,7 +813,7 @@ function evaluateProposal(galaxy: Galaxy, initiator: Empire, empire: Empire, opt
             const diplomaticRelation = obtainDiplomaticRelation(initiator, empire);
             if (diplomaticRelation.type === DiplomaticRelationType.War) {
                 const v = determineVictorInWar(diplomaticRelation);
-                if (v.victor === initiator && determineSubjugationOfLoserInWar(v.victor, v.loser, v.winningRatio, militaryPotency(v.victor), militaryPotency(v.loser))) {
+                if (humanAccepted || (v.victor === initiator && determineSubjugationOfLoserInWar(v.victor, v.loser, v.winningRatio, militaryPotency(v.victor), militaryPotency(v.loser)))) {
                     reply('SUBJUGATIONDEMAND_ACCEPT');
                     result.accepted = true;
                     resetAttitudeLevelsAtEndOfWar(galaxy, diplomaticRelation);
@@ -779,11 +837,11 @@ function evaluateProposal(galaxy: Galaxy, initiator: Empire, empire: Empire, opt
             break;
         }
         case 'WAR_END_SUBJUGATIONOFFER': { // Main.Part10.cs:4767
-            if (desiredRelationType(initiator, empire) === DiplomaticRelationType.War) {
+            if (!humanAccepted && desiredRelationType(initiator, empire) === DiplomaticRelationType.War) {
                 reply('SUBJUGATIONOFFER_REJECT');
                 break;
             }
-            const c = considerEndWar(galaxy, empire, initiator, true);
+            const c = humanAccepted ? { end: true } : considerEndWar(galaxy, empire, initiator, true);
             if (c.end) {
                 reply('SUBJUGATIONOFFER_ACCEPT');
                 result.accepted = true;
@@ -826,7 +884,7 @@ function evaluateProposal(galaxy: Galaxy, initiator: Empire, empire: Empire, opt
             reply('TREATY_REJECTRESPONSE');
             break;
         case 'SUBJUGATION_REQUESTRELEASE': // Main.Part10.cs:4877 (Rnd.Next(0, 80) only when they want no relation)
-            if (desiredRelationType(empire, initiator) === DiplomaticRelationType.None && aggressionLevel(empire) < 130 + galaxy.rnd.next(0, 80)) {
+            if (humanAccepted || (desiredRelationType(empire, initiator) === DiplomaticRelationType.None && aggressionLevel(empire) < 130 + galaxy.rnd.next(0, 80))) {
                 reply('SUBJUGATION_RELEASE');
                 result.accepted = true;
                 const diplomaticRelation = obtainDiplomaticRelation(empire, initiator);
@@ -864,12 +922,22 @@ function evaluateProposal(galaxy: Galaxy, initiator: Empire, empire: Empire, opt
             break;
         }
         case 'WARNING_INTELLIGENCEMISSIONS': // Main.Part10.cs:4925 (a reply only)
+            if (humanAccepted) result.accepted = true; // a human's "we will comply": the reply only
             reply(num === -1 ? 'WARNING_INTELLIGENCEMISSIONS_RESPONSE_ANGRY' : num === 0 ? 'WARNING_INTELLIGENCEMISSIONS_RESPONSE_NEUTRAL' : 'WARNING_INTELLIGENCEMISSIONS_RESPONSE_FRIENDLY');
             break;
         case 'WARNING_ATTACKS': // Main.Part10.cs:4939 (a reply only)
+            if (humanAccepted) result.accepted = true;
             reply(num === -1 ? 'WARNING_ATTACKS_RESPONSE_ANGRY' : num === 0 ? 'WARNING_ATTACKS_RESPONSE_NEUTRAL' : 'WARNING_ATTACKS_RESPONSE_FRIENDLY');
             break;
         case 'WARNING_REMOVEFORCESSYSTEM': { // Main.Part10.cs:4953
+            if (humanAccepted) {
+                // A human promises to withdraw: no orders are given for them (they move their own ships).
+                reply('WARNING_REMOVEFORCESSYSTEM_RESPONSE_COMPLY');
+                result.accepted = true;
+                const habitat = determineTopThreatenedSystem(galaxy, initiator, empire);
+                if (habitat !== null) result.replyArgs = [habitat.name];
+                break;
+            }
             let related: Empire | Habitat | null = option0.related;
             const habitat = determineTopThreatenedSystem(galaxy, initiator, empire);
             if (habitat !== null) {

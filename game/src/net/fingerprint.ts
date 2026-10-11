@@ -62,6 +62,43 @@ export function fingerprintMismatch(host: AppFingerprint, mine: AppFingerprint):
     return null;
 }
 
+/**
+ * Phase 5 (docs/MULTIPLAYER.md §17): what kind of difference. `hard`: the app itself differs (protocol, version, build,
+ * engine) — refused, no setting fixes it. `soft`: the theme (DW:U customization set: its own data and mods), the add-on
+ * files or the game data — the joiner is shown what differs, and a theme can be matched for the session.
+ */
+export type FingerprintDifference = { kind: 'hard'; reason: string } | { kind: 'soft'; reason: string; theme: boolean; addons: boolean; data: boolean };
+
+export function fingerprintDifference(host: AppFingerprint, mine: AppFingerprint): FingerprintDifference | null {
+    const why = fingerprintMismatch(host, mine);
+    if (why === null) return null;
+    if (host.protocol !== mine.protocol || host.version !== mine.version || host.build !== mine.build || host.engine !== mine.engine) return { kind: 'hard', reason: why };
+    return { kind: 'soft', reason: why, theme: host.theme !== mine.theme, addons: host.addons !== mine.addons, data: host.data !== mine.data };
+}
+
+/** The files behind a data / add-on difference: host's list vs. ours (fingerprintFiles), each as lower-cased paths. */
+export interface FileDiff {
+    /** The host has them, this app read none. */
+    missing: string[];
+    /** Both read them, with other contents. */
+    different: string[];
+    /** This app read them, the host did not. */
+    extra: string[];
+}
+
+export function diffFingerprintFiles(host: ReadonlyArray<readonly [string, string]>, mine: ReadonlyArray<readonly [string, string]>): FileDiff {
+    const h = new Map(host.map(([k, v]) => [k, v]));
+    const m = new Map(mine.map(([k, v]) => [k, v]));
+    const out: FileDiff = { missing: [], different: [], extra: [] };
+    for (const [k, v] of h) {
+        const x = m.get(k);
+        if (x === undefined) out.missing.push(k);
+        else if (x !== v) out.different.push(k);
+    }
+    for (const k of m.keys()) if (!h.has(k)) out.extra.push(k);
+    return out;
+}
+
 // ---------------------------------------------------------------------------------------------------------------------
 // The reads behind the hashes
 // ---------------------------------------------------------------------------------------------------------------------

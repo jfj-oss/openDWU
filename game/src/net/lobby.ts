@@ -16,7 +16,7 @@
 
 import type { Link } from './transport';
 import type { AppFingerprint } from './fingerprint';
-import { fingerprintMismatch } from './fingerprint';
+import { fingerprintDifference } from './fingerprint';
 import type { ClockState, LockstepParams } from './protocol';
 import type { HumanPlayerStart } from '../sim/humanPlayerStarts';
 import type { StartGameOptions } from '../sim/startGameOptions';
@@ -33,6 +33,22 @@ export interface LobbyPlayer {
     /** Loaded game: the index in the save's galaxy.humanEmpires this player takes (-1 = none chosen yet). */
     claim: number;
     ready: boolean;
+    /** Phase 5: the add-on packages of the host's settings this player's app does not have (it cannot build the game). */
+    missing?: string[];
+}
+
+/**
+ * Phase 5 (docs/MULTIPLAYER.md §17): the add-on set of the host's game settings, for everyone to see: the scenario
+ * packages that run (by id and name, the ones they pull in included) with the choice's flags and params.
+ */
+export interface LobbyAddonSet {
+    /** The start choice's scenario id ('addons' for a composite of several). */
+    id: string;
+    /** Every package that runs (overlay ids), and their names. */
+    packages: string[];
+    names: string[];
+    flags: Record<string, boolean>;
+    params: Record<string, number>;
 }
 
 /** A loaded multiplayer save's humans (LobbyState.loaded). */
@@ -49,7 +65,12 @@ export interface LobbyState {
     settings: string[];
     /** Loading a saved game: its human empires (the players claim them); null = a new game. */
     loaded: { name: string; humans: LoadedHumanSlot[] } | null;
+    /** Phase 5: the host's theme ('' = the stock game) and add-on set (null: none) — what everyone plays with. */
+    host?: { theme: string; addons: LobbyAddonSet | null };
 }
+
+/** Phase 5: a chat line in the lobby (sideChannel.ts carries the in-game ones). */
+export const LOBBY_CHAT_MAX_CHARS = 400;
 
 /** What every peer needs to build the identical game (sent by the host on Start). */
 export interface MultiplayerStart {
@@ -75,7 +96,15 @@ export type LobbyMessage =
     | { t: 'lobbyRefused'; reason: string }
     | { t: 'lobbyWelcome'; slot: number; state: LobbyState; host: AppFingerprint }
     | { t: 'lobbyState'; state: LobbyState }
-    | { t: 'lobbyPick'; pick: HumanPlayerStart; claim: number; ready: boolean }
+    | { t: 'lobbyPick'; pick: HumanPlayerStart; claim: number; ready: boolean; missing?: string[] }
+    /**
+     * Phase 5 (§17): the joiner's theme, add-on files or game data differ from the host's. Not a refusal: the link stays
+     * open, the joiner sees what differs (the host's theme; `files`, the host's per-file hashes, when the data or add-on
+     * files differ) and may say lobbyHello again after matching the host's settings (at most LOBBY_HELLO_TRIES times).
+     */
+    | { t: 'lobbyMismatch'; reason: string; theme: string; files: Array<[string, string]> | null; addons: boolean; data: boolean }
+    /** Phase 5 (§19): lobby chat. Client → host: `text` (to: a slot, or absent: everyone). Host → clients: with `from`/`name`. */
+    | { t: 'lobbyChat'; text: string; to?: number; from?: number; name?: string }
     /** `token`: this player's rejoin token (multiplayer Phase 4: a dropped player reconnects with it). */
     | { t: 'lobbyStart'; start: MultiplayerStart; token?: string }
     | { t: 'lobbyBye'; reason: string }
@@ -127,6 +156,8 @@ export function decodeLobbyMessage(text: string): LobbyMessage | null {
 
 /** The most a first message (the lobby hello, with the fingerprint) may hold. */
 export const LOBBY_HELLO_MAX_CHARS = 64 * 1024;
+/** How many hellos a joiner may send (the first, then after matching the host's settings). */
+export const LOBBY_HELLO_TRIES = 5;
 
 /**
  * The first message on a new link, if it is a lobby hello of sane size and shape; null otherwise (the host then
@@ -182,6 +213,8 @@ function cleanPick(p: Partial<HumanPlayerStart> | undefined): HumanPlayerStart {
 /**
  * A link handed from the lobby to the lockstep session: what arrives before the session sets onMessage / onClose is
  * kept and delivered then, in order. `rewrite` (host side) may change the first message (the joiner's lockstep hello).
+ * `filter` (Phase 5: the side channel of chat and host-migration signalling, ui/multiplayer/sideChannel.ts) takes the
+ * messages it returns true for; the session never sees them.
  */
 export class HandoffLink implements Link {
     private handler: ((text: string) => void) | null = null;
@@ -190,8 +223,9 @@ export class HandoffLink implements Link {
     private closedReason: string | null = null;
     private first = true;
 
-    constructor(private readonly inner: Link, private readonly rewrite?: (text: string) => string) {
+    constructor(readonly inner: Link, private readonly rewrite?: (text: string) => string, filter?: (text: string) => boolean) {
         inner.onMessage = (text) => {
+            if (filter !== undefined && filter(text)) return;
             if (this.first) {
                 this.first = false;
                 if (this.rewrite !== undefined) text = this.rewrite(text);
@@ -255,6 +289,10 @@ export class HandoffLink implements Link {
 export interface LobbyHostOptions {
     name: string;
     fingerprint: AppFingerprint;
+    /** Phase 5: this app's per-file hashes (fingerprint.ts fingerprintFiles), sent to a joiner whose files differ. */
+    files?: () => Promise<Array<[string, string]>>;
+    /** Phase 5: a lobby chat line (from a slot, to a slot or -1: everyone) — the host's screen shows it. */
+    onChat?: (from: number, name: string, text: string, to: number) => void;
     hostPick: HumanPlayerStart;
     maxPlayers?: number;
     /** The lobby state changed (players, picks, settings). */
@@ -291,6 +329,7 @@ export class LobbyHost {
             players: [...this.players.values()].sort((a, b) => a.slot - b.slot).map((p) => ({ ...p, pick: { ...p.pick } })),
             settings: [...this.settings],
             loaded: this.loaded === null ? null : { name: this.loaded.name, humans: this.loaded.humans.map((h) => ({ ...h })) },
+            ...(this.hostSettings !== null ? { host: { theme: this.hostSettings.theme, addons: this.hostSettings.addons === null ? null : structuredClone(this.hostSettings.addons) } } : {}),
         };
     }
 
@@ -303,20 +342,25 @@ export class LobbyHost {
         }
         let entry: ClientEntry | null = null;
         let refused = false;
+        let tries = 0;
+        let checking = false;
+        const chat = new ChatLimiter();
         link.onMessage = (text) => {
             if (refused) return;
             if (entry === null) {
+                if (checking) return; // a mismatch's file list is on its way
                 // Before the version check only a hello is accepted: anything else closes the link.
                 const hello = decodeHello(text);
-                if (hello === null) {
+                if (hello === null || ++tries > LOBBY_HELLO_TRIES) {
                     refused = true;
-                    this.opts.log?.(`refused ${remote || 'a connection'}: it did not start with a lobby hello`);
-                    send(link, { t: 'lobbyRefused', reason: 'Not an openDWU lobby hello.' });
+                    this.opts.log?.(`refused ${remote || 'a connection'}: ${hello === null ? 'it did not start with a lobby hello' : 'too many hellos'}`);
+                    send(link, { t: 'lobbyRefused', reason: hello === null ? 'Not an openDWU lobby hello.' : 'Too many tries to match the host\'s settings.' });
                     link.close('refused');
                     return;
                 }
-                entry = this.admit(link, hello, remote);
-                if (entry === null) refused = true;
+                const got = this.admit(link, hello, remote, () => (checking = true), () => (checking = false));
+                if (got === 'refused') refused = true;
+                else if (got !== 'mismatch') entry = got;
                 return;
             }
             const m = decode(text);
@@ -326,7 +370,13 @@ export class LobbyHost {
                 p.pick = cleanPick(m.pick);
                 p.claim = this.loaded !== null && Number.isInteger(m.claim) ? this.validClaim(m.claim, p.slot) : -1;
                 p.ready = m.ready === true;
+                p.missing = Array.isArray(m.missing) ? m.missing.filter((x): x is string => typeof x === 'string').slice(0, 40).map((x) => x.slice(0, 80)) : undefined;
+                if (p.missing?.length === 0) delete p.missing;
                 this.changed();
+            } else if (m.t === 'lobbyChat' && typeof m.text === 'string') {
+                const t = cleanChat(m.text);
+                if (t === '' || !chat.take()) return;
+                this.chat(entry.player.slot, t, Number.isInteger(m.to) ? m.to! : -1);
             }
         };
         link.onClose = (reason) => {
@@ -338,17 +388,30 @@ export class LobbyHost {
         };
     }
 
-    private admit(link: Link, m: Extract<LobbyMessage, { t: 'lobbyHello' }>, remote: string): ClientEntry | null {
-        const refuse = (reason: string): null => {
+    private admit(link: Link, m: Extract<LobbyMessage, { t: 'lobbyHello' }>, remote: string, busy: () => void, idle: () => void): ClientEntry | 'refused' | 'mismatch' {
+        const refuse = (reason: string): 'refused' => {
             this.opts.log?.(`refused ${remote || 'a player'}: ${reason}`);
             send(link, { t: 'lobbyRefused', reason });
             link.close('refused');
-            return null;
+            return 'refused';
         };
         const fp = m.fp as AppFingerprint | undefined;
         if (fp === undefined || typeof fp !== 'object') return refuse('Your app sent no version information: update it to the host\'s version.');
-        const why = fingerprintMismatch(this.fingerprint, fp);
-        if (why !== null) return refuse(why);
+        const diff = fingerprintDifference(this.fingerprint, fp);
+        if (diff !== null && diff.kind === 'hard') return refuse(diff.reason);
+        if (diff !== null && diff.kind === 'soft') {
+            // Not a refusal (Phase 5): say what differs; the joiner may match the host's settings and say hello again.
+            this.opts.log?.(`${remote || 'a player'} differs from the host: ${diff.reason}`);
+            const theme = this.fingerprint.theme;
+            if ((diff.data || diff.addons) && this.opts.files !== undefined) {
+                busy();
+                void this.opts.files().then(
+                    (files) => send(link, { t: 'lobbyMismatch', reason: diff.reason, theme, files, addons: diff.addons, data: diff.data }),
+                    () => send(link, { t: 'lobbyMismatch', reason: diff.reason, theme, files: null, addons: diff.addons, data: diff.data }),
+                ).finally(idle);
+            } else send(link, { t: 'lobbyMismatch', reason: diff.reason, theme, files: null, addons: diff.addons, data: diff.data });
+            return 'mismatch';
+        }
         if (this.players.size >= (this.opts.maxPlayers ?? LOBBY_MAX_PLAYERS)) return refuse(`The game is full (${this.players.size} players).`);
         const slot = this.nextSlot++;
         let name = cleanName(m.name, `Player ${slot + 1}`);
@@ -374,6 +437,33 @@ export class LobbyHost {
         for (const p of this.players.values()) if (p.slot !== slot && p.claim === claim) return -1;
         return claim;
     }
+
+    /** Lobby chat: from `from` (a slot) to `to` (a slot, or -1: everyone). The host's own lines too (sendChat). */
+    private chat(from: number, text: string, to: number): void {
+        const name = this.players.get(from)?.name ?? `Player ${from + 1}`;
+        const m: LobbyMessage = { t: 'lobbyChat', text, from, name, to };
+        for (const c of this.clients.values()) {
+            if (c.player.slot === from) continue;
+            if (to === -1 || c.player.slot === to) send(c.link, m);
+        }
+        if (to === -1 || to === 0 || from === 0) this.opts.onChat?.(from, name, text, to);
+    }
+
+    /** The host says something in the lobby (to a slot, or -1: everyone). */
+    sendChat(text: string, to = -1): boolean {
+        const t = cleanChat(text);
+        if (t === '' || this.closed || this.started) return false;
+        this.chat(0, t, to);
+        return true;
+    }
+
+    /** Phase 5: the host's theme and add-on set, shown to everyone. */
+    setHostSettings(theme: string, addons: LobbyAddonSet | null): void {
+        this.hostSettings = { theme, addons };
+        this.changed();
+    }
+
+    private hostSettings: { theme: string; addons: LobbyAddonSet | null } | null = null;
 
     private changed(skipLink?: ClientEntry): void {
         if (this.closed) return;
@@ -416,6 +506,8 @@ export class LobbyHost {
         if (this.started) return 'The game has started.';
         const clients = [...this.players.values()].filter((p) => p.slot !== 0);
         if (clients.length === 0) return 'Waiting for players to join.';
+        const lacking = clients.filter((p) => p.missing !== undefined && p.missing.length > 0);
+        if (lacking.length > 0) return lacking.map((p) => `${p.name} does not have the add-on package${p.missing!.length === 1 ? '' : 's'} ${p.missing!.join(', ')}.`).join(' ');
         const notReady = clients.filter((p) => !p.ready);
         if (notReady.length > 0) return `Waiting for ${notReady.map((p) => p.name).join(', ')} to be ready.`;
         if (this.loaded !== null) {
@@ -467,6 +559,28 @@ export class LobbyHost {
     }
 }
 
+/** A chat line as it may travel: no control characters, at most LOBBY_CHAT_MAX_CHARS. */
+export function cleanChat(text: unknown): string {
+    return typeof text === 'string' ? text.replace(/[\u0000-\u001f\u007f]/g, ' ').trim().slice(0, LOBBY_CHAT_MAX_CHARS) : '';
+}
+
+/** Chat rate limit (per sender): CHAT_BURST lines at once, then one per CHAT_EVERY_MS. */
+export const CHAT_BURST = 5;
+export const CHAT_EVERY_MS = 1000;
+
+export class ChatLimiter {
+    private tokens = CHAT_BURST;
+    private at = Date.now();
+    take(): boolean {
+        const now = Date.now();
+        this.tokens = Math.min(CHAT_BURST, this.tokens + (now - this.at) / CHAT_EVERY_MS);
+        this.at = now;
+        if (this.tokens < 1) return false;
+        this.tokens -= 1;
+        return true;
+    }
+}
+
 function freshColor(players: Map<number, LobbyPlayer>): string {
     const used = new Set([...players.values()].map((p) => p.pick.primaryColor.toLowerCase()));
     const palette = ['#c03030', '#3060d0', '#30a040', '#d0a020', '#a040c0', '#20a0b0', '#e07020', '#808080', '#d050a0', '#60c0e0'];
@@ -489,6 +603,13 @@ export interface LobbyClientOptions {
     rejoin?: string;
     /** The host gave this player its slot of a running game back: join the session over `link` (the save comes). */
     onRejoin?: (start: MultiplayerStart, slot: number, link: HandoffLink, token: string) => void;
+    /**
+     * Phase 5: the host says this app's theme / add-on files / data differ (not a refusal). `retry` sends a new hello
+     * with the fingerprint after matching the host's settings; without onMismatch the join fails with the reason.
+     */
+    onMismatch?: (m: Extract<LobbyMessage, { t: 'lobbyMismatch' }>, retry: (fp: AppFingerprint) => void) => void;
+    /** Phase 5: a lobby chat line (from a slot; `to`: -1 everyone, or this player). */
+    onChat?: (from: number, name: string, text: string, to: number) => void;
 }
 
 export class LobbyClient {
@@ -516,6 +637,18 @@ export class LobbyClient {
                     case 'lobbyRefused':
                         if (!welcomed) reject(new Error(m.reason));
                         c.byeReason = m.reason;
+                        return;
+                    case 'lobbyMismatch':
+                        if (welcomed) return;
+                        if (c.opts.onMismatch === undefined) {
+                            reject(new Error(m.reason));
+                            link.close('mismatch');
+                            return;
+                        }
+                        c.opts.onMismatch(m, (fp) => send(link, { t: 'lobbyHello', name: opts.name, fp, ...(opts.rejoin !== undefined ? { rejoin: opts.rejoin } : {}) }));
+                        return;
+                    case 'lobbyChat':
+                        if (typeof m.text === 'string') c.opts.onChat?.(Number(m.from ?? 0), String(m.name ?? ''), cleanChat(m.text), Number.isInteger(m.to) ? m.to! : -1);
                         return;
                     case 'lobbyWelcome':
                         welcomed = true;
@@ -571,9 +704,24 @@ export class LobbyClient {
         return this.state.players.find((p) => p.slot === this.slot) ?? null;
     }
 
-    setPick(pick: HumanPlayerStart, claim: number, ready: boolean): void {
+    setPick(pick: HumanPlayerStart, claim: number, ready: boolean, missing?: string[]): void {
         if (this.started) return;
-        send(this.link, { t: 'lobbyPick', pick, claim, ready });
+        send(this.link, { t: 'lobbyPick', pick, claim, ready, ...(missing !== undefined && missing.length > 0 ? { missing } : {}) });
+    }
+
+    /** Phase 5: say something in the lobby (to a slot, or -1: everyone). Rate-limited here too. */
+    sendChat(text: string, to = -1): boolean {
+        const t = cleanChat(text);
+        if (t === '' || this.started || !this.chatLimit.take()) return false;
+        send(this.link, { t: 'lobbyChat', text: t, ...(to >= 0 ? { to } : {}) });
+        return true;
+    }
+
+    private readonly chatLimit = new ChatLimiter();
+
+    /** The link closes (the host left the lobby / we leave). */
+    get isOpen(): boolean {
+        return this.link.isOpen;
     }
 
     leave(): void {

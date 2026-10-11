@@ -601,7 +601,7 @@ export class SimClientCore {
 
     /** Hand the worker the HUD clock's pause / speed when they changed. */
     syncClock(time: ClockControls): void {
-        if (this.disposed) return;
+        if (this.disposed || this.adopting) return;
         if (time.speed === this.sent.speed && time.paused === this.sent.paused) return;
         const pausing = time.paused && !this.sent.paused;
         this.sent = { speed: time.speed, paused: time.paused };
@@ -634,6 +634,9 @@ export class SimClientCore {
      * keyboard, game menu, auto-pause, tutorials, the action menu and the console all write these fields), instead of
      * at the next frame(). The fields become accessors on this instance; dispose() turns them back into plain fields.
      */
+    /** frame(): adopting the worker's clock (the two writes to a bound clock post nothing). */
+    private adopting = false;
+
     bindClock(time: ClockControls): void {
         this.unbindClock?.();
         let paused = time.paused;
@@ -734,9 +737,16 @@ export class SimClientCore {
                 this.speed = m.speed;
                 if (time.paused !== m.paused || time.speed !== m.speed) {
                     // Set `sent` first: with bindClock these writes would otherwise post the worker's own state back.
+                    // Both at once: with bindClock the first write would post a half-updated clock (the new pause with
+                    // the old speed) — which a multiplayer host's session took for a speed request (both changed there).
                     this.sent = { speed: m.speed, paused: m.paused };
-                    time.paused = m.paused;
-                    time.speed = m.speed;
+                    this.adopting = true;
+                    try {
+                        time.paused = m.paused;
+                        time.speed = m.speed;
+                    } finally {
+                        this.adopting = false;
+                    }
                 }
             }
             // Replies (their onApplied reads the replica as of the boundary that applied the commands, so the cold parts

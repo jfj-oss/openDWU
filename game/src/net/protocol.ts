@@ -108,6 +108,8 @@ export interface WelcomeMsg {
     inputs: FrameInput[];
     peers: PeerInfo[];
     params: LockstepParams;
+    /** Host migration (§16): who was the hub from which frame (absent: peer 0 all along). */
+    hosts?: Array<{ peer: PeerId; from: number }>;
 }
 
 export interface InputsMsg {
@@ -172,4 +174,34 @@ export interface ByeMsg {
     reason: string;
 }
 
-export type NetMessage = HelloMsg | WelcomeMsg | SaveChunkMsg | InputsMsg | DigestMsg | ResyncMsg | PeerJoinedMsg | PeerLeftMsg | PauseRequestMsg | PingMsg | PongMsg | ByeMsg;
+/**
+ * Host migration (multiplayer Phase 5, docs/MULTIPLAYER.md §16). Survivor → the new host, the first message on the
+ * survivor's backup link once the old host is gone: what the survivor holds, so the new host can cut every peer's input
+ * stream at the same frame for everyone. `inputs`: every input it holds (any peer's, its own included) from a few
+ * seconds before its frame on.
+ */
+export interface MigrateMsg {
+    t: 'migrate';
+    peer: PeerId;
+    /** Resyncs it has applied (its digests carry this count). */
+    epoch: number;
+    /** Its next frame to run. */
+    frame: number;
+    inputs: FrameInput[];
+}
+
+/**
+ * New host → survivor: the session goes on with `host` as its hub from `hostFrom` (the first frame whose clock / delay
+ * changes come from the new host). `peers`: who is in it now (the old host and every peer that did not reconnect have
+ * `leftFrom` set: the first frame nobody holds an input of theirs for); `inputs`: what the survivor may lack.
+ */
+export interface MigratedMsg {
+    t: 'migrated';
+    host: PeerId;
+    hostFrom: number;
+    peers: PeerInfo[];
+    inputs: FrameInput[];
+    epoch: number;
+}
+
+export type NetMessage = HelloMsg | WelcomeMsg | SaveChunkMsg | InputsMsg | DigestMsg | ResyncMsg | PeerJoinedMsg | PeerLeftMsg | PauseRequestMsg | PingMsg | PongMsg | ByeMsg | MigrateMsg | MigratedMsg;

@@ -1,0 +1,59 @@
+/* Multiplayer Phase 5: offers between human players (humanOffers.ts). Not in the original; styled after its dark
+   glass message windows. */
+.human-offers {
+    position: fixed;
+    top: 70px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 1950;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    width: min(520px, calc(100vw - 32px));
+    pointer-events: none;
+}
+.human-offer {
+    pointer-events: auto;
+    padding: 10px 14px;
+    border: 2px solid #4a5a70;
+    border-radius: 12px;
+    background: linear-gradient(rgba(26, 34, 48, 0.96), rgba(11, 15, 22, 0.96));
+    box-shadow: 0 0 18px rgba(0, 0, 0, 0.8);
+    color: #d8d8d8;
+    font-family: Verdana, Arial, sans-serif;
+    font-size: 13px;
+}
+.human-offer-title {
+    font-weight: bold;
+    color: #ffa000;
+    margin-bottom: 4px;
+}
+.human-offer-text {
+    line-height: 1.4;
+}
+.human-offer-time {
+    margin-top: 4px;
+    font-size: 11px;
+    color: #a0a8b8;
+}
+.human-offer-bar {
+    display: flex;
+    gap: 8px;
+    margin-top: 8px;
+}
+.human-offer-btn {
+    padding: 4px 14px;
+    border: 1px solid #5a6a80;
+    border-radius: 8px;
+    background: linear-gradient(#34445a, #1c2634);
+    color: #e8e8e8;
+    font-family: inherit;
+    font-size: 12px;
+    cursor: pointer;
+}
+.human-offer-accept {
+    border-color: #50a050;
+}
+.human-offer-reject {
+    border-color: #a05050;
+}

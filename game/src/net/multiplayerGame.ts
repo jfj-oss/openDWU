@@ -47,7 +47,9 @@ export type MultiplayerStatus =
     | { kind: 'running' }
     | { kind: 'resyncing'; who: string }
     | { kind: 'absent'; players: AbsentPlayer[]; paused: boolean }
-    | { kind: 'hostLost'; reason: string };
+    | { kind: 'hostLost'; reason: string }
+    /** Host migration (§16): the host is gone and `newHost` (a lobby name) takes over; `self`: this peer does. */
+    | { kind: 'migrating'; newHost: string; self: boolean };
 
 export interface MultiplayerGameOptions {
     start: MultiplayerStart;
@@ -77,17 +79,19 @@ export function empireOfSlot(galaxy: Galaxy, start: MultiplayerStart, slot: numb
 }
 
 /**
- * A lockstep authorize(): `peer` may issue commands only for its slot's human empire; the host (peer 0) may also hand
- * another player's seat to the AI and back (setSeatAi).
+ * A lockstep authorize(): `peer` may issue commands only for its slot's human empire; the host (`hostPeer()`: the hub of
+ * the command's frame — peer 0, or after a host migration the new host) may also hand another player's seat to the AI
+ * and back (setSeatAi).
  */
-export function slotAuthorizer(galaxy: () => Galaxy, start: MultiplayerStart, peers: () => readonly PeerInfo[]): (peer: PeerId, empireIndex: number, op: string) => boolean {
+export function slotAuthorizer(galaxy: () => Galaxy, start: MultiplayerStart, peers: () => readonly PeerInfo[], hostPeer: () => PeerId = () => 0): (peer: PeerId, empireIndex: number, op: string) => boolean {
     return (peer, empireIndex, op) => {
         const info = peers().find((p) => p.id === peer);
         if (info === undefined) return false;
         const target = flatEmpireList(galaxy())[empireIndex];
         if (op === SEAT_AI_OP) {
-            if (peer !== 0 || target == null) return false;
-            return start.players.some((p) => p.slot !== 0 && empireOfSlot(galaxy(), start, p.slot) === target);
+            if (peer !== hostPeer() || target == null) return false;
+            const own = slotOfPeerName(info.name);
+            return start.players.some((p) => p.slot !== own && empireOfSlot(galaxy(), start, p.slot) === target);
         }
         const empire = empireOfSlot(galaxy(), start, slotOfPeerName(info.name));
         return empire !== null && target === empire;
@@ -125,10 +129,24 @@ export interface SeatState {
     empire: string;
 }
 
+/**
+ * Host: which slot a reconnecting player gets back (by token first, else by lobby name among the absent players), or
+ * why not. `hostSlot`: the host's own (never free). After a host migration the old host's slot can be rejoined too.
+ */
+export function rejoinSlotFor(seats: readonly SeatState[], hostSlot: number, name: string, token: string | undefined, tokens: ReadonlyMap<number, string>): { slot: number } | { refused: string } {
+    const away = seats.filter((s) => s.slot !== hostSlot && !s.present);
+    if (token !== undefined) {
+        for (const [slot, t] of tokens) if (t === token && away.some((s) => s.slot === slot)) return { slot };
+    }
+    const byName = away.filter((s) => s.name.toLowerCase() === name.trim().toLowerCase());
+    if (byName.length === 1) return { slot: byName[0].slot };
+    return { refused: away.length === 0 ? 'The game has already started and every player is connected.' : `The game has already started. Only a disconnected player can rejoin (${away.map((s) => s.name).join(', ')}); use your name from the lobby.` };
+}
+
 export class MultiplayerGame {
     readonly sim: GalaxyLockstepSim;
     session: LockstepSession | null = null;
-    readonly role: 'host' | 'client';
+    private readonly initialRole: 'host' | 'client';
     stepper: LockstepStepper | null = null;
     private status: MultiplayerStatus = { kind: 'running' };
     private statusKey = '';
@@ -143,14 +161,19 @@ export class MultiplayerGame {
     /** Host: the game was paused for a drop (lifted when every absent player is decided or back). */
     private pausedForDrop = false;
     private lastPaused: boolean | null = null;
+    /** Host migration (§16): the lobby name of the peer taking over (status 'migrating'), until it is done. */
+    private migratingTo: { name: string; self: boolean } | null = null;
+    /** Called when a host migration finished (this peer is a client of the new hub, or the hub). */
+    onMigrated: ((hostSlot: number) => void) | null = null;
 
-    private constructor(game: Game | null, time: GalaxyTime | null, private readonly opts: MultiplayerGameOptions) {
-        this.role = opts.slot === 0 ? 'host' : 'client';
+    private constructor(game: Game | null, time: GalaxyTime | null, private readonly opts: MultiplayerGameOptions, role: 'host' | 'client') {
+        // (Not by slot: after a host migration the lobby's host, slot 0, can rejoin as a client.)
+        this.initialRole = role;
         this.expected = new Map(opts.start.players.filter((p) => p.slot !== 0).map((p) => [p.slot, p.name]));
         const simOpts = {
             gameData: opts.gameData,
             startOptions: opts.startOptions,
-            authorize: slotAuthorizer(() => this.sim.galaxy, opts.start, () => this.session?.peerList() ?? []),
+            authorize: slotAuthorizer(() => this.sim.galaxy, opts.start, () => this.session?.peerList() ?? [], () => this.session?.hostPeerAt(this.session.frame) ?? 0),
             onGameReplaced: (g: Game, t: GalaxyTime) => this.opts.onGameReplaced?.(g, t),
             onApplied: (cmd: { op: string }) => {
                 if (cmd.op === SEAT_AI_OP) queueMicrotask(() => this.refreshStatus());
@@ -158,6 +181,24 @@ export class MultiplayerGame {
             onDropped: (cmd: { op: string }, reason: string) => this.opts.onDropped?.(cmd.op, reason),
         };
         this.sim = game !== null && time !== null ? new GalaxyLockstepSim(game, time, simOpts) : new GalaxyLockstepSim(null, null, simOpts);
+    }
+
+    /** 'host' for the hub (the lobby's host, or after a host migration the new one). */
+    get role(): 'host' | 'client' {
+        return this.session?.role ?? this.initialRole;
+    }
+
+    /** This peer's lobby slot. */
+    get slot(): number {
+        return this.opts.slot;
+    }
+
+    /** The lobby slot of the current hub (0 until a host migration). */
+    hostSlot(): number {
+        const s = this.session;
+        if (s === null) return 0;
+        const info = s.peerList().find((p) => p.id === s.hostPeer);
+        return info === undefined ? 0 : slotOfPeerName(info.name);
     }
 
     /** The human empire this peer plays (in the current game). */
@@ -179,11 +220,12 @@ export class MultiplayerGame {
         const galaxy = this.sim.game === null ? null : this.sim.galaxy;
         return this.opts.start.players.map((p) => {
             const empire = galaxy === null ? null : empireOfSlot(galaxy, this.opts.start, p.slot);
+            const hub = p.slot === this.hostSlot();
             return {
                 slot: p.slot,
                 name: p.name,
                 humanIndex: p.humanIndex,
-                present: p.slot === 0 ? this.role === 'host' || this.hostLost === null : peers.some((x) => x.leftFrom === null && slotOfPeerName(x.name) === p.slot),
+                present: (hub && this.role === 'client' && this.hostLost !== null) ? false : peers.some((x) => x.leftFrom === null && slotOfPeerName(x.name) === p.slot),
                 ai: galaxy !== null && empire !== null && isAiSeat(galaxy, empire),
                 empire: empire?.name ?? '',
             };
@@ -212,7 +254,7 @@ export class MultiplayerGame {
                 if (this.role === 'host' && this.joined) {
                     // The host decides what happens to their empire (takeOver / standIdle); until then the game waits.
                     const still = this.session?.peerList().some((p) => p.leftFrom === null && slotOfPeerName(p.name) === slot) ?? false;
-                    if (!still && slot > 0) {
+                    if (!still && slot >= 0 && slot !== this.opts.slot) {
                         this.absent.set(slot, { reason, decided: false });
                         // (As requested: a resume on its way counts as running.)
                         if (!this.session!.requestedClock().paused) this.pausedForDrop = true;
@@ -224,6 +266,14 @@ export class MultiplayerGame {
             onHostLost: (reason) => {
                 this.hostLost = reason;
                 this.refreshStatus();
+            },
+            onMigrated: () => {
+                this.hostLost = null;
+                this.migratingTo = null;
+                const hub = this.hostSlot();
+                this.opts.log?.(`host migration: ${this.nameOfSlot(hub)} is the host now`);
+                this.refreshStatus();
+                this.onMigrated?.(hub);
             },
             onResyncStart: () => {
                 this.resyncing.add('you');
@@ -280,15 +330,7 @@ export class MultiplayerGame {
     /** Host: which slot a reconnecting player gets back (by token first, else by name), or why not. */
     rejoinSlot(name: string, token: string | undefined, tokens: ReadonlyMap<number, string>): { slot: number } | { refused: string } {
         if (this.role !== 'host') return { refused: 'not the host' };
-        const seats = this.seats();
-        const free = (slot: number): boolean => seats.some((s) => s.slot === slot && s.slot !== 0 && !s.present);
-        if (token !== undefined) {
-            for (const [slot, t] of tokens) if (t === token && free(slot)) return { slot };
-        }
-        const byName = seats.filter((s) => s.slot !== 0 && !s.present && s.name.toLowerCase() === name.trim().toLowerCase());
-        if (byName.length === 1) return { slot: byName[0].slot };
-        const away = seats.filter((s) => s.slot !== 0 && !s.present).map((s) => s.name);
-        return { refused: away.length === 0 ? 'The game has already started and every player is connected.' : `The game has already started. Only a disconnected player can rejoin (${away.join(', ')}); use your name from the lobby.` };
+        return rejoinSlotFor(this.seats(), this.opts.slot, name, token, tokens);
     }
 
     /** Host: a reconnecting player's link (already handed to `slot`: lobby.ts slotHandoff). It joins with the save. */
@@ -301,6 +343,53 @@ export class MultiplayerGame {
         this.session.accept(link);
     }
 
+    // -----------------------------------------------------------------------------------------------------------------
+    // Host migration (docs/MULTIPLAYER.md §16)
+    // -----------------------------------------------------------------------------------------------------------------
+
+    /**
+     * The host is gone: this peer becomes the hub. `expectSlots`: the survivors' lobby slots that will report over their
+     * backup links (acceptMigrant). The old host's slot then counts as an absent player (AI takes over or idle, as
+     * any drop), and the old host can rejoin it.
+     */
+    promote(expectSlots: readonly number[], timeoutMs?: number): void {
+        const s = this.session;
+        if (s === null || s.role !== 'client') throw new Error('promote: not a client in a session');
+        const peers = s.peerList().filter((p) => p.leftFrom === null && expectSlots.includes(slotOfPeerName(p.name)));
+        this.joined = true;
+        this.migratingTo = { name: this.nameOfSlot(this.opts.slot), self: true };
+        this.refreshStatus();
+        s.promoteToHost(peers.map((p) => p.id), timeoutMs);
+    }
+
+    /** New host: a survivor's backup link (it reports, then it is its session link). */
+    acceptMigrant(link: Link): void {
+        if (this.session === null || this.role !== 'host') {
+            link.close('not the host');
+            return;
+        }
+        this.session.acceptMigrant(link);
+    }
+
+    /** Survivor: play on with the peer at the other end of `link` (lobby slot `hostSlot`) as the hub. */
+    migrateTo(link: Link, hostSlot: number): void {
+        const s = this.session;
+        if (s === null || s.role !== 'client') {
+            link.close('not a client');
+            return;
+        }
+        this.migratingTo = { name: this.nameOfSlot(hostSlot), self: false };
+        this.refreshStatus();
+        s.migrateTo(link);
+    }
+
+    /** A migration did not happen (no backup link): the screen shows the host as lost. */
+    abandonMigration(): void {
+        if (this.migratingTo === null) return;
+        this.migratingTo = null;
+        this.refreshStatus();
+    }
+
     /** After the frames of a tick: the clock may have changed (status shows the pause). */
     afterFrames(): void {
         const paused = this.session?.clock.paused ?? false;
@@ -311,6 +400,7 @@ export class MultiplayerGame {
     }
 
     private computeStatus(): MultiplayerStatus {
+        if (this.migratingTo !== null) return { kind: 'migrating', newHost: this.migratingTo.name, self: this.migratingTo.self };
         if (this.hostLost !== null) return { kind: 'hostLost', reason: this.hostLost };
         if (this.role === 'host' && !this.joined) {
             const inSession = new Set((this.session?.peerList() ?? []).map((p) => slotOfPeerName(p.name)));
@@ -320,8 +410,9 @@ export class MultiplayerGame {
         if (this.resyncing.size > 0) return { kind: 'resyncing', who: [...this.resyncing].join(', ') };
         const paused = this.session?.clock.paused ?? false;
         const players: AbsentPlayer[] = [];
+        const hub = this.hostSlot();
         for (const s of this.seats()) {
-            if (s.slot === 0 || s.present) continue;
+            if (s.present || s.slot === hub) continue;
             if (this.role === 'host') {
                 const a = this.absent.get(s.slot);
                 const dropped = this.droppedBeforeJoin.has(s.slot);
@@ -378,7 +469,7 @@ export class MultiplayerGame {
      * The loop does not step until everyone joined.
      */
     static host(game: Game, time: GalaxyTime, links: Map<number, Link>, opts: MultiplayerGameOptions): MultiplayerGame {
-        const mp = new MultiplayerGame(game, time, opts);
+        const mp = new MultiplayerGame(game, time, opts, 'host');
         const s = LockstepSession.host(mp.sim, {
             name: peerName(0, opts.name),
             inputDelay: opts.start.params.inputDelay,
@@ -416,9 +507,9 @@ export class MultiplayerGame {
      * game (onGameReplaced).
      */
     static async join(game: Game | null, time: GalaxyTime | null, link: Link, opts: MultiplayerGameOptions): Promise<MultiplayerGame> {
-        const mp = new MultiplayerGame(game, time, opts);
+        const mp = new MultiplayerGame(game, time, opts, 'client');
         const have = game !== null ? { frame: 0, digest: mp.sim.digest() } : undefined;
-        const s = await LockstepSession.join(link, mp.sim, { name: peerName(opts.slot, opts.name), hooks: mp.hooks(), ...(have !== undefined ? { have } : {}) });
+        const s = await LockstepSession.join(link, mp.sim, { name: peerName(opts.slot, opts.name), hooks: mp.hooks(), migratable: true, ...(have !== undefined ? { have } : {}) });
         mp.session = s;
         mp.sim.attach(s);
         mp.stepper = new MultiplayerStepper(mp);

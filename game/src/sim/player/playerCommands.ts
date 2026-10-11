@@ -21,6 +21,10 @@ import { nextFrameMs, runSimFrame, schedulerState, type SimView } from '../tick/
 import { flatEmpireList } from '../save/galaxySave';
 import { appendCommandLog, commandLog, copyCommandLogEntry, type CommandLogEntry, type PlayerLogEntry } from './commandLog';
 import { COMMAND_CODEC_VERSION, CommandEncodeError, decodeCommandArg, encodeCommandArg, type EncodedArg } from './commandCodec';
+import { setHumanOfferCodec } from './humanDiplomacy';
+
+// A trade offer between human players keeps its negotiation in the command-log encoding (humanDiplomacy.ts).
+setHumanOfferCodec({ encode: (galaxy, value) => encodeCommandArg(galaxy, value), decode: decodeCommandArg });
 import { assignEntityRefIds, resetEntityRefIds } from '../entityRefs';
 import { PLAYER_OPS, type PlayerOpArgs, type PlayerOpName, type PlayerOpResult } from './playerOps';
 import { applyStrategicCommand } from './strategicDecisions';

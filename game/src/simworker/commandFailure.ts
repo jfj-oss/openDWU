@@ -111,6 +111,8 @@ export const COMMAND_FAILURE: FailureTable = {
     renameCharacter: no,
     dismissCharacter: no,
     submitProposal: (message) => ({ ok: false, accepted: false, message, reply: null, replyArgs: [], followUps: [], expireMessagesFor: null, automationPrompt: false, trade: null }),
+    answerHumanOffer: (message) => ({ ok: false, message, offer: null }),
+    withdrawHumanOffer: (message) => ({ ok: false, message, offer: null }),
     submitTradeOffer: (message) => ({ ok: false, response: TradeOfferResponse.Undefined, accepted: false, reply: null, replyArgs: [], message, nextOptionLabel: '', expireMessagesFor: null }),
     answerConversation: () => ({ ok: false, noFunds: false, expireFor: null, history: null, reply: null, replyArgs: [] }),
     acceptProposal: no,

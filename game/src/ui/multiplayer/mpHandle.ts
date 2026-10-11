@@ -13,7 +13,7 @@ import type { Game } from '../../sim/game';
 import type { Empire } from '../../sim/empire';
 import type { GalaxyTime } from '../../sim/galaxyTime';
 import { setLockstepStepper } from '../../net/lockstepSeam';
-import { empireOfSlot, MultiplayerGame, type MultiplayerStatus, type SeatState } from '../../net/multiplayerGame';
+import { empireOfSlot, MultiplayerGame, rejoinSlotFor, type MultiplayerStatus, type SeatState } from '../../net/multiplayerGame';
 import type { ClockState, LockstepStats, PeerInfo } from '../../net/lockstep';
 import type { MultiplayerStart } from '../../net/lobby';
 import type { Link } from '../../net/transport';
@@ -52,6 +52,16 @@ export interface MpHandle {
     rejoinSlot(name: string, token: string | undefined, tokens: ReadonlyMap<number, string>): { slot: number } | { refused: string };
     /** Host: hand a reconnecting player's (slot-handed) link to the session. */
     acceptRejoin(link: Link, slot: number): void;
+    /** The lobby slot of the hub (0 until a host migration, docs/MULTIPLAYER.md §16). */
+    hostSlot(): number;
+    /** Host migration: this client becomes the hub; `expectSlots` report over their backup links (acceptMigrant). */
+    promote(expectSlots: number[]): void;
+    /** Host migration, the new hub: a survivor's backup link. */
+    acceptMigrant(link: Link): void;
+    /** Host migration, a survivor: play on with the hub at `slot` over `link` (its backup link). */
+    migrateTo(link: Link, slot: number): void;
+    /** Host migration did not happen (no backup link): show the host as lost. */
+    abandonMigration(): void;
     /** The debug hook's calls (workerLockstep.ts run): issue, renameOther, scriptStep, shipNames, myEmpire. */
     call(fn: string, args: unknown[]): Promise<unknown>;
     close(reason: string): void;
@@ -150,6 +160,23 @@ export class InThreadMp implements MpHandle {
         this.links.push(link);
         this.mp.acceptRejoin(link, slot);
     }
+    hostSlot(): number {
+        return this.mp.hostSlot();
+    }
+    promote(expectSlots: number[]): void {
+        this.mp.promote(expectSlots);
+    }
+    acceptMigrant(link: Link): void {
+        this.links.push(link);
+        this.mp.acceptMigrant(link);
+    }
+    migrateTo(link: Link, slot: number): void {
+        this.links.push(link);
+        this.mp.migrateTo(link, slot);
+    }
+    abandonMigration(): void {
+        this.mp.abandonMigration();
+    }
     call(): Promise<unknown> {
         return Promise.reject(new Error('in-thread: call the session directly'));
     }
@@ -186,7 +213,12 @@ export class WorkerMp implements MpHandle {
     private replacing: Promise<SimWorkerClient> | null = null;
     private closed = false;
 
-    constructor(readonly role: 'host' | 'client', readonly start: MultiplayerStart, readonly slot: number, private readonly name: string) {
+    /** The role the session started in (the worker's mpState says the current one: a host migration changes it). */
+    get role(): 'host' | 'client' {
+        return this.state?.role ?? this.initialRole;
+    }
+
+    constructor(private readonly initialRole: 'host' | 'client', readonly start: MultiplayerStart, readonly slot: number, private readonly name: string) {
         this.side = {
             handler: (m) => this.onSide(m),
             onReplaced: (next) => {
@@ -288,7 +320,7 @@ export class WorkerMp implements MpHandle {
         const list = [...links].map(([slot, link]) => ({ slot, link: this.relay(link) }));
         await new Promise<unknown>((resolve, reject) => {
             this.calls.set(id, { resolve, reject });
-            this.post({ type: 'mpStart', id, start: this.start, slot: this.slot, name: this.name, links: list, have, ...(adaptiveDelay ? { adaptiveDelay: true } : {}) });
+            this.post({ type: 'mpStart', id, start: this.start, slot: this.slot, role: this.initialRole, name: this.name, links: list, have, ...(adaptiveDelay ? { adaptiveDelay: true } : {}) });
         });
         // A join save may have replaced the game meanwhile: wait for its replica.
         while (this.replacing !== null) await this.replacing.catch(() => undefined);
@@ -353,17 +385,28 @@ export class WorkerMp implements MpHandle {
     }
     rejoinSlot(name: string, token: string | undefined, tokens: ReadonlyMap<number, string>): { slot: number } | { refused: string } {
         if (this.role !== 'host') return { refused: 'not the host' };
-        const seats = this.seats();
-        const free = (slot: number): boolean => seats.some((s) => s.slot === slot && s.slot !== 0 && !s.present);
-        if (token !== undefined) for (const [slot, t] of tokens) if (t === token && free(slot)) return { slot };
-        const byName = seats.filter((s) => s.slot !== 0 && !s.present && s.name.toLowerCase() === name.trim().toLowerCase());
-        if (byName.length === 1) return { slot: byName[0].slot };
-        const away = seats.filter((s) => s.slot !== 0 && !s.present).map((s) => s.name);
-        return { refused: away.length === 0 ? 'The game has already started and every player is connected.' : `The game has already started. Only a disconnected player can rejoin (${away.join(', ')}); use your name from the lobby.` };
+        return rejoinSlotFor(this.seats(), this.slot, name, token, tokens);
     }
     acceptRejoin(link: Link, slot: number): void {
         const id = this.relay(link);
-        this.post({ type: 'netLink', link: id, slot });
+        this.post({ type: 'netLink', link: id, slot, mode: 'rejoin' });
+    }
+    hostSlot(): number {
+        return this.state?.hostSlot ?? 0;
+    }
+    promote(expectSlots: number[]): void {
+        void this.call('promote', [expectSlots]).catch((err: unknown) => console.warn('multiplayer: promote failed', err));
+    }
+    acceptMigrant(link: Link): void {
+        const id = this.relay(link);
+        this.post({ type: 'netLink', link: id, slot: -1, mode: 'migrant' });
+    }
+    migrateTo(link: Link, slot: number): void {
+        const id = this.relay(link);
+        this.post({ type: 'netLink', link: id, slot, mode: 'newHost' });
+    }
+    abandonMigration(): void {
+        void this.call('abandonMigration', []).catch(() => undefined);
     }
     dropLinks(reason: string): void {
         for (const l of [...this.links.values()]) l.close(reason);

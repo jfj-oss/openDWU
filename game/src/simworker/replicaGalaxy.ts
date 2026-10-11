@@ -7,6 +7,7 @@
 import type { Galaxy } from '../sim/galaxy';
 import type { GameData } from '../sim/data/gameData';
 import { applyBaconSettingsStatics, baconInitializeSettings } from '../sim/baconSettings';
+import { restoreHumanOffers, type SavedHumanOffers } from '../sim/player/humanOfferTable';
 import { applyReplicaSideTables, galaxyExternals, replicaCodecOptions, replicaSideTables, replicaSkipFields, replicaStatics, wireReplicaVisibility } from '../sim/save/galaxySave';
 import { Galaxy as GalaxyClass } from '../sim/galaxy';
 import { BuiltObject } from '../sim/builtObject';
@@ -428,7 +429,20 @@ export class GalaxyReplica {
         this.sideIdlePumps = 0;
         if (all || (--this.sideCountdown <= 0 && this.decoder.coldBacklog === 0)) this.applySideTables();
         else this.sideStale = true;
+        // Multiplayer: the offers between human players (player/humanDiplomacy.ts) land at once — a busy game's cold
+        // queue may keep the other side tables waiting for long, and an offer waits for its receiver's answer.
+        const side = this.decoder.object(1) as Record<string, unknown> | null;
+        const offers = side?.humanOffers;
+        if (offers !== undefined) {
+            const key = offers === null ? '' : JSON.stringify(offers);
+            if (key !== this.offersSeen) {
+                this.offersSeen = key;
+                restoreHumanOffers(g, offers as SavedHumanOffers | null);
+            }
+        }
     }
+
+    private offersSeen = '';
 
     private applySideTables(): void {
         const g = this.galaxy;

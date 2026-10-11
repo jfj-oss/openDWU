@@ -7,7 +7,9 @@ clear "a human controls this empire" sim rules), Milestone 2 (the local viewer i
 check, and the session flow. **Phase 4's LAN half is built (§11–§14):** lockstep with the sim in the worker, rejoining
 a dropped player, AI takeover of an absent player's empire, and an adaptive input delay. **Internet play is built
 (§15):** WebRTC data channels set up with copy-paste invite / reply codes, peer-to-peer, with no server of ours in
-between. Nothing changes for the player: the seed pins (`npm run repin -- --check`) are
+between. **Phase 5 (§16–§21, 2026-10-11):** host migration (the game goes on when the host leaves; the old host can
+rejoin), the lobby's add-on / theme matching, diplomacy between human players as offers, and chat. Nothing changes for
+the player: the seed pins (`npm run repin -- --check`) are
 unchanged at every commit, one-human saves are byte-identical to before, and every multiplayer-only rule runs only when
 the game has more than one human (`isMultiHuman`).
 
@@ -28,8 +30,8 @@ The command log already names the empire of each command (`PlayerLogEntry.empire
 | **1** | Refactor "the player" into a *set of human empires* plus *the local viewer*, still with one human. Nothing changes for the player; repin stays at 0. | 1–2 weeks (the biggest) |
 | 2 | Hot-seat: two players on one PC (switch the local viewer between turns or with pause). | |
 | 3 | LAN lockstep: host/join by IP, a shared clock and pause, desync checks. | |
-| 4 | Internet: WebRTC, a lobby and invite codes, reconnects, AI takeover on disconnect. | Done: worker mode, rejoin, AI takeover, adaptive delay (§11–§14); Internet play by codes, no server (§15). Left: host migration. |
-| 5 | Polish: chat, human-to-human diplomacy, multiplayer saves, version/add-on/data checks, joining mid-game. | |
+| 4 | Internet: WebRTC, a lobby and invite codes, reconnects, AI takeover on disconnect. | Done: worker mode, rejoin, AI takeover, adaptive delay (§11–§14); Internet play by codes, no server (§15); host migration (§16). |
+| 5 | Polish: chat, human-to-human diplomacy, multiplayer saves, version/add-on/data checks, joining mid-game. | Done: host migration (§16), settings matching (§17), human-to-human diplomacy (§18), chat (§19). Left: §21. |
 
 Risks: cross-platform determinism (checked, see §9: it holds once Math.pow is replaced), hidden single-player
 assumptions, and the slowest PC sets the game speed.
@@ -597,7 +599,8 @@ loop asks `lockstepStepper(galaxy)`, which is null unless a session is attached.
   ~1.5 MB.
 - **Leave.** When a client's link drops, the host ends it at the first frame it has no input for, and tells the
   others. The session goes on. `hooks.onPeerLeft` is where the host decides about the empire (§12). If the host's link
-  drops, a client's session ends (`onHostLost`).
+  drops, a client's session ends (`onHostLost`) — or, with `migratable` (every app session since Phase 5), waits for a
+  new host (§16).
 
 **The demo** (`scripts/lockstep-demo.mjs`, not a test):
 
@@ -855,11 +858,11 @@ Phase 4:
 - ~~**Rejoin** and **AI takeover**~~: done (§12).
 - ~~**The sim worker**~~: done (§11).
 - ~~**An adaptive input delay**~~: done (§13).
-- **Host migration** (the host leaving ends the game).
+- ~~**Host migration**~~: done (§16).
 - ~~**Internet play**~~: done (§15): WebRTC with copy-paste codes, no server.
 
-Phase 5: chat, human-to-human diplomacy, joining a running game (refused today), a per-human handicap, a Windows peer
-in the cross-machine check, and a deeper desync hash with the first divergent frame logged.
+Phase 5: ~~chat~~ (§19), ~~human-to-human diplomacy~~ (§18), ~~add-on / settings matching~~ (§17), joining a running
+game (refused today), a per-human handicap, and a deeper desync hash with the first divergent frame logged.
 
 ## 11. Phase 4: lockstep with the sim in the worker
 
@@ -1081,6 +1084,190 @@ There is no WebRTC in Node, so the lockstep demo does not test this transport; W
 
 ### 15.6 Around it (next)
 
-Host migration (today the host leaving ends the game: a client with the newest state could take over the star),
-Windows in the cross-machine determinism check (§9), a deeper desync hash with the first divergent frame logged, and
-chat (Phase 5).
+~~Host migration~~ (§16), ~~chat~~ (§19); a deeper desync hash with the first divergent frame logged.
+
+## 16. Phase 5: host migration
+
+**Before:** the host leaving ended the game for everyone ("Lost the connection to the host"). **Now** the remaining
+players agree on a new host, which becomes the hub of the star with the state every peer already has, the others
+reconnect to it at once, and the game goes on with matching digests. The old host can rejoin as a player.
+
+### 16.1 The protocol (`src/net/lockstep.ts`, `multiplayerGame.ts`)
+
+- **Who.** The host names the **successor**: the lowest lobby slot among the connected players (deterministic). It
+  tells everyone on the side channel (§19.1: `succ` with the successor and the other connected players, the
+  *members*), on every change and every 5 s.
+- **Backup links, opened ahead.** The successor opens one WebRTC data channel to each member *while the host is still
+  there*: its invite code goes to the member through the host (side message `mOffer`), the member's reply comes back
+  the same way (`mReply`). No copy-paste and no server: the host relays the codes. A LAN game's backup links use no
+  STUN server (only the PCs' own LAN / VPN addresses: host candidates, so Tailscale works too); an Internet game's use
+  the public STUN servers as its invites do (§15). A desktop successor also opens a LAN port and says where
+  (`succAddr`: its IPv4 addresses and the port): the address players without a backup link, and the old host, rejoin
+  at.
+- **The host goes** (it quits: `bye`; or its links break: a crash, a network failure). A client's session no longer
+  ends (`LockstepOptions.migratable`): it keeps everything and waits (`orphaned`; no frame runs past what it holds).
+  - Each **member** reports to the successor over its backup link (`MigrateMsg`: its peer id, resync epoch, frame and
+    every input it holds — any peer's — from 240 frames back) and waits for the answer, sending nothing meanwhile.
+  - The **successor** waits for the first report (none needed without members), then becomes the hub
+    (`promoteToHost`): its clock and input-delay changes count from the first frame it has not sent (`hosts`: who was
+    the hub from which frame — the clock of frame F is read from the input of `hostPeerAt(F)` only, so a late input
+    of the old host cannot move the clock). It merges every report (inputs are immutable: the first copy is kept) and,
+    once every member with an open backup link reported (or after 10 s), **cuts the stream of every peer that did not
+    report — the old host first — at the first frame nobody holds an input of theirs for** (`leftFrom = knownThrough
+    + 1` over the merged inputs). No survivor can have run a frame past that cut (it would have needed that input), so
+    every survivor ends up with exactly the same inputs. It answers each with `MigratedMsg` (the hub and its first frame,
+    the peer list with the cuts, the inputs a survivor may lack, its epoch) and the session goes on: digests are
+    compared by the new hub from the next boundary.
+  - The old host's seat is then an absent player on the new host (§12): the game pauses, and the new host chooses **AI
+    Takes Over** (the primary human's seat can now be AI-run too: `setAiSeat`) or **Continue Without Them**.
+- **Safety.** A successor that hears no report within 20 s assumes it was the one cut off and shows the host as lost
+  instead (a player whose own network failed must not fork the game of the others); a member whose report gets no
+  answer within 30 s gives up the same way. A report that reaches a successor whose host is still there is refused
+  after 20 s (only that member lost its link: it rejoins the host as in §12). With two players there is no third
+  party: if the host's network (not the host) failed, both go on alone (the usual split; either can rejoin the other).
+- **The old host rejoins** as a player, as any dropped player (§12): its slot is free on the new host (by lobby name),
+  it gets the current save in the welcome, and the AI hands its empire back at the frame its input starts. After a
+  deliberate quit its Join Game box already holds the successor's address (it heard `succAddr`); after a crash the new
+  host's chip says where ("LAN host · rejoin at 192.168.1.8:43877"). In an Internet game the new host's banner shows a
+  fresh invite code for each absent player (§15), the old host's too.
+- **Several migrations.** The new host names its own successor at once, so the game survives the next host leaving too.
+
+**Trade-off (Internet, no server).** The alternative to backup links — the new host shows fresh invite codes and every
+player pastes one — costs a code exchange per player at the worst moment, and a WebRTC code needs both sides online
+and pasting. Backup links cost one idle data channel per member to the successor (no traffic but ICE keep-alives) and
+a few small side messages per minute, and they make the migration take well under a second with nothing to paste. The
+fresh codes remain as the fallback: for a player whose backup link failed, for the old host, and for anyone who joins
+later. What cannot be covered without a relay: two players whose networks cannot connect directly at all (§15.3) — the
+same pair would also have failed to connect through codes.
+
+### 16.2 In the app
+
+| File | What |
+|---|---|
+| `src/ui/multiplayer/sideChannel.ts` | **The side channel**: `SideHub` taps every session link (`HandoffLink`'s new `filter`): `{"t":"side",…}` messages never reach the lockstep session (so they cannot change a digest). The hub stamps the sender's slot and relays to one player or all; each message ≤ 4 KB; a token bucket per link (30, +4/s). |
+| `src/ui/multiplayer/migration.ts` | `Migration`: the host's succession announcements; the successor's invites and LAN port; the members' answers; on `hostLost`, the take-over (successor: `promote` + `acceptMigrant` for each open backup link) or the report (member: `migrateTo`), and the fallbacks. |
+| `src/ui/multiplayer/multiplayerApp.ts` | Wires both into the running game; the new host's rejoin gate, LAN port and (Internet) invite board; the banners ("The host left the game. Alice takes over as the host: reconnecting…"; the old host, cut off: "Rejoin Alice's Game"); the chip's "rejoin at …"; `rejoinGame` tries each of the new host's addresses. |
+| `src/ui/multiplayer/mpHandle.ts`, `src/simworker/workerLockstep.ts`, `protocol.ts` | `promote` / `acceptMigrant` / `migrateTo` / `hostSlot` in both modes (worker: `mpCall 'promote'`, `netLink` with `mode: 'migrant' | 'newHost'`); `mpStart.role` (the lobby's host, slot 0, can now be a client); `__dwuMp.log()` (the worker session's last log lines). |
+| `src/net/multiplayerGame.ts` | `promote`, `acceptMigrant`, `migrateTo`, status `migrating`; the role follows the session; the hub's slot is not always 0 (`hostSlot`, `rejoinSlotFor`, `slotAuthorizer(…, hostPeer)`: only the hub of the command's frame may hand seats to the AI). |
+
+Two fixes found on the way (worker mode, any LAN game): the main thread adopted the worker's clock in two writes to a
+bound clock, so the first posted a half-updated clock (the new pause with the old speed) — which a host's session took
+for a speed request, and the speed could flip between two values (`clientCore.ts`); and `SimHost.clock` in a lockstep
+game now passes on only the field the HUD changed (`simHost.ts`). Another peer's commands applied in a paused frame now
+reach the replica at once (they did only at the next unpaused step).
+
+## 17. Phase 5: the lobby's settings matching
+
+- **What is shown.** The lobby lists the host's theme (the DW:U customization set — its own data and mods) and the
+  add-on set of the host's game settings: every scenario package that runs (by name, the ones it pulls in included)
+  and the choice's switches and values (`LobbyState.host`, `LobbyAddonSet`).
+- **The version check stays strict.** A different protocol, version, build or JS engine is still refused (they compute
+  another game: §9).
+- **A soft difference is not a refusal** (`fingerprintDifference`: the theme, the add-on files, the game data). The
+  host answers `lobbyMismatch` and keeps the link open; the joiner sees a panel with what differs and **Match Host
+  Settings**, which switches the joiner's theme to the host's *for this session* (the stored choice stays; it comes
+  back on leaving: `deps.matchTheme` / `restoreTheme`), reloads the data and says hello again (at most 5 tries).
+- **What is missing, exactly.** When the data or add-on files differ with the same theme, the host sends its per-file
+  hashes and the joiner's panel lists the files missing here, different from the host's, and only here. When the host's
+  settings use an add-on package this app does not have, the joiner's lobby names it ("This app does not have the
+  add-on package the host's game uses: Themed names for AI empires (themed-names)…"), the joiner's row carries it
+  (`lobbyPick.missing`) and the host's Start is blocked with the reason ("Clienty does not have the add-on package
+  themed-names."). A theme that is not installed is named ("You do not have the host's theme …: it is a folder in
+  Customization\ …").
+- Test hook: `localStorage['dwu.mp.hideAddon'] = '<id>'` makes this app act as if it lacked that package.
+
+## 18. Phase 5: diplomacy between human players
+
+Decision §4.9 holds: the AI never decides for a human. Until now the Diplomacy screen's proposals to another human were
+answered by that empire's AI evaluation (`evaluateProposal`'s desired-relation tests). Now (`src/sim/player/humanDiplomacy.ts`):
+
+- **Offers.** A proposal that needs the other human's consent becomes an offer: treaties (free trade, mutual defense,
+  protectorate), peace (`WAR_END`), subjugation demanded or offered, a request for release, gifts, demands (the three
+  warnings: the answer is a reply only — a human moves their own ships), and trades from the trade panel (any items,
+  peace or lifting sanctions for a price). The sender sees "Offer sent — awaiting their reply." (talk panel / trade
+  panel); the receiver gets a popup (`src/ui/screens/humanOffers.ts`): who offers what — a trade's two lists —, the game
+  time left, **Accept / Reject / Counter…** (counter: decline and the Diplomacy screen opens on the sender, to propose
+  something else). The sender is told the outcome (accepted, rejected, countered, expired, no longer possible).
+- **What acts at once** (no consent needed, as before): declare war, cancel a treaty, impose or lift sanctions, release
+  a dominion, mining / refuelling rights. The AI's quick swaps ("Swap maps or tech"), add-on proposal kinds and pirate
+  deals are greyed out between humans ("use Negotiate a trade proposal…").
+- **Deterministic.** Everything is a journaled player command: the offer is made when the sender's `submitProposal` /
+  `submitTradeOffer` applies (every peer adds the same offer at the same frame); the answer is the receiver's new
+  `answerHumanOffer` (and the sender's `withdrawHumanOffer`); an accepted offer's effect is applied by that command, at
+  its frame, on every peer, through the same code an AI's acceptance runs (`evaluateProposal(…, humanAccepted)` skips
+  only the AI's tests and their random draws; a trade's items change hands with `giveTradeableItem` both ways). The
+  option is resolved again when accepted (a treaty no longer possible fails, a gift at the amount offered).
+- **Timeout:** 6 game minutes (`HUMAN_OFFER_TIMEOUT_MS`), read from galaxy time when a command touches the list (there
+  is no tick of its own); the popup shows the time left. A newer offer of the same kind replaces a pending one.
+- **Hot seat:** the offer waits in the galaxy until its receiver's turn: the popup shows only for the local viewer, and
+  comes up after the curtain.
+- **State.** The offers are the save side table `humanOffers` (`humanOfferTable.ts`), written only once an offer was ever
+  made (its id counter must travel in a resync or join save), so every other game saves the same text. The replica gets
+  it at once (the sim worker freshens it on every change; the replica applies it on the next delta), not with the slower
+  side-table cycle.
+
+## 19. Phase 5: chat
+
+- **Lobby chat** (`lobbyChat` lobby messages) and **in-game chat** (side channel kind `chat`, §19.1): to everyone or
+  privately to one player (the "To" list). `src/ui/multiplayer/chatPanel.ts`: in the lobby a box in the window; in the
+  game a small dark glass box at the lower left, above the chip, hidden until wanted — **Enter** opens it with the
+  cursor in the line (Enter sends; an empty line or Escape closes it); the "Chat" button shows the unread count, and a
+  line that arrives while it is closed shows for 6 s as a notice (click it to open the chat).
+- **Not sim state:** chat never enters the lockstep session (the tapped links take it off), so it cannot change a digest.
+  It follows a host migration (the new hub relays it).
+- **Bounded:** 400 characters a line, no control characters; a burst of 5 lines then one a second per sender (checked on
+  the sender and again by the hub, which drops the excess); a side message of more than 4 KB is dropped.
+- Scripts: `window.__dwuChat` (`lines()`, `open(bool)`, `dropped()`), `__dwuMpLobby.chatLines()`.
+
+### 19.1 The side channel
+
+`SideHub` (`sideChannel.ts`) carries what is not simulation over the session's own links: chat and the host-migration
+signalling (`succ`, `succAddr`, `mOffer`, `mReply`). A tapped link (`HandoffLink` with a `filter`) hands every
+`{"t":"side",…}` message to the hub before the lockstep session reads it, in both modes (in worker mode the main thread
+taps before relaying). The hub stamps `from`, relays to `to` (a slot) or everyone (-1), and checks a per-kind `allow`
+(chat's own rate limit).
+
+## 20. Phase 5: tests (2026-10-10)
+
+`scripts/lockstep-demo.mjs --phase5` (scratch flags, not a test): three players over the in-memory transport through
+`MultiplayerGame`; the host quits (`bye`; `--drop`: its links break) with commands in flight; Alice (the successor)
+promotes itself, Bob reports over a backup link; the AI takes the old host's seat (`--idle`: it stands idle); they play
+on; the old host rejoins as a client by name with no game of its own; all three final digests must match.
+
+| Run (seed 1, 150 stars, 4 empires, 4x) | Result |
+|---|---|
+| `--phase5` | OK: migrated in 2 ms; the old host's stream cut at frame 336 (it had sent through 336); **`4e971b46cb75e6b7` on all three at frame 1858**; 35 checks on the new host, 0 mismatches; the old host's ship renamed after its rejoin on every peer |
+| `--phase5 --drop` / `--drop --latency 40` | OK: the same final digest `4e971b46cb75e6b7` (a crash and a quit cut at the same frame here) |
+| `--phase5 --idle` | OK: `bed1b4b98a646744` on all three |
+
+**Real UI** (Electron apps on this PC, each on its own `kwin_wayland --virtual`, real GPU through ANGLE / Vulkan,
+`DWU_USER_DATA_DIR` profiles, nice 19, each in `systemd-run --user --scope -p MemoryMax=5G -p MemorySwapMax=1G`; driven
+over CDP through the menus, the lobby, the game menu, the Diplomacy screen, the trade panel, the popups and the chat;
+seed 4242, 120 stars, 2x; renames and waypoints from every player every 2 s; digests compared while paused at the same
+game time; all three apps in worker mode):
+
+| Scenario | Result |
+|---|---|
+| **Host migration, LAN, the host quits** (three apps on 127.0.0.1; 15 s of play; the host: Escape → Exit to Main Menu → Yes) | before: `3e9e11a236f50725` on all three at 28,133 game ms. **Migrated in 0.58 s** (Alice the hub from frame 1230, the old host cut at frame 1229, Bob reported 729 inputs); the banner "Hosty disconnected (the host left)…", Alice clicks AI Takes Over; 20 s more: **`5f1955d6348ca4d5` on Alice and Bob** at 70,900 ms (speed 2 kept). The old host: Multiplayer → Join Game (its box already held `192.168.1.8:38069`, the successor's) → back as a client in 2 s, its empire handed back; **`b67a78930db583e3` on all three** at 86,366 ms |
+| **Host migration, LAN, the host's app is killed** (SIGKILL) | migrated in 0.61 s; **`00bdf16ae4b6de3c` on Alice and Bob** at 56,366 ms; the old host restarted (the crash lost its unsaved storage), typed the address from Alice's chip ("LAN host · rejoin at 192.168.1.8:43877"), rejoined; **`968b2bdcce20b8b2` on all three** at 69,233 ms |
+| **Host migration, Internet codes** (the three joined by invite / reply codes; adaptive delay on; the host quits) | migrated in 0.60 s over the pre-opened WebRTC backup link; **`805ed28de4ed27c4` on Alice and Bob** at 80,333 ms; the old host rejoined with a fresh code from Alice's banner (Join by code); **`d64217ce5e7a86a1` on all three** at 104,100 ms |
+| **Chat** (in those runs) | Alice → Bob privately (Enter, To Bob, Enter): Bob sees "Alice→2: psst bob, only you", the host does not; Bob → everyone: all three; after the migration Bob's line reaches Alice through the new hub. Two apps: lobby chat ("hello from the lobby" at the host); in-game the host's line shows on the client with the notice "Hosty: gl hf from the host"; 12 lines at once from the client: 5 reach the host (the burst) |
+| **Settings mismatch** (two apps; the joiner's stored theme "Lower Speed and Range", the host's the stock game) | the joiner's panel: "Theme: the host plays "Default", you have "Lower Speed and Range" active. Match Host Settings switches…"; **Match Host Settings → in the lobby in 1 s** (its stored theme unchanged). The host's settings with the add-on package themed-names while the joiner hides it (`dwu.mp.hideAddon`): the joiner's lobby "This app does not have the add-on package the host's game uses: Themed names for AI empires (themed-names)…", the host's Start blocked: "Clienty does not have the add-on package themed-names."; cleared when it has it |
+| **Diplomacy between the two humans** (the Diplomacy screen, F5 → Speak with → Change relationship → Propose Free Trade Agreement) | the host's talk panel "Offer sent — awaiting their reply."; the client's popup "Leanna Confederacy proposes: Free Trade Agreement. Expires in 6:00 (game time)" → **Reject**: state rejected, relation None on both; again → **Accept**: **Free Trade on both** |
+| **A trade offer** (the client: Negotiate a trade proposal… → its territory map for the host's → Would you accept this trade?) | the client's trade panel "Offer sent — awaiting their reply."; the host's popup "Wekkarus Alliance proposes a trade. You receive: Territory Map. You give: Territory Map." → **Reject** (rejected), again → **Accept** (accepted); the four offers in the same states on both; **`c8f52eecac433c76` on both** at the end |
+
+Also: `npm run repin -- --check --workers 1` = 0; `scripts/lockstep-demo.mjs` (WebSocket), `--phase4` and `--phase5`
+OK; `npm run typecheck`; vitest: the sim-worker, diplomacy, trade, save-runtime and UI-write files (30 files, 251 tests) pass.
+
+## 21. What is left
+
+- The new host does not take over the old host's adaptive input delay (§13): the delay stays where it was.
+- The Mac and the Windows laptop were not part of these runs (the cross-machine checks of §9 / §15 stand for the
+  transport and the determinism; a cross-machine host migration is still to do).
+- A peer that cannot reach the successor at all gets no backup link: it rejoins by address or code (the fallback).
+- Two players and the host's *network* failing: both go on alone (no third party to tell who was cut off).
+- Chat history is not saved; there is no mute / block.
+- Human-to-human diplomacy: no offer list screen of one's own pending offers (they are withdrawn with
+  `withdrawHumanOffer` by script only); the AI's "Swap maps or tech" quick deals and the add-ons' proposal kinds are
+  not offered between humans.
+- From the earlier lists: joining a running game (refused), a per-human handicap, a deeper desync hash.

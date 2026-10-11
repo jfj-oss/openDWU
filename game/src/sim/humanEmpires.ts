@@ -85,13 +85,14 @@ export function isAiSeat(galaxy: Galaxy, empire: Empire | null | undefined): boo
 }
 
 /**
- * Hand a human seat to the AI (`ai`) or back to its player. Only a seat of the explicit list other than the primary
- * human (the host never leaves a running game). Returns whether anything changed. Sim state: only through the journaled
- * `setSeatAi` command, at a frame boundary, so every peer changes it at the same frame.
+ * Hand a human seat to the AI (`ai`) or back to its player. Any seat of the explicit list (a multiplayer game); the
+ * primary human's too, since a host migration (docs/MULTIPLAYER.md §16) lets the lobby's host leave a running game.
+ * Returns whether anything changed. Sim state: only through the journaled `setSeatAi` command, at a frame boundary, so
+ * every peer changes it at the same frame.
  */
 export function setAiSeat(galaxy: Galaxy, empire: Empire, ai: boolean): boolean {
     const list = explicit.get(galaxy);
-    if (list === undefined || !list.includes(empire) || empire === list[0]) return false;
+    if (list === undefined || !list.includes(empire)) return false;
     const cur = aiSeats.get(galaxy);
     if ((cur?.has(empire) === true) === ai) return false;
     const next = new Set(cur ?? []);

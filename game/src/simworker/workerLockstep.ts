@@ -82,6 +82,15 @@ export class WorkerLockstep {
 
     constructor(private readonly env: WorkerLockstepEnv) {}
 
+    /** The session's last log lines (debug: __dwuMp.log()). */
+    private readonly logLines: string[] = [];
+
+    private note(msg: string): void {
+        console.info(`[lockstep] ${msg}`);
+        this.logLines.push(`${new Date().toISOString().slice(11, 23)} ${msg}`);
+        if (this.logLines.length > 300) this.logLines.shift();
+    }
+
     /** Start the session (MpStartMessage). */
     start(m: MpStartMessage): void {
         const relay = (id: number): RelayLink => {
@@ -103,12 +112,12 @@ export class WorkerLockstep {
                 if (mp !== null) setLockstepStepper(game.galaxy, mp.stepper);
                 this.env.replaceGame(game, time, mp?.sim.currentStartOptions ?? opts.startOptions);
             },
-            onDropped: (op, reason) => console.warn(`[lockstep] dropped ${op}: ${reason}`),
-            log: (msg) => console.info(`[lockstep] ${msg}`),
+            onDropped: (op, reason) => this.note(`dropped ${op}: ${reason}`),
+            log: (msg) => this.note(msg),
             ...(m.adaptiveDelay === true ? { adaptiveDelay: {} } : {}),
         };
         const reply = (value?: unknown, error?: string): void => this.env.post({ type: 'mpReply', id: m.id, ...(value !== undefined ? { value } : {}), ...(error !== undefined ? { error } : {}) });
-        if (m.slot === 0) {
+        if ((m.role ?? (m.slot === 0 ? 'host' : 'client')) === 'host') {
             if (cur === null) {
                 reply(undefined, 'the host has no game');
                 return;
@@ -151,12 +160,16 @@ export class WorkerLockstep {
         if (this.mp?.session?.stalled === true) this.env.kick();
     }
 
-    /** Host: a rejoining player's link (multiplayerGame.ts acceptRejoin). */
+    /** A link for the session: a rejoining player's (host), or a host migration's backup link (§16). */
     rejoinLink(m: NetLinkMessage): void {
         const l = new RelayLink(m.link, (x) => this.env.post(x));
         this.links.set(m.link, l);
         if (this.mp === null) l.close('no session');
+        else if (m.mode === 'migrant') this.mp.acceptMigrant(l);
+        else if (m.mode === 'newHost') this.mp.migrateTo(l, m.slot);
         else this.mp.acceptRejoin(l, m.slot);
+        this.postState(true);
+        this.env.kick();
     }
 
     /** A call from the main thread (pause, speed, the host's decisions, the debug hook). */
@@ -186,6 +199,7 @@ export class WorkerLockstep {
             this.close(String(args[0] ?? 'left the game'));
             return true;
         }
+        if (fn === 'log') return [...this.logLines];
         if (mp === null || mp.session === null) throw new Error('no session');
         const s = mp.session;
         const galaxy = mp.sim.galaxy;
@@ -202,6 +216,12 @@ export class WorkerLockstep {
                 return mp.sim.digest();
             case 'decideAbsent':
                 return mp.decideAbsent(Number(args[0]), args[1] === true);
+            case 'promote':
+                mp.promote((args[0] as number[]) ?? [], args[1] === undefined ? undefined : Number(args[1]));
+                return true;
+            case 'abandonMigration':
+                mp.abandonMigration();
+                return true;
             case 'inputDelay':
                 s.setInputDelay(Number(args[0]));
                 return true;
@@ -258,6 +278,7 @@ export class WorkerLockstep {
             inputDelay: s.params.inputDelay,
             gameMs: mp.sim.game === null ? -1 : mp.sim.galaxy.nowMs,
             seats: mp.seats(),
+            hostSlot: mp.hostSlot(),
         };
         // The frame / stats move every tick: compare the rest, but send at the interval anyway (the chip, the hook).
         const key = JSON.stringify({ ...state, frame: 0, stats: null, gameMs: 0 });

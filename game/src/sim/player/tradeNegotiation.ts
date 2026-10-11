@@ -63,7 +63,8 @@ import {
     valueMoney,
     valueTerritoryMapForEmpire,
 } from '../tradeItems';
-import { isHumanEmpire } from '../humanEmpires';
+import { isHumanEmpire, isMultiHuman } from '../humanEmpires';
+import { addTradeOffer } from './humanDiplomacy';
 
 export { TradeableItem, TradeableItemType, TradeOfferResponse, evaluateTradeOffer };
 
@@ -553,14 +554,15 @@ function staleItem(galaxy: Galaxy, tree: TradeTree): TradeableItem | null {
 export function submitTradeOffer(galaxy: Galaxy, negotiation: TradeNegotiation): TradeOfferResult {
     const initiator = negotiation.player;
     const empire = negotiation.other;
-    if (!empire.active || initiator === empire) return refusedOffer('No longer on offer');
-    if (negotiation.kind !== 'trade') {
-        const rel = obtainDiplomaticRelation(initiator, empire);
-        const want = negotiation.kind === 'end-war' ? DiplomaticRelationType.War : DiplomaticRelationType.TradeSanctions;
-        if (rel.type !== want || rel.locked) return refusedOffer('No longer on offer');
+    const why = tradeStillPossible(galaxy, negotiation);
+    if (why !== null) return refusedOffer(why);
+    // Multiplayer (humanDiplomacy.ts, decision §4.9): another human answers for themselves — the trade waits as an offer.
+    if (isMultiHuman(galaxy) && isHumanEmpire(galaxy, empire)) {
+        if (negotiation.us.selected.length + negotiation.them.selected.length === 0) return refusedOffer('Put something on the table first.');
+        const label = (t: TradeableItem): TradeLabel => tradeItemLabel(galaxy, t, true, true);
+        addTradeOffer(galaxy, negotiation, negotiation.them.selected.map(label), negotiation.us.selected.map(label));
+        return { ok: true, response: TradeOfferResponse.Undefined, accepted: false, reply: null, replyArgs: [], message: 'Offer sent — awaiting their reply.', nextOptionLabel: '', expireMessagesFor: null };
     }
-    const stale = staleItem(galaxy, negotiation.us) ?? staleItem(galaxy, negotiation.them);
-    if (stale !== null) return refusedOffer('No longer on offer');
 
     const tradeableItemList = negotiation.us.selected;
     const tradeableItemList2 = negotiation.them.selected;
@@ -620,6 +622,39 @@ export function submitTradeOffer(galaxy: Galaxy, negotiation: TradeNegotiation):
     empire.reviewResearchAbilities();
     result.message = result.reply ?? '';
     return result;
+}
+
+/** Why the trade can no longer be made (an empire gone, the war / sanctions over, an item gone), or null. */
+function tradeStillPossible(galaxy: Galaxy, negotiation: TradeNegotiation): string | null {
+    const initiator = negotiation.player;
+    const empire = negotiation.other;
+    if (!empire.active || initiator === empire) return 'No longer on offer';
+    if (negotiation.kind !== 'trade') {
+        const rel = obtainDiplomaticRelation(initiator, empire);
+        const want = negotiation.kind === 'end-war' ? DiplomaticRelationType.War : DiplomaticRelationType.TradeSanctions;
+        if (rel.type !== want || rel.locked) return 'No longer on offer';
+    }
+    const stale = staleItem(galaxy, negotiation.us) ?? staleItem(galaxy, negotiation.them);
+    if (stale !== null) return 'No longer on offer';
+    return null;
+}
+
+/**
+ * Multiplayer (humanDiplomacy.ts): the receiving human accepted the trade — both lists change hands as on an AI's
+ * acceptance (Accept: Galaxy.GiveTradeableItem both ways, then the design / research reviews), if it is still possible.
+ */
+export function applyAcceptedTrade(galaxy: Galaxy, negotiation: TradeNegotiation): { ok: boolean; message: string } {
+    const why = negotiation.player.active ? tradeStillPossible(galaxy, negotiation) : 'gone';
+    if (why !== null) return { ok: false, message: 'The trade is no longer possible (an item is gone or the situation changed).' };
+    const initiator = negotiation.player;
+    const empire = negotiation.other;
+    for (const item2 of negotiation.us.selected) giveTradeableItem(galaxy, initiator, empire, item2, negotiation.them.selected);
+    for (const item3 of negotiation.them.selected) giveTradeableItem(galaxy, empire, initiator, item3, negotiation.us.selected);
+    reviewDesignsBuiltObjectsImprovedComponents(initiator);
+    initiator.reviewResearchAbilities();
+    reviewDesignsBuiltObjectsImprovedComponents(empire);
+    empire.reviewResearchAbilities();
+    return { ok: true, message: 'Trade accepted.' };
 }
 
 // ---------------------------------------------------------------------------------------------------------------

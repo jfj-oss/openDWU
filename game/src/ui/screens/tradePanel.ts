@@ -246,7 +246,8 @@ function createTradePanel(opts: TradePanelOptions): OpenPanel {
 
         const reply = el('div', tradeReplyClass(last));
         reply.appendChild(el('span', 'trade-reply-speaker', `${other.name}:`));
-        const text = el('span', 'trade-reply-text', last !== null && !last.ok ? last.message : '…');
+        // A trade with another human player (humanDiplomacy.ts) waits as an offer: its message says so.
+        const text = el('span', 'trade-reply-text', last !== null && (!last.ok || last.reply === null) ? last.message || '…' : '…');
         reply.appendChild(text);
         body.appendChild(reply);
         // [diplovoice] begin

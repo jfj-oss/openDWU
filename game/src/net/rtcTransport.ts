@@ -556,7 +556,8 @@ function newPeer(opts: RtcOptions): { pc: RTCPeerConnection; dc: RTCDataChannel 
     const Ctor = (globalThis as { RTCPeerConnection?: typeof RTCPeerConnection }).RTCPeerConnection;
     if (Ctor === undefined) throw new Error('this app has no WebRTC');
     const pc = new Ctor({
-        iceServers: opts.blockIce === true ? [] : [{ urls: opts.stun ?? RTC_STUN_SERVERS }],
+        // `stun: []`: none (a LAN game's backup links, docs/MULTIPLAYER.md §16: only the PCs' own addresses).
+        iceServers: opts.blockIce === true || opts.stun?.length === 0 ? [] : [{ urls: opts.stun ?? RTC_STUN_SERVERS }],
         // blockIce: relay-only with no relay = no candidates (and no relay is ever configured otherwise).
         iceTransportPolicy: opts.blockIce === true ? 'relay' : 'all',
         bundlePolicy: 'max-bundle',

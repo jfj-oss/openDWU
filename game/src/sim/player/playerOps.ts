@@ -60,9 +60,10 @@ import {
 } from './fleetTemplates';
 import { assignFleetTemplate, replenishFleet, setFleetAutoRefill, setFleetRefillYard } from './fleetRefill';
 import { setFleetMoveTogether } from '../fleets/moveTogether';
-import { submitProposal } from './diplomacyProposals';
+import { applyAcceptedProposal, submitProposal } from './diplomacyProposals';
 import { answerConversationReply, type ConversationRelated, type ConversationReplyPart } from './conversationReplies';
-import { submitTradeOffer, type TradeNegotiation } from './tradeNegotiation';
+import { applyAcceptedTrade, submitTradeOffer, type TradeNegotiation } from './tradeNegotiation';
+import { answerOffer, offerNegotiation, withdrawOffer, type HumanOfferResult } from './humanDiplomacy';
 import { executeAdvisorCommands, type AdvisorCommand, type ValidatedCommand } from './advisorCommands';
 import type { AdvisorBrief } from './advisorBrief';
 import { proposeDiplomatCounter } from './diplomatCounter';
@@ -430,6 +431,24 @@ export const PLAYER_OPS = {
     /** Main.Part2.cs:4652 method_683 (pnlRelationAllianceName Apply): the alliance name on both relations. */
     setAllianceName: (_galaxy: Galaxy, empire: Empire, other: Empire, name: string) => setAllianceName(empire, other, name),
     declineProposal: (_galaxy: Galaxy, empire: Empire, other: Empire) => declineProposal(empire, other),
+    /**
+     * Multiplayer (humanDiplomacy.ts): the receiver answers another human player's offer — 'accept' applies it at this
+     * frame on every peer (the proposal as an AI's acceptance would; a trade's items change hands), 'reject', 'counter'.
+     */
+    answerHumanOffer: (galaxy: Galaxy, empire: Empire, id: number, answer: string): HumanOfferResult =>
+        answerOffer(galaxy, empire, Number(id), answer === 'accept' || answer === 'counter' ? answer : 'reject', (o, from, to) => {
+            if (o.kind === 'proposal') return applyAcceptedProposal(galaxy, from, to, o.option, o.cost);
+            let n: TradeNegotiation;
+            try {
+                n = offerNegotiation(galaxy, o);
+            } catch {
+                return { ok: false, message: 'The trade is no longer possible (an item is gone).' };
+            }
+            if (n.player !== from || n.other !== to) return { ok: false, message: 'Not this offer\'s trade.' };
+            return applyAcceptedTrade(galaxy, n);
+        }),
+    /** Multiplayer (humanDiplomacy.ts): the sender takes its open offer back. */
+    withdrawHumanOffer: (galaxy: Galaxy, empire: Empire, id: number): HumanOfferResult => withdrawOffer(galaxy, empire, Number(id)),
 
     // --- Pirates ---
     /**

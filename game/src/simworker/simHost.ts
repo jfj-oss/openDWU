@@ -40,6 +40,7 @@ import type { ClockMessage, CommandMessage, DebugReply, DebugRequest, FromWorker
 import { commandLog, copyCommandLogEntry, type CommandLogEntry } from '../sim/player/commandLog';
 import type { ReplicaEncoderOptions } from './replicaSync';
 import { lockstepStepper } from '../net/lockstepSeam';
+import { humanOffersRevision, liveHumanOffers } from '../sim/player/humanOfferTable';
 
 export interface SimHostOptions {
     /** Wall clock (performance.now in the worker; a fake one in tests). */
@@ -209,11 +210,26 @@ export class SimHost {
 
     clock(m: ClockMessage): void {
         this.untouched = false;
-        this.time.speed = m.speed;
-        this.time.paused = m.paused;
+        if (lockstepStepper(this.galaxy) !== null) {
+            // [lockstep seam] The HUD's clock is a request to the session (the stepper turns a change into one). A
+            // message carries both values; only the one the HUD changed is a request — the other may be stale (a pause
+            // toggle that still carries an old speed would otherwise ask the host for that speed).
+            const prev = Number.isNaN(this.hudClock.speed) ? { speed: this.time.speed, paused: this.time.paused } : this.hudClock;
+            if (m.speed !== prev.speed) this.time.speed = m.speed;
+            if (m.paused !== prev.paused) this.time.paused = m.paused;
+        } else {
+            this.time.speed = m.speed;
+            this.time.paused = m.paused;
+        }
+        this.hudClock = { speed: m.speed, paused: m.paused };
         this.clockSeq = m.seq;
         this.dirty = true;
     }
+
+    private offersSeen = humanOffersRevision();
+
+    /** The HUD's clock as its last message said (lockstep: what changed since is the request). */
+    private hudClock = { speed: Number.NaN, paused: false };
 
     /** The main thread switched trade-flow recording (the freight overlay / Trade Flows panel). */
     setTradeFlowRecording(m: TradeFlowsMessage): void {
@@ -493,7 +509,11 @@ export class SimHost {
                 // no camera pass (each screen's camera differs). The HUD's pause / speed (clock messages) become session
                 // requests in the stepper; the clock it leaves in `time` is the session's.
                 this.commandValues.boundary();
+                const journaled = commandLog(this.galaxy).length;
                 steps = lockstep.tick(realDtMs, time);
+                // Another peer's commands applied in a paused frame change the game too: their effect must reach the
+                // replica (no step would send a delta).
+                if (commandLog(this.galaxy).length !== journaled) this.dirty = true;
                 this.budget.backlogMs = 0;
             } else {
                 drainCommandBoundary(this.galaxy);
@@ -526,6 +546,13 @@ export class SimHost {
         const t1 = this.now();
         // After the last change (a step, a command, the clock), keep diffing until a whole cold cycle has passed, so a
         // paused game's replica becomes exact (every cold object compared since); then go quiet.
+        // Multiplayer: the offers between human players (a side table) changed — by any peer's command, also while paused.
+        const offersRev = humanOffersRevision();
+        if (offersRev !== this.offersSeen) {
+            this.offersSeen = offersRev;
+            this.sync.freshenSideTable('humanOffers', liveHumanOffers(this.galaxy), 4);
+            this.dirty = true;
+        }
         const changed = steps > 0 || this.dirty || this.results.length > 0 || this.events.length > 0;
         if (changed) this.settleUntilCycle = this.sync.encoder.cycleCount + 2;
         if (!changed && !forceDelta && this.sync.encoder.cycleCount >= this.settleUntilCycle) return null;

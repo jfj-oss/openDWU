@@ -131,6 +131,14 @@ if (role === 'parent') {
         });
         exit(code ?? 1);
     }
+    if (arg('phase5', false) === true) {
+        // Phase 5 (docs/MULTIPLAYER.md §16): host migration with three players, in one process.
+        const code = await new Promise((r) => {
+            const child = spawn(process.execPath, [self, '--role', 'phase5', '--bundle', bundleDir, ...process.argv.slice(2)], { stdio: 'inherit' });
+            child.on('exit', r);
+        });
+        exit(code ?? 1);
+    }
     if (arg('memory', false) === true) {
         // In-memory transport: host and client sessions in this one process (two games), no sockets.
         const code = await new Promise((r) => {
@@ -805,6 +813,196 @@ if (role === 'phase4') {
         && (!aiTakeover || (aiFrom >= 0 && returnedAt >= 0 && returnedAt <= peerInfo.fromFrame && hijackRefused));
     out(ok ? 'RESULT: OK' : 'RESULT: FAILED');
     hostMp.close('demo over');
+    process.exit(ok ? 0 : 1);
+}
+
+// ---------------------------------------------------------------------------------------------------- phase5
+if (role === 'phase5') {
+    // Multiplayer Phase 5 (docs/MULTIPLAYER.md §16): host migration, in one process over the in-memory transport,
+    // through the app's session layer (net/multiplayerGame.ts). Three players: the host (slot 0) and two clients (1, 2).
+    // Client 1 is the successor: client 2 holds a backup link to it (the app opens it ahead, over WebRTC; here an
+    // in-memory pair). They play; the host quits (`bye`; --drop: its links just break, as a crash would) with commands
+    // in flight; client 1 promotes itself to the hub, client 2 reports to it over the backup link; the old host's seat is
+    // absent (the AI takes over, --idle: it stands idle); they play on; then the old host rejoins as a client by name
+    // with no game of its own (the save comes in the welcome) and gets its empire back; the three final digests match.
+    const { MultiplayerGame } = await load('multiplayerGame');
+    const { slotHandoff } = await load('lobby');
+    const { humanSeats, isAiSeat } = await load('humans');
+    const { memoryLinkPair } = await load('transport');
+    const drop = arg('drop', false) === true;
+    const aiTakeover = arg('idle', false) !== true;
+    const latencyMs = Number(arg('latency', 0));
+    const T5 = { cmds: [60, 150, 240], quit: 330, after: Number(arg('after', 900)), rejoinRun: 600 };
+    const start = {
+        kind: 'new', startOptions, createExtras: null, scenario: null,
+        players: [{ slot: 0, name: 'Host', humanIndex: 0 }, { slot: 1, name: 'Alice', humanIndex: 1 }, { slot: 2, name: 'Bob', humanIndex: 2 }],
+        params: { inputDelay: cfg.delay, digestInterval: cfg.digest }, clock: { speed: cfg.speed, paused: false },
+    };
+    const names = ['host', 'alice', 'bob', 'old-host'];
+    const notes = [];
+    const note = (who, m) => {
+        notes.push(`[${who}] ${m}`);
+        if (!/joined from frame|asks to/.test(m)) out(`[${who}] ${m}`);
+    };
+    const mkOpts = (slot, who) => ({
+        start, slot, name: start.players[slot].name, gameData, startOptions,
+        onStatus: (st) => note(who, `status ${st.kind}${st.kind === 'absent' ? ` (${st.players.map((p) => `${p.name}: ${p.ai ? 'AI' : p.decided ? 'idle' : 'undecided'}`).join(', ')}${st.paused ? ', paused' : ''})` : st.kind === 'migrating' ? ` (new host ${st.newHost})` : ''}`),
+        onDropped: (op, reason) => note(who, `dropped ${op}: ${reason}`),
+        log: (m) => note(who, m),
+    });
+    /** Three humans: the primary and two more (createGame's humanPlayers order). */
+    const makeHumans3 = (galaxy) => {
+        const others = galaxy.empires.filter((e) => e !== galaxy.playerEmpire && e.builtObjects.length > 2).slice(0, 2);
+        if (others.length < 2) throw new Error('need two more empires with ships (--empires 4 or more)');
+        setHumanEmpires(galaxy, [galaxy.playerEmpire, ...others]);
+    };
+    const peers = [];
+    const tick = (mp) => {
+        if (mp === null || mp.session === null || !mp.session.active) return;
+        mp.stepper.tick(1000 / 60, mp.sim.time);
+    };
+    const pace = () => (latencyMs > 0 ? sleep(4) : yieldIo());
+    // ---- host + two clients, each building the game itself (no save travels at the start)
+    const hostGame = buildGame();
+    makeHumans3(hostGame.galaxy);
+    const [a1, ha] = memoryLinkPair({ latencyMs });
+    const [b1, hb] = memoryLinkPair({ latencyMs });
+    const hostMp = MultiplayerGame.host(hostGame, new GalaxyTime(), new Map([[1, slotHandoff(ha, 1, 'Alice')], [2, slotHandoff(hb, 2, 'Bob')]]), mkOpts(0, 'host'));
+    const joinOne = async (slot, link, who) => {
+        const g = buildGame();
+        makeHumans3(g.galaxy);
+        const p = MultiplayerGame.join(g, new GalaxyTime(), link, mkOpts(slot, who));
+        let mp = null;
+        p.then((x) => (mp = x));
+        while (mp === null) {
+            tick(hostMp);
+            await yieldIo();
+        }
+        return mp;
+    };
+    const alice = await joinOne(1, a1, 'alice');
+    const bob = await joinOne(2, b1, 'bob');
+    // The backup link Bob holds to Alice, the successor (the app opens it ahead through the host's side channel).
+    const [bobBackup, aliceBackup] = memoryLinkPair({ latencyMs });
+    let checksA = 0, badA = 0;
+    const live = () => [hostMp, alice, bob].filter((m) => m !== null && m.session?.active === true && !m.session.orphaned);
+    const run = async (lead, until, each = () => {}) => {
+        let guard = 0;
+        while (lead.session.frame < until) {
+            each(lead.session.frame);
+            for (const mp of [hostMp, alice, bob, oldHost]) tick(mp);
+            await pace();
+            if (++guard > until * 300) throw new Error(`stuck at frame ${lead.session.frame} (${live().map((m) => m.session.frame).join(', ')})`);
+        }
+    };
+    let oldHost = null;
+    const seat = (mp, i) => humanSeats(mp.sim.galaxy)[i];
+    const rename = (mp, i, label) => issuePlayerCommand(mp.sim.galaxy, seat(mp, i), 'renameShip', [someShips(seat(mp, i), 1)[0], label]);
+    let acted = -1;
+    // 1. three players
+    await run(hostMp, T5.quit, (f) => {
+        if (acted >= f) return;
+        acted = f;
+        if (T5.cmds.includes(f)) {
+            rename(hostMp, 0, `host @${f}`);
+            rename(alice, 1, `alice @${f}`);
+            rename(bob, 2, `bob @${f}`);
+        }
+    });
+    // Commands in flight when the host goes: the host's, and the clients' (sent to the host just before).
+    rename(hostMp, 0, 'host last words');
+    rename(alice, 1, 'alice in flight');
+    rename(bob, 2, 'bob in flight');
+    for (let i = 0; i < 2; i++) {
+        for (const mp of [hostMp, alice, bob]) tick(mp);
+        await yieldIo();
+    }
+    const quitFrames = { host: hostMp.session.frame, alice: alice.session.frame, bob: bob.session.frame };
+    out(`frames when the host goes: host ${quitFrames.host}, alice ${quitFrames.alice}, bob ${quitFrames.bob}`);
+    // 2. the host goes
+    if (drop) {
+        a1.close('network drop');
+        b1.close('network drop');
+    } else hostMp.close('the host quit');
+    await yieldIo();
+    await yieldIo();
+    out(`alice ${alice.currentStatus().kind}, bob ${bob.currentStatus().kind} (orphaned: ${alice.session.orphaned}, ${bob.session.orphaned})`);
+    const t0 = performance.now();
+    // 3. the successor takes over; the other survivor reports over its backup link
+    alice.promote([2]);
+    alice.acceptMigrant(aliceBackup);
+    bob.migrateTo(bobBackup, 1);
+    while (alice.currentStatus().kind === 'migrating' || bob.currentStatus().kind === 'migrating') {
+        tick(alice);
+        tick(bob);
+        await yieldIo();
+    }
+    const migMs = performance.now() - t0;
+    const as = alice.session;
+    const hostInfo = as.peerList().find((p) => p.id === 0);
+    out(`migrated in ${migMs.toFixed(1)} ms: alice role ${alice.role} (hub slot ${alice.hostSlot()}), bob role ${bob.role} (hub slot ${bob.hostSlot()}); old host left from frame ${hostInfo.leftFrom} (it had sent through ${quitFrames.host + cfg.delay}); alice status ${alice.currentStatus().kind}`);
+    const realOnDigest = as.hooks.onDigest;
+    as.hooks.onDigest = (frame, peer, ok, x, y) => {
+        checksA++;
+        if (!ok) badA++;
+        realOnDigest?.(frame, peer, ok, x, y);
+    };
+    // The old host's seat: absent on the new host, which decides as for any drop.
+    await run(alice, as.frame + 20);
+    out(`alice: ${alice.currentStatus().kind}, paused ${as.clock.paused}; decides for the old host's empire: ${aiTakeover ? 'the AI takes over' : 'continue without them'}`);
+    alice.decideAbsent(0, aiTakeover);
+    let aiFrom = -1;
+    const hostSeatA = seat(alice, 0);
+    acted = -1;
+    await run(alice, as.frame + T5.after, (f) => {
+        if (aiFrom < 0 && isAiSeat(alice.sim.galaxy, hostSeatA)) aiFrom = f - 1;
+        if (acted >= f) return;
+        acted = f;
+        if (f % 150 === 0) {
+            rename(alice, 1, `alice as host @${f}`);
+            rename(bob, 2, `bob after @${f}`);
+        }
+    });
+    const ships0 = { bob: someShips(seat(bob, 2), 1)[0].name, aliceSeesBob: someShips(seat(alice, 2), 1)[0].name };
+    out(`after the migration: bob's first ship "${ships0.bob}" (alice sees "${ships0.aliceSeesBob}"); old host's seat AI on alice ${isAiSeat(alice.sim.galaxy, hostSeatA)}, on bob ${isAiSeat(bob.sim.galaxy, seat(bob, 0))} (from frame ${aiFrom})`);
+    // 4. the old host rejoins as a client (by name; no game of its own)
+    const pick = alice.rejoinSlot('host', undefined, new Map());
+    if (!('slot' in pick)) throw new Error(`rejoin refused: ${pick.refused}`);
+    const [o1, ao] = memoryLinkPair({ latencyMs });
+    alice.acceptRejoin(slotHandoff(ao, pick.slot, 'Host'), pick.slot);
+    const rejoinP = MultiplayerGame.join(null, null, o1, mkOpts(0, 'old-host'));
+    rejoinP.then((x) => (oldHost = x));
+    while (oldHost === null) {
+        tick(alice);
+        tick(bob);
+        await yieldIo();
+    }
+    const rejoinedAt = oldHost.session.frame;
+    out(`old host rejoined as a client at frame ${rejoinedAt} (slot ${pick.slot}); its role ${oldHost.role}, hub slot ${oldHost.hostSlot()}`);
+    let cmdAt = -1;
+    await run(alice, as.frame + T5.rejoinRun, (f) => {
+        if (cmdAt < 0 && oldHost.session.frame > rejoinedAt + 60) {
+            cmdAt = oldHost.session.frame;
+            rename(oldHost, 0, `old host back @${cmdAt}`);
+        }
+    });
+    // Everyone to the same frame (a peer can be a few frames ahead of the hub).
+    const endAt = Math.max(as.frame, bob.session.frame, oldHost.session.frame);
+    for (let guard = 0; [alice, bob, oldHost].some((m) => m.session.frame < endAt); guard++) {
+        for (const m of [alice, bob, oldHost]) if (m.session.frame < endAt) m.session.step();
+        await yieldIo();
+        if (guard > 100000) throw new Error('could not reach the same frame');
+    }
+    const dA = alice.sim.digest(), dB = bob.sim.digest(), dO = oldHost.sim.digest();
+    const hostShip = (mp) => someShips(seat(mp, 0), 1)[0].name;
+    out(`final frame ${endAt}: alice (new host) ${dA}, bob ${dB}, old host ${dO} -> ${dA === dB && dB === dO ? 'MATCH' : 'MISMATCH'}`);
+    out(`digest checks on the new host ${checksA} (${badA} mismatches); the old host's seat AI now: ${isAiSeat(alice.sim.galaxy, hostSeatA)}; its first ship: alice "${hostShip(alice)}", bob "${hostShip(bob)}", old host "${hostShip(oldHost)}"`);
+    out(`stalls: alice ${as.stats.stalls} (${as.stats.stallMs.toFixed(0)} ms), bob ${bob.session.stats.stalls}; commands applied alice ${as.stats.commandsApplied}, bob ${bob.session.stats.commandsApplied}`);
+    const ok = dA === dB && dB === dO && badA === 0 && checksA > 0 && alice.role === 'host' && bob.hostSlot() === 1 && oldHost.hostSlot() === 1
+        && !isAiSeat(alice.sim.galaxy, hostSeatA) && hostShip(alice).startsWith('old host back @') && hostShip(alice) === hostShip(bob)
+        && (!aiTakeover || aiFrom >= 0) && !as.clock.paused;
+    out(ok ? 'RESULT: OK' : 'RESULT: FAILED');
+    alice.close('demo over');
     process.exit(ok ? 0 : 1);
 }
 
