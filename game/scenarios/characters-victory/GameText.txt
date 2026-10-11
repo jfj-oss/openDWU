@@ -19,7 +19,7 @@ CV Ruler Revealed Title;Ruler's shuttle identified
 CV Ruler Revealed;Our agents have identified the shuttle carrying {0} of the {1}: {2}.
 CV Reputation VIP Attacked;Attacked our VIP shuttle
 CV Colony Decline Title;Colony without a governor
-CV Colony Decline;{0} has been without a governor for six months and is starting to decline.
+CV Colony Decline;{0} has been without a governor for a year and is starting to decline.
 CV Local Governor Title;Local governor
 CV Local Governor;{0} has risen to govern {1}.
 CV Suggestion Title;Governor suggestion
@@ -99,3 +99,4 @@ Diet Motion Claim;Recognise the claim of the {0} to {1} (held by the {2})
 Diet Motion Expel;Expel the {0} from the Diet
 Diet Motion Regent;Elect the {0} as Regent of the Diet
 Diet Motion Repeal;Repeal: {0}
+Diet Post Locked;Our delegate {0} is dead. No governor can be appointed to {1} until {2}: the colony declines after a year without one.

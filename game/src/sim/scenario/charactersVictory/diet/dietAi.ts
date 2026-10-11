@@ -15,6 +15,7 @@ import { empireGovernmentAttributes } from '../../../empire';
 import { CharacterTraitType } from '../../../characters';
 import { PirateRelationType } from '../../../pirateRelations';
 import { calculateEmpireScore } from '../../../achievements';
+import { identifyMechanoidEmpire } from '../../../fleets/militaryAI';
 import { strategicValue } from '../../../territory';
 import { YEAR_LENGTH } from '../../../galaxyTime';
 import { galaxyStarDate } from '../../../tick/simTime';
@@ -279,7 +280,8 @@ export function dietVoteScore(galaxy: Galaxy, c: Council, st: DietState, voter: 
             let total = 0;
             for (const v of scores.values()) total += v;
             const share = (scores.get(t!) ?? 0) / Math.max(1, total);
-            return 0.5 * attitudeOf(voter, t!) + 0.5 * tradeInterest(voter, t!) - (share > 0.3 ? 20 * (p.caution + 0.5) : 0) + 5 * has(p, CharacterTraitType.Trusting) - 10 * has(p, CharacterTraitType.Paranoid) + (blocOf(c, voter)?.members.includes(t!) ? 20 : 0) - (atWar(voter, t!) ? 60 : 0);
+            // The seat must be filled (+10); only a dominant candidate (over 35 % of the score) is feared.
+            return 10 + (t === st.host ? 10 : 0) + 0.5 * attitudeOf(voter, t!) + 0.5 * tradeInterest(voter, t!) - (share > 0.35 ? 15 * (p.caution + 0.5) : 0) + 5 * has(p, CharacterTraitType.Trusting) - 10 * has(p, CharacterTraitType.Paranoid) + (blocOf(c, voter)?.members.includes(t!) ? 20 : 0) - (atWar(voter, t!) ? 60 : 0);
         }
         default:
             return 0;
@@ -396,8 +398,11 @@ export function memberCandidates(galaxy: Galaxy, c: Council, st: DietState, a: E
     const now = galaxyStarDate(galaxy);
     if (st.regent === null || !st.regent.active || now >= st.regentUntil || !members.includes(st.regent)) {
         const scores = memberScores(galaxy, members);
-        const ranked = [...members].sort((x, y) => (scores.get(y) ?? 0) - (scores.get(x) ?? 0) || byId(x, y));
-        if (ranked.indexOf(a) >= 0 && ranked.indexOf(a) < 2) out.push({ kind: 'regent', proposer: a, target: a, other: null, colony: null, resourceId: -1, weight: 50 + 10 * p.aggression - 5 * ranked.indexOf(a) });
+        // The Ancient Guardians (the story's Mechanoids) never stand for the Regency.
+        const guardians = identifyMechanoidEmpire(galaxy);
+        const ranked = [...members].filter((x) => x !== guardians).sort((x, y) => (scores.get(y) ?? 0) - (scores.get(x) ?? 0) || byId(x, y));
+        // An empty seat is the Diet's first business: it outweighs the members' other cases.
+        if (ranked.indexOf(a) >= 0 && ranked.indexOf(a) < 2) out.push({ kind: 'regent', proposer: a, target: a, other: null, colony: null, resourceId: -1, weight: 85 + 10 * p.aggression - 5 * ranked.indexOf(a) });
     }
     // Repeal what hurts us.
     for (const law of st.laws) {
@@ -431,20 +436,48 @@ export function emergencyCase(galaxy: Galaxy, c: Council, st: DietState, a: Empi
     return best;
 }
 
-/** The AI Regent's Emperor bid: it holds the host world and its capital, ≥ dietEmperorMinSharePct of the members' score and ≥ 1.5× the next member's military. */
+/**
+ * The AI Regent's Emperor bid: it holds the host world and its capital, carries a large share of the members'
+ * strength (≥ dietEmperorMinSharePct of their score, or of their military), at least 1.2× the next member's military,
+ * is not a pacifist, and has not failed a bid in the last ten years.
+ */
 export function wantsEmperorBid(galaxy: Galaxy, c: Council, st: DietState, regent: Empire): boolean {
-    if (st.world === null || st.world.empire !== regent || regent.capital === null || regent.capital.empire !== regent) return false;
-    const scores = memberScores(galaxy, c.members);
+    return emperorBidBlock(galaxy, c, st, regent) === '';
+}
+
+/** Why the AI Regent does not bid now ('' = it bids). Pure. */
+export function emperorBidBlock(galaxy: Galaxy, c: Council, st: DietState, regent: Empire): string {
+    if (st.world === null) return 'notHost';
+    // Not the host: it must take the host world, so only with a military well above the host's (1.5×).
+    const host = st.world.empire;
+    if (host !== regent && (host === null || militaryPotency(regent) < 1.5 * Math.max(1, militaryPotency(host)))) return 'notHost';
+    if (regent.capital === null || regent.capital.empire !== regent) return 'noCapital';
+    const failed = st.emperorFailedAt?.[regent.empireId];
+    if (failed !== undefined && galaxyStarDate(galaxy) - failed < 10 * YEAR_LENGTH) return 'failedRecently';
+    // The rivals: the other members (the aloof Ancient Guardians do not contend for the galaxy).
+    const guardians = identifyMechanoidEmpire(galaxy);
+    const rivals = c.members.filter((m) => m !== guardians);
+    const scores = memberScores(galaxy, rivals);
     let total = 0;
     for (const v of scores.values()) total += v;
     const share = (scores.get(regent) ?? 0) / Math.max(1, total);
-    if (share * 100 < dietParam(galaxy, 'dietEmperorMinSharePct')) return false;
     const mine = militaryPotency(regent);
     let next = 1;
-    for (const m of c.members) if (m !== regent) next = Math.max(next, militaryPotency(m));
-    if (mine < 1.3 * next) return false;
+    let mil = 0;
+    for (const m of rivals) {
+        const p = Math.max(0, militaryPotency(m));
+        mil += p;
+        if (m !== regent) next = Math.max(next, p);
+    }
+    // The strongest rival by score, with a large share (dietEmperorMinSharePct, or the mean rival's when lower)
+    // and at least 0.35 of the next rival's military; ambitious enough (not a peaceful race, not a Pacifist).
+    for (const [m, v] of scores) if (m !== regent && v > (scores.get(regent) ?? 0)) return 'notTop';
+    const need = Math.min(dietParam(galaxy, 'dietEmperorMinSharePct') / 100, 1 / Math.max(1, rivals.length));
+    if (share < need && mine / Math.max(1, mil) < need) return 'smallShare';
+    if (mine < 0.35 * next) return 'weakMilitary';
     const p = personality(regent);
-    return p.aggression + 0.5 * has(p, CharacterTraitType.Expansionist) - 0.5 * has(p, CharacterTraitType.Pacifist) >= 0.1;
+    if (has(p, CharacterTraitType.Pacifist) > 0 || p.aggression + 0.5 * has(p, CharacterTraitType.Expansionist) < -0.3) return 'peaceful';
+    return '';
 }
 
 /** An AI empire joins the war on the Emperor: it dislikes them or is aggressive, and is not hopelessly outmatched. */

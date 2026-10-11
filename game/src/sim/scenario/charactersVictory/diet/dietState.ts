@@ -49,7 +49,7 @@ export const DIET_PARAMS = {
     dietEmergencyYears: 4,
     dietEmergencyGatherDays: 90,
     dietEmperorYears: 5,
-    dietEmperorMinSharePct: 30,
+    dietEmperorMinSharePct: 25,
     dietExpelYears: 10,
 } as const;
 export type DietParamName = keyof typeof DIET_PARAMS;
@@ -219,6 +219,8 @@ export interface DietCounters {
     truceBreaks: number;
     banViolations: number;
     delegateAttacks: number;
+    /** Posts locked by a delegate's death. */
+    lockouts?: number;
     /** Sum of the regular sessions' gathering days (the farthest delegate's ETA; tuning). */
     gatherDaysTotal?: number;
 }
@@ -254,6 +256,14 @@ export interface DietState {
     raids?: Record<string, number>;
     /** memberId → bombardments it suffered lately (decaying; bombardment bans). */
     bombarded?: Record<number, number>;
+    /** Delegates away from their posts (to, at or back from a session): a death among them locks the post (5-6 years). */
+    abroad?: { character: Character; post: Habitat; empire: Empire }[];
+    /** A pressing case for an emergency session (a war on a member, open defiance), for the AI Regent. */
+    pendingEmergency?: { kind: DietMotionKind; target: Empire | null; other: Empire | null; at: number; why: string } | null;
+    /** "attackerId:victimId" → star date of the last AI strike order on a delegate. */
+    strikes?: Record<string, number>;
+    /** empireId → star date of a failed Emperor's bid (no new bid for ten years). */
+    emperorFailedAt?: Record<number, number>;
     /** The vetoed motion of the session (the Regent's; 0 = none). */
     vetoMotionId?: number;
     history: DietHistoryEntry[];

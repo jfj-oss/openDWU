@@ -28,7 +28,9 @@ import { IntelligenceMissionOutcome, IntelligenceMissionType } from '../src/sim/
 import { BuiltObjectRole } from '../src/sim/data/designSpecifications';
 import { leaveShipGroup } from '../src/sim/fleets/shipGroup';
 import { generateVipShuttleDesign, vipComponentAllowed } from '../src/sim/scenario/charactersVictory/shuttleDesign';
-import { colonyVacancy, reviewGovernors } from '../src/sim/scenario/charactersVictory/governorsCv';
+import { colonyVacancy, governorLockedUntil, requestGovernor, reviewGovernors } from '../src/sim/scenario/charactersVictory/governorsCv';
+import { cvColonySlot } from '../src/ui/scenario/charactersVictoryUi';
+import { galaxyStarDate } from '../src/sim/tick/simTime';
 import { DIET_STATE_KEY, dietState, type DietMotion } from '../src/sim/scenario/charactersVictory/diet/dietState';
 import { closeSession, declareEmperor, dietTick, hostWorldOf, strongestMember } from '../src/sim/scenario/charactersVictory/diet/diet';
 import { memberScores, voteWeight } from '../src/sim/scenario/charactersVictory/diet/dietAi';
@@ -449,7 +451,7 @@ describe('Characters & Victory add-on', () => {
         const r0 = peekCvState(g)!.colonies.find((x) => x.colony === h)!;
         expect(r0.vacantSince).toBeGreaterThanOrEqual(0);
         // Back-date the vacancy past the grace plus two years: neglect, a negative 'vacancy' term, lower taxes, paused facilities.
-        r0.vacantSince -= (180 + 720) * (YEAR_LENGTH / 360);
+        r0.vacantSince -= (360 + 720) * (YEAR_LENGTH / 360); // the grace is a year (cvGraceDays 360)
         r0.updated -= 720 * (YEAR_LENGTH / 360);
         r0.riseAt = -1;
         reviewGovernors(g, e);
@@ -633,7 +635,7 @@ describe('Characters & Victory: the Interstellar Diet', () => {
             const t = tripOfCharacter(g, d.character!);
             expect(t?.reason).toBe('diet');
             expect(t?.destination).toBe(s.world);
-            // The post is kept, the colony vacant meanwhile (Part 1 duty: the 6-month grace applies).
+            // The post is kept, the colony vacant meanwhile (Part 1 duty: the one-year grace applies).
             expect(colonyVacancy(g, d.empire.capital!).vacant).toBe(true);
         }
         expect(s.opens).toBeGreaterThan(s.called);
@@ -755,6 +757,34 @@ describe('Characters & Victory: the Interstellar Diet', () => {
         expect(st.counters.emperorWins).toBe(1);
         expect(g.gameIsFinished).toBe(true);
         expect(g.gameVictor).toBe(em);
+    }, 600000);
+
+    it("a delegate's death locks their post: no governor can be appointed there for 5-6 years (no reserve, no local rise)", () => {
+        const { g } = dietGame();
+        const st = dietState(g);
+        st.nextSessionAt = 0;
+        dietTick(g);
+        const sent = st.session!.delegates.filter((x) => x.sent && x.character !== null);
+        const d = sent.find((x) => x.empire === g.playerEmpire) ?? sent[0];
+        const post = st.abroad!.find((a) => a.character === d.character)!.post;
+        const e = d.empire;
+        d.character!.kill(g);
+        dietTick(g);
+        const now = galaxyStarDate(g);
+        const until = governorLockedUntil(g, post);
+        expect(until).toBeGreaterThanOrEqual(now + 5 * YEAR_LENGTH - 1);
+        expect(until).toBeLessThanOrEqual(now + 6 * YEAR_LENGTH + 1);
+        expect(st.counters.lockouts).toBe(1);
+        // A governor sent there anyway is turned away; nobody rises locally; the player cannot request one.
+        const g2 = generateNewCharacter(g, e, CharacterRole.ColonyGovernor, post).character;
+        reviewGovernors(g, e);
+        // (Turned away when the empire has another colony; the post counts as vacant either way.)
+        if (e.colonies.length > 1) expect(g2.location === post && tripOfCharacter(g, g2) === null).toBe(false);
+        expect(colonyVacancy(g, post).vacant).toBe(true);
+        const r = peekCvState(g)!.colonies.find((x) => x.colony === post)!;
+        expect(r.riseAt).toBe(-1);
+        expect(requestGovernor(g, e, post)).toBe(false);
+        if (e === g.playerEmpire) expect(cvColonySlot(g, e, post)!.status).toContain('No governor can be appointed until');
     }, 600000);
 
     it('a game with a Diet session sitting saves and reloads identically', () => {

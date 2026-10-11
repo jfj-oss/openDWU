@@ -3,13 +3,13 @@
   "name": "Characters & Victory",
   "addableToSave": true,
   "include": ["galactic-council"],
-  "description": "Characters travel in person: every relocation is a free, marked VIP shuttle that can be escorted, intercepted and destroyed (its passenger dies with it; the ruler travels with decoys). Every colony needs a governor: new characters appear at the capital or the matching academy and travel to their post, the capital trains reserve governors, and a colony left without one declines after six months (no construction, falling output and approval, disrepair, emigration) and needs years to recover. Governors are moved by their skills and the colonies' needs, with suggestions for the player or full automation. The AI uses all of it. The galactic council becomes the Interstellar Diet: sessions every 2-3 years at a host world (the strongest member's colony nearest the galaxy centre, with wonder-type bonuses), 1-3 motions moved by the members, weighted votes cast only by delegates who travel there in person, enforcer fleets that blockade sanctioned empires, truces, free trade, weapon bans, outlawed pirates, protected or open independents, recognised claims, expulsions, and a Regent with a veto and emergency sessions who may declare themselves Emperor and try to hold on to win.",
+  "description": "Characters travel in person: every relocation is a free, marked VIP shuttle that can be escorted, intercepted and destroyed (its passenger dies with it; the ruler travels with decoys). Every colony needs a governor: new characters appear at the capital or the matching academy and travel to their post, the capital trains reserve governors, and a colony left without one declines after a year (no construction, falling output and approval, disrepair, emigration) and needs years to recover. Governors are moved by their skills and the colonies' needs, with suggestions for the player or full automation. The AI uses all of it. The galactic council becomes the Interstellar Diet: sessions every 2-3 years at a host world (the strongest member's colony nearest the galaxy centre, with wonder-type bonuses), 1-3 motions moved by the members, weighted votes cast only by delegates who travel there in person, enforcer fleets that blockade sanctioned empires, truces, free trade, weapon bans, outlawed pirates, protected or open independents, recognised claims, expulsions, and a Regent with a veto and emergency sessions who may declare themselves Emperor and try to hold on to win.",
   "flags": [
     { "name": "charactersVictory", "label": "Characters & Victory", "description": "Master switch.", "default": true },
     { "name": "cvVipShuttles", "label": "VIP shuttles", "description": "Every character trip is a free VIP shuttle (gold ring on the map, despawns on arrival); the passenger dies if it is destroyed or captured.", "default": true },
     { "name": "cvEscorts", "label": "VIP escorts", "description": "Idle warships escort important travellers on dangerous routes (automatic for the AI; 'Automate VIP escorts' for the player).", "default": true },
     { "name": "cvRulerDecoys", "label": "Ruler decoys", "description": "A travelling ruler is joined by identical decoy shuttles; a Steal Operations Map mission reveals the real one.", "default": true },
-    { "name": "cvGovernors", "label": "Governors on every colony", "description": "Each colony needs a governor; vacant colonies decline after six months; reserves are trained at the capital; governors move to where their skills matter.", "default": true },
+    { "name": "cvGovernors", "label": "Governors on every colony", "description": "Each colony needs a governor; vacant colonies decline after a year (a dead Diet delegate's colony gets no new governor for 5-6 years); reserves are trained at the capital; governors move to where their skills matter.", "default": true },
     { "name": "cvCouncil", "label": "The Interstellar Diet", "description": "The galactic council meets every 2-3 years at a host world; delegates travel there by VIP shuttle; enforcer fleets blockade sanctioned empires; a Regent with a veto may bid to become Emperor.", "default": true },
     { "name": "cvDietVictory", "label": "Emperor's victory ends the game", "description": "An Emperor who holds their capital and the host world through the countdown wins the game.", "default": true }
   ],
@@ -20,7 +20,7 @@
     { "name": "cvEscortFirepowerPerPoint", "label": "Escort firepower per importance x danger point", "default": 60, "min": 0, "max": 2000 },
     { "name": "cvEscortCapPct", "label": "Escorts at most this % of idle warships", "default": 20, "min": 0, "max": 100 },
     { "name": "cvEscortWaitDays", "label": "An important trip waits up to this many days for its escort", "default": 60, "min": 0, "max": 360 },
-    { "name": "cvGraceDays", "label": "Days a colony may be vacant before it declines", "default": 180, "min": 0, "max": 1800 },
+    { "name": "cvGraceDays", "label": "Days a colony may be vacant before it declines", "default": 360, "min": 0, "max": 1800 },
     { "name": "cvDeclineYears", "label": "Years of vacancy (after the grace) to full neglect", "default": 4, "min": 1, "max": 30 },
     { "name": "cvRecoveryYears", "label": "Years for a governor to recover a fully neglected colony", "default": 5, "min": 1, "max": 30 },
     { "name": "cvDisrepairPerYear", "label": "Development levels a neglected colony loses per year", "default": 2, "min": 0, "max": 50 },
@@ -56,7 +56,7 @@
     { "name": "dietEmergencyYears", "label": "Years between a Regent's emergency sessions", "default": 4, "min": 1, "max": 50 },
     { "name": "dietEmergencyGatherDays", "label": "Days delegates have to reach an emergency session", "default": 90, "min": 30, "max": 360 },
     { "name": "dietEmperorYears", "label": "Years an Emperor must hold the capital and the host world", "default": 5, "min": 1, "max": 50 },
-    { "name": "dietEmperorMinSharePct", "label": "An AI Regent bids for Emperor with this share (%) of the members' score", "default": 30, "min": 0, "max": 100 },
+    { "name": "dietEmperorMinSharePct", "label": "An AI Regent bids for Emperor with this share (%) of the members' score or military", "default": 25, "min": 0, "max": 100 },
     { "name": "dietExpelYears", "label": "Years an expelled member may not rejoin", "default": 10, "min": 0, "max": 100 }
   ]
 }

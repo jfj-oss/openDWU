@@ -109,7 +109,9 @@ const CONFIGS = [
     // Characters & Victory part 2, the Interstellar Diet (docs/CHARACTERS_AND_VICTORY.md §12): cv-on-s1 runs it; the same
     // setup with only the Diet off (the galactic council's stock yearly rhythm), and a longer run for Regents / Emperors.
     SCN('characters-victory', { name: 'cv-nodiet-s1', seed: 1, years: 10, wizard: { starCountIndex: 3, dimensionIndex: 3, otherEmpires: { empireCount: 9 } }, flags: { cvCouncil: false } }),
-    SCN('characters-victory', { name: 'diet-long-s3', seed: 3, years: 16, wizard: { starCountIndex: 3, dimensionIndex: 3, otherEmpires: { empireCount: 9 } } }),
+    SCN('characters-victory', { name: 'diet-long-s3', seed: 3, years: 20, wizard: { starCountIndex: 3, dimensionIndex: 3, otherEmpires: { empireCount: 9 } } }),
+    SCN('characters-victory', { name: 'diet-long-s1', seed: 1, years: 20, wizard: { starCountIndex: 3, dimensionIndex: 3, otherEmpires: { empireCount: 9 } } }),
+    SCN('characters-victory', { name: 'diet-war-s17', seed: 17, years: 18, wizard: { starCountIndex: 3, dimensionIndex: 3, otherEmpires: { empireCount: 9 }, difficultyIndex: 4, aggressionIndex: 4, piratesIndex: 5, pirateProximityIndex: 2, pirateStrengthIndex: 3 } }),
     // Corporate coup x Characters & Victory (C4: bribes per year with a governor on every colony vs the stock count; coupBribePct raised to 200 per mille so the counts are measurable);
     // the companies are registered by a hook (19c is a stub). --save-at 0 (a composite test bed has no folder to reload).
     { name: 'cv-coup-on', seed: 1, years: 8, wizard: { starCountIndex: 3, dimensionIndex: 3, otherEmpires: { empireCount: 9 } }, scenario: ['threat-framework', 'corporatecoup', 'characters-victory'], flags: 'all', params: { ...early('corporateCoup'), coupMinYears: 1000, coupGovernors: 1000, coupBribePct: 200 } },

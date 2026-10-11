@@ -163,7 +163,8 @@ ledger entry or emit an event they already read.
 A colony is **vacant** when no active ColonyGovernor of its empire is located at it. A governor away on a trip or on
 duty (Part 2) does not count.
 
-- **new.** Grace: for `cvGraceDays` (180, six months) after the vacancy starts, nothing happens.
+- **new.** Grace: for `cvGraceDays` (360, **one year**; the user's decision of 2026-10-11, was 180 days) after the vacancy starts, nothing happens.
+- **new (Part 2; the user's decision of 2026-10-11).** **A Diet delegate's death locks the post.** When a governor dies as a delegate (killed or captured on the way to or back from a session, attacked, assassinated at the host world), no governor can be appointed to the colony they held for 5–6 years (`galaxy.rnd` draws 1800–2160 days): no reserve is posted there, no local governor rises, other packages' spawns stay reserves at their birthplace, the player's request is refused, and a governor who reaches it anyway is turned away (to the capital; from a locked capital, to the nearest other colony). The vacancy rules run as usual: the one-year grace, then decline. After the lockout the local rise is drawn as for any vacancy. This applies to delegate deaths only. The colony screen's governor slot shows "No governor can be appointed until <date>" (`governorLockedUntil`, `lockGovernorPost` in governorsCv.ts).
 - **new.** Decline: after the grace, the colony's **neglect** `N` rises linearly from 0 to 1 over `cvDeclineYears` (4). Its effects grow with `N`, in the plan's order:
 
   | Effect | Mechanism | Size |
@@ -176,7 +177,7 @@ duty (Part 2) does not count.
   | Unrest, rebellion, breakaway | Nothing of this add-on's own: the falling approval drives the **stock** revolt (Habitat.cs:5992 CheckSatisfaction → LeaveEmpire) or internal-security's ledger revolt; with frontier-autonomy on, only its breakaway path | emergent, after years |
 
 - **new.** Recovery: once a governor is in post, `N` falls by 1/`cvRecoveryYears` (5) per year. A colony at full neglect therefore takes 5 years to recover, and a partly neglected one proportionally less.
-- **new.** When the add-on starts in a running game (added to a save), the posts vacant at its first review are filled by local rises within the grace (60–180 days), not after 1–3 years. Otherwise every colony of a mid-game empire would decline at once.
+- **new.** When the add-on starts in a running game (added to a save), the posts vacant at its first review are filled by local rises within the grace (60–180 days, inside the one-year grace), not after 1–3 years. Otherwise every colony of a mid-game empire would decline at once.
 - **new.** Colonies of fewer than `cvMinPopulation` (50M) are exempt from the decline. They are still counted vacant (and still get a governor when one is free). Outposts are not run by governors.
 
 ### 5.4 Replacement paths
@@ -256,7 +257,9 @@ the clash with rimTrade's Concord cannot happen (the council is always the Diet)
 ### 7.1 Host and seat
 
 - **new (real inputs).** At every session call the host is the member with the highest Galaxy.1.cs:2863
-  CalculateEmpireScore (`achievements.ts calculateEmpireScore`); the Diet's world is that empire's populated colony
+  CalculateEmpireScore — except the Ancient Guardians (the story's Mechanoid empire, IdentifyMechanoidEmpire), who sit
+  and vote but never host and never stand for the Regency (in the soaks they out-scored everyone and held both for
+  the whole game, so no other Regent could ever bid for Emperor; reported as a decision) (`achievements.ts calculateEmpireScore`); the Diet's world is that empire's populated colony
   nearest the galaxy centre (`sizeX / 2, sizeY / 2`). When the strongest member changed, the seat moves then (a news
   line).
 - **new (real paths).** The host world gets a **virtual wonder** of the real WonderType kinds, merged into the stock
@@ -275,11 +278,12 @@ the clash with rimTrade's Concord cannot happen (the council is always the Diet)
 ### 7.2 Delegates
 
 - **new.** At the call, each member's delegate is the player's choice (a governor of theirs) or Part 1's
-  `mostImportantGovernor`. `setGovernorDuty` keeps the post (the colony is vacant: the 6-month grace, then decline);
+  `mostImportantGovernor`. `setGovernorDuty` keeps the post (the colony is vacant: the one-year grace, then decline; a delegate's death locks the post for 5–6 years, §5.3);
   `sendVip(…, 'diet')` flies them to the host world (Part 1's `destinationValid` accepts a foreign host world for a
   `'diet'` trip — a one-line change in vip.ts). A delegate trip counts as importance ≥ 5 for the escort rules.
 - **new.** The floor opens when the farthest delegate's shuttle can be there (ETA + 15 days, at least
-  `dietGatherDays` 150, at most 540 days: on a large map early hyperdrives need over a year); the vote stays open `dietVoteDays` (60). Only a delegate **at the host
+  `dietGatherDays` 150, at most 600 days: on a large map early hyperdrives need over a year; the shuttle's
+  straight-line ETA is taken × 1.35 + 20 days for jumps and detours); the vote stays open `dietVoteDays` (60). Only a delegate **at the host
   world** at the close votes. After the tally `endGovernorDuty` sends every delegate home.
 - **new.** A lesser delegate (not the most important governor) votes at `dietLesserDelegatePct` (50 %) weight. No
   governor, no delegate, no vote.
@@ -351,20 +355,33 @@ the clash with rimTrade's Concord cannot happen (the council is always the Diet)
   bans by caution, aggression, its own planet destroyers / bombardment policy, ImportanceOfOthersReputations;
   outlawing by the pirates' raids on it and a protection deal; independents by aggression, friendliness, its
   independent colonisation targets, Expansionist / Tolerant; claims and expulsions by attitudes and blocs; the Regent
-  by attitude, trade and fear of a strong one (caution, Paranoid / Trusting). Race levels are (level − 100) / 50;
+  by attitude, trade, +10 for the empty seat, +10 for the host, and fear of a dominant one (over 35 % of the score:
+  caution, Paranoid / Trusting). Race levels are (level − 100) / 50;
   government factors − 1; the gift budget (DiplomacySendGiftsUpToAmount) and IntelligenceAllowMission* feed the
   personality record.
 - **Proposals.** Every AI member moves its strongest case: the council's grievance candidates (spy crises, wars,
   attitude), crimes and defiance (sanctions / expulsion), truces when losing, measures it likes (score ≥ 25), outlaws
   after 3+ raids, a claim on a disliked or warring neighbour's colony inside its territory, itself as Regent (the two
   strongest), repeals of what hurts it.
-- **Regent.** Vetoes its worst passing motion when its score is ≤ −40; calls an emergency session for a case of
-  weight ≥ 60 (a crime, a spy crisis, a war on it) when the next session is more than 300 days away; bids for
-  Emperor when it holds the host world and its capital, has ≥ 30 % of the members' score and 1.3× the next member's
-  military, and is not a pacifist.
-- **Delegates.** Defended by the escort rules (importance ≥ 5). Attacked by an AI member at war with the delegate's
-  empire when its aggression − caution > 0.1 and its ConcernForOwnReputation ≤ 1.1: its nearest warship within two
-  sectors and fuel range (leaving its fleet if it has one) takes an Attack mission on the shuttle (once per session).
+- **Regent (retuned 2026-10-11, the user's decision: these powers must actually be used).** Vetoes its worst passing
+  motion when it strongly hurts it (score ≤ −12), or strikes at its ally (a mutual-defence, protectorate or
+  dominion partner) or a friend (attitude ≥ 40). Calls an emergency session (once every `dietEmergencyYears`, 4,
+  when the next session is more than 180 days away) when **a war is started on a Diet member** (a condemnation of a
+  member aggressor, sanctions on an outsider) or **a sanctioned target openly defies the enforcers** (expulsion of a
+  member, else a declared threat) — unless the case is against itself, its bloc, or an empire it likes far more than
+  the victim — and otherwise for its own case of weight ≥ 60 (a crime, a spy crisis) when the next session is more
+  than 300 days away. Bids for Emperor when it holds its capital and either holds the host world or
+  has 1.5× its holder's military (it then declares war on the holder to take it), has served a year, is the strongest rival by score with a large share (score or military: `dietEmperorMinSharePct`
+  25 %, or the mean rival's share when that is lower — above average; the Ancient Guardians are not counted as
+  rivals), has a military of at least 0.35 of the next rival's (a gamble: a failed bid costs −20 attitude with every
+  member and the Regency), is ambitious (not a Pacifist leader, not a clearly peaceful race), and has not
+  failed a bid in the last ten years.
+- **Delegates.** Defended by the escort rules (importance ≥ 5), on the way there and back. Struck at by any AI empire
+  at war with the delegate's empire that is **aggressive** (aggression − caution > 0.1, ConcernForOwnReputation ≤ 1.1)
+  or **desperate** (under 0.6 of that enemy's military): its nearest warship within four sectors and fuel range
+  (leaving its fleet if need be) takes an Attack mission on the shuttle — only a shuttle still waiting at its origin
+  for its escort, or one within a sector (a shuttle at warp outruns a chase) — at most once per attacker and victim
+  every 120 days. The attack itself (when it lands) is the crime.
 - **The Emperor.** The countdown is `dietEmperorYears` (5). Everyone may declare war on the Emperor (the Diet's
   `declareWarBlocked` handler runs last and unblocks it); AI empires that dislike them or are aggressive and not
   hopelessly outmatched (≥ 0.25 of their military) do. The bid fails when the Emperor loses its capital, or the host
@@ -570,3 +587,28 @@ pair; no Diet cost shows above the run-to-run noise.
   the tests and by the player's buttons; tune further only if the user wants them more often.
 - Sanctions pass often enough to send fleets, but a target strong enough to defy (aggression − caution ≥ 0.25,
   twice the fleet's firepower) destroys them: 1×–3× scaling keeps the fleet "balanced" rather than decisive.
+
+### 12.2 The AI powers retuned (2026-10-11)
+
+The user asked that the Regent's veto, emergency sessions, crimes and strikes on delegates, and Emperor bids actually
+happen. Long soaks (`diet-long-s1` / `diet-long-s3`, 20 years; `diet-war-s17`, 18 years, aggressive AIs, many
+pirates), with the retuned rules of §7.5, the one-year grace and the delegate-death lockout:
+
+| | seed 1, 20 y | seed 3, 20 y | war, seed 17, 18 y |
+|---|---|---|---|
+| Sessions / emergency sessions (cause) | 9 / 2 (war on a member ×2) | 9 / 2 (defiance, war) | 8 / 1 (war) |
+| Regents elected / vetoes | 2 / 1 | 3 / 0 | 2 / 0 |
+| AI strike orders on delegates / crimes (attacks on delegates or the host world in session) | 11 / 9 | 21 / 5 | 14 / 4 |
+| Emperor bids (outcome) | 0 (the only host-Regent was a peaceful race) | 1 (failed) | 0 (peaceful Regents) |
+| Delegates sent / arrived / absent at the vote / lost (posts locked) | 66 / 45 / 19 / 0 (0) | 58 / 54 / 18 / 0 (0) | 65 / 53 / 9 / 0 (0) |
+| Motions passed | sanction 5, outlaw 6, embargo 1, truce 1, Regent 2 | sanction 6, outlaw 6, Regent 3 | sanction 4, outlaw 5, condemn 1, truce 1, Regent 2 |
+| Enforcer fleets (ships) | 3 (36) | 6 (90) | 4 (72) |
+
+Each power now occurs over 15–20 years without dominating; vetoes and Emperor bids stay rare because they need a
+sitting Regent who is present, strong and ambitious (the Emperor's bid counters, `bidBlocks`, show why the others
+held back: not the host and not strong enough to take its world, or a peaceful race). No delegate died in these runs,
+so the lockout did not trigger there; the test suite covers it.
+
+**Decision (reported).** The Ancient Guardians (the story's Mechanoids) out-scored every member and held the seat and
+the Regency for whole games, so no other Regent could ever bid; they now sit and vote but never host or stand for the
+Regency, and do not count as rivals in the Emperor's reckoning.

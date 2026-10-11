@@ -31,7 +31,8 @@ import { leaveShipGroup } from '../../../fleets/shipGroup';
 import { BuiltObjectRole } from '../../../data/designSpecifications';
 import { BuiltObjectSubRole } from '../../../builtObjectTypes';
 import { GameEndEventArgs, GameEndOutcome, humansGameEnd, onGameEnd } from '../../../victory';
-import { YEAR_LENGTH } from '../../../galaxyTime';
+import { identifyMechanoidEmpire } from '../../../fleets/militaryAI';
+import { YEAR_LENGTH, resolveStarDateDescription } from '../../../galaxyTime';
 import { galaxyStarDate } from '../../../tick/simTime';
 import { humanEmpires, isHumanEmpire, isMultiHuman } from '../../../humanEmpires';
 import { withinFuelRangeAndRefuel } from '../../../movement';
@@ -49,9 +50,11 @@ import {
     recordLosses,
     registerCouncilExtension,
     scoreToVote,
+    attitudeOf,
+    blocOf,
     type Council,
 } from '../../emergent/council';
-import { endGovernorDuty, mostImportantGovernor, setGovernorDuty, empireGovernors } from '../governorsCv';
+import { endGovernorDuty, lockGovernorPost, mostImportantGovernor, setGovernorDuty, empireGovernors } from '../governorsCv';
 import { assignEscorts, tripOfCharacter, tripOfShuttle, vipTripView } from '../vip';
 import { sendVip } from '../index';
 import {
@@ -76,7 +79,8 @@ import {
     lawInForce,
     peekDietState,
 } from './dietState';
-import { asCouncilMotion, atWar, attacksDelegates, dietCandidates, dietVoteScore, emergencyCase, joinsWarOnEmperor, memberScores, voteWeight, wantsEmperorBid } from './dietAi';
+import { asCouncilMotion, atWar, attacksDelegates, dietCandidates, dietVoteScore, emergencyCase, emperorBidBlock, joinsWarOnEmperor, memberScores, voteWeight } from './dietAi';
+import { militaryPotency } from '../../../diplomacyTick';
 import { aiDefiance, collectDues, enforcerFleetOf, enforcerUpkeep, ensureFaction, isEnforcerFaction, recallEnforcers, reviewEnforcers, spawnEnforcers } from './dietEnforcers';
 import type { DietCandidate as Cand, DietCandidate } from './dietAi';
 
@@ -163,7 +167,10 @@ export function dietMotionText(galaxy: Galaxy, st: DietState, kind: DietMotionKi
 export function strongestMember(galaxy: Galaxy, ms: readonly Empire[]): Empire | null {
     let best: Empire | null = null;
     let bv = -Infinity;
+    // The Ancient Guardians (the story's Mechanoids, Galaxy IdentifyMechanoidEmpire) sit and vote but never host.
+    const guardians = identifyMechanoidEmpire(galaxy);
     for (const e of ms) {
+        if (e === guardians && ms.length > 1) continue;
         const s = calculateEmpireScore(galaxy, e).score;
         if (s > bv) {
             bv = s;
@@ -239,6 +246,7 @@ function dispatch(galaxy: Galaxy, st: DietState, s: DietSession, d: DietDelegate
     const ch = d.character;
     if (ch === null) return;
     if (ch.location === s.world) return;
+    if (ch.location !== null && !isBuiltObjectLocation(ch.location)) (st.abroad ??= []).push({ character: ch, post: ch.location as Habitat, empire: d.empire });
     setGovernorDuty(galaxy, ch, DIET_TRIP_REASON);
     sendVip(galaxy, ch, s.world, DIET_TRIP_REASON);
     d.sent = true;
@@ -344,9 +352,10 @@ export function callSession(galaxy: Galaxy, st: DietState, c: Council, emergency
         for (const d of s.delegates) {
             if (!d.sent || d.character === null) continue;
             const v = vipTripView(galaxy, d.character);
-            if (v !== null) eta = Math.max(eta, v.etaStarDate + 15 * DAY);
+            // The straight-line ETA misses jumps, acceleration and detours: × 1.35, + 20 days.
+            if (v !== null) eta = Math.max(eta, now + (v.etaStarDate - now) * 1.35 + 20 * DAY);
         }
-        s.opens = Math.min(now + 540 * DAY, eta);
+        s.opens = Math.min(now + 600 * DAY, eta);
         st.counters.gatherDaysTotal = (st.counters.gatherDaysTotal ?? 0) + Math.round((s.opens - now) / DAY);
         s.closes = s.opens + dietParam(galaxy, 'dietVoteDays') * DAY;
     }
@@ -413,10 +422,13 @@ export function closeSession(galaxy: Galaxy, st: DietState, c: Council, s: DietS
             let veto: DietMotion | null = null;
             if (isHumanEmpire(galaxy, regent)) veto = s.motions.find((m) => m.id === (st.vetoMotionId ?? 0)) ?? null;
             else {
-                let worst = -40;
+                let worst = -12; // a passing motion that strongly hurts the Regent (or strikes at its ally)
                 for (const m of s.motions) {
                     if (!(m.yes > m.no) || m.kind === 'regent') continue;
-                    const sc = dietVoteScore(galaxy, c, st, regent, m);
+                    let sc = dietVoteScore(galaxy, c, st, regent, m);
+                    const ally = m.target !== null && m.target !== regent && [DiplomaticRelationType.MutualDefensePact, DiplomaticRelationType.Protectorate, DiplomaticRelationType.SubjugatedDominion].includes(regent.diplomaticRelations.byEmpire(m.target)?.type ?? DiplomaticRelationType.NotMet);
+                    const friend = m.target !== null && m.target !== regent && attitudeOf(regent, m.target) >= 40;
+                    if ((ally || friend) && ['sanction', 'embargo', 'condemn', 'expel', 'threat'].includes(m.kind)) sc = Math.min(sc, -50);
                     if (sc <= worst) {
                         worst = sc;
                         veto = m;
@@ -451,15 +463,20 @@ export function closeSession(galaxy: Galaxy, st: DietState, c: Council, s: DietS
     news(galaxy, null, scenarioText('Diet Session Closed News', s.world.name, lines.join(' ') || scenarioText('Diet No Motions')), s.world);
     tell(galaxy, humanMembers(galaxy, c, st), 'Diet Results Title', lines.join('\n') || scenarioText('Diet No Motions'), { popup: s.motions.length > 0, subject: s.world });
     // Delegates go home (the duty ends: Part 1 sends them back by VIP shuttle).
-    for (const d of s.delegates) if (d.character !== null) endGovernorDuty(galaxy, d.character);
+    for (const d of s.delegates) {
+        const ch = d.character;
+        if (ch === null) continue;
+        endGovernorDuty(galaxy, ch);
+        // The way home is still a delegate's trip (attacks on it are crimes; a death there locks the post).
+        const back = (st.abroad ?? []).find((a) => a.character === ch);
+        if (back !== undefined && ch.active && tripOfCharacter(galaxy, ch) !== null) sendVip(galaxy, ch, back.post, DIET_TRIP_REASON);
+    }
     st.session = null;
     st.vetoMotionId = 0;
     // Sessions every 2-3 years from one call to the next (a long gathering does not stretch the rhythm), and at least
     // half a year after this one closed.
-    if (!s.emergency || st.nextSessionAt < now) {
-        scheduleNext(galaxy, st, s.called);
-        st.nextSessionAt = Math.max(st.nextSessionAt, now + 180 * DAY);
-    }
+    if (!s.emergency || st.nextSessionAt < now) scheduleNext(galaxy, st, s.called);
+    st.nextSessionAt = Math.max(st.nextSessionAt, now + 180 * DAY);
 }
 
 function round1(v: number): number {
@@ -608,6 +625,8 @@ function defiance(galaxy: Galaxy, st: DietState, c: Council, offender: Empire): 
     }
     st.grievances[offender.empireId] = (st.grievances[offender.empireId] ?? 0) + 40;
     news(galaxy, offender, scenarioText('Diet Defiance News', offender.name), null);
+    // Open defiance: an emergency case (expulsion of a member, else a declared threat).
+    st.pendingEmergency = { kind: c.members.includes(offender) ? 'expel' : 'threat', target: offender, other: null, at: galaxyStarDate(galaxy), why: 'defiance' };
 }
 
 function violation(galaxy: Galaxy, st: DietState, c: Council, offender: Empire, law: DietLaw): void {
@@ -652,6 +671,9 @@ export function declareEmperor(galaxy: Galaxy, empire: Empire): boolean {
     st.emperor = { empire, capital: empire.capital, world: st.world, since: now, until: now + dietParam(galaxy, 'dietEmperorYears') * YEAR_LENGTH };
     (st.emperor as { joined?: number[] }).joined = [];
     st.counters.emperorBids++;
+    // A Regent who does not hold the host world goes to war for it (its holder may resist).
+    const holder = st.world.empire;
+    if (holder !== null && holder !== empire && !atWar(empire, holder) && holder.pirateEmpireBaseHabitat === null) declareWar(galaxy, empire, holder);
     scenarioNews(galaxy, empire, scenarioText('Diet Emperor News', empire.name, st.world.name, empire.capital.name, Math.round(dietParam(galaxy, 'dietEmperorYears'))), (e) => !isHumanEmpire(galaxy, e), st.world, { category: 'council' });
     for (const h of humanEmpires(galaxy)) {
         scenarioMessage(galaxy, h, scenarioText('Diet Emperor Title'), h === empire ? scenarioText('Diet Emperor You', st.world.name, empire.capital.name) : scenarioText('Diet Emperor Other', empire.name, st.world.name, empire.capital.name), { type: h === empire ? EmpireMessageType.GeneralGoodEvent : EmpireMessageType.GeneralBadEvent, subject: st.world, log: { category: 'council' } });
@@ -678,6 +700,7 @@ function emperorEnds(galaxy: Galaxy, st: DietState, c: Council | null, won: bool
         return;
     }
     st.counters.emperorFails++;
+    (st.emperorFailedAt ??= {})[e.empireId] = galaxyStarDate(galaxy);
     if (st.regent === e) st.regent = null;
     if (c !== null) for (const m of members(c, st)) if (m !== e) applyReputation(galaxy, m, e, -20, { cause: 'dietUsurper', labelKey: 'Diet Reputation Usurper', source: 'interstellarDiet' });
     news(galaxy, e, scenarioText('Diet Emperor Failed News', e.name), null);
@@ -710,6 +733,17 @@ function reviewEmperor(galaxy: Galaxy, st: DietState, c: Council | null): void {
         joined.push(x.empireId);
         declareWar(galaxy, x, e);
     }
+}
+
+/** The AI Regent answers a pressing event: not against itself, its bloc or an empire it likes more than the victim. */
+function regentAnswers(galaxy: Galaxy, c: Council, st: DietState, regent: Empire, p: NonNullable<DietState['pendingEmergency']>): boolean {
+    void st;
+    const t = p.target;
+    if (t === null || t === regent || !t.active) return false;
+    if (blocOf(c, regent)?.members.includes(t)) return false;
+    if (p.other !== null && p.other !== regent && attitudeOf(regent, t) > attitudeOf(regent, p.other) + 20) return false;
+    void galaxy;
+    return true;
 }
 
 function heldWorldOnce(em: NonNullable<DietState['emperor']>): boolean {
@@ -755,16 +789,36 @@ export function dietTick(galaxy: Galaxy): void {
     const regent = activeRegent(galaxy, st, c);
     if (regent !== null && !isHumanEmpire(galaxy, regent)) {
         const checked = (st as { emergencyChecked?: number }).emergencyChecked ?? -1;
-        if (st.session === null && now - checked >= 90 * DAY && st.nextSessionAt - now > 300 * DAY && (st.lastEmergency < 0 || now - st.lastEmergency >= dietParam(galaxy, 'dietEmergencyYears') * YEAR_LENGTH)) {
+        const cooled = st.lastEmergency < 0 || now - st.lastEmergency >= dietParam(galaxy, 'dietEmergencyYears') * YEAR_LENGTH;
+        // A pressing event (a war started on a member, open defiance of the enforcers) is answered at once.
+        const pend = st.pendingEmergency ?? null;
+        if (pend !== null && now - pend.at > 1.5 * YEAR_LENGTH) st.pendingEmergency = null;
+        // (The case waits, up to a year and a half, for the sitting session to close.)
+        if (st.session === null && cooled && st.pendingEmergency != null) {
+            const p = st.pendingEmergency;
+            st.pendingEmergency = null;
+            if (regentAnswers(galaxy, c, st, regent, p) && callEmergency(galaxy, regent, { kind: p.kind, proposer: regent, target: p.target, other: p.other, colony: null, resourceId: -1, weight: 100 })) {
+                const why = ((st.counters as { emergencyCauses?: Record<string, number> }).emergencyCauses ??= {});
+                why[p.why] = (why[p.why] ?? 0) + 1;
+            }
+        } else if (st.session === null && now - checked >= 90 * DAY && st.nextSessionAt - now > 300 * DAY && cooled) {
             (st as { emergencyChecked?: number }).emergencyChecked = now;
             const cand = emergencyCase(galaxy, c, st, regent, gameYear(now));
             if (cand !== null) callEmergency(galaxy, regent, cand);
         }
-        if (st.emperor === null && st.session === null && wantsEmperorBid(galaxy, c, st, regent)) declareEmperor(galaxy, regent);
+        // A Regent of at least a year's standing.
+        const served = now - (st.regentUntil - dietParam(galaxy, 'dietRegentYears') * YEAR_LENGTH) >= YEAR_LENGTH;
+        if (st.emperor === null && served) {
+            const why = emperorBidBlock(galaxy, c, st, regent);
+            const rec = ((st.counters as { bidBlocks?: Record<string, number> }).bidBlocks ??= {});
+            rec[why === '' ? 'bid' : why] = (rec[why === '' ? 'bid' : why] ?? 0) + 1;
+            if (why === '') declareEmperor(galaxy, regent);
+        }
     }
     reviewEmperor(galaxy, st, c);
+    reviewAbroad(galaxy, st);
     // AI members attack enemy delegates on the way (aggressive, careless of their reputation, at war with them).
-    if (st.session !== null && st.session.stage === 'gathering') aiDelegateAttacks(galaxy, st, c, st.session);
+    aiDelegateAttacks(galaxy, st);
     // Enforcers: losses, the sanction's end, stations; open defiance by an AI target.
     const sanctioned = (e: Empire): boolean => c.sanctions.some((x) => x.target === e && x.kind === 'sanction');
     reviewEnforcers(galaxy, st, c, sanctioned);
@@ -784,32 +838,88 @@ export function dietTick(galaxy: Galaxy): void {
     }
 }
 
-/** One attack order per session and attacker: the nearest idle warship within fuel reach goes for the enemy delegate's shuttle. */
-function aiDelegateAttacks(galaxy: Galaxy, st: DietState, c: Council, s: DietSession): void {
-    const done = ((s as { attacked?: number[] }).attacked ??= []);
-    for (const d of s.delegates) {
-        const ch = d.character;
-        if (ch === null || !ch.active) continue;
+/**
+ * Delegates abroad: one who died (killed or captured on the way, attacked, assassinated at the host world) leaves a post
+ * that takes 5-6 years to fill (no reserve posted, no local rise: governorsCv lockGovernorPost). Back home: done. Draws
+ * (the lockout length).
+ */
+function reviewAbroad(galaxy: Galaxy, st: DietState): void {
+    const list = st.abroad;
+    if (list === undefined || list.length === 0) return;
+    const now = galaxyStarDate(galaxy);
+    for (const a of [...list]) {
+        const c = a.character;
+        if (c.active && c.location === a.post) {
+            list.splice(list.indexOf(a), 1);
+            continue;
+        }
+        if (c.active && c.empire === a.empire && (tripOfCharacter(galaxy, c) !== null || c.transferDestination !== null || st.session?.delegates.some((d) => d.character === c))) continue;
+        list.splice(list.indexOf(a), 1);
+        if (c.active || a.post.empire !== a.empire) continue; // moved on alive (a defection, a new post) or the post was lost
+        // RND(diet): 5-6 years.
+        const until = now + (5 * 360 + galaxy.rnd.next(0, 361)) * DAY;
+        lockGovernorPost(galaxy, a.post, until);
+        st.counters.lockouts = (st.counters.lockouts ?? 0) + 1;
+        tell(galaxy, [a.empire], 'Diet Delegate Title', scenarioText('Diet Post Locked', c.name, a.post.name, resolveStarDateDescription(until)), { popup: true, bad: true, subject: a.post });
+    }
+}
+
+/**
+ * AI strikes on delegates (to or back from a session): an AI empire at war with the delegate's empire that is
+ * aggressive and careless of its reputation, or desperate (losing that war: under 0.6 of the enemy's military),
+ * sends its nearest warship within four sectors and fuel reach (leaving its fleet if need be) to attack the shuttle.
+ * At most one order per attacker and victim empire every 120 days.
+ */
+function aiDelegateAttacks(galaxy: Galaxy, st: DietState): void {
+    const list = st.abroad;
+    if (list === undefined || list.length === 0) return;
+    const now = galaxyStarDate(galaxy);
+    const strikes = (st.strikes ??= {});
+    for (const ab of list) {
+        const ch = ab.character;
+        if (!ch.active) continue;
         const t = tripOfCharacter(galaxy, ch);
-        if (t === null || t.reason !== DIET_TRIP_REASON) continue;
-        for (const a of members(c, st)) {
-            if (a === d.empire || isHumanEmpire(galaxy, a) || done.includes(a.empireId) || !atWar(a, d.empire) || !attacksDelegates(a)) continue;
+        if (t === null || t.reason !== DIET_TRIP_REASON || t.waitUntil < 0) continue;
+        const victim = ab.empire;
+        for (const a of galaxy.empires) {
+            if (a === null || a === victim || !a.active || a.pirateEmpireBaseHabitat !== null || a === galaxy.independentEmpire || a.dominantRace === null || isHumanEmpire(galaxy, a) || isEnforcerFaction(st, a)) continue;
+            if (!atWar(a, victim)) continue;
+            const key = `${a.empireId}:${victim.empireId}`;
+            if (strikes[key] !== undefined && now - strikes[key] < 120 * DAY) continue;
+            const desperate = militaryPotency(a) < 0.6 * Math.max(1, militaryPotency(victim));
+            if (!desperate && !attacksDelegates(a)) continue;
+            // A shuttle at warp cannot be fought: strike it where it is slow — still at its origin (waiting for its
+            // escort, or close by), or by lying in wait at its destination, reached before it arrives.
+            const dest = t.destination;
+            const view = vipTripView(galaxy, ch);
+            const eta = view !== null ? view.etaStarDate : now;
             let best: BuiltObject | null = null;
-            let bd = galaxy.sectorSize * 2;
+            let bd = galaxy.sectorSize * 4;
+            let ambush = false;
             for (const b of a.builtObjects) {
                 if (b === null || b.hasBeenDestroyed || b.role !== BuiltObjectRole.Military || b.firepowerRaw <= 0 || b.warpSpeed <= 0 || b.builtAt !== null || !b.isAutoControlled) continue;
                 if (b.subRole === BuiltObjectSubRole.TroopTransport || b.subRole === BuiltObjectSubRole.ResupplyShip) continue;
-                const dist = galaxy.calculateDistance(b.xpos, b.ypos, t.shuttle.xpos, t.shuttle.ypos);
-                if (dist < bd && withinFuelRangeAndRefuel(galaxy, b, t.shuttle.xpos, t.shuttle.ypos, 0.1)) {
-                    bd = dist;
+                const near = galaxy.calculateDistance(b.xpos, b.ypos, t.shuttle.xpos, t.shuttle.ypos);
+                if (near < bd && (t.waitUntil > now || near <= galaxy.sectorSize) && withinFuelRangeAndRefuel(galaxy, b, t.shuttle.xpos, t.shuttle.ypos, 0.1)) {
+                    bd = near;
                     best = b;
+                    ambush = false;
+                    continue;
+                }
+                const toDest = galaxy.calculateDistance(b.xpos, b.ypos, dest.xpos, dest.ypos);
+                const arrive = now + (toDest / Math.max(1, b.warpSpeed)) * 1000 + 15 * DAY;
+                if (toDest < bd && arrive < eta && withinFuelRangeAndRefuel(galaxy, b, dest.xpos, dest.ypos, 0.1)) {
+                    bd = toDest;
+                    best = b;
+                    ambush = true;
                 }
             }
             if (best === null) continue;
-            done.push(a.empireId);
+            strikes[key] = now;
             // A fleet member leaves its fleet for the strike (as the VIP escorts do); the stock AI re-tasks it afterwards.
             if (best.shipGroup !== null) leaveShipGroup(galaxy, best);
-            assignMission(galaxy, best, BuiltObjectMissionType.Attack, t.shuttle, null, BuiltObjectMissionPriority.High);
+            if (ambush) assignMission(galaxy, best, BuiltObjectMissionType.Move, dest, null, BuiltObjectMissionPriority.High);
+            else assignMission(galaxy, best, BuiltObjectMissionType.Attack, t.shuttle, null, BuiltObjectMissionPriority.High);
             st.counters.delegateAttacks++;
         }
     }
@@ -962,6 +1072,7 @@ function onTripFailed(galaxy: Galaxy, ev: { character: Character; reason: string
     if (ev.reason !== DIET_TRIP_REASON) return;
     const x = sessionMember(galaxy);
     if (x === null) return;
+    reviewAbroad(galaxy, x.st);
     const d = delegateOf(x.st, ev.character);
     if (d === null) return;
     d.lost = true;
@@ -1070,6 +1181,11 @@ function onBombarded(galaxy: Galaxy, ev: { builtObject: BuiltObject; habitat: Ha
 function onWarDeclared(galaxy: Galaxy, ev: { empire: Empire; target: Empire }): void {
     const x = sessionMember(galaxy);
     if (x === null) return;
+    // A war started on a Diet member (not on the Emperor, not by the enforcers): an emergency case for the Regent.
+    if (members(x.c, x.st).includes(ev.target) && ev.empire !== x.st.faction && ev.target !== x.st.emperor?.empire && ev.empire.pirateEmpireBaseHabitat === null && ev.empire !== galaxy.independentEmpire) {
+        const kind: DietMotionKind = x.c.members.includes(ev.empire) ? 'condemn' : 'sanction';
+        x.st.pendingEmergency ??= { kind, target: ev.empire, other: ev.target, at: galaxyStarDate(galaxy), why: 'war' };
+    }
     for (const l of [...x.st.laws]) {
         if (l.kind !== 'truce') continue;
         const pair = (l.empire === ev.empire && l.other === ev.target) || (l.other === ev.empire && l.empire === ev.target);
