@@ -8,6 +8,7 @@
 // to reveal safe lanes. 19k-3 hand-off: herderColonies(galaxy) / herderColonyOf(galaxy, habitat) list the herder
 // colonies and their herds, so independent leagues can pool herds.
 
+import type { ShipGroup } from '../../fleets/shipGroup';
 import type { Galaxy } from '../../galaxy';
 import type { Empire } from '../../empire';
 import type { BuiltObject } from '../../builtObject';
@@ -64,6 +65,8 @@ export const RIM_HERDERS_PARAM_DEFAULTS = {
      */
     rimHerdersContactRange: 5000000,
     rimHerdersStandingGain: 10,
+    rimHerdersStandingCap: 100,
+    rimHerdersStandingDecay: 0.05,
     rimHerdersStandingKill: 8,
     rimHerdersCharacterStanding: 20,
     rimHerdersLeaveStanding: 0,
@@ -75,6 +78,9 @@ export const RIM_HERDERS_PARAM_DEFAULTS = {
     rimHerdersWarnDays: 30,
     rimHerdersCorridor: 60000,
     rimHerdersWarnPenalty: 15,
+    rimHerdersStagingTroops: 40000,
+    rimHerdersStagingYears: 2,
+    rimHerdersHomeRange: 2000,
     rimHerdersConquestChance: 0.35,
     rimHerdersMatureYears: 25,
     rimHerdersRegrowYears: 4,
@@ -96,6 +102,15 @@ export const STANDING_ATTACK = 20;
 export const STANDING_CONQUEST = 60;
 /** A herd stays in defence of its colony this long after the last attack (game days). */
 export const DEFEND_DAYS = 30;
+
+/** A conquest being staged: `fleet` refuels at `base` (its empire's colony or base nearest the herders), gathers troops, then attacks. */
+export interface HerderStaging {
+    empireId: number;
+    fleet: ShipGroup;
+    base: Habitat | BuiltObject;
+    /** Star date the staging began. */
+    since: number;
+}
 
 export type HerderColonyStatus = 'free' | 'protectorate' | 'conquered' | 'lost';
 
@@ -123,6 +138,8 @@ export interface HerderColony {
     warned: number[];
     /** Empires the herds are aggressive toward (ignored warnings), until a star date. */
     hostile: { empireId: number; until: number }[];
+    /** Conquest staging (rimHerders.ts rimHerdersStagingTick): a troop fleet gathering at its empire's post nearest the colony. */
+    staging?: HerderStaging | null;
     /** Husbandry (husbandry.ts): star date the colony lost its last herd, and the next date a stampede may start. */
     herdlessSince?: number;
     stampedeReadyAt?: number;
@@ -150,7 +167,7 @@ export interface RimHerdersStats {
     charactersLeft: number;
     herdingStolen: number;
     domesticated: number;
-    conquestOrders: number;
+    conquestOrders: number; stagings?: number; stagedLaunches?: number;
     /** Husbandry (husbandry.ts; absent in older saves): young herds regrown, extra calves, stampedes and herds rallied. */
     regrown?: number;
     calves?: number;

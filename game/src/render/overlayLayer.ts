@@ -106,7 +106,7 @@ import { DrawKey, DrawSig } from './drawCache';
 import { warEmpires } from './builtObjectLayer';
 import { FreightOverlay } from './freightOverlay'; // [freightOverlay]
 import { threatKnownSites, type KnownThreatSite } from '../sim/scenario/threats/framework';
-import { scenarioMapFeatures, type ScenarioMapMarker } from '../sim/scenario/mapFeatures';
+import { scenarioMapFeatures, scenarioSelectionFeatures, type ScenarioMapMarker } from '../sim/scenario/mapFeatures';
 import { VipMarkerLayer } from './vipMarkers'; // [charactersVictory]
 import { EconomyMarkerLayer } from './economyMarkers'; // [colonyEconomy]
 import { DietMarkerLayer } from './dietMarkers'; // [charactersVictory] the Interstellar Diet's seat and enforcers
@@ -598,6 +598,8 @@ export class OverlayLayer {
     readonly econ: EconomyMarkerLayer; // [colonyEconomy] designation badges
     /** Scenario map markers (mod layer, e.g. the 19a treasure fleet beacon): drawn at every zoom. */
     private scenarioMarkers = new Graphics();
+    /** A selected scenario group (mod layer, the 19a treasure fleet): remaining stops and lines to its ships. */
+    private scenarioSel = new Graphics();
     private scenarioMarkerList: ScenarioMapMarker[] = [];
     private scenarioFrame = 0;
     /** Long Range Scanners: lrs.png discs composited as one layer, then (one colour matrix) RGB set to white — method_221
@@ -693,7 +695,7 @@ export class OverlayLayer {
         this.freight = new FreightOverlay(galaxy, this.root, state);
         // [freightOverlay] end
         this.root.addChild(this.threats);
-        this.root.addChild(this.scenarioMarkers);
+        this.root.addChild(this.scenarioMarkers, this.scenarioSel);
         this.root.addChild(this.wrecks); // [wreckage]
         this.vip = new VipMarkerLayer(galaxy, this.root, state); // [charactersVictory]
         this.diet = new DietMarkerLayer(galaxy, this.root); // [charactersVictory]
@@ -865,6 +867,7 @@ export class OverlayLayer {
         this.runOverlay('Trade Flows', FREIGHT_KEYS, () => this.freight.update(z, cam)); // [freightOverlay]
         this.updateThreats(z);
         this.updateScenarioMarkers(z);
+        this.updateScenarioSelection(z, cam);
         this.updateWrecks(z); // [wreckage]
         this.vip.motion = this.motion; // [charactersVictory] rings follow the drawn shuttles
         this.vip.update(z);
@@ -908,6 +911,67 @@ export class OverlayLayer {
     private readonly scenarioSig = new DrawSig();
     private readonly wreckSig = new DrawSig();
     private readonly threatSig = new DrawSig();
+    /**
+     * The selected scenario group (mod layer; the 19a treasure fleet): a dashed line through its remaining stops with a
+     * ring at each, and a thin line from the lead to every other ship (stragglers). Only while it is the selection; the
+     * segments outside the view are skipped. Drawn relative to the lead's drawn position (galaxy coordinates run to
+     * millions: float32 vertices).
+     */
+    private updateScenarioSelection(z: number, cam: Camera): void {
+        const g = this.scenarioSel;
+        const sel = this.galaxy.scenario !== null ? this.getSelection() : null;
+        const feats = sel !== null ? scenarioSelectionFeatures(this.galaxy, sel) : [];
+        if (feats.length === 0) {
+            if (g.visible) {
+                g.clear();
+                g.visible = false;
+            }
+            return;
+        }
+        const f = 1 / z;
+        const pad = 64 * f;
+        const halfW = cam.width / (2 * z) + pad;
+        const halfH = cam.height / (2 * z) + pad;
+        const x0 = cam.x - halfW;
+        const x1 = cam.x + halfW;
+        const y0 = cam.y - halfH;
+        const y1 = cam.y + halfH;
+        const inView = (ax: number, ay: number, bx: number, by: number): boolean => Math.max(ax, bx) >= x0 && Math.min(ax, bx) <= x1 && Math.max(ay, by) >= y0 && Math.min(ay, by) <= y1;
+        const o = this.drawnPos(feats[0].lead);
+        g.clear();
+        g.position.set(o.x, o.y);
+        for (const ft of feats) {
+            const p = this.drawnPos(ft.lead);
+            // Lines to the other ships.
+            let any = false;
+            for (const b of ft.members) {
+                const q = this.drawnPos(b);
+                if (!inView(p.x, p.y, q.x, q.y)) continue;
+                g.moveTo(p.x - o.x, p.y - o.y).lineTo(q.x - o.x, q.y - o.y);
+                any = true;
+            }
+            if (any) g.stroke({ width: f, color: ft.color, alpha: 0.55 });
+            // The route through the remaining stops.
+            let ax = p.x;
+            let ay = p.y;
+            any = false;
+            for (const st of ft.stops) {
+                if (inView(ax, ay, st.x, st.y)) {
+                    for (const [sx, sy, ex, ey] of dashSegments(ax - o.x, ay - o.y, st.x - o.x, st.y - o.y, 10 * f, 6 * f, 400)) g.moveTo(sx, sy).lineTo(ex, ey);
+                    any = true;
+                }
+                ax = st.x;
+                ay = st.y;
+            }
+            if (any) g.stroke({ width: 1.5 * f, color: ft.color, alpha: 0.85 });
+            for (const st of ft.stops) {
+                if (st.x < x0 || st.x > x1 || st.y < y0 || st.y > y1) continue;
+                g.circle(st.x - o.x, st.y - o.y, 8 * f).stroke({ width: 1.5 * f, color: ft.color, alpha: 0.9 });
+            }
+        }
+        g.visible = true;
+    }
+
     private updateScenarioMarkers(z: number): void {
         const g = this.scenarioMarkers;
         if (this.galaxy.scenario === null) {

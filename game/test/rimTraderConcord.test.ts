@@ -433,15 +433,15 @@ describe('19a Concord — wealth and navy', () => {
         expect(concordTradeHouseYear(g)).toBe(500000);
         expect(r.stateMoney).toBe(before + 500000);
         expect(empireMessages(r).some((m) => m.title === scenarioText('Scenario RimTrade Trade House Title'))).toBe(true);
-        // A stock contract for a rare good: the buyer pays 2× (the factor on top), the standing is spent at 2×.
+        // A stock contract for a rare good: the buyer pays 1.5× (the factor on top), the standing is spent at 1.5×.
         const buyer = others(g, r)[0];
         const rare = rareGoodIds(g)[0];
         const bm = buyer.stateMoney;
         const rm = r.stateMoney;
         scenarioEmit(g, 'contractInitiated', { seller: r, buyer, sellingPoint: null, destination: null, resourceId: rare, componentId: -1, amount: 10, value: 1000, isState: true, freighter: null });
-        expect(buyer.stateMoney).toBe(bm - 1000);
-        expect(r.stateMoney).toBe(rm + 1000);
-        expect(rimTradeState(g).ledger[buyer.empireId].debit).toBe(2000);
+        expect(buyer.stateMoney).toBe(bm - 500);
+        expect(r.stateMoney).toBe(rm + 500);
+        expect(rimTradeState(g).ledger[buyer.empireId].debit).toBe(1500);
         // The navy: with money above the reserve, warships are ordered at the shipyards (queued, not spawned).
         r.stateMoney = 20000000;
         const n0 = concordWarships(r).length;

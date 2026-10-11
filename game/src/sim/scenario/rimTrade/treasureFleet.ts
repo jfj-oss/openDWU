@@ -30,7 +30,7 @@ import { GAME_DAY_LENGTH, registerScenarioEvent, registerScenarioPeriodic, regis
 import { scenarioFlag, scenarioParam, scenarioState } from '../state';
 import { scenarioMessage, scenarioNews, scenarioText } from '../messages';
 import { noteVoiceCue, voicesOn } from '../llm/voiceCues';
-import { registerScenarioMapFeatures, type ScenarioMapFeatures } from '../mapFeatures';
+import { registerScenarioMapFeatures, registerScenarioSelectionFeatures, type ScenarioMapFeatures, type ScenarioSelectionFeature, type ScenarioSelectionLike } from '../mapFeatures';
 import { DiplomaticRelationType, obtainDiplomaticRelation } from '../../diplomacy';
 import { EmpireMessageType } from '../../messages';
 import { YEAR_LENGTH } from '../../galaxyTime';
@@ -66,9 +66,9 @@ export const TREASURE_PARAM_DEFAULTS = {
     treasureCircuitPorts: 6,
     treasureShipSize: 1500,
     treasureFleetTreasureShips: 8,
-    treasureFleetCapitalShips: 6,
-    treasureFleetCruisers: 10,
-    treasureFleetCarriers: 2,
+    treasureFleetCapitalShips: 3,
+    treasureFleetCruisers: 5,
+    treasureFleetCarriers: 1,
     treasureStragglePct: 4,
     treasureStraggleMinDays: 10,
     treasureStraggleMaxDays: 40,
@@ -470,7 +470,7 @@ export function treasureFleetTargetSize(galaxy: Galaxy, r: Empire): number {
 
 /**
  * The fixed composition (treasureFleetTreasureShips > 0): treasure ships and escorts by sub-role (default 8 treasure
- * ships, 6 capital ships, 10 cruisers, 2 carriers). Null: the older scaled fleet (treasureFleetTargetSize). Pure.
+ * ships, 3 capital ships, 5 cruisers, 1 carrier). Null: the older scaled fleet (treasureFleetTargetSize). Pure.
  */
 export function treasureComposition(galaxy: Galaxy): { treasure: number; escorts: { subRole: BuiltObjectSubRole; n: number }[] } | null {
     const t = Math.trunc(treasureParam(galaxy, 'treasureFleetTreasureShips'));
@@ -845,9 +845,33 @@ export function treasureMapFeatures(galaxy: Galaxy): ScenarioMapFeatures | null 
     return out;
 }
 
+/**
+ * The treasure fleet selected on the map (one of its ships, or a fleet holding one): its remaining stops (the port
+ * sailed to, the later ports, then home) and a line from the lead to every other live ship, so stragglers show.
+ * Read-only, no Rnd.
+ */
+export function treasureSelectionFeature(galaxy: Galaxy, sel: ScenarioSelectionLike): ScenarioSelectionFeature | null {
+    if (!hasTreasureState(galaxy) || !scenarioFlag(galaxy, 'rimTrader')) return null;
+    const st = treasureState(galaxy);
+    if (st.ships.length === 0) return null;
+    const picked = sel.shipGroup !== undefined ? sel.shipGroup.ships : sel.builtObjects !== undefined ? sel.builtObjects : sel.builtObject !== undefined ? [sel.builtObject] : [];
+    if (!picked.some((b) => st.ships.includes(b))) return null;
+    const live = st.ships.filter((b) => !b.hasBeenDestroyed);
+    const lead = live.find((b) => st.treasure.includes(b)) ?? live[0] ?? null;
+    if (lead === null) return null;
+    const stops: { x: number; y: number }[] = [];
+    if (st.sailing) {
+        for (let i = Math.max(0, st.leg); i < st.circuit.length; i++) stops.push({ x: st.circuit[i].xpos, y: st.circuit[i].ypos });
+        const home = rimTraderPort(galaxy);
+        if (home !== null) stops.push({ x: home.xpos, y: home.ypos });
+    }
+    return { color: TREASURE_COLOR, lead, stops, members: live.filter((b) => b !== lead) };
+}
+
 registerScenarioQuery({ id: 'rimTrade.researchCap', flag: 'rimTrader', query: 'researchFrozen', run: concordResearchFrozen });
 registerScenarioQuery({ id: 'rimTrade.beacon', flag: 'treasureBeacon', query: 'objectVisibleToAll', run: (g, v, a) => treasureBeaconVisible(g, v, a) });
 registerScenarioEvent({ id: 'rimTrade.treasureRaid', flag: 'rimTrader', event: 'builtObjectKilledBy', run: treasureShipDestroyed });
 registerScenarioPeriodic({ id: 'rimTrade.treasure', flag: 'rimTrader', periodDays: 10, run: (g) => treasureFleetTick(g) });
 registerScenarioYearly({ id: 'rimTrade.researchCapYear', flag: 'rimTrader', order: 11, run: (g) => yearlyCapCheck(g) });
 registerScenarioMapFeatures('rimTrade.treasure', (g) => treasureMapFeatures(g));
+registerScenarioSelectionFeatures('rimTrade.treasure', (g, sel) => treasureSelectionFeature(g, sel));

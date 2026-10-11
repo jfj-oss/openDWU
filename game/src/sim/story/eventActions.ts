@@ -26,6 +26,7 @@
 // direct addLocationHint call, plus a registerLocationPingedHook for the UI (main.ts) to additionally react to (a
 // no-op by default, so headless tests are unaffected). OnCharacterImageChanged remains UI-only, TODO(port) M9.
 
+import { scenarioQuery } from '../scenario/hooks';
 import { executeProcessEmpireScienceShips } from '../baconScienceShips';
 import { baconSettings } from '../data/baconSettings';
 import type { Galaxy } from '../galaxy';
@@ -585,7 +586,8 @@ export function executeEventAction(galaxy: Galaxy, eventAction: EventAction, tri
         case EventActionType.AcquireHabitat:
             if (target !== null && isHabitat(target)) {
                 habitat = target;
-                if (!habitat.hasBeenDestroyed && habitat.empire !== triggerEmpire && habitat.population != null && habitat.population.totalAmount > 0 && triggerEmpire !== null) {
+                // mod layer (19j rim herders): peacefulColonyTakeoverAllowed (no-op without a scenario).
+                if (!habitat.hasBeenDestroyed && habitat.empire !== triggerEmpire && habitat.population != null && habitat.population.totalAmount > 0 && triggerEmpire !== null && (galaxy.scenario === null || scenarioQuery(galaxy, 'peacefulColonyTakeoverAllowed', true, { habitat, empire: triggerEmpire }))) {
                     takeOwnershipOfColonyFull(galaxy, triggerEmpire, habitat, triggerEmpire, false, false);
                     const habitat23 = galaxy.determineHabitatSystemStar(habitat);
                     text = gameText('GameEventAction Description AcquireHabitat', resolveDescription(HabitatType as unknown as Record<number, string>, habitat.type).toLowerCase(), habitat.name, habitat23.name);

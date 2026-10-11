@@ -31,7 +31,7 @@ import { ComponentType } from '../data/components';
 import { ComponentCategoryType } from '../data/policies';
 import { ComponentStatus } from '../builtObjectComponent';
 import { researchComponentTechPoints, resolveSubRoleDescription } from '../designGeneration';
-import { DiplomaticRelationType, obtainDiplomaticRelation } from '../diplomacy';
+import { DiplomaticRelationType, obtainDiplomaticRelation, obtainEmpireEvaluation } from '../diplomacy';
 import { PirateRelationType, obtainPirateRelation } from '../pirateRelations';
 import { checkSystemOwnership } from '../stationPlacement';
 import { EmpireMessageType, resolveDescription, sendMessageToEmpire } from '../messages';
@@ -461,7 +461,6 @@ export function notifyOfAttackBuiltObject(galaxy: Galaxy, attacker: StellarObjec
 
 /** Galaxy.7.cs 3058 NotifyOfAttack(attacker, attackingEmpire, habitatUnderAttack, bombarded, isNewAttack, notifyIndependent). */
 export function notifyOfAttackHabitat(galaxy: Galaxy, attacker: StellarObject | null, attackingEmpire: Empire | null, habitatUnderAttack: Habitat | null, bombarded: boolean, isNewAttack: boolean, notifyIndependent: boolean): void {
-    void notifyIndependent; // unused by the C# body
     // mod layer (19j herd defence): no-op without a scenario; handlers never draw.
     if (galaxy.scenario !== null && habitatUnderAttack !== null) scenarioEmit(galaxy, 'habitatAttacked', { habitat: habitatUnderAttack, attacker, attackingEmpire, bombarded });
     if (habitatUnderAttack !== null && habitatUnderAttack.empire !== null && habitatUnderAttack.empire !== galaxy.independentEmpire && attackingEmpire !== null && attackingEmpire.dominantRace !== null && attacker !== null) {
@@ -502,7 +501,64 @@ export function notifyOfAttackHabitat(galaxy: Galaxy, attacker: StellarObject | 
         } else if (distressSignalType === DistressSignalType.UnderAttack && isNewAttack) {
             distressSignal.attackStrength += attackerStrength(attacker);
         }
+    } else {
+        // Galaxy.7.cs 3138-3195: an independent colony. (The C# dereferences habitatUnderAttack / attacker unguarded here;
+        // every caller passes both, so a null just returns.)
+        if (habitatUnderAttack === null || attacker === null || habitatUnderAttack.empire !== galaxy.independentEmpire || !notifyIndependent) {
+            return;
+        }
+        const distressSignal3 = checkForMatchingSignal(galaxy, habitatUnderAttack.empire, attackingEmpire, habitatUnderAttack.xpos, habitatUnderAttack.ypos);
+        if (distressSignal3 === null) {
+            // The record is kept as the C# keeps it; nothing answers the independent empire's signals.
+            const distressSignal4 = new DistressSignal(habitatUnderAttack, DistressSignalType.UnderAttack, galaxyStarDate(galaxy));
+            distressSignal4.attacker = attackingEmpire;
+            distressSignal4.attackStrength = attackerStrength(attacker);
+            empireDistressSignals(habitatUnderAttack.empire!).push(distressSignal4);
+            if (attackingEmpire === null) {
+                return;
+            }
+            if (!bombarded) {
+                attackingEmpire.civilityRating -= INDEPENDENT_COLONY_INVADE_REPUTATION_IMPACT;
+            }
+            const num = galaxy.empireTerritory.checkLocationOwnership(galaxy, habitatUnderAttack.xpos, habitatUnderAttack.ypos);
+            if (num >= 0 && num !== attackingEmpire.empireId) {
+                const byEmpireId = galaxy.empires.find((e) => e.empireId === num) ?? null;
+                if (byEmpireId !== null) {
+                    const ev = obtainEmpireEvaluation(galaxy, byEmpireId, attackingEmpire);
+                    ev.incidentEvaluation = ev.incidentEvaluationStock - 50.0;
+                }
+            }
+        } else if (isNewAttack) {
+            distressSignal3.attackStrength += attackerStrength(attacker);
+        }
     }
+}
+
+/** Galaxy.IndependentColonyInvadeReputationImpact = 4.0 (Galaxy.3.cs 5113). */
+export const INDEPENDENT_COLONY_INVADE_REPUTATION_IMPACT = 4.0;
+
+/** Galaxy.7.cs 2902/2907 CheckForMatchingSignal(targetEmpire, attacker, x, y[, type = UnderAttack]). */
+export function checkForMatchingSignal(galaxy: Galaxy, targetEmpire: Empire | null, attacker: Empire | null, x: number, y: number, type: DistressSignalType = DistressSignalType.UnderAttack): DistressSignal | null {
+    const currentStarDate = galaxyStarDate(galaxy);
+    if (targetEmpire !== null && targetEmpire.distressSignals !== null) {
+        const signals = empireDistressSignals(targetEmpire);
+        for (let i = 0; i < signals.length; i++) {
+            const distressSignal = signals[i];
+            if (distressSignal != null && distressSignal.type === type && distressSignal.attacker === attacker && distressSignal.date > currentStarDate - DISTRESS_SIGNAL_DATE_RANGE) {
+                let x2 = 0.0;
+                let y2 = 0.0;
+                const source = distressSignal.source;
+                if (source !== null && (isBuiltObject(source) || isHabitat(source))) {
+                    x2 = source.xpos;
+                    y2 = source.ypos;
+                }
+                if (galaxy.calculateDistanceSquared(x, y, x2, y2) < DISTRESS_SIGNAL_LOCATION_OVERLAP_RANGE_SQUARED) {
+                    return distressSignal;
+                }
+            }
+        }
+    }
+    return null;
 }
 
 // ---------------------------------------------------------------------------------------------------------------

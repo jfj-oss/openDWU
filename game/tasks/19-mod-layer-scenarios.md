@@ -277,6 +277,20 @@ outer-band dimming and the music / ambient weights. Dev capture: `?autostart=1&s
    them, with a warning); shown on the wizard's scenario page like every param.
 Reuses: race traits, protectorate relations, character joining, resource system, 19d-6 independents as actors, 19g-7 herd
 rules. Effort: medium (~1–2 agent-days). Flag off = byte-identical.
+9. Follow-ups (user, 2026-10-11): standing is capped at `rimHerdersStandingCap` (100) and fades
+   `rimHerdersStandingDecay` (5 %) toward 0 each year before the year's goodwill (it grew to 240–370 before); warships
+   within `rimHerdersHomeRange` (2000) of their empire's own colony or base are exempt from the migration-warning
+   penalty; protectorate tribute goes to the protector's space port nearest the herders (else its capital), so it enters
+   normal trade and the Concord's treasure fleet (19a, herd goods count as rim goods) can buy it there. The "tamed
+   freighters" are the stock independent traders GenerateIndependentTraders builds at a free herder colony (tagged,
+   storm-immune and self-fuelling); they run the stock independent trade and never carried tribute, which is credited
+   directly as before (now at the port). Conquest by staging: when no attack fleet has the colony in its posture range,
+   the AI sends its nearest attack fleet to refuel at its own colony or base nearest the herders, loads troops there
+   (stock LoadTroopsIfNecessaryAndPossible) until it carries `rimHerdersStagingTroops` (40 000) or 1.5× the colony's
+   defence, then attacks; given up after `rimHerdersStagingYears` (2). The stock posture-range rule is unchanged. Herder
+   colonies (free or protectorate) cannot change hands without conquest: the ruins' LostColony outcome, the ruin
+   event's AcquireHabitat action and a colony ship's "the existing population joined our empire" skip them (new
+   `peacefulColonyTakeoverAllowed` query).
 
 ## 19k — Big galaxies: 60 empires + independents as real actors (ACCEPTED by the user 2026-09-26)
 1. 60-empire games: the wizard cap is already 100 (startGameOptions.ts OTHER_EMPIRES_COUNT_MAX; the C# lists no bound), so

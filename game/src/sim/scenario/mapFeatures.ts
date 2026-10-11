@@ -4,6 +4,7 @@
 
 import type { Galaxy } from '../galaxy';
 import type { Empire } from '../empire';
+import type { BuiltObject } from '../builtObject';
 
 export interface ScenarioMapMarker {
     x: number;
@@ -48,6 +49,50 @@ export function scenarioMapFeatures(galaxy: Galaxy, viewer: Empire | null): Scen
         if (f === null) continue;
         out.markers.push(...f.markers);
         out.routes.push(...f.routes);
+    }
+    return out;
+}
+
+/**
+ * A scenario group the player has selected on the map (mod layer, 19a treasure fleet): its remaining stops and a line
+ * from the lead to every member (stragglers). Drawn only while one of its ships (or its fleet) is the selection.
+ */
+export interface ScenarioSelectionFeature {
+    color: number;
+    /** The ship the lines start from (drawn at its render position). */
+    lead: BuiltObject;
+    /** The remaining stops in order (world points). */
+    stops: { x: number; y: number }[];
+    /** The other ships of the group. */
+    members: BuiltObject[];
+}
+
+/** The map selection as the renderer holds it (render/mapHighlights.ts SelectedObjectLike, the parts used here). */
+export interface ScenarioSelectionLike {
+    builtObject?: BuiltObject;
+    shipGroup?: { ships: readonly BuiltObject[] };
+    builtObjects?: readonly BuiltObject[];
+}
+
+export type ScenarioSelectionProvider = (galaxy: Galaxy, selection: ScenarioSelectionLike) => ScenarioSelectionFeature | null;
+
+const selectionProviders = new Map<string, ScenarioSelectionProvider>();
+
+/** Registers (or replaces, by id) a selection provider. Returns an unregister function. */
+export function registerScenarioSelectionFeatures(id: string, provider: ScenarioSelectionProvider): () => void {
+    selectionProviders.set(id, provider);
+    return () => {
+        if (selectionProviders.get(id) === provider) selectionProviders.delete(id);
+    };
+}
+
+/** Every selection provider's feature for `selection` (empty without a scenario or a selection), in id order. */
+export function scenarioSelectionFeatures(galaxy: Galaxy, selection: ScenarioSelectionLike | null): ScenarioSelectionFeature[] {
+    const out: ScenarioSelectionFeature[] = [];
+    if (galaxy.scenario === null || selection === null) return out;
+    for (const id of [...selectionProviders.keys()].sort()) {
+        const f = selectionProviders.get(id)!(galaxy, selection);
+        if (f !== null) out.push(f);
     }
     return out;
 }

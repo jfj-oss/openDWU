@@ -17,7 +17,7 @@ import { cargoGetCargo } from '../src/sim/logistics/orders';
 import { performResearch } from '../src/sim/researchTick';
 import { isObjectVisibleToThisEmpire } from '../src/sim/independentTraders';
 import { scenarioEmit } from '../src/sim/scenario';
-import { scenarioMapFeatures } from '../src/sim/scenario/mapFeatures';
+import { scenarioMapFeatures, scenarioSelectionFeatures } from '../src/sim/scenario/mapFeatures';
 import { empireMessages } from '../src/sim/messages';
 import { rareGoodIds, rimGoodIds, rimTradeState, rimTraderEmpire, rimTraderPort, rimTraderStanding } from '../src/sim/scenario/rimTrade/common';
 import {
@@ -102,7 +102,8 @@ describe('19a addendum — treasure fleet', () => {
     let g: Galaxy;
     let r: Empire;
     beforeAll(() => {
-        g = rimGame().galaxy;
+        // Exchange rate 1: the stop's host earns more from its rim goods than its standing lets it spend on rare goods.
+        g = rimGame({}, { rimTraderExchangeRate: 1 }).galaxy;
         r = rimTraderEmpire(g)!;
     }, 600000);
 
@@ -123,18 +124,24 @@ describe('19a addendum — treasure fleet', () => {
         st.contactDone = true;
         treasureFleetTick(g);
         expect(st.sailing).toBe(true);
-        // The fixed composition (2026-10-10): 8 treasure ships, 6 capital ships, 10 cruisers, 2 carriers.
+        // The fixed composition (2026-10-11): 8 treasure ships, 3 capital ships (battleships), 5 cruisers, 1 carrier.
         expect(r.colonies.length).toBe(3);
         expect(st.treasure.length).toBe(8);
-        expect(st.ships.length).toBe(26);
+        expect(st.ships.length).toBe(17);
         const bySub = (sub: BuiltObjectSubRole): number => st.ships.filter((b) => !st.treasure.includes(b) && b.subRole === sub).length;
-        expect([bySub(BuiltObjectSubRole.CapitalShip), bySub(BuiltObjectSubRole.Cruiser), bySub(BuiltObjectSubRole.Carrier)]).toEqual([6, 10, 2]);
+        expect([bySub(BuiltObjectSubRole.CapitalShip), bySub(BuiltObjectSubRole.Cruiser), bySub(BuiltObjectSubRole.Carrier)]).toEqual([3, 5, 1]);
         // AI requests only (the player asks through requestTreasureStop): one port per empire.
         const owners = st.circuit.map((p) => p.actualEmpire);
         expect(new Set(owners).size).toBe(owners.length);
         expect(owners.includes(g.playerEmpire)).toBe(false);
         expect(st.circuit.length).toBeGreaterThan(0);
         expect(st.circuit.every((p) => p.actualEmpire !== r && p.isSpacePort)).toBe(true);
+        // Selected on the map: its remaining stops (the circuit, then home) and a line to each other ship.
+        const selF = scenarioSelectionFeatures(g, { builtObject: st.ships[st.ships.length - 1] });
+        expect(selF.length).toBe(1);
+        expect(selF[0].stops.length).toBe(st.circuit.length + 1);
+        expect(selF[0].members.length).toBe(st.ships.length - 1);
+        expect(scenarioSelectionFeatures(g, { builtObject: st.circuit[0] }).length).toBe(0);
         const lead = st.treasure[0];
         const rare = rareGoodIds(g)[0];
         expect(cargoGetCargo(lead.cargo!, rare, r)?.amount ?? 0).toBeGreaterThan(0);

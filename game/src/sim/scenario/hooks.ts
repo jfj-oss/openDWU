@@ -615,6 +615,13 @@ export interface ScenarioQueries {
      */
     contractAvailable: { value: number; args: { seller: Empire | null; buyer: Empire | null; resourceId: number } };
     /**
+     * A colony handed over without conquest — exploration.ts investigateRuins (Galaxy.5.cs RuinType.LostColony's
+     * MakeHabitatIntoColony, and the ruin event's AcquireHabitat action, eventActions.ts) and cmdTroops.ts cmdColonize
+     * ("the existing population joined our empire"): false skips it (19j rim herders: herder colonies are taken only by
+     * conquest or a protectorate). Stock: true. Pure, never draws.
+     */
+    peacefulColonyTakeoverAllowed: { value: boolean; args: { habitat: Habitat; empire: Empire | null } };
+    /**
      * forceStructure.ts recalculateAnnualTaxRevenue (Habitat.cs 6083 RecalculateAnnualTaxRevenue): the tax rate the
      * revenue product uses (stock: the colony's TaxRate). 19g-5 frontier sectors: the sector governor's local rate
      * override and the sector rule's collection factor. Never draws.

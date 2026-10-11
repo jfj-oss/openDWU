@@ -26,7 +26,9 @@ import { FleetPosture, changeDiplomaticRelation } from '../../diplomacyTick';
 import { raceAggressionLevel, raceCautionLevel } from '../../colonyTick';
 import { findNearestAvailableFleet } from '../../fleets/militaryAI';
 import { shipGroupAssignMission, type ShipGroup } from '../../fleets/shipGroup';
-import { BuiltObjectMissionPriority, BuiltObjectMissionType, isBuiltObject } from '../../missions/mission';
+import { BuiltObjectMissionPriority, BuiltObjectMissionType, builtObjectMission, isBuiltObject } from '../../missions/mission';
+import { shipGroupTotalTroopAttackStrength } from '../../fleets/shipGroupTasks';
+import { loadTroopsIfNecessaryAndPossible } from '../../combat/troopsRuntime';
 import { stellarAttackers, stellarPursuers } from '../../combat/threats';
 import { IntelligenceMissionType } from '../../espionage';
 import { galaxyRaceByName } from '../../story/storyEvents';
@@ -95,7 +97,14 @@ function empireById(galaxy: Galaxy, id: number): Empire | null {
 
 function addStanding(galaxy: Galaxy, empireId: number, delta: number): void {
     const st = rimHerdersState(galaxy);
-    st.standing[empireId] = (st.standing[empireId] ?? 0) + delta;
+    st.standing[empireId] = Math.min(herderParam(galaxy, 'rimHerdersStandingCap'), (st.standing[empireId] ?? 0) + delta);
+}
+
+/** Yearly fade: every standing moves rimHerdersStandingDecay of the way toward 0 (before the year's goodwill). */
+function decayStanding(galaxy: Galaxy): void {
+    const st = rimHerdersState(galaxy);
+    const k = 1 - Math.max(0, Math.min(1, herderParam(galaxy, 'rimHerdersStandingDecay')));
+    for (const id of Object.keys(st.standing)) st.standing[id as unknown as number] *= k;
 }
 
 /** The empire the colony's herds serve (its current herder owner), or null once conquered / lost. */
@@ -659,7 +668,13 @@ export function rimHerdersSeasonCheck(galaxy: Galaxy, year: number): number {
             // there. Before, the yearly penalty turned a protectorate's herds on their own protector, whose bases then
             // killed them (seed 3, 1000 stars: the only protectorate lost its herd in year 7).
             if (e === null || id === hc.protectorId) continue;
-            const inCorridor = e.builtObjects.some((b) => b != null && !b.hasBeenDestroyed && b.role === BuiltObjectRole.Military && pts.some((p) => galaxy.calculateDistanceSquared(b.xpos, b.ypos, p.x, p.y) <= r2));
+            // Warships at the empire's own colonies or bases (within rimHerdersHomeRange) are home, not in the herds' way.
+            const home = herderParam(galaxy, 'rimHerdersHomeRange');
+            const home2 = home * home;
+            const atHome = (b: { xpos: number; ypos: number }): boolean =>
+                e.colonies.some((c) => c != null && galaxy.calculateDistanceSquared(b.xpos, b.ypos, c.xpos, c.ypos) <= home2) ||
+                e.builtObjects.some((o) => o != null && !o.hasBeenDestroyed && o.role === BuiltObjectRole.Base && galaxy.calculateDistanceSquared(b.xpos, b.ypos, o.xpos, o.ypos) <= home2);
+            const inCorridor = e.builtObjects.some((b) => b != null && !b.hasBeenDestroyed && b.role === BuiltObjectRole.Military && pts.some((p) => galaxy.calculateDistanceSquared(b.xpos, b.ypos, p.x, p.y) <= r2) && !atHome(b));
             if (!inCorridor) continue;
             ignored++;
             addStanding(galaxy, id, -herderParam(galaxy, 'rimHerdersWarnPenalty'));
@@ -703,6 +718,85 @@ export function orderHerderConquest(galaxy: Galaxy, hc: HerderColony, e: Empire)
     return true;
 }
 
+/** The empire's colony or base nearest (x, y) — its staging post. No Rnd. */
+function nearestOwnPost(galaxy: Galaxy, e: Empire, x: number, y: number): Habitat | BuiltObject | null {
+    let best: Habitat | BuiltObject | null = null;
+    let bestD = Infinity;
+    for (const c of e.colonies) {
+        if (c == null || c.hasBeenDestroyed) continue;
+        const d = galaxy.calculateDistanceSquared(x, y, c.xpos, c.ypos);
+        if (d < bestD) {
+            bestD = d;
+            best = c;
+        }
+    }
+    for (const b of e.builtObjects) {
+        if (b == null || b.hasBeenDestroyed || b.role !== BuiltObjectRole.Base) continue;
+        const d = galaxy.calculateDistanceSquared(x, y, b.xpos, b.ypos);
+        if (d < bestD) {
+            bestD = d;
+            best = b;
+        }
+    }
+    return best;
+}
+
+/**
+ * Herder conquest by staging (add-on path; the stock posture-range rule stays as it is): when no attack fleet has the
+ * colony in its posture range, the nearest available attack fleet within fuel range of `e`'s colony or base nearest the
+ * herders is sent there to refuel (a Refuel mission on that post); rimHerdersStagingTick then gathers troops and
+ * launches the invasion from close range. False when there is no post or no fleet. Draws only through AssignMission.
+ */
+export function startHerderStaging(galaxy: Galaxy, hc: HerderColony, e: Empire): boolean {
+    if (hc.staging != null) return false;
+    const base = nearestOwnPost(galaxy, e, hc.colony.xpos, hc.colony.ypos);
+    if (base === null) return false;
+    const fleet = findNearestAvailableFleet(galaxy, e, base.xpos, base.ypos, BuiltObjectMissionPriority.Low, 0, FleetPosture.Attack, true, 0.1, false, false, false, false, 0);
+    if (fleet === null || fleet.leadShip === null) return false;
+    if (!shipGroupAssignMission(galaxy, fleet, BuiltObjectMissionType.Refuel, base, null, BuiltObjectMissionPriority.High, false)) return false;
+    hc.staging = { empireId: e.empireId, fleet, base, since: galaxyStarDate(galaxy) };
+    rimHerdersState(galaxy).stats.stagings = (rimHerdersState(galaxy).stats.stagings ?? 0) + 1;
+    return true;
+}
+
+/**
+ * Staged conquests, each long block: the fleet refuels at its post; once there (mission done) it loads troops
+ * (ShipGroup.LoadTroopsIfNecessaryAndPossible) until it carries rimHerdersStagingTroops (or 1.5× the colony's defence),
+ * then attacks the colony. Given up when the colony is no longer free, the fleet is gone or taken for another mission,
+ * or after rimHerdersStagingYears.
+ */
+export function rimHerdersStagingTick(galaxy: Galaxy): void {
+    const st = rimHerdersState(galaxy);
+    const now = galaxyStarDate(galaxy);
+    for (const hc of st.colonies) {
+        const sg = hc.staging;
+        if (sg == null) continue;
+        const e = empireById(galaxy, sg.empireId);
+        const fleet = sg.fleet;
+        const lead = fleet.leadShip;
+        const m = builtObjectMission(fleet.mission);
+        const type = m === null ? BuiltObjectMissionType.Undefined : m.type;
+        const ours = type === BuiltObjectMissionType.Undefined || type === BuiltObjectMissionType.Refuel || type === BuiltObjectMissionType.LoadTroops;
+        if (hc.status !== 'free' || hc.colony.hasBeenDestroyed || e === null || !e.active || lead === null || fleet.ships.length === 0 || !ours || sg.base.hasBeenDestroyed || now - sg.since > herderParam(galaxy, 'rimHerdersStagingYears') * YEAR_LENGTH) {
+            hc.staging = null;
+            continue;
+        }
+        if (type !== BuiltObjectMissionType.Undefined) continue; // still refuelling or loading
+        if (galaxy.calculateDistanceSquared(lead.xpos, lead.ypos, sg.base.xpos, sg.base.ypos) > 5000 * 5000) {
+            shipGroupAssignMission(galaxy, fleet, BuiltObjectMissionType.Refuel, sg.base, null, BuiltObjectMissionPriority.High, false);
+            continue;
+        }
+        const need = Math.max(herderParam(galaxy, 'rimHerdersStagingTroops'), 1.5 * (hc.colony.troops?.totalDefendStrength ?? 0));
+        if (shipGroupTotalTroopAttackStrength(fleet) < need) {
+            loadTroopsIfNecessaryAndPossible(galaxy, fleet);
+            continue;
+        }
+        shipGroupAssignMission(galaxy, fleet, BuiltObjectMissionType.Attack, hc.colony, null, BuiltObjectMissionPriority.High, false);
+        st.stats.stagedLaunches = (st.stats.stagedLaunches ?? 0) + 1;
+        hc.staging = null;
+    }
+}
+
 /**
  * An aggressive AI neighbour moves on a free herder colony: the nearest available attack fleet gets an Attack mission on
  * it, as Empire.4.cs 4449 InvadeUnwillingColonizationTargets does for an unwilling independent (FindNearestAvailableFleet
@@ -717,7 +811,8 @@ export function rimHerdersAiConquest(galaxy: Galaxy): number {
         for (const e of normalEmpires(galaxy)) {
             if (isHumanEmpire(galaxy, e) || isHerderEmpire(galaxy, e) || hc.neighbourSince[e.empireId] === undefined || empirePrefersProtectorate(galaxy, e)) continue;
             if (galaxy.rnd.nextDouble() >= chance) continue;
-            if (!orderHerderConquest(galaxy, hc, e)) continue;
+            // No fleet in posture range of the colony: stage from the empire's own post nearest it instead.
+            if (!orderHerderConquest(galaxy, hc, e) && !startHerderStaging(galaxy, hc, e)) continue;
             orders++;
             break;
         }
@@ -814,6 +909,21 @@ export function offerCharacters(galaxy: Galaxy): void {
 }
 
 /** Protectorates pay rimHerdersTribute of their herd-goods stock to the protector's capital. */
+/** The protector's live space port nearest (x, y) — its cargo — else its capital's. No Rnd. */
+function tributeDestination(galaxy: Galaxy, protector: Empire, x: number, y: number): NonNullable<BuiltObject['cargo']> {
+    let best: BuiltObject | null = null;
+    let bestD = Infinity;
+    for (const p of protector.spacePorts) {
+        if (p == null || p.hasBeenDestroyed || !p.isSpacePort || p.cargo === null || p.empire !== protector) continue;
+        const d = galaxy.calculateDistanceSquared(x, y, p.xpos, p.ypos);
+        if (d < bestD) {
+            bestD = d;
+            best = p;
+        }
+    }
+    return best !== null ? best.cargo! : protector.capital!.cargo!;
+}
+
 export function rimHerdersTribute(galaxy: Galaxy): number {
     const st = rimHerdersState(galaxy);
     const share = herderParam(galaxy, 'rimHerdersTribute');
@@ -823,6 +933,9 @@ export function rimHerdersTribute(galaxy: Galaxy): number {
         const protector = empireById(galaxy, hc.protectorId);
         const herder = hc.colony.empire;
         if (protector === null || !protector.active || protector.capital === null || protector.capital.cargo === null || herder === null) continue;
+        // Delivered to the protector's space port nearest the herders (else its capital), so the goods enter its normal
+        // trade (and, with the Rim Trade, the Concord's treasure fleet can buy them there).
+        const dest = tributeDestination(galaxy, protector, hc.colony.xpos, hc.colony.ypos);
         const paid: string[] = [];
         for (const id of harvestResourceIds(galaxy)) {
             const c = hc.colony.cargo.items.find((x) => x.commodity.resourceId === id && x.empire === herder && x.commodityComponent === null);
@@ -830,7 +943,7 @@ export function rimHerdersTribute(galaxy: Galaxy): number {
             const amount = Math.trunc(c.amount * share);
             if (amount <= 0) continue;
             c.amount -= amount;
-            protector.capital.cargo.add(new Cargo(new ResourceRef(id), amount, protector));
+            dest.add(new Cargo(new ResourceRef(id), amount, protector));
             total += amount;
             paid.push(`${amount} ${galaxy.resourceSystem.byId.get(id)?.name ?? id}`);
         }
@@ -855,6 +968,7 @@ export function rimHerdersYear(galaxy: Galaxy, year: number): void {
             if (p !== null && p.active) neighbours.add(p);
         }
     }
+    decayStanding(galaxy);
     // Goodwill: peaceful neighbours (no herd kills this past year) gain standing.
     for (const e of [...neighbours].sort((a, b) => a.empireId - b.empireId)) {
         if (!st.kills.some((k) => k.empireId === e.empireId && now - k.date < YEAR_LENGTH)) addStanding(galaxy, e.empireId, gain);
@@ -888,6 +1002,7 @@ export function rimHerdersTick(galaxy: Galaxy): void {
     const now = galaxyStarDate(galaxy);
     const year = gameYear(now);
     tagTamedShips(galaxy);
+    rimHerdersStagingTick(galaxy);
     // Herd membership: fauna herds born in a herder colony's system later (none split today) stay wild; dead herds drop out.
     const fs = peekRimFaunaState(galaxy);
     if (fs !== null) {
@@ -991,6 +1106,7 @@ registerScenarioEvent({ id: 'rimHerders.owner', flag: RIM_HERDERS_FLAG, event: '
 registerScenarioEvent({ id: 'rimHerders.intel', flag: RIM_HERDERS_FLAG, event: 'intelMissionCompleted', run: rimHerdersOnIntelMission });
 registerScenarioQuery({ id: 'rimHerders.storm', flag: RIM_HERDERS_FLAG, query: 'builtObjectStormImmune', run: (g, v, a) => v || isTamedCreatureShip(g, a.builtObject) });
 registerScenarioQuery({ id: 'rimHerders.fuel', flag: RIM_HERDERS_FLAG, query: 'builtObjectSelfFuelling', run: (g, v, a) => v || isTamedCreatureShip(g, a.builtObject) });
+registerScenarioQuery({ id: 'rimHerders.noPeacefulTakeover', flag: RIM_HERDERS_FLAG, query: 'peacefulColonyTakeoverAllowed', run: (g, v, a) => v && (herderColonyOf(g, a.habitat)?.status ?? 'conquered') === 'conquered' });
 registerScenarioQuery({
     id: 'rimHerders.ignore',
     flag: RIM_HERDERS_FLAG,

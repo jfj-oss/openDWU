@@ -45,7 +45,7 @@ Text only, patches only (MODLAYER-DESIGN §1: never copy stock files).
   ],
   "params": [
     { "name": "rimTraderMaxColonies",   "label": "Concord colony cap",            "default": 4,    "min": 1,    "max": 12 },
-    { "name": "rimTraderExchangeRate",  "label": "Rare goods per rim good (value)", "default": 1.0, "min": 0.25, "max": 4 },
+    { "name": "rimTraderExchangeRate",  "label": "Rare goods per rim good (value)", "default": 2.5, "min": 0.25, "max": 8 },
     { "name": "rimTraderGrantThreshold","label": "Standing needed to open trade",  "default": 5000, "min": 0,    "max": 100000 },
     { "name": "rimTraderImportQuota",   "label": "Import quota per rim good (units)", "default": 400, "min": 50, "max": 5000 },
     { "name": "rimTraderConsumption",   "label": "Yearly consumption per rim good (units)", "default": 200, "min": 0, "max": 5000 },
@@ -437,8 +437,8 @@ All behind flag `rimTrader` (add-on off: byte-identical; the base sim gains thre
   the way (the refuelling location nearest the target / a way point that it can reach and that is nearer the target),
   else at the nearest location; targets are picked among those the lead ship can reach; beyond the retaliation range
   bases come before ships (fleets chasing explorers never caught them).
-- **Treasure fleet** (`treasureFleet.ts`, `treasureRaids.ts`): fixed composition 8 treasure ships + 6 capital ships + 10
-  cruisers + 2 carriers (navy ships of each sub-role the home guard can spare, then dedicated ships bought);
+- **Treasure fleet** (`treasureFleet.ts`, `treasureRaids.ts`): fixed composition 8 treasure ships + 3 capital ships
+  (battleships) + 5 cruisers + 1 carrier (2026-10-11; was 6 + 10 + 2) (navy ships of each sub-role the home guard can spare, then dedicated ships bought);
   6 stops per voyage, one per empire, from stop requests (AI: its port holding the most rim goods; the player: journaled
   command `requestTreasureStop`, a button in the Concord's diplomacy terms block) weighted by (rim goods + 1) × max(0.25,
   1 + standing / threshold); home early when out of rare goods; stragglers (4 % per ship per leg, 10–40 days, escorts turn
@@ -494,3 +494,8 @@ years; in 50 years main-body raids appear (years 17–43 in s1) but fail; the lo
 Guardians at stops in their space (now screened). The navy cap and the price cap cut the late-start Concord from 309
 warships / 732 kills to 210 / 12. Adding the Rim Trade to a save is not supported: it needs galaxy-generation steps (the
 rim-goods placement, the Concord's home) and the game-start handler.
+
+**Retuned (user, 2026-10-11).** Standing goes further: `rimTraderExchangeRate` 1.0 → 2.5 and `rimTraderRarePriceMult`
+2.0 → 1.5, so one rare unit costs about 100 × (1.5 / 2) / 2.5 ≈ 30 rim units instead of ≈ 100. The treasure fleet's
+escort shrinks to 3 battleships (CapitalShip), 5 cruisers and 1 carrier (17 ships with the 8 treasure ships). With the
+fleet selected, the map draws its remaining stops and a line from the fleet to each of its ships (stragglers).

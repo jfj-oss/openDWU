@@ -55,7 +55,7 @@ describe('19a Concord — flag off is byte-identical', () => {
     // 13cf4e837a88adbf. The wizard-Oranthi values do not move.
     const PINS: [boolean, string, string][] = [
         [true, 'b219685db2d2d5db', '94796ded96a0ba95'],
-        [false, '6fb9b2295df9e9c3', '7803a217d920cb27'],
+        [false, '6fb9b2295df9e9c3', 'b4d3ec6299e45a89'],
     ];
     for (const [forced, d0, d1] of PINS) {
         it(`passive off, 1 starting colony, cap 4 (${forced ? 'wizard Oranthi' : 'Concord created at start'}): 1 year matches the pre-feature digests`, () => {

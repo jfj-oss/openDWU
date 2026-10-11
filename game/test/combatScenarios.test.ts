@@ -42,7 +42,9 @@ import { executeShipAction } from '../src/sim/player/executeShipAction';
 import { captainBonuses } from '../src/sim/characters';
 import { fireWeaponsAtTarget, handleWeaponsFiringBuiltObject, rechargeShields, weaponDamageDropoff, weaponFire } from '../src/sim/combat/weapons';
 import { evaluateThreats } from '../src/sim/combat/threats';
-import { calculateAvailableAssaultPodAttackStrength, calculateBoardingDefenseValue, shouldAttack } from '../src/sim/combat/attackAI';
+import { calculateAvailableAssaultPodAttackStrength, calculateBoardingDefenseValue, INDEPENDENT_COLONY_INVADE_REPUTATION_IMPACT, notifyOfAttackHabitat, shouldAttack } from '../src/sim/combat/attackAI';
+import { empireDistressSignals } from '../src/sim/missions/distress';
+import { obtainEmpireEvaluation } from '../src/sim/diplomacy';
 import { empireRaidStrengthFactor, handleAssaultPodMovement, processBoardingAssault } from '../src/sim/combat/boarding';
 import { assignMission } from '../src/sim/missions/assign';
 import { inflictDamage } from '../src/sim/combat/damage';
@@ -147,6 +149,35 @@ describe('seed-1 cast', () => {
 // ---------------------------------------------------------------------------------------------------------------
 // (1) One escort vs one pirate ship
 // ---------------------------------------------------------------------------------------------------------------
+
+describe('Galaxy.7.cs 3138-3195 NotifyOfAttack: an attack on an independent colony', () => {
+    it('records one inert distress signal, costs IndependentColonyInvadeReputationImpact (not when bombarding) and 50 incident with the territory owner, once per matching signal', () => {
+        const g = cachedTickGame(gameData).galaxy;
+        const ind = g.independentEmpire!;
+        const indColonies = g.habitats.filter((h) => h.empire === ind && h.population.items.length > 0);
+        const colony = indColonies[0];
+        const attacker = g.empires.find((e) => e !== null && e !== ind && e.pirateEmpireBaseHabitat === null && e.dominantRace !== null && e.builtObjects.length > 0)!;
+        const ship = attacker.builtObjects.find((b) => b != null)!;
+        const signals = empireDistressSignals(ind);
+        const n0 = signals.length;
+        const civ0 = attacker.civilityRating;
+        const ownerId = g.empireTerritory.checkLocationOwnership(g, colony.xpos, colony.ypos);
+        const owner = ownerId >= 0 && ownerId !== attacker.empireId ? g.empires.find((e) => e !== null && e.empireId === ownerId) ?? null : null;
+        const inc0 = owner !== null ? obtainEmpireEvaluation(g, owner, attacker).incidentEvaluationStock : 0;
+        notifyOfAttackHabitat(g, ship, attacker, colony, false, true, true);
+        expect(signals.length).toBe(n0 + 1);
+        expect(signals[signals.length - 1].attacker).toBe(attacker);
+        expect(attacker.civilityRating).toBeCloseTo(civ0 - INDEPENDENT_COLONY_INVADE_REPUTATION_IMPACT, 9);
+        if (owner !== null) expect(obtainEmpireEvaluation(g, owner, attacker).incidentEvaluationStock).toBeLessThan(inc0);
+        // The matching signal (same attacker, within the overlap range, < 90 000 ms old) absorbs the next attack.
+        notifyOfAttackHabitat(g, ship, attacker, colony, false, true, true);
+        expect(signals.length).toBe(n0 + 1);
+        expect(attacker.civilityRating).toBeCloseTo(civ0 - INDEPENDENT_COLONY_INVADE_REPUTATION_IMPACT, 9);
+        // notifyIndependent false (an Attack order's first notice): nothing.
+        notifyOfAttackHabitat(g, ship, attacker, indColonies[indColonies.length - 1], false, true, false);
+        expect(signals.length).toBe(n0 + 1);
+    });
+});
 
 describe('(1) a player escort ordered to Attack a pirate ship', () => {
     /**

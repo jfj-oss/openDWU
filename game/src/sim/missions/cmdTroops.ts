@@ -134,7 +134,8 @@ export const cmdColonize: CommandHandler = (ctx) => {
             const empire = bo.empire!;
             const { result: canColonize, newPopulationAmount } = canBuiltObjectColonizeHabitat(galaxy, empire, bo, targetHabitat10);
             // Mod layer 19a: the Concord AI founds no colony past its cap (tasks/19a-rim-trader.md R2); the mission is cancelled.
-            if (canColonize && !(galaxy.scenario !== null && rimTraderColonyCapBlocks(galaxy, empire))) {
+            // 19j: a herder colony's population never joins a colonist (peacefulColonyTakeoverAllowed); the mission is cancelled.
+            if (canColonize && !(galaxy.scenario !== null && (rimTraderColonyCapBlocks(galaxy, empire) || !scenarioQuery(galaxy, 'peacefulColonyTakeoverAllowed', true, { habitat: targetHabitat10, empire })))) {
                 if (targetHabitat10.owner === null || targetHabitat10.owner === galaxy.independentEmpire) {
                     let empty2 = '';
                     let text2 = '';

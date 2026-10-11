@@ -18,6 +18,7 @@
 // Empire.SendMessageToEmpire calls are kept (messages.ts queue) with GameText keys as descriptions (TextResolver is not
 // ported; M9). Scripted game events: CheckTriggerEvent / GetMatchingGameEventId* are story/eventActions.ts.
 
+import { scenarioQuery } from './scenario/hooks';
 import { doSingleEmpireEncounterShakturiStory, checkForStoryLocationHint, investigateRuinsStoryClue, investigateRuinsStoryEvent } from './story/storyEvents';
 import { resolveDescription } from './messages';
 import { EventMessageType, DisasterEventType, RaceEventType } from './eventTypes';
@@ -1307,7 +1308,9 @@ export function investigateRuins(galaxy: Galaxy, investigatingEmpire: Empire | n
             }
             case RuinType.LostColony: {
                 empty = formatGameTextNow('Lost Colony Location Revealed');
-                const habitat8 = findLonelyColonyLocation(galaxy, investigatingEmpire);
+                let habitat8 = findLonelyColonyLocation(galaxy, investigatingEmpire);
+                // mod layer (19j rim herders): a herder colony is never handed over this way (no-op without a scenario).
+                if (habitat8 !== null && galaxy.scenario !== null && !scenarioQuery(galaxy, 'peacefulColonyTakeoverAllowed', true, { habitat: habitat8, empire: investigatingEmpire })) habitat8 = null;
                 if (habitat8 !== null) {
                     if (habitat8.quality < Math.fround(0.65)) {
                         habitat8.baseQuality = Math.fround(0.65 + galaxy.rnd.nextDouble() * 0.35);

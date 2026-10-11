@@ -165,8 +165,8 @@ describe('19a rim trader — ledger, access and AI rules', () => {
     let r: Empire;
     let human: Empire;
     beforeAll(() => {
-        // Price factor 1: these checks follow the stock contract values (the factor is tested in rimTraderConcord.test.ts).
-        game = rimGame({}, { rimTraderRarePriceMult: 1 });
+        // Price factor 1, exchange rate 1: these checks follow the stock contract values (the factor is tested in rimTraderConcord.test.ts).
+        game = rimGame({}, { rimTraderRarePriceMult: 1, rimTraderExchangeRate: 1 });
         g = game.galaxy;
         r = rimTraderEmpire(g)!;
         human = g.playerEmpire!;
@@ -365,8 +365,8 @@ describe('19a rim trader — rare-good effects, ordering priority, treasure stop
         expect(rareOrderMinDevelopment(g, 80, [rare[0]])).toBe(60);
         const stock = g.resourceSystem.superLuxuryResources.map((x) => x.resourceId).filter((id) => !rare.includes(id));
         expect(rareOrderMinDevelopment(g, 80, stock)).toBe(80);
-        const price = galaxyResourceCurrentPrices(g)[rare[0]] * 2; // rimTraderRarePriceMult 2
-        rimTradeState(g).ledger[human.empireId] = { credit: price * 10.5, debit: 0 };
+        const price = galaxyResourceCurrentPrices(g)[rare[0]] * 1.5; // rimTraderRarePriceMult 1.5
+        rimTradeState(g).ledger[human.empireId] = { credit: (price * 10.5) / 2.5, debit: 0 }; // rimTraderExchangeRate 2.5
         expect(rareContractAvailable(g, 500, { seller: r, buyer: human, resourceId: rare[0] })).toBe(10);
         rimTradeState(g).ledger[human.empireId] = { credit: 0, debit: 100 };
         expect(rareContractAvailable(g, 500, { seller: r, buyer: human, resourceId: rare[0] })).toBe(0);

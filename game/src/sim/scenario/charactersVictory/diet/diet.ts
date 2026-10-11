@@ -414,7 +414,7 @@ export function closeSession(galaxy: Galaxy, st: DietState, c: Council, s: DietS
         m.yes = round1(m.votes.filter((v) => v.vote === 'yes').reduce((a, v) => a + v.weight, 0));
         m.no = round1(m.votes.filter((v) => v.vote === 'no').reduce((a, v) => a + v.weight, 0));
     }
-    // The Regent's veto (one per session): the human's choice, or the AI Regent's worst passing motion (score ≤ −40).
+    // The Regent's veto (one per session): the human's choice, or the AI Regent's worst passing motion it opposes (score ≤ −0.5).
     const regent = st.regent !== null && st.regent.active && ms.includes(st.regent) && now < st.regentUntil ? st.regent : null;
     if (regent !== null && !s.vetoUsed) {
         const regentDelegate = s.delegates.find((d) => d.empire === regent);
@@ -422,12 +422,12 @@ export function closeSession(galaxy: Galaxy, st: DietState, c: Council, s: DietS
             let veto: DietMotion | null = null;
             if (isHumanEmpire(galaxy, regent)) veto = s.motions.find((m) => m.id === (st.vetoMotionId ?? 0)) ?? null;
             else {
-                let worst = -12; // a passing motion that strongly hurts the Regent (or strikes at its ally)
+                let worst = -0.5; // a passing motion the Regent opposes (or one striking at its ally or friend)
                 for (const m of s.motions) {
                     if (!(m.yes > m.no) || m.kind === 'regent') continue;
                     let sc = dietVoteScore(galaxy, c, st, regent, m);
                     const ally = m.target !== null && m.target !== regent && [DiplomaticRelationType.MutualDefensePact, DiplomaticRelationType.Protectorate, DiplomaticRelationType.SubjugatedDominion].includes(regent.diplomaticRelations.byEmpire(m.target)?.type ?? DiplomaticRelationType.NotMet);
-                    const friend = m.target !== null && m.target !== regent && attitudeOf(regent, m.target) >= 40;
+                    const friend = m.target !== null && m.target !== regent && attitudeOf(regent, m.target) >= 20;
                     if ((ally || friend) && ['sanction', 'embargo', 'condemn', 'expel', 'threat'].includes(m.kind)) sc = Math.min(sc, -50);
                     if (sc <= worst) {
                         worst = sc;

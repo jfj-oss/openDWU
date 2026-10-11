@@ -33,7 +33,7 @@ Build phases: **Part 1** (this branch): VIP transport + governors on every colon
 | Skills (CharacterSkillType) | CharacterSkillType.cs has ColonyIncome, TradeIncome, TourismIncome, ColonyCorruption, ColonyHappiness, PopulationGrowth, MiningRate, TroopRecruitment, Military/Civilian/ColonyShipConstructionSpeed and FacilityConstructionSpeed. | Confirmed. |
 | Academies and RegionalCapital "are real PlanetaryFacilityTypes" | PlanetaryFacilityType.cs has RegionalCapital, MilitaryAcademy, SpyAcademy, NavalAcademy and ScienceAcademy. In CheckForCharacterAppearance they only scale the appearance chance (×(1 + value/100), at most ×2). They never set where a character appears. | Spawning at the academy is a **new** rule (§5.2). |
 | Relations and missions (TradeSanctions, Truce, FreeTradeAgreement; Escort, Blockade, Bombard) | DiplomaticRelationType.cs and BuiltObjectMissionType.cs have them all (plus WaitAndBombard). | Confirmed. |
-| "Recognising a claim: TO VERIFY how the original penalises conquest" | **Resolved.** The original has no claims and does not penalise taking a colony in a war. The penalties are: **(a)** declaring war: −1 reputation (`CivilityRating -= Galaxy.DeclareWarReputationImpact` = 1.0, Empire.8.cs:2712 ChangeDiplomaticRelation) and −40 IncidentEvaluation with the target (`IncidentImpactWhenDeclareWar` = 40, 2704). **(b)** Invading an **independent** colony: −4 reputation per attack notification unless it is a bombardment (`IndependentColonyInvadeReputationImpact` = 4.0, Galaxy.7.cs:3171 NotifyOfAttack). The owner of the territory it lies in also loses 50 IncidentEvaluation towards the attacker (3174-3180). **(c)** Killing population by bombardment: reputation scaled by the attacker's civility (BuiltObject.2.cs:5982). Exterminate or enslave policies: Empire.2.cs:3357. **(d)** The victim's war-damage ledger (Galaxy.3.cs:529/541 InflictWarDamage), which drives war weariness and peace. | Part 2's "recognise a claim" waives (a) for the claimant against the named colony's owner and drops the condemnation motion against it (§7.4). **(b) is not ported** (attackAI.ts notifyOfAttackHabitat ports only the non-independent branch), so there is nothing to waive yet. |
+| "Recognising a claim: TO VERIFY how the original penalises conquest" | **Resolved.** The original has no claims and does not penalise taking a colony in a war. The penalties are: **(a)** declaring war: −1 reputation (`CivilityRating -= Galaxy.DeclareWarReputationImpact` = 1.0, Empire.8.cs:2712 ChangeDiplomaticRelation) and −40 IncidentEvaluation with the target (`IncidentImpactWhenDeclareWar` = 40, 2704). **(b)** Invading an **independent** colony: −4 reputation per attack notification unless it is a bombardment (`IndependentColonyInvadeReputationImpact` = 4.0, Galaxy.7.cs:3171 NotifyOfAttack). The owner of the territory it lies in also loses 50 IncidentEvaluation towards the attacker (3174-3180). **(c)** Killing population by bombardment: reputation scaled by the attacker's civility (BuiltObject.2.cs:5982). Exterminate or enslave policies: Empire.2.cs:3357. **(d)** The victim's war-damage ledger (Galaxy.3.cs:529/541 InflictWarDamage), which drives war weariness and peace. | Part 2's "recognise a claim" waives (a) for the claimant against the named colony's owner and drops the condemnation motion against it (§7.4). (b) is ported since 2026-10-11 (attackAI.ts notifyOfAttackHabitat, the independent branch; see §7.4); the claim does not waive it (a claim names an empire's colony, not an independent one). |
 
 ---
 
@@ -323,10 +323,15 @@ the clash with rimTrade's Concord cannot happen (the council is always the Diet)
 | Regent | `dietRegentYears` (6); one veto per session; an emergency session every `dietEmergencyYears` (4); may declare themselves Emperor | — |
 | Repeal | Ends a measure in force | — |
 
-- **Resolved to-verify (§1).** The original's independent-colony branch of NotifyOfAttack (Galaxy.7.cs 3138-3195:
-  −4 reputation per attack, the −50 incident with the territory owner) is **not ported** (attackAI.ts
-  notifyOfAttackHabitat ports only the other branch). So there is nothing to waive for (b) today; the claim waives
-  (a), which is ported. Reported, not ported here (a faithful-game change).
+- **Resolved to-verify (§1); ported (user, 2026-10-11).** The original's independent-colony branch of NotifyOfAttack
+  (Galaxy.7.cs 3138-3195) is now ported faithfully in the stock game (attackAI.ts notifyOfAttackHabitat): when no
+  matching signal exists (CheckForMatchingSignal, Galaxy.7.cs 2907: same type UnderAttack and attacker, within
+  DistressSignalLocationOverlapRangeSquared, younger than DistressSignalDateRange = 90 000 ms) a DistressSignal is added
+  to the independent empire's DistressSignals, the attacker loses IndependentColonyInvadeReputationImpact (4) unless
+  bombarding, and the owner of the territory it lies in loses 50 IncidentEvaluation toward it; a matching signal only
+  adds attack strength. Only with notifyIndependent (invasions and bombardment, not an Attack order's first notice).
+  The signal record stays inert: nothing answers the independent empire's signals (no response is ported). The claim
+  waives (a) only. `npm run repin -- --check`: 0 pins moved (no pinned run attacks an independent colony).
 - **Enforcers (new, on real code).** A neutral "Diet Enforcers" faction (createThreatFaction with no enemies and
   relation bias 0; the Exchange's switched-off stock AI; `stateAIDormant`; hidden from the diplomacy list; excluded
   from the council; nobody may declare war on it except open defiance) spawns one fleet per sanctioned empire at the
@@ -608,6 +613,15 @@ Each power now occurs over 15–20 years without dominating; vetoes and Emperor 
 sitting Regent who is present, strong and ambitious (the Emperor's bid counters, `bidBlocks`, show why the others
 held back: not the host and not strong enough to take its world, or a peaceful race). No delegate died in these runs,
 so the lockout did not trigger there; the test suite covers it.
+
+**Pushed (user, 2026-10-11): vetoes and bids more often.** The AI Regent vetoes any passing motion it opposes (vote
+score ≤ −0.5, was ≤ −12) and shields allies and friends from attitude 20 (was 40); it bids for the throne when within
+80 % of the top member's score (was: the top), with a military at least the host's when it is not the host (was 1.5×),
+unless a Pacifist or of very peaceful temper (aggression + ½ Expansionist < −0.8, was −0.3), and waits 8 years after a
+failed bid (was 10). Soaks `diet-long-s1` 20 y / `diet-long-s3` 17 y: vetoes 1 / 1, Emperor bids 1 / 1 (both failed),
+Regents 2 / 3, sessions 8 / 7 — about one veto and one bid per 18 game-years each (before: 1 veto and 1 bid in 58
+years). s3 stopped at year 17 on a stock exception repeated from day 6090 (invasion.ts resolveInvasionBattles 1307
+`defender!.pirateEmpireBaseHabitat` with no defender, a C#-unguarded dereference; not investigated here).
 
 **Decision (reported).** The Ancient Guardians (the story's Mechanoids) out-scored every member and held the seat and
 the Regency for whole games, so no other Regent could ever bid; they now sit and vote but never host or stand for the

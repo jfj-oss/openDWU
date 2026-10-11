@@ -271,12 +271,18 @@ describe('19j rim herders — (5) protectorate, conquest, espionage; (7) AI path
             expect(h.docileEmpireIds).toContain(protector.empireId);
         }
         expect(empireHasHerding(g, herder)).toBe(true);
-        // Harvest now fills the herder empire's stock; tribute moves half of it to the protector's capital.
+        // Harvest now fills the herder empire's stock; tribute moves half of it to the protector's space port nearest
+        // the herders (its capital without a port), where it enters normal trade.
         rimHerdersHarvest(g);
         const id = harvestResourceIds(g)[0];
-        const held = protector.capital!.cargo!.items.find((c) => c.commodity.resourceId === id && c.empire === protector)?.amount ?? 0;
+        const ports = protector.spacePorts.filter((p) => !p.hasBeenDestroyed && p.isSpacePort && p.cargo !== null);
+        const near = ports.sort((a, b) => g.calculateDistanceSquared(hc.colony.xpos, hc.colony.ypos, a.xpos, a.ypos) - g.calculateDistanceSquared(hc.colony.xpos, hc.colony.ypos, b.xpos, b.ypos))[0];
+        const destCargo = near !== undefined ? near.cargo! : protector.capital!.cargo!;
+        const held = destCargo.items.find((c) => c.commodity.resourceId === id && c.empire === protector)?.amount ?? 0;
         expect(rimHerdersTribute(g)).toBeGreaterThan(0);
-        expect(protector.capital!.cargo!.items.find((c) => c.commodity.resourceId === id && c.empire === protector)!.amount).toBeGreaterThan(held);
+        // A herder colony is never handed over without conquest (ruins' lost colony, colony ships, AcquireHabitat).
+        expect(scenarioQuery(g, 'peacefulColonyTakeoverAllowed', true, { habitat: hc.colony, empire: protector })).toBe(false);
+        expect(destCargo.items.find((c) => c.commodity.resourceId === id && c.empire === protector)!.amount).toBeGreaterThan(held);
     });
 
     it('conquest turns the herds feral toward the conqueror; stolen herding domesticates one herd a year', () => {
