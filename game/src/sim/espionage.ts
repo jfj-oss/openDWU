@@ -1339,6 +1339,15 @@ export function performIntelligenceMissions(galaxy: Galaxy, self: Empire): void 
     const num = TIME_ONE_MONTH;
     const num2 = TIME_THREE_MONTHS;
     const num3 = TIME_ONE_YEAR;
+    // Guard (not in the C#): an agent with no empire is skipped in the three loops below (`character.empire !== null`).
+    // Character.Kill always takes a character out of its empire's Characters (CompleteEmpireChange(null)), so in the C#
+    // every listed agent has an Empire and these loops dereference it freely: the enemy agent caught by counter-
+    // intelligence (`character4.Empire.PirateEmpireBaseHabitat`, Empire.5.cs 5794) and, through BaconEmpire.cs 655
+    // ResetSpyMission → new IntelligenceMission(spy.Empire, ...), the counter-intelligence mission whose TargetEmpire is
+    // that Empire (`mission3.TargetEmpire.PirateEmpireBaseHabitat`, 5713). A save can still list a dead agent (inactive,
+    // no empire, no location) under its old empire: AssignSpecialMissions (5401) has no Active check and gives it a new
+    // mission, and the next counter-intelligence catch threw a TypeError that stopped the game (late2500 campaign). Such
+    // an agent is dead: it neither runs missions nor can be caught. Never true in a consistent game (no Rnd change).
     const characterList: Character[] = [];
     for (let i = 0; i < galaxy.empires.length; i++) {
         const empire = galaxy.empires[i];
@@ -1346,7 +1355,7 @@ export function performIntelligenceMissions(galaxy: Galaxy, self: Empire): void 
         const ec = getEmpireCharacters(empire);
         for (let j = 0; j < ec.length; j++) {
             const character = ec[j];
-            if (character != null && character.role === CharacterRole.IntelligenceAgent) {
+            if (character != null && character.role === CharacterRole.IntelligenceAgent && character.empire !== null) {
                 const mission = characterMission(character);
                 if (mission !== null && mission.type !== T.Undefined && mission.targetEmpire === self) characterList.push(character);
             }
@@ -1358,7 +1367,7 @@ export function performIntelligenceMissions(galaxy: Galaxy, self: Empire): void 
         const ec = getEmpireCharacters(empire2);
         for (let l = 0; l < ec.length; l++) {
             const character2 = ec[l];
-            if (character2 != null && character2.role === CharacterRole.IntelligenceAgent) {
+            if (character2 != null && character2.role === CharacterRole.IntelligenceAgent && character2.empire !== null) {
                 const mission2 = characterMission(character2);
                 if (mission2 !== null && mission2.type !== T.Undefined && mission2.targetEmpire === self) characterList.push(character2);
             }
@@ -1368,7 +1377,7 @@ export function performIntelligenceMissions(galaxy: Galaxy, self: Empire): void 
     const chars = getEmpireCharacters(self);
     for (let m = 0; m < chars.length; m++) {
         const character3 = chars[m];
-        if (character3 == null || character3.role !== CharacterRole.IntelligenceAgent) continue;
+        if (character3 == null || character3.role !== CharacterRole.IntelligenceAgent || character3.empire === null) continue;
         const mission3 = characterMission(character3);
         if (mission3 === null || mission3.type === T.Undefined) continue;
         // 19n court schemes (scenario only: no mission has these types unless the courtIntrigue flag created it). The ported
