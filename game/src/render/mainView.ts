@@ -2830,7 +2830,7 @@ export class MainView {
                     }
                     // [freightOverlay] end
                     // [charactersVictory] hover a VIP shuttle's gold ring: its name and passenger (own) / "VIP shuttle".
-                    const vh = this.overlayLayer?.vip.hitTest(w.x, w.y, this.camera.zoom) ?? this.overlayLayer?.diet.hitTest(w.x, w.y, this.camera.zoom) ?? null;
+                    const vh = this.overlayLayer?.vip.hitTest(w.x, w.y, this.camera.zoom) ?? this.overlayLayer?.diet.hitTest(w.x, w.y, this.camera.zoom) ?? this.overlayLayer?.econ.hitTest(w.x, w.y, this.camera.zoom) ?? null; // [colonyEconomy] designation badges
                     if (vh !== null) {
                         showMapTooltip(vh, e.clientX, e.clientY);
                         return;

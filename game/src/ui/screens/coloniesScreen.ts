@@ -24,6 +24,7 @@
 // TODO(port): racial / wonder / resource bonus lines of the attitude summary — HabitatAttitudeSummary.cs DetermineHabitat*Bonuses
 
 import { cvColonySlot } from '../scenario/charactersVictoryUi'; // [charactersVictory]
+import { econVisible, renderEconomyTab } from '../scenario/colonyEconomyUi'; // [colonyEconomy]
 import './coloniesScreen.css';
 import type { Empire } from '../../sim/empire';
 import type { Galaxy } from '../../sim/galaxy';
@@ -236,10 +237,15 @@ export function countColonySystems(colonies: readonly Pick<Habitat, 'systemIndex
     return new Set(colonies.map((c) => c.systemIndex)).size;
 }
 
-export type ColonyTabId = 'population' | 'cargo' | 'resources' | 'troops' | 'construction' | 'docking' | 'facilities';
+export type ColonyTabId = 'population' | 'cargo' | 'resources' | 'troops' | 'construction' | 'docking' | 'facilities' | 'economy';
 
 /** tabColonyData's pages in their Controls order (Main.InitializeComponent.cs 1691-1697). */
 export const COLONY_TABS: readonly ColonyTabId[] = ['population', 'cargo', 'resources', 'troops', 'construction', 'docking', 'facilities'];
+
+/** [colonyEconomy] The tabs of this game: the original's, plus Economy with the Colony Economy add-on on. */
+export function colonyTabsFor(galaxy: Galaxy): readonly ColonyTabId[] {
+    return galaxy.scenario !== null && econVisible(galaxy) ? [...COLONY_TABS, 'economy'] : COLONY_TABS;
+}
 
 export interface ColonyTabCounts {
     cargo: number;
@@ -262,6 +268,7 @@ export function colonyTabLabels(c: ColonyTabCounts | null): Record<ColonyTabId, 
         construction: n(T('Construction Yard', 'Construction Yard'), c?.underConstruction ?? 0),
         docking: n(T('Docking Bay', 'Docking Bay'), c?.docked ?? 0),
         facilities: n(T('Facilities', 'Facilities'), c?.facilities ?? 0),
+        economy: 'Economy', // [colonyEconomy] only listed with the add-on on (colonyTabsFor)
     };
 }
 
@@ -554,7 +561,8 @@ export function habitatResourceBonuses(galaxy: Galaxy, h: Habitat): string[] {
             out.push('');
             continue;
         }
-        const name = galaxy.resourceSystem?.resources.find((r) => r.resourceId === b.resourceId)?.name ?? '';
+        // [colonyEconomy] the add-on's bonuses carry resource id -1 (no resource).
+        const name = b.resourceId < 0 ? 'Colony Economy' : galaxy.resourceSystem?.resources.find((r) => r.resourceId === b.resourceId)?.name ?? '';
         const key = `Race Resource Bonus ${effect}${b.appliesOnlyToSources ? ' Source' : ''}`;
         out.push(formatNet(T(key, key), [name, String(roundAway(b.value))]));
     }
@@ -976,11 +984,12 @@ function createColoniesScreen(opts: ColoniesScreenOptions): OpenState {
     let stripLabels = '';
     const renderStrip = (): void => {
         const labels = colonyTabLabels(selected ? colonyTabCounts(selected) : null);
-        const key = COLONY_TABS.map((t) => labels[t]).join('|');
+        const tabIds = colonyTabsFor(galaxy);
+        const key = tabIds.map((t) => labels[t]).join('|');
         if (key === stripLabels && strip !== null) return;
         stripLabels = key;
         const s = tabStrip(
-            COLONY_TABS.map((id) => ({ id, label: labels[id] })),
+            tabIds.map((id) => ({ id, label: labels[id] })),
             tab,
             (id) => {
                 tab = id as ColonyTabId;
@@ -1149,6 +1158,9 @@ function createColoniesScreen(opts: ColoniesScreenOptions): OpenState {
                 break;
             case 'facilities':
                 renderFacilities(h);
+                break;
+            case 'economy': // [colonyEconomy]
+                renderEconomyTab(page, galaxy, empire, h, () => renderPage(true));
                 break;
         }
         if (!force) [...page.querySelectorAll<HTMLElement>('.ow-scroll')].forEach((s, i) => (s.scrollTop = scrolls[i] ?? 0));

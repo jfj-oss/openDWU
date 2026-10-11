@@ -33,6 +33,7 @@ import { crisesSummaryRows } from '../../sim/scenario/emergent/crisesCore';
 import { stabilityRow } from '../emergentPolitics'; // [emergent]
 import { ledgerStabilityRow } from '../internalSecurityView'; // [security]
 import { courtSummaryRows } from '../courtView'; // [court]
+import { econBondsVisible, openTreasuryWindow } from '../scenario/colonyEconomyUi'; // [colonyEconomy]
 import {
     COLORS,
     FONT,
@@ -392,6 +393,15 @@ function createEmpireSummary(src: EmpireSummarySource): OpenState {
         body.appendChild(place(link, 450, 20));
     }
     // [freightOverlay] end
+    // [colonyEconomy] the treasury view: bonds, debt, repayment schedule, private surplus.
+    if (galaxy && galaxy.scenario !== null && econBondsVisible(galaxy)) {
+        const g = galaxy;
+        const link = linkLabel('Bonds & private sector →', () => openTreasuryWindow(g, empire), F.normal);
+        link.classList.add('es-bonds');
+        link.style.zIndex = '5';
+        link.title = 'Borrow from your own private sector; outstanding debt, interest and the repayment schedule';
+        body.appendChild(place(link, 760, 46));
+    }
     // [improvements] supplyChain: the resource supply panel, on the resource with the most unmet need (else the first).
     if (resourceSupplyAvailable()) {
         const link = linkLabel('Supply by resource →', () => openResourceSupply(mostNeededResource(galaxy, empire)), F.normal);
