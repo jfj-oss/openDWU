@@ -260,6 +260,10 @@ interface Cache {
     rev: number;
     empires: Map<number, EmpireSources>;
     raid: Src[];
+    /** Fast exits for the hot queries (per-ship upkeep, prices, visibility): any source of the kind galaxy-wide. */
+    anyMaint: boolean;
+    anyPrice: boolean;
+    anyOutpost: boolean;
 }
 
 const caches = new WeakMap<Galaxy, Cache>();
@@ -268,7 +272,7 @@ function sources(galaxy: Galaxy): Cache {
     const rev = econRevision(galaxy);
     const c = caches.get(galaxy);
     if (c !== undefined && c.rev === rev) return c;
-    const out: Cache = { rev, empires: new Map(), raid: [] };
+    const out: Cache = { rev, empires: new Map(), raid: [], anyMaint: false, anyPrice: false, anyOutpost: false };
     const st = peekEconState(galaxy);
     if (st !== null) {
         for (const e of galaxy.empires) {
@@ -314,6 +318,9 @@ function sources(galaxy: Galaxy): Cache {
                 }
             }
             out.empires.set(e.empireId, s);
+            if (s.depots.length > 0 || s.extractors.length > 0) out.anyMaint = true;
+            if (s.componentWorks > 0) out.anyPrice = true;
+            if (s.outposts.length > 0) out.anyOutpost = true;
         }
     }
     caches.set(galaxy, out);
@@ -604,6 +611,7 @@ export function repairFactor(galaxy: Galaxy, bo: BuiltObject): number {
 
 /** Design price factor of `empire` (Component Works). */
 export function priceFactor(galaxy: Galaxy, e: Empire | null): number {
+    if (!sources(galaxy).anyPrice) return 1;
     const s = empireSources(galaxy, e);
     if (s === null || s.componentWorks === 0) return 1;
     return 1 - Math.min(X.componentWorksMaxPct, X.componentWorksPct * s.componentWorks * facStrength(galaxy)) / 100;
@@ -611,6 +619,7 @@ export function priceFactor(galaxy: Galaxy, e: Empire | null): number {
 
 /** Survey Outposts: `object` is within range of one of `empire`'s outposts. */
 export function outpostSees(galaxy: Galaxy, empire: Empire, object: BuiltObject | Habitat): boolean {
+    if (!sources(galaxy).anyOutpost) return false;
     const s = empireSources(galaxy, empire);
     if (s === null || s.outposts.length === 0) return false;
     for (const h of s.outposts) if (h.empire === empire && near(h, object, X.outpostRange * Math.max(1, Math.min(1.5, governorBoost(h, undefined))))) return true;
@@ -626,6 +635,7 @@ export function troopMaintFactor(galaxy: Galaxy, e: Empire): number {
 
 /** Upkeep factor of `bo` (Fleet Depot for state ships / bases, Automated Extractors for mining stations). */
 export function shipMaintFactor(galaxy: Galaxy, bo: BuiltObject): number {
+    if (!sources(galaxy).anyMaint) return 1;
     const s = empireSources(galaxy, bo.empire);
     if (s === null || (s.depots.length === 0 && s.extractors.length === 0)) return 1;
     let pct = 0;

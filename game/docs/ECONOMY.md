@@ -574,3 +574,55 @@ capital set, so the "capital is always designated" rule missed it. They are repo
 **Wall time.** The whole-soak wall times (on runs 1.5–2× the off ones in years 6–10) were measured on cores shared
 with three other agents' soaks: four or more node processes per core set at nice 19. The step time on the big save
 (phase 1 table; phase 3 below for the full add-on) is the controlled measurement.
+
+### Phase 3 (2026-10-11): the whole add-on with the refinement chain
+
+There are two seeds: seed 1 runs 10 years and seed 2 runs 8 years (1000 stars, 10 empires each). "AI ex. AG" means
+the AI empires without the Ancient Guardians.
+
+| | seed 1 off | seed 1 on | seed 2 off | seed 2 on |
+|---|---|---|---|---|
+| **Private money, AI ex. AG** | **2.24 M** | **1.25 M (−44 %)** | **2.31 M** | **1.18 M (−49 %)** |
+| Ancient Guardians' private money | 6.51 M | 4.53 M | 4.46 M | 3.35 M |
+| Private money, galaxy-wide | 9.48 M | 5.89 M (−38 %) | 7.27 M | 4.87 M (−33 %) |
+| Facilities built (+ building) | – | 18 (+4) | – | 12 (+6) |
+| Refineries | – | Chemical Plant 3, Electronics Fab 2, Smelter 1, Fuel Refinery 1 | – | Chemical Plant 1, Electronics Fab 1 |
+| Goods made: Alloys / Electronics / Polymer Composites / Fuel Cells | – | 2.0 k / 11.4 k / 2.0 k / 0.5 k | – | 0 / 5.9 k / 0.5 k / 0 |
+| Goods used by completed builds | – | 3.9 k / 4.2 k / 4.3 k / 1.8 k | – | 2.7 k / 3.3 k / 2.1 k / 1.4 k |
+| Builds completed / short of some good | – | 2079 / 1936 | – | 1595 / 1538 |
+| Bonds outstanding / borrowed / repaid / interest | – | 11 / 0.47 M / 0.36 M / 0.08 M | – | 17 / 0.39 M / 0.23 M / 0.05 M |
+| AI state money | 3.83 M | 3.64 M | 2.11 M | 2.32 M |
+| Colonies / population | 48 / 172.9 bn | 49 / 182.3 bn | 32 / 156.5 bn | 35 / 158.6 bn |
+| Annual tax revenue | 3.16 M | 2.90 M | 2.27 M | 2.31 M |
+| Mean development / approval | 20.8 / 14.0 | 16.6 / 14.0 | 21.8 / 15.2 | 21.4 / 14.4 |
+| State ships and bases | 768 | 673 (−12 %) | 570 | 521 (−9 %) |
+| Save round trip and continuation | identical | identical | identical | identical |
+
+**Reading the numbers.**
+- **The private surplus:** about half of it is spent. The AI empires' private money ends at 0.5–0.6 of the off
+  run's.
+- **The goods are used before they are made.** The start-up stockpiles (§5) and early refining are consumed by the
+  first builds. Afterwards most builds complete short of some good, because there are only 1–7 refineries a galaxy.
+- **The speed penalty costs the AI 9–12 % of its ships.** Builds are ×0.95 without goods and up to ×1.25 with them,
+  and the state pays for the goods its yards order. That is the price of the chain, not a block.
+- **More refineries would close the gap.** That is phase 4 balancing: Smarter AI could value refineries by the
+  shortfall.
+- **Development on seed 1 (16.6 vs 20.8)** is not repeated on seed 2 (21.4 vs 21.8). Tax revenue on seed 2 is level
+  (+2 %). The seed 1 drop is that game's history.
+- **Tuning applied.** In the first phase 3 soak, three refineries needed an Industrial colony, which the AI seldom
+  makes, and only Fuel Cells were refined. The refineries moved to the Mining Hubs and Core Worlds. Yard orders
+  became state orders, the penalty went from ×0.90 to ×0.95, and refining from 40 to 60 units an input a month.
+
+**Step time on the big save** (`~/wt/eng-perf/scratch/late.save`, the add-on added to the save: designations,
+facilities and bonds. The refinement chain stays off in an added save, C7). The same 360 s warm-up and 120 s
+measurement as phase 1; by then 65 colonies are designated, 133 facilities started and 14 bonds sold:
+
+| | wall ms / step | CPU ms / step |
+|---|---|---|
+| Off | 6.40, 6.59, 6.69, 6.58 | 7.29, 7.28, 7.38, 7.06 |
+| On | 7.06, 7.04, 6.93, 7.13 | 7.79, 7.78, 7.70, 7.91 |
+
+That is about +6 % CPU. A CPU profile of an on run puts the add-on's own functions at under 0.5 % of the sim time,
+and the whole scenario hook machinery (every add-on) at about 1.2 %. The rest of the difference is the game itself
+playing out differently with the add-on: more facilities, freighters and orders. The fast exits added for the hot
+queries (per-ship upkeep, ship prices, visibility) did not move it.
