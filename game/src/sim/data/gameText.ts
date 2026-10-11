@@ -29,6 +29,8 @@ export enum EncyclopediaCategory {
     GameInfo,
     /** Not in the original: the add-ons' own entries (Colony Economy facilities and refined goods; ui/screens/galactopedia.ts). */
     AddOns,
+    /** Ours: the add-on expansions' articles (galactopedia.ts). */
+    Expansions,
 }
 
 /** Port of EncyclopediaItem.cs. `relatedItems` keeps insertion order (the

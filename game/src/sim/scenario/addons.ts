@@ -402,6 +402,78 @@ export function resolveAddonSwitches(cat: AddonCatalog, picked: readonly string[
     return { flags, params };
 }
 
+/**
+ * Expansions: ONE picker switch that ticks a group of add-ons. Purely a picker grouping: the switch ticks / unticks
+ * the members as ordinary explicit picks, so a game (and its save, and the lobby's package list) records the members
+ * exactly as if they had been ticked one by one, each member's manifest flags, params and placement included. Each
+ * member can still be switched off (or on) alone, in the picker's "Advanced" fold; with every member off the
+ * expansion is off and the game is the stock one. Hidden members (threat-framework) come in as dependencies.
+ */
+export interface Expansion {
+    id: string;
+    name: string;
+    description: string;
+    /** Scenario ids, in display order (those the index does not have are skipped). */
+    members: readonly string[];
+}
+
+export const EXPANSIONS: readonly Expansion[] = [
+    { id: 'the-rim', name: 'The Rim', description: 'The frontier beyond the core: rim trade, frontier settlement, wild fauna and herders, and the rim atmosphere.', members: ['rimTrade', 'rim-frontier', 'rim-fauna', 'rim-herders', 'rim-atmosphere', 'new-fauna'] },
+    { id: 'politics-characters', name: 'Politics & Characters', description: 'Governors, VIPs and the Galactic Council, internal security, reputation, espionage fallout, frontier autonomy and refugees.', members: ['characters-victory', 'internal-security', 'reputation', 'espionage-consequences', 'frontier-autonomy', 'refugees-demographics'] },
+    { id: 'economy', name: 'Economy', description: 'Colony economy, the exchange, chartered companies, corporate coups, privateers, resource crises and wreckage salvage.', members: ['colony-economy', 'exchange', 'chartered-companies', 'corporatecoup', 'privateers', 'resource-crises', 'wreckage-salvage'] },
+    { id: 'galactic-threats', name: 'Galactic Threats', description: 'The hidden end-game threats: cult, hive, silence, greytide, ghost armada, robot mutiny, time bomb, doppelgangers and dark farms.', members: ['threat-framework', 'cult', 'hive', 'silence', 'greytide', 'ghostarmada', 'robotmutiny', 'timebomb', 'doppelgangers', 'darkfarms'] },
+    { id: 'living-galaxy', name: 'Living Galaxy', description: 'A galaxy that moves on its own: lively events, emergent factions, active independents and colony defence.', members: ['lively-galaxy', 'emergent', 'independents-active', 'colony-defence'] },
+];
+
+/** The expansion's members this index has, visible ones only (hidden infrastructure comes in as a dependency). */
+export function expansionMembers(cat: AddonCatalog, e: Expansion): string[] {
+    return e.members.filter((id) => cat.byId.has(id) && !cat.byId.get(id)!.hidden);
+}
+
+/** Ticks / unticks every member of an expansion (members that conflict or are needed by others stay as they are). */
+export function toggleExpansion(cat: AddonCatalog, picked: readonly string[], id: string, on: boolean): string[] {
+    const e = EXPANSIONS.find((x) => x.id === id);
+    let p = canonicalAddons(cat, picked);
+    if (e === undefined) return p;
+    // Repeat: a member needed by a later member (untick) or needing an earlier one can only change on the second pass.
+    for (let pass = 0; pass < 2; pass++) for (const m of expansionMembers(cat, e)) p = toggleAddon(cat, p, m, on);
+    return p;
+}
+
+/** One expansion of the picker: 'on' = every member runs, 'partial' = some, 'off' = none. */
+export interface ExpansionRow {
+    id: string;
+    name: string;
+    description: string;
+    state: 'on' | 'partial' | 'off';
+    /** Members (the Advanced fold), same rows as the groups'. */
+    members: AddonRow[];
+}
+
+/** The picker's expansions for a set of ticks (members in display order). */
+export function expansionRows(cat: AddonCatalog, model: AddonPickerModel): ExpansionRow[] {
+    const rows = new Map(model.groups.flatMap((g) => g.rows).map((r) => [r.id, r] as const));
+    const out: ExpansionRow[] = [];
+    for (const e of EXPANSIONS) {
+        const members = expansionMembers(cat, e).map((id) => rows.get(id)).filter((r): r is AddonRow => r !== undefined);
+        if (members.length === 0) continue;
+        const n = members.filter((r) => r.checked).length;
+        out.push({ id: e.id, name: e.name, description: e.description, state: n === 0 ? 'off' : n === members.length ? 'on' : 'partial', members });
+    }
+    return out;
+}
+
+/** Ids that belong to some expansion (the picker lists them under it, not in the plain groups). */
+export function expansionMemberIds(cat: AddonCatalog): Set<string> {
+    return new Set(EXPANSIONS.flatMap((e) => expansionMembers(cat, e)));
+}
+
+/** Expansions switched on or partly on for a set of ticks (names; for the lobby's match-host line). */
+export function activeExpansions(cat: AddonCatalog, packages: readonly string[]): string[] {
+    const set = new Set(packages);
+    return EXPANSIONS.filter((e) => expansionMembers(cat, e).some((id) => set.has(id))).map((e) => e.name);
+}
+
 /** One row of the picker. */
 export interface AddonRow {
     id: string;
@@ -635,4 +707,17 @@ export function planSaveAddonAddition(cat: AddonCatalog, saved: SavedScenarioRef
         params,
         withData: newPackages.some((id) => (mf(id)?.files.length ?? 0) > 0),
     };
+}
+
+/** Expansions the Load screen can add to a save: every member not loaded yet is addable, and at least one is not loaded. */
+export function expansionsAddableToSave(cat: AddonCatalog, saved: SavedScenarioRef): { id: string; name: string; description: string; members: string[] }[] {
+    const loaded = new Set(savedScenarioPackages(cat, saved));
+    const addable = new Set(addonsAddableToSave(cat, saved).map((a) => a.id));
+    const out: { id: string; name: string; description: string; members: string[] }[] = [];
+    for (const e of EXPANSIONS) {
+        const members = expansionMembers(cat, e);
+        const todo = members.filter((id) => !loaded.has(id));
+        if (todo.length > 0 && members.length > 0 && todo.every((id) => addable.has(id))) out.push({ id: e.id, name: e.name, description: e.description, members: todo });
+    }
+    return out;
 }

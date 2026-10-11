@@ -202,3 +202,9 @@
     font-weight: bold;
     text-shadow: 1px 1px 0 #000;
 }
+.gp-meters {
+    margin: 8px 0;
+    padding: 4px 8px;
+    border-left: 2px solid rgba(208, 208, 216, 0.35);
+    color: rgb(200, 200, 200);
+}

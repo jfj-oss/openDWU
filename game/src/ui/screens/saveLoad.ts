@@ -64,6 +64,8 @@ export interface SaveAddonsInfo {
     current: string[];
     /** The add-ons that can be switched on in it (addons.ts addonsAddableToSave), with their descriptions. */
     addable: { id: string; name: string; description: string }[];
+    /** Expansions whose every missing member can be added (addons.ts expansionsAddableToSave); each ticks its members. */
+    expansions?: { id: string; name: string; description: string; members: string[] }[];
 }
 
 // ---------------------------------------------------------------------------
@@ -796,6 +798,22 @@ export function createSaveLoadPanel(mode: 'save' | 'load', wiring: SavePanelWiri
         const refresh = (): void => {
             loadWith.disabled = picked.size === 0;
         };
+        // An expansion is one tick for all its members (each member is also listed on its own below).
+        const exps = info.expansions ?? [];
+        for (const x of exps) {
+            const row = el('div', 'save-load-addon-row');
+            row.dataset.addon = x.id;
+            row.appendChild(checkBox(`${x.name} (expansion)`, false, (v) => {
+                for (const m of x.members) {
+                    if (v) picked.add(m);
+                    else picked.delete(m);
+                    for (const b of list.querySelectorAll<HTMLInputElement>(`[data-addon="${m}"] input`)) b.checked = v;
+                }
+                refresh();
+            }, SL_FONT));
+            row.appendChild(el('div', 'save-load-addon-desc', x.description));
+            list.appendChild(row);
+        }
         if (info.addable.length === 0) list.appendChild(text('No more add-ons can be added to this game.', { size: FONT.normal, shadow: false, wrapWidth: bw - 40 }));
         for (const a of info.addable) {
             const row = el('div', 'save-load-addon-row');

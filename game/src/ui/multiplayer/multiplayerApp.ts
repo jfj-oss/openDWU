@@ -811,6 +811,7 @@ export function hostSettingsLines(state: LobbyState): string[] {
     const a = h.addons;
     if (a === null) lines.push('Add-on packages: none');
     else {
+        if (a.expansions !== undefined && a.expansions.length > 0) lines.push(`Expansions: ${a.expansions.join(', ')}`);
         lines.push(`Add-on packages (${a.packages.length}): ${a.names.join(', ')}`);
         const flags = Object.entries(a.flags);
         if (flags.length > 0) lines.push(`Add-on switches: ${flags.map(([k, v]) => `${k} ${v ? 'on' : 'off'}`).join(', ')}`);

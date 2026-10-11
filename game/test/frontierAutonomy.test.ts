@@ -5,7 +5,8 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import { loadGameDataFs } from './helpers/loadGameDataFs';
 import { cachedTickGameRun } from './helpers/gameCache';
-import { createScenarioGame } from './helpers/scenarioGame';
+import { comboOverlayFs, createScenarioGame, scenarioIndexFs } from './helpers/scenarioGame';
+import { addonCatalog, addonClosure } from '../src/sim/scenario/addons';
 import type { GameData } from '../src/sim/data/gameData';
 import type { Game } from '../src/sim/game';
 import type { Galaxy } from '../src/sim/galaxy';
@@ -65,7 +66,9 @@ beforeAll(async () => {
     base = await loadGameDataFs();
 }, 120000);
 
-const SC = 'frontier-autonomy';
+// Frontier no longer includes Court & Dynasties (the ruling-house governor term needs it): the court is switched on explicitly.
+const SC_OVERLAY = comboOverlayFs(addonClosure(addonCatalog(scenarioIndexFs()), ['court-dynasties', 'frontier-autonomy'], 'all'), 'combo');
+const SC = SC_OVERLAY;
 /** Every flag the scenario (with its includes) carries, off. */
 const ALL_OFF: Record<string, boolean> = {
     frontierAutonomy: false,
@@ -454,7 +457,7 @@ describe('yearly handler and save round trip', () => {
         const time = new GalaxyTime();
         time.togglePause();
         time.advance(game.galaxy.nowMs);
-        return serializeGame(game as never, time, { ...defaultStartGameOptions(), seed: 1, scenario: { id: SC, flags: ON, params: TEST_PARAMS } });
+        return serializeGame(game as never, time, { ...defaultStartGameOptions(), seed: 1, scenario: { id: 'combo', flags: ON, params: TEST_PARAMS } });
     }
 
     it('autonomy, sectors, militia and deals survive save / load and the runs match', { tags: ['slow'], timeout: 1200000 }, () => {

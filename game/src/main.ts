@@ -97,7 +97,7 @@ import { loadScenarioIndex, loadScenarioOverlay } from './sim/scenario/fetchScen
 import { applyScenarioOverlay, type ScenarioOverlay } from './sim/scenario/overlay';
 import { isTextLoaded, loadBaseTextUnderAdded } from './sim/textResolver';
 import { resolveThemedDataUrl } from './sim/data/paths';
-import { COMPOSITE_SCENARIO_ID, addonCatalog, addonsAddableToSave, compositeScenarioManifest, planAddonStart, planSaveAddonAddition, resolveAddonSwitches, savedScenarioPackages, scenarioOverlayFor } from './sim/scenario/addons';
+import { COMPOSITE_SCENARIO_ID, activeExpansions, addonCatalog, addonsAddableToSave, expansionsAddableToSave, compositeScenarioManifest, planAddonStart, planSaveAddonAddition, resolveAddonSwitches, savedScenarioPackages, scenarioOverlayFor } from './sim/scenario/addons';
 // [leftovers] begin
 import { closeGalacticHistory } from './ui/screens/galacticHistory';
 import { installEventLogDevHook } from './ui/eventLogDev';
@@ -343,7 +343,7 @@ async function saveAddonChoices(text: SaveText): Promise<SaveAddonsInfo> {
     const current = savedScenarioPackages(cat, saved)
         .filter((id) => !(cat.byId.get(id)?.hidden ?? false))
         .map((id) => cat.byId.get(id)?.name ?? id);
-    return { current, addable: addonsAddableToSave(cat, saved).map((a) => ({ id: a.id, name: a.name, description: a.description })) };
+    return { current, addable: addonsAddableToSave(cat, saved).map((a) => ({ id: a.id, name: a.name, description: a.description })), expansions: expansionsAddableToSave(cat, saved) };
 }
 
 /** gameDataForSave with add-ons added: the combined set's data and deserializeGame's addAddons plan. */
@@ -1906,7 +1906,7 @@ const multiplayerDeps: MultiplayerAppDeps = {
         const sc = o.scenario;
         if (sc == null) return null;
         const packages = choiceInclude(sc) ?? [sc.id];
-        return { id: sc.id, packages, names: packages.map((id) => scenarioOverlays.get(id)?.manifest.name ?? id), flags: { ...sc.flags }, params: { ...sc.params } };
+        return { id: sc.id, packages, names: packages.map((id) => scenarioOverlays.get(id)?.manifest.name ?? id), expansions: activeExpansions(addonCatalog([...scenarioOverlays.values()].map((o) => o.manifest)), packages), flags: { ...sc.flags }, params: { ...sc.params } };
     },
     missingAddons(ids) {
         // Test hook (like dwu.mp.blockIce; dev flag only): 'dwu.mp.hideAddon' = an add-on id this app pretends not to have.

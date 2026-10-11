@@ -106,7 +106,7 @@ import { activeCustomizationSetName } from '../../sim/data/customization';
 import { selectColorFromKey } from '../../sim/empireColors';
 import { loadScenarioIndex } from '../../sim/scenario/fetchScenario';
 import type { ScenarioManifest } from '../../sim/scenario/manifest';
-import { SMARTER_AI_ADDON_ID, addonCatalog, addonPickerModel, canonicalAddons, defaultSmarterAIChoice, planAddonStart, resolveAddonSwitches, toggleAddon, withSmarterAI, type AddonCatalog, type AddonOverrides, type AddonRow, type SmarterAIChoice } from '../../sim/scenario/addons';
+import { SMARTER_AI_ADDON_ID, addonCatalog, addonPickerModel, canonicalAddons, defaultSmarterAIChoice, expansionMemberIds, expansionRows, toggleExpansion, type ExpansionRow, planAddonStart, resolveAddonSwitches, toggleAddon, withSmarterAI, type AddonCatalog, type AddonOverrides, type AddonRow, type SmarterAIChoice } from '../../sim/scenario/addons';
 import {
     COLORS,
     FONT,
@@ -131,6 +131,7 @@ import {
 } from '../originalWindow';
 import { checkBoxRight, colorDropDown, colorSlider, groupBox, labelledTrackBar, radioButton, raceDropDown, roundRectanglePanel } from '../originalWindowControls';
 import { startResxImageUrl } from '../resxImage';
+import { EXPANSION_INFO, difficultyLabel, meterBar } from '../../sim/scenario/expansionInfo';
 import { generateRaceSummary, openGalactopedia, type RaceSummaryData, type RaceSummarySection } from './galactopedia';
 import { buildHotSeatPlayersPanel, hotSeatSummaryText } from './hotSeatPlayersPanel'; // multiplayer Phase 2
 import { GALAXY_BACKDROP_OPTIONS, parseGalaxyBackdrop, setGalaxyBackdrop } from '../../render/galaxyBackdropChoice';
@@ -2854,6 +2855,7 @@ function buildScenarioPage(ctx: WizardCtx): HTMLDivElement {
     const overrides: AddonOverrides = { flags: {}, params: {} };
     /** Settings panels the player opened (kept open across re-renders). */
     const openPanels = new Set<string>();
+    const openExpansions = new Set<string>();
     try {
         // Dev / screenshot hook: ?screen=wizard&page=scenario&addons=timebomb,robotmutiny starts with those ticked.
         const pre = new URLSearchParams(window.location.search).get('addons');
@@ -2896,6 +2898,69 @@ function buildScenarioPage(ctx: WizardCtx): HTMLDivElement {
         return row;
     }
 
+    /** An expansion: one switch for all its members; the members sit in an "Advanced" fold, each switchable alone. */
+    function expansionEl(x: ExpansionRow): HTMLElement {
+        const box = el('div', 'wizard-expansion');
+        const row = el('label', 'wizard-addon-row' + (x.state !== 'off' ? ' is-on' : ''));
+        const check = el('input');
+        check.type = 'checkbox';
+        check.checked = x.state === 'on';
+        check.indeterminate = x.state === 'partial';
+        check.addEventListener('change', () => {
+            picked = toggleExpansion(cat, picked, x.id, check.checked);
+            update();
+        });
+        row.appendChild(check);
+        const txt = el('div', 'wizard-addon-text');
+        const head = el('div', 'wizard-addon-head');
+        head.appendChild(el('span', 'wizard-addon-name', x.name));
+        const n = x.members.filter((m) => m.checked).length;
+        head.appendChild(el('span', 'wizard-addon-needs', `${n} of ${x.members.length} add-ons`));
+        txt.appendChild(head);
+        const desc = el('div', 'wizard-addon-desc', firstSentence(x.description));
+        desc.title = x.description;
+        txt.appendChild(desc);
+        const info = EXPANSION_INFO[x.id];
+        if (info !== undefined) {
+            const mt = el('div', 'wizard-expansion-meters');
+            mt.append(el('span', '', `Changes ${meterBar(info.changes)}`), el('span', '', `Difficulty: ${difficultyLabel(info.difficulty)}`));
+            mt.title = `Changes to the base game: ${info.changes} of 5. ${info.difficultyNote}`;
+            txt.appendChild(mt);
+        }
+        row.appendChild(txt);
+        box.appendChild(row);
+        if (info !== undefined) {
+            const about = el('details', 'wizard-expansion-advanced wizard-expansion-about');
+            about.open = openExpansions.has(`about:${x.id}`);
+            about.addEventListener('toggle', () => {
+                if (about.open) openExpansions.add(`about:${x.id}`);
+                else openExpansions.delete(`about:${x.id}`);
+            });
+            about.appendChild(el('summary', '', 'About'));
+            const bd = el('div', 'wizard-expansion-aboutbody');
+            bd.appendChild(el('div', '', info.about));
+            bd.appendChild(el('div', 'wizard-addon-needs', `Changes to the base game ${meterBar(info.changes)} · Difficulty: ${difficultyLabel(info.difficulty)} (${info.difficultyNote})`));
+            const more = linkLabel('Read more', () => openGalactopedia({ topic: x.id }), FONT.normal);
+            more.style.position = 'static';
+            more.style.alignSelf = 'flex-start';
+            bd.appendChild(more);
+            about.appendChild(bd);
+            box.appendChild(about);
+        }
+        const adv = el('details', 'wizard-expansion-advanced');
+        adv.open = openExpansions.has(x.id);
+        adv.addEventListener('toggle', () => {
+            if (adv.open) openExpansions.add(x.id);
+            else openExpansions.delete(x.id);
+        });
+        adv.appendChild(el('summary', '', 'Advanced'));
+        const grid = el('div', 'wizard-expansion-members');
+        for (const r of x.members) grid.appendChild(rowEl(r));
+        adv.appendChild(grid);
+        box.appendChild(adv);
+        return box;
+    }
+
     function render(): void {
         const model = addonPickerModel(cat, picked);
         summary.textContent = `Running: ${model.summary}`;
@@ -2904,10 +2969,20 @@ function buildScenarioPage(ctx: WizardCtx): HTMLDivElement {
         if (cat.list.length === 0) {
             listSection.appendChild(el('div', 'wizard-todo', 'No add-ons found (/assets/scenarios/index.json).'));
         }
+        const exps = expansionRows(cat, model);
+        if (exps.length > 0) {
+            listSection.appendChild(el('div', 'wizard-addon-group', 'Expansions'));
+            const egrid = el('div', 'wizard-addon-grid wizard-expansion-grid');
+            for (const x of exps) egrid.appendChild(expansionEl(x));
+            listSection.appendChild(egrid);
+        }
+        const inExpansion = expansionMemberIds(cat);
         for (const g of model.groups) {
+            const rows = g.rows.filter((r) => !inExpansion.has(r.id));
+            if (rows.length === 0) continue;
             listSection.appendChild(el('div', 'wizard-addon-group', g.group));
             const grid = el('div', 'wizard-addon-grid');
-            for (const r of g.rows) grid.appendChild(rowEl(r));
+            for (const r of rows) grid.appendChild(rowEl(r));
             listSection.appendChild(grid);
         }
         listSection.scrollTop = scroll;

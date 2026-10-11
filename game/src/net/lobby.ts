@@ -47,6 +47,8 @@ export interface LobbyAddonSet {
     /** Every package that runs (overlay ids), and their names. */
     packages: string[];
     names: string[];
+    /** Expansions (names) with any member running; the members are in `packages`, which is what must match. */
+    expansions?: string[];
     flags: Record<string, boolean>;
     params: Record<string, number>;
 }

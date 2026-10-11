@@ -82,6 +82,16 @@ A "Scenario" page between Victory Conditions and Start: "None" (default) plus ev
 (manifest defaults). The Start page summary shows the choice. main.ts loads the overlay and applies it before
 `createGame`.
 
+**Expansions** (`EXPANSIONS` in addons.ts): one picker switch for a group of add-ons - The Rim, Politics & Characters,
+Economy, Galactic Threats, Living Galaxy. A pure picker grouping: the switch ticks / unticks the members as ordinary
+explicit picks (so saves, the composite `include` list and the lobby's package list record the members exactly as if
+ticked one by one, and each member's flags, params and placement work unchanged). Members sit under the expansion's
+"Advanced" fold and stay switchable alone (new-fauna is a Rim member and also works alone); the checkbox is
+indeterminate when only some run. Standalone, in no expansion: smarter-ai, big-galaxies, art-bundle, themed-names,
+event-log, llm-layer, ai-parity, example, court-dynasties. The lobby shows the active expansions (LobbyAddonSet.expansions,
+informational: matching is by package). The Load screen's "Add add-ons" offers an expansion only when every missing
+member is addableToSave (none are today).
+
 **Add-on picker** (`src/sim/scenario/addons.ts`): the page is a checklist — any number of add-ons, grouped by theme.
 Each `include` (plus an optional `requires` list in scenario.json) is a dependency: ticking an add-on ticks and locks
 what it needs ("required by X"; unticking it is refused, tooltip "needed by X") and switches their master flag (the

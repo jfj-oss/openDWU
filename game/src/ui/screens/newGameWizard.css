@@ -450,6 +450,34 @@
     color: rgb(170, 170, 170);
     margin-bottom: 6px;
 }
+.wizard-expansion-grid {
+    grid-template-columns: minmax(0, 1fr);
+}
+.wizard-expansion {
+    border-left: 2px solid rgba(208, 208, 216, 0.25);
+    padding-left: 4px;
+}
+.wizard-expansion > .wizard-addon-row .wizard-addon-name {
+    font-weight: bold;
+}
+.wizard-expansion > .wizard-addon-row.is-on .wizard-addon-name {
+    color: rgb(255, 255, 0);
+}
+.wizard-expansion-advanced > summary {
+    cursor: pointer;
+    font-size: 13.33px;
+    color: rgb(150, 150, 150);
+    padding-left: 22px;
+}
+.wizard-expansion-advanced[open] > summary {
+    color: rgb(200, 200, 200);
+}
+.wizard-expansion-members {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 2px 12px;
+    padding: 2px 0 4px 18px;
+}
 .wizard-addon-panel {
     border-top: 1px solid rgba(208, 208, 216, 0.25);
     padding: 3px 2px;
@@ -530,4 +558,19 @@
 .wizard-difficulty-custom .owc-slider-thumb,
 .wizard-difficulty-custom .owc-slider-elapsed {
     opacity: 0.4;
+}
+
+.wizard-expansion-meters {
+    display: flex;
+    gap: 12px;
+    font-size: 13.33px;
+    color: rgb(120, 120, 130);
+}
+.wizard-expansion-aboutbody {
+    padding: 2px 8px 4px 22px;
+    font-size: 13.33px;
+    color: rgb(170, 170, 170);
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
 }

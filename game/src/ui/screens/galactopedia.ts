@@ -42,6 +42,9 @@ import { manifestFiles } from '../../render/assets';
 import { activeCustomizationSet, activeCustomizationSetName } from '../../sim/data/customization';
 import { econGalactopediaItems, econGalactopediaPage } from '../scenario/colonyEconomyPedia';
 import { FONT, el, glassButton, gradientPanel, linkLabel, openOriginalWindow, place, textBox } from '../originalWindow';
+import { EXPANSIONS } from '../../sim/scenario/addons';
+import { EXPANSION_INFO, difficultyLabel, meterBar } from '../../sim/scenario/expansionInfo';
+import { loadScenarioIndex } from '../../sim/scenario/fetchScenario';
 import { fileNameOf, findMhtPart, parseMht, type MhtDocument } from './mht';
 
 const DWU = '/assets/dwu/';
@@ -218,6 +221,10 @@ async function loadGalactopediaData(): Promise<GalactopediaData> {
         helpListing,
     });
     items.push(...econGalactopediaItems()); // [colonyEconomy] the add-on's facilities, goods and designations
+    // Ours: an "Expansions" category, one article per expansion (rendered by renderExpansionArticle, no help file).
+    const expRoot: EncyclopediaItem = { id: 'expansions', title: 'Expansions', filename: 'expansion:', category: EncyclopediaCategory.Expansions, isCategoryRoot: true, relatedItems: [] };
+    const expItems = EXPANSIONS.map((e): EncyclopediaItem => ({ id: e.id, title: e.name, filename: `expansion:${e.id}`, category: EncyclopediaCategory.Expansions, isCategoryRoot: false, relatedItems: [] }));
+    items.push(expRoot, ...expItems);
     return {
         text,
         items,
@@ -1109,6 +1116,46 @@ export class TopicHistory<T> {
     }
 }
 
+/** The Galactopedia article of an expansion (id '' = the Expansions overview): about, meters, features, then each
+ *  member add-on with its description and options (read from the scenario index). */
+const fetchFirstText_ = (c: string[]): Promise<string> => fetchFirstText(c);
+
+async function renderExpansionArticle(id: string): Promise<HTMLElement> {
+    const wrap = el('div', 'gp-page gp-expansion');
+    const e = EXPANSIONS.find((x) => x.id === id);
+    const info = EXPANSION_INFO[id];
+    if (e === undefined || info === undefined) {
+        wrap.appendChild(el('p', '', 'Expansions switch on a group of add-ons with one tick in the new-game wizard. Pick one to read about it.'));
+        for (const x of EXPANSIONS) wrap.appendChild(el('p', '', `${x.name}: ${x.description}`));
+        return wrap;
+    }
+    wrap.appendChild(el('p', '', info.about));
+    const meters = el('div', 'gp-meters');
+    meters.appendChild(el('div', '', `Changes to the base game: ${meterBar(info.changes)}`));
+    meters.appendChild(el('div', '', `Difficulty: ${difficultyLabel(info.difficulty)}. ${info.difficultyNote}`));
+    wrap.appendChild(meters);
+    for (const f of info.features) {
+        wrap.appendChild(el('h3', '', f.heading));
+        wrap.appendChild(el('p', '', f.text));
+    }
+    wrap.appendChild(el('h3', '', 'Member add-ons'));
+    wrap.appendChild(el('p', '', 'Switch the expansion on and every member runs; under Advanced in the picker each can be switched off alone. Each also works without the expansion.'));
+    try {
+        const list = await loadScenarioIndex(fetchFirstText_);
+        const ul = el('ul');
+        for (const mid of e.members) {
+            const m = list.find((x) => x.id === mid);
+            if (m === undefined || mid === 'threat-framework') continue;
+            const opts = [...m.flags.slice(1).map((f) => f.label), ...m.params.map((p) => p.label)];
+            ul.appendChild(el('li', '', `${m.name}: ${m.description}${opts.length > 0 ? ` Options: ${opts.slice(0, 8).join('; ')}${opts.length > 8 ? `; and ${opts.length - 8} more` : ''}.` : ''}`));
+        }
+        wrap.appendChild(ul);
+    } catch {
+        wrap.appendChild(el('p', 'gp-missing', 'The add-on list could not be loaded.'));
+    }
+    return wrap;
+}
+
 // ---------------------------------------------------------------------------
 // The modal.
 // ---------------------------------------------------------------------------
@@ -1285,6 +1332,16 @@ function createGalactopedia(opts: GalactopediaOptions): OpenState {
             return;
         }
         content.classList.add('gp-loading');
+        if (filename.startsWith('expansion:')) {
+            const art = await renderExpansionArticle(filename.slice('expansion:'.length));
+            if (token !== renderToken) return;
+            content.classList.remove('gp-loading');
+            content.textContent = '';
+            content.appendChild(el('h1', 'gp-page-title', topicTitle));
+            content.appendChild(art);
+            content.scrollTop = 0;
+            return;
+        }
         const page = await loadPage(filename);
         if (token !== renderToken) return;
         content.classList.remove('gp-loading');

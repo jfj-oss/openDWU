@@ -29,6 +29,10 @@ import {
     resolveAddonSwitches,
     scenarioOverlayFor,
     toggleAddon,
+    EXPANSIONS,
+    toggleExpansion,
+    expansionRows,
+    activeExpansions,
     type AddonCatalog,
 } from '../src/sim/scenario/addons';
 import { scenarioRuns } from '../src/sim/scenario/state';
@@ -69,9 +73,8 @@ describe('dependencies derived from include / requires', () => {
     });
 
     it('closure is transitive, deps-first, and a cycle is cut instead of looping', () => {
-        expect(addonClosure(cat, ['frontier-autonomy'], 'on')).toEqual(expect.arrayContaining(['court-dynasties', 'internal-security', 'emergent', 'threat-framework', 'frontier-autonomy']));
+        expect(addonClosure(cat, ['frontier-autonomy'], 'on')).toEqual(expect.arrayContaining(['threat-framework', 'frontier-autonomy']));
         const on = addonClosure(cat, ['frontier-autonomy'], 'on');
-        expect(on.indexOf('internal-security')).toBeLessThan(on.indexOf('court-dynasties'));
         expect(on).not.toContain('cult'); // data-only for internal-security
         expect(addonClosure(cat, ['frontier-autonomy'], 'all')).toContain('cult');
         const cyc = addonCatalog([m({ id: 'a', requires: ['b'] }), m({ id: 'b', include: ['c'] }), m({ id: 'c', requires: ['a'] })]);
@@ -235,4 +238,21 @@ describe('games', () => {
         // An inline overlay with no include still works through the single path.
         expect(scenarioOverlayFor('x', null, new Map([['x', inlineOverlay({ id: 'x' })]])).manifest.id).toBe('x');
     }, 600000);
+});
+
+describe('expansions', () => {
+    it('one switch ticks its members; members stay individually switchable; every member is in the index', () => {
+        for (const e of EXPANSIONS) for (const id of e.members) expect(cat.byId.has(id), id).toBe(true);
+        const rim = EXPANSIONS.find((e) => e.id === 'the-rim')!;
+        let p = toggleExpansion(cat, [], 'the-rim', true);
+        expect(p).toEqual(expect.arrayContaining([...rim.members]));
+        expect(expansionRows(cat, addonPickerModel(cat, p)).find((r) => r.id === 'the-rim')!.state).toBe('on');
+        p = toggleAddon(cat, p, 'rim-atmosphere', false);
+        expect(expansionRows(cat, addonPickerModel(cat, p)).find((r) => r.id === 'the-rim')!.state).toBe('partial');
+        expect(toggleExpansion(cat, p, 'the-rim', false)).toEqual([]);
+        expect(toggleAddon(cat, [], 'new-fauna', true)).toEqual(['new-fauna']);
+        const threats = toggleExpansion(cat, [], 'galactic-threats', true);
+        expect(addonClosure(cat, threats, 'on')).toContain('threat-framework');
+        expect(activeExpansions(cat, threats)).toEqual(['Galactic Threats']);
+    });
 });
