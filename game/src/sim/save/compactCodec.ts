@@ -510,7 +510,9 @@ export class CompactEncoder {
             for (let j = 0; j < k; j++) {
                 const v = rec[keys[j]];
                 if (!this.isLeaf(v)) return false;
-                vals[i * k + j] = v;
+                // -0 is written as 0 (and read back as 0): the columns compare it as 0 too, or a column with a -0 would be
+                // written one way and its reloaded copy (all 0) another — a save that did not re-serialize identically.
+                vals[i * k + j] = v === 0 ? 0 : v;
             }
         }
         const s = this.shapeId(proto, name, keys);

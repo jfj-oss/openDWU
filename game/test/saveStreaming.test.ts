@@ -66,6 +66,10 @@ describe('streamed save text', { timeout: 600000 }, () => {
             rows,
             ids: Array.from({ length: 4 }, (_, i) => Object.assign(new Thing(), { a: 1000000 + i, b: undefined })),
             wide,
+            // A table column of zeros with a -0 among them (written as 0): its reloaded copy (all 0) must write the same
+            // text (2026-10-11: a soak save with such a column did not re-serialize identically).
+            zeroCol: Array.from({ length: 4 }, (_, i) => Object.assign(new Thing(), { a: i === 2 ? -0 : 0, b: 'k' })),
+            deltaCol: Array.from({ length: 4 }, (_, i) => Object.assign(new Thing(), { a: i === 0 ? -0 : 1000000 + i, b: 'k' })),
             plains: [{ p: 1, q: 'a' }, { p: 2, q: 'b' }, { q: 3, p: 4 }],
         };
         const opts = { classes: { Thing: Thing.prototype, Wide: Wide.prototype } };
