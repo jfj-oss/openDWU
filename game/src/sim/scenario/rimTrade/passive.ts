@@ -55,6 +55,7 @@ import { IntelligenceMissionType } from '../../espionage';
 import { takeOwnershipOfColonyFull } from '../../combat/ownership';
 import { EmpireMessageType } from '../../messages';
 import { galaxyStarDate } from '../../tick/simTime';
+import { ultraFastFindNearestRefuellingLocation, withinFuelRange, withinFuelRangeAndRefuel, type FuelTypeRef } from '../../movement';
 import { registerScenarioEvent, registerScenarioPeriodic, registerScenarioQuery, registerScenarioYearly } from '../hooks';
 import { scenarioFlag, scenarioState } from '../state';
 import { scenarioMessage, scenarioNews, scenarioText } from '../messages';
@@ -531,26 +532,71 @@ function strikeCapable(galaxy: Galaxy, b: BuiltObject): boolean {
 
 /**
  * The offender's ships and bases to strike, best first: those within rimTraderRetaliationRange of Concord space first,
- * then nearest to Concord space — anywhere in the galaxy. Never colonies. Pure.
+ * then its bases, then its ships, nearest to Concord space first — anywhere in the galaxy. Never colonies. Pure.
  */
 export function strikeTargets(galaxy: Galaxy, r: Empire, offender: Empire): BuiltObject[] {
     const out: { b: BuiltObject; near: number; d: number }[] = [];
     for (const b of offender.builtObjects) {
         if (b === null || b.hasBeenDestroyed || b.actualEmpire !== offender) continue;
         const d = distanceToConcordSpace(galaxy, r, b.xpos, b.ypos);
-        out.push({ b, near: inRetaliationRange(galaxy, r, b.xpos, b.ypos) ? 0 : 1, d });
+        // Beyond the retaliation range a base (it stays put) before a ship (a strike fleet chasing an explorer across
+        // the galaxy never catches it).
+        const near = inRetaliationRange(galaxy, r, b.xpos, b.ypos) ? 0 : b.role === BuiltObjectRole.Base || b.topSpeed <= 0 ? 1 : 2;
+        out.push({ b, near, d });
     }
     out.sort((a, b) => a.near - b.near || a.d - b.d || a.b.builtObjectID - b.b.builtObjectID);
     return out.map((x) => x.b);
 }
 
+/** Extra fuel portion kept in hand on a strike leg: none, as the stock AI's own target checks (assign.ts ~545). */
+const STRIKE_FUEL_MARGIN = 0.0;
+/** Targets the fuel-aware pick tests (best first), so the per-review cost stays bounded. */
+const STRIKE_FUEL_PICK_LIMIT = 24;
+/** Way points tried between a strike ship and its target when looking for a refuelling stop (fractions of the leg). */
+const STRIKE_STOP_FRACTIONS = [0.9, 0.75, 0.6, 0.45, 0.3, 0.15];
+
+function strikeFuelTypes(b: BuiltObject): FuelTypeRef[] {
+    return b.fuelType === null ? [] : [{ resourceId: b.fuelType.resourceId, sortTag: b.fuelCapacity - b.currentFuel }];
+}
+
+/**
+ * The refuelling stop for a strike ship that cannot reach `target` on its fuel (BuiltObject.1.cs WithinFuelRangeAndRefuel
+ * failed): the Concord's refuelling location (Empire.6.cs 3727 UltraFastFindNearestRefuellingLocation, resupply ships
+ * included) nearest the target — else nearest a way point on the leg, from the target end back — that the ship can
+ * reach on its fuel and that is nearer the target than the ship is. Null: none (the caller refuels at the nearest
+ * location instead, or sails on a full tank). Pure.
+ */
+export function strikeRefuelStop(galaxy: Galaxy, r: Empire, b: BuiltObject, target: BuiltObject): BuiltObject | Habitat | null {
+    const fuel = strikeFuelTypes(b);
+    const dShip = galaxy.calculateDistance(b.xpos, b.ypos, target.xpos, target.ypos);
+    const ok = (s: unknown): s is BuiltObject | Habitat => {
+        if (s === null || s === undefined || (!isBuiltObject(s) && !isHabitat(s)) || s.hasBeenDestroyed) return false;
+        if (galaxy.calculateDistance(s.xpos, s.ypos, target.xpos, target.ypos) >= dShip - galaxy.maxSolarSystemSize) return false;
+        return withinFuelRange(galaxy, b, s.xpos, s.ypos, STRIKE_FUEL_MARGIN);
+    };
+    const near = ultraFastFindNearestRefuellingLocation(galaxy, r, target.xpos, target.ypos, fuel, b, false, true);
+    if (ok(near)) return near;
+    for (const f of STRIKE_STOP_FRACTIONS) {
+        const x = b.xpos + (target.xpos - b.xpos) * f;
+        const y = b.ypos + (target.ypos - b.ypos) * f;
+        const s = ultraFastFindNearestRefuellingLocation(galaxy, r, x, y, fuel, b, false, true);
+        if (ok(s)) return s;
+    }
+    return null;
+}
+
 /**
  * Each strike ship: far from the target, a Move to the target's system (hyperjump; the way the stock AI sends fleets to
- * a distant objective); within a system's reach of it, an Attack on it (BuiltObject.2.cs 7620 AssignMission).
+ * a distant objective) if it has the fuel to get there and on to a refuelling point (BuiltObject.1.cs 2470
+ * WithinFuelRangeAndRefuel, as the stock AI tests its targets), else a Refuel at a stop on the way (strikeRefuelStop),
+ * else a Refuel at the nearest refuelling location while its tank is not full; within a system's reach of it, an
+ * Attack on it (BuiltObject.2.cs 7620 AssignMission). Strike ships are out of AI control, so the stock
+ * AutoRefuelRepairShip never turns them back: this is their refuelling.
  */
 function sendStrike(galaxy: Galaxy, f: RimStrikeFleet, target: BuiltObject): void {
     f.target = target;
     const star = target.nearestSystemStar;
+    const r = passiveConcord(galaxy);
     for (const b of f.ships) {
         if (b.hasBeenDestroyed) continue;
         const m = builtObjectMission(b.mission);
@@ -558,6 +604,17 @@ function sendStrike(galaxy: Galaxy, f: RimStrikeFleet, target: BuiltObject): voi
         if (m !== null && (m.type === BuiltObjectMissionType.Refuel || m.type === BuiltObjectMissionType.Repair)) continue;
         const far = galaxy.calculateDistance(b.xpos, b.ypos, target.xpos, target.ypos) > galaxy.maxSolarSystemSize;
         if (far && star !== null) {
+            if (r !== null && b.fuelCapacity > 0 && !withinFuelRangeAndRefuel(galaxy, b, target.xpos, target.ypos, STRIKE_FUEL_MARGIN)) {
+                let stop = strikeRefuelStop(galaxy, r, b, target);
+                if (stop === null && b.currentFuel < b.fuelCapacity * 0.95) {
+                    const s = ultraFastFindNearestRefuellingLocation(galaxy, r, b.xpos, b.ypos, strikeFuelTypes(b), b, false, true);
+                    if (s !== null && (isBuiltObject(s) || isHabitat(s)) && !s.hasBeenDestroyed) stop = s;
+                }
+                if (stop !== null) {
+                    assignMission(galaxy, b, BuiltObjectMissionType.Refuel, stop, null, BuiltObjectMissionPriority.High);
+                    continue;
+                }
+            }
             if (m !== null && m.type === BuiltObjectMissionType.Move && m.targetHabitat === star) continue;
             assignMission(galaxy, b, BuiltObjectMissionType.Move, star, null, BuiltObjectMissionPriority.High);
             continue;
@@ -565,6 +622,23 @@ function sendStrike(galaxy: Galaxy, f: RimStrikeFleet, target: BuiltObject): voi
         if (m !== null && m.type === BuiltObjectMissionType.Attack && m.targetBuiltObject === target) continue;
         assignMission(galaxy, b, BuiltObjectMissionType.Attack, target, null, BuiltObjectMissionPriority.High);
     }
+}
+
+/**
+ * The fleet's target among `targets` (best first): the `idx`-th of those its lead ship can reach on its fuel and still
+ * refuel after (WithinFuelRangeAndRefuel, the first STRIKE_FUEL_PICK_LIMIT tested), else the `idx`-th overall (reached
+ * through refuelling stops, sendStrike). Pure.
+ */
+function pickStrikeTarget(galaxy: Galaxy, ships: BuiltObject[], targets: BuiltObject[], idx: number): BuiltObject {
+    const lead = ships.find((b) => !b.hasBeenDestroyed) ?? null;
+    if (lead !== null && lead.fuelCapacity > 0) {
+        const reach: BuiltObject[] = [];
+        for (let i = 0; i < targets.length && i < STRIKE_FUEL_PICK_LIMIT; i++) {
+            if (withinFuelRangeAndRefuel(galaxy, lead, targets[i].xpos, targets[i].ypos, STRIKE_FUEL_MARGIN)) reach.push(targets[i]);
+        }
+        if (reach.length > 0) return reach[Math.min(idx, reach.length - 1)];
+    }
+    return targets[Math.min(idx, targets.length - 1)];
 }
 
 /**
@@ -604,7 +678,7 @@ export function rimStrikeReview(galaxy: Galaxy): number {
         // Retarget: each fleet on its own target where there are enough (fleet i → the i-th best).
         mine.forEach((f, i) => {
             const cur = f.target;
-            if (cur === null || cur.hasBeenDestroyed || cur.actualEmpire !== off) sendStrike(galaxy, f, targets[Math.min(i, targets.length - 1)]);
+            if (cur === null || cur.hasBeenDestroyed || cur.actualEmpire !== off) sendStrike(galaxy, f, pickStrikeTarget(galaxy, f.ships, targets, i));
             else sendStrike(galaxy, f, cur);
         });
         while (strikes(galaxy).length < maxFleets) {
@@ -626,7 +700,7 @@ export function rimStrikeReview(galaxy: Galaxy): number {
             strikes(galaxy).push(f);
             st.stats.strikes = (st.stats.strikes ?? 0) + 1;
             const idx = strikes(galaxy).filter((x) => x.targetEmpireId === off.empireId).length - 1;
-            sendStrike(galaxy, f, targets[Math.min(idx, targets.length - 1)]);
+            sendStrike(galaxy, f, pickStrikeTarget(galaxy, f.ships, targets, idx));
         }
     }
     return strikes(galaxy).reduce((n, f) => n + f.ships.length, 0);

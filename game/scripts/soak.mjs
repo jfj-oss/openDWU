@@ -120,6 +120,14 @@ const CONFIGS = [
     // A scenario at the large end, and a scenario under a pirate player.
     SCN('rim-herders', { name: 'rim-herders-pirate', seed: 71, years: 5, wizard: { empireType: 'CustomPirate', starCountIndex: 3, dimensionIndex: 3 } }),
     SCN('independents-active', { name: 'independents-1400', seed: 73, years: 3, wizard: { starCountIndex: 5, dimensionIndex: 4, otherEmpires: { empireCount: 15 }, galaxyExpansionIndex: 3, empireExpansionIndex: 3 } }),
+    // `--set rim-measure`: the Rim Trade measurement runs (scripts/rimtrade-measure-hook.mjs; tasks/19a-rim-trader.md §14),
+    // three seeds on the default (700-star) galaxy and two on a big one (1400 stars), the add-on's defaults.
+    ...[1, 2, 3].map((seed) => SCN('rimTrade', { name: `rimtrade-m-s${seed}`, set: 'rim-measure', seed, years: 15, wizard: {}, flags: undefined })),
+    ...[4, 5].map((seed) => SCN('rimTrade', { name: `rimtrade-m-big-s${seed}`, set: 'rim-measure', seed, years: 10, wizard: { starCountIndex: 5, dimensionIndex: 4, otherEmpires: { empireCount: 15 } }, flags: undefined })),
+    // Late-game starts (old galaxy, mature empires, tech level 6: the other empires begin above the Concord's research
+    // cap of 5) and the 50-year runs (checkpoint saves with RIM_SAVE_YEARS / RIM_SAVE_DIR) for the treasure-fleet balance.
+    ...[6, 7].map((seed) => SCN('rimTrade', { name: `rimtrade-m-late-s${seed}`, set: 'rim-measure', seed, years: 15, wizard: { galaxyExpansionIndex: 5, empireExpansionIndex: 4, empireTechLevelIndex: 7 }, flags: undefined })),
+    ...[1, 3].map((seed) => SCN('rimTrade', { name: `rimtrade-m-long-s${seed}`, set: 'rim-measure', seed, years: 50, wizard: {}, flags: undefined })),
     // `--set long`: the many-decade runs (not in the default set).
     { name: 'long-s1-30y', set: 'long', seed: 1, years: 30, wizard: {} },
     { name: 'long-s7-small-50y', set: 'long', seed: 7, years: 50, wizard: { starCountIndex: 1, dimensionIndex: 1, otherEmpires: { empireCount: 5 } } },

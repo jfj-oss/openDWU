@@ -688,7 +688,7 @@ function rimTraderEmpireOf(player: Empire): Empire | null {
 }
 
 /** Scenario 19a (tasks/19a-rim-trader.md §8.1): the Concord's "Trade terms" block. */
-function rimTraderTermsBlock(t: RimTraderTermsRows): HTMLElement {
+function rimTraderTermsBlock(t: RimTraderTermsRows, onRequestStop?: () => void): HTMLElement {
     const box = el('div', 'diplomacy-rimterms');
     box.appendChild(el('div', 'diplomacy-section-heading', t.title));
     const goods = (label: string, rows: RimTraderTermsRows['wanted']): HTMLElement => {
@@ -715,6 +715,11 @@ function rimTraderTermsBlock(t: RimTraderTermsRows): HTMLElement {
     if (access) access.style.color = t.open ? LIGHT_GREEN : RED;
     box.appendChild(el('div', 'diplomacy-line diplomacy-muted', t.where));
     box.appendChild(el('div', 'diplomacy-line diplomacy-muted', `${t.noWar} ${t.treaties}`));
+    // Treasure fleet: ask it to call at our port with the most rim goods (journaled command requestTreasureStop).
+    if (t.treasureStop !== null) {
+        if (t.treasureStop.requested || onRequestStop === undefined) box.appendChild(el('div', 'diplomacy-line diplomacy-muted', t.treasureStop.label));
+        else box.appendChild(glassButton(t.treasureStop.label, { onClick: onRequestStop }));
+    }
     return box;
 }
 // [rimTrader] end
@@ -1394,7 +1399,10 @@ function createDiplomacyScreen(opts: DiplomacyScreenOptions): OpenState {
         // [charters] end
         // [rimTrader] begin
         const rimTerms = empire === rimTraderEmpireOf(player) ? rimTraderTermsRows(player.galaxy, player) : null;
-        if (rimTerms !== null) box.appendChild(rimTraderTermsBlock(rimTerms));
+        if (rimTerms !== null) {
+            const stop = rimTerms.treasureStop;
+            box.appendChild(rimTraderTermsBlock(rimTerms, stop === null ? undefined : () => issuePlayerCommand(player.galaxy, player, 'requestTreasureStop', [stop.port], () => render())));
+        }
         // [rimTrader] end
         // [wargoals] begin
         const war = warTermsBlock(player, empire, () => render());

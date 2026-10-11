@@ -12,6 +12,7 @@ import { empireApprovalRating } from '../../sim/taxes';
 import { habitatAnnualRevenue } from '../../sim/forceStructure';
 import { formatPopulation } from '../hud';
 import { colonyShortageMarker, crisesApprovalBreakdown } from '../../sim/scenario/emergent/crisesCore';
+import { rareGoodApprovalLines } from '../../sim/scenario/rimTrade/rareGoods'; // [rimTrader]
 import { colonyLedgerLines } from '../internalSecurityView'; // [security]
 
 /** One displayed row of the panel. Pure so the row logic is testable without
@@ -46,7 +47,8 @@ export interface ColonyScenarioInfo {
 export function colonyScenarioInfo(galaxy: Galaxy, h: Habitat): ColonyScenarioInfo | null {
     if (galaxy.scenario === null) return null;
     // 19m: with internal security on, the tooltip lists every stability-ledger cause.
-    return { shortage: colonyShortageMarker(galaxy, h), approvalBreakdown: colonyLedgerLines(galaxy, h) ?? crisesApprovalBreakdown(galaxy, h) };
+    // [rimTrader] the rare goods' approval terms (Oranthi Porcelain) join the breakdown (the ledger lists them already).
+    return { shortage: colonyShortageMarker(galaxy, h), approvalBreakdown: colonyLedgerLines(galaxy, h) ?? [...crisesApprovalBreakdown(galaxy, h), ...rareGoodApprovalLines(galaxy, h)] };
 }
 
 /** The four approval icons drawn by ItemListPanel.cs 895-898

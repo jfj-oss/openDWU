@@ -145,7 +145,8 @@ export function recalculateCriticalResourceSupplyBonuses(galaxy: Galaxy, h: Habi
             }
         }
     }
-    h.resourceBonuses = resourceBonusList;
+    // Mod layer (19a rim trade): scenario resource bonuses (the Concord's rare goods).
+    h.resourceBonuses = galaxy.scenario !== null ? scenarioQuery(galaxy, 'colonyResourceBonuses', resourceBonusList, { habitat: h }) : resourceBonusList;
 }
 
 // Habitat.cs CalculateStrategicResourceSupplyGrowthFactor (7268).

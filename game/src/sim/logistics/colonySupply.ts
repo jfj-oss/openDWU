@@ -43,6 +43,7 @@ import { DiplomaticRelationType, obtainDiplomaticRelation } from '../diplomacy';
 import { determineResourcesEmpireSupplies } from '../diplomacyTick';
 import { habitatDevelopmentLevel } from '../developmentLevel';
 import { conditionCheckLimit } from '../tick/builtObjectTick';
+import { scenarioQuery } from '../scenario/hooks';
 
 // Galaxy.3.cs 5123-5128 ResourceLevel*Quantity.
 const RESOURCE_LEVEL_ONE_QUANTITY = 4000.0;
@@ -484,7 +485,8 @@ function showAvailableRestrictedResourcesForEmpire(galaxy: Galaxy, empire: Empir
         }
         if (resourceList.length >= 3) break;
     }
-    return resourceList;
+    // Mod layer (19a rim trade): the Concord's rare goods take the slots first.
+    return galaxy.scenario !== null ? scenarioQuery(galaxy, 'availableRestrictedResources', resourceList, { empire }) : resourceList;
 }
 
 /** The three lists EvaluateColonyVariables builds once per call (Empire.4.cs 2959-2961). */
@@ -621,7 +623,16 @@ export function orderColonyLuxuryResources(galaxy: Galaxy, empire: Empire, habit
         let resource2: ResourceRef | null = null;
         let num27 = 0;
         const superLuxury = galaxy.resourceSystem.superLuxuryResources;
-        const candidates = resourceList3 !== null && resourceList3.length > 0 ? resourceList3 : resourceList2;
+        let candidates = resourceList3 !== null && resourceList3.length > 0 ? resourceList3 : resourceList2;
+        // Mod layer (19a rim trade): the Concord's rare goods are ordered first.
+        if (galaxy.scenario !== null) {
+            candidates = scenarioQuery(galaxy, 'restrictedOrderCandidates', candidates, {
+                empire,
+                habitat,
+                available: resourceList2,
+                amountToOrder: (id) => checkResourceMeetsMinimumLevelHabitat(galaxy, new ResourceRef(id), num7, maximumResourceLevel2, habitat, orders).amountToOrder,
+            });
+        }
         for (let num28 = 0; num28 < superLuxury.length; num28++) {
             const resource3 = new ResourceRef(superLuxury[num28].resourceId);
             if (resourceListContains(candidates, resource3.resourceId)) {

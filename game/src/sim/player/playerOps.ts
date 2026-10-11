@@ -124,6 +124,7 @@ import { grantCharter, nationaliseCompany, releaseCompany, renewCharter, type Ch
 import { obtainPirateRelation, PirateRelationType } from '../pirateRelations';
 import { acceptPirateProtection, calculatePirateProtectionPricePerMonth } from '../pirates/pirateRelationsAI';
 import { orderSalvage } from '../scenario/wreckage/wreckage';
+import { requestTreasureStop } from '../scenario/rimTrade/treasureFleet';
 import { exposeUncoveredPlanetDestroyer, investigateEncounteredBuiltObject, warnTargetOfPirateAttackFunding } from './eventPanelActions';
 import { assignPirateSmugglingMission, pirateMissionButton } from '../pirates/pirateMissionsPanel';
 import type { EmpireActivityType } from '../pirates/empireActivity';
@@ -532,6 +533,8 @@ export const PLAYER_OPS = {
     exposeUncoveredPlanetDestroyer: (galaxy: Galaxy, empire: Empire, builder: Empire, location: GalaxyLocation | number) =>
         exposeUncoveredPlanetDestroyer(galaxy, empire, builder, location),
     salvageWreckField: (galaxy: Galaxy, empire: Empire, ship: BuiltObject, fieldId: number) => orderSalvage(galaxy, empire, ship, fieldId, true),
+    /** 19a rim trade: ask the Concord's treasure fleet to call at `port` (the empire's own space port) on a coming voyage. */
+    requestTreasureStop: (galaxy: Galaxy, empire: Empire, port: BuiltObject) => requestTreasureStop(galaxy, empire, port),
     // --- Pirate missions (the left sidebar's Pirate Missions panel, the smuggling resource picker) ---
     /** Main.Part12.cs 2591-2678 method_78: a Pirate Missions row's button (Bid / Accept Smuggling Mission / Cancel); the
      *  mission is named by its EmpireActivity.CheckEquivalent fields (pirates/pirateMissionsPanel.ts). */

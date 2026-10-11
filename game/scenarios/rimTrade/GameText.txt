@@ -44,3 +44,5 @@ Scenario RimTrade Price Exacted;The {0} have exacted their price from the {1}. T
 Scenario RimTrade Price Exacted You;The {0} have exacted their price from us. Their strike fleets return home.
 Scenario RimTrade Trade House Title;Trade house profits
 Scenario RimTrade Trade House;The trade houses of the {0} have paid {1} credits into the treasury from the rim monopoly.
+Scenario RimTrade Request Stop;Request a treasure-fleet stop at {0} ({1} rim goods there)
+Scenario RimTrade Stop Requested;Treasure-fleet stop requested at {0} ({1} rim goods there)

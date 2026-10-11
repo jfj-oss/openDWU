@@ -408,3 +408,40 @@ is byte-identical to the pre-addendum one (test/rimTraderPassiveSoak.test.ts pin
   gain past the cap is released to the independents at the next 10-day review.
 - Passive posture and anger (`passive.ts`, `common.ts` RimAggression / `rimAnger` state): see the header of passive.ts
   for the exact aggressive-action list, the retaliation rule and the decay.
+
+## 14. 2026-10-10 — rare-good effects, ordering priority, long-range huge designs, the bigger treasure fleet
+
+All behind flag `rimTrader` (add-on off: byte-identical; the base sim gains three query sites only).
+
+- **Rare goods, development 50** (`resources.txt` SuperLuxuryBonusAmount 50; stock super-luxuries 30). The stock bonus is the
+  literal +30 of Habitat.cs 447 (`_RestrictedResourcesPresent`); `rimTrade/rareGoods.ts` adds the difference (+20) as a
+  Development resource bonus while a colony holds a rare good (new query `colonyResourceBonuses` at
+  `taxes.ts recalculateCriticalResourceSupplyBonuses`).
+- **One effect each** (held = in the colony's cargo, its empire's, Available > 0): Oranthi Porcelain approval
+  +`rimRarePorcelainApproval` (8; a stability term: approval, unrest, revolt; shown in the colony approval breakdown and the
+  internal-security ledger), Moonsilk colony income +`rimRareMoonsilkIncomePct` % (15; IncomeBoost, the stock
+  AnnualRevenue factor), Starleaf Tea population growth +`rimRareTeaGrowthPct` % (25; PopulationGrowthRate). Resource
+  bonuses show in the colony attitude summary; the resource icon tooltip (selection panel) names the effect.
+- **Ordering priority**: query `availableRestrictedResources` (Galaxy.3.cs 367, the 3-slot list) puts the rare goods the
+  empire can get now (Concord access open and the port holds them) first; query `restrictedOrderCandidates`
+  (Empire.4.cs 3271) orders the most-lacking rare good while any needs ordering, else the stock super-luxuries in the
+  slots left (3 − rare goods available). The stock order preferred the self-supplied list, so an empire with its own
+  Loros Fruit never ordered a rare good.
+- **Designs** (`rimTrade/concordDesigns.ts`, query `aiDesignTweak`): every Concord warship sub-role sized up to the maximum
+  construction size (construction level 8 = 1500 × 0.9 military; carriers × 1.5) and fuel cells added until the design's
+  MaximumFuelRange reaches `rimTraderDesignRangeSectors` (40) sectors; policy design focus Efficiency
+  (`Policy/Oranthi.txt`); VelocityDrive, NovaCore Reactor and Mega-Density Fuel Cell researched at start
+  (`applyConcordTech`, with their parents); the designs are regenerated at game start. The Treasure Ship gets the same
+  range (cargo makes room), size `treasureShipSize` 1500.
+- **Strike fuel** (`passive.ts`): a strike ship that fails WithinFuelRangeAndRefuel for its target refuels at a stop on
+  the way (the refuelling location nearest the target / a way point that it can reach and that is nearer the target),
+  else at the nearest location; targets are picked among those the lead ship can reach; beyond the retaliation range
+  bases come before ships (fleets chasing explorers never caught them).
+- **Treasure fleet** (`treasureFleet.ts`, `treasureRaids.ts`): fixed composition 8 treasure ships + 6 capital ships + 10
+  cruisers + 2 carriers (navy ships of each sub-role the home guard can spare, then dedicated ships bought);
+  6 stops per voyage, one per empire, from stop requests (AI: its port holding the most rim goods; the player: journaled
+  command `requestTreasureStop`, a button in the Concord's diplomacy terms block) weighted by (rim goods + 1) × max(0.25,
+  1 + standing / threshold); home early when out of rare goods; stragglers (4 % per ship per leg, 10–40 days, escorts turn
+  back after 20); AI raids on exposed stragglers or, with 1.5 × the defending firepower, the main body (pirates and
+  races of aggression ≥ 110, when the loot beats the 3000 standing penalty); a sunk or captured treasure ship's whole
+  cargo goes to the attacker. Adding the Rim Trade to a save is not supported (see the report).

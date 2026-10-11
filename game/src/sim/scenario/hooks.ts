@@ -560,6 +560,25 @@ export interface ScenarioQueries {
      */
     colonyTaxRevenue: { value: number; args: { habitat: Habitat; empire: Empire } };
     /**
+     * taxes.ts recalculateCriticalResourceSupplyBonuses (Habitat.cs RecalculateCriticalResourceSupplyBonuses), end: the
+     * colony's resource bonuses (stock: the dominant race's critical-resource bonuses). A handler returns a new list
+     * (never mutates `value`). 19a rim trade: the Concord's rare goods. Never draws.
+     */
+    colonyResourceBonuses: { value: Habitat['resourceBonuses']; args: { habitat: Habitat } };
+    /**
+     * logistics/colonySupply.ts showAvailableRestrictedResourcesForEmpire (Galaxy.3.cs 367), end: the restricted
+     * (super-luxury) resource ids `empire`'s colonies may order (stock: the first 3 found, in empire order). A handler
+     * returns a new list. 19a rim trade: the Concord's rare goods first. Never draws.
+     */
+    availableRestrictedResources: { value: number[]; args: { empire: Empire } };
+    /**
+     * logistics/colonySupply.ts orderColonyLuxuryResources (Empire.4.cs 3271-3301): the restricted resources the colony
+     * order picks from (the most-lacking one is ordered; stock: the self-supplied list if any, else the available list).
+     * `amountToOrder(id)` is the stock need test (Empire.4.cs 4101 at the num7 / num7 × 2 levels, pure). 19a rim trade.
+     * Never draws.
+     */
+    restrictedOrderCandidates: { value: number[]; args: { empire: Empire; habitat: Habitat; available: number[]; amountToOrder: (resourceId: number) => number } };
+    /**
      * forceStructure.ts recalculateAnnualTaxRevenue (Habitat.cs 6083 RecalculateAnnualTaxRevenue): the tax rate the
      * revenue product uses (stock: the colony's TaxRate). 19g-5 frontier sectors: the sector governor's local rate
      * override and the sector rule's collection factor. Never draws.

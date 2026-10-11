@@ -1,5 +1,7 @@
 'Scenario rimTrade: the Concord's policy — key lines over its parent's (Ackdarian) policy.
 'Tax levels are 0-3 (3 = highest, taxes.ts); the Concord taxes every colony size high.
+'19a designs: Efficiency focus (the most fuel-efficient reactor / hyperdrive; Ackdarian's is 1 = SpeedAgility).
+ResearchDesignOverallFocus		;3
 TradeWithOtherEmpires		;Y
 TradePriority		;4
 ControlRestrictedResourcesPriority		;4

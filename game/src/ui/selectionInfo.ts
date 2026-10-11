@@ -54,6 +54,7 @@ import { abundancePercentText } from './resourceAbundance';
 import { habitatTypeLabel, hyperjumpStatusText, invasionVsText, missionTargetText, missionTypeLabel, resourceIconUrl, threatRows, troopStrengthText } from './hud';
 import { wreckSalvageRows } from './scenario/wreckageUi'; // [wreckage]
 import { rimGoodMarker } from './scenario/rimTraderRows'; // [rimTrader]
+import { rareGoodEffectText } from '../sim/scenario/rimTrade/rareGoods'; // [rimTrader]
 import { facilityGalactopediaTopic, facilityPanelHoverText } from './facilityHover';
 import { supplyChainEnabled, supplySnapshot } from './supplyChainCache'; // [improvements] supplyChain
 import { colonyTooltipLines, itemNeedsText, resourceName, siteTooltipLines } from './supplyChainText'; // [improvements] supplyChain
@@ -511,7 +512,8 @@ function resourceSegs(ctx: InfoContext, resources: { resourceId: number; abundan
         const pct = abundancePercentText(r.abundance) + (rimMark !== '' ? ` ${rimMark}` : '');
         // 3226: the icon is a hotspot, "Name (click for details)"; a click opens the Galactopedia on the resource's
         // page (Main.Part4.cs 3598 → method_456(resource.Name)).
-        segs.push({ img: def ? resourceIconUrl(def.pictureRef) : undefined, title: `${name} (click for details)`, target: { kind: 'galactopedia', topic: name }, gap: segs.length > 0 ? 3 : 0 });
+        const rareFx = rareGoodEffectText(ctx.galaxy, r.resourceId); // [rimTrader]
+        segs.push({ img: def ? resourceIconUrl(def.pictureRef) : undefined, title: `${name} (click for details)${rareFx !== '' ? `\n${rareFx}` : ''}`, target: { kind: 'galactopedia', topic: name }, gap: segs.length > 0 ? 3 : 0 });
         segs.push({ text: pct, tiny: true, color, gap: -2 });
     }
     return segs;

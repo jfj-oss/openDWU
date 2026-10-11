@@ -35,6 +35,7 @@ import {
 import { RIM_START_HIGH_QUALITY, RIM_START_MIN_QUALITY, concordStartColonyCandidates } from '../src/sim/scenario/rimTrade/rimTrader';
 import { concordAttacksWithoutWar, concordMissionAllowed, distanceToConcordSpace, inConcordSpace, isStrikeShip, recordRimAggression, rimAngerReview, rimAngerYear, rimCapReview, rimPassiveLeash, rimStrikeReview } from '../src/sim/scenario/rimTrade/passive';
 import { treasureFleetTargetSize, treasureState } from '../src/sim/scenario/rimTrade/treasureFleet';
+import { withinFuelRangeAndRefuel } from '../src/sim/movement';
 import { concordNavyYear, concordTradeHouseYear, concordWarships, navyGroupOf, rimNavyState } from '../src/sim/scenario/rimTrade/wealth';
 import { builtObjectMission } from '../src/sim/missions/mission';
 
@@ -316,6 +317,8 @@ describe('19a Concord — tit-for-tat strikes without war', () => {
                 // Far off: a Move (hyperjump) to the target's system first; near it: an Attack on the ship / base itself.
                 const m = builtObjectMission(b.mission)!;
                 if (m.type === BuiltObjectMissionType.Move) expect(m.targetHabitat).toBe(f.target!.nearestSystemStar);
+                // A ship without the fuel to get there and refuel after first refuels on the way (2026-10-10 fuel fix).
+                else if (m.type === BuiltObjectMissionType.Refuel) expect(withinFuelRangeAndRefuel(g, b, f.target!.xpos, f.target!.ypos, 0)).toBe(false);
                 else {
                     expect(m.type).toBe(BuiltObjectMissionType.Attack);
                     expect(m.targetBuiltObject).toBe(f.target);
@@ -329,7 +332,7 @@ describe('19a Concord — tit-for-tat strikes without war', () => {
         // Strike ships are exempt from the leash.
         const n = rimPassiveLeash(g);
         void n;
-        for (const f of fleets) for (const b of f.ships) expect([BuiltObjectMissionType.Move, BuiltObjectMissionType.Attack]).toContain(builtObjectMission(b.mission)!.type);
+        for (const f of fleets) for (const b of f.ships) expect([BuiltObjectMissionType.Move, BuiltObjectMissionType.Attack, BuiltObjectMissionType.Refuel]).toContain(builtObjectMission(b.mission)!.type);
         for (const f of fleets) for (const b of f.ships) if (builtObjectMission(b.mission)!.type === BuiltObjectMissionType.Move) expect(builtObjectMission(b.mission)!.targetHabitat).toBe(f.target!.nearestSystemStar);
         // The strike declared no war; anger holds while the price is owed.
         expect(obtainDiplomaticRelation(r, x).type).not.toBe(DiplomaticRelationType.War);
@@ -366,8 +369,8 @@ describe('19a Concord — tit-for-tat strikes without war', () => {
 });
 
 describe('19a treasure fleet scaling', () => {
-    it('target size = base + per colony × (colonies − 1), capped at 20', () => {
-        const g = rimGame().galaxy;
+    it('target size = base + per colony × (colonies − 1), capped at 20 (the scaled fleet: treasureFleetTreasureShips 0)', () => {
+        const g = rimGame({}, { treasureFleetTreasureShips: 0 }).galaxy;
         const r = rimTraderEmpire(g)!;
         const withColonies = (n: number): number => {
             const saved = r.colonies;

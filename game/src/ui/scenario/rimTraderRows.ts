@@ -4,6 +4,8 @@ import type { Galaxy } from '../../sim/galaxy';
 import type { Empire } from '../../sim/empire';
 import { scenarioFlag, scenarioText } from '../../sim/scenario';
 import { DiplomaticRelationType } from '../../sim/diplomacy';
+import type { BuiltObject } from '../../sim/builtObject';
+import { portRimUnits, treasureState } from '../../sim/scenario/rimTrade/treasureFleet';
 import { RIM_MIN_RADIUS, rareGoodIds, rimGoodIds, rimParam, rimTraderEmpire, rimTraderPort, rimTraderStanding } from '../../sim/scenario/rimTrade/common';
 
 export interface RimGoodRow {
@@ -30,6 +32,8 @@ export interface RimTraderTermsRows {
     where: string;
     noWar: string;
     treaties: string;
+    /** The treasure-fleet stop the player can request: its space port holding the most rim goods (null: none). */
+    treasureStop: { port: BuiltObject; label: string; requested: boolean } | null;
 }
 
 function goodRows(galaxy: Galaxy, ids: number[]): RimGoodRow[] {
@@ -91,6 +95,7 @@ export function rimTraderTermsRows(galaxy: Galaxy, viewer: Empire): RimTraderTer
         where: scenarioText('Scenario RimTrade Where', Math.round(RIM_MIN_RADIUS * 100)),
         noWar: scenarioText('Scenario RimTrade No War', r.name),
         treaties: scenarioText('Scenario RimTrade Treaty Refused', r.name),
+        treasureStop: treasureStopRow(galaxy, viewer),
     };
 }
 
@@ -103,4 +108,23 @@ export function rimTraderTag(galaxy: Galaxy, empire: Empire | null): string {
 export function rimGoodMarker(galaxy: Galaxy, resourceId: number): string {
     if (!scenarioFlag(galaxy, 'rimTrader') || rimTraderEmpire(galaxy) === null) return '';
     return rimGoodIds(galaxy).includes(resourceId) ? scenarioText('Scenario RimTrade Rim Good') : '';
+}
+
+/** The player's request row: its space port holding the most rim goods, and whether a stop there is already asked. Pure. */
+export function treasureStopRow(galaxy: Galaxy, viewer: Empire): { port: BuiltObject; label: string; requested: boolean } | null {
+    if (galaxy.scenario === null || !('rimTreasure' in galaxy.scenario.state)) return null;
+    let best: BuiltObject | null = null;
+    let units = -1;
+    for (const p of viewer.spacePorts ?? []) {
+        if (p === null || p.hasBeenDestroyed || !p.isSpacePort) continue;
+        const u = portRimUnits(galaxy, p, viewer);
+        if (u > units || (u === units && best !== null && p.builtObjectID < best.builtObjectID)) {
+            best = p;
+            units = u;
+        }
+    }
+    if (best === null) return null;
+    const req = (treasureState(galaxy).requests ?? []).find((q) => q.empireId === viewer.empireId);
+    const requested = req !== undefined && req.port === best;
+    return { port: best, label: scenarioText(requested ? 'Scenario RimTrade Stop Requested' : 'Scenario RimTrade Request Stop', best.name, String(Math.round(units))), requested };
 }

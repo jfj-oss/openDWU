@@ -29,6 +29,7 @@ import {
     treasureFleetTick,
     treasureState,
 } from '../src/sim/scenario/rimTrade/treasureFleet';
+import { designFuelRange } from '../src/sim/scenario/rimTrade/concordDesigns';
 
 let base: GameData;
 beforeAll(async () => {
@@ -58,7 +59,7 @@ describe('19a addendum — Concord tech and stagnation', () => {
         r = rimTraderEmpire(g)!;
     }, 600000);
 
-    it('starts at tech level 4 with Ship Construction 7 (1100-size hulls)', () => {
+    it('starts at tech level 4 with Ship Construction 8 (1500-size hulls)', () => {
         // SetTechTreeLevel(4): everything up to level 4 except race-restricted / locked projects.
         const upTo4 = r.research.techTree.filter((n) => n.def.techLevel <= 4 && n.def.specialFunctionCode === 0);
         const missing = upTo4.filter((n) => !n.isResearched);
@@ -68,8 +69,9 @@ describe('19a addendum — Concord tech and stagnation', () => {
         }
         expect(upTo4.length - missing.length).toBeGreaterThan(150);
         for (const i of [IndustryType.Weapon, IndustryType.Energy, IndustryType.HighTech]) expect(highestResearchedLevel(r, i)).toBe(4);
-        expect(constructionLevel(r)).toBe(7);
-        expect(r.baseMaximumConstructionSize).toBe(1100);
+        // 2026-10-10: the whole Ship Construction line (rimTraderConstructionLevel 8, the top of research.txt 105-112).
+        expect(constructionLevel(r)).toBe(8);
+        expect(r.baseMaximumConstructionSize).toBe(1500);
         // A normal AI starts at the wizard's 0.5.
         const other = others(g, r)[0];
         expect(constructionLevel(other)).toBeLessThan(4);
@@ -104,13 +106,14 @@ describe('19a addendum — treasure fleet', () => {
         r = rimTraderEmpire(g)!;
     }, 600000);
 
-    it('the Treasure Ship design is a ~1100-size freighter hull with cargo, fuel, shields and weapons', () => {
+    it('the Treasure Ship design is a ~1500-size freighter hull with cargo, fuel for 40 sectors, shields and weapons', () => {
         const d = generateTreasureShipDesign(g, r)!;
         expect(d).not.toBeNull();
         expect(d.subRole).toBe(BuiltObjectSubRole.LargeFreighter);
         expect(d.name).toBe('Treasure Ship');
-        expect(d.size).toBeGreaterThanOrEqual(1000);
-        expect(d.size).toBeLessThanOrEqual(1100);
+        expect(d.size).toBeGreaterThanOrEqual(1300);
+        expect(d.size).toBeLessThanOrEqual(1500);
+        expect(designFuelRange(d)).toBeGreaterThanOrEqual(40 * g.sectorSize);
         expect(r.designs.includes(d)).toBe(false);
     });
 
@@ -120,10 +123,16 @@ describe('19a addendum — treasure fleet', () => {
         st.contactDone = true;
         treasureFleetTick(g);
         expect(st.sailing).toBe(true);
-        // treasureFleetSize 6 + treasureFleetPerColony 1 × (3 colonies − 1) = 8 ships, ⌈8 / 3⌉ = 3 of them treasure ships.
+        // The fixed composition (2026-10-10): 8 treasure ships, 6 capital ships, 10 cruisers, 2 carriers.
         expect(r.colonies.length).toBe(3);
-        expect(st.treasure.length).toBe(3);
-        expect(st.ships.length).toBe(8);
+        expect(st.treasure.length).toBe(8);
+        expect(st.ships.length).toBe(26);
+        const bySub = (sub: BuiltObjectSubRole): number => st.ships.filter((b) => !st.treasure.includes(b) && b.subRole === sub).length;
+        expect([bySub(BuiltObjectSubRole.CapitalShip), bySub(BuiltObjectSubRole.Cruiser), bySub(BuiltObjectSubRole.Carrier)]).toEqual([6, 10, 2]);
+        // AI requests only (the player asks through requestTreasureStop): one port per empire.
+        const owners = st.circuit.map((p) => p.actualEmpire);
+        expect(new Set(owners).size).toBe(owners.length);
+        expect(owners.includes(g.playerEmpire)).toBe(false);
         expect(st.circuit.length).toBeGreaterThan(0);
         expect(st.circuit.every((p) => p.actualEmpire !== r && p.isSpacePort)).toBe(true);
         const lead = st.treasure[0];
@@ -155,8 +164,14 @@ describe('19a addendum — treasure fleet', () => {
         expect(f.routes[0].activeLeg).toBe(1);
         // Raid: sinking a treasure ship costs the attacker standing.
         const s0 = rimTraderStanding(g, host.empireId);
+        // Loot (2026-10-10): the sunk ship's whole cargo goes to the attacker's nearest store.
+        const leadRare = cargoGetCargo(lead.cargo!, rare, r)?.amount ?? 0;
+        const hostRareBefore = host.spacePorts.reduce((n, p) => n + (cargoGetCargo(p.cargo!, rare, host)?.amount ?? 0), 0);
         scenarioEmit(g, 'builtObjectKilledBy', { builtObject: lead, destroyer: host });
         expect(rimTraderStanding(g, host.empireId)).toBe(s0 - 3000);
+        expect(leadRare).toBeGreaterThan(0);
+        expect(host.spacePorts.reduce((n, p) => n + (cargoGetCargo(p.cargo!, rare, host)?.amount ?? 0), 0)).toBe(hostRareBefore + leadRare);
+        expect(lead.cargo!.items.length).toBe(0);
         expect(rimTraderPort(g)).not.toBeNull();
     });
 
@@ -165,7 +180,7 @@ describe('19a addendum — treasure fleet', () => {
         const r2 = rimTraderEmpire(g2)!;
         const st = treasureState(g2);
         st.contactDone = true;
-        const e = others(g2, r2)[0];
+        const e = others(g2, r2).filter((x) => x !== g2.playerEmpire)[0]; // an AI empire: it requests a stop
         meet(r2, e);
         treasureFleetTick(g2);
         const ship = st.treasure[0];
@@ -176,7 +191,7 @@ describe('19a addendum — treasure fleet', () => {
         const r3 = rimTraderEmpire(g3)!;
         const st3 = treasureState(g3);
         st3.contactDone = true;
-        meet(r3, others(g3, r3)[0]);
+        meet(r3, others(g3, r3).filter((x) => x !== g3.playerEmpire)[0]);
         treasureFleetTick(g3);
         const stranger3 = others(g3, r3).find((x) => obtainDiplomaticRelation(r3, x).type === DiplomaticRelationType.NotMet)!;
         expect(isObjectVisibleToThisEmpire(g3, stranger3, st3.treasure[0])).toBe(false);

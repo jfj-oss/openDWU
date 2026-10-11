@@ -148,6 +148,7 @@ export const COMMAND_FAILURE: FailureTable = {
     warnTargetOfPirateAttackFunding: () => undefined,
     exposeUncoveredPlanetDestroyer: () => undefined,
     salvageWreckField: no,
+    requestTreasureStop: no,
     pirateMissionButton: no,
     assignPirateSmugglingMission: no,
     storyEventAction: () => null,

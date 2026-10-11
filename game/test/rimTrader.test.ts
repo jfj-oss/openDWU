@@ -40,6 +40,9 @@ import {
 } from '../src/sim/scenario/rimTrade/common';
 import { rimTraderPortStock, rimTraderYear } from '../src/sim/scenario/rimTrade/rimTrader';
 import { rimTraderTermsRows } from '../src/ui/scenario/rimTraderRows';
+import { porcelainApproval, rareGoodEffects, rareGoodEffectText, rareGoodResourceBonuses, rareGoodsFirst, rareOrderCandidates } from '../src/sim/scenario/rimTrade/rareGoods';
+import { requestTreasureStop, treasureStopRequests } from '../src/sim/scenario/rimTrade/treasureFleet';
+import { ColonyResourceEffect } from '../src/sim/developmentLevel';
 
 let base: GameData;
 beforeAll(async () => {
@@ -309,6 +312,63 @@ describe('19a rim trader — ledger, access and AI rules', () => {
         expect(rows.standing).toBe(1500);
         expect(rows.threshold).toBe(1500);
         expect(rimTraderTermsRows(g, g.empires.find((e) => e !== null && e !== r && e !== human)!)).not.toBeNull();
+    });
+});
+
+describe('19a rim trader — rare-good effects, ordering priority, treasure stop requests (2026-10-10)', () => {
+    let g: Galaxy;
+    let r: Empire;
+    let human: Empire;
+    beforeAll(() => {
+        g = rimGame().galaxy;
+        r = rimTraderEmpire(g)!;
+        human = g.playerEmpire!;
+    }, 600000);
+
+    it('a colony holding a rare good: +20 development over the stock +30 (bonus 50), and that good\'s own effect', () => {
+        const colony = human.capital!;
+        const [porcelain, moonsilk, tea] = RARE_GOODS.map((n) => g.resourceSystem.resources.find((x) => x.name === n)!.resourceId);
+        expect(g.resourceSystem.byId.get(porcelain)!.superLuxuryBonusAmount).toBe(50);
+        expect(rareGoodEffects(g, colony)).toEqual([]);
+        expect(porcelainApproval(g, colony)).toBeNull();
+        colony.cargo!.add(new Cargo(new ResourceRef(porcelain), 50, human));
+        colony.cargo!.add(new Cargo(new ResourceRef(moonsilk), 50, human));
+        colony.cargo!.add(new Cargo(new ResourceRef(tea), 50, human));
+        const fx = rareGoodEffects(g, colony);
+        expect(fx.map((e) => [e.kind, e.value])).toEqual([['development', 20], ['approval', 8], ['income', 15], ['growth', 25]]);
+        expect(porcelainApproval(g, colony)).toBe(8);
+        const bonuses = rareGoodResourceBonuses(g, [], colony);
+        expect(bonuses.map((b) => [b.effect, b.value])).toEqual([[ColonyResourceEffect.Development, 20], [ColonyResourceEffect.IncomeBoost, 15], [ColonyResourceEffect.PopulationGrowthRate, 25]]);
+        expect(rareGoodEffectText(g, moonsilk)).toContain('colony income +15%');
+        for (const id of [porcelain, moonsilk, tea]) cargoGetCargo(colony.cargo!, id, human)!.amount = 0;
+    });
+
+    it('ordering priority: the rare goods take the 3 restricted slots first while access is open and the port holds them', () => {
+        meet(r, human);
+        const rare = rareGoodIds(g);
+        const stock = g.resourceSystem.superLuxuryResources.map((x) => x.resourceId).filter((id) => !rare.includes(id));
+        expect(rareGoodsFirst(g, stock.slice(0, 3), human)).toEqual(stock.slice(0, 3)); // access shut: stock list
+        obtainDiplomaticRelation(r, human).supplyRestrictedResources = true;
+        expect(rareGoodsFirst(g, stock.slice(0, 3), human)).toEqual(rare); // 3 rare goods: all 3 slots
+        // Ordering: the most-lacking rare good while any needs ordering, else the stock goods in the slots left.
+        expect(rareOrderCandidates(g, stock, { available: [rare[0], stock[0], stock[1]], amountToOrder: () => 100 })).toEqual([rare[0]]);
+        expect(rareOrderCandidates(g, stock, { available: [rare[0], stock[0], stock[1]], amountToOrder: () => 0 })).toEqual(stock.slice(0, 2));
+        obtainDiplomaticRelation(r, human).supplyRestrictedResources = false;
+    });
+
+    it('requestTreasureStop: only the empire\'s own space port; the player\'s stop is in the next circuit only on request', () => {
+        const mine = human.spacePorts.find((p) => p !== null && !p.hasBeenDestroyed && p.isSpacePort)!;
+        const theirs = g.empires.find((e) => e !== null && e !== r && e !== human && e.spacePorts.length > 0)!.spacePorts[0];
+        expect(requestTreasureStop(g, human, theirs)).toBe(false);
+        meet(r, human);
+        expect(treasureStopRequests(g, r, r.capital!).some((q) => q.empire === human)).toBe(false);
+        expect(requestTreasureStop(g, human, mine)).toBe(true);
+        const q = treasureStopRequests(g, r, r.capital!).find((x) => x.empire === human)!;
+        expect(q.port).toBe(mine);
+        expect(q.player).toBe(true);
+        // One port per empire.
+        const owners = treasureStopRequests(g, r, r.capital!).map((x) => x.empire);
+        expect(new Set(owners).size).toBe(owners.length);
     });
 });
 

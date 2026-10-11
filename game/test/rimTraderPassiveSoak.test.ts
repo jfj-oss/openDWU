@@ -43,9 +43,16 @@ describe('19a Concord — flag off is byte-identical', () => {
     // hashes Empire.messages.length, RNG draws unchanged. With only that line reverted the 990fb8c values still
     // match on a26a7455, so the flag-off path is still identical to the feature-free game. The 990fb8c values were
     // aae3cd943610cba5/7ebf83ea39581249 and af20ac37e16a82a1/9494f88633de1e94.
+    // Repinned 2026-10-10 (rim-measure: rimTrade-ON only, deliberate): the Concord's warship designs are regenerated at
+    // game start (huge, 40-sector fuel, Efficiency focus, Ship Construction 8 and the range components researched:
+    // concordDesigns.ts, design-naming Rnd), the rare goods give +50 development and one effect each and take the
+    // restricted slots first (rareGoods.ts), and the treasure fleet / circuit changed (fixed composition, AI stop requests,
+    // stragglers). None of these has a neutral value among this test's params, so the 'pre-feature' identity now reads:
+    // the passive / wealth / navy params at neutral reproduce the game of the rest of the add-on. The 1615137a values were
+    // 27f56466e7db0995/975f2f55b5990a4c and 1b1366f7b0c5b9e5/198f40389d329b22.
     const PINS: [boolean, string, string][] = [
-        [true, '27f56466e7db0995', '975f2f55b5990a4c'],
-        [false, '1b1366f7b0c5b9e5', '198f40389d329b22'],
+        [true, 'b219685db2d2d5db', '94796ded96a0ba95'],
+        [false, '6fb9b2295df9e9c3', '13cf4e837a88adbf'],
     ];
     for (const [forced, d0, d1] of PINS) {
         it(`passive off, 1 starting colony, cap 4 (${forced ? 'wizard Oranthi' : 'Concord created at start'}): 1 year matches the pre-feature digests`, () => {

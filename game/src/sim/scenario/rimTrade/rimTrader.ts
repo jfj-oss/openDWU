@@ -183,9 +183,11 @@ export function rimTraderGameStart(galaxy: Galaxy, ctx: HomePlacementHelpers): v
             st.empireId = -1;
             return;
         }
+        st.empireId = r.empireId; // the Concord from here on (applyConcordTech's design review asks isRimTraderAI)
         applyConcordTech(galaxy, r, false);
     } else if (!isHumanEmpire(galaxy, r)) {
         // An Oranthi AI the wizard already generated (at the game's tech level): lift it to the Concord's.
+        st.empireId = r.empireId;
         applyConcordTech(galaxy, r, true);
         // rimTraderStartColonies: top up the wizard's starting colonies.
         foundConcordStartColonies(galaxy, r, true);

@@ -9,7 +9,10 @@ import './rimFauna/rimFauna';
 import './rimHerders/rimHerders';
 import './rimTrade/rimTrader';
 import './rimTrade/treasureFleet';
+import './rimTrade/treasureRaids'; // 19a treasure fleet stragglers, AI raids and loot (flag rimTrader)
 import './rimTrade/passive';
+import './rimTrade/concordDesigns'; // 19a huge long-range Concord warship designs (flag rimTrader)
+import './rimTrade/rareGoods'; // 19a rare goods: development 50, one effect each, ordering priority (flag rimTrader)
 import './rimTrade/wealth'; // 19a Concord wealth and navy (flag rimTrader) // 19a passive posture (flag rimTraderPassive) + colony cap on every path (flag rimTrader)
 import './emergent/espionage';
 import './threats/darkFarms';
