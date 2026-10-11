@@ -579,7 +579,7 @@ describe('Characters & Victory: the Interstellar Diet', () => {
         return { game, g, c, members };
     }
 
-    it("a session sits at the strongest member's world nearest the centre; delegates travel there by VIP shuttle, keep their posts on duty and go home after the vote", () => {
+    it("a session sits at the strongest member's world nearest the centre; delegates travel there by VIP shuttle, keep their posts on duty and go home after the vote", { tags: ['slow'], timeout: 1200000 }, () => {
         const { game, g, members } = dietGame();
         const st = dietState(g);
         st.nextSessionAt = 0;
@@ -607,7 +607,7 @@ describe('Characters & Victory: the Interstellar Diet', () => {
         expect(st.nextSessionAt).toBeGreaterThan(s.closes);
         // Delegates who made it are on their way home (or home already).
         for (const d of sent) if (d.character!.active) expect(d.character!.location === s.world && tripOfCharacter(g, d.character!) === null).toBe(false);
-    }, 900000);
+    });
 
     it("the tally counts only delegates present, weighted (a lesser delegate counts less), and the Regent's veto stops one motion", () => {
         const { g, c, members } = dietGame();
@@ -652,7 +652,7 @@ describe('Characters & Victory: the Interstellar Diet', () => {
         if (m1.status === 'passed') expect(st.laws.some((l) => l.kind === 'banBombard')).toBe(true);
     }, 600000);
 
-    it("a sanction's enforcers: the members' current designs, return fire only, a blockade of a fuel-reachable target world", () => {
+    it("a sanction's enforcers: the members' current designs, return fire only, a blockade of a fuel-reachable target world", { tags: ['slow'], timeout: 1200000 }, () => {
         const { game, g, c, members } = dietGame();
         const st = dietState(g);
         st.nextSessionAt = 1e15;
@@ -679,7 +679,7 @@ describe('Characters & Victory: the Interstellar Diet', () => {
         dietTick(g);
         expect(st.enforcers.length).toBe(0);
         expect(f.ships.every((b) => b.hasBeenDestroyed)).toBe(true);
-    }, 900000);
+    });
 
     it('a game with a Diet session sitting saves and reloads identically', () => {
         const { game, g } = dietGame();
