@@ -19,9 +19,11 @@
 > folder (your Steam install, or on a Mac a copy of the game folder from a PC
 > where you own and installed the game).
 
-openDWU is ported directly from the game's decompiled engine source
-(formulas, constants, generation order and RNG sequence), with an opt-in
-mod/scenario layer on top. The code lives under [`game/`](game/).
+openDWU is new code written in TypeScript, with an opt-in mod/scenario layer
+on top. **No code from the original game is copied into this project.** The
+decompiled original was used only as a reference for gameplay accuracy, so
+that formulas, constants, generation order and the random-number sequence
+play out the same way. The code lives under [`game/`](game/).
 
 ## Why this exists
 
@@ -56,7 +58,7 @@ longer maintained). On current systems players commonly run into:
   download it) or natively on **Linux**.
 
 openDWU doesn't fix the original program; it replaces it. It is a new
-engine, ported from the original's rules, that plays the same game using
+engine, written to match the original's rules, that plays the same game using
 the data files from your own install. It needs no XNA, .NET Framework or
 DirectX 9, and runs as a native 64-bit app on **Windows, macOS (Apple
 silicon) and Linux**. It finds your Steam install by itself, plays
@@ -690,9 +692,11 @@ On Windows PowerShell, run the fast tier as
 
 ## About the project
 
-- **Faithful port.** Game logic in `game/src/sim/` is ported line-for-line
-  where practical from the original C# engine — same formulas, same order of
-  operations, same seeded `System.Random` sequence — and cross-checked
+- **Faithful to the original.** Game logic in `game/src/sim/` is our own
+  TypeScript, written to behave like the original engine: same formulas, same
+  order of operations, same seeded `System.Random` sequence. No original code
+  is copied; the decompiled original was used only as a reference for that
+  gameplay accuracy. Results are cross-checked
   against the original data files (`races.txt`, `resources.txt`, `Policy/`,
   `designTemplates/`, …).
 - **Deterministic simulation.** The sim is a headless model (no DOM/Pixi
@@ -769,7 +773,8 @@ core-engine work.
 ### Licence / assets note
 
 This repository contains no original *Distant Worlds: Universe* art, sound,
-data files or decompiled source; none of it is redistributed here. The game
+data files, code or decompiled source; none of it is redistributed here.
+The decompiled original was used only as a reference for gameplay accuracy. The game
 reads those files live from your own install folder at runtime. Art under
 `game/public/art/` is original artwork created for this project (procedural
 code and our own generated sprites), not from the original game.
