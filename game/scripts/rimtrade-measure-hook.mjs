@@ -243,7 +243,8 @@ export async function chunk(ctx) {
         // RIM_SAVE_YEARS=10,20,...: a checkpoint save (serializeGame text) after those game years, under the --out dir.
         if (SAVE_YEARS.has(yearIdx) && (process.env.RIM_SAVE_ALL === '1' || String(ctx.report.name).includes('long'))) {
             const { serializeGame } = await ctx.load('save');
-            writeFileSync(resolve(process.env.RIM_SAVE_DIR ?? '.', `${ctx.report.name}-y${yearIdx}.save`), serializeGame(ctx.game));
+            const { GalaxyTime } = await ctx.load('time');
+            writeFileSync(resolve(process.env.RIM_SAVE_DIR ?? '.', `${ctx.report.name}-y${yearIdx}.save`), serializeGame(ctx.game, new GalaxyTime(), ctx.so));
             console.log(`= checkpoint y${yearIdx}`);
         }
     }
