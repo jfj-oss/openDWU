@@ -91,7 +91,7 @@ Each effect goes through the game's own formula. The table shows the channel and
 | Tax revenue | Habitat.cs 6083 RecalculateAnnualTaxRevenue | forceStructure.ts 459 | `colonyTaxRevenue` (existing) |
 | Tourism | Habitat.cs 1116 CalculateScenicFactorIncludingRuinsWonders | civilianAI.ts 384 | `colonyScenicFactor` (existing) |
 | Approval | Habitat.cs 534 EmpireApprovalRating | taxes.ts 356 → stability.ts | stability terms (cause "colonyEconomy", "bonds"); the internal-security ledger lists them |
-| Construction speed | BaconConstructionQueue.cs 45 ReviewConstructionSpeed (yard: `Value1 × wonder × resource × race`; colony: `600 × min(1, √(pop/1e10)) × …`) | constructionQueue.ts 1276 | **new** query `colonyConstructionFactor` (kind 'yard' / 'colony') |
+| Construction speed | BaconConstructionQueue.cs 45 ReviewConstructionSpeed (yard: `Value1 × wonder × resource × race`; colony queue: `600 × min(1, √(pop/1e10)) × …`); Habitat.cs 2039 ConstructFacilities (facilities and wonders: `dt / clamp(100000 × 600 / StrategicValue, 90, 1800)` × leader / skill × build factor) | constructionQueue.ts 1276; construction/facilities.ts 373 | **new** query `colonyConstructionFactor` (kind 'yard' / 'colony' / 'facility'; the 'facility' kind applies to the owner's facilities only, never a pirate base) |
 | Mining rate | BuiltObject.2.cs ~7930 IndustrialProcessing: `Extraction × (1+bonus) × MiningRate × leader × skill × dt`, capped at MaxResourceExtractionRate | industry.ts 476 | **new** query `extractionRateFactor` (before the stock cap) |
 | Population cap | BaconHabitat.cs 233: `Diameter² × 250 000 × quality²`; Habitat.cs 5172 GrowPopulation caps growth | colonyTick.ts 226 | **new** query `colonyMaxPopulation` (the cap growth runs against; the stored maximum is unchanged) |
 | Pirate control | BaconHabitat.cs 1388 ReviewPirateControl: `clamp(strength/20, 0.5, 3) × 0.5 / yr` | pirateAI.ts 250 | **new** query `pirateControlGrowthFactor` |
@@ -130,9 +130,9 @@ The add-on's resource bonuses carry resource id −1. The colony's bonus list (H
 
   The colony screen shows the best one and its reasons.
 - **AI** (new): every 180 days, each AI empire (not the human seats) does the following.
-  - It designates colonies of at least 150 M population (and the capital) whose best score is 35 or more, at most 3
+  - It designates colonies of at least 40 M population (and the capital) whose best score is 30 or more, at most 3
     a review.
-  - A fair-share crowding penalty spreads the designations: past a quarter of the colonies, −6 for each further
+  - A fair-share crowding penalty spreads the designations: past a sixth of the colonies, −15 for each further
     colony of the same kind.
   - It re-designates only for a fit 1.6× better, or 2.4× better when facilities stand.
   - Smarter AI can override this later.
@@ -143,7 +143,7 @@ The add-on's resource bonuses carry resource id −1. The colony's bonus list (H
 
 | Designation | Bonus | Drawback |
 |---|---|---|
-| Industrial | +25 % construction speed: ships at its yards, and its own facility / wonder / base queue. ×1.2 when one of the empire's Mining Hubs is within 2 sectors (supply chain). | −4 approval |
+| Industrial | +25 % construction speed: ships at its yards, its planetary facilities and wonders, and the bases its own queue builds. ×1.2 when one of the empire's Mining Hubs is within 2 sectors (supply chain). | −4 approval |
 | Trade Hub | +10 % colony income (IncomeBoost) | pirate raids recover 25 % faster within 1.5 sectors (`raidCountdownRate`) |
 | Resort World | +0.5 scenic factor (more tourist traffic); +3 approval at own colonies within 1.5 sectors | −10 % growth, −15 % construction speed |
 | Mining Hub | +15 % mining rate at own mining stations within 1.5 sectors | −3 approval, −10 % tax revenue |
@@ -163,24 +163,27 @@ Phase 2, still to do:
 **Rules.** All of these are new.
 - **Who builds:** the private sector, from its *surplus*. The surplus is private money above:
   - a reserve of `econReserveK` (30 k);
-  - one year of its own ship and base upkeep (real: Empire.cs 2116 AnnualPrivateMaintenance);
+  - half a year of its own ship and base upkeep (real: Empire.cs 2116 AnnualPrivateMaintenance);
   - one year of its facilities' upkeep.
 
-  A facility starts only while the private cashflow covers its upkeep (real: Empire.6.cs 556
-  GetPrivateAnnualCashflow, the gate the stock DirectPrivateConstruction uses). Each 30-day review starts at most one
-  facility per empire and spends at most `econSpendSharePct` (60 %) of the surplus.
-- **Cost, build time and upkeep:** the price (30–60 k) is paid at the start. The build takes 240–420 days. Upkeep of
-  4–8 % of the price a year is paid monthly from private money.
+  A facility starts only while its upkeep fits in the private cashflow (real: Empire.6.cs 556
+  GetPrivateAnnualCashflow, the gate the stock DirectPrivateConstruction uses) plus a tenth of the surplus (the idle
+  money may carry ten years of upkeep), minus the upkeep already owed. Each 30-day review starts a waiting
+  request, or up to 3 of the private sector's own picks, within `econSpendSharePct` (80 %) of the surplus.
+- **Cost, build time and upkeep:** the price is paid at the start. It is 30–60 k × a size factor of
+  1 + population / 4 bn (at most ×4), so a facility on a big, rich world costs what its private sector can raise and
+  the sink grows with the economy. The build takes 240–420 days. Upkeep of 8–15 % of the price a year is paid monthly
+  from private money.
 - **Unpaid upkeep:** when the private money goes below 0, the facilities stop working. A facility unpaid for a year
   closes.
 - **Slots by colony size (population):**
-  - small = 1 slot below 1.5 bn;
-  - medium = 2 slots below 5 bn;
-  - large = 3 slots from 5 bn.
+  - small = 1 slot below 0.8 bn;
+  - medium = 2 slots below 3 bn;
+  - large = 3 slots from 3 bn.
 
   The thresholds come from the real maximum population, `Diameter² × 250 000 × quality²`: a D200/q0.4 world holds
-  1.6 bn, D250/q0.6 holds 5.6 bn, D320/q0.9 holds 21 bn, and capitals reach 10–25 bn. A colony that shrinks keeps
-  what stands, but builds nothing new.
+  1.6 bn, D250/q0.6 holds 5.6 bn, D320/q0.9 holds 21 bn, and capitals reach 10–25 bn. Outside the capitals the
+  average colony holds about 1 bn in the soaks (§9). A colony that shrinks keeps what stands, but builds nothing new.
 - **Off-designation building is impossible.** Only facilities of the colony's own designation can be requested or
   built.
 - **Exclusive pairs** never stand together, and a request for one blocks the other. Phase 1: Free Port XOR Customs
@@ -211,7 +214,7 @@ Phase 2, still to do:
 | Designation | Facility | Effect (channel) | Skill |
 |---|---|---|---|
 | Industrial | ★ Private Shipyard | +20 % ship construction speed at this colony's yards | CivilianShipConstructionSpeed |
-| | ★ Heavy Foundry | +30 % facility / wonder / base construction here; −3 approval | FacilityConstructionSpeed |
+| | ★ Heavy Foundry | +30 % construction of facilities, wonders and colony-built bases here; −3 approval | FacilityConstructionSpeed |
 | | ★ Component Works | ships and bases cost 2 % less empire-wide per works, at most 8 % (`designPriceFactor`) | MilitaryShipConstructionSpeed |
 | | ★ Orbital Drydock | own ships self-repair 50 % faster in this system | RepairBonus |
 | | Robotic Plant (phase 2) | cheaper robotic troops (troops.ts maintenance 0.25) | |
@@ -246,9 +249,9 @@ Phase 2, still to do:
 | | Genetics Institute (phase 2) | growth, habitability for new colonies | |
 | | Senate Hall (phase 2) | Diet vote weight; upkeep | |
 | Frontier / Garrison | ★ Private Security Firm | +25 % recruited troop strength; pirate control grows 40 % slower here | TroopRecruitment |
-| | ★ Militia Yard | +40 % construction speed here (defensive bases, facilities); raids recover 30 % slower nearby. Militia ships: phase 2 | MilitaryShipConstructionSpeed |
+| | ★ Militia Yard | +40 % construction of facilities and colony-built bases here (which bases the colony queue builds: to verify); raids recover 30 % slower nearby. Militia ships: phase 2 | MilitaryShipConstructionSpeed |
 | | ★ Survey Outpost | every ship and base within 1 sector of the colony is visible to its owner (`objectVisibleToAll`) | |
-| | ★ Colonist Office | new own colonies within 2 sectors grow 40 % faster for their first 5 years | ColonyShipConstructionSpeed |
+| | ★ Colonist Office | new own colonies within 2 sectors grow 40 % faster for their first 5 years (cheaper colony ships: phase 2) | ColonyShipConstructionSpeed |
 | | Fortress Bunker (phase 2) | big ground defence (DefensiveFortressBonus, Habitat.cs 7216) | |
 | | Bounty Office (phase 2) | see below | BountyHunter trait |
 | | Frontier Charter (phase 2) | less breakaway pressure (Frontier Autonomy), costs taxes | |
@@ -353,8 +356,9 @@ Every action is a journaled player command (multiplayer-safe). Commands and thei
 - **Empire Summary:** a "Bonds & private sector →" link opens the treasury view (§4), with Sell bond, Repay and
   automatic bonds.
 - **Map:** the "Colony Designations" overlay toggle (View popup, a mod row; on by default). It draws a small badge
-  for each of the viewer's colonies that has a designation, plus foreign ones the viewer can see. Our own procedural
-  art: a dark disc, a coloured ring and a glyph per designation (gear, coin, star, pick, crown, shield).
+  for each of the viewer's own colonies that has a designation (foreign designations stay hidden: phase 2 could show
+  them through intelligence). Hovering a badge names the designation and the facilities. Our own procedural art: a
+  dark disc, a coloured ring and a glyph per designation (gear, two arrows, star, pick, crown, shield).
 
 ---
 
@@ -410,4 +414,56 @@ Every action is a journaled player command (multiplayer-safe). Commands and thei
 The soak configs `econ-on-s1` / `econ-off-s1` (seed 1, 1000 stars, 10 empires) and `colony-economy` run with the
 scratch hook (`~/data/agent-tmp/economy-p1/econhook.mjs`). Results are filled in below.
 
-(See the "Measurements" section appended after the soaks.)
+### Phase 1 (2026-10-11)
+
+Seed 1, 1000 stars, 10 empires, 10 years. "Galaxy-wide" means every normal empire, the unattended human seat
+included. The off run is the faithful game (master switch off).
+
+| | off | on (final tuning) |
+|---|---|---|
+| **Private money, galaxy-wide** | **9.48 M** | **7.57 M (−20 %)** |
+| Private money, AI empires | 8.75 M | 6.90 M (−21 %) |
+| Spent on facilities (purchase / upkeep) | – | 2.96 M / 0.86 M |
+| Facilities built (+ building) | – | 25 (+6): Mining Hub 14, Core World 9, Industrial 2 |
+| Designations (of 46 colonies) | – | Mining Hub 21, Core World 10, Industrial 1, Trade Hub 1, none 13 |
+| Bonds outstanding / borrowed / repaid / interest | – | 19 / 0.69 M / 0.48 M / 0.11 M, no defaults |
+| AI state money | 3.83 M | 2.88 M |
+| Colonies / population | 48 / 172.9 bn | 46 / 187.1 bn |
+| Annual tax revenue | 3.16 M | 2.96 M |
+| Mean development / approval | 20.8 / 14.0 | 22.0 / 12.3 |
+| State ships and bases | 768 | 696 |
+| Save round trip and continuation | identical | identical |
+
+**Step time on the big save.** `~/wt/eng-perf/scratch/late.save` (27 empires, 47.7 k built objects), with the add-on
+added to the save. Each run is a 360 s warm-up (65 colonies designated, 119 facilities started and 13 bonds sold
+during it), then 120 game seconds (7200 steps), two runs each:
+
+| | wall ms / step | CPU ms / step |
+|---|---|---|
+| Off | 7.44, 6.58 | 7.98, 7.21 |
+| On | 7.09, 6.88 | 8.10, 7.70 |
+
+That is about +3 % CPU, within run-to-run noise. In the first on soak, the whole-soak wall time was nearly 2× the off
+run's in years 6–10, but the save-based measurement above does not show it. That soak had a different history and
+ran on a shared machine.
+
+**Tuning applied in the soaks.**
+1. **Prices.** With base prices only, the private sector spent 1.5 M in 10 years: private money −5 %. Prices now scale
+   with the colony (×1 + population / 4 bn, at most ×4) and upkeep doubled (8–15 % a year).
+2. **The binding limit.** It was the cashflow room for upkeep: the private sector's after-tax cashflow is small (taxes
+   come out of private money, §0.1). Upkeep may now also be carried by a tenth of the surplus.
+3. **Mining Hub.** It took over (26 of 52 colonies) while scoring on uncolonised deposits alone. It now needs nearby
+   mining stations to score fully, and the crowding penalty is −15 a colony past a sixth. It still leads, because most
+   small colonies are mining outposts.
+4. **Bonds.** AI empires borrowed in their first year and stayed at the cap. They now borrow only below 1.5 months of
+   expenses, and not when the yearly deficit is more than 3 months' expenses.
+
+**Open points, reported rather than tuned away.**
+- **Bacon infrastructure.** Its investment chance is proportional to private money, so spending the hoard on
+  facilities lowers it (C1). Development still ends higher with the add-on on (22.0 vs 20.8), thanks to the Orbital
+  Warehouses.
+- **Approval −1.7 and tax revenue −6 %.** These come from the Mining Hub drawbacks on many colonies. The AI's scores
+  do not weigh drawbacks yet (Smarter AI, phase 4).
+- **AI treasuries −25 %.** The causes are the debt service and the lower tax. The AI has fewer state ships (−9 %) but
+  more population (+8 %).
+
