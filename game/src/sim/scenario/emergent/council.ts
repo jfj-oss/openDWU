@@ -211,6 +211,14 @@ export interface CouncilExtension {
     excluded?: (galaxy: Galaxy, e: Empire) => boolean;
     /** Added to a voter's score on motion `m` (pure). */
     voteBias?: (galaxy: Galaxy, voter: Empire, m: Motion) => number;
+    /**
+     * Characters & Victory's Interstellar Diet: the founding name and text of a new council (null: the stock pick),
+     * and whether the extension holds the sessions itself (true: the yearly review keeps founding, membership, chair,
+     * enforcement and blocs, but proposes no yearly motion). Pure; with nothing registered the council runs as before.
+     */
+    councilName?: (galaxy: Galaxy) => string | null;
+    foundingText?: (galaxy: Galaxy, c: Council, names: string) => string | null;
+    ownsSessions?: (galaxy: Galaxy) => boolean;
 }
 
 // eslint-disable-next-line no-var
@@ -225,6 +233,20 @@ export function registerCouncilExtension(ext: CouncilExtension): void {
     const i = list.findIndex((x) => x.id === ext.id);
     if (i >= 0) list.splice(i, 1);
     list.push(ext);
+}
+
+function extensionCouncilName(galaxy: Galaxy): string | null {
+    for (const x of councilExtensions()) {
+        const n = x.councilName?.(galaxy) ?? null;
+        if (n !== null) return n;
+    }
+    return null;
+}
+
+/** An extension (the Interstellar Diet) holds the council's sessions: no yearly motion. Pure. */
+export function councilSessionsOwned(galaxy: Galaxy): boolean {
+    for (const x of councilExtensions()) if (x.ownsSessions !== undefined && x.ownsSessions(galaxy)) return true;
+    return false;
 }
 
 function councilExcluded(galaxy: Galaxy, e: Empire): boolean {
@@ -380,7 +402,7 @@ function foundCouncil(galaxy: Galaxy, st: CouncilState, members: Empire[], year:
     const seed = members.reduce((s, m) => s + m.empireId, 0);
     const c: Council = {
         id: st.nextId++,
-        name: COUNCIL_NAMES[seed % COUNCIL_NAMES.length],
+        name: extensionCouncilName(galaxy) ?? COUNCIL_NAMES[seed % COUNCIL_NAMES.length],
         foundedYear: year,
         members: [...members],
         chair: null,
@@ -399,8 +421,10 @@ function foundCouncil(galaxy: Galaxy, st: CouncilState, members: Empire[], year:
     electChair(c);
     const names = members.map((m) => m.name).join(', ');
     scenarioNews(galaxy, null, `The ${c.name} is founded by the ${names}. The ${c.chair?.name ?? ''} take the first chair.`);
+    let founding: string | null = null;
+    for (const x of councilExtensions()) founding ??= x.foundingText?.(galaxy, c, names) ?? null;
     for (const m of members) {
-        scenarioMessage(galaxy, m, `${c.name} founded`, `We have a seat on the ${c.name} with the ${names}. Each year the council votes on one motion; the ${c.chair?.name ?? ''} hold the chair.`, { type: EmpireMessageType.GeneralGoodEvent });
+        scenarioMessage(galaxy, m, `${c.name} founded`, founding ?? `We have a seat on the ${c.name} with the ${names}. Each year the council votes on one motion; the ${c.chair?.name ?? ''} hold the chair.`, { type: EmpireMessageType.GeneralGoodEvent });
     }
     return c;
 }
@@ -831,7 +855,7 @@ export function outvoted(m: Motion, passed: boolean): Empire[] {
     return m.votes.filter((v) => v.vote === 'abstain' || v.vote === (passed ? 'no' : 'yes')).map((v) => v.empire);
 }
 
-function recordLosses(galaxy: Galaxy, c: Council, m: Motion, passed: boolean, year: number): void {
+export function recordLosses(galaxy: Galaxy, c: Council, m: Motion, passed: boolean, year: number): void {
     const losers = outvoted(m, passed).filter((e) => c.members.includes(e)).sort(byId);
     for (const e of losers) c.losses[e.empireId] = (c.losses[e.empireId] ?? 0) + 1;
     const need = P.blocLosses(galaxy);
@@ -967,6 +991,8 @@ export function reviewCouncil(galaxy: Galaxy, year: number): void {
         enforce(galaxy, c);
         reviewBlocs(galaxy, st, c, year);
     }
+    // Characters & Victory's Interstellar Diet holds its own sessions (every 2-3 years, 1-3 motions).
+    if (councilSessionsOwned(galaxy)) return;
     for (const c of [...st.councils]) {
         const cand = chooseMotion(galaxy, c, year);
         if (cand !== null) proposeMotion(galaxy, c, cand);

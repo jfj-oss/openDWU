@@ -2661,13 +2661,15 @@ export function changeDiplomaticRelation(
         if (diplomaticRelation5 !== null && diplomaticRelation5.type === DiplomaticRelationType.None) self.proposedDiplomaticRelations.remove(diplomaticRelation5);
     }
     if (newDiplomaticRelationType === DiplomaticRelationType.War) {
+        // [scenario] a waived declaration (declareWarPenaltyWaived; Characters & Victory's Diet: a recognised claim).
+        const waived = galaxy.scenario !== null && scenarioQuery(galaxy, 'declareWarPenaltyWaived', false, { self, target: cOther });
         const ev = empireEvaluationByEmpire(empireEvaluationsOf(cOther), self);
-        if (ev !== null) ev.incidentEvaluation = ev.incidentEvaluationRaw - INCIDENT_IMPACT_WHEN_DECLARE_WAR;
+        if (ev !== null && !waived) ev.incidentEvaluation = ev.incidentEvaluationRaw - INCIDENT_IMPACT_WHEN_DECLARE_WAR;
         currentDiplomaticRelation.militaryRefuelingToOther = false;
         currentDiplomaticRelation.miningRightsToOther = false;
         diplomaticRelation3.militaryRefuelingToOther = false;
         diplomaticRelation3.miningRightsToOther = false;
-        setCivilityRating(self, self.civilityRating - DECLARE_WAR_REPUTATION_IMPACT);
+        if (!waived) setCivilityRating(self, self.civilityRating - DECLARE_WAR_REPUTATION_IMPACT);
     }
     if (newDiplomaticRelationType === DiplomaticRelationType.TradeSanctions) {
         const ev2 = empireEvaluationByEmpire(empireEvaluationsOf(cOther), self);

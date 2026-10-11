@@ -364,7 +364,7 @@ function countDocked(bays: readonly DockingBay[]): number {
 }
 
 /** Habitat.cs 1116/1122 CalculateScenicFactorIncludingRuinsWonders (the feature name is UI-only). */
-export function calculateScenicFactorIncludingRuinsWonders(habitat: Habitat): number {
+export function calculateScenicFactorIncludingRuinsWonders(habitat: Habitat, galaxy: Galaxy | null = null): number {
     let num = 0.0;
     if (habitat.scenicFactor > 0) num = Math.max(num, habitat.scenicFactor);
     if (habitat.ruin !== null && habitat.ruin.developmentBonus > num) num = habitat.ruin.developmentBonus;
@@ -380,6 +380,8 @@ export function calculateScenicFactorIncludingRuinsWonders(habitat: Habitat): nu
         const num3 = num2 / 100.0;
         if (num3 > num) num = num3;
     }
+    // [scenario] visitors (colonyScenicFactor; Characters & Victory's Diet host world).
+    if (galaxy !== null && galaxy.scenario !== null) num = scenarioQuery(galaxy, 'colonyScenicFactor', num, { habitat });
     return num;
 }
 
@@ -1668,7 +1670,7 @@ export function determineResortBaseBuildLocations(galaxy: Galaxy, empire: Empire
         const habitatList: Habitat[] = [systemInfo.systemStar, ...galaxy.systemHabitatsOf(i)];
         for (let j = 0; j < habitatList.length; j++) {
             const habitat = habitatList[j];
-            const num = calculateScenicFactorIncludingRuinsWonders(habitat);
+            const num = calculateScenicFactorIncludingRuinsWonders(habitat, galaxy);
             if (!(num > 0.0) || (!flag && checkInStorm(galaxy, habitat.xpos, habitat.ypos)) || !checkEmpireTerritoryCanBuildAtHabitat(galaxy, empire, habitat)) continue;
             if (habitat.category === HabitatCategoryType.Star || habitat.category === HabitatCategoryType.GasCloud) {
                 let flag2 = true;
@@ -1936,7 +1938,7 @@ export function determineTourismDestinations(galaxy: Galaxy, empire: Empire): Pr
                 const systemStar = galaxy.determineHabitatSystemStar(habitat);
                 if (!checkSystemExplored(empire, systemStar.systemIndex)) continue;
                 let num = 0;
-                const num2 = calculateScenicFactorIncludingRuinsWonders(habitat);
+                const num2 = calculateScenicFactorIncludingRuinsWonders(habitat, galaxy);
                 if (num2 > 0.0) {
                     if (flag || !checkInStorm(galaxy, habitat.xpos, habitat.ypos)) num = Math.trunc(num2 * 1000.0);
                     if (num > 0) prioritizedTargetListAdd(prioritizedTargetList, new PrioritizedTarget(habitat, num));
@@ -1948,7 +1950,7 @@ export function determineTourismDestinations(galaxy: Galaxy, empire: Empire): Pr
                 if (!builtObject.isFunctional || builtObject.populationCapacity <= 0 || builtObject.nearestSystemStar === null || !checkSystemExplored(empire, builtObject.nearestSystemStar.systemIndex)) continue;
                 let num3 = 0;
                 if (builtObject.parentHabitat !== null) {
-                    const num4 = calculateScenicFactorIncludingRuinsWonders(builtObject.parentHabitat);
+                    const num4 = calculateScenicFactorIncludingRuinsWonders(builtObject.parentHabitat, galaxy);
                     if (num4 > 0.0 && (flag || !checkInStorm(galaxy, builtObject.xpos, builtObject.ypos))) num3 = Math.trunc(num4 * 1000.0);
                 } else if (builtObject.nearestSystemStar.scenicFactor > 0 && (flag || !checkInStorm(galaxy, builtObject.xpos, builtObject.ypos))) {
                     num3 = Math.trunc(builtObject.nearestSystemStar.scenicFactor * 1000.0);
@@ -1965,7 +1967,7 @@ export function determineTourismDestinations(galaxy: Galaxy, empire: Empire): Pr
                 if (builtObject2 == null || !builtObject2.isFunctional || builtObject2.populationCapacity <= 0 || builtObject2.nearestSystemStar === null || !checkSystemExplored(empire, builtObject2.nearestSystemStar.systemIndex)) continue;
                 let num5 = 0;
                 if (builtObject2.parentHabitat !== null) {
-                    const num6 = calculateScenicFactorIncludingRuinsWonders(builtObject2.parentHabitat);
+                    const num6 = calculateScenicFactorIncludingRuinsWonders(builtObject2.parentHabitat, galaxy);
                     if (num6 > 0.0 && (flag || !checkInStorm(galaxy, builtObject2.xpos, builtObject2.ypos))) num5 = Math.trunc(num6 * 1000.0);
                 } else if (builtObject2.nearestSystemStar.scenicFactor > 0 && (flag || !checkInStorm(galaxy, builtObject2.xpos, builtObject2.ypos))) {
                     num5 = Math.trunc(builtObject2.nearestSystemStar.scenicFactor * 1000.0);
@@ -2610,6 +2612,8 @@ export function checkMilitaryShipWelcomeAtTerritoryLocation(galaxy: Galaxy, x: n
         if (byEmpireId !== null) {
             const diplomaticRelation = obtainDiplomaticRelation(byEmpireId, empire);
             if (diplomaticRelation.militaryRefuelingToOther) return true;
+            // [scenario] welcome anyway (militaryShipWelcome; Characters & Victory's Diet: an outlawed pirate faction).
+            if (galaxy.scenario !== null && scenarioQuery(galaxy, 'militaryShipWelcome', false, { owner: byEmpireId, empire })) return true;
         }
     }
     return false;
@@ -3248,7 +3252,7 @@ export function processTourists(galaxy: Galaxy, builtObject: BuiltObject, touris
             return;
         }
         const habitat = dockedAt;
-        const num4 = calculateScenicFactorIncludingRuinsWonders(habitat);
+        const num4 = calculateScenicFactorIncludingRuinsWonders(habitat, galaxy);
         if (!(num4 > 0.0) || tourists.amount >= 1000000) {
             return;
         }

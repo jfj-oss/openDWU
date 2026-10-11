@@ -12,6 +12,7 @@ import { accelerateToTargetSpeed, baconMovementSettings, doMovement } from '../m
 import { detectShipsDockingAtHabitat, detectShipsDockingAtSpacePort } from '../logistics/docking';
 import { evaluateAdequateAttackers, threatEvaluation } from '../combat/threats';
 import { setupBlockadeBuiltObject, setupBlockadeColony } from '../fleets/blockades';
+import { scenarioQuery } from '../scenario/hooks';
 
 /** Galaxy.ParentRelativeRange (Galaxy.3.cs 4988) / EscortRange (4977). */
 const PARENT_RELATIVE_RANGE = 700;
@@ -54,7 +55,8 @@ export const cmdBlockade: CommandHandler = (ctx) => {
         builtObjectList = detectShipsDockingAtSpacePort(command.targetBuiltObject);
     }
     // C# dereferences the list unguarded (a Blockade command without a target would throw here).
-    if (builtObjectList!.length > 0) {
+    // [scenario] a blockade that does not engage (blockadeEngagesDocking; Characters & Victory's Diet enforcers).
+    if (builtObjectList!.length > 0 && (galaxy.scenario === null || scenarioQuery(galaxy, 'blockadeEngagesDocking', true, { builtObject: bo }))) {
         for (const item of builtObjectList!) {
             if (item.empire !== bo.empire && !evaluateAdequateAttackers(galaxy, bo, item).adequate) {
                 const command2 = Command.forTarget(CommandAction.Attack, item);

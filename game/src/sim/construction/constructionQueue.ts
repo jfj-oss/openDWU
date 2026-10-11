@@ -64,7 +64,7 @@ import {
     yardsIndexOfShip,
 } from './constructionYard';
 import { formatGameTextNow } from '../textResolver';
-import { scenarioEmit } from '../scenario/hooks';
+import { scenarioEmit, scenarioQuery } from '../scenario/hooks';
 import { processWaitQueueStatePriority, statePriorityActive } from './statePriority'; // [improvements]
 
 /** Galaxy.3.cs 5086 ColonyShipBuildFactor = 10.0. */
@@ -147,6 +147,10 @@ type QueueParent = BuiltObject | Habitat;
 /** ConstructionQueue.cs. */
 export class ConstructionQueue {
     private readonly _galaxy: Galaxy;
+    /** The galaxy (the scenario wonder query of baconReviewConstructionSpeed). */
+    get galaxyRef(): Galaxy {
+        return this._galaxy;
+    }
     private readonly _parentBuiltObject: BuiltObject | null;
     private readonly _parentHabitat: Habitat | null;
     private _constructionYards: ConstructionYard[] | null = null;
@@ -1282,6 +1286,8 @@ export function baconReviewConstructionSpeed(conQueue: ConstructionQueue): void 
             if (ph.facilities !== null) {
                 for (const v2 of colonyConstructionSpeedWonderValues(ph)) val1 = Math.max(val1, 1.0 + v2 / 100.0);
             }
+            // [scenario] a virtual ColonyConstructionSpeed wonder (Characters & Victory's Diet host world).
+            if (pbo._galaxy.scenario !== null) val1 = Math.max(val1, 1.0 + scenarioQuery(pbo._galaxy, 'colonyWonderBonus', 0, { habitat: ph, wonderType: WonderType.ColonyConstructionSpeed }) / 100.0);
             // ParentHabitat.ResourceBonuses (never null on a TS habitat).
             const totalByEffectType = resourceBonusTotalByEffectType(ph, ColonyResourceEffect.ConstructionSpeed);
             if (totalByEffectType > 0.0) num1 = 1.0 + Math.max(0.0, Math.min(100.0, totalByEffectType)) / 100.0;
@@ -1314,6 +1320,12 @@ export function baconReviewConstructionSpeed(conQueue: ConstructionQueue): void 
         let num5 = 0.0;
         for (const v2 of colonyConstructionSpeedWonderValues(ph)) num5 = v2 / 100.0;
         if (num5 > 0.0) num4 = csInt(num4 * (1.0 + num5));
+    }
+    // [scenario] a virtual ColonyConstructionSpeed wonder (Characters & Victory's Diet host world).
+    const galaxyQ = conQueue.galaxyRef;
+    if (galaxyQ.scenario !== null) {
+        const v = scenarioQuery(galaxyQ, 'colonyWonderBonus', 0, { habitat: ph, wonderType: WonderType.ColonyConstructionSpeed });
+        if (v > 0) num4 = csInt(num4 * (1.0 + v / 100.0));
     }
     const totalByEffectType = resourceBonusTotalByEffectType(ph, ColonyResourceEffect.ConstructionSpeed);
     if (totalByEffectType > 0.0) {

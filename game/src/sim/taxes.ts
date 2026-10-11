@@ -33,7 +33,7 @@ import { RaceEventType, getPlagueUnhappinessFactorWithPlague } from './eventType
 import { processColonyTroops } from './troops';
 import { CharacterSkillType, colonyCharactersHighestSkillExcludeLeaders, resolveColonyWarWearinessDivisors, resolveEmpireLeaderWarWearinessDivisor, resolveLeaderColonyHappiness } from './characters';
 import type { Galaxy } from './galaxy';
-import { scenarioEmit } from './scenario/hooks';
+import { scenarioEmit, scenarioQuery } from './scenario/hooks';
 import type { Habitat } from './types';
 import { checkColonyRevenueFromPirateControl } from './pirates/pirateColonyControl';
 import type { Race } from './data/races';
@@ -104,6 +104,11 @@ export function recalculateCriticalResourceSupplyFactors(galaxy: Galaxy, h: Habi
                     }
                 }
             }
+        }
+        // [scenario] a virtual wonder (colonyWonderBonus; Characters & Victory's Diet host world).
+        if (galaxy.scenario !== null) {
+            num3v = Math.max(num3v, 1.0 + scenarioQuery(galaxy, 'colonyWonderBonus', 0, { habitat: h, wonderType: WonderType.ColonyIncome }) / 100.0);
+            num4v = Math.max(num4v, 1.0 + scenarioQuery(galaxy, 'colonyWonderBonus', 0, { habitat: h, wonderType: WonderType.ColonyPopulationGrowth }) / 100.0);
         }
         num *= num4v;
         num2 *= num3v;
@@ -423,7 +428,8 @@ export function empireApprovalRatingStock(galaxy: Galaxy, h: Habitat): number {
         else if (num22 < 0.0) num22 /= 1.0 + specialBonusHappiness(empire);
     }
     // Habitat.cs 638-660: ColonyHappiness wonder (completed PlanetaryFacility; facility model: M4i).
-    const num25 = colonyHappinessWonderFactor(h);
+    let num25 = colonyHappinessWonderFactor(h);
+    if (galaxy.scenario !== null) num25 = Math.max(num25, scenarioQuery(galaxy, 'colonyWonderBonus', 0, { habitat: h, wonderType: WonderType.ColonyHappiness }) / 100.0); // [scenario]
     if (num25 > 0.0) {
         if (num22 > 0.0) num22 *= 1.0 + num25;
         else if (num22 < 0.0) num22 /= 1.0 + num25;
@@ -457,7 +463,8 @@ export function calculateUnmodifiedApproval(galaxy: Galaxy, h: Habitat, value: n
         else if (value < 0.0) value *= 1.0 + specialBonusHappiness(h.empire);
     }
     // Habitat.cs 5822-5843: ColonyHappiness wonder (facility model: M4i).
-    const num3 = colonyHappinessWonderFactor(h);
+    let num3 = colonyHappinessWonderFactor(h);
+    if (galaxy.scenario !== null) num3 = Math.max(num3, scenarioQuery(galaxy, 'colonyWonderBonus', 0, { habitat: h, wonderType: WonderType.ColonyHappiness }) / 100.0); // [scenario]
     if (num3 > 0.0) {
         if (value > 0.0) value /= 1.0 + num3;
         else if (value < 0.0) value *= 1.0 + num3;

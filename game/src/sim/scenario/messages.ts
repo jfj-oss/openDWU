@@ -18,6 +18,8 @@ export interface ScenarioMessageOptions {
     sender?: Empire | null;
     /** 19p event log: explicit category / importance / extra actors (default: the package's, by text-tag prefix). */
     log?: ScenarioLogOptions;
+    /** false = a ticker / history line only, never a popup (EmpireMessage.SupressPopup); default: the message settings decide. */
+    popup?: boolean;
 }
 
 /**
@@ -37,6 +39,7 @@ export function scenarioMessage(galaxy: Galaxy, recipient: Empire, title: string
     m.title = title;
     m.description = description;
     m.starDate = galaxyStarDate(galaxy);
+    if (opts.popup === false) m.supressPopup = true;
     withoutEmpireMessageTap(() => sendEmpireMessage(m, recipient));
     logScenarioMessage(galaxy, recipient, m, opts.log); // 19p (flag eventLog)
     return m;

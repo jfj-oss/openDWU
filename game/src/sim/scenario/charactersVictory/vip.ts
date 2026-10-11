@@ -402,8 +402,9 @@ function destinationValid(t: VipTrip): boolean {
     const d = t.destination;
     if (isBuiltObjectLocation(d)) return !d.hasBeenDestroyed && d.actualEmpire === t.empire;
     const h = d as Habitat;
-    // Ambassadors travel to foreign capitals; everyone else to their own colonies (or uncolonised places).
+    // Ambassadors travel to foreign capitals, Diet delegates to the host world; everyone else to their own colonies (or uncolonised places).
     if (t.character !== null && t.character.role === CharacterRole.Ambassador) return h.empire !== null;
+    if (t.reason === 'diet') return h.empire !== null;
     return h.empire === null || h.empire === t.empire;
 }
 

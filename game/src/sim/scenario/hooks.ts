@@ -680,6 +680,31 @@ export interface ScenarioQueries {
      * may return changed (a new array; never in place). No Rnd. Characters & Victory: VIP shuttles leave ship lists.
      */
     playerCommandArgs: { value: unknown[]; args: { empire: Empire; op: string } };
+    /**
+     * The extra Value2 (percent) of a virtual wonder of `wonderType` (WonderType: ColonyIncome, ColonyHappiness,
+     * ColonyPopulationGrowth, ColonyConstructionSpeed) at `habitat`, merged into the stock wonder paths (taxes.ts
+     * recalculateCriticalResourceSupplyFactors / colony happiness, construction/constructionQueue.ts construction speed)
+     * as one more completed wonder (stock 0 = none). Characters & Victory's Diet host world. Pure, no Rnd.
+     */
+    colonyWonderBonus: { value: number; args: { habitat: Habitat; wonderType: number } };
+    /** civilianAI.ts calculateScenicFactorIncludingRuinsWonders (Habitat.cs 1116): the habitat's scenic factor (tourism). Pure. */
+    colonyScenicFactor: { value: number; args: { habitat: Habitat } };
+    /**
+     * civilianAI.ts checkMilitaryShipWelcomeAtTerritoryLocation (Galaxy.cs 3699) when the stock answer is no: true =
+     * `empire`'s warships are welcome in `owner`'s territory anyway. Characters & Victory's Diet (an outlawed pirate faction). Pure.
+     */
+    militaryShipWelcome: { value: boolean; args: { owner: Empire; empire: Empire } };
+    /**
+     * diplomacyTick.ts changeDiplomaticRelation → War (Empire.8.cs 2704/2712): true = `self`'s declaration on `target`
+     * costs neither the reputation (DeclareWarReputationImpact) nor the target's incident (IncidentImpactWhenDeclareWar).
+     * Characters & Victory's Diet (a recognised claim). Pure.
+     */
+    declareWarPenaltyWaived: { value: boolean; args: { self: Empire; target: Empire } };
+    /**
+     * missions/cmdMilitary.ts cmdBlockade (BuiltObject.2.cs 540): false = the blockading ship does not attack ships
+     * docking at the target (the blockade record still stands). Characters & Victory's Diet enforcers (return fire only). Pure.
+     */
+    blockadeEngagesDocking: { value: boolean; args: { builtObject: BuiltObject } };
 }
 export type ScenarioQueryName = keyof ScenarioQueries;
 
