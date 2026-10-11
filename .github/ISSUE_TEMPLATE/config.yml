@@ -1,1 +1,5 @@
 blank_issues_enabled: true
+contact_links:
+  - name: Questions and help
+    url: https://github.com/jfj-oss/openDWU/discussions
+    about: Ask how to install or play, or share a tip. Bug reports go in the bug form.

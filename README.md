@@ -701,6 +701,11 @@ Desktop app:
   `~/Library/Application Support/Distant Worlds Universe`, Linux
   `~/.config/Distant Worlds Universe`).
 
+- **Logs.** Crashes and errors are written to `crash-log.txt` in the settings
+  folder: Windows `%APPDATA%\Distant Worlds Universe`, macOS
+  `~/Library/Application Support/Distant Worlds Universe`, Linux
+  `~/.config/Distant Worlds Universe`. Attach that file to a bug report.
+
 From source:
 
 - **Planets, ships and UI show plain generated placeholder art.** The game
@@ -722,6 +727,10 @@ From source:
   script. Use the junction from the [Windows](#windows) step 3.
 - **`npm run test:fast` / `test:slow` fail on Windows.** They set an
   environment variable with bash syntax; see [Tests](#tests).
+
+**Still stuck?** [Report a bug](https://github.com/jfj-oss/openDWU/issues/new/choose)
+(the form asks for your OS, version and log file), or ask in
+[Discussions](https://github.com/jfj-oss/openDWU/discussions).
 
 ## Tests
 

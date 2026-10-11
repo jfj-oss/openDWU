@@ -2,34 +2,79 @@ name: Bug report
 description: "Something in openDWU behaves differently from Distant Worlds: Universe, crashes, or looks wrong"
 labels: [bug]
 body:
-  - type: textarea
-    id: what
+  - type: markdown
     attributes:
-      label: What happened
-      description: What you saw, and what you expected instead (if it differs from the original game, how the original does it).
+      value: |
+        Thanks for reporting a bug. Please search the existing issues first. Crashes and errors are written to
+        `crash-log.txt` in openDWU's settings folder (attach it below):
+        - **Windows:** `%APPDATA%\Distant Worlds Universe\crash-log.txt`
+        - **macOS:** `~/Library/Application Support/Distant Worlds Universe/crash-log.txt`
+        - **Linux:** `~/.config/Distant Worlds Universe/crash-log.txt`
+
+  - type: input
+    id: os
+    attributes:
+      label: OS and version
+      description: For example "Windows 11 24H2", "macOS 15.4 (Apple silicon)" or "Ubuntu 24.04 (x86_64)".
     validations:
       required: true
+
+  - type: input
+    id: app_version
+    attributes:
+      label: openDWU version
+      description: The release you downloaded (e.g. 0.1.15), or "from source" plus the commit (`git rev-parse --short HEAD`).
+    validations:
+      required: true
+
+  - type: dropdown
+    id: client
+    attributes:
+      label: Desktop app or browser
+      options:
+        - Desktop app
+        - Browser (running from source with npm run dev)
+    validations:
+      required: true
+
+  - type: textarea
+    id: addons
+    attributes:
+      label: Add-ons and expansions enabled
+      description: "The new-game wizard's Scenario page (or the save's add-on list). Name the expansions (The Rim, Politics & Characters, Economy, Galactic Threats, Living Galaxy) and any standalone add-ons, or write \"none\"."
+    validations:
+      required: true
+
+  - type: textarea
+    id: happened
+    attributes:
+      label: What happened
+      description: What you saw, including any error message.
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+      description: What should have happened. If it differs from the original game, say how the original does it.
+    validations:
+      required: true
+
   - type: textarea
     id: steps
     attributes:
-      label: How to reproduce
-      description: Steps, galaxy settings or seed if you know them. Attaching a save (.dwusave) helps a lot.
-  - type: input
-    id: version
-    attributes:
-      label: openDWU version
-      description: The release you downloaded (e.g. 0.1.0), or the commit if you run from source.
-  - type: dropdown
-    id: platform
-    attributes:
-      label: Platform
-      options:
-        - macOS (desktop app)
-        - Windows (desktop app)
-        - Linux (desktop app)
-        - Browser (running from source)
+      label: Steps to reproduce
+      description: Numbered steps, plus the galaxy settings or seed if you know them. Attaching a save (.dwusave) helps a lot.
+      placeholder: |
+        1. ...
+        2. ...
+    validations:
+      required: true
+
   - type: textarea
     id: logs
     attributes:
-      label: Console errors or screenshots
-      description: Optional. When running from source in a browser, the browser's developer console (F12) shows errors.
+      label: Log file and console errors
+      description: Attach `crash-log.txt` (see the paths above), or paste the errors from the browser developer console (F12) when running in a browser.
+      render: text
