@@ -671,7 +671,7 @@ function emperorEnds(galaxy: Galaxy, st: DietState, c: Council | null, won: bool
             const text = scenarioText('Diet Emperor Won Text', e.name);
             if (isMultiHuman(galaxy)) humansGameEnd(galaxy, e, isHumanEmpire(galaxy, e) ? [e] : [], text, DIET_EMPEROR_VICTORY_CODE);
             else {
-                const playerWon = e === galaxy.playerEmpire;
+                const playerWon = isHumanEmpire(galaxy, e); // one human: the player
                 onGameEnd(galaxy, new GameEndEventArgs(e, playerWon ? GameEndOutcome.Victory : GameEndOutcome.Defeat, text, playerWon ? DIET_EMPEROR_VICTORY_CODE : DIET_EMPEROR_DEFEAT_CODE));
             }
         }
