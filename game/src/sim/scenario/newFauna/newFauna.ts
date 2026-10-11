@@ -278,14 +278,17 @@ export function newFaunaGameStart(galaxy: Galaxy): void {
             if (spawnVariantHerd(galaxy, v, i) !== null) groups++;
         }
     }
-    // Void whales: the same chance in every system of the galaxy (newFaunaWhaleDensity), their own cap.
+    // Void whales: the same chance for every free system of the galaxy — round(free systems × newFaunaWhaleDensity)
+    // groups (cap newFaunaWhaleMaxGroups), each in a uniformly drawn free system. (A per-system roll in index order
+    // clustered the whales in one radius band: the spiral's system order and the draws between rolls line up.)
     const whaleCap = Math.trunc(newFaunaParam(galaxy, 'newFaunaWhaleMaxGroups'));
-    const whaleD = newFaunaParam(galaxy, 'newFaunaWhaleDensity');
-    let whales = 0;
-    for (let i = 0; i < galaxy.systems.length && whales < whaleCap && whaleD > 0; i++) {
-        if (galaxy.systemHabitatsOf(i).some((h) => h.empire !== null && h.empire !== galaxy.independentEmpire)) continue;
-        if (galaxy.rnd.nextDouble() >= whaleD) continue;
-        if (spawnVariantHerd(galaxy, FaunaVariant.VoidWhale, i) !== null) whales++;
+    const freeSystems: number[] = [];
+    for (let i = 0; i < galaxy.systems.length; i++) if (freeSystem(galaxy, i)) freeSystems.push(i);
+    const whaleGroups = Math.min(whaleCap, Math.round(freeSystems.length * newFaunaParam(galaxy, 'newFaunaWhaleDensity')));
+    for (let k = 0; k < whaleGroups && freeSystems.length > 0; k++) {
+        const j = galaxy.rnd.next(0, freeSystems.length);
+        spawnVariantHerd(galaxy, FaunaVariant.VoidWhale, freeSystems[j]);
+        freeSystems.splice(j, 1);
     }
     const steel = resourceIdByName(galaxy, 'Steel');
     for (const l of galaxy.galaxyLocations) {
@@ -524,18 +527,32 @@ export function hullGrazerTick(galaxy: Galaxy, herd: RimHerd, info: FaunaHerdInf
             nearestShip(galaxy, leader.xpos, leader.ypos, range, (b) => isCivilianHost(b) && !rimHerdDocileTo(herd, b.empire) && grazersOn(galaxy, b) < grazerHostCap(galaxy)) ??
             nearestShip(galaxy, leader.xpos, leader.ypos, range, (b) => b.role === BuiltObjectRole.Base && !rimHerdDocileTo(herd, b.empire) && grazersOn(galaxy, b) < grazerHostCap(galaxy));
         if (target === null) {
-            steer(leader, herd.homeX, herd.homeY, herd.homeRange);
-            for (const c of herd.followers) steer(c, leader.xpos, leader.ypos, HERD_COHESION);
+            // Nothing in reach: drift (slow hyper travel) toward the nearest traffic within newFaunaGrazerSeekRange.
+            const far = nearestShip(galaxy, leader.xpos, leader.ypos, newFaunaParam(galaxy, 'newFaunaGrazerSeekRange'), (b) => !rimHerdDocileTo(herd, b.empire) && grazersOn(galaxy, b) < grazerHostCap(galaxy));
+            if (far === null) {
+                for (const c of members) c.hyperSpeed = 0;
+                steer(leader, herd.homeX, herd.homeY, herd.homeRange);
+                for (const c of herd.followers) steer(c, leader.xpos, leader.ypos, HERD_COHESION);
+                return;
+            }
+            const hyper = dist(galaxy, leader.xpos, leader.ypos, far.xpos, far.ypos) > range * 0.5 ? newFaunaParam(galaxy, 'newFaunaGrazerHyperSpeed') : 0;
+            for (const c of members) {
+                c.hyperSpeed = hyper;
+                steer(c, far.xpos, far.ypos, 100);
+            }
             return;
         }
-        for (const c of members) steer(c, target.xpos, target.ypos, 100);
+        for (const c of members) {
+            c.hyperSpeed = 0;
+            steer(c, target.xpos, target.ypos, 100);
+        }
         if (dist(galaxy, leader.xpos, leader.ypos, target.xpos, target.ypos) > GRAZER_LATCH_DIST) return;
         latchGrazer(galaxy, herd, info, target);
         host = target;
     }
     // Scraped off: the host docked at a space port / shipyard, or a port's own crews.
     const docked = host.dockedAt;
-    if ((docked !== null && (isBuiltObject(docked) ? docked.isSpacePort || docked.role === BuiltObjectRole.Base : true)) || (host.isSpacePort && galaxy.rnd.nextDouble() < newFaunaParam(galaxy, 'newFaunaGrazerPortScrape'))) {
+    if ((docked !== null && (isBuiltObject(docked) ? docked.isSpacePort : docked.empire !== null)) || (host.isSpacePort && galaxy.rnd.nextDouble() < newFaunaParam(galaxy, 'newFaunaGrazerPortScrape'))) {
         st.stats.grazersScraped = (st.stats.grazersScraped ?? 0) + members.length;
         detachGrazer(info);
         for (const c of members) c.completeTeardown();
@@ -583,9 +600,10 @@ export function hullGrazerTick(galaxy: Galaxy, herd: RimHerd, info: FaunaHerdInf
     grazerSpread(galaxy, herd, info, host);
 }
 
-/** Civilian grazer hosts: freighters, passenger, mining and construction ships (moving, not warships, not bases). */
+/** Civilian grazer hosts: freighters, passenger, mining and construction ships (not warships, not bases). */
 function isCivilianHost(b: BuiltObject): boolean {
-    return b.role !== BuiltObjectRole.Military && b.role !== BuiltObjectRole.Base && b.topSpeed > 0;
+    // A slow grazer (speed ~20) only catches a civilian ship that is (nearly) still: parked, mining, waiting to dock.
+    return b.role !== BuiltObjectRole.Military && b.role !== BuiltObjectRole.Base && b.topSpeed > 0 && b.currentSpeed <= 50;
 }
 
 function grazerHostCap(galaxy: Galaxy): number {
@@ -621,8 +639,8 @@ export function grazerCount(galaxy: Galaxy): { total: number; bySystem: Map<numb
 
 function latchGrazer(galaxy: Galaxy, herd: RimHerd, info: FaunaHerdInfo, host: BuiltObject): void {
     const st = newFaunaState(galaxy);
-    info.latched = host;
     const n = grazersOn(galaxy, host);
+    info.latched = host;
     const a = (n * 2.1 + herd.id * 0.7) % (Math.PI * 2);
     info.offset = { x: Math.round(Math.cos(a) * GRAZER_HULL_OFFSET), y: Math.round(Math.sin(a) * GRAZER_HULL_OFFSET) };
     st.stats.latches = (st.stats.latches ?? 0) + 1;
@@ -1090,6 +1108,9 @@ export function newFaunaOnBuiltObjectRemoved(galaxy: Galaxy, ev: { builtObject: 
 // Population recovery (user change 2026-10-11): each species breeds its own young, full groups split, the rim refills
 // ---------------------------------------------------------------------------------------------------------------
 
+/** Splits stop once a variant has this many times its start count of wild groups (recovery, not a population boom). */
+const SPLIT_CAP_FACTOR = 1.25;
+
 /** Yearly chance a group below its groupMax gains one young of its own species (0: the variant breeds otherwise). */
 function breedRate(galaxy: Galaxy, v: FaunaVariant): number {
     switch (v) {
@@ -1163,6 +1184,7 @@ export function newFaunaYear(galaxy: Galaxy): void {
             (info.variant === FaunaVariant.VoidWhale || info.variant === FaunaVariant.HunterPack) &&
             n >= def.groupMax &&
             herd.followers.length >= 2 &&
+            variantGroupCounts(galaxy)[info.variant] < Math.ceil((st.startGroups?.[info.variant] ?? 0) * SPLIT_CAP_FACTOR) &&
             galaxy.rnd.nextDouble() < newFaunaParam(galaxy, 'newFaunaSplitChance')
         ) {
             const cand: number[] = [];

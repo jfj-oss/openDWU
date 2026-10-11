@@ -544,6 +544,9 @@ export function rimFaunaYear(galaxy: Galaxy): void {
 // Population recovery: splits and repopulation (wild Kaltor herds; 19g-7b species recover in their own package)
 // ---------------------------------------------------------------------------------------------------------------
 
+/** Splits stop once the wild herds number this many times their start count. */
+const SPLIT_CAP_FACTOR = 1.25;
+
 /** A wild system: no empire colony and no empire station within rimFaunaWildClearance of its star. Pure. */
 function wildSystem(galaxy: Galaxy, systemIndex: number): boolean {
     if (galaxy.systemHabitatsOf(systemIndex).some((h) => h.empire !== null && h.empire !== galaxy.independentEmpire)) return false;
@@ -570,7 +573,11 @@ export function rimFaunaSplits(galaxy: Galaxy): number {
     const minD = faunaParam(galaxy, 'rimFaunaSplitMinDistance');
     const maxD = faunaParam(galaxy, 'rimFaunaSplitRange');
     let n = 0;
+    // Recovery, not a boom: no splits once the wild herds number SPLIT_CAP_FACTOR times their start count.
+    const cap = Math.ceil((st.startHerds ?? st.herds.length) * SPLIT_CAP_FACTOR);
+    let wild = st.herds.filter((h) => wildHerd(galaxy, h)).length;
     for (const herd of [...st.herds]) {
+        if (wild >= cap) break;
         if (!wildHerd(galaxy, herd) || herd.migration !== null || herdMembers(herd).length < sizeMax || herd.followers.length < 2) continue;
         if (galaxy.rnd.nextDouble() >= chance) continue;
         const cand: number[] = [];
@@ -611,6 +618,7 @@ export function rimFaunaSplits(galaxy: Galaxy): number {
         startRimHerdMigration(galaxy, child, to, false);
         st.stats.splits = (st.stats.splits ?? 0) + 1;
         n++;
+        wild++;
     }
     return n;
 }

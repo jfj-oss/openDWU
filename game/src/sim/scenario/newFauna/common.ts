@@ -131,6 +131,8 @@ export const NEW_FAUNA_PARAM_DEFAULTS = {
     newFaunaGrazerMaxCount: 70,
     newFaunaGrazerPDDamage: 25,
     newFaunaGrazerPortScrape: 0.1,
+    newFaunaGrazerSeekRange: 1500000,
+    newFaunaGrazerHyperSpeed: 1500,
     newFaunaDrifterCloudRadius: 30000,
     newFaunaDrifterScanFactor: 0.1,
     newFaunaDrifterHopChance: 0.05,

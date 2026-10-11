@@ -36,6 +36,8 @@
     { "name": "newFaunaGrazerSystemCap", "label": "Hull grazers per system at most (spread)", "default": 8, "min": 0, "max": 100 },
     { "name": "newFaunaGrazerMaxCount", "label": "Hull grazers in the galaxy at most (spread)", "default": 70, "min": 0, "max": 1000 },
     { "name": "newFaunaGrazerPDDamage", "label": "Damage a day a host's working point-defence component deals to its grazer", "default": 25, "min": 0, "max": 1000 },
+    { "name": "newFaunaGrazerSeekRange", "label": "Hull grazer: range it drifts toward traffic from when nothing is in reach", "default": 1500000, "min": 0, "max": 10000000 },
+    { "name": "newFaunaGrazerHyperSpeed", "label": "Hull grazer drift hyper speed", "default": 1500, "min": 0, "max": 20000 },
     { "name": "newFaunaGrazerPortScrape", "label": "Daily chance a space port's crews scrape a grazer off the port itself", "default": 0.1, "min": 0, "max": 1 },
     { "name": "newFaunaDrifterCloudRadius", "label": "Storm drifter cloud radius", "default": 30000, "min": 1000, "max": 200000 },
     { "name": "newFaunaDrifterScanFactor", "label": "Sensor range multiplier inside a drifter cloud", "default": 0.1, "min": 0, "max": 1 },
