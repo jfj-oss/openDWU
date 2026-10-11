@@ -146,3 +146,147 @@ export function stateCounts(galaxy: Galaxy): Record<string, number> {
         colonies: galaxy.empires.reduce((n, e) => n + e.colonies.length, 0),
     };
 }
+
+// ---------------------------------------------------------------------------------------------------- deep digest
+// MULTIPLAYER.md §27: a broader, per-subsystem hash the lockstep session compares every few digests. stateDigest above
+// stays as it is (the seed pins). This one hashes each object's own primitive fields (numbers, booleans, strings;
+// null / undefined count as absent) plus the length of each array field, order-independently per object, so it sees
+// state the pinned digest does not name. Fields that are not simulation state
+// (render / UI caches, lazily rebuilt lookups that a save does not carry) are skipped.
+
+/** Field names (any object) that are caches or views, not simulation state: they differ after a save is loaded. */
+const DEEP_SKIP = new Set<string>([]);
+
+const f64 = new Float64Array(1);
+const u32 = new Uint32Array(f64.buffer);
+const keyHashes = new Map<string, number>();
+
+function strHash(s: string): number {
+    let x = 0x811c9dc5;
+    for (let i = 0; i < s.length; i++) x = Math.imul(x ^ s.charCodeAt(i), 0x01000193);
+    return x >>> 0;
+}
+
+function keyHash(k: string): number {
+    let v = keyHashes.get(k);
+    if (v === undefined) {
+        v = strHash(k);
+        keyHashes.set(k, v);
+    }
+    return v;
+}
+
+function mix(a: number, b: number): number {
+    let x = Math.imul(a ^ b, 0x9e3779b1);
+    x ^= x >>> 15;
+    x = Math.imul(x, 0x85ebca77);
+    return (x ^ (x >>> 13)) >>> 0;
+}
+
+/**
+ * One object's primitive fields: [lane a, lane b]. Order-independent (a sum and an xor of per-field hashes): a save
+ * loaded elsewhere builds its objects with their fields in another order, and fields added lazily sit wherever they
+ * were added. -0 counts as 0 and every NaN alike (a save writes them so); null / undefined count as absent.
+ */
+function objectHash(o: object): [number, number] {
+    let sum = 0;
+    let xr = 0;
+    const rec = o as Record<string, unknown>;
+    // for-in over own fields: V8's enum cache makes this fast for objects of one shape (no key array per object).
+    for (const k in rec) {
+        const v = rec[k];
+        let x: number;
+        let y: number;
+        if (typeof v === 'number') {
+            if (v === 0 || v !== v) {
+                x = v === 0 ? 0 : 0x7ff80000;
+                y = 0;
+            } else {
+                f64[0] = v;
+                x = u32[0]!;
+                y = u32[1]!;
+            }
+        } else if (typeof v === 'boolean') {
+            x = v ? 1 : 2;
+            y = 0x5bd1;
+        } else if (typeof v === 'string') {
+            x = strHash(v);
+            y = v.length ^ 0x7a3c;
+        } else if (Array.isArray(v)) {
+            x = v.length;
+            y = 0xa11a;
+        } else {
+            continue; // null / undefined (absent), nested objects (their own section or none), functions
+        }
+        if (DEEP_SKIP.has(k) || !Object.prototype.hasOwnProperty.call(rec, k)) continue;
+        const kh = keyHash(k);
+        const h = mix(mix(kh, x), y);
+        sum = (sum + h) | 0;
+        xr ^= Math.imul(h, 0x2c1b3c6d) ^ kh;
+    }
+    return [sum >>> 0, xr >>> 0];
+}
+
+class Lanes {
+    a = 0x811c9dc5;
+    b = 0x1b873593;
+    add(o: object | null | undefined): void {
+        if (o == null) {
+            this.a = mix(this.a, 0xdead);
+            return;
+        }
+        const [s, x] = objectHash(o);
+        this.a = mix(this.a, s);
+        this.b = mix(this.b ^ x, this.a);
+    }
+    num(n: number): void {
+        f64[0] = n;
+        this.a = mix(this.a, u32[0]!);
+        this.b = mix(this.b, u32[1]!);
+    }
+    hex(): string {
+        return (this.a >>> 0).toString(16).padStart(8, '0') + (this.b >>> 0).toString(16).padStart(8, '0');
+    }
+}
+
+/** The subsystems deepDigest reports, in order. */
+export const DEEP_SECTIONS = ['core', 'empires', 'pirates', 'habitats', 'ships', 'creatures'] as const;
+export type DeepDigest = Record<(typeof DEEP_SECTIONS)[number], string>;
+
+function empireLanes(l: Lanes, list: readonly Empire[]): void {
+    l.num(list.length);
+    for (const e of list) l.add(e);
+}
+
+/**
+ * The per-subsystem digest (hex per section). `core`: the galaxy's own fields, the scheduler and the Rnd state.
+ * `part` of `parts`: the habitats and ships hashed are those whose index ≡ part (mod parts) — the costly lists, spread
+ * over `parts` calls (the lockstep session rotates `part` with the digest frame); the rest is hashed in full each time.
+ */
+export function deepDigest(galaxy: Galaxy, part = 0, parts = 1): DeepDigest {
+    const core = new Lanes();
+    core.add(galaxy);
+    core.add(galaxy.scheduler);
+    const rnd = galaxy.rnd.snapshotState();
+    for (const v of rnd.seedArray) core.num(v);
+    core.num(rnd.inext);
+    core.num(rnd.inextp);
+    core.num(galaxy.rnd.drawCount);
+    const empires = new Lanes();
+    empireLanes(empires, galaxy.empires);
+    const pirates = new Lanes();
+    empireLanes(pirates, galaxy.pirateEmpires);
+    pirates.add(galaxy.independentEmpire);
+    const habitats = new Lanes();
+    const habs = galaxy.habitats;
+    habitats.num(habs.length);
+    for (let i = part; i < habs.length; i += parts) habitats.add(habs[i]);
+    const ships = new Lanes();
+    const bos = galaxy.builtObjects;
+    ships.num(bos.length);
+    for (let i = part; i < bos.length; i += parts) ships.add(bos[i]);
+    const creatures = new Lanes();
+    creatures.num(galaxy.creatures.length);
+    for (const c of galaxy.creatures) creatures.add(c);
+    return { core: core.hex(), empires: empires.hex(), pirates: pirates.hex(), habitats: habitats.hex(), ships: ships.hex(), creatures: creatures.hex() };
+}

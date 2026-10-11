@@ -125,6 +125,8 @@ export interface DigestMsg {
     frame: number;
     digest: string;
     epoch: number;
+    /** §27: the per-subsystem deep digest, every few digests. */
+    deep?: Record<string, string>;
 }
 
 /** Host → client: the client desynced; reload this save and continue at `frame`. */

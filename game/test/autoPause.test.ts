@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { AutoPauseState } from '../src/ui/autoPause';
+import { AutoPauseState, autoPauseClose, autoPauseOpen, bindAutoPauseClock, setAutoPauseSuppressed } from '../src/ui/autoPause';
 
 describe('AutoPauseState', () => {
     it('pauses on first open and resumes on last close', () => {
@@ -80,5 +80,22 @@ describe('AutoPauseState', () => {
         expect(c.paused).toBe(true);
         s.close(c);
         expect(c.paused).toBe(false);
+    });
+
+    it('multiplayer: a forced event pop-up leaves the shared clock running (suppressed)', () => {
+        const c = { paused: false };
+        let mp = true;
+        setAutoPauseSuppressed(() => mp);
+        bindAutoPauseClock(c, () => true);
+        autoPauseOpen(true);
+        expect(c.paused).toBe(false);
+        autoPauseClose();
+        expect(c.paused).toBe(false);
+        mp = false; // single player again: unchanged behaviour
+        autoPauseOpen(true);
+        expect(c.paused).toBe(true);
+        autoPauseClose();
+        expect(c.paused).toBe(false);
+        setAutoPauseSuppressed(() => false);
     });
 });

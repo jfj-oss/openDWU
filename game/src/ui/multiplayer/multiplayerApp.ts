@@ -49,6 +49,7 @@ import { setSaveEntryTagger } from '../screens/saveLoad';
 import { playableRacesSorted, startGovernmentsForRace } from '../screens/newGameWizard';
 import './multiplayer.css';
 import { exposeDevHook } from './devHooks';
+import { setAutoPauseSuppressed } from '../autoPause';
 
 export interface LoadedMultiplayerSave {
     game: Game;
@@ -143,6 +144,24 @@ interface Running {
     chat: ChatPanel;
 }
 
+/**
+ * The multiplayer dock (the status chip, the Chat button, the chat window and its notice) sits at the bottom of the
+ * screen just right of the selection panel (hud.ts .sel-frame, scaled with the HUD), clear of the stock bottom-left
+ * UI; CSS reads its corner from --mp-dock-left / --mp-dock-bottom. Without a selection panel: the bottom-left corner.
+ */
+function placeDock(): void {
+    const frame = document.querySelector<HTMLElement>('.sel-frame');
+    let left = 8;
+    if (frame !== null) {
+        const r = frame.getBoundingClientRect();
+        if (r.width > 0 && r.right + 260 < window.innerWidth) left = Math.round(r.right + 6);
+    }
+    const root = document.documentElement.style;
+    const v = `${left}px`;
+    if (root.getPropertyValue('--mp-dock-left') !== v) root.setProperty('--mp-dock-left', v);
+}
+window.addEventListener('resize', () => placeDock());
+
 /** The "address" of a game joined by code (the rejoin memory; reconnecting takes a fresh code exchange). */
 const INTERNET_ADDRESS = 'internet';
 
@@ -152,6 +171,9 @@ let running: Running | null = null;
 export function multiplayerActive(): boolean {
     return running !== null;
 }
+// Event pop-ups and screen windows do not pause a multiplayer game for everyone (§27): the local player sees the
+// pop-up while the game runs. The pause button and the Escape menu still pause (they ask the host).
+setAutoPauseSuppressed(multiplayerActive);
 
 /** What a save of the running LAN game carries: its players by human index (loading it as host reopens the lobby). */
 export function multiplayerSaveExtras(galaxy: Galaxy): GameSaveExtras | undefined {
@@ -262,7 +284,8 @@ function statusText(s: MultiplayerStatus, role: 'host' | 'client', canRejoin: bo
 
 interface StatusBanner {
     show(s: MultiplayerStatus): void;
-    chip(text: string): void;
+    /** The status chip: `short` collapsed, `full` on hover / click. */
+    chip(short: string, full: string): void;
     destroy(): void;
 }
 
@@ -300,9 +323,16 @@ function createStatusBanner(role: () => 'host' | 'client', actions: { onMenu: ()
         invites.replaceChildren(...away.map((p) => internet.rejoinWidget(p.slot, p.name)));
     };
     banner.append(text, ai, idle, rejoin, rejoinNew, takeOverAlone, menu, invites);
+    // The status chip (the multiplayer dock, placeDock): one short line; hover or click shows the full line.
     const chip = document.createElement('div');
     chip.className = 'mp-chip';
     chip.dataset.mp = 'chip';
+    const chipShort = document.createElement('span');
+    chipShort.className = 'mp-chip-short';
+    const chipFull = document.createElement('span');
+    chipFull.className = 'mp-chip-full';
+    chip.append(chipShort, chipFull);
+    chip.addEventListener('click', () => chip.classList.toggle('mp-chip-open'));
     document.body.append(banner, chip);
     return {
         show(s) {
@@ -321,8 +351,10 @@ function createStatusBanner(role: () => 'host' | 'client', actions: { onMenu: ()
             rejoinNew.hidden = t.rejoinNew === undefined;
             if (t.rejoinNew !== undefined) rejoinNew.textContent = `Rejoin ${t.rejoinNew}'s Game`;
         },
-        chip(t) {
-            if (chip.textContent !== t) chip.textContent = t;
+        chip(short, full) {
+            if (chipShort.textContent !== short) chipShort.textContent = short;
+            if (chipFull.textContent !== full) chipFull.textContent = full;
+            placeDock();
         },
         destroy() {
             banner.remove();
@@ -430,7 +462,12 @@ async function runGame(deps: MultiplayerAppDeps, mp: MpHandle, side: SideHub, na
         const ai = mp.seats().filter((s) => s.ai).length;
         // A host that took over (§16): the address the others rejoin at.
         const at = mp.role === 'host' && mp.slot !== 0 && r.migration.ownAddresses.length > 0 ? ` · rejoin at ${r.migration.ownAddresses[0]}` : '';
-        banner.chip(`${net} ${mp.role === 'host' ? 'host' : 'client'}${at}${mp.worker ? ' (worker)' : ''} · ${peers} player${peers === 1 ? '' : 's'}${me !== null ? ` · ${me.name}` : ''}${ping >= 0 ? ` · ping ${ping.toFixed(0)} ms` : ''} · delay ${mp.inputDelay()}${ai > 0 ? ` · AI plays ${ai}` : ''}${st !== null && st.resyncs > 0 ? ` · ${st.resyncs} resync${st.resyncs === 1 ? '' : 's'}` : ''}`);
+        const role = mp.role === 'host' ? 'host' : 'client';
+        const resyncs = st !== null && st.resyncs > 0 ? ` · ${st.resyncs} resync${st.resyncs === 1 ? '' : 's'}` : '';
+        banner.chip(
+            `${net} ${role} · ${peers}P${ping >= 0 ? ` · ${ping.toFixed(0)} ms` : ''}${resyncs !== '' ? ' · !' : ''}`,
+            `${net} ${role}${at}${mp.worker ? ' (worker)' : ''} · ${peers} player${peers === 1 ? '' : 's'}${me !== null ? ` · ${me.name}` : ''}${ping >= 0 ? ` · ping ${ping.toFixed(0)} ms` : ''} · delay ${mp.inputDelay()}${ai > 0 ? ` · AI plays ${ai}` : ''}${resyncs}`,
+        );
         if (mp.role === 'client' && mp.currentStatus().kind !== 'hostLost') void mp.ping().then((ms) => (ping = ms), () => undefined);
     };
     mp.onStatus = (s) => {

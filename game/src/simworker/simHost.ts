@@ -20,7 +20,7 @@ import type { PlayerOpName } from '../sim/player/playerOps';
 import { serializeGame, type GameSaveExtras } from '../sim/save/gameSave';
 import { serializeGameSave } from '../saveData';
 import { galaxyExternals, saveClassPrototypes } from '../sim/save/galaxySave';
-import { stateDigest } from '../sim/tick/digest';
+import { deepDigest, stateDigest } from '../sim/tick/digest';
 import { setGameEndHandler } from '../sim/victory';
 import { registerLocationPingedHook } from '../sim/story/eventActions';
 import { SimFrameBudget } from '../simFrameBudget';
@@ -680,6 +680,10 @@ export class SimHost {
 
     digest(): string {
         return stateDigest(this.galaxy);
+    }
+
+    deepDigest(part: number, parts: number): Record<string, string> {
+        return deepDigest(this.galaxy, part, parts);
     }
 
     /** [simworker chunk 1] The authoritative command log (`__dwu.commands.log()`), as a copy (plain data). */

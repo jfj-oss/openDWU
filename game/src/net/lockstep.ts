@@ -37,6 +37,8 @@ export interface LockstepSim {
     applyFrame(frame: number, cmds: readonly NetCommand[], clock: ClockState): void;
     /** State digest at the current boundary (sim/tick/digest.ts stateDigest). */
     digest(): string;
+    /** §27: the per-subsystem deep digest (sim/tick/digest.ts deepDigest), slice `part` of `parts`, with each digest. */
+    deepDigest?(part: number, parts: number): Record<string, string>;
     /** A full save at the current boundary (serializeGame). */
     save(clock: ClockState): string;
     /** Replace the state with a save (a resync or a join). */
@@ -49,7 +51,7 @@ export interface LockstepHooks {
     /** A peer left: it sends no input from `fromFrame` on. Phase 4: hand its empire to the AI here. */
     onPeerLeft?(peer: PeerInfo, reason: string): void;
     /** A digest comparison (host: for each client; client: never). */
-    onDigest?(frame: number, peer: PeerId, ok: boolean, host: string, client: string): void;
+    onDigest?(frame: number, peer: PeerId, ok: boolean, host: string, client: string, detail?: DigestDetail): void;
     /** Host: a resync save was sent to `peer`. Client: a resync save was loaded. `bytes`: its compressed size. */
     onResync?(frame: number, peer: PeerId, bytes: number): void;
     /** Client: the host's resync arrived; its save is being inflated and loaded (onResync follows, or the link closes). */
@@ -94,6 +96,9 @@ export interface LockstepOptions extends Partial<LockstepParams> {
     maxCatchUpFrames?: number;
     /** Frames of inputs kept behind the current one (a resync may rewind this far). */
     historyFrames?: number;
+    /** §27: a deep digest goes with every digest, its costly lists in this many rotating slices (default 5: all of
+     *  them every 300 frames; 0: no deep digest). */
+    deepParts?: number;
     /** Monotonic ms (performance.now) and wall epoch ms (command stamps). */
     now?: () => number;
     wallNow?: () => number;
@@ -139,6 +144,13 @@ export interface LockstepStats {
     commandsApplied: number;
     digestChecks: number;
     digestMismatches: number;
+    /** §27: deep digest comparisons (host), deep-only mismatches (the pinned digest still agreed). */
+    deepChecks: number;
+    deepMismatches: number;
+    /** §27: deep digests taken here and their total / largest cost (ms). */
+    deepTaken: number;
+    deepMsTotal: number;
+    deepMsMax: number;
     resyncs: number;
     /** Input-delay changes applied (the adaptive delay). */
     delayChanges: number;
@@ -155,6 +167,25 @@ interface PeerState {
     epoch: number;
     /** Host side: the client's digests not compared yet. */
     digests: Map<number, string>;
+    /** Host side (§27): the client's deep digests by frame, not compared yet. */
+    deep: Map<number, Record<string, string>>;
+    /** Host side (§27): the last frame whose digest matched (the divergence lies after it). */
+    lastGood: number;
+    /** Host side (§27): a resync for a deep-only mismatch was sent and no full round of deep checks passed since (no
+     *  second one). */
+    deepResynced: boolean;
+    /** Host side (§27): deep checks passed in a row. */
+    deepPassed: number;
+}
+
+/** §27: what a digest comparison found beyond ok / not ok. */
+export interface DigestDetail {
+    /** The deep digest's sections that differ (empty: they agree, or no deep digest at this frame). */
+    sections: string[];
+    /** The last frame whose digest matched before this one (-1: none yet): the first divergent frame is after it. */
+    lastGood: number;
+    /** Whether a deep digest was compared at this frame. */
+    deep: boolean;
 }
 
 const DEFAULT_PARAMS: LockstepParams = { inputDelay: 4, digestInterval: 60 };
@@ -170,7 +201,7 @@ export class LockstepSession {
     params: LockstepParams;
     readonly stats: LockstepStats = {
         framesRun: 0, stalls: 0, stallMs: 0, messagesSent: 0, messagesReceived: 0, bytesSent: 0, bytesReceived: 0,
-        commandsSent: 0, commandsApplied: 0, digestChecks: 0, digestMismatches: 0, resyncs: 0, delayChanges: 0,
+        commandsSent: 0, commandsApplied: 0, digestChecks: 0, digestMismatches: 0, deepChecks: 0, deepMismatches: 0, deepTaken: 0, deepMsTotal: 0, deepMsMax: 0, resyncs: 0, delayChanges: 0,
     };
     /** False once the session ended (client: the host link closed; host: close()). */
     active = true;
@@ -213,6 +244,10 @@ export class LockstepSession {
     private lowerWanted = 0;
     /** Host: own digests by frame. */
     private readonly ownDigests = new Map<number, string>();
+    /** Host (§27): own deep digests by frame. */
+    private readonly ownDeep = new Map<number, Record<string, string>>();
+    /** §27: the deep digest goes with every digest, in this many rotating slices (0: none). */
+    private readonly deepParts: number;
     /** Client: resyncs applied. */
     private epoch = 0;
     private hostLink: Link | null = null;
@@ -242,6 +277,7 @@ export class LockstepSession {
         this.frameRealMs = opts.frameRealMs ?? 1000 / 60;
         this.maxCatchUp = opts.maxCatchUpFrames ?? 4;
         this.history = opts.historyFrames ?? 1200;
+        this.deepParts = opts.deepParts ?? 5;
         this.now = opts.now ?? (() => performance.now());
         this.wallNow = opts.wallNow ?? (() => performance.timeOrigin + performance.now());
         this.allowPause = opts.allowPauseRequest ?? (() => true);
@@ -577,11 +613,21 @@ export class LockstepSession {
 
     private takeDigest(frame: number): void {
         const d = this.sim.digest();
+        let deep: Record<string, string> | undefined;
+        if (this.deepParts > 0 && this.sim.deepDigest !== undefined) {
+            const t0 = performance.now();
+            deep = this.sim.deepDigest(Math.floor(frame / this.params.digestInterval) % this.deepParts, this.deepParts);
+            const ms = performance.now() - t0;
+            this.stats.deepTaken++;
+            this.stats.deepMsTotal += ms;
+            if (ms > this.stats.deepMsMax) this.stats.deepMsMax = ms;
+        }
         if (this.role === 'host') {
             this.ownDigests.set(frame, d);
+            if (deep !== undefined) this.ownDeep.set(frame, deep);
             for (const p of this.peers.values()) this.compareDigests(p);
         } else if (this.hostLink !== null && this.awaitingMigrated === null) {
-            this.sendTo(this.hostLink, { t: 'digest', frame, digest: d, epoch: this.epoch });
+            this.sendTo(this.hostLink, deep !== undefined ? { t: 'digest', frame, digest: d, epoch: this.epoch, deep } : { t: 'digest', frame, digest: d, epoch: this.epoch });
         }
     }
 
@@ -589,6 +635,7 @@ export class LockstepSession {
         const keep = this.frame - this.history;
         for (const p of this.peers.values()) for (const f of p.inputs.keys()) if (f < keep) p.inputs.delete(f);
         for (const f of this.ownDigests.keys()) if (f < keep) this.ownDigests.delete(f);
+        for (const f of this.ownDeep.keys()) if (f < keep) this.ownDeep.delete(f);
     }
 
     // -----------------------------------------------------------------------------------------------------------
@@ -596,7 +643,7 @@ export class LockstepSession {
     // -----------------------------------------------------------------------------------------------------------
 
     private addPeer(info: PeerInfo, link: Link | null): PeerState {
-        const p: PeerState = { info, inputs: new Map(), knownThrough: info.fromFrame - 1, link, epoch: 0, digests: new Map() };
+        const p: PeerState = { info, inputs: new Map(), knownThrough: info.fromFrame - 1, link, epoch: 0, digests: new Map(), deep: new Map(), lastGood: -1, deepResynced: false, deepPassed: 0 };
         this.peers.set(info.id, p);
         return p;
     }
@@ -655,6 +702,7 @@ export class LockstepSession {
             case 'digest':
                 if (m.epoch !== p.epoch) return; // computed before its last resync
                 p.digests.set(m.frame, m.digest);
+                if (m.deep !== undefined) p.deep.set(m.frame, m.deep);
                 this.compareDigests(p);
                 return;
             case 'pauseRequest':
@@ -685,11 +733,37 @@ export class LockstepSession {
             }
             p.digests.delete(frame);
             this.stats.digestChecks++;
-            const ok = mine === theirs;
-            this.hooks.onDigest?.(frame, p.info.id, ok, mine, theirs);
-            if (!ok) {
+            let ok = mine === theirs;
+            // §27: the deep digest at this frame, when both sides took one: which subsystems differ.
+            const myDeep = this.ownDeep.get(frame);
+            const theirDeep = p.deep.get(frame);
+            p.deep.delete(frame);
+            const sections: string[] = [];
+            const deep = myDeep !== undefined && theirDeep !== undefined;
+            if (deep) {
+                this.stats.deepChecks++;
+                for (const k of Object.keys(myDeep)) if (myDeep[k] !== theirDeep[k]) sections.push(k);
+            }
+            const deepOnly = ok && sections.length > 0;
+            if (deepOnly) {
+                this.stats.deepMismatches++;
+                p.deepPassed = 0;
+            } else if (deep && ++p.deepPassed >= this.deepParts) p.deepResynced = false;
+            const lastGood = p.lastGood;
+            this.hooks.onDigest?.(frame, p.info.id, ok && !deepOnly, mine, theirs, { sections, lastGood, deep });
+            if (ok && !deepOnly) p.lastGood = frame;
+            if (deepOnly) {
+                // The pinned digest agrees but deeper state does not: resync now, before it spreads (once: a deep
+                // difference that a fresh save does not cure is reported, not resynced again and again).
+                this.hooks.log?.(`desync (deep): peer ${p.info.id} at frame ${frame}, after frame ${lastGood}: ${sections.join(', ')} differ${p.deepResynced ? ' again (no second resync)' : '; sending a save'}`);
+                if (p.deepResynced) continue;
+                p.deepResynced = true;
+                ok = false;
+            } else if (!ok) {
                 this.stats.digestMismatches++;
-                this.hooks.log?.(`desync: peer ${p.info.id} at frame ${frame} (${theirs} != ${mine}); sending a save`);
+                this.hooks.log?.(`desync: peer ${p.info.id} at frame ${frame}, after frame ${lastGood} (${theirs} != ${mine})${deep ? `; deep: ${sections.length > 0 ? sections.join(', ') : 'none'} differ` : ''}; sending a save`);
+            }
+            if (!ok) {
                 this.resync(p);
                 return;
             }
@@ -701,6 +775,7 @@ export class LockstepSession {
         if (p.link === null) return;
         p.epoch++;
         p.digests.clear();
+        p.deep.clear();
         const text = this.sim.save(this.clock);
         const frame = this.frame;
         const msg: Omit<ResyncMsg, 'save'> = { t: 'resync', frame, clock: { ...this.clock }, inputs: this.inputsFrom(frame), epoch: p.epoch, params: { ...this.params } };
@@ -789,8 +864,10 @@ export class LockstepSession {
         this.hosts.push({ peer: this.localPeer, from });
         this.nextPeerId = Math.max(...this.peers.keys()) + 1;
         this.ownDigests.clear();
+        this.ownDeep.clear();
         for (const p of this.peers.values()) {
             p.digests.clear();
+            p.deep.clear();
             p.link = null;
         }
         // The old hub's adaptive input delay (§13) goes on here, measured afresh from this hub.

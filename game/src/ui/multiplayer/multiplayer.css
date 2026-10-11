@@ -221,21 +221,44 @@
 .mp-banner .mp-btn {
     margin: 0;
 }
+/* The multiplayer dock (multiplayerApp.ts placeDock): [Chat] [chip] in one 20 px row at the bottom, right of the
+   selection panel; the chat window and its notice open above it. DW:U's grey glass look (hud.css .hud-btn). */
+:root {
+    --mp-dock-left: 8px;
+    --mp-dock-bottom: 6px;
+}
 .mp-chip {
     position: fixed;
-    left: 8px;
-    bottom: 140px;
+    left: calc(var(--mp-dock-left) + 46px);
+    bottom: var(--mp-dock-bottom);
     z-index: 1800;
-    padding: 3px 8px;
-    border-radius: 6px;
-    background: rgba(0, 0, 0, 0.6);
-    color: #a8c0e0;
+    height: 20px;
+    box-sizing: border-box;
+    max-width: calc(100vw - var(--mp-dock-left) - 60px);
+    padding: 0 7px;
+    border: 1px solid rgb(90, 90, 100);
+    border-radius: 4px;
+    background: linear-gradient(to bottom, rgba(112, 112, 128, 0.45), rgba(112, 112, 128, 0.15) 50%, transparent 50%), rgba(10, 10, 16, 0.82);
+    color: rgb(200, 200, 210);
     font-family: Verdana, Arial, sans-serif;
-    font-size: 11px;
-    pointer-events: none;
+    font-size: 10px;
+    line-height: 18px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    cursor: default;
 }
-.mp-chip:empty {
+.mp-chip:has(.mp-chip-short:empty) {
     display: none;
+}
+.mp-chip-full,
+.mp-chip:hover .mp-chip-short,
+.mp-chip.mp-chip-open .mp-chip-short {
+    display: none;
+}
+.mp-chip:hover .mp-chip-full,
+.mp-chip.mp-chip-open .mp-chip-full {
+    display: inline;
 }
 
 /* Phase 4: the host lobby's adaptive input delay switch. */
@@ -328,8 +351,8 @@
 }
 .mp-chat-game {
     position: fixed;
-    left: 8px;
-    bottom: 196px;
+    left: var(--mp-dock-left);
+    bottom: calc(var(--mp-dock-bottom) + 26px);
     z-index: 1850;
     width: min(400px, calc(100vw - 32px));
     padding: 6px 8px 8px;
@@ -411,22 +434,28 @@
 }
 .mp-chat-toggle {
     position: fixed;
-    left: 8px;
-    bottom: 166px;
+    left: var(--mp-dock-left);
+    bottom: var(--mp-dock-bottom);
     z-index: 1800;
-    padding: 2px 10px;
-    border: 1px solid #4a5a70;
-    border-radius: 6px;
-    background: rgba(0, 0, 0, 0.6);
-    color: #a8c0e0;
+    width: 42px;
+    height: 20px;
+    padding: 0;
+    border: 1px solid rgb(90, 90, 100);
+    border-radius: 4px;
+    background: linear-gradient(to bottom, rgba(112, 112, 128, 0.6), rgba(112, 112, 128, 0.2) 50%, transparent 50%), rgb(16, 16, 22);
+    color: rgb(220, 220, 230);
     font-family: Verdana, Arial, sans-serif;
-    font-size: 11px;
+    font-size: 10px;
     cursor: pointer;
+}
+.mp-chat-toggle:hover {
+    color: #fff;
+    border-color: rgb(140, 140, 150);
 }
 .mp-chat-notice {
     position: fixed;
-    left: 8px;
-    bottom: 196px;
+    left: var(--mp-dock-left);
+    bottom: calc(var(--mp-dock-bottom) + 26px);
     z-index: 1800;
     max-width: min(420px, calc(100vw - 32px));
     padding: 4px 10px;

@@ -22,7 +22,7 @@ import type { GalaxyTime } from '../sim/galaxyTime';
 import type { StartGameOptions } from '../sim/startGameOptions';
 import { flatEmpireList } from '../sim/save/galaxySave';
 import { deserializeGame, serializeGame } from '../sim/save/gameSave';
-import { stateDigest } from '../sim/tick/digest';
+import { deepDigest, stateDigest } from '../sim/tick/digest';
 import { nextFrameMs, runSimFrame, schedulerState } from '../sim/tick/scheduler';
 import { encodeCommandArg, decodeCommandArg, type EncodedArg } from '../sim/player/commandCodec';
 import { flushPlayerCommands, issuePlayerCommand, noteSimSpeed, noteSimViewRect, setRemoteCommandSink, type RemoteCommandSink } from '../sim/player/playerCommands';
@@ -166,6 +166,10 @@ export class GalaxyLockstepSim implements LockstepSim {
 
     digest(): string {
         return stateDigest(this.galaxy);
+    }
+
+    deepDigest(part: number, parts: number): Record<string, string> {
+        return deepDigest(this.galaxy, part, parts);
     }
 
     save(clock: ClockState): string {

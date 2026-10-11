@@ -816,9 +816,9 @@ uses are part of the host's start options; the hash makes sure everyone has the 
 - **Commands.** Each screen's local viewer is its player's empire (`setLocalViewerEmpire`). Commands go through the
   journaled path (`issuePlayerCommand` → the session → applied at frame + 4 on every peer). A command for another
   empire is refused on every peer (`authorize`).
-- **Clock.** The host's inputs carry the speed and pause; a client's pause button asks the host. Auto-pauses on a client
-  (an event pop-up, Game Options) also pause everyone.
-- **Desync.** Every 60 frames the clients send their digest; on a mismatch the host sends that client a save. The client
+- **Clock.** The host's inputs carry the speed and pause; a client's pause button asks the host. Event pop-ups and
+  screen windows do **not** pause a multiplayer game (§27; before, they paused everyone).
+- **Desync.** Every 60 frames the clients send their digest (with a deep digest: §27); on a mismatch the host sends that client a save. The client
   shows "Resyncing with the host…", reloads, and its view is rebuilt on the new galaxy; the host shows "Resyncing
   <player>…" until that player's next digest matches.
 - **Disconnect.** A client leaving pauses the game on the host; the host chooses AI takeover or idle, and the player can
@@ -1378,7 +1378,7 @@ on the host, 0 mismatches, 0 resyncs, 1,192 commands applied on every peer.
 | Stalls | the host 5.7%, the clients 4.7%, 3.6% and 1.7% of the time while all four run freely |
 | The slowest peer | p4 squeezed onto one CPU core for 72 s: the frame pace held (57 frames/s, minimum 46), but the **other three** stalled 3–4× as much (the host's stall count +480 in that minute vs. +180 before: they wait for p4's inputs), while p4 itself barely stalled; back to normal within a minute of the release |
 | Memory | about 1.15–1.29 GB per renderer (plus each app's sim process) |
-| Event pop-ups | an event pop-up on any peer pauses everyone (§10.4): 8 such pauses in 6 minutes (the test dismissed them and resumed) |
+| Event pop-ups | an event pop-up on any peer paused everyone then: 8 such pauses in 6 minutes (the test dismissed them and resumed); no longer (§27) |
 
 A first 6-minute run on a smaller galaxy (the default size caps the star count) also ended equal on all four
 (`2a7fdc6ebd6bdd61`), with the game paused by an event pop-up for its second half (frames ran on at 60/s).
@@ -1389,11 +1389,71 @@ message-feed, desktop-shell and sim-worker files: 30 files, 260 tests) pass.
 
 ## 26. What is left
 
-- The Mac and the Windows laptop were not part of these runs (the Mac was asleep); a cross-machine host migration and
-  a cross-machine new-player join are still to do.
 - A peer that cannot reach the successor at all gets no backup link: it rejoins by address or code (the fallback).
 - Battle reports per human were checked by the existing tests (one human: unchanged) and by reading, not in a real
   multi-human battle.
 - Human-to-human diplomacy: the AI's "Swap maps or tech" quick deals and the add-ons' proposal kinds are not offered
   between humans.
-- From the earlier lists: a per-human handicap, a deeper desync hash with the first divergent frame logged.
+- A per-human handicap.
+- The Windows laptop has not run the phase 5 flows (migration, joining in progress); Linux ↔ Mac has (§27).
+- The deep digest (§27) hashes each object's own primitive fields only: nested objects (cargo, components, designs,
+  diplomatic relations) are seen through array lengths, not their contents.
+
+## 27. Non-pausing pop-ups, the deep digest, Linux ↔ Mac (2026-10-11)
+
+- **Event pop-ups no longer pause a multiplayer game.** Before, an event pop-up (or any screen window with
+  AutoPauseWhenInPopupWindow) on any peer paused everyone (8 pauses in 6 minutes in §25's four-player run). Now, while
+  a LAN / Internet game runs, `autoPause.ts` leaves the shared clock alone (`setAutoPauseSuppressed(multiplayerActive)`):
+  the player sees the pop-up while the game runs on. The pause button and the Escape menu still pause (they ask the
+  host). Single player and hot seat: unchanged.
+- **The deep digest** (`sim/tick/digest.ts deepDigest`). The pinned `stateDigest` stays as it is (the seed pins). With
+  every digest (every 60 frames) each peer also sends a per-subsystem deep digest — `core` (the galaxy's own fields, the
+  scheduler, the Rnd state), `empires`, `pirates` (+ the independents), `habitats`, `ships`, `creatures` — hashing every
+  own primitive field of each object (null / undefined absent, -0 as 0, NaN alike, array fields by length),
+  order-independently per object (a save loaded in another process builds its objects with their fields in another
+  order: an order-dependent hash differed after every join). The costly lists (habitats, ships) go in 5 rotating
+  slices (`deepParts`, index ≡ part mod 5), so all of them are covered every 300 frames. The host compares the
+  sections and logs which differ and since when: `desync: peer 1 at frame 960, after frame 900 (…); deep: empires
+  differ`. A deep-only difference (the pinned digest agrees) resyncs that client once (`desync (deep)`); one that a
+  fresh save does not cure is reported, not resynced again, until a full round of deep checks passes.
+  `LockstepStats.deepChecks / deepMismatches / deepTaken / deepMsTotal / deepMsMax`; `DigestDetail` on `onDigest`.
+- **Cost** (seed 1, 300 stars, 12,060 habitats, 565 ships, this PC): the whole deep digest 16 ms, one slice of 5:
+  4 ms, per 60 frames (the pinned digest itself: 9.5 ms); 0.07 ms per frame on average. In the real apps (120 stars):
+  1.4–1.7 ms average per digest on Linux, about 3 ms on the Mac (in-thread).
+- **The multiplayer dock.** The status chip and the Chat button were stacked over the selection panel (bottom left).
+  Now they sit in one 20 px row at the bottom of the screen just right of the selection panel (`placeDock`, from the
+  scaled `.sel-frame`), in the HUD's grey glass look; the chip shows a short line (`LAN host · 3P · 62 ms`) and the
+  full line on hover or click; the chat window and its notice open above the row.
+
+`scripts/lockstep-demo.mjs` now prints the deep stats; its default run checks that the injected money desync is put
+down to `empires` and that no deep-only mismatch occurred.
+
+| Run (seed 1, 4 empires, 4x) | Result |
+|---|---|
+| default (WebSocket, 1 minute, injected desync) | OK: detected at frame 960 "after frame 900; deep: empires differ"; 18 deep checks, 0 deep-only mismatches; 8.8 ms per deep digest on average there (two sims in one niced, busy process) |
+| `--phase4 --worker` (rejoin with a save, worker client) | OK: 16 deep checks, 0 deep-only mismatches |
+| `--phase5` (migration + Carol joins with a save) | OK: 59 deep checks, 0 deep-only mismatches |
+
+**Linux x64 ↔ macOS arm64, real UI** (LAN mode over Tailscale: Linux 100.106.232.94, the Mac 100.114.187.94; two
+Electron apps on this PC on `kwin_wayland --virtual`, real GPU through ANGLE / Vulkan, worker mode; the Mac: a copy
+of its dwu.app with this build in a temp folder, in-thread sim, removed afterwards; `DWU_DEV_HOOKS=1`; seed 4242, 120
+stars, 4 empires, 2x, adaptive delay; renames and waypoints from every player every 2 s; digests compared while paused
+at the same game time):
+
+| Step | Result |
+|---|---|
+| A. Hosty (Linux host) + Clienty (Linux) | `b778148b75c43ef3` on both at 33,933 game ms; 20 deep checks, 0 deep-only mismatches |
+| B. **Macy (the Mac) joins the running game as a new player** (Join Game at 100.106.232.94; offered the AI empires; takes Atuuk Alliance from frame 1342) | **`1ff2272f0e80d030` on all three** at 70,066 ms; 58 checks, 0 mismatches, 0 deep-only, 0 resyncs |
+| C. **Migration: the Linux host quits** (Clienty the successor; the Mac follows over its backup link) | migrated 1.8 s after the click (menu included); **`14752b1ffb245a27` on Clienty and the Mac** at 109,366 ms |
+| D. **Migration: Clienty quits** → **the Mac takes over** (alone; its chip "rejoin at 192.168.1.231:64134") | 1.1 s |
+| E. **The old host rejoins the Mac-hosted game** (Join Game at the Mac's Tailscale address and that port; macOS's firewall let it in) | **`ad8bc28a88e4df05` on the Mac and Hosty** at 155,466 ms |
+| F. **A new player joins the Mac-hosted game** (the second Linux app as "Newbie", takes Sollost Supremacy from frame 5424) | **`f9900efcff5b75e3` on all three** at 189,466 ms; on the Mac host 56 checks, 0 mismatches, 0 deep-only |
+| Deep digest cost | 1.4–1.8 ms per digest on Linux (worker), 2.9–3.0 ms on the Mac (in-thread); at most 5.5 ms |
+| The dock | screenshots on both: [Chat] [LAN host · 3P · 118 ms] in one row right of the selection panel; hover / click: the full line |
+
+A first run (before the deep digest was made order-independent) showed the reason for it: after the Mac's join by
+save every deep check of `core` and `ships` differed (fields in another order on the joiner), with equal pinned
+digests; one deep resync each time, as designed, and no loop.
+
+Also: `npm run repin -- --check --workers 1` = 0; `npm run typecheck`; `npm run check:player-empire`; vitest
+`autoPause.test.ts` (a forced event pop-up leaves the clock running while suppressed; single player unchanged).

@@ -202,7 +202,7 @@ if (role === 'parent') {
     console.log('\n================ lockstep demo summary ================');
     console.log(`final frame ${h.frame}: host digest ${h.digest}, client digest ${c.digest} -> ${h.digest === c.digest ? 'MATCH' : 'MISMATCH'}`);
     console.log(`game time ${(h.nowMs / 60000).toFixed(2)} min (client ${(c.nowMs / 60000).toFixed(2)}), command-log player entries host ${h.playerLog} / client ${c.playerLog}`);
-    console.log(`digest checks on the host: ${h.stats.digestChecks}, mismatches ${h.stats.digestMismatches} (the injected one), resyncs ${h.stats.resyncs}`);
+    console.log(`digest checks on the host: ${h.stats.digestChecks}, mismatches ${h.stats.digestMismatches} (the injected one), resyncs ${h.stats.resyncs}; deep checks ${h.stats.deepChecks} (${h.stats.deepMismatches} deep-only mismatches), deep digest ${h.stats.deepTaken} taken, ${(h.stats.deepMsTotal / Math.max(1, h.stats.deepTaken)).toFixed(2)} ms avg, ${h.stats.deepMsMax.toFixed(2)} ms max`);
     if (h.desync !== null) console.log(`  desync injected at client frame ${c.corruptFrame}; detected at frame ${h.desync.frame}; save ${(h.desync.bytes / 1e6).toFixed(2)} MB; client reloaded in ${ms(c.reloadMs)}; every later check matched: ${h.cleanAfterResync}`);
     console.log(`digest timeline: ${c.digests.length} client checkpoints, ${c.digests.filter((d) => h.digestsByFrame[d.frame] === d.digest).length} equal to the host's (the rest are the corrupted stretch before the reload)`);
     console.log(`pause: requested by the client at frame ${T.pauseAsk}, paused frames host ${h.pausedFrames} / client ${c.pausedFrames}`);
@@ -226,7 +226,7 @@ if (role === 'parent') {
         console.log(`  host saw it leave from frame ${h.leftFrom}; host and client went on to frame ${h.frame}`);
     }
     const jc2 = h.checksByPeer[2];
-    const ok = h.digest === c.digest && h.cleanAfterResync && h.stats.digestMismatches === 1 && (j === undefined || (jc2 !== undefined && jc2.checked > 0 && jc2.ok === jc2.checked));
+    const ok = h.digest === c.digest && h.cleanAfterResync && h.stats.digestMismatches === 1 && h.deepSections === 'empires' && h.stats.deepMismatches === 0 && (j === undefined || (jc2 !== undefined && jc2.checked > 0 && jc2.ok === jc2.checked));
     console.log(ok ? 'RESULT: OK' : 'RESULT: FAILED');
     exit(ok && codes.every((x) => x === 0) ? 0 : 1);
 }
@@ -414,6 +414,7 @@ if (role === 'host') {
     sim = makeSim(game, time);
     let hostDesync = null;
     let mismatchSeen = false;
+    let deepSections = null;
     let cleanAfterResync = true;
     const digestsByFrame = {};
     let leftFrom = null;
@@ -422,7 +423,9 @@ if (role === 'host') {
         name: 'host', inputDelay: cfg.delay, digestInterval: cfg.digest,
         hooks: {
             log: (m) => out(m),
-            onDigest: (frame, peer, ok) => {
+            onDigest: (frame, peer, ok, _h, _c, detail) => {
+                // §27: the injected money desync must be put down to the empires section of the deep digest.
+                if (!ok && detail !== undefined) deepSections = detail.sections.join(',');
                 const c = (checksByPeer[peer] ??= { checked: 0, ok: 0 });
                 c.checked++;
                 if (ok) c.ok++;
@@ -485,7 +488,7 @@ if (role === 'host') {
     for (let i = 0; i < 180; i++) sched.runSimFrame(sim.galaxy, sched.nextFrameMs(sched.schedulerState(sim.galaxy), cfg.speed));
     const soloFps = 180 / ((performance.now() - t) / 1000);
     out(`RESULT ${JSON.stringify({
-        frame, digest, nowMs, playerLog, stats: st, desync: hostDesync, cleanAfterResync, digestsByFrame,
+        frame, digest, nowMs, playerLog, stats: st, desync: hostDesync, cleanAfterResync, digestsByFrame, deepSections,
         arrival: stats(S.arrival), idleFps: res.idleFps ?? 0, soloFps, sustain: res.sustain ?? { fps: 0, cps: 0 }, burstMs: S.burstMs,
         pausedFrames: S.pausedFrames, refused: S.refused, leftFrom, checksByPeer,
     })}`);
@@ -594,7 +597,7 @@ if (role === 'memory') {
     await yieldIo();
     const dh = hostSim.digest(), dc = clientSim.digest();
     const sec = (performance.now() - t) / 1000;
-    out(`in-memory transport: ${frames} frames in ${sec.toFixed(1)} s (${(frames / sec).toFixed(0)} frames/s, both sims in one process); host ${dh}, client ${dc} -> ${dh === dc ? 'MATCH' : 'MISMATCH'}; digest checks ${checks}, mismatches ${bad}; commands applied ${host.stats.commandsApplied}`);
+    out(`in-memory transport: ${frames} frames in ${sec.toFixed(1)} s (${(frames / sec).toFixed(0)} frames/s, both sims in one process); host ${dh}, client ${dc} -> ${dh === dc ? 'MATCH' : 'MISMATCH'}; digest checks ${checks}, mismatches ${bad}; commands applied ${host.stats.commandsApplied}; deep checks ${host.stats.deepChecks} (${host.stats.deepMismatches} deep-only mismatches), deep digest ${host.stats.deepTaken} taken, ${(host.stats.deepMsTotal / Math.max(1, host.stats.deepTaken)).toFixed(2)} ms avg, ${host.stats.deepMsMax.toFixed(2)} ms max`);
     host.close();
     process.exit(dh === dc && bad === 0 && checks > 0 ? 0 : 1);
 }
@@ -804,7 +807,7 @@ if (role === 'phase4') {
     const shipNameC = someShips(seatOf(client.mp.sim.galaxy), 1)[0].name;
     const hijackRefused = log.some((l) => l.includes('dropped renameShip') && l.startsWith('[host]'));
     out(`final frame ${endAt}: host ${dh}, client ${dc} -> ${dh === dc ? 'MATCH' : 'MISMATCH'}`);
-    out(`digest checks ${checks} (${bad} mismatches); after the rejoin ${checksAfterRejoin} (${badAfterRejoin} mismatches); host paused at the end: ${hs.clock.paused}`);
+    out(`digest checks ${checks} (${bad} mismatches); after the rejoin ${checksAfterRejoin} (${badAfterRejoin} mismatches); host paused at the end: ${hs.clock.paused}; deep checks ${hs.stats.deepChecks} (${hs.stats.deepMismatches} deep-only mismatches), deep digest ${hs.stats.deepTaken} taken, ${(hs.stats.deepMsTotal / Math.max(1, hs.stats.deepTaken)).toFixed(2)} ms avg, ${hs.stats.deepMsMax.toFixed(2)} ms max`);
     out(`input delay: ${hs.params.inputDelay} frames at the end (host), ${client.mp.session.params.inputDelay} (client); ${hs.stats.delayChanges} changes on the host; one-way latency ${latencyMs} ms${adaptive ? ', adaptive' : ''}; stalls host ${hs.stats.stalls} (${hs.stats.stallMs.toFixed(0)} ms)`);
     out(`seat back to the human at frame ${returnedAt} (rejoined peer's input from frame ${peerInfo.fromFrame}); seat AI now: host ${isAiSeat(hostMp.sim.galaxy, seat)}, client ${isAiSeat(client.mp.sim.galaxy, seatOf(client.mp.sim.galaxy))}`);
     out(`the host's command for the away seat refused: ${triedHijack ? hijackRefused : 'not tried (idle)'}; the rejoined client's rename applied: host "${shipName}", client "${shipNameC}"`);
@@ -1032,7 +1035,7 @@ if (role === 'phase5') {
     const dA = alice.sim.digest(), dB = bob.sim.digest(), dO = oldHost.sim.digest(), dC = carol.sim.digest();
     const hostShip = (mp) => someShips(seat(mp, 0), 1)[0].name;
     out(`final frame ${endAt}: alice (new host) ${dA}, bob ${dB}, old host ${dO}, carol ${dC} -> ${dA === dB && dB === dO && dO === dC ? 'MATCH' : 'MISMATCH'}`);
-    out(`digest checks on the new host ${checksA} (${badA} mismatches); the old host's seat AI now: ${isAiSeat(alice.sim.galaxy, hostSeatA)}; its first ship: alice "${hostShip(alice)}", bob "${hostShip(bob)}", old host "${hostShip(oldHost)}"`);
+    out(`digest checks on the new host ${checksA} (${badA} mismatches); deep checks ${as.stats.deepChecks} (${as.stats.deepMismatches} deep-only mismatches), deep digest ${as.stats.deepTaken} taken, ${(as.stats.deepMsTotal / Math.max(1, as.stats.deepTaken)).toFixed(2)} ms avg, ${as.stats.deepMsMax.toFixed(2)} ms max; the old host's seat AI now: ${isAiSeat(alice.sim.galaxy, hostSeatA)}; its first ship: alice "${hostShip(alice)}", bob "${hostShip(bob)}", old host "${hostShip(oldHost)}"`);
     out(`stalls: alice ${as.stats.stalls} (${as.stats.stallMs.toFixed(0)} ms), bob ${bob.session.stats.stalls}; commands applied alice ${as.stats.commandsApplied}, bob ${bob.session.stats.commandsApplied}`);
     const ok = dA === dB && dB === dO && badA === 0 && checksA > 0 && alice.role === 'host' && bob.hostSlot() === 1 && oldHost.hostSlot() === 1
         && !isAiSeat(alice.sim.galaxy, hostSeatA) && hostShip(alice).startsWith('old host back @') && hostShip(alice) === hostShip(bob)

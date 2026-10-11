@@ -56,6 +56,13 @@ export class AutoPauseState {
 
 let boundClock: PausableClock | null = null;
 let state: AutoPauseState | null = null;
+/** Multiplayer (MULTIPLAYER.md §27): a pop-up or window never pauses the shared clock; the game runs on. */
+let suppressed: () => boolean = () => false;
+
+/** multiplayerApp.ts: while a LAN / Internet game runs, windows and event pop-ups do not pause (hot seat still does). */
+export function setAutoPauseSuppressed(fn: () => boolean): void {
+    suppressed = fn;
+}
 
 /** The HUD binds its clock here (hud.ts createHud). Rebinding resets the nesting state. */
 export function bindAutoPauseClock(clock: PausableClock | null, enabled: () => boolean): void {
@@ -64,7 +71,8 @@ export function bindAutoPauseClock(clock: PausableClock | null, enabled: () => b
 }
 
 export function autoPauseOpen(force = false): void {
-    state?.open(boundClock, force);
+    // Suppressed: the window still counts (its close pairs up) but leaves the clock alone.
+    state?.open(suppressed() ? null : boundClock, force);
 }
 
 export function autoPauseClose(): void {

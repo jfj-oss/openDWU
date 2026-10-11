@@ -200,7 +200,7 @@ export class InThreadMp implements MpHandle {
 // Worker
 // ---------------------------------------------------------------------------------------------------------------------
 
-const NO_STATS: LockstepStats = { framesRun: 0, stalls: 0, stallMs: 0, messagesSent: 0, messagesReceived: 0, bytesSent: 0, bytesReceived: 0, commandsSent: 0, commandsApplied: 0, digestChecks: 0, digestMismatches: 0, resyncs: 0, delayChanges: 0 };
+const NO_STATS: LockstepStats = { framesRun: 0, stalls: 0, stallMs: 0, messagesSent: 0, messagesReceived: 0, bytesSent: 0, bytesReceived: 0, commandsSent: 0, commandsApplied: 0, digestChecks: 0, digestMismatches: 0, deepChecks: 0, deepMismatches: 0, deepTaken: 0, deepMsTotal: 0, deepMsMax: 0, resyncs: 0, delayChanges: 0 };
 
 export class WorkerMp implements MpHandle {
     readonly worker = true;
