@@ -1,41 +1,31 @@
-// Scenario 19a Concord art (render/concordArt.ts, concordFleet.ts, concordHull.ts): the biomech insect fleet drawn
-// procedurally on the biomech canvas (deterministic sources placed per bucket, scarred / pristine looks), sizes,
-// thruster marks at the engine pods, bioluminescent lights, the seam-glow overlay, brightness held dark but readable
-// under the Ackdarian reference frames, the portrait / flag, the display gate (Concord's empire only; off with the
-// `concordArt` flag or without the rim trader) and the manifest switches.
+// Scenario 19a Concord art (render/concordArt.ts, concordPhoto.ts): the insect-photo fleet (public/art/concord-photo,
+// built offline by scripts/concord-photo-art.py) composed per variant — the stock frame's texture side per class, the
+// fittings baked from each class's manifest (blue blink lights, strobes, running lights, engine glow, thruster marks at
+// the nozzles), the image's own area ratio, the limbs cut out for the close-zoom animation — the portrait / flag, the
+// display gate (Concord's empire only; off with the `concordArt` flag or without the rim trader) and the manifest.
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { decodePng, dwuAssetPath } from './helpers/pngDecode';
+import { decodePng } from './helpers/pngDecode';
 import { loadScenarioOverlayFs } from './helpers/scenarioGame';
 import {
-    ACKDARIAN_REFERENCE,
     CONCORD_FLAG_H,
     CONCORD_FLAG_W,
     CONCORD_KINDS,
-    CONCORD_LOOKS,
+    CONCORD_LIMBS_MIN_PX,
     CONCORD_PORTRAIT_SIZE,
-    CONCORD_HULL_AREA_RATIO,
-    CONCORD_HULL_FILL,
-    CONCORD_TARGET_L,
-    composeConcordHullImages,
-    concordHullSource,
-    concordHullSourceSide,
-    concordImages,
-    concordSourceOf,
+    CONCORD_TREASURE_AREA_BOOST,
     isConcordBase,
-    isConcordMilitary,
     buildConcordShipArt,
     concordArtEmpire,
     concordArtEnabled,
-    concordArtLook,
     concordArtStats,
     CONCORD_LIGHT_GROUPS,
     ACKDARIAN_PORTRAIT_STDL,
     concordKindOf,
     concordLightAlpha,
-    concordLookOf,
+    concordLimbAngle,
     concordSizeBucket,
-    concordSpec,
-    concordTextureSide,
     concordTreasureShips,
     concordVariantFor,
     generateConcordFlag,
@@ -43,265 +33,129 @@ import {
     imageHash,
     raceHasConcordArt,
     type ConcordImages,
+    type ConcordKind,
     type RgbaImage,
 } from '../src/render/concordArt';
-import { drawConcordHull } from '../src/render/concordFleet';
+import {
+    CONCORD_PHOTO_SIDE,
+    concordPhotoImages,
+    concordPhotoSplitLimbs,
+    type ConcordPhotoManifest,
+    type ConcordPhotoSourceData,
+} from '../src/render/concordPhoto';
 import { BuiltObjectSubRole } from '../src/sim/builtObjectTypes';
 import type { Galaxy } from '../src/sim/galaxy';
 import type { Empire } from '../src/sim/empire';
 
-function build(kind: (typeof CONCORD_KINDS)[number], bucket: number, look: (typeof CONCORD_LOOKS)[number]): ConcordImages {
-    return concordImages(kind, bucket, look);
+const ART = resolve(__dirname, '../public/art/concord-photo');
+
+function png(file: string): RgbaImage {
+    const d = decodePng(file);
+    return { w: d.width, h: d.height, data: d.data };
 }
 
-const cache = new Map<string, ConcordImages>();
-function images(kind: (typeof CONCORD_KINDS)[number], bucket: number, look: (typeof CONCORD_LOOKS)[number]): ConcordImages {
-    const key = `${look}:${kind}:${bucket}`;
-    let im = cache.get(key);
-    if (im === undefined) {
-        im = build(kind, bucket, look);
-        cache.set(key, im);
+const sources = new Map<ConcordKind, ConcordPhotoSourceData>();
+function source(kind: ConcordKind): ConcordPhotoSourceData {
+    let s = sources.get(kind);
+    if (s === undefined) {
+        const img = png(`${ART}/${kind}.png`);
+        const manifest = JSON.parse(readFileSync(`${ART}/${kind}.json`, 'utf8')) as ConcordPhotoManifest;
+        s = manifest.limbs !== undefined && manifest.limbs.length > 0 ? { img, manifest, ...concordPhotoSplitLimbs(img, png(`${ART}/${kind}-limbs.png`), manifest.limbs) } : { img, manifest };
+        sources.set(kind, s);
     }
-    return im;
+    return s;
 }
 
-function opaqueBox(img: RgbaImage, minAlpha = 1): { x0: number; y0: number; x1: number; y1: number } {
-    let x0 = Infinity;
-    let y0 = Infinity;
-    let x1 = -1;
-    let y1 = -1;
-    for (let y = 0; y < img.h; y++) {
-        for (let x = 0; x < img.w; x++) {
-            if (img.data[(y * img.w + x) * 4 + 3] < minAlpha) continue;
-            x0 = Math.min(x0, x);
-            y0 = Math.min(y0, y);
-            x1 = Math.max(x1, x);
-            y1 = Math.max(y1, y);
-        }
-    }
-    return { x0, y0, x1, y1 };
+function images(kind: ConcordKind, bucket: number): ConcordImages {
+    return concordPhotoImages({ kind, bucket }, source(kind));
+}
+
+function opaque(img: RgbaImage): number {
+    let n = 0;
+    for (let p = 0; p < img.w * img.h; p++) if (img.data[p * 4 + 3] >= 128) n++;
+    return n;
 }
 
 describe('Concord ship images', { timeout: 300000 }, () => {
-    it('are deterministic and differ by finish', () => {
-        for (const kind of ['destroyer', 'freighter'] as const) {
-            const a = build(kind, 2, 'weathered');
-            const b = build(kind, 2, 'weathered');
+    it('are deterministic, at the stock frame\'s texture side for the class', () => {
+        for (const kind of CONCORD_KINDS) {
+            const a = images(kind, 3);
+            const b = concordPhotoImages({ kind, bucket: 3 }, source(kind));
             expect(imageHash(a.ship)).toBe(imageHash(b.ship));
-            for (const g of CONCORD_LIGHT_GROUPS) expect(imageHash(a.halos[g])).toBe(imageHash(b.halos[g]));
-            expect(imageHash(images(kind, 2, 'clean').ship), kind).not.toBe(imageHash(a.ship));
+            expect(a.ship.w).toBe(CONCORD_PHOTO_SIDE[kind]);
+            expect(a.ship.h).toBe(CONCORD_PHOTO_SIDE[kind]);
+            for (const g of CONCORD_LIGHT_GROUPS) expect(a.halos[g].data.length).toBe(a.ship.w * a.ship.h * 4);
+            expect(opaque(a.ship)).toBeGreaterThan(a.ship.w * a.ship.h * 0.15);
         }
         expect(imageHash(generateConcordPortrait())).toBe(imageHash(generateConcordPortrait()));
-        expect(imageHash(generateConcordFlag())).toBe(imageHash(generateConcordFlag()));
     });
 
-    it('have the variant sizes, content inside the texture, thruster marks at the nozzles and no stock light marks', () => {
-        for (const look of CONCORD_LOOKS) {
-            for (const kind of CONCORD_KINDS) {
-                for (const bucket of [0, 5]) {
-                    const im = images(kind, bucket, look);
-                    const side = concordTextureSide(kind, bucket);
-                    expect(im.ship.w).toBe(side);
-                    expect(im.ship.h).toBe(side);
-                    for (const g of CONCORD_LIGHT_GROUPS) expect(im.halos[g].data.length).toBe(side * side * 4);
-                    const box = opaqueBox(im.ship);
-                    expect(box.x0, `${look} ${kind} ${bucket}`).toBeGreaterThan(0);
-                    expect(box.y0).toBeGreaterThan(0);
-                    expect(box.x1).toBeLessThan(side - 1);
-                    expect(box.y1).toBeLessThan(side - 1);
-                    const art = buildConcordShipArt(im);
-                    expect(art).not.toBeNull();
-                    expect(art!.markers.lights.length).toBe(0);
-                    expect(art!.markers.thrusters.length, `${look} ${kind} ${bucket}`).toBe(isConcordBase(kind) ? 0 : concordSpec(kind, bucket).engines);
-                    for (const p of im.markerPixels) expect(art!.rgba[p * 4 + 2] === 255 && art!.rgba[p * 4] === 0).toBe(false);
-                    // The marks sit in the aft half (at the engine pods' nozzles).
-                    for (const t of art!.markers.thrusters) expect(t.left, kind).toBeLessThan(art!.markers.side / 2);
-                    // Every light sits on the ship (inside its opaque silhouette).
-                    for (const l of im.lights) expect(im.ship.data[(Math.floor(l.y) * side + Math.floor(l.x)) * 4 + 3], `${kind} ${l.kind}`).toBeGreaterThan(0);
-                }
-            }
-        }
-    });
-
-    it('carry bioluminescent positional lights at the extremities: pink to port, violet to starboard, stern / masthead, strobes', () => {
+    it('carry thruster marks at every nozzle of the manifest and no stray marker colours', () => {
         for (const kind of CONCORD_KINDS) {
-            const im = images(kind, 5, 'weathered');
-            const S = im.ship.w;
-            const port = im.lights.filter((l) => l.kind === 'port');
-            const star = im.lights.filter((l) => l.kind === 'starboard');
-            expect(port.length, kind).toBe(1);
-            expect(star.length).toBe(1);
-            // Port is −x (raw art faces up), starboard +x, at the outer edge.
-            for (const l of port) expect(l.x).toBeLessThan(S / 2);
-            for (const l of star) expect(l.x).toBeGreaterThan(S / 2);
-            const whites = im.lights.filter((l) => l.kind === 'white');
-            expect(Math.max(...whites.map((l) => l.y))).toBeGreaterThan(S * 0.8); // the stern light
-            for (const l of im.lights) expect(l.r).toBeLessThan(S * 0.006);
-            expect(im.lights.filter((l) => l.kind === 'strobe').length, kind).toBe(isConcordMilitary(kind) ? 2 : 0);
-            expect(im.lights.filter((l) => l.kind === 'engine').length, kind).toBe(concordSpec(kind, 5).engines);
-            // Pink port, violet starboard (red-blue, no green).
-            const c = (p: number): number[] => Array.from(im.ship.data.slice(p * 4, p * 4 + 3));
-            const [pr, pg] = c(Math.floor(port[0].y) * S + Math.floor(port[0].x));
-            const [sr, sg, sb] = c(Math.floor(star[0].y) * S + Math.floor(star[0].x));
-            expect(pr).toBeGreaterThan(pg * 2);
-            expect(sb).toBeGreaterThan(sr);
-            expect(sb).toBeGreaterThan(sg * 1.5);
+            const im = images(kind, 4);
+            const built = buildConcordShipArt(im);
+            expect(built).not.toBeNull();
+            const n = source(kind).manifest.thrusters.length;
+            expect(built!.markers.thrusters.length).toBe(n);
+            if (kind === 'base' || kind === 'port') expect(n).toBe(0);
+            else expect(n).toBeGreaterThanOrEqual(2);
+            // No pure-yellow (stock light) marks; pure blue only at the thruster runs.
+            const marks = new Set(im.markerPixels);
+            for (let p = 0; p < im.ship.w * im.ship.h; p++) {
+                const d = im.ship.data;
+                if (d[p * 4 + 3] === 0) continue;
+                expect(d[p * 4] === 255 && d[p * 4 + 1] === 255 && d[p * 4 + 2] === 0).toBe(false);
+                if (d[p * 4] === 0 && d[p * 4 + 1] === 0 && d[p * 4 + 2] === 255) expect(marks.has(p)).toBe(true);
+            }
         }
-        // The builders' lamps (antenna tips, docking clamps) are lights too.
-        expect(images('frigate', 5, 'weathered').lights.filter((l) => l.kind === 'lamp').length).toBeGreaterThanOrEqual(2);
-        expect(images('port', 5, 'weathered').lights.filter((l) => l.kind === 'lamp').length).toBeGreaterThanOrEqual(6);
     });
 
-    it('glow at the seams: a pink-violet seam overlay on every kind', () => {
+    it('blink blue: position lights on every class, strobe pairs on the larger hulls, steady running lights', () => {
         for (const kind of CONCORD_KINDS) {
-            const g = images(kind, 3, 'clean').halos.pulse;
-            let lit = 0;
-            let r = 0;
-            let gr = 0;
-            let b = 0;
-            for (let p = 0; p < g.w * g.h; p++) {
-                if (g.data[p * 4 + 3] < 40) continue;
-                lit++;
-                r += g.data[p * 4];
-                gr += g.data[p * 4 + 1];
-                b += g.data[p * 4 + 2];
-            }
-            expect(lit, kind).toBeGreaterThan(g.w * g.h * 0.004);
-            expect(r, kind).toBeGreaterThan(gr * 1.5);
-            expect(b, kind).toBeGreaterThan(gr * 1.5);
+            const im = images(kind, 4);
+            const blink = im.lights.filter((l) => l.kind === 'blink');
+            expect(blink.length).toBeGreaterThanOrEqual(3);
+            for (const l of blink) expect(l.c![2]).toBeGreaterThan(l.c![0]);
+            if (kind !== 'frigate') expect(im.lights.filter((l) => l.kind === 'strobe').length).toBe(2);
+            expect(im.lights.some((l) => l.kind === 'deck')).toBe(true);
+            // Every light sits on the silhouette.
+            for (const l of im.lights) expect(im.ship.data[(Math.floor(l.y) * im.ship.w + Math.floor(l.x)) * 4 + 3]).toBeGreaterThan(0);
         }
     });
 
-    it('scale fittings with size', () => {
-        expect(concordSpec('frigate', 3).engines).toBe(2);
-        expect(concordSpec('battleship', 3).engines).toBe(4);
-        expect(concordSpec('carrier', 3).engines).toBe(4);
-        expect(concordSpec('treasure', 3).engines).toBe(4);
-        expect(concordSpec('battleship', 3, 'clean').weathering).toBeLessThan(concordSpec('battleship', 3).weathering);
-        expect(concordSpec('freighter', 3).weathering).toBeLessThan(concordSpec('battleship', 3).weathering);
-        expect(concordSpec('battleship', 3).weathering).toBeLessThan(concordSpec('port', 3).weathering);
-        expect(concordSpec('port', 3).side).toBeGreaterThan(concordSpec('base', 3).side);
-        // The treasure ship draws bigger than its hull size alone gives.
-        const t = buildConcordShipArt(images('treasure', 5, 'weathered'))!;
-        const f = buildConcordShipArt(images('freighter', 5, 'weathered'))!;
-        expect(t.metrics.areaRatio).toBeGreaterThan(f.metrics.areaRatio * 1.8);
-    });
-
-    it('stay dark but readable: under the Ackdarian frames\' brightness, bright highlights, violet / magenta hue', () => {
-        for (const look of CONCORD_LOOKS) {
-            for (const kind of CONCORD_KINDS) {
-                for (const bucket of [0, 5]) {
-                    const im = images(kind, bucket, look);
-                    const mk = new Set(im.markerPixels);
-                    const lp = new Set(im.lightPixels);
-                    const s = concordArtStats(im.ship.data, im.ship.w, im.ship.h, (p) => mk.has(p) || lp.has(p));
-                    const tag = `${look} ${kind} ${bucket}`;
-                    expect(s.meanL, tag).toBeGreaterThan(CONCORD_TARGET_L * 0.75);
-                    expect(s.meanL, tag).toBeLessThan(ACKDARIAN_REFERENCE.base.meanL * 0.8);
-                    expect(s.p95L, tag).toBeGreaterThan(0.22);
-                    expect(s.p5L, tag).toBeLessThan(0.06);
-                    expect(s.hueDeg, tag).toBeGreaterThan(255);
-                    expect(s.hueDeg, tag).toBeLessThan(335);
-                }
-            }
-        }
-    });
-
-    it.skipIf(dwuAssetPath('images/units/ships/family7/cruiser.png') === null)('reference constants re-measure on the install frames', () => {
-        for (const kind of Object.keys(ACKDARIAN_REFERENCE) as (keyof typeof ACKDARIAN_REFERENCE)[]) {
-            const ref = ACKDARIAN_REFERENCE[kind];
-            const png = decodePng(dwuAssetPath(`images/units/ships/${ref.file}`)!);
-            const s = concordArtStats(png.data, png.width, png.height);
-            expect(Math.abs(s.meanL - ref.meanL), kind).toBeLessThan(0.001);
-            expect(Math.abs(s.stdL - ref.stdL), kind).toBeLessThan(0.001);
-            expect(Math.abs(s.meanSat - ref.meanSat), kind).toBeLessThan(0.001);
-            expect(Math.abs(s.p5L - ref.p5L), kind).toBeLessThan(0.001);
-            expect(Math.abs(s.p95L - ref.p95L), kind).toBeLessThan(0.001);
-        }
-    });
-
-    it('fill the texture at the kind\'s fill, centred, hard alpha edge, scarring only in the scarred look', () => {
+    it('draw at a stock ship\'s opaque area: their own area ratio (treasure ship boosted)', () => {
         for (const kind of CONCORD_KINDS) {
-            for (const bucket of [0, 3, 5]) {
-                const im = images(kind, bucket, 'clean');
-                const S = im.ship.w;
-                const box = opaqueBox(im.ship, 1);
-                const extent = Math.max(box.x1 - box.x0 + 1, box.y1 - box.y0 + 1);
-                expect(Math.abs(extent / S - CONCORD_HULL_FILL[kind]), `${kind} ${bucket}`).toBeLessThan(0.03);
-                expect(Math.abs((box.x0 + box.x1) / 2 - S / 2)).toBeLessThan(S * 0.03);
-                expect(Math.abs((box.y0 + box.y1) / 2 - S / 2)).toBeLessThan(S * 0.03);
-                for (let p = 0; p < S * S; p++) {
-                    const a = im.ship.data[p * 4 + 3];
-                    if (a !== 0 && a !== 255) throw new Error(`${kind} ${bucket}: partial alpha ${a} at ${p}`);
-                }
-            }
-            // The drawn extent of the earlier art is kept (the area ratio sets the drawn size).
-            expect(buildConcordShipArt(images(kind, 3, 'clean'))!.metrics.areaRatio).toBe(CONCORD_HULL_AREA_RATIO[kind]);
-            // Scarring marks some pixels but never moves the silhouette.
-            const w = images(kind, 3, 'weathered').ship;
-            const c = images(kind, 3, 'clean').ship;
-            let changed = 0;
-            for (let p = 0; p < w.w * w.h; p++) {
-                expect(w.data[p * 4 + 3]).toBe(c.data[p * 4 + 3]);
-                if (w.data[p * 4] !== c.data[p * 4] || w.data[p * 4 + 1] !== c.data[p * 4 + 1]) changed++;
-            }
-            expect(changed, kind).toBeGreaterThan(20);
+            const im = images(kind, 3);
+            const built = buildConcordShipArt(im)!;
+            const own = (built.metrics.cropSide * built.metrics.cropSide) / opaque(im.ship);
+            const boost = kind === 'treasure' ? CONCORD_TREASURE_AREA_BOOST : 1;
+            const ratio = built.metrics.areaRatio / (own * boost);
+            expect(ratio).toBeGreaterThan(0.8);
+            expect(ratio).toBeLessThan(1.2);
         }
     });
 
-    it('sources: twice the largest texture side, symmetric about the vertical axis, deterministic', () => {
+    it('cut the legs and antennae out for the close-zoom animation (bases have none)', () => {
         for (const kind of CONCORD_KINDS) {
-            const src = concordHullSource(kind);
-            const n = concordHullSourceSide(kind);
-            expect(n).toBe(2 * concordTextureSide(kind, 5));
-            expect(src.img.w).toBe(n);
-            expect(src.img.h).toBe(n);
-            expect(src.glow.w).toBe(n);
-            expect(concordHullSource(kind)).toBe(src); // cached
-            expect(src.nozzles.length, kind).toBe(concordSpec(kind, 0).engines);
-            let opaque = 0;
-            let asym = 0;
-            for (let y = 0; y < n; y++) {
-                for (let x = 0; x < n / 2; x++) {
-                    const a = src.img.data[(y * n + x) * 4 + 3] > 0;
-                    const b = src.img.data[(y * n + (n - 1 - x)) * 4 + 3] > 0;
-                    if (a) opaque++;
-                    if (a !== b) asym++;
-                }
+            const im = images(kind, 5);
+            if (kind === 'base' || kind === 'port') {
+                expect(im.limbs).toBeUndefined();
+                continue;
             }
-            expect(asym / opaque, kind).toBeLessThan(0.002);
-        }
-        // Drawn afresh, a kind comes out byte-identical (own seeded hash / RNG, no Math.random).
-        const again = composeConcordHullImages('frigate', 2, 'weathered', concordSourceOf(drawConcordHull('frigate', concordHullSourceSide('frigate'))));
-        expect(imageHash(again.ship)).toBe(imageHash(images('frigate', 2, 'weathered').ship));
-    });
-
-    it('are not flat: lit volumes and organic detail give a luminance spread inside the body', () => {
-        for (const kind of CONCORD_KINDS) {
-            for (const bucket of [0, 5]) {
-                const im = images(kind, bucket, 'clean');
-                const mk = new Set(im.markerPixels);
-                const lp = new Set(im.lightPixels);
-                const st = concordArtStats(im.ship.data, im.ship.w, im.ship.h, (p) => mk.has(p) || lp.has(p));
-                expect(st.stdL, `${kind} ${bucket}`).toBeGreaterThan(0.07);
-                const { w, data } = im.ship;
-                const L = (p: number): number => (0.2126 * data[p * 4] + 0.7152 * data[p * 4 + 1] + 0.0722 * data[p * 4 + 2]) / 255;
-                let sum = 0;
-                let cnt = 0;
-                for (let p = 0; p < w * w - 1; p++) {
-                    if (p % w === w - 1 || data[p * 4 + 3] === 0 || data[(p + 1) * 4 + 3] === 0) continue;
-                    sum += Math.abs(L(p) - L(p + 1));
-                    cnt++;
-                }
-                expect(sum / cnt, `${kind} ${bucket} local`).toBeGreaterThan(0.02);
+            expect(im.limbs!.length).toBeGreaterThanOrEqual(3);
+            expect(opaque(im.bodyShip!)).toBeLessThan(opaque(im.ship));
+            for (const l of im.limbs!) {
+                expect(l.x).toBeGreaterThan(0);
+                expect(l.x).toBeLessThan(im.ship.w);
+                expect(Math.abs(concordLimbAngle(l, 0.7, 3))).toBeLessThan(0.15);
             }
         }
+        expect(CONCORD_LIMBS_MIN_PX).toBeGreaterThan(48);
     });
 
-    it('every kind is drawn in code: no file loads', () => {
-        const concord = { empireId: 5 } as unknown as Empire;
-        expect(concordVariantFor({ empire: concord, subRole: BuiltObjectSubRole.Escort, size: 100 }, concord, new Set())?.kind).toBe('frigate');
-        expect(concordVariantFor({ empire: concord, subRole: BuiltObjectSubRole.SmallFreighter, size: 100 }, concord, new Set())?.kind).toBe('freighter');
+    it('every class has its own image', () => {
+        const hashes = new Set(CONCORD_KINDS.map((k) => imageHash(source(k).img)));
+        expect(hashes.size).toBe(CONCORD_KINDS.length);
         expect(isConcordBase('port')).toBe(true);
         expect(isConcordBase('base')).toBe(true);
         expect(isConcordBase('carrier')).toBe(false);
@@ -354,8 +208,8 @@ describe('Concord art display gate', () => {
         const treasure = concordTreasureShips(galaxy);
         expect(concordVariantFor({ empire: other, subRole: BuiltObjectSubRole.Cruiser, size: 600 }, empire, treasure)).toBeNull();
         expect(concordVariantFor({ empire: null, subRole: BuiltObjectSubRole.SmallFreighter, size: 200 }, empire, treasure)).toBeNull();
-        expect(concordVariantFor({ empire: concord, subRole: BuiltObjectSubRole.Cruiser, size: 600 }, empire, treasure)).toEqual({ kind: 'battleship', bucket: 3, look: 'weathered' });
-        expect(concordVariantFor(treasureShip, empire, treasure)).toEqual({ kind: 'treasure', bucket: 4, look: 'weathered' });
+        expect(concordVariantFor({ empire: concord, subRole: BuiltObjectSubRole.Cruiser, size: 600 }, empire, treasure)).toEqual({ kind: 'battleship', bucket: 3 });
+        expect(concordVariantFor(treasureShip, empire, treasure)).toEqual({ kind: 'treasure', bucket: 4 });
         expect(concordVariantFor({ empire: concord, subRole: BuiltObjectSubRole.LargeFreighter, size: 1100 }, empire, treasure)?.kind).toBe('freighter');
         expect(raceHasConcordArt(galaxy, 'Oranthi')).toBe(true);
         expect(raceHasConcordArt(galaxy, 'Ackdarian')).toBe(false);
@@ -377,19 +231,10 @@ describe('Concord art display gate', () => {
         expect(concordArtEnabled(fakeGalaxy({ rimTrader: true }).galaxy)).toBe(true);
     });
 
-    it('reads the finish param (default weathered)', () => {
-        expect(concordArtLook(fakeGalaxy({ rimTrader: true }).galaxy)).toBe('weathered');
-        expect(concordArtLook(fakeGalaxy({ rimTrader: true }, { concordArtLook: 1 }).galaxy)).toBe('clean');
-        expect(concordLookOf(9)).toBe('clean');
-        expect(concordLookOf(-3)).toBe('weathered');
-    });
-
-    it('the manifest declares the flag (default on) and the look param (default 0)', () => {
+    it('the manifest declares the flag (default on) and no finish param', () => {
         const m = loadScenarioOverlayFs('rimTrade').manifest;
         expect(m.flags.find((f) => f.name === 'concordArt')?.default).toBe(true);
-        const p = m.params.find((x) => x.name === 'concordArtLook');
-        expect(p?.default).toBe(0);
-        expect(p?.max).toBe(1);
+        expect(m.params.find((x) => x.name === 'concordArtLook')).toBeUndefined();
     });
 
     it('maps sub-roles to kinds and sizes to buckets', () => {
@@ -408,21 +253,18 @@ describe('Concord art display gate', () => {
         expect([100, 150, 299, 300, 500, 800, 1200, 5000].map(concordSizeBucket)).toEqual([0, 1, 1, 2, 3, 4, 5, 5]);
     });
 
-    it('light blink groups: steady, breathing seam glow, slow pink / violet pulse, strobe double flash on the nav-light cycle', () => {
+    it('light blink groups: steady, slow nav pulse, strobe double flash, blue blink on / off on the nav-light cycle', () => {
         const strobeOn: number[] = [];
-        let pMin = 1;
-        let pMax = 0;
+        let blinkOn = 0;
         for (let t = 0; t < 5; t += 0.01) {
             expect(concordLightAlpha('steady', t, 3)).toBe(0.5);
-            const f = concordLightAlpha('pulse', t, 3);
-            expect(f).toBeGreaterThanOrEqual(0.25);
-            expect(f).toBeLessThanOrEqual(0.75);
-            pMin = Math.min(pMin, f);
-            pMax = Math.max(pMax, f);
             const n = concordLightAlpha('nav', t, 3);
             expect(n).toBeGreaterThanOrEqual(0.45);
             expect(n).toBeLessThanOrEqual(0.7);
             if (concordLightAlpha('strobe', t, 3) > 0) strobeOn.push(t);
+            const b = concordLightAlpha('blink', t, 3);
+            expect(b === 0 || b === 1).toBe(true);
+            if (b > 0) blinkOn++;
         }
         // Two short (0.07 s) flashes per 2.5 s cycle: about 5.6 % of the time lit, in 4 separate bursts over 5 s.
         expect(strobeOn.length).toBeGreaterThan(20);
@@ -430,9 +272,9 @@ describe('Concord art display gate', () => {
         let bursts = 1;
         for (let k = 1; k < strobeOn.length; k++) if (strobeOn[k] - strobeOn[k - 1] > 0.05) bursts++;
         expect(bursts).toBe(4);
-        // The seam glow breathes through most of its range within the 5 s, with its own phase per ship.
-        expect(pMax - pMin).toBeGreaterThan(0.4);
-        expect(concordLightAlpha('pulse', 1, 3)).not.toBe(concordLightAlpha('pulse', 1, 4));
+        // Blink: on 1.5 s of every 2.5 s (the stock nav lights' LIGHT_ON / OFF_SECONDS).
+        expect(blinkOn / 500).toBeGreaterThan(0.55);
+        expect(blinkOn / 500).toBeLessThan(0.65);
         // Phase offset per ship (the ambient pattern: id % 20 / 10 s).
         expect(concordLightAlpha('strobe', 0.03, 0)).toBeGreaterThan(0);
         expect(concordLightAlpha('strobe', 0.03, 5)).toBe(0);

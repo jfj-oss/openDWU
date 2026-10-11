@@ -1,42 +1,35 @@
 // Scenario 19a art — the Oranthi Concord's own ships (tasks/19-mod-layer-scenarios.md "Concord art"). Not a port:
-// the original has no such art. All procedural, one family ("biomech"): dark insects — glossy black chitin with an
-// iridescent violet / magenta / pink oil-slick sheen, dark purple and deep pink plate margins — cybernetically
-// augmented into giant ships: grafted gunmetal armour bolted into the shell, cable bundles along the segments,
-// mechanical engine pods fused onto the abdomen, implanted sensor clusters, and glowing pink-violet seams wherever
-// flesh meets machine.
-//   Every kind — frigate (wasp), destroyer (mantis-hornet), battleship (armoured stag beetle), carrier (hive-backed
-//     beetle with brood hatches), construction ship (worker ant with manipulator mandibles), explorer (dragonfly),
-//     freighter (bloated tick with strapped cargo sacs), treasure ship (giant armoured queen), space port and generic
-//     base (honeycomb hives with grafted docking arms) — is drawn by concordFleet.ts on the biomech canvas of
-//     concordHull.ts: a supersampled G-buffer (height, albedo, material, thin-film phase, steady and pulsing emission)
-//     built from anatomy volumes, then detail (growth lines, pores, fine ridges, facets, comb cells, bolts, panel
-//     lines) and lighting (normals from the height field, one top-left key light, ambient occlusion, cast shadows, a
-//     specular whose colour is the thin-film hue on chitin plus a broad sheen lobe and a slope rim — the oil-slick —
-//     and tinted highlights on metal). Each kind is drawn once at twice its largest texture side
-//     (concordHullSourceSide); each variant places that image at the kind's fill (CONCORD_HULL_FILL) in its bucket's
-//     texture side (box downsample, hard alpha edge), then layers the shared passes on: the scarred look's scratches
-//     and old wounds (the pristine look skips them), positional lights found on the silhouette (bioluminescent: hot
-//     pink to port at the leftmost point, violet to starboard at the rightmost, pale lilac at the stern and masthead,
-//     the warships' two mast strobes), the builders' lamp points, thruster marks at the engine pods' nozzles, and the
-//     overlays.
+// the original has no such art. The Concord flies cybernetically augmented insects built from real specimen photos
+// (public-domain USGS Bee Inventory and Monitoring Lab images; public/art/concord-photo/CREDITS.md): no winged insects
+// (frigate tortoise beetle, destroyer weevil, battleship longhorn beetle, carrier and construction ship ground beetles,
+// explorer ground beetle, freighter shield bug, treasure ship gold beetle), each class its own colour in one dark
+// purple / pink / wine family with an iridescent sheen, wearing teal-metal cybernetics (an exo-ribcage over the
+// carapace, a spine conduit, margin cables, sensor clusters, a per-class engine recipe; gold trim, emerald / cyan glow,
+// rust and wear); the space port and generic base are egg sacs (a real egg mass under a procedural membrane) with
+// docking arms. The offline build step scripts/concord-photo-art.py renders each class once (its lighting follows this
+// module's old convention: normals from a height field, a key light from ahead of the bow, ambient occlusion, cast
+// shadows, specular) and writes its fittings; concordPhoto.ts loads them and composes each variant.
 //
-// Thruster marks are painted as the originals do (pure-blue runs at the nozzles) and go through the same scan + paint-
-// out as stock art (shipArt.ts), so the ambient layer's engine exhaust works unchanged; there are no yellow marks (the
-// Concord's own lights replace the stock ones). Overlays sharing the ship's transform: light halos by blink group
-// (additive, tight) and the seam glow (additive, breathing on its own slow cycle, phase per ship). Top-down like the
-// originals, bow up in the raw image (the ship layer rotates raw art by heading + π/2). Pure and deterministic (own
-// hash / RNG, never galaxy.rnd) and testable without a DOM.
+// A variant places its class's image at the class's fill in the stock Ackdarian frame's texture side for the class
+// and bakes the fittings drawn on the cybernetic parts (finishConcordImages): blue blinking position lights (the
+// 'blink' group: on / off on the stock nav-light cycle, phase per ship), blue strobe pairs, steady emerald running
+// lights, engine glow, and the thruster marks at each nozzle — pure-blue runs as the originals paint them, through the
+// same scan + paint-out as stock art (shipArt.ts), so the ambient layer's engine exhaust works unchanged; there are no
+// yellow marks. Its own measured area ratio sets its drawn size, so the opaque on-screen area matches a stock ship of
+// the same size. Overlays sharing the ship's transform: light halos by blink group (additive) and, from
+// CONCORD_LIMBS_MIN_PX (system / planet zoom), the legs and antennae as separate sprites turned about their attachment
+// points over the limbless body (concordLimbAngle), on an animation clock frozen while the game is paused. Top-down
+// like the originals, bow up in the raw image (the ship layer rotates raw art by heading + π/2).
 //
 // Display gate: the rim trader flag and the scenario flag `concordArt` (default on; off = the stock Ackdarian art the
-// race file names); `concordArtLook` 0 = scarred (default), 1 = pristine. Render-only — nothing here reads galaxy.rnd
-// or writes sim state.
+// race file names). Render-only — nothing here reads galaxy.rnd or writes sim state.
 
 import { Container, Texture } from 'pixi.js';
 import { makeTextureCanvas, textureFromRgbaPixels } from './textureCanvas';
 import type { Galaxy } from '../sim/galaxy';
 import type { Empire } from '../sim/empire';
 import { BuiltObjectSubRole } from '../sim/builtObjectTypes';
-import { scenarioFlag, scenarioParam } from '../sim/scenario/state';
+import { scenarioFlag } from '../sim/scenario/state';
 import { RIM_RACE, rimTraderEmpire } from '../sim/scenario/rimTrade/common';
 import { shipImageMetrics, type ShipImageMetrics } from './builtObjectLayer';
 import { LIGHT_OFF_SECONDS, LIGHT_ON_SECONDS, scanShipMarkers, type ShipMarkers } from './ambientLayer';
@@ -44,39 +37,24 @@ import { paintOutShipMarkers } from './shipArt';
 import { useMinifyingFilter } from './assets';
 import { SpritePool } from './fxCommon';
 import { registerEmblemOverride } from '../ui/empireEmblem';
-import { drawConcordHull, type ConcordHullDrawing, type ConcordHullKind } from './concordFleet';
-import { filmHue, fbm, hashI, noise2, segDist } from './concordHull';
+import { filmHue, fbm, hashI, noise2, segDist } from './concordNoise';
+import { concordPhotoImages, concordPhotoSource } from './concordPhoto';
 
 // ---------------------------------------------------------------------------------------------------------------
 // Variants
 // ---------------------------------------------------------------------------------------------------------------
 
-export type ConcordKind = ConcordHullKind;
+export type ConcordKind = 'frigate' | 'destroyer' | 'battleship' | 'carrier' | 'freighter' | 'explorer' | 'construction' | 'treasure' | 'port' | 'base';
 export const CONCORD_KINDS: readonly ConcordKind[] = ['frigate', 'destroyer', 'battleship', 'carrier', 'freighter', 'explorer', 'construction', 'treasure', 'port', 'base'];
-export type { ConcordHullKind };
-
-/** The military classes (mast strobes). */
-export function isConcordMilitary(kind: ConcordKind): boolean {
-    return kind === 'frigate' || kind === 'destroyer' || kind === 'battleship' || kind === 'carrier';
-}
 
 export function isConcordBase(kind: ConcordKind): boolean {
     return kind === 'port' || kind === 'base';
 }
 
-/** 'weathered' = scarred (old wounds, scratches), 'clean' = pristine gloss. */
-export type ConcordLook = 'weathered' | 'clean';
-/** Index = the `concordArtLook` param value. */
-export const CONCORD_LOOKS: readonly ConcordLook[] = ['weathered', 'clean'];
-
-export function concordLookOf(param: number): ConcordLook {
-    return CONCORD_LOOKS[Math.max(0, Math.min(CONCORD_LOOKS.length - 1, Math.trunc(param) || 0))];
-}
-
 /** Hull-size thresholds of the size buckets 1..5 (bucket 0 below the first). */
 export const CONCORD_SIZE_THRESHOLDS = [150, 300, 500, 800, 1200] as const;
 export const CONCORD_BUCKETS = CONCORD_SIZE_THRESHOLDS.length + 1;
-/** Square texture side per size bucket (ships / bases). */
+/** Square texture side per size bucket (ships / bases); the photo art uses the stock frame's side instead. */
 const SHIP_SIDES = [128, 160, 192, 256, 320, 384] as const;
 const BASE_SIDES = [192, 224, 256, 320, 384, 448] as const;
 const PORT_SIDES = [224, 256, 320, 384, 448, 512] as const;
@@ -141,38 +119,33 @@ export function concordTextureSide(kind: ConcordKind, bucket: number): number {
     return SHIP_SIDES[b];
 }
 
-/** The drawing parameters of one variant (derived; exported for tests and the report). */
+/** The parameters of one variant (derived; exported for tests and the report). */
 export interface ConcordSpec {
     kind: ConcordKind;
-    look: ConcordLook;
     bucket: number;
+    /** Texture side (the photo art overrides it with the stock frame's side, concordPhoto.ts CONCORD_PHOTO_SIDE). */
     side: number;
-    /** Scarring strength (scratches, old wounds): 1 scarred, 0 pristine; warships ×1.4, hives ×1.6. */
-    weathering: number;
-    /** Engine pods (one thruster mark at each nozzle). */
+    /** Engine nozzles (one thruster mark at each). */
     engines: number;
 }
 
-/** Engine pods each kind's builder fuses on (concordFleet.ts). */
+/** Engine nozzles of each class (the build step's per-class engine recipe). */
 const ENGINES: Readonly<Record<ConcordKind, number>> = {
     frigate: 2,
-    destroyer: 2,
+    destroyer: 3,
     battleship: 4,
     carrier: 4,
     freighter: 2,
     explorer: 2,
-    construction: 2,
+    construction: 3,
     treasure: 4,
     port: 0,
     base: 0,
 };
 
-export function concordSpec(kind: ConcordKind, bucket: number, look: ConcordLook = 'weathered'): ConcordSpec {
+export function concordSpec(kind: ConcordKind, bucket: number): ConcordSpec {
     const b = Math.max(0, Math.min(CONCORD_BUCKETS - 1, bucket));
-    let weathering = look === 'clean' ? 0 : 1;
-    if (isConcordMilitary(kind)) weathering *= 1.4;
-    if (isConcordBase(kind)) weathering *= 1.6;
-    return { kind, look, bucket: b, side: concordTextureSide(kind, b), weathering, engines: ENGINES[kind] };
+    return { kind, bucket: b, side: concordTextureSide(kind, b), engines: ENGINES[kind] };
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -249,79 +222,26 @@ function hueOf(r: number, g: number, b: number): number {
  * PNG; the install-gated test re-measures them): the brightness the biomech art is held under (dark, but readable
  * next to the neighbours' stock ships). Only these numbers live in the repo, never the art.
  */
-export interface AckdarianReference {
-    file: string;
-    meanL: number;
-    stdL: number;
-    meanSat: number;
-    p5L: number;
-    p95L: number;
-}
-
-export const ACKDARIAN_REFERENCE: Readonly<Record<'freighter' | 'base', AckdarianReference>> = {
-    freighter: { file: 'family7/largefreighter.png', meanL: 0.255, stdL: 0.183, meanSat: 0.174, p5L: 0.001, p95L: 0.599 },
-    base: { file: 'family7/genericbase.png', meanL: 0.242, stdL: 0.141, meanSat: 0.225, p5L: 0.06, p95L: 0.51 },
-};
-
-/** Mean luma (opaque, non-light pixels) every kind's drawing is exposed to: about 60 % of the Ackdarian frames'. */
-export const CONCORD_TARGET_L = 0.135;
-
-/** Scales the RGB of the pixels not in `keep` so their mean luma reaches `target` (an exposure; hue kept). */
-function exposeTo(img: RgbaImage, target: number, keep: (p: number) => boolean): void {
-    const d = img.data;
-    const n = img.w * img.h;
-    for (let pass = 0; pass < 3; pass++) {
-        let sum = 0;
-        let cnt = 0;
-        for (let p = 0; p < n; p++) {
-            if (d[p * 4 + 3] < 128 || keep(p)) continue;
-            sum += luma709(d[p * 4] / 255, d[p * 4 + 1] / 255, d[p * 4 + 2] / 255);
-            cnt++;
-        }
-        const mean = cnt > 0 ? sum / cnt : 0;
-        if (mean <= 1e-4 || Math.abs(mean - target) < 0.002) return;
-        const k = target / mean;
-        for (let p = 0; p < n; p++) {
-            if (d[p * 4 + 3] === 0 || keep(p)) continue;
-            d[p * 4] = Math.min(255, Math.round(d[p * 4] * k));
-            d[p * 4 + 1] = Math.min(255, Math.round(d[p * 4 + 1] * k));
-            d[p * 4 + 2] = Math.min(255, Math.round(d[p * 4 + 2] * k));
-        }
-    }
-}
-
 // ---------------------------------------------------------------------------------------------------------------
 // Lights, palette, RNG
 // ---------------------------------------------------------------------------------------------------------------
 
 type Rgb = readonly [number, number, number];
 
-/** Light kinds: blink groups of the overlay (and the baked colour). All bioluminescent. */
-export type ConcordLightKind = 'lamp' | 'port' | 'starboard' | 'white' | 'strobe' | 'engine';
+/**
+ * Light kinds: blink groups of the overlay (and the baked colour; a light may carry its own colour). The photo art
+ * uses blink (blue position lights), strobe (blue), deck (steady emerald running lights) and engine.
+ */
+export type ConcordLightKind = 'lamp' | 'deck' | 'port' | 'starboard' | 'white' | 'strobe' | 'engine' | 'blink';
 const LIGHT_COLOUR: Readonly<Record<ConcordLightKind, Rgb>> = {
     lamp: [1, 0.5, 0.9],
+    deck: [0.35, 1, 0.7],
     port: [1, 0.22, 0.55],
     starboard: [0.62, 0.38, 1],
     white: [1, 0.84, 1],
-    strobe: [1, 0.9, 1],
-    engine: [0.8, 0.56, 1],
-};
-
-/** Own deterministic RNG (mulberry32). */
-function makeRng(seed: number): () => number {
-    let a = seed >>> 0;
-    return () => {
-        a = (a + 0x6d2b79f5) >>> 0;
-        let t = a;
-        t = Math.imul(t ^ (t >>> 15), t | 1);
-        t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-    };
-}
-
-const smooth01 = (e0: number, e1: number, x: number): number => {
-    const t = Math.max(0, Math.min(1, (x - e0) / (e1 - e0)));
-    return t * t * (3 - 2 * t);
+    strobe: [0.55, 0.75, 1],
+    engine: [0.72, 0.86, 1],
+    blink: [0.35, 0.62, 1],
 };
 
 function norm3(x: number, y: number, z: number): [number, number, number] {
@@ -334,29 +254,33 @@ export interface ConcordLight {
     y: number;
     r: number;
     kind: ConcordLightKind;
+    /** Colour instead of the kind's; the blink group stays the kind's. */
+    c?: readonly [number, number, number];
 }
 
 // ---------------------------------------------------------------------------------------------------------------
-// Overlays: light halos by blink group, the seam glow
+// Overlays: light halos by blink group
 // ---------------------------------------------------------------------------------------------------------------
 
-/** Blink groups of the overlay: 'pulse' is the seam glow (not point lights). */
-export type ConcordLightGroup = 'steady' | 'nav' | 'strobe' | 'engine' | 'pulse';
-export const CONCORD_LIGHT_GROUPS: readonly ConcordLightGroup[] = ['steady', 'nav', 'strobe', 'engine', 'pulse'];
+/** Blink groups of the overlay. */
+export type ConcordLightGroup = 'steady' | 'nav' | 'strobe' | 'engine' | 'blink';
+export const CONCORD_LIGHT_GROUPS: readonly ConcordLightGroup[] = ['steady', 'nav', 'strobe', 'engine', 'blink'];
 
 export function concordLightGroup(kind: ConcordLightKind): ConcordLightGroup {
     if (kind === 'port' || kind === 'starboard') return 'nav';
     if (kind === 'strobe') return 'strobe';
     if (kind === 'engine') return 'engine';
+    if (kind === 'blink') return 'blink';
     return 'steady';
 }
 
-/** Tight halos (σ ≈ 1.2–1.8 × the light's radius) of one blink group, each in its own colour. */
+/** Halos (σ ≈ 1.3–2.6 × the light's radius) of one blink group, each in its own colour. */
 function haloImage(S: number, lights: readonly ConcordLight[]): RgbaImage {
     const acc = new Float64Array(S * S * 4);
     for (const l of lights) {
-        const sg = Math.max(0.6, l.r * (l.kind === 'engine' || l.kind === 'lamp' ? 1.6 : l.kind === 'strobe' ? 1.8 : 1.3));
-        const c = LIGHT_COLOUR[l.kind];
+        // The blue blink lights get a larger soft halo (readable on the dark chitin).
+        const sg = Math.max(0.6, l.r * (l.kind === 'engine' || l.kind === 'lamp' ? 1.6 : l.kind === 'strobe' ? 1.8 : l.kind === 'blink' ? 2.6 : 1.3));
+        const c = l.c ?? LIGHT_COLOUR[l.kind];
         const x0 = Math.max(0, Math.floor(l.x - 3 * sg));
         const x1 = Math.min(S - 1, Math.ceil(l.x + 3 * sg));
         const y0 = Math.max(0, Math.floor(l.y - 3 * sg));
@@ -394,88 +318,23 @@ export interface ConcordImages {
     spec: ConcordSpec;
     /** The ship / base, straight alpha, with the pure-blue thruster marks still in (shipArt pipeline removes them). */
     ship: RgbaImage;
-    /** Tight light halos per blink group (additive); 'pulse' is the seam glow. */
+    /** Light halos per blink group (additive). */
     halos: Record<ConcordLightGroup, RgbaImage>;
     lights: ConcordLight[];
     /** Pixel indices of the thruster marks. */
     markerPixels: number[];
     /** Pixel indices of baked light dots. */
     lightPixels: number[];
+    /** Multiplier on the image's own measured area ratio (a per-class linear size correction squared). */
+    areaScale?: number;
+    /** The ship without its animated limbs, and the limbs (pivot in ship px, limb px per ship px). */
+    bodyShip?: RgbaImage;
+    limbs?: { img: RgbaImage; x: number; y: number; ax: number; ay: number; k: number; kind: 'antenna' | 'leg'; amp: number; freq: number; phase: number }[];
 }
 
-function variantSeed(kind: ConcordKind, bucket: number, look: ConcordLook): number {
-    return (CONCORD_KINDS.indexOf(kind) + 1) * 7919 + bucket * 104729 + CONCORD_LOOKS.indexOf(look) * 15485863;
-}
-
-/** Longest extent of the body as a fraction of the texture side. */
-export const CONCORD_HULL_FILL: Readonly<Record<ConcordKind, number>> = {
-    frigate: 0.89,
-    destroyer: 0.92,
-    battleship: 0.925,
-    carrier: 0.925,
-    freighter: 0.9,
-    explorer: 0.86,
-    construction: 0.88,
-    treasure: 0.95,
-    port: 0.965,
-    base: 0.93,
-};
-
-/**
- * Drawn-area ratio per kind (crop square / opaque px, which with the hull size sets the drawn size): the earlier
- * Concord art's measured values, so every kind keeps its on-map footprint whatever its silhouette. The treasure ship
- * draws bigger than its hull size alone gives (about 2× the beam and 1.5× the length of a carrier of its size): its
- * ratio carries CONCORD_TREASURE_AREA_BOOST.
- */
+/** The treasure ship draws bigger than its hull size alone gives (about 2× the beam and 1.5× the length of a carrier
+ * of its size): its area ratio carries this boost. */
 export const CONCORD_TREASURE_AREA_BOOST = 3;
-export const CONCORD_HULL_AREA_RATIO: Readonly<Record<ConcordKind, number>> = {
-    frigate: 5.0,
-    destroyer: 4.6,
-    battleship: 3.9,
-    carrier: 3.9,
-    freighter: 4.4,
-    explorer: 5.4,
-    construction: 3.7,
-    treasure: 3.1 * CONCORD_TREASURE_AREA_BOOST,
-    port: 2.2,
-    base: 2.2,
-};
-
-/** Side of a kind's full-resolution drawing: twice its largest texture side (every variant downsamples from it). */
-export function concordHullSourceSide(kind: ConcordKind): number {
-    return 2 * concordTextureSide(kind, CONCORD_BUCKETS - 1);
-}
-
-/** A kind's drawing, exposed and with its lamp / nozzle sites in px. */
-export interface ConcordSource {
-    img: RgbaImage;
-    glow: RgbaImage;
-    /** px of the source image. */
-    nozzles: { x: number; y: number; r: number }[];
-    lamps: { x: number; y: number; r: number }[];
-}
-
-const hullSources = new Map<ConcordKind, ConcordSource>();
-
-/** Turns a raw drawing into a source: exposure to CONCORD_TARGET_L (the emissive pixels kept), sites in px. */
-export function concordSourceOf(d: ConcordHullDrawing): ConcordSource {
-    const k = d.img.w / 1000;
-    const img: RgbaImage = { w: d.img.w, h: d.img.h, data: d.img.data };
-    const glow = d.glow.data;
-    exposeTo(img, CONCORD_TARGET_L, (p) => glow[p * 4 + 3] > 140);
-    const px = (s: { x: number; y: number; r: number }): { x: number; y: number; r: number } => ({ x: s.x * k, y: s.y * k, r: s.r * k });
-    return { img, glow: { w: d.glow.w, h: d.glow.h, data: d.glow.data }, nozzles: d.nozzles.map(px), lamps: d.lamps.map(px) };
-}
-
-/** A kind's full-resolution drawing (drawn once, then cached; pure and deterministic). */
-export function concordHullSource(kind: ConcordKind): ConcordSource {
-    let src = hullSources.get(kind);
-    if (src === undefined) {
-        src = concordSourceOf(drawConcordHull(kind, concordHullSourceSide(kind)));
-        hullSources.set(kind, src);
-    }
-    return src;
-}
 
 /** Inclusive bbox of the pixels with alpha ≥ `min`, or null. */
 function alphaBox(img: RgbaImage, min: number): { x0: number; y0: number; x1: number; y1: number } | null {
@@ -587,219 +446,32 @@ function resample(src: RgbaImage, S: number, pl: ConcordPlacement, hard: boolean
     return { w: S, h: S, data };
 }
 
-/** The body's silhouette scaled so its longest side is `fill` × S and centred (hard alpha edge). Pure. */
-export function placeConcordHull(src: RgbaImage, S: number, fill: number): RgbaImage {
-    const pl = concordPlacement(src, S, fill);
+/**
+ * The body's silhouette scaled so its longest side is `fill` × S and centred (hard alpha edge); `placeFrom` sets the
+ * placement (the photo art's limbless body is placed as its full image). Pure.
+ */
+export function placeConcordHull(src: RgbaImage, S: number, fill: number, placeFrom: RgbaImage = src): RgbaImage {
+    const pl = concordPlacement(placeFrom, S, fill);
     if (pl === null) return { w: S, h: S, data: new Uint8ClampedArray(S * S * 4) };
     return resample(src, S, pl, true);
 }
 
 /**
- * The scarred look on a placed body (the pristine look skips it): pale scratches across the chitin, a few old wounds
- * (healed scar tissue: dull, pinkish, with a dark rim) and dulled blotches, scaled by the spec's strength. Never moves
- * the silhouette.
+ * Bakes `lights` (dots; the overlay adds their halos / blink) and the pure-blue thruster runs `thrusters`
+ * ([x0, x1, y], inclusive) into `ship` (spec.side square, modified in place) and builds the halo overlays per blink
+ * group. Never leaves an accidental pure-blue / pure-yellow marker colour elsewhere in the art.
  */
-function scarring(img: RgbaImage, spec: ConcordSpec, rng: () => number): void {
-    const { w: S, data: d } = img;
-    const wk = spec.weathering;
-    if (wk <= 0) return;
-    const k240 = 240 / S;
-    for (let p = 0; p < S * S; p++) {
-        if (d[p * 4 + 3] === 0) continue;
-        const x = (p % S) * k240;
-        const y = Math.floor(p / S) * k240;
-        const m = 1 - 0.14 * Math.min(1.3, wk) * smooth01(0.6, 0.85, noise2(x * 0.11, y * 0.11, 53));
-        d[p * 4] *= m;
-        d[p * 4 + 1] *= m;
-        d[p * 4 + 2] *= m;
-    }
-    const tint = (i: number, c: Rgb, t: number): void => {
-        d[i] += (c[0] * 255 - d[i]) * t;
-        d[i + 1] += (c[1] * 255 - d[i + 1]) * t;
-        d[i + 2] += (c[2] * 255 - d[i + 2]) * t;
-    };
-    const scratches = Math.round(S * 0.1 * wk);
-    for (let n = 0, tries = 0; n < scratches && tries < scratches * 8; tries++) {
-        const x0 = rng() * S;
-        const y0 = rng() * S;
-        if (d[(Math.floor(y0) * S + Math.floor(x0)) * 4 + 3] < 255) continue;
-        n++;
-        const a = rng() * Math.PI;
-        const len = (1 + rng() * 2.5) * (S / 240);
-        const x1 = x0 + Math.cos(a) * len;
-        const y1 = y0 + Math.sin(a) * len;
-        for (let y = Math.max(0, Math.floor(Math.min(y0, y1) - 1)); y <= Math.min(S - 1, Math.ceil(Math.max(y0, y1) + 1)); y++) {
-            for (let x = Math.max(0, Math.floor(Math.min(x0, x1) - 1)); x <= Math.min(S - 1, Math.ceil(Math.max(x0, x1) + 1)); x++) {
-                const i = (y * S + x) * 4;
-                if (d[i + 3] < 200 || segDist(x + 0.5, y + 0.5, x0, y0, x1, y1) > 0.5) continue;
-                tint(i, [0.3, 0.24, 0.34], 0.22 * Math.min(1, wk));
-            }
-        }
-    }
-    const wounds = Math.round(S * 0.02 * wk) + 1;
-    for (let n = 0, tries = 0; n < wounds && tries < wounds * 10; tries++) {
-        const cx = rng() * S;
-        const cy = rng() * S;
-        if (d[(Math.floor(cy) * S + Math.floor(cx)) * 4 + 3] < 255) continue;
-        n++;
-        const r = (1.2 + rng() * 2.2) * (S / 240);
-        for (let y = Math.max(0, Math.floor(cy - r - 1)); y <= Math.min(S - 1, Math.ceil(cy + r + 1)); y++) {
-            for (let x = Math.max(0, Math.floor(cx - r - 1)); x <= Math.min(S - 1, Math.ceil(cx + r + 1)); x++) {
-                const i = (y * S + x) * 4;
-                if (d[i + 3] < 200) continue;
-                const q = Math.hypot(x + 0.5 - cx, (y + 0.5 - cy) * 1.4) / r;
-                if (q > 1.25) continue;
-                if (q > 1) tint(i, [0.02, 0.01, 0.03], 0.5);
-                else tint(i, [0.36, 0.14, 0.24], 0.55 * (1 - q * 0.6));
-            }
-        }
-    }
-}
-
-/** Opaque runs [x0, x1] (inclusive, alpha ≥ `min`) of one row. */
-function rowRuns(img: RgbaImage, y: number, min: number): [number, number][] {
-    const runs: [number, number][] = [];
-    let start = -1;
-    for (let x = 0; x <= img.w; x++) {
-        const on = x < img.w && img.data[(y * img.w + x) * 4 + 3] >= min;
-        if (on && start < 0) start = x;
-        else if (!on && start >= 0) {
-            runs.push([start, x - 1]);
-            start = -1;
-        }
-    }
-    return runs;
-}
-
-/** The run of a row nearest the centre column (the body, not a limb), or null. */
-function centreRun(img: RgbaImage, y: number, min: number): [number, number] | null {
-    const c = img.w / 2;
-    let best: [number, number] | null = null;
-    let bestD = Infinity;
-    for (const r of rowRuns(img, y, min)) {
-        const d = c < r[0] ? r[0] - c : c > r[1] ? c - r[1] : 0;
-        if (d < bestD || (d === bestD && best !== null && r[1] - r[0] > best[1] - best[0])) {
-            best = r;
-            bestD = d;
-        }
-    }
-    return best;
-}
-
-/**
- * Lights and thruster marks of a placed body: pink to port at its leftmost point, violet to starboard at its
- * rightmost, lilac at the stern and the masthead (the hives: fore and aft), the warships' two mast strobes, the
- * builders' lamps, and one thruster mark at each engine pod's nozzle with a glow there. Every point sits inside the
- * opaque silhouette.
- */
-function hullFittings(img: RgbaImage, spec: ConcordSpec, src: ConcordSource, pl: ConcordPlacement): { lights: ConcordLight[]; thrusters: [number, number, number][] } {
-    const S = img.w;
-    const A = 200;
-    const lights: ConcordLight[] = [];
-    const thrusters: [number, number, number][] = [];
-    const box = alphaBox(img, A);
-    if (box === null) return { lights, thrusters };
-    const r = (kind: ConcordLightKind): number => Math.max(0.45, S * (kind === 'lamp' ? 0.0028 : 0.0034));
-    const inset = (kind: ConcordLightKind): number => Math.max(1, Math.ceil(r(kind) * 1.5));
-    const opaque = (x: number, y: number): boolean => x >= 0 && y >= 0 && x < S && y < S && img.data[(y * S + x) * 4 + 3] >= A;
-    const add = (x: number, y: number, kind: ConcordLightKind, rr = r(kind)): void => {
-        let px = Math.round(x);
-        let py = Math.round(y);
-        for (let n = 0; n < S && !opaque(px, py); n++) {
-            px += Math.sign(Math.round(S / 2) - px);
-            py += Math.sign(Math.round(S / 2) - py);
-        }
-        lights.push({ x: px + 0.5, y: py + 0.5, r: rr, kind });
-    };
-    const map = (x: number, y: number): [number, number] => [pl.ox + (x - pl.box.x0) * pl.k, pl.oy + (y - pl.box.y0) * pl.k];
-    const sideLight = (dir: -1 | 1, kind: ConcordLightKind): void => {
-        let best = dir < 0 ? Infinity : -Infinity;
-        const rows: number[] = [];
-        for (let y = box.y0; y <= box.y1; y++) {
-            const runs = rowRuns(img, y, A);
-            if (runs.length === 0) continue;
-            const e = dir < 0 ? runs[0][0] : runs[runs.length - 1][1];
-            if (dir < 0 ? e < best - 1 : e > best + 1) {
-                best = e;
-                rows.length = 0;
-            }
-            if (Math.abs(e - best) <= 1) rows.push(y);
-        }
-        add(best - dir * inset(kind), rows[Math.floor(rows.length / 2)], kind);
-    };
-    sideLight(-1, 'port');
-    sideLight(1, 'starboard');
-    const endLight = (y: number): void => {
-        const run = centreRun(img, y, A);
-        if (run !== null) add((run[0] + run[1] + 1) / 2, y, 'white');
-    };
-    endLight(box.y1 - inset('white'));
-    if (isConcordBase(spec.kind)) endLight(box.y0 + inset('white'));
-    else {
-        const ym = Math.round(box.y0 + (box.y1 - box.y0) * 0.4);
-        const run = centreRun(img, ym, A);
-        if (run !== null) {
-            const mx = (run[0] + run[1] + 1) / 2;
-            add(mx, ym, 'white');
-            if (isConcordMilitary(spec.kind)) {
-                const off = Math.max(1.5, S * 0.012);
-                add(mx - off, ym + off * 0.5, 'strobe');
-                add(mx + off, ym + off * 0.5, 'strobe');
-            }
-        }
-    }
-    for (const l of src.lamps) {
-        const [x, y] = map(l.x, l.y);
-        add(x, y, 'lamp', Math.max(0.45, Math.min(S * 0.005, l.r * pl.k * 0.9)));
-    }
-    // Thruster marks: one per nozzle, on the lowest opaque row at the nozzle (within its width), at least a pixel apart.
-    const used = new Set<number>();
-    for (const nz of src.nozzles) {
-        const [cx, cy] = map(nz.x, nz.y);
-        const hw = Math.max(0.5, nz.r * pl.k * 0.55);
-        let x0 = Math.round(cx - hw);
-        let x1 = Math.round(cx + hw) - 1;
-        if (x1 < x0) x1 = x0;
-        let y = Math.min(S - 1, Math.ceil(cy));
-        for (; y > 0; y--) {
-            let all = true;
-            for (let x = x0; x <= x1; x++) if (!opaque(x, y)) all = false;
-            if (all) break;
-        }
-        // Keep a clear pixel between neighbouring marks in the same row.
-        while (x0 <= x1 && (used.has(y * S + x0 - 1) || used.has(y * S + x0))) x0++;
-        while (x1 >= x0 && (used.has(y * S + x1 + 1) || used.has(y * S + x1))) x1--;
-        if (x1 < x0) continue;
-        for (let x = x0; x <= x1; x++) used.add(y * S + x);
-        thrusters.push([x0, x1, y]);
-        lights.push({ x: (x0 + x1 + 1) / 2, y: y + 0.5, r: r('engine'), kind: 'engine' });
-    }
-    return { lights, thrusters };
-}
-
-/**
- * Images of a variant (pure; no DOM): the kind's full-resolution drawing (concordHullSource) placed at the kind's
- * fill, the scarred look's scratches and wounds (pristine: none), the lights and thruster marks, baked light dots and
- * the overlays (the light halos by blink group and the placed seam glow).
- */
-export function composeConcordHullImages(kind: ConcordKind, bucket: number, look: ConcordLook, src: ConcordSource = concordHullSource(kind)): ConcordImages {
-    const spec = concordSpec(kind, bucket, look);
+export function finishConcordImages(spec: ConcordSpec, ship: RgbaImage, lights: ConcordLight[], thrusters: [number, number, number][]): ConcordImages {
     const S = spec.side;
-    const pl = concordPlacement(src.img, S, CONCORD_HULL_FILL[kind]);
-    const ship = pl === null ? { w: S, h: S, data: new Uint8ClampedArray(S * S * 4) } : resample(src.img, S, pl, true);
-    const pulse = pl === null ? { w: S, h: S, data: new Uint8ClampedArray(S * S * 4) } : resample(src.glow, S, pl, false);
-    if (look === 'weathered') scarring(ship, spec, makeRng(variantSeed(kind, bucket, look)));
-    const { lights, thrusters } = pl === null ? { lights: [], thrusters: [] } : hullFittings(ship, spec, src, pl);
     const d = ship.data;
     for (let p = 0; p < S * S; p++) {
         const i = p * 4;
         if (d[i + 3] === 0) continue;
-        // Never leave an accidental pure-blue / pure-yellow marker colour in the art.
         if ((d[i] === 0 && d[i + 1] === 0 && d[i + 2] === 255) || (d[i] === 255 && d[i + 1] === 255 && d[i + 2] === 0)) d[i + 2] = d[i + 2] === 255 ? 254 : 1;
     }
     const lightPixels: number[] = [];
     for (const l of lights) {
-        const c = LIGHT_COLOUR[l.kind];
+        const c = l.c ?? LIGHT_COLOUR[l.kind];
         const dim = l.kind === 'strobe' ? 0.55 : 1;
         for (let y = Math.max(0, Math.floor(l.y - l.r)); y <= Math.min(S - 1, Math.floor(l.y + l.r)); y++) {
             for (let x = Math.max(0, Math.floor(l.x - l.r)); x <= Math.min(S - 1, Math.floor(l.x + l.r)); x++) {
@@ -824,13 +496,8 @@ export function composeConcordHullImages(kind: ConcordKind, bucket: number, look
         }
     }
     const halos = {} as Record<ConcordLightGroup, RgbaImage>;
-    for (const g of CONCORD_LIGHT_GROUPS) halos[g] = g === 'pulse' ? pulse : haloImage(S, lights.filter((l) => concordLightGroup(l.kind) === g));
+    for (const g of CONCORD_LIGHT_GROUPS) halos[g] = haloImage(S, lights.filter((l) => concordLightGroup(l.kind) === g));
     return { spec, ship, halos, lights, markerPixels, lightPixels };
-}
-
-/** Images of any variant (pure; no DOM; deterministic). */
-export function concordImages(kind: ConcordKind, bucket: number, look: ConcordLook = 'weathered'): ConcordImages {
-    return composeConcordHullImages(kind, bucket, look);
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -1417,11 +1084,6 @@ export function concordArtEnabled(galaxy: Galaxy): boolean {
     return s !== null && scenarioFlag(galaxy, 'rimTrader') && s.flags['concordArt'] !== false;
 }
 
-/** The look chosen by the `concordArtLook` param (0 scarred, 1 pristine). */
-export function concordArtLook(galaxy: Galaxy): ConcordLook {
-    return concordLookOf(scenarioParam(galaxy, 'concordArtLook', 0));
-}
-
 /** The empire whose built objects get the Concord art this frame (null = draw every object with its stock art). */
 export function concordArtEmpire(galaxy: Galaxy): Empire | null {
     return concordArtEnabled(galaxy) ? rimTraderEmpire(galaxy) : null;
@@ -1436,7 +1098,6 @@ export function concordTreasureShips(galaxy: Galaxy): ReadonlySet<unknown> {
 export interface ConcordVariant {
     kind: ConcordKind;
     bucket: number;
-    look: ConcordLook;
 }
 
 /** Which Concord variant draws `bo` — null unless it belongs to the Concord (and the art is on). */
@@ -1444,11 +1105,10 @@ export function concordVariantFor(
     bo: { empire: Empire | null; subRole: BuiltObjectSubRole; size: number },
     concord: Empire | null,
     treasure: ReadonlySet<unknown>,
-    look: ConcordLook = 'weathered',
 ): ConcordVariant | null {
     if (concord === null || bo.empire !== concord) return null;
     const kind = concordKindOf(bo.subRole, treasure.has(bo));
-    return { kind, bucket: concordSizeBucket(bo.size), look };
+    return { kind, bucket: concordSizeBucket(bo.size) };
 }
 
 /** The ambient nav-light cycle (MainView.cs:1457-1458: 1.5 s on + 1.0 s off) and its per-ship phase (id % 20 / 10). */
@@ -1459,14 +1119,11 @@ const navPhase = (seconds: number, id: number): number => {
     return (((seconds + (Math.abs(id) % 20) / 10) % c) + c) % c;
 };
 
-/** Period (s) of the seam glow's breathing. */
-export const CONCORD_PULSE_SECONDS = 3.6;
-
 /**
- * Overlay alpha of a blink group at `seconds` (wall clock) for ship `id`: steady (lamps, stern / masthead) constant;
- * nav (pink port / violet starboard) steady with a slow pulse on the ambient nav-light cycle; strobe a short double
- * flash at the start of each cycle; engine steady; pulse (the seam glow) a slow breath between 0.25 and 0.75, phase
- * per ship.
+ * Overlay alpha of a blink group at `seconds` (wall clock) for ship `id`, on the ambient nav-light cycle and its
+ * per-ship phase: steady (running lights) constant; nav steady with a slow pulse; strobe a short double flash at the
+ * start of each cycle; engine steady; blink (the blue position lights) on / off like the stock ships' nav lights
+ * (LIGHT_ON_SECONDS on, LIGHT_OFF_SECONDS off).
  */
 export function concordLightAlpha(group: ConcordLightGroup, seconds: number, id: number): number {
     const t = navPhase(seconds, id);
@@ -1479,26 +1136,54 @@ export function concordLightAlpha(group: ConcordLightGroup, seconds: number, id:
             return t < 0.07 || (t > 0.2 && t < 0.27) ? 0.95 : 0;
         case 'engine':
             return 0.6;
-        case 'pulse': {
-            const ph = (Math.abs(id) % 37) / 37;
-            const b = 0.5 - 0.5 * Math.cos(2 * Math.PI * (seconds / CONCORD_PULSE_SECONDS + ph));
-            return 0.25 + 0.5 * b * b * (3 - 2 * b);
-        }
+        case 'blink':
+            return t < LIGHT_ON_SECONDS ? 1 : 0;
     }
 }
 
 /** Overlays are skipped below this drawn size (px): too small to read, and cheap to skip. */
 export const CONCORD_FX_MIN_PX = 12;
+/**
+ * Animated limbs (legs / antennae) are drawn from this drawn size (px) up (system / planet zoom); below it the baked
+ * static image shows and the limbs cost nothing.
+ */
+export const CONCORD_LIMBS_MIN_PX = 96;
+
+/** A limb's angle (radians) at animation time `sec` (frozen while the game is paused): antennae sway, legs twitch. */
+export function concordLimbAngle(limb: { kind: 'antenna' | 'leg'; amp: number; freq: number; phase: number }, sec: number, id: number): number {
+    const ph = 2 * Math.PI * limb.freq * sec + limb.phase + (Math.abs(id) % 97) * 0.73;
+    if (limb.kind === 'antenna') return limb.amp * (Math.sin(ph) + 0.35 * Math.sin(2.3 * ph + 1));
+    // Legs: a short step then a hold (a cubed sine), so they twitch rather than wave.
+    const s = Math.sin(ph);
+    return limb.amp * s * s * s;
+}
 
 // ---------------------------------------------------------------------------------------------------------------
 // Textures (DOM / Pixi) — generated once per variant, lazily, at most CONCORD_BUILDS_PER_FRAME per frame
 // ---------------------------------------------------------------------------------------------------------------
+
+export interface ConcordLimbArt {
+    texture: Texture;
+    /** Pivot in ship texture px; pivot in limb texture px; limb texture px per ship texture px. */
+    x: number;
+    y: number;
+    ax: number;
+    ay: number;
+    k: number;
+    kind: 'antenna' | 'leg';
+    amp: number;
+    freq: number;
+    phase: number;
+}
 
 export interface ConcordShipArt {
     texture: Texture;
     metrics: ShipImageMetrics;
     markers: ShipMarkers;
     halos: Record<ConcordLightGroup, Texture>;
+    /** The ship without its animated limbs (drawn instead of `texture` from CONCORD_LIMBS_MIN_PX), and the limbs. */
+    body?: Texture;
+    limbs?: ConcordLimbArt[];
 }
 
 export const CONCORD_BUILDS_PER_FRAME = 1;
@@ -1518,15 +1203,17 @@ export function buildConcordShipArt(images: ConcordImages): { rgba: Uint8Clamped
     const { w, h, data } = images.ship;
     const raw = shipImageMetrics(data, w, h);
     if (raw === null) return null;
-    // Every kind keeps the drawn extent the earlier Concord art had (both layers read areaRatio: sprite, picking and
-    // the ambient exhaust stay consistent).
-    const metrics = { ...raw, areaRatio: CONCORD_HULL_AREA_RATIO[images.spec.kind] };
+    // The image's own area ratio (builtObjectSizePx draws crop-square px ∝ √(size · areaRatio), so the opaque on-screen
+    // area then matches a stock ship of the same size), times the class's small correction and the treasure ship's
+    // boost (both layers read areaRatio: sprite, picking and the ambient exhaust stay consistent).
+    const boost = images.spec.kind === 'treasure' ? CONCORD_TREASURE_AREA_BOOST : 1;
+    const metrics = { ...raw, areaRatio: raw.areaRatio * boost * (images.areaScale ?? 1) };
     const markers = scanShipMarkers(data, w, h, metrics);
     return { rgba: paintOutShipMarkers(data, w, h, metrics, markers, true), metrics, markers };
 }
 
 export function concordVariantKey(v: ConcordVariant): string {
-    return `${v.look}:${v.kind}:${v.bucket}`;
+    return `${v.kind}:${v.bucket}`;
 }
 
 /**
@@ -1537,14 +1224,16 @@ export function concordShipArt(v: ConcordVariant, frame: number, build = true): 
     const key = concordVariantKey(v);
     const hit = shipArtCache.get(key);
     if (hit !== undefined || !build) return hit ?? null;
+    // The class's image, fittings and limbs load once (null until then).
+    const src = concordPhotoSource(v);
+    if (src === null) return null;
     if (frame !== buildFrame) {
         buildFrame = frame;
         buildsThisFrame = 0;
     }
     if (buildsThisFrame >= CONCORD_BUILDS_PER_FRAME) return null;
     buildsThisFrame++;
-    // A kind's first variant also draws its full-resolution source (a few hundred ms, once per kind).
-    const images = concordImages(v.kind, v.bucket, v.look);
+    const images = concordPhotoImages(v, src);
     const built = buildConcordShipArt(images);
     if (built === null) return null;
     const halos = {} as Record<ConcordLightGroup, Texture>;
@@ -1554,12 +1243,18 @@ export function concordShipArt(v: ConcordVariant, frame: number, build = true): 
         metrics: built.metrics,
         markers: built.markers,
         halos,
+        ...(images.bodyShip !== undefined && images.limbs !== undefined && images.limbs.length > 0
+            ? {
+                  body: toCanvasTexture({ w: images.bodyShip.w, h: images.bodyShip.h, data: paintOutShipMarkers(images.bodyShip.data, images.bodyShip.w, images.bodyShip.h, built.metrics, built.markers, true) }),
+                  limbs: images.limbs.map((l) => ({ texture: toCanvasTexture(l.img), x: l.x, y: l.y, ax: l.ax, ay: l.ay, k: l.k, kind: l.kind, amp: l.amp, freq: l.freq, phase: l.phase })),
+              }
+            : {}),
     };
     shipArtCache.set(key, art);
     return art;
 }
 
-/** Light halos (by blink group) and the seam glow over the Concord's ships (pooled; one container above the ships). */
+/** Light halos (by blink group) and the animated limbs over the Concord's ships (pooled; one container above the ships). */
 export class ConcordFxLayer {
     readonly root = new Container();
     private pool = new SpritePool(this.root);
@@ -1570,11 +1265,32 @@ export class ConcordFxLayer {
 
     /**
      * Overlays for one ship drawn with the ship sprite's transform (position, rotation, scale = world units per raw
-     * texture px, anchor as a fraction of the texture); `drawnPx` = its drawn size.
+     * texture px, anchor as a fraction of the texture); `drawnPx` = its drawn size; `nowMs` the wall clock (lights),
+     * `animMs` the limb animation clock (frozen while paused).
      */
-    draw(art: ConcordShipArt, x: number, y: number, rotation: number, scale: number, anchorX: number, anchorY: number, id: number, drawnPx: number, nowMs: number): void {
+    draw(art: ConcordShipArt, x: number, y: number, rotation: number, scale: number, anchorX: number, anchorY: number, id: number, drawnPx: number, nowMs: number, animMs = 0): void {
         if (drawnPx < CONCORD_FX_MIN_PX) return;
         const sec = nowMs / 1000;
+        if (art.limbs !== undefined && drawnPx >= CONCORD_LIMBS_MIN_PX) {
+            // The limbs over the limbless body (the ship layer draws art.body at this size), each turned about its
+            // attachment point.
+            const cos = Math.cos(rotation);
+            const sin = Math.sin(rotation);
+            const tw = art.texture.width;
+            const th = art.texture.height;
+            const at = animMs / 1000;
+            for (const l of art.limbs) {
+                const lx = (l.x - anchorX * tw) * scale;
+                const ly = (l.y - anchorY * th) * scale;
+                const s = this.pool.acquire(l.texture);
+                s.blendMode = 'normal';
+                s.alpha = 1;
+                s.anchor.set(l.ax / l.texture.width, l.ay / l.texture.height);
+                s.position.set(x + lx * cos - ly * sin, y + lx * sin + ly * cos);
+                s.rotation = rotation + concordLimbAngle(l, at, id);
+                s.scale.set(scale * l.k);
+            }
+        }
         for (const g of CONCORD_LIGHT_GROUPS) {
             const a = concordLightAlpha(g, sec, id);
             if (a <= 0) continue;

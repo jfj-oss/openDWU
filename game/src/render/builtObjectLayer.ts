@@ -24,7 +24,7 @@ import { Camera } from './camera';
 import { AssetStore, makeDotTexture, useMinifyingFilter } from './assets';
 import { loadShipArt, type ShipArt } from './shipArt';
 // [concordArt] begin
-import { ConcordFxLayer, concordArtEmpire, concordArtLook, concordShipArt, concordTreasureShips, concordVariantFor, type ConcordShipArt } from './concordArt';
+import { CONCORD_LIMBS_MIN_PX, ConcordFxLayer, concordArtEmpire, concordShipArt, concordTreasureShips, concordVariantFor, type ConcordShipArt } from './concordArt';
 // [concordArt] end
 import { ConstructionOverlays, DamageOverlays, shipConstructionSubject, shipDamageSubject } from './shipOverlays';
 import { artBundleFlag } from './artBundleFlags';
@@ -525,8 +525,12 @@ export class BuiltObjectLayer {
     private nearScratch: BuiltObject[] = [];
     private liveScratch = new Set<BuiltObject>();
     private rebuildsSeen = 0;
-    // [concordArt] begin — scenario 19a: the Concord's ships (concordArt.ts: procedural hulls) and overlays.
+    // [concordArt] begin — scenario 19a: the Concord's ships (concordArt.ts: the insect-photo art) and overlays.
     private concordFx = new ConcordFxLayer();
+    /** [concordArt] Limb animation clock (ms): real time while game time runs, frozen while paused (as creatureLayer). */
+    private concordAnimMs = 0;
+    private concordWallMs = -1;
+    private concordGameMs = -1;
     private frame = 0;
     // [concordArt] end
     /** Render interpolation between sim steps (renderInterp.ts; set by MainView). Null: draw the sim positions. */
@@ -590,10 +594,16 @@ export class BuiltObjectLayer {
         // [concordArt] begin — null with the scenario / flag off: every object keeps its stock art.
         const concord = concordArtEmpire(this.galaxy);
         const treasure = concord !== null ? concordTreasureShips(this.galaxy) : NO_TREASURE;
-        const look = concord !== null ? concordArtLook(this.galaxy) : 'weathered';
         const nowMs = Date.now();
         this.frame++;
         this.concordFx.begin();
+        if (concord !== null) {
+            const gameMs = this.motion !== null ? this.motion.renderNowMs : this.galaxy.nowMs;
+            const wallMs = performance.now();
+            if (this.concordWallMs >= 0 && gameMs > this.concordGameMs) this.concordAnimMs += Math.min(250, wallMs - this.concordWallMs);
+            this.concordWallMs = wallMs;
+            this.concordGameMs = gameMs;
+        }
         // [concordArt] end
         this.damage.begin();
         this.construction.begin();
@@ -655,7 +665,7 @@ export class BuiltObjectLayer {
                 heading = st.heading;
             }
             // [concordArt] begin — the Concord's objects draw their own art (built lazily; hidden until then).
-            const cv = concordVariantFor(bo, concord, treasure, look);
+            const cv = concordVariantFor(bo, concord, treasure);
             const cArt = cv !== null ? concordShipArt(cv, this.frame) : null;
             if (cv !== null && cArt === null) {
                 if (sprite !== undefined) sprite.visible = false;
@@ -728,7 +738,7 @@ export class BuiltObjectLayer {
                 continue;
             }
             // A Concord ship (cArt !== null) has no shipArt.ts record of its own — it's drawn by the concordFx pass
-            // below instead, with its own weathered/pristine look (concordArtLook), so 19r's damage/liveries overlays
+            // below instead, with its own rusted cybernetics, so 19r's damage/liveries overlays
             // (keyed off the stock art record) skip it rather than fall over on a shape without `.art`.
             const shipArtRecord = 'art' in img ? img.art : null;
             // MainView.cs:3259 method_73 → Main.Part11.cs method_115 while UnbuiltComponentCount > 0: the ship/base
@@ -739,7 +749,9 @@ export class BuiltObjectLayer {
                 constructionSubject !== null && shipArtRecord !== null
                     ? this.construction.texture(bo, constructionSubject, shipArtRecord, builtObjectSizePx(bo.size, metrics.areaRatio, 1, bo.design?.imageScalingType ?? DesignImageScalingMode.None, bo.design?.imageScalingFactor ?? 1))
                     : null;
-            sprite.texture = revealTex ?? texture;
+            // [concordArt] at close zoom the Concord's limbs animate: the limbless body under the moving limbs.
+            const shipTex = cArt !== null && cArt.body !== undefined && px >= CONCORD_LIMBS_MIN_PX ? cArt.body : texture;
+            sprite.texture = revealTex ?? shipTex;
             sprite.position.set(x, y);
             if (revealTex !== null) sprite.anchor.set(0.5);
             else sprite.anchor.set(metrics.cropCenterX / texture.width, metrics.cropCenterY / texture.height);
@@ -750,7 +762,7 @@ export class BuiltObjectLayer {
             shown.add(sprite);
             // [concordArt] begin
             if (cArt !== null) {
-                this.concordFx.draw(cArt, x, y, sprite.rotation, sprite.scale.x, sprite.anchor.x, sprite.anchor.y, bo.builtObjectID, px, nowMs);
+                this.concordFx.draw(cArt, x, y, sprite.rotation, sprite.scale.x, sprite.anchor.x, sprite.anchor.y, bo.builtObjectID, px, nowMs, this.concordAnimMs);
             }
             // [concordArt] end
             if (liveries && shipArtRecord !== null) this.liveries.draw(bo, shipArtRecord, px, z, sprite.alpha, x, y, heading);

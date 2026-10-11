@@ -49,7 +49,7 @@ import {
 } from './builtObjectLayer';
 import { loadShipArt } from './shipArt';
 // [concordArt] begin
-import { concordArtEmpire, concordArtLook, concordShipArt, concordTreasureShips, concordVariantFor } from './concordArt';
+import { concordArtEmpire, concordShipArt, concordTreasureShips, concordVariantFor } from './concordArt';
 // [concordArt] end
 import type { Galaxy } from '../sim/galaxy';
 import type { BuiltObject } from '../sim/builtObject';
@@ -539,7 +539,6 @@ export class AmbientLayer {
             // [concordArt] begin — the Concord's junks: their own thruster marks, no nav lights (lanterns instead).
             const concord = concordArtEmpire(this.galaxy);
             const treasure = concord !== null ? concordTreasureShips(this.galaxy) : null;
-            const look = concord !== null ? concordArtLook(this.galaxy) : 'weathered';
             // [concordArt] end
             const fog = fogOf(this.galaxy);
             // Perf: with the index, only the objects inside the 100 px cull below (same order).
@@ -553,7 +552,7 @@ export class AmbientLayer {
                 if (sx < -100 || sx > cam.width + 100 || sy < -100 || sy > cam.height + 100) continue;
                 if (!fog.builtObject(bo)) continue; // fog.ts: exhaust, lights and shields belong to the ship's draw block
                 // [concordArt] begin
-                const cv = treasure !== null ? concordVariantFor(bo, concord, treasure, look) : null;
+                const cv = treasure !== null ? concordVariantFor(bo, concord, treasure) : null;
                 let art: ShipArt | null;
                 if (cv !== null) {
                     art = concordShipArt(cv, 0, false);
