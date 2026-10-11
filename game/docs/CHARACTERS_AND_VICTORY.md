@@ -429,7 +429,7 @@ The council (C1–C3) follows this plan (§7). Part 2 builds on these hooks and 
 - **`sendVip(galaxy, character, destination: BuiltObject | Habitat, reason: string): boolean`.** Sends a character in person, whatever the reason (`reason` is a tag such as `'council'`).
   - It calls the stock `transferToNewLocation`, so the trip is an ordinary transfer in every stock view, and tags the trip with `reason`.
   - It returns false when the VIP shuttles are off: the stock timer then runs and no event fires.
-  - A trip with a reason other than `'transfer'` may go to any habitat, a foreign one included (the council world is the host's colony). Ordinary transfers to another empire's habitat reroute home, except an ambassador's to a foreign capital.
+  - Foreign destinations: an ambassador's trip may end at a foreign capital, and a `'diet'` trip (a Diet delegate, Part 2) at any owned habitat (the host world). Any other trip to another empire's habitat reroutes home (vip.ts `destinationValid`).
 - **Events** (scenario/hooks.ts `ScenarioEvents`; subscribe with `registerScenarioEvent`; no closures in state, so they are save-safe):
   - `vipTripArrived { character, destination, reason }`: emitted after the stock `CompleteLocationTransfer`, so the character is already there.
   - `vipTripFailed { character, destination, reason, cause }`, where `cause` is `'destroyed'`, `'captured'` or `'removed'`. The stock death message has already gone out.
