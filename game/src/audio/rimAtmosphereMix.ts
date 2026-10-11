@@ -54,7 +54,7 @@ export function pickRimWeightedTrack(files: readonly string[], moodFiles: readon
 /** The bed's master gain at ambientGain 1 and full rim depth: a hard cap well under the music. */
 export const RIM_AMBIENT_MAX_GAIN = 0.25;
 /** The manifest's ambientGain default (scenarios/rim-atmosphere/scenario.json). */
-export const RIM_AMBIENT_DEFAULT_GAIN = 0.4;
+export const RIM_AMBIENT_DEFAULT_GAIN = 0.5;
 /** The rim depth ramp: gain follows weight^this (gentle: half-way into the band gives ~a third of the level). */
 export const RIM_AMBIENT_DEPTH_EXPONENT = 1.6;
 
