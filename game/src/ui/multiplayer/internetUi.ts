@@ -12,23 +12,17 @@
 
 import type { Link } from '../../net/transport';
 import { answerInvite, decodeCode, expandSdp, RtcInvite, rtcLinkPath, type RtcOptions, type RtcState } from '../../net/rtcTransport';
+import { devHooksOn, devSwitch } from './devHooks';
 
 /** The WebRTC links this page opened (scripts: __dwuRtc.paths()). */
 const openedLinks: Link[] = [];
 
 /**
- * Test hooks (localStorage): 'dwu.mp.blockIce' = '1' gathers no ICE candidates at all (the failure path);
- * 'dwu.mp.publicOnly' = '1' puts only the public (STUN) addresses in the codes (no LAN / VPN path).
+ * Test hooks (localStorage, dev flag only: devHooks.ts): 'dwu.mp.blockIce' = '1' gathers no ICE candidates at all (the
+ * failure path); 'dwu.mp.publicOnly' = '1' puts only the public (STUN) addresses in the codes (no LAN / VPN path).
  */
 export function rtcOptions(): RtcOptions {
-    const flag = (k: string): boolean => {
-        try {
-            return localStorage.getItem(k) === '1';
-        } catch {
-            return false;
-        }
-    };
-    return { ...(flag('dwu.mp.blockIce') ? { blockIce: true } : {}), ...(flag('dwu.mp.publicOnly') ? { publicOnly: true } : {}) };
+    return { ...(devSwitch('dwu.mp.blockIce') ? { blockIce: true } : {}), ...(devSwitch('dwu.mp.publicOnly') ? { publicOnly: true } : {}) };
 }
 
 function h<K extends keyof HTMLElementTagNameMap>(tag: K, cls = '', text?: string): HTMLElementTagNameMap[K] {
@@ -417,8 +411,8 @@ export function openCodeJoin(opts: { title: string; note?: string }): Promise<Li
     });
 }
 
-// Scripts and debugging: the code layer of the Internet screens (window.__dwuRtc).
-(globalThis as unknown as { __dwuRtc?: unknown }).__dwuRtc = {
+// Scripts and debugging (dev flag only): the code layer of the Internet screens (window.__dwuRtc).
+if (devHooksOn()) (globalThis as unknown as { __dwuRtc?: unknown }).__dwuRtc = {
     RtcInvite,
     answerInvite,
     decodeCode,

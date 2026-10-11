@@ -6,6 +6,7 @@
 //   cannot cross the context bridge; window.postMessage is Electron's documented way to hand one to the page).
 // - net: LAN multiplayer (and the router port mapping of Internet hosting) (desktop/netHost.cjs, src/net/netBridge.ts). host / connect resolve; each connection's
 //   MessagePort then arrives as a window message `{ dwuNetLink: id, kind, remote }`.
+// - devHooks: the app was started with DWU_DEV_HOOKS=1 (scripts drive multiplayer games through the debug hooks).
 'use strict';
 const { contextBridge, ipcRenderer } = require('electron');
 
@@ -26,6 +27,8 @@ ipcRenderer.on('dwu:net-link', (event, msg) => {
 });
 
 contextBridge.exposeInMainWorld('dwuDesktop', {
+    // Started with DWU_DEV_HOOKS=1 (desktop/main.cjs): the multiplayer debug hooks are on (src/ui/multiplayer/devHooks.ts).
+    devHooks: Array.isArray(process.argv) && process.argv.includes('--dwu-dev-hooks'),
     net: {
         host: (port) => ipcRenderer.invoke('dwu:net-host', { port: Number(port) }),
         stopHost: () => ipcRenderer.invoke('dwu:net-stop-host'),

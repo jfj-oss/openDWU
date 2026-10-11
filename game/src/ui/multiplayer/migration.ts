@@ -115,6 +115,9 @@ export interface MigrationEnv {
     onMigrating(slot: number): void;
     /** No migration for this peer (no backup link, or it failed): show the host as lost. */
     onNoMigration(why: string): void;
+    /** Two players, the host's link broke (no goodbye): this peer cannot tell whose network failed, so it waits for the
+     *  player's choice — reconnect to the host, or takeOverAlone. */
+    onSplit(): void;
     log(message: string): void;
 }
 
@@ -135,6 +138,8 @@ export class Migration {
     private handling = false;
     private lostAt = 0;
     private closed = false;
+    /** Two players and the host's link broke: waiting for the player's choice (takeOverAlone or a reconnect). */
+    split = false;
     /** Successor: preparing its LAN port (once). */
     private lanPort: Promise<void> | null = null;
 
@@ -315,7 +320,7 @@ export class Migration {
         if (s.kind === 'hostLost' && !this.handling && this.env.mp.role === 'client') {
             this.handling = true;
             this.lostAt = Date.now();
-            this.takeOver();
+            this.takeOver(s.deliberate === true);
         }
         if (s.kind !== 'hostLost' && s.kind !== 'migrating' && this.handling && this.env.mp.role === 'client' && this.env.mp.hostSlot() === this.successor) {
             // Migrated as a member: ready for the next one.
@@ -325,13 +330,21 @@ export class Migration {
         }
     }
 
-    private takeOver(): void {
+    private takeOver(deliberate: boolean): void {
         const mp = this.env.mp;
         const me = mp.slot;
         if (this.successor === me) {
             const open = [...this.backups].filter(([, l]) => l.isOpen).map(([s]) => s);
             if (open.length === 0 && this.members.length === 0) {
-                this.promote([]);
+                // Two players: the host quit — take over at once. Its link broke instead: there is no third player to
+                // tell whether the host or this PC lost the network; playing on alone while the host does would fork
+                // the game. Wait for the player: reconnect, or take over.
+                if (deliberate) this.promote([]);
+                else {
+                    this.split = true;
+                    this.env.log('the host link broke and no other player can tell whose network failed: waiting for the player');
+                    this.env.onSplit();
+                }
                 return;
             }
             if (open.length === 0) {
@@ -377,6 +390,14 @@ export class Migration {
 
     private migratingLink: Link | null = null;
 
+    /** The player's choice after a two-player split: play on as the host (the old host's seat is then absent). */
+    takeOverAlone(): void {
+        if (!this.split || this.closed || this.env.mp.role !== 'client') return;
+        this.split = false;
+        this.env.log('the player takes over as the host');
+        this.promote([]);
+    }
+
     private giveUp(why: string): void {
         this.env.log(`no host migration: ${why}`);
         this.migratingLink?.close(why);
@@ -388,7 +409,7 @@ export class Migration {
 
     /** Every second: the successor's wait for a report; refusing reports while the host is still there. */
     private watch(): void {
-        if (this.closed) return;
+        if (this.closed || this.split) return;
         const mp = this.env.mp;
         const now = Date.now();
         if (mp.role === 'client' && this.handling && this.successor !== mp.slot && this.status.kind === 'migrating' && now - this.lostAt > MIGRATE_ANSWER_MS) {

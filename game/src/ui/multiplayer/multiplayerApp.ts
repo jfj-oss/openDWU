@@ -31,8 +31,8 @@ import { issuePlayerCommand } from '../../sim/player/playerCommands';
 import type { PlayerOpName } from '../../sim/player/playerOps';
 import { GalaxyShape } from '../../sim/types';
 import { appFingerprint, diffFingerprintFiles, fingerprintFiles, fingerprintMismatch, type AppFingerprint } from '../../net/fingerprint';
-import { ChatLimiter, decodeHello, LOBBY_CHAT_MAX_CHARS, LOBBY_MAX_PLAYERS, LobbyClient, LobbyHost, rejoinToken, sendLobbyMessage, slotHandoff, type HandoffLink, type LobbyAddonSet, type LobbyMessage, type LobbyPlayer, type LobbyState, type MultiplayerStart } from '../../net/lobby';
-import { MultiplayerGame, type MultiplayerStatus } from '../../net/multiplayerGame';
+import { checkJoinPick, ChatLimiter, decodeHello, slotOfPeerName, type LobbyJoinChoice, LOBBY_CHAT_MAX_CHARS, LOBBY_MAX_PLAYERS, LobbyClient, LobbyHost, rejoinToken, sendLobbyMessage, slotHandoff, type HandoffLink, type LobbyAddonSet, type LobbyMessage, type LobbyPlayer, type LobbyState, type MultiplayerStart } from '../../net/lobby';
+import { joinChoicesFor, MultiplayerGame, type MultiplayerStatus } from '../../net/multiplayerGame';
 import { setLockstepStepper } from '../../net/lockstepSeam';
 import type { Link } from '../../net/transport';
 import { SimWorkerClient, type MpSideChannel, type ReplicaGameData } from '../../simworker/workerClient';
@@ -44,9 +44,11 @@ import { DEFAULT_MULTIPLAYER_PORT, netEndpoint, type NetAddress, type PortMappin
 import { InternetHost, openCodeJoin } from './internetUi';
 import { SideHub } from './sideChannel';
 import { Migration } from './migration';
-import { ChatPanel } from './chatPanel';
+import { ChatPanel, type SavedChatLine } from './chatPanel';
+import { setSaveEntryTagger } from '../screens/saveLoad';
 import { playableRacesSorted, startGovernmentsForRace } from '../screens/newGameWizard';
 import './multiplayer.css';
+import { exposeDevHook } from './devHooks';
 
 export interface LoadedMultiplayerSave {
     game: Game;
@@ -56,6 +58,11 @@ export interface LoadedMultiplayerSave {
     scenario: { id: string; include: string[] | null } | null;
     /** The save's LAN players by human index (savedMultiplayerPlayers), if it is a LAN save. */
     players: string[] | undefined;
+    /** The save's chat lines (savedMultiplayerChat; [] for none). */
+    chat?: SavedChatLine[];
+    /** The players' rejoin tokens by human index ('' none; savedMultiplayerTokens): a player whose app kept it gets its
+     *  empire back in the lobby. */
+    tokens?: string[];
     name: string;
     /** The save's text (worker mode: the worker loads the game from it). */
     text?: string;
@@ -72,8 +79,9 @@ export interface MultiplayerAppDeps {
     createExtras(startOptions: StartGameOptions): Record<string, unknown>;
     /** Build a new game from the start (every peer, in-thread). */
     buildGame(startOptions: StartGameOptions, createExtras: Record<string, unknown> | null): Promise<{ game: Game; playData: GameData }>;
-    /** The host's Load Saved Game: pick a save and load it in-thread (null: cancelled). */
-    pickSave(): Promise<LoadedMultiplayerSave | null>;
+    /** The host's Load Saved Game: pick a save and load it in-thread (null: cancelled). `multiplayerOnly`: the list opens
+     *  on the multiplayer saves (Resume). */
+    pickSave(opts?: { multiplayerOnly?: boolean }): Promise<LoadedMultiplayerSave | null>;
     /** The GameData of a loaded game's add-ons (a client: the welcome's save loads over it). */
     gameDataFor(scenario: { id: string; include: string[] | null } | null): GameData;
     /** Show `game` in the main view (tears down the one up, if any). `newGame`: a fresh start (the founding line).
@@ -117,7 +125,9 @@ interface Running {
     chipTimer: ReturnType<typeof setInterval>;
     hosting: boolean;
     /** Host: the rejoin tokens handed out at start, by slot (lobby.ts LobbyHost.tokens). */
-    tokens: ReadonlyMap<number, string>;
+    tokens: Map<number, string>;
+    /** Host: new players being let in (§21), by their new slot: the empire each takes over. */
+    joining: Map<number, number>;
     /** Client: how to reconnect after a drop (the host's address — INTERNET_ADDRESS for a code join —, this player's token;
      *  after a host migration the new host's, with its other addresses to try). */
     rejoin: { address: string; token: string | null; alternatives?: string[] } | null;
@@ -150,7 +160,14 @@ export function multiplayerSaveExtras(galaxy: Galaxy): GameSaveExtras | undefine
     const n = humanSeats(galaxy).length;
     const names: string[] = Array.from({ length: n }, () => '');
     for (const p of running.start.players) if (p.humanIndex >= 0 && p.humanIndex < n) names[p.humanIndex] = p.name;
-    return n > 0 ? { multiplayerPlayers: names } : undefined;
+    if (n === 0) return undefined;
+    // The chat this player saw (§21), by lobby names.
+    const r = running;
+    const chat = r.chat.savedLines(r.name, (slot) => r.start.players.find((p) => p.slot === slot)?.name ?? `Player ${slot + 1}`);
+    // The rejoin tokens by human index (§21: Resume with the same players gives a player their empire back by token).
+    const tokens: string[] = Array.from({ length: n }, () => '');
+    for (const p of r.start.players) if (p.humanIndex >= 0 && p.humanIndex < n) tokens[p.humanIndex] = r.tokens.get(p.slot) ?? '';
+    return { multiplayerPlayers: names, ...(chat.length > 0 ? { multiplayerChat: chat } : {}), ...(tokens.some((t) => t !== '') ? { multiplayerTokens: tokens } : {}) };
 }
 
 /** End the LAN game (leaving to the menu, loading another game): the host ends it for everyone. */
@@ -169,6 +186,7 @@ export function endMultiplayerSession(reason = 'left the game'): void {
     }
     r.migration.close();
     r.chat.destroy();
+    setSaveEntryTagger(null);
     delete (window as unknown as { __dwuChat?: unknown }).__dwuChat;
     r.internet?.close();
     if (r.hosting || r.migration.lanHosting) {
@@ -188,9 +206,11 @@ interface BannerView {
     rejoin?: boolean;
     /** The old host, cut off from everyone: rejoin the game under its new host (§16). */
     rejoinNew?: string;
+    /** Two players, the host's link broke: Reconnect (rejoin) or Take Over (play on as the host). */
+    takeOverAlone?: boolean;
 }
 
-function statusText(s: MultiplayerStatus, role: 'host' | 'client', canRejoin: boolean, newHost: string | null = null): BannerView | null {
+function statusText(s: MultiplayerStatus, role: 'host' | 'client', canRejoin: boolean, newHost: string | null = null, split = false): BannerView | null {
     switch (s.kind) {
         case 'migrating':
             return { text: s.self ? 'The host left the game. You are the new host: the other players are reconnecting to you…' : `The host left the game. ${s.newHost} takes over as the host: reconnecting…`, menu: false };
@@ -208,7 +228,11 @@ function statusText(s: MultiplayerStatus, role: 'host' | 'client', canRejoin: bo
                 // Every player dropped at once: perhaps it is this PC that lost the network, and the game went on under
                 // the successor (host migration).
                 return {
-                    text: `Every player disconnected. If this PC lost its network connection, the game goes on with ${newHost} as the host: rejoin it as a player. Otherwise, the players can rejoin you.`,
+                    text:
+                        s.players.length === 1
+                            ? // Two players (§21): the other one waits and chooses — reconnect here, or take over.
+                              `${s.players[0].name} disconnected. They wait and choose: reconnect to you, or — if they think your game is gone — take over as the host. If they took over, rejoin ${newHost}'s game as a player.`
+                            : `Every player disconnected. If this PC lost its network connection, the game goes on with ${newHost} as the host: rejoin it as a player. Otherwise, the players can rejoin you.`,
                     menu: true,
                     ...(undecided !== undefined ? { decide: { slot: undecided.slot, name: undecided.name } } : {}),
                     rejoinNew: newHost,
@@ -225,6 +249,13 @@ function statusText(s: MultiplayerStatus, role: 'host' | 'client', canRejoin: bo
             return { text: `${others}${s.paused && s.players.some((p) => !p.decided) ? ' The game is paused; the host decides.' : ''}${role === 'host' ? ' They can rejoin with their name.' : ''}`, menu: role === 'client' ? false : false };
         }
         case 'hostLost':
+            if (split)
+                return {
+                    text: `Lost the connection to the host (${s.reason}). The game is paused here: it cannot tell whether the host's network or yours failed. If the host's game is still running, Reconnect. If the host has really gone (its app closed), Take Over and play on as the host — while the host plays on too, that would split the game in two.`,
+                    menu: true,
+                    rejoin: canRejoin,
+                    takeOverAlone: true,
+                };
             return { text: `Lost the connection to the host (${s.reason}). The game has stopped.${canRejoin ? ' Rejoin to reconnect to your empire.' : ''}`, menu: true, rejoin: canRejoin };
     }
 }
@@ -235,7 +266,7 @@ interface StatusBanner {
     destroy(): void;
 }
 
-function createStatusBanner(role: () => 'host' | 'client', actions: { onMenu: () => void; onDecide: (slot: number, ai: boolean) => void; onRejoin: () => (() => void) | null; onRejoinNew: () => void; newHost: () => string | null }, internetOf: () => InternetHost | null): StatusBanner {
+function createStatusBanner(role: () => 'host' | 'client', actions: { onMenu: () => void; onDecide: (slot: number, ai: boolean) => void; onRejoin: () => (() => void) | null; onRejoinNew: () => void; newHost: () => string | null; split: () => boolean; onTakeOverAlone: () => void }, internetOf: () => InternetHost | null): StatusBanner {
     const banner = document.createElement('div');
     banner.className = 'mp-banner';
     banner.dataset.mp = 'banner';
@@ -256,6 +287,7 @@ function createStatusBanner(role: () => 'host' | 'client', actions: { onMenu: ()
     const idle = mk('Continue Without Them', 'continue', () => decideSlot >= 0 && actions.onDecide(decideSlot, false));
     const rejoin = mk('Rejoin', 'rejoin', () => actions.onRejoin()?.());
     const rejoinNew = mk('Rejoin as a Player', 'rejoin-new-host', () => actions.onRejoinNew());
+    const takeOverAlone = mk('Take Over', 'take-over-alone', () => actions.onTakeOverAlone());
     const menu = mk('Main Menu', 'menu', actions.onMenu);
     // Hosting on the Internet: a fresh invite code for each absent player (rejoining takes a new code exchange).
     const invites = h('div', 'mp-banner-invites');
@@ -267,14 +299,14 @@ function createStatusBanner(role: () => 'host' | 'client', actions: { onMenu: ()
         for (const slot of internet.rejoinSlots()) if (!away.some((p) => p.slot === slot)) internet.endRejoin(slot);
         invites.replaceChildren(...away.map((p) => internet.rejoinWidget(p.slot, p.name)));
     };
-    banner.append(text, ai, idle, rejoin, rejoinNew, menu, invites);
+    banner.append(text, ai, idle, rejoin, rejoinNew, takeOverAlone, menu, invites);
     const chip = document.createElement('div');
     chip.className = 'mp-chip';
     chip.dataset.mp = 'chip';
     document.body.append(banner, chip);
     return {
         show(s) {
-            const t = statusText(s, role(), actions.onRejoin() !== null, actions.newHost());
+            const t = statusText(s, role(), actions.onRejoin() !== null, actions.newHost(), actions.split());
             banner.hidden = t === null;
             banner.dataset.status = s.kind;
             syncInvites(s);
@@ -284,6 +316,8 @@ function createStatusBanner(role: () => 'host' | 'client', actions: { onMenu: ()
             decideSlot = t.decide?.slot ?? -1;
             ai.hidden = idle.hidden = t.decide === undefined;
             rejoin.hidden = t.rejoin !== true;
+            rejoin.textContent = t.takeOverAlone === true ? 'Reconnect' : 'Rejoin';
+            takeOverAlone.hidden = t.takeOverAlone !== true;
             rejoinNew.hidden = t.rejoinNew === undefined;
             if (t.rejoinNew !== undefined) rejoinNew.textContent = `Rejoin ${t.rejoinNew}'s Game`;
         },
@@ -298,7 +332,7 @@ function createStatusBanner(role: () => 'host' | 'client', actions: { onMenu: ()
 }
 
 /** Wire a started session into the app: viewer, view, banner, chip, debug hook, and the host's rejoin gate. */
-async function runGame(deps: MultiplayerAppDeps, mp: MpHandle, side: SideHub, name: string, startOptions: StartGameOptions, hosting: boolean, newGame: boolean, extra: { tokens?: ReadonlyMap<number, string>; rejoin?: { address: string; token: string | null }; internet?: InternetHost | null }): Promise<void> {
+async function runGame(deps: MultiplayerAppDeps, mp: MpHandle, side: SideHub, name: string, startOptions: StartGameOptions, hosting: boolean, newGame: boolean, extra: { tokens?: ReadonlyMap<number, string>; rejoin?: { address: string; token: string | null }; internet?: InternetHost | null; chatHistory?: readonly SavedChatLine[] }): Promise<void> {
     const internet = extra.internet ?? null;
     const overInternet = internet !== null || extra.rejoin?.address === INTERNET_ADDRESS;
     let r: Running;
@@ -321,6 +355,8 @@ async function runGame(deps: MultiplayerAppDeps, mp: MpHandle, side: SideHub, na
             void rejoinGame(deps, name, r.overInternet || addrs.length === 0 ? INTERNET_ADDRESS : addrs[0], null, addrs.slice(1));
         },
         newHost: () => newHostName(),
+        split: () => r.migration.split,
+        onTakeOverAlone: () => r.migration.takeOverAlone(),
     }, () => r.internet);
     const migration = new Migration({
         mp,
@@ -346,6 +382,7 @@ async function runGame(deps: MultiplayerAppDeps, mp: MpHandle, side: SideHub, na
             r.rejoin = { address: r.overInternet || addrs.length === 0 ? INTERNET_ADDRESS : addrs[0], token: null, alternatives: addrs.slice(1) };
             console.info(`[migration] reconnecting to the new host (slot ${slot})`);
         },
+        onSplit: () => banner.show(mp.currentStatus()),
         onNoMigration: (why) => {
             console.info(`[migration] none: ${why}`);
             // A member without a backup link rejoins the successor; a successor that was cut off rejoins the old host.
@@ -364,6 +401,7 @@ async function runGame(deps: MultiplayerAppDeps, mp: MpHandle, side: SideHub, na
         peers: () => mp.start.players.map((p) => ({ slot: p.slot, name: p.name })),
         send: (text, to) => side.send('chat', to, { text }),
     });
+    if (extra.chatHistory !== undefined) chat.history(extra.chatHistory, name);
     const limits = new Map<number, ChatLimiter>();
     side.allow = (m) => {
         if (m.k !== 'chat') return true;
@@ -379,8 +417,8 @@ async function runGame(deps: MultiplayerAppDeps, mp: MpHandle, side: SideHub, na
     side.on('chat', (m) => {
         if (typeof m.text === 'string' && (m.to === -1 || m.to === mp.slot)) chat.add(m.from, nameOfSlot(m.from), m.text, m.to);
     });
-    (window as unknown as { __dwuChat?: unknown }).__dwuChat = { lines: () => chat.lines.map((l) => ({ ...l })), open: (on: boolean) => chat.setOpen(on), dropped: () => side.dropped };
-    r = { mp, start: mp.start, slot: mp.slot, name, banner, chipTimer: setInterval(() => paintChip(), 1000), hosting, tokens: extra.tokens ?? new Map(), rejoin: extra.rejoin ?? null, internet, side, migration, overInternet, chat };
+    exposeDevHook('__dwuChat', { lines: () => chat.lines.map((l) => ({ ...l })), open: (on: boolean) => chat.setOpen(on), dropped: () => side.dropped, muted: () => [...chat.muted], mutedLines: () => chat.mutedLines });
+    r = { mp, start: mp.start, slot: mp.slot, name, banner, chipTimer: setInterval(() => paintChip(), 1000), hosting, tokens: new Map(extra.tokens ?? []), joining: new Map(), rejoin: extra.rejoin ?? null, internet, side, migration, overInternet, chat };
     const net = overInternet ? 'Internet' : 'LAN';
     running = r;
     let ping = -1;
@@ -409,6 +447,16 @@ async function runGame(deps: MultiplayerAppDeps, mp: MpHandle, side: SideHub, na
     banner.show(mp.currentStatus());
     installDebugHook(mp);
     if (hosting) installRejoinGate(r);
+    // The Load list marks this game's saves (and autosaves) as multiplayer ones, with the players (§21).
+    setSaveEntryTagger(() => {
+        if (running !== r) return null;
+        try {
+            const players = multiplayerSaveExtras(r.mp.game().galaxy)?.multiplayerPlayers;
+            return players !== undefined ? { players } : null;
+        } catch {
+            return null;
+        }
+    });
     const game = mp.game();
     setLocalViewerEmpire(game.galaxy, mp.myEmpire());
     await deps.showGame(game, startOptions, { ...(mp.clock() ?? { speed: 1, paused: true }) }, newGame, mp.simClient());
@@ -440,7 +488,8 @@ function installRejoinGate(r: Running): void {
             const why = fp === undefined || typeof fp !== 'object' ? 'Your app sent no version information.' : fingerprintMismatch(lastFingerprint!, fp);
             if (why !== null) return refuse(why);
             const pick = r.mp.rejoinSlot(String(m.name ?? ''), typeof m.rejoin === 'string' ? m.rejoin : undefined, r.tokens);
-            if ('refused' in pick) return refuse(pick.refused);
+            // Not a dropped player: a NEW player may take over a free empire (§21).
+            if ('refused' in pick) return offerJoin(r, link, String(m.name ?? ''), refuse, pick.refused);
             const player = r.start.players.find((p) => p.slot === pick.slot)!;
             const token = r.tokens.get(pick.slot) ?? rejoinToken();
             // The link becomes the session's (its lockstep hello gets the slot's name), then the player is told.
@@ -449,6 +498,65 @@ function installRejoinGate(r: Running): void {
             sendLobbyMessage(link, { t: 'lobbyRejoin', slot: pick.slot, start: r.start, token });
         };
     };
+}
+
+/**
+ * Host: a new player at the running game's door (§21). They get the empires nobody plays (lobbyJoinOffer); their pick
+ * gets a new lobby slot, the link goes to the session (the current save comes in its welcome), and the host's
+ * addHumanSeat at their first input frame hands them the empire (net/multiplayerGame.ts acceptNewPlayer).
+ */
+function offerJoin(r: Running, link: Link, rawName: string, refuse: (reason: string) => void, why: string): void {
+    const name = rawName.replace(/[\u0000-\u001f|]/g, '').trim().slice(0, 32);
+    if (name === '') return refuse(why);
+    const seats = r.mp.seats();
+    if (seats.some((s) => s.name.toLowerCase() === name.toLowerCase())) return refuse(`${why} (A player named ${name} is in this game: a new player needs another name.)`);
+    if (seats.length >= LOBBY_MAX_PLAYERS) return refuse('The game is full.');
+    let galaxy: Galaxy;
+    try {
+        galaxy = r.mp.game().galaxy;
+    } catch {
+        return refuse(why);
+    }
+    const choicesNow = (): LobbyJoinChoice[] =>
+        joinChoicesFor(galaxy, r.start, [...r.joining.values()]).map((e) => ({
+            empireId: e.empireId,
+            name: e.name,
+            kind: humanSeats(galaxy).includes(e) ? 'seat' : 'ai',
+            race: e.dominantRace?.name ?? '',
+            colonies: e.colonies.length,
+            color: e.mainColor,
+        }));
+    const choices = choicesNow();
+    if (choices.length === 0) return refuse('The game has already started and no empire is free to take over.');
+    link.onMessage = (text) => {
+        let msg: unknown = null;
+        try {
+            msg = JSON.parse(text);
+        } catch {
+            // not JSON
+        }
+        const c = checkJoinPick(msg, choices);
+        if (c === null) return refuse('Not one of the empires on offer.');
+        if (running !== r || r.mp.role !== 'host') return refuse('The game is over.');
+        if (!choicesNow().some((x) => x.empireId === c.empireId)) return refuse(`${c.name} is no longer free.`);
+        const used = [...r.mp.seats().map((x) => x.slot), ...r.mp.peers().map((p) => slotOfPeerName(p.name)), ...r.joining.keys(), r.mp.slot];
+        const slot = Math.max(0, ...used) + 1;
+        const token = rejoinToken();
+        r.tokens.set(slot, token);
+        r.joining.set(slot, c.empireId);
+        console.info(`[lockstep] ${name} joins as a new player (slot ${slot}) and takes over ${c.name}`);
+        const handoff = slotHandoff(link, slot, name);
+        r.mp.acceptNewPlayer(r.side.tap(handoff, slot), slot, c.empireId, name);
+        sendLobbyMessage(link, { t: 'lobbyRejoin', slot, start: { ...r.start, joining: { slot, empireId: c.empireId } }, token });
+        // Once the seat is theirs (or they never made it), the empire is no longer "being joined".
+        const forget = setInterval(() => {
+            if (running !== r || r.mp.seats().some((x) => x.slot === slot) || !link.isOpen) {
+                clearInterval(forget);
+                r.joining.delete(slot);
+            }
+        }, 1000);
+    };
+    sendLobbyMessage(link, { t: 'lobbyJoinOffer', game: humanSeats(galaxy).map((e) => e.name).join(', '), choices });
 }
 
 /** The fingerprint this app sent / checks with (set when the Multiplayer screen computed it). */
@@ -519,6 +627,10 @@ function installDebugHook(mp: MpHandle): void {
         pause: (paused: boolean) => mp.requestPause(paused),
         setSpeed: (speed: number) => mp.setSpeed(speed),
         setInputDelay: (frames: number) => mp.setInputDelay(frames),
+        /** The input delay the adaptive delay wants now (null: a fixed delay; a hub after a host migration takes it over). */
+        wantedDelay: () => (inThread === null ? mp.call('wantedDelay', []) : (inThread.mp.session?.wantedDelay() ?? null)),
+        /** Phase 5 (§21): the empires a new player could take over now (host). */
+        joinChoices: () => joinChoicesFor(mp.game().galaxy, mp.start, []).map((e) => e.name),
         /** Host: decide an absent player's empire (the banner's buttons). */
         decideAbsent: (slot: number, ai: boolean) => mp.decideAbsent(slot, ai),
         /** Tests: drop this peer's network links (as a failing network would). */
@@ -537,7 +649,7 @@ function installDebugHook(mp: MpHandle): void {
         /** The session's log (worker mode: its last lines; in-thread it goes to the console). */
         log: () => (inThread === null ? mp.call('log', []) : Promise.resolve([])),
     };
-    (window as unknown as { __dwuMp?: unknown }).__dwuMp = hook;
+    exposeDevHook('__dwuMp', hook);
 }
 
 /**
@@ -672,13 +784,20 @@ export function hostSettingsLines(state: LobbyState): string[] {
 }
 
 /** Open the main menu's Multiplayer screen. `onBack`: back to the menu. */
-export function openMultiplayerScreen(deps: MultiplayerAppDeps, onBack: () => void): void {
+export function openMultiplayerScreen(deps: MultiplayerAppDeps, onBack: () => void, opts: { resume?: boolean } = {}): void {
     const ep = netEndpoint();
     const root = h('div', 'mp-screen');
     root.dataset.mp = 'menu';
     const win = h('div', 'mp-window');
     root.appendChild(win);
-    win.appendChild(h('div', 'mp-title', 'Multiplayer'));
+    win.appendChild(h('div', 'mp-title', opts.resume === true ? 'Resume a Multiplayer Game' : 'Multiplayer'));
+    // Resume with the same players (§21): host as usual; the lobby opens on the save picker (multiplayer saves), and
+    // the players rejoin it by name (or by the token their app kept from that game).
+    if (opts.resume === true) {
+        const note = h('div', 'mp-note mp-resume-note', 'Host the game again (on your LAN or on the Internet); pick the saved multiplayer game next. The lobby gives each player their empire back when they join with the name they played under.');
+        note.dataset.mp = 'resume-note';
+        win.appendChild(note);
+    }
     win.appendChild(h('div', 'mp-note', 'Play one game with other players on your local network, or over the Internet with invite codes (your PCs connect directly; no server is involved). Every player needs the same version of openDWU and the same Distant Worlds: Universe files.'));
 
     const nameRow = h('label', 'mp-row');
@@ -787,7 +906,7 @@ export function openMultiplayerScreen(deps: MultiplayerAppDeps, onBack: () => vo
                 internet.port = listening?.port ?? null;
             }
             root.remove();
-            openHostLobby(deps, gameData, fp, name, listening?.port ?? null, listening?.addresses ?? [], onBack, internet, mapping);
+            openHostLobby(deps, gameData, fp, name, listening?.port ?? null, listening?.addresses ?? [], onBack, internet, mapping, opts.resume === true);
         } catch (err) {
             setStatus(`Cannot host: ${err instanceof Error ? err.message : String(err)}`, true);
         } finally {
@@ -926,6 +1045,21 @@ export function openMultiplayerScreen(deps: MultiplayerAppDeps, onBack: () => vo
                     setStatus('Your settings differ from the host\'s.', true);
                 },
                 onChat: (from, who, text, to) => lobby?.chat(from, who, text, to),
+                // The game is running (§21): pick an empire to take over, or leave.
+                onJoinOffer: (game, choices, pick) => {
+                    mismatchBox?.remove();
+                    mismatchBox = joinOfferPanel(game, choices, (empireId) => {
+                        setStatus('Joining the game…');
+                        pick(empireId);
+                    }, () => {
+                        mismatchBox?.remove();
+                        mismatchBox = null;
+                        link.close('cancelled');
+                        setStatus('');
+                    });
+                    win.insertBefore(mismatchBox, status);
+                    setStatus('The game is running: choose the empire you will play.');
+                },
                 onStart: (start, handoff) => {
                     lobby?.destroy();
                     lobby = null;
@@ -958,6 +1092,42 @@ export function openMultiplayerScreen(deps: MultiplayerAppDeps, onBack: () => vo
             lobby.render(client.state);
         }
     }
+}
+
+/** A new player at a running game (§21): the empires on offer, one to pick (`kind` 'ai': the AI plays it until then). */
+function joinOfferPanel(game: string, choices: readonly LobbyJoinChoice[], onPick: (empireId: number) => void, onCancel: () => void): HTMLElement {
+    const box = h('div', 'mp-mismatch mp-join-offer');
+    box.dataset.mp = 'join-offer';
+    box.appendChild(h('div', 'mp-subtitle', 'Join the running game'));
+    box.appendChild(h('div', 'mp-note', `The game has started${game !== '' ? ` (players: ${game})` : ''}. Take over an empire: you receive the current game and play from the next moments on. An AI empire keeps its colonies, ships and treaties.`));
+    const list = h('div', 'mp-join-list');
+    let chosen = choices[0]?.empireId ?? -1;
+    const take = button('Take Over', 'join-take', () => {
+        if (chosen < 0) return;
+        take.disabled = true;
+        onPick(chosen);
+    }, 'mp-btn mp-btn-primary');
+    for (const c of choices) {
+        const row = h('label', 'mp-row mp-check mp-join-row');
+        const radio = h('input');
+        radio.type = 'radio';
+        radio.name = 'mp-join';
+        radio.dataset.mp = 'join-choice';
+        radio.dataset.empire = String(c.empireId);
+        radio.checked = c.empireId === chosen;
+        radio.addEventListener('change', () => (chosen = c.empireId));
+        const sw = h('span', 'mp-swatch');
+        sw.style.background = `#${c.color.toString(16).padStart(6, '0')}`;
+        row.append(radio, sw, h('span', '', `${c.name} — ${c.race !== '' ? `${c.race}, ` : ''}${c.colonies} colon${c.colonies === 1 ? 'y' : 'ies'}${c.kind === 'seat' ? ' (a free player seat)' : ' (AI)'}`));
+        list.appendChild(row);
+    }
+    const bar = h('div', 'mp-bar');
+    bar.append(take, button('Cancel', 'join-cancel', () => {
+        box.remove();
+        onCancel();
+    }, 'mp-btn mp-btn-secondary'));
+    box.append(list, bar);
+    return box;
 }
 
 /** The rejoin token of the last game this app joined ({ address, name, token }), or null. */
@@ -1166,7 +1336,7 @@ function refuseLate(link: Link): void {
     link.close('refused');
 }
 
-function openHostLobby(deps: MultiplayerAppDeps, gameData: GameData, fp: AppFingerprint, name: string, port: number | null, addresses: NetAddress[], onBack: () => void, internet: InternetHost | null, mapping: Promise<PortMapping> | null): void {
+function openHostLobby(deps: MultiplayerAppDeps, gameData: GameData, fp: AppFingerprint, name: string, port: number | null, addresses: NetAddress[], onBack: () => void, internet: InternetHost | null, mapping: Promise<PortMapping> | null, resume = false): void {
     const ep = netEndpoint();
     let options: StartGameOptions = wizardStartGameOptions();
     let loaded: LoadedMultiplayerSave | null = null;
@@ -1277,7 +1447,7 @@ function openHostLobby(deps: MultiplayerAppDeps, gameData: GameData, fp: AppFing
     }
     pushSettings(settingsSummary(options), deps.addonSet(options));
     // Scripts (a LAN test without clicking through the wizard): patch the settings as the wizard would.
-    (window as unknown as { __dwuMpLobby?: unknown }).__dwuMpLobby = {
+    exposeDevHook('__dwuMpLobby', {
         patchSettings: (patch: Partial<StartGameOptions>) => {
             options = { ...options, ...structuredClone(patch) };
             pushSettings(settingsSummary(options), deps.addonSet(options));
@@ -1291,7 +1461,11 @@ function openHostLobby(deps: MultiplayerAppDeps, gameData: GameData, fp: AppFing
         },
         fingerprint: () => ({ ...lobby.fingerprint }),
         files: () => fingerprintFiles(),
-    };
+        /** Open Load Saved Game (the Resume path opens it on the multiplayer saves). */
+        loadSave: (multiplayerOnly = false) => loadSave(multiplayerOnly),
+    });
+    // Resume with the same players (§21): straight to the multiplayer saves.
+    if (resume) queueMicrotask(() => void loadSave(true));
 
     async function editSettings(): Promise<void> {
         root.hidden = true;
@@ -1311,14 +1485,15 @@ function openHostLobby(deps: MultiplayerAppDeps, gameData: GameData, fp: AppFing
         }
     }
 
-    async function loadSave(): Promise<void> {
+    async function loadSave(multiplayerOnly = false): Promise<void> {
         root.hidden = true;
         try {
-            const save = await deps.pickSave();
+            const save = await deps.pickSave({ multiplayerOnly });
             if (save === null) return;
             loaded = save;
+            if ((save.chat?.length ?? 0) > 0) chat.history(save.chat!, name);
             const humans = humanSeats(save.game.galaxy);
-            lobby.setLoaded({ name: save.name, humans: humans.map((e, i) => ({ humanIndex: i, empireName: e.name, playerName: save.players?.[i] ?? '' })) });
+            lobby.setLoaded({ name: save.name, humans: humans.map((e, i) => ({ humanIndex: i, empireName: e.name, playerName: save.players?.[i] ?? '' })) }, save.tokens);
             const extra = humans.length < 2 ? ['This save has one human empire: the other players need a LAN save (or start a new game).'] : [];
             const sc = save.scenario;
             pushSettings([`${humans.length} human empire${humans.length === 1 ? '' : 's'}: ${humans.map((e) => e.name).join(', ')}`, ...settingsSummary(save.startOptions).slice(0, 1), ...extra], sc === null ? null : { id: sc.id, packages: sc.include ?? [sc.id], names: (sc.include ?? [sc.id]).map(String), flags: {}, params: {} });
@@ -1337,6 +1512,7 @@ function openHostLobby(deps: MultiplayerAppDeps, gameData: GameData, fp: AppFing
         const host = state.players.find((p) => p.slot === 0)!;
         const params = { inputDelay: 4, digestInterval: 60 };
         let start: MultiplayerStart;
+        const chatHistory = loaded?.chat;
         if (loaded === null) {
             const so: StartGameOptions = { ...structuredClone(options), empireName: host.pick.name, raceName: host.pick.race, governmentId: host.pick.governmentId, primaryColor: host.pick.primaryColor, secondaryColor: host.pick.secondaryColor, humanPlayers: clients.map((p) => ({ ...p.pick })) };
             start = {
@@ -1410,7 +1586,7 @@ function openHostLobby(deps: MultiplayerAppDeps, gameData: GameData, fp: AppFing
                 setLockstepStepper(game.galaxy, it.mp.stepper);
                 handle = it;
             }
-            await runGame(deps, handle, side, host.name, start.startOptions, true, start.kind === 'new', { tokens, internet });
+            await runGame(deps, handle, side, host.name, start.startOptions, true, start.kind === 'new', { tokens, internet, ...(chatHistory !== undefined && chatHistory.length > 0 ? { chatHistory } : {}) });
         } catch (err) {
             console.error('multiplayer: the game could not start', err);
             for (const l of links.values()) l.close('the host could not start the game');

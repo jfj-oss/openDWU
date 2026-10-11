@@ -110,6 +110,8 @@ export interface WelcomeMsg {
     params: LockstepParams;
     /** Host migration (§16): who was the hub from which frame (absent: peer 0 all along). */
     hosts?: Array<{ peer: PeerId; from: number }>;
+    /** The hub's adaptive input delay settings (§13; absent: a fixed delay): a peer that becomes the hub takes it over. */
+    adaptive?: { min?: number; max?: number; intervalMs?: number; window?: number; marginFrames?: number; lowerAfter?: number };
 }
 
 export interface InputsMsg {

@@ -132,7 +132,8 @@ import type { EmpireActivityType } from '../pirates/empireActivity';
 import { storyEventAction, storyEventClose } from '../story/freedomAlliance';
 import { applyLlmStrategicCommand, type LlmStrategicCommand } from '../scenario/llm/strategic';
 import { applyPopulationPolicyToAllColonies, renameColony, scrapColonyFacility, setColonyAsCapital, setColonyPopulationPolicy, transferToTransport } from './colonyOrders';
-import { isHumanEmpire, setAiSeat } from '../humanEmpires';
+import { addHumanSeat, isHumanEmpire, setAiSeat } from '../humanEmpires';
+import { setEmpireDifficultyFactors } from '../pirates';
 import { setHumanMessageOptions } from '../perHumanState';
 import { acceptGovernorSuggestion, requestGovernor, setCvAutomation } from '../scenario/charactersVictory/governorsCv';
 import { dietPlayerDeclareEmperor, dietPlayerEmergency, dietPlayerVeto, dietPlayerVote, dietPropose, dietSetDelegate } from '../scenario/charactersVictory/diet/diet';
@@ -517,6 +518,15 @@ export const PLAYER_OPS = {
     /** Multiplayer Phase 4 (net/multiplayerGame.ts, docs/MULTIPLAYER.md §12): the host hands a human seat whose player
      *  left to the AI (`ai`), or back when they return. The session lets only the host issue it. */
     setSeatAi: (galaxy: Galaxy, empire: Empire, ai: boolean) => setAiSeat(galaxy, empire, ai === true),
+    /** Multiplayer Phase 5 (docs/MULTIPLAYER.md §21): a new player takes over `empire` (an AI empire, or a seat without
+     *  a player) at this frame; the host's command, issued as the joiner's input starts. `slot` / `name`: the joiner's
+     *  lobby slot and name (read by the session, net/multiplayerGame.ts, to map the slot to the seat). The player's
+     *  difficulty factors apply from now on (decision §4.2). */
+    addHumanSeat: (galaxy: Galaxy, empire: Empire, _slot: number, _name: string) => {
+        if (!addHumanSeat(galaxy, empire)) return false;
+        setEmpireDifficultyFactors(galaxy, empire, galaxy.difficultyLevel);
+        return true;
+    },
 
     // --- Mod layer: the local model's chronicle (19s-1) ---
     /** llm/chronicleJob.ts: store one year of the chronicle in the event-log state (the model's text arrives by value). */

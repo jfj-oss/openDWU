@@ -8,7 +8,8 @@ check, and the session flow. **Phase 4's LAN half is built (§11–§14):** lock
 a dropped player, AI takeover of an absent player's empire, and an adaptive input delay. **Internet play is built
 (§15):** WebRTC data channels set up with copy-paste invite / reply codes, peer-to-peer, with no server of ours in
 between. **Phase 5 (§16–§21, 2026-10-11):** host migration (the game goes on when the host leaves; the old host can
-rejoin), the lobby's add-on / theme matching, diplomacy between human players as offers, and chat. Nothing changes for
+rejoin), the lobby's add-on / theme matching, diplomacy between human players as offers, and chat; the leftovers
+(§21–§24: joining a running game as a new player, multiplayer saves and Resume, dev-only debug hooks). Nothing changes for
 the player: the seed pins (`npm run repin -- --check`) are
 unchanged at every commit, one-human saves are byte-identical to before, and every multiplayer-only rule runs only when
 the game has more than one human (`isMultiHuman`).
@@ -31,7 +32,7 @@ The command log already names the empire of each command (`PlayerLogEntry.empire
 | 2 | Hot-seat: two players on one PC (switch the local viewer between turns or with pause). | |
 | 3 | LAN lockstep: host/join by IP, a shared clock and pause, desync checks. | |
 | 4 | Internet: WebRTC, a lobby and invite codes, reconnects, AI takeover on disconnect. | Done: worker mode, rejoin, AI takeover, adaptive delay (§11–§14); Internet play by codes, no server (§15); host migration (§16). |
-| 5 | Polish: chat, human-to-human diplomacy, multiplayer saves, version/add-on/data checks, joining mid-game. | Done: host migration (§16), settings matching (§17), human-to-human diplomacy (§18), chat (§19). Left: §21. |
+| 5 | Polish: chat, human-to-human diplomacy, multiplayer saves, version/add-on/data checks, joining mid-game. | Done: host migration (§16), settings matching (§17), human-to-human diplomacy (§18), chat (§19), the leftovers (§21), joining mid-game (§22), saves and Resume (§23), dev-only hooks (§24). Left: §26. |
 
 Risks: cross-platform determinism (checked, see §9: it holds once Math.pow is replaced), hidden single-player
 assumptions, and the slowest PC sets the game speed.
@@ -822,12 +823,16 @@ uses are part of the host's start options; the hash makes sure everyone has the 
   <player>…" until that player's next digest matches.
 - **Disconnect.** A client leaving pauses the game on the host; the host chooses AI takeover or idle, and the player can
   rejoin (§12). The host leaving ends the game on the clients ("Lost the connection to the host"; Rejoin / Main Menu).
-  A connection after the start that is not a dropped player coming back is refused.
+  A connection after the start that is not a dropped player coming back may take over a free empire (§22).
 - **Saving.** Any player can save (each has the whole game); the host's save is the one to keep. A LAN save carries the
   players by human index (`multiplayer` key). Loading it as host: Multiplayer → Host Game → Load Saved Game…; the same
   players get their empires back by name.
 
 ### 10.5 Scripting (`window.__dwuMp`, `window.__dwuMpLobby`)
+
+Dev flag only since §24 (`DWU_DEV_HOOKS=1`). Since §21: `__dwuMp.wantedDelay()`, `joinChoices()`; `__dwuChat.muted()`,
+`mutedLines()`; `__dwuOffers.openOwn()`; `__dwuMpLobby.loadSave(multiplayerOnly)`.
+
 
 `__dwuMp` (while a LAN game runs): `role`, `status`, `frame`, `clock`, `stats`, `gameMs`, `peers()`, `digest()`,
 `myEmpire()`, `issue(op, args)` (for this player's empire), `renameOther(humanIndex, label)` (a refused command),
@@ -1270,17 +1275,125 @@ game time; all three apps in worker mode):
 Also: `npm run repin -- --check --workers 1` = 0; `scripts/lockstep-demo.mjs` (WebSocket), `--phase4` and `--phase5`
 OK; `npm run typecheck`; vitest: the sim-worker, diplomacy, trade, save-runtime and UI-write files (30 files, 251 tests) pass.
 
-## 21. What is left
+## 21. Phase 5 leftovers (2026-10-11)
 
-- The new host does not take over the old host's adaptive input delay (§13): the delay stays where it was.
-- Hot seat offers (the popup for the local viewer only, shown after the curtain) were not driven in the real UI in these
-  runs: the `?hotSeatDev=1&newgame=…` dev path did not come up under the test driver.
-- The Mac and the Windows laptop were not part of these runs (the cross-machine checks of §9 / §15 stand for the
-  transport and the determinism; a cross-machine host migration is still to do).
+- **The new host takes over the adaptive input delay** (§13). The hub's welcome now carries its adaptive settings
+  (`WelcomeMsg.adaptive`); a client keeps them, and `promoteToHost` switches the adaptive delay on with them, measured
+  afresh from the new hub (its round trips start empty; the running delay stays until the new measurements move it).
+- **Two players and the host's link breaks.** A client's session now learns whether the host said goodbye
+  (`bye`: it quit) before its link closed (`onHostLost(reason, deliberate)`, `MultiplayerStatus.hostLost.deliberate`).
+  With no other player to ask (§16: no members, no backup link), a quit hands the game over at once as before; a broken
+  link does **not**: the client waits (its session is orphaned, so no frame runs) and its banner offers **Reconnect**
+  (rejoin the host, §12) or **Take Over** (`Migration.takeOverAlone`: promote, the old host's seat becomes absent),
+  with the warning that taking over while the host plays on splits the game. The host's banner says the other player
+  waits and chooses. The 20 s give-up of a lone successor does not apply while it waits for the choice.
+- **Your own pending offers** (`humanOffers.ts`): while this player has pending offers, a "Your offers (N)" button sits
+  under the offer popups; it opens the list — to whom, what (a trade's two lists), the game time left — with
+  **Withdraw** on each (the journaled `withdrawHumanOffer`).
+- **Chat history and mute** (`chatPanel.ts`). A multiplayer save keeps the last 100 lines this player saw, by lobby
+  names (`GameSaveJSON.multiplayerChat`, just before `multiplayer`; `savedMultiplayerChat`); loading it as host shows
+  them greyed in the lobby chat and then in the game chat ("— earlier in this game —"). **Mute…** in the chat head lists
+  the other players: a muted player's lines are not shown here (nothing is sent; by lobby name, kept in localStorage
+  `dwu.mp.muted`).
+- **Hot-seat offers in the real UI** (driven: §25). The flow works as designed; the only thing that "broke" was the test
+  driver of §20 (it waited for `__dwu.game` and tested the fixed curtain's `offsetParent`, which is always null).
+
+## 22. Joining a running game as a new player
+
+Before, a connection to a running game that was not a dropped player coming back was refused. Now (the reverse of AI
+takeover, §12):
+
+1. The new player clicks **Join Game** (or Join by code) as usual. The host's rejoin gate runs the same checks as a
+   rejoin (a well-formed hello, then the strict version / build / engine / theme / data check, §10.3); a name that is
+   already playing is refused, and so is a full game (8 players).
+2. The host answers `lobbyJoinOffer`: the empires nobody plays (`joinChoicesFor`): every active AI empire with a
+   colony (not the independents, no pirate faction) and every human seat without a player. The joiner's screen lists
+   them (name, race, colonies, AI or free seat); it picks one: `lobbyJoinPick`.
+3. The host gives it a new lobby slot and a rejoin token, hands the link to the session (`acceptNewPlayer`: the
+   current save comes in the welcome, §8) and sends `lobbyRejoin` with the start and `joining: { slot, empireId }`
+   (the joiner's screen shows that empire until the seat is mapped; `myEmpireOf`; never read by the command check).
+4. **The agreed frame.** When the new peer is admitted, the hub issues the journaled `addHumanSeat(slot, name)` for the
+   empire; it rides on the hub's next input, the frame the new peer's input starts from. At that frame, on every peer,
+   the empire becomes a human seat (`humanEmpires.ts addHumanSeat`: appended to the seats, or a seat handed back from
+   the AI; the player's difficulty factors apply) and the session maps the slot to it (`MultiplayerStart.players`,
+   `seatJoined`), so the AI runs the empire up to that frame and the player from then on. Only the hub may issue it
+   (`slotAuthorizer`), for an empire no slot plays.
+
+Worker mode: `netLink { mode: 'join', join }`; the main thread's copy of the start follows the worker's seats. The
+saves carry the new player like any other (by seat). Single-player: the op exists but does nothing outside a
+multiplayer game (repin 0).
+
+## 23. Multiplayer saves and Resume
+
+- **The Load list** marks a multiplayer game's saves (and autosaves): the index entry gets the players' names
+  (`SaveEntry.players`, from `setSaveEntryTagger` while a session runs) and the row says "— Multiplayer: Hosty,
+  Clienty, Newbie". A **Multiplayer saves only** box filters the list. (Saves made before this have no tag.)
+- **Resume Multiplayer Game** (main menu, under Multiplayer): the Multiplayer screen with a note; Host Game (LAN) or
+  Host on the Internet opens the lobby straight on the save picker, filtered to multiplayer saves. The lobby lists the
+  save's human empires with who played them; each player rejoins **by token** — the save keeps every player's rejoin
+  token by human index (`multiplayer.tokens`), and a player whose app kept its token for that host address
+  (`dwu.mp.rejoin`) says hello with it — or **by name**. The token a player came back with stays theirs.
+
+## 24. Debug hooks are dev-only
+
+`window.__dwuMp`, `__dwuMpLobby`, `__dwuRtc`, `__dwuChat`, `__dwuOffers` and the localStorage test switches
+(`dwu.mp.blockIce`, `dwu.mp.publicOnly`, `dwu.mp.hideAddon`) exist only behind the dev flag
+(`src/ui/multiplayer/devHooks.ts`): a dev build (`npm run dev`), the desktop app started with **`DWU_DEV_HOOKS=1`**
+(the shell passes `--dwu-dev-hooks` to the game window; `dwuDesktop.devHooks`), or `?devHooks=1` in the page URL.
+Test scripts start their apps with `DWU_DEV_HOOKS=1`. A release build without it has none of them (checked: §25).
+
+## 25. Tests (2026-10-11)
+
+`scripts/lockstep-demo.mjs --phase5` now also lets a fourth player (Carol) join the running game after the migration,
+taking over an AI empire with no game of her own, and checks her seat on every peer, its frame (= her first input
+frame), her rename and the four final digests; `--adaptive` checks that the new hub took over the adaptive delay.
+
+| Run (seed 1, 150 stars, 4 empires, 4x) | Result |
+|---|---|
+| `--phase5` | OK: Carol takes over Ugnari Corporation at frame 1864 = her first input frame, on all four peers; **`699f47c61436eb7e` on all four at frame 2284**; 59 checks on the new host, 0 mismatches |
+| `--phase5 --adaptive` / `--drop` / `--idle` | OK (the new hub's adaptive delay on, with the old host's on) |
+| `lockstep-demo.mjs` (WebSocket), `--memory`, `--phase4`, `--phase4 --worker`, `--phase4 --worker --idle`, `--phase4 --ws --worker` | OK, all (`--phase4 --ws --worker`: `36584c83d1761558` at frame 3000 on both) |
+
+**Real UI** (Electron apps on this PC, each on its own `kwin_wayland --virtual`, real GPU through ANGLE / Vulkan,
+`DWU_USER_DATA_DIR` profiles, `DWU_DEV_HOOKS=1`, nice 19, each in `systemd-run --user --scope -p MemoryMax=5G -p
+MemorySwapMax=1G`; driven over CDP through the menus, the lobby, the banners, the chat, the game menu and the save
+picker):
+
+| Scenario | Result |
+|---|---|
+| **Hot seat** (one app, in-thread; a new game with one extra human) | Player 1's curtain and founding line ("Human Empire founded at Nobea 5"); an event for player 2 during player 1's turn is held (not shown to player 1, not behind player 2's curtain), shown after player 2's curtain; player 2's ticker shows its own founding line ("Second Seat founded at Isisenie"). Player 1 proposes Free Trade on the Diplomacy screen ("Offer sent — awaiting their reply."), **Your offers (1)** lists it, **Withdraw** → withdrawn; proposes again; no popup on player 1's turn; Switch Player → curtain → player 2's popup "Human Empire proposes: Free Trade Agreement." → **Accept** → Free Trade |
+| **LAN, three apps, worker mode** (seed 4242, 120 stars, 4 AI empires, 2x, adaptive delay on, orders from every player every 2 s) | Two players: `567bc292f9ba8c10` on both. **Mute**: the client mutes Hosty, the host's next line is dropped there (1 muted line). **Split**: the host's links break; the client stays a client, waits (paused, `hostLost` 5 s later), banner Reconnect / Take Over; **Reconnect** → back; `829c337d5ffef7d2` on both. **New player**: Newbie joins the running game, is offered the 4 AI empires, takes over Atuuk Alliance (a seat on every peer); `32af81cbaab02e67` on all three. **Save** (Save Game As): index entry `players: [Hosty, Clienty, Newbie]`. **Migration** (the host quits): the client is the hub, the adaptive delay goes on there (delay 15, wanted 6); `06568550f2fd86b9` on both survivors. **Resume**: everyone at the main menu; the host's Resume Multiplayer Game → the picker shows only "mp-resume — Multiplayer: Hosty, Clienty, Newbie"; the lobby shows the saved chat; Clienty and Newbie join and get their empires back (claims 1, 2); the game chat shows the history; `16a79e5752726fd1` on all three |
+| **No dev flag** (one app without `DWU_DEV_HOOKS`, localStorage `blockIce` / `publicOnly` set) | `dwuDesktop.devHooks` false; no `__dwuMp`, `__dwuMpLobby`, `__dwuChat`, `__dwuOffers`, `__dwuRtc`; the invite code is a normal one (114 characters, LAN addresses in it: the switches are ignored) |
+
+**Four players, a big galaxy** (four apps on this PC in worker mode, LAN 127.0.0.1, adaptive delay on; seed 9001,
+requested 1,400 stars and 16 AI empires on the largest preset size; 2x; renames and waypoints from every player every
+2 s; the Mac was asleep, so four local apps): built on all four in 8.5 s; **digests equal at the start
+(`34da50a25a8e7ee6`) and after 6 minutes (`6f263bc9a7137ae6`, game ms 667,366, frame ~21,000)**; 1,026 digest checks
+on the host, 0 mismatches, 0 resyncs, 1,192 commands applied on every peer.
+
+| | |
+|---|---|
+| Frame pace | 59.0 frames/s average (minimum 52 over a 7 s window), game speed 1.90x of the wanted 2x |
+| Input delay (adaptive) | 15–19 frames (each app's main thread and sim worker share a niced, busy PC: round trips of 200–300 ms) |
+| Stalls | the host 5.7%, the clients 4.7%, 3.6% and 1.7% of the time while all four run freely |
+| The slowest peer | p4 squeezed onto one CPU core for 72 s: the frame pace held (57 frames/s, minimum 46), but the **other three** stalled 3–4× as much (the host's stall count +480 in that minute vs. +180 before: they wait for p4's inputs), while p4 itself barely stalled; back to normal within a minute of the release |
+| Memory | about 1.15–1.29 GB per renderer (plus each app's sim process) |
+| Event pop-ups | an event pop-up on any peer pauses everyone (§10.4): 8 such pauses in 6 minutes (the test dismissed them and resumed) |
+
+A first 6-minute run on a smaller galaxy (the default size caps the star count) also ended equal on all four
+(`2a7fdc6ebd6bdd61`), with the game paused by an event pop-up for its second half (frames ran on at 60/s).
+
+Also: `npm run repin -- --check --workers 1` = 0; `npm run typecheck`; `npm run check:player-empire`; vitest (the
+battle-report, hint-subject, galactic-history, AI advisor, LLM strategic, replica, save, save panel, main menu,
+message-feed, desktop-shell and sim-worker files: 30 files, 260 tests) pass.
+
+## 26. What is left
+
+- The Mac and the Windows laptop were not part of these runs (the Mac was asleep); a cross-machine host migration and
+  a cross-machine new-player join are still to do.
 - A peer that cannot reach the successor at all gets no backup link: it rejoins by address or code (the fallback).
-- Two players and the host's *network* failing: both go on alone (no third party to tell who was cut off).
-- Chat history is not saved; there is no mute / block.
-- Human-to-human diplomacy: no offer list screen of one's own pending offers (they are withdrawn with
-  `withdrawHumanOffer` by script only); the AI's "Swap maps or tech" quick deals and the add-ons' proposal kinds are
-  not offered between humans.
-- From the earlier lists: joining a running game (refused), a per-human handicap, a deeper desync hash.
+- Battle reports per human were checked by the existing tests (one human: unchanged) and by reading, not in a real
+  multi-human battle.
+- Human-to-human diplomacy: the AI's "Swap maps or tech" quick deals and the add-ons' proposal kinds are not offered
+  between humans.
+- From the earlier lists: a per-human handicap, a deeper desync hash with the first divergent frame logged.

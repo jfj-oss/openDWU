@@ -208,8 +208,8 @@ function encodeArgs(galaxy: Galaxy, args: readonly unknown[], version: number = 
 }
 
 /** The ops issued for AI empires: the LLM layer's strategic orders and chronicle (src/llm), and the multiplayer host's
- *  seat hand-over (setSeatAi: back to its player, while the AI runs it). */
-const AI_EMPIRE_OPS: ReadonlySet<PlayerOpName> = new Set<PlayerOpName>(['llmStrategic', 'storeChronicleYear', 'setSeatAi']);
+ *  seat hand-over (setSeatAi: back to its player, while the AI runs it) and a new player's takeover (addHumanSeat). */
+const AI_EMPIRE_OPS: ReadonlySet<PlayerOpName> = new Set<PlayerOpName>(['llmStrategic', 'storeChronicleYear', 'setSeatAi', 'addHumanSeat']);
 
 function applyLive(galaxy: Galaxy, p: Pending): void {
     // Multiplayer: a command acts for a human empire only (an AI empire's orders are the AI's). Rejected before the

@@ -637,6 +637,8 @@ function createWindow() {
             nodeIntegration: false,
             sandbox: true,
             preload: path.join(__dirname, 'gamePreload.cjs'),
+            // DWU_DEV_HOOKS=1: the multiplayer debug hooks and test switches (src/ui/multiplayer/devHooks.ts) for scripts.
+            ...(process.env.DWU_DEV_HOOKS === '1' ? { additionalArguments: ['--dwu-dev-hooks'] } : {}),
         },
     });
     mainWin = win;

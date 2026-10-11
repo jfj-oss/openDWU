@@ -57,7 +57,9 @@ export interface LockstepHooks {
     /** An input arrived from another peer (stats; `now` = wall epoch ms). */
     onInput?(input: FrameInput, now: number): void;
     /** Client: the host link closed; the session is over (or, with `migratable`, waits for a new host: §16). */
-    onHostLost?(reason: string): void;
+    /** `deliberate`: the host said goodbye (it quit) before its link closed; false: the link broke (a crash or a
+     *  network failure: this peer cannot tell whose). */
+    onHostLost?(reason: string, deliberate: boolean): void;
     /** Host migration (§16): this peer now plays on with `host` as the hub (the new host: once every survivor reported). */
     onMigrated?(host: PeerId): void;
     /** A frame ran (after applyFrame). */
@@ -106,6 +108,19 @@ export interface LockstepOptions extends Partial<LockstepParams> {
      * new host — promoteToHost here, or migrateTo the new host's link (host migration, docs/MULTIPLAYER.md §16).
      */
     migratable?: boolean;
+}
+
+/** The adaptive-delay options with their defaults filled in; a wire value's bad numbers fall back to the defaults. */
+function normalizeAdaptive(a: AdaptiveDelayOptions): Required<AdaptiveDelayOptions> {
+    const num = (v: unknown, d: number, lo: number, hi: number): number => (typeof v === 'number' && Number.isFinite(v) ? Math.min(hi, Math.max(lo, v)) : d);
+    return {
+        min: num(a.min, 3, 1, 120),
+        max: num(a.max, 30, 1, 240),
+        intervalMs: num(a.intervalMs, 1000, 50, 60_000),
+        window: Math.trunc(num(a.window, 5, 1, 100)),
+        marginFrames: num(a.marginFrames, 2, 0, 60),
+        lowerAfter: Math.trunc(num(a.lowerAfter, 5, 1, 100)),
+    };
 }
 
 /** Frames of inputs a survivor reports behind its own frame (MigrateMsg): more than any two peers can be apart. */
@@ -188,7 +203,10 @@ export class LockstepSession {
     private pendingClock: ClockState | null = null;
     /** Host: an input-delay change for the next input it sends (the adaptive delay). */
     private pendingDelay: number | null = null;
-    private readonly adaptive: Required<AdaptiveDelayOptions> | null;
+    private adaptive: Required<AdaptiveDelayOptions> | null;
+    /** The hub's adaptive-delay settings as the welcome told them (or this peer's own options): a peer promoted to host
+     *  (host migration, §16) takes the adaptive delay over with them. */
+    private adaptiveShared: Required<AdaptiveDelayOptions> | null;
     /** Host, adaptive delay: the last round trips per client (ms), when the last probe went, cuts wanted in a row. */
     private readonly rtts = new Map<PeerId, number[]>();
     private lastProbeAt = -Infinity;
@@ -230,10 +248,8 @@ export class LockstepSession {
         this.migratable = opts.migratable === true;
         this.name = opts.name ?? (role === 'host' ? 'host' : 'client');
         const a = opts.adaptiveDelay;
-        this.adaptive =
-            role === 'host' && a !== undefined
-                ? { min: a.min ?? 3, max: a.max ?? 30, intervalMs: a.intervalMs ?? 1000, window: a.window ?? 5, marginFrames: a.marginFrames ?? 2, lowerAfter: a.lowerAfter ?? 5 }
-                : null;
+        this.adaptiveShared = a !== undefined ? normalizeAdaptive(a) : null;
+        this.adaptive = role === 'host' ? this.adaptiveShared : null;
     }
 
     // -----------------------------------------------------------------------------------------------------------
@@ -597,6 +613,7 @@ export class LockstepSession {
             t: 'welcome', peer: id, frame: this.frame, save: null, clock: { ...this.clock }, inputs: this.inputsFrom(this.frame),
             peers: this.peerList(), params: { ...this.params },
             ...(this.hosts.length > 1 ? { hosts: this.hosts.map((x) => ({ ...x })) } : {}),
+            ...(this.adaptive !== null ? { adaptive: { ...this.adaptive } } : {}),
         };
         if (skipSave) {
             this.sendTo(link, welcome);
@@ -775,6 +792,15 @@ export class LockstepSession {
         for (const p of this.peers.values()) {
             p.digests.clear();
             p.link = null;
+        }
+        // The old hub's adaptive input delay (§13) goes on here, measured afresh from this hub.
+        if (this.adaptive === null && this.adaptiveShared !== null) {
+            this.adaptive = this.adaptiveShared;
+            this.rtts.clear();
+            this.lastProbeAt = -Infinity;
+            this.lowerWanted = 0;
+            this.pendingDelay = null;
+            this.hooks.log?.(`host migration: this hub takes over the adaptive input delay (now ${this.params.inputDelay})`);
         }
         const wanted = new Set(expect.filter((id) => id !== this.localPeer && id !== oldHost && this.peers.get(id)?.info.leftFrom === null));
         this.migration = { oldHost, from, expect: wanted, reported: new Map(), timer: null };
@@ -1014,6 +1040,7 @@ export class LockstepSession {
     private onWelcome(m: WelcomeMsg, save: string | null): void {
         this.localPeer = m.peer;
         this.params = { ...m.params };
+        if (m.adaptive !== undefined && m.adaptive !== null && typeof m.adaptive === 'object') this.adaptiveShared = normalizeAdaptive(m.adaptive);
         if (Array.isArray(m.hosts) && m.hosts.length > 0) this.hosts.splice(0, Infinity, ...m.hosts.map((x) => ({ peer: x.peer, from: x.from })));
         for (const info of m.peers) this.addPeer({ ...info }, null);
         if (save !== null) this.sim.load(save);
@@ -1054,6 +1081,7 @@ export class LockstepSession {
                 this.pings.delete(m.id);
                 return;
             case 'bye':
+                this.hostBye = typeof m.reason === 'string' ? m.reason : 'bye';
                 this.hostLink?.close(m.reason);
                 return;
             default:
@@ -1079,17 +1107,22 @@ export class LockstepSession {
         if (!this.active) return;
         this.hostLink = null;
         this.awaitingMigrated = null;
+        const deliberate = this.hostBye !== null;
+        this.hostBye = null;
         if (this.migratable && this.localPeer >= 0) {
             // Host migration (§16): keep everything; a new host takes over (promoteToHost / migrateTo).
             this.orphaned = true;
-            this.hooks.log?.(`host link closed: ${reason} (waiting for a new host)`);
-            this.hooks.onHostLost?.(reason);
+            this.hooks.log?.(`host link closed: ${reason}${deliberate ? ' (the host quit)' : ''} (waiting for a new host)`);
+            this.hooks.onHostLost?.(reason, deliberate);
             return;
         }
         this.active = false;
         this.hooks.log?.(`host link closed: ${reason}`);
-        this.hooks.onHostLost?.(reason);
+        this.hooks.onHostLost?.(reason, deliberate);
     }
+
+    /** Client: the host's goodbye (its reason) arrived before its link closed. */
+    private hostBye: string | null = null;
 
     // -----------------------------------------------------------------------------------------------------------
     // Wire

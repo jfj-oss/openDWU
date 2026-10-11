@@ -167,6 +167,7 @@ export class WorkerLockstep {
         if (this.mp === null) l.close('no session');
         else if (m.mode === 'migrant') this.mp.acceptMigrant(l);
         else if (m.mode === 'newHost') this.mp.migrateTo(l, m.slot);
+        else if (m.mode === 'join' && m.join !== undefined) this.mp.acceptNewPlayer(l, m.slot, Number(m.join.empireId), String(m.join.name));
         else this.mp.acceptRejoin(l, m.slot);
         this.postState(true);
         this.env.kick();
@@ -225,6 +226,8 @@ export class WorkerLockstep {
             case 'inputDelay':
                 s.setInputDelay(Number(args[0]));
                 return true;
+            case 'wantedDelay':
+                return s.wantedDelay();
             case 'issue': {
                 const me = mp.myEmpire();
                 if (me === null) throw new Error('no empire');

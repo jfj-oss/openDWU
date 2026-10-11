@@ -92,7 +92,7 @@ import { habitatInfo } from './ui/selectionInfo';
 import { renderInfoModel } from './ui/selectionInfoView';
 import { colonizationRangeFor, defaultStartGameOptions, wizardStartGameOptions, piratesFor, STARTING_TECH_LEVEL, toCreateGameOptions, type StartGameOptions, maximumEmpireAmountFor, starCountFor, defaultScenarioChoice, type StartScenarioChoice } from './sim/startGameOptions';
 import { readSaveScenarioRef, serializeGameSave, saveTextString, saveTextTail, type SaveText } from './saveData';
-import { deserializeGameSteps, savedCustomizationSet, savedGalaxyBackdrop, savedMultiplayerPlayers, savedScenarioId, savedScenarioInclude, type GameSaveExtras, type GameSaveJSON } from './sim/save/gameSave';
+import { deserializeGameSteps, savedCustomizationSet, savedGalaxyBackdrop, savedMultiplayerChat, savedMultiplayerPlayers, savedMultiplayerTokens, savedScenarioId, savedScenarioInclude, type GameSaveExtras, type GameSaveJSON } from './sim/save/gameSave';
 import { loadScenarioIndex, loadScenarioOverlay } from './sim/scenario/fetchScenario';
 import { applyScenarioOverlay, type ScenarioOverlay } from './sim/scenario/overlay';
 import { isTextLoaded, loadBaseTextUnderAdded } from './sim/textResolver';
@@ -167,6 +167,7 @@ import { toggleDiplomacyScreen } from './ui/screens/diplomacyScreen';
 import { humanEmpires } from './sim/humanEmpires';
 import type { Empire } from './sim/empire';
 // LAN multiplayer (docs/MULTIPLAYER.md §10).
+import { devValue } from './ui/multiplayer/devHooks';
 import { endMultiplayerSession, multiplayerActive, multiplayerSaveExtras, openMultiplayerScreen, type LoadedMultiplayerSave, type MultiplayerAppDeps } from './ui/multiplayer/multiplayerApp';
 import { engineName, noteDataRead, resetDataReads } from './net/fingerprint';
 import { APP_BUILD, APP_VERSION } from './appVersion';
@@ -1828,7 +1829,7 @@ const multiplayerDeps: MultiplayerAppDeps = {
         const sc = start.startOptions.scenario;
         return sc == null ? null : { id: sc.id, include: choiceInclude(sc) };
     },
-    pickSave: () =>
+    pickSave: (pickOpts) =>
         new Promise<LoadedMultiplayerSave | null>((resolve) => {
             let picked: LoadedMultiplayerSave | null = null;
             let sourceText = '';
@@ -1844,6 +1845,7 @@ const multiplayerDeps: MultiplayerAppDeps = {
                 callbacks: { onLoadedFile: () => finish(picked) },
                 serialize: () => null,
                 loadOnly: true,
+                multiplayerOnly: pickOpts?.multiplayerOnly === true,
                 memorySaves: sessionSaves,
                 loadSave: async (text) => {
                     await ensureStaticData();
@@ -1856,6 +1858,8 @@ const multiplayerDeps: MultiplayerAppDeps = {
                         playData: lastPlayedGameData ?? lastGameData!,
                         scenario: ref.id === null ? null : { id: ref.id, include: ref.include },
                         players: savedMultiplayerPlayers(str.slice(-65536)),
+                        chat: savedMultiplayerChat(str),
+                        tokens: savedMultiplayerTokens(str.slice(-65536)),
                         name: loaded.game.galaxy.playerEmpire?.name ?? 'saved game',
                         // Worker mode: the worker loads the save from its text (the in-thread copy lists the humans).
                         text: sourceText,
@@ -1905,13 +1909,8 @@ const multiplayerDeps: MultiplayerAppDeps = {
         return { id: sc.id, packages, names: packages.map((id) => scenarioOverlays.get(id)?.manifest.name ?? id), flags: { ...sc.flags }, params: { ...sc.params } };
     },
     missingAddons(ids) {
-        // Test hook (like dwu.mp.blockIce): 'dwu.mp.hideAddon' = an add-on id this app pretends not to have.
-        let hide = '';
-        try {
-            hide = localStorage.getItem('dwu.mp.hideAddon') ?? '';
-        } catch {
-            // no storage
-        }
+        // Test hook (like dwu.mp.blockIce; dev flag only): 'dwu.mp.hideAddon' = an add-on id this app pretends not to have.
+        const hide = devValue('dwu.mp.hideAddon');
         return ids.filter((id) => !scenarioOverlays.has(id) || id === hide);
     },
 };
@@ -1934,6 +1933,8 @@ function showMainMenu(): void {
             openWizard(showMainMenu);
         },
         onMultiplayer: () => openMultiplayerScreen(multiplayerDeps, () => undefined),
+        // Resume with the same players (docs/MULTIPLAYER.md §21): host again on a saved multiplayer game.
+        onResumeMultiplayer: () => openMultiplayerScreen(multiplayerDeps, () => undefined, { resume: true }),
         onTutorials: () => {
             // Task 06l: the Tutorials list screen; Start boots a default
             // game and opens that tutorial's window in it.

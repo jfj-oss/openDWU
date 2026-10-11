@@ -103,6 +103,25 @@ export function setAiSeat(galaxy: Galaxy, empire: Empire, ai: boolean): boolean 
     return true;
 }
 
+/**
+ * A new player joins a running multiplayer game (docs/MULTIPLAYER.md §21): `empire` becomes a human seat — an AI
+ * empire is added at the end of the seats; a seat the AI runs (or that stands idle without a player) is handed back.
+ * Only in a multiplayer game, and not for the independents or a pirate faction. Returns whether `empire` is now a
+ * human-played seat. Sim state: only through the journaled `addHumanSeat` command (the host's, at the joiner's first
+ * input frame), so every peer changes it at the same frame.
+ */
+export function addHumanSeat(galaxy: Galaxy, empire: Empire): boolean {
+    const list = explicit.get(galaxy);
+    if (list === undefined || list.length < 2) return false;
+    if (list.includes(empire)) {
+        setAiSeat(galaxy, empire, false);
+        return true;
+    }
+    if (!empire.active || empire === galaxy.independentEmpire || empire.pirateEmpireBaseHabitat != null) return false;
+    setHumanEmpires(galaxy, [...list, empire]);
+    return true;
+}
+
 /** What the save writes (galaxySave.ts side table `aiSeats`): the AI-run seats in seat order, or undefined (no key). */
 export function savedAiSeats(galaxy: Galaxy): Empire[] | undefined {
     const ai = aiSeats.get(galaxy);

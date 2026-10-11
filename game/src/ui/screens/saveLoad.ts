@@ -34,6 +34,16 @@ export interface SaveEntry {
     name: string;
     /** ISO date string (UTC) when the save was written. */
     date: string;
+    /** A multiplayer game's save (docs/MULTIPLAYER.md §21): its players' lobby names. Absent for any other save. */
+    players?: string[];
+}
+
+/** What the running game adds to a save's index entry (main.ts: a multiplayer game's players); null / {}: nothing. */
+let saveEntryTagger: (() => Partial<SaveEntry> | null) | null = null;
+
+/** Register (null: clear) the tagger of new index entries (the panel's saves and the autosaves). */
+export function setSaveEntryTagger(fn: (() => Partial<SaveEntry> | null) | null): void {
+    saveEntryTagger = fn;
 }
 
 /** The three things a loaded game needs to boot through startGameView. */
@@ -67,10 +77,9 @@ export function readSaveIndex(storage: SaveStorage): SaveEntry[] {
         if (raw === null) return [];
         const parsed = JSON.parse(raw) as unknown;
         if (!Array.isArray(parsed)) return [];
-        return parsed.filter(
-            (e): e is SaveEntry =>
-                typeof e === 'object' && e !== null && typeof (e as SaveEntry).name === 'string',
-        );
+        return parsed
+            .filter((e): e is SaveEntry => typeof e === 'object' && e !== null && typeof (e as SaveEntry).name === 'string')
+            .map((e) => (e.players !== undefined && !(Array.isArray(e.players) && e.players.every((p) => typeof p === 'string')) ? { name: e.name, date: e.date } : e));
     } catch {
         return [];
     }
@@ -85,7 +94,9 @@ export function writeSaveIndex(storage: SaveStorage, entries: SaveEntry[]): void
  * itself is written separately — see storeSave / SaveTextStore). */
 export function writeSaveIndexEntry(storage: SaveStorage, name: string, date: string): void {
     const entries = readSaveIndex(storage).filter((e) => e.name !== name);
-    entries.unshift({ name, date });
+    const tag = saveEntryTagger?.() ?? null;
+    const players = tag?.players;
+    entries.unshift(Array.isArray(players) && players.length > 0 ? { name, date, players: players.map((p) => String(p).slice(0, 64)).slice(0, 16) } : { name, date });
     writeSaveIndex(storage, entries);
 }
 
@@ -407,6 +418,8 @@ export interface SavePanelWiring {
     textStore?: SaveTextStore;
     /** Hide the Save tab (main menu: there is no running game to save). */
     loadOnly?: boolean;
+    /** Open the Load list on the multiplayer saves only (the "Multiplayer saves only" box; Resume Multiplayer Game). */
+    multiplayerOnly?: boolean;
 }
 
 /** The window's size (original pixels) and its body layout. */
@@ -418,6 +431,7 @@ const SL_FONT = FONT.large; // 16.67
  * (Escape menu Load Game / main menu Load Game). The window opens on show(). */
 export function createSaveLoadPanel(mode: 'save' | 'load', wiring: SavePanelWiring = { callbacks: {} }): SavePanelRefs {
     const { callbacks, memorySaves, serialize, loadSave, saveAddons, now, storage, textStore, loadOnly } = wiring;
+    let multiplayerOnly = wiring.multiplayerOnly === true;
     const getStorage = (): SaveStorage => storage ?? (window.localStorage as unknown as SaveStorage);
     const getTextStore = (): SaveTextStore => textStore ?? getDefaultTextStore();
     const stamp = (): string => (now ? now() : new Date()).toISOString();
@@ -443,7 +457,21 @@ export function createSaveLoadPanel(mode: 'save' | 'load', wiring: SavePanelWiri
     if (!loadOnly) root.appendChild(tabsHost);
 
     const columns = (): GridColumn<SaveEntry>[] => [
-        { id: 'name', header: 'Name', render: (e, c) => (c.textContent = e.name), sort: (e) => e.name.toLowerCase() },
+        {
+            id: 'name',
+            header: 'Name',
+            render: (e, c) => {
+                c.textContent = e.name;
+                // A multiplayer save: its players (docs/MULTIPLAYER.md §21).
+                if (e.players !== undefined && e.players.length > 0) {
+                    const tag = el('span', 'save-load-mp-tag', ` — Multiplayer: ${e.players.filter((p) => p !== '').join(', ')}`);
+                    tag.style.color = 'rgb(143, 192, 255)';
+                    c.appendChild(tag);
+                    c.title = `A multiplayer game (${e.players.length} players). Multiplayer → Resume Saved Game reopens its lobby for them.`;
+                }
+            },
+            sort: (e) => e.name.toLowerCase(),
+        },
         { id: 'date', header: 'Saved', width: 170, render: (e, c) => (c.textContent = formatSaveDate(e.date)), sort: (e) => e.date },
     ];
 
@@ -482,6 +510,12 @@ export function createSaveLoadPanel(mode: 'save' | 'load', wiring: SavePanelWiri
     // --- Load sub-panel --------------------------------------------------------
     const loadBody = place(el('div', 'save-load-body'), 0, top, 604, SL_H - 63 - top);
     loadBody.appendChild(place(text('Saves', { size: SL_FONT, color: COLORS.label, shadow: false }), 10, 4));
+    const mpOnlyBox = checkBox('Multiplayer saves only', multiplayerOnly, (v) => {
+        multiplayerOnly = v;
+        refreshLists();
+    });
+    mpOnlyBox.classList.add('save-load-mp-only');
+    loadBody.appendChild(place(mpOnlyBox, 360, 2));
     const loadGrid = new OwGrid<SaveEntry>({
         columns: columns(),
         key: (e) => e.name,
@@ -574,7 +608,7 @@ export function createSaveLoadPanel(mode: 'save' | 'load', wiring: SavePanelWiri
         const entries = allSaves();
         saveGrid.setRows(entries);
         const sel = loadGrid.selected?.name;
-        loadGrid.setRows(entries);
+        loadGrid.setRows(multiplayerOnly ? entries.filter((e) => (e.players?.length ?? 0) > 0) : entries);
         if (sel !== undefined && entries.some((e) => e.name === sel)) loadGrid.setSelection([sel]);
         updateLoadButtons();
     }

@@ -8,6 +8,9 @@
 //   line that arrives while it is closed shows for a few seconds as a notice above the chip, with an unread count.
 // - Bounded: at most CHAT_MAX_CHARS a line (lobby.ts LOBBY_CHAT_MAX_CHARS), a burst of CHAT_BURST lines then one a
 //   second (lobby.ts ChatLimiter, on the sender and again on the host), the last CHAT_KEEP lines kept.
+// - Mute (docs/MULTIPLAYER.md §21): the "Mute…" list in the head hides a player's lines here (by lobby name, kept in
+//   localStorage `dwu.mp.muted`, so it holds across games); nothing is sent, the others still see them.
+// - History: a multiplayer save carries the lines (gameSave.ts multiplayerChat); loading it shows them again, greyed.
 //
 // Main thread / DOM.
 
@@ -15,6 +18,35 @@ import { ChatLimiter, cleanChat, LOBBY_CHAT_MAX_CHARS } from '../../net/lobby';
 
 /** Lines kept in the panel. */
 export const CHAT_KEEP = 200;
+/** Lines a save keeps (gameSave.ts multiplayerChat). */
+export const CHAT_SAVE_KEEP = 100;
+
+/** A saved chat line (by lobby names: slots change between sessions). `to`: '' = everyone, else the receiver. */
+export interface SavedChatLine {
+    from: string;
+    to: string;
+    text: string;
+}
+
+const MUTED_KEY = 'dwu.mp.muted';
+
+/** The muted players' lobby names (localStorage). */
+export function mutedNames(): Set<string> {
+    try {
+        const v = JSON.parse(localStorage.getItem(MUTED_KEY) ?? '[]') as unknown;
+        return new Set(Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string').slice(0, 64) : []);
+    } catch {
+        return new Set();
+    }
+}
+
+function storeMuted(names: ReadonlySet<string>): void {
+    try {
+        localStorage.setItem(MUTED_KEY, JSON.stringify([...names].slice(0, 64)));
+    } catch {
+        // no storage: the mute lasts for this session
+    }
+}
 
 export interface ChatPeer {
     slot: number;
@@ -51,6 +83,11 @@ export class ChatPanel {
     private readonly onKey: ((e: KeyboardEvent) => void) | null = null;
     /** Lines shown (scripts / tests: __dwuChat.lines()). */
     readonly lines: Array<{ from: number; name: string; text: string; to: number; at: number }> = [];
+    /** The muted players' lobby names. */
+    readonly muted: Set<string> = mutedNames();
+    /** Lines dropped here because their sender is muted. */
+    mutedLines = 0;
+    private readonly muteList: HTMLElement;
 
     constructor(private readonly opts: ChatPanelOptions) {
         const game = opts.mode === 'game';
@@ -59,6 +96,18 @@ export class ChatPanel {
         this.el.dataset.mp = 'chat';
         const head = h('div', 'mp-chat-head');
         head.appendChild(h('span', 'mp-chat-title', 'Chat'));
+        const muteBtn = h('button', 'mp-chat-mute-btn', 'Mute…');
+        muteBtn.type = 'button';
+        muteBtn.dataset.mp = 'chat-mute';
+        muteBtn.title = 'Hide the lines of a player (here only)';
+        head.appendChild(muteBtn);
+        this.muteList = h('div', 'mp-chat-mutes');
+        this.muteList.dataset.mp = 'chat-mutes';
+        this.muteList.hidden = true;
+        muteBtn.addEventListener('click', () => {
+            this.muteList.hidden = !this.muteList.hidden;
+            if (!this.muteList.hidden) this.fillMutes();
+        });
         if (game) {
             const close = h('button', 'mp-chat-close', '×');
             close.type = 'button';
@@ -94,7 +143,7 @@ export class ChatPanel {
         });
         this.to.addEventListener('focus', () => this.fillTargets());
         row.append(this.to, this.input, sendBtn);
-        this.el.append(head, this.list, row);
+        this.el.append(head, this.muteList, this.list, row);
         this.fillTargets();
         if (game) {
             this.el.hidden = true;
@@ -121,6 +170,58 @@ export class ChatPanel {
             };
             window.addEventListener('keydown', this.onKey, true);
         }
+    }
+
+    private fillMutes(): void {
+        const peers = this.opts.peers().filter((p) => p.slot !== this.opts.mySlot);
+        const rows = peers.map((p) => {
+            const label = h('label', 'mp-chat-mute');
+            const box = h('input');
+            box.type = 'checkbox';
+            box.dataset.mp = 'chat-mute-player';
+            box.dataset.name = p.name;
+            box.checked = this.muted.has(p.name);
+            box.addEventListener('change', () => this.setMuted(p.name, box.checked));
+            label.append(box, document.createTextNode(` ${p.name}`));
+            return label;
+        });
+        this.muteList.replaceChildren(...(rows.length > 0 ? rows : [h('span', 'mp-chat-system', 'No other players.')]));
+    }
+
+    /** Mute (or unmute) a player by lobby name. */
+    setMuted(name: string, on: boolean): void {
+        if (on) this.muted.add(name);
+        else this.muted.delete(name);
+        storeMuted(this.muted);
+        this.system(on ? `${name} is muted (here only).` : `${name} is no longer muted.`);
+    }
+
+    /** Saved lines (a loaded multiplayer save), shown greyed before the new ones. */
+    history(saved: readonly SavedChatLine[], myName: string): void {
+        if (saved.length === 0) return;
+        this.system('— earlier in this game —');
+        for (const l of saved.slice(-CHAT_SAVE_KEEP)) {
+            const t = cleanChat(String(l.text ?? ''));
+            if (t === '') continue;
+            const mine = l.from === myName;
+            const who = mine ? (l.to !== '' ? `You → ${l.to}` : 'You') : l.to !== '' ? `${l.from} (to ${l.to === myName ? 'you' : l.to})` : l.from;
+            const line = h('div', `mp-chat-line mp-chat-history${l.to !== '' ? ' mp-chat-private' : ''}${mine ? ' mp-chat-mine' : ''}`);
+            line.append(h('span', 'mp-chat-who', `${who}: `), h('span', 'mp-chat-text', t));
+            this.list.appendChild(line);
+            this.saved.push({ from: String(l.from), to: String(l.to ?? ''), text: t });
+        }
+        this.system('— now —');
+        this.list.scrollTop = this.list.scrollHeight;
+    }
+
+    /** History lines shown (kept in the next save before this session's own). */
+    private readonly saved: SavedChatLine[] = [];
+
+    /** What a save keeps: the history, then this session's lines, by lobby names (`me`: this player's), the last
+     *  CHAT_SAVE_KEEP. */
+    savedLines(me: string, nameOfSlot: (slot: number) => string): SavedChatLine[] {
+        const out = [...this.saved, ...this.lines.map((l) => ({ from: l.name === 'You' && l.from === this.opts.mySlot ? me : l.name, to: l.to >= 0 ? (l.to === this.opts.mySlot ? me : nameOfSlot(l.to)) : '', text: l.text }))];
+        return out.slice(-CHAT_SAVE_KEEP);
     }
 
     private fillTargets(): void {
@@ -150,6 +251,10 @@ export class ChatPanel {
     add(from: number, name: string, text: string, to: number, mine = false): void {
         const t = cleanChat(text);
         if (t === '') return;
+        if (!mine && this.muted.has(name)) {
+            this.mutedLines++;
+            return;
+        }
         this.lines.push({ from, name, text: t, to, at: Date.now() });
         if (this.lines.length > CHAT_KEEP) this.lines.shift();
         const line = h('div', `mp-chat-line${to >= 0 ? ' mp-chat-private' : ''}${mine ? ' mp-chat-mine' : ''}`);

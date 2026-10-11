@@ -13,7 +13,7 @@ import type { Game } from '../../sim/game';
 import type { Empire } from '../../sim/empire';
 import type { GalaxyTime } from '../../sim/galaxyTime';
 import { setLockstepStepper } from '../../net/lockstepSeam';
-import { empireOfSlot, MultiplayerGame, rejoinSlotFor, type MultiplayerStatus, type SeatState } from '../../net/multiplayerGame';
+import { empireOfSlot, myEmpireOf, MultiplayerGame, rejoinSlotFor, type MultiplayerStatus, type SeatState } from '../../net/multiplayerGame';
 import type { ClockState, LockstepStats, PeerInfo } from '../../net/lockstep';
 import type { MultiplayerStart } from '../../net/lobby';
 import type { Link } from '../../net/transport';
@@ -52,6 +52,9 @@ export interface MpHandle {
     rejoinSlot(name: string, token: string | undefined, tokens: ReadonlyMap<number, string>): { slot: number } | { refused: string };
     /** Host: hand a reconnecting player's (slot-handed) link to the session. */
     acceptRejoin(link: Link, slot: number): void;
+    /** Host: a NEW player's (slot-handed) link (§21): it joins with the save and takes `empireId` over at its first
+     *  input frame. */
+    acceptNewPlayer(link: Link, slot: number, empireId: number, name: string): void;
     /** The lobby slot of the hub (0 until a host migration, docs/MULTIPLAYER.md §16). */
     hostSlot(): number;
     /** Host migration: this client becomes the hub; `expectSlots` report over their backup links (acceptMigrant). */
@@ -159,6 +162,10 @@ export class InThreadMp implements MpHandle {
     acceptRejoin(link: Link, slot: number): void {
         this.links.push(link);
         this.mp.acceptRejoin(link, slot);
+    }
+    acceptNewPlayer(link: Link, slot: number, empireId: number, name: string): void {
+        this.links.push(link);
+        this.mp.acceptNewPlayer(link, slot, empireId, name);
     }
     hostSlot(): number {
         return this.mp.hostSlot();
@@ -280,6 +287,13 @@ export class WorkerMp implements MpHandle {
             }
             case 'mpState': {
                 this.state = m.state;
+                // The worker's session maps new players to their seats (§21): keep this copy of the start in step.
+                for (const seat of m.state.seats) {
+                    const p = this.start.players.find((x) => x.slot === seat.slot);
+                    if (p !== undefined) p.humanIndex = seat.humanIndex;
+                    else this.start.players.push({ slot: seat.slot, name: seat.name, humanIndex: seat.humanIndex });
+                    if (this.start.joining?.slot === seat.slot) delete this.start.joining;
+                }
                 const key = JSON.stringify(m.state.status);
                 if (key !== this.statusKey) {
                     this.statusKey = key;
@@ -363,7 +377,7 @@ export class WorkerMp implements MpHandle {
         return this.state?.gameMs ?? -1;
     }
     myEmpire(): Empire | null {
-        return this.client === null ? null : empireOfSlot(this.client.core.galaxy, this.start, this.slot);
+        return this.client === null ? null : myEmpireOf(this.client.core.galaxy, this.start, this.slot);
     }
     ping(): Promise<number> {
         return this.call('ping', []) as Promise<number>;
@@ -390,6 +404,10 @@ export class WorkerMp implements MpHandle {
     acceptRejoin(link: Link, slot: number): void {
         const id = this.relay(link);
         this.post({ type: 'netLink', link: id, slot, mode: 'rejoin' });
+    }
+    acceptNewPlayer(link: Link, slot: number, empireId: number, name: string): void {
+        const id = this.relay(link);
+        this.post({ type: 'netLink', link: id, slot, mode: 'join', join: { empireId, name } });
     }
     hostSlot(): number {
         return this.state?.hostSlot ?? 0;

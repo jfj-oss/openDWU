@@ -24,11 +24,12 @@ import type { StartGameOptions } from '../sim/startGameOptions';
 import { humanSeats, isAiSeat } from '../sim/humanEmpires';
 import { flatEmpireList } from '../sim/save/galaxySave';
 import { issuePlayerCommand } from '../sim/player/playerCommands';
+import { decodeCommandArg } from '../sim/player/commandCodec';
 import { LockstepSession, type AdaptiveDelayOptions, type LockstepHooks } from './lockstep';
 import { GalaxyLockstepSim, SessionStepper } from './lockstepSim';
 import type { LockstepStepper } from './lockstepSeam';
 import type { Link } from './transport';
-import type { PeerId, PeerInfo } from './protocol';
+import type { NetCommand, PeerId, PeerInfo } from './protocol';
 import { peerName, slotOfPeerName, type MultiplayerStart } from './lobby';
 
 /** A player whose peer left the running game (Phase 4). */
@@ -47,7 +48,9 @@ export type MultiplayerStatus =
     | { kind: 'running' }
     | { kind: 'resyncing'; who: string }
     | { kind: 'absent'; players: AbsentPlayer[]; paused: boolean }
-    | { kind: 'hostLost'; reason: string }
+    /** `deliberate`: the host quit (said goodbye); otherwise its link broke and this peer cannot tell whose network
+     *  failed (a two-player game then waits for the player's choice: docs/MULTIPLAYER.md §21). */
+    | { kind: 'hostLost'; reason: string; deliberate?: boolean }
     /** Host migration (§16): the host is gone and `newHost` (a lobby name) takes over; `self`: this peer does. */
     | { kind: 'migrating'; newHost: string; self: boolean };
 
@@ -71,11 +74,22 @@ export interface MultiplayerGameOptions {
 /** The op that hands a human seat to the AI and back (sim/player/playerOps.ts setSeatAi). Host only. */
 export const SEAT_AI_OP = 'setSeatAi';
 
+/** The op that makes a new player's pick a human seat (sim/player/playerOps.ts addHumanSeat). Host only (§21). */
+export const JOIN_SEAT_OP = 'addHumanSeat';
+
 /** The human empire `slot` plays in `start` (null: a spectator / unknown slot / not in the game any more). */
 export function empireOfSlot(galaxy: Galaxy, start: MultiplayerStart, slot: number): Empire | null {
     const p = start.players.find((x) => x.slot === slot);
     if (p === undefined) return null;
     return humanSeats(galaxy)[p.humanIndex] ?? null;
+}
+
+/** This screen's empire: its slot's seat, or (a new player before its first input frame: §21) the empire it takes over. */
+export function myEmpireOf(galaxy: Galaxy, start: MultiplayerStart, slot: number): Empire | null {
+    const own = empireOfSlot(galaxy, start, slot);
+    if (own !== null || start.joining?.slot !== slot) return own;
+    const id = start.joining.empireId;
+    return flatEmpireList(galaxy).find((e) => e?.empireId === id) ?? null;
 }
 
 /**
@@ -88,6 +102,8 @@ export function slotAuthorizer(galaxy: () => Galaxy, start: MultiplayerStart, pe
         const info = peers().find((p) => p.id === peer);
         if (info === undefined) return false;
         const target = flatEmpireList(galaxy())[empireIndex];
+        // A new player takes over an empire (§21): only the hub, for an empire nobody plays (the op checks the rest).
+        if (op === JOIN_SEAT_OP) return peer === hostPeer() && target != null && !start.players.some((p) => empireOfSlot(galaxy(), start, p.slot) === target);
         if (op === SEAT_AI_OP) {
             if (peer !== hostPeer() || target == null) return false;
             const own = slotOfPeerName(info.name);
@@ -143,6 +159,20 @@ export function rejoinSlotFor(seats: readonly SeatState[], hostSlot: number, nam
     return { refused: away.length === 0 ? 'The game has already started and every player is connected.' : `The game has already started. Only a disconnected player can rejoin (${away.map((s) => s.name).join(', ')}); use your name from the lobby.` };
 }
 
+/** The empires a new player may take over (MultiplayerGame.joinChoices): AI empires and human seats nobody plays. */
+export function joinChoicesFor(galaxy: Galaxy, start: MultiplayerStart, taken: readonly number[]): Empire[] {
+    const seats = humanSeats(galaxy);
+    const played = new Set(start.players.map((p) => seats[p.humanIndex]).filter((e): e is Empire => e != null));
+    const out: Empire[] = [];
+    for (const e of seats) if (!played.has(e) && e.active && !taken.includes(e.empireId)) out.push(e);
+    for (const e of galaxy.empires) {
+        if (e == null || seats.includes(e) || !e.active || e === galaxy.independentEmpire || e.pirateEmpireBaseHabitat != null || taken.includes(e.empireId)) continue;
+        if (e.colonies.length === 0) continue;
+        out.push(e);
+    }
+    return out;
+}
+
 export class MultiplayerGame {
     readonly sim: GalaxyLockstepSim;
     session: LockstepSession | null = null;
@@ -156,6 +186,7 @@ export class MultiplayerGame {
     private joined = false;
     private resyncing = new Set<string>();
     private hostLost: string | null = null;
+    private hostLostDeliberate = false;
     /** Host: the players whose peer left, by slot (until they rejoin). */
     private readonly absent = new Map<number, { reason: string; decided: boolean }>();
     /** Host: the game was paused for a drop (lifted when every absent player is decided or back). */
@@ -175,8 +206,9 @@ export class MultiplayerGame {
             startOptions: opts.startOptions,
             authorize: slotAuthorizer(() => this.sim.galaxy, opts.start, () => this.session?.peerList() ?? [], () => this.session?.hostPeerAt(this.session.frame) ?? 0),
             onGameReplaced: (g: Game, t: GalaxyTime) => this.opts.onGameReplaced?.(g, t),
-            onApplied: (cmd: { op: string }) => {
-                if (cmd.op === SEAT_AI_OP) queueMicrotask(() => this.refreshStatus());
+            onApplied: (cmd: NetCommand) => {
+                if (cmd.op === JOIN_SEAT_OP) this.seatJoined(cmd);
+                if (cmd.op === SEAT_AI_OP || cmd.op === JOIN_SEAT_OP) queueMicrotask(() => this.refreshStatus());
             },
             onDropped: (cmd: { op: string }, reason: string) => this.opts.onDropped?.(cmd.op, reason),
         };
@@ -203,7 +235,7 @@ export class MultiplayerGame {
 
     /** The human empire this peer plays (in the current game). */
     myEmpire(): Empire | null {
-        return this.sim.game === null ? null : empireOfSlot(this.sim.galaxy, this.opts.start, this.opts.slot);
+        return this.sim.game === null ? null : myEmpireOf(this.sim.galaxy, this.opts.start, this.opts.slot);
     }
 
     get start(): MultiplayerStart {
@@ -247,6 +279,13 @@ export class MultiplayerGame {
                 this.refreshWaiting();
                 const slot = slotOfPeerName(peer.name);
                 if (this.role === 'host' && this.absent.has(slot)) this.rejoined(slot);
+                // A new player (§21): submitted now, the takeover rides on the host's next input — the frame the new
+                // peer's input starts from — so the AI runs the empire up to that frame and the player from there on.
+                const j = this.role === 'host' ? this.joining.get(slot) : undefined;
+                if (j !== undefined && this.sim.game !== null) {
+                    const empire = flatEmpireList(this.sim.galaxy).find((e) => e?.empireId === j.empireId) ?? null;
+                    if (empire !== null) issuePlayerCommand(this.sim.galaxy, empire, JOIN_SEAT_OP, [slot, j.name]);
+                }
                 this.refreshStatus();
             },
             onPeerLeft: (peer, reason) => {
@@ -263,8 +302,9 @@ export class MultiplayerGame {
                 }
                 this.refreshStatus();
             },
-            onHostLost: (reason) => {
+            onHostLost: (reason, deliberate) => {
                 this.hostLost = reason;
+                this.hostLostDeliberate = deliberate;
                 this.refreshStatus();
             },
             onMigrated: () => {
@@ -289,6 +329,55 @@ export class MultiplayerGame {
                 if (this.resyncing.delete(nameOfId(peer))) this.refreshStatus();
             },
         };
+    }
+
+    /**
+     * Every peer, at the frame the host's addHumanSeat applied (§21): the new player's slot now plays that seat (its
+     * index in humanSeats, the same on every peer), so the session authorizes its commands from here on.
+     */
+    private seatJoined(cmd: NetCommand): void {
+        if (this.sim.game === null) return;
+        const galaxy = this.sim.galaxy;
+        let slot = -1;
+        let name = '';
+        try {
+            slot = Number(decodeCommandArg(galaxy, cmd.args[0]));
+            name = String(decodeCommandArg(galaxy, cmd.args[1]) ?? '');
+        } catch {
+            return;
+        }
+        const empire = flatEmpireList(galaxy).find((e) => e?.empireId === cmd.empire) ?? null;
+        const humanIndex = empire === null ? -1 : humanSeats(galaxy).indexOf(empire);
+        if (!Number.isInteger(slot) || slot < 0 || humanIndex < 0) return;
+        const players = this.opts.start.players;
+        const p = players.find((x) => x.slot === slot);
+        if (p !== undefined) p.humanIndex = humanIndex;
+        else players.push({ slot, name: name.slice(0, 32) || `Player ${slot + 1}`, humanIndex });
+        this.joining.delete(slot);
+        if (this.opts.start.joining?.slot === slot) delete this.opts.start.joining;
+        this.opts.log?.(`${name} plays ${empire!.name} from frame ${this.session?.frame ?? -1} (seat ${humanIndex})`);
+    }
+
+    /** Host: new players being let in (§21), by slot: the empire they take over at their first input frame. */
+    private readonly joining = new Map<number, { empireId: number; name: string }>();
+
+    /** Host: a NEW player's link (already handed to its new `slot`: lobby.ts slotHandoff); it joins with the save and
+     *  takes `empireId` over at its first input frame (onPeerJoined issues addHumanSeat). */
+    acceptNewPlayer(link: Link, slot: number, empireId: number, name: string): void {
+        if (this.role !== 'host' || this.session === null) {
+            link.close('not the host');
+            return;
+        }
+        this.joining.set(slot, { empireId, name });
+        this.opts.log?.(`${name} is joining (new player, slot ${slot})`);
+        this.session.accept(link);
+    }
+
+    /** Host: the empires a new player may take over now (§21): the AI empires (not the independents, no pirate
+     *  faction) and the human seats nobody plays; none being taken over by another joiner. */
+    joinChoices(): Empire[] {
+        if (this.role !== 'host' || this.sim.game === null) return [];
+        return joinChoicesFor(this.sim.galaxy, this.opts.start, [...this.joining.values()].map((j) => j.empireId));
     }
 
     /** Host: a player came back (their slot has a peer again): the AI hands their empire back, the drop's pause lifts. */
@@ -401,7 +490,7 @@ export class MultiplayerGame {
 
     private computeStatus(): MultiplayerStatus {
         if (this.migratingTo !== null) return { kind: 'migrating', newHost: this.migratingTo.name, self: this.migratingTo.self };
-        if (this.hostLost !== null) return { kind: 'hostLost', reason: this.hostLost };
+        if (this.hostLost !== null) return { kind: 'hostLost', reason: this.hostLost, ...(this.hostLostDeliberate ? { deliberate: true } : {}) };
         if (this.role === 'host' && !this.joined) {
             const inSession = new Set((this.session?.peerList() ?? []).map((p) => slotOfPeerName(p.name)));
             const missing = [...this.expected].filter(([s]) => !inSession.has(s) && !this.droppedBeforeJoin.has(s)).map(([, n]) => n);

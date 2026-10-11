@@ -451,3 +451,38 @@
     color: #e0c890;
     word-break: break-all;
 }
+/* Chat: mute list and saved history (docs/MULTIPLAYER.md §21). */
+.mp-chat-mute-btn {
+    margin-left: auto;
+    margin-right: 4px;
+    background: none;
+    border: 1px solid #3a4658;
+    border-radius: 4px;
+    color: #a8b8d0;
+    font-size: 11px;
+    cursor: pointer;
+    padding: 0 6px;
+}
+.mp-chat-mutes {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 2px 10px;
+    padding: 2px 4px;
+    font-size: 12px;
+}
+.mp-chat-mutes[hidden] {
+    display: none;
+}
+.mp-chat-history {
+    opacity: 0.6;
+}
+/* Joining a running game (§21): the empires on offer. */
+.mp-join-list {
+    max-height: 260px;
+    overflow-y: auto;
+    margin: 6px 0;
+}
+.mp-join-row {
+    gap: 6px;
+    align-items: center;
+}

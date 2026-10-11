@@ -844,8 +844,11 @@ if (role === 'phase5') {
         notes.push(`[${who}] ${m}`);
         if (!/joined from frame|asks to/.test(m)) out(`[${who}] ${m}`);
     };
-    const mkOpts = (slot, who) => ({
-        start, slot, name: start.players[slot].name, gameData, startOptions,
+    const adaptive = arg('adaptive', false) === true;
+    // Each peer holds its own copy of the start (a new player's seat is mapped on each at the frame it applies).
+    const mkOpts = (slot, who, st = structuredClone(start)) => ({
+        start: st, slot, name: st.players.find((p) => p.slot === slot)?.name ?? who, gameData, startOptions,
+        ...(adaptive && slot === 0 && who === 'host' ? { adaptiveDelay: {} } : {}),
         onStatus: (st) => note(who, `status ${st.kind}${st.kind === 'absent' ? ` (${st.players.map((p) => `${p.name}: ${p.ai ? 'AI' : p.decided ? 'idle' : 'undecided'}`).join(', ')}${st.paused ? ', paused' : ''})` : st.kind === 'migrating' ? ` (new host ${st.newHost})` : ''}`),
         onDropped: (op, reason) => note(who, `dropped ${op}: ${reason}`),
         log: (m) => note(who, m),
@@ -886,11 +889,12 @@ if (role === 'phase5') {
     const [bobBackup, aliceBackup] = memoryLinkPair({ latencyMs });
     let checksA = 0, badA = 0;
     const live = () => [hostMp, alice, bob].filter((m) => m !== null && m.session?.active === true && !m.session.orphaned);
+    let carol = null;
     const run = async (lead, until, each = () => {}) => {
         let guard = 0;
         while (lead.session.frame < until) {
             each(lead.session.frame);
-            for (const mp of [hostMp, alice, bob, oldHost]) tick(mp);
+            for (const mp of [hostMp, alice, bob, oldHost, carol]) tick(mp);
             await pace();
             if (++guard > until * 300) throw new Error(`stuck at frame ${lead.session.frame} (${live().map((m) => m.session.frame).join(', ')})`);
         }
@@ -940,6 +944,8 @@ if (role === 'phase5') {
     const migMs = performance.now() - t0;
     const as = alice.session;
     const hostInfo = as.peerList().find((p) => p.id === 0);
+    // The new hub takes over the adaptive input delay (--adaptive: the host had it on).
+    out(`adaptive delay on the new hub: ${alice.session.wantedDelay() !== null ? 'on' : 'off'} (the old host's: ${adaptive ? 'on' : 'off'})`);
     out(`migrated in ${migMs.toFixed(1)} ms: alice role ${alice.role} (hub slot ${alice.hostSlot()}), bob role ${bob.role} (hub slot ${bob.hostSlot()}); old host left from frame ${hostInfo.leftFrom} (it had sent through ${quitFrames.host + cfg.delay}); alice status ${alice.currentStatus().kind}`);
     const realOnDigest = as.hooks.onDigest;
     as.hooks.onDigest = (frame, peer, ok, x, y) => {
@@ -986,21 +992,53 @@ if (role === 'phase5') {
             rename(oldHost, 0, `old host back @${cmdAt}`);
         }
     });
+    // 5. a NEW player joins the running game (§21): Carol takes over an AI empire (no game of her own: the save comes
+    // in the welcome); the new hub's addHumanSeat rides on its input of Carol's first input frame.
+    const seatsBefore = humanSeats(alice.sim.galaxy).length;
+    const aiPick = alice.joinChoices().find((e) => !humanSeats(alice.sim.galaxy).includes(e) && e.builtObjects.some((b) => b != null && !b.hasBeenDestroyed));
+    if (aiPick === undefined) throw new Error('no AI empire to take over');
+    const [c1, ac] = memoryLinkPair({ latencyMs });
+    alice.acceptNewPlayer(slotHandoff(ac, 3, 'Carol'), 3, aiPick.empireId, 'Carol');
+    const carolStart = { ...structuredClone(alice.start), joining: { slot: 3, empireId: aiPick.empireId } };
+    const carolP = MultiplayerGame.join(null, null, c1, mkOpts(3, 'carol', carolStart));
+    carolP.then((x) => (carol = x));
+    while (carol === null) {
+        tick(alice);
+        tick(bob);
+        tick(oldHost);
+        await yieldIo();
+    }
+    const carolFrom = carol.session.peerList().find((p) => p.id === carol.session.localPeer)?.fromFrame ?? -1;
+    out(`carol (new player) joined at frame ${carol.session.frame}, her input from frame ${carolFrom}; she takes over ${aiPick.name} (AI now: ${!humanSeats(carol.sim.galaxy).includes(carol.myEmpire())})`);
+    let carolCmd = -1;
+    let carolSeatAt = -1;
+    await run(alice, as.frame + 420, (f) => {
+        if (carolSeatAt < 0 && humanSeats(alice.sim.galaxy).length > seatsBefore) carolSeatAt = f - 1;
+        if (carolCmd < 0 && carol.session.frame > carolFrom + 30) {
+            carolCmd = carol.session.frame;
+            const me = carol.myEmpire();
+            issuePlayerCommand(carol.sim.galaxy, me, 'renameShip', [someShips(me, 1)[0], `carol @${carolCmd}`]);
+        }
+    });
+    const carolSeatOk = [alice, bob, oldHost, carol].every((m) => m.seats().some((x) => x.slot === 3 && x.empire === aiPick.name));
+    out(`carol's seat on every peer: ${carolSeatOk} (a human seat from frame ${carolSeatAt}); her ship: alice "${someShips(seat(alice, seatsBefore), 1)[0].name}", carol "${someShips(carol.myEmpire(), 1)[0].name}"`);
     // Everyone to the same frame (a peer can be a few frames ahead of the hub).
-    const endAt = Math.max(as.frame, bob.session.frame, oldHost.session.frame);
-    for (let guard = 0; [alice, bob, oldHost].some((m) => m.session.frame < endAt); guard++) {
-        for (const m of [alice, bob, oldHost]) if (m.session.frame < endAt) m.session.step();
+    const endAt = Math.max(as.frame, bob.session.frame, oldHost.session.frame, carol.session.frame);
+    for (let guard = 0; [alice, bob, oldHost, carol].some((m) => m.session.frame < endAt); guard++) {
+        for (const m of [alice, bob, oldHost, carol]) if (m.session.frame < endAt) m.session.step();
         await yieldIo();
         if (guard > 100000) throw new Error('could not reach the same frame');
     }
-    const dA = alice.sim.digest(), dB = bob.sim.digest(), dO = oldHost.sim.digest();
+    const dA = alice.sim.digest(), dB = bob.sim.digest(), dO = oldHost.sim.digest(), dC = carol.sim.digest();
     const hostShip = (mp) => someShips(seat(mp, 0), 1)[0].name;
-    out(`final frame ${endAt}: alice (new host) ${dA}, bob ${dB}, old host ${dO} -> ${dA === dB && dB === dO ? 'MATCH' : 'MISMATCH'}`);
+    out(`final frame ${endAt}: alice (new host) ${dA}, bob ${dB}, old host ${dO}, carol ${dC} -> ${dA === dB && dB === dO && dO === dC ? 'MATCH' : 'MISMATCH'}`);
     out(`digest checks on the new host ${checksA} (${badA} mismatches); the old host's seat AI now: ${isAiSeat(alice.sim.galaxy, hostSeatA)}; its first ship: alice "${hostShip(alice)}", bob "${hostShip(bob)}", old host "${hostShip(oldHost)}"`);
     out(`stalls: alice ${as.stats.stalls} (${as.stats.stallMs.toFixed(0)} ms), bob ${bob.session.stats.stalls}; commands applied alice ${as.stats.commandsApplied}, bob ${bob.session.stats.commandsApplied}`);
     const ok = dA === dB && dB === dO && badA === 0 && checksA > 0 && alice.role === 'host' && bob.hostSlot() === 1 && oldHost.hostSlot() === 1
         && !isAiSeat(alice.sim.galaxy, hostSeatA) && hostShip(alice).startsWith('old host back @') && hostShip(alice) === hostShip(bob)
-        && (!aiTakeover || aiFrom >= 0) && !as.clock.paused;
+        && (!aiTakeover || aiFrom >= 0) && !as.clock.paused
+        && dC === dA && carolSeatOk && carolSeatAt === carolFrom && someShips(seat(alice, seatsBefore), 1)[0].name === `carol @${carolCmd}`
+        && (!adaptive || alice.session.wantedDelay() !== null);
     out(ok ? 'RESULT: OK' : 'RESULT: FAILED');
     alice.close('demo over');
     process.exit(ok ? 0 : 1);

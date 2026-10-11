@@ -88,6 +88,12 @@ export interface MultiplayerStart {
     players: Array<{ slot: number; name: string; humanIndex: number }>;
     params: LockstepParams;
     clock: ClockState;
+    /**
+     * A new player joining the running game (§21), on the joiner only: the empire (empireId) its slot takes over at
+     * its first input frame — its screen shows that empire until the host's addHumanSeat maps the slot (`players`).
+     * Never read by the command check.
+     */
+    joining?: { slot: number; empireId: number };
 }
 
 export type LobbyMessage =
@@ -112,7 +118,35 @@ export type LobbyMessage =
      * Host → a player reconnecting to a running game (Phase 4, docs/MULTIPLAYER.md §12): their slot is free again (by
      * `rejoin` token or by name); join the lockstep session over this link, which brings the current save.
      */
-    | { t: 'lobbyRejoin'; slot: number; start: MultiplayerStart; token: string };
+    | { t: 'lobbyRejoin'; slot: number; start: MultiplayerStart; token: string }
+    /**
+     * Phase 5 (docs/MULTIPLAYER.md §21): host → a NEW player connecting to a running game (not a dropped one): the
+     * empires it may take over — an AI empire, or a human seat nobody plays. The joiner answers lobbyJoinPick (or
+     * closes the link); the host then sends lobbyRejoin with its new slot, and it takes control at its first input
+     * frame (the host's journaled addHumanSeat at that frame: the reverse of an AI takeover).
+     */
+    | { t: 'lobbyJoinOffer'; game: string; choices: LobbyJoinChoice[] }
+    | { t: 'lobbyJoinPick'; empireId: number };
+
+/** One empire a player joining a running game may take over (lobbyJoinOffer). */
+export interface LobbyJoinChoice {
+    empireId: number;
+    name: string;
+    /** 'ai': an AI empire; 'seat': a human seat that has no player. */
+    kind: 'ai' | 'seat';
+    race: string;
+    colonies: number;
+    /** Empire.mainColor (0xRRGGBB). */
+    color: number;
+}
+
+/** The joiner's pick, checked against the host's offer (null: not one of them). */
+export function checkJoinPick(m: unknown, choices: readonly LobbyJoinChoice[]): LobbyJoinChoice | null {
+    if (m === null || typeof m !== 'object') return null;
+    const x = m as { t?: unknown; empireId?: unknown };
+    if (x.t !== 'lobbyJoinPick' || !Number.isInteger(x.empireId)) return null;
+    return choices.find((c) => c.empireId === x.empireId) ?? null;
+}
 
 /** The lockstep peer name of a lobby slot: "<slot>|<display name>" (the host writes it: HandoffLink). */
 export function peerName(slot: number, name: string): string {
@@ -417,9 +451,12 @@ export class LobbyHost {
         let name = cleanName(m.name, `Player ${slot + 1}`);
         if ([...this.players.values()].some((p) => p.name.toLowerCase() === name.toLowerCase())) name = `${name} (${slot + 1})`;
         const player: LobbyPlayer = { slot, name, pick: cleanPick({ name: '', race: '', governmentId: -1, primaryColor: freshColor(this.players), secondaryColor: '#ffffff' }), claim: -1, ready: false };
-        // A loaded game: the saved human this name played, when free.
+        // The token of an earlier game with this host (kept by the joiner's app): the empire it played in a loaded save.
+        if (typeof m.rejoin === 'string' && m.rejoin.length <= 64) this.helloTokens.set(slot, m.rejoin);
+        // A loaded game: the saved human this token (or else this name) played, when free.
         if (this.loaded !== null) {
-            const mine = this.loaded.humans.find((h) => h.playerName !== '' && h.playerName.toLowerCase() === name.toLowerCase());
+            const byToken = this.loadedTokens.get(this.helloTokens.get(slot) ?? '');
+            const mine = byToken !== undefined ? this.loaded.humans.find((h) => h.humanIndex === byToken) : this.loaded.humans.find((h) => h.playerName !== '' && h.playerName.toLowerCase() === name.toLowerCase());
             if (mine !== undefined) player.claim = this.validClaim(mine.humanIndex, slot);
         }
         this.players.set(slot, player);
@@ -484,9 +521,12 @@ export class LobbyHost {
         this.changed();
     }
 
-    /** Loading a saved game (null: back to a new game). The host plays human 0. */
-    setLoaded(loaded: LobbyState['loaded']): void {
+    /** Loading a saved game (null: back to a new game). The host plays human 0. `tokens`: the save's rejoin tokens by
+     *  human index ('' none, §21): a player who says hello with one gets that empire (before a name match). */
+    setLoaded(loaded: LobbyState['loaded'], tokens?: readonly string[]): void {
         this.loaded = loaded;
+        this.loadedTokens.clear();
+        if (loaded !== null) (tokens ?? []).forEach((t, i) => typeof t === 'string' && t !== '' && i > 0 && this.loadedTokens.set(t, i));
         const host = this.players.get(0)!;
         host.claim = loaded === null ? -1 : 0;
         for (const p of this.players.values()) {
@@ -494,7 +534,8 @@ export class LobbyHost {
             p.claim = -1;
             p.ready = false;
             if (loaded !== null) {
-                const mine = loaded.humans.find((h) => h.playerName !== '' && h.playerName.toLowerCase() === p.name.toLowerCase());
+                const byToken = this.loadedTokens.get(this.helloTokens.get(p.slot) ?? '');
+                const mine = byToken !== undefined ? loaded.humans.find((h) => h.humanIndex === byToken) : loaded.humans.find((h) => h.playerName !== '' && h.playerName.toLowerCase() === p.name.toLowerCase());
                 if (mine !== undefined) p.claim = this.validClaim(mine.humanIndex, p.slot);
             }
         }
@@ -534,8 +575,11 @@ export class LobbyHost {
         this.started = true;
         const out = new Map<number, HandoffLink>();
         for (const c of this.clients.values()) {
-            // Each player's own rejoin token (Phase 4): reconnecting with it gets the same slot back.
-            const token = rejoinToken();
+            // Each player's own rejoin token (Phase 4): reconnecting with it gets the same slot back. A resumed save
+            // keeps the token a player came back with (its app has it stored for this host).
+            const hello = this.helloTokens.get(c.player.slot);
+            const keep = hello !== undefined && this.loaded !== null && this.loadedTokens.get(hello) === c.player.claim && c.player.claim > 0;
+            const token = keep ? hello : rejoinToken();
             this.tokens.set(c.player.slot, token);
             send(c.link, { t: 'lobbyStart', start, token });
             out.set(c.player.slot, slotHandoff(c.link, c.player.slot, c.player.name));
@@ -545,6 +589,9 @@ export class LobbyHost {
 
     /** The rejoin tokens handed out at start, by slot. */
     readonly tokens = new Map<number, string>();
+    /** A loaded save's rejoin tokens → human index (setLoaded); the tokens the players said hello with, by slot. */
+    private readonly loadedTokens = new Map<string, number>();
+    private readonly helloTokens = new Map<number, string>();
 
     /** Close the lobby (the host left): tell everyone and drop their links. */
     close(reason = 'The host closed the lobby.'): void {
@@ -610,6 +657,11 @@ export interface LobbyClientOptions {
     onMismatch?: (m: Extract<LobbyMessage, { t: 'lobbyMismatch' }>, retry: (fp: AppFingerprint) => void) => void;
     /** Phase 5: a lobby chat line (from a slot; `to`: -1 everyone, or this player). */
     onChat?: (from: number, name: string, text: string, to: number) => void;
+    /**
+     * Phase 5 (§21): the host's game is running and this player is new: the empires it may take over. `pick` answers
+     * (the host then sends lobbyRejoin: onRejoin). Without onJoinOffer the join fails ("the game has started").
+     */
+    onJoinOffer?: (game: string, choices: LobbyJoinChoice[], pick: (empireId: number) => void) => void;
 }
 
 export class LobbyClient {
@@ -671,6 +723,17 @@ export class LobbyClient {
                         c.token = typeof m.token === 'string' ? m.token : null;
                         const handoff = new HandoffLink(link);
                         c.opts.onStart?.(m.start, handoff);
+                        return;
+                    }
+                    case 'lobbyJoinOffer': {
+                        if (c.started || welcomed) return;
+                        const choices = Array.isArray(m.choices) ? m.choices.filter((x) => x !== null && typeof x === 'object' && Number.isInteger(x.empireId)).slice(0, 64) : [];
+                        if (c.opts.onJoinOffer === undefined) {
+                            reject(new Error('The game has already started.'));
+                            link.close('cannot join a running game');
+                            return;
+                        }
+                        c.opts.onJoinOffer(String(m.game ?? ''), choices.map((x) => ({ empireId: x.empireId, name: String(x.name ?? '').replace(/[\u0000-\u001f]/g, '').slice(0, 64), kind: x.kind === 'seat' ? 'seat' : 'ai', race: String(x.race ?? '').slice(0, 64), colonies: Number(x.colonies) || 0, color: Number(x.color) || 0 })), (empireId) => send(link, { t: 'lobbyJoinPick', empireId }));
                         return;
                     }
                     case 'lobbyRejoin': {

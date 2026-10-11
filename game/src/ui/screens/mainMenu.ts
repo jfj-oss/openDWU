@@ -54,6 +54,8 @@ export interface MainMenuCallbacks {
     onSwitchTheme?: (name: string) => void | Promise<void>;
     /** Multiplayer (not in the original; docs/MULTIPLAYER.md §10): the LAN Host / Join screen. No item without it. */
     onMultiplayer?: () => void;
+    /** Resume a saved multiplayer game with the same players (docs/MULTIPLAYER.md §21). No item without it. */
+    onResumeMultiplayer?: () => void;
 }
 
 export interface MainMenuRefs {
@@ -237,6 +239,18 @@ export function createMainMenu(callbacks: MainMenuCallbacks): MainMenuRefs {
             const onMp = callbacks.onMultiplayer;
             mp.addEventListener('click', () => onMp());
             panel.appendChild(mp);
+            if (callbacks.onResumeMultiplayer !== undefined) {
+                const rs = document.createElement('button');
+                rs.className = 'main-menu-item main-menu-item-text';
+                rs.type = 'button';
+                rs.setAttribute('data-id', 'resumeMultiplayer');
+                rs.textContent = 'Resume Multiplayer Game';
+                rs.style.width = `${280 * s}px`;
+                rs.style.fontSize = `${18 * s}px`;
+                const onRs = callbacks.onResumeMultiplayer;
+                rs.addEventListener('click', () => onRs());
+                panel.appendChild(rs);
+            }
         }
     }
     root.appendChild(panel);

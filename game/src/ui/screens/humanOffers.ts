@@ -6,7 +6,9 @@
 //   left — with Accept / Reject / Counter… (counter: decline, and the Diplomacy screen opens on the sender to propose
 //   something else). The answer is the journaled answerHumanOffer: its effect applies at the same frame on every peer.
 // - The sender: the Diplomacy screen says "Offer sent — awaiting their reply"; the answer comes as a notice here
-//   (accepted, rejected, countered, expired, no longer possible); a pending offer can be withdrawn from its notice.
+//   (accepted, rejected, countered, expired, no longer possible).
+// - The sender's pending offers (docs/MULTIPLAYER.md §21): while it has any, a "Your offers (N)" button under the popups
+//   opens the list — to whom, what, the game time left — with Withdraw on each (the journaled withdrawHumanOffer).
 //
 // Main thread / DOM. Reads the galaxy (in worker mode, the replica: the offers are a synced side table).
 
@@ -18,6 +20,7 @@ import { issuePlayerCommand } from '../../sim/player/playerCommands';
 import { isMultiHuman } from '../../sim/humanEmpires';
 import { resolveGameText } from '../../sim/textResolver';
 import { showToast } from '../toast';
+import { exposeDevHook } from '../multiplayer/devHooks';
 import './humanOffers.css';
 
 export interface HumanOffersOptions {
@@ -60,6 +63,18 @@ export function offerText(o: HumanOffer, fromName: string): string {
     return `${fromName} proposes: ${label}.`;
 }
 
+/** The sender's own pending offer, in one line ("To X: Free Trade Agreement."). */
+export function ownOfferText(o: HumanOffer, toName: string): string {
+    if (o.kind === 'trade' && o.trade !== null) {
+        const give = o.trade.senderGives.map(labelText);
+        const get = o.trade.receiverGives.map(labelText);
+        const what = o.trade.kind === 'end-war' ? ' to end the war' : o.trade.kind === 'lift-sanctions' ? ' to lift the trade sanctions' : '';
+        return `Trade with ${toName}${what}. You give: ${give.length > 0 ? give.join(', ') : 'nothing'}. You receive: ${get.length > 0 ? get.join(', ') : 'nothing'}.`;
+    }
+    if (o.option.startsWith('GIFT_GIVE')) return `To ${toName}: a gift of ${Math.round(o.cost).toLocaleString('en-US')} credits.`;
+    return `To ${toName}: ${resolveGameText(o.label).replace(/^(Propose|Offer)\s+/i, '')}.`;
+}
+
 /** What became of the sender's offer, in one line. */
 function outcomeText(o: HumanOffer, toName: string, what: string): string {
     switch (o.state) {
@@ -88,6 +103,64 @@ export function installHumanOffers(opts: HumanOffersOptions): () => void {
     const told = new Set<number>();
     const popups = new Map<number, { el: HTMLElement; time: HTMLElement }>();
     const watched = new Set<number>(); // the viewer's own pending offers (their outcome is told once)
+    // The sender's list of its own pending offers (withdraw).
+    const ownBtn = h('button', 'human-offer-btn human-offers-own-btn');
+    ownBtn.type = 'button';
+    ownBtn.dataset.ui = 'own-offers';
+    ownBtn.hidden = true;
+    const ownPanel = h('div', 'human-offer human-offers-own');
+    ownPanel.dataset.ui = 'own-offers-panel';
+    ownPanel.hidden = true;
+    let ownOpen = false;
+    ownBtn.addEventListener('click', () => {
+        ownOpen = !ownOpen;
+        sync();
+    });
+    const withdrawing = new Set<number>();
+    const withdraw = (o: HumanOffer, viewer: Empire): void => {
+        withdrawing.add(o.id);
+        issuePlayerCommand(opts.galaxy(), viewer, 'withdrawHumanOffer', [o.id], (r: HumanOfferResult) => {
+            withdrawing.delete(o.id);
+            showToast(r.ok ? 'Offer withdrawn.' : `Not possible: ${r.message}`, document.body, 4000);
+        });
+        sync();
+    };
+    let ownKey = '';
+    const paintOwn = (mine: HumanOffer[], viewer: Empire | null, galaxy: Galaxy, now: number): void => {
+        ownBtn.hidden = mine.length === 0 || viewer === null;
+        if (mine.length === 0) ownOpen = false;
+        const label = `Your offers (${mine.length}) ${ownOpen ? '▾' : '▸'}`;
+        if (ownBtn.textContent !== label) ownBtn.textContent = label;
+        ownPanel.hidden = !ownOpen || viewer === null;
+        if (ownPanel.hidden || viewer === null) return;
+        const key = mine.map((o) => `${o.id}:${withdrawing.has(o.id) ? 'w' : ''}`).join(',');
+        if (key !== ownKey) {
+            ownKey = key;
+            ownPanel.replaceChildren(h('div', 'human-offer-title', 'Your pending offers'));
+            for (const o of mine) {
+                const row = h('div', 'human-offers-own-row');
+                row.dataset.offer = String(o.id);
+                row.appendChild(h('div', 'human-offer-text', ownOfferText(o, empireOfId(galaxy, o.to)?.name ?? 'Another player')));
+                const time = h('div', 'human-offer-time');
+                time.dataset.ui = 'own-offer-time';
+                row.appendChild(time);
+                const b = h('button', 'human-offer-btn human-offer-reject', withdrawing.has(o.id) ? 'Withdrawing…' : 'Withdraw');
+                b.type = 'button';
+                b.dataset.ui = 'offer-withdraw';
+                b.disabled = withdrawing.has(o.id);
+                b.title = 'Take the offer back: the other player can no longer accept it.';
+                b.addEventListener('click', () => withdraw(o, viewer));
+                const bar = h('div', 'human-offer-bar');
+                bar.appendChild(b);
+                row.appendChild(bar);
+                ownPanel.appendChild(row);
+            }
+        }
+        for (const o of mine) {
+            const t = ownPanel.querySelector<HTMLElement>(`[data-offer="${o.id}"] [data-ui="own-offer-time"]`);
+            if (t !== null) t.textContent = `Expires in ${timeLeft(o.expiresMs - now)} (game time)`;
+        }
+    };
 
     const answer = (o: HumanOffer, a: 'accept' | 'reject' | 'counter', viewer: Empire): void => {
         answered.add(o.id);
@@ -121,7 +194,7 @@ export function installHumanOffers(opts: HumanOffersOptions): () => void {
         };
         bar.append(mk('Accept', 'accept', 'Agree: it takes effect for both of you.'), mk('Reject', 'reject', 'Refuse.'), mk('Counter…', 'counter', 'Refuse and make them another offer (the Diplomacy screen opens).'));
         el.appendChild(bar);
-        root.appendChild(el);
+        root.insertBefore(el, ownBtn);
         popups.set(o.id, { el, time });
     };
 
@@ -136,6 +209,11 @@ export function installHumanOffers(opts: HumanOffersOptions): () => void {
         const offers = isMultiHuman(galaxy) ? humanOffers(galaxy) : [];
         const now = galaxy.nowMs;
         const live = new Set<number>();
+        const mine: HumanOffer[] = [];
+        for (const o of offers) {
+            if (viewer !== null && o.from === viewer.empireId && offerPending(o, now)) mine.push(o);
+        }
+        paintOwn(mine, viewer, galaxy, now);
         for (const o of offers) {
             if (viewer === null) break;
             const pending = offerPending(o, now);
@@ -163,9 +241,11 @@ export function installHumanOffers(opts: HumanOffersOptions): () => void {
             }
         }
     };
+    // The own-offers button and its list sit under the popups.
+    root.append(ownBtn, ownPanel);
     const timer = setInterval(sync, 500);
     sync();
-    (window as unknown as { __dwuOffers?: unknown }).__dwuOffers = {
+    exposeDevHook('__dwuOffers', {
         list: () => {
             try {
                 return humanOffers(opts.galaxy()).map((o) => ({ ...o }));
@@ -173,7 +253,12 @@ export function installHumanOffers(opts: HumanOffersOptions): () => void {
                 return [];
             }
         },
-    };
+        /** Open (or close) the list of this player's own pending offers. */
+        openOwn: (on = true) => {
+            ownOpen = on;
+            sync();
+        },
+    });
     return () => {
         clearInterval(timer);
         root.remove();

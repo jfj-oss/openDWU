@@ -209,7 +209,9 @@ export interface NetLinkMessage {
     type: 'netLink';
     link: number;
     slot: number;
-    mode?: 'rejoin' | 'migrant' | 'newHost';
+    mode?: 'rejoin' | 'migrant' | 'newHost' | 'join';
+    /** mode 'join' (§21): the empire the new player takes over, and its name. */
+    join?: { empireId: number; name: string };
 }
 
 /** A call on the worker's session (pause, speed, AI takeover, the debug hook); answered by mpReply under `id`. */

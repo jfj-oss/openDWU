@@ -44,7 +44,13 @@ export interface GameSaveJSON {
      * by the sim; written only for a LAN game, just before galaxyBackdrop, and read from the tail
      * (savedMultiplayerPlayers).
      */
-    multiplayer?: { players: string[] };
+    multiplayer?: { players: string[]; tokens?: string[] };
+    /**
+     * A LAN / Internet game's chat (docs/MULTIPLAYER.md §21), the last lines this player saw, by lobby names (`to`: ''
+     * everyone). Main-thread state; written only beside `multiplayer` and just before it, read with
+     * savedMultiplayerChat.
+     */
+    multiplayerChat?: Array<{ from: string; to: string; text: string }>;
     /**
      * The Main View's galaxy backdrop (render/galaxyBackdropChoice.ts kind): a view setting the sim never reads. Written
      * only when it is not Original (so a default save is byte-identical; an older save loads as Original), just before
@@ -73,6 +79,11 @@ export interface GameSaveExtras {
     galaxyBackdrop?: string;
     /** A LAN game's players by human index (GameSaveJSON.multiplayer); absent = not a LAN game. */
     multiplayerPlayers?: string[];
+    /** A LAN game's players' rejoin tokens by human index ('' none; GameSaveJSON.multiplayer.tokens): written only with
+     *  multiplayerPlayers. Resuming the save, a player whose app kept its token gets its empire back. */
+    multiplayerTokens?: string[];
+    /** A LAN game's chat lines (GameSaveJSON.multiplayerChat); written only with multiplayerPlayers. */
+    multiplayerChat?: Array<{ from: string; to: string; text: string }>;
 }
 
 /** Serialize a whole game to a JSON string (see GameSaveJSON). */
@@ -127,7 +138,12 @@ export function serializeGameChunks(game: Game, time: GalaxyTime, startOptions: 
     if (log.length > 0) rest.commandLog = log.map(copyCommandLogEntry);
     // A LAN game: its players by human index (not sim state).
     const mpPlayers = extras?.multiplayerPlayers;
-    if (Array.isArray(mpPlayers) && mpPlayers.length > 0) rest.multiplayer = { players: mpPlayers.map((n) => String(n).slice(0, 64)) };
+    if (Array.isArray(mpPlayers) && mpPlayers.length > 0) {
+        const chat = extras?.multiplayerChat;
+        if (Array.isArray(chat) && chat.length > 0) rest.multiplayerChat = chat.slice(-100).map((l) => ({ from: String(l.from).slice(0, 64), to: String(l.to ?? '').slice(0, 64), text: String(l.text).slice(0, 400) }));
+        const tokens = extras?.multiplayerTokens;
+        rest.multiplayer = { players: mpPlayers.map((n) => String(n).slice(0, 64)), ...(Array.isArray(tokens) && tokens.some((t) => t !== '') ? { tokens: mpPlayers.map((_, i) => (/^[0-9a-f]{1,64}$/.test(String(tokens[i] ?? '')) ? String(tokens[i]) : '')) } : {}) };
+    }
     // The view's galaxy backdrop (not sim state), only when it is not the original image.
     const backdrop = extras?.galaxyBackdrop;
     if (typeof backdrop === 'string' && /^[A-Za-z]+$/.test(backdrop) && backdrop !== 'original') rest.galaxyBackdrop = backdrop;
@@ -185,7 +201,7 @@ export function savedGalaxyBackdrop(save: string | GameSaveJSON): string {
  */
 export function savedMultiplayerPlayers(save: string | GameSaveJSON): string[] | undefined {
     if (typeof save !== 'string') return save.multiplayer?.players;
-    const m = /"multiplayer":(\{"players":\[(?:"(?:[^"\\]|\\.)*",?)*\]\})(?:,"galaxyBackdrop":"[A-Za-z]+")?(?:,"localViewer":\d+)?(?:,"customizationSet":"(?:[^"\\]|\\.)*")?\}\s*$/.exec(save.slice(-65536));
+    const m = /"multiplayer":(\{"players":\[(?:"(?:[^"\\]|\\.)*",?)*\](?:,"tokens":\[(?:"[0-9a-f]*",?)*\])?\})(?:,"galaxyBackdrop":"[A-Za-z]+")?(?:,"localViewer":\d+)?(?:,"customizationSet":"(?:[^"\\]|\\.)*")?\}\s*$/.exec(save.slice(-65536));
     if (m === null) return undefined;
     try {
         const players = (JSON.parse(m[1]) as { players?: unknown }).players;
@@ -193,6 +209,43 @@ export function savedMultiplayerPlayers(save: string | GameSaveJSON): string[] |
     } catch {
         return undefined;
     }
+}
+
+/** A LAN game's saved rejoin tokens by human index ('' none), or undefined (none saved / not a LAN save). */
+export function savedMultiplayerTokens(save: string | GameSaveJSON): string[] | undefined {
+    if (typeof save !== 'string') return save.multiplayer?.tokens;
+    const m = /"multiplayer":\{"players":\[(?:"(?:[^"\\]|\\.)*",?)*\],"tokens":(\[(?:"[0-9a-f]*",?)*\])\}(?:,"galaxyBackdrop":"[A-Za-z]+")?(?:,"localViewer":\d+)?(?:,"customizationSet":"(?:[^"\\]|\\.)*")?\}\s*$/.exec(save.slice(-65536));
+    if (m === null) return undefined;
+    try {
+        const t = JSON.parse(m[1]) as unknown;
+        return Array.isArray(t) ? t.map((x) => String(x)) : undefined;
+    } catch {
+        return undefined;
+    }
+}
+
+/**
+ * A LAN game's saved chat lines (GameSaveJSON.multiplayerChat), or [] for any other save. A save text is read from its
+ * last 256 kB only (the key sits just before `multiplayer`).
+ */
+export function savedMultiplayerChat(save: string | GameSaveJSON): Array<{ from: string; to: string; text: string }> {
+    let raw: unknown;
+    if (typeof save !== 'string') raw = save.multiplayerChat;
+    else {
+        // A quote inside a line is escaped (\"), so `],"multiplayer":{"players":` only ends the array itself.
+        const m = /"multiplayerChat":(\[[\s\S]*?\]),"multiplayer":\{"players":/.exec(save.slice(-262144));
+        if (m === null) return [];
+        try {
+            raw = JSON.parse(m[1]);
+        } catch {
+            return [];
+        }
+    }
+    if (!Array.isArray(raw)) return [];
+    return raw
+        .filter((l): l is { from: unknown; to: unknown; text: unknown } => l !== null && typeof l === 'object')
+        .map((l) => ({ from: String(l.from ?? ''), to: String(l.to ?? ''), text: String(l.text ?? '') }))
+        .filter((l) => l.text !== '');
 }
 
 /**
