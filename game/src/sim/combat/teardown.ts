@@ -405,6 +405,10 @@ export function builtObjectCompleteTeardown(galaxy: Galaxy, builtObject: BuiltOb
             if (self.actualEmpire.builtObjects !== null && self.actualEmpire.builtObjects.includes(self)) removeFirst(self.actualEmpire.builtObjects, self);
         }
     }
+    // Mod layer: a private ship or station is in no empire's private list once torn down — also one listed by an empire
+    // that is neither its owner nor its actual empire (a company's station, a bounty office's hunter after an ownership
+    // change), one in both its owner's lists, or one whose owner is gone. The stock game keeps the C# removal above (pinned).
+    if (removeFromEmpire && galaxy.scenario !== null) removeFromAllPrivateLists(galaxy, self);
     checkCancelAttackMissionsForBuiltObject(galaxy, self, null);
     if (self.empire !== null && self.empire !== galaxy.independentEmpire && self.empire.pirateEmpireBaseHabitat === null) {
         self.empire.visibility.resolveSystemVisibilityForUnit(self, true);
@@ -414,6 +418,17 @@ export function builtObjectCompleteTeardown(galaxy: Galaxy, builtObject: BuiltOb
 }
 
 /** Empire.8.cs 2896 CleanupInvalidShips: tear down destroyed / non-functional / immobile auto-controlled ships (not in view). No Rnd. */
+function removeFromAllPrivateLists(galaxy: Galaxy, bo: BuiltObject): void {
+    const purge = (e: Empire | null): void => {
+        if (e === null || e.privateBuiltObjects == null) return;
+        const list = e.privateBuiltObjects as unknown[];
+        for (let i = list.length - 1; i >= 0; i--) if (list[i] === bo) list.splice(i, 1);
+    };
+    for (const e of galaxy.empires) purge(e);
+    for (const e of galaxy.pirateEmpires) purge(e);
+    purge(galaxy.independentEmpire);
+}
+
 export function cleanupInvalidShips(galaxy: Galaxy, empire: Empire): void {
     const builtObjectList: BuiltObject[] = [];
     const builtObjectList2: BuiltObject[] = [];

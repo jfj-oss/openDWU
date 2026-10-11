@@ -565,7 +565,10 @@ export class ConstructionQueue {
                 ship.parentOffsetY = -2000000001.0;
                 constructionYard.shipUnderConstruction = null;
                 num3 = 0;
-                builtObjectCompleteTeardown(galaxy, ship, false);
+                // ConstructionQueue.cs 584 CompleteTeardown(galaxy): removeFromEmpire true. The port passed false, so a
+                // scrapped ship stayed in its empire's list until CleanupInvalidShips; kept for the stock game (pinned),
+                // fixed in add-on games (a scrapped private ship — a retired bounty hunter — left its owner's list).
+                builtObjectCompleteTeardown(galaxy, ship, galaxy.scenario !== null);
                 constructionYard.incrementalProgress = 0;
                 constructionYard.shipUnderConstruction = null;
                 continue;

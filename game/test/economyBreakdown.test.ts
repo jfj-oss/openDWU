@@ -260,6 +260,26 @@ describe('Colony Economy add-on', async () => {
         expect(E.peekEmpire(g, p)!.facilityTax ?? 0).toBeGreaterThan(0);
     }, 300000);
 
+    it('a torn-down or scrapped private ship leaves every private list (bounty hunters, company stations)', async () => {
+        const { builtObjectCompleteTeardown } = await import('../src/sim/combat/teardown');
+        const game = econGame();
+        const g = game.galaxy;
+        const e = g.empires.find((x) => x.privateBuiltObjects.filter((b) => b !== null && b.builtAt === null && b.role !== 0).length >= 2 && x.spacePorts.length > 0)!;
+        const [a, b] = e.privateBuiltObjects.filter((x) => x !== null && x.builtAt === null && x.role !== 0);
+        // Listed by a second empire too (a company's station): teardown takes it out of both.
+        const other = g.empires.find((x) => x !== e)!;
+        other.privateBuiltObjects.push(a);
+        builtObjectCompleteTeardown(g, a);
+        expect(e.privateBuiltObjects.includes(a) || other.privateBuiltObjects.includes(a)).toBe(false);
+        // Scrapped at a yard (a retired hunter): ConstructionQueue.cs 584 tears it down with its empire's lists.
+        const yard = e.spacePorts[0]!;
+        b.dockedAt = yard;
+        expect((yard.constructionQueue as { addBuiltObjectToScrap(o: unknown): boolean }).addBuiltObjectToScrap(b)).toBe(true);
+        for (let i = 0; i < 40 && !b.hasBeenDestroyed; i++) runGameSeconds(game, 3);
+        expect(b.hasBeenDestroyed).toBe(true);
+        expect(e.privateBuiltObjects.includes(b)).toBe(false);
+    }, 300000);
+
     it('bonds: limits, money moves between the private sector and the treasury, repayment', () => {
         const g = econGame().galaxy;
         const e = g.playerEmpire!;
