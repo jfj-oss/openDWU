@@ -795,8 +795,8 @@ Steam](https://store.steampowered.com/app/261470/).
 
 **Rights holders.** If you represent the rights holders and have a concern
 about this project, please
-[open an issue](https://github.com/jfj-oss/openDWU/issues) and I will respond
-promptly.
+[open an issue](https://github.com/jfj-oss/openDWU/issues) or email
+[jfj@tutanota.de](mailto:jfj@tutanota.de), and I will respond promptly.
 
 **Privacy.** openDWU has no telemetry, analytics or accounts and sends no
 data about you or your games anywhere. The only network use is:
