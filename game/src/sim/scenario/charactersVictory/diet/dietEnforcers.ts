@@ -350,7 +350,10 @@ export function reviewEnforcers(galaxy: Galaxy, st: DietState, c: Council | null
             if (f.stage === 'gathering' && st.world !== null) for (const b of ships) if (galaxy.calculateDistance(b.xpos, b.ypos, st.world.xpos, st.world.ypos) < STATION_RANGE * 4) b.currentFuel = b.fuelCapacity;
             f.station = null;
             f.stage = 'gathering';
-            chooseStation(galaxy, st, f);
+            const since = ((f as { gatherSince?: number }).gatherSince ??= galaxyStarDate(galaxy));
+            if (chooseStation(galaxy, st, f) !== null) delete (f as { gatherSince?: number }).gatherSince;
+            // No world of the target within the fleet's fuel reach for a year: the fleet stands down (the sanction stays).
+            else if (galaxyStarDate(galaxy) - since >= YEAR_LENGTH) recallEnforcers(galaxy, st, f, 'unreachable');
             continue;
         }
         const s = f.station!;

@@ -49,7 +49,7 @@ export const DIET_PARAMS = {
     dietEmergencyYears: 4,
     dietEmergencyGatherDays: 90,
     dietEmperorYears: 5,
-    dietEmperorMinSharePct: 35,
+    dietEmperorMinSharePct: 30,
     dietExpelYears: 10,
 } as const;
 export type DietParamName = keyof typeof DIET_PARAMS;
@@ -219,6 +219,8 @@ export interface DietCounters {
     truceBreaks: number;
     banViolations: number;
     delegateAttacks: number;
+    /** Sum of the regular sessions' gathering days (the farthest delegate's ETA; tuning). */
+    gatherDaysTotal?: number;
 }
 
 export interface DietState {

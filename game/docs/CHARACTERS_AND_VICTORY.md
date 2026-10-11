@@ -279,7 +279,7 @@ the clash with rimTrade's Concord cannot happen (the council is always the Diet)
   `sendVip(…, 'diet')` flies them to the host world (Part 1's `destinationValid` accepts a foreign host world for a
   `'diet'` trip — a one-line change in vip.ts). A delegate trip counts as importance ≥ 5 for the escort rules.
 - **new.** The floor opens when the farthest delegate's shuttle can be there (ETA + 15 days, at least
-  `dietGatherDays` 150, at most 330 days); the vote stays open `dietVoteDays` (60). Only a delegate **at the host
+  `dietGatherDays` 150, at most 540 days: on a large map early hyperdrives need over a year); the vote stays open `dietVoteDays` (60). Only a delegate **at the host
   world** at the close votes. After the tally `endGovernorDuty` sends every delegate home.
 - **new.** A lesser delegate (not the most important governor) votes at `dietLesserDelegatePct` (50 %) weight. No
   governor, no delegate, no vote.
@@ -290,8 +290,8 @@ the clash with rimTrade's Concord cannot happen (the council is always the Diet)
 
 ### 7.3 Sessions
 
-- **new.** Regular sessions every 2–3 years (`galaxy.rnd` draws the interval; the first one 120 days after the
-  founding). The agenda: every human member's motion (one each), then the heaviest AI candidates — 1 to
+- **new.** Regular sessions every 2–3 years from one call to the next (`galaxy.rnd` draws the interval; at least 180
+  days after the last close; the first one 120 days after the founding). The agenda: every human member's motion (one each), then the heaviest AI candidates — 1 to
   `dietMaxMotions` (3), as many as carry weight ≥ 30; one motion per kind (sanctions / embargoes / condemnations /
   expulsions: one per target), one per AI proposer.
 - **new (real inputs).** Vote weight = 10 × √(CalculateEmpireScore / the members' mean) × (1 + standing + gifts +
@@ -311,7 +311,7 @@ the clash with rimTrade's Concord cannot happen (the council is always the Diet)
 | Galactic free trade | FreeTradeAgreement between every pair of met members whose relation is plain None, re-applied yearly | Empire.8.cs 2550 |
 | Ban planet destroyers | AI members' planet destroyers may not take an Attack mission on a colony (`assignMissionAllowed`); a member's planet destroyer attacking a colony is a violation | BuiltObject.2.cs 7620 |
 | Ban bombardment | AI members may not take Bombard / WaitAndBombard; a member's bombardment (`habitatBombarded`) is a violation | BuiltObject.2.cs 7620 |
-| Outlaw a pirate faction | Members' warships are welcome in each other's territory (new `militaryShipWelcome` query at Galaxy.cs 3699 CheckMilitaryShipWelcomeAtTerritoryLocation); **new:** a bounty (`dietBountyPerShip`, 1 500) from the Diet fund per outlawed warship a member destroys | Galaxy.cs 3699 |
+| Outlaw a pirate faction | Members' warships are welcome in each other's territory (new `militaryShipWelcome` query at Galaxy.cs 3699 CheckMilitaryShipWelcomeAtTerritoryLocation); **new:** a bounty (`dietBountyPerShip`, 1 500) from the Diet fund per outlawed warship a member destroys (the members keep ten bounties in the fund through yearly dues) | Galaxy.cs 3699 |
 | Protect the independents | AI members may not send an Attack mission at an independent colony; a member taking one (`colonyOwnerChanged`) is a violation | — |
 | Open the independents | Ends the protection | — |
 | Recognise a claim (claimant, colony) | The claimant's war declaration on the colony's owner costs neither DeclareWarReputationImpact nor IncidentImpactWhenDeclareWar (new `declareWarPenaltyWaived` query at diplomacyTick.ts changeDiplomaticRelation = Empire.8.cs 2704/2712), and condemnations of that war are not moved. The claim ends when the claimant holds the colony, or after 10 years | Empire.8.cs 2704/2712 |
@@ -332,7 +332,7 @@ the clash with rimTrade's Concord cannot happen (the council is always the Diet)
   stance AttackIfAttacked. Its station is a weighted-random (`galaxy.rnd`, weight = strategic value) pick among the
   target's five most valuable colonies and their space ports that **every ship can reach on its fuel**
   (WithinFuelRangeAndRefuel, margin 0.1; none reachable: it waits at the host world, refuelled, and retries — the
-  Dark Farms bug). It flies there with the real Blockade mission (ImplementBlockade, Empire.8.cs 3748); the blockade
+  Dark Farms bug; after a year without a reachable station it stands down, outcome `unreachable`, the sanction staying). It flies there with the real Blockade mission (ImplementBlockade, Empire.8.cs 3748); the blockade
   record has every stock effect (no trade, docking or construction there), but the new `blockadeEngagesDocking` query
   stops it attacking docking ships: it only returns fire. Members pay for it (`dietEnforcerCostPct` 50 % of the ships'
   price, then `dietEnforcerUpkeepPct` 10 % a year) in shares of their score, into the Diet fund. It goes home
@@ -360,11 +360,11 @@ the clash with rimTrade's Concord cannot happen (the council is always the Diet)
   strongest), repeals of what hurts it.
 - **Regent.** Vetoes its worst passing motion when its score is ≤ −40; calls an emergency session for a case of
   weight ≥ 60 (a crime, a spy crisis, a war on it) when the next session is more than 300 days away; bids for
-  Emperor when it holds the host world and its capital, has ≥ 35 % of the members' score and 1.5× the next member's
+  Emperor when it holds the host world and its capital, has ≥ 30 % of the members' score and 1.3× the next member's
   military, and is not a pacifist.
 - **Delegates.** Defended by the escort rules (importance ≥ 5). Attacked by an AI member at war with the delegate's
-  empire when its aggression − caution > 0.15 and its ConcernForOwnReputation is low: its nearest loose warship in fuel
-  range takes an Attack mission on the shuttle (once per session).
+  empire when its aggression − caution > 0.1 and its ConcernForOwnReputation ≤ 1.1: its nearest warship within two
+  sectors and fuel range (leaving its fleet if it has one) takes an Attack mission on the shuttle (once per session).
 - **The Emperor.** The countdown is `dietEmperorYears` (5). Everyone may declare war on the Emperor (the Diet's
   `declareWarBlocked` handler runs last and unblocks it); AI empires that dislike them or are aggressive and not
   hopelessly outmatched (≥ 0.25 of their military) do. The bid fails when the Emperor loses its capital, or the host

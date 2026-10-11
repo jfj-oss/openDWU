@@ -56,7 +56,7 @@
     { "name": "dietEmergencyYears", "label": "Years between a Regent's emergency sessions", "default": 4, "min": 1, "max": 50 },
     { "name": "dietEmergencyGatherDays", "label": "Days delegates have to reach an emergency session", "default": 90, "min": 30, "max": 360 },
     { "name": "dietEmperorYears", "label": "Years an Emperor must hold the capital and the host world", "default": 5, "min": 1, "max": 50 },
-    { "name": "dietEmperorMinSharePct", "label": "An AI Regent bids for Emperor with this share (%) of the members' score", "default": 35, "min": 0, "max": 100 },
+    { "name": "dietEmperorMinSharePct", "label": "An AI Regent bids for Emperor with this share (%) of the members' score", "default": 30, "min": 0, "max": 100 },
     { "name": "dietExpelYears", "label": "Years an expelled member may not rejoin", "default": 10, "min": 0, "max": 100 }
   ]
 }

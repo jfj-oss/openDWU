@@ -241,7 +241,7 @@ export function dietVoteScore(galaxy: Galaxy, c: Council, st: DietState, voter: 
             return 10 + 15 * p.friendliness - 15 * p.aggression + 10 * has(p, CharacterTraitType.Pacifist) + 0.2 * (Math.max(attitudeOf(voter, a), attitudeOf(voter, b))) - (atWar(voter, a) || atWar(voter, b) ? 20 : 0);
         }
         case 'freeTrade':
-            return 8 + 40 * p.freeTrade + 15 * p.trade + 25 * has(p, CharacterTraitType.FreeTrader) - 25 * has(p, CharacterTraitType.Protectionist) - 15 * has(p, CharacterTraitType.Isolationist) - 10 * has(p, CharacterTraitType.Xenophobic) + 5 * has(p, CharacterTraitType.Tolerant) - 5 * c.members.filter((x) => x !== voter && atWar(voter, x)).length;
+            return 14 + 40 * p.freeTrade + 15 * p.trade + 25 * has(p, CharacterTraitType.FreeTrader) - 25 * has(p, CharacterTraitType.Protectionist) - 15 * has(p, CharacterTraitType.Isolationist) - 10 * has(p, CharacterTraitType.Xenophobic) + 5 * has(p, CharacterTraitType.Tolerant) - 5 * c.members.filter((x) => x !== voter && atWar(voter, x)).length;
         case 'banPlanetDestroyers':
             return 10 + 15 * p.caution - 15 * p.aggression + 15 * has(p, CharacterTraitType.Pacifist) + 10 * p.othersReputation - (hasPlanetDestroyers(voter) ? 45 : 0) + (c.members.some((x) => x !== voter && hasPlanetDestroyers(x)) ? 15 : 0);
         case 'banBombard':
@@ -343,7 +343,7 @@ export function memberCandidates(galaxy: Galaxy, c: Council, st: DietState, a: E
     };
     if (lawInForce(st, 'freeTrade') === null) {
         const s = self('freeTrade');
-        if (s >= 25) out.push({ kind: 'freeTrade', proposer: a, target: null, other: null, colony: null, resourceId: -1, weight: 15 + s / 3 });
+        if (s >= 18) out.push({ kind: 'freeTrade', proposer: a, target: null, other: null, colony: null, resourceId: -1, weight: 15 + s / 3 });
     }
     if (lawInForce(st, 'banPlanetDestroyers') === null && !hasPlanetDestroyers(a) && members.some((x) => x !== a && hasPlanetDestroyers(x))) {
         const s = self('banPlanetDestroyers');
@@ -352,7 +352,7 @@ export function memberCandidates(galaxy: Galaxy, c: Council, st: DietState, a: E
     if (lawInForce(st, 'banBombard') === null) {
         const bombed = st.bombarded?.[a.empireId] ?? 0;
         const s = self('banBombard');
-        if (bombed > 0 || s >= 25) out.push({ kind: 'banBombard', proposer: a, target: null, other: null, colony: null, resourceId: -1, weight: (bombed > 0 ? 40 : 12) + s / 4 });
+        if (bombed > 0 || s >= 18) out.push({ kind: 'banBombard', proposer: a, target: null, other: null, colony: null, resourceId: -1, weight: (bombed > 0 ? 40 : 12) + s / 4 });
     }
     for (const pirate of galaxy.pirateEmpires) {
         if (pirate === null || !pirate.active || lawInForce(st, 'outlawPirates', pirate) !== null) continue;
@@ -365,11 +365,11 @@ export function memberCandidates(galaxy: Galaxy, c: Council, st: DietState, a: E
     const open = lawInForce(st, 'openIndependents');
     if (protect === null) {
         const s = self('protectIndependents');
-        if (s >= 20) out.push({ kind: 'protectIndependents', proposer: a, target: null, other: null, colony: null, resourceId: -1, weight: 12 + s / 4 });
+        if (s >= 15) out.push({ kind: 'protectIndependents', proposer: a, target: null, other: null, colony: null, resourceId: -1, weight: 12 + s / 4 });
     }
     if (open === null) {
         const s = self('openIndependents');
-        if (s >= 20) out.push({ kind: 'openIndependents', proposer: a, target: null, other: null, colony: null, resourceId: -1, weight: (protect !== null ? 25 : 10) + s / 4 });
+        if (s >= 15) out.push({ kind: 'openIndependents', proposer: a, target: null, other: null, colony: null, resourceId: -1, weight: (protect !== null ? 25 : 10) + s / 4 });
     }
     // A claim: a colony of a disliked or warring neighbour that lies inside our territory.
     if (!st.laws.some((l) => l.kind === 'claim' && l.empire === a)) {
@@ -439,7 +439,7 @@ export function wantsEmperorBid(galaxy: Galaxy, c: Council, st: DietState, regen
     const mine = militaryPotency(regent);
     let next = 1;
     for (const m of c.members) if (m !== regent) next = Math.max(next, militaryPotency(m));
-    if (mine < 1.5 * next) return false;
+    if (mine < 1.3 * next) return false;
     const p = personality(regent);
     return p.aggression + 0.5 * has(p, CharacterTraitType.Expansionist) - 0.5 * has(p, CharacterTraitType.Pacifist) >= 0.1;
 }
@@ -455,5 +455,5 @@ export function joinsWarOnEmperor(galaxy: Galaxy, e: Empire, emperor: Empire): b
 /** An AI member attacks an enemy member's delegate: aggressive, careless of its reputation, at war with the delegate's empire. */
 export function attacksDelegates(e: Empire): boolean {
     const p = personality(e);
-    return p.aggression - p.caution > 0.15 && p.ownReputation < 0.05;
+    return p.aggression - p.caution > 0.1 && p.ownReputation <= 0.1;
 }

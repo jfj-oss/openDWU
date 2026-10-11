@@ -27,6 +27,7 @@ import { EmpireMessageType } from '../../../messages';
 import { WonderType } from '../../../researchSystem';
 import { BuiltObjectMissionType, BuiltObjectMissionPriority } from '../../../missions/mission';
 import { assignMission } from '../../../missions/assign';
+import { leaveShipGroup } from '../../../fleets/shipGroup';
 import { BuiltObjectRole } from '../../../data/designSpecifications';
 import { BuiltObjectSubRole } from '../../../builtObjectTypes';
 import { GameEndEventArgs, GameEndOutcome, humansGameEnd, onGameEnd } from '../../../victory';
@@ -76,7 +77,7 @@ import {
     peekDietState,
 } from './dietState';
 import { asCouncilMotion, atWar, attacksDelegates, dietCandidates, dietVoteScore, emergencyCase, joinsWarOnEmperor, memberScores, voteWeight, wantsEmperorBid } from './dietAi';
-import { aiDefiance, enforcerFleetOf, enforcerUpkeep, ensureFaction, isEnforcerFaction, recallEnforcers, reviewEnforcers, spawnEnforcers } from './dietEnforcers';
+import { aiDefiance, collectDues, enforcerFleetOf, enforcerUpkeep, ensureFaction, isEnforcerFaction, recallEnforcers, reviewEnforcers, spawnEnforcers } from './dietEnforcers';
 import type { DietCandidate as Cand, DietCandidate } from './dietAi';
 
 const DAY = YEAR_LENGTH / 360;
@@ -336,7 +337,8 @@ export function callSession(galaxy: Galaxy, st: DietState, c: Council, emergency
         dispatch(galaxy, st, s, d);
     }
     // The floor opens when the farthest delegate can be there (its shuttle's ETA + 15 days), within dietGatherDays
-    // (at least) and 330 days (at most); an emergency session keeps its short call.
+    // (at least) and 540 days (at most: early hyperdrives on a large map need over a year); an emergency session keeps
+    // its short call.
     if (!emergency) {
         let eta = s.opens;
         for (const d of s.delegates) {
@@ -344,7 +346,8 @@ export function callSession(galaxy: Galaxy, st: DietState, c: Council, emergency
             const v = vipTripView(galaxy, d.character);
             if (v !== null) eta = Math.max(eta, v.etaStarDate + 15 * DAY);
         }
-        s.opens = Math.min(now + 330 * DAY, eta);
+        s.opens = Math.min(now + 540 * DAY, eta);
+        st.counters.gatherDaysTotal = (st.counters.gatherDaysTotal ?? 0) + Math.round((s.opens - now) / DAY);
         s.closes = s.opens + dietParam(galaxy, 'dietVoteDays') * DAY;
     }
     st.counters.sessions++;
@@ -451,7 +454,12 @@ export function closeSession(galaxy: Galaxy, st: DietState, c: Council, s: DietS
     for (const d of s.delegates) if (d.character !== null) endGovernorDuty(galaxy, d.character);
     st.session = null;
     st.vetoMotionId = 0;
-    if (!s.emergency || st.nextSessionAt < now) scheduleNext(galaxy, st, now);
+    // Sessions every 2-3 years from one call to the next (a long gathering does not stretch the rhythm), and at least
+    // half a year after this one closed.
+    if (!s.emergency || st.nextSessionAt < now) {
+        scheduleNext(galaxy, st, s.called);
+        st.nextSessionAt = Math.max(st.nextSessionAt, now + 180 * DAY);
+    }
 }
 
 function round1(v: number): number {
@@ -799,7 +807,8 @@ function aiDelegateAttacks(galaxy: Galaxy, st: DietState, c: Council, s: DietSes
             }
             if (best === null) continue;
             done.push(a.empireId);
-            if (best.shipGroup !== null) continue; // fleets keep their stock orders; only loose ships are diverted
+            // A fleet member leaves its fleet for the strike (as the VIP escorts do); the stock AI re-tasks it afterwards.
+            if (best.shipGroup !== null) leaveShipGroup(galaxy, best);
             assignMission(galaxy, best, BuiltObjectMissionType.Attack, t.shuttle, null, BuiltObjectMissionPriority.High);
             st.counters.delegateAttacks++;
         }
@@ -812,6 +821,11 @@ export function dietYearly(galaxy: Galaxy): void {
     const c = dietCouncil(galaxy);
     if (st === null || c === null) return;
     enforcerUpkeep(galaxy, st, c);
+    // Bounties on outlawed pirates: the members keep ten bounties in the fund.
+    if (st.laws.some((l) => l.kind === 'outlawPirates')) {
+        const want = 10 * dietParam(galaxy, 'dietBountyPerShip');
+        if (st.fund < want) collectDues(galaxy, st, c.members, null, want - st.fund);
+    }
     if (lawInForce(st, 'freeTrade') !== null) applyFreeTrade(galaxy, c, st);
     // Grievances, spies, raids and bombardments fade.
     for (const k of Object.keys(st.grievances)) {
