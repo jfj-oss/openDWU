@@ -12,8 +12,9 @@
 //     never a human empire, never the Concord) weighs it: the loot (the target's cargo at galaxy prices; the main body:
 //     every treasure ship's) must beat the treasureRaidPenalty standing (twice it for an empire with trade access open),
 //     and its strongest fleet that can reach the target on its fuel (BuiltObject.1.cs WithinFuelRangeAndRefuel; a
-//     pirate's free warships near it count as one force) must have RAID_ADVANTAGE × the firepower defending it (the
-//     Concord ships within DEFENCE_RANGE, the target included). The raid is an Attack mission on the target (ShipGroup
+//     pirate's free warships near it count as one force) must have RAID_ADVANTAGE × the firepower defending it (a
+//     straggler: the Concord ships within DEFENCE_RANGE, itself included; the main body: its whole escort, or what is
+//     near if more). The raid is an Attack mission on the target (ShipGroup
 //     AssignMission / AssignMission; combat/attackAI.ts lets a ship attack its own mission target without a war).
 //     A main-body raid therefore needs a fleet stronger than the fixed escort: in practice the late game only.
 //   Loot: a treasure ship destroyed (builtObjectKilledBy) or captured (builtObjectOwnerChanged) gives its whole cargo
@@ -326,7 +327,12 @@ export function treasureRaidReview(galaxy: Galaxy): void {
     for (const t of targets) {
         const active = hasRaidState(galaxy) ? raidState(galaxy).active : [];
         if (active.some((x) => x.target === t.target)) continue;
-        const defence = firepowerNear(galaxy, r, t.target.xpos, t.target.ypos, DEFENCE_RANGE);
+        // A straggler is defended by what is near it; the main body by its whole escort (spread out on the way or
+        // turned back for a straggler, it closes on an attacker) or what is near, if more.
+        const near = firepowerNear(galaxy, r, t.target.xpos, t.target.ypos, DEFENCE_RANGE);
+        const strag = st.stragglers ?? [];
+        const escortFp = st.ships.filter((b) => !b.hasBeenDestroyed && !st.treasure.includes(b) && !strag.some((x) => x.ship === b)).reduce((n, b) => n + b.firepowerRaw, 0);
+        const defence = t.kind === 'main' ? Math.max(near, escortFp) : near;
         let pick: { e: Empire; f: RaidForce } | null = null;
         for (const e of raiders) {
             if (active.some((x) => x.raiderId === e.empireId)) continue;
