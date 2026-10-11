@@ -116,25 +116,29 @@ modded themes, and is free and open source.
 
 ## Install
 
-**Jump to your platform:** [Windows](#windows) · [macOS](#macos) · [Linux](#linux) · [Themes](#themes-modded-content) · [Troubleshooting](#troubleshooting) · [Tests](#tests) · [About the project](#about-the-project)
+1. Download the app for your system from the
+   [**latest release**](https://github.com/jfj-oss/openDWU/releases/latest).
+2. Start it and, if it doesn't find your Distant Worlds: Universe folder by
+   itself, point it at that folder once.
+3. Play. New versions are offered automatically.
 
-Each platform section starts with the **desktop app**: download it from the
-[Releases page](https://github.com/jfj-oss/openDWU/releases), point it at
-your game folder once, and play. The apps check for a new release once a day
-and offer to download it. Below that, **running from source** (for
-development, or to play the latest code in the browser) needs
-**Node.js 22.12 or newer** (Node 24 LTS is fine) and **git**.
-
-The apps are not code-signed (this is a free hobby project without Apple or
-Microsoft certificates), so macOS and Windows warn about them the first time;
-each section below says how to get past that once.
+The apps aren't code-signed (a free hobby project), so Windows and macOS
+need one extra click the first time; each section below says which. The
+dropdowns have the full details and how to run from source.
 
 ---
 
 ## Windows
 
+1. Download **`openDWU-<version>-windows-x64-setup.exe`** from the
+   [latest release](https://github.com/jfj-oss/openDWU/releases/latest).
+2. Run it. If Windows says *"Windows protected your PC"*, click
+   **More info → Run anyway**.
+3. Start **openDWU** from the Start menu. It finds your Steam copy of the game
+   by itself; if not, click **Choose Folder…** and pick the game's folder.
+
 <details>
-<summary><b>Desktop app (Windows 10/11, 64-bit)</b></summary>
+<summary><b>More details: desktop app (portable zip, game folder, updates, uninstall)</b></summary>
 
 **1. Download** `openDWU-<version>-windows-x64-setup.exe` from the
 [latest release](https://github.com/jfj-oss/openDWU/releases/latest). (There
@@ -252,8 +256,20 @@ The junction from step 3 is kept across updates.
 
 ## macOS
 
+Apple silicon (M1 and later).
+
+1. Download **`openDWU-<version>-macos-arm64.dmg`** from the
+   [latest release](https://github.com/jfj-oss/openDWU/releases/latest) and
+   drag **dwu** to **Applications**.
+2. Get the game files: Steam for Mac won't download Distant Worlds: Universe,
+   so copy the whole `Distant Worlds Universe` folder from a PC where you own
+   the game to **`~/Games/Distant Worlds Universe`** (other ways in the
+   details below).
+3. First time only: **Control-click dwu → Open → Open**. (macOS 15 and later:
+   open it once, then **System Settings → Privacy & Security → Open Anyway**.)
+
 <details>
-<summary><b>Desktop app (Apple silicon: M1 and later)</b></summary>
+<summary><b>More details: desktop app (opening an unsigned app, other ways to get the game files, updates)</b></summary>
 
 **1. Download** `openDWU-<version>-macos-arm64.dmg` from the
 [latest release](https://github.com/jfj-oss/openDWU/releases/latest), open
@@ -420,8 +436,17 @@ npm run dev
 
 ## Linux
 
+x86_64.
+
+1. Download **`openDWU-<version>-linux-x64.AppImage`** from the
+   [latest release](https://github.com/jfj-oss/openDWU/releases/latest).
+2. Make it executable and run it:
+   `chmod +x openDWU-*-linux-x64.AppImage && ./openDWU-*-linux-x64.AppImage`
+3. It finds your Steam copy of the game by itself; if not, click
+   **Choose Folder…** and pick the game's folder.
+
 <details>
-<summary><b>Desktop app (x86_64)</b></summary>
+<summary><b>More details: desktop app (tar.gz, FUSE, game folder, updates)</b></summary>
 
 **1. Download** from the
 [latest release](https://github.com/jfj-oss/openDWU/releases/latest) either
