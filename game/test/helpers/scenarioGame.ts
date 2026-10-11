@@ -37,6 +37,11 @@ export function loadScenarioOverlayFs(id: string): ScenarioOverlay {
     return resolveScenarioIncludes(overlay, byId);
 }
 
+/** Several scenarios/<id>/ packages as one overlay (a test-bed composite, in this order). As the add-on composite does, list every dependency too: the sim gate reads only the direct includes. */
+export function comboOverlayFs(ids: readonly string[], id = 'combo'): ScenarioOverlay {
+    return resolveScenarioIncludes(inlineOverlay({ id, name: id, description: ids.join(' + '), include: [...ids] }), scenarioOverlaysFs());
+}
+
 /** An inline overlay for tests: a manifest (plain object, validated) plus files. */
 export function inlineOverlay(manifest: Record<string, unknown>, files: Record<string, string> = {}): ScenarioOverlay {
     return { manifest: parseScenarioManifest({ ...manifest, files: Object.keys(files) }), files: new Map(Object.entries(files)) };

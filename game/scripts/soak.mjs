@@ -7,7 +7,7 @@
 //   nice -n 15 node scripts/soak.mjs --only std-s1,rim-herders --jobs 2 [--years N] [--out DIR]
 //   nice -n 15 node scripts/soak.mjs --set long             # the many-decade runs
 //   node scripts/soak.mjs --list                             # the config names
-//   nice -n 15 node --expose-gc scripts/soak.mjs --run NAME [--years N] [--seed N] [--out DIR] [--hook dbg.mjs]   # one config, in process
+//   nice -n 15 node --expose-gc scripts/soak.mjs --run NAME [--years N] [--seed N] [--flags-off a,b] [--out DIR] [--hook dbg.mjs]   # one config, in process
 //
 // Per config (a child process per config in the default driver mode):
 // - the game is built the way the app builds it (StartGameOptions → toCreateGameOptions → createGame, the scenario
@@ -110,6 +110,10 @@ const CONFIGS = [
     // setup with only the Diet off (the galactic council's stock yearly rhythm), and a longer run for Regents / Emperors.
     SCN('characters-victory', { name: 'cv-nodiet-s1', seed: 1, years: 10, wizard: { starCountIndex: 3, dimensionIndex: 3, otherEmpires: { empireCount: 9 } }, flags: { cvCouncil: false } }),
     SCN('characters-victory', { name: 'diet-long-s3', seed: 3, years: 16, wizard: { starCountIndex: 3, dimensionIndex: 3, otherEmpires: { empireCount: 9 } } }),
+    // Corporate coup x Characters & Victory (C4: bribes per year with a governor on every colony vs the stock count; coupBribePct raised to 200 per mille so the counts are measurable);
+    // the companies are registered by a hook (19c is a stub). --save-at 0 (a composite test bed has no folder to reload).
+    { name: 'cv-coup-on', seed: 1, years: 8, wizard: { starCountIndex: 3, dimensionIndex: 3, otherEmpires: { empireCount: 9 } }, scenario: ['threat-framework', 'corporatecoup', 'characters-victory'], flags: 'all', params: { ...early('corporateCoup'), coupMinYears: 1000, coupGovernors: 1000, coupBribePct: 200 } },
+    { name: 'cv-coup-off', seed: 1, years: 8, wizard: { starCountIndex: 3, dimensionIndex: 3, otherEmpires: { empireCount: 9 } }, scenario: ['threat-framework', 'corporatecoup', 'characters-victory'], flags: 'all', flagsOff: ['charactersVictory'], params: { ...early('corporateCoup'), coupMinYears: 1000, coupGovernors: 1000, coupBribePct: 200 } },
     // Wars and pirates (escorts, losses, stampede on war declarations).
     SCN('characters-victory', { name: 'cv-war-s17', seed: 17, years: 8, wizard: { starCountIndex: 3, dimensionIndex: 3, otherEmpires: { empireCount: 9 }, difficultyIndex: 4, aggressionIndex: 4, piratesIndex: 5, pirateProximityIndex: 2, pirateStrengthIndex: 3 } }),
     SCN('ai-parity', { name: 'ai-parity-all', seed: 61, years: 6, wizard: { starCountIndex: 3, dimensionIndex: 3, otherEmpires: { empireCount: 9 } }, flagsOff: ['darkFarmsGameEnd'] }),
@@ -245,7 +249,9 @@ async function runOne(name) {
     const cfg0 = CONFIGS.find((c) => c.name === name);
     if (!cfg0) throw new Error(`no config ${name}`);
     // --seed N: the same config on another seed (A/B measurement pairs).
-    const cfg = arg('seed', null) === null ? cfg0 : { ...cfg0, seed: Number(arg('seed')) };
+    let cfg = arg('seed', null) === null ? cfg0 : { ...cfg0, seed: Number(arg('seed')) };
+    // --flags-off a,b: also switch these scenario flags off (ablation runs of an 'all flags' config).
+    if (arg('flags-off', null) !== null) cfg = { ...cfg, flagsOff: [...(cfg.flagsOff ?? []), ...String(arg('flags-off')).split(',')] };
     const ownBundle = arg('bundle', null) === null;
     const bundleDir = ownBundle ? await bundle() : String(arg('bundle'));
     const load = (key) => import(resolve(bundleDir, key + '.js'));
@@ -287,7 +293,9 @@ async function runOne(name) {
         so.raceName = playable.length > 0 ? playable[cfg.seed % playable.length].name : defaultRaceName(gameData.races);
         applyEmpireDefaults(so, gameData.races.findIndex((r) => r.name === so.raceName));
         if (cfg.scenario) {
-            gameData = scenarioGameData(gameData, cfg.scenario);
+            // An array: a test-bed composite of those packages (test/helpers/scenarioGame.ts comboOverlayFs).
+            const { comboOverlayFs } = await load('scenario');
+            gameData = scenarioGameData(gameData, Array.isArray(cfg.scenario) ? comboOverlayFs(cfg.scenario) : cfg.scenario);
             const manifest = gameData.scenario.manifest;
             const flags = {};
             for (const f of manifest.flags) flags[f.name] = cfg.flags === 'all' ? !(cfg.flagsOff ?? []).includes(f.name) : (cfg.flags?.[f.name] ?? f.default);
