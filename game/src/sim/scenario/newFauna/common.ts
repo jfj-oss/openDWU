@@ -77,7 +77,7 @@ export interface FaunaVariantDef {
 export function faunaVariantTable(): readonly FaunaVariantDef[] {
     if (table !== null) return table;
     table = [
-        { variant: FaunaVariant.VoidWhale, name: 'Void Whale', baseType: CreatureType.Kaltor, look: 'voidWhale', groupMin: 1, groupMax: 3, sizeMin: 1000, sizeMax: 1400, maxSize: 1800, leaderSpeed: 14, followerSpeed: 18, hyperSpeed: 0, attackDiv: 40, killMul: 3.0, attackRange: 800, harmless: true, minRadius: 0.55, weight: 3, tameable: true, grazes: true },
+        { variant: FaunaVariant.VoidWhale, name: 'Void Whale', baseType: CreatureType.Kaltor, look: 'voidWhale', groupMin: 1, groupMax: 3, sizeMin: 1000, sizeMax: 1400, maxSize: 1800, leaderSpeed: 14, followerSpeed: 18, hyperSpeed: 3500, attackDiv: 40, killMul: 3.0, attackRange: 800, harmless: true, minRadius: 0, weight: 3, tameable: true, grazes: true },
         { variant: FaunaVariant.HunterPack, name: 'Hunter Pack', baseType: CreatureType.Kaltor, look: 'hunter', groupMin: 4, groupMax: 6, sizeMin: 45, sizeMax: 70, maxSize: 120, leaderSpeed: 70, followerSpeed: 78, hyperSpeed: 4000, attackDiv: 6, killMul: 1.2, attackRange: 3000, harmless: false, minRadius: 0.5, weight: 3, tameable: true, grazes: false },
         { variant: FaunaVariant.HullGrazer, name: 'Hull Grazer', baseType: CreatureType.RockSpaceSlug, look: 'hullGrazer', groupMin: 1, groupMax: 2, sizeMin: 110, sizeMax: 160, maxSize: 300, leaderSpeed: 20, followerSpeed: 22, hyperSpeed: 0, attackDiv: 30, killMul: 1.6, attackRange: 600, harmless: true, minRadius: 0.5, weight: 2, tameable: false, grazes: false },
         { variant: FaunaVariant.StormDrifter, name: 'Storm Drifter', baseType: CreatureType.Ardilus, look: 'stormDrifter', groupMin: 1, groupMax: 2, sizeMin: 260, sizeMax: 380, maxSize: 600, leaderSpeed: 16, followerSpeed: 18, hyperSpeed: 6000, attackDiv: 0, killMul: 2.0, attackRange: 800, harmless: true, minRadius: 0.6, weight: 2, tameable: false, grazes: false },
@@ -99,14 +99,32 @@ export const NEST_YOUNG = { sizeMin: 30, sizeMax: 50, speed: 60, attackDiv: 8, k
 
 /** Manifest defaults (scenario.json) — the fallbacks of scenarioParam. */
 export const NEW_FAUNA_PARAM_DEFAULTS = {
-    newFaunaDensity: 0.6,
+    /** 0.49 = the former 0.6 × 13/16: the rim pass no longer picks whales (their weight 3 of 16), so the other
+     *  variants keep their counts. */
+    newFaunaDensity: 0.49,
+    newFaunaWhaleDensity: 0.012,
+    newFaunaWhaleMaxGroups: 20,
+    newFaunaWhaleMigrationChance: 0.5,
+    newFaunaWhaleMigrationRange: 4000000,
+    newFaunaNestEscapeDamage: 0.7,
+    newFaunaNestEscapeMin: 3000000,
+    newFaunaNestEscapeHyper: 2500,
     newFaunaMaxGroups: 60,
     newFaunaWhaleKillHaul: 40,
     newFaunaHunterStalkRange: 40000,
     newFaunaHunterFleeRange: 25000,
     newFaunaHunterFleeDistance: 60000,
     newFaunaGrazerRange: 60000,
-    newFaunaGrazerDrain: 3,
+    newFaunaGrazerDrain: 10,
+    newFaunaGrazerFuelSiphon: 0.03,
+    newFaunaGrazerSpreadChance: 0.2,
+    newFaunaGrazerSpreadRange: 2000,
+    newFaunaGrazerSpreadDays: 30,
+    newFaunaGrazerHostCap: 2,
+    newFaunaGrazerSystemCap: 8,
+    newFaunaGrazerMaxCount: 70,
+    newFaunaGrazerPDDamage: 25,
+    newFaunaGrazerPortScrape: 0.1,
     newFaunaDrifterCloudRadius: 30000,
     newFaunaDrifterScanFactor: 0.1,
     newFaunaDrifterHopChance: 0.05,
@@ -130,7 +148,10 @@ export function newFaunaParam(galaxy: Galaxy, name: NewFaunaParam): number {
 }
 
 /** Distance (world units) at which a hull grazer is latched on and feeding. */
-export const GRAZER_LATCH_DIST = 1500;
+export const GRAZER_LATCH_DIST = 150;
+/** A latched grazer's place on its host's hull (offset from the host's centre): inside the host's own weapon range
+ *  (stock beam / PD ranges are about 190-740), so the host and its escorts can shoot it. */
+export const GRAZER_HULL_OFFSET = 60;
 /** Distance at which a scavenger eats a wreck. */
 export const SCAVENGE_EAT_DIST = 2500;
 /** A wreck site stays this long (game days) before it has drifted apart. */
@@ -166,8 +187,10 @@ export interface FaunaHerdInfo {
     destSystem: number;
     /** Next nest young / brood seeding (star date). */
     nextAt: number;
-    /** Hull grazer: the station it is latched on. */
+    /** Hull grazer: the ship or station it is latched on, its place on the hull, and the hosts it tried to spread to. */
     latched: BuiltObject | null;
+    offset?: { x: number; y: number };
+    spreadTried?: { other: BuiltObject; at: number }[];
     /** Hunter pack: fleeing a warship (last tick). */
     fleeing: boolean;
     /** Scavenger: salvage carried. */
@@ -190,6 +213,16 @@ export interface NewFaunaStats {
     seeded: number;
     tamed: number;
     killHaul: number;
+    /** Hull grazer parasite (absent in older saves). */
+    latches?: number;
+    infestations?: number;
+    grazerBirths?: number;
+    grazersScraped?: number;
+    grazersKilledPD?: number;
+    hostsKilled?: number;
+    fuelSiphoned?: number;
+    whaleMigrations?: number;
+    nestEscapes?: number;
 }
 
 /** Saved state (`scenarioState(galaxy, 'newFauna')`): plain data and graph references. */
@@ -200,6 +233,8 @@ export interface NewFaunaState {
     caravans: { ship: BuiltObject; creature: Creature }[];
     rev: number;
     stats: NewFaunaStats;
+    /** Void whales: the rim-fauna season year their own migrations last ran (absent in older saves). */
+    whaleSeasonYear?: number;
 }
 
 export function newFaunaState(galaxy: Galaxy): NewFaunaState {

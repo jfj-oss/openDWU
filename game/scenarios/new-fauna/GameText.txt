@@ -1,0 +1,4 @@
+'Scenario new-fauna: texts of the new fauna variants (tasks/19-mod-layer-scenarios.md §19g-7b).
+Scenario NewFauna Title;New Fauna
+Scenario NewFauna Nest Escape;The badly wounded nest mother {0} has fled her nest in {1}, warping slowly toward {2} to build a new one.
+Scenario NewFauna Nest Escape News;A wounded nest mother flees {0} for the far rim at {1}.

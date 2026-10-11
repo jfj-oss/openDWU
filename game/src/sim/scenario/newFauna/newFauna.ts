@@ -37,6 +37,8 @@ import type { Creature } from '../../creature';
 import { CreatureType } from '../../creature';
 import { GalaxyLocationEffectType, GalaxyLocationType } from '../../galaxyLocation';
 import { BuiltObjectRole } from '../../data/designSpecifications';
+import { ComponentType } from '../../data/components';
+import { ComponentStatus } from '../../builtObjectComponent';
 import { Cargo, ResourceRef } from '../../cargo';
 import { generateCreaturesAtLocation } from '../../story/storyStart';
 import { creatureDamageTarget } from '../../combat/damage';
@@ -46,12 +48,15 @@ import { isBuiltObject } from '../../missions/mission';
 import { galaxyStarDate } from '../../tick/simTime';
 import { GAME_DAY_LENGTH, radiusFraction, registerScenarioEvent, registerScenarioGameStart, registerScenarioPeriodic, registerScenarioQuery } from '../hooks';
 import { scenarioFlag } from '../state';
+import { scenarioMessage, scenarioNews, scenarioText } from '../messages';
+import { EmpireMessageType } from '../../messages';
 import { HERD_COHESION, HERD_HYPER_SPEED, HERD_REST_RANGE, herdDensityAt, herdMembers, peekRimFaunaState, rimFaunaState, rimHerdDocileTo, rimHerdOfCreature, setRimHerdDocile, type RimHerd } from '../rimFauna/common';
-import { registerRimHerdDriver } from '../rimFauna/rimFauna';
+import { registerRimHerdDriver, startRimHerdMigration } from '../rimFauna/rimFauna';
 import { herderColonies, peekRimHerdersState, type HerderColony } from '../rimHerders/common';
 import {
     DEBRIS_FIELD_SALVAGE,
     FaunaVariant,
+    GRAZER_HULL_OFFSET,
     GRAZER_LATCH_DIST,
     MAX_WRECKS,
     NEST_YOUNG,
@@ -235,7 +240,8 @@ export function spawnVariantHerd(galaxy: Galaxy, variant: FaunaVariant, systemIn
 
 /** Weighted variant pick among those allowed at radius fraction f. One NextDouble. */
 function pickVariant(galaxy: Galaxy, f: number): FaunaVariant | null {
-    const rows = faunaVariantTable().filter((d) => f >= d.minRadius);
+    // Void whales are placed galaxy-wide on their own (newFaunaGameStart's whale pass).
+    const rows = faunaVariantTable().filter((d) => f >= d.minRadius && d.variant !== FaunaVariant.VoidWhale);
     if (rows.length === 0) return null;
     const total = rows.reduce((a, d) => a + d.weight, 0);
     let roll = galaxy.rnd.nextDouble() * total;
@@ -271,6 +277,15 @@ export function newFaunaGameStart(galaxy: Galaxy): void {
             if (v === null) break;
             if (spawnVariantHerd(galaxy, v, i) !== null) groups++;
         }
+    }
+    // Void whales: the same chance in every system of the galaxy (newFaunaWhaleDensity), their own cap.
+    const whaleCap = Math.trunc(newFaunaParam(galaxy, 'newFaunaWhaleMaxGroups'));
+    const whaleD = newFaunaParam(galaxy, 'newFaunaWhaleDensity');
+    let whales = 0;
+    for (let i = 0; i < galaxy.systems.length && whales < whaleCap && whaleD > 0; i++) {
+        if (galaxy.systemHabitatsOf(i).some((h) => h.empire !== null && h.empire !== galaxy.independentEmpire)) continue;
+        if (galaxy.rnd.nextDouble() >= whaleD) continue;
+        if (spawnVariantHerd(galaxy, FaunaVariant.VoidWhale, i) !== null) whales++;
     }
     const steel = resourceIdByName(galaxy, 'Steel');
     for (const l of galaxy.galaxyLocations) {
@@ -479,33 +494,207 @@ export function hunterPackTick(galaxy: Galaxy, herd: RimHerd, info: FaunaHerdInf
 }
 
 /**
- * 3 Hull grazer: latch onto the nearest empire station (role Base) in range and eat its hull — Creature.cs 1347
- * DamageTarget through combat/damage.ts creatureDamageTarget (armour components first, then random components; the C#
- * never consults shields, so it eats through them), with the Creature.cs 1206 distress call. Draws galaxy.rnd (the
- * component pick inside DamageTarget).
+ * 3 Hull grazer — a parasite (user change 2026-10-11). A free grazer seeks the nearest non-docile host within
+ * newFaunaGrazerRange: a civilian ship first (freighters, passenger, mining and construction ships: slow and lightly
+ * armed), else a station. Within GRAZER_LATCH_DIST it latches on: it sits on the hull (GRAZER_HULL_OFFSET, inside the
+ * host's own weapon range) and moves and warps with it (creatureAttachedHost query, creature.ts Move), the host's owner
+ * gets the stock distress call once (attackAI.ts notifyOfAttackBuiltObject: the host, its escorts and nearby armed ships
+ * and stations fight back — "harmless" only means a grazer never starts a fight). Every day it eats newFaunaGrazerDrain
+ * of the hull through creatureDamageTarget (armour first, then components; shields never read; the host's damage
+ * control reduces it, the stock DamageReduction path) and siphons newFaunaGrazerFuelSiphon of the host's fuel
+ * capacity, and grows. Point defence fights it (newFaunaGrazerPDDamage per working PD component of the host a day, via
+ * the stock Creature.DamageCreature). Docking at a space port or shipyard scrapes it off (destroyed); a space port host
+ * scrapes its own at newFaunaGrazerPortScrape a day. It multiplies: see grazerSpread. Draws galaxy.rnd (DamageTarget's
+ * component pick; the scrape and spread rolls).
  */
 export function hullGrazerTick(galaxy: Galaxy, herd: RimHerd, info: FaunaHerdInfo): void {
     const st = newFaunaState(galaxy);
     const leader = herd.leader!;
-    let station = info.latched;
-    if (station !== null && (station.hasBeenDestroyed || station.empire === null || rimHerdDocileTo(herd, station.empire))) station = null;
-    if (station === null) {
-        station = nearestShip(galaxy, leader.xpos, leader.ypos, newFaunaParam(galaxy, 'newFaunaGrazerRange'), (b) => b.role === BuiltObjectRole.Base && !rimHerdDocileTo(herd, b.empire));
-        info.latched = station;
-    }
     const members = herdMembers(herd);
-    if (station === null) {
-        steer(leader, herd.homeX, herd.homeY, herd.homeRange);
-        for (const c of herd.followers) steer(c, leader.xpos, leader.ypos, HERD_COHESION);
+    let host = info.latched;
+    if (host !== null && (host.hasBeenDestroyed || host.empire === null || rimHerdDocileTo(herd, host.empire))) {
+        host = null;
+        detachGrazer(info);
+    }
+    if (host === null) {
+        // Seek: civilian ships first, then stations.
+        const range = newFaunaParam(galaxy, 'newFaunaGrazerRange');
+        const target =
+            nearestShip(galaxy, leader.xpos, leader.ypos, range, (b) => isCivilianHost(b) && !rimHerdDocileTo(herd, b.empire) && grazersOn(galaxy, b) < grazerHostCap(galaxy)) ??
+            nearestShip(galaxy, leader.xpos, leader.ypos, range, (b) => b.role === BuiltObjectRole.Base && !rimHerdDocileTo(herd, b.empire) && grazersOn(galaxy, b) < grazerHostCap(galaxy));
+        if (target === null) {
+            steer(leader, herd.homeX, herd.homeY, herd.homeRange);
+            for (const c of herd.followers) steer(c, leader.xpos, leader.ypos, HERD_COHESION);
+            return;
+        }
+        for (const c of members) steer(c, target.xpos, target.ypos, 100);
+        if (dist(galaxy, leader.xpos, leader.ypos, target.xpos, target.ypos) > GRAZER_LATCH_DIST) return;
+        latchGrazer(galaxy, herd, info, target);
+        host = target;
+    }
+    // Scraped off: the host docked at a space port / shipyard, or a port's own crews.
+    const docked = host.dockedAt;
+    if ((docked !== null && (isBuiltObject(docked) ? docked.isSpacePort || docked.role === BuiltObjectRole.Base : true)) || (host.isSpacePort && galaxy.rnd.nextDouble() < newFaunaParam(galaxy, 'newFaunaGrazerPortScrape'))) {
+        st.stats.grazersScraped = (st.stats.grazersScraped ?? 0) + members.length;
+        detachGrazer(info);
+        for (const c of members) c.completeTeardown();
         return;
     }
-    for (const c of members) steer(c, station.xpos, station.ypos, 300);
-    if (dist(galaxy, leader.xpos, leader.ypos, station.xpos, station.ypos) > GRAZER_LATCH_DIST) return;
-    const drain = Math.trunc(newFaunaParam(galaxy, 'newFaunaGrazerDrain'));
-    if (drain <= 0) return;
-    notifyOfAttackBuiltObject(galaxy, leader, null, station, st.stats.hullDrained === 0);
-    st.stats.hullDrained += drain;
-    if (creatureDamageTarget(galaxy, leader, station, drain, Math.round(galaxy.currentTimeSeconds * 1000), 1)) info.latched = null;
+    // Feeding: hull, fuel, growth.
+    const drain = Math.trunc(newFaunaParam(galaxy, 'newFaunaGrazerDrain')) * members.length;
+    if (drain > 0) {
+        st.stats.hullDrained += drain;
+        if (creatureDamageTarget(galaxy, leader, host, drain, Math.round(galaxy.currentTimeSeconds * 1000), 1)) {
+            st.stats.hostsKilled = (st.stats.hostsKilled ?? 0) + 1;
+            detachGrazer(info);
+            return;
+        }
+    }
+    const siphon = newFaunaParam(galaxy, 'newFaunaGrazerFuelSiphon') * host.fuelCapacity * members.length;
+    if (siphon > 0 && host.currentFuel > 0) {
+        const take = Math.min(host.currentFuel, siphon);
+        host.currentFuel -= take;
+        st.stats.fuelSiphoned = (st.stats.fuelSiphoned ?? 0) + take;
+    }
+    const def = faunaVariantDef(FaunaVariant.HullGrazer);
+    for (const c of members) {
+        if (c.size < c.maxSize) {
+            c.size += 1;
+            c.attackStrength = Math.trunc(c.size / def.attackDiv);
+            c.damageKillThreshold = Math.max(c.damageKillThreshold, Math.trunc(c.size * def.killMul));
+        }
+    }
+    // Point defence on the host picks it off.
+    const pd = host.components.items.filter((x) => x.type === ComponentType.WeaponPointDefense && x.status === ComponentStatus.Normal).length;
+    if (pd > 0) {
+        const dmg = pd * newFaunaParam(galaxy, 'newFaunaGrazerPDDamage');
+        for (const c of members) {
+            if (c.damageCreature(host, dmg, null)) {
+                c.completeTeardown();
+                st.stats.grazersKilledPD = (st.stats.grazersKilledPD ?? 0) + 1;
+            }
+        }
+        if (herdMembers(herd).length === 0) {
+            detachGrazer(info);
+            return;
+        }
+    }
+    grazerSpread(galaxy, herd, info, host);
+}
+
+/** Civilian grazer hosts: freighters, passenger, mining and construction ships (moving, not warships, not bases). */
+function isCivilianHost(b: BuiltObject): boolean {
+    return b.role !== BuiltObjectRole.Military && b.role !== BuiltObjectRole.Base && b.topSpeed > 0;
+}
+
+function grazerHostCap(galaxy: Galaxy): number {
+    return Math.trunc(newFaunaParam(galaxy, 'newFaunaGrazerHostCap'));
+}
+
+/** Grazer herds latched onto `host`. Pure. */
+export function grazersOn(galaxy: Galaxy, host: BuiltObject): number {
+    const st = peekNewFaunaState(galaxy);
+    if (st === null) return 0;
+    let n = 0;
+    for (const key of Object.keys(st.herds)) if (st.herds[Number(key)].latched === host) n++;
+    return n;
+}
+
+/** Live hull grazer creatures (all herds). Pure. */
+export function grazerCount(galaxy: Galaxy): { total: number; bySystem: Map<number, number> } {
+    const fs = peekRimFaunaState(galaxy);
+    const st = peekNewFaunaState(galaxy);
+    const bySystem = new Map<number, number>();
+    let total = 0;
+    if (fs === null || st === null) return { total, bySystem };
+    for (const herd of fs.herds) {
+        const info = st.herds[herd.id];
+        if (info === undefined || info.variant !== FaunaVariant.HullGrazer || herd.leader === null) continue;
+        const n = herdMembers(herd).length;
+        total += n;
+        const sys = herd.leader.nearestSystemStar?.systemIndex ?? -1;
+        bySystem.set(sys, (bySystem.get(sys) ?? 0) + n);
+    }
+    return { total, bySystem };
+}
+
+function latchGrazer(galaxy: Galaxy, herd: RimHerd, info: FaunaHerdInfo, host: BuiltObject): void {
+    const st = newFaunaState(galaxy);
+    info.latched = host;
+    const n = grazersOn(galaxy, host);
+    const a = (n * 2.1 + herd.id * 0.7) % (Math.PI * 2);
+    info.offset = { x: Math.round(Math.cos(a) * GRAZER_HULL_OFFSET), y: Math.round(Math.sin(a) * GRAZER_HULL_OFFSET) };
+    st.stats.latches = (st.stats.latches ?? 0) + 1;
+    for (const c of herdMembers(herd)) {
+        c.hyperSpeed = 0;
+        c.currentSpeed = 0;
+        c.targetSpeed = 0;
+    }
+    // The owner's distress call, once per infestation (the host, its escorts and armed neighbours answer it).
+    if (n === 0) {
+        st.stats.infestations = (st.stats.infestations ?? 0) + 1;
+        notifyOfAttackBuiltObject(galaxy, herd.leader!, null, host, true);
+    }
+}
+
+function detachGrazer(info: FaunaHerdInfo): void {
+    info.latched = null;
+    info.offset = undefined;
+}
+
+/**
+ * Multiplying: a latched grazer whose host is within newFaunaGrazerSpreadRange of another non-docile empire ship or
+ * station rolls newFaunaGrazerSpreadChance (once per pair of hosts per newFaunaGrazerSpreadDays; once per grazer per
+ * newFaunaGrazerSpreadDays): a new grazer (Size = sizeMin) latches onto that ship / station. Caps: newFaunaGrazerHostCap
+ * per host, newFaunaGrazerSystemCap per system, newFaunaGrazerMaxCount in the galaxy. Draws galaxy.rnd (the roll).
+ */
+function grazerSpread(galaxy: Galaxy, herd: RimHerd, info: FaunaHerdInfo, host: BuiltObject): void {
+    const t = now(galaxy);
+    const days = newFaunaParam(galaxy, 'newFaunaGrazerSpreadDays') * GAME_DAY_LENGTH;
+    if (t < info.nextAt) return;
+    const range = newFaunaParam(galaxy, 'newFaunaGrazerSpreadRange');
+    const r2 = range * range;
+    info.spreadTried = (info.spreadTried ?? []).filter((p) => t - p.at < days && !p.other.hasBeenDestroyed);
+    for (const other of galaxy.builtObjects) {
+        if (other == null || other === host || other.hasBeenDestroyed || other.empire === null || rimHerdDocileTo(herd, other.empire)) continue;
+        if (galaxy.calculateDistanceSquared(other.xpos, other.ypos, host.xpos, host.ypos) > r2) continue;
+        if (info.spreadTried.some((p) => p.other === other)) continue;
+        if (grazersOn(galaxy, other) >= grazerHostCap(galaxy)) continue;
+        info.spreadTried.push({ other, at: t });
+        if (galaxy.rnd.nextDouble() >= newFaunaParam(galaxy, 'newFaunaGrazerSpreadChance')) continue;
+        const counts = grazerCount(galaxy);
+        const sys = herd.leader!.nearestSystemStar?.systemIndex ?? -1;
+        if (counts.total >= newFaunaParam(galaxy, 'newFaunaGrazerMaxCount') || (counts.bySystem.get(sys) ?? 0) >= newFaunaParam(galaxy, 'newFaunaGrazerSystemCap')) return;
+        const child = spawnVariantHerd(galaxy, FaunaVariant.HullGrazer, sys >= 0 ? sys : herd.homeSystemIndex, 1, { x: other.xpos, y: other.ypos });
+        if (child === null) return;
+        const def = faunaVariantDef(FaunaVariant.HullGrazer);
+        for (const c of herdMembers(child)) {
+            c.size = def.sizeMin;
+            c.attackStrength = Math.trunc(c.size / def.attackDiv);
+            c.damageKillThreshold = Math.trunc(c.size * def.killMul);
+        }
+        const cinfo = newFaunaState(galaxy).herds[child.id];
+        latchGrazer(galaxy, child, cinfo, other);
+        cinfo.nextAt = t + days;
+        info.nextAt = t + days;
+        const st = newFaunaState(galaxy);
+        st.stats.grazerBirths = (st.stats.grazerBirths ?? 0) + 1;
+        return;
+    }
+}
+
+/** creatureAttachedHost: a latched grazer sits on its host's hull (moves and warps with it). Pure. */
+export function grazerAttachedPoint(galaxy: Galaxy, c: Creature): { x: number; y: number } | null {
+    const st = peekNewFaunaState(galaxy);
+    if (st === null) return null;
+    const herd = rimHerdOfCreature(galaxy, c);
+    if (herd === null) return null;
+    const info = st.herds[herd.id];
+    const host = info?.latched ?? null;
+    if (info === undefined || info.variant !== FaunaVariant.HullGrazer || host === null || host.hasBeenDestroyed) return null;
+    const o = info.offset ?? { x: 0, y: 0 };
+    const k = c === herd.leader ? 0 : 25;
+    return { x: host.xpos + o.x + k, y: host.ypos + o.y - k };
 }
 
 /** 4 Storm drifter: drifts in its storm cloud; now and then rides to another storm of the belt. Draws galaxy.rnd. */
@@ -559,6 +748,7 @@ export function nestMotherTick(galaxy: Galaxy, herd: RimHerd, info: FaunaHerdInf
     const mother = herd.leader!;
     const def = faunaVariantDef(FaunaVariant.NestMother);
     if (info.target === null) info.target = { x: Math.trunc(mother.xpos), y: Math.trunc(mother.ypos) };
+    if (nestMotherEscape(galaxy, herd, info)) return;
     const guard = newFaunaParam(galaxy, 'newFaunaNestGuardRange');
     mother.attackRange = guard;
     steer(mother, info.target.x, info.target.y, 400);
@@ -575,6 +765,69 @@ export function nestMotherTick(galaxy: Galaxy, herd: RimHerd, info: FaunaHerdInf
     }
     peekRimFaunaState(galaxy)!.rev++;
     st.rev++;
+}
+
+/**
+ * Nest mother escape (user change 2026-10-11): she never warps, but past newFaunaNestEscapeDamage of her hit points
+ * lost she flees — slowly (newFaunaNestEscapeHyper, the ported Creature hyper travel) to a remote rim system (radius
+ * fraction ≥ 0.7, no empire colony, at least newFaunaNestEscapeMin away; one galaxy.rnd pick) — her young with her,
+ * and builds a new nest there (the nest tick rebuilds the young she lost). The empires with ships or colonies in the old
+ * system get a message; the news reports it. True while she is travelling. Draws galaxy.rnd (the pick).
+ */
+function nestMotherEscape(galaxy: Galaxy, herd: RimHerd, info: FaunaHerdInfo): boolean {
+    const st = newFaunaState(galaxy);
+    const mother = herd.leader!;
+    const members = herdMembers(herd);
+    if (info.destSystem >= 0) {
+        // Travelling.
+        for (const c of members) {
+            steer(c, info.target!.x, info.target!.y, c === mother ? 400 : 4000);
+            c.hyperSpeed = newFaunaParam(galaxy, 'newFaunaNestEscapeHyper');
+        }
+        if (dist(galaxy, mother.xpos, mother.ypos, info.target!.x, info.target!.y) > HERD_REST_RANGE) return true;
+        const star = galaxy.systems[info.destSystem].systemStar;
+        herd.homeSystemIndex = info.destSystem;
+        herd.homeX = star.xpos;
+        herd.homeY = star.ypos;
+        info.destSystem = -1;
+        for (const c of members) c.hyperSpeed = 0;
+        info.nextAt = now(galaxy) + newFaunaParam(galaxy, 'newFaunaNestYoungDays') * GAME_DAY_LENGTH;
+        return false;
+    }
+    if (mother.damageKillThreshold <= 0 || mother.damage < mother.damageKillThreshold * newFaunaParam(galaxy, 'newFaunaNestEscapeDamage')) return false;
+    const minD = newFaunaParam(galaxy, 'newFaunaNestEscapeMin');
+    const cand: number[] = [];
+    for (let i = 0; i < galaxy.systems.length; i++) {
+        if (i === herd.homeSystemIndex) continue;
+        const star = galaxy.systems[i].systemStar;
+        if (radiusFraction(galaxy, star.xpos, star.ypos) < 0.7 || dist(galaxy, mother.xpos, mother.ypos, star.xpos, star.ypos) < minD) continue;
+        if (galaxy.systemHabitatsOf(i).some((h) => h.empire !== null && h.empire !== galaxy.independentEmpire)) continue;
+        cand.push(i);
+    }
+    if (cand.length === 0) return false;
+    const to = cand[galaxy.rnd.next(0, cand.length)];
+    const site = richestSite(galaxy, to);
+    const p = site !== null ? { x: site.xpos + site.diameter, y: site.ypos } : systemPoint(galaxy, to);
+    const fromName = galaxy.systems[herd.homeSystemIndex]?.systemStar.name ?? '';
+    const toName = galaxy.systems[to].systemStar.name;
+    info.destSystem = to;
+    info.target = { x: Math.trunc(p.x), y: Math.trunc(p.y) };
+    for (const c of members) {
+        const t = c.currentTarget;
+        if (t !== null) dropTarget(c);
+        c.hyperSpeed = newFaunaParam(galaxy, 'newFaunaNestEscapeHyper');
+        steer(c, p.x, p.y, 4000);
+    }
+    st.stats.nestEscapes = (st.stats.nestEscapes ?? 0) + 1;
+    const told = new Set<Empire>();
+    for (const b of galaxy.builtObjects) if (b != null && b.empire !== null && b.nearestSystemStar?.systemIndex === herd.homeSystemIndex) told.add(b.empire);
+    for (const h of galaxy.systemHabitatsOf(herd.homeSystemIndex)) if (h.empire !== null && h.empire !== galaxy.independentEmpire) told.add(h.empire);
+    for (const e of told) {
+        if (e === galaxy.independentEmpire || !e.active) continue;
+        scenarioMessage(galaxy, e, scenarioText('Scenario NewFauna Title'), scenarioText('Scenario NewFauna Nest Escape', mother.name, fromName, toName), { type: EmpireMessageType.GeneralNeutralEvent });
+    }
+    scenarioNews(galaxy, null, scenarioText('Scenario NewFauna Nest Escape News', fromName, toName));
+    return true;
 }
 
 /** 7 Scavenger: to the nearest wreck in range, eat newFaunaScavengeRate salvage per tick into the herd's hold. No Rnd. */
@@ -671,6 +924,36 @@ export function broodCarrierTick(galaxy: Galaxy, herd: RimHerd, info: FaunaHerdI
     st.stats.seeded++;
 }
 
+/**
+ * Void whale migration season (when the 19g-7 season ran): each wild whale group rolls newFaunaWhaleMigrationChance and
+ * migrates to a random system within newFaunaWhaleMigrationRange, any direction (galaxy-wide wandering, not the rim
+ * fauna's inward push), at the whales' slow hyper speed (the ported Creature Move hyper travel, as the 19g-7
+ * migrations). Tamed whales go with their herders' freighters instead (herderCaravans). Draws galaxy.rnd.
+ */
+function voidWhaleSeason(galaxy: Galaxy): void {
+    const fs = peekRimFaunaState(galaxy);
+    const st = newFaunaState(galaxy);
+    if (fs === null) return;
+    const def = faunaVariantDef(FaunaVariant.VoidWhale);
+    const range = newFaunaParam(galaxy, 'newFaunaWhaleMigrationRange');
+    const chance = newFaunaParam(galaxy, 'newFaunaWhaleMigrationChance');
+    for (const herd of fs.herds) {
+        const info = st.herds[herd.id];
+        if (info === undefined || info.variant !== FaunaVariant.VoidWhale || info.tamedBy >= 0 || herd.leader === null || herd.migration !== null || herd.docileEmpireIds.length > 0) continue;
+        if (galaxy.rnd.nextDouble() >= chance) continue;
+        const cand: number[] = [];
+        for (let i = 0; i < galaxy.systems.length; i++) {
+            if (i === herd.homeSystemIndex) continue;
+            const star = galaxy.systems[i].systemStar;
+            if (dist(galaxy, herd.homeX, herd.homeY, star.xpos, star.ypos) <= range) cand.push(i);
+        }
+        if (cand.length === 0) continue;
+        startRimHerdMigration(galaxy, herd, cand[galaxy.rnd.next(0, cand.length)], false);
+        for (const c of herdMembers(herd)) c.hyperSpeed = def.hyperSpeed;
+        st.stats.whaleMigrations = (st.stats.whaleMigrations ?? 0) + 1;
+    }
+}
+
 /** Whale herds: the 19g-7 tick grazes and migrates them; count the grazing and keep the member stats. No Rnd. */
 function voidWhaleTick(galaxy: Galaxy, herd: RimHerd): void {
     if (herd.feedSite !== null && herd.migration === null) newFaunaState(galaxy).stats.grazeTicks++;
@@ -701,6 +984,10 @@ export function newFaunaTick(galaxy: Galaxy): void {
         }
     }
     const t = now(galaxy);
+    if (fs.lastMigrationYear > (st.whaleSeasonYear ?? -1)) {
+        st.whaleSeasonYear = fs.lastMigrationYear;
+        voidWhaleSeason(galaxy);
+    }
     st.wrecks = st.wrecks.filter((w) => t - w.date <= WRECK_DAYS * GAME_DAY_LENGTH);
     for (const herd of [...fs.herds]) {
         const info = st.herds[herd.id];
@@ -812,6 +1099,8 @@ registerRimHerdDriver({
         const info = peekNewFaunaState(g)?.herds[herd.id];
         return info !== undefined && faunaVariantDef(info.variant).harmless;
     },
+    // Void whales run their own galaxy-wide migration season (voidWhaleSeason), not the rim fauna's inward one.
+    staysHome: (g, herd) => peekNewFaunaState(g)?.herds[herd.id]?.variant === FaunaVariant.VoidWhale,
 });
 
 registerScenarioGameStart({ id: 'newFauna.spawn', order: 10, flag: NEW_FAUNA_FLAG, run: (g) => newFaunaGameStart(g) });
@@ -837,6 +1126,7 @@ registerScenarioQuery({
         return false;
     },
 });
+registerScenarioQuery({ id: 'newFauna.attach', flag: NEW_FAUNA_FLAG, query: 'creatureAttachedHost', run: (g, v, a) => v ?? grazerAttachedPoint(g, a.creature) });
 registerScenarioQuery({
     id: 'newFauna.drifterFog',
     flag: NEW_FAUNA_FLAG,

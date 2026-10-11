@@ -18,6 +18,7 @@ import type { Empire } from './empire';
 import { ComponentType } from './data/components';
 import { countersProcessCreatureDeath } from './victory';
 import { galaxyStarDate } from './tick/simTime';
+import { scenarioQuery } from './scenario/hooks';
 
 // Port of DistantWorlds.Types.CreatureType (member order exact; byte enum).
 export enum CreatureType {
@@ -773,6 +774,17 @@ export class Creature {
     // Port of Creature.cs Move (line 998); `tempNow` in game seconds (the lunge clock).
     private move(timePassed: number, tempNow: number): void {
         const g = this.galaxy;
+        // mod layer (19g-7b hull grazers ride their host); no-op without a scenario.
+        if (g.scenario !== null) {
+            const at = scenarioQuery(g, 'creatureAttachedHost', null, { creature: this });
+            if (at !== null) {
+                this.xpos = at.x;
+                this.ypos = at.y;
+                this.currentSpeed = 0;
+                this.targetSpeed = 0;
+                return;
+            }
+        }
         if (this.targetSpeed > 0.0 || this.currentSpeed > 0.0) {
             let num1 = this.xpos;
             let num2 = this.ypos;

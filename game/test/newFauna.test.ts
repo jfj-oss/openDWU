@@ -26,6 +26,7 @@ import { rimFaunaHerdTick } from '../src/sim/scenario/rimFauna/rimFauna';
 import { herderColonies, rimHerdersState } from '../src/sim/scenario/rimHerders/common';
 import {
     FaunaVariant,
+    GRAZER_HULL_OFFSET,
     GRAZER_LATCH_DIST,
     creatureTamedByHerders,
     faunaVariantDef,
@@ -50,7 +51,7 @@ import {
 
 let base: GameData;
 let shared: Game;
-const PARAMS = { rimFaunaDensityRim: 1.5, rimFaunaDensityInner: 0.5, rimFaunaMaxHerds: 60, newFaunaDensity: 1.5, newFaunaMaxGroups: 300, rimFaunaMigrationDay: 359 };
+const PARAMS = { rimFaunaDensityRim: 1.5, rimFaunaDensityInner: 0.5, rimFaunaMaxHerds: 60, newFaunaDensity: 1.5, newFaunaMaxGroups: 300, rimFaunaMigrationDay: 359, newFaunaWhaleDensity: 0.1, newFaunaWhaleMaxGroups: 100 };
 
 beforeAll(async () => {
     base = await loadGameDataFs();
@@ -117,12 +118,21 @@ describe('19g-7b new fauna — variant table and spawning', () => {
             if (g.systemHabitatsOf(i).some((h) => h.empire !== null && h.empire !== g.independentEmpire)) return;
             systemsPerBand[band(radiusFraction(g, s.systemStar.xpos, s.systemStar.ypos))]++;
         });
+        // Void whales are placed galaxy-wide at one flat density (newFaunaWhaleDensity), the others on the rim curve.
+        const whalesPerBand = [0, 0, 0];
         for (const h of herds) {
             const s = g.systems[h.birthSystemIndex].systemStar;
             const f = radiusFraction(g, s.xpos, s.ypos);
+            if (st.herds[h.id].variant === FaunaVariant.VoidWhale) {
+                whalesPerBand[band(f)]++;
+                continue;
+            }
             perBand[band(f)]++;
             expect(f).toBeGreaterThanOrEqual(faunaVariantDef(st.herds[h.id].variant).minRadius);
         }
+        console.log(`[newFauna] void whale groups by radius band <0.5 / 0.5-0.75 / >=0.75: ${whalesPerBand.join(' / ')}`);
+        expect(faunaVariantDef(FaunaVariant.VoidWhale).minRadius).toBe(0);
+        expect(whalesPerBand[0]).toBeGreaterThan(0);
         const density = perBand.map((n, i) => n / Math.max(1, systemsPerBand[i]));
         console.log(`[newFauna] groups per free system by radius band <0.5 / 0.5-0.75 / >=0.75: ${density.map((d) => d.toFixed(2)).join(' / ')}; by variant ${st.stats.spawned.slice(1).join(',')}`);
         expect(density[0]).toBe(0);
@@ -193,22 +203,71 @@ describe('19g-7b new fauna — behaviours (forced short runs)', () => {
         place(warship, wx, wy);
     });
 
-    it('3 hull grazer: latches onto a station and drains its hull through full shields (Creature.cs DamageTarget)', () => {
+    it('3 hull grazer: a parasite — latches onto a ship or station, rides it, drains hull and fuel, spreads, and is scraped off', () => {
         const g = shared.galaxy;
         const station = shipOf(g, (b) => b.role === BuiltObjectRole.Base && b.components.items.length > 4);
-        const herd = spawnVariantHerd(g, FaunaVariant.HullGrazer, station.nearestSystemStar?.systemIndex ?? rimSystem(g), 1, { x: station.xpos + 5000, y: station.ypos })!;
+        const sys = station.nearestSystemStar?.systemIndex ?? rimSystem(g);
+        // Only the station in range: it latches there.
+        g.scenario!.params.newFaunaGrazerRange = 6000;
+        const herd = spawnVariantHerd(g, FaunaVariant.HullGrazer, sys, 1, { x: station.xpos + 5000, y: station.ypos })!;
         const inf = info(g, herd);
         hullGrazerTick(g, herd, inf);
-        expect(inf.latched).toBe(station);
-        expect(herd.leader!.anchorPoint).toEqual({ x: Math.trunc(station.xpos), y: Math.trunc(station.ypos) });
-        place(herd.leader!, station.xpos + GRAZER_LATCH_DIST / 2, station.ypos);
-        station.currentShields = station.shieldsCapacity;
-        const damaged = (): number => station.components.items.filter((c) => c.status === ComponentStatus.Damaged).length;
+        expect(inf.latched).toBeNull(); // still approaching (latches within GRAZER_LATCH_DIST)
+        expect(herd.leader!.anchorPoint).not.toBeNull();
+        place(herd.leader!, herd.leader!.anchorPoint!.x + GRAZER_LATCH_DIST / 2, herd.leader!.anchorPoint!.y);
+        hullGrazerTick(g, herd, inf);
+        expect(inf.latched).not.toBeNull();
+        const host = inf.latched!;
+        host.dockedAt = null; // a docked host is scraped clean (checked below)
+        // On the hull: within the host's own weapon range, and it rides along (creatureAttachedHost).
+        const at = scenarioQuery(g, 'creatureAttachedHost', null, { creature: herd.leader! })!;
+        expect(Math.hypot(at.x - host.xpos, at.y - host.ypos)).toBeLessThanOrEqual(GRAZER_HULL_OFFSET + 1);
+        expect(GRAZER_HULL_OFFSET).toBeLessThan(190);
+        // Feeding: the hull through full shields, day by day.
+        host.currentShields = host.shieldsCapacity;
+        const damaged = (): number => host.components.items.filter((c) => c.status === ComponentStatus.Damaged).length;
         const before = damaged();
+        const drained = newFaunaState(g).stats.hullDrained;
         for (let i = 0; i < 4; i++) hullGrazerTick(g, herd, inf);
         expect(damaged()).toBeGreaterThan(before);
-        expect(newFaunaState(g).stats.hullDrained).toBe(12);
-        expect(scenarioQuery(g, 'creatureIgnoresTarget', false, { creature: herd.leader!, target: station })).toBe(true);
+        expect(newFaunaState(g).stats.hullDrained - drained).toBe(4 * 10);
+        // Harmless only means it never starts a fight: the host's empire does not spare it.
+        expect(scenarioQuery(g, 'creatureIgnoresTarget', false, { creature: herd.leader!, target: host })).toBe(true);
+        expect(scenarioQuery(g, 'builtObjectSparesCreature', false, { builtObject: host, creature: herd.leader! })).toBe(false);
+        // Multiplying: another ship close to the host gets its own grazer (chance 1 here), once per pair.
+        const other = shipOf(g, (b) => b !== host && b.role !== BuiltObjectRole.Base && b.topSpeed > 0 && b.empire === host.empire);
+        place(other, host.xpos + 500, host.ypos);
+        g.scenario!.params.newFaunaGrazerSpreadChance = 1;
+        g.scenario!.params.newFaunaGrazerSystemCap = 1000; // the dense test galaxy is above the stock caps
+        g.scenario!.params.newFaunaGrazerMaxCount = 1000;
+        inf.nextAt = 0;
+        const births = newFaunaState(g).stats.grazerBirths ?? 0;
+        inf.spreadTried = []; // the feeding ticks above (same day) already tried the neighbours at 20%
+        hullGrazerTick(g, herd, inf);
+        expect(newFaunaState(g).stats.grazerBirths).toBe(births + 1);
+        // The child is the newest grazer herd, latched on one of the host's neighbours.
+        const child = variantHerds(g, FaunaVariant.HullGrazer).reduce((a, h) => (h.id > a.id ? h : a));
+        const nb = info(g, child).latched!;
+        expect(nb).not.toBeNull();
+        expect(nb).not.toBe(host);
+        expect(Math.hypot(nb.xpos - host.xpos, nb.ypos - host.ypos)).toBeLessThanOrEqual(2000);
+        expect(child.leader!.size).toBe(faunaVariantDef(FaunaVariant.HullGrazer).sizeMin);
+        hullGrazerTick(g, herd, inf); // cooldown: no second child
+        expect(newFaunaState(g).stats.grazerBirths).toBe(births + 1);
+        // Fuel siphon on a ship host; docking at a port scrapes it off.
+        const cinf = info(g, child);
+        nb.dockedAt = null;
+        nb.currentFuel = nb.fuelCapacity;
+        hullGrazerTick(g, child, cinf);
+        if (nb.fuelCapacity > 0) expect(nb.currentFuel).toBeLessThan(nb.fuelCapacity);
+        nb.dockedAt = station;
+        const scraped = newFaunaState(g).stats.grazersScraped ?? 0;
+        hullGrazerTick(g, child, cinf);
+        expect(newFaunaState(g).stats.grazersScraped).toBe(scraped + 1);
+        expect(cinf.latched).toBeNull();
+        nb.dockedAt = null;
+        g.scenario!.params.newFaunaGrazerSpreadChance = 0.2;
+        delete g.scenario!.params.newFaunaGrazerRange;
     });
 
     it('4 storm drifter: blinds sensors and misfires jumps inside its cloud (19h queries)', () => {
@@ -334,6 +393,48 @@ describe('19g-7b new fauna — behaviours (forced short runs)', () => {
         // Cooldown: no second pack right away.
         broodCarrierTick(g, herd, inf);
         expect(newFaunaState(g).stats.seeded).toBe(1);
+    });
+});
+
+describe('19g-7b new fauna — travellers: void whale seasons, nest mother escape', () => {
+    it('wild void whales migrate galaxy-wide each season at their slow hyper speed', () => {
+        const g = shared.galaxy;
+        const st = newFaunaState(g);
+        const fs = rimFaunaState(g);
+        const wild = variantHerds(g, FaunaVariant.VoidWhale).filter((h) => info(g, h).tamedBy < 0 && h.migration === null && h.docileEmpireIds.length === 0);
+        expect(wild.length).toBeGreaterThan(0);
+        g.scenario!.params.newFaunaWhaleMigrationChance = 1;
+        fs.lastMigrationYear = (st.whaleSeasonYear ?? fs.lastMigrationYear) + 1;
+        newFaunaTick(g);
+        const moving = wild.filter((h) => h.migration !== null);
+        expect(moving.length).toBe(wild.length);
+        for (const h of moving) for (const c of herdMembers(h)) expect(c.hyperSpeed).toBe(faunaVariantDef(FaunaVariant.VoidWhale).hyperSpeed);
+        expect(st.stats.whaleMigrations).toBeGreaterThanOrEqual(wild.length);
+        delete g.scenario!.params.newFaunaWhaleMigrationChance;
+    });
+
+    it('a badly wounded nest mother flees to a remote rim system and nests there', () => {
+        const g = shared.galaxy;
+        const st = newFaunaState(g);
+        const herd = spawnVariantHerd(g, FaunaVariant.NestMother, rimSystem(g))!;
+        const inf = info(g, herd);
+        const mother = herd.leader!;
+        nestMotherTick(g, herd, inf);
+        expect(inf.destSystem).toBe(-1);
+        mother.damage = mother.damageKillThreshold * 0.8;
+        nestMotherTick(g, herd, inf);
+        expect(inf.destSystem).toBeGreaterThanOrEqual(0);
+        expect(st.stats.nestEscapes).toBeGreaterThanOrEqual(1);
+        expect(mother.hyperSpeed).toBeGreaterThan(0);
+        const to = inf.destSystem;
+        expect(radiusFraction(g, g.systems[to].systemStar.xpos, g.systems[to].systemStar.ypos)).toBeGreaterThanOrEqual(0.7);
+        // Arrival: the new system is her home.
+        place(mother, inf.target!.x, inf.target!.y);
+        mother.currentSpeed = 0;
+        nestMotherTick(g, herd, inf);
+        expect(inf.destSystem).toBe(-1);
+        expect(herd.homeSystemIndex).toBe(to);
+        expect(mother.hyperSpeed).toBe(0);
     });
 });
 

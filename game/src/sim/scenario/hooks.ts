@@ -480,6 +480,11 @@ export interface ScenarioQueries {
      */
     extraLuxuryOrders: { value: readonly number[]; args: { empire: Empire; habitat: Habitat } };
     /**
+     * creature.ts Move (Creature.cs Move), first line: a point the creature is attached to this frame (null = stock
+     * movement). The creature sits there and moves / warps with it (19g-7b hull grazers on their host's hull). Pure.
+     */
+    creatureAttachedHost: { value: { x: number; y: number } | null; args: { creature: Creature } };
+    /**
      * movement.ts detectHyperDeny's RestrictedArea/HyperjumpDisabled location loop (BuiltObject.1.cs 1737): true when
      * `builtObject` should ignore `location`'s hyperjump-disable effect (19f: the Silence — pirate ships are immune
      * inside its zone). Default false (not exempt); never draws.
